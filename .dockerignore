@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.cicada-data
+__pycache__
+*.py[cod]
+*.log
+

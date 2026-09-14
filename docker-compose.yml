@@ -1,0 +1,66 @@
+name: cicada
+
+x-cicada-common: &cicada-common
+  image: ${CICADA_IMAGE:-cicada-codex:dev}
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    network: host
+    args:
+      CICADA_UID: ${CICADA_UID:-1000}
+      CICADA_GID: ${CICADA_GID:-1000}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+  working_dir: /workspace
+  env_file:
+    - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/secrets/cicada.env
+  environment:
+    CODEX_HOME: /state
+  volumes:
+    - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state:/state
+    - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
+    - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs:/var/log/cicada
+    - ./docker/codex-config.toml:/state/config.toml:ro
+  init: true
+  stdin_open: true
+  tty: true
+  healthcheck:
+    test: ["CMD", "cicada-entrypoint", "health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 5s
+
+services:
+  control:
+    <<: *cicada-common
+    container_name: cicada-control
+    ports:
+      - "127.0.0.1:${CICADA_API_PORT:-8787}:8787"
+    environment:
+      CODEX_HOME: /state
+      CICADA_ROLE: control
+      CICADA_API_HOST: 0.0.0.0
+      CICADA_API_PORT: 8787
+    volumes:
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/control:/state
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/control:/var/log/cicada
+      - ./docker/codex-config.toml:/state/config.toml:ro
+    command: ["cicada", "serve", "--host", "0.0.0.0", "--port", "8787"]
+
+  worker:
+    <<: *cicada-common
+    container_name: cicada-worker
+    profiles: ["worker"]
+    environment:
+      CODEX_HOME: /state
+      CICADA_ROLE: worker
+    volumes:
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/worker:/state
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/worker:/var/log/cicada
+      - ./docker/codex-config.toml:/state/config.toml:ro
+    command: ["sleep", "infinity"]
