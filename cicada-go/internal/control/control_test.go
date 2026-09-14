@@ -170,15 +170,33 @@ func TestControlMonitorCorrectionStartsAnotherTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
+	runningObserved := false
 	for time.Now().Before(deadline) {
 		current, lookupErr := controlPlane.Goal(goal.ID)
 		if lookupErr != nil {
 			t.Fatal(lookupErr)
 		}
 		if current.Worker != nil && current.Worker.Status == "running" {
+			runningObserved = true
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if !runningObserved {
+		t.Fatal("worker never entered running state")
+	}
+	machines, err := controlPlane.Machines()
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := false
+	for _, machine := range machines {
+		if machine.ID == goal.MachineID && machine.Status == "busy" {
+			busy = true
+		}
+	}
+	if !busy {
+		t.Fatalf("selected machine was not marked busy: %#v", machines)
 	}
 	if _, err := controlPlane.SendCommand(goal.ID, "Correction: use the corrected answer"); err != nil {
 		t.Fatal(err)

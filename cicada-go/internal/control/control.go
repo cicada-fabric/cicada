@@ -427,6 +427,8 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 	if err != nil || worker == nil {
 		return
 	}
+	machineID := worker.MachineID
+	defer func() { _ = c.store.SetMachineStatus(machineID, "available") }()
 	goal, err := c.store.GetGoal(worker.GoalID)
 	if err != nil || goal == nil {
 		return
@@ -449,6 +451,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 		_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{
 			Status: &runningStatus, Attempt: &attempt, StartedAt: stringPtr(storeNow()), ClearPID: true,
 		})
+		_ = c.store.SetMachineStatus(machineID, "busy")
 		_, _ = c.store.UpdateGoal(goal.ID, "running", goal.Summary)
 		_, _ = c.store.AppendEvent(goal.ID, workerID, "WorkerStarted", map[string]any{
 			"attempt": attempt, "prompt_kind": map[bool]string{true: "recovery", false: "goal"}[recoveryPrompt != ""],
