@@ -257,3 +257,83 @@ func TestControlApprovalPausesUntilResolved(t *testing.T) {
 		t.Fatalf("missing approval events: %v", types)
 	}
 }
+
+func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		goal, err := controlPlane.Goal(goalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if goal != nil && goal.Worker != nil && goal.Worker.Status == "running" {
+			return goal
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("worker did not enter running state: %s", goalID)
+	return nil
+}
+
+func TestControlRoutesMessagesBetweenCodexThreads(t *testing.T) {
+	controlPlane := newTestControl(t, "correction")
+	first, err := controlPlane.CreateGoal(GoalInput{Objective: "thread A prepare a result"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait until worker-local is reserved, so the second Goal demonstrates
+	// scheduler selection of the other registered machine.
+	waitTestWorkerRunning(t, controlPlane, first.ID)
+	second, err := controlPlane.CreateGoal(GoalInput{Objective: "thread B review a peer result"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first = waitTestGoal(t, controlPlane, first.ID)
+	second = waitTestGoal(t, controlPlane, second.ID)
+	if first.Worker == nil || second.Worker == nil || first.Worker.ThreadID == "" || second.Worker.ThreadID == "" {
+		t.Fatalf("both goals need Codex threads: first=%#v second=%#v", first.Worker, second.Worker)
+	}
+	if first.MachineID == second.MachineID {
+		t.Fatalf("scheduler reused a busy machine: first=%s second=%s", first.MachineID, second.MachineID)
+	}
+
+	sent, err := controlPlane.SendThreadMessage(first.Worker.ID, second.Worker.ID, "Thread A reports evidence; verify it and respond.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.Status != "dispatched" || sent.FromThreadID != first.Worker.ThreadID || sent.ToThreadID != second.Worker.ThreadID {
+		t.Fatalf("unexpected peer dispatch: %#v", sent)
+	}
+	second = waitTestGoal(t, controlPlane, second.ID)
+	if second.Summary != "FAKE_CORRECTED_READY" {
+		t.Fatalf("thread B did not resume with peer context: %q", second.Summary)
+	}
+
+	returned, err := controlPlane.SendThreadMessage(second.Worker.ID, first.Worker.ID, "Thread B verified the evidence; continue with the shared conclusion.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if returned.Status != "dispatched" {
+		t.Fatalf("unexpected return dispatch: %#v", returned)
+	}
+	first = waitTestGoal(t, controlPlane, first.ID)
+	if first.Summary != "FAKE_CORRECTED_READY" {
+		t.Fatalf("thread A did not receive the return message: %q", first.Summary)
+	}
+
+	firstEvents, err := controlPlane.Events(first.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondEvents, err := controlPlane.Events(second.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstTypes, secondTypes := eventTypes(firstEvents), eventTypes(secondEvents)
+	if !firstTypes["PeerMessageSent"] || !firstTypes["PeerMessageReceived"] {
+		t.Fatalf("thread A peer events missing: %v", firstTypes)
+	}
+	if !secondTypes["PeerMessageSent"] || !secondTypes["PeerMessageReceived"] || !secondTypes["PeerMessageDispatched"] {
+		t.Fatalf("thread B peer events missing: %v", secondTypes)
+	}
+}

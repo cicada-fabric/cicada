@@ -55,6 +55,28 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusOK, map[string]any{"approvals": approvals})
 		return
 	}
+	if request.URL.Path == "/v1/threads/messages" && request.Method == http.MethodPost {
+		var input struct {
+			FromWorkerID string `json:"from_worker_id"`
+			ToWorkerID   string `json:"to_worker_id"`
+			Message      string `json:"message"`
+		}
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		message, err := h.control.SendThreadMessage(input.FromWorkerID, input.ToWorkerID, input.Message)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, message)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/v1/approvals/") && request.Method == http.MethodPost {
 		approvalID := strings.TrimPrefix(request.URL.Path, "/v1/approvals/")
 		if approvalID == "" || strings.Contains(approvalID, "/") {

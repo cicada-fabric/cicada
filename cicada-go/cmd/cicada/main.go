@@ -34,7 +34,7 @@ func main() {
 		}
 	case "version", "--version", "-V":
 		fmt.Println("cicada " + version)
-	case "goal", "machine", "worker":
+	case "goal", "machine", "worker", "thread":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -96,6 +96,16 @@ func clientCommand(args []string) error {
 			return errors.New("usage: cicada worker list")
 		}
 		method, path = http.MethodGet, "/v1/workers"
+	case "thread":
+		if len(args) < 2 || args[1] != "send" || len(args) < 5 {
+			return errors.New("usage: cicada thread send FROM_WORKER_ID TO_WORKER_ID MESSAGE")
+		}
+		body = map[string]string{
+			"from_worker_id": args[2],
+			"to_worker_id":   args[3],
+			"message":        strings.Join(args[4:], " "),
+		}
+		method, path = http.MethodPost, "/v1/threads/messages"
 	case "goal":
 		if len(args) < 2 {
 			return errors.New("usage: cicada goal list|show|create|send|stop")
@@ -173,7 +183,7 @@ func requestJSON(url, method string, body any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|version")
 }
 
 func envOr(name, fallback string) string {

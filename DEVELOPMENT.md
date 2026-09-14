@@ -73,6 +73,14 @@ curl http://127.0.0.1:8787/v1/approvals
 curl -X POST http://127.0.0.1:8787/v1/approvals/APPROVAL_ID \
   -H 'content-type: application/json' \
   -d '{"decision":"approve"}'
+
+# Run a real two-thread, two-way Codex conversation (uses the relay).
+./scripts/two-thread-demo.sh
+
+# The demo's message primitive is also available directly:
+curl -X POST http://127.0.0.1:8787/v1/threads/messages \
+  -H 'content-type: application/json' \
+  -d '{"from_worker_id":"WORKER_A","to_worker_id":"WORKER_B","message":"Please verify this result."}'
 ```
 
 Verify Docker storage, both containers, the official CLI installation, and the
@@ -109,8 +117,9 @@ TypeScript client split are recorded in `docs/language-decision.md`.
 
 Development starts from `develop`; feature work uses a dedicated branch such
 as `feat/go-control-mvp`. Keep `main` for reviewed releases. The current local
-checkout has `origin` set to `git@github.com:cicada-fabric/cicada.git` and the
-MVP implementation committed on `feat/go-control-mvp`.
+checkout has `origin` set to `git@github.com:cicada-fabric/cicada.git`; the MVP
+baseline is on `feat/go-control-mvp` and the thread-to-thread extension is on
+`feat/worker-heartbeat`.
 
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:

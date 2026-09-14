@@ -261,6 +261,20 @@ type GoalInput struct {
 	MachineID       string `json:"machine_id"`
 }
 
+// ThreadMessage is a durable, Control-mediated message between two Native
+// Codex threads. The event IDs are used as the message ID so the message and
+// its delivery audit trail remain in the same append-only event log.
+type ThreadMessage struct {
+	ID           int64  `json:"id"`
+	FromWorkerID string `json:"from_worker_id"`
+	ToWorkerID   string `json:"to_worker_id"`
+	FromThreadID string `json:"from_thread_id,omitempty"`
+	ToThreadID   string `json:"to_thread_id,omitempty"`
+	Message      string `json:"message"`
+	Status       string `json:"status"`
+	CreatedAt    string `json:"created_at"`
+}
+
 func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	input.Objective = strings.TrimSpace(input.Objective)
 	if input.Objective == "" {
@@ -372,6 +386,102 @@ func (c *Control) SendCommand(goalID, command string) (*store.Command, error) {
 		_ = c.store.TouchMonitor(goal.MonitorID, "active")
 	}
 	return item, err
+}
+
+// SendThreadMessage routes a message between two logical workers. Running
+// workers receive it through the normal monitor command queue; a completed
+// worker is re-launched on its existing Codex thread so the conversation can
+// continue without losing context.
+func (c *Control) SendThreadMessage(fromWorkerID, toWorkerID, message string) (*ThreadMessage, error) {
+	fromWorkerID = strings.TrimSpace(fromWorkerID)
+	toWorkerID = strings.TrimSpace(toWorkerID)
+	message = strings.TrimSpace(message)
+	if fromWorkerID == "" || toWorkerID == "" || message == "" {
+		return nil, errors.New("from_worker_id, to_worker_id, and message are required")
+	}
+	if fromWorkerID == toWorkerID {
+		return nil, errors.New("thread message requires two different workers")
+	}
+	from, err := c.store.GetWorker(fromWorkerID)
+	if err != nil {
+		return nil, err
+	}
+	to, err := c.store.GetWorker(toWorkerID)
+	if err != nil {
+		return nil, err
+	}
+	if from == nil || to == nil {
+		return nil, os.ErrNotExist
+	}
+	fromGoal, err := c.store.GetGoal(from.GoalID)
+	if err != nil {
+		return nil, err
+	}
+	toGoal, err := c.store.GetGoal(to.GoalID)
+	if err != nil {
+		return nil, err
+	}
+	if fromGoal == nil || toGoal == nil {
+		return nil, os.ErrNotExist
+	}
+	payload := map[string]any{
+		"from_worker_id": fromWorkerID,
+		"to_worker_id":   toWorkerID,
+		"from_thread_id": from.ThreadID,
+		"to_thread_id":   to.ThreadID,
+		"message":        message,
+	}
+	sent, err := c.store.AppendEvent(from.GoalID, fromWorkerID, "PeerMessageSent", payload)
+	if err != nil {
+		return nil, err
+	}
+	receivedPayload := map[string]any{
+		"message_id":     sent.ID,
+		"from_worker_id": fromWorkerID,
+		"from_thread_id": from.ThreadID,
+		"message":        message,
+	}
+	if _, err := c.store.AppendEvent(to.GoalID, toWorkerID, "PeerMessageReceived", receivedPayload); err != nil {
+		return nil, err
+	}
+	_ = c.store.TouchMonitor(toGoal.MonitorID, "active")
+
+	peerPrompt := "A peer Codex thread sent this message. Incorporate it into the current goal and reply with your updated conclusion. Do not use tools for this thread-to-thread exchange unless the message explicitly asks for a tool action.\n\n" + message
+	active := false
+	c.mu.Lock()
+	_, active = c.running[toWorkerID]
+	c.mu.Unlock()
+	status := "queued"
+	if active || to.Status == "running" || to.Status == "recovering" || to.Status == "queued" {
+		if _, err := c.store.EnqueueCommand(to.GoalID, toWorkerID, peerPrompt); err != nil {
+			return nil, err
+		}
+		_, _ = c.store.AppendEvent(to.GoalID, toWorkerID, "PeerMessageQueued", map[string]any{"message_id": sent.ID})
+		status = "queued"
+	} else {
+		machine, machineErr := c.store.GetMachine(to.MachineID)
+		if machineErr != nil {
+			return nil, machineErr
+		}
+		if machine == nil || (machine.Status != "available" && machine.Status != "idle") {
+			return nil, fmt.Errorf("destination machine is not available: %s", to.MachineID)
+		}
+		queued := "queued"
+		if _, err := c.store.UpdateWorker(to.ID, store.WorkerUpdate{Status: &queued, ClearPID: true, LastError: stringPtr("")}); err != nil {
+			return nil, err
+		}
+		if _, err := c.store.UpdateGoal(to.GoalID, queued, toGoal.Summary); err != nil {
+			return nil, err
+		}
+		_, _ = c.store.AppendEvent(to.GoalID, toWorkerID, "PeerMessageDispatched", map[string]any{"message_id": sent.ID})
+		c.launchWorker(toWorkerID, peerPrompt)
+		status = "dispatched"
+	}
+	return &ThreadMessage{
+		ID: sent.ID, FromWorkerID: fromWorkerID, ToWorkerID: toWorkerID,
+		FromThreadID: from.ThreadID, ToThreadID: to.ThreadID,
+		Message: message, Status: status, CreatedAt: sent.CreatedAt,
+	}, nil
 }
 
 func (c *Control) StopGoal(goalID string) (*store.Goal, error) {
