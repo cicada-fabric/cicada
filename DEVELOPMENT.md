@@ -107,6 +107,11 @@ The reviewed Happy source checkout and reuse boundaries are recorded in
 The implementation language decision and the reasons for the Go core plus
 TypeScript client split are recorded in `docs/language-decision.md`.
 
+Development starts from `develop`; feature work uses a dedicated branch such
+as `feat/go-control-mvp`. Keep `main` for reviewed releases. The current local
+checkout has `origin` set to `git@github.com:cicada-fabric/cicada.git` and the
+MVP implementation committed on `feat/go-control-mvp`.
+
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:
 
