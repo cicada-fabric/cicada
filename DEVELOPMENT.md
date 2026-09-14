@@ -119,7 +119,7 @@ Development starts from `develop`; feature work uses a dedicated branch such
 as `feat/go-control-mvp`. Keep `main` for reviewed releases. The current local
 checkout has `origin` set to `git@github.com:cicada-fabric/cicada.git`; the MVP
 baseline is on `feat/go-control-mvp` and the thread-to-thread extension is on
-`feat/worker-heartbeat`.
+`feat/thread-messaging`.
 
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:
