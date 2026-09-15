@@ -24,13 +24,30 @@ volume or replace the identity file with an OS secret provider before sharing
 the machine. The private key is never placed in events, artifacts, or a peer
 message envelope.
 
-The current 0.2.0 release exposes a manually controlled contact and envelope path:
+The current 0.2.0 line exposes signed discovery and a manually controlled
+contact and envelope path:
 
 ```bash
-# Publish only the local public identity.
-curl http://127.0.0.1:8787/v1/identity
+# Create a portable public announcement signed by the local ML-DSA key.
+curl -X POST http://127.0.0.1:8787/v1/identity/announcement \
+  -H 'content-type: application/json' -d '{"label":"Alice"}' \
+  > alice-announcement.json
 
-# Pin a peer's published identity.
+# A remote Control receives the exact announcement as a JSON value. It
+# validates the identity ID and ML-DSA signature, then records it as pending.
+jq -n --slurpfile announcement alice-announcement.json \
+  '{announcement:$announcement[0]}' |
+  curl -X POST http://REMOTE_CONTROL/v1/discovery/requests \
+    -H 'content-type: application/json' --data-binary @-
+
+# Review and accept or reject the discovery request. Acceptance creates a
+# pending Contact; a separate PATCH to trusted is still required.
+curl 'http://REMOTE_CONTROL/v1/discovery/requests?status=pending'
+curl -X POST http://REMOTE_CONTROL/v1/discovery/requests/REQUEST_ID/accept
+curl -X PATCH http://REMOTE_CONTROL/v1/contacts/CONTACT_ID \
+  -H 'content-type: application/json' -d '{"status":"trusted"}'
+
+# Direct/manual pinning remains available for already verified identities.
 curl -X POST http://127.0.0.1:8787/v1/contacts \
   -H 'content-type: application/json' \
   -d '{"label":"Alice","identity":{"id":"pq1-...","kem_public":"...","signing_public":"..."}}'
@@ -57,8 +74,9 @@ export CICADA_PEER_RELAY_TOKEN=relay-auth-token
 curl -X POST http://127.0.0.1:8787/v1/peer-messages/PEER_MESSAGE_ID/deliver
 ```
 
-This is the authenticated envelope and pinned-contact layer. Federation,
-automatic contact discovery, and ratcheting/session key rotation remain later
-work. The relay adapter is deliberately transport-agnostic: it retries queued
-messages, marks successful deliveries, and keeps the cryptographic boundary in
-the envelope layer.
+The discovery endpoint authenticates a portable announcement and preserves the
+operator trust decision; it does not supply a public directory or cross-Control
+rendezvous. Federation, directory transport, and ratcheting/session key
+rotation remain later work. The relay adapter retries queued messages, marks
+successful deliveries, and keeps the cryptographic boundary in the envelope
+layer.

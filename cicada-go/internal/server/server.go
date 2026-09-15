@@ -106,6 +106,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusAccepted, message)
 		return
 	}
+	if request.URL.Path == "/v1/identity/announcement" {
+		h.contactAnnouncement(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/identity" && request.Method == http.MethodGet {
 		writeJSON(response, http.StatusOK, h.control.Identity())
 		return
@@ -116,6 +120,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	if strings.HasPrefix(request.URL.Path, "/v1/contacts/") {
 		h.contact(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/discovery/requests" {
+		h.discoveryRequests(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/discovery/requests/") {
+		h.discoveryRequest(response, request)
 		return
 	}
 	if request.URL.Path == "/v1/permissions" {

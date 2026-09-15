@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 )
 
 func TestSignedConnectorWebhookIsDurable(t *testing.T) {
@@ -58,6 +59,25 @@ func TestEmbeddedClientIsServed(t *testing.T) {
 	NewHandler(controlPlane).ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Cicada Control") {
 		t.Fatalf("client was not served: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestSignedContactAnnouncementEndpoint(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	request := httptest.NewRequest(http.MethodPost, "/v1/identity/announcement", strings.NewReader(`{"label":"Alice"}`))
+	request.Header.Set("content-type", "application/json")
+	response := httptest.NewRecorder()
+	NewHandler(controlPlane).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("announcement status=%d body=%s", response.Code, response.Body.String())
+	}
+	if _, label, err := e2ee.VerifyContactAnnouncement(response.Body.Bytes()); err != nil || label != "Alice" {
+		t.Fatalf("invalid signed announcement body=%s err=%v label=%q", response.Body.String(), err, label)
 	}
 }
 

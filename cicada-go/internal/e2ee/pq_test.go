@@ -86,6 +86,28 @@ func TestPostQuantumEnvelopeRejectsTamperingAndWrongContact(t *testing.T) {
 	}
 }
 
+func TestSignedContactAnnouncementRequiresKeyPossession(t *testing.T) {
+	alice, err := NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	announcement, err := alice.SignContactAnnouncement("Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, label, err := VerifyContactAnnouncement(announcement)
+	if err != nil || identity.ID != alice.Public().ID || label != "Alice" {
+		t.Fatalf("valid announcement was rejected: identity=%#v label=%q err=%v", identity, label, err)
+	}
+	announcement[len(announcement)-2] ^= 1
+	if _, _, err := VerifyContactAnnouncement(announcement); err == nil {
+		t.Fatal("tampered announcement was accepted")
+	}
+	if _, err := alice.SignContactAnnouncement(""); err == nil {
+		t.Fatal("empty announcement label was accepted")
+	}
+}
+
 func TestReplayGuardDoesNotConsumeFailedCiphertext(t *testing.T) {
 	sender, err := NewIdentity()
 	if err != nil {

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/cloudflare/circl/kem/mlkem/mlkem768"
@@ -41,6 +42,16 @@ type PublicIdentity struct {
 	ID            string `json:"id"`
 	KEMPublic     []byte `json:"kem_public"`
 	SigningPublic []byte `json:"signing_public"`
+}
+
+// ContactAnnouncement proves possession of the private signing key while a
+// peer is being discovered. It is intentionally separate from an envelope:
+// discovery carries no message plaintext or credentials and is never trust.
+type ContactAnnouncement struct {
+	Version   int            `json:"version"`
+	Identity  PublicIdentity `json:"identity"`
+	Label     string         `json:"label"`
+	Signature []byte         `json:"signature"`
 }
 
 // Identity contains the private ML-KEM and ML-DSA keys for one Cicada peer.
@@ -162,6 +173,58 @@ func (identity *Identity) Public() PublicIdentity {
 		KEMPublic:     append([]byte(nil), identity.public.KEMPublic...),
 		SigningPublic: append([]byte(nil), identity.public.SigningPublic...),
 	}
+}
+
+// SignContactAnnouncement creates a portable, signed public identity record.
+// The recipient must still approve the resulting Contact before messaging.
+func (identity *Identity) SignContactAnnouncement(label string) ([]byte, error) {
+	if identity == nil || identity.signingPrivate == nil {
+		return nil, errors.New("nil E2EE identity")
+	}
+	label = strings.TrimSpace(label)
+	if label == "" || len(label) > 200 {
+		return nil, errors.New("contact announcement label must be 1-200 characters")
+	}
+	announcement := ContactAnnouncement{Version: ProtocolVersion, Identity: identity.Public(), Label: label}
+	unsigned, err := json.Marshal(announcement)
+	if err != nil {
+		return nil, fmt.Errorf("encode contact announcement: %w", err)
+	}
+	announcement.Signature = make([]byte, mldsa65.SignatureSize)
+	if err := mldsa65.SignTo(identity.signingPrivate, unsigned, nil, true, announcement.Signature); err != nil {
+		return nil, fmt.Errorf("sign contact announcement: %w", err)
+	}
+	return json.Marshal(announcement)
+}
+
+// VerifyContactAnnouncement checks the self-derived identity ID and ML-DSA
+// signature. It returns only public data; callers decide whether to trust it.
+func VerifyContactAnnouncement(data []byte) (PublicIdentity, string, error) {
+	var announcement ContactAnnouncement
+	if err := json.Unmarshal(data, &announcement); err != nil {
+		return PublicIdentity{}, "", fmt.Errorf("decode contact announcement: %w", err)
+	}
+	if announcement.Version != ProtocolVersion || len(announcement.Signature) != mldsa65.SignatureSize {
+		return PublicIdentity{}, "", ErrInvalidEnvelope
+	}
+	announcement.Label = strings.TrimSpace(announcement.Label)
+	if announcement.Label == "" || len(announcement.Label) > 200 {
+		return PublicIdentity{}, "", errors.New("invalid contact announcement label")
+	}
+	if err := ValidatePublicIdentity(announcement.Identity); err != nil {
+		return PublicIdentity{}, "", fmt.Errorf("validate contact announcement identity: %w", err)
+	}
+	signature := announcement.Signature
+	announcement.Signature = nil
+	unsigned, err := json.Marshal(announcement)
+	if err != nil {
+		return PublicIdentity{}, "", fmt.Errorf("encode contact announcement: %w", err)
+	}
+	_, signingPublic, err := validatePublic(announcement.Identity)
+	if err != nil || !mldsa65.Verify(signingPublic, unsigned, nil, signature) {
+		return PublicIdentity{}, "", errors.New("contact announcement signature verification failed")
+	}
+	return announcement.Identity, announcement.Label, nil
 }
 
 // MarshalBinary serializes only the private identity. Callers must store its

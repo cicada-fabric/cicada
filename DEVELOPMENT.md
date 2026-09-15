@@ -133,6 +133,18 @@ curl -X POST http://127.0.0.1:8787/v1/threads/messages \
 curl http://127.0.0.1:8787/v1/identity
 curl http://127.0.0.1:8787/v1/contacts
 
+# Publish a signed identity announcement. A receiving Control verifies the
+# ML-DSA signature and records a discovery request without trusting it.
+curl -X POST http://127.0.0.1:8787/v1/identity/announcement \
+  -H 'content-type: application/json' -d '{"label":"Alice"}' \
+  > alice-announcement.json
+jq -n --slurpfile announcement alice-announcement.json \
+  '{announcement:$announcement[0]}' |
+  curl -X POST http://REMOTE_CONTROL/v1/discovery/requests \
+    -H 'content-type: application/json' --data-binary @-
+curl 'http://REMOTE_CONTROL/v1/discovery/requests?status=pending'
+curl -X POST http://REMOTE_CONTROL/v1/discovery/requests/REQUEST_ID/accept
+
 # Seal an opaque peer envelope for a pinned contact.
 curl -X POST http://127.0.0.1:8787/v1/peer-messages \
   -H 'content-type: application/json' \

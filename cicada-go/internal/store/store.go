@@ -117,6 +117,20 @@ type Contact struct {
 	UpdatedAt         string              `json:"updated_at"`
 }
 
+// DiscoveryRequest records a signed identity announcement before the operator
+// decides whether to create a pending Contact.
+type DiscoveryRequest struct {
+	ID           string              `json:"id"`
+	RemoteID     string              `json:"remote_id"`
+	Label        string              `json:"label"`
+	Identity     e2ee.PublicIdentity `json:"identity"`
+	Announcement json.RawMessage     `json:"announcement"`
+	Status       string              `json:"status"`
+	ContactID    string              `json:"contact_id,omitempty"`
+	CreatedAt    string              `json:"created_at"`
+	UpdatedAt    string              `json:"updated_at"`
+}
+
 // PeerMessage stores the opaque envelope and delivery metadata. Plaintext is
 // intentionally absent: the relay/control database must not become a second
 // copy of a peer conversation.
@@ -452,6 +466,18 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS contact_discovery_requests (
+  id TEXT PRIMARY KEY,
+  remote_id TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  announcement_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  contact_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(contact_id) REFERENCES contacts(id)
+);
 CREATE TABLE IF NOT EXISTS peer_messages (
   id TEXT PRIMARY KEY,
   contact_id TEXT NOT NULL,
@@ -520,6 +546,7 @@ CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
+CREATE INDEX IF NOT EXISTS contact_discovery_status_idx ON contact_discovery_requests(status, created_at);
 CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
 CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id, created_at);

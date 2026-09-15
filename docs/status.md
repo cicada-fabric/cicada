@@ -18,6 +18,8 @@ Implemented in this line:
   child-count budgets, and aggregated child evidence;
 - ML-KEM-768 + ML-DSA-65 authenticated peer envelopes with persistent replay
   protection;
+- signed ML-DSA contact announcements with durable discovery requests,
+  idempotent ingress, and an explicit accept/reject then trust lifecycle;
 - optional opaque HTTP relay delivery with queued/retry/delivered state;
 - Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
 - optional bearer authentication for the HTTP/JSON Control boundary, with
@@ -30,8 +32,8 @@ Implemented in this line:
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 
-The release deliberately keeps its boundaries explicit. Automatic federation
-and contact discovery, session ratcheting, a production browser executor,
+The release deliberately keeps its boundaries explicit. Automatic federation,
+directory rendezvous, session ratcheting, a production browser executor,
 external message/calendar connectors, additional harness adapters, and the
 mobile/voice Client remain the next feature lines. The external action queue
 is a safe Control boundary; it does not pretend to be a browser or grant an
