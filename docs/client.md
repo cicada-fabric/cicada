@@ -21,6 +21,11 @@ criteria, Worker states, key events, Artifacts, Workspaces, and external
 actions. Detail data is loaded on demand from the existing Goal APIs, so the
 overview stays compact while a long-running execution remains inspectable.
 
+The Ask Cicada form accepts text, up to five files or images (8 MiB each), and
+one reference link. Uploads are stored under Control's private state with
+generated IDs; links are retained as references and are not fetched during
+upload.
+
 When `CICADA_API_TOKEN` protects Control, the HTML, CSS, and JavaScript remain
 readable so the client can start. Open **Remote access**, paste the bearer
 token, and select **Use for this tab**. The client keeps the token in

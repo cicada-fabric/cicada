@@ -17,6 +17,7 @@ type IntentInput struct {
 	TargetID    string    `json:"target_id,omitempty"`
 	Decision    string    `json:"decision,omitempty"`
 	RevisitWhen string    `json:"revisit_when,omitempty"`
+	Attachments []string  `json:"attachments,omitempty"`
 	Goal        GoalInput `json:"goal,omitempty"`
 }
 
@@ -40,9 +41,16 @@ func (c *Control) RouteIntent(input IntentInput) (*store.Intent, error) {
 	if requested == "" {
 		requested = "auto"
 	}
-	intent, err := c.store.CreateIntent(input.Text, requested, input.TargetID)
+	intent, err := c.store.CreateIntent(input.Text, requested, input.TargetID, input.Attachments)
 	if err != nil {
 		return nil, err
+	}
+	if err := c.prepareIntentAttachments(&input); err != nil {
+		failed, updateErr := c.store.ResolveIntent(intent.ID, "", "failed", map[string]any{}, "", err.Error())
+		if updateErr != nil {
+			return nil, fmt.Errorf("prepare intent attachments: %v; persist failure: %w", err, updateErr)
+		}
+		return failed, err
 	}
 	kind, content, valid := classifyIntent(input.Text, requested)
 	if !valid {

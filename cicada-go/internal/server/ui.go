@@ -6,11 +6,11 @@ import (
 	"net/http"
 )
 
-//go:embed ui/index.html ui/app.css ui/app.js ui/goal-detail.js
+//go:embed ui/index.html ui/app.css ui/app.js ui/goal-detail.js ui/attachments.js
 var clientFiles embed.FS
 
 func isPublicClientPath(path string) bool {
-	return path == "/" || path == "/assets/app.css" || path == "/assets/app.js" || path == "/assets/goal-detail.js"
+	return path == "/" || path == "/assets/app.css" || path == "/assets/app.js" || path == "/assets/goal-detail.js" || path == "/assets/attachments.js"
 }
 
 func serveClient(response http.ResponseWriter, request *http.Request) {
@@ -28,6 +28,9 @@ func serveClient(response http.ResponseWriter, request *http.Request) {
 		contentType = "text/javascript; charset=utf-8"
 	} else if request.URL.Path == "/assets/goal-detail.js" {
 		path = "ui/goal-detail.js"
+		contentType = "text/javascript; charset=utf-8"
+	} else if request.URL.Path == "/assets/attachments.js" {
+		path = "ui/attachments.js"
 		contentType = "text/javascript; charset=utf-8"
 	}
 	data, err := clientFiles.ReadFile(path)

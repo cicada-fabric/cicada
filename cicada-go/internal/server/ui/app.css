@@ -30,6 +30,7 @@ section, details { border: 1px solid #203c34; border-radius: 16px; background: r
 label { display: block; margin-top: 14px; color: #b8cec5; font-size: .82rem; }
 input, textarea, select, button { width: 100%; border-radius: 9px; font: inherit; }
 input, textarea, select { margin-top: 7px; border: 1px solid #315247; background: #07110f; color: #effcf7; padding: 11px 12px; outline: none; }
+input[type="file"] { padding: 8px; color: #a9c1b7; }
 input:focus, textarea:focus, select:focus { border-color: #70d5ae; box-shadow: 0 0 0 3px rgba(112, 213, 174, .12); }
 textarea { resize: vertical; }
 button { margin-top: 12px; border: 1px solid #77deb6; background: #70d5ae; color: #06100d; padding: 10px 13px; font-weight: 750; cursor: pointer; }

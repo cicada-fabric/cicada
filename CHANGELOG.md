@@ -27,6 +27,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   with explicit stale-data and prompt-instruction boundaries.
 - Optional gpt-5.5 natural-input planning through an ephemeral read-only Codex
   invocation, with deterministic fallback and no model-driven Approval.
+- Personal Client file/image/link attachments with 8 MiB per-file and five-item
+  Intent limits, private generated paths, and non-fetching link references.
 
 ### Changed
 

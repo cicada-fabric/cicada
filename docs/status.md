@@ -46,6 +46,8 @@ Implemented in this line:
 - optional gpt-5.5 Intent Planner through the official Codex CLI, with a
   read-only ephemeral sandbox, strict JSON output, timeout, and deterministic
   fallback.
+- Personal Client file/image/link attachments with bounded private storage and
+  attachment metadata carried into Goal resources.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production

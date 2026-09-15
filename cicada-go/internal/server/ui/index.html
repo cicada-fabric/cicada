@@ -47,6 +47,10 @@
           </select>
           <label for="criteria">Success criteria <span class="muted">optional</span></label>
           <input id="criteria" maxlength="4000" placeholder="Tests pass and evidence is recorded">
+          <label for="attachments">Files or images <span class="muted">optional, 8 MB each</span></label>
+          <input id="attachments" type="file" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
+          <label for="reference-link">Reference link <span class="muted">optional</span></label>
+          <input id="reference-link" type="url" maxlength="2000" placeholder="https://…">
           <button type="submit">Start goal</button>
         </form>
       </section>
@@ -89,6 +93,7 @@
     <div id="message" role="status" aria-live="polite"></div>
   </main>
   <script src="/assets/goal-detail.js" defer></script>
+  <script src="/assets/attachments.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>

@@ -427,11 +427,21 @@ CREATE TABLE IF NOT EXISTS intents (
   resolved_kind TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'pending',
   target_id TEXT NOT NULL DEFAULT '',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
   result_json TEXT NOT NULL DEFAULT '{}',
   question TEXT NOT NULL DEFAULT '',
   error TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  source_url TEXT NOT NULL DEFAULT '',
+  path TEXT NOT NULL DEFAULT '',
+  size INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
@@ -560,6 +570,7 @@ CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at)
 CREATE INDEX IF NOT EXISTS permissions_lookup_idx ON permissions(subject_type, subject_id, action, resource);
 CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
 CREATE INDEX IF NOT EXISTS intents_status_idx ON intents(status, updated_at);
+CREATE INDEX IF NOT EXISTS attachments_created_idx ON attachments(created_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
@@ -591,6 +602,7 @@ CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(statu
 		{"contacts", "remote_id", `ALTER TABLE contacts ADD COLUMN remote_id TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "aad", `ALTER TABLE peer_messages ADD COLUMN aad TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "transport_id", `ALTER TABLE peer_messages ADD COLUMN transport_id TEXT NOT NULL DEFAULT ''`},
+		{"intents", "attachments_json", `ALTER TABLE intents ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'`},
 	} {
 		if err := s.ensureColumn(column.table, column.name, column.ddl); err != nil {
 			return err

@@ -147,11 +147,13 @@ byId('goal-form').addEventListener('submit', async event => {
   const button = event.submitter || event.target.querySelector('button[type="submit"]');
   button.disabled = true;
   try {
+    const attachments = await window.CicadaAttachments.upload(window.CicadaClient.api);
     const intent = await api('/v1/intents', {
       method: 'POST', headers: {'content-type': 'application/json'},
       body: JSON.stringify({
         text: byId('objective').value,
         kind: byId('intent-kind').value,
+        attachments,
         goal: {success_criteria: byId('criteria').value},
       }),
     });

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -51,6 +52,18 @@ func (c *Control) memoryContext(goal store.Goal) string {
 		used += len(entry)
 	}
 	return builder.String()
+}
+
+func attachmentContext(goal store.Goal) string {
+	attachments, ok := goal.Resources["attachments"]
+	if !ok || attachments == nil {
+		return ""
+	}
+	data, err := json.Marshal(attachments)
+	if err != nil || string(data) == "null" || string(data) == "[]" {
+		return ""
+	}
+	return string(data)
 }
 
 func truncatePromptMemory(content string, limit int) string {
