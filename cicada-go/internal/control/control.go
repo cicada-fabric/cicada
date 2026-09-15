@@ -207,16 +207,17 @@ func (c *Control) registerLocalMachines() error {
 	if err != nil {
 		hostname = "local"
 	}
-	_, err = c.store.UpsertMachine("control-local", "Control ("+hostname+")", map[string]any{
-		"role": "control", "os": "linux", "harnesses": []string{"codex"},
-	}, "available")
+	capabilities := discoverLocalCapabilities()
+	capabilities["role"] = "control"
+	capabilities["harnesses"] = []string{"codex"}
+	_, err = c.store.UpsertMachine("control-local", "Control ("+hostname+")", capabilities, "available")
 	if err != nil {
 		return err
 	}
-	_, err = c.store.UpsertMachine("worker-local", "Worker ("+hostname+")", map[string]any{
-		"role": "worker", "os": "linux", "harnesses": []string{"codex"},
-		"workspace_root": c.config.WorkspaceRoot,
-	}, "available")
+	workerCapabilities := cloneCapabilities(capabilities)
+	workerCapabilities["role"] = "worker"
+	workerCapabilities["workspace_root"] = c.config.WorkspaceRoot
+	_, err = c.store.UpsertMachine("worker-local", "Worker ("+hostname+")", workerCapabilities, "available")
 	return err
 }
 

@@ -21,6 +21,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   clarification states.
 - On-demand Goal detail view for conclusions, events, workers, artifacts,
   workspaces, and external actions.
+- Local machine capability discovery for scheduler matching, with bounded
+  NVIDIA probing and CPU fallback.
 
 ### Changed
 

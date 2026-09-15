@@ -39,6 +39,8 @@ Implemented in this line:
   for missing targets or decisions.
 - on-demand Goal detail view for conclusions, events, Workers, Artifacts,
   Workspaces, and external actions.
+- local Machine capability discovery for OS, architecture, CPU, memory,
+  toolchains, and NVIDIA/CPU accelerator matching.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production
