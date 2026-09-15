@@ -225,6 +225,27 @@ type ExternalEvent struct {
 	UpdatedAt  string          `json:"updated_at"`
 }
 
+// ExternalAction is a policy-checked request for an external capability. The
+// control plane stores intent and results, never credentials or auth headers.
+type ExternalAction struct {
+	ID          string          `json:"id"`
+	GoalID      string          `json:"goal_id"`
+	WorkerID    string          `json:"worker_id"`
+	Kind        string          `json:"kind"`
+	Method      string          `json:"method"`
+	URL         string          `json:"url"`
+	Domain      string          `json:"domain"`
+	Payload     json.RawMessage `json:"payload,omitempty"`
+	Status      string          `json:"status"`
+	ApprovalID  string          `json:"approval_id,omitempty"`
+	Result      json.RawMessage `json:"result,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	CreatedAt   string          `json:"created_at"`
+	UpdatedAt   string          `json:"updated_at"`
+	StartedAt   string          `json:"started_at,omitempty"`
+	CompletedAt string          `json:"completed_at,omitempty"`
+}
+
 // Permission is a durable capability rule. A rule may target a concrete
 // subject/resource or use an empty resource as an action-wide default.
 // Effects are allow, approval, or deny and are evaluated by Control before an
@@ -471,6 +492,26 @@ CREATE TABLE IF NOT EXISTS external_events (
   UNIQUE(connector, external_id),
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
+CREATE TABLE IF NOT EXISTS external_actions (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  method TEXT NOT NULL,
+  url TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'queued',
+  approval_id TEXT,
+  result_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY(goal_id) REFERENCES goals(id),
+  FOREIGN KEY(worker_id) REFERENCES workers(id)
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
@@ -481,6 +522,8 @@ CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
 CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
 CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
+CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id, created_at);
+CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(status, created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)

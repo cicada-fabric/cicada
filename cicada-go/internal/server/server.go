@@ -142,6 +142,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.externalEvent(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/actions" {
+		h.actions(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/actions/") {
+		h.action(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {
 		unreadOnly := request.URL.Query().Get("unread") != "false"
 		notifications, err := h.control.Notifications(unreadOnly)

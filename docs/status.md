@@ -24,15 +24,19 @@ Implemented in this line:
   constant-time token comparison and runtime-only secret injection;
 - signed external connector ingress with HMAC-SHA256 verification, idempotent
   event keys, durable payloads, Goal audit events, and P1 notifications;
+- policy-gated external action requests with domain and SSRF checks, credential
+  field rejection, durable approval transitions, executor claim/complete state,
+  and append-only action audit events;
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 
 The release deliberately keeps its boundaries explicit. Automatic federation
-and contact discovery, session ratcheting, authenticated browser actions,
+and contact discovery, session ratcheting, a production browser executor,
 external message/calendar connectors, additional harness adapters, and the
-mobile/voice Client remain the next feature lines. They are tracked as product
-work rather than hidden behind claims that the current Codex adapter supports
-them.
+mobile/voice Client remain the next feature lines. The external action queue
+is a safe Control boundary; it does not pretend to be a browser or grant an
+executor access to credentials. These are tracked as product work rather than
+hidden behind claims that the current Codex adapter supports them.
 
 Version and branch workflow:
 

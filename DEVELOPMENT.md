@@ -81,6 +81,26 @@ curl -X POST http://127.0.0.1:8787/v1/connectors/events \
   -d '{"subject":"hello"}'
 curl 'http://127.0.0.1:8787/v1/connectors/events?connector=mail'
 
+# External actions are opt-in by domain. An absent rule creates a P1 approval;
+# destructive methods/capabilities always require approval. No credentials or
+# request headers are accepted by Control.
+GOAL_ID=goal_...
+WORKER_ID=worker_...
+curl -X POST http://127.0.0.1:8787/v1/permissions \
+  -H 'content-type: application/json' \
+  -d "{\"subject_type\":\"goal\",\"subject_id\":\"$GOAL_ID\",\"action\":\"external.fetch\",\"resource\":\"example.com\",\"effect\":\"allow\"}"
+curl -X POST http://127.0.0.1:8787/v1/actions \
+  -H 'content-type: application/json' \
+  -d "{\"goal_id\":\"$GOAL_ID\",\"worker_id\":\"$WORKER_ID\",\"kind\":\"fetch\",\"url\":\"https://example.com\"}"
+
+# If the action is pending approval, resolve it, then pass it to an isolated
+# executor. The Control plane itself never performs arbitrary network access.
+curl -X POST http://127.0.0.1:8787/v1/approvals/APPROVAL_ID \
+  -H 'content-type: application/json' -d '{"decision":"approve"}'
+curl -X POST http://127.0.0.1:8787/v1/actions/ACTION_ID/claim
+curl -X POST http://127.0.0.1:8787/v1/actions/ACTION_ID/complete \
+  -H 'content-type: application/json' -d '{"result":{"status":"ok"}}'
+
 # Create a monitor-only coordinator and attach a child Goal. The coordinator
 # completes only after every child reaches a terminal state.
 curl -X POST http://127.0.0.1:8787/v1/goals \

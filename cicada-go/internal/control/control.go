@@ -1076,7 +1076,38 @@ func (c *Control) ResolveApproval(id, decision string) (*store.Approval, error) 
 			}
 		}
 	}
-	return c.store.ResolveApproval(id, decision)
+	resolved, err := c.store.ResolveApproval(id, decision)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil || resolved.Method != "external_action" || resolved.Status != "resolved" {
+		return resolved, nil
+	}
+	var request struct {
+		ActionID string `json:"action_id"`
+	}
+	if err := json.Unmarshal(resolved.Request, &request); err != nil || request.ActionID == "" {
+		return resolved, nil
+	}
+	action, actionErr := c.store.GetExternalAction(request.ActionID)
+	if actionErr != nil {
+		return nil, actionErr
+	}
+	if action == nil || action.Status != "pending_approval" {
+		return resolved, nil
+	}
+	if resolved.Decision == "accept" || resolved.Decision == "acceptForSession" {
+		action, actionErr = c.store.UpdateExternalActionStatus(action.ID, "queued", string(action.Result), "")
+		if actionErr == nil {
+			_, _ = c.store.AppendEvent(action.GoalID, action.WorkerID, "ExternalActionApproved", map[string]any{"action_id": action.ID})
+		}
+		return resolved, actionErr
+	}
+	_, actionErr = c.store.UpdateExternalActionStatus(action.ID, "rejected", "{}", "approval declined")
+	if actionErr == nil {
+		_, _ = c.store.AppendEvent(action.GoalID, action.WorkerID, "ExternalActionRejected", map[string]any{"action_id": action.ID})
+	}
+	return resolved, actionErr
 }
 
 func (c *Control) Events(goalID string, after int64) ([]store.Event, error) {
