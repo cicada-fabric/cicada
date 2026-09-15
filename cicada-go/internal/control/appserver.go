@@ -260,7 +260,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	threadID := worker.ThreadID
 	if threadID == "" {
 		result, requestErr := app.request(ctx, "thread/start", map[string]any{
-			"model": "gpt-5.4", "modelProvider": nil, "profile": nil, "cwd": workspace,
+			"model": "gpt-5.5", "modelProvider": nil, "profile": nil, "cwd": workspace,
 			"approvalPolicy": "on-request", "sandbox": "workspace-write", "config": nil,
 			"baseInstructions": nil, "developerInstructions": nil, "compactPrompt": nil,
 			"includeApplyPatchTool": nil, "experimentalRawEvents": false, "persistExtendedHistory": true,
@@ -274,7 +274,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 		}
 	} else {
 		if _, err := app.request(ctx, "thread/resume", map[string]any{
-			"threadId": threadID, "model": "gpt-5.4", "modelProvider": nil, "cwd": workspace,
+			"threadId": threadID, "model": "gpt-5.5", "modelProvider": nil, "cwd": workspace,
 			"approvalPolicy": "on-request", "sandbox": "workspace-write", "config": nil,
 			"baseInstructions": nil, "developerInstructions": nil, "persistExtendedHistory": true,
 		}); err != nil {
@@ -290,7 +290,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 		"cwd":            workspace,
 		"approvalPolicy": "on-request",
 		"sandboxPolicy":  map[string]any{"type": "workspaceWrite"},
-		"model":          "gpt-5.4",
+		"model":          "gpt-5.5",
 		"effort":         nil,
 		"summary":        "none",
 		"outputSchema":   nil,

@@ -1,6 +1,6 @@
 # This file contains no credential. The API key is injected as API_KEY by
 # docker-compose from /gpu1-share/data/cicada/secrets/cicada.env.
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_provider = "basil"
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
@@ -14,4 +14,3 @@ env_key = "API_KEY"
 wire_api = "responses"
 request_max_retries = 4
 stream_idle_timeout_ms = 300000
-

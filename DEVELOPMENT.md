@@ -110,8 +110,7 @@ The helper creates the workspace before starting Codex and uses
 `CICADA_TEST_MODEL` (default `gpt-5.5`) for the test TUI. If you start Codex directly, create the directories first with
 `docker compose exec -T control mkdir -p /workspace/manual-a /workspace/manual-b`,
 then pass `--model gpt-5.5` to the Codex command. The packaged runtime
-configuration remains on the requested production model `gpt-5.4`; set
-`CICADA_TEST_MODEL=gpt-5.4` when the verification must match it.
+configuration and the Control app-server also use `gpt-5.5`.
 
 In a normal shell, list the session UUIDs after both TUIs have started:
 
@@ -141,7 +140,7 @@ effective relay configuration without exposing the API key:
 ./scripts/smoke-test.sh
 ```
 
-Set `CICADA_SMOKE_INFERENCE=1` to include a real `gpt-5.4` request through the
+Set `CICADA_SMOKE_INFERENCE=1` to include a real `gpt-5.5` request through the
 relay. The normal smoke test checks authenticated endpoint reachability but
 does not create a model response.
 
@@ -156,7 +155,7 @@ images/      exported image tarball and checksum
 vendor/      optional upstream source checkouts
 ```
 
-Codex reads `docker/codex-config.toml`. It selects model `gpt-5.4`, the
+Codex reads `docker/codex-config.toml`. It selects model `gpt-5.5`, the
 `basil` provider, and `https://basil.xin/v1`; the provider reads the API key
 from the runtime-only `API_KEY` variable.
 

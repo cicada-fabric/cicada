@@ -479,10 +479,22 @@ type IdeaInput struct {
 }
 
 func (c *Control) CreateIdea(input IdeaInput) (*store.Idea, error) {
+	if input.Status != "" && !validIdeaStatus(input.Status) {
+		return nil, fmt.Errorf("unsupported idea status: %s", input.Status)
+	}
 	return c.store.CreateIdea(store.Idea{
 		Title: input.Title, Description: input.Description, Source: input.Source,
 		Status: input.Status, Rationale: input.Rationale, RevisitWhen: input.RevisitWhen,
 	})
+}
+
+func validIdeaStatus(status string) bool {
+	switch status {
+	case "inbox", "researching", "parked", "ready", "started", "completed", "archived":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Control) UpdateIdea(id, status, rationale, revisitWhen string) (*store.Idea, error) {
@@ -496,6 +508,9 @@ func (c *Control) UpdateIdea(id, status, rationale, revisitWhen string) (*store.
 	if status == "" {
 		status = idea.Status
 	}
+	if !validIdeaStatus(status) {
+		return nil, fmt.Errorf("unsupported idea status: %s", status)
+	}
 	if rationale == "" {
 		rationale = idea.Rationale
 	}
@@ -505,6 +520,32 @@ func (c *Control) UpdateIdea(id, status, rationale, revisitWhen string) (*store.
 	return c.store.UpdateIdea(id, status, rationale, revisitWhen, idea.GoalID)
 }
 
+func (c *Control) ResearchIdea(id string) (*store.Goal, error) {
+	idea, err := c.store.GetIdea(id)
+	if err != nil {
+		return nil, err
+	}
+	if idea == nil {
+		return nil, os.ErrNotExist
+	}
+	if idea.GoalID != "" && (idea.Status == "researching" || idea.Status == "started") {
+		return nil, fmt.Errorf("idea already linked to goal: %s", idea.GoalID)
+	}
+	goal, err := c.CreateGoal(GoalInput{
+		Objective:       "Research this idea and return an evidence-backed recommendation without executing it:\n\n" + idea.Description,
+		SuccessCriteria: "Summarize feasibility, relevant evidence, risks, and a clear recommendation.",
+		Constraints:     "Research and analysis only. Do not implement code, change external systems, or commit to execution.",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.store.UpdateIdea(id, "researching", idea.Rationale, idea.RevisitWhen, goal.ID); err != nil {
+		return nil, err
+	}
+	_, _ = c.store.AppendEvent(goal.ID, "", "IdeaResearchStarted", map[string]any{"idea_id": id})
+	return goal, nil
+}
+
 func (c *Control) PromoteIdea(id string, input GoalInput) (*store.Goal, error) {
 	idea, err := c.store.GetIdea(id)
 	if err != nil {
@@ -512,6 +553,9 @@ func (c *Control) PromoteIdea(id string, input GoalInput) (*store.Goal, error) {
 	}
 	if idea == nil {
 		return nil, os.ErrNotExist
+	}
+	if idea.Status == "started" || idea.Status == "completed" {
+		return nil, fmt.Errorf("idea is already %s", idea.Status)
 	}
 	if strings.TrimSpace(input.Objective) == "" {
 		input.Objective = idea.Description

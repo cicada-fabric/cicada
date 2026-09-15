@@ -1737,14 +1737,14 @@ func nullableString(value string) any {
 
 func (s *Store) getEventLocked(id int64) (*Event, error) {
 	var event Event
-	var workerID, payload string
+	var workerID, payload sql.NullString
 	err := s.db.QueryRow(`SELECT id, goal_id, worker_id, type, payload_json, created_at FROM events WHERE id = ?`, id).
 		Scan(&event.ID, &event.GoalID, &workerID, &event.Type, &payload, &event.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
-	event.WorkerID = workerID
-	event.Payload = json.RawMessage(payload)
+	event.WorkerID = workerID.String
+	event.Payload = json.RawMessage(payload.String)
 	return &event, nil
 }
 
@@ -1762,12 +1762,12 @@ func (s *Store) ListEvents(goalID string, after int64, limit int) ([]Event, erro
 	var result []Event
 	for rows.Next() {
 		var event Event
-		var workerID, payload string
+		var workerID, payload sql.NullString
 		if err := rows.Scan(&event.ID, &event.GoalID, &workerID, &event.Type, &payload, &event.CreatedAt); err != nil {
 			return nil, err
 		}
-		event.WorkerID = workerID
-		event.Payload = json.RawMessage(payload)
+		event.WorkerID = workerID.String
+		event.Payload = json.RawMessage(payload.String)
 		result = append(result, event)
 	}
 	return result, rows.Err()

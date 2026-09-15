@@ -352,6 +352,19 @@ func (h *Handler) idea(response http.ResponseWriter, request *http.Request) {
 		writeJSON(response, http.StatusCreated, goal)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "research" && request.Method == http.MethodPost {
+		goal, err := h.control.ResearchIdea(id)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, goal)
+		return
+	}
 	if len(parts) != 1 {
 		writeError(response, http.StatusNotFound, errors.New("route not found"))
 		return

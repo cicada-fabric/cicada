@@ -405,6 +405,29 @@ func TestMonitorQueuesCorrectionAfterStall(t *testing.T) {
 	}
 }
 
+func TestIdeaResearchCreatesNonExecutionGoal(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	idea, err := controlPlane.CreateIdea(IdeaInput{Title: "Research opportunity", Description: "Assess whether this benchmark is worth pursuing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal, err := controlPlane.ResearchIdea(idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTestGoal(t, controlPlane, goal.ID)
+	if final.Status != "completed" || !strings.Contains(final.Objective, "without executing it") {
+		t.Fatalf("research goal did not complete as constrained analysis: %#v", final)
+	}
+	updated, err := controlPlane.Idea(idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != "researching" || updated.GoalID != goal.ID {
+		t.Fatalf("idea was not linked to research goal: %#v", updated)
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

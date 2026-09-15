@@ -18,6 +18,13 @@ curl -X POST http://127.0.0.1:8787/v1/ideas/IDEA_ID/promote \
   -d '{"success_criteria":"Record a reproducible comparison"}'
 ```
 
+Research is a separate action and carries an explicit no-execution constraint
+into the temporary Goal:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/ideas/IDEA_ID/research
+```
+
 Every Goal creates a registered Workspace. The workspace registry records its
 path, source, revision, and lifecycle status; `GET /v1/workspaces?goal_id=...`
 lists the workspaces associated with a Goal, and `PATCH /v1/workspaces/ID`

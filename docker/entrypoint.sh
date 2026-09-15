@@ -25,7 +25,7 @@ case "${1:-shell}" in
   health)
     version="$(codex --version 2>/dev/null | head -n 1)"
     jq -cn --arg version "$version" \
-      '{status:"ok", codex_version:$version, model:"gpt-5.4", provider:"basil"}'
+      '{status:"ok", codex_version:$version, model:"gpt-5.5", provider:"basil"}'
     ;;
   *)
     exec "$@"
