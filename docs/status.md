@@ -48,6 +48,8 @@ Implemented in this line:
   fallback.
 - Personal Client file/image/link attachments with bounded private storage and
   attachment metadata carried into Goal resources.
+- installable Personal Client PWA shell with a static-only service worker that
+  never caches API or private data.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production

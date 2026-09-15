@@ -26,6 +26,11 @@ one reference link. Uploads are stored under Control's private state with
 generated IDs; links are retained as references and are not fetched during
 upload.
 
+The web client is installable as a small PWA. Its service worker caches only
+the embedded HTML/CSS/JavaScript and manifest; it never caches `/v1` responses,
+attachments, bearer tokens, or other private state. Polling resumes when the
+app returns online.
+
 When `CICADA_API_TOKEN` protects Control, the HTML, CSS, and JavaScript remain
 readable so the client can start. Open **Remote access**, paste the bearer
 token, and select **Use for this tab**. The client keeps the token in
@@ -34,6 +39,6 @@ the generated HTML or written to Control storage.
 
 The embedded client uses separate HTML, CSS, and JavaScript source files with a
 strict Content Security Policy. It has no package manager or asset build step.
-This page covers the browser-based Goal overview, Approval UX, and remote
-status slice of Personal Client. Push, voice, native mobile delivery, file and
-image input, and detailed Goal graph/log views remain future work.
+This page covers the browser-based Goal overview, Approval UX, remote status,
+attachments, and on-demand Goal detail slice of Personal Client. Push, voice,
+and native mobile delivery remain future work.

@@ -29,6 +29,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   invocation, with deterministic fallback and no model-driven Approval.
 - Personal Client file/image/link attachments with 8 MiB per-file and five-item
   Intent limits, private generated paths, and non-fetching link references.
+- Installable Personal Client PWA shell with static-only caching and no API or
+  bearer-token cache.
 
 ### Changed
 

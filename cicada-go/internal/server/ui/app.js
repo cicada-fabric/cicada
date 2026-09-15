@@ -9,6 +9,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character =>
 }[character]));
 const statusClass = status => ['running', 'queued', 'recovering', 'failed', 'blocked', 'completed'].includes(status) ? status : '';
 const readableTime = value => value ? new Date(value).toLocaleString() : '';
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
