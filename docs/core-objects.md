@@ -53,3 +53,14 @@ Workers automatically register their final Codex message as an
 `ArtifactProduced` artifact and attach its path and ID to the completed Goal's
 evidence list. Other executors can register reports, patches, measurements,
 or links through `POST /v1/artifacts`.
+
+A Goal can also add another logical Worker. Each added Worker receives an
+ isolated directory under the Goal workspace and can be scheduled with a
+ different capability profile:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/goals/GOAL_ID/workers \
+  -H 'content-type: application/json' \
+  -d '{"resources":{"accelerator":"H100","harness":"codex"},"prompt":"Run the independent validation path."}'
+curl http://127.0.0.1:8787/v1/goals/GOAL_ID/workers
+```

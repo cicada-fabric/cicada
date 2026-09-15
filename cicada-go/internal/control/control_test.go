@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -336,6 +337,35 @@ func TestWorkspaceLifecycleActions(t *testing.T) {
 	resumed, err := controlPlane.WorkspaceAction(workspace.ID, "resume", "")
 	if err != nil || resumed.Status != "active" {
 		t.Fatalf("workspace did not resume: %#v err=%v", resumed, err)
+	}
+}
+
+func TestGoalCanRunMultipleWorkersInSeparateWorkspaces(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.RegisterMachine("worker-2", "Worker 2", map[string]any{"harnesses": []string{"codex"}}, "available"); err != nil {
+		t.Fatal(err)
+	}
+	goalID, monitorID := "goal_multi", "monitor_multi"
+	goalPath := filepath.Join(controlPlane.config.WorkspaceRoot, "goals", goalID)
+	if err := os.MkdirAll(goalPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.store.CreateGoal(goalID, "run two workers", "", "", 50, "worker-local", monitorID, goalPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := controlPlane.AddWorker(goalID, WorkerInput{MachineID: "worker-2", Prompt: "inspect the shared goal independently"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if worker.Workspace == "" || worker.Workspace == goalPath || !strings.HasPrefix(worker.Workspace, filepath.Join(goalPath, "workers")) {
+		t.Fatalf("worker did not receive an isolated workspace: %#v", worker)
+	}
+	workers, err := controlPlane.store.ListWorkersForGoal(goalID)
+	if err != nil || len(workers) != 1 {
+		t.Fatalf("unexpected goal workers: %#v err=%v", workers, err)
 	}
 }
 

@@ -600,6 +600,41 @@ func (h *Handler) goal(response http.ResponseWriter, request *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]any{"events": events})
 		return
 	}
+	if len(parts) == 2 && parts[1] == "workers" {
+		if request.Method == http.MethodGet {
+			goal, err := h.control.Goal(goalID)
+			if err != nil {
+				writeError(response, http.StatusInternalServerError, err)
+				return
+			}
+			if goal == nil {
+				writeError(response, http.StatusNotFound, errors.New("goal not found"))
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]any{"workers": goal.Workers})
+			return
+		}
+		if request.Method != http.MethodPost {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		var input control.WorkerInput
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		worker, err := h.control.AddWorker(goalID, input)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, worker)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "commands" && request.Method == http.MethodPost {
 		var input struct {
 			Command string `json:"command"`

@@ -756,11 +756,15 @@ func (c *Control) decorate(goal *store.Goal) error {
 	if err != nil {
 		return err
 	}
+	workers, err := c.store.ListWorkersForGoal(goal.ID)
+	if err != nil {
+		return err
+	}
 	events, err := c.store.ListEvents(goal.ID, 0, 20)
 	if err != nil {
 		return err
 	}
-	goal.Worker, goal.Events = worker, events
+	goal.Worker, goal.Workers, goal.Events = worker, workers, events
 	if goal.MonitorID != "" {
 		monitor, err := c.store.GetMonitor(goal.MonitorID)
 		if err != nil {
@@ -830,8 +834,8 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if _, err := c.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
 		return nil, err
 	}
-	worker, err := c.store.CreateWorker(store.NewID("worker"), goalID, machineID,
-		filepath.Join(workspace, ".cicada-last-message"))
+	worker, err := c.store.CreateWorkerAt(store.NewID("worker"), goalID, machineID,
+		filepath.Join(workspace, ".cicada-last-message"), workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -845,6 +849,52 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	}
 	c.launchWorker(worker.ID, "")
 	return c.Goal(goalID)
+}
+
+type WorkerInput struct {
+	MachineID string         `json:"machine_id"`
+	Resources map[string]any `json:"resources"`
+	Prompt    string         `json:"prompt"`
+}
+
+func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, error) {
+	goal, err := c.store.GetGoal(goalID)
+	if err != nil {
+		return nil, err
+	}
+	if goal == nil {
+		return nil, os.ErrNotExist
+	}
+	if goal.Status == "completed" || goal.Status == "failed" || goal.Status == "cancelled" {
+		return nil, fmt.Errorf("goal is already %s", goal.Status)
+	}
+	machineID, err := c.chooseMachine(input.MachineID, input.Resources)
+	if err != nil {
+		return nil, err
+	}
+	workerID := store.NewID("worker")
+	workspace := filepath.Join(goal.Workspace, "workers", workerID)
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		return nil, fmt.Errorf("create worker workspace: %w", err)
+	}
+	if _, err := c.store.CreateWorkspace(store.NewID("workspace"), goalID, workspace, "worker", ""); err != nil {
+		return nil, err
+	}
+	worker, err := c.store.CreateWorkerAt(workerID, goalID, machineID, filepath.Join(workspace, ".cicada-last-message"), workspace)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.store.AppendEvent(goalID, workerID, "WorkerQueued", map[string]any{
+		"harness": worker.Harness, "machine_id": machineID, "workspace": workspace,
+	}); err != nil {
+		return nil, err
+	}
+	prompt := strings.TrimSpace(input.Prompt)
+	if prompt == "" {
+		prompt = c.initialPrompt(*goal)
+	}
+	c.launchWorker(worker.ID, prompt)
+	return c.store.GetWorker(worker.ID)
 }
 
 func (c *Control) chooseMachine(requested string, resources map[string]any) (string, error) {
@@ -1262,6 +1312,10 @@ func (c *Control) runExecCodex(parent context.Context, goal store.Goal, workerID
 	if err != nil || worker == nil {
 		return codexResult{ExitCode: 1, Output: "worker not found"}
 	}
+	workspace := goal.Workspace
+	if worker.Workspace != "" {
+		workspace = worker.Workspace
+	}
 	args := []string{"exec"}
 	if worker.ThreadID != "" {
 		args = append(args, "resume", worker.ThreadID, "--skip-git-repo-check")
@@ -1272,7 +1326,7 @@ func (c *Control) runExecCodex(parent context.Context, goal store.Goal, workerID
 	ctx, cancel := context.WithTimeout(parent, c.config.WorkerTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, "codex", args...)
-	command.Dir = goal.Workspace
+	command.Dir = workspace
 	command.Env = append(os.Environ(), "CODEX_HOME="+envOr("CODEX_HOME", "/state"))
 	stdout, err := command.StdoutPipe()
 	if err != nil {

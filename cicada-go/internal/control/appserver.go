@@ -215,6 +215,10 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	if err != nil || worker == nil {
 		return appServerResult{ExitCode: 1, Output: "worker not found"}
 	}
+	workspace := goal.Workspace
+	if worker.Workspace != "" {
+		workspace = worker.Workspace
+	}
 	ctx, cancel := context.WithTimeout(parent, c.config.WorkerTimeout)
 	defer cancel()
 	var approvalErr error
@@ -235,7 +239,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 		}
 		return map[string]any{}
 	}
-	app, err := newAppServer(ctx, c.config.CodexBinary, goal.Workspace, onEvent, onRequest)
+	app, err := newAppServer(ctx, c.config.CodexBinary, workspace, onEvent, onRequest)
 	if err != nil {
 		return appServerResult{ExitCode: 1, Output: err.Error()}
 	}
@@ -256,7 +260,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	threadID := worker.ThreadID
 	if threadID == "" {
 		result, requestErr := app.request(ctx, "thread/start", map[string]any{
-			"model": "gpt-5.4", "modelProvider": nil, "profile": nil, "cwd": goal.Workspace,
+			"model": "gpt-5.4", "modelProvider": nil, "profile": nil, "cwd": workspace,
 			"approvalPolicy": "on-request", "sandbox": "workspace-write", "config": nil,
 			"baseInstructions": nil, "developerInstructions": nil, "compactPrompt": nil,
 			"includeApplyPatchTool": nil, "experimentalRawEvents": false, "persistExtendedHistory": true,
@@ -270,7 +274,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 		}
 	} else {
 		if _, err := app.request(ctx, "thread/resume", map[string]any{
-			"threadId": threadID, "model": "gpt-5.4", "modelProvider": nil, "cwd": goal.Workspace,
+			"threadId": threadID, "model": "gpt-5.4", "modelProvider": nil, "cwd": workspace,
 			"approvalPolicy": "on-request", "sandbox": "workspace-write", "config": nil,
 			"baseInstructions": nil, "developerInstructions": nil, "persistExtendedHistory": true,
 		}); err != nil {
@@ -283,7 +287,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	if _, err := app.request(ctx, "turn/start", map[string]any{
 		"threadId":       threadID,
 		"input":          []any{map[string]any{"type": "text", "text": prompt}},
-		"cwd":            goal.Workspace,
+		"cwd":            workspace,
 		"approvalPolicy": "on-request",
 		"sandboxPolicy":  map[string]any{"type": "workspaceWrite"},
 		"model":          "gpt-5.4",

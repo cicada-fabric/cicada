@@ -47,6 +47,7 @@ type Goal struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	Worker          *Worker        `json:"worker,omitempty"`
+	Workers         []Worker       `json:"workers,omitempty"`
 	Monitor         *Monitor       `json:"monitor,omitempty"`
 	Events          []Event        `json:"events,omitempty"`
 }
@@ -157,6 +158,7 @@ type Worker struct {
 	EndedAt      string `json:"ended_at,omitempty"`
 	LastError    string `json:"last_error,omitempty"`
 	ResponseFile string `json:"response_file"`
+	Workspace    string `json:"workspace"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -271,6 +273,7 @@ CREATE TABLE IF NOT EXISTS workers (
   ended_at TEXT,
   last_error TEXT NOT NULL DEFAULT '',
   response_file TEXT NOT NULL,
+  workspace TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(goal_id) REFERENCES goals(id),
@@ -398,17 +401,19 @@ CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id
 	// Keep initialization backward compatible so an upgrade never discards the
 	// durable worker/event history already on disk.
 	for _, column := range []struct {
-		name string
-		ddl  string
+		table string
+		name  string
+		ddl   string
 	}{
-		{"deadline", `ALTER TABLE goals ADD COLUMN deadline TEXT`},
-		{"budget_json", `ALTER TABLE goals ADD COLUMN budget_json TEXT NOT NULL DEFAULT '{}'`},
-		{"resources_json", `ALTER TABLE goals ADD COLUMN resources_json TEXT NOT NULL DEFAULT '{}'`},
-		{"current_state", `ALTER TABLE goals ADD COLUMN current_state TEXT NOT NULL DEFAULT ''`},
-		{"evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
-		{"outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
+		{"goals", "deadline", `ALTER TABLE goals ADD COLUMN deadline TEXT`},
+		{"goals", "budget_json", `ALTER TABLE goals ADD COLUMN budget_json TEXT NOT NULL DEFAULT '{}'`},
+		{"goals", "resources_json", `ALTER TABLE goals ADD COLUMN resources_json TEXT NOT NULL DEFAULT '{}'`},
+		{"goals", "current_state", `ALTER TABLE goals ADD COLUMN current_state TEXT NOT NULL DEFAULT ''`},
+		{"goals", "evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
+		{"goals", "outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
+		{"workers", "workspace", `ALTER TABLE workers ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
 	} {
-		if err := s.ensureColumn("goals", column.name, column.ddl); err != nil {
+		if err := s.ensureColumn(column.table, column.name, column.ddl); err != nil {
 			return err
 		}
 	}
@@ -1356,12 +1361,16 @@ func (s *Store) TouchMonitor(id, status string) error {
 }
 
 func (s *Store) CreateWorker(id, goalID, machineID, responseFile string) (*Worker, error) {
+	return s.CreateWorkerAt(id, goalID, machineID, responseFile, filepath.Dir(responseFile))
+}
+
+func (s *Store) CreateWorkerAt(id, goalID, machineID, responseFile, workspace string) (*Worker, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`INSERT INTO workers
-(id, goal_id, machine_id, harness, status, response_file, created_at, updated_at)
-VALUES (?, ?, ?, 'codex', 'queued', ?, ?, ?)`, id, goalID, machineID, responseFile, timestamp, timestamp)
+	(id, goal_id, machine_id, harness, status, response_file, workspace, created_at, updated_at)
+VALUES (?, ?, ?, 'codex', 'queued', ?, ?, ?, ?)`, id, goalID, machineID, responseFile, workspace, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create worker: %w", err)
 	}
@@ -1373,9 +1382,9 @@ func (s *Store) getWorkerLocked(id string) (*Worker, error) {
 	var pid sql.NullInt64
 	var threadID, startedAt, endedAt, lastError sql.NullString
 	err := s.db.QueryRow(`SELECT id, goal_id, machine_id, harness, status, pid, thread_id, attempt,
-started_at, ended_at, last_error, response_file, created_at, updated_at FROM workers WHERE id = ?`, id).
+	started_at, ended_at, last_error, response_file, workspace, created_at, updated_at FROM workers WHERE id = ?`, id).
 		Scan(&worker.ID, &worker.GoalID, &worker.MachineID, &worker.Harness, &worker.Status, &pid, &threadID, &worker.Attempt,
-			&startedAt, &endedAt, &lastError, &worker.ResponseFile, &worker.CreatedAt, &worker.UpdatedAt)
+			&startedAt, &endedAt, &lastError, &worker.ResponseFile, &worker.Workspace, &worker.CreatedAt, &worker.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1408,6 +1417,41 @@ func (s *Store) GetWorkerForGoal(goalID string) (*Worker, error) {
 		return nil, err
 	}
 	return s.getWorkerLocked(id)
+}
+
+func (s *Store) ListWorkersForGoal(goalID string) ([]Worker, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT id FROM workers WHERE goal_id = ? ORDER BY created_at`, goalID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	workers := make([]Worker, 0, len(ids))
+	for _, id := range ids {
+		worker, err := s.getWorkerLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if worker != nil {
+			workers = append(workers, *worker)
+		}
+	}
+	return workers, nil
 }
 
 func (s *Store) ListWorkers() ([]Worker, error) {
