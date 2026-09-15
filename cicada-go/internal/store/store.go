@@ -915,6 +915,20 @@ func (s *Store) GetIdea(id string) (*Idea, error) {
 	return s.getIdeaLocked(id)
 }
 
+func (s *Store) GetIdeaByGoalID(goalID string) (*Idea, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var id string
+	err := s.db.QueryRow(`SELECT id FROM ideas WHERE goal_id = ? ORDER BY updated_at DESC LIMIT 1`, goalID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.getIdeaLocked(id)
+}
+
 func (s *Store) ListIdeas(status string) ([]Idea, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

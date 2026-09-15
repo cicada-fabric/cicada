@@ -1644,6 +1644,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 			// Publish the terminal Goal state last so clients that observe
 			// status=completed can also read the completion events and evidence.
 			_, _ = c.store.UpdateGoalDetails(goal.ID, completed, summary, "completed", summary, evidence)
+			c.completeIdeaResearch(goal, summary)
 			c.notify(goal.ID, "goal.completed", "P2", "Goal completed", summary)
 			_ = c.store.SetMachineStatus(worker.MachineID, "available")
 			return
@@ -1676,8 +1677,55 @@ func (c *Control) finishFailure(goal *store.Goal, workerID string, attempt int, 
 	_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Status: &failed, ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: &message})
 	_, _ = c.store.UpdateGoal(goal.ID, failed, message)
 	_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalBlocked", map[string]any{"attempt": attempt, "reason": message})
+	c.parkFailedIdeaResearch(goal, message)
 	c.notify(goal.ID, "goal.blocked", "P0", "Goal needs attention", message)
 	_ = c.store.SetMachineStatus(goal.MachineID, "available")
+}
+
+// completeIdeaResearch closes the durable Idea workflow when its research
+// goal reaches a terminal success state. The final worker message is retained
+// as both the Idea rationale and a scoped Memory so later planning can reuse
+// the evidence without reopening the completed worker.
+func (c *Control) completeIdeaResearch(goal *store.Goal, summary string) {
+	idea, err := c.store.GetIdeaByGoalID(goal.ID)
+	if err != nil || idea == nil || idea.Status != "researching" {
+		return
+	}
+	rationale := strings.TrimSpace(summary)
+	if rationale == "" {
+		rationale = "Research completed without a final worker message."
+	}
+	if _, err := c.store.UpdateIdea(idea.ID, "ready", rationale, idea.RevisitWhen, goal.ID); err != nil {
+		return
+	}
+	if _, err := c.store.CreateMemory(store.Memory{
+		Scope: "idea", Namespace: idea.ID, Content: rationale, Source: goal.ID, Importance: 80,
+	}); err != nil {
+		_, _ = c.store.AppendEvent(goal.ID, "", "IdeaResearchMemoryFailed", map[string]any{
+			"idea_id": idea.ID, "error": err.Error(),
+		})
+	}
+	_, _ = c.store.AppendEvent(goal.ID, "", "IdeaResearchCompleted", map[string]any{
+		"idea_id": idea.ID, "rationale": tail(rationale, 4000),
+	})
+	c.notify(goal.ID, "idea.researched", "P2", "Idea research completed", rationale)
+}
+
+// parkFailedIdeaResearch preserves the link to a failed research goal while
+// making the Idea eligible for a later retry or explicit promotion.
+func (c *Control) parkFailedIdeaResearch(goal *store.Goal, message string) {
+	idea, err := c.store.GetIdeaByGoalID(goal.ID)
+	if err != nil || idea == nil || idea.Status != "researching" {
+		return
+	}
+	rationale := "Research failed: " + strings.TrimSpace(message)
+	if _, err := c.store.UpdateIdea(idea.ID, "parked", tail(rationale, 12000), idea.RevisitWhen, goal.ID); err != nil {
+		return
+	}
+	_, _ = c.store.AppendEvent(goal.ID, "", "IdeaResearchFailed", map[string]any{
+		"idea_id": idea.ID, "reason": tail(message, 4000),
+	})
+	c.notify(goal.ID, "idea.research_failed", "P1", "Idea research failed", message)
 }
 
 type codexResult struct {

@@ -570,8 +570,20 @@ func TestIdeaResearchCreatesNonExecutionGoal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Status != "researching" || updated.GoalID != goal.ID {
-		t.Fatalf("idea was not linked to research goal: %#v", updated)
+	if updated.Status != "ready" || updated.GoalID != goal.ID || updated.Rationale != "FAKE_READY" {
+		t.Fatalf("idea research result was not persisted: %#v", updated)
+	}
+	memories, err := controlPlane.Memories("idea", idea.ID)
+	if err != nil || len(memories) != 1 || memories[0].Content != "FAKE_READY" || memories[0].Source != goal.ID {
+		t.Fatalf("idea research memory missing: %#v err=%v", memories, err)
+	}
+	events, err := controlPlane.Events(goal.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := eventTypes(events)
+	if !types["IdeaResearchCompleted"] {
+		t.Fatalf("idea research completion event missing: %v", types)
 	}
 }
 
