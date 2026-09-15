@@ -40,7 +40,9 @@ Implemented in this line:
 - on-demand Goal detail view for conclusions, events, Workers, Artifacts,
   Workspaces, and external actions.
 - local Machine capability discovery for OS, architecture, CPU, memory,
-  toolchains, and NVIDIA/CPU accelerator matching.
+  toolchains, container runtimes, compilers, disk, network, and NVIDIA/CPU
+  accelerator matching, including load, disk, toolchain, container, and
+  network constraints.
 - bounded personal, project, and execution Memory context in Worker prompts,
   labeled as reference data and persisted through the existing Memory API.
 - optional gpt-5.5 Intent Planner through the official Codex CLI, with a
