@@ -30,6 +30,7 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		{path: "/", contentType: "text/html", contains: "Ask Cicada"},
 		{path: "/assets/app.css", contentType: "text/css", contains: ".stats"},
 		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
+		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "artifacts"},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
@@ -67,7 +68,7 @@ func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
 
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js"} {
+	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)

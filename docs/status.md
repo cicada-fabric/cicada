@@ -37,6 +37,8 @@ Implemented in this line:
 - durable natural-input Intent routing for Goal, Idea, Research, Question,
   Command, and explicitly requested Approval actions, with clarification states
   for missing targets or decisions.
+- on-demand Goal detail view for conclusions, events, Workers, Artifacts,
+  Workspaces, and external actions.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production

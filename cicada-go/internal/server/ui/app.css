@@ -51,6 +51,15 @@ button.danger { color: #fca5a5; border-color: #7f3939; }
 .summary { margin: 12px 0 0; color: #d4e5de; white-space: pre-wrap; overflow-wrap: anywhere; }
 .worker-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .worker { border-radius: 7px; background: #152721; padding: 5px 8px; color: #a7c0b6; font-size: .72rem; }
+.detail-toggle { margin-top: 14px; }
+.goal-detail { margin-top: 12px; border-top: 1px solid #29463c; padding-top: 12px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.detail-grid > div { min-width: 0; border-radius: 9px; background: #081410; padding: 10px; }
+.detail-grid h3 { margin: 0 0 8px; color: #b8cec5; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+.detail-grid ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.detail-grid li { display: grid; gap: 3px; color: #d4e5de; font-size: .78rem; overflow-wrap: anywhere; }
+.detail-grid li span, .detail-grid li small { color: #78958a; }
+.detail-grid pre { max-height: 90px; margin: 4px 0 0; font-size: .68rem; }
 pre { margin: 10px 0 0; color: #adc5bb; font: .73rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .notice.P0 { border-left: 4px solid #ef4444; }
 .notice.P1 { border-left: 4px solid #f59e0b; }
@@ -69,4 +78,5 @@ summary { cursor: pointer; font-weight: 650; }
   .stats article { min-height: 76px; }
   .stats strong { font-size: 1.7rem; }
   .approval header, .notice header, .goal header { flex-direction: column; gap: 7px; }
+  .detail-grid { grid-template-columns: 1fr; }
 }

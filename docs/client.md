@@ -16,6 +16,11 @@ deny a request, and acknowledge a notification. The page polls the JSON API
 every five seconds; the API remains the stable boundary for a future mobile or
 desktop client.
 
+Select **View detail** on any Goal to inspect its current conclusion, success
+criteria, Worker states, key events, Artifacts, Workspaces, and external
+actions. Detail data is loaded on demand from the existing Goal APIs, so the
+overview stays compact while a long-running execution remains inspectable.
+
 When `CICADA_API_TOKEN` protects Control, the HTML, CSS, and JavaScript remain
 readable so the client can start. Open **Remote access**, paste the bearer
 token, and select **Use for this tab**. The client keeps the token in

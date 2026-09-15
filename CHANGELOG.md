@@ -19,6 +19,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Durable `/v1/intents` routing for natural input into Goals, Ideas, research,
   questions, commands, and explicit Approval decisions, including persisted
   clarification states.
+- On-demand Goal detail view for conclusions, events, workers, artifacts,
+  workspaces, and external actions.
 
 ### Changed
 

@@ -35,6 +35,8 @@ function showMessage(message, error = false) {
   messageTimer = setTimeout(() => { target.className = ''; }, 3600);
 }
 
+window.CicadaClient = {api, showMessage, escapeHTML};
+
 function renderApprovals(approvals) {
   const target = byId('approvals');
   if (!approvals.length) {
@@ -99,8 +101,11 @@ function renderGoals(goals) {
       <p class="meta">${escapeHTML(metadata)}</p>
       <p class="summary">${escapeHTML(goal.summary || goal.current_state || 'Working autonomously…')}</p>
       ${workerList}
+      <button class="secondary detail-toggle" data-goal-detail="${escapeHTML(goal.id)}" type="button">View detail</button>
+      <div class="goal-detail" data-goal-detail-panel="${escapeHTML(goal.id)}" hidden></div>
     </article>`;
   }).join('');
+  window.CicadaGoalDetail?.attach(target);
 }
 
 async function refresh() {
