@@ -14,12 +14,18 @@ fi
 # selected model. Earlier Codex versions may have migrated this line to a
 # different default; the explicit Cicada runtime contract is gpt-5.5.
 if [[ -f "${CODEX_HOME}/config.toml" ]]; then
+  config_tmp="${CODEX_HOME}/config.toml.tmp.$$"
   if grep -qE '^model[[:space:]]*=' "${CODEX_HOME}/config.toml"; then
-    sed -i -E 's/^model[[:space:]]*=.*/model = "gpt-5.5"/' "${CODEX_HOME}/config.toml"
+    sed -E 's/^model[[:space:]]*=.*/model = "gpt-5.5"/' \
+      "${CODEX_HOME}/config.toml" >"${config_tmp}"
   else
-    printf '\nmodel = "gpt-5.5"\n' >> "${CODEX_HOME}/config.toml"
+    cat "${CODEX_HOME}/config.toml" >"${config_tmp}"
+    printf '\nmodel = "gpt-5.5"\n' >>"${config_tmp}"
   fi
-  chmod 0600 "${CODEX_HOME}/config.toml"
+  chmod 0600 "${config_tmp}"
+  # A previous container may have created the file as root. Replacing it via
+  # the writable state directory still works for the unprivileged runtime user.
+  mv -f "${config_tmp}" "${CODEX_HOME}/config.toml"
 fi
 
 case "${1:-shell}" in
