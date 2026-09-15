@@ -30,6 +30,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		response.WriteHeader(http.StatusNoContent)
 		return
 	}
+	if request.URL.Path == "/" {
+		serveClient(response, request)
+		return
+	}
 	if request.URL.Path == "/healthz" && request.Method == http.MethodGet {
 		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "service": "cicada-control", "version": "0.1.0"})
 		return
