@@ -74,5 +74,6 @@ curl http://127.0.0.1:8787/v1/goals/GOAL_ID/workers
 
 Goal metadata accepts an RFC3339 `deadline`, structured `budget`, and
 structured `resources`. The monitor stops an unfinished Goal after its deadline
-and emits a P0 notification; budget values are retained as policy input while
-executor-specific usage accounting is added with the corresponding harness.
+and emits a P0 notification. The MVP enforces `budget.max_runtime_seconds` for
+running workers and `budget.max_workers` when adding workers; token and
+executor-specific accounting can be added without changing the Goal shape.

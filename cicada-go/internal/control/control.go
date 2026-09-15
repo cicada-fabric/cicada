@@ -259,6 +259,16 @@ func (c *Control) evaluateMonitors() {
 		if workerErr != nil || worker == nil || worker.Status != "running" {
 			continue
 		}
+		if maxRuntime, ok := numberValue(goal.Budget["max_runtime_seconds"]); ok && maxRuntime > 0 && worker.StartedAt != "" {
+			if started, parseErr := time.Parse(time.RFC3339, worker.StartedAt); parseErr == nil && time.Since(started) >= time.Duration(maxRuntime)*time.Second {
+				_, _ = c.store.AppendEvent(goal.ID, worker.ID, "GoalBudgetExceeded", map[string]any{
+					"budget": "max_runtime_seconds", "limit": maxRuntime, "elapsed_seconds": int64(time.Since(started).Seconds()),
+				})
+				c.notify(goal.ID, "goal.budget", "P0", "Goal budget exceeded", "The configured runtime budget was exceeded; the goal was stopped.")
+				_, _ = c.StopGoal(goal.ID)
+				continue
+			}
+		}
 		monitor, monitorErr := c.store.GetMonitor(goal.MonitorID)
 		if monitorErr != nil || monitor == nil {
 			continue
@@ -1096,6 +1106,15 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	}
 	if goal.Status == "completed" || goal.Status == "failed" || goal.Status == "cancelled" {
 		return nil, fmt.Errorf("goal is already %s", goal.Status)
+	}
+	if maxWorkers, ok := numberValue(goal.Budget["max_workers"]); ok && maxWorkers > 0 {
+		workers, listErr := c.store.ListWorkersForGoal(goalID)
+		if listErr != nil {
+			return nil, listErr
+		}
+		if float64(len(workers)) >= maxWorkers {
+			return nil, fmt.Errorf("goal worker budget exceeded: max_workers=%d", int(maxWorkers))
+		}
 	}
 	harness := strings.ToLower(strings.TrimSpace(input.Harness))
 	if harness == "" {

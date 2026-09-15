@@ -220,6 +220,40 @@ func TestControlMonitorCorrectionStartsAnotherTurn(t *testing.T) {
 	}
 }
 
+func TestControlStopsGoalWhenRuntimeBudgetIsExceeded(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := New(Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		CodexBinary: fakeCodex(t, "correction"), WorkerTimeout: 2 * time.Second,
+		MaxRecoveries: 1, MonitorInterval: 10 * time.Millisecond, MonitorStallAfter: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controlPlane.Start(); err != nil {
+		_ = controlPlane.Shutdown(context.Background())
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = controlPlane.Shutdown(context.Background()) })
+	goal, err := controlPlane.CreateGoal(GoalInput{
+		Objective: "stop over-budget work", Budget: map[string]any{"max_runtime_seconds": 0.01},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTestGoal(t, controlPlane, goal.ID)
+	if final.Status != "cancelled" {
+		t.Fatalf("runtime budget did not cancel goal: %#v", final)
+	}
+	events, err := controlPlane.Events(goal.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eventTypes(events)["GoalBudgetExceeded"] {
+		t.Fatalf("missing budget event: %v", eventTypes(events))
+	}
+}
+
 func TestControlApprovalPausesUntilResolved(t *testing.T) {
 	controlPlane := newTestControl(t, "approval")
 	goal, err := controlPlane.CreateGoal(GoalInput{Objective: "run an approved action"})
