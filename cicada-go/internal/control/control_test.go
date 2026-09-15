@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -283,6 +284,31 @@ func TestControlPeerMessageUsesPostQuantumEnvelope(t *testing.T) {
 	}
 	if _, _, err := bob.ReceivePeerMessage(bobContact.ID, outbound.Envelope, []byte("goal=demo")); err != store.ErrPeerReplay {
 		t.Fatalf("expected persistent replay rejection, got %v", err)
+	}
+}
+
+func TestControlPermissionBlocksPeerMessage(t *testing.T) {
+	alice := newTestControl(t, "success")
+	bob := newTestControl(t, "success")
+	contact, err := alice.CreateContact("bob", bob.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := alice.SetPermission(PermissionInput{
+		SubjectType: "contact", SubjectID: contact.ID, Action: "peer.message", Effect: "deny",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := alice.SendPeerMessage(contact.ID, "should be blocked", nil); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("expected denied peer message, got %v", err)
+	}
+	if _, err := alice.SetPermission(PermissionInput{
+		SubjectType: "contact", SubjectID: contact.ID, Action: "peer.message", Effect: "approval",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := alice.SendPeerMessage(contact.ID, "needs approval", nil); !errors.Is(err, ErrPermissionApproval) {
+		t.Fatalf("expected approval-gated peer message, got %v", err)
 	}
 }
 

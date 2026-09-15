@@ -95,6 +95,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.contacts(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/permissions" {
+		h.permissions(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/permissions/") {
+		h.permission(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/peer-messages" {
 		h.peerMessages(response, request)
 		return
@@ -248,6 +256,67 @@ func (h *Handler) contacts(response http.ResponseWriter, request *http.Request) 
 	writeJSON(response, http.StatusCreated, contact)
 }
 
+func (h *Handler) permissions(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		permissions, err := h.control.Permissions(request.URL.Query().Get("subject_type"), request.URL.Query().Get("subject_id"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"permissions": permissions})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input control.PermissionInput
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	permission, err := h.control.SetPermission(input)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, permission)
+}
+
+func (h *Handler) permission(response http.ResponseWriter, request *http.Request) {
+	id := strings.TrimPrefix(request.URL.Path, "/v1/permissions/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(response, http.StatusNotFound, errors.New("permission not found"))
+		return
+	}
+	if request.Method == http.MethodGet {
+		permission, err := h.control.Permission(id)
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		if permission == nil {
+			writeError(response, http.StatusNotFound, errors.New("permission not found"))
+			return
+		}
+		writeJSON(response, http.StatusOK, permission)
+		return
+	}
+	if request.Method != http.MethodDelete {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if err := h.control.DeletePermission(id); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	response.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodGet {
 		messages, err := h.control.PeerMessages(request.URL.Query().Get("contact_id"))
@@ -291,6 +360,8 @@ func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Reque
 		status := http.StatusBadRequest
 		if errors.Is(err, os.ErrNotExist) {
 			status = http.StatusNotFound
+		} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+			status = http.StatusForbidden
 		}
 		writeError(response, status, err)
 		return

@@ -206,6 +206,21 @@ type Approval struct {
 	ResolvedAt string          `json:"resolved_at,omitempty"`
 }
 
+// Permission is a durable capability rule. A rule may target a concrete
+// subject/resource or use an empty resource as an action-wide default.
+// Effects are allow, approval, or deny and are evaluated by Control before an
+// agent performs an operation.
+type Permission struct {
+	ID          string `json:"id"`
+	SubjectType string `json:"subject_type"`
+	SubjectID   string `json:"subject_id"`
+	Action      string `json:"action"`
+	Resource    string `json:"resource,omitempty"`
+	Effect      string `json:"effect"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
 type Store struct {
 	db *sql.DB
 	mu sync.Mutex
@@ -325,6 +340,17 @@ CREATE TABLE IF NOT EXISTS approvals (
   FOREIGN KEY(goal_id) REFERENCES goals(id),
   FOREIGN KEY(worker_id) REFERENCES workers(id)
 );
+CREATE TABLE IF NOT EXISTS permissions (
+  id TEXT PRIMARY KEY,
+  subject_type TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource TEXT NOT NULL DEFAULT '',
+  effect TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(subject_type, subject_id, action, resource)
+);
 CREATE TABLE IF NOT EXISTS ideas (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -413,6 +439,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
+CREATE INDEX IF NOT EXISTS permissions_lookup_idx ON permissions(subject_type, subject_id, action, resource);
 CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
@@ -1930,4 +1957,139 @@ func (s *Store) ResolveApproval(id, decision string) (*Approval, error) {
 		return s.getApprovalLocked(id)
 	}
 	return s.getApprovalLocked(id)
+}
+
+func (s *Store) UpsertPermission(permission Permission) (*Permission, error) {
+	permission.ID = strings.TrimSpace(permission.ID)
+	if permission.ID == "" {
+		permission.ID = NewID("permission")
+	}
+	permission.SubjectType = strings.TrimSpace(permission.SubjectType)
+	permission.SubjectID = strings.TrimSpace(permission.SubjectID)
+	permission.Action = strings.TrimSpace(permission.Action)
+	permission.Resource = strings.TrimSpace(permission.Resource)
+	permission.Effect = strings.TrimSpace(permission.Effect)
+	if permission.SubjectType == "" || permission.SubjectID == "" || permission.Action == "" || permission.Effect == "" {
+		return nil, errors.New("permission subject, action, and effect are required")
+	}
+	if permission.Effect != "allow" && permission.Effect != "approval" && permission.Effect != "deny" {
+		return nil, fmt.Errorf("unsupported permission effect: %s", permission.Effect)
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`
+INSERT INTO permissions (id, subject_type, subject_id, action, resource, effect, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(subject_type, subject_id, action, resource) DO UPDATE SET
+  effect = excluded.effect, updated_at = excluded.updated_at`,
+		permission.ID, permission.SubjectType, permission.SubjectID, permission.Action, permission.Resource,
+		permission.Effect, timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("save permission: %w", err)
+	}
+	return s.getPermissionLocked(permission.SubjectType, permission.SubjectID, permission.Action, permission.Resource)
+}
+
+func (s *Store) getPermissionLocked(subjectType, subjectID, action, resource string) (*Permission, error) {
+	var permission Permission
+	err := s.db.QueryRow(`SELECT id, subject_type, subject_id, action, resource, effect, created_at, updated_at
+FROM permissions WHERE subject_type = ? AND subject_id = ? AND action = ? AND resource = ?`,
+		subjectType, subjectID, action, resource).Scan(
+		&permission.ID, &permission.SubjectType, &permission.SubjectID, &permission.Action,
+		&permission.Resource, &permission.Effect, &permission.CreatedAt, &permission.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &permission, nil
+}
+
+func (s *Store) GetPermission(id string) (*Permission, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var permission Permission
+	err := s.db.QueryRow(`SELECT id, subject_type, subject_id, action, resource, effect, created_at, updated_at
+FROM permissions WHERE id = ?`, id).Scan(
+		&permission.ID, &permission.SubjectType, &permission.SubjectID, &permission.Action,
+		&permission.Resource, &permission.Effect, &permission.CreatedAt, &permission.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &permission, nil
+}
+
+func (s *Store) ListPermissions(subjectType, subjectID string) ([]Permission, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id, subject_type, subject_id, action, resource, effect, created_at, updated_at FROM permissions ORDER BY subject_type, subject_id, action, resource`
+	args := []any{}
+	if strings.TrimSpace(subjectType) != "" {
+		query = `SELECT id, subject_type, subject_id, action, resource, effect, created_at, updated_at FROM permissions WHERE subject_type = ?`
+		args = append(args, strings.TrimSpace(subjectType))
+		if strings.TrimSpace(subjectID) != "" {
+			query += ` AND subject_id = ?`
+			args = append(args, strings.TrimSpace(subjectID))
+		}
+		query += ` ORDER BY subject_id, action, resource`
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	permissions := make([]Permission, 0)
+	for rows.Next() {
+		var permission Permission
+		if err := rows.Scan(&permission.ID, &permission.SubjectType, &permission.SubjectID, &permission.Action,
+			&permission.Resource, &permission.Effect, &permission.CreatedAt, &permission.UpdatedAt); err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, permission)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return permissions, nil
+}
+
+func (s *Store) LookupPermission(subjectType, subjectID, action, resource string) (*Permission, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Prefer the most specific rule, then an action-wide resource rule, then a
+	// subject-wide rule. The '*' subject is a safe way to set a default policy
+	// without duplicating it for every contact or goal.
+	var permission Permission
+	err := s.db.QueryRow(`SELECT id, subject_type, subject_id, action, resource, effect, created_at, updated_at
+FROM permissions
+WHERE (subject_type = ? OR subject_type = 'global') AND subject_id IN (?, '*') AND action = ? AND resource IN (?, '')
+ORDER BY CASE WHEN subject_type = ? THEN 0 ELSE 1 END,
+         CASE WHEN subject_id = ? THEN 0 ELSE 1 END,
+         CASE WHEN resource = ? THEN 0 ELSE 1 END
+LIMIT 1`, subjectType, subjectID, action, resource, subjectType, subjectID, resource).Scan(
+		&permission.ID, &permission.SubjectType, &permission.SubjectID, &permission.Action,
+		&permission.Resource, &permission.Effect, &permission.CreatedAt, &permission.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &permission, nil
+}
+
+func (s *Store) DeletePermission(id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, err := s.db.Exec(`DELETE FROM permissions WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count > 0, err
 }

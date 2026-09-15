@@ -207,3 +207,54 @@ func TestStorePersistsNotificationsAndReadState(t *testing.T) {
 		t.Fatalf("read notification remained unread: %#v err=%v", unread, err)
 	}
 }
+
+func TestStorePersistsAndResolvesPermissions(t *testing.T) {
+	persistence, err := New(t.TempDir() + "/state/cicada.sqlite3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistence.Close()
+
+	permission, err := persistence.UpsertPermission(Permission{
+		SubjectType: "contact", SubjectID: "contact_alice", Action: "peer.message",
+		Resource: "", Effect: "deny",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permission.ID == "" || permission.Effect != "deny" {
+		t.Fatalf("unexpected permission: %#v", permission)
+	}
+	resolved, err := persistence.LookupPermission("contact", "contact_alice", "peer.message", "")
+	if err != nil || resolved == nil || resolved.ID != permission.ID {
+		t.Fatalf("permission was not resolved: %#v err=%v", resolved, err)
+	}
+	if _, err := persistence.UpsertPermission(Permission{
+		SubjectType: "contact", SubjectID: "contact_alice", Action: "peer.message",
+		Effect: "allow",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = persistence.LookupPermission("contact", "contact_alice", "peer.message", "")
+	if err != nil || resolved == nil || resolved.Effect != "allow" || resolved.ID != permission.ID {
+		t.Fatalf("permission was not updated: %#v err=%v", resolved, err)
+	}
+	global, err := persistence.UpsertPermission(Permission{
+		SubjectType: "global", SubjectID: "*", Action: "peer.message", Effect: "approval",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = persistence.LookupPermission("contact", "contact_bob", "peer.message", "")
+	if err != nil || resolved == nil || resolved.ID != global.ID || resolved.Effect != "approval" {
+		t.Fatalf("global permission was not resolved: %#v err=%v", resolved, err)
+	}
+	permissions, err := persistence.ListPermissions("", "")
+	if err != nil || len(permissions) != 2 || global.ID == "" {
+		t.Fatalf("unexpected permissions: %#v err=%v", permissions, err)
+	}
+	deleted, err := persistence.DeletePermission(global.ID)
+	if err != nil || !deleted {
+		t.Fatalf("permission was not deleted: %v", err)
+	}
+}

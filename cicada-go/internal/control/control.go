@@ -101,6 +101,11 @@ type runningWorker struct {
 	cancel context.CancelFunc
 }
 
+var (
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrPermissionApproval = errors.New("permission requires approval")
+)
+
 func New(config Config) (*Control, error) {
 	if err := os.MkdirAll(config.WorkspaceRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("create workspace root: %w", err)
@@ -409,6 +414,80 @@ func (c *Control) CreateContact(label string, identity e2ee.PublicIdentity) (*st
 	return c.store.CreateContact(store.Contact{Label: label, Identity: identity})
 }
 
+type PermissionInput struct {
+	ID          string `json:"id"`
+	SubjectType string `json:"subject_type"`
+	SubjectID   string `json:"subject_id"`
+	Action      string `json:"action"`
+	Resource    string `json:"resource"`
+	Effect      string `json:"effect"`
+}
+
+func (c *Control) Permissions(subjectType, subjectID string) ([]store.Permission, error) {
+	return c.store.ListPermissions(subjectType, subjectID)
+}
+
+func (c *Control) SetPermission(input PermissionInput) (*store.Permission, error) {
+	input.SubjectType = strings.TrimSpace(input.SubjectType)
+	input.SubjectID = strings.TrimSpace(input.SubjectID)
+	input.Action = strings.TrimSpace(input.Action)
+	input.Resource = strings.TrimSpace(input.Resource)
+	input.Effect = strings.TrimSpace(strings.ToLower(input.Effect))
+	switch input.SubjectType {
+	case "contact", "goal", "workspace", "machine", "global":
+	default:
+		return nil, fmt.Errorf("unsupported permission subject_type: %s", input.SubjectType)
+	}
+	if input.SubjectID == "" || input.Action == "" {
+		return nil, errors.New("permission subject_id and action are required")
+	}
+	if input.Effect != "allow" && input.Effect != "approval" && input.Effect != "deny" {
+		return nil, fmt.Errorf("unsupported permission effect: %s", input.Effect)
+	}
+	return c.store.UpsertPermission(store.Permission{
+		ID: input.ID, SubjectType: input.SubjectType, SubjectID: input.SubjectID,
+		Action: input.Action, Resource: input.Resource, Effect: input.Effect,
+	})
+}
+
+func (c *Control) Permission(id string) (*store.Permission, error) {
+	return c.store.GetPermission(id)
+}
+
+func (c *Control) DeletePermission(id string) error {
+	deleted, err := c.store.DeletePermission(id)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return os.ErrNotExist
+	}
+	return nil
+}
+
+// CheckPermission resolves the most specific rule. No rule means allow for
+// local MVP operations; callers can install a global deny/approval default
+// and then add narrow allow rules for trusted workflows.
+func (c *Control) CheckPermission(subjectType, subjectID, action, resource string) (string, error) {
+	permission, err := c.store.LookupPermission(strings.TrimSpace(subjectType), strings.TrimSpace(subjectID), strings.TrimSpace(action), strings.TrimSpace(resource))
+	if err != nil {
+		return "", err
+	}
+	if permission == nil {
+		return "allow", nil
+	}
+	switch permission.Effect {
+	case "allow":
+		return "allow", nil
+	case "approval":
+		return "approval", ErrPermissionApproval
+	case "deny":
+		return "deny", ErrPermissionDenied
+	default:
+		return "", fmt.Errorf("unsupported stored permission effect: %s", permission.Effect)
+	}
+}
+
 func (c *Control) PeerMessages(contactID string) ([]store.PeerMessage, error) {
 	return c.store.ListPeerMessages(contactID)
 }
@@ -427,6 +506,12 @@ func (c *Control) SendPeerMessage(contactID, message string, aad []byte) (*store
 	}
 	if contact == nil {
 		return nil, os.ErrNotExist
+	}
+	if contact.Status != "trusted" {
+		return nil, fmt.Errorf("contact is not trusted: %s", contact.Status)
+	}
+	if _, permissionErr := c.CheckPermission("contact", contactID, "peer.message", ""); permissionErr != nil {
+		return nil, permissionErr
 	}
 	sequence, err := c.store.AllocateContactSequence(contactID)
 	if err != nil {
@@ -453,6 +538,12 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	}
 	if contact == nil {
 		return nil, nil, os.ErrNotExist
+	}
+	if contact.Status != "trusted" {
+		return nil, nil, fmt.Errorf("contact is not trusted: %s", contact.Status)
+	}
+	if _, permissionErr := c.CheckPermission("contact", contactID, "peer.receive", ""); permissionErr != nil {
+		return nil, nil, permissionErr
 	}
 	plaintext, sequence, err := e2ee.Open(c.identity, contact.Identity, envelope, aad)
 	if err != nil {
