@@ -297,6 +297,7 @@ func (c *Control) monitorLoop() {
 }
 
 func (c *Control) evaluateMonitors() {
+	c.evaluateParentGoals()
 	if c.config.MachineStaleAfter > 0 {
 		cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
 		_, _ = c.store.MarkStaleMachines(cutoff)
@@ -1118,6 +1119,11 @@ func (c *Control) decorate(goal *store.Goal) error {
 		return err
 	}
 	goal.Worker, goal.Workers, goal.Events = worker, workers, events
+	children, err := c.store.ListChildGoals(goal.ID)
+	if err != nil {
+		return err
+	}
+	goal.Children = children
 	if goal.MonitorID != "" {
 		monitor, err := c.store.GetMonitor(goal.MonitorID)
 		if err != nil {
@@ -1138,6 +1144,8 @@ type GoalInput struct {
 	Resources       map[string]any `json:"resources"`
 	MachineID       string         `json:"machine_id"`
 	Harness         string         `json:"harness"`
+	ParentGoalID    string         `json:"parent_goal_id"`
+	MonitorOnly     bool           `json:"monitor_only"`
 }
 
 // ThreadMessage is a durable, Control-mediated message between two Native
@@ -1155,6 +1163,7 @@ type ThreadMessage struct {
 }
 
 func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
+	var err error
 	input.Objective = strings.TrimSpace(input.Objective)
 	if input.Objective == "" {
 		return nil, errors.New("objective is required")
@@ -1180,6 +1189,29 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if harness != "codex" {
 		return nil, fmt.Errorf("harness %q is not installed; current release supports codex", harness)
 	}
+	input.ParentGoalID = strings.TrimSpace(input.ParentGoalID)
+	var parent *store.Goal
+	if input.ParentGoalID != "" {
+		parent, err = c.store.GetGoal(input.ParentGoalID)
+		if err != nil {
+			return nil, err
+		}
+		if parent == nil {
+			return nil, os.ErrNotExist
+		}
+		if parent.Status == "completed" || parent.Status == "failed" || parent.Status == "cancelled" {
+			return nil, fmt.Errorf("parent goal is already %s", parent.Status)
+		}
+		if maxChildren, ok := numberValue(parent.Budget["max_children"]); ok && maxChildren > 0 {
+			children, childErr := c.store.ListChildGoals(parent.ID)
+			if childErr != nil {
+				return nil, childErr
+			}
+			if float64(len(children)) >= maxChildren {
+				return nil, fmt.Errorf("parent goal child budget exceeded: max_children=%d", int(maxChildren))
+			}
+		}
+	}
 	resources := input.Resources
 	if resources == nil {
 		resources = map[string]any{}
@@ -1187,16 +1219,29 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if _, exists := resources["required_harness"]; !exists {
 		resources["required_harness"] = harness
 	}
-	machineID, err := c.chooseMachine(input.MachineID, resources)
-	if err != nil {
-		return nil, err
+	machineID := ""
+	if input.MonitorOnly {
+		if parent != nil {
+			machineID = parent.MachineID
+		} else {
+			machineID = "control-local"
+		}
+	} else {
+		machineID, err = c.chooseMachine(input.MachineID, resources)
+		if err != nil {
+			return nil, err
+		}
 	}
 	goalID, monitorID := store.NewID("goal"), store.NewID("monitor")
-	workspace := filepath.Join(c.config.WorkspaceRoot, "goals", goalID)
+	workspaceRoot := filepath.Join(c.config.WorkspaceRoot, "goals")
+	if parent != nil {
+		workspaceRoot = filepath.Join(parent.Workspace, "children")
+	}
+	workspace := filepath.Join(workspaceRoot, goalID)
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		return nil, fmt.Errorf("create goal workspace: %w", err)
 	}
-	_, err = c.store.CreateGoalWithDetails(goalID, input.Objective, input.SuccessCriteria, input.Constraints,
+	_, err = c.store.CreateGoalWithParent(goalID, input.ParentGoalID, input.Objective, input.SuccessCriteria, input.Constraints,
 		input.Priority, input.Deadline, input.Budget, input.Resources, machineID, monitorID, workspace)
 	if err != nil {
 		return nil, err
@@ -1207,20 +1252,39 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if _, err := c.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
 		return nil, err
 	}
-	worker, err := c.store.CreateWorkerAtHarness(store.NewID("worker"), goalID, machineID, harness,
-		filepath.Join(workspace, ".cicada-last-message"), workspace)
-	if err != nil {
-		return nil, err
+	var worker *store.Worker
+	if !input.MonitorOnly {
+		worker, err = c.store.CreateWorkerAtHarness(store.NewID("worker"), goalID, machineID, harness,
+			filepath.Join(workspace, ".cicada-last-message"), workspace)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if _, err := c.store.AppendEvent(goalID, worker.ID, "GoalCreated", map[string]any{
+	workerID := ""
+	if worker != nil {
+		workerID = worker.ID
+	}
+	if _, err := c.store.AppendEvent(goalID, workerID, "GoalCreated", map[string]any{
 		"objective": input.Objective, "machine_id": machineID, "workspace": workspace,
 	}); err != nil {
 		return nil, err
 	}
-	if _, err := c.store.AppendEvent(goalID, worker.ID, "WorkerQueued", map[string]any{"harness": "codex"}); err != nil {
-		return nil, err
+	if worker != nil {
+		if _, err := c.store.AppendEvent(goalID, worker.ID, "WorkerQueued", map[string]any{"harness": "codex"}); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := c.store.UpdateGoal(goalID, "running", ""); err != nil {
+			return nil, err
+		}
+		_, _ = c.store.AppendEvent(goalID, "", "MonitorGoalStarted", map[string]any{"parent_goal_id": input.ParentGoalID})
 	}
-	c.launchWorker(worker.ID, "")
+	if worker != nil {
+		c.launchWorker(worker.ID, "")
+	}
+	if parent != nil {
+		_, _ = c.store.AppendEvent(parent.ID, "", "ChildGoalCreated", map[string]any{"child_goal_id": goalID})
+	}
 	return c.Goal(goalID)
 }
 

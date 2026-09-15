@@ -29,6 +29,7 @@ type Machine struct {
 
 type Goal struct {
 	ID              string         `json:"id"`
+	ParentGoalID    string         `json:"parent_goal_id,omitempty"`
 	Objective       string         `json:"objective"`
 	SuccessCriteria string         `json:"success_criteria"`
 	Constraints     string         `json:"constraints"`
@@ -48,6 +49,7 @@ type Goal struct {
 	UpdatedAt       string         `json:"updated_at"`
 	Worker          *Worker        `json:"worker,omitempty"`
 	Workers         []Worker       `json:"workers,omitempty"`
+	Children        []Goal         `json:"children,omitempty"`
 	Monitor         *Monitor       `json:"monitor,omitempty"`
 	Events          []Event        `json:"events,omitempty"`
 }
@@ -259,6 +261,7 @@ CREATE TABLE IF NOT EXISTS machines (
 );
 CREATE TABLE IF NOT EXISTS goals (
   id TEXT PRIMARY KEY,
+  parent_goal_id TEXT,
   objective TEXT NOT NULL,
   success_criteria TEXT NOT NULL DEFAULT '',
   constraints TEXT NOT NULL DEFAULT '',
@@ -439,6 +442,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
+CREATE INDEX IF NOT EXISTS goals_parent_idx ON goals(parent_goal_id, created_at);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
 CREATE INDEX IF NOT EXISTS permissions_lookup_idx ON permissions(subject_type, subject_id, action, resource);
@@ -460,6 +464,7 @@ CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, cre
 		ddl   string
 	}{
 		{"goals", "deadline", `ALTER TABLE goals ADD COLUMN deadline TEXT`},
+		{"goals", "parent_goal_id", `ALTER TABLE goals ADD COLUMN parent_goal_id TEXT`},
 		{"goals", "budget_json", `ALTER TABLE goals ADD COLUMN budget_json TEXT NOT NULL DEFAULT '{}'`},
 		{"goals", "resources_json", `ALTER TABLE goals ADD COLUMN resources_json TEXT NOT NULL DEFAULT '{}'`},
 		{"goals", "current_state", `ALTER TABLE goals ADD COLUMN current_state TEXT NOT NULL DEFAULT ''`},
@@ -632,10 +637,14 @@ func (s *Store) MarkStaleMachines(cutoff string) ([]string, error) {
 }
 
 func (s *Store) CreateGoal(id, objective, successCriteria, constraints string, priority int, machineID, monitorID, workspace string) (*Goal, error) {
-	return s.CreateGoalWithDetails(id, objective, successCriteria, constraints, priority, "", nil, nil, machineID, monitorID, workspace)
+	return s.CreateGoalWithParent(id, "", objective, successCriteria, constraints, priority, "", nil, nil, machineID, monitorID, workspace)
 }
 
 func (s *Store) CreateGoalWithDetails(id, objective, successCriteria, constraints string, priority int, deadline string, budget, resources map[string]any, machineID, monitorID, workspace string) (*Goal, error) {
+	return s.CreateGoalWithParent(id, "", objective, successCriteria, constraints, priority, deadline, budget, resources, machineID, monitorID, workspace)
+}
+
+func (s *Store) CreateGoalWithParent(id, parentGoalID, objective, successCriteria, constraints string, priority int, deadline string, budget, resources map[string]any, machineID, monitorID, workspace string) (*Goal, error) {
 	if budget == nil {
 		budget = map[string]any{}
 	}
@@ -654,8 +663,8 @@ func (s *Store) CreateGoalWithDetails(id, objective, successCriteria, constraint
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err = s.db.Exec(`INSERT INTO goals
-(id, objective, success_criteria, constraints, priority, deadline, budget_json, resources_json, status, machine_id, monitor_id, workspace, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, objective, successCriteria, constraints, priority, nullableString(deadline), string(budgetJSON), string(resourcesJSON), machineID, monitorID, workspace, timestamp, timestamp)
+(id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json, resources_json, status, machine_id, monitor_id, workspace, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, nullableString(parentGoalID), objective, successCriteria, constraints, priority, nullableString(deadline), string(budgetJSON), string(resourcesJSON), machineID, monitorID, workspace, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create goal: %w", err)
 	}
@@ -664,11 +673,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, objective, succes
 
 func (s *Store) getGoalLocked(id string) (*Goal, error) {
 	var goal Goal
-	var machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
-	err := s.db.QueryRow(`SELECT id, objective, success_criteria, constraints, priority, deadline, budget_json,
+	var parentGoalID, machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
+	err := s.db.QueryRow(`SELECT id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
 resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
 created_at, updated_at FROM goals WHERE id = ?`, id).
-		Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline, &budgetJSON,
+		Scan(&goal.ID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline, &budgetJSON,
 			&resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID, &goal.MonitorID,
 			&goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -678,6 +687,7 @@ created_at, updated_at FROM goals WHERE id = ?`, id).
 		return nil, err
 	}
 	goal.MachineID = machineID.String
+	goal.ParentGoalID = parentGoalID.String
 	goal.Summary = summary.String
 	goal.Deadline = deadline.String
 	goal.CurrentState = currentState.String
@@ -709,7 +719,7 @@ func (s *Store) GetGoal(id string) (*Goal, error) {
 func (s *Store) ListGoals() ([]Goal, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id, objective, success_criteria, constraints, priority, deadline, budget_json,
+	rows, err := s.db.Query(`SELECT id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
 resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
 created_at, updated_at FROM goals ORDER BY created_at DESC`)
 	if err != nil {
@@ -719,13 +729,14 @@ created_at, updated_at FROM goals ORDER BY created_at DESC`)
 	var result []Goal
 	for rows.Next() {
 		var goal Goal
-		var machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
-		if err := rows.Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline,
+		var parentGoalID, machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
+		if err := rows.Scan(&goal.ID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline,
 			&budgetJSON, &resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID,
 			&goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 			return nil, err
 		}
 		goal.MachineID = machineID.String
+		goal.ParentGoalID = parentGoalID.String
 		goal.Summary = summary.String
 		goal.Deadline = deadline.String
 		goal.CurrentState = currentState.String
@@ -748,6 +759,38 @@ created_at, updated_at FROM goals ORDER BY created_at DESC`)
 		result = append(result, goal)
 	}
 	return result, rows.Err()
+}
+
+func (s *Store) ListChildGoals(parentGoalID string) ([]Goal, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT id FROM goals WHERE parent_goal_id = ? ORDER BY created_at`, parentGoalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	children := make([]Goal, 0, len(ids))
+	for _, id := range ids {
+		child, err := s.getGoalLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if child != nil {
+			children = append(children, *child)
+		}
+	}
+	return children, nil
 }
 
 func (s *Store) UpdateGoal(id, status, summary string) (*Goal, error) {

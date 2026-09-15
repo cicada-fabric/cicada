@@ -14,6 +14,8 @@ Implemented in this line:
   recovery, deadlines, runtime/worker budgets, and conservative monitor
   correction;
 - multiple isolated Workers per Goal and durable thread-to-thread messaging;
+- durable parent/child execution graphs, monitor-only coordinator Goals,
+  child-count budgets, and aggregated child evidence;
 - ML-KEM-768 + ML-DSA-65 authenticated peer envelopes with persistent replay
   protection;
 - optional opaque HTTP relay delivery with queued/retry/delivered state;

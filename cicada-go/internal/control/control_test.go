@@ -554,6 +554,49 @@ func TestMultipleWorkersCompleteGoalOnlyAfterEveryBranchFinishes(t *testing.T) {
 	}
 }
 
+func TestMonitorOnlyParentAggregatesChildGoal(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	parent, err := controlPlane.CreateGoal(GoalInput{
+		Objective: "coordinate child work", MonitorOnly: true,
+		Budget: map[string]any{"max_children": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workers, err := controlPlane.store.ListWorkersForGoal(parent.ID)
+	if err != nil || len(workers) != 0 {
+		t.Fatalf("monitor-only parent unexpectedly owns workers: %#v err=%v", workers, err)
+	}
+	child, err := controlPlane.CreateGoal(GoalInput{
+		Objective: "complete child work", ParentGoalID: parent.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.ParentGoalID != parent.ID || !strings.HasPrefix(child.Workspace, filepath.Join(parent.Workspace, "children")) {
+		t.Fatalf("child was not attached to parent execution graph: %#v", child)
+	}
+	if final := waitTestGoal(t, controlPlane, child.ID); final.Status != "completed" {
+		t.Fatalf("child did not complete: %#v", final)
+	}
+	controlPlane.evaluateParentGoals()
+	updated, err := controlPlane.Goal(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != "completed" || !strings.Contains(updated.Summary, child.ID) || len(updated.Children) != 1 {
+		t.Fatalf("parent did not aggregate child result: %#v", updated)
+	}
+	events, err := controlPlane.Events(parent.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := eventTypes(events)
+	if !types["ParentGoalCompleted"] {
+		t.Fatalf("parent completion event missing: %v", types)
+	}
+}
+
 func TestMonitorQueuesCorrectionAfterStall(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := New(Config{

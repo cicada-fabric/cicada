@@ -69,6 +69,15 @@ curl -X POST http://127.0.0.1:8787/v1/goals \
   -d '{"objective":"Inspect this workspace and report its state"}'
 curl http://127.0.0.1:8787/v1/goals/GOAL_ID/events
 
+# Create a monitor-only coordinator and attach a child Goal. The coordinator
+# completes only after every child reaches a terminal state.
+curl -X POST http://127.0.0.1:8787/v1/goals \
+  -H 'content-type: application/json' \
+  -d '{"objective":"Coordinate two independent checks","monitor_only":true,"budget":{"max_children":2}}'
+curl -X POST http://127.0.0.1:8787/v1/goals \
+  -H 'content-type: application/json' \
+  -d '{"objective":"Run the first check","parent_goal_id":"PARENT_GOAL_ID"}'
+
 # Queue a monitor correction for a running Goal.
 curl -X POST http://127.0.0.1:8787/v1/goals/GOAL_ID/commands \
   -H 'content-type: application/json' \
