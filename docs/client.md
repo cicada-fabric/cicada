@@ -8,7 +8,8 @@ immediately after `docker compose up -d control`:
 http://127.0.0.1:8787/
 ```
 
-The current 0.2.0 page displays the local post-quantum identity, unread notifications,
+The current 0.3.0 development page displays the local post-quantum identity,
+unread notifications,
 Goal status, worker count, and latest evidence summary. It can create a Goal
 and acknowledge a notification. The page polls the JSON API every five
 seconds; the API remains the stable boundary for a future TypeScript mobile or

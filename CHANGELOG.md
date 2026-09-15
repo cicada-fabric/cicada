@@ -1,0 +1,27 @@
+# Changelog
+
+This file records user-visible changes by release line. `VERSION` and the Go
+`buildinfo` package identify the running build; Git tags identify releases.
+
+## 0.3.0-dev — unreleased
+
+### Added
+
+- Durable parent/child Goal supervision and multi-worker evidence aggregation.
+- Signed external connector ingress and policy-gated external action requests.
+- ML-DSA signed Contact discovery with an explicit pending trust lifecycle.
+- Identity-routed federation ingress with atomic replay state, idempotent
+  transport retries, and plaintext-free receipts.
+- Optional bearer authentication for remotely exposed Control APIs.
+
+### Changed
+
+- Parallel workers now publish one aggregate `GoalCompleted` event.
+- Peer delivery no longer depends on matching local Contact IDs across two
+  Control databases.
+- Runtime, image, and test configuration consistently select `gpt-5.5`.
+
+## 0.2.0 — 2026-09-15
+
+- Established the verified Codex supervisor baseline on `release/0.2.0` and
+  tag `v0.2.0`.

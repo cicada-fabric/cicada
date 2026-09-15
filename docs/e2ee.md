@@ -24,7 +24,7 @@ volume or replace the identity file with an OS secret provider before sharing
 the machine. The private key is never placed in events, artifacts, or a peer
 message envelope.
 
-The current 0.2.0 line exposes signed discovery and a manually controlled
+The current 0.3.0 development line exposes signed discovery and a controlled
 contact and envelope path:
 
 ```bash

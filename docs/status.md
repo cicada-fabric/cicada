@@ -1,8 +1,9 @@
 # Release status
 
-The current line is **Cicada 0.2.0**, a Codex-first autonomous supervisor
-baseline. It is beyond the original proof-of-concept MVP and is maintained as
-a versioned feature branch rather than being developed directly on `main`.
+The current line is **Cicada 0.3.0-dev**, an unreleased Codex-first autonomous
+supervisor with secure collaboration boundaries. It is beyond the original
+proof-of-concept MVP and is maintained on versioned feature branches rather
+than being developed directly on `main`.
 
 Implemented in this line:
 
@@ -48,7 +49,9 @@ Version and branch workflow:
 2. `feat/*` branches contain one coherent feature and are pushed to
    `origin` (`git@github.com:cicada-fabric/cicada.git`) as work progresses.
 3. `release/0.2.0` and tag `v0.2.0` identify this verified baseline.
-4. `main` is reserved for reviewed release merges.
+4. `0.3.0-dev` identifies current unreleased work; it receives a release
+   branch and tag only after its release checks pass.
+5. `main` is reserved for reviewed release merges.
 
 The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
 health endpoint, and Codex app-server metadata through the Go `buildinfo`

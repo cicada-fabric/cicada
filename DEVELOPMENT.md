@@ -1,6 +1,6 @@
 # Cicada development container
 
-The 0.2.0 development image is a single reusable image with two Compose roles:
+The 0.3.0 development image is a single reusable image with two Compose roles:
 
 - `control`: a long-lived manager container;
 - `worker`: an optional execution container, enabled with the `worker` profile.
@@ -236,8 +236,8 @@ Development starts from `develop`; feature work uses a dedicated branch such
 as `feat/core-objects` or `feat/permission-trust`. Keep `main` for reviewed
 releases. The current local checkout has `origin` set to
 `git@github.com:cicada-fabric/cicada.git`. The current release baseline is
-`v0.2.0` on `release/0.2.0`; active work continues on feature branches and is
-merged only after the checks below pass.
+`v0.2.0` on `release/0.2.0`; the current unreleased line is `0.3.0-dev` and
+continues on feature branches. It is merged only after the checks below pass.
 
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:
