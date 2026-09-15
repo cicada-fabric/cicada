@@ -29,6 +29,7 @@ type Config struct {
 	MaxRecoveries     int
 	MonitorInterval   time.Duration
 	MachineStaleAfter time.Duration
+	MonitorStallAfter time.Duration
 }
 
 func DefaultConfig() Config {
@@ -57,6 +58,12 @@ func DefaultConfig() Config {
 			staleAfter = seconds
 		}
 	}
+	stallAfter := 5 * time.Minute
+	if value := os.Getenv("CICADA_MONITOR_STALL_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			stallAfter = seconds
+		}
+	}
 	return Config{
 		StateDir:          envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot:     envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
@@ -66,6 +73,7 @@ func DefaultConfig() Config {
 		MaxRecoveries:     recoveries,
 		MonitorInterval:   monitorInterval,
 		MachineStaleAfter: staleAfter,
+		MonitorStallAfter: stallAfter,
 	}
 }
 
@@ -242,10 +250,25 @@ func (c *Control) evaluateMonitors() {
 		if monitorErr != nil || monitor == nil {
 			continue
 		}
+		lastActivity := monitor.LastEventAt
+		if lastActivity == "" {
+			lastActivity = worker.StartedAt
+		}
+		stalledFor := time.Duration(0)
+		if parsed, parseErr := time.Parse(time.RFC3339, lastActivity); parseErr == nil {
+			stalledFor = time.Since(parsed)
+		}
 		_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorEvaluated", map[string]any{
-			"worker_status": worker.Status, "last_event_at": monitor.LastEventAt,
+			"worker_status": worker.Status, "last_event_at": lastActivity, "stalled_for_seconds": int64(stalledFor.Seconds()),
 		})
-		_ = c.store.TouchMonitor(monitor.ID, "active")
+		if c.config.MonitorStallAfter > 0 && stalledFor >= c.config.MonitorStallAfter && monitor.Status != "correction_pending" && worker.Attempt <= 1 {
+			command := "The monitor detected no Codex progress for " + stalledFor.Round(time.Second).String() + ". Inspect the current workspace and thread, diagnose the stall, and continue the goal."
+			if _, commandErr := c.store.EnqueueCommand(goal.ID, worker.ID, command); commandErr == nil {
+				_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorCorrectionQueued", map[string]any{"reason": "worker stalled", "stalled_for_seconds": int64(stalledFor.Seconds())})
+				_ = c.store.TouchMonitor(monitor.ID, "correction_pending")
+				c.notify(goal.ID, "monitor.stalled", "P1", "Worker appears stalled", command)
+			}
+		}
 	}
 }
 
@@ -339,6 +362,27 @@ func (c *Control) Approvals(pendingOnly bool) ([]store.Approval, error) {
 	return c.store.ListApprovals(pendingOnly)
 }
 
+func (c *Control) Notifications(unreadOnly bool) ([]store.Notification, error) {
+	return c.store.ListNotifications(unreadOnly)
+}
+
+func (c *Control) MarkNotificationRead(id string) (*store.Notification, error) {
+	notification, err := c.store.MarkNotificationRead(id)
+	if err != nil {
+		return nil, err
+	}
+	if notification == nil {
+		return nil, os.ErrNotExist
+	}
+	return notification, nil
+}
+
+func (c *Control) notify(goalID, kind, priority, title, body string) {
+	_, _ = c.store.CreateNotification(store.Notification{
+		GoalID: goalID, Kind: kind, Priority: priority, Title: title, Body: body,
+	})
+}
+
 func (c *Control) Identity() e2ee.PublicIdentity {
 	if c.identity == nil {
 		return e2ee.PublicIdentity{}
@@ -417,6 +461,7 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	if err != nil {
 		return nil, nil, err
 	}
+	c.notify("", "peer.message", "P2", "New peer message", "An encrypted message was received from "+contact.Label+".")
 	return plaintext, message, nil
 }
 
@@ -1232,6 +1277,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 			}
 			if len(commands) > 0 {
 				_, _ = c.store.AppendEvent(goal.ID, workerID, "MonitorCommandSent", map[string]any{"count": len(commands)})
+				_ = c.store.TouchMonitor(goal.MonitorID, "active")
 				parts := make([]string, 0, len(commands))
 				for _, command := range commands {
 					parts = append(parts, command.Command)
@@ -1261,6 +1307,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 			// Publish the terminal Goal state last so clients that observe
 			// status=completed can also read the completion events and evidence.
 			_, _ = c.store.UpdateGoalDetails(goal.ID, completed, summary, "completed", summary, evidence)
+			c.notify(goal.ID, "goal.completed", "P2", "Goal completed", summary)
 			_ = c.store.SetMachineStatus(worker.MachineID, "available")
 			return
 		}
@@ -1292,6 +1339,7 @@ func (c *Control) finishFailure(goal *store.Goal, workerID string, attempt int, 
 	_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Status: &failed, ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: &message})
 	_, _ = c.store.UpdateGoal(goal.ID, failed, message)
 	_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalBlocked", map[string]any{"attempt": attempt, "reason": message})
+	c.notify(goal.ID, "goal.blocked", "P0", "Goal needs attention", message)
 	_ = c.store.SetMachineStatus(goal.MachineID, "available")
 }
 

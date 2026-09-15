@@ -369,6 +369,42 @@ func TestGoalCanRunMultipleWorkersInSeparateWorkspaces(t *testing.T) {
 	}
 }
 
+func TestMonitorQueuesCorrectionAfterStall(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := New(Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		CodexBinary: fakeCodex(t, "correction"), WorkerTimeout: 10 * time.Second, MaxRecoveries: 1,
+		MonitorInterval: 20 * time.Millisecond, MonitorStallAfter: 30 * time.Millisecond, MachineStaleAfter: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controlPlane.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = controlPlane.Shutdown(context.Background()) })
+	goal, err := controlPlane.CreateGoal(GoalInput{Objective: "monitor a slow worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTestGoal(t, controlPlane, goal.ID)
+	if final.Status != "completed" || final.Summary != "FAKE_CORRECTED_READY" {
+		t.Fatalf("monitor did not correct worker: %#v", final)
+	}
+	events, err := controlPlane.Events(goal.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := eventTypes(events)
+	if !types["MonitorCorrectionQueued"] {
+		t.Fatalf("monitor correction event missing: %v", types)
+	}
+	notifications, err := controlPlane.Notifications(true)
+	if err != nil || len(notifications) == 0 {
+		t.Fatalf("monitor notification missing: %#v err=%v", notifications, err)
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

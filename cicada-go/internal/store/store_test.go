@@ -183,3 +183,27 @@ func TestStorePersistsContactSequencesAndOpaquePeerMessages(t *testing.T) {
 		t.Fatalf("peer message was not persisted: %#v err=%v", messages, err)
 	}
 }
+
+func TestStorePersistsNotificationsAndReadState(t *testing.T) {
+	persistence, err := New(t.TempDir() + "/state/cicada.sqlite3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistence.Close()
+	notification, err := persistence.CreateNotification(Notification{Kind: "approval.requested", Priority: "P1", Title: "Approve", Body: "Choose a path"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unread, err := persistence.ListNotifications(true)
+	if err != nil || len(unread) != 1 || unread[0].ID != notification.ID {
+		t.Fatalf("unexpected unread notifications: %#v err=%v", unread, err)
+	}
+	read, err := persistence.MarkNotificationRead(notification.ID)
+	if err != nil || read.Status != "read" || read.ReadAt == "" {
+		t.Fatalf("notification was not marked read: %#v err=%v", read, err)
+	}
+	unread, err = persistence.ListNotifications(true)
+	if err != nil || len(unread) != 0 {
+		t.Fatalf("read notification remained unread: %#v err=%v", unread, err)
+	}
+}

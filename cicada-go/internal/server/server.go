@@ -95,6 +95,34 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.peerMessages(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {
+		unreadOnly := request.URL.Query().Get("unread") != "false"
+		notifications, err := h.control.Notifications(unreadOnly)
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"notifications": notifications})
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/notifications/") && strings.HasSuffix(request.URL.Path, "/read") && request.Method == http.MethodPost {
+		id := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/v1/notifications/"), "/read")
+		if id == "" || strings.Contains(id, "/") {
+			writeError(response, http.StatusNotFound, errors.New("notification not found"))
+			return
+		}
+		notification, err := h.control.MarkNotificationRead(id)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, notification)
+		return
+	}
 	if request.URL.Path == "/v1/ideas" {
 		h.ideas(response, request)
 		return

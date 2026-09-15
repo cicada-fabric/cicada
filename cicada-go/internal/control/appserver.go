@@ -334,6 +334,7 @@ func (c *Control) handleApprovalRequest(ctx context.Context, goalID, workerID, m
 		return map[string]any{"decision": "decline"}
 	}
 	_, _ = c.store.AppendEvent(goalID, workerID, "ApprovalRequested", map[string]any{"approval_id": approval.ID, "method": method, "request": params})
+	c.notify(goalID, "approval.requested", "P1", "Approval required", "Codex is waiting for a human decision for "+method+" (approval "+approval.ID+").")
 	waiter := make(chan string, 1)
 	c.approvalMu.Lock()
 	c.approvalWaiters[approvalID] = waiter

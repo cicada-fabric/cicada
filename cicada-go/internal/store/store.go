@@ -131,6 +131,18 @@ type PeerMessage struct {
 	DeliveredAt string          `json:"delivered_at,omitempty"`
 }
 
+type Notification struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Priority  string `json:"priority"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	GoalID    string `json:"goal_id,omitempty"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	ReadAt    string `json:"read_at,omitempty"`
+}
+
 // Monitor is the durable supervisor binding for a Goal. The MVP monitor is
 // deliberately small: it records whether supervision is active and when the
 // last event or correction was observed. More advanced policies can be added
@@ -386,6 +398,18 @@ CREATE TABLE IF NOT EXISTS peer_messages (
   delivered_at TEXT,
   FOREIGN KEY(contact_id) REFERENCES contacts(id)
 );
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'P2',
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  goal_id TEXT,
+  status TEXT NOT NULL DEFAULT 'unread',
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
@@ -393,6 +417,7 @@ CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
+CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)
@@ -1313,6 +1338,99 @@ func (s *Store) MarkPeerMessageDelivered(id string) (*PeerMessage, error) {
 		return nil, err
 	}
 	return s.getPeerMessageLocked(id)
+}
+
+func (s *Store) CreateNotification(notification Notification) (*Notification, error) {
+	notification.ID = strings.TrimSpace(notification.ID)
+	if notification.ID == "" {
+		notification.ID = NewID("notification")
+	}
+	if notification.Kind == "" {
+		notification.Kind = "update"
+	}
+	if notification.Priority == "" {
+		notification.Priority = "P2"
+	}
+	if notification.Title == "" || notification.Body == "" {
+		return nil, errors.New("notification title and body are required")
+	}
+	if notification.Status == "" {
+		notification.Status = "unread"
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO notifications (id, kind, priority, title, body, goal_id, status, created_at, read_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, notification.ID, notification.Kind, notification.Priority, notification.Title, notification.Body,
+		nullableString(notification.GoalID), notification.Status, timestamp, nullableString(notification.ReadAt))
+	if err != nil {
+		return nil, fmt.Errorf("create notification: %w", err)
+	}
+	return s.getNotificationLocked(notification.ID)
+}
+
+func (s *Store) getNotificationLocked(id string) (*Notification, error) {
+	var notification Notification
+	var goalID, readAt sql.NullString
+	err := s.db.QueryRow(`SELECT id, kind, priority, title, body, goal_id, status, created_at, read_at FROM notifications WHERE id = ?`, id).
+		Scan(&notification.ID, &notification.Kind, &notification.Priority, &notification.Title, &notification.Body, &goalID, &notification.Status, &notification.CreatedAt, &readAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	notification.GoalID, notification.ReadAt = goalID.String, readAt.String
+	return &notification, nil
+}
+
+func (s *Store) ListNotifications(unreadOnly bool) ([]Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM notifications ORDER BY created_at DESC`
+	if unreadOnly {
+		query = `SELECT id FROM notifications WHERE status = 'unread' ORDER BY created_at DESC`
+	}
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]Notification, 0, len(ids))
+	for _, id := range ids {
+		notification, err := s.getNotificationLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if notification != nil {
+			result = append(result, *notification)
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) MarkNotificationRead(id string) (*Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?`, now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getNotificationLocked(id)
 }
 
 func (s *Store) CreateMonitor(id, goalID, policy string) (*Monitor, error) {
