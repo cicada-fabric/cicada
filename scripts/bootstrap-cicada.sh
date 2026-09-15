@@ -23,6 +23,9 @@ if [[ ! -s "$env_file" ]]; then
 	if [[ -n "${CICADA_API_TOKEN:-}" ]]; then
 	  printf 'CICADA_API_TOKEN=%s\n' "$CICADA_API_TOKEN" >> "$env_file"
 	fi
+	if [[ -n "${CICADA_WEBHOOK_SECRET:-}" ]]; then
+	  printf 'CICADA_WEBHOOK_SECRET=%s\n' "$CICADA_WEBHOOK_SECRET" >> "$env_file"
+	fi
   printf 'Created %s\n' "$env_file"
 else
   chmod 0600 "$env_file"

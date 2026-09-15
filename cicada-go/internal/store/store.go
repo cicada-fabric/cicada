@@ -209,6 +209,22 @@ type Approval struct {
 	ResolvedAt string          `json:"resolved_at,omitempty"`
 }
 
+// ExternalEvent is a durable inbound event from an information connector.
+// Payload is retained as JSON so Control can audit and route it without
+// handing connector credentials to a worker.
+type ExternalEvent struct {
+	ID         string          `json:"id"`
+	Connector  string          `json:"connector"`
+	ExternalID string          `json:"external_id"`
+	EventType  string          `json:"event_type"`
+	Payload    json.RawMessage `json:"payload"`
+	Signature  string          `json:"signature,omitempty"`
+	Status     string          `json:"status"`
+	GoalID     string          `json:"goal_id,omitempty"`
+	CreatedAt  string          `json:"created_at"`
+	UpdatedAt  string          `json:"updated_at"`
+}
+
 // Permission is a durable capability rule. A rule may target a concrete
 // subject/resource or use an empty resource as an action-wide default.
 // Effects are allow, approval, or deny and are evaluated by Control before an
@@ -441,6 +457,20 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at TEXT,
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
+CREATE TABLE IF NOT EXISTS external_events (
+  id TEXT PRIMARY KEY,
+  connector TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  signature TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'received',
+  goal_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(connector, external_id),
+  FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
@@ -450,6 +480,7 @@ CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, upda
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
 CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
+CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)

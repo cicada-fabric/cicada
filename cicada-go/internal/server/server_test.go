@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +14,37 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/control"
 )
+
+func TestSignedConnectorWebhookIsDurable(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := control.New(control.Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		WebhookSecret: "connector-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	payload := []byte(`{"subject":"hello"}`)
+	mac := hmac.New(sha256.New, []byte("connector-secret"))
+	_, _ = mac.Write(payload)
+	request := httptest.NewRequest(http.MethodPost, "/v1/connectors/events", strings.NewReader(string(payload)))
+	request.Header.Set("X-Cicada-Connector", "mail")
+	request.Header.Set("X-Cicada-Event-ID", "mail-1")
+	request.Header.Set("X-Cicada-Event-Type", "message.created")
+	request.Header.Set("X-Cicada-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	response := httptest.NewRecorder()
+	NewHandler(controlPlane).ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("webhook status=%d body=%s", response.Code, response.Body.String())
+	}
+	list := httptest.NewRequest(http.MethodGet, "/v1/connectors/events?connector=mail", nil)
+	listResponse := httptest.NewRecorder()
+	NewHandler(controlPlane).ServeHTTP(listResponse, list)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "mail-1") {
+		t.Fatalf("webhook event missing from list: status=%d body=%s", listResponse.Code, listResponse.Body.String())
+	}
+}
 
 func TestEmbeddedClientIsServed(t *testing.T) {
 	root := t.TempDir()

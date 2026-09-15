@@ -37,6 +37,7 @@ type Config struct {
 	// beyond the local host. An empty token keeps the localhost-only default
 	// convenient for development.
 	APIToken          string
+	WebhookSecret     string
 	PeerRelayURL      string
 	PeerRelayToken    string
 	PeerRelayInterval time.Duration
@@ -91,6 +92,7 @@ func DefaultConfig() Config {
 		MachineStaleAfter: staleAfter,
 		MonitorStallAfter: stallAfter,
 		APIToken:          os.Getenv("CICADA_API_TOKEN"),
+		WebhookSecret:     os.Getenv("CICADA_WEBHOOK_SECRET"),
 		PeerRelayURL:      os.Getenv("CICADA_PEER_RELAY_URL"),
 		PeerRelayToken:    os.Getenv("CICADA_PEER_RELAY_TOKEN"),
 		PeerRelayInterval: relayInterval,

@@ -2,6 +2,9 @@ package control
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +19,39 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
+
+func TestSignedExternalEventIsIdempotentAndAudited(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := New(Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		WebhookSecret: "connector-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	payload := []byte(`{"title":"new message"}`)
+	mac := hmac.New(sha256.New, []byte("connector-secret"))
+	_, _ = mac.Write(payload)
+	signature := hex.EncodeToString(mac.Sum(nil))
+	event, err := controlPlane.IngestExternalEvent("mail", "evt-1", "message.created", signature, payload, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := controlPlane.IngestExternalEvent("mail", "evt-1", "message.created", signature, payload, "")
+	if err != nil || duplicate.ID != event.ID {
+		t.Fatalf("duplicate delivery was not idempotent: event=%#v duplicate=%#v err=%v", event, duplicate, err)
+	}
+	if events, err := controlPlane.ExternalEvents("mail"); err != nil || len(events) != 1 {
+		t.Fatalf("external event was not durable: events=%#v err=%v", events, err)
+	}
+	if notifications, err := controlPlane.Notifications(true); err != nil || len(notifications) != 1 {
+		t.Fatalf("connector notification missing: notifications=%#v err=%v", notifications, err)
+	}
+	if _, err := controlPlane.IngestExternalEvent("mail", "evt-2", "message.created", "00", payload, ""); err == nil {
+		t.Fatal("invalid connector signature was accepted")
+	}
+}
 
 // fakeCodex speaks just enough of Codex's app-server JSON-RPC protocol to
 // exercise the real Control lifecycle without spending relay tokens.

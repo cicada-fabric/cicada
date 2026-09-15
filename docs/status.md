@@ -22,6 +22,8 @@ Implemented in this line:
 - Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
 - optional bearer authentication for the HTTP/JSON Control boundary, with
   constant-time token comparison and runtime-only secret injection;
+- signed external connector ingress with HMAC-SHA256 verification, idempotent
+  event keys, durable payloads, Goal audit events, and P1 notifications;
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 

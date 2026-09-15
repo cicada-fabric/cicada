@@ -21,6 +21,7 @@ x-cicada-common: &cicada-common
     CICADA_PEER_RELAY_URL: ${CICADA_PEER_RELAY_URL:-}
     CICADA_PEER_RELAY_TOKEN: ${CICADA_PEER_RELAY_TOKEN:-}
     CICADA_PEER_RELAY_INTERVAL_SECONDS: ${CICADA_PEER_RELAY_INTERVAL_SECONDS:-30}
+    CICADA_WEBHOOK_SECRET: ${CICADA_WEBHOOK_SECRET:-}
   volumes:
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state:/state
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace

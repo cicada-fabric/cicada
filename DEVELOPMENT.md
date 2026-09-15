@@ -69,6 +69,18 @@ curl -X POST http://127.0.0.1:8787/v1/goals \
   -d '{"objective":"Inspect this workspace and report its state"}'
 curl http://127.0.0.1:8787/v1/goals/GOAL_ID/events
 
+# Receive an external information event. The connector secret stays in the
+# runtime env; sign the exact JSON bytes with HMAC-SHA256.
+printf '%s' '{"subject":"hello"}' | openssl dgst -sha256 -hmac "$CICADA_WEBHOOK_SECRET"
+curl -X POST http://127.0.0.1:8787/v1/connectors/events \
+  -H 'X-Cicada-Connector: mail' \
+  -H 'X-Cicada-Event-ID: mail-1' \
+  -H 'X-Cicada-Event-Type: message.created' \
+  -H 'X-Cicada-Signature: sha256=HEX_DIGEST' \
+  -H 'content-type: application/json' \
+  -d '{"subject":"hello"}'
+curl 'http://127.0.0.1:8787/v1/connectors/events?connector=mail'
+
 # Create a monitor-only coordinator and attach a child Goal. The coordinator
 # completes only after every child reaches a terminal state.
 curl -X POST http://127.0.0.1:8787/v1/goals \

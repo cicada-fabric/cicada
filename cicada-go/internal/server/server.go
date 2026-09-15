@@ -134,6 +134,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.peerMessage(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/connectors/events" {
+		h.externalEvents(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/connectors/events/") {
+		h.externalEvent(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {
 		unreadOnly := request.URL.Query().Get("unread") != "false"
 		notifications, err := h.control.Notifications(unreadOnly)
