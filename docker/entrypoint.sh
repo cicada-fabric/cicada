@@ -3,6 +3,13 @@ set -euo pipefail
 
 mkdir -p "${CODEX_HOME:?}" /workspace /var/log/cicada/codex
 
+# Seed the packaged defaults only on a fresh state directory. The runtime
+# config must remain writable so Codex can persist project trust and TUI
+# preferences in CODEX_HOME.
+if [[ ! -e "${CODEX_HOME}/config.toml" && -f /etc/codex/config.toml ]]; then
+  install -m 600 /etc/codex/config.toml "${CODEX_HOME}/config.toml"
+fi
+
 case "${1:-shell}" in
   shell)
     shift || true
@@ -24,4 +31,3 @@ case "${1:-shell}" in
     exec "$@"
     ;;
 esac
-

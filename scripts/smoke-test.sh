@@ -44,6 +44,8 @@ jq -e '.machines | length >= 2' >/dev/null <<<"$machines_json"
 
 codex_version="$(docker compose exec -T control codex --version)"
 doctor_json="$(docker compose exec -T control codex doctor -c 'model="gpt-5.4"' --json)"
+docker compose exec -T control sh -lc \
+  'test -f /etc/codex/config.toml && test -f "$CODEX_HOME/config.toml" && touch "$CODEX_HOME/.cicada-write-test" && rm "$CODEX_HOME/.cicada-write-test"'
 
 jq -e '
   .checks["auth.credentials"].status == "ok" and
