@@ -88,11 +88,15 @@ Codex session in each:
 
 ```bash
 # Terminal A
-docker compose exec -it control codex -C /workspace/manual-a
+./scripts/open-codex-thread.sh manual-a
 
 # Terminal B
-docker compose exec -it control codex -C /workspace/manual-b
+./scripts/open-codex-thread.sh manual-b
 ```
+
+The helper creates the workspace before starting Codex. If you start Codex
+directly, create the directories first with
+`docker compose exec -T control mkdir -p /workspace/manual-a /workspace/manual-b`.
 
 In a normal shell, list the session UUIDs after both TUIs have started:
 
