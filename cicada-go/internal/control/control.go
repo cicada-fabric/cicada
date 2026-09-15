@@ -16,12 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
 type Config struct {
 	StateDir      string
 	WorkspaceRoot string
+	IdentityFile  string
 	CodexBinary   string
 	WorkerTimeout time.Duration
 	MaxRecoveries int
@@ -44,6 +46,7 @@ func DefaultConfig() Config {
 	return Config{
 		StateDir:      envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot: envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
+		IdentityFile:  envOr("CICADA_E2EE_IDENTITY_FILE", ""),
 		CodexBinary:   envOr("CICADA_CODEX_BIN", "codex"),
 		WorkerTimeout: timeout,
 		MaxRecoveries: recoveries,
@@ -62,6 +65,7 @@ type Control struct {
 	store           *store.Store
 	mu              sync.Mutex
 	running         map[string]runningWorker
+	identity        *e2ee.Identity
 	approvalMu      sync.Mutex
 	approvalWaiters map[string]chan string
 	shutdown        chan struct{}
@@ -88,11 +92,58 @@ func New(config Config) (*Control, error) {
 		approvalWaiters: make(map[string]chan string),
 		shutdown:        make(chan struct{}),
 	}
+	identityPath := config.IdentityFile
+	if identityPath == "" {
+		identityPath = filepath.Join(config.StateDir, "e2ee", "identity.json")
+	}
+	identity, err := loadIdentity(identityPath)
+	if err != nil {
+		persistence.Close()
+		return nil, err
+	}
+	control.identity = identity
 	if err := control.registerLocalMachines(); err != nil {
 		persistence.Close()
 		return nil, err
 	}
 	return control, nil
+}
+
+func loadIdentity(path string) (*e2ee.Identity, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("create E2EE identity directory: %w", err)
+	}
+	if data, err := os.ReadFile(path); err == nil {
+		identity, decodeErr := e2ee.UnmarshalIdentity(data)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		_ = os.Chmod(path, 0o600)
+		return identity, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("read E2EE identity: %w", err)
+	}
+	identity, err := e2ee.NewIdentity()
+	if err != nil {
+		return nil, err
+	}
+	data, err := identity.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, data, 0o600); err != nil {
+		return nil, fmt.Errorf("write E2EE identity: %w", err)
+	}
+	if err := os.Chmod(temporary, 0o600); err != nil {
+		_ = os.Remove(temporary)
+		return nil, err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return nil, fmt.Errorf("install E2EE identity: %w", err)
+	}
+	return identity, nil
 }
 
 func (c *Control) registerLocalMachines() error {
@@ -171,6 +222,87 @@ func (c *Control) Workers() ([]store.Worker, error) { return c.store.ListWorkers
 
 func (c *Control) Approvals(pendingOnly bool) ([]store.Approval, error) {
 	return c.store.ListApprovals(pendingOnly)
+}
+
+func (c *Control) Identity() e2ee.PublicIdentity {
+	if c.identity == nil {
+		return e2ee.PublicIdentity{}
+	}
+	return c.identity.Public()
+}
+
+func (c *Control) Contacts() ([]store.Contact, error) { return c.store.ListContacts() }
+
+func (c *Control) Contact(id string) (*store.Contact, error) { return c.store.GetContact(id) }
+
+func (c *Control) CreateContact(label string, identity e2ee.PublicIdentity) (*store.Contact, error) {
+	if err := e2ee.ValidatePublicIdentity(identity); err != nil {
+		return nil, fmt.Errorf("validate contact identity: %w", err)
+	}
+	return c.store.CreateContact(store.Contact{Label: label, Identity: identity})
+}
+
+func (c *Control) PeerMessages(contactID string) ([]store.PeerMessage, error) {
+	return c.store.ListPeerMessages(contactID)
+}
+
+func (c *Control) SendPeerMessage(contactID, message string, aad []byte) (*store.PeerMessage, error) {
+	if c.identity == nil {
+		return nil, errors.New("local E2EE identity is unavailable")
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil, errors.New("message is required")
+	}
+	contact, err := c.store.GetContact(contactID)
+	if err != nil {
+		return nil, err
+	}
+	if contact == nil {
+		return nil, os.ErrNotExist
+	}
+	sequence, err := c.store.AllocateContactSequence(contactID)
+	if err != nil {
+		return nil, err
+	}
+	envelope, err := e2ee.Seal(c.identity, contact.Identity, []byte(message), aad, sequence)
+	if err != nil {
+		return nil, err
+	}
+	local := c.Identity()
+	return c.store.CreatePeerMessage(store.PeerMessage{
+		ContactID: contactID, Direction: "outbound", SenderID: local.ID,
+		RecipientID: contact.Identity.ID, Sequence: sequence, Envelope: envelope, Status: "queued",
+	})
+}
+
+func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]byte, *store.PeerMessage, error) {
+	if c.identity == nil {
+		return nil, nil, errors.New("local E2EE identity is unavailable")
+	}
+	contact, err := c.store.GetContact(contactID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if contact == nil {
+		return nil, nil, os.ErrNotExist
+	}
+	plaintext, sequence, err := e2ee.Open(c.identity, contact.Identity, envelope, aad)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := c.store.AcceptContactSequence(contactID, sequence); err != nil {
+		return nil, nil, err
+	}
+	local := c.Identity()
+	message, err := c.store.CreatePeerMessage(store.PeerMessage{
+		ContactID: contactID, Direction: "inbound", SenderID: contact.Identity.ID,
+		RecipientID: local.ID, Sequence: sequence, Envelope: envelope, Status: "received",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return plaintext, message, nil
 }
 
 func (c *Control) Ideas(status string) ([]store.Idea, error) { return c.store.ListIdeas(status) }

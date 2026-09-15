@@ -81,6 +81,18 @@ curl -X POST http://127.0.0.1:8787/v1/approvals/APPROVAL_ID \
 curl -X POST http://127.0.0.1:8787/v1/threads/messages \
   -H 'content-type: application/json' \
   -d '{"from_worker_id":"WORKER_A","to_worker_id":"WORKER_B","message":"Please verify this result."}'
+
+# Inspect the local post-quantum peer identity and pinned contacts.
+curl http://127.0.0.1:8787/v1/identity
+curl http://127.0.0.1:8787/v1/contacts
+
+# Seal an opaque peer envelope for a pinned contact.
+curl -X POST http://127.0.0.1:8787/v1/peer-messages \
+  -H 'content-type: application/json' \
+  -d '{"contact_id":"CONTACT_ID","message":"evidence is ready","aad":"goal=GOAL_ID"}'
+
+The post-quantum contact and envelope boundary is documented in
+`docs/e2ee.md`; it uses ML-KEM-768, ML-DSA-65, HKDF-SHA256, and AES-256-GCM.
 ```
 
 For the manual two-TUI workflow, open two terminals and start one interactive

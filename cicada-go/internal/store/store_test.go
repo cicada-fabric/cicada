@@ -3,6 +3,8 @@ package store
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/cicada-ai/cicada/internal/e2ee"
 )
 
 func TestStorePersistsControlObjects(t *testing.T) {
@@ -140,5 +142,44 @@ func TestStorePersistsIdeasWorkspacesMemoriesAndArtifacts(t *testing.T) {
 	artifacts, err := persistence.ListArtifacts(goal.ID)
 	if err != nil || len(artifacts) != 1 || artifacts[0].ID != artifact.ID {
 		t.Fatalf("artifact was not listed: %#v err=%v", artifacts, err)
+	}
+}
+
+func TestStorePersistsContactSequencesAndOpaquePeerMessages(t *testing.T) {
+	persistence, err := New(t.TempDir() + "/state/cicada.sqlite3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistence.Close()
+	identity, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contact, err := persistence.CreateContact(Contact{Label: "peer", Identity: identity.Public()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sequence, err := persistence.AllocateContactSequence(contact.ID); err != nil || sequence != 1 {
+		t.Fatalf("unexpected first outbound sequence: %d err=%v", sequence, err)
+	}
+	if sequence, err := persistence.AllocateContactSequence(contact.ID); err != nil || sequence != 2 {
+		t.Fatalf("unexpected second outbound sequence: %d err=%v", sequence, err)
+	}
+	if err := persistence.AcceptContactSequence(contact.ID, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.AcceptContactSequence(contact.ID, 5); err != ErrPeerReplay {
+		t.Fatalf("expected persistent replay rejection, got %v", err)
+	}
+	message, err := persistence.CreatePeerMessage(PeerMessage{
+		ContactID: contact.ID, Direction: "outbound", SenderID: "local", RecipientID: identity.Public().ID,
+		Sequence: 1, Envelope: json.RawMessage(`{"ciphertext":"opaque"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := persistence.ListPeerMessages(contact.ID)
+	if err != nil || len(messages) != 1 || messages[0].ID != message.ID {
+		t.Fatalf("peer message was not persisted: %#v err=%v", messages, err)
 	}
 }

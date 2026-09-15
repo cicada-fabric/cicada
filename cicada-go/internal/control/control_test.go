@@ -258,6 +258,33 @@ func TestControlApprovalPausesUntilResolved(t *testing.T) {
 	}
 }
 
+func TestControlPeerMessageUsesPostQuantumEnvelope(t *testing.T) {
+	alice := newTestControl(t, "success")
+	bob := newTestControl(t, "success")
+	aliceContact, err := alice.CreateContact("bob", bob.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobContact, err := bob.CreateContact("alice", alice.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, err := alice.SendPeerMessage(aliceContact.ID, "benchmark evidence is ready", []byte("goal=demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, inbound, err := bob.ReceivePeerMessage(bobContact.ID, outbound.Envelope, []byte("goal=demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(plaintext) != "benchmark evidence is ready" || inbound.Sequence != outbound.Sequence {
+		t.Fatalf("unexpected peer message: plaintext=%q inbound=%#v outbound=%#v", plaintext, inbound, outbound)
+	}
+	if _, _, err := bob.ReceivePeerMessage(bobContact.ID, outbound.Envelope, []byte("goal=demo")); err != store.ErrPeerReplay {
+		t.Fatalf("expected persistent replay rejection, got %v", err)
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

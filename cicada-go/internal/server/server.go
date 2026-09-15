@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -78,6 +79,18 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusAccepted, message)
 		return
 	}
+	if request.URL.Path == "/v1/identity" && request.Method == http.MethodGet {
+		writeJSON(response, http.StatusOK, h.control.Identity())
+		return
+	}
+	if request.URL.Path == "/v1/contacts" {
+		h.contacts(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/peer-messages" {
+		h.peerMessages(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/ideas" {
 		h.ideas(response, request)
 		return
@@ -141,6 +154,86 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeError(response, http.StatusNotFound, errors.New("route not found"))
+}
+
+func (h *Handler) contacts(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		contacts, err := h.control.Contacts()
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"contacts": contacts})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input struct {
+		Label    string              `json:"label"`
+		Identity e2ee.PublicIdentity `json:"identity"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	contact, err := h.control.CreateContact(input.Label, input.Identity)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, contact)
+}
+
+func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		messages, err := h.control.PeerMessages(request.URL.Query().Get("contact_id"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"messages": messages})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input struct {
+		ContactID string          `json:"contact_id"`
+		Message   string          `json:"message"`
+		Envelope  json.RawMessage `json:"envelope"`
+		AAD       string          `json:"aad"`
+		Direction string          `json:"direction"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	if input.Direction == "inbound" {
+		plaintext, stored, err := h.control.ReceivePeerMessage(input.ContactID, input.Envelope, []byte(input.AAD))
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]any{"message": stored, "plaintext": string(plaintext)})
+		return
+	}
+	message, err := h.control.SendPeerMessage(input.ContactID, input.Message, []byte(input.AAD))
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, message)
 }
 
 func (h *Handler) ideas(response http.ResponseWriter, request *http.Request) {

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	_ "modernc.org/sqlite"
 )
 
@@ -100,6 +101,33 @@ type Artifact struct {
 	Evidence    string `json:"evidence,omitempty"`
 	Status      string `json:"status"`
 	CreatedAt   string `json:"created_at"`
+}
+
+type Contact struct {
+	ID                string              `json:"id"`
+	Label             string              `json:"label"`
+	Identity          e2ee.PublicIdentity `json:"identity"`
+	Status            string              `json:"status"`
+	SendSequence      uint64              `json:"send_sequence"`
+	ReceivedSequences []uint64            `json:"-"`
+	CreatedAt         string              `json:"created_at"`
+	UpdatedAt         string              `json:"updated_at"`
+}
+
+// PeerMessage stores the opaque envelope and delivery metadata. Plaintext is
+// intentionally absent: the relay/control database must not become a second
+// copy of a peer conversation.
+type PeerMessage struct {
+	ID          string          `json:"id"`
+	ContactID   string          `json:"contact_id"`
+	Direction   string          `json:"direction"`
+	SenderID    string          `json:"sender_id"`
+	RecipientID string          `json:"recipient_id"`
+	Sequence    uint64          `json:"sequence"`
+	Envelope    json.RawMessage `json:"envelope"`
+	Status      string          `json:"status"`
+	CreatedAt   string          `json:"created_at"`
+	DeliveredAt string          `json:"delivered_at,omitempty"`
 }
 
 // Monitor is the durable supervisor binding for a Goal. The MVP monitor is
@@ -332,12 +360,36 @@ CREATE TABLE IF NOT EXISTS artifacts (
   FOREIGN KEY(worker_id) REFERENCES workers(id),
   FOREIGN KEY(workspace_id) REFERENCES workspaces(id)
 );
+CREATE TABLE IF NOT EXISTS contacts (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'trusted',
+  send_sequence INTEGER NOT NULL DEFAULT 0,
+  received_sequences_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS peer_messages (
+  id TEXT PRIMARY KEY,
+  contact_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  sender_id TEXT NOT NULL,
+  recipient_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  envelope_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  created_at TEXT NOT NULL,
+  delivered_at TEXT,
+  FOREIGN KEY(contact_id) REFERENCES contacts(id)
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
 CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
+CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)
@@ -983,6 +1035,242 @@ func (s *Store) ListArtifacts(goalID string) ([]Artifact, error) {
 		}
 	}
 	return result, rows.Err()
+}
+
+var ErrPeerReplay = errors.New("peer message sequence already received")
+
+func (s *Store) CreateContact(contact Contact) (*Contact, error) {
+	contact.ID = strings.TrimSpace(contact.ID)
+	if contact.ID == "" {
+		contact.ID = NewID("contact")
+	}
+	contact.Label = strings.TrimSpace(contact.Label)
+	if contact.Label == "" {
+		contact.Label = contact.Identity.ID
+	}
+	if contact.Identity.ID == "" {
+		return nil, errors.New("contact identity is required")
+	}
+	if contact.Status == "" {
+		contact.Status = "trusted"
+	}
+	identityJSON, err := json.Marshal(contact.Identity)
+	if err != nil {
+		return nil, fmt.Errorf("encode contact identity: %w", err)
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err = s.db.Exec(`INSERT INTO contacts (id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, '[]', ?, ?)`, contact.ID, contact.Label, string(identityJSON), contact.Status, contact.SendSequence, timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create contact: %w", err)
+	}
+	return s.getContactLocked(contact.ID)
+}
+
+func (s *Store) getContactLocked(id string) (*Contact, error) {
+	var contact Contact
+	var identityJSON, receivedJSON string
+	err := s.db.QueryRow(`SELECT id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at FROM contacts WHERE id = ?`, id).
+		Scan(&contact.ID, &contact.Label, &identityJSON, &contact.Status, &contact.SendSequence, &receivedJSON, &contact.CreatedAt, &contact.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(identityJSON), &contact.Identity); err != nil {
+		return nil, fmt.Errorf("decode contact identity: %w", err)
+	}
+	if receivedJSON != "" {
+		if err := json.Unmarshal([]byte(receivedJSON), &contact.ReceivedSequences); err != nil {
+			return nil, fmt.Errorf("decode contact replay state: %w", err)
+		}
+	}
+	return &contact, nil
+}
+
+func (s *Store) GetContact(id string) (*Contact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getContactLocked(id)
+}
+
+func (s *Store) ListContacts() ([]Contact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT id FROM contacts ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]Contact, 0, len(ids))
+	for _, id := range ids {
+		contact, err := s.getContactLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if contact != nil {
+			result = append(result, *contact)
+		}
+	}
+	return result, nil
+}
+
+// AllocateContactSequence atomically returns the next outbound sequence.
+func (s *Store) AllocateContactSequence(id string) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, err := s.db.Exec(`UPDATE contacts SET send_sequence = send_sequence + 1, updated_at = ? WHERE id = ?`, now(), id)
+	if err != nil {
+		return 0, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if changed == 0 {
+		return 0, os.ErrNotExist
+	}
+	var sequence uint64
+	if err := s.db.QueryRow(`SELECT send_sequence FROM contacts WHERE id = ?`, id).Scan(&sequence); err != nil {
+		return 0, err
+	}
+	return sequence, nil
+}
+
+// AcceptContactSequence persists replay protection across Control restarts.
+func (s *Store) AcceptContactSequence(id string, sequence uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	contact, err := s.getContactLocked(id)
+	if err != nil {
+		return err
+	}
+	if contact == nil {
+		return os.ErrNotExist
+	}
+	for _, seen := range contact.ReceivedSequences {
+		if seen == sequence {
+			return ErrPeerReplay
+		}
+	}
+	if len(contact.ReceivedSequences) >= 4096 {
+		contact.ReceivedSequences = contact.ReceivedSequences[1:]
+	}
+	contact.ReceivedSequences = append(contact.ReceivedSequences, sequence)
+	receivedJSON, err := json.Marshal(contact.ReceivedSequences)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE contacts SET received_sequences_json = ?, updated_at = ? WHERE id = ?`, string(receivedJSON), now(), id)
+	return err
+}
+
+func (s *Store) CreatePeerMessage(message PeerMessage) (*PeerMessage, error) {
+	message.ID = strings.TrimSpace(message.ID)
+	if message.ID == "" {
+		message.ID = NewID("peer_message")
+	}
+	message.ContactID = strings.TrimSpace(message.ContactID)
+	message.Direction = strings.TrimSpace(message.Direction)
+	if message.ContactID == "" || message.Direction == "" || len(message.Envelope) == 0 {
+		return nil, errors.New("peer message contact, direction, and envelope are required")
+	}
+	if message.Status == "" {
+		message.Status = "queued"
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO peer_messages (id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, status, created_at, delivered_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, message.Direction, message.SenderID, message.RecipientID, message.Sequence, string(message.Envelope), message.Status, timestamp, nullableString(message.DeliveredAt))
+	if err != nil {
+		return nil, fmt.Errorf("create peer message: %w", err)
+	}
+	return s.getPeerMessageLocked(message.ID)
+}
+
+func (s *Store) getPeerMessageLocked(id string) (*PeerMessage, error) {
+	var message PeerMessage
+	var envelope, deliveredAt sql.NullString
+	err := s.db.QueryRow(`SELECT id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, status, created_at, delivered_at FROM peer_messages WHERE id = ?`, id).
+		Scan(&message.ID, &message.ContactID, &message.Direction, &message.SenderID, &message.RecipientID, &message.Sequence, &envelope, &message.Status, &message.CreatedAt, &deliveredAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	message.Envelope = json.RawMessage(envelope.String)
+	message.DeliveredAt = deliveredAt.String
+	return &message, nil
+}
+
+func (s *Store) ListPeerMessages(contactID string) ([]PeerMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM peer_messages ORDER BY created_at`
+	args := []any{}
+	if contactID != "" {
+		query = `SELECT id FROM peer_messages WHERE contact_id = ? ORDER BY created_at`
+		args = append(args, contactID)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]PeerMessage, 0, len(ids))
+	for _, id := range ids {
+		message, err := s.getPeerMessageLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if message != nil {
+			result = append(result, *message)
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) MarkPeerMessageDelivered(id string) (*PeerMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE peer_messages SET status = 'delivered', delivered_at = ? WHERE id = ?`, now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getPeerMessageLocked(id)
 }
 
 func (s *Store) CreateMonitor(id, goalID, policy string) (*Monitor, error) {

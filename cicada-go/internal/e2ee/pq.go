@@ -226,6 +226,13 @@ func validatePublic(public PublicIdentity) (*mlkem768.PublicKey, *mldsa65.Public
 	return kemPublic, signingPublic, nil
 }
 
+// ValidatePublicIdentity checks key sizes and the self-derived stable ID
+// before a contact is trusted or persisted.
+func ValidatePublicIdentity(public PublicIdentity) error {
+	_, _, err := validatePublic(public)
+	return err
+}
+
 // Seal encrypts one message for recipient. sequence must be unique for the
 // sender/contact direction; callers should persist the counter durably.
 func Seal(sender *Identity, recipient PublicIdentity, message, aad []byte, sequence uint64) ([]byte, error) {
@@ -320,11 +327,6 @@ func open(recipient *Identity, expectedSender PublicIdentity, data, aad []byte, 
 	if !mldsa65.Verify(signingPublic, unsignedBytes, nil, envelope.Signature) {
 		return nil, 0, errors.New("E2EE envelope signature verification failed")
 	}
-	if guard != nil {
-		if err := guard.accept(envelope.Sequence); err != nil {
-			return nil, 0, err
-		}
-	}
 	if len(envelope.KEMCiphertext) != mlkem768.CiphertextSize {
 		return nil, 0, ErrInvalidEnvelope
 	}
@@ -354,6 +356,11 @@ func open(recipient *Identity, expectedSender PublicIdentity, data, aad []byte, 
 	plaintext, err := gcm.Open(nil, envelope.Nonce, envelope.Ciphertext, append(append([]byte(nil), aad...), headerBytes...))
 	if err != nil {
 		return nil, 0, errors.New("E2EE ciphertext authentication failed")
+	}
+	if guard != nil {
+		if err := guard.accept(envelope.Sequence); err != nil {
+			return nil, 0, err
+		}
 	}
 	return plaintext, envelope.Sequence, nil
 }

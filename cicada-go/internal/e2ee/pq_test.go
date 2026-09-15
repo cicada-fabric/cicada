@@ -85,3 +85,35 @@ func TestPostQuantumEnvelopeRejectsTamperingAndWrongContact(t *testing.T) {
 		t.Fatal("tampered ciphertext was accepted")
 	}
 }
+
+func TestReplayGuardDoesNotConsumeFailedCiphertext(t *testing.T) {
+	sender, err := NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipient, err := NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := Seal(sender, recipient.Public(), []byte("hello"), nil, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed Envelope
+	if err := json.Unmarshal(envelope, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	parsed.Ciphertext[0] ^= 0xff
+	tampered, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := NewReplayGuard()
+	if _, _, err := OpenWithReplayGuard(recipient, sender.Public(), tampered, nil, guard); err == nil {
+		t.Fatal("tampered ciphertext unexpectedly opened")
+	}
+	opened, sequence, err := OpenWithReplayGuard(recipient, sender.Public(), envelope, nil, guard)
+	if err != nil || string(opened) != "hello" || sequence != 7 {
+		t.Fatalf("valid envelope was rejected after failed ciphertext: plaintext=%q sequence=%d err=%v", opened, sequence, err)
+	}
+}
