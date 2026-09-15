@@ -25,6 +25,9 @@ func (c *Control) IngestExternalEvent(connector, externalID, eventType, signatur
 	if len(payload) == 0 || len(payload) > 1<<20 || !json.Valid(payload) {
 		return nil, errors.New("payload must be valid JSON and at most 1 MiB")
 	}
+	if !validWebhookSignature(c.config.WebhookSecret, payload, signature) {
+		return nil, errors.New("invalid connector signature")
+	}
 	if goalID != "" {
 		goal, err := c.store.GetGoal(goalID)
 		if err != nil {
@@ -33,9 +36,6 @@ func (c *Control) IngestExternalEvent(connector, externalID, eventType, signatur
 		if goal == nil {
 			return nil, os.ErrNotExist
 		}
-	}
-	if !validWebhookSignature(c.config.WebhookSecret, payload, signature) {
-		return nil, errors.New("invalid connector signature")
 	}
 	if existing, err := c.store.GetExternalEventByKey(connector, externalID); err != nil {
 		return nil, err
@@ -47,6 +47,11 @@ func (c *Control) IngestExternalEvent(connector, externalID, eventType, signatur
 		Payload: json.RawMessage(payload), Signature: signature, GoalID: goalID,
 	})
 	if err != nil {
+		// A concurrent delivery may win the unique connector/external_id key
+		// between the lookup above and the insert. Return the durable winner.
+		if existing, lookupErr := c.store.GetExternalEventByKey(connector, externalID); lookupErr == nil && existing != nil {
+			return existing, nil
+		}
 		return nil, err
 	}
 	if goalID != "" {
