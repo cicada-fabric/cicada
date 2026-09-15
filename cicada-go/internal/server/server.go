@@ -80,6 +80,8 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 			status := http.StatusBadRequest
 			if errors.Is(err, os.ErrNotExist) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
 			}
 			writeError(response, status, err)
 			return
@@ -132,6 +134,8 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 			status := http.StatusBadRequest
 			if errors.Is(err, os.ErrNotExist) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
 			}
 			writeError(response, status, err)
 			return
@@ -604,6 +608,8 @@ func (h *Handler) workspace(response http.ResponseWriter, request *http.Request)
 			status := http.StatusBadRequest
 			if errors.Is(err, os.ErrNotExist) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
 			}
 			writeError(response, status, err)
 			return

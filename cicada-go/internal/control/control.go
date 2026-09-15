@@ -739,7 +739,14 @@ func (c *Control) WorkspaceAction(id, action, targetPath string) (*store.Workspa
 	if workspace == nil {
 		return nil, os.ErrNotExist
 	}
-	switch strings.ToLower(strings.TrimSpace(action)) {
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	if normalizedAction == "" {
+		return nil, errors.New("workspace action is required")
+	}
+	if _, permissionErr := c.CheckPermission("workspace", id, "workspace."+normalizedAction, targetPath); permissionErr != nil {
+		return nil, permissionErr
+	}
+	switch normalizedAction {
 	case "resume":
 		if err := os.MkdirAll(workspace.Path, 0o755); err != nil {
 			return nil, fmt.Errorf("resume workspace: %w", err)

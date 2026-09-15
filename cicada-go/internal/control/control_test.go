@@ -355,6 +355,18 @@ func TestWorkspaceLifecycleActions(t *testing.T) {
 	if err != nil || snapshot.Status != "snapshot" || snapshot.Revision == "" {
 		t.Fatalf("snapshot failed: %#v err=%v", snapshot, err)
 	}
+	archiveRule, err := controlPlane.SetPermission(PermissionInput{
+		SubjectType: "workspace", SubjectID: workspace.ID, Action: "workspace.archive", Effect: "deny",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.WorkspaceAction(workspace.ID, "archive", ""); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("expected workspace archive to be denied, got %v", err)
+	}
+	if err := controlPlane.DeletePermission(archiveRule.ID); err != nil {
+		t.Fatal(err)
+	}
 	target := filepath.Join(controlPlane.config.WorkspaceRoot, "migrated")
 	occupied := filepath.Join(controlPlane.config.WorkspaceRoot, "occupied")
 	if err := os.MkdirAll(occupied, 0o755); err != nil {
