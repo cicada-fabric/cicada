@@ -414,6 +414,14 @@ func (c *Control) CreateContact(label string, identity e2ee.PublicIdentity) (*st
 	return c.store.CreateContact(store.Contact{Label: label, Identity: identity})
 }
 
+func (c *Control) UpdateContact(id, label, status string) (*store.Contact, error) {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status != "" && status != "pending" && status != "trusted" && status != "untrusted" && status != "revoked" {
+		return nil, fmt.Errorf("unsupported contact status: %s", status)
+	}
+	return c.store.UpdateContact(id, label, status)
+}
+
 type PermissionInput struct {
 	ID          string `json:"id"`
 	SubjectType string `json:"subject_type"`

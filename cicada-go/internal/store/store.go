@@ -1226,6 +1226,34 @@ func (s *Store) ListContacts() ([]Contact, error) {
 	return result, nil
 }
 
+func (s *Store) UpdateContact(id, label, status string) (*Contact, error) {
+	id = strings.TrimSpace(id)
+	label = strings.TrimSpace(label)
+	status = strings.TrimSpace(status)
+	if id == "" {
+		return nil, errors.New("contact id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	contact, err := s.getContactLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if contact == nil {
+		return nil, os.ErrNotExist
+	}
+	if label == "" {
+		label = contact.Label
+	}
+	if status == "" {
+		status = contact.Status
+	}
+	if _, err := s.db.Exec(`UPDATE contacts SET label = ?, status = ?, updated_at = ? WHERE id = ?`, label, status, now(), id); err != nil {
+		return nil, err
+	}
+	return s.getContactLocked(id)
+}
+
 // AllocateContactSequence atomically returns the next outbound sequence.
 func (s *Store) AllocateContactSequence(id string) (uint64, error) {
 	s.mu.Lock()

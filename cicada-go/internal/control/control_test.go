@@ -294,6 +294,16 @@ func TestControlPermissionBlocksPeerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if revoked, err := alice.UpdateContact(contact.ID, "bob revoked", "revoked"); err != nil || revoked.Status != "revoked" {
+		t.Fatalf("contact trust status was not updated: %#v err=%v", revoked, err)
+	}
+	if _, err := alice.SendPeerMessage(contact.ID, "should be blocked", nil); err == nil {
+		t.Fatal("revoked contact accepted a peer message")
+	}
+	contact, err = alice.UpdateContact(contact.ID, "bob", "trusted")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := alice.SetPermission(PermissionInput{
 		SubjectType: "contact", SubjectID: contact.ID, Action: "peer.message", Effect: "deny",
 	}); err != nil {

@@ -159,6 +159,10 @@ func TestStorePersistsContactSequencesAndOpaquePeerMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	updatedContact, err := persistence.UpdateContact(contact.ID, "revoked peer", "revoked")
+	if err != nil || updatedContact.Status != "revoked" || updatedContact.Label != "revoked peer" {
+		t.Fatalf("contact was not updated: %#v err=%v", updatedContact, err)
+	}
 	if sequence, err := persistence.AllocateContactSequence(contact.ID); err != nil || sequence != 1 {
 		t.Fatalf("unexpected first outbound sequence: %d err=%v", sequence, err)
 	}

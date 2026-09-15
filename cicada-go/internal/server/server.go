@@ -95,6 +95,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.contacts(response, request)
 		return
 	}
+	if strings.HasPrefix(request.URL.Path, "/v1/contacts/") {
+		h.contact(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/permissions" {
 		h.permissions(response, request)
 		return
@@ -254,6 +258,49 @@ func (h *Handler) contacts(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	writeJSON(response, http.StatusCreated, contact)
+}
+
+func (h *Handler) contact(response http.ResponseWriter, request *http.Request) {
+	id := strings.TrimPrefix(request.URL.Path, "/v1/contacts/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(response, http.StatusNotFound, errors.New("contact not found"))
+		return
+	}
+	if request.Method == http.MethodGet {
+		contact, err := h.control.Contact(id)
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		if contact == nil {
+			writeError(response, http.StatusNotFound, errors.New("contact not found"))
+			return
+		}
+		writeJSON(response, http.StatusOK, contact)
+		return
+	}
+	if request.Method != http.MethodPatch {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input struct {
+		Label  string `json:"label"`
+		Status string `json:"status"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	contact, err := h.control.UpdateContact(id, input.Label, input.Status)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, contact)
 }
 
 func (h *Handler) permissions(response http.ResponseWriter, request *http.Request) {
