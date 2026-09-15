@@ -317,41 +317,47 @@ func (c *Control) evaluateMonitors() {
 		if goal.MonitorID == "" || goal.Status != "running" {
 			continue
 		}
-		worker, workerErr := c.store.GetWorkerForGoal(goal.ID)
-		if workerErr != nil || worker == nil || worker.Status != "running" {
+		workers, workerErr := c.store.ListWorkersForGoal(goal.ID)
+		if workerErr != nil || len(workers) == 0 {
 			continue
-		}
-		if maxRuntime, ok := numberValue(goal.Budget["max_runtime_seconds"]); ok && maxRuntime > 0 && worker.StartedAt != "" {
-			if started, parseErr := time.Parse(time.RFC3339, worker.StartedAt); parseErr == nil && time.Since(started) >= time.Duration(maxRuntime)*time.Second {
-				_, _ = c.store.AppendEvent(goal.ID, worker.ID, "GoalBudgetExceeded", map[string]any{
-					"budget": "max_runtime_seconds", "limit": maxRuntime, "elapsed_seconds": int64(time.Since(started).Seconds()),
-				})
-				c.notify(goal.ID, "goal.budget", "P0", "Goal budget exceeded", "The configured runtime budget was exceeded; the goal was stopped.")
-				_, _ = c.StopGoal(goal.ID)
-				continue
-			}
 		}
 		monitor, monitorErr := c.store.GetMonitor(goal.MonitorID)
 		if monitorErr != nil || monitor == nil {
 			continue
 		}
-		lastActivity := monitor.LastEventAt
-		if lastActivity == "" {
-			lastActivity = worker.StartedAt
-		}
-		stalledFor := time.Duration(0)
-		if parsed, parseErr := time.Parse(time.RFC3339, lastActivity); parseErr == nil {
-			stalledFor = time.Since(parsed)
-		}
-		_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorEvaluated", map[string]any{
-			"worker_status": worker.Status, "last_event_at": lastActivity, "stalled_for_seconds": int64(stalledFor.Seconds()),
-		})
-		if c.config.MonitorStallAfter > 0 && stalledFor >= c.config.MonitorStallAfter && monitor.Status != "correction_pending" && worker.Attempt <= 1 {
-			command := "The monitor detected no Codex progress for " + stalledFor.Round(time.Second).String() + ". Inspect the current workspace and thread, diagnose the stall, and continue the goal."
-			if _, commandErr := c.store.EnqueueCommand(goal.ID, worker.ID, command); commandErr == nil {
-				_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorCorrectionQueued", map[string]any{"reason": "worker stalled", "stalled_for_seconds": int64(stalledFor.Seconds())})
-				_ = c.store.TouchMonitor(monitor.ID, "correction_pending")
-				c.notify(goal.ID, "monitor.stalled", "P1", "Worker appears stalled", command)
+		for _, worker := range workers {
+			if worker.Status != "running" {
+				continue
+			}
+			if maxRuntime, ok := numberValue(goal.Budget["max_runtime_seconds"]); ok && maxRuntime > 0 && worker.StartedAt != "" {
+				if started, parseErr := time.Parse(time.RFC3339, worker.StartedAt); parseErr == nil && time.Since(started) >= time.Duration(maxRuntime)*time.Second {
+					_, _ = c.store.AppendEvent(goal.ID, worker.ID, "GoalBudgetExceeded", map[string]any{
+						"budget": "max_runtime_seconds", "limit": maxRuntime, "elapsed_seconds": int64(time.Since(started).Seconds()),
+					})
+					c.notify(goal.ID, "goal.budget", "P0", "Goal budget exceeded", "The configured runtime budget was exceeded; the goal was stopped.")
+					_, _ = c.StopGoal(goal.ID)
+					break
+				}
+			}
+			lastActivity, _ := c.store.LastWorkerEventAt(goal.ID, worker.ID)
+			if lastActivity == "" {
+				lastActivity = worker.StartedAt
+			}
+			stalledFor := time.Duration(0)
+			if parsed, parseErr := time.Parse(time.RFC3339, lastActivity); parseErr == nil {
+				stalledFor = time.Since(parsed)
+			}
+			_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorEvaluated", map[string]any{
+				"worker_status": worker.Status, "last_event_at": lastActivity, "stalled_for_seconds": int64(stalledFor.Seconds()),
+			})
+			pending, _ := c.store.HasPendingCommand(goal.ID, worker.ID)
+			if c.config.MonitorStallAfter > 0 && stalledFor >= c.config.MonitorStallAfter && !pending && worker.Attempt <= 1 {
+				command := "The monitor detected no Codex progress for " + stalledFor.Round(time.Second).String() + ". Inspect the current workspace and thread, diagnose the stall, and continue the goal."
+				if _, commandErr := c.store.EnqueueCommand(goal.ID, worker.ID, command); commandErr == nil {
+					_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorCorrectionQueued", map[string]any{"reason": "worker stalled", "stalled_for_seconds": int64(stalledFor.Seconds())})
+					_ = c.store.TouchMonitor(monitor.ID, "correction_pending")
+					c.notify(goal.ID, "monitor.stalled", "P1", "Worker appears stalled", command)
+				}
 			}
 		}
 	}
@@ -1527,11 +1533,14 @@ func (c *Control) StopGoal(goalID string) (*store.Goal, error) {
 	if err != nil || goal == nil {
 		return goal, err
 	}
-	worker, err := c.store.GetWorkerForGoal(goalID)
+	workers, err := c.store.ListWorkersForGoal(goalID)
 	if err != nil {
 		return nil, err
 	}
-	if worker != nil {
+	for _, worker := range workers {
+		if worker.Status == "completed" || worker.Status == "failed" || worker.Status == "cancelled" {
+			continue
+		}
 		c.mu.Lock()
 		if active, ok := c.running[worker.ID]; ok {
 			active.cancel()
@@ -1649,12 +1658,11 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 				evidence = append(evidence, map[string]any{"artifact_id": artifact.ID, "kind": artifact.Kind, "path": artifact.Path})
 			}
 			_, _ = c.store.AppendEvent(goal.ID, workerID, "WorkerCompleted", map[string]any{"summary": tail(summary, 4000)})
-			_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalCompleted", map[string]any{"summary": tail(summary, 4000)})
-			// Publish the terminal Goal state last so clients that observe
-			// status=completed can also read the completion events and evidence.
-			_, _ = c.store.UpdateGoalDetails(goal.ID, completed, summary, "completed", summary, evidence)
-			c.completeIdeaResearch(goal, summary)
-			c.notify(goal.ID, "goal.completed", "P2", "Goal completed", summary)
+			if c.completeGoalWhenWorkersFinish(goal, workerID, summary, evidence) {
+				// completeGoalWhenWorkersFinish publishes the terminal Goal state
+				// only after every logical Worker has reached a terminal state.
+				c.notify(goal.ID, "goal.completed", "P2", "Goal completed", summary)
+			}
 			_ = c.store.SetMachineStatus(worker.MachineID, "available")
 			return
 		}
@@ -1689,6 +1697,65 @@ func (c *Control) finishFailure(goal *store.Goal, workerID string, attempt int, 
 	c.parkFailedIdeaResearch(goal, message)
 	c.notify(goal.ID, "goal.blocked", "P0", "Goal needs attention", message)
 	_ = c.store.SetMachineStatus(goal.MachineID, "available")
+}
+
+// completeGoalWhenWorkersFinish applies Goal terminal state atomically from a
+// caller's perspective: the current worker is already marked completed, so we
+// wait for all sibling workers before publishing GoalCompleted. This keeps a
+// parallel execution graph from looking complete while another branch still
+// runs.
+func (c *Control) completeGoalWhenWorkersFinish(goal *store.Goal, workerID, currentSummary string, currentEvidence []any) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	workers, err := c.store.ListWorkersForGoal(goal.ID)
+	if err != nil || len(workers) == 0 {
+		return false
+	}
+	for _, worker := range workers {
+		switch worker.Status {
+		case "completed", "failed", "cancelled":
+		default:
+			return false
+		}
+	}
+	summaries := make([]string, 0, len(workers))
+	for _, worker := range workers {
+		summary := strings.TrimSpace(readSummary(worker.ResponseFile))
+		if summary == "" && worker.ID == workerID {
+			summary = strings.TrimSpace(currentSummary)
+		}
+		if summary != "" {
+			if len(workers) == 1 {
+				summaries = append(summaries, summary)
+			} else {
+				summaries = append(summaries, worker.ID+": "+summary)
+			}
+		}
+	}
+	aggregate := strings.TrimSpace(strings.Join(summaries, "\n\n"))
+	if aggregate == "" {
+		aggregate = strings.TrimSpace(currentSummary)
+	}
+	evidence := append([]any(nil), currentEvidence...)
+	artifacts, artifactErr := c.store.ListArtifacts(goal.ID)
+	if artifactErr == nil {
+		evidence = make([]any, 0, len(artifacts))
+		for _, artifact := range artifacts {
+			evidence = append(evidence, map[string]any{
+				"artifact_id": artifact.ID, "worker_id": artifact.WorkerID,
+				"kind": artifact.Kind, "path": artifact.Path,
+			})
+		}
+	}
+	_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalCompleted", map[string]any{"summary": tail(aggregate, 4000)})
+	c.completeIdeaResearch(goal, aggregate)
+	// Publish the terminal Goal state last so clients that observe status=completed
+	// can also read every completion event and artifact.
+	_, err = c.store.UpdateGoalDetails(goal.ID, "completed", aggregate, "completed", aggregate, evidence)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // completeIdeaResearch closes the durable Idea workflow when its research

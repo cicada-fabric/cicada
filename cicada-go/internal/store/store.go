@@ -1964,6 +1964,30 @@ func (s *Store) ClaimPendingCommands(goalID string) ([]Command, error) {
 	return result, nil
 }
 
+// HasPendingCommand reports whether a worker already has a correction waiting
+// to be consumed. It lets a monitor remain idempotent across polling ticks.
+func (s *Store) HasPendingCommand(goalID, workerID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(1) FROM commands WHERE goal_id = ? AND worker_id = ? AND status = 'pending'`, goalID, workerID).Scan(&count)
+	return count > 0, err
+}
+
+// LastWorkerEventAt returns the timestamp of the latest durable event emitted
+// for one worker. Monitor decisions must use this per-worker value so a busy
+// sibling cannot hide a stalled worker.
+func (s *Store) LastWorkerEventAt(goalID, workerID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var timestamp sql.NullString
+	err := s.db.QueryRow(`SELECT created_at FROM events WHERE goal_id = ? AND worker_id = ? AND type != 'MonitorEvaluated' ORDER BY id DESC LIMIT 1`, goalID, workerID).Scan(&timestamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return timestamp.String, err
+}
+
 func (s *Store) CreateApproval(id, goalID, workerID, method string, request any) (*Approval, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {

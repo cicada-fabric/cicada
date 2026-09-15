@@ -516,6 +516,44 @@ func TestGoalCanRunMultipleWorkersInSeparateWorkspaces(t *testing.T) {
 	}
 }
 
+func TestMultipleWorkersCompleteGoalOnlyAfterEveryBranchFinishes(t *testing.T) {
+	controlPlane := newTestControl(t, "correction")
+	if _, err := controlPlane.RegisterMachine("worker-2", "Worker 2", map[string]any{"harnesses": []string{"codex"}}, "available"); err != nil {
+		t.Fatal(err)
+	}
+	goal, err := controlPlane.CreateGoal(GoalInput{Objective: "compare two worker branches"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := controlPlane.AddWorker(goal.ID, WorkerInput{
+		MachineID: "worker-2", Prompt: "produce an independent comparison",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTestGoal(t, controlPlane, goal.ID)
+	workers, err := controlPlane.store.ListWorkersForGoal(goal.ID)
+	if err != nil || len(workers) != 2 {
+		t.Fatalf("expected two workers: %#v err=%v", workers, err)
+	}
+	if final.Status != "completed" || !strings.Contains(final.Summary, second.ID) {
+		t.Fatalf("goal did not aggregate both worker results: %#v", final)
+	}
+	events, err := controlPlane.Events(goal.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := 0
+	for _, event := range events {
+		if event.Type == "GoalCompleted" {
+			completed++
+		}
+	}
+	if completed != 1 {
+		t.Fatalf("expected one aggregate GoalCompleted event, got %d", completed)
+	}
+}
+
 func TestMonitorQueuesCorrectionAfterStall(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := New(Config{
