@@ -43,15 +43,16 @@ machines_json="$(curl -fsS http://127.0.0.1:${CICADA_API_PORT:-8787}/v1/machines
 jq -e '.machines | length >= 2' >/dev/null <<<"$machines_json"
 
 codex_version="$(docker compose exec -T control codex --version)"
-doctor_json="$(docker compose exec -T control codex doctor -c 'model="gpt-5.4"' --json)"
+test_model="${CICADA_TEST_MODEL:-gpt-5.5}"
+doctor_json="$(docker compose exec -T control codex doctor -c "model=\"${test_model}\"" --json)"
 docker compose exec -T control sh -lc \
   'test -f /etc/codex/config.toml && test -f "$CODEX_HOME/config.toml" && touch "$CODEX_HOME/.cicada-write-test" && rm "$CODEX_HOME/.cicada-write-test"'
 
-jq -e '
+jq -e --arg test_model "$test_model" '
   .checks["auth.credentials"].status == "ok" and
   .checks["auth.credentials"].details["provider auth env var"] == "API_KEY (present)" and
   .checks["config.load"].status == "ok" and
-  .checks["config.load"].details.model == "gpt-5.4" and
+  .checks["config.load"].details.model == $test_model and
   .checks["config.load"].details["model provider"] == "basil" and
   .checks.installation.details["managed by npm"] == "false" and
   .checks["network.provider_reachability"].status == "ok"
@@ -60,7 +61,7 @@ jq -e '
 printf 'Docker root: %s\n' "$docker_root"
 printf 'Codex: %s\n' "$codex_version"
 printf 'Containers: control=healthy worker=healthy\n'
-printf 'Configuration: model=gpt-5.4 provider=basil auth=present endpoint=reachable\n'
+printf 'Configuration: test_model=%s provider=basil auth=present endpoint=reachable\n' "$test_model"
 
 if [[ "${CICADA_SMOKE_INFERENCE:-0}" == "1" ]]; then
   api_url="http://127.0.0.1:${CICADA_API_PORT:-8787}"

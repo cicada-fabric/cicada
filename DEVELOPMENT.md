@@ -106,10 +106,12 @@ Codex session in each:
 ./scripts/open-codex-thread.sh manual-b
 ```
 
-The helper creates the workspace before starting Codex and pins the TUI to
-`gpt-5.4`. If you start Codex directly, create the directories first with
+The helper creates the workspace before starting Codex and uses
+`CICADA_TEST_MODEL` (default `gpt-5.5`) for the test TUI. If you start Codex directly, create the directories first with
 `docker compose exec -T control mkdir -p /workspace/manual-a /workspace/manual-b`,
-then pass `--model gpt-5.4` to the Codex command.
+then pass `--model gpt-5.5` to the Codex command. The packaged runtime
+configuration remains on the requested production model `gpt-5.4`; set
+`CICADA_TEST_MODEL=gpt-5.4` when the verification must match it.
 
 In a normal shell, list the session UUIDs after both TUIs have started:
 
