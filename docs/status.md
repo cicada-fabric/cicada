@@ -41,6 +41,8 @@ Implemented in this line:
   Workspaces, and external actions.
 - local Machine capability discovery for OS, architecture, CPU, memory,
   toolchains, and NVIDIA/CPU accelerator matching.
+- bounded personal, project, and execution Memory context in Worker prompts,
+  labeled as reference data and persisted through the existing Memory API.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production

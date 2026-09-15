@@ -23,6 +23,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   workspaces, and external actions.
 - Local machine capability discovery for scheduler matching, with bounded
   NVIDIA probing and CPU fallback.
+- Bounded personal, project, and execution Memory context in Worker prompts,
+  with explicit stale-data and prompt-instruction boundaries.
 
 ### Changed
 
