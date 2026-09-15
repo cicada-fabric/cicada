@@ -43,7 +43,7 @@ machines_json="$(curl -fsS http://127.0.0.1:${CICADA_API_PORT:-8787}/v1/machines
 jq -e '.machines | length >= 2' >/dev/null <<<"$machines_json"
 
 codex_version="$(docker compose exec -T control codex --version)"
-doctor_json="$(docker compose exec -T control codex doctor --json)"
+doctor_json="$(docker compose exec -T control codex doctor -c 'model="gpt-5.4"' --json)"
 
 jq -e '
   .checks["auth.credentials"].status == "ok" and

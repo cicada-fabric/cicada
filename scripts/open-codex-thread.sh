@@ -10,4 +10,4 @@ fi
 
 workspace="/workspace/$name"
 docker compose exec -T control mkdir -p "$workspace"
-exec docker compose exec -it control codex -C "$workspace"
+exec docker compose exec -it control codex -C "$workspace" --model gpt-5.4

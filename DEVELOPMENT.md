@@ -94,9 +94,10 @@ Codex session in each:
 ./scripts/open-codex-thread.sh manual-b
 ```
 
-The helper creates the workspace before starting Codex. If you start Codex
-directly, create the directories first with
-`docker compose exec -T control mkdir -p /workspace/manual-a /workspace/manual-b`.
+The helper creates the workspace before starting Codex and pins the TUI to
+`gpt-5.4`. If you start Codex directly, create the directories first with
+`docker compose exec -T control mkdir -p /workspace/manual-a /workspace/manual-b`,
+then pass `--model gpt-5.4` to the Codex command.
 
 In a normal shell, list the session UUIDs after both TUIs have started:
 

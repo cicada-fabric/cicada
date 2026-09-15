@@ -22,7 +22,6 @@ x-cicada-common: &cicada-common
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state:/state
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs:/var/log/cicada
-    - ./docker/codex-config.toml:/state/config.toml:ro
   init: true
   stdin_open: true
   tty: true
@@ -48,7 +47,6 @@ services:
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/control:/state
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/control:/var/log/cicada
-      - ./docker/codex-config.toml:/state/config.toml:ro
     command: ["cicada", "serve", "--host", "0.0.0.0", "--port", "8787"]
 
   worker:
@@ -62,5 +60,4 @@ services:
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/worker:/state
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/worker:/var/log/cicada
-      - ./docker/codex-config.toml:/state/config.toml:ro
     command: ["sleep", "infinity"]
