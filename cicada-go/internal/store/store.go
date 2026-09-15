@@ -442,7 +442,6 @@ CREATE TABLE IF NOT EXISTS notifications (
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
-CREATE INDEX IF NOT EXISTS goals_parent_idx ON goals(parent_goal_id, created_at);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
 CREATE INDEX IF NOT EXISTS permissions_lookup_idx ON permissions(subject_type, subject_id, action, resource);
@@ -476,6 +475,9 @@ CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, cre
 		if err := s.ensureColumn(column.table, column.name, column.ddl); err != nil {
 			return err
 		}
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS goals_parent_idx ON goals(parent_goal_id, created_at)`); err != nil {
+		return fmt.Errorf("create parent goal index: %w", err)
 	}
 	// Populate the workspace registry for goals created by the MVP schema.
 	// INSERT OR IGNORE makes this safe to run on every startup.
