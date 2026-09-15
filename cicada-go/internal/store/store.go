@@ -543,6 +543,34 @@ func (s *Store) SetMachineStatus(id, status string) error {
 	return err
 }
 
+func (s *Store) MarkStaleMachines(cutoff string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT id FROM machines WHERE last_seen < ? AND status <> 'offline'`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := s.db.Exec(`UPDATE machines SET status = 'offline' WHERE last_seen < ? AND status <> 'offline'`, cutoff); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (s *Store) CreateGoal(id, objective, successCriteria, constraints string, priority int, machineID, monitorID, workspace string) (*Goal, error) {
 	return s.CreateGoalWithDetails(id, objective, successCriteria, constraints, priority, "", nil, nil, machineID, monitorID, workspace)
 }

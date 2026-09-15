@@ -38,6 +38,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.machines(response, request)
 		return
 	}
+	if strings.HasPrefix(request.URL.Path, "/v1/machines/") {
+		h.machine(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/workers" && request.Method == http.MethodGet {
 		workers, err := h.control.Workers()
 		if err != nil {
@@ -472,6 +476,32 @@ func (h *Handler) machines(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	writeJSON(response, http.StatusCreated, registered)
+}
+
+func (h *Handler) machine(response http.ResponseWriter, request *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/machines/"), "/")
+	if len(parts) != 2 || parts[1] != "heartbeat" || request.Method != http.MethodPost || parts[0] == "" {
+		writeError(response, http.StatusNotFound, errors.New("machine heartbeat route not found"))
+		return
+	}
+	var input struct {
+		Status       string         `json:"status"`
+		Capabilities map[string]any `json:"capabilities"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	machine, err := h.control.HeartbeatMachine(parts[0], input.Status, input.Capabilities)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, machine)
 }
 
 func (h *Handler) goals(response http.ResponseWriter, request *http.Request) {

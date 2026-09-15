@@ -21,12 +21,14 @@ import (
 )
 
 type Config struct {
-	StateDir      string
-	WorkspaceRoot string
-	IdentityFile  string
-	CodexBinary   string
-	WorkerTimeout time.Duration
-	MaxRecoveries int
+	StateDir          string
+	WorkspaceRoot     string
+	IdentityFile      string
+	CodexBinary       string
+	WorkerTimeout     time.Duration
+	MaxRecoveries     int
+	MonitorInterval   time.Duration
+	MachineStaleAfter time.Duration
 }
 
 func DefaultConfig() Config {
@@ -43,13 +45,27 @@ func DefaultConfig() Config {
 			recoveries = parsed
 		}
 	}
+	monitorInterval := 30 * time.Second
+	if value := os.Getenv("CICADA_MONITOR_INTERVAL_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			monitorInterval = seconds
+		}
+	}
+	staleAfter := 2 * time.Minute
+	if value := os.Getenv("CICADA_MACHINE_STALE_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			staleAfter = seconds
+		}
+	}
 	return Config{
-		StateDir:      envOr("CICADA_STATE_DIR", "/state"),
-		WorkspaceRoot: envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
-		IdentityFile:  envOr("CICADA_E2EE_IDENTITY_FILE", ""),
-		CodexBinary:   envOr("CICADA_CODEX_BIN", "codex"),
-		WorkerTimeout: timeout,
-		MaxRecoveries: recoveries,
+		StateDir:          envOr("CICADA_STATE_DIR", "/state"),
+		WorkspaceRoot:     envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
+		IdentityFile:      envOr("CICADA_E2EE_IDENTITY_FILE", ""),
+		CodexBinary:       envOr("CICADA_CODEX_BIN", "codex"),
+		WorkerTimeout:     timeout,
+		MaxRecoveries:     recoveries,
+		MonitorInterval:   monitorInterval,
+		MachineStaleAfter: staleAfter,
 	}
 }
 
@@ -180,7 +196,57 @@ func (c *Control) Start() error {
 		})
 		c.launchWorker(worker.ID, "Control restarted; inspect the current workspace and continue.")
 	}
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.monitorLoop()
+	}()
 	return nil
+}
+
+func (c *Control) monitorLoop() {
+	interval := c.config.MonitorInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			c.evaluateMonitors()
+		case <-c.shutdown:
+			return
+		}
+	}
+}
+
+func (c *Control) evaluateMonitors() {
+	if c.config.MachineStaleAfter > 0 {
+		cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
+		_, _ = c.store.MarkStaleMachines(cutoff)
+	}
+	goals, err := c.store.ListGoals()
+	if err != nil {
+		return
+	}
+	for _, goal := range goals {
+		if goal.MonitorID == "" || goal.Status != "running" {
+			continue
+		}
+		worker, workerErr := c.store.GetWorkerForGoal(goal.ID)
+		if workerErr != nil || worker == nil || worker.Status != "running" {
+			continue
+		}
+		monitor, monitorErr := c.store.GetMonitor(goal.MonitorID)
+		if monitorErr != nil || monitor == nil {
+			continue
+		}
+		_, _ = c.store.AppendEvent(goal.ID, worker.ID, "MonitorEvaluated", map[string]any{
+			"worker_status": worker.Status, "last_event_at": monitor.LastEventAt,
+		})
+		_ = c.store.TouchMonitor(monitor.ID, "active")
+	}
 }
 
 func (c *Control) Shutdown(ctx context.Context) error {
@@ -209,13 +275,62 @@ func (c *Control) Shutdown(ctx context.Context) error {
 	return c.store.Close()
 }
 
-func (c *Control) Machines() ([]store.Machine, error) { return c.store.ListMachines() }
+func (c *Control) Machines() ([]store.Machine, error) {
+	c.sweepStaleMachines()
+	return c.store.ListMachines()
+}
 
 func (c *Control) RegisterMachine(id, name string, capabilities map[string]any, status string) (*store.Machine, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(name) == "" {
+		return nil, errors.New("machine id and name are required")
+	}
 	if status == "" {
 		status = "available"
 	}
+	if !validMachineStatus(status) {
+		return nil, fmt.Errorf("unsupported machine status: %s", status)
+	}
 	return c.store.UpsertMachine(id, name, capabilities, status)
+}
+
+func (c *Control) HeartbeatMachine(id, status string, capabilities map[string]any) (*store.Machine, error) {
+	machine, err := c.store.GetMachine(id)
+	if err != nil {
+		return nil, err
+	}
+	if machine == nil {
+		return nil, os.ErrNotExist
+	}
+	if status == "" {
+		status = machine.Status
+		if status == "offline" {
+			status = "available"
+		}
+	}
+	if !validMachineStatus(status) {
+		return nil, fmt.Errorf("unsupported machine status: %s", status)
+	}
+	if capabilities == nil {
+		capabilities = machine.Capabilities
+	}
+	return c.store.UpsertMachine(machine.ID, machine.Name, capabilities, status)
+}
+
+func validMachineStatus(status string) bool {
+	switch status {
+	case "available", "idle", "busy", "offline", "draining":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Control) sweepStaleMachines() {
+	if c.config.MachineStaleAfter <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
+	_, _ = c.store.MarkStaleMachines(cutoff)
 }
 
 func (c *Control) Workers() ([]store.Worker, error) { return c.store.ListWorkers() }
@@ -537,7 +652,7 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if input.Priority > 100 {
 		input.Priority = 100
 	}
-	machineID, err := c.chooseMachine(input.MachineID)
+	machineID, err := c.chooseMachine(input.MachineID, input.Resources)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +689,8 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	return c.Goal(goalID)
 }
 
-func (c *Control) chooseMachine(requested string) (string, error) {
+func (c *Control) chooseMachine(requested string, resources map[string]any) (string, error) {
+	c.sweepStaleMachines()
 	if requested != "" {
 		machine, err := c.store.GetMachine(requested)
 		if err != nil {
@@ -586,6 +702,9 @@ func (c *Control) chooseMachine(requested string) (string, error) {
 		if machine.Status != "available" && machine.Status != "idle" {
 			return "", fmt.Errorf("machine is not available: %s", requested)
 		}
+		if !machineMatches(*machine, resources) {
+			return "", fmt.Errorf("machine does not satisfy requested resources: %s", requested)
+		}
 		return requested, nil
 	}
 	machines, err := c.store.ListMachines()
@@ -593,16 +712,85 @@ func (c *Control) chooseMachine(requested string) (string, error) {
 		return "", err
 	}
 	for _, machine := range machines {
-		if machine.ID == "worker-local" && machine.Status == "available" {
+		if machine.ID == "worker-local" && machine.Status == "available" && machineMatches(machine, resources) {
 			return machine.ID, nil
 		}
 	}
 	for _, machine := range machines {
-		if machine.Status == "available" {
+		if machine.Status == "available" && machineMatches(machine, resources) {
 			return machine.ID, nil
 		}
 	}
 	return "", errors.New("no available machine")
+}
+
+func machineMatches(machine store.Machine, resources map[string]any) bool {
+	if len(resources) == 0 {
+		return true
+	}
+	for key, required := range resources {
+		switch key {
+		case "harness", "required_harness":
+			name, ok := required.(string)
+			if !ok || !containsString(machine.Capabilities["harnesses"], name) {
+				return false
+			}
+		case "os", "arch", "accelerator":
+			if fmt.Sprint(machine.Capabilities[key]) != fmt.Sprint(required) {
+				return false
+			}
+		case "min_memory_gb":
+			requiredValue, ok := numberValue(required)
+			availableValue, available := numberValue(machine.Capabilities["memory_gb"])
+			if !ok || !available || availableValue < requiredValue {
+				return false
+			}
+		default:
+			actual, exists := machine.Capabilities[key]
+			if !exists || fmt.Sprint(actual) != fmt.Sprint(required) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func containsString(value any, wanted string) bool {
+	switch values := value.(type) {
+	case []string:
+		for _, item := range values {
+			if item == wanted {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range values {
+			if fmt.Sprint(item) == wanted {
+				return true
+			}
+		}
+	case string:
+		return values == wanted
+	}
+	return false
+}
+
+func numberValue(value any) (float64, bool) {
+	switch number := value.(type) {
+	case float64:
+		return number, true
+	case float32:
+		return float64(number), true
+	case int:
+		return float64(number), true
+	case int64:
+		return float64(number), true
+	case json.Number:
+		parsed, err := number.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (c *Control) SendCommand(goalID, command string) (*store.Command, error) {

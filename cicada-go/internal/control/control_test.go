@@ -285,6 +285,26 @@ func TestControlPeerMessageUsesPostQuantumEnvelope(t *testing.T) {
 	}
 }
 
+func TestSchedulerMatchesMachineCapabilitiesAndHeartbeat(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.RegisterMachine("gpu-test", "GPU test", map[string]any{
+		"harnesses": []string{"codex"}, "os": "linux", "accelerator": "H100", "memory_gb": 80,
+	}, "available"); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := controlPlane.chooseMachine("", map[string]any{"accelerator": "H100", "min_memory_gb": 40, "harness": "codex"})
+	if err != nil || selected != "gpu-test" {
+		t.Fatalf("scheduler selected %q err=%v", selected, err)
+	}
+	heartbeat, err := controlPlane.HeartbeatMachine("gpu-test", "busy", nil)
+	if err != nil || heartbeat.Status != "busy" {
+		t.Fatalf("heartbeat did not update machine: %#v err=%v", heartbeat, err)
+	}
+	if _, err := controlPlane.chooseMachine("gpu-test", map[string]any{"accelerator": "A100"}); err == nil {
+		t.Fatal("scheduler accepted an incompatible accelerator")
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
