@@ -42,12 +42,12 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	// The embedded client and health probe remain readable so a deployment can
 	// bootstrap and monitor itself. Every state-changing or data API request is
 	// protected when an operator configures CICADA_API_TOKEN.
-	if h.apiToken != "" && request.URL.Path != "/" && request.URL.Path != "/healthz" && !h.authorized(request) {
+	if h.apiToken != "" && !isPublicClientPath(request.URL.Path) && request.URL.Path != "/healthz" && !h.authorized(request) {
 		response.Header().Set("WWW-Authenticate", `Bearer realm="cicada"`)
 		writeError(response, http.StatusUnauthorized, errors.New("missing or invalid API bearer token"))
 		return
 	}
-	if request.URL.Path == "/" {
+	if isPublicClientPath(request.URL.Path) {
 		serveClient(response, request)
 		return
 	}

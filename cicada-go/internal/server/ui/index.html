@@ -2,78 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07110f">
   <title>Cicada Control</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111827; color: #e5e7eb; }
-    body { max-width: 1100px; margin: 0 auto; padding: 24px; }
-    h1 { margin: 0 0 4px; } .muted { color: #9ca3af; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
-    section, .goal { background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 16px; }
-    section { min-height: 100px; } .goal { margin-top: 12px; }
-    input, textarea, button { width: 100%; box-sizing: border-box; margin-top: 8px; padding: 9px; border-radius: 6px; border: 1px solid #4b5563; background: #111827; color: inherit; }
-    button { cursor: pointer; background: #2563eb; border-color: #2563eb; } button:hover { background: #1d4ed8; }
-    .status { font-weight: 700; } .running { color: #fbbf24; } .completed { color: #34d399; } .failed { color: #f87171; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: #d1d5db; }
-    .notification { border-left: 3px solid #f59e0b; padding-left: 10px; margin: 10px 0; }
-  </style>
+  <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-  <h1>Cicada Control</h1>
-  <div class="muted">Personal control plane · <span id="identity">loading identity…</span></div>
-  <div class="grid">
-    <section>
-      <h2>New Goal</h2>
-      <form id="goal-form">
-        <textarea id="objective" rows="3" placeholder="What should Cicada do?"></textarea>
-        <input id="criteria" placeholder="Success criteria (optional)">
-        <button>Create Goal</button>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">AUTONOMOUS PERSONAL AI MANAGER</p>
+      <h1>Cicada</h1>
+      <p class="muted">Control plane <span class="dot">·</span> <span id="identity">connecting…</span></p>
+    </div>
+    <div class="live"><span></span> live</div>
+  </header>
+
+  <main>
+    <section aria-labelledby="today-title">
+      <div class="section-title">
+        <div><p class="eyebrow">OVERVIEW</p><h2 id="today-title">Today</h2></div>
+        <time id="updated-at" class="muted"></time>
+      </div>
+      <div class="stats">
+        <article><strong id="running-count">—</strong><span>running</span></article>
+        <article><strong id="approval-count">—</strong><span>need approval</span></article>
+        <article><strong id="completed-count">—</strong><span>completed</span></article>
+      </div>
+    </section>
+
+    <div class="columns">
+      <section aria-labelledby="ask-title">
+        <p class="eyebrow">INTENT</p>
+        <h2 id="ask-title">Ask Cicada</h2>
+        <form id="goal-form">
+          <label for="objective">What outcome do you want?</label>
+          <textarea id="objective" rows="4" required maxlength="8000" placeholder="Inspect this project, verify the result, and tell me only when it is done."></textarea>
+          <label for="criteria">Success criteria <span class="muted">optional</span></label>
+          <input id="criteria" maxlength="4000" placeholder="Tests pass and evidence is recorded">
+          <button type="submit">Start goal</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="approvals-title">
+        <div class="section-title">
+          <div><p class="eyebrow">YOUR DECISION</p><h2 id="approvals-title">Approvals</h2></div>
+        </div>
+        <div id="approvals" class="empty">loading…</div>
+      </section>
+    </div>
+
+    <section aria-labelledby="goals-title">
+      <div class="section-title">
+        <div><p class="eyebrow">OUTCOMES</p><h2 id="goals-title">Goals</h2></div>
+      </div>
+      <div id="goals" class="goal-list empty">loading…</div>
+    </section>
+
+    <section aria-labelledby="notifications-title">
+      <div class="section-title">
+        <div><p class="eyebrow">ONLY WHAT MATTERS</p><h2 id="notifications-title">Notifications</h2></div>
+      </div>
+      <div id="notifications" class="empty">loading…</div>
+    </section>
+
+    <details id="access-panel">
+      <summary>Remote access</summary>
+      <form id="token-form" class="token-form">
+        <label for="api-token">API bearer token</label>
+        <input id="api-token" type="password" autocomplete="off" placeholder="Required when Control authentication is enabled">
+        <div class="button-row">
+          <button type="submit">Use for this tab</button>
+          <button type="button" id="clear-token" class="secondary">Clear</button>
+        </div>
       </form>
-      <div id="form-error" class="muted"></div>
-    </section>
-    <section>
-      <h2>Notifications</h2>
-      <div id="notifications" class="muted">loading…</div>
-    </section>
-  </div>
-  <section style="margin-top:16px">
-    <h2>Goals</h2>
-    <div id="goals" class="muted">loading…</div>
-  </section>
-  <script>
-    const json = async (path, options) => {
-      const response = await fetch(path, options);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || response.statusText);
-      return data;
-    };
-    const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    async function refresh() {
-      try {
-        const [identity, goals, notifications] = await Promise.all([
-          json('/v1/identity'), json('/v1/goals'), json('/v1/notifications')
-        ]);
-        document.querySelector('#identity').textContent = identity.id || 'identity unavailable';
-        document.querySelector('#notifications').innerHTML = notifications.notifications.length
-          ? notifications.notifications.map(item => `<div class="notification"><b>${escapeHTML(item.priority)} · ${escapeHTML(item.title)}</b><br>${escapeHTML(item.body)}<br><button data-read="${escapeHTML(item.id)}">Mark read</button></div>`).join('')
-          : '<span class="muted">No unread notifications.</span>';
-        document.querySelector('#goals').innerHTML = goals.goals.length
-          ? goals.goals.map(goal => `<article class="goal"><b>${escapeHTML(goal.objective)}</b> <span class="status ${escapeHTML(goal.status)}">${escapeHTML(goal.status)}</span><br><span class="muted">${escapeHTML(goal.id)} · workers: ${(goal.workers || []).length}</span><pre>${escapeHTML(goal.summary || goal.current_state || 'in progress')}</pre></article>`).join('')
-          : '<span class="muted">No goals yet.</span>';
-        document.querySelectorAll('[data-read]').forEach(button => button.onclick = async () => { await json(`/v1/notifications/${button.dataset.read}/read`, {method:'POST'}); refresh(); });
-      } catch (error) {
-        document.querySelector('#form-error').textContent = error.message;
-      }
-    }
-    document.querySelector('#goal-form').onsubmit = async event => {
-      event.preventDefault();
-      const error = document.querySelector('#form-error'); error.textContent = '';
-      try {
-        await json('/v1/goals', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({objective:document.querySelector('#objective').value, success_criteria:document.querySelector('#criteria').value})});
-        event.target.reset(); refresh();
-      } catch (failure) { error.textContent = failure.message; }
-    };
-    refresh(); setInterval(refresh, 5000);
-  </script>
+      <p class="muted">The token stays in this browser tab and is never rendered into the page.</p>
+    </details>
+
+    <div id="message" role="status" aria-live="polite"></div>
+  </main>
+  <script src="/assets/app.js" defer></script>
 </body>
 </html>

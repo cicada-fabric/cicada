@@ -31,13 +31,15 @@ Implemented in this line:
 - policy-gated external action requests with domain and SSRF checks, credential
   field rejection, durable approval transitions, executor claim/complete state,
   and append-only action audit events;
-- embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
-  smoke test.
+- responsive embedded Personal Client with a Today Goal overview, pending
+  Approval decisions, prioritized notifications, per-tab remote bearer token,
+  HTTP/JSON API, Docker image export, and a reproducible smoke test.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production
 browser executor, external message/calendar connectors, additional harness
-adapters, and the mobile/voice Client remain the next feature lines. The
+adapters, and push, native mobile, voice, and detailed Goal views remain the
+next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
 product work rather than hidden behind claims that the current Codex adapter

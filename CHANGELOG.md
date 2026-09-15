@@ -13,6 +13,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Identity-routed federation ingress with atomic replay state, idempotent
   transport retries, and plaintext-free receipts.
 - Optional bearer authentication for remotely exposed Control APIs.
+- Responsive embedded Personal Client with Today counters, Goal and worker
+  summaries, pending Approval decisions, prioritized notifications, and a
+  per-tab remote bearer token.
 
 ### Changed
 
