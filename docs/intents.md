@@ -35,6 +35,10 @@ It never infers an Approval from ordinary language. Commands without a
 `target_id`, approvals without an explicit `kind`, and approvals without a
 decision become `needs_input` rather than causing a side effect.
 
-The first router is intentionally deterministic and auditable. It provides a
-stable boundary for a future gpt-5.5 planner while keeping high-impact actions
-behind explicit typed input and the existing Control policy checks.
+The Docker deployment enables an optional gpt-5.5 planner through the official
+Codex CLI (`CICADA_INTENT_PLANNER_BIN=codex`). It runs with an ephemeral
+read-only sandbox and a strict JSON Schema. Planner errors or low confidence
+fall back to the deterministic rules above. Set the variable to an empty value
+when an offline deployment needs deterministic routing only. High-impact
+actions remain behind explicit typed input and the existing Control policy
+checks.

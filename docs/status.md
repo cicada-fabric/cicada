@@ -43,12 +43,14 @@ Implemented in this line:
   toolchains, and NVIDIA/CPU accelerator matching.
 - bounded personal, project, and execution Memory context in Worker prompts,
   labeled as reference data and persisted through the existing Memory API.
+- optional gpt-5.5 Intent Planner through the official Codex CLI, with a
+  read-only ephemeral sandbox, strict JSON output, timeout, and deterministic
+  fallback.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, a production
 browser executor, external message/calendar connectors, additional harness
-adapters, push, native mobile, voice, and a model-backed planner remain the
-next feature lines. The
+adapters, push, native mobile, and voice remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
 product work rather than hidden behind claims that the current Codex adapter

@@ -48,6 +48,11 @@ func (c *Control) RouteIntent(input IntentInput) (*store.Intent, error) {
 	if !valid {
 		return c.needsIntentInput(intent.ID, "", "Choose one intent kind: goal, idea, research, question, command, or approval.")
 	}
+	if requested == "auto" && kind == "goal" {
+		if plan, planErr := c.planIntent(input.Text); planErr == nil && plan.Confidence >= 0.65 {
+			kind, content = plan.Kind, input.Text
+		}
+	}
 	if question := missingIntentInput(kind, input); question != "" {
 		return c.needsIntentInput(intent.ID, kind, question)
 	}

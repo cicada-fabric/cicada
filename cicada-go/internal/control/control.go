@@ -41,6 +41,8 @@ type Config struct {
 	PeerRelayURL      string
 	PeerRelayToken    string
 	PeerRelayInterval time.Duration
+	IntentPlannerBin  string
+	IntentPlannerTime time.Duration
 }
 
 func DefaultConfig() Config {
@@ -81,6 +83,12 @@ func DefaultConfig() Config {
 			relayInterval = seconds
 		}
 	}
+	plannerTimeout := 20 * time.Second
+	if value := os.Getenv("CICADA_INTENT_PLANNER_TIMEOUT_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			plannerTimeout = seconds
+		}
+	}
 	return Config{
 		StateDir:          envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot:     envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
@@ -96,6 +104,8 @@ func DefaultConfig() Config {
 		PeerRelayURL:      os.Getenv("CICADA_PEER_RELAY_URL"),
 		PeerRelayToken:    os.Getenv("CICADA_PEER_RELAY_TOKEN"),
 		PeerRelayInterval: relayInterval,
+		IntentPlannerBin:  os.Getenv("CICADA_INTENT_PLANNER_BIN"),
+		IntentPlannerTime: plannerTimeout,
 	}
 }
 

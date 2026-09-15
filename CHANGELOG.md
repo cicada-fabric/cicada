@@ -25,6 +25,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   NVIDIA probing, CPU fallback, and a `max_load_1m` resource constraint.
 - Bounded personal, project, and execution Memory context in Worker prompts,
   with explicit stale-data and prompt-instruction boundaries.
+- Optional gpt-5.5 natural-input planning through an ephemeral read-only Codex
+  invocation, with deterministic fallback and no model-driven Approval.
 
 ### Changed
 
