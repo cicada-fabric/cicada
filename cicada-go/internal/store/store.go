@@ -143,7 +143,7 @@ type Notification struct {
 	ReadAt    string `json:"read_at,omitempty"`
 }
 
-// Monitor is the durable supervisor binding for a Goal. The MVP monitor is
+// Monitor is the durable supervisor binding for a Goal. The current monitor is
 // deliberately small: it records whether supervision is active and when the
 // last event or correction was observed. More advanced policies can be added
 // without changing the Goal/Worker relationship.

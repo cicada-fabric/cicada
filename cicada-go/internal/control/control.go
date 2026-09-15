@@ -484,7 +484,7 @@ func (c *Control) DeletePermission(id string) error {
 }
 
 // CheckPermission resolves the most specific rule. No rule means allow for
-// local MVP operations; callers can install a global deny/approval default
+// local operations; callers can install a global deny/approval default
 // and then add narrow allow rules for trusted workflows.
 func (c *Control) CheckPermission(subjectType, subjectID, action, resource string) (string, error) {
 	permission, err := c.store.LookupPermission(strings.TrimSpace(subjectType), strings.TrimSpace(subjectID), strings.TrimSpace(action), strings.TrimSpace(resource))
@@ -1043,7 +1043,7 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 		harness = "codex"
 	}
 	if harness != "codex" {
-		return nil, fmt.Errorf("harness %q is not installed; MVP supports codex", harness)
+		return nil, fmt.Errorf("harness %q is not installed; current release supports codex", harness)
 	}
 	resources := input.Resources
 	if resources == nil {
@@ -1121,7 +1121,7 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 		harness = "codex"
 	}
 	if harness != "codex" {
-		return nil, fmt.Errorf("harness %q is not installed; MVP supports codex", harness)
+		return nil, fmt.Errorf("harness %q is not installed; current release supports codex", harness)
 	}
 	resources := input.Resources
 	if resources == nil {
