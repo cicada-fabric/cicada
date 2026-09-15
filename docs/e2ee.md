@@ -35,6 +35,11 @@ curl -X POST http://127.0.0.1:8787/v1/contacts \
   -H 'content-type: application/json' \
   -d '{"label":"Alice","identity":{"id":"pq1-...","kem_public":"...","signing_public":"..."}}'
 
+# Revoke a pinned identity immediately if the relationship changes.
+curl -X PATCH http://127.0.0.1:8787/v1/contacts/CONTACT_ID \
+  -H 'content-type: application/json' \
+  -d '{"status":"revoked"}'
+
 # Seal an outbound message. The response contains an opaque envelope.
 curl -X POST http://127.0.0.1:8787/v1/peer-messages \
   -H 'content-type: application/json' \
