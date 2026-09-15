@@ -305,6 +305,40 @@ func TestSchedulerMatchesMachineCapabilitiesAndHeartbeat(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLifecycleActions(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	workspace, err := controlPlane.CreateWorkspace(WorkspaceInput{Path: filepath.Join(controlPlane.config.WorkspaceRoot, "source"), Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace.Path, "evidence.txt"), []byte("ready"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := controlPlane.WorkspaceAction(workspace.ID, "snapshot", "")
+	if err != nil || snapshot.Status != "snapshot" || snapshot.Revision == "" {
+		t.Fatalf("snapshot failed: %#v err=%v", snapshot, err)
+	}
+	target := filepath.Join(controlPlane.config.WorkspaceRoot, "migrated")
+	migrated, err := controlPlane.WorkspaceAction(workspace.ID, "migrate", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.Path != target {
+		t.Fatalf("workspace did not migrate: %#v", migrated)
+	}
+	content, err := os.ReadFile(filepath.Join(target, "evidence.txt"))
+	if err != nil || string(content) != "ready" {
+		t.Fatalf("migrated evidence missing: %q err=%v", content, err)
+	}
+	if _, err := controlPlane.WorkspaceAction(workspace.ID, "archive", ""); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := controlPlane.WorkspaceAction(workspace.ID, "resume", "")
+	if err != nil || resumed.Status != "active" {
+		t.Fatalf("workspace did not resume: %#v err=%v", resumed, err)
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

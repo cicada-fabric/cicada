@@ -792,9 +792,18 @@ func (s *Store) ListWorkspaces(goalID string) ([]Workspace, error) {
 }
 
 func (s *Store) UpdateWorkspace(id, status, revision string) (*Workspace, error) {
+	return s.UpdateWorkspaceLocation(id, "", status, revision)
+}
+
+func (s *Store) UpdateWorkspaceLocation(id, path, status, revision string) (*Workspace, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`UPDATE workspaces SET status = ?, revision = ?, updated_at = ? WHERE id = ?`, status, revision, now(), id)
+	var err error
+	if path == "" {
+		_, err = s.db.Exec(`UPDATE workspaces SET status = ?, revision = ?, updated_at = ? WHERE id = ?`, status, revision, now(), id)
+	} else {
+		_, err = s.db.Exec(`UPDATE workspaces SET path = ?, status = ?, revision = ?, updated_at = ? WHERE id = ?`, path, status, revision, now(), id)
+	}
 	if err != nil {
 		return nil, err
 	}

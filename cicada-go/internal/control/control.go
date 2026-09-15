@@ -491,6 +491,33 @@ func (c *Control) Workspaces(goalID string) ([]store.Workspace, error) {
 
 func (c *Control) Workspace(id string) (*store.Workspace, error) { return c.store.GetWorkspace(id) }
 
+type WorkspaceInput struct {
+	GoalID   string `json:"goal_id"`
+	Path     string `json:"path"`
+	Source   string `json:"source"`
+	Revision string `json:"revision"`
+}
+
+func (c *Control) CreateWorkspace(input WorkspaceInput) (*store.Workspace, error) {
+	path, err := c.workspacePath(input.Path)
+	if err != nil {
+		return nil, err
+	}
+	if input.GoalID != "" {
+		goal, err := c.store.GetGoal(input.GoalID)
+		if err != nil {
+			return nil, err
+		}
+		if goal == nil {
+			return nil, os.ErrNotExist
+		}
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return nil, fmt.Errorf("create workspace directory: %w", err)
+	}
+	return c.store.CreateWorkspace(store.NewID("workspace"), input.GoalID, path, input.Source, input.Revision)
+}
+
 func (c *Control) UpdateWorkspace(id, status, revision string) (*store.Workspace, error) {
 	workspace, err := c.store.GetWorkspace(id)
 	if err != nil {
@@ -506,6 +533,137 @@ func (c *Control) UpdateWorkspace(id, status, revision string) (*store.Workspace
 		revision = workspace.Revision
 	}
 	return c.store.UpdateWorkspace(id, status, revision)
+}
+
+func (c *Control) WorkspaceAction(id, action, targetPath string) (*store.Workspace, error) {
+	workspace, err := c.store.GetWorkspace(id)
+	if err != nil {
+		return nil, err
+	}
+	if workspace == nil {
+		return nil, os.ErrNotExist
+	}
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "resume":
+		if err := os.MkdirAll(workspace.Path, 0o755); err != nil {
+			return nil, fmt.Errorf("resume workspace: %w", err)
+		}
+		return c.store.UpdateWorkspace(id, "active", workspace.Revision)
+	case "archive":
+		return c.store.UpdateWorkspace(id, "archived", workspace.Revision)
+	case "snapshot":
+		revision := workspace.Revision
+		if value, gitErr := gitRevision(workspace.Path); gitErr == nil && value != "" {
+			revision = value
+		}
+		if revision == "" {
+			revision = time.Now().UTC().Format("20060102T150405Z")
+		}
+		return c.store.UpdateWorkspace(id, "snapshot", revision)
+	case "migrate":
+		target, err := c.workspacePath(targetPath)
+		if err != nil {
+			return nil, err
+		}
+		if target == workspace.Path {
+			return nil, errors.New("migration target must differ from current workspace")
+		}
+		if err := copyWorkspace(workspace.Path, target); err != nil {
+			return nil, err
+		}
+		return c.store.UpdateWorkspaceLocation(id, target, "active", workspace.Revision)
+	default:
+		return nil, fmt.Errorf("unsupported workspace action: %s", action)
+	}
+}
+
+func (c *Control) workspacePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("workspace path is required")
+	}
+	root, err := filepath.Abs(c.config.WorkspaceRoot)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	relative, err := filepath.Rel(root, resolved)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("workspace path must stay inside workspace root")
+	}
+	return resolved, nil
+}
+
+func gitRevision(path string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "git", "-C", path, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func copyWorkspace(source, target string) error {
+	if source == "" || target == "" {
+		return errors.New("workspace source and target are required")
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return fmt.Errorf("create migration target: %w", err)
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return fmt.Errorf("read workspace for migration: %w", err)
+	}
+	for _, entry := range entries {
+		if err := copyWorkspaceEntry(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name()), entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyWorkspaceEntry(source, target string, entry os.DirEntry) error {
+	info, err := entry.Info()
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(target, info.Mode().Perm()); err != nil {
+			return err
+		}
+		children, err := os.ReadDir(source)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			if err := copyWorkspaceEntry(filepath.Join(source, child.Name()), filepath.Join(target, child.Name()), child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("workspace migration refuses symlink: %s", source)
+	}
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(output, input)
+	closeErr := output.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func (c *Control) Memories(scope, namespace string) ([]store.Memory, error) {

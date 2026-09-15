@@ -111,13 +111,8 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.artifacts(response, request)
 		return
 	}
-	if request.URL.Path == "/v1/workspaces" && request.Method == http.MethodGet {
-		workspaces, err := h.control.Workspaces(request.URL.Query().Get("goal_id"))
-		if err != nil {
-			writeError(response, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(response, http.StatusOK, map[string]any{"workspaces": workspaces})
+	if request.URL.Path == "/v1/workspaces" {
+		h.workspaces(response, request)
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/v1/workspaces/") {
@@ -158,6 +153,37 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeError(response, http.StatusNotFound, errors.New("route not found"))
+}
+
+func (h *Handler) workspaces(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		workspaces, err := h.control.Workspaces(request.URL.Query().Get("goal_id"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"workspaces": workspaces})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input control.WorkspaceInput
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	workspace, err := h.control.CreateWorkspace(input)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, workspace)
 }
 
 func (h *Handler) contacts(response http.ResponseWriter, request *http.Request) {
@@ -395,9 +421,35 @@ func (h *Handler) artifacts(response http.ResponseWriter, request *http.Request)
 }
 
 func (h *Handler) workspace(response http.ResponseWriter, request *http.Request) {
-	id := strings.TrimPrefix(request.URL.Path, "/v1/workspaces/")
-	if id == "" || strings.Contains(id, "/") {
+	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/workspaces/"), "/")
+	id := parts[0]
+	if id == "" {
 		writeError(response, http.StatusNotFound, errors.New("workspace not found"))
+		return
+	}
+	if len(parts) == 2 && parts[1] == "actions" && request.Method == http.MethodPost {
+		var input struct {
+			Action     string `json:"action"`
+			TargetPath string `json:"target_path"`
+		}
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		workspace, err := h.control.WorkspaceAction(id, input.Action, input.TargetPath)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, workspace)
+		return
+	}
+	if len(parts) != 1 {
+		writeError(response, http.StatusNotFound, errors.New("route not found"))
 		return
 	}
 	if request.Method == http.MethodGet {
