@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -18,6 +19,10 @@ func discoverLocalCapabilities() map[string]any {
 		"memory_gb":  localMemoryGB(),
 		"load_1m":    localLoad1m(),
 		"toolchains": localToolchains(),
+		"containers": localCommands("docker", "podman", "containerd"),
+		"compilers":  localCommands("gcc", "clang", "nvcc"),
+		"disk":       localDisk("/"),
+		"network":    localNetwork(),
 	}
 	if name, models, memoryGB, ok := discoverNVIDIA(); ok {
 		capabilities["accelerator"] = "cuda"
@@ -82,6 +87,60 @@ func localToolchains() map[string]any {
 		}
 	}
 	return result
+}
+
+func localCommands(names ...string) map[string]any {
+	result := map[string]any{}
+	for _, name := range names {
+		if path, err := exec.LookPath(name); err == nil {
+			result[name] = path
+		}
+	}
+	return result
+}
+
+func localDisk(path string) map[string]any {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "df", "-Pk", path).Output()
+	if err != nil {
+		return map[string]any{}
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 2 {
+		return map[string]any{}
+	}
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) < 5 {
+		return map[string]any{}
+	}
+	total, totalErr := strconv.ParseFloat(fields[1], 64)
+	free, freeErr := strconv.ParseFloat(fields[3], 64)
+	if totalErr != nil || freeErr != nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"mount": path, "total_gb": total / (1024 * 1024), "free_gb": free / (1024 * 1024),
+	}
+}
+
+func localNetwork() map[string]any {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return map[string]any{"online": false, "interfaces": []string{}}
+	}
+	names := make([]string, 0, len(interfaces))
+	online := false
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		names = append(names, iface.Name)
+		if iface.Flags&net.FlagUp != 0 {
+			online = true
+		}
+	}
+	return map[string]any{"online": online, "interfaces": names}
 }
 
 func discoverNVIDIA() (string, []string, float64, bool) {

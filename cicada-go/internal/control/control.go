@@ -1462,6 +1462,28 @@ func machineMatches(machine store.Machine, resources map[string]any) bool {
 			if !ok || !available || availableValue > requiredValue {
 				return false
 			}
+		case "min_disk_free_gb":
+			requiredValue, ok := numberValue(required)
+			disk, diskOK := machine.Capabilities["disk"].(map[string]any)
+			availableValue, available := numberValue(disk["free_gb"])
+			if !ok || !diskOK || !available || availableValue < requiredValue {
+				return false
+			}
+		case "required_toolchains":
+			if !containsCommandSet(machine.Capabilities["toolchains"], required) {
+				return false
+			}
+		case "required_container":
+			if !containsCommandSet(machine.Capabilities["containers"], required) {
+				return false
+			}
+		case "network_required":
+			requiredValue, ok := required.(bool)
+			network, networkOK := machine.Capabilities["network"].(map[string]any)
+			availableValue, available := network["online"].(bool)
+			if !ok || !networkOK || !available || availableValue != requiredValue {
+				return false
+			}
 		case "attachments":
 			// Attachments are Goal context, not a machine capability.
 			continue
@@ -1493,6 +1515,38 @@ func containsString(value any, wanted string) bool {
 		return values == wanted
 	}
 	return false
+}
+
+func containsCommandSet(value, required any) bool {
+	commands, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	switch values := required.(type) {
+	case string:
+		_, ok := commands[values]
+		return ok
+	case []string:
+		for _, value := range values {
+			if _, ok := commands[value]; !ok {
+				return false
+			}
+		}
+		return true
+	case []any:
+		for _, value := range values {
+			name, ok := value.(string)
+			if !ok {
+				return false
+			}
+			if _, ok := commands[name]; !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func numberValue(value any) (float64, bool) {

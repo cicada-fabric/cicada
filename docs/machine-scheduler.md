@@ -13,9 +13,11 @@ curl -X POST http://127.0.0.1:8787/v1/machines/gpu2/heartbeat \
 The scheduler ignores machines whose status is not `available` or `idle`, and
 marks a machine `offline` after the configured heartbeat timeout
 (`CICADA_MACHINE_STALE_SECONDS`, two minutes by default). Goal resources are
-matched before a worker is launched. The current scheduler supports exact capability keys,
-required harnesses, accelerator/OS/architecture values, and
-`min_memory_gb`.
+matched before a worker is launched. The current scheduler supports exact
+capability keys, required harnesses, accelerator/OS/architecture values,
+`min_memory_gb`, `max_load_1m`, `min_disk_free_gb`, `required_toolchains`,
+`required_container`, and `network_required`. Toolchain and container
+constraints accept either one command name or a list of names.
 
 For example:
 
@@ -25,7 +27,10 @@ For example:
   "resources": {
     "accelerator": "H100",
     "min_memory_gb": 40,
-    "harness": "codex"
+    "harness": "codex",
+    "min_disk_free_gb": 20,
+    "required_toolchains": ["git", "python3"],
+    "network_required": true
   }
 }
 ```

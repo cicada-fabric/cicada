@@ -1,6 +1,7 @@
 package control
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/store"
@@ -8,7 +9,7 @@ import (
 
 func TestDiscoverLocalCapabilities(t *testing.T) {
 	capabilities := discoverLocalCapabilities()
-	for _, key := range []string{"os", "arch", "cpu_count", "memory_gb", "load_1m", "toolchains", "accelerator"} {
+	for _, key := range []string{"os", "arch", "cpu_count", "memory_gb", "load_1m", "toolchains", "containers", "compilers", "disk", "network", "accelerator"} {
 		if _, ok := capabilities[key]; !ok {
 			t.Fatalf("local capability %q is missing: %#v", key, capabilities)
 		}
@@ -21,6 +22,23 @@ func TestDiscoverLocalCapabilities(t *testing.T) {
 	}
 }
 
+func TestLocalDiskAndNetworkDoNotExposeAddresses(t *testing.T) {
+	disk := localDisk("/")
+	if _, ok := disk["free_gb"]; !ok {
+		t.Fatalf("disk free space was not discovered: %#v", disk)
+	}
+	network := localNetwork()
+	interfaces, ok := network["interfaces"].([]string)
+	if !ok {
+		t.Fatalf("network interfaces have an unexpected type: %#v", network)
+	}
+	for _, name := range interfaces {
+		if strings.Contains(name, ".") {
+			t.Fatalf("network profile should contain interface names only: %q", name)
+		}
+	}
+}
+
 func TestMachineLoadConstraint(t *testing.T) {
 	machine := store.Machine{Capabilities: map[string]any{"load_1m": 1.5}}
 	if !machineMatches(machine, map[string]any{"max_load_1m": 2}) {
@@ -28,6 +46,24 @@ func TestMachineLoadConstraint(t *testing.T) {
 	}
 	if machineMatches(machine, map[string]any{"max_load_1m": 1}) {
 		t.Fatal("machine above load limit was accepted")
+	}
+}
+
+func TestMachineProfileConstraints(t *testing.T) {
+	machine := store.Machine{Capabilities: map[string]any{
+		"disk":       map[string]any{"free_gb": 120.0},
+		"toolchains": map[string]any{"go": "/usr/bin/go", "git": "/usr/bin/git"},
+		"containers": map[string]any{"docker": "/usr/bin/docker"},
+		"network":    map[string]any{"online": true},
+	}}
+	if !machineMatches(machine, map[string]any{"min_disk_free_gb": 100, "required_toolchains": []any{"go", "git"}, "required_container": "docker", "network_required": true}) {
+		t.Fatal("machine profile constraints rejected a matching machine")
+	}
+	if machineMatches(machine, map[string]any{"min_disk_free_gb": 200}) {
+		t.Fatal("machine below disk constraint was accepted")
+	}
+	if machineMatches(machine, map[string]any{"required_toolchains": []any{"python3"}}) {
+		t.Fatal("machine missing a toolchain was accepted")
 	}
 }
 
