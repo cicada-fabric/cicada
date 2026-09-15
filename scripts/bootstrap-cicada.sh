@@ -18,8 +18,11 @@ install -d -m 0700 "$secret_dir"
 
 if [[ ! -s "$env_file" ]]; then
   : "${API_KEY:?Set API_KEY in the environment when creating the secret file}"
-  umask 077
-  printf 'API_KEY=%s\n' "$API_KEY" > "$env_file"
+	umask 077
+	printf 'API_KEY=%s\n' "$API_KEY" > "$env_file"
+	if [[ -n "${CICADA_API_TOKEN:-}" ]]; then
+	  printf 'CICADA_API_TOKEN=%s\n' "$CICADA_API_TOKEN" >> "$env_file"
+	fi
   printf 'Created %s\n' "$env_file"
 else
   chmod 0600 "$env_file"
@@ -29,4 +32,3 @@ fi
 printf 'Cicada data root: %s\n' "$data_root"
 printf 'Secret file mode: '
 stat -c '%a' "$env_file"
-

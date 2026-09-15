@@ -61,3 +61,42 @@ func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 		t.Fatalf("permission delete status=%d body=%s", removeResponse.Code, removeResponse.Body.String())
 	}
 }
+
+func TestConfiguredAPITokenProtectsControlRoutes(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := control.New(control.Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		APIToken: "test-api-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	handler := NewHandler(controlPlane)
+	unauthorized := httptest.NewRequest(http.MethodGet, "/v1/machines", nil)
+	unauthorizedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorizedResponse, unauthorized)
+	if unauthorizedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized API request status=%d body=%s", unauthorizedResponse.Code, unauthorizedResponse.Body.String())
+	}
+	wrong := httptest.NewRequest(http.MethodGet, "/v1/machines", nil)
+	wrong.Header.Set("Authorization", "Bearer wrong")
+	wrongResponse := httptest.NewRecorder()
+	handler.ServeHTTP(wrongResponse, wrong)
+	if wrongResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong-token API request status=%d body=%s", wrongResponse.Code, wrongResponse.Body.String())
+	}
+	authorized := httptest.NewRequest(http.MethodGet, "/v1/machines", nil)
+	authorized.Header.Set("Authorization", "Bearer test-api-token")
+	authorizedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(authorizedResponse, authorized)
+	if authorizedResponse.Code != http.StatusOK {
+		t.Fatalf("authorized API request status=%d body=%s", authorizedResponse.Code, authorizedResponse.Body.String())
+	}
+	health := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	healthResponse := httptest.NewRecorder()
+	handler.ServeHTTP(healthResponse, health)
+	if healthResponse.Code != http.StatusOK {
+		t.Fatalf("health probe should remain public: status=%d", healthResponse.Code)
+	}
+}

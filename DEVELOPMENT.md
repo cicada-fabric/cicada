@@ -55,6 +55,12 @@ curl http://127.0.0.1:8787/v1/machines
 curl http://127.0.0.1:8787/v1/workers
 ```
 
+When the API is exposed beyond localhost, set `CICADA_API_TOKEN` in the
+runtime-only secret file. The server then requires `Authorization: Bearer
+<token>` on every Control API route; `/` and `/healthz` remain available for
+the embedded client bootstrap and health probes. The `cicada` CLI reads the
+same environment variable automatically.
+
 Create a Goal and follow its event stream:
 
 ```bash

@@ -2,6 +2,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -19,11 +20,16 @@ import (
 )
 
 type Handler struct {
-	control *control.Control
+	control  *control.Control
+	apiToken string
 }
 
 func NewHandler(controlPlane *control.Control) http.Handler {
-	return &Handler{control: controlPlane}
+	handler := &Handler{control: controlPlane}
+	if controlPlane != nil {
+		handler.apiToken = strings.TrimSpace(controlPlane.APIToken())
+	}
+	return handler
 }
 
 func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -31,6 +37,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	response.Header().Set("Cache-Control", "no-store")
 	if request.Method == http.MethodOptions {
 		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// The embedded client and health probe remain readable so a deployment can
+	// bootstrap and monitor itself. Every state-changing or data API request is
+	// protected when an operator configures CICADA_API_TOKEN.
+	if h.apiToken != "" && request.URL.Path != "/" && request.URL.Path != "/healthz" && !h.authorized(request) {
+		response.Header().Set("WWW-Authenticate", `Bearer realm="cicada"`)
+		writeError(response, http.StatusUnauthorized, errors.New("missing or invalid API bearer token"))
 		return
 	}
 	if request.URL.Path == "/" {
@@ -208,6 +222,19 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeError(response, http.StatusNotFound, errors.New("route not found"))
+}
+
+func (h *Handler) authorized(request *http.Request) bool {
+	value := strings.TrimSpace(request.Header.Get("Authorization"))
+	const prefix = "Bearer "
+	if len(value) <= len(prefix) || !strings.EqualFold(value[:len(prefix)], prefix) {
+		return false
+	}
+	presented := strings.TrimSpace(value[len(prefix):])
+	if presented == "" || len(presented) != len(h.apiToken) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(h.apiToken)) == 1
 }
 
 func (h *Handler) workspaces(response http.ResponseWriter, request *http.Request) {

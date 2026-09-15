@@ -18,6 +18,8 @@ Implemented in this line:
   protection;
 - optional opaque HTTP relay delivery with queued/retry/delivered state;
 - Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
+- optional bearer authentication for the HTTP/JSON Control boundary, with
+  constant-time token comparison and runtime-only secret injection;
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 

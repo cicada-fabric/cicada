@@ -33,6 +33,10 @@ type Config struct {
 	MonitorInterval   time.Duration
 	MachineStaleAfter time.Duration
 	MonitorStallAfter time.Duration
+	// APIToken protects the HTTP/JSON control boundary when it is exposed
+	// beyond the local host. An empty token keeps the localhost-only default
+	// convenient for development.
+	APIToken          string
 	PeerRelayURL      string
 	PeerRelayToken    string
 	PeerRelayInterval time.Duration
@@ -86,6 +90,7 @@ func DefaultConfig() Config {
 		MonitorInterval:   monitorInterval,
 		MachineStaleAfter: staleAfter,
 		MonitorStallAfter: stallAfter,
+		APIToken:          os.Getenv("CICADA_API_TOKEN"),
 		PeerRelayURL:      os.Getenv("CICADA_PEER_RELAY_URL"),
 		PeerRelayToken:    os.Getenv("CICADA_PEER_RELAY_TOKEN"),
 		PeerRelayInterval: relayInterval,
@@ -98,6 +103,10 @@ func envOr(name, fallback string) string {
 	}
 	return fallback
 }
+
+// APIToken returns the configured bearer token without exposing it through any
+// status object or log line. The server package uses this only at its boundary.
+func (c *Control) APIToken() string { return c.config.APIToken }
 
 type Control struct {
 	config          Config

@@ -162,6 +162,9 @@ func requestJSON(url, method string, body any) error {
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
