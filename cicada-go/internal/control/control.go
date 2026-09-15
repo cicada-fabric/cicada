@@ -873,6 +873,7 @@ type GoalInput struct {
 	Budget          map[string]any `json:"budget"`
 	Resources       map[string]any `json:"resources"`
 	MachineID       string         `json:"machine_id"`
+	Harness         string         `json:"harness"`
 }
 
 // ThreadMessage is a durable, Control-mediated message between two Native
@@ -903,7 +904,21 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if input.Priority > 100 {
 		input.Priority = 100
 	}
-	machineID, err := c.chooseMachine(input.MachineID, input.Resources)
+	harness := strings.ToLower(strings.TrimSpace(input.Harness))
+	if harness == "" {
+		harness = "codex"
+	}
+	if harness != "codex" {
+		return nil, fmt.Errorf("harness %q is not installed; MVP supports codex", harness)
+	}
+	resources := input.Resources
+	if resources == nil {
+		resources = map[string]any{}
+	}
+	if _, exists := resources["required_harness"]; !exists {
+		resources["required_harness"] = harness
+	}
+	machineID, err := c.chooseMachine(input.MachineID, resources)
 	if err != nil {
 		return nil, err
 	}
@@ -923,7 +938,7 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if _, err := c.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
 		return nil, err
 	}
-	worker, err := c.store.CreateWorkerAt(store.NewID("worker"), goalID, machineID,
+	worker, err := c.store.CreateWorkerAtHarness(store.NewID("worker"), goalID, machineID, harness,
 		filepath.Join(workspace, ".cicada-last-message"), workspace)
 	if err != nil {
 		return nil, err
@@ -943,6 +958,7 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 type WorkerInput struct {
 	MachineID string         `json:"machine_id"`
 	Resources map[string]any `json:"resources"`
+	Harness   string         `json:"harness"`
 	Prompt    string         `json:"prompt"`
 }
 
@@ -957,7 +973,21 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	if goal.Status == "completed" || goal.Status == "failed" || goal.Status == "cancelled" {
 		return nil, fmt.Errorf("goal is already %s", goal.Status)
 	}
-	machineID, err := c.chooseMachine(input.MachineID, input.Resources)
+	harness := strings.ToLower(strings.TrimSpace(input.Harness))
+	if harness == "" {
+		harness = "codex"
+	}
+	if harness != "codex" {
+		return nil, fmt.Errorf("harness %q is not installed; MVP supports codex", harness)
+	}
+	resources := input.Resources
+	if resources == nil {
+		resources = map[string]any{}
+	}
+	if _, exists := resources["required_harness"]; !exists {
+		resources["required_harness"] = harness
+	}
+	machineID, err := c.chooseMachine(input.MachineID, resources)
 	if err != nil {
 		return nil, err
 	}
@@ -969,7 +999,7 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	if _, err := c.store.CreateWorkspace(store.NewID("workspace"), goalID, workspace, "worker", ""); err != nil {
 		return nil, err
 	}
-	worker, err := c.store.CreateWorkerAt(workerID, goalID, machineID, filepath.Join(workspace, ".cicada-last-message"), workspace)
+	worker, err := c.store.CreateWorkerAtHarness(workerID, goalID, machineID, harness, filepath.Join(workspace, ".cicada-last-message"), workspace)
 	if err != nil {
 		return nil, err
 	}

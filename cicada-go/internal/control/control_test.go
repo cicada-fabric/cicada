@@ -428,6 +428,13 @@ func TestIdeaResearchCreatesNonExecutionGoal(t *testing.T) {
 	}
 }
 
+func TestUnsupportedHarnessIsRejectedBeforeWorkerCreation(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "try unsupported harness", Harness: "claude-code"}); err == nil {
+		t.Fatal("unsupported harness was accepted")
+	}
+}
+
 func waitTestWorkerRunning(t *testing.T, controlPlane *Control, goalID string) *store.Goal {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

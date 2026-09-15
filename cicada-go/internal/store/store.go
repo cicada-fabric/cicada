@@ -1483,12 +1483,19 @@ func (s *Store) CreateWorker(id, goalID, machineID, responseFile string) (*Worke
 }
 
 func (s *Store) CreateWorkerAt(id, goalID, machineID, responseFile, workspace string) (*Worker, error) {
+	return s.CreateWorkerAtHarness(id, goalID, machineID, "codex", responseFile, workspace)
+}
+
+func (s *Store) CreateWorkerAtHarness(id, goalID, machineID, harness, responseFile, workspace string) (*Worker, error) {
+	if strings.TrimSpace(harness) == "" {
+		harness = "codex"
+	}
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`INSERT INTO workers
 	(id, goal_id, machine_id, harness, status, response_file, workspace, created_at, updated_at)
-VALUES (?, ?, ?, 'codex', 'queued', ?, ?, ?, ?)`, id, goalID, machineID, responseFile, workspace, timestamp, timestamp)
+	VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`, id, goalID, machineID, harness, responseFile, workspace, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create worker: %w", err)
 	}
