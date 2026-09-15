@@ -83,6 +83,38 @@ curl -X POST http://127.0.0.1:8787/v1/threads/messages \
   -d '{"from_worker_id":"WORKER_A","to_worker_id":"WORKER_B","message":"Please verify this result."}'
 ```
 
+For the manual two-TUI workflow, open two terminals and start one interactive
+Codex session in each:
+
+```bash
+# Terminal A
+docker compose exec -it control codex -C /workspace/manual-a
+
+# Terminal B
+docker compose exec -it control codex -C /workspace/manual-b
+```
+
+In a normal shell, list the session UUIDs after both TUIs have started:
+
+```bash
+./scripts/list-codex-threads.sh
+```
+
+Give each TUI the other UUID and explicitly ask it to send a message. For
+example, in Thread A type:
+
+```text
+Use the official queue command to send this message to Thread B:
+codex queue --thread B_UUID --message "Thread A says: compare the two hypotheses and reply with your conclusion."
+Then wait for Thread B's reply.
+```
+
+If Thread A asks for approval to execute that shell command, approve it in the
+A terminal. Thread B receives the queued turn in its own TUI. To send the reply
+back, enter the analogous instruction in Thread B with `A_UUID`. This path is
+manual and uses Codex's native `queue` command; the Control API thread-message
+endpoint and `two-thread-demo.sh` provide the durable/audited automation path.
+
 Verify Docker storage, both containers, the official CLI installation, and the
 effective relay configuration without exposing the API key:
 
