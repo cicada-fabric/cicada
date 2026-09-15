@@ -13,7 +13,7 @@ curl -X POST http://127.0.0.1:8787/v1/machines/gpu2/heartbeat \
 The scheduler ignores machines whose status is not `available` or `idle`, and
 marks a machine `offline` after the configured heartbeat timeout
 (`CICADA_MACHINE_STALE_SECONDS`, two minutes by default). Goal resources are
-matched before a worker is launched. The MVP supports exact capability keys,
+matched before a worker is launched. The current scheduler supports exact capability keys,
 required harnesses, accelerator/OS/architecture values, and
 `min_memory_gb`.
 
@@ -31,6 +31,6 @@ For example:
 ```
 
 The periodic monitor loop records a `MonitorEvaluated` event for active running
-workers. Its correction policy remains conservative in the MVP: automatic
+workers. Its correction policy remains conservative in this release: automatic
 commands are still generated only from explicit monitor/API input, while the
 evaluation hook is ready for progress and stall policies.

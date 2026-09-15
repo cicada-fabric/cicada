@@ -15,11 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/server"
 )
-
-const version = "0.1.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -33,7 +32,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "version", "--version", "-V":
-		fmt.Println("cicada " + version)
+		fmt.Println("cicada " + buildinfo.Version)
 	case "goal", "machine", "worker", "thread":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)

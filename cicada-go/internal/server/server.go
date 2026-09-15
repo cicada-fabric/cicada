@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -35,7 +36,7 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if request.URL.Path == "/healthz" && request.Method == http.MethodGet {
-		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "service": "cicada-control", "version": "0.1.0"})
+		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "service": "cicada-control", "version": buildinfo.Version, "stage": buildinfo.Stage})
 		return
 	}
 	if request.URL.Path == "/v1/machines" {

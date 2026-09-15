@@ -24,7 +24,7 @@ volume or replace the identity file with an OS secret provider before sharing
 the machine. The private key is never placed in events, artifacts, or a peer
 message envelope.
 
-The MVP exposes a manually controlled contact and envelope path:
+The current 0.2.0 release exposes a manually controlled contact and envelope path:
 
 ```bash
 # Publish only the local public identity.

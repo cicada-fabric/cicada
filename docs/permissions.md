@@ -10,7 +10,7 @@ Cicada stores capability rules separately from a harness. A rule identifies a
 
 Rules are durable in the control SQLite database and are evaluated from the
 most specific subject/resource to a wildcard subject (`"*"`). No matching rule
-currently preserves the local MVP default of allowing the operation. This
+currently preserves the local 0.2 default of allowing the operation. This
 makes policies opt-in while leaving a clear path to install a global default
 deny and narrow exceptions.
 

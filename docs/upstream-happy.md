@@ -18,7 +18,7 @@ The checkout contains `packages/happy-cli`, `packages/happy-agent`, and
 `packages/happy-server`. Happy is MIT licensed. Any copied or substantially
 derived code must retain Happy's copyright and permission notice.
 
-For the Codex-first MVP, the most relevant references are:
+For the Codex-first 0.2.0 baseline, the most relevant references are:
 
 - `packages/happy-cli/src/codex/codexAppServerClient.ts` and related app-server
   types for the Codex event and request boundary;
@@ -32,7 +32,7 @@ For the Codex-first MVP, the most relevant references are:
 The initial Cicada implementation should keep its own small control/worker
 boundary and reuse focused modules only when their behavior matches
 `CICADA.md`. Pulling in Happy's complete UI, account system, or server is not
-required for the MVP.
+required for the current Codex baseline.
 
 To refresh the reference deliberately:
 
@@ -42,4 +42,3 @@ git -C /gpu1-share/data/cicada/vendor/happy checkout <reviewed-commit>
 ```
 
 Record the new commit here and review its license before copying code.
-

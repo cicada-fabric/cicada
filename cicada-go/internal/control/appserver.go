@@ -12,10 +12,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// appServer is the small JSON-RPC client needed by the MVP. The protocol is
+// appServer is the small JSON-RPC client needed by the current Codex adapter. The protocol is
 // intentionally kept here instead of importing Happy's UI/runtime packages;
 // its message shapes are compatible with the Codex app-server reference used
 // by Happy's codexAppServerClient.
@@ -37,7 +38,7 @@ type appServerResult struct {
 }
 
 func newAppServer(ctx context.Context, binary, cwd string, onEvent func(string, map[string]any), onRequest func(string, map[string]any) any) (*appServer, error) {
-	// Plugins are outside Cicada's MVP trust boundary. Disabling them keeps a
+	// Plugins are outside Cicada's current trust boundary. Disabling them keeps a
 	// worker startup deterministic and prevents the app-server from trying to
 	// clone/update plugin repositories before it can accept a Goal turn.
 	if strings.TrimSpace(binary) == "" {
@@ -247,7 +248,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	pid := app.process.Process.Pid
 	_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{PID: &pid})
 	initialized, err := app.request(ctx, "initialize", map[string]any{
-		"clientInfo":   map[string]any{"name": "cicada-control", "title": "Cicada Control", "version": "0.1.0"},
+		"clientInfo":   map[string]any{"name": "cicada-control", "title": "Cicada Control", "version": buildinfo.Version},
 		"capabilities": map[string]any{"experimentalApi": true},
 	})
 	_ = initialized

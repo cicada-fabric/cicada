@@ -1,7 +1,7 @@
 # Core object APIs
 
 The Go control plane now persists the objects that sit around a long-running
-Goal. SQLite migrations are additive, so upgrading an existing MVP state
+Goal. SQLite migrations are additive, so upgrading an existing pre-0.2 state
 directory preserves its workers and event history.
 
 Ideas are intentionally separate from Goals. Create one without starting a
