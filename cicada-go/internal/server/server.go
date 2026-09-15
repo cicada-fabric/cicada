@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 type Handler struct {
@@ -77,6 +78,35 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusAccepted, message)
 		return
 	}
+	if request.URL.Path == "/v1/ideas" {
+		h.ideas(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/ideas/") {
+		h.idea(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/memories" {
+		h.memories(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/artifacts" {
+		h.artifacts(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/workspaces" && request.Method == http.MethodGet {
+		workspaces, err := h.control.Workspaces(request.URL.Query().Get("goal_id"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"workspaces": workspaces})
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/workspaces/") {
+		h.workspace(response, request)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/v1/approvals/") && request.Method == http.MethodPost {
 		approvalID := strings.TrimPrefix(request.URL.Path, "/v1/approvals/")
 		if approvalID == "" || strings.Contains(approvalID, "/") {
@@ -111,6 +141,203 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeError(response, http.StatusNotFound, errors.New("route not found"))
+}
+
+func (h *Handler) ideas(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		ideas, err := h.control.Ideas(request.URL.Query().Get("status"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"ideas": ideas})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input control.IdeaInput
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	idea, err := h.control.CreateIdea(input)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, idea)
+}
+
+func (h *Handler) idea(response http.ResponseWriter, request *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/ideas/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeError(response, http.StatusNotFound, errors.New("idea id is required"))
+		return
+	}
+	id := parts[0]
+	if len(parts) == 2 && parts[1] == "promote" && request.Method == http.MethodPost {
+		var input control.GoalInput
+		if request.ContentLength != 0 {
+			if err := readJSON(request, &input); err != nil {
+				writeError(response, http.StatusBadRequest, err)
+				return
+			}
+		}
+		goal, err := h.control.PromoteIdea(id, input)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, goal)
+		return
+	}
+	if len(parts) != 1 {
+		writeError(response, http.StatusNotFound, errors.New("route not found"))
+		return
+	}
+	if request.Method == http.MethodGet {
+		idea, err := h.control.Idea(id)
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		if idea == nil {
+			writeError(response, http.StatusNotFound, errors.New("idea not found"))
+			return
+		}
+		writeJSON(response, http.StatusOK, idea)
+		return
+	}
+	if request.Method != http.MethodPatch {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input struct {
+		Status      string `json:"status"`
+		Rationale   string `json:"rationale"`
+		RevisitWhen string `json:"revisit_when"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	idea, err := h.control.UpdateIdea(id, input.Status, input.Rationale, input.RevisitWhen)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, idea)
+}
+
+func (h *Handler) memories(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		memories, err := h.control.Memories(request.URL.Query().Get("scope"), request.URL.Query().Get("namespace"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"memories": memories})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var memory store.Memory
+	if err := readJSON(request, &memory); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	created, err := h.control.CreateMemory(memory)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, created)
+}
+
+func (h *Handler) artifacts(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet {
+		artifacts, err := h.control.Artifacts(request.URL.Query().Get("goal_id"))
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"artifacts": artifacts})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var artifact store.Artifact
+	if err := readJSON(request, &artifact); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	created, err := h.control.CreateArtifact(artifact)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, created)
+}
+
+func (h *Handler) workspace(response http.ResponseWriter, request *http.Request) {
+	id := strings.TrimPrefix(request.URL.Path, "/v1/workspaces/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(response, http.StatusNotFound, errors.New("workspace not found"))
+		return
+	}
+	if request.Method == http.MethodGet {
+		workspace, err := h.control.Workspace(id)
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, err)
+			return
+		}
+		if workspace == nil {
+			writeError(response, http.StatusNotFound, errors.New("workspace not found"))
+			return
+		}
+		writeJSON(response, http.StatusOK, workspace)
+		return
+	}
+	if request.Method != http.MethodPatch {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input struct {
+		Status   string `json:"status"`
+		Revision string `json:"revision"`
+	}
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	workspace, err := h.control.UpdateWorkspace(id, input.Status, input.Revision)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, workspace)
 }
 
 func (h *Handler) machines(response http.ResponseWriter, request *http.Request) {

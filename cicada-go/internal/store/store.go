@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,21 +27,79 @@ type Machine struct {
 }
 
 type Goal struct {
-	ID              string   `json:"id"`
-	Objective       string   `json:"objective"`
-	SuccessCriteria string   `json:"success_criteria"`
-	Constraints     string   `json:"constraints"`
-	Priority        int      `json:"priority"`
-	Status          string   `json:"status"`
-	MachineID       string   `json:"machine_id"`
-	MonitorID       string   `json:"monitor_id"`
-	Workspace       string   `json:"workspace"`
-	Summary         string   `json:"summary"`
-	CreatedAt       string   `json:"created_at"`
-	UpdatedAt       string   `json:"updated_at"`
-	Worker          *Worker  `json:"worker,omitempty"`
-	Monitor         *Monitor `json:"monitor,omitempty"`
-	Events          []Event  `json:"events,omitempty"`
+	ID              string         `json:"id"`
+	Objective       string         `json:"objective"`
+	SuccessCriteria string         `json:"success_criteria"`
+	Constraints     string         `json:"constraints"`
+	Priority        int            `json:"priority"`
+	Deadline        string         `json:"deadline,omitempty"`
+	Budget          map[string]any `json:"budget,omitempty"`
+	Resources       map[string]any `json:"resources,omitempty"`
+	CurrentState    string         `json:"current_state,omitempty"`
+	Evidence        []any          `json:"evidence,omitempty"`
+	Outcome         string         `json:"outcome,omitempty"`
+	Status          string         `json:"status"`
+	MachineID       string         `json:"machine_id"`
+	MonitorID       string         `json:"monitor_id"`
+	Workspace       string         `json:"workspace"`
+	Summary         string         `json:"summary"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+	Worker          *Worker        `json:"worker,omitempty"`
+	Monitor         *Monitor       `json:"monitor,omitempty"`
+	Events          []Event        `json:"events,omitempty"`
+}
+
+// Idea is an uncommitted intention. It can be researched and parked without
+// creating a worker; promotion creates a normal Goal when the user decides to
+// execute it.
+type Idea struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Source      string `json:"source,omitempty"`
+	Status      string `json:"status"`
+	Rationale   string `json:"rationale,omitempty"`
+	RevisitWhen string `json:"revisit_when,omitempty"`
+	GoalID      string `json:"goal_id,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type Workspace struct {
+	ID        string `json:"id"`
+	GoalID    string `json:"goal_id,omitempty"`
+	Path      string `json:"path"`
+	Source    string `json:"source,omitempty"`
+	Revision  string `json:"revision,omitempty"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type Memory struct {
+	ID         string `json:"id"`
+	Scope      string `json:"scope"`
+	Namespace  string `json:"namespace,omitempty"`
+	Content    string `json:"content"`
+	Source     string `json:"source,omitempty"`
+	Importance int    `json:"importance"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+type Artifact struct {
+	ID          string `json:"id"`
+	GoalID      string `json:"goal_id,omitempty"`
+	WorkerID    string `json:"worker_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Kind        string `json:"kind"`
+	Digest      string `json:"digest,omitempty"`
+	Evidence    string `json:"evidence,omitempty"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // Monitor is the durable supervisor binding for a Goal. The MVP monitor is
@@ -146,6 +205,12 @@ CREATE TABLE IF NOT EXISTS goals (
   success_criteria TEXT NOT NULL DEFAULT '',
   constraints TEXT NOT NULL DEFAULT '',
   priority INTEGER NOT NULL DEFAULT 50,
+  deadline TEXT,
+  budget_json TEXT NOT NULL DEFAULT '{}',
+  resources_json TEXT NOT NULL DEFAULT '{}',
+  current_state TEXT NOT NULL DEFAULT '',
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  outcome TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
   machine_id TEXT,
   monitor_id TEXT NOT NULL,
@@ -217,12 +282,123 @@ CREATE TABLE IF NOT EXISTS approvals (
   FOREIGN KEY(goal_id) REFERENCES goals(id),
   FOREIGN KEY(worker_id) REFERENCES workers(id)
 );
+CREATE TABLE IF NOT EXISTS ideas (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'inbox',
+  rationale TEXT NOT NULL DEFAULT '',
+  revisit_when TEXT NOT NULL DEFAULT '',
+  goal_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
+CREATE TABLE IF NOT EXISTS workspaces (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT,
+  path TEXT NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT '',
+  revision TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  namespace TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  importance INTEGER NOT NULL DEFAULT 50,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT,
+  worker_id TEXT,
+  workspace_id TEXT,
+  name TEXT NOT NULL,
+  path TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'file',
+  digest TEXT NOT NULL DEFAULT '',
+  evidence TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'available',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(goal_id) REFERENCES goals(id),
+  FOREIGN KEY(worker_id) REFERENCES workers(id),
+  FOREIGN KEY(workspace_id) REFERENCES workspaces(id)
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
+CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
+CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
+CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)
+	}
+	// Databases created by the first MVP do not have the richer Goal columns.
+	// Keep initialization backward compatible so an upgrade never discards the
+	// durable worker/event history already on disk.
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{"deadline", `ALTER TABLE goals ADD COLUMN deadline TEXT`},
+		{"budget_json", `ALTER TABLE goals ADD COLUMN budget_json TEXT NOT NULL DEFAULT '{}'`},
+		{"resources_json", `ALTER TABLE goals ADD COLUMN resources_json TEXT NOT NULL DEFAULT '{}'`},
+		{"current_state", `ALTER TABLE goals ADD COLUMN current_state TEXT NOT NULL DEFAULT ''`},
+		{"evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
+		{"outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
+	} {
+		if err := s.ensureColumn("goals", column.name, column.ddl); err != nil {
+			return err
+		}
+	}
+	// Populate the workspace registry for goals created by the MVP schema.
+	// INSERT OR IGNORE makes this safe to run on every startup.
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO workspaces (id, goal_id, path, source, status, created_at, updated_at)
+SELECT 'workspace_' || id, id, workspace, 'goal', 'active', created_at, updated_at
+FROM goals WHERE workspace <> ''`); err != nil {
+		return fmt.Errorf("backfill goal workspaces: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureColumn(table, column, ddl string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return fmt.Errorf("inspect %s schema: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, kind string
+		var notNull, pk int
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("read %s schema: %w", table, err)
+		}
+		if name == column {
+			if err := rows.Close(); err != nil {
+				return fmt.Errorf("close %s schema: %w", table, err)
+			}
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read %s schema: %w", table, err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close %s schema: %w", table, err)
+	}
+	if _, err := s.db.Exec(ddl); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
 	}
 	return nil
 }
@@ -316,12 +492,30 @@ func (s *Store) SetMachineStatus(id, status string) error {
 }
 
 func (s *Store) CreateGoal(id, objective, successCriteria, constraints string, priority int, machineID, monitorID, workspace string) (*Goal, error) {
+	return s.CreateGoalWithDetails(id, objective, successCriteria, constraints, priority, "", nil, nil, machineID, monitorID, workspace)
+}
+
+func (s *Store) CreateGoalWithDetails(id, objective, successCriteria, constraints string, priority int, deadline string, budget, resources map[string]any, machineID, monitorID, workspace string) (*Goal, error) {
+	if budget == nil {
+		budget = map[string]any{}
+	}
+	if resources == nil {
+		resources = map[string]any{}
+	}
+	budgetJSON, err := json.Marshal(budget)
+	if err != nil {
+		return nil, fmt.Errorf("encode goal budget: %w", err)
+	}
+	resourcesJSON, err := json.Marshal(resources)
+	if err != nil {
+		return nil, fmt.Errorf("encode goal resources: %w", err)
+	}
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO goals
-(id, objective, success_criteria, constraints, priority, status, machine_id, monitor_id, workspace, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, objective, successCriteria, constraints, priority, machineID, monitorID, workspace, timestamp, timestamp)
+	_, err = s.db.Exec(`INSERT INTO goals
+(id, objective, success_criteria, constraints, priority, deadline, budget_json, resources_json, status, machine_id, monitor_id, workspace, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, objective, successCriteria, constraints, priority, nullableString(deadline), string(budgetJSON), string(resourcesJSON), machineID, monitorID, workspace, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create goal: %w", err)
 	}
@@ -330,11 +524,13 @@ VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, objective, successCriteria
 
 func (s *Store) getGoalLocked(id string) (*Goal, error) {
 	var goal Goal
-	var machineID, summary sql.NullString
-	err := s.db.QueryRow(`SELECT id, objective, success_criteria, constraints, priority, status,
-machine_id, monitor_id, workspace, summary, created_at, updated_at FROM goals WHERE id = ?`, id).
-		Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &goal.Status,
-			&machineID, &goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt)
+	var machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
+	err := s.db.QueryRow(`SELECT id, objective, success_criteria, constraints, priority, deadline, budget_json,
+resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
+created_at, updated_at FROM goals WHERE id = ?`, id).
+		Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline, &budgetJSON,
+			&resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID, &goal.MonitorID,
+			&goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -343,6 +539,24 @@ machine_id, monitor_id, workspace, summary, created_at, updated_at FROM goals WH
 	}
 	goal.MachineID = machineID.String
 	goal.Summary = summary.String
+	goal.Deadline = deadline.String
+	goal.CurrentState = currentState.String
+	goal.Outcome = outcome.String
+	if budgetJSON.String != "" {
+		if err := json.Unmarshal([]byte(budgetJSON.String), &goal.Budget); err != nil {
+			return nil, fmt.Errorf("decode goal budget: %w", err)
+		}
+	}
+	if resourcesJSON.String != "" {
+		if err := json.Unmarshal([]byte(resourcesJSON.String), &goal.Resources); err != nil {
+			return nil, fmt.Errorf("decode goal resources: %w", err)
+		}
+	}
+	if evidenceJSON.String != "" {
+		if err := json.Unmarshal([]byte(evidenceJSON.String), &goal.Evidence); err != nil {
+			return nil, fmt.Errorf("decode goal evidence: %w", err)
+		}
+	}
 	return &goal, nil
 }
 
@@ -355,8 +569,9 @@ func (s *Store) GetGoal(id string) (*Goal, error) {
 func (s *Store) ListGoals() ([]Goal, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id, objective, success_criteria, constraints, priority, status,
-machine_id, monitor_id, workspace, summary, created_at, updated_at FROM goals ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id, objective, success_criteria, constraints, priority, deadline, budget_json,
+resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
+created_at, updated_at FROM goals ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -364,13 +579,32 @@ machine_id, monitor_id, workspace, summary, created_at, updated_at FROM goals OR
 	var result []Goal
 	for rows.Next() {
 		var goal Goal
-		var machineID, summary sql.NullString
-		if err := rows.Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &goal.Status,
-			&machineID, &goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+		var machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
+		if err := rows.Scan(&goal.ID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline,
+			&budgetJSON, &resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID,
+			&goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 			return nil, err
 		}
 		goal.MachineID = machineID.String
 		goal.Summary = summary.String
+		goal.Deadline = deadline.String
+		goal.CurrentState = currentState.String
+		goal.Outcome = outcome.String
+		if budgetJSON.String != "" {
+			if err := json.Unmarshal([]byte(budgetJSON.String), &goal.Budget); err != nil {
+				return nil, err
+			}
+		}
+		if resourcesJSON.String != "" {
+			if err := json.Unmarshal([]byte(resourcesJSON.String), &goal.Resources); err != nil {
+				return nil, err
+			}
+		}
+		if evidenceJSON.String != "" {
+			if err := json.Unmarshal([]byte(evidenceJSON.String), &goal.Evidence); err != nil {
+				return nil, err
+			}
+		}
 		result = append(result, goal)
 	}
 	return result, rows.Err()
@@ -384,6 +618,371 @@ func (s *Store) UpdateGoal(id, status, summary string) (*Goal, error) {
 		return nil, err
 	}
 	return s.getGoalLocked(id)
+}
+
+func (s *Store) UpdateGoalDetails(id, status, summary, currentState, outcome string, evidence []any) (*Goal, error) {
+	evidenceJSON, err := json.Marshal(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("encode goal evidence: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err = s.db.Exec(`UPDATE goals SET status = ?, summary = ?, current_state = ?, outcome = ?, evidence_json = ?, updated_at = ? WHERE id = ?`,
+		status, summary, currentState, outcome, string(evidenceJSON), now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getGoalLocked(id)
+}
+
+func (s *Store) CreateWorkspace(id, goalID, path, source, revision string) (*Workspace, error) {
+	if path == "" {
+		return nil, errors.New("workspace path is required")
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO workspaces (id, goal_id, path, source, revision, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`, id, nullableString(goalID), path, source, revision, timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace: %w", err)
+	}
+	return s.getWorkspaceLocked(id)
+}
+
+func (s *Store) getWorkspaceLocked(id string) (*Workspace, error) {
+	var workspace Workspace
+	var goalID, source, revision sql.NullString
+	err := s.db.QueryRow(`SELECT id, goal_id, path, source, revision, status, created_at, updated_at FROM workspaces WHERE id = ?`, id).
+		Scan(&workspace.ID, &goalID, &workspace.Path, &source, &revision, &workspace.Status, &workspace.CreatedAt, &workspace.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	workspace.GoalID, workspace.Source, workspace.Revision = goalID.String, source.String, revision.String
+	return &workspace, nil
+}
+
+func (s *Store) GetWorkspace(id string) (*Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getWorkspaceLocked(id)
+}
+
+func (s *Store) ListWorkspaces(goalID string) ([]Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM workspaces ORDER BY created_at DESC`
+	args := []any{}
+	if goalID != "" {
+		query = `SELECT id FROM workspaces WHERE goal_id = ? ORDER BY created_at DESC`
+		args = append(args, goalID)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var result []Workspace
+	for _, id := range ids {
+		workspace, err := s.getWorkspaceLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if workspace != nil {
+			result = append(result, *workspace)
+		}
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) UpdateWorkspace(id, status, revision string) (*Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE workspaces SET status = ?, revision = ?, updated_at = ? WHERE id = ?`, status, revision, now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getWorkspaceLocked(id)
+}
+
+func (s *Store) CreateIdea(idea Idea) (*Idea, error) {
+	idea.ID = strings.TrimSpace(idea.ID)
+	if idea.ID == "" {
+		idea.ID = NewID("idea")
+	}
+	idea.Title = strings.TrimSpace(idea.Title)
+	idea.Description = strings.TrimSpace(idea.Description)
+	if idea.Title == "" || idea.Description == "" {
+		return nil, errors.New("idea title and description are required")
+	}
+	if idea.Status == "" {
+		idea.Status = "inbox"
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO ideas (id, title, description, source, status, rationale, revisit_when, goal_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, idea.ID, idea.Title, idea.Description, idea.Source, idea.Status, idea.Rationale, idea.RevisitWhen, nullableString(idea.GoalID), timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create idea: %w", err)
+	}
+	return s.getIdeaLocked(idea.ID)
+}
+
+func (s *Store) getIdeaLocked(id string) (*Idea, error) {
+	var idea Idea
+	var source, rationale, revisitWhen, goalID sql.NullString
+	err := s.db.QueryRow(`SELECT id, title, description, source, status, rationale, revisit_when, goal_id, created_at, updated_at FROM ideas WHERE id = ?`, id).
+		Scan(&idea.ID, &idea.Title, &idea.Description, &source, &idea.Status, &rationale, &revisitWhen, &goalID, &idea.CreatedAt, &idea.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	idea.Source, idea.Rationale, idea.RevisitWhen, idea.GoalID = source.String, rationale.String, revisitWhen.String, goalID.String
+	return &idea, nil
+}
+
+func (s *Store) GetIdea(id string) (*Idea, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getIdeaLocked(id)
+}
+
+func (s *Store) ListIdeas(status string) ([]Idea, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM ideas ORDER BY updated_at DESC`
+	args := []any{}
+	if status != "" {
+		query = `SELECT id FROM ideas WHERE status = ? ORDER BY updated_at DESC`
+		args = append(args, status)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var result []Idea
+	for _, id := range ids {
+		idea, err := s.getIdeaLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if idea != nil {
+			result = append(result, *idea)
+		}
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) UpdateIdea(id string, status, rationale, revisitWhen, goalID string) (*Idea, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE ideas SET status = ?, rationale = ?, revisit_when = ?, goal_id = ?, updated_at = ? WHERE id = ?`,
+		status, rationale, revisitWhen, nullableString(goalID), now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getIdeaLocked(id)
+}
+
+func (s *Store) CreateMemory(memory Memory) (*Memory, error) {
+	memory.ID = strings.TrimSpace(memory.ID)
+	if memory.ID == "" {
+		memory.ID = NewID("memory")
+	}
+	memory.Scope = strings.TrimSpace(memory.Scope)
+	memory.Content = strings.TrimSpace(memory.Content)
+	if memory.Scope == "" || memory.Content == "" {
+		return nil, errors.New("memory scope and content are required")
+	}
+	if memory.Importance <= 0 {
+		memory.Importance = 50
+	}
+	if memory.Importance > 100 {
+		memory.Importance = 100
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO memories (id, scope, namespace, content, source, importance, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, memory.ID, memory.Scope, memory.Namespace, memory.Content, memory.Source, memory.Importance, timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create memory: %w", err)
+	}
+	return s.getMemoryLocked(memory.ID)
+}
+
+func (s *Store) getMemoryLocked(id string) (*Memory, error) {
+	var memory Memory
+	var namespace, source sql.NullString
+	err := s.db.QueryRow(`SELECT id, scope, namespace, content, source, importance, created_at, updated_at FROM memories WHERE id = ?`, id).
+		Scan(&memory.ID, &memory.Scope, &namespace, &memory.Content, &source, &memory.Importance, &memory.CreatedAt, &memory.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	memory.Namespace, memory.Source = namespace.String, source.String
+	return &memory, nil
+}
+
+func (s *Store) ListMemories(scope, namespace string) ([]Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM memories ORDER BY importance DESC, updated_at DESC`
+	args := []any{}
+	if scope != "" && namespace != "" {
+		query = `SELECT id FROM memories WHERE scope = ? AND namespace = ? ORDER BY importance DESC, updated_at DESC`
+		args = append(args, scope, namespace)
+	} else if scope != "" {
+		query = `SELECT id FROM memories WHERE scope = ? ORDER BY importance DESC, updated_at DESC`
+		args = append(args, scope)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var result []Memory
+	for _, id := range ids {
+		memory, err := s.getMemoryLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if memory != nil {
+			result = append(result, *memory)
+		}
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) CreateArtifact(artifact Artifact) (*Artifact, error) {
+	artifact.ID = strings.TrimSpace(artifact.ID)
+	if artifact.ID == "" {
+		artifact.ID = NewID("artifact")
+	}
+	artifact.Name = strings.TrimSpace(artifact.Name)
+	artifact.Path = strings.TrimSpace(artifact.Path)
+	if artifact.Name == "" || artifact.Path == "" {
+		return nil, errors.New("artifact name and path are required")
+	}
+	if artifact.Kind == "" {
+		artifact.Kind = "file"
+	}
+	if artifact.Status == "" {
+		artifact.Status = "available"
+	}
+	timestamp := now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`INSERT INTO artifacts (id, goal_id, worker_id, workspace_id, name, path, kind, digest, evidence, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, artifact.ID, nullableString(artifact.GoalID), nullableString(artifact.WorkerID), nullableString(artifact.WorkspaceID), artifact.Name, artifact.Path, artifact.Kind, artifact.Digest, artifact.Evidence, artifact.Status, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create artifact: %w", err)
+	}
+	return s.getArtifactLocked(artifact.ID)
+}
+
+func (s *Store) getArtifactLocked(id string) (*Artifact, error) {
+	var artifact Artifact
+	var goalID, workerID, workspaceID, digest, evidence sql.NullString
+	err := s.db.QueryRow(`SELECT id, goal_id, worker_id, workspace_id, name, path, kind, digest, evidence, status, created_at FROM artifacts WHERE id = ?`, id).
+		Scan(&artifact.ID, &goalID, &workerID, &workspaceID, &artifact.Name, &artifact.Path, &artifact.Kind, &digest, &evidence, &artifact.Status, &artifact.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	artifact.GoalID, artifact.WorkerID, artifact.WorkspaceID = goalID.String, workerID.String, workspaceID.String
+	artifact.Digest, artifact.Evidence = digest.String, evidence.String
+	return &artifact, nil
+}
+
+func (s *Store) ListArtifacts(goalID string) ([]Artifact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT id FROM artifacts ORDER BY created_at DESC`
+	args := []any{}
+	if goalID != "" {
+		query = `SELECT id FROM artifacts WHERE goal_id = ? ORDER BY created_at DESC`
+		args = append(args, goalID)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var result []Artifact
+	for _, id := range ids {
+		artifact, err := s.getArtifactLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if artifact != nil {
+			result = append(result, *artifact)
+		}
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) CreateMonitor(id, goalID, policy string) (*Monitor, error) {

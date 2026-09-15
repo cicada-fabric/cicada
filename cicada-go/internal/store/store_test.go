@@ -79,3 +79,66 @@ func TestStorePersistsControlObjects(t *testing.T) {
 		t.Fatalf("event payload was not persisted: %s", events[0].Payload)
 	}
 }
+
+func TestStorePersistsIdeasWorkspacesMemoriesAndArtifacts(t *testing.T) {
+	persistence, err := New(t.TempDir() + "/state/cicada.sqlite3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistence.Close()
+
+	machine, err := persistence.UpsertMachine("worker-local", "Worker", nil, "available")
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal, err := persistence.CreateGoalWithDetails("goal_objects", "ship feature", "tests pass", "", 60,
+		"2030-01-01T00:00:00Z", map[string]any{"tokens": 1000}, map[string]any{"gpu": "H100"},
+		machine.ID, "monitor_objects", "/workspace/goals/goal_objects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goal.Deadline == "" || goal.Budget["tokens"] != float64(1000) || goal.Resources["gpu"] != "H100" {
+		t.Fatalf("goal details were not decoded: %#v", goal)
+	}
+
+	workspace, err := persistence.CreateWorkspace("workspace_objects", goal.ID, goal.Workspace, "git", "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.Status != "active" || workspace.Revision != "abc123" {
+		t.Fatalf("unexpected workspace: %#v", workspace)
+	}
+
+	idea, err := persistence.CreateIdea(Idea{Title: "Try feature", Description: "Explore a feature", Status: "parked", RevisitWhen: "after release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idea.Status != "parked" {
+		t.Fatalf("unexpected idea: %#v", idea)
+	}
+	if _, err := persistence.UpdateIdea(idea.ID, "started", "worth doing", idea.RevisitWhen, goal.ID); err != nil {
+		t.Fatal(err)
+	}
+	updatedIdea, err := persistence.GetIdea(idea.ID)
+	if err != nil || updatedIdea.GoalID != goal.ID || updatedIdea.Status != "started" {
+		t.Fatalf("idea was not linked to goal: %#v err=%v", updatedIdea, err)
+	}
+
+	memory, err := persistence.CreateMemory(Memory{Scope: "project", Namespace: goal.ID, Content: "Use a deterministic benchmark", Importance: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memories, err := persistence.ListMemories("project", goal.ID)
+	if err != nil || len(memories) != 1 || memories[0].ID != memory.ID {
+		t.Fatalf("memory was not listed: %#v err=%v", memories, err)
+	}
+
+	artifact, err := persistence.CreateArtifact(Artifact{GoalID: goal.ID, WorkspaceID: workspace.ID, Name: "report", Path: "report.md", Kind: "evidence", Evidence: "benchmark output"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := persistence.ListArtifacts(goal.ID)
+	if err != nil || len(artifacts) != 1 || artifacts[0].ID != artifact.ID {
+		t.Fatalf("artifact was not listed: %#v err=%v", artifacts, err)
+	}
+}

@@ -153,10 +153,12 @@ The implementation language decision and the reasons for the Go core plus
 TypeScript client split are recorded in `docs/language-decision.md`.
 
 Development starts from `develop`; feature work uses a dedicated branch such
-as `feat/go-control-mvp`. Keep `main` for reviewed releases. The current local
-checkout has `origin` set to `git@github.com:cicada-fabric/cicada.git`; the MVP
-baseline is on `feat/go-control-mvp` and the thread-to-thread extension is on
-`feat/thread-messaging`.
+as `feat/core-objects` or `feat/pq-e2ee`. Keep `main` for reviewed releases.
+The current local checkout has `origin` set to
+`git@github.com:cicada-fabric/cicada.git`; the MVP baseline is on
+`feat/go-control-mvp`, thread messaging is on `feat/thread-messaging`, the
+post-quantum envelope is on `feat/pq-e2ee`, and the core object work is on the
+current feature branch.
 
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:
@@ -165,4 +167,14 @@ recovery, monitor correction, and approval pause/resume paths:
 cd cicada-go
 go test -race ./...
 go vet ./...
+
+If Go is not installed on the host, run the same checks in the pinned builder
+image used by the Dockerfile:
+
+```bash
+docker run --rm --network host \
+  -e HTTP_PROXY -e HTTPS_PROXY -e ALL_PROXY \
+  -v "$PWD":/src -w /src golang:1.22-bookworm \
+  bash -lc 'export PATH=/usr/local/go/bin:$PATH; go test -race ./...; go vet ./...'
+```
 ```

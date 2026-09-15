@@ -173,6 +173,119 @@ func (c *Control) Approvals(pendingOnly bool) ([]store.Approval, error) {
 	return c.store.ListApprovals(pendingOnly)
 }
 
+func (c *Control) Ideas(status string) ([]store.Idea, error) { return c.store.ListIdeas(status) }
+
+func (c *Control) Idea(id string) (*store.Idea, error) { return c.store.GetIdea(id) }
+
+type IdeaInput struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Status      string `json:"status"`
+	Rationale   string `json:"rationale"`
+	RevisitWhen string `json:"revisit_when"`
+}
+
+func (c *Control) CreateIdea(input IdeaInput) (*store.Idea, error) {
+	return c.store.CreateIdea(store.Idea{
+		Title: input.Title, Description: input.Description, Source: input.Source,
+		Status: input.Status, Rationale: input.Rationale, RevisitWhen: input.RevisitWhen,
+	})
+}
+
+func (c *Control) UpdateIdea(id, status, rationale, revisitWhen string) (*store.Idea, error) {
+	idea, err := c.store.GetIdea(id)
+	if err != nil {
+		return nil, err
+	}
+	if idea == nil {
+		return nil, os.ErrNotExist
+	}
+	if status == "" {
+		status = idea.Status
+	}
+	if rationale == "" {
+		rationale = idea.Rationale
+	}
+	if revisitWhen == "" {
+		revisitWhen = idea.RevisitWhen
+	}
+	return c.store.UpdateIdea(id, status, rationale, revisitWhen, idea.GoalID)
+}
+
+func (c *Control) PromoteIdea(id string, input GoalInput) (*store.Goal, error) {
+	idea, err := c.store.GetIdea(id)
+	if err != nil {
+		return nil, err
+	}
+	if idea == nil {
+		return nil, os.ErrNotExist
+	}
+	if strings.TrimSpace(input.Objective) == "" {
+		input.Objective = idea.Description
+	}
+	if input.SuccessCriteria == "" {
+		input.SuccessCriteria = "Decide and explain what evidence demonstrates completion."
+	}
+	goal, err := c.CreateGoal(input)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.store.UpdateIdea(id, "started", idea.Rationale, idea.RevisitWhen, goal.ID); err != nil {
+		return nil, err
+	}
+	_, _ = c.store.AppendEvent(goal.ID, "", "IdeaPromoted", map[string]any{"idea_id": id})
+	return goal, nil
+}
+
+func (c *Control) Workspaces(goalID string) ([]store.Workspace, error) {
+	return c.store.ListWorkspaces(goalID)
+}
+
+func (c *Control) Workspace(id string) (*store.Workspace, error) { return c.store.GetWorkspace(id) }
+
+func (c *Control) UpdateWorkspace(id, status, revision string) (*store.Workspace, error) {
+	workspace, err := c.store.GetWorkspace(id)
+	if err != nil {
+		return nil, err
+	}
+	if workspace == nil {
+		return nil, os.ErrNotExist
+	}
+	if status == "" {
+		status = workspace.Status
+	}
+	if revision == "" {
+		revision = workspace.Revision
+	}
+	return c.store.UpdateWorkspace(id, status, revision)
+}
+
+func (c *Control) Memories(scope, namespace string) ([]store.Memory, error) {
+	return c.store.ListMemories(scope, namespace)
+}
+
+func (c *Control) CreateMemory(memory store.Memory) (*store.Memory, error) {
+	return c.store.CreateMemory(memory)
+}
+
+func (c *Control) Artifacts(goalID string) ([]store.Artifact, error) {
+	return c.store.ListArtifacts(goalID)
+}
+
+func (c *Control) CreateArtifact(artifact store.Artifact) (*store.Artifact, error) {
+	if artifact.GoalID != "" {
+		goal, err := c.store.GetGoal(artifact.GoalID)
+		if err != nil {
+			return nil, err
+		}
+		if goal == nil {
+			return nil, os.ErrNotExist
+		}
+	}
+	return c.store.CreateArtifact(artifact)
+}
+
 func (c *Control) ResolveApproval(id, decision string) (*store.Approval, error) {
 	switch decision {
 	case "approve", "approved", "accept":
@@ -254,11 +367,14 @@ func (c *Control) decorate(goal *store.Goal) error {
 }
 
 type GoalInput struct {
-	Objective       string `json:"objective"`
-	SuccessCriteria string `json:"success_criteria"`
-	Constraints     string `json:"constraints"`
-	Priority        int    `json:"priority"`
-	MachineID       string `json:"machine_id"`
+	Objective       string         `json:"objective"`
+	SuccessCriteria string         `json:"success_criteria"`
+	Constraints     string         `json:"constraints"`
+	Priority        int            `json:"priority"`
+	Deadline        string         `json:"deadline"`
+	Budget          map[string]any `json:"budget"`
+	Resources       map[string]any `json:"resources"`
+	MachineID       string         `json:"machine_id"`
 }
 
 // ThreadMessage is a durable, Control-mediated message between two Native
@@ -298,9 +414,12 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		return nil, fmt.Errorf("create goal workspace: %w", err)
 	}
-	_, err = c.store.CreateGoal(goalID, input.Objective, input.SuccessCriteria, input.Constraints,
-		input.Priority, machineID, monitorID, workspace)
+	_, err = c.store.CreateGoalWithDetails(goalID, input.Objective, input.SuccessCriteria, input.Constraints,
+		input.Priority, input.Deadline, input.Budget, input.Resources, machineID, monitorID, workspace)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := c.store.CreateWorkspace(store.NewID("workspace"), goalID, workspace, "goal", ""); err != nil {
 		return nil, err
 	}
 	if _, err := c.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
@@ -594,11 +713,26 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 				continue
 			}
 			summary := readSummary(worker.ResponseFile)
+			artifact, artifactErr := c.store.CreateArtifact(store.Artifact{
+				GoalID: goal.ID, WorkerID: workerID, Name: "worker-final-message",
+				Path: worker.ResponseFile, Kind: "worker-summary", Evidence: summary,
+			})
+			if artifactErr == nil {
+				_, _ = c.store.AppendEvent(goal.ID, workerID, "ArtifactProduced", map[string]any{
+					"artifact_id": artifact.ID, "path": artifact.Path, "kind": artifact.Kind,
+				})
+			}
 			completed := "completed"
 			_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Status: &completed, ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: stringPtr("")})
-			_, _ = c.store.UpdateGoal(goal.ID, completed, summary)
+			evidence := []any{}
+			if artifact != nil {
+				evidence = append(evidence, map[string]any{"artifact_id": artifact.ID, "kind": artifact.Kind, "path": artifact.Path})
+			}
 			_, _ = c.store.AppendEvent(goal.ID, workerID, "WorkerCompleted", map[string]any{"summary": tail(summary, 4000)})
 			_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalCompleted", map[string]any{"summary": tail(summary, 4000)})
+			// Publish the terminal Goal state last so clients that observe
+			// status=completed can also read the completion events and evidence.
+			_, _ = c.store.UpdateGoalDetails(goal.ID, completed, summary, "completed", summary, evidence)
 			_ = c.store.SetMachineStatus(worker.MachineID, "available")
 			return
 		}
