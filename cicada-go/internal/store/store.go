@@ -420,6 +420,19 @@ CREATE TABLE IF NOT EXISTS ideas (
   updated_at TEXT NOT NULL,
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
+CREATE TABLE IF NOT EXISTS intents (
+  id TEXT PRIMARY KEY,
+  text TEXT NOT NULL,
+  requested_kind TEXT NOT NULL DEFAULT 'auto',
+  resolved_kind TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  target_id TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  question TEXT NOT NULL DEFAULT '',
+  error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
   goal_id TEXT,
@@ -546,6 +559,7 @@ CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id)
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
 CREATE INDEX IF NOT EXISTS permissions_lookup_idx ON permissions(subject_type, subject_id, action, resource);
 CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas(status, updated_at);
+CREATE INDEX IF NOT EXISTS intents_status_idx ON intents(status, updated_at);
 CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, updated_at);
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);

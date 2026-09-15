@@ -139,15 +139,23 @@ async function resolveApproval(id, decision) {
 
 byId('goal-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const button = event.submitter;
+  const button = event.submitter || event.target.querySelector('button[type="submit"]');
   button.disabled = true;
   try {
-    await api('/v1/goals', {
+    const intent = await api('/v1/intents', {
       method: 'POST', headers: {'content-type': 'application/json'},
-      body: JSON.stringify({objective: byId('objective').value, success_criteria: byId('criteria').value}),
+      body: JSON.stringify({
+        text: byId('objective').value,
+        kind: byId('intent-kind').value,
+        goal: {success_criteria: byId('criteria').value},
+      }),
     });
-    event.target.reset();
-    showMessage('Goal started. Cicada will report meaningful changes.');
+    if (intent.status === 'needs_input') {
+      showMessage(intent.question || 'Cicada needs more information.', true);
+    } else {
+      event.target.reset();
+      showMessage(`${intent.resolved_kind} accepted. Cicada will report meaningful changes.`);
+    }
     await refresh();
   } catch (error) { showMessage(error.message, true); }
   finally { button.disabled = false; }

@@ -37,6 +37,14 @@
         <form id="goal-form">
           <label for="objective">What outcome do you want?</label>
           <textarea id="objective" rows="4" required maxlength="8000" placeholder="Inspect this project, verify the result, and tell me only when it is done."></textarea>
+          <label for="intent-kind">Route as</label>
+          <select id="intent-kind">
+            <option value="auto">Decide from my words</option>
+            <option value="goal">Goal — execute an outcome</option>
+            <option value="idea">Idea — capture without executing</option>
+            <option value="research">Research — investigate first</option>
+            <option value="question">Question — answer without changing things</option>
+          </select>
           <label for="criteria">Success criteria <span class="muted">optional</span></label>
           <input id="criteria" maxlength="4000" placeholder="Tests pass and evidence is recorded">
           <button type="submit">Start goal</button>

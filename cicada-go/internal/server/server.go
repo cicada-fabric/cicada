@@ -196,6 +196,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusOK, notification)
 		return
 	}
+	if request.URL.Path == "/v1/intents" {
+		h.intents(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/intents/") {
+		h.intent(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/ideas" {
 		h.ideas(response, request)
 		return

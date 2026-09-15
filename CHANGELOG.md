@@ -16,6 +16,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Responsive embedded Personal Client with Today counters, Goal and worker
   summaries, pending Approval decisions, prioritized notifications, and a
   per-tab remote bearer token.
+- Durable `/v1/intents` routing for natural input into Goals, Ideas, research,
+  questions, commands, and explicit Approval decisions, including persisted
+  clarification states.
 
 ### Changed
 
