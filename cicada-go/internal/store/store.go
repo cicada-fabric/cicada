@@ -136,6 +136,7 @@ type DiscoveryRequest struct {
 // copy of a peer conversation.
 type PeerMessage struct {
 	ID          string          `json:"id"`
+	TransportID string          `json:"transport_id,omitempty"`
 	ContactID   string          `json:"contact_id"`
 	Direction   string          `json:"direction"`
 	SenderID    string          `json:"sender_id"`
@@ -458,6 +459,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 CREATE TABLE IF NOT EXISTS contacts (
   id TEXT PRIMARY KEY,
+  remote_id TEXT NOT NULL DEFAULT '',
   label TEXT NOT NULL,
   identity_json TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'trusted',
@@ -480,6 +482,7 @@ CREATE TABLE IF NOT EXISTS contact_discovery_requests (
 );
 CREATE TABLE IF NOT EXISTS peer_messages (
   id TEXT PRIMARY KEY,
+  transport_id TEXT NOT NULL DEFAULT '',
   contact_id TEXT NOT NULL,
   direction TEXT NOT NULL,
   sender_id TEXT NOT NULL,
@@ -571,7 +574,9 @@ CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(statu
 		{"goals", "evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
 		{"goals", "outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
 		{"workers", "workspace", `ALTER TABLE workers ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
+		{"contacts", "remote_id", `ALTER TABLE contacts ADD COLUMN remote_id TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "aad", `ALTER TABLE peer_messages ADD COLUMN aad TEXT NOT NULL DEFAULT ''`},
+		{"peer_messages", "transport_id", `ALTER TABLE peer_messages ADD COLUMN transport_id TEXT NOT NULL DEFAULT ''`},
 	} {
 		if err := s.ensureColumn(column.table, column.name, column.ddl); err != nil {
 			return err
@@ -579,6 +584,18 @@ CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(statu
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS goals_parent_idx ON goals(parent_goal_id, created_at)`); err != nil {
 		return fmt.Errorf("create parent goal index: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS peer_messages_transport_idx
+ON peer_messages(sender_id, transport_id) WHERE transport_id <> ''`); err != nil {
+		return fmt.Errorf("create peer transport index: %w", err)
+	}
+	if _, err := s.db.Exec(`UPDATE contacts SET remote_id = json_extract(identity_json, '$.id')
+WHERE remote_id = ''`); err != nil {
+		return fmt.Errorf("backfill contact remote identity: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS contacts_remote_idx
+ON contacts(remote_id) WHERE remote_id <> ''`); err != nil {
+		return fmt.Errorf("create contact remote identity index: %w", err)
 	}
 	// Populate the workspace registry for goals created by the MVP schema.
 	// INSERT OR IGNORE makes this safe to run on every startup.
@@ -1318,8 +1335,15 @@ func (s *Store) CreateContact(contact Contact) (*Contact, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err = s.db.Exec(`INSERT INTO contacts (id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, '[]', ?, ?)`, contact.ID, contact.Label, string(identityJSON), contact.Status, contact.SendSequence, timestamp, timestamp)
+	existing, err := s.getContactByRemoteIDLocked(contact.Identity.ID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("contact identity already exists: %s", existing.ID)
+	}
+	_, err = s.db.Exec(`INSERT INTO contacts (id, remote_id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?)`, contact.ID, contact.Identity.ID, contact.Label, string(identityJSON), contact.Status, contact.SendSequence, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create contact: %w", err)
 	}
@@ -1327,25 +1351,8 @@ VALUES (?, ?, ?, ?, ?, '[]', ?, ?)`, contact.ID, contact.Label, string(identityJ
 }
 
 func (s *Store) getContactLocked(id string) (*Contact, error) {
-	var contact Contact
-	var identityJSON, receivedJSON string
-	err := s.db.QueryRow(`SELECT id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at FROM contacts WHERE id = ?`, id).
-		Scan(&contact.ID, &contact.Label, &identityJSON, &contact.Status, &contact.SendSequence, &receivedJSON, &contact.CreatedAt, &contact.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal([]byte(identityJSON), &contact.Identity); err != nil {
-		return nil, fmt.Errorf("decode contact identity: %w", err)
-	}
-	if receivedJSON != "" {
-		if err := json.Unmarshal([]byte(receivedJSON), &contact.ReceivedSequences); err != nil {
-			return nil, fmt.Errorf("decode contact replay state: %w", err)
-		}
-	}
-	return &contact, nil
+	return scanContact(s.db.QueryRow(`SELECT id, label, identity_json, status, send_sequence,
+received_sequences_json, created_at, updated_at FROM contacts WHERE id = ?`, id))
 }
 
 func (s *Store) GetContact(id string) (*Contact, error) {
@@ -1483,8 +1490,8 @@ func (s *Store) CreatePeerMessage(message PeerMessage) (*PeerMessage, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO peer_messages (id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, message.Direction, message.SenderID, message.RecipientID, message.Sequence, string(message.Envelope), message.AAD, message.Status, timestamp, nullableString(message.DeliveredAt))
+	_, err := s.db.Exec(`INSERT INTO peer_messages (id, transport_id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.TransportID, message.ContactID, message.Direction, message.SenderID, message.RecipientID, message.Sequence, string(message.Envelope), message.AAD, message.Status, timestamp, nullableString(message.DeliveredAt))
 	if err != nil {
 		return nil, fmt.Errorf("create peer message: %w", err)
 	}
@@ -1492,20 +1499,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, messag
 }
 
 func (s *Store) getPeerMessageLocked(id string) (*PeerMessage, error) {
-	var message PeerMessage
-	var envelope, aad, deliveredAt sql.NullString
-	err := s.db.QueryRow(`SELECT id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at FROM peer_messages WHERE id = ?`, id).
-		Scan(&message.ID, &message.ContactID, &message.Direction, &message.SenderID, &message.RecipientID, &message.Sequence, &envelope, &aad, &message.Status, &message.CreatedAt, &deliveredAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	message.Envelope = json.RawMessage(envelope.String)
-	message.AAD = aad.String
-	message.DeliveredAt = deliveredAt.String
-	return &message, nil
+	return scanPeerMessage(s.db.QueryRow(`SELECT id, transport_id, contact_id, direction, sender_id,
+recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at
+FROM peer_messages WHERE id = ?`, id))
 }
 
 func (s *Store) ListPeerMessages(contactID string) ([]PeerMessage, error) {

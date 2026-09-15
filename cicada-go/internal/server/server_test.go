@@ -81,6 +81,85 @@ func TestSignedContactAnnouncementEndpoint(t *testing.T) {
 	}
 }
 
+func TestFederationIngressMapsIdentityAndIsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	bob, err := control.New(control.Config{StateDir: filepath.Join(root, "bob-state"), WorkspaceRoot: filepath.Join(root, "bob-workspace")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bob.Shutdown(context.Background())
+	receiver := httptest.NewServer(NewHandler(bob))
+	defer receiver.Close()
+	alice, err := control.New(control.Config{
+		StateDir: filepath.Join(root, "alice-state"), WorkspaceRoot: filepath.Join(root, "alice-workspace"),
+		PeerRelayURL: receiver.URL + "/v1/federation/messages",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer alice.Shutdown(context.Background())
+	aliceContact, err := alice.CreateContact("Bob", bob.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobContact, err := bob.CreateContact("Alice", alice.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, err := alice.SendPeerMessage(aliceContact.ID, "relay must not see this plaintext", []byte("goal=federation"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := alice.DeliverPeerMessage(outbound.ID)
+	if err != nil || delivered.Status != "delivered" {
+		t.Fatalf("direct federation delivery failed: message=%#v err=%v", delivered, err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"id": outbound.ID, "contact_id": outbound.ContactID,
+		"sender_id": outbound.SenderID, "recipient_id": outbound.RecipientID,
+		"sequence": outbound.Sequence, "envelope": outbound.Envelope,
+		"aad_base64": outbound.AAD,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(bob)
+	post := func() *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/v1/federation/messages", strings.NewReader(string(payload)))
+		request.Header.Set("content-type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	if _, err := bob.UpdateContact(bobContact.ID, "Alice", "revoked"); err != nil {
+		t.Fatal(err)
+	}
+	duplicateResponse := post()
+	if duplicateResponse.Code != http.StatusAccepted || strings.Contains(duplicateResponse.Body.String(), "relay must not see this plaintext") {
+		t.Fatalf("duplicate federation ingress status=%d body=%s", duplicateResponse.Code, duplicateResponse.Body.String())
+	}
+	var receipt control.FederationReceipt
+	if err := json.Unmarshal(duplicateResponse.Body.Bytes(), &receipt); err != nil || !receipt.Duplicate || receipt.TransportID != outbound.ID {
+		t.Fatalf("invalid duplicate receipt: %#v err=%v", receipt, err)
+	}
+	var mismatched map[string]any
+	if err := json.Unmarshal(payload, &mismatched); err != nil {
+		t.Fatal(err)
+	}
+	mismatched["sequence"] = outbound.Sequence + 1
+	mismatchedPayload, _ := json.Marshal(mismatched)
+	mismatchRequest := httptest.NewRequest(http.MethodPost, "/v1/federation/messages", strings.NewReader(string(mismatchedPayload)))
+	mismatchResponse := httptest.NewRecorder()
+	handler.ServeHTTP(mismatchResponse, mismatchRequest)
+	if mismatchResponse.Code != http.StatusBadRequest {
+		t.Fatalf("unauthenticated transport sequence was accepted: status=%d body=%s", mismatchResponse.Code, mismatchResponse.Body.String())
+	}
+	messages, err := bob.PeerMessages(bobContact.ID)
+	if err != nil || len(messages) != 1 || messages[0].TransportID != outbound.ID {
+		t.Fatalf("federation ingress was not atomically idempotent: messages=%#v err=%v", messages, err)
+	}
+}
+
 func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})

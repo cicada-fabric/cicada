@@ -155,9 +155,16 @@ contact_id, created_at, updated_at FROM contact_discovery_requests WHERE id = ?`
 		return nil, nil, false, err
 	}
 	timestamp := now()
-	if _, err := tx.Exec(`INSERT INTO contacts
-(id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at)
-VALUES (?, ?, ?, 'pending', 0, '[]', ?, ?)`, contactID, request.Label, string(identityJSON), timestamp, timestamp); err != nil {
+	var existingContactID string
+	err = tx.QueryRow(`SELECT id FROM contacts WHERE remote_id = ? ORDER BY created_at LIMIT 1`, request.RemoteID).Scan(&existingContactID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, false, err
+	}
+	if existingContactID != "" {
+		contactID = existingContactID
+	} else if _, err := tx.Exec(`INSERT INTO contacts
+(id, remote_id, label, identity_json, status, send_sequence, received_sequences_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, 'pending', 0, '[]', ?, ?)`, contactID, request.RemoteID, request.Label, string(identityJSON), timestamp, timestamp); err != nil {
 		return nil, nil, false, fmt.Errorf("create discovered contact: %w", err)
 	}
 	result, err := tx.Exec(`UPDATE contact_discovery_requests SET status = 'accepted', contact_id = ?, updated_at = ?

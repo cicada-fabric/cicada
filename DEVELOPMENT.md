@@ -153,9 +153,13 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
 The post-quantum contact and envelope boundary is documented in
 `docs/e2ee.md`; it uses ML-KEM-768, ML-DSA-65, HKDF-SHA256, and AES-256-GCM.
 
-For an optional opaque relay, set `CICADA_PEER_RELAY_URL` and
-`CICADA_PEER_RELAY_TOKEN` in the runtime environment. Control retries queued
-outbound envelopes in the background; the relay never receives peer plaintext.
+For direct Control-to-Control delivery, set `CICADA_PEER_RELAY_URL` to the
+remote Control's `/v1/federation/messages` endpoint and set
+`CICADA_PEER_RELAY_TOKEN` to its API token. Control routes by public identity,
+so the two databases do not need matching Contact IDs. It retries queued
+envelopes in the background; duplicate transport IDs return the original
+plaintext-free receipt. A third-party relay can forward the same opaque JSON
+contract without receiving message plaintext.
 ```
 
 For the manual two-TUI workflow, open two terminals and start one interactive

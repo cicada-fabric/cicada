@@ -67,16 +67,18 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
   -H 'content-type: application/json' \
   -d '{"direction":"inbound","contact_id":"CONTACT_ID","envelope":{...},"aad":"goal=GOAL_ID"}'
 
-# Optional relay delivery. Set these only on a Control that owns an outbound
-# transport; the relay receives an opaque envelope and a base64 AAD value.
-export CICADA_PEER_RELAY_URL=https://relay.example/v1/deliver
+# Direct Control-to-Control delivery uses the receiver's federation ingress.
+# Routing uses public identity IDs, so local Contact IDs need not match.
+export CICADA_PEER_RELAY_URL=https://bob-control.example/v1/federation/messages
 export CICADA_PEER_RELAY_TOKEN=relay-auth-token
 curl -X POST http://127.0.0.1:8787/v1/peer-messages/PEER_MESSAGE_ID/deliver
 ```
 
 The discovery endpoint authenticates a portable announcement and preserves the
 operator trust decision; it does not supply a public directory or cross-Control
-rendezvous. Federation, directory transport, and ratcheting/session key
-rotation remain later work. The relay adapter retries queued messages, marks
-successful deliveries, and keeps the cryptographic boundary in the envelope
-layer.
+rendezvous. The federation ingress maps the authenticated sender identity to a
+local trusted Contact, checks the encrypted envelope's recipient and sequence,
+and atomically stores replay state with the opaque message. A lost HTTP response
+can be retried with the same transport ID without creating another message. Its
+receipt contains no plaintext. Directory transport, multi-peer relay routing,
+and ratcheting/session key rotation remain later work.

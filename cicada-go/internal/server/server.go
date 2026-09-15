@@ -146,6 +146,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.peerMessage(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/federation/messages" {
+		h.federationMessages(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/connectors/events" {
 		h.externalEvents(response, request)
 		return

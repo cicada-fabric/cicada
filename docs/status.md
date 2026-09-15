@@ -20,7 +20,8 @@ Implemented in this line:
   protection;
 - signed ML-DSA contact announcements with durable discovery requests,
   idempotent ingress, and an explicit accept/reject then trust lifecycle;
-- optional opaque HTTP relay delivery with queued/retry/delivered state;
+- identity-routed federation ingress and optional opaque HTTP delivery with
+  atomic replay persistence, retry idempotency, and plaintext-free receipts;
 - Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
 - optional bearer authentication for the HTTP/JSON Control boundary, with
   constant-time token comparison and runtime-only secret injection;
@@ -32,13 +33,14 @@ Implemented in this line:
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 
-The release deliberately keeps its boundaries explicit. Automatic federation,
-directory rendezvous, session ratcheting, a production browser executor,
-external message/calendar connectors, additional harness adapters, and the
-mobile/voice Client remain the next feature lines. The external action queue
-is a safe Control boundary; it does not pretend to be a browser or grant an
-executor access to credentials. These are tracked as product work rather than
-hidden behind claims that the current Codex adapter supports them.
+The release deliberately keeps its boundaries explicit. Contact directory and
+rendezvous services, multi-peer relay routing, session ratcheting, a production
+browser executor, external message/calendar connectors, additional harness
+adapters, and the mobile/voice Client remain the next feature lines. The
+external action queue is a safe Control boundary; it does not pretend to be a
+browser or grant an executor access to credentials. These are tracked as
+product work rather than hidden behind claims that the current Codex adapter
+supports them.
 
 Version and branch workflow:
 

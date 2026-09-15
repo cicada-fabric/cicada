@@ -645,14 +645,13 @@ func (c *Control) DeliverPeerMessage(id string) (*store.PeerMessage, error) {
 	}
 	payload := struct {
 		ID          string          `json:"id"`
-		ContactID   string          `json:"contact_id"`
 		SenderID    string          `json:"sender_id"`
 		RecipientID string          `json:"recipient_id"`
 		Sequence    uint64          `json:"sequence"`
 		Envelope    json.RawMessage `json:"envelope"`
 		AADBase64   string          `json:"aad_base64,omitempty"`
 	}{
-		ID: message.ID, ContactID: message.ContactID, SenderID: message.SenderID,
+		ID: message.ID, SenderID: message.SenderID,
 		RecipientID: message.RecipientID, Sequence: message.Sequence,
 		Envelope: message.Envelope, AADBase64: message.AAD,
 	}
@@ -704,11 +703,8 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := c.store.AcceptContactSequence(contactID, sequence); err != nil {
-		return nil, nil, err
-	}
 	local := c.Identity()
-	message, err := c.store.CreatePeerMessage(store.PeerMessage{
+	message, created, err := c.store.AcceptInboundPeerMessage(store.PeerMessage{
 		ContactID: contactID, Direction: "inbound", SenderID: contact.Identity.ID,
 		RecipientID: local.ID, Sequence: sequence, Envelope: envelope,
 		AAD: base64.RawStdEncoding.EncodeToString(aad), Status: "received",
@@ -716,7 +712,9 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	if err != nil {
 		return nil, nil, err
 	}
-	c.notify("", "peer.message", "P2", "New peer message", "An encrypted message was received from "+contact.Label+".")
+	if created {
+		c.notify("", "peer.message", "P2", "New peer message", "An encrypted message was received from "+contact.Label+".")
+	}
 	return plaintext, message, nil
 }
 
@@ -1804,6 +1802,10 @@ func (c *Control) finishFailure(goal *store.Goal, workerID string, attempt int, 
 func (c *Control) completeGoalWhenWorkersFinish(goal *store.Goal, workerID, currentSummary string, currentEvidence []any) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	current, err := c.store.GetGoal(goal.ID)
+	if err != nil || current == nil || current.Status == "completed" || current.Status == "failed" || current.Status == "cancelled" {
+		return false
+	}
 	workers, err := c.store.ListWorkersForGoal(goal.ID)
 	if err != nil || len(workers) == 0 {
 		return false
