@@ -2,8 +2,10 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -112,6 +114,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	if request.URL.Path == "/v1/peer-messages" {
 		h.peerMessages(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/peer-messages/") {
+		h.peerMessage(response, request)
 		return
 	}
 	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {
@@ -388,6 +394,7 @@ func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Reque
 		Message   string          `json:"message"`
 		Envelope  json.RawMessage `json:"envelope"`
 		AAD       string          `json:"aad"`
+		AADBase64 string          `json:"aad_base64"`
 		Direction string          `json:"direction"`
 	}
 	if err := readJSON(request, &input); err != nil {
@@ -395,7 +402,16 @@ func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	if input.Direction == "inbound" {
-		plaintext, stored, err := h.control.ReceivePeerMessage(input.ContactID, input.Envelope, []byte(input.AAD))
+		aad := []byte(input.AAD)
+		if input.AADBase64 != "" {
+			decoded, decodeErr := base64.RawStdEncoding.DecodeString(input.AADBase64)
+			if decodeErr != nil {
+				writeError(response, http.StatusBadRequest, fmt.Errorf("invalid aad_base64: %w", decodeErr))
+				return
+			}
+			aad = decoded
+		}
+		plaintext, stored, err := h.control.ReceivePeerMessage(input.ContactID, input.Envelope, aad)
 		if err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, os.ErrNotExist) {
@@ -414,6 +430,33 @@ func (h *Handler) peerMessages(response http.ResponseWriter, request *http.Reque
 			status = http.StatusNotFound
 		} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
 			status = http.StatusForbidden
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, message)
+}
+
+func (h *Handler) peerMessage(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	path := strings.TrimPrefix(request.URL.Path, "/v1/peer-messages/")
+	if !strings.HasSuffix(path, "/deliver") {
+		writeError(response, http.StatusNotFound, errors.New("route not found"))
+		return
+	}
+	id := strings.TrimSuffix(path, "/deliver")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(response, http.StatusNotFound, errors.New("peer message not found"))
+		return
+	}
+	message, err := h.control.DeliverPeerMessage(id)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
 		}
 		writeError(response, status, err)
 		return

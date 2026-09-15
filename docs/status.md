@@ -16,15 +16,17 @@ Implemented in this line:
 - multiple isolated Workers per Goal and durable thread-to-thread messaging;
 - ML-KEM-768 + ML-DSA-65 authenticated peer envelopes with persistent replay
   protection;
+- optional opaque HTTP relay delivery with queued/retry/delivered state;
 - Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
 - embedded status Client, HTTP/JSON API, Docker image export, and a reproducible
   smoke test.
 
 The release deliberately keeps its boundaries explicit. Automatic federation
-and relay delivery, session ratcheting, authenticated browser actions, external
-message/calendar connectors, additional harness adapters, and the mobile/voice
-Client remain the next feature lines. They are tracked as product work rather
-than hidden behind claims that the current Codex adapter supports them.
+and contact discovery, session ratcheting, authenticated browser actions,
+external message/calendar connectors, additional harness adapters, and the
+mobile/voice Client remain the next feature lines. They are tracked as product
+work rather than hidden behind claims that the current Codex adapter supports
+them.
 
 Version and branch workflow:
 

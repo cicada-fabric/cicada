@@ -4,11 +4,14 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +33,9 @@ type Config struct {
 	MonitorInterval   time.Duration
 	MachineStaleAfter time.Duration
 	MonitorStallAfter time.Duration
+	PeerRelayURL      string
+	PeerRelayToken    string
+	PeerRelayInterval time.Duration
 }
 
 func DefaultConfig() Config {
@@ -64,6 +70,12 @@ func DefaultConfig() Config {
 			stallAfter = seconds
 		}
 	}
+	relayInterval := 30 * time.Second
+	if value := os.Getenv("CICADA_PEER_RELAY_INTERVAL_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			relayInterval = seconds
+		}
+	}
 	return Config{
 		StateDir:          envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot:     envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
@@ -74,6 +86,9 @@ func DefaultConfig() Config {
 		MonitorInterval:   monitorInterval,
 		MachineStaleAfter: staleAfter,
 		MonitorStallAfter: stallAfter,
+		PeerRelayURL:      os.Getenv("CICADA_PEER_RELAY_URL"),
+		PeerRelayToken:    os.Getenv("CICADA_PEER_RELAY_TOKEN"),
+		PeerRelayInterval: relayInterval,
 	}
 }
 
@@ -92,6 +107,7 @@ type Control struct {
 	identity        *e2ee.Identity
 	approvalMu      sync.Mutex
 	approvalWaiters map[string]chan string
+	peerRelayMu     sync.Mutex
 	shutdown        chan struct{}
 	wg              sync.WaitGroup
 	closed          bool
@@ -214,7 +230,44 @@ func (c *Control) Start() error {
 		defer c.wg.Done()
 		c.monitorLoop()
 	}()
+	if strings.TrimSpace(c.config.PeerRelayURL) != "" {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.peerRelayLoop()
+		}()
+	}
 	return nil
+}
+
+func (c *Control) peerRelayLoop() {
+	interval := c.config.PeerRelayInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	// Deliver messages left queued before Control restarted, then continue
+	// polling. Delivery is best-effort; failed messages remain retryable.
+	c.deliverQueuedPeerMessages()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			c.deliverQueuedPeerMessages()
+		case <-c.shutdown:
+			return
+		}
+	}
+}
+
+func (c *Control) deliverQueuedPeerMessages() {
+	messages, err := c.store.ListPendingPeerMessages(100)
+	if err != nil {
+		return
+	}
+	for _, message := range messages {
+		_, _ = c.DeliverPeerMessage(message.ID)
+	}
 }
 
 func (c *Control) monitorLoop() {
@@ -542,8 +595,74 @@ func (c *Control) SendPeerMessage(contactID, message string, aad []byte) (*store
 	local := c.Identity()
 	return c.store.CreatePeerMessage(store.PeerMessage{
 		ContactID: contactID, Direction: "outbound", SenderID: local.ID,
-		RecipientID: contact.Identity.ID, Sequence: sequence, Envelope: envelope, Status: "queued",
+		RecipientID: contact.Identity.ID, Sequence: sequence, Envelope: envelope,
+		AAD: base64.RawStdEncoding.EncodeToString(aad), Status: "queued",
 	})
+}
+
+// DeliverPeerMessage forwards only the authenticated opaque envelope to the
+// configured relay. The relay cannot decrypt it and never receives plaintext.
+func (c *Control) DeliverPeerMessage(id string) (*store.PeerMessage, error) {
+	relayURL := strings.TrimSpace(c.config.PeerRelayURL)
+	if relayURL == "" {
+		return nil, errors.New("peer relay is not configured")
+	}
+	if !strings.HasPrefix(relayURL, "http://") && !strings.HasPrefix(relayURL, "https://") {
+		return nil, errors.New("peer relay URL must use http or https")
+	}
+	c.peerRelayMu.Lock()
+	defer c.peerRelayMu.Unlock()
+	message, err := c.store.GetPeerMessage(id)
+	if err != nil {
+		return nil, err
+	}
+	if message == nil {
+		return nil, os.ErrNotExist
+	}
+	if message.Direction != "outbound" {
+		return nil, errors.New("only outbound peer messages can be delivered")
+	}
+	if message.Status == "delivered" {
+		return message, nil
+	}
+	payload := struct {
+		ID          string          `json:"id"`
+		ContactID   string          `json:"contact_id"`
+		SenderID    string          `json:"sender_id"`
+		RecipientID string          `json:"recipient_id"`
+		Sequence    uint64          `json:"sequence"`
+		Envelope    json.RawMessage `json:"envelope"`
+		AADBase64   string          `json:"aad_base64,omitempty"`
+	}{
+		ID: message.ID, ContactID: message.ContactID, SenderID: message.SenderID,
+		RecipientID: message.RecipientID, Sequence: message.Sequence,
+		Envelope: message.Envelope, AADBase64: message.AAD,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequest(http.MethodPost, relayURL, bytes.NewReader(body))
+	if err != nil {
+		_, _ = c.store.MarkPeerMessageRetry(message.ID)
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(c.config.PeerRelayToken); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+	if err != nil {
+		_, _ = c.store.MarkPeerMessageRetry(message.ID)
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		detail, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		_, _ = c.store.MarkPeerMessageRetry(message.ID)
+		return nil, fmt.Errorf("peer relay returned %s: %s", response.Status, strings.TrimSpace(string(detail)))
+	}
+	return c.store.MarkPeerMessageDelivered(message.ID)
 }
 
 func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]byte, *store.PeerMessage, error) {
@@ -573,7 +692,8 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	local := c.Identity()
 	message, err := c.store.CreatePeerMessage(store.PeerMessage{
 		ContactID: contactID, Direction: "inbound", SenderID: contact.Identity.ID,
-		RecipientID: local.ID, Sequence: sequence, Envelope: envelope, Status: "received",
+		RecipientID: local.ID, Sequence: sequence, Envelope: envelope,
+		AAD: base64.RawStdEncoding.EncodeToString(aad), Status: "received",
 	})
 	if err != nil {
 		return nil, nil, err

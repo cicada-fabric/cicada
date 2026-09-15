@@ -126,6 +126,7 @@ type PeerMessage struct {
 	RecipientID string          `json:"recipient_id"`
 	Sequence    uint64          `json:"sequence"`
 	Envelope    json.RawMessage `json:"envelope"`
+	AAD         string          `json:"aad,omitempty"`
 	Status      string          `json:"status"`
 	CreatedAt   string          `json:"created_at"`
 	DeliveredAt string          `json:"delivered_at,omitempty"`
@@ -419,6 +420,7 @@ CREATE TABLE IF NOT EXISTS peer_messages (
   recipient_id TEXT NOT NULL,
   sequence INTEGER NOT NULL,
   envelope_json TEXT NOT NULL,
+  aad TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'queued',
   created_at TEXT NOT NULL,
   delivered_at TEXT,
@@ -464,6 +466,7 @@ CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, cre
 		{"goals", "evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
 		{"goals", "outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
 		{"workers", "workspace", `ALTER TABLE workers ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
+		{"peer_messages", "aad", `ALTER TABLE peer_messages ADD COLUMN aad TEXT NOT NULL DEFAULT ''`},
 	} {
 		if err := s.ensureColumn(column.table, column.name, column.ddl); err != nil {
 			return err
@@ -1320,8 +1323,8 @@ func (s *Store) CreatePeerMessage(message PeerMessage) (*PeerMessage, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO peer_messages (id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, status, created_at, delivered_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, message.Direction, message.SenderID, message.RecipientID, message.Sequence, string(message.Envelope), message.Status, timestamp, nullableString(message.DeliveredAt))
+	_, err := s.db.Exec(`INSERT INTO peer_messages (id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, message.Direction, message.SenderID, message.RecipientID, message.Sequence, string(message.Envelope), message.AAD, message.Status, timestamp, nullableString(message.DeliveredAt))
 	if err != nil {
 		return nil, fmt.Errorf("create peer message: %w", err)
 	}
@@ -1330,9 +1333,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, message.ID, message.ContactID, message.D
 
 func (s *Store) getPeerMessageLocked(id string) (*PeerMessage, error) {
 	var message PeerMessage
-	var envelope, deliveredAt sql.NullString
-	err := s.db.QueryRow(`SELECT id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, status, created_at, delivered_at FROM peer_messages WHERE id = ?`, id).
-		Scan(&message.ID, &message.ContactID, &message.Direction, &message.SenderID, &message.RecipientID, &message.Sequence, &envelope, &message.Status, &message.CreatedAt, &deliveredAt)
+	var envelope, aad, deliveredAt sql.NullString
+	err := s.db.QueryRow(`SELECT id, contact_id, direction, sender_id, recipient_id, sequence, envelope_json, aad, status, created_at, delivered_at FROM peer_messages WHERE id = ?`, id).
+		Scan(&message.ID, &message.ContactID, &message.Direction, &message.SenderID, &message.RecipientID, &message.Sequence, &envelope, &aad, &message.Status, &message.CreatedAt, &deliveredAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1340,6 +1343,7 @@ func (s *Store) getPeerMessageLocked(id string) (*PeerMessage, error) {
 		return nil, err
 	}
 	message.Envelope = json.RawMessage(envelope.String)
+	message.AAD = aad.String
 	message.DeliveredAt = deliveredAt.String
 	return &message, nil
 }
@@ -1385,6 +1389,12 @@ func (s *Store) ListPeerMessages(contactID string) ([]PeerMessage, error) {
 	return result, nil
 }
 
+func (s *Store) GetPeerMessage(id string) (*PeerMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getPeerMessageLocked(strings.TrimSpace(id))
+}
+
 func (s *Store) MarkPeerMessageDelivered(id string) (*PeerMessage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1393,6 +1403,51 @@ func (s *Store) MarkPeerMessageDelivered(id string) (*PeerMessage, error) {
 		return nil, err
 	}
 	return s.getPeerMessageLocked(id)
+}
+
+func (s *Store) MarkPeerMessageRetry(id string) (*PeerMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`UPDATE peer_messages SET status = 'retry' WHERE id = ? AND direction = 'outbound'`, id); err != nil {
+		return nil, err
+	}
+	return s.getPeerMessageLocked(id)
+}
+
+func (s *Store) ListPendingPeerMessages(limit int) ([]PeerMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT id FROM peer_messages
+WHERE direction = 'outbound' AND status IN ('queued', 'retry') ORDER BY created_at LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]PeerMessage, 0, len(ids))
+	for _, id := range ids {
+		message, err := s.getPeerMessageLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if message != nil {
+			result = append(result, *message)
+		}
+	}
+	return result, nil
 }
 
 func (s *Store) CreateNotification(notification Notification) (*Notification, error) {

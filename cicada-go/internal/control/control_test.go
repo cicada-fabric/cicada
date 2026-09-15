@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -318,6 +322,57 @@ func TestControlPeerMessageUsesPostQuantumEnvelope(t *testing.T) {
 	}
 	if _, _, err := bob.ReceivePeerMessage(bobContact.ID, outbound.Envelope, []byte("goal=demo")); err != store.ErrPeerReplay {
 		t.Fatalf("expected persistent replay rejection, got %v", err)
+	}
+}
+
+func TestControlDeliversOpaquePeerEnvelopeToRelay(t *testing.T) {
+	var receivedBody []byte
+	var receivedAuth string
+	deliveries := 0
+	relay := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		deliveries++
+		receivedAuth = request.Header.Get("Authorization")
+		receivedBody, _ = io.ReadAll(request.Body)
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer relay.Close()
+	root := t.TempDir()
+	controlPlane, err := New(Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		CodexBinary: fakeCodex(t, "success"), WorkerTimeout: 10 * time.Second,
+		MaxRecoveries: 1, PeerRelayURL: relay.URL, PeerRelayToken: "relay-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controlPlane.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = controlPlane.Shutdown(context.Background()) })
+	peer, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contact, err := controlPlane.CreateContact("relay peer", peer.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, err := controlPlane.SendPeerMessage(contact.ID, "relay secret must stay encrypted", []byte{0, 1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := controlPlane.DeliverPeerMessage(outbound.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delivered.Status != "delivered" || deliveries != 1 || receivedAuth != "Bearer relay-token" {
+		t.Fatalf("unexpected relay delivery: message=%#v deliveries=%d auth=%q", delivered, deliveries, receivedAuth)
+	}
+	if strings.Contains(string(receivedBody), "relay secret must stay encrypted") {
+		t.Fatal("relay request contained peer plaintext")
+	}
+	if _, err := controlPlane.DeliverPeerMessage(outbound.ID); err != nil || deliveries != 1 {
+		t.Fatalf("delivering an already delivered message should be idempotent: err=%v deliveries=%d", err, deliveries)
 	}
 }
 

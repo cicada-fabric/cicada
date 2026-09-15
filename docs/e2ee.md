@@ -49,10 +49,16 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
 curl -X POST http://127.0.0.1:8787/v1/peer-messages \
   -H 'content-type: application/json' \
   -d '{"direction":"inbound","contact_id":"CONTACT_ID","envelope":{...},"aad":"goal=GOAL_ID"}'
+
+# Optional relay delivery. Set these only on a Control that owns an outbound
+# transport; the relay receives an opaque envelope and a base64 AAD value.
+export CICADA_PEER_RELAY_URL=https://relay.example/v1/deliver
+export CICADA_PEER_RELAY_TOKEN=relay-auth-token
+curl -X POST http://127.0.0.1:8787/v1/peer-messages/PEER_MESSAGE_ID/deliver
 ```
 
 This is the authenticated envelope and pinned-contact layer. Federation,
-automatic contact discovery, ratcheting/session key rotation, and external
-transport adapters remain later work; the API keeps the transport boundary
-explicit so those pieces can be added without weakening the cryptographic
-framing.
+automatic contact discovery, and ratcheting/session key rotation remain later
+work. The relay adapter is deliberately transport-agnostic: it retries queued
+messages, marks successful deliveries, and keeps the cryptographic boundary in
+the envelope layer.

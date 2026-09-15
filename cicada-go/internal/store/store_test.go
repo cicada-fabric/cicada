@@ -177,13 +177,13 @@ func TestStorePersistsContactSequencesAndOpaquePeerMessages(t *testing.T) {
 	}
 	message, err := persistence.CreatePeerMessage(PeerMessage{
 		ContactID: contact.ID, Direction: "outbound", SenderID: "local", RecipientID: identity.Public().ID,
-		Sequence: 1, Envelope: json.RawMessage(`{"ciphertext":"opaque"}`),
+		Sequence: 1, Envelope: json.RawMessage(`{"ciphertext":"opaque"}`), AAD: "Z29hbD1kZW1v",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	messages, err := persistence.ListPeerMessages(contact.ID)
-	if err != nil || len(messages) != 1 || messages[0].ID != message.ID {
+	if err != nil || len(messages) != 1 || messages[0].ID != message.ID || messages[0].AAD != "Z29hbD1kZW1v" {
 		t.Fatalf("peer message was not persisted: %#v err=%v", messages, err)
 	}
 }
