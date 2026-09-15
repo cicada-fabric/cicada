@@ -32,6 +32,9 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
 		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "artifacts"},
 		{path: "/assets/attachments.js", contentType: "text/javascript", contains: "content_base64"},
+		{path: "/manifest.webmanifest", contentType: "application/manifest+json", contains: "Cicada Control"},
+		{path: "/sw.js", contentType: "text/javascript", contains: "cicada-static-v1"},
+		{path: "/icon.svg", contentType: "image/svg+xml", contains: "#70d5ae"},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
@@ -57,6 +60,20 @@ func TestEmbeddedClientAssets(t *testing.T) {
 	}
 }
 
+func TestServiceWorkerDoesNotCachePrivateRoutes(t *testing.T) {
+	data, err := clientFiles.ReadFile("ui/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	if strings.Contains(script, "'/v1") || strings.Contains(script, "\"/v1") {
+		t.Fatal("service worker must not cache Control API routes")
+	}
+	if !strings.Contains(script, "'/icon.svg'") {
+		t.Fatal("service worker must cache the install icon")
+	}
+}
+
 func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{
@@ -69,7 +86,7 @@ func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
 
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js"} {
+	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
