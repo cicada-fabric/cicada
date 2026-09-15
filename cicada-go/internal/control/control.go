@@ -1446,6 +1446,12 @@ func machineMatches(machine store.Machine, resources map[string]any) bool {
 			if !ok || !available || availableValue < requiredValue {
 				return false
 			}
+		case "max_load_1m":
+			requiredValue, ok := numberValue(required)
+			availableValue, available := numberValue(machine.Capabilities["load_1m"])
+			if !ok || !available || availableValue > requiredValue {
+				return false
+			}
 		default:
 			actual, exists := machine.Capabilities[key]
 			if !exists || fmt.Sprint(actual) != fmt.Sprint(required) {

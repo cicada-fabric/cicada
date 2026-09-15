@@ -16,6 +16,7 @@ func discoverLocalCapabilities() map[string]any {
 		"arch":       runtime.GOARCH,
 		"cpu_count":  runtime.NumCPU(),
 		"memory_gb":  localMemoryGB(),
+		"load_1m":    localLoad1m(),
 		"toolchains": localToolchains(),
 	}
 	if name, models, memoryGB, ok := discoverNVIDIA(); ok {
@@ -27,6 +28,22 @@ func discoverLocalCapabilities() map[string]any {
 		capabilities["accelerator"] = "cpu"
 	}
 	return capabilities
+}
+
+func localLoad1m() float64 {
+	data, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0
+	}
+	load, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return 0
+	}
+	return load
 }
 
 func cloneCapabilities(source map[string]any) map[string]any {

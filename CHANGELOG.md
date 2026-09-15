@@ -22,7 +22,7 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - On-demand Goal detail view for conclusions, events, workers, artifacts,
   workspaces, and external actions.
 - Local machine capability discovery for scheduler matching, with bounded
-  NVIDIA probing and CPU fallback.
+  NVIDIA probing, CPU fallback, and a `max_load_1m` resource constraint.
 - Bounded personal, project, and execution Memory context in Worker prompts,
   with explicit stale-data and prompt-instruction boundaries.
 

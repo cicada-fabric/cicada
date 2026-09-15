@@ -3,7 +3,7 @@
 Control registers two local records at startup: `control-local` and
 `worker-local`. Their capability maps are collected from the running process and
 include OS, architecture, CPU count, `/proc/meminfo` memory, available
-toolchains, and an accelerator class. When `nvidia-smi` is available, Control
+toolchains, `/proc/loadavg` 1-minute load, and an accelerator class. When `nvidia-smi` is available, Control
 also records GPU model, count, and aggregate memory; otherwise the accelerator
 is explicitly `cpu`.
 
@@ -17,7 +17,8 @@ A remote worker can register its own capabilities through `POST /v1/machines`
 and refresh liveness through `POST /v1/machines/MACHINE_ID/heartbeat`. Goal
 resources use the same capability names: `os`, `arch`, `accelerator`,
 `min_memory_gb`, `harness`, and `required_harness`. Control excludes stale or
-unavailable records before selecting a machine.
+unavailable records before selecting a machine; `max_load_1m` rejects a busy
+machine from a Goal that supplies that constraint.
 
 The discovery code records executable paths, never command output or
 credentials. GPU probing has a short timeout and degrades to CPU-only
