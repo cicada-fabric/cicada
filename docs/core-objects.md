@@ -71,3 +71,8 @@ curl -X POST http://127.0.0.1:8787/v1/goals/GOAL_ID/workers \
   -d '{"resources":{"accelerator":"H100","harness":"codex"},"prompt":"Run the independent validation path."}'
 curl http://127.0.0.1:8787/v1/goals/GOAL_ID/workers
 ```
+
+Goal metadata accepts an RFC3339 `deadline`, structured `budget`, and
+structured `resources`. The monitor stops an unfinished Goal after its deadline
+and emits a P0 notification; budget values are retained as policy input while
+executor-specific usage accounting is added with the corresponding harness.

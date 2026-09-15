@@ -239,6 +239,14 @@ func (c *Control) evaluateMonitors() {
 		return
 	}
 	for _, goal := range goals {
+		if goal.Deadline != "" {
+			if deadline, parseErr := time.Parse(time.RFC3339, goal.Deadline); parseErr == nil && time.Now().UTC().After(deadline) && goal.Status != "completed" && goal.Status != "failed" && goal.Status != "cancelled" {
+				_, _ = c.store.AppendEvent(goal.ID, "", "GoalDeadlineExceeded", map[string]any{"deadline": goal.Deadline})
+				c.notify(goal.ID, "goal.deadline", "P0", "Goal deadline exceeded", "The configured deadline has passed; the goal was stopped.")
+				_, _ = c.StopGoal(goal.ID)
+				continue
+			}
+		}
 		if goal.MonitorID == "" || goal.Status != "running" {
 			continue
 		}
@@ -703,6 +711,11 @@ func copyWorkspace(source, target string) error {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return fmt.Errorf("create migration target: %w", err)
 	}
+	if entries, err := os.ReadDir(target); err != nil {
+		return fmt.Errorf("inspect migration target: %w", err)
+	} else if len(entries) > 0 {
+		return fmt.Errorf("migration target is not empty: %s", target)
+	}
 	entries, err := os.ReadDir(source)
 	if err != nil {
 		return fmt.Errorf("read workspace for migration: %w", err)
@@ -903,6 +916,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	}
 	if input.Priority > 100 {
 		input.Priority = 100
+	}
+	if input.Deadline != "" {
+		if deadline, err := time.Parse(time.RFC3339, input.Deadline); err != nil || deadline.IsZero() {
+			return nil, errors.New("deadline must be an RFC3339 timestamp")
+		}
 	}
 	harness := strings.ToLower(strings.TrimSpace(input.Harness))
 	if harness == "" {

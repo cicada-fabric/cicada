@@ -320,6 +320,16 @@ func TestWorkspaceLifecycleActions(t *testing.T) {
 		t.Fatalf("snapshot failed: %#v err=%v", snapshot, err)
 	}
 	target := filepath.Join(controlPlane.config.WorkspaceRoot, "migrated")
+	occupied := filepath.Join(controlPlane.config.WorkspaceRoot, "occupied")
+	if err := os.MkdirAll(occupied, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(occupied, "keep.txt"), []byte("do not overwrite"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.WorkspaceAction(workspace.ID, "migrate", occupied); err == nil {
+		t.Fatal("migration overwrote a non-empty target")
+	}
 	migrated, err := controlPlane.WorkspaceAction(workspace.ID, "migrate", target)
 	if err != nil {
 		t.Fatal(err)
@@ -432,6 +442,13 @@ func TestUnsupportedHarnessIsRejectedBeforeWorkerCreation(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "try unsupported harness", Harness: "claude-code"}); err == nil {
 		t.Fatal("unsupported harness was accepted")
+	}
+}
+
+func TestGoalDeadlineMustBeRFC3339(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "bad deadline", Deadline: "tomorrow"}); err == nil {
+		t.Fatal("invalid deadline was accepted")
 	}
 }
 
