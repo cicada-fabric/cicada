@@ -32,6 +32,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   Intent limits, private generated paths, and non-fetching link references.
 - Installable Personal Client PWA shell with static-only caching and no API or
   bearer-token cache.
+- Bounded credential-free read-only HTTP execution for approved `fetch`,
+  `search`, and `download` actions, with DNS-aware SSRF protection and capped
+  response capture.
 
 ### Changed
 

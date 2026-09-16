@@ -66,6 +66,21 @@ func (h *Handler) action(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	switch parts[1] {
+	case "execute":
+		if request.Method != http.MethodPost {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		action, err := h.control.ExecuteExternalAction(request.Context(), id)
+		if err != nil {
+			if action != nil && action.Status == "failed" {
+				writeJSON(response, http.StatusBadGateway, action)
+				return
+			}
+			writeActionError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, action)
 	case "claim":
 		action, err := h.control.ClaimExternalAction(id)
 		if err != nil {

@@ -235,11 +235,11 @@ func (c *Control) checkExternalPermission(goalID, kind, domain string) (string, 
 }
 
 func validateExternalURL(raw string) (*url.URL, error) {
-	target, err := url.ParseRequestURI(strings.TrimSpace(raw))
+	target, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || target == nil || (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" {
 		return nil, errors.New("external action url must be an absolute http or https URL")
 	}
-	if target.User != nil || target.Fragment != "" {
+	if target.Opaque != "" || target.User != nil || target.Fragment != "" {
 		return nil, errors.New("external action url cannot contain credentials or fragments")
 	}
 	if sensitiveQuery(target.Query()) {

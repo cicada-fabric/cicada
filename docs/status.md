@@ -30,7 +30,8 @@ Implemented in this line:
   event keys, durable payloads, Goal audit events, and P1 notifications;
 - policy-gated external action requests with domain and SSRF checks, credential
   field rejection, durable approval transitions, executor claim/complete state,
-  and append-only action audit events;
+  append-only action audit events, and a bounded credential-free read-only HTTP
+  fetch executor;
 - responsive embedded Personal Client with a Today Goal overview, pending
   Approval decisions, prioritized notifications, per-tab remote bearer token,
   HTTP/JSON API, Docker image export, and a reproducible smoke test.
@@ -54,8 +55,8 @@ Implemented in this line:
   never caches API or private data.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
-rendezvous services, multi-peer relay routing, session ratcheting, a production
-browser executor, external message/calendar connectors, additional harness
+rendezvous services, multi-peer relay routing, session ratcheting, an
+authenticated browser executor, external message/calendar connectors, additional harness
 adapters, push, native mobile, and voice remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
