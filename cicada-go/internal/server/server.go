@@ -195,6 +195,18 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.calendarConnector(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/connectors/x" {
+		h.socialConnector(response, request, "x")
+		return
+	}
+	if request.URL.Path == "/v1/connectors/wechat" {
+		h.socialConnector(response, request, "wechat")
+		return
+	}
+	if request.URL.Path == "/v1/connectors/qq" {
+		h.socialConnector(response, request, "qq")
+		return
+	}
 	if request.URL.Path == "/v1/connectors/events" {
 		h.externalEvents(response, request)
 		return

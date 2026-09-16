@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -166,4 +167,64 @@ func (c *Control) TriageExternalEvent(id, status, goalID string) (*store.Externa
 		c.notify(auditGoal, "connector."+updated.Connector, "P1", "External action requires review", updated.EventType)
 	}
 	return updated, nil
+}
+
+// ClassifyExternalEvent applies a bounded, deterministic first-pass
+// classifier. It never links an event to a Goal implicitly; linking remains an
+// explicit operator or planner decision. Events containing a clear request for
+// approval, confirmation, or an urgent decision become action_required.
+func (c *Control) ClassifyExternalEvent(id string) (*store.ExternalEvent, error) {
+	event, err := c.store.GetExternalEvent(strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return nil, os.ErrNotExist
+	}
+	if event.Status == "ignored" || event.Status == "linked" || event.Status == "action_required" {
+		return event, nil
+	}
+	status, reason := classifyPayload(event.EventType, event.Payload)
+	updated, err := c.store.UpdateExternalEventTriage(event.ID, status, event.GoalID)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, os.ErrNotExist
+	}
+	if updated.GoalID != "" {
+		_, _ = c.store.AppendEvent(updated.GoalID, "", "ExternalEventClassified", map[string]any{
+			"event_id": updated.ID, "connector": updated.Connector, "status": status, "reason": reason,
+		})
+	}
+	if status == "action_required" {
+		c.notify(updated.GoalID, "connector."+updated.Connector, "P1", "External action requires review", reason)
+	}
+	return updated, nil
+}
+
+func classifyPayload(eventType string, payload []byte) (string, string) {
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(eventType)), ".deleted") {
+		return "classified", "deleted event"
+	}
+	var fields map[string]any
+	if json.Unmarshal(payload, &fields) != nil {
+		return "classified", "normalized payload unavailable"
+	}
+	var textParts []string
+	for _, key := range []string{"subject", "text", "summary", "description", "title"} {
+		if value, ok := fields[key].(string); ok && utf8.ValidString(value) {
+			textParts = append(textParts, value)
+		}
+	}
+	text := strings.ToLower(strings.Join(textParts, "\n"))
+	for _, marker := range []string{
+		"approve", "approval", "confirm", "confirmation", "decision", "urgent", "asap",
+		"需要批准", "请批准", "请确认", "尽快决定", "紧急", "截止",
+	} {
+		if strings.Contains(text, marker) {
+			return "action_required", "decision marker: " + marker
+		}
+	}
+	return "classified", "no decision marker"
 }

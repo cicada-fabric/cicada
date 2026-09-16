@@ -87,6 +87,19 @@ func (h *Handler) externalEvent(response http.ResponseWriter, request *http.Requ
 		writeJSON(response, http.StatusOK, event)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "classify" && request.Method == http.MethodPost {
+		event, err := h.control.ClassifyExternalEvent(id)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, event)
+		return
+	}
 	if len(parts) != 1 || request.Method != http.MethodGet {
 		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return

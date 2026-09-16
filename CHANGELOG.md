@@ -60,6 +60,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Provider-neutral Email and Calendar webhook adapters with HMAC verification,
   bounded JSON/iCalendar normalization, credential stripping, and idempotent
   durable events.
+- Provider-neutral X, WeChat, and QQ webhook adapters with HMAC verification,
+  bounded envelope stripping, idempotent normalized events, and deterministic
+  first-pass classification.
 - Conservative snapshot garbage collection and an authenticated
   `cicada snapshot replicate` path for copying verified archives between
   independent Controls.
