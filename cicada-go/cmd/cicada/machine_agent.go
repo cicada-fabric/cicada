@@ -25,6 +25,8 @@ func runMachineAgent(args []string) error {
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
 	interval := flags.Duration("interval", machineAgentInterval(), "heartbeat interval")
 	once := flags.Bool("once", false, "register, heartbeat, and process the current job queue once")
+	lanDiscovery := flags.Bool("lan-discovery", false, "answer unauthenticated LAN capability discovery requests")
+	lanPort := flags.Int("lan-port", lanDiscoveryPort, "UDP LAN discovery port")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -43,6 +45,16 @@ func runMachineAgent(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if *lanDiscovery {
+		if *lanPort < 1 || *lanPort > 65535 {
+			return errors.New("LAN discovery port must be between 1 and 65535")
+		}
+		go func() {
+			if err := serveLANDiscovery(ctx, *id, *name, *lanPort); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(os.Stderr, "LAN discovery:", err)
+			}
+		}()
+	}
 	send := func() error {
 		capabilities := control.DiscoverMachineCapabilities()
 		capabilities["role"] = "worker"

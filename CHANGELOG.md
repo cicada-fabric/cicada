@@ -90,6 +90,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   document lifecycle triage.
 - Local capability discovery now recognizes ROCm and Ascend/CANN accelerators
   in addition to NVIDIA CUDA and CPU fallback.
+- Opt-in UDP LAN capability discovery for Machine agents, with no automatic
+  registration or trust from unauthenticated responses.
 
 ### Changed
 

@@ -35,6 +35,18 @@ profile command is also useful for an explicit read-only check:
 ssh gpu2.example cicada machine discover
 ```
 
+For local-network discovery, opt a machine agent into the unauthenticated UDP
+profile responder and query it from the operator host:
+
+```bash
+cicada machine agent --lan-discovery --lan-port 8788
+cicada machine discover-lan --port 8788 --wait 2s
+```
+
+LAN discovery returns non-secret profiles only and never registers or trusts a
+machine automatically. Use the returned profile with an explicit machine
+registration or pair it through SSH after verifying the host identity.
+
 A remote worker can register its own capabilities through `POST /v1/machines`,
 refresh liveness through `POST /v1/machines/MACHINE_ID/heartbeat`, and claim
 Workers assigned by Control. Goal

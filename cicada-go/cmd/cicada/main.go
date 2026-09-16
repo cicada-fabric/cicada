@@ -127,11 +127,14 @@ func clientCommand(args []string) error {
 		if len(args) >= 2 && args[1] == "pair" {
 			return runMachinePair(args[2:])
 		}
+		if len(args) >= 2 && args[1] == "discover-lan" {
+			return runMachineLANDiscovery(args[2:])
+		}
 		if len(args) == 2 && args[1] == "discover" {
 			return printJSON(control.DiscoverMachineCapabilities())
 		}
 		if len(args) != 2 || args[1] != "list" {
-			return errors.New("usage: cicada machine list|discover|pair|agent [options]")
+			return errors.New("usage: cicada machine list|discover|discover-lan|pair|agent [options]")
 		}
 		method, path = http.MethodGet, "/v1/machines"
 	case "worker":

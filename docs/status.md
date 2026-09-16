@@ -68,8 +68,8 @@ Implemented in this line:
 - local Machine capability discovery for OS, architecture, CPU, memory,
   toolchains, container runtimes, compilers, disk, network, NVIDIA/ROCm/Ascend
   accelerator matching, including load, disk, toolchain, container, and
-  network constraints, plus fixed-command SSH pairing and a standalone
-  `machine discover` profile command.
+  network constraints, plus fixed-command SSH pairing, standalone `machine
+  discover` profiles, and opt-in unauthenticated LAN discovery.
 - machine agent registration and periodic capability heartbeats for remote
   execution hosts, plus atomic remote Worker polling, claim, Codex/Shell
   execution, bounded result reporting, busy heartbeats, retry, and stale-host
