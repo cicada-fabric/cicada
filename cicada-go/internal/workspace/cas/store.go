@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/workspace/snapshot"
 )
@@ -16,6 +17,23 @@ import (
 // Store keeps immutable workspace archives addressed by SHA-256.
 type Store struct {
 	root string
+}
+
+// Object is the filesystem metadata for one validated CAS object. The CAS is
+// content addressed, so the filename is the authoritative digest and the
+// modification time is used only for the orphan grace period during GC.
+type Object struct {
+	Digest  string
+	Size    int64
+	ModTime time.Time
+}
+
+// GCResult describes one bounded collection pass.
+type GCResult struct {
+	Scanned      int
+	Retained     int
+	Removed      int
+	RemovedBytes int64
 }
 
 func New(root string) (*Store, error) {
@@ -124,6 +142,86 @@ func (s *Store) Open(digest string) (*os.File, snapshot.Snapshot, error) {
 		return nil, snapshot.Snapshot{}, errors.New("workspace snapshot object digest mismatch")
 	}
 	return file, result, nil
+}
+
+// ListObjects returns regular, digest-shaped objects below the CAS root. It
+// deliberately ignores temporary uploads and malformed filenames so a
+// partially written or manually placed file cannot make collection unsafe.
+func (s *Store) ListObjects() ([]Object, error) {
+	if s == nil || s.root == "" {
+		return nil, errors.New("workspace snapshot store is not initialized")
+	}
+	prefixes, err := os.ReadDir(s.root)
+	if err != nil {
+		return nil, err
+	}
+	objects := make([]Object, 0)
+	for _, prefix := range prefixes {
+		if !prefix.IsDir() || len(prefix.Name()) != 2 || !isHex(prefix.Name()) {
+			continue
+		}
+		entries, readErr := os.ReadDir(filepath.Join(s.root, prefix.Name()))
+		if readErr != nil {
+			return nil, readErr
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tar") {
+				continue
+			}
+			digest := strings.TrimSuffix(entry.Name(), ".tar")
+			if len(digest) != sha256HexLength || !isHex(digest) || digest[:2] != prefix.Name() {
+				continue
+			}
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil, infoErr
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+			objects = append(objects, Object{Digest: digest, Size: info.Size(), ModTime: info.ModTime()})
+		}
+	}
+	return objects, nil
+}
+
+// Collect removes only unreferenced objects older than olderThan. Callers pass
+// all durable workspace and artifact roots; the grace period protects an
+// archive between CAS installation and its database reference becoming
+// durable, including after a Control crash.
+func (s *Store) Collect(ctx context.Context, referenced map[string]struct{}, olderThan time.Time) (GCResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	objects, err := s.ListObjects()
+	if err != nil {
+		return GCResult{}, err
+	}
+	result := GCResult{Scanned: len(objects)}
+	for _, object := range objects {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if _, keep := referenced[object.Digest]; keep || !object.ModTime.Before(olderThan) {
+			result.Retained++
+			continue
+		}
+		path, pathErr := s.objectPath(object.Digest)
+		if pathErr != nil {
+			result.Retained++
+			continue
+		}
+		if removeErr := os.Remove(path); removeErr != nil {
+			if errors.Is(removeErr, os.ErrNotExist) {
+				continue
+			}
+			return result, removeErr
+		}
+		result.Removed++
+		result.RemovedBytes += object.Size
+		_ = os.Remove(filepath.Dir(path))
+	}
+	return result, nil
 }
 
 type contextReader struct {

@@ -179,6 +179,18 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.externalEvent(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/snapshots/gc" {
+		h.snapshotGC(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/snapshots" {
+		h.snapshots(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/snapshots/") {
+		h.snapshot(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/actions" {
 		h.actions(response, request)
 		return

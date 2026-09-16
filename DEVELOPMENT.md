@@ -198,6 +198,35 @@ boundary are documented in `docs/telegram-connector.md`.
 The remote claim/result protocol, secret boundary, workspace requirement, and
 failure semantics are documented in `docs/remote-execution.md`.
 
+Workspace snapshot archives are content addressed and collected in the
+background. Objects referenced by a Workspace or a snapshot Artifact are
+retained; unreferenced objects are removed after the configurable grace period
+(`CICADA_SNAPSHOT_GC_KEEP_SECONDS`, one day by default). A maintenance pass can
+also be requested explicitly:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/snapshots/gc
+```
+
+For an explicitly authorized cross-Control copy, fetch from the source CAS and
+verify/store on the destination with the CLI. Both Controls should have their
+API bearer tokens configured:
+
+```bash
+CICADA_SNAPSHOT_SOURCE_TOKEN="$SOURCE_TOKEN" \
+CICADA_SNAPSHOT_DESTINATION_TOKEN="$DESTINATION_TOKEN" \
+cicada snapshot replicate \
+  --source-url https://source-control.example \
+  --destination-url https://destination-control.example \
+  --digest SHA256_HEX \
+  --workspace-path /workspace/goal
+```
+
+The destination verifies the archive's SHA-256 digest before storing it and
+attaches it to a Workspace only when the exact stable path exists. The
+replication protocol never forwards plaintext workspace files through the
+Control database; it transfers the already bounded deterministic archive.
+
 Codex completion claims are checked by an ephemeral read-only `gpt-5.5`
 verifier. Shell evidence stays local unless a Goal opts into model verification.
 The verdict policy and failure behavior are documented in

@@ -77,14 +77,16 @@ Implemented in this line:
 - content-addressed workspace snapshots for remote result transfer and Worker
   recovery, with bounded archives, SHA-256 verification, safe extraction, and
   digest-carrying cross-Machine resume.
+- conservative content-addressed snapshot garbage collection rooted in
+  Workspaces and snapshot Artifacts, plus authenticated operator-driven
+  cross-Control archive replication with destination digest verification;
 - an isolated browser action agent with approval-gated claims, a credential-free
   stdin/stdout runner contract, process-group timeouts, bounded JSON results,
   and profile/HOME isolation; the concrete Chromium or Playwright runtime is
   operator supplied.
 
-The release deliberately keeps its boundaries explicit. Snapshot garbage
-collection and cross-Control replication, Contact directory and rendezvous
-services, multi-peer relay routing, session ratcheting, an authenticated
+The release deliberately keeps its boundaries explicit. Contact directory and
+rendezvous services, multi-peer relay routing, session ratcheting, authenticated
 Email/X/WeChat/QQ/calendar connectors, proactive classifiers and authorized
 reply executors, additional harness adapters, push,
 native mobile, and local voice channels remain the next feature lines. The

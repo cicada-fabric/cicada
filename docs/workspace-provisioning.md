@@ -64,5 +64,14 @@ the machine-agent API.
 Uncommitted files and generated artifacts are uploaded as bounded,
 content-addressed snapshots after remote attempts. A recovered Worker carries
 the digest to its next Machine, which verifies and restores it before running.
-Snapshot garbage collection and cross-Control replication remain separate
-operations.
+The Control CAS now performs conservative garbage collection in the background:
+Workspace pointers and historical `workspace-snapshot` Artifacts are roots, and
+unreferenced archives are deleted only after the configured grace period. An
+operator can trigger `POST /v1/snapshots/gc` for a maintenance pass.
+
+An authenticated operator can copy a digest between independent Controls with
+`cicada snapshot replicate`. The source serves a verified archive at
+`GET /v1/snapshots/DIGEST`; the destination verifies the digest again at
+`POST /v1/snapshots` and can attach it by matching the stable Workspace path.
+Neither endpoint accepts credentials in the archive or sends snapshot contents
+to a Worker prompt.

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,15 +27,17 @@ import (
 )
 
 type Config struct {
-	StateDir          string
-	WorkspaceRoot     string
-	IdentityFile      string
-	CodexBinary       string
-	WorkerTimeout     time.Duration
-	MaxRecoveries     int
-	MonitorInterval   time.Duration
-	MachineStaleAfter time.Duration
-	MonitorStallAfter time.Duration
+	StateDir           string
+	WorkspaceRoot      string
+	IdentityFile       string
+	CodexBinary        string
+	WorkerTimeout      time.Duration
+	MaxRecoveries      int
+	MonitorInterval    time.Duration
+	SnapshotGCInterval time.Duration
+	SnapshotGCKeepFor  time.Duration
+	MachineStaleAfter  time.Duration
+	MonitorStallAfter  time.Duration
 	// APIToken protects the HTTP/JSON control boundary when it is exposed
 	// beyond the local host. An empty token keeps the localhost-only default
 	// convenient for development.
@@ -68,6 +71,18 @@ func DefaultConfig() Config {
 	if value := os.Getenv("CICADA_MONITOR_INTERVAL_SECONDS"); value != "" {
 		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
 			monitorInterval = seconds
+		}
+	}
+	snapshotGCInterval := time.Hour
+	if value := os.Getenv("CICADA_SNAPSHOT_GC_INTERVAL_SECONDS"); value != "" {
+		if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 {
+			snapshotGCInterval = time.Duration(seconds) * time.Second
+		}
+	}
+	snapshotGCKeepFor := 24 * time.Hour
+	if value := os.Getenv("CICADA_SNAPSHOT_GC_KEEP_SECONDS"); value != "" {
+		if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds > 0 {
+			snapshotGCKeepFor = time.Duration(seconds) * time.Second
 		}
 	}
 	staleAfter := 2 * time.Minute
@@ -112,6 +127,8 @@ func DefaultConfig() Config {
 		WorkerTimeout:          timeout,
 		MaxRecoveries:          recoveries,
 		MonitorInterval:        monitorInterval,
+		SnapshotGCInterval:     snapshotGCInterval,
+		SnapshotGCKeepFor:      snapshotGCKeepFor,
 		MachineStaleAfter:      staleAfter,
 		MonitorStallAfter:      stallAfter,
 		APIToken:               os.Getenv("CICADA_API_TOKEN"),
@@ -288,6 +305,13 @@ func (c *Control) Start() error {
 		go func() {
 			defer c.wg.Done()
 			c.peerRelayLoop()
+		}()
+	}
+	if c.config.SnapshotGCInterval != 0 {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.snapshotGCLoop()
 		}()
 	}
 	return nil

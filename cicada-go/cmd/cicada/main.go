@@ -33,7 +33,7 @@ func main() {
 		}
 	case "version", "--version", "-V":
 		fmt.Println("cicada " + buildinfo.Version)
-	case "goal", "machine", "worker", "thread":
+	case "goal", "machine", "worker", "thread", "snapshot":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -103,6 +103,11 @@ func clientCommand(args []string) error {
 	var method, path string
 	var body any
 	switch args[0] {
+	case "snapshot":
+		if len(args) >= 2 && args[1] == "replicate" {
+			return runSnapshotReplication(args[2:])
+		}
+		return errors.New("usage: cicada snapshot replicate [options]")
 	case "machine":
 		if len(args) >= 2 && args[1] == "agent" {
 			return runMachineAgent(args[2:])
@@ -247,7 +252,7 @@ func requestJSON(url, method string, body any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|external|connector|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|snapshot|external|connector|version")
 }
 
 func envOr(name, fallback string) string {

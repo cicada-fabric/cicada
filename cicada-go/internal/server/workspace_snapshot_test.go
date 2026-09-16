@@ -60,8 +60,31 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("X-Cicada-Snapshot-Digest") != uploaded.Digest {
 		t.Fatalf("download status=%d headers=%v", response.Code, response.Header())
 	}
+	// The digest endpoint is the authenticated cross-Control replication
+	// source. It must serve the same verified archive without a Workspace ID.
+	request = httptest.NewRequest(http.MethodGet, "/v1/snapshots/"+uploaded.Digest, nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("X-Cicada-Snapshot-Digest") != uploaded.Digest || response.Body.Len() == 0 {
+		t.Fatalf("replication download status=%d headers=%v bytes=%d", response.Code, response.Header(), response.Body.Len())
+	}
+	replicatedArchive := append([]byte(nil), response.Body.Bytes()...)
+	request = httptest.NewRequest(http.MethodPost, "/v1/snapshots", bytes.NewReader(replicatedArchive))
+	request.Header.Set("X-Cicada-Snapshot-Digest", uploaded.Digest)
+	request.Header.Set("X-Cicada-Workspace-Path", workspace.Path)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || !bytes.Contains(response.Body.Bytes(), []byte(workspace.ID)) {
+		t.Fatalf("replication upload status=%d body=%s", response.Code, response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodPost, "/v1/snapshots/gc", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"retained"`)) {
+		t.Fatalf("snapshot GC status=%d body=%s", response.Code, response.Body.String())
+	}
 	archivePath := filepath.Join(t.TempDir(), "download.tar")
-	if err := os.WriteFile(archivePath, response.Body.Bytes(), 0o600); err != nil {
+	if err := os.WriteFile(archivePath, replicatedArchive, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(t.TempDir(), "restored")
