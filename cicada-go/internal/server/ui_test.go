@@ -74,6 +74,16 @@ func TestServiceWorkerDoesNotCachePrivateRoutes(t *testing.T) {
 	}
 }
 
+func TestClientIncludesProgressiveVoiceInput(t *testing.T) {
+	data, err := clientFiles.ReadFile("ui/voice.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "SpeechRecognition") || !strings.Contains(string(data), "webkitSpeechRecognition") {
+		t.Fatal("client voice input integration is missing")
+	}
+}
+
 func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{
@@ -86,7 +96,7 @@ func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
 
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
+	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/assets/voice.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
