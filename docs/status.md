@@ -58,7 +58,8 @@ Implemented in this line:
   for missing targets or decisions.
 - durable Idea lifecycle states covering capture, research, assessment,
   parking/rejection, approval/planning, execution, pause/block, review, and
-  archive transitions through the Idea API.
+  archive transitions through the Idea API, with scheduled `at:`/`on:` parked
+  Idea revisits that become assessed and notify the user.
 - on-demand Goal detail view for conclusions, events, Workers, Artifacts,
   Workspaces, and external actions.
 - local Machine capability discovery for OS, architecture, CPU, memory,

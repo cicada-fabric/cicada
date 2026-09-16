@@ -79,6 +79,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - VAPID-backed encrypted browser Push delivery for prioritized notifications,
   durable subscription registration, stale endpoint cleanup, and Personal
   Client opt-in controls.
+- Scheduled parked-Idea revisits using explicit UTC timestamps or dates, with
+  an idempotent assessed transition, rationale audit marker, and P2 notice.
 
 ### Changed
 
