@@ -83,6 +83,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   an idempotent assessed transition, rationale audit marker, and P2 notice.
 - Authenticated Goal detail access to bounded raw Worker output with workspace
   and state-root containment checks.
+- SSH Machine pairing through a fixed remote `machine discover` command, with
+  bounded JSON output, BatchMode/timeout enforcement, and authenticated profile
+  registration.
 
 ### Changed
 

@@ -124,8 +124,14 @@ func clientCommand(args []string) error {
 		if len(args) >= 2 && args[1] == "agent" {
 			return runMachineAgent(args[2:])
 		}
+		if len(args) >= 2 && args[1] == "pair" {
+			return runMachinePair(args[2:])
+		}
+		if len(args) == 2 && args[1] == "discover" {
+			return printJSON(control.DiscoverMachineCapabilities())
+		}
 		if len(args) != 2 || args[1] != "list" {
-			return errors.New("usage: cicada machine list|agent [options]")
+			return errors.New("usage: cicada machine list|discover|pair|agent [options]")
 		}
 		method, path = http.MethodGet, "/v1/machines"
 	case "worker":
@@ -261,6 +267,15 @@ func requestJSON(url, method string, body any) error {
 		fmt.Print(string(data))
 	}
 	return nil
+}
+
+func printJSON(value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(append(encoded, '\n'))
+	return err
 }
 
 func usage() {

@@ -15,6 +15,25 @@ Inspect the current inventory:
 curl http://127.0.0.1:8787/v1/machines
 ```
 
+For a host that is reachable through the operator's SSH configuration, pairing
+can collect the same profile without manually copying fields. The remote
+command is fixed to `cicada machine discover`; it emits JSON only, and the
+local command submits the profile through the authenticated Control API:
+
+```bash
+cicada machine pair --host gpu2.example --user runner --id gpu2 \
+  --name 'GPU server 2' --control-url https://control.example
+```
+
+`--identity-file` and `--port` select the SSH key and port when needed. Pairing
+uses `BatchMode` and a connection timeout, never asks for a password, and does
+not persist the SSH host or private key in the capability profile. The remote
+profile command is also useful for an explicit read-only check:
+
+```bash
+ssh gpu2.example cicada machine discover
+```
+
 A remote worker can register its own capabilities through `POST /v1/machines`,
 refresh liveness through `POST /v1/machines/MACHINE_ID/heartbeat`, and claim
 Workers assigned by Control. Goal
