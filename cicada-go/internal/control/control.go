@@ -919,7 +919,7 @@ func (c *Control) CreateIdea(input IdeaInput) (*store.Idea, error) {
 
 func validIdeaStatus(status string) bool {
 	switch status {
-	case "inbox", "researching", "parked", "ready", "started", "completed", "archived":
+	case "inbox", "captured", "researching", "assessed", "parked", "rejected", "approved", "planned", "started", "running", "blocked", "paused", "completed", "review", "archived", "ready":
 		return true
 	default:
 		return false

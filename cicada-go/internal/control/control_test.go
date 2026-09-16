@@ -808,6 +808,21 @@ func TestIdeaResearchCreatesNonExecutionGoal(t *testing.T) {
 	}
 }
 
+func TestIdeaLifecycleStatusesArePersistable(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	idea, err := controlPlane.CreateIdea(IdeaInput{Title: "lifecycle", Description: "track lifecycle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := []string{"captured", "assessed", "approved", "planned", "running", "blocked", "paused", "review", "archived"}
+	for _, status := range statuses {
+		updated, updateErr := controlPlane.UpdateIdea(idea.ID, status, "state="+status, "when="+status)
+		if updateErr != nil || updated.Status != status {
+			t.Fatalf("status %q was not persisted: idea=%#v err=%v", status, updated, updateErr)
+		}
+	}
+}
+
 func TestUnsupportedHarnessIsRejectedBeforeWorkerCreation(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "try unsupported harness", Harness: "unknown-harness"}); err == nil {
