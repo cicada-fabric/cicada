@@ -117,8 +117,10 @@ func DefaultConfig() Config {
 		}
 	}
 	connectorSecrets := map[string]string{}
-	if telegramSecret := strings.TrimSpace(os.Getenv("CICADA_CONNECTOR_SECRET_TELEGRAM")); telegramSecret != "" {
-		connectorSecrets["telegram"] = telegramSecret
+	for _, connector := range []string{"telegram", "email", "calendar", "x", "wechat", "qq"} {
+		if secret := strings.TrimSpace(os.Getenv("CICADA_CONNECTOR_SECRET_" + strings.ToUpper(connector))); secret != "" {
+			connectorSecrets[connector] = secret
+		}
 	}
 	return Config{
 		StateDir:               envOr("CICADA_STATE_DIR", "/state"),

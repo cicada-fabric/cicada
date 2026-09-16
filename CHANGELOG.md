@@ -54,6 +54,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Restart-safe inbound Telegram connector with a minimized normalized payload,
   connector-specific HMAC authentication, durable offsets, idempotent retries,
   and explicit event triage states.
+- Provider-neutral Email and Calendar webhook adapters with HMAC verification,
+  bounded JSON/iCalendar normalization, credential stripping, and idempotent
+  durable events.
 - Conservative snapshot garbage collection and an authenticated
   `cicada snapshot replicate` path for copying verified archives between
   independent Controls.

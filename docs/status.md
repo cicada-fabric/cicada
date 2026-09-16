@@ -33,6 +33,9 @@ Implemented in this line:
 - restart-safe Telegram Bot API ingestion with connector-specific
   authentication, atomic update offsets, normalized message payloads, and an
   explicit classified/linked/ignored/action-required triage API;
+- signed, bounded Email and Calendar ingress adapters with JSON/iCalendar
+  normalization, provider-envelope stripping, and durable idempotent triage
+  events;
 - policy-gated external action requests with domain and SSRF checks, credential
   field rejection, durable approval transitions, executor claim/complete state,
   append-only action audit events, and a bounded credential-free read-only HTTP

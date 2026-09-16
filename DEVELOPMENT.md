@@ -67,6 +67,10 @@ curl http://127.0.0.1:8787/healthz
 curl http://127.0.0.1:8787/v1/machines
 curl http://127.0.0.1:8787/v1/workers
 
+# Email and Calendar ingress use independent runtime-only connector secrets
+# (`CICADA_CONNECTOR_SECRET_EMAIL` and `CICADA_CONNECTOR_SECRET_CALENDAR`) and
+# sign the exact provider request bytes. See docs/information-connectors.md.
+
 # Run a bounded non-Codex command worker by passing an explicit argv array.
 curl -X POST http://127.0.0.1:8787/v1/goals \
   -H 'content-type: application/json' \

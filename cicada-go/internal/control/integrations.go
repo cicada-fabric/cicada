@@ -16,16 +16,31 @@ import (
 // IngestExternalEvent accepts signed connector webhooks. The body is stored
 // before routing so a transient downstream failure never loses an event.
 func (c *Control) IngestExternalEvent(connector, externalID, eventType, signature string, payload []byte, goalID string) (*store.ExternalEvent, error) {
+	return c.ingestExternalEvent(connector, externalID, eventType, signature, payload, payload, goalID)
+}
+
+// IngestNormalizedExternalEvent verifies the connector signature over the
+// provider body while persisting a bounded, provider-neutral payload. This is
+// used by concrete Email/Calendar adapters so credentials and arbitrary
+// provider envelopes never become durable Control data.
+func (c *Control) IngestNormalizedExternalEvent(connector, externalID, eventType, signature string, signedPayload, normalizedPayload []byte, goalID string) (*store.ExternalEvent, error) {
+	return c.ingestExternalEvent(connector, externalID, eventType, signature, signedPayload, normalizedPayload, goalID)
+}
+
+func (c *Control) ingestExternalEvent(connector, externalID, eventType, signature string, signedPayload, payload []byte, goalID string) (*store.ExternalEvent, error) {
 	connector = strings.TrimSpace(connector)
 	externalID = strings.TrimSpace(externalID)
 	eventType = strings.TrimSpace(eventType)
 	if connector == "" || externalID == "" || eventType == "" {
 		return nil, errors.New("connector, event id, and event type are required")
 	}
+	if len(signedPayload) == 0 || len(signedPayload) > 1<<20 {
+		return nil, errors.New("signed connector payload must be at most 1 MiB")
+	}
 	if len(payload) == 0 || len(payload) > 1<<20 || !json.Valid(payload) {
 		return nil, errors.New("payload must be valid JSON and at most 1 MiB")
 	}
-	if !validWebhookSignature(c.webhookSecret(connector), payload, signature) {
+	if !validWebhookSignature(c.webhookSecret(connector), signedPayload, signature) {
 		return nil, errors.New("invalid connector signature")
 	}
 	if goalID != "" {

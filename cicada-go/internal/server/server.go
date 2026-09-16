@@ -171,6 +171,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.federationMessages(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/connectors/email" {
+		h.emailConnector(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/connectors/calendar" {
+		h.calendarConnector(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/connectors/events" {
 		h.externalEvents(response, request)
 		return
