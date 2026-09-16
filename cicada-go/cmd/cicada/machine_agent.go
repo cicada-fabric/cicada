@@ -24,7 +24,7 @@ func runMachineAgent(args []string) error {
 	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
 	interval := flags.Duration("interval", machineAgentInterval(), "heartbeat interval")
-	once := flags.Bool("once", false, "register and send one heartbeat")
+	once := flags.Bool("once", false, "register, heartbeat, and process the current job queue once")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func runMachineAgent(args []string) error {
 	send := func() error {
 		capabilities := control.DiscoverMachineCapabilities()
 		capabilities["role"] = "worker"
-		capabilities["harnesses"] = []string{"codex", "shell"}
+		capabilities["harnesses"] = discoveredMachineHarnesses()
 		if err := machineAPI(ctx, base+"/v1/machines", http.MethodPost, map[string]any{
 			"id": *id, "name": *name, "status": "available", "capabilities": capabilities,
 		}); err != nil {
@@ -56,9 +56,38 @@ func runMachineAgent(args []string) error {
 			"status": "available", "capabilities": capabilities,
 		})
 	}
+	process := func() error {
+		jobs, err := pollMachineJobs(ctx, base, *id)
+		if err != nil {
+			return err
+		}
+		for _, job := range jobs {
+			claimed, claimErr := claimMachineJob(ctx, base, job)
+			if claimErr != nil {
+				// A second agent may have claimed the job between polling and
+				// claiming. Continue polling instead of treating that as a
+				// machine failure.
+				if machineAPIHasStatus(claimErr, http.StatusConflict) {
+					continue
+				}
+				return claimErr
+			}
+			result := executeMachineJobWithHeartbeats(ctx, base, *id, *interval, claimed)
+			if err := reportMachineJobReliably(ctx, base, claimed, result, *interval); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if err := send(); err != nil {
 		if *once {
 			return err
+		}
+		fmt.Fprintln(os.Stderr, err)
+	}
+	if err := process(); err != nil {
+		if *once {
+			return fmt.Errorf("process machine jobs: %w", err)
 		}
 		fmt.Fprintln(os.Stderr, err)
 	}
@@ -74,7 +103,30 @@ func runMachineAgent(args []string) error {
 		case <-ticker.C:
 			if err := send(); err != nil {
 				fmt.Fprintln(os.Stderr, err)
+				continue
 			}
+			if err := process(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+		}
+	}
+}
+
+func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID string, interval time.Duration, job machineJob) machineJobResult {
+	done := make(chan machineJobResult, 1)
+	go func() { done <- executeMachineJob(ctx, job) }()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case result := <-done:
+			return result
+		case <-ticker.C:
+			if err := machineAPI(ctx, base+"/v1/machines/"+url.PathEscape(machineID)+"/heartbeat", http.MethodPost, map[string]any{"status": "busy"}); err != nil {
+				fmt.Fprintln(os.Stderr, "machine heartbeat:", err)
+			}
+		case <-ctx.Done():
+			return machineJobResult{Status: "failed", Error: ctx.Err().Error()}
 		}
 	}
 }

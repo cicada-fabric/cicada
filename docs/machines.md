@@ -15,16 +15,18 @@ Inspect the current inventory:
 curl http://127.0.0.1:8787/v1/machines
 ```
 
-A remote worker can register its own capabilities through `POST /v1/machines`
-and refresh liveness through `POST /v1/machines/MACHINE_ID/heartbeat`. Goal
+A remote worker can register its own capabilities through `POST /v1/machines`,
+refresh liveness through `POST /v1/machines/MACHINE_ID/heartbeat`, and claim
+Workers assigned by Control. Goal
 resources use the same capability names: `os`, `arch`, `accelerator`,
 `min_memory_gb`, `harness`, and `required_harness`. Control excludes stale or
 unavailable records before selecting a machine; `max_load_1m`,
 `min_disk_free_gb`, `required_toolchains`, `required_container`, and
 `network_required` reject machines that cannot satisfy an explicit constraint.
 
-For a machine that can reach Control, the bundled agent performs registration
-and then sends the same non-secret profile on a heartbeat interval:
+For a machine that can reach Control, the bundled agent registers, sends the
+same non-secret profile on a heartbeat interval, and executes queued Codex or
+Shell Workers:
 
 ```bash
 CICADA_MACHINE_ID=gpu2 \
@@ -33,9 +35,12 @@ CICADA_CONTROL_URL=https://control.example \
 cicada machine agent --interval 30s
 ```
 
-Use `--once` for a provisioning check. The agent reads `CICADA_API_TOKEN` when
-Control authentication is enabled and reports transient failures on stderr
-before retrying; it never logs the token or private network addresses.
+Use `--once` to register and drain the jobs currently assigned to the Machine.
+The agent reads `CICADA_API_TOKEN` when Control authentication is enabled and
+retries result delivery without declaring the Machine available in between; it
+never logs the token or private network addresses. The complete execution and
+shared-workspace contract is in
+[`remote-execution.md`](remote-execution.md).
 
 The discovery code records executable paths and interface names, never command
 output, IP addresses, or credentials. GPU and disk probing have short

@@ -72,6 +72,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusOK, map[string]any{"workers": workers})
 		return
 	}
+	if strings.HasPrefix(request.URL.Path, "/v1/workers/") {
+		h.workerDispatch(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/threads/sessions" {
 		h.threadSessions(response, request)
 		return
@@ -836,8 +840,21 @@ func (h *Handler) machines(response http.ResponseWriter, request *http.Request) 
 
 func (h *Handler) machine(response http.ResponseWriter, request *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/machines/"), "/")
+	if len(parts) == 2 && parts[1] == "jobs" && request.Method == http.MethodGet && parts[0] != "" {
+		jobs, err := h.control.MachineJobs(parts[0])
+		if err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"jobs": jobs})
+		return
+	}
 	if len(parts) != 2 || parts[1] != "heartbeat" || request.Method != http.MethodPost || parts[0] == "" {
-		writeError(response, http.StatusNotFound, errors.New("machine heartbeat route not found"))
+		writeError(response, http.StatusNotFound, errors.New("machine route not found"))
 		return
 	}
 	var input struct {

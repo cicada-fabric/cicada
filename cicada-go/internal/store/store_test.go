@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
 )
@@ -20,6 +21,17 @@ func TestStorePersistsControlObjects(t *testing.T) {
 	}
 	if machine.Capabilities["harnesses"].([]any)[0] != "codex" {
 		t.Fatalf("machine capabilities were not decoded: %#v", machine.Capabilities)
+	}
+	if _, err := persistence.UpsertMachine("remote-test", "Remote", nil, "available"); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := persistence.MarkStaleMachines(time.Now().UTC().Add(time.Hour).Format(time.RFC3339))
+	if err != nil || len(stale) != 1 || stale[0] != "remote-test" {
+		t.Fatalf("stale sweep touched reserved local machines: ids=%v err=%v", stale, err)
+	}
+	local, err := persistence.GetMachine("worker-local")
+	if err != nil || local.Status != "available" {
+		t.Fatalf("local machine was marked stale: %#v err=%v", local, err)
 	}
 
 	goal, err := persistence.CreateGoal("goal_test", "run benchmark", "report evidence", "workspace only", 80, machine.ID, "monitor_test", "/workspace/goals/goal_test")
@@ -52,6 +64,24 @@ func TestStorePersistsControlObjects(t *testing.T) {
 	}
 	if len(commands) != 1 || commands[0].Status != "consumed" {
 		t.Fatalf("unexpected claimed commands: %#v", commands)
+	}
+	sibling, err := persistence.CreateWorker("worker_sibling", goal.ID, machine.ID, "/workspace/goals/goal_test/.sibling-message")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.EnqueueCommand(goal.ID, worker.ID, "first worker only"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.EnqueueCommand(goal.ID, sibling.ID, "sibling only"); err != nil {
+		t.Fatal(err)
+	}
+	commands, err = persistence.ClaimPendingCommandsForWorker(goal.ID, worker.ID)
+	if err != nil || len(commands) != 1 || commands[0].WorkerID != worker.ID {
+		t.Fatalf("worker-scoped claim returned %#v err=%v", commands, err)
+	}
+	pending, err := persistence.ListPendingCommands(goal.ID, sibling.ID)
+	if err != nil || len(pending) != 1 || pending[0].WorkerID != sibling.ID {
+		t.Fatalf("sibling command was consumed: %#v err=%v", pending, err)
 	}
 
 	approval, err := persistence.CreateApproval("approval_test", goal.ID, worker.ID, "item/commandExecution/requestApproval", map[string]any{"command": []string{"make", "test"}})

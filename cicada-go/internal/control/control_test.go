@@ -594,6 +594,12 @@ func TestMultipleWorkersCompleteGoalOnlyAfterEveryBranchFinishes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := controlPlane.ClaimRemoteWorker(second.ID, "worker-2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.CompleteRemoteWorker(second.ID, "worker-2", "completed", "REMOTE_READY", "remote-thread", ""); err != nil {
+		t.Fatal(err)
+	}
 	final := waitTestGoal(t, controlPlane, goal.ID)
 	workers, err := controlPlane.store.ListWorkersForGoal(goal.ID)
 	if err != nil || len(workers) != 2 {

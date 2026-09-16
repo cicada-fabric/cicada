@@ -41,6 +41,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   durable event history with reconnect offsets.
 - A `cicada machine agent` heartbeat process for registering remote execution
   hosts with non-secret capability profiles.
+- Atomic remote Worker dispatch through the machine agent, including queued job
+  polling, Codex/Shell execution, bounded result delivery, busy heartbeats,
+  retry-safe completion, and stale-machine requeue.
 - Bounded Shell workers with direct argv execution, capped output evidence, and
   secret-free child environments.
 - Registered manual Codex TUI sessions with audited, permission-gated message
@@ -52,6 +55,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Peer delivery no longer depends on matching local Contact IDs across two
   Control databases.
 - Runtime, image, and test configuration consistently select `gpt-5.5`.
+- Monitor and peer correction commands are consumed per Worker, preventing one
+  parallel branch from consuming a sibling's command.
 
 ## 0.2.0 — 2026-09-15
 

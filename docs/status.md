@@ -47,7 +47,9 @@ Implemented in this line:
   accelerator matching, including load, disk, toolchain, container, and
   network constraints.
 - machine agent registration and periodic capability heartbeats for remote
-  execution hosts, with runtime bearer-token injection.
+  execution hosts, plus atomic remote Worker polling, claim, Codex/Shell
+  execution, bounded result reporting, busy heartbeats, retry, and stale-host
+  requeue, with runtime bearer-token injection.
 - bounded personal, project, and execution Memory context in Worker prompts,
   labeled as reference data and persisted through the existing Memory API.
 - optional gpt-5.5 Intent Planner through the official Codex CLI, with a
@@ -64,9 +66,10 @@ Implemented in this line:
 - registered manual Codex TUI sessions with permission-gated, durable message
   delivery through the official `codex queue` command.
 
-The release deliberately keeps its boundaries explicit. Contact directory and
-rendezvous services, multi-peer relay routing, session ratcheting, an
-authenticated browser executor, external message/calendar connectors, additional harness
+The release deliberately keeps its boundaries explicit. Cross-machine
+workspace provisioning and migration, Contact directory and rendezvous
+services, multi-peer relay routing, session ratcheting, an authenticated
+browser executor, external message/calendar connectors, additional harness
 adapters, push, native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as

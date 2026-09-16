@@ -59,8 +59,9 @@ curl -X POST http://127.0.0.1:8787/v1/goals \
   -H 'content-type: application/json' \
   -d '{"objective":"Print the build marker","harness":"shell","resources":{"argv":["/usr/bin/printf","SHELL_READY\\n"]}}'
 
-# Register a remote execution machine and keep its capability profile alive.
-# The command can run under systemd, supervisord, or another process manager.
+# Register a remote execution machine, keep its profile alive, and execute the
+# Codex or Shell Workers that Control assigns to it. The remote host needs the
+# same workspace mount (or pre-provisioned contents) in this development line.
 CICADA_MACHINE_ID=remote-1 CICADA_CONTROL_URL=http://127.0.0.1:8787 \
   cicada machine agent --interval 30s
 ```
@@ -166,6 +167,9 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
 
 The post-quantum contact and envelope boundary is documented in
 `docs/e2ee.md`; it uses ML-KEM-768, ML-DSA-65, HKDF-SHA256, and AES-256-GCM.
+
+The remote claim/result protocol, secret boundary, workspace requirement, and
+failure semantics are documented in `docs/remote-execution.md`.
 
 For direct Control-to-Control delivery, set `CICADA_PEER_RELAY_URL` to the
 remote Control's `/v1/federation/messages` endpoint and set

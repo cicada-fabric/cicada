@@ -187,6 +187,8 @@ type Worker struct {
 	StartedAt    string `json:"started_at,omitempty"`
 	EndedAt      string `json:"ended_at,omitempty"`
 	LastError    string `json:"last_error,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	Prompt       string `json:"prompt,omitempty"`
 	ResponseFile string `json:"response_file"`
 	Workspace    string `json:"workspace"`
 	CreatedAt    string `json:"created_at"`
@@ -355,6 +357,8 @@ CREATE TABLE IF NOT EXISTS workers (
   started_at TEXT,
   ended_at TEXT,
   last_error TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  prompt TEXT NOT NULL DEFAULT '',
   response_file TEXT NOT NULL,
   workspace TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
@@ -620,6 +624,8 @@ CREATE INDEX IF NOT EXISTS thread_deliveries_created_idx ON thread_deliveries(cr
 		{"goals", "evidence_json", `ALTER TABLE goals ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'`},
 		{"goals", "outcome", `ALTER TABLE goals ADD COLUMN outcome TEXT NOT NULL DEFAULT ''`},
 		{"workers", "workspace", `ALTER TABLE workers ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
+		{"workers", "summary", `ALTER TABLE workers ADD COLUMN summary TEXT NOT NULL DEFAULT ''`},
+		{"workers", "prompt", `ALTER TABLE workers ADD COLUMN prompt TEXT NOT NULL DEFAULT ''`},
 		{"contacts", "remote_id", `ALTER TABLE contacts ADD COLUMN remote_id TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "aad", `ALTER TABLE peer_messages ADD COLUMN aad TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "transport_id", `ALTER TABLE peer_messages ADD COLUMN transport_id TEXT NOT NULL DEFAULT ''`},
@@ -778,7 +784,8 @@ func (s *Store) SetMachineStatus(id, status string) error {
 func (s *Store) MarkStaleMachines(cutoff string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id FROM machines WHERE last_seen < ? AND status <> 'offline'`, cutoff)
+	rows, err := s.db.Query(`SELECT id FROM machines
+WHERE last_seen < ? AND status <> 'offline' AND id NOT IN ('control-local', 'worker-local')`, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -797,7 +804,8 @@ func (s *Store) MarkStaleMachines(cutoff string) ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if _, err := s.db.Exec(`UPDATE machines SET status = 'offline' WHERE last_seen < ? AND status <> 'offline'`, cutoff); err != nil {
+	if _, err := s.db.Exec(`UPDATE machines SET status = 'offline'
+WHERE last_seen < ? AND status <> 'offline' AND id NOT IN ('control-local', 'worker-local')`, cutoff); err != nil {
 		return nil, err
 	}
 	return ids, nil
@@ -1818,11 +1826,11 @@ func (s *Store) CreateWorkerAtHarness(id, goalID, machineID, harness, responseFi
 func (s *Store) getWorkerLocked(id string) (*Worker, error) {
 	var worker Worker
 	var pid sql.NullInt64
-	var threadID, startedAt, endedAt, lastError sql.NullString
+	var threadID, startedAt, endedAt, lastError, summary, prompt sql.NullString
 	err := s.db.QueryRow(`SELECT id, goal_id, machine_id, harness, status, pid, thread_id, attempt,
-	started_at, ended_at, last_error, response_file, workspace, created_at, updated_at FROM workers WHERE id = ?`, id).
+	started_at, ended_at, last_error, summary, prompt, response_file, workspace, created_at, updated_at FROM workers WHERE id = ?`, id).
 		Scan(&worker.ID, &worker.GoalID, &worker.MachineID, &worker.Harness, &worker.Status, &pid, &threadID, &worker.Attempt,
-			&startedAt, &endedAt, &lastError, &worker.ResponseFile, &worker.Workspace, &worker.CreatedAt, &worker.UpdatedAt)
+			&startedAt, &endedAt, &lastError, &summary, &prompt, &worker.ResponseFile, &worker.Workspace, &worker.CreatedAt, &worker.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1833,7 +1841,8 @@ func (s *Store) getWorkerLocked(id string) (*Worker, error) {
 		value := int(pid.Int64)
 		worker.PID = &value
 	}
-	worker.ThreadID, worker.StartedAt, worker.EndedAt, worker.LastError = threadID.String, startedAt.String, endedAt.String, lastError.String
+	worker.ThreadID, worker.StartedAt, worker.EndedAt = threadID.String, startedAt.String, endedAt.String
+	worker.LastError, worker.Summary, worker.Prompt = lastError.String, summary.String, prompt.String
 	return &worker, nil
 }
 
@@ -1971,6 +1980,8 @@ type WorkerUpdate struct {
 	StartedAt *string
 	EndedAt   *string
 	LastError *string
+	Summary   *string
+	Prompt    *string
 }
 
 func (s *Store) UpdateWorker(id string, update WorkerUpdate) (*Worker, error) {
@@ -2005,6 +2016,14 @@ func (s *Store) UpdateWorker(id string, update WorkerUpdate) (*Worker, error) {
 	if update.LastError != nil {
 		assignments = append(assignments, "last_error = ?")
 		args = append(args, *update.LastError)
+	}
+	if update.Summary != nil {
+		assignments = append(assignments, "summary = ?")
+		args = append(args, *update.Summary)
+	}
+	if update.Prompt != nil {
+		assignments = append(assignments, "prompt = ?")
+		args = append(args, *update.Prompt)
 	}
 	args = append(args, id)
 	s.mu.Lock()
@@ -2149,6 +2168,45 @@ func (s *Store) ClaimPendingCommands(goalID string) ([]Command, error) {
 			return nil, err
 		}
 		result = append(result, *command)
+	}
+	return result, nil
+}
+
+// ListPendingCommands returns monitor messages without consuming them. Remote
+// agents use this during polling; ClaimPendingCommandsForWorker performs the
+// durable consume when the worker is actually claimed.
+func (s *Store) ListPendingCommands(goalID, workerID string) ([]Command, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT id FROM commands WHERE goal_id = ? AND status = 'pending'
+AND (worker_id = ? OR worker_id IS NULL) ORDER BY id`, goalID, nullableString(workerID))
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]Command, 0, len(ids))
+	for _, id := range ids {
+		command, err := s.getCommandLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if command != nil {
+			result = append(result, *command)
+		}
 	}
 	return result, nil
 }

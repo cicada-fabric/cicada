@@ -237,6 +237,12 @@ func (c *Control) Start() error {
 		return err
 	}
 	for _, worker := range workers {
+		if !isLocalMachine(worker.MachineID) {
+			queued := "queued"
+			_, _ = c.store.UpdateWorker(worker.ID, store.WorkerUpdate{Status: &queued, ClearPID: true, LastError: stringPtr("awaiting remote machine")})
+			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerAwaitingMachine", map[string]any{"machine_id": worker.MachineID, "reason": "control restarted"})
+			continue
+		}
 		status := "recovering"
 		_, _ = c.store.UpdateWorker(worker.ID, store.WorkerUpdate{
 			Status: &status, ClearPID: true,
@@ -313,7 +319,7 @@ func (c *Control) evaluateMonitors() {
 	c.evaluateParentGoals()
 	if c.config.MachineStaleAfter > 0 {
 		cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
-		_, _ = c.store.MarkStaleMachines(cutoff)
+		c.markStaleMachines(cutoff)
 	}
 	goals, err := c.store.ListGoals()
 	if err != nil {
@@ -409,8 +415,16 @@ func (c *Control) Machines() ([]store.Machine, error) {
 }
 
 func (c *Control) RegisterMachine(id, name string, capabilities map[string]any, status string) (*store.Machine, error) {
-	if strings.TrimSpace(id) == "" || strings.TrimSpace(name) == "" {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if id == "" || name == "" {
 		return nil, errors.New("machine id and name are required")
+	}
+	if !validMachineID(id) {
+		return nil, errors.New("machine id must contain 1-128 letters, digits, dots, underscores, colons, or hyphens")
+	}
+	if isLocalMachine(id) {
+		return nil, errors.New("machine id is reserved by Control")
 	}
 	if status == "" {
 		status = "available"
@@ -419,6 +433,20 @@ func (c *Control) RegisterMachine(id, name string, capabilities map[string]any, 
 		return nil, fmt.Errorf("unsupported machine status: %s", status)
 	}
 	return c.store.UpsertMachine(id, name, capabilities, status)
+}
+
+func validMachineID(id string) bool {
+	if len(id) == 0 || len(id) > 128 {
+		return false
+	}
+	for _, character := range id {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || strings.ContainsRune("._:-", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (c *Control) HeartbeatMachine(id, status string, capabilities map[string]any) (*store.Machine, error) {
@@ -458,7 +486,28 @@ func (c *Control) sweepStaleMachines() {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
-	_, _ = c.store.MarkStaleMachines(cutoff)
+	c.markStaleMachines(cutoff)
+}
+
+func (c *Control) markStaleMachines(cutoff string) {
+	machineIDs, err := c.store.MarkStaleMachines(cutoff)
+	if err != nil {
+		return
+	}
+	for _, machineID := range machineIDs {
+		workers, requeueErr := c.store.RequeueRunningWorkersForMachine(machineID, "remote machine heartbeat expired")
+		if requeueErr != nil {
+			continue
+		}
+		for _, worker := range workers {
+			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerRecoveryStarted", map[string]any{
+				"reason": "remote machine heartbeat expired", "machine_id": machineID,
+			})
+			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerAwaitingMachine", map[string]any{
+				"reason": "remote machine offline", "machine_id": machineID,
+			})
+		}
+	}
 }
 
 func (c *Control) Workers() ([]store.Worker, error) { return c.store.ListWorkers() }
@@ -1317,7 +1366,7 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 		return nil, err
 	}
 	if worker != nil {
-		if _, err := c.store.AppendEvent(goalID, worker.ID, "WorkerQueued", map[string]any{"harness": "codex"}); err != nil {
+		if _, err := c.store.AppendEvent(goalID, worker.ID, "WorkerQueued", map[string]any{"harness": worker.Harness}); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1327,7 +1376,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 		_, _ = c.store.AppendEvent(goalID, "", "MonitorGoalStarted", map[string]any{"parent_goal_id": input.ParentGoalID})
 	}
 	if worker != nil {
-		c.launchWorker(worker.ID, "")
+		if isLocalMachine(machineID) {
+			c.launchWorker(worker.ID, "")
+		} else {
+			_, _ = c.store.AppendEvent(goalID, worker.ID, "WorkerAwaitingMachine", map[string]any{"machine_id": machineID})
+		}
 	}
 	if parent != nil {
 		_, _ = c.store.AppendEvent(parent.ID, "", "ChildGoalCreated", map[string]any{"child_goal_id": goalID})
@@ -1406,7 +1459,14 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	if prompt == "" {
 		prompt = c.initialPrompt(*goal)
 	}
-	c.launchWorker(worker.ID, prompt)
+	if _, err := c.store.UpdateWorker(worker.ID, store.WorkerUpdate{Prompt: &prompt}); err != nil {
+		return nil, err
+	}
+	if isLocalMachine(machineID) {
+		c.launchWorker(worker.ID, prompt)
+	} else {
+		_, _ = c.store.AppendEvent(goalID, worker.ID, "WorkerAwaitingMachine", map[string]any{"machine_id": machineID})
+	}
 	return c.store.GetWorker(worker.ID)
 }
 
@@ -1691,14 +1751,21 @@ func (c *Control) SendThreadMessage(fromWorkerID, toWorkerID, message string) (*
 			return nil, fmt.Errorf("destination machine is not available: %s", to.MachineID)
 		}
 		queued := "queued"
-		if _, err := c.store.UpdateWorker(to.ID, store.WorkerUpdate{Status: &queued, ClearPID: true, LastError: stringPtr("")}); err != nil {
+		if _, err := c.store.UpdateWorker(to.ID, store.WorkerUpdate{
+			Status: &queued, ClearPID: true, LastError: stringPtr(""),
+			Summary: stringPtr(""), Prompt: &peerPrompt,
+		}); err != nil {
 			return nil, err
 		}
 		if _, err := c.store.UpdateGoal(to.GoalID, queued, toGoal.Summary); err != nil {
 			return nil, err
 		}
 		_, _ = c.store.AppendEvent(to.GoalID, toWorkerID, "PeerMessageDispatched", map[string]any{"message_id": sent.ID})
-		c.launchWorker(toWorkerID, peerPrompt)
+		if isLocalMachine(to.MachineID) {
+			c.launchWorker(toWorkerID, peerPrompt)
+		} else {
+			_, _ = c.store.AppendEvent(to.GoalID, toWorkerID, "WorkerAwaitingMachine", map[string]any{"machine_id": to.MachineID, "reason": "peer message"})
+		}
 		status = "dispatched"
 	}
 	return &ThreadMessage{
@@ -1805,12 +1872,13 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 			return
 		}
 		if result.ExitCode == 0 {
-			commands, commandErr := c.store.ClaimPendingCommands(goal.ID)
+			commands, commandErr := c.store.ClaimPendingCommandsForWorker(goal.ID, workerID)
 			if commandErr != nil {
 				c.finishFailure(goal, workerID, attempt, commandErr.Error())
 				return
 			}
 			if len(commands) > 0 {
+				_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Summary: stringPtr("")})
 				_, _ = c.store.AppendEvent(goal.ID, workerID, "MonitorCommandSent", map[string]any{"count": len(commands)})
 				_ = c.store.TouchMonitor(goal.MonitorID, "active")
 				parts := make([]string, 0, len(commands))
@@ -1821,7 +1889,10 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 				recoveryPrompt = ""
 				continue
 			}
-			summary := readSummary(worker.ResponseFile)
+			summary := strings.TrimSpace(worker.Summary)
+			if summary == "" {
+				summary = readSummary(worker.ResponseFile)
+			}
 			artifact, artifactErr := c.store.CreateArtifact(store.Artifact{
 				GoalID: goal.ID, WorkerID: workerID, Name: "worker-final-message",
 				Path: worker.ResponseFile, Kind: "worker-summary", Evidence: summary,
@@ -1832,7 +1903,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 				})
 			}
 			completed := "completed"
-			_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Status: &completed, ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: stringPtr("")})
+			_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{Status: &completed, ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: stringPtr(""), Summary: &summary})
 			evidence := []any{}
 			if artifact != nil {
 				evidence = append(evidence, map[string]any{"artifact_id": artifact.ID, "kind": artifact.Kind, "path": artifact.Path})
@@ -1904,7 +1975,10 @@ func (c *Control) completeGoalWhenWorkersFinish(goal *store.Goal, workerID, curr
 	}
 	summaries := make([]string, 0, len(workers))
 	for _, worker := range workers {
-		summary := strings.TrimSpace(readSummary(worker.ResponseFile))
+		summary := strings.TrimSpace(worker.Summary)
+		if summary == "" {
+			summary = strings.TrimSpace(readSummary(worker.ResponseFile))
+		}
 		if summary == "" && worker.ID == workerID {
 			summary = strings.TrimSpace(currentSummary)
 		}

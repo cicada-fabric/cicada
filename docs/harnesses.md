@@ -15,5 +15,8 @@ The Shell harness accepts only `resources.argv`, a bounded string array. It
 executes the program directly without a shell, captures at most 512 KiB of
 combined stdout/stderr as evidence, and strips relay/API/connector secrets from
 the child environment. The `shell.execute` permission can deny the executable
-before launch. Claude, OpenCode, Happy Agent, and browser adapters can be added
+before launch. Both Codex and Shell can execute through a remote
+[`machine agent`](remote-execution.md); remote Codex keeps only the model
+credential it needs and always selects `gpt-5.5`. Claude, OpenCode, Happy Agent,
+and browser adapters can be added
 behind the same boundary in later branches.

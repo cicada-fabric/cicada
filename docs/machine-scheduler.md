@@ -19,6 +19,14 @@ capability keys, required harnesses, accelerator/OS/architecture values,
 `required_container`, and `network_required`. Toolchain and container
 constraints accept either one command name or a list of names.
 
+Workers selected for `control-local` or `worker-local` are launched by Control.
+Workers selected for any other Machine remain durably queued until that
+Machine's agent polls and atomically claims them. The agent reports completion,
+failure, bounded evidence, and the Codex thread ID back to the same Goal state
+machine. If a remote heartbeat expires, Control marks the Machine offline and
+requeues its running Workers for recovery; the two reserved local Machines are
+never marked stale by the remote heartbeat sweep.
+
 For example:
 
 ```json
@@ -36,6 +44,6 @@ For example:
 ```
 
 The periodic monitor loop records a `MonitorEvaluated` event for active running
-workers. Its correction policy remains conservative in this release: automatic
-commands are still generated only from explicit monitor/API input, while the
-evaluation hook is ready for progress and stall policies.
+workers. Its correction policy remains conservative: it queues a bounded stall
+correction after the configured inactivity threshold, and explicit API or peer
+commands use the same per-Worker command queue.
