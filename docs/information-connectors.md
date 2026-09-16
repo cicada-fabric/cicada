@@ -59,3 +59,8 @@ After approval, `POST /v1/actions/ACTION_ID/reply` sends the bounded normalized
 JSON body to the callback with `X-Cicada-Signature` computed from the connector
 secret and no provider credentials. The callback process owns OAuth or bot
 tokens and is responsible for the provider API call.
+
+Replies may use `email`, `calendar`, `telegram`, `x`, `wechat`, `qq`, `slack`,
+or `discord` as the connector name. Slack and Discord callbacks remain
+operator-owned adapters: Control signs the normalized body but never stores a
+Slack bot token, Discord token, or provider cookie.

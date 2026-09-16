@@ -87,6 +87,9 @@ func TestClientIncludesProgressiveVoiceInput(t *testing.T) {
 	if !strings.Contains(string(data), "SpeechRecognition") || !strings.Contains(string(data), "webkitSpeechRecognition") {
 		t.Fatal("client voice input integration is missing")
 	}
+	if !strings.Contains(string(data), "speechSynthesis") {
+		t.Fatal("client voice output integration is missing")
+	}
 }
 
 func TestClientIncludesPushSubscriptionIntegration(t *testing.T) {
