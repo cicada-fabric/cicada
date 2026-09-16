@@ -11,6 +11,8 @@ Implemented in this line:
   Artifacts, Events, Notifications, Approvals, Machines, Monitors, and Workers;
 - Native Codex app-server workers using the official CLI and `gpt-5.5` through
   the configured relay;
+- bounded Shell workers with explicit argv execution, capped evidence output,
+  secret-free child environments, and `shell.execute` permission checks;
 - machine capability scheduling, heartbeats, stale-machine handling, worker
   recovery, deadlines, runtime/worker budgets, and conservative monitor
   correction;

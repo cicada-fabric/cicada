@@ -46,7 +46,7 @@ func runMachineAgent(args []string) error {
 	send := func() error {
 		capabilities := control.DiscoverMachineCapabilities()
 		capabilities["role"] = "worker"
-		capabilities["harnesses"] = []string{"codex"}
+		capabilities["harnesses"] = []string{"codex", "shell"}
 		if err := machineAPI(ctx, base+"/v1/machines", http.MethodPost, map[string]any{
 			"id": *id, "name": *name, "status": "available", "capabilities": capabilities,
 		}); err != nil {

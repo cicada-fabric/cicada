@@ -467,6 +467,33 @@ func TestSchedulerMatchesMachineCapabilitiesAndHeartbeat(t *testing.T) {
 	}
 }
 
+func TestShellHarnessCapturesOutputWithoutRelaySecrets(t *testing.T) {
+	t.Setenv("API_KEY", "must-not-reach-shell")
+	controlPlane := newTestControl(t, "success")
+	goal, err := controlPlane.CreateGoal(GoalInput{
+		Objective: "run a bounded command",
+		Harness:   "shell",
+		Resources: map[string]any{"argv": []any{"/usr/bin/env"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal = waitTestGoal(t, controlPlane, goal.ID)
+	if goal.Status != "completed" {
+		t.Fatalf("shell goal did not complete safely: status=%s summary=%q", goal.Status, goal.Summary)
+	}
+	if strings.Contains(goal.Summary, "must-not-reach-shell") || strings.Contains(goal.Summary, "API_KEY=") {
+		t.Fatalf("shell worker leaked a secret environment variable: %q", goal.Summary)
+	}
+}
+
+func TestShellHarnessRequiresArgv(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "missing command", Harness: "shell"}); err == nil {
+		t.Fatal("shell goal without argv was accepted")
+	}
+}
+
 func TestWorkspaceLifecycleActions(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	workspace, err := controlPlane.CreateWorkspace(WorkspaceInput{Path: filepath.Join(controlPlane.config.WorkspaceRoot, "source"), Source: "manual"})

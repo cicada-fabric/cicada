@@ -219,7 +219,7 @@ func (c *Control) registerLocalMachines() error {
 	}
 	capabilities := discoverLocalCapabilities()
 	capabilities["role"] = "control"
-	capabilities["harnesses"] = []string{"codex"}
+	capabilities["harnesses"] = []string{"codex", "shell"}
 	_, err = c.store.UpsertMachine("control-local", "Control ("+hostname+")", capabilities, "available")
 	if err != nil {
 		return err
@@ -1228,8 +1228,8 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if harness == "" {
 		harness = "codex"
 	}
-	if harness != "codex" {
-		return nil, fmt.Errorf("harness %q is not installed; current release supports codex", harness)
+	if harness != "codex" && harness != "shell" {
+		return nil, fmt.Errorf("harness %q is not installed; current release supports codex and shell", harness)
 	}
 	input.ParentGoalID = strings.TrimSpace(input.ParentGoalID)
 	var parent *store.Goal
@@ -1257,6 +1257,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	resources := input.Resources
 	if resources == nil {
 		resources = map[string]any{}
+	}
+	if harness == "shell" {
+		if _, argvErr := shellArgv(resources["argv"]); argvErr != nil {
+			return nil, argvErr
+		}
 	}
 	if _, exists := resources["required_harness"]; !exists {
 		resources["required_harness"] = harness
@@ -1361,12 +1366,17 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	if harness == "" {
 		harness = "codex"
 	}
-	if harness != "codex" {
-		return nil, fmt.Errorf("harness %q is not installed; current release supports codex", harness)
+	if harness != "codex" && harness != "shell" {
+		return nil, fmt.Errorf("harness %q is not installed; current release supports codex and shell", harness)
 	}
 	resources := input.Resources
 	if resources == nil {
 		resources = map[string]any{}
+	}
+	if harness == "shell" {
+		if _, argvErr := shellArgv(goal.Resources["argv"]); argvErr != nil {
+			return nil, fmt.Errorf("shell worker requires goal resources.argv: %w", argvErr)
+		}
 	}
 	if _, exists := resources["required_harness"]; !exists {
 		resources["required_harness"] = harness
@@ -1484,8 +1494,9 @@ func machineMatches(machine store.Machine, resources map[string]any) bool {
 			if !ok || !networkOK || !available || availableValue != requiredValue {
 				return false
 			}
-		case "attachments":
-			// Attachments are Goal context, not a machine capability.
+		case "attachments", "argv":
+			// Goal context and harness execution arguments are not machine
+			// capabilities.
 			continue
 		default:
 			actual, exists := machine.Capabilities[key]
@@ -1782,7 +1793,7 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 		_, _ = c.store.AppendEvent(goal.ID, workerID, "WorkerStarted", map[string]any{
 			"attempt": attempt, "prompt_kind": map[bool]string{true: "recovery", false: "goal"}[recoveryPrompt != ""],
 		})
-		result := c.runCodex(ctx, *goal, workerID, prompt)
+		result := c.runWorker(ctx, *goal, workerID, prompt)
 		if result.ThreadID != "" {
 			_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{ThreadID: &result.ThreadID})
 		}

@@ -54,6 +54,11 @@ curl http://127.0.0.1:8787/healthz
 curl http://127.0.0.1:8787/v1/machines
 curl http://127.0.0.1:8787/v1/workers
 
+# Run a bounded non-Codex command worker by passing an explicit argv array.
+curl -X POST http://127.0.0.1:8787/v1/goals \
+  -H 'content-type: application/json' \
+  -d '{"objective":"Print the build marker","harness":"shell","resources":{"argv":["/usr/bin/printf","SHELL_READY\\n"]}}'
+
 # Register a remote execution machine and keep its capability profile alive.
 # The command can run under systemd, supervisord, or another process manager.
 CICADA_MACHINE_ID=remote-1 CICADA_CONTROL_URL=http://127.0.0.1:8787 \
