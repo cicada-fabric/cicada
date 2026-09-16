@@ -30,7 +30,7 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		{path: "/", contentType: "text/html", contains: "Ask Cicada"},
 		{path: "/assets/app.css", contentType: "text/css", contains: ".stats"},
 		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
-		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "artifacts"},
+		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "Execution graph"},
 		{path: "/assets/attachments.js", contentType: "text/javascript", contains: "content_base64"},
 		{path: "/assets/events.js", contentType: "text/javascript", contains: "EventSource"},
 		{path: "/assets/push.js", contentType: "text/javascript", contains: "PushManager"},

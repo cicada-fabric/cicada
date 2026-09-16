@@ -10,13 +10,14 @@ function detailList(items, render, empty = 'None recorded.') {
 function renderGoalDetail(panel, data) {
   const {goal, events, workers, artifacts, workspaces, actions} = data;
   const eventItems = detailList(events, event => `<li><strong>${detailEscape(event.type)}</strong><span>${detailEscape(event.created_at)}</span><pre>${detailJSON(event.payload)}</pre></li>`);
-  const workerItems = detailList(workers, worker => `<li><strong>${detailEscape(worker.harness)}</strong><span>${detailEscape(worker.status)}</span><small>${detailEscape(worker.id)}</small></li>`);
+  const workerItems = detailList(workers, worker => `<li><strong>${detailEscape(worker.harness)}</strong><span>${detailEscape(worker.status)}</span><small>${detailEscape(worker.id)}${worker.thread_id ? ` · thread ${detailEscape(worker.thread_id)}` : ''}</small></li>`);
+  const monitor = goal.monitor ? `<p><strong>Monitor</strong><span>${detailEscape(goal.monitor.status)}</span><small>${detailEscape(goal.monitor.id)}</small></p>` : '<p class="muted">No monitor assigned.</p>';
   const artifactItems = detailList(artifacts, artifact => `<li><strong>${detailEscape(artifact.name)}</strong><span>${detailEscape(artifact.kind)}</span><small>${detailEscape(artifact.path)}</small></li>`);
   const workspaceItems = detailList(workspaces, workspace => `<li><strong>${detailEscape(workspace.status)}</strong><small>${detailEscape(workspace.path)}</small></li>`);
   const actionItems = detailList(actions, action => `<li><strong>${detailEscape(action.kind)}</strong><span>${detailEscape(action.status)}</span><small>${detailEscape(action.url)}</small></li>`);
   panel.innerHTML = `<div class="detail-grid">
     <div><h3>Conclusion</h3><p class="summary">${detailEscape(goal.outcome || goal.summary || goal.current_state || 'No conclusion yet.')}</p><p class="meta">${detailEscape(goal.success_criteria || 'No success criteria recorded.')}</p></div>
-    <div><h3>Execution</h3>${workerItems}</div>
+    <div><h3>Execution graph</h3>${monitor}${workerItems}</div>
     <div><h3>Artifacts</h3>${artifactItems}</div>
     <div><h3>Workspaces</h3>${workspaceItems}</div>
     <div><h3>External actions</h3>${actionItems}</div>
