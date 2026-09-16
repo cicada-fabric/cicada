@@ -72,12 +72,20 @@ function renderNotifications(notifications) {
     <article class="notice ${escapeHTML(item.priority)}">
       <header><div><strong>${escapeHTML(item.title)}</strong><p class="meta">${escapeHTML(readableTime(item.created_at))}</p></div><span class="badge">${escapeHTML(item.priority)}</span></header>
       <p class="summary">${escapeHTML(item.body)}</p>
+      <button class="secondary" data-speak="${escapeHTML(`${item.title}. ${item.body}`)}" type="button">Read aloud</button>
       <button class="secondary" data-read="${escapeHTML(item.id)}">Acknowledge</button>
     </article>`).join('');
   target.querySelectorAll('[data-read]').forEach(button => {
     button.addEventListener('click', async () => {
       try { await api(`/v1/notifications/${button.dataset.read}/read`, {method: 'POST'}); await refresh(); }
       catch (error) { showMessage(error.message, true); }
+    });
+  });
+  target.querySelectorAll('[data-speak]').forEach(button => {
+    button.addEventListener('click', () => {
+      try {
+        window.CicadaVoice?.speak(button.dataset.speak);
+      } catch (error) { showMessage(error.message, true); }
     });
   });
 }

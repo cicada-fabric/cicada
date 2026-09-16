@@ -38,7 +38,7 @@ func (c *Control) RequestExternalReply(input ExternalReplyInput) (*store.Externa
 		return nil, errors.New("connector is required")
 	}
 	switch connector {
-	case "email", "calendar", "telegram", "x", "wechat", "qq":
+	case "email", "calendar", "telegram", "x", "wechat", "qq", "slack", "discord":
 	default:
 		return nil, fmt.Errorf("unsupported reply connector: %s", connector)
 	}

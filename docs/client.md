@@ -29,8 +29,10 @@ upload.
 On browsers that expose `SpeechRecognition`, **Speak** adds a dictated intent
 to the same text field. Audio is handled by the browser's speech implementation
 and is never uploaded to Control as an attachment; browser vendors may apply
-their own local or remote speech-processing policy. Browsers without the API
-keep the text form fully usable.
+their own local or remote speech-processing policy. Notifications also offer a
+user-triggered **Read aloud** action backed by the browser's `speechSynthesis`
+API, so Cicada never starts audio without an explicit gesture. Browsers without
+these APIs keep the text form and visual notification list fully usable.
 
 The web client is installable as a small PWA. Its service worker caches only
 the embedded HTML/CSS/JavaScript and manifest; it never caches `/v1` responses,
@@ -46,6 +48,7 @@ the generated HTML or written to Control storage.
 The embedded client uses separate HTML, CSS, and JavaScript source files with a
 strict Content Security Policy. It has no package manager or asset build step.
 This page covers the browser-based Goal overview, Approval UX, remote status,
-attachments, on-demand Goal detail slice, browser speech input, and encrypted
-VAPID browser Push delivery. Native mobile and device-local voice processing
-remain future work.
+attachments, on-demand Goal detail slice, browser speech input/output, and
+encrypted VAPID browser Push delivery. A browser/PWA is the current mobile
+client; a separately packaged native mobile client and fully model-local voice
+pipeline remain future work.

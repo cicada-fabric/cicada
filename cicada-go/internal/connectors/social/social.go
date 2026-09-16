@@ -1,4 +1,4 @@
-// Package social normalizes inbound X, WeChat, and QQ message webhooks before
+// Package social normalizes inbound X, WeChat, QQ, Slack, and Discord message webhooks before
 // they enter Control. Provider envelopes, credentials, and unknown fields are
 // intentionally discarded at this boundary.
 package social
@@ -15,7 +15,9 @@ import (
 
 const MaxMessageBytes = 1 << 20
 
-var supportedProviders = map[string]bool{"x": true, "wechat": true, "qq": true}
+var supportedProviders = map[string]bool{
+	"x": true, "wechat": true, "qq": true, "slack": true, "discord": true,
+}
 
 // Normalize returns an idempotency key, a normalized event type, and a small
 // provider-neutral payload. It accepts either a direct event object or a

@@ -24,10 +24,32 @@ func TestNormalizeSocialEnvelope(t *testing.T) {
 }
 
 func TestNormalizeSocialRejectsUnknownProviderAndType(t *testing.T) {
-	if _, _, _, err := Normalize("slack", []byte(`{"id":"1"}`)); err == nil {
+	if _, _, _, err := Normalize("mastodon", []byte(`{"id":"1"}`)); err == nil {
 		t.Fatal("unknown provider accepted")
 	}
 	if _, _, _, err := Normalize("qq", []byte(`{"id":"1","type":"reaction.added"}`)); err == nil {
 		t.Fatal("unknown event type accepted")
+	}
+}
+
+func TestNormalizeSlackAndDiscordEnvelopes(t *testing.T) {
+	for _, test := range []struct {
+		provider string
+		body     string
+	}{
+		{provider: "slack", body: `{"event":{"event_id":"slack-1","type":"message","user":"alice","text":"hello","channel":"C1"}}`},
+		{provider: "discord", body: `{"data":{"id":"discord-1","author":{"id":"bob"},"content":"hello","channel_id":"D1"}}`},
+	} {
+		id, kind, payload, err := Normalize(test.provider, []byte(test.body))
+		if err != nil || id == "" || kind != "message.created" {
+			t.Fatalf("%s normalize id=%q kind=%q err=%v", test.provider, id, kind, err)
+		}
+		var value map[string]any
+		if err := json.Unmarshal(payload, &value); err != nil {
+			t.Fatal(err)
+		}
+		if value["provider"] != test.provider || value["text"] != "hello" {
+			t.Fatalf("%s normalized payload=%#v", test.provider, value)
+		}
 	}
 }

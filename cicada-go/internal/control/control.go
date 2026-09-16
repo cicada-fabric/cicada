@@ -121,7 +121,7 @@ func DefaultConfig() Config {
 		}
 	}
 	connectorSecrets := map[string]string{}
-	for _, connector := range []string{"telegram", "email", "calendar", "x", "wechat", "qq"} {
+	for _, connector := range []string{"telegram", "email", "calendar", "x", "wechat", "qq", "slack", "discord"} {
 		if secret := strings.TrimSpace(os.Getenv("CICADA_CONNECTOR_SECRET_" + strings.ToUpper(connector))); secret != "" {
 			connectorSecrets[connector] = secret
 		}

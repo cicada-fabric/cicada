@@ -207,6 +207,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.socialConnector(response, request, "qq")
 		return
 	}
+	if request.URL.Path == "/v1/connectors/slack" {
+		h.socialConnector(response, request, "slack")
+		return
+	}
+	if request.URL.Path == "/v1/connectors/discord" {
+		h.socialConnector(response, request, "discord")
+		return
+	}
 	if request.URL.Path == "/v1/connectors/replies" {
 		h.connectorReply(response, request)
 		return

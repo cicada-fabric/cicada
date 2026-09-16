@@ -1,5 +1,8 @@
 # Changelog
 
+- Added signed Slack and Discord ingress/reply connector routes alongside the
+  existing social adapters.
+
 This file records user-visible changes by release line. `VERSION` and the Go
 `buildinfo` package identify the running build; Git tags identify releases.
 

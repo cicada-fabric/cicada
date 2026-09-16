@@ -1,6 +1,6 @@
 # Information connectors
 
-Control accepts provider-neutral Email, Calendar, X, WeChat, and QQ events
+Control accepts provider-neutral Email, Calendar, X, WeChat, QQ, Slack, and Discord events
 through dedicated HMAC-protected endpoints. The adapters run before
 persistence, enforce a 1 MiB body limit, derive an idempotent external ID, and
 retain only triage fields; provider envelopes, credentials, cookies, and
@@ -14,12 +14,15 @@ CICADA_CONNECTOR_SECRET_CALENDAR=independent-calendar-webhook-secret
 CICADA_CONNECTOR_SECRET_X=independent-x-webhook-secret
 CICADA_CONNECTOR_SECRET_WECHAT=independent-wechat-webhook-secret
 CICADA_CONNECTOR_SECRET_QQ=independent-qq-webhook-secret
+CICADA_CONNECTOR_SECRET_SLACK=independent-slack-webhook-secret
+CICADA_CONNECTOR_SECRET_DISCORD=independent-discord-webhook-secret
 ```
 
 Sign the exact bytes sent by the provider with HMAC-SHA256 and send the result
 as `X-Cicada-Signature: sha256=<hex>` to `/v1/connectors/email` or
 `/v1/connectors/calendar`. The social adapters use the same signature header at
-`/v1/connectors/x`, `/v1/connectors/wechat`, and `/v1/connectors/qq`; they
+`/v1/connectors/x`, `/v1/connectors/wechat`, `/v1/connectors/qq`,
+`/v1/connectors/slack`, and `/v1/connectors/discord`; they
 accept direct provider events or a bounded `data`/`event` wrapper. Email accepts
 `message_id` or `id` and keeps
 sender, recipients, subject, plain text, thread, timestamp, and reply linkage.

@@ -38,4 +38,15 @@ function setupVoiceInput() {
   status.textContent = 'Voice input ready.';
 }
 
-window.CicadaVoice = {setup: setupVoiceInput};
+function speakLocal(text) {
+  const value = String(text || '').trim();
+  if (!value || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
+    throw new Error('Text-to-speech is unavailable in this browser.');
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(value);
+  utterance.lang = navigator.language || 'en-US';
+  window.speechSynthesis.speak(utterance);
+}
+
+window.CicadaVoice = {setup: setupVoiceInput, speak: speakLocal};

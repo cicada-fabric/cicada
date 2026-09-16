@@ -41,7 +41,7 @@ Implemented in this line:
 - signed, bounded Email and Calendar ingress adapters with JSON/iCalendar
   normalization, provider-envelope stripping, and durable idempotent triage
   events;
-- signed, bounded X, WeChat, and QQ ingress adapters with provider-envelope
+- signed, bounded X, WeChat, QQ, Slack, and Discord ingress adapters with provider-envelope
   stripping, idempotent normalized events, and a deterministic first-pass
   classifier that never links a Goal implicitly;
 - approval-backed connector reply actions with bounded normalized POST payloads,
@@ -75,8 +75,9 @@ Implemented in this line:
   attachment metadata carried into Goal resources.
 - installable Personal Client PWA shell with a static-only service worker that
   never caches API or private data.
-- progressive browser speech input for the Personal Client when the platform
-  exposes `SpeechRecognition`; audio is not sent to Control.
+- progressive browser speech input and user-triggered speech output for the
+  Personal Client when the platform exposes `SpeechRecognition` and
+  `speechSynthesis`; audio is not sent to Control.
 - authenticated, replayable Goal event streaming over Server-Sent Events for
   CLI and remote clients.
 - registered manual Codex TUI sessions with permission-gated, durable message
@@ -107,8 +108,9 @@ Implemented in this line:
   durable subscription registration, stale endpoint cleanup, and a Personal
   Client enablement flow.
 
-The release deliberately keeps its boundaries explicit. Native mobile and
-device-local voice channels remain the next feature lines. The external action
+The release deliberately keeps its boundaries explicit. The installable PWA is
+the current mobile client; native packaging and fully model-local voice
+channels remain the next feature lines. The external action
 queue is a safe Control boundary; it does not pretend to be a browser or grant
 an executor access to credentials.
 
