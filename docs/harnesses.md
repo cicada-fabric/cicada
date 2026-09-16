@@ -18,5 +18,7 @@ the child environment. The `shell.execute` permission can deny the executable
 before launch. Both Codex and Shell can execute through a remote
 [`machine agent`](remote-execution.md); remote Codex keeps only the model
 credential it needs and always selects `gpt-5.5`. Claude, OpenCode, Happy Agent,
-and browser adapters can be added
-behind the same boundary in later branches.
+and other Worker harnesses can be added behind the same boundary in later
+branches. Browser capabilities use the separate [`external agent`](external-actions.md)
+protocol; they are intentionally not exposed as a general-purpose Worker
+harness.

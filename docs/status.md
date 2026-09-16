@@ -74,12 +74,16 @@ Implemented in this line:
 - content-addressed workspace snapshots for remote result transfer and Worker
   recovery, with bounded archives, SHA-256 verification, safe extraction, and
   digest-carrying cross-Machine resume.
+- an isolated browser action agent with approval-gated claims, a credential-free
+  stdin/stdout runner contract, process-group timeouts, bounded JSON results,
+  and profile/HOME isolation; the concrete Chromium or Playwright runtime is
+  operator supplied.
 
 The release deliberately keeps its boundaries explicit. Snapshot garbage
 collection and cross-Control replication, Contact directory and rendezvous
 services, multi-peer relay routing, session ratcheting, an authenticated
-browser executor, external message/calendar connectors, additional harness
-adapters, push, native mobile, and local voice channels remain the next feature lines. The
+external message/calendar connectors, additional harness adapters, push,
+native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
 product work rather than hidden behind claims that the current Codex adapter

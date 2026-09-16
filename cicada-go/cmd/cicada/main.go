@@ -38,6 +38,15 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "external":
+		if len(os.Args) < 3 || os.Args[2] != "agent" {
+			fmt.Fprintln(os.Stderr, "usage: cicada external agent [options]")
+			os.Exit(2)
+		}
+		if err := runExternalAgent(os.Args[3:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	default:
 		usage()
 		os.Exit(2)
@@ -229,7 +238,7 @@ func requestJSON(url, method string, body any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|external|version")
 }
 
 func envOr(name, fallback string) string {

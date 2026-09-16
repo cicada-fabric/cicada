@@ -35,3 +35,35 @@ rebinding risk, and redirects are revalidated and cannot downgrade HTTPS.
 `external_api` requests remain queued for a separately isolated executor. The
 Control plane does not store or forward their credentials, and it does not
 claim that a public fetch is a browser session.
+
+## Isolated browser agent
+
+The repository includes a small external agent for browser actions. It claims
+only `browser`, `authenticated_browser`, and `form_fill` actions, then starts
+an operator-supplied runner as a separate process:
+
+```bash
+export CICADA_BROWSER_EXECUTOR_BIN=/opt/cicada/bin/browser-runner
+export CICADA_BROWSER_PROFILE_DIR=/var/lib/cicada/browser-profile
+cicada external agent --control-url http://127.0.0.1:8787
+```
+
+Use `--once` for a single poll, which is convenient for a supervised service
+or a smoke test. The runner path must be absolute. A browser profile is
+required for authenticated browser and form-fill actions and is never stored
+in an action payload.
+
+The runner receives one JSON object on stdin and must write exactly one JSON
+value to stdout. The request contains `action_id`, `kind`, `method`, `url`,
+`payload`, and (when configured) `profile_dir`; it has no cookie, token,
+credential, or authorization-header field. The payload has already passed
+Control's secret-field validation. The agent gives the child a temporary
+`HOME` (or the explicitly configured profile), an allowlisted locale/display
+environment, and no API, proxy, Control, or model secrets. It does not invoke
+a shell and kills the whole process group on timeout. Runner output is capped
+at 1 MiB and must be valid JSON before it is sent to `/complete`.
+
+The agent does not install or select a browser implementation. Operators can
+wrap Chromium, Playwright, or another audited runtime behind the stdin/stdout
+contract and keep its cookies and login state in the isolated profile. Claim,
+completion, failure, and approval transitions remain durable Control events.

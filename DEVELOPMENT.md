@@ -116,6 +116,12 @@ curl -X POST http://127.0.0.1:8787/v1/actions/ACTION_ID/claim
 curl -X POST http://127.0.0.1:8787/v1/actions/ACTION_ID/complete \
   -H 'content-type: application/json' -d '{"result":{"status":"ok"}}'
 
+# Run the isolated browser action agent. Supply a concrete browser wrapper;
+# Control never receives its cookies or login state. Use --once for one poll.
+export CICADA_BROWSER_EXECUTOR_BIN=/opt/cicada/bin/browser-runner
+export CICADA_BROWSER_PROFILE_DIR=/var/lib/cicada/browser-profile
+cicada external agent --control-url http://127.0.0.1:8787 --once
+
 # Create a monitor-only coordinator and attach a child Goal. The coordinator
 # completes only after every child reaches a terminal state.
 curl -X POST http://127.0.0.1:8787/v1/goals \

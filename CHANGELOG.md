@@ -48,6 +48,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   secret-free child environments.
 - Registered manual Codex TUI sessions with audited, permission-gated message
   delivery through the official `codex queue` command.
+- Isolated browser action agent with a bounded stdin/stdout runner protocol,
+  approval-gated claims, credential-free payloads, process-group timeouts, and
+  profile/HOME isolation for operator-supplied browser runtimes.
 
 ### Changed
 
