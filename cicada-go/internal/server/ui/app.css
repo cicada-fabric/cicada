@@ -33,6 +33,9 @@ input, textarea, select { margin-top: 7px; border: 1px solid #315247; background
 input[type="file"] { padding: 8px; color: #a9c1b7; }
 input:focus, textarea:focus, select:focus { border-color: #70d5ae; box-shadow: 0 0 0 3px rgba(112, 213, 174, .12); }
 textarea { resize: vertical; }
+.voice-row { display: flex; align-items: center; gap: 10px; }
+.voice-row button { width: auto; min-width: 92px; margin-top: 8px; }
+.voice-row .muted { font-size: .76rem; }
 button { margin-top: 12px; border: 1px solid #77deb6; background: #70d5ae; color: #06100d; padding: 10px 13px; font-weight: 750; cursor: pointer; }
 button:hover { background: #8ce9c4; }
 button:disabled { cursor: wait; opacity: .55; }

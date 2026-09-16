@@ -1,5 +1,5 @@
 const CACHE_NAME = 'cicada-static-v1';
-const STATIC_ASSETS = ['/', '/assets/app.css', '/assets/app.js', '/assets/goal-detail.js', '/assets/attachments.js', '/manifest.webmanifest', '/icon.svg'];
+const STATIC_ASSETS = ['/', '/assets/app.css', '/assets/app.js', '/assets/goal-detail.js', '/assets/attachments.js', '/assets/voice.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)));

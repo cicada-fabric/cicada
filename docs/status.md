@@ -53,6 +53,8 @@ Implemented in this line:
   attachment metadata carried into Goal resources.
 - installable Personal Client PWA shell with a static-only service worker that
   never caches API or private data.
+- progressive browser speech input for the Personal Client when the platform
+  exposes `SpeechRecognition`; audio is not sent to Control.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, an

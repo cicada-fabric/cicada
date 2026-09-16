@@ -38,6 +38,10 @@
         <form id="goal-form">
           <label for="objective">What outcome do you want?</label>
           <textarea id="objective" rows="4" required maxlength="8000" placeholder="Inspect this project, verify the result, and tell me only when it is done."></textarea>
+          <div class="voice-row">
+            <button type="button" id="voice-input" class="secondary" aria-label="Dictate your intent">Speak</button>
+            <span id="voice-status" class="muted" role="status" aria-live="polite"></span>
+          </div>
           <label for="intent-kind">Route as</label>
           <select id="intent-kind">
             <option value="auto">Decide from my words</option>
@@ -95,6 +99,7 @@
   </main>
   <script src="/assets/goal-detail.js" defer></script>
   <script src="/assets/attachments.js" defer></script>
+  <script src="/assets/voice.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>

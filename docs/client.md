@@ -26,6 +26,12 @@ one reference link. Uploads are stored under Control's private state with
 generated IDs; links are retained as references and are not fetched during
 upload.
 
+On browsers that expose `SpeechRecognition`, **Speak** adds a dictated intent
+to the same text field. Audio is handled by the browser's speech implementation
+and is never uploaded to Control as an attachment; browser vendors may apply
+their own local or remote speech-processing policy. Browsers without the API
+keep the text form fully usable.
+
 The web client is installable as a small PWA. Its service worker caches only
 the embedded HTML/CSS/JavaScript and manifest; it never caches `/v1` responses,
 attachments, bearer tokens, or other private state. Polling resumes when the

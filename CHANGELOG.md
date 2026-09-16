@@ -35,6 +35,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Bounded credential-free read-only HTTP execution for approved `fetch`,
   `search`, and `download` actions, with DNS-aware SSRF protection and capped
   response capture.
+- Progressive browser speech input for the Personal Client, with no audio
+  upload to the Control API.
 
 ### Changed
 

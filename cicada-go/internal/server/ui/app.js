@@ -184,6 +184,7 @@ byId('clear-token').addEventListener('click', () => {
   refresh();
 });
 byId('api-token').value = state.token;
+window.CicadaVoice?.setup();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 refresh();
 setInterval(refresh, 5000);
