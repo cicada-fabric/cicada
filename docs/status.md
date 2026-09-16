@@ -56,6 +56,9 @@ Implemented in this line:
 - durable natural-input Intent routing for Goal, Idea, Research, Question,
   Command, and explicitly requested Approval actions, with clarification states
   for missing targets or decisions.
+- durable Idea lifecycle states covering capture, research, assessment,
+  parking/rejection, approval/planning, execution, pause/block, review, and
+  archive transitions through the Idea API.
 - on-demand Goal detail view for conclusions, events, Workers, Artifacts,
   Workspaces, and external actions.
 - local Machine capability discovery for OS, architecture, CPU, memory,
