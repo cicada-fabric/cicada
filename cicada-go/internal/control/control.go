@@ -46,6 +46,7 @@ type Config struct {
 	WebhookSecret          string
 	ConnectorSecrets       map[string]string
 	PeerRelayURL           string
+	PeerRelayURLs          []string
 	PeerRelayToken         string
 	PeerRelayInterval      time.Duration
 	IntentPlannerBin       string
@@ -122,6 +123,10 @@ func DefaultConfig() Config {
 			connectorSecrets[connector] = secret
 		}
 	}
+	relayURLs := splitURLs(os.Getenv("CICADA_PEER_RELAY_URLS"))
+	if len(relayURLs) == 0 && strings.TrimSpace(os.Getenv("CICADA_PEER_RELAY_URL")) != "" {
+		relayURLs = []string{strings.TrimSpace(os.Getenv("CICADA_PEER_RELAY_URL"))}
+	}
 	return Config{
 		StateDir:               envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot:          envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
@@ -138,6 +143,7 @@ func DefaultConfig() Config {
 		WebhookSecret:          os.Getenv("CICADA_WEBHOOK_SECRET"),
 		ConnectorSecrets:       connectorSecrets,
 		PeerRelayURL:           os.Getenv("CICADA_PEER_RELAY_URL"),
+		PeerRelayURLs:          relayURLs,
 		PeerRelayToken:         os.Getenv("CICADA_PEER_RELAY_TOKEN"),
 		PeerRelayInterval:      relayInterval,
 		IntentPlannerBin:       os.Getenv("CICADA_INTENT_PLANNER_BIN"),
@@ -145,6 +151,17 @@ func DefaultConfig() Config {
 		CompletionVerifierBin:  os.Getenv("CICADA_COMPLETION_VERIFIER_BIN"),
 		CompletionVerifierTime: verifierTimeout,
 	}
+}
+
+func splitURLs(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func envOr(name, fallback string) string {
@@ -168,6 +185,7 @@ type Control struct {
 	approvalMu      sync.Mutex
 	approvalWaiters map[string]chan string
 	peerRelayMu     sync.Mutex
+	sessionMu       sync.Mutex
 	shutdown        chan struct{}
 	wg              sync.WaitGroup
 	closed          bool
@@ -720,12 +738,21 @@ func (c *Control) SendPeerMessage(contactID, message string, aad []byte) (*store
 	if _, permissionErr := c.CheckPermission("contact", contactID, "peer.message", ""); permissionErr != nil {
 		return nil, permissionErr
 	}
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	state, offer, err := c.loadSendSession(contact)
+	if err != nil {
+		return nil, err
+	}
 	sequence, err := c.store.AllocateContactSequence(contactID)
 	if err != nil {
 		return nil, err
 	}
-	envelope, err := e2ee.Seal(c.identity, contact.Identity, []byte(message), aad, sequence)
+	envelope, err := e2ee.SealRatchet(c.identity, contact.Identity, state, sequence, offer, []byte(message), aad)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.saveSession(contactID, state, nil); err != nil {
 		return nil, err
 	}
 	local := c.Identity()
@@ -739,12 +766,17 @@ func (c *Control) SendPeerMessage(contactID, message string, aad []byte) (*store
 // DeliverPeerMessage forwards only the authenticated opaque envelope to the
 // configured relay. The relay cannot decrypt it and never receives plaintext.
 func (c *Control) DeliverPeerMessage(id string) (*store.PeerMessage, error) {
-	relayURL := strings.TrimSpace(c.config.PeerRelayURL)
-	if relayURL == "" {
+	relayURLs := append([]string(nil), c.config.PeerRelayURLs...)
+	if len(relayURLs) == 0 && strings.TrimSpace(c.config.PeerRelayURL) != "" {
+		relayURLs = []string{strings.TrimSpace(c.config.PeerRelayURL)}
+	}
+	if len(relayURLs) == 0 {
 		return nil, errors.New("peer relay is not configured")
 	}
-	if !strings.HasPrefix(relayURL, "http://") && !strings.HasPrefix(relayURL, "https://") {
-		return nil, errors.New("peer relay URL must use http or https")
+	for _, relayURL := range relayURLs {
+		if !strings.HasPrefix(relayURL, "http://") && !strings.HasPrefix(relayURL, "https://") {
+			return nil, errors.New("peer relay URL must use http or https")
+		}
 	}
 	c.peerRelayMu.Lock()
 	defer c.peerRelayMu.Unlock()
@@ -777,27 +809,35 @@ func (c *Control) DeliverPeerMessage(id string) (*store.PeerMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequest(http.MethodPost, relayURL, bytes.NewReader(body))
-	if err != nil {
-		_, _ = c.store.MarkPeerMessageRetry(message.ID)
-		return nil, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(c.config.PeerRelayToken); token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
-	}
-	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
-	if err != nil {
-		_, _ = c.store.MarkPeerMessageRetry(message.ID)
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	var lastErr error
+	for _, relayURL := range relayURLs {
+		request, requestErr := http.NewRequest(http.MethodPost, relayURL, bytes.NewReader(body))
+		if requestErr != nil {
+			lastErr = requestErr
+			continue
+		}
+		request.Header.Set("Content-Type", "application/json")
+		if token := strings.TrimSpace(c.config.PeerRelayToken); token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		response, requestErr := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+		if requestErr != nil {
+			lastErr = requestErr
+			continue
+		}
+		if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+			response.Body.Close()
+			return c.store.MarkPeerMessageDelivered(message.ID)
+		}
 		detail, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
-		_, _ = c.store.MarkPeerMessageRetry(message.ID)
-		return nil, fmt.Errorf("peer relay returned %s: %s", response.Status, strings.TrimSpace(string(detail)))
+		response.Body.Close()
+		lastErr = fmt.Errorf("peer relay %s returned %s: %s", relayURL, response.Status, strings.TrimSpace(string(detail)))
 	}
-	return c.store.MarkPeerMessageDelivered(message.ID)
+	_, _ = c.store.MarkPeerMessageRetry(message.ID)
+	if lastErr == nil {
+		lastErr = errors.New("all peer relays failed")
+	}
+	return nil, lastErr
 }
 
 func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]byte, *store.PeerMessage, error) {
@@ -817,7 +857,9 @@ func (c *Control) ReceivePeerMessage(contactID string, envelope, aad []byte) ([]
 	if _, permissionErr := c.CheckPermission("contact", contactID, "peer.receive", ""); permissionErr != nil {
 		return nil, nil, permissionErr
 	}
-	plaintext, sequence, err := e2ee.Open(c.identity, contact.Identity, envelope, aad)
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	plaintext, sequence, err := c.openPeerEnvelope(contact, envelope, aad)
 	if err != nil {
 		return nil, nil, err
 	}

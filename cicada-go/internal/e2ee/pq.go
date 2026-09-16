@@ -81,6 +81,9 @@ type Envelope struct {
 	SenderID            string `json:"sender_id"`
 	SenderSigningPublic []byte `json:"sender_signing_public"`
 	Signature           []byte `json:"signature"`
+	SessionEpoch        uint64 `json:"session_epoch,omitempty"`
+	SessionCounter      uint64 `json:"session_counter,omitempty"`
+	SessionOffer        []byte `json:"session_offer,omitempty"`
 }
 
 type envelopeHeader struct {

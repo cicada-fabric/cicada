@@ -131,6 +131,22 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.contactAnnouncement(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/directory/announcement" {
+		h.directoryAnnouncement(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/directory/records" || request.URL.Path == "/v1/rendezvous" {
+		h.directoryRecords(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/directory/records/") {
+		h.directoryRecord(response, request, "/v1/directory/records/")
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/rendezvous/") {
+		h.directoryRecord(response, request, "/v1/rendezvous/")
+		return
+	}
 	if request.URL.Path == "/v1/identity" && request.Method == http.MethodGet {
 		writeJSON(response, http.StatusOK, h.control.Identity())
 		return
@@ -388,7 +404,43 @@ func (h *Handler) contacts(response http.ResponseWriter, request *http.Request) 
 }
 
 func (h *Handler) contact(response http.ResponseWriter, request *http.Request) {
-	id := strings.TrimPrefix(request.URL.Path, "/v1/contacts/")
+	path := strings.TrimPrefix(request.URL.Path, "/v1/contacts/")
+	parts := strings.Split(path, "/")
+	if len(parts) >= 2 && parts[1] == "session" {
+		if parts[0] == "" || len(parts) > 3 || len(parts) == 3 && parts[2] != "rotate" {
+			writeError(response, http.StatusNotFound, errors.New("contact session not found"))
+			return
+		}
+		if len(parts) == 2 && request.Method == http.MethodGet {
+			session, err := h.control.PeerSession(parts[0])
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, os.ErrNotExist) {
+					status = http.StatusNotFound
+				}
+				writeError(response, status, err)
+				return
+			}
+			writeJSON(response, http.StatusOK, session)
+			return
+		}
+		if len(parts) == 3 && parts[2] == "rotate" && request.Method == http.MethodPost {
+			session, err := h.control.RotatePeerSession(parts[0])
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, os.ErrNotExist) {
+					status = http.StatusNotFound
+				}
+				writeError(response, status, err)
+				return
+			}
+			writeJSON(response, http.StatusOK, session)
+			return
+		}
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	id := path
 	if id == "" || strings.Contains(id, "/") {
 		writeError(response, http.StatusNotFound, errors.New("contact not found"))
 		return

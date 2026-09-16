@@ -21,6 +21,11 @@ Implemented in this line:
   child-count budgets, and aggregated child evidence;
 - ML-KEM-768 + ML-DSA-65 authenticated peer envelopes with persistent replay
   protection;
+- signed ML-KEM session offers with directional HMAC chain-key ratcheting,
+  monotonic counters, authenticated rotation, and a secret-free session status
+  API;
+- ordered multi-relay delivery with opaque, idempotent transport retries and
+  automatic fallback when a relay is unavailable;
 - signed ML-DSA contact announcements with durable discovery requests,
   idempotent ingress, and an explicit accept/reject then trust lifecycle;
 - identity-routed federation ingress and optional opaque HTTP delivery with
@@ -90,11 +95,13 @@ Implemented in this line:
   stdin/stdout runner contract, process-group timeouts, bounded JSON results,
   and profile/HOME isolation; the concrete Chromium or Playwright runtime is
   operator supplied.
+- signed Contact directory/rendezvous records with bounded HTTPS endpoints,
+  expiry reaping, and an explicit separation between discovery and Contact
+  trust.
 
-The release deliberately keeps its boundaries explicit. Contact directory and
-rendezvous services, multi-peer relay routing, session ratcheting, authenticated
-Email/X/WeChat/QQ/calendar connectors, proactive classifiers and authorized
-reply executors, push,
+The release deliberately keeps its boundaries explicit. Authenticated
+X/WeChat/QQ connectors, proactive classifiers and authorized reply executors,
+push,
 native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as

@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -67,7 +66,9 @@ func (c *Control) ReceiveFederatedPeerMessage(transportID, senderID, recipientID
 	if _, permissionErr := c.CheckPermission("contact", contact.ID, "peer.receive", ""); permissionErr != nil {
 		return nil, permissionErr
 	}
-	_, sequence, err := e2ee.Open(c.identity, contact.Identity, envelope, aad)
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	_, sequence, err := c.openPeerEnvelope(contact, envelope, aad)
 	if err != nil {
 		return nil, err
 	}

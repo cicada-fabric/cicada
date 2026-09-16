@@ -361,6 +361,42 @@ func TestControlPeerMessageUsesPostQuantumEnvelope(t *testing.T) {
 	}
 }
 
+func TestControlPeerSessionRotationResumesDelivery(t *testing.T) {
+	alice := newTestControl(t, "success")
+	bob := newTestControl(t, "success")
+	aliceContact, err := alice.CreateContact("bob", bob.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobContact, err := bob.CreateContact("alice", alice.Identity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := alice.SendPeerMessage(aliceContact.ID, "before rotation", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := bob.ReceivePeerMessage(bobContact.ID, first.Envelope, nil); err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := alice.RotatePeerSession(aliceContact.ID)
+	if err != nil || rotated.Epoch != 2 {
+		t.Fatalf("rotation failed: %#v err=%v", rotated, err)
+	}
+	second, err := alice.SendPeerMessage(aliceContact.ID, "after rotation", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, _, err := bob.ReceivePeerMessage(bobContact.ID, second.Envelope, nil)
+	if err != nil || string(plaintext) != "after rotation" {
+		t.Fatalf("rotated message plaintext=%q err=%v", plaintext, err)
+	}
+	status, err := bob.PeerSession(bobContact.ID)
+	if err != nil || status.Epoch != 2 || status.ReceiveCount != 1 {
+		t.Fatalf("receiver session did not rotate: %#v err=%v", status, err)
+	}
+}
+
 func TestControlDeliversOpaquePeerEnvelopeToRelay(t *testing.T) {
 	var receivedBody []byte
 	var receivedAuth string
@@ -409,6 +445,41 @@ func TestControlDeliversOpaquePeerEnvelopeToRelay(t *testing.T) {
 	}
 	if _, err := controlPlane.DeliverPeerMessage(outbound.ID); err != nil || deliveries != 1 {
 		t.Fatalf("delivering an already delivered message should be idempotent: err=%v deliveries=%d", err, deliveries)
+	}
+}
+
+func TestControlFallsBackAcrossPeerRelays(t *testing.T) {
+	first := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusBadGateway)
+	}))
+	defer first.Close()
+	deliveries := 0
+	second := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		deliveries++
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer second.Close()
+	root := t.TempDir()
+	controlPlane, err := New(Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), PeerRelayURLs: []string{first.URL, second.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	peer, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contact, err := controlPlane.CreateContact("relay peer", peer.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, err := controlPlane.SendPeerMessage(contact.ID, "fallback", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := controlPlane.DeliverPeerMessage(outbound.ID)
+	if err != nil || delivered.Status != "delivered" || deliveries != 1 {
+		t.Fatalf("relay fallback failed: message=%#v err=%v deliveries=%d", delivered, err, deliveries)
 	}
 }
 

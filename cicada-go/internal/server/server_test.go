@@ -145,6 +145,36 @@ func TestFederationIngressMapsIdentityAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPeerSessionRotationEndpointDoesNotExposeSecrets(t *testing.T) {
+	root := t.TempDir()
+	alice, err := control.New(control.Config{StateDir: filepath.Join(root, "alice-state"), WorkspaceRoot: filepath.Join(root, "alice-workspace")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer alice.Shutdown(context.Background())
+	bob, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contact, err := alice.CreateContact("Bob", bob.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(alice)
+	rotate := httptest.NewRequest(http.MethodPost, "/v1/contacts/"+contact.ID+"/session/rotate", nil)
+	rotateResponse := httptest.NewRecorder()
+	handler.ServeHTTP(rotateResponse, rotate)
+	if rotateResponse.Code != http.StatusOK || strings.Contains(rotateResponse.Body.String(), "root_key") || strings.Contains(rotateResponse.Body.String(), "chain_key") {
+		t.Fatalf("unsafe session rotation response status=%d body=%s", rotateResponse.Code, rotateResponse.Body.String())
+	}
+	status := httptest.NewRequest(http.MethodGet, "/v1/contacts/"+contact.ID+"/session", nil)
+	statusResponse := httptest.NewRecorder()
+	handler.ServeHTTP(statusResponse, status)
+	if statusResponse.Code != http.StatusOK || !strings.Contains(statusResponse.Body.String(), `"epoch":1`) {
+		t.Fatalf("session status response status=%d body=%s", statusResponse.Code, statusResponse.Body.String())
+	}
+}
+
 func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})

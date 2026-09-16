@@ -118,6 +118,23 @@ type Contact struct {
 	UpdatedAt         string              `json:"updated_at"`
 }
 
+// PeerSession stores the secret ratchet state for one trusted Contact. Secret
+// fields are never serialized in API responses; the state database is kept
+// under the operator's protected StateDir.
+type PeerSession struct {
+	ContactID       string
+	Epoch           uint64
+	RootKey         []byte
+	SendChainKey    []byte
+	ReceiveChainKey []byte
+	SendCount       uint64
+	ReceiveCount    uint64
+	PendingOffer    []byte
+	Status          string
+	CreatedAt       string
+	UpdatedAt       string
+}
+
 // DiscoveryRequest records a signed identity announcement before the operator
 // decides whether to create a pending Contact.
 type DiscoveryRequest struct {
@@ -128,6 +145,21 @@ type DiscoveryRequest struct {
 	Announcement json.RawMessage     `json:"announcement"`
 	Status       string              `json:"status"`
 	ContactID    string              `json:"contact_id,omitempty"`
+	CreatedAt    string              `json:"created_at"`
+	UpdatedAt    string              `json:"updated_at"`
+}
+
+// DirectoryRecord is a signed public rendezvous entry. It never stores trust
+// state; discovery and Contact approval remain separate operations.
+type DirectoryRecord struct {
+	ID           string              `json:"id"`
+	RemoteID     string              `json:"remote_id"`
+	Label        string              `json:"label"`
+	Identity     e2ee.PublicIdentity `json:"identity"`
+	Endpoints    []string            `json:"endpoints"`
+	Announcement json.RawMessage     `json:"announcement"`
+	ExpiresAt    string              `json:"expires_at"`
+	Status       string              `json:"status"`
 	CreatedAt    string              `json:"created_at"`
 	UpdatedAt    string              `json:"updated_at"`
 }
@@ -497,6 +529,20 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS peer_sessions (
+  contact_id TEXT PRIMARY KEY,
+  epoch INTEGER NOT NULL,
+  root_key BLOB NOT NULL,
+  send_chain_key BLOB NOT NULL,
+  receive_chain_key BLOB NOT NULL,
+  send_count INTEGER NOT NULL DEFAULT 0,
+  receive_count INTEGER NOT NULL DEFAULT 0,
+  pending_offer BLOB,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS contact_discovery_requests (
   id TEXT PRIMARY KEY,
   remote_id TEXT NOT NULL UNIQUE,
@@ -508,6 +554,18 @@ CREATE TABLE IF NOT EXISTS contact_discovery_requests (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(contact_id) REFERENCES contacts(id)
+);
+CREATE TABLE IF NOT EXISTS directory_records (
+  id TEXT PRIMARY KEY,
+  remote_id TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  endpoints_json TEXT NOT NULL,
+  announcement_json TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS peer_messages (
   id TEXT PRIMARY KEY,
@@ -600,6 +658,7 @@ CREATE INDEX IF NOT EXISTS memories_scope_idx ON memories(scope, namespace, upda
 CREATE INDEX IF NOT EXISTS artifacts_goal_idx ON artifacts(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id, created_at);
 CREATE INDEX IF NOT EXISTS contact_discovery_status_idx ON contact_discovery_requests(status, created_at);
+CREATE INDEX IF NOT EXISTS directory_records_expiry_idx ON directory_records(status, expires_at);
 CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
 CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id, created_at);

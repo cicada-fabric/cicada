@@ -12,6 +12,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - ML-DSA signed Contact discovery with an explicit pending trust lifecycle.
 - Identity-routed federation ingress with atomic replay state, idempotent
   transport retries, and plaintext-free receipts.
+- Signed PQ session offers with directional ratchet chain keys, durable replay
+  counters, authenticated rotation, and a secret-free Contact session API.
+- Ordered multi-relay peer delivery with opaque idempotent fallback retries.
 - Optional bearer authentication for remotely exposed Control APIs.
 - Responsive embedded Personal Client with Today counters, Goal and worker
   summaries, pending Approval decisions, prioritized notifications, and a
@@ -63,6 +66,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Bounded Claude Code, OpenCode, and Happy Agent adapters with direct
   stdin/stdout execution, capability discovery, JSON-lines session extraction,
   and secret-filtered remote machine support.
+- Signed Contact directory/rendezvous records with bounded HTTPS endpoints,
+  expiry reaping, and no implicit Contact trust.
 
 ### Changed
 

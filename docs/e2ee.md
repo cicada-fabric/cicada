@@ -72,13 +72,32 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
 export CICADA_PEER_RELAY_URL=https://bob-control.example/v1/federation/messages
 export CICADA_PEER_RELAY_TOKEN=relay-auth-token
 curl -X POST http://127.0.0.1:8787/v1/peer-messages/PEER_MESSAGE_ID/deliver
+
+# Multiple opaque relays are tried in order; a failed relay does not consume
+# the message and the next URL receives the same idempotent transport ID.
+export CICADA_PEER_RELAY_URLS=https://relay-a.example/v1/federation/messages,https://relay-b.example/v1/federation/messages
 ```
 
 The discovery endpoint authenticates a portable announcement and preserves the
-operator trust decision; it does not supply a public directory or cross-Control
-rendezvous. The federation ingress maps the authenticated sender identity to a
-local trusted Contact, checks the encrypted envelope's recipient and sequence,
-and atomically stores replay state with the opaque message. A lost HTTP response
-can be retried with the same transport ID without creating another message. Its
-receipt contains no plaintext. Directory transport, multi-peer relay routing,
-and ratcheting/session key rotation remain later work.
+operator trust decision. The signed directory/rendezvous endpoints described in
+[`directory.md`](directory.md) provide public routing hints but do not create a
+trusted Contact. The federation ingress maps the authenticated sender identity
+to a local trusted Contact, checks the encrypted envelope's recipient and
+sequence, and atomically stores replay state with the opaque message. A lost
+HTTP response can be retried with the same transport ID without creating
+another message. Its receipt contains no plaintext. Directory transport still
+requires the operator to turn a discovered identity into a trusted Contact.
+
+Control-managed peer messages now bootstrap a signed ML-KEM session offer on
+the first message, derive directional HMAC chain keys, and advance a monotonic
+counter for each AES-GCM message. Rotate a session without exposing its
+secrets:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/contacts/CONTACT_ID/session/rotate
+curl http://127.0.0.1:8787/v1/contacts/CONTACT_ID/session
+```
+
+Root and chain keys remain in protected SQLite state and the status API returns
+only epoch/counter metadata. Old per-message ML-KEM envelopes remain accepted
+for compatibility; ratchet counters reject large skips and replay.
