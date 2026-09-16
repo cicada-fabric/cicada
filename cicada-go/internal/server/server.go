@@ -72,6 +72,22 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusOK, map[string]any{"workers": workers})
 		return
 	}
+	if request.URL.Path == "/v1/threads/sessions" {
+		h.threadSessions(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/threads/sessions/") {
+		h.threadSession(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/threads/queue" {
+		h.threadQueue(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/threads/deliveries" {
+		h.threadDeliveries(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/approvals" && request.Method == http.MethodGet {
 		pendingOnly := request.URL.Query().Get("pending") != "false"
 		approvals, err := h.control.Approvals(pendingOnly)

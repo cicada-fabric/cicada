@@ -41,6 +41,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   durable event history with reconnect offsets.
 - A `cicada machine agent` heartbeat process for registering remote execution
   hosts with non-secret capability profiles.
+- Registered manual Codex TUI sessions with audited, permission-gated message
+  delivery through the official `codex queue` command.
 
 ### Changed
 

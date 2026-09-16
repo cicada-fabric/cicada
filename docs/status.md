@@ -59,6 +59,8 @@ Implemented in this line:
   exposes `SpeechRecognition`; audio is not sent to Control.
 - authenticated, replayable Goal event streaming over Server-Sent Events for
   CLI and remote clients.
+- registered manual Codex TUI sessions with permission-gated, durable message
+  delivery through the official `codex queue` command.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, an

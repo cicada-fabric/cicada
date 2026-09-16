@@ -99,15 +99,56 @@ func clientCommand(args []string) error {
 		}
 		method, path = http.MethodGet, "/v1/workers"
 	case "thread":
-		if len(args) < 2 || args[1] != "send" || len(args) < 5 {
-			return errors.New("usage: cicada thread send FROM_WORKER_ID TO_WORKER_ID MESSAGE")
+		if len(args) < 2 {
+			return errors.New("usage: cicada thread sessions|register|queue|deliveries|send")
 		}
-		body = map[string]string{
-			"from_worker_id": args[2],
-			"to_worker_id":   args[3],
-			"message":        strings.Join(args[4:], " "),
+		switch args[1] {
+		case "sessions":
+			if len(args) != 2 {
+				return errors.New("usage: cicada thread sessions")
+			}
+			method, path = http.MethodGet, "/v1/threads/sessions"
+		case "register":
+			if len(args) < 3 || len(args) > 5 {
+				return errors.New("usage: cicada thread register THREAD_ID [LABEL] [WORKSPACE]")
+			}
+			registerBody := map[string]string{"thread_id": args[2]}
+			if len(args) >= 4 {
+				registerBody["label"] = args[3]
+			}
+			if len(args) == 5 {
+				registerBody["workspace"] = args[4]
+			}
+			body = registerBody
+			method, path = http.MethodPost, "/v1/threads/sessions"
+		case "queue":
+			if len(args) < 5 {
+				return errors.New("usage: cicada thread queue FROM_THREAD_ID TO_THREAD_ID MESSAGE")
+			}
+			body = map[string]string{
+				"from_thread_id": args[2],
+				"to_thread_id":   args[3],
+				"message":        strings.Join(args[4:], " "),
+			}
+			method, path = http.MethodPost, "/v1/threads/queue"
+		case "deliveries":
+			if len(args) != 2 {
+				return errors.New("usage: cicada thread deliveries")
+			}
+			method, path = http.MethodGet, "/v1/threads/deliveries"
+		case "send":
+			if len(args) < 5 {
+				return errors.New("usage: cicada thread send FROM_WORKER_ID TO_WORKER_ID MESSAGE")
+			}
+			body = map[string]string{
+				"from_worker_id": args[2],
+				"to_worker_id":   args[3],
+				"message":        strings.Join(args[4:], " "),
+			}
+			method, path = http.MethodPost, "/v1/threads/messages"
+		default:
+			return errors.New("usage: cicada thread sessions|register|queue|deliveries|send")
 		}
-		method, path = http.MethodPost, "/v1/threads/messages"
 	case "goal":
 		if len(args) < 2 {
 			return errors.New("usage: cicada goal list|show|create|send|stop")

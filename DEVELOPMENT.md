@@ -194,6 +194,19 @@ In a normal shell, list the session UUIDs after both TUIs have started:
 ./scripts/list-codex-threads.sh
 ```
 
+For durable Control auditing, register the two sessions and queue the message
+through the official Codex command boundary:
+
+```bash
+cicada thread register A_UUID Thread-A /workspace/manual-a
+cicada thread register B_UUID Thread-B /workspace/manual-b
+cicada thread queue A_UUID B_UUID 'Thread A says: compare the two hypotheses and reply.'
+cicada thread deliveries
+```
+
+This invokes `codex queue` without a shell and records the delivery status. The
+full API contract and permission boundary are in [`docs/manual-threads.md`](docs/manual-threads.md).
+
 Give each TUI the other UUID and explicitly ask it to send a message. For
 example, in Thread A type:
 

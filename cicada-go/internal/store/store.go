@@ -564,6 +564,25 @@ CREATE TABLE IF NOT EXISTS external_actions (
   FOREIGN KEY(goal_id) REFERENCES goals(id),
   FOREIGN KEY(worker_id) REFERENCES workers(id)
 );
+CREATE TABLE IF NOT EXISTS thread_sessions (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL DEFAULT '',
+  workspace TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS thread_deliveries (
+  id TEXT PRIMARY KEY,
+  from_thread_id TEXT NOT NULL,
+  to_thread_id TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  delivered_at TEXT
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
@@ -579,6 +598,8 @@ CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, cre
 CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(status, created_at);
+CREATE INDEX IF NOT EXISTS thread_sessions_status_idx ON thread_sessions(status, updated_at);
+CREATE INDEX IF NOT EXISTS thread_deliveries_created_idx ON thread_deliveries(created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)
