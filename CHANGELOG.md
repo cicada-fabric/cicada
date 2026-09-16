@@ -37,6 +37,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   response capture.
 - Progressive browser speech input for the Personal Client, with no audio
   upload to the Control API.
+- Authenticated Server-Sent Events for replaying and following a Goal's
+  durable event history with reconnect offsets.
 
 ### Changed
 

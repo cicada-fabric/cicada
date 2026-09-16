@@ -55,11 +55,13 @@ Implemented in this line:
   never caches API or private data.
 - progressive browser speech input for the Personal Client when the platform
   exposes `SpeechRecognition`; audio is not sent to Control.
+- authenticated, replayable Goal event streaming over Server-Sent Events for
+  CLI and remote clients.
 
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, an
 authenticated browser executor, external message/calendar connectors, additional harness
-adapters, push, native mobile, and voice remain the next feature lines. The
+adapters, push, native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
 product work rather than hidden behind claims that the current Codex adapter

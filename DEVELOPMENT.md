@@ -69,6 +69,10 @@ curl -X POST http://127.0.0.1:8787/v1/goals \
   -d '{"objective":"Inspect this workspace and report its state"}'
 curl http://127.0.0.1:8787/v1/goals/GOAL_ID/events
 
+# Stream the same durable events as Server-Sent Events. `after` is the last
+# numeric event ID already processed; reconnect with that offset.
+curl -N http://127.0.0.1:8787/v1/goals/GOAL_ID/events/stream?after=0
+
 # Receive an external information event. The connector secret stays in the
 # runtime env; sign the exact JSON bytes with HMAC-SHA256.
 printf '%s' '{"subject":"hello"}' | openssl dgst -sha256 -hmac "$CICADA_WEBHOOK_SECRET"

@@ -888,6 +888,10 @@ func (h *Handler) goal(response http.ResponseWriter, request *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]any{"events": events})
 		return
 	}
+	if len(parts) == 3 && parts[1] == "events" && parts[2] == "stream" && request.Method == http.MethodGet {
+		h.goalEventStream(response, request, goalID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "workers" {
 		if request.Method == http.MethodGet {
 			goal, err := h.control.Goal(goalID)
