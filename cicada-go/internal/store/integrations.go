@@ -104,6 +104,17 @@ func (s *Store) UpdateExternalEventStatus(id, status string) (*ExternalEvent, er
 	return s.getExternalEventLocked(id)
 }
 
+func (s *Store) UpdateExternalEventTriage(id, status, goalID string) (*ExternalEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE external_events SET status = ?, goal_id = ?, updated_at = ? WHERE id = ?`,
+		status, nullableString(goalID), now(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.getExternalEventLocked(id)
+}
+
 func (s *Store) getExternalEventLocked(id string) (*ExternalEvent, error) {
 	var event ExternalEvent
 	var payload, signature, goalID sql.NullString

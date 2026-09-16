@@ -40,6 +40,7 @@ type Config struct {
 	// convenient for development.
 	APIToken               string
 	WebhookSecret          string
+	ConnectorSecrets       map[string]string
 	PeerRelayURL           string
 	PeerRelayToken         string
 	PeerRelayInterval      time.Duration
@@ -99,6 +100,10 @@ func DefaultConfig() Config {
 			verifierTimeout = seconds
 		}
 	}
+	connectorSecrets := map[string]string{}
+	if telegramSecret := strings.TrimSpace(os.Getenv("CICADA_CONNECTOR_SECRET_TELEGRAM")); telegramSecret != "" {
+		connectorSecrets["telegram"] = telegramSecret
+	}
 	return Config{
 		StateDir:               envOr("CICADA_STATE_DIR", "/state"),
 		WorkspaceRoot:          envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
@@ -111,6 +116,7 @@ func DefaultConfig() Config {
 		MonitorStallAfter:      stallAfter,
 		APIToken:               os.Getenv("CICADA_API_TOKEN"),
 		WebhookSecret:          os.Getenv("CICADA_WEBHOOK_SECRET"),
+		ConnectorSecrets:       connectorSecrets,
 		PeerRelayURL:           os.Getenv("CICADA_PEER_RELAY_URL"),
 		PeerRelayToken:         os.Getenv("CICADA_PEER_RELAY_TOKEN"),
 		PeerRelayInterval:      relayInterval,

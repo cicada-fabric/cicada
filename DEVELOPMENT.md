@@ -1,9 +1,11 @@
 # Cicada development container
 
-The 0.3.0 development image is a single reusable image with two Compose roles:
+The 0.3.0 development image is a single reusable image with three Compose roles:
 
 - `control`: a long-lived manager container;
-- `worker`: an optional execution container, enabled with the `worker` profile.
+- `worker`: an optional execution container, enabled with the `worker` profile;
+- `telegram`: an optional inbound connector, enabled with the `telegram`
+  profile.
 
 The Control core is a static Go binary. The Client/API boundary is HTTP/JSON;
 the future personal client can use TypeScript without coupling the control
@@ -26,6 +28,16 @@ never copied into the image or the repository:
 API_KEY='your relay key' ./scripts/bootstrap-cicada.sh
 ```
 
+To create a Telegram-ready runtime file on first setup, also provide a bot
+token and an independent connector secret:
+
+```bash
+API_KEY='your relay key' \
+CICADA_TELEGRAM_BOT_TOKEN='123456:bot-token' \
+CICADA_CONNECTOR_SECRET_TELEGRAM='random-hmac-secret' \
+  ./scripts/bootstrap-cicada.sh
+```
+
 Build and export the image:
 
 ```bash
@@ -43,6 +55,7 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 ```bash
 docker compose up -d control
 docker compose --profile worker up -d worker
+docker compose --profile telegram up -d telegram
 docker compose exec control codex --version
 docker compose exec control codex
 ```
@@ -95,6 +108,11 @@ curl -X POST http://127.0.0.1:8787/v1/connectors/events \
   -H 'content-type: application/json' \
   -d '{"subject":"hello"}'
 curl 'http://127.0.0.1:8787/v1/connectors/events?connector=mail'
+
+# Record an explicit triage decision and optionally link the event to a Goal.
+curl -X POST http://127.0.0.1:8787/v1/connectors/events/EVENT_ID/triage \
+  -H 'content-type: application/json' \
+  -d '{"status":"linked","goal_id":"GOAL_ID"}'
 
 # External actions are opt-in by domain. An absent rule creates a P1 approval;
 # destructive methods/capabilities always require approval. No credentials or
@@ -173,6 +191,9 @@ curl -X POST http://127.0.0.1:8787/v1/peer-messages \
 
 The post-quantum contact and envelope boundary is documented in
 `docs/e2ee.md`; it uses ML-KEM-768, ML-DSA-65, HKDF-SHA256, and AES-256-GCM.
+
+The inbound Telegram process, durable offset, normalized payload, and secret
+boundary are documented in `docs/telegram-connector.md`.
 
 The remote claim/result protocol, secret boundary, workspace requirement, and
 failure semantics are documented in `docs/remote-execution.md`.

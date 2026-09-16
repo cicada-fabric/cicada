@@ -60,13 +60,35 @@ func (h *Handler) externalEvents(response http.ResponseWriter, request *http.Req
 }
 
 func (h *Handler) externalEvent(response http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/connectors/events/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeError(response, http.StatusNotFound, errors.New("external event not found"))
 		return
 	}
-	id := strings.TrimPrefix(request.URL.Path, "/v1/connectors/events/")
-	if id == "" || strings.Contains(id, "/") {
-		writeError(response, http.StatusNotFound, errors.New("external event not found"))
+	id := parts[0]
+	if len(parts) == 2 && parts[1] == "triage" && request.Method == http.MethodPost {
+		var input struct {
+			Status string `json:"status"`
+			GoalID string `json:"goal_id"`
+		}
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		event, err := h.control.TriageExternalEvent(id, input.Status, input.GoalID)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, event)
+		return
+	}
+	if len(parts) != 1 || request.Method != http.MethodGet {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return
 	}
 	event, err := h.control.ExternalEvent(id)

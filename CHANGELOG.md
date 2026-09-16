@@ -51,6 +51,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Isolated browser action agent with a bounded stdin/stdout runner protocol,
   approval-gated claims, credential-free payloads, process-group timeouts, and
   profile/HOME isolation for operator-supplied browser runtimes.
+- Restart-safe inbound Telegram connector with a minimized normalized payload,
+  connector-specific HMAC authentication, durable offsets, idempotent retries,
+  and explicit event triage states.
 
 ### Changed
 
@@ -66,6 +69,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Compose service environments now inherit the complete shared Control
   configuration, so intent planning, completion verification, federation, and
   connector settings survive service-specific role overrides.
+- Compose no longer replaces runtime-file webhook and peer relay secrets with
+  empty interpolation defaults.
 - Goals can provision a pinned public HTTPS Git workspace on local or remote
   executors. The adapter isolates credentials/config, rejects private network
   targets and symlink escapes, resumes marked workspaces, and records the

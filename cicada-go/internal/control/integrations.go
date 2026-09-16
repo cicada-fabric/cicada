@@ -25,7 +25,7 @@ func (c *Control) IngestExternalEvent(connector, externalID, eventType, signatur
 	if len(payload) == 0 || len(payload) > 1<<20 || !json.Valid(payload) {
 		return nil, errors.New("payload must be valid JSON and at most 1 MiB")
 	}
-	if !validWebhookSignature(c.config.WebhookSecret, payload, signature) {
+	if !validWebhookSignature(c.webhookSecret(connector), payload, signature) {
 		return nil, errors.New("invalid connector signature")
 	}
 	if goalID != "" {
@@ -64,6 +64,15 @@ func (c *Control) IngestExternalEvent(connector, externalID, eventType, signatur
 	return event, nil
 }
 
+func (c *Control) webhookSecret(connector string) string {
+	if c.config.ConnectorSecrets != nil {
+		if secret := strings.TrimSpace(c.config.ConnectorSecrets[strings.ToLower(connector)]); secret != "" {
+			return secret
+		}
+	}
+	return c.config.WebhookSecret
+}
+
 func validWebhookSignature(secret string, payload []byte, presented string) bool {
 	secret = strings.TrimSpace(secret)
 	presented = strings.TrimSpace(presented)
@@ -86,4 +95,60 @@ func (c *Control) ExternalEvents(connector string) ([]store.ExternalEvent, error
 
 func (c *Control) ExternalEvent(id string) (*store.ExternalEvent, error) {
 	return c.store.GetExternalEvent(id)
+}
+
+// TriageExternalEvent records a human or connector classification. Linking an
+// event to a Goal is explicit so inbound messages never silently become work.
+func (c *Control) TriageExternalEvent(id, status, goalID string) (*store.ExternalEvent, error) {
+	id, status, goalID = strings.TrimSpace(id), strings.TrimSpace(status), strings.TrimSpace(goalID)
+	if id == "" {
+		return nil, errors.New("external event id is required")
+	}
+	switch status {
+	case "classified", "linked", "ignored", "action_required":
+	default:
+		return nil, fmt.Errorf("unsupported external event triage status: %s", status)
+	}
+	event, err := c.store.GetExternalEvent(id)
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return nil, os.ErrNotExist
+	}
+	if goalID != "" {
+		goal, goalErr := c.store.GetGoal(goalID)
+		if goalErr != nil {
+			return nil, goalErr
+		}
+		if goal == nil {
+			return nil, os.ErrNotExist
+		}
+	}
+	if status == "linked" && goalID == "" {
+		goalID = event.GoalID
+		if goalID == "" {
+			return nil, errors.New("linked external event requires goal_id")
+		}
+	}
+	if goalID == "" {
+		goalID = event.GoalID
+	}
+	updated, err := c.store.UpdateExternalEventTriage(id, status, goalID)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, os.ErrNotExist
+	}
+	auditGoal := updated.GoalID
+	if auditGoal != "" {
+		_, _ = c.store.AppendEvent(auditGoal, "", "ExternalEventTriaged", map[string]any{
+			"event_id": updated.ID, "connector": updated.Connector, "status": status,
+		})
+	}
+	if status == "action_required" {
+		c.notify(auditGoal, "connector."+updated.Connector, "P1", "External action requires review", updated.EventType)
+	}
+	return updated, nil
 }

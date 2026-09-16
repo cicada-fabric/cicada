@@ -3,9 +3,7 @@ name: cicada
 x-cicada-environment: &cicada-environment
   CODEX_HOME: /state
   CICADA_PEER_RELAY_URL: ${CICADA_PEER_RELAY_URL:-}
-  CICADA_PEER_RELAY_TOKEN: ${CICADA_PEER_RELAY_TOKEN:-}
   CICADA_PEER_RELAY_INTERVAL_SECONDS: ${CICADA_PEER_RELAY_INTERVAL_SECONDS:-30}
-  CICADA_WEBHOOK_SECRET: ${CICADA_WEBHOOK_SECRET:-}
   CICADA_INTENT_PLANNER_BIN: ${CICADA_INTENT_PLANNER_BIN:-codex}
   CICADA_INTENT_PLANNER_TIMEOUT_SECONDS: ${CICADA_INTENT_PLANNER_TIMEOUT_SECONDS:-20}
   CICADA_COMPLETION_VERIFIER_BIN: ${CICADA_COMPLETION_VERIFIER_BIN:-codex}
@@ -71,3 +69,28 @@ services:
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/worker:/var/log/cicada
     command: ["sleep", "infinity"]
+
+  telegram:
+    <<: *cicada-common
+    container_name: cicada-telegram
+    profiles: ["telegram"]
+    depends_on:
+      control:
+        condition: service_healthy
+    environment:
+      <<: *cicada-environment
+      CICADA_ROLE: connector
+      CICADA_CONTROL_URL: http://control:8787
+      CICADA_STATE_DIR: /state
+      # The shared runtime file also contains model and federation secrets for
+      # Control. The connector only needs its Telegram credentials and, when
+      # configured, the Control bearer token.
+      API_KEY: ""
+      CICADA_PEER_RELAY_TOKEN: ""
+      CICADA_WEBHOOK_SECRET: ""
+    volumes:
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/telegram:/state
+      - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/logs/telegram:/var/log/cicada
+    healthcheck:
+      disable: true
+    command: ["cicada", "connector", "telegram"]

@@ -30,6 +30,9 @@ Implemented in this line:
   constant-time token comparison and runtime-only secret injection;
 - signed external connector ingress with HMAC-SHA256 verification, idempotent
   event keys, durable payloads, Goal audit events, and P1 notifications;
+- restart-safe Telegram Bot API ingestion with connector-specific
+  authentication, atomic update offsets, normalized message payloads, and an
+  explicit classified/linked/ignored/action-required triage API;
 - policy-gated external action requests with domain and SSRF checks, credential
   field rejection, durable approval transitions, executor claim/complete state,
   append-only action audit events, and a bounded credential-free read-only HTTP
@@ -82,7 +85,8 @@ Implemented in this line:
 The release deliberately keeps its boundaries explicit. Snapshot garbage
 collection and cross-Control replication, Contact directory and rendezvous
 services, multi-peer relay routing, session ratcheting, an authenticated
-external message/calendar connectors, additional harness adapters, push,
+Email/X/WeChat/QQ/calendar connectors, proactive classifiers and authorized
+reply executors, additional harness adapters, push,
 native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as
