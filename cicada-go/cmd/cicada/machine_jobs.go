@@ -15,20 +15,22 @@ import (
 )
 
 type machineJob struct {
-	WorkerID     string         `json:"worker_id"`
-	GoalID       string         `json:"goal_id"`
-	MachineID    string         `json:"machine_id"`
-	Harness      string         `json:"harness"`
-	Workspace    string         `json:"workspace"`
-	ResponseFile string         `json:"response_file"`
-	ThreadID     string         `json:"thread_id"`
-	Prompt       string         `json:"prompt"`
-	Resources    map[string]any `json:"resources"`
-	Attempt      int            `json:"attempt"`
+	WorkerID                string         `json:"worker_id"`
+	GoalID                  string         `json:"goal_id"`
+	MachineID               string         `json:"machine_id"`
+	WorkspaceID             string         `json:"workspace_id,omitempty"`
+	Harness                 string         `json:"harness"`
+	WorkspaceSnapshotDigest string         `json:"workspace_snapshot_digest,omitempty"`
+	Workspace               string         `json:"workspace"`
+	ResponseFile            string         `json:"response_file"`
+	ThreadID                string         `json:"thread_id"`
+	Prompt                  string         `json:"prompt"`
+	Resources               map[string]any `json:"resources"`
+	Attempt                 int            `json:"attempt"`
 }
 
 type machineJobResult struct {
-	Status, Summary, ThreadID, Error, WorkspaceRevision string
+	Status, Summary, ThreadID, Error, WorkspaceRevision, WorkspaceSnapshotDigest string
 }
 
 type machineAPIError struct {
@@ -60,8 +62,9 @@ func reportMachineJob(ctx context.Context, base string, job machineJob, result m
 	payload := map[string]string{
 		"machine_id": job.MachineID, "status": result.Status,
 		"summary": limitText(result.Summary, 16000), "thread_id": result.ThreadID,
-		"error":              limitText(result.Error, 4000),
-		"workspace_revision": result.WorkspaceRevision,
+		"error":                     limitText(result.Error, 4000),
+		"workspace_revision":        result.WorkspaceRevision,
+		"workspace_snapshot_digest": result.WorkspaceSnapshotDigest,
 	}
 	return machineAPIJSON(ctx, base+"/v1/workers/"+urlPath(job.WorkerID)+"/result", http.MethodPost, payload, nil)
 }

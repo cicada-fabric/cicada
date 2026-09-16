@@ -113,6 +113,15 @@ func runMachineAgent(args []string) error {
 }
 
 func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID string, interval time.Duration, job machineJob) machineJobResult {
+	workspace, _, pathErr := machineJobPaths(job)
+	if pathErr != nil {
+		return machineJobResult{Status: "failed", Error: pathErr.Error()}
+	}
+	if job.WorkspaceSnapshotDigest != "" {
+		if err := downloadMachineSnapshot(ctx, base, job, workspace); err != nil {
+			return machineJobResult{Status: "failed", Error: "restore workspace snapshot: " + err.Error()}
+		}
+	}
 	done := make(chan machineJobResult, 1)
 	go func() { done <- executeMachineJob(ctx, job) }()
 	ticker := time.NewTicker(interval)
@@ -120,6 +129,15 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID string
 	for {
 		select {
 		case result := <-done:
+			if job.WorkspaceID != "" {
+				digest, err := uploadMachineSnapshot(ctx, base, job, workspace)
+				if err != nil {
+					result.Status = "failed"
+					result.Error = "store workspace snapshot: " + err.Error()
+				} else {
+					result.WorkspaceSnapshotDigest = digest
+				}
+			}
 			return result
 		case <-ticker.C:
 			if err := machineAPI(ctx, base+"/v1/machines/"+url.PathEscape(machineID)+"/heartbeat", http.MethodPost, map[string]any{"status": "busy"}); err != nil {

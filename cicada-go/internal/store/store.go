@@ -71,14 +71,15 @@ type Idea struct {
 }
 
 type Workspace struct {
-	ID        string `json:"id"`
-	GoalID    string `json:"goal_id,omitempty"`
-	Path      string `json:"path"`
-	Source    string `json:"source,omitempty"`
-	Revision  string `json:"revision,omitempty"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID             string `json:"id"`
+	GoalID         string `json:"goal_id,omitempty"`
+	Path           string `json:"path"`
+	Source         string `json:"source,omitempty"`
+	Revision       string `json:"revision,omitempty"`
+	SnapshotDigest string `json:"snapshot_digest,omitempty"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 type Memory struct {
@@ -453,6 +454,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   path TEXT NOT NULL UNIQUE,
   source TEXT NOT NULL DEFAULT '',
   revision TEXT NOT NULL DEFAULT '',
+  snapshot_digest TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -626,6 +628,7 @@ CREATE INDEX IF NOT EXISTS thread_deliveries_created_idx ON thread_deliveries(cr
 		{"workers", "workspace", `ALTER TABLE workers ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
 		{"workers", "summary", `ALTER TABLE workers ADD COLUMN summary TEXT NOT NULL DEFAULT ''`},
 		{"workers", "prompt", `ALTER TABLE workers ADD COLUMN prompt TEXT NOT NULL DEFAULT ''`},
+		{"workspaces", "snapshot_digest", `ALTER TABLE workspaces ADD COLUMN snapshot_digest TEXT NOT NULL DEFAULT ''`},
 		{"contacts", "remote_id", `ALTER TABLE contacts ADD COLUMN remote_id TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "aad", `ALTER TABLE peer_messages ADD COLUMN aad TEXT NOT NULL DEFAULT ''`},
 		{"peer_messages", "transport_id", `ALTER TABLE peer_messages ADD COLUMN transport_id TEXT NOT NULL DEFAULT ''`},
@@ -1000,8 +1003,8 @@ func (s *Store) CreateWorkspace(id, goalID, path, source, revision string) (*Wor
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO workspaces (id, goal_id, path, source, revision, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`, id, nullableString(goalID), path, source, revision, timestamp, timestamp)
+	_, err := s.db.Exec(`INSERT INTO workspaces (id, goal_id, path, source, revision, snapshot_digest, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, '', 'active', ?, ?)`, id, nullableString(goalID), path, source, revision, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace: %w", err)
 	}
@@ -1010,16 +1013,16 @@ VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`, id, nullableString(goalID), path, sourc
 
 func (s *Store) getWorkspaceLocked(id string) (*Workspace, error) {
 	var workspace Workspace
-	var goalID, source, revision sql.NullString
-	err := s.db.QueryRow(`SELECT id, goal_id, path, source, revision, status, created_at, updated_at FROM workspaces WHERE id = ?`, id).
-		Scan(&workspace.ID, &goalID, &workspace.Path, &source, &revision, &workspace.Status, &workspace.CreatedAt, &workspace.UpdatedAt)
+	var goalID, source, revision, snapshotDigest sql.NullString
+	err := s.db.QueryRow(`SELECT id, goal_id, path, source, revision, snapshot_digest, status, created_at, updated_at FROM workspaces WHERE id = ?`, id).
+		Scan(&workspace.ID, &goalID, &workspace.Path, &source, &revision, &snapshotDigest, &workspace.Status, &workspace.CreatedAt, &workspace.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	workspace.GoalID, workspace.Source, workspace.Revision = goalID.String, source.String, revision.String
+	workspace.GoalID, workspace.Source, workspace.Revision, workspace.SnapshotDigest = goalID.String, source.String, revision.String, snapshotDigest.String
 	return &workspace, nil
 }
 
@@ -1071,6 +1074,15 @@ func (s *Store) ListWorkspaces(goalID string) ([]Workspace, error) {
 
 func (s *Store) UpdateWorkspace(id, status, revision string) (*Workspace, error) {
 	return s.UpdateWorkspaceLocation(id, "", status, revision)
+}
+
+func (s *Store) UpdateWorkspaceSnapshot(id, digest string) (*Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`UPDATE workspaces SET snapshot_digest = ?, updated_at = ? WHERE id = ?`, digest, now(), id); err != nil {
+		return nil, err
+	}
+	return s.getWorkspaceLocked(id)
 }
 
 func (s *Store) UpdateWorkspaceLocation(id, path, status, revision string) (*Workspace, error) {

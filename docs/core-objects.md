@@ -26,12 +26,12 @@ curl -X POST http://127.0.0.1:8787/v1/ideas/IDEA_ID/research
 ```
 
 Every Goal creates a registered Workspace. The workspace registry records its
-path, source, revision, and lifecycle status; `GET /v1/workspaces?goal_id=...`
+path, source, revision, snapshot digest, and lifecycle status; `GET /v1/workspaces?goal_id=...`
 lists the workspaces associated with a Goal, and `PATCH /v1/workspaces/ID`
 updates a snapshot or migration revision after an executor performs it.
 
 The lifecycle actions are explicit and auditable. `snapshot` records the Git
-revision when the path is a repository, `migrate` copies a workspace inside
+revision and can persist a content-addressed file archive, `migrate` copies a workspace inside
 the configured workspace root and updates its path, `archive` marks it
 inactive without deleting files, and `resume` recreates the directory and
 marks it active:
@@ -44,6 +44,12 @@ curl -X POST http://127.0.0.1:8787/v1/workspaces/WORKSPACE_ID/actions \
   -H 'content-type: application/json' \
   -d '{"action":"migrate","target_path":"/workspace/migrated"}'
 ```
+
+Remote agents use the snapshot endpoints directly. Uploading a deterministic
+tar archive returns its SHA-256 address and persists it on the Workspace;
+`GET /v1/workspaces/WORKSPACE_ID/snapshot/DIGEST` streams the verified archive
+to a recovering Machine. Archives are bounded and reject symlinks, special
+files, non-canonical paths, and trailing data.
 
 A Goal can also materialize a credential-free public Git repository on either
 a local or remote executor. The source is pinned on first execution and resumed

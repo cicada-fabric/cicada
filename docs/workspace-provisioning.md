@@ -61,6 +61,8 @@ without a shared workspace mount. They must use the same logical
 absolute path. Result summaries and the resolved Git revision return through
 the machine-agent API.
 
-Uncommitted files and generated artifacts still remain on the execution host
-unless the machines share storage. Content-addressed artifact upload and
-automatic migration of a modified workspace remain separate product work.
+Uncommitted files and generated artifacts are uploaded as bounded,
+content-addressed snapshots after remote attempts. A recovered Worker carries
+the digest to its next Machine, which verifies and restores it before running.
+Snapshot garbage collection and cross-Control replication remain separate
+operations.

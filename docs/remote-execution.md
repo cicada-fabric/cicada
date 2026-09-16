@@ -48,8 +48,10 @@ is contained by `CICADA_WORKSPACE_ROOT`. A Goal can declare a public HTTPS
 [`Git workspace source`](workspace-provisioning.md), allowing machines with
 independent disks to materialize the same pinned starting revision. Goals
 without a source still require the same mounted storage or operator-provisioned
-contents. Content-addressed transfer of modified workspaces and automatic
-cross-machine migration remain separate product work.
+contents. After each remote attempt, the agent uploads a bounded,
+content-addressed workspace snapshot. If the Worker is requeued, the next
+Machine verifies and restores that digest before execution, so modified files
+survive a machine failure without entering the model prompt.
 
 The agent resolves symlinks before entering the workspace and rejects a path
 that resolves outside the configured root. It always recreates the response

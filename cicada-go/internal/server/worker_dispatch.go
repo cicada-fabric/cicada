@@ -34,18 +34,19 @@ func (h *Handler) workerDispatch(response http.ResponseWriter, request *http.Req
 		writeJSON(response, http.StatusOK, job)
 	case parts[1] == "result" && request.Method == http.MethodPost:
 		var input struct {
-			MachineID         string `json:"machine_id"`
-			Status            string `json:"status"`
-			Summary           string `json:"summary"`
-			ThreadID          string `json:"thread_id"`
-			Error             string `json:"error"`
-			WorkspaceRevision string `json:"workspace_revision"`
+			MachineID               string `json:"machine_id"`
+			Status                  string `json:"status"`
+			Summary                 string `json:"summary"`
+			ThreadID                string `json:"thread_id"`
+			Error                   string `json:"error"`
+			WorkspaceRevision       string `json:"workspace_revision"`
+			WorkspaceSnapshotDigest string `json:"workspace_snapshot_digest"`
 		}
 		if err := readJSON(request, &input); err != nil {
 			writeError(response, http.StatusBadRequest, err)
 			return
 		}
-		worker, err := h.control.CompleteRemoteWorker(workerID, strings.TrimSpace(input.MachineID), input.Status, input.Summary, input.ThreadID, input.Error, input.WorkspaceRevision)
+		worker, err := h.control.CompleteRemoteWorker(workerID, strings.TrimSpace(input.MachineID), input.Status, input.Summary, input.ThreadID, input.Error, input.WorkspaceRevision, input.WorkspaceSnapshotDigest)
 		if err != nil {
 			status := dispatchErrorStatus(err)
 			writeError(response, status, err)

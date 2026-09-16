@@ -22,6 +22,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
+	workspacecas "github.com/cicada-ai/cicada/internal/workspace/cas"
 )
 
 type Config struct {
@@ -134,6 +135,7 @@ func (c *Control) APIToken() string { return c.config.APIToken }
 type Control struct {
 	config          Config
 	store           *store.Store
+	snapshotStore   *workspacecas.Store
 	mu              sync.Mutex
 	running         map[string]runningWorker
 	identity        *e2ee.Identity
@@ -162,9 +164,15 @@ func New(config Config) (*Control, error) {
 	if err != nil {
 		return nil, err
 	}
+	snapshotStore, err := workspacecas.New(filepath.Join(config.StateDir, "workspace-snapshots"))
+	if err != nil {
+		_ = persistence.Close()
+		return nil, err
+	}
 	control := &Control{
 		config:          config,
 		store:           persistence,
+		snapshotStore:   snapshotStore,
 		running:         make(map[string]runningWorker),
 		approvalWaiters: make(map[string]chan string),
 		shutdown:        make(chan struct{}),
@@ -975,6 +983,9 @@ func (c *Control) WorkspaceAction(id, action, targetPath string) (*store.Workspa
 		revision := workspace.Revision
 		if value, gitErr := gitRevision(workspace.Path); gitErr == nil && value != "" {
 			revision = value
+		}
+		if _, snapshotErr := c.SnapshotWorkspace(id); snapshotErr != nil {
+			return nil, fmt.Errorf("snapshot workspace: %w", snapshotErr)
 		}
 		if revision == "" {
 			revision = time.Now().UTC().Format("20060102T150405Z")

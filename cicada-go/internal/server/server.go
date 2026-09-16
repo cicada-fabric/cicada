@@ -17,6 +17,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
+	"github.com/cicada-ai/cicada/internal/workspace/snapshot"
 )
 
 type Handler struct {
@@ -731,6 +732,39 @@ func (h *Handler) workspace(response http.ResponseWriter, request *http.Request)
 	id := parts[0]
 	if id == "" {
 		writeError(response, http.StatusNotFound, errors.New("workspace not found"))
+		return
+	}
+	if len(parts) == 2 && parts[1] == "snapshot" && request.Method == http.MethodPost {
+		request.Body = http.MaxBytesReader(response, request.Body, snapshot.MaxArchiveBytes+1)
+		stored, err := h.control.ReceiveWorkspaceSnapshot(id, request.Body)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
+			}
+			writeError(response, status, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, stored)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "snapshot" && request.Method == http.MethodGet {
+		file, metadata, err := h.control.OpenWorkspaceSnapshot(id, parts[2])
+		if err != nil {
+			status := http.StatusNotFound
+			if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
+			}
+			writeError(response, status, err)
+			return
+		}
+		defer file.Close()
+		response.Header().Set("Content-Type", "application/x-cicada-workspace-tar")
+		response.Header().Set("Content-Length", strconv.FormatInt(metadata.Size, 10))
+		response.Header().Set("X-Cicada-Snapshot-Digest", metadata.Digest)
+		_, _ = io.Copy(response, file)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "actions" && request.Method == http.MethodPost {

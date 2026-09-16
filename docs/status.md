@@ -71,9 +71,12 @@ Implemented in this line:
 - credential-free public HTTPS Git workspace provisioning on local and remote
   executors, with public-address checks, atomic checkout, pinned provenance,
   secret-free Git processes, symlink containment, and revision evidence.
+- content-addressed workspace snapshots for remote result transfer and Worker
+  recovery, with bounded archives, SHA-256 verification, safe extraction, and
+  digest-carrying cross-Machine resume.
 
-The release deliberately keeps its boundaries explicit. Content-addressed
-transfer of modified workspaces and automatic migration, Contact directory and rendezvous
+The release deliberately keeps its boundaries explicit. Snapshot garbage
+collection and cross-Control replication, Contact directory and rendezvous
 services, multi-peer relay routing, session ratcheting, an authenticated
 browser executor, external message/calendar connectors, additional harness
 adapters, push, native mobile, and local voice channels remain the next feature lines. The

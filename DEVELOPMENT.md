@@ -180,6 +180,11 @@ For machines without a shared workspace mount, a Goal may declare
 `resources.workspace_source` with a credential-free HTTPS Git URL and revision.
 See `docs/workspace-provisioning.md` for the provenance and security contract.
 
+Remote agents persist modified workspaces through the authenticated snapshot
+endpoints. Archives are deterministic tar streams capped at 256 MiB and are
+addressed by SHA-256; recovery jobs download the digest before starting the
+harness. The Control CAS lives in `$CICADA_STATE_DIR/workspace-snapshots`.
+
 For direct Control-to-Control delivery, set `CICADA_PEER_RELAY_URL` to the
 remote Control's `/v1/federation/messages` endpoint and set
 `CICADA_PEER_RELAY_TOKEN` to its API token. Control routes by public identity,

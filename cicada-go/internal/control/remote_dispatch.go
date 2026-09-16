@@ -12,16 +12,18 @@ import (
 // The control database remains authoritative; the agent only executes this
 // payload and reports a result back over the authenticated API.
 type MachineJob struct {
-	WorkerID     string         `json:"worker_id"`
-	GoalID       string         `json:"goal_id"`
-	MachineID    string         `json:"machine_id"`
-	Harness      string         `json:"harness"`
-	Workspace    string         `json:"workspace"`
-	ResponseFile string         `json:"response_file"`
-	ThreadID     string         `json:"thread_id,omitempty"`
-	Prompt       string         `json:"prompt"`
-	Resources    map[string]any `json:"resources,omitempty"`
-	Attempt      int            `json:"attempt"`
+	WorkerID                string         `json:"worker_id"`
+	GoalID                  string         `json:"goal_id"`
+	MachineID               string         `json:"machine_id"`
+	WorkspaceID             string         `json:"workspace_id,omitempty"`
+	Harness                 string         `json:"harness"`
+	Workspace               string         `json:"workspace"`
+	WorkspaceSnapshotDigest string         `json:"workspace_snapshot_digest,omitempty"`
+	ResponseFile            string         `json:"response_file"`
+	ThreadID                string         `json:"thread_id,omitempty"`
+	Prompt                  string         `json:"prompt"`
+	Resources               map[string]any `json:"resources,omitempty"`
+	Attempt                 int            `json:"attempt"`
 }
 
 var ErrWorkerUnavailable = errors.New("worker is no longer available")
@@ -91,11 +93,39 @@ func (c *Control) machineJob(goal store.Goal, worker store.Worker, commands []st
 	}
 	return MachineJob{
 		WorkerID: worker.ID, GoalID: worker.GoalID, MachineID: worker.MachineID,
-		Harness: worker.Harness, Workspace: worker.Workspace,
+		WorkspaceID:             c.workspaceID(goal.ID, worker.Workspace),
+		WorkspaceSnapshotDigest: c.workspaceSnapshotDigest(goal.ID, worker.Workspace),
+		Harness:                 worker.Harness, Workspace: worker.Workspace,
 		ResponseFile: worker.ResponseFile, ThreadID: worker.ThreadID,
 		Prompt:    prompt,
 		Resources: goal.Resources, Attempt: worker.Attempt,
 	}
+}
+
+func (c *Control) workspaceID(goalID, path string) string {
+	workspaces, err := c.store.ListWorkspaces(goalID)
+	if err != nil {
+		return ""
+	}
+	for _, workspace := range workspaces {
+		if workspace.Path == path {
+			return workspace.ID
+		}
+	}
+	return ""
+}
+
+func (c *Control) workspaceSnapshotDigest(goalID, path string) string {
+	workspaces, err := c.store.ListWorkspaces(goalID)
+	if err != nil {
+		return ""
+	}
+	for _, workspace := range workspaces {
+		if workspace.Path == path {
+			return workspace.SnapshotDigest
+		}
+	}
+	return ""
 }
 
 // ClaimRemoteWorker is the only transition that assigns execution ownership.

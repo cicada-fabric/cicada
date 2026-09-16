@@ -67,6 +67,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   executors. The adapter isolates credentials/config, rejects private network
   targets and symlink escapes, resumes marked workspaces, and records the
   resolved commit as evidence.
+- Remote execution now uploads deterministic, bounded workspace snapshots to a
+  SHA-256 content-addressed store. Requeued Workers carry the digest to a new
+  Machine, which verifies and atomically restores modified files.
 
 ## 0.2.0 — 2026-09-15
 

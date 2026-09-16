@@ -37,6 +37,9 @@ func (c *Control) CompleteRemoteWorker(workerID, machineID, status, summary, thr
 	if len(workspaceRevision) > 0 && strings.TrimSpace(workspaceRevision[0]) != "" {
 		c.recordWorkspacePrepared(worker.GoalID, worker.ID, worker.Workspace, strings.TrimSpace(workspaceRevision[0]), false)
 	}
+	if len(workspaceRevision) > 1 && strings.TrimSpace(workspaceRevision[1]) != "" {
+		c.recordWorkspaceSnapshotDigest(worker.GoalID, worker.Workspace, strings.TrimSpace(workspaceRevision[1]))
+	}
 	summary = tail(strings.TrimSpace(summary), 16000)
 	if threadID == "" {
 		threadID = worker.ThreadID
