@@ -36,13 +36,15 @@ type Config struct {
 	// APIToken protects the HTTP/JSON control boundary when it is exposed
 	// beyond the local host. An empty token keeps the localhost-only default
 	// convenient for development.
-	APIToken          string
-	WebhookSecret     string
-	PeerRelayURL      string
-	PeerRelayToken    string
-	PeerRelayInterval time.Duration
-	IntentPlannerBin  string
-	IntentPlannerTime time.Duration
+	APIToken               string
+	WebhookSecret          string
+	PeerRelayURL           string
+	PeerRelayToken         string
+	PeerRelayInterval      time.Duration
+	IntentPlannerBin       string
+	IntentPlannerTime      time.Duration
+	CompletionVerifierBin  string
+	CompletionVerifierTime time.Duration
 }
 
 func DefaultConfig() Config {
@@ -89,23 +91,31 @@ func DefaultConfig() Config {
 			plannerTimeout = seconds
 		}
 	}
+	verifierTimeout := 20 * time.Second
+	if value := os.Getenv("CICADA_COMPLETION_VERIFIER_TIMEOUT_SECONDS"); value != "" {
+		if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
+			verifierTimeout = seconds
+		}
+	}
 	return Config{
-		StateDir:          envOr("CICADA_STATE_DIR", "/state"),
-		WorkspaceRoot:     envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
-		IdentityFile:      envOr("CICADA_E2EE_IDENTITY_FILE", ""),
-		CodexBinary:       envOr("CICADA_CODEX_BIN", "codex"),
-		WorkerTimeout:     timeout,
-		MaxRecoveries:     recoveries,
-		MonitorInterval:   monitorInterval,
-		MachineStaleAfter: staleAfter,
-		MonitorStallAfter: stallAfter,
-		APIToken:          os.Getenv("CICADA_API_TOKEN"),
-		WebhookSecret:     os.Getenv("CICADA_WEBHOOK_SECRET"),
-		PeerRelayURL:      os.Getenv("CICADA_PEER_RELAY_URL"),
-		PeerRelayToken:    os.Getenv("CICADA_PEER_RELAY_TOKEN"),
-		PeerRelayInterval: relayInterval,
-		IntentPlannerBin:  os.Getenv("CICADA_INTENT_PLANNER_BIN"),
-		IntentPlannerTime: plannerTimeout,
+		StateDir:               envOr("CICADA_STATE_DIR", "/state"),
+		WorkspaceRoot:          envOr("CICADA_WORKSPACE_ROOT", "/workspace"),
+		IdentityFile:           envOr("CICADA_E2EE_IDENTITY_FILE", ""),
+		CodexBinary:            envOr("CICADA_CODEX_BIN", "codex"),
+		WorkerTimeout:          timeout,
+		MaxRecoveries:          recoveries,
+		MonitorInterval:        monitorInterval,
+		MachineStaleAfter:      staleAfter,
+		MonitorStallAfter:      stallAfter,
+		APIToken:               os.Getenv("CICADA_API_TOKEN"),
+		WebhookSecret:          os.Getenv("CICADA_WEBHOOK_SECRET"),
+		PeerRelayURL:           os.Getenv("CICADA_PEER_RELAY_URL"),
+		PeerRelayToken:         os.Getenv("CICADA_PEER_RELAY_TOKEN"),
+		PeerRelayInterval:      relayInterval,
+		IntentPlannerBin:       os.Getenv("CICADA_INTENT_PLANNER_BIN"),
+		IntentPlannerTime:      plannerTimeout,
+		CompletionVerifierBin:  os.Getenv("CICADA_COMPLETION_VERIFIER_BIN"),
+		CompletionVerifierTime: verifierTimeout,
 	}
 }
 
@@ -1554,7 +1564,7 @@ func machineMatches(machine store.Machine, resources map[string]any) bool {
 			if !ok || !networkOK || !available || availableValue != requiredValue {
 				return false
 			}
-		case "attachments", "argv":
+		case "attachments", "argv", "completion_verifier":
 			// Goal context and harness execution arguments are not machine
 			// capabilities.
 			continue
@@ -1796,6 +1806,7 @@ func (c *Control) StopGoal(goalID string) (*store.Goal, error) {
 		status := "cancelled"
 		_, _ = c.store.UpdateWorker(worker.ID, store.WorkerUpdate{Status: &status, ClearPID: true, EndedAt: stringPtr(storeNow())})
 		_, _ = c.store.AppendEvent(goalID, worker.ID, "WorkerCancelled", map[string]any{})
+		_ = c.store.SetMachineStatus(worker.MachineID, "available")
 	}
 	status := "cancelled"
 	if _, err := c.store.UpdateGoal(goalID, status, ""); err != nil {
@@ -1853,7 +1864,8 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 		attempt++
 		runningStatus := "running"
 		_, _ = c.store.UpdateWorker(workerID, store.WorkerUpdate{
-			Status: &runningStatus, Attempt: &attempt, StartedAt: stringPtr(storeNow()), ClearPID: true,
+			Status: &runningStatus, Attempt: &attempt, StartedAt: stringPtr(storeNow()),
+			ClearPID: true, Summary: stringPtr(""),
 		})
 		_ = c.store.SetMachineStatus(machineID, "busy")
 		_, _ = c.store.UpdateGoal(goal.ID, "running", goal.Summary)
@@ -1892,6 +1904,21 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 			summary := strings.TrimSpace(worker.Summary)
 			if summary == "" {
 				summary = readSummary(worker.ResponseFile)
+			}
+			verdict := c.verifyCompletion(ctx, *goal, *worker, summary)
+			c.recordCompletionVerdict(goal.ID, workerID, verdict)
+			worker, _ = c.store.GetWorker(workerID)
+			if worker == nil || ctx.Err() != nil || worker.Status == "cancelled" {
+				return
+			}
+			if !verdict.Accepted {
+				var retry bool
+				prompt, retry = c.rejectLocalCompletion(goal, workerID, attempt, summary, verdict)
+				if !retry {
+					return
+				}
+				recoveryPrompt = prompt
+				continue
 			}
 			artifact, artifactErr := c.store.CreateArtifact(store.Artifact{
 				GoalID: goal.ID, WorkerID: workerID, Name: "worker-final-message",

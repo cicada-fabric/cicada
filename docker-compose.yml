@@ -1,5 +1,16 @@
 name: cicada
 
+x-cicada-environment: &cicada-environment
+  CODEX_HOME: /state
+  CICADA_PEER_RELAY_URL: ${CICADA_PEER_RELAY_URL:-}
+  CICADA_PEER_RELAY_TOKEN: ${CICADA_PEER_RELAY_TOKEN:-}
+  CICADA_PEER_RELAY_INTERVAL_SECONDS: ${CICADA_PEER_RELAY_INTERVAL_SECONDS:-30}
+  CICADA_WEBHOOK_SECRET: ${CICADA_WEBHOOK_SECRET:-}
+  CICADA_INTENT_PLANNER_BIN: ${CICADA_INTENT_PLANNER_BIN:-codex}
+  CICADA_INTENT_PLANNER_TIMEOUT_SECONDS: ${CICADA_INTENT_PLANNER_TIMEOUT_SECONDS:-20}
+  CICADA_COMPLETION_VERIFIER_BIN: ${CICADA_COMPLETION_VERIFIER_BIN:-codex}
+  CICADA_COMPLETION_VERIFIER_TIMEOUT_SECONDS: ${CICADA_COMPLETION_VERIFIER_TIMEOUT_SECONDS:-20}
+
 x-cicada-common: &cicada-common
   image: ${CICADA_IMAGE:-cicada-codex:dev}
   build:
@@ -16,14 +27,7 @@ x-cicada-common: &cicada-common
   working_dir: /workspace
   env_file:
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/secrets/cicada.env
-  environment:
-    CODEX_HOME: /state
-    CICADA_PEER_RELAY_URL: ${CICADA_PEER_RELAY_URL:-}
-    CICADA_PEER_RELAY_TOKEN: ${CICADA_PEER_RELAY_TOKEN:-}
-    CICADA_PEER_RELAY_INTERVAL_SECONDS: ${CICADA_PEER_RELAY_INTERVAL_SECONDS:-30}
-    CICADA_WEBHOOK_SECRET: ${CICADA_WEBHOOK_SECRET:-}
-    CICADA_INTENT_PLANNER_BIN: ${CICADA_INTENT_PLANNER_BIN:-codex}
-    CICADA_INTENT_PLANNER_TIMEOUT_SECONDS: ${CICADA_INTENT_PLANNER_TIMEOUT_SECONDS:-20}
+  environment: *cicada-environment
   volumes:
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state:/state
     - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/workspaces:/workspace
@@ -45,7 +49,7 @@ services:
     ports:
       - "127.0.0.1:${CICADA_API_PORT:-8787}:8787"
     environment:
-      CODEX_HOME: /state
+      <<: *cicada-environment
       CICADA_ROLE: control
       CICADA_API_HOST: 0.0.0.0
       CICADA_API_PORT: 8787
@@ -60,7 +64,7 @@ services:
     container_name: cicada-worker
     profiles: ["worker"]
     environment:
-      CODEX_HOME: /state
+      <<: *cicada-environment
       CICADA_ROLE: worker
     volumes:
       - ${CICADA_DATA_ROOT:-/gpu1-share/data/cicada}/state/worker:/state

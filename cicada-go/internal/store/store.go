@@ -1939,7 +1939,7 @@ func (s *Store) ListWorkers() ([]Worker, error) {
 func (s *Store) ListInflightWorkers() ([]Worker, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id FROM workers WHERE status IN ('queued', 'running', 'recovering') ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id FROM workers WHERE status IN ('queued', 'running', 'recovering', 'verifying') ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}

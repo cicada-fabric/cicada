@@ -46,4 +46,6 @@ For example:
 The periodic monitor loop records a `MonitorEvaluated` event for active running
 workers. Its correction policy remains conservative: it queues a bounded stall
 correction after the configured inactivity threshold, and explicit API or peer
-commands use the same per-Worker command queue.
+commands use the same per-Worker command queue. A separate
+[`completion verification`](completion-verification.md) step checks bounded
+evidence before accepting a Worker's final claim.

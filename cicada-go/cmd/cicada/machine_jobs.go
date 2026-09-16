@@ -129,7 +129,7 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
-	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
 		return err
 	}

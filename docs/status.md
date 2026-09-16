@@ -65,6 +65,9 @@ Implemented in this line:
   CLI and remote clients.
 - registered manual Codex TUI sessions with permission-gated, durable message
   delivery through the official `codex queue` command.
+- evidence-aware completion supervision with a read-only ephemeral `gpt-5.5`
+  verdict, high-confidence automatic correction, bounded retries, explicit
+  outage events, and compare-and-swap protection for remote results.
 
 The release deliberately keeps its boundaries explicit. Cross-machine
 workspace provisioning and migration, Contact directory and rendezvous

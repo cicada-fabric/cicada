@@ -57,6 +57,12 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Runtime, image, and test configuration consistently select `gpt-5.5`.
 - Monitor and peer correction commands are consumed per Worker, preventing one
   parallel branch from consuming a sibling's command.
+- Worker completion claims now pass a bounded evidence verifier before artifact
+  and Goal completion. High-confidence `gpt-5.5` rejections resume the Worker
+  with a correction; verifier outages remain visible without blocking work.
+- Compose service environments now inherit the complete shared Control
+  configuration, so intent planning, completion verification, federation, and
+  connector settings survive service-specific role overrides.
 
 ## 0.2.0 — 2026-09-15
 

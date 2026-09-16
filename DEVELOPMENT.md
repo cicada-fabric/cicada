@@ -171,6 +171,11 @@ The post-quantum contact and envelope boundary is documented in
 The remote claim/result protocol, secret boundary, workspace requirement, and
 failure semantics are documented in `docs/remote-execution.md`.
 
+Codex completion claims are checked by an ephemeral read-only `gpt-5.5`
+verifier. Shell evidence stays local unless a Goal opts into model verification.
+The verdict policy and failure behavior are documented in
+`docs/completion-verification.md`.
+
 For direct Control-to-Control delivery, set `CICADA_PEER_RELAY_URL` to the
 remote Control's `/v1/federation/messages` endpoint and set
 `CICADA_PEER_RELAY_TOKEN` to its API token. Control routes by public identity,

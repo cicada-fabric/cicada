@@ -57,6 +57,27 @@ WHERE id = ? AND machine_id = ? AND status IN ('queued', 'recovering')`, now(), 
 	return s.getWorkerLocked(id)
 }
 
+// TransitionWorkerStatus performs a compare-and-swap transition. Remote
+// completion uses it to ensure retries cannot verify or finalize one attempt
+// twice, while cancellation can still win the race safely.
+func (s *Store) TransitionWorkerStatus(id, machineID, from, to string) (*Worker, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, err := s.db.Exec(`UPDATE workers SET status = ?, updated_at = ?
+WHERE id = ? AND machine_id = ? AND status = ?`, to, now(), id, machineID, from)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if changed == 0 {
+		return nil, nil
+	}
+	return s.getWorkerLocked(id)
+}
+
 // RequeueRunningWorkersForMachine releases work whose remote machine stopped
 // heartbeating. A later claim increments the attempt and resumes normal
 // recovery processing.
