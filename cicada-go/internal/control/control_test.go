@@ -823,6 +823,66 @@ func TestIdeaLifecycleStatusesArePersistable(t *testing.T) {
 	}
 }
 
+func TestParkedIdeaRevisitTriggerIsDurableAndIdempotent(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := New(Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		MonitorInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+
+	due := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	dueIdea, err := controlPlane.CreateIdea(IdeaInput{
+		Title: "Revisit me", Description: "Check the opportunity again", Status: "parked",
+		Rationale: "Not enough time before the deadline", RevisitWhen: "at:" + due,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	futureIdea, err := controlPlane.CreateIdea(IdeaInput{
+		Title: "Wait longer", Description: "Do not check yet", Status: "parked", RevisitWhen: future,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controlPlane.evaluateMonitors()
+	updated, err := controlPlane.Idea(dueIdea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != "assessed" || !strings.Contains(updated.Rationale, "Automatic revisit triggered at") {
+		t.Fatalf("due idea was not assessed with an audit marker: %#v", updated)
+	}
+	unchanged, err := controlPlane.Idea(futureIdea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Status != "parked" {
+		t.Fatalf("future idea was revisited early: %#v", unchanged)
+	}
+
+	controlPlane.evaluateMonitors()
+	again, err := controlPlane.Idea(dueIdea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(again.Rationale, "Automatic revisit triggered at") != 1 {
+		t.Fatalf("revisit transition was not idempotent: %q", again.Rationale)
+	}
+	notifications, err := controlPlane.Notifications(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].Kind != "idea.revisit" || notifications[0].Priority != "P2" {
+		t.Fatalf("unexpected revisit notification: %#v", notifications)
+	}
+}
+
 func TestUnsupportedHarnessIsRejectedBeforeWorkerCreation(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "try unsupported harness", Harness: "unknown-harness"}); err == nil {

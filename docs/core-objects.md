@@ -64,6 +64,14 @@ curl -X POST http://127.0.0.1:8787/v1/goals \
 The validation and credential boundary is documented in
 [`workspace-provisioning.md`](workspace-provisioning.md).
 
+Parked Ideas can carry an automatic revisit schedule in `revisit_when`. Use
+`at:<RFC3339>` for an exact UTC time or `on:<YYYY-MM-DD>` for a UTC date (a
+bare RFC3339 timestamp/date is also accepted). The monitor changes a due Idea
+from `parked` to `assessed`, appends an audit marker to its rationale, and
+creates a P2 `idea.revisit` notification. Free-form text remains available for
+conditions that require human or planner judgment and is never guessed by the
+automatic checker.
+
 Memory entries have one of the CICADA scopes (`personal`, `project`,
 `execution`, or `idea`) and an optional namespace. They are durable context,
 not hidden prompt text:

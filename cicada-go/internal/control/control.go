@@ -398,6 +398,7 @@ func (c *Control) monitorLoop() {
 }
 
 func (c *Control) evaluateMonitors() {
+	c.evaluateParkedIdeas()
 	c.evaluateParentGoals()
 	if c.config.MachineStaleAfter > 0 {
 		cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
@@ -463,6 +464,58 @@ func (c *Control) evaluateMonitors() {
 			}
 		}
 	}
+}
+
+// evaluateParkedIdeas turns an explicitly scheduled parked idea back into an
+// assessed idea when its revisit time arrives. RevisitWhen intentionally stays
+// human-readable for conditional notes; the automatic path only acts on the
+// unambiguous `at:<RFC3339>` or `on:<YYYY-MM-DD>` forms documented for the API.
+// Updating the status makes the transition idempotent across monitor ticks.
+func (c *Control) evaluateParkedIdeas() {
+	ideas, err := c.store.ListIdeas("parked")
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC()
+	for _, idea := range ideas {
+		revisitAt, ok := ideaRevisitTime(idea.RevisitWhen)
+		if !ok || revisitAt.After(now) {
+			continue
+		}
+		rationale := strings.TrimSpace(idea.Rationale)
+		marker := "Automatic revisit triggered at " + now.Format(time.RFC3339)
+		if rationale == "" {
+			rationale = marker
+		} else {
+			rationale += "\n\n" + marker
+		}
+		if _, updateErr := c.store.UpdateIdea(idea.ID, "assessed", rationale, idea.RevisitWhen, idea.GoalID); updateErr != nil {
+			continue
+		}
+		if idea.GoalID != "" {
+			_, _ = c.store.AppendEvent(idea.GoalID, "", "IdeaRevisitTriggered", map[string]any{
+				"idea_id": idea.ID, "revisit_at": revisitAt.Format(time.RFC3339),
+			})
+		}
+		c.notify(idea.GoalID, "idea.revisit", "P2", "Parked idea ready for review", idea.Title+" is due for re-evaluation.")
+	}
+}
+
+func ideaRevisitTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	for _, prefix := range []string{"at:", "on:"} {
+		if strings.HasPrefix(strings.ToLower(value), prefix) {
+			value = strings.TrimSpace(value[len(prefix):])
+			break
+		}
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.UTC(), true
+	}
+	if parsed, err := time.ParseInLocation("2006-01-02", value, time.UTC); err == nil {
+		return parsed, true
+	}
+	return time.Time{}, false
 }
 
 func (c *Control) Shutdown(ctx context.Context) error {
