@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	harnesspkg "github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/store"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 	workspacecas "github.com/cicada-ai/cicada/internal/workspace/cas"
@@ -261,7 +262,13 @@ func (c *Control) registerLocalMachines() error {
 	}
 	capabilities := discoverLocalCapabilities()
 	capabilities["role"] = "control"
-	capabilities["harnesses"] = []string{"codex", "shell"}
+	harnesses := []string{"codex", "shell"}
+	for _, name := range harnesspkg.Names() {
+		if harnesspkg.Available(name) {
+			harnesses = append(harnesses, name)
+		}
+	}
+	capabilities["harnesses"] = harnesses
 	_, err = c.store.UpsertMachine("control-local", "Control ("+hostname+")", capabilities, "available")
 	if err != nil {
 		return err
@@ -1325,12 +1332,12 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 			return nil, errors.New("deadline must be an RFC3339 timestamp")
 		}
 	}
-	harness := strings.ToLower(strings.TrimSpace(input.Harness))
+	harness := harnesspkg.Canonical(input.Harness)
 	if harness == "" {
 		harness = "codex"
 	}
-	if harness != "codex" && harness != "shell" {
-		return nil, fmt.Errorf("harness %q is not installed; current release supports codex and shell", harness)
+	if harness != "codex" && harness != "shell" && !harnesspkg.IsOptional(harness) {
+		return nil, fmt.Errorf("unsupported harness %q; supported harnesses are codex, shell, claude-code, opencode, and happy-agent", harness)
 	}
 	input.ParentGoalID = strings.TrimSpace(input.ParentGoalID)
 	var parent *store.Goal
@@ -1476,12 +1483,12 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 			return nil, fmt.Errorf("goal worker budget exceeded: max_workers=%d", int(maxWorkers))
 		}
 	}
-	harness := strings.ToLower(strings.TrimSpace(input.Harness))
+	harness := harnesspkg.Canonical(input.Harness)
 	if harness == "" {
 		harness = "codex"
 	}
-	if harness != "codex" && harness != "shell" {
-		return nil, fmt.Errorf("harness %q is not installed; current release supports codex and shell", harness)
+	if harness != "codex" && harness != "shell" && !harnesspkg.IsOptional(harness) {
+		return nil, fmt.Errorf("unsupported harness %q; supported harnesses are codex, shell, claude-code, opencode, and happy-agent", harness)
 	}
 	resources := input.Resources
 	if resources == nil {

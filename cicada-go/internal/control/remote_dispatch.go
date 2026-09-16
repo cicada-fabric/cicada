@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -152,7 +153,7 @@ func (c *Control) ClaimRemoteWorker(workerID, machineID string) (MachineJob, err
 	if permissionErr := c.checkWorkspaceSourcePermission(*goal); permissionErr != nil {
 		return MachineJob{}, permissionErr
 	}
-	if worker.Harness == "shell" {
+	if harness.Canonical(worker.Harness) == "shell" {
 		argv, argvErr := shellArgv(goal.Resources["argv"])
 		if argvErr != nil {
 			return MachineJob{}, argvErr

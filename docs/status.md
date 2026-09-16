@@ -80,6 +80,9 @@ Implemented in this line:
 - conservative content-addressed snapshot garbage collection rooted in
   Workspaces and snapshot Artifacts, plus authenticated operator-driven
   cross-Control archive replication with destination digest verification;
+- bounded Claude Code, OpenCode, and Happy Agent adapters alongside the native
+  Codex and direct-argv Shell harnesses, with capability discovery and remote
+  machine execution;
 - an isolated browser action agent with approval-gated claims, a credential-free
   stdin/stdout runner contract, process-group timeouts, bounded JSON results,
   and profile/HOME isolation; the concrete Chromium or Playwright runtime is
@@ -88,7 +91,7 @@ Implemented in this line:
 The release deliberately keeps its boundaries explicit. Contact directory and
 rendezvous services, multi-peer relay routing, session ratcheting, authenticated
 Email/X/WeChat/QQ/calendar connectors, proactive classifiers and authorized
-reply executors, additional harness adapters, push,
+reply executors, push,
 native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as

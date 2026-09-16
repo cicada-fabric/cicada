@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cicada-ai/cicada/internal/harness"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
 
@@ -27,14 +28,48 @@ func executeMachineJob(parent context.Context, job machineJob) machineJobResult 
 		result.WorkspaceRevision = prepared.Revision
 		return result
 	}
-	switch strings.ToLower(strings.TrimSpace(job.Harness)) {
+	switch harness.Canonical(job.Harness) {
 	case "shell":
 		return finish(executeMachineShell(ctx, job, workspace, responseFile))
 	case "codex", "":
 		return finish(executeMachineCodex(ctx, job, workspace, responseFile))
+	case "claude-code", "opencode", "happy-agent":
+		return finish(executeMachineOptionalHarness(ctx, job, workspace, responseFile))
 	default:
 		return machineJobResult{Status: "failed", Error: "unsupported harness: " + job.Harness}
 	}
+}
+
+func executeMachineOptionalHarness(ctx context.Context, job machineJob, workspace, responseFile string) machineJobResult {
+	command, err := harness.Command(ctx, job.Harness, job.Prompt, machineWorkerEnvironment(os.Environ(), true))
+	if err != nil {
+		return machineJobResult{Status: "failed", Error: err.Error()}
+	}
+	command.Dir = workspace
+	output := &harness.BoundedOutput{Limit: harness.OutputLimit}
+	command.Stdout, command.Stderr = output, output
+	waitErr := command.Run()
+	summary, sessionID := harness.Result([]byte(output.String()), "")
+	if summary == "" {
+		summary = readMachineSummary(responseFile)
+	}
+	if summary == "" {
+		summary = strings.TrimSpace(output.String())
+	}
+	if output.Truncated {
+		summary += "\n[output truncated at 512 KiB]"
+	}
+	_ = os.WriteFile(responseFile, []byte(summary+"\n"), 0o600)
+	if sessionID == "" {
+		sessionID = job.ThreadID
+	}
+	if waitErr != nil {
+		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: sessionID, Error: waitErr.Error()}
+	}
+	if ctx.Err() != nil {
+		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: sessionID, Error: ctx.Err().Error()}
+	}
+	return machineJobResult{Status: "completed", Summary: limitText(summary, 16000), ThreadID: sessionID}
 }
 
 func machineJobPaths(job machineJob) (string, string, error) {

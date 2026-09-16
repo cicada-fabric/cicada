@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/store"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
@@ -66,8 +67,12 @@ func (c *Control) runWorker(parent context.Context, goal store.Goal, workerID, p
 	if prepared.Source != nil {
 		c.recordWorkspacePrepared(goal.ID, worker.ID, registeredWorkspacePath, prepared.Revision, prepared.Created)
 	}
-	if worker.Harness == "shell" {
+	workerHarness := harness.Canonical(worker.Harness)
+	if workerHarness == "shell" {
 		return c.runShell(parent, goal, workerID)
+	}
+	if harness.IsOptional(workerHarness) {
+		return c.runOptionalHarness(parent, goal, workerID, prompt)
 	}
 	return c.runCodex(parent, goal, workerID, prompt)
 }

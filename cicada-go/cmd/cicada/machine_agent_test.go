@@ -29,6 +29,9 @@ func TestMachineAgentInterval(t *testing.T) {
 
 func TestMachineAgentAdvertisesOnlyInstalledHarnesses(t *testing.T) {
 	t.Setenv("CICADA_CODEX_BIN", filepath.Join(t.TempDir(), "missing-codex"))
+	for _, variable := range []string{"CICADA_CLAUDE_CODE_BIN", "CICADA_OPENCODE_BIN", "CICADA_HAPPY_AGENT_BIN"} {
+		t.Setenv(variable, filepath.Join(t.TempDir(), "missing-"+variable))
+	}
 	if harnesses := discoveredMachineHarnesses(); len(harnesses) != 1 || harnesses[0] != "shell" {
 		t.Fatalf("uninstalled Codex was advertised: %v", harnesses)
 	}
@@ -98,6 +101,29 @@ printf '{"type":"thread.started","thread_id":"thread-new"}\n'
 	got := string(arguments)
 	if !strings.HasPrefix(got, "exec\nresume\nthread-old\n") || strings.Contains(got, "\n-C\n") || !strings.Contains(got, "\n--model\ngpt-5.5\n") {
 		t.Fatalf("unsupported Codex resume arguments:\n%s", got)
+	}
+}
+
+func TestRemoteOptionalHarnessExecutesWithBoundedJSONResult(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "goal")
+	fake := filepath.Join(root, "claude")
+	script := `#!/bin/sh
+cat >/dev/null
+printf '%s\n' '{"session_id":"claude-session","message":"OPTIONAL_READY"}'
+`
+	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_WORKSPACE_ROOT", root)
+	t.Setenv("CICADA_CLAUDE_CODE_BIN", fake)
+	t.Setenv("CICADA_CLAUDE_CODE_ARGS_JSON", `[]`)
+	result := executeMachineJob(context.Background(), machineJob{
+		Harness: "claude", Workspace: workspace, Prompt: "continue",
+		ResponseFile: filepath.Join(workspace, ".cicada-last-message"),
+	})
+	if result.Status != "completed" || result.Summary != "OPTIONAL_READY" || result.ThreadID != "claude-session" {
+		t.Fatalf("remote optional harness result=%#v", result)
 	}
 }
 

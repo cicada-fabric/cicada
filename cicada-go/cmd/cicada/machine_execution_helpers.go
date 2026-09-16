@@ -7,12 +7,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cicada-ai/cicada/internal/harness"
 )
 
 func discoveredMachineHarnesses() []string {
 	harnesses := []string{"shell"}
 	if _, err := exec.LookPath(envOr("CICADA_CODEX_BIN", "codex")); err == nil {
 		harnesses = append(harnesses, "codex")
+	}
+	for _, name := range harness.Names() {
+		if harness.Available(name) {
+			harnesses = append(harnesses, name)
+		}
 	}
 	return harnesses
 }

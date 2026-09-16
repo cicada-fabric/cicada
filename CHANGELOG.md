@@ -57,6 +57,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Conservative snapshot garbage collection and an authenticated
   `cicada snapshot replicate` path for copying verified archives between
   independent Controls.
+- Bounded Claude Code, OpenCode, and Happy Agent adapters with direct
+  stdin/stdout execution, capability discovery, JSON-lines session extraction,
+  and secret-filtered remote machine support.
 
 ### Changed
 
