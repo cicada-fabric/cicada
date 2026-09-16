@@ -37,3 +37,22 @@ an event to a Goal implicitly.
 These adapters are ingress boundaries, not OAuth clients. Provider polling,
 OAuth refresh, and reply delivery should run in an operator-owned connector
 process and submit only signed events or separately approved external actions.
+
+An authorized reply is requested through `/v1/connectors/replies`:
+
+```json
+{
+  "goal_id": "GOAL_ID",
+  "worker_id": "WORKER_ID",
+  "connector": "x",
+  "event_id": "EVENT_ID",
+  "callback_url": "https://connector.example/reply",
+  "text": "The benchmark result is ready."
+}
+```
+
+The request creates an Approval-backed `ExternalAction` with `kind=reply`.
+After approval, `POST /v1/actions/ACTION_ID/reply` sends the bounded normalized
+JSON body to the callback with `X-Cicada-Signature` computed from the connector
+secret and no provider credentials. The callback process owns OAuth or bot
+tokens and is responsible for the provider API call.

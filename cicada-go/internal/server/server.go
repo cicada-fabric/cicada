@@ -207,6 +207,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.socialConnector(response, request, "qq")
 		return
 	}
+	if request.URL.Path == "/v1/connectors/replies" {
+		h.connectorReply(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/connectors/events" {
 		h.externalEvents(response, request)
 		return

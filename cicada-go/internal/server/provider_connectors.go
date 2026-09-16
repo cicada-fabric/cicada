@@ -9,6 +9,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/connectors/calendar"
 	"github.com/cicada-ai/cicada/internal/connectors/email"
 	"github.com/cicada-ai/cicada/internal/connectors/social"
+	"github.com/cicada-ai/cicada/internal/control"
 )
 
 func (h *Handler) emailConnector(response http.ResponseWriter, request *http.Request) {
@@ -87,6 +88,24 @@ func (h *Handler) socialConnector(response http.ResponseWriter, request *http.Re
 		return
 	}
 	writeJSON(response, http.StatusAccepted, event)
+}
+
+func (h *Handler) connectorReply(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var input control.ExternalReplyInput
+	if err := readJSON(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	action, err := h.control.RequestExternalReply(input)
+	if err != nil {
+		writeActionError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, action)
 }
 
 func providerConnectorError(response http.ResponseWriter, err error) {

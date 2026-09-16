@@ -201,7 +201,7 @@ func (c *Control) CancelExternalAction(id string) (*store.ExternalAction, error)
 func normalizeExternalActionKind(kind string) (string, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	switch kind {
-	case "search", "fetch", "browser", "authenticated_browser", "form_fill", "download", "external_api":
+	case "search", "fetch", "browser", "authenticated_browser", "form_fill", "download", "external_api", "reply":
 		return kind, nil
 	default:
 		return "", fmt.Errorf("unsupported external action kind: %s", kind)
@@ -304,7 +304,7 @@ func sensitiveQuery(values url.Values) bool {
 }
 
 func externalActionIsDestructive(kind, method string) bool {
-	if kind == "authenticated_browser" || kind == "form_fill" || kind == "external_api" {
+	if kind == "authenticated_browser" || kind == "form_fill" || kind == "external_api" || kind == "reply" {
 		return true
 	}
 	switch method {

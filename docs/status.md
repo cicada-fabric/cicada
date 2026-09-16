@@ -44,6 +44,8 @@ Implemented in this line:
 - signed, bounded X, WeChat, and QQ ingress adapters with provider-envelope
   stripping, idempotent normalized events, and a deterministic first-pass
   classifier that never links a Goal implicitly;
+- approval-backed connector reply actions with bounded normalized POST payloads,
+  connector-secret HMAC callbacks, and no provider credentials in Control;
 - policy-gated external action requests with domain and SSRF checks, credential
   field rejection, durable approval transitions, executor claim/complete state,
   append-only action audit events, and a bounded credential-free read-only HTTP
@@ -102,8 +104,7 @@ Implemented in this line:
   expiry reaping, and an explicit separation between discovery and Contact
   trust.
 
-The release deliberately keeps its boundaries explicit. Authorized reply
-executors, push,
+The release deliberately keeps its boundaries explicit. Push,
 native mobile, and local voice channels remain the next feature lines. The
 external action queue is a safe Control boundary; it does not pretend to be a
 browser or grant an executor access to credentials. These are tracked as

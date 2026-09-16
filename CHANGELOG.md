@@ -63,6 +63,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Provider-neutral X, WeChat, and QQ webhook adapters with HMAC verification,
   bounded envelope stripping, idempotent normalized events, and deterministic
   first-pass classification.
+- Approval-backed connector reply actions with bounded HMAC-signed callback
+  delivery and provider credentials kept in the operator connector process.
 - Conservative snapshot garbage collection and an authenticated
   `cicada snapshot replicate` path for copying verified archives between
   independent Controls.
