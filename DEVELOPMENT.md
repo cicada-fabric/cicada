@@ -53,6 +53,11 @@ The Control API listens on `127.0.0.1:8787` on the host:
 curl http://127.0.0.1:8787/healthz
 curl http://127.0.0.1:8787/v1/machines
 curl http://127.0.0.1:8787/v1/workers
+
+# Register a remote execution machine and keep its capability profile alive.
+# The command can run under systemd, supervisord, or another process manager.
+CICADA_MACHINE_ID=remote-1 CICADA_CONTROL_URL=http://127.0.0.1:8787 \
+  cicada machine agent --interval 30s
 ```
 
 When the API is exposed beyond localhost, set `CICADA_API_TOKEN` in the

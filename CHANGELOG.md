@@ -39,6 +39,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   upload to the Control API.
 - Authenticated Server-Sent Events for replaying and following a Goal's
   durable event history with reconnect offsets.
+- A `cicada machine agent` heartbeat process for registering remote execution
+  hosts with non-secret capability profiles.
 
 ### Changed
 

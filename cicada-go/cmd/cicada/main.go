@@ -86,8 +86,11 @@ func clientCommand(args []string) error {
 	var body any
 	switch args[0] {
 	case "machine":
+		if len(args) >= 2 && args[1] == "agent" {
+			return runMachineAgent(args[2:])
+		}
 		if len(args) != 2 || args[1] != "list" {
-			return errors.New("usage: cicada machine list")
+			return errors.New("usage: cicada machine list|agent [options]")
 		}
 		method, path = http.MethodGet, "/v1/machines"
 	case "worker":

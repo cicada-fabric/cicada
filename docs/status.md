@@ -44,6 +44,8 @@ Implemented in this line:
   toolchains, container runtimes, compilers, disk, network, and NVIDIA/CPU
   accelerator matching, including load, disk, toolchain, container, and
   network constraints.
+- machine agent registration and periodic capability heartbeats for remote
+  execution hosts, with runtime bearer-token injection.
 - bounded personal, project, and execution Memory context in Worker prompts,
   labeled as reference data and persisted through the existing Memory API.
 - optional gpt-5.5 Intent Planner through the official Codex CLI, with a

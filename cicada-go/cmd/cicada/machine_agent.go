@@ -1,0 +1,121 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/cicada-ai/cicada/internal/control"
+)
+
+func runMachineAgent(args []string) error {
+	flags := flag.NewFlagSet("machine agent", flag.ContinueOnError)
+	id := flags.String("id", envOr("CICADA_MACHINE_ID", ""), "stable machine ID")
+	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
+	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
+	interval := flags.Duration("interval", machineAgentInterval(), "heartbeat interval")
+	once := flags.Bool("once", false, "register and send one heartbeat")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*id) == "" {
+		return errors.New("machine agent requires --id or CICADA_MACHINE_ID")
+	}
+	if strings.TrimSpace(*name) == "" {
+		*name = *id
+	}
+	base, err := normalizeControlURL(*controlURL)
+	if err != nil {
+		return err
+	}
+	if *interval < time.Second {
+		return errors.New("machine agent interval must be at least 1s")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	send := func() error {
+		capabilities := control.DiscoverMachineCapabilities()
+		capabilities["role"] = "worker"
+		capabilities["harnesses"] = []string{"codex"}
+		if err := machineAPI(ctx, base+"/v1/machines", http.MethodPost, map[string]any{
+			"id": *id, "name": *name, "status": "available", "capabilities": capabilities,
+		}); err != nil {
+			return fmt.Errorf("register machine: %w", err)
+		}
+		return machineAPI(ctx, base+"/v1/machines/"+url.PathEscape(*id)+"/heartbeat", http.MethodPost, map[string]any{
+			"status": "available", "capabilities": capabilities,
+		})
+	}
+	if err := send(); err != nil {
+		if *once {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, err)
+	}
+	if *once {
+		return nil
+	}
+	ticker := time.NewTicker(*interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := send(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+		}
+	}
+}
+
+func machineAgentInterval() time.Duration {
+	seconds := envInt("CICADA_MACHINE_HEARTBEAT_SECONDS", 30)
+	if seconds < 1 {
+		seconds = 30
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func normalizeControlURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("control URL must be an absolute http or https URL without credentials")
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func machineAPI(ctx context.Context, endpoint, method string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(string(data)))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("Control returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
+}

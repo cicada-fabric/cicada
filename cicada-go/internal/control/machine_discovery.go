@@ -35,6 +35,12 @@ func discoverLocalCapabilities() map[string]any {
 	return capabilities
 }
 
+// DiscoverMachineCapabilities returns a fresh, non-secret capability profile
+// suitable for a remote machine heartbeat.
+func DiscoverMachineCapabilities() map[string]any {
+	return discoverLocalCapabilities()
+}
+
 func localLoad1m() float64 {
 	data, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
