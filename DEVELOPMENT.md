@@ -198,10 +198,10 @@ For durable Control auditing, register the two sessions and queue the message
 through the official Codex command boundary:
 
 ```bash
-cicada thread register A_UUID Thread-A /workspace/manual-a
-cicada thread register B_UUID Thread-B /workspace/manual-b
-cicada thread queue A_UUID B_UUID 'Thread A says: compare the two hypotheses and reply.'
-cicada thread deliveries
+docker compose exec -T control cicada thread register A_UUID Thread-A /workspace/manual-a
+docker compose exec -T control cicada thread register B_UUID Thread-B /workspace/manual-b
+docker compose exec -T control cicada thread queue A_UUID B_UUID 'Thread A says: compare the two hypotheses and reply.'
+docker compose exec -T control cicada thread deliveries
 ```
 
 This invokes `codex queue` without a shell and records the delivery status. The

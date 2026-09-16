@@ -14,15 +14,15 @@ Register each UUID. The workspace must be inside the mounted Control workspace
 root and must already exist:
 
 ```bash
-cicada thread register A_UUID Thread-A /workspace/manual-a
-cicada thread register B_UUID Thread-B /workspace/manual-b
-cicada thread sessions
+docker compose exec -T control cicada thread register A_UUID Thread-A /workspace/manual-a
+docker compose exec -T control cicada thread register B_UUID Thread-B /workspace/manual-b
+docker compose exec -T control cicada thread sessions
 ```
 
 Trigger a turn in the other TUI:
 
 ```bash
-cicada thread queue A_UUID B_UUID \
+docker compose exec -T control cicada thread queue A_UUID B_UUID \
   'Thread A says: compare the two hypotheses and reply with your conclusion.'
 ```
 
@@ -31,7 +31,7 @@ Thread B receives the message in its own TUI. Reverse the two UUIDs to send a
 reply. Every attempt is retained in `thread_deliveries` and can be inspected:
 
 ```bash
-cicada thread deliveries   # API clients can GET /v1/threads/deliveries
+docker compose exec -T control cicada thread deliveries   # API clients can GET /v1/threads/deliveries
 ```
 
 The HTTP API equivalents are `POST /v1/threads/sessions` and
