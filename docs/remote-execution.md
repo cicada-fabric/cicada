@@ -44,15 +44,17 @@ agents should remain running under a process supervisor.
 ## Workspace contract
 
 Control sends an absolute workspace path and the agent accepts it only when it
-is contained by `CICADA_WORKSPACE_ROOT`. The current development line expects
-that path to refer to the same mounted storage on Control and the execution
-host, or that an operator has provisioned equivalent contents before the
-Worker starts. Repository cloning, content-addressed workspace transfer, and
-automatic cross-machine migration are still separate product work.
+is contained by `CICADA_WORKSPACE_ROOT`. A Goal can declare a public HTTPS
+[`Git workspace source`](workspace-provisioning.md), allowing machines with
+independent disks to materialize the same pinned starting revision. Goals
+without a source still require the same mounted storage or operator-provisioned
+contents. Content-addressed transfer of modified workspaces and automatic
+cross-machine migration remain separate product work.
 
 The agent resolves symlinks before entering the workspace and rejects a path
 that resolves outside the configured root. It always recreates the response
 file as `.cicada-last-message` inside the resolved Worker directory.
+The resolved Git revision is returned to Control as Workspace evidence.
 Combined subprocess output is capped at 512 KiB, returned summaries are capped
 at 16 KiB, and execution uses `CICADA_WORKER_TIMEOUT_SECONDS` (30 minutes by
 default).

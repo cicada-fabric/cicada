@@ -176,6 +176,10 @@ verifier. Shell evidence stays local unless a Goal opts into model verification.
 The verdict policy and failure behavior are documented in
 `docs/completion-verification.md`.
 
+For machines without a shared workspace mount, a Goal may declare
+`resources.workspace_source` with a credential-free HTTPS Git URL and revision.
+See `docs/workspace-provisioning.md` for the provenance and security contract.
+
 For direct Control-to-Control delivery, set `CICADA_PEER_RELAY_URL` to the
 remote Control's `/v1/federation/messages` endpoint and set
 `CICADA_PEER_RELAY_TOKEN` to its API token. Control routes by public identity,

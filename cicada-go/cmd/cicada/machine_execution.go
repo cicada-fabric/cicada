@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
 
 func executeMachineJob(parent context.Context, job machineJob) machineJobResult {
@@ -17,11 +19,19 @@ func executeMachineJob(parent context.Context, job machineJob) machineJobResult 
 	}
 	ctx, cancel := context.WithTimeout(parent, machineJobTimeout())
 	defer cancel()
+	prepared, err := workspaceprep.Prepare(ctx, workspace, job.Resources, machineWorkerEnvironment(os.Environ(), false))
+	if err != nil {
+		return machineJobResult{Status: "failed", Error: "prepare workspace: " + err.Error()}
+	}
+	finish := func(result machineJobResult) machineJobResult {
+		result.WorkspaceRevision = prepared.Revision
+		return result
+	}
 	switch strings.ToLower(strings.TrimSpace(job.Harness)) {
 	case "shell":
-		return executeMachineShell(ctx, job, workspace, responseFile)
+		return finish(executeMachineShell(ctx, job, workspace, responseFile))
 	case "codex", "":
-		return executeMachineCodex(ctx, job, workspace, responseFile)
+		return finish(executeMachineCodex(ctx, job, workspace, responseFile))
 	default:
 		return machineJobResult{Status: "failed", Error: "unsupported harness: " + job.Harness}
 	}
@@ -31,38 +41,15 @@ func machineJobPaths(job machineJob) (string, string, error) {
 	if strings.TrimSpace(job.Workspace) == "" {
 		return "", "", errors.New("remote job workspace is required")
 	}
-	root, err := filepath.Abs(envOr("CICADA_WORKSPACE_ROOT", "/workspace"))
+	workspace, err := workspaceprep.ResolveWithin(envOr("CICADA_WORKSPACE_ROOT", "/workspace"), job.Workspace)
 	if err != nil {
 		return "", "", err
 	}
-	workspace, err := filepath.Abs(strings.TrimSpace(job.Workspace))
-	if err != nil {
-		return "", "", err
-	}
-	relative, err := filepath.Rel(root, workspace)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("remote job workspace is outside CICADA_WORKSPACE_ROOT")
-	}
-	if err := os.MkdirAll(workspace, 0o755); err != nil {
-		return "", "", err
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", "", err
-	}
-	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
-	if err != nil {
-		return "", "", err
-	}
-	resolvedRelative, err := filepath.Rel(resolvedRoot, resolvedWorkspace)
-	if err != nil || resolvedRelative == ".." || strings.HasPrefix(resolvedRelative, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("remote job workspace resolves outside CICADA_WORKSPACE_ROOT")
-	}
-	responseFile := filepath.Join(resolvedWorkspace, ".cicada-last-message")
+	responseFile := filepath.Join(workspace, ".cicada-last-message")
 	if err := os.Remove(responseFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", "", err
 	}
-	return resolvedWorkspace, responseFile, nil
+	return workspace, responseFile, nil
 }
 
 func executeMachineShell(ctx context.Context, job machineJob, workspace, responseFile string) machineJobResult {

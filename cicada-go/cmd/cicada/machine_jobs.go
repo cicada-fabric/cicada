@@ -28,7 +28,7 @@ type machineJob struct {
 }
 
 type machineJobResult struct {
-	Status, Summary, ThreadID, Error string
+	Status, Summary, ThreadID, Error, WorkspaceRevision string
 }
 
 type machineAPIError struct {
@@ -60,7 +60,8 @@ func reportMachineJob(ctx context.Context, base string, job machineJob, result m
 	payload := map[string]string{
 		"machine_id": job.MachineID, "status": result.Status,
 		"summary": limitText(result.Summary, 16000), "thread_id": result.ThreadID,
-		"error": limitText(result.Error, 4000),
+		"error":              limitText(result.Error, 4000),
+		"workspace_revision": result.WorkspaceRevision,
 	}
 	return machineAPIJSON(ctx, base+"/v1/workers/"+urlPath(job.WorkerID)+"/result", http.MethodPost, payload, nil)
 }

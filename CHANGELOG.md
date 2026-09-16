@@ -63,6 +63,10 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - Compose service environments now inherit the complete shared Control
   configuration, so intent planning, completion verification, federation, and
   connector settings survive service-specific role overrides.
+- Goals can provision a pinned public HTTPS Git workspace on local or remote
+  executors. The adapter isolates credentials/config, rejects private network
+  targets and symlink escapes, resumes marked workspaces, and records the
+  resolved commit as evidence.
 
 ## 0.2.0 — 2026-09-15
 

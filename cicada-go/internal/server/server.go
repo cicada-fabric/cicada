@@ -846,6 +846,8 @@ func (h *Handler) machine(response http.ResponseWriter, request *http.Request) {
 			status := http.StatusInternalServerError
 			if errors.Is(err, os.ErrNotExist) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, control.ErrPermissionDenied) || errors.Is(err, control.ErrPermissionApproval) {
+				status = http.StatusForbidden
 			}
 			writeError(response, status, err)
 			return

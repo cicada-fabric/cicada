@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cicada-ai/cicada/internal/store"
+	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
 
 const shellOutputLimit = 512 * 1024
@@ -46,6 +47,25 @@ func (c *Control) runWorker(parent context.Context, goal store.Goal, workerID, p
 	if err != nil || worker == nil {
 		return codexResult{ExitCode: 1, Output: "worker not found"}
 	}
+	if err := c.checkWorkspaceSourcePermission(goal); err != nil {
+		return codexResult{ExitCode: 126, Output: "prepare workspace: " + err.Error()}
+	}
+	workspacePath := worker.Workspace
+	if workspacePath == "" {
+		workspacePath = goal.Workspace
+	}
+	registeredWorkspacePath := workspacePath
+	workspacePath, err = workspaceprep.ResolveWithin(c.config.WorkspaceRoot, workspacePath)
+	if err != nil {
+		return codexResult{ExitCode: 1, Output: "resolve workspace: " + err.Error()}
+	}
+	prepared, err := workspaceprep.Prepare(parent, workspacePath, goal.Resources, workerEnvironment(os.Environ()))
+	if err != nil {
+		return codexResult{ExitCode: 1, Output: "prepare workspace: " + err.Error()}
+	}
+	if prepared.Source != nil {
+		c.recordWorkspacePrepared(goal.ID, worker.ID, registeredWorkspacePath, prepared.Revision, prepared.Created)
+	}
 	if worker.Harness == "shell" {
 		return c.runShell(parent, goal, workerID)
 	}
@@ -67,6 +87,10 @@ func (c *Control) runShell(parent context.Context, goal store.Goal, workerID str
 	workspace := goal.Workspace
 	if worker.Workspace != "" {
 		workspace = worker.Workspace
+	}
+	workspace, err = workspaceprep.ResolveWithin(c.config.WorkspaceRoot, workspace)
+	if err != nil {
+		return codexResult{ExitCode: 1, Output: "resolve workspace: " + err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(parent, c.config.WorkerTimeout)
 	defer cancel()

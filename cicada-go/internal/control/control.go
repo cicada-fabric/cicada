@@ -21,6 +21,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
+	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
 
 type Config struct {
@@ -1322,6 +1323,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 			return nil, argvErr
 		}
 	}
+	workspaceSource, sourceErr := workspaceprep.SourceFromResources(resources)
+	if sourceErr != nil {
+		return nil, sourceErr
+	}
+	input.Resources = resources
 	if _, exists := resources["required_harness"]; !exists {
 		resources["required_harness"] = harness
 	}
@@ -1352,7 +1358,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.store.CreateWorkspace(store.NewID("workspace"), goalID, workspace, "goal", ""); err != nil {
+	workspaceKind := "goal"
+	if workspaceSource != nil {
+		workspaceKind = "git"
+	}
+	if _, err := c.store.CreateWorkspace(store.NewID("workspace"), goalID, workspace, workspaceKind, ""); err != nil {
 		return nil, err
 	}
 	if _, err := c.store.CreateMonitor(monitorID, goalID, "supervise"); err != nil {
@@ -1564,7 +1574,7 @@ func machineMatches(machine store.Machine, resources map[string]any) bool {
 			if !ok || !networkOK || !available || availableValue != requiredValue {
 				return false
 			}
-		case "attachments", "argv", "completion_verifier":
+		case "attachments", "argv", "completion_verifier", "workspace_source":
 			// Goal context and harness execution arguments are not machine
 			// capabilities.
 			continue

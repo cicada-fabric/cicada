@@ -86,6 +86,7 @@ func TestRemoteWorkerDispatchAPICompletesGoal(t *testing.T) {
 	}
 	result := post("/v1/workers/"+goal.Worker.ID+"/result", map[string]any{
 		"machine_id": "remote-test", "status": "completed", "summary": "REMOTE_READY",
+		"workspace_revision": "remote-revision-1",
 	})
 	if result.Code != http.StatusOK {
 		t.Fatalf("result status=%d body=%s", result.Code, result.Body.String())
@@ -94,5 +95,9 @@ func TestRemoteWorkerDispatchAPICompletesGoal(t *testing.T) {
 	if err != nil || completed.Status != "completed" ||
 		!strings.Contains(completed.Summary, "REMOTE_READY") || !strings.Contains(completed.Summary, "CUSTOM_READY") {
 		t.Fatalf("remote result did not complete goal: %#v err=%v", completed, err)
+	}
+	workspaces, err := controlPlane.Workspaces(goal.ID)
+	if err != nil || len(workspaces) == 0 || workspaces[0].Revision != "remote-revision-1" {
+		t.Fatalf("remote workspace revision was not persisted: %#v err=%v", workspaces, err)
 	}
 }

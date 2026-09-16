@@ -137,3 +137,43 @@ func TestRemoteMachineRejectsSymlinkWorkspaceEscape(t *testing.T) {
 		t.Fatalf("workspace symlink escape was not rejected: %#v", result)
 	}
 }
+
+func TestRemoteMachinePreparesGitWorkspace(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "goal")
+	git := filepath.Join(root, "git")
+	script := `#!/bin/sh
+set -eu
+repository=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '-C' ]; then repository="$argument"; fi
+  previous="$argument"
+done
+case " $* " in
+  *' init --quiet '*)
+    for argument in "$@"; do target="$argument"; done
+    mkdir -p "$target/.git"
+    ;;
+  *' checkout --quiet '*) printf 'REMOTE_WORKSPACE_READY\n' > "$repository/evidence.txt" ;;
+  *' rev-parse HEAD '*) printf 'fedcba9876543210\n' ;;
+esac
+`
+	if err := os.WriteFile(git, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_WORKSPACE_ROOT", root)
+	t.Setenv("CICADA_GIT_BIN", git)
+	result := executeMachineJob(context.Background(), machineJob{
+		Harness: "shell", Workspace: workspace,
+		Resources: map[string]any{
+			"argv": []any{"/bin/cat", "evidence.txt"},
+			"workspace_source": map[string]any{
+				"url": "https://93.184.216.34/example/repository.git", "revision": "main",
+			},
+		},
+	})
+	if result.Status != "completed" || result.Summary != "REMOTE_WORKSPACE_READY" || result.WorkspaceRevision != "fedcba9876543210" {
+		t.Fatalf("remote provisioned result=%#v", result)
+	}
+}

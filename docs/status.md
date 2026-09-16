@@ -68,9 +68,12 @@ Implemented in this line:
 - evidence-aware completion supervision with a read-only ephemeral `gpt-5.5`
   verdict, high-confidence automatic correction, bounded retries, explicit
   outage events, and compare-and-swap protection for remote results.
+- credential-free public HTTPS Git workspace provisioning on local and remote
+  executors, with public-address checks, atomic checkout, pinned provenance,
+  secret-free Git processes, symlink containment, and revision evidence.
 
-The release deliberately keeps its boundaries explicit. Cross-machine
-workspace provisioning and migration, Contact directory and rendezvous
+The release deliberately keeps its boundaries explicit. Content-addressed
+transfer of modified workspaces and automatic migration, Contact directory and rendezvous
 services, multi-peer relay routing, session ratcheting, an authenticated
 browser executor, external message/calendar connectors, additional harness
 adapters, push, native mobile, and local voice channels remain the next feature lines. The

@@ -65,13 +65,20 @@ func (c *Control) remoteJob(worker store.Worker) (MachineJob, error) {
 	if goal == nil {
 		return MachineJob{}, os.ErrNotExist
 	}
-	prompt := strings.TrimSpace(worker.Prompt)
-	if prompt == "" {
-		prompt = c.initialPrompt(*goal)
+	if permissionErr := c.checkWorkspaceSourcePermission(*goal); permissionErr != nil {
+		return MachineJob{}, permissionErr
 	}
 	commands, err := c.store.ListPendingCommands(goal.ID, worker.ID)
 	if err != nil {
 		return MachineJob{}, err
+	}
+	return c.machineJob(*goal, worker, commands), nil
+}
+
+func (c *Control) machineJob(goal store.Goal, worker store.Worker, commands []store.Command) MachineJob {
+	prompt := strings.TrimSpace(worker.Prompt)
+	if prompt == "" {
+		prompt = c.initialPrompt(goal)
 	}
 	if len(commands) > 0 {
 		prompt += "\n\nThe monitor has provided the following correction. Apply it to the current goal, verify the result, and continue:\n\n"
@@ -88,7 +95,7 @@ func (c *Control) remoteJob(worker store.Worker) (MachineJob, error) {
 		ResponseFile: worker.ResponseFile, ThreadID: worker.ThreadID,
 		Prompt:    prompt,
 		Resources: goal.Resources, Attempt: worker.Attempt,
-	}, nil
+	}
 }
 
 // ClaimRemoteWorker is the only transition that assigns execution ownership.
@@ -112,6 +119,9 @@ func (c *Control) ClaimRemoteWorker(workerID, machineID string) (MachineJob, err
 	if goal == nil {
 		return MachineJob{}, os.ErrNotExist
 	}
+	if permissionErr := c.checkWorkspaceSourcePermission(*goal); permissionErr != nil {
+		return MachineJob{}, permissionErr
+	}
 	if worker.Harness == "shell" {
 		argv, argvErr := shellArgv(goal.Resources["argv"])
 		if argvErr != nil {
@@ -128,15 +138,16 @@ func (c *Control) ClaimRemoteWorker(workerID, machineID string) (MachineJob, err
 	if claimed == nil {
 		return MachineJob{}, ErrWorkerUnavailable
 	}
+	commands, err := c.store.ClaimPendingCommandsForWorker(claimed.GoalID, claimed.ID)
+	if err != nil {
+		_, _ = c.store.TransitionWorkerStatus(claimed.ID, machineID, "running", "queued")
+		return MachineJob{}, err
+	}
+	job := c.machineJob(*goal, *claimed, commands)
 	_ = c.store.SetMachineStatus(machineID, "busy")
 	_, _ = c.store.UpdateGoal(claimed.GoalID, "running", "")
 	_, _ = c.store.AppendEvent(claimed.GoalID, claimed.ID, "WorkerStarted", map[string]any{
 		"attempt": claimed.Attempt, "remote": true, "machine_id": machineID,
 	})
-	job, err := c.remoteJob(*claimed)
-	if err != nil {
-		return MachineJob{}, err
-	}
-	_, _ = c.store.ClaimPendingCommandsForWorker(claimed.GoalID, claimed.ID)
 	return job, nil
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/store"
+	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 )
 
 // appServer is the small JSON-RPC client needed by the current Codex adapter. The protocol is
@@ -219,6 +220,10 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	workspace := goal.Workspace
 	if worker.Workspace != "" {
 		workspace = worker.Workspace
+	}
+	workspace, err = workspaceprep.ResolveWithin(c.config.WorkspaceRoot, workspace)
+	if err != nil {
+		return appServerResult{ExitCode: 1, Output: "resolve workspace: " + err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(parent, c.config.WorkerTimeout)
 	defer cancel()

@@ -45,6 +45,19 @@ curl -X POST http://127.0.0.1:8787/v1/workspaces/WORKSPACE_ID/actions \
   -d '{"action":"migrate","target_path":"/workspace/migrated"}'
 ```
 
+A Goal can also materialize a credential-free public Git repository on either
+a local or remote executor. The source is pinned on first execution and resumed
+without resetting Worker changes:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/goals \
+  -H 'content-type: application/json' \
+  -d '{"objective":"Inspect the release","resources":{"workspace_source":{"kind":"git","url":"https://github.com/example/project.git","revision":"v1.2.3"}}}'
+```
+
+The validation and credential boundary is documented in
+[`workspace-provisioning.md`](workspace-provisioning.md).
+
 Memory entries have one of the CICADA scopes (`personal`, `project`,
 `execution`, or `idea`) and an optional namespace. They are durable context,
 not hidden prompt text:

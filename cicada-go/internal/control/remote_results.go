@@ -11,7 +11,7 @@ import (
 
 // CompleteRemoteWorker persists a result returned by an agent and advances
 // the normal Goal completion/recovery state machine.
-func (c *Control) CompleteRemoteWorker(workerID, machineID, status, summary, threadID, failure string) (*store.Worker, error) {
+func (c *Control) CompleteRemoteWorker(workerID, machineID, status, summary, threadID, failure string, workspaceRevision ...string) (*store.Worker, error) {
 	worker, err := c.store.GetWorker(strings.TrimSpace(workerID))
 	if err != nil {
 		return nil, err
@@ -34,6 +34,9 @@ func (c *Control) CompleteRemoteWorker(workerID, machineID, status, summary, thr
 		return nil, ErrWorkerUnavailable
 	}
 	worker = verifying
+	if len(workspaceRevision) > 0 && strings.TrimSpace(workspaceRevision[0]) != "" {
+		c.recordWorkspacePrepared(worker.GoalID, worker.ID, worker.Workspace, strings.TrimSpace(workspaceRevision[0]), false)
+	}
 	summary = tail(strings.TrimSpace(summary), 16000)
 	if threadID == "" {
 		threadID = worker.ThreadID
