@@ -29,6 +29,16 @@ func discoverLocalCapabilities() map[string]any {
 		capabilities["gpu_name"] = name
 		capabilities["gpu_models"] = models
 		capabilities["gpu_memory_gb"] = memoryGB
+	} else if name, models, memoryGB, ok := discoverROCm(); ok {
+		capabilities["accelerator"] = "rocm"
+		capabilities["gpu_name"] = name
+		capabilities["gpu_models"] = models
+		capabilities["gpu_memory_gb"] = memoryGB
+	} else if name, models, memoryGB, ok := discoverAscend(); ok {
+		capabilities["accelerator"] = "cann"
+		capabilities["npu_name"] = name
+		capabilities["npu_models"] = models
+		capabilities["npu_memory_gb"] = memoryGB
 	} else {
 		capabilities["accelerator"] = "cpu"
 	}
@@ -161,6 +171,90 @@ func discoverNVIDIA() (string, []string, float64, bool) {
 		return "", nil, 0, false
 	}
 	return models[0], models, memoryGB, true
+}
+
+func discoverROCm() (string, []string, float64, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := exec.LookPath("rocminfo"); err != nil {
+		return "", nil, 0, false
+	}
+	output, err := exec.CommandContext(ctx, "rocminfo").Output()
+	if err != nil {
+		return "", nil, 0, false
+	}
+	models := parseROCmModels(string(output))
+	if len(models) == 0 {
+		return "", nil, 0, false
+	}
+	return models[0], models, 0, true
+}
+
+func parseROCmModels(output string) []string {
+	models := make([]string, 0, 2)
+	seen := map[string]bool{}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Name:") {
+			continue
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(line, "Name:"))
+		if name == "" || seen[name] || strings.Contains(strings.ToLower(name), "cpu") {
+			continue
+		}
+		seen[name] = true
+		models = append(models, name)
+	}
+	return models
+}
+
+func discoverAscend() (string, []string, float64, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := exec.LookPath("npu-smi"); err != nil {
+		return "", nil, 0, false
+	}
+	output, err := exec.CommandContext(ctx, "npu-smi", "info").Output()
+	if err != nil {
+		return "", nil, 0, false
+	}
+	models, memoryGB := parseAscendOutput(string(output))
+	if len(models) == 0 {
+		return "", nil, 0, false
+	}
+	return models[0], models, memoryGB, true
+}
+
+func parseAscendOutput(output string) ([]string, float64) {
+	models := make([]string, 0, 2)
+	seen := map[string]bool{}
+	var memoryGB float64
+	for _, line := range strings.Split(output, "\n") {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "910") || strings.Contains(lower, "310") || strings.Contains(lower, "910b") {
+			fields := strings.Fields(line)
+			for _, field := range fields {
+				field = strings.Trim(field, "|,[]")
+				if strings.Contains(field, "910") || strings.Contains(field, "310") {
+					if !seen[field] {
+						seen[field] = true
+						models = append(models, field)
+					}
+					break
+				}
+			}
+		}
+		if strings.Contains(lower, "memory capacity") {
+			fields := strings.Fields(strings.ReplaceAll(line, "|", " "))
+			for _, field := range fields {
+				if value, err := strconv.ParseFloat(strings.TrimSuffix(field, "MB"), 64); err == nil && value > 0 {
+					memoryGB = value / 1024
+					break
+				}
+			}
+		}
+	}
+	return models, memoryGB
 }
 
 func parseNVIDIAOutput(output string) ([]string, float64) {

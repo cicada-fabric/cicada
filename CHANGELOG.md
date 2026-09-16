@@ -88,6 +88,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   registration.
 - Signed Documents ingress with bounded metadata normalization and explicit
   document lifecycle triage.
+- Local capability discovery now recognizes ROCm and Ascend/CANN accelerators
+  in addition to NVIDIA CUDA and CPU fallback.
 
 ### Changed
 

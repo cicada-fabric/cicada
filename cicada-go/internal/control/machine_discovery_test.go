@@ -77,3 +77,17 @@ func TestParseNVIDIAOutput(t *testing.T) {
 		t.Fatalf("invalid NVIDIA output was accepted: models=%#v memory=%v", models, memoryGB)
 	}
 }
+
+func TestParseROCmModels(t *testing.T) {
+	models := parseROCmModels("Name:                    gfx1100\nName:                    gfx1100\nName:                    cpu\n")
+	if len(models) != 1 || models[0] != "gfx1100" {
+		t.Fatalf("unexpected ROCm models: %#v", models)
+	}
+}
+
+func TestParseAscendOutput(t *testing.T) {
+	models, memoryGB := parseAscendOutput("| 910B | Memory Capacity(MB) 32768 |\n| 910B |\n")
+	if len(models) != 1 || models[0] != "910B" || memoryGB <= 31 {
+		t.Fatalf("unexpected Ascend profile: models=%#v memory_gb=%v", models, memoryGB)
+	}
+}

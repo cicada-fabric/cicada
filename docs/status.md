@@ -66,7 +66,7 @@ Implemented in this line:
   Workspaces, external actions, and an authenticated bounded raw Worker output
   view for investigations that need more than the summary.
 - local Machine capability discovery for OS, architecture, CPU, memory,
-  toolchains, container runtimes, compilers, disk, network, and NVIDIA/CPU
+  toolchains, container runtimes, compilers, disk, network, NVIDIA/ROCm/Ascend
   accelerator matching, including load, disk, toolchain, container, and
   network constraints, plus fixed-command SSH pairing and a standalone
   `machine discover` profile command.

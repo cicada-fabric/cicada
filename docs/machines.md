@@ -5,8 +5,9 @@ Control registers two local records at startup: `control-local` and
 include OS, architecture, CPU count, `/proc/meminfo` memory, available
 toolchains, container runtimes, compilers, `/proc/loadavg` 1-minute load,
 free/total disk space for the workspace mount, a network-up indicator, and an
-accelerator class. When `nvidia-smi` is available, Control also records GPU
-model, count, and aggregate memory; otherwise the accelerator is explicitly
+accelerator class. When `nvidia-smi`, `rocminfo`, or `npu-smi` is available,
+Control records CUDA, ROCm, or Ascend/CANN model information and aggregate
+memory where the tool reports it; otherwise the accelerator is explicitly
 `cpu`.
 
 Inspect the current inventory:
