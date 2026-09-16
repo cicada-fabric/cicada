@@ -1,6 +1,6 @@
 # Information connectors
 
-Control accepts provider-neutral Email, Calendar, X, WeChat, QQ, Slack, and Discord events
+Control accepts provider-neutral Email, Calendar, Documents, X, WeChat, QQ, Slack, and Discord events
 through dedicated HMAC-protected endpoints. The adapters run before
 persistence, enforce a 1 MiB body limit, derive an idempotent external ID, and
 retain only triage fields; provider envelopes, credentials, cookies, and
@@ -11,6 +11,7 @@ Configure independent runtime secrets in the Control secret file:
 ```dotenv
 CICADA_CONNECTOR_SECRET_EMAIL=independent-email-webhook-secret
 CICADA_CONNECTOR_SECRET_CALENDAR=independent-calendar-webhook-secret
+CICADA_CONNECTOR_SECRET_DOCUMENTS=independent-documents-webhook-secret
 CICADA_CONNECTOR_SECRET_X=independent-x-webhook-secret
 CICADA_CONNECTOR_SECRET_WECHAT=independent-wechat-webhook-secret
 CICADA_CONNECTOR_SECRET_QQ=independent-qq-webhook-secret
@@ -20,7 +21,11 @@ CICADA_CONNECTOR_SECRET_DISCORD=independent-discord-webhook-secret
 
 Sign the exact bytes sent by the provider with HMAC-SHA256 and send the result
 as `X-Cicada-Signature: sha256=<hex>` to `/v1/connectors/email` or
-`/v1/connectors/calendar`. The social adapters use the same signature header at
+`/v1/connectors/calendar` or `/v1/connectors/documents`. The Documents adapter
+accepts a bounded JSON `data`/`document`/`file` wrapper, keeps the document ID,
+title, text, URL, MIME type, owner, and update time, and normalizes
+`document.created|updated|deleted` events. The social adapters use the same
+signature header at
 `/v1/connectors/x`, `/v1/connectors/wechat`, `/v1/connectors/qq`,
 `/v1/connectors/slack`, and `/v1/connectors/discord`; they
 accept direct provider events or a bounded `data`/`event` wrapper. Email accepts

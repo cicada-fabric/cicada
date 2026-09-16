@@ -199,6 +199,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.calendarConnector(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/connectors/documents" {
+		h.documentsConnector(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/connectors/x" {
 		h.socialConnector(response, request, "x")
 		return

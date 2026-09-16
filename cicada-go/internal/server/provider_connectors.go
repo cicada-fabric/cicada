@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/connectors/calendar"
+	"github.com/cicada-ai/cicada/internal/connectors/documents"
 	"github.com/cicada-ai/cicada/internal/connectors/email"
 	"github.com/cicada-ai/cicada/internal/connectors/social"
 	"github.com/cicada-ai/cicada/internal/control"
@@ -55,6 +56,32 @@ func (h *Handler) calendarConnector(response http.ResponseWriter, request *http.
 	}
 	event, err := h.control.IngestNormalizedExternalEvent(
 		"calendar", externalID, eventType, strings.TrimSpace(request.Header.Get("X-Cicada-Signature")),
+		body, normalized, strings.TrimSpace(request.Header.Get("X-Cicada-Goal-ID")),
+	)
+	if err != nil {
+		providerConnectorError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, event)
+}
+
+func (h *Handler) documentsConnector(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	body, err := readBody(request, documents.MaxDocumentBytes)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	externalID, eventType, normalized, err := documents.Normalize(body)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err)
+		return
+	}
+	event, err := h.control.IngestNormalizedExternalEvent(
+		"documents", externalID, eventType, strings.TrimSpace(request.Header.Get("X-Cicada-Signature")),
 		body, normalized, strings.TrimSpace(request.Header.Get("X-Cicada-Goal-ID")),
 	)
 	if err != nil {

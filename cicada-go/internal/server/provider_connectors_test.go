@@ -9,9 +9,37 @@ import (
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/connectors/calendar"
+	"github.com/cicada-ai/cicada/internal/connectors/documents"
 	"github.com/cicada-ai/cicada/internal/connectors/email"
 	"github.com/cicada-ai/cicada/internal/control"
 )
+
+func TestDocumentsConnectorVerifiesAndNormalizes(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := control.New(control.Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		ConnectorSecrets: map[string]string{"documents": "documents-secret"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	raw := []byte(`{"data":{"id":"doc-42","name":"Runbook","content":"restart instructions","type":"updated"},"credential":"drop"}`)
+	request := httptest.NewRequest(http.MethodPost, "/v1/connectors/documents", strings.NewReader(string(raw)))
+	request.Header.Set("X-Cicada-Signature", documents.Signature("documents-secret", raw))
+	response := httptest.NewRecorder()
+	NewHandler(controlPlane).ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || strings.Contains(response.Body.String(), "credential") {
+		t.Fatalf("documents connector status=%d body=%s", response.Code, response.Body.String())
+	}
+	duplicate := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/v1/connectors/documents", strings.NewReader(string(raw)))
+	request.Header.Set("X-Cicada-Signature", documents.Signature("documents-secret", raw))
+	NewHandler(controlPlane).ServeHTTP(duplicate, request)
+	if duplicate.Code != http.StatusAccepted {
+		t.Fatalf("duplicate documents event status=%d body=%s", duplicate.Code, duplicate.Body.String())
+	}
+}
 
 func TestEmailConnectorVerifiesRawAndStoresNormalizedPayload(t *testing.T) {
 	root := t.TempDir()

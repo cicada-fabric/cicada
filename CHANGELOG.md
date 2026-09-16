@@ -86,6 +86,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 - SSH Machine pairing through a fixed remote `machine discover` command, with
   bounded JSON output, BatchMode/timeout enforcement, and authenticated profile
   registration.
+- Signed Documents ingress with bounded metadata normalization and explicit
+  document lifecycle triage.
 
 ### Changed
 

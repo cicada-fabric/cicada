@@ -44,6 +44,8 @@ Implemented in this line:
 - signed, bounded X, WeChat, QQ, Slack, and Discord ingress adapters with provider-envelope
   stripping, idempotent normalized events, and a deterministic first-pass
   classifier that never links a Goal implicitly;
+- signed, bounded Documents ingress with minimized text metadata, idempotent
+  document lifecycle events, and the same explicit triage boundary;
 - approval-backed connector reply actions with bounded normalized POST payloads,
   connector-secret HMAC callbacks, and no provider credentials in Control;
 - policy-gated external action requests with domain and SSRF checks, credential
