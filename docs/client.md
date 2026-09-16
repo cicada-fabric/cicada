@@ -52,3 +52,8 @@ attachments, on-demand Goal detail slice, browser speech input/output, and
 encrypted VAPID browser Push delivery. A browser/PWA is the current mobile
 client; a separately packaged native mobile client and fully model-local voice
 pipeline remain future work.
+
+Goal detail also provides **View raw output** for each Worker. This reads a
+bounded response file through the authenticated `/v1/workers/{id}/log` route;
+Control accepts only paths under its configured workspace or state roots and
+marks output over 512 KiB as truncated.

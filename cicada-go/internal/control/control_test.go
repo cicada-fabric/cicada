@@ -883,6 +883,33 @@ func TestParkedIdeaRevisitTriggerIsDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestWorkerLogIsBoundedToCicadaRoots(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := New(Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	goal, err := controlPlane.CreateGoal(GoalInput{Objective: "inspect worker output"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(goal.Workers) != 1 {
+		t.Fatalf("expected one worker, got %#v", goal.Workers)
+	}
+	worker := goal.Workers[0]
+	if err := os.WriteFile(worker.ResponseFile, []byte("raw event\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := controlPlane.WorkerLog(worker.ID, 1024)
+	if err != nil || output.Content != "raw event\n" || output.Truncated {
+		t.Fatalf("unexpected worker output: %#v err=%v", output, err)
+	}
+	if _, err := controlPlane.WorkerLog("missing-worker", 1024); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing worker did not return not-exist: %v", err)
+	}
+}
+
 func TestUnsupportedHarnessIsRejectedBeforeWorkerCreation(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	if _, err := controlPlane.CreateGoal(GoalInput{Objective: "try unsupported harness", Harness: "unknown-harness"}); err == nil {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,6 +45,38 @@ func TestSignedConnectorWebhookIsDurable(t *testing.T) {
 	NewHandler(controlPlane).ServeHTTP(listResponse, list)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "mail-1") {
 		t.Fatalf("webhook event missing from list: status=%d body=%s", listResponse.Code, listResponse.Body.String())
+	}
+}
+
+func TestWorkerRawLogEndpointIsBoundedAndAuthenticated(t *testing.T) {
+	root := t.TempDir()
+	controlPlane, err := control.New(control.Config{
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+	goal, err := controlPlane.CreateGoal(control.GoalInput{Objective: "show worker log"})
+	if err != nil || len(goal.Workers) != 1 {
+		t.Fatalf("create goal workers=%#v err=%v", goal.Workers, err)
+	}
+	if err := os.WriteFile(goal.Workers[0].ResponseFile, []byte("event output"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(controlPlane)
+	unauthorized := httptest.NewRequest(http.MethodGet, "/v1/workers/"+goal.Workers[0].ID+"/log", nil)
+	unauthorizedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorizedResponse, unauthorized)
+	if unauthorizedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("raw log bypassed API auth: status=%d body=%s", unauthorizedResponse.Code, unauthorizedResponse.Body.String())
+	}
+	request := httptest.NewRequest(http.MethodGet, "/v1/workers/"+goal.Workers[0].ID+"/log", nil)
+	request.Header.Set("Authorization", "Bearer secret")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "event output") {
+		t.Fatalf("raw log endpoint status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

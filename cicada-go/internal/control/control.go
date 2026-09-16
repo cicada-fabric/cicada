@@ -647,6 +647,66 @@ func (c *Control) markStaleMachines(cutoff string) {
 
 func (c *Control) Workers() ([]store.Worker, error) { return c.store.ListWorkers() }
 
+// WorkerLog is the bounded raw output view used by the authenticated client
+// when a summary is insufficient. The response file is accepted only inside a
+// configured Cicada workspace or state directory; arbitrary filesystem paths
+// stored in a corrupted record cannot become a file-read primitive.
+type WorkerLog struct {
+	WorkerID  string `json:"worker_id"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated"`
+}
+
+func (c *Control) WorkerLog(id string, maxBytes int64) (*WorkerLog, error) {
+	worker, err := c.store.GetWorker(strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	if worker == nil {
+		return nil, os.ErrNotExist
+	}
+	path := filepath.Clean(strings.TrimSpace(worker.ResponseFile))
+	if path == "." || !filepath.IsAbs(path) || !c.pathUnderConfiguredRoot(path) {
+		return nil, errors.New("worker log path is outside the configured Cicada roots")
+	}
+	if maxBytes <= 0 || maxBytes > 4<<20 {
+		maxBytes = 512 << 10
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	truncated := int64(len(data)) > maxBytes
+	if truncated {
+		data = data[:maxBytes]
+	}
+	return &WorkerLog{WorkerID: worker.ID, ThreadID: worker.ThreadID, Content: string(data), Truncated: truncated}, nil
+}
+
+func (c *Control) pathUnderConfiguredRoot(path string) bool {
+	for _, root := range []string{c.config.WorkspaceRoot, c.config.StateDir} {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		absoluteRoot, err := filepath.Abs(root)
+		if err != nil {
+			continue
+		}
+		relative, err := filepath.Rel(filepath.Clean(absoluteRoot), path)
+		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Control) Approvals(pendingOnly bool) ([]store.Approval, error) {
 	return c.store.ListApprovals(pendingOnly)
 }

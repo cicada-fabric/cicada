@@ -61,7 +61,8 @@ Implemented in this line:
   archive transitions through the Idea API, with scheduled `at:`/`on:` parked
   Idea revisits that become assessed and notify the user.
 - on-demand Goal detail view for conclusions, events, Workers, Artifacts,
-  Workspaces, and external actions.
+  Workspaces, external actions, and an authenticated bounded raw Worker output
+  view for investigations that need more than the summary.
 - local Machine capability discovery for OS, architecture, CPU, memory,
   toolchains, container runtimes, compilers, disk, network, and NVIDIA/CPU
   accelerator matching, including load, disk, toolchain, container, and

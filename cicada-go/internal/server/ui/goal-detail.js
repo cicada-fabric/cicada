@@ -10,7 +10,7 @@ function detailList(items, render, empty = 'None recorded.') {
 function renderGoalDetail(panel, data) {
   const {goal, events, workers, artifacts, workspaces, actions} = data;
   const eventItems = detailList(events, event => `<li><strong>${detailEscape(event.type)}</strong><span>${detailEscape(event.created_at)}</span><pre>${detailJSON(event.payload)}</pre></li>`);
-  const workerItems = detailList(workers, worker => `<li><strong>${detailEscape(worker.harness)}</strong><span>${detailEscape(worker.status)}</span><small>${detailEscape(worker.id)}${worker.thread_id ? ` · thread ${detailEscape(worker.thread_id)}` : ''}</small></li>`);
+  const workerItems = detailList(workers, worker => `<li><strong>${detailEscape(worker.harness)}</strong><span>${detailEscape(worker.status)}</span><small>${detailEscape(worker.id)}${worker.thread_id ? ` · thread ${detailEscape(worker.thread_id)}` : ''}</small><button class="secondary worker-log-button" data-worker-log="${detailEscape(worker.id)}" type="button">View raw output</button><pre data-worker-log-output="${detailEscape(worker.id)}" hidden></pre></li>`);
   const monitor = goal.monitor ? `<p><strong>Monitor</strong><span>${detailEscape(goal.monitor.status)}</span><small>${detailEscape(goal.monitor.id)}</small></p>` : '<p class="muted">No monitor assigned.</p>';
   const artifactItems = detailList(artifacts, artifact => `<li><strong>${detailEscape(artifact.name)}</strong><span>${detailEscape(artifact.kind)}</span><small>${detailEscape(artifact.path)}</small></li>`);
   const workspaceItems = detailList(workspaces, workspace => `<li><strong>${detailEscape(workspace.status)}</strong><small>${detailEscape(workspace.path)}</small></li>`);
@@ -23,6 +23,24 @@ function renderGoalDetail(panel, data) {
     <div><h3>External actions</h3>${actionItems}</div>
     <div><h3>Key events</h3>${eventItems}</div>
   </div>`;
+  panel.querySelectorAll('[data-worker-log]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const workerID = button.dataset.workerLog;
+      const output = [...panel.querySelectorAll('[data-worker-log-output]')].find(item => item.dataset.workerLogOutput === workerID);
+      if (!output) return;
+      button.disabled = true;
+      try {
+        const log = await window.CicadaClient.api(`/v1/workers/${encodeURIComponent(workerID)}/log`);
+        output.textContent = `${log.content || ''}${log.truncated ? '\n… output truncated …' : ''}`;
+        output.hidden = false;
+        button.textContent = 'Refresh raw output';
+      } catch (error) {
+        window.CicadaClient.showMessage(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 }
 
 async function loadGoalDetail(id, panel) {

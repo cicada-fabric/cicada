@@ -9,6 +9,29 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 )
 
+func (h *Handler) workerLog(response http.ResponseWriter, request *http.Request) {
+	path := strings.TrimPrefix(request.URL.Path, "/v1/workers/")
+	if !strings.HasSuffix(path, "/log") {
+		writeError(response, http.StatusNotFound, errors.New("worker log route not found"))
+		return
+	}
+	workerID := strings.TrimSuffix(path, "/log")
+	if workerID == "" || strings.Contains(workerID, "/") {
+		writeError(response, http.StatusNotFound, errors.New("worker log not found"))
+		return
+	}
+	log, err := h.control.WorkerLog(workerID, 512<<10)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, os.ErrNotExist) {
+			status = http.StatusNotFound
+		}
+		writeError(response, status, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, log)
+}
+
 func (h *Handler) workerDispatch(response http.ResponseWriter, request *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/workers/"), "/")
 	if len(parts) != 2 || parts[0] == "" {

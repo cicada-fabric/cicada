@@ -74,6 +74,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/v1/workers/") {
+		if strings.HasSuffix(request.URL.Path, "/log") && request.Method == http.MethodGet {
+			h.workerLog(response, request)
+			return
+		}
 		h.workerDispatch(response, request)
 		return
 	}

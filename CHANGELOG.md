@@ -81,6 +81,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
   Client opt-in controls.
 - Scheduled parked-Idea revisits using explicit UTC timestamps or dates, with
   an idempotent assessed transition, rationale audit marker, and P2 notice.
+- Authenticated Goal detail access to bounded raw Worker output with workspace
+  and state-root containment checks.
 
 ### Changed
 
