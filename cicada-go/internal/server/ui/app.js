@@ -126,6 +126,7 @@ async function refresh() {
     renderApprovals(approvals);
     renderGoals(goals);
     renderNotifications(notificationsData.notifications || []);
+    window.CicadaEvents?.sync(goals, state.token, refresh);
   } catch (error) {
     showMessage(error.message, true);
   } finally {

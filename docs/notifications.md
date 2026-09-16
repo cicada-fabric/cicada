@@ -15,7 +15,8 @@ curl -N http://127.0.0.1:8787/v1/goals/GOAL_ID/events/stream?after=0
 ```
 
 When `CICADA_API_TOKEN` is set, send the bearer token in the request header.
-The embedded browser client keeps its polling fallback because the native
+The embedded browser client uses EventSource for live local Goals and keeps its
+polling fallback for authenticated remote sessions because the native
 `EventSource` API cannot set an Authorization header; it never places a token
 in the stream URL.
 

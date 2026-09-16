@@ -32,6 +32,7 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
 		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "artifacts"},
 		{path: "/assets/attachments.js", contentType: "text/javascript", contains: "content_base64"},
+		{path: "/assets/events.js", contentType: "text/javascript", contains: "EventSource"},
 		{path: "/manifest.webmanifest", contentType: "application/manifest+json", contains: "Cicada Control"},
 		{path: "/sw.js", contentType: "text/javascript", contains: "cicada-static-v1"},
 		{path: "/icon.svg", contentType: "image/svg+xml", contains: "#70d5ae"},
@@ -96,7 +97,7 @@ func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
 
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/assets/voice.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
+	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/assets/voice.js", "/assets/events.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
