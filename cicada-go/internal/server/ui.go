@@ -6,11 +6,11 @@ import (
 	"net/http"
 )
 
-//go:embed ui/index.html ui/app.css ui/app.js ui/goal-detail.js ui/attachments.js ui/voice.js ui/events.js ui/manifest.webmanifest ui/sw.js ui/icon.svg
+//go:embed ui/index.html ui/app.css ui/app.js ui/goal-detail.js ui/attachments.js ui/voice.js ui/push.js ui/events.js ui/manifest.webmanifest ui/sw.js ui/icon.svg
 var clientFiles embed.FS
 
 func isPublicClientPath(path string) bool {
-	return path == "/" || path == "/assets/app.css" || path == "/assets/app.js" || path == "/assets/goal-detail.js" || path == "/assets/attachments.js" || path == "/assets/voice.js" || path == "/assets/events.js" || path == "/manifest.webmanifest" || path == "/sw.js" || path == "/icon.svg"
+	return path == "/" || path == "/assets/app.css" || path == "/assets/app.js" || path == "/assets/goal-detail.js" || path == "/assets/attachments.js" || path == "/assets/voice.js" || path == "/assets/push.js" || path == "/assets/events.js" || path == "/manifest.webmanifest" || path == "/sw.js" || path == "/icon.svg"
 }
 
 func serveClient(response http.ResponseWriter, request *http.Request) {
@@ -34,6 +34,9 @@ func serveClient(response http.ResponseWriter, request *http.Request) {
 		contentType = "text/javascript; charset=utf-8"
 	} else if request.URL.Path == "/assets/voice.js" {
 		path = "ui/voice.js"
+		contentType = "text/javascript; charset=utf-8"
+	} else if request.URL.Path == "/assets/push.js" {
+		path = "ui/push.js"
 		contentType = "text/javascript; charset=utf-8"
 	} else if request.URL.Path == "/assets/events.js" {
 		path = "ui/events.js"

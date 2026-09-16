@@ -103,13 +103,14 @@ Implemented in this line:
 - signed Contact directory/rendezvous records with bounded HTTPS endpoints,
   expiry reaping, and an explicit separation between discovery and Contact
   trust.
+- VAPID-backed encrypted browser Push delivery for P0/P1/P2 notifications,
+  durable subscription registration, stale endpoint cleanup, and a Personal
+  Client enablement flow.
 
-The release deliberately keeps its boundaries explicit. Push,
-native mobile, and local voice channels remain the next feature lines. The
-external action queue is a safe Control boundary; it does not pretend to be a
-browser or grant an executor access to credentials. These are tracked as
-product work rather than hidden behind claims that the current Codex adapter
-supports them.
+The release deliberately keeps its boundaries explicit. Native mobile and
+device-local voice channels remain the next feature lines. The external action
+queue is a safe Control boundary; it does not pretend to be a browser or grant
+an executor access to credentials.
 
 Version and branch workflow:
 

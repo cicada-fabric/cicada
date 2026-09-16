@@ -239,6 +239,14 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.action(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/notifications/push/config" {
+		h.pushConfiguration(response, request)
+		return
+	}
+	if request.URL.Path == "/v1/notifications/push/subscriptions" || strings.HasPrefix(request.URL.Path, "/v1/notifications/push/subscriptions/") {
+		h.pushSubscription(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {
 		unreadOnly := request.URL.Query().Get("unread") != "false"
 		notifications, err := h.control.Notifications(unreadOnly)

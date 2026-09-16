@@ -36,6 +36,9 @@ textarea { resize: vertical; }
 .voice-row { display: flex; align-items: center; gap: 10px; }
 .voice-row button { width: auto; min-width: 92px; margin-top: 8px; }
 .voice-row .muted { font-size: .76rem; }
+.push-settings { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.push-settings button { width: auto; margin-top: 0; }
+.push-settings .muted { font-size: .76rem; }
 button { margin-top: 12px; border: 1px solid #77deb6; background: #70d5ae; color: #06100d; padding: 10px 13px; font-weight: 750; cursor: pointer; }
 button:hover { background: #8ce9c4; }
 button:disabled { cursor: wait; opacity: .55; }

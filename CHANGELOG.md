@@ -73,6 +73,9 @@ This file records user-visible changes by release line. `VERSION` and the Go
   and secret-filtered remote machine support.
 - Signed Contact directory/rendezvous records with bounded HTTPS endpoints,
   expiry reaping, and no implicit Contact trust.
+- VAPID-backed encrypted browser Push delivery for prioritized notifications,
+  durable subscription registration, stale endpoint cleanup, and Personal
+  Client opt-in controls.
 
 ### Changed
 

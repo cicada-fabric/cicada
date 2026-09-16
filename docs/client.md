@@ -46,5 +46,6 @@ the generated HTML or written to Control storage.
 The embedded client uses separate HTML, CSS, and JavaScript source files with a
 strict Content Security Policy. It has no package manager or asset build step.
 This page covers the browser-based Goal overview, Approval UX, remote status,
-attachments, and on-demand Goal detail slice of Personal Client. Push, voice,
-and native mobile delivery remain future work.
+attachments, on-demand Goal detail slice, browser speech input, and encrypted
+VAPID browser Push delivery. Native mobile and device-local voice processing
+remain future work.

@@ -33,8 +33,9 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "artifacts"},
 		{path: "/assets/attachments.js", contentType: "text/javascript", contains: "content_base64"},
 		{path: "/assets/events.js", contentType: "text/javascript", contains: "EventSource"},
+		{path: "/assets/push.js", contentType: "text/javascript", contains: "PushManager"},
 		{path: "/manifest.webmanifest", contentType: "application/manifest+json", contains: "Cicada Control"},
-		{path: "/sw.js", contentType: "text/javascript", contains: "cicada-static-v1"},
+		{path: "/sw.js", contentType: "text/javascript", contains: "cicada-static-v2"},
 		{path: "/icon.svg", contentType: "image/svg+xml", contains: "#70d5ae"},
 	}
 	for _, test := range tests {
@@ -73,6 +74,9 @@ func TestServiceWorkerDoesNotCachePrivateRoutes(t *testing.T) {
 	if !strings.Contains(script, "'/icon.svg'") {
 		t.Fatal("service worker must cache the install icon")
 	}
+	if !strings.Contains(script, "addEventListener('push'") || !strings.Contains(script, "showNotification") {
+		t.Fatal("service worker push delivery integration is missing")
+	}
 }
 
 func TestClientIncludesProgressiveVoiceInput(t *testing.T) {
@@ -82,6 +86,16 @@ func TestClientIncludesProgressiveVoiceInput(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "SpeechRecognition") || !strings.Contains(string(data), "webkitSpeechRecognition") {
 		t.Fatal("client voice input integration is missing")
+	}
+}
+
+func TestClientIncludesPushSubscriptionIntegration(t *testing.T) {
+	data, err := clientFiles.ReadFile("ui/push.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "pushManager.subscribe") || !strings.Contains(string(data), "/v1/notifications/push/subscriptions") {
+		t.Fatal("client push subscription integration is missing")
 	}
 }
 
@@ -97,7 +111,7 @@ func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
 
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/assets/voice.js", "/assets/events.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
+	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/attachments.js", "/assets/voice.js", "/assets/push.js", "/assets/events.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/server"
@@ -33,6 +34,17 @@ func main() {
 		}
 	case "version", "--version", "-V":
 		fmt.Println("cicada " + buildinfo.Version)
+	case "push-vapid-keys":
+		if len(os.Args) != 2 {
+			fmt.Fprintln(os.Stderr, "usage: cicada push-vapid-keys")
+			os.Exit(2)
+		}
+		privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("CICADA_PUSH_VAPID_PUBLIC_KEY=%s\nCICADA_PUSH_VAPID_PRIVATE_KEY=%s\n", publicKey, privateKey)
 	case "goal", "machine", "worker", "thread", "snapshot":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)

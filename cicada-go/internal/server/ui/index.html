@@ -93,6 +93,10 @@
         </div>
       </form>
       <p class="muted">The token stays in this browser tab and is never rendered into the page.</p>
+      <div class="push-settings">
+        <button type="button" id="push-enable" class="secondary" hidden>Enable push notifications</button>
+        <span id="push-status" class="muted" role="status" aria-live="polite"></span>
+      </div>
     </details>
 
     <div id="message" role="status" aria-live="polite"></div>
@@ -100,6 +104,7 @@
   <script src="/assets/goal-detail.js" defer></script>
   <script src="/assets/attachments.js" defer></script>
   <script src="/assets/voice.js" defer></script>
+  <script src="/assets/push.js" defer></script>
   <script src="/assets/events.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>

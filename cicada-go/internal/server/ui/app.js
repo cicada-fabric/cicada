@@ -127,6 +127,7 @@ async function refresh() {
     renderGoals(goals);
     renderNotifications(notificationsData.notifications || []);
     window.CicadaEvents?.sync(goals, state.token, refresh);
+    window.CicadaPush?.setup(api);
   } catch (error) {
     showMessage(error.message, true);
   } finally {

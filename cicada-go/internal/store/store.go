@@ -194,6 +194,21 @@ type Notification struct {
 	ReadAt    string `json:"read_at,omitempty"`
 }
 
+// PushSubscription is the browser Push API endpoint and its public encryption
+// keys. The endpoint is treated as a credential by the push service, so it is
+// only returned through the subscription registration response and never
+// included in ordinary notification payloads.
+type PushSubscription struct {
+	ID        string `json:"id"`
+	Endpoint  string `json:"endpoint"`
+	P256DH    string `json:"p256dh"`
+	Auth      string `json:"auth"`
+	UserAgent string `json:"user_agent,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // Monitor is the durable supervisor binding for a Goal. The current monitor is
 // deliberately small: it records whether supervision is active and when the
 // last event or correction was observed. More advanced policies can be added
@@ -594,6 +609,16 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at TEXT,
   FOREIGN KEY(goal_id) REFERENCES goals(id)
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT NOT NULL DEFAULT '',
+  last_error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS external_events (
   id TEXT PRIMARY KEY,
   connector TEXT NOT NULL,
@@ -660,6 +685,7 @@ CREATE INDEX IF NOT EXISTS peer_messages_contact_idx ON peer_messages(contact_id
 CREATE INDEX IF NOT EXISTS contact_discovery_status_idx ON contact_discovery_requests(status, created_at);
 CREATE INDEX IF NOT EXISTS directory_records_expiry_idx ON directory_records(status, expires_at);
 CREATE INDEX IF NOT EXISTS notifications_status_idx ON notifications(status, created_at);
+CREATE INDEX IF NOT EXISTS push_subscriptions_updated_idx ON push_subscriptions(updated_at);
 CREATE INDEX IF NOT EXISTS external_events_connector_idx ON external_events(connector, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id, created_at);
 CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(status, created_at);
