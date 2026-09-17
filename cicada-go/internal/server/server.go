@@ -81,6 +81,18 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		h.workerDispatch(response, request)
 		return
 	}
+	if request.URL.Path == "/v1/endpoints" || request.URL.Path == "/v1/fabric/endpoints" {
+		h.fabricEndpoints(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/endpoints/") {
+		h.fabricEndpoint(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/fabric/") {
+		h.fabric(response, request)
+		return
+	}
 	if request.URL.Path == "/v1/threads/sessions" {
 		h.threadSessions(response, request)
 		return
@@ -986,6 +998,31 @@ func (h *Handler) machines(response http.ResponseWriter, request *http.Request) 
 
 func (h *Handler) machine(response http.ResponseWriter, request *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/v1/machines/"), "/")
+	if len(parts) == 2 && parts[1] == "fabric-deliveries" && request.Method == http.MethodGet && parts[0] != "" {
+		deliveries, err := h.control.MachineFabricDeliveries(parts[0], queryInt(request, "limit", 50))
+		if err != nil {
+			fabricError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"deliveries": deliveries})
+		return
+	}
+	if len(parts) == 3 && parts[1] == "fabric-deliveries" && request.Method == http.MethodPost && parts[0] != "" && parts[2] != "" {
+		var input struct {
+			Error string `json:"error"`
+		}
+		if err := readOptionalJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		message, err := h.control.CompleteMachineFabricDelivery(parts[0], parts[2], input.Error)
+		if err != nil {
+			fabricError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, message)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "jobs" && request.Method == http.MethodGet && parts[0] != "" {
 		jobs, err := h.control.MachineJobs(parts[0])
 		if err != nil {

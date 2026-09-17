@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,23 @@ func TestMachineAgentInterval(t *testing.T) {
 	t.Setenv("CICADA_MACHINE_HEARTBEAT_SECONDS", "")
 	if got := machineAgentInterval(); got != 30*time.Second {
 		t.Fatalf("default interval=%s", got)
+	}
+}
+
+func TestMachineAuthReadsTokenFile(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "control.token")
+	if err := os.WriteFile(tokenPath, []byte("file-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_API_TOKEN", "")
+	t.Setenv("CICADA_API_TOKEN_FILE", tokenPath)
+	request, err := http.NewRequest(http.MethodGet, "https://control.example/healthz", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setMachineAuth(request)
+	if got := request.Header.Get("Authorization"); got != "Bearer file-token" {
+		t.Fatalf("unexpected machine authorization header: %q", got)
 	}
 }
 
@@ -56,13 +74,14 @@ func TestRemoteMachineExecutesShellWithoutControlSecrets(t *testing.T) {
 
 func TestCodexEnvironmentKeepsModelCredentialsButDropsControlToken(t *testing.T) {
 	environment := machineWorkerEnvironment([]string{
-		"API_KEY=model-key", "OPENAI_API_KEY=openai-key", "CICADA_API_TOKEN=control-token", "PATH=/usr/bin",
+		"API_KEY=model-key", "OPENAI_API_KEY=openai-key", "CICADA_API_TOKEN=control-token",
+		"CICADA_API_TOKEN_FILE=/etc/cicada/control.token", "PATH=/usr/bin",
 	}, true)
 	joined := strings.Join(environment, "\n")
 	if !strings.Contains(joined, "API_KEY=model-key") || !strings.Contains(joined, "OPENAI_API_KEY=openai-key") {
 		t.Fatalf("Codex credentials were removed: %q", joined)
 	}
-	if strings.Contains(joined, "CICADA_API_TOKEN=") {
+	if strings.Contains(joined, "CICADA_API_TOKEN=") || strings.Contains(joined, "CICADA_API_TOKEN_FILE=") {
 		t.Fatalf("Control token reached Codex: %q", joined)
 	}
 }

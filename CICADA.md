@@ -1,7 +1,7 @@
 # Cicada
 
 > **让 AI 管理我的 AI，让我退出管理循环。**  
-> Cicada 是一个面向个人与小团队的 Autonomous Personal AI Manager。它接收我的意图，理解我的长期上下文，调度我的设备、服务器和 AI harness，创建并管理长期运行的 monitor / worker，在必要时与其他人的 AI 安全协作，并且只在真正需要我判断时打扰我。
+> Cicada 是一个面向个人与小团队的 Autonomous Personal AI Manager。它接收我的意图，理解我的长期上下文，调度我的设备、服务器和 AI harness，创建并管理长期运行的 monitor / worker，也允许我正在使用的任意 AI session 随时加入 Cicada Fabric、成为可寻址的 Endpoint 并与其他 AI 协作；它只在真正需要我判断时打扰我。
 
 ---
 
@@ -357,6 +357,110 @@ Cicada 的目标不是“让我看到更多通知”，而是**替我过滤世�
 
 ---
 
+## 2.10 我正常使用一个 AI，某一刻再让它加入 Cicada
+
+Cicada 不应该要求我在开始工作前就先进入一个专门的 Cicada 启动流程。
+
+更自然的使用方式是：我先像平时一样使用自己喜欢的 harness。
+
+例如在 `gpu1` 上：
+
+```bash
+cd ~/AAA/le-wm
+codex
+```
+
+我正常和这个 Codex thread 工作：
+
+> “先把 planner 这部分代码读一下，看看哪里还有优化空间。”
+
+它此时可以只是一个普通 Codex thread，不必一开始就属于某个 Goal，也不必事先由 Control 创建。
+
+工作到一半，我突然希望它能够访问我的其他 AI、服务器或 monitor。我只需要在当前 TUI 中表达：
+
+> `@cicada`
+
+或者更明确：
+
+> `@cicada join`
+
+这里的 `@cicada` 是统一的用户心智模型；不同 harness 可以通过 MCP、plugin、skill、slash command 或其他原生扩展机制实现同一件事。
+
+Cicada 自动：
+
+1. 识别当前 harness，例如 Codex / Claude Code / OpenCode / Hermes / DeepSeek harness；
+2. 获取当前原生 session / thread ID；
+3. 获取当前 Machine；
+4. 获取当前 workspace；
+5. 为这个现有 session 建立一个 Cicada **Endpoint**；
+6. 分配稳定的内部 `endpoint_id`；
+7. 自动生成一个人类可读名称；
+8. 返回它在 Cicada Fabric 中的地址；
+9. 给当前 AI 暴露 Cicada 的网络能力。
+
+例如：
+
+```text
+Joined Cicada Fabric.
+
+Address:
+le-wm@gpu1:~/AAA/le-wm
+
+Endpoint ID:
+ep_01K...
+
+Harness:
+codex
+```
+
+从这一刻开始，我不需要离开当前 TUI。
+
+如果我说：
+
+> “接下来问一下 gpu2 上做 benchmark 的那个 thread，现在最优结果是多少。”
+
+当前 AI 应该能够自己：
+
+```text
+resolve target
+   ↓
+ask remote endpoint
+   ↓
+wait asynchronously
+   ↓
+receive reply
+   ↓
+continue current work
+```
+
+最终它直接告诉我：
+
+> “我问过 gpu2 上负责 benchmark 的 endpoint 了。目前最优结果是 2.31 ms，使用配置 X。这个结果和我们这里的假设有一个冲突，我准备先检查……”
+
+我不需要：
+
+- 查 UUID；
+- 手工执行 `cicada thread register`；
+- 查目标 thread ID；
+- SSH 到另一台机器；
+- 打开另一个 TUI；
+- 把问题复制过去；
+- 再把答案复制回来。
+
+**Cicada 的组网应该发生在我当前正在工作的 AI 内部，而不是要求我先成为一个 Cicada 运维人员。**
+
+`cicada thread register ...` 之类的命令可以继续存在，用于：
+
+- 调试；
+- 手工恢复；
+- 不支持自动发现的 harness；
+- 自动化脚本；
+- 兼容旧版本；
+
+但它不应该成为普通用户加入 Fabric 的主要方式。
+
+---
+
 # 3. Cicada 的核心对象
 
 Cicada 需要有一套稳定的产品抽象。具体底层可以换模型、换 harness、换通信协议，但这些上层对象不应该随实现变化。
@@ -572,17 +676,84 @@ Workspace 应该能够：
 
 ---
 
-## 3.10 Thread / Session
+## 3.10 Endpoint
 
-真正 harness 的会话对象。
+Endpoint 是 Cicada Fabric 中**可被寻址、被发现、被询问或被发送消息的逻辑端点**。
+
+Endpoint 是比 `Thread` 更稳定的网络抽象。因为不同 harness 对会话的命名并不一致：
+
+- Codex 使用 thread；
+- Claude Code 使用 session；
+- OpenCode 有自己的 session / conversation；
+- Hermes、DeepSeek harness 或未来其他 harness 可能采用完全不同的运行模型；
+- Monitor 甚至可以不是一个永久进程。
+
+因此 Cicada 不应该把网络层绑定到 `Codex Thread`，而应该统一为：
+
+```text
+Endpoint
+├── Codex Thread
+├── Claude Code Session
+├── OpenCode Session
+├── Worker
+├── Monitor
+├── Research Agent
+└── Future Harness
+```
+
+一个 Endpoint 至少应具有：
+
+```text
+endpoint_id
+name
+role
+harness
+native_session_id
+machine_id
+workspace
+goal_id
+status
+capabilities
+tags
+owner
+visibility
+joined_at
+last_seen
+```
+
+其中 `endpoint_id` 是稳定的内部身份，例如：
+
+```text
+ep_01K7...
+```
+
+用户一般不需要记住它。
+
+用户主要使用人类可读地址，例如：
+
+```text
+planner@gpu1:~/AAA/le-wm
+benchmark@gpu2:/data/le-wm
+ascend-opt@a2:~/ops-math
+monitor@control:/goals/kernel-opt
+```
+
+Endpoint 可以迁移、更名或更换底层 harness，但 Cicada 应尽量保持其稳定身份和上下文连续性。
+
+---
+
+## 3.11 Thread / Session
+
+Thread / Session 是某个具体 harness 的**原生会话对象**，它通常被一个 Endpoint 包装，而不是直接作为整个 Cicada 网络的统一身份。
 
 例如：
 
 - Codex thread；
 - Claude Code session；
-- OpenCode session。
+- OpenCode session；
+- 其他 harness 的 conversation / task session。
 
-Cicada 不应该把所有 harness 强行抹平成最低公共能力。
+Cicada 不应该为了统一接口而抹掉这些原生能力。
 
 对于 Codex，应尽量保留并利用真正的：
 
@@ -591,15 +762,86 @@ Cicada 不应该把所有 harness 强行抹平成最低公共能力。
 - message；
 - subagent；
 - resume；
-- device auth。
+- device auth；
+- queue / wake 等原生能力。
+
+因此关系更像：
+
+```text
+Endpoint
+   ↓ binds to
+Native Thread / Session
+```
+
+而不是：
+
+```text
+Cicada = 一个重新发明的统一 Agent Harness
+```
 
 ---
 
-## 3.11 Event
+## 3.12 Fabric Directory
+
+Fabric Directory 是 Cicada 对整个网络的实时目录。
+
+它维护：
+
+- 当前有哪些 Machine；
+- 当前有哪些 Endpoint；
+- Endpoint 当前在哪台 Machine；
+- 使用什么 harness；
+- 属于哪个 Goal / Project；
+- 当前 workspace；
+- online / offline / busy / idle；
+- 可以提供什么能力；
+- 当前 visibility / permission 边界；
+- last seen / liveness。
+
+但 Directory **不是把整个网络状态永久复制进每个模型的 prompt**。
+
+每个 Endpoint 只需要知道：
+
+1. 自己是谁；
+2. 自己的地址；
+3. 自己属于哪个 Fabric / Control；
+4. 自己有哪些 Cicada 网络工具；
+5. 当需要信息时如何查询 Directory。
+
+例如一个刚加入 Fabric 的 Codex 可以得到一张很小的 Network Card：
+
+```text
+CICADA FABRIC
+
+You are:
+  address: planner@gpu1:~/AAA/le-wm
+  endpoint_id: ep_01K...
+  role: thread
+  harness: codex
+  machine: gpu1
+  workspace: ~/AAA/le-wm
+
+Available network capabilities:
+  whoami
+  list
+  resolve
+  inspect
+  send
+  ask
+```
+
+网络的当前形态通过工具按需查询，而不是在每个 turn 中重复注入整张网络拓扑。
+
+---
+
+## 3.13 Event
 
 Cicada 内部所有重要变化都应成为事件：
 
 ```text
+EndpointJoined
+EndpointLeft
+EndpointMoved
 WorkerStarted
 WorkerBlocked
 WorkerRecovered
@@ -615,7 +857,7 @@ Control 根据 Event 决定下一步，而不是依赖用户不停轮询。
 
 ---
 
-## 3.12 Approval
+## 3.14 Approval
 
 Approval 表示：
 
@@ -812,6 +1054,22 @@ Control / Monitor 持续检查：
 - 新证据推翻旧假设；
 
 Cicada 自动调整执行计划。
+
+### Fabric Awareness
+
+Control 还负责维护 Cicada Fabric 的网络视图：
+
+- Endpoint membership；
+- Address / alias；
+- Machine location；
+- Endpoint capability；
+- liveness；
+- visibility；
+- routing；
+- request / reply correlation；
+- permission boundary。
+
+但 Control 不应把完整网络状态不断塞进每个 Worker 的上下文。它应该通过 Directory 与工具调用提供**按需、实时、最小化**的网络信息。
 
 ---
 
@@ -1114,15 +1372,372 @@ Cicada 需要的不是单纯聊天历史，而是面向行动的记忆。
 
 ---
 
-# 10. AI ↔ AI 通信
+# 10. Cicada Fabric：AI ↔ AI 组网与通信
 
-Cicada 内部以及跨用户场景都需要 agent communication，但它是基础设施，不是 Cicada 的最终产品定义。
+Cicada 内部以及跨用户场景都需要 agent communication，但通信不是简单“让两个 AI 聊天”。
+
+Cicada Fabric 的目标是：
+
+> **让我当前正在使用的 AI 能够知道自己处于一个可发现、可寻址、受权限控制的 Agent 网络中，并在需要时主动访问其他 worker、monitor 或人的 Cicada，而不需要我充当信息中转站。**
 
 ---
 
-## 10.1 同一用户内部
+## 10.1 Session-first：先正常工作，需要时再加入 Fabric
+
+普通用户不应该先手工登记 UUID，才能开始使用 Cicada。
+
+推荐使用周期是：
+
+```text
+normal harness session
+        ↓
+work normally
+        ↓
+user decides to network it
+        ↓
+@cicada / @cicada join
+        ↓
+auto-discover current session
+        ↓
+create / bind Endpoint
+        ↓
+join Fabric
+```
 
 例如：
+
+```bash
+gpu1$ cd ~/AAA/le-wm
+gpu1$ codex
+```
+
+我先正常工作。直到某一刻说：
+
+> `@cicada`
+
+Cicada Integration 自动发现：
+
+- 当前 harness；
+- native thread / session ID；
+- hostname / Machine；
+- cwd / Workspace；
+- 当前用户；
+- 可用原生能力。
+
+然后建立 Endpoint。
+
+因此：
+
+```text
+Integration installed
+≠
+Session joined
+```
+
+服务器可以提前安装 Cicada integration，但一个 session 只有在用户明确加入或 policy 自动加入后，才成为 Fabric Endpoint。
+
+`cicada thread register ...` 等手工命令只作为调试、恢复和兼容入口存在。
+
+---
+
+## 10.2 跨 Harness 的统一 Endpoint
+
+Cicada Fabric 不能假设所有 AI 都使用 thread 这个概念。
+
+网络层统一处理 Endpoint：
+
+```text
+Endpoint
+├── Native Codex Thread
+├── Claude Code Session
+├── OpenCode Session
+├── Hermes Session
+├── DeepSeek Harness Session
+├── Monitor
+└── Future Agent Runtime
+```
+
+每个 harness 通过自己的 Integration Adapter 实现类似能力：
+
+```text
+DetectCurrentSession()
+Join()
+Capabilities()
+Send()
+Wake()
+Resume()
+Leave()
+```
+
+技术实现可以不同，但用户心智模型应一致：
+
+> **“让当前 AI 加入 Cicada。”**
+
+---
+
+## 10.3 Endpoint Address：人类可读地址 + 稳定内部身份
+
+Cicada 应同时存在两种身份。
+
+### 稳定内部身份
+
+```text
+endpoint_id = ep_01K...
+```
+
+用于：
+
+- durable routing；
+- migration；
+- audit；
+- permission；
+- correlation；
+- rename 后保持连续性。
+
+### 人类可读地址
+
+推荐形式：
+
+```text
+endpoint_name@server_name:workspace_dir
+```
+
+例如：
+
+```text
+planner@gpu1:~/AAA/le-wm
+benchmark@gpu2:/data/le-wm
+ascend-opt@a2:~/ops-math
+monitor@control:/goals/lewm
+```
+
+这个形式的好处是：
+
+- 一眼知道目标是谁；
+- 一眼知道当前位于哪台 Machine；
+- 能看到工作上下文；
+- 很像熟悉的 `user@host:/path`；
+- 适合在 TUI 中直接引用。
+
+但 Machine 和 Workspace 是**locator / context**，不是永久身份。
+
+例如 Endpoint 从 gpu2 迁移到 gpu3：
+
+```text
+benchmark@gpu2:/data/le-wm
+            ↓ migrate
+benchmark@gpu3:/data/le-wm
+```
+
+其 `endpoint_id` 不应变化。
+
+---
+
+## 10.4 地址缩写与解析
+
+我不应该每次都输入完整地址。
+
+Cicada Resolver 应支持：
+
+```text
+benchmark@gpu2:/data/le-wm   # 完全限定
+benchmark@gpu2               # 在 gpu2 上唯一即可
+benchmark                    # 整个可见 Fabric 中唯一即可
+```
+
+解析原则：
+
+1. 显式完整地址优先；
+2. server-qualified alias 次之；
+3. global-visible unique alias 再次；
+4. 发生歧义时绝不能静默猜测。
+
+例如：
+
+```text
+Ambiguous endpoint "benchmark":
+
+1. benchmark@gpu1:~/foo
+2. benchmark@gpu2:~/bar
+```
+
+AI 可以先根据 Goal / Project / Workspace 上下文消歧；如果仍无法确定，再询问用户。
+
+---
+
+## 10.5 每个 Endpoint 应该知道多少网络信息
+
+每个 Endpoint **应该知道 Cicada Fabric 存在**，但不应该默认拿到全网所有上下文。
+
+它可以默认知道：
+
+- 自己的 Endpoint ID 和地址；
+- 当前 Machine；
+- 当前 Workspace；
+- 当前 Goal / Project（如果有）；
+- 当前角色；
+- 可用 Cicada 网络工具；
+- 当前 Fabric / Control identity。
+
+它可以通过 Directory 按需查询：
+
+```text
+list()
+resolve()
+inspect()
+```
+
+例如：
+
+```text
+SERVERS
+gpu1    online    H100
+gpu2    online    RTX4090
+a2      online    Ascend 910B
+
+ENDPOINTS
+planner@gpu1:~/AAA/le-wm
+benchmark@gpu2:~/AAA/le-wm
+ascend-test@a2:~/ops
+monitor@control:/goals/lewm
+```
+
+默认可见信息可以包括：
+
+- endpoint name；
+- role；
+- harness；
+- machine；
+- display workspace；
+- status；
+- Goal / Project label；
+- capabilities；
+- tags；
+- last seen。
+
+默认**不应该**暴露：
+
+- 完整 thread history；
+- system prompt；
+- credentials；
+- secrets；
+- `.env`；
+- 私有文件；
+- 私有 memory；
+- 未授权 workspace 内容。
+
+这些能力必须受 Permission & Trust 控制。
+
+核心原则：
+
+> **A Cicada Endpoint knows that the network exists, but queries the network when it needs to know its current shape.**
+
+---
+
+## 10.6 Cicada Tool / MCP：AI 自己使用网络，而不是人手工执行 CLI
+
+用户不应该告诉 AI：
+
+> “请执行 `cicada thread queue UUID ...`。”
+
+加入 Fabric 后，AI 应直接拥有稳定的 Cicada Tool 接口，例如：
+
+```text
+cicada_whoami()
+cicada_list(...)
+cicada_resolve(...)
+cicada_inspect(...)
+cicada_send(...)
+cicada_ask(...)
+```
+
+例如我说：
+
+> “问一下 benchmark 那边现在最优结果是多少。”
+
+当前 AI 可以自动：
+
+```text
+cicada_resolve("benchmark")
+        ↓
+benchmark@gpu2:~/AAA/le-wm
+
+cicada_ask(
+  target="benchmark@gpu2:~/AAA/le-wm",
+  question="目前 benchmark 的最优结果和配置是什么？"
+)
+```
+
+这类能力应优先通过 MCP / plugin / skill / harness-native tool 提供，而不是要求模型通过 shell 拼 Cicada CLI。
+
+CLI 仍然有价值，但主要面向：
+
+- 调试；
+- 运维；
+- 自动化；
+- fallback。
+
+---
+
+## 10.7 `send` 与 `ask` 是不同的 primitive
+
+普通消息只需要：
+
+```text
+send(target, message)
+```
+
+但 Agent 协作更重要的是：
+
+```text
+ask(target, question)
+```
+
+`ask` 应具有 request / reply 语义：
+
+```text
+A
+ ↓ ask
+request_id = rq_123
+ ↓
+B
+ ↓ work
+reply_to = rq_123
+ ↓
+A resumes
+```
+
+例如：
+
+```text
+planner@gpu1
+  ↓ ask
+benchmark@gpu2
+
+“目前最优 benchmark 是多少？”
+
+        ↓
+
+benchmark@gpu2
+处理、查询、必要时运行工具
+
+        ↓
+
+reply:
+“2.31 ms，配置为 ...”
+```
+
+回复到达后，原始 Endpoint 应可以被自动唤醒或恢复，让它继续原来的上下文：
+
+> “gpu2 回复了。结果是 2.31 ms，我接下来会据此修改当前方案。”
+
+这比简单聊天更接近 **Agent RPC**。
+
+---
+
+## 10.8 同一用户内部协作
+
+同一用户的 Fabric 可以包含：
 
 ```text
 Monitor
@@ -1130,19 +1745,59 @@ Monitor
 Worker A
    ↕
 Worker B
+   ↕
+Manual TUI Endpoint
 ```
 
-可以通过 Control Plane / local daemon / secure transport 通信。
+Endpoint 可以位于：
+
+- 同一进程；
+- 同一服务器；
+- 不同服务器；
+- 不同 harness；
+- 不同 workspace。
+
+同一用户内部可以通过 Control Plane / local daemon / secure transport 通信。
+
+用户不应该成为 worker 之间的 copy-paste 中间人。
 
 ---
 
-## 10.2 不同用户之间
+## 10.9 Monitor 也可以成为 Endpoint
+
+Monitor 是一种逻辑角色，不要求一定是永久运行的 LLM thread。
+
+但它应该可以被寻址，例如：
+
+```text
+monitor@control:/goals/lewm
+```
+
+我可以从当前 TUI 说：
+
+> “问一下 monitor，为什么 benchmark 还没有结束。”
+
+Control 可以根据：
+
+- Goal state；
+- Worker events；
+- artifacts；
+- evidence；
+- monitor state；
+
+直接回答，或者临时启动 reasoning。
+
+因此 Endpoint 不等于 OS process，也不等于必须存在一个永久 thread。
+
+---
+
+## 10.10 不同用户之间
 
 例如我和另一个人一起做项目。
 
 我们双方都安装 Cicada。
 
-我可以告诉自己的 Cicada：
+我可以告诉自己的 AI：
 
 > “问一下 Bob，他们那边 API v2 的 schema 定下来没有。”
 
@@ -1153,26 +1808,28 @@ Worker B
 ```text
 Me
  ↓
+My current Endpoint
+ ↓
 My Cicada
  ↓
-My relevant thread
+resolve Bob / target endpoint
  ↓
 E2EE
  ↓
 Bob's Cicada
  ↓
-Bob's relevant thread
+Bob's relevant Endpoint
  ↓
 reply
  ↓
 E2EE
  ↓
-My original thread
+My original Endpoint resumes
 ```
 
 ---
 
-## 10.3 Person-level Contact
+## 10.11 Person-level Contact
 
 长期不应该只是：
 
@@ -1188,14 +1845,24 @@ Me ↔ Bob
 
 然后由双方 Cicada 决定：
 
-- 这条消息交给哪个 AI；
-- 哪个 thread；
+- 这条消息交给哪个 Endpoint；
+- 哪个 thread / session；
 - 可以访问哪些信息；
 - 哪些操作需要人工批准。
 
+因此跨用户地址未来可以进一步扩展，例如：
+
+```text
+benchmark@bob/gpu2:/project
+```
+
+或其他更合适的 federation namespace。
+
+具体外部 namespace 可以演进，但**内部稳定 Endpoint ID 与用户级 Contact identity 必须分离**。
+
 ---
 
-## 10.4 E2EE
+## 10.12 E2EE
 
 跨用户通信应默认端到端加密。
 
@@ -1603,6 +2270,51 @@ GPU 很贵，token 很贵，但对 Cicada 来说最需要保护的是：
 
 ---
 
+## 17.9 Join Existing Work, Do Not Force a New Workflow
+
+Cicada 应该加入我已经在进行的工作，而不是要求我为了使用 Cicada 重开一个特殊 session。
+
+理想路径是：
+
+```text
+normal Codex / Claude / OpenCode session
+        ↓
+work
+        ↓
+@cicada
+        ↓
+join Fabric
+```
+
+而不是：
+
+```text
+先登记 UUID
+↓
+先创建 Cicada session
+↓
+再开始工作
+```
+
+---
+
+## 17.10 Query the Fabric, Do Not Dump the Fabric
+
+每个 Endpoint 应知道自己处于 Fabric 中，但不应该把整个网络拓扑、所有线程和所有状态长期塞入模型上下文。
+
+网络信息应：
+
+- 实时；
+- 按需；
+- 最小化；
+- 权限过滤；
+- 可查询；
+- 可失效刷新。
+
+**Network state belongs in the Directory, not in the prompt.**
+
+---
+
 # 18. 功能总览
 
 完整 Cicada 可以分成以下模块：
@@ -1611,9 +2323,9 @@ GPU 很贵，token 很贵，但对 Cicada 来说最需要保护的是：
 Cicada
 │
 ├── Client
+│   ├── Mobile
 │   ├── Web
 │   ├── Desktop
-│   ├── PWA (mobile browser)
 │   ├── Voice
 │   ├── Notifications
 │   └── Approvals
@@ -1633,26 +2345,40 @@ Cicada
 ├── Runtime
 │   ├── Monitor
 │   ├── Worker
+│   ├── Endpoint
 │   ├── Workspace
 │   ├── Machine
 │   ├── Recovery
 │   └── Artifact
 │
+├── Fabric
+│   ├── Membership / Join
+│   ├── Endpoint Directory
+│   ├── Address Resolver
+│   ├── Presence / Liveness
+│   ├── Capability Discovery
+│   ├── Harness Integration
+│   └── Network Card
+│
 ├── Executors
 │   ├── Native Codex
 │   ├── Claude Code
 │   ├── OpenCode
+│   ├── Hermes
+│   ├── DeepSeek Harness
 │   ├── Happy Agent
 │   ├── Shell
 │   └── Browser
 │
 ├── Communication
 │   ├── Internal Messaging
-│   ├── Thread-to-Thread
+│   ├── Endpoint-to-Endpoint
+│   ├── Agent RPC / Ask
+│   ├── Request / Reply Correlation
+│   ├── Wake / Resume
 │   ├── E2EE Peer Link
 │   ├── Contact
-│   ├── Federation
-│   └── Wake / Delivery
+│   └── Federation
 │
 ├── Integrations
 │   ├── Email
@@ -1735,6 +2461,63 @@ Result
 Me
 ```
 
+## 19.1 第二个关键验收：现有 TUI 动态加入 Fabric
+
+在 Autonomous Coding Supervisor 的闭环成立后，下一项最重要的验收不是增加更多外部平台，而是证明：
+
+> **我可以在一个已经工作了一段时间的 AI TUI 中临时加入 Cicada，并让当前 AI 自己访问其他 Endpoint。**
+
+最小验收场景：
+
+```text
+gpu1                               gpu2
+
+existing Codex A                   existing Codex B
+      │                                  │
+      │ @cicada                          │ @cicada
+      ↓                                  ↓
+ Endpoint A                           Endpoint B
+      │                                  │
+      └──────── Cicada Fabric ───────────┘
+```
+
+然后我只在 A 中说：
+
+> “问一下 gpu2 上的 benchmark thread，目前最优结果是多少。”
+
+系统自动完成：
+
+1. 当前 Codex A 已经通过 `@cicada` 加入 Fabric；
+2. 自动解析目标 Endpoint；
+3. A 调用 `ask`；
+4. 请求通过 Fabric 路由到 B；
+5. B 的原生 session 被唤醒 / resume；
+6. B 得到问题并处理；
+7. 回复与 `request_id` 关联；
+8. 回复回到 A；
+9. A 的原 session 自动继续；
+10. 我没有离开 A 的 TUI，也没有复制任何信息。
+
+第一版只要求：
+
+- Codex ↔ Codex；
+- 两台 Machine；
+- 一个 Control / Fabric Directory；
+- Endpoint join；
+- 地址解析；
+- `list / resolve / ask / send`；
+- exact native-session wake；
+- request / reply correlation。
+
+第一版不要求：
+
+- 跨用户；
+- 公共 directory；
+- native mobile；
+- 所有 harness；
+- 复杂群聊；
+- 社交网络。
+
 ---
 
 # 20. 后续演进
@@ -1767,35 +2550,60 @@ Me
 
 增加：
 
+- Mobile；
 - Push；
 - Voice；
 - Goal overview；
 - Approval UX；
 - remote status。
 
-当前发布线已经提供嵌入式 Web/PWA 客户端、浏览器 Push、语音输入输出和
-远程状态；原生 iOS/Android Mobile 只在这一阶段之外继续规划。
-
 可以大量复用 / 改造已有开源项目的成熟 Client 与 remote-agent 基础设施，而不是重新实现所有 plumbing。
 
 ---
 
-## Phase 3 — Multi-Harness
+## Phase 3 — Fabric Membership & Agent RPC
 
 目标：
 
-> “Cicada 管的不是 Codex，而是所有 Agent。”
+> “我当前正在使用的 AI 可以随时加入 Cicada，并直接访问其他 AI。”
+
+增加：
+
+- Endpoint；
+- Fabric Directory；
+- `@cicada` / join UX；
+- automatic native-session discovery；
+- `endpoint_name@server_name:workspace` locator；
+- stable Endpoint ID；
+- address resolver；
+- Network Card；
+- `list / resolve / inspect / send / ask`；
+- request / reply correlation；
+- exact session wake / resume；
+- Codex ↔ Codex first-class path。
+
+---
+
+## Phase 4 — Multi-Harness Fabric
+
+目标：
+
+> “加入 Cicada 的不只是 Codex，而是所有 Agent。”
 
 增加：
 
 - Claude Code；
 - OpenCode；
+- Hermes；
+- DeepSeek harness；
 - Happy Agent；
-- 其他 harness。
+- harness-specific session discovery；
+- harness-specific wake / resume；
+- capability-normalized Endpoint API。
 
 ---
 
-## Phase 4 — Secure Agent Network
+## Phase 5 — Secure Cross-User Agent Network
 
 目标：
 
@@ -1806,13 +2614,16 @@ Me
 - Contact；
 - Peer identity；
 - E2EE；
-- thread-to-thread messaging；
+- cross-Control Endpoint routing；
+- cross-user `ask / reply`；
 - cross-user permission；
-- federation。
+- federation；
+- person-level routing；
+- relay / offline delivery。
 
 ---
 
-## Phase 5 — Personal Information Proxy
+## Phase 6 — Personal Information Proxy
 
 目标：
 
@@ -1831,7 +2642,7 @@ Me
 
 ---
 
-## Phase 6 — Cicada
+## Phase 7 — Cicada
 
 最终状态：
 
@@ -1880,6 +2691,26 @@ worker 工作几个小时以后，是否仍然在解决原问题？
 ### 它能否跨机器、跨 harness 保持连续性？
 
 底层对象变化不应该摧毁 Goal。
+
+### 我能否不离开当前 TUI 就调用整个 Fabric？
+
+如果我为了问另一个 worker 仍然需要：
+
+```text
+查 UUID
+SSH
+切 tmux
+复制问题
+等待
+复制答案
+切回来
+```
+
+那么 Cicada 的组网就失败了。
+
+理想状态是：
+
+> 我只告诉当前 AI“去问那个 Endpoint”，剩下的寻址、权限、唤醒、等待、回复和上下文继续都由 Cicada 完成。
 
 ### 它最终有没有让我离开屏幕？
 

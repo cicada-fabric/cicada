@@ -6,7 +6,22 @@
 This file records user-visible changes by release line. `VERSION` and the Go
 `buildinfo` package identify the running build; Git tags identify releases.
 
-## 0.3.0-dev — unreleased
+## 0.4.0-dev — unreleased
+
+### Added
+
+- Session-first Endpoint membership for existing Codex threads, including
+  automatic native session discovery, stable IDs, human-readable addresses,
+  Network Cards, liveness, and explicit resolver ambiguity errors.
+- Durable Fabric `send` and correlated `ask/reply` messaging with exact local
+  and remote Codex session wake through machine agents.
+- A bundled stdio MCP server and Codex plugin tools for joining, listing,
+  resolving, inspecting, sending, asking, replying, and receiving without
+  shell command construction.
+- Fabric Directory APIs, operator CLI commands, and a live Endpoint Network
+  panel in the embedded desktop/mobile PWA.
+
+## 0.3.0-dev
 
 ### Added
 

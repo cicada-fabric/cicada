@@ -337,12 +337,12 @@ The reviewed Happy source checkout and reuse boundaries are recorded in
 The implementation language decision and the reasons for the Go core plus
 TypeScript client split are recorded in `docs/language-decision.md`.
 
-Development starts from `develop`; feature work uses a dedicated branch such
-as `feat/core-objects` or `feat/permission-trust`. Keep `main` for reviewed
-releases. The current local checkout has `origin` set to
-`git@github.com:cicada-fabric/cicada.git`. The current release baseline is
-`v0.2.0` on `release/0.2.0`; the current unreleased line is `0.3.0-dev` and
-continues on feature branches. It is merged only after the checks below pass.
+Development is consolidated on `main`. Use a short-lived feature branch only
+when review or isolation requires one, then merge and delete it instead of
+keeping parallel long-running lines. The current checkout has `origin` set to
+`git@github.com:cicada-fabric/cicada.git`. The latest release tag is `v0.2.0`;
+the current unreleased line is `0.4.0-dev`. Changes land only after the checks
+below pass.
 
 The Go checks cover the durable store and the Control's process-level
 recovery, monitor correction, and approval pause/resume paths:

@@ -114,7 +114,7 @@ func postTelegramEvent(ctx context.Context, base, goalID, externalID, eventType 
 	if goalID = strings.TrimSpace(goalID); goalID != "" {
 		request.Header.Set("X-Cicada-Goal-ID", goalID)
 	}
-	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+	if token := clientAPIToken(); token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)

@@ -6,6 +6,6 @@ const (
 	// Version is the current protocol-compatible Cicada release. Keep this in
 	// one package so health responses and app-server client metadata cannot
 	// silently drift apart.
-	Version = "0.3.0-dev"
+	Version = "0.4.0-dev"
 	Stage   = "codex-supervisor"
 )

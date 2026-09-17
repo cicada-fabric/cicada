@@ -104,7 +104,7 @@ func uploadMachineSnapshot(ctx context.Context, base string, job machineJob, wor
 }
 
 func setMachineAuth(request *http.Request) {
-	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+	if token := clientAPIToken(); token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
 }

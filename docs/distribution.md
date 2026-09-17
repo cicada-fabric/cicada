@@ -165,18 +165,21 @@ bounded snapshot, and reports the result. A stale machine is marked offline
 and its Worker is requeued; the next machine restores the snapshot before
 continuing.
 
-Threads are logical durable sessions, not network sockets. A Codex session can
-register itself and queue a message:
+Threads are native harness sessions wrapped by stable Fabric Endpoints. From a
+normal Codex TUI, the plugin's bundled MCP server discovers the current thread
+and joins it idempotently. The equivalent operator fallback is:
 
 ```bash
-cicada thread register THREAD_ID 'laptop Codex'
-cicada thread queue FROM_THREAD_ID TO_THREAD_ID 'share the benchmark result'
-cicada thread deliveries
+cicada endpoint join --auto --name planner
+cicada endpoint list
+cicada fabric ask ENDPOINT_ID benchmark 'share the current benchmark result'
 ```
 
-Goals own the monitor/worker graph, so separate threads on the same or
-different machines communicate through Control's durable queue and event
-stream. Cross-user communication uses the Contact/E2EE path and federation;
+For a destination on another machine, that machine's agent atomically claims
+the Fabric delivery and invokes the official `codex queue --thread` command
+against the exact native session. A correlated reply wakes the original
+session. See [Fabric membership and Agent RPC](fabric.md) for the complete
+flow. Cross-user communication uses the Contact/E2EE path and federation;
 machines never need to open direct ports to one another.
 
 ## Codex plugin distribution
@@ -184,19 +187,28 @@ machines never need to open direct ports to one another.
 The repository contains a portable `cicada` plugin under
 `.agents/plugins/cicada` and a repo marketplace under
 `.agents/plugins/marketplace.json`. Install that package in Codex (or publish
-the same package to the public plugin directory) and configure:
+the same package to the public plugin directory):
+
+```bash
+codex plugin marketplace add cicada-fabric/cicada --ref main
+codex plugin add cicada@cicada-repo
+```
+
+Then configure:
 
 ```text
 CICADA_API_URL=https://control.example
-CICADA_API_TOKEN=<read from the operator's secret store>
+CICADA_API_TOKEN_FILE=$HOME/.config/cicada/control.token
+CICADA_MACHINE_ID=$(hostname -s)
 ```
 
-The plugin supplies the Cicada workflow and CLI examples. It does not install
-Docker, create a server, or silently grant network access. Networking starts
-only after a reachable Control URL and an authorized token are configured.
-The current package has no bundled MCP endpoint because Cicada's stable
-interface is its authenticated HTTP API and `cicada` CLI; a future hosted MCP
-adapter can be added without changing the Control/worker protocol.
+The plugin supplies the Cicada workflow and a bundled local `cicada mcp` stdio
+server. Its tools join the current `CODEX_THREAD_ID`, query the Endpoint
+Directory, resolve addresses, and perform `send` or correlated `ask/reply`
+without making the model construct CLI commands. It does not install Docker,
+create a server, or silently grant network access. Networking starts only
+after the `cicada` binary, a reachable Control URL, and an authorized token are
+configured.
 
 ## First end-to-end run
 
@@ -204,14 +216,18 @@ adapter can be added without changing the Control/worker protocol.
    file path.
 2. Install one worker with `install-cicada-worker.sh`, a token file, and a
    workspace root; verify it appears in `cicada machine list`.
-3. Configure `CICADA_API_URL` and `CICADA_API_TOKEN` for the Codex plugin, or
-   use the CLI directly.
-4. Create a Goal. Control schedules a monitor and Worker to a capable machine;
+3. Configure `CICADA_API_URL`, `CICADA_API_TOKEN_FILE`, and the same
+   `CICADA_MACHINE_ID` used by the local machine agent; open a normal Codex
+   TUI, and say `@cicada join`.
+4. Join a second Codex session on another Machine, then use `cicada_ask` from
+   the first. Verify the target native session wakes, replies with the returned
+   `request_id`, and the original session resumes.
+5. Create a Goal. Control schedules a monitor and Worker to a capable machine;
    the worker's logical thread and result remain durable across reconnects.
-5. Open the panel through the SSH tunnel or HTTPS reverse proxy. Approvals,
-   notifications, artifacts, raw bounded output, and Goal detail are all
-   available there.
-6. For a second person, exchange signed announcements, review and trust the
+6. Open the panel through the SSH tunnel or HTTPS reverse proxy. Live Fabric
+   Network Cards, approvals, notifications, artifacts, raw bounded output, and
+   Goal detail are available there.
+7. For a second person, exchange signed announcements, review and trust the
    Contact, then configure the federation/relay URL. Only trusted Contacts can
    send encrypted peer messages.
 

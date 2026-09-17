@@ -5,7 +5,7 @@ Control scheduler checks the requested harness against a Machine's
 `capabilities.harnesses` profile, and the executor boundary can therefore grow
 without changing Goal or Monitor data.
 
-The current 0.3.0 development line supports the official Codex CLI, an
+The current 0.4.0 development line supports the official Codex CLI, an
 explicit `shell` harness, and bounded adapters for Claude Code, OpenCode, and
 Happy Agent. A Goal or additional Worker may state `"harness":"codex"`,
 `"harness":"shell"`, `"harness":"claude-code"`, `"harness":"opencode"`,

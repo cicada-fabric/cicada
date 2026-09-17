@@ -8,13 +8,14 @@ immediately after `docker compose up -d control`:
 http://127.0.0.1:8787/
 ```
 
-The current 0.3.0 development page provides a responsive Today view with
+The current 0.4.0 development page provides a responsive Today view with
 running, approval, and completed counts. It displays the local post-quantum
 identity, Goal status and workers, latest result summaries, unread prioritized
-notifications, and pending approval requests. It can create a Goal, approve or
-deny a request, and acknowledge a notification. The page polls the JSON API
-every five seconds; the API remains the stable boundary for a future mobile or
-desktop client.
+notifications, pending approval requests, and live Fabric Endpoint Network
+Cards with address, role, harness, Machine, capabilities, and liveness. It can
+create a Goal, approve or deny a request, and acknowledge a notification. The
+page polls the JSON API every five seconds; the API remains the stable boundary
+for a future mobile or desktop client.
 
 Select **View detail** on any Goal to inspect its current conclusion, success
 criteria, Worker states, key events, Artifacts, Workspaces, and external

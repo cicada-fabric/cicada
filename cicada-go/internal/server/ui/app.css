@@ -46,18 +46,24 @@ button.secondary, button.danger { background: transparent; color: #cce0d8; borde
 button.danger { color: #fca5a5; border-color: #7f3939; }
 .button-row { display: flex; gap: 8px; }
 .button-row button { flex: 1; }
-.approval, .notice, .goal { margin-top: 10px; border: 1px solid #29463c; border-radius: 12px; background: #0a1714; padding: 14px; }
-.approval:first-child, .notice:first-child, .goal:first-child { margin-top: 0; }
-.approval header, .notice header, .goal header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.approval, .notice, .goal, .endpoint-card { margin-top: 10px; border: 1px solid #29463c; border-radius: 12px; background: #0a1714; padding: 14px; }
+.approval:first-child, .notice:first-child, .goal:first-child, .endpoint-card:first-child { margin-top: 0; }
+.approval header, .notice header, .goal header, .endpoint-card header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
 .approval pre { max-height: 150px; overflow: auto; }
 .badge { display: inline-block; white-space: nowrap; border-radius: 999px; padding: 4px 8px; background: #19382d; color: #9ee8c8; font-size: .7rem; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
 .badge.running, .badge.queued, .badge.recovering { background: #493817; color: #fde68a; }
+.badge.online, .badge.idle { background: #123f2c; color: #86efac; }
+.badge.busy { background: #493817; color: #fde68a; }
+.badge.offline, .badge.left { background: #26332e; color: #8ca59c; }
 .badge.failed, .badge.blocked { background: #4d2222; color: #fecaca; }
 .badge.completed { background: #123f2c; color: #86efac; }
 .meta { margin: 7px 0 0; color: #78958a; font-size: .76rem; overflow-wrap: anywhere; }
 .summary { margin: 12px 0 0; color: #d4e5de; white-space: pre-wrap; overflow-wrap: anywhere; }
 .worker-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .worker { border-radius: 7px; background: #152721; padding: 5px 8px; color: #a7c0b6; font-size: .72rem; }
+.endpoint-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.endpoint-card { margin-top: 0; min-width: 0; }
+.endpoint-card code { display: block; margin-top: 10px; color: #9ee8c8; font: .76rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .detail-toggle { margin-top: 14px; }
 .goal-detail { margin-top: 12px; border-top: 1px solid #29463c; padding-top: 12px; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -84,6 +90,6 @@ summary { cursor: pointer; font-weight: 650; }
   section, details { padding: 16px; border-radius: 13px; }
   .stats article { min-height: 76px; }
   .stats strong { font-size: 1.7rem; }
-  .approval header, .notice header, .goal header { flex-direction: column; gap: 7px; }
+  .approval header, .notice header, .goal header, .endpoint-card header { flex-direction: column; gap: 7px; }
   .detail-grid { grid-template-columns: 1fr; }
 }

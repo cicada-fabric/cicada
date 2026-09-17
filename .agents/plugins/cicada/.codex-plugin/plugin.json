@@ -1,25 +1,27 @@
 {
   "name": "cicada",
-  "version": "0.3.0",
-  "description": "Operate a self-hosted Cicada Control plane from Codex.",
+  "version": "0.4.0",
+  "description": "Join the current Codex thread to a self-hosted Cicada Fabric and coordinate endpoints.",
   "author": {
     "name": "Cicada Fabric",
     "url": "https://github.com/cicada-fabric/cicada"
   },
   "repository": "https://github.com/cicada-fabric/cicada",
   "license": "MIT",
-  "keywords": ["codex", "orchestration", "workers", "machines", "e2ee"],
+  "keywords": ["codex", "fabric", "endpoints", "orchestration", "workers", "e2ee"],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Cicada",
-    "shortDescription": "Coordinate Codex workers across your machines.",
-    "longDescription": "Connect Codex to a self-hosted Cicada Control plane for durable goals, machine scheduling, supervision, and encrypted peer collaboration.",
+    "shortDescription": "Join and coordinate Codex sessions across machines.",
+    "longDescription": "Join the current Codex thread to a self-hosted Cicada Fabric, discover Endpoint network cards, and use durable send or ask/reply workflows across machines.",
     "developerName": "Cicada Fabric",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Show my Cicada goals and current workers.",
-      "Create a Cicada goal for this task and report the result when it completes."
+      "@cicada join this thread and show my Network Card.",
+      "List the visible Cicada endpoints.",
+      "Ask the benchmark endpoint for its current result."
     ]
   }
 }

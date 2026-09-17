@@ -403,6 +403,12 @@ func (c *Control) evaluateMonitors() {
 	if c.config.MachineStaleAfter > 0 {
 		cutoff := time.Now().UTC().Add(-c.config.MachineStaleAfter).Format(time.RFC3339)
 		c.markStaleMachines(cutoff)
+		endpointIDs, _ := c.store.MarkStaleEndpoints(cutoff)
+		for _, endpointID := range endpointIDs {
+			_, _ = c.store.AppendFabricEvent(endpointID, "EndpointStatusChanged", map[string]any{
+				"to": "offline", "reason": "heartbeat expired",
+			})
+		}
 	}
 	goals, err := c.store.ListGoals()
 	if err != nil {

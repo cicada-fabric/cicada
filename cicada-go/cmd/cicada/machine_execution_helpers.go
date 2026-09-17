@@ -93,6 +93,7 @@ func machineJobTimeout() time.Duration {
 func machineWorkerEnvironment(environment []string, allowModelSecrets bool) []string {
 	blocked := map[string]bool{
 		"CICADA_API_TOKEN":        true,
+		"CICADA_API_TOKEN_FILE":   true,
 		"CICADA_PEER_RELAY_TOKEN": true, "CICADA_WEBHOOK_SECRET": true,
 	}
 	if !allowModelSecrets {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/server"
 )
 
@@ -45,7 +47,12 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("CICADA_PUSH_VAPID_PUBLIC_KEY=%s\nCICADA_PUSH_VAPID_PRIVATE_KEY=%s\n", publicKey, privateKey)
-	case "goal", "machine", "worker", "thread", "snapshot":
+	case "mcp":
+		if err := runMCP(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "goal", "machine", "worker", "thread", "snapshot", "endpoint", "fabric":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -115,6 +122,10 @@ func clientCommand(args []string) error {
 	var method, path string
 	var body any
 	switch args[0] {
+	case "endpoint":
+		return endpointCommand(baseURL, args[1:])
+	case "fabric":
+		return fabricCommand(baseURL, args[1:])
 	case "snapshot":
 		if len(args) >= 2 && args[1] == "replicate" {
 			return runSnapshotReplication(args[2:])
@@ -250,7 +261,7 @@ func requestJSON(url, method string, body any) error {
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+	if token := clientAPIToken(); token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	response, err := http.DefaultClient.Do(request)
@@ -272,6 +283,21 @@ func requestJSON(url, method string, body any) error {
 	return nil
 }
 
+func clientAPIToken() string {
+	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
+		return token
+	}
+	path := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN_FILE"))
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func printJSON(value any) error {
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -282,7 +308,151 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|snapshot|external|connector|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|thread|endpoint|fabric|snapshot|external|connector|mcp|version")
+}
+
+func endpointCommand(baseURL string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: cicada endpoint join|list|show|heartbeat|leave")
+	}
+	switch args[0] {
+	case "join":
+		flags := flag.NewFlagSet("endpoint join", flag.ContinueOnError)
+		endpointID := flags.String("endpoint", "", "existing stable Endpoint ID")
+		name := flags.String("name", "", "human-readable endpoint name")
+		role := flags.String("role", "", "endpoint role (defaults to thread for a new Endpoint)")
+		harnessName := flags.String("harness", "", "native harness")
+		session := flags.String("session", "", "native session/thread ID")
+		machine := flags.String("machine", "", "machine ID")
+		workspace := flags.String("workspace", "", "display workspace")
+		goal := flags.String("goal", "", "bound goal ID")
+		visibility := flags.String("visibility", "", "private, fabric, or public (defaults to private for a new Endpoint)")
+		auto := flags.Bool("auto", true, "discover the current harness session")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *name == "" && len(flags.Args()) > 0 {
+			*name = flags.Args()[0]
+		}
+		context, detectErr := harness.DetectCurrentSession()
+		if *session == "" {
+			if !*auto {
+				return errors.New("endpoint join requires --session when --auto=false")
+			}
+			if detectErr != nil {
+				return detectErr
+			}
+			*session = context.NativeSessionID
+		}
+		if *harnessName == "" {
+			*harnessName = context.Harness
+		}
+		if *machine == "" {
+			*machine = context.MachineID
+		}
+		if *workspace == "" {
+			*workspace = context.Workspace
+		}
+		body := control.EndpointJoinInput{
+			EndpointID: *endpointID, Name: *name, Role: *role, Harness: *harnessName, NativeSessionID: *session,
+			MachineID: *machine, Workspace: *workspace, GoalID: *goal,
+			Visibility: *visibility, Capabilities: context.Capabilities,
+		}
+		return requestJSON(baseURL+"/v1/endpoints", http.MethodPost, body)
+	case "list":
+		if len(args) != 1 {
+			return errors.New("usage: cicada endpoint list")
+		}
+		return requestJSON(baseURL+"/v1/endpoints", http.MethodGet, nil)
+	case "show":
+		if len(args) != 2 {
+			return errors.New("usage: cicada endpoint show ENDPOINT_ID")
+		}
+		return requestJSON(baseURL+"/v1/endpoints/"+url.PathEscape(args[1]), http.MethodGet, nil)
+	case "heartbeat":
+		if len(args) < 2 || len(args) > 3 {
+			return errors.New("usage: cicada endpoint heartbeat ENDPOINT_ID [online|idle|busy|offline]")
+		}
+		status := "online"
+		if len(args) == 3 {
+			status = args[2]
+		}
+		return requestJSON(baseURL+"/v1/endpoints/"+url.PathEscape(args[1])+"/heartbeat", http.MethodPost, map[string]string{"status": status})
+	case "leave":
+		if len(args) != 2 {
+			return errors.New("usage: cicada endpoint leave ENDPOINT_ID")
+		}
+		return requestJSON(baseURL+"/v1/endpoints/"+url.PathEscape(args[1])+"/leave", http.MethodPost, map[string]any{})
+	default:
+		return errors.New("usage: cicada endpoint join|list|show|heartbeat|leave")
+	}
+}
+
+func fabricCommand(baseURL string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: cicada fabric whoami|list|resolve|inspect|send|ask|reply|messages|claim")
+	}
+	switch args[0] {
+	case "whoami":
+		if len(args) != 2 {
+			return errors.New("usage: cicada fabric whoami ENDPOINT_ID")
+		}
+		return requestJSON(baseURL+"/v1/fabric/whoami?endpoint_id="+url.QueryEscape(args[1]), http.MethodGet, nil)
+	case "list":
+		endpointID := ""
+		if len(args) > 2 {
+			return errors.New("usage: cicada fabric list [ENDPOINT_ID]")
+		}
+		if len(args) == 2 {
+			endpointID = args[1]
+		}
+		path := "/v1/fabric/list"
+		if endpointID != "" {
+			path += "?endpoint_id=" + url.QueryEscape(endpointID)
+		}
+		return requestJSON(baseURL+path, http.MethodGet, nil)
+	case "resolve", "inspect":
+		if len(args) < 2 || len(args) > 3 {
+			return fmt.Errorf("usage: cicada fabric %s QUERY [REQUESTER_ENDPOINT_ID]", args[0])
+		}
+		body := control.EndpointResolveInput{Query: args[1]}
+		if len(args) == 3 {
+			body.RequesterEndpointID = args[2]
+		}
+		return requestJSON(baseURL+"/v1/fabric/"+args[0], http.MethodPost, body)
+	case "send":
+		if len(args) < 4 {
+			return errors.New("usage: cicada fabric send FROM_ENDPOINT TARGET MESSAGE")
+		}
+		return requestJSON(baseURL+"/v1/fabric/send", http.MethodPost, control.FabricSendInput{
+			FromEndpointID: args[1], Target: args[2], Message: strings.Join(args[3:], " "),
+		})
+	case "ask":
+		if len(args) < 4 {
+			return errors.New("usage: cicada fabric ask FROM_ENDPOINT TARGET QUESTION")
+		}
+		return requestJSON(baseURL+"/v1/fabric/ask", http.MethodPost, control.FabricAskInput{
+			FromEndpointID: args[1], Target: args[2], Question: strings.Join(args[3:], " "),
+		})
+	case "reply":
+		if len(args) < 4 {
+			return errors.New("usage: cicada fabric reply FROM_ENDPOINT REQUEST_ID MESSAGE")
+		}
+		return requestJSON(baseURL+"/v1/fabric/reply", http.MethodPost, control.FabricReplyInput{
+			FromEndpointID: args[1], RequestID: args[2], Message: strings.Join(args[3:], " "),
+		})
+	case "messages", "claim":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: cicada fabric %s ENDPOINT_ID", args[0])
+		}
+		method := http.MethodGet
+		if args[0] == "claim" {
+			method = http.MethodPost
+		}
+		return requestJSON(baseURL+"/v1/endpoints/"+url.PathEscape(args[1])+"/messages", method, nil)
+	default:
+		return errors.New("usage: cicada fabric whoami|list|resolve|inspect|send|ask|reply|messages|claim")
+	}
 }
 
 func envOr(name, fallback string) string {

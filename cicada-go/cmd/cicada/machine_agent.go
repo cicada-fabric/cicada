@@ -69,6 +69,9 @@ func runMachineAgent(args []string) error {
 		})
 	}
 	process := func() error {
+		if err := processMachineFabricDeliveries(ctx, base, *id); err != nil {
+			return err
+		}
 		jobs, err := pollMachineJobs(ctx, base, *id)
 		if err != nil {
 			return err
@@ -187,9 +190,7 @@ func machineAPI(ctx context.Context, endpoint, method string, payload any) error
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(os.Getenv("CICADA_API_TOKEN")); token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
-	}
+	setMachineAuth(request)
 	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
 	if err != nil {
 		return err

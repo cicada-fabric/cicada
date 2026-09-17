@@ -243,6 +243,57 @@ type Worker struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
+// Endpoint is the stable Cicada Fabric identity that wraps a native harness
+// session (or a monitor/worker process). Native session IDs are intentionally
+// retained as metadata; callers should address the endpoint ID or address.
+type Endpoint struct {
+	ID              string         `json:"endpoint_id"`
+	Name            string         `json:"name"`
+	Role            string         `json:"role"`
+	Harness         string         `json:"harness"`
+	NativeSessionID string         `json:"native_session_id,omitempty"`
+	MachineID       string         `json:"machine_id"`
+	Workspace       string         `json:"workspace,omitempty"`
+	GoalID          string         `json:"goal_id,omitempty"`
+	Status          string         `json:"status"`
+	Capabilities    map[string]any `json:"capabilities,omitempty"`
+	Tags            []string       `json:"tags,omitempty"`
+	Owner           string         `json:"owner,omitempty"`
+	Visibility      string         `json:"visibility"`
+	JoinedAt        string         `json:"joined_at"`
+	LastSeen        string         `json:"last_seen"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+	Address         string         `json:"address,omitempty"`
+}
+
+// FabricMessage is a durable local Fabric envelope. Body is available to the
+// authenticated local Control plane; cross-user transport must use the E2EE
+// peer message path instead of this table.
+type FabricMessage struct {
+	ID             string         `json:"message_id"`
+	RequestID      string         `json:"request_id,omitempty"`
+	ReplyTo        string         `json:"reply_to,omitempty"`
+	FromEndpointID string         `json:"from_endpoint_id"`
+	ToEndpointID   string         `json:"to_endpoint_id"`
+	Kind           string         `json:"kind"`
+	Body           string         `json:"body"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+	Status         string         `json:"status"`
+	Error          string         `json:"error,omitempty"`
+	CreatedAt      string         `json:"created_at"`
+	DeliveredAt    string         `json:"delivered_at,omitempty"`
+	RepliedAt      string         `json:"replied_at,omitempty"`
+}
+
+type FabricEvent struct {
+	ID         int64           `json:"id"`
+	EndpointID string          `json:"endpoint_id,omitempty"`
+	Type       string          `json:"type"`
+	Payload    json.RawMessage `json:"payload"`
+	CreatedAt  string          `json:"created_at"`
+}
+
 type Event struct {
 	ID        int64           `json:"id"`
 	GoalID    string          `json:"goal_id"`
@@ -672,6 +723,47 @@ CREATE TABLE IF NOT EXISTS thread_deliveries (
   created_at TEXT NOT NULL,
   delivered_at TEXT
 );
+CREATE TABLE IF NOT EXISTS fabric_endpoints (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'thread',
+  harness TEXT NOT NULL DEFAULT 'codex',
+  native_session_id TEXT NOT NULL DEFAULT '',
+  machine_id TEXT NOT NULL DEFAULT '',
+  workspace TEXT NOT NULL DEFAULT '',
+  goal_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'online',
+  capabilities_json TEXT NOT NULL DEFAULT '{}',
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  owner TEXT NOT NULL DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'private',
+  joined_at TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fabric_messages (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL DEFAULT '',
+  reply_to TEXT NOT NULL DEFAULT '',
+  from_endpoint_id TEXT NOT NULL,
+  to_endpoint_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  body TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  delivered_at TEXT,
+  replied_at TEXT
+);
+CREATE TABLE IF NOT EXISTS fabric_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint_id TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS events_goal_idx ON events(goal_id, id);
 CREATE INDEX IF NOT EXISTS commands_pending_idx ON commands(goal_id, status, id);
 CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status, created_at);
@@ -691,6 +783,17 @@ CREATE INDEX IF NOT EXISTS external_actions_goal_idx ON external_actions(goal_id
 CREATE INDEX IF NOT EXISTS external_actions_status_idx ON external_actions(status, created_at);
 CREATE INDEX IF NOT EXISTS thread_sessions_status_idx ON thread_sessions(status, updated_at);
 CREATE INDEX IF NOT EXISTS thread_deliveries_created_idx ON thread_deliveries(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS fabric_endpoints_session_idx
+ON fabric_endpoints(harness, native_session_id) WHERE native_session_id <> '';
+CREATE INDEX IF NOT EXISTS fabric_endpoints_status_idx ON fabric_endpoints(status, updated_at);
+CREATE INDEX IF NOT EXISTS fabric_endpoints_machine_idx ON fabric_endpoints(machine_id, status);
+CREATE INDEX IF NOT EXISTS fabric_messages_target_idx ON fabric_messages(to_endpoint_id, status, created_at);
+CREATE INDEX IF NOT EXISTS fabric_messages_request_idx ON fabric_messages(request_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS fabric_messages_ask_request_idx
+ON fabric_messages(request_id) WHERE kind = 'ask' AND request_id <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS fabric_messages_reply_once_idx
+ON fabric_messages(reply_to) WHERE kind = 'reply' AND reply_to <> '';
+CREATE INDEX IF NOT EXISTS fabric_events_endpoint_idx ON fabric_events(endpoint_id, id);
 `)
 	if err != nil {
 		return fmt.Errorf("initialize sqlite schema: %w", err)

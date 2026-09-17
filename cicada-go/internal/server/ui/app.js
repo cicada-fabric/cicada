@@ -7,7 +7,7 @@ const byId = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]));
-const statusClass = status => ['running', 'queued', 'recovering', 'failed', 'blocked', 'completed'].includes(status) ? status : '';
+const statusClass = status => ['running', 'queued', 'recovering', 'failed', 'blocked', 'completed', 'online', 'idle', 'busy', 'offline', 'left'].includes(status) ? status : '';
 const readableTime = value => value ? new Date(value).toLocaleString() : '';
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
@@ -117,12 +117,36 @@ function renderGoals(goals) {
   window.CicadaGoalDetail?.attach(target);
 }
 
+function renderFabric(data) {
+  const endpoints = data.endpoints || [];
+  const machines = data.machines || [];
+  byId('fabric-summary').textContent = `${endpoints.length} endpoints · ${machines.length} machines`;
+  const target = byId('fabric-endpoints');
+  if (!endpoints.length) {
+    target.className = 'endpoint-list empty';
+    target.innerHTML = 'No sessions have joined this Fabric yet.';
+    return;
+  }
+  target.className = 'endpoint-list';
+  target.innerHTML = endpoints.map(endpoint => {
+    const capabilities = Object.keys(endpoint.capabilities || {}).slice(0, 5);
+    const labels = [...(endpoint.tags || []), ...capabilities];
+    return `<article class="endpoint-card">
+      <header><strong>${escapeHTML(endpoint.name)}</strong><span class="badge ${statusClass(endpoint.status)}">${escapeHTML(endpoint.status)}</span></header>
+      <code>${escapeHTML(endpoint.address)}</code>
+      <p class="meta">${escapeHTML(endpoint.role)} · ${escapeHTML(endpoint.harness)} · ${escapeHTML(endpoint.machine_id)}</p>
+      ${labels.length ? `<div class="worker-list">${labels.map(label => `<span class="worker">${escapeHTML(label)}</span>`).join('')}</div>` : ''}
+      <p class="meta">seen ${escapeHTML(readableTime(endpoint.last_seen))}</p>
+    </article>`;
+  }).join('');
+}
+
 async function refresh() {
   if (state.refreshing || document.hidden) return;
   state.refreshing = true;
   try {
-    const [identity, goalsData, notificationsData, approvalsData] = await Promise.all([
-      api('/v1/identity'), api('/v1/goals'), api('/v1/notifications'), api('/v1/approvals?pending=true'),
+    const [identity, goalsData, notificationsData, approvalsData, fabricData] = await Promise.all([
+      api('/v1/identity'), api('/v1/goals'), api('/v1/notifications'), api('/v1/approvals?pending=true'), api('/v1/fabric/list'),
     ]);
     const goals = goalsData.goals || [];
     const approvals = approvalsData.approvals || [];
@@ -132,6 +156,7 @@ async function refresh() {
     byId('completed-count').textContent = goals.filter(goal => goal.status === 'completed').length;
     byId('updated-at').textContent = `updated ${new Date().toLocaleTimeString()}`;
     renderApprovals(approvals);
+    renderFabric(fabricData);
     renderGoals(goals);
     renderNotifications(notificationsData.notifications || []);
     window.CicadaEvents?.sync(goals, state.token, refresh);

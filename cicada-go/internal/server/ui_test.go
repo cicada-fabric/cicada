@@ -27,7 +27,7 @@ func TestEmbeddedClientAssets(t *testing.T) {
 		contentType string
 		contains    string
 	}{
-		{path: "/", contentType: "text/html", contains: "Ask Cicada"},
+		{path: "/", contentType: "text/html", contains: "FABRIC DIRECTORY"},
 		{path: "/assets/app.css", contentType: "text/css", contains: ".stats"},
 		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
 		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "View raw output"},

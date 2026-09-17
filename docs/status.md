@@ -1,11 +1,23 @@
 # Release status
 
-The current line is **Cicada 0.3.0-dev**, an unreleased Codex-first autonomous
+The current line is **Cicada 0.4.0-dev**, an unreleased Codex-first autonomous
 supervisor with secure collaboration boundaries. It is beyond the original
 proof-of-concept MVP. The implementation is consolidated on `main`; release
 tags and the checked-in tag workflow are the distribution boundary.
 
 Implemented in this line:
+
+- session-first Cicada Fabric membership that idempotently wraps the current
+  Codex native thread in a stable Endpoint with a human-readable address;
+- a live Fabric Directory, bounded Network Cards, deterministic address
+  resolution with explicit ambiguity errors, heartbeats, stale/offline state,
+  and a Network section in the desktop/mobile PWA;
+- authenticated `send`, correlated `ask/reply`, durable Endpoint inboxes, and
+  exact local or remote native-session wake through the official Codex queue
+  boundary and machine-agent delivery acknowledgements;
+- a bundled `cicada mcp` stdio server exposing `cicada_whoami`, `list`,
+  `resolve`, `inspect`, `send`, `ask`, `reply`, and `receive` directly inside
+  the current Codex session, plus matching HTTP and operator CLI surfaces;
 
 - Go Control plane with durable SQLite Goals, Ideas, Workspaces, Memories,
   Artifacts, Events, Notifications, Approvals, Machines, Monitors, and Workers;
@@ -129,7 +141,7 @@ Version and branch workflow:
    deleted; they are not part of the deployment contract.
 3. A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes
    checksummed binaries and the OCI image.
-4. `0.3.0-dev` identifies the current unreleased line until its release tag is
+4. `0.4.0-dev` identifies the current unreleased line until its release tag is
    cut.
 
 The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
