@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/store"
@@ -77,14 +76,7 @@ func executeBrowserAction(parent context.Context, action *store.ExternalAction, 
 	stdout := &machineBoundedOutput{limit: 1 << 20}
 	stderr := &machineBoundedOutput{limit: 64 << 10}
 	command.Stdout, command.Stderr = stdout, stderr
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	command.Cancel = func() error {
-		if command.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-	}
-	command.WaitDelay = 5 * time.Second
+	configureChildProcess(command)
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("browser runner timeout after %s", timeout)

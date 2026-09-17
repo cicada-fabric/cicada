@@ -2,8 +2,8 @@
 
 The current line is **Cicada 0.3.0-dev**, an unreleased Codex-first autonomous
 supervisor with secure collaboration boundaries. It is beyond the original
-proof-of-concept MVP and is maintained on versioned feature branches rather
-than being developed directly on `main`.
+proof-of-concept MVP. The implementation is consolidated on `main`; release
+tags and the checked-in tag workflow are the distribution boundary.
 
 Implemented in this line:
 
@@ -124,13 +124,13 @@ an executor access to credentials.
 
 Version and branch workflow:
 
-1. `develop` is the integration starting point.
-2. `feat/*` branches contain one coherent feature and are pushed to
-   `origin` (`git@github.com:cicada-fabric/cicada.git`) as work progresses.
-3. `release/0.2.0` and tag `v0.2.0` identify this verified baseline.
-4. `0.3.0-dev` identifies current unreleased work; it receives a release
-   branch and tag only after its release checks pass.
-5. `main` is reserved for reviewed release merges.
+1. `main` is the single maintained integration and release branch.
+2. Short-lived feature branches may be used for review, then are merged and
+   deleted; they are not part of the deployment contract.
+3. A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes
+   checksummed binaries and the OCI image.
+4. `0.3.0-dev` identifies the current unreleased line until its release tag is
+   cut.
 
 The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
 health endpoint, and Codex app-server metadata through the Go `buildinfo`

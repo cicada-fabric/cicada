@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/marketplace.schema.json",
+  "name": "cicada-repo",
+  "interface": {
+    "displayName": "Cicada"
+  },
+  "plugins": [
+    {
+      "name": "cicada",
+      "source": {
+        "source": "local",
+        "path": "./cicada"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "cicada",
+  "version": "0.3.0",
+  "description": "Operate a self-hosted Cicada Control plane from Codex.",
+  "author": {
+    "name": "Cicada Fabric",
+    "url": "https://github.com/cicada-fabric/cicada"
+  },
+  "repository": "https://github.com/cicada-fabric/cicada",
+  "license": "MIT",
+  "keywords": ["codex", "orchestration", "workers", "machines", "e2ee"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cicada",
+    "shortDescription": "Coordinate Codex workers across your machines.",
+    "longDescription": "Connect Codex to a self-hosted Cicada Control plane for durable goals, machine scheduling, supervision, and encrypted peer collaboration.",
+    "developerName": "Cicada Fabric",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Show my Cicada goals and current workers.",
+      "Create a Cicada goal for this task and report the result when it completes."
+    ]
+  }
+}

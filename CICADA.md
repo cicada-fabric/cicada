@@ -1611,9 +1611,9 @@ GPU 很贵，token 很贵，但对 Cicada 来说最需要保护的是：
 Cicada
 │
 ├── Client
-│   ├── Mobile
 │   ├── Web
 │   ├── Desktop
+│   ├── PWA (mobile browser)
 │   ├── Voice
 │   ├── Notifications
 │   └── Approvals
@@ -1767,12 +1767,14 @@ Me
 
 增加：
 
-- Mobile；
 - Push；
 - Voice；
 - Goal overview；
 - Approval UX；
 - remote status。
+
+当前发布线已经提供嵌入式 Web/PWA 客户端、浏览器 Push、语音输入输出和
+远程状态；原生 iOS/Android Mobile 只在这一阶段之外继续规划。
 
 可以大量复用 / 改造已有开源项目的成熟 Client 与 remote-agent 基础设施，而不是重新实现所有 plumbing。
 
