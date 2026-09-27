@@ -1,0 +1,167 @@
+# Release status
+
+The current line is **Cicada 0.4.0-dev**, an unreleased Codex-first autonomous
+supervisor with secure collaboration boundaries. It is beyond the original
+proof-of-concept MVP. The implementation is consolidated on `main`; release
+tags and the checked-in tag workflow are the distribution boundary.
+
+The adopted **Architecture v2.1** target is ahead of this implementation.
+Current v2 Fabric retains a primary `group_id` as a legacy projection, but
+the worktree has independently scoped multi-Group membership, MCP/HTTP Group
+selection and per-Group Leave in targeted tests. Real native multi-Group
+validation remains open. Cross-Group traffic still uses the old representative
+path until explicit CommunicationLink exists. Same-Node peer delivery still
+traverses Hub Relay, and v2 Fabric message bodies are plaintext in Hub state.
+The old Contact API encrypts/decrypts in Control. Nested Groups, direct
+cross-user Endpoint links, Group broadcast, local zero-Relay delivery,
+endpoint-held PQ E2EE, Android↔Control PQ E2EE, and device-code enrollment
+are not yet implemented. The Node-initiated persistent Relay SSE stream is in
+the current worktree and has targeted tests; it avoids normal polling latency
+but does not itself encrypt message bodies end-to-end.
+
+Implemented in this line:
+
+- session-first Cicada Fabric membership that idempotently wraps the current
+  Codex native thread in a stable Endpoint with a human-readable address;
+- a live Fabric Directory, bounded Network Cards, deterministic address
+  resolution with explicit ambiguity errors, heartbeats, stale/offline state,
+  and a Network section in the desktop/mobile PWA;
+- authenticated `send`, correlated `ask/reply`, durable Endpoint inboxes, and
+  exact native-session wake through the official Codex queue boundary and
+  machine-agent delivery acknowledgements; current same-Node peer delivery
+  still traverses the Hub Relay;
+- a bundled `cicada mcp` stdio server exposing `cicada_whoami`, `list`,
+  `resolve`, `inspect`, `send`, `ask`, `reply`, and `receive` directly inside
+  the current Codex session, plus matching HTTP and operator CLI surfaces;
+
+- Go Control plane with durable SQLite Goals, Ideas, Workspaces, Memories,
+  Artifacts, Events, Notifications, Approvals, Machines, Monitors, and Workers;
+- Native Codex app-server workers using the official CLI and `gpt-5.5` through
+  the configured relay;
+- bounded Shell workers with explicit argv execution, capped evidence output,
+  secret-free child environments, and `shell.execute` permission checks;
+- machine capability scheduling, heartbeats, stale-machine handling, worker
+  recovery, deadlines, runtime/worker budgets, and conservative monitor
+  correction;
+- multiple isolated Workers per Goal and durable thread-to-thread messaging;
+- durable parent/child execution graphs, monitor-only coordinator Goals,
+  child-count budgets, and aggregated child evidence;
+- ML-KEM-768 + ML-DSA-65 authenticated peer envelopes with persistent replay
+  protection;
+- signed ML-KEM session offers with directional HMAC chain-key ratcheting,
+  monotonic counters, authenticated rotation, and a secret-free session status
+  API;
+- legacy Contact transport with ordered alternative Relay URLs and idempotent
+  retries (alternative URLs are not a multi-hop path and are not the v2.1
+  cross-user Thread network);
+- signed ML-DSA contact announcements with durable discovery requests,
+  idempotent ingress, and an explicit accept/reject then trust lifecycle;
+- identity-routed federation ingress and optional opaque HTTP delivery with
+  atomic replay persistence, retry idempotency, and plaintext-free receipts;
+- Contact trust lifecycle and durable Contact/Goal/Workspace permission rules;
+- optional bearer authentication for the HTTP/JSON Control boundary, with
+  constant-time token comparison and runtime-only secret injection;
+- signed external connector ingress with HMAC-SHA256 verification, idempotent
+  event keys, durable payloads, Goal audit events, and P1 notifications;
+- restart-safe Telegram Bot API ingestion with connector-specific
+  authentication, atomic update offsets, normalized message payloads, and an
+  explicit classified/linked/ignored/action-required triage API;
+- signed, bounded Email and Calendar ingress adapters with JSON/iCalendar
+  normalization, provider-envelope stripping, and durable idempotent triage
+  events;
+- signed, bounded X, WeChat, QQ, Slack, and Discord ingress adapters with provider-envelope
+  stripping, idempotent normalized events, and a deterministic first-pass
+  classifier that never links a Goal implicitly;
+- signed, bounded Documents ingress with minimized text metadata, idempotent
+  document lifecycle events, and the same explicit triage boundary;
+- approval-backed connector reply actions with bounded normalized POST payloads,
+  connector-secret HMAC callbacks, and no provider credentials in Control;
+- policy-gated external action requests with domain and SSRF checks, credential
+  field rejection, durable approval transitions, executor claim/complete state,
+  append-only action audit events, and a bounded credential-free read-only HTTP
+  fetch executor;
+- responsive embedded Personal Client with a Today Goal overview, pending
+  Approval decisions, prioritized notifications, per-tab remote bearer token,
+  HTTP/JSON API, Docker image export, and a reproducible smoke test.
+- durable natural-input Intent routing for Goal, Idea, Research, Question,
+  Command, and explicitly requested Approval actions, with clarification states
+  for missing targets or decisions.
+- durable Idea lifecycle states covering capture, research, assessment,
+  parking/rejection, approval/planning, execution, pause/block, review, and
+  archive transitions through the Idea API, with scheduled `at:`/`on:` parked
+  Idea revisits that become assessed and notify the user.
+- on-demand Goal detail view for conclusions, events, Workers, Artifacts,
+  Workspaces, external actions, and an authenticated bounded raw Worker output
+  view for investigations that need more than the summary.
+- local Machine capability discovery for OS, architecture, CPU, memory,
+  toolchains, container runtimes, compilers, disk, network, NVIDIA/ROCm/Ascend
+  accelerator matching, including load, disk, toolchain, container, and
+  network constraints, plus fixed-command SSH pairing, standalone `machine
+  discover` profiles, and opt-in unauthenticated LAN discovery.
+- machine agent registration and periodic capability heartbeats for remote
+  execution hosts, plus atomic remote Worker polling, claim, Codex/Shell
+  execution, bounded result reporting, busy heartbeats, retry, and stale-host
+  requeue, with runtime bearer-token injection.
+- bounded personal, project, and execution Memory context in Worker prompts,
+  labeled as reference data and persisted through the existing Memory API.
+- optional gpt-5.5 Intent Planner through the official Codex CLI, with a
+  read-only ephemeral sandbox, strict JSON output, timeout, and deterministic
+  fallback.
+- Personal Client file/image/link attachments with bounded private storage and
+  attachment metadata carried into Goal resources.
+- installable Personal Client PWA shell with a static-only service worker that
+  never caches API or private data.
+- progressive browser speech input and user-triggered speech output for the
+  Personal Client when the platform exposes `SpeechRecognition` and
+  `speechSynthesis`; audio is not sent to Control.
+- authenticated, replayable Goal event streaming over Server-Sent Events for
+  CLI and remote clients.
+- registered manual Codex TUI sessions with permission-gated, durable message
+  delivery through the official `codex queue` command.
+- evidence-aware completion supervision with a read-only ephemeral `gpt-5.5`
+  verdict, high-confidence automatic correction, bounded retries, explicit
+  outage events, and compare-and-swap protection for remote results.
+- credential-free public HTTPS Git workspace provisioning on local and remote
+  executors, with public-address checks, atomic checkout, pinned provenance,
+  secret-free Git processes, symlink containment, and revision evidence.
+- content-addressed workspace snapshots for remote result transfer and Worker
+  recovery, with bounded archives, SHA-256 verification, safe extraction, and
+  digest-carrying cross-Machine resume.
+- conservative content-addressed snapshot garbage collection rooted in
+  Workspaces and snapshot Artifacts, plus authenticated operator-driven
+  cross-Control archive replication with destination digest verification;
+- bounded Claude Code, OpenCode, and Happy Agent adapters alongside the native
+  Codex and direct-argv Shell harnesses, with capability discovery and remote
+  machine execution;
+- an isolated browser action agent with approval-gated claims, a credential-free
+  stdin/stdout runner contract, process-group timeouts, bounded JSON results,
+  and profile/HOME isolation; the concrete Chromium or Playwright runtime is
+  operator supplied.
+- signed Contact directory/rendezvous records with bounded HTTPS endpoints,
+  expiry reaping, and an explicit separation between discovery and Contact
+  trust.
+- VAPID-backed encrypted browser Push delivery for P0/P1/P2 notifications,
+  durable subscription registration, stale endpoint cleanup, and a Personal
+  Client enablement flow.
+
+The release deliberately keeps its boundaries explicit. The installable PWA is
+the existing browser interface, not Android v1. The separate Android app is
+the first native Client target; its local STT and Client↔Control NIST PQ E2EE
+are not yet integrated. The external action
+queue is a safe Control boundary; it does not pretend to be a browser or grant
+an executor access to credentials.
+
+Version and branch workflow:
+
+1. `main` is the single maintained integration and release branch.
+2. Short-lived feature branches may be used for review, then are merged and
+   deleted; they are not part of the deployment contract.
+3. A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes
+   checksummed binaries and the OCI image.
+4. `0.4.0-dev` identifies the current unreleased line until its release tag is
+   cut.
+
+The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
+health endpoint, and Codex app-server metadata through the Go `buildinfo`
+package. Docker artifacts are exported under
+`/gpu1-share/data/cicada/images/` with a SHA-256 sidecar.

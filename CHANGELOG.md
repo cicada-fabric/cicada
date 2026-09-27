@@ -1,0 +1,161 @@
+# Changelog
+
+- Added signed Slack and Discord ingress/reply connector routes alongside the
+  existing social adapters.
+
+This file records user-visible changes by release line. `VERSION` and the Go
+`buildinfo` package identify the running build; Git tags identify releases.
+
+## 0.4.0-dev — unreleased
+
+### Added
+
+- Added an encrypted Client↔Hub key-consent RPC for proposed CommunicationLinks. Both owner signatures bind the current Link contract, native SessionBindings, and Endpoint public-key candidates; old unbound grants remain historical and do not authorize routing.
+- Moved the embedded panel's Endpoint read projection to `/v2/management/endpoints` and removed all `/v1/endpoints` HTTP routes.
+- Added a versioned, owner-authorized Client↔Hub PQ RPC for Android integration: encrypted status and topology reads/writes, durable asynchronous Intent acceptance/progress, Approval and Client-device management, and a partial owner-bound status change cursor.
+- Added Node-local bearer generation with short-lived device-code confirmation through an enrolled Client, owner/Hub-bound Relay authorization, and authenticated Node liveness updates. The separate Android app supplies the verification UI.
+- Retired the public v1 Fabric peer, Endpoint write, manual Thread queue, Contact peer ingress/session management, SSH machine-pair, and server-issued plaintext Node credential routes; also removed the obsolete `cicada endpoint` CLI. The Endpoint read-only panel projection and historical data remain for migration and audit.
+- Removed the unused Control→Contact relay sender and its old relay URL/token configuration; preserved historical Contact keys and ratchet records for migration.
+- Added offline user-held post-quantum owner key generation and local Hub public-key registration, plus durable, separately signed SOURCE/TARGET CommunicationLink grants. These records do not activate a cross-Group route or change the existing plaintext Fabric transport.
+- Session-first Endpoint membership for existing Codex threads, including
+  automatic native session discovery, stable IDs, human-readable addresses,
+  Network Cards, liveness, and explicit resolver ambiguity errors.
+- Durable Fabric `send` and correlated `ask/reply` messaging with exact local
+  and remote Codex session wake through machine agents.
+- A bundled stdio MCP server and Codex plugin tools for joining, listing,
+  resolving, inspecting, sending, asking, replying, and receiving without
+  shell command construction.
+- Additive Architecture v2 Fabric foundations: Principal/Group/Membership/
+  SessionBinding records, explicit MCP `cicada_join`, Group-scoped actor
+  authorization, durable Relay/Node receipts, and bounded representative
+  federation state. The v2 path is still partial; Shared Task/Lease and
+  product/interop phases remain unfinished.
+- Node Relay calls use locally held, owner-confirmed credentials, validate
+  active binding leases and monotonic receipts, and remove Control/Node
+  credentials from native Codex child environments.
+- Versioned additive v2 migrations now serialize concurrent upgrades, verify
+  legacy state preservation, and roll back/retry an interrupted version.
+- Added `serve --fabric-only`, `machine agent --relay-only`, and authenticated
+  `fabric v2` CLI commands. MCP credentials remain outside model-visible join
+  results and can recover an explicitly joined binding after process restart.
+- Native peer injections retain request/source metadata as external content;
+  an abnormal queue-process exit after launch is recorded as injection
+  uncertainty instead of being blindly retried.
+- Fabric Directory APIs, operator CLI commands, and a live Endpoint Network
+  panel in the embedded desktop/mobile PWA.
+
+## 0.3.0-dev
+
+### Added
+
+- Durable parent/child Goal supervision and multi-worker evidence aggregation.
+- Signed external connector ingress and policy-gated external action requests.
+- ML-DSA signed Contact discovery with an explicit pending trust lifecycle.
+- Identity-routed federation ingress with atomic replay state, idempotent
+  transport retries, and plaintext-free receipts.
+- Signed PQ session offers with directional ratchet chain keys, durable replay
+  counters, authenticated rotation, and a secret-free Contact session API.
+- Ordered multi-relay peer delivery with opaque idempotent fallback retries.
+- Optional bearer authentication for remotely exposed Control APIs.
+- Responsive embedded Personal Client with Today counters, Goal and worker
+  summaries, pending Approval decisions, prioritized notifications, and a
+  per-tab remote bearer token.
+- Durable `/v1/intents` routing for natural input into Goals, Ideas, research,
+  questions, commands, and explicit Approval decisions, including persisted
+  clarification states.
+- On-demand Goal detail view for conclusions, events, workers, artifacts,
+  workspaces, and external actions.
+- Local machine capability discovery for scheduler matching, with bounded
+  NVIDIA probing, CPU fallback, disk/network/toolchain/container discovery,
+  and `max_load_1m`/disk/toolchain/container/network resource constraints.
+- Bounded personal, project, and execution Memory context in Worker prompts,
+  with explicit stale-data and prompt-instruction boundaries.
+- Optional gpt-5.5 natural-input planning through an ephemeral read-only Codex
+  invocation, with deterministic fallback and no model-driven Approval.
+- Personal Client file/image/link attachments with 8 MiB per-file and five-item
+  Intent limits, private generated paths, and non-fetching link references.
+- Installable Personal Client PWA shell with static-only caching and no API or
+  bearer-token cache.
+- Bounded credential-free read-only HTTP execution for approved `fetch`,
+  `search`, and `download` actions, with DNS-aware SSRF protection and capped
+  response capture.
+- Progressive browser speech input for the Personal Client, with no audio
+  upload to the Control API.
+- Authenticated Server-Sent Events for replaying and following a Goal's
+  durable event history with reconnect offsets.
+- A `cicada machine agent` heartbeat process for registering remote execution
+  hosts with non-secret capability profiles.
+- Atomic remote Worker dispatch through the machine agent, including queued job
+  polling, Codex/Shell execution, bounded result delivery, busy heartbeats,
+  retry-safe completion, and stale-machine requeue.
+- Bounded Shell workers with direct argv execution, capped output evidence, and
+  secret-free child environments.
+- Registered manual Codex TUI sessions with audited, permission-gated message
+  delivery through the official `codex queue` command.
+- Isolated browser action agent with a bounded stdin/stdout runner protocol,
+  approval-gated claims, credential-free payloads, process-group timeouts, and
+  profile/HOME isolation for operator-supplied browser runtimes.
+- Restart-safe inbound Telegram connector with a minimized normalized payload,
+  connector-specific HMAC authentication, durable offsets, idempotent retries,
+  and explicit event triage states.
+- Provider-neutral Email and Calendar webhook adapters with HMAC verification,
+  bounded JSON/iCalendar normalization, credential stripping, and idempotent
+  durable events.
+- Provider-neutral X, WeChat, and QQ webhook adapters with HMAC verification,
+  bounded envelope stripping, idempotent normalized events, and deterministic
+  first-pass classification.
+- Approval-backed connector reply actions with bounded HMAC-signed callback
+  delivery and provider credentials kept in the operator connector process.
+- Conservative snapshot garbage collection and an authenticated
+  `cicada snapshot replicate` path for copying verified archives between
+  independent Controls.
+- Bounded Claude Code, OpenCode, and Happy Agent adapters with direct
+  stdin/stdout execution, capability discovery, JSON-lines session extraction,
+  and secret-filtered remote machine support.
+- Signed Contact directory/rendezvous records with bounded HTTPS endpoints,
+  expiry reaping, and no implicit Contact trust.
+- VAPID-backed encrypted browser Push delivery for prioritized notifications,
+  durable subscription registration, stale endpoint cleanup, and Personal
+  Client opt-in controls.
+- Scheduled parked-Idea revisits using explicit UTC timestamps or dates, with
+  an idempotent assessed transition, rationale audit marker, and P2 notice.
+- Authenticated Goal detail access to bounded raw Worker output with workspace
+  and state-root containment checks.
+- SSH Machine pairing through a fixed remote `machine discover` command, with
+  bounded JSON output, BatchMode/timeout enforcement, and authenticated profile
+  registration.
+- Signed Documents ingress with bounded metadata normalization and explicit
+  document lifecycle triage.
+- Local capability discovery now recognizes ROCm and Ascend/CANN accelerators
+  in addition to NVIDIA CUDA and CPU fallback.
+- Opt-in UDP LAN capability discovery for Machine agents, with no automatic
+  registration or trust from unauthenticated responses.
+
+### Changed
+
+- Parallel workers now publish one aggregate `GoalCompleted` event.
+- Peer delivery no longer depends on matching local Contact IDs across two
+  Control databases.
+- Runtime, image, and test configuration consistently select `gpt-5.5`.
+- Monitor and peer correction commands are consumed per Worker, preventing one
+  parallel branch from consuming a sibling's command.
+- Worker completion claims now pass a bounded evidence verifier before artifact
+  and Goal completion. High-confidence `gpt-5.5` rejections resume the Worker
+  with a correction; verifier outages remain visible without blocking work.
+- Compose service environments now inherit the complete shared Control
+  configuration, so intent planning, completion verification, federation, and
+  connector settings survive service-specific role overrides.
+- Compose no longer replaces runtime-file webhook and peer relay secrets with
+  empty interpolation defaults.
+- Goals can provision a pinned public HTTPS Git workspace on local or remote
+  executors. The adapter isolates credentials/config, rejects private network
+  targets and symlink escapes, resumes marked workspaces, and records the
+  resolved commit as evidence.
+- Remote execution now uploads deterministic, bounded workspace snapshots to a
+  SHA-256 content-addressed store. Requeued Workers carry the digest to a new
+  Machine, which verifies and atomically restores modified files.
+
+## 0.2.0 — 2026-09-15
+
+- Established the verified Codex supervisor baseline on `release/0.2.0` and
+  tag `v0.2.0`.

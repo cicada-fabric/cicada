@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime state and credentials are kept outside the repository by default.
+.cicada-data/
+

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cicada": {
+      "command": "cicada",
+      "args": ["mcp"]
+    }
+  }
+}
