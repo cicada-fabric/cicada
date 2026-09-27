@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 34
+	CurrentV2SchemaVersion = 35
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -337,6 +337,15 @@ var v2Migrations = []v2Migration{
 			}
 			return s.initializeUserMonitorBroadcastV2LimitsSchema()
 		},
+	},
+	{
+		Version:     35,
+		ID:          "v2.fabric.network_identity",
+		Description: "add isolated Network identity, consent, registrations and explicit Group mapping",
+		Objects: []string{"networks_v2", "network_memberships_v2", "endpoint_network_memberships_v2",
+			"network_invitations_v2", "network_join_consents_v2", "network_access_sessions_v2",
+			"network_group_mappings_v2", "network_mode_v2", "network_message_enrollment_v2"},
+		Apply: func(s *Store) error { return s.initializeNetworkSchema() },
 	},
 }
 

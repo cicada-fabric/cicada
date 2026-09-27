@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Status:** adopted target design for planning; Network features are not implemented by this document.
-**Current scope:** documentation and next-stage plan only. No Network or Journal/Discussion code is authorized in this checkpoint.
+**Current code checkpoint:** M1 implementation is authorized and underway from clean `dev` / `0cda61460757246789970782584b1e904173e653`. This design document states the target semantics; it does not claim Network or Journal/Discussion features are complete.
 **Authority:** [CICADA architecture specification](../CICADA.md), with sequencing in [architecture-v2-plan.md](architecture-v2-plan.md).
 
 ## Purpose
@@ -92,7 +92,7 @@ Keep existing Endpoint, Group and Link IDs, original Threads, receipts, approval
 
 The controlled `25013b5` candidate has passed the bounded Android/native Monitor chain: the same original Monitor Thread produced one verified read-only preview and one separate dispatch, and both original recipient Threads passed receive/context assertions. Client's final strict status, the scoped Hub ciphertext scan, Intake's independent Hub-state audit and all owned fixture cleanup also passed; no owned containers or fixture directory remain. Exact bounds and evidence are in the [candidate validation report](client-hub-v13-25013b5-validation.md), [Monitor approval review note](monitor-broadcast-approval-review.md), [native runbook](client-monitor-native-fixture.md), and [Client's validation report](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
 
-This evidence covers one pinned, controlled run; it is not a general prompt-injection defense, full React Native consent UX, physical dual-Node test, or public HTTPS result. Earlier `81d8f1f` automatic-review denials remain historical and are not the result of this candidate. The current turn completes architecture planning only and does not start Network M1 implementation. Group Journal and Discussion semantics are described in the [proposed collaboration-spaces design](group-collaboration-spaces-design.md); no such APIs or persistent board are claimed implemented.
+This evidence covers one pinned, controlled run; it is not a general prompt-injection defense, full React Native consent UX, physical dual-Node test, or public HTTPS result. Earlier `81d8f1f` automatic-review denials remain historical and are not the result of this candidate. The `25013b5` Go/vet/race/TCP gates and `0d532f2` fixed native runner results apply to those exact source identities; the current `0cda614` base has no M1 code and does not inherit an M1 PASS. Group Journal and Discussion semantics are described in the [proposed collaboration-spaces design](group-collaboration-spaces-design.md); those APIs and persistent boards remain outside M1.
 
 ## Stages and exit criteria
 
@@ -104,4 +104,4 @@ This evidence covers one pinned, controlled run; it is not a general prompt-inje
 | M4 — delegated topology and regrouping | Monitor proposals and narrow, versioned topology delegation with CAS and audit; user/owner review when readers or history scope widens | No self-grant, no implicit Group inheritance, no automatic key/history transfer or Thread context move; stale versions and out-of-scope requests fail closed |
 | M5 — multi-Hub Node and Client interop | Independent Hub credentials, replay state and registration; one local writer per Thread; later Client selects active Hub/Network explicitly | No Hub-to-Hub forwarding or global public Thread ID; recovery, ambiguous routing and Client contract are validated by their respective owners |
 
-The current native checkpoint's independent Hub audit and cleanup are recorded as PASS; the current turn stops at planning. M1 is a future implementation checkpoint. Before M1, pin its migration fixture, protected service entry points, Network data scope, contract operation list and disposable Docker scenario. The present design does not assert that any Network, Journal or Discussion feature is implemented.
+The current native checkpoint's independent Hub audit and cleanup are recorded as PASS for the fixed candidate only. M1 is the active implementation checkpoint: its migration fixture, protected service entry points, Network data scope, contract operations, and disposable Docker scenario are being pinned and implemented in this work cycle. The present design does not assert that any Network, Journal or Discussion feature has passed acceptance.

@@ -1,11 +1,13 @@
 # Release status
 
-The current line is **Cicada 0.4.0-dev**, an unreleased Codex-first autonomous
-supervisor with secure collaboration boundaries. It is beyond the original
-proof-of-concept MVP. The implementation is consolidated on `main`; release
-tags and the checked-in tag workflow are the distribution boundary.
+The current line is **Cicada 0.1.0-dev**, an unreleased product line planned
+for public `0.1.x` releases. This does not change Architecture v2.3, Client
+wire v1, or the frozen v1.3 contract. The bounded Network foundation checkpoint
+passed; overall M1 remains **NOT_COMPLETE**. Separate disposable Network and default Client Docker gates, full vet, focused race, frozen contract and seven Python checks passed. The initial full Go run failed only on a stale v34 migration assertion; after the test-only fix the full Store suite passed, and every other package had passed initially. See the [M1 evidence and limits](network-m1-validation.md) and [operator and authorization contract](network-m1-contract.md). Development remains on `dev`; this checkpoint is not a release.
 
-The adopted **Architecture v2.1** target is ahead of this implementation.
+Network-only Endpoints without a Group cannot DM. Endpoints in different Groups can use an existing sealed Link when each Group is authorized in the same Network and both Owners grant the Link. Frozen Client v1.3 `group.create` has no Network selector and is rejected on an ACTIVE Hub; the passing default PREPARING Client gate does not prove ACTIVE compatibility. M1 native Runtime, Android, physical dual-Node and public HTTPS are **NOT_RUN**. Close the remaining M1 entry-point and test gaps before M2; native TUI adapter feasibility remains a bounded next investigation. The implementation list below is a historical baseline, not a claim that every listed path passed the M1 Network matrix.
+
+The adopted **Architecture v2.3** target is ahead of this implementation.
 Current v2 Fabric retains a primary `group_id` as a legacy projection, but
 the worktree has independently scoped multi-Group membership, MCP/HTTP Group
 selection and per-Group Leave in targeted tests. Real native multi-Group
@@ -158,8 +160,9 @@ Version and branch workflow:
    deleted; they are not part of the deployment contract.
 3. A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes
    checksummed binaries and the OCI image.
-4. `0.4.0-dev` identifies the current unreleased line until its release tag is
-   cut.
+4. `0.1.0-dev` identifies the current unreleased product line; planned public
+   product releases use `0.1.x`. Historical prototype tags do not change
+   architecture or protocol versions.
 
 The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
 health endpoint, and Codex app-server metadata through the Go `buildinfo`

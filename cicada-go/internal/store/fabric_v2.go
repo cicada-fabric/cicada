@@ -100,6 +100,7 @@ type PrincipalFilter struct {
 // the policy/topology revision, while Version tracks row updates.
 type Group struct {
 	ID               string `json:"group_id"`
+	NetworkID        string `json:"network_id,omitempty"`
 	ParentGroupID    string `json:"parent_group_id,omitempty"`
 	OwnerPrincipalID string `json:"owner_principal_id,omitempty"`
 	TrustDomainID    string `json:"trust_domain_id,omitempty"`
@@ -360,7 +361,7 @@ func scanPrincipal(row v2Scanner) (*Principal, error) {
 
 func scanGroup(row v2Scanner) (*Group, error) {
 	var group Group
-	err := row.Scan(&group.ID, &group.ParentGroupID, &group.OwnerPrincipalID, &group.TrustDomainID,
+	err := row.Scan(&group.ID, &group.NetworkID, &group.ParentGroupID, &group.OwnerPrincipalID, &group.TrustDomainID,
 		&group.Name, &group.State, &group.Purpose, &group.Revision,
 		&group.PolicyRef, &group.ContextPolicy, &group.IsolationProfile,
 		&group.ExternalMode, &group.Version, &group.CreatedAt, &group.UpdatedAt)
@@ -438,7 +439,7 @@ func scanSessionBinding(row v2Scanner) (*SessionBinding, error) {
 const principalColumns = `id, kind, owner_id, trust_domain_id, name, display_name,
 status, credential_hash, version, created_at, updated_at`
 
-const groupColumns = `id, parent_group_id, owner_principal_id, trust_domain_id, name, state,
+const groupColumns = `id, network_id, parent_group_id, owner_principal_id, trust_domain_id, name, state,
 purpose, revision, policy_ref, context_policy, isolation_profile, external_mode,
 version, created_at, updated_at`
 
@@ -585,6 +586,7 @@ func (s *Store) RevokePrincipal(id, reason string) (*Principal, error) {
 
 func (s *Store) UpsertGroup(group Group) (*Group, error) {
 	group.ID = strings.TrimSpace(group.ID)
+	group.NetworkID = strings.TrimSpace(group.NetworkID)
 	if strings.TrimSpace(group.ParentGroupID) != "" {
 		return nil, errors.New("group parent must be set through versioned SetGroupParent")
 	}
@@ -609,18 +611,44 @@ func (s *Store) UpsertGroup(group Group) (*Group, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if group.NetworkID != "" {
+		var active int
+		if err := s.db.QueryRow(`SELECT 1 FROM networks_v2 WHERE id=? AND state='ACTIVE'`, group.NetworkID).Scan(&active); err != nil {
+			return nil, ErrNetworkNotFound
+		}
+	}
+	var existingNetwork string
+	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, group.ID).Scan(&existingNetwork); err == nil {
+		if group.NetworkID == "" {
+			group.NetworkID = existingNetwork
+		}
+		if existingNetwork != group.NetworkID {
+			return nil, ErrNetworkConflict
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if group.NetworkID == "" {
+		var phase string
+		if err := s.db.QueryRow(`SELECT phase FROM network_mode_v2 WHERE id=1`).Scan(&phase); err != nil {
+			return nil, err
+		}
+		if phase == NetworkModeActive {
+			return nil, ErrNetworkPermission
+		}
+	}
 	_, err := s.db.Exec(`INSERT INTO groups
-(id, owner_principal_id, trust_domain_id, name, state, purpose, revision,
+(id, network_id, owner_principal_id, trust_domain_id, name, state, purpose, revision,
  policy_ref, context_policy, isolation_profile, external_mode, version,
  created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET owner_principal_id=excluded.owner_principal_id,
  trust_domain_id=excluded.trust_domain_id, name=excluded.name,
  state=excluded.state, purpose=excluded.purpose, revision=excluded.revision,
  policy_ref=excluded.policy_ref, context_policy=excluded.context_policy,
  isolation_profile=excluded.isolation_profile, external_mode=excluded.external_mode,
  version=groups.version + 1, updated_at=excluded.updated_at`,
-		group.ID, group.OwnerPrincipalID, group.TrustDomainID, group.Name,
+		group.ID, group.NetworkID, group.OwnerPrincipalID, group.TrustDomainID, group.Name,
 		group.State, group.Purpose, group.Revision, group.PolicyRef,
 		group.ContextPolicy, group.IsolationProfile, group.ExternalMode,
 		group.Version, timestamp, timestamp)

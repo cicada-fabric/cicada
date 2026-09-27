@@ -77,6 +77,34 @@ func TestExplicitJoinIsIdempotentAndRotatesBindingCredential(t *testing.T) {
 	}
 }
 
+func TestJoinPreservesNativeWorkspaceUnderHubHome(t *testing.T) {
+	service, _, group := newFabricTestService(t)
+	hubHome := t.TempDir()
+	t.Setenv("HOME", hubHome)
+	workspace := filepath.Join(hubHome, "work", "native-project")
+	joined, err := service.Join(JoinInput{
+		GroupID: group.ID, Harness: "codex", NativeSessionID: "native-under-home",
+		NodeID: "node-a", Workspace: workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined.Endpoint.Workspace != workspace {
+		t.Fatalf("Join changed the Node's verified workspace: got %q, want %q", joined.Endpoint.Workspace, workspace)
+	}
+	actor, err := service.Authenticate(joined.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err := service.WhoAmI(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card.Workspace != workspace || card.NativeSessionID != "native-under-home" || card.BindingID != joined.BindingID {
+		t.Fatalf("whoami lost the Node's exact native binding: %#v", card)
+	}
+}
+
 func TestDirectoryIsGroupScopedAndNeverGuesses(t *testing.T) {
 	service, persistence, groupA := newFabricTestService(t)
 	join := func(groupID, principal, session, node string) *JoinResult {

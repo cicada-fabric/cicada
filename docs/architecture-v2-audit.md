@@ -1,4 +1,27 @@
-# Architecture v2.1 当前事实审计
+# Architecture v2.3 当前事实审计
+
+## 2026-09-27 M1 Network scope 与旧入口审计（起点 `0cda614`）
+
+下表是 M1 的实施前审计快照，不代表当前代码或验收结论。`dev` 在
+`0cda61460757246789970782584b1e904173e653` 干净起步。该提交的 Go 核心没有
+`NetworkMembership`、`NetworkAdmin` 或可信 `network_id`：既有 Guard 以 Group、
+Endpoint、Principal、SessionBinding 和 owner 为主要作用域。现有 Group 边界不能
+被误写成同 Hub 多 Network 已隔离。
+
+风险最高的是只加 Network 新路由而未把可信 scope 推进现有服务和 Node 检查点：
+
+| 旧路径 | 起点行为与 M1 风险 | M1 必须覆盖的检查点 |
+|---|---|---|
+| `internal/fabric/service.go`: `JoinForNodeCredential`, `join`, `AuthenticateForGroup`, `Authorize`; `internal/fabric/model.go`: `Actor` | Join 按 Harness/native Session 全局定位 Endpoint，再以单个绑定续租/轮换凭据；Actor 及授权上下文包含 Group 而无 Network。模型或 HTTP header 自带的 scope 不能建立成员身份。 | 每个 Hub/Network 注册需可独立认证、授权并撤销；不得为同一原生 Session 切 Network 时夺取当前 Node writer、重建 native Session 或覆盖其他 scope 的 binding/receipt。Network membership 与 Endpoint-Group join 分开求交。 |
+| `internal/server/server.go`, `internal/server/fabric_v2.go`: `/v2/fabric/*` | Session credential 后由 `Cicada-Group-Scope` 选已加入 Group；对 legacy 上下文未强制 Network scope。JOIN 使用另一公共入口。 | 每个旧 route 必须将可信 Hub/Network scope 映射进统一 Core Guard，或对无法安全映射的请求显式拒绝；不能把传入的 Network ID 当作 credential。 |
+| `internal/fabric/relay.go`: `Send`, `Ask`, `Reply`, `Request`, `CancelRequest`, `Receive`, `ClaimNodeDeliveries`; `internal/store/relay_v2.go`: `ReceiveRelayInboxForBindingGroup`, `ClaimRelayInbox`, `ClaimRelaySealedV1Inbox` | 请求及收件记录保存 Endpoint、Principal、Group 与绑定 epoch。读历史、回 Reply 和 claim 以 Group 为边界。Node claim 会扫描该 Node 上多个 Endpoint；SQL 当前检查 recipient 的 Group join，却没有 Network membership。 | enqueue 和每次状态/历史读取都检查当前源、收件方 Network membership 与资源范围；Reply/status/cancel 复核原请求的可信 Network；claim 不能只依赖 Group。撤权后 enqueue、claim 和收件读取都要拒绝。 |
+| `internal/fabric/local_delivery_authorization.go`, `internal/store/local_delivery_authorization_v2.go`, `internal/fabric/native_wake_authorization.go`, `internal/fabric/sealed_link.go` | same-Node 授权/最终 wake 和 sealed Node claim 以 Endpoint、Group、binding、Link 或 Node 凭据为锚。Node scope 可包含多个新 Network registration。 | 源与目标 Network 必须相同或满足精确已授权规则；在最终 Node injection/wake 入口重新验证当前 grant/revision。一个 Network 的权限不能借同 Node、本地队列或共用 binding 写入另一个。 |
+| `internal/fabric/artifact_v2.go`, `internal/store/artifact_v2.go`, `internal/fabric/task_v2.go`, `internal/store/shared_task_v2.go`, `internal/server/task_v2.go` | Artifact read grant 和 Shared Task/list/claim/result 以 Principal、Group、Task/Artifact scope 授权；直接 Store 方法也可调用，不能只在 HTTP 边界加租户检查。 | Group 资源须经其唯一 Network 映射后授权；Task offer/claim/result 单独核验 Network grants，不能暴露任务来源 Group、历史或 Artifact。撤权复查覆盖 claim、修改、结果和证据读取。 |
+| `internal/server/directory.go`, `internal/server/federation_v2.go`, `internal/server/groups.go`, `/v2/management/endpoints` | 旧目录 announcement/records、GroupCard/federation 集合、Group 与管理 Endpoint API 由管理 bearer/owner 上下文处理，没有 Network 地址空间。 | 对现有用户 API 做显式 scope 迁移；全局管理凭据不能充当 NetworkAdmin，也不能让按 nickname 查询先于 scope 过滤。重复 nickname 必须在授权范围内返回歧义。 |
+
+当前 v35 使用 additive schema、只读 inventory、prepare/mapping、版本校验 approve，再单向 activate。`PREPARING` 时只有尚未映射的旧 Group 是 `LEGACY_UNSCOPED`；`APPROVED` Group 在激活前立即受到严格 Network Guard，Network 新 API 从引入起亦严格校验。激活后仍未映射的 pending Group fail closed。合成 v34→v35 测试仅证明选定 Client key/device/replay、Monitor、Group/Endpoint/原生绑定状态保留；无 Network enrollment revision 的旧排队消息保持原 ID，但映射后不自动获得新授权。
+
+有界基础检查点 `b0081a0` 的独立 Docker Client 与 Network suite 均通过；测试专用提交 `f9d3c7e` 将旧迁移 fixture 的 v34 ledger 预期补至 v35，随后完整 Store 包复验通过。它不等于完整 M1：跨旧入口、撤权后历史读取、Node 投递及管理边界仍有矩阵缺口。冻结的 Client v1.3 `group.create` 不带 Network selector；默认 PREPARING Client gate 不能证明 ACTIVE Hub 兼容，ACTIVE 上缺少 Network 的新 Group 申请会被拒绝。详细证据和未完成项见 [迁移说明](architecture-v2-migration.md) 与 [M1 验证](network-m1-validation.md)。
 
 ## 2026-09-27 Monitor intake 与 Node notice scan 有界性复审
 

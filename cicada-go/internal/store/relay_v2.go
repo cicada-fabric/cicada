@@ -1417,6 +1417,9 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 	if security.SenderEndpointID == "" {
 		security.SenderEndpointID = message.FromEndpointID
 	}
+	if err := networkGuardRelaySecurityTx(tx, &security, security.ReceiverGroupID, time.Now().UTC()); err != nil {
+		return nil, false, err
+	}
 	if payloadMode == RelayPayloadModePlaintext {
 		if err := rejectPlaintextSealedPeerTx(tx, security.SenderEndpointID, security.ReceiverEndpointID); err != nil {
 			return nil, false, err
@@ -1561,6 +1564,9 @@ WHERE sender_principal_id = ? AND sender_group_id = ? AND idempotency_key = ?`,
 			}
 		}
 		return nil, false, fmt.Errorf("create relay message security metadata: %w", err)
+	}
+	if err := networkCaptureRelayMessageEnrollmentTx(tx, &security); err != nil {
+		return nil, false, err
 	}
 	_, err = tx.Exec(`INSERT INTO relay_v2_message_payloads
 (message_id, payload_mode, ciphertext) VALUES (?, ?, ?)`, message.ID, payloadMode, ciphertext)
@@ -2157,6 +2163,9 @@ WHERE i.recipient_endpoint_id = ?
 		if item.BindingID != "" && bindingID != "" && item.BindingID != bindingID {
 			continue
 		}
+		if err := networkGuardRelayMessageTx(tx, item.MessageID, item.ReceiverGroupID, time.Now().UTC()); err != nil {
+			continue
+		}
 		if bindingID != "" && item.BindingID == "" {
 			// An unbound legacy recipient can be read only without a binding
 			// assertion; a Node binding must never silently adopt it.
@@ -2408,6 +2417,9 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, now(), input.Limit)
 		if !relayBindingMatches(item, input.BindingID, input.BindingEpoch) {
 			return nil, ErrRelayBindingMismatch
 		}
+		if err := networkGuardRelayMessageTx(tx, item.MessageID, item.ReceiverGroupID, time.Now().UTC()); err != nil {
+			continue
+		}
 		if item.RequestID != "" {
 			request, err := relayLoadRequestTx(tx, item.RequestID)
 			if err != nil {
@@ -2543,6 +2555,9 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, EndpointMigrationReady,
 	for _, item := range items {
 		if !relayBindingMatches(item, input.BindingID, input.BindingEpoch) {
 			return nil, ErrRelayBindingMismatch
+		}
+		if guardErr := networkGuardRelayMessageTx(tx, item.MessageID, item.ReceiverGroupID, time.Now().UTC()); guardErr != nil {
+			continue
 		}
 		record, err := relaySealedV1RecordTx(tx, item.MessageID)
 		if err != nil {
@@ -2998,6 +3013,15 @@ func (s *Store) RecordRelayReceipt(receipt RelayReceipt) (*RelayReceipt, error) 
 			return nil, err
 		}
 		return existing, nil
+	}
+	if receipt.Layer != RelayReceiptNodeReceived && receipt.Layer != RelayReceiptInjectionUncertain && receipt.Layer != RelayReceiptConsumptionUnknown && receipt.Layer != RelayReceiptFailed {
+		var receiverGroupID string
+		if err := tx.QueryRow(`SELECT receiver_group_id FROM relay_v2_inbox WHERE recipient_endpoint_id=? AND sequence=? AND message_id=?`, attempt.RecipientEndpointID, attempt.Sequence, attempt.MessageID).Scan(&receiverGroupID); err != nil {
+			return nil, ErrRelayInvalidReceipt
+		}
+		if err := networkGuardRelayMessageTx(tx, receipt.MessageID, receiverGroupID, time.Now().UTC()); err != nil {
+			return nil, ErrRelayStaleReceipt
+		}
 	}
 	if attempt.State == RelayAttemptCancelled || attempt.State == RelayAttemptFailed {
 		return nil, ErrRelayStaleReceipt

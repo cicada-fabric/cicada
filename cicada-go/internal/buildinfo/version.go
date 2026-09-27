@@ -2,13 +2,13 @@
 // CLI, HTTP API, and Codex app-server adapter.
 package buildinfo
 
-const (
-	// Version is the current protocol-compatible Cicada release. Keep this in
-	// one package so health responses and app-server client metadata cannot
-	// silently drift apart.
-	Version = "0.4.0-dev"
-	Stage   = "codex-supervisor"
-)
+// Version is the current software release label. Keep it in one package so
+// health responses and app-server client metadata cannot silently drift apart.
+// It is a variable so scripts/build-release.sh can embed a selected tag with
+// the Go linker; source builds use VERSION's current development line.
+var Version = "0.1.0-dev"
+
+const Stage = "codex-supervisor"
 
 // These values are set by the repository Docker build helper. A binary built
 // directly with `go build` keeps the explicit unknown values rather than

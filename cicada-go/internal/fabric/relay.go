@@ -58,6 +58,9 @@ func (s *Service) validateActorCurrent(actor Actor) (*store.SessionBinding, erro
 	if err != nil || !joined {
 		return nil, ErrPermissionDenied
 	}
+	if err := s.store.NetworkGuardGroup(actor.PrincipalID, actor.EndpointID, actor.GroupID, actor.NetworkID); err != nil {
+		return nil, ErrPermissionDenied
+	}
 	return binding, nil
 }
 

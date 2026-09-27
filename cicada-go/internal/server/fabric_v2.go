@@ -24,6 +24,10 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		h.fabricV2NodeJoin(response, request)
 		return
 	}
+	if request.URL.Path == "/v2/fabric/node/networks/join" || request.URL.Path == "/v2/fabric/node/networks/renew" || strings.HasPrefix(request.URL.Path, "/v2/fabric/networks/") {
+		h.fabricV2Network(response, request)
+		return
+	}
 	if request.URL.Path == "/v2/fabric/join" {
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))

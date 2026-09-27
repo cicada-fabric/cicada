@@ -17,8 +17,21 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 > and [Client validation report](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
 > The prior `81d8f1f` denials remain historical. This bounded run used two logical
 > Nodes in one container; full React Native consent UX, physical Android/dual
-> Node, and public HTTPS remain **NOT_RUN**. Agent Network M1+ and Group
-> Journal/Discussion remain proposed, unimplemented work.
+> Node, and public HTTPS remain **NOT_RUN**. Network M1 started from clean `dev` /
+> `0cda61460757246789970782584b1e904173e653`. The bounded Network foundation
+> checkpoint at `b0081a0` passed separate disposable Network and default Client
+> Docker gates; `f9d3c7e` only fixed a stale migration test assertion. Overall M1
+> remains **NOT_COMPLETE**; see the [validation matrix](network-m1-validation.md)
+> and [Network contract](network-m1-contract.md). Frozen v1.3 `group.create` has no
+> Network selector and is rejected on an ACTIVE Hub. The passing default PREPARING
+> Client gate is not an ACTIVE topology test. A Network-only Endpoint without a
+> Group cannot DM; different-Group Endpoints may use an authorized sealed Link
+> when both Groups map to the same Network and each Owner grants the Link. M1
+> native Runtime, Android, physical dual-Node and public HTTPS remain **NOT_RUN**.
+> Close M1 entry-point and test gaps before M2; native TUI adapter feasibility is
+> a bounded next investigation. The frozen v1.3 Client contract and independent
+> Android repository are unchanged.
+> Journal/Discussion remain proposed later-stage work.
 
 ### 2026-09-27 Monitor v1.3 冻结前候选状态快照
 

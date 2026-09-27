@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "cicada",
-  "version": "0.4.0",
+  "version": "0.1.0-dev",
   "description": "Explicitly join the current Codex thread to a self-hosted Cicada Fabric and coordinate endpoints.",
   "author": {
     "name": "Cicada Fabric",

@@ -10,6 +10,12 @@ in `docs/architecture-v2-*.md`, not in the specification.
 - Develop on `dev`; keep changes small and reviewable. Do not push, release,
   merge into `main`, replace resident deployments, or rotate real keys as part
   of routine development. Preserve uncommitted work and existing state.
+- Make one commit for each meaningful checkpoint, including its code, tests,
+  contract, documentation, and validation record as applicable. Avoid routine
+  follow-up microcommits that merely split one checkpoint's test or document
+  fixes. Do not amend or rewrite published history outside an explicitly
+  authorized maintenance operation that records the old-to-new milestone
+  mapping and keeps historical validation attributed to its tested source.
 - For Client-facing changes, follow `docs/client-hub-development.md`. Update the
   authoritative contract and its checks in the same change as the implementation.
   Public capabilities describe availability, not caller authorization; encrypted

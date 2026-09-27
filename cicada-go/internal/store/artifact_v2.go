@@ -800,6 +800,9 @@ func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, reque
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := networkGuardPrincipalGroupLocked(s.db, principalID, groupID); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
 	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
 		return nil, err
 	}
@@ -815,6 +818,16 @@ func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, reque
 	}
 	if ref == nil {
 		return nil, ErrArtifactRefV2NotFound
+	}
+	var refNetwork, readerNetwork string
+	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, ref.GroupID).Scan(&refNetwork); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
+	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, groupID).Scan(&readerNetwork); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
+	if refNetwork != readerNetwork {
+		return nil, ErrArtifactRefV2Denied
 	}
 	if ref.Status != ArtifactRefV2StatusAvailable {
 		return nil, ErrArtifactRefV2Revoked

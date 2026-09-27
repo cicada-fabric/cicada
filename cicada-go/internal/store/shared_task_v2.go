@@ -386,6 +386,9 @@ func (s *Store) ClaimSharedTask(id string, expectedRevision int64, principalID, 
 	if err != nil {
 		return nil, err
 	}
+	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	if task.ClaimKey == key && task.OwnerPrincipalID == principalID && task.OwnerEndpointID == endpointID && task.Status == SharedTaskClaimed && sharedTaskLeaseActive(task.LeaseExpiresAt) {
 		return task, nil
 	}
@@ -440,6 +443,9 @@ func (s *Store) ReleaseSharedTaskClaim(id string, expectedRevision, ownerEpoch i
 	if err != nil {
 		return nil, err
 	}
+	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	if task.OwnerPrincipalID != principalID || task.OwnerEndpointID != endpointID || task.OwnerEpoch != ownerEpoch {
 		return nil, ErrSharedTaskStaleOwner
 	}
@@ -491,6 +497,9 @@ func (s *Store) RenewSharedTaskClaim(id string, expectedRevision, ownerEpoch int
 	}
 	task, err := loadSharedTaskTx(tx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	if task.OwnerPrincipalID != principalID || task.OwnerEndpointID != endpointID || task.OwnerEpoch != ownerEpoch || !sharedTaskLeaseActive(task.LeaseExpiresAt) {
@@ -588,6 +597,9 @@ func (s *Store) SubmitSharedTaskResult(taskID, principalID, endpointID string, o
 	if err != nil {
 		return nil, err
 	}
+	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	authoritative := sharedTaskLeaseActive(task.LeaseExpiresAt) && task.Revision == expectedRevision && task.OwnerEpoch == ownerEpoch && task.OwnerPrincipalID == principalID && task.OwnerEndpointID == endpointID &&
 		(task.Status == SharedTaskClaimed || task.Status == SharedTaskRunning)
 	authority := "CANDIDATE"
@@ -637,6 +649,9 @@ func (s *Store) AcceptSharedTaskResult(taskID, resultID string, expectedRevision
 	}
 	task, err := loadSharedTaskTx(tx, taskID)
 	if err != nil {
+		return nil, err
+	}
+	if err := networkGuardTaskPrincipalTx(tx, verifierPrincipalID, task.GroupID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	if task.Revision != expectedRevision || task.Status != SharedTaskResultSubmitted {

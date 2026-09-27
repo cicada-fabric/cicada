@@ -3,7 +3,6 @@ package fabric
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -145,14 +144,23 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 			return nil, ErrPermissionDenied
 		}
 	}
+	if group.NetworkID != "" && previous == nil {
+		return nil, ErrNotFoundOrNotAuthorized
+	}
 
 	principal, createdPrincipal, err := s.resolveJoinPrincipal(input, ownerID, trustDomainID)
 	if err != nil {
 		return nil, err
 	}
+	if group.NetworkID != "" {
+		if createdPrincipal || previous == nil || previous.PrincipalID != principal.ID ||
+			s.store.NetworkGuardGroup(principal.ID, previous.ID, group.ID, group.NetworkID) != nil {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+	}
 	membership, err := s.store.GetMembershipByPrincipalGroup(principal.ID, input.GroupID)
 	if err != nil {
-		if !errors.Is(err, store.ErrMembershipNotFound) || !createdPrincipal {
+		if !errors.Is(err, store.ErrMembershipNotFound) || !createdPrincipal || group.NetworkID != "" {
 			return nil, ErrNotFoundOrNotAuthorized
 		}
 		membership, err = s.store.CreateMembership(store.Membership{
@@ -319,6 +327,9 @@ func (s *Service) AuthenticateForGroup(sessionToken, groupID string) (Actor, err
 	if err != nil || group.State != store.GroupStateActive {
 		return Actor{}, ErrPermissionDenied
 	}
+	if err := s.store.NetworkGuardGroup(binding.PrincipalID, binding.EndpointID, groupID, group.NetworkID); err != nil {
+		return Actor{}, ErrPermissionDenied
+	}
 	joined, err := s.store.GetEndpointGroupMembership(binding.EndpointID, groupID)
 	if err != nil || joined.Status != store.MembershipStatusActive {
 		return Actor{}, ErrPermissionDenied
@@ -329,7 +340,8 @@ func (s *Service) AuthenticateForGroup(sessionToken, groupID string) (Actor, err
 	}
 	actor := Actor{
 		PrincipalID: binding.PrincipalID, EndpointID: binding.EndpointID,
-		GroupID: groupID, MembershipID: membership.ID,
+		NetworkID: group.NetworkID,
+		GroupID:   groupID, MembershipID: membership.ID,
 		MembershipRevision: membership.Revision, BindingID: binding.ID,
 		BindingEpoch: binding.Epoch, LeaseOwner: binding.LeaseOwner,
 		LeaseExpiresAt: binding.LeaseExpiresAt,
@@ -567,13 +579,8 @@ func cleanWorkspace(value string) string {
 	if absolute, err := filepath.Abs(value); err == nil {
 		value = filepath.Clean(absolute)
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if value == home {
-			return "~"
-		}
-		if strings.HasPrefix(value, home+string(filepath.Separator)) {
-			return "~" + strings.TrimPrefix(value, home)
-		}
-	}
+	// This is the Node's verified native workspace, not a path relative to the
+	// Hub's home. Rewriting it to "~" when both happen to share a home prefix
+	// breaks the exact native SessionBinding check on subsequent requests.
 	return value
 }

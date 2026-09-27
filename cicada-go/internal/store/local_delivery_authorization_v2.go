@@ -172,6 +172,9 @@ func (s *Store) AuthorizeLocalDeliveryForNodeCredential(nodeCredentialDigest, se
 	if target.PrincipalOwnerID != nodeOwnerID || target.EndpointOwnerID != nodeOwnerID {
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
+	if err := networkGuardRelaySecurityTx(tx, &RelayMessageSecurity{SenderPrincipalID: source.PrincipalID, SenderEndpointID: source.EndpointID, SenderGroupID: input.GroupID, ReceiverPrincipalID: target.PrincipalID, ReceiverEndpointID: target.EndpointID, ReceiverGroupID: input.GroupID}, input.GroupID, nowTime); err != nil {
+		return nil, ErrLocalDeliveryNotAuthorized
+	}
 
 	sourceKey, err := readCurrentLocalDeliveryKeyTx(tx, source)
 	if err != nil {
@@ -253,6 +256,9 @@ func (s *Store) RevalidateLocalDeliveryForNodeCredential(nodeCredentialDigest st
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
 	if err := validateLocalDeliveryEndpointSnapshot(target, input.GroupID, nowTime); err != nil {
+		return nil, ErrLocalDeliveryNotAuthorized
+	}
+	if err := networkGuardRelaySecurityTx(tx, &RelayMessageSecurity{SenderPrincipalID: source.PrincipalID, SenderEndpointID: source.EndpointID, SenderGroupID: input.GroupID, ReceiverPrincipalID: target.PrincipalID, ReceiverEndpointID: target.EndpointID, ReceiverGroupID: input.GroupID}, input.GroupID, nowTime); err != nil {
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
 	allowed, err := localDeliveryMembershipAllows(tx, source.PrincipalID, input.GroupID, input.Action, nowText)

@@ -99,10 +99,17 @@ JOIN endpoint_group_memberships eg ON eg.endpoint_id = e.id AND eg.group_id = ?
 JOIN memberships m ON m.principal_id = e.principal_id AND m.group_id = eg.group_id
 JOIN principals p ON p.id = e.principal_id
 JOIN groups g ON g.id = eg.group_id
+JOIN network_mode_v2 nm ON nm.id = 1
 WHERE e.id = ? AND e.migration_state = 'READY' AND e.status != 'left'
   AND eg.status = 'active' AND m.status = 'active' AND p.status = 'active'
-  AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?)`,
-		strings.TrimSpace(groupID), strings.TrimSpace(endpointID), now()).Scan(&active)
+	AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?)
+	AND ((g.network_id = '' AND nm.phase = 'PREPARING') OR
+	 (g.network_id <> '' AND EXISTS (
+	   SELECT 1 FROM networks_v2 n
+	   JOIN network_memberships_v2 nm2 ON nm2.network_id=n.id AND nm2.principal_id=e.principal_id AND nm2.status='active'
+	   JOIN endpoint_network_memberships_v2 en ON en.network_id=n.id AND en.endpoint_id=e.id AND en.status='active'
+	   WHERE n.id=g.network_id AND n.state='ACTIVE' AND (nm2.expires_at='' OR nm2.expires_at>?))))`,
+		strings.TrimSpace(groupID), strings.TrimSpace(endpointID), now(), now()).Scan(&active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

@@ -37,17 +37,42 @@ type localJoinRequest struct {
 	Workspace       string `json:"workspace,omitempty"`
 }
 
+// Network Join is separate from Group Join. The native Thread record is
+// checked by this Node before its credential is used at the Hub.
+type localNetworkJoinRequest struct {
+	Version         int    `json:"version"`
+	Operation       string `json:"operation"`
+	NetworkID       string `json:"network_id"`
+	InvitationToken string `json:"invitation_token"`
+	OwnerJoinProof  string `json:"owner_join_proof"`
+	Harness         string `json:"harness"`
+	NativeSessionID string `json:"native_session_id"`
+	Workspace       string `json:"workspace"`
+	EndpointName    string `json:"endpoint_name,omitempty"`
+}
+
+type localNetworkRenewRequest struct {
+	Version         int    `json:"version"`
+	Operation       string `json:"operation"`
+	NetworkID       string `json:"network_id"`
+	EndpointID      string `json:"endpoint_id"`
+	Harness         string `json:"harness"`
+	NativeSessionID string `json:"native_session_id"`
+	Workspace       string `json:"workspace"`
+}
+
 type localJoinResponse struct {
-	Version          int                     `json:"version"`
-	Join             *fabricpkg.JoinResult   `json:"join,omitempty"`
-	SealedSend       *localSealedSendResult  `json:"sealed_send,omitempty"`
-	SealedRPC        *localSealedRPCResult   `json:"sealed_rpc,omitempty"`
-	LocalGroup       *localGroupResult       `json:"local_group,omitempty"`
-	CrossNodeGroup   *crossNodeGroupResult   `json:"cross_node_group,omitempty"`
-	GroupBroadcast   *groupBroadcastResult   `json:"group_broadcast,omitempty"`
-	MonitorBroadcast *monitorBroadcastResult `json:"monitor_broadcast,omitempty"`
-	Retryable        bool                    `json:"retryable,omitempty"`
-	Error            string                  `json:"error,omitempty"`
+	Version          int                          `json:"version"`
+	Join             *fabricpkg.JoinResult        `json:"join,omitempty"`
+	NetworkJoin      *fabricpkg.NetworkJoinResult `json:"network_join,omitempty"`
+	SealedSend       *localSealedSendResult       `json:"sealed_send,omitempty"`
+	SealedRPC        *localSealedRPCResult        `json:"sealed_rpc,omitempty"`
+	LocalGroup       *localGroupResult            `json:"local_group,omitempty"`
+	CrossNodeGroup   *crossNodeGroupResult        `json:"cross_node_group,omitempty"`
+	GroupBroadcast   *groupBroadcastResult        `json:"group_broadcast,omitempty"`
+	MonitorBroadcast *monitorBroadcastResult      `json:"monitor_broadcast,omitempty"`
+	Retryable        bool                         `json:"retryable,omitempty"`
+	Error            string                       `json:"error,omitempty"`
 }
 
 type machineAgentJoinBridge struct {
@@ -328,6 +353,34 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 	}
 	if err := json.Unmarshal(requestBytes, &header); err != nil {
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Node request"})
+		return
+	}
+	if header.Operation == "network_join" {
+		var request localNetworkJoinRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Network Join request"})
+			return
+		}
+		joined, err := b.joinNetwork(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: safeLocalJoinError(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkJoin: joined})
+		return
+	}
+	if header.Operation == "network_renew" {
+		var request localNetworkRenewRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Network Renew request"})
+			return
+		}
+		joined, err := b.renewNetwork(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: safeLocalJoinError(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkJoin: joined})
 		return
 	}
 	if header.Operation == "sealed_send" {

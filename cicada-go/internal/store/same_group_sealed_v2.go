@@ -210,6 +210,11 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 		sender.Grant.Manifest.GroupRevision != receiver.Grant.Manifest.GroupRevision {
 		return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 	}
+	for _, endpoint := range []SameGroupSealedV1EndpointEvidence{sender, receiver} {
+		if err := networkGuardGroupEndpointTx(tx, endpoint.PrincipalID, endpoint.EndpointID, groupID, at); err != nil {
+			return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
+		}
+	}
 	return sameGroupEndpointPair{hubID: hubID, groupID: groupID,
 		sender: sender, receiver: receiver}, nil
 }
@@ -796,6 +801,12 @@ func validateQueuedSameGroupSealedV1Tx(tx *sql.Tx, record *RelaySealedV1Record,
 		record.Security.Digest != relayCiphertextDigest(record.Ciphertext) ||
 		record.Route.SenderEndpointID != record.Security.SenderEndpointID ||
 		record.Route.ReceiverEndpointID != record.Security.ReceiverEndpointID {
+		return sameGroupEndpointPair{}, nil, ErrSameGroupSealedV1Denied
+	}
+	// This specialized claim path does not pass through generic Relay claim.
+	// Recheck the persisted route and its enrollment-time fence here so a
+	// revoked member cannot revive a queued message by joining again.
+	if err := networkGuardRelayMessageTx(tx, record.Route.MessageID, record.Security.ReceiverGroupID, at); err != nil {
 		return sameGroupEndpointPair{}, nil, ErrSameGroupSealedV1Denied
 	}
 	switch record.Route.Kind {

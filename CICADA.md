@@ -111,7 +111,9 @@
 
 **升级组织模型，不等于把 CICADA 降级成只有消息和 Group 的基础库。**
 
-架构 v2.3 将 Network 定为 Group 之上的租户与授权边界，并为 Group 增加拟议的持久 Journal 与 Discussion 空间；这不改变物理 Node/Hub/Client 或逻辑 User/Control/Worker/Monitor 四类参与者。新增空间、授权重组及 M1–M5 均为目标，未因本文而实现；软件 `0.4.0-dev`、客户端 wire version 1 与已冻结的 v1.3 合同不变。
+架构 v2.3 将 Network 定为 Group 之上的租户与授权边界，并为 Group 增加拟议的持久 Journal 与 Discussion 空间；这不改变物理 Node/Hub/Client 或逻辑 User/Control/Worker/Monitor 四类参与者。Network M1 正在实施，尚未通过验收；后续 M2–M5 仍为目标。当前未发布产品版本为 `0.1.0-dev`，计划公开产品版本使用 `0.1.x`；客户端 wire version 1 与已冻结的 v1.3 合同不变。
+
+任意已授权 Thread 对之间默认通过 HubRelay 传递密文。只有两个目标 Thread 位于同一物理宿主机、同一 Codex 账号，且 Node 能调用可用的原生 API 精确触达目标 Thread 时，才允许用本机 direct transport 替代 HubRelay；这仍需先解析唯一目标并独立通过当前 Join、Network/Group/Link 与 SessionBinding Guard。相同 Hub、Network、Node 标签、工作区或机器地址都不足以启用 direct transport。模型会话能看见某个 TUI 工具不表示 Go Node 可以独立调用它；通用 TUI 直连适配器尚未实现。在该 API 可用性经过验收前保持 HubRelay 默认。显式 Join 仍是必要条件，不能把账号下所有 Thread 自动暴露给 Node。现有同 Node sealed 路径已将正文留在 Node 本地账本和 native queue，Hub 只参与授权 metadata 检查；其本地写入成功不等于 Thread 已消费或冷唤醒。
 
 ---
 
@@ -349,6 +351,10 @@ Node A             Node B
 Hub 是部署边界名称，不是让 Control 参与普通 peer 消息的业务组件。第一阶段允许模块共进程、服务同机，不要求微服务集群。必须支持在测试中不启动 Control 业务模块而单独运行 Fabric。两个 Node 不需要互通，也无需允许 Hub 主动拨入 Node；只要双方能主动连接同一个 Hub 即可跨节点投递。若没有任何共同可达的 Hub，也无法直连，就不能宣称消息可达。共用进程被整体杀死时 Fabric 也会停，这不违反逻辑独立。
 
 一个 Hub 可以托管多个相互隔离的 Network；每个 Network 固定一个权威 Hub，Network 不是 Hub 集群或跨 Hub 复制层。Node 可为自己加入的 Network 主动连接一个或多个 Hub，但每个连接具有独立凭据、订阅、重放水位和授权缓存。Node 上只有一个受控本地投递 owner 能写入某个原生 Thread；来自不同 Hub 的请求须在本地统一 Guard 后排队给同一 writer，不能让 Hub 直接争抢 Runtime。
+
+Hub、Node、Client 是运行服务实例的职责，不是互斥的物理主机类型；同一台物理主机可以同时运行 Hub 实例与 Node 实例。Node 上托管的 Thread 仍须对每个 Hub/Network 显式注册并通过对应 Guard。相同主机、操作系统用户、Docker bridge 或 Workspace 不构成身份、NetworkMembership、Group Membership 或本地投递授权。容器网络和宿主机隔离可用于部署与资源约束，但不能替代应用层 Network scope。
+
+威胁模型信任宿主机及其管理员；恶意宿主管理员控制运行环境，属于该部署自身的责任边界，不要求 CICADA 引入 VM 或 enclave 来抵御。CICADA 仍负责应用/进程最小权限、Hub 不持有 peer 解密密钥、作用域身份鉴权、密文和 replay 检查及撤权。
 
     Hub X
       ├─ Network alpha (authoritative Hub X)

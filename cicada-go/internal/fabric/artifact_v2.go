@@ -184,6 +184,9 @@ func (s *Service) ReadArtifactRefV2(actor Actor, input ArtifactRefReadInput) (*s
 		if _, err := s.AuthorizeArtifactRefV2(actor, ArtifactRefReadInput{ArtifactRefID: input.ArtifactRefID, Scopes: scopes}); err != nil {
 			return nil, err
 		}
+		if err := s.Authorize(actor, "artifact.read"); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }

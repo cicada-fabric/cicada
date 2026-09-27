@@ -120,6 +120,9 @@ WHERE a.attempt_id=? AND a.message_id=? AND a.state='CLAIMED'
 	if err != nil {
 		return nil, err
 	}
+	if err := networkGuardRelayMessageTx(tx, input.MessageID, authorization.GroupID, time.Now().UTC()); err != nil {
+		return nil, ErrRelayNativeWakeAuthorizationUnavailable
+	}
 	authorization.NodeID = nodeID
 	if err := tx.Commit(); err != nil {
 		return nil, err

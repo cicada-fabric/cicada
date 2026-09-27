@@ -46,6 +46,7 @@ var (
 type Actor struct {
 	PrincipalID        string `json:"principal_id"`
 	EndpointID         string `json:"endpoint_id"`
+	NetworkID          string `json:"network_id,omitempty"`
 	GroupID            string `json:"group_id"`
 	MembershipID       string `json:"membership_id"`
 	MembershipRevision int64  `json:"membership_revision"`

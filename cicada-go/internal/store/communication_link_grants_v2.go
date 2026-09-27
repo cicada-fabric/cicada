@@ -445,6 +445,9 @@ AND endpoint_id = ? AND status = ?`, endpointID, endpointID, SessionBindingStatu
 }
 
 func communicationLinkCurrentStatus(tx *sql.Tx, link *CommunicationLink, at time.Time) string {
+	if err := networkGuardCommunicationLinkTx(tx, link, at); err != nil {
+		return CommunicationLinkGrantScopeStale
+	}
 	if link.State != CommunicationLinkProposed {
 		return CommunicationLinkGrantLinkRevoked
 	}

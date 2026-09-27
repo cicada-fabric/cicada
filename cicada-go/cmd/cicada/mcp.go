@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/buildinfo"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -147,7 +148,7 @@ func (m *mcpServer) handle(request mcpRequest) (mcpResponse, bool) {
 		return mcpResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{
 			"protocolVersion": protocol,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": "cicada-fabric", "version": "0.4.0"},
+			"serverInfo":      map[string]any{"name": "cicada-fabric", "version": buildinfo.Version},
 			"instructions":    "Join the current session to Cicada Fabric, resolve endpoints on demand, and use ask for request/reply work.",
 		}}, true
 	case "notifications/initialized", "notifications/cancelled":
@@ -211,6 +212,11 @@ func cicadaMCPTools() []map[string]any {
 		return map[string]any{"type": "string", "description": description}
 	}
 	return []map[string]any{
+		{"name": "cicada_network_join", "description": "Explicitly join this verified native Session to an invited Network. Invitation and Owner-signed consent are read from private local files configured outside model input; the Node and Hub independently verify them.", "inputSchema": object(map[string]any{"network_id": stringField("Invited Network ID")}, "network_id")},
+		{"name": "cicada_network_renew", "description": "Renew this native Session's existing Network access through the trusted local Node, rechecking current membership and Owner authority.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID")}, "network_id")},
+		{"name": "cicada_network_directory", "description": "List small Endpoint cards permitted by the current Network discovery grant.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID"), "limit": map[string]any{"type": "integer"}}, "network_id")},
+		{"name": "cicada_network_resolve", "description": "Resolve one authorized Network nickname or Endpoint ID; ambiguous names are refused.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID"), "query": stringField("Nickname or Endpoint ID")}, "network_id", "query")},
+		{"name": "cicada_network_leave", "description": "Leave this Network registration without changing the native Session or unrelated Group membership.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID"), "reason": stringField("Optional reason")}, "network_id")},
 		{"name": "cicada_join", "description": "Explicitly join the current Codex session through the local Cicada Node agent. The local session record and workspace are checked; the Hub cannot cryptographically prove the native session, so same-OS-user processes remain the local trust boundary. Omit group_id when CICADA_GROUP_ID is configured in trusted MCP settings.", "inputSchema": object(map[string]any{"group_id": stringField("Fabric Group ID; optional when CICADA_GROUP_ID is configured")})},
 		{"name": "cicada_use_group", "description": "Select an already joined Group for this native session. The server verifies both Endpoint and Principal memberships; selection does not grant access.", "inputSchema": object(map[string]any{"group_id": stringField("Joined Group ID")}, "group_id")},
 		{"name": "cicada_leave_group", "description": "Leave only the selected Group; preserve this native Thread in its other authorized Groups.", "inputSchema": object(map[string]any{"reason": stringField("Optional reason")})},
@@ -255,10 +261,12 @@ func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error)
 	if err := validateMCPArguments(name, arguments); err != nil {
 		return nil, err
 	}
-	if name != "cicada_join" && !m.isJoined() {
+	if name != "cicada_join" && !strings.HasPrefix(name, "cicada_network_") && !m.isJoined() {
 		return nil, fmt.Errorf("%s requires an active Cicada session; call cicada_join first", name)
 	}
 	switch name {
+	case "cicada_network_join", "cicada_network_renew", "cicada_network_directory", "cicada_network_resolve", "cicada_network_leave":
+		return m.networkTool(name, arguments)
 	case "cicada_join":
 		return m.join(arguments)
 	case "cicada_use_group":
@@ -493,6 +501,10 @@ func validateMCPArguments(name string, arguments map[string]any) error {
 		case "group_id":
 			if name != "cicada_join" && name != "cicada_use_group" && name != "cicada_broadcast" {
 				return errors.New("group_id is only accepted by cicada_join, cicada_use_group, or cicada_broadcast")
+			}
+		case "network_id":
+			if !strings.HasPrefix(name, "cicada_network_") {
+				return errors.New("network_id is only accepted by Network tools")
 			}
 		}
 	}
@@ -1007,7 +1019,7 @@ func sanitizeMCPToolResult(value any) any {
 
 func isCicadaMCPTool(name string) bool {
 	switch name {
-	case "cicada_join", "cicada_use_group", "cicada_leave", "cicada_leave_group", "cicada_whoami", "cicada_publish_endpoint_key_candidate", "cicada_members", "cicada_find", "cicada_list", "cicada_resolve", "cicada_inspect", "cicada_send", "cicada_broadcast", "cicada_monitor_broadcast", "cicada_monitor_broadcast_preview", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "request_status", "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel", "cicada_operation_status", "cicada_operation_retry", "cicada_outbox_status", "cicada_outbox_retry", "cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept", "cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status", "cicada_task_list", "cicada_task_get", "cicada_task_claim", "cicada_task_renew", "cicada_task_submit", "cicada_task_accept", "cicada_task_handoff_propose", "cicada_task_handoff_accept", "cicada_artifact_read":
+	case "cicada_network_join", "cicada_network_renew", "cicada_network_directory", "cicada_network_resolve", "cicada_network_leave", "cicada_join", "cicada_use_group", "cicada_leave", "cicada_leave_group", "cicada_whoami", "cicada_publish_endpoint_key_candidate", "cicada_members", "cicada_find", "cicada_list", "cicada_resolve", "cicada_inspect", "cicada_send", "cicada_broadcast", "cicada_monitor_broadcast", "cicada_monitor_broadcast_preview", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "request_status", "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel", "cicada_operation_status", "cicada_operation_retry", "cicada_outbox_status", "cicada_outbox_retry", "cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept", "cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status", "cicada_task_list", "cicada_task_get", "cicada_task_claim", "cicada_task_renew", "cicada_task_submit", "cicada_task_accept", "cicada_task_handoff_propose", "cicada_task_handoff_accept", "cicada_artifact_read":
 		return true
 	default:
 		return false

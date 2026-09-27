@@ -67,6 +67,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "network":
+		if err := networkCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "machine":
 		if len(os.Args) > 2 && (os.Args[2] == "backup" || os.Args[2] == "verify" || os.Args[2] == "restore") {
 			if err := machineBackupCommand(os.Args[2:]); err != nil {
@@ -306,7 +311,7 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|fabric|snapshot|external|connector|mcp|migration|owner-key|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|version")
 }
 
 func fabricCommand(baseURL string, args []string) error {

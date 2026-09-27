@@ -222,6 +222,9 @@ func currentUserMonitorSourceTx(tx *sql.Tx, groupID, endpointID, ownerID string,
 		!userMonitorRoleTx(tx, source.PrincipalID, groupID) {
 		return source, ErrUserMonitorBroadcastV2Denied
 	}
+	if err := networkGuardGroupEndpointTx(tx, source.PrincipalID, source.EndpointID, groupID, nowTime); err != nil {
+		return source, ErrUserMonitorBroadcastV2Denied
+	}
 	var boundOwner string
 	err = tx.QueryRow(`SELECT binding.owner_id FROM node_owner_bindings_v2 binding
 JOIN fabric_node_credentials credential ON credential.node_id=binding.node_id
@@ -340,6 +343,9 @@ func (s *Store) PrepareUserMonitorBroadcastV2(input PrepareUserMonitorBroadcastV
 			if err := verifyStoredUserMonitorPreviewTx(tx, r.Preview, r.Snapshot); err != nil {
 				return nil, err
 			}
+		}
+		if err := currentUserMonitorSnapshotTx(tx, r, time.Now().UTC()); err != nil {
+			return nil, ErrUserMonitorBroadcastV2Denied
 		}
 		return r, nil
 	}

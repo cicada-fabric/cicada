@@ -1,6 +1,8 @@
 # Cicada development environment
 
-The current unreleased version is `0.4.0-dev`. The root
+The current unreleased version is `0.1.0-dev`; planned public product releases
+use `0.1.x`. This does not change Architecture v2.3, Client wire v1, or the
+frozen `client-hub-v1.3` contract. The root
 [`docker-compose.yml`](docker-compose.yml) is a legacy single-host development
 layout with three roles: `control`, an optional `worker` profile that currently
 runs `sleep infinity`, and an optional Telegram connector. It does not describe
@@ -417,11 +419,14 @@ The implementation language decision and the reasons for the Go core plus
 TypeScript client split are recorded in `docs/language-decision.md`.
 
 Development takes place on `dev`, as requested by the user. Review and verify
-bounded milestones before merging into `main`; do not create a permanent branch
-for each subtask. Pushing, releasing, and replacing resident deployments are
-separate actions from running local tests. The current checkout has `origin` set to
-`git@github.com:cicada-fabric/cicada.git`. The latest release tag is `v0.2.0`;
-the current unreleased line is `0.4.0-dev`. Changes land only after the checks
+bounded milestones there; `main` remains a README-only unreleased placeholder
+until a public release (see [Git history](docs/git-history.md)). Do not create a
+permanent branch for each subtask. Pushing, releasing, and replacing resident
+deployments are separate actions from running local tests. The current checkout
+has `origin` set to `git@github.com:cicada-fabric/cicada.git`. The retired
+`v0.2.0` tag was a historical prototype checkpoint; the current unreleased
+product line is `0.1.0-dev` and planned public releases use `v0.1.x`. This does not change the
+architecture or protocol versions. Changes land only after the checks
 below pass.
 
 The Go checks cover the durable store and the Control's process-level

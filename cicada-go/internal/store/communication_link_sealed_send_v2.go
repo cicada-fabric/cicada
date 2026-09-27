@@ -225,6 +225,12 @@ func validateQueuedCommunicationLinkSealedSendTx(tx *sql.Tx, record *RelaySealed
 	if record == nil {
 		return ErrCommunicationLinkRelayDenied
 	}
+	// Claim and pre-injection authorization must pin the enrollment that
+	// existed when this ciphertext was enqueued. Current Link grants alone
+	// cannot make an old message valid after a revoked member joins again.
+	if err := networkGuardRelayMessageTx(tx, record.Route.MessageID, record.Security.ReceiverGroupID, at); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
 	if record.Route.Kind == "reply" {
 		return validateQueuedCommunicationLinkSealedReplyTx(tx, record, at)
 	}

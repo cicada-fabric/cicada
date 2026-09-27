@@ -1,0 +1,193 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"time"
+
+	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/harness"
+)
+
+func (b *machineAgentJoinBridge) joinNetwork(request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, error) {
+	if request.Version != localJoinProtocolVersion || request.Operation != "network_join" ||
+		strings.TrimSpace(request.NetworkID) == "" || strings.TrimSpace(request.InvitationToken) == "" ||
+		strings.TrimSpace(request.OwnerJoinProof) == "" {
+		return nil, errors.New("incomplete Network Join request")
+	}
+	if strings.TrimSpace(request.Harness) != "codex" || harness.Canonical(request.Harness) != "codex" {
+		return nil, errors.New("Network Join requires a verified Codex session")
+	}
+	if strings.TrimSpace(request.NativeSessionID) == "" || len(request.NativeSessionID) > 512 ||
+		len(request.Workspace) > 4096 || !filepath.IsAbs(request.Workspace) {
+		return nil, errors.New("invalid native Codex session context")
+	}
+	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
+	endpointName := strings.TrimSpace(request.EndpointName)
+	if endpointName == "" {
+		endpointName = filepath.Base(request.Workspace)
+	}
+	if endpointName == "." || endpointName == string(filepath.Separator) {
+		endpointName = "codex"
+	}
+	input := fabricpkg.NetworkJoinInput{
+		NetworkID:       strings.TrimSpace(request.NetworkID),
+		InvitationToken: strings.TrimSpace(request.InvitationToken),
+		OwnerJoinProof:  strings.TrimSpace(request.OwnerJoinProof),
+		Harness:         "codex", NativeSessionID: strings.TrimSpace(request.NativeSessionID),
+		EndpointName: endpointName,
+		Capabilities: map[string]any{"fabric_tools": true, "wake": "codex_queue", "local_peer_delivery": "sealed_v1"},
+	}
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	defer cancel()
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		b.baseURL+"/v2/fabric/node/networks/join", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+	response, err := client.Do(httpRequest)
+	if err != nil {
+		return nil, errors.New("could not reach the Hub for Network Join")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("Hub rejected Network Join with HTTP %d", response.StatusCode)
+	}
+	var joined fabricpkg.NetworkJoinResult
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2*1024*1024)).Decode(&joined); err != nil ||
+		strings.TrimSpace(joined.SessionToken) == "" || strings.TrimSpace(joined.Endpoint.ID) == "" ||
+		joined.NetworkID != request.NetworkID {
+		return nil, errors.New("Hub returned an invalid Network Join result")
+	}
+	return &joined, nil
+}
+
+func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
+	if request.Version != localJoinProtocolVersion || request.Operation != "network_renew" ||
+		request.NetworkID == "" || request.EndpointID == "" ||
+		strings.TrimSpace(request.Harness) != "codex" || harness.Canonical(request.Harness) != "codex" ||
+		request.NativeSessionID == "" || len(request.NativeSessionID) > 512 ||
+		len(request.Workspace) > 4096 || !filepath.IsAbs(request.Workspace) {
+		return nil, errors.New("invalid local Network Renew request")
+	}
+	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
+	input := fabricpkg.NetworkRenewInput{NetworkID: request.NetworkID, EndpointID: request.EndpointID,
+		Harness: "codex", NativeSessionID: request.NativeSessionID}
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	defer cancel()
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		b.baseURL+"/v2/fabric/node/networks/renew", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
+	response, err := (&http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(httpRequest)
+	if err != nil {
+		return nil, errors.New("could not reach the Hub for Network Renew")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("Hub rejected Network Renew with HTTP %d", response.StatusCode)
+	}
+	var renewed fabricpkg.NetworkJoinResult
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2*1024*1024)).Decode(&renewed); err != nil ||
+		renewed.SessionToken == "" || renewed.NetworkID != request.NetworkID ||
+		renewed.Endpoint.ID != request.EndpointID {
+		return nil, errors.New("Hub returned an invalid Network Renew result")
+	}
+	return &renewed, nil
+}
+
+func requestMachineAgentNetworkRenew(socketPath string, request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
+	if strings.TrimSpace(socketPath) == "" {
+		return nil, errLocalJoinBridgeUnavailable
+	}
+	connection, err := netDialLocalBridge(socketPath)
+	if err != nil {
+		return nil, err
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(35 * time.Second))
+	request.Version, request.Operation = localJoinProtocolVersion, "network_renew"
+	if err := json.NewEncoder(connection).Encode(request); err != nil {
+		return nil, errors.New("could not send Network Renew request to the local Node")
+	}
+	if unixConnection, ok := connection.(*net.UnixConn); ok {
+		if err := unixConnection.CloseWrite(); err != nil {
+			return nil, errors.New("could not finish local Network Renew request")
+		}
+	}
+	decoder := json.NewDecoder(io.LimitReader(connection, 2*1024*1024))
+	decoder.DisallowUnknownFields()
+	var response localJoinResponse
+	if err := decoder.Decode(&response); err != nil || response.Version != localJoinProtocolVersion {
+		return nil, errors.New("local Node returned an invalid Network Renew response")
+	}
+	if response.Error != "" {
+		return nil, errors.New(response.Error)
+	}
+	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" ||
+		response.NetworkJoin.NetworkID != request.NetworkID || response.NetworkJoin.Endpoint.ID != request.EndpointID {
+		return nil, errors.New("local Node returned an incomplete Network Renew result")
+	}
+	return response.NetworkJoin, nil
+}
+
+func requestMachineAgentNetworkJoin(socketPath string, request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, error) {
+	if strings.TrimSpace(socketPath) == "" {
+		return nil, errLocalJoinBridgeUnavailable
+	}
+	connection, err := netDialLocalBridge(socketPath)
+	if err != nil {
+		return nil, err
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(35 * time.Second))
+	request.Version = localJoinProtocolVersion
+	request.Operation = "network_join"
+	if err := json.NewEncoder(connection).Encode(request); err != nil {
+		return nil, errors.New("could not send Network Join request to the local Node")
+	}
+	if unixConnection, ok := connection.(*net.UnixConn); ok {
+		if err := unixConnection.CloseWrite(); err != nil {
+			return nil, errors.New("could not finish local Network Join request")
+		}
+	}
+	decoder := json.NewDecoder(io.LimitReader(connection, 2*1024*1024))
+	decoder.DisallowUnknownFields()
+	var response localJoinResponse
+	if err := decoder.Decode(&response); err != nil || response.Version != localJoinProtocolVersion {
+		return nil, errors.New("local Node returned an invalid Network Join response")
+	}
+	if response.Error != "" {
+		return nil, errors.New(response.Error)
+	}
+	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" || response.NetworkJoin.NetworkID != request.NetworkID {
+		return nil, errors.New("local Node returned an incomplete Network Join result")
+	}
+	return response.NetworkJoin, nil
+}

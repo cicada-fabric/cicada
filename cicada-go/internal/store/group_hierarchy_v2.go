@@ -42,10 +42,10 @@ func (s *Store) SetGroupParent(childID, parentID string, expectedVersion int64) 
 		return nil, err
 	}
 	defer tx.Rollback()
-	var owner, trustDomain, currentParent string
+	var owner, trustDomain, currentParent, childNetwork string
 	var version int64
-	err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id, parent_group_id, version FROM groups WHERE id = ?`, childID).
-		Scan(&owner, &trustDomain, &currentParent, &version)
+	err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id, parent_group_id, network_id, version FROM groups WHERE id = ?`, childID).
+		Scan(&owner, &trustDomain, &currentParent, &childNetwork, &version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrGroupNotFound
 	}
@@ -56,16 +56,16 @@ func (s *Store) SetGroupParent(childID, parentID string, expectedVersion int64) 
 		return nil, ErrVersionConflict
 	}
 	if parentID != "" {
-		var parentOwner, parentDomain string
-		err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id FROM groups WHERE id = ?`, parentID).
-			Scan(&parentOwner, &parentDomain)
+		var parentOwner, parentDomain, parentNetwork string
+		err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id, network_id FROM groups WHERE id = ?`, parentID).
+			Scan(&parentOwner, &parentDomain, &parentNetwork)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrGroupNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
-		if owner == "" || trustDomain == "" || owner != parentOwner || trustDomain != parentDomain {
+		if owner == "" || trustDomain == "" || owner != parentOwner || trustDomain != parentDomain || childNetwork != parentNetwork {
 			return nil, ErrGroupParentOwnerScope
 		}
 		var cycle int
