@@ -58,6 +58,18 @@ func TestClientDeviceEnrollmentExactAcceptedGrantRetrySurvivesExpiryAndRestart(t
 	if err != nil || initial.SessionEpoch != 1 || initial.KeyVersion != 1 {
 		t.Fatalf("initial enrollment failed: device=%+v err=%v", initial, err)
 	}
+	// v31 stored only whole seconds. The original signed grant may have been
+	// issued later inside that same accepted second; v32 must recover its exact
+	// bytes without pretending the old timestamp had finer precision.
+	legacyCreatedAt := issuedAt.Truncate(time.Second).Format(time.RFC3339)
+	if _, err := current.db.Exec(`UPDATE client_devices_v2 SET created_at=? WHERE owner_id=? AND device_id=?`,
+		legacyCreatedAt, input.OwnerID, input.DeviceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := current.db.Exec(`DELETE FROM client_device_enrollment_proofs_v2 WHERE owner_id=? AND device_id=?`,
+		input.OwnerID, input.DeviceID); err != nil {
+		t.Fatal(err)
+	}
 
 	// An independently authorized epoch advance must be reflected by recovery;
 	// replaying the enrollment grant must never recreate its original epoch.
@@ -84,6 +96,14 @@ func TestClientDeviceEnrollmentExactAcceptedGrantRetrySurvivesExpiryAndRestart(t
 		recovered.KeyID != initial.KeyID || recovered.KeyFingerprint != initial.KeyFingerprint ||
 		recovered.SessionEpoch != 2 || recovered.KeyVersion != 1 || recovered.Version != advanced.Version {
 		t.Fatalf("retry did not return the current persisted device binding: initial=%+v recovered=%+v", initial, recovered)
+	}
+	var recoveredEnrollmentAt string
+	if err := current.db.QueryRow(`SELECT enrolled_at FROM client_device_enrollment_proofs_v2
+WHERE owner_id=? AND device_id=?`, input.OwnerID, input.DeviceID).Scan(&recoveredEnrollmentAt); err != nil {
+		t.Fatal(err)
+	}
+	if recoveredEnrollmentAt != legacyCreatedAt {
+		t.Fatalf("legacy enrollment timestamp changed on proof recovery: got %q want %q", recoveredEnrollmentAt, legacyCreatedAt)
 	}
 
 	var nonceCount int

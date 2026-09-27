@@ -124,27 +124,27 @@ func (progress *mcpBroadcastProgress) apply(result groupBroadcastResult, offset 
 	if result.BroadcastID != progress.BroadcastID || result.GroupID != progress.GroupID ||
 		result.SnapshotDigest == "" || result.Offset != offset ||
 		result.RecipientCount < 0 || result.RecipientCount > mcpBroadcastMaxRecipients ||
-		result.NextOffset < offset || result.NextOffset > result.RecipientCount ||
+		offset < 0 || result.NextOffset < offset || result.NextOffset > result.RecipientCount ||
 		len(result.Recipients) != result.NextOffset-result.Offset ||
+		result.Complete != (result.NextOffset == result.RecipientCount) ||
 		(!result.Complete && result.NextOffset == offset) ||
 		(progress.SnapshotDigest != "" && progress.SnapshotDigest != result.SnapshotDigest) ||
 		(progress.SnapshotDigest != "" && progress.RecipientCount != result.RecipientCount) {
 		return errors.New("local Node returned inconsistent broadcast progress")
 	}
-	progress.SnapshotDigest = result.SnapshotDigest
-	progress.RecipientCount = result.RecipientCount
-	progress.NextOffset = result.NextOffset
-	progress.Complete = result.Complete
 	byEndpoint := make(map[string]groupBroadcastRecipientResult, len(progress.Recipients)+len(result.Recipients))
 	for _, recipient := range progress.Recipients {
-		if recipient.EndpointID == "" {
+		if !validBroadcastRecipientResult(recipient) {
 			return errors.New("durable broadcast recipient is invalid")
+		}
+		if _, duplicate := byEndpoint[recipient.EndpointID]; duplicate {
+			return errors.New("durable broadcast recipient is duplicated")
 		}
 		byEndpoint[recipient.EndpointID] = recipient
 	}
 	seenInBatch := make(map[string]struct{}, len(result.Recipients))
 	for _, recipient := range result.Recipients {
-		if recipient.EndpointID == "" || recipient.State == "" {
+		if !validBroadcastRecipientResult(recipient) {
 			return errors.New("local Node returned invalid broadcast recipient state")
 		}
 		if _, duplicate := seenInBatch[recipient.EndpointID]; duplicate {
@@ -152,14 +152,29 @@ func (progress *mcpBroadcastProgress) apply(result groupBroadcastResult, offset 
 		}
 		seenInBatch[recipient.EndpointID] = struct{}{}
 		previous := byEndpoint[recipient.EndpointID]
+		if previous.NodeID != "" && previous.NodeID != recipient.NodeID {
+			return errors.New("local Node changed a broadcast recipient Node")
+		}
 		if previous.MessageID != "" && recipient.MessageID != "" && previous.MessageID != recipient.MessageID {
 			return errors.New("local Node changed a broadcast recipient message ID")
 		}
+		// A later failure cannot disprove a prior transport acceptance, and a
+		// definite rejection of this attempt cannot resolve an older uncertain
+		// attempt. Only positive evidence for the stable child ID advances it.
+		if previous.State == "ACCEPTED" || (previous.State == "UNKNOWN" && recipient.State == "FAILED") {
+			continue
+		}
 		byEndpoint[recipient.EndpointID] = recipient
 	}
-	if len(byEndpoint) > mcpBroadcastMaxRecipients || len(byEndpoint) > progress.RecipientCount {
+	if len(byEndpoint) > mcpBroadcastMaxRecipients || len(byEndpoint) > result.RecipientCount {
 		return fmt.Errorf("broadcast recipient result exceeds immutable snapshot")
 	}
+	// Commit only after the entire batch validates. A malformed result must
+	// not change the durable retry cursor or any previously accepted child.
+	progress.SnapshotDigest = result.SnapshotDigest
+	progress.RecipientCount = result.RecipientCount
+	progress.NextOffset = result.NextOffset
+	progress.Complete = result.Complete
 	progress.Recipients = progress.Recipients[:0]
 	for _, recipient := range byEndpoint {
 		progress.Recipients = append(progress.Recipients, recipient)
@@ -168,6 +183,22 @@ func (progress *mcpBroadcastProgress) apply(result groupBroadcastResult, offset 
 		return progress.Recipients[i].EndpointID < progress.Recipients[j].EndpointID
 	})
 	return nil
+}
+
+func validBroadcastRecipientResult(result groupBroadcastRecipientResult) bool {
+	if result.EndpointID == "" || result.NodeID == "" {
+		return false
+	}
+	switch result.State {
+	case "ACCEPTED":
+		return result.MessageID != "" && result.FailureCode == ""
+	case "FAILED":
+		return result.MessageID == "" && result.FailureCode == "DELIVERY_REJECTED"
+	case "UNKNOWN":
+		return result.MessageID == "" && result.FailureCode == "DELIVERY_OUTCOME_UNKNOWN"
+	default:
+		return false
+	}
 }
 
 func (progress mcpBroadcastProgress) allAccepted() bool {

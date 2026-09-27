@@ -262,7 +262,7 @@ func (s *Store) RegisterClientDeviceFromOwnerGrant(input RegisterClientDeviceInp
 	}
 	grantDigest := sha256.Sum256(input.OwnerDeviceGrant)
 	grantDigestHex := hex.EncodeToString(grantDigest[:])
-	stamp := now()
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -335,6 +335,35 @@ WHERE owner_id = ? AND owner_key_id = ? AND nonce = ?`,
 		if nonceDeviceID != input.DeviceID || acceptedDigest != grantDigestHex {
 			return nil, ErrClientDeviceGrantReplay
 		}
+		// v32 preserves the exact original enrollment proof for later Node-side
+		// verification. Older devices have no stored bytes; only a byte-for-byte
+		// retry matching the original nonce digest can recover that evidence.
+		var storedProof []byte
+		var storedDigest, enrolledAt string
+		err = tx.QueryRow(`SELECT grant_bytes,grant_digest,enrolled_at
+FROM client_device_enrollment_proofs_v2 WHERE owner_id=? AND device_id=?`,
+			input.OwnerID, input.DeviceID).Scan(&storedProof, &storedDigest, &enrolledAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			enrolledTime, parseErr := time.Parse(time.RFC3339Nano, existing.CreatedAt)
+			if parseErr != nil {
+				return nil, ErrClientDeviceConflict
+			}
+			if _, verifyErr := e2ee.VerifyOwnerDeviceGrantAtRecordedEnrollment(input.OwnerDeviceGrant, ownerKey.Public,
+				input.DevicePublic, input.OwnerID, input.OwnerKeyID, input.DeviceID,
+				hubID, e2ee.OwnerDevicePurposeControl, enrolledTime); verifyErr != nil {
+				return nil, ErrClientDeviceConflict
+			}
+			if _, err := tx.Exec(`INSERT INTO client_device_enrollment_proofs_v2
+(owner_id,device_id,owner_key_id,grant_bytes,grant_digest,enrolled_at)
+VALUES(?,?,?,?,?,?)`, input.OwnerID, input.DeviceID, input.OwnerKeyID,
+				input.OwnerDeviceGrant, grantDigestHex, existing.CreatedAt); err != nil {
+				return nil, err
+			}
+		} else if err != nil {
+			return nil, err
+		} else if storedDigest != grantDigestHex || enrolledAt != existing.CreatedAt || !bytes.Equal(storedProof, input.OwnerDeviceGrant) {
+			return nil, ErrClientDeviceConflict
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -377,6 +406,13 @@ VALUES (?, ?, ?, ?, ?, ?)`, input.OwnerID, input.OwnerKeyID, grant.Nonce,
 		input.DeviceID, grantDigestHex, stamp)
 	if err != nil {
 		return nil, fmt.Errorf("consume owner device grant nonce: %w", err)
+	}
+	_, err = tx.Exec(`INSERT INTO client_device_enrollment_proofs_v2
+(owner_id,device_id,owner_key_id,grant_bytes,grant_digest,enrolled_at)
+VALUES(?,?,?,?,?,?)`, input.OwnerID, input.DeviceID, input.OwnerKeyID,
+		input.OwnerDeviceGrant, grantDigestHex, stamp)
+	if err != nil {
+		return nil, fmt.Errorf("persist exact Client enrollment proof: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

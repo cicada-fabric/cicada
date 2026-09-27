@@ -6,8 +6,8 @@
 >
 > 用户通过面板组织可嵌套 Group 和授权通信连线；同一 Thread 可加入多个 Group，Monitor 可选。Control 管理系统并服务用户，但不成为普通 Agent 消息的中转人。
 
-**文档版本：Architecture v2.1 — User-Defined Collaboration Graph & Single-Relay Transport**
-**修订日期：2026-09-23**
+**文档版本：Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport**
+**修订日期：2026-09-27**
 **文档性质：已采纳的目标架构、产品规范与实施约束；不是功能已经全部实现的声明。**
 **主要基线：此前的 `CICADA(4).md`，以及本次读取的现有仓库开发文档。**
 
@@ -84,7 +84,7 @@
 
 本次查阅的仓库 `CHANGELOG.md` 包含 `0.4.0-dev` 开发线，记录了 Session-first Endpoint、MCP、durable send/ask/reply 与本地/远端 Codex wake；`DEVELOPMENT.md` 描述 Go 核心；`docs/e2ee.md` 描述已有后量子 peer-link。这里只确认**文档中的声明**，没有据此宣称所有运行路径已通过本次实测。[S10][S11][S12]
 
-**Architecture v2.1 不是软件发行版本 2.1.0。** 实施代理不得因为替换此文件就修改发布标签、软件版本或宣称完成大版本发布。
+**Architecture v2.3 不是软件发行版本 2.3.0。** 实施代理不得因为替换此文件就修改发布标签、软件版本或宣称完成大版本发布。
 
 ### 0.2 规范优先级
 
@@ -96,6 +96,8 @@
 
 从“可寻址的 Thread 网络”扩展为“持久 Agent 的自治协作网络”，新增或正式化以下语义：
 
+- `Network`：受邀请、由单个权威 Hub 承载的租户与授权范围；一个 Hub 可承载多个 Network。Network 不是新的部署实体、参与者或全局社交目录。
+- `Group Journal / Discussion`：Agent 可按需将重要进展写入持久 Journal，或在有主题和回复的讨论区协作；普通消息不自动变成共享历史，讨论结案不等于 Task 验收。
 - `Principal / Membership / Group`：谁在行动、在哪个范围内行动、被授予什么权限。
 - `SessionBinding / SessionLease`：稳定身份如何绑定真实会话，谁拥有当前投递和恢复权。
 - `CommunicationLink / GroupGateway`：用户如何授权端点间的直达通信；Monitor 如何在需要时参与审阅，而不成为强制传话站。
@@ -109,6 +111,8 @@
 
 **升级组织模型，不等于把 CICADA 降级成只有消息和 Group 的基础库。**
 
+架构 v2.3 将 Network 定为 Group 之上的租户与授权边界，并为 Group 增加拟议的持久 Journal 与 Discussion 空间；这不改变物理 Node/Hub/Client 或逻辑 User/Control/Worker/Monitor 四类参与者。新增空间、授权重组及 M1–M5 均为目标，未因本文而实现；软件 `0.4.0-dev`、客户端 wire version 1 与已冻结的 v1.3 合同不变。
+
 ---
 
 <a id="chapter-01"></a>
@@ -117,7 +121,7 @@
 
 ### 1.1 为什么需要 CICADA
 
-同时使用多个 AI、项目和服务器时，人类往往被迫承担消息传递、机器选择、上下文重述、终端切换、状态检查、错误恢复、任务交接和结果核对。CICADA 的价值不是“运行更多 Agent”，而是减少这些低价值操作，让用户保留目标选择、重大风险判断和最终主权。
+同时使用多个 AI、项目和服务器时，人类往往被迫承担消息传递、机器选择、上下文重述、终端切换、状态检查、错误恢复、任务交接和结果核对。CICADA 的价值不是“运行更多 Agent”，而是减少这些低价值操作，让用户保留目标选择、重大风险判断和最终主权。受邀的 Network 可以让不同用户的 Agent 在窄范围内发现、私聊、广播和认领任务；它不是开放注册的公网社交网络，也不把成员可见性或操作权限默认扩散到整个 Network。
 
 衡量成功时，首先看人工复制粘贴次数、手动 SSH 次数、手动恢复次数、无效通知次数以及真实成果，而不是 Agent 数量、消息总量或消耗的 Token。
 
@@ -141,7 +145,7 @@
 
 ### 1.5 非目标
 
-CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局大脑；不要求所有任务都变成 DAG 工作流；不把“Agent 相互同意”视为事实；不发明密码学原语；不在第一阶段建设公共 Agent 社交网络、Kubernetes 平台、复杂移动客户端或三万 Agent 的生产集群。
+CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局大脑；不要求所有任务都变成 DAG 工作流；不把“Agent 相互同意”视为事实；不发明密码学原语；不建设无邀请的开放公网社交目录、Kubernetes 平台、复杂移动客户端或未经容量实测的超大规模集群。私有、明确加入且按 Network 隔离的 Agent 协作属于本架构目标；它不等于公共网络或全局发现。
 
 “跨厂商”是接口与架构目标，不意味着所有厂商具备完全相同的恢复、推送、鉴权和工具能力。
 
@@ -155,9 +159,9 @@ CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局�
 
 **物理部署视图只有三类抽象：Node、Hub、Client。** Node 承载原生 Thread、工作空间、本地适配器和按需常驻的 `cicada-node`；Hub 是各 Node 主动连接的公共中枢，组合部署 Control、Directory、Relay、面板服务和持久状态；Client 是用户操作入口，可以是浏览器、桌面、手机或 CLI。它们是部署职责，不强迫对应三台机器：一台电脑可以同时作为 Node 和 Client，测试环境也可以把 Hub 与 Node 同机部署。
 
-**逻辑协作视图只有四类顶层参与者：User、Control、Worker、Monitor。** User 持有最终授权；Control 是服务 User 的管理者；Worker 执行工作；Monitor 是可选的观察、评审或获授权代表角色。Worker/Monitor 是角色绑定，不是独立物理设备或固定进程；一个原生 Thread 在不同 Group 可具有不同角色，同组也可以没有 Monitor。
+**逻辑协作视图只有四类顶层参与者：User、Control、Worker、Monitor。** User 持有最终授权；Control 是服务 User 的管理者；Worker 执行工作；Monitor 是可选的观察、评审或获授权代表角色。Worker/Monitor 是角色绑定，不是独立物理设备或固定进程；一个原生 Thread 在不同 Group 可具有不同角色，同组也可以没有 Monitor。Network 是上述参与者行动时的租户范围，不是第五类参与者；NetworkAdmin 是附着于特定 Network 的可撤销权限 grant，不是新角色层级或全局经理。
 
-其余名词属于内部对象或服务职责，而不是第四种部署实体或第五种顶层参与者。Thread/Session 是运行时原生会话；Endpoint、Principal、Membership、SessionBinding、Group、CommunicationLink、Goal、Task、Artifact 等是身份、组织或工作对象；Directory、Relay、Guard、Runtime Adapter、状态存储等是 Node/Hub 内的服务职责。GroupGateway 若存在，只承载可选策略或审阅，不是强制转发跳点。
+其余名词属于内部对象或服务职责，而不是第四种部署实体或第五种顶层参与者。Thread/Session 是运行时原生会话；Endpoint、Principal、Network、NetworkMembership、Membership、SessionBinding、Group、CommunicationLink、Goal、Task、Artifact 等是身份、组织或工作对象；Directory、Relay、Guard、Runtime Adapter、状态存储等是 Node/Hub 内的服务职责。GroupGateway 若存在，只承载可选策略或审阅，不是强制转发跳点。
 
 逻辑角色不等于进程；服务职责不等于服务器；组织图不等于物理部署图。
 
@@ -172,7 +176,11 @@ CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局�
 | Control | 面向用户的管家与管理服务 | 所有 peer 消息的中转 Agent |
 | Principal | 可认证、可授权、可审计的稳定主体 | 显示名、模型名或 PID |
 | Agent | Agent 类型 Principal 及其持久身份/工作记录 | 每次临时模型调用 |
+| Network | 由一个权威 Hub 承载的私有租户、成员与策略范围；Hub 可以承载多个 Network | 全局开放目录、Hub 部署、成员自动可见 |
+| NetworkMembership | Principal 在特定 Network 内的有效成员关系与版本化 grants | 加入 Network 就加入所有 Group 或获得所有目录/消息权限 |
 | Group | 持久协作、发现、规则和上下文范围 | 仅一个聊天频道标签 |
+| Group Journal | 在明确 Group 范围持久记录少量重要进展、发现、决定与更正 | 全量原生 Thread 历史或正式 Approval |
+| Discussion | 有主题、回复、出处及状态的持久组内讨论 | 即时消息、Task 验收或事实投票 |
 | Membership | Principal 在 Group 内的成员与授权关系 | 永久拥有该组所有信息 |
 | Worker | 执行工作的逻辑角色 | 天然绑定唯一 Thread 的进程 |
 | Monitor | 观察、审阅、建议及获授权的组代表角色 | 全局管理员或安全防火墙 |
@@ -194,14 +202,15 @@ CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局�
 | Grant | 有发行者、范围、期限的授权 | 文本中的角色自称 |
 | Approval | 对具体动作的用户决策记录 | 可无限复用的一句“可以” |
 | Contact | 跨用户/域的受信任关系对象 | 发现即信任的公钥记录 |
+| NetworkAdmin | 对一个 Network 范围内成员、目录策略、任务发布和广播设置的有限 grant | User 设备所有权、原生历史/密钥访问、用户审批权或跨 Hub 管理权 |
 
 ### 2.3 几个特别重要的不等式
 
 ```text
-Thread ≠ Endpoint ≠ Principal ≠ Worker ≠ Monitor
+Thread ≠ Endpoint ≠ Principal ≠ Network ≠ Group ≠ Worker ≠ Monitor
 Node ≠ Hub ≠ Client（部署职责）
 User ≠ Control ≠ Worker ≠ Monitor（协作参与者）
-Group ≠ Goal ≠ Workspace ≠ Machine
+Network ≠ Group ≠ Goal ≠ Workspace ≠ Machine
 Control ≠ Relay ≠ Directory ≠ Guard
 Message ≠ Ask ≠ Task ≠ Artifact ≠ Event
 Lease ≠ Approval
@@ -252,6 +261,23 @@ Agent identity continuity ≠ Native context continuity
 | INV-30 | 用户注意力是首要产品指标；自治应减少干扰，而不是制造通知和协作风暴。 |
 | INV-31 | 同一 Node 的 Endpoint 消息不经中心 Relay；跨 Node 或跨用户的单条消息最多经过一个双方共同连接的 Hub Relay。 |
 | INV-32 | Hub 的 Control、Directory、Relay、数据库和反向代理均不得持有普通 peer 消息的解密私钥或获取正文；实际旧路径例外必须明确标为兼容缺口。 |
+| INV-33 | Network 是私有租户/授权范围，不是部署实体、全局目录或第五类参与者；一个 Hub 可承载多个 Network，每个 Network 只有一个权威 Hub。 |
+| INV-34 | 每个 Group 恰属一个 Network；嵌套只允许在同一 Network 内，父子关系不继承成员、目录、消息、任务、密钥或权限。 |
+| INV-35 | NetworkMembership、Group Membership、Endpoint 加入关系及 NetworkAdmin grant 各自独立、可撤销、带版本；加入 Network 不自动加入其 Group 或获得全网可见/广播权限。 |
+| INV-36 | Network discovery、EndpointCard 可见性、单播发送/接收、广播发送/接收分别授权；默认返回最小卡片并按授权过滤，歧义别名必须拒绝。 |
+| INV-37 | Network 业务对象、消息、授权和相关性使用明确的 Hub+Network scope；Hub 级设备/连接/登记使用独立 Hub+Owner scope，不用伪默认 Network 补齐；跨范围不得复用或推断授权。 |
+| INV-38 | 同一 Thread 可以在多个 Network 注册；完整地址至少为 (hub_id, network_id, endpoint_id)。Node 可有多条 Hub 连接，但本地同一 native Session 仅有一个有效投递 owner 和一个串行 writer。 |
+| INV-39 | 跨 Network 默认拒绝；允许时必须有双方 Endpoint/Network 范围的显式窄连线，两个 Network 的权威 Hub 必须相同且每条消息只经过该 Hub 一次；禁止隐式 Hub 间桥接。 |
+| INV-40 | NetworkAdmin grant 不拥有成员的设备、Endpoint 私钥、原生 Thread 历史、Workspace 或本地审批权，也不能替用户加入 Thread、批准操作或跨 Network 授权。 |
+| INV-41 | Network task offer 与 Group 内 Task 分离；认领只创建范围明确的责任交接，不授予发布者读取接收方私有 Group、上下文或 Artifact 的权利。 |
+| INV-42 | 外部 Agent 消息和 Task offer 不是用户命令；Monitor 自愿认领不构成用户批准，所有执行仍经现有 Guard、Action 与 Approval 检查。 |
+| INV-43 | 多 Network 共用一个 Thread 时显示共享原生上下文风险；敏感 Network 可要求专用 Thread。撤权阻止后续操作，但不承诺擦除已接收消息或模型记忆。 |
+| INV-44 | Client 多 Hub/Network 操作显式绑定当前 Hub 与 Network；每 Hub 独立 pin、设备身份、密钥、session 与计数器，不能自动把身份/Group key/信任带到另一 Hub。 |
+| INV-45 | 即时消息、Group Journal、Discussion、Task、Evidence 与 Approval 的持久性和效力各异；模型可选择何时发送、记录或提议，但其文本和讨论结案不授予执行权、不证明结果。 |
+| INV-46 | Journal/Discussion 的作者来自当前认证 Endpoint；每条读写、分页、引用及补读按 Hub+Network+Group+对象和当前授权校验。已有成员断线后的补读可使用其有效历史权限；新成员加入前的历史必须另获明确范围授权。 |
+| INV-47 | Group 共享正文只能由授权 Endpoint 解密，Hub 存密文及必要的有限元数据；Endpoint key grant 不等于共享内容密钥。读者变化不得自动分发旧密钥、旧历史或扩展 Evidence/Artifact 读取权。 |
+| INV-48 | Monitor 的分组建议不改变拓扑；执行须有精确、可撤销的委托和版本比较/审计，不能自授权、扩大读者、复制旧 key 或迁移原生 Thread 的本地 writer。 |
+| INV-49 | Journal/Discussion 的更新通知是有界游标提示，不携带正文、不默认唤醒模型；这不改变现有即时消息的投递语义。 |
 
 ---
 
@@ -322,6 +348,18 @@ Node A             Node B
 
 Hub 是部署边界名称，不是让 Control 参与普通 peer 消息的业务组件。第一阶段允许模块共进程、服务同机，不要求微服务集群。必须支持在测试中不启动 Control 业务模块而单独运行 Fabric。两个 Node 不需要互通，也无需允许 Hub 主动拨入 Node；只要双方能主动连接同一个 Hub 即可跨节点投递。若没有任何共同可达的 Hub，也无法直连，就不能宣称消息可达。共用进程被整体杀死时 Fabric 也会停，这不违反逻辑独立。
 
+一个 Hub 可以托管多个相互隔离的 Network；每个 Network 固定一个权威 Hub，Network 不是 Hub 集群或跨 Hub 复制层。Node 可为自己加入的 Network 主动连接一个或多个 Hub，但每个连接具有独立凭据、订阅、重放水位和授权缓存。Node 上只有一个受控本地投递 owner 能写入某个原生 Thread；来自不同 Hub 的请求须在本地统一 Guard 后排队给同一 writer，不能让 Hub 直接争抢 Runtime。
+
+    Hub X
+      ├─ Network alpha (authoritative Hub X)
+      ├─ Network beta  (authoritative Hub X)
+      └─ Network team  (authoritative Hub X)
+
+    Hub Y
+      └─ Network private (authoritative Hub Y)
+
+网络之间没有默认桥接。跨 Network 连线只在双方有明确授权且这些 Network 的权威 Hub 是同一个时才可路由；不能把 Hub X → Hub Y 当作“一个共同 Hub Relay”。
+
 ### 4.4 服务之间的依赖方向
 
 ```text
@@ -336,6 +374,10 @@ Optional GroupGateway -> Coordination + Policy（仅获授权的审阅/策略，
 ```
 
 Fabric 核心包不得 import Control 的意图理解、规划、自然语言汇报模块。共享的类型和存储接口应下沉到无业务循环的包，不能把 Control 改名叫 Fabric 后继续承载所有逻辑。
+
+### 4.5 Network 是 Hub 内的租户边界
+
+Network 记录其 `network_id`、权威 `hub_id`、状态、版本、管理 grant、默认可发现策略、保留规则和密钥/重放范围。Hub 的认证与授权在接入请求时确定 Network scope；不能依赖客户端传入的 `network_id` 作为授权证明，也不能因同一数据库、Control 管理界面或网络名相同而共享对象。新安装可创建一个私有默认 Network；加入额外 Network 必须显式发生。
 
 ---
 
@@ -365,7 +407,7 @@ flowchart LR
     G2[Group B] --> M2
 ```
 
-一个 Principal 和同一个真实原生 Thread 都可以参加多个 Group。Thread/Endpoint/SessionBinding 保持一个稳定身份；Principal 的 Group Membership 与具体 Endpoint 的 Group 加入关系分别记录，两者都有效才允许该 Thread 在该 Group 行动，不为每个 Group 虚构一个新的 native session。发送和接收必须绑定选定的 Endpoint-Group 关系、Principal Membership、连线权限、版本及实际 Endpoint；没有唯一且已授权的范围时返回歧义或拒绝。多个 Group 共用同一个模型记忆，不能通过切换 `group_id`、换一套密钥或提示词声称上下文隔离。敏感 Group 可以要求专用 Thread 与独立 sandbox。
+一个 Principal 和同一个真实原生 Thread 都可以参加多个 Group，也可以分别注册到多个 Network。Thread/Endpoint/SessionBinding 保持一个本地稳定身份；Hub 侧的地址至少为 `(hub_id, network_id, endpoint_id)`，跨 Hub 注册使用各 Hub 自己的 Network-scoped Endpoint 凭据，不要求可公开关联的全局 Thread ID 或自动共享 Owner 真实身份。Principal 的 NetworkMembership、Group Membership 与具体 Endpoint-Group 加入关系分别记录；这些关系均有效才允许该 Thread 在该 Group 行动，不为每个 Network 或 Group 虚构 native session。发送和接收必须绑定所选 Hub、Network、Endpoint-Group 关系、Principal Membership、连线权限、版本及实际 Endpoint；没有唯一且已授权的范围时返回歧义或拒绝。多个 Network/Group 共用同一个模型记忆，不能通过切换 ID、换一套密钥或提示词声称上下文隔离。敏感范围可以要求专用 Thread 与独立 sandbox。
 
 ### 5.3 角色不是身份等级
 
@@ -391,6 +433,12 @@ Endpoint 可以指向单个工作会话，也可以是稳定的 Monitor 角色�
 
 不得把后两种显示成“原会话完整恢复”。持久 ID 解决的是身份连续性，不是神奇的模型记忆迁移。
 
+### 5.6 NetworkMembership 与 NetworkAdmin
+
+`NetworkMembership` 至少绑定 `network_id`、Principal、状态、revision、邀请/策略来源和明确 grants。它允许主体处于该 Network 的成员集合中，不推出加入任何 Group，也不自动允许读取 Network 目录、发私信、接收广播或认领任务。授权按本次操作的资源范围求交：Group 内操作要求对应 Group/Endpoint Membership；Network directory、Network direct message 或 Task offer 可以依 Network-scoped grant 进行，不虚构共同 Group，但不得读取目标私有 Group、原生历史或未分享 Artifact；跨 Network 操作另需显式双方 Link 和共同 Hub。
+
+`NetworkAdmin` 是一组 Network-scoped 管理 grant 的便捷名称，最小职责可以包括发邀请、撤销 NetworkMembership、维护目录公开策略、发布/关闭 Task offer 和配置 Network 广播。它不增加新的 Principal kind、参与者或全局 Control。管理员不能替 Thread owner 完成本地 Join、读取其原生历史/Workspace/私钥、批准具体用户操作、强制广播给拒收者，或把成员任意移入其他 Network。权限可拆分、版本化和撤销。
+
 ---
 
 <a id="chapter-06"></a>
@@ -401,12 +449,16 @@ Endpoint 可以指向单个工作会话，也可以是稳定的 Monitor 角色�
 
 Group 是用户可在面板上创建和嵌套的持续协作范围，包含成员、可发现能力、共享任务、事件索引、资源规则、上下文规则和消息可见性；Monitor/代表是可选配置。它可以围绕项目、专业能力、短期任务或个人工作域建立。单个 Thread 可以加入多个 Group，面板显示同一 Endpoint 的多条 Membership 边，不复制会话身份。
 
+每个 Group 必须且只属于一个 Network，并有权威 Network/Hub 作用域。不同 Network 的 Group 不能组成同一父子树；跨 Network 组织或协作必须用独立的显式 Link/Task handoff 表达。Group 仍是实际成员、上下文、Task 和普通广播的主要范围，Network 只提供 tenant 身份、管理、经授权目录/Task offer 等上层能力，不自动扩大 Group 可见性。
+
 Group 不必绑定唯一 Goal。一个 Goal 可以由多个 Group 协作完成；一个长期专家 Group 可以服务多个 Goal；Fabric-only Group 可以没有 Goal。用 `GoalGroupBinding` 表示范围和预算，不把 Group 强制塞入单一 Goal 树。
 
 ### 6.2 GroupRecord 的最小语义
 
 ```yaml
 group_id: grp_kernel
+network_id: net_personal
+hub_id: hub_local
 owner_principal_id: human_owner
 trust_domain_id: domain_personal
 name: kernel-optimization
@@ -436,6 +488,12 @@ Group 至少拥有 Membership、角色绑定、Policy、共享 Task 索引、Art
 
 Group Event Log 不应默认保存全部原生会话历史。只记录已获授权的协作事件与必要引用；需要原始日志时按权限查询来源。
 
+拟议的 **Group Journal** 与 **Discussion** 是与 Event Log、即时消息分离的持久协作空间。Agent 在授权内自行决定何时发送即时消息、追加一条重要 Journal checkpoint，或创建主题/回复；不把所有对话自动写成 Journal。Journal 更正以关联的新记录追加；Discussion 的 resolved/reopened 只改变讨论状态，不代表 Task 完成、证据验真或用户批准。每条记录绑定唯一 `(hub_id, network_id, group_id)`、稳定 ID、可信 Endpoint 作者、单调组内序号/版本、幂等 ID、密文摘要、必要的父记录/更正引用和独立鉴权的 Evidence 引用。重复同一 ID 与内容返回原结果，不同内容冲突。
+
+正文由获授权 Endpoint 使用经审查的 NIST 加密方案封装，Hub 只保存密文及授权、顺序和保留所需的有限元数据；不建立 Hub 明文索引或复制原生 Thread 全文。具体逐读者封装或群内容密钥方案须在 M2 独立设计与验证，Endpoint 公钥授权证明不自动成为 Group 内容密钥。正文、读者扇出、页大小、保留期和通知队列都要有明确上限；这些接口目前均为 **PROPOSED**，不是现有 v1.3 能力。
+
+Hub 可见索引只使用密文摘要；短正文的裸哈希可被字典猜测，如需明文摘要只能放入加密认证内容，不作为 Hub 索引。
+
 ### 6.4 Group 生命周期
 
 ```text
@@ -451,9 +509,9 @@ DRAFT -> ACTIVE -> QUIESCING -> ARCHIVED
 
 ### 6.5 成员和上下文边界
 
-Membership 至少包含 Principal、Group、状态、角色、授权引用、生效与失效时间、修订号。加入需要有效邀请或既有明确授权；自称“我属于该组”无效。
+Membership 至少包含 Principal、Network/Group、状态、角色、授权引用、生效与失效时间、修订号。NetworkMembership 与 Group Membership 是两个关系：前者不能自动产生后者。加入需要有效邀请或既有明确授权；自称“我属于该组”无效。
 
-新成员默认看加入后允许可见的协作记录；历史信息访问需要历史访问策略。成员离开后不能继续获得新消息和新解密材料。已经阅读的数据无法靠撤权从对方记忆中抹除。
+现有成员临时断线后，在原授权和保留范围仍有效时可从自己的 `read_from_seq` 起点按游标补读已获准的记录，不必为每次补读重新审批。新成员的起点默认是加入时的 cutoff，只看此后被授权的记录；加入前的 Journal、Discussion 与关联历史须有单独、明确范围和时间窗口的历史 grant，不能因加入或拿到新 key 自动解密旧内容。成员离开后不能继续获得新消息和新解密材料。已经阅读的数据无法靠撤权从对方记忆中抹除。
 
 ### 6.6 Group 的隔离等级必须诚实声明
 
@@ -469,7 +527,7 @@ Membership 至少包含 Principal、Group、状态、角色、授权引用、生
 
 拆分/合并是管理操作，不是修改 `group_id` 字符串。需要重新确认 Membership、活跃 Task、Artifact 访问和代表关系；按批准后的迁移计划逐步迁移，保留旧 ID 的历史归属。
 
-Group 可以嵌套，形成用于面板和管理的有向无环组织关系；必须拒绝循环。父子关系本身不继承 Membership、消息可见性、Artifact 读取、通信连线或密钥。用户可通过经过授权和版本检查的面板操作，明确为子组配置成员、连线与策略。跨用户共用 Group 也必须按参与者和 Endpoint 明确授权，不能因为 Group 被拖入同一图中就开放对方的全部 Node/Thread。
+Group 可以在同一 Network 内嵌套，形成用于面板和管理的有向无环组织关系；必须拒绝循环。不同 Network 的 Group 不能以 parent/child 方式关联。父子关系本身不继承 Membership、消息可见性、Artifact 读取、通信连线或密钥。用户可通过经过授权和版本检查的面板操作，明确为子组配置成员、连线与策略。跨用户共用 Group 也必须按参与者和 Endpoint 明确授权，不能因为 Group 被拖入同一图中就开放对方的全部 Node/Thread。
 
 ---
 
@@ -485,10 +543,11 @@ Group 可以嵌套，形成用于面板和管理的有向无环组织关系；�
 
 ```text
 正常启动原生会话 -> 正常工作 -> 明确 Join
+-> 选择并验证 Hub/Network 邀请或加入策略 -> Thread owner 明确确认
 -> 验证当前原生会话 -> 确认目标 Group 与访问范围
 -> 建立/复用 Principal -> 创建/复用 Endpoint
--> 建立/复用 SessionBinding -> 建立该 Endpoint 的 Group 加入关系
--> 校验 Principal Membership 与 Group 策略 -> 返回 Network Card
+-> 建立/复用 NetworkMembership、SessionBinding 与 Endpoint-Group 关系
+-> 校验 NetworkMembership、Principal Membership 与 Group 策略 -> 返回受限 Network Card
 ```
 
 `@cicada join` 是统一产品心智模型；具体入口取决于 Harness 已验证的插件/Skill/MCP 能力，不能假定每个 CLI 都天然识别同一种语法。
@@ -497,13 +556,13 @@ Group 可以嵌套，形成用于面板和管理的有向无环组织关系；�
 
 Adapter 应通过原生可靠接口识别当前 session、Workspace 和运行环境。存在显式 workspace 默认 Group 时可以使用该默认值，并展示实际加入范围；没有默认值且存在歧义时需要选择，不能猜测。
 
-新用户可以在明确 enrollment 流程中建立个人默认 Group。不能把所有历史 Endpoint、工作区和敏感项目未经审核塞进一个“默认组”。
+新安装可在明确 enrollment 流程中建立一个私有默认 Network 和默认 Group；这只是便于开始的配置，不把历史 Thread/Workspace 加入其中，也不自动授予全网可见性。不能把所有历史 Endpoint、工作区和敏感项目未经审核塞进一个“默认组”或 Network。
 
 ### 7.3 Join 必须幂等
 
-相同经过验证的会话重复加入同一 Group，应返回现有 Endpoint、SessionBinding 和 Endpoint-Group 关系，而不是重复注册两个发送者。加入第二个 Group 只新增受权关系，不复制 Endpoint 或清空原会话。不同 Session 不能仅凭同一工作目录或显示名被误认成同一个 Endpoint。
+相同经过验证的会话重复加入同一 Hub/Network/Group，应返回该范围内原 Endpoint/成员/加入关系，而不是重复注册发送者。用户可以预先授权明确的、限定 Hub/Network/Group scope 的 Join policy，使符合条件的幂等重试不需每次重复确认；首次加入或扩大 scope 仍须依该 policy 的授权主体确认。加入第二个 Group 或 Network 只新增经授权的作用域注册，不复制 native session 或清空原会话。跨 Hub 使用各自的 Endpoint 注册和凭据；同一个 Thread 的本地 Node 关联负责映射至同一个 SessionBinding writer。不同 Session 不能仅凭同一工作目录或显示名被误认成同一个 Endpoint。
 
-Join 与成员授权写入成功但绑定未完成时，应进入可诊断的 `JOINING/UNBOUND`，不得提前宣称可被精确唤醒。
+Network 邀请/成员批准、Thread owner 本地确认和 SessionBinding 是独立步骤。任一步未完成时应进入可诊断的 pending/unbound 状态，不得提前展示为可见、可消息或可唤醒。管理员批准网络成员不能代替 Thread owner Join。
 
 ### 7.4 Adopt 不夺走用户的会话
 
@@ -513,7 +572,9 @@ Join 与成员授权写入成功但绑定未完成时，应进入可诊断的 `J
 
 ### 7.5 Leave、Suspend 和 Revoke 的区别
 
-`Leave(group)` 只退出当前 Group；`Leave all` 才使 Endpoint 整体退出网络；`Suspend` 是暂时停止某类协作；`Revoke` 是授权主体强制撤销访问。三者都不自动删除用户本地 Thread 或 Workspace。一个 Thread 的 Group A 权限被撤销，不应误伤它在 Group B 的独立授权；但相应缓存、待投递消息和解密材料必须更新。
+`Leave(group)` 只退出当前 Group；`Leave(network)` 撤销该 Network 的成员/Endpoint 注册；`Leave all` 才使 Endpoint 整体退出已加入网络；`Suspend` 是暂时停止某类协作；`Revoke` 是授权主体强制撤销访问。上述操作都不自动删除用户本地 Thread 或 Workspace。一个 Thread 的 Group A 或 Network A 权限被撤销，不应误伤它在 Group B/Network B 的独立授权；但对应缓存、待投递消息和解密材料必须更新。
+
+Network 撤权由其权威 Hub 与 Node 投递 Guard 在各自检查点重新核验；可连通的检查点拒绝后续发现、发送、接收和任务操作。离线 Node 无法确认最新授权时必须 fail closed 或遵循明确且有期限的授权缓存策略；系统不承诺网络分区期间全局瞬时撤权，也不声称删除已传出的消息、缓存正文或接收者原生上下文。
 
 对于消息：新请求拒绝；已接受但未执行请求重新检查权限；历史结果保留审计；未发送回复是否允许完成由请求关闭策略决定。对于运行 Task：明确继续、交接、取消或等待，而不是把 Task 留成永久 RUNNING。
 
@@ -525,25 +586,29 @@ Join 与成员授权写入成功但绑定未完成时，应进入可诊断的 `J
 
 ### 8.1 两种地址
 
-内部使用稳定 `principal_id`、`endpoint_id` 和 `group_id`。外部可显示 `benchmark@gpu2:/workspace/lewm`，但这个 locator 可变且可能敏感。
+Hub 内部使用稳定 `principal_id`、`network_id`、`endpoint_id` 和 `group_id`。跨 Hub 地址至少为 `(hub_id, network_id, endpoint_id)`；跨 Hub Endpoint ID 不提供可公开关联身份。外部可显示 Network/Group scoped alias，但机器、workspace locator 可变且可能敏感。
 
-推荐人类解析上下文：`group/member`；兼容旧的 `name@machine:workspace`。跨用户显示使用经过脱敏的别名，不默认泄露真实主机名、绝对路径或本地用户名。
+推荐人类解析上下文：`hub/network/group/member`；兼容旧的 `name@machine:workspace` 仅用于已有本地显示。跨用户/Network 显示使用经过授权的脱敏别名，不默认泄露真实 Owner 身份、主机名、原生 Thread ID、绝对路径或本地用户名。
 
 ### 8.2 解析规则
 
-先做授权过滤，再依次尝试稳定 ID、完全限定地址、Group 内别名和当前允许范围内的唯一别名。多结果返回 `AMBIGUOUS`，不允许模型或服务静默选“看起来像”的目标。
+先验证 Hub 与 Network scope 和当前授权，再依次尝试稳定的 scope-local ID、完全限定地址、Group 内别名和当前允许范围内的唯一别名。昵称不是稳定身份；即使两个对象都可见，只要昵称在所选范围不唯一就返回 `AMBIGUOUS`，不允许模型或服务静默选“看起来像”的目标。
 
 对未授权调用者可统一返回 `NOT_FOUND_OR_NOT_AUTHORIZED`，避免通过错误信息枚举私有 Group 或 Endpoint。具备审计权限的用户可另查内部拒绝原因。
 
 ### 8.3 发现范围
 
-Agent 默认只发现自己已加入 Group 的授权成员与能力，以及显式通信连线许可暴露的外部 Endpoint Card。跨组或跨用户发现不因父子 Group、Contact、同一 Hub 或同一面板而公开所有内部 Thread；目标可仅展示经过对方授权的别名、能力和可连状态。一个 Thread 加入多个 Group 时，解析必须携带选定范围或返回歧义，不能由模型猜测要用哪组身份。
+NetworkMembership 不等于 Network-wide discovery。Agent 默认只发现当前已加入 Group policy 授权的成员与能力，以及显式 Link/独立 grant 许可暴露的最小 EndpointCard；Network 级目录同样按 `directory.discover` 授权过滤。私聊发送/接收、Network 广播发送/接收是不同 grant；“发现了卡片”不授予发送权，“Network 内成员”不表示其所有 Group/Thread 可见。卡片只可带 scope-local alias、经批准的能力、可用状态新鲜度和受限联系入口，不含 workspace/path、原生历史、私密 Task 或身份材料。跨组/跨用户发现不因父子 Group、Contact、同一 Hub 或同一面板而公开所有内部 Thread。一个 Thread 加入多个范围时，解析必须携带 Hub/Network/Group 或 Link scope，不能由模型猜测要用哪组身份。
 
 这减少全局信息暴露和不必要候选，但**不保证实际通信复杂度自动从 O(N²) 变成 O(N)**。消息规模取决于工作负载、广播、跨组请求比例与事件订阅，需要测量。
 
-### 8.4 GroupCard 与 Capability
+### 8.4 NetworkCard、EndpointCard 与 Capability
 
-GroupCard 应包含稳定组 ID、版本、所有者信任域、代表端点、允许公开的能力、输入/输出契约、可用性时间戳和安全配置摘要。能力描述是声明，不是权限，也不是正确性证明。
+NetworkCard 是进入特定 Network 后的最小范围说明：权威 Hub、Network 标识/别名、当前成员/Group 入口、调用者可用的动作和策略摘要。它不枚举无授权成员，也不含密钥、Owner 私有身份或跨 Network 图。EndpointCard 只在对应目录/Link grant 允许时返回，默认字段限于 scoped alias、获准公开的 capability、带新鲜度的可用状态与有限联系方式。
+
+Network 名称或成员身份不会自动授予私聊、广播或任务读取权。Directory 查询先校验 `directory.discover`，Message 路由分别检查 `message.send`/`message.receive`，广播分别检查 `message.broadcast`/`broadcast.receive`，Task offer 的列出、认领和结果读取也分别授权。能力字段仅用于发现与匹配，不成为执行权限。
+
+GroupCard 应包含稳定组 ID、Network scope、版本、所有者信任域、代表端点、允许公开的能力、输入/输出契约、可用性时间戳和安全配置摘要。能力描述是声明，不是权限，也不是正确性证明。
 
 Capability 可以关联已验证测试、硬件特征与证据更新时间。Agent 自称“精通 CUDA”不应自动进入可信专家名单；推荐排序可以利用历史证据，但不得自动授予更高权限。
 
@@ -574,6 +639,8 @@ Control 不理解这条消息，Monitor 不必转述这条消息，用户不必�
 
 Agent 可以自行决定何时询问同组专家、共享某条发现、申请一个 Task 或检查结果。服务验证其具体权限、预算和资源边界；权限内不要求每一次 `send/ask/reply` 都让用户审批。
 
+同样，Agent 可选择将值得长期共享的进展追加到 Journal，或在 Discussion 主题中征求意见；这两种持久写入均须经独立的 Group 写权限、内容限额和当前 Guard。写入不使其判断自动成为事实、Task 结果或 Approval。
+
 Agent 不得自行授予角色、邀请外部成员、扩大 Group 明文范围或申请无上限的子 Agent。希望改变拓扑时产生 `ManagementProposal`，由既有管理策略执行或升级给 Control。
 
 ### 9.3 对话不必变成任务
@@ -581,6 +648,8 @@ Agent 不得自行授予角色、邀请外部成员、扩大 Group 明文范围�
 一句“你测过这个参数吗”可以只是 Ask；一条“已发现 ABI 冲突”可以只是 Send。只有需要持久责任、重试恢复、完成判断或共享资源协调时才创建 Task。
 
 任务依赖可以是 DAG，但对话可以循环、反复讨论或产生修正。不要用 Task 图强行限制所有人类式交流，也不要反过来用聊天记录代替 Task 所有权。
+
+即时 Message/Ask/Reply 解决投递与问答；Journal 保留少量可追踪的重要 checkpoint；Discussion 保留主题与回复。三者分别选择、分别授权，不因为 Agent 发了一条即时消息就自动公布为持久 Group 历史。
 
 ### 9.4 单播、广播与可见性
 
@@ -591,6 +660,12 @@ Agent 不得自行授予角色、邀请外部成员、扩大 Group 明文范围�
 Monitor 可订阅获准的轻量事件，只有明确获授阅读范围时才可读正文。同一 Thread 的多组成员身份不自动把 A 组消息复制到 B 组历史。广播需有接收者数量上限、队列背压、限速和失败逐人可见状态，不能因部分成功就报告全员已收到。
 
 敏感请求可以收窄可见范围，UI 必须明确“谁能阅读”。同组并不意味着所有私有文件和历史原生会话都自动公开。
+
+#### Network 级直接互动、广播与 Task offer
+
+Network 级私聊/目录/广播不是把 Group 权限升成全网权限。两端 Endpoint 必须各自在该 Network 有效注册，且单播发送者与接收者、广播发布者与每个接收者分别满足当前授权。Network 广播固定一个 Network、一次获准接收者快照和每个接收者独立 Delivery；成员可以按 Network policy 拒收，父子 Group 不自动收到。接收者资格、是否被唤醒和是否能读取历史分别处理。
+
+团队可发布有限的 Network Task offer，供授权发现者自愿认领。Offer 只暴露经批准的标题、范围、输入要求、验收条件摘要、截止时间和结果回传契约；不会暴露发布者私有 Group 或完整对话。Claim 使用原子状态与版本，成功后创建带来源/期限/允许输出字段的 Task handoff。领取者可在自己原有小 Group 中协作，发布方只能收到合同允许的结果和证据引用。Monitor 可以主动认领，但须另有 task-claim/执行授权；这不赋予发起方读取其小 Group 的权限，也不替用户批准执行或外部副作用。Task offer 和消息广播均视为低信任输入。
 
 ### 9.5 何时不需要协作
 
@@ -618,6 +693,8 @@ source_endpoint_id: ep_a
 target_endpoint_id: ep_b
 source_group_id: grp_a
 target_group_id: grp_b
+source_network_id: net_alpha
+target_network_id: net_alpha
 direction: bidirectional
 actions: [send, ask, reply]
 data_scope: [benchmark.public_result]
@@ -631,6 +708,8 @@ state: ACTIVE
 
 以上是目标契约示例，不是当前 API。源/目标 Group 表示该消息使用的两个明确加入关系；同一个 Endpoint 在多个 Group 中时不能靠模型自填 `group_id` 换取权限。服务从可信会话绑定与用户选择的连线推导身份，验证双方 Principal Membership、Endpoint-Group 加入、连线方向、scope、期限、修订与撤销状态。若多个有效范围都能匹配，返回歧义，让用户或可信本地策略选定。跨用户连线须由双方用户授权，不能由一方拖动对方的 Endpoint 自动生效。
 
+跨 Network 连线额外固定 source/target Network、两个 Network 的权威 Hub、双方 Endpoint/Network 的授权引用和各自政策版本。双方 Endpoint owner/授权主体同意且两个 Network 的策略均允许后才生效；NetworkAdmin 不能代替 Endpoint owner 批准。两个 Network 必须由同一个 Hub 承载，消息只经过该 Hub 一次；若权威 Hub 不同，当前模型明确拒绝跨 Network 路由，不尝试 Hub-to-Hub forwarding。已有跨用户 Link 与跨 Network Link 的条件是分别满足，而不是相互替代。
+
 ### 10.3 每条消息的物理路径
 
 ```text
@@ -642,6 +721,8 @@ state: ACTIVE
 同 Node 的在线快路径允许发送方本地 MCP 适配器在验证目标绑定和连线授权后直接调用官方 `codex queue --thread`，不强制通过常驻 Node 进程；本地持久 outbox/inbox、去重、撤销检查及不确定注入状态仍不可省略。其他用户的 Thread 即使共用一台机器，也须满足双方身份、授权和端点加密边界。Node 只建立出站 HTTPS 持久连接；Hub Relay 沿已有连接发 wake hint，消息正文由目标 Node 领取。Hub 不必也不能依赖向 Node 建立入站连接。
 
 每条跨节点消息只能选择一个共同可达的 Hub；不能串联“发送方 Hub → 接收方 Hub”。拥有不同 Home Hub 的用户如要通信，双方必须额外连接同一个选定 Hub，或者使用真实可达的直连路径。没有共同可达的传输就报告不可达；短暂离线则在选定 Hub 的 durable mailbox 中等待，不能把无路由说成已投递。
+
+跨 Hub 的同一 Thread/Endpoint 通过 scoped 注册分别连接各 Hub；完整地址带 `(hub_id, network_id, endpoint_id)`。Node 持有各 Hub 独立的凭据和状态，在本地完成多条连接入队、撤销重验、去重和有界调度，然后交给唯一 SessionBinding owner 的串行 writer。Hub 不可写入 Node 本机 SessionBinding，也不可彼此传递 Node credential、密钥或消息。
 
 ### 10.4 Monitor 与 GroupGateway 是可选策略
 
@@ -657,7 +738,7 @@ Ask 仍持久返回 `request_id`，B 的 reply 必须回到发起它的 A 原生
 
 撤销连线、Group 加入关系或 Contact 信任后，新消息拒绝；已排队消息在实际投递前重查有效版本和范围，不能因入队时有效而绕过撤销。变更 Group 嵌套只改变组织关系，不自动更改子组授权。离线 Endpoint 的消息按截止时间排队；可选 Monitor 离线不阻塞没有审阅要求的直接连线。只有明确要求其审阅的连线进入等待审阅状态，不能悄悄改为另一个审阅者。
 
-面板在连接前展示双方、方向、可传数据、有效期、谁能读取以及所选 Hub；成功提交后显示真实状态和撤销入口。UI 不能把画线动作当作“用户已批准任意后续外部操作”，也不能把隐藏对象拖入同组就视为获得密钥或全部历史。
+面板在连接前展示双方、Hub/Network/Group scope、方向、可传数据、有效期、谁能读取以及所选 Hub；成功提交后显示真实状态和撤销入口。UI 不能把画线动作当作“用户已批准任意后续外部操作”，也不能把隐藏对象拖入同组就视为获得密钥或全部历史。
 
 ---
 
@@ -714,6 +795,10 @@ confidence_label: supported_by_attached_evidence
 
 层级 Monitor 仅用于有限的信息聚合与复核。它们不是无限递归的行政层级，也不能在层层摘要中删除原始证据指针。
 
+### 11.6 分组建议与受委托执行
+
+Monitor 可以建议拆分 Group、将工作移入更小范围，或调整协作拓扑；建议本身没有执行效力。执行仅在已有用户/Owner 授予的精确、可撤销委托覆盖该 Network、Group、操作、限额与期限时允许，服务端从认证 Endpoint 取得 actor，并对相关拓扑版本执行原子比较、记录审计。陈旧版本冲突，不部分应用。Monitor 不能给自己授权、把 Discussion 的 resolved 当作审批、悄悄增加读者、复制旧历史密钥或把原生 Thread 的本地 writer 迁走。扩大历史/读者范围需要独立的有权用户决策；同一 Thread 多 Group 的模型记忆风险仍须告知用户。
+
 ---
 
 <a id="chapter-12"></a>
@@ -764,6 +849,8 @@ Goal: DRAFT -> PLANNED -> RUNNING
 
 用户拖拽 Monitor 到 Worker，是带版本与权限检查的 `AddObservationRelation`，不是发送一条提示。用户暂停 Group，也不是向所有 Agent 发一句“暂停”：应更新 intake、执行与发送政策，并由相关执行器落实。
 
+Network 管理同样是 Hub 权威的版本化事务。Control 只能代表当前 User 在其明确授权的 Network 范围内操作，不因“管家”身份取得跨用户 Network 的全局管理权；NetworkAdmin grant 也不能代替成员本人对 Thread Join、Endpoint key、原生历史或具体高风险操作的同意。
+
 跨服务的创建、迁移、归档采用可恢复的步骤记录：记录意图、逐步执行、确认实际状态、失败时补偿或标记部分完成。不假装能通过一个数据库事务同时回滚真实机器上的全部操作。
 
 ### 12.6 没有 Control 时
@@ -781,6 +868,8 @@ Control 的规划或汇总业务停用后，已合法加入、具备有效授权
 | 对象 | 使用场景 | 关键语义 |
 |---|---|---|
 | Message | 通知、建议、讨论 | 传达信息，不自动建立工作承诺 |
+| JournalEntry | 重要进展、发现、决定与更正的组内持久记录 | 带可信作者和出处；不自动成为已验证结果或用户批准 |
+| DiscussionTopic/Reply | 围绕一个议题的持久协作 | 主题状态和回复可追溯；resolved 不等于 Task 完成 |
 | Ask | 希望对方作答 | 请求身份、相关回复、截止与取消 |
 | Task | 有责任和验收的工作 | 所有者、依赖、租约、结果与验证 |
 | Handoff | 责任与上下文转交 | 双方接受、版本与执行权切换 |
@@ -804,14 +893,18 @@ Control 的规划或汇总业务停用后，已合法加入、具备有效授权
   "conversation_id": "conv_example",
   "trace_id": "trace_example",
   "causation_id": null,
+  "hub_id": "hub_shared",
+  "network_id": "net_kernel",
   "sender": {
     "principal_id": "pr_optimizer",
     "endpoint_id": "ep_optimizer",
+    "network_id": "net_kernel",
     "group_id": "grp_kernel",
     "binding_epoch": 7
   },
   "recipient": {
     "endpoint_id": "ep_reviewer",
+    "network_id": "net_kernel",
     "group_id": "grp_kernel"
   },
   "created_at": "2026-09-18T09:00:00Z",
@@ -984,6 +1077,8 @@ capabilities:
 同一 Endpoint 在同一执行上下文中只能有一个拥有有效投递权的绑定。获取和续租必须通过权威存储原子完成；每次所有权变更递增 epoch。旧适配器持有的令牌失效，即使旧进程仍在运行，也不得继续提交新的状态和结果。
 
 会话租约不是资源租约，两者的作用域和失效处理不同。一个仍拥有会话的 Agent 也可能已经失去 Task 或 GPU 租约。
+
+同一 Thread 加入多 Group/Network 时，不能为每条 Network 注册创建独立的 native writer 或相互竞争的 SessionBinding。Endpoint 的本地 Node 持有唯一的当前 binding owner 和串行投递队列；各 Hub 仅提供各自 Network 范围的授权路由请求，Node 按 Hub/Network、当前 Membership/Link、epoch 和撤销水位再次 Guard，再将获准消息送入同一 writer。切换 Hub 或 Network 不改变原生 Thread 身份。
 
 ### 16.3 Wake 必须是适配器能力
 
@@ -1203,9 +1298,11 @@ Personal Memory 属于用户服务范围，不自动暴露给所有 Worker。Gro
 
 有意跨组共享的专家需要经过明确的数据共享政策。Prompt 中一句“不要泄露另一组的内容”不能替代会话、文件、工具和凭据隔离。
 
+跨 Network 复用同一 Thread 具有同样且更明显的上下文混合风险。Client 和 Join 流程应显示其已绑定的 Network/Group 范围及“该 Thread 的模型可能记住其他范围内容”的说明；高敏感 Network 可以要求专用 Thread/Endpoint、Workspace 与凭据。无论界面如何隔离，CICADA 都不能保证清除 Harness 已接收的消息或模型记忆。
+
 ### 20.5 历史访问与撤销
 
-新增成员是否可读加入前历史必须明确：默认不给予超出授权的历史访问。被移除成员停止获取新内容；已读明文不能被远程遗忘。加密组状态变更需要轮换适当的密钥/授权 epoch，但不宣称它可以删除接收者已经保存的内容。
+已有成员断线后的补读在有效权限、保留期和授权读取起点内进行，不需要每次重批；每页、每个对象和 Evidence 引用仍重验当前 Guard。新成员默认从明确的加入读取起点开始，不因加入自动读取此前 Journal、Discussion 或 Artifact；加入前历史需要单独的范围/时间授权和相应解密材料。被移除成员停止获取新内容；已读明文不能被远程遗忘。加密组状态变更需要轮换适当的密钥/授权 epoch，但不宣称它可以删除接收者已经保存的内容。
 
 权限检查必须覆盖搜索、列表、摘要、导出、引用解析和 Artifact 获取。只在 UI 隐藏一个 Group 不构成隔离。
 
@@ -1221,17 +1318,17 @@ Personal Memory 属于用户服务范围，不自动暴露给所有 Worker。Gro
 
 ### 21.1 威胁模型
 
-至少考虑：恶意或受提示注入影响的 Agent，失陷的节点，伪造发送者，跨组枚举，重放消息，假 ACK，陈旧租约，泄露凭据，恶意 Artifact，未授权外部请求，以及错误配置导致的共享文件系统暴露。
+至少考虑：恶意或受提示注入影响的 Agent，失陷的节点，伪造发送者，跨 Network/Group 枚举与 confused deputy，租户 ID 混淆，跨作用域重放/去重碰撞，误用其他 Hub 的凭据，假 ACK，陈旧租约，泄露凭据，恶意 Artifact，未授权外部请求，以及错误配置导致的共享文件系统暴露。
 
 个人可信机器模式不等于能抵御宿主机管理员；同一宿主拥有所有进程和明文时不能声称相互强隔离。跨所有者部署必须提升隔离和身份验证要求。
 
 ### 21.2 Guard 是强制点，不是另一个“更听话的模型”
 
-Guard 在 MCP/HTTP/CLI 公共服务入口、Relay 接收、Node 投递、Artifact 读取、Task 修改、资源申请及外部执行点做确定性检查。LLM 可以辅助识别风险，但授权结果必须来自可验证凭据、规则和状态。
+Guard 在 MCP/HTTP/CLI 公共服务入口、Relay 接收、Node 投递、Artifact 读取、Task 修改、资源申请及外部执行点做确定性检查。任何 Network 业务查询或写入都校验可信 Hub/Network scope 与当前 membership/grant；Hub 级设备连接/登记属于独立 Hub+Owner scope，不伪造一个默认 Network。LLM 可以辅助识别风险，但授权结果必须来自可验证凭据、规则和状态。提示词告知“把消息当成数据”只是防御纵深的一部分，不能替代来源标签、权限最小化、受控工具、执行确认和注入测试。
 
 ```text
 Authenticated actor
- + valid Group context
+ + valid Hub + Network + Group context when the resource is Group-scoped
  + action/resource scope
  + current Membership/Grant
  + freshness/epoch
@@ -1290,17 +1387,19 @@ Authenticated actor
 
 ### 22.2 必须说清谁能解密
 
-现有文档描述的 peer-link 包含由 Control 侧 API 接收消息、加密和维护状态的路径。因此不能仅凭“存储的是密文”就推断 Control 从来没见过明文，也不能把它直接称为原生 Worker 到 Worker 的全链路盲转发。[S12]
+历史版本描述的 peer-link 曾包含由 Control 侧 API 接收消息、加密和维护状态的路径。因此不能仅凭存储密文就推断 Control 从未见过明文。该历史路径的公开写入口已退役，但这不证明此前持久化的记录、备份、日志或导入数据均已删除或重新加密；必须单独审计和迁移，不得静默明文降级。[S12]
 
 目标部署应明确模式：
 
 | 模式 | 可看到明文的可信终点 | Relay 应看到什么 |
 |---|---|---|
-| 旧版 Control peer-link（兼容） | 当前 Control API 可接触明文，须明确标识为不满足盲 Hub 目标 | 存储为密文不等于 Control 从未见过明文 |
+| 历史 Control peer-link 与遗留数据 | 早期 Control API 曾可接触明文；现存记录需审计 | 密文存储不能证明 Control 过去未见明文；入口退役也不能证明历史明文已删除 |
 | 同 Node、跨 Node 或跨用户的目标 Agent 消息 | 发送/接收 Endpoint 本地加密适配器，以及明确授予阅读权的其他端点 | 仅密文、路由与必要审计元数据 |
 | 可选 Monitor 审阅 | 只有被明确列为解密接收者的 Monitor | 仅密文、路由与必要审计元数据 |
 
-目标架构要求 Hub 所在服务器上的 Control、Directory、Relay、数据库、反向代理均不能解密普通 peer 正文。TLS 只保护网络链路，不能使 TLS 终止的 Hub 对正文失明；消息必须在 Endpoint 的受控本地边缘完成后量子认证和端点加密。现有 v2 Fabric `fabric_messages.body` 仍保存明文，旧 Contact 路径在 Control 加解密，均属于**未完成迁移的真实缺口**，不得以目标要求冒充现状。若选用 Monitor 审阅正文，它是明确授权的额外明文端点，但不承担必经传输转发。
+目标架构要求 Hub 所在服务器上的 Control、Directory、Relay、数据库、反向代理均不能解密普通 peer 正文。TLS 只保护网络链路，不能使 TLS 终止的 Hub 对正文失明；消息必须在 Endpoint 的受控本地边缘完成后量子认证和端点加密。本文不把历史存储实现写成当前部署事实。现行代码与验收范围请查阅 [架构状态记录](docs/architecture-v2-status.md) 和 [PQ transport 实施记录](docs/architecture-v2-pq-transport.md)；旧路径持久数据仍须按保留策略审计，入口退役不能被解释为旧明文已自动消失。若选用 Monitor 审阅正文，它是明确授权的额外明文端点，但不承担必经传输转发。
+
+端点加密不隐匿 Hub 完成投递所需的最低路由元数据、成员/Endpoint 存在、包大小和流量时序。Hub 只保留完成认证、授权、持久投递、限流和审计所需的字段与期限；不暴露这些元数据给无权成员，不将其宣传为匿名网络。
 
 ### 22.3 目标密钥边界
 
@@ -1312,6 +1411,8 @@ Principal 的稳定身份、设备/节点密钥、会话密钥和 Group 成员�
 
 组内可查询日志需要明确授权读者。可采用逐接收者加密或受控的 Group 加密层，但具体方案必须有独立设计和测试；第一阶段不要临时自创 Group key 协议。
 
+Journal 与 Discussion 同样只能在 Endpoint 处加解密；Hub 的排序、幂等、列表和通知索引不能包含可搜索正文。现有 Endpoint key grant 只证明 Endpoint key 的受信任绑定，不是可直接复用的共享内容密钥。M2 必须明确读者快照、历史读取起点、密钥分发及撤权后的新写入隔离，再选择经审查的逐读者封装或群内容密钥方案。
+
 使用共享组密钥时，需要考虑成员变更、历史访问、密钥分发、设备丢失和撤销；使用逐接收者封装时，需要考虑 fan-out、存储与授权更新。技术选择不能只由“看起来像聊天室”决定。
 
 ### 22.5 重放、顺序与恢复
@@ -1322,7 +1423,7 @@ Principal 的稳定身份、设备/节点密钥、会话密钥和 Group 成员�
 
 ### 22.6 不得未经验证宣称的性质
 
-不宣称已拥有前向保密、失陷后安全、所有元数据隐藏、对恶意宿主机安全或所有 Runtime 的端到端保护，除非相应协议、密钥生命周期和运行测试已证明。内容加密不能防止有权限的接收者泄露数据，也不能替代业务授权。
+不宣称已拥有前向保密、失陷后安全、所有元数据隐藏、对恶意宿主机安全或所有 Runtime 的端到端保护，除非相应协议、密钥生命周期和运行测试已证明。Hub 为投递必需的路由/成员元数据、包大小和时序仍可能可见，必须限定用途与保留。内容加密不能防止有权限的接收者泄露数据，也不能替代业务授权。
 
 ### 22.7 兼容迁移
 
@@ -1385,6 +1486,7 @@ REQUESTED -> PENDING -> APPROVED / REJECTED / EXPIRED / CANCELLED
 | 状态 | 权威逻辑组件 | 一致性需求 |
 |---|---|---|
 | Principal/Membership/Grant | Identity/Authorization | 撤销、角色、版本等强检查 |
+| Network/NetworkMembership | Network authority on its single Hub | tenant ownership、邀请、admin grant、目录/任务策略版本强检查 |
 | Group/Goal/角色拓扑 | Management/Coordination | 有版本的事务修改 |
 | Endpoint/SessionBinding | Directory/Binding | 身份持久、所有权原子 |
 | Presence/load | Directory/Node | 可最终一致，必须带时间戳 |
@@ -1400,6 +1502,8 @@ REQUESTED -> PENDING -> APPROVED / REJECTED / EXPIRED / CANCELLED
 同一数据库内，状态变更、审计/事件记录和待发送消息应尽量在同一事务中提交。后台 dispatcher 从 outbox 投递；成功确认后更新状态。这样不会出现“Task 已完成，但结果永远没发出去”而没有可恢复记录的窗口。
 
 不同数据库之间使用幂等协议和对账，而不是跨网络假装拥有本地事务。所有副作用要有显式操作身份。
+
+Network 业务表和所有业务唯一键/索引必须包含明确的 Network scope；Hub 级设备和 Node 连接登记单独按 Hub+Owner 管理。Network 内的请求、回执、Task claim、授权和 crypto replay 状态不得与其他 Network 共享水位或仅按 Endpoint ID 去重。Node 对跨 Hub 注册保留局部关联，但不发布可追踪全局 Thread 身份。
 
 ### 24.4 存储迁移
 
@@ -1536,6 +1640,8 @@ Goal -> Group -> Role/Task -> Endpoint -> Native Session
 
 展示 Group 目的、成员角色、Monitor 代表、正在处理的 Task、外部请求、资源占用、关键证据和当前政策。默认不把所有消息滚动成聊天瀑布。提供按请求、任务、作者和来源过滤的历史查询。
 
+拟议的 Journal 以少量重要 checkpoint 为主，Discussion 按主题显示回复和结案状态；界面要区分已发送、已记录、已讨论、Task 已验收与用户已批准。历史补读显示自身授权范围，不把新成员加入解释为获得全组旧历史；新增界面以版本化合同另行实现。
+
 跨组请求应清楚显示“提交”“对方接受”“执行中”“结果待验证”等阶段，避免一个绿色发送图标被误认成任务完成。
 
 ### 27.3 管理图编辑
@@ -1571,6 +1677,12 @@ Client 第一版只开发 Android 手机 App；Web、桌面、手表与鸿蒙 Ag
 Idea 重评、报告和 Monitor 检查若使用定时触发，需要持久 job ID、时区、下一次运行时间、去重键、重启恢复和停止条件。不要靠某个 LLM 记住“晚上再做”。
 
 定时触发只启动授权范围内的检查，不自动扩展行动权限。结果没有变化时可以不通知用户，以保护注意力。
+
+### 27.8 多 Hub / 多 Network 的 Client 目标
+
+未来 Client 可连接多个 Hub、每个 Hub 下多个 Network；本节只定义目标，不表示当前 Android Client 或 v1.3 Hub 已支持多 Hub Network UI。每条 Hub 连接独立保存并验证 Hub identity pin、owner/device key、session、request/replay counters 和 Network 注册。界面始终显式显示当前 Hub 与 Network，消息、广播和 Task 操作锁定该选择；离线或恢复后不得根据昵称、上次活动或同名 Network 猜测路由。
+
+跨 Hub 的同一 Thread 可由本地 Node 关联不同的 scoped Endpoint 注册，但不要求 Client 暴露一个全局公开 Thread ID，不自动共享 Owner 真实身份、Group key 或 Contact 信任。Network 切换、加入或导入协议包时，必须展示信任边界和共享 Thread 上下文风险。
 
 ---
 
@@ -1740,6 +1852,8 @@ CLI、HTTP、MCP 和测试调用必须进入同一个经过授权的核心服务
 
 不要求每个 Agent 都加载所有工具。基础工具、Worker 工具、Monitor 工具和管理工具分别暴露，并由服务端再次授权。不能以减少工具数量为理由提供一个未经约束的 `execute_anything`。
 
+Group 协作空间的拟议操作族为 `group_journal.append/list/get`、`group_discussion.topic_create/reply/list/get` 与 `group_collaboration.subscribe`；主题 resolve/reopen 须是显式版本化记录。它们不是当前 MCP 工具名、公共 API 或 v1.3 catalog 承诺。写入从当前可信 Endpoint 导出作者，使用稳定幂等 ID；列表采用固定页上限和带 scope 的不透明游标，查询与补读每次重验授权。`subscribe` 只复用现有出站长连接发送有界游标提示，不附带正文，也不默认唤醒模型。精确命名、编码、限额和合同在 M2/M3 单独版本化。
+
 ### 29.4 Ask 返回示例
 
 ```json
@@ -1780,6 +1894,8 @@ Control/Client 的目标语义包括 `capture_idea`、`create_goal`、`create_gr
 
 这些 API 与 peer 的 `send/ask/reply` 分开。代码可以共享认证、错误处理和存储基础设施，不能共享一个具有无限权限的“内部请求”入口。
 
+Network 未来可增加 `cicada_network_list/join/leave`、Network-scoped invite/policy 管理、过滤后的 `cicada_network_directory`、Network Task offer list/publish/claim/result 和有界 Network broadcast。它们都是目标操作名，不是当前 MCP/HTTP/Client 接口。每次引入需先固定 Network scope、可信调用者、每项动作的 grants、错误语义和双端撤销测试，并发布新的合同修订；不得把这些操作加回已冻结的 v1.3 catalog，也不以 capability flag 暗示未实现权限。
+
 ### 29.7 Node/Adapter 接口
 
 适配器至少报告当前版本和能力、验证本地 Session、关联 Endpoint、接收持久 inbox、在安全点精确投递、报告确定或不确定的投递结果、读取有限执行证据、处理会话所有权变更。
@@ -1803,7 +1919,12 @@ Control/Client 的目标语义包括 `capture_idea`、`create_goal`、`create_gr
 ```text
 User / TrustDomain
   -> Principal
-  -> Group
+Hub
+  -> Network(authoritative scope, revision, policy)
+Network
+  -> NetworkMembership(principal, grants, revision)
+Network
+  -> Group (each Group belongs to exactly one Network)
 Principal + Group
   -> Membership(role, grants, context policy, revision)
 Principal
@@ -1821,6 +1942,14 @@ Group <-> Goal
 Group
   -> Task -> ResultSubmission -> Evidence/Artifact
 Group
+  -> JournalEntry(correction reference, producer, sequence, ciphertext)
+Group
+  -> DiscussionTopic -> DiscussionReply / versioned topic state
+Endpoint + Group
+  -> HistoryGrant(read-from sequence/range, expiry, key access)
+Network
+  -> TaskOffer -> Claim/OfferRevision -> scoped Task Handoff to receiving Group
+Group
   -> optional Monitor/RepresentativeAssignment -> legacy FederationRequest
 ActualResource
   -> Lease(holder, epoch, enforcement)
@@ -1836,6 +1965,8 @@ Every authoritative change
 
 不要求一次性为每个箭头建一个数据库表。选择实现时保留语义和可迁移性，避免为了画图把系统切成几十个无必要服务。
 
+跨 Hub 的本地注册以 `(hub_id, network_id, endpoint_id)` 寻址；Node 可将这些 scoped Endpoint 映射到同一个本地 SessionBinding，但映射只留在受控 Node，不构造面向全网的稳定 Thread ID。
+
 ### 30.2 必须可索引的关系
 
 典型查询包括：当前授权 Group 的成员，Endpoint 当前有效绑定，未过期 inbox，等待回复的 Ask，任务可认领状态，资源当前 owner，某个联邦请求的两侧状态，证据被哪些结论引用，以及某个用户还有哪些待决事项。
@@ -1850,12 +1981,14 @@ Every authoritative change
 
 ```text
 Identity: PrincipalCreated, MembershipGranted, MembershipRevoked
+Network: NetworkCreated, NetworkMembershipGranted, NetworkMembershipRevoked, NetworkPolicyChanged, NetworkInviteAccepted
 Group: GroupCreated, GroupPolicyChanged, RepresentativeAssigned
 Endpoint: EndpointJoined, EndpointLeft, BindingAcquired, BindingSuperseded
 Message: MessageAccepted, DeliveryAttempted, NodeReceived, InjectionUncertain
 Ask: AskCreated, ReplyAccepted, AskExpired, AskCancelled
 Federation: ExternalRequestAccepted, ExternalRequestRejected, ExternalResultSubmitted
 Task: TaskCreated, TaskClaimed, TaskBlocked, ResultSubmitted, TaskCompleted
+NetworkTask: TaskOfferPublished, TaskOfferClaimed, TaskOfferClosed, TaskHandoffAccepted, NetworkBroadcastCommitted
 Lease: LeaseGranted, LeaseRenewed, LeaseExpired, ResourceQuarantined
 Evidence: ArtifactPublished, EvidenceVerified, ResultSuperseded
 Management: IdeaParked, GoalStarted, ApprovalRequested, ApprovalResolved
@@ -2029,6 +2162,21 @@ Monitor 的业务观察覆盖与 Guard 的执行拦截覆盖分别报告，不�
 | V71 | 断开 SSE/Hub/Node 并恢复 | durable 队列保留；重连立即对账、低频兜底；重复 wake 不重复原生高风险注入 |
 | V72 | 已授权 Thread 在 Group A 广播，含本地及远端成员 | 每个有效接收者恰有一个逻辑 Delivery；本机零 Hub Relay、远端一个 Hub Relay；父/子组和 Thread 的 Group B 不自动收到 |
 | V73 | 用户通过 Monitor 发起广播 | 真实用户发起/批准记录与 Monitor 发送身份分离；伪造用户批准被拒；成员撤销、单接收者失败和限额均逐人可见 |
+| V74 | 同一 Hub 托管两个 Network | 跨 Network 的读取、搜索、路由和写入默认拒绝；每个 Group 只属于一个 Network |
+| V75 | Network 普通成员访问目录、私聊和 Task offer | 仅各自明确授权的 Network action 可用；无需虚构共同 Group；不能读取私有 Group 或历史 |
+| V76 | Network Join 与 permission preset | Network membership 不自动加入 Group；Thread owner 确认、已配置 Join policy 和幂等重试按各自 scope 校验 |
+| V77 | 跨 Network 显式 Link | 同一权威 Hub 上双方 Endpoint 与 Network policy 均批准的窄 Link 可用；不同权威 Hub 间拒绝 |
+| V78 | 同一 Thread 在多 Hub 注册 | 各 Hub 凭据、Endpoint registration、重放状态隔离；Node 只用一个本地 native writer 仲裁，不公布全局 Thread ID |
+| V79 | NetworkAdmin 尝试设备/Node、私钥、历史或具体用户 Approval 操作 | 拒绝；NetworkAdmin 只能使用本 Network 的明确管理 grants |
+| V80 | 旧 Group 到 Network 的迁移映射缺失、冲突或扩大可见性 | dry-run 保持 pending 等用户决定；保留现有 ID、key、receipt、approval 与 replay 历史 |
+| V81 | 成员撤销时 Hub 在线或 Node 离线 | 每个权威 Guard checkpoint 重验并拒绝后续操作；离线 Node fail closed 或按明确有限 lease 工作，不宣称分区中瞬时全局撤销 |
+| V82 | Network discovery、E2EE 与元数据检查 | 未授权对象不被枚举；必要 Hub/Network 路由元数据、成员存在与流量时序可能可见并受限保留，不宣称匿名 |
+| V83 | 既有成员断线后补读 Journal/Discussion | 原授权及保留期有效时从自身读取起点分页续读，无需逐次审批；撤权后页/对象读取拒绝 |
+| V84 | 新成员加入并请求加入前历史、Evidence/Artifact | 默认拒绝旧记录及独立证据内容；只有精确历史 grant 与相应解密材料允许其指定范围，引用仍单独鉴权 |
+| V85 | Journal 重要进展与更正、Discussion 回复与结案 | 可信 Endpoint 作者、组内顺序、稳定幂等和追加式更正可核；resolved 不伪造 Task 完成、Evidence 验真或 Approval |
+| V86 | 加密协作空间与游标提示 | Hub 仅有密文及有界元数据，正文不进入索引/通知；按读者快照封装，撤权后新写入不泄露，页大小/保留/扇出有界 |
+| V87 | Monitor 提议与受委托再分组 | 未委托、自授权、陈旧版本、跨 scope、扩大读者/旧历史或复制 key 均拒绝；有效窄委托以 CAS 生效并审计，不重建原 Thread |
+| V88 | 同 Thread 在多 Group/Network 使用协作空间 | 每条操作固定 Hub+Network+Group；模型记忆风险向用户显现，敏感范围可要求专用 Thread；父子 Group 不继承内容 |
 
 ### 32.8 旧验收项不能丢
 
@@ -2102,6 +2250,13 @@ Worker/Monitor ID 和观察关系尽量保留，角色绑定到 Principal/Group 
 
 在身份匹配不可靠、旧数据关系损坏或无法保持授权边界时，停止受影响路径并报告，而不是删除数据继续。其他不受影响的审计、单元测试与实现工作可以继续。
 
+
+### 33.9 Network 映射与租户迁移
+
+迁移前必须以 dry-run 方式为每个现有 Group 指定恰好一个 Network，并列出跨 Owner Group、现存 Link、Endpoint/Principal Membership、Owner key grants、挂起消息/receipt、审批、Task 与重放水位的影响。不得机械按 Owner 拆分合法共享 Group，也不得为了保留连接而把所有 Group 合并进一个 Network。映射缺失、多解或扩大任何主体既有可见性的情况须停在 pending，由有权用户明确选择。
+
+迁移保留 Endpoint、Group、Link 和 Thread 身份及旧 receipt、key、approval、grant 和 replay 历史。旧授权只在其精确主体、资源、动作、期限与新 scope 仍一致时才可继续使用；不足时重新取得相应 Owner/Network 授权，不自动复制 Group key、不静默重信任。每步可重放、备份、校验和向前修复边界必须可验证。
+
 ---
 
 <a id="chapter-34"></a>
@@ -2134,7 +2289,7 @@ Worker/Monitor ID 和观察关系尽量保留，角色绑定到 Principal/Group 
 
 退出条件：A1 与 B1 在授权连线上直接完成原生 Ask/Reply；未授权直连被拒；同 Thread 多 Group 身份稳定且范围不混淆；Monitor 缺席不阻止普通直连；同 Node 零中心 Relay、跨 Node 至多一个盲 Hub Relay；收到请求不被标成任务完成。
 
-**本轮升级的首要可交付主线是 v2-A 至 v2-C。** 不应只停在“添加几个结构体”和漂亮架构图。
+v2-A 至 v2-C 是既有升级的基础闭环；它们的目标与退出条件继续保留，不把本轮新增的 M1–M5 规划误认为这些基础能力全部完成。
 
 ### 34.4 v2-D：共享责任与资源协调
 
@@ -2156,7 +2311,21 @@ Worker/Monitor ID 和观察关系尽量保留，角色绑定到 Principal/Group 
 
 ### 34.6 长期演进
 
-跨用户多设备恢复、Group 加密协议、公共能力目录、大规模分布式状态、复杂资源调度与移动端体验可以后续推进。前提是有真实需求、兼容方案与测试，而不是为了“组织系统”这个名字把所有分布式组件一次加齐。
+跨用户多设备恢复、经 M2 审查方案之外的大规模 Group 密钥优化、公共能力目录、大规模分布式状态、复杂资源调度与移动端体验可以后续推进。前提是有真实需求、兼容方案与测试，而不是为了“组织系统”这个名字把所有分布式组件一次加齐。
+
+### 34.7 Agent Network 与持久协作空间路线（M1–M5）
+
+Network 是 Hub 内的逻辑 tenant 与授权 scope，不新增部署实体或 User、Control、Worker、Monitor 之外的参与者。一个 Hub 可承载多个 Network，每个 Network 只有一个权威 Hub；一个 Group 只属于一个 Network，Group 父子不继承权限。Network membership 本身不提供 Network-wide 发现、私聊、广播、Task、Group 或历史权限。Network 级目录/私聊/Task grant 可在没有共同 Group 时生效，但不能穿透到私有 Group 或其历史。
+
+- **M1 — Network identity, Guard and migration:** 同一现有 Hub 上至少两个 Network；NetworkMembership、单 Network Group 绑定、受限 NetworkAdmin grants、邀请/显式 Join、Thread owner 确认、最小权限目录/EndpointCard 和少量清晰 presets；迁移 dry-run；跨租户读写、昵称歧义、撤权、旧 API 绕过和管理员越权须拒绝。M1 不含多 Hub 路由或持久协作空间。
+- **M2 — 加密 Group Journal 与 Discussion:** 授权的 Journal append/list/get、Discussion topic/reply/list/get，可信生产者、稳定幂等、有限游标分页、追加式更正、独立 Evidence ACL、读者快照、历史 grant 与保留行为。先选定经审查的 NIST 密封和读者密钥方案；证明 Hub 仅存密文，新成员默认不能读加入前历史，既有成员可在授权期内补读，撤权后的新内容不泄露。正文、扇出、分页、保留和提示队列要有明确上限。
+- **M3 — 授权路由与轻量同步:** 在现有即时消息中显式引用选定 Journal/topic，连接获准的 Network 私聊、Task offer 与逐收件者广播；复用 Node→Hub 出站长连接传合并的 Journal/Discussion 游标提示，Endpoint 分页拉取并维护本地未读。提示不推正文或完整成员表，不默认唤醒模型；即时消息继续遵守其原有密文投递语义。同 Node 仍零 Hub Relay，跨 Node 至多一个盲 Hub Relay。
+- **M4 — 委托再分组:** Monitor 先提出建议；仅在精确、可撤销的 Network/Group/操作/期限委托下按拓扑版本 CAS 执行并审计。不得自授权、扩大读者、自动复制旧历史/key、迁移 Thread 上下文或本地 writer；涉及读者或历史扩权另走有权用户审批。
+- **M5 — 多 Hub Node 与 Client 互操作:** 各 Hub 的 Endpoint registration、Node credential、订阅、序号/重放状态独立，Node 对同一 native Thread 维持唯一本地 writer owner/串行队列；Client 另有版本化合同与每 Hub 独立 identity pin、设备密钥、session/replay 状态，UI 明确 active Hub、Network 与目标。不得有 Hub-to-Hub 转发或公开的全局 Thread ID；Client 仓库 Owner 单独实现，不回填冻结的 v1.3。
+
+具体实施顺序、当前工程前置条件和验收证据以 [实施计划](docs/architecture-v2-plan.md)、[Agent Networks 设计](docs/agent-networks-design.md) 和 [Group 协作空间设计](docs/group-collaboration-spaces-design.md) 为准。M1–M5 均是目标路线，不表示当前已实现；现有 Android/原生 Monitor 广播检查点的实际状态只在实施证据文档记录。
+
+阶段之间保留 Go、SQLite、单二进制/既有 Docker，不为协作空间引入新消息中间件或常驻服务。每阶段的合同、迁移、负面测试与实际运行范围须独立验收；规划不是既有实现。
 
 ---
 
@@ -2332,11 +2501,11 @@ Group、消息、租约、任务和管理层均有相关先例。CICADA 的价�
 | 27 产品原则 | 1、3、37、42 | 保留并形成可验收不变量 |
 | 28 MVP/路线 | 34 | 替换为本轮 v2-A 至 v2-E 退出条件 |
 | 29 下一阶段计划 | 33–35 | 基于现有 Go 代码渐进升级 |
-| 30 验收矩阵 | 32 | 保留旧 T1–T10，扩充为 V01–V64 |
+| 30 验收矩阵 | 32 | 保留旧 T1–T10，扩充为 V01–V88 |
 | 31 数据草案 | 5、6、10、13、16–18、30 | 补充身份、联邦、租约与版本 |
 | 32 Cicada 的一天 | 28、39 | 用完整成功/失败闭环表达用户体验 |
 | 33 成功标准 | 31、35、41 | 区分用户价值、实现状态和证据等级 |
-| 34 设计不变量 | 3 | 扩展为 INV-01 至 INV-30 |
+| 34 设计不变量 | 3 | 扩展为 INV-01 至 INV-49 |
 | 35 功能总览 | 全文及目录 | 按可执行职责展开，不只保留功能树 |
 | 36 产品定义 | 文首、1、42 | 个人管家与 Agent 组织底座并存 |
 | 37 最终用户故事 | 28、42 | 保留用户退出低价值管理循环的愿景 |
@@ -2501,7 +2670,7 @@ next_exit_condition: 在真实原始会话中完成双向 Ask/Reply 并记录 ID
 
 ### 41.3 文档完成不等于软件完成
 
-替换本文件只表示目标语义已经更新。实际发布必须根据代码、兼容性、测试和用户使用结果确定；不能把 `Architecture v2.1` 自动映射到软件 tag。
+替换本文件只表示目标语义已经更新。实际发布必须根据代码、兼容性、测试和用户使用结果确定；不能把 Architecture v2.3 自动映射到软件 tag。
 
 ---
 

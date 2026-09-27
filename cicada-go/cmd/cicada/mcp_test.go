@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -16,33 +17,30 @@ import (
 
 func TestCicadaMCPAdvertisesExplicitFabricTools(t *testing.T) {
 	required := map[string]bool{
-		"cicada_join":                     false,
-		"cicada_use_group":                false,
-		"cicada_leave_group":              false,
-		"cicada_leave":                    false,
-		"cicada_whoami":                   false,
-		"cicada_members":                  false,
-		"cicada_find":                     false,
-		"cicada_send":                     false,
-		"cicada_broadcast":                false,
-		"cicada_ask":                      false,
-		"cicada_reply":                    false,
-		"cicada_receive":                  false,
-		"cicada_request_status":           false,
-		"cicada_request_cancel":           false,
-		"cicada_representative_claim":     false,
-		"cicada_federate_request":         false,
-		"cicada_federation_accept":        false,
-		"cicada_federation_result":        false,
-		"cicada_federation_accept_result": false,
-		"cicada_federation_status":        false,
-		"cicada_task_list":                false,
-		"cicada_task_claim":               false,
-		"cicada_task_submit":              false,
-		"cicada_task_accept":              false,
-		"cicada_task_handoff_propose":     false,
-		"cicada_task_handoff_accept":      false,
-		"cicada_artifact_read":            false,
+		"cicada_join":                 false,
+		"cicada_use_group":            false,
+		"cicada_leave_group":          false,
+		"cicada_leave":                false,
+		"cicada_whoami":               false,
+		"cicada_members":              false,
+		"cicada_find":                 false,
+		"cicada_send":                 false,
+		"cicada_broadcast":            false,
+		"cicada_ask":                  false,
+		"cicada_reply":                false,
+		"cicada_receive":              false,
+		"cicada_request_status":       false,
+		"cicada_request_cancel":       false,
+		"cicada_representative_claim": false,
+		"cicada_federation_accept":    false,
+		"cicada_federation_status":    false,
+		"cicada_task_list":            false,
+		"cicada_task_claim":           false,
+		"cicada_task_submit":          false,
+		"cicada_task_accept":          false,
+		"cicada_task_handoff_propose": false,
+		"cicada_task_handoff_accept":  false,
+		"cicada_artifact_read":        false,
 	}
 	for _, tool := range cicadaMCPTools() {
 		name, _ := tool["name"].(string)
@@ -54,6 +52,46 @@ func TestCicadaMCPAdvertisesExplicitFabricTools(t *testing.T) {
 		if !found {
 			t.Fatalf("MCP tool %q is missing", name)
 		}
+	}
+}
+
+func TestRetiredFederationMCPBodyWritersFailClosedAndAreNotAdvertised(t *testing.T) {
+	retired := map[string]bool{
+		"cicada_federate_request":         false,
+		"cicada_federation_result":        false,
+		"cicada_federation_accept_result": false,
+	}
+	for _, tool := range cicadaMCPTools() {
+		name, _ := tool["name"].(string)
+		if _, ok := retired[name]; ok {
+			t.Errorf("retired plaintext Federation writer %q is still advertised", name)
+			retired[name] = true
+		}
+	}
+	for name, advertised := range retired {
+		if advertised {
+			t.Errorf("retired Federation writer %q was marked as advertised", name)
+		}
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		http.Error(response, "unexpected Federation write", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	mcp := &mcpServer{baseURL: server.URL, sessionToken: "joined-session"}
+	for name := range retired {
+		if !isCicadaMCPTool(name) {
+			t.Errorf("retired Federation tool %q no longer has an explicit compatibility refusal", name)
+			continue
+		}
+		if _, err := mcp.callTool(name, map[string]any{}); !errors.Is(err, fabricpkg.ErrFederationBodyWritesRetired) {
+			t.Errorf("retired Federation tool %q returned %v, want explicit retirement error", name, err)
+		}
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("retired Federation MCP calls issued %d HTTP requests", got)
 	}
 }
 

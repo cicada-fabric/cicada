@@ -11,7 +11,7 @@ import (
 
 // ContractRevision identifies the cross-repository Client/Hub contract
 // revision. The encrypted Client-Control wire framing remains version 1.
-const ContractRevision = "client-hub-v1.2.1"
+const ContractRevision = "client-hub-v1.3"
 
 type Role string
 
@@ -21,15 +21,17 @@ const (
 )
 
 // Operation describes one encrypted RPC method and its authorization and
-// documentation references. Request/result references point into the current
-// prose wire contract; they do not claim complete JSON Schema coverage.
+// documentation references. Optional RequestSchema/ResultSchema name
+// OpenAPI component schemas when the contract publishes a complete pair.
 type Operation struct {
-	ID         string `json:"id"`
-	Method     string `json:"method"`
-	Roles      []Role `json:"roles"`
-	RequestRef string `json:"request_ref"`
-	ResultRef  string `json:"result_ref"`
-	Boundary   string `json:"boundary"`
+	ID            string `json:"id"`
+	Method        string `json:"method"`
+	Roles         []Role `json:"roles"`
+	RequestRef    string `json:"request_ref"`
+	ResultRef     string `json:"result_ref"`
+	Boundary      string `json:"boundary"`
+	RequestSchema string `json:"request_schema,omitempty"`
+	ResultSchema  string `json:"result_schema,omitempty"`
 }
 
 // Definition is the machine-readable operation catalog embedded into the Hub.

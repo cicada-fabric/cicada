@@ -64,12 +64,16 @@ func TestPlaintextFabricPeerWritesAreRetiredBeforeBodyRead(t *testing.T) {
 	handler := NewFabricHandler(service, "")
 
 	for _, test := range []struct {
-		path  string
-		token string
+		path           string
+		token          string
+		retiredMessage string
 	}{
-		{"/v2/fabric/send", a.SessionToken},
-		{"/v2/fabric/ask", a.SessionToken},
-		{"/v2/fabric/reply", b.SessionToken},
+		{"/v2/fabric/send", a.SessionToken, "plaintext Fabric peer writes are retired; use sealed Node delivery"},
+		{"/v2/fabric/ask", a.SessionToken, "plaintext Fabric peer writes are retired; use sealed Node delivery"},
+		{"/v2/fabric/reply", b.SessionToken, "plaintext Fabric peer writes are retired; use sealed Node delivery"},
+		{"/v2/fabric/federate", a.SessionToken, fabricpkg.ErrFederationBodyWritesRetired.Error()},
+		{"/v2/fabric/federation/historical-request/result", b.SessionToken, fabricpkg.ErrFederationBodyWritesRetired.Error()},
+		{"/v2/fabric/federation/historical-request/accept-result", a.SessionToken, fabricpkg.ErrFederationBodyWritesRetired.Error()},
 	} {
 		requestBody := &readProbeBody{reader: strings.NewReader("not-json")}
 		request := httptest.NewRequest(http.MethodPost, test.path, nil)
@@ -78,8 +82,7 @@ func TestPlaintextFabricPeerWritesAreRetiredBeforeBodyRead(t *testing.T) {
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusGone || !strings.Contains(response.Body.String(),
-			"plaintext Fabric peer writes are retired; use sealed Node delivery") {
+		if response.Code != http.StatusGone || !strings.Contains(response.Body.String(), test.retiredMessage) {
 			t.Fatalf("retired route %s returned %d %s", test.path, response.Code, response.Body.String())
 		}
 		if requestBody.reads != 0 {
@@ -109,5 +112,11 @@ func TestPlaintextFabricPeerWritesAreRetiredBeforeBodyRead(t *testing.T) {
 		if err != nil || len(inbox) != 0 {
 			t.Fatalf("retired peer writes persisted inbox rows for %s: inbox=%#v err=%v", endpointID, inbox, err)
 		}
+	}
+	federationRequests, err := persistence.ListFederationRequests(store.FederationRequestFilter{
+		SourceGroupID: group.ID, Limit: 10,
+	})
+	if err != nil || len(federationRequests) != 0 {
+		t.Fatalf("retired Federation writes persisted request rows: requests=%#v err=%v", federationRequests, err)
 	}
 }

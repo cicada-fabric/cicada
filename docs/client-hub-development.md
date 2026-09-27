@@ -6,6 +6,46 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 ## 当前整改顺序
 
+> 2026-09-27: frozen v1.3 artifact and disposable TCP gate **PASS**; see the
+> [frozen validation record](client-hub-v13-validation.md). Clean source
+> `25013b5` also passed full Go/vet, focused race, contract/export, exact-image
+> disposable TCP, and the bounded Android/native Monitor chain. Client's 10
+> selectors/final strict status, Core's scoped ciphertext scan, Intake's
+> independent Hub audit and owned-fixture cleanup all passed. The exact evidence
+> and limits are in the [candidate record](client-hub-v13-25013b5-validation.md),
+> [native runbook](client-monitor-native-fixture.md), [approval review note](monitor-broadcast-approval-review.md),
+> and [Client validation report](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
+> The prior `81d8f1f` denials remain historical. This bounded run used two logical
+> Nodes in one container; full React Native consent UX, physical Android/dual
+> Node, and public HTTPS remain **NOT_RUN**. Agent Network M1+ and Group
+> Journal/Discussion remain proposed, unimplemented work.
+
+### 2026-09-27 Monitor v1.3 冻结前候选状态快照
+
+当前共享开发树中的候选目录为 `client-hub-v1.3`，33 项操作，catalog SHA-256
+`808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`。
+`python3 scripts/client-contract.py check` 和七项合同/恢复 Python 测试通过。
+四项新增 RPC 为 `monitor.broadcast_prepare/confirm/status/recover`；它们通过
+已认证的加密设备会话调用，catalog 仅表示操作可用，当前会话角色与每次服务端
+Guard 才是授权依据。
+
+Hub v34 将新的 live preview intake 限为 16 条/owner-device、64 条/owner；只统计
+未过期的 `PREPARED`、`APPROVED`、`DISPATCH_AUTHORIZED`。新预览五分钟过期，撤销
+设备不会立即释放仍有效的旧行；精确 Prepare 重试不消耗新名额。列表每次最多扫描
+16 个 owner-wide 候选并使用 per-Node 持久游标，因此客户端/Node 仍需通过周期性
+reconciliation 推进积压通知。
+
+两个定向 TCP Monitor HTTP lifecycle/Relay 测试通过；整仓 Go tests/`go vet` 在两项
+review 修正前通过。随后 Confirm projection/OpenAPI 与 inactive Group 修正通过受影响的
+Control/Server 全包测试、vet 及聚焦 race 复验；五项 Store Monitor race 测试也通过。
+最终 disposable Docker
+gate 待完成；干净源码 commit、协议包 manifest/hash 与精确 image ID/digest 尚待根
+任务提供。开始 Client Android 工作前需取得该元数据。
+v1.2.1 Android 模拟器 PASS
+只作旧固定镜像的历史证据；v1.3 Android、真实 native Monitor 与公网 HTTPS 均为
+**NOT_RUN**。独立 Client 的任务边界和验收清单见
+[v1.3 Client 提示词](client-hub-v13-client-prompt.md)。
+
 | 切片 | 交付与退出条件 | 当前状态 |
 |---|---|---|
 | N1 契约来源 | operation catalog 驱动角色 allowlist；版本与摘要可查询；与真实 dispatch 和 OpenAPI 检查一致 | 已实现；Go 定向与全仓回归通过 |

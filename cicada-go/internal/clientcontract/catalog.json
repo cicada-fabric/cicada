@@ -1,6 +1,6 @@
 {
   "catalog_schema_version": 1,
-  "contract_revision": "client-hub-v1.2.1",
+  "contract_revision": "client-hub-v1.3",
   "wire_version": 1,
   "rpc_route": "/v2/client/rpc",
   "operations": [
@@ -24,6 +24,10 @@
     {"id":"link.key_grants","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-grants","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-grants","boundary":"current_link_side"},
     {"id":"link.key_manifest","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-manifest","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-manifest","boundary":"current_link_side"},
     {"id":"link.list","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-list","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-list","boundary":"authenticated_owner"},
+    {"id":"monitor.broadcast_confirm","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-confirm","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-confirm","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastConfirmRequest","result_schema":"MonitorBroadcastConfirmResult"},
+    {"id":"monitor.broadcast_prepare","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-prepare","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-prepare","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastPrepareRequest","result_schema":"MonitorBroadcastPrepareResult"},
+    {"id":"monitor.broadcast_recover","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-recover","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-recover","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastRecoverRequest","result_schema":"MonitorBroadcastRecoveredResult"},
+    {"id":"monitor.broadcast_status","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-status","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-status","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastStatusRequest","result_schema":"MonitorBroadcastStatusResult"},
     {"id":"nodes.confirm","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-confirm","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-confirm","boundary":"authenticated_owner"},
     {"id":"nodes.list","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-list","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-list","boundary":"authenticated_owner"},
     {"id":"nodes.preview","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-preview","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-preview","boundary":"authenticated_owner"},

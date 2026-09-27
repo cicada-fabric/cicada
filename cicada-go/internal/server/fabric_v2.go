@@ -175,17 +175,7 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
-		var input fabricpkg.FederateInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		result, err := h.fabricService.Federate(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, result)
+		writeError(response, http.StatusGone, fabricpkg.ErrFederationBodyWritesRetired)
 	default:
 		if request.URL.Path == "/v2/fabric/endpoint-keys" || strings.HasPrefix(request.URL.Path, "/v2/fabric/endpoint-keys/") {
 			h.endpointKeysV2(response, request, actor)
@@ -305,26 +295,8 @@ func (h *Handler) fabricV2Federation(response http.ResponseWriter, request *http
 			return
 		}
 		writeJSON(response, http.StatusAccepted, result)
-	case "result":
-		var input fabricpkg.FederationResultInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		input.FederationRequestID = requestID
-		result, err := h.fabricService.SubmitFederationResult(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, result)
-	case "accept-result":
-		result, err := h.fabricService.AcceptFederationResult(actor, requestID)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, result)
+	case "result", "accept-result":
+		writeError(response, http.StatusGone, fabricpkg.ErrFederationBodyWritesRetired)
 	default:
 		writeError(response, http.StatusNotFound, errors.New("federation route not found"))
 	}
@@ -404,6 +376,8 @@ func fabricV2Error(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, fabricpkg.ErrRequestTerminal):
 		status = http.StatusConflict
+	case errors.Is(err, fabricpkg.ErrFederationBodyWritesRetired):
+		status = http.StatusGone
 	case errors.Is(err, store.ErrSharedTaskHandoffMissingArtifact):
 		status = http.StatusConflict
 	}

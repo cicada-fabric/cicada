@@ -26,6 +26,15 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read wire contract: %v", err)
 	}
+	openAPIPath := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../../../docs/client-hub-v1.openapi.yaml"))
+	openAPI, err := os.ReadFile(openAPIPath)
+	if err != nil {
+		t.Fatalf("read OpenAPI contract: %v", err)
+	}
+	openAPIText := string(openAPI)
+	if !strings.Contains(openAPIText, "x-contract-revision: "+ContractRevision) {
+		t.Fatalf("OpenAPI contract revision does not match catalog revision %s", ContractRevision)
+	}
 
 	seen := make(map[string]bool, len(definition.Operations))
 	for _, operation := range definition.Operations {
@@ -52,17 +61,42 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 				t.Errorf("operation %s has unresolved wire reference %q", operation.ID, ref)
 			}
 		}
+		if operation.RequestSchema != "" || operation.ResultSchema != "" {
+			if operation.RequestSchema == "" || operation.ResultSchema == "" {
+				t.Errorf("operation %s has an incomplete request/result schema pair", operation.ID)
+			}
+			for _, schema := range []string{operation.RequestSchema, operation.ResultSchema} {
+				if !strings.Contains(openAPIText, "    "+schema+":\n") {
+					t.Errorf("operation %s refers to missing OpenAPI schema %q", operation.ID, schema)
+				}
+			}
+			mapping := "        " + operation.ID + ":\n          request: '#/components/schemas/" + operation.RequestSchema + "'\n          result: '#/components/schemas/" + operation.ResultSchema + "'"
+			if !strings.Contains(openAPIText, mapping) {
+				t.Errorf("operation %s catalog schemas do not match OpenAPI operation mapping", operation.ID)
+			}
+		}
 	}
-	if got := len(OperationsForRole(RoleManager)); got != 29 {
-		t.Errorf("manager operation count = %d, want 29", got)
+	if got := len(OperationsForRole(RoleManager)); got != 33 {
+		t.Errorf("manager operation count = %d, want 33", got)
 	}
-	if got := len(OperationsForRole(RoleExternal)); got != 21 {
-		t.Errorf("external operation count = %d, want 21", got)
+	if got := len(OperationsForRole(RoleExternal)); got != 25 {
+		t.Errorf("external operation count = %d, want 25", got)
 	}
 	if Allows(RoleExternal, "intent.submit") || Allows(RoleExternal, "goal.result") || Allows(RoleExternal, "approvals.decide") ||
-		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleManager, "intent.submit") ||
+		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleExternal, "monitor.broadcast_prepare") ||
+		!Allows(RoleManager, "monitor.broadcast_confirm") || !Allows(RoleManager, "intent.submit") ||
 		Allows(Role("unknown"), "session.capabilities") {
 		t.Fatal("catalog role authorization does not preserve the current owner boundary")
+	}
+	monitorOperations := []string{"monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status", "monitor.broadcast_recover"}
+	for _, operationID := range monitorOperations {
+		if !Allows(RoleManager, operationID) || !Allows(RoleExternal, operationID) {
+			t.Errorf("owner-scoped Monitor operation %s must be catalogued for both owner roles", operationID)
+		}
+	}
+	if !strings.Contains(openAPIText, "membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'") ||
+		!strings.Contains(openAPIText, "broadcast_permission_enabled:") {
+		t.Fatal("OpenAPI does not describe the explicit broadcast permission action and topology snapshot field")
 	}
 	assertOpenAPIOperationsMatchCatalog(t, definition)
 }

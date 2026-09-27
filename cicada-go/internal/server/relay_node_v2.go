@@ -18,7 +18,12 @@ const relayNodeStreamRevalidateInterval = time.Second
 func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Request) {
 	remainder := strings.Trim(strings.TrimPrefix(request.URL.Path, "/v2/relay/nodes/"), "/")
 	parts := strings.Split(remainder, "/")
+	monitorBroadcastPath := len(parts) >= 3 && parts[0] != "" &&
+		parts[1] == "monitor" && parts[2] == "broadcasts"
 	if len(parts) == 4 && parts[1] == "group" && parts[2] == "broadcast" && parts[3] == "snapshot" {
+		response.Header().Set("Cache-Control", "no-store")
+	}
+	if monitorBroadcastPath {
 		response.Header().Set("Cache-Control", "no-store")
 	}
 	if h.fabricService == nil {
@@ -46,6 +51,10 @@ func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Reques
 	}
 	if len(parts) == 4 && parts[1] == "group" && parts[2] == "broadcast" && parts[3] == "snapshot" {
 		h.relayNodeGroupBroadcastSnapshot(response, request, token)
+		return
+	}
+	if monitorBroadcastPath {
+		h.relayNodeMonitorBroadcastV2(response, request, token, parts[3:])
 		return
 	}
 	if parts[1] == "links" {

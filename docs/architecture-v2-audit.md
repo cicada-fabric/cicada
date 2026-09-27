@@ -1,5 +1,81 @@
 # Architecture v2.1 当前事实审计
 
+## 2026-09-27 Monitor intake 与 Node notice scan 有界性复审
+
+v34 在现有账本上增加 consent 元数据列、三条活动记录索引和 per-Node notice
+cursor。Admission helper 在同一 SQL transaction 中通过带 `LIMIT/OFFSET` 的
+索引探针检测是否已达到阈值，不遍历完整历史账本：16 个未过期 PREPARED/
+APPROVED/DISPATCH_AUTHORIZED 记录封顶每个 owner/device，64 条封顶同 Owner 的
+所有设备。过期记录不计；设备撤销仅停止未来授权，不提前回收其仍有效的容量。
+错误信息不区分触发的是哪一层限额。Helper 由新 Prepare 分支在确认精确重试之后
+调用，所以同一已持久请求的幂等恢复不消耗新槽。
+
+Node 列表不再在一次 Store 锁持有期间扫描任意数量的历史页并逐条运行完整 Guard。
+每次最多取 16 个 owner-wide 活动候选，先按 expiry/preview ID 从索引分段读取；
+随后在 Go 中排除非本 Node 的记录及最终回执，并对其余项逐条重验当前完整 Guard。
+因此一次最多做 16 次深度候选检查，但不保证返回 16 条；其他 Node 的条目也会占用
+当前 page。候选包含准备态以外仍有效的批准记录，但不改变授权或回执。
+
+持久游标以 Node 为键、owner 和 `(julianday(expires_at), preview_id)` 为位置，
+在列表 transaction 内推进。崩溃/重启保留位置；当已无更大位置时回卷至小于或等于
+当前 cursor 的记录，使仅剩的一条未 ACK 通知仍可再次读取。即便候选因 Node、Guard
+或终态回执被排除，也推进已检查位置，避免永久停在坏行。游标不是 ACK/授权；空页
+可能只是扫描到其他 Node 或被 Guard 拒绝的条目，消费者必须继续定期 reconciliation。
+SSE hint 合并时，后续轮询负责逐页推进，不能承诺积压工作都由单次 hint 即时送达。
+
+验证覆盖设备与 owner 过限、准确重试绕过新配额、过期释放、已撤销设备仍占槽、
+v33→v34 保留已有 preview、超过首个 page 的有效 notice、重启后推进，以及单 pending
+row 无 ACK 时重复可见。Go 1.27.1 Bookworm 聚焦 Store limits/migration tests 通过。
+五项 Store Monitor 并发、重启与 uncertainty -race 测试也通过（67.007 秒）。
+Client contract check 和七项合同/恢复 Python 测试也通过；定向 TCP Monitor HTTP
+lifecycle 与 Relay 测试通过。整仓 `go test -count=1 -timeout 15m ./...` 与
+`go vet ./...` 先前通过；随后修正 Confirm response projection/OpenAPI mismatch 与
+inactive Group 拒绝，并通过受影响 Control/Server 全包测试、vet 和聚焦 race 复验，
+Store Monitor 并发/恢复 race 也通过。仅最终干净 artifact 和 Docker 门禁待确认。先前
+2026-09-26
+审计中“Store 候选页 64、总扫描 CPU 随陈旧候选增长”
+是 v33 快照；当前页为 16 并有持久轮转游标。它仍是有界批次而非“每次完整清空队列”
+保证，新的 Android/native Monitor 与公网 HTTPS 验收仍为 **NOT_RUN**。
+
+## 2026-09-26 Node 管理通知与资源边界复审
+
+v31 的授权账本不是完整执行链。此次接入使用独立管理通知 inbox、Node 专用
+Fabric 路由和仅接受批准 ID 的 `cicada_monitor_broadcast`。Node 校验本地独立
+Owner 信任以及原始登记签名后才打开 Client→Monitor 密文；Hub 提供的公钥不能
+替代本地信任。原登记只保存 nonce 摘要，故 v32 增量保留原始公开签名 Grant；
+历史设备缺少该证据时，新增 Monitor 路径拒绝，不能重新授信或凭空生成证据。
+
+资源审查发现：无新通知且 inbox 尚不存在时不应创建 SQLite 文件；已有 regular
+inbox 仍须打开以恢复持久工作。`TestMachineMonitorNotificationEmptyListDoesNotCreateInbox`
+验证前一边界。通知列表之后原有重复 detail 查询；未完成/重试广播的本地进度
+也曾覆盖旧 ACCEPTED 结果。本轮保留一次注入前复核、删除冗余读取并实现单调
+结果合并。Hub 列表每页 64 个候选、最多返回 16 条；活动通知有期限索引。这限制
+单页内存，但大量尚未过期、仅在逐条 Guard 复核时才发现已撤权的候选仍会增加
+总扫描 CPU，不能称为与历史量无关的常数复杂度。不得用硬截断造成合法通知饥饿。
+
+安全与轻量同时验收：继续使用 Go、SQLite 和现有出站连接，不新增常驻协调
+服务；每次通知列表最多 16 项，Group 广播最多 32 人、每批最多 8 项，正文与
+报文有上限。干净 `f1b99c4` 精确镜像通过 disposable Hub smoke/recovery；首轮
+空闲测量记录 RSS 约 25.7 MiB、受限 cgroup 内存低于 128 MiB，但 cgroup CPU
+含探针开销，Hub PID 1 统计的复跑结果待补。测量只描述空闲 Hub，不代表模型、
+Node 或负载边界。不将后量子应用消息保护表述成所有 TLS/历史明文路径均已完成
+同等保护。
+
+## 2026-09-26 Monitor 广播与旧写入口审计
+
+起点为干净 `dev` / `45206a2`。现有 MCP 普通 SEND/ASK/REPLY 经 Node 密封，
+公开 `/v2/fabric/send|ask|reply` 在读正文前返回 410；但旧
+`internal/fabric/gateway.go` 的 Federation 请求/结果仍直接写入 Hub 明文消息。
+该旧双代表路径不满足 v2.1；本轮退役其业务写入口，保留历史表与授权查询。
+内部 `fabric.Service.Send/Ask/Reply` 的历史测试能力不等于生产密文路径，不能
+据其测试宣称 Hub 从未见过旧正文。
+
+V73 需要可信设备请求、独立确认、固定接收者范围与端点密文。本轮新增内部
+授权账本与 Client→Monitor 密文原语；未开放 Client 广播操作，不宣称完整
+用户广播已可用。Node 原广播快照只在开始时校验，子消息会重新解析当前密钥；
+现在在实际密封前比较固定快照中的源/目标身份、成员版本、绑定和密钥证据，
+拒绝中途换绑/换钥。现有 Client v1.2.1 合同保持不变。
+
 ## 2026-09-24 恢复与结果读取复审
 
 N4 修复前，`RegisterClientDeviceFromOwnerGrant` 在设备已持久登记但 HTTP 201

@@ -1,4 +1,174 @@
-# Architecture v2.1 状态矩阵
+# Architecture v2 状态矩阵（v2.3目标）
+
+> **2026-09-27 bounded checkpoint PASS:** clean candidate `25013b5` passed full Go/vet, focused race, v1.3 contract/export checks and exact-image disposable TCP gates. The controlled three-Thread Android/native run passed one same-Thread read-only preview, one separate dispatch and both original recipient Thread receive/context assertions. Client's 10 selectors and final strict status passed; Core's scoped Hub ciphertext scan and Intake's independent read-only Hub audit passed; owned fixture/emulator cleanup exited `0`, with no owned containers or fixture directory remaining. See the [candidate record](client-hub-v13-25013b5-validation.md), [approval evidence note](monitor-broadcast-approval-review.md), [runbook](client-monitor-native-fixture.md), and [Client validation](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
+> Scope limits: two logical Nodes shared one container. Full product-facing React Native consent UX, physical dual-Node/Android operation, public HTTPS and unattended cold wake remain **NOT_RUN/UNSUPPORTED**; one accepted review flow is not general prompt-injection protection. The `81d8f1f` denials remain historical. Agent Network and Group Journal/Discussion remain unimplemented targets under Architecture v2.3; the Group collaboration design is [proposed only](group-collaboration-spaces-design.md).
+> The dated sections below are historical snapshots and do not override this current bounded result.
+
+## 2026-09-27 截至冻结前的候选状态快照：Monitor 同意候选、intake 限额与公平分页
+
+Hub v34 在 Monitor 账本中增加 consent 元数据，并为待确认预览与 Node 通知
+增加有界查询。新 intake 只统计尚未过期且状态为 `PREPARED`、`APPROVED` 或
+`DISPATCH_AUTHORIZED` 的行：每 Owner/Device 最多 16 条、每 Owner 最多 64 条。
+预览有效期仍为五分钟；设备撤销不会提前释放仍有效的行。超限返回同一个通用
+backpressure 错误。精确 Prepare 重试先于 admission 检查，因此不会额外占槽。
+
+通知列表每次最多检查 16 个 Owner 范围内的活动候选，按 `(expires_at, preview_id)`
+用索引扫描，并用每 Node 持久游标轮转。SQL 候选仍需在 Go 中排除其他 Node 和终态
+通知回执，并对候选重新执行当前完整 Guard；因此一页可能返回少于 16 条或为空，
+空响应不证明没有后续待办。Node 必须保留周期性 reconciliation，SSE wake hint
+合并或丢失时由后续轮询推进。游标在检查候选后事务性前进，包含拒绝/终态候选；
+回卷包含当前游标位置，单条未确认记录在响应丢失后仍会再次出现。游标仅是调度
+提示，不是 ACK、授权或跳过检查的依据。
+
+Client `client-hub-v1.3` 现为候选目录：33 项操作、catalog SHA-256
+`808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`。新增
+`monitor.broadcast_prepare/confirm/status/recover` 四项操作；用户授权仍由当前
+加密设备会话与服务端 Guard 决定，操作目录只说明可用性。成员上的显式
+`message.broadcast` 开关独立于 Monitor 角色。候选检查
+`python3 scripts/client-contract.py check` 通过，七项
+`scripts.test_client_contract` 与 `scripts.test_client_recovery_fault_proxy` 测试
+通过，最新七项合同/恢复 Python 测试用时 1.692 秒；`TestClientMonitorBroadcastEncryptedHTTPLifecycle`
+与 `TestRelayNodeMonitorBroadcast` 的定向 TCP HTTP 测试也通过。交叉审查发现的
+Confirm 响应 projection/OpenAPI 不匹配和 inactive Group 拒绝缺口已修正。整仓
+`go test -count=1 -timeout 15m ./... && go vet ./...` 在这两项 review 修正之前通过；
+修正后，受影响的 Control/Server 全包测试、vet 及聚焦 race 复验均通过，Store 的
+Monitor 并发/恢复聚焦 race 也通过。截至冻结前，最终干净 artifact 元数据与 disposable Docker
+门禁仍待根任务确认。不要据此宣称
+新 Android 集成、真实原生 Monitor 或公网 HTTPS 通过；
+三者均为 **NOT_RUN**。旧 v1.2.1 Android 结果继续只归属于历史固定镜像。
+
+本轮 limits 与迁移定向测试在 Go 1.27.1 Bookworm 中通过，包括精确重试和过期释放、
+撤销设备仍占用 Owner 配额、旧记录跨页公平性/重启、单条游标记录重复可读，以及
+v33→v34 数据保全。Store 的五项 Monitor 并发/恢复定向 race 测试通过。根任务发现
+并已修正一个旧迁移 fixture 对最高版本 v33 的硬编码。上述两个 review 修正随后通过
+受影响的 Control/Server 全包测试、vet 及聚焦 race 复验；截至冻结前仅等待干净 artifact
+和最终 Docker 门禁。
+
+## 2026-09-26 历史状态快照：Node Monitor 通知、执行与结果证据
+
+以下为 2026-09-26 的记录；其中 `client-hub-v1.2.1` 与“未公开 Monitor RPC”
+描述的是当日 v31–v33 快照，不是当前 v34 / v1.3 候选状态。
+
+Hub v31–v33 与 Node/MCP 内部接线已完成：v32 保存原始签名登记 Grant 和通知回执，
+v33 保存有界逐收件者结果。原 Monitor Session 的 `cicada_monitor_broadcast` 只接受
+通知中的批准 ID；Node 验证本地 Owner 信任、Client 密文和固定快照，并在每名
+收件者密封前重验 Endpoint、成员、Binding epoch 与密钥。
+
+结果按 `FAILED → UNKNOWN → ACCEPTED` 单调前进。本地 `NODE_REPORTED` 与 Hub 验证的
+远端 `RELAY_PERSISTED` 都只证明传输持久接受，不证明模型消费。Client 撤销或
+批准过期不抹去事实报告，但仍要求原 Node 与有效的原 Monitor SessionBinding。
+子消息已持久而 Hub 报告丢失时结果可保持 `PENDING`；只能在五分钟期限和原绑定
+仍有效时用相同稳定 ID 显式重试，过期或换绑后不自动重发。
+
+公共合同仍为 `client-hub-v1.2.1`、29 项操作、catalog SHA-256
+`25c3d7f585b1811781cb46669a09e2e08ab8c58765a7b9318145cea5bbce4df9`。未公开
+preview/confirm/status RPC 或 Monitor capability。Endpoint 原始 attestation 与
+Owner proof 预览 DTO 和丢预览响应后的业务恢复状态尚未实现；新 Client 合同、
+公开向量及 Monitor RPC 门禁因此未开放。Android/native Monitor 流程为 **NOT_RUN**。
+
+独立 Client 双 Owner 合成 Endpoint 授权报告 PASS：实现
+`680fac2bf12c431ac02804e5db168669cf12941f`、报告
+`a4007a51b53a36b15ecc02cbf50bdac4f744ec56`，固定 Hub `967dbd8` / v1.2.1；
+不含 Codex/native Thread 或 v33 广播，见
+`../CICADA_CLIENT/docs/client-two-owner-v1.2.1-967dbd-validation.md`。
+
+无新通知且 inbox 不存在时，不新建 Node inbox；已有常规 inbox 仍可为恢复持久工作
+而打开。列表上限 16、Store 候选页 64、收件人上限 32、每批 8。期限索引和分页
+不消除大量有效期内但被逐条 Guard 判为陈旧的候选所需总扫描 CPU。测试
+`TestMachineMonitorNotificationEmptyListDoesNotCreateInbox` 覆盖的是不创建新库。
+
+Docker Go 1.27.1 Bookworm `go test -count=1 -timeout 15m ./... && go vet ./...`、
+合同检查与 7 项 Python 合同/恢复代理测试均退出 0；catalog 未变。聚焦 race 命令
+见下文。源码含
+`617be77`（v33）、`01a22df`（Node/MCP）等切片，不能把 dirty/组合验证只归因于
+HEAD。干净源码 `f1b99c4` / fingerprint
+`56b00612f335bc5cb7210f1434796208bd9b876ff842de349820f9ccff744055` 的隔离
+Hub 门禁已 PASS：Hub 镜像 `sha256:acd2f956e86d499249bb9881df8edb601d6df6fb3359947f44d717ea0ddc1997`，
+smoke 与 recovery 两项 TCP 测试通过，记录在
+`.cicada-data/client-interop/monitor-20260926T233342Z/result.json`。Android、native
+和公网 HTTPS 不在此门禁范围。空闲 Hub 的镜像另为
+`sha256:351830afad94de2abec7a85d4fa90e4679d24e160a327a3e2394173184817e98`，来源同为
+干净 `f1b99c4` / fingerprint
+`56b00612f335bc5cb7210f1434796208bd9b876ff842de349820f9ccff744055`；测量脚本版本
+为 `bd2f46d`。最终三次 RSS 为 25,907,200、25,972,736、25,972,736 字节
+（约 24.71–24.77 MiB），cgroup 内存为 20,283,392、21,495,808、22,708,224 字节，
+均低于 128 MiB 上限；容器限制为 0.5 CPU。PID 1 的 100 Hz CPU tick 为
+30→30→31→31，即三段增量 0、10、0 ms；合计 7.660 秒短采样约为单核 0.13%，
+10 ms 分辨率不足以代表长期闲置基线，且 cgroup CPU 仍含探针开销。最终记录：
+`.cicada-data/footprint/20260926T233342Z/idle-hub-20260926T234235Z-de8694a7.json`。
+较早独立测量保留于
+`.cicada-data/footprint/20260926T233342Z/idle-hub-20260926T233446Z-1df3d407.json`；
+该轮 RSS 为 26,955,776 字节，CPU 只读 cgroup 计数，故不与 PID 1 最终样本合并。
+这些数字只描述一次性空闲 Hub，不涵盖 Node、模型、Android 或负载运行。
+
+定向结果证据包括 `TestUserMonitorBroadcastV2OutcomeReportsAreExactAndMonotone`、
+`TestUserMonitorBroadcastV2OutcomeRejectsMismatchesAtomically`、
+`TestUserMonitorBroadcastV2OutcomeMigrationBackfillsV32Dispatch`；跨组件
+`TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren` 与
+`TestMonitorBroadcastLostOutcomeReceiptRetainsStableChildren` 通过 TCP Hub 测试服务、
+Node bridge、Store 和 fake queue 验收，Control 未构造。local/remote 结果分别为
+`NODE_REPORTED`/`RELAY_PERSISTED`，不表示模型消费。Android 真机、真实 native Monitor、
+双物理 Node 和本轮公共 HTTPS 为 **NOT_RUN**。
+
+`TestUserMonitorBroadcastV2OutcomeReportsAreIdempotentAcrossStoreHandles` 另以
+`-count=10` 通过。额外的聚焦 race 验证命令为：
+`go test -race -count=1 -timeout 5m ./internal/store ./cmd/cicada -run 'TestUserMonitorBroadcastV2OutcomeReportsAreIdempotentAcrossStoreHandles|TestMonitorBroadcastLostOutcomeReceipt|TestMachineMonitorNotificationRechecksClientGuard|TestMachineMonitorExpired'`，退出 0；其中 expiry 测试是
+`TestMachineMonitorExpiredNoticeReceiptRemainsCorrelatedWithoutAuthorization`。
+
+## 2026-09-26 Monitor 授权基础与广播投递校验（v31 历史快照）
+
+本节只记录 v31 基础账本刚落地时的范围；后续 Node/MCP 接线、v32/v33 和当前
+缺口以上一节为准。下文关于“Node 管理通知、Monitor MCP 未接通”的描述是当时
+状态，不代表现在的实现。
+
+本轮从干净 `dev` / `45206a2` 开始，分四个可独立审阅的提交：
+
+| 提交 | 代码与实际边界 |
+|---|---|
+| `3196452` | Node 本地/远端广播子投递在密封与持久接受前，比较原快照和新授权的 Endpoint、成员、绑定 epoch、密钥与证明；拒绝静默换目标或换钥 |
+| `29322f4` | Client→Monitor 独立 PQ 密封格式，绑定设备、epoch、批准 ID、Group、Monitor、正文/收件范围摘要与期限；含完整公开合成验签向量，无私钥 |
+| `765d67b` | Hub schema v31 的设备绑定预览、密文确认、单操作派发授权账本；来源取自已经认证的 Client 请求记录，当前角色/设备/Node/绑定/成员/密钥与期限重新验证 |
+| `d5aa124` | 退役旧 Federation 三个正文写方法及 HTTP/MCP 入口；HTTP 在读取正文前返回 410，历史查询和数据保留 |
+
+各实现的定向测试已通过：`TestGroupBroadcastLocalChildRejectsStaleSnapshotBeforePersistence`、
+`TestGroupBroadcastRemoteFenceChecksBothEndpoints`、
+`TestMCPBroadcastLocalAndRemoteSealedFullChain`、`internal/e2ee` 的 Monitor 向量/
+篡改测试、`TestUserMonitorBroadcastV2*` 与迁移测试，以及
+`./internal/fabric ./internal/server ./cmd/cicada` 的退役入口回归。环境均为
+Docker Go 1.27.1；协议、Store 和 fake Runtime 测试不证明真实模型消费。
+新 Store 测试包含两个 Store 实例并发确认/授权、重启、v30→v31 数据保全、
+撤销与过期重试、密文序号冲突和溢出拒绝。
+
+在 v31 基础落地时，**V73 为 PARTIAL**：`DISPATCH_AUTHORIZED` 只是为同一个操作
+预留执行权限，不是投递完成或模型消费；当时 Node 管理通知与 Monitor MCP 尚未
+接通。后续 v32/v33 与当前 Node/MCP 范围见本文顶部；Client 新操作和
+Android/真实 native Monitor 全链仍待验收。
+Client 合同仍为 `client-hub-v1.2.1`；内部向量不在其既有协议包中，不能让
+Client 据此调用不存在的操作。既有固定 `967dbd8` 镜像验收继续独立保留。
+
+已通过原生任务工具启动用户指定的 Client Thread
+`01a0cc3a-91d2-74f2-9f41-547c9b38fb0d`，执行
+[双 Owner 独立验收任务](client-two-owner-acceptance-task.md)。该任务只修改
+Client 仓库、使用独立一次性资源，不重跑付费 Codex 或改动常驻 Hub；收到
+最终回报前不得将双 Owner Android 路径标为通过。
+
+冻结代码回归中，历史 invite 迁移测试首次失败：预期账本停在 v30，与实际
+新增的 v31 不符。`3a19968` 更新该断言，保留旧行保全/失败回滚检查后，
+同一 Go 1.27.1 Bookworm 环境完整复跑 `go test -count=1 -timeout 15m ./... &&
+go vet ./...` 退出 0。`go test -race -count=1 -timeout 5m ./internal/store -run
+'TestUserMonitorBroadcastV2ConcurrentStore'` 退出 0。合同检查和七项 Python
+合同/恢复代理测试退出 0；catalog 与 29 个公开操作均未改变。
+
+`scripts/test-client-hub-interop.sh` 在修正该测试断言前的干净提交
+`3d7f4cab283ad6ec3d8290012a31c420849dba52` 构建并运行，退出 0；后续差异只有
+上述测试断言与工程文档，没有归因成新提交的镜像。Hub 本地镜像 ID 为
+`sha256:8adfd753e15e148d450016f61a6b6dda31edc219a62c944d643b5fc738ab37d2`，
+`dirty=false`，source fingerprint 为
+`d148427fbb6d3a7b67a53590d8fd8d64f3db9410dceb9952b6e2b2089b1e21a9`。
+`TestClientDockerHubSmoke` 和 `TestClientDockerHubRecoveryFixture` 均通过；
+证据在 `.cicada-data/client-interop/20260926T021133Z-3494794/result.json` 与
+同目录 `test.log`。这只证明实际 TCP Hub/Go 协议客户端，不含 Android、
+真实 Codex、公网 HTTPS 或完整 Monitor 广播。一次性容器与镜像标签已清理。
 
 ## 2026-09-25 本轮冻结源码回归与故障边界
 
@@ -423,21 +593,21 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 
 该轮 Docker Go 1.22 的 `go test -count=1 ./...`、`go vet ./...`、全 Go 格式检查及 `git diff --check` 均通过。Store 全包及 same-Group sealed 定向测试、Hub HTTP 集成 `TestNodeSameGroupSealedHTTPRoutesAuthorizeOpaqueTrafficWithoutControl`、同 Node fake full-chain、两逻辑 Node same-Group fake full-chain 和 scoped `cicada_receive` 测试均通过；新增 inbox/本机收件全链的聚焦 `-race` 也通过。fake Codex queue 不证明模型真实消费；真实 Codex 同 Node 两 Thread 的受控 Ask/Reply 则已单独通过。当时双物理 Node、真实 native 广播、Node 一致点备份/恢复与 Android 独立互操作仍未通过验收；Node 子树离线备份后来已完成，但设备级恢复仍未完成，因此 v2-B 整体保持 **PARTIAL**。
 
-快照日期：2026-09-24。`dev` 从 `main` 的 `f4fa7eb8d948ae09834be0b5ec2695205cba536f` 开发；目标规格为根目录 Architecture v2.1。本文区分历史 v2 实现证据与新的退出条件。旧版 MA→MB 演示通过不等于新跨组直达已实现。
+快照日期：2026-09-24。`dev` 从 `main` 的 `f4fa7eb8d948ae09834be0b5ec2695205cba536f` 开发；目标规格为根目录 Architecture v2.1。以下阶段/逐项矩阵中的“当前”和 schema v30 均指这个历史快照；2026-09-26 的 Monitor 进度以本文顶部为准。本文区分历史 v2 实现证据与新的退出条件。旧版 MA→MB 演示通过不等于新跨组直达已实现。
 
-状态约定：**A／完成** = 代码和针对性测试覆盖该限定范围；**B／部分** = 有实现但缺完整验收或只覆盖 fake/in-process/native 子集；**C／未完成** = 尚未实现或缺少验收证据；明确缺少外部条件才标 `BLOCKED`。当前 Hub schema v30、Node crypto DB v5；v27 grants 已被 Node-only same-Group sealed Relay route 消费，并经 Store、Hub HTTP 与两逻辑 Node/fake Codex 验证。v30 为 Node Worker 原生审批桥添加绑定的幂等持久记录；HTTP/Store 与模拟 app-server 的审批链路已验证。独立 Docker 中真实 Codex 0.156.1 的命令审批与跨进程精确 `thread/resume`、上下文延续通过，但真实 Node Agent→Hub→Android 联合验收仍缺；证据见 [v1.2 验收记录](client-hub-v12-validation.md)。此前 `-race ./internal/store` 曾停在既有备份校验测试并于默认 10 分钟超时，本轮 Store 包测试已通过。Client 独立仓库在固定 967dbd8 镜像上的 Android 模拟器管理、恢复与审批结果另有 PASS，不归属于这批 Go 改动；当前代码尚未与新 Android 镜像联合验收。完整 -race ./... 也未针对这批改动完成。
+状态约定：**A／完成** = 代码和针对性测试覆盖该限定范围；**B／部分** = 有实现但缺完整验收或只覆盖 fake/in-process/native 子集；**C／未完成** = 尚未实现或缺少验收证据；明确缺少外部条件才标 `BLOCKED`。该 2026-09-24 快照的 Hub schema v30、Node crypto DB v5；v27 grants 已被 Node-only same-Group sealed Relay route 消费，并经 Store、Hub HTTP 与两逻辑 Node/fake Codex 验证。v30 为 Node Worker 原生审批桥添加绑定的幂等持久记录；HTTP/Store 与模拟 app-server 的审批链路已验证。独立 Docker 中真实 Codex 0.156.1 的命令审批与跨进程精确 `thread/resume`、上下文延续通过，但真实 Node Agent→Hub→Android 联合验收仍缺；证据见 [v1.2 验收记录](client-hub-v12-validation.md)。此前 `-race ./internal/store` 曾停在既有备份校验测试并于默认 10 分钟超时，本轮 Store 包测试已通过。Client 独立仓库在固定 967dbd8 镜像上的 Android 模拟器管理、恢复与审批结果另有 PASS，不归属于这批 Go 改动；当前代码尚未与新 Android 镜像联合验收。完整 -race ./... 也未针对这批改动完成。
 
-## 阶段结论
+## 2026-09-24 历史基线：阶段结论
 
 | 阶段 | 状态 | 已有事实 | 仍缺什么 |
 |---|---|---|---|
 | v2-A 身份、Group、显式 Join、统一 Guard | **B（相对 v2.1）** | Principal/Membership/Endpoint/SessionBinding、显式 Join、旧 API guard；v11 多组关系及同机双容器真实 Codex 多组 Ask/Reply；v12 版本化 Group 父子关系、防环、不继承授权；v26 增加由当前 Node owner 绑定推导的 guest Join 服务端入口和本机 Codex record/Unix socket 桥接。两个 owner 的真实 Codex Thread Join 与 sealed Link Ask/Reply 另有同机双逻辑 Node 验收，见 C-04。 | 桥接信任同 OS 用户；Android guest enrollment、双物理 Node 与嵌套 Group 面板编辑、完整跨用户 Guard 未完成或未验收。 |
 | v2-B Relay、Node、原生异步恢复 | **B** | 持久 Relay/Node、精确 queue、Control-free test、同 Node sealed ASK/REPLY 的真实 Codex 原生 Thread 验收通过；同组跨 Node route 的 Store/Hub、两逻辑 Node/fake Codex full-chain 及两逻辑 Node/真实 Codex ASK/REPLY 通过。 | 同组跨 Node 已有两个逻辑 Node 的真实 Codex 验收；双物理机仍未验收；旧的未 sealed Session 组内 peer 路径仍可能走明文；无人值守前台安全仍缺。 |
-| v2-C 通信图与跨组/跨用户 | **B（单收件人密文 SEND/ASK/REPLY）** | 旧版 GroupGateway/MA→MB 状态和真实演示保留为历史证据；v13–v27 建立 Link 提案、候选公钥、key-bound 双侧 Grant 和两个独立 owner 的邀请；显式 Link 有 fake 全链和两个 owner 的真实 Codex sealed Ask/Reply 验收，后者限同机两个逻辑 Node；同 Node sealed 路径也有真实 Codex Thread 闭环。独立 Client Group Grant 正向验收已通过。 | 双物理机、无人值守 cold wake、可选 Monitor、完整 Group 广播和双真实 Owner 的 Android 越权测试仍缺；邀请或 Grant 单独不建立消息路由。 |
+| v2-C 通信图与跨组/跨用户 | **B（单收件人密文 SEND/ASK/REPLY）** | 旧版 GroupGateway/MA→MB 状态和真实演示保留为历史证据；v13–v27 建立 Link 提案、候选公钥、key-bound 双侧 Grant 和两个独立 owner 的邀请；显式 Link 有 fake 全链和两个 owner 的真实 Codex sealed Ask/Reply 验收，后者限同机两个逻辑 Node；同 Node sealed 路径也有真实 Codex Thread 闭环。v31–v33 已接入内部 Monitor 通知、批准 ID MCP 和逐收件者结果；独立 Client Group Grant 正向验收另有证据。 | 双物理机、无人值守 cold wake、真实 native Monitor 消费、Client Monitor RPC/Android 和双真实 Owner 的 Android 越权测试仍缺；邀请或 Grant 单独不建立消息路由。 |
 | v2-D Shared Task/Lease | **B** | Shared Task claim/结果验收、ResourceLease 权威冲突键、结构化 handoff、副作用 ledger 与 scoped Artifact v6–v10 已实现并测试。 | GPU/workspace 资源仍 advisory；真实执行器强制 fencing/外部副作用对账不完整。 |
 | v2-E 产品化/互操作 | **B** | Android↔Hub PQ 设备授权/RPC、状态快照、部分差异游标、持久异步 Intent、加密拓扑读写与设备撤销有服务端测试；Node 设备码配对后可用单独 Node 凭据执行同 owner 的 Worker 管理链路；Client 已在固定 `967dbd8` 镜像完成模拟器管理、故障恢复、审批结果与独立 Group Grant 闭环；仍保留只读 PWA 管理视图。 | 手机侧由独立仓库负责；完整状态推送、真机/公网及双真实 Owner 越权验收未完成。 |
 
-## 逐项状态
+## 2026-09-24 历史基线：逐项状态
 
 | 编号 | 状态 | 证据 | 边界/下一步 |
 |---|---|---|---|
@@ -455,7 +625,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | C-03 provenance/result | **A** | `TestGatewayV2ContractScopeDeadlineAndProvenance`、`TestMonitorMediatedCrossGroupCollaboration` 保留 producer principal/endpoint/group、evidence/provenance refs。 | 未验证真实外部 producer、签名证据或 Artifact 权限。 |
 | C-04 新跨组/跨用户直连 | **B（单收件人密文 SEND/ASK/REPLY）** | 两个 owner 的提案及当前 key-bound Grant 经 Node 本地 Owner trust 再验证；显式 Link 的 MCP SEND/ASK/REPLY 经本地 Node 桥加密，Hub 只持久保存 `SEALED_V1`，目标 Node 在精确 attempt 授权下持久收件、复验并调用官方 `codex queue --thread`。Fake Codex 全链测试覆盖两个逻辑 Node；`TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative` 又以真实 Codex Thread 验证双 owner sealed Ask/Reply、原 ID 保持、Hub 无正文及 Control business call 为 0。 | 原生 PASS 限同机两个逻辑 Node，driver 使用受控 `codex exec resume`；不证明 cold wake、双物理机或公网 HTTPS。Android 单 Owner Group Grant 已单独通过；跨 Owner 手机授权、完整广播和可选 Monitor 仍未验收。详见[原生验收记录](architecture-v2-native-validation.md)。 |
 | D-01 Shared Task/Lease | **B** | `shared_task_v2.go`、`resource_lease_v2.go`、`shared_task_handoff_v2.go`、`shared_task_side_effect_v2.go` 与测试。 | 外部 GPU/workspace 强制 fencing、真实 SideEffect 执行对账未完成。 |
-| E-01 产品化/互操作 | **B** | Hub v26 的 Client PQ 入口支持管家 owner 的状态、Goal、Intent、审批、拓扑和本人 Node 管理；外部 owner 有独立加密设备会话，只能读取自己归属的状态/差异、管理本人设备/Node/Group/Endpoint 拓扑、邀请、本侧 Link 授权和列表。旧 ownerless Goal/机器不会进入外部状态视图。v26 双用户 HTTP 密文邀请与独立 Docker Hub TCP smoke 已通过；Client 在固定 `967dbd8` 镜像的 Android 模拟器管理、故障恢复、审批结果及独立 Group Grant 闭环均通过；`GET /v2/client/capabilities` 仍声明 `partial`。 | 运行中 Worker 的安全停止、完整状态推送、用户经 Monitor 广播、双 Owner 手机越权和真机/公网验收仍缺；跨 owner sealed Ask/Reply 另有受控真实 Codex 验收，但不覆盖双物理 Node。 |
+| E-01 产品化/互操作 | **B** | Hub v26 的 Client PQ 入口支持 owner 范围状态、Goal、Intent、审批、拓扑和 Node 管理。`client-hub-v1.3` 已公开 Monitor prepare/confirm/status/recover RPC；`25013b5` Node 增加只读验签/解密 preview，deterministic/disposable TCP gates 及受控 Android/native Monitor preview→dispatch→两 recipient receive 链通过。 | 当前验收仅两逻辑 Node/单容器。完整产品 React Native consent UX、双 Owner 手机越权、物理 Android/dual Node 和 public HTTPS 仍缺；其他状态推送、跨 Owner 操作按各自合同与验收边界判断。 |
 | E-03 Client→Node Worker 闭环 | **B（隔离真实 Node/Codex）** | v23 的 owner 列不回填旧行；`TestClientIntentQueuesWorkForOwnerBoundMachineAgent` 以 PQ Client RPC、Node 设备码、v2 Node heartbeat/jobs/claim、Workspace 快照 GET/POST 和 fenced result 跑通 Hub HTTP 链路。Store/Control 的撤销、并发 claim、旧 attempt、快照 CAS 和验证期间撤权测试通过；CLI 的 Node 快照收发与重定向拒绝定向 race 测试通过。真实 Node Agent、Codex CLI、Hub HTTP 与加密合成 Client 驱动的审批→结果闭环另以 `scripts/test-real-node-codex-approval.py` 通过，原生 Thread ID 一致。 | 原有 HTTP 集成测试本身不启动真实 Agent；新联合测试也未运行 Android、双物理机或公网 HTTPS，且不证明已有用户 Thread 的跨进程恢复。 |
 | M-01 additive schema | **A（合成迁移测试）** | v14 增加 `endpoint_key_candidates_v2`，公开候选及其证明；定义为 additive，不更新旧 Endpoint、Contact、密钥、ratchet/replay 行。 | v14 合成旧库重跑/中断/并发打开和旧状态保留测试通过；真实生产库未演练。 |
 | M-02 legacy pending | **A** | 旧 Endpoint 默认 `MIGRATION_PENDING_GROUP`；无明确映射不创建 Group；`TestFabricV2LegacyEndpointMigrationIsAdditiveAndRepeatable`。 | 需生产前显式 mapping/quarantine 操作和审计导出。 |
@@ -464,7 +634,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | M-05 v15/v16/v22 owner approval | **B（单收件人密文路由已使用）** | v15 登记用户独立持有的 ML-KEM/ML-DSA 公钥；v16 旧合同 Grant 保留为不绑定 Endpoint key 的历史记录；v22 新表保存当前合同、两端原生绑定与公钥候选摘要的双侧签署，旧 v16 Grant 报 `LEGACY_KEY_UNBOUND`。v26 外部邀请可产生跨 owner 提案。邀请和单侧 Grant 不激活路由；双方当前 key-bound Grant 已用于显式 Link SEND/ASK/REPLY 的入队、领取与注入前 Guard，双 owner 的真实 Codex sealed Ask/Reply 也已验收。 | 原生验收限同机双逻辑 Node，未覆盖双物理 Node、Android 正向 Group Grant 或广播。外部邀请 token 不是两侧 Endpoint 密钥批准，管理 bearer 不能代替用户签署。 |
 | M-06 v17 sealed Relay Store | **B（Node-auth SEND/ASK/REPLY 闭环）** | 独立 `relay_v2_message_payloads` BLOB/mode 迁移；Node 凭证保护的 `/sealed/send|ask|reply|claim`、请求状态/取消与精确 attempt 授权。ASK 的密文、request、outbox/inbox 同事务持久；REPLY 由原请求推导反向路由，迟到结果留密文终态且不自动唤醒。两端 Node 写入密文和恢复坐标后才报告 `NODE_RECEIVED`，注入前重查 Link/Grant/binding/Node owner；撤权和旧 attempt 拒绝，重复消息不二次 queue，原生结果不确定则停在 `INJECTION_UNCERTAIN`。 | 显式跨组单收件人有同机双逻辑 Node 的真实 Codex Ask/Reply 验收；双物理机与冷唤醒仍缺。旧同组 peer API 仍存明文，保护范围须明确区分。 |
 | M-07 v18 Client 设备/重放 | **B（单 owner Hub）** | 持久 Hub ID、owner 签名设备 Grant、设备撤销/epoch、请求序号/operation ID、精确重试缓存与中断 UNCERTAIN；v18 迁移回滚/重跑及旧记录保留通过。 | 还缺双用户独立状态分区、首次远程可信引导、Android 设备码 UX 和完整备份/换机演练。 |
-| E-02 Client PQ HTTP 入口 | **B（部分可调用）** | `internal/clientwire` 和 `/v2/client/{identity,devices/enroll,rpc}` 使用 ML-KEM/ML-DSA/AES-GCM，AAD 绑定 Hub/owner/device/epoch/sequence/operation/方向/密钥版本。v19 Intent 持久异步派发；v20 Node 设备码经 Client 加密确认；v21 owner-bound 部分状态差异游标；v26 外部会话、邀请和 `link.list`。Handler 的伪造、重启、精确重试和管理动作测试、独立 Docker Hub TCP smoke，以及 Client 固定 `967dbd8` 镜像上的 Android 模拟器管理/恢复/审批结果与单 Owner Group Grant 闭环均已通过。服务端显式 Link 的跨 owner sealed Ask/Reply 另有真实 Codex 验收。 | 尚缺完整状态推送、双真实 Owner 手机越权、真机与公网 HTTPS；Android 尚未验收跨 owner Link 消息发送/接收。`capabilities.status=partial`。 |
+| E-02 Client PQ HTTP 入口 | **B（固定范围已验收）** | `internal/clientwire` 和 `/v2/client/{identity,devices/enroll,rpc}` 使用 ML-KEM/ML-DSA/AES-GCM，AAD 绑定 Hub/owner/device/epoch/sequence/operation/方向/密钥版本。v1.3 Monitor prepare/confirm/status/recover 在固定 `25013b5` Hub 上通过 Android strict status；具体 10 selectors、APK 与源 commit 见独立 [Client report](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md)。同一受控运行完成 preview→dispatch→两个原 Thread receive。 | 仅限本次候选和两个逻辑 Node/单 container；仍缺 full React Native consent UX、physical dual Node/Android 与 public HTTPS。其他跨 Owner、恢复和旧 API coverage 按各自条目判断。 |
 
 离线公钥引导的可复现命令与边界见 [owner approval bootstrap](owner-approval-bootstrap.md)。
 
@@ -531,8 +701,8 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V64 | NOT_RUN | 未运行压力测试，也未声明真实多 Agent 容量。 |
 | V65–V70 | PARTIAL | 同 Thread 多 Group 服务/HTTP/MCP scope、独立撤权和同机双容器原生 Ask/Reply 有证据；v12 Group 父子关系 API 防环/版本/不继承授权有测试。双 owner Link 与同 owner 同组跨 Node 的密文 ASK/REPLY fake full-chain 均通过。V67 同 Node 同 Group sealed 路径与 V69 双 owner 单 Hub sealed Link Ask/Reply 均已有真实 Codex Thread 验收；跨 owner 测试限同机两个逻辑 Node，并由 driver 受控 resume。V66 面板拖拽、V68 双物理 Node、cold wake 与完整多组/拒绝组合仍未验收。 |
 | V71 | PARTIAL | 新增 `TestMachineSealedAskReconnectClaimsDurableOfflineMessage` 在一条 TLS/TCP SSE 链中验证 sealed Link ASK 离线持久化、新连接 ready、Node 生产 claim/decrypt/inbox、fake queue 去重和分层回执，普通及 `-race` 均通过。另有双私有网桥门禁证明两个 Node 只能出站到同一 Hub、彼此及 Hub→Node 不可拨入；该门禁和 SSE 测试仍是两个隔离子链。真实双物理机、真实 Codex 消费及 Node/Hub 逐窗口重启未验收。 |
-| V72 | PARTIAL | 同 owner 同 Group 的本地+跨 Node 逐人密文广播通过两个逻辑 Node/fake Codex full-chain。三 Thread opt-in 原生测试已落地，但三轮分别因夹具路径、夹具结果解析和 Codex 自动审批超时以 exit 1 结束，未证明两名真实接收者消费；双物理 Node、通知预算和故障恢复全链亦未验收。 |
-| V73 | NOT_RUN | 用户经 Monitor 的可信发起/批准、伪造批准拒绝和独立 Monitor 原生发送尚未实现。 |
+| V72 | PARTIAL | 同 owner 同 Group 的 Agent-initiated 本地+跨 Node 逐人密文广播通过两个逻辑 Node/fake Codex full-chain。早期普通广播三 Thread 尝试因夹具/结果解析/自动审批失败的历史记录保留；当前通过的是 V73 用户经 Monitor 发起的限定链路，见本表 V73 和 `client-hub-v13-25013b5-validation.md`。不把 Monitor PASS 归因给普通 Agent 广播；物理双 Node、通知预算与各类故障恢复全链仍未验收。 |
+| V73 | PASS（限定链路） | 固定候选 `25013b5` 的同一 original Monitor Thread 完成一次只读 preview、一次独立 dispatch；两原生 recipient Thread receive/context assertions 通过。Client 10 selectors/final strict status、Core scoped ciphertext scan、Intake Hub state audit 与 cleanup 均 PASS；Hub 记录一条原审批，两个 unique recipient outcomes：local `NODE_REPORTED`、remote `RELAY_PERSISTED`。派发授权和这些 outcome 不证明普遍模型正确性；物理双 Node、完整 RN 同意 UI、公网 HTTPS 未验收。详见 [bounded candidate report](client-hub-v13-25013b5-validation.md)。 |
 
 ## G1–G5 演示状态
 

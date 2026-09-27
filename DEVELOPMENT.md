@@ -22,6 +22,31 @@ contract bundle with `python3 scripts/client-contract.py export --output .cicada
 Published synthetic wire vectors must also be checked by the independent Kotlin
 implementation before claiming cross-language compatibility.
 
+## Monitor v1.3 and controlled native acceptance (2026-09-27)
+
+The frozen `client-hub-v1.3` contract has four owner-guarded Monitor operations,
+33 catalog operations and catalog SHA-256
+`808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`. The clean
+`25013b5` Hub candidate passed full Go/vet, focused race, contract/export and
+exact-image disposable TCP gates. In the controlled Android/native run, one
+read-only preview and one separate dispatch on the original Monitor Thread
+were followed by receive/context assertions on both original recipient Threads.
+Client's 10 selectors/final strict status, the Core scoped ciphertext scan,
+Intake's read-only Hub audit and owned fixture/emulator cleanup all passed.
+Exact identities, bounded claims and layer-specific evidence are in the
+[candidate report](docs/client-hub-v13-25013b5-validation.md),
+[native runbook](docs/client-monitor-native-fixture.md), [approval review](docs/monitor-broadcast-approval-review.md),
+and [independent Client report](../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
+
+The run used two logical Nodes in one container. Full React Native consent UX,
+physical Android/dual-Node operation and public HTTPS remain **NOT_RUN**;
+unattended cold wake remains **UNSUPPORTED**. This is a bounded acceptance, not
+a general prompt-injection defense. Earlier `81d8f1f` denials and `d76e630`/
+`28bd462` failures are historical attempts, not the final candidate result.
+Agent Network M1+ and Group Journal/Discussion remain proposed and unimplemented.
+The older v1.2.1 Android PASS and idle-Hub measurements remain attributed to
+their original source and image, as recorded in the [status matrix](docs/architecture-v2-status.md).
+
 For Client protocol work, use the lightweight Hub path; it does not need a Codex
 installation or model credentials:
 
@@ -39,6 +64,16 @@ proxy environment settings, or a reachable local port 7890; set
 `CICADA_BUILD_PROXY=''` to force a direct build. The older full Codex/connector
 setup below is only needed for its corresponding execution tests.
 
+To measure core idle overhead, build from a clean checkout with
+`scripts/build-hub-image.sh --image <unique-local-tag> --metadata-file <local-json>`,
+then run `scripts/measure-idle-hub.sh --image sha256:<exact-local-image-id>`.
+The measurement never pulls an image or uses a resident Hub: it allocates private
+temporary state, caps the fresh Hub at 128 MiB/0.5 CPU, samples RSS and cgroup
+usage, and removes its container/state. Results go to `.cicada-data/footprint/`.
+They describe an empty idle Hub, not loaded capacity or Node/Codex/Android usage;
+cgroup CPU includes sampling overhead. Remove only the unique test image tag
+when finished. Do not run broad Docker prune commands on the shared host.
+
 Architecture v2.1's temporary offline user-key bootstrap and its strict
 non-routing boundary are documented in [docs/owner-approval-bootstrap.md](docs/owner-approval-bootstrap.md).
 The Node-local Owner public-key trust procedure for explicit encrypted Links
@@ -47,8 +82,10 @@ peer paths support single-recipient `SEND/ASK/REPLY` over an explicit
 cross-owner Link and same-owner, same-Group delivery across Nodes. On one Node,
 same-Group sealed delivery uses the Node-local ledger and inbox without Hub
 Relay message routing; authorization reads may still use Hub Guard and
-Directory. Older Sessions without sealed-delivery capability retain a legacy
-plaintext path. See the current boundaries and test evidence in the
+Directory. Current MCP peer writes require sealed delivery; Sessions without that
+capability fail closed. Historical plaintext remains readable under its existing
+authorization. Legacy Monitor Federation body-write routes are retired. See the
+current boundaries and test evidence in the
 [status matrix](docs/architecture-v2-status.md).
 
 For an offline backup of one Node, stop its Agent and use an explicit new

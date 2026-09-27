@@ -1,5 +1,76 @@
 # v2 原生 MCP 验收记录
 
+## 2026-09-27 Client v1.3 Monitor 原生验收：PASS（限定范围，第三轮）
+
+`TestMCPMonitorBroadcastClientV13Native` 验证三个真实 Codex Thread、同一
+Docker 环境中的两个逻辑 Node，以及生产 Node bridge/delivery 路径；驱动通过受控
+safe-point `exec resume` 继续原 Thread。本范围不覆盖两个隔离 Node 容器、双物理机或
+无人值守 cold wake。Codex CLI 0.157.1 来自独立镜像
+`sha256:742214d7f2b7f0cd6a4f5bd5ed1d55d0026c25de0f654dc868cfdf70882cf264`，由官方
+shell 安装器安装，不使用 npm。
+
+首轮退出 1（417.31 秒）：旧 receive-only structured parser 不接受 Monitor 返回的
+operation/status/broadcast_id 形状，Monitor 结果解析断言失败。日志在
+`.cicada-data/native-monitor.6VWPcsoX/native-monitor-v13-0.157.1.run.log`。这是观察器
+解析失败；不能据此推断广播未送达。修正仅在 `_test.go`，合成正反解析用例通过。
+
+第二轮退出 1（547.27 秒），日志在
+`.cicada-data/native-monitor-rerun.x1HtcUGA/native-monitor-v13-0.157.1.run.log`。它通过
+Monitor 结果解析，并观察到 `status=SENT` 与预期 `broadcast_id` 匹配；随后因 Monitor
+原上下文 marker 未出现在模型回复中而失败。该轮的两名收件者消费检查和最终隔离断言尚未
+执行；不记录 marker 值、正文或 approval 内容。第三轮通过情况见下文。
+
+第二轮固定源为 `e890da4fa0c6ced3c22a3bc141dafc3cd000c16a`，测试 binary 在进程内启动本次
+测试 Hub 并通过真实 TCP 路径调用。它没有运行交付镜像的 Hub 容器；交付源
+`be0269e` / 镜像 `sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783`
+仍只作为独立 disposable Docker gate 证据。临时产物目录
+`.cicada-data/native-monitor-rerun.x1HtcUGA`；其中 `cicada.test` SHA-256 为
+`26e53894ff7c29b899f4efa57b352ea100deac67252bfc2baafeaceaae73b858`，`cicada-native`
+SHA-256 为 `34691dfbea38ade8aea9da937493c068b42a054f62244db6ba6627cb0462b3a3`。Hub 源
+`be0269e`、镜像 `sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783` 与
+v1.3 bundle SHA `68a7db6a3238605feb340012886dddd2054a577801154236c39d4ed7d84db2a9` 保持冻结，未重打包。
+
+第三轮 exit 0，**PASS**，229.08 秒。使用 clean source
+`c32d2e13b8471015f4eb5d54f215d9f10edc0a08`、Codex CLI 0.157.1（镜像
+`sha256:742214d7f2b7f0cd6a4f5bd5ed1d55d0026c25de0f654dc868cfdf70882cf264`）、模型
+`gpt-5.6-luna`；`cicada.test` SHA-256 为
+`3dba1aa3d850ee4b8ef520f7d5334ad47d3aa65d700e1866291f40b61984e8c4`，`cicada-native`
+SHA-256 为 `34691dfbea38ade8aea9da937493c068b42a054f62244db6ba6627cb0462b3a3`。运行日志
+`.cicada-data/native-monitor-final.lmbpSTrG/native-monitor-v13-0.157.1.run.log`（0600）。
+测试 binary 在进程内启动本次 Hub 并以真实 TCP 调用；这不是交付 `6cc7…` Hub 镜像容器，
+该镜像只对应独立 disposable Docker gate。测试结束无残留容器。
+
+| Thread | Node | Endpoint | 原 Thread 与受控恢复后的 ID |
+|---|---|---|---|
+| Monitor | `nm_73c74009` | `ep_41488de4a6599e8b` | `01a0e08d-cacb-7880-b211-6b9c82b1951f` |
+| 本地收件者 | `nm_73c74009` | `ep_2494176b704c5c26` | `01a0e08d-dcc8-7db3-990e-130c8bc37425` |
+| 远端收件者 | `nr_73c74009` | `ep_cc2c73e71d443cc6` | `01a0e08e-1009-70f1-b66b-856e41d5ff2b` |
+
+Client 加密 prepare、丢响应 recover、精确序号 confirm/status、metadata-only 通知、两名
+收件者在真实 MCP Thread 中处理消息并命中正文/上下文断言均通过；恢复前后使用同一原生
+Thread。广播 `bc_4e7c8679688e00251c3e050aa033e73a` 的本地/远端子消息分别为
+`msg_768b554175c76caab102577d3ddcdee5`、`msg_7f05117ca9d60e90a829bcf75f9dad56`。Hub HTTP/DB
+未发现正文；planner/verifier stub 调用数为 0，禁止 path 未调用。12 次 CLI rollout、22 个
+内部 turn 是运行器计数，不是计费 request 数。范围仍限同容器两个逻辑 Node 与受控 safe-point
+恢复，不证明独立 Node 容器、双物理机、无人值守 cold wake 或 Android 联合互操作。
+
+Driver 仅在工具回合未输出 marker 时允许至多一次独立回忆检查：同一原 Thread、MCP 关闭且
+没有执行工具事件；提示不提供 marker、正文或 approval，模型仍须回答命中原值并保持
+same-session。本轮没有计数该 fallback 是否实际触发。独立两轮纯记忆 preflight PASS（24.10 秒）：
+同一 Thread、`agent_message.text`、0 tools；仅为辅助证据，不替代广播验收。
+
+复跑命令（在 Go 1.27.1 的一次性测试容器内，从 `cicada-go` 执行；Codex CLI 使用
+[`docker/Dockerfile`](../docker/Dockerfile) 固定的 0.157.1 安装方式）：
+
+```bash
+CICADA_MONITOR_NATIVE_E2E=1 CICADA_CODEX_BIN=/path/to/codex CICADA_NATIVE_CICADA_BIN=/path/to/cicada-native CICADA_NATIVE_MODEL=gpt-5.6-luna go test -count=1 -timeout 30m ./cmd/cicada -run '^TestMCPMonitorBroadcastClientV13Native$'
+```
+
+运行容器时只通过 `--env-file /path/to/private-runtime.env` 注入隔离模型凭据；该占位文件
+须为 `0600`，不得把凭据放进命令行或记录。可用容器环境 `CICADA_NATIVE_MODEL` 固定模型；
+未设置时测试默认 `gpt-5.6-luna`。测试 opt-in 与二进制要求见
+[`monitor_broadcast_native_test.go`](../cicada-go/cmd/cicada/monitor_broadcast_native_test.go#L104)。
+
 ## 2026-09-25 同 Group 三 Thread 广播：协议通过，原生闭环未通过
 
 新增 opt-in `TestMCPSealedSameGroupBroadcastNative`，使用同一逻辑 Node 的三个

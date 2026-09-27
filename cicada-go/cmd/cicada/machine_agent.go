@@ -93,6 +93,16 @@ func runMachineAgent(args []string) error {
 		return fmt.Errorf("open local Group node inbox: %w", err)
 	}
 	defer localInbox.Close()
+	monitorInboxPath := machineMonitorBroadcastInboxPath(*stateDir, *id)
+	monitorInbox, err := openExistingMachineMonitorBroadcastInbox(monitorInboxPath)
+	if err != nil {
+		return fmt.Errorf("open Monitor management inbox: %w", err)
+	}
+	defer func() {
+		if monitorInbox != nil {
+			_ = monitorInbox.Close()
+		}
+	}()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if *lanDiscovery {
@@ -179,6 +189,14 @@ func runMachineAgent(args []string) error {
 	}
 	var localBridge *machineAgentJoinBridge
 	var localWake <-chan struct{}
+	processMonitor := func() error {
+		if *relayOnly || !relayAuthorized || strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) == "" {
+			return nil
+		}
+		bridge := &machineAgentJoinBridge{ctx: ctx, stateDir: *stateDir,
+			baseURL: base, nodeID: *id, nodeToken: nodeIdentity.RelayToken}
+		return processMachineMonitorBroadcastNotifications(ctx, bridge, &monitorInbox, monitorInboxPath)
+	}
 	processLocal := func() error {
 		if localBridge == nil {
 			return nil
@@ -190,8 +208,9 @@ func runMachineAgent(args []string) error {
 		// unrelated management jobs on the same Node.
 		localErr := processLocal()
 		relayErr := processRelay()
+		monitorErr := processMonitor()
 		jobErr := processJobs()
-		return errors.Join(localErr, relayErr, jobErr)
+		return errors.Join(localErr, relayErr, monitorErr, jobErr)
 	}
 	for {
 		if err := awaitMachineNodeBinding(ctx, base, *id, *name, nodeIdentity.RelayToken,
@@ -266,6 +285,9 @@ func runMachineAgent(args []string) error {
 					return nodeCredentialRevokedError(err)
 				}
 				fmt.Fprintln(os.Stderr, err)
+			}
+			if err := processMonitor(); err != nil {
+				fmt.Fprintln(os.Stderr, "Monitor management delivery:", err)
 			}
 		case <-localWake:
 			if err := processLocal(); err != nil {

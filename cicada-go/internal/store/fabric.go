@@ -241,31 +241,74 @@ func (s *Store) TouchEndpoint(id, status string) (*Endpoint, error) {
 	return s.getEndpointLocked(id)
 }
 
+const staleEndpointPredicate = `fabric_endpoints.last_seen < ?
+AND fabric_endpoints.status NOT IN ('offline', 'left')
+AND NOT EXISTS (
+  SELECT 1 FROM session_bindings current_binding
+  WHERE fabric_endpoints.migration_state = ?
+    AND current_binding.id = fabric_endpoints.binding_id
+    AND current_binding.endpoint_id = fabric_endpoints.id
+    AND current_binding.status IN ('active', 'leased', 'online', 'ready', 'acquired')
+    AND current_binding.lease_owner <> ''
+    AND current_binding.lease_expires_at > ?
+)`
+
 func (s *Store) MarkStaleEndpoints(cutoff string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id FROM fabric_endpoints WHERE last_seen < ? AND status NOT IN ('offline', 'left')`, cutoff)
+
+	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	var ids []string
+	rollback := func(err error) ([]string, error) {
+		_ = tx.Rollback()
+		return nil, err
+	}
+
+	// V2 presence is authoritative only when this READY Endpoint points at its
+	// own current binding and that binding still has a live lease. Legacy or
+	// incomplete mappings continue to age out by last_seen as before.
+	currentNow := now()
+	rows, err := tx.Query(`SELECT id FROM fabric_endpoints WHERE `+staleEndpointPredicate+` ORDER BY id`,
+		cutoff, EndpointMigrationReady, currentNow)
+	if err != nil {
+		return rollback(err)
+	}
+	ids := make([]string, 0)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			_ = rows.Close()
-			return nil, err
+			return rollback(err)
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return rollback(err)
+	}
+	if err := rows.Close(); err != nil {
+		return rollback(err)
+	}
+	if len(ids) > 0 {
+		result, err := tx.Exec(`UPDATE fabric_endpoints SET status = 'offline', updated_at = ? WHERE `+staleEndpointPredicate,
+			currentNow, cutoff, EndpointMigrationReady, currentNow)
+		if err != nil {
+			return rollback(err)
+		}
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return rollback(err)
+		}
+		if updated != int64(len(ids)) {
+			return rollback(fmt.Errorf("stale endpoint candidate set changed within transaction: selected %d, updated %d", len(ids), updated))
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	_, err = s.db.Exec(`UPDATE fabric_endpoints SET status = 'offline', updated_at = ?
-WHERE last_seen < ? AND status NOT IN ('offline', 'left')`, now(), cutoff)
-	return ids, err
+	return ids, nil
 }
 
 func (s *Store) FindWorkerByThreadID(threadID string) (*Worker, error) {

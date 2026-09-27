@@ -1,15 +1,45 @@
 # Disposable Client Group-key fixture
 
-Status: **preparation only**. This recipe starts the exact fixed v1.2.1 Hub,
-registers a synthetic owner key, and creates a synthetic Node with a pending
-pairing code. It does not create a leased native Endpoint or claim a positive
-Android `group.key_manifest/grant/status` result. The Endpoint must be joined
-from a live native Codex Thread through the owner-bound Node's local Join
-bridge; a made-up Thread ID or direct Hub request is not an acceptable
-replacement.
+Status: **preparation only**. Bare `start` remains pinned to the historical
+v1.2.1 Hub for reproducing the earlier run below. For the current v1.3 Hub,
+pass its fixed build metadata explicitly:
 
-The Android handoff and validation reports identify the required target as
-Hub source `967dbd885fae9a150b3d9a77c8e4e30da1d0dd8a`, protocol
+```bash
+./scripts/client-group-key-fixture.sh start \
+  --build-metadata .cicada-data/client-v13-be0269e/interop/result.json
+```
+
+The explicit path accepts either a `cicada.hub-build.v1` record or a completed
+`cicada.client-hub-interop.v1` result whose `build` uses that schema. It
+requires `source.dirty=false`, full SHA formats, the current authoritative
+v1.3 catalog digest, and a full `image.id`; Docker must have that exact image
+ID locally, and the image's revision, dirty flag, catalog, source fingerprint
+and `hub` role labels must match. Runtime `/healthz`, Client capabilities and
+public identity are checked against that same metadata. The image is run by
+its ID, never by a mutable tag; no image is built or pulled. The companion
+`.cicada-data/client-v13-be0269e/build.json` names a different image ID, so use
+the interop result above when reproducing the retained `sha256:6cc7c2c6…` image.
+
+Both paths register a synthetic owner key and create a synthetic Node with a
+pending pairing code. Neither creates a leased native Endpoint or claims a
+positive Android `group.key_manifest/grant/status` result. The Endpoint must
+be joined from a live native Codex Thread through the owner-bound Node's local
+Join bridge; a made-up Thread ID or direct Hub request is not an acceptable
+replacement. Teardown reads the fixture marker's original image and build
+identity, so `stop` continues to match a v1.2.1 fixture even when the current
+explicit metadata points at a v1.3 image.
+
+The current explicit v1.3 build metadata records source revision
+`be0269e80c41e94881d131bd4f4b233e80b6ffe6`, `dirty=false`, source fingerprint
+`f21f206525c9deb6f959988d675606257ee796ae39f46b973f9bdd714cda7e4e`, catalog
+SHA-256 `808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`,
+and exact image ID
+`sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783`.
+The contract revision is taken from the checked v1.3 catalog.
+
+The historical v1.2.1 Android handoff and validation reports used by bare
+`start` identify their target as Hub source
+`967dbd885fae9a150b3d9a77c8e4e30da1d0dd8a`, protocol
 `client-hub-v1.2.1`, catalog SHA-256
 `25c3d7f585b1811781cb46669a09e2e08ab8c58765a7b9318145cea5bbce4df9`, and
 local image ID
@@ -226,3 +256,18 @@ creation, native Codex Join, leased native Endpoint, positive
 `group.key_manifest/grant/status`, physical Android and public HTTPS remain
 **NOT_RUN**. The prepared Hub was stopped and its `/tmp` state removed after
 verification; no Client repository files or Client database were accessed.
+
+## Current v1.3 bootstrap smoke
+
+On 2026-09-27, the explicit metadata command shown above exited **0** using
+image ID `sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783`.
+Hub extraction/version, synthetic Owner key generation and offline
+registration, Hub health/capability/identity provenance, identity stability,
+and pending Node bootstrap all completed as expected. The Node's one-shot
+bootstrap exited **1** after creating the protected pending-device-code file;
+owner confirmation was intentionally not performed. The only result is
+**bootstrap PASS**. Android enrollment, Node confirmation, Group creation,
+native Codex Join, leased Endpoint, `group.key_manifest/grant/status`, physical
+Android and public HTTPS remain **NOT_RUN**. The marker-based `stop` exited
+**0**; a follow-up check found neither the fixture Hub container nor its
+`/tmp` directory.

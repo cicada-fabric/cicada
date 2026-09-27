@@ -1,6 +1,7 @@
 package fabric
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func grantRepresentative(t *testing.T, persistence *store.Store, actor Actor) {
 	}
 }
 
-func TestMonitorMediatedCrossGroupCollaboration(t *testing.T) {
+func TestRetiredFederationBodyWritersPreserveHistoricalRead(t *testing.T) {
 	service, persistence, groupA := newFabricTestService(t)
 	owner, err := persistence.GetPrincipal("owner")
 	if err != nil {
@@ -32,9 +33,8 @@ func TestMonitorMediatedCrossGroupCollaboration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a1, actorA1 := joinFabricPeer(t, service, groupA.ID, "a1", "native-a1", "node-a")
+	_, actorA1 := joinFabricPeer(t, service, groupA.ID, "a1", "native-a1", "node-a")
 	ma, actorMAOld := joinFabricPeer(t, service, groupA.ID, "ma", "native-ma", "node-a")
-	b1, actorB1 := joinFabricPeer(t, service, groupB.ID, "b1", "native-b1", "node-b")
 	mb, actorMBOld := joinFabricPeer(t, service, groupB.ID, "mb", "native-mb", "node-b")
 	grantRepresentative(t, persistence, actorMAOld)
 	grantRepresentative(t, persistence, actorMBOld)
@@ -69,92 +69,64 @@ func TestMonitorMediatedCrossGroupCollaboration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ClaimRepresentation(actorMA, repA.ID, 300); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.ClaimRepresentation(actorMB, repB.ID, 300); err != nil {
-		t.Fatal(err)
-	}
-
-	// A1 can only ask its own representative. The normal direct A1 -> B1 path
-	// remains denied by TestDirectCrossGroupMessageIsDenied.
-	origin, err := service.Ask(actorA1, AskInput{Target: ma.Endpoint.ID, Question: "What is B1's best result?"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	federated, err := service.Federate(actorMA, FederateInput{
-		OriginRequestID: origin.RequestID, TargetGroupID: groupB.ID,
-		Capability: "benchmark.read", ContractID: contract.ID,
+	deadline := time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339)
+	historical, err := persistence.CreateFederationRequest(store.FederationRequest{
+		ID: "frequest_historical", OriginRequestID: "rq_historical",
+		SourceGroupID: groupA.ID, TargetGroupID: groupB.ID,
+		SourceRepresentativeEndpointID:   actorMA.EndpointID,
+		TargetRepresentativeEndpointID:   actorMB.EndpointID,
 		SourceRepresentativeAssignmentID: repA.ID, TargetRepresentativeAssignmentID: repB.ID,
-		Scopes: []string{"public-result"}, Deadline: time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339), MaxHops: 2,
+		OriginPrincipalID: actorA1.PrincipalID, Capability: "benchmark.read", ContractID: contract.ID,
+		RequestDigest: "synthetic-historical-request-digest", Scopes: []string{"public-result"},
+		Deadline: deadline, MaxHops: 2, State: store.FederationRequestPending,
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	mailboxMB, err := service.Receive(actorMB, ReceiveInput{Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foundFederationRequest := false
-	for _, item := range mailboxMB.Messages {
-		if item.Message != nil && item.Message.Kind == "federation_request" && item.Message.RequestID == federated.ID {
-			foundFederationRequest = true
-		}
-	}
-	if !foundFederationRequest {
-		t.Fatalf("MB did not receive gateway request: %#v", mailboxMB.Messages)
-	}
-	accepted, err := service.AcceptFederation(actorMB, federated.ID)
-	if err != nil || accepted.State != store.FederationRequestInProgress {
-		t.Fatalf("target acceptance did not begin work: %#v err=%v", accepted, err)
 	}
 
-	local, err := service.Ask(actorMB, AskInput{Target: b1.Endpoint.ID, Question: "Return the public benchmark result"})
-	if err != nil {
-		t.Fatal(err)
+	readable, err := service.FederationRequest(actorMA, historical.ID)
+	if err != nil || readable == nil || readable.ID != historical.ID || readable.State != store.FederationRequestPending {
+		t.Fatalf("historical Federation status is no longer readable: request=%#v err=%v", readable, err)
 	}
-	if _, err := service.Reply(actorB1, ReplyInput{RequestID: local.RequestID, Body: "best=42.7"}); err != nil {
-		t.Fatal(err)
+
+	retiredWrites := []struct {
+		name string
+		call func() error
+	}{
+		{"federate", func() error {
+			_, err := service.Federate(actorMA, FederateInput{
+				OriginRequestID: "rq_new", TargetGroupID: groupB.ID, Capability: "benchmark.read",
+				ContractID: contract.ID, SourceRepresentativeAssignmentID: repA.ID,
+				TargetRepresentativeAssignmentID: repB.ID, Scopes: []string{"public-result"},
+				Deadline: deadline, MaxHops: 2,
+			})
+			return err
+		}},
+		{"submit result", func() error {
+			_, err := service.SubmitFederationResult(actorMB, FederationResultInput{
+				FederationRequestID: historical.ID, LocalRequestID: "rq_local_historical",
+			})
+			return err
+		}},
+		{"accept result", func() error {
+			_, err := service.AcceptFederationResult(actorMA, historical.ID)
+			return err
+		}},
 	}
-	submitted, err := service.SubmitFederationResult(actorMB, FederationResultInput{
-		FederationRequestID: federated.ID, LocalRequestID: local.RequestID,
-		EvidenceRefs: []string{"evidence:benchmark-run-7"}, VerificationLevel: "producer-reply",
-	})
-	if err != nil || submitted.State != store.FederationRequestResultSubmitted {
-		t.Fatalf("result submission failed: %#v err=%v", submitted, err)
-	}
-	if submitted.ProducerEndpointID != b1.Endpoint.ID || submitted.ProducerPrincipalID != actorB1.PrincipalID {
-		t.Fatalf("true producer provenance was lost: %#v", submitted)
-	}
-	mailboxMA, err := service.Receive(actorMA, ReceiveInput{Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foundFederationResult := false
-	for _, item := range mailboxMA.Messages {
-		if item.Message != nil && item.Message.Kind == "federation_result" && item.Message.RequestID == federated.ID {
-			foundFederationResult = true
+	for _, attempt := range retiredWrites {
+		if err := attempt.call(); !errors.Is(err, ErrFederationBodyWritesRetired) {
+			t.Errorf("%s returned %v, want explicit Federation body-write retirement", attempt.name, err)
 		}
 	}
-	if !foundFederationResult {
-		t.Fatalf("MA did not receive gateway result: %#v", mailboxMA.Messages)
+
+	requests, err := persistence.ListFederationRequests(store.FederationRequestFilter{SourceGroupID: groupA.ID, Limit: 10})
+	if err != nil || len(requests) != 1 || requests[0].ID != historical.ID || requests[0].State != store.FederationRequestPending {
+		t.Fatalf("retired Federation writes changed historical state or created a new request: %#v err=%v", requests, err)
 	}
-	closed, err := service.AcceptFederationResult(actorMA, federated.ID)
-	if err != nil || closed.State != store.FederationRequestClosed {
-		t.Fatalf("source result acceptance did not close request: %#v err=%v", closed, err)
-	}
-	mailboxA1, err := service.Receive(actorA1, ReceiveInput{Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foundReply := false
-	for _, item := range mailboxA1.Messages {
-		if item.Message != nil && item.Message.Kind == "reply" && item.Message.RequestID == origin.RequestID && item.Message.Body == "best=42.7" {
-			foundReply = true
+	for _, endpointID := range []string{actorMA.EndpointID, actorMB.EndpointID} {
+		inbox, err := persistence.ListRelayInbox(endpointID, 0, 10)
+		if err != nil || len(inbox) != 0 {
+			t.Fatalf("retired Federation writes created peer relay messages for %s: %#v err=%v", endpointID, inbox, err)
 		}
 	}
-	if !foundReply {
-		t.Fatalf("federated result did not return to original A1 request: %#v", mailboxA1.Messages)
-	}
-	_ = a1
 }

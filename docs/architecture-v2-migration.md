@@ -1,5 +1,91 @@
 # Architecture v2.1 数据与协议迁移
 
+## 2026-09-27 Hub v34：consent 元数据与 Monitor intake 限额
+
+`v2.client.monitor_broadcast_intake_limits` 先补充现有
+`user_monitor_broadcast_v2` 的 `consent_digest` 与 `preview_json`，再创建
+`user_monitor_broadcast_v2_notice_cursors` 和三条 owner/device/status/expiry
+索引。新 notice scan index 可按有效期与 preview ID 做有界 owner 范围分页；迁移
+随后删除已被它替代的 `user_monitor_broadcast_v2_active_notice_idx`。既有 preview、
+批准、设备、密文、recipient snapshot、结果与 replay 记录均保留，不重写授权事实。
+
+Admission 对仍有效的 `PREPARED`、`APPROVED`、`DISPATCH_AUTHORIZED` 行实施
+16 条/owner-device 与 64 条/owner 的容量检查。Prepare 精确重试先查到已有请求后
+直接返回，不再占用槽位；只有记录过期才释放容量，设备撤销不删除未过期历史状态。
+限制只作用于新 intake，不限制既有状态的查询/事实回执。候选扫描游标只记每个 Node
+上次检查的有效期/preview 位置，不授予授权、不确认送达，也不丢弃旧 ledger。
+
+迁移 apply 会调用相同 v34 中的 consent schema initializer，再创建限额 schema；版本
+验证检查 cursor table、两个 consent 列以及三个必需索引。`TestUserMonitorBroadcastV2LimitsMigration34PreservesLedger`
+从 v33 形态重开合成数据库，验证既有 PREPARED preview/snapshot 保留、列和索引出现、
+旧通知索引移除。旧版本对 v33 ledger 上限的 fixture 已更新到 v34。整仓 Go tests/vet
+通过后，Confirm response projection/OpenAPI 与 inactive Group 拒绝两项 review 修正
+通过受影响的 Control/Server 全包测试、vet 及聚焦 race 复验；Store Monitor race 也
+通过。只待干净 artifact 与最终 Docker 门禁。
+
+Client `client-hub-v1.3` 操作目录已通过本地一致性检查，但最终协议包 manifest、干净
+源码 commit 与 Hub image metadata 尚未冻结。本迁移说明不表示运行中的 Hub 已升级；
+部署升级仍按 Hub/Node 分离备份流程操作，不对共享开发 Hub 做门禁或替换。
+
+## 2026-09-26 Hub v33：逐收件者结果证据
+
+`v2.client.monitor_broadcast_recipient_outcomes` 增量增加
+`user_monitor_broadcast_v2_recipient_outcomes`，从原固定快照派生最多 32 个
+稳定子操作/消息 ID。旧已预留派发的行仅补 `PENDING` 槽位，表示尚无合格结果
+上报，不声称从未发送。迁移可重入且保留原批准、密文、设备与身份记录。
+
+当前 Node + 原 Monitor SessionBinding 才能上报最多 8 项事实；过期/设备撤销
+不抹去已经发生的投递，但旧绑定不能覆盖新 owner。`FAILED → UNKNOWN → ACCEPTED`
+只单调前进，本地接受明确为 `NODE_REPORTED`，远端接受必须核对对应 Relay
+密文记录才写 `RELAY_PERSISTED`。这些状态都不证明模型消费或业务结果通过。
+
+`TestUserMonitorBroadcastV2OutcomeMigrationBackfillsV32Dispatch` 将一次性库降为
+v32 状态再重开，验证 `DISPATCH_AUTHORIZED` 原行、快照、摘要、稳定 ID 与密文
+均不变，新收件者行只为 `PENDING`。结果读取目前是内部 Node/Store 协议，未提供
+给 Client 的 `status` RPC；Client 撤销后的 Node 事实报告也不等于原 Client 还能
+读取状态。
+
+报告丢失后使用同一个操作和子消息 ID 重试；若原批准或 SessionBinding 已
+失效，禁止借对账重新发送。尚未收到有效报告的槽位仍不能汇报成功；超期后的
+独立 Node 结果补报/恢复 UX 仍需后续接线。
+
+## 2026-09-26 Hub v32：原登记证据与管理通知回执
+
+`v2.client.monitor_broadcast_delivery_evidence` 增量增加
+`client_device_enrollment_proofs_v2` 和
+`user_monitor_broadcast_v2_notice_receipts`；不重建设备或密钥，不更改原 nonce
+和 replay 状态。新设备登记事务保存准确签名 Grant、摘要、原登记时间。
+旧设备只能通过与原 nonce 摘要完全匹配的原 Grant 重试补回证据；没有该文件时
+旧 Client 操作仍可用，新增 Monitor 密文打开明确拒绝，不签发替代 Grant。
+
+历史登记时间精确到秒：验签在该秒表示的时间区间与签名有效期交集中检查，
+保留原始时间字符串；新登记使用纳秒时间格式。Hub 与 Node 共用同一时间精度
+校验函数，不用当前时间替代历史登记，也不虚构更精确的时间。
+
+通知回执区分 `NODE_ACCEPTED`、`QUEUE_ACCEPTED`、`INJECTION_UNCERTAIN` 和
+`FAILED`。它们描述管理通知，允许在派发批准消费之前记录；不能用作广播
+投递完成凭据。Node 凭据和当前原 SessionBinding/epoch 约束回执，撤销或
+过期后的事实记录不重新授权发送。Node 的独立
+`monitor-broadcast-inbox.sqlite` 复用已有持久注入日志与维护锁下的离线备份。
+
+升级前仍须使用已有 Hub/Node 分离备份流程；这不是对运行中状态的热备份
+支持。Client wire 和 `client-hub-v1.2.1` 的公开操作未改变。
+
+## 2026-09-26 Hub v31：Monitor 广播授权基础
+
+增量迁移 `v2.client.monitor_broadcast_authorization` 新建
+`user_monitor_broadcast_v2`，关联现有设备请求与不可变广播快照，保存可信
+设备来源、准确内容/接收范围摘要、短期限、密封正文及单次派发授权状态。
+不改写历史 Endpoint、Session、Goal、Contact、Approval、密钥或重放计数。
+签名验证成功不是授权，派发授权也不是原生消费回执。该内部基础尚无公开
+Client 操作，合同仍为 `client-hub-v1.2.1`、外层 wire 仍为 v1。
+
+升级前按现有一致点备份/验证流程保存 Hub StateDir；Node 子树和外部 MCP/
+Codex 状态分别备份。不要删除迁移账本或回退密钥计数。v31 数据应向前修复；
+旧二进制未验收读取新授权状态，不能直接复用已升级 StateDir 做降级。
+旧 Federation 业务写入口退役不删除其请求、结果、消息和密钥历史；新通信
+使用已授权 Endpoint 连线与 Node 密封路径。
+
 ## 2026-09-25 Relay/Node 语义修正（无 schema 迁移）
 
 本切片没有提高 Hub 或 Node 数据库 schema 版本，也没有重写历史消息、Endpoint、

@@ -1,14 +1,21 @@
 请在当前 CICADA 仓库上执行一次重大架构升级。
 
 仓库根目录新版 CICADA.md 是本轮已经采纳的目标架构：
-Architecture v2.1 — User-Defined Collaboration Graph & Single-Relay Transport。
+Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport。
 
 请完整阅读该文档，尤其是设计不变量、原生会话与失败语义、迁移方案、
-V01–V73 验收矩阵、G1–G5 演示路径和 v2-A 至 v2-E 的阶段划分。
+完整验收矩阵、G1–G5 演示路径和 v2-A 至 v2-E 的阶段划分。
 如果根目录也有 CICADA_PROMPT.md，请完整读取并执行其中要求。
 
-这是一项真实工程任务：修改现有代码、迁移、测试和工程文档。
-不要只返回设计或计划，不要只增加 Group struct，不要另起一个项目。
+## 2026-09-27 当前检查点：原生联调已收口，Network 与 Group 空间规划
+
+本轮目标以 `CICADA.md` 的 Architecture v2.3 为准：物理部署仍是 Node、Hub、Client，逻辑参与者仍是 User、Control、Worker、Monitor；Network 是 Group 之上的私有租户/授权范围，不是新部署实体或第五类参与者。每个 Network 只有一个权威 Hub、每个 Group 只属一个 Network；同一 Thread/Endpoint 可在多个 Network 各有 scoped 注册并加入多个 Group，各 Hub 的 SessionBinding/registry 独立，而 Node 对同一原生 Session 只允许一个当前投递 owner 和串行 writer。NetworkMembership、Group Membership、Endpoint 加入关系，以及目录发现、私聊、广播和 Task grant 各自独立；Network 成员身份不自动加入 Group 或暴露私有 Group 历史。多 Hub 注册使用各自的凭据与状态，不做 Hub-to-Hub 转发。
+
+原生 Monitor 检查点已经完成：固定候选上的 Android 用户确认、同原生 Monitor Thread 的只读批准预览与独立派发、本地/远端原收件 Thread 消费、Client 最终只读状态、Hub 受限明文扫描、独立账本审计与一次性环境清理分别通过；精确来源和限制只在 [当前候选验证](docs/client-hub-v13-25013b5-validation.md) 与实施状态文档记录，早期失败仍保留为历史。本轮只更新 v2.3 目标和实施规划，不启动新 Network、Journal、Discussion 或多 Hub 代码，不调用模型，也不把旧 v2-A/B/C 广泛任务当作本轮新增实现授权。
+
+新增目标是 Group 内长期但克制的 Journal 重要 checkpoint 与 Discussion 主题/回复。Agent 可决定何时发即时消息、写进展或提出讨论；Core 逐操作验证身份、Group/Network 范围、版本、限额与历史权限，Hub 只存密文及必要元数据。已有成员断线后在有效授权期内可从原读取起点补读，不需重复人工批准；新成员加入前历史须有单独的范围 grant 和解密材料。Monitor 可提出再分组，仅在精确可撤销委托下 CAS 执行并审计，不能自授权、复制旧 key、扩大读者或替用户审批。拟议接口和具体阶段见 [Group 协作空间设计](docs/group-collaboration-spaces-design.md) 与 [实施计划](docs/architecture-v2-plan.md)。下一个代码检查点从 M1 Network identity/Guard/迁移开始；M1–M5 是依赖路线，不是永久性的逐阶段审批关卡。
+
+以下保留原架构升级的完整工程基线与未来验收要求；当前轮次的范围以上述检查点为准。后续实施必须修改真实代码、迁移、测试和工程文档，不能只增加 Group struct 或另起项目。
 
 一、先确认真实起点，然后继续实现
 
@@ -28,7 +35,7 @@ Goal/Idea、Worker/Monitor、审批、Contact、加密和恢复能力的真实�
 - docs/architecture-v2-status.md
 - docs/architecture-v2-migration.md
 
-审计和计划完成后继续修改真实代码，不要停下来只交计划。
+后续 M1 获得实施任务后，审计和计划须推进到真实代码与验收；本轮完成目标文档后停止。
 
 二、必须保留的架构边界
 
@@ -40,9 +47,11 @@ Goal/Idea、Worker/Monitor、审批、Contact、加密和恢复能力的真实�
    但普通 Agent 通信不得调用它的意图、规划或汇总业务。
 
 2. Group 是持久、可嵌套的一等协作域。一个真实 Thread/Endpoint 可以同时加入多个 Group，保持原生 Session 与 Endpoint ID 不变；父子关系不自动继承授权。组内 Agent 通过 MCP 自主通信和广播。跨组、跨用户由双方明确授权的 Endpoint 连线直达，未经连线授权默认拒绝。旧版双 Monitor 必经工作流须退役，不作为新路径的兼容要求。
+   Group 的拟议 Journal 只追加少量重要进展，Discussion 保留主题/回复与明确状态；即时消息不自动写入长期历史，讨论结案不代替 Task 验收或 Approval。Hub 不存这些正文的明文，引用的 Evidence/Artifact 另行授权。
 
 3. Monitor 是可选的观察者、专家、reviewer 或获授权的代表，不是默认消息转发站，也不能代替用户批准操作。用户可通过 Monitor 发起一个 Group 广播；必须分别记录可信用户发起/批准与 Monitor 实际发送身份。GroupGateway 如仍用于可选审阅，只能执行明确策略，不能偷偷插入普通 peer 传输链。
    Guard 在真实服务和执行入口落实安全规则，不能只靠模型遵守提示词。
+   Monitor 可以建议二次分组；执行需要另授的精确 Network/Group/动作/期限委托、当前版本 CAS 和审计，不能自授权或静默增加读者/历史访问，也不能重建原生 Thread 来掩盖共享记忆。
 
 4. 分离 Principal、Endpoint、Membership 和 SessionBinding。
    保留现有 Endpoint ID、原生 Session 和历史关系。
@@ -61,7 +70,9 @@ Goal/Idea、Worker/Monitor、审批、Contact、加密和恢复能力的真实�
 
 8. Client 第一版仅开发 Android，且由独立仓库 `~/CICADA_CLIENT` 中的另一开发者负责；本任务不得修改该仓库。核心 Hub/Control 需预留安全契约：按 Node/Worker/Goal 分层状态与增量、语音转写/文字 Control Intent、Hub 权威面板事务、双端授权的外部 Thread 连线。Android 可选安装本地小模型做语音转文字；无本地模型的联网 STT 须另行明确第三方边界。Android↔Control 的用户指令与管理数据必须使用 NIST 标准的应用层后量子 E2EE，不能以 TLS/旧 bearer 降级；Control 是管理指令的解密端，普通 peer 的解密端则是目标 Endpoint。未实现的能力应经版本化发现明确报未就绪，不开放假接口。
 
-三、本轮优先完成 v2-A → v2-B → v2-C
+三、保留原 v2-A → v2-B → v2-C 基线范围
+
+以下 v2-A 至 v2-E 阶段仍作为既有架构基线和退出条件记录；它们不代表本轮均已完成，也不取代上方 2026-09-27 当前检查点。后续依次为 M1 Network 身份/Guard/迁移、M2 加密 Journal/Discussion、M3 授权路由及复用出站长连接的 cursor/unread、M4 委托再分组、M5 多 Hub Node/Client；本轮不启动这些实现。
 
 v2-A：Group、身份与统一权限
 - 梳理并解除 Fabric 对 Control 推理业务的依赖。
@@ -176,4 +187,4 @@ Control API 接触过明文的路径，不能声称 Control 从未看到明文�
 文档、代码、单元测试、集成测试、真实原生验收和故障验收分别报告。
 不要用“整体基本完成”掩盖缺口。
 
-现在开始：建立本地事实和回归基线，然后连续推进真实实现。
+当前轮次在文档规划与证据收口后停止。下一次明确的实现任务从 M1 的可迁移 Network 身份与 Guard 闭环开始，并按实际测试结果持续推进；不把本提示词解释为擅自启动新代码范围的授权。

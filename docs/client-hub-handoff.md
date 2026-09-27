@@ -2,12 +2,38 @@
 
 本文件给独立 Android 仓库的开发者一条最短接入路径。Hub 代码仍在 `CICADA`；不要在 Android 端链接 Go 包、读取 Hub SQLite、保存管理 bearer 或 Node bearer。详细字段、字节级加密规则和错误边界分别见 [最小互操作流程](client-hub-interop-v1.md)、[wire contract](client-hub-wire-v1.md) 和 [OpenAPI](client-hub-v1.openapi.yaml)。
 
+> 2026-09-27: frozen v1.3 artifact and disposable TCP gate **PASS**; exact pins and
+> boundaries are in the [validation record](client-hub-v13-validation.md). The dated candidate note below is pre-freeze history.
+
 两仓统一开发、版本固定和验收流程见 [联合开发规范](client-hub-development.md)。
 可直接交给独立 Client 开发者的 v1.2 任务书见
 [Client 提示词](client-hub-v12-client-prompt.md)。
 机器可读 operation 来源为 [`catalog.json`](../cicada-go/internal/clientcontract/catalog.json)，
 不要在各份文档中分别维护操作数量。`contract_revision` 与 `catalog_sha256`
 用于核对协议修订；实际权限仍由加密 `session.capabilities` 和服务端 Guard 决定。
+
+## 2026-09-27 Monitor v1.3 冻结前候选快照
+
+共享工作树中的候选为 `client-hub-v1.3`，33 个操作，catalog SHA-256
+`808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`；本地
+catalog 检查及七项合同/恢复 Python 测试通过。四项新 RPC 是
+`monitor.broadcast_prepare`、`monitor.broadcast_confirm`、
+`monitor.broadcast_status` 与 `monitor.broadcast_recover`。
+
+先等待 Hub owner 提供干净 source commit、完整协议包及 manifest/hash、实际 Hub
+image ID/digest，再导入 Android。两个定向 TCP Monitor HTTP lifecycle/Relay 测试已
+通过；整仓 Go tests/`go vet` 在两项 review 修正前通过。之后的 Confirm
+projection/OpenAPI 与 inactive Group 修正通过受影响的 Control/Server 全包测试、
+vet 及聚焦 race 复验；五项 Store Monitor race 测试也通过。最终 Docker 联合门禁仍待确认。不要从
+共享开发 Hub 构建 Android 验收结论。候选功能要求 Client 先验证完整 Endpoint
+attestation 与独立可信 Owner 签署的 Group Endpoint grant，再显示 consent scope 与
+有序 recipient roster；只有显式用户确认后才以 Monitor key 加密正文并用 Client
+device key 签署 envelope v2。精确细节、重试/恢复与验收条件见
+[v1.3 Client 任务书](client-hub-v13-client-prompt.md)。
+
+v1.2.1 固定镜像上的 Android 管理、恢复和 Group key 验收只保留为历史证据。此候选
+的 Android、真实 native Monitor、物理设备与公网 HTTPS 均为 **NOT_RUN**，不能从旧
+APK 或旧镜像结果推导通过。
 
 ## 现在可以接入
 

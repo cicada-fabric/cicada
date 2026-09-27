@@ -396,6 +396,14 @@ func localGroupGuardAction(ledgerAction string) (string, error) {
 }
 
 func (b *machineAgentJoinBridge) localGroup(request localGroupRequest) (*localGroupResult, error) {
+	return b.localGroupWithBroadcastFence(request, nil)
+}
+
+func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroupRequest,
+	fence *groupBroadcastDeliveryFence) (*localGroupResult, error) {
+	if fence != nil && request.Operation != "local_send" {
+		return nil, errors.New("broadcast snapshot can only authorize SEND")
+	}
 	if _, err := b.verifyLocalGroupSource(request); err != nil {
 		return nil, err
 	}
@@ -409,7 +417,7 @@ func (b *machineAgentJoinBridge) localGroup(request localGroupRequest) (*localGr
 	defer ledger.Close()
 	switch request.Operation {
 	case "local_send", "local_ask", "local_reply":
-		return b.submitLocalGroupMessage(ledger, request)
+		return b.submitLocalGroupMessage(ledger, request, fence)
 	case "local_status", "local_cancel":
 		stored, err := ledger.GetRequest(b.ctx, request.RequestID)
 		if err != nil {
@@ -449,7 +457,7 @@ func machineLocalGroupInboxPath(stateDir, nodeID string) string {
 }
 
 func (b *machineAgentJoinBridge) submitLocalGroupMessage(ledger *nodelocal.Ledger,
-	request localGroupRequest) (*localGroupResult, error) {
+	request localGroupRequest, fence *groupBroadcastDeliveryFence) (*localGroupResult, error) {
 	messageID, derivedRequestID, err := localSealedRPCIDs(request.OperationID)
 	if err != nil {
 		return nil, err
@@ -493,6 +501,9 @@ func (b *machineAgentJoinBridge) submitLocalGroupMessage(ledger *nodelocal.Ledge
 			authorization.Target.BindingEpoch != original.Route.SourceBindingEpoch ||
 			authorization.Target.NativeSessionID != original.Route.SourceSessionID) {
 		return nil, errors.New("original requester native binding changed before local reply")
+	}
+	if err := fence.validateLocal(authorization); err != nil {
+		return nil, err
 	}
 	sender, receiver, err := b.loadLocalGroupIdentities(*authorization)
 	if err != nil {

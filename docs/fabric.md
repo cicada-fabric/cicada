@@ -206,11 +206,14 @@ The current native Session is the sender. Its trusted local Node bridge
 derives the destination from the signed Link and encrypts for the target
 Endpoint; the reply bridge derives its route from the original Request. The
 Hub Relay persists only signed `SEALED_V1` ciphertext and correlation metadata.
-This sealed Link route has passed two-logical-Node/fake-Codex tests, not a real
-cross-user native session or two physical machines. Sealed-capable same-Group
+The fake-runtime and real-native checks for this route are recorded separately
+in [native validation](architecture-v2-native-validation.md); logical Node tests
+do not establish two-physical-machine acceptance. Sealed-capable same-Group
 `target` SEND/ASK/REPLY uses the Node-local sealed path or the Node-only Hub
-ciphertext route; older unsealed Sessions can still use legacy plaintext
-Fabric and must not be presented as E2EE. Node claim/receipt uses a distinct
+ciphertext route; current MCP peer writes require sealed delivery and fail closed
+for older unsealed Sessions. Historical plaintext remains readable only under
+its existing authorization; its existence must not be presented as E2EE.
+Node claim/receipt uses a distinct
 Node credential.
 
 An Agent with both `message.broadcast` and `message.send` may broadcast to
@@ -226,8 +229,30 @@ independent sealed SEND for each recipient in batches of eight. Inspect
 `cicada_operation_status`, and call `cicada_operation_retry` with the same
 operation ID to continue another batch or reconcile an uncertain child.
 `ACCEPTED` means persisted locally or at Relay, not consumed by a model.
-The current implementation queues each child to its native Session; Group
-notification/budget policy and user-via-Monitor approval are not yet wired.
+The current implementation queues each child to its native Session; successful
+queue invocation does not prove native model consumption. Detailed runtime
+limits are recorded in the native validation report.
+
+The internal user-approved Monitor path uses
+`cicada_monitor_broadcast(approval_id="umbprev_…")` in the original joined Monitor
+Session. It accepts no body, sender, Group override or `user_approved` assertion.
+Node verifies the exact Client-sealed content against its independently trusted
+Owner key, uses the fixed recipient snapshot, and reports bounded child results.
+Hub distinguishes `NODE_REPORTED` local acceptance from verified remote
+`RELAY_PERSISTED`; neither means task completion. Retry uses the same durable
+operation and child IDs. A lost Hub report can leave a persisted child shown as
+`PENDING`; explicit retry is allowed only before the five-minute approval
+deadline and while the original source SessionBinding lease/epoch remains
+current. Expiry still permits a later factual report while that source binding
+is current, but never restores send permission; a replaced/expired source lease
+fences the report. No background resend runs after expiry.
+
+This is an internal Node/MCP path, not a public Client capability. Client
+preview/confirm/status RPCs do not exist; the safe preview DTO with raw Endpoint
+attestation and Owner proof, and lost-preview recovery status, remain to be
+implemented before a phone can create or recover these approvals. The internal
+Store status read is not a Client business API. Do not write approval rows
+manually.
 
 ## Operator CLI and HTTP API
 

@@ -191,7 +191,35 @@ func (s *Store) CreateSameGroupBroadcastV2Snapshot(input SameGroupBroadcastV2Sna
 		return nil, err
 	}
 
-	sourceEvidence, err := readSameGroupSealedV1EndpointTx(tx, input.GroupID, source.EndpointID, nowTime)
+	snapshot, err := buildSameGroupBroadcastV2SnapshotTx(tx, input.BroadcastID, input.GroupID, source, nowTime)
+	if err != nil {
+		return nil, err
+	}
+	if err := insertSameGroupBroadcastV2SnapshotTx(tx, snapshot); err != nil {
+		if isUniqueConstraintError(err) {
+			stored, readErr := readSameGroupBroadcastV2SnapshotTx(tx, input.BroadcastID)
+			if readErr == nil && sameGroupBroadcastV2SourceMatches(stored, input.GroupID, source) {
+				if commitErr := tx.Commit(); commitErr != nil {
+					return nil, commitErr
+				}
+				return stored, nil
+			}
+			return nil, ErrSameGroupBroadcastV2Conflict
+		}
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+// buildSameGroupBroadcastV2SnapshotTx shares the exact recipient and key
+// selection with trusted Client-origin previews. The caller owns the transaction.
+func buildSameGroupBroadcastV2SnapshotTx(tx *sql.Tx, broadcastID, groupID string,
+	source localDeliveryEndpointSnapshot, nowTime time.Time) (*SameGroupBroadcastV2Snapshot, error) {
+	nowText := nowTime.Format(time.RFC3339Nano)
+	sourceEvidence, err := readSameGroupSealedV1EndpointTx(tx, groupID, source.EndpointID, nowTime)
 	if err != nil || sourceEvidence.GroupRevision != source.GroupRevision ||
 		sourceEvidence.MembershipRevision != source.MembershipRevision ||
 		sourceEvidence.EndpointJoinRevision != source.GroupJoinRevision {
@@ -202,7 +230,7 @@ func (s *Store) CreateSameGroupBroadcastV2Snapshot(input SameGroupBroadcastV2Sna
 		return nil, ErrSameGroupBroadcastV2NotReady
 	}
 
-	recipientIDs, err := listSameGroupBroadcastV2RecipientIDsTx(tx, input.GroupID,
+	recipientIDs, err := listSameGroupBroadcastV2RecipientIDsTx(tx, groupID,
 		source.EndpointID, nowText)
 	if err != nil {
 		return nil, err
@@ -212,13 +240,13 @@ func (s *Store) CreateSameGroupBroadcastV2Snapshot(input SameGroupBroadcastV2Sna
 	}
 	recipients := make([]SameGroupBroadcastV2Endpoint, 0, len(recipientIDs))
 	for _, endpointID := range recipientIDs {
-		evidence, err := readSameGroupSealedV1EndpointTx(tx, input.GroupID, endpointID, nowTime)
+		evidence, err := readSameGroupSealedV1EndpointTx(tx, groupID, endpointID, nowTime)
 		if err != nil || evidence.OwnerID != source.OwnerID ||
 			evidence.GroupRevision != source.GroupRevision {
 			return nil, ErrSameGroupBroadcastV2NotReady
 		}
 		allowed, err := localDeliveryMembershipAllows(tx, evidence.PrincipalID,
-			input.GroupID, "message.receive", nowText)
+			groupID, "message.receive", nowText)
 		if err != nil || !allowed {
 			return nil, ErrSameGroupBroadcastV2NotReady
 		}
@@ -233,30 +261,12 @@ func (s *Store) CreateSameGroupBroadcastV2Snapshot(input SameGroupBroadcastV2Sna
 	})
 
 	snapshot := &SameGroupBroadcastV2Snapshot{
-		BroadcastID: input.BroadcastID, GroupID: input.GroupID,
+		BroadcastID: broadcastID, GroupID: groupID,
 		GroupRevision: source.GroupRevision, CapturedAt: nowText,
 		Source: resultSource, Recipients: recipients,
 	}
 	snapshot.SnapshotDigest, err = sameGroupBroadcastV2SnapshotDigest(snapshot)
 	if err != nil {
-		return nil, err
-	}
-	if err := insertSameGroupBroadcastV2SnapshotTx(tx, snapshot); err != nil {
-		if isUniqueConstraintError(err) {
-			// A different Store process may have won the same idempotency race.
-			// SQLite's write lock makes the persisted snapshot authoritative.
-			stored, readErr := readSameGroupBroadcastV2SnapshotTx(tx, input.BroadcastID)
-			if readErr == nil && sameGroupBroadcastV2SourceMatches(stored, input.GroupID, source) {
-				if commitErr := tx.Commit(); commitErr != nil {
-					return nil, commitErr
-				}
-				return stored, nil
-			}
-			return nil, ErrSameGroupBroadcastV2Conflict
-		}
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return snapshot, nil

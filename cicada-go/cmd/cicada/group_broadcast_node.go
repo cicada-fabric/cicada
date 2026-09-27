@@ -313,10 +313,10 @@ func (b *machineAgentJoinBridge) deliverGroupBroadcastBatch(request groupBroadca
 	snapshot *store.SameGroupBroadcastV2Snapshot) (*groupBroadcastResult, error) {
 	return fanoutGroupBroadcastBatch(request, snapshot, b.nodeID,
 		func(recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
-			return b.sendLocalGroupBroadcastChild(request, recipient, operationID)
+			return b.sendLocalGroupBroadcastChild(request, snapshot.Source, recipient, operationID)
 		},
 		func(recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
-			return b.sendRemoteGroupBroadcastChild(request, recipient, operationID)
+			return b.sendRemoteGroupBroadcastChild(request, snapshot.Source, recipient, operationID)
 		})
 }
 
@@ -374,8 +374,8 @@ func fanoutGroupBroadcastBatch(request groupBroadcastRequest,
 }
 
 func (b *machineAgentJoinBridge) sendLocalGroupBroadcastChild(request groupBroadcastRequest,
-	recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
-	result, err := b.localGroup(localGroupRequest{
+	source, recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
+	result, err := b.localGroupWithBroadcastFence(localGroupRequest{
 		Version: localGroupProtocolVersion, Operation: "local_send",
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		NodeID: request.NodeID, Workspace: request.Workspace, SessionToken: request.SessionToken,
@@ -383,7 +383,7 @@ func (b *machineAgentJoinBridge) sendLocalGroupBroadcastChild(request groupBroad
 		GroupID: request.GroupID, BindingID: request.BindingID, BindingEpoch: request.BindingEpoch,
 		OperationID: operationID, IdempotencyKey: operationID,
 		Target: recipient.EndpointID, Body: request.Body,
-	})
+	}, &groupBroadcastDeliveryFence{source: source, recipient: recipient})
 	if err != nil {
 		return "", err
 	}
@@ -396,8 +396,8 @@ func (b *machineAgentJoinBridge) sendLocalGroupBroadcastChild(request groupBroad
 }
 
 func (b *machineAgentJoinBridge) sendRemoteGroupBroadcastChild(request groupBroadcastRequest,
-	recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
-	result, err := b.crossNodeGroup(crossNodeGroupRequest{
+	source, recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
+	result, err := b.crossNodeGroupWithBroadcastFence(crossNodeGroupRequest{
 		Version: crossNodeGroupProtocolVersion, Operation: "cross_node_group_send",
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		NodeID: request.NodeID, Workspace: request.Workspace, SessionToken: request.SessionToken,
@@ -405,7 +405,7 @@ func (b *machineAgentJoinBridge) sendRemoteGroupBroadcastChild(request groupBroa
 		GroupID: request.GroupID, BindingID: request.BindingID, BindingEpoch: request.BindingEpoch,
 		TargetEndpointID: recipient.EndpointID, OperationID: operationID,
 		IdempotencyKey: operationID, Body: request.Body,
-	})
+	}, &groupBroadcastDeliveryFence{source: source, recipient: recipient})
 	if err != nil {
 		return "", err
 	}

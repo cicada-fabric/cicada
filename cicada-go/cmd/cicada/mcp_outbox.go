@@ -42,13 +42,14 @@ var (
 // The idempotency key is stored in its own column so it cannot accidentally
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
-	Target    string `json:"target,omitempty"`
-	LinkID    string `json:"link_id,omitempty"`
-	DataScope string `json:"data_scope,omitempty"`
-	Body      string `json:"body,omitempty"`
-	Question  string `json:"question,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-	ExpiresAt string `json:"expires_at,omitempty"`
+	ApprovalID string `json:"approval_id,omitempty"`
+	Target     string `json:"target,omitempty"`
+	LinkID     string `json:"link_id,omitempty"`
+	DataScope  string `json:"data_scope,omitempty"`
+	Body       string `json:"body,omitempty"`
+	Question   string `json:"question,omitempty"`
+	RequestID  string `json:"request_id,omitempty"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
 }
 
 type mcpOutboxScope struct {
@@ -276,6 +277,23 @@ func canonicalMCPOutboxInput(input mcpOutboxInput) (string, string, error) {
 func mcpOutboxNow() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 func (s *mcpOutboxStore) prepare(scope mcpOutboxScope, kind, requestedKey string, input mcpOutboxInput) (mcpOutboxOperation, bool, error) {
+	return s.prepareOperation(scope, kind, requestedKey, input, "")
+}
+
+// prepareMonitorBroadcast preserves the identity reserved by current Hub
+// authority. This is not a general caller-selected operation ID API.
+func (s *mcpOutboxStore) prepareMonitorBroadcast(scope mcpOutboxScope, approvalID, operationID string) (mcpOutboxOperation, bool, error) {
+	if !validMonitorApprovalID(approvalID) {
+		return mcpOutboxOperation{}, false, errMCPOutboxConflict
+	}
+	if _, _, err := localSealedRPCIDs(operationID); err != nil {
+		return mcpOutboxOperation{}, false, errMCPOutboxConflict
+	}
+	return s.prepareOperation(scope, "monitor_broadcast", "monitor:"+approvalID,
+		mcpOutboxInput{ApprovalID: approvalID}, operationID)
+}
+
+func (s *mcpOutboxStore) prepareOperation(scope mcpOutboxScope, kind, requestedKey string, input mcpOutboxInput, reservedID string) (mcpOutboxOperation, bool, error) {
 	inputJSON, inputDigest, err := canonicalMCPOutboxInput(input)
 	if err != nil {
 		return mcpOutboxOperation{}, false, err
@@ -307,7 +325,8 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 		if !mcpOutboxScopeMatches(existing, scope) {
 			return mcpOutboxOperation{}, false, errMCPOutboxContext
 		}
-		if existing.Kind != kind || existing.InputDigest != inputDigest || existing.InputJSON != inputJSON {
+		if existing.Kind != kind || existing.InputDigest != inputDigest || existing.InputJSON != inputJSON ||
+			(reservedID != "" && existing.OperationID != reservedID) {
 			return mcpOutboxOperation{}, false, errMCPOutboxConflict
 		}
 		if err := tx.Commit(); err != nil {
@@ -318,9 +337,12 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return mcpOutboxOperation{}, false, fmt.Errorf("%w: inspect operation: %v", errMCPOutboxPersistence, err)
 	}
-	operationID, err := newMCPOutboxID("op")
-	if err != nil {
-		return mcpOutboxOperation{}, false, err
+	operationID := reservedID
+	if operationID == "" {
+		operationID, err = newMCPOutboxID("op")
+		if err != nil {
+			return mcpOutboxOperation{}, false, err
+		}
 	}
 	if key == "" {
 		key = operationID
@@ -570,6 +592,9 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 	if op.Kind == "broadcast" {
 		return m.dispatchBroadcastMCPOutbox(store, scope, op)
 	}
+	if op.Kind == "monitor_broadcast" {
+		return m.dispatchMonitorBroadcastMCPOutbox(store, scope, op)
+	}
 	if op.Kind == "send" || op.Kind == "ask" || op.Kind == "reply" {
 		var input mcpOutboxInput
 		if err := json.Unmarshal([]byte(op.InputJSON), &input); err != nil {
@@ -662,7 +687,7 @@ func mcpOutboxPublicResult(op mcpOutboxOperation) map[string]any {
 		"attempts":        op.AttemptCount,
 		"retryable":       op.Status == mcpOutboxStatusPending || op.Status == mcpOutboxStatusUnknown,
 	}
-	if op.Kind == "broadcast" {
+	if op.Kind == "broadcast" || op.Kind == "monitor_broadcast" {
 		if broadcastID, err := mcpBroadcastID(op.OperationID); err == nil {
 			result["broadcast_id"] = broadcastID
 		}

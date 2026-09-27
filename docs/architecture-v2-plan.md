@@ -1,4 +1,116 @@
-# Architecture v2.1 实施计划
+# Architecture v2.3 实施计划
+
+## 当前范围与停止条件（2026-09-27）
+
+**当前重大检查点：PASS，已停止本轮实现。** Clean Hub source `25013b51915124fa1da25e5fd37088eadf0e3d2d` and image `sha256:a1cf39e4b341cda7d5f80a13b8c3272964f43e5341eadbae1b6caafb6a68a31c` pass full Go tests, vet, focused race, contract/export/verify and exact-image disposable TCP gates. The fixed native runner reports one read-only preview, one separate dispatch and successful receive/context assertions in both original recipient Threads. Client reports all 10 selectors and the final strict read-only status pass; the Core scoped ciphertext scan and Intake's independent Hub-state audit pass; Android/native fixture and emulator cleanup exited `0`, with no owned containers or fixture directory remaining. The earlier TCP gate also passed; its expected post-`--rm` inspect/remove misses (exit `1`) are recorded separately. Exact identities, bounds and evidence are in the [25013b5 candidate record](client-hub-v13-25013b5-validation.md), [native runbook](client-monitor-native-fixture.md), and [Client's final validation](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
+
+The latest safety change adds a Node-local read-only preview bound to the original confirmed approval. Its deterministic tests prove that review does not mutate approval/replay/outcome state or create an outbox, and that stale or mismatched authorization fails closed. The preview exposes the locally verified exact body and ordered recipients for review; it is not another user approval and cannot itself authorize dispatch. The actual broadcast remains a separate MCP call with the same approval ID, a separate Codex review, and current Hub/Node Guard. If auto-review refuses, stop and preserve the denial; do not retry, change the payload, change reviewer policy, or bypass the provider decision. Fixed CLI help confirms automatic-review routing, and pinned CLI probes confirm the per-turn tool and shell restrictions used by the fixture. Neither the CLI probes nor official reviewer documentation guarantee that this reviewer will accept this flow. See [Monitor preview and approval evidence](monitor-broadcast-approval-review.md).
+
+**本轮停止条件：** 当前 v1.3 Monitor 联合验收范围已经收口；不再启动模型或重跑 native。本次通过仅适用于精确固定候选和受控运行，不证明普遍 prompt-injection 防护、完整 React Native 同意体验、双物理 Node/Android 或公网 HTTPS。此前 `81d8f1f` 的自动审查拒绝仍是历史记录。本轮新增 Journal/Discussion 与授权重组仅完成目标架构提案，不实施 Network M1 或 Group board API。
+
+## Agent Network 与 Group collaboration spaces 路线（M1–M5）
+
+Network 是 Group 之上的私有 tenant/授权范围，不改变 Node/Hub/Client 部署实体，也不增加 User/Control/Worker/Monitor 之外的参与者。一个 Hub 可托管多个 Network；每个 Network 只由一个权威 Hub 承载。编号使用 M1–M5，避免与 `docs/client-hub-development.md` 的 N1–N6 冲突。
+
+**本轮在当前重大检查点收口，不开始 Network M1 或 Group Journal/Discussion 实现。** 后续继续时按下述依赖执行；这不是永久禁止后续开发，也不为每个阶段额外设立普遍审批门槛。既有 v1.3 catalog/wire/image 保持冻结；新增 Network 和 Group collaboration 操作须另行形成版本化合同，不回填 v1.3。
+
+| 阶段 | 最小交付与验收 | 依赖 / 明确不做 |
+|---|---|---|
+| M1 — Network identity, migration, Guard and discovery | 一个 Hub 托管至少两个 Network；Group 各属一个 Network；版本化 NetworkMembership、scoped grants、邀请/策略加入、Thread owner 确认、最小 EndpointCard 和少量权限预设；migration dry-run | Network/Group isolation、撤权、歧义昵称、旧入口绕过拒绝；保留现有 ID、历史、授权边界。暂不做 Board 和多 Hub 路由。 |
+| M2 — Encrypted Group Journal and Discussion | Journal append/list/get；Discussion topic/reply/list/get；来源归属、幂等 ID、有限 cursor 分页、Evidence 独立 ACL、`read_from_seq` 与保留策略 | 先审定逐读者封装或群内容密钥方案；Endpoint key grant 不是共享内容密钥。新成员只从加入 cutoff 读；既有授权成员离线补读时仍逐页查 Guard；更早历史另行授权。限制正文/读者/分页/保留/hint queue。 |
+| M3 — Links, task/broadcast routes and unread sync | 在一个权威 Hub 作用域内将选定 Journal/topic 引用带入立即消息；连接既有获准私聊、Network Task offer 和逐收件人广播；复用 Node→Hub 出站长连接多路复用 cursor hint；Endpoint 分页拉取并维护本地未读 | 同 Network/Link/Group 规则逐资源 Guard；Journal/Discussion hints 不推正文、不唤醒所有 Model；即时消息保留自身投递语义；重连按 cursor 补读，周期对账低频退避。跨 Hub 路由不在本阶段。 |
+| M4 — Delegated topology and regrouping | Monitor 先提出二次分组；仅在精确、可撤销 delegation 下按拓扑版本 CAS 执行并审计 | 无自授权、无隐式历史 key/读者扩张、无自动 Thread/context 迁移；扩大可见性走现有 Owner/User Approval。 |
+| M5 — Multi-Hub Node and Client interop | Node 按 Hub 隔离 credential、Endpoint registration、订阅、序号和 replay 状态；地址为 `(hub_id, network_id, endpoint_id)`；同一 native Thread 仍由一个本地 writer 仲裁。未来 Client 独立合同、每 Hub identity pin/device key/session/counter，明确 active Hub/Network | 依赖 M1–M4 已稳定 scope/Guard/route。禁止 Hub-to-Hub forwarding 和公开全局 Thread ID；Client 由其仓库 Owner 实现，不修改或回填冻结的 v1.3。 |
+
+M1 的首个可运行验收切片必须包含：同 Hub 双 Network 的数据/授权隔离；每 Network 最小成员邀请和 Thread owner Join；默认权限预设与按资源 scope 的 Guard；最小授权目录/私聊；撤权、scope 伪造、昵称歧义、NetworkAdmin 越权和旧 API 绕过拒绝；用户可读的拓扑/发现结果；schema migration 预演、回滚边界、全 Go 和 disposable Docker 门禁。Network membership 本身不赋予共同 Group 权限；Network-scoped directory/direct-message/task grants 可在没有共同 Group 时工作，但不能泄露私有 Group、历史或未分享 Artifact。M2–M4 的提出式 API 与加密/授权边界见[Group Journal and Discussion 设计](group-collaboration-spaces-design.md)；它们均为 PROPOSED。M5 保留原计划的跨 Hub Node 和独立 Client 多 Hub 范围。
+
+旧Group到Network的映射不得按Owner机械拆开（可能破坏已有跨Owner共同Group/Link），也不得为了保留连通而合成一个大Network。迁移输入必须显式列出旧Group→Network；缺失、多解或会扩大已有可见性的映射停在pending供用户确认。保留Endpoint/Group/Link ID、Thread、receipt、密钥、审批和旧Grant历史；按新scope逐项验证现有精确授权，覆盖不足时双方重新授权，不自动重信任或复制旧Group key。NetworkAdmin仅有该Network的管理grant，不持有Node命令执行、成员设备/私钥、原生历史或用户审批权。
+
+所有阶段保留Go、SQLite、单二进制/既有Docker，不预建消息中间件或全局管理服务。目录发现、私聊发送/接收、广播、Task offer分别授权；默认显示最小卡片，不保证匿名，路由所需Hub/Network元数据、成员存在与流量时序仍需最小保留。提示词不是prompt-injection防御。每个真实/确定性/Android/native/双物理Node/public HTTPS结果单独分层记录；skip不算pass。
+
+## 历史实施记录（以下日期快照不代表当前状态）
+> 2026-09-27: earlier clean lease-fix candidate `81d8f1f` deterministic checks, full Go suite/vet and exact-image disposable TCP interop **PASS**. Its native attempts and bounds are recorded in [the historical candidate report](client-hub-v13-81d8f1f-validation.md); they do not describe the current 25013b5 live run.
+
+> 2026-09-27: frozen v1.3 artifact and disposable TCP gate **PASS**; exact pins and
+> evidence are in [the validation record](client-hub-v13-validation.md). The dated plan below is a pre-freeze snapshot.
+> Earlier standalone three-Thread native Monitor acceptance **PASS** used an in-process Hub and synthetic Go client; see the [native validation report](architecture-v2-native-validation.md). The frozen fixed-Hub v1.3 outer-RPC recovery slice also **PASS** (three fresh Hubs, 12/12 Android JUnit selectors); see the [validation record](client-hub-v13-validation.md). Neither result validates the current 25013b5 native attempt. The Client-reported limited Android emulator **PASS** has completed Core read-only code/evidence review. The synthetic-endpoint run has an empty recipient ledger and does not establish recipient delivery/model consumption. Physical Android, dual-physical Node and public HTTPS remain **NOT_RUN**; unattended cold wake is **UNSUPPORTED**. See [the Client evidence and boundaries](client-hub-v13-validation.md#client-reported-android-emulator-slice-core-review-complete).
+
+## 2026-09-27 Historical lease-fix candidate checkpoint: 81d8f1f
+
+The earlier fixed runner pinned clean Hub source `81d8f1f90895f41c4f5ea5c67a6281ccda9e1264`
+and image `sha256:0c484d1c10a9fd71e6ae74ddd7fec85ae6ae8cbecf2ece6f90d393892990a04f`.
+The two attempts on that image did not complete the three-Thread chain. This historical
+candidate is superseded for the current fixture by 25013b5; its deterministic PASS
+does not transfer a native PASS. Current pins and outcomes are in the
+[25013b5 validation report](client-hub-v13-25013b5-validation.md).
+
+## 2026-09-27 截至冻结前的候选执行顺序快照：完成 v1.3 候选门禁后再做 Android
+
+Hub v34 已为 Client Monitor consent 元数据、有限 preview intake 与有界通知扫描
+接线。限额定向 Store 测试、Client catalog 检查与七项合同/恢复 Python 测试通过；
+两个定向 TCP Monitor HTTP lifecycle/Relay 测试也通过。Confirm response projection
+与 OpenAPI 不匹配及 inactive Group 拒绝缺口已修正。整仓 Go tests/vet 原先通过；
+随后受影响的 Control/Server 全包测试、vet、聚焦 race 及 Store race 复验均通过。截至
+冻结前，只待干净 artifact 元数据与最终 disposable Docker Hub gate。候选目录为
+`client-hub-v1.3` / 33 operations；这不是 Android 联合验收或发布结论。详见
+[当前状态](architecture-v2-status.md)。
+
+1. **完成。** v34 migration 与数据保全、intake 上限
+   16/Device、64/Owner 和每次至多 16 个通知候选。五分钟 expiry 是硬边界；
+   精确 Prepare 重试不额外占容量。旧 v1.2.1 Android PASS 与干净 `f1b99c4`
+   idle-Hub 数据继续只归因于原固定源码/镜像，不作为本轮产物证据。
+2. **截至冻结前进行中。** 由根任务生成干净来源的协议包与 Hub 镜像元数据并通过最终
+   disposable Docker 门禁。不要用
+   dirty 工作树、catalog 单独摘要或共享开发 Hub 替代精确交付元数据。
+3. **截至冻结前待开始。** 收到准确 commit、bundle manifest/hash 与 image ID/digest 后，才让
+   独立 Client 导入候选并做 Android preview/confirm/recovery。新 Android、真实
+   native Monitor、前台交接、双物理 Node 和公网 HTTPS 仍分别验收；当前均
+   **NOT_RUN**（均为截至冻结前的记录）。
+
+独立 Client 仓库的双 Owner 合成授权任务已完成：实现 `680fac2bf12c431ac02804e5db168669cf12941f`、
+报告 `a4007a51b53a36b15ecc02cbf50bdac4f744ec56`，固定旧 `967dbd8` Hub，
+Android 合成 Endpoint 授权/撤销 PASS；没有 Codex/native Thread 或 Monitor 广播。
+这是 v1.2.1 镜像的历史验收，只证明该次限定范围；不能认证当前 v1.3 候选，也不改变
+V73 仍需真实 native Monitor/Android 验收的 PARTIAL 结论。
+
+## 2026-09-26 并行实施与后续接线
+
+本轮分为三个不重叠实现范围：Store v31 用户/Monitor 授权状态机、复用现有
+NIST 原语的 Client→Monitor 密封格式、旧 Federation 明文写入口退役；主线程
+补 Node 广播子投递的快照校验并集成回归。具体运行证据记入状态文档。
+
+下一切片按依赖接线，不提前开放半成品 Client 能力：
+
+1. 将独立授权账本接入 Control 的可信 Client 请求上下文；固定预览/确认/
+   状态查询 DTO，过滤 native Session 信息，补契约与完整跨语言合成向量。
+2. 实现 Node 只出站领取 Monitor 管理请求与持久分层回执；Monitor 当前原生
+   会话经 MCP 消费批准 ID，由 Node 解密正文并校验实际摘要，再调用已加固
+   的逐接收者密文发送。授权预留不等于 Runtime 消费或全员收到。
+3. 完成授权撤销、过期、丢响应、Node 重启、部分失败与 Control 隔离测试后，
+   才提高 Client 合同修订并交付固定包/镜像；直接协调既有 Client Thread
+   `01a0cc3a-91d2-74f2-9f41-547c9b38fb0d` 独立接入、验收并回报。
+
+本节记录基础提交时的接线缺口；最新执行顺序见顶部。V73 尚未完成 Android/
+真实原生 Monitor 全链，既有 v1.2.1 Client 无需因内部实现而更换固定包。
+
+接线审查确认以下具体约束：
+
+- Client 入口只能使用 `client_rpc_v2.go` 验签、解密和持久接受后传下来的
+  `accepted.Request.ID`。正文内不得接受请求来源、角色或批准者字段；Store
+  的内部输入结构不能直接复用为 Client JSON。
+- 需要新增专用 Node 响应，在同一次当前授权检查内返回数据库确定的
+  `MonitorBroadcastContext`、Client 公钥、密文和固定快照。现在 Store 返回
+  类型的部分字段不参与 JSON，且缺少上述完整上下文，不能直接作为 Node
+  HTTP 返回值。Client DTO 则应排除 native Session ID 与 Node 私有定位信息。
+- 现有 Worker job 会启动受管理 Worker，不适合投递给原来的 Monitor Thread。
+  新管理请求需独立 claim/回执，复用 Node `nodeinbox` 的注入日志和不确定状态，
+  由出站 SSE 提示及重连/定期对账领取；不得只改 SSE 后丢掉离线持久恢复。
+- MCP 广播 outbox 当前会生成新 operation ID；批准广播必须使用账本预留的
+  `bc_…` / `op_…` 同一身份，以同一批准重试，不另发一笔广播。普通广播不能
+  因参数中写了批准 ID 就取得用户来源。
+- 当前五分钟 TTL 同时是硬派发期限：过期后连同原操作重试都拒绝。后续状态
+  DTO 应明确展示过期，不能把它描述成任意时长离线可送达；若需要延长期限，
+  必须进入用户签名与批准范围。逐收件者持久回执完成前也不能汇报全员成功。
 
 ## 2026-09-25 收尾与下个安全门槛
 
@@ -18,7 +130,8 @@ opt-in 在首个 Join 因 Codex 自动审批超时结束；V72 保持 PARTIAL，
 合同修订与 Client 仓库协同交付；保持现有 v1.2.1 固定镜像可复验，
 不将它悄悄扩展成不受审的 Monitor 广播入口。
 
-V73 的独立后续切片应按以下次序实施，完成前保持 **NOT_RUN**：
+V73 的完整端到端验收仍为 **NOT_RUN**；以下为 9 月 25 日确定的实施依赖，
+内部基础进展见本文件顶部与状态矩阵：
 
 1. 固定新 Client 合同修订（外层 PQ wire framing 可保持 v1），至少提供
    `group.broadcast.preview`、`confirm`、`status`。预览绑定精确 Group、当前

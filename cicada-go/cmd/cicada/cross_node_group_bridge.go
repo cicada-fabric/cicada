@@ -91,13 +91,21 @@ type crossNodeGroupReplyReceipt struct {
 }
 
 func (b *machineAgentJoinBridge) crossNodeGroup(request crossNodeGroupRequest) (*crossNodeGroupResult, error) {
+	return b.crossNodeGroupWithBroadcastFence(request, nil)
+}
+
+func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossNodeGroupRequest,
+	fence *groupBroadcastDeliveryFence) (*crossNodeGroupResult, error) {
+	if fence != nil && request.Operation != "cross_node_group_send" {
+		return nil, errors.New("broadcast snapshot can only authorize SEND")
+	}
 	card, err := b.verifyCrossNodeGroupSource(request)
 	if err != nil {
 		return nil, err
 	}
 	switch request.Operation {
 	case "cross_node_group_send", "cross_node_group_ask":
-		return b.crossNodeGroupSendAsk(request, card)
+		return b.crossNodeGroupSendAsk(request, card, fence)
 	case "cross_node_group_reply":
 		// Same-Node requests already have a durable local ledger. Only an exact
 		// not-found result permits looking up the independent Hub Group request.
@@ -225,7 +233,7 @@ func validateCrossNodeGroupPeerKey(peerKey crossNodeGroupPeerKey, groupID, sourc
 }
 
 func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupRequest,
-	card fabric.NetworkCard) (*crossNodeGroupResult, error) {
+	card fabric.NetworkCard, fence *groupBroadcastDeliveryFence) (*crossNodeGroupResult, error) {
 	messageID, derivedRequestID, err := localSealedRPCIDs(request.OperationID)
 	if err != nil {
 		return nil, err
@@ -236,6 +244,9 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	}
 	if !crossNodeGroupEndpointMatchesCard(peerKey.Sender, card) || peerKey.Sender.OwnerID != request.OwnerID {
 		return nil, errors.New("Hub key evidence does not match the current native same-Group sender")
+	}
+	if err := fence.validateRemote(peerKey); err != nil {
+		return nil, err
 	}
 	kind, requestID, replyTo := "SEND", "", ""
 	var expiresAt time.Time

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.2.1
+  x-contract-revision: client-hub-v1.3
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -371,7 +371,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.2.1}
+        contract_revision: {const: client-hub-v1.3}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -536,6 +536,22 @@ components:
         the Hub. The canonical role catalog is embedded at
         cicada-go/internal/clientcontract/catalog.json.
       x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
+      x-rpc-request-result-schemas:
+        monitor.broadcast_confirm:
+          request: '#/components/schemas/MonitorBroadcastConfirmRequest'
+          result: '#/components/schemas/MonitorBroadcastConfirmResult'
+        monitor.broadcast_prepare:
+          request: '#/components/schemas/MonitorBroadcastPrepareRequest'
+          result: '#/components/schemas/MonitorBroadcastPrepareResult'
+        monitor.broadcast_recover:
+          request: '#/components/schemas/MonitorBroadcastRecoverRequest'
+          result: '#/components/schemas/MonitorBroadcastRecoveredResult'
+        monitor.broadcast_status:
+          request: '#/components/schemas/MonitorBroadcastStatusRequest'
+          result: '#/components/schemas/MonitorBroadcastStatusResult'
+      x-topology-apply-action-schemas:
+        membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+      x-topology-member-projection-schema: '#/components/schemas/ClientTopologyMember'
       enum:
         - session.capabilities
         - status.snapshot
@@ -562,6 +578,10 @@ components:
         - group.key_manifest
         - group.key_grant
         - group.key_status
+        - monitor.broadcast_confirm
+        - monitor.broadcast_prepare
+        - monitor.broadcast_recover
+        - monitor.broadcast_status
         - link.list
         - link.invite_create
         - link.invite_preview
@@ -574,7 +594,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.2.1}
+        contract_revision: {const: client-hub-v1.3}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -676,3 +696,431 @@ components:
           type: string
           contentEncoding: base64
           description: Standard padded base64 of canonical OwnerLinkKeyGrant v2 JSON bytes.
+
+    MonitorBroadcastPrepareRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, monitor_endpoint_id, body_sha256]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        monitor_endpoint_id: {type: string, minLength: 1, maxLength: 256}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    MonitorBroadcastConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [preview_id, snapshot_digest, body_sha256, sealed_payload]
+      properties:
+        preview_id: {type: string, minLength: 1, maxLength: 256}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        sealed_payload:
+          type: string
+          contentEncoding: base64
+          maxLength: 65536
+          description: >-
+            Base64 of the complete signed MonitorBroadcastEnvelope v2 bytes.
+            Its context binds the exact body, consent scope, Hub, owner,
+            authenticated device epoch/key, preview, Monitor key/binding,
+            expiry, and this confirm request's sequence.
+          x-decoded-json-schema: '#/components/schemas/MonitorBroadcastEnvelopeV2'
+
+    MonitorBroadcastStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [preview_id]
+      properties:
+        preview_id: {type: string, minLength: 1, maxLength: 256}
+
+    MonitorBroadcastRecoverRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Original outer Client route operation_id used by monitor.broadcast_prepare.
+
+    MonitorBroadcastConsentEndpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - endpoint_id
+        - principal_id
+        - owner_id
+        - node_id
+        - membership_revision
+        - group_join_revision
+        - binding_id
+        - binding_epoch
+        - key_id
+        - key_version
+        - key_fingerprint
+        - key_proof_digest
+      properties:
+        endpoint_id: {type: string, minLength: 1, maxLength: 256}
+        principal_id: {type: string, minLength: 1, maxLength: 256}
+        owner_id: {type: string, minLength: 1, maxLength: 256}
+        node_id: {type: string, minLength: 1, maxLength: 256}
+        membership_revision: {type: integer, minimum: 1}
+        group_join_revision: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1, maxLength: 256}
+        binding_epoch: {type: integer, minimum: 1}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_version: {type: integer, minimum: 1}
+        key_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        key_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    MonitorBroadcastConsentScope:
+      type: object
+      additionalProperties: false
+      required: [version, broadcast_id, group_id, group_revision, source, recipients]
+      properties:
+        version: {const: 1}
+        broadcast_id: {type: string, minLength: 1, maxLength: 256}
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        group_revision: {type: integer, minimum: 1}
+        source:
+          $ref: '#/components/schemas/MonitorBroadcastConsentEndpoint'
+        recipients:
+          type: array
+          minItems: 0
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/MonitorBroadcastConsentEndpoint'
+          description: Sorted by endpoint_id ascending; excludes source.endpoint_id.
+
+    MonitorBroadcastContextV2:
+      type: object
+      additionalProperties: false
+      required:
+        - hub_id
+        - owner_id
+        - client_device_id
+        - client_session_epoch
+        - client_key_version
+        - approval_id
+        - broadcast_id
+        - group_id
+        - monitor_endpoint_id
+        - monitor_key_id
+        - monitor_binding_id
+        - monitor_binding_epoch
+        - body_sha256
+        - recipient_snapshot_sha256
+        - expires_at
+        - consent_sha256
+        - confirm_request_sequence
+      properties:
+        hub_id: {type: string}
+        owner_id: {type: string}
+        client_device_id: {type: string}
+        client_session_epoch: {type: integer, minimum: 1}
+        client_key_version: {type: integer, minimum: 1}
+        approval_id: {type: string}
+        broadcast_id: {type: string}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        monitor_key_id: {type: string}
+        monitor_binding_id: {type: string}
+        monitor_binding_epoch: {type: integer, minimum: 1}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        recipient_snapshot_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        consent_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        confirm_request_sequence: {type: integer, minimum: 1}
+      x-canonical-json-field-order:
+        - hub_id
+        - owner_id
+        - client_device_id
+        - client_session_epoch
+        - client_key_version
+        - approval_id
+        - broadcast_id
+        - group_id
+        - monitor_endpoint_id
+        - monitor_key_id
+        - monitor_binding_id
+        - monitor_binding_epoch
+        - body_sha256
+        - recipient_snapshot_sha256
+        - expires_at
+        - consent_sha256
+        - confirm_request_sequence
+
+    MonitorBroadcastSealedHeader:
+      type: object
+      additionalProperties: false
+      required: [version, algorithm, sequence, kem_ciphertext, nonce, sender_id, sender_signing_public]
+      properties:
+        version: {const: 1}
+        algorithm: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        sequence: {type: integer, minimum: 1}
+        kem_ciphertext: {type: string, contentEncoding: base64}
+        nonce: {type: string, contentEncoding: base64, minLength: 16, maxLength: 16}
+        sender_id: {type: string}
+        sender_signing_public: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [version, algorithm, sequence, kem_ciphertext, nonce, sender_id, sender_signing_public]
+
+    MonitorBroadcastSealedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, algorithm, sequence, kem_ciphertext, nonce, ciphertext, sender_id, sender_signing_public, signature]
+      properties:
+        version: {const: 1}
+        algorithm: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        sequence: {type: integer, minimum: 1}
+        kem_ciphertext: {type: string, contentEncoding: base64}
+        nonce: {type: string, contentEncoding: base64, minLength: 16, maxLength: 16}
+        ciphertext: {type: string, contentEncoding: base64, minLength: 24}
+        sender_id: {type: string}
+        sender_signing_public: {type: string, contentEncoding: base64}
+        signature: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [version, algorithm, sequence, kem_ciphertext, nonce, ciphertext, sender_id, sender_signing_public, signature]
+      x-signature-null-for-signing-bytes: true
+      x-session-chain-fields: forbidden
+      x-header-schema-for-aead: '#/components/schemas/MonitorBroadcastSealedHeader'
+
+    MonitorBroadcastEnvelopeV2:
+      type: object
+      additionalProperties: false
+      required: [type, version, suite, context, sealed, signature]
+      properties:
+        type: {const: MONITOR_BROADCAST}
+        version: {const: 2}
+        suite: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        context:
+          $ref: '#/components/schemas/MonitorBroadcastContextV2'
+        sealed:
+          $ref: '#/components/schemas/MonitorBroadcastSealedEnvelope'
+        signature: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [type, version, suite, context, sealed, signature]
+      x-signature-null-for-signing-bytes: true
+      x-signing-prefix-utf8-hex: 6369636164612f636c69656e742f6d6f6e69746f722d62726f6164636173742f7369676e2f763100
+      x-aad-prefix-utf8-hex: 6369636164612f636c69656e742f6d6f6e69746f722d62726f6164636173742f6161642f763100
+      x-consent-array-empty-value: []
+      x-consent-source-cross-checks:
+        consent_scope.source.endpoint_id: context.monitor_endpoint_id
+        consent_scope.source.owner_id: context.owner_id
+        consent_scope.source.binding_id: context.monitor_binding_id
+        consent_scope.source.binding_epoch: context.monitor_binding_epoch
+        consent_scope.source.key_id: context.monitor_key_id
+        consent_scope.consent_sha256: context.consent_sha256
+      x-outer-and-inner-sequence-equality:
+        - context.confirm_request_sequence
+        - sealed.sequence
+        - accepted_rpc_route.sequence
+      description: >-
+        Version 2 retains the v1 domain prefixes and E2EE primitives. Outer
+        signing bytes use compact ordered JSON with signature:null. The AAD is
+        the AAD prefix followed by compact ordered context JSON. AES-256-GCM
+        key derivation is HKDF-SHA256(shared_secret, 32 zero bytes,
+        UTF8("cicada/e2ee/v1/key") || uint64_be(sequence) || AAD, 32 bytes).
+        GCM AAD appends the compact ordered MonitorBroadcastSealedHeader.
+
+    MonitorGroupEndpointKeyGrantManifest:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - operation
+        - hub_id
+        - owner_id
+        - principal_id
+        - group_id
+        - group_revision
+        - endpoint_id
+        - node_id
+        - binding_id
+        - binding_epoch
+        - membership_revision
+        - endpoint_join_revision
+        - candidate_version
+        - candidate_key_id
+        - candidate_fingerprint
+        - candidate_proof_digest
+        - candidate_binding_digest
+        - candidate_public_identity
+        - candidate_attestation
+        - owner_key_id
+        - issued_at
+        - expires_at
+        - digest
+      properties:
+        version: {const: 1}
+        operation: {const: group-endpoint-key-grant:v1}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        principal_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_join_revision: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        candidate_key_id: {type: string}
+        candidate_fingerprint: {type: string}
+        candidate_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_binding_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        candidate_attestation:
+          type: string
+          contentEncoding: base64
+        owner_key_id: {type: string}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    MonitorBroadcastPreview:
+      type: object
+      additionalProperties: false
+      required: [monitor_grant_manifest, monitor_grant_signed_proof, consent_scope, consent_sha256]
+      properties:
+        monitor_grant_manifest:
+          $ref: '#/components/schemas/MonitorGroupEndpointKeyGrantManifest'
+        monitor_grant_signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete owner-signed Group Endpoint key grant proof JSON bytes.
+        consent_scope:
+          $ref: '#/components/schemas/MonitorBroadcastConsentScope'
+        consent_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: >-
+        Bounded verification evidence only. It excludes the full server snapshot,
+        native session IDs, workspace paths, and message bodies.
+
+    MonitorBroadcastPrepareResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, preview]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {const: PREPARED}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        preview:
+          $ref: '#/components/schemas/MonitorBroadcastPreview'
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastRecoveredResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, preview]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {type: string, enum: [PREPARED, APPROVED, DISPATCH_AUTHORIZED]}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        approved_at: {type: string, format: date-time}
+        dispatch_authorized_at: {type: string, format: date-time}
+        sealed_payload_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        preview:
+          $ref: '#/components/schemas/MonitorBroadcastPreview'
+      description: Read-only recovery result; this operation cannot repeat prepare or delivery.
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastConfirmResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, sealed_payload_digest]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {type: string, enum: [APPROVED, DISPATCH_AUTHORIZED]}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        approved_at: {type: string, format: date-time}
+        dispatch_authorized_at: {type: string, format: date-time}
+        sealed_payload_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastRecipientOutcome:
+      type: object
+      additionalProperties: false
+      required: [ordinal, endpoint_id, state]
+      properties:
+        ordinal: {type: integer, minimum: 0, maximum: 31}
+        endpoint_id: {type: string}
+        state: {type: string, enum: [PENDING, FAILED, UNKNOWN, ACCEPTED]}
+        evidence: {type: string, enum: [NODE_REPORTED, RELAY_PERSISTED]}
+        message_id: {type: string}
+        failure_code: {type: string, enum: [DELIVERY_REJECTED, DELIVERY_OUTCOME_UNKNOWN]}
+        reported_at: {type: string, format: date-time}
+
+    MonitorBroadcastStatusResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, group_id, approval_status, expires_at, recipients]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        group_id: {type: string}
+        approval_status: {type: string, enum: [PREPARED, APPROVED, DISPATCH_AUTHORIZED]}
+        expires_at: {type: string, format: date-time}
+        recipients:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/MonitorBroadcastRecipientOutcome'
+      description: >-
+        NODE_REPORTED and RELAY_PERSISTED are evidence tiers, not model consumption
+        or task success. INJECTION_UNCERTAIN is not proof of native consumption
+        or delivery; reconcile only the same reserved operation ID.
+
+    TopologySetBroadcastPermissionAction:
+      type: object
+      additionalProperties: false
+      required: [kind, set_broadcast_permission]
+      properties:
+        kind: {const: membership.set_broadcast_permission}
+        set_broadcast_permission:
+          $ref: '#/components/schemas/ClientTopologySetBroadcastPermission'
+
+    ClientTopologySetBroadcastPermission:
+      type: object
+      additionalProperties: false
+      required: [group_id, membership_id, enabled, expected_membership_version]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        membership_id: {type: string, minLength: 1, maxLength: 256}
+        enabled: {type: boolean}
+        expected_membership_version: {type: integer, minimum: 1}
+      description: >-
+        Changes only the explicit message.broadcast permission for an active
+        same-owner Membership. Monitor role assignment does not imply this permission.
+
+    ClientTopologyMember:
+      type: object
+      additionalProperties: false
+      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, status, version]
+      properties:
+        membership_id: {type: string}
+        principal_id: {type: string}
+        display_name: {type: string}
+        group_id: {type: string}
+        role: {type: string}
+        roles:
+          type: array
+          items: {type: string}
+        broadcast_permission_enabled:
+          type: boolean
+          description: Current explicit message.broadcast grant configuration; Monitor role alone does not enable it.
+        status: {type: string}
+        version: {type: integer, minimum: 1}

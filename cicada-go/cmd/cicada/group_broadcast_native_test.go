@@ -649,6 +649,19 @@ func nativeBroadcastFindStructuredContent(raw []byte) (map[string]any, bool) {
 			if _, hasMessages := typed["messages"]; hasMessages {
 				return typed, true
 			}
+			if approvalID, ok := typed["approval_id"].(string); ok && approvalID != "" &&
+				typed["proof"] == "verified_client_signature_and_recorded_owner_device_enrollment" {
+				if _, hasBody := typed["body"].(string); hasBody {
+					return typed, true
+				}
+			}
+			if typed["operation"] == "monitor_broadcast" {
+				status, hasStatus := typed["status"].(string)
+				broadcastID, hasBroadcastID := typed["broadcast_id"].(string)
+				if hasStatus && status != "" && hasBroadcastID && broadcastID != "" {
+					return typed, true
+				}
+			}
 			for _, key := range []string{"structuredContent", "structured_content", "result", "output"} {
 				if nested, exists := typed[key]; exists {
 					if found, ok := visit(nested, depth+1); ok {

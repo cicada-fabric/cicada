@@ -35,14 +35,15 @@ type ClientTopologyGroup struct {
 }
 
 type ClientTopologyMember struct {
-	MembershipID string   `json:"membership_id"`
-	PrincipalID  string   `json:"principal_id"`
-	DisplayName  string   `json:"display_name,omitempty"`
-	GroupID      string   `json:"group_id"`
-	Role         string   `json:"role"`
-	Roles        []string `json:"roles,omitempty"`
-	Status       string   `json:"status"`
-	Version      int64    `json:"version"`
+	MembershipID               string   `json:"membership_id"`
+	PrincipalID                string   `json:"principal_id"`
+	DisplayName                string   `json:"display_name,omitempty"`
+	GroupID                    string   `json:"group_id"`
+	Role                       string   `json:"role"`
+	Roles                      []string `json:"roles,omitempty"`
+	BroadcastPermissionEnabled bool     `json:"broadcast_permission_enabled"`
+	Status                     string   `json:"status"`
+	Version                    int64    `json:"version"`
 }
 
 type ClientTopologyEndpoint struct {
@@ -77,27 +78,29 @@ type ClientTopologyLink struct {
 type ClientTopologyActionKind string
 
 const (
-	ClientTopologyCreateGroup ClientTopologyActionKind = "group.create"
-	ClientTopologySetParent   ClientTopologyActionKind = "group.set_parent"
-	ClientTopologyJoinGroup   ClientTopologyActionKind = "endpoint.join_group"
-	ClientTopologyLeaveGroup  ClientTopologyActionKind = "endpoint.leave_group"
-	ClientTopologyBindRole    ClientTopologyActionKind = "membership.bind_role"
-	ClientTopologyProposeLink ClientTopologyActionKind = "link.propose"
-	ClientTopologyRevokeLink  ClientTopologyActionKind = "link.revoke"
+	ClientTopologyCreateGroup            ClientTopologyActionKind = "group.create"
+	ClientTopologySetParent              ClientTopologyActionKind = "group.set_parent"
+	ClientTopologyJoinGroup              ClientTopologyActionKind = "endpoint.join_group"
+	ClientTopologyLeaveGroup             ClientTopologyActionKind = "endpoint.leave_group"
+	ClientTopologyBindRole               ClientTopologyActionKind = "membership.bind_role"
+	ClientTopologySetBroadcastPermission ClientTopologyActionKind = "membership.set_broadcast_permission"
+	ClientTopologyProposeLink            ClientTopologyActionKind = "link.propose"
+	ClientTopologyRevokeLink             ClientTopologyActionKind = "link.revoke"
 )
 
 // ClientTopologyAction is a tagged union. Exactly one payload must be set and
 // it must match Kind. Object-specific versions are used where the Store
 // supports compare-and-swap; the API does not invent a global topology version.
 type ClientTopologyAction struct {
-	Kind        ClientTopologyActionKind         `json:"kind"`
-	CreateGroup *ClientTopologyCreateGroupAction `json:"create_group,omitempty"`
-	SetParent   *ClientTopologySetParentAction   `json:"set_parent,omitempty"`
-	JoinGroup   *ClientTopologyJoinGroupAction   `json:"join_group,omitempty"`
-	LeaveGroup  *ClientTopologyLeaveGroupAction  `json:"leave_group,omitempty"`
-	BindRole    *ClientTopologyBindRoleAction    `json:"bind_role,omitempty"`
-	ProposeLink *ClientTopologyProposeLinkAction `json:"propose_link,omitempty"`
-	RevokeLink  *ClientTopologyRevokeLinkAction  `json:"revoke_link,omitempty"`
+	Kind                   ClientTopologyActionKind                    `json:"kind"`
+	CreateGroup            *ClientTopologyCreateGroupAction            `json:"create_group,omitempty"`
+	SetParent              *ClientTopologySetParentAction              `json:"set_parent,omitempty"`
+	JoinGroup              *ClientTopologyJoinGroupAction              `json:"join_group,omitempty"`
+	LeaveGroup             *ClientTopologyLeaveGroupAction             `json:"leave_group,omitempty"`
+	BindRole               *ClientTopologyBindRoleAction               `json:"bind_role,omitempty"`
+	SetBroadcastPermission *ClientTopologySetBroadcastPermissionAction `json:"set_broadcast_permission,omitempty"`
+	ProposeLink            *ClientTopologyProposeLinkAction            `json:"propose_link,omitempty"`
+	RevokeLink             *ClientTopologyRevokeLinkAction             `json:"revoke_link,omitempty"`
 }
 
 type ClientTopologyCreateGroupAction struct {
@@ -127,6 +130,16 @@ type ClientTopologyBindRoleAction struct {
 	GroupID                   string `json:"group_id"`
 	MembershipID              string `json:"membership_id"`
 	Role                      string `json:"role"`
+	ExpectedMembershipVersion int64  `json:"expected_membership_version"`
+}
+
+// ClientTopologySetBroadcastPermissionAction changes only the explicit
+// message.broadcast grant for one owner-controlled Group Membership. A
+// pointer preserves the distinction between omitted enabled and false.
+type ClientTopologySetBroadcastPermissionAction struct {
+	GroupID                   string `json:"group_id"`
+	MembershipID              string `json:"membership_id"`
+	Enabled                   *bool  `json:"enabled"`
 	ExpectedMembershipVersion int64  `json:"expected_membership_version"`
 }
 
@@ -208,11 +221,7 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 			if principal.OwnerID != ownerID {
 				continue
 			}
-			view.Memberships = append(view.Memberships, ClientTopologyMember{
-				MembershipID: membership.ID, PrincipalID: principal.ID, DisplayName: principal.DisplayName,
-				GroupID: group.ID, Role: membership.Role, Roles: append([]string(nil), membership.Roles...),
-				Status: membership.Status, Version: membership.Version,
-			})
+			view.Memberships = append(view.Memberships, *projectClientTopologyMember(membership, principal.DisplayName))
 		}
 		if group.State != store.GroupStateActive {
 			continue
@@ -398,6 +407,67 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 			return nil, err
 		}
 		result.Membership = projectClientTopologyMember(*updated, principal.DisplayName)
+	case ClientTopologySetBroadcastPermission:
+		input := action.SetBroadcastPermission
+		if input.Enabled == nil || input.ExpectedMembershipVersion <= 0 {
+			return nil, errors.New("broadcast permission action requires enabled and expected membership version")
+		}
+		group, err := c.clientOwnedGroup(ownerID, input.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.State != store.GroupStateActive {
+			return nil, store.ErrMembershipNotActive
+		}
+		membership, err := c.store.GetMembership(input.MembershipID)
+		if err != nil {
+			return nil, err
+		}
+		if membership == nil || membership.GroupID != input.GroupID {
+			return nil, store.ErrMembershipNotFound
+		}
+		principal, err := c.store.GetPrincipal(membership.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		if principal == nil || principal.OwnerID != ownerID || principal.Status != store.PrincipalStatusActive {
+			return nil, ErrPermissionDenied
+		}
+		active, err := c.store.IsMembershipActive(membership.PrincipalID, membership.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if membership.Status != store.MembershipStatusActive || !active {
+			return nil, store.ErrMembershipNotActive
+		}
+		if membership.Version != input.ExpectedMembershipVersion {
+			return nil, store.ErrVersionConflict
+		}
+		grants := make([]string, 0, len(membership.Grants)+1)
+		for _, grant := range membership.Grants {
+			if grant != "message.broadcast" {
+				grants = append(grants, grant)
+			}
+		}
+		if *input.Enabled {
+			grants = append(grants, "message.broadcast")
+		}
+		authorization := make(map[string]any, len(membership.Authorization))
+		for grant, value := range membership.Authorization {
+			if grant != "message.broadcast" {
+				authorization[grant] = value
+			}
+		}
+		roles := append([]string(nil), membership.Roles...)
+		if len(roles) == 0 {
+			roles = []string{membership.Role}
+		}
+		updated, err := c.store.UpdateMembershipAuthorization(membership.ID, roles, grants,
+			authorization, input.ExpectedMembershipVersion)
+		if err != nil {
+			return nil, err
+		}
+		result.Membership = projectClientTopologyMember(*updated, principal.DisplayName)
 	case ClientTopologyProposeLink:
 		input := action.ProposeLink.Proposal
 		if _, err := c.clientOwnedGroup(ownerID, input.SourceGroupID); err != nil {
@@ -454,7 +524,7 @@ func validateClientTopologyUnion(action ClientTopologyAction) error {
 	count := 0
 	for _, present := range []bool{
 		action.CreateGroup != nil, action.SetParent != nil, action.JoinGroup != nil,
-		action.LeaveGroup != nil, action.BindRole != nil, action.ProposeLink != nil,
+		action.LeaveGroup != nil, action.BindRole != nil, action.SetBroadcastPermission != nil, action.ProposeLink != nil,
 		action.RevokeLink != nil,
 	} {
 		if present {
@@ -465,13 +535,14 @@ func validateClientTopologyUnion(action ClientTopologyAction) error {
 		return errors.New("topology action must contain exactly one operation payload")
 	}
 	valid := map[ClientTopologyActionKind]bool{
-		ClientTopologyCreateGroup: action.CreateGroup != nil,
-		ClientTopologySetParent:   action.SetParent != nil,
-		ClientTopologyJoinGroup:   action.JoinGroup != nil,
-		ClientTopologyLeaveGroup:  action.LeaveGroup != nil,
-		ClientTopologyBindRole:    action.BindRole != nil,
-		ClientTopologyProposeLink: action.ProposeLink != nil,
-		ClientTopologyRevokeLink:  action.RevokeLink != nil,
+		ClientTopologyCreateGroup:            action.CreateGroup != nil,
+		ClientTopologySetParent:              action.SetParent != nil,
+		ClientTopologyJoinGroup:              action.JoinGroup != nil,
+		ClientTopologyLeaveGroup:             action.LeaveGroup != nil,
+		ClientTopologyBindRole:               action.BindRole != nil,
+		ClientTopologySetBroadcastPermission: action.SetBroadcastPermission != nil,
+		ClientTopologyProposeLink:            action.ProposeLink != nil,
+		ClientTopologyRevokeLink:             action.RevokeLink != nil,
 	}
 	if !valid[action.Kind] {
 		return errors.New("topology action kind does not match its operation payload")
@@ -522,10 +593,21 @@ func projectClientTopologyGroup(group store.Group) *ClientTopologyGroup {
 }
 
 func projectClientTopologyMember(membership store.Membership, displayName string) *ClientTopologyMember {
+	broadcastEnabled := false
+	for _, grant := range membership.Grants {
+		if grant == "message.broadcast" {
+			broadcastEnabled = true
+			break
+		}
+	}
+	if membership.Authorization["message.broadcast"] == true {
+		broadcastEnabled = true
+	}
 	return &ClientTopologyMember{
 		MembershipID: membership.ID, PrincipalID: membership.PrincipalID, DisplayName: displayName,
 		GroupID: membership.GroupID, Role: membership.Role, Roles: append([]string(nil), membership.Roles...),
-		Status: membership.Status, Version: membership.Version,
+		BroadcastPermissionEnabled: broadcastEnabled,
+		Status:                     membership.Status, Version: membership.Version,
 	}
 }
 

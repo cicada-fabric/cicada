@@ -23,6 +23,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG TZ=Etc/UTC
 ARG CICADA_UID=1000
 ARG CICADA_GID=1000
+ARG CODEX_RELEASE=0.157.1
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
@@ -77,13 +78,15 @@ RUN export http_proxy="${HTTP_PROXY:-}" https_proxy="${HTTPS_PROXY:-}" \
        | CODEX_NON_INTERACTIVE=1 \
          CODEX_INSTALL_DIR=/usr/local/bin \
          CODEX_HOME=/opt/codex \
-         sh \
-    && codex --version
+         sh -s -- --release "${CODEX_RELEASE}" \
+    && test "$(codex --version)" = "codex-cli ${CODEX_RELEASE}"
 
 # The standalone package also ships the code-mode helper. The installer cannot
 # create this alias when CODEX_HOME differs from the runtime user's home.
-RUN ln -s /opt/codex/packages/standalone/current/bin/codex-code-mode-host \
-    /usr/local/bin/codex-code-mode-host
+RUN if [ -x /opt/codex/packages/standalone/current/bin/codex-code-mode-host ]; then \
+      ln -sfn /opt/codex/packages/standalone/current/bin/codex-code-mode-host \
+        /usr/local/bin/codex-code-mode-host; \
+    fi
 
 COPY --chown=root:root docker/codex-config.toml /etc/codex/config.toml
 COPY --chown=root:root docker/entrypoint.sh /usr/local/bin/cicada-entrypoint

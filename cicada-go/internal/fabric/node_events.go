@@ -34,6 +34,20 @@ func (s *Service) SubscribeNodeEvents(nodeID string) (<-chan struct{}, func()) {
 	}
 }
 
+// NotifyNodeClaimHint publishes a generic, coalesced wake hint after the
+// caller has committed durable work for this Node. The hint carries no payload;
+// Node authorization and delivery remain guarded by the durable claim APIs.
+func (s *Service) NotifyNodeClaimHint(nodeID string) {
+	if s == nil {
+		return
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return
+	}
+	s.notifyNode(nodeID)
+}
+
 // notifyNode is intentionally nonblocking. It runs only after a message has
 // been committed, and coalescing wake hints cannot lose durable messages.
 func (s *Service) notifyNode(nodeID string) {

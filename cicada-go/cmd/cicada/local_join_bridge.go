@@ -38,15 +38,16 @@ type localJoinRequest struct {
 }
 
 type localJoinResponse struct {
-	Version        int                    `json:"version"`
-	Join           *fabricpkg.JoinResult  `json:"join,omitempty"`
-	SealedSend     *localSealedSendResult `json:"sealed_send,omitempty"`
-	SealedRPC      *localSealedRPCResult  `json:"sealed_rpc,omitempty"`
-	LocalGroup     *localGroupResult      `json:"local_group,omitempty"`
-	CrossNodeGroup *crossNodeGroupResult  `json:"cross_node_group,omitempty"`
-	GroupBroadcast *groupBroadcastResult  `json:"group_broadcast,omitempty"`
-	Retryable      bool                   `json:"retryable,omitempty"`
-	Error          string                 `json:"error,omitempty"`
+	Version          int                     `json:"version"`
+	Join             *fabricpkg.JoinResult   `json:"join,omitempty"`
+	SealedSend       *localSealedSendResult  `json:"sealed_send,omitempty"`
+	SealedRPC        *localSealedRPCResult   `json:"sealed_rpc,omitempty"`
+	LocalGroup       *localGroupResult       `json:"local_group,omitempty"`
+	CrossNodeGroup   *crossNodeGroupResult   `json:"cross_node_group,omitempty"`
+	GroupBroadcast   *groupBroadcastResult   `json:"group_broadcast,omitempty"`
+	MonitorBroadcast *monitorBroadcastResult `json:"monitor_broadcast,omitempty"`
+	Retryable        bool                    `json:"retryable,omitempty"`
+	Error            string                  `json:"error,omitempty"`
 }
 
 type machineAgentJoinBridge struct {
@@ -359,6 +360,23 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 			return
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, SealedRPC: result})
+		return
+	}
+	if header.Operation == "monitor_broadcast_info" || header.Operation == "monitor_broadcast_execute" || header.Operation == "monitor_broadcast_preview" {
+		var request monitorBroadcastRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: "invalid Monitor broadcast request"})
+			return
+		}
+		result, err := b.monitorBroadcast(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: safeLocalJoinError(err), Retryable: localSealedSendRetryable(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+			MonitorBroadcast: result})
 		return
 	}
 	if header.Operation == "group_broadcast" {

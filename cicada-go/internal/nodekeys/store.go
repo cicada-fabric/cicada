@@ -36,6 +36,58 @@ type identityRecord struct {
 	Private    []byte              `json:"private_identity"`
 }
 
+// LoadExisting reads one already enrolled Endpoint identity. It never creates
+// a state directory, key directory or replacement key. Receiving an encrypted
+// payload for a missing Monitor identity must fail closed.
+func LoadExisting(stateDir, endpointID string) (*e2ee.Identity, error) {
+	if err := validateEndpointID(endpointID); err != nil {
+		return nil, err
+	}
+	root, err := cleanStateDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := inspectExistingStateDirectory(root); err != nil {
+		return nil, err
+	}
+	keyDir := filepath.Join(root, keyDirectoryName)
+	info, err := os.Lstat(keyDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect existing Node Endpoint key directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != keyDirectoryMode {
+		return nil, errors.New("Node Endpoint key directory must be a real 0700 directory")
+	}
+	return readIdentity(identityPath(keyDir, endpointID), endpointID)
+}
+
+func inspectExistingStateDirectory(path string) error {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	volume := filepath.VolumeName(abs)
+	current := volume + string(filepath.Separator)
+	rest := strings.TrimPrefix(abs, current)
+	for _, component := range strings.Split(rest, string(filepath.Separator)) {
+		if component == "" {
+			continue
+		}
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect existing Node-local state path %q: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("Node-local state path component %q is not a real directory", current)
+		}
+		if current == abs && info.Mode().Perm()&0o022 != 0 {
+			return fmt.Errorf("Node-local state directory is group or world writable: mode %04o", info.Mode().Perm())
+		}
+	}
+	return nil
+}
+
 // LoadOrCreate returns the persistent identity for endpointID under the
 // Node-local stateDir. New identities are installed atomically without
 // replacing an existing identity, including when multiple processes race.

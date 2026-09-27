@@ -94,7 +94,7 @@ func TestAndroidClientCapabilitiesAdvertiseOnlyImplementedHubOperations(t *testi
 	if err := compareCapabilityOperations(operations, clientcontract.OperationsForRole(clientcontract.RoleManager)); err != nil {
 		t.Fatalf("manager capabilities drifted from catalog: %v", err)
 	}
-	for _, required := range []string{"session.capabilities", "status.changes", "goal.lifecycle", "nodes.preview", "nodes.confirm", "nodes.list", "nodes.revoke", "link.list", "link.invite_create", "link.invite_preview", "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status"} {
+	for _, required := range []string{"session.capabilities", "status.changes", "goal.lifecycle", "nodes.preview", "nodes.confirm", "nodes.list", "nodes.revoke", "link.list", "link.invite_create", "link.invite_preview", "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status", "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status", "monitor.broadcast_recover"} {
 		found := false
 		for _, operation := range operations {
 			if operation == required {
@@ -113,7 +113,7 @@ func TestAndroidClientCapabilitiesAdvertiseOnlyImplementedHubOperations(t *testi
 	if err := compareCapabilityOperations(externalOperations, clientcontract.OperationsForRole(clientcontract.RoleExternal)); err != nil {
 		t.Fatalf("external capabilities drifted from catalog: %v", err)
 	}
-	for _, required := range []string{"status.snapshot", "status.changes", "topology.snapshot", "topology.apply", "link.list", "group.key_manifest", "group.key_grant", "group.key_status"} {
+	for _, required := range []string{"status.snapshot", "status.changes", "topology.snapshot", "topology.apply", "link.list", "group.key_manifest", "group.key_grant", "group.key_status", "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status", "monitor.broadcast_recover"} {
 		found := false
 		for _, operation := range externalOperations {
 			if operation == required {

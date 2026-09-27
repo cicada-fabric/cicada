@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 30
+	CurrentV2SchemaVersion = 34
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -302,6 +302,41 @@ var v2Migrations = []v2Migration{
 		Description: "add attempt-fenced remote Node Worker approval request identity",
 		Objects:     []string{"approvals"},
 		Apply:       func(s *Store) error { return s.initializeRemoteWorkerApprovalsV2Schema() },
+	},
+	{
+		Version:     31,
+		ID:          "v2.client.monitor_broadcast_authorization",
+		Description: "add Client-origin Monitor broadcast preview, approval, and single-use consumption ledger",
+		Objects:     []string{"user_monitor_broadcast_v2"},
+		Apply:       func(s *Store) error { return s.initializeUserMonitorBroadcastV2Schema() },
+	},
+	{
+		Version:     32,
+		ID:          "v2.client.monitor_broadcast_delivery_evidence",
+		Description: "retain exact signed Client enrollment proof and Node-scoped Monitor notice receipts",
+		Objects: []string{
+			"client_device_enrollment_proofs_v2", "user_monitor_broadcast_v2_notice_receipts",
+		},
+		Apply: func(s *Store) error { return s.initializeUserMonitorBroadcastV2DeliverySchema() },
+	},
+	{
+		Version:     33,
+		ID:          "v2.client.monitor_broadcast_recipient_outcomes",
+		Description: "persist bounded recipient outcomes for approved Monitor dispatch",
+		Objects:     []string{"user_monitor_broadcast_v2_recipient_outcomes"},
+		Apply:       func(s *Store) error { return s.initializeUserMonitorBroadcastV2OutcomeSchema() },
+	},
+	{
+		Version:     34,
+		ID:          "v2.client.monitor_broadcast_intake_limits",
+		Description: "persist Monitor consent metadata, bound live preview intake, and fairly page Node notices",
+		Objects:     []string{"user_monitor_broadcast_v2_notice_cursors"},
+		Apply: func(s *Store) error {
+			if err := s.initializeUserMonitorBroadcastV2ConsentSchema(); err != nil {
+				return err
+			}
+			return s.initializeUserMonitorBroadcastV2LimitsSchema()
+		},
 	},
 }
 
@@ -715,6 +750,28 @@ func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]le
 		}
 		if count != 1 {
 			return fmt.Errorf("migration object %s is missing", object)
+		}
+	}
+	if migration.ID == "v2.client.monitor_broadcast_intake_limits" {
+		columns, err := existingColumns(s.db, "user_monitor_broadcast_v2", []string{"consent_digest", "preview_json"})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 2 {
+			return errors.New("Monitor broadcast consent columns are missing")
+		}
+		for _, index := range []string{
+			"user_monitor_broadcast_v2_live_device_expiry_idx",
+			"user_monitor_broadcast_v2_live_owner_expiry_idx",
+			"user_monitor_broadcast_v2_notice_scan_idx",
+		} {
+			var count int
+			if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?`, index).Scan(&count); err != nil {
+				return fmt.Errorf("inspect index %s: %w", index, err)
+			}
+			if count != 1 {
+				return fmt.Errorf("migration index %s is missing", index)
+			}
 		}
 	}
 	if migration.ID == "v2.group.hierarchy" {

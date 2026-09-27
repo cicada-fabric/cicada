@@ -201,6 +201,48 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		}
 		return h.control.AcceptClientExternalThreadInvite(ownerID, input.Token,
 			input.TargetEndpointID, input.TargetGroupID)
+	case "monitor.broadcast_prepare":
+		var input struct {
+			GroupID           string `json:"group_id"`
+			MonitorEndpointID string `json:"monitor_endpoint_id"`
+			BodySHA256        string `json:"body_sha256"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.GroupID == "" || input.MonitorEndpointID == "" || input.BodySHA256 == "" {
+			return nil, errors.New("invalid Monitor broadcast preparation request")
+		}
+		return h.control.ClientPrepareMonitorBroadcast(ownerID, clientRequestID,
+			input.GroupID, input.MonitorEndpointID, input.BodySHA256)
+	case "monitor.broadcast_confirm":
+		var input struct {
+			PreviewID      string `json:"preview_id"`
+			SnapshotDigest string `json:"snapshot_digest"`
+			BodySHA256     string `json:"body_sha256"`
+			SealedPayload  []byte `json:"sealed_payload"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.PreviewID == "" || input.SnapshotDigest == "" || input.BodySHA256 == "" || len(input.SealedPayload) == 0 {
+			return nil, errors.New("invalid consent-bound Monitor broadcast confirmation")
+		}
+		return h.control.ClientConfirmMonitorBroadcast(ownerID, clientRequestID,
+			input.PreviewID, input.SnapshotDigest, input.BodySHA256, input.SealedPayload)
+	case "monitor.broadcast_status":
+		var input struct {
+			PreviewID string `json:"preview_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.PreviewID == "" {
+			return nil, errors.New("invalid Monitor broadcast status request")
+		}
+		return h.control.ClientMonitorBroadcastStatus(ownerID, clientRequestID, input.PreviewID)
+	case "monitor.broadcast_recover":
+		var input struct {
+			OperationID string `json:"operation_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.OperationID == "" || len(input.OperationID) > 256 {
+			return nil, errors.New("invalid Monitor broadcast recovery request")
+		}
+		return h.control.ClientRecoverMonitorBroadcast(ownerID, clientRequestID, input.OperationID)
 	case "link.key_manifest":
 		var input struct {
 			LinkID string `json:"link_id"`

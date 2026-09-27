@@ -29,15 +29,16 @@ const (
 )
 
 var (
-	ErrAmbiguous                 = errors.New("endpoint address is ambiguous")
-	ErrNotFoundOrNotAuthorized   = errors.New("not found or not authorized")
-	ErrUnauthenticated           = errors.New("fabric session is not authenticated")
-	ErrPermissionDenied          = errors.New("fabric permission denied")
-	ErrConflict                  = errors.New("fabric object conflicts with existing state")
-	ErrStaleBinding              = errors.New("session binding is stale")
-	ErrCrossGroupDirectDenied    = errors.New("direct cross-group endpoint communication is denied")
-	ErrRequestTerminal           = errors.New("request is already terminal")
-	ErrRepresentativeUnavailable = errors.New("group representative is unavailable")
+	ErrAmbiguous                   = errors.New("endpoint address is ambiguous")
+	ErrNotFoundOrNotAuthorized     = errors.New("not found or not authorized")
+	ErrUnauthenticated             = errors.New("fabric session is not authenticated")
+	ErrPermissionDenied            = errors.New("fabric permission denied")
+	ErrConflict                    = errors.New("fabric object conflicts with existing state")
+	ErrStaleBinding                = errors.New("session binding is stale")
+	ErrCrossGroupDirectDenied      = errors.New("direct cross-group endpoint communication is denied")
+	ErrRequestTerminal             = errors.New("request is already terminal")
+	ErrRepresentativeUnavailable   = errors.New("group representative is unavailable")
+	ErrFederationBodyWritesRetired = errors.New("legacy Monitor Federation body writes are retired; use an explicitly authorized sealed Communication Link")
 )
 
 // Actor is derived from a verified SessionBinding credential. Callers never
