@@ -82,24 +82,24 @@ func TestFabricV2CLIJoinUsesManagementBearerAndStoresSessionCredential(t *testin
 	}
 }
 
-func TestFabricV2CLIPeerOperationUsesSessionBindingWithoutIdentityFields(t *testing.T) {
+func TestFabricV2CLIHistoricalReceiveUsesSessionBindingWithoutIdentityFields(t *testing.T) {
 	t.Setenv("CICADA_API_TOKEN", "management-token")
 	t.Setenv("CICADA_API_TOKEN_FILE", "")
 	t.Setenv(fabricV2SessionTokenEnv, "")
 	tokenPath := filepath.Join(t.TempDir(), "session.token")
 
-	var sendBody map[string]any
+	var receiveBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/v2/fabric/send" {
-			t.Fatalf("unexpected send route: %s %s", request.Method, request.URL.Path)
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/fabric/receive" {
+			t.Fatalf("unexpected receive route: %s %s", request.Method, request.URL.Path)
 		}
 		if got := request.Header.Get("Authorization"); got != "CicadaSession cicada_session_peer-secret" {
-			t.Fatalf("send authorization = %q", got)
+			t.Fatalf("receive authorization = %q", got)
 		}
-		if err := json.NewDecoder(request.Body).Decode(&sendBody); err != nil {
-			t.Fatalf("decode send body: %v", err)
+		if err := json.NewDecoder(request.Body).Decode(&receiveBody); err != nil {
+			t.Fatalf("decode receive body: %v", err)
 		}
-		_ = json.NewEncoder(response).Encode(map[string]string{"message_id": "msg_cli"})
+		_ = json.NewEncoder(response).Encode(map[string]any{"messages": []any{}})
 	}))
 	defer server.Close()
 	if err := writeFabricV2SessionState(tokenPath, fabricV2SessionState{
@@ -112,19 +112,30 @@ func TestFabricV2CLIPeerOperationUsesSessionBindingWithoutIdentityFields(t *test
 	t.Setenv(fabricV2SessionFileEnv, tokenPath)
 
 	var output strings.Builder
-	if err := fabricV2CommandOutput(server.URL, []string{"send", "benchmark", "hello", "peer"}, &output); err != nil {
+	if err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	if got := sendBody["target"]; got != "benchmark" {
-		t.Fatalf("target = %#v", got)
-	}
-	if got := sendBody["body"]; got != "hello peer" {
-		t.Fatalf("body = %#v", got)
-	}
 	for _, field := range []string{"sender", "sender_endpoint_id", "principal_id", "group_id", "role", "approval"} {
-		if _, ok := sendBody[field]; ok {
-			t.Fatalf("peer operation accepted caller identity field %q", field)
+		if _, ok := receiveBody[field]; ok {
+			t.Fatalf("historical receive accepted caller identity field %q", field)
 		}
+	}
+}
+
+func TestFabricV2CLIPeerWritesAreUnavailable(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		response.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	for _, command := range []string{"send", "ask", "reply"} {
+		if err := fabricV2CommandOutput(server.URL, []string{command, "target", "body"}, &strings.Builder{}); err == nil || !strings.Contains(err.Error(), fabricV2Usage) {
+			t.Fatalf("retired CLI command %q error = %v", command, err)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("retired CLI peer writes reached Hub %d times", requests)
 	}
 }
 
@@ -139,7 +150,7 @@ func TestFabricV2CLIRequiresExplicitJoinCredential(t *testing.T) {
 	defer server.Close()
 
 	var output strings.Builder
-	err := fabricV2CommandOutput(server.URL, []string{"send", "benchmark", "hello"}, &output)
+	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "no active Cicada session credential") {
 		t.Fatalf("missing-session error = %v", err)
 	}
@@ -171,7 +182,7 @@ func TestFabricV2CLISessionFileRejectsOriginAndNativeContextReuse(t *testing.T) 
 	}
 	t.Setenv(fabricV2SessionFileEnv, tokenPath)
 	var output strings.Builder
-	err := fabricV2CommandOutput(server.URL, []string{"send", "benchmark", "hello"}, &output)
+	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "different API origin") {
 		t.Fatalf("cross-origin error = %v", err)
 	}
@@ -186,7 +197,7 @@ func TestFabricV2CLISessionFileRejectsOriginAndNativeContextReuse(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err = fabricV2CommandOutput(server.URL, []string{"send", "benchmark", "hello"}, &output)
+	err = fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "different native session") {
 		t.Fatalf("cross-session error = %v", err)
 	}
@@ -205,7 +216,7 @@ func TestFabricV2CLIRedactsSessionCredentialFromAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := fabricV2CommandOutput(server.URL, []string{"send", "benchmark", "hello"}, &strings.Builder{})
+	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &strings.Builder{})
 	if err == nil || strings.Contains(err.Error(), "cicada_session_error-secret") || !strings.Contains(err.Error(), "<redacted>") {
 		t.Fatalf("redacted API error = %v", err)
 	}

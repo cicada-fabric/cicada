@@ -74,6 +74,12 @@ func (h *Handler) clientV2(response http.ResponseWriter, request *http.Request) 
 			return
 		}
 		h.clientRPC(response, request)
+	case "/v2/client/rpc/recover":
+		if request.Method != http.MethodPost {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		h.clientRPCRecover(response, request)
 	default:
 		writeError(response, http.StatusNotFound, errors.New("Client route not found"))
 	}

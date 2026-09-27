@@ -15,30 +15,37 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// machineRelayJournalEntry contains only the remote delivery coordinates. The
-// message body remains in nodeinbox's SQLite payload column and is never
-// copied into this recovery journal or an error message.
+// machineRelayJournalEntry contains remote delivery coordinates and signed
+// clear route metadata. The message body remains in nodeinbox's SQLite payload
+// column, and sealed ciphertext remains in nodekeys' durable crypto inbox;
+// neither payload is copied into this recovery journal or an error message.
 type machineRelayJournalEntry struct {
-	MessageID        string `json:"message_id"`
-	RequestID        string `json:"request_id,omitempty"`
-	Kind             string `json:"kind,omitempty"`
-	GroupID          string `json:"group_id,omitempty"`
-	SenderEndpointID string `json:"sender_endpoint_id,omitempty"`
-	ReplyTo          string `json:"reply_to,omitempty"`
-	Digest           string `json:"digest"`
-	EndpointID       string `json:"endpoint_id"`
-	BindingID        string `json:"binding_id"`
-	BindingEpoch     uint64 `json:"binding_epoch"`
-	AttemptID        string `json:"attempt_id"`
-	SessionID        string `json:"session_id"`
-	Harness          string `json:"harness"`
-	NodeReceived     bool   `json:"node_received,omitempty"`
-	RuntimeInjected  bool   `json:"runtime_injected,omitempty"`
-	ConsumptionSent  bool   `json:"consumption_unconfirmed,omitempty"`
-	UncertainSent    bool   `json:"injection_uncertain,omitempty"`
-	FailedSent       bool   `json:"failed,omitempty"`
+	MessageID         string                      `json:"message_id"`
+	RequestID         string                      `json:"request_id,omitempty"`
+	Kind              string                      `json:"kind,omitempty"`
+	GroupID           string                      `json:"group_id,omitempty"`
+	SenderEndpointID  string                      `json:"sender_endpoint_id,omitempty"`
+	ReplyTo           string                      `json:"reply_to,omitempty"`
+	Digest            string                      `json:"digest"`
+	EndpointID        string                      `json:"endpoint_id"`
+	BindingID         string                      `json:"binding_id"`
+	BindingEpoch      uint64                      `json:"binding_epoch"`
+	AttemptID         string                      `json:"attempt_id"`
+	SessionID         string                      `json:"session_id"`
+	Harness           string                      `json:"harness"`
+	NodeReceived      bool                        `json:"node_received,omitempty"`
+	RuntimeInjected   bool                        `json:"runtime_injected,omitempty"`
+	ConsumptionSent   bool                        `json:"consumption_unconfirmed,omitempty"`
+	UncertainSent     bool                        `json:"injection_uncertain,omitempty"`
+	FailedSent        bool                        `json:"failed,omitempty"`
+	PayloadMode       string                      `json:"payload_mode,omitempty"`
+	DataScope         string                      `json:"data_scope,omitempty"`
+	AuthorizationKind string                      `json:"authorization_kind,omitempty"`
+	SealedRoute       *store.RelaySealedV1Route   `json:"sealed_route,omitempty"`
+	SealedSecurity    *store.RelayMessageSecurity `json:"sealed_security,omitempty"`
 }
 
 type machineRelayJournalDisk struct {
@@ -142,6 +149,9 @@ func (j *machineRelayJournal) put(delivery fabric.Delivery) error {
 	}
 	if index >= 0 {
 		previous := j.deliveries[index]
+		if previous.PayloadMode == "SEALED_V1" {
+			return errors.New("machine relay message ID is already bound to a sealed payload")
+		}
 		if previous.Digest == entry.Digest && previous.AttemptID == entry.AttemptID {
 			entry.NodeReceived = previous.NodeReceived
 			entry.RuntimeInjected = previous.RuntimeInjected
@@ -197,6 +207,34 @@ func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID strin
 	if err != nil {
 		return err
 	}
+	var sealedPayload struct {
+		Deliveries []fabric.NodeSealedDelivery `json:"deliveries"`
+	}
+	sealedEndpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/sealed/claim"
+	if err := machineAPIJSON(ctx, sealedEndpoint, http.MethodPost, map[string]any{
+		"consumer_id": machineRelayConsumerID(machineID), "limit": 50,
+	}, &sealedPayload); err != nil {
+		return fmt.Errorf("claim v2 sealed relay deliveries: %w", err)
+	}
+	for _, delivery := range sealedPayload.Deliveries {
+		if err := acceptMachineSealedRelayDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
+			return err
+		}
+	}
+	var groupSealedPayload struct {
+		Deliveries []fabric.NodeSealedDelivery `json:"deliveries"`
+	}
+	groupSealedEndpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/group/sealed/claim"
+	if err := machineAPIJSON(ctx, groupSealedEndpoint, http.MethodPost, map[string]any{
+		"consumer_id": machineRelayConsumerID(machineID), "limit": 50,
+	}, &groupSealedPayload); err != nil {
+		return fmt.Errorf("claim same-Group sealed relay deliveries: %w", err)
+	}
+	for _, delivery := range groupSealedPayload.Deliveries {
+		if err := acceptMachineCrossNodeGroupDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
+			return err
+		}
+	}
 	var payload struct {
 		Deliveries []fabric.Delivery `json:"deliveries"`
 	}
@@ -206,7 +244,7 @@ func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID strin
 	}, &payload); err != nil {
 		return fmt.Errorf("claim v2 relay deliveries: %w", err)
 	}
-	if err := reconcileMachineRelayJournal(ctx, base, machineID, inbox, journal); err != nil {
+	if err := reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal); err != nil {
 		return err
 	}
 	for _, delivery := range payload.Deliveries {
@@ -214,15 +252,18 @@ func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID strin
 			return err
 		}
 	}
-	if err := reconcileMachineRelayJournal(ctx, base, machineID, inbox, journal); err != nil {
+	if err := reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal); err != nil {
 		return err
 	}
-	return drainMachineRelayInbox(ctx, base, machineID, inbox, journal)
+	return drainMachineRelayInbox(ctx, base, machineID, stateDir, inbox, journal)
 }
 
 func acceptMachineRelayDelivery(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, journal *machineRelayJournal, delivery fabric.Delivery) error {
 	if delivery.PayloadMode != "" && delivery.PayloadMode != "PLAINTEXT" {
 		return fmt.Errorf("v2 relay delivery %s uses unsupported payload mode", delivery.MessageID)
+	}
+	if existing := journal.entry(delivery.MessageID); existing != nil && existing.PayloadMode == "SEALED_V1" {
+		return errors.New("machine relay message ID is already bound to a sealed payload")
 	}
 	stored, _, err := inbox.Save(ctx, nodeinbox.Message{
 		MessageID: delivery.MessageID, Digest: delivery.Digest,
@@ -253,16 +294,33 @@ func acceptMachineRelayDelivery(ctx context.Context, base, machineID string, inb
 	})
 }
 
-func reconcileMachineRelayJournal(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, journal *machineRelayJournal) error {
+func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir string, inbox *nodeinbox.Inbox, journal *machineRelayJournal) error {
 	for index := 0; index < len(journal.deliveries); index++ {
 		entry := journal.deliveries[index]
 		delivery, err := inbox.Get(ctx, entry.MessageID)
 		if errors.Is(err, nodeinbox.ErrNotFound) {
-			if err := journal.remove(entry.MessageID); err != nil {
-				return err
+			if entry.PayloadMode == "SEALED_V1" {
+				recoveryErr := recoverMachineSealedInboxSave(ctx, base, stateDir, machineID, inbox, entry)
+				if recoveryErr != nil {
+					// The remote claim can expire and be reissued under a new attempt.
+					// Keep the journal until that happens; it is the only recovery
+					// pointer to the ciphertext already committed in nodekeys.
+					if machineAPIHasStatus(recoveryErr, http.StatusNotFound) {
+						continue
+					}
+					return fmt.Errorf("recover sealed local relay delivery %s: %w", entry.MessageID, recoveryErr)
+				}
+				delivery, err = inbox.Get(ctx, entry.MessageID)
+				if err != nil {
+					return fmt.Errorf("read recovered sealed relay delivery %s: %w", entry.MessageID, err)
+				}
+			} else {
+				if err := journal.remove(entry.MessageID); err != nil {
+					return err
+				}
+				index--
+				continue
 			}
-			index--
-			continue
 		}
 		if err != nil {
 			return fmt.Errorf("read local relay delivery %s: %w", entry.MessageID, err)
@@ -299,6 +357,17 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID string, i
 				index--
 			}
 		case nodeinbox.CONSUMPTION_UNCONFIRMED:
+			if !entry.RuntimeInjected {
+				if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptRuntimeInjected, ""); err != nil {
+					return fmt.Errorf("report v2 RUNTIME_INJECTED for %s: %w", entry.MessageID, err)
+				}
+				if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
+					entry.RuntimeInjected = true
+				}); err != nil {
+					return err
+				}
+				entry.RuntimeInjected = true
+			}
 			if err := reportMachineRelayConsumption(ctx, base, machineID, journal, entry); err != nil {
 				return err
 			}
@@ -321,7 +390,7 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID string, i
 	return nil
 }
 
-func drainMachineRelayInbox(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, journal *machineRelayJournal) error {
+func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir string, inbox *nodeinbox.Inbox, journal *machineRelayJournal) error {
 	consumerID := machineRelayConsumerID(machineID)
 	for {
 		claim, err := inbox.Claim(ctx, consumerID)
@@ -345,6 +414,18 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID string, inbox *
 				return err
 			}
 			entry.NodeReceived = true
+		}
+		if entry.PayloadMode == "SEALED_V1" {
+			var drainErr error
+			if entry.AuthorizationKind == "same-group" {
+				drainErr = drainMachineCrossNodeGroupRelayClaim(ctx, base, machineID, stateDir, inbox, journal, *claim, *entry)
+			} else {
+				drainErr = drainMachineSealedRelayClaim(ctx, base, machineID, stateDir, inbox, journal, *claim, *entry)
+			}
+			if drainErr != nil {
+				return drainErr
+			}
+			continue
 		}
 		if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
 			if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
@@ -374,10 +455,10 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID string, inbox *
 			if errors.As(err, &uncertain) {
 				receipt := machineRelayReceipt(*claim, nodeinbox.INJECTION_UNCERTAIN)
 				receipt.Error = "native queue process started but injection could not be confirmed"
-				if _, recordErr := inbox.RecordReceipt(ctx, receipt); recordErr != nil {
+				if _, recordErr := inbox.Acknowledge(ctx, receipt); recordErr != nil {
 					return recordErr
 				}
-				if reconcileErr := reconcileMachineRelayJournal(ctx, base, machineID, inbox, journal); reconcileErr != nil {
+				if reconcileErr := reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal); reconcileErr != nil {
 					return reconcileErr
 				}
 				continue

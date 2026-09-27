@@ -45,6 +45,38 @@ func TestRelayNodeLinkAuthorizationRequiresCurrentBoundNodeCredential(t *testing
 	}
 }
 
+func TestRelayNodeSealedDeliveryAuthorizationRequiresExactClaimAndNode(t *testing.T) {
+	service, persistence, _ := newRelayNodeTestService(t)
+	nodeToken, nodeHash, err := fabricpkg.NewNodeCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindRelayNodeTestCredential(t, persistence, "node-b", nodeHash)
+	handler := NewFabricHandler(service, "management-token")
+	call := func(path, authorization string) int {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", authorization)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response.Code
+	}
+	path := "/v2/relay/nodes/node-b/sealed/missing-message/authorization"
+	if status := call(path+"?attempt_id=missing-attempt", "Bearer management-token"); status != http.StatusUnauthorized {
+		t.Fatalf("management credential read Node sealed authorization: %d", status)
+	}
+	if status := call(path+"?attempt_id=missing-attempt", "CicadaNode "+nodeToken); status != http.StatusNotFound {
+		t.Fatalf("unclaimed message exposed authorization: %d", status)
+	}
+	if status := call(path, "CicadaNode "+nodeToken); status != http.StatusBadRequest {
+		t.Fatalf("missing attempt ID was accepted: %d", status)
+	}
+	if status := call("/v2/relay/nodes/other-node/sealed/missing-message/authorization?attempt_id=missing-attempt",
+		"CicadaNode "+nodeToken); status != http.StatusForbidden {
+		t.Fatalf("Node credential crossed Node scope: %d", status)
+	}
+}
+
 func TestRelayNodeLinkAuthorizationReturnsOnlyCurrentBilateralEvidence(t *testing.T) {
 	service, persistence, groupA := newRelayNodeTestService(t)
 	groupB, err := persistence.CreateGroup(store.Group{

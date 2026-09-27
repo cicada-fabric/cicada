@@ -1,95 +1,112 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/cicada-ai/cicada/internal/control"
-	"github.com/cicada-ai/cicada/internal/server"
+	"github.com/cicada-ai/cicada/internal/workspace/snapshot"
 )
 
-func TestMachineSnapshotRoundTripThroughControl(t *testing.T) {
+func TestMachineAgentRestoresAndUploadsBoundNodeWorkspaceSnapshot(t *testing.T) {
 	root := t.TempDir()
-	workspacePath := filepath.Join(root, "workspace", "worker")
-	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
-	})
+	t.Setenv("CICADA_WORKSPACE_ROOT", root)
+	seed := filepath.Join(root, "seed")
+	if err := os.MkdirAll(seed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seed, "input.txt"), []byte("restored"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	initial, err := snapshot.Pack(context.Background(), seed, &archive)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controlPlane.Shutdown(context.Background())
-	workspace, err := controlPlane.CreateWorkspace(control.WorkspaceInput{Path: workspacePath, Source: "remote"})
-	if err != nil {
-		t.Fatal(err)
+	const nodeID, workerID, workspaceID, nodeToken = "node-a", "worker-a", "workspace-a", "node-token"
+	workspace := filepath.Join(root, "workspaces", workspaceID)
+	job := machineJob{
+		MachineID: nodeID, WorkerID: workerID, WorkspaceID: workspaceID,
+		Workspace: "/hub/goals/worker-a", WorkspaceSnapshotDigest: initial.Digest, Attempt: 2,
+		Harness: "shell", Resources: map[string]any{"argv": []any{"/bin/sh", "-c", "cat input.txt && printf done > output.txt"}},
 	}
-	if err := os.WriteFile(filepath.Join(workspacePath, "answer.txt"), []byte("snapshot-ready"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	api := httptest.NewServer(server.NewHandler(controlPlane))
+	var uploadedDigest string
+	api := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if got := request.Header.Get("Authorization"); got != "CicadaNode "+nodeToken {
+			t.Errorf("snapshot request authorization=%q", got)
+		}
+		if got := request.Header.Get("X-Cicada-Worker-Attempt"); got != "2" {
+			t.Errorf("snapshot attempt=%q", got)
+		}
+		if got := request.Header.Get("X-Cicada-Workspace-ID"); got != workspaceID {
+			t.Errorf("snapshot workspace=%q", got)
+		}
+		switch request.Method {
+		case http.MethodGet:
+			if request.URL.Path != "/v2/relay/nodes/node-a/jobs/worker-a/snapshot/"+initial.Digest {
+				t.Errorf("snapshot GET route=%q", request.URL.Path)
+			}
+			response.Header().Set("X-Cicada-Snapshot-Digest", initial.Digest)
+			_, _ = response.Write(archive.Bytes())
+		case http.MethodPost:
+			if request.URL.Path != "/v2/relay/nodes/node-a/jobs/worker-a/snapshot" {
+				t.Errorf("snapshot POST route=%q", request.URL.Path)
+			}
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Errorf("read uploaded snapshot: %v", err)
+			}
+			digest := sha256.Sum256(body)
+			uploadedDigest = hex.EncodeToString(digest[:])
+			if got := request.Header.Get("X-Cicada-Snapshot-Digest"); got != uploadedDigest {
+				t.Errorf("upload digest header=%q, actual=%q", got, uploadedDigest)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			response.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(response).Encode(snapshot.Snapshot{Digest: uploadedDigest, Size: int64(len(body))})
+		default:
+			t.Errorf("unexpected snapshot method: %s", request.Method)
+			response.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
 	defer api.Close()
-	job := machineJob{WorkspaceID: workspace.ID, Workspace: workspacePath}
-	digest, err := uploadMachineSnapshot(context.Background(), api.URL, job, workspacePath)
-	if err != nil {
-		t.Fatal(err)
+	result := executeMachineJobWithHeartbeats(context.Background(), api.URL, nodeID, nodeToken, time.Hour, job)
+	if result.Status != "completed" || result.Summary != "restored" || result.WorkspaceSnapshotDigest == "" || result.WorkspaceSnapshotDigest != uploadedDigest {
+		t.Fatalf("Node Workspace execution/result=%#v, upload=%q", result, uploadedDigest)
 	}
-	if digest == "" {
-		t.Fatal("snapshot upload returned an empty digest")
-	}
-	if err := os.Remove(filepath.Join(workspacePath, "answer.txt")); err != nil {
-		t.Fatal(err)
-	}
-	job.WorkspaceSnapshotDigest = digest
-	if err := downloadMachineSnapshot(context.Background(), api.URL, job, workspacePath); err != nil {
-		t.Fatal(err)
-	}
-	content, err := os.ReadFile(filepath.Join(workspacePath, "answer.txt"))
-	if err != nil || string(content) != "snapshot-ready" {
-		t.Fatalf("restored snapshot content=%q err=%v", content, err)
+	if output, err := os.ReadFile(filepath.Join(workspace, "output.txt")); err != nil || string(output) != "done" {
+		t.Fatalf("Workspace output=%q err=%v", output, err)
 	}
 }
 
-func TestMachineAgentPersistsSnapshotForRecovery(t *testing.T) {
+func TestBoundNodeSnapshotDoesNotForwardCredentialOnRedirect(t *testing.T) {
+	var leaked atomic.Bool
+	target := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		leaked.Store(request.Header.Get("Authorization") != "")
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, target.URL+"/capture", http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
 	root := t.TempDir()
-	t.Setenv("CICADA_WORKSPACE_ROOT", filepath.Join(root, "workspace"))
-	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
-	})
-	if err != nil {
-		t.Fatal(err)
+	job := machineJob{WorkerID: "worker-a", WorkspaceID: "workspace-a", Attempt: 1,
+		WorkspaceSnapshotDigest: "abcdef", Workspace: filepath.Join(root, "workspace")}
+	if err := downloadBoundNodeSnapshot(context.Background(), redirect.URL, "node-a", "sensitive-node-token", job, job.Workspace); err == nil {
+		t.Fatal("snapshot redirect unexpectedly followed")
 	}
-	defer controlPlane.Shutdown(context.Background())
-	if _, err := controlPlane.RegisterMachine("agent-snapshot", "Agent snapshot", map[string]any{"harnesses": []string{"shell"}}, "available"); err != nil {
-		t.Fatal(err)
-	}
-	workspace, err := controlPlane.CreateWorkspace(control.WorkspaceInput{Path: filepath.Join(root, "workspace", "worker"), Source: "remote"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	api := httptest.NewServer(server.NewHandler(controlPlane))
-	defer api.Close()
-	job := machineJob{
-		MachineID: "agent-snapshot", WorkspaceID: workspace.ID, Workspace: workspace.Path,
-		Harness: "shell", Resources: map[string]any{"argv": []any{"/bin/sh", "-c", "printf recovered > recovered.txt"}},
-	}
-	result := executeMachineJobWithHeartbeats(context.Background(), api.URL, job.MachineID, time.Second, job)
-	if result.Status != "completed" || result.WorkspaceSnapshotDigest == "" {
-		t.Fatalf("agent did not upload completed snapshot: %#v", result)
-	}
-	if err := os.Remove(filepath.Join(workspace.Path, "recovered.txt")); err != nil {
-		t.Fatal(err)
-	}
-	job.WorkspaceSnapshotDigest = result.WorkspaceSnapshotDigest
-	job.Resources = map[string]any{"argv": []any{"/bin/true"}}
-	result = executeMachineJobWithHeartbeats(context.Background(), api.URL, job.MachineID, time.Second, job)
-	if result.Status != "completed" {
-		t.Fatalf("agent did not resume from snapshot: %#v", result)
-	}
-	content, err := os.ReadFile(filepath.Join(workspace.Path, "recovered.txt"))
-	if err != nil || string(content) != "recovered" {
-		t.Fatalf("snapshot file was not restored: %q err=%v", content, err)
+	if leaked.Load() {
+		t.Fatal("snapshot redirect forwarded the Node credential")
 	}
 }

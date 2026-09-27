@@ -3,16 +3,19 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 )
 
 func TestNormalizeControlURL(t *testing.T) {
@@ -93,6 +96,66 @@ func TestMachineAgentCreatesAndPersistsNodeCredentialLocally(t *testing.T) {
 	reloaded, reloadedDigest, err := loadOrCreateMachineNodeIdentity(stateDir, "node-a")
 	if err != nil || reloaded.RelayToken != identity.RelayToken || reloadedDigest != digest {
 		t.Fatalf("Node identity did not survive restart: identity=%#v digest=%q err=%v", reloaded, reloadedDigest, err)
+	}
+}
+
+func TestMachineAgentRejectsDuplicateBeforeCreatingNodeIdentity(t *testing.T) {
+	stateDir := t.TempDir()
+	const nodeID = "node-duplicate-lock-test"
+	held, err := nodelock.AcquireAgent(stateDir, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	err = runMachineAgent([]string{"--id", nodeID, "--name", nodeID, "--state-dir", stateDir,
+		"--control-url", server.URL, "--interval", "1s", "--once"})
+	if !errors.Is(err, nodelock.ErrAgentRunning) {
+		t.Fatalf("duplicate Agent error=%v, want ErrAgentRunning", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("duplicate Agent made %d Hub requests", requests.Load())
+	}
+	if _, err := os.Stat(machineNodeStateDir(stateDir, nodeID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("duplicate Agent created its Node subtree before rejecting: %v", err)
+	}
+}
+
+func TestMachineAgentRefusesPendingRecoveryBeforeIdentityOrNetwork(t *testing.T) {
+	stateDir := t.TempDir()
+	const nodeID = "node-recovery-lock-test"
+	nodeDir := machineNodeStateDir(stateDir, nodeID)
+	if err := os.MkdirAll(nodeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(nodeDir, machineNodeRecoveryPendingFileName)
+	if err := os.WriteFile(marker, []byte(`{"version":1,"recovery_status":"pending"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	err := runMachineAgent([]string{"--id", nodeID, "--name", nodeID, "--state-dir", stateDir,
+		"--control-url", server.URL, "--interval", "1s", "--once"})
+	if err == nil || !strings.Contains(err.Error(), "recovery is pending") {
+		t.Fatalf("pending recovery error=%v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("Agent made %d Hub requests before rejecting pending recovery", requests.Load())
+	}
+	for _, path := range []string{filepath.Join(nodeDir, "identity.json"),
+		machineNodeCredentialPath(stateDir, nodeID), machineNodeInboxPath(stateDir, nodeID)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("pending recovery startup created %s: %v", path, err)
+		}
 	}
 }
 
@@ -244,6 +307,237 @@ func TestNodeRelayBearerRequestsRejectRedirects(t *testing.T) {
 	}
 }
 
+func TestMachineNodeWorkerAPIRejectsWrongCredentialWithoutGlobalFallback(t *testing.T) {
+	t.Setenv("CICADA_API_TOKEN", "legacy-global-token")
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestCount++
+		if request.Method != http.MethodGet || request.URL.Path != "/v2/relay/nodes/node-a/jobs" {
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		if got := request.Header.Get("Authorization"); got != "CicadaNode wrong-node-token" {
+			t.Errorf("wrong credential request authorization=%q", got)
+		}
+		response.WriteHeader(http.StatusUnauthorized)
+		_, _ = response.Write([]byte("revoked Node credential"))
+	}))
+	defer server.Close()
+
+	var payload struct {
+		Jobs []machineJob `json:"jobs"`
+	}
+	err := machineNodeAPIJSON(context.Background(), nodeWorkerJobsEndpoint(server.URL, "node-a"),
+		http.MethodGet, "wrong-node-token", nil, &payload)
+	if !machineAPIHasStatus(err, http.StatusUnauthorized) {
+		t.Fatalf("wrong Node credential error=%v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("wrong Node credential caused %d requests; it must not retry with the global bearer", requestCount)
+	}
+}
+
+func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFiltersChild(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state")
+	const nodeID = "node-worker-a"
+	identity, _, err := loadOrCreateMachineNodeIdentity(stateDir, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyTokenFile := filepath.Join(root, "legacy.token")
+	if err := os.WriteFile(legacyTokenFile, []byte("legacy-file-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_API_TOKEN", "legacy-global-token")
+	t.Setenv("CICADA_API_TOKEN_FILE", legacyTokenFile)
+	t.Setenv("CICADA_NODE_TOKEN", "stale-inherited-node-token")
+	t.Setenv("CICADA_WORKSPACE_ROOT", filepath.Join(root, "workspaces"))
+	t.Setenv("CICADA_CODEX_BIN", filepath.Join(root, "missing-codex"))
+	for _, variable := range []string{"CICADA_CLAUDE_CODE_BIN", "CICADA_OPENCODE_BIN", "CICADA_HAPPY_AGENT_BIN"} {
+		t.Setenv(variable, filepath.Join(root, "missing-"+variable))
+	}
+
+	workspace := filepath.Join(root, "workspaces", "goals", "node-job")
+	job := machineJob{
+		WorkerID: "worker-a", GoalID: "goal-a", MachineID: nodeID,
+		Harness: "shell", Workspace: workspace,
+		ResponseFile: filepath.Join(workspace, ".cicada-last-message"),
+		Prompt:       "run a bounded shell task", Attempt: 0,
+		Resources: map[string]any{"argv": []any{"/bin/sh", "-c",
+			`test -z "${CICADA_API_TOKEN:-}" && test -z "${CICADA_API_TOKEN_FILE:-}" && test -z "${CICADA_NODE_TOKEN:-}" && test -z "${CICADA_NODE_TOKEN_FILE:-}" && printf CHILD_CREDENTIALS_FILTERED`}},
+	}
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.URL.Path)
+		if strings.HasPrefix(request.URL.Path, "/v1/") {
+			t.Errorf("Node agent used legacy global-auth route %s", request.URL.Path)
+			response.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if got := request.Header.Get("Authorization"); got != "CicadaNode "+identity.RelayToken {
+			t.Errorf("Node request %s authorization=%q", request.URL.Path, got)
+		}
+		switch request.URL.Path {
+		case "/v2/relay/nodes/" + nodeID + "/events":
+			if request.Method != http.MethodGet {
+				t.Errorf("binding probe method=%s", request.Method)
+			}
+			response.Header().Set("Content-Type", "text/event-stream")
+			_, _ = response.Write([]byte("event: ready\ndata: claim\n\n"))
+		case "/v2/relay/nodes/" + nodeID + "/heartbeat":
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Errorf("decode Node heartbeat: %v", err)
+			}
+			if len(body) == 0 {
+				response.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if body["status"] != "available" {
+				t.Errorf("Node availability heartbeat=%#v", body)
+			}
+			capabilities, _ := body["capabilities"].(map[string]any)
+			if capabilities["role"] != "worker" {
+				t.Errorf("Node worker capabilities=%#v", capabilities)
+			}
+			response.WriteHeader(http.StatusNoContent)
+		case "/v2/relay/nodes/" + nodeID + "/sealed/claim":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/group/sealed/claim":
+			if request.Method != http.MethodPost {
+				t.Errorf("same-Group sealed claim method=%s", request.Method)
+			}
+			var input fabric.NodeClaimInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil ||
+				input.ConsumerID != machineRelayConsumerID(nodeID) || input.Limit != 50 {
+				t.Errorf("same-Group sealed claim=%#v err=%v", input, err)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/claim":
+			if request.Method != http.MethodPost {
+				t.Errorf("Relay claim method=%s", request.Method)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/jobs":
+			if request.Method != http.MethodGet {
+				t.Errorf("jobs poll method=%s", request.Method)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(map[string]any{"jobs": []machineJob{job}})
+		case "/v2/relay/nodes/" + nodeID + "/jobs/worker-a/claim":
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || len(body) != 0 {
+				t.Errorf("claim body=%#v err=%v; Node path is the assignment scope", body, err)
+			}
+			claimed := job
+			claimed.Attempt = 1
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(claimed)
+		case "/v2/relay/nodes/" + nodeID + "/jobs/worker-a/result":
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Errorf("decode Worker result: %v", err)
+			}
+			if body["attempt"] != float64(1) || body["status"] != "completed" ||
+				body["summary"] != "CHILD_CREDENTIALS_FILTERED" {
+				t.Errorf("Worker result=%#v", body)
+			}
+			if _, exists := body["machine_id"]; exists {
+				t.Errorf("Worker result supplied its own machine scope: %#v", body)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"id":"worker-a","status":"completed"}`))
+		default:
+			t.Errorf("unexpected Node API route: %s %s", request.Method, request.URL.Path)
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	if err := runMachineAgent([]string{"--id", nodeID, "--name", "Worker A", "--control-url", server.URL,
+		"--state-dir", stateDir, "--interval", "1h", "--once"}); err != nil {
+		t.Fatalf("run machine agent: %v", err)
+	}
+	if len(paths) < 6 {
+		t.Fatalf("Worker chain made too few Node API requests: %v", paths)
+	}
+}
+
+func TestMachineAgentStopsWhenBoundNodeCredentialIsRevoked(t *testing.T) {
+	stateDir := t.TempDir()
+	const nodeID = "node-revoked-a"
+	identity, _, err := loadOrCreateMachineNodeIdentity(stateDir, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_API_TOKEN", "legacy-global-token")
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.URL.Path)
+		if got := request.Header.Get("Authorization"); got != "CicadaNode "+identity.RelayToken {
+			t.Errorf("Node request authorization=%q", got)
+		}
+		switch request.URL.Path {
+		case "/v2/relay/nodes/" + nodeID + "/events":
+			response.Header().Set("Content-Type", "text/event-stream")
+			_, _ = response.Write([]byte("event: ready\ndata: claim\n\n"))
+		case "/v2/relay/nodes/" + nodeID + "/heartbeat":
+			response.WriteHeader(http.StatusNoContent)
+		case "/v2/relay/nodes/" + nodeID + "/sealed/claim":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/group/sealed/claim":
+			if request.Method != http.MethodPost {
+				t.Errorf("same-Group sealed claim method=%s", request.Method)
+			}
+			var input fabric.NodeClaimInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil ||
+				input.ConsumerID != machineRelayConsumerID(nodeID) || input.Limit != 50 {
+				t.Errorf("same-Group sealed claim=%#v err=%v", input, err)
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/claim":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/relay/nodes/" + nodeID + "/jobs":
+			response.WriteHeader(http.StatusUnauthorized)
+			_, _ = response.Write([]byte("Node credential revoked"))
+		default:
+			if strings.HasPrefix(request.URL.Path, "/v1/") {
+				t.Errorf("revoked Node token fell back to legacy route %s", request.URL.Path)
+			}
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	err = runMachineAgent([]string{"--id", nodeID, "--name", "Revoked Node", "--control-url", server.URL,
+		"--state-dir", stateDir, "--interval", "1h", "--once"})
+	if !machineAPIHasStatus(err, http.StatusUnauthorized) || !strings.Contains(err.Error(), "stopping machine agent") {
+		t.Fatalf("revoked Node credential did not stop the agent: %v", err)
+	}
+	for _, path := range paths {
+		if strings.HasPrefix(path, "/v1/") {
+			t.Fatalf("revoked Node credential fell back to %s", path)
+		}
+	}
+}
+
+func TestMachineAgentRejectsWorkspaceSnapshotWithoutWorkspaceIdentity(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CICADA_WORKSPACE_ROOT", root)
+	result := executeMachineJobWithHeartbeats(context.Background(), "https://hub.example", "node-a", "node-token", time.Second, machineJob{
+		WorkspaceSnapshotDigest: "snapshot-digest", Workspace: filepath.Join(root, "goal-a"),
+	})
+	if result.Status != "failed" || !strings.Contains(result.Error, "workspace ID") {
+		t.Fatalf("workspace task did not reject absent identity: %#v", result)
+	}
+}
+
 func TestMachineAgentAdvertisesOnlyInstalledHarnesses(t *testing.T) {
 	t.Setenv("CICADA_CODEX_BIN", filepath.Join(t.TempDir(), "missing-codex"))
 	for _, variable := range []string{"CICADA_CLAUDE_CODE_BIN", "CICADA_OPENCODE_BIN", "CICADA_HAPPY_AGENT_BIN"} {
@@ -299,7 +593,7 @@ for argument in "$@"; do
   if [ "$previous" = '--output-last-message' ]; then printf 'REMOTE_CODEX_READY\n' > "$argument"; fi
   previous="$argument"
 done
-printf '{"type":"thread.started","thread_id":"thread-new"}\n'
+printf '{"type":"thread.started","thread_id":"thread-old"}\n'
 `
 	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
@@ -311,7 +605,7 @@ printf '{"type":"thread.started","thread_id":"thread-new"}\n'
 		Harness: "codex", Workspace: workspace, ThreadID: "thread-old", Prompt: "continue",
 		ResponseFile: filepath.Join(workspace, ".cicada-last-message"),
 	})
-	if result.Status != "completed" || result.Summary != "REMOTE_CODEX_READY" || result.ThreadID != "thread-new" {
+	if result.Status != "completed" || result.Summary != "REMOTE_CODEX_READY" || result.ThreadID != "thread-old" {
 		t.Fatalf("remote Codex result=%#v", result)
 	}
 	arguments, err := os.ReadFile(capture)
@@ -319,8 +613,25 @@ printf '{"type":"thread.started","thread_id":"thread-new"}\n'
 		t.Fatal(err)
 	}
 	got := string(arguments)
-	if !strings.HasPrefix(got, "exec\nresume\nthread-old\n") || strings.Contains(got, "\n-C\n") || !strings.Contains(got, "\n--model\ngpt-5.5\n") {
+	if !strings.HasPrefix(got, "exec\nresume\nthread-old\n") || strings.Contains(got, "\n-C\n") || !strings.Contains(got, "\n--model\ngpt-5.6-luna\n") {
 		t.Fatalf("unsupported Codex resume arguments:\n%s", got)
+	}
+}
+
+func TestRemoteCodexResumeRejectsDifferentNativeThread(t *testing.T) {
+	root := t.TempDir()
+	fake := filepath.Join(root, "codex")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nprintf '%s\\n' '{\"type\":\"thread.started\",\"thread_id\":\"thread-new\"}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_WORKSPACE_ROOT", root)
+	t.Setenv("CICADA_CODEX_BIN", fake)
+	result := executeMachineJob(context.Background(), machineJob{
+		Harness: "codex", Workspace: filepath.Join(root, "goal"), ThreadID: "thread-old", Prompt: "continue",
+	})
+	if result.Status != "failed" || result.ThreadID != "thread-old" ||
+		!strings.Contains(result.Error, "different native thread") {
+		t.Fatalf("different native session was treated as a successful resume: %#v", result)
 	}
 }
 
@@ -421,5 +732,25 @@ esac
 	})
 	if result.Status != "completed" || result.Summary != "REMOTE_WORKSPACE_READY" || result.WorkspaceRevision != "fedcba9876543210" {
 		t.Fatalf("remote provisioned result=%#v", result)
+	}
+}
+func TestMachineJobPathsUseNodeLocalWorkspaceID(t *testing.T) {
+	root := t.TempDir()
+	nodeRoot := filepath.Join(root, "node-workspaces")
+	t.Setenv("CICADA_WORKSPACE_ROOT", nodeRoot)
+	job := machineJob{WorkspaceID: "ws-test-123", Workspace: "/hub/private/goals/goal-test"}
+	workspace, responseFile, err := machineJobPaths(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(nodeRoot, "workspaces", "ws-test-123")
+	if workspace != want || responseFile != filepath.Join(want, ".cicada-last-message") {
+		t.Fatalf("Node used the Hub filesystem path: workspace=%q response=%q", workspace, responseFile)
+	}
+	for _, invalid := range []string{"../escape", "/absolute", "nested/child", `nested\child`, ".", ".."} {
+		job.WorkspaceID = invalid
+		if _, _, err := machineJobPaths(job); err == nil {
+			t.Fatalf("accepted unsafe Workspace ID %q", invalid)
+		}
 	}
 }

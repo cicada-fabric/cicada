@@ -20,6 +20,10 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		writeError(response, http.StatusServiceUnavailable, errors.New("fabric service is unavailable"))
 		return
 	}
+	if request.URL.Path == "/v2/fabric/node/join" {
+		h.fabricV2NodeJoin(response, request)
+		return
+	}
 	if request.URL.Path == "/v2/fabric/join" {
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -59,6 +63,13 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	switch request.URL.Path {
+	case "/v2/fabric/send", "/v2/fabric/ask", "/v2/fabric/reply":
+		if request.Method != http.MethodPost {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		writeError(response, http.StatusGone,
+			errors.New("plaintext Fabric peer writes are retired; use sealed Node delivery"))
 	case "/v2/fabric/whoami":
 		if request.Method != http.MethodGet {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -143,54 +154,6 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{"status": "left_group", "left_group_id": actor.GroupID, "remaining_group_id": remaining})
-	case "/v2/fabric/send":
-		if request.Method != http.MethodPost {
-			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-			return
-		}
-		var input fabricpkg.SendInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		message, err := h.fabricService.Send(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, message)
-	case "/v2/fabric/ask":
-		if request.Method != http.MethodPost {
-			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-			return
-		}
-		var input fabricpkg.AskInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		result, err := h.fabricService.Ask(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, result)
-	case "/v2/fabric/reply":
-		if request.Method != http.MethodPost {
-			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-			return
-		}
-		var input fabricpkg.ReplyInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		result, err := h.fabricService.Reply(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, result)
 	case "/v2/fabric/receive":
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -250,6 +213,49 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		}
 		writeError(response, http.StatusNotFound, errors.New("fabric route not found"))
 	}
+}
+
+// fabricV2NodeJoin is the guest-owner enrollment path. The request schema
+// intentionally excludes owner_id, node_id, principal_id, endpoint_id, and
+// lease_owner: identity comes from the active owner-bound Node credential and
+// the Node's local Harness adapter. The Hub authenticates that Node boundary,
+// but cannot independently prove a native Session ID supplied by the adapter.
+func (h *Handler) fabricV2NodeJoin(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	nodeToken, err := fabricpkg.NodeCredentialFromAuthorization(request.Header.Get("Authorization"))
+	if err != nil {
+		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
+		return
+	}
+	var body struct {
+		GroupID           string         `json:"group_id"`
+		EndpointName      string         `json:"endpoint_name,omitempty"`
+		Harness           string         `json:"harness"`
+		NativeSessionID   string         `json:"native_session_id"`
+		Workspace         string         `json:"workspace,omitempty"`
+		Capabilities      map[string]any `json:"capabilities,omitempty"`
+		Tags              []string       `json:"tags,omitempty"`
+		LeaseSeconds      int            `json:"lease_seconds,omitempty"`
+		ContextContinuity string         `json:"context_continuity,omitempty"`
+	}
+	if err := readJSON(request, &body); err != nil {
+		writeError(response, http.StatusBadRequest, errors.New("invalid Node Fabric join request"))
+		return
+	}
+	joined, err := h.fabricService.JoinForNodeCredential(nodeToken, fabricpkg.JoinInput{
+		GroupID: body.GroupID, EndpointName: body.EndpointName, Harness: body.Harness,
+		NativeSessionID: body.NativeSessionID, Workspace: body.Workspace,
+		Capabilities: body.Capabilities, Tags: body.Tags, LeaseSeconds: body.LeaseSeconds,
+		ContextContinuity: body.ContextContinuity,
+	})
+	if err != nil {
+		fabricV2Error(response, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, joined)
 }
 
 func (h *Handler) fabricV2Representative(response http.ResponseWriter, request *http.Request, actor fabricpkg.Actor) {

@@ -5,9 +5,10 @@ import (
 	"fmt"
 )
 
-// EnsureLocalOwnerPrincipal records Control's already established identity as
-// a Human owner without creating any Group or Endpoint membership. Existing
-// principals are never updated: in particular, a revoked owner must not be
+// EnsureLocalOwnerPrincipal records an independently established local owner
+// identity as a Human without creating any Group or Endpoint membership. The
+// caller must verify the owner/key association through a trusted local path.
+// Existing principals are never updated: in particular, a revoked owner must not be
 // reactivated by a process restart.
 func (s *Store) EnsureLocalOwnerPrincipal(identityID string) error {
 	if err := validateOwnerApprovalID(identityID); err != nil {

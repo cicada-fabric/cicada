@@ -11,27 +11,47 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
+type mcpOutboxFixtureSession struct {
+	nativeSession string
+	endpoint      string
+	group         string
+	workspace     string
+	principal     string
+	binding       string
+	bindingEpoch  uint64
+	capabilities  map[string]any
+}
+
 type mcpOutboxHTTPFixture struct {
-	t           *testing.T
-	server      *httptest.Server
-	requests    atomic.Int32
-	accepted    atomic.Int32
-	mu          sync.Mutex
-	keys        []string
-	groupScopes []string
-	byKey       map[string]string
-	token       string
-	expectGroup string
-	dropFirst   bool
-	forbidden   bool
-	whoamiCalls atomic.Int32
+	server               *httptest.Server
+	requests             atomic.Int32
+	whoamiCalls          atomic.Int32
+	resolveCalls         atomic.Int32
+	mu                   sync.Mutex
+	preflightGroupScopes []string
+	token                string
+	workspace            string
+	sourceCapabilities   map[string]any
+	targetCapabilities   map[string]any
+	targetNodeID         string
+	currentSession       mcpOutboxFixtureSession
 }
 
 func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 	t.Helper()
-	fixture := &mcpOutboxHTTPFixture{t: t, byKey: make(map[string]string), token: "session-token"}
+	workspace, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := &mcpOutboxHTTPFixture{
+		token:     "session-token",
+		workspace: workspace, targetNodeID: "node-b",
+	}
 	fixture.server = httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		expectedAuthorization := "CicadaSession " + fixture.token
 		if request.URL.Path == "/v2/fabric/whoami" {
@@ -39,7 +59,53 @@ func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 			if request.Header.Get("Authorization") != expectedAuthorization {
 				t.Errorf("whoami authorization = %q", request.Header.Get("Authorization"))
 			}
-			_ = json.NewEncoder(response).Encode(map[string]any{"endpoint_id": "endpoint-a", "group_id": "group-a", "harness": "codex", "node_id": "node-a", "workspace": "/work/a"})
+			fixture.mu.Lock()
+			session := fixture.currentSession
+			fixture.preflightGroupScopes = append(fixture.preflightGroupScopes, request.Header.Get("Cicada-Group-Scope"))
+			fixture.mu.Unlock()
+			_ = json.NewEncoder(response).Encode(fabricpkg.NetworkCard{
+				PrincipalID: session.principal, EndpointID: session.endpoint, GroupID: session.group,
+				Name: "Outbox fixture session", Harness: "codex", NodeID: "node-a",
+				Workspace: session.workspace, Status: "online", BindingID: session.binding,
+				BindingEpoch: session.bindingEpoch, NativeSessionID: session.nativeSession,
+				Capabilities: session.capabilities,
+			})
+			return
+		}
+		if request.URL.Path == "/v2/fabric/resolve" {
+			fixture.resolveCalls.Add(1)
+			if request.Header.Get("Authorization") != expectedAuthorization {
+				t.Errorf("resolve authorization = %q", request.Header.Get("Authorization"))
+			}
+			fixture.mu.Lock()
+			session := fixture.currentSession
+			fixture.preflightGroupScopes = append(fixture.preflightGroupScopes, request.Header.Get("Cicada-Group-Scope"))
+			fixture.mu.Unlock()
+			var input fabricpkg.ResolveInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode Directory resolve: %v", err)
+				return
+			}
+			_ = json.NewEncoder(response).Encode(fabricpkg.NetworkCard{
+				PrincipalID: "principal-b", EndpointID: input.Query, GroupID: session.group,
+				Name: input.Query, Harness: "codex", NodeID: fixture.targetNodeID, Status: "online",
+				Capabilities: fixture.targetCapabilities,
+			})
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/v2/fabric/requests/") && request.Method == http.MethodGet {
+			if request.Header.Get("Authorization") != expectedAuthorization {
+				t.Errorf("request metadata authorization = %q", request.Header.Get("Authorization"))
+			}
+			fixture.mu.Lock()
+			session := fixture.currentSession
+			fixture.preflightGroupScopes = append(fixture.preflightGroupScopes, request.Header.Get("Cicada-Group-Scope"))
+			fixture.mu.Unlock()
+			requestID := strings.TrimPrefix(request.URL.Path, "/v2/fabric/requests/")
+			_ = json.NewEncoder(response).Encode(fabricpkg.RequestView{
+				RequestID: requestID, SenderEndpointID: "endpoint-b", SenderGroupID: session.group,
+				State: "OPEN", Delivery: "RELAY_ACCEPTED", ReplyMode: "asynchronous",
+			})
 			return
 		}
 		if request.URL.Path != "/v2/fabric/send" && request.URL.Path != "/v2/fabric/ask" && request.URL.Path != "/v2/fabric/reply" {
@@ -50,55 +116,8 @@ func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 		if request.Header.Get("Authorization") != expectedAuthorization {
 			t.Errorf("operation authorization = %q", request.Header.Get("Authorization"))
 		}
-		groupScope := request.Header.Get("Cicada-Group-Scope")
-		fixture.mu.Lock()
-		fixture.groupScopes = append(fixture.groupScopes, groupScope)
-		fixture.mu.Unlock()
-		if fixture.expectGroup != "" && groupScope != fixture.expectGroup {
-			response.WriteHeader(http.StatusNotFound)
-			_, _ = response.Write([]byte(`{"error":"not found or not authorized"}`))
-			return
-		}
-		var body map[string]any
-		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-			t.Errorf("decode operation body: %v", err)
-			return
-		}
-		key, _ := body["idempotency_key"].(string)
-		if key == "" {
-			t.Errorf("operation omitted idempotency key: %#v", body)
-		}
-		encoded, _ := json.Marshal(body)
-		fixture.mu.Lock()
-		fixture.keys = append(fixture.keys, key)
-		previous, seen := fixture.byKey[key]
-		if !seen {
-			fixture.byKey[key] = string(encoded)
-			fixture.accepted.Add(1)
-		}
-		fixture.mu.Unlock()
-		if seen && previous != string(encoded) {
-			response.WriteHeader(http.StatusConflict)
-			_, _ = response.Write([]byte(`{"error":"idempotency conflict"}`))
-			return
-		}
-		if fixture.forbidden {
-			response.WriteHeader(http.StatusForbidden)
-			_, _ = response.Write([]byte(`{"error":"operation forbidden"}`))
-			return
-		}
-		if fixture.dropFirst {
-			fixture.dropFirst = false
-			if hijacker, ok := response.(http.Hijacker); ok {
-				connection, _, err := hijacker.Hijack()
-				if err == nil {
-					_ = connection.Close()
-				}
-				return
-			}
-		}
-		response.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(response).Encode(map[string]any{"message_id": "message-1", "request_id": "request-1", "state": "OPEN"})
+		response.WriteHeader(http.StatusInternalServerError)
+		_, _ = response.Write([]byte(`{"error":"unexpected plaintext peer HTTP request"}`))
 	}))
 	t.Cleanup(fixture.server.Close)
 	return fixture
@@ -106,13 +125,44 @@ func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 
 func mcpOutboxTestServer(t *testing.T, fixture *mcpOutboxHTTPFixture, statePath string, nativeSession string, endpoint string, group string) *mcpServer {
 	t.Helper()
+	bindingID := "binding-" + nativeSession
+	session := mcpOutboxFixtureSession{
+		nativeSession: nativeSession, endpoint: endpoint, group: group,
+		workspace: fixture.workspace, principal: "principal-a", binding: bindingID, bindingEpoch: 1,
+		capabilities: fixture.sourceCapabilities,
+	}
+	fixture.mu.Lock()
+	fixture.currentSession = session
+	fixture.mu.Unlock()
+	t.Setenv("CICADA_HARNESS", "codex")
+	t.Setenv("CICADA_MACHINE_ID", "node-a")
+	t.Setenv("CICADA_WORKSPACE", fixture.workspace)
+	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", nativeSession)
+	t.Setenv("CODEX_SESSION_ID", "")
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	writeCodexSessionRecord(t, codexHome, nativeSession, fixture.workspace)
 	server := newMCPServer(fixture.server.URL, endpoint, statePath)
-	context := mcpTestContext("codex", nativeSession, "node-a", "/work/a")
+	context := mcpTestContext("codex", nativeSession, "node-a", fixture.workspace)
 	scope, trusted, err := mcpSessionScope(fixture.server.URL, context)
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.setSession("session-token", endpoint, group, trusted, scope, mcpPublicJoinResult{})
+	card := fabricpkg.NetworkCard{
+		PrincipalID: session.principal, EndpointID: endpoint, GroupID: group,
+		Name: "Outbox fixture session", Harness: "codex", NodeID: "node-a",
+		Workspace: fixture.workspace, Status: "online", BindingID: bindingID,
+		BindingEpoch: 1, NativeSessionID: nativeSession, Capabilities: fixture.sourceCapabilities,
+	}
+	server.setSession("session-token", endpoint, group, trusted, scope, mcpPublicJoinResult{
+		Endpoint: store.Endpoint{
+			ID: endpoint, GroupID: group, Owner: "owner-a", PrincipalID: session.principal,
+			Harness: "codex", NativeSessionID: nativeSession, MachineID: "node-a",
+			Workspace: fixture.workspace, BindingID: bindingID, Capabilities: fixture.sourceCapabilities,
+		},
+		NetworkCard: card, BindingID: bindingID, BindingEpoch: 1,
+	})
 	t.Cleanup(func() {
 		if server.outbox != nil {
 			_ = server.outbox.close()
@@ -135,9 +185,8 @@ func mcpOutboxOperationID(t *testing.T, result any) string {
 	return operationID
 }
 
-func TestMCPOutboxLostResponseRestartRetriesSameOperation(t *testing.T) {
+func TestMCPOutboxUnsealedSendFailsClosedAndRetryNeverPostsPlaintext(t *testing.T) {
 	fixture := newMCPOutboxHTTPFixture(t)
-	fixture.dropFirst = true
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	first := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
 	result, err := first.callTool("cicada_send", map[string]any{"target": "endpoint-b", "body": "same payload", "idempotency_key": "operation-lost-response"})
@@ -145,36 +194,43 @@ func TestMCPOutboxLostResponseRestartRetriesSameOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	operationID := mcpOutboxOperationID(t, result)
-	if status := result.(map[string]any)["status"]; status != mcpOutboxStatusUnknown {
-		t.Fatalf("lost response status = %#v, want UNKNOWN", status)
+	if status := result.(map[string]any)["status"]; status != mcpOutboxStatusFailed {
+		t.Fatalf("unsealed send status = %#v, want terminal FAILED", status)
 	}
-	if fixture.requests.Load() != 1 || fixture.accepted.Load() != 1 {
-		t.Fatalf("first attempt requests=%d accepted=%d", fixture.requests.Load(), fixture.accepted.Load())
+	if fixture.requests.Load() != 0 {
+		t.Fatalf("unsealed send reached plaintext peer HTTP: requests=%d", fixture.requests.Load())
 	}
-	_ = first.outbox.close()
-
-	second := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
-	retried, err := second.callTool("cicada_operation_retry", map[string]any{"operation_id": operationID})
+	// Simulate a crash after an uncertain local attempt. Retrying must recheck
+	// current capabilities and may not fall back to the old Hub SEND endpoint.
+	scope, err := first.currentMCPOutboxScope()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status := retried.(map[string]any)["status"]; status != mcpOutboxStatusSent {
-		t.Fatalf("retry status = %#v, want SENT", status)
+	if _, err := first.outbox.markError(scope, operationID, mcpOutboxStatusUnknown, errors.New("simulated uncertain attempt")); err != nil {
+		t.Fatal(err)
 	}
-	if fixture.requests.Load() != 2 || fixture.accepted.Load() != 1 {
-		t.Fatalf("retry requests=%d accepted=%d, want two HTTP attempts and one accepted operation", fixture.requests.Load(), fixture.accepted.Load())
+
+	retried, err := first.callTool("cicada_operation_retry", map[string]any{"operation_id": operationID})
+	if err != nil {
+		t.Fatal(err)
 	}
-	fixture.mu.Lock()
-	defer fixture.mu.Unlock()
-	if len(fixture.keys) != 2 || fixture.keys[0] != fixture.keys[1] {
-		t.Fatalf("retry did not reuse idempotency key: %#v", fixture.keys)
+	if status := retried.(map[string]any)["status"]; status != mcpOutboxStatusFailed {
+		t.Fatalf("retry without sealed capability status = %#v, want FAILED", status)
+	}
+	if fixture.requests.Load() != 0 {
+		t.Fatalf("retry reached plaintext peer HTTP: requests=%d", fixture.requests.Load())
+	}
+	if fixture.whoamiCalls.Load() != 2 || fixture.resolveCalls.Load() != 0 {
+		t.Fatalf("source capability checks whoami=%d resolve=%d, want 2/0", fixture.whoamiCalls.Load(), fixture.resolveCalls.Load())
 	}
 }
 
-func TestMCPOutboxAskUsesSelectedGroupOnInitialAndRestartedRetry(t *testing.T) {
+func TestMCPOutboxAskUsesSelectedGroupAndNeverFallsBackToHubPlaintext(t *testing.T) {
 	fixture := newMCPOutboxHTTPFixture(t)
-	fixture.expectGroup = "group-b"
-	fixture.dropFirst = true
+	fixture.sourceCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
+	fixture.targetCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
+	stateDir := filepath.Join(t.TempDir(), "node-state")
+	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	first := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-b")
 	result, err := first.callTool("cicada_ask", map[string]any{"target": "endpoint-b", "question": "current result?"})
@@ -182,33 +238,100 @@ func TestMCPOutboxAskUsesSelectedGroupOnInitialAndRestartedRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	operationID := mcpOutboxOperationID(t, result)
-	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusUnknown {
-		t.Fatalf("first attempt status = %v, want UNKNOWN", got)
+	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
+		t.Fatalf("unavailable sealed Node attempt result = %#v, want terminal FAILED", result)
 	}
 	_ = first.outbox.close()
 	wrongGroup := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
 	if _, err := wrongGroup.callTool("cicada_operation_retry", map[string]any{"operation_id": operationID}); !errors.Is(err, errMCPOutboxContext) {
 		t.Fatalf("retry from another selected Group = %v, want %v", err, errMCPOutboxContext)
 	}
-	if got := fixture.requests.Load(); got != 1 {
-		t.Fatalf("cross-Group retry reached HTTP: requests=%d", got)
+	if got := fixture.requests.Load(); got != 0 {
+		t.Fatalf("sealed Group retry reached legacy Hub plaintext endpoint: requests=%d", got)
 	}
 	_ = wrongGroup.outbox.close()
-	second := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-b")
-	retried, err := second.callTool("cicada_operation_retry", map[string]any{"operation_id": operationID})
+	if len(fixture.preflightGroupScopes) != 4 || fixture.whoamiCalls.Load() != 2 || fixture.resolveCalls.Load() != 2 {
+		t.Fatalf("fresh sealed-route metadata calls whoami=%d resolve=%d scopes=%#v, want two of each in group-b", fixture.whoamiCalls.Load(), fixture.resolveCalls.Load(), fixture.preflightGroupScopes)
+	}
+	for _, groupScope := range fixture.preflightGroupScopes {
+		if groupScope != "group-b" {
+			t.Fatalf("sealed route metadata escaped selected Group: scopes=%#v", fixture.preflightGroupScopes)
+		}
+	}
+	if fixture.requests.Load() != 0 {
+		t.Fatalf("sealed same-Group retry reached plaintext Hub endpoint: requests=%d", fixture.requests.Load())
+	}
+}
+
+func TestMCPOutboxUnsealedTargetFailsClosed(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	fixture.sourceCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
+	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
+	result, err := server.callTool("cicada_send", map[string]any{"target": "endpoint-b", "body": "must remain local"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := retried.(map[string]any)["status"]; got != mcpOutboxStatusSent {
-		t.Fatalf("retry status = %v, want SENT", got)
+	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
+		t.Fatalf("unsealed target status = %v, want terminal FAILED", got)
 	}
-	fixture.mu.Lock()
-	defer fixture.mu.Unlock()
-	if len(fixture.groupScopes) != 2 || fixture.groupScopes[0] != "group-b" || fixture.groupScopes[1] != "group-b" {
-		t.Fatalf("initial/retry Group scopes = %#v, want group-b twice", fixture.groupScopes)
+	if fixture.requests.Load() != 0 || fixture.resolveCalls.Load() != 1 {
+		t.Fatalf("unsealed target reached peer HTTP or skipped Directory check: peer requests=%d resolve=%d", fixture.requests.Load(), fixture.resolveCalls.Load())
 	}
-	if fixture.accepted.Load() != 1 {
-		t.Fatalf("accepted operations = %d, want one", fixture.accepted.Load())
+}
+
+func TestMCPOutboxUnknownTargetCapabilityFailsClosed(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	fixture.sourceCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
+	fixture.targetCapabilities = map[string]any{"local_peer_delivery": "future-v9"}
+	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
+	result, err := server.callTool("cicada_ask", map[string]any{"target": "endpoint-b", "question": "private?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
+		t.Fatalf("unknown target capability status = %v, want terminal FAILED", got)
+	}
+	if fixture.requests.Load() != 0 || fixture.resolveCalls.Load() != 1 {
+		t.Fatalf("unknown capability reached peer HTTP or skipped Directory check: peer requests=%d resolve=%d", fixture.requests.Load(), fixture.resolveCalls.Load())
+	}
+}
+
+func TestMCPOutboxCorruptInputCannotFallThrough(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
+	scope, err := server.currentMCPOutboxScope()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := server.outbox.prepare(scope, "send", "corrupt-retry",
+		mcpOutboxInput{Target: "endpoint-b", Body: "do not deliver"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.outbox.markError(scope, operation.OperationID, mcpOutboxStatusUnknown, errors.New("simulated crash")); err != nil {
+		t.Fatal(err)
+	}
+	server.outbox.mu.Lock()
+	db, err := server.outbox.withDBLocked()
+	if err == nil {
+		_, err = db.Exec(`UPDATE mcp_outbox_operations SET input_json = ? WHERE operation_id = ?`, "{", operation.OperationID)
+	}
+	server.outbox.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := server.callTool("cicada_operation_retry", map[string]any{"operation_id": operation.OperationID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
+		t.Fatalf("corrupt input status = %v, want terminal FAILED", got)
+	}
+	if fixture.requests.Load() != 0 || fixture.whoamiCalls.Load() != 0 || fixture.resolveCalls.Load() != 0 {
+		t.Fatalf("corrupt input reached network: peer=%d whoami=%d resolve=%d", fixture.requests.Load(), fixture.whoamiCalls.Load(), fixture.resolveCalls.Load())
 	}
 }
 
@@ -243,8 +366,8 @@ func TestMCPOutboxSameBodyWithoutExplicitKeyCreatesDistinctOperations(t *testing
 	if mcpOutboxOperationID(t, first) == mcpOutboxOperationID(t, second) {
 		t.Fatalf("two deliberate sends without an explicit key reused one operation: first=%#v second=%#v", first, second)
 	}
-	if fixture.requests.Load() != 2 || fixture.accepted.Load() != 2 {
-		t.Fatalf("same-body sends requests=%d accepted=%d, want two distinct operations", fixture.requests.Load(), fixture.accepted.Load())
+	if fixture.requests.Load() != 0 {
+		t.Fatalf("unsealed same-body sends reached Hub peer endpoint: requests=%d", fixture.requests.Load())
 	}
 }
 
@@ -281,7 +404,6 @@ func TestMCPOutboxCrossContextStatusAndRetryAreRejected(t *testing.T) {
 	fixture := newMCPOutboxHTTPFixture(t)
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	first := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
-	fixture.dropFirst = true
 	result, err := first.callTool("cicada_send", map[string]any{"target": "endpoint-b", "body": "payload"})
 	if err != nil {
 		t.Fatal(err)
@@ -295,41 +417,15 @@ func TestMCPOutboxCrossContextStatusAndRetryAreRejected(t *testing.T) {
 	if _, err := second.callTool("cicada_operation_retry", map[string]any{"operation_id": operationID}); !errors.Is(err, errMCPOutboxContext) {
 		t.Fatalf("cross-context retry = %v, want %v", err, errMCPOutboxContext)
 	}
-	if fixture.requests.Load() != 1 {
+	if fixture.requests.Load() != 0 {
 		t.Fatalf("cross-context retry sent HTTP: requests=%d", fixture.requests.Load())
 	}
 }
 
-func TestMCPForbiddenOperationDoesNotDestroySession(t *testing.T) {
-	var requests atomic.Int32
-	var whoami atomic.Int32
-	serverHTTP := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/v2/fabric/send" {
-			requests.Add(1)
-			response.WriteHeader(http.StatusForbidden)
-			_, _ = response.Write([]byte(`{"error":"operation forbidden"}`))
-			return
-		}
-		if request.URL.Path == "/v2/fabric/whoami" {
-			whoami.Add(1)
-			_ = json.NewEncoder(response).Encode(map[string]any{"endpoint_id": "endpoint-a", "group_id": "group-a"})
-			return
-		}
-		http.NotFound(response, request)
-	}))
-	defer serverHTTP.Close()
+func TestMCPOutboxFailureDoesNotDestroySession(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
-	server := newMCPServer(serverHTTP.URL, "endpoint-a", statePath)
-	context := mcpTestContext("codex", "thread-a", "node-a", "/work/a")
-	scope, trusted, err := mcpSessionScope(serverHTTP.URL, context)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server.setSession("session-token", "endpoint-a", "group-a", trusted, scope, mcpPublicJoinResult{})
-	defer func() {
-		_ = server.outbox.close()
-		close(server.stop)
-	}()
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
 	result, err := server.callTool("cicada_send", map[string]any{"target": "endpoint-b", "body": "denied"})
 	if err != nil {
 		t.Fatal(err)
@@ -340,8 +436,8 @@ func TestMCPForbiddenOperationDoesNotDestroySession(t *testing.T) {
 	if _, err := server.callTool("cicada_whoami", nil); err != nil {
 		t.Fatalf("valid session was cleared by per-operation 403: %v", err)
 	}
-	if requests.Load() != 1 || whoami.Load() != 1 {
-		t.Fatalf("requests=%d whoami=%d", requests.Load(), whoami.Load())
+	if fixture.requests.Load() != 0 || fixture.whoamiCalls.Load() != 2 || fixture.resolveCalls.Load() != 0 {
+		t.Fatalf("operation requests=%d fresh whoami=%d resolve=%d, want 0/2/0", fixture.requests.Load(), fixture.whoamiCalls.Load(), fixture.resolveCalls.Load())
 	}
 }
 
@@ -383,5 +479,44 @@ func TestMCPOutboxFilesArePrivate(t *testing.T) {
 	}
 	if mode := fileInfo.Mode().Perm(); mode != 0o600 {
 		t.Fatalf("outbox file mode = %o, want 600", mode)
+	}
+}
+
+// Explicit Link RPC continues to use its sealed local Node bridge and has no
+// Hub peer-message fallback when that bridge is unavailable.
+func TestMCPOutboxExplicitLinkAskNeverPostsPlaintextToHub(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	t.Setenv("CICADA_NODE_STATE_DIR", filepath.Join(t.TempDir(), "node-state"))
+	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
+	result, err := server.callTool("cicada_ask", map[string]any{
+		"link_id": "link-a", "data_scope": "summary", "question": "private question",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
+		t.Fatalf("unavailable sealed Node bridge result = %#v, want terminal FAILED", result)
+	}
+	if fixture.requests.Load() != 0 || fixture.resolveCalls.Load() != 0 {
+		t.Fatalf("explicit Link Ask reached Hub peer endpoint or Directory target resolution: peer=%d resolve=%d", fixture.requests.Load(), fixture.resolveCalls.Load())
+	}
+}
+
+func TestMCPSealedAskUnknownKeepsQueryableCorrelationWithoutBody(t *testing.T) {
+	input, err := json.Marshal(mcpOutboxInput{LinkID: "link-a", DataScope: "summary", Question: "private question"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := mcpOutboxOperation{OperationID: "op_0123456789abcdef0123456789abcdef", Kind: "ask",
+		Status: mcpOutboxStatusUnknown, InputJSON: string(input)}
+	public := mcpOutboxPublicResult(op)
+	if public["request_id"] != "rq_0123456789abcdef0123456789abcdef" ||
+		public["link_id"] != "link-a" || public["status"] != mcpOutboxStatusUnknown {
+		t.Fatalf("uncertain sealed ASK lost recovery correlation: %#v", public)
+	}
+	encoded, err := json.Marshal(public)
+	if err != nil || strings.Contains(string(encoded), "private question") {
+		t.Fatalf("uncertain sealed ASK leaked its body: %s err=%v", encoded, err)
 	}
 }

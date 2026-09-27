@@ -1067,6 +1067,13 @@ func collectStateFiles(sourceDir string) ([]sourceStateFile, error) {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink is not allowed in StateDir: %s", path)
 		}
+		// A colocated Node has independent SQLite databases, private keys and
+		// replay counters. The Hub snapshot only locks cicada.sqlite3, so copying
+		// nodes/ here would produce an unsafe, apparently complete Node backup.
+		// Node state has its own offline backup and recovery procedure.
+		if path == filepath.Join(sourceDir, "nodes") && entry.IsDir() {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() {
 			return nil
 		}
@@ -1369,6 +1376,12 @@ func validateManifestFiles(files []StateBackupFile) error {
 		clean, err := cleanStateRelativePath(file.Path)
 		if err != nil || clean != filepath.ToSlash(filepath.Clean(file.Path)) {
 			return fmt.Errorf("manifest file path %q: %w", file.Path, ErrStateBackupPathUnsafe)
+		}
+		// Earlier Hub backups could accidentally include Node files when both
+		// roles shared a StateDir. Never restore those files through the Hub
+		// path: it has no Node lock or recovery quarantine.
+		if clean == "nodes" || strings.HasPrefix(clean, "nodes/") {
+			return fmt.Errorf("Node state requires a separate quarantined restore: %w", ErrStateBackupPathUnsafe)
 		}
 		if _, exists := seen[clean]; exists {
 			return fmt.Errorf("manifest contains duplicate file %q", clean)

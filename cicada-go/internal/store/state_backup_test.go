@@ -239,6 +239,55 @@ func TestStateBackupRejectsExistingBackupAndIncompleteTarget(t *testing.T) {
 	}
 }
 
+func TestHubBackupDoesNotCaptureOrRestoreColocatedNodeState(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	persistence, err := New(filepath.Join(source, stateDatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.Close(); err != nil {
+		t.Fatal(err)
+	}
+	nodeKey := filepath.Join(source, "nodes", "node-a", "endpoint-keys", "private.json")
+	if err := os.MkdirAll(filepath.Dir(nodeKey), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nodeKey, []byte("synthetic-node-private-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	backup := filepath.Join(root, "hub-backup")
+	manifest, err := BackupStateDir(source, backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range manifest.Files {
+		if file.Path == "nodes" || strings.HasPrefix(file.Path, "nodes/") {
+			t.Fatalf("Hub backup captured independent Node state: %s", file.Path)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(backup, stateBackupPayloadName, "nodes")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Hub backup payload contains Node state: %v", err)
+	}
+	if _, err := VerifyStateBackup(backup); err != nil {
+		t.Fatalf("Hub backup without Node subtree failed verification: %v", err)
+	}
+	target := filepath.Join(root, "restored-hub")
+	if _, err := RestoreStateDir(backup, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "nodes")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Hub restore reintroduced Node state: %v", err)
+	}
+	// Older archives might contain Node files. Their bytes remain on disk for
+	// manual recovery, but the Hub-only restore must refuse them before copy.
+	manifest.Files = append(manifest.Files, StateBackupFile{Path: "nodes/node-a/relay.token", Mode: 0o600})
+	if err := validateManifestFiles(manifest.Files); !errors.Is(err, ErrStateBackupPathUnsafe) {
+		t.Fatalf("legacy manifest with Node secrets was accepted: %v", err)
+	}
+}
+
 func checkSQLiteIntegrityAndForeignKeys(t *testing.T, path string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", sqliteFileURI(path, "mode=ro"))

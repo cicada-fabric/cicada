@@ -1,5 +1,45 @@
 # v2 原生 MCP 验收记录
 
+2026-09-24 **真实同组跨 Node 原生 ASK/REPLY PASS**：opt-in `TestMCPSealedCrossNodeGroupAskReplyNative` 在一次性 `cicada-codex:updated` Docker 容器中使用官方 shell 安装的 Codex CLI `0.156.1` 与 `gpt-5.6-luna`，退出码 0，耗时 171.22 秒。两个独立逻辑 Node 状态目录、两个真实原生 Codex Thread 和一个测试 Hub 完成显式 Join、A MCP Ask、B 原 Thread MCP Receive/Reply、A 原 Thread 收到关联回复并继续保留初始上下文。A Endpoint `ep_f217f9c04b362396` / native Session `01a0d2c8-ca08-7410-8bad-495462b7d1b1`；B Endpoint `ep_bcc822a880296304` / native Session `01a0d2c8-b243-7481-9a98-2fbde67e36ba`；请求 `rq_e77d87511d94c05784e564f1ae427894`，回复消息 `msg_c8325c7dbbc96fdd2bad1aa79e1fee2b`。测试从真实 `thread.started` 和本地 Session record 验证前后原生 ID 相同，Hub HTTP/SQLite 均不含测试正文，method/path whitelist 未见旧明文 Fabric 路由或 Control 业务调用。Control 业务对象未构造。测试驱动显式绑定 Session ID，在安全点调用官方 `codex exec resume`；这证明两个逻辑 Node 的真实模型消费，不证明无人值守唤醒、两个独立物理主机或公网网络隔离。
+
+首次运行其实完成了原生 A→B→A，但测试白名单遗漏正常 Node `/claim` 而退出码 1；之后一次测试把合成标记误写成 private，自动审批合理地拒绝 B `cicada_reply`；另两次模型直接结束回合而未调用 Ask/Join 工具。最终测试只在确认回合完全没有 MCP 工具调用时于同一原 Thread 补一次指令，不对已尝试或不确定的操作自动重试。提供方最初对 `gpt-5.6-luna` 返回无权限 403，用户开通后最小模型探针与上述最终原生运行均通过。
+
+## 2026-09-24 新同 Node 密文路径的验收边界
+
+`TestMCPSealedSameNodeGroupAskReplyFullChain` 在 Docker Go 1.22 中通过：真实 Store/Fabric、一个 owner-bound Node、两条显式 Join 的 Codex 记录与当前公钥候选、MCP/Node 本地桥、持久密文 ASK/REPLY 和原生 `queue --thread` 参数均进入同一测试；Hub 请求正文没有 peer 明文，调用路径只有 Directory/Guard，没有 Hub 消息 Relay 或 Control 业务实例。该测试的 `codex` 是记录 argv 的替身，**没有真实模型消费**，原生连续性只验证了参数和持久绑定。本轮含同组跨 Node 与 inbox 增量的 Docker Go 1.22 全仓 `go test -count=1 ./...`、`go vet ./...` 与新增收件路径的聚焦 `-race` 均已通过；真实原生验收另见下文。
+
+旧的独立 provider 探针在 `codex-cli 0.155.1` 下使用 `gpt-5.5` 成功返回 `READY`，产生真实新 Session `01a0d16e-181f-7b11-951b-e1d1b17071fa`。2026-09-24 用官方 shell 安装器更新一次性 `cicada-codex:updated` 镜像后，当前镜像报告 `codex-cli 0.156.1`，没有使用 npm 或更改宿主机全局 Codex 配置。该旧探针只确认 CLI/model 可用，没有 Join、ASK/REPLY 或唤醒任何旧 Session，**不计入**新 G1 原生验收。
+
+另在一次性 `cicada-codex:updated` 容器中，使用 `gpt-5.5` 的真实 CLI 独立验证了队列与恢复：`codex exec --json` 创建原生 Session `01a0d18e-9760-7363-85a7-59c6d7ce9b23`，`codex queue --thread <原 ID> --message <测试标记>` 退出 0；随后 `codex exec --skip-git-repo-check --json resume -m gpt-5.5 <原 ID> <安全点提示>` 退出 0，恢复事件中的 `thread.started` 等于原 ID，模型答复同时包含初始上下文标记和队列标记。两次 `exec` 的标准输入均显式指向 `/dev/null`，避免 CLI 等待额外输入。该独立探针证明所用 CLI 具备精确队列/原会话恢复能力，**尚未**调用 Cicada Join、Node Guard、密文账本或 MCP Ask/Reply，不能代替新 G1 全链验收。
+
+新增 `TestMCPSealedSameNodeGroupAskReplyNative` 作为 opt-in 真 Codex 测试，默认跳过；它会在一次性容器和隔离 Cicada StateDir 中建立两条真实 Thread，以受控安全点推进 MCP Join/Ask、Node 本机密文交接、原生 queue 和 Reply。初期提供方曾对 `codex-auto-review` 返回 403 和价格未配置；用户修正后，`codex-cli 0.156.1` + `gpt-5.5` 的正常自动审批已允许真正执行 MCP 工具。未绕过审批。
+
+2026-09-24 一次运行实际走到：A Endpoint `ep_914eaa6833bf042f`、B Endpoint `ep_389cf082e288534b`；请求 `rq_08f770058ed55c46687fd789bc8b4fdf`，原生 B Session `01a0d21d-2ae1-7923-8d0b-2e5ac03cf594`，原生 A Session `01a0d21d-7efc-79c0-a65c-7461045bb792`。A 的 ASK 持久密封后由 Node 向 B 的原 Session queue 注入；B 在原 Session 的恢复回合调用 `cicada_reply`，回复消息 `msg_c7ce43362fe006cfb9a59a76ac7004d5` 被密封并向 A 原 Session queue 注入；A 恢复回合中的回答同时含原上下文标记与 B 私有回复标记。两条消息的记录达到 `CONSUMPTION_UNCONFIRMED`；B 的实际回复与 A 的回答是本次应用层观察，不能推广成 Runtime 通用消费 ACK。测试最终因 Hub 路径白名单出现 1 条未识别请求而退出码 1；白名单只报数量，尚不能证明这条请求是只读 Fabric 查询还是错误的 Relay/Control 调用。测试在结论上仍为 **未通过**。
+
+随后增加了仅记录 method/path 的失败诊断并重跑两次，但提供方分别在创建 A 和 B 的初始原生 Thread 时超时（均未进入 Cicada 路径），尚未获得额外路径。新的测试源码把每回合等待由 150 秒提高至 210 秒，待跨 Node 切片完成后重编再跑。测试驱动从真实 `thread.started` 事件取原生 ID、核对 CODEX_HOME Session 记录，再为这个一次性 MCP 进程显式设置 `CODEX_THREAD_ID`；不能据此宣称普通全局 MCP 安装能自动发现 Thread ID。`codex queue --thread` 后的恢复由受控安全点的驱动调用 `codex exec resume`；本测试也不证明无人值守唤醒或真实双物理机。Docker Go 测试中的 fake queue 全链继续独立验证协议与 Guard。
+
+路径诊断最终把此前唯一的额外 Hub 请求确认成 `POST /v2/fabric/receive`：sealed-capable Thread 的 MCP `cicada_receive` 曾落到 legacy Hub receive。该调用不是同 Node 的密文 ASK/REPLY 路径。实现已改为经受信 Node 本机桥读取同 Node inbox 与跨 Node crypto inbox 的 Group/native-session scoped 注入记录，使用只读 SQLite handles；没有 sealed capability 的旧 Session 才保留 legacy receive。Node inbox 增量 Group 索引不会猜测旧行属于哪个 Group，缺少可信映射的历史行保持不可见。Node Agent 已补齐显式 Link 收件 normal/recovery `Save` 的可信 GroupID，并覆盖最终注入前精确 attempt recheck；Node inbox 与跨 Node fake full-chain 定向测试通过。未映射的历史行仍只保留数据、不猜测 Group。
+
+当前同 Group 跨 Node fake full-chain `TestMCPSealedSameGroupCrossNodeAskReplyFullChain` 使用两个隔离逻辑 Node 和 fake Codex queue 通过；最终授权复查返回 404 时不会 queue。它证明 Hub/Node route、密文、相关回复和 fail-closed 注入边界，不证明物理网络或真实跨 Node 模型消费。
+
+2026-09-24 修复后的真实原生运行 **PASS**：`TestMCPSealedSameNodeGroupAskReplyNative` 在一次性 `cicada-codex:updated` 容器中使用 `codex-cli 0.156.1` 与 `gpt-5.5`，耗时 738.65 秒、进程退出码 0。request `rq_da0e6864af4065f3e9e2393f0987f1c8`；A Endpoint `ep_1c13164d3eab3789` / native Session `01a0d256-fad3-7470-934b-736b5efe2619`；B Endpoint `ep_efe659c1f38a1d0c` / native Session `01a0d256-b314-7f92-ae09-4f102cf43dae`。A 在其原 Thread Ask；B 的原生 Session 收到投递并实际调用 MCP `cicada_reply`；A 的原生 Session 收到相关回复，最终模型恢复后断言保留原上下文。Hub path whitelist 通过，只记录 method/path 元数据，未出现 `/v2/fabric/receive`。此验收是同一物理主机、一个 Node、两个真实 Codex Thread；使用测试驱动显式绑定 Session ID 和受控 `codex exec resume`，不证明全局 MCP 自动发现、无人值守唤醒、真实跨 Node 消费或双物理机链路。
+
+复验命令在已构建 `cicada.test` 的 Docker 容器内运行：
+
+```bash
+docker run --rm --network host \
+  --env-file /gpu1-share/data/cicada/secrets/cicada.env \
+  -e HTTPS_PROXY=http://127.0.0.1:7890 \
+  -e HTTP_PROXY=http://127.0.0.1:7890 \
+  -e CICADA_NATIVE_E2E=1 \
+  -e CICADA_NATIVE_MODEL=gpt-5.5 \
+  -e CICADA_NATIVE_CICADA_BIN=/tmp/cicada-current \
+  -v /tmp/cicada-native-build/cicada:/tmp/cicada-current:ro \
+  -v /tmp/cicada-native-build/cicada.test:/tmp/cicada.test:ro \
+  cicada-codex:updated /tmp/cicada.test -test.v -test.timeout=25m \
+  -test.run '^TestMCPSealedSameNodeGroupAskReplyNative$'
+```
+
 2026-09-23，已通过 **旧架构 G1 的同机双容器原生验收**：真实模型经 MCP Join/Ask/Reply，双方原生 ID 不变，A 保留原上下文并收到 B 的结果。旧架构 MA→MB→B1 的 G2 也已通过，但它不是根目录 v2.1 要求的直接授权连线。此前失败保留在下文；这些结果不能推广为双物理机、无人值守 Adopt、同 Node 零 Hub Relay、Hub-blind PQ E2EE 或新版 G1–G5 全部完成。
 
 下列 `scripts/native-group-demo.py` 命令是当时的实测记录；脚本依赖现已退役的服务器明文 Node token 下发入口，已从当前可执行脚本中删除。它们不能作为现版本的复验命令；要复验须先用 owner 确认的 Node 设备码流程重建演示夹具。历史证据和会话 ID 保留在本记录。

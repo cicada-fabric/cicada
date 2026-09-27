@@ -91,7 +91,10 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call(http.MethodPost, "/v2/client/devices/enroll", enrollment, "", http.StatusCreated)
+	firstEnrollment := call(http.MethodPost, "/v2/client/devices/enroll", enrollment, "", http.StatusCreated)
+	if exactEnrollmentRetry := call(http.MethodPost, "/v2/client/devices/enroll", enrollment, "", http.StatusCreated); !bytes.Equal(firstEnrollment, exactEnrollmentRetry) {
+		t.Fatal("Docker Hub exact enrollment retry changed persisted binding")
+	}
 	binding := clientwire.Binding{HubID: hub.HubID, OwnerID: owner.ID, DeviceID: "docker-phone",
 		SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
 	route := clientwire.Route{Version: clientwire.Version, Direction: clientwire.DirectionRequest,
@@ -122,6 +125,10 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	retry := call(http.MethodPost, "/v2/client/rpc", packet, "", http.StatusOK)
 	if !bytes.Equal(retry, sealed) {
 		t.Fatal("Docker Hub exact retry did not return cached sealed packet")
+	}
+	recovered := call(http.MethodPost, "/v2/client/rpc/recover", packet, "", http.StatusOK)
+	if !bytes.Equal(recovered, sealed) {
+		t.Fatal("Docker Hub completed-request recovery did not return cached sealed packet")
 	}
 	nodeToken, nodeDigest, err := fabric.NewNodeCredential()
 	if err != nil {
@@ -186,5 +193,101 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if !bytes.Contains(changes, []byte(`"completeness":"partial"`)) ||
 		!bytes.Contains(changes, []byte(`"docker-client-node"`)) {
 		t.Fatalf("Docker status changes missing Node: %s", changes)
+	}
+
+	// A separately trusted owner can enroll over the same TCP Hub, but the
+	// resident Control's status and management operations remain unavailable.
+	guestOwner := "docker-guest-owner"
+	guestOwnerKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence, err = store.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.EnsureLocalOwnerPrincipal(guestOwner); err != nil {
+		_ = persistence.Close()
+		t.Fatal(err)
+	}
+	if _, err := persistence.RegisterOwnerApprovalKeyLocal(guestOwner, guestOwnerKey.Public()); err != nil {
+		_ = persistence.Close()
+		t.Fatal(err)
+	}
+	if err := persistence.Close(); err != nil {
+		t.Fatal(err)
+	}
+	guestDevice, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	guestGrant, err := guestOwnerKey.SignOwnerDeviceGrant(guestOwner, "docker-guest-phone",
+		guestDevice.Public(), hub.HubID, e2ee.OwnerDevicePurposeControl,
+		time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guestEnrollment, err := json.Marshal(map[string]any{
+		"owner_id": guestOwner, "owner_key_id": guestOwnerKey.Public().ID,
+		"device_id": "docker-guest-phone", "device_public_identity": guestDevice.Public(),
+		"owner_device_grant": guestGrant,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodPost, "/v2/client/devices/enroll", guestEnrollment, "", http.StatusCreated)
+	guestBinding := clientwire.Binding{HubID: hub.HubID, OwnerID: guestOwner,
+		DeviceID: "docker-guest-phone", SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
+	guestCall := func(sequence uint64, operation string, body []byte) []byte {
+		t.Helper()
+		guestRoute := route
+		guestRoute.OwnerID = guestOwner
+		guestRoute.DeviceID = "docker-guest-phone"
+		guestRoute.Sequence = sequence
+		guestRoute.OperationID = operation + "-docker-guest"
+		guestRoute.Operation = operation
+		guestRoute.SenderKeyID = guestDevice.Public().ID
+		packet, err := clientwire.SealRequest(guestDevice, hub.ControlPublicIdentity,
+			guestBinding, guestRoute, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sealed := call(http.MethodPost, "/v2/client/rpc", packet, "", http.StatusOK)
+		opened, err := clientwire.OpenResponse(guestDevice, hub.ControlPublicIdentity,
+			guestBinding, sealed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return opened.Plaintext
+	}
+	guestScope := guestCall(1, "session.capabilities", []byte(`{}`))
+	if !bytes.Contains(guestScope, []byte(`"role":"external"`)) ||
+		!bytes.Contains(guestScope, []byte(`"link.invite_accept"`)) ||
+		!bytes.Contains(guestScope, []byte(`"topology.apply"`)) ||
+		!bytes.Contains(guestScope, []byte(`"status.snapshot"`)) ||
+		bytes.Contains(guestScope, []byte(`"intent.submit"`)) {
+		t.Fatalf("Docker guest scope invalid: %s", guestScope)
+	}
+	guestStatus := guestCall(2, "status.snapshot", []byte(`{}`))
+	if !bytes.Contains(guestStatus, []byte(`"scope_mode":"owner_attributed_v2"`)) ||
+		bytes.Contains(guestStatus, []byte(`docker-client-smoke`)) ||
+		bytes.Contains(guestStatus, []byte(`control-local`)) {
+		t.Fatalf("Docker guest status scope invalid: %s", guestStatus)
+	}
+	guestGroup := guestCall(3, "topology.apply", []byte(`{"kind":"group.create","create_group":{"group":{"name":"docker-guest-group"}}}`))
+	if !bytes.Contains(guestGroup, []byte(`"ok":true`)) ||
+		!bytes.Contains(guestGroup, []byte(`docker-guest-group`)) {
+		t.Fatalf("Docker guest Group creation failed: %s", guestGroup)
+	}
+	guestTopology := guestCall(4, "topology.snapshot", []byte(`{}`))
+	if !bytes.Contains(guestTopology, []byte(`docker-guest-group`)) ||
+		bytes.Contains(guestTopology, []byte(`docker-client-smoke`)) {
+		t.Fatalf("Docker guest topology leaked resident Group: %s", guestTopology)
+	}
+	guestChanges := guestCall(5, "status.changes", []byte(`{}`))
+	if !bytes.Contains(guestChanges, []byte(`"scope_mode":"owner_attributed_v2"`)) ||
+		!bytes.Contains(guestChanges, []byte(`docker-guest-group`)) ||
+		bytes.Contains(guestChanges, []byte(`docker-client-smoke`)) {
+		t.Fatalf("Docker guest status changes crossed owner boundary: %s", guestChanges)
 	}
 }

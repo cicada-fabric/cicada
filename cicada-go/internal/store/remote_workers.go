@@ -1,11 +1,45 @@
 package store
 
+const RemoteWorkerOutcomeUncertain = "outcome_uncertain"
+
+// CancelPendingRemoteWorkerApprovals retires requests from a lost native turn.
+// A fresh attempt must issue its own request; the old app-server RPC ID is not
+// a reusable user authorization.
+func (s *Store) CancelPendingRemoteWorkerApprovals(id, nodeID string, attempt int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE approvals SET status='cancelled', resolved_at=?
+WHERE worker_id=? AND source_node_id=? AND worker_attempt=? AND status='pending'`,
+		now(), id, nodeID, attempt)
+	return err
+}
+
+// ProtectApprovedRemoteWorker stops automatic replay after an accepted native
+// approval. The Node may have executed the action before losing its result.
+func (s *Store) ProtectApprovedRemoteWorker(id string, attempt int, reason string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, err := s.db.Exec(`UPDATE workers SET status=?, pid=NULL, last_error=?, updated_at=?
+WHERE id=? AND attempt=? AND status IN ('running','verifying')
+AND EXISTS (SELECT 1 FROM approvals WHERE worker_id=workers.id
+AND source_node_id=workers.machine_id AND worker_attempt=workers.attempt
+AND status='resolved' AND decision IN ('accept','acceptForSession'))`,
+		RemoteWorkerOutcomeUncertain, reason, now(), id, attempt)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	return changed != 0, err
+}
+
 // ListWorkersForMachine returns queued work for a remote agent to claim.
 func (s *Store) ListWorkersForMachine(machineID string) ([]Worker, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rows, err := s.db.Query(`SELECT id FROM workers
-WHERE machine_id = ? AND status IN ('queued', 'recovering') ORDER BY created_at`, machineID)
+WHERE machine_id = ? AND status IN ('queued', 'recovering')
+AND EXISTS (SELECT 1 FROM goals WHERE goals.id=workers.goal_id AND goals.status<>'paused')
+ORDER BY created_at`, machineID)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +77,8 @@ func (s *Store) ClaimWorker(id, machineID string) (*Worker, error) {
 	defer s.mu.Unlock()
 	result, err := s.db.Exec(`UPDATE workers SET status = 'running', attempt = attempt + 1,
 started_at = ?, ended_at = NULL, pid = NULL, updated_at = ?
-WHERE id = ? AND machine_id = ? AND status IN ('queued', 'recovering')`, now(), now(), id, machineID)
+WHERE id = ? AND machine_id = ? AND status IN ('queued', 'recovering')
+AND EXISTS (SELECT 1 FROM goals WHERE goals.id=workers.goal_id AND goals.status<>'paused')`, now(), now(), id, machineID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +114,8 @@ WHERE id = ? AND machine_id = ? AND status = ?`, to, now(), id, machineID, from)
 }
 
 // RequeueRunningWorkersForMachine releases work whose remote machine stopped
-// heartbeating. A later claim increments the attempt and resumes normal
-// recovery processing.
+// heartbeating. Attempts with an accepted approval are held for reconciliation
+// instead of silently replaying a possibly executed native action.
 func (s *Store) RequeueRunningWorkersForMachine(machineID, reason string) ([]Worker, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -105,8 +140,16 @@ func (s *Store) RequeueRunningWorkersForMachine(machineID, reason string) ([]Wor
 	}
 	result := make([]Worker, 0, len(ids))
 	for _, id := range ids {
-		if _, err := s.db.Exec(`UPDATE workers SET status = 'queued', pid = NULL,
-ended_at = NULL, last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'`, reason, now(), id); err != nil {
+		if _, err := s.db.Exec(`UPDATE workers SET status = CASE WHEN EXISTS (
+SELECT 1 FROM approvals WHERE worker_id=workers.id AND source_node_id=workers.machine_id
+AND worker_attempt=workers.attempt AND status='resolved'
+AND decision IN ('accept','acceptForSession')) THEN 'outcome_uncertain' ELSE 'queued' END,
+pid = NULL, ended_at = NULL, last_error = ?, updated_at = ?
+WHERE id = ? AND status = 'running'`, reason, now(), id); err != nil {
+			return nil, err
+		}
+		if _, err := s.db.Exec(`UPDATE approvals SET status='cancelled', resolved_at=?
+WHERE worker_id=? AND source_node_id=? AND status='pending'`, now(), id, machineID); err != nil {
 			return nil, err
 		}
 		worker, err := s.getWorkerLocked(id)

@@ -18,6 +18,7 @@ type Service struct {
 	ownerID       string
 	trustDomainID string
 	now           func() time.Time
+	joinMu        sync.Mutex
 	nodeEventsMu  sync.Mutex
 	nodeEvents    map[string]map[chan struct{}]struct{}
 }
@@ -37,6 +38,41 @@ func NewService(persistence *store.Store, ownerID, trustDomainID string) (*Servi
 }
 
 func (s *Service) Join(input JoinInput) (*JoinResult, error) {
+	return s.join(input, s.ownerID, s.trustDomainID, "")
+}
+
+// JoinForNodeCredential allows a currently owner-bound Node to join an
+// Endpoint into one of its owner's active Groups. The caller identity, owner,
+// and Node ID are derived from the current Node credential binding; none are
+// accepted from JoinInput. The authenticated Node Agent is the trusted local
+// boundary here. It must obtain native_session_id from a local Harness adapter
+// that has verified the live native Session; the Hub cannot independently
+// prove that association.
+func (s *Service) JoinForNodeCredential(nodeToken string, input JoinInput) (*JoinResult, error) {
+	credential, binding, err := s.store.GetOwnerBoundNodeCredentialByHash(HashSessionCredential(nodeToken))
+	if err != nil || credential.Status != store.NodeCredentialActive ||
+		binding.State != "ACTIVE" || binding.NodeID != credential.NodeID {
+		return nil, ErrUnauthenticated
+	}
+	owner, err := s.store.GetPrincipal(binding.OwnerID)
+	if err != nil || owner.Kind != store.PrincipalKindHuman || owner.Status != store.PrincipalStatusActive ||
+		strings.TrimSpace(owner.TrustDomainID) == "" {
+		return nil, ErrUnauthenticated
+	}
+
+	// The request is only a proposal for this Node's verified local session.
+	// It cannot choose an existing Endpoint, Principal, Node, or adapter lease.
+	input.EndpointID = ""
+	input.PrincipalID = ""
+	input.LeaseOwner = ""
+	input.NodeID = credential.NodeID
+	return s.join(input, owner.ID, owner.TrustDomainID, credential.NodeID)
+}
+
+func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNodeID string) (*JoinResult, error) {
+	s.joinMu.Lock()
+	defer s.joinMu.Unlock()
+
 	input.GroupID = strings.TrimSpace(input.GroupID)
 	input.PrincipalID = strings.TrimSpace(input.PrincipalID)
 	input.EndpointID = strings.TrimSpace(input.EndpointID)
@@ -55,6 +91,17 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 	}
 	group, err := s.store.GetGroup(input.GroupID)
 	if err != nil || group.State != store.GroupStateActive {
+		return nil, ErrNotFoundOrNotAuthorized
+	}
+	// The configured Fabric owner is the trust boundary for this Service.
+	// Knowing an active Group ID does not authorize this owner to create or
+	// rejoin an Endpoint in another owner's Group, even when both happen to be
+	// in the same trust domain. Keep the public failure indistinguishable from
+	// an unavailable Group. Legacy Groups owned by this Service may have an
+	// empty trust-domain field; those inherit the Service's configured default.
+	groupTrustDomainID := strings.TrimSpace(group.TrustDomainID)
+	if strings.TrimSpace(group.OwnerPrincipalID) != ownerID ||
+		(groupTrustDomainID != "" && groupTrustDomainID != trustDomainID) {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
 	capabilities, err := sanitizeCapabilities(input.Capabilities)
@@ -85,6 +132,13 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 		if previous.NativeSessionID != input.NativeSessionID || previous.Harness != input.Harness {
 			return nil, ErrConflict
 		}
+		// Stable Endpoint IDs and native Session IDs cannot be adopted by a
+		// different owner or Node through Join. Movement requires a separate,
+		// explicit handoff flow that this endpoint does not implement.
+		if strings.TrimSpace(previous.Owner) != ownerID || previous.MachineID != input.NodeID ||
+			(authenticatedNodeID != "" && previous.MachineID != authenticatedNodeID) {
+			return nil, ErrPermissionDenied
+		}
 		if input.PrincipalID == "" {
 			input.PrincipalID = previous.PrincipalID
 		} else if previous.PrincipalID != "" && input.PrincipalID != previous.PrincipalID {
@@ -92,7 +146,7 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 		}
 	}
 
-	principal, createdPrincipal, err := s.resolveJoinPrincipal(input)
+	principal, createdPrincipal, err := s.resolveJoinPrincipal(input, ownerID, trustDomainID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +184,7 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 		ID: endpointID, Name: name, Role: "thread", Harness: input.Harness,
 		NativeSessionID: input.NativeSessionID, MachineID: input.NodeID,
 		Workspace: input.Workspace, Status: "online", Capabilities: capabilities,
-		Tags: input.Tags, Owner: s.ownerID, Visibility: "private",
+		Tags: input.Tags, Owner: ownerID, Visibility: "private",
 	})
 	if err != nil {
 		return nil, err
@@ -153,7 +207,8 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 	binding, err := s.store.GetActiveSessionBinding(endpoint.ID)
 	if err == nil {
 		previousBindingID, previousBindingEpoch := binding.ID, binding.Epoch
-		if binding.NativeSessionID != input.NativeSessionID || binding.PrincipalID != principal.ID {
+		if binding.NativeSessionID != input.NativeSessionID || binding.PrincipalID != principal.ID ||
+			binding.NodeID != input.NodeID || (authenticatedNodeID != "" && binding.NodeID != authenticatedNodeID) {
 			return nil, ErrConflict
 		}
 		// An explicit, management-authenticated rejoin of the same verified
@@ -208,10 +263,11 @@ func (s *Service) Join(input JoinInput) (*JoinResult, error) {
 	}, nil
 }
 
-func (s *Service) resolveJoinPrincipal(input JoinInput) (*store.Principal, bool, error) {
+func (s *Service) resolveJoinPrincipal(input JoinInput, ownerID, trustDomainID string) (*store.Principal, bool, error) {
 	if input.PrincipalID != "" {
 		principal, err := s.store.GetPrincipal(input.PrincipalID)
-		if err != nil || principal.Status != store.PrincipalStatusActive || principal.TrustDomainID != s.trustDomainID {
+		if err != nil || principal.Status != store.PrincipalStatusActive ||
+			principal.OwnerID != ownerID || principal.TrustDomainID != trustDomainID {
 			return nil, false, ErrNotFoundOrNotAuthorized
 		}
 		return principal, false, nil
@@ -224,7 +280,7 @@ func (s *Service) resolveJoinPrincipal(input JoinInput) (*store.Principal, bool,
 		name = endpointDefaultName(input.Workspace, input.Harness, input.NativeSessionID)
 	}
 	principal, err := s.store.CreatePrincipal(store.Principal{
-		Kind: store.PrincipalKindAgent, OwnerID: s.ownerID, TrustDomainID: s.trustDomainID,
+		Kind: store.PrincipalKindAgent, OwnerID: ownerID, TrustDomainID: trustDomainID,
 		Name: name, DisplayName: name, Status: store.PrincipalStatusActive,
 	})
 	return principal, true, err
@@ -278,6 +334,11 @@ func (s *Service) AuthenticateForGroup(sessionToken, groupID string) (Actor, err
 		BindingEpoch: binding.Epoch, LeaseOwner: binding.LeaseOwner,
 		LeaseExpiresAt: binding.LeaseExpiresAt,
 	}
+	if endpoint.Owner != s.ownerID {
+		if _, err := s.validateActorCurrent(actor); err != nil {
+			return Actor{}, ErrUnauthenticated
+		}
+	}
 	return actor, actor.Validate()
 }
 
@@ -299,6 +360,13 @@ func (s *Service) HeartbeatNode(nodeToken string) error {
 		return ErrUnauthenticated
 	}
 	return nil
+}
+
+// RecordBoundNodeMachineHeartbeat updates the owner-tagged machine projection
+// for the authenticated Relay Node. Store rechecks the active credential and
+// owner binding in the same transaction as the liveness/status write.
+func (s *Service) RecordBoundNodeMachineHeartbeat(nodeToken, status string, capabilities map[string]any) error {
+	return s.store.RecordBoundNodeMachineHeartbeat(HashSessionCredential(nodeToken), status, capabilities)
 }
 
 func (s *Service) Authorize(actor Actor, action string) error {
@@ -383,6 +451,7 @@ func (s *Service) WhoAmI(actor Actor) (*NetworkCard, error) {
 		return nil, ErrStaleBinding
 	}
 	card := s.networkCard(*endpoint, binding, actor.GroupID)
+	card.NativeSessionID = binding.NativeSessionID
 	return &card, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -95,7 +96,17 @@ func (m *mcpServer) publishEndpointKeyCandidate(arguments map[string]any) (any, 
 	if stateDir == "" {
 		return nil, errors.New("endpoint key publication requires CICADA_NODE_STATE_DIR or CICADA_STATE_DIR")
 	}
-	identity, err := nodekeys.LoadOrCreate(machineNodeStateDir(stateDir, card.NodeID), card.EndpointID)
+	maintenance, err := nodelock.AcquireMaintenance(stateDir, card.NodeID)
+	if err != nil {
+		return nil, fmt.Errorf("lock Node Endpoint identity: %w", err)
+	}
+	identity, identityErr := nodekeys.LoadOrCreate(machineNodeStateDir(stateDir, card.NodeID), card.EndpointID)
+	unlockErr := maintenance.Close()
+	if identityErr != nil {
+		err = identityErr
+	} else if unlockErr != nil {
+		err = unlockErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("load Node-local Endpoint identity: %w", err)
 	}

@@ -1,18 +1,94 @@
-# Cicada development container
+# Cicada development environment
 
-The 0.3.0 development image is a single reusable image with three Compose roles:
-
-- `control`: a long-lived manager container;
-- `worker`: an optional execution container, enabled with the `worker` profile;
-- `telegram`: an optional inbound connector, enabled with the `telegram`
-  profile.
+The current unreleased version is `0.4.0-dev`. The root
+[`docker-compose.yml`](docker-compose.yml) is a legacy single-host development
+layout with three roles: `control`, an optional `worker` profile that currently
+runs `sleep infinity`, and an optional Telegram connector. It does not describe
+the Architecture v2 Node/Hub/Client deployment. For an isolated local Hub, use
+[`./scripts/run-client-hub-dev.sh`](scripts/run-client-hub-dev.sh); for a
+Fabric-only Hub run `cicada serve --fabric-only`, and run a v2 Node with
+`cicada machine agent --relay-only` after owner-confirmed device-code binding.
+The current architecture and evidence are in [CICADA.md](CICADA.md), the
+[status matrix](docs/architecture-v2-status.md), and the
+[Client↔Hub contract](docs/android-client-hub-contract.md).
 
 The Control core is a static Go binary. The independent Android repository
 connects through the versioned Client↔Hub HTTP/JSON and PQ packet contract;
 this repository does not ship Android UI or local STT.
 
+The two repositories follow the [joint development and acceptance workflow](docs/client-hub-development.md).
+The operation catalog is authoritative for role allowlists; export a versioned
+contract bundle with `python3 scripts/client-contract.py export --output .cicada-data/contracts`.
+Published synthetic wire vectors must also be checked by the independent Kotlin
+implementation before claiming cross-language compatibility.
+
+For Client protocol work, use the lightweight Hub path; it does not need a Codex
+installation or model credentials:
+
+```bash
+python3 scripts/client-contract.py check
+python3 -m unittest discover -s scripts -p test_client_contract.py
+./scripts/test-client-hub-interop.sh
+# For an ongoing Android developer session, keep a separate persistent Hub:
+./scripts/run-client-hub-dev.sh
+```
+
+The disposable check never replaces the persistent developer Hub. Its sanitized
+evidence goes to `CICADA_INTEROP_OUTPUT` when set. The image helper uses standard
+proxy environment settings, or a reachable local port 7890; set
+`CICADA_BUILD_PROXY=''` to force a direct build. The older full Codex/connector
+setup below is only needed for its corresponding execution tests.
+
 Architecture v2.1's temporary offline user-key bootstrap and its strict
 non-routing boundary are documented in [docs/owner-approval-bootstrap.md](docs/owner-approval-bootstrap.md).
+The Node-local Owner public-key trust procedure for explicit encrypted Links
+is documented in [docs/node-owner-trust.md](docs/node-owner-trust.md). Sealed
+peer paths support single-recipient `SEND/ASK/REPLY` over an explicit
+cross-owner Link and same-owner, same-Group delivery across Nodes. On one Node,
+same-Group sealed delivery uses the Node-local ledger and inbox without Hub
+Relay message routing; authorization reads may still use Hub Guard and
+Directory. Older Sessions without sealed-delivery capability retain a legacy
+plaintext path. See the current boundaries and test evidence in the
+[status matrix](docs/architecture-v2-status.md).
+
+For an offline backup of one Node, stop its Agent and use an explicit new
+destination. `verify` checks every copied file and SQLite database. Restore
+publishes only into a new or empty Node subtree and leaves the Agent blocked
+by `recovery-pending.json` until the Hub binding, replay counters, pending
+outbox and uncertain native injections are reconciled:
+
+```bash
+cicada machine backup --id NODE_ID --state-dir STATE_DIR --output NEW_BACKUP_DIR
+cicada machine verify --backup NEW_BACKUP_DIR
+cicada machine restore --backup NEW_BACKUP_DIR --state-dir NEW_STATE_DIR
+cicada machine recovery inspect --backup NEW_BACKUP_DIR --state-dir NEW_STATE_DIR
+```
+
+`recovery inspect` takes the exclusive maintenance lock, re-verifies the backup,
+checks the pending marker and restored file hashes/inventory, and opens known
+SQLite files with immutable read-only connections for integrity and bounded
+state counts. It does not start the Agent or contact the Hub, run migrations,
+read message bodies or keys, or clear quarantine. Its output explicitly leaves
+Hub binding/counter reconciliation and native-runtime consumption unchecked;
+`agent_may_start` remains false. Missing/corrupt markers, files, or databases
+fail closed. This inspection is evidence for an operator, not a reconciliation
+or unquarantine procedure.
+
+This covers only `STATE_DIR/nodes/node-<id>/`. Back up Codex native sessions
+and any external MCP session/outbox state separately in the same maintenance
+window. The Hub `migration backup` deliberately excludes `nodes/`; see the
+[recovery limits](docs/architecture-v2-migration.md) before using a restored
+Node.
+
+The real Codex same-Node sealed Ask/Reply test passed with two native Threads;
+its controlled Session binding and resume do not prove automatic MCP session
+discovery or unattended wake. The opt-in real Codex cross-Node test passed with two isolated logical
+Node state directories and real native Threads using `gpt-5.6-luna`. Both
+logical Nodes ran on one Docker host; unattended wake and two physical
+machines remain unverified. Same-Group broadcast passed a two-logical-Node fake-Codex full-chain;
+it does not yet prove native broadcast delivery or user-authorized Monitor
+broadcast. See the
+[native validation record](docs/architecture-v2-native-validation.md).
 
 The Docker daemon on this host is already configured with
 `DockerRootDir=/gpu1-share/data/docker-root`, so image layers are stored below
@@ -55,6 +131,7 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 
 ## Run
 
+# Legacy Control/worker/Telegram Compose commands:
 ```bash
 docker compose up -d control
 docker compose --profile worker up -d worker
@@ -78,7 +155,9 @@ public HTTPS deployment. `GET /v2/client/capabilities` and
 `GET /v2/client/identity` are publicly callable; device enrollment requires
 a locally trusted owner key and its signed grant, and management RPC requires
 the registered device's PQ key. The current capability status is `partial`;
-see [the exact Android contract](docs/android-client-hub-contract.md) and
+see [the Client developer handoff](docs/client-hub-handoff.md),
+[implementation prompt](docs/client-development-prompt.md),
+[the exact Android contract](docs/android-client-hub-contract.md), and
 [OpenAPI](docs/client-hub-v1.openapi.yaml). The separate Android repository
 is not changed by this helper.
 
@@ -300,9 +379,10 @@ The reviewed Happy source checkout and reuse boundaries are recorded in
 The implementation language decision and the reasons for the Go core plus
 TypeScript client split are recorded in `docs/language-decision.md`.
 
-Development is consolidated on `main`. Use a short-lived feature branch only
-when review or isolation requires one, then merge and delete it instead of
-keeping parallel long-running lines. The current checkout has `origin` set to
+Development takes place on `dev`, as requested by the user. Review and verify
+bounded milestones before merging into `main`; do not create a permanent branch
+for each subtask. Pushing, releasing, and replacing resident deployments are
+separate actions from running local tests. The current checkout has `origin` set to
 `git@github.com:cicada-fabric/cicada.git`. The latest release tag is `v0.2.0`;
 the current unreleased line is `0.4.0-dev`. Changes land only after the checks
 below pass.
@@ -322,6 +402,6 @@ image used by the Dockerfile:
 ```bash
 docker run --rm --network host \
   -e HTTP_PROXY -e HTTPS_PROXY -e ALL_PROXY \
-  -v "$PWD":/src -w /src golang:1.22-bookworm \
-  bash -lc 'export PATH=/usr/local/go/bin:$PATH; go test -race ./...; go vet ./...'
+  -v "$PWD":/src -w /src golang:1.27.1-bookworm \
+  bash -lc 'export PATH=/usr/local/go/bin:$PATH && go test -race ./... && go vet ./...'
 ```

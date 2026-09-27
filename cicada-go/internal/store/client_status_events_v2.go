@@ -47,6 +47,7 @@ type ClientStatusChangeEvent struct {
 
 var clientStatusEntityTypes = map[string]struct{}{
 	"node": {}, "endpoint": {}, "worker": {}, "goal": {}, "group": {}, "task": {},
+	"approval": {}, "intent": {},
 }
 
 // initializeClientStatusEventsV2Schema is registered by the v2.21 migration.
@@ -56,7 +57,7 @@ var clientStatusEntityTypes = map[string]struct{}{
 func (s *Store) initializeClientStatusEventsV2Schema() error {
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS client_status_state_v2 (
   owner_principal_id TEXT NOT NULL,
-  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task')),
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task','approval','intent')),
   entity_id TEXT NOT NULL,
   state_json TEXT NOT NULL,
   present INTEGER NOT NULL CHECK(present IN (0,1)),
@@ -68,10 +69,10 @@ CREATE TABLE IF NOT EXISTS client_status_streams_v2 (
   last_sequence INTEGER NOT NULL DEFAULT 0 CHECK(last_sequence >= 0)
 );
 CREATE TABLE IF NOT EXISTS client_status_change_events_v2 (
-	  id INTEGER NOT NULL CHECK(id > 0),
+  id INTEGER NOT NULL CHECK(id > 0),
   owner_principal_id TEXT NOT NULL,
   change_type TEXT NOT NULL CHECK(change_type IN ('present','updated','removed')),
-  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task')),
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task','approval','intent')),
   entity_id TEXT NOT NULL,
   state_json TEXT NOT NULL,
   observed_at TEXT NOT NULL,
@@ -80,6 +81,157 @@ CREATE TABLE IF NOT EXISTS client_status_change_events_v2 (
 );
 `)
 	return err
+}
+
+// expandClientStatusEventsEntityTypes upgrades the two v21 status tables to
+// accept owner-scoped approval and intent observations. The v25 migration
+// runner calls this inside its savepoint; it must not start or commit a
+// transaction of its own. All rows, owner-local stream IDs, and primary keys
+// are copied verbatim before the old tables are dropped.
+func (s *Store) expandClientStatusEventsEntityTypes() error {
+	for _, table := range []struct {
+		name    string
+		columns string
+		create  string
+	}{
+		{
+			name:    "client_status_state_v2",
+			columns: "owner_principal_id,entity_type,entity_id,state_json,present,observed_at",
+			create: `CREATE TABLE client_status_state_v2 (
+  owner_principal_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task','approval','intent')),
+  entity_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  present INTEGER NOT NULL CHECK(present IN (0,1)),
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY(owner_principal_id, entity_type, entity_id)
+)`,
+		},
+		{
+			name:    "client_status_change_events_v2",
+			columns: "id,owner_principal_id,change_type,entity_type,entity_id,state_json,observed_at,created_at",
+			create: `CREATE TABLE client_status_change_events_v2 (
+  id INTEGER NOT NULL CHECK(id > 0),
+  owner_principal_id TEXT NOT NULL,
+  change_type TEXT NOT NULL CHECK(change_type IN ('present','updated','removed')),
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task','approval','intent')),
+  entity_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(owner_principal_id,id)
+)`,
+		},
+	} {
+		var schema string
+		if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table.name).Scan(&schema); err != nil {
+			return fmt.Errorf("inspect Client status table %s: %w", table.name, err)
+		}
+		if strings.Contains(schema, "'approval'") && strings.Contains(schema, "'intent'") {
+			if err := verifyClientStatusPrimaryKey(s.db, table.name); err != nil {
+				return err
+			}
+			continue
+		}
+
+		before, err := clientStatusTableRowCount(s.db, table.name)
+		if err != nil {
+			return err
+		}
+		legacy := table.name + "_v24_backup"
+		if _, err := s.db.Exec(`ALTER TABLE ` + table.name + ` RENAME TO ` + legacy); err != nil {
+			return fmt.Errorf("rename legacy Client status table %s: %w", table.name, err)
+		}
+		if _, err := s.db.Exec(table.create); err != nil {
+			return fmt.Errorf("create expanded Client status table %s: %w", table.name, err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO ` + table.name + ` (` + table.columns + `) SELECT ` + table.columns + ` FROM ` + legacy); err != nil {
+			return fmt.Errorf("copy legacy Client status table %s: %w", table.name, err)
+		}
+		after, err := clientStatusTableRowCount(s.db, table.name)
+		if err != nil {
+			return err
+		}
+		if before != after {
+			return fmt.Errorf("Client status table %s row count changed during migration: %d != %d", table.name, before, after)
+		}
+		if _, err := s.db.Exec(`DROP TABLE ` + legacy); err != nil {
+			return fmt.Errorf("drop migrated Client status table %s: %w", legacy, err)
+		}
+		if err := verifyClientStatusPrimaryKey(s.db, table.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func clientStatusTableRowCount(db *sql.DB, table string) (int64, error) {
+	var count int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count Client status table %s: %w", table, err)
+	}
+	return count, nil
+}
+
+// verifyClientStatusPrimaryKey checks SQLite's actual primary-key index, not
+// just the table definition text, after the rebuild.
+func verifyClientStatusPrimaryKey(db *sql.DB, table string) error {
+	rows, err := db.Query(`PRAGMA index_list("` + strings.ReplaceAll(table, `"`, `""`) + `")`)
+	if err != nil {
+		return fmt.Errorf("list Client status indexes for %s: %w", table, err)
+	}
+	var primary string
+	for rows.Next() {
+		var sequence, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("read Client status index for %s: %w", table, err)
+		}
+		if origin == "pk" && unique == 1 && partial == 0 {
+			primary = name
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if primary == "" {
+		return fmt.Errorf("Client status table %s lost its primary-key index", table)
+	}
+	indexInfo := `PRAGMA index_info("` + strings.ReplaceAll(primary, `"`, `""`) + `")`
+	columns, err := db.Query(indexInfo)
+	if err != nil {
+		return fmt.Errorf("read Client status primary key for %s: %w", table, err)
+	}
+	defer columns.Close()
+	var actual []string
+	for columns.Next() {
+		var sequence, columnID int
+		var columnName string
+		if err := columns.Scan(&sequence, &columnID, &columnName); err != nil {
+			return fmt.Errorf("read Client status primary-key column for %s: %w", table, err)
+		}
+		if sequence != len(actual) {
+			return fmt.Errorf("Client status table %s primary-key index has a discontinuous column order", table)
+		}
+		actual = append(actual, columnName)
+	}
+	if err := columns.Err(); err != nil {
+		return err
+	}
+	want := []string{"owner_principal_id", "entity_type", "entity_id"}
+	if table == "client_status_change_events_v2" {
+		want = []string{"owner_principal_id", "id"}
+	}
+	if len(actual) != len(want) {
+		return fmt.Errorf("Client status table %s primary-key column count is %d, want %d", table, len(actual), len(want))
+	}
+	for i := range want {
+		if actual[i] != want[i] {
+			return fmt.Errorf("Client status table %s primary-key column %d is %q, want %q", table, i, actual[i], want[i])
+		}
+	}
+	return nil
 }
 
 // RecordClientStatusObservations reconciles one full observation of the

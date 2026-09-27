@@ -42,6 +42,18 @@ func (s *Service) validateActorCurrent(actor Actor) (*store.SessionBinding, erro
 		endpoint.PrincipalID != actor.PrincipalID || endpoint.Status == "left" {
 		return nil, ErrStaleBinding
 	}
+	if endpoint.Owner != s.ownerID {
+		// Guest sessions are valid only while their Node remains bound to the
+		// same owner. Revoking the Node cannot leave behind an independently
+		// usable Fabric Session token.
+		principal, principalErr := s.store.GetPrincipal(actor.PrincipalID)
+		nodeOwner, nodeErr := s.store.CurrentBoundNodeOwner(binding.NodeID)
+		if principalErr != nil || principal.Status != store.PrincipalStatusActive ||
+			principal.OwnerID != endpoint.Owner || endpoint.MachineID != binding.NodeID ||
+			nodeErr != nil || nodeOwner != endpoint.Owner {
+			return nil, ErrStaleBinding
+		}
+	}
 	joined, err := s.store.IsEndpointGroupActive(actor.EndpointID, actor.GroupID)
 	if err != nil || !joined {
 		return nil, ErrPermissionDenied
@@ -88,6 +100,32 @@ func validateMessageBody(body string) (string, error) {
 	return body, nil
 }
 
+// rejectPlaintextPeerIfSealed checks the current authoritative capability on
+// both route endpoints. The Store repeats this check inside the write
+// transaction to close the capability-update/write race; this early check
+// keeps the Fabric boundary's denial behavior explicit for HTTP callers.
+func (s *Service) rejectPlaintextPeerIfSealed(sourceEndpointID, targetEndpointID string) error {
+	seen := make(map[string]struct{}, 2)
+	for _, endpointID := range []string{sourceEndpointID, targetEndpointID} {
+		endpointID = strings.TrimSpace(endpointID)
+		if endpointID == "" {
+			return ErrPermissionDenied
+		}
+		if _, ok := seen[endpointID]; ok {
+			continue
+		}
+		seen[endpointID] = struct{}{}
+		endpoint, err := s.store.GetEndpointV2(endpointID)
+		if err != nil || endpoint == nil {
+			return ErrPermissionDenied
+		}
+		if _, present := endpoint.Capabilities["local_peer_delivery"]; present {
+			return fmt.Errorf("%w: endpoint has a peer-delivery capability that disallows plaintext", ErrPermissionDenied)
+		}
+	}
+	return nil
+}
+
 func validateExpiry(raw string, current time.Time) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -117,6 +155,9 @@ func (s *Service) Send(actor Actor, input SendInput) (*store.RelayMessageRecord,
 	}
 	target, err := s.resolvePeer(actor, input.Target)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.rejectPlaintextPeerIfSealed(actor.EndpointID, target.EndpointID); err != nil {
 		return nil, err
 	}
 	record, err := s.store.EnqueueRelayMessage(store.RelayMessageInput{
@@ -157,6 +198,9 @@ func (s *Service) Ask(actor Actor, input AskInput) (*RequestView, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.rejectPlaintextPeerIfSealed(actor.EndpointID, target.EndpointID); err != nil {
+		return nil, err
+	}
 	request, err := s.store.CreateFabricRequest(store.FabricRequest{
 		SenderEndpointID: actor.EndpointID, SenderPrincipalID: actor.PrincipalID,
 		SenderGroupID: actor.GroupID, SenderBindingID: actor.BindingID,
@@ -188,6 +232,9 @@ func (s *Service) Reply(actor Actor, input ReplyInput) (*RequestView, error) {
 	if request.ReceiverEndpointID != actor.EndpointID || request.ReceiverPrincipalID != actor.PrincipalID ||
 		request.ReceiverGroupID != actor.GroupID {
 		return nil, ErrPermissionDenied
+	}
+	if err := s.rejectPlaintextPeerIfSealed(actor.EndpointID, request.SenderEndpointID); err != nil {
+		return nil, err
 	}
 	updated, err := s.store.SubmitFabricReply(store.FabricReply{
 		RequestID: request.RequestID, ResponderEndpointID: actor.EndpointID,
@@ -363,7 +410,9 @@ func requestView(request *store.FabricRequest) *RequestView {
 		delivery = "RESULT_ACCEPTED"
 	}
 	view := &RequestView{
-		RequestID: request.RequestID, MessageID: request.MessageID, State: request.State,
+		RequestID: request.RequestID, MessageID: request.MessageID,
+		SenderEndpointID: request.SenderEndpointID, SenderGroupID: request.SenderGroupID,
+		State:    request.State,
 		Delivery: delivery, ReplyMode: "asynchronous", ExpiresAt: request.ExpiresAt,
 		CancelledAt: request.CancelledAt, ReplyMessageID: request.ReplyMessageID,
 		LateReply: request.State == store.FabricRequestLateResult,
@@ -387,6 +436,8 @@ func mapRelayError(err error) error {
 		return fmt.Errorf("%w: %v", ErrStaleBinding, err)
 	case errors.Is(err, store.ErrRelayRequestTerminal):
 		return fmt.Errorf("%w: %v", ErrRequestTerminal, err)
+	case errors.Is(err, store.ErrRelayPlaintextSealedPeer):
+		return fmt.Errorf("%w: %v", ErrPermissionDenied, err)
 	case errors.Is(err, store.ErrRelayRequestNotFound), errors.Is(err, store.ErrRelayMessageNotFound):
 		return ErrNotFoundOrNotAuthorized
 	default:

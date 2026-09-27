@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,7 +16,10 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 )
+
+const machineNodeRecoveryPendingFileName = "recovery-pending.json"
 
 func runMachineAgent(args []string) error {
 	flags := flag.NewFlagSet("machine agent", flag.ContinueOnError)
@@ -34,12 +35,14 @@ func runMachineAgent(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	*id = strings.TrimSpace(*id)
 	if strings.TrimSpace(*id) == "" {
 		return errors.New("machine agent requires --id or CICADA_MACHINE_ID")
 	}
 	if strings.TrimSpace(*name) == "" {
 		*name = *id
 	}
+	*stateDir = strings.TrimSpace(*stateDir)
 	base, err := normalizeControlURL(*controlURL)
 	if err != nil {
 		return err
@@ -52,6 +55,14 @@ func runMachineAgent(args []string) error {
 	}
 	if strings.TrimSpace(*stateDir) == "" {
 		return errors.New("machine agent state directory is required")
+	}
+	agentLock, err := nodelock.AcquireAgent(*stateDir, *id)
+	if err != nil {
+		return fmt.Errorf("acquire Node Agent lock: %w", err)
+	}
+	defer agentLock.Close()
+	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
+		return err
 	}
 	nodeIdentity, credentialDigest, err := loadOrCreateMachineNodeIdentity(*stateDir, *id)
 	if err != nil {
@@ -74,6 +85,13 @@ func runMachineAgent(args []string) error {
 		return fmt.Errorf("open machine node inbox: %w", err)
 	}
 	defer inbox.Close()
+	// Local peer delivery has a separate inbox and ledger. The remote Relay
+	// journal must never claim its messages or report Hub receipts for them.
+	localInbox, err := nodeinbox.Open(machineLocalGroupInboxPath(*stateDir, *id))
+	if err != nil {
+		return fmt.Errorf("open local Group node inbox: %w", err)
+	}
+	defer localInbox.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if *lanDiscovery {
@@ -93,14 +111,7 @@ func runMachineAgent(args []string) error {
 		capabilities := control.DiscoverMachineCapabilities()
 		capabilities["role"] = "worker"
 		capabilities["harnesses"] = discoveredMachineHarnesses()
-		if err := machineAPI(ctx, base+"/v1/machines", http.MethodPost, map[string]any{
-			"id": *id, "name": *name, "status": "available", "capabilities": capabilities,
-		}); err != nil {
-			return fmt.Errorf("register machine: %w", err)
-		}
-		return machineAPI(ctx, base+"/v1/machines/"+url.PathEscape(*id)+"/heartbeat", http.MethodPost, map[string]any{
-			"status": "available", "capabilities": capabilities,
-		})
+		return sendMachineNodeWorkerHeartbeat(ctx, base, *id, nodeIdentity.RelayToken, "available", capabilities)
 	}
 	relayContext, cancelRelay := context.WithCancel(ctx)
 	defer cancelRelay()
@@ -112,20 +123,21 @@ func runMachineAgent(args []string) error {
 		relayAuthorized = false
 		cancelRelay()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Node Relay authorization was revoked; Relay delivery is disabled until restart:", err)
+			fmt.Fprintln(os.Stderr, "Node authorization was rejected; stopping the machine agent:", err)
 		}
 	}
-	heartbeatRelay := func() {
+	heartbeatRelay := func() error {
 		if !relayAuthorized {
-			return
+			return nil
 		}
 		if err := sendMachineNodeHeartbeat(ctx, base, *id, nodeIdentity.RelayToken); err != nil {
 			if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
 				disableRelay(err)
-				return
+				return nodeCredentialRevokedError(err)
 			}
 			fmt.Fprintln(os.Stderr, "Node heartbeat:", err)
 		}
+		return nil
 	}
 	processRelay := func() error {
 		if !relayAuthorized {
@@ -134,7 +146,7 @@ func runMachineAgent(args []string) error {
 		err := processMachineFabricDeliveriesV2(ctx, base, *id, inbox, *stateDir)
 		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
 			disableRelay(err)
-			return nil
+			return nodeCredentialRevokedError(err)
 		}
 		return err
 	}
@@ -142,12 +154,12 @@ func runMachineAgent(args []string) error {
 		if *relayOnly {
 			return nil
 		}
-		jobs, err := pollMachineJobs(ctx, base, *id)
+		jobs, err := pollMachineJobs(ctx, base, *id, nodeIdentity.RelayToken)
 		if err != nil {
 			return err
 		}
 		for _, job := range jobs {
-			claimed, claimErr := claimMachineJob(ctx, base, job)
+			claimed, claimErr := claimMachineJob(ctx, base, *id, nodeIdentity.RelayToken, job)
 			if claimErr != nil {
 				// A second agent may have claimed the job between polling and
 				// claiming. Continue polling instead of treating that as a
@@ -157,18 +169,28 @@ func runMachineAgent(args []string) error {
 				}
 				return claimErr
 			}
-			result := executeMachineJobWithHeartbeats(ctx, base, *id, *interval, claimed)
-			if err := reportMachineJobReliably(ctx, base, claimed, result, *interval); err != nil {
+			result := executeMachineJobWithHeartbeats(ctx, base, *id, nodeIdentity.RelayToken, *interval, claimed)
+			if err := reportMachineJobReliably(ctx, base, *id, nodeIdentity.RelayToken, claimed, result, *interval); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	process := func() error {
-		if err := processRelay(); err != nil {
-			return err
+	var localBridge *machineAgentJoinBridge
+	var localWake <-chan struct{}
+	processLocal := func() error {
+		if localBridge == nil {
+			return nil
 		}
-		return processJobs()
+		return processMachineLocalGroupDeliveries(ctx, localBridge, localInbox)
+	}
+	process := func() error {
+		// A local Guard outage must not starve remote Relay deliveries or
+		// unrelated management jobs on the same Node.
+		localErr := processLocal()
+		relayErr := processRelay()
+		jobErr := processJobs()
+		return errors.Join(localErr, relayErr, jobErr)
 	}
 	for {
 		if err := awaitMachineNodeBinding(ctx, base, *id, *name, nodeIdentity.RelayToken,
@@ -184,14 +206,31 @@ func runMachineAgent(args []string) error {
 		}
 		break
 	}
-	heartbeatRelay()
+	if !*once {
+		bridge, err := startMachineAgentJoinBridge(ctx, *stateDir, base, *id, nodeIdentity.RelayToken)
+		if err != nil {
+			return fmt.Errorf("start trusted local Join bridge: %w", err)
+		}
+		defer bridge.Close()
+		localBridge = bridge
+		localWake = bridge.localWake
+	}
+	if err := heartbeatRelay(); err != nil {
+		return err
+	}
 	if err := send(); err != nil {
+		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+			return nodeCredentialRevokedError(err)
+		}
 		if *once {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, err)
 	}
 	if err := process(); err != nil {
+		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+			return nodeCredentialRevokedError(err)
+		}
 		if *once {
 			return fmt.Errorf("process machine jobs: %w", err)
 		}
@@ -216,22 +255,58 @@ func runMachineAgent(args []string) error {
 			return nil
 		case err := <-relayRevoked:
 			disableRelay(err)
+			return nodeCredentialRevokedError(err)
 		case <-wake:
-			heartbeatRelay()
+			if err := heartbeatRelay(); err != nil {
+				return err
+			}
 			if err := processRelay(); err != nil {
+				if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+					return nodeCredentialRevokedError(err)
+				}
 				fmt.Fprintln(os.Stderr, err)
 			}
+		case <-localWake:
+			if err := processLocal(); err != nil {
+				fmt.Fprintln(os.Stderr, "Local Group delivery:", err)
+			}
 		case <-ticker.C:
-			heartbeatRelay()
+			if err := heartbeatRelay(); err != nil {
+				return err
+			}
 			if err := send(); err != nil {
+				if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+					return nodeCredentialRevokedError(err)
+				}
 				fmt.Fprintln(os.Stderr, err)
 				continue
 			}
 			if err := process(); err != nil {
+				if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+					return nodeCredentialRevokedError(err)
+				}
 				fmt.Fprintln(os.Stderr, err)
 			}
 		}
 	}
+}
+
+// rejectMachineNodePendingRecovery prevents a restored Node from reconnecting
+// before its binding, replay watermarks, and uncertain injections are reconciled.
+// Marker contents are deliberately not read or included in the error.
+func rejectMachineNodePendingRecovery(stateDir, nodeID string) error {
+	path := filepath.Join(machineNodeStateDir(stateDir, nodeID), machineNodeRecoveryPendingFileName)
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect Node recovery marker: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("Node recovery marker must be a regular file")
+	}
+	return errors.New("Node recovery is pending reconciliation; refusing to start Agent")
 }
 
 func machineAgentStateDir() string {
@@ -245,25 +320,60 @@ func machineAgentStateDir() string {
 	return base
 }
 
-func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID string, interval time.Duration, job machineJob) machineJobResult {
+func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeToken string, interval time.Duration, job machineJob) machineJobResult {
 	workspace, _, pathErr := machineJobPaths(job)
 	if pathErr != nil {
 		return machineJobResult{Status: "failed", Error: pathErr.Error()}
 	}
+	executionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	revoked := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-executionCtx.Done():
+				return
+			case <-ticker.C:
+				if err := sendMachineNodeWorkerHeartbeat(executionCtx, base, machineID, nodeToken, "busy", nil); err != nil {
+					if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
+						revoked <- nodeCredentialRevokedError(err)
+						cancel()
+						return
+					}
+					fmt.Fprintln(os.Stderr, "machine heartbeat:", err)
+				}
+			}
+		}
+	}()
+	finish := func(result machineJobResult) machineJobResult {
+		select {
+		case err := <-revoked:
+			return machineJobResult{Status: "failed", Error: err.Error()}
+		default:
+			return result
+		}
+	}
 	if job.WorkspaceSnapshotDigest != "" {
-		if err := downloadMachineSnapshot(ctx, base, job, workspace); err != nil {
-			return machineJobResult{Status: "failed", Error: "restore workspace snapshot: " + err.Error()}
+		if job.WorkspaceID == "" {
+			return machineJobResult{Status: "failed", Error: "workspace snapshot requires a workspace ID"}
+		}
+		if err := downloadBoundNodeSnapshot(executionCtx, base, machineID, nodeToken, job, workspace); err != nil {
+			return finish(machineJobResult{Status: "failed", Error: "restore workspace snapshot: " + err.Error()})
 		}
 	}
 	done := make(chan machineJobResult, 1)
-	go func() { done <- executeMachineJob(ctx, job) }()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	go func() {
+		done <- executeMachineJobWithApproval(executionCtx, job, &machineApprovalBridge{
+			BaseURL: base, NodeID: machineID, NodeToken: nodeToken,
+		})
+	}()
 	for {
 		select {
 		case result := <-done:
 			if job.WorkspaceID != "" {
-				digest, err := uploadMachineSnapshot(ctx, base, job, workspace)
+				digest, err := uploadBoundNodeSnapshot(executionCtx, base, machineID, nodeToken, job, workspace)
 				if err != nil {
 					result.Status = "failed"
 					result.Error = "store workspace snapshot: " + err.Error()
@@ -271,11 +381,9 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID string
 					result.WorkspaceSnapshotDigest = digest
 				}
 			}
-			return result
-		case <-ticker.C:
-			if err := machineAPI(ctx, base+"/v1/machines/"+url.PathEscape(machineID)+"/heartbeat", http.MethodPost, map[string]any{"status": "busy"}); err != nil {
-				fmt.Fprintln(os.Stderr, "machine heartbeat:", err)
-			}
+			return finish(result)
+		case err := <-revoked:
+			return machineJobResult{Status: "failed", Error: err.Error()}
 		case <-ctx.Done():
 			return machineJobResult{Status: "failed", Error: ctx.Err().Error()}
 		}
@@ -296,27 +404,4 @@ func normalizeControlURL(raw string) (string, error) {
 		return "", errors.New("control URL must be an absolute http or https URL without credentials")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
-}
-
-func machineAPI(ctx context.Context, endpoint, method string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(string(data)))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	setMachineAuth(request)
-	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("Control returned %s: %s", response.Status, strings.TrimSpace(string(body)))
-	}
-	return nil
 }

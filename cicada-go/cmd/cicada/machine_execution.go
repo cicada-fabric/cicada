@@ -14,6 +14,10 @@ import (
 )
 
 func executeMachineJob(parent context.Context, job machineJob) machineJobResult {
+	return executeMachineJobWithApproval(parent, job, nil)
+}
+
+func executeMachineJobWithApproval(parent context.Context, job machineJob, approval *machineApprovalBridge) machineJobResult {
 	workspace, responseFile, err := machineJobPaths(job)
 	if err != nil {
 		return machineJobResult{Status: "failed", Error: err.Error()}
@@ -32,6 +36,9 @@ func executeMachineJob(parent context.Context, job machineJob) machineJobResult 
 	case "shell":
 		return finish(executeMachineShell(ctx, job, workspace, responseFile))
 	case "codex", "":
+		if approval != nil {
+			return finish(executeMachineCodexWithApproval(ctx, job, workspace, responseFile, *approval))
+		}
 		return finish(executeMachineCodex(ctx, job, workspace, responseFile))
 	case "claude-code", "opencode", "happy-agent":
 		return finish(executeMachineOptionalHarness(ctx, job, workspace, responseFile))
@@ -73,10 +80,24 @@ func executeMachineOptionalHarness(ctx context.Context, job machineJob, workspac
 }
 
 func machineJobPaths(job machineJob) (string, string, error) {
-	if strings.TrimSpace(job.Workspace) == "" {
+	root := envOr("CICADA_WORKSPACE_ROOT", "/workspace")
+	path := job.Workspace
+	if job.WorkspaceID != "" {
+		// Hub and Node do not share a filesystem. The authenticated Workspace ID
+		// names the Node-local copy; the Hub's absolute path is never executed.
+		if job.WorkspaceID == "." || job.WorkspaceID == ".." ||
+			filepath.Base(job.WorkspaceID) != job.WorkspaceID ||
+			strings.ContainsAny(job.WorkspaceID, `/\\`) {
+			return "", "", errors.New("invalid remote workspace ID")
+		}
+		path = filepath.Join(root, "workspaces", job.WorkspaceID)
+	} else if strings.TrimSpace(path) == "" {
 		return "", "", errors.New("remote job workspace is required")
 	}
-	workspace, err := workspaceprep.ResolveWithin(envOr("CICADA_WORKSPACE_ROOT", "/workspace"), job.Workspace)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", "", err
+	}
+	workspace, err := workspaceprep.ResolveWithin(root, path)
 	if err != nil {
 		return "", "", err
 	}
@@ -121,7 +142,7 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 	} else {
 		args = append(args, "--skip-git-repo-check")
 	}
-	args = append(args, "--model", "gpt-5.5", "--json", "--output-last-message", responseFile, "-")
+	args = append(args, "--model", envOr("CICADA_CODEX_MODEL", "gpt-5.6-luna"), "--json", "--output-last-message", responseFile, "-")
 	command := exec.CommandContext(ctx, envOr("CICADA_CODEX_BIN", "codex"), args...)
 	command.Dir = workspace
 	command.Env = append(machineWorkerEnvironment(os.Environ(), true), "CODEX_HOME="+envOr("CODEX_HOME", "/state"))
@@ -130,11 +151,17 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 	command.Stdout, command.Stderr = output, output
 	waitErr := command.Run()
 	threadID := job.ThreadID
+	observedThread := false
 	for _, line := range strings.Split(output.String(), "\n") {
 		var event map[string]any
 		if json.Unmarshal([]byte(strings.TrimSpace(line)), &event) == nil && event["type"] == "thread.started" {
 			threadID, _ = event["thread_id"].(string)
+			observedThread = true
 		}
+	}
+	if job.ThreadID != "" && (!observedThread || threadID != job.ThreadID) {
+		return machineJobResult{Status: "failed", ThreadID: job.ThreadID,
+			Error: "Codex resumed a different native thread"}
 	}
 	summary := readMachineSummary(responseFile)
 	if summary == "" {

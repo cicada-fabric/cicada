@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -389,6 +390,25 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?)`,
 		}
 		return nil, err
 	}
+	// The explicit Client confirmation establishes the Node's machine owner.
+	// Never adopt an old machine row whose ownership is unknown, and never
+	// transfer a Node ID across owners implicitly.
+	var machineOwnerID string
+	err = tx.QueryRow(`SELECT owner_id FROM machines WHERE id=?`, request.NodeID).Scan(&machineOwnerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		capabilities, _ := json.Marshal(map[string]any{})
+		_, err = tx.Exec(`INSERT INTO machines
+(id, name, status, capabilities_json, last_seen, created_at, owner_id)
+VALUES (?, ?, 'offline', ?, '', ?, ?)`, request.NodeID, request.NodeName,
+			string(capabilities), stamp, ownerID)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	} else if machineOwnerID != ownerID {
+		return nil, ErrNodeMachineOwnershipConflict
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -496,8 +516,8 @@ func (s *Store) RecordBoundNodeHeartbeat(credentialDigest string) error {
 		return err
 	}
 	defer tx.Rollback()
-	var nodeID, nodeName string
-	err = tx.QueryRow(`SELECT binding.node_id, binding.node_name
+	var nodeID, nodeName, ownerID, machineOwnerID string
+	err = tx.QueryRow(`SELECT binding.node_id, binding.node_name, binding.owner_id, machine.owner_id
 FROM fabric_node_credentials credential
 JOIN node_owner_bindings_v2 binding ON binding.node_id=credential.node_id
   AND binding.node_credential_digest=credential.credential_hash
@@ -507,18 +527,21 @@ JOIN principals principal ON principal.id=binding.owner_id
   AND principal.kind='human' AND principal.status='active'
 JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=binding.owner_id
   AND owner_key.key_id=binding.owner_key_id AND owner_key.state='ACTIVE'
-WHERE credential.credential_hash=? AND credential.status='active'`, credentialDigest).Scan(&nodeID, &nodeName)
+JOIN machines machine ON machine.id=binding.node_id
+WHERE credential.credential_hash=? AND credential.status='active'`, credentialDigest).
+		Scan(&nodeID, &nodeName, &ownerID, &machineOwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNodeCredentialNotFound
 	}
 	if err != nil {
 		return err
 	}
+	if machineOwnerID != ownerID {
+		return ErrNodeMachineOwnershipConflict
+	}
 	stamp := now()
-	_, err = tx.Exec(`INSERT INTO machines (id, name, status, capabilities_json, last_seen, created_at)
-VALUES (?, ?, 'available', '{}', ?, ?)
-ON CONFLICT(id) DO UPDATE SET name=excluded.name, status='available', last_seen=excluded.last_seen`,
-		nodeID, nodeName, stamp, stamp)
+	_, err = tx.Exec(`UPDATE machines SET name=?, last_seen=?
+WHERE id=? AND owner_id=?`, nodeName, stamp, nodeID, ownerID)
 	if err != nil {
 		return err
 	}
@@ -580,7 +603,11 @@ updated_at=? WHERE node_id=? AND status='active'`, stamp, binding.NodeID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(`UPDATE machines SET status='offline' WHERE id=?`, binding.NodeID); err != nil {
+	if _, err := tx.Exec(`UPDATE machines SET status='offline' WHERE id=? AND owner_id=?`, binding.NodeID, ownerID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', resolved_at=?
+WHERE source_node_id=? AND status='pending'`, stamp, binding.NodeID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

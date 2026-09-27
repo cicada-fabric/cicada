@@ -3,11 +3,49 @@ package nodeinbox
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
+
+func TestOpenRequiresPrivateDirectoryAndProtectsPlaintextDatabase(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "node")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "inbox.sqlite3")
+	if err := os.Chmod(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); err == nil {
+		t.Fatal("plaintext inbox opened in a directory readable by other users")
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inbox.Close()
+	if _, _, err := inbox.Save(context.Background(), testMessage("msg-private", "digest-private")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("database mode = %v; want 0600", info.Mode().Perm())
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if sidecar, err := os.Stat(path + suffix); err == nil && sidecar.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("SQLite %s sidecar is readable by other users", suffix)
+		}
+	}
+}
 
 func TestSaveIsIdempotentAndRejectsDigestConflict(t *testing.T) {
 	inbox := openTestInbox(t)
@@ -47,6 +85,64 @@ func TestSaveIsIdempotentAndRejectsDigestConflict(t *testing.T) {
 	}
 	if stored.Digest != "digest-a" || stored.State != NODE_RECEIVED {
 		t.Fatalf("conflict changed stored delivery: digest=%s state=%s", stored.Digest, stored.State)
+	}
+}
+
+func TestAbandonClaimBeforeInjectionAllowsRetryButNotAfterInjection(t *testing.T) {
+	inbox := openTestInbox(t)
+	ctx := context.Background()
+	message := testMessage("msg-local-guard-outage", "digest-local-guard-outage")
+	if _, _, err := inbox.Save(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	first, err := inbox.Claim(ctx, "local-consumer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.AbandonClaim(ctx, first.AttemptID); err != nil {
+		t.Fatalf("release before injection: %v", err)
+	}
+	if err := inbox.AbandonClaim(ctx, first.AttemptID); !errors.Is(err, ErrStaleReceipt) {
+		t.Fatalf("reusing abandoned attempt: %v", err)
+	}
+	second, err := inbox.Claim(ctx, "local-consumer")
+	if err != nil || second.MessageID != first.MessageID || second.AttemptID == first.AttemptID {
+		t.Fatalf("retry after Guard recovery: claim=%+v err=%v", second, err)
+	}
+	if _, err := inbox.BeginInjection(ctx, second.AttemptID); err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.AbandonClaim(ctx, second.AttemptID); !errors.Is(err, ErrStaleReceipt) {
+		t.Fatalf("injecting attempt must not be released: %v", err)
+	}
+	if _, err := inbox.Claim(ctx, "another-consumer"); !errors.Is(err, ErrNoDelivery) {
+		t.Fatalf("injecting message was re-claimed: %v", err)
+	}
+}
+
+func TestRejectBeforeInjectionFencesRevokedLocalDelivery(t *testing.T) {
+	inbox := openTestInbox(t)
+	ctx := context.Background()
+	message := testMessage("msg-local-revoked", "digest-local-revoked")
+	if _, _, err := inbox.Save(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := inbox.Claim(ctx, "local-consumer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := *claim
+	forged.BindingEpoch++
+	if err := inbox.RejectBeforeInjection(ctx, forged, "authorization revoked"); !errors.Is(err, ErrInvalidReceipt) {
+		t.Fatalf("forged route could reject delivery: %v", err)
+	}
+	assertState(t, inbox, message.MessageID, NODE_RECEIVED)
+	if err := inbox.RejectBeforeInjection(ctx, *claim, "authorization revoked"); err != nil {
+		t.Fatal(err)
+	}
+	assertState(t, inbox, message.MessageID, FAILED)
+	if _, err := inbox.Claim(ctx, "other-consumer"); !errors.Is(err, ErrNoDelivery) {
+		t.Fatalf("revoked delivery was re-claimed: %v", err)
 	}
 }
 
@@ -175,7 +271,7 @@ func TestClaimIsSingleConsumer(t *testing.T) {
 }
 
 func TestClaimIsSingleConsumerAcrossInboxHandles(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "node.sqlite3")
+	path := privateTestInboxPath(t)
 	producer, err := Open(path)
 	if err != nil {
 		t.Fatalf("open producer inbox: %v", err)
@@ -228,7 +324,7 @@ func TestClaimIsSingleConsumerAcrossInboxHandles(t *testing.T) {
 }
 
 func TestRecoveryMarksInjectionUncertainAndDoesNotRetry(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "node.sqlite3")
+	path := privateTestInboxPath(t)
 	first, err := Open(path)
 	if err != nil {
 		t.Fatalf("open first inbox: %v", err)
@@ -281,7 +377,7 @@ func TestRecoveryMarksInjectionUncertainAndDoesNotRetry(t *testing.T) {
 }
 
 func TestRecoveryReleasesClaimBeforeInjection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "node.sqlite3")
+	path := privateTestInboxPath(t)
 	first, err := Open(path)
 	if err != nil {
 		t.Fatalf("open first inbox: %v", err)
@@ -318,13 +414,22 @@ func TestRecoveryReleasesClaimBeforeInjection(t *testing.T) {
 
 func openTestInbox(t *testing.T) *Inbox {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "node.sqlite3")
+	path := privateTestInboxPath(t)
 	inbox, err := Open(path)
 	if err != nil {
 		t.Fatalf("open inbox: %v", err)
 	}
 	t.Cleanup(func() { _ = inbox.Close() })
 	return inbox
+}
+
+func privateTestInboxPath(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(directory, "node.sqlite3")
 }
 
 func testMessage(messageID, digest string) Message {

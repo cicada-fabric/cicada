@@ -7,7 +7,7 @@ const byId = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]));
-const statusClass = status => ['running', 'queued', 'recovering', 'failed', 'blocked', 'completed', 'online', 'idle', 'busy', 'offline', 'left'].includes(status) ? status : '';
+const statusClass = status => ['running', 'queued', 'recovering', 'failed', 'blocked', 'completed', 'online', 'idle', 'busy', 'offline', 'left', 'outcome_uncertain'].includes(status) ? status : '';
 const readableTime = value => value ? new Date(value).toLocaleString() : '';
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 

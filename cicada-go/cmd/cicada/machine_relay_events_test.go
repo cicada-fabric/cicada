@@ -52,3 +52,41 @@ func TestMachineRelayEventStreamReportsRevokedNodeAuthorization(t *testing.T) {
 		t.Fatal("event stream did not stop on revoked Node authorization")
 	}
 }
+
+func TestMachineRelayEventStreamBacksOffRepeatedShortConnections(t *testing.T) {
+	t.Setenv("CICADA_NODE_TOKEN", "node-test-token")
+	arrivals := make(chan time.Time, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		select {
+		case arrivals <- time.Now():
+		default:
+		}
+		response.Header().Set("Content-Type", "text/event-stream")
+		_, _ = response.Write([]byte("event: ready\ndata: claim\n\n"))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runMachineRelayEventStream(ctx, server.URL, "node-b", make(chan struct{}, 1), make(chan error, 1))
+	}()
+	var received [3]time.Time
+	for index := range received {
+		select {
+		case received[index] = <-arrivals:
+		case <-ctx.Done():
+			t.Fatal("Relay event stream did not reconnect three times")
+		}
+	}
+	if first, second := received[1].Sub(received[0]), received[2].Sub(received[1]); first < 450*time.Millisecond || second < 900*time.Millisecond {
+		t.Fatalf("short-lived Relay streams retried too rapidly: first=%s second=%s", first, second)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Relay event stream did not stop after cancellation")
+	}
+}

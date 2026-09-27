@@ -20,6 +20,7 @@ import (
 
 type Machine struct {
 	ID           string         `json:"id"`
+	OwnerID      string         `json:"-"`
 	Name         string         `json:"name"`
 	Status       string         `json:"status"`
 	Capabilities map[string]any `json:"capabilities"`
@@ -28,30 +29,32 @@ type Machine struct {
 }
 
 type Goal struct {
-	ID              string         `json:"id"`
-	ParentGoalID    string         `json:"parent_goal_id,omitempty"`
-	Objective       string         `json:"objective"`
-	SuccessCriteria string         `json:"success_criteria"`
-	Constraints     string         `json:"constraints"`
-	Priority        int            `json:"priority"`
-	Deadline        string         `json:"deadline,omitempty"`
-	Budget          map[string]any `json:"budget,omitempty"`
-	Resources       map[string]any `json:"resources,omitempty"`
-	CurrentState    string         `json:"current_state,omitempty"`
-	Evidence        []any          `json:"evidence,omitempty"`
-	Outcome         string         `json:"outcome,omitempty"`
-	Status          string         `json:"status"`
-	MachineID       string         `json:"machine_id"`
-	MonitorID       string         `json:"monitor_id"`
-	Workspace       string         `json:"workspace"`
-	Summary         string         `json:"summary"`
-	CreatedAt       string         `json:"created_at"`
-	UpdatedAt       string         `json:"updated_at"`
-	Worker          *Worker        `json:"worker,omitempty"`
-	Workers         []Worker       `json:"workers,omitempty"`
-	Children        []Goal         `json:"children,omitempty"`
-	Monitor         *Monitor       `json:"monitor,omitempty"`
-	Events          []Event        `json:"events,omitempty"`
+	ID               string         `json:"id"`
+	OwnerID          string         `json:"-"`
+	LifecycleVersion int64          `json:"lifecycle_version"`
+	ParentGoalID     string         `json:"parent_goal_id,omitempty"`
+	Objective        string         `json:"objective"`
+	SuccessCriteria  string         `json:"success_criteria"`
+	Constraints      string         `json:"constraints"`
+	Priority         int            `json:"priority"`
+	Deadline         string         `json:"deadline,omitempty"`
+	Budget           map[string]any `json:"budget,omitempty"`
+	Resources        map[string]any `json:"resources,omitempty"`
+	CurrentState     string         `json:"current_state,omitempty"`
+	Evidence         []any          `json:"evidence,omitempty"`
+	Outcome          string         `json:"outcome,omitempty"`
+	Status           string         `json:"status"`
+	MachineID        string         `json:"machine_id"`
+	MonitorID        string         `json:"monitor_id"`
+	Workspace        string         `json:"workspace"`
+	Summary          string         `json:"summary"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	Worker           *Worker        `json:"worker,omitempty"`
+	Workers          []Worker       `json:"workers,omitempty"`
+	Children         []Goal         `json:"children,omitempty"`
+	Monitor          *Monitor       `json:"monitor,omitempty"`
+	Events           []Event        `json:"events,omitempty"`
 }
 
 // Idea is an uncommitted intention. It can be researched and parked without
@@ -325,15 +328,19 @@ type Command struct {
 }
 
 type Approval struct {
-	ID         string          `json:"id"`
-	GoalID     string          `json:"goal_id"`
-	WorkerID   string          `json:"worker_id"`
-	Method     string          `json:"method"`
-	Request    json.RawMessage `json:"request"`
-	Status     string          `json:"status"`
-	Decision   string          `json:"decision,omitempty"`
-	CreatedAt  string          `json:"created_at"`
-	ResolvedAt string          `json:"resolved_at,omitempty"`
+	ID          string          `json:"id"`
+	GoalID      string          `json:"goal_id"`
+	WorkerID    string          `json:"worker_id"`
+	Attempt     int             `json:"attempt,omitempty"`
+	NodeID      string          `json:"-"`
+	RequestID   string          `json:"-"`
+	RequestHash string          `json:"-"`
+	Method      string          `json:"method"`
+	Request     json.RawMessage `json:"request"`
+	Status      string          `json:"status"`
+	Decision    string          `json:"decision,omitempty"`
+	CreatedAt   string          `json:"created_at"`
+	ResolvedAt  string          `json:"resolved_at,omitempty"`
 }
 
 // ExternalEvent is a durable inbound event from an information connector.
@@ -957,18 +964,26 @@ INSERT INTO machines (id, name, status, capabilities_json, last_seen, created_at
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET name=excluded.name, status=excluded.status,
   capabilities_json=excluded.capabilities_json, last_seen=excluded.last_seen
+WHERE machines.owner_id=''
 `, id, name, status, string(capabilitiesJSON), timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("upsert machine: %w", err)
 	}
-	return s.getMachineLocked(id)
+	updated, err := s.getMachineLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if updated != nil && updated.OwnerID != "" {
+		return nil, ErrOwnerBoundMachineManagedByNode
+	}
+	return updated, nil
 }
 
 func (s *Store) getMachineLocked(id string) (*Machine, error) {
 	var machine Machine
 	var capabilitiesJSON string
-	err := s.db.QueryRow(`SELECT id, name, status, capabilities_json, last_seen, created_at FROM machines WHERE id = ?`, id).
-		Scan(&machine.ID, &machine.Name, &machine.Status, &capabilitiesJSON, &machine.LastSeen, &machine.CreatedAt)
+	err := s.db.QueryRow(`SELECT id, owner_id, name, status, capabilities_json, last_seen, created_at FROM machines WHERE id = ?`, id).
+		Scan(&machine.ID, &machine.OwnerID, &machine.Name, &machine.Status, &capabilitiesJSON, &machine.LastSeen, &machine.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -990,7 +1005,7 @@ func (s *Store) GetMachine(id string) (*Machine, error) {
 func (s *Store) ListMachines() ([]Machine, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id, name, status, capabilities_json, last_seen, created_at FROM machines ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, owner_id, name, status, capabilities_json, last_seen, created_at FROM machines ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +1014,7 @@ func (s *Store) ListMachines() ([]Machine, error) {
 	for rows.Next() {
 		var machine Machine
 		var capabilitiesJSON string
-		if err := rows.Scan(&machine.ID, &machine.Name, &machine.Status, &capabilitiesJSON, &machine.LastSeen, &machine.CreatedAt); err != nil {
+		if err := rows.Scan(&machine.ID, &machine.OwnerID, &machine.Name, &machine.Status, &capabilitiesJSON, &machine.LastSeen, &machine.CreatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(capabilitiesJSON), &machine.Capabilities); err != nil {
@@ -1074,8 +1089,8 @@ func (s *Store) CreateGoalWithParent(id, parentGoalID, objective, successCriteri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err = s.db.Exec(`INSERT INTO goals
-(id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json, resources_json, status, machine_id, monitor_id, workspace, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, nullableString(parentGoalID), objective, successCriteria, constraints, priority, nullableString(deadline), string(budgetJSON), string(resourcesJSON), machineID, monitorID, workspace, timestamp, timestamp)
+(id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json, resources_json, status, machine_id, monitor_id, workspace, created_at, updated_at, owner_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, '')`, id, nullableString(parentGoalID), objective, successCriteria, constraints, priority, nullableString(deadline), string(budgetJSON), string(resourcesJSON), machineID, monitorID, workspace, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create goal: %w", err)
 	}
@@ -1085,12 +1100,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, nullableString
 func (s *Store) getGoalLocked(id string) (*Goal, error) {
 	var goal Goal
 	var parentGoalID, machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
-	err := s.db.QueryRow(`SELECT id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
+	err := s.db.QueryRow(`SELECT id, owner_id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
 resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
-created_at, updated_at FROM goals WHERE id = ?`, id).
-		Scan(&goal.ID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline, &budgetJSON,
+created_at, updated_at, lifecycle_version FROM goals WHERE id = ?`, id).
+		Scan(&goal.ID, &goal.OwnerID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline, &budgetJSON,
 			&resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID, &goal.MonitorID,
-			&goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt)
+			&goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt, &goal.LifecycleVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1130,9 +1145,9 @@ func (s *Store) GetGoal(id string) (*Goal, error) {
 func (s *Store) ListGoals() ([]Goal, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
+	rows, err := s.db.Query(`SELECT id, owner_id, parent_goal_id, objective, success_criteria, constraints, priority, deadline, budget_json,
 resources_json, current_state, evidence_json, outcome, status, machine_id, monitor_id, workspace, summary,
-created_at, updated_at FROM goals ORDER BY created_at DESC`)
+created_at, updated_at, lifecycle_version FROM goals ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -1141,9 +1156,9 @@ created_at, updated_at FROM goals ORDER BY created_at DESC`)
 	for rows.Next() {
 		var goal Goal
 		var parentGoalID, machineID, summary, deadline, budgetJSON, resourcesJSON, currentState, evidenceJSON, outcome sql.NullString
-		if err := rows.Scan(&goal.ID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline,
+		if err := rows.Scan(&goal.ID, &goal.OwnerID, &parentGoalID, &goal.Objective, &goal.SuccessCriteria, &goal.Constraints, &goal.Priority, &deadline,
 			&budgetJSON, &resourcesJSON, &currentState, &evidenceJSON, &outcome, &goal.Status, &machineID,
-			&goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+			&goal.MonitorID, &goal.Workspace, &summary, &goal.CreatedAt, &goal.UpdatedAt, &goal.LifecycleVersion); err != nil {
 			return nil, err
 		}
 		goal.MachineID = machineID.String
@@ -1207,7 +1222,7 @@ func (s *Store) ListChildGoals(parentGoalID string) ([]Goal, error) {
 func (s *Store) UpdateGoal(id, status, summary string) (*Goal, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`UPDATE goals SET status = ?, summary = ?, updated_at = ? WHERE id = ?`, status, summary, now(), id)
+	_, err := s.db.Exec(`UPDATE goals SET status = ?, summary = ?, updated_at = ?, lifecycle_version = lifecycle_version + 1 WHERE id = ?`, status, summary, now(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -1221,7 +1236,7 @@ func (s *Store) UpdateGoalDetails(id, status, summary, currentState, outcome str
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err = s.db.Exec(`UPDATE goals SET status = ?, summary = ?, current_state = ?, outcome = ?, evidence_json = ?, updated_at = ? WHERE id = ?`,
+	_, err = s.db.Exec(`UPDATE goals SET status = ?, summary = ?, current_state = ?, outcome = ?, evidence_json = ?, updated_at = ?, lifecycle_version = lifecycle_version + 1 WHERE id = ?`,
 		status, summary, currentState, outcome, string(evidenceJSON), now(), id)
 	if err != nil {
 		return nil, err
@@ -1998,19 +2013,7 @@ func (s *Store) CreateWorkerAt(id, goalID, machineID, responseFile, workspace st
 }
 
 func (s *Store) CreateWorkerAtHarness(id, goalID, machineID, harness, responseFile, workspace string) (*Worker, error) {
-	if strings.TrimSpace(harness) == "" {
-		harness = "codex"
-	}
-	timestamp := now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO workers
-	(id, goal_id, machine_id, harness, status, response_file, workspace, created_at, updated_at)
-	VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`, id, goalID, machineID, harness, responseFile, workspace, timestamp, timestamp)
-	if err != nil {
-		return nil, fmt.Errorf("create worker: %w", err)
-	}
-	return s.getWorkerLocked(id)
+	return s.createOwnedWorkerAtHarness(id, goalID, machineID, harness, responseFile, workspace)
 }
 
 func (s *Store) getWorkerLocked(id string) (*Worker, error) {
@@ -2440,19 +2443,9 @@ func (s *Store) CreateApproval(id, goalID, workerID, method string, request any)
 }
 
 func (s *Store) getApprovalLocked(id string) (*Approval, error) {
-	var approval Approval
-	var request, decision, resolvedAt sql.NullString
-	err := s.db.QueryRow(`SELECT id, goal_id, worker_id, method, request_json, status, decision, created_at, resolved_at FROM approvals WHERE id = ?`, id).
-		Scan(&approval.ID, &approval.GoalID, &approval.WorkerID, &approval.Method, &request, &approval.Status, &decision, &approval.CreatedAt, &resolvedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	approval.Request = json.RawMessage(request.String)
-	approval.Decision, approval.ResolvedAt = decision.String, resolvedAt.String
-	return &approval, nil
+	return scanApprovalRecord(s.db.QueryRow(`SELECT id, goal_id, worker_id, method, request_json,
+status, decision, created_at, resolved_at, source_node_id, worker_attempt, request_id, request_hash
+FROM approvals WHERE id = ?`, id))
 }
 
 func (s *Store) GetApproval(id string) (*Approval, error) {
@@ -2464,6 +2457,10 @@ func (s *Store) GetApproval(id string) (*Approval, error) {
 func (s *Store) ListApprovals(pendingOnly bool) ([]Approval, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, err := s.db.Exec(`UPDATE approvals SET status='cancelled', resolved_at=?
+WHERE status='pending' AND source_node_id<>'' AND NOT `+remoteApprovalRunnableExists, now()); err != nil {
+		return nil, err
+	}
 	query := `SELECT id FROM approvals ORDER BY created_at DESC`
 	if pendingOnly {
 		query = `SELECT id FROM approvals WHERE status = 'pending' ORDER BY created_at`
@@ -2503,7 +2500,9 @@ func (s *Store) ListApprovals(pendingOnly bool) ([]Approval, error) {
 func (s *Store) ResolveApproval(id, decision string) (*Approval, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result, err := s.db.Exec(`UPDATE approvals SET status = 'resolved', decision = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`, decision, now(), id)
+	result, err := s.db.Exec(`UPDATE approvals SET status = 'resolved', decision = ?, resolved_at = ?
+WHERE id = ? AND status = 'pending'
+AND (source_node_id = '' OR `+remoteApprovalRunnableExists+`)`, decision, now(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -2512,7 +2511,20 @@ func (s *Store) ResolveApproval(id, decision string) (*Approval, error) {
 		return nil, err
 	}
 	if changed == 0 {
-		return s.getApprovalLocked(id)
+		approval, err := s.getApprovalLocked(id)
+		if err != nil || approval == nil || approval.Status != "pending" || approval.NodeID == "" {
+			return approval, err
+		}
+		if err := s.validateRemoteApprovalForDecisionLocked(approval, true); err != nil {
+			if errors.Is(err, ErrNodeApprovalStale) {
+				if _, cancelErr := s.db.Exec(`UPDATE approvals SET status='cancelled', resolved_at=?
+WHERE id=? AND status='pending' AND source_node_id<>''`, now(), id); cancelErr != nil {
+					return nil, cancelErr
+				}
+			}
+			return nil, err
+		}
+		return approval, nil
 	}
 	return s.getApprovalLocked(id)
 }

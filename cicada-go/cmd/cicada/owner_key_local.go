@@ -100,6 +100,12 @@ func ownerKeyLocalCommand(args []string, output io.Writer) error {
 	defer persistence.Close()
 	var key *store.OwnerApprovalKey
 	if subcommand == "register" {
+		// The operator has independently checked the key ID. Register the
+		// self-owned human Principal needed for an encrypted guest Client
+		// session, without creating a Group or granting manager privileges.
+		if err := persistence.EnsureLocalOwnerPrincipal(*ownerID); err != nil {
+			return err
+		}
 		key, err = persistence.RegisterOwnerApprovalKeyLocal(*ownerID, public)
 	} else {
 		key, err = persistence.RevokeOwnerApprovalKeyLocal(*ownerID, *keyID, *expectedVersion)

@@ -116,6 +116,15 @@ func TestDirectoryIsGroupScopedAndNeverGuesses(t *testing.T) {
 	if len(cards) != 3 {
 		t.Fatalf("group A directory size=%d cards=%#v", len(cards), cards)
 	}
+	for _, card := range cards {
+		if card.NativeSessionID != "" {
+			t.Fatalf("directory disclosed a native session ID: %#v", card)
+		}
+	}
+	self, err := service.WhoAmI(actor)
+	if err != nil || self.NativeSessionID != "native-a" {
+		t.Fatalf("authenticated whoami did not return exact native binding: card=%#v err=%v", self, err)
+	}
 	if _, err := service.Resolve(actor, ResolveInput{Query: c.Endpoint.ID}); !errors.Is(err, ErrNotFoundOrNotAuthorized) {
 		t.Fatalf("cross-group stable ID leaked: %v", err)
 	}
@@ -125,6 +134,9 @@ func TestDirectoryIsGroupScopedAndNeverGuesses(t *testing.T) {
 	resolved, err := service.Resolve(actor, ResolveInput{Query: b1.Endpoint.ID})
 	if err != nil || resolved.EndpointID != b1.Endpoint.ID {
 		t.Fatalf("stable resolve=%#v err=%v", resolved, err)
+	}
+	if resolved.NativeSessionID != "" {
+		t.Fatalf("resolve disclosed another native session ID: %#v", resolved)
 	}
 	_ = b2
 }

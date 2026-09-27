@@ -65,7 +65,7 @@ func (c *Control) ConfirmNodeDeviceCode(ownerID, clientDeviceID, userCode string
 	if c == nil || c.store == nil {
 		return nil, errors.New("Node device binding registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	code, err := normalizeNodeDeviceCode(userCode)
@@ -87,7 +87,7 @@ func (c *Control) PreviewNodeDeviceCode(ownerID, clientDeviceID, userCode string
 	if c == nil || c.store == nil {
 		return nil, errors.New("Node device binding registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	code, err := normalizeNodeDeviceCode(userCode)
@@ -103,14 +103,14 @@ func (c *Control) PreviewNodeDeviceCode(ownerID, clientDeviceID, userCode string
 }
 
 func (c *Control) NodeDeviceBindings(ownerID string) ([]store.NodeDeviceBinding, error) {
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.ListNodeDeviceBindings(ownerID)
 }
 
 func (c *Control) RevokeNodeDeviceBinding(ownerID, bindingID string, expectedVersion int64) (*store.NodeDeviceBinding, error) {
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.RevokeNodeDeviceBinding(ownerID, bindingID, expectedVersion)

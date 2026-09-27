@@ -41,6 +41,14 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		20: v2MigrationApplied,
 		21: v2MigrationApplied,
 		22: v2MigrationApplied,
+		23: v2MigrationApplied,
+		24: v2MigrationApplied,
+		25: v2MigrationApplied,
+		26: v2MigrationApplied,
+		27: v2MigrationApplied,
+		28: v2MigrationApplied,
+		29: v2MigrationApplied,
+		30: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -86,6 +94,14 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		20: v2MigrationApplied,
 		21: v2MigrationApplied,
 		22: v2MigrationApplied,
+		23: v2MigrationApplied,
+		24: v2MigrationApplied,
+		25: v2MigrationApplied,
+		26: v2MigrationApplied,
+		27: v2MigrationApplied,
+		28: v2MigrationApplied,
+		29: v2MigrationApplied,
+		30: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := reopened.readV2Migration(migration.Version)
@@ -190,6 +206,14 @@ func TestV2MigrationFailureRollsBackSchemaAndResumes(t *testing.T) {
 		20: v2MigrationApplied,
 		21: v2MigrationApplied,
 		22: v2MigrationApplied,
+		23: v2MigrationApplied,
+		24: v2MigrationApplied,
+		25: v2MigrationApplied,
+		26: v2MigrationApplied,
+		27: v2MigrationApplied,
+		28: v2MigrationApplied,
+		29: v2MigrationApplied,
+		30: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(3)
 	if err != nil {
@@ -256,6 +280,14 @@ func TestEndpointKeyCandidateMigrationRollsBackAndReopensWithLegacyState(t *test
 		20: v2MigrationApplied,
 		21: v2MigrationApplied,
 		22: v2MigrationApplied,
+		23: v2MigrationApplied,
+		24: v2MigrationApplied,
+		25: v2MigrationApplied,
+		26: v2MigrationApplied,
+		27: v2MigrationApplied,
+		28: v2MigrationApplied,
+		29: v2MigrationApplied,
+		30: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(14)
 	if err != nil {
@@ -322,6 +354,14 @@ func TestV2MigrationsConcurrentOpenSerializesLedger(t *testing.T) {
 		20: v2MigrationApplied,
 		21: v2MigrationApplied,
 		22: v2MigrationApplied,
+		23: v2MigrationApplied,
+		24: v2MigrationApplied,
+		25: v2MigrationApplied,
+		26: v2MigrationApplied,
+		27: v2MigrationApplied,
+		28: v2MigrationApplied,
+		29: v2MigrationApplied,
+		30: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -601,6 +641,20 @@ func assertLegacyStatePreserved(t *testing.T, store *Store) {
 	}
 	if objective != "preserve this goal" || goalStatus != "active" || goalWorkspace != "/tmp/legacy-workspace" {
 		t.Fatalf("legacy Goal changed: objective=%q status=%q workspace=%q", objective, goalStatus, goalWorkspace)
+	}
+	var goalOwner, machineOwner string
+	if err := store.db.QueryRow(`SELECT owner_id FROM goals WHERE id='goal_legacy'`).Scan(&goalOwner); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.QueryRow(`SELECT owner_id FROM machines WHERE id='machine_legacy'`).Scan(&machineOwner); err != nil {
+		t.Fatal(err)
+	}
+	if goalOwner != "" || machineOwner != "" {
+		t.Fatalf("migration inferred ownership for legacy rows: goal=%q machine=%q", goalOwner, machineOwner)
+	}
+	var lifecycleVersion int64
+	if err := store.db.QueryRow(`SELECT lifecycle_version FROM goals WHERE id='goal_legacy'`).Scan(&lifecycleVersion); err != nil || lifecycleVersion != 1 {
+		t.Fatalf("legacy Goal lifecycle version was not initialized without changing status: version=%d err=%v", lifecycleVersion, err)
 	}
 	var approvalRequest, approvalStatus, approvalDecision string
 	if err := store.db.QueryRow(`SELECT request_json, status, decision FROM approvals WHERE id = 'approval_legacy'`).Scan(&approvalRequest, &approvalStatus, &approvalDecision); err != nil {

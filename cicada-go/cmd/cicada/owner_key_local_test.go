@@ -61,6 +61,18 @@ func TestOwnerKeyLocalBootstrapRequiresExactOutOfBandKeyID(t *testing.T) {
 		result.State != store.OwnerApprovalKeyActive || result.Version != 1 {
 		t.Fatalf("unexpected registered key metadata: %#v", result)
 	}
+	registered, err := store.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := registered.GetPrincipal("owner_a")
+	if err != nil || principal == nil || principal.Kind != store.PrincipalKindHuman || principal.OwnerID != "owner_a" ||
+		principal.Status != store.PrincipalStatusActive {
+		t.Fatalf("trusted guest owner Principal was not registered: %#v err=%v", principal, err)
+	}
+	if err := registered.Close(); err != nil {
+		t.Fatal(err)
+	}
 	output.Reset()
 	if err := ownerKeyLocalCommand([]string{"revoke", "--db", dbPath,
 		"--owner-id", "owner_a", "--key-id", result.KeyID,

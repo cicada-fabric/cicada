@@ -8,6 +8,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 func TestClientControlIdentityIsSeparateAndDurable(t *testing.T) {
@@ -62,5 +63,33 @@ func TestClientControlIdentityIsSeparateAndDurable(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("Client Control private key mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestClientApprovalReadsExcludeUnownedLegacyGoals(t *testing.T) {
+	c := newTestControl(t, "success")
+	ownerID := c.Identity().ID
+	if _, err := c.store.CreateGoal("legacy-goal", "Legacy request", "Done", "", 1,
+		"control-local", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateOwnedGoal(ownerID, store.Goal{ID: "client-goal", Objective: "Client request",
+		SuccessCriteria: "Done", Priority: 1, MachineID: "control-local"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][3]string{{"legacy-approval", "legacy-goal", "legacy-worker"}, {"client-approval", "client-goal", "client-worker"}} {
+		if _, err := c.store.CreateWorker(pair[2], pair[1], "control-local", filepath.Join(t.TempDir(), "result")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.store.CreateApproval(pair[0], pair[1], pair[2], "review", map[string]string{"action": "inspect"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approvals, err := c.ClientApprovals(ownerID, true)
+	if err != nil || len(approvals) != 1 || approvals[0].ID != "client-approval" {
+		t.Fatalf("Client approval projection leaked ownerless legacy row: approvals=%#v err=%v", approvals, err)
+	}
+	if legacy, err := c.ClientApproval(ownerID, "legacy-approval"); err == nil || legacy != nil {
+		t.Fatalf("Client approval lookup exposed ownerless legacy row: approval=%#v err=%v", legacy, err)
 	}
 }

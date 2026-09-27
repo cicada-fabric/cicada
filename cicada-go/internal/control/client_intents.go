@@ -84,7 +84,7 @@ func (c *Control) runClientIntentAsync(intentID string) {
 		return
 	}
 
-	_, routeErr := c.routeExistingIntent(intentID, input)
+	_, routeErr := c.routeExistingIntentForOwner(intentID, input, claimed.OwnerID)
 	// RouteIntent persists business failures on the normal Intent before
 	// returning the error. A failure to persist a terminal state leaves the
 	// operation uncertain because a Goal, Approval or other effect may already

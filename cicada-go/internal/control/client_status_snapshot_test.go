@@ -238,6 +238,10 @@ func TestClientStatusMappingsKeepOfflineAndUnknownDistinct(t *testing.T) {
 	if offlineNode.State != ClientNodeOffline || !offlineNode.Known || !offlineNode.Stale {
 		t.Fatalf("explicit offline should remain distinct while its timestamp is stale: %#v", offlineNode)
 	}
+	pairedButNeverSeen := clientNodeConnectivity(store.Machine{ID: "node", Status: "offline", LastSeen: ""}, now, time.Minute)
+	if pairedButNeverSeen.State != ClientNodeOffline || !pairedButNeverSeen.Known || !pairedButNeverSeen.Stale || pairedButNeverSeen.ObservedAt != "" {
+		t.Fatalf("confirmed-but-disconnected Node should remain explicitly offline: %#v", pairedButNeverSeen)
+	}
 	unknownNode := clientNodeConnectivity(store.Machine{ID: "node", Status: "connected-ish", LastSeen: now.Format(time.RFC3339Nano)}, now, time.Minute)
 	if unknownNode.State != ClientNodeUnknown || unknownNode.Known {
 		t.Fatalf("unrecognized backend Node status was guessed: %#v", unknownNode)
@@ -250,9 +254,13 @@ func TestClientStatusMappingsKeepOfflineAndUnknownDistinct(t *testing.T) {
 	if unknownWorker.State != ClientWorkerUnknown || unknownWorker.Known {
 		t.Fatalf("unrecognized Worker status was guessed: %#v", unknownWorker)
 	}
-	unknownGoal := clientGoalLifecycle("paused", now.Format(time.RFC3339Nano))
-	if unknownGoal.State != ClientGoalUnknown || unknownGoal.Known {
-		t.Fatalf("unsupported Goal pause state was represented as real: %#v", unknownGoal)
+	uncertainWorker := clientWorkerExecution("outcome_uncertain", now.Format(time.RFC3339Nano))
+	if uncertainWorker.State != ClientWorkerOutcomeUncertain || !uncertainWorker.Known {
+		t.Fatalf("uncertain Worker result was hidden from Client: %#v", uncertainWorker)
+	}
+	pausedGoal := clientGoalLifecycle("paused", now.Format(time.RFC3339Nano))
+	if pausedGoal.State != ClientGoalPaused || !pausedGoal.Known {
+		t.Fatalf("persisted Goal pause state was lost: %#v", pausedGoal)
 	}
 	knownGroupPause := clientGroupLifecycle(store.GroupStatePaused, now.Format(time.RFC3339Nano))
 	if knownGroupPause.State != ClientGroupPaused || !knownGroupPause.Known {

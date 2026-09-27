@@ -1,9 +1,7 @@
 package store
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -224,6 +222,8 @@ func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*Comm
 	if err != nil || !expires.After(time.Now().UTC()) {
 		return nil, errors.New("communication link expiry must be a future RFC3339 timestamp")
 	}
+	input.Actions = actions
+	input.DataScopes = scopes
 	input.ExpiresAt = expires.UTC().Format(time.RFC3339)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -233,7 +233,6 @@ func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*Comm
 	}
 	defer tx.Rollback()
 	currentTime := time.Now().UTC()
-	timestamp := currentTime.Format(time.RFC3339)
 	source, err := readLinkEndpointScope(tx, input.SourceEndpointID, input.SourceGroupID, currentTime)
 	if err != nil {
 		return nil, err
@@ -251,6 +250,28 @@ func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*Comm
 	if target.ownerID != source.ownerID {
 		return nil, ErrCommunicationLinkScope
 	}
+	link, err := insertCommunicationLinkProposalTx(tx, input, source, target, currentTime)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return link, nil
+}
+
+// insertCommunicationLinkProposalTx creates only a durable PROPOSED contract.
+// Callers must establish actor/consent policy before using it. The public
+// ProposeCommunicationLink path deliberately keeps its same-owner guard;
+// external invite acceptance is the only current cross-owner caller.
+func insertCommunicationLinkProposalTx(
+	tx *sql.Tx,
+	input CommunicationLinkProposal,
+	source, target linkEndpointScope,
+	currentTime time.Time,
+) (*CommunicationLink, error) {
+	timestamp := currentTime.UTC().Format(time.RFC3339)
+	actions, scopes := input.Actions, input.DataScopes
 	if source.nodeID != target.nodeID && input.TransportHubID == "" {
 		return nil, errors.New("cross-node link requires one selected transport Hub")
 	}
@@ -270,36 +291,13 @@ func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*Comm
 		SourceGroupVersion: source.groupVersion, TargetMembershipRevision: target.membershipRevision,
 		TargetJoinRevision: target.joinRevision, TargetGroupVersion: target.groupVersion,
 	}
-	contract, err := json.Marshal(struct {
-		LinkID            string                         `json:"link_id"`
-		SourceEndpointID  string                         `json:"source_endpoint_id"`
-		SourcePrincipalID string                         `json:"source_principal_id"`
-		SourceGroupID     string                         `json:"source_group_id"`
-		SourceOwnerID     string                         `json:"source_owner_id"`
-		SourceNodeID      string                         `json:"source_node_id"`
-		TargetEndpointID  string                         `json:"target_endpoint_id"`
-		TargetPrincipalID string                         `json:"target_principal_id"`
-		TargetGroupID     string                         `json:"target_group_id"`
-		TargetOwnerID     string                         `json:"target_owner_id"`
-		TargetNodeID      string                         `json:"target_node_id"`
-		Direction         string                         `json:"direction"`
-		Actions           []string                       `json:"actions"`
-		DataScopes        []string                       `json:"data_scopes"`
-		TransportHubID    string                         `json:"transport_hub_id"`
-		ExpiresAt         string                         `json:"expires_at"`
-		ScopeSnapshot     CommunicationLinkScopeSnapshot `json:"scope_snapshot"`
-	}{link.ID, link.SourceEndpointID, link.SourcePrincipalID, link.SourceGroupID,
-		link.SourceOwnerID, link.SourceNodeID, link.TargetEndpointID,
-		link.TargetPrincipalID, link.TargetGroupID, link.TargetOwnerID, link.TargetNodeID,
-		link.Direction, link.Actions, link.DataScopes, link.TransportHubID, link.ExpiresAt,
-		link.ScopeSnapshot})
+	digest, err := communicationLinkContractDigest(link)
 	if err != nil {
 		return nil, err
 	}
-	digest := sha256.Sum256(append([]byte("cicada/communication-link/proposal/v1\x00"), contract...))
-	link.ContractDigest = hex.EncodeToString(digest[:])
-	actionsJSON, _ := json.Marshal(actions)
-	scopesJSON, _ := json.Marshal(scopes)
+	link.ContractDigest = digest
+	actionsJSON, _ := json.Marshal(link.Actions)
+	scopesJSON, _ := json.Marshal(link.DataScopes)
 	snapshotJSON, _ := json.Marshal(link.ScopeSnapshot)
 	_, err = tx.Exec(`INSERT INTO communication_links_v2
 (id, source_endpoint_id, source_principal_id, source_group_id, source_owner_id, source_node_id,
@@ -314,9 +312,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.ContractDigest, link.State, link.Version, link.CreatedAt, link.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("persist communication link proposal: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
 	}
 	return &link, nil
 }

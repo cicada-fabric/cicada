@@ -81,8 +81,8 @@ func TestLinkProposalCannotOpenPlaintextCrossGroupPath(t *testing.T) {
 	}
 	ask := call(http.MethodPost, "/v2/fabric/ask", "CicadaSession "+a.SessionToken,
 		[]byte(`{"target":"`+b.Endpoint.ID+`","question":"private result?"}`))
-	if ask.Code != http.StatusForbidden {
-		t.Fatalf("unapproved Link opened plaintext cross-group peer path: %d %s", ask.Code, ask.Body.String())
+	if ask.Code != http.StatusGone {
+		t.Fatalf("retired plaintext ASK route returned %d %s", ask.Code, ask.Body.String())
 	}
 	revoked, err := manager.RevokeCommunicationLink(link.ID, link.Version, "scope changed")
 	if err != nil || revoked.State != store.CommunicationLinkRevoked || revoked.Version != link.Version+1 {

@@ -1,6 +1,6 @@
 # Architecture v2.1：后量子传输与解密边界
 
-> **状态：设计草案，尚未实现 PQ-only 传输或真实 Fabric E2EE。** 当前工作树已有 Node 主动 SSE、durable claim/receipt、`internal/e2ee/endpoint.go` 端点消息密文格式、MCP 显式发布的 Endpoint 公钥候选，以及 `internal/nodekeys` 的 Node 本地私钥、scoped pin、持久序号/outbox/inbox/replay 和 seal/open 组合 API。这些 API 尚未连接可信 owner/device 批准、Hub-blind Relay 与 native delivery，Hub 仍可见普通 peer 明文。当前 v15/v16 只增量保存独立用户公钥和 Link 两侧签署证明，仍不开启跨组路由。协议层 ML-KEM/ML-DSA Node 认证与纯 PQ TLS 协商仍未实现。局部密码学与状态测试不能证明端到端或 PQ 传输安全。本设计遵守 [CICADA.md §22](../CICADA.md#chapter-22)、[§24](../CICADA.md#chapter-24)、[§25](../CICADA.md#chapter-25) 的信任终点、原子状态和恢复要求。
+> **状态：应用层端点加密覆盖跨 owner 显式 Link 和 sealed-capable 同 owner、同 Group 的本地/跨 Node SEND/ASK/REPLY；PQ-only 传输仍是设计目标。** 当前 `dev` 实现用 Node 本地 Owner 公钥信任和 key-bound Grant，连接 MCP、本机密文 outbox、Hub-blind `SEALED_V1` Relay、两侧 Node 密文 inbox 和精确 native queue；两个逻辑 Node/fake Codex 的 ASK/REPLY 全链测试及一个 Node 两真实 Codex Thread 的本机 ASK/REPLY 验收已通过。v28 同 Group 广播采用固定成员快照和逐人 sealed SEND，已通过两个逻辑 Node/fake Codex 全链；旧无 sealed capability 的 Session 仍可走明文 Fabric。同组跨 Node 的真实 Codex ASK/REPLY 已在两个逻辑 Node 上通过；跨 owner native 与广播 native 验收单独见 [状态矩阵](architecture-v2-status.md)。Node→Hub 当前仍使用 Node bearer 和普通 HTTPS/TLS，协议层 ML-KEM/ML-DSA Node 认证与纯 PQ TLS 协商未实现，不能宣称整条网络符合 PQ-only 要求。本设计遵守 [CICADA.md §22](../CICADA.md#chapter-22)、[§24](../CICADA.md#chapter-24)、[§25](../CICADA.md#chapter-25) 的信任终点、原子状态和恢复要求。
 
 ## 1. 决策
 
@@ -12,7 +12,7 @@
 
 所有新公共密钥认证和密钥交换固定使用 NIST FIPS 203 ML-KEM 与 FIPS 204 ML-DSA。传输配置只接受 TLS 1.3、纯 ML-KEM-768 key exchange、ML-DSA-65 客户端和服务端证书、`TLS_AES_256_GCM_SHA384`；拒绝 X25519/ECDH/RSA/ECDSA/Ed25519、任何 classical/PQ hybrid、TLS 1.2 及未知 suite。TLS 应检查实际协商结果，不能只看 `supported_groups` 配置或宣称“启用了 PQ”。AES/GCM 使用 FIPS 197 和 NIST SP 800-38D；ML-KEM 的应用方式遵循 NIST SP 800-227。参数集和实现按 FIPS 当前勘误复核。
 
-这一套标准原语的选择不等于当前有符合要求的传输实现。仓库 `go.mod` 固定 `go1.22.12`，当前代码依赖 CIRCL 实现 Contact 原语。Go 1.24 的官方 TLS 说明列出的默认 PQ key exchange 是 **X25519 + ML-KEM-768 混合组**，它包含经典 X25519，不能满足本设计的纯 PQ 策略。[Go 1.24 发布说明](https://go.dev/doc/go1.24) IETF 的 [TLS 1.3 ML-KEM](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) 与 [TLS 1.3 ML-DSA](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/) profile 截至 2026-09-23 仍处于 RFC Editor 队列、拟为 Informational；它们不是已发布的 TLS 标准。ML-DSA 的 X.509 算法标识已有 [RFC 9881](https://datatracker.ietf.org/doc/rfc9881/)。实现阶段须选定能按明确 profile 禁用所有 classical/hybrid 协商的 TLS 栈，锁定版本，并实际验协商组、签名算法、证书链和 cipher。达不到这些条件时，PQ-only 部署必须 fail closed；不得退回当前 bearer/普通 TLS 路径。
+这一套标准原语的选择不等于当前有符合要求的传输实现。仓库当前使用 Go 1.27.1 工具链和 CIRCL 1.6.5 实现应用层原语；升级工具链并未自动提供纯 PQ TLS。Go 1.24 的官方 TLS 说明列出的默认 PQ key exchange 是 **X25519 + ML-KEM-768 混合组**，它包含经典 X25519，不能满足本设计的纯 PQ 策略。[Go 1.24 发布说明](https://go.dev/doc/go1.24) IETF 的 [TLS 1.3 ML-KEM](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) 与 [TLS 1.3 ML-DSA](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/) profile 截至 2026-09-23 仍处于 RFC Editor 队列、拟为 Informational；它们不是已发布的 TLS 标准。ML-DSA 的 X.509 算法标识已有 [RFC 9881](https://datatracker.ietf.org/doc/rfc9881/)。实现阶段须选定能按明确 profile 禁用所有 classical/hybrid 协商的 TLS 栈，锁定版本，并实际验协商组、签名算法、证书链和 cipher。达不到这些条件时，PQ-only 部署必须 fail closed；不得退回当前 bearer/普通 TLS 路径。
 
 ## 2. 当前真实数据与凭据路径
 
@@ -20,14 +20,14 @@
 
 | 路径 | 当前凭据与传输 | 当前明文/密文终点 |
 |---|---|---|
-| Node → Relay | Node 本地生成并保存独立 `CicadaNode` bearer，只把摘要提交 `/v2/nodes/device-code`；owner Client 用加密 RPC 预览/确认后，Node 才可访问 `/v2/relay/nodes/{id}/events`、`heartbeat`、`claim`、`receipts`。旧 `/v1/machines/{id}/relay-credential` 已删除。远程 Node CLI 强制 `https`，回环开发环境可用 `http`；HTTPS 仍是普通 Go TLS，不是纯 PQ TLS。 | `fabric.Delivery.Body` 当前是明文；Relay 持久化明文 Fabric body，Node 又把明文存入 SQLite inbox 后注入确切 Native Session。无 Node→Relay PQ TLS、无 Endpoint E2EE。 |
+| Node → Relay | Node 本地保存独立 `CicadaNode` bearer，只把摘要提交 `/v2/nodes/device-code`；owner Client 加密确认后才可访问 Node Relay。远程 CLI 强制 `https`，回环开发可用 `http`；HTTPS 仍是普通 Go TLS，不是纯 PQ TLS。 | 旧未 sealed-capable 的同组 `fabric.Delivery.Body` 仍明文；显式 Link 与当前 sealed-capable 同组路径的 `SEALED_V1` 只在 Hub 保存 Endpoint 密文，目标 Node 验权后本地解密。Node→Relay PQ TLS 尚无实现。 |
 | Node 唤醒 | 当前工作树已有 Node 主动建立的 `/v2/relay/nodes/{id}/events` SSE 流；Relay 提交后发送 `event: wake`/`data: claim`，不携带消息正文。Node 收到提示后走现有 claim/receipt；断线后周期 ticker 兜底。凭据仍是 `CicadaNode` bearer。代码和 `relay_node_v2_test.go` 覆盖 SSE 认证、事件和 durable claim 路径。 | SSE 提示不是 PQ 认证或 PQ 加密；它不能使明文 claim/body 变成密文。当前测试没有证明 PQ 握手、PQ TLS 或 E2EE。 |
-| MCP → Fabric | `mcp.go` 显式 Join 使用管理 `Bearer`；之后工具调用带 `Authorization: CicadaSession ...`。Fabric server 从这个凭据校验 SessionBinding 并派生 Actor。连接走 `CICADA_API_URL` 的普通 HTTP/TLS。 | `/v2/fabric/send|ask|reply` 的正文为普通 JSON；Fabric store 的 `fabric_messages.body` 和 Relay 的 claim response 保存/返回明文。服务端可以看到正文，Node 也能看到。 |
+| MCP → Fabric | `mcp.go` 显式 Join 后使用 `CicadaSession` 校验当前 SessionBinding；旧未 sealed-capable Session 仍走 `CICADA_API_URL` 的普通 HTTP/TLS。显式 Link 与 sealed-capable 同组发送经本机 Unix 桥，把当前 Session credential 临时交给 Node 核验，Node bearer 不进入 MCP。 | 旧 `/v2/fabric/send|ask|reply` 的正文仍在 Hub 明文存储；显式 Link 与 sealed-capable 同组 SEND 在本机 Node 封装后，Hub 只见密文和必要路由。 |
 | 旧 Contact | `/v1/peer-messages` 与 `/v1/federation/messages` HTTP 写入口已删除；Contact identity、ratchet、replay 和历史 envelope 仍保存在 StateDir/SQLite 供迁移对账。 | 历史 Control 收发逻辑曾接触明文，因此不能将旧记录称作 Hub-blind E2EE；不能靠删除 HTTP 入口改变旧密钥的信任终点。 |
 
-当前 v11 Fabric 已有同一 Thread/Endpoint 的多条 Group Membership，并按选定 Group scope 保存单播请求/收件箱；v12 有不继承权限的父子 Group 管理关系。但 `fabric_endpoints.group_id` 和 SessionBinding `group_id` 仍是旧主组投影，普通消息仍是明文；跨组双端连线、加密 recipient 列表和密文 AAD 授权均未实现，不能写作现有能力。
+当前 v11 Fabric 已有同一 Thread/Endpoint 的多条 Group Membership，并按选定 Group scope 保存单播请求/收件箱；v12 有不继承权限的父子 Group 管理关系。`fabric_endpoints.group_id` 和 SessionBinding `group_id` 仍是旧主组投影；v22/v26 的双侧授权使指定跨 owner 单收件人 SEND/ASK 与原请求反向 REPLY 获得密文路由，v27 让同组跨 Node 走 sealed 路径，v28 固定同组广播收件人快照。广播正文不在 Hub 快照，来源 Node 按收件人分别封装；旧未 sealed-capable Session 的明文路径仍需迁移。
 
-旧 Contact 目前使用 Cloudflare CIRCL 1.6.3 的 ML-KEM-768、ML-DSA-65、HKDF-SHA256 和 AES-256-GCM；固定 Contact public identity、签名 envelope、ratchet epoch/counter 和 replay 状态在 `internal/e2ee/{pq,ratchet,directory}.go` 与 Store 中。私有 identity 文件位于 `e2ee/identity.json`（0600）；peer ratchet key/counter 在 SQLite。`docs/e2ee.md` 描述了这些路径。不能重生或替换身份、清空 Contact/session/replay 状态，也不能把旧 Control API 说成端到端不可见。旧 Contact 在 Control 解密是待处理迁移缺口，不是新协议的兼容条件；必须迁移并保全可验证的身份、密钥、序号与证据后退役旧 API，无法安全迁移时阻断相关路径，不能静默丢数据或降级。
+旧 Contact 目前使用 Cloudflare CIRCL 1.6.5 的 ML-KEM-768、ML-DSA-65、HKDF-SHA256 和 AES-256-GCM；固定 Contact public identity、签名 envelope、ratchet epoch/counter 和 replay 状态在 `internal/e2ee/{pq,ratchet,directory}.go` 与 Store 中。私有 identity 文件位于 `e2ee/identity.json`（0600）；peer ratchet key/counter 在 SQLite。`docs/e2ee.md` 描述了这些路径。不能重生或替换身份、清空 Contact/session/replay 状态，也不能把旧 Control API 说成端到端不可见。旧 Contact 在 Control 解密是待处理迁移缺口，不是新协议的兼容条件；必须迁移并保全可验证的身份、密钥、序号与证据后退役旧 API，无法安全迁移时阻断相关路径，不能静默丢数据或降级。
 
 NIST 明确指出，FIPS 算法标准本身不保证具体实现或整体系统安全。当前代码没有证据表明 CIRCL 是经过验证的 FIPS 140 模块，也没有独立审计当前 Contact 组合协议；这里仅确认代码使用了这些标准原语，不宣称模块验证、系统认证或审计通过。[FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) · [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final)
 
@@ -103,7 +103,7 @@ Group 广播固定一个 Group ID 和发送时的有效成员快照，以一份�
 
 | 阶段 | 改造范围 | 必须保持的约束 |
 |---|---|---|
-| P0：本地优先与远程传输门槛 | 让同 Node Thread/MCP → 本地 Codex queue 能离线工作；面板持久化可嵌套 Group、Endpoint/Thread 多对多 Membership 和显式 Permission/ConnectionEdge。并行验证纯 ML-KEM-768 + ML-DSA-65 TLS profile、Go toolchain、证书/密钥存储及实际互操作。 | 本地路径无公网 Directory/Hub 依赖。仓库 `go1.22.12`、Go 默认 hybrid/standard TLS、传统 reverse-proxy TLS 和 bearer 认证均不满足远程 PQ-only 要求；profile 未验证前远程 Hub 功能不可启用，不能回退旧 `/v2`。 |
+| P0：本地优先与远程传输门槛 | 让同 Node Thread/MCP → 本地 Codex queue 能离线工作；面板持久化可嵌套 Group、Endpoint/Thread 多对多 Membership 和显式 Permission/ConnectionEdge。并行验证纯 ML-KEM-768 + ML-DSA-65 TLS profile、Go toolchain、证书/密钥存储及实际互操作。 | 本地路径无公网 Directory/Hub 依赖。当前 Go 1.27.1 工具链仍使用默认 hybrid/standard TLS；传统 reverse-proxy TLS 和 bearer 认证不满足远程 PQ-only 要求；profile 未验证前远程 Hub 功能不可启用，不能回退旧 `/v2`。 |
 | P1：Endpoint 身份与消息 scope | 在 `internal/e2ee` 扩展并审阅 Endpoint ML-DSA/ML-KEM envelope；为 `internal/fabric` / `internal/store` 建立多对多 Membership、ConnectionEdge revision、单消息 scope、完整 recipient/AAD 及 replay schema；实现本地 adapter 解密。 | 当前单 `GroupID` schema 不冒充多 Membership。授权必须按每消息 scope、签名 recipient set 和当前 revision 重查；Endpoint 私钥不交给模型或 Hub。敏感 Group 可由面板强制 dedicated Thread。 |
 | P2：可选 Hub 与 PQ SSE | 将 `cmd/cicada/machine_agent.go`、`machine_fabric.go`、`internal/server/relay_node_v2.go`、`internal/fabric` 的远程路径重做为双方批准的 HubCard、Node PQ mTLS、Hub opaque mailbox、持久 SSE wake、claim/receipt 和重连对账。 | Hub 仅被显式 ConnectionEdge 使用；两端出站、最多一跳、无隐式 relay chain。当前 `CicadaNode` bearer 路径只视为待退役实现；新路径未就绪时保持远程连接关闭，不兼容降级。 |
 | P3：面板授权与 Fabric 迁移 | 将 `cmd/cicada/mcp.go`、`mcp_outbox.go`、`mcp_session_state.go` 的 Actor 来源绑定到 Endpoint identity 和 owner-signed Membership/Binding；改 `internal/server/fabric_v2.go`、`internal/fabric/model.go|service.go`、`internal/store/fabric_v2.go|relay_v2.go` 为 per-recipient envelope，Node inbox 只持久化密文。面板实现可选 Monitor 和逐边权限。 | Join/连接显式；撤权在 claim、解密、Artifact 读取和执行前重查。旧明文 Fabric rows 明确标为 plaintext 并安全迁移；旧 API 不是长期兼容条件，无明文 fallback。 |
@@ -128,5 +128,5 @@ Group 广播固定一个 Group ID 和发送时的有效成员快照，以一份�
 - [NIST FIPS 203：ML-KEM](https://csrc.nist.gov/pubs/fips/203/final)；[NIST SP 800-227：KEM 推荐用法](https://csrc.nist.gov/pubs/sp/800/227/final)。
 - [NIST FIPS 204：ML-DSA](https://csrc.nist.gov/pubs/fips/204/final)；[RFC 9881：ML-DSA 的 X.509 算法标识](https://datatracker.ietf.org/doc/rfc9881/)。
 - [NIST FIPS 197：AES](https://csrc.nist.gov/pubs/fips/197/final)；[NIST SP 800-38D：GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)。
-- [Go 1.24 发布说明](https://go.dev/doc/go1.24)：其默认 TLS PQ KEX 是 X25519MLKEM768 混合方式，因此不能单独满足本文件的无 classical/hybrid profile。仓库当前更旧的 Go 1.22.12 工具链须升级或采用经审阅的兼容实现。
+- [Go 1.24 发布说明](https://go.dev/doc/go1.24)：其默认 TLS PQ KEX 是 X25519MLKEM768 混合方式，因此不能单独满足本文件的无 classical/hybrid profile。当前仓库已升级 Go 工具链，仍需另行验证 TLS profile。
 - [IETF TLS 1.3 ML-KEM work in progress](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) 与 [ML-DSA work in progress](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/)：只用于跟踪 TLS profile；截至 2026-09-23 尚非已发布 RFC。上线前必须复核版本、RFC 状态、Go/TLS 实现和实际握手，不能引用草案把当前部署称为已标准化 PQ TLS。

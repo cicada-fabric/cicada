@@ -12,7 +12,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-func TestFabricV2WorksWithoutControlBusinessService(t *testing.T) {
+func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testing.T) {
 	persistence, err := store.New(filepath.Join(t.TempDir(), "fabric.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,31 +93,17 @@ func TestFabricV2WorksWithoutControlBusinessService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	forgedAskBody, _ := json.Marshal(map[string]any{
-		"target": joinedB.Endpoint.ID, "question": "current result?",
-		"sender_endpoint_id": joinedB.Endpoint.ID, "group_id": "forged-group",
+	historical, err := persistence.CreateFabricRequest(store.FabricRequest{
+		RequestID: "rq_historical", MessageID: "msg_historical_ask",
+		SenderEndpointID: joined.Endpoint.ID, SenderPrincipalID: joined.Endpoint.PrincipalID,
+		SenderGroupID: group.ID, SenderBindingID: joined.BindingID,
+		SenderBindingEpoch: joined.BindingEpoch,
+		ReceiverEndpointID: joinedB.Endpoint.ID, ReceiverPrincipalID: joinedB.Endpoint.PrincipalID,
+		ReceiverGroupID: group.ID, ReceiverBindingID: joinedB.BindingID,
+		ReceiverBindingEpoch: joinedB.BindingEpoch, Body: "historical question",
 	})
-	forgedAsk := httptest.NewRequest(http.MethodPost, "/v2/fabric/ask", bytes.NewReader(forgedAskBody))
-	forgedAsk.Header.Set("Authorization", "CicadaSession "+joined.SessionToken)
-	forgedAsk.Header.Set("Content-Type", "application/json")
-	forgedAskResponse := httptest.NewRecorder()
-	handler.ServeHTTP(forgedAskResponse, forgedAsk)
-	if forgedAskResponse.Code != http.StatusBadRequest {
-		t.Fatalf("forged sender/group fields were accepted: status=%d body=%s", forgedAskResponse.Code, forgedAskResponse.Body.String())
-	}
-
-	askBody, _ := json.Marshal(map[string]any{"target": joinedB.Endpoint.ID, "question": "current result?"})
-	ask := httptest.NewRequest(http.MethodPost, "/v2/fabric/ask", bytes.NewReader(askBody))
-	ask.Header.Set("Authorization", "CicadaSession "+joined.SessionToken)
-	ask.Header.Set("Content-Type", "application/json")
-	askResponse := httptest.NewRecorder()
-	handler.ServeHTTP(askResponse, ask)
-	if askResponse.Code != http.StatusAccepted {
-		t.Fatalf("ask status=%d body=%s", askResponse.Code, askResponse.Body.String())
-	}
-	var accepted fabricpkg.RequestView
-	if err := json.Unmarshal(askResponse.Body.Bytes(), &accepted); err != nil || accepted.RequestID == "" {
-		t.Fatalf("invalid accepted request: %#v err=%v", accepted, err)
+	if err != nil {
+		t.Fatalf("seed historical plaintext request: %v", err)
 	}
 
 	receiveB := httptest.NewRequest(http.MethodPost, "/v2/fabric/receive", bytes.NewReader([]byte(`{}`)))
@@ -125,42 +111,18 @@ func TestFabricV2WorksWithoutControlBusinessService(t *testing.T) {
 	receiveB.Header.Set("Content-Type", "application/json")
 	receiveBResponse := httptest.NewRecorder()
 	handler.ServeHTTP(receiveBResponse, receiveB)
-	if receiveBResponse.Code != http.StatusOK || !bytes.Contains(receiveBResponse.Body.Bytes(), []byte(accepted.RequestID)) {
+	if receiveBResponse.Code != http.StatusOK || !bytes.Contains(receiveBResponse.Body.Bytes(), []byte(historical.RequestID)) ||
+		!bytes.Contains(receiveBResponse.Body.Bytes(), []byte("historical question")) {
 		t.Fatalf("B receive status=%d body=%s", receiveBResponse.Code, receiveBResponse.Body.String())
 	}
 
-	replyBody, _ := json.Marshal(fabricpkg.ReplyInput{RequestID: accepted.RequestID, Body: "17.4", IdempotencyKey: "reply-key-1"})
-	reply := httptest.NewRequest(http.MethodPost, "/v2/fabric/reply", bytes.NewReader(replyBody))
-	reply.Header.Set("Authorization", "CicadaSession "+joinedB.SessionToken)
-	reply.Header.Set("Content-Type", "application/json")
-	replyResponse := httptest.NewRecorder()
-	handler.ServeHTTP(replyResponse, reply)
-	if replyResponse.Code != http.StatusAccepted {
-		t.Fatalf("reply status=%d body=%s", replyResponse.Code, replyResponse.Body.String())
-	}
-	var firstReply fabricpkg.RequestView
-	if err := json.Unmarshal(replyResponse.Body.Bytes(), &firstReply); err != nil || firstReply.ReplyMessageID == "" {
-		t.Fatalf("invalid reply view: %#v err=%v", firstReply, err)
-	}
-	// Simulate a lost HTTP response: the MCP outbox retries the same logical
-	// reply with a fresh transport message ID and must recover the first result.
-	retry := httptest.NewRequest(http.MethodPost, "/v2/fabric/reply", bytes.NewReader(replyBody))
-	retry.Header.Set("Authorization", "CicadaSession "+joinedB.SessionToken)
-	retry.Header.Set("Content-Type", "application/json")
-	retryResponse := httptest.NewRecorder()
-	handler.ServeHTTP(retryResponse, retry)
-	var retriedReply fabricpkg.RequestView
-	if err := json.Unmarshal(retryResponse.Body.Bytes(), &retriedReply); err != nil || retryResponse.Code != http.StatusAccepted || retriedReply.ReplyMessageID != firstReply.ReplyMessageID {
-		t.Fatalf("retry did not recover reply: status=%d first=%#v retry=%#v err=%v body=%s", retryResponse.Code, firstReply, retriedReply, err, retryResponse.Body.String())
-	}
-	conflictBody, _ := json.Marshal(fabricpkg.ReplyInput{RequestID: accepted.RequestID, Body: "altered answer", IdempotencyKey: "reply-key-1"})
-	conflict := httptest.NewRequest(http.MethodPost, "/v2/fabric/reply", bytes.NewReader(conflictBody))
-	conflict.Header.Set("Authorization", "CicadaSession "+joinedB.SessionToken)
-	conflict.Header.Set("Content-Type", "application/json")
-	conflictResponse := httptest.NewRecorder()
-	handler.ServeHTTP(conflictResponse, conflict)
-	if conflictResponse.Code != http.StatusConflict {
-		t.Fatalf("changed reply reused idempotency key: status=%d body=%s", conflictResponse.Code, conflictResponse.Body.String())
+	if _, err := persistence.SubmitFabricReply(store.FabricReply{
+		RequestID: historical.RequestID, ResponderEndpointID: joinedB.Endpoint.ID,
+		ResponderPrincipalID: joinedB.Endpoint.PrincipalID, ResponderGroupID: group.ID,
+		ReceiverBindingID: joined.BindingID, ReceiverBindingEpoch: joined.BindingEpoch,
+		Body: "historical answer", IdempotencyKey: "historical-reply",
+	}); err != nil {
+		t.Fatalf("seed historical plaintext reply: %v", err)
 	}
 
 	receiveA := httptest.NewRequest(http.MethodPost, "/v2/fabric/receive", bytes.NewReader([]byte(`{}`)))
@@ -168,7 +130,7 @@ func TestFabricV2WorksWithoutControlBusinessService(t *testing.T) {
 	receiveA.Header.Set("Content-Type", "application/json")
 	receiveAResponse := httptest.NewRecorder()
 	handler.ServeHTTP(receiveAResponse, receiveA)
-	if receiveAResponse.Code != http.StatusOK || !bytes.Contains(receiveAResponse.Body.Bytes(), []byte(`"body":"17.4"`)) {
+	if receiveAResponse.Code != http.StatusOK || !bytes.Contains(receiveAResponse.Body.Bytes(), []byte(`"body":"historical answer"`)) {
 		t.Fatalf("A receive status=%d body=%s", receiveAResponse.Code, receiveAResponse.Body.String())
 	}
 }
@@ -266,11 +228,11 @@ func TestFabricV2GroupScopeHeaderAndScopedLeave(t *testing.T) {
 		t.Fatalf("forged Group scope: status=%d body=%s", response.Code, response.Body.String())
 	}
 	ask := `{"target":"` + peer.Endpoint.ID + `","question":"scope test"}`
-	if response := call(http.MethodPost, "/v2/fabric/ask", groupA.ID, ask); response.Code == http.StatusAccepted {
-		t.Fatalf("Group A reached B-only peer: status=%d body=%s", response.Code, response.Body.String())
+	if response := call(http.MethodPost, "/v2/fabric/ask", groupA.ID, ask); response.Code != http.StatusGone {
+		t.Fatalf("retired ASK route returned %d for Group A scope: %s", response.Code, response.Body.String())
 	}
-	if response := call(http.MethodPost, "/v2/fabric/ask", groupB.ID, ask); response.Code != http.StatusAccepted {
-		t.Fatalf("Group B could not reach peer: status=%d body=%s", response.Code, response.Body.String())
+	if response := call(http.MethodPost, "/v2/fabric/ask", groupB.ID, ask); response.Code != http.StatusGone {
+		t.Fatalf("retired ASK route returned %d for Group B scope: %s", response.Code, response.Body.String())
 	}
 	if response := call(http.MethodPost, "/v2/fabric/leave-group", groupB.ID, `{}`); response.Code != http.StatusOK ||
 		!bytes.Contains(response.Body.Bytes(), []byte(groupA.ID)) {

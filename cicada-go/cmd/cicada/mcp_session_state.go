@@ -40,6 +40,7 @@ type mcpCachedSession struct {
 	Workspace       string `json:"workspace,omitempty"`
 	GroupID         string `json:"group_id"`
 	EndpointID      string `json:"endpoint_id"`
+	OwnerID         string `json:"owner_id,omitempty"`
 	BindingID       string `json:"binding_id,omitempty"`
 	BindingEpoch    uint64 `json:"binding_epoch,omitempty"`
 	LeaseExpiresAt  string `json:"lease_expires_at,omitempty"`

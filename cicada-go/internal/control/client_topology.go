@@ -154,9 +154,9 @@ type ClientTopologyChangeResult struct {
 // BuildClientTopologySnapshot returns current owner-managed Group,
 // Membership, Endpoint, and communication-link metadata. The authenticated
 // owner must be supplied by the transport after verifying the Client device;
-// this method performs an additional single-owner Control scope check.
+// this method rechecks the current self-owned Client owner boundary.
 func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*ClientTopologySnapshot, error) {
-	if err := c.ValidateClientOwnerScope(authenticatedOwnerID); err != nil {
+	if err := c.ValidateClientSessionOwner(authenticatedOwnerID); err != nil {
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerID)
@@ -281,7 +281,7 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 		sort.Strings(view.Endpoints[i].GroupIDs)
 	}
 	sort.Slice(view.Links, func(i, j int) bool { return view.Links[i].LinkID < view.Links[j].LinkID })
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return view, nil
@@ -289,10 +289,10 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 
 // ApplyClientTopologyChange executes one explicitly typed owner action. It
 // derives the acting owner from the authenticated transport argument and
-// reuses Control and Store authorization/CAS checks. Cross-owner links remain
-// rejected by the Store and are never activated by this method.
+// reuses Control and Store authorization/CAS checks. Cross-owner proposals
+// still require the separate invitation path and remain non-routable.
 func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action ClientTopologyAction) (*ClientTopologyChangeResult, error) {
-	if err := c.ValidateClientOwnerScope(authenticatedOwnerID); err != nil {
+	if err := c.ValidateClientSessionOwner(authenticatedOwnerID); err != nil {
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerID)
@@ -309,7 +309,7 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 				return nil, err
 			}
 		}
-		group, err := c.CreateGroup(input.Group)
+		group, err := c.createGroupForOwner(ownerID, input.Group)
 		if err != nil {
 			return nil, err
 		}
@@ -412,7 +412,13 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 		if _, err := c.clientOwnedEndpoint(ownerID, input.TargetEndpointID); err != nil {
 			return nil, err
 		}
-		link, err := c.ProposeCommunicationLink(input)
+		link, err := c.store.ProposeCommunicationLink(store.CommunicationLinkProposal{
+			SourceEndpointID: input.SourceEndpointID, SourceGroupID: input.SourceGroupID,
+			TargetEndpointID: input.TargetEndpointID, TargetGroupID: input.TargetGroupID,
+			Direction: input.Direction, Actions: input.Actions, DataScopes: input.DataScopes,
+			TransportHubID: input.TransportHubID, ExpiresAt: input.ExpiresAt,
+			ActorOwnerID: ownerID,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -422,17 +428,14 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 		}
 	case ClientTopologyRevokeLink:
 		input := action.RevokeLink
-		link, err := c.CommunicationLink(input.LinkID)
+		link, err := c.store.GetCommunicationLinkForOwner(input.LinkID, ownerID)
 		if err != nil {
 			return nil, err
 		}
 		if link == nil {
 			return nil, store.ErrCommunicationLinkNotFound
 		}
-		if link.SourceOwnerID != ownerID || link.TargetOwnerID != ownerID {
-			return nil, ErrPermissionDenied
-		}
-		revoked, err := c.RevokeCommunicationLink(input.LinkID, input.ExpectedLinkVersion, input.Reason)
+		revoked, err := c.store.RevokeCommunicationLink(input.LinkID, ownerID, input.ExpectedLinkVersion, input.Reason)
 		if err != nil {
 			return nil, err
 		}
@@ -441,7 +444,7 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 	default:
 		return nil, errors.New("unsupported topology action")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return result, nil

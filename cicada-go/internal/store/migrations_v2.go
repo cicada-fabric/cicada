@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	// CurrentV2SchemaVersion is the highest additive migration installed by
+	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 22
+	CurrentV2SchemaVersion = 30
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -242,6 +242,66 @@ var v2Migrations = []v2Migration{
 		Description: "record owner signatures over both current Endpoint key candidates without enabling routes",
 		Objects:     []string{"communication_link_key_grants_v2"},
 		Apply:       func(s *Store) error { return s.initializeCommunicationLinkKeyGrantsV2Schema() },
+	},
+	{
+		Version:     23,
+		ID:          "v2.node.owner_scoped_worker_jobs",
+		Description: "attribute Client-created Goals and accepted intents to their authenticated owner for scoped Node jobs",
+		Objects: []string{
+			"machines", "goals", "client_control_intents_v2",
+		},
+		Apply: func(s *Store) error { return s.initializeOwnerScopedNodeJobsV2Schema() },
+	},
+	{
+		Version:     24,
+		ID:          "v2.client.goal_lifecycle",
+		Description: "version owner-scoped Goal lifecycle transitions for queued Node work",
+		Objects:     []string{"goals"},
+		Apply:       func(s *Store) error { return s.initializeClientGoalLifecycleSchema() },
+	},
+	{
+		Version:     25,
+		ID:          "v2.client.status_approval_intent_deltas",
+		Description: "extend owner-bound status delta entity types for approval and intent metadata",
+		Objects:     []string{"client_status_state_v2", "client_status_change_events_v2"},
+		Apply:       func(s *Store) error { return s.expandClientStatusEventsEntityTypes() },
+	},
+	{
+		Version:     26,
+		ID:          "v2.collaboration.external_thread_invites",
+		Description: "add one-time owner-scoped external Thread invitation storage without activating routes",
+		Objects:     []string{"external_thread_invites_v2"},
+		Apply:       func(s *Store) error { return s.initializeExternalThreadInvitesV2Schema() },
+	},
+	{
+		Version:     27,
+		ID:          "v2.collaboration.group_endpoint_key_grants",
+		Description: "record same-owner Group-scoped consent for current Endpoint public key candidates",
+		Objects:     []string{"group_endpoint_key_grants_v2"},
+		Apply:       func(s *Store) error { return s.initializeGroupEndpointKeyGrantsV2Schema() },
+	},
+	{
+		Version:     28,
+		ID:          "v2.fabric.group_broadcast_snapshots",
+		Description: "persist immutable, owner-scoped Group broadcast recipient snapshots",
+		Objects: []string{
+			"group_broadcast_v2_snapshots", "group_broadcast_v2_snapshot_recipients",
+		},
+		Apply: func(s *Store) error { return s.initializeGroupBroadcastV2Schema() },
+	},
+	{
+		Version:     29,
+		ID:          "v2.client.request_recovery",
+		Description: "persist exact Client RPC response reservations and sealed uncertainty notices",
+		Objects:     []string{"client_device_request_recovery_v2"},
+		Apply:       func(s *Store) error { return s.initializeClientRequestRecoveryV2Schema() },
+	},
+	{
+		Version:     30,
+		ID:          "v2.node.worker_approval_bridge",
+		Description: "add attempt-fenced remote Node Worker approval request identity",
+		Objects:     []string{"approvals"},
+		Apply:       func(s *Store) error { return s.initializeRemoteWorkerApprovalsV2Schema() },
 	},
 }
 
@@ -671,6 +731,92 @@ func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]le
 		}
 		if count != 1 {
 			return errors.New("group hierarchy index is missing")
+		}
+	}
+	if migration.ID == "v2.node.owner_scoped_worker_jobs" {
+		for table, column := range map[string]string{
+			"machines":                  "owner_id",
+			"goals":                     "owner_id",
+			"client_control_intents_v2": "owner_id",
+		} {
+			columns, err := existingColumns(s.db, table, []string{column})
+			if err != nil {
+				return err
+			}
+			if len(columns) != 1 {
+				return fmt.Errorf("owner-scoped Node jobs migration is missing %s.%s", table, column)
+			}
+		}
+		for _, index := range []string{"goals_owner_status_idx", "client_control_intents_v2_owner_state_idx"} {
+			var count int
+			if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?`, index).Scan(&count); err != nil {
+				return err
+			}
+			if count != 1 {
+				return fmt.Errorf("owner-scoped Node jobs migration is missing index %s", index)
+			}
+		}
+	}
+	if migration.ID == "v2.client.goal_lifecycle" {
+		columns, err := existingColumns(s.db, "goals", []string{"lifecycle_version"})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 1 {
+			return errors.New("Client Goal lifecycle version column is missing")
+		}
+	}
+	if migration.ID == "v2.client.status_approval_intent_deltas" {
+		for _, table := range []string{"client_status_state_v2", "client_status_change_events_v2"} {
+			var schema string
+			if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&schema); err != nil {
+				return err
+			}
+			if !strings.Contains(schema, "'approval'") || !strings.Contains(schema, "'intent'") {
+				return fmt.Errorf("Client status table %s is missing approval or intent entity support", table)
+			}
+		}
+	}
+	if migration.ID == "v2.node.worker_approval_bridge" {
+		columns, err := existingColumns(s.db, "approvals", []string{
+			"source_node_id", "worker_attempt", "request_id", "request_hash",
+		})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 4 {
+			return errors.New("remote Node approval migration is missing required attempt fields")
+		}
+		var count int
+		if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name='approvals_remote_request_idem_idx'`).Scan(&count); err != nil {
+			return err
+		}
+		if count != 1 {
+			return errors.New("remote Node approval migration is missing idempotency index")
+		}
+	}
+	if migration.ID == "v2.collaboration.external_thread_invites" {
+		columns, err := existingColumns(s.db, "external_thread_invites_v2", []string{
+			"invite_id", "token_digest", "source_endpoint_id", "source_group_id",
+			"source_owner_id", "source_principal_id", "source_node_id", "source_membership_revision",
+			"source_join_revision", "source_group_version", "hub_id", "direction", "actions_json",
+			"data_scopes_json", "expires_at", "state", "target_owner_id", "target_endpoint_id",
+			"target_group_id", "communication_link_id", "created_at", "accepted_at",
+		})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 22 {
+			return errors.New("external Thread invite table is missing required columns")
+		}
+		for _, indexName := range []string{"external_thread_invites_v2_digest_idx", "external_thread_invites_v2_link_idx"} {
+			var indexCount int
+			if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?`, indexName).Scan(&indexCount); err != nil {
+				return err
+			}
+			if indexCount != 1 {
+				return fmt.Errorf("external Thread invite index %s is missing", indexName)
+			}
 		}
 	}
 	if err := verifySQLiteIntegrity(s.db); err != nil {

@@ -1,13 +1,13 @@
 # Distribution and deployment
 
 This document separates the **v2.1 target topology** from the installers and
-APIs that are runnable in the current worktree. The current Fabric stores peer
-message bodies in plaintext, the old Contact API encrypts/decrypts inside
-Control, and explicit cross-Group links, nested Groups, local bypass,
-device-code enrollment, and endpoint-held PQ encryption are not yet shipped.
-Multi-Group Thread membership now has a service/HTTP/MCP implementation but
-has not passed real native multi-Group validation.
-Do not expose current peer APIs as a blind, cross-user Hub.
+APIs that are runnable in the current worktree. Sealed-capable same-Group and
+explicit Link traffic uses endpoint-held post-quantum message encryption;
+legacy unsealed Fabric traffic can still be plaintext at Hub. Nested Groups,
+same-Node local delivery, multi-Group membership, and Node device-code binding
+have implementations, but multi-Group native validation and public PQ-only
+transport acceptance remain open. The historical Contact flow decrypted inside
+Control. Do not expose legacy peer APIs as a blind, cross-user Hub.
 
 Cicada is distributed as four cooperating pieces. The split keeps the Control
 plane durable and easy to expose while keeping execution machines private:
@@ -52,15 +52,16 @@ to the **same chosen Hub** for that link. Hub-to-Hub forwarding would introduce
 a second Relay and is outside this topology. If no common Hub or direct route
 is reachable, the system must report no route. The chosen Hub must not hold
 peer decryption keys; Node/Endpoint adapters encrypt before transport and only
-the authorized recipient decrypts. The current code has not reached this E2EE
-boundary. TLS alone does not make a TLS-terminating Hub blind.
+the authorized recipient decrypts. Sealed-capable routes implement this
+application-message boundary; legacy unsealed routes do not. TLS alone does
+not make a TLS-terminating Hub blind.
 
-The target device-code flow displays a Hub-specific enrollment URL and a
-short-lived code on a new Node. The user authenticates in the Hub panel and
-approves that Node's key and scope. This is **not implemented**; current worker
-installation still uses a protected Control bearer token. External users need
-their own verified identity and two-sided link approval, not possession of the
-Node enrollment code.
+The Node device-code flow returns a Hub-specific verification path and a
+short-lived code. A separately enrolled owner Client previews and confirms
+the Node binding through encrypted RPC. The separate Android Client supplies
+the verification UI; the legacy installer below still uses a protected
+Control bearer token. External users need their own verified identity and
+two-sided Link approval, not possession of the Node enrollment code.
 
 ## Choose a topology
 
@@ -225,21 +226,27 @@ normal Codex TUI, explicitly choose the target Group and invoke the plugin's
 cicada fabric v2 join --group grp_kernel --name planner \
   --session-token-file /run/user/1000/cicada/session.json
 cicada fabric v2 members
-cicada fabric v2 ask benchmark 'share the current benchmark result'
 ```
+
+This CLI join is for operator enrollment/discovery and does not install the
+Node-local sealed delivery bridge. For peer Ask/Reply, Join from the native
+Codex Thread with `cicada_join`, then use `cicada_ask`/`cicada_reply` through
+MCP. The old CLI `send|ask|reply` and Hub plaintext POST routes are retired;
+`fabric v2 receive` remains a read-only view of authorized historical rows.
 
 The v2 join call uses the management bearer only for enrollment. Set
 `CICADA_SESSION_TOKEN_FILE` or pass `--session-token-file` when the CLI should
 persist the short-lived `CicadaSession` credential; it has no ambient default
 credential file. Later peer commands authenticate with that origin-scoped
 credential and derive the caller, Group, and membership from the server-side
-binding. The old `endpoint`/v1 commands remain available for pending legacy
-records; they do not bypass v2 authorization.
+binding. The old `endpoint`/v1 records remain available for migration; they do
+not bypass v2 authorization.
 
 For a destination on another machine, that machine's agent atomically claims
 the Fabric delivery and invokes the official `codex queue --thread` command
-against the exact native session. A correlated reply wakes the original
-session. The new Node-initiated event stream sends immediate, body-free wake
+against the exact native session. A correlated reply is queued to the original
+session; if that Codex thread is unloaded, this alone may not start a turn.
+The new Node-initiated event stream sends immediate, body-free wake
 hints after durable Relay acceptance; reconnection and periodic reconciliation
 cover missed hints. See [Fabric membership and Agent RPC](fabric.md). Current
 cross-Group messages still use the old representative policy; direct authorized

@@ -13,7 +13,7 @@ import (
 const (
 	ClientStatusChangesContractVersion = 1
 	ClientStatusChangesCompleteness    = "partial"
-	ClientStatusChangesCoverage        = "node_endpoint_worker_goal_group_task_snapshot_deltas"
+	ClientStatusChangesCoverage        = "node_endpoint_worker_goal_group_task_approval_intent_snapshot_deltas"
 	clientStatusChangesDefaultLimit    = 100
 	clientStatusChangesMaxLimit        = 500
 )
@@ -27,9 +27,9 @@ type clientStatusCursor struct {
 }
 
 // ClientStatusChangesPage is a durable, owner-bound delta read. The feed is
-// deliberately partial: it reconciles the safe status snapshot entities and
-// does not cover approvals, Control intents, topology memberships/links, or
-// transient transitions that happen between reads.
+// deliberately partial: it reconciles safe status entities plus owner-scoped
+// Approval and Client Intent lifecycle metadata. It does not cover topology
+// memberships/links or transient transitions that happen between reads.
 type ClientStatusChangesPage struct {
 	ContractVersion       int                             `json:"contract_version"`
 	Completeness          string                          `json:"completeness"`
@@ -48,7 +48,7 @@ type ClientStatusChangesPage struct {
 // The cursor is only a position marker; authenticatedOwnerID remains the
 // authority and is checked on every call.
 func (c *Control) ReadClientStatusChanges(authenticatedOwnerID, cursor string, limit int) (*ClientStatusChangesPage, error) {
-	if err := c.ValidateClientOwnerScope(authenticatedOwnerID); err != nil {
+	if err := c.ValidateClientSessionOwner(authenticatedOwnerID); err != nil {
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerID)
@@ -69,7 +69,12 @@ func (c *Control) ReadClientStatusChanges(authenticatedOwnerID, cursor string, l
 	if err != nil {
 		return nil, err
 	}
-	covered := []string{"node", "endpoint", "worker", "goal", "group", "task"}
+	managementObservations, err := c.clientManagementStatusObservations(ownerID)
+	if err != nil {
+		return nil, err
+	}
+	observations = append(observations, managementObservations...)
+	covered := []string{"node", "endpoint", "worker", "goal", "group", "task", "approval", "intent"}
 	if err := c.store.RecordClientStatusObservations(ownerID, snapshot.CapturedAt, covered, observations); err != nil {
 		return nil, err
 	}
@@ -92,18 +97,18 @@ func (c *Control) ReadClientStatusChanges(authenticatedOwnerID, cursor string, l
 		ContractVersion:  ClientStatusChangesContractVersion,
 		Completeness:     ClientStatusChangesCompleteness,
 		Coverage:         ClientStatusChangesCoverage,
-		ScopeMode:        ClientStatusSnapshotScopeSingleOwner,
+		ScopeMode:        snapshot.ScopeMode,
 		OwnerPrincipalID: ownerID,
 		Events:           rows,
 		Cursor:           encodeClientStatusCursor(ownerID, next),
 		HasMore:          latest > next,
 		Limit:            limit,
 		ExcludedChangeSources: []string{
-			"approvals", "control_intents", "topology_memberships_and_links",
-			"transitions_between_snapshot_reads", "legacy_event_payload_history",
+			"topology_memberships_and_links", "transitions_between_snapshot_reads",
+			"intent_text_results_and_errors", "approval_request_payloads", "legacy_event_payload_history",
 		},
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return page, nil
@@ -140,6 +145,80 @@ type clientStatusStateObservation struct {
 	State string `json:"state"`
 	Known bool   `json:"known"`
 	Stale bool   `json:"stale"`
+}
+
+// clientManagementStatusObservations adds allowlisted owner-scoped lifecycle
+// facts. It deliberately never marshals the source Approval request or Intent
+// text/result/error fields.
+func (c *Control) clientManagementStatusObservations(ownerID string) ([]store.ClientStatusObservation, error) {
+	observations := make([]store.ClientStatusObservation, 0)
+	appendState := func(entityType, entityID string, state any) error {
+		encoded, err := json.Marshal(state)
+		if err != nil {
+			return err
+		}
+		observations = append(observations, store.ClientStatusObservation{
+			EntityType: entityType, EntityID: entityID, StateJSON: encoded,
+		})
+		return nil
+	}
+
+	intents, err := c.store.ListClientIntentsForOwner(ownerID, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, intent := range intents {
+		job, err := c.store.GetClientIntent(intent.ID)
+		if err != nil {
+			return nil, err
+		}
+		// ListClientIntentsForOwner is the query boundary; retain a second
+		// service-layer check before projecting its asynchronous job state.
+		if job == nil || job.OwnerID != ownerID {
+			continue
+		}
+		state := struct {
+			Status        string `json:"status"`
+			DispatchState string `json:"dispatch_state"`
+			CreatedAt     string `json:"created_at"`
+			UpdatedAt     string `json:"updated_at"`
+			StartedAt     string `json:"started_at,omitempty"`
+			FinishedAt    string `json:"finished_at,omitempty"`
+		}{intent.Status, job.State, intent.CreatedAt, intent.UpdatedAt, job.StartedAt, job.FinishedAt}
+		if err := appendState("intent", intent.ID, state); err != nil {
+			return nil, err
+		}
+	}
+
+	approvals, err := c.store.ListApprovals(false)
+	if err != nil {
+		return nil, err
+	}
+	for _, approval := range approvals {
+		goal, err := c.store.GetGoal(approval.GoalID)
+		if err != nil {
+			return nil, err
+		}
+		if goal == nil || goal.OwnerID != ownerID {
+			continue
+		}
+		decision := ""
+		switch approval.Decision {
+		case "accept", "acceptForSession", "decline":
+			decision = approval.Decision
+		}
+		state := struct {
+			GoalID     string `json:"goal_id"`
+			Status     string `json:"status"`
+			Decision   string `json:"decision,omitempty"`
+			CreatedAt  string `json:"created_at"`
+			ResolvedAt string `json:"resolved_at,omitempty"`
+		}{approval.GoalID, approval.Status, decision, approval.CreatedAt, approval.ResolvedAt}
+		if err := appendState("approval", approval.ID, state); err != nil {
+			return nil, err
+		}
+	}
+	return observations, nil
 }
 
 func clientStatusSnapshotObservations(snapshot *ClientStatusSnapshot) ([]store.ClientStatusObservation, error) {
@@ -200,11 +279,12 @@ func clientStatusSnapshotObservations(snapshot *ClientStatusSnapshot) ([]store.C
 	}
 	for _, goal := range snapshot.Goals {
 		state := struct {
-			ParentID  string                       `json:"parent_id,omitempty"`
-			NodeID    string                       `json:"node_id,omitempty"`
-			WorkerIDs []string                     `json:"worker_ids"`
-			Lifecycle clientStatusStateObservation `json:"lifecycle"`
-		}{goal.ParentID, goal.NodeID, append([]string(nil), goal.WorkerIDs...),
+			LifecycleVersion int64                        `json:"lifecycle_version"`
+			ParentID         string                       `json:"parent_id,omitempty"`
+			NodeID           string                       `json:"node_id,omitempty"`
+			WorkerIDs        []string                     `json:"worker_ids"`
+			Lifecycle        clientStatusStateObservation `json:"lifecycle"`
+		}{goal.Version, goal.ParentID, goal.NodeID, append([]string(nil), goal.WorkerIDs...),
 			clientStatusStateObservation{string(goal.Lifecycle.State), goal.Lifecycle.Known, goal.Lifecycle.Stale}}
 		if err := appendState("goal", goal.GoalID, state); err != nil {
 			return nil, err

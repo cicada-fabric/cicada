@@ -60,6 +60,33 @@ func (c *Control) MachineJobs(machineID string) ([]MachineJob, error) {
 	return jobs, nil
 }
 
+// BoundNodeMachineJobs is the v2 Node bearer poll path. Candidate IDs come
+// from a Store read that rechecks credential, binding, owner, Goal and machine
+// relations in one transaction; each payload still passes the normal Control
+// workspace permission check.
+func (c *Control) BoundNodeMachineJobs(credentialDigest, nodeID string) ([]MachineJob, error) {
+	ids, err := c.store.ListBoundNodeWorkerIDs(credentialDigest, nodeID, 100)
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]MachineJob, 0, len(ids))
+	for _, id := range ids {
+		worker, err := c.store.GetBoundNodeWorker(credentialDigest, nodeID, id)
+		if errors.Is(err, store.ErrNodeWorkerUnavailable) || errors.Is(err, store.ErrNodeWorkerNotAuthorized) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		job, err := c.remoteJob(*worker)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
 func (c *Control) remoteJob(worker store.Worker) (MachineJob, error) {
 	goal, err := c.store.GetGoal(worker.GoalID)
 	if err != nil {
@@ -179,6 +206,55 @@ func (c *Control) ClaimRemoteWorker(workerID, machineID string) (MachineJob, err
 	_, _ = c.store.UpdateGoal(claimed.GoalID, "running", "")
 	_, _ = c.store.AppendEvent(claimed.GoalID, claimed.ID, "WorkerStarted", map[string]any{
 		"attempt": claimed.Attempt, "remote": true, "machine_id": machineID,
+	})
+	return job, nil
+}
+
+// ClaimBoundNodeRemoteWorker performs the same Control permission checks as
+// the legacy claim and delegates the authoritative state transition to the
+// Node-scoped Store guard.
+func (c *Control) ClaimBoundNodeRemoteWorker(credentialDigest, nodeID, workerID string) (MachineJob, error) {
+	if isLocalMachine(strings.TrimSpace(nodeID)) {
+		return MachineJob{}, ErrWorkerUnavailable
+	}
+	worker, err := c.store.GetBoundNodeWorker(credentialDigest, nodeID, strings.TrimSpace(workerID))
+	if err != nil {
+		return MachineJob{}, err
+	}
+	goal, err := c.store.GetGoal(worker.GoalID)
+	if err != nil {
+		return MachineJob{}, err
+	}
+	if goal == nil {
+		return MachineJob{}, os.ErrNotExist
+	}
+	if permissionErr := c.checkWorkspaceSourcePermission(*goal); permissionErr != nil {
+		return MachineJob{}, permissionErr
+	}
+	if harness.Canonical(worker.Harness) == "shell" {
+		argv, argvErr := shellArgv(goal.Resources["argv"])
+		if argvErr != nil {
+			return MachineJob{}, argvErr
+		}
+		if _, permissionErr := c.CheckPermission("goal", goal.ID, "shell.execute", argv[0]); permissionErr != nil {
+			return MachineJob{}, permissionErr
+		}
+	}
+	claimed, err := c.store.ClaimBoundNodeWorker(credentialDigest, nodeID, worker.ID)
+	if err != nil {
+		return MachineJob{}, err
+	}
+	commands, err := c.store.ClaimPendingCommandsForWorker(claimed.GoalID, claimed.ID)
+	if err != nil {
+		_, _ = c.store.UpdateWorkerAtAttempt(claimed.ID, nodeID, "running", "queued", claimed.Attempt,
+			store.WorkerUpdate{ClearPID: true})
+		return MachineJob{}, err
+	}
+	job := c.machineJob(*goal, *claimed, commands)
+	_ = c.store.SetMachineStatus(nodeID, "busy")
+	_, _ = c.store.UpdateGoal(claimed.GoalID, "running", "")
+	_, _ = c.store.AppendEvent(claimed.GoalID, claimed.ID, "WorkerStarted", map[string]any{
+		"attempt": claimed.Attempt, "remote": true, "machine_id": nodeID,
 	})
 	return job, nil
 }

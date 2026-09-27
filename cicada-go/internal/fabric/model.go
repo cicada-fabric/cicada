@@ -89,17 +89,20 @@ type JoinResult struct {
 }
 
 type NetworkCard struct {
-	PrincipalID       string         `json:"principal_id"`
-	EndpointID        string         `json:"endpoint_id"`
-	GroupID           string         `json:"group_id"`
-	Address           string         `json:"address"`
-	Name              string         `json:"name"`
-	Harness           string         `json:"harness"`
-	NodeID            string         `json:"node_id"`
-	Workspace         string         `json:"workspace,omitempty"`
-	Status            string         `json:"status"`
-	BindingID         string         `json:"binding_id,omitempty"`
-	BindingEpoch      uint64         `json:"binding_epoch,omitempty"`
+	PrincipalID  string `json:"principal_id"`
+	EndpointID   string `json:"endpoint_id"`
+	GroupID      string `json:"group_id"`
+	Address      string `json:"address"`
+	Name         string `json:"name"`
+	Harness      string `json:"harness"`
+	NodeID       string `json:"node_id"`
+	Workspace    string `json:"workspace,omitempty"`
+	Status       string `json:"status"`
+	BindingID    string `json:"binding_id,omitempty"`
+	BindingEpoch uint64 `json:"binding_epoch,omitempty"`
+	// NativeSessionID is populated only by WhoAmI for the authenticated session.
+	// Directory listing and resolution must not disclose another thread's ID.
+	NativeSessionID   string         `json:"native_session_id,omitempty"`
 	BindingStatus     string         `json:"binding_status,omitempty"`
 	ContextContinuity string         `json:"context_continuity,omitempty"`
 	Capabilities      map[string]any `json:"capabilities,omitempty"`
@@ -155,16 +158,18 @@ type ReplyInput struct {
 }
 
 type RequestView struct {
-	RequestID      string `json:"request_id"`
-	MessageID      string `json:"message_id"`
-	State          string `json:"state"`
-	Delivery       string `json:"delivery"`
-	ReplyMode      string `json:"reply_mode"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	CancelledAt    string `json:"cancelled_at,omitempty"`
-	ReplyMessageID string `json:"reply_message_id,omitempty"`
-	LateReply      bool   `json:"late_reply,omitempty"`
-	NextAction     string `json:"next_action,omitempty"`
+	RequestID        string `json:"request_id"`
+	MessageID        string `json:"message_id"`
+	SenderEndpointID string `json:"sender_endpoint_id,omitempty"`
+	SenderGroupID    string `json:"sender_group_id,omitempty"`
+	State            string `json:"state"`
+	Delivery         string `json:"delivery"`
+	ReplyMode        string `json:"reply_mode"`
+	ExpiresAt        string `json:"expires_at,omitempty"`
+	CancelledAt      string `json:"cancelled_at,omitempty"`
+	ReplyMessageID   string `json:"reply_message_id,omitempty"`
+	LateReply        bool   `json:"late_reply,omitempty"`
+	NextAction       string `json:"next_action,omitempty"`
 }
 
 type ReceiveInput struct {

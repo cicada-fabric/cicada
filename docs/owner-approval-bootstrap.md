@@ -1,8 +1,10 @@
 # Offline owner key bootstrap for development
 
-This is a temporary local trust ceremony for Architecture v2.1 Link grants.
-It does not enroll an Android device, create an authenticated Client session,
-activate a CommunicationLink, or make Fabric messages end-to-end encrypted.
+This is a temporary local trust ceremony for Architecture v2.1 owner keys.
+It registers the public trust root used by encrypted Client device enrollment
+and key-bound Link grants. It does not by itself enroll an Android device,
+create an authenticated Client session, activate a CommunicationLink, or make
+Fabric messages end-to-end encrypted.
 The Hub's normal management bearer and Node/Fabric credentials cannot replace
 the owner's private signing key.
 
@@ -45,11 +47,23 @@ cicada owner-key revoke \
   --expected-version 1
 ```
 
-The Store accepts one separately signed SOURCE and TARGET grant against the
-exact current Link contract digest/version. A grant is valid only while the
-owner key, both Endpoint memberships and native bindings, and the Link remain
-current. Grant records never make the old plaintext cross-Group route usable.
-There is not yet a safe remote Client review/sign/submit flow: callers must
-not expose private key files to a Node Agent or model just to exercise this
-API. The Android Client will need its own PQ-protected device session and
-contract review before grants become a routine product operation.
+After device enrollment, the Hub already offers encrypted `link.key_manifest`,
+`link.key_grants` and `link.key_grant` Client RPCs. A Client can review the
+current Link contract, both Endpoint key candidates and native bindings,
+then submit a separately signed SOURCE or TARGET key-bound grant. The Hub
+rechecks the manifest, owner key, memberships, bindings and expiry when it
+records or reads consent. A bound Node can fetch current public bilateral
+evidence at `/v2/relay/nodes/{node_id}/links/{link_id}/authorization` and must
+verify it against independently trusted owner keys before a non-routing pin.
+The current Hub also supports one-time invitations between two separately
+registered owners. Acceptance creates a `PROPOSED` Link; each owner must still
+sign the current key-bound manifest separately. The Node-only sealed SEND
+transport persists and claims authorized ciphertext; the target Node Agent
+checks exact-attempt authorization and local Owner trust, saves a durable
+crypto inbox, decrypts, and queues the bound native Codex Thread. This path
+has passed two-logical-Node/fake-Codex tests, not real cross-user native
+continuity or two-physical-machine acceptance. Grant
+records never make the old plaintext cross-Group route usable. Do not expose
+private Owner key files to a Node Agent, model, or Hub just to exercise the API.
+Each Node's independent public-key trust procedure is documented in
+[Node-local Owner key trust](node-owner-trust.md).

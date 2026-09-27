@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/cicada-ai/cicada/internal/clientcontract"
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -34,7 +36,7 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 	route := packet.Route
 	device, err := h.control.ClientDevice(route.OwnerID, route.DeviceID)
 	if err != nil || device.State != store.ClientDeviceActive ||
-		h.control.ValidateClientOwnerScope(route.OwnerID) != nil {
+		h.control.ValidateClientSessionOwner(route.OwnerID) != nil {
 		writeError(response, http.StatusForbidden, errors.New("Client device is not authorized"))
 		return
 	}
@@ -54,11 +56,12 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	digest := sha256.Sum256(data)
-	accepted, err := h.control.AcceptClientControlRequest(store.AcceptClientRequestInput{
+	requestBinding := store.AcceptClientRequestInput{
 		OwnerID: device.OwnerID, DeviceID: device.DeviceID,
 		SessionEpoch: opened.Route.SessionEpoch, Sequence: opened.Route.Sequence,
 		OperationID: opened.Route.OperationID, CiphertextDigest: hex.EncodeToString(digest[:]),
-	})
+	}
+	accepted, err := h.control.AcceptClientControlRequest(requestBinding)
 	if err != nil {
 		writeError(response, http.StatusConflict, errors.New("Client request was rejected by replay or device state guard"))
 		return
@@ -87,13 +90,13 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 	}
 	encoded, err := json.Marshal(resultBody)
 	if err != nil {
-		_, _ = h.control.FailClientControlRequest(device.OwnerID, device.DeviceID, opened.Route.OperationID)
+		_, _ = h.control.MarkClientControlRequestUncertain(device.OwnerID, device.DeviceID, opened.Route.OperationID)
 		writeError(response, http.StatusInternalServerError, err)
 		return
 	}
-	sequence, err := h.control.AllocateClientControlResponseSequence(device.OwnerID, device.DeviceID, binding.SessionEpoch)
+	sequence, err := h.control.ReserveClientControlResponseSequence(requestBinding)
 	if err != nil {
-		_, _ = h.control.FailClientControlRequest(device.OwnerID, device.DeviceID, opened.Route.OperationID)
+		_, _ = h.control.MarkClientControlRequestUncertain(device.OwnerID, device.DeviceID, opened.Route.OperationID)
 		writeError(response, http.StatusConflict, errors.New("Client device session changed before response"))
 		return
 	}
@@ -104,11 +107,12 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 	responseRoute.SenderKeyVersion, responseRoute.ReceiverKeyVersion = responseRoute.ReceiverKeyVersion, responseRoute.SenderKeyVersion
 	sealed, err := h.control.SealClientControlResponse(device.Public, binding, responseRoute, encoded)
 	if err != nil {
-		_, _ = h.control.FailClientControlRequest(device.OwnerID, device.DeviceID, opened.Route.OperationID)
+		_, _ = h.control.MarkClientControlRequestUncertain(device.OwnerID, device.DeviceID, opened.Route.OperationID)
 		writeError(response, http.StatusInternalServerError, err)
 		return
 	}
 	if _, err := h.control.CompleteClientControlRequest(device.OwnerID, device.DeviceID, opened.Route.OperationID, sealed); err != nil {
+		_, _ = h.control.MarkClientControlRequestUncertain(device.OwnerID, device.DeviceID, opened.Route.OperationID)
 		writeError(response, http.StatusConflict, errors.New("Client operation completion is uncertain"))
 		return
 	}
@@ -124,10 +128,79 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 }
 
 func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, operation string, plaintext []byte) (any, error) {
-	if err := h.control.ValidateClientOwnerScope(ownerID); err != nil {
-		return nil, errors.New("Client owner scope is unavailable")
+	if err := h.control.ValidateClientSessionOwner(ownerID); err != nil {
+		return nil, errors.New("Client session owner is unavailable")
+	}
+	role := clientcontract.RoleExternal
+	if ownerID == h.control.Identity().ID {
+		role = clientcontract.RoleManager
+	}
+	// The catalog is the common allowlist for both capability discovery and
+	// dispatch authorization. It does not replace operation-specific owner,
+	// Link, Group, version, or proof checks below.
+	if !clientcontract.Allows(role, operation) {
+		return nil, errors.New("Client operation is not authorized for this owner")
 	}
 	switch operation {
+	case "link.list":
+		var input struct {
+			Cursor string `json:"cursor"`
+			Limit  int    `json:"limit"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.Limit < 0 {
+			return nil, errors.New("invalid communication link list request")
+		}
+		return h.control.ClientCommunicationLinks(ownerID, input.Cursor, input.Limit)
+	case "session.capabilities":
+		var input struct{}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
+			return nil, errors.New("invalid Client session capabilities request")
+		}
+		return map[string]any{
+			"owner_id": ownerID, "role": string(role),
+			"contract_revision":        clientcontract.ContractRevision,
+			"catalog_sha256":           clientcontract.CatalogSHA256(),
+			"rpc_recovery":             true,
+			"available_rpc_operations": clientcontract.OperationsForRole(role),
+		}, nil
+	case "link.invite_create":
+		var input struct {
+			SourceEndpointID string   `json:"source_endpoint_id"`
+			SourceGroupID    string   `json:"source_group_id"`
+			HubID            string   `json:"hub_id"`
+			Actions          []string `json:"actions,omitempty"`
+			DataScopes       []string `json:"data_scopes"`
+			ExpiresAt        string   `json:"expires_at"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.SourceEndpointID == "" || input.SourceGroupID == "" || input.HubID == "" || input.ExpiresAt == "" {
+			return nil, errors.New("invalid external Thread invitation request")
+		}
+		return h.control.CreateClientExternalThreadInvite(ownerID, store.ExternalThreadInviteInput{
+			SourceEndpointID: input.SourceEndpointID, SourceGroupID: input.SourceGroupID,
+			HubID: input.HubID, Actions: input.Actions, DataScopes: input.DataScopes,
+			ExpiresAt: input.ExpiresAt,
+		})
+	case "link.invite_preview":
+		var input struct {
+			Token string `json:"token"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.Token == "" {
+			return nil, errors.New("invalid external Thread invitation preview")
+		}
+		return h.control.PreviewClientExternalThreadInvite(ownerID, input.Token)
+	case "link.invite_accept":
+		var input struct {
+			Token            string `json:"token"`
+			TargetEndpointID string `json:"target_endpoint_id"`
+			TargetGroupID    string `json:"target_group_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.Token == "" || input.TargetEndpointID == "" || input.TargetGroupID == "" {
+			return nil, errors.New("invalid external Thread invitation acceptance")
+		}
+		return h.control.AcceptClientExternalThreadInvite(ownerID, input.Token,
+			input.TargetEndpointID, input.TargetGroupID)
 	case "link.key_manifest":
 		var input struct {
 			LinkID string `json:"link_id"`
@@ -157,6 +230,52 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		}
 		return h.control.ClientRecordCommunicationLinkKeyGrant(ownerID,
 			input.LinkID, input.Side, input.OwnerKeyID, input.SignedProof)
+	case "group.key_manifest":
+		var input struct {
+			GroupID    string `json:"group_id"`
+			EndpointID string `json:"endpoint_id"`
+			OwnerKeyID string `json:"owner_key_id"`
+			IssuedAt   string `json:"issued_at"`
+			ExpiresAt  string `json:"expires_at"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" || input.OwnerKeyID == "" ||
+			input.IssuedAt == "" || input.ExpiresAt == "" {
+			return nil, errors.New("invalid Group Endpoint key grant manifest request")
+		}
+		issuedAt, err := parseCanonicalGroupKeyGrantTime(input.IssuedAt)
+		if err != nil {
+			return nil, errors.New("invalid Group Endpoint key grant issue time")
+		}
+		expiresAt, err := parseCanonicalGroupKeyGrantTime(input.ExpiresAt)
+		if err != nil {
+			return nil, errors.New("invalid Group Endpoint key grant expiry")
+		}
+		return h.control.ClientPreviewGroupEndpointKeyGrant(ownerID, input.GroupID,
+			input.EndpointID, input.OwnerKeyID, issuedAt, expiresAt)
+	case "group.key_grant":
+		var input struct {
+			GroupID     string `json:"group_id"`
+			EndpointID  string `json:"endpoint_id"`
+			OwnerKeyID  string `json:"owner_key_id"`
+			SignedProof []byte `json:"signed_proof"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" || input.OwnerKeyID == "" || len(input.SignedProof) == 0 {
+			return nil, errors.New("invalid Group Endpoint key grant")
+		}
+		return h.control.ClientAcceptGroupEndpointKeyGrant(ownerID, input.GroupID,
+			input.EndpointID, input.OwnerKeyID, input.SignedProof)
+	case "group.key_status":
+		var input struct {
+			GroupID    string `json:"group_id"`
+			EndpointID string `json:"endpoint_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" {
+			return nil, errors.New("invalid Group Endpoint key grant status request")
+		}
+		return h.control.ClientGroupEndpointKeyGrantStatus(ownerID, input.GroupID, input.EndpointID)
 	case "nodes.preview":
 		var input struct {
 			UserCode string `json:"user_code"`
@@ -224,6 +343,19 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid status changes request")
 		}
 		return h.control.ReadClientStatusChanges(ownerID, input.Cursor, input.Limit)
+	case "goal.lifecycle":
+		var input struct {
+			GoalID          string `json:"goal_id"`
+			Action          string `json:"action"`
+			ExpectedVersion int64  `json:"expected_version"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.GoalID == "" || input.ExpectedVersion <= 0 ||
+			(input.Action != "pause" && input.Action != "resume") {
+			return nil, errors.New("invalid Goal lifecycle request")
+		}
+		return h.control.ChangeClientGoalLifecycle(ownerID, callerDeviceID, clientRequestID,
+			input.GoalID, input.Action, input.ExpectedVersion)
 	case "topology.snapshot":
 		var input struct{}
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
@@ -243,7 +375,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
 			return nil, errors.New("invalid approval list request")
 		}
-		return h.control.Approvals(input.PendingOnly)
+		return h.control.ClientApprovals(ownerID, input.PendingOnly)
 	case "intent.get":
 		var input struct {
 			IntentID string `json:"intent_id"`
@@ -251,7 +383,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.IntentID == "" {
 			return nil, errors.New("invalid intent lookup request")
 		}
-		return h.control.Intent(input.IntentID)
+		return h.control.ClientIntentForOwner(ownerID, input.IntentID)
 	case "intent.status":
 		var input struct {
 			IntentID string `json:"intent_id"`
@@ -260,6 +392,14 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid intent status request")
 		}
 		return h.control.ClientIntentStatus(ownerID, input.IntentID)
+	case "goal.result":
+		var input struct {
+			IntentID string `json:"intent_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.IntentID == "" {
+			return nil, errors.New("invalid Goal result request")
+		}
+		return h.control.ClientGoalResultForIntent(ownerID, input.IntentID)
 	case "intent.list":
 		var input struct {
 			Status string `json:"status,omitempty"`
@@ -267,13 +407,13 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
 			return nil, errors.New("invalid intent list request")
 		}
-		return h.control.Intents(input.Status)
+		return h.control.ClientIntentsForOwner(ownerID, input.Status)
 	case "intent.submit":
 		var input control.IntentInput
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || strings.TrimSpace(input.Text) == "" {
 			return nil, errors.New("invalid intent submission")
 		}
-		return h.control.AcceptClientIntent(clientRequestID, input)
+		return h.control.AcceptClientIntentForOwner(ownerID, clientRequestID, input)
 	case "approvals.decide":
 		var input struct {
 			ApprovalID string `json:"approval_id"`
@@ -291,4 +431,20 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 	default:
 		return nil, errors.New("Client operation is not available")
 	}
+}
+
+func managerClientRPCOperations() []string {
+	return clientcontract.OperationsForRole(clientcontract.RoleManager)
+}
+
+func externalClientRPCOperations() []string {
+	return clientcontract.OperationsForRole(clientcontract.RoleExternal)
+}
+
+func parseCanonicalGroupKeyGrantTime(value string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil || parsed.UTC().Format(time.RFC3339Nano) != value {
+		return time.Time{}, errors.New("Group Endpoint key grant time must be canonical UTC RFC3339Nano")
+	}
+	return parsed.UTC(), nil
 }

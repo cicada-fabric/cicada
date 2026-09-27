@@ -2,12 +2,16 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
+  x-contract-revision: client-hub-v1.2
+  x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
     Android interoperability certification. Check GET /v2/client/capabilities
     before use. The /v2/client/rpc operation body is encrypted to Control;
     operation plaintext shapes and cryptographic byte rules are documented in
-    docs/client-hub-wire-v1.md. The legacy /v1 management API is outside this
+    docs/client-hub-wire-v1.md. `contract_revision` identifies the cross-repository
+    contract revision; `catalog_sha256` hashes only the embedded operation catalog,
+    not this OpenAPI document or the complete contract bundle. The legacy /v1 management API is outside this
     contract. The Node-only Link authorization route is included to make its
     separate Node bearer trust boundary explicit; it is not a Client RPC.
 servers:
@@ -134,6 +138,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HttpError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/rpc/recover:
+    post:
+      operationId: recoverClientControlRPC
+      description: >-
+        Submit the exact original signed REQUEST packet after a lost RPC
+        response. This route authenticates the current device binding and
+        persisted packet digest; it never executes the operation again.
+        COMPLETED returns the original cached encrypted response. UNCERTAIN
+        or FAILED returns a durable encrypted OUTCOME_UNCERTAIN notice using
+        the request's reserved response sequence. PROCESSING returns 409;
+        pre-migration uncertain requests without a reservation return 409
+        RECOVERY_UNAVAILABLE. A notice does not prove the business outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Packet'
+      responses:
+        '200':
+          description: Original cached packet or sealed uncertainty notice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Packet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Device inactive or packet authentication failed.
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Still processing, recovery unavailable, or identity/replay mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryError'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -283,11 +329,23 @@ components:
           type: string
           description: Human-readable message; no stable error code is currently defined.
 
+    RecoveryError:
+      type: object
+      additionalProperties: false
+      required: [code, error]
+      properties:
+        code:
+          type: string
+          enum: [STILL_PROCESSING, RECOVERY_UNAVAILABLE, RECOVERY_REJECTED]
+        error: {type: string}
+
     ClientCapabilities:
       type: object
       additionalProperties: true
       required:
         - contract
+        - contract_revision
+        - catalog_sha256
         - status
         - planned_platform
         - legacy_management_api_available
@@ -300,13 +358,24 @@ components:
         - control_intents
         - device_binding
         - external_thread_links
+        - external_link_invites
+        - external_client_sessions
         - link_key_consent
+        - group_endpoint_key_grants
         - client_device_enrollment
+        - rpc_recovery
         - client_device_management
         - approval_read_and_decide
+        - queued_goal_lifecycle
         - available_rpc_operations
+        - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
+        contract_revision: {const: client-hub-v1.2}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
         status: {type: string, enum: [partial, not_ready]}
         planned_platform: {const: android}
         legacy_management_api_available: {type: boolean}
@@ -319,11 +388,20 @@ components:
         control_intents: {type: boolean}
         device_binding: {type: boolean}
         external_thread_links: {const: false}
+        external_link_invites: {type: boolean}
+        external_client_sessions: {type: boolean}
         link_key_consent: {type: boolean}
+        group_endpoint_key_grants: {type: boolean}
         client_device_enrollment: {type: boolean}
+        rpc_recovery: {type: boolean}
         client_device_management: {type: boolean}
         approval_read_and_decide: {type: boolean}
+        queued_goal_lifecycle: {type: boolean}
         available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+        external_rpc_operations:
           type: array
           items:
             $ref: '#/components/schemas/ClientRpcOperation'
@@ -452,9 +530,18 @@ components:
 
     ClientRpcOperation:
       type: string
+      description: >-
+        Union of manager and external RPC operation IDs. Per-device authorization
+        is returned by the encrypted session.capabilities result and enforced by
+        the Hub. The canonical role catalog is embedded at
+        cicada-go/internal/clientcontract/catalog.json.
+      x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
       enum:
+        - session.capabilities
         - status.snapshot
         - status.changes
+        - goal.lifecycle
+        - goal.result
         - topology.snapshot
         - topology.apply
         - devices.list
@@ -472,6 +559,31 @@ components:
         - link.key_manifest
         - link.key_grants
         - link.key_grant
+        - group.key_manifest
+        - group.key_grant
+        - group.key_status
+        - link.list
+        - link.invite_create
+        - link.invite_preview
+        - link.invite_accept
+
+    SessionCapabilities:
+      type: object
+      additionalProperties: false
+      required: [owner_id, role, contract_revision, catalog_sha256, rpc_recovery, available_rpc_operations]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        role: {type: string, enum: [manager, external]}
+        contract_revision: {const: client-hub-v1.2}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
+        rpc_recovery: {const: true}
+        available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
 
     NodeLinkAuthorizationBundle:
       type: object

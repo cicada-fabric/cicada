@@ -14,7 +14,7 @@ func (c *Control) ClientCommunicationLinkKeyManifest(ownerID, linkID string) (*s
 	if c == nil || c.store == nil {
 		return nil, errors.New("communication link key registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.GetCommunicationLinkKeyManifest(linkID, ownerID)
@@ -24,7 +24,7 @@ func (c *Control) ClientCommunicationLinkKeyGrants(ownerID, linkID string) ([]st
 	if c == nil || c.store == nil {
 		return nil, errors.New("communication link key registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.GetCommunicationLinkKeyGrantStatuses(linkID, ownerID)
@@ -35,7 +35,7 @@ func (c *Control) ClientRecordCommunicationLinkKeyGrant(ownerID, linkID, side,
 	if c == nil || c.store == nil {
 		return nil, errors.New("communication link key registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.RecordCommunicationLinkKeyGrant(ownerID, linkID, side, ownerKeyID, signedProof)

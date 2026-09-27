@@ -1,0 +1,75 @@
+# Lightweight Hub runtime. It uses the same Go service binary as the full
+# development image, but deliberately contains no Codex CLI, model config,
+# provider URL, or provider credentials.
+FROM golang:1.27.1-alpine AS cicada-builder
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ARG CICADA_BUILD_REVISION=unknown
+ARG CICADA_BUILD_DIRTY=unknown
+ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
+ARG CICADA_BUILD_CATALOG_SHA256=unknown
+
+WORKDIR /src
+COPY cicada-go/go.mod cicada-go/go.sum ./
+RUN go mod download
+COPY cicada-go/ ./
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+    -o /out/cicada ./cmd/cicada
+
+# This target runs the existing real-TCP Docker Hub protocol smoke test. It is
+# a build-only test image and is never used as the Hub runtime.
+FROM cicada-builder AS interop-test
+ARG CICADA_BUILD_REVISION=unknown
+ARG CICADA_BUILD_DIRTY=unknown
+ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
+ARG CICADA_BUILD_CATALOG_SHA256=unknown
+LABEL org.opencontainers.image.title="CICADA Hub interop test runner" \
+      org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
+      org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
+      org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+      org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}"
+WORKDIR /src
+ENTRYPOINT ["go", "test", "-json", "./internal/server", "-run", "^TestClientDockerHubSmoke$", "-count=1"]
+
+FROM alpine:3.24 AS hub-runtime
+
+ARG CICADA_UID=1000
+ARG CICADA_GID=1000
+ARG CICADA_BUILD_REVISION=unknown
+ARG CICADA_BUILD_DIRTY=unknown
+ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
+ARG CICADA_BUILD_CATALOG_SHA256=unknown
+
+LABEL org.opencontainers.image.title="CICADA Hub" \
+      org.opencontainers.image.description="CICADA Hub HTTP service without Codex or model credentials" \
+      org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
+      org.cicada.role="hub" \
+      org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
+      org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+      org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}"
+
+RUN apk add --no-cache ca-certificates \
+    && addgroup -g "${CICADA_GID}" cicada \
+    && adduser -D -u "${CICADA_UID}" -G cicada -h /home/cicada cicada \
+    && mkdir -p /home/cicada /state /workspace \
+    && chown -R cicada:cicada /home/cicada /state /workspace
+
+COPY --from=cicada-builder /out/cicada /usr/local/bin/cicada
+
+ENV HOME=/home/cicada \
+    CICADA_STATE_DIR=/state \
+    CICADA_WORKSPACE_ROOT=/workspace \
+    CICADA_INTENT_PLANNER_BIN= \
+    CICADA_COMPLETION_VERIFIER_BIN=
+
+USER cicada
+WORKDIR /workspace
+EXPOSE 8787
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8787/healthz || exit 1
+ENTRYPOINT ["/usr/local/bin/cicada"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8787"]

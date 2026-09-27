@@ -66,18 +66,22 @@ var roleGrantNames = map[string]struct{}{
 // owner Principal and owner Membership explicitly; Fabric peer operations only
 // read the resulting authority and never call this method.
 func (c *Control) CreateGroup(input GroupCreateInput) (*store.Group, error) {
-	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" {
-		return nil, errors.New("group name is required")
-	}
 	identity := c.Identity()
 	if strings.TrimSpace(identity.ID) == "" {
 		return nil, errors.New("local control identity is unavailable")
 	}
-	if err := c.store.EnsureLocalOwnerPrincipal(identity.ID); err != nil {
+	return c.createGroupForOwner(identity.ID, input)
+}
+
+func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput) (*store.Group, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" {
+		return nil, errors.New("group name is required")
+	}
+	if err := c.store.EnsureLocalOwnerPrincipal(ownerID); err != nil {
 		return nil, err
 	}
-	owner, err := c.store.GetPrincipal(identity.ID)
+	owner, err := c.store.GetPrincipal(ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +95,7 @@ func (c *Control) CreateGroup(input GroupCreateInput) (*store.Group, error) {
 		input.ExternalMode = "monitor_mediated"
 	}
 	group, err := c.store.CreateGroup(store.Group{
-		OwnerPrincipalID: owner.ID, TrustDomainID: identity.ID, Name: input.Name,
+		OwnerPrincipalID: owner.ID, TrustDomainID: owner.TrustDomainID, Name: input.Name,
 		State: store.GroupStateActive, Purpose: strings.TrimSpace(input.Purpose),
 		PolicyRef: strings.TrimSpace(input.PolicyRef), ContextPolicy: input.ContextPolicy,
 		IsolationProfile: input.IsolationProfile, ExternalMode: input.ExternalMode,

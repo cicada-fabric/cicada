@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,9 +43,12 @@ var (
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
 	Target    string `json:"target,omitempty"`
+	LinkID    string `json:"link_id,omitempty"`
+	DataScope string `json:"data_scope,omitempty"`
 	Body      string `json:"body,omitempty"`
 	Question  string `json:"question,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
 type mcpOutboxScope struct {
@@ -120,26 +122,6 @@ func mcpOutboxStatePath(sessionStatePath string) string {
 	}
 	// A directly constructed test/server without a session-state path must fail
 	// closed instead of unexpectedly opening a process-wide home-directory DB.
-	// The normal runMCP path always supplies mcpSessionStatePath, including its
-	// home-directory default.
-	if strings.TrimSpace(sessionStatePath) == "" || strings.TrimSpace(sessionStatePath) == ":memory:" {
-		return ""
-	}
-	if value := strings.TrimSpace(os.Getenv("CICADA_SESSION_STATE_DIR")); value != "" {
-		return filepath.Join(filepath.Clean(value), "mcp", "outbox.sqlite3")
-	}
-	if value := strings.TrimSpace(os.Getenv("CICADA_MCP_STATE_DIR")); value != "" {
-		return filepath.Join(filepath.Clean(value), "mcp", "outbox.sqlite3")
-	}
-	if value := strings.TrimSpace(os.Getenv("CICADA_STATE_DIR")); value != "" {
-		return filepath.Join(filepath.Clean(value), "mcp", "outbox.sqlite3")
-	}
-	if value := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); value != "" {
-		return filepath.Join(filepath.Clean(value), "cicada", "mcp", "outbox.sqlite3")
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".local", "state", "cicada", "mcp", "outbox.sqlite3")
-	}
 	return ""
 }
 
@@ -551,25 +533,6 @@ func (m *mcpServer) currentMCPOutboxScope() (mcpOutboxScope, error) {
 		EndpointID: endpointID, GroupID: groupID}, nil
 }
 
-func outboxHTTPRequest(op mcpOutboxOperation) (string, string, any, error) {
-	var input mcpOutboxInput
-	if err := json.Unmarshal([]byte(op.InputJSON), &input); err != nil {
-		return "", "", nil, fmt.Errorf("decode immutable MCP outbox input: %w", err)
-	}
-	switch op.Kind {
-	case "send":
-		return http.MethodPost, "/v2/fabric/send", fabricpkg.SendInput{Target: input.Target, Body: input.Body, IdempotencyKey: op.IdempotencyKey}, nil
-	case "ask":
-		return http.MethodPost, "/v2/fabric/ask", fabricpkg.AskInput{Target: input.Target, Question: input.Question, IdempotencyKey: op.IdempotencyKey}, nil
-	case "reply":
-		return http.MethodPost, "/v2/fabric/reply", fabricpkg.ReplyInput{
-			RequestID: input.RequestID, Body: input.Body, IdempotencyKey: op.IdempotencyKey,
-		}, nil
-	default:
-		return "", "", nil, fmt.Errorf("unsupported MCP outbox operation kind %q", op.Kind)
-	}
-}
-
 func (m *mcpServer) submitMCPOutbox(kind string, input mcpOutboxInput, key string) (any, error) {
 	scope, err := m.currentMCPOutboxScope()
 	if err != nil {
@@ -604,75 +567,33 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 		}
 		return nil, err
 	}
-	method, path, body, err := outboxHTTPRequest(op)
-	if err != nil {
-		failed, persistErr := store.markError(scope, op.OperationID, mcpOutboxStatusFailed, err)
-		if persistErr != nil {
-			return nil, persistErr
-		}
-		return mcpOutboxPublicResult(failed), nil
+	if op.Kind == "broadcast" {
+		return m.dispatchBroadcastMCPOutbox(store, scope, op)
 	}
-	token := m.currentSessionToken()
-	if token == "" {
-		failed, persistErr := store.markError(scope, op.OperationID, mcpOutboxStatusFailed, errors.New("MCP session authorization disappeared before send"))
-		if persistErr != nil {
-			return nil, persistErr
-		}
-		return mcpOutboxPublicResult(failed), nil
-	}
-	// The operation's Group is immutable in the durable outbox. A selected
-	// secondary Group must remain the authorization scope on every attempt,
-	// including a retry after the MCP process restarts.
-	result, requestErr := m.requestWithGroup(method, path, body, "CicadaSession "+token, op.GroupID)
-	if requestErr != nil {
-		status := mcpOutboxStatusUnknown
-		message := requestErr
-		var httpErr *mcpHTTPError
-		if errors.As(requestErr, &httpErr) {
-			switch httpErr.statusCode {
-			case http.StatusUnauthorized:
-				status = mcpOutboxStatusFailed
-				message = errors.New("Cicada session authorization was revoked")
-				m.clearSession()
-			case http.StatusForbidden:
-				// A single operation can be denied by policy while this valid
-				// session remains authorized for receive/status and other tools.
-				status = mcpOutboxStatusFailed
-				message = errors.New("Cicada operation was forbidden")
-			default:
-				// A definitive client error cannot become valid by transport
-				// retrying. Keep timeout/rate-limit responses uncertain because a
-				// Relay or proxy may have accepted the request before responding.
-				if httpErr.statusCode >= http.StatusBadRequest && httpErr.statusCode < 500 &&
-					httpErr.statusCode != http.StatusRequestTimeout && httpErr.statusCode != http.StatusTooManyRequests {
-					status = mcpOutboxStatusFailed
-				}
+	if op.Kind == "send" || op.Kind == "ask" || op.Kind == "reply" {
+		var input mcpOutboxInput
+		if err := json.Unmarshal([]byte(op.InputJSON), &input); err != nil {
+			failed, persistErr := store.markError(scope, op.OperationID, mcpOutboxStatusFailed,
+				errors.New("MCP peer operation has corrupt immutable input"))
+			if persistErr != nil {
+				return nil, persistErr
 			}
+			return mcpOutboxPublicResult(failed), nil
 		}
-		failed, persistErr := store.markError(scope, op.OperationID, status, message)
-		if persistErr != nil {
-			return nil, persistErr
+		if input.LinkID != "" {
+			if op.Kind == "send" {
+				return m.dispatchSealedMCPOutbox(store, scope, op)
+			}
+			return m.dispatchSealedRPCMCPOutbox(store, scope, op, input)
 		}
-		return mcpOutboxPublicResult(failed), nil
+		return m.dispatchLocalGroupMCPOutbox(store, scope, op, input)
 	}
-	resultJSON, err := mcpOutboxResultJSON(result, token)
-	if err != nil {
-		unknown, persistErr := store.markError(scope, op.OperationID, mcpOutboxStatusUnknown, err)
-		if persistErr != nil {
-			return nil, persistErr
-		}
-		return mcpOutboxPublicResult(unknown), nil
+	failed, persistErr := store.markError(scope, op.OperationID, mcpOutboxStatusFailed,
+		errors.New("unsupported MCP outbox operation kind"))
+	if persistErr != nil {
+		return nil, persistErr
 	}
-	sent, err := store.markResult(scope, op.OperationID, mcpOutboxStatusSent, "", resultJSON)
-	if err != nil {
-		// The remote may already have accepted the operation. Preserve the
-		// uncertain result locally only in memory; a later explicit retry uses
-		// the same key and lets the Relay's durable dedupe decide.
-		op.Status = mcpOutboxStatusUnknown
-		op.LastError = "local outbox result persistence failed"
-		return mcpOutboxPublicResult(op), nil
-	}
-	return mcpOutboxPublicResult(sent), nil
+	return mcpOutboxPublicResult(failed), nil
 }
 
 func mcpOutboxScopeEqual(a, b mcpOutboxScope) bool {
@@ -740,6 +661,28 @@ func mcpOutboxPublicResult(op mcpOutboxOperation) map[string]any {
 		"idempotency_key": op.IdempotencyKey,
 		"attempts":        op.AttemptCount,
 		"retryable":       op.Status == mcpOutboxStatusPending || op.Status == mcpOutboxStatusUnknown,
+	}
+	if op.Kind == "broadcast" {
+		if broadcastID, err := mcpBroadcastID(op.OperationID); err == nil {
+			result["broadcast_id"] = broadcastID
+		}
+	}
+	// A timeout can happen after Hub durable acceptance and before the MCP
+	// process records the receipt. Publish only immutable correlation metadata
+	// so the original joined session can query status without guessing an ID;
+	// the question/answer body remains private in the local outbox.
+	if op.Kind == "ask" || op.Kind == "reply" {
+		var input mcpOutboxInput
+		if json.Unmarshal([]byte(op.InputJSON), &input) == nil && input.LinkID != "" {
+			result["link_id"] = input.LinkID
+			if op.Kind == "ask" {
+				if _, requestID, err := localSealedRPCIDs(op.OperationID); err == nil {
+					result["request_id"] = requestID
+				}
+			} else if input.RequestID != "" {
+				result["request_id"] = input.RequestID
+			}
+		}
 	}
 	if op.Status == mcpOutboxStatusPending {
 		result["next_action"] = "cicada_operation_retry"

@@ -439,9 +439,9 @@ func deriveKey(sharedSecret, aad []byte, sequence uint64) ([]byte, error) {
 	return hkdfSHA256(sharedSecret, nil, info, 32), nil
 }
 
-// hkdfSHA256 is RFC 5869's extract-and-expand construction. Keeping this tiny
-// implementation local avoids adding a second crypto dependency to the Go
-// 1.22 build while retaining the standard, reviewed construction.
+// hkdfSHA256 is the legacy Contact protocol's RFC 5869 derivation. Its output
+// is part of the stored session format; replace the helper only after proving
+// byte-for-byte compatibility with retained Contact and replay fixtures.
 func hkdfSHA256(secret, salt, info []byte, length int) []byte {
 	if salt == nil {
 		salt = make([]byte, sha256.Size)

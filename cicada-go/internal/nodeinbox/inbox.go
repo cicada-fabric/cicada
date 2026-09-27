@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,7 +89,33 @@ type Message struct {
 	EndpointID   string
 	SessionID    string
 	BindingEpoch uint64
+	GroupID      string
+	Route        RouteMetadata
 	Payload      []byte
+}
+
+// RouteMetadata is the verified, immutable clear route attached to a sealed
+// peer envelope. Legacy deliveries may omit it; callers must never infer it
+// from plaintext or from unverified history.
+type RouteMetadata struct {
+	Kind             string
+	RequestID        string
+	ReplyTo          string
+	SenderEndpointID string
+}
+
+// VisibleMessage is a message whose native runtime injection has been
+// positively recorded. Sequence is local to one Node inbox database.
+type VisibleMessage struct {
+	Sequence         int64  `json:"sequence"`
+	MessageID        string `json:"message_id"`
+	Body             string `json:"body"`
+	State            State  `json:"state"`
+	CreatedAt        string `json:"created_at"`
+	Kind             string `json:"kind,omitempty"`
+	RequestID        string `json:"request_id,omitempty"`
+	ReplyTo          string `json:"reply_to,omitempty"`
+	SenderEndpointID string `json:"sender_endpoint_id,omitempty"`
 }
 
 // Delivery is a durable inbox record.  Payload is returned only to callers
@@ -140,9 +167,10 @@ type Receipt struct {
 // opened beside the existing Control database or in a separate Node-local
 // state directory.
 type Inbox struct {
-	db     *sql.DB
-	mu     sync.Mutex
-	closed bool
+	db                      *sql.DB
+	mu                      sync.Mutex
+	closed                  bool
+	routeMetadataTableReady bool
 }
 
 // Open opens or creates a durable Node inbox.  Recovery is part of opening:
@@ -153,8 +181,8 @@ func Open(path string) (*Inbox, error) {
 		return nil, errors.New("node inbox database path is required")
 	}
 	if path != ":memory:" && !strings.HasPrefix(path, "file::memory:") {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, fmt.Errorf("create node inbox state directory: %w", err)
+		if err := preparePrivateInboxPath(path); err != nil {
+			return nil, err
 		}
 	}
 	db, err := sql.Open("sqlite", path)
@@ -174,11 +202,69 @@ func Open(path string) (*Inbox, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	inbox.routeMetadataTableReady = true
 	return inbox, nil
 }
 
-// New is a compatibility alias for Open for machine-agent constructors.
-func New(path string) (*Inbox, error) { return Open(path) }
+// OpenReadOnly never initializes schema or performs crash recovery. A live
+// machine agent owns those transitions; MCP inbox reads must be observational.
+func OpenReadOnly(path string) (*Inbox, error) {
+	if strings.TrimSpace(path) == "" || path == ":memory:" {
+		return nil, errors.New("node inbox read-only path is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("node inbox read-only database is unavailable")
+	}
+	uri := (&url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}).String()
+	db, err := sql.Open("sqlite", uri)
+	if err != nil {
+		return nil, fmt.Errorf("open read-only node inbox sqlite: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	var routeMetadataTable int
+	err = db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='node_inbox_message_routes'`).Scan(&routeMetadataTable)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		_ = db.Close()
+		return nil, fmt.Errorf("inspect read-only node inbox schema: %w", err)
+	}
+	return &Inbox{db: db, routeMetadataTableReady: routeMetadataTable == 1}, nil
+}
+
+// The inbox can contain decrypted peer text. SQLite may create WAL/SHM files
+// beside the database, so protecting only the main file is insufficient.
+func preparePrivateInboxPath(path string) error {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("create node inbox state directory: %w", err)
+	}
+	info, err := os.Lstat(directory)
+	if err != nil {
+		return fmt.Errorf("inspect node inbox state directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("node inbox state directory must be private (mode 0700); got mode %04o", info.Mode().Perm())
+	}
+	info, err = os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		file, createErr := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if createErr != nil {
+			return fmt.Errorf("create private node inbox database: %w", createErr)
+		}
+		return file.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("inspect node inbox database: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("node inbox database must be a regular file")
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("protect node inbox database: %w", err)
+	}
+	return nil
+}
 
 // Close closes the underlying SQLite handle.  A closed Inbox must not be
 // reused.
@@ -224,6 +310,32 @@ CREATE INDEX IF NOT EXISTS node_inbox_claim_idx
 CREATE INDEX IF NOT EXISTS node_inbox_endpoint_idx
   ON node_inbox_deliveries(endpoint_id, binding_epoch, state);
 
+CREATE TABLE IF NOT EXISTS node_inbox_message_groups (
+  message_id TEXT PRIMARY KEY REFERENCES node_inbox_deliveries(message_id),
+  group_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS node_inbox_message_routes (
+  message_id TEXT PRIMARY KEY REFERENCES node_inbox_deliveries(message_id),
+  kind TEXT NOT NULL CHECK (kind IN ('SEND', 'REQUEST', 'REPLY')),
+  request_id TEXT NOT NULL,
+  reply_to TEXT NOT NULL,
+  sender_endpoint_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS node_inbox_schema_migrations (
+  name TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS node_inbox_visible_messages (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id TEXT NOT NULL UNIQUE REFERENCES node_inbox_deliveries(message_id)
+);
+CREATE TRIGGER IF NOT EXISTS node_inbox_visibility_after_injection
+AFTER UPDATE OF state ON node_inbox_deliveries
+WHEN NEW.state IN ('RUNTIME_INJECTED', 'CONSUMPTION_UNCONFIRMED')
+ AND OLD.state NOT IN ('RUNTIME_INJECTED', 'CONSUMPTION_UNCONFIRMED')
+BEGIN
+  INSERT OR IGNORE INTO node_inbox_visible_messages(message_id) VALUES (NEW.message_id);
+END;
+
 CREATE TABLE IF NOT EXISTS node_inbox_attempts (
   attempt_id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL REFERENCES node_inbox_deliveries(message_id),
@@ -246,7 +358,32 @@ CREATE INDEX IF NOT EXISTS node_inbox_attempt_message_idx
 	if err != nil {
 		return fmt.Errorf("initialize node inbox schema: %w", err)
 	}
-	return nil
+	// Backfill once and commit its marker atomically. Reopening a busy Node
+	// inbox must not repeatedly scan its entire historical delivery table.
+	tx, err := i.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin node inbox visibility migration: %w", err)
+	}
+	defer tx.Rollback()
+	var migrated int
+	err = tx.QueryRow(`SELECT 1 FROM node_inbox_schema_migrations WHERE name='visible_messages_v1'`).Scan(&migrated)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check node inbox visibility migration: %w", err)
+	}
+	if migrated == 0 {
+		// Existing injected deliveries gain stable visibility positions.
+		// Historical unscoped rows remain hidden from scoped MCP receive.
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO node_inbox_visible_messages(message_id)
+SELECT message_id FROM node_inbox_deliveries
+	WHERE state IN ('RUNTIME_INJECTED', 'CONSUMPTION_UNCONFIRMED')
+	ORDER BY updated_at, message_id`); err != nil {
+			return fmt.Errorf("migrate node inbox visibility: %w", err)
+		}
+		if _, err := tx.Exec(`INSERT INTO node_inbox_schema_migrations(name) VALUES ('visible_messages_v1')`); err != nil {
+			return fmt.Errorf("mark node inbox visibility migration: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // Save durably accepts an inbound message.  It returns created=false for an
@@ -277,6 +414,12 @@ func (i *Inbox) Save(ctx context.Context, message Message) (*Delivery, bool, err
 			existing.SessionID != normalized.SessionID || existing.BindingEpoch != normalized.BindingEpoch {
 			return nil, false, ErrMessageConflict
 		}
+		if err := verifyMessageGroup(ctx, tx, normalized.MessageID, normalized.GroupID); err != nil {
+			return nil, false, err
+		}
+		if err := verifyMessageRoute(ctx, tx, normalized.MessageID, normalized.Route); err != nil {
+			return nil, false, err
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, false, fmt.Errorf("commit idempotent node delivery: %w", err)
 		}
@@ -298,12 +441,31 @@ VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`,
 				winner.SessionID != normalized.SessionID || winner.BindingEpoch != normalized.BindingEpoch {
 				return nil, false, ErrMessageConflict
 			}
+			if err := verifyMessageGroup(ctx, tx, normalized.MessageID, normalized.GroupID); err != nil {
+				return nil, false, err
+			}
+			if err := verifyMessageRoute(ctx, tx, normalized.MessageID, normalized.Route); err != nil {
+				return nil, false, err
+			}
 			if commitErr := tx.Commit(); commitErr != nil {
 				return nil, false, fmt.Errorf("commit concurrent node delivery: %w", commitErr)
 			}
 			return winner, false, nil
 		}
 		return nil, false, fmt.Errorf("store node delivery: %w", err)
+	}
+	if normalized.GroupID != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO node_inbox_message_groups(message_id, group_id) VALUES (?, ?)`, normalized.MessageID, normalized.GroupID); err != nil {
+			return nil, false, fmt.Errorf("store node inbox Group: %w", err)
+		}
+	}
+	if normalized.Route.Kind != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO node_inbox_message_routes
+(message_id, kind, request_id, reply_to, sender_endpoint_id) VALUES (?, ?, ?, ?, ?)`,
+			normalized.MessageID, normalized.Route.Kind, normalized.Route.RequestID,
+			normalized.Route.ReplyTo, normalized.Route.SenderEndpointID); err != nil {
+			return nil, false, fmt.Errorf("store verified node inbox route: %w", err)
+		}
 	}
 	stored, err := scanDelivery(tx.QueryRowContext(ctx, deliverySelect+" WHERE message_id = ?", normalized.MessageID), true)
 	if err != nil || stored == nil {
@@ -318,9 +480,113 @@ VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`,
 	return stored, true, nil
 }
 
-// Accept is an explicit alias for Save used by relay-facing adapters.
-func (i *Inbox) Accept(ctx context.Context, message Message) (*Delivery, bool, error) {
-	return i.Save(ctx, message)
+func verifyMessageGroup(ctx context.Context, tx *sql.Tx, messageID, groupID string) error {
+	var stored string
+	err := tx.QueryRowContext(ctx, `SELECT group_id FROM node_inbox_message_groups WHERE message_id=?`, messageID).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		if groupID == "" {
+			return nil
+		}
+		return ErrMessageConflict
+	}
+	if err != nil {
+		return fmt.Errorf("verify node inbox Group: %w", err)
+	}
+	if stored != groupID {
+		return ErrMessageConflict
+	}
+	return nil
+}
+
+func verifyMessageRoute(ctx context.Context, tx *sql.Tx, messageID string, route RouteMetadata) error {
+	var stored RouteMetadata
+	err := tx.QueryRowContext(ctx, `SELECT kind, request_id, reply_to, sender_endpoint_id
+FROM node_inbox_message_routes WHERE message_id=?`, messageID).Scan(
+		&stored.Kind, &stored.RequestID, &stored.ReplyTo, &stored.SenderEndpointID)
+	if errors.Is(err, sql.ErrNoRows) {
+		if route.Kind == "" {
+			return nil
+		}
+		// A verified route recovered from the local sealed ledger or current
+		// Relay authorization may complete an older delivery row once. Existing
+		// inbox rows by themselves never provide route metadata, and subsequent
+		// retries must match this immutable record exactly.
+		_, err := tx.ExecContext(ctx, `INSERT INTO node_inbox_message_routes
+(message_id, kind, request_id, reply_to, sender_endpoint_id) VALUES (?, ?, ?, ?, ?)`,
+			messageID, route.Kind, route.RequestID, route.ReplyTo, route.SenderEndpointID)
+		if err != nil {
+			return fmt.Errorf("store recovered verified node inbox route: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("verify node inbox route: %w", err)
+	}
+	if stored != route {
+		return ErrMessageConflict
+	}
+	return nil
+}
+
+// ListInjectedForSession exposes only positively injected text for the exact
+// current Endpoint, native Session, binding epoch and Group. The caller owns
+// the cursor envelope because it may aggregate multiple Node inbox files.
+func (i *Inbox) ListInjectedForSession(ctx context.Context, endpointID, sessionID string,
+	bindingEpoch uint64, groupID string, afterSequence int64, limit int) ([]VisibleMessage, error) {
+	if endpointID == "" || sessionID == "" || bindingEpoch == 0 || groupID == "" ||
+		bindingEpoch > math.MaxInt64 || afterSequence < 0 || limit < 1 || limit > 16 {
+		return nil, errors.New("invalid scoped node inbox read")
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if err := i.checkOpen(); err != nil {
+		return nil, err
+	}
+	query := `SELECT v.sequence, d.message_id, d.payload, d.state, d.created_at`
+	if i.routeMetadataTableReady {
+		query += `, r.kind, r.request_id, r.reply_to, r.sender_endpoint_id`
+	}
+	query += `
+FROM node_inbox_visible_messages v
+JOIN node_inbox_deliveries d ON d.message_id=v.message_id
+JOIN node_inbox_message_groups g ON g.message_id=d.message_id`
+	if i.routeMetadataTableReady {
+		query += ` LEFT JOIN node_inbox_message_routes r ON r.message_id=d.message_id`
+	}
+	query += `
+WHERE v.sequence>? AND d.endpoint_id=? AND d.session_id=? AND d.binding_epoch=?
+	AND g.group_id=? AND d.state IN ('RUNTIME_INJECTED', 'CONSUMPTION_UNCONFIRMED')
+ORDER BY v.sequence LIMIT ?`
+	rows, err := i.db.QueryContext(ctx, query, afterSequence, endpointID, sessionID, bindingEpoch, groupID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list scoped node inbox: %w", err)
+	}
+	defer rows.Close()
+	messages := make([]VisibleMessage, 0, limit)
+	for rows.Next() {
+		var item VisibleMessage
+		var payload []byte
+		destinations := []any{&item.Sequence, &item.MessageID, &payload, &item.State, &item.CreatedAt}
+		var kind, requestID, replyTo, senderEndpointID sql.NullString
+		if i.routeMetadataTableReady {
+			destinations = append(destinations, &kind, &requestID, &replyTo, &senderEndpointID)
+		}
+		if err := rows.Scan(destinations...); err != nil {
+			return nil, fmt.Errorf("scan scoped node inbox: %w", err)
+		}
+		item.Body = string(payload)
+		if i.routeMetadataTableReady {
+			item.Kind = kind.String
+			item.RequestID = requestID.String
+			item.ReplyTo = replyTo.String
+			item.SenderEndpointID = senderEndpointID.String
+		}
+		messages = append(messages, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read scoped node inbox: %w", err)
+	}
+	return messages, nil
 }
 
 // Get returns a durable delivery by message ID.  It never changes state.
@@ -409,9 +675,117 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, attemptID, claimed.MessageID, claimed.Endpoint
 	return &Claim{Delivery: *claimed, ConsumerID: consumerID}, nil
 }
 
-// ClaimNext is an alias for Claim.
-func (i *Inbox) ClaimNext(ctx context.Context, consumerID string) (*Claim, error) {
-	return i.Claim(ctx, consumerID)
+// AbandonClaim releases a claim only while native injection has not begun.
+// A temporary Guard outage can therefore defer delivery without waiting for
+// a Node restart. An INJECTING or uncertain attempt must never be released
+// through this path because the runtime may already have received it.
+func (i *Inbox) AbandonClaim(ctx context.Context, attemptID string) error {
+	if ctx == nil || strings.TrimSpace(attemptID) == "" {
+		return ErrInvalidReceipt
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if err := i.checkOpen(); err != nil {
+		return err
+	}
+	tx, err := i.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin node claim abandonment: %w", err)
+	}
+	defer tx.Rollback()
+	var messageID string
+	if err := tx.QueryRowContext(ctx, `SELECT message_id FROM node_inbox_attempts
+WHERE attempt_id = ? AND state = 'CLAIMED'`, attemptID).Scan(&messageID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrStaleReceipt
+		}
+		return fmt.Errorf("read node claim for abandonment: %w", err)
+	}
+	now := formatTime(time.Now().UTC())
+	result, err := tx.ExecContext(ctx, `UPDATE node_inbox_deliveries
+SET attempt_id = NULL, consumer_id = NULL, claimed_at = NULL, updated_at = ?
+WHERE message_id = ? AND state = ? AND attempt_id = ?`, now, messageID, string(NODE_RECEIVED), attemptID)
+	if err != nil {
+		return fmt.Errorf("release node claim: %w", err)
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		if err != nil {
+			return fmt.Errorf("confirm node claim release: %w", err)
+		}
+		return ErrStaleReceipt
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE node_inbox_attempts
+SET state = 'ABANDONED', finished_at = ?, failure = ?
+WHERE attempt_id = ? AND state = 'CLAIMED'`, now, abandonedClaimNote, attemptID); err != nil {
+		return fmt.Errorf("record abandoned node claim: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit node claim abandonment: %w", err)
+	}
+	return nil
+}
+
+// RejectBeforeInjection permanently fences a claimed delivery when the
+// current authorization or business deadline no longer permits a native wake.
+// Both rows become FAILED atomically while still in CLAIMED/NODE_RECEIVED;
+// no INJECTING window is opened and no runtime call has occurred.
+func (i *Inbox) RejectBeforeInjection(ctx context.Context, claim Claim, reason string) error {
+	if ctx == nil || claim.AttemptID == "" || claim.MessageID == "" ||
+		claim.Digest == "" || claim.EndpointID == "" || claim.BindingEpoch == 0 {
+		return ErrInvalidReceipt
+	}
+	if len(reason) > maxFailureLength {
+		reason = reason[:maxFailureLength]
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if err := i.checkOpen(); err != nil {
+		return err
+	}
+	tx, err := i.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin pre-injection rejection: %w", err)
+	}
+	defer tx.Rollback()
+	var attemptState, endpointID, sessionID, digest string
+	var bindingEpoch uint64
+	err = tx.QueryRowContext(ctx, `SELECT a.state, a.endpoint_id, a.session_id,
+d.binding_epoch, d.digest FROM node_inbox_attempts a
+JOIN node_inbox_deliveries d ON d.message_id=a.message_id
+WHERE a.attempt_id=? AND a.message_id=? AND d.attempt_id=?`,
+		claim.AttemptID, claim.MessageID, claim.AttemptID).
+		Scan(&attemptState, &endpointID, &sessionID, &bindingEpoch, &digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrStaleReceipt
+	}
+	if err != nil {
+		return fmt.Errorf("read claimed delivery for rejection: %w", err)
+	}
+	if attemptState != "CLAIMED" || endpointID != claim.EndpointID ||
+		sessionID != claim.SessionID || bindingEpoch != claim.BindingEpoch || digest != claim.Digest {
+		return ErrInvalidReceipt
+	}
+	now := formatTime(time.Now().UTC())
+	result, err := tx.ExecContext(ctx, `UPDATE node_inbox_deliveries
+SET state = ?, failure = ?, updated_at = ?
+WHERE message_id = ? AND state = ? AND attempt_id = ?`,
+		string(FAILED), reason, now, claim.MessageID, string(NODE_RECEIVED), claim.AttemptID)
+	if err != nil {
+		return fmt.Errorf("fence revoked node delivery: %w", err)
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		if err != nil {
+			return fmt.Errorf("confirm revoked node delivery: %w", err)
+		}
+		return ErrStaleReceipt
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE node_inbox_attempts
+SET state = ?, finished_at = ?, failure = ?
+WHERE attempt_id = ? AND state = 'CLAIMED'`,
+		string(FAILED), now, reason, claim.AttemptID); err != nil {
+		return fmt.Errorf("record revoked node attempt: %w", err)
+	}
+	return tx.Commit()
 }
 
 // BeginInjection persists INJECTING before the machine agent calls its
@@ -504,11 +878,6 @@ func (i *Inbox) RecordFailed(ctx context.Context, receipt Receipt, reason string
 // desired state in Receipt.State.
 func (i *Inbox) Acknowledge(ctx context.Context, receipt Receipt) (*Delivery, error) {
 	return i.recordReceipt(ctx, receipt)
-}
-
-// RecordReceipt is an alias for Acknowledge.
-func (i *Inbox) RecordReceipt(ctx context.Context, receipt Receipt) (*Delivery, error) {
-	return i.Acknowledge(ctx, receipt)
 }
 
 func (i *Inbox) recordReceipt(ctx context.Context, receipt Receipt) (*Delivery, error) {
@@ -672,17 +1041,61 @@ func normalizeMessage(message Message) (Message, error) {
 	message.Digest = strings.TrimSpace(message.Digest)
 	message.EndpointID = strings.TrimSpace(message.EndpointID)
 	message.SessionID = strings.TrimSpace(message.SessionID)
+	message.GroupID = strings.TrimSpace(message.GroupID)
+	var err error
+	message.Route, err = normalizeRouteMetadata(message.Route)
+	if err != nil {
+		return Message{}, err
+	}
 	if message.MessageID == "" || message.Digest == "" || message.EndpointID == "" || message.SessionID == "" {
 		return Message{}, errors.New("node inbox message ID, digest, endpoint, and session are required")
 	}
 	if len(message.MessageID) > maxIDLength || len(message.Digest) > maxDigestLength || len(message.EndpointID) > maxIDLength || len(message.SessionID) > maxIDLength {
 		return Message{}, errors.New("node inbox message routing field is too long")
 	}
+	if len(message.GroupID) > maxIDLength || strings.ContainsAny(message.GroupID, "\r\n\x00") {
+		return Message{}, errors.New("node inbox Group ID is invalid")
+	}
 	if message.BindingEpoch > math.MaxInt64 {
 		return Message{}, errors.New("node inbox binding epoch is out of range")
 	}
 	message.Payload = append([]byte(nil), message.Payload...)
 	return message, nil
+}
+
+func normalizeRouteMetadata(route RouteMetadata) (RouteMetadata, error) {
+	route.Kind = strings.TrimSpace(route.Kind)
+	route.RequestID = strings.TrimSpace(route.RequestID)
+	route.ReplyTo = strings.TrimSpace(route.ReplyTo)
+	route.SenderEndpointID = strings.TrimSpace(route.SenderEndpointID)
+	if route.Kind == "" && route.RequestID == "" && route.ReplyTo == "" && route.SenderEndpointID == "" {
+		return RouteMetadata{}, nil
+	}
+	if len(route.RequestID) > maxIDLength || len(route.ReplyTo) > maxIDLength ||
+		len(route.SenderEndpointID) > maxIDLength ||
+		strings.ContainsAny(route.RequestID+route.ReplyTo+route.SenderEndpointID, "\r\n\x00") {
+		return RouteMetadata{}, errors.New("node inbox route metadata is invalid")
+	}
+	switch route.Kind {
+	case "SEND":
+		if route.RequestID != "" || route.ReplyTo != "" {
+			return RouteMetadata{}, errors.New("SEND route cannot carry request correlation")
+		}
+	case "REQUEST":
+		if route.RequestID == "" || route.ReplyTo != "" {
+			return RouteMetadata{}, errors.New("REQUEST route has invalid correlation")
+		}
+	case "REPLY":
+		if route.RequestID == "" || route.ReplyTo == "" {
+			return RouteMetadata{}, errors.New("REPLY route has invalid correlation")
+		}
+	default:
+		return RouteMetadata{}, errors.New("node inbox route kind is invalid")
+	}
+	if route.SenderEndpointID == "" {
+		return RouteMetadata{}, errors.New("node inbox sender Endpoint is required")
+	}
+	return route, nil
 }
 
 func newAttemptID() (string, error) {

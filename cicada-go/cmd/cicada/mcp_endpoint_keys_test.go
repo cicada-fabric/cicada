@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -230,6 +233,57 @@ func TestCicadaPublishEndpointKeyCandidateRegistersAndRepeatsSafely(t *testing.T
 		t.Fatalf("stored proof does not bind current session: key=%q err=%v", verified.ID, err)
 	}
 	fixture.assertSessionAuthorization(t, fixture.joined.SessionToken)
+}
+
+func TestCicadaPublishEndpointKeyCandidateWaitsForOfflineMaintenance(t *testing.T) {
+	fixture := newMCPEndpointKeyFixture(t)
+	stateDir := t.TempDir()
+	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
+	offline, err := nodelock.AcquireMaintenanceExclusive(stateDir, fixture.joined.NetworkCard.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer offline.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", nil)
+		done <- err
+	}()
+
+	deadline := time.After(5 * time.Second)
+	for fixture.whoamiCount.Load() == 0 {
+		select {
+		case err := <-done:
+			t.Fatalf("Endpoint key publication completed before reaching its Node write: %v", err)
+		case <-deadline:
+			t.Fatalf("Endpoint key publication did not reach the Node write: requests=%d whoami=%d key_get=%d",
+				fixture.requestCount.Load(), fixture.whoamiCount.Load(), fixture.keyGetCount.Load())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Endpoint key publication bypassed exclusive maintenance: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if _, err := os.Stat(machineNodeStateDir(stateDir, fixture.joined.NetworkCard.NodeID)); !os.IsNotExist(err) {
+		t.Fatalf("blocked Endpoint key writer created the Node subtree: %v", err)
+	}
+	if err := offline.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Endpoint key publication failed after maintenance ended: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Endpoint key publication did not resume after maintenance ended")
+	}
+	if _, err := os.Stat(machineNodeStateDir(stateDir, fixture.joined.NetworkCard.NodeID)); err != nil {
+		t.Fatalf("Endpoint key writer did not create its Node subtree after unlocking: %v", err)
+	}
 }
 
 func TestCicadaPublishEndpointKeyCandidateRejoinRefreshesSameNodeKey(t *testing.T) {

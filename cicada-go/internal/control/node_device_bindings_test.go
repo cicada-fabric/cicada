@@ -106,14 +106,17 @@ func TestNodeDeviceCodeOwnerConfirmationActivatesLocallyHeldBearerAndSupportsRev
 	var pendingVisible bool
 	for _, node := range beforeHeartbeat.Nodes {
 		if node.NodeID == "node-device-1" {
-			pendingVisible = node.Verified && !node.Connectivity.Known
+			pendingVisible = node.Verified && node.Connectivity.Known &&
+				node.Connectivity.State == ClientNodeOffline && node.Connectivity.ObservedAt == ""
 		}
 	}
 	if !pendingVisible {
-		t.Fatal("confirmed Node did not appear as verified with unknown connectivity before its heartbeat")
+		t.Fatal("confirmed-but-disconnected Node did not appear offline with no heartbeat timestamp")
 	}
-	if err := c.Fabric().HeartbeatNode(nodeToken); err != nil {
-		t.Fatalf("bound Node heartbeat failed: %v", err)
+	if err := c.Fabric().RecordBoundNodeMachineHeartbeat(nodeToken, "available", map[string]any{
+		"harnesses": []string{"codex"},
+	}); err != nil {
+		t.Fatalf("bound Node machine heartbeat failed: %v", err)
 	}
 	afterHeartbeat, err := c.BuildClientStatusSnapshot(ownerID)
 	if err != nil {

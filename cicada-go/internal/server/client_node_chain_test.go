@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -19,10 +20,10 @@ import (
 )
 
 // TestClientIntentQueuesWorkForOwnerBoundMachineAgent covers the Hub-side
-// protocol seams used by the machine agent: an owner binds its Node, the
-// agent registers the same stable ID with the bearer-protected machine API,
-// and an encrypted Client intent creates a Worker that the agent can poll and
-// claim. It deliberately does not start an agent process or execute the job.
+// protocol seams used by the machine agent: an owner binds its Node, and an
+// encrypted Client intent creates a Worker that the Node bearer can poll,
+// claim, exchange a Workspace snapshot with, and report. It deliberately does
+// not start an agent process or execute the job.
 func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, "state")
@@ -112,7 +113,7 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 			Version: clientwire.Version, Direction: clientwire.DirectionRequest,
 			HubID: binding.HubID, OwnerID: binding.OwnerID, DeviceID: binding.DeviceID,
 			SessionEpoch: binding.SessionEpoch, Sequence: sequence,
-			OperationID: "node-chain-" + operation, Operation: operation,
+			OperationID: fmt.Sprintf("node-chain-%s-%d", operation, sequence), Operation: operation,
 			SenderKeyID: deviceKey.Public().ID, SenderKeyVersion: binding.DeviceKeyVersion,
 			ReceiverKeyID: hubIdentity.ControlPublicIdentity.ID, ReceiverKeyVersion: binding.HubKeyVersion,
 		}
@@ -178,10 +179,11 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 		t.Fatalf("encrypted Node confirmation failed: err=%v binding=%#v", err, bindingResult)
 	}
 
-	// The bound Node bearer authenticates the Relay heartbeat. Machine-agent's
-	// separate Control API bearer registers its worker identity and polls jobs.
+	// The bound Node bearer authenticates Relay liveness and worker capabilities.
 	relayStatus, relayBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
-		"/v2/relay/nodes/"+nodeID+"/heartbeat", []byte(`{}`), "CicadaNode "+nodeToken)
+		"/v2/relay/nodes/"+nodeID+"/heartbeat",
+		[]byte(`{"status":"available","capabilities":{"role":"worker","harnesses":["codex"]}}`),
+		"CicadaNode "+nodeToken)
 	if relayStatus != http.StatusNoContent {
 		t.Fatalf("bound Node Relay heartbeat status=%d body=%s", relayStatus, relayBody)
 	}
@@ -194,29 +196,6 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 		"/v2/relay/nodes/"+nodeID+"/heartbeat", []byte(`{}`), "Bearer "+apiToken)
 	if wrongRelayPlaneStatus != http.StatusUnauthorized {
 		t.Fatalf("Control API bearer authorized the Node Relay: status=%d body=%s", wrongRelayPlaneStatus, wrongRelayPlaneBody)
-	}
-	registration, err := json.Marshal(map[string]any{
-		"id": nodeID, "name": "Node chain test", "status": "available",
-		"capabilities": map[string]any{"role": "worker", "harnesses": []string{"codex"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	registrationStatus, registrationBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
-		"/v1/machines", registration, "Bearer "+apiToken)
-	if registrationStatus != http.StatusCreated {
-		t.Fatalf("machine-agent registration status=%d body=%s", registrationStatus, registrationBody)
-	}
-	heartbeat, err := json.Marshal(map[string]any{
-		"status": "available", "capabilities": map[string]any{"role": "worker", "harnesses": []string{"codex"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	heartbeatStatus, heartbeatBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
-		"/v1/machines/"+nodeID+"/heartbeat", heartbeat, "Bearer "+apiToken)
-	if heartbeatStatus != http.StatusOK {
-		t.Fatalf("machine-agent heartbeat status=%d body=%s", heartbeatStatus, heartbeatBody)
 	}
 
 	intentBody := []byte(`{"text":"Prepare a bounded task for the paired Node","kind":"goal","goal":{"objective":"Prepare a bounded task for the paired Node","success_criteria":"Return a short completion summary","constraints":"Do not modify files or contact external services","machine_id":"node-chain-a","harness":"codex"}}`)
@@ -255,6 +234,14 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 		goal.Worker.MachineID != nodeID || goal.Worker.Status != "queued" {
 		t.Fatalf("Control did not persist a queued Worker for the bound Node ID: goal=%#v err=%v", goal, err)
 	}
+	workspaces, err := controlPlane.Workspaces(goal.ID)
+	if err != nil || len(workspaces) != 1 {
+		t.Fatalf("Client Goal Workspace was not created: workspaces=%#v err=%v", workspaces, err)
+	}
+	seededSnapshot, err := controlPlane.SnapshotWorkspace(workspaces[0].ID)
+	if err != nil {
+		t.Fatalf("seed Client Goal Workspace snapshot: %v", err)
+	}
 
 	// Reopen the SQLite store to establish that the Goal/Worker association is
 	// committed durably before the remote agent polls it.
@@ -275,9 +262,49 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 		persistedWorker.MachineID != nodeID || persistedWorker.Status != "queued" {
 		t.Fatalf("Worker was not durably queued for the bound Node ID: worker=%#v err=%v", persistedWorker, err)
 	}
+	var paused store.Goal
+	requestPause, _ := json.Marshal(map[string]any{
+		"goal_id": goal.ID, "action": "pause", "expected_version": persistedGoal.LifecycleVersion,
+	})
+	if err := json.Unmarshal(callClientRPC("goal.lifecycle", requestPause), &paused); err != nil ||
+		paused.Status != "paused" || paused.LifecycleVersion != persistedGoal.LifecycleVersion+1 {
+		t.Fatalf("encrypted Client pause did not fence queued Goal: goal=%#v err=%v", paused, err)
+	}
+	var pausedSnapshot control.ClientStatusSnapshot
+	if err := json.Unmarshal(callClientRPC("status.snapshot", []byte(`{}`)), &pausedSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	seenPaused := false
+	for _, item := range pausedSnapshot.Goals {
+		if item.GoalID == goal.ID && item.Lifecycle.State == control.ClientGoalPaused &&
+			item.Version == paused.LifecycleVersion {
+			seenPaused = true
+		}
+	}
+	if !seenPaused {
+		t.Fatalf("Client snapshot did not show authoritative paused Goal: %#v", pausedSnapshot.Goals)
+	}
+	pausedJobsStatus, pausedJobsBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
+		"/v2/relay/nodes/"+nodeID+"/jobs", nil, "CicadaNode "+nodeToken)
+	if pausedJobsStatus != http.StatusOK || !bytes.Contains(pausedJobsBody, []byte(`"jobs":[]`)) {
+		t.Fatalf("paused Goal remained claimable by Node: status=%d body=%s", pausedJobsStatus, pausedJobsBody)
+	}
+	pausedClaimStatus, pausedClaimBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+persistedWorker.ID+"/claim", []byte(`{}`), "CicadaNode "+nodeToken)
+	if pausedClaimStatus == http.StatusOK {
+		t.Fatalf("Node claimed paused Goal through exact worker ID: %s", pausedClaimBody)
+	}
+	var resumed store.Goal
+	requestResume, _ := json.Marshal(map[string]any{
+		"goal_id": goal.ID, "action": "resume", "expected_version": paused.LifecycleVersion,
+	})
+	if err := json.Unmarshal(callClientRPC("goal.lifecycle", requestResume), &resumed); err != nil ||
+		resumed.Status != "queued" || resumed.LifecycleVersion != paused.LifecycleVersion+1 {
+		t.Fatalf("encrypted Client resume did not release queued Goal: goal=%#v err=%v", resumed, err)
+	}
 
 	jobsStatus, jobsBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
-		"/v1/machines/"+nodeID+"/jobs", nil, "Bearer "+apiToken)
+		"/v2/relay/nodes/"+nodeID+"/jobs", nil, "CicadaNode "+nodeToken)
 	if jobsStatus != http.StatusOK {
 		t.Fatalf("machine-agent jobs poll status=%d body=%s", jobsStatus, jobsBody)
 	}
@@ -290,31 +317,169 @@ func TestClientIntentQueuesWorkForOwnerBoundMachineAgent(t *testing.T) {
 	job := listed.Jobs[0]
 	if job.WorkerID != persistedWorker.ID || job.GoalID != intentResult.GoalID ||
 		job.MachineID != nodeID || job.Harness != "codex" ||
+		job.WorkspaceSnapshotDigest != seededSnapshot.Digest || job.WorkspaceID != workspaces[0].ID ||
 		!strings.Contains(job.Prompt, "Prepare a bounded task for the paired Node") {
 		t.Fatalf("polled machine task did not match persisted Goal/Worker: job=%#v", job)
 	}
 
-	claimBody, err := json.Marshal(map[string]string{"machine_id": nodeID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	claimBody := []byte(`{}`)
 	claimStatus, claimResponse := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
-		"/v1/workers/"+job.WorkerID+"/claim", claimBody, "Bearer "+apiToken)
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/claim", claimBody, "CicadaNode "+nodeToken)
 	if claimStatus != http.StatusOK {
-		t.Fatalf("machine-agent worker claim status=%d body=%s", claimStatus, claimResponse)
+		t.Fatalf("Node worker claim status=%d body=%s", claimStatus, claimResponse)
 	}
 	var claimed control.MachineJob
 	if err := json.Unmarshal(claimResponse, &claimed); err != nil || claimed.WorkerID != job.WorkerID ||
 		claimed.GoalID != intentResult.GoalID || claimed.MachineID != nodeID || claimed.Attempt != 1 {
-		t.Fatalf("machine-agent claim did not return the assigned task: err=%v job=%#v", err, claimed)
+		t.Fatalf("Node claim did not return the assigned task: err=%v job=%#v", err, claimed)
+	}
+	approvalRequest := []byte(`{"attempt":1,"request_id":"thread-turn-rpc-approval-1","method":"item/commandExecution/requestApproval","request":{"command":["echo","approval integration payload"],"cwd":"/tmp"}}`)
+	approvalStatus, approvalBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/approvals", approvalRequest, "CicadaNode "+nodeToken)
+	var nodeApproval nodeWorkerApprovalResponse
+	if err := json.Unmarshal(approvalBody, &nodeApproval); approvalStatus != http.StatusAccepted || err != nil ||
+		nodeApproval.ApprovalID == "" || nodeApproval.GoalID != intentResult.GoalID ||
+		nodeApproval.WorkerID != job.WorkerID || nodeApproval.Attempt != claimed.Attempt || nodeApproval.Status != "pending" ||
+		bytes.Contains(approvalBody, []byte("approval integration payload")) {
+		t.Fatalf("Node approval create response exposed content or lost its fence: status=%d response=%#v err=%v body=%s",
+			approvalStatus, nodeApproval, err, approvalBody)
+	}
+	approvalListBody, err := json.Marshal(map[string]bool{"pending_only": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listedApprovals []store.Approval
+	if err := json.Unmarshal(callClientRPC("approvals.list", approvalListBody), &listedApprovals); err != nil {
+		t.Fatal(err)
+	}
+	var listedApproval *store.Approval
+	for i := range listedApprovals {
+		if listedApprovals[i].ID == nodeApproval.ApprovalID {
+			listedApproval = &listedApprovals[i]
+			break
+		}
+	}
+	if listedApproval == nil || listedApproval.Attempt != claimed.Attempt ||
+		!bytes.Contains(listedApproval.Request, []byte("approval integration payload")) {
+		t.Fatalf("encrypted Client approvals.list omitted the exact remote request: %#v", listedApprovals)
+	}
+	decisionBody, err := json.Marshal(map[string]string{"approval_id": nodeApproval.ApprovalID, "decision": "accept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decided store.Approval
+	if err := json.Unmarshal(callClientRPC("approvals.decide", decisionBody), &decided); err != nil ||
+		decided.ID != nodeApproval.ApprovalID || decided.Status != "resolved" || decided.Decision != "accept" {
+		t.Fatalf("encrypted Client approval decision failed: approval=%#v err=%v", decided, err)
+	}
+	decisionStatus, decisionResponse := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/approvals/"+nodeApproval.ApprovalID+"?attempt=1&wait_ms=0",
+		nil, "CicadaNode "+nodeToken)
+	var polledApproval nodeWorkerApprovalResponse
+	if err := json.Unmarshal(decisionResponse, &polledApproval); decisionStatus != http.StatusOK || err != nil ||
+		polledApproval.Status != "resolved" || polledApproval.Decision != "accept" || polledApproval.Attempt != claimed.Attempt {
+		t.Fatalf("Node did not retrieve the accepted Client decision: status=%d approval=%#v err=%v body=%s",
+			decisionStatus, polledApproval, err, decisionResponse)
+	}
+	wrongAttemptStatus, _ := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/approvals/"+nodeApproval.ApprovalID+"?attempt=2&wait_ms=0",
+		nil, "CicadaNode "+nodeToken)
+	if wrongAttemptStatus != http.StatusConflict {
+		t.Fatalf("Node approval poll accepted a forged attempt: status=%d", wrongAttemptStatus)
+	}
+
+	snapshotHeaders := make(http.Header)
+	snapshotHeaders.Set("Authorization", "CicadaNode "+nodeToken)
+	snapshotHeaders.Set("X-Cicada-Worker-Attempt", "1")
+	snapshotHeaders.Set("X-Cicada-Workspace-ID", job.WorkspaceID)
+	downloadHeaders := snapshotHeaders.Clone()
+	downloadStatus, downloadedResponseHeaders, downloadedArchive := clientNodeChainHTTPWithHeaders(t, httpClient,
+		server.URL, http.MethodGet, "/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/snapshot/"+seededSnapshot.Digest,
+		nil, downloadHeaders)
+	if downloadStatus != http.StatusOK || downloadedResponseHeaders.Get("X-Cicada-Snapshot-Digest") != seededSnapshot.Digest ||
+		downloadedResponseHeaders.Get("Content-Type") != "application/x-cicada-workspace-tar" || len(downloadedArchive) == 0 {
+		t.Fatalf("Node snapshot download failed: status=%d headers=%v bytes=%d", downloadStatus, downloadedResponseHeaders, len(downloadedArchive))
+	}
+	uploadHeaders := snapshotHeaders.Clone()
+	uploadHeaders.Set("Content-Type", "application/x-cicada-workspace-tar")
+	uploadHeaders.Set("X-Cicada-Snapshot-Digest", seededSnapshot.Digest)
+	uploadStatus, _, uploadResponse := clientNodeChainHTTPWithHeaders(t, httpClient, server.URL, http.MethodPost,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/snapshot", downloadedArchive, uploadHeaders)
+	if uploadStatus != http.StatusCreated {
+		t.Fatalf("Node snapshot upload failed: status=%d body=%s", uploadStatus, uploadResponse)
+	}
+	result, err := json.Marshal(map[string]any{
+		"attempt": claimed.Attempt, "status": "completed", "summary": "Task completed with bounded evidence.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultStatus, resultBody := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodPost,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/result", result, "CicadaNode "+nodeToken)
+	if resultStatus != http.StatusOK {
+		t.Fatalf("Node worker result status=%d body=%s", resultStatus, resultBody)
+	}
+	var completed store.Worker
+	if err := json.Unmarshal(resultBody, &completed); err != nil || completed.Status != "completed" || completed.Attempt != 1 {
+		t.Fatalf("Node result did not complete its fenced attempt: worker=%#v err=%v", completed, err)
 	}
 	claimedGoal, err := controlPlane.Goal(intentResult.GoalID)
-	if err != nil || claimedGoal == nil || claimedGoal.Worker == nil || claimedGoal.Worker.Status != "running" {
-		t.Fatalf("Control did not persist machine claim state: goal=%#v err=%v", claimedGoal, err)
+	if err != nil || claimedGoal == nil || claimedGoal.Worker == nil || claimedGoal.Worker.Status != "completed" {
+		t.Fatalf("Control did not persist Node result state: goal=%#v err=%v", claimedGoal, err)
+	}
+	readBody, err := json.Marshal(map[string]string{"intent_id": accepted.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var clientResult control.ClientGoalResult
+	if err := json.Unmarshal(callClientRPC("goal.result", readBody), &clientResult); err != nil ||
+		clientResult.IntentID != accepted.ID || clientResult.GoalID != goal.ID ||
+		len(clientResult.Workers) != 1 || clientResult.Workers[0].Status != "completed" ||
+		clientResult.Workers[0].Summary != "Task completed with bounded evidence." {
+		t.Fatalf("encrypted Client could not read its Node result: result=%+v err=%v", clientResult, err)
+	}
+	terminalPollStatus, _ := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/approvals/"+nodeApproval.ApprovalID+"?attempt=1&wait_ms=0",
+		nil, "CicadaNode "+nodeToken)
+	if terminalPollStatus != http.StatusConflict {
+		t.Fatalf("terminal Worker attempt returned an old approval decision: status=%d", terminalPollStatus)
+	}
+	if _, err := controlPlane.ClientGoalResultForIntent("another-owner", accepted.ID); err == nil {
+		t.Fatal("another owner read a Client Goal result")
+	}
+	approvalStore, err = store.New(filepath.Join(stateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approvalStore.RevokeNodeDeviceBinding(ownerID, bindingResult.ID, bindingResult.Version); err != nil {
+		_ = approvalStore.Close()
+		t.Fatal(err)
+	}
+	if err := approvalStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	revokedPollStatus, _ := clientNodeChainHTTP(t, httpClient, server.URL, http.MethodGet,
+		"/v2/relay/nodes/"+nodeID+"/jobs/"+job.WorkerID+"/approvals/"+nodeApproval.ApprovalID+"?attempt=1&wait_ms=0",
+		nil, "CicadaNode "+nodeToken)
+	if revokedPollStatus != http.StatusUnauthorized {
+		t.Fatalf("revoked Node credential polled an approval: status=%d", revokedPollStatus)
 	}
 }
 
 func clientNodeChainHTTP(t *testing.T, client *http.Client, base, method, path string, body []byte, authorization string) (int, []byte) {
+	t.Helper()
+	headers := make(http.Header)
+	if body != nil {
+		headers.Set("Content-Type", "application/json")
+	}
+	if authorization != "" {
+		headers.Set("Authorization", authorization)
+	}
+	status, _, responseBody := clientNodeChainHTTPWithHeaders(t, client, base, method, path, body, headers)
+	return status, responseBody
+}
+
+func clientNodeChainHTTPWithHeaders(t *testing.T, client *http.Client, base, method, path string, body []byte, headers http.Header) (int, http.Header, []byte) {
 	t.Helper()
 	var requestBody *bytes.Reader
 	if body != nil {
@@ -326,11 +491,10 @@ func clientNodeChainHTTP(t *testing.T, client *http.Client, base, method, path s
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	if authorization != "" {
-		request.Header.Set("Authorization", authorization)
+	for name, values := range headers {
+		for _, value := range values {
+			request.Header.Add(name, value)
+		}
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -341,5 +505,5 @@ func clientNodeChainHTTP(t *testing.T, client *http.Client, base, method, path s
 	if _, err := responseBytes.ReadFrom(response.Body); err != nil {
 		t.Fatal(err)
 	}
-	return response.StatusCode, responseBytes.Bytes()
+	return response.StatusCode, response.Header.Clone(), responseBytes.Bytes()
 }

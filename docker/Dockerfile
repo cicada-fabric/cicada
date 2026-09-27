@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS cicada-builder
+FROM golang:1.27.1-alpine AS cicada-builder
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -16,7 +16,7 @@ RUN go mod download
 COPY cicada-go/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/cicada ./cmd/cicada
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

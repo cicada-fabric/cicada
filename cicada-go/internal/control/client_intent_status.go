@@ -22,6 +22,9 @@ func (c *Control) ClientIntentStatus(ownerID, intentID string) (*ClientIntentPro
 	if err != nil {
 		return nil, err
 	}
+	if job.OwnerID == "" || job.OwnerID != strings.TrimSpace(ownerID) {
+		return nil, store.ErrClientIntentNotFound
+	}
 	intent, err := c.store.GetIntent(job.IntentID)
 	if err != nil {
 		return nil, err
@@ -30,4 +33,18 @@ func (c *Control) ClientIntentStatus(ownerID, intentID string) (*ClientIntentPro
 		return nil, store.ErrClientIntentNotFound
 	}
 	return &ClientIntentProgress{Job: job, Intent: intent}, nil
+}
+
+func (c *Control) ClientIntentForOwner(ownerID, intentID string) (*store.Intent, error) {
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	return c.store.GetClientIntentForOwner(ownerID, intentID)
+}
+
+func (c *Control) ClientIntentsForOwner(ownerID, status string) ([]store.Intent, error) {
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	return c.store.ListClientIntentsForOwner(ownerID, status)
 }

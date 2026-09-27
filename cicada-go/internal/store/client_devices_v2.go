@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -260,6 +261,7 @@ func (s *Store) RegisterClientDeviceFromOwnerGrant(input RegisterClientDeviceInp
 		return nil, err
 	}
 	grantDigest := sha256.Sum256(input.OwnerDeviceGrant)
+	grantDigestHex := hex.EncodeToString(grantDigest[:])
 	stamp := now()
 
 	s.mu.Lock()
@@ -282,20 +284,73 @@ WHERE owner_id = ? AND key_id = ?`, input.OwnerID, input.OwnerKeyID))
 	if ownerKey.State != OwnerApprovalKeyActive {
 		return nil, ErrOwnerApprovalKeyConflict
 	}
+	existing, err := scanClientDevice(tx.QueryRow(clientDeviceSelect+` WHERE owner_id = ? AND device_id = ?`,
+		input.OwnerID, input.DeviceID))
+	if err == nil {
+		// A successful enrollment response can be lost after this transaction
+		// commits. The nonce row is written atomically with the device row and
+		// records the exact signed grant accepted at that time, so it can safely
+		// authenticate a byte-for-byte retry even if the grant has since expired.
+		if existing.State != ClientDeviceActive {
+			return nil, ErrClientDeviceRevoked
+		}
+		if existing.OwnerKeyID != input.OwnerKeyID {
+			return nil, ErrClientDeviceConflict
+		}
+		existingPublicJSON, marshalErr := json.Marshal(existing.Public)
+		if marshalErr != nil || !bytes.Equal(existingPublicJSON, publicJSON) ||
+			existing.KeyID != input.DevicePublic.ID || existing.KeyFingerprint != fingerprint {
+			return nil, ErrClientDeviceConflict
+		}
+
+		var acceptedGrant e2ee.OwnerDeviceGrant
+		decoder := json.NewDecoder(bytes.NewReader(input.OwnerDeviceGrant))
+		decoder.DisallowUnknownFields()
+		if decodeErr := decoder.Decode(&acceptedGrant); decodeErr != nil {
+			return nil, ErrClientDeviceConflict
+		}
+		var trailing any
+		if decodeErr := decoder.Decode(&trailing); !errors.Is(decodeErr, io.EOF) {
+			return nil, ErrClientDeviceConflict
+		}
+		canonicalGrant, marshalErr := json.Marshal(acceptedGrant)
+		if marshalErr != nil || !bytes.Equal(input.OwnerDeviceGrant, canonicalGrant) ||
+			acceptedGrant.OwnerID != input.OwnerID || acceptedGrant.OwnerKeyID != input.OwnerKeyID ||
+			acceptedGrant.DeviceID != input.DeviceID || acceptedGrant.DeviceKeyID != input.DevicePublic.ID ||
+			acceptedGrant.DeviceKeyFingerprint != fingerprint || acceptedGrant.HubID != hubID ||
+			acceptedGrant.Purpose != e2ee.OwnerDevicePurposeControl || acceptedGrant.Nonce == "" {
+			return nil, ErrClientDeviceConflict
+		}
+
+		var nonceDeviceID, acceptedDigest string
+		err = tx.QueryRow(`SELECT device_id, grant_digest FROM client_device_grant_nonces_v2
+WHERE owner_id = ? AND owner_key_id = ? AND nonce = ?`,
+			input.OwnerID, input.OwnerKeyID, acceptedGrant.Nonce).Scan(&nonceDeviceID, &acceptedDigest)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrClientDeviceConflict
+		}
+		if err != nil {
+			return nil, err
+		}
+		if nonceDeviceID != input.DeviceID || acceptedDigest != grantDigestHex {
+			return nil, ErrClientDeviceGrantReplay
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, ErrClientDeviceNotFound) {
+		return nil, err
+	}
+
+	// No persisted accepted device exists, so this is a first-time enrollment.
+	// Only this path evaluates grant validity against the current clock.
 	grant, err := e2ee.VerifyOwnerDeviceGrant(input.OwnerDeviceGrant, ownerKey.Public,
 		input.DevicePublic, input.OwnerID, input.OwnerKeyID, input.DeviceID,
 		hubID, e2ee.OwnerDevicePurposeControl, time.Now().UTC())
 	if err != nil {
 		return nil, fmt.Errorf("verify owner device grant: %w", err)
-	}
-	var existing int
-	err = tx.QueryRow(`SELECT 1 FROM client_devices_v2 WHERE owner_id = ? AND device_id = ?`,
-		input.OwnerID, input.DeviceID).Scan(&existing)
-	if err == nil {
-		return nil, ErrClientDeviceConflict
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
 	}
 	var nonceExists int
 	err = tx.QueryRow(`SELECT 1 FROM client_device_grant_nonces_v2
@@ -319,7 +374,7 @@ VALUES (?, ?, ?, ?, ?, 1, ?, 'ACTIVE', 1, 1, 0, 1, ?, ?)`,
 	_, err = tx.Exec(`INSERT INTO client_device_grant_nonces_v2
 (owner_id, owner_key_id, nonce, device_id, grant_digest, created_at)
 VALUES (?, ?, ?, ?, ?, ?)`, input.OwnerID, input.OwnerKeyID, grant.Nonce,
-		input.DeviceID, hex.EncodeToString(grantDigest[:]), stamp)
+		input.DeviceID, grantDigestHex, stamp)
 	if err != nil {
 		return nil, fmt.Errorf("consume owner device grant nonce: %w", err)
 	}
@@ -561,6 +616,11 @@ WHERE owner_id = ? AND device_id = ? AND state = 'ACTIVE' AND session_epoch = ? 
 		request.OperationID, request.CiphertextDigest, stamp, stamp)
 	if err != nil {
 		return nil, fmt.Errorf("persist Client request replay state: %w", err)
+	}
+	_, err = tx.Exec(`INSERT INTO client_device_request_recovery_v2
+(request_id, created_at, updated_at) VALUES (?, ?, ?)`, request.ID, stamp, stamp)
+	if err != nil {
+		return nil, fmt.Errorf("persist Client response reservation marker: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

@@ -26,6 +26,7 @@ var (
 // responses because it can contain user text and Goal details.
 type ClientIntent struct {
 	IntentID        string          `json:"intent_id"`
+	OwnerID         string          `json:"-"`
 	ClientRequestID string          `json:"client_request_id"`
 	Input           json.RawMessage `json:"-"`
 	State           string          `json:"state"`
@@ -65,6 +66,27 @@ func (s *Store) AcceptClientIntent(
 	clientRequestID, text, requestedKind, targetID string,
 	attachments []string, inputJSON []byte,
 ) (*Intent, bool, error) {
+	return s.acceptClientIntent("", clientRequestID, text, requestedKind, targetID, attachments, inputJSON)
+}
+
+// AcceptClientIntentForOwner is used only after the Hub has authenticated an
+// encrypted Client device session. The owner is supplied by that session,
+// never by request JSON.
+func (s *Store) AcceptClientIntentForOwner(
+	ownerID, clientRequestID, text, requestedKind, targetID string,
+	attachments []string, inputJSON []byte,
+) (*Intent, bool, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if err := validateOwnerApprovalID(ownerID); err != nil {
+		return nil, false, errors.New("authenticated Client owner is required")
+	}
+	return s.acceptClientIntent(ownerID, clientRequestID, text, requestedKind, targetID, attachments, inputJSON)
+}
+
+func (s *Store) acceptClientIntent(
+	ownerID, clientRequestID, text, requestedKind, targetID string,
+	attachments []string, inputJSON []byte,
+) (*Intent, bool, error) {
 	clientRequestID = strings.TrimSpace(clientRequestID)
 	text = strings.TrimSpace(text)
 	if clientRequestID == "" || len(clientRequestID) > 256 || text == "" || len(inputJSON) == 0 || len(inputJSON) > 256*1024 || !json.Valid(inputJSON) {
@@ -95,9 +117,9 @@ VALUES (?, ?, ?, '', 'pending', ?, ?, '{}', '', '', ?, ?)`, intentID, text,
 		return nil, false, fmt.Errorf("create accepted Client intent: %w", err)
 	}
 	inserted, err := tx.Exec(`INSERT INTO client_control_intents_v2
-(client_request_id, intent_id, input_json, state, error, created_at, updated_at)
-VALUES (?, ?, ?, 'QUEUED', '', ?, ?)
-ON CONFLICT(client_request_id) DO NOTHING`, clientRequestID, intentID, inputJSON, stamp, stamp)
+(client_request_id, intent_id, input_json, state, error, created_at, updated_at, owner_id)
+VALUES (?, ?, ?, 'QUEUED', '', ?, ?, ?)
+ON CONFLICT(client_request_id) DO NOTHING`, clientRequestID, intentID, inputJSON, stamp, stamp, ownerID)
 	if err != nil {
 		return nil, false, fmt.Errorf("persist accepted Client intent: %w", err)
 	}
@@ -112,12 +134,12 @@ ON CONFLICT(client_request_id) DO NOTHING`, clientRequestID, intentID, inputJSON
 			return nil, false, err
 		}
 		prior, err := readClientIntent(s.db.QueryRow(`SELECT client_request_id, intent_id,
-input_json, state, error, created_at, updated_at, started_at, finished_at
+input_json, state, error, created_at, updated_at, started_at, finished_at, owner_id
 FROM client_control_intents_v2 WHERE client_request_id = ?`, clientRequestID))
 		if err != nil {
 			return nil, false, err
 		}
-		if !equalClientIntentInput(prior.Input, inputJSON) {
+		if prior.OwnerID != ownerID || !equalClientIntentInput(prior.Input, inputJSON) {
 			return nil, false, ErrClientIntentConflict
 		}
 		intent, err := s.getIntentLocked(prior.IntentID)
@@ -146,8 +168,67 @@ func (s *Store) GetClientIntent(intentID string) (*ClientIntent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return readClientIntent(s.db.QueryRow(`SELECT client_request_id, intent_id,
-input_json, state, error, created_at, updated_at, started_at, finished_at
+input_json, state, error, created_at, updated_at, started_at, finished_at, owner_id
 FROM client_control_intents_v2 WHERE intent_id = ?`, strings.TrimSpace(intentID)))
+}
+
+func (s *Store) GetClientIntentForOwner(ownerID, intentID string) (*Intent, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	intentID = strings.TrimSpace(intentID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var intentOwnerID string
+	err := s.db.QueryRow(`SELECT owner_id FROM client_control_intents_v2 WHERE intent_id=?`, intentID).Scan(&intentOwnerID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (intentOwnerID == "" || intentOwnerID != ownerID)) {
+		return nil, ErrClientIntentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.getIntentLocked(intentID)
+}
+
+func (s *Store) ListClientIntentsForOwner(ownerID, status string) ([]Intent, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	status = strings.TrimSpace(status)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query := `SELECT intent.id FROM client_control_intents_v2 client_job
+JOIN intents intent ON intent.id=client_job.intent_id
+WHERE client_job.owner_id=? AND client_job.owner_id<>''`
+	args := []any{ownerID}
+	if status != "" {
+		query += ` AND intent.status=?`
+		args = append(args, status)
+	}
+	query += ` ORDER BY intent.created_at DESC, intent.id`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	intents := make([]Intent, 0, len(ids))
+	for _, id := range ids {
+		intent, err := s.getIntentLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		if intent != nil {
+			intents = append(intents, *intent)
+		}
+	}
+	return intents, nil
 }
 
 // ClaimClientIntent atomically gives one dispatcher ownership of a QUEUED
@@ -171,7 +252,7 @@ started_at = ?, updated_at = ? WHERE intent_id = ? AND state = 'QUEUED'`, stamp,
 		return nil, false, err
 	}
 	intent, err := readClientIntent(s.db.QueryRow(`SELECT client_request_id, intent_id,
-input_json, state, error, created_at, updated_at, started_at, finished_at
+input_json, state, error, created_at, updated_at, started_at, finished_at, owner_id
 FROM client_control_intents_v2 WHERE intent_id = ?`, intentID))
 	if err != nil {
 		return nil, false, err
@@ -238,7 +319,7 @@ finished_at = ?, updated_at = ? WHERE state = 'RUNNING'`, stamp, stamp); err != 
 		return nil, err
 	}
 	rows, err := tx.Query(`SELECT client_request_id, intent_id, input_json, state, error,
-created_at, updated_at, started_at, finished_at FROM client_control_intents_v2
+created_at, updated_at, started_at, finished_at, owner_id FROM client_control_intents_v2
 WHERE state = 'QUEUED' ORDER BY created_at, intent_id`)
 	if err != nil {
 		return nil, err
@@ -262,7 +343,7 @@ func readClientIntent(row interface{ Scan(...any) error }) (*ClientIntent, error
 	var input []byte
 	var startedAt, finishedAt sql.NullString
 	err := row.Scan(&intent.ClientRequestID, &intent.IntentID, &input, &intent.State,
-		&intent.Error, &intent.CreatedAt, &intent.UpdatedAt, &startedAt, &finishedAt)
+		&intent.Error, &intent.CreatedAt, &intent.UpdatedAt, &startedAt, &finishedAt, &intent.OwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrClientIntentNotFound
 	}

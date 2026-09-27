@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ import (
 func runMachineRelayEventStream(ctx context.Context, base, machineID string, wake chan<- struct{}, revoked chan<- error) {
 	backoff := time.Second
 	for ctx.Err() == nil {
+		openedAt := time.Now()
 		connected, err := streamMachineRelayEvents(ctx, base, machineID, wake)
 		if ctx.Err() != nil {
 			return
@@ -31,23 +33,33 @@ func runMachineRelayEventStream(ctx context.Context, base, machineID string, wak
 				return
 			}
 		}
-		if connected {
+		// A successful HTTP handshake followed by an immediate close is not a
+		// healthy stream. Back off repeated short-lived connections as well as
+		// failed handshakes; reset only after the stream was actually stable.
+		if connected && time.Since(openedAt) >= 30*time.Second {
 			backoff = time.Second
 		}
-		timer := time.NewTimer(backoff)
+		timer := time.NewTimer(relayEventReconnectDelay(backoff))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return
 		case <-timer.C:
 		}
-		if !connected && backoff < 30*time.Second {
+		if backoff < 30*time.Second {
 			backoff *= 2
 			if backoff > 30*time.Second {
 				backoff = 30 * time.Second
 			}
 		}
 	}
+}
+
+// Equal jitter keeps independently reconnecting Nodes from retrying in lockstep
+// without making a healthy stream's first reconnect slower than one second.
+func relayEventReconnectDelay(backoff time.Duration) time.Duration {
+	half := backoff / 2
+	return half + time.Duration(rand.Int64N(int64(backoff-half)+1))
 }
 
 func streamMachineRelayEvents(ctx context.Context, base, machineID string, wake chan<- struct{}) (bool, error) {

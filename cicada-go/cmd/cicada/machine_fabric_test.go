@@ -45,6 +45,8 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 			t.Errorf("relay authorization = %q", got)
 		}
 		switch {
+		case strings.HasSuffix(request.URL.Path, "/sealed/claim"):
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.NodeSealedDelivery{}})
 		case strings.HasSuffix(request.URL.Path, "/claim"):
 			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.Delivery{delivery}})
 		case strings.HasSuffix(request.URL.Path, "/receipts"):
@@ -170,6 +172,10 @@ func TestMachineRelayV2ReportsRecoveredInjectionUncertain(t *testing.T) {
 
 	var layers []string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/sealed/claim") {
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.NodeSealedDelivery{}})
+			return
+		}
 		if strings.HasSuffix(request.URL.Path, "/claim") {
 			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.Delivery{}})
 			return

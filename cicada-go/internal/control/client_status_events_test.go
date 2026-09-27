@@ -44,7 +44,9 @@ func TestReadClientStatusChangesReturnsStableOwnerBoundSnapshotDeltas(t *testing
 	if len(first.Events) == 0 || first.Cursor == "" {
 		t.Fatalf("first observation did not create a durable baseline: %#v", first)
 	}
-	if !strings.Contains(strings.Join(first.ExcludedChangeSources, ","), "approvals") || !strings.Contains(strings.Join(first.ExcludedChangeSources, ","), "control_intents") {
+	excluded := strings.Join(first.ExcludedChangeSources, ",")
+	if strings.Contains(excluded, "approvals") || strings.Contains(excluded, "control_intents") ||
+		!strings.Contains(excluded, "topology_memberships_and_links") || !strings.Contains(excluded, "transitions_between_snapshot_reads") {
 		t.Fatalf("partial feed omissions were not explicit: %#v", first.ExcludedChangeSources)
 	}
 	foundGroup := false
@@ -91,6 +93,173 @@ func TestReadClientStatusChangesReturnsStableOwnerBoundSnapshotDeltas(t *testing
 	}
 	if _, err := c.ReadClientStatusChanges(ownerID, encodeClientStatusCursor(ownerID, latest+1), 100); !errors.Is(err, store.ErrClientStatusCursorRange) {
 		t.Fatalf("future cursor was accepted: %v", err)
+	}
+}
+
+func TestClientManagementStatusObservationsAreOwnerScopedAndMetadataOnly(t *testing.T) {
+	c := newStatusEventsControl(t, filepath.Join(t.TempDir(), "state"))
+	ownerID := c.Identity().ID
+	otherOwnerID := "another-owner"
+
+	ownedGoal, err := c.store.CreateOwnedGoal(ownerID, store.Goal{
+		ID: "owned-approval-goal", Objective: "safe approval state", SuccessCriteria: "done", Priority: 1, MachineID: "control-local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedWorker, err := c.store.CreateWorker("owned-approval-worker", ownedGoal.ID, "control-local", filepath.Join(t.TempDir(), "owned-result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateApproval("owned-approval", ownedGoal.ID, ownedWorker.ID, "review", map[string]string{"private_request": "approval-secret-body"}); err != nil {
+		t.Fatal(err)
+	}
+
+	otherGoal, err := c.store.CreateOwnedGoal(otherOwnerID, store.Goal{
+		ID: "other-approval-goal", Objective: "other goal", SuccessCriteria: "done", Priority: 1, MachineID: "control-local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherWorker, err := c.store.CreateWorker("other-approval-worker", otherGoal.ID, "control-local", filepath.Join(t.TempDir(), "other-result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateApproval("other-approval", otherGoal.ID, otherWorker.ID, "review", map[string]string{"private_request": "other-approval-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	legacyGoal, err := c.store.CreateGoal("legacy-approval-goal", "legacy", "done", "", 1, "control-local", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyWorker, err := c.store.CreateWorker("legacy-approval-worker", legacyGoal.ID, "control-local", filepath.Join(t.TempDir(), "legacy-result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateApproval("legacy-approval", legacyGoal.ID, legacyWorker.ID, "review", map[string]string{"private_request": "legacy-approval-secret"}); err != nil {
+		t.Fatal(err)
+	}
+
+	ownedIntent, err := c.AcceptClientIntentForOwner(ownerID, "owned-client-request", IntentInput{Text: "owned-intent-secret-body", Kind: "idea"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherInput := []byte(`{"text":"other-intent-secret-body","kind":"idea"}`)
+	if _, _, err := c.store.AcceptClientIntentForOwner(otherOwnerID, "other-client-request", "other-intent-secret-body", "idea", "", nil, otherInput); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateIntent("legacy-intent-secret-body", "idea", "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	observations, err := c.clientManagementStatusObservations(ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundApproval, foundIntent := false, false
+	for _, observation := range observations {
+		switch observation.EntityType {
+		case "approval":
+			if observation.EntityID != "owned-approval" {
+				t.Fatalf("foreign or ownerless approval was projected: %#v", observation)
+			}
+			foundApproval = true
+		case "intent":
+			if observation.EntityID != ownedIntent.ID {
+				t.Fatalf("foreign or ownerless Intent was projected: %#v", observation)
+			}
+			foundIntent = true
+		default:
+			t.Fatalf("unexpected management entity type %q", observation.EntityType)
+		}
+		for _, secret := range []string{"approval-secret-body", "other-approval-secret", "legacy-approval-secret", "owned-intent-secret-body", "other-intent-secret-body", "legacy-intent-secret-body", "private_request", "text", "result", "error"} {
+			if strings.Contains(string(observation.StateJSON), secret) {
+				t.Fatalf("status state leaked private input field %q: %s", secret, observation.StateJSON)
+			}
+		}
+	}
+	if !foundApproval || !foundIntent || len(observations) != 2 {
+		t.Fatalf("owner-scoped Approval/Intent observations missing: %#v", observations)
+	}
+}
+
+func TestReadClientStatusChangesTracksApprovalAndIntentLifecycleOnly(t *testing.T) {
+	c := newStatusEventsControl(t, filepath.Join(t.TempDir(), "state"))
+	ownerID := c.Identity().ID
+	goal, err := c.store.CreateOwnedGoal(ownerID, store.Goal{
+		ID: "status-goal", Objective: "status goal", SuccessCriteria: "done", Priority: 1, MachineID: "control-local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := c.store.CreateWorker("status-worker", goal.ID, "control-local", filepath.Join(t.TempDir(), "status-result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.CreateApproval("status-approval", goal.ID, worker.ID, "review", map[string]string{"private_request": "do-not-emit"}); err != nil {
+		t.Fatal(err)
+	}
+	intent, err := c.AcceptClientIntentForOwner(ownerID, "status-client-request", IntentInput{Text: "do-not-emit-intent-body", Kind: "idea"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initial, err := c.ReadClientStatusChanges(ownerID, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalInitial, intentInitial, goalInitial := false, false, false
+	for _, event := range initial.Events {
+		switch event.EntityType {
+		case "approval":
+			approvalInitial = event.EntityID == "status-approval" && strings.Contains(string(event.StateJSON), `"pending"`)
+		case "intent":
+			intentInitial = event.EntityID == intent.ID && strings.Contains(string(event.StateJSON), `"QUEUED"`)
+		case "goal":
+			if event.EntityID == goal.ID {
+				var state map[string]any
+				if err := json.Unmarshal(event.StateJSON, &state); err != nil {
+					t.Fatal(err)
+				}
+				_, goalInitial = state["lifecycle_version"]
+			}
+		}
+		for _, secret := range []string{"do-not-emit", "private_request", "request"} {
+			if strings.Contains(string(event.StateJSON), secret) {
+				t.Fatalf("status event exposed private management input %q: %s", secret, event.StateJSON)
+			}
+		}
+	}
+	if !approvalInitial || !intentInitial || !goalInitial {
+		t.Fatalf("first status page missed safe lifecycle baseline: approval=%v intent=%v goal_version=%v events=%#v", approvalInitial, intentInitial, goalInitial, initial.Events)
+	}
+
+	if _, err := c.store.ResolveApproval("status-approval", "accept"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DispatchClientIntentAsync(intent.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForClientIntent(t, c, intent.ID, store.ClientIntentDone)
+
+	updated, err := c.ReadClientStatusChanges(ownerID, initial.Cursor, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalUpdated, intentUpdated := false, false
+	for _, event := range updated.Events {
+		if event.ChangeType != store.ClientStatusChangeUpdated {
+			continue
+		}
+		switch event.EntityType {
+		case "approval":
+			approvalUpdated = event.EntityID == "status-approval" && strings.Contains(string(event.StateJSON), `"resolved"`) && strings.Contains(string(event.StateJSON), `"accept"`)
+		case "intent":
+			intentUpdated = event.EntityID == intent.ID && strings.Contains(string(event.StateJSON), `"resolved"`) && strings.Contains(string(event.StateJSON), `"DONE"`)
+		}
+	}
+	if !approvalUpdated || !intentUpdated {
+		t.Fatalf("terminal Approval/Intent deltas missing: approval=%v intent=%v events=%#v", approvalUpdated, intentUpdated, updated.Events)
 	}
 }
 

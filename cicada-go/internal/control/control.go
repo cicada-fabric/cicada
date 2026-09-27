@@ -1,6 +1,5 @@
-// Package control implements Cicada's Goal, Monitor, and Native Codex worker
-// lifecycle. It deliberately talks to Codex through its stable CLI boundary;
-// the app-server adapter can be added behind the same worker interface later.
+// Package control implements Cicada's Goal, Monitor, and native worker
+// lifecycle. Codex app-server transport is shared with the Node adapter.
 package control
 
 import (
@@ -318,6 +317,19 @@ func (c *Control) Start() error {
 	}
 	for _, worker := range workers {
 		if !isLocalMachine(worker.MachineID) {
+			if err := c.store.CancelPendingRemoteWorkerApprovals(worker.ID, worker.MachineID, worker.Attempt); err != nil {
+				return err
+			}
+			protected, protectErr := c.store.ProtectApprovedRemoteWorker(worker.ID, worker.Attempt, "control restarted after accepted remote approval; reconcile native result before retry")
+			if protectErr != nil {
+				return protectErr
+			}
+			if protected {
+				_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerOutcomeUncertain", map[string]any{
+					"reason": "control restarted after accepted remote approval", "machine_id": worker.MachineID,
+				})
+				continue
+			}
 			queued := "queued"
 			_, _ = c.store.UpdateWorker(worker.ID, store.WorkerUpdate{Status: &queued, ClearPID: true, LastError: stringPtr("awaiting remote machine")})
 			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerAwaitingMachine", map[string]any{"machine_id": worker.MachineID, "reason": "control restarted"})
@@ -609,6 +621,12 @@ func (c *Control) markStaleMachines(cutoff string) {
 			continue
 		}
 		for _, worker := range workers {
+			if worker.Status == store.RemoteWorkerOutcomeUncertain {
+				_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerOutcomeUncertain", map[string]any{
+					"reason": "remote machine heartbeat expired after accepted approval", "machine_id": machineID,
+				})
+				continue
+			}
 			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerRecoveryStarted", map[string]any{
 				"reason": "remote machine heartbeat expired", "machine_id": machineID,
 			})
@@ -960,6 +978,18 @@ func (c *Control) UpdateIdea(id, status, rationale, revisitWhen string) (*store.
 }
 
 func (c *Control) ResearchIdea(id string) (*store.Goal, error) {
+	return c.researchIdea("", id)
+}
+
+func (c *Control) ResearchIdeaForOwner(ownerID, id string) (*store.Goal, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	return c.researchIdea(ownerID, id)
+}
+
+func (c *Control) researchIdea(ownerID, id string) (*store.Goal, error) {
 	idea, err := c.store.GetIdea(id)
 	if err != nil {
 		return nil, err
@@ -970,11 +1000,17 @@ func (c *Control) ResearchIdea(id string) (*store.Goal, error) {
 	if idea.GoalID != "" && (idea.Status == "researching" || idea.Status == "started") {
 		return nil, fmt.Errorf("idea already linked to goal: %s", idea.GoalID)
 	}
-	goal, err := c.CreateGoal(GoalInput{
+	goalInput := GoalInput{
 		Objective:       "Research this idea and return an evidence-backed recommendation without executing it:\n\n" + idea.Description,
 		SuccessCriteria: "Summarize feasibility, relevant evidence, risks, and a clear recommendation.",
 		Constraints:     "Research and analysis only. Do not implement code, change external systems, or commit to execution.",
-	})
+	}
+	var goal *store.Goal
+	if ownerID == "" {
+		goal, err = c.CreateGoal(goalInput)
+	} else {
+		goal, err = c.CreateGoalForOwner(ownerID, goalInput)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1254,6 +1290,9 @@ func (c *Control) ResolveApproval(id, decision string) (*store.Approval, error) 
 	if approval == nil {
 		return nil, os.ErrNotExist
 	}
+	if err := c.store.ValidateRemoteApprovalForDecision(id, approval.Status == "pending"); err != nil {
+		return nil, err
+	}
 	var resolved *store.Approval
 	if approval.Status != "pending" {
 		if approval.Status != "resolved" || approval.Decision != decision {
@@ -1382,6 +1421,21 @@ type GoalInput struct {
 }
 
 func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
+	return c.createGoal("", input)
+}
+
+// CreateGoalForOwner persists owner attribution from an authenticated Client
+// session. A requested remote machine must currently be bound to this exact
+// owner; the JSON goal input never contains owner identity.
+func (c *Control) CreateGoalForOwner(ownerID string, input GoalInput) (*store.Goal, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	return c.createGoal(ownerID, input)
+}
+
+func (c *Control) createGoal(ownerID string, input GoalInput) (*store.Goal, error) {
 	var err error
 	input.Objective = strings.TrimSpace(input.Objective)
 	if input.Objective == "" {
@@ -1456,7 +1510,11 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 			machineID = "control-local"
 		}
 	} else {
-		machineID, err = c.chooseMachine(input.MachineID, resources)
+		if ownerID == "" {
+			machineID, err = c.chooseMachine(input.MachineID, resources)
+		} else {
+			machineID, err = c.chooseMachineForOwner(ownerID, input.MachineID, resources)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1470,8 +1528,17 @@ func (c *Control) CreateGoal(input GoalInput) (*store.Goal, error) {
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		return nil, fmt.Errorf("create goal workspace: %w", err)
 	}
-	_, err = c.store.CreateGoalWithParent(goalID, input.ParentGoalID, input.Objective, input.SuccessCriteria, input.Constraints,
-		input.Priority, input.Deadline, input.Budget, input.Resources, machineID, monitorID, workspace)
+	if ownerID == "" {
+		_, err = c.store.CreateGoalWithParent(goalID, input.ParentGoalID, input.Objective, input.SuccessCriteria, input.Constraints,
+			input.Priority, input.Deadline, input.Budget, input.Resources, machineID, monitorID, workspace)
+	} else {
+		_, err = c.store.CreateOwnedGoal(ownerID, store.Goal{
+			ID: goalID, ParentGoalID: input.ParentGoalID, Objective: input.Objective,
+			SuccessCriteria: input.SuccessCriteria, Constraints: input.Constraints,
+			Priority: input.Priority, Deadline: input.Deadline, Budget: input.Budget,
+			Resources: input.Resources, MachineID: machineID, MonitorID: monitorID, Workspace: workspace,
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1571,7 +1638,12 @@ func (c *Control) AddWorker(goalID string, input WorkerInput) (*store.Worker, er
 	if _, exists := resources["required_harness"]; !exists {
 		resources["required_harness"] = harness
 	}
-	machineID, err := c.chooseMachine(input.MachineID, resources)
+	var machineID string
+	if goal.OwnerID == "" {
+		machineID, err = c.chooseMachine(input.MachineID, resources)
+	} else {
+		machineID, err = c.chooseMachineForOwner(goal.OwnerID, input.MachineID, resources)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1640,6 +1712,64 @@ func (c *Control) chooseMachine(requested string, resources map[string]any) (str
 		}
 	}
 	return "", errors.New("no available machine")
+}
+
+func (c *Control) chooseMachineForOwner(ownerID, requested string, resources map[string]any) (string, error) {
+	c.sweepStaleMachines()
+	requested = strings.TrimSpace(requested)
+	if requested == "control-local" || requested == "worker-local" {
+		machine, err := c.store.GetMachine(requested)
+		if err != nil {
+			return "", err
+		}
+		if machine == nil {
+			return "", fmt.Errorf("unknown machine: %s", requested)
+		}
+		if machine.Status != "available" && machine.Status != "idle" {
+			return "", fmt.Errorf("machine is not available: %s", requested)
+		}
+		if !machineMatches(*machine, resources) {
+			return "", fmt.Errorf("machine does not satisfy requested resources: %s", requested)
+		}
+		return requested, nil
+	}
+	if requested != "" {
+		machine, err := c.store.OwnerBoundNodeMachine(ownerID, requested)
+		if err != nil {
+			return "", fmt.Errorf("machine is not paired to this Client owner: %s", requested)
+		}
+		if machine.Status != "available" && machine.Status != "idle" {
+			return "", fmt.Errorf("machine is not available: %s", requested)
+		}
+		if !machineMatches(*machine, resources) {
+			return "", fmt.Errorf("machine does not satisfy requested resources: %s", requested)
+		}
+		return requested, nil
+	}
+	machines, err := c.store.ListMachines()
+	if err != nil {
+		return "", err
+	}
+	for _, machine := range machines {
+		if machine.ID == "worker-local" && machine.Status == "available" && machineMatches(machine, resources) {
+			return machine.ID, nil
+		}
+	}
+	for _, machine := range machines {
+		if machine.ID == "control-local" && machine.Status == "available" && machineMatches(machine, resources) {
+			return machine.ID, nil
+		}
+	}
+	ownerMachines, err := c.store.ListOwnerBoundNodeMachines(ownerID)
+	if err != nil {
+		return "", err
+	}
+	for _, machine := range ownerMachines {
+		if machine.Status == "available" && machineMatches(machine, resources) {
+			return machine.ID, nil
+		}
+	}
+	return "", errors.New("no available machine bound to this Client owner")
 }
 
 func machineMatches(machine store.Machine, resources map[string]any) bool {

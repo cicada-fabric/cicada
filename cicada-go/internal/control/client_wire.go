@@ -32,7 +32,7 @@ func (c *Control) RegisterClientDevice(input store.RegisterClientDeviceInput) (*
 	if c == nil || c.store == nil {
 		return nil, errors.New("Client device registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(input.OwnerID); err != nil {
+	if err := c.ValidateClientSessionOwner(input.OwnerID); err != nil {
 		return nil, err
 	}
 	return c.store.RegisterClientDeviceFromOwnerGrant(input)
@@ -46,14 +46,14 @@ func (c *Control) ClientDevice(ownerID, deviceID string) (*store.ClientDevice, e
 }
 
 func (c *Control) ClientDevices(ownerID string) ([]store.ClientDevice, error) {
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.ListClientDevices(ownerID)
 }
 
 func (c *Control) RevokeClientDevice(ownerID, deviceID string, expectedVersion int64) (*store.ClientDevice, error) {
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return c.store.RevokeClientDevice(ownerID, deviceID, expectedVersion)
@@ -63,17 +63,40 @@ func (c *Control) AcceptClientControlRequest(input store.AcceptClientRequestInpu
 	if c == nil || c.store == nil {
 		return nil, errors.New("Client request registry is unavailable")
 	}
-	if err := c.ValidateClientOwnerScope(input.OwnerID); err != nil {
+	if err := c.ValidateClientSessionOwner(input.OwnerID); err != nil {
 		return nil, err
 	}
 	return c.store.AcceptClientRequest(input)
 }
 
-func (c *Control) AllocateClientControlResponseSequence(ownerID, deviceID string, epoch uint64) (uint64, error) {
+func (c *Control) LookupClientControlRequestRecovery(input store.AcceptClientRequestInput) (*store.ClientRequestRecovery, error) {
+	if c == nil || c.store == nil {
+		return nil, errors.New("Client request registry is unavailable")
+	}
+	if err := c.ValidateClientSessionOwner(input.OwnerID); err != nil {
+		return nil, err
+	}
+	return c.store.LookupClientRequestRecovery(input)
+}
+
+func (c *Control) ReserveClientControlResponseSequence(input store.AcceptClientRequestInput) (uint64, error) {
 	if c == nil || c.store == nil {
 		return 0, errors.New("Client request registry is unavailable")
 	}
-	return c.store.AllocateClientResponseSequence(ownerID, deviceID, epoch)
+	if err := c.ValidateClientSessionOwner(input.OwnerID); err != nil {
+		return 0, err
+	}
+	return c.store.ReserveClientRequestResponseSequence(input)
+}
+
+func (c *Control) CacheClientControlRecoveryPacket(input store.AcceptClientRequestInput, sequence uint64, packet []byte) ([]byte, error) {
+	if c == nil || c.store == nil {
+		return nil, errors.New("Client request registry is unavailable")
+	}
+	if err := c.ValidateClientSessionOwner(input.OwnerID); err != nil {
+		return nil, err
+	}
+	return c.store.CacheClientRequestRecoveryPacket(input, sequence, packet)
 }
 
 func (c *Control) CompleteClientControlRequest(ownerID, deviceID, operationID string, packet []byte) (*store.ClientRequest, error) {
@@ -83,18 +106,50 @@ func (c *Control) CompleteClientControlRequest(ownerID, deviceID, operationID st
 	return c.store.CompleteClientRequestWithSealedResponse(ownerID, deviceID, operationID, packet)
 }
 
-func (c *Control) FailClientControlRequest(ownerID, deviceID, operationID string) (*store.ClientRequest, error) {
+func (c *Control) MarkClientControlRequestUncertain(ownerID, deviceID, operationID string) (*store.ClientRequest, error) {
 	if c == nil || c.store == nil {
 		return nil, errors.New("Client request registry is unavailable")
 	}
-	return c.store.UpdateClientRequestStatus(ownerID, deviceID, operationID, store.ClientRequestFailed)
+	return c.store.UpdateClientRequestStatus(ownerID, deviceID, operationID, store.ClientRequestUncertain)
 }
 
 func (c *Control) ClientApproval(ownerID, approvalID string) (*store.Approval, error) {
 	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
 		return nil, err
 	}
-	return c.store.GetApproval(approvalID)
+	approval, err := c.store.GetApproval(approvalID)
+	if err != nil || approval == nil {
+		return approval, err
+	}
+	goal, err := c.store.GetGoal(approval.GoalID)
+	if err != nil {
+		return nil, err
+	}
+	if goal == nil || goal.OwnerID != ownerID {
+		return nil, errors.New("approval is unavailable")
+	}
+	return approval, nil
+}
+
+func (c *Control) ClientApprovals(ownerID string, pendingOnly bool) ([]store.Approval, error) {
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	all, err := c.Approvals(pendingOnly)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]store.Approval, 0, len(all))
+	for _, approval := range all {
+		goal, err := c.store.GetGoal(approval.GoalID)
+		if err != nil {
+			return nil, err
+		}
+		if goal != nil && goal.OwnerID == ownerID {
+			visible = append(visible, approval)
+		}
+	}
+	return visible, nil
 }
 
 // OpenClientControlPacket only authenticates the cryptographic packet. The

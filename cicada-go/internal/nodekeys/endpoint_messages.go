@@ -145,6 +145,86 @@ func (s *CryptoState) SealOutboundEndpointMessage(ctx context.Context, local *e2
 	return outboundFromRecord(stored, route, localPublic, false)
 }
 
+// SealOwnerGrantedCrossGroupOutboundEndpointMessage encrypts one SEND,
+// REQUEST, or correlated REPLY for an explicitly owner-granted cross-Group Link. The current bilateral Bundle is
+// verified against independent Node-local Owner trust and the existing exact
+// peer pin; the route is checked against its signed contract before the same
+// durable sequence/outbox protocol used by same-Group messages. Callers must
+// still obtain a fresh production route Guard decision before transport.
+func (s *CryptoState) SealOwnerGrantedCrossGroupOutboundEndpointMessage(ctx context.Context,
+	local *e2ee.Identity, scope PeerPinScope, localEndpoint PeerPinLocalEndpoint,
+	expectedPeer PeerPinIdentity, bundle PeerKeyAuthorizationBundle, dataScope,
+	operationID string, route e2ee.EndpointMessageContext,
+	plaintext []byte) (OutboundEndpointMessage, error) {
+	if ctx == nil || local == nil {
+		return OutboundEndpointMessage{}, errors.New("context and local Endpoint identity are required")
+	}
+	localPublic := local.Public()
+	if localEndpoint.KeyID != localPublic.ID || !samePublicIdentity(localEndpoint.Public, localPublic) {
+		return OutboundEndpointMessage{}, ErrEndpointKeyIdentity
+	}
+	if err := validateCryptoToken("operation ID", operationID); err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	if err := validateEndpointRouteScope(route, scope, expectedPeer, true); err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	if err := validateOwnerGrantedMessageRoute(bundle, dataScope, route); err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	if route.SenderKeyID != localPublic.ID || route.SenderBindingEpoch != localEndpoint.BindingEpoch {
+		return OutboundEndpointMessage{}, ErrEndpointKeyIdentity
+	}
+	pin, err := s.GetOwnerGrantedCrossGroupPeerPin(ctx, scope, localEndpoint,
+		expectedPeer, bundle)
+	if err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	if route.ReceiverKeyID != pin.KeyID || route.ReceiverBindingEpoch != pin.BindingEpoch {
+		return OutboundEndpointMessage{}, ErrEndpointKeyIdentity
+	}
+	derivedOperationID, err := EndpointMessageOperationID(route, plaintext)
+	if err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	if operationID != derivedOperationID {
+		return OutboundEndpointMessage{}, ErrOutboundConflict
+	}
+	// A retry adopts the original immutable ciphertext and sequence, never a
+	// newly sealed payload with the same operation identity.
+	record, err := s.GetOutbound(ctx, operationID, localPublic.ID)
+	if err == nil {
+		if record.SourceEndpointID != scope.LocalEndpointID || record.SourceKeyID != localPublic.ID {
+			return OutboundEndpointMessage{}, ErrOutboundConflict
+		}
+		return outboundFromRecord(record, route, localPublic, true)
+	}
+	if !errors.Is(err, ErrCryptoStateNotFound) {
+		return OutboundEndpointMessage{}, err
+	}
+	sequence, err := s.ReserveOutboundSequence(ctx, scope.LocalEndpointID, localPublic.ID)
+	if err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	wire, err := e2ee.SealEndpointMessage(local, pin.Public, route, plaintext, sequence)
+	if err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	stored, _, err := s.StoreOutbound(ctx, operationID, scope.LocalEndpointID, localPublic.ID, wire)
+	if errors.Is(err, ErrOutboundConflict) {
+		record, getErr := s.GetOutbound(ctx, operationID, localPublic.ID)
+		if getErr != nil || record.SourceEndpointID != scope.LocalEndpointID ||
+			record.SourceKeyID != localPublic.ID {
+			return OutboundEndpointMessage{}, ErrOutboundConflict
+		}
+		return outboundFromRecord(record, route, localPublic, true)
+	}
+	if err != nil {
+		return OutboundEndpointMessage{}, err
+	}
+	return outboundFromRecord(stored, route, localPublic, false)
+}
+
 // EndpointMessageOperationID returns a stable operation key for the exact
 // trusted route and plaintext. Pass this value to SealOutboundEndpointMessage
 // so retries with a changed route or body cannot silently reuse old ciphertext.
@@ -218,6 +298,135 @@ func (s *CryptoState) OpenInboundEndpointMessage(ctx context.Context, local *e2e
 		return InboundEndpointMessage{}, err
 	}
 	return InboundEndpointMessage{Plaintext: plaintext, Sequence: sequence, Duplicate: duplicate}, nil
+}
+
+// OpenOwnerGrantedCrossGroupInboundEndpointMessage is the receiving Endpoint
+// cryptographic boundary for a cross-Group SEND, REQUEST, or correlated REPLY. The caller must first obtain
+// a fresh, exact-attempt authorization from the authenticated Node Relay API;
+// this method independently verifies its bilateral Owner proof, local trust,
+// pinned peer key, signed route and replay state. The encrypted bytes are
+// durable before plaintext is returned. This method does not claim that a
+// native runtime consumed the result.
+func (s *CryptoState) OpenOwnerGrantedCrossGroupInboundEndpointMessage(ctx context.Context,
+	local *e2ee.Identity, scope PeerPinScope, localEndpoint PeerPinLocalEndpoint,
+	expectedPeer PeerPinIdentity, bundle PeerKeyAuthorizationBundle, dataScope string,
+	expectedRoute e2ee.EndpointMessageContext, wire []byte) (InboundEndpointMessage, error) {
+	if ctx == nil || local == nil {
+		return InboundEndpointMessage{}, errors.New("context and local Endpoint identity are required")
+	}
+	localPublic := local.Public()
+	if localEndpoint.KeyID != localPublic.ID || !samePublicIdentity(localEndpoint.Public, localPublic) {
+		return InboundEndpointMessage{}, ErrEndpointKeyIdentity
+	}
+	if err := validateEndpointRouteScope(expectedRoute, scope, expectedPeer, false); err != nil {
+		return InboundEndpointMessage{}, err
+	}
+	if (expectedRoute.Kind != "SEND" && expectedRoute.Kind != "REQUEST" && expectedRoute.Kind != "REPLY") || expectedRoute.MessageID == "" ||
+		expectedRoute.ReceiverKeyID != localPublic.ID ||
+		expectedRoute.ReceiverBindingEpoch != localEndpoint.BindingEpoch {
+		return InboundEndpointMessage{}, ErrEndpointContextScope
+	}
+	// GetOwnerGrantedCrossGroupPeerPin rejects revoked local trust, changed
+	// grants, stale candidate/binding and a mismatched manifest. Legacy
+	// GetPeerPin intentionally cannot return this cross-Group pin.
+	pin, err := s.GetOwnerGrantedCrossGroupPeerPin(ctx, scope, localEndpoint,
+		expectedPeer, bundle)
+	if err != nil {
+		return InboundEndpointMessage{}, err
+	}
+	if expectedRoute.SenderKeyID != pin.KeyID || expectedRoute.SenderBindingEpoch != pin.BindingEpoch {
+		return InboundEndpointMessage{}, ErrEndpointKeyIdentity
+	}
+	if err := validateOwnerGrantedMessageRoute(bundle, dataScope, expectedRoute); err != nil {
+		return InboundEndpointMessage{}, err
+	}
+	plaintext, sequence, err := e2ee.OpenEndpointMessage(local, pin.Public, expectedRoute, wire)
+	if err != nil {
+		return InboundEndpointMessage{}, err
+	}
+	duplicate, err := s.AcceptInbound(ctx, scope.LocalEndpointID, pin.KeyID,
+		expectedRoute.MessageID, sequence, wire)
+	if err != nil {
+		return InboundEndpointMessage{}, err
+	}
+	return InboundEndpointMessage{Plaintext: plaintext, Sequence: sequence, Duplicate: duplicate}, nil
+}
+
+func validateOwnerGrantedMessageRoute(bundle PeerKeyAuthorizationBundle, dataScope string,
+	route e2ee.EndpointMessageContext) error {
+	var contract peerLinkContract
+	if err := json.Unmarshal(bundle.Manifest.ContractCanonical, &contract); err != nil {
+		return ErrEndpointContextScope
+	}
+	requiredAction := ""
+	reverse := false
+	switch route.Kind {
+	case "SEND":
+		if route.RequestID != "" || route.ReplyTo != "" {
+			return ErrEndpointContextScope
+		}
+		requiredAction = "send"
+	case "REQUEST":
+		if route.RequestID == "" || route.ReplyTo != "" {
+			return ErrEndpointContextScope
+		}
+		requiredAction = "ask"
+	case "REPLY":
+		if route.RequestID == "" || route.ReplyTo == "" {
+			return ErrEndpointContextScope
+		}
+		requiredAction, reverse = "reply", true
+	default:
+		return ErrEndpointContextScope
+	}
+	allowedAction, allowedScope := false, false
+	for _, action := range contract.Actions {
+		allowedAction = allowedAction || action == requiredAction
+	}
+	for _, allowed := range contract.DataScopes {
+		allowedScope = allowedScope || allowed == dataScope
+	}
+	senderManifest, receiverManifest := bundle.Manifest.Source, bundle.Manifest.Target
+	expectedSenderEndpointID, expectedSenderPrincipalID, expectedSenderGroupID :=
+		contract.SourceEndpointID, contract.SourcePrincipalID, contract.SourceGroupID
+	expectedReceiverEndpointID, expectedReceiverPrincipalID, expectedReceiverGroupID :=
+		contract.TargetEndpointID, contract.TargetPrincipalID, contract.TargetGroupID
+	expectedSenderOwnerID, expectedReceiverOwnerID := contract.SourceOwnerID, contract.TargetOwnerID
+	expectedSenderMembershipRevision := contract.ScopeSnapshot.SourceMembershipRevision
+	expectedReceiverMembershipRevision := contract.ScopeSnapshot.TargetMembershipRevision
+	if reverse {
+		// A forward-only Link may carry the reverse answer to its exact
+		// REQUEST when both Owners granted the separate reply action. The
+		// Hub must additionally prove request_id/reply_to correlation.
+		senderManifest, receiverManifest = receiverManifest, senderManifest
+		expectedSenderEndpointID, expectedReceiverEndpointID = expectedReceiverEndpointID, expectedSenderEndpointID
+		expectedSenderPrincipalID, expectedReceiverPrincipalID = expectedReceiverPrincipalID, expectedSenderPrincipalID
+		expectedSenderGroupID, expectedReceiverGroupID = expectedReceiverGroupID, expectedSenderGroupID
+		expectedSenderOwnerID, expectedReceiverOwnerID = expectedReceiverOwnerID, expectedSenderOwnerID
+		expectedSenderMembershipRevision, expectedReceiverMembershipRevision =
+			expectedReceiverMembershipRevision, expectedSenderMembershipRevision
+	}
+	if !allowedAction || !allowedScope || dataScope == "" || route.MessageID == "" ||
+		expectedSenderEndpointID != route.SenderEndpointID ||
+		expectedSenderPrincipalID != route.SenderPrincipalID ||
+		expectedSenderGroupID != route.SenderGroupID ||
+		expectedReceiverEndpointID != route.ReceiverEndpointID ||
+		expectedReceiverPrincipalID != route.ReceiverPrincipalID ||
+		expectedReceiverGroupID != route.ReceiverGroupID ||
+		contract.Direction != "forward" && contract.Direction != "bidirectional" ||
+		route.SenderOwnerID != expectedSenderOwnerID ||
+		route.ReceiverOwnerID != expectedReceiverOwnerID ||
+		route.SenderMembershipRevision != expectedSenderMembershipRevision ||
+		route.ReceiverMembershipRevision != expectedReceiverMembershipRevision ||
+		route.LinkID != bundle.Manifest.LinkID || route.LinkRevision != bundle.Manifest.LinkVersion ||
+		route.TransportHubID != contract.TransportHubID ||
+		route.SenderKeyID != senderManifest.KeyID ||
+		route.ReceiverKeyID != receiverManifest.KeyID ||
+		route.SenderBindingEpoch != senderManifest.BindingEpoch ||
+		route.ReceiverBindingEpoch != receiverManifest.BindingEpoch {
+		return ErrEndpointContextScope
+	}
+	return nil
 }
 
 func validateEndpointRouteScope(route e2ee.EndpointMessageContext, scope PeerPinScope,

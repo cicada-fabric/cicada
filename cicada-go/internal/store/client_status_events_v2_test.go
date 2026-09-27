@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -118,7 +119,7 @@ func TestClientStatusObservationFeedRejectsInvalidScopeAndBounds(t *testing.T) {
 	if err := s.RecordClientStatusObservations("owner", "not-a-time", []string{"node"}, []ClientStatusObservation{valid}); err == nil {
 		t.Fatal("invalid observation time was accepted")
 	}
-	if err := s.RecordClientStatusObservations("owner", "2026-09-23T10:00:00Z", []string{"approval"}, nil); err == nil {
+	if err := s.RecordClientStatusObservations("owner", "2026-09-23T10:00:00Z", []string{"unknown"}, nil); err == nil {
 		t.Fatal("unsupported entity type was accepted")
 	}
 	if err := s.RecordClientStatusObservations("owner", "2026-09-23T10:00:00Z", []string{"node"}, []ClientStatusObservation{{
@@ -134,5 +135,104 @@ func TestClientStatusObservationFeedRejectsInvalidScopeAndBounds(t *testing.T) {
 	}
 	if _, err := s.ListClientStatusChanges("", 0, 10); !errors.Is(err, ErrClientStatusOwnerRequired) {
 		t.Fatalf("empty owner list error=%v", err)
+	}
+}
+
+func TestExpandClientStatusEventsEntityTypesPreservesV24RowsAndOwnerCursors(t *testing.T) {
+	s := openClientStatusEventsTestStore(t, filepath.Join(t.TempDir(), "status.sqlite3"))
+	if _, err := s.db.Exec(`DROP TABLE client_status_state_v2;
+DROP TABLE client_status_change_events_v2;
+CREATE TABLE client_status_state_v2 (
+  owner_principal_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task')),
+  entity_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  present INTEGER NOT NULL CHECK(present IN (0,1)),
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY(owner_principal_id, entity_type, entity_id)
+);
+CREATE TABLE client_status_change_events_v2 (
+  id INTEGER NOT NULL CHECK(id > 0),
+  owner_principal_id TEXT NOT NULL,
+  change_type TEXT NOT NULL CHECK(change_type IN ('present','updated','removed')),
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('node','endpoint','worker','goal','group','task')),
+  entity_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(owner_principal_id,id)
+);
+INSERT INTO client_status_state_v2 VALUES('owner-a','node','node-a','{"state":"online"}',1,'2026-09-23T10:00:00Z');
+INSERT INTO client_status_streams_v2(owner_principal_id,last_sequence) VALUES('owner-a',2),('owner-b',1);
+INSERT INTO client_status_change_events_v2 VALUES
+ (1,'owner-a','present','node','node-a','{"state":"online"}','2026-09-23T10:00:00Z','2026-09-23T10:00:00Z'),
+ (2,'owner-a','updated','node','node-a','{"state":"busy"}','2026-09-23T10:00:01Z','2026-09-23T10:00:01Z'),
+ (1,'owner-b','present','task','task-b','{"state":"ready"}','2026-09-23T10:00:00Z','2026-09-23T10:00:00Z');`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a failed v25 attempt after the table rebuild. The enclosing
+	// migration savepoint restores the old schema and rows so it can retry.
+	if _, err := s.db.Exec(`SAVEPOINT v25_rollback_test`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.expandClientStatusEventsEntityTypes(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`ROLLBACK TO SAVEPOINT v25_rollback_test;
+RELEASE SAVEPOINT v25_rollback_test;`); err != nil {
+		t.Fatal(err)
+	}
+	var oldSchema string
+	if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='client_status_state_v2'`).Scan(&oldSchema); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(oldSchema, "'approval'") || strings.Contains(oldSchema, "'intent'") {
+		t.Fatalf("rolled-back v25 attempt left expanded schema: %s", oldSchema)
+	}
+
+	if _, err := s.db.Exec(`SAVEPOINT v25_retry_test`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.expandClientStatusEventsEntityTypes(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`RELEASE SAVEPOINT v25_retry_test`); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyClientStatusPrimaryKey(s.db, "client_status_state_v2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyClientStatusPrimaryKey(s.db, "client_status_change_events_v2"); err != nil {
+		t.Fatal(err)
+	}
+	if latest, err := s.LatestClientStatusChangeID("owner-a"); err != nil || latest != 2 {
+		t.Fatalf("owner-a sequence changed during v25 migration: %d err=%v", latest, err)
+	}
+	if latest, err := s.LatestClientStatusChangeID("owner-b"); err != nil || latest != 1 {
+		t.Fatalf("owner-b sequence changed during v25 migration: %d err=%v", latest, err)
+	}
+	legacyRows, err := s.ListClientStatusChanges("owner-a", 0, 10)
+	if err != nil || len(legacyRows) != 2 || legacyRows[0].ID != 1 || legacyRows[1].ID != 2 || legacyRows[1].EntityID != "node-a" {
+		t.Fatalf("v24 owner-a rows/cursor not preserved: %#v err=%v", legacyRows, err)
+	}
+	foreignRows, err := s.ListClientStatusChanges("owner-b", 0, 10)
+	if err != nil || len(foreignRows) != 1 || foreignRows[0].ID != 1 || foreignRows[0].EntityID != "task-b" {
+		t.Fatalf("v24 owner-b rows/cursor not preserved: %#v err=%v", foreignRows, err)
+	}
+
+	managementAt := "2026-09-23T10:00:02Z"
+	if err := s.RecordClientStatusObservations("owner-a", managementAt, []string{"approval", "intent"}, []ClientStatusObservation{
+		{EntityType: "approval", EntityID: "approval-a", StateJSON: json.RawMessage(`{"status":"pending"}`)},
+		{EntityType: "intent", EntityID: "intent-a", StateJSON: json.RawMessage(`{"status":"resolved"}`)},
+	}); err != nil {
+		t.Fatalf("expanded status entity types rejected: %v", err)
+	}
+	updatedRows, err := s.ListClientStatusChanges("owner-a", 2, 10)
+	if err != nil || len(updatedRows) != 2 || updatedRows[0].ID != 3 || updatedRows[0].EntityType != "approval" || updatedRows[1].ID != 4 || updatedRows[1].EntityType != "intent" {
+		t.Fatalf("owner-local sequence did not continue through management deltas: %#v err=%v", updatedRows, err)
+	}
+	if foreignRows, err := s.ListClientStatusChanges("owner-b", 0, 10); err != nil || len(foreignRows) != 1 {
+		t.Fatalf("management changes leaked into another owner stream: %#v err=%v", foreignRows, err)
 	}
 }

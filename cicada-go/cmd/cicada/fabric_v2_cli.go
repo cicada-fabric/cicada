@@ -86,12 +86,6 @@ func fabricV2CommandOutput(baseURL string, args []string, output io.Writer) erro
 		return client.members(args[1:])
 	case "find", "resolve", "inspect":
 		return client.find(strings.ToLower(strings.TrimSpace(args[0])), args[1:])
-	case "send":
-		return client.send(args[1:])
-	case "ask":
-		return client.ask(args[1:])
-	case "reply":
-		return client.reply(args[1:])
 	case "receive":
 		return client.receive(args[1:])
 	case "request-status", "status":
@@ -103,7 +97,7 @@ func fabricV2CommandOutput(baseURL string, args []string, output io.Writer) erro
 	}
 }
 
-const fabricV2Usage = "usage: cicada fabric v2 join|use-group|leave-group|leave|heartbeat|whoami|members|find|resolve|inspect|send|ask|reply|receive|request-status|cancel"
+const fabricV2Usage = "usage: cicada fabric v2 join|use-group|leave-group|leave|heartbeat|whoami|members|find|resolve|inspect|receive|request-status|cancel"
 
 type fabricV2CLI struct {
 	baseURL string
@@ -401,55 +395,6 @@ func (c *fabricV2CLI) find(operation string, args []string) error {
 	return c.sessionRequest(http.MethodPost, "/v2/fabric/"+operation, fabricpkg.ResolveInput{
 		Query: strings.TrimSpace(flags.Args()[0]), NodeID: strings.TrimSpace(*nodeID), Workspace: strings.TrimSpace(*workspace),
 	})
-}
-
-func (c *fabricV2CLI) send(args []string) error {
-	if len(args) < 2 {
-		return errors.New("usage: cicada fabric v2 send TARGET MESSAGE")
-	}
-	if err := rejectFabricV2IdentityFlags(args); err != nil {
-		return err
-	}
-	return c.sessionRequest(http.MethodPost, "/v2/fabric/send", fabricpkg.SendInput{
-		Target: strings.TrimSpace(args[0]), Body: strings.Join(args[1:], " "),
-	})
-}
-
-func (c *fabricV2CLI) ask(args []string) error {
-	if len(args) < 2 {
-		return errors.New("usage: cicada fabric v2 ask TARGET QUESTION")
-	}
-	if err := rejectFabricV2IdentityFlags(args); err != nil {
-		return err
-	}
-	return c.sessionRequest(http.MethodPost, "/v2/fabric/ask", fabricpkg.AskInput{
-		Target: strings.TrimSpace(args[0]), Question: strings.Join(args[1:], " "),
-	})
-}
-
-func (c *fabricV2CLI) reply(args []string) error {
-	if len(args) < 2 {
-		return errors.New("usage: cicada fabric v2 reply REQUEST_ID ANSWER")
-	}
-	if err := rejectFabricV2IdentityFlags(args); err != nil {
-		return err
-	}
-	return c.sessionRequest(http.MethodPost, "/v2/fabric/reply", fabricpkg.ReplyInput{
-		RequestID: strings.TrimSpace(args[0]), Body: strings.Join(args[1:], " "),
-	})
-}
-
-func rejectFabricV2IdentityFlags(args []string) error {
-	if len(args) == 0 {
-		return nil
-	}
-	arg := strings.TrimSpace(args[0])
-	for _, name := range []string{"--sender", "--sender-endpoint-id", "--principal", "--principal-id", "--group", "--group-id", "--role"} {
-		if arg == name || strings.HasPrefix(arg, name+"=") {
-			return errors.New("v2 peer authorization comes from the CicadaSession binding; sender, principal, group, and role flags are not accepted")
-		}
-	}
-	return nil
 }
 
 func (c *fabricV2CLI) receive(args []string) error {

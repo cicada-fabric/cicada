@@ -24,6 +24,7 @@ func TestCicadaMCPAdvertisesExplicitFabricTools(t *testing.T) {
 		"cicada_members":                  false,
 		"cicada_find":                     false,
 		"cicada_send":                     false,
+		"cicada_broadcast":                false,
 		"cicada_ask":                      false,
 		"cicada_reply":                    false,
 		"cicada_receive":                  false,
@@ -68,7 +69,7 @@ func TestCicadaMCPToolsRequireExplicitJoin(t *testing.T) {
 	defer close(mcp.stop)
 	for _, name := range []string{
 		"cicada_whoami", "cicada_members", "cicada_find", "cicada_list", "cicada_resolve", "cicada_inspect",
-		"cicada_send", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "cicada_request_cancel",
+		"cicada_send", "cicada_broadcast", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "cicada_request_cancel",
 		"cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept",
 		"cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status",
 		"cicada_task_list", "cicada_task_claim", "cicada_task_submit", "cicada_task_accept",
@@ -86,40 +87,38 @@ func TestCicadaMCPToolsRequireExplicitJoin(t *testing.T) {
 	}
 }
 
-func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *testing.T) {
+func TestCicadaMCPNodeBridgeJoinPreservesMultiGroupSession(t *testing.T) {
 	t.Setenv("CICADA_HARNESS", "")
 	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
 	t.Setenv("CODEX_THREAD_ID", "thread-current")
+	t.Setenv("CODEX_SESSION_ID", "session-thread-current")
 	t.Setenv("CICADA_MACHINE_ID", "gpu1")
-	t.Setenv("CICADA_WORKSPACE", "/work/project")
+	workspace := prepareMCPJoinSessionRecord(t, "thread-current")
 	t.Setenv("CICADA_GROUP_ID", "group-a")
-	t.Setenv("CICADA_API_TOKEN", "admin-token")
+	t.Setenv("CICADA_API_TOKEN", "admin-token-must-not-join")
 	t.Setenv("CICADA_API_TOKEN_FILE", "")
 
-	var joinCalls atomic.Int32
+	var nodeJoinCalls, managementJoinCalls atomic.Int32
 	var sessionCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
-		case "/v2/fabric/join":
-			joinCalls.Add(1)
-			if got := request.Header.Get("Authorization"); got != "Bearer admin-token" {
-				t.Errorf("join authorization = %q, want management bearer", got)
+		case "/v2/fabric/node/join":
+			nodeJoinCalls.Add(1)
+			if got := request.Header.Get("Authorization"); !strings.HasPrefix(got, "CicadaNode cicada_node_") {
+				t.Errorf("Node Join authorization = %q, want agent-held Node credential", got)
 			}
 			var raw map[string]any
 			if err := json.NewDecoder(request.Body).Decode(&raw); err != nil {
 				t.Errorf("decode join: %v", err)
 				return
 			}
-			if (raw["group_id"] != "group-a" && raw["group_id"] != "group-b") || raw["harness"] != "codex" || raw["native_session_id"] != "thread-current" || raw["node_id"] != "gpu1" || raw["workspace"] != "/work/project" {
+			if (raw["group_id"] != "group-a" && raw["group_id"] != "group-b") || raw["harness"] != "codex" || raw["native_session_id"] != "thread-current" || raw["workspace"] != workspace {
 				t.Errorf("unexpected join body: %#v", raw)
 			}
-			if raw["group_id"] == "group-b" && raw["endpoint_id"] != "ep_current" {
-				t.Errorf("second Group join replaced Endpoint identity: %#v", raw)
-			}
-			for _, forbidden := range []string{"sender", "sender_endpoint_id", "principal_id", "role", "approval", "approved"} {
+			for _, forbidden := range []string{"node_id", "owner_id", "endpoint_id", "sender", "sender_endpoint_id", "principal_id", "role", "approval", "approved"} {
 				if _, ok := raw[forbidden]; ok {
-					t.Errorf("join body accepted model identity field %q: %#v", forbidden, raw)
+					t.Errorf("Node Join body included caller-asserted identity field %q: %#v", forbidden, raw)
 				}
 			}
 			token := "cicada_session_test-token"
@@ -128,8 +127,12 @@ func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *
 			}
 			_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{
 				Endpoint:     store.Endpoint{ID: "ep_current", Name: "project", Harness: "codex", NativeSessionID: "thread-current"},
+				NetworkCard:  fabricpkg.NetworkCard{EndpointID: "ep_current", GroupID: raw["group_id"].(string), BindingID: "binding-1"},
 				SessionToken: token, BindingID: "binding-1", BindingEpoch: 1,
 			})
+		case "/v2/fabric/join":
+			managementJoinCalls.Add(1)
+			http.Error(response, "management Join must not be used", http.StatusForbidden)
 		case "/v2/fabric/whoami":
 			sessionCalls.Add(1)
 			if got := request.Header.Get("Authorization"); got != "CicadaSession cicada_session_test-token" && got != "CicadaSession cicada_session_test-token-b" {
@@ -156,6 +159,7 @@ func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *
 		}
 	}))
 	defer server.Close()
+	_, _ = startTestMCPNodeBridge(t, server.URL, "gpu1")
 
 	mcp := &mcpServer{baseURL: server.URL, stop: make(chan struct{})}
 	defer close(mcp.stop)
@@ -166,8 +170,8 @@ func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || mcp.endpointID != "ep_current" || mcp.sessionToken != "cicada_session_test-token" || joinCalls.Load() != 1 {
-		t.Fatalf("unexpected join state: endpoint=%q joins=%d result=%#v", mcp.endpointID, joinCalls.Load(), result)
+	if result == nil || mcp.endpointID != "ep_current" || mcp.sessionToken != "cicada_session_test-token" || nodeJoinCalls.Load() != 1 {
+		t.Fatalf("unexpected join state: endpoint=%q Node joins=%d result=%#v", mcp.endpointID, nodeJoinCalls.Load(), result)
 	}
 	joinedJSON, _ := json.Marshal(result)
 	if strings.Contains(string(joinedJSON), "cicada_session_test-token") || strings.Contains(string(joinedJSON), fabricpkg.HashSessionCredential("cicada_session_test-token")) {
@@ -182,14 +186,14 @@ func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *
 	if _, err := mcp.callTool("cicada_join", map[string]any{"group_id": "group-a"}); err != nil {
 		t.Fatalf("idempotent join failed: %v", err)
 	}
-	if joinCalls.Load() != 1 {
-		t.Fatalf("idempotent join rotated the credential: joins=%d", joinCalls.Load())
+	if nodeJoinCalls.Load() != 1 {
+		t.Fatalf("idempotent join rotated the credential: Node joins=%d", nodeJoinCalls.Load())
 	}
 	if _, err := mcp.callTool("cicada_join", map[string]any{"group_id": "group-b"}); err != nil {
 		t.Fatalf("explicit second Group join failed: %v", err)
 	}
-	if joinCalls.Load() != 2 || mcp.endpointID != "ep_current" || mcp.sessionGroupID != "group-b" {
-		t.Fatalf("second Group join did not preserve Endpoint/scope: joins=%d endpoint=%q group=%q", joinCalls.Load(), mcp.endpointID, mcp.sessionGroupID)
+	if nodeJoinCalls.Load() != 2 || mcp.endpointID != "ep_current" || mcp.sessionGroupID != "group-b" {
+		t.Fatalf("second Group join did not preserve Endpoint/scope: Node joins=%d endpoint=%q group=%q", nodeJoinCalls.Load(), mcp.endpointID, mcp.sessionGroupID)
 	}
 	if _, err := mcp.callTool("cicada_use_group", map[string]any{"group_id": "group-a"}); err != nil || mcp.sessionGroupID != "group-a" {
 		t.Fatalf("selecting previously joined Group failed: %v group=%q", err, mcp.sessionGroupID)
@@ -202,6 +206,9 @@ func TestCicadaMCPExplicitJoinBindsCurrentSessionAndUsesSessionAuthorization(t *
 	}
 	if _, err := mcp.callTool("cicada_leave_group", nil); err != nil || mcp.isJoined() {
 		t.Fatalf("leaving last Group retained joined MCP state: %v", err)
+	}
+	if managementJoinCalls.Load() != 0 {
+		t.Fatalf("MCP Join sent %d management Join requests", managementJoinCalls.Load())
 	}
 }
 
@@ -226,67 +233,122 @@ func TestCicadaMCPRejectsForgedIdentityAndCredentialArguments(t *testing.T) {
 
 func TestCicadaMCPJoinUsesGroupEnvironment(t *testing.T) {
 	t.Setenv("CICADA_GROUP_ID", "group-from-env")
-	t.Setenv("CICADA_API_TOKEN", "")
-	t.Setenv("CICADA_API_TOKEN_FILE", "")
 	t.Setenv("CICADA_HARNESS", "")
 	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
 	t.Setenv("CODEX_THREAD_ID", "thread-env")
+	t.Setenv("CODEX_SESSION_ID", "session-thread-env")
+	t.Setenv("CICADA_MACHINE_ID", "node-env")
+	workspace := prepareMCPJoinSessionRecord(t, "thread-env")
+	t.Setenv("CICADA_API_TOKEN", "manager-token-must-not-join")
+	t.Setenv("CICADA_API_TOKEN_FILE", "")
 
-	var joined atomic.Int32
+	var nodeJoins, managementJoins atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v2/fabric/join" {
+		switch request.URL.Path {
+		case "/v2/fabric/node/join":
+			nodeJoins.Add(1)
+			if got := request.Header.Get("Authorization"); !strings.HasPrefix(got, "CicadaNode cicada_node_") {
+				t.Errorf("Node Join authorization = %q", got)
+			}
+			var input map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode Node Join: %v", err)
+				return
+			}
+			if input["group_id"] != "group-from-env" || input["native_session_id"] != "thread-env" || input["workspace"] != workspace {
+				t.Errorf("unexpected environment join: %#v", input)
+			}
+			_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{Endpoint: store.Endpoint{ID: "ep-env"}, SessionToken: "cicada_session_env-token"})
+		case "/v2/fabric/join":
+			managementJoins.Add(1)
+			http.Error(response, "management Join must not be used", http.StatusForbidden)
+		default:
 			http.NotFound(response, request)
-			return
 		}
-		joined.Add(1)
-		var input fabricpkg.JoinInput
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-			t.Errorf("decode join: %v", err)
-		}
-		if input.GroupID != "group-from-env" || input.NativeSessionID != "thread-env" {
-			t.Errorf("unexpected environment join: %#v", input)
-		}
-		_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{Endpoint: store.Endpoint{ID: "ep-env"}, SessionToken: "cicada_session_env-token"})
 	}))
 	defer server.Close()
+	_, _ = startTestMCPNodeBridge(t, server.URL, "node-env")
 
 	mcp := &mcpServer{baseURL: server.URL, stop: make(chan struct{})}
 	defer close(mcp.stop)
 	if _, err := mcp.callTool("cicada_join", map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
-	if joined.Load() != 1 {
-		t.Fatalf("join requests=%d, want 1", joined.Load())
+	if nodeJoins.Load() != 1 || managementJoins.Load() != 0 {
+		t.Fatalf("Node joins=%d management joins=%d, want 1 and 0", nodeJoins.Load(), managementJoins.Load())
+	}
+}
+
+func TestCicadaMCPJoinFailsClosedWhenNodeBridgeIsUnavailable(t *testing.T) {
+	t.Setenv("CICADA_HARNESS", "")
+	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", "thread-no-bridge")
+	t.Setenv("CODEX_SESSION_ID", "session-thread-no-bridge")
+	t.Setenv("CICADA_MACHINE_ID", "node-no-bridge")
+	prepareMCPJoinSessionRecord(t, "thread-no-bridge")
+	t.Setenv("CICADA_GROUP_ID", "group-no-bridge")
+	t.Setenv("CICADA_API_TOKEN", "management-token-must-not-join")
+	t.Setenv("CICADA_API_TOKEN_FILE", "")
+
+	var managementJoins atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v2/fabric/join" {
+			managementJoins.Add(1)
+		}
+		http.Error(response, "unexpected Hub request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	mcp := &mcpServer{baseURL: server.URL, stop: make(chan struct{})}
+	defer close(mcp.stop)
+	if _, err := mcp.callTool("cicada_join", map[string]any{}); err == nil || !strings.Contains(err.Error(), "trusted local Node join bridge is unavailable") {
+		t.Fatalf("Join without the trusted bridge did not fail closed: %v", err)
+	}
+	if managementJoins.Load() != 0 {
+		t.Fatalf("bridge-unavailable Join sent %d management Join requests", managementJoins.Load())
 	}
 }
 
 func TestCicadaMCPRestartRestoresSessionAfterServerValidation(t *testing.T) {
 	t.Setenv("CICADA_HARNESS", "codex")
-	t.Setenv("CICADA_NATIVE_SESSION_ID", "thread-restart")
-	t.Setenv("CODEX_THREAD_ID", "")
-	t.Setenv("CODEX_SESSION_ID", "")
+	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", "thread-restart")
+	t.Setenv("CODEX_SESSION_ID", "session-thread-restart")
 	t.Setenv("CICADA_MACHINE_ID", "node-restart")
-	t.Setenv("CICADA_WORKSPACE", "/work/restart")
+	workspace := prepareMCPJoinSessionRecord(t, "thread-restart")
 	t.Setenv("CICADA_API_TOKEN", "management-token")
 	t.Setenv("CICADA_API_TOKEN_FILE", "")
 
-	var joinCalls, whoamiCalls, heartbeatCalls atomic.Int32
+	var joinCalls, managementJoinCalls, whoamiCalls, heartbeatCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
-		case "/v2/fabric/join":
+		case "/v2/fabric/node/join":
 			joinCalls.Add(1)
+			if !strings.HasPrefix(request.Header.Get("Authorization"), "CicadaNode cicada_node_") {
+				t.Errorf("initial Join did not use the agent-held Node credential")
+			}
+			var input map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode Node Join: %v", err)
+			}
+			if input["group_id"] != "group-restart" || input["native_session_id"] != "thread-restart" || input["workspace"] != workspace {
+				t.Errorf("unexpected restart Join body: %#v", input)
+			}
 			_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{
-				Endpoint:     store.Endpoint{ID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NativeSessionID: "thread-restart", MachineID: "node-restart", Workspace: "/work/restart"},
-				NetworkCard:  fabricpkg.NetworkCard{EndpointID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NodeID: "node-restart", Workspace: "/work/restart", Status: "online", BindingID: "binding-restart", BindingEpoch: 1},
+				Endpoint:     store.Endpoint{ID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NativeSessionID: "thread-restart", MachineID: "node-restart", Workspace: workspace},
+				NetworkCard:  fabricpkg.NetworkCard{EndpointID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NodeID: "node-restart", Workspace: workspace, Status: "online", BindingID: "binding-restart", BindingEpoch: 1},
 				SessionToken: "cicada_session_restart-token", BindingID: "binding-restart", BindingEpoch: 1,
 			})
+		case "/v2/fabric/join":
+			managementJoinCalls.Add(1)
+			http.Error(response, "management Join must not be used", http.StatusForbidden)
 		case "/v2/fabric/whoami":
 			whoamiCalls.Add(1)
 			if request.Header.Get("Authorization") != "CicadaSession cicada_session_restart-token" {
 				t.Errorf("restore whoami used unexpected authorization")
 			}
-			_ = json.NewEncoder(response).Encode(fabricpkg.NetworkCard{EndpointID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NodeID: "node-restart", Workspace: "/work/restart", Status: "online", BindingID: "binding-restart", BindingEpoch: 1})
+			_ = json.NewEncoder(response).Encode(fabricpkg.NetworkCard{EndpointID: "ep-restart", GroupID: "group-restart", Name: "restart", Harness: "codex", NodeID: "node-restart", Workspace: workspace, Status: "online", BindingID: "binding-restart", BindingEpoch: 1})
 		case "/v2/fabric/heartbeat":
 			heartbeatCalls.Add(1)
 			_ = json.NewEncoder(response).Encode(fabricpkg.Actor{EndpointID: "ep-restart", GroupID: "group-restart", BindingID: "binding-restart", BindingEpoch: 1})
@@ -295,6 +357,7 @@ func TestCicadaMCPRestartRestoresSessionAfterServerValidation(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	bridge, _ := startTestMCPNodeBridge(t, server.URL, "node-restart")
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	context, err := harness.DetectCurrentSession()
 	if err != nil {
@@ -302,6 +365,9 @@ func TestCicadaMCPRestartRestoresSessionAfterServerValidation(t *testing.T) {
 	}
 	first := newMCPServer(server.URL, "", statePath)
 	if _, err := first.callTool("cicada_join", map[string]any{"group_id": "group-restart"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bridge.Close(); err != nil {
 		t.Fatal(err)
 	}
 	close(first.stop)
@@ -313,27 +379,33 @@ func TestCicadaMCPRestartRestoresSessionAfterServerValidation(t *testing.T) {
 	if !second.isJoined() || second.endpointID != "ep-restart" {
 		t.Fatalf("restart did not restore the authenticated session: joined=%t endpoint=%q", second.isJoined(), second.endpointID)
 	}
-	if joinCalls.Load() != 1 || whoamiCalls.Load() != 1 || heartbeatCalls.Load() != 1 {
-		t.Fatalf("restore requests join=%d whoami=%d heartbeat=%d", joinCalls.Load(), whoamiCalls.Load(), heartbeatCalls.Load())
+	if joinCalls.Load() != 1 || managementJoinCalls.Load() != 0 || whoamiCalls.Load() != 1 || heartbeatCalls.Load() != 1 {
+		t.Fatalf("restore requests NodeJoin=%d managementJoin=%d whoami=%d heartbeat=%d", joinCalls.Load(), managementJoinCalls.Load(), whoamiCalls.Load(), heartbeatCalls.Load())
 	}
 }
 
-func TestCicadaMCPRestoreDoesNotUseStaleCredentialOrManagementFallback(t *testing.T) {
+func TestCicadaMCPRestoreClearsStaleCredential(t *testing.T) {
 	t.Setenv("CICADA_HARNESS", "codex")
-	t.Setenv("CICADA_NATIVE_SESSION_ID", "thread-stale")
-	t.Setenv("CODEX_THREAD_ID", "")
-	t.Setenv("CODEX_SESSION_ID", "")
+	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", "thread-stale")
+	t.Setenv("CODEX_SESSION_ID", "session-thread-stale")
 	t.Setenv("CICADA_MACHINE_ID", "node-stale")
-	t.Setenv("CICADA_WORKSPACE", "/work/stale")
+	workspace := prepareMCPJoinSessionRecord(t, "thread-stale")
 	t.Setenv("CICADA_API_TOKEN", "management-token")
 	t.Setenv("CICADA_API_TOKEN_FILE", "")
-	var joinCalls, whoamiCalls atomic.Int32
+	var joinCalls, managementJoinCalls, whoamiCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/v2/fabric/join":
+		case "/v2/fabric/node/join":
 			joinCalls.Add(1)
 			response.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{Endpoint: store.Endpoint{ID: "ep-stale", GroupID: "group-stale"}, SessionToken: "cicada_session_stale-token"})
+			if !strings.HasPrefix(request.Header.Get("Authorization"), "CicadaNode cicada_node_") {
+				t.Errorf("initial Join did not use the agent-held Node credential")
+			}
+			_ = json.NewEncoder(response).Encode(fabricpkg.JoinResult{Endpoint: store.Endpoint{ID: "ep-stale", GroupID: "group-stale", Workspace: workspace}, SessionToken: "cicada_session_stale-token"})
+		case "/v2/fabric/join":
+			managementJoinCalls.Add(1)
+			http.Error(response, "management Join must not be used", http.StatusForbidden)
 		case "/v2/fabric/whoami":
 			whoamiCalls.Add(1)
 			http.Error(response, `{"error":"fabric session is not authenticated"}`, http.StatusUnauthorized)
@@ -342,6 +414,7 @@ func TestCicadaMCPRestoreDoesNotUseStaleCredentialOrManagementFallback(t *testin
 		}
 	}))
 	defer server.Close()
+	bridge, _ := startTestMCPNodeBridge(t, server.URL, "node-stale")
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	context, err := harness.DetectCurrentSession()
 	if err != nil {
@@ -349,6 +422,9 @@ func TestCicadaMCPRestoreDoesNotUseStaleCredentialOrManagementFallback(t *testin
 	}
 	first := newMCPServer(server.URL, "", statePath)
 	if _, err := first.callTool("cicada_join", map[string]any{"group_id": "group-stale"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bridge.Close(); err != nil {
 		t.Fatal(err)
 	}
 	close(first.stop)
@@ -360,8 +436,8 @@ func TestCicadaMCPRestoreDoesNotUseStaleCredentialOrManagementFallback(t *testin
 	if second.isJoined() {
 		t.Fatal("stale credential remained active after restore failure")
 	}
-	if joinCalls.Load() != 1 || whoamiCalls.Load() != 1 {
-		t.Fatalf("stale restore used an unexpected fallback: joins=%d whoami=%d", joinCalls.Load(), whoamiCalls.Load())
+	if joinCalls.Load() != 1 || managementJoinCalls.Load() != 0 || whoamiCalls.Load() != 1 {
+		t.Fatalf("stale restore requests NodeJoin=%d managementJoin=%d whoami=%d", joinCalls.Load(), managementJoinCalls.Load(), whoamiCalls.Load())
 	}
 	if cached, err := newMCPSessionStateStore(statePath).load(server.URL, context); err != nil {
 		t.Fatal(err)

@@ -55,7 +55,7 @@ button.danger { color: #fca5a5; border-color: #7f3939; }
 .badge.online, .badge.idle { background: #123f2c; color: #86efac; }
 .badge.busy { background: #493817; color: #fde68a; }
 .badge.offline, .badge.left { background: #26332e; color: #8ca59c; }
-.badge.failed, .badge.blocked { background: #4d2222; color: #fecaca; }
+.badge.failed, .badge.blocked, .badge.outcome_uncertain { background: #4d2222; color: #fecaca; }
 .badge.completed { background: #123f2c; color: #86efac; }
 .meta { margin: 7px 0 0; color: #78958a; font-size: .76rem; overflow-wrap: anywhere; }
 .summary { margin: 12px 0 0; color: #d4e5de; white-space: pre-wrap; overflow-wrap: anywhere; }

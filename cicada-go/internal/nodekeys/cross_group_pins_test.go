@@ -14,6 +14,8 @@ import (
 
 type crossGroupPinFixture struct {
 	now         time.Time
+	localKey    *e2ee.Identity
+	peerKey     *e2ee.Identity
 	scope       PeerPinScope
 	local       PeerPinLocalEndpoint
 	peer        PeerPinIdentity
@@ -351,7 +353,8 @@ func newCrossGroupPinFixtureAt(t *testing.T, sourceOwnerID, targetOwnerID string
 	if err != nil {
 		t.Fatal(err)
 	}
-	return crossGroupPinFixture{now: now, scope: scope, local: local, peer: peer,
+	return crossGroupPinFixture{now: now, localKey: localIdentity, peerKey: peerIdentity,
+		scope: scope, local: local, peer: peer,
 		bundle: PeerKeyAuthorizationBundle{Manifest: manifest, LinkState: "PROPOSED",
 			SourceGrant: PeerOwnerKeyGrantEvidence{Side: "SOURCE", OwnerID: sourceOwnerID,
 				OwnerKeyID: sourceOwnerKey.Public().ID, OwnerPublicIdentity: sourceOwnerKey.Public(),

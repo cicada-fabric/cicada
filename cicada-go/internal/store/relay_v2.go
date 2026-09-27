@@ -173,6 +173,7 @@ var (
 	ErrRelayPayloadModeMismatch = errors.New("relay payload mode does not match API")
 	ErrRelayCiphertextDigest    = errors.New("relay sealed payload digest does not match stored ciphertext")
 	ErrRelayRequestTerminal     = errors.New("relay request is already terminal")
+	ErrRelayPlaintextSealedPeer = errors.New("plaintext delivery is disabled for a sealed-capable endpoint")
 )
 
 // Aliases make the errors easy to use from callers that do not otherwise care
@@ -253,6 +254,12 @@ type RelayMessageInput struct {
 	Digest         string               `json:"digest,omitempty"`
 	IdempotencyKey string               `json:"idempotency_key,omitempty"`
 	ExpiresAt      string               `json:"expires_at,omitempty"`
+	// Only the Link-authorized request transaction may persist a sealed Ask;
+	// the generic sealed message API must not create an orphan request route.
+	sealedAskAuthorized bool
+	// Only the correlated Link reply transaction may persist a sealed Reply;
+	// the generic sealed message API must not create an orphan reverse route.
+	sealedReplyAuthorized bool
 }
 
 // RelaySealedV1Route contains the clear routing envelope that accompanies an
@@ -1142,16 +1149,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`, requestID, eventType, fromState, toState, message
 	return err
 }
 
-// relayAcquireAdmissionGuardTx turns the deferred SQLite transaction into a
-// serialized writer before a quota is read. Store.mu covers calls in one
-// process; this singleton UPDATE also fences independent Store handles or
-// processes sharing the same state database, preventing check-then-insert
-// races from exceeding a limit.
-func relayAcquireAdmissionGuardTx(tx *sql.Tx) error {
+// relayAcquireWriteGuardTx turns a deferred SQLite transaction into a
+// serialized writer before any read-then-write sequence. Store.mu covers calls
+// in one process; this singleton UPDATE also fences independent Store handles
+// or processes sharing the same state database.
+func relayAcquireWriteGuardTx(tx *sql.Tx) error {
 	if _, err := tx.Exec(`UPDATE relay_v2_admission_guard SET touched_at = ? WHERE id = 1`, now()); err != nil {
-		return fmt.Errorf("acquire relay admission guard: %w", err)
+		return fmt.Errorf("acquire relay write guard: %w", err)
 	}
 	return nil
+}
+
+// relayAcquireAdmissionGuardTx is the Ask-specific spelling for the shared
+// Relay write serialization guard.
+func relayAcquireAdmissionGuardTx(tx *sql.Tx) error {
+	return relayAcquireWriteGuardTx(tx)
 }
 
 func relayPendingAskCountTx(tx *sql.Tx, scope, principalID, groupID, receiverEndpointID, currentTime string) (int, error) {
@@ -1401,6 +1413,11 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 	if security.SenderEndpointID == "" {
 		security.SenderEndpointID = message.FromEndpointID
 	}
+	if payloadMode == RelayPayloadModePlaintext {
+		if err := rejectPlaintextSealedPeerTx(tx, security.SenderEndpointID, security.ReceiverEndpointID); err != nil {
+			return nil, false, err
+		}
+	}
 	var digest string
 	switch payloadMode {
 	case RelayPayloadModePlaintext:
@@ -1416,8 +1433,13 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 		if message.Body != "" || len(message.Metadata) != 0 {
 			return nil, false, errors.New("sealed relay route cannot contain a body or arbitrary metadata")
 		}
-		if message.Kind != "send" || message.RequestID != "" || message.ReplyTo != "" {
-			return nil, false, errors.New("SEALED_V1 currently supports single-recipient SEND messages only")
+		sealedSend := message.Kind == "send" && message.RequestID == "" && message.ReplyTo == ""
+		sealedAsk := input.sealedAskAuthorized && message.Kind == "ask" &&
+			message.RequestID != "" && message.ReplyTo == ""
+		sealedReply := input.sealedReplyAuthorized && message.Kind == "reply" &&
+			message.RequestID != "" && message.ReplyTo != ""
+		if !sealedSend && !sealedAsk && !sealedReply {
+			return nil, false, errors.New("SEALED_V1 requires a single-recipient SEND or an internally authorized correlated request/reply")
 		}
 		if len(ciphertext) == 0 {
 			return nil, false, errors.New("sealed relay ciphertext is required")
@@ -1582,6 +1604,43 @@ VALUES (?, '', ?, ?, ?, ?, ?, ?, '', ?)`, NewID("rcpt"), message.ID,
 	return record, false, nil
 }
 
+// rejectPlaintextSealedPeerTx is the persistence-boundary downgrade guard for
+// legacy plaintext Relay routes. Endpoint capability state is read in the
+// same transaction that creates the message and inbox rows, so a concurrent
+// capability update cannot race a previously authorized plaintext write.
+// Rows absent from fabric_endpoints are legacy Store-only fixtures/routes and
+// retain their historical behavior; public Fabric dispatch always resolves
+// both endpoint rows before enqueueing.
+func rejectPlaintextSealedPeerTx(tx *sql.Tx, endpointIDs ...string) error {
+	seen := make(map[string]struct{}, len(endpointIDs))
+	for _, endpointID := range endpointIDs {
+		endpointID = relayString(endpointID)
+		if endpointID == "" {
+			continue
+		}
+		if _, ok := seen[endpointID]; ok {
+			continue
+		}
+		seen[endpointID] = struct{}{}
+		var raw string
+		err := tx.QueryRow(`SELECT capabilities_json FROM fabric_endpoints WHERE id = ?`, endpointID).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		var capabilities map[string]any
+		if err := json.Unmarshal([]byte(raw), &capabilities); err != nil {
+			return fmt.Errorf("decode endpoint delivery capabilities: %w", err)
+		}
+		if _, present := capabilities["local_peer_delivery"]; present {
+			return ErrRelayPlaintextSealedPeer
+		}
+	}
+	return nil
+}
+
 // EnqueueRelayMessage durably accepts a non-Ask envelope and creates its
 // per-recipient inbox row.  The body remains in fabric_messages.
 func (s *Store) EnqueueRelayMessage(input RelayMessageInput) (*RelayMessageRecord, error) {
@@ -1592,6 +1651,9 @@ func (s *Store) EnqueueRelayMessage(input RelayMessageInput) (*RelayMessageRecor
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := relayAcquireWriteGuardTx(tx); err != nil {
+		return nil, err
+	}
 	record, _, err := relayEnqueueMessageTx(tx, input)
 	if err != nil {
 		return nil, err
@@ -1717,6 +1779,9 @@ func (s *Store) CreateFabricRequest(request FabricRequest) (*FabricRequest, erro
 	// Serialize the quota read with every other Ask admission, including
 	// callers using a second Store handle for this database.
 	if err := relayAcquireAdmissionGuardTx(tx); err != nil {
+		return nil, err
+	}
+	if err := rejectPlaintextSealedPeerTx(tx, request.SenderEndpointID, request.ReceiverEndpointID); err != nil {
 		return nil, err
 	}
 
@@ -2141,23 +2206,66 @@ ORDER BY i.sequence LIMIT ?`, endpointID, afterSequence, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := make([]RelayInboxItem, 0, limit)
 	for rows.Next() {
 		item, err := scanRelayInboxItem(rows)
 		if err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		if item == nil {
 			continue
 		}
-		item.Message, err = s.getFabricMessageLocked(item.MessageID)
-		if err != nil {
-			return nil, err
-		}
 		result = append(result, *item)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	// Close the inbox cursor before loading message bodies: this Store uses one
+	// SQLite connection. Batch the historical plaintext reads so a page does
+	// not make one extra query per message.
+	const messageBatchSize = 500
+	messages := make(map[string]*FabricMessage, len(result))
+	for start := 0; start < len(result); start += messageBatchSize {
+		end := min(start+messageBatchSize, len(result))
+		args := make([]any, 0, end-start)
+		placeholders := make([]string, 0, end-start)
+		for _, item := range result[start:end] {
+			args = append(args, item.MessageID)
+			placeholders = append(placeholders, "?")
+		}
+		messageRows, queryErr := s.db.Query(`SELECT `+fabricMessageColumns+` FROM fabric_messages WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		for messageRows.Next() {
+			message, scanErr := scanFabricMessage(messageRows)
+			if scanErr != nil {
+				_ = messageRows.Close()
+				return nil, scanErr
+			}
+			messages[message.ID] = message
+		}
+		if scanErr := messageRows.Err(); scanErr != nil {
+			_ = messageRows.Close()
+			return nil, scanErr
+		}
+		if closeErr := messageRows.Close(); closeErr != nil {
+			return nil, closeErr
+		}
+	}
+	for index := range result {
+		message, ok := messages[result[index].MessageID]
+		if !ok {
+			return nil, sql.ErrNoRows
+		}
+		result[index].Message = message
+	}
+	return result, nil
 }
 
 func (s *Store) GetRelayInboxItem(endpointID string, sequence int64) (*RelayInboxItem, error) {
@@ -2381,12 +2489,19 @@ func (s *Store) ClaimRelaySealedV1Inbox(input RelayClaimInput) ([]RelaySealedV1D
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := failStaleQueuedCommunicationLinkSendsTx(tx, input.RecipientEndpointID, time.Now().UTC(), input.Limit); err != nil {
+		return nil, err
+	}
 	rows, err := tx.Query(`SELECT `+relayInboxColumns+` FROM relay_v2_inbox i
 JOIN fabric_messages f ON f.id = i.message_id
 JOIN fabric_endpoints e ON e.id = i.recipient_endpoint_id
 JOIN session_bindings sb ON sb.id = i.binding_id
 WHERE i.recipient_endpoint_id = ? AND i.state = 'READY'
 AND COALESCE((SELECT p.payload_mode FROM relay_v2_message_payloads p WHERE p.message_id = i.message_id), 'PLAINTEXT') = 'SEALED_V1'
+AND NOT EXISTS (
+  SELECT 1 FROM relay_v2_message_security same_group_security
+  WHERE same_group_security.message_id = i.message_id
+    AND same_group_security.authorization_ref GLOB 'same-group-sealed.v2:*')
 AND e.migration_state = ? AND e.binding_id = i.binding_id
 AND sb.endpoint_id = e.id AND sb.group_id = i.receiver_group_id
 AND sb.epoch = i.binding_epoch AND sb.status IN ('active', 'leased', 'online', 'ready', 'acquired')
@@ -2425,21 +2540,39 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, EndpointMigrationReady,
 		if !relayBindingMatches(item, input.BindingID, input.BindingEpoch) {
 			return nil, ErrRelayBindingMismatch
 		}
+		record, err := relaySealedV1RecordTx(tx, item.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		if record.Route.RequestID != item.RequestID {
+			continue
+		}
 		if item.RequestID != "" {
 			request, err := relayLoadRequestTx(tx, item.RequestID)
 			if err != nil {
 				return nil, err
 			}
-			if request != nil {
+			if request == nil {
+				continue
+			}
+			switch record.Route.Kind {
+			case "ask":
+				if request.MessageID != item.MessageID || request.State != FabricRequestOpen {
+					continue
+				}
 				if relayParseExpired(request.ExpiresAt, time.Now().UTC()) {
 					if err := relayExpireRequestTx(tx, request.RequestID, "request deadline reached", now()); err != nil {
 						return nil, err
 					}
 					continue
 				}
-				if request.State == FabricRequestCancelled || request.State == FabricRequestExpired || request.State == FabricRequestLateResult {
+			case "reply":
+				if request.MessageID != record.Route.ReplyTo ||
+					request.State != FabricRequestReplied || request.ReplyMessageID != item.MessageID {
 					continue
 				}
+			default:
+				continue
 			}
 		}
 		attemptID := NewID("attempt")
@@ -2464,10 +2597,6 @@ WHERE recipient_endpoint_id = ? AND sequence = ? AND state = 'READY'`, RelayInbo
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, '', ?)`, attemptID, item.MessageID,
 			item.RequestID, item.RecipientEndpointID, item.Sequence, item.Digest, item.BindingID,
 			item.BindingEpoch, input.ConsumerID, RelayAttemptClaimed, timestamp, timestamp); err != nil {
-			return nil, err
-		}
-		record, err := relaySealedV1RecordTx(tx, item.MessageID)
-		if err != nil {
 			return nil, err
 		}
 		result = append(result, RelaySealedV1DeliveryAttempt{
@@ -3354,6 +3483,9 @@ func (s *Store) SubmitFabricReply(reply FabricReply) (*FabricRequest, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := relayAcquireWriteGuardTx(tx); err != nil {
+		return nil, err
+	}
 	request, err := relayLoadRequestTx(tx, reply.RequestID)
 	if err != nil {
 		return nil, err
@@ -3396,6 +3528,9 @@ func (s *Store) SubmitFabricReply(reply FabricReply) (*FabricRequest, error) {
 	}
 	if message.ToEndpointID != request.SenderEndpointID || message.ReplyTo != request.MessageID {
 		return nil, ErrRelayMessageConflict
+	}
+	if err := rejectPlaintextSealedPeerTx(tx, request.ReceiverEndpointID, request.SenderEndpointID); err != nil {
+		return nil, err
 	}
 	terminalMessageID := ""
 	if request.State == FabricRequestReplied {

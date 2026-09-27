@@ -352,14 +352,23 @@ func TestRelayNodeRequiresCredentialBoundToExactNode(t *testing.T) {
 	if response := heartbeat("CicadaNode "+nodeAToken, `{}`); response.Code != http.StatusForbidden {
 		t.Fatalf("wrong Node heartbeat status=%d", response.Code)
 	}
-	if response := heartbeat("CicadaNode "+nodeBToken, `{"status":"available"}`); response.Code != http.StatusBadRequest {
-		t.Fatalf("Node forged heartbeat state status=%d", response.Code)
+	if response := heartbeat("CicadaNode "+nodeBToken, `{"status":"available"}`); response.Code != http.StatusNoContent {
+		t.Fatalf("explicit bound Node status update status=%d body=%s", response.Code, response.Body.String())
 	}
 	if response := heartbeat("CicadaNode "+nodeBToken, `{}`); response.Code != http.StatusNoContent {
 		t.Fatalf("bound Node heartbeat status=%d body=%s", response.Code, response.Body.String())
 	}
 	if machine, err := persistence.GetMachine("node-b"); err != nil || machine == nil || machine.Status != "available" {
-		t.Fatalf("bound Node heartbeat did not update status: machine=%#v err=%v", machine, err)
+		t.Fatalf("bound Node heartbeat changed the explicitly reported status: machine=%#v err=%v", machine, err)
+	}
+	if err := persistence.SetMachineStatus("node-b", "busy"); err != nil {
+		t.Fatal(err)
+	}
+	if response := heartbeat("CicadaNode "+nodeBToken, `{}`); response.Code != http.StatusNoContent {
+		t.Fatalf("fabric-only transport heartbeat depends on Control status=%d body=%s", response.Code, response.Body.String())
+	}
+	if machine, err := persistence.GetMachine("node-b"); err != nil || machine == nil || machine.Status != "busy" || machine.LastSeen == "" {
+		t.Fatalf("transport heartbeat should refresh liveness but preserve worker status: machine=%#v err=%v", machine, err)
 	}
 	claim := func(authorization string) *httptest.ResponseRecorder {
 		body := bytes.NewReader([]byte(`{"consumer_id":"node-agent","limit":10}`))

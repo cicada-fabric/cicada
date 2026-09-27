@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -48,6 +49,21 @@ func (c *Control) RouteIntent(input IntentInput) (*store.Intent, error) {
 // This method deliberately does not start work. The HTTP boundary should first
 // persist its sealed response packet, then call DispatchClientIntentAsync.
 func (c *Control) AcceptClientIntent(clientRequestID string, input IntentInput) (*store.Intent, error) {
+	return c.acceptClientIntent("", clientRequestID, input)
+}
+
+// AcceptClientIntentForOwner is called from an authenticated encrypted
+// Client session. The owner value is supplied by the session verifier, not
+// the Client intent JSON.
+func (c *Control) AcceptClientIntentForOwner(ownerID, clientRequestID string, input IntentInput) (*store.Intent, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+		return nil, err
+	}
+	return c.acceptClientIntent(ownerID, clientRequestID, input)
+}
+
+func (c *Control) acceptClientIntent(ownerID, clientRequestID string, input IntentInput) (*store.Intent, error) {
 	clientRequestID = strings.TrimSpace(clientRequestID)
 	if clientRequestID == "" || len(clientRequestID) > 256 {
 		return nil, errors.New("client_request_id is required and must be at most 256 characters")
@@ -61,8 +77,14 @@ func (c *Control) AcceptClientIntent(clientRequestID string, input IntentInput) 
 	if err != nil {
 		return nil, fmt.Errorf("encode accepted Client intent: %w", err)
 	}
-	intent, _, err := c.store.AcceptClientIntent(clientRequestID, input.Text, requested,
-		input.TargetID, input.Attachments, encoded)
+	var intent *store.Intent
+	if ownerID == "" {
+		intent, _, err = c.store.AcceptClientIntent(clientRequestID, input.Text, requested,
+			input.TargetID, input.Attachments, encoded)
+	} else {
+		intent, _, err = c.store.AcceptClientIntentForOwner(ownerID, clientRequestID, input.Text, requested,
+			input.TargetID, input.Attachments, encoded)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +108,10 @@ func normalizeIntentInput(input IntentInput) (IntentInput, string, error) {
 }
 
 func (c *Control) routeExistingIntent(intentID string, input IntentInput) (*store.Intent, error) {
+	return c.routeExistingIntentForOwner(intentID, input, "")
+}
+
+func (c *Control) routeExistingIntentForOwner(intentID string, input IntentInput, ownerID string) (*store.Intent, error) {
 	requested := input.Kind
 	if err := c.prepareIntentAttachments(&input); err != nil {
 		failed, updateErr := c.store.ResolveIntent(intentID, "", "failed", map[string]any{}, "", err.Error())
@@ -107,7 +133,7 @@ func (c *Control) routeExistingIntent(intentID string, input IntentInput) (*stor
 		return c.needsIntentInput(intentID, kind, question)
 	}
 
-	result, dispatchErr := c.dispatchIntent(intentID, kind, content, input)
+	result, dispatchErr := c.dispatchIntent(intentID, kind, content, input, ownerID)
 	if dispatchErr != nil {
 		failed, updateErr := c.store.ResolveIntent(intentID, kind, "failed", map[string]any{}, "", dispatchErr.Error())
 		if updateErr != nil {
@@ -122,7 +148,12 @@ func (c *Control) needsIntentInput(id, kind, question string) (*store.Intent, er
 	return c.store.ResolveIntent(id, kind, "needs_input", map[string]any{}, question, "")
 }
 
-func (c *Control) dispatchIntent(intentID, kind, text string, input IntentInput) (map[string]any, error) {
+func (c *Control) dispatchIntent(intentID, kind, text string, input IntentInput, ownerID string) (map[string]any, error) {
+	if ownerID != "" {
+		if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+			return nil, err
+		}
+	}
 	switch kind {
 	case "idea":
 		idea, err := c.CreateIdea(IdeaInput{
@@ -141,7 +172,12 @@ func (c *Control) dispatchIntent(intentID, kind, text string, input IntentInput)
 		if err != nil {
 			return nil, err
 		}
-		goal, err := c.ResearchIdea(idea.ID)
+		var goal *store.Goal
+		if ownerID == "" {
+			goal, err = c.ResearchIdea(idea.ID)
+		} else {
+			goal, err = c.ResearchIdeaForOwner(ownerID, idea.ID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -157,21 +193,48 @@ func (c *Control) dispatchIntent(intentID, kind, text string, input IntentInput)
 		if strings.TrimSpace(goalInput.Constraints) == "" {
 			goalInput.Constraints = "Answer and research only. Do not modify projects or external systems."
 		}
-		return c.createIntentGoal(goalInput)
+		return c.createIntentGoal(ownerID, goalInput)
 	case "goal":
 		goalInput := input.Goal
 		if strings.TrimSpace(goalInput.Objective) == "" {
 			goalInput.Objective = text
 		}
-		return c.createIntentGoal(goalInput)
+		return c.createIntentGoal(ownerID, goalInput)
 	case "command":
-		command, err := c.SendCommand(strings.TrimSpace(input.TargetID), text)
+		goalID := strings.TrimSpace(input.TargetID)
+		if ownerID != "" {
+			goal, err := c.store.GetGoal(goalID)
+			if err != nil {
+				return nil, err
+			}
+			if goal == nil || goal.OwnerID != ownerID {
+				return nil, os.ErrNotExist
+			}
+		}
+		command, err := c.SendCommand(goalID, text)
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"type": "command", "command_id": command.ID, "goal_id": command.GoalID}, nil
 	case "approval":
-		approval, err := c.ResolveApproval(strings.TrimSpace(input.TargetID), strings.TrimSpace(input.Decision))
+		approvalID := strings.TrimSpace(input.TargetID)
+		if ownerID != "" {
+			approval, err := c.store.GetApproval(approvalID)
+			if err != nil {
+				return nil, err
+			}
+			if approval == nil {
+				return nil, os.ErrNotExist
+			}
+			goal, err := c.store.GetGoal(approval.GoalID)
+			if err != nil {
+				return nil, err
+			}
+			if goal == nil || goal.OwnerID != ownerID {
+				return nil, os.ErrNotExist
+			}
+		}
+		approval, err := c.ResolveApproval(approvalID, strings.TrimSpace(input.Decision))
 		if err != nil {
 			return nil, err
 		}
@@ -181,8 +244,14 @@ func (c *Control) dispatchIntent(intentID, kind, text string, input IntentInput)
 	}
 }
 
-func (c *Control) createIntentGoal(input GoalInput) (map[string]any, error) {
-	goal, err := c.CreateGoal(input)
+func (c *Control) createIntentGoal(ownerID string, input GoalInput) (map[string]any, error) {
+	var goal *store.Goal
+	var err error
+	if ownerID == "" {
+		goal, err = c.CreateGoal(input)
+	} else {
+		goal, err = c.CreateGoalForOwner(ownerID, input)
+	}
 	if err != nil {
 		return nil, err
 	}

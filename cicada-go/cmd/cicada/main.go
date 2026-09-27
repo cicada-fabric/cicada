@@ -67,7 +67,22 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-	case "goal", "machine", "worker", "snapshot", "fabric":
+	case "machine":
+		if len(os.Args) > 2 && (os.Args[2] == "backup" || os.Args[2] == "verify" || os.Args[2] == "restore") {
+			if err := machineBackupCommand(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		} else if len(os.Args) > 2 && os.Args[2] == "recovery" {
+			if err := machineRecoveryCommand(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		} else if err := clientCommand(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "goal", "worker", "snapshot", "fabric":
 		if err := clientCommand(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -169,6 +184,9 @@ func clientCommand(args []string) error {
 		if len(args) >= 2 && args[1] == "agent" {
 			return runMachineAgent(args[2:])
 		}
+		if len(args) >= 2 && (args[1] == "trust-owner-key" || args[1] == "revoke-owner-key") {
+			return machineOwnerKeyTrustCommand(args[1], args[2:], os.Stdout)
+		}
 		if len(args) >= 2 && args[1] == "discover-lan" {
 			return runMachineLANDiscovery(args[2:])
 		}
@@ -176,7 +194,7 @@ func clientCommand(args []string) error {
 			return printJSON(control.DiscoverMachineCapabilities())
 		}
 		if len(args) != 2 || args[1] != "list" {
-			return errors.New("usage: cicada machine list|discover|discover-lan|agent [options]")
+			return errors.New("usage: cicada machine list|discover|discover-lan|agent|trust-owner-key|revoke-owner-key [options]")
 		}
 		method, path = http.MethodGet, "/v1/machines"
 	case "worker":

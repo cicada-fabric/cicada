@@ -59,9 +59,9 @@ type mcpHTTPError struct {
 
 func (e *mcpHTTPError) Error() string {
 	if strings.TrimSpace(e.message) == "" {
-		return fmt.Sprintf("Cicada Control %s", e.status)
+		return fmt.Sprintf("Cicada Hub %s", e.status)
 	}
-	return fmt.Sprintf("Cicada Control %s: %s", e.status, e.message)
+	return fmt.Sprintf("Cicada Hub %s: %s", e.status, e.message)
 }
 
 func newMCPServer(baseURL, endpointID, statePath string) *mcpServer {
@@ -99,7 +99,7 @@ type mcpError struct {
 
 func runMCP(args []string) error {
 	flags := flag.NewFlagSet("mcp", flag.ContinueOnError)
-	apiURL := flags.String("api-url", envOr("CICADA_API_URL", "http://127.0.0.1:8787"), "Cicada Control URL")
+	apiURL := flags.String("api-url", envOr("CICADA_API_URL", "http://127.0.0.1:8787"), "Cicada Hub URL")
 	endpointID := flags.String("endpoint", strings.TrimSpace(os.Getenv("CICADA_ENDPOINT_ID")), "existing Endpoint ID")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -211,7 +211,7 @@ func cicadaMCPTools() []map[string]any {
 		return map[string]any{"type": "string", "description": description}
 	}
 	return []map[string]any{
-		{"name": "cicada_join", "description": "Explicitly join the current native session to a Fabric group. Omit group_id when CICADA_GROUP_ID is configured in the trusted MCP environment.", "inputSchema": object(map[string]any{"group_id": stringField("Fabric Group ID; optional when CICADA_GROUP_ID is configured")})},
+		{"name": "cicada_join", "description": "Explicitly join the current Codex session through the local Cicada Node agent. The local session record and workspace are checked; the Hub cannot cryptographically prove the native session, so same-OS-user processes remain the local trust boundary. Omit group_id when CICADA_GROUP_ID is configured in trusted MCP settings.", "inputSchema": object(map[string]any{"group_id": stringField("Fabric Group ID; optional when CICADA_GROUP_ID is configured")})},
 		{"name": "cicada_use_group", "description": "Select an already joined Group for this native session. The server verifies both Endpoint and Principal memberships; selection does not grant access.", "inputSchema": object(map[string]any{"group_id": stringField("Joined Group ID")}, "group_id")},
 		{"name": "cicada_leave_group", "description": "Leave only the selected Group; preserve this native Thread in its other authorized Groups.", "inputSchema": object(map[string]any{"reason": stringField("Optional reason")})},
 		{"name": "cicada_leave", "description": "Leave the current Fabric Endpoint and all its Groups while keeping native work intact.", "inputSchema": object(map[string]any{"reason": stringField("Optional reason for leaving")})},
@@ -222,14 +222,15 @@ func cicadaMCPTools() []map[string]any {
 		{"name": "cicada_list", "description": "Compatibility alias for cicada_members.", "inputSchema": object(map[string]any{"status": stringField("Optional endpoint status"), "machine_id": stringField("Compatibility alias for node_id"), "node_id": stringField("Optional node ID"), "harness": stringField("Optional native harness"), "limit": map[string]any{"type": "integer", "description": "Optional result limit"}})},
 		{"name": "cicada_resolve", "description": "Compatibility alias for cicada_find.", "inputSchema": object(map[string]any{"query": stringField("Endpoint address or alias"), "node_id": stringField("Optional node ID"), "workspace": stringField("Optional workspace")}, "query")},
 		{"name": "cicada_inspect", "description": "Compatibility alias for cicada_find.", "inputSchema": object(map[string]any{"query": stringField("Endpoint address or alias"), "node_id": stringField("Optional node ID"), "workspace": stringField("Optional workspace")}, "query")},
-		{"name": "cicada_send", "description": "Persist an asynchronous one-way message to another Endpoint.", "inputSchema": object(map[string]any{"target": stringField("Endpoint address or alias"), "body": stringField("Message body"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "target", "body")},
-		{"name": "cicada_ask", "description": "Persist an asynchronous request and return its request_id immediately.", "inputSchema": object(map[string]any{"target": stringField("Endpoint address or alias"), "question": stringField("Question or task"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "target", "question")},
-		{"name": "cicada_reply", "description": "Reply to a Cicada ask request.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID from cicada_ask"), "body": stringField("Answer"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "request_id", "body")},
+		{"name": "cicada_send", "description": "Persist one one-way SEND. Same-Node Group peers use the local sealed Node adapter; remote same-Group peers and authorized cross-Group Links use sealed Hub transport.", "inputSchema": object(map[string]any{"target": stringField("Same-Group Endpoint address or alias; omit when using link_id"), "link_id": stringField("Explicit cross-Group Communication Link ID; omit for same-Group target sends"), "data_scope": stringField("Data scope already granted by the Link; required with link_id"), "body": stringField("Message body"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "body")},
+		{"name": "cicada_broadcast", "description": "Send one bounded, Group-scoped broadcast from the joined native session. The recipient set is snapshotted once and each recipient has independent sealed delivery and status; this is not a user-approved Monitor broadcast.", "inputSchema": object(map[string]any{"group_id": stringField("Explicitly selected current Group ID"), "body": stringField("Message body, at most 64 KiB"), "idempotency_key": stringField("Optional stable key for this broadcast operation")}, "group_id", "body")},
+		{"name": "cicada_ask", "description": "Persist an asynchronous request and return its request_id immediately. Same-Node Group requests use local sealed delivery; remote Group peers and authorized Links use sealed Hub transport.", "inputSchema": object(map[string]any{"target": stringField("Same-Group Endpoint address or alias; omit with link_id"), "link_id": stringField("Authorized cross-Group Communication Link ID; omit with target"), "data_scope": stringField("Granted Link data scope; required with link_id"), "expires_at": stringField("Optional RFC3339 request deadline; the Node selects a bounded default when omitted"), "question": stringField("Question or task"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "question")},
+		{"name": "cicada_reply", "description": "Reply to an original request_id. Give link_id for a sealed cross-Group Link request; omit it for a same-Group request. The local Node verifies and derives the reply route.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID from cicada_ask"), "link_id": stringField("Link ID from a sealed Link REQUEST; omit for same-Group requests"), "body": stringField("Answer"), "idempotency_key": stringField("Optional key reused only for an explicit retry")}, "request_id", "body")},
 		{"name": "cicada_operation_status", "description": "Read one bounded durable MCP send/ask/reply operation status for this native session.", "inputSchema": object(map[string]any{"operation_id": stringField("Operation ID returned by send, ask, or reply")}, "operation_id")},
 		{"name": "cicada_operation_retry", "description": "Explicitly retry one PENDING or UNKNOWN operation with its original immutable input and same idempotency key.", "inputSchema": object(map[string]any{"operation_id": stringField("Operation ID returned by send, ask, or reply")}, "operation_id")},
-		{"name": "cicada_receive", "description": "Read a bounded authenticated inbox page for the current Endpoint.", "inputSchema": object(map[string]any{"cursor": stringField("Opaque inbox cursor"), "limit": map[string]any{"type": "integer", "description": "Optional result limit"}})},
-		{"name": "cicada_request_status", "description": "Read the lifecycle status of an asynchronous request.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID")}, "request_id")},
-		{"name": "cicada_request_cancel", "description": "Request cancellation of an asynchronous request owned by this session.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID"), "reason": stringField("Optional cancellation reason")}, "request_id")},
+		{"name": "cicada_receive", "description": "Read a bounded authenticated inbox page for the current Endpoint.", "inputSchema": object(map[string]any{"cursor": stringField("Opaque inbox cursor"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 16, "description": "Optional page size; maximum 16"}})},
+		{"name": "cicada_request_status", "description": "Read an asynchronous request status. Provide link_id for an endpoint-encrypted cross-Group request.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID"), "link_id": stringField("Link ID for a sealed request")}, "request_id")},
+		{"name": "cicada_request_cancel", "description": "Request cancellation of an asynchronous request owned by this session. Provide link_id for an endpoint-encrypted cross-Group request.", "inputSchema": object(map[string]any{"request_id": stringField("Request ID"), "link_id": stringField("Link ID for a sealed request"), "reason": stringField("Optional cancellation reason")}, "request_id")},
 		{"name": "cicada_representative_claim", "description": "Claim this Endpoint's authorized Group representative assignment with an epoch-fenced lease.", "inputSchema": object(map[string]any{"assignment_id": stringField("Representative assignment ID"), "lease_seconds": map[string]any{"type": "integer"}}, "assignment_id")},
 		{"name": "cicada_federate_request", "description": "As the source Group representative, forward a verified local ask through an authorized federation contract.", "inputSchema": object(map[string]any{"origin_request_id": stringField("Local Worker-to-representative request ID"), "target_group_id": stringField("Target Group ID"), "capability": stringField("Contract capability"), "contract_id": stringField("Bilateral contract ID"), "source_representative_assignment_id": stringField("Source representative assignment"), "target_representative_assignment_id": stringField("Target representative assignment"), "deadline": stringField("RFC3339 deadline"), "scopes": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "artifact_refs": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "max_hops": map[string]any{"type": "integer"}}, "origin_request_id", "target_group_id", "capability", "contract_id", "source_representative_assignment_id", "target_representative_assignment_id", "deadline")},
 		{"name": "cicada_federation_accept", "description": "As the target Group representative, accept and begin an authorized federation request.", "inputSchema": object(map[string]any{"federation_request_id": stringField("Federation request ID")}, "federation_request_id")},
@@ -331,33 +332,91 @@ func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error)
 			// always sending the v2 field name on the wire.
 			body = stringArgument(arguments, "message")
 		}
-		return m.submitMCPOutbox("send", mcpOutboxInput{Target: stringArgument(arguments, "target"), Body: body}, stringArgument(arguments, "idempotency_key"))
+		target := stringArgument(arguments, "target")
+		linkID := stringArgument(arguments, "link_id")
+		dataScope := stringArgument(arguments, "data_scope")
+		if (linkID == "") == (target == "") {
+			return nil, errors.New("cicada_send requires exactly one of target or link_id")
+		}
+		if linkID != "" && dataScope == "" {
+			return nil, errors.New("data_scope is required with link_id")
+		}
+		if linkID == "" && dataScope != "" {
+			return nil, errors.New("data_scope is only accepted with link_id")
+		}
+		return m.submitMCPOutbox("send", mcpOutboxInput{
+			Target: target, LinkID: linkID, DataScope: dataScope, Body: body,
+		}, stringArgument(arguments, "idempotency_key"))
+	case "cicada_broadcast":
+		scope, err := m.currentMCPOutboxScope()
+		if err != nil {
+			return nil, err
+		}
+		groupID := stringArgument(arguments, "group_id")
+		body := stringArgument(arguments, "body")
+		if groupID == "" || body == "" || len([]byte(body)) > 64*1024 {
+			return nil, errors.New("cicada_broadcast requires an explicit Group and a non-empty body under 64 KiB")
+		}
+		if groupID != scope.GroupID {
+			return nil, errors.New("cicada_broadcast Group must match the current joined Group")
+		}
+		return m.submitMCPOutbox("broadcast", mcpOutboxInput{Body: body},
+			stringArgument(arguments, "idempotency_key"))
 	case "cicada_ask":
-		return m.submitMCPOutbox("ask", mcpOutboxInput{Target: stringArgument(arguments, "target"), Question: stringArgument(arguments, "question")}, stringArgument(arguments, "idempotency_key"))
+		target := stringArgument(arguments, "target")
+		linkID := stringArgument(arguments, "link_id")
+		dataScope := stringArgument(arguments, "data_scope")
+		expiresAt := stringArgument(arguments, "expires_at")
+		if (linkID == "") == (target == "") {
+			return nil, errors.New("cicada_ask requires exactly one of target or link_id")
+		}
+		if linkID != "" && dataScope == "" {
+			return nil, errors.New("data_scope is required with link_id")
+		}
+		if linkID == "" && (dataScope != "" || expiresAt != "") {
+			return nil, errors.New("data_scope and expires_at are only accepted with link_id")
+		}
+		return m.submitMCPOutbox("ask", mcpOutboxInput{
+			Target: target, LinkID: linkID, DataScope: dataScope,
+			ExpiresAt: expiresAt, Question: stringArgument(arguments, "question"),
+		}, stringArgument(arguments, "idempotency_key"))
 	case "cicada_reply":
 		body := stringArgument(arguments, "body")
 		if body == "" {
 			body = stringArgument(arguments, "message")
 		}
-		return m.submitMCPOutbox("reply", mcpOutboxInput{RequestID: stringArgument(arguments, "request_id"), Body: body}, stringArgument(arguments, "idempotency_key"))
+		return m.submitMCPOutbox("reply", mcpOutboxInput{
+			RequestID: stringArgument(arguments, "request_id"),
+			LinkID:    stringArgument(arguments, "link_id"), Body: body,
+		}, stringArgument(arguments, "idempotency_key"))
 	case "cicada_operation_status", "cicada_outbox_status":
 		return m.mcpOutboxStatus(stringArgument(arguments, "operation_id"))
 	case "cicada_operation_retry", "cicada_outbox_retry":
 		return m.mcpOutboxRetry(stringArgument(arguments, "operation_id"))
 	case "cicada_receive":
-		return m.api(http.MethodPost, "/v2/fabric/receive", fabricpkg.ReceiveInput{
-			Cursor: stringArgument(arguments, "cursor"), Limit: intArgument(arguments, "limit"),
-		})
+		return m.receiveMCPInbox(stringArgument(arguments, "cursor"), intArgument(arguments, "limit"))
 	case "cicada_request_status", "request_status":
 		requestID := stringArgument(arguments, "request_id")
 		if requestID == "" {
 			return nil, errors.New("request_id is required")
+		}
+		if stringArgument(arguments, "link_id") != "" {
+			return m.sealedRPCControl("sealed_status", requestID, stringArgument(arguments, "link_id"), "")
+		}
+		if local, found, err := m.localGroupRequestControl("local_status", requestID, ""); err != nil || found {
+			return local, err
 		}
 		return m.api(http.MethodGet, "/v2/fabric/requests/"+url.PathEscape(requestID), nil)
 	case "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel":
 		requestID := stringArgument(arguments, "request_id")
 		if requestID == "" {
 			return nil, errors.New("request_id is required")
+		}
+		if stringArgument(arguments, "link_id") != "" {
+			return m.sealedRPCControl("sealed_cancel", requestID, stringArgument(arguments, "link_id"), stringArgument(arguments, "reason"))
+		}
+		if local, found, err := m.localGroupRequestControl("local_cancel", requestID, stringArgument(arguments, "reason")); err != nil || found {
+			return local, err
 		}
 		return m.api(http.MethodPost, "/v2/fabric/requests/"+url.PathEscape(requestID)+"/cancel", fabricpkg.RequestCancelInput{
 			RequestID: requestID, Reason: stringArgument(arguments, "reason"),
@@ -429,14 +488,17 @@ func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error)
 }
 
 func validateMCPArguments(name string, arguments map[string]any) error {
+	if name == "cicada_publish_endpoint_key_candidate" && len(arguments) > 0 {
+		return errors.New("cicada_publish_endpoint_key_candidate accepts no arguments")
+	}
 	for key := range arguments {
 		lower := strings.ToLower(strings.TrimSpace(key))
 		switch lower {
-		case "sender", "sender_endpoint_id", "from_endpoint_id", "requester_endpoint_id", "principal", "principal_id", "role", "approval", "approved", "user_approved", "session_token", "credential", "credential_hash":
+		case "sender", "sender_endpoint_id", "from_endpoint_id", "requester_endpoint_id", "principal", "principal_id", "owner", "owner_id", "role", "approval", "approved", "user_approved", "session_token", "credential", "credential_hash", "native_session_id", "native_thread_id", "node_id", "machine_id", "endpoint_id", "harness", "workspace", "capabilities":
 			return fmt.Errorf("MCP argument %q cannot provide Fabric identity or credential claims", key)
 		case "group_id":
-			if name != "cicada_join" && name != "cicada_use_group" {
-				return errors.New("group_id is only accepted by cicada_join or cicada_use_group")
+			if name != "cicada_join" && name != "cicada_use_group" && name != "cicada_broadcast" {
+				return errors.New("group_id is only accepted by cicada_join, cicada_use_group, or cicada_broadcast")
 			}
 		}
 	}
@@ -506,7 +568,8 @@ func (m *mcpServer) restoreSession(context harness.SessionContext) error {
 	public.NetworkCard = card
 	public.Endpoint = store.Endpoint{ID: card.EndpointID, GroupID: card.GroupID, PrincipalID: card.PrincipalID,
 		Name: card.Name, Harness: card.Harness, NativeSessionID: trusted.NativeSessionID, MachineID: card.NodeID,
-		Workspace: card.Workspace, Status: card.Status}
+		Workspace: card.Workspace, Status: card.Status, Owner: cached.OwnerID,
+		Capabilities: card.Capabilities}
 	m.sessionMu.Lock()
 	m.sessionPublic = public
 	m.sessionMu.Unlock()
@@ -590,18 +653,6 @@ func (m *mcpServer) apiForGroup(method, path string, body any, groupID string) (
 	return result, err
 }
 
-func (m *mcpServer) managementAPI(method, path string, body any) (any, error) {
-	authorization := ""
-	if token := clientAPIToken(); token != "" {
-		authorization = "Bearer " + token
-	}
-	return m.request(method, path, body, authorization)
-}
-
-func (m *mcpServer) request(method, path string, body any, authorization string) (any, error) {
-	return m.requestWithGroup(method, path, body, authorization, "")
-}
-
 func (m *mcpServer) requestWithGroup(method, path string, body any, authorization, groupID string) (any, error) {
 	var reader io.Reader
 	if body != nil {
@@ -626,7 +677,7 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 	}
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("Cicada Control request failed: %w", err)
+		return nil, fmt.Errorf("Cicada Hub request failed: %w", err)
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
@@ -644,7 +695,7 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 	}
 	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
-		return nil, fmt.Errorf("decode Cicada Control response: %w", err)
+		return nil, fmt.Errorf("decode Cicada Hub response: %w", err)
 	}
 	return value, nil
 }
@@ -682,7 +733,7 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 	if groupID == "" {
 		return nil, errors.New("group_id is required (pass group_id or set CICADA_GROUP_ID)")
 	}
-	context, err := harness.DetectCurrentSession()
+	context, err := detectCodexMCPJoinSession()
 	if err != nil {
 		return nil, err
 	}
@@ -717,22 +768,16 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 			return m.currentPublicJoinResult(), nil
 		}
 	}
-	input := fabricpkg.JoinInput{
-		GroupID: groupID, EndpointID: strings.TrimSpace(m.endpointID),
-		Harness: context.Harness, NativeSessionID: context.NativeSessionID,
-		NodeID: context.MachineID, Workspace: context.Workspace,
-		Capabilities: context.Capabilities,
-	}
-	result, err := m.managementAPI(http.MethodPost, "/v2/fabric/join", input)
+	socketPath := defaultMCPJoinSocketPath(context)
+	joinedResult, err := requestMachineAgentJoin(socketPath, localJoinRequest{
+		Version: localJoinProtocolVersion, GroupID: groupID, Harness: context.Harness,
+		NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
+	})
 	if err != nil {
 		return nil, err
 	}
-	var joined fabricpkg.JoinResult
-	encoded, marshalErr := json.Marshal(result)
-	if marshalErr != nil {
-		return nil, marshalErr
-	}
-	if err := json.Unmarshal(encoded, &joined); err != nil || strings.TrimSpace(joined.SessionToken) == "" || strings.TrimSpace(joined.Endpoint.ID) == "" {
+	joined := *joinedResult
+	if strings.TrimSpace(joined.SessionToken) == "" || strings.TrimSpace(joined.Endpoint.ID) == "" {
 		return nil, errors.New("Cicada Fabric returned an invalid join result")
 	}
 	origin, err := normalizeMCPAPIOrigin(m.baseURL)
@@ -768,6 +813,7 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 		if err := state.save(mcpCachedSession{
 			Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
 			NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: groupID, EndpointID: joined.Endpoint.ID,
+			OwnerID:   joined.Endpoint.Owner,
 			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt,
 			SessionToken: strings.TrimSpace(joined.SessionToken),
 		}); err != nil {
@@ -811,6 +857,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 			Scope: scope, APIOrigin: origin, Harness: trusted.Harness,
 			NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: groupID, EndpointID: endpointID,
+			OwnerID:   public.Endpoint.Owner,
 			BindingID: card.BindingID, BindingEpoch: card.BindingEpoch,
 			LeaseExpiresAt: public.LeaseExpiresAt, SessionToken: token,
 		}); err != nil {
@@ -966,7 +1013,7 @@ func sanitizeMCPToolResult(value any) any {
 
 func isCicadaMCPTool(name string) bool {
 	switch name {
-	case "cicada_join", "cicada_use_group", "cicada_leave", "cicada_leave_group", "cicada_whoami", "cicada_publish_endpoint_key_candidate", "cicada_members", "cicada_find", "cicada_list", "cicada_resolve", "cicada_inspect", "cicada_send", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "request_status", "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel", "cicada_operation_status", "cicada_operation_retry", "cicada_outbox_status", "cicada_outbox_retry", "cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept", "cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status", "cicada_task_list", "cicada_task_get", "cicada_task_claim", "cicada_task_renew", "cicada_task_submit", "cicada_task_accept", "cicada_task_handoff_propose", "cicada_task_handoff_accept", "cicada_artifact_read":
+	case "cicada_join", "cicada_use_group", "cicada_leave", "cicada_leave_group", "cicada_whoami", "cicada_publish_endpoint_key_candidate", "cicada_members", "cicada_find", "cicada_list", "cicada_resolve", "cicada_inspect", "cicada_send", "cicada_broadcast", "cicada_ask", "cicada_reply", "cicada_receive", "cicada_request_status", "request_status", "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel", "cicada_operation_status", "cicada_operation_retry", "cicada_outbox_status", "cicada_outbox_retry", "cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept", "cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status", "cicada_task_list", "cicada_task_get", "cicada_task_claim", "cicada_task_renew", "cicada_task_submit", "cicada_task_accept", "cicada_task_handoff_propose", "cicada_task_handoff_accept", "cicada_artifact_read":
 		return true
 	default:
 		return false

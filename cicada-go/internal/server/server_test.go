@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cicada-ai/cicada/internal/buildinfo"
+	"github.com/cicada-ai/cicada/internal/clientcontract"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 )
@@ -45,6 +47,55 @@ func TestSignedConnectorWebhookIsDurable(t *testing.T) {
 	NewHandler(controlPlane).ServeHTTP(listResponse, list)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "mail-1") {
 		t.Fatalf("webhook event missing from list: status=%d body=%s", listResponse.Code, listResponse.Body.String())
+	}
+}
+
+func TestHealthzReportsBuildAndCatalogProvenanceWithoutControl(t *testing.T) {
+	previousRevision, previousDirty, previousFingerprint := buildinfo.Revision, buildinfo.Dirty, buildinfo.SourceFingerprint
+	t.Cleanup(func() {
+		buildinfo.Revision, buildinfo.Dirty, buildinfo.SourceFingerprint = previousRevision, previousDirty, previousFingerprint
+	})
+	buildinfo.Revision = "test-revision"
+	buildinfo.Dirty = "false"
+	buildinfo.SourceFingerprint = "sha256:test-source"
+
+	handler := NewFabricHandler(nil, "health-secret-must-not-appear")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status=%d body=%s", response.Code, response.Body.String())
+	}
+	var health struct {
+		Service           string `json:"service"`
+		Revision          string `json:"revision"`
+		Dirty             *bool  `json:"dirty"`
+		SourceFingerprint string `json:"source_fingerprint"`
+		CatalogSHA256     string `json:"catalog_sha256"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &health); err != nil {
+		t.Fatal(err)
+	}
+	if health.Service != "cicada-fabric" || health.Revision != "test-revision" || health.Dirty == nil || *health.Dirty ||
+		health.SourceFingerprint != "sha256:test-source" || health.CatalogSHA256 != clientcontract.CatalogSHA256() {
+		t.Fatalf("health provenance = %#v", health)
+	}
+	if strings.Contains(response.Body.String(), "health-secret-must-not-appear") {
+		t.Fatal("health response disclosed the management token")
+	}
+
+	capabilityResponse := httptest.NewRecorder()
+	handler.ServeHTTP(capabilityResponse, httptest.NewRequest(http.MethodGet, "/v2/client/capabilities", nil))
+	var capability struct {
+		Status           string `json:"status"`
+		ContractRevision string `json:"contract_revision"`
+		CatalogSHA256    string `json:"catalog_sha256"`
+	}
+	if err := json.Unmarshal(capabilityResponse.Body.Bytes(), &capability); err != nil {
+		t.Fatal(err)
+	}
+	if capability.Status != "not_ready" || capability.ContractRevision != clientcontract.ContractRevision ||
+		capability.CatalogSHA256 != clientcontract.CatalogSHA256() {
+		t.Fatalf("fabric-only capability provenance = %#v", capability)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/buildinfo"
+	"github.com/cicada-ai/cicada/internal/clientcontract"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
@@ -65,14 +66,15 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	if request.URL.Path == "/v2/client/identity" ||
 		request.URL.Path == "/v2/client/devices/enroll" ||
-		request.URL.Path == "/v2/client/rpc" {
+		request.URL.Path == "/v2/client/rpc" ||
+		request.URL.Path == "/v2/client/rpc/recover" {
 		h.clientV2(response, request)
 		return
 	}
 	// A public, metadata-only negotiation point for the separate Android
 	// Client. Advertise only operations that have a real PQ device boundary;
-	// the whole Android product contract remains partial until the remaining
-	// status stream, asynchronous intents, topology and link flows exist.
+	// the whole Android product contract remains partial until the complete
+	// status stream and external Thread link flows exist.
 	if request.URL.Path == "/v2/client/capabilities" {
 		if request.Method != http.MethodGet {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -85,6 +87,8 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		}
 		writeJSON(response, http.StatusOK, map[string]any{
 			"contract":                        "android-hub-v1-draft",
+			"contract_revision":               clientcontract.ContractRevision,
+			"catalog_sha256":                  clientcontract.CatalogSHA256(),
 			"status":                          status,
 			"planned_platform":                "android",
 			"legacy_management_api_available": h.control != nil,
@@ -97,15 +101,26 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 			"control_intents":                 clientReady,
 			"device_binding":                  clientReady,
 			"external_thread_links":           false,
+			"external_link_invites":           clientReady,
+			"external_client_sessions":        clientReady,
 			"link_key_consent":                clientReady,
+			"group_endpoint_key_grants":       clientReady,
 			"client_device_enrollment":        clientReady,
+			"rpc_recovery":                    clientReady,
 			"client_device_management":        clientReady,
 			"approval_read_and_decide":        clientReady,
+			"queued_goal_lifecycle":           clientReady,
 			"available_rpc_operations": func() []string {
 				if !clientReady {
 					return []string{}
 				}
-				return []string{"status.snapshot", "status.changes", "topology.snapshot", "topology.apply", "devices.list", "devices.revoke", "nodes.preview", "nodes.confirm", "nodes.list", "nodes.revoke", "approvals.list", "approvals.decide", "intent.get", "intent.status", "intent.list", "intent.submit", "link.key_manifest", "link.key_grants", "link.key_grant"}
+				return managerClientRPCOperations()
+			}(),
+			"external_rpc_operations": func() []string {
+				if !clientReady {
+					return []string{}
+				}
+				return externalClientRPCOperations()
 			}(),
 		})
 		return
@@ -128,10 +143,24 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		if h.control == nil {
 			serviceName = "cicada-fabric"
 		}
-		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "service": serviceName, "version": buildinfo.Version, "stage": buildinfo.Stage})
+		provenance := buildinfo.CurrentProvenance()
+		writeJSON(response, http.StatusOK, map[string]any{
+			"status":             "ok",
+			"service":            serviceName,
+			"version":            buildinfo.Version,
+			"stage":              buildinfo.Stage,
+			"revision":           provenance.Revision,
+			"dirty":              provenance.Dirty,
+			"source_fingerprint": provenance.SourceFingerprint,
+			"catalog_sha256":     clientcontract.CatalogSHA256(),
+		})
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/v2/relay/nodes/") {
+		if isRelayNodeGroupSealedV2Path(request.URL.Path) {
+			h.relayNodeGroupSealedV2(response, request)
+			return
+		}
 		h.relayNodeV2(response, request)
 		return
 	}

@@ -15,6 +15,7 @@ const (
 	// of the HTTP route or the Client↔Control encryption protocol.
 	ClientStatusSnapshotContractVersion  = 1
 	ClientStatusSnapshotScopeSingleOwner = "single_owner_control_database"
+	ClientStatusSnapshotScopeAttributed  = "owner_attributed_v2"
 )
 
 type ClientStatusCode interface {
@@ -64,14 +65,15 @@ const (
 type ClientWorkerExecutionState string
 
 const (
-	ClientWorkerQueued     ClientWorkerExecutionState = "queued"
-	ClientWorkerRunning    ClientWorkerExecutionState = "running"
-	ClientWorkerRecovering ClientWorkerExecutionState = "recovering"
-	ClientWorkerVerifying  ClientWorkerExecutionState = "verifying"
-	ClientWorkerCompleted  ClientWorkerExecutionState = "completed"
-	ClientWorkerFailed     ClientWorkerExecutionState = "failed"
-	ClientWorkerCancelled  ClientWorkerExecutionState = "cancelled"
-	ClientWorkerUnknown    ClientWorkerExecutionState = "unknown"
+	ClientWorkerQueued           ClientWorkerExecutionState = "queued"
+	ClientWorkerRunning          ClientWorkerExecutionState = "running"
+	ClientWorkerRecovering       ClientWorkerExecutionState = "recovering"
+	ClientWorkerVerifying        ClientWorkerExecutionState = "verifying"
+	ClientWorkerCompleted        ClientWorkerExecutionState = "completed"
+	ClientWorkerFailed           ClientWorkerExecutionState = "failed"
+	ClientWorkerCancelled        ClientWorkerExecutionState = "cancelled"
+	ClientWorkerOutcomeUncertain ClientWorkerExecutionState = "outcome_uncertain"
+	ClientWorkerUnknown          ClientWorkerExecutionState = "unknown"
 )
 
 type ClientGoalLifecycleState string
@@ -80,6 +82,7 @@ const (
 	ClientGoalQueued    ClientGoalLifecycleState = "queued"
 	ClientGoalRunning   ClientGoalLifecycleState = "running"
 	ClientGoalBlocked   ClientGoalLifecycleState = "blocked"
+	ClientGoalPaused    ClientGoalLifecycleState = "paused"
 	ClientGoalCompleted ClientGoalLifecycleState = "completed"
 	ClientGoalFailed    ClientGoalLifecycleState = "failed"
 	ClientGoalCancelled ClientGoalLifecycleState = "cancelled"
@@ -157,6 +160,7 @@ type ClientWorkerStatus struct {
 
 type ClientGoalStatus struct {
 	GoalID    string                                            `json:"goal_id"`
+	Version   int64                                             `json:"lifecycle_version"`
 	ParentID  string                                            `json:"parent_goal_id,omitempty"`
 	NodeID    string                                            `json:"node_id,omitempty"`
 	WorkerIDs []string                                          `json:"worker_ids"`
@@ -184,21 +188,28 @@ type ClientTaskStatus struct {
 
 // BuildClientStatusSnapshot constructs a read-only projection from the current
 // Control store. The caller must authenticate the client and pass its verified
-// owner Principal ID. This implementation only supports a database dedicated
-// to one owner: legacy Goal, Worker, and Machine rows have no owner columns.
-// It must not be used as a multi-tenant filter or exposed through the legacy
+// owner Principal ID. The resident manager retains its legacy dedicated-store
+// view. External owners receive only owner-attributed Nodes/Goals and their
+// own Groups/Endpoints; ownerless legacy rows never enter that view. Workers
+// are scoped through their owner-attributed Goal because they lack an owner
+// column. It must not be exposed through the legacy
 // bearer API. The result contains metadata and statuses only; it never reads
 // peer message bodies, worker prompts/logs, credentials, or E2EE key material.
 func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string) (*ClientStatusSnapshot, error) {
-	if err := c.ValidateClientOwnerScope(authenticatedOwnerPrincipalID); err != nil {
+	if err := c.ValidateClientSessionOwner(authenticatedOwnerPrincipalID); err != nil {
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerPrincipalID)
+	residentOwner := ownerID == c.Identity().ID
+	scopeMode := ClientStatusSnapshotScopeAttributed
+	if residentOwner {
+		scopeMode = ClientStatusSnapshotScopeSingleOwner
+	}
 
 	capturedAt := time.Now().UTC()
 	snapshot := &ClientStatusSnapshot{
 		ContractVersion:  ClientStatusSnapshotContractVersion,
-		ScopeMode:        ClientStatusSnapshotScopeSingleOwner,
+		ScopeMode:        scopeMode,
 		OwnerPrincipalID: ownerID,
 		CapturedAt:       capturedAt.Format(time.RFC3339Nano),
 		ReadConsistency:  "best_effort",
@@ -244,6 +255,12 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 			if _, ok := ownedGroups[group.GroupID]; !ok {
 				continue
 			}
+			if !residentOwner {
+				principal, principalErr := c.store.GetPrincipal(endpoint.PrincipalID)
+				if principalErr != nil || principal.OwnerID != ownerID || endpoint.Owner != ownerID {
+					continue
+				}
+			}
 			entry := endpointsByID[endpoint.ID]
 			if entry == nil {
 				presence := clientEndpointPresence(endpoint.Status, endpoint.LastSeen, capturedAt, c.clientStatusStaleAfter())
@@ -278,6 +295,9 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 	}
 	nodeStates := make(map[string]ClientStatusObservation[ClientNodeConnectivity], len(machines))
 	for _, machine := range machines {
+		if !residentOwner && (machine.OwnerID != ownerID || !boundNodeHistory[machine.ID]) {
+			continue
+		}
 		state := clientNodeConnectivity(machine, capturedAt, c.clientStatusStaleAfter())
 		if boundNodeHistory[machine.ID] && !verifiedNodes[machine.ID].Authorized {
 			state = ClientStatusObservation[ClientNodeConnectivity]{
@@ -304,6 +324,16 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 		})
 	}
 	for _, endpoint := range endpointsByID {
+		if !residentOwner && !verifiedNodes[endpoint.NodeID].Authorized {
+			endpoint.Presence = ClientStatusObservation[ClientEndpointPresence]{
+				State: ClientEndpointUnknown, Known: false, Stale: true,
+				Source: "store.node_owner_bindings_v2",
+			}
+			endpoint.NativeSession = ClientStatusObservation[ClientNativeSessionState]{
+				State: ClientNativeSessionUnknown, Known: false, Stale: true,
+				Source: "store.node_owner_bindings_v2",
+			}
+		}
 		sort.Strings(endpoint.GroupIDs)
 		snapshot.Endpoints = append(snapshot.Endpoints, *endpoint)
 	}
@@ -312,9 +342,31 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 	if err != nil {
 		return nil, err
 	}
+	if !residentOwner {
+		ownedGoals := goals[:0]
+		for _, goal := range goals {
+			if goal.OwnerID == ownerID {
+				ownedGoals = append(ownedGoals, goal)
+			}
+		}
+		goals = ownedGoals
+	}
 	workers, err := c.store.ListWorkers()
 	if err != nil {
 		return nil, err
+	}
+	if !residentOwner {
+		goalIDs := make(map[string]bool, len(goals))
+		for _, goal := range goals {
+			goalIDs[goal.ID] = true
+		}
+		ownedWorkers := workers[:0]
+		for _, worker := range workers {
+			if goalIDs[worker.GoalID] {
+				ownedWorkers = append(ownedWorkers, worker)
+			}
+		}
+		workers = ownedWorkers
 	}
 	workersByGoal := make(map[string][]store.Worker)
 	for _, worker := range workers {
@@ -350,7 +402,7 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 			lifecycle.Stale = true
 		}
 		snapshot.Goals = append(snapshot.Goals, ClientGoalStatus{
-			GoalID: goal.ID, ParentID: goal.ParentGoalID, NodeID: goal.MachineID,
+			GoalID: goal.ID, Version: goal.LifecycleVersion, ParentID: goal.ParentGoalID, NodeID: goal.MachineID,
 			WorkerIDs: workerIDs, Lifecycle: lifecycle,
 		})
 	}
@@ -401,7 +453,7 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 	// independently locked reads, so this is a best-effort snapshot rather
 	// than one transaction; it still fails closed if the owner was revoked
 	// during construction.
-	if err := c.ValidateClientOwnerScope(ownerID); err != nil {
+	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
 	return snapshot, nil
@@ -562,7 +614,7 @@ func clientWorkerExecution(status, updatedAt string) ClientStatusObservation[Cli
 	state := ClientWorkerExecutionState(strings.ToLower(strings.TrimSpace(status)))
 	switch state {
 	case ClientWorkerQueued, ClientWorkerRunning, ClientWorkerRecovering, ClientWorkerVerifying,
-		ClientWorkerCompleted, ClientWorkerFailed, ClientWorkerCancelled:
+		ClientWorkerCompleted, ClientWorkerFailed, ClientWorkerCancelled, ClientWorkerOutcomeUncertain:
 		return ClientStatusObservation[ClientWorkerExecutionState]{
 			State: state, Known: true, ObservedAt: strings.TrimSpace(updatedAt),
 			Source: "store.workers.status+updated_at",
@@ -578,7 +630,7 @@ func clientWorkerExecution(status, updatedAt string) ClientStatusObservation[Cli
 func clientGoalLifecycle(status, updatedAt string) ClientStatusObservation[ClientGoalLifecycleState] {
 	state := ClientGoalLifecycleState(strings.ToLower(strings.TrimSpace(status)))
 	switch state {
-	case ClientGoalQueued, ClientGoalRunning, ClientGoalBlocked, ClientGoalCompleted,
+	case ClientGoalQueued, ClientGoalRunning, ClientGoalBlocked, ClientGoalPaused, ClientGoalCompleted,
 		ClientGoalFailed, ClientGoalCancelled:
 		return ClientStatusObservation[ClientGoalLifecycleState]{
 			State: state, Known: true, ObservedAt: strings.TrimSpace(updatedAt),

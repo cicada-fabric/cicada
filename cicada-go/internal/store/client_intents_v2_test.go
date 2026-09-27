@@ -33,6 +33,29 @@ func TestClientIntentAcceptanceIsIdempotentAndRejectsChangedInput(t *testing.T) 
 	}
 }
 
+func TestOwnerAttributedClientIntentCannotBeRetriedAcrossOwners(t *testing.T) {
+	s, err := New(filepath.Join(t.TempDir(), "state.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	input := []byte(`{"text":"goal","owner_id":"owner_b"}`)
+	intent, created, err := s.AcceptClientIntentForOwner("owner_a", "same-client-request", "goal", "goal", "", nil, input)
+	if err != nil || !created || intent == nil {
+		t.Fatalf("accept owner-attributed Client intent: intent=%#v created=%v err=%v", intent, created, err)
+	}
+	job, err := s.GetClientIntent(intent.ID)
+	if err != nil || job.OwnerID != "owner_a" {
+		t.Fatalf("owner was not persisted from the authenticated caller: job=%#v err=%v", job, err)
+	}
+	if _, created, err := s.AcceptClientIntentForOwner("owner_a", "same-client-request", "goal", "goal", "", nil, input); err != nil || created {
+		t.Fatalf("same-owner retry was not idempotent: created=%v err=%v", created, err)
+	}
+	if _, _, err := s.AcceptClientIntentForOwner("owner_b", "same-client-request", "goal", "goal", "", nil, input); !errors.Is(err, ErrClientIntentConflict) {
+		t.Fatalf("foreign owner reused another owner's Client request ID: %v", err)
+	}
+}
+
 func TestClientIntentRecoveryPreservesQueuedAndFencesRunningCrashWindows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.sqlite3")
 	s, err := New(path)
@@ -156,14 +179,27 @@ func TestClientIntentV19MigrationPreservesLegacyIntentRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	acceptedLegacy, err := s.CreateIntent("legacy accepted Client request", "idea", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Recreate the v18 schema boundary while leaving all existing Intent rows
 	// intact, then run only the additive v19 migration as an upgrade would.
 	s.mu.Lock()
 	_, err = s.db.Exec(`DROP TABLE client_control_intents_v2;
-DELETE FROM schema_migrations_v2 WHERE version = 19`)
+DELETE FROM schema_migrations_v2 WHERE version >= 19`)
 	s.mu.Unlock()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.initializeClientControlIntentsV2Schema(); err != nil {
+		t.Fatal(err)
+	}
+	stamp := now()
+	if _, err := s.db.Exec(`INSERT INTO client_control_intents_v2
+(client_request_id, intent_id, input_json, state, error, created_at, updated_at)
+VALUES ('legacy-client-request', ?, ?, 'QUEUED', '', ?, ?)`, acceptedLegacy.ID, []byte(`{"text":"legacy request"}`), stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.initializeV2Migrations(); err != nil {
@@ -176,5 +212,12 @@ DELETE FROM schema_migrations_v2 WHERE version = 19`)
 	entry, err := s.readV2Migration(19)
 	if err != nil || entry == nil || entry.State != v2MigrationApplied {
 		t.Fatalf("v19 migration ledger = %#v err=%v", entry, err)
+	}
+	var legacyOwner string
+	if err := s.db.QueryRow(`SELECT owner_id FROM client_control_intents_v2 WHERE client_request_id='legacy-client-request'`).Scan(&legacyOwner); err != nil {
+		t.Fatal(err)
+	}
+	if legacyOwner != "" {
+		t.Fatalf("v23 inferred owner for legacy accepted Client intent: %q", legacyOwner)
 	}
 }
