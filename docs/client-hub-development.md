@@ -10,12 +10,27 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 |---|---|---|
 | N1 契约来源 | operation catalog 驱动角色 allowlist；版本与摘要可查询；与真实 dispatch 和 OpenAPI 检查一致 | 已实现；Go 定向与全仓回归通过 |
 | N2 可重复环境 | 无 Codex/模型凭据的轻量 Hub 镜像；源码来源可核对；独立临时状态的真实 TCP 加密互操作命令 | 已实现；一次性 TCP 联调和开发启动检查通过 |
-| N3 联合验收入口 | 协议包、公开合成密码学向量、CI 检查与分层结果；Client 可固定下载/导入具体版本 | 本仓入口完成；本地测试通过，GitHub Actions 与新 Kotlin 向量测试未运行 |
-| N4 登记与不确定状态恢复 | 丢失登记响应、Hub 重启后 UNCERTAIN 的明确恢复协议，两端故障测试通过 | Hub 侧已实现并通过 Store/HTTP 故障测试；Android pending-slot/uncertainty UI 尚待联调 |
-| N5 最小产品闭环 | 可信绑定 → 手机 Intent → 真实 Node Worker → 审批 → 结果回手机 | Hub 的 `goal.result`、Node 审批桥及加密 Client 决议链已实现并有 HTTP/模拟运行时测试；真实 Node/Codex、Android 全链仍待验收 |
+| N3 联合验收入口 | 协议包、公开合成密码学向量、CI 检查与分层结果；Client 可固定下载/导入具体版本 | 本仓入口完成；Client 在固定 `967dbd8` 镜像上通过 Kotlin wire/Endpoint 向量；GitHub Actions 未在本轮运行 |
+| N4 登记与不确定状态恢复 | 丢失登记响应、Hub 重启后 UNCERTAIN 的明确恢复协议，两端故障测试通过 | Hub 侧 Store/HTTP 测试及固定镜像的 Android 模拟器 201/200 丢响应、三类恢复故障验收均通过 |
+| N5 最小产品闭环 | 可信绑定 → 手机 Intent → 真实 Node Worker → 审批 → 结果回手机 | 固定镜像的 Android 模拟器→真实 Node/Codex 审批→`goal.result` 通过；同一固定镜像上的独立 Group key 正向授权亦已通过，属于另一条验收链 |
 | N6 发布验收 | 真机录音/前后台、HTTPS、签名 APK；跨用户密钥授权另列功能验收 | 未运行 |
 
-N1–N3 完成及 N4/N5 的 Hub 侧改动不表示跨仓、真实原生与 N6 已完成，也不表示 Architecture v2 已全部实现。
+N1–N5 的 Android 管理闭环与独立 Group key 正向授权均已在模拟器通过；它们
+不覆盖双物理 Node、双真实 Owner 的 Group 越权验收、真机与公网 HTTPS，
+也不表示 Architecture v2 已全部实现。跨 owner 原生 peer RPC 另有
+同机双逻辑 Node 的真实 Codex sealed Ask/Reply 验收，边界见
+[原生验收记录](architecture-v2-native-validation.md)。
+
+上述 Android 结果来自独立 Client 仓库的
+`docs/client-hub-v1.2.1-967dbd-validation.md` 与
+`docs/client-group-key-v1.2.1-disposable-validation.md`。固定目标是干净源码
+`967dbd885fae9a150b3d9a77c8e4e30da1d0dd8a`、合同
+`client-hub-v1.2.1`、完整本地镜像 ID
+`sha256:adca1c62db5747625141be4506c4f3713368260076c50876776b4dabafa6c1b7`。
+Android 管理闭环使用的候选 APK 早于 Group 时间戳验签修复；后续 Group
+正向验收使用 Client 实现提交 `b676668` 的另一对最终 APK，完成原生 Join、
+Endpoint attestation 验签、外部 Owner 签名、手机显式确认、加密 Grant 与
+`group.key_status=CURRENT`。两条测试不拼成同一次运行；详情以各自报告为准。
 
 ## 契约的唯一来源
 
@@ -52,7 +67,8 @@ python3 scripts/client-contract.py export --output .cicada-data/contracts
 `source_dirty=true` 表示包含未提交改动，不能按 HEAD 当成已发布版本。
 
 互操作脚本构建 `docker/Dockerfile.hub`，创建一次性 Hub 和 Go 测试客户端，
-使用动态本机端口与独立状态。它检查源码/镜像来源、加密 RPC 重试和 owner
+使用动态本机端口与独立状态。它检查源码/镜像来源、加密 RPC 重试、三种
+恢复故障状态与 owner
 隔离，输出 `result.json` 与 `test.log`；可用 `CICADA_INTEROP_OUTPUT` 指定
 保留证据的位置。原始临时凭据和数据库不属于交付 artifact。
 `CICADA_BUILD_PROXY=''` 显式关闭构建代理。开发者需要长期运行的 Hub 时，
@@ -101,14 +117,18 @@ Runtime 不合并。合同检查通过、构建成功、Hub 协议联调、Andro
 测试仅使用自动生成的合成身份和独立 state；Owner trust 的测试 bootstrap
 不是生产登录。保持 resident Hub、现有 Owner/Node 密钥和数据库不变。
 
-## 下一项交给 Client 开发者的工作
+## Client 已完成的 Group key 验收与后续边界
 
-先导入本次协议包、运行 Kotlin 向量验证，再锁定可追溯的 Hub 镜像完成
-`session.capabilities` 联调。新增加的 Group key operation 按实际产品需要
-接入，不因 operation 被列举就省略 Owner 签署、Endpoint attestation 验证。
-已实现的 Android operation 子集可继续使用；未知可选操作保持关闭。
+Client 已导入 `client-hub-v1.2.1` 固定协议包，完成 Kotlin 向量、加密
+`session.capabilities`、N4 与 N5 的上述模拟器验收。随后使用
+[一次性 Group-key 夹具](client-group-key-disposable-fixture.md)和真实 leased
+Codex Endpoint 完成加密 `group.key_manifest/grant/status` 的正向与失效验证：
+最终 APK 的 `CURRENT`、租约到期 `STALE`、证明到期 `PROOF_EXPIRED`，以及
+Android 本地篡改签名拒绝均有独立记录。Owner 私钥只在外部签署端，Android
+独立验证 Endpoint attestation 并显式确认 Grant。该夹具只有一个合成 Owner；
+双真实 Owner 的跨 owner 拒绝、物理设备与公网 HTTPS 尚未运行。
 
-N4 的 Hub 端已进入 `client-hub-v1.2`：登记 HTTP 201 丢失时原样重发同一
+N4 的 Hub 端已进入 `client-hub-v1.2`，v1.2.1 保持相同恢复语义：登记 HTTP 201 丢失时原样重发同一
 签名 Grant 和设备身份，Hub 在当前绑定仍有效时返回同一 epoch/key version；
 完成的加密 RPC 可将原始请求包发到 `/v2/client/rpc/recover`，获得逐字节相同
 的缓存响应。仍在处理中的请求返回 409 `STILL_PROCESSING`；v29 接受后因
@@ -117,14 +137,18 @@ N4 的 Hub 端已进入 `client-hub-v1.2`：登记 HTTP 201 丢失时原样重�
 `RECOVERY_UNAVAILABLE`。Client 验证通知后只能清除传输 pending，业务
 结果仍需查权威 Intent/Goal/Approval 状态。具体字节与拒绝语义见
 [wire contract](client-hub-wire-v1.md) 和 [互操作流程](client-hub-interop-v1.md)。
-Android 的持久 pending-slot、Kotlin 向量、丢响应与 Hub 重启测试须在固定
-v1.2 协议包和干净 Hub 镜像下重新验收；旧 v1.1 结果不能算通过。
+Android 已在固定 v1.2.1 协议包和干净 Hub 镜像下独立完成持久 pending-slot、
+Kotlin 向量、丢响应与 Hub 重启故障验收；旧 v1.2 结果仍只作历史记录。
+固定镜像无需增加故障 API：仅测试专用的回环代理和标记过的 `/tmp` 下
+一次性数据库辅助程序可复现三个 `/rpc/recover` 分支，操作步骤和边界见
+[v1.2.1 联调清单](client-hub-v12-validation.md#固定镜像的-android-恢复故障入口仅隔离测试)。
 
 N5 的 `goal.result` 已在 Hub 接受 owner 归属 `intent_id` 后读取 Worker 摘要
 和不含正文/本地路径的 Artifact 元数据。`TestClientIntentQueuesWorkForOwnerBoundMachineAgent`
 验证加密 Client RPC、Node HTTP claim/snapshot/approval/result 和结果读取；
-Node 的模拟 app-server 测试验证用原请求 ID 恢复挂起审批。两者均未启动真实
-Node Agent/Codex 或 Android；可复跑步骤与真实验收门槛见
+Node 的模拟 app-server 测试验证用原请求 ID 恢复挂起审批；另有真实
+Node Agent/Codex 与加密合成 Client 协议驱动通过隔离闭环；Client 随后在固定
+镜像上完成 Android 模拟器发起、审批与结果读取。可复跑步骤与真实验收门槛见
 [v1.2 联调清单](client-hub-v12-validation.md)。
 
 用户当前无需提供新凭据或操作。到真机/公网验收阶段才需要 Android 测试

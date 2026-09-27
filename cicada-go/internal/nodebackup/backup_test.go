@@ -131,6 +131,21 @@ func TestNodeBackupWALRestoreQuarantineAndManifestPrivacy(t *testing.T) {
 	if !restored.Quarantined || restored.NodeID != backupTestNodeID {
 		t.Fatalf("restore was not marked quarantined: %#v", restored)
 	}
+	registryPath := recoveryRegistrationPath(targetStateDir, backupTestNodeID)
+	registryInfo, err := os.Stat(registryPath)
+	if err != nil {
+		t.Fatalf("external recovery registration mode=%v err=%v, want 0600", registryInfo, err)
+	}
+	if registryInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("external recovery registration mode=%v, want 0600", registryInfo.Mode().Perm())
+	}
+	registryDirInfo, err := os.Stat(filepath.Dir(registryPath))
+	if err != nil {
+		t.Fatalf("external recovery registry directory mode=%v err=%v, want 0700", registryDirInfo, err)
+	}
+	if registryDirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("external recovery registry directory mode=%v, want 0700", registryDirInfo.Mode().Perm())
+	}
 	markerBytes, err := os.ReadFile(filepath.Join(restored.NodeState, recoveryMarker))
 	if err != nil {
 		t.Fatalf("recovery marker missing: %v", err)
@@ -150,6 +165,70 @@ func TestNodeBackupWALRestoreQuarantineAndManifestPrivacy(t *testing.T) {
 			t.Fatalf("restored database %s value=%q err=%v", name, value, err)
 		}
 	}
+}
+
+func TestFailedRestoreRemovesNewRecoveryRegistration(t *testing.T) {
+	backupDir := createMinimalNodeBackup(t, "node-restore-fault")
+	targetStateDir := filepath.Join(t.TempDir(), "restored-state")
+	publishFailure := errors.New("synthetic restore publish failure")
+	_, err := restoreWithPublisher(backupDir, targetStateDir, func(string, string) (bool, error) {
+		return false, publishFailure
+	})
+	if !errors.Is(err, publishFailure) {
+		t.Fatalf("restore error=%v, want injected publish failure", err)
+	}
+	registrationPath := recoveryRegistrationPath(targetStateDir, "node-restore-fault")
+	if _, err := os.Lstat(registrationPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed restore left a recovery registration: %v", err)
+	}
+	if _, err := os.Lstat(nodeStatePath(targetStateDir, "node-restore-fault")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed restore published a Node subtree: %v", err)
+	}
+	active, err := RecoveryQuarantineActive(targetStateDir, "node-restore-fault")
+	if err != nil || active {
+		t.Fatalf("failed restore left active quarantine: active=%t err=%v", active, err)
+	}
+}
+
+func TestRestoreKeepsRegistrationWhenPublishMayHaveCommitted(t *testing.T) {
+	backupDir := createMinimalNodeBackup(t, "node-restore-publish-uncertain")
+	targetStateDir := filepath.Join(t.TempDir(), "restored-state")
+	publishFailure := errors.New("synthetic parent sync failure after publish")
+	_, err := restoreWithPublisher(backupDir, targetStateDir, func(source, destination string) (bool, error) {
+		if err := os.Rename(source, destination); err != nil {
+			return false, err
+		}
+		return true, publishFailure
+	})
+	if !errors.Is(err, publishFailure) {
+		t.Fatalf("restore error=%v, want injected post-publish failure", err)
+	}
+	registrationPath := recoveryRegistrationPath(targetStateDir, "node-restore-publish-uncertain")
+	if _, err := os.Stat(registrationPath); err != nil {
+		t.Fatalf("post-publish failure lost its recovery registration: %v", err)
+	}
+	active, err := RecoveryQuarantineActive(targetStateDir, "node-restore-publish-uncertain")
+	if err != nil || !active {
+		t.Fatalf("possibly published Node is not quarantined: active=%t err=%v", active, err)
+	}
+}
+
+func createMinimalNodeBackup(t *testing.T, nodeID string) string {
+	t.Helper()
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "source-state")
+	nodeDir := nodeStatePath(stateDir, nodeID)
+	if err := os.MkdirAll(nodeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nodeDir, "identity.json"), []byte("synthetic Node identity"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDir := filepath.Join(root, "backup")
+	if _, err := Backup(stateDir, nodeID, backupDir); err != nil {
+		t.Fatalf("create Node backup fixture: %v", err)
+	}
+	return backupDir
 }
 
 func TestNodeBackupPreservesEndpointIdentityAndReplayState(t *testing.T) {

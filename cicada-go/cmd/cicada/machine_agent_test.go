@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 )
 
@@ -155,6 +156,50 @@ func TestMachineAgentRefusesPendingRecoveryBeforeIdentityOrNetwork(t *testing.T)
 		machineNodeCredentialPath(stateDir, nodeID), machineNodeInboxPath(stateDir, nodeID)} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("pending recovery startup created %s: %v", path, err)
+		}
+	}
+}
+
+func TestMachineAgentRefusesRestoredNodeWhenInTreeMarkerIsMissing(t *testing.T) {
+	root := t.TempDir()
+	const nodeID = "node-recovery-registry-test"
+	sourceStateDir := filepath.Join(root, "source-state")
+	sourceNodeDir := machineNodeStateDir(sourceStateDir, nodeID)
+	if err := os.MkdirAll(sourceNodeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceNodeDir, "identity.json"), []byte("synthetic Node identity"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDir := filepath.Join(root, "backup")
+	if _, err := nodebackup.Backup(sourceStateDir, nodeID, backupDir); err != nil {
+		t.Fatalf("create Node backup fixture: %v", err)
+	}
+	stateDir := filepath.Join(root, "restored-state")
+	restored, err := nodebackup.Restore(backupDir, stateDir)
+	if err != nil {
+		t.Fatalf("restore Node backup fixture: %v", err)
+	}
+	if err := os.Remove(filepath.Join(restored.NodeState, machineNodeRecoveryPendingFileName)); err != nil {
+		t.Fatalf("remove in-tree marker to simulate marker loss: %v", err)
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	err = runMachineAgent([]string{"--id", nodeID, "--name", nodeID, "--state-dir", stateDir,
+		"--control-url", server.URL, "--interval", "1s", "--once"})
+	if err == nil || !strings.Contains(err.Error(), "recovery is pending") {
+		t.Fatalf("restored Agent error=%v, want recovery quarantine", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("restored Agent made %d Hub requests before refusing quarantine", requests.Load())
+	}
+	for _, path := range []string{machineNodeCredentialPath(stateDir, nodeID), machineNodeInboxPath(stateDir, nodeID)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("quarantined startup created %s: %v", path, err)
 		}
 	}
 }

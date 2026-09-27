@@ -80,7 +80,7 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 	if got := strings.Count(argv, "queue\n"); got != 1 {
 		t.Fatalf("native queue count after first delivery = %d, want 1", got)
 	}
-	if strings.Join(layers, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(layers, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("receipt order = %v", layers)
 	}
 

@@ -210,12 +210,9 @@ func drainMachineLocalGroupClaim(ctx context.Context, bridge *machineAgentJoinBr
 		return recordErr
 	}
 	receipt := localGroupReceipt(claim)
-	if _, err := inbox.RecordRuntimeInjected(ctx, receipt); err != nil {
-		return err
-	}
-	_, err = inbox.RecordConsumptionUnconfirmed(ctx, receipt)
+	_, err = inbox.RecordCodexQueueAccepted(ctx, receipt)
 	if err == nil {
-		log.Printf("local peer native injection message_id=%s request_id=%s target=%s node=%s native_session_id=%s attempt_id=%s state=CONSUMPTION_UNCONFIRMED",
+		log.Printf("local peer Codex queue accepted message_id=%s request_id=%s target=%s node=%s native_session_id=%s attempt_id=%s state=CONSUMPTION_UNCONFIRMED wake_unconfirmed=true model_consumption_unconfirmed=true",
 			claim.MessageID, record.RequestID, claim.EndpointID, bridge.nodeID, claim.SessionID, claim.AttemptID)
 	}
 	return err

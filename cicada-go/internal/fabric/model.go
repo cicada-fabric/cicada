@@ -18,6 +18,8 @@ const (
 
 	ReceiptRelayAccepted        = "RELAY_ACCEPTED"
 	ReceiptNodeReceived         = "NODE_RECEIVED"
+	ReceiptCodexQueueAccepted   = "CODEX_QUEUE_ACCEPTED"
+	ReceiptNativeThreadResumed  = "NATIVE_THREAD_RESUMED"
 	ReceiptRuntimeInjected      = "RUNTIME_INJECTED"
 	ReceiptConsumptionUncertain = "CONSUMPTION_UNCONFIRMED"
 	ReceiptApplicationAcked     = "APPLICATION_ACKNOWLEDGED"

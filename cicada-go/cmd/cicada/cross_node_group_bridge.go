@@ -945,25 +945,7 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 		}
 		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue failed")
 	}
-	if _, err := inbox.RecordRuntimeInjected(ctx, machineRelayReceipt(claim, nodeinbox.RUNTIME_INJECTED)); err != nil {
-		return fmt.Errorf("record same-Group runtime injection for %s: %w", entry.MessageID, err)
-	}
-	if !entry.RuntimeInjected {
-		if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptRuntimeInjected, ""); err != nil {
-			return fmt.Errorf("report same-Group RUNTIME_INJECTED for %s: %w", entry.MessageID, err)
-		}
-		if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
-			entry.RuntimeInjected = true
-		}); err != nil {
-			return err
-		}
-		entry.RuntimeInjected = true
-	}
-	if _, err := inbox.RecordConsumptionUnconfirmed(ctx,
-		machineRelayReceipt(claim, nodeinbox.CONSUMPTION_UNCONFIRMED)); err != nil {
-		return fmt.Errorf("record same-Group consumption uncertainty for %s: %w", claim.MessageID, err)
-	}
-	return reportMachineRelayConsumption(ctx, base, machineID, journal, entry)
+	return completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal, claim, entry)
 }
 
 func machineCrossNodeGroupRelayPrompt(entry machineRelayJournalEntry, plaintext []byte) string {

@@ -27,6 +27,7 @@ FILES = (
     "docs/client-hub-v12-client-prompt.md",
     "cicada-go/internal/clientwire/testdata/README.md",
     "cicada-go/internal/clientwire/testdata/client-control-v1.json",
+    "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
 )
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 
@@ -59,11 +60,28 @@ def read_contract(root):
             reference = operation[field].split("#", 1)[0]
             if reference not in files:
                 raise ValueError(f"unbundled {field}: {reference}")
-    vectors = json.loads(files[FILES[-1]])
+    vectors = json.loads(files["cicada-go/internal/clientwire/testdata/client-control-v1.json"])
     if vectors.get("warning") != "PUBLIC SYNTHETIC TEST KEYS — NEVER USE IN A DEPLOYMENT":
         raise ValueError("unlabelled cryptographic fixture")
     if vectors.get("wire_version") != catalog["wire_version"]:
         raise ValueError("wire fixture/catalog version mismatch")
+    attestation = json.loads(files["cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json"])
+    if (attestation.get("warning") != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT"
+            or attestation.get("fixture_version") != 1):
+        raise ValueError("unlabelled Endpoint attestation fixture")
+    proof = attestation.get("attestation_utf8", "").encode()
+    if hashlib.sha256(proof).hexdigest() != attestation.get("proof_sha256"):
+        raise ValueError("Endpoint attestation fixture digest mismatch")
+    claims = json.loads(proof)
+    if not isinstance(claims.get("signature"), str) or not claims["signature"]:
+        raise ValueError("Endpoint attestation fixture signature missing")
+    if claims.get("public_identity") != attestation.get("public_identity"):
+        raise ValueError("Endpoint attestation fixture public key mismatch")
+    claims["signature"] = None
+    unsigned = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode()
+    signed = b"cicada/fabric/endpoint-key-attestation/v1\x00" + unsigned
+    if signed.hex() != attestation.get("signed_input_hex"):
+        raise ValueError("Endpoint attestation fixture signed bytes mismatch")
     return files, catalog
 
 

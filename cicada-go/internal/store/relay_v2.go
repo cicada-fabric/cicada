@@ -44,14 +44,16 @@ const (
 	RelayAttemptUncertain = "INJECTION_UNCERTAIN"
 	RelayAttemptCancelled = "CANCELLED"
 
-	RelayReceiptAccepted           = "RELAY_ACCEPTED"
-	RelayReceiptNodeReceived       = "NODE_RECEIVED"
-	RelayReceiptRuntimeInjected    = "RUNTIME_INJECTED"
-	RelayReceiptConsumptionUnknown = "CONSUMPTION_UNCONFIRMED"
-	RelayReceiptApplicationAck     = "APPLICATION_ACKNOWLEDGED"
-	RelayReceiptResultAccepted     = "RESULT_ACCEPTED"
-	RelayReceiptInjectionUncertain = "INJECTION_UNCERTAIN"
-	RelayReceiptFailed             = "FAILED"
+	RelayReceiptAccepted            = "RELAY_ACCEPTED"
+	RelayReceiptNodeReceived        = "NODE_RECEIVED"
+	RelayReceiptCodexQueueAccepted  = "CODEX_QUEUE_ACCEPTED"
+	RelayReceiptNativeThreadResumed = "NATIVE_THREAD_RESUMED"
+	RelayReceiptRuntimeInjected     = "RUNTIME_INJECTED"
+	RelayReceiptConsumptionUnknown  = "CONSUMPTION_UNCONFIRMED"
+	RelayReceiptApplicationAck      = "APPLICATION_ACKNOWLEDGED"
+	RelayReceiptResultAccepted      = "RESULT_ACCEPTED"
+	RelayReceiptInjectionUncertain  = "INJECTION_UNCERTAIN"
+	RelayReceiptFailed              = "FAILED"
 )
 
 // Compatibility spellings mirror the vocabulary used by the fabric package
@@ -59,6 +61,8 @@ const (
 const (
 	ReceiptRelayAccepted           = RelayReceiptAccepted
 	ReceiptNodeReceived            = RelayReceiptNodeReceived
+	ReceiptCodexQueueAccepted      = RelayReceiptCodexQueueAccepted
+	ReceiptNativeThreadResumed     = RelayReceiptNativeThreadResumed
 	ReceiptRuntimeInjected         = RelayReceiptRuntimeInjected
 	ReceiptConsumptionUnconfirmed  = RelayReceiptConsumptionUnknown
 	ReceiptApplicationAcknowledged = RelayReceiptApplicationAck
@@ -2503,7 +2507,7 @@ AND NOT EXISTS (
   WHERE same_group_security.message_id = i.message_id
     AND same_group_security.authorization_ref GLOB 'same-group-sealed.v2:*')
 AND e.migration_state = ? AND e.binding_id = i.binding_id
-AND sb.endpoint_id = e.id AND sb.group_id = i.receiver_group_id
+AND sb.endpoint_id = e.id
 AND sb.epoch = i.binding_epoch AND sb.status IN ('active', 'leased', 'online', 'ready', 'acquired')
 AND (sb.lease_expires_at = '' OR sb.lease_expires_at > ?)
 AND EXISTS (
@@ -2852,12 +2856,14 @@ func relayReceiptRank(layer string) int {
 		return 1
 	case RelayReceiptNodeReceived:
 		return 2
-	case RelayReceiptRuntimeInjected, RelayReceiptConsumptionUnknown, RelayReceiptInjectionUncertain:
+	case RelayReceiptCodexQueueAccepted, RelayReceiptNativeThreadResumed:
 		return 3
-	case RelayReceiptApplicationAck:
+	case RelayReceiptRuntimeInjected, RelayReceiptConsumptionUnknown, RelayReceiptInjectionUncertain:
 		return 4
-	case RelayReceiptResultAccepted:
+	case RelayReceiptApplicationAck:
 		return 5
+	case RelayReceiptResultAccepted:
+		return 6
 	case RelayReceiptFailed:
 		return 0
 	default:
@@ -3012,6 +3018,82 @@ func (s *Store) RecordRelayReceipt(receipt RelayReceipt) (*RelayReceipt, error) 
 	if attempt.State == RelayAttemptUncertain && receipt.Layer != RelayReceiptRuntimeInjected && receipt.Layer != RelayReceiptConsumptionUnknown {
 		return nil, ErrRelayStaleReceipt
 	}
+	// Fence the inbox row by its current attempt as well as by message ID.
+	// A delayed receipt from an older claim must never rewrite a later claim's
+	// state or advance that consumer's cursor. Application ACK is terminal for
+	// transport delivery; RESULT_ACCEPTED may be recorded afterward as a higher
+	// business layer, but it must leave the already-ACKED inbox untouched.
+	var inboxState, inboxAttemptID string
+	err = tx.QueryRow(`SELECT state, attempt_id FROM relay_v2_inbox
+WHERE recipient_endpoint_id = ? AND sequence = ? AND message_id = ?`,
+		attempt.RecipientEndpointID, attempt.Sequence, attempt.MessageID).Scan(&inboxState, &inboxAttemptID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRelayStaleReceipt
+	}
+	if err != nil {
+		return nil, err
+	}
+	if attempt.State == RelayAttemptAcked {
+		if receipt.Layer != RelayReceiptResultAccepted || inboxState != RelayInboxAcked || inboxAttemptID != "" {
+			return nil, ErrRelayStaleReceipt
+		}
+	} else {
+		expectedInboxState := RelayInboxClaimed
+		switch attempt.State {
+		case RelayAttemptInjected:
+			expectedInboxState = RelayInboxInjected
+		case RelayAttemptUncertain:
+			expectedInboxState = RelayInboxUncertain
+		}
+		if inboxState != expectedInboxState || inboxAttemptID != attempt.AttemptID {
+			return nil, ErrRelayStaleReceipt
+		}
+	}
+	// Codex queue acceptance and native-thread resume are durable operational
+	// milestones only. They require the exact active claim and prior durable
+	// Node receipt, but must not advance delivery state or the consumer cursor.
+	if receipt.Layer == RelayReceiptCodexQueueAccepted || receipt.Layer == RelayReceiptNativeThreadResumed {
+		if attempt.State != RelayAttemptClaimed || inboxState != RelayInboxClaimed || inboxAttemptID != attempt.AttemptID {
+			return nil, ErrRelayStaleReceipt
+		}
+		var nodeReceived int
+		if err := tx.QueryRow(`SELECT count(*) FROM relay_v2_receipts WHERE attempt_id = ? AND layer = ?`,
+			attempt.AttemptID, RelayReceiptNodeReceived).Scan(&nodeReceived); err != nil {
+			return nil, err
+		}
+		if nodeReceived == 0 {
+			return nil, ErrRelayStaleReceipt
+		}
+		if receipt.Layer == RelayReceiptNativeThreadResumed {
+			var queueAccepted int
+			if err := tx.QueryRow(`SELECT count(*) FROM relay_v2_receipts WHERE attempt_id = ? AND layer = ?`,
+				attempt.AttemptID, RelayReceiptCodexQueueAccepted).Scan(&queueAccepted); err != nil {
+				return nil, err
+			}
+			if queueAccepted == 0 {
+				return nil, ErrRelayStaleReceipt
+			}
+		}
+		timestamp := now()
+		receipt.ReceiptID = relayString(receipt.ReceiptID)
+		if receipt.ReceiptID == "" {
+			receipt.ReceiptID = NewID("rcpt")
+		}
+		if _, err := tx.Exec(`INSERT INTO relay_v2_receipts
+(receipt_id, attempt_id, message_id, digest, target_endpoint_id, binding_id,
+ binding_epoch, layer, error, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, receipt.ReceiptID, receipt.AttemptID,
+			receipt.MessageID, receipt.Digest, receipt.TargetEndpointID, receipt.BindingID,
+			receipt.BindingEpoch, receipt.Layer, receipt.Error, timestamp); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		receipt.CreatedAt = timestamp
+		receipt.Status = receipt.Layer
+		return &receipt, nil
+	}
 	timestamp := now()
 	receipt.ReceiptID = relayString(receipt.ReceiptID)
 	if receipt.ReceiptID == "" {
@@ -3027,7 +3109,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, receipt.ReceiptID, receipt.AttemptID,
 		return nil, err
 	}
 	newAttemptState := attempt.State
-	inboxState := RelayInboxClaimed
+	inboxState = RelayInboxClaimed
 	completedAt := ""
 	switch receipt.Layer {
 	case RelayReceiptRuntimeInjected, RelayReceiptConsumptionUnknown:
@@ -3045,15 +3127,46 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, receipt.ReceiptID, receipt.AttemptID,
 		inboxState = RelayInboxReady
 		completedAt = timestamp
 	}
-	if _, err := tx.Exec(`UPDATE relay_v2_delivery_attempts SET state = ?, failure = ?, completed_at = ? WHERE attempt_id = ?`,
-		newAttemptState, receipt.Error, completedAt, attempt.AttemptID); err != nil {
-		return nil, err
+	// A RESULT_ACCEPTED receipt can arrive after an APPLICATION_ACK. Preserve
+	// the terminal delivery state and its already-advanced cursor in that case.
+	if attempt.State != RelayAttemptAcked {
+		updatedAttempt, err := tx.Exec(`UPDATE relay_v2_delivery_attempts SET state = ?, failure = ?, completed_at = ? WHERE attempt_id = ? AND state = ?`,
+			newAttemptState, receipt.Error, completedAt, attempt.AttemptID, attempt.State)
+		if err != nil {
+			return nil, err
+		}
+		changed, err := updatedAttempt.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if changed != 1 {
+			return nil, ErrRelayStaleReceipt
+		}
 	}
-	if _, err := tx.Exec(`UPDATE relay_v2_inbox SET state = ?, attempt_id = CASE WHEN ? IN (?, ?) THEN '' ELSE attempt_id END, updated_at = ?
-WHERE recipient_endpoint_id = ? AND sequence = ? AND message_id = ?`, inboxState,
-		receipt.Layer, RelayReceiptFailed, RelayReceiptApplicationAck,
-		timestamp, attempt.RecipientEndpointID, attempt.Sequence, attempt.MessageID); err != nil {
-		return nil, err
+	if attempt.State != RelayAttemptAcked {
+		updatedInbox, err := tx.Exec(`UPDATE relay_v2_inbox SET state = ?, attempt_id = CASE WHEN ? IN (?, ?) THEN '' ELSE attempt_id END, updated_at = ?
+WHERE recipient_endpoint_id = ? AND sequence = ? AND message_id = ? AND attempt_id = ? AND state = ?`, inboxState,
+			receipt.Layer, RelayReceiptFailed, RelayReceiptApplicationAck,
+			timestamp, attempt.RecipientEndpointID, attempt.Sequence, attempt.MessageID,
+			attempt.AttemptID, inboxStateForAttempt(attempt.State))
+		if err != nil {
+			return nil, err
+		}
+		changed, err := updatedInbox.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if changed != 1 {
+			return nil, ErrRelayStaleReceipt
+		}
+	}
+	if attempt.State == RelayAttemptAcked {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		receipt.CreatedAt = timestamp
+		receipt.Status = receipt.Layer
+		return &receipt, nil
 	}
 	if inboxState == RelayInboxAcked {
 		if err := relayAdvanceCursorTx(tx, attempt.RecipientEndpointID, attempt.ConsumerID,
@@ -3067,6 +3180,19 @@ WHERE recipient_endpoint_id = ? AND sequence = ? AND message_id = ?`, inboxState
 	receipt.CreatedAt = timestamp
 	receipt.Status = receipt.Layer
 	return &receipt, nil
+}
+
+func inboxStateForAttempt(attemptState string) string {
+	switch attemptState {
+	case RelayAttemptInjected:
+		return RelayInboxInjected
+	case RelayAttemptUncertain:
+		return RelayInboxUncertain
+	case RelayAttemptAcked:
+		return RelayInboxAcked
+	default:
+		return RelayInboxClaimed
+	}
 }
 
 func (s *Store) AcknowledgeRelayDelivery(receipt RelayReceipt) (*RelayReceipt, error) {
@@ -3159,6 +3285,34 @@ FROM relay_v2_receipts WHERE receipt_id = ?`, relayString(receiptID)))
 		return nil, ErrRelayDeliveryNotFound
 	}
 	return receipt, nil
+}
+
+// HasRelayReceiptForAttempt reports whether an exact receipt layer is already
+// durable for the immutable coordinates of a delivery attempt. Node recovery
+// uses this only to permit a stale binding to repeat NODE_RECEIVED after the
+// Hub committed it but the response/journal update was lost.
+func (s *Store) HasRelayReceiptForAttempt(receipt RelayReceipt) (bool, error) {
+	receipt.AttemptID = relayString(receipt.AttemptID)
+	receipt.MessageID = relayString(receipt.MessageID)
+	receipt.Digest = relayString(receipt.Digest)
+	receipt.TargetEndpointID = relayString(receipt.TargetEndpointID)
+	receipt.BindingID = relayString(receipt.BindingID)
+	receipt.Layer = relayString(receipt.Layer)
+	if receipt.AttemptID == "" || receipt.MessageID == "" || receipt.Digest == "" ||
+		receipt.TargetEndpointID == "" || receipt.BindingID == "" || receipt.BindingEpoch == 0 || receipt.Layer == "" {
+		return false, ErrRelayInvalidReceipt
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var exists int
+	err := s.db.QueryRow(`SELECT 1 FROM relay_v2_receipts WHERE attempt_id = ? AND message_id = ?
+AND digest = ? AND target_endpoint_id = ? AND binding_id = ? AND binding_epoch = ? AND layer = ? LIMIT 1`,
+		receipt.AttemptID, receipt.MessageID, receipt.Digest, receipt.TargetEndpointID,
+		receipt.BindingID, receipt.BindingEpoch, receipt.Layer).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *Store) ListRelayReceipts(messageID string, limit int) ([]RelayReceipt, error) {

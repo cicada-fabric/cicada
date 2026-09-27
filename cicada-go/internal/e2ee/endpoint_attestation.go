@@ -43,6 +43,9 @@ func (attestation EndpointKeyAttestation) validateClaims() error {
 }
 
 func endpointAttestationSignedBytes(attestation EndpointKeyAttestation) ([]byte, error) {
+	// v1 signs the complete ordered JSON shape with a null signature field.
+	// Preserve these bytes for persisted candidates and owner grants: omitting
+	// the field would invalidate their existing proofs.
 	attestation.Signature = nil
 	encoded, err := json.Marshal(attestation)
 	if err != nil {

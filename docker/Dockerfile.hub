@@ -33,7 +33,7 @@ LABEL org.opencontainers.image.title="CICADA Hub interop test runner" \
       org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
       org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}"
 WORKDIR /src
-ENTRYPOINT ["go", "test", "-json", "./internal/server", "-run", "^TestClientDockerHubSmoke$", "-count=1"]
+ENTRYPOINT ["go", "test", "-json", "-p=1", "./internal/server", "./cmd/client-recovery-fixture", "-run", "^TestClientDockerHub(Smoke|RecoveryFixture)$", "-count=1"]
 
 FROM alpine:3.24 AS hub-runtime
 

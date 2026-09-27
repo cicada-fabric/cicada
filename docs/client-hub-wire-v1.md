@@ -1,6 +1,6 @@
 # Client ↔ Hub wire contract (server implementation)
 
-This document describes the **implemented Hub side** for the separate Android repository. Packet framing is version 1. The cross-repository operation catalog revision is `client-hub-v1.2`; its `catalog_sha256` is computed over only the exact embedded `internal/clientcontract/catalog.json` bytes, not this whole document or a complete protocol bundle. The public capabilities response keeps `contract=android-hub-v1-draft` and `status=partial` (or `not_ready` when Control is unavailable); the separate pinned identity document keeps `contract=android-hub-v1`. These names serve different endpoints and remain distinct. `available_rpc_operations` lists the resident manager's operations; `external_rpc_operations` lists an enrolled outside owner's restricted operations. After enrollment, call encrypted `session.capabilities` for the actual device's scope and catalog digest. A `true` flag reports a Hub implementation, not independent Android interoperability. `status_events` and routable `external_thread_links` remain `false`. The Hub combines Control, Directory and Relay in development, but only Control decrypts these management packets. Peer Endpoint messages use a different identity and must not enter this RPC.
+This document describes the **implemented Hub side** for the separate Android repository. Packet framing is version 1. The cross-repository operation catalog revision is `client-hub-v1.2.1`; its `catalog_sha256` is computed over only the exact embedded `internal/clientcontract/catalog.json` bytes, not this whole document or a complete protocol bundle. The public capabilities response keeps `contract=android-hub-v1-draft` and `status=partial` (or `not_ready` when Control is unavailable); the separate pinned identity document keeps `contract=android-hub-v1`. These names serve different endpoints and remain distinct. `available_rpc_operations` lists the resident manager's operations; `external_rpc_operations` lists an enrolled outside owner's restricted operations. After enrollment, call encrypted `session.capabilities` for the actual device's scope and catalog digest. A `true` flag reports a Hub implementation, not independent Android interoperability. `status_events` and routable `external_thread_links` remain `false`. The Hub combines Control, Directory and Relay in development, but only Control decrypts these management packets. Peer Endpoint messages use a different identity and must not enter this RPC.
 
 ## Client contract at a glance
 
@@ -156,8 +156,19 @@ Require `version=1`, all identity/binding fields to equal the manifest, and
 the public identity to equal `candidate_public_identity`. Validate the
 ML-KEM-768 and ML-DSA-65 public keys and derive the `pq1-...` key ID from
 their bytes. Verify the ML-DSA-65 `signature` with that public signing key
-over `UTF-8("cicada/fabric/endpoint-key-attestation/v1\x00") || compact_JSON(unsigned_claims)`;
-`unsigned_claims` uses the same field order above, excluding `signature`.
+over `UTF-8("cicada/fabric/endpoint-key-attestation/v1\x00") || compact_JSON(unsigned_claims)`.
+For EndpointKeyAttestation **v1**, `unsigned_claims` is the complete compact JSON
+object in that field order, including a final `"signature":null` field. This is
+the exact byte string Go signs and verifies after setting its `[]byte` signature
+field to nil. `public_identity` is an ordered compact object with
+`id,kem_public,signing_public`; both public-key byte arrays use standard padded
+base64 JSON strings. The proof itself carries the base64 signature string. Omitting the
+field produces a different signature input and MUST fail verification. This
+v1 encoding preserves already issued Endpoint candidates and owner grants;
+`client-hub-v1.2.1` corrects the published contract, not the on-disk proof bytes.
+The public, synthetic `endpoint-key-attestation-v1.json` vector in the protocol
+bundle contains the complete proof, full public identity, exact signed-input
+hex bytes and proof SHA-256 for independent Client verification.
 Also require `candidate_proof_digest == lowercase_hex(SHA-256(raw_decoded_attestation_bytes))`,
 `candidate_key_id == candidate_public_identity.id`, and
 `candidate_fingerprint == "sha256:" + lowercase_hex(SHA-256(UTF-8("cicada/nodekeys/peer-key-fingerprint/v1\x00") || kem_public_bytes || signing_public_bytes))`.

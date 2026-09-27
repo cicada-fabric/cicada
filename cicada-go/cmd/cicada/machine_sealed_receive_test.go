@@ -23,24 +23,29 @@ import (
 )
 
 type machineSealedReceiveFixture struct {
-	store          *store.Store
-	service        *fabric.Service
-	stateDir       string
-	sourceNodeID   string
-	sourceToken    string
-	sourceEndpoint string
-	sourceKey      *e2ee.Identity
-	targetNodeID   string
-	targetToken    string
-	targetKey      *e2ee.Identity
-	link           *store.CommunicationLink
-	manifest       *store.CommunicationLinkKeyManifest
-	dataScope      string
-	ciphertext     []byte
-	messageID      string
-	requestID      string
-	targetEndpoint string
-	claimed        []fabric.NodeSealedDelivery
+	store               *store.Store
+	service             *fabric.Service
+	databasePath        string
+	stateDir            string
+	sourceNodeID        string
+	sourceToken         string
+	sourceOwnerKeyID    string
+	sourceOwnerIdentity *e2ee.Identity
+	sourceEndpoint      string
+	sourceKey           *e2ee.Identity
+	targetNodeID        string
+	targetToken         string
+	targetOwnerKeyID    string
+	targetOwnerIdentity *e2ee.Identity
+	targetKey           *e2ee.Identity
+	link                *store.CommunicationLink
+	manifest            *store.CommunicationLinkKeyManifest
+	dataScope           string
+	ciphertext          []byte
+	messageID           string
+	requestID           string
+	targetEndpoint      string
+	claimed             []fabric.NodeSealedDelivery
 }
 
 func newMachineSealedReceiveFixture(t *testing.T) *machineSealedReceiveFixture {
@@ -65,8 +70,34 @@ func newMachineSealedReceiveFixtureWithSeedAndRouteKind(t *testing.T, seedMessag
 
 func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 	routeKind string, actions []string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithActionsForNativeSessions(t, seedMessage,
+		routeKind, actions, "", "")
+}
+
+func newMachineSealedReceiveFixtureWithActionsForNativeSessions(t *testing.T, seedMessage bool,
+	routeKind string, actions []string, sourceNativeSessionID, targetNativeSessionID string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithEndpointGrantsForNativeSessions(t, seedMessage,
+		routeKind, actions, []string{"message.ask"}, sourceNativeSessionID, targetNativeSessionID)
+}
+
+func newMachineSealedReceiveFixtureWithEndpointGrantsForNativeSessions(t *testing.T, seedMessage bool,
+	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t, seedMessage,
+		routeKind, actions, endpointGrants, sourceNativeSessionID, targetNativeSessionID, false)
+}
+
+func newMachineSealedReceiveFixtureWithDeferredOwnerGrantsForNativeSessions(t *testing.T, seedMessage bool,
+	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t, seedMessage,
+		routeKind, actions, endpointGrants, sourceNativeSessionID, targetNativeSessionID, true)
+}
+
+func newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t *testing.T, seedMessage bool,
+	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string,
+	deferOwnerGrants bool) *machineSealedReceiveFixture {
 	t.Helper()
-	state, err := store.New(filepath.Join(t.TempDir(), "hub.sqlite3"))
+	databasePath := filepath.Join(t.TempDir(), "hub.sqlite3")
+	state, err := store.New(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,8 +166,11 @@ func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 		principal  string
 		bindingID  string
 	}
-	makeEndpoint := func(ownerID, groupID, endpointID, nodeID string) endpointSetup {
+	makeEndpoint := func(ownerID, groupID, endpointID, nodeID, nativeSessionID string) endpointSetup {
 		t.Helper()
+		if strings.TrimSpace(nativeSessionID) == "" {
+			nativeSessionID = "native_" + endpointID
+		}
 		owner, err := state.CreatePrincipal(store.Principal{ID: ownerID,
 			Kind: store.PrincipalKindHuman, OwnerID: ownerID, TrustDomainID: ownerID, Name: ownerID})
 		if err != nil {
@@ -152,10 +186,9 @@ func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 			t.Fatal(err)
 		}
 		if _, err := state.CreateMembership(store.Membership{PrincipalID: principal.ID,
-			GroupID: groupID, Role: "member", Grants: []string{"message.ask"}}); err != nil {
+			GroupID: groupID, Role: "member", Grants: append([]string(nil), endpointGrants...)}); err != nil {
 			t.Fatal(err)
 		}
-		nativeSessionID := "native_" + endpointID
 		endpoint, err := state.UpsertEndpoint(store.Endpoint{ID: endpointID, Name: endpointID,
 			Harness: "codex", NativeSessionID: nativeSessionID, MachineID: nodeID,
 			Owner: ownerID, Status: "online"})
@@ -177,8 +210,8 @@ func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 
 	sourceOwner := newBoundNode("owner_source", "node_source")
 	targetOwner := newBoundNode("owner_target", "node_target")
-	source := makeEndpoint("owner_source", "group_source", "ep_source", "node_source")
-	target := makeEndpoint("owner_target", "group_target", "ep_target", "node_target")
+	source := makeEndpoint("owner_source", "group_source", "ep_source", "node_source", sourceNativeSessionID)
+	target := makeEndpoint("owner_target", "group_target", "ep_target", "node_target", targetNativeSessionID)
 	hubID, err := state.GetClientHubID()
 	if err != nil {
 		t.Fatal(err)
@@ -245,6 +278,9 @@ func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 		{link.SourceOwnerID, sourceOwner.keyID, sourceOwner.identity, e2ee.OwnerLinkGrantSideSource},
 		{link.TargetOwnerID, targetOwner.keyID, targetOwner.identity, e2ee.OwnerLinkGrantSideTarget},
 	} {
+		if deferOwnerGrants {
+			continue
+		}
 		proof, err := grant.identity.SignOwnerLinkKeyGrant(grant.ownerID, link.ID,
 			link.ContractDigest, manifest.Digest, uint64(link.Version), grant.side,
 			time.Now().UTC().Add(-time.Minute), linkExpiry)
@@ -328,10 +364,12 @@ func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 			}
 		}
 	}
-	return &machineSealedReceiveFixture{store: state, service: service, stateDir: stateDir,
+	return &machineSealedReceiveFixture{store: state, service: service, databasePath: databasePath, stateDir: stateDir,
 		sourceNodeID: source.nodeID, sourceToken: sourceOwner.nodeToken,
+		sourceOwnerKeyID: sourceOwner.keyID, sourceOwnerIdentity: sourceOwner.identity,
 		sourceEndpoint: source.endpointID, sourceKey: sourceKey,
 		targetNodeID: target.nodeID, targetToken: targetOwner.nodeToken,
+		targetOwnerKeyID: targetOwner.keyID, targetOwnerIdentity: targetOwner.identity,
 		targetKey: targetKey,
 		link:      link, manifest: manifest, dataScope: "thread.message", ciphertext: ciphertext,
 		messageID: context.MessageID, requestID: context.RequestID, targetEndpoint: target.endpointID}
@@ -507,7 +545,7 @@ func TestMachineSealedReceivePersistsInjectsExactThreadAndDedupes(t *testing.T) 
 	if err != nil || string(count) != "x" {
 		t.Fatalf("sealed message queue count=%q error=%v", count, err)
 	}
-	if strings.Join(receipts, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(receipts, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("sealed receipt layers=%v", receipts)
 	}
 	stored, err := inbox.Get(context.Background(), fixture.messageID)
@@ -569,7 +607,7 @@ func TestMachineSealedRequestDecryptsAndQueuesExactNativeSession(t *testing.T) {
 	if err != nil || string(count) != "x" {
 		t.Fatalf("sealed REQUEST queue count=%q error=%v", count, err)
 	}
-	if strings.Join(receipts, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(receipts, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("sealed REQUEST receipt layers=%v", receipts)
 	}
 	stored, err := inbox.Get(context.Background(), fixture.messageID)
@@ -709,7 +747,7 @@ func TestMachineSealedReplyReturnsToOriginalRequesterSession(t *testing.T) {
 	if err != nil || string(count) != "x" {
 		t.Fatalf("sealed REPLY queue count=%q error=%v", count, err)
 	}
-	if strings.Join(receipts, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(receipts, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("sealed REPLY receipt layers=%v", receipts)
 	}
 	stored, err := inbox.Get(context.Background(), replyMessageID)
@@ -845,7 +883,7 @@ func TestMachineSealedReplyRecoversCrashBeforeInboxSave(t *testing.T) {
 	if err != nil || string(count) != "x" {
 		t.Fatalf("recovered REPLY queue count=%q error=%v", count, err)
 	}
-	if strings.Join(receipts, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(receipts, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("recovered REPLY receipt layers=%v", receipts)
 	}
 }

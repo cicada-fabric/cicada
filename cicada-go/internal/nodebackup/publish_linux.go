@@ -21,19 +21,19 @@ func publishNewDirectory(source, destination string) error {
 	return syncDirectory(filepath.Dir(destination))
 }
 
-func publishRestoreDirectory(source, destination string) error {
+func publishRestoreDirectory(source, destination string) (bool, error) {
 	removedEmptyTarget := false
 	info, err := os.Lstat(destination)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return ErrRestoreTargetBusy
+			return false, ErrRestoreTargetBusy
 		}
 		contents, readErr := os.ReadDir(destination)
 		if readErr != nil {
-			return fmt.Errorf("recheck Node restore target: %w", readErr)
+			return false, fmt.Errorf("recheck Node restore target: %w", readErr)
 		}
 		if len(contents) != 0 {
-			return ErrRestoreTargetBusy
+			return false, ErrRestoreTargetBusy
 		}
 		// Removing only an empty directory makes an existing empty target
 		// portable across filesystems. AT_REMOVEDIR also fails closed if the
@@ -41,15 +41,15 @@ func publishRestoreDirectory(source, destination string) error {
 		if removeErr := unix.Unlinkat(unix.AT_FDCWD, destination, unix.AT_REMOVEDIR); removeErr != nil {
 			if !errors.Is(removeErr, unix.ENOENT) {
 				if errors.Is(removeErr, unix.ENOTEMPTY) || errors.Is(removeErr, unix.EEXIST) || errors.Is(removeErr, unix.ENOTDIR) {
-					return ErrRestoreTargetBusy
+					return false, ErrRestoreTargetBusy
 				}
-				return fmt.Errorf("remove empty Node restore target: %w", removeErr)
+				return false, fmt.Errorf("remove empty Node restore target: %w", removeErr)
 			}
 		} else {
 			removedEmptyTarget = true
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("recheck Node restore target: %w", err)
+		return false, fmt.Errorf("recheck Node restore target: %w", err)
 	}
 	if err := renameNoReplace(source, destination); err != nil {
 		if removedEmptyTarget {
@@ -62,11 +62,14 @@ func publishRestoreDirectory(source, destination string) error {
 			}
 		}
 		if errors.Is(err, unix.EEXIST) || errors.Is(err, unix.ENOTEMPTY) {
-			return ErrRestoreTargetBusy
+			return false, ErrRestoreTargetBusy
 		}
-		return fmt.Errorf("atomically publish quarantined Node restore: %w", err)
+		return false, fmt.Errorf("atomically publish quarantined Node restore: %w", err)
 	}
-	return syncDirectory(filepath.Dir(destination))
+	if err := syncDirectory(filepath.Dir(destination)); err != nil {
+		return true, fmt.Errorf("sync published Node restore parent: %w", err)
+	}
+	return true, nil
 }
 
 func renameNoReplace(source, destination string) error {

@@ -1,5 +1,165 @@
 # v2 原生 MCP 验收记录
 
+## 2026-09-25 同 Group 三 Thread 广播：协议通过，原生闭环未通过
+
+新增 opt-in `TestMCPSealedSameGroupBroadcastNative`，使用同一逻辑 Node 的三个
+真实 Codex Thread、显式 MCP Join、发送者 `cicada_broadcast`，并要求两名接收者
+分别在原 Thread 通过 `cicada_receive` 取得各自的 sealed child message 和原有
+上下文。默认未设置 `CICADA_BROADCAST_NATIVE_E2E=1` 时明确 SKIP。
+无模型的路径/结构化结果解析向量、`TestMCPBroadcastLocalAndRemoteSealedFullChain`
+及现有 Group Broadcast/Store/Hub 定向测试通过。完整原生测试仍 **未通过**：
+
+| 隔离尝试 | 结果 | 到达的可信阶段与失败边界 |
+|---|---|---|
+| 1 | exit 1，236.06 秒 | 三 Thread Join，发送者广播 MCP 调用完成且两条本地子消息持久接受；测试夹具误读 MCP outbox 路径，尚未验证 Node queue/接收。 |
+| 2 | exit 1，223.89 秒 | 三 Thread Join，outbox `SENT/complete/2`，Hub 当前成员快照、两条 exact-session Node inbox 与 queue 均有证据；第一接收者原 Thread 的 `cicada_receive` 工具事件完成，但夹具错误解析 wrapper/`omitempty` 字段，未确认消息体或上下文，也未运行第二接收者和最终 Hub/Control 断言。此后无模型解析向量已修正。 |
+| 3 | exit 1，187.68 秒 | 从干净 `c4eb00664a238eee8344044bfcbc1f4275c1ddb6` 冻结二进制；三条初始 native Thread/session record 成立，第一个发送者的 `cicada_join` 因 Codex 自动审批等待超过 deadline 失败，未到广播。该错误不是 HTTP 403，也没有 CICADA Guard 拒绝证据。未作第四次真实重试。 |
+
+第三轮使用 Go 1.27.1 编译的 app/test 二进制 SHA-256 分别为
+`049ec226d7b02a976b864a1964e89c522e2aa405cc7888fdd8bf63e67ac486e6` /
+`8e163f32b13e63bb916468ade85cb87312dd0cf13ac7b76e2f52546e015d29e5`，
+Codex CLI `0.156.1`，本地隔离镜像
+`sha256:6dd50c3c2494b20853a5a8ab7c8bfe53ece3873cf5d647c903402004cc45de2f`。
+三条初始 native Session 仅记录 SHA-256 短标签：发送者
+`4262c2eac3bd28cf`，接收者一 `872fb86db0da34f2`，接收者二
+`bcef16299093c7a8`。第三轮没有成功 Join，故不存在可报告的 Endpoint、
+broadcast 或 child message ID。第一、二轮的部分阶段不能拼成一条完整 PASS；
+三轮均不能证明两名接收者消费、双物理机、无人值守唤醒或用户经 Monitor 广播。
+容器使用临时 `CODEX_HOME`，退出后一次性 Node/Hub/MCP 状态已删除；测试凭据
+仅经隔离容器环境文件注入，不写入仓库或验收记录。
+
+## 2026-09-25 Codex 0.157 冷 Thread 与 MCP ID 协议核验
+
+核验使用官方 Codex CLI `0.157.0`（本机二进制 SHA-256
+`138b3fd3150ffc03ca5270f9e66cbec841742b2980dbfad47d88a5564f2965bf`）。在隔离
+`CODEX_HOME` 中运行 `codex app-server generate-ts --experimental --out <temp>`，生成的
+0.157.0 协议类型显示：`thread/queue/add` 有 `clientUserMessageId`；队列项包含自己的
+`id`、`input` 和 `clientUserMessageId`；`thread/queue/start` 接受 `threadId` 与可选
+`queuedSubmissionId`，返回 `{turn}`；`thread/resume` 必须带 `threadId`，响应含 Thread
+及配置/历史页字段。resume 文档注明按 ID 从盘加载；若该 ID 已运行则重新加入运行中的
+Thread。`thread/loaded/list` 只列当前载入的 Thread IDs；Thread 状态为 `notLoaded`、
+`idle`、`systemError` 或带 flags 的 `active`，没有 Node owner、前台租约或 generation
+字段。上述 API 没有 expected-owner/expected-generation CAS，读取 `notLoaded` 与后续
+resume 之间也没有原子保护；resume 的响应不提供队列消费或模型完成回执，调用超时/进程
+退出后的执行结果仍可能未知。可选 `queuedSubmissionId` 是精确队列项定位字段，不是
+`queue/add` 的去重保证；隔离协议探针曾观察到相同 `clientUserMessageId` 再次 add 会产生
+重复项。
+
+此前一次 0.157.0 隔离只读冷队列观察得到 `thread/read=status.notLoaded`、精确 Thread 的
+`thread/queue/list` 返回一个与持久提交见证唯一匹配的条目；该观察未调用 resume 或
+queue/start。Codex 维护者在 [issue #44491](https://github.com/openai/codex/issues/44491)
+中解释，CLI queue 对未加载 Thread 只持久排队而不自动恢复；issue 的实测版本为 0.154，
+因此仅作为与本地 0.157 协议观察一致的上游背景，不替代本版本 wake 验收。
+
+MCP ID 探针也在临时 `CODEX_HOME` 中运行同一 `codex app-server --listen stdio://`，配置
+只指向受控 fake stdio MCP 子进程；完成 app-server `initialize`、一次
+`thread/start(ephemeral=true)` 与 `mcpServerStatus/list`，没有凭据、模型调用或 queue 操作。
+初始化、ephemeral Thread 和 MCP status 请求均成功，app-server/探针退出码均为 `0`；两个
+fake MCP 子进程实例的环境都没有 `CODEX_THREAD_ID`/`CODEX_SESSION_ID`，两次 MCP
+`initialize` 参数键都只有 `capabilities`、`clientInfo`、`protocolVersion`，未暴露
+native ID。隔离目录在结束后删除。该结果只证明 Codex 0.157 app-server 的这条启动方式；
+没有测试 TUI、IDE 或未来 Runtime，不能据此推断所有客户端。当前官方
+[Codex MCP 配置文档](https://developers.openai.com/codex/mcp)只记载 stdio 子进程的静态
+`env` 和从 local/remote executor 转发的 `env_vars`，没有文档化的 Thread-derived 来源。
+仓库 `detectCodexMCPJoinSession` 仅接受 `CODEX_THREAD_ID`/`CODEX_SESSION_ID`，原生测试
+由驱动显式设置，因此本探针不能证明普通全局 MCP 安装具备自动 Join 的 ID 来源。
+
+生产自动 cold resume 暂判 **UNSUPPORTED**：唯一队列见证与 `notLoaded` 快照仍无法证明
+执行 resume 时 Thread 未被前台所有者重新载入；官方接口没有 owner/generation 条件，且
+resume 的崩溃/超时窗口没有可查询的执行回执。现有 Node queue 成功只表示
+`CODEX_QUEUE_ACCEPTED`，不表示 Thread 已 wake 或模型已消费。原生模型测试使用受控安全点
+显式绑定 Session 后执行 `codex exec resume`；那不是 Node 无人值守恢复，也不能覆盖前台
+竞争。生产路径继续 fail closed，不会因 queue 成功就自行 resume、queue/start 或重投。
+
+## 2026-09-25 跨 owner CommunicationLink 原生验收：PASS
+
+`TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative` 在一次性
+`cicada-codex:updated` Docker 容器中以 Codex CLI `0.156.1`、`gpt-5.6-luna`
+和 Go `1.27.1` 通过，退出码 `0`，耗时 `228.02` 秒。两个不同 owner 的真实
+Codex Thread 在各自原 Thread 完成 MCP Join 与 Endpoint 公钥候选发布；A 调用
+密封 CommunicationLink Ask，B 在原 Thread 收到并调用 Reply，A 恢复原 Thread
+后同时保留了原上下文与 B 的回复。测试检查了 Hub HTTP 边界和 SQLite 中没有
+测试正文，并断言 Control business call 计数为 `0`，未访问
+`/v2/fabric/send`、`/v2/fabric/ask`、`/v2/fabric/reply`、
+`/v2/fabric/receive` 或 `/v2/control/`；必经的 Link authorization、sealed
+ASK、sealed REPLY 和 sealed claim 路径断言均通过。成功日志中的合成身份为 A
+owner `owner_source` / Endpoint `ep_source`、B owner `owner_target` / Endpoint
+`ep_target`，request `rq_1755face8d1ac24a5f7932ae04e02d89`，reply
+`msg_70f0dbdadad3a7ccc9585e25cc93db91`。两个 native Thread 仅以 SHA-256 短标签
+记录：A `sha256:2c92c5c747033b13`，B `sha256:d0e77867f62c75ec`。
+
+这次验收中发现并修正了两个测试夹具问题。其一，预设 Endpoint Membership 只给
+`message.ask`，但真实 Join 后候选发布先调用 WhoAmI，需要 `directory.read`；
+opt-in 合成成员现在显式具有 `directory.read`、`message.ask`、`message.reply`
+和 `message.receive`。其二，旧夹具在 Join 前签署 owner key grant；真实 Join 会
+轮换 SessionBinding 并重新发布候选，授权 manifest 因而必须按 Join 后的当前
+binding 和候选重新生成。opt-in 路径现在保留 Link、延后两侧 synthetic owner
+grant，直到双方实际 Join 和发布候选之后再签署，不修改生产 Guard。新增的
+`TestSyntheticCrossOwnerLinkAuthorizationAfterJoin` 不调用模型；它通过真实 Hub
+HTTP 流程完成两个 synthetic Node Join 和 Endpoint key 发布，然后验证两侧 owner
+grant 绑定当前 manifest，Store 检查以及两个 Node 凭据的 HTTP authorization
+bundle 均通过 `200`。这项检查是合成夹具证据，不是原生 Codex 证据。
+
+修正前的真实 FAIL 路径诊断保留：一次尝试在两侧 Node Join 均返回 `201` 后，
+`GET /v2/fabric/whoami` 返回 `403`；当时 Membership 仅含 `message.ask`。仅补足
+该权限后的下一次尝试中，两侧 WhoAmI 和候选发布均返回 `200`，但 A 的
+`GET /v2/relay/nodes/node_source/links/<synthetic-link>/authorization` 返回
+`404`，没有进入 sealed ASK。原因为夹具已用 Join 前 manifest 记录双侧 owner
+grant；当前授权 bundle 按新 SessionBinding/候选 fail closed。这两个 FAIL 均未
+运行完整 Ask/Reply。相关失败 Thread 标签仅保留为散列：WhoAmI 轮 A
+`sha256:daf3d2fbe5f9ca75`、B `sha256:078cfd4002f3b45e`；旧 grant 轮 A
+`sha256:31bbcd22fec5538e`、B `sha256:d6ce3b72fa95d667`。
+
+原生测试仍是 opt-in；未设置 `CICADA_CROSS_OWNER_NATIVE_E2E=1` 时明确 SKIP，
+不能计通过。真实验收在容器内使用隔离 tmpfs `CODEX_HOME`，通过本机 provider
+env 文件注入 API key，配置 MCP child 使用同一 `CODEX_HOME`，并用
+`omit_tools_from=["deferred"]` 直接公开 Cicada 工具。Go 构建与合成 preflight
+命令为：
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -v /home/zyf/go/pkg/mod:/go/pkg/mod:ro \
+  -v cicada-go-buildcache:/root/.cache/go-build \
+  -v /tmp/cicada-cross-owner-native-build:/out \
+  -w /workspace/cicada-go -e GOPROXY=off golang:1.27.1-bookworm \
+  sh -c 'gofmt -w cmd/cicada/communication_link_native_test.go cmd/cicada/machine_sealed_receive_test.go && \
+    go test -count=1 -run "^TestSyntheticCrossOwnerLinkAuthorizationAfterJoin$" ./cmd/cicada && \
+    go build -buildvcs=false -o /out/cicada-native ./cmd/cicada && \
+    go test -c -o /out/cicada.test ./cmd/cicada'
+```
+
+原生运行在 `cicada-codex:updated` 内执行等价于以下命令的有界单次测试：
+
+```bash
+docker run --rm --network host \
+  --env-file /gpu1-share/data/cicada/secrets/cicada.env \
+  -e HTTPS_PROXY=http://127.0.0.1:7890 -e HTTP_PROXY=http://127.0.0.1:7890 \
+  -e NO_PROXY=127.0.0.1,localhost \
+  -e CODEX_HOME=/tmp/cicada-cross-owner-codex-home \
+  -e CICADA_CROSS_OWNER_NATIVE_E2E=1 \
+  -e CICADA_NATIVE_MODEL=gpt-5.6-luna \
+  -e CICADA_CODEX_BIN=/usr/local/bin/codex \
+  -e CICADA_NATIVE_CICADA_BIN=/tmp/cicada-native \
+  --tmpfs /tmp/cicada-cross-owner-codex-home:rw,size=1g \
+  -v "$PWD/docker/codex-config.toml:/tmp/cicada-codex-config.toml:ro" \
+  -v /tmp/cicada-cross-owner-native-build/cicada-native:/tmp/cicada-native:ro \
+  -v /tmp/cicada-cross-owner-native-build/cicada.test:/tmp/cicada.test:ro \
+  -w /workspace/cicada-go --entrypoint /bin/sh cicada-codex:updated \
+  -c 'cp /tmp/cicada-codex-config.toml "$CODEX_HOME/config.toml" && \
+    /tmp/cicada.test -test.v -test.timeout=25m \
+    -test.run "^TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative$"'
+```
+
+该原生运行使用的 `/tmp/cicada-cross-owner-native-build/cicada.test` SHA-256 为
+`49bea5863d646fd3547b16a352ea0bbc8827075c0ee7dd80559601eab3b91829`。测试结束后，
+Go 测试源只发生了上述 opt-in 注释的文字编辑；运行二进制中的测试逻辑和当前
+工作树一致，但二进制不是由注释编辑后的字节级源码重新构建。没有生产二进制
+或部署镜像参与该验收。
+
+该结果证明同一物理主机上两个逻辑 Node、一个 disposable Hub 和两条真实 Codex
+Thread 的跨 owner 消费闭环；不证明双物理机、公网隔离或无人值守冷 Thread 唤醒。
+
 2026-09-24 **真实同组跨 Node 原生 ASK/REPLY PASS**：opt-in `TestMCPSealedCrossNodeGroupAskReplyNative` 在一次性 `cicada-codex:updated` Docker 容器中使用官方 shell 安装的 Codex CLI `0.156.1` 与 `gpt-5.6-luna`，退出码 0，耗时 171.22 秒。两个独立逻辑 Node 状态目录、两个真实原生 Codex Thread 和一个测试 Hub 完成显式 Join、A MCP Ask、B 原 Thread MCP Receive/Reply、A 原 Thread 收到关联回复并继续保留初始上下文。A Endpoint `ep_f217f9c04b362396` / native Session `01a0d2c8-ca08-7410-8bad-495462b7d1b1`；B Endpoint `ep_bcc822a880296304` / native Session `01a0d2c8-b243-7481-9a98-2fbde67e36ba`；请求 `rq_e77d87511d94c05784e564f1ae427894`，回复消息 `msg_c8325c7dbbc96fdd2bad1aa79e1fee2b`。测试从真实 `thread.started` 和本地 Session record 验证前后原生 ID 相同，Hub HTTP/SQLite 均不含测试正文，method/path whitelist 未见旧明文 Fabric 路由或 Control 业务调用。Control 业务对象未构造。测试驱动显式绑定 Session ID，在安全点调用官方 `codex exec resume`；这证明两个逻辑 Node 的真实模型消费，不证明无人值守唤醒、两个独立物理主机或公网网络隔离。
 
 首次运行其实完成了原生 A→B→A，但测试白名单遗漏正常 Node `/claim` 而退出码 1；之后一次测试把合成标记误写成 private，自动审批合理地拒绝 B `cicada_reply`；另两次模型直接结束回合而未调用 Ask/Join 工具。最终测试只在确认回合完全没有 MCP 工具调用时于同一原 Thread 补一次指令，不对已尝试或不确定的操作自动重试。提供方最初对 `gpt-5.6-luna` 返回无权限 403，用户开通后最小模型探针与上述最终原生运行均通过。

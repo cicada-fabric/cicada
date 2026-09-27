@@ -431,8 +431,19 @@ func (s *Store) initialize() error {
 	if _, err := s.db.Exec(`PRAGMA busy_timeout = 30000`); err != nil {
 		return fmt.Errorf("configure sqlite busy timeout: %w", err)
 	}
-	if _, err := s.db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		return fmt.Errorf("configure sqlite WAL: %w", err)
+	// Switching a legacy database to WAL can return SQLITE_BUSY immediately
+	// while another opener is doing the same, even with busy_timeout set. Wait
+	// for that short transition before taking the schema migration lock below.
+	walDeadline := time.Now().Add(30 * time.Second)
+	for {
+		_, err := s.db.Exec(`PRAGMA journal_mode = WAL`)
+		if err == nil {
+			break
+		}
+		if !isSQLiteBusy(err) || time.Now().After(walDeadline) {
+			return fmt.Errorf("configure sqlite WAL: %w", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if _, err := s.db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
 		return fmt.Errorf("configure sqlite foreign keys: %w", err)

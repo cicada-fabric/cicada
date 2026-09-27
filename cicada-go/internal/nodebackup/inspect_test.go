@@ -82,6 +82,17 @@ func TestRecoveryInspectRejectsMissingMarker(t *testing.T) {
 	}
 }
 
+func TestRecoveryRegistryKeepsRestoredNodeQuarantinedAfterMarkerLoss(t *testing.T) {
+	_, stateDir, nodeDir := createRecoveryInspectFixture(t)
+	if err := os.Remove(filepath.Join(nodeDir, recoveryMarker)); err != nil {
+		t.Fatal(err)
+	}
+	active, err := RecoveryQuarantineActive(stateDir, backupTestNodeID)
+	if err != nil || !active {
+		t.Fatalf("restored Node escaped quarantine after marker loss: active=%t err=%v", active, err)
+	}
+}
+
 func TestRecoveryInspectRejectsMarkerDigestMismatch(t *testing.T) {
 	backupDir, stateDir, nodeDir := createRecoveryInspectFixture(t)
 	markerPath := filepath.Join(nodeDir, recoveryMarker)

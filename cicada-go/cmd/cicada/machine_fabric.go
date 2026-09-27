@@ -37,6 +37,8 @@ type machineRelayJournalEntry struct {
 	SessionID         string                      `json:"session_id"`
 	Harness           string                      `json:"harness"`
 	NodeReceived      bool                        `json:"node_received,omitempty"`
+	QueueAccepted     bool                        `json:"codex_queue_accepted,omitempty"`
+	QueueAcceptedSent bool                        `json:"codex_queue_accepted_sent,omitempty"`
 	RuntimeInjected   bool                        `json:"runtime_injected,omitempty"`
 	ConsumptionSent   bool                        `json:"consumption_unconfirmed,omitempty"`
 	UncertainSent     bool                        `json:"injection_uncertain,omitempty"`
@@ -154,6 +156,8 @@ func (j *machineRelayJournal) put(delivery fabric.Delivery) error {
 		}
 		if previous.Digest == entry.Digest && previous.AttemptID == entry.AttemptID {
 			entry.NodeReceived = previous.NodeReceived
+			entry.QueueAccepted = previous.QueueAccepted
+			entry.QueueAcceptedSent = previous.QueueAcceptedSent
 			entry.RuntimeInjected = previous.RuntimeInjected
 			entry.ConsumptionSent = previous.ConsumptionSent
 			entry.UncertainSent = previous.UncertainSent
@@ -338,6 +342,14 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 		}
 		switch delivery.State {
 		case nodeinbox.INJECTION_UNCERTAIN:
+			if entry.QueueAccepted {
+				if err := completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal,
+					nodeinbox.Claim{Delivery: *delivery}, entry); err != nil {
+					return err
+				}
+				index--
+				continue
+			}
 			if entry.UncertainSent {
 				continue
 			}
@@ -357,6 +369,14 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 				index--
 			}
 		case nodeinbox.CONSUMPTION_UNCONFIRMED:
+			if entry.QueueAccepted {
+				if err := completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal,
+					nodeinbox.Claim{Delivery: *delivery}, entry); err != nil {
+					return err
+				}
+				index--
+				continue
+			}
 			if !entry.RuntimeInjected {
 				if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptRuntimeInjected, ""); err != nil {
 					return fmt.Errorf("report v2 RUNTIME_INJECTED for %s: %w", entry.MessageID, err)
@@ -468,24 +488,7 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 			}
 			continue
 		}
-		if _, err := inbox.RecordRuntimeInjected(ctx, machineRelayReceipt(*claim, nodeinbox.RUNTIME_INJECTED)); err != nil {
-			return fmt.Errorf("record local runtime injection for %s: %w", claim.MessageID, err)
-		}
-		if !entry.RuntimeInjected {
-			if err := reportMachineRelayReceiptReliably(ctx, base, machineID, *entry, fabric.ReceiptRuntimeInjected, ""); err != nil {
-				return fmt.Errorf("report v2 RUNTIME_INJECTED for %s: %w", claim.MessageID, err)
-			}
-			if err := journal.update(claim.MessageID, func(entry *machineRelayJournalEntry) {
-				entry.RuntimeInjected = true
-			}); err != nil {
-				return err
-			}
-			entry.RuntimeInjected = true
-		}
-		if _, err := inbox.RecordConsumptionUnconfirmed(ctx, machineRelayReceipt(*claim, nodeinbox.CONSUMPTION_UNCONFIRMED)); err != nil {
-			return fmt.Errorf("record local consumption uncertainty for %s: %w", claim.MessageID, err)
-		}
-		if err := reportMachineRelayConsumption(ctx, base, machineID, journal, *entry); err != nil {
+		if err := completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal, *claim, *entry); err != nil {
 			return err
 		}
 	}
@@ -497,6 +500,39 @@ func machineRelayReceipt(claim nodeinbox.Claim, state nodeinbox.State) nodeinbox
 		SessionID: claim.SessionID, BindingEpoch: claim.BindingEpoch,
 		AttemptID: claim.AttemptID, State: state,
 	}
+}
+
+// completeMachineRelayCodexQueue persists the confirmed CLI queue result and
+// reports that the queued message has not yet been confirmed as woken or
+// consumed. It never infers RUNTIME_INJECTED from a zero queue exit.
+func completeMachineRelayCodexQueue(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox,
+	journal *machineRelayJournal, claim nodeinbox.Claim, entry machineRelayJournalEntry) error {
+	if !entry.QueueAccepted {
+		if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
+			entry.QueueAccepted = true
+		}); err != nil {
+			return err
+		}
+		entry.QueueAccepted = true
+	}
+	if _, err := inbox.RecordCodexQueueAccepted(ctx, machineRelayReceipt(claim, nodeinbox.CONSUMPTION_UNCONFIRMED)); err != nil {
+		return fmt.Errorf("record local CODEX_QUEUE_ACCEPTED for %s: %w", entry.MessageID, err)
+	}
+	if !entry.QueueAcceptedSent {
+		if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptCodexQueueAccepted, ""); err != nil {
+			return fmt.Errorf("report CODEX_QUEUE_ACCEPTED for %s: %w", entry.MessageID, err)
+		}
+		if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
+			entry.QueueAcceptedSent = true
+		}); err != nil {
+			return err
+		}
+		entry.QueueAcceptedSent = true
+	}
+	if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptConsumptionUncertain, ""); err != nil {
+		return fmt.Errorf("report queued but not consumed for %s: %w", entry.MessageID, err)
+	}
+	return journal.remove(entry.MessageID)
 }
 
 func finishMachineRelayRuntime(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, journal *machineRelayJournal, entry machineRelayJournalEntry, localRuntimeAlreadyRecorded bool) error {

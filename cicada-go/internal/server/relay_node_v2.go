@@ -63,6 +63,32 @@ func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Reques
 		writeJSON(response, http.StatusOK, bundle)
 		return
 	}
+	if parts[1] == "deliveries" {
+		response.Header().Set("Cache-Control", "no-store")
+		if len(parts) != 4 || parts[2] == "" || parts[3] != "authorization" {
+			writeError(response, http.StatusNotFound, errors.New("relay node route not found"))
+			return
+		}
+		if request.Method != http.MethodGet {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		attemptID := request.URL.Query().Get("attempt_id")
+		if attemptID == "" {
+			writeError(response, http.StatusBadRequest, errors.New("attempt_id is required"))
+			return
+		}
+		authorization, err := h.fabricService.AuthorizeNodeNativeWake(token, nodeID,
+			fabricpkg.RelayNativeWakeAuthorizationInput{MessageID: parts[2], AttemptID: attemptID})
+		if err != nil {
+			// Current authorization deliberately hides whether a message,
+			// attempt, Endpoint, Group join, or binding still exists.
+			writeError(response, http.StatusNotFound, errors.New("current native wake authorization unavailable"))
+			return
+		}
+		writeJSON(response, http.StatusOK, authorization)
+		return
+	}
 	if parts[1] == "sealed" {
 		if len(parts) == 4 && parts[2] == "requests" && parts[3] != "" && request.Method == http.MethodGet {
 			status, err := h.fabricService.NodeSealedLinkRequestStatus(token, parts[3])

@@ -307,6 +307,141 @@ func TestRelaySealedV1ClaimRequiresReadyJoinAndActivePermission(t *testing.T) {
 	}
 }
 
+func enqueueSecondaryGroupSealedRelay(t *testing.T, f *localDeliveryAuthorizationFixture, messageID string) {
+	t.Helper()
+	groupID := "group_other"
+	input := RelaySealedV1Input{
+		Route: RelaySealedV1Route{MessageID: messageID,
+			SenderEndpointID: f.source.ID, ReceiverEndpointID: f.target.ID, Kind: "send"},
+		Security: RelayMessageSecurity{
+			SenderEndpointID: f.source.ID, SenderPrincipalID: f.source.PrincipalID,
+			SenderGroupID: f.group.ID, SenderBindingID: f.sourceBinding.ID,
+			SenderBindingEpoch: f.sourceBinding.Epoch,
+			ReceiverEndpointID: f.target.ID, ReceiverPrincipalID: f.target.PrincipalID,
+			ReceiverGroupID: groupID, ReceiverBindingID: f.targetBinding.ID,
+			ReceiverBindingEpoch: f.targetBinding.Epoch,
+			VisibilityPolicyRef:  "visible-to-recipient", AuthorizationRef: "link-grant-v1",
+		},
+		Ciphertext: []byte("synthetic sealed secondary-group payload"), IdempotencyKey: messageID,
+	}
+	if _, err := f.store.EnqueueRelaySealedV1(input); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRelaySealedV1ClaimSupportsSecondaryGroupsAndRetainsGuards(t *testing.T) {
+	t.Run("active secondary Group join", func(t *testing.T) {
+		f := newLocalDeliveryAuthorizationFixture(t)
+		if _, err := f.store.CreateMembership(Membership{PrincipalID: f.target.PrincipalID,
+			GroupID: "group_other", Role: "member", Grants: []string{"message.receive"},
+			Status: MembershipStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.JoinEndpointGroup(f.target.ID, "group_other"); err != nil {
+			t.Fatal(err)
+		}
+		enqueueSecondaryGroupSealedRelay(t, f, "msg-secondary-group-claim")
+		claimed, err := f.store.ClaimRelaySealedV1Inbox(RelayClaimInput{
+			RecipientEndpointID: f.target.ID, ConsumerID: "secondary-group-node",
+			BindingID: f.targetBinding.ID, BindingEpoch: f.targetBinding.Epoch, Limit: 1,
+		})
+		if err != nil || len(claimed) != 1 || claimed[0].ReceiverGroupID != "group_other" ||
+			claimed[0].BindingID != f.targetBinding.ID || claimed[0].BindingEpoch != f.targetBinding.Epoch {
+			t.Fatalf("active secondary-Group delivery was not claimable on its current binding: %#v err=%v", claimed, err)
+		}
+	})
+
+	t.Run("missing endpoint Group join", func(t *testing.T) {
+		f := newLocalDeliveryAuthorizationFixture(t)
+		if _, err := f.store.CreateMembership(Membership{PrincipalID: f.target.PrincipalID,
+			GroupID: "group_other", Role: "member", Grants: []string{"message.receive"},
+			Status: MembershipStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+		enqueueSecondaryGroupSealedRelay(t, f, "msg-secondary-group-unjoined")
+		claimed, err := f.store.ClaimRelaySealedV1Inbox(RelayClaimInput{
+			RecipientEndpointID: f.target.ID, ConsumerID: "unjoined-secondary-group-node",
+			BindingID: f.targetBinding.ID, BindingEpoch: f.targetBinding.Epoch, Limit: 1,
+		})
+		if err != nil || len(claimed) != 0 {
+			t.Fatalf("unjoined secondary Group claimed sealed delivery: %#v err=%v", claimed, err)
+		}
+	})
+
+	t.Run("revoked principal membership", func(t *testing.T) {
+		f := newLocalDeliveryAuthorizationFixture(t)
+		if _, err := f.store.CreateMembership(Membership{PrincipalID: f.target.PrincipalID,
+			GroupID: "group_other", Role: "member", Grants: []string{"message.receive"},
+			Status: MembershipStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.JoinEndpointGroup(f.target.ID, "group_other"); err != nil {
+			t.Fatal(err)
+		}
+		enqueueSecondaryGroupSealedRelay(t, f, "msg-secondary-group-revoked")
+		if _, err := f.store.RevokeMembershipForPrincipalGroup(f.target.PrincipalID,
+			"group_other", "test revocation"); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := f.store.ClaimRelaySealedV1Inbox(RelayClaimInput{
+			RecipientEndpointID: f.target.ID, ConsumerID: "revoked-secondary-group-node",
+			BindingID: f.targetBinding.ID, BindingEpoch: f.targetBinding.Epoch, Limit: 1,
+		})
+		if err != nil || len(claimed) != 0 {
+			t.Fatalf("revoked secondary-Group membership claimed sealed delivery: %#v err=%v", claimed, err)
+		}
+	})
+
+	t.Run("revoked endpoint Group join", func(t *testing.T) {
+		f := newLocalDeliveryAuthorizationFixture(t)
+		if _, err := f.store.CreateMembership(Membership{PrincipalID: f.target.PrincipalID,
+			GroupID: "group_other", Role: "member", Grants: []string{"message.receive"},
+			Status: MembershipStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.JoinEndpointGroup(f.target.ID, "group_other"); err != nil {
+			t.Fatal(err)
+		}
+		enqueueSecondaryGroupSealedRelay(t, f, "msg-secondary-group-left")
+		if _, err := f.store.LeaveEndpointGroup(f.target.ID, "group_other", f.targetBinding.ID,
+			f.targetBinding.Epoch, "test leave"); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := f.store.ClaimRelaySealedV1Inbox(RelayClaimInput{
+			RecipientEndpointID: f.target.ID, ConsumerID: "left-secondary-group-node",
+			BindingID: f.targetBinding.ID, BindingEpoch: f.targetBinding.Epoch, Limit: 1,
+		})
+		if err != nil || len(claimed) != 0 {
+			t.Fatalf("endpoint with revoked secondary-Group join claimed sealed delivery: %#v err=%v", claimed, err)
+		}
+	})
+
+	t.Run("stale binding epoch", func(t *testing.T) {
+		f := newLocalDeliveryAuthorizationFixture(t)
+		if _, err := f.store.CreateMembership(Membership{PrincipalID: f.target.PrincipalID,
+			GroupID: "group_other", Role: "member", Grants: []string{"message.receive"},
+			Status: MembershipStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.JoinEndpointGroup(f.target.ID, "group_other"); err != nil {
+			t.Fatal(err)
+		}
+		enqueueSecondaryGroupSealedRelay(t, f, "msg-secondary-group-stale-epoch")
+		if _, err := f.store.RotateSessionBindingCredential(f.targetBinding.ID, f.targetBinding.Epoch,
+			localDeliveryDigest("rotated target credential"), f.targetBinding.LeaseOwner,
+			time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := f.store.ClaimRelaySealedV1Inbox(RelayClaimInput{
+			RecipientEndpointID: f.target.ID, ConsumerID: "stale-secondary-group-node",
+			BindingID: f.targetBinding.ID, BindingEpoch: f.targetBinding.Epoch, Limit: 1,
+		})
+		if err != nil || len(claimed) != 0 {
+			t.Fatalf("old binding epoch claimed sealed delivery: %#v err=%v", claimed, err)
+		}
+	})
+}
+
 func TestRelayV2SchemaMigrationKeepsLegacyEnvelope(t *testing.T) {
 	path := t.TempDir() + "/state/cicada.sqlite3"
 	first, err := New(path)
@@ -705,6 +840,9 @@ func TestRelayV2ReceiptCannotRegressAfterRuntimeOrApplicationAck(t *testing.T) {
 	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptApplicationAck)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptResultAccepted)); err != nil {
+		t.Fatalf("business result receipt after transport ACK was rejected: %v", err)
+	}
 	// An exact duplicate of an already persisted receipt remains idempotent and
 	// must not mutate state.
 	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptRuntimeInjected)); err != nil {
@@ -718,5 +856,109 @@ func TestRelayV2ReceiptCannotRegressAfterRuntimeOrApplicationAck(t *testing.T) {
 	item, err := persistence.GetRelayInboxItem("ep-b", attempt.Sequence)
 	if err != nil || item.State != RelayInboxAcked {
 		t.Fatalf("regressive receipt changed inbox: %#v err=%v", item, err)
+	}
+	cursor, err := persistence.GetRelayCursor("ep-b", "node-b", "binding-b")
+	if err != nil || cursor.Sequence != attempt.Sequence {
+		t.Fatalf("RESULT_ACCEPTED regressed or advanced ACK cursor: %#v err=%v", cursor, err)
+	}
+}
+
+func TestRelayV2CodexRecoveryStagesAreDurableWithoutDeliveryProgress(t *testing.T) {
+	persistence := newRelayV2TestStore(t)
+	defer persistence.Close()
+	if _, err := persistence.CreateFabricRequest(relayTestAsk("rq-codex-stages", "msg-codex-stages", "digest-codex-stages", "operation-codex-stages", "body")); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := persistence.ClaimRelayInbox(RelayClaimInput{
+		RecipientEndpointID: "ep-b", ConsumerID: "node-b", BindingID: "binding-b", BindingEpoch: 7, Limit: 1,
+	})
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim=%#v err=%v", claimed, err)
+	}
+	attempt := claimed[0]
+	receipt := func(layer string) RelayReceipt {
+		return RelayReceipt{AttemptID: attempt.AttemptID, MessageID: attempt.MessageID,
+			Digest: attempt.Digest, TargetEndpointID: attempt.RecipientEndpointID,
+			BindingID: attempt.BindingID, BindingEpoch: attempt.BindingEpoch, Layer: layer}
+	}
+	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptCodexQueueAccepted)); !errors.Is(err, ErrRelayStaleReceipt) {
+		t.Fatalf("queue acceptance without durable Node receipt was accepted: %v", err)
+	}
+	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptNodeReceived)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptNativeThreadResumed)); !errors.Is(err, ErrRelayStaleReceipt) {
+		t.Fatalf("native resume without queued submission was accepted: %v", err)
+	}
+	for _, layer := range []string{RelayReceiptCodexQueueAccepted, RelayReceiptNativeThreadResumed} {
+		if _, err := persistence.RecordRelayReceipt(receipt(layer)); err != nil {
+			t.Fatalf("could not persist %s: %v", layer, err)
+		}
+	}
+	state, err := persistence.GetRelayDeliveryAttempt(attempt.AttemptID)
+	if err != nil || state.State != RelayAttemptClaimed {
+		t.Fatalf("operational stages advanced attempt state: %#v err=%v", state, err)
+	}
+	item, err := persistence.GetRelayInboxItem("ep-b", attempt.Sequence)
+	if err != nil || item.State != RelayInboxClaimed || item.AttemptID != attempt.AttemptID {
+		t.Fatalf("operational stages changed inbox ownership: %#v err=%v", item, err)
+	}
+	cursor, err := persistence.GetRelayCursor("ep-b", "node-b", "binding-b")
+	if err != nil || cursor.Sequence != 0 {
+		t.Fatalf("operational stages advanced consumer cursor: %#v err=%v", cursor, err)
+	}
+	if _, err := persistence.RecordRelayReceipt(receipt(RelayReceiptRuntimeInjected)); err != nil {
+		t.Fatalf("runtime start acceptance was not recorded: %v", err)
+	}
+}
+
+func TestRelayV2StaleAttemptCannotOverwriteNewInboxClaim(t *testing.T) {
+	persistence := newRelayV2TestStore(t)
+	defer persistence.Close()
+	if _, err := persistence.CreateFabricRequest(relayTestAsk("rq-attempt-fence", "msg-attempt-fence", "digest-attempt-fence", "operation-attempt-fence", "body")); err != nil {
+		t.Fatal(err)
+	}
+	first, err := persistence.ClaimRelayInbox(RelayClaimInput{
+		RecipientEndpointID: "ep-b", ConsumerID: "node-b", BindingID: "binding-b", BindingEpoch: 7, Limit: 1,
+	})
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first claim=%#v err=%v", first, err)
+	}
+	old := first[0]
+	oldReceipt := RelayReceipt{AttemptID: old.AttemptID, MessageID: old.MessageID, Digest: old.Digest,
+		TargetEndpointID: old.RecipientEndpointID, BindingID: old.BindingID, BindingEpoch: old.BindingEpoch,
+		Layer: RelayReceiptNodeReceived}
+	if _, err := persistence.RecordRelayReceipt(oldReceipt); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the race invariant directly: simulate recovery/reconciliation
+	// making a newer claim current while the previous uncertain attempt remains
+	// addressable for a delayed receipt.
+	if _, err := persistence.db.Exec(`UPDATE relay_v2_inbox SET state = ?, attempt_id = ''
+WHERE recipient_endpoint_id = ? AND sequence = ?`, RelayInboxReady, "ep-b", old.Sequence); err != nil {
+		t.Fatal(err)
+	}
+	second, err := persistence.ClaimRelayInbox(RelayClaimInput{
+		RecipientEndpointID: "ep-b", ConsumerID: "node-b-next", BindingID: "binding-b", BindingEpoch: 7, Limit: 1,
+	})
+	if err != nil || len(second) != 1 || second[0].AttemptID == old.AttemptID {
+		t.Fatalf("second claim=%#v err=%v", second, err)
+	}
+	late := oldReceipt
+	late.Layer = RelayReceiptRuntimeInjected
+	if _, err := persistence.RecordRelayReceipt(late); !errors.Is(err, ErrRelayStaleReceipt) {
+		t.Fatalf("old attempt receipt was not fenced: %v", err)
+	}
+	item, err := persistence.GetRelayInboxItem("ep-b", old.Sequence)
+	if err != nil || item.State != RelayInboxClaimed || item.AttemptID != second[0].AttemptID {
+		t.Fatalf("old receipt overwrote newer inbox owner: %#v err=%v", item, err)
+	}
+	newAttempt, err := persistence.GetRelayDeliveryAttempt(second[0].AttemptID)
+	if err != nil || newAttempt.State != RelayAttemptClaimed {
+		t.Fatalf("old receipt changed new attempt state: %#v err=%v", newAttempt, err)
+	}
+	cursor, err := persistence.GetRelayCursor("ep-b", "node-b-next", "binding-b")
+	if err != nil || cursor.Sequence != 0 {
+		t.Fatalf("old receipt advanced new owner's cursor: %#v err=%v", cursor, err)
 	}
 }

@@ -1,5 +1,33 @@
 # Architecture v2.1 数据与协议迁移
 
+## 2026-09-25 Relay/Node 语义修正（无 schema 迁移）
+
+本切片没有提高 Hub 或 Node 数据库 schema 版本，也没有重写历史消息、Endpoint、
+Group、Goal、Contact、Approval、密钥或 replay 计数。Relay 在既有
+`relay_v2_receipts.layer` 文本列记录 `CODEX_QUEUE_ACCEPTED` 和未来可核实的
+`NATIVE_THREAD_RESUMED` 审计层；旧回执原样保留。新 Node 代码只把
+`codex queue` 的成功视为队列接受，保留原有本地
+`CONSUMPTION_UNCONFIRMED` 行的读取方式，不据此推断模型消费。旧数据中的
+`RUNTIME_INJECTED` 是当时实现写出的历史记录，迁移不会倒推或伪造新的
+原生唤醒证明。
+
+sealed claim 现在依据 Endpoint 的精确目标 Group Join 和 Principal Membership，
+不再要求目标 Group 等于 `SessionBinding.group_id` 的首次 Join 投影；Endpoint ID、
+native Session、binding epoch 与已有消息/密文均不变。原生唤醒授权新读接口
+仅准许 PLAINTEXT 当前 attempt；sealed Link 继续使用其专用双边授权接口。
+升级时保持原 StateDir 与 Node 私有账本，先按既有流程一致点备份；不要删除或
+重建数据以获得这些代码语义修正。
+
+## Client–Hub v1.2.1 Endpoint 证明合同勘误
+
+v1 EndpointKeyAttestation 的 Go 签发和验证自实现起均使用域分离字节加完整
+有序 compact JSON，并在末尾包含 `"signature":null`。旧 v1.2 wire 文档误写
+为省略 signature；v1.2.1 只修正跨仓合同与公开合成向量，不改变实际签名算法、
+证明原始字节或数据库 schema。现有 Endpoint key candidate 的证明摘要、
+owner Group/Link Grant、Node pin、Contact、私钥和 replay 计数保持原样。
+Client 必须按新固定包独立验证完整证明后才签新 Grant；旧固定合同的
+“省略 signature”实现不得被当作兼容验签路径。无需执行数据迁移或轮换密钥。
+
 ## 2026-09-24 远端 Node Worker 审批增量
 
 Hub schema v30 `v2.node.worker_approval_bridge` 在既有 `approvals` 表增量添加
@@ -138,7 +166,7 @@ cicada machine restore --backup BACKUP_DIR --state-dir PATH
 
 Backup 和 Restore 获取位于 `nodes/.locks` 的非阻塞独占维护锁；Agent 与直接 Node 写入者持有共享锁时，命令 fail-fast 并且不会发布输出。锁覆盖整个 Node 子树复制；对其中发现的 SQLite 数据库逐一执行 WAL 截断 checkpoint，持有 `BEGIN EXCLUSIVE` 到所有文件复制和源哈希复核完成。任何未 checkpoint 的 WAL、rollback journal、其他 socket、symlink、特殊文件、校验失败或已有输出目录都会使操作失败。Checkpoint 后的空 WAL 和可重建 SHM 不进入 payload，而在 manifest 中列明；根目录的陈旧 `join.sock` 也只在独占锁下跳过并列入 manifest。备份目录与文件分别使用 `0700` 和 `0600`，manifest 只存 Node ID、相对路径、大小、SHA-256 与 SQLite 完整性元数据，不存文件内容、密钥或凭据。MCP session/outbox 状态和 Codex 原生记录位于 Node 子树之外，明确不属于该命令边界。
 
-Restore 只允许同一 Node ID 的目标子树不存在或为空，原子发布副本并写 `recovery-pending.json`。Node Agent 检查到该标记会拒绝启动。该命令建立的是隔离的 Node 子树副本，不代表完成了原生会话恢复或外部状态对账；重新联网前须按 Node binding epoch、密文 outbox/replay 序号以及未确认注入/副作用逐项 reconciliation，不能直接重放或恢复旧计数。`TestNodeBackupWALRestoreQuarantineAndManifestPrivacy`、`TestNodeBackupRejectsLiveAgentAndDirectWriter`、`TestNodeBackupCorruptionAndExtraWALRefuseRestore` 覆盖合成 Node 树与 WAL、锁竞争、私有 manifest、损坏拒绝及隔离恢复；尚无真实生产 Node 或物理设备恢复演练。
+Restore 只允许同一 Node ID 的目标子树不存在或为空；发布前先在 `nodes/.recovery-pending/` 写入并同步外置私有隔离登记，再原子发布带 `recovery-pending.json` 的副本。Node Agent 在维护锁内看到任一隔离信号都会拒绝启动；误删子树内标记不能直接放行。发布前失败会清掉本次登记，发布可能已提交时保留登记；崩溃可能留下需未来受权对账处理的孤儿登记。该命令建立的是隔离的 Node 子树副本，不代表完成了原生会话恢复或外部状态对账；重新联网前须按 Node binding epoch、密文 outbox/replay 序号以及未确认注入/副作用逐项 reconciliation，不能直接重放或恢复旧计数。`TestNodeBackupWALRestoreQuarantineAndManifestPrivacy`、`TestNodeBackupRejectsLiveAgentAndDirectWriter`、`TestNodeBackupCorruptionAndExtraWALRefuseRestore` 覆盖合成 Node 树与 WAL、锁竞争、私有 manifest、损坏拒绝及隔离恢复；尚无真实生产 Node 或物理设备恢复演练。
 
 `cicada machine recovery inspect --backup BACKUP_DIR --state-dir PATH` 只做恢复前检查：持有同一独占维护锁，核对 marker 中的 manifest 摘要、恢复文件清单/哈希及 SQLite 完整性，并以 immutable read-only 连接给出本地序号、outbox/replay 与 inbox 状态的有限计数。它不打开会在启动时恢复状态的 `nodeinbox.Open`，不启动 Agent、不连 Hub、不改数据库或 marker，且始终报告仍处于 quarantine。Hub 对旧 binding epoch 的接受情况、服务端/对端 crypto counter 高水位、Node 子树外的 MCP 会话/队列、Codex 原生 Session 所有权及模型是否消费消息都无法由该离线副本证明；不得依据 inspect 输出自行清除 marker 或启动恢复的 Node。缺少/损坏 marker、文件或 manifest 声明的数据库会 fail closed。`TestRecoveryInspectIsReadOnlyAndReportsUncertainty`、`TestRecoveryInspectRejectsRestoredTreeCorruption` 与 `TestRecoveryInspectRejectsMissingMarker` 覆盖合成状态；它们不构成生产恢复授权或原生会话连续性证明。
 

@@ -354,6 +354,16 @@ func Verify(backupDir string) (*Manifest, error) {
 // a recovery-pending marker, verifies the staged databases, and atomically
 // publishes the quarantined subtree under the target StateDir.
 func Restore(backupDir, targetStateDir string) (_ *RestoreReport, retErr error) {
+	return restoreWithPublisher(backupDir, targetStateDir, publishRestoreDirectory)
+}
+
+// restoreWithPublisher keeps the filesystem publication boundary injectable so
+// tests can exercise failures after the recovery registry has been created.
+func restoreWithPublisher(backupDir, targetStateDir string,
+	publish func(source, destination string) (bool, error)) (_ *RestoreReport, retErr error) {
+	if publish == nil {
+		return nil, errors.New("Node restore publisher is required")
+	}
 	backupDir, err := canonicalPath(backupDir)
 	if err != nil {
 		return nil, err
@@ -454,10 +464,29 @@ func Restore(backupDir, targetStateDir string) (_ *RestoreReport, retErr error) 
 	if err := syncTreeDirectories(staging, manifest.Directories); err != nil {
 		return nil, fmt.Errorf("sync restored Node staging directory: %w", err)
 	}
-	if err := publishRestoreDirectory(staging, nodeDir); err != nil {
-		return nil, err
+
+	registryCreated, err := ensureRecoveryRegistration(stateRoot, manifest)
+	if registryCreated {
+		defer func() {
+			if published {
+				return
+			}
+			if cleanupErr := removeRecoveryRegistration(stateRoot, manifest.NodeID); cleanupErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("remove failed Node recovery registration: %w", cleanupErr))
+			}
+		}()
 	}
-	published = true
+	if err != nil {
+		return nil, fmt.Errorf("register Node recovery quarantine: %w", err)
+	}
+	didPublish, publishErr := publish(staging, nodeDir)
+	published = didPublish
+	if publishErr != nil {
+		return nil, publishErr
+	}
+	if !didPublish {
+		return nil, errors.New("Node restore publisher returned without publishing the staged subtree")
+	}
 	return &RestoreReport{NodeID: manifest.NodeID, NodeState: nodeDir, Quarantined: true, Manifest: *manifest}, nil
 }
 

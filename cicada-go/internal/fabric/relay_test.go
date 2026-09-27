@@ -173,6 +173,16 @@ func TestNodeClaimUsesExactNativeBindingAndLayeredReceipt(t *testing.T) {
 	if err != nil || nodeReceipt.Layer != ReceiptNodeReceived {
 		t.Fatalf("node durable receipt was not persisted: %#v err=%v", nodeReceipt, err)
 	}
+	for _, layer := range []string{ReceiptCodexQueueAccepted, ReceiptNativeThreadResumed} {
+		if got, err := service.RecordNodeReceipt("node-b", NodeReceiptInput{
+			AttemptID: deliveries[0].AttemptID, MessageID: deliveries[0].MessageID,
+			Digest: deliveries[0].Digest, EndpointID: deliveries[0].EndpointID,
+			BindingID: deliveries[0].BindingID, BindingEpoch: deliveries[0].BindingEpoch,
+			Layer: layer,
+		}); err != nil || got.Layer != layer {
+			t.Fatalf("operational stage %s was not persisted: %#v err=%v", layer, got, err)
+		}
+	}
 	receipt, err := service.RecordNodeReceipt("node-b", NodeReceiptInput{
 		AttemptID: deliveries[0].AttemptID, MessageID: deliveries[0].MessageID,
 		Digest: deliveries[0].Digest, EndpointID: deliveries[0].EndpointID,
@@ -185,6 +195,67 @@ func TestNodeClaimUsesExactNativeBindingAndLayeredReceipt(t *testing.T) {
 	again, err := service.ClaimNodeDeliveries("node-b", NodeClaimInput{ConsumerID: "node-b-agent", Limit: 10})
 	if err != nil || len(again) != 0 {
 		t.Fatalf("injected message was claimed twice: %#v err=%v", again, err)
+	}
+}
+
+func TestNodeOldBindingCanReconcileUncertaintyButCannotClaimInjection(t *testing.T) {
+	service, persistence, group := newFabricTestService(t)
+	_, actorA := joinFabricPeer(t, service, group.ID, "a", "native-a-old-epoch", "node-a")
+	b, _ := joinFabricPeer(t, service, group.ID, "b", "native-b-old-epoch", "node-b")
+	if _, err := service.Ask(actorA, AskInput{Target: b.Endpoint.ID, Question: "old epoch recovery"}); err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err := service.ClaimNodeDeliveries("node-b", NodeClaimInput{ConsumerID: "node-b-old", Limit: 1})
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("claim=%#v err=%v", deliveries, err)
+	}
+	old := deliveries[0]
+	receipt := func(layer string) NodeReceiptInput {
+		return NodeReceiptInput{AttemptID: old.AttemptID, MessageID: old.MessageID, Digest: old.Digest,
+			EndpointID: old.EndpointID, BindingID: old.BindingID, BindingEpoch: old.BindingEpoch, Layer: layer}
+	}
+	if _, err := service.RecordNodeReceipt("node-b", receipt(ReceiptNodeReceived)); err != nil {
+		t.Fatal(err)
+	}
+	newBinding, err := service.Join(JoinInput{
+		GroupID: group.ID, EndpointID: b.Endpoint.ID, EndpointName: "b",
+		Harness: "codex", NativeSessionID: "native-b-old-epoch", NodeID: "node-b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := persistence.GetRelayDeliveryAttempt(old.AttemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newBinding.BindingEpoch <= old.BindingEpoch {
+		t.Fatalf("rejoin did not invalidate old epoch: old=%d new=%d", old.BindingEpoch, newBinding.BindingEpoch)
+	}
+	item, err := persistence.GetRelayInboxItem(old.EndpointID, attempt.Sequence)
+	if err != nil || item.State != store.RelayInboxClaimed || item.AttemptID != old.AttemptID {
+		t.Fatalf("old attempt no longer occupies inbox before reconciliation: %#v err=%v", item, err)
+	}
+	for _, layer := range []string{ReceiptCodexQueueAccepted, ReceiptNativeThreadResumed,
+		ReceiptRuntimeInjected, ReceiptConsumptionUncertain} {
+		if _, err := service.RecordNodeReceipt("node-b", receipt(layer)); !errors.Is(err, ErrStaleBinding) {
+			t.Fatalf("expired epoch was allowed to first report %s: %v", layer, err)
+		}
+	}
+	if got, err := service.RecordNodeReceipt("node-b", receipt(ReceiptNodeReceived)); err != nil || got.Layer != ReceiptNodeReceived {
+		t.Fatalf("exact historical receipt could not be reconciled: %#v err=%v", got, err)
+	}
+	if got, err := service.RecordNodeReceipt("node-b", receipt(ReceiptInjectionUncertain)); err != nil || got.Layer != ReceiptInjectionUncertain {
+		t.Fatalf("stale attempt could not be safely marked uncertain: %#v err=%v", got, err)
+	}
+	item, err = persistence.GetRelayInboxItem(old.EndpointID, attempt.Sequence)
+	if err != nil || item.State != store.RelayInboxUncertain || item.AttemptID != old.AttemptID {
+		t.Fatalf("stale reconciliation advanced or released the old claim: %#v err=%v", item, err)
+	}
+	if _, err := service.RecordNodeReceipt("node-b", receipt(ReceiptRuntimeInjected)); !errors.Is(err, ErrStaleBinding) {
+		t.Fatalf("stale epoch claimed injection after recording uncertainty: %v", err)
+	}
+	if got, err := service.ClaimNodeDeliveries("node-b", NodeClaimInput{ConsumerID: "node-b-new", Limit: 1}); err != nil || len(got) != 0 {
+		t.Fatalf("uncertain old attempt was redelivered to new binding: %#v err=%v", got, err)
 	}
 }
 

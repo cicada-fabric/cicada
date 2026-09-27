@@ -70,13 +70,14 @@ func TestScopedVisibleInboxFollowsNativeInjectionOrderAndGroup(t *testing.T) {
 	if _, err := inbox.BeginInjection(ctx, claimFirst.AttemptID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := inbox.RecordRuntimeInjected(ctx, receiptFrom(claimFirst, RUNTIME_INJECTED)); err != nil {
+	if _, err := inbox.RecordCodexQueueAccepted(ctx, receiptFrom(claimFirst, CONSUMPTION_UNCONFIRMED)); err != nil {
 		t.Fatal(err)
 	}
 	more := read("group-one", visible[0].Sequence)
 	if len(more) != 1 || more[0].MessageID != first.MessageID ||
 		more[0].Sequence <= visible[0].Sequence || more[0].Kind != "SEND" ||
-		more[0].RequestID != "" || more[0].ReplyTo != "" || more[0].SenderEndpointID != "ep-sender" {
+		more[0].RequestID != "" || more[0].ReplyTo != "" || more[0].SenderEndpointID != "ep-sender" ||
+		more[0].State != CONSUMPTION_UNCONFIRMED {
 		t.Fatalf("late injection disappeared behind cursor: %+v", more)
 	}
 	conflict := second

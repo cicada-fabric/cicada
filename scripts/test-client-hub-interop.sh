@@ -63,9 +63,12 @@ result = {
     "build": json.loads(build_file.read_text()) if build_file.exists() else None,
     "test_image_id": test_image_id,
     "test": {"name": "TestClientDockerHubSmoke", "exit_code": int(test_exit)},
+    "recovery_fault_test": {"name": "TestClientDockerHubRecoveryFixture", "exit_code": int(test_exit)},
     "android": "NOT_RUN", "native_runtime": "NOT_RUN", "public_https": "NOT_RUN",
     "scope": ["enrollment", "exact_enrollment_retry", "encrypted_snapshot",
               "exact_packet_retry", "completed_request_recovery",
+              "still_processing_recovery", "uncertain_recovery_packet",
+              "legacy_recovery_unavailable",
               "node_code_confirmation_and_heartbeat", "owner_status_topology_isolation"],
 }
 (Path(output) / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
@@ -92,6 +95,7 @@ hub_image_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[
 
 phase=hub_start
 mkdir "$scratch/state" "$scratch/workspaces"
+printf 'disposable\n' >"$scratch/state/.cicada-disposable-recovery-fixture"
 python3 - "$scratch" <<'PY'
 from pathlib import Path
 import secrets
@@ -146,9 +150,9 @@ phase=protocol_test
 set +e
 docker run --rm --name "$test_container" --network host \
   --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
-  -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/state/cicada.sqlite3 \
+  -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
   -e GOCACHE=/tmp/go-build -e GOPROXY=off -e CGO_ENABLED=0 \
-  -v "$scratch/state:/state" "$test_image_id" >"$scratch/test.raw" 2>&1
+  -v "$scratch/state:/tmp/fixture-state" "$test_image_id" >"$scratch/test.raw" 2>&1
 test_exit=$?
 set -e
 # Keep only structured test lifecycle metadata. Failure output can contain a
@@ -161,7 +165,8 @@ import sys
 
 raw, destination, exit_code = sys.argv[1:]
 events = []
-passed = False
+required = {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture"}
+passed = set()
 for line in Path(raw).read_text(errors="replace").splitlines():
     try:
         event = json.loads(line)
@@ -171,10 +176,11 @@ for line in Path(raw).read_text(errors="replace").splitlines():
     if not re.fullmatch(r"[A-Za-z0-9_/.]+", name) or action not in ("run", "pass", "fail", "skip"):
         continue
     events.append({"test": name, "action": action})
-    passed |= name == "TestClientDockerHubSmoke" and action == "pass"
-events.append({"runner_exit_code": int(exit_code), "required_test_passed": passed})
+    if action == "pass" and name in required:
+        passed.add(name)
+events.append({"runner_exit_code": int(exit_code), "required_tests_passed": sorted(passed)})
 Path(destination).write_text("".join(json.dumps(event) + "\n" for event in events))
-if int(exit_code) != 0 or not passed:
+if int(exit_code) != 0 or passed != required:
     raise SystemExit("Required Docker protocol test failed or did not run; inspect sanitized lifecycle evidence")
 PY
 status=PASS

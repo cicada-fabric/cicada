@@ -1,17 +1,97 @@
 # Architecture v2.1 实施计划
 
-## 当前优先切片：两仓接口与联调规范化
+## 2026-09-25 收尾与下个安全门槛
 
-用户要求先整改开发方式。本轮按 [联合开发规范](client-hub-development.md)
+当前 `dev` 在干净 `d88e090` 上通过整仓 Go 测试/vet、合同校验、一次性
+Client–Hub TCP 联调与双私有网桥拓扑门禁。sealed Link ASK 的真实 TLS/SSE
+断流恢复已与 Node 生产 claim/decrypt 接成一条 deterministic 测试，Runtime
+仍是假队列。同 Group 三真实 Codex Thread 广播夹具已加入，但第三次独立
+opt-in 在首个 Join 因 Codex 自动审批超时结束；V72 保持 PARTIAL，不能据前两轮
+部分阶段宣布原生广播通过。详见[状态矩阵](architecture-v2-status.md)与
+[原生验收记录](architecture-v2-native-validation.md)。
+
+下一条可执行的工程切片应先取得受支持的 native Session ID 来源和前台所有权/
+安全注入回执，或明确使用需用户在前台交接的模式；在缺少该协议前不实现
+无人值守 cold resume。用户经 Monitor 广播需要独立的可信 Client 操作、
+与正文/Group/Monitor/版本绑定的用户批准记录及 Guard，不能借用普通
+`intent.submit` 或 Worker `approvals.decide` 伪造批准。该功能应作为新的
+合同修订与 Client 仓库协同交付；保持现有 v1.2.1 固定镜像可复验，
+不将它悄悄扩展成不受审的 Monitor 广播入口。
+
+V73 的独立后续切片应按以下次序实施，完成前保持 **NOT_RUN**：
+
+1. 固定新 Client 合同修订（外层 PQ wire framing 可保持 v1），至少提供
+   `group.broadcast.preview`、`confirm`、`status`。预览绑定精确 Group、当前
+   Monitor Endpoint/角色/SessionBinding、正文 SHA-256、收件者快照及期限。
+   Client 本地显示并确认最终正文，将它密封给已验签的 Monitor Endpoint；
+   Hub 的批准账本只保存摘要、路由和密封正文，不记录可读广播正文。
+   `status` 供响应丢失、
+   `OUTCOME_UNCERTAIN` 与逐收件者结果查询，不能因恢复通知重建一笔广播。
+2. Control 在 owner/device-bound Client 会话中写入版本化用户发起与批准记录，
+   并创建独立的 durable Monitor 管理请求。Monitor 角色不能仅凭普通
+   `message.broadcast` 权限推断；管理请求离线排队、重放幂等，Node 领取和
+   原生 queue 的不确定窗口按现有分层回执处理。
+3. Monitor 原生 Thread 在当前 Session 下实际调用扩展的 MCP 广播，Node/Hub
+   核验批准 ID、正文摘要、Group/收件快照、角色、binding epoch、期限与单次
+   使用；Monitor Node 解开给自己的密封正文，然后复用现有逐人 sealed SEND。
+   Sender 仍是 Monitor Endpoint，
+   用户只作为可审计 origin/approver；Hub 不得冒用 Monitor Session。
+4. 同仓完成 catalog/OpenAPI/wire 文档和拒绝测试，再让 Client 独立导入新包并
+   做 Android 预览/确认/丢响应恢复测试。验收必须覆盖伪造批准、错组/错
+   Monitor、撤权、成员变化、重复确认、离线 Monitor、单接收者失败和限额。
+   现有 v1.2.1 固定镜像仍以旧合同单独复验，不将新增能力回填旧镜像。
+
+## 2026-09-25 当前执行切片
+
+本轮从干净的 `dev` / `967dbd8` 开始，不扩大 Client 协议或产品范围。先以既有
+Codex 适配器、CIRCL、SQLite 账本与 Node 出站连接为基线，分别完成：
+
+1. 两个独立 owner、两个逻辑 Node 的真实 Codex 原生 Ask/Reply 验收；逐端核对
+   Join 前、注入后和 Reply 后的 native Thread ID，并记录 Hub 只见密文、
+   Control 业务调用为零。测试驱动显式恢复与无人值守冷 Thread 唤醒分别记录，
+   不把 `codex queue` 的成功退出当成后者通过。若模型或适配器能力不足，保留
+   可复跑测试并明确阻塞。
+2. 修复一个具体的 Node 重启/对账故障窗口，用确定性故障测试证明状态与重试
+   语义，不把传输去重写成模型或外部副作用的 exactly-once。
+3. 核对官方 Codex 与现有开源密码/存储组件的可复用能力，记录版本、许可证
+   和不引入额外运行时的理由；据此确定冷 Thread 的显式 resume/安全点能力
+   门槛；固定来源和取舍见[开源复用审查](architecture-v2-open-source-review.md)。
+   再跑完整 Go、合同与隔离 Docker 回归。
+
+每项只在有实际代码和测试证据后更新状态矩阵。当前片段不代表 v2-A/B/C
+整体完成；双物理 Node、真实 Android 和公网 HTTPS 仍须分别验收。
+
+本切片实际结果以[状态矩阵](architecture-v2-status.md)和
+[原生验收记录](architecture-v2-native-validation.md)为准：Relay attempt fencing、
+Codex queue 分层回执、次要 Group sealed claim 与一次性 Docker 出站拓扑门禁已
+实现并通过确定性测试。跨 owner TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative
+现已在同机两个逻辑 Node、两个 owner 的真实 Codex Thread 上通过，A/B 原 ID 保持，
+Hub 不见正文且 Control business call 为 0；早先两次未走到 B Join 的失败运行保留为
+历史诊断，不再代表当前状态。测试 driver 使用受控 codex exec resume；
+Codex 0.157.0 的 MCP ID 与前台 owner/epoch 协议门槛未满足，生产无人值守
+cold Thread wake 暂标 **UNSUPPORTED**（证据见原生验收记录）。Client 在另一个仓库对干净的
+`967dbd8` / `client-hub-v1.2.1` 固定镜像完成 Android 模拟器的管理链路验收；
+随后用[可复跑夹具](client-group-key-disposable-fixture.md)、真实 Node/Codex leased
+Endpoint 与最终 Android APK 完成独立 Group key 正向 Grant、`CURRENT`、`STALE`
+和 `PROOF_EXPIRED` 验收，见独立仓库的固定镜像报告。该夹具准备本身不算验收；
+它的 Node Join Unix socket 路径问题已在核心脚本中修正并通过启动/清理 smoke。
+Client 的历史固定镜像验收不得替代当前 dev Go 代码或新 dirty 镜像的验收。
+
+## 前一切片：两仓接口与联调规范化
+
+此前按 [联合开发规范](client-hub-development.md)
 的 N1→N2→N3 完成统一 operation catalog、可追溯轻量 Docker Hub、协议包、
 公开合成 wire 向量与 CI。保持两个仓库独立，不修改 CICADA_CLIENT，也不
 把该规范化切片描述为 Architecture v2 全部完成。
 
 N4 的 Hub 设备登记精确重试、RPC 恢复查询与 `OUTCOME_UNCERTAIN` 故障窗
-已实现并通过 Store/HTTP/一次性 Docker Hub 测试；Android pending-slot 接入
-另待 Client 仓库。N5 的 Hub `goal.result` owner-scoped 结果读取已实现；
+已实现并通过 Store/HTTP/一次性 Docker Hub 测试；Client 已在固定干净
+`967dbd8` 镜像上通过 Android 模拟器的丢响应恢复和三类故障结果。
+v1.2.1 校正 Endpoint attestation 的跨仓签名原文合同，
+保留既有证明与 Grant，不重写密钥或计数。N5 的 Hub `goal.result` owner-scoped 结果读取已实现；
 隔离 Hub HTTP、真实 Node Agent、真实 Codex 与加密合成 Client 协议驱动已完成
-Worker→审批→结果闭环，手机端发起/批准仍未验收。下一步先验收
+Worker→审批→结果闭环；Client 又在 Android 模拟器上对同一固定镜像完成
+发起/批准/读取结果验收。下一步先验收
 真实 Node/Codex 冷 Thread 唤醒与身份连续、Node 恢复后重新联网对账及双物理机
 封闭路径；Client 真机、公网 HTTPS 和发布属于后续 N6。恢复必须保留设备
 身份、旧结果、重放水位和授权，不盲目重试副作用。
@@ -28,7 +108,7 @@ Worker→审批→结果闭环，手机端发起/批准仍未验收。下一步�
 
 ### 1. 固定协议与数据迁移
 
-1. 当前 v11 已新增 Endpoint-Group 多对多关系和精确回填，MCP/HTTP/CLI 的显式 Join/Leave/作用域及 Directory/Relay 授权已接入；同机双容器真实原生多组验收已通过。v12 增量实现了 Group parent 的版本化管理、防环和不继承权限。v13 增量保存不可路由的同 owner CommunicationLink 提案及版本化撤销。v14 只新增按 Group 可读的 `CANDIDATE` 公钥登记；MCP 已可从显式 Join 的当前原生 Session 发布其 Node 本地公钥候选。v15/v16 将用户独立持有的公钥经 Hub 本地离线信任流程登记，并保存 Link 两侧精确合同的 ML-DSA Grant；两端当前原生绑定/成员版本与 key 状态在读取时重查。v17 最初只增加 Relay 密文 BLOB 与明文读路径隔离；v18 增加单 owner Client↔Control PQ 设备登记、重放保护、加密 RPC 与状态快照；v19 增加持久异步 Intent 与恢复；v20 增加 owner 确认的 Node 设备码绑定；v21 增加部分状态快照差异游标。v22 将当前合同、两端原生绑定和公钥候选组成可复核清单，并用 Client 加密 RPC 保存两侧密钥绑定签署；旧 v16 合同 Grant 仅为历史。v23 让 Client 新建的 Node/Goal/Intent 保留 owner 并收敛 Worker 领取凭据；v24 对远端未领取 Goal 提供真实的版本化暂停/恢复；v25 扩展状态差异游标的审批与 Intent 元数据。v26 为分别登记的两个 owner 提供一次性外部邀请、预览和接受，接受仅产生 `PROPOSED` Link；外部 Client 的设备/Node/邀请/本侧密钥同意操作与管家管理范围分离。v27 增量保存同 owner、当前 Group/Endpoint/SessionBinding/候选公钥的签名授权，并通过加密 Client RPC 提供授权预览/接受；本轮又接通 Node 独立验签、Hub Node-only 密文 SEND/ASK/REPLY/claim、注入前授权复查和同组跨 Node 路由。Store 全包、Hub HTTP 集成与两逻辑 Node/fake Codex same-Group full-chain 测试已通过。旧 `/v1/fabric/*`、Thread queue/message、Contact peer ingress、SSH machine pair 和明文 token 下发已退役。双 owner 显式 Link 与同 owner 同组均有逻辑 Node/fake Codex 覆盖；同 Node sealed 路径有 fake 全链/故障测试及一个 Node 上两真实 Thread 的 Codex Ask/Reply 验收。同组跨 Node 的真实 Codex 消费已在两个逻辑 Node 上验证；双物理 Node、跨 owner native 和 Node 一致点恢复尚未验证。保留旧 Endpoint ID、原生 Session、单 `group_id` 列为迁移投影；不自动把旧 Session 放入宽权限全局 Group。
+1. 当前 v11 已新增 Endpoint-Group 多对多关系和精确回填，MCP/HTTP/CLI 的显式 Join/Leave/作用域及 Directory/Relay 授权已接入；同机双容器真实原生多组验收已通过。v12 增量实现了 Group parent 的版本化管理、防环和不继承权限。v13 增量保存不可路由的同 owner CommunicationLink 提案及版本化撤销。v14 只新增按 Group 可读的 `CANDIDATE` 公钥登记；MCP 已可从显式 Join 的当前原生 Session 发布其 Node 本地公钥候选。v15/v16 将用户独立持有的公钥经 Hub 本地离线信任流程登记，并保存 Link 两侧精确合同的 ML-DSA Grant；两端当前原生绑定/成员版本与 key 状态在读取时重查。v17 最初只增加 Relay 密文 BLOB 与明文读路径隔离；v18 增加单 owner Client↔Control PQ 设备登记、重放保护、加密 RPC 与状态快照；v19 增加持久异步 Intent 与恢复；v20 增加 owner 确认的 Node 设备码绑定；v21 增加部分状态快照差异游标。v22 将当前合同、两端原生绑定和公钥候选组成可复核清单，并用 Client 加密 RPC 保存两侧密钥绑定签署；旧 v16 合同 Grant 仅为历史。v23 让 Client 新建的 Node/Goal/Intent 保留 owner 并收敛 Worker 领取凭据；v24 对远端未领取 Goal 提供真实的版本化暂停/恢复；v25 扩展状态差异游标的审批与 Intent 元数据。v26 为分别登记的两个 owner 提供一次性外部邀请、预览和接受，接受仅产生 `PROPOSED` Link；外部 Client 的设备/Node/邀请/本侧密钥同意操作与管家管理范围分离。v27 增量保存同 owner、当前 Group/Endpoint/SessionBinding/候选公钥的签名授权，并通过加密 Client RPC 提供授权预览/接受；本轮又接通 Node 独立验签、Hub Node-only 密文 SEND/ASK/REPLY/claim、注入前授权复查和同组跨 Node 路由。Store 全包、Hub HTTP 集成与两逻辑 Node/fake Codex same-Group full-chain 测试已通过。旧 `/v1/fabric/*`、Thread queue/message、Contact peer ingress、SSH machine pair 和明文 token 下发已退役。双 owner 显式 Link 与同 owner 同组均有逻辑 Node/fake Codex 覆盖；同 Node sealed 路径有 fake 全链/故障测试及一个 Node 上两真实 Thread 的 Codex Ask/Reply 验收。同组跨 Node 与跨 owner Link 的真实 Codex Ask/Reply 也已在同机两个逻辑 Node 上通过。双物理 Node、无人值守 cold wake 和 Node 一致点恢复后对账尚未验收。保留旧 Endpoint ID、原生 Session、单 `group_id` 列为迁移投影；不自动把旧 Session 放入宽权限全局 Group。
 2. 明确每条消息使用的来源 Group、目标 Group、link revision、双方 Principal/Endpoint 及可信 SessionBinding；若多条连线或 Group scope 均可匹配，返回歧义，不依赖模型猜测。父子 Group 关系不传递访问权。
 3. 迁移前后用 `migration inventory/backup/verify/restore` 在合成 StateDir 检查旧 Goal、Contact、消息、Approval、密钥/重放计数；真实 StateDir 仅在用户授权的运行环境与维护窗口操作。旧 GroupGateway 请求保持只读可追溯，完成映射前不删除表。
 
@@ -36,17 +116,17 @@ Worker→审批→结果闭环，手机端发起/批准仍未验收。下一步�
 
 ### 2. 打通本地与单 Hub 传输
 
-1. Node-local `CryptoState` 已有 durable sequence、精确密文 outbox；Node DB v3 对新收件将经认证的密文和 replay 同事务保存，旧 replay-only 行明确要求对账。v4/v5 扩展跨组 pin 的签署清单和独立 Owner key trust；Node 能核验双侧授权证据并持久 pin，但该 pin 不赋予消息路由权。跨 Node 显式 Link 密文 SEND/ASK/REPLY 已把 outbox、Relay receipt、目标 crypto inbox 和原生 queue 接通。同 owner、同 Node、同 Group sealed SEND/ASK/REPLY 已由可信适配器写入独立持久账本和 inbox；fake Codex queue 的全链、撤权、Hub Guard 503/重启和不确定注入测试通过。该本机路径不调用 Hub Relay 消息路由或 Control 业务，但授权读仍可调用 Hub Guard/Directory；2026-09-24 真实 Codex 同 Node Ask/Reply 已通过，同组跨 Node native consumption 已在两个逻辑 Node 上通过，跨 owner native 仍待验。持久收件不证明模型提供通用消费 ACK。
+1. Node-local `CryptoState` 已有 durable sequence、精确密文 outbox；Node DB v3 对新收件将经认证的密文和 replay 同事务保存，旧 replay-only 行明确要求对账。v4/v5 扩展跨组 pin 的签署清单和独立 Owner key trust；Node 能核验双侧授权证据并持久 pin，但该 pin 不赋予消息路由权。跨 Node 显式 Link 密文 SEND/ASK/REPLY 已把 outbox、Relay receipt、目标 crypto inbox 和原生 queue 接通。同 owner、同 Node、同 Group sealed SEND/ASK/REPLY 已由可信适配器写入独立持久账本和 inbox；fake Codex queue 的全链、撤权、Hub Guard 503/重启和不确定注入测试通过。该本机路径不调用 Hub Relay 消息路由或 Control 业务，但授权读仍可调用 Hub Guard/Directory；2026-09-24 真实 Codex 同 Node Ask/Reply、同组跨 Node native consumption 和 2026-09-25 双 owner sealed Link Ask/Reply 已分别在真实 Thread 中通过，后两项使用同机两个逻辑 Node。受控测试 driver 的原生恢复不证明 unattended wake，持久收件也不证明 Runtime 提供通用消费 ACK。
 2. 跨 Node 复用现有 Node credential、durable Relay、出站 HTTPS/SSE wake；Node 不要求入站端口，Hub 不能主动拨 Node。每条消息绑定一个共同 Hub，不能串联 Home Hub。断流后恢复与低频对账兜底，不能用高频轮询替代长连接。
 3. 维持 `RELAY_ACCEPTED/LOCAL_ACCEPTED`、`NODE_RECEIVED`、`RUNTIME_INJECTED`、消费未知、结果验收的分层语义；异常注入进入 `INJECTION_UNCERTAIN`，不盲重投高风险操作。保护用户前台输入，只用官方 queue/安全投递点。
 
 同 Node、同 Group sealed 路径当前要求 **零 Hub Relay 消息路由**，允许发送和注入前向 Hub Guard/Directory 做在线授权读取；不构成 Hub 全离线工作。Node+Session Guard 才是本地权威校验，MCP Session 缓存本身不是 Guard。若以后要求 Hub 完全离线时仍可本机通信，则另需短租期、签名且版本化的双 Endpoint/Group/Binding 授权快照及撤销水位；离线期间只能承诺有界陈旧，不能声称即时撤权。旧 `/v1/threads/queue` HTTP/CLI 入口已移除，不能充当该路径。
 
-退出条件：同 Node、同 Group 的真实 Codex A↔B MCP Ask/Reply 在零 Hub Relay 消息路由下完成，两端保持原生 Session ID；两个 Node 网络互不可达但共连 Hub 时在原生 A/B Session 中完成跨 Node Ask/Reply、两端 ID 不变；Control 规划/汇报禁用时仍成功。2026-09-24 同 Node 真实 Ask/Reply 已通过；跨 Node 当前有逻辑 Node/fake full-chain，物理网络隔离下的原生验证与独立 Control-disabled 黑盒仍待做。
+退出条件：同 Node、同 Group 的真实 Codex A↔B MCP Ask/Reply 在零 Hub Relay 消息路由下完成，两端保持原生 Session ID；两个 Node 网络互不可达但共连 Hub 时在原生 A/B Session 中完成跨 Node Ask/Reply、两端 ID 不变；Control 规划/汇报禁用时仍成功。2026-09-24 同 Node 真实 Ask/Reply 已通过；同组跨 Node 和双 owner Link 的真实 Ask/Reply 也已在同机两个逻辑 Node 上通过，但 Docker 网络隔离下的真实原生验证、双物理机与独立 Control-disabled 黑盒仍待做。
 
 ### 3. 授权连线、可选 Monitor 与广播
 
-版本化合同和 Guard 已让显式单收件人跨 owner SEND/ASK/REPLY 在端点密文闭环下开放，并以两逻辑 Node/fake Codex 验证；**跨 owner 和用户经 Monitor 的广播正文路径仍保持关闭**，直至逐收件人密文、授权、恢复和验收完成；不能为证明连线路由而把新业务明文写入 Hub。
+版本化合同和 Guard 已让显式单收件人跨 owner SEND/ASK/REPLY 在端点密文闭环下开放，并通过同机两个逻辑 Node 的真实 Codex sealed Ask/Reply 验收；**跨 owner 广播和用户经 Monitor 的广播正文路径仍保持关闭**，直至逐收件人密文、授权、恢复和验收完成；不能为证明连线路由而把新业务明文写入 Hub。
 
 v13 已落下提案结构、范围快照、摘要和撤销，但管理 bearer 不能证明双方用户独立批准。v14 的候选公钥仍只是自证 `CANDIDATE`。v15/v16 的离线用户公钥与双侧签名 Grant 使合同批准可持久核验；v22 已让 Link 两侧通过加密 Client RPC 分别提交**与两端 Endpoint 密钥绑定**的 Link Grant，并让旧 v16 Grant 明确保持历史。v26 允许分别登记的 owner 经各自加密 Client session 创建、预览和接受一次性邀请，但结果只是不可路由提案；邀请 token 的持有不能代替任何一侧对端点密钥的授权。受信 Node Join 桥、Node 独立可信 pin 与生产 Guard 已接入显式 Link SEND/ASK/REPLY；Guard 在入队、领取和注入前重查当前 Membership/Join/Group/Binding、期限、动作、数据范围和撤销状态。同 owner、同 Group 广播已经限定开放；跨 owner 广播和外部 Endpoint 枚举仍未开放。
 
@@ -58,7 +138,7 @@ v13 已落下提案结构、范围快照、摘要和撤销，但管理 bearer �
 
 本阶段退出条件：双端授权、范围、期限、版本、撤销和未授权拒绝有持久合同与负例；跨组正向 Ask/Reply 和广播的真实投递须与第 4 步的端点密文一起验收。Monitor 缺席不得使无审阅要求的授权合同失效。
 
-Hub 已提供绑定 Node 专用的 `GET /v2/relay/nodes/{node_id}/links/{link_id}/authorization`，只返回当前双方签署的公开证据；Node 使用独立预置信任的 Owner 公钥重验。Node-only `sealed/send|ask|reply|claim`、请求 status/cancel 和精确 attempt 授权已建立跨 Node 密文单播的入队、领取和注入前 Guard。MCP 显式 Link SEND/ASK/REPLY 经本地 Node 桥的 durable outbox、Owner trust、Seal 与 Hub 接通；双方 Node 已把密文 claim、精确授权、本地 crypto inbox/恢复 journal、解密与原生队列串成闭环，并在 queue 前再次查权。两个逻辑 Node 加 fake Codex 的显式 Link 与同组跨 Node ASK/REPLY full-chain 测试已通过；同 Node 同 Group 路径不走 Hub Relay 消息路由，也已通过 fake queue 故障测试及真实 Codex 原生 Thread 验收。同组跨 Node 真实 Codex 在两个逻辑 Node 上已通过；跨 owner native 和双物理机验收仍未通过。fake queue 只证明精确 queue 调用，不等同真实模型消费。
+Hub 已提供绑定 Node 专用的 `GET /v2/relay/nodes/{node_id}/links/{link_id}/authorization`，只返回当前双方签署的公开证据；Node 使用独立预置信任的 Owner 公钥重验。Node-only `sealed/send|ask|reply|claim`、请求 status/cancel 和精确 attempt 授权已建立跨 Node 密文单播的入队、领取和注入前 Guard。MCP 显式 Link SEND/ASK/REPLY 经本地 Node 桥的 durable outbox、Owner trust、Seal 与 Hub 接通；双方 Node 已把密文 claim、精确授权、本地 crypto inbox/恢复 journal、解密与原生队列串成闭环，并在 queue 前再次查权。两个逻辑 Node 加 fake Codex 的显式 Link 与同组跨 Node ASK/REPLY full-chain 测试已通过；同 Node 同 Group 路径不走 Hub Relay 消息路由，也已通过 fake queue 故障测试及真实 Codex 原生 Thread 验收。同组跨 Node 与跨 owner Link 的真实 Codex Ask/Reply 均已在同机两个逻辑 Node 上通过；跨 owner 证据还验证原 ID 保持、Hub 不见正文和 Control business call 为 0。受控 driver resume 不证明无人值守 cold wake，双物理机仍未验收。fake queue 只证明精确 queue 调用，不等同真实模型消费。
 
 ### 4. 实现 Hub 失明的 NIST PQ 端点保护
 
@@ -70,17 +150,21 @@ Hub 已提供绑定 Node 专用的 `GET /v2/relay/nodes/{node_id}/links/{link_id
 
 ### 5. Android Client 契约、面板、设备绑定与 Docker 演示
 
-Android 是首版手机 Client；Hub v18–v26 已实现经 NIST PQ 应用层保护的管家 owner 设备入口、状态快照/部分差异游标、审批、持久异步 Intent、Node 设备码、版本化拓扑、受限连线提案，以及仅限未领取远端队列任务的 Goal 暂停/恢复。v26 外部 owner 可独立登记设备并在受限加密会话内管理自己的设备/Node、邀请与本侧密钥同意，不读取管家 Goal/状态；本机 Node Join 桥接和单收件人密文 SEND/ASK/REPLY 已接入，但真实 guest Codex 验收未运行。下一步补完整状态推送、运行中 Worker 安全停止、真实 Node 密文原生消费验收，以及独立 Android 互操作验收。未就绪的单项能力在 `/v2/client/capabilities` 保持 `false`，不能让旧 bearer API 承载敏感 Android 操作。Control 对管理指令是预定解密端；普通 peer 消息仍要求 Hub Relay 失明。服务端按 Node/Worker/Goal 分层给出运行、暂停、完成、未知与时间来源，不凭推断伪造 Goal pause/resume。详见 [Android 契约](android-client-hub-contract.md)。
+Android 是首版手机 Client；Hub v18–v26 已实现经 NIST PQ 应用层保护的管家 owner 设备入口、状态快照/部分差异游标、审批、持久异步 Intent、Node 设备码、版本化拓扑、受限连线提案，以及仅限未领取远端队列任务的 Goal 暂停/恢复。v26 外部 owner 可独立登记设备并在受限加密会话内管理自己的设备/Node、邀请与本侧密钥同意，不读取管家 Goal/状态；本机 Node Join 桥接和单收件人密文 SEND/ASK/REPLY 已接入，两个 owner 的真实 Codex sealed Link Ask/Reply 另有同机双逻辑 Node 验收。下一步补完整状态推送、运行中 Worker 安全停止；固定镜像的 Android 模拟器管理闭环与独立 Group key 正向授权均已验收，真机和公网 HTTPS 仍未运行。未就绪的单项能力在 `/v2/client/capabilities` 保持 `false`，不能让旧 bearer API 承载敏感 Android 操作。Control 对管理指令是预定解密端；普通 peer 消息仍要求 Hub Relay 失明。服务端按 Node/Worker/Goal 分层给出运行、暂停、完成、未知与时间来源，不凭推断伪造 Goal pause/resume。详见 [Android 契约](android-client-hub-contract.md)。
 
-Hub→Node Worker 管理链路已用 v23 收敛凭据：加密 Client session 接受的新 Intent/Goal 传播可信 owner，旧记录保持 ownerless；已确认 Node 以本地 `CicadaNode` bearer 心跳、领取同 owner 的 Worker、传输精确 attempt 的 Workspace 快照并提交结果。任务领取、快照关联和结果提交在 Store 事务中重验凭据、owner、机器、Goal/Worker 关系及 attempt；旧 ownerless 任务不按机器名推断 owner。HTTP 集成测试覆盖 Client 加密 Intent 到 Node 结果，CLI 测试覆盖同一路由的快照收发；隔离的真实 Node Agent/Codex 审批闭环另见 [v1.2 验收记录](client-hub-v12-validation.md)。独立 Android 互操作、真实远端物理 Node 和公网 HTTPS 仍待验收。
+Hub→Node Worker 管理链路已用 v23 收敛凭据：加密 Client session 接受的新 Intent/Goal 传播可信 owner，旧记录保持 ownerless；已确认 Node 以本地 `CicadaNode` bearer 心跳、领取同 owner 的 Worker、传输精确 attempt 的 Workspace 快照并提交结果。任务领取、快照关联和结果提交在 Store 事务中重验凭据、owner、机器、Goal/Worker 关系及 attempt；旧 ownerless 任务不按机器名推断 owner。HTTP 集成测试覆盖 Client 加密 Intent 到 Node 结果，CLI 测试覆盖同一路由的快照收发；隔离的真实 Node Agent/Codex 审批闭环另见 [v1.2 验收记录](client-hub-v12-validation.md)。固定镜像的 Android 模拟器互操作已有独立验收记录；真实远端物理 Node 和公网 HTTPS 仍待验收。
 
-v26 已为 guest Node 增加受当前 Node owner 绑定限制的 `POST /v2/fabric/node/join` 服务端入口；撤销 Node owner 绑定后，其 guest Fabric Session token 随之失效。Node 本机受信 Join 桥已核对 Codex session 记录和 Workspace，再由 Node bearer 调用该入口；MCP/模型不持有 Node bearer。显式 Link SEND 还用当前 Session 凭据的 `whoami` 核对原生 Session ID、Endpoint 和 binding epoch，且 Directory 列表不公开别人的原生 ID。这仍只是本地记录与绑定检查；真实 guest Codex 的跨用户原生连续性尚未验收，Hub 自身不能独立观察模型是否消费了消息。
+v26 已为 guest Node 增加受当前 Node owner 绑定限制的 `POST /v2/fabric/node/join` 服务端入口；撤销 Node owner 绑定后，其 guest Fabric Session token 随之失效。Node 本机受信 Join 桥已核对 Codex session 记录和 Workspace，再由 Node bearer 调用该入口；MCP/模型不持有 Node bearer。显式 Link SEND 还用当前 Session 凭据的 `whoami` 核对原生 Session ID、Endpoint 和 binding epoch，且 Directory 列表不公开别人的原生 ID。Node Join 桥对 guest 身份仍只核对本地记录与绑定；另有独立真实 Codex 测试验证两个 owner Thread 的 sealed Link Ask/Reply 连续性，但不覆盖 Android guest enrollment、双物理 Node 或无人值守唤醒。Hub 自身不能独立观察模型是否消费了消息。
 
 Hub 权威面板状态展示经验证 Node、Thread/Endpoint、可嵌套 Group、同一 Thread 的多组 Membership、可选 Monitor 和已授权通信连线；Android 只是其视图和操作入口，拖拽/连线每次都是有预期版本和权限预览的管理事务。Node 登录采用一次性设备码与用户在已认证 Android Client 上批准的绑定流程；Node 仍只主动出站，设备绑定不授予 peer 明文密钥。
 
 Docker 演示至少有持续运行的 Hub、两个互不可直连的 Node、Alice/Bob 两个独立用户、A1/A2/MA/B1/MB/U、嵌套 Group 与多组 Thread。分别验证本机零 Hub、跨机一个 Hub、双用户双端授权、广播、断流/重启/重复/错误 ACK/撤权。容器测试只能证明隔离网络模拟；真实 Codex 原生连续性和双物理机/公网仍要单独记录。v2-D Task/Lease 与只读 v2-E 功能继续回归，不因拓扑改动而丢失。
 
-## 2026-09-24 起按序执行的下一切片
+## 2026-09-24 起按序执行的下一切片（当时计划）
+
+以下保留当时的待办快照；此后同 Node、同组跨 Node 和跨 owner Link 的真实
+Codex Ask/Reply 均已通过，跨 owner 结果限定同机两个逻辑 Node 与受控 resume。
+当前验收状态及未覆盖边界见上文和[原生验收记录](architecture-v2-native-validation.md)。
 
 1. **跨 Node 密文 RPC 收尾（代码已连通）**：双 owner 显式 Link 与同 owner、同 Group 路径均经 MCP durable outbox、本机受信 Node 桥、端点加解密和一个 Hub Relay；Hub Store 原子保存 REQUEST/REPLY 状态与密文，Node claim/注入前复查当前授权，回复按原 request 关联。Hub 不调用 Control。Store 全包/定向测试、Node-only Hub HTTP 授权测试与当前同 Node fake full-chain 均通过；fake queue 不能证明真实模型消费或双物理机连通。跨 Node Group 运行要求 Node 上另行设置并钉住 `CICADA_HUB_ID`；设备码流程尚未自动写入此值。
 2. **真实原生与隔离网络验收**：用现有官方 shell 安装的 Codex CLI 和两个相互不可直连、只出站连一个常驻 Hub 的 Node 容器，分别记录两个 owner 的原 Session ID、Endpoint ID、请求/回复 ID、Hub 中的密文模式及 Control 调用计数；有条件再上两台物理机。真实模型未运行时明确标 `NOT_RUN`。
@@ -96,6 +180,7 @@ Docker 演示至少有持续运行的 Hub、两个互不可直连的 Node、Alic
 本轮已给 Agent 建立单实例锁，并让 Agent 与两个独立的 Node 子树写入入口服从离线维护锁。`cicada machine backup/verify/restore` 在独占锁下对 Node 子树的 SQLite WAL 做 checkpoint，复制私钥、身份、账本和 inbox，生成无正文/私钥的摘要清单，并将校验过的副本原子发布到私有目录。恢复只写入新/空目标，并写入阻止 Agent 启动的 `recovery-pending.json`。Hub `migration backup` 现在明确跳过 `nodes/`，不能代替这套 Node 子树备份。
 
 下一步是恢复后对账与安全重新联网：以 Hub 当前 Node 绑定、SessionBinding epoch、Node outbox/replay 水位、原生注入不确定项和可能仍运行的旧进程为依据，决定是否前滚、隔离或人工处置。Codex 原生 Session 与 MCP outbox 不在 Node 子目录时，必须在同一维护窗口单独纳入设备级恢复计划。当前没有自动化对账或生产 Node 恢复演练，不能把隔离副本称为完整 Node 恢复。
+现在已在 Node 子树之外持久登记“此 Node 正在恢复”，Agent 启动时同时核对该登记与子树内 `recovery-pending.json`；误删子树内标记不会绕过启动门。崩溃可能留下孤儿登记并安全地阻止启动。下一步仍须建立 Hub 绑定、SessionBinding 和加密/重放水位对账后的受权解除隔离协议，不能仅靠删除标记。
 
 ## 每步共同的安全与验证门槛
 

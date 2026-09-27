@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -25,10 +26,66 @@ type Client struct {
 	stdin         io.WriteCloser
 	scanner       *bufio.Scanner
 	writeMu       sync.Mutex
+	readMu        sync.Mutex
 	nextID        int64
 	onEvent       EventHandler
 	onRequest     RequestHandler
 	asyncRequests bool
+}
+
+const minimumQueueWakeVersion = "0.156.1"
+
+var semanticVersion = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?(?:$|[^0-9])`)
+
+// versionAtLeast deliberately parses the runtime's reported version rather
+// than relying on a compiled-in exact CLI release. Unknown versions fail
+// closed because the experimental queue API is part of the pinned protocol.
+func versionAtLeast(version, minimum string) bool {
+	parse := func(value string) ([3]int, bool) {
+		match := semanticVersion.FindStringSubmatch(strings.TrimSpace(value))
+		if len(match) != 6 || match[4] != "" {
+			return [3]int{}, false
+		}
+		var parsed [3]int
+		for index := range parsed {
+			if _, err := fmt.Sscanf(match[index+1], "%d", &parsed[index]); err != nil {
+				return [3]int{}, false
+			}
+		}
+		return parsed, true
+	}
+	actual, ok := parse(version)
+	if !ok {
+		return false
+	}
+	wanted, ok := parse(minimum)
+	if !ok {
+		return false
+	}
+	for index := range actual {
+		if actual[index] != wanted[index] {
+			return actual[index] > wanted[index]
+		}
+	}
+	return true
+}
+
+// InitializeExperimental negotiates the experimental queue methods and
+// verifies that the server handshake reports a version supported by this
+// client. Call it before any thread mutation.
+func (c *Client) InitializeExperimental(ctx context.Context, clientName, title, clientVersion string) error {
+	result, err := c.Request(ctx, "initialize", map[string]any{
+		"clientInfo":   map[string]any{"name": clientName, "title": title, "version": clientVersion},
+		"capabilities": map[string]any{"experimentalApi": true},
+	})
+	if err != nil {
+		return err
+	}
+	userAgent, _ := result["userAgent"].(string)
+	if !versionAtLeast(userAgent, minimumQueueWakeVersion) {
+		return errors.New("Codex app-server did not negotiate the required experimental protocol")
+	}
+	return c.Notify("initialized", map[string]any{})
 }
 
 // StartAsync keeps the stdout reader active while an approval request waits
@@ -108,6 +165,11 @@ func (c *Client) Notify(method string, params any) error {
 }
 
 func (c *Client) Request(ctx context.Context, method string, params any) (map[string]any, error) {
+	// Request and WaitTurn share one scanner. Serialize all reads and use the
+	// same operation context for Start and requests so cancellation terminates
+	// the app-server process and unblocks a pending Scan.
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
 	id := c.nextID
 	c.nextID++
 	if err := c.write(map[string]any{"id": id, "method": method, "params": params}); err != nil {
@@ -165,6 +227,8 @@ func (c *Client) handleMessage(message map[string]any) {
 }
 
 func (c *Client) WaitTurn(ctx context.Context) (string, string, error) {
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
 	var summary string
 	for c.scanner.Scan() {
 		message := decodeMessage(c.scanner.Text())

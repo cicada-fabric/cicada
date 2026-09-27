@@ -369,8 +369,15 @@ func (s *Service) ClaimNodeDeliveries(nodeID string, input NodeClaimInput) ([]De
 
 func (s *Service) RecordNodeReceipt(nodeID string, input NodeReceiptInput) (*store.RelayReceipt, error) {
 	nodeID = strings.TrimSpace(nodeID)
+	input.AttemptID = strings.TrimSpace(input.AttemptID)
+	input.MessageID = strings.TrimSpace(input.MessageID)
+	input.Digest = strings.TrimSpace(input.Digest)
+	input.EndpointID = strings.TrimSpace(input.EndpointID)
+	input.BindingID = strings.TrimSpace(input.BindingID)
+	input.Layer = strings.TrimSpace(input.Layer)
 	switch strings.TrimSpace(input.Layer) {
-	case ReceiptNodeReceived, ReceiptRuntimeInjected, ReceiptConsumptionUncertain,
+	case ReceiptNodeReceived, ReceiptCodexQueueAccepted, ReceiptNativeThreadResumed,
+		ReceiptRuntimeInjected, ReceiptConsumptionUncertain,
 		ReceiptInjectionUncertain, ReceiptFailed:
 		// These receipt layers describe durable Node inbox and runtime facts.
 	default:
@@ -378,21 +385,55 @@ func (s *Service) RecordNodeReceipt(nodeID string, input NodeReceiptInput) (*sto
 		// receiving application/session, not to the machine-level Node bearer.
 		return nil, ErrPermissionDenied
 	}
-	endpoint, err := s.store.GetEndpointV2(strings.TrimSpace(input.EndpointID))
-	if err != nil || endpoint.MigrationState != store.EndpointMigrationReady || endpoint.MachineID != nodeID {
+	endpoint, err := s.store.GetEndpointV2(input.EndpointID)
+	if err != nil || endpoint.MigrationState != store.EndpointMigrationReady {
 		return nil, ErrPermissionDenied
 	}
-	binding, err := s.store.GetSessionBinding(strings.TrimSpace(input.BindingID))
-	if err != nil || binding.EndpointID != endpoint.ID || binding.NodeID != nodeID || binding.Epoch != input.BindingEpoch {
+	binding, err := s.store.GetSessionBinding(input.BindingID)
+	if err != nil || binding.EndpointID != endpoint.ID {
 		return nil, ErrStaleBinding
 	}
-	if err := s.store.ValidateSessionBindingLease(binding.ID, binding.LeaseOwner, binding.Epoch); err != nil {
-		return nil, ErrStaleBinding
+	if binding.NodeID != nodeID {
+		return nil, ErrPermissionDenied
+	}
+	currentBinding := binding.Epoch == input.BindingEpoch && endpoint.MachineID == nodeID && endpoint.BindingID == binding.ID &&
+		s.store.ValidateSessionBindingLease(binding.ID, binding.LeaseOwner, binding.Epoch) == nil
+	if !currentBinding {
+		// Exact duplicate historical receipts are harmless to return. A stale
+		// binding may otherwise report only uncertainty for a Node-received
+		// attempt; it cannot first claim queueing, resume, injection, or
+		// consumption after its authority expired.
+		coordinates := store.RelayReceipt{
+			AttemptID: input.AttemptID, MessageID: input.MessageID, Digest: input.Digest,
+			TargetEndpointID: endpoint.ID, BindingID: binding.ID,
+			BindingEpoch: input.BindingEpoch,
+		}
+		exactDuplicate, err := s.store.HasRelayReceiptForAttempt(store.RelayReceipt{
+			AttemptID: coordinates.AttemptID, MessageID: coordinates.MessageID, Digest: coordinates.Digest,
+			TargetEndpointID: coordinates.TargetEndpointID, BindingID: coordinates.BindingID,
+			BindingEpoch: coordinates.BindingEpoch, Layer: input.Layer,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !exactDuplicate {
+			if input.Layer != ReceiptInjectionUncertain {
+				return nil, ErrStaleBinding
+			}
+			coordinates.Layer = ReceiptNodeReceived
+			seenNodeReceived, err := s.store.HasRelayReceiptForAttempt(coordinates)
+			if err != nil {
+				return nil, err
+			}
+			if !seenNodeReceived {
+				return nil, ErrStaleBinding
+			}
+		}
 	}
 	receipt, err := s.store.RecordRelayReceipt(store.RelayReceipt{
-		AttemptID: strings.TrimSpace(input.AttemptID), MessageID: strings.TrimSpace(input.MessageID),
-		Digest: strings.TrimSpace(input.Digest), TargetEndpointID: endpoint.ID,
-		BindingID: binding.ID, BindingEpoch: binding.Epoch, Layer: strings.TrimSpace(input.Layer),
+		AttemptID: input.AttemptID, MessageID: input.MessageID,
+		Digest: input.Digest, TargetEndpointID: endpoint.ID,
+		BindingID: binding.ID, BindingEpoch: input.BindingEpoch, Layer: input.Layer,
 		Error: strings.TrimSpace(input.Error),
 	})
 	if err != nil {

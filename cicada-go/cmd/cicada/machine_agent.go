@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 )
@@ -293,20 +294,17 @@ func runMachineAgent(args []string) error {
 
 // rejectMachineNodePendingRecovery prevents a restored Node from reconnecting
 // before its binding, replay watermarks, and uncertain injections are reconciled.
-// Marker contents are deliberately not read or included in the error.
+// Recovery marker and registry contents are deliberately not read or included
+// in the error.
 func rejectMachineNodePendingRecovery(stateDir, nodeID string) error {
-	path := filepath.Join(machineNodeStateDir(stateDir, nodeID), machineNodeRecoveryPendingFileName)
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	quarantined, err := nodebackup.RecoveryQuarantineActive(stateDir, nodeID)
 	if err != nil {
-		return fmt.Errorf("inspect Node recovery marker: %w", err)
+		return fmt.Errorf("inspect Node recovery quarantine: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return errors.New("Node recovery marker must be a regular file")
+	if quarantined {
+		return errors.New("Node recovery is pending reconciliation; refusing to start Agent")
 	}
-	return errors.New("Node recovery is pending reconciliation; refusing to start Agent")
+	return nil
 }
 
 func machineAgentStateDir() string {

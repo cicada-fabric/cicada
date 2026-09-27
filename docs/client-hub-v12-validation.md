@@ -1,4 +1,15 @@
-# Client–Hub v1.2 固定版本与联调清单
+# Client–Hub v1.2.1 固定版本与联调清单
+
+v1.2.1 是 v1.2 的 Endpoint attestation 签名原文勘误：v1 证明实际签入
+`"signature":null`，此前 wire 文档误写为省略该字段。Go 签发/验签字节、
+已有候选证明和 owner Grant 均不改动；新包加入仅供测试的公开向量，供
+Android 独立验签。旧 v1.2 固定包的模拟器结果仍是历史证据，不能替代
+v1.2.1 的独立验证。
+
+公开向量在 `cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json`，
+含完整合成证明、完整公钥、精确签名输入 hex 与原始证明 SHA-256；
+`TestPublishedEndpointAttestationVector` 使用 ML-DSA-65 直接验证签名，且
+断言省略 `signature` 的旧合同字节验签失败。该向量不得用于实际 Node/Client。
 
 本清单只使用 CICADA Hub/Node 仓库；Android 实现在独立仓库。每轮联调固定
 Hub 的完整 Git commit、协议包 SHA-256、`catalog_sha256`、本地 Docker image
@@ -15,8 +26,8 @@ python3 scripts/client-contract.py check
 python3 -m unittest discover -s scripts -p test_client_contract.py
 python3 scripts/client-contract.py export --output .cicada-data/contracts
 python3 scripts/client-contract.py verify .cicada-data/contracts/client-hub-<SHA256>.tar.gz
-./scripts/build-hub-image.sh --image cicada:client-hub-v1.2 \
-  --metadata-file .cicada-data/client-hub-v12-build.json
+./scripts/build-hub-image.sh --image cicada:client-hub-v1.2.1 \
+  --metadata-file .cicada-data/client-hub-v121-build.json
 ```
 
 导出命令打印实际协议包路径、完整 SHA-256 和 catalog 摘要；以该输出替换上面的
@@ -26,12 +37,13 @@ python3 scripts/client-contract.py verify .cicada-data/contracts/client-hub-<SHA
 镜像没有 registry digest，不能把本地 image ID 当 registry digest。
 `docker/Dockerfile.hub` 是无 Codex/模型凭据的轻量镜像。
 
-## v1.2 确定性 Hub 验证
+## v1.2.1 确定性 Hub 验证
 
 ```bash
 cd cicada-go
 go test -count=1 ./internal/store -run 'TestClientRecovery|TestGroupEndpointKeyGrant'
 go test -count=1 ./internal/server -run 'TestClientRPCRecovery|TestClientDockerHubSmoke|TestClientIntentQueuesWorkForOwnerBoundMachineAgent|TestClientGroupEndpointKeyGrant'
+go test -count=1 ./cmd/client-recovery-fixture -run 'TestRecoveryFixture'
 cd ..
 ./scripts/test-client-hub-interop.sh
 ```
@@ -39,10 +51,51 @@ cd ..
 若主机没有 Go，使用仓库规定的 Go 1.27.1 Docker 工具链运行相同测试。一次性
 interop 脚本会独立构建并启动真实 TCP Docker Hub，记录自己的 image ID
 和 `result.json`，不接触 resident Hub。它覆盖登记精确重试、完成请求的原包
-恢复、加密 RPC、Node 设备码和 owner 隔离。Store/HTTP 测试另外覆盖重启后
+恢复、三种恢复故障的固定镜像 TCP 响应、加密 RPC、Node 设备码和 owner 隔离。Store/HTTP 测试另外覆盖重启后
 `OUTCOME_UNCERTAIN`、409 `STILL_PROCESSING`、409 `RECOVERY_UNAVAILABLE`、
 错包、撤权、单调响应序号和 `goal.result` 归属。每项以实际退出码为准；Go
 测试不等于 Kotlin/Android 或真实 Node Runtime 已通过。
+
+### 固定镜像的 Android 恢复故障入口（仅隔离测试）
+
+`scripts/client-recovery-fault-proxy.py` 是本机回环 HTTP 代理，仅拦截一次
+指定 operation 的 `/v2/client/rpc`；它调用测试专用
+`cicada-go/cmd/client-recovery-fixture` 在**已标记的临时 Hub 数据库**中持久
+接受原密文请求，然后丢失这一次响应。其余请求包括 `/rpc/recover` 原样发给
+固定 Hub 镜像。正式 Hub 镜像没有故障路由，也没有这个测试程序；Android
+无需读 SQLite 或持有 Hub/Node bearer。
+
+使用前在 `/tmp` 下新建独立状态目录，创建内容恰为 `disposable` 的
+`state/.cicada-disposable-recovery-fixture`，并以本次固定 image ID 启动
+**新的一次性 Hub**，将该目录挂载为 `/state`。在 Go 1.27.1 环境构建辅助程序：
+
+```bash
+cd cicada-go
+go build -o /tmp/<fixture-root>/client-recovery-fixture ./cmd/client-recovery-fixture
+cd ..
+python3 scripts/client-recovery-fault-proxy.py \
+  --listen-port 8790 --hub-url http://127.0.0.1:<hub-port> \
+  --db /tmp/<fixture-root>/state/cicada.sqlite3 \
+  --fixture-binary /tmp/<fixture-root>/client-recovery-fixture \
+  --scenario processing --operation status.snapshot
+```
+
+`<fixture-root>` 和 `<hub-port>` 必须换成一次性目录/容器的实际值；没有主机
+Go 时可在 Go 1.27.1 构建容器中挂载源码与临时输出目录执行同一 `go build`。
+Android 模拟器把 Hub URL 设为 `http://10.0.2.2:8790`，先正常登记与建立
+加密会话，再发送该 operation。代理显示 `FAULT_READY` 后，原 RPC 在
+Client 侧表现为连接中断；随后 Android 用原包调用 `/rpc/recover`。
+
+每个场景使用**新的临时 Hub/Client 会话**：`processing` 直接得到 409
+`STILL_PROCESSING`；`uncertain` 已预留响应序号但仍是 `PROCESSING`，必须
+在 Android 恢复前重启这台**一次性 Hub 容器**，启动恢复把它标为
+`UNCERTAIN`，随后得到签名密文 `OUTCOME_UNCERTAIN`；`legacy` 模拟一个
+无 v29 预留标记的历史请求，得到 409 `RECOVERY_UNAVAILABLE`。
+该工具不复制或打印密文正文、设备 Grant 或私钥。它依据公开 route 创建
+故障状态，不替代 Hub 对真实请求的验签；因此只能连接隔离 Hub，不能连接
+常驻/生产数据库。`TestRecoveryFixtureAgainstRealHTTPHandler` 验证三个状态
+与拒绝二次执行，`test_client_recovery_fault_proxy.py` 验证仅拦截目标 RPC。
+这些是 Go/代理测试；Android 三个场景只有 Client 仓库实际运行后才算通过。
 
 Client 在固定镜像上应至少重放：登记响应丢失后原样重发同一 Grant；已完成
 RPC 的 `/rpc/recover` 返回原密文；处理中返回 409 `STILL_PROCESSING`；

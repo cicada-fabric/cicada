@@ -104,8 +104,9 @@ type RouteMetadata struct {
 	SenderEndpointID string
 }
 
-// VisibleMessage is a message whose native runtime injection has been
-// positively recorded. Sequence is local to one Node inbox database.
+// VisibleMessage is a message accepted into the native-session relay inbox.
+// Its State distinguishes confirmed injection from a queued, unconsumed item.
+// Sequence is local to one Node inbox database.
 type VisibleMessage struct {
 	Sequence         int64  `json:"sequence"`
 	MessageID        string `json:"message_id"`
@@ -528,9 +529,10 @@ FROM node_inbox_message_routes WHERE message_id=?`, messageID).Scan(
 	return nil
 }
 
-// ListInjectedForSession exposes only positively injected text for the exact
-// current Endpoint, native Session, binding epoch and Group. The caller owns
-// the cursor envelope because it may aggregate multiple Node inbox files.
+// ListInjectedForSession exposes accepted text for the exact current Endpoint,
+// native Session, binding epoch and Group, including queued items whose Thread
+// wake and model consumption remain unconfirmed. The caller owns the cursor
+// envelope because it may aggregate multiple Node inbox files.
 func (i *Inbox) ListInjectedForSession(ctx context.Context, endpointID, sessionID string,
 	bindingEpoch uint64, groupID string, afterSequence int64, limit int) ([]VisibleMessage, error) {
 	if endpointID == "" || sessionID == "" || bindingEpoch == 0 || groupID == "" ||
@@ -859,11 +861,24 @@ func (i *Inbox) RecordRuntimeInjected(ctx context.Context, receipt Receipt) (*De
 	return i.recordReceipt(ctx, receipt)
 }
 
-// RecordConsumptionUnconfirmed records that runtime injection was accepted,
-// while the harness cannot prove that the model consumed the message.
+// RecordConsumptionUnconfirmed records that a native queue accepted the
+// message, while Thread wake and model consumption remain unconfirmed. Older
+// callers that positively identified runtime injection may also use this
+// state for compatibility.
 func (i *Inbox) RecordConsumptionUnconfirmed(ctx context.Context, receipt Receipt) (*Delivery, error) {
 	receipt.State = CONSUMPTION_UNCONFIRMED
 	return i.recordReceipt(ctx, receipt)
+}
+
+// RecordCodexQueueAccepted records the durable success result of `codex
+// queue`. It deliberately uses the existing readable terminal state while
+// keeping that state distinct from RUNTIME_INJECTED. It also reconciles an
+// interrupted local receipt only when the caller has a confirmed queue
+// acceptance witness for this exact attempt (normally kept in the Node relay
+// journal across restart).
+func (i *Inbox) RecordCodexQueueAccepted(ctx context.Context, receipt Receipt) (*Delivery, error) {
+	receipt.State = CONSUMPTION_UNCONFIRMED
+	return i.recordReceiptWithQueueAccepted(ctx, receipt)
 }
 
 // RecordFailed records a runtime failure after a begun injection.  It does
@@ -881,6 +896,14 @@ func (i *Inbox) Acknowledge(ctx context.Context, receipt Receipt) (*Delivery, er
 }
 
 func (i *Inbox) recordReceipt(ctx context.Context, receipt Receipt) (*Delivery, error) {
+	return i.recordReceiptMode(ctx, receipt, false)
+}
+
+func (i *Inbox) recordReceiptWithQueueAccepted(ctx context.Context, receipt Receipt) (*Delivery, error) {
+	return i.recordReceiptMode(ctx, receipt, true)
+}
+
+func (i *Inbox) recordReceiptMode(ctx context.Context, receipt Receipt, queueAccepted bool) (*Delivery, error) {
 	if receipt.State != RUNTIME_INJECTED && receipt.State != CONSUMPTION_UNCONFIRMED && receipt.State != FAILED && receipt.State != INJECTION_UNCERTAIN {
 		return nil, ErrInvalidReceipt
 	}
@@ -927,7 +950,11 @@ func (i *Inbox) recordReceipt(ctx context.Context, receipt Receipt) (*Delivery, 
 		}
 		return delivery, nil
 	}
-	if delivery.State == INJECTION_UNCERTAIN && receipt.State == RUNTIME_INJECTED {
+	if queueAccepted && receipt.State == CONSUMPTION_UNCONFIRMED &&
+		(delivery.State == INJECTING || delivery.State == INJECTION_UNCERTAIN) {
+		// The caller has durably journaled a successful queue exit for this
+		// exact attempt; no runtime injection or model consumption is inferred.
+	} else if delivery.State == INJECTION_UNCERTAIN && receipt.State == RUNTIME_INJECTED {
 		// Native idempotency reconciliation is the only path out of the
 		// uncertain window.  It does not invoke a runtime or retry anything.
 	} else if delivery.State == INJECTING && (receipt.State == RUNTIME_INJECTED || receipt.State == FAILED || receipt.State == INJECTION_UNCERTAIN) {

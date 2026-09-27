@@ -5,6 +5,7 @@ go 1.25.0
 toolchain go1.27.1
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/cloudflare/circl v1.6.5
 	github.com/gofrs/flock v0.13.1

@@ -207,6 +207,28 @@ func TestReceiptValidationAndLayeredStates(t *testing.T) {
 	}
 }
 
+func TestCodexQueueAcceptedDoesNotClaimRuntimeInjection(t *testing.T) {
+	inbox := openTestInbox(t)
+	message := testMessage("msg-codex-queue-accepted", "digest-codex-queue-accepted")
+	if _, _, err := inbox.Save(context.Background(), message); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := inbox.Claim(context.Background(), "codex-queue-consumer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inbox.BeginInjection(context.Background(), claim.AttemptID); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := inbox.RecordCodexQueueAccepted(context.Background(), receiptFrom(claim, CONSUMPTION_UNCONFIRMED))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.State != CONSUMPTION_UNCONFIRMED || queued.State == RUNTIME_INJECTED {
+		t.Fatalf("queue acceptance state = %s, must remain consumption-unconfirmed", queued.State)
+	}
+}
+
 func TestFailedReceiptIsTerminal(t *testing.T) {
 	inbox := openTestInbox(t)
 	message := testMessage("msg-failed", "digest-failed")

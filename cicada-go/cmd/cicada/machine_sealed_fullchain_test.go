@@ -241,7 +241,7 @@ func TestMCPSealedSendAcrossTwoLogicalNodesWithoutControlBusiness(t *testing.T) 
 	observedMu.Lock()
 	receivedLayers := append([]string(nil), receipts...)
 	observedMu.Unlock()
-	if strings.Join(receivedLayers, ",") != "NODE_RECEIVED,RUNTIME_INJECTED,CONSUMPTION_UNCONFIRMED" {
+	if strings.Join(receivedLayers, ",") != "NODE_RECEIVED,CODEX_QUEUE_ACCEPTED,CONSUMPTION_UNCONFIRMED" {
 		t.Fatalf("unexpected layered target receipts: %v", receivedLayers)
 	}
 }

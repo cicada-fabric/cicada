@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.2
+  x-contract-revision: client-hub-v1.2.1
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -371,7 +371,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.2}
+        contract_revision: {const: client-hub-v1.2.1}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -574,7 +574,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.2}
+        contract_revision: {const: client-hub-v1.2.1}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
