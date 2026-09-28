@@ -1,5 +1,13 @@
 # Architecture v2.3 当前事实审计
 
+## 2026-09-28 M1 ACTIVE 入口与撤权复审（有界检查点 PASS）
+
+本轮候选保持 Hub schema v35 和冻结的 Client `client-hub-v1.3` / 33 operations。Network access credential 与原生 Group SessionBinding 分离：前者只可访问当前 Network 的目录和获授邀请操作；它不能凭 `Cicada-Group-Scope`、请求体中的 Node ID 或 operator bearer 取得 Group、Node、device、approval 权限。同一原生 Thread 可分别加入 A/B，A 的续期或退出不更换 B 的 access session，也不替换 Group native writer。ACTIVE 未映射 Group 继续拒绝；Control 业务服务为 nil 时，Fabric HTTP 的合法密封 ASK/REPLY 可独立完成。
+
+映射批准会推进 Group 授权 revision，使旧 Group key-grant proof 失效；Owner 须在明确 Network enrollment 后重新 Preview、签名并接受当前 Group Endpoint key grant。Network 撤权还会推进相应 Group/Endpoint 授权 revision，旧消息与旧注入尝试不得因重新加入而复活。定向真实 HTTP 测试覆盖 mapped Network 上同组 sealed ASK→claim→delivery authorization→REPLY→REPLIED，以及目标撤权后旧 SEND/ASK 重试、新 SEND/ASK 和待决 REPLY 入队拒绝。MCP 定向测试覆盖 Network-only 私有状态只可目录、Group 工具本地拒绝。全 Go、vet、聚焦 race、合同与八项 Python、默认 Client 和独立 ACTIVE Network disposable Docker 门禁均通过；准确 dirty source fingerprint、两套隔离 fixture 与清理核对见 [Go 门禁](../.cicada-data/checkpoint-next-20260928/go-gates.json)、[Client 结果](../.cicada-data/checkpoint-next-20260928/client-docker/result.json)、[Network 结果](../.cicada-data/checkpoint-next-20260928/network-docker/result.json)及[清理记录](../.cicada-data/checkpoint-next-20260928/cleanup.json)。参阅 [M1 合同](network-m1-contract.md) 和 [验证矩阵](network-m1-validation.md)。
+
+本轮 `AcceptTaskResultForActor` 在写事务复查完整 native actor；其他 Task Claim/Release/Renew/Submit 写入口在写事务复查当前 Network、Endpoint 和 Owner 绑定，但不等同于完整 native actor scope。旧入口与历史读的全面矩阵仍未完成。全量合成账本保全已验证：93 个保全摘要条目（含 v34 迁移账本；52 个非空）一致，9 张新增 Network 表在注入失败后回滚；迁移 dry-run 的完整影响清单与真实 StateDir 一致备份、恢复演练仍未验收。ACTIVE Client `group.create` 无 Network selector 是下一轮 Client 合同协作，不在本次冻结目录上静默补字段。Network-only 且无 Group 不能 DM；跨不同 Group 的 Link 要求双方各有同一 Network 下的有效 Group scope 与双向 Owner 授权。真实 native Runtime、Android、双物理机、公网 HTTPS 本轮均 **NOT_RUN**；整体 M1 **NOT_COMPLETE**。
+
 ## 2026-09-27 M1 Network scope 与旧入口审计（起点 `0cda614`）
 
 下表是 M1 的实施前审计快照，不代表当前代码或验收结论。`dev` 在

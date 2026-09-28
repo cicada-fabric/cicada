@@ -44,6 +44,9 @@ func enrollBroadcastFixtureEndpoint(t *testing.T, f *sameGroupBroadcastV2Fixture
 (network_id,endpoint_id,status,nickname,created_at,updated_at) VALUES(?,?,'active',?,?,?)`, networkID, endpoint.id, endpoint.id, stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
+	// Mapping advances the signed Group revision; the synthetic Owner must
+	// approve this Endpoint key again in its explicit Network scope.
+	f.sealed.grant(t, endpoint.id)
 }
 
 func revokeBroadcastFixtureEndpoint(t *testing.T, f *sameGroupBroadcastV2Fixture, networkID string, endpoint sameGroupSealedV1EndpointFixture) {

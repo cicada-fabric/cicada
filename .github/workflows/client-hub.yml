@@ -49,14 +49,29 @@ jobs:
       - name: Disposable Hub protocol acceptance
         env:
           CICADA_BUILD_PROXY: ''
-          CICADA_INTEROP_OUTPUT: ${{ runner.temp }}/cicada-interop
+          CICADA_INTEROP_OUTPUT: ${{ runner.temp }}/cicada-client-interop
         run: scripts/test-client-hub-interop.sh
+      - name: Disposable ACTIVE Network protocol acceptance
+        if: always()
+        env:
+          CICADA_BUILD_PROXY: ''
+          CICADA_INTEROP_OUTPUT: ${{ runner.temp }}/cicada-network-m1-interop
+        run: scripts/test-client-hub-interop.sh --suite network-m1
       - name: Upload sanitized protocol evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, Node 24
         with:
           name: client-hub-interop-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/cicada-interop/result.json
-            ${{ runner.temp }}/cicada-interop/test.log
+            ${{ runner.temp }}/cicada-client-interop/result.json
+            ${{ runner.temp }}/cicada-client-interop/test.log
+          if-no-files-found: error
+      - name: Upload sanitized Network M1 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, Node 24
+        with:
+          name: network-m1-interop-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/cicada-network-m1-interop/result.json
+            ${{ runner.temp }}/cicada-network-m1-interop/test.log
           if-no-files-found: error

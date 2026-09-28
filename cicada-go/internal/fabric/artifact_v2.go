@@ -135,10 +135,10 @@ func (s *Service) RevokeArtifactRefV2(actor Actor, refID, reason string) (*store
 // AuthorizeArtifactRefV2 is intentionally small and side-effect free.  All
 // callers use it before metadata, summary, digest, or content is returned.
 func (s *Service) AuthorizeArtifactRefV2(actor Actor, input ArtifactRefReadInput) (*store.ArtifactRefV2, error) {
-	if err := actor.Validate(); err != nil {
+	if err := s.Authorize(actor, "artifact.read"); err != nil {
 		return nil, err
 	}
-	return s.store.AuthorizeArtifactRefV2(actor.PrincipalID, actor.GroupID,
+	return s.store.AuthorizeArtifactRefV2ForActor(nativeActorScope(actor),
 		input.ArtifactRefID, input.Scopes, s.now().UTC())
 }
 
@@ -215,7 +215,7 @@ func (s *Service) ResolveArtifactRefsV2(actor Actor, refIDs, scopes []string) ([
 			continue
 		}
 		seen[refID] = struct{}{}
-		ref, err := s.store.AuthorizeArtifactRefV2(actor.PrincipalID, actor.GroupID, refID, scopes, s.now().UTC())
+		ref, err := s.store.AuthorizeArtifactRefV2ForActor(nativeActorScope(actor), refID, scopes, s.now().UTC())
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +228,7 @@ func (s *Service) ListArtifactRefsV2(actor Actor, limit int) ([]store.ArtifactRe
 	if err := s.Authorize(actor, "artifact.read"); err != nil {
 		return nil, err
 	}
-	return s.store.ListArtifactRefsV2(actor.GroupID, limit)
+	return s.store.ListArtifactRefsV2ForActor(nativeActorScope(actor), limit)
 }
 
 // ValidateGatewayArtifactRefs checks the source actor's current membership,
@@ -243,7 +243,7 @@ func (s *Service) ValidateGatewayArtifactRefs(actor Actor, targetGroupID string,
 		return store.ErrArtifactRefV2Denied
 	}
 	for _, refID := range refIDs {
-		ref, err := s.store.AuthorizeArtifactRefV2(actor.PrincipalID, actor.GroupID, refID, scopes, s.now().UTC())
+		ref, err := s.store.AuthorizeArtifactRefV2ForActor(nativeActorScope(actor), refID, scopes, s.now().UTC())
 		if err != nil {
 			return err
 		}

@@ -372,7 +372,7 @@ func fabricV2Error(response http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, fabricpkg.ErrUnauthenticated):
 		status = http.StatusUnauthorized
-	case errors.Is(err, fabricpkg.ErrPermissionDenied), errors.Is(err, fabricpkg.ErrStaleBinding), errors.Is(err, fabricpkg.ErrCrossGroupDirectDenied):
+	case errors.Is(err, fabricpkg.ErrPermissionDenied), errors.Is(err, fabricpkg.ErrStaleBinding), errors.Is(err, fabricpkg.ErrCrossGroupDirectDenied), errors.Is(err, store.ErrNetworkPermission):
 		status = http.StatusForbidden
 	case errors.Is(err, fabricpkg.ErrNotFoundOrNotAuthorized):
 		status = http.StatusNotFound

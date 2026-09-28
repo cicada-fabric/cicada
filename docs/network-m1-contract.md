@@ -1,6 +1,6 @@
 # Network M1 service contract
 
-**Status:** M1 implementation contract. This document describes the new Network surface; the frozen Android Hub v1.3 catalog, wire version, and capability advertisement are unchanged.
+**Status:** M1 implementation contract. The ACTIVE authorization/migration hardening **bounded checkpoint passed** its deterministic, contract and separate disposable Client/Network Docker gates on the [recorded dirty source fingerprint](../.cicada-data/checkpoint-next-20260928/go-gates.json); it is not an overall M1 acceptance. The frozen Android Hub v1.3 catalog (33 operations), wire version, capability advertisement, and Hub schema v35 are unchanged. Overall M1 is **NOT_COMPLETE**; real native Runtime, Android, two physical machines, and public HTTPS are **NOT_RUN** in this checkpoint. See the [audit](architecture-v2-audit.md) and [validation matrix](network-m1-validation.md).
 
 ## Authority and scope
 
@@ -36,5 +36,9 @@ For MCP, configure existing private directories `CICADA_NETWORK_JOIN_DIR` and `C
 ## Guard and transport
 
 Every directory read, resolve, old Group entry, Link route, Relay enqueue/claim, local delivery and native injection checkpoint rechecks the active Network and current membership revisions. Revocation prevents new authorized reads/writes and connected delivery; already delivered ciphertext or native context cannot be recalled. Existing sealed Group and bilateral Owner-approved Link transport remains the private-message path in M1. For a Link, each endpoint must have its own authorized Group scope mapped to the same Network; the endpoints need not share one Group. A Network-only member without a Group cannot use that Link or send a private message in M1. M1 adds no plaintext peer send route, implicit Group, Hub-to-Hub relay, Journal, or new native writer.
+
+Approving a Group→Network mapping advances the Group authorization revision. An Owner-signed Group Endpoint key grant prepared or accepted before mapping is no longer current: the Owner must preview and sign a fresh grant after the Endpoint has explicitly joined the mapped Network. Revoking a Network membership or leaving one Endpoint enrollment advances only the affected Group/Endpoint authorization generations; old queued attempts and old key grants cannot regain authority through a later rejoin. Native writer identity and unrelated Network registrations remain separate. Current reads and state transitions must validate their authenticated actor and saved route inside the Store transaction, including the current owner-bound Node where native authority is required.
+
+The ACTIVE Client `group.create` operation has no Network selector in v1.3 and is rejected for a new Group. An independently reviewed Client contract revision is required before that Client flow can create a Group on an ACTIVE Hub; the default PREPARING Client gate is not evidence of ACTIVE topology compatibility.
 
 The new HTTP and CLI surface is independent of Android Hub v1.3. Public capabilities continue to mean availability only; encrypted device session claims and the server Guard remain authoritative for existing Client operations.

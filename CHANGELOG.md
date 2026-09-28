@@ -12,6 +12,16 @@ v2.3, Client wire v1, or the frozen v1.3 contract. The bounded Network M1
 foundation checkpoint passed; overall M1 remains incomplete under the
 [validation matrix](docs/network-m1-validation.md).
 
+The ACTIVE Network authorization/migration hardening bounded checkpoint passed
+full Go/vet, focused race, contract checks and separate disposable Client/Network
+Docker gates on its recorded dirty source fingerprint. It adds current Network
+checks to existing collaboration paths and fences Group key grants made before
+an approved Network mapping. Focused HTTP tests cover Control-free sealed
+Ask/Reply and rejection of peer enqueues after Network revocation. Client v1.3
+remains 33 operations and Hub schema remains v35. ACTIVE
+Client Group creation needs a later contract revision; real native Runtime,
+Android, two physical machines and public HTTPS are not run in this candidate.
+
 ## 0.4.0-dev — historical prototype, unreleased
 
 ### Added

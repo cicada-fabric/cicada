@@ -90,6 +90,21 @@ type NetworkDirectoryEntry struct {
 	Availability string
 }
 
+// NetworkAccessScope is derived from an authenticated access session. It is a
+// directory credential, not a native writer lease. Every directory read checks
+// these revisions and the current owner/Node binding in its own transaction.
+type NetworkAccessScope struct {
+	NetworkID                  string
+	PrincipalID                string
+	EndpointID                 string
+	AccessSessionID            string
+	AccessEpoch                uint64
+	LeaseOwner                 string
+	MembershipID               string
+	MembershipRevision         int64
+	EndpointMembershipRevision int64
+}
+
 // GroupNetworkMapping is an explicit operator decision. A pending row is a
 // quarantine marker, not a usable tenant assignment.
 type GroupNetworkMapping struct {
@@ -462,7 +477,10 @@ func (s *Store) ApproveGroupNetworkMapping(groupID, networkID string, expectedVe
 		return ErrNetworkConflict
 	}
 	timestamp := now()
-	if _, err := tx.Exec(`UPDATE groups SET network_id=?,version=version+1,updated_at=? WHERE id=? AND network_id='' AND version=?`, networkID, timestamp, groupID, expectedVersion); err != nil {
+	// Network mapping changes the signed Group key-grant scope. Advancing the
+	// existing GroupRevision fences both accepted and not-yet-accepted proofs
+	// prepared against the legacy unscoped Group.
+	if _, err := tx.Exec(`UPDATE groups SET network_id=?,revision=revision+1,version=version+1,updated_at=? WHERE id=? AND network_id='' AND version=?`, networkID, timestamp, groupID, expectedVersion); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE network_group_mappings_v2 SET state='APPROVED',group_version=?,updated_at=? WHERE group_id=?`, expectedVersion+1, timestamp, groupID); err != nil {
@@ -519,7 +537,9 @@ func (s *Store) NetworkGuardGroup(principalID, endpointID, groupID, networkID st
 	err := s.db.QueryRow(`SELECT 1 FROM groups g
 JOIN networks_v2 n ON n.id=g.network_id AND n.state='ACTIVE'
 JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=? AND m.status='active'
+JOIN principals p ON p.id=m.principal_id AND p.status='active'
 JOIN endpoint_network_memberships_v2 e ON e.network_id=n.id AND e.endpoint_id=? AND e.status='active'
+JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.principal_id=p.id AND f.status!='left'
 WHERE g.id=? AND g.network_id=? AND (m.expires_at='' OR m.expires_at>?)`, principalID, endpointID, groupID, networkID, now()).Scan(&ok)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNetworkPermission
@@ -628,8 +648,8 @@ func networkGuardRelaySecurityTx(tx *sql.Tx, security *RelayMessageSecurity, rec
 	if senderNetwork == "" || senderNetwork != receiverNetwork || security.ReceiverGroupID != receiverGroupID {
 		return ErrNetworkPermission
 	}
-	var active int
-	if err := tx.QueryRow(`SELECT 1 FROM networks_v2 WHERE id=? AND state='ACTIVE'`, senderNetwork).Scan(&active); err != nil {
+	var hubID string
+	if err := tx.QueryRow(`SELECT hub_id FROM networks_v2 WHERE id=? AND state='ACTIVE'`, senderNetwork).Scan(&hubID); err != nil {
 		return ErrNetworkPermission
 	}
 	for _, side := range []struct{ principalID, endpointID, groupID, action string }{
@@ -651,7 +671,16 @@ func networkGuardRelaySecurityTx(tx *sql.Tx, security *RelayMessageSecurity, rec
 			query += ` AND EXISTS(SELECT 1 FROM json_each(nm.grants_json) WHERE value=?)`
 			args = append(args, side.action)
 		}
+		var active int
 		if err := tx.QueryRow(query, args...).Scan(&active); err != nil {
+			return ErrNetworkPermission
+		}
+		var ownerID, nodeID string
+		if err := tx.QueryRow(`SELECT owner,machine_id FROM fabric_endpoints
+WHERE id=? AND principal_id=?`, side.endpointID, side.principalID).Scan(&ownerID, &nodeID); err != nil {
+			return ErrNetworkPermission
+		}
+		if err := requireCurrentOwnerBoundGroupNodeTx(tx, nodeID, ownerID, hubID); err != nil {
 			return ErrNetworkPermission
 		}
 	}
@@ -1132,6 +1161,20 @@ func (s *Store) RevokeNetworkMembership(networkID, principalID string, expectedR
 	if count != 1 {
 		return ErrNetworkConflict
 	}
+	// Group relationships and grants remain intact. Only their authorization
+	// generation advances, so native actors and Owner-signed key proofs from
+	// before Network revocation cannot become current after a fresh Join.
+	timestamp := now()
+	if _, err := tx.Exec(`UPDATE memberships SET revision=revision+1,version=version+1,updated_at=?
+WHERE principal_id=? AND group_id IN (SELECT id FROM groups WHERE network_id=?)`,
+		timestamp, principalID, networkID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE endpoint_group_memberships SET revision=revision+1,updated_at=?
+WHERE endpoint_id IN (SELECT id FROM fabric_endpoints WHERE principal_id=?)
+AND group_id IN (SELECT id FROM groups WHERE network_id=?)`, timestamp, principalID, networkID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`UPDATE endpoint_network_memberships_v2 SET status='revoked',revision=revision+1,updated_at=? WHERE network_id=? AND endpoint_id IN (SELECT id FROM fabric_endpoints WHERE principal_id=?)`, now(), networkID, principalID); err != nil {
 		return err
 	}
@@ -1160,21 +1203,89 @@ func (s *Store) LeaveEndpointNetwork(networkID, endpointID string, expectedRevis
 	if count != 1 {
 		return ErrNetworkConflict
 	}
+	if _, err := tx.Exec(`UPDATE endpoint_group_memberships SET revision=revision+1,updated_at=?
+WHERE endpoint_id=? AND group_id IN (SELECT id FROM groups WHERE network_id=?)`,
+		now(), endpointID, networkID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`UPDATE network_access_sessions_v2 SET status='revoked',updated_at=? WHERE network_id=? AND endpoint_id=?`, now(), networkID, endpointID); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// ListNetworkDirectory runs its visibility predicates in SQLite. It never
-// loads private Group names, workspace paths, native session IDs or keys.
-func (s *Store) ListNetworkDirectory(networkID string, limit int) ([]NetworkDirectoryEntry, error) {
+// networkGuardAccessTx and the directory query share one SQLite snapshot.
+// Revocation committed by another Store instance before this read begins is
+// therefore observed before any card can be returned.
+func networkGuardAccessTx(tx *sql.Tx, scope NetworkAccessScope, action string, at time.Time) error {
+	if scope.NetworkID == "" || scope.PrincipalID == "" || scope.EndpointID == "" ||
+		scope.AccessSessionID == "" || scope.AccessEpoch == 0 || scope.LeaseOwner == "" ||
+		scope.MembershipID == "" || scope.MembershipRevision <= 0 ||
+		scope.EndpointMembershipRevision <= 0 || action == "" {
+		return ErrNetworkPermission
+	}
+	var leaseExpiry, membershipExpiry string
+	err := tx.QueryRow(`SELECT a.lease_expires_at,m.expires_at
+FROM network_access_sessions_v2 a
+JOIN networks_v2 n ON n.id=a.network_id AND n.state='ACTIVE'
+JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=a.principal_id AND m.status='active'
+JOIN endpoint_network_memberships_v2 en ON en.network_id=n.id AND en.endpoint_id=a.endpoint_id AND en.status='active'
+JOIN fabric_endpoints f ON f.id=en.endpoint_id AND f.principal_id=m.principal_id
+  AND f.machine_id=a.node_id AND f.native_session_id=a.native_session_id AND f.status!='left'
+JOIN principals p ON p.id=m.principal_id AND p.status='active' AND p.owner_id=f.owner
+JOIN node_owner_bindings_v2 b ON b.node_id=a.node_id AND b.owner_id=f.owner
+  AND b.hub_id=n.hub_id AND b.state='ACTIVE'
+JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=b.hub_id
+JOIN fabric_node_credentials c ON c.node_id=b.node_id
+  AND c.credential_hash=b.node_credential_digest
+  AND c.version=b.node_credential_version AND c.status='active'
+JOIN owner_approval_keys_v2 nk ON nk.owner_id=b.owner_id
+  AND nk.key_id=b.owner_key_id AND nk.state='ACTIVE'
+JOIN owner_approval_keys_v2 ak ON ak.owner_id=f.owner
+  AND ak.key_id=a.owner_key_id AND ak.state='ACTIVE'
+WHERE a.id=? AND a.network_id=? AND a.principal_id=? AND a.endpoint_id=?
+  AND a.epoch=? AND a.lease_owner=? AND a.status='active'
+  AND m.id=? AND m.revision=? AND en.revision=?
+  AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`,
+		scope.AccessSessionID, scope.NetworkID, scope.PrincipalID, scope.EndpointID,
+		scope.AccessEpoch, scope.LeaseOwner, scope.MembershipID,
+		scope.MembershipRevision, scope.EndpointMembershipRevision, action).
+		Scan(&leaseExpiry, &membershipExpiry)
+	if err != nil {
+		return ErrNetworkPermission
+	}
+	leaseDeadline, err := time.Parse(time.RFC3339Nano, leaseExpiry)
+	if err != nil || !leaseDeadline.After(at) {
+		return ErrNetworkPermission
+	}
+	if membershipExpiry != "" {
+		membershipDeadline, err := time.Parse(time.RFC3339Nano, membershipExpiry)
+		if err != nil || !membershipDeadline.After(at) {
+			return ErrNetworkPermission
+		}
+	}
+	return nil
+}
+
+// ListNetworkDirectory runs caller and publisher checks in one transaction.
+// It never loads private Group names, workspace paths, native IDs or keys.
+func (s *Store) ListNetworkDirectory(scope NetworkAccessScope, limit int) ([]NetworkDirectoryEntry, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	at := time.Now().UTC()
+	if err := networkGuardAccessTx(tx, scope, "directory.discover", at); err != nil {
+		return nil, err
+	}
+	stamp := at.Format(time.RFC3339)
+	rows, err := tx.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
 CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at>? THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
 FROM endpoint_network_memberships_v2 e
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.status!='left'
@@ -1185,7 +1296,7 @@ LEFT JOIN network_access_sessions_v2 a ON a.network_id=e.network_id AND a.endpoi
 WHERE e.network_id=? AND e.status='active' AND e.discoverable=1
 AND (m.expires_at='' OR m.expires_at>?)
 AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value='directory.publish')
-ORDER BY e.nickname COLLATE NOCASE,e.endpoint_id LIMIT ?`, now(), networkID, now(), limit)
+ORDER BY e.nickname COLLATE NOCASE,e.endpoint_id LIMIT ?`, stamp, scope.NetworkID, stamp, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1198,15 +1309,34 @@ ORDER BY e.nickname COLLATE NOCASE,e.endpoint_id LIMIT ?`, now(), networkID, now
 		}
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 // ResolveNetworkDirectory scans at most two matching authorized rows. The
 // ambiguity check is independent of the directory page size.
-func (s *Store) ResolveNetworkDirectory(networkID, query string) ([]NetworkDirectoryEntry, error) {
+func (s *Store) ResolveNetworkDirectory(scope NetworkAccessScope, query string) ([]NetworkDirectoryEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	at := time.Now().UTC()
+	if err := networkGuardAccessTx(tx, scope, "directory.discover", at); err != nil {
+		return nil, err
+	}
+	stamp := at.Format(time.RFC3339)
+	rows, err := tx.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
 CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at>? THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
 FROM endpoint_network_memberships_v2 e
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.status!='left'
@@ -1218,7 +1348,7 @@ WHERE e.network_id=? AND e.status='active' AND e.discoverable=1
 AND (m.expires_at='' OR m.expires_at>?)
 AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value='directory.publish')
 AND ((substr(?,1,3)='ep_' AND e.endpoint_id=?) OR (substr(?,1,3)!='ep_' AND e.nickname=? COLLATE NOCASE))
-ORDER BY e.endpoint_id LIMIT 2`, now(), networkID, now(), query, query, query, query)
+ORDER BY e.endpoint_id LIMIT 2`, stamp, scope.NetworkID, stamp, query, query, query, query)
 	if err != nil {
 		return nil, err
 	}
@@ -1231,7 +1361,16 @@ ORDER BY e.endpoint_id LIMIT 2`, now(), networkID, now(), query, query, query, q
 		}
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 func validNetworkGrants(grants []string) bool {

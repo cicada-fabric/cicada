@@ -89,7 +89,13 @@ func TestNetworkSignedJoinIsIndependentOfGroupAndRevocable(t *testing.T) {
 	if err != nil || endpoint.GroupID != "" || endpoint.PrincipalID != accepted.PrincipalID {
 		t.Fatalf("network join changed Group identity: %#v %v", endpoint, err)
 	}
-	entries, err := s.ListNetworkDirectory(network.ID, 10)
+	entries, err := s.ListNetworkDirectory(NetworkAccessScope{
+		NetworkID: network.ID, PrincipalID: accepted.PrincipalID,
+		EndpointID: accepted.EndpointID, AccessSessionID: accepted.AccessSessionID,
+		AccessEpoch: accepted.AccessSessionEpoch, LeaseOwner: join.LeaseOwner,
+		MembershipID: accepted.MembershipID, MembershipRevision: accepted.MembershipRevision,
+		EndpointMembershipRevision: accepted.EndpointRevision,
+	}, 10)
 	if err != nil || len(entries) != 1 || entries[0].EndpointID != accepted.EndpointID {
 		t.Fatalf("directory=%#v err=%v", entries, err)
 	}

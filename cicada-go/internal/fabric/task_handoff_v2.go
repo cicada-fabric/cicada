@@ -23,7 +23,7 @@ func (s *Service) ProposeTaskHandoff(actor Actor, input TaskHandoffProposeInput)
 	if err := s.Authorize(actor, "task.submit"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.submit"); err != nil {
 		return nil, err
 	}
 	card, err := s.resolvePeer(actor, input.Target)
@@ -45,14 +45,14 @@ func (s *Service) ProposeTaskHandoff(actor Actor, input TaskHandoffProposeInput)
 	if errors.Is(err, store.ErrSharedTaskHandoffConflict) {
 		return nil, ErrConflict
 	}
-	return handoff, err
+	return handoff, mapRelayError(err)
 }
 
 func (s *Service) GetTaskHandoff(actor Actor, id string) (*store.SharedTaskHandoff, error) {
 	if err := s.Authorize(actor, "task.read"); err != nil {
 		return nil, err
 	}
-	handoff, err := s.store.GetSharedTaskHandoff(id)
+	handoff, err := s.store.GetSharedTaskHandoffForActor(nativeActorScope(actor), id, "task.read")
 	if err != nil || handoff.GroupID != actor.GroupID {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -63,7 +63,7 @@ func (s *Service) AcceptTaskHandoff(actor Actor, id string, leaseSeconds int) (*
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
-	handoff, err := s.store.GetSharedTaskHandoff(id)
+	handoff, err := s.store.GetSharedTaskHandoffForActor(nativeActorScope(actor), id, "task.claim")
 	if err != nil || handoff.GroupID != actor.GroupID || handoff.ToPrincipalID != actor.PrincipalID || handoff.ToEndpointID != actor.EndpointID {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -75,7 +75,7 @@ func (s *Service) AcceptTaskHandoff(actor Actor, id string, leaseSeconds int) (*
 	}
 	if len(missing) != 0 {
 		if err := s.store.MarkSharedTaskHandoffMissingArtifacts(id, actor.PrincipalID, actor.EndpointID, missing); err != nil {
-			return nil, err
+			return nil, mapRelayError(err)
 		}
 		return nil, store.ErrSharedTaskHandoffMissingArtifact
 	}
@@ -83,5 +83,5 @@ func (s *Service) AcceptTaskHandoff(actor Actor, id string, leaseSeconds int) (*
 	if errors.Is(err, store.ErrSharedTaskHandoffConflict) {
 		return nil, ErrConflict
 	}
-	return task, err
+	return task, mapRelayError(err)
 }

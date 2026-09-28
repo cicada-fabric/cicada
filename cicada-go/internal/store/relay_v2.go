@@ -3671,6 +3671,9 @@ func (s *Store) SubmitFabricReply(reply FabricReply) (*FabricRequest, error) {
 	if request == nil {
 		return nil, ErrRelayRequestNotFound
 	}
+	if err := networkGuardRelayMessageTx(tx, request.MessageID, request.ReceiverGroupID, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	if relayString(reply.ResponderEndpointID) != request.ReceiverEndpointID {
 		return nil, ErrRelayInvalidReceipt
 	}

@@ -533,6 +533,53 @@ func (s *Store) ListArtifactRefsV2(groupID string, limit int) ([]ArtifactRefV2, 
 	return result, rows.Err()
 }
 
+func (s *Store) ListArtifactRefsV2ForActor(scope NativeActorScope, limit int) ([]ArtifactRefV2, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.read", time.Now().UTC()); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
+	rows, err := tx.Query(`SELECT id, artifact_id, version, group_id, workspace_id,
+producer_principal_id, producer_endpoint_id, name, kind, summary, digest, size,
+mime_type, scopes_json, relative_path, status, created_at, updated_at
+FROM artifact_v2_refs WHERE group_id=? ORDER BY updated_at DESC,id LIMIT ?`, scope.GroupID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]ArtifactRefV2, 0)
+	for rows.Next() {
+		ref, _, err := scanArtifactRefV2(rows)
+		if err != nil {
+			return nil, err
+		}
+		if ref != nil {
+			result = append(result, *ref)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func normalizeArtifactGrant(input ArtifactRefV2GrantInput) (ArtifactRefV2GrantInput, error) {
 	input.ID = strings.TrimSpace(input.ID)
 	input.ArtifactRefID = strings.TrimSpace(input.ArtifactRefID)
@@ -783,9 +830,9 @@ func artifactV2ScopesAllowed(requested, allowed []string) bool {
 	return true
 }
 
-// AuthorizeArtifactRefV2 is the single storage guard used by Service, HTTP,
-// and MCP callers.  It queries Membership on every call and then checks the
-// exact ref/grant/scope; no workspace-wide or path-wide permission is inferred.
+// AuthorizeArtifactRefV2 is the trusted management read-side check. Native
+// Fabric callers use AuthorizeArtifactRefV2ForActor so their exact Endpoint,
+// binding and Network enrollment are checked with the ref in one snapshot.
 func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, requestedScopes []string, at time.Time) (*ArtifactRefV2, error) {
 	principalID, groupID, refID = strings.TrimSpace(principalID), strings.TrimSpace(groupID), strings.TrimSpace(refID)
 	if principalID == "" || groupID == "" || refID == "" {
@@ -800,17 +847,70 @@ func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, reque
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := networkGuardPrincipalGroupLocked(s.db, principalID, groupID); err != nil {
-		return nil, ErrArtifactRefV2Denied
-	}
 	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
 		return nil, err
 	}
-	membership, err := scanMembership(s.db.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE principal_id = ? AND group_id = ?`, principalID, groupID))
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := networkGuardTaskPrincipalTx(tx, principalID, groupID, at); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
+	ref, err := authorizeArtifactRefV2Tx(tx, principalID, groupID, refID, requested, at)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ref, nil
+}
+
+func (s *Store) AuthorizeArtifactRefV2ForActor(scope NativeActorScope, refID string,
+	requestedScopes []string, at time.Time) (*ArtifactRefV2, error) {
+	refID = strings.TrimSpace(refID)
+	if refID == "" {
+		return nil, ErrArtifactRefV2Denied
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	requested, err := artifactV2Scopes(requestedScopes)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.read", at); err != nil {
+		return nil, ErrArtifactRefV2Denied
+	}
+	ref, err := authorizeArtifactRefV2Tx(tx, scope.PrincipalID, scope.GroupID, refID, requested, at)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ref, nil
+}
+
+func authorizeArtifactRefV2Tx(tx *sql.Tx, principalID, groupID, refID string,
+	requested []string, at time.Time) (*ArtifactRefV2, error) {
+	membership, err := scanMembership(tx.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE principal_id = ? AND group_id = ?`, principalID, groupID))
 	if err != nil || !artifactV2MembershipAllows(membership, "artifact.read") {
 		return nil, ErrArtifactRefV2Denied
 	}
-	ref, _, err := scanArtifactRefV2(s.db.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
+	ref, _, err := scanArtifactRefV2(tx.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
  name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at
  FROM artifact_v2_refs WHERE id = ?`, refID))
 	if err != nil {
@@ -820,10 +920,10 @@ func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, reque
 		return nil, ErrArtifactRefV2NotFound
 	}
 	var refNetwork, readerNetwork string
-	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, ref.GroupID).Scan(&refNetwork); err != nil {
+	if err := tx.QueryRow(`SELECT network_id FROM groups WHERE id=?`, ref.GroupID).Scan(&refNetwork); err != nil {
 		return nil, ErrArtifactRefV2Denied
 	}
-	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, groupID).Scan(&readerNetwork); err != nil {
+	if err := tx.QueryRow(`SELECT network_id FROM groups WHERE id=?`, groupID).Scan(&readerNetwork); err != nil {
 		return nil, ErrArtifactRefV2Denied
 	}
 	if refNetwork != readerNetwork {
@@ -838,7 +938,7 @@ func (s *Store) AuthorizeArtifactRefV2(principalID, groupID, refID string, reque
 	if groupID == ref.GroupID {
 		return ref, nil
 	}
-	rows, err := s.db.Query(`SELECT scopes_json, status, expires_at FROM artifact_v2_grants
+	rows, err := tx.Query(`SELECT scopes_json, status, expires_at FROM artifact_v2_grants
  WHERE artifact_ref_id = ? AND (grantee_group_id = ? OR grantee_principal_id = ?)`, refID, groupID, principalID)
 	if err != nil {
 		return nil, err

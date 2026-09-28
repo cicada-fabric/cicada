@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -370,6 +371,11 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		_ = persistence.Close()
 		t.Fatal("Network A membership was not established")
 	}
+	secondMembership, err := persistence.GetNetworkMembership(networkA, secondA.Endpoint.PrincipalID)
+	if err != nil || secondMembership.Status != "active" {
+		_ = persistence.Close()
+		t.Fatal("second synthetic Network A membership was not established")
+	}
 	if err := persistence.Close(); err != nil {
 		t.Fatal("close scope-check Store")
 	}
@@ -473,6 +479,31 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	if status != http.StatusForbidden {
 		t.Fatalf("NetworkAdmin/Node credential adopted an Endpoint without Owner proof: status %d", status)
 	}
+	// Even a valid Owner proof cannot let an unjoined caller choose a different
+	// native Thread or assert a Node ID in the HTTP body.
+	const approvedUnjoinedSession = "network-m1-approved-unjoined"
+	proof, err := ownerKey.SignOwnerNetworkJoinGrant(owner.ID, hub.HubID, networkA,
+		nodeID, approvedUnjoinedSession,
+		store.NetworkInvitationDigest(string(bytes.TrimSpace(unsignedInvite))),
+		registeredOwnerKey.KeyID, []string{"directory.discover", "directory.publish"}, true,
+		time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatal("sign synthetic scoped negative Join proof")
+	}
+	forgedJoin := fabric.NetworkJoinInput{NetworkID: networkA,
+		InvitationToken: string(bytes.TrimSpace(unsignedInvite)), OwnerJoinProof: string(proof),
+		Harness: "codex", NativeSessionID: "forged-other-thread", EndpointName: "must-not-join"}
+	if status, _ := call(http.MethodPost, "/v2/fabric/node/networks/join", forgedJoin, nodeHeaders); status != http.StatusForbidden {
+		t.Fatalf("valid Owner proof authorized a different unjoined Thread: %d", status)
+	}
+	if status, _ := call(http.MethodPost, "/v2/fabric/node/networks/join", map[string]any{
+		"network_id": networkA, "invitation_token": string(bytes.TrimSpace(unsignedInvite)),
+		"owner_join_proof": string(proof), "harness": "codex",
+		"native_session_id": approvedUnjoinedSession, "endpoint_name": "must-not-join",
+		"node_id": "forged-node",
+	}, nodeHeaders); status != http.StatusBadRequest {
+		t.Fatalf("caller-asserted Node ID passed strict Network Join schema: %d", status)
+	}
 	if err := os.Remove(unsignedInvitePath); err != nil {
 		t.Fatal("remove unused synthetic invitation")
 	}
@@ -483,14 +514,137 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		"Cicada-Group-Scope": groupA.ID}
 	expectDenied(http.MethodGet, "/v2/fabric/whoami", nil, networkOnlyGroupHeaders)
 
-	// A revoke is scoped to its Network and is checked on subsequent reads;
-	// the sibling Network registration and old native writer remain distinct.
-	runOperator("member-revoke", append(append([]string{}, dbArg...), "--network", networkA,
-		"--principal", primaryPrincipal, "--expected-version", strconv.FormatInt(primaryMembership.Revision, 10))...)
+	// A Network access credential is only a discovery/Network-management
+	// credential. It cannot impersonate a Group session, Node, Client device,
+	// or global operator, even when selectors name resources in its Network.
+	for _, path := range []string{"/v2/fabric/whoami", "/v2/fabric/tasks", "/v1/groups", "/v1/approvals"} {
+		if status := expectDenied(http.MethodGet, path, nil, primaryAHeaders); status != http.StatusUnauthorized {
+			t.Fatalf("Network credential reached %s with status %d", path, status)
+		}
+	}
+	if status := expectDenied(http.MethodPost, "/v2/fabric/send", map[string]string{"body": "must not send"}, primaryAHeaders); status != http.StatusUnauthorized {
+		t.Fatalf("Network-only credential reached legacy Group send: %d", status)
+	}
+	if status := expectDenied(http.MethodPost, "/v2/relay/nodes/"+nodeID+"/claim", nil, primaryAHeaders); status != http.StatusUnauthorized {
+		t.Fatalf("Network credential reached Node claim: %d", status)
+	}
+	if status := expectDenied(http.MethodGet, pathA, nil, groupHeaders); status != http.StatusUnauthorized {
+		t.Fatalf("Group credential was accepted as Network access: %d", status)
+	}
+	spoofedGroupHeaders := map[string]string{"Authorization": groupHeaders["Authorization"],
+		"Cicada-Group-Scope": groupB.ID}
+	expectDenied(http.MethodGet, "/v2/fabric/whoami", nil, spoofedGroupHeaders)
+	spoofedNetworkHeaders := map[string]string{"Authorization": primaryAHeaders["Authorization"],
+		"Cicada-Group-Scope": groupB.ID}
+	expect(http.MethodGet, pathA, nil, spoofedNetworkHeaders, http.StatusOK)
+	expectDenied(http.MethodGet, pathB, nil, spoofedNetworkHeaders)
+	if status, _ := call(http.MethodPost, "/v2/fabric/node/networks/renew",
+		fabric.NetworkRenewInput{NetworkID: networkA, EndpointID: primaryA.Endpoint.ID,
+			Harness: "codex", NativeSessionID: "forged-other-thread"}, nodeHeaders); status != http.StatusForbidden {
+		t.Fatalf("Node credential renewed a different native Thread: %d", status)
+	}
+	if status, _ := call(http.MethodPost, "/v2/fabric/node/networks/renew",
+		map[string]any{"network_id": networkA, "endpoint_id": primaryA.Endpoint.ID,
+			"harness": "codex", "native_session_id": nativePrimary, "node_id": "forged-node"}, nodeHeaders); status != http.StatusBadRequest {
+		t.Fatalf("caller-asserted Node ID passed the strict Network Renew schema: %d", status)
+	}
+	if status, _ := call(http.MethodPost, "/v2/fabric/send", map[string]string{"target": secondA.Endpoint.ID,
+		"body": "retired plaintext path"}, groupHeaders); status != http.StatusGone {
+		t.Fatalf("authenticated legacy plaintext send returned %d, want 410", status)
+	}
+
+	// Renewal rotates only A's access credential. Neither B nor the original
+	// Group writer may be replaced by a Network access epoch.
+	var renewedA fabric.NetworkJoinResult
+	if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/renew",
+		fabric.NetworkRenewInput{NetworkID: networkA, EndpointID: primaryA.Endpoint.ID,
+			Harness: "codex", NativeSessionID: nativePrimary}, nodeHeaders, http.StatusCreated), &renewedA); err != nil ||
+		renewedA.Endpoint.ID != primaryA.Endpoint.ID || renewedA.BindingID != primaryA.BindingID ||
+		renewedA.BindingEpoch <= primaryA.BindingEpoch || renewedA.SessionToken == primaryA.SessionToken {
+		t.Fatal("Network A renewal did not rotate only its access session")
+	}
+	if status := expectDenied(http.MethodGet, pathA, nil, primaryAHeaders); status != http.StatusUnauthorized {
+		t.Fatalf("old Network A credential survived renewal: %d", status)
+	}
+	primaryAHeaders = map[string]string{"Authorization": "Cicada-Network-Session " + renewedA.SessionToken}
+	expect(http.MethodGet, pathA, nil, primaryAHeaders, http.StatusOK)
+	expect(http.MethodGet, pathB, nil, primaryBHeaders, http.StatusOK)
+	expect(http.MethodGet, "/v2/fabric/whoami", nil, groupHeaders, http.StatusOK)
+
+	// The same ACTIVE Store also serves authorized collaboration over HTTP
+	// with Control deliberately absent. A trusted management bearer cannot
+	// turn that Fabric-only handler into a planner or topology manager.
+	isolatedStore, err := store.New(dbPath)
+	if err != nil {
+		t.Fatal("open disposable ACTIVE Store for Control-free HTTP check")
+	}
+	ownerPrincipal, err := isolatedStore.GetPrincipal(owner.ID)
+	if err != nil {
+		_ = isolatedStore.Close()
+		t.Fatal("load synthetic Owner for Control-free Fabric service")
+	}
+	isolatedFabric, err := fabric.NewService(isolatedStore, owner.ID, ownerPrincipal.TrustDomainID)
+	if err != nil {
+		_ = isolatedStore.Close()
+		t.Fatal("construct Control-free Fabric service")
+	}
+	isolatedHTTP := httptest.NewServer(NewFabricHandler(isolatedFabric, "synthetic-operator"))
+	standaloneStatus := func(path string, headers map[string]string) int {
+		t.Helper()
+		request, err := http.NewRequest(http.MethodGet, isolatedHTTP.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+		result, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.Body.Close()
+		return result.StatusCode
+	}
+	if standaloneStatus(pathB, primaryBHeaders) != http.StatusOK ||
+		standaloneStatus("/v2/fabric/whoami", groupHeaders) != http.StatusOK ||
+		standaloneStatus("/v2/fabric/members", groupHeaders) != http.StatusOK ||
+		standaloneStatus("/v1/groups", map[string]string{"Authorization": "Bearer synthetic-operator"}) != http.StatusServiceUnavailable {
+		isolatedHTTP.Close()
+		_ = isolatedStore.Close()
+		t.Fatal("ACTIVE Fabric HTTP collaboration depended on Control business availability")
+	}
+	isolatedHTTP.Close()
+	if err := isolatedStore.Close(); err != nil {
+		t.Fatal("close Control-free ACTIVE Store")
+	}
+
+	// The same native Thread has both A and B registrations. Leaving A must
+	// preserve B, and it must not release the original Group writer.
+	expect(http.MethodPost, "/v2/fabric/networks/"+networkA+"/leave",
+		map[string]string{"reason": "synthetic scoped leave"}, primaryAHeaders, http.StatusOK)
 	expectDenied(http.MethodGet, pathA, nil, primaryAHeaders)
+	expect(http.MethodGet, pathB, nil, primaryBHeaders, http.StatusOK)
+
+	// Revoke a different A member to prove an operator revocation cannot
+	// restore an exited A access session or reach the sibling B registration.
+	runOperator("member-revoke", append(append([]string{}, dbArg...), "--network", networkA,
+		"--principal", secondA.Endpoint.PrincipalID, "--expected-version", strconv.FormatInt(secondMembership.Revision, 10))...)
+	expectDenied(http.MethodGet, pathA, nil, secondAHeaders)
 	expect(http.MethodGet, pathB, nil, primaryBHeaders, http.StatusOK)
 	groupHeaders = map[string]string{"Authorization": "CicadaSession " + primaryLegacy.SessionToken,
 		"Cicada-Group-Scope": groupA.ID}
 	expectDenied(http.MethodGet, "/v2/fabric/whoami", nil, groupHeaders)
-	expect(http.MethodGet, pathA, nil, secondAHeaders, http.StatusOK)
+	expectDenied(http.MethodGet, pathA, nil, secondAHeaders)
+	persistence, err = store.New(dbPath)
+	if err != nil {
+		t.Fatal("reopen disposable Hub state after scoped Network lifecycle")
+	}
+	writerAfter, writerErr := persistence.GetActiveSessionBinding(primaryLegacy.Endpoint.ID)
+	if writerErr != nil || writerAfter.ID != primaryLegacy.BindingID || writerAfter.Epoch != primaryLegacy.BindingEpoch {
+		_ = persistence.Close()
+		t.Fatal("Network renew/leave/revoke changed the original native Group writer")
+	}
+	if err := persistence.Close(); err != nil {
+		t.Fatal("close scoped Network lifecycle snapshot")
+	}
 }

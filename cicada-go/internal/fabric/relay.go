@@ -64,6 +64,16 @@ func (s *Service) validateActorCurrent(actor Actor) (*store.SessionBinding, erro
 	return binding, nil
 }
 
+func nativeActorScope(actor Actor) store.NativeActorScope {
+	return store.NativeActorScope{
+		PrincipalID: actor.PrincipalID, EndpointID: actor.EndpointID,
+		GroupID: actor.GroupID, NetworkID: actor.NetworkID,
+		MembershipID: actor.MembershipID, MembershipRevision: actor.MembershipRevision,
+		BindingID: actor.BindingID, BindingEpoch: actor.BindingEpoch,
+		LeaseOwner: actor.LeaseOwner,
+	}
+}
+
 func (s *Service) resolvePeer(actor Actor, query string) (*NetworkCard, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -260,7 +270,7 @@ func (s *Service) Request(actor Actor, requestID string) (*RequestView, error) {
 	if _, err := s.validateActorCurrent(actor); err != nil {
 		return nil, err
 	}
-	request, err := s.store.GetRelayFabricRequest(strings.TrimSpace(requestID))
+	request, err := s.store.GetRelayFabricRequestForActor(strings.TrimSpace(requestID), nativeActorScope(actor))
 	if err != nil || request == nil {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -275,15 +285,8 @@ func (s *Service) CancelRequest(actor Actor, input RequestCancelInput) (*Request
 	if _, err := s.validateActorCurrent(actor); err != nil {
 		return nil, err
 	}
-	request, err := s.store.GetRelayFabricRequest(strings.TrimSpace(input.RequestID))
-	if err != nil || request == nil {
-		return nil, ErrNotFoundOrNotAuthorized
-	}
-	if request.SenderEndpointID != actor.EndpointID || request.SenderPrincipalID != actor.PrincipalID ||
-		request.SenderGroupID != actor.GroupID {
-		return nil, ErrPermissionDenied
-	}
-	updated, err := s.store.RequestFabricRequestCancellation(request.RequestID, strings.TrimSpace(input.Reason))
+	updated, err := s.store.RequestFabricRequestCancellationForActor(
+		strings.TrimSpace(input.RequestID), strings.TrimSpace(input.Reason), nativeActorScope(actor))
 	if err != nil {
 		return nil, mapRelayError(err)
 	}
@@ -482,6 +485,8 @@ func mapRelayError(err error) error {
 		return fmt.Errorf("%w: %v", ErrRequestTerminal, err)
 	case errors.Is(err, store.ErrRelayPlaintextSealedPeer):
 		return fmt.Errorf("%w: %v", ErrPermissionDenied, err)
+	case errors.Is(err, store.ErrNetworkPermission):
+		return ErrPermissionDenied
 	case errors.Is(err, store.ErrRelayRequestNotFound), errors.Is(err, store.ErrRelayMessageNotFound):
 		return ErrNotFoundOrNotAuthorized
 	default:

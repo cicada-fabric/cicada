@@ -1,6 +1,6 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-09-27 M1 Network migration gate（有界基础门禁通过；整体未完成）
+## 2026-09-28 M1 Network migration gate（有界门禁通过；整体未完成）
 
 M1 从干净 Hub schema v34 之后做 additive migration，不改写旧 Endpoint、Principal、
 Group、Thread、Message、Request、Receipt、Approval、Link/Contact、owner key、密钥、
@@ -12,7 +12,7 @@ schema v35 已在有界 M1 基础检查点实现；当前 Core 门槛为：
 | 对象 | 目标语义 | 必须保留/拒绝 |
 |---|---|---|
 | Hub scope ledger（v35）`network_mode_v2` | 单行 mode 从 `PREPARING` 单向转至 `ACTIVE`。Prepare 阶段只记录候选；批准映射后，该 Group 立即收紧为 Network Guard。 | 不允许回到旧 mode；旧二进制未经验证不能连接已激活 schema。 |
-| `network_group_mappings_v2` | 每个既有 Group 记录唯一映射候选、`PENDING`/`APPROVED` 状态、Group 版本及原因。Prepare 不修改 Group；Approve 以预期版本 CAS 校验父子 Group 属于同一 Network，并只允许给空 `groups.network_id` 赋值。映射一经写入不可静默变更。 | 缺失、多个候选、跨 Network 父子、已有授权会扩大的映射保留为 `PENDING`，不按 Owner 机械拆组或把所有 Group 并入大 Network。 |
+| `network_group_mappings_v2` | 每个既有 Group 记录唯一映射候选、`PENDING`/`APPROVED` 状态、Group 版本及原因。Prepare 不修改 Group；Approve 以预期版本 CAS 校验父子 Group 属于同一 Network，并只允许给空 `groups.network_id` 赋值。批准同时让该 Group 的 `revision` 和 `version` 各前进 1，以使旧签名证明失效；除此之外仅 `updated_at` 改变。映射一经写入不可静默变更。 | 缺失、多个候选、跨 Network 父子、已有授权会扩大的映射保留为 `PENDING`，不按 Owner 机械拆组或把所有 Group 并入大 Network。 |
 | `groups.network_id` | 仅在显式批准后保存归属；Group 只属于一个 Network。 | 不通过 `network_id` 请求参数或同名 Group 推断权威归属。 |
 | activation | 单一事务确认所有旧 Group 已有一致 APPROVED 映射，或保持 `network_id` 为空且有显式 pending quarantine，再将 Hub mode CAS 为 ACTIVE。 | 未确定归属的旧 Group 在激活后 fail closed；Network 新 API 自启用起严格 Guard，不依赖 Hub 总 mode。 |
 
@@ -23,6 +23,11 @@ schema v35 已在有界 M1 基础检查点实现；当前 Core 门槛为：
 Activation 将 Hub mode 单向切到 `ACTIVE`，所有仍未映射的 PENDING Group 此后 fail closed，旧 API 也必须从认证上下文取得并校验当前 Network scope。无法映射或不能在当前 Guard 下复验的操作拒绝。迁移保留 activation 前排队的 delivery/message/request/receipt 行和原 ID；后续新 Network grant 不会追溯授权这些旧操作的 claim、投递或历史读取。它们须经过逐项重验、显式重新授权、取消或隔离，不能自动续送；清理也不得删除原始审计数据。
 
 有界基础检查点 `b0081a0` 的独立 Docker Client 与 Network suite 均通过；测试修正提交 `f9d3c7e` 仅把旧迁移测试的 ledger 预期从 v34 补至 v35，随后完整 Store 包复验通过。合成 v34→v35 测试比较了选定的 Client owner key、设备、nonce/replay、Monitor 批准密文、Group key grant、Principal、Group、Endpoint 和原生绑定表，确认 v35 不自动映射 Group 或创造 Network 成员，并能继续授权历史 Monitor 密文投递；它不证明所有历史 ledger 均已覆盖。无 Network enrollment revision 的旧排队消息及原 ID 被保留，在映射后缺少新 scope 证据时 fail closed。Client v1.3 `group.create` 没有 Network selector，ACTIVE Hub 拒绝缺少 Network 的新 Group 申请；默认 PREPARING Client gate 不证明 ACTIVE 兼容。完整证据与未完成矩阵见 [M1 验证](network-m1-validation.md)。任何真实 StateDir 迁移均需另行安排停写、一致备份与人工审核，本轮未执行。
+
+**2026-09-28 更新：** `TestNetworkV34UpgradeInterruptionPreservesCompleteLedgerAndMappingScope`
+现覆盖合成 v34 数据库的 93 个 legacy inventory 条目（每张 pre-v35 应用表和一份 v34 schema-ledger 摘要），其中 52 个条目非空；行内容仅用于摘要，不进入日志。fixture 包含 Relay sealed REQUEST/REPLY/receipt/security/outbox、Contact replay/ratchet、Goal/Workspace/Worker/Approval、双侧 Link grants、Endpoint key grants、Artifact/grant、Task/result 与 Monitor dispatch。v35 `after_apply` 故障后，全部 9 张新增 Network 表、`groups_network_idx` 和 `groups.network_id` 均不存在，旧表摘要一致；重开后 migration 35 只重试一次。Prepare 不变更 Group；Approve 只更新批准 Group 的 `network_id`、`revision`、`version`、`updated_at`，`revision` 与 `version` 分别加 1，其他 Group 行不变；pending quarantine 不改 Group，activation 保持映射 ledger 和 Group 快照。初始 focused Docker 执行 exit 0、1.254s；正式冻结候选 race log 再次通过同一测试（21.23s，93/52），为权威结果。详细命令/输出见 [M1 验证](network-m1-validation.md)。这不是生产 StateDir migration/backup/restore 演练；最终 Go/vet/race/Docker 门禁现已全部通过。
+
+冻结候选 `HEAD=975ce8e1a49fd48f1b09b34faf891e20dc977554`、`dirty=true`、source fingerprint `1738095ea36e47655808857ce1934a72241bab1d8bb860d62f24299964c38d00` 的独立 Client smoke/recovery 与 Network M1 Docker gates 均 exit 0。全 Go tests、vet、定向 race 与 gofmt 也 exit 0，Go gates 前后 fingerprint 相同。准确镜像、命令与 suite 范围见 [M1 验证](network-m1-validation.md)。默认 PREPARING Client gate 不证明 ACTIVE Hub 的 `group.create` 兼容；v1.3 没有 Network selector。Android、真实 native Runtime、physical device 与 public HTTPS 未运行。
 
 ## 2026-09-27 Hub v34：consent 元数据与 Monitor intake 限额
 

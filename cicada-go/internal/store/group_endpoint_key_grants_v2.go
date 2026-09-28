@@ -465,6 +465,9 @@ WHERE e.id = ?`, groupID, groupID, groupID, endpointID).Scan(
 			return nil, ErrGroupEndpointKeyGrantScope
 		}
 	}
+	if err := networkGuardGroupEndpointTx(tx, snapshot.principalID, endpointID, groupID, at); err != nil {
+		return nil, ErrGroupEndpointKeyGrantScope
+	}
 	if err := requireCurrentOwnerBoundGroupNodeTx(tx, snapshot.endpointNodeID, ownerID, hubID); err != nil {
 		return nil, err
 	}

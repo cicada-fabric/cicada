@@ -6,6 +6,8 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 ## 当前整改顺序
 
+> 2026-09-28 M1 ACTIVE 权限迁移**有界检查点 PASS**：全 Go/vet、聚焦 race、合同检查与两套独立 disposable Docker 门禁通过，见 [当前状态](architecture-v2-status.md) 和 [验证矩阵](network-m1-validation.md)。这不改变 `client-hub-v1.3`、33 项操作、wire 合同或 schema v35，也不表示整体 M1 完成。现有 `group.create` 不带 Network selector，在 ACTIVE Hub 上申请新 Group 会被拒绝；修复须走下一轮独立 Client 合同修订和两仓协作。通过的默认 Client 门禁运行于 PREPARING Hub，不能代替 ACTIVE Client topology 验收。真实 native Runtime、Android、双物理机和公网 HTTPS 本轮 **NOT_RUN**。
+
 > 2026-09-27: frozen v1.3 artifact and disposable TCP gate **PASS**; see the
 > [frozen validation record](client-hub-v13-validation.md). Clean source
 > `25013b5` also passed full Go/vet, focused race, contract/export, exact-image

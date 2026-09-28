@@ -44,11 +44,11 @@ type TaskAcceptInput struct {
 	ExpectedRevision int64  `json:"expected_revision"`
 }
 
-func (s *Service) taskForActor(actor Actor, taskID string) (*store.SharedTask, error) {
+func (s *Service) taskForActor(actor Actor, taskID, action string) (*store.SharedTask, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
-	task, err := s.store.GetSharedTask(taskID)
+	task, err := s.store.GetSharedTaskForActor(nativeActorScope(actor), taskID, action)
 	if err != nil || task.GroupID != actor.GroupID {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -59,82 +59,84 @@ func (s *Service) ListTasks(actor Actor, limit int) ([]store.SharedTask, error) 
 	if err := s.Authorize(actor, "task.read"); err != nil {
 		return nil, err
 	}
-	return s.store.ListSharedTasks(actor.GroupID, limit)
+	tasks, err := s.store.ListSharedTasksForActor(nativeActorScope(actor), limit)
+	return tasks, mapRelayError(err)
 }
 
 func (s *Service) GetTask(actor Actor, taskID string) (*store.SharedTask, error) {
 	if err := s.Authorize(actor, "task.read"); err != nil {
 		return nil, err
 	}
-	return s.taskForActor(actor, taskID)
+	return s.taskForActor(actor, taskID, "task.read")
 }
 
 func (s *Service) ClaimTask(actor Actor, input TaskClaimInput) (*store.SharedTask, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
 	task, err := s.store.ClaimSharedTask(input.TaskID, input.ExpectedRevision, actor.PrincipalID, actor.EndpointID, input.IdempotencyKey, input.LeaseSeconds)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskDependency) {
 		return nil, ErrConflict
 	}
-	return task, err
+	return task, mapRelayError(err)
 }
 
 func (s *Service) ReleaseTask(actor Actor, input TaskReleaseInput) (*store.SharedTask, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
 	task, err := s.store.ReleaseSharedTaskClaim(input.TaskID, input.ExpectedRevision, input.OwnerEpoch, actor.PrincipalID, actor.EndpointID)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, err
+	return task, mapRelayError(err)
 }
 
 func (s *Service) RenewTask(actor Actor, input TaskRenewInput) (*store.SharedTask, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
 	task, err := s.store.RenewSharedTaskClaim(input.TaskID, input.ExpectedRevision, input.OwnerEpoch, actor.PrincipalID, actor.EndpointID, input.LeaseSeconds)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, err
+	return task, mapRelayError(err)
 }
 
 func (s *Service) SubmitTaskResult(actor Actor, input TaskResultInput) (*store.SharedTaskResult, error) {
 	if err := s.Authorize(actor, "task.submit"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.submit"); err != nil {
 		return nil, err
 	}
 	result, err := s.store.SubmitSharedTaskResult(input.TaskID, actor.PrincipalID, actor.EndpointID, input.OwnerEpoch, input.ExpectedRevision, input.Summary, input.Evidence)
 	if errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return result, ErrConflict
 	}
-	return result, err
+	return result, mapRelayError(err)
 }
 
 func (s *Service) AcceptTaskResult(actor Actor, input TaskAcceptInput) (*store.SharedTask, error) {
 	if err := s.Authorize(actor, "task.verify"); err != nil {
 		return nil, err
 	}
-	if _, err := s.taskForActor(actor, input.TaskID); err != nil {
+	if _, err := s.taskForActor(actor, input.TaskID, "task.verify"); err != nil {
 		return nil, err
 	}
-	task, err := s.store.AcceptSharedTaskResult(input.TaskID, input.ResultID, input.ExpectedRevision, actor.PrincipalID)
+	task, err := s.store.AcceptSharedTaskResultForActor(input.TaskID, input.ResultID,
+		input.ExpectedRevision, nativeActorScope(actor))
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, err
+	return task, mapRelayError(err)
 }

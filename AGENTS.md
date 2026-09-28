@@ -16,6 +16,10 @@ in `docs/architecture-v2-*.md`, not in the specification.
   fixes. Do not amend or rewrite published history outside an explicitly
   authorized maintenance operation that records the old-to-new milestone
   mapping and keeps historical validation attributed to its tested source.
+- Commit Author and Committer must both inherit the server's existing global
+  `user.name` and `user.email`. Check them with `git var` before committing and
+  verify both identities afterward. Do not set local or environment Git
+  identity, use `--author`, or add a proxy co-author/signature.
 - For Client-facing changes, follow `docs/client-hub-development.md`. Update the
   authoritative contract and its checks in the same change as the implementation.
   Public capabilities describe availability, not caller authorization; encrypted

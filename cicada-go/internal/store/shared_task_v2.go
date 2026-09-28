@@ -634,6 +634,19 @@ func (s *Store) SubmitSharedTaskResult(taskID, principalID, endpointID string, o
 }
 
 func (s *Store) AcceptSharedTaskResult(taskID, resultID string, expectedRevision int64, verifierPrincipalID string) (*SharedTask, error) {
+	return s.acceptSharedTaskResult(taskID, resultID, expectedRevision, verifierPrincipalID, nil)
+}
+
+// AcceptSharedTaskResultForActor rechecks the exact Endpoint and native
+// binding in the same transaction as acceptance. A Principal's other active
+// Endpoint cannot keep a departed Endpoint's stale task.verify authority.
+func (s *Store) AcceptSharedTaskResultForActor(taskID, resultID string,
+	expectedRevision int64, scope NativeActorScope) (*SharedTask, error) {
+	return s.acceptSharedTaskResult(taskID, resultID, expectedRevision, scope.PrincipalID, &scope)
+}
+
+func (s *Store) acceptSharedTaskResult(taskID, resultID string, expectedRevision int64,
+	verifierPrincipalID string, scope *NativeActorScope) (*SharedTask, error) {
 	if verifierPrincipalID == "" {
 		return nil, errors.New("verifier principal is required")
 	}
@@ -651,7 +664,14 @@ func (s *Store) AcceptSharedTaskResult(taskID, resultID string, expectedRevision
 	if err != nil {
 		return nil, err
 	}
-	if err := networkGuardTaskPrincipalTx(tx, verifierPrincipalID, task.GroupID, time.Now().UTC()); err != nil {
+	if scope != nil {
+		if scope.PrincipalID != verifierPrincipalID || scope.GroupID != task.GroupID {
+			return nil, ErrNetworkPermission
+		}
+		if err := guardNativeActorTx(tx, *scope, "task.verify", time.Now().UTC()); err != nil {
+			return nil, err
+		}
+	} else if err := networkGuardTaskPrincipalTx(tx, verifierPrincipalID, task.GroupID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	if task.Revision != expectedRevision || task.Status != SharedTaskResultSubmitted {

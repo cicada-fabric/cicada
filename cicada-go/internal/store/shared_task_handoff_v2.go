@@ -138,6 +138,13 @@ func (s *Store) ProposeSharedTaskHandoff(input SharedTaskHandoff) (*SharedTaskHa
 		!sharedTaskLeaseActive(task.LeaseExpiresAt) || (task.Status != SharedTaskClaimed && task.Status != SharedTaskRunning) {
 		return nil, ErrSharedTaskHandoffConflict
 	}
+	at := time.Now().UTC()
+	if err := networkGuardGroupEndpointTx(tx, input.FromPrincipalID, input.FromEndpointID, input.GroupID, at); err != nil {
+		return nil, err
+	}
+	if err := networkGuardGroupEndpointTx(tx, input.ToPrincipalID, input.ToEndpointID, input.GroupID, at); err != nil {
+		return nil, err
+	}
 	var other int
 	if err = tx.QueryRow(`SELECT count(*) FROM shared_task_v2_handoffs WHERE task_id=? AND status=?`, task.ID, HandoffProposed).Scan(&other); err != nil {
 		return nil, err
@@ -190,6 +197,9 @@ func (s *Store) MarkSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, r
 	if handoff.Status != HandoffProposed || handoff.ToPrincipalID != receiverPrincipalID || handoff.ToEndpointID != receiverEndpointID {
 		return ErrSharedTaskHandoffConflict
 	}
+	if err := networkGuardGroupEndpointTx(tx, receiverPrincipalID, receiverEndpointID, handoff.GroupID, time.Now().UTC()); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(`UPDATE shared_task_v2_handoffs SET missing_artifact_refs_json=?,updated_at=? WHERE id=? AND status=?`, string(encoded), now(), id, HandoffProposed); err != nil {
 		return err
 	}
@@ -228,6 +238,9 @@ func (s *Store) AcceptSharedTaskHandoff(id, receiverPrincipalID, receiverEndpoin
 	}
 	if handoff.Status != HandoffProposed || handoff.ToPrincipalID != receiverPrincipalID || handoff.ToEndpointID != receiverEndpointID {
 		return nil, ErrSharedTaskHandoffConflict
+	}
+	if err := networkGuardGroupEndpointTx(tx, receiverPrincipalID, receiverEndpointID, handoff.GroupID, time.Now().UTC()); err != nil {
+		return nil, err
 	}
 	task, err := loadSharedTaskTx(tx, handoff.TaskID)
 	if err != nil {

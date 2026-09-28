@@ -153,6 +153,17 @@ func TestNetworkSealedClaimAndPreInjectionFenceRevocation(t *testing.T) {
 
 func TestNetworkLinkSealedPreInjectionRejectsRejoinedEnrollment(t *testing.T) {
 	f := newLinkSealedSendTestFixture(t, true)
+	// The historical invite fixture predates explicit Endpoint owner fields.
+	// A mapped Network must have the same trusted Owner on Endpoint and Principal.
+	for _, side := range []struct{ endpointID, ownerID string }{
+		{f.link.SourceEndpointID, f.base.source.ownerID},
+		{f.link.TargetEndpointID, f.base.target.ownerID},
+	} {
+		if _, err := f.base.store.db.Exec(`UPDATE fabric_endpoints SET owner=? WHERE id=? AND owner=''`,
+			side.ownerID, side.endpointID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// This fixture creates its Link first. Assign Network IDs without changing
 	// Group revisions to model the production order (mapping before Link).
 	network, err := f.base.store.CreateNetwork(Network{ID: NewID("net"), HubID: f.base.hubID,

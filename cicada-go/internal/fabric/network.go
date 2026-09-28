@@ -59,6 +59,16 @@ type NetworkEndpointCard struct {
 	Capabilities map[string]any `json:"capabilities"`
 }
 
+func networkDirectoryScope(actor NetworkActor) store.NetworkAccessScope {
+	return store.NetworkAccessScope{
+		NetworkID: actor.NetworkID, PrincipalID: actor.PrincipalID,
+		EndpointID: actor.EndpointID, AccessSessionID: actor.BindingID,
+		AccessEpoch: actor.BindingEpoch, LeaseOwner: actor.LeaseOwner,
+		MembershipID: actor.MembershipID, MembershipRevision: actor.MembershipRevision,
+		EndpointMembershipRevision: actor.EndpointMembershipRevision,
+	}
+}
+
 func networkLease(seconds int, at time.Time) string {
 	duration := time.Duration(seconds) * time.Second
 	if duration <= 0 {
@@ -213,8 +223,11 @@ func (s *Service) ListNetwork(actor NetworkActor, limit int) ([]NetworkEndpointC
 	if err := s.authorizeNetwork(actor, "directory.discover"); err != nil {
 		return nil, err
 	}
-	entries, err := s.store.ListNetworkDirectory(actor.NetworkID, limit)
+	entries, err := s.store.ListNetworkDirectory(networkDirectoryScope(actor), limit)
 	if err != nil {
+		if err == store.ErrNetworkPermission {
+			return nil, ErrPermissionDenied
+		}
 		return nil, err
 	}
 	cards := make([]NetworkEndpointCard, 0, len(entries))
@@ -232,8 +245,11 @@ func (s *Service) ResolveNetwork(actor NetworkActor, query string) (*NetworkEndp
 	if query == "" {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
-	entries, err := s.store.ResolveNetworkDirectory(actor.NetworkID, query)
+	entries, err := s.store.ResolveNetworkDirectory(networkDirectoryScope(actor), query)
 	if err != nil {
+		if err == store.ErrNetworkPermission {
+			return nil, ErrPermissionDenied
+		}
 		return nil, err
 	}
 	if len(entries) == 0 {
