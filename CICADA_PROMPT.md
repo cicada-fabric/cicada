@@ -7,15 +7,15 @@ Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay 
 完整验收矩阵、G1–G5 演示路径和 v2-A 至 v2-E 的阶段划分。
 如果根目录也有 CICADA_PROMPT.md，请完整读取并执行其中要求。
 
-## 2026-09-27 当前检查点：M1 Network identity/Guard/迁移实施中
+## 2026-09-28 当前检查点：M1 后端矩阵通过
 
 本轮目标以 `CICADA.md` 的 Architecture v2.3 为准：物理部署仍是 Node、Hub、Client，逻辑参与者仍是 User、Control、Worker、Monitor；Network 是 Group 之上的私有租户/授权范围，不是新部署实体或第五类参与者。每个 Network 只有一个权威 Hub、每个 Group 只属一个 Network；同一 Thread/Endpoint 可在多个 Network 各有 scoped 注册并加入多个 Group，各 Hub 的 SessionBinding/registry 独立，而 Node 对同一原生 Session 只允许一个当前投递 owner 和串行 writer。NetworkMembership、Group Membership、Endpoint 加入关系，以及目录发现、私聊、广播和 Task grant 各自独立；Network 成员身份不自动加入 Group 或暴露私有 Group 历史。多 Hub 注册使用各自的凭据与状态，不做 Hub-to-Hub 转发。
 
-原生 Monitor 检查点仍是已完成的历史门禁：固定候选上的 Android 用户确认、同原生 Monitor Thread 的只读批准预览与独立派发、本地/远端原收件 Thread 消费、Client 最终只读状态、Hub 受限明文扫描、独立账本审计与一次性环境清理分别通过；精确来源和限制只在 [当前候选验证](docs/client-hub-v13-25013b5-validation.md) 与实施状态文档记录，早期失败仍保留为历史。当前授权范围从干净 `dev` / `0cda61460757246789970782584b1e904173e653` 起实施 M1 Network identity、Guard、可迁移 schema 和既有入口收口。M1 尚未完成；此前 `25013b5` 的 Go/vet/race/合同及 `0d532f2` 固定 Runner 证据只归属这些精确候选，不能算作 M1 验收。当前不启动 M2 Journal/Discussion、M3 路由/未读、M4 委托再分组、M5 多 Hub，也不调用模型或修改独立 Client 仓库。
+原生 Monitor 检查点是历史门禁：固定候选上的 Android 用户确认、同原生 Monitor Thread 的只读批准预览与独立派发、本地/远端原收件 Thread 消费、Client 最终只读状态、Hub 受限明文扫描、独立账本审计与一次性环境清理分别通过；精确来源和限制见 [v1.3 固定候选验证](docs/client-hub-v13-25013b5-validation.md) 与实施状态文档。M1 从干净 `dev` / `0cda61460757246789970782584b1e904173e653` 起步；当前独立 `client-hub-v1.4`/schema v36 候选已接入 ACTIVE Owner Network 拓扑、同网建组和 Owner Network Endpoint key 同意，以及无需 Group 的 Network-scoped 密封 SEND/ASK/REPLY。冻结源码上全 Go/vet/聚焦 race、合同与两个独立 disposable real-TCP Docker 门禁均 PASS，M1 **后端验收矩阵完成**；证据见[当前状态](docs/architecture-v2-status.md)和[验证矩阵](docs/network-m1-validation.md)。此前 `25013b5`/`0d532f2` 以及 v1.3/v35 有界检查点证据只归属各自候选，不能算作本轮结果。Android v1.4、真实 native Runtime、双物理 Node 和公网 HTTPS 均 **NOT_RUN**。M2 Journal/Discussion 是下一阶段，本轮不启动 M2–M5，也不调用模型或修改独立 Client 仓库。
 
-新增目标是 Group 内长期但克制的 Journal 重要 checkpoint 与 Discussion 主题/回复。Agent 可决定何时发即时消息、写进展或提出讨论；Core 逐操作验证身份、Group/Network 范围、版本、限额与历史权限，Hub 只存密文及必要元数据。已有成员断线后在有效授权期内可从原读取起点补读，不需重复人工批准；新成员加入前历史须有单独的范围 grant 和解密材料。Monitor 可提出再分组，仅在精确可撤销委托下 CAS 执行并审计，不能自授权、复制旧 key、扩大读者或替用户审批。拟议接口和具体阶段见 [Group 协作空间设计](docs/group-collaboration-spaces-design.md) 与 [实施计划](docs/architecture-v2-plan.md)。本轮当前代码检查点为 M1 Network identity/Guard/迁移；M2–M5 是后续依赖路线，不是永久性的逐阶段审批关卡。
+后续目标是 Group 内克制的 Journal 重要 checkpoint 与 Discussion 主题/回复。Agent 可决定何时发即时消息、写进展或提出讨论；Core 逐操作验证身份、Group/Network 范围、版本、限额与历史权限，Hub 只存密文及必要元数据。已有成员断线后在有效授权期内可从原读取起点补读，不需重复人工批准；新成员加入前历史须有单独的范围 grant 和解密材料。Monitor 可提出再分组，仅在精确可撤销委托下 CAS 执行并审计，不能自授权、复制旧 key、扩大读者或替用户审批。拟议接口和具体阶段见 [Group 协作空间设计](docs/group-collaboration-spaces-design.md) 与 [实施计划](docs/architecture-v2-plan.md)。本轮代码范围仍为 M1；M2–M5 是后续依赖路线，不是永久性的逐阶段审批关卡。
 
-以下保留原架构升级的完整工程基线与未来验收要求；当前轮次的范围是 M1。实施必须修改真实代码、迁移、测试和工程文档，不能只增加 Group struct 或另起项目。新 Network 的严格 Guard 与既有路径的映射/拒绝语义，必须和 M1 schema 一起交付；仅有新 API 不构成隔离。
+以下保留原架构升级的完整工程基线与未来验收要求；当前轮次的范围是 M1。实施必须修改真实代码、迁移、测试和工程文档，不能只增加 Group struct 或另起项目。新 Network 的严格 Guard 与既有路径的映射/拒绝语义，必须和 M1 schema 一起验收；仅有新 API 不构成隔离。
 
 一、先确认真实起点，然后继续实现
 
@@ -66,13 +66,13 @@ Goal/Idea、Worker/Monitor、审批、Contact、加密和恢复能力的真实�
    不接受模型填写的 sender、group、role 或“用户已批准”作为授权证明。
    MCP、HTTP、CLI 必须进入同一个授权和核心状态服务。
 
-7. 公网部署单个 Cicada Hub，可同机运行 Control、Directory、Relay 与面板，但职责独立。同 Node 两 Thread 经本地受控适配器与原生 `queue` 通信，不走中心 Relay；跨 Node/跨用户两端 Node 只主动连接双方选定的一个 Hub，消息最多经过一个 Relay，Hub 不需要也不应拨入 Node。Hub 上任何进程都不得持有普通 peer 消息解密材料。当前明文 Fabric/旧 Contact 路径必须标为迁移缺口。
+7. 公网部署单个 Cicada Hub，可同机运行 Control、Directory、Relay 与面板，但职责独立。任意已授权 Thread 对默认经双方选定的唯一 Hub Relay 传密文；只有同物理宿主、同 Codex 账号且 Node 可调用精确目标原生 API 的本机 direct 路径才零 Relay，同 Node 标签本身不授权直达。两端 Node 只主动连接 Hub，Hub 不需要也不应拨入 Node。Hub 上任何进程都不得持有普通 peer 消息解密材料。当前明文 Fabric/旧 Contact 路径必须标为迁移缺口。
 
 8. Client 第一版仅开发 Android，且由独立仓库 `~/CICADA_CLIENT` 中的另一开发者负责；本任务不得修改该仓库。核心 Hub/Control 需预留安全契约：按 Node/Worker/Goal 分层状态与增量、语音转写/文字 Control Intent、Hub 权威面板事务、双端授权的外部 Thread 连线。Android 可选安装本地小模型做语音转文字；无本地模型的联网 STT 须另行明确第三方边界。Android↔Control 的用户指令与管理数据必须使用 NIST 标准的应用层后量子 E2EE，不能以 TLS/旧 bearer 降级；Control 是管理指令的解密端，普通 peer 的解密端则是目标 Endpoint。未实现的能力应经版本化发现明确报未就绪，不开放假接口。
 
 三、保留原 v2-A → v2-B → v2-C 基线范围
 
-以下 v2-A 至 v2-E 阶段仍作为既有架构基线和退出条件记录；它们不代表本轮均已完成，也不取代上方 2026-09-27 当前检查点。M1 Network 身份/Guard/迁移是本轮实施范围；M2 加密 Journal/Discussion、M3 授权路由及复用出站长连接的 cursor/unread、M4 委托再分组、M5 多 Hub Node/Client 留待后续范围。
+以下 v2-A 至 v2-E 阶段仍作为既有架构基线和退出条件记录；它们不代表本轮均已完成，也不取代上方 2026-09-28 当前检查点。M1 Network 身份/Guard/迁移与 Network-only 私聊、ACTIVE Owner 合同是本轮实施范围；M2 加密 Journal/Discussion、M3 授权路由及复用出站长连接的 cursor/unread、M4 委托再分组、M5 多 Hub Node/Client 留待后续范围。
 
 v2-A：Group、身份与统一权限
 - 梳理并解除 Fabric 对 Control 推理业务的依赖。
@@ -140,7 +140,7 @@ Group B：B1，可选 Monitor MB；由另一用户拥有。
 仍运行的 Directory、Relay、Authorization 和 State。
 
 完成并记录：
-1. A1 与 A2 经 MCP 在原始 native Session 中完成 Ask/Reply；同 Node 路径 Hub Relay 业务调用为零。
+1. A1 与 A2 经 MCP 在原始 native Session 中完成 Ask/Reply；默认 HubRelay 路径至多经过一个共同 Hub。另以同物理宿主、同 Codex 账号且可调用原生目标 API 的环境验本机 direct 路径 Hub Relay 业务调用为零；未实现适配器不得记 PASS。
 2. A1 沿双方授权连线直达 B1 原生会话，收到有来源的结果；跨 Node/跨用户只经过一个 Hub Relay，双方 Node 仅出站。
 3. 无连线时 A1→B1 拒绝；授权、撤销、限 scope 及两个用户的可见性边界均可验证。
 4. A1 的同一真实 Thread 加入两个 Group、再退出其中一个，Endpoint/native Session ID 不变，权限不混淆。

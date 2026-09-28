@@ -9,6 +9,7 @@ import (
 )
 
 type GroupCreateInput struct {
+	NetworkID        string `json:"network_id,omitempty"`
 	Name             string `json:"name"`
 	Purpose          string `json:"purpose,omitempty"`
 	PolicyRef        string `json:"policy_ref,omitempty"`
@@ -66,14 +67,19 @@ var roleGrantNames = map[string]struct{}{
 // owner Principal and owner Membership explicitly; Fabric peer operations only
 // read the resulting authority and never call this method.
 func (c *Control) CreateGroup(input GroupCreateInput) (*store.Group, error) {
+	// The legacy operator bearer does not authenticate the human owner of a
+	// Network. Network-scoped creation requires an encrypted Client session.
+	if strings.TrimSpace(input.NetworkID) != "" {
+		return nil, ErrPermissionDenied
+	}
 	identity := c.Identity()
 	if strings.TrimSpace(identity.ID) == "" {
 		return nil, errors.New("local control identity is unavailable")
 	}
-	return c.createGroupForOwner(identity.ID, input)
+	return c.createGroupForOwner(identity.ID, input, "")
 }
 
-func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput) (*store.Group, error) {
+func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput, clientRequestID string) (*store.Group, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
 		return nil, errors.New("group name is required")
@@ -94,12 +100,19 @@ func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput) (*
 	if input.ExternalMode == "" {
 		input.ExternalMode = "monitor_mediated"
 	}
-	group, err := c.store.CreateGroup(store.Group{
+	groupInput := store.Group{
+		NetworkID:        strings.TrimSpace(input.NetworkID),
 		OwnerPrincipalID: owner.ID, TrustDomainID: owner.TrustDomainID, Name: input.Name,
 		State: store.GroupStateActive, Purpose: strings.TrimSpace(input.Purpose),
 		PolicyRef: strings.TrimSpace(input.PolicyRef), ContextPolicy: input.ContextPolicy,
 		IsolationProfile: input.IsolationProfile, ExternalMode: input.ExternalMode,
-	})
+	}
+	var group *store.Group
+	if groupInput.NetworkID == "" {
+		group, err = c.store.CreateGroup(groupInput)
+	} else {
+		group, err = c.store.CreateGroupForNetworkOwner(groupInput, clientRequestID)
+	}
 	if err != nil {
 		return nil, err
 	}

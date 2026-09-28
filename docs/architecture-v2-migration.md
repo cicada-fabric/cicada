@@ -1,5 +1,13 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-09-28 v36 Network direct 增量（backend 门禁通过）
+
+当前 dirty 候选 `HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2`、源码指纹 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 的全 Go、vet、gofmt、精准 race、独立 Client 与 Network disposable Docker 门禁均通过，门禁前后指纹一致。详见 [门禁记录](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Docker 结果](../.cicada-data/m1-final-20260928/accepted/docker-gates.json)、[代码审计](m1-code-audit.md)与 [M1 验证矩阵](network-m1-validation.md)。这些是合成迁移和一次性 Hub 验证，不是生产 StateDir 备份/恢复演练。
+
+v36 在 v35 上增量增加 `network_direct_native_bindings_v2`、`network_direct_key_candidates_v2`、`network_direct_key_grants_v2`、`network_direct_key_grant_nonces_v2` 和 `network_direct_message_routes_v2`。这五张表分别持有无 Group 原生路由、Endpoint 自证明、Owner 接受的公钥授权、防重放 nonce 与消息 Network/revision 快照；既有 Relay/Request/inbox/receipt 和 Node 本地持久状态机继续复用。direct native binding 的被动 writer 元数据与两个监听 `session_bindings` 的 trigger 只记录当前 Group lease owner，并在真正 owner 接管时推进 direct native epoch；首次加入 Group 或同 owner 续租不凭空建立第二 writer。v35 数据须先可恢复且迁移 ledger 一致，不能靠旧二进制打开 v36。
+
+迁移不改旧 Group/Endpoint ID、密钥、消息与 receipt；没有 direct scope 快照的旧消息不会自动取得 v36 授权。Owner 签名 manifest 的 canonical bytes、Endpoint 自证明和 Network 密文 context 均有独立 synthetic 向量；peer 不获得原生 Session locator。合成 v35→v36 中断回滚与账本保全、Network-only HTTP/Node 密封 SEND/ASK/REPLY 闭环已纳入本轮通过的门禁；旧 v35 状态须保持可恢复，不能把缺少 v36 scope 证据的历史消息自动授权。真实 native Runtime、Android、物理设备和公网 HTTPS 未运行。
+
 ## 2026-09-28 M1 Network migration gate（有界门禁通过；整体未完成）
 
 M1 从干净 Hub schema v34 之后做 additive migration，不改写旧 Endpoint、Principal、

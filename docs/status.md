@@ -1,27 +1,49 @@
 # Release status
 
-The current line is **Cicada 0.1.0-dev**, an unreleased product line planned
-for public `0.1.x` releases. This does not change Architecture v2.3, Client
-wire v1, or the frozen v1.3 contract. The bounded Network foundation checkpoint
-passed; overall M1 remains **NOT_COMPLETE**. Separate disposable Network and default Client Docker gates, full vet, focused race, frozen contract and seven Python checks passed. The initial full Go run failed only on a stale v34 migration assertion; after the test-only fix the full Store suite passed, and every other package had passed initially. See the [M1 evidence and limits](network-m1-validation.md) and [operator and authorization contract](network-m1-contract.md). Development remains on `dev`; this checkpoint is not a release.
+The current line is **Cicada 0.1.0-dev**, unreleased on `dev`; Architecture v2.3,
+software version, encrypted Client wire v1, contract revision and Hub schema
+are separate. The M1 backend matrix **passed** on schema v36 and an independent
+`client-hub-v1.4` catalog of 36 encrypted operations. Authenticated Owners can
+inspect bounded ACTIVE Network topology, create a Group with an explicit
+`network_id`, and approve a Network-only Endpoint key manifest. With current
+dual-end enrollment, Owner key grants and exact Node/native scope, Network-only
+Endpoints can exchange sealed SEND/ASK/REPLY without joining a Group. The
+capability catalog reports availability, not a caller's permission. The frozen
+source fingerprint `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe`
+passed full Go (25 packages), vet, focused race (16 cases), contract/eight Python
+checks, and separate disposable Client and Network real-TCP Docker gates; it
+was dirty at HEAD `733ca86`, so the result is not attributable to HEAD alone.
+This completes the **M1 backend acceptance matrix**; M2 is next and has not
+started. Android, real native Runtime, physical dual-Node and public HTTPS
+remain **NOT_RUN**. See the
+[M1 evidence and limits](network-m1-validation.md), [Network contract](network-m1-contract.md)
+and [Client development contract](client-hub-development.md).
 
-Network-only Endpoints without a Group cannot DM. Endpoints in different Groups can use an existing sealed Link when each Group is authorized in the same Network and both Owners grant the Link. Frozen Client v1.3 `group.create` has no Network selector and is rejected on an ACTIVE Hub; the passing default PREPARING Client gate does not prove ACTIVE compatibility. M1 native Runtime, Android, physical dual-Node and public HTTPS are **NOT_RUN**. Close the remaining M1 entry-point and test gaps before M2; native TUI adapter feasibility remains a bounded next investigation. The implementation list below is a historical baseline, not a claim that every listed path passed the M1 Network matrix.
+The previous v35 / `client-hub-v1.3` ACTIVE permission checkpoint passed only
+for its pinned, dirty source. Its 33-operation contract lacked a Network
+selector for ACTIVE `group.create`, and Network-only Endpoints then could not
+DM; both statements are historical, not current v1.4/v36 limitations. The
+passing default PREPARING Client gate did not validate ACTIVE Android. The
+implementation inventory below is an older baseline snapshot and does not
+override the current M1 backend evidence.
 
-The adopted **Architecture v2.3** target is ahead of this implementation.
-Current v2 Fabric retains a primary `group_id` as a legacy projection, but
-the worktree has independently scoped multi-Group membership, MCP/HTTP Group
+## Historical implementation inventory (pre-M1)
+
+The adopted **Architecture v2.3** target was ahead of this historical baseline.
+At that point v2 Fabric retained a primary `group_id` as a legacy projection, but
+the worktree had independently scoped multi-Group membership, MCP/HTTP Group
 selection and per-Group Leave in targeted tests. Real native multi-Group
-validation remains open. Cross-Group traffic still uses the old representative
-path until explicit CommunicationLink exists. Same-Node peer delivery still
-traverses Hub Relay, and v2 Fabric message bodies are plaintext in Hub state.
-The old Contact API encrypts/decrypts in Control. Nested Groups, direct
+validation was still open. Cross-Group traffic then used the old representative
+path until explicit CommunicationLink existed. Same-Node peer delivery then
+traversed Hub Relay, and v2 Fabric message bodies were plaintext in Hub state.
+The old Contact API encrypted/decrypted in Control. Nested Groups, direct
 cross-user Endpoint links, Group broadcast, local zero-Relay delivery,
 endpoint-held PQ E2EE, Android↔Control PQ E2EE, and device-code enrollment
-are not yet implemented. The Node-initiated persistent Relay SSE stream is in
-the current worktree and has targeted tests; it avoids normal polling latency
-but does not itself encrypt message bodies end-to-end.
+had not yet been implemented. The Node-initiated persistent Relay SSE stream
+had targeted tests; it avoided normal polling latency but did not itself
+encrypt message bodies end-to-end.
 
-Implemented in this line:
+Implemented at that baseline:
 
 - session-first Cicada Fabric membership that idempotently wraps the current
   Codex native thread in a stable Endpoint with a human-readable address;

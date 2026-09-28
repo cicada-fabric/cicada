@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -90,7 +92,8 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		t.Fatal("could not load synthetic Hub owner identity")
 	}
 	var hub struct {
-		HubID string `json:"hub_id"`
+		HubID                 string              `json:"hub_id"`
+		ControlPublicIdentity e2ee.PublicIdentity `json:"control_public_identity"`
 	}
 	if err := json.Unmarshal(expect(http.MethodGet, "/v2/client/identity", nil,
 		nil, http.StatusOK), &hub); err != nil || hub.HubID == "" {
@@ -300,7 +303,8 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	expectDenied(http.MethodGet, "/v2/fabric/whoami", nil, groupHeaders)
 
 	const discoverGrants = "directory.discover,directory.publish"
-	const adminGrants = "directory.discover,directory.publish,network.admin.invite"
+	const directGrants = "directory.discover,directory.publish,direct.send,direct.receive"
+	const adminGrants = "directory.discover,directory.publish,direct.send,direct.receive,network.admin.invite"
 	issueAndJoin := func(networkID, sessionID, endpointName, grants string) fabric.NetworkJoinResult {
 		t.Helper()
 		invitationPath := filepath.Join(privateDir, networkID+"-"+sessionID+"-invite")
@@ -343,7 +347,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 
 	primaryA := issueAndJoin(networkA, nativePrimary, alias, adminGrants)
 	primaryB := issueAndJoin(networkB, nativePrimary, alias, discoverGrants)
-	secondA := issueAndJoin(networkA, nativeSecond, alias, discoverGrants)
+	secondA := issueAndJoin(networkA, nativeSecond, alias, directGrants)
 	betaOnly := issueAndJoin(networkB, nativeBeta, "beta-only", discoverGrants)
 	if primaryA.Endpoint.ID != primaryLegacy.Endpoint.ID || primaryB.Endpoint.ID != primaryA.Endpoint.ID ||
 		primaryA.Endpoint.PrincipalID != primaryB.Endpoint.PrincipalID || primaryA.BindingID == primaryB.BindingID ||
@@ -571,6 +575,228 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	expect(http.MethodGet, pathB, nil, primaryBHeaders, http.StatusOK)
 	expect(http.MethodGet, "/v2/fabric/whoami", nil, groupHeaders, http.StatusOK)
 
+	// A separate no-Group Thread now exchanges Endpoint-encrypted messages
+	// over the real Node HTTP route. Both key grants travel through the same
+	// accepted encrypted Client device protocol as production Owner consent.
+	clientBinding := clientwire.Binding{HubID: hub.HubID, OwnerID: owner.ID,
+		DeviceID: deviceID, SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
+	var clientSequence uint64
+	clientRPC := func(operation string, payload any, target any) {
+		t.Helper()
+		clientSequence++
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		route := clientwire.Route{Version: clientwire.Version,
+			Direction: clientwire.DirectionRequest, HubID: hub.HubID,
+			OwnerID: owner.ID, DeviceID: deviceID, SessionEpoch: 1,
+			Sequence: clientSequence, OperationID: fmt.Sprintf("synthetic-network-direct-%d", clientSequence),
+			Operation: operation, SenderKeyID: ownerDevice.Public().ID, SenderKeyVersion: 1,
+			ReceiverKeyID: hub.ControlPublicIdentity.ID, ReceiverKeyVersion: 1}
+		packet, err := clientwire.SealRequest(ownerDevice, hub.ControlPublicIdentity,
+			clientBinding, route, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, err := http.NewRequest(http.MethodPost, baseURL+"/v2/client/rpc",
+			bytes.NewReader(packet))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("encrypted %s HTTP=%d", operation, response.StatusCode)
+		}
+		ciphertext, err := io.ReadAll(io.LimitReader(response.Body, 256*1024+1))
+		if err != nil || len(ciphertext) > 256*1024 {
+			t.Fatal("read encrypted Client result")
+		}
+		opened, err := clientwire.OpenResponse(ownerDevice, hub.ControlPublicIdentity,
+			clientBinding, ciphertext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			OK     bool            `json:"ok"`
+			Result json.RawMessage `json:"result"`
+			Error  string          `json:"error"`
+		}
+		if err := json.Unmarshal(opened.Plaintext, &result); err != nil || !result.OK {
+			t.Fatalf("encrypted %s result denied: %s %v", operation, result.Error, err)
+		}
+		if target != nil && json.Unmarshal(result.Result, target) != nil {
+			t.Fatalf("decode encrypted %s result", operation)
+		}
+	}
+	var ownerTopology struct {
+		Networks []struct {
+			NetworkID string `json:"network_id"`
+		} `json:"networks"`
+	}
+	clientRPC("topology.snapshot", map[string]any{}, &ownerTopology)
+	if len(ownerTopology.Networks) != 2 {
+		t.Fatal("encrypted Client topology did not project both Owner Networks")
+	}
+	directPath := "/v2/fabric/networks/" + networkA + "/direct/"
+	publishKey := func(join fabric.NetworkJoinResult, headers map[string]string,
+		identity *e2ee.Identity, nativeID string) {
+		t.Helper()
+		var binding store.NetworkDirectNativeBinding
+		if err := json.Unmarshal(expect(http.MethodPost, directPath+"native-binding", nil,
+			headers, http.StatusOK), &binding); err != nil || binding.ID == "" ||
+			binding.NativeSessionID != nativeID {
+			t.Fatalf("Network native binding: %#v %v", binding, err)
+		}
+		attestation, err := identity.SignNetworkDirectKeyAttestation(hub.HubID, networkA,
+			join.Endpoint.ID, join.Endpoint.PrincipalID, nodeID, binding.ID, binding.Epoch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect(http.MethodPost, directPath+"key-candidate", map[string]any{
+			"attestation": attestation}, headers, http.StatusCreated)
+		var manifest store.NetworkDirectKeyManifest
+		clientRPC("network.key_manifest", map[string]any{"network_id": networkA,
+			"endpoint_id": join.Endpoint.ID, "owner_key_id": registeredOwnerKey.KeyID}, &manifest)
+		if manifest.NativeSessionID != nativeID ||
+			manifest.NativeSessionDigest != e2ee.NetworkDirectNativeSessionDigest(nativeID) {
+			t.Fatal("Owner manifest did not bind the native Thread")
+		}
+		proof, err := ownerKey.SignOwnerNetworkDirectKeyGrant(hub.HubID, networkA,
+			join.Endpoint.ID, owner.ID, manifest.Digest, time.Now().UTC().Add(-time.Minute),
+			time.Now().UTC().Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		clientRPC("network.key_grant", map[string]any{"network_id": networkA,
+			"endpoint_id": join.Endpoint.ID, "signed_proof": proof}, nil)
+	}
+	primaryDirectKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondDirectKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishKey(renewedA, primaryAHeaders, primaryDirectKey, nativePrimary)
+	publishKey(secondA, secondAHeaders, secondDirectKey, nativeSecond)
+	var directBundle store.NetworkDirectPeerBundle
+	if err := json.Unmarshal(expect(http.MethodPost, directPath+"peer-key",
+		map[string]string{"target_endpoint_id": secondA.Endpoint.ID}, primaryAHeaders,
+		http.StatusOK), &directBundle); err != nil ||
+		directBundle.Sender.Manifest.NativeSessionID != "" ||
+		directBundle.Receiver.Manifest.NativeSessionID != "" {
+		t.Fatal("Network peer bundle leaked native locator")
+	}
+	sendID := "msg_synthetic_http_direct_send"
+	sendContext := store.NetworkDirectContext(&directBundle, sendID, "SEND", "", "")
+	sendWire, err := e2ee.SealNetworkDirectMessage(primaryDirectKey, secondDirectKey.Public(),
+		sendContext, []byte("synthetic HTTP direct SEND"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent store.RelaySealedV1Record
+	if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/direct/send",
+		fabric.NetworkDirectSendInput{NetworkID: networkA,
+			NetworkSessionToken: renewedA.SessionToken, TargetEndpointID: secondA.Endpoint.ID,
+			MessageID: sendID, IdempotencyKey: "synthetic-http-once", Ciphertext: sendWire},
+		nodeHeaders, http.StatusAccepted), &sent); err != nil || sent.Route.MessageID != sendID {
+		t.Fatal("real HTTP Network direct SEND not accepted")
+	}
+	claimDirect := func() []fabric.NetworkDirectDelivery {
+		t.Helper()
+		var claimed struct {
+			Deliveries []fabric.NetworkDirectDelivery `json:"deliveries"`
+		}
+		if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/direct/claim",
+			map[string]any{"node_id": nodeID, "consumer_id": "synthetic-http-direct-consumer", "limit": 10},
+			nodeHeaders, http.StatusOK), &claimed); err != nil {
+			t.Fatal(err)
+		}
+		return claimed.Deliveries
+	}
+	firstClaims := claimDirect()
+	if len(firstClaims) != 1 || firstClaims[0].MessageID != sendID {
+		t.Fatal("Node claim missed exact Network direct SEND")
+	}
+	var sendAuthorization store.NetworkDirectDeliveryAuthorization
+	if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/direct/authorize",
+		map[string]string{"message_id": sendID, "attempt_id": firstClaims[0].AttemptID},
+		nodeHeaders, http.StatusOK), &sendAuthorization); err != nil ||
+		sendAuthorization.NativeSessionID != nativeSecond {
+		t.Fatal("Node authorize changed native target")
+	}
+	if _, _, err := e2ee.OpenNetworkDirectMessage(secondDirectKey, primaryDirectKey.Public(),
+		sendAuthorization.Context, firstClaims[0].Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	firstReceipt := fabric.NodeReceiptInput{AttemptID: firstClaims[0].AttemptID, MessageID: sendID,
+		Digest: firstClaims[0].Digest, EndpointID: secondA.Endpoint.ID,
+		BindingID: firstClaims[0].BindingID, BindingEpoch: firstClaims[0].BindingEpoch,
+		Layer: store.RelayReceiptNodeReceived}
+	expect(http.MethodPost, "/v2/fabric/node/networks/direct/receipt", firstReceipt,
+		nodeHeaders, http.StatusOK)
+	requestID, askID := "rq_synthetic_http_direct", "msg_synthetic_http_direct_ask"
+	askContext := store.NetworkDirectContext(&directBundle, askID, "REQUEST", requestID, "")
+	askWire, err := e2ee.SealNetworkDirectMessage(primaryDirectKey, secondDirectKey.Public(),
+		askContext, []byte("synthetic HTTP direct ASK"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect(http.MethodPost, "/v2/fabric/node/networks/direct/ask",
+		fabric.NetworkDirectAskInput{NetworkID: networkA, NetworkSessionToken: renewedA.SessionToken,
+			TargetEndpointID: secondA.Endpoint.ID, MessageID: askID, RequestID: requestID,
+			IdempotencyKey: "synthetic-http-ask", ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+			Ciphertext: askWire}, nodeHeaders, http.StatusAccepted)
+	askClaims := claimDirect()
+	if len(askClaims) != 1 || askClaims[0].MessageID != askID {
+		t.Fatal("Node claim missed Network direct ASK")
+	}
+	var replyRoute store.NetworkDirectReplyRoute
+	if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/direct/reply-route",
+		map[string]string{"network_id": networkA, "network_session_token": secondA.SessionToken,
+			"request_id": requestID}, nodeHeaders, http.StatusOK), &replyRoute); err != nil ||
+		replyRoute.RequestMessageID != askID {
+		t.Fatal("trusted reply route did not correlate original ASK")
+	}
+	replyID := "msg_synthetic_http_direct_reply"
+	replyContext := store.NetworkDirectContext(replyRoute.Bundle, replyID, "REPLY", requestID, askID)
+	replyWire, err := e2ee.SealNetworkDirectMessage(secondDirectKey, primaryDirectKey.Public(),
+		replyContext, []byte("synthetic HTTP direct REPLY"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect(http.MethodPost, "/v2/fabric/node/networks/direct/reply",
+		fabric.NetworkDirectReplyInput{NetworkID: networkA, NetworkSessionToken: secondA.SessionToken,
+			RequestID: requestID, MessageID: replyID, IdempotencyKey: "synthetic-http-reply",
+			Ciphertext: replyWire}, nodeHeaders, http.StatusAccepted)
+	replyClaims := claimDirect()
+	if len(replyClaims) != 1 || replyClaims[0].MessageID != replyID {
+		t.Fatal("Node claim missed Network direct REPLY")
+	}
+	var replyAuthorization store.NetworkDirectDeliveryAuthorization
+	if err := json.Unmarshal(expect(http.MethodPost, "/v2/fabric/node/networks/direct/authorize",
+		map[string]string{"message_id": replyID, "attempt_id": replyClaims[0].AttemptID},
+		nodeHeaders, http.StatusOK), &replyAuthorization); err != nil ||
+		replyAuthorization.NativeSessionID != nativePrimary {
+		t.Fatal("Network direct REPLY native target mismatch")
+	}
+	if _, _, err := e2ee.OpenNetworkDirectMessage(primaryDirectKey, secondDirectKey.Public(),
+		replyAuthorization.Context, replyClaims[0].Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	var requestStatus store.FabricRequest
+	if err := json.Unmarshal(expect(http.MethodGet, directPath+"request-status?request_id="+requestID,
+		nil, primaryAHeaders, http.StatusOK), &requestStatus); err != nil ||
+		requestStatus.State != store.FabricRequestReplied {
+		t.Fatal("Network direct request status was not REPLIED")
+	}
+
 	// The same ACTIVE Store also serves authorized collaboration over HTTP
 	// with Control deliberately absent. A trusted management bearer cannot
 	// turn that Fabric-only handler into a planner or topology manager.
@@ -605,13 +831,119 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		defer result.Body.Close()
 		return result.StatusCode
 	}
+	standaloneCall := func(path string, payload any, headers map[string]string, wanted int, target any) {
+		t.Helper()
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, err := http.NewRequest(http.MethodPost, isolatedHTTP.URL+path, bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != wanted {
+			t.Fatalf("Control-free %s returned %d, want %d", path, response.StatusCode, wanted)
+		}
+		if target != nil && json.NewDecoder(response.Body).Decode(target) != nil {
+			t.Fatalf("decode Control-free %s", path)
+		}
+	}
 	if standaloneStatus(pathB, primaryBHeaders) != http.StatusOK ||
+		standaloneStatus(directPath+"request-status?request_id="+requestID, primaryAHeaders) != http.StatusOK ||
 		standaloneStatus("/v2/fabric/whoami", groupHeaders) != http.StatusOK ||
 		standaloneStatus("/v2/fabric/members", groupHeaders) != http.StatusOK ||
 		standaloneStatus("/v1/groups", map[string]string{"Authorization": "Bearer synthetic-operator"}) != http.StatusServiceUnavailable {
 		isolatedHTTP.Close()
 		_ = isolatedStore.Close()
 		t.Fatal("ACTIVE Fabric HTTP collaboration depended on Control business availability")
+	}
+	// Exercise a fresh encrypted ASK/REPLY chain through only the Fabric
+	// service. The prior status check alone would merely read old state.
+	const isolatedRequestID = "rq_synthetic_control_free_direct"
+	const isolatedAskID = "msg_synthetic_control_free_ask"
+	const isolatedReplyID = "msg_synthetic_control_free_reply"
+	isolatedAskContext := store.NetworkDirectContext(&directBundle, isolatedAskID,
+		"REQUEST", isolatedRequestID, "")
+	isolatedAskWire, err := e2ee.SealNetworkDirectMessage(primaryDirectKey,
+		secondDirectKey.Public(), isolatedAskContext, []byte("control-free ASK"), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standaloneCall("/v2/fabric/node/networks/direct/ask", fabric.NetworkDirectAskInput{
+		NetworkID: networkA, NetworkSessionToken: renewedA.SessionToken,
+		TargetEndpointID: secondA.Endpoint.ID, MessageID: isolatedAskID,
+		RequestID: isolatedRequestID, IdempotencyKey: "synthetic-control-free-ask",
+		ExpiresAt:  time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+		Ciphertext: isolatedAskWire}, nodeHeaders, http.StatusAccepted, nil)
+	var isolatedClaims struct {
+		Deliveries []fabric.NetworkDirectDelivery `json:"deliveries"`
+	}
+	standaloneCall("/v2/fabric/node/networks/direct/claim",
+		map[string]any{"node_id": nodeID, "consumer_id": "synthetic-control-free", "limit": 10},
+		nodeHeaders, http.StatusOK, &isolatedClaims)
+	if len(isolatedClaims.Deliveries) != 1 || isolatedClaims.Deliveries[0].MessageID != isolatedAskID {
+		t.Fatal("Control-free Node did not claim its ASK")
+	}
+	var isolatedAskAuth store.NetworkDirectDeliveryAuthorization
+	standaloneCall("/v2/fabric/node/networks/direct/authorize",
+		map[string]string{"message_id": isolatedAskID, "attempt_id": isolatedClaims.Deliveries[0].AttemptID},
+		nodeHeaders, http.StatusOK, &isolatedAskAuth)
+	if isolatedAskAuth.NativeSessionID != nativeSecond {
+		t.Fatal("Control-free ASK authorized the wrong native Thread")
+	}
+	if _, _, err := e2ee.OpenNetworkDirectMessage(secondDirectKey, primaryDirectKey.Public(),
+		isolatedAskAuth.Context, isolatedClaims.Deliveries[0].Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	var isolatedReplyRoute store.NetworkDirectReplyRoute
+	standaloneCall("/v2/fabric/node/networks/direct/reply-route",
+		map[string]string{"network_id": networkA, "network_session_token": secondA.SessionToken,
+			"request_id": isolatedRequestID}, nodeHeaders, http.StatusOK, &isolatedReplyRoute)
+	if isolatedReplyRoute.Bundle == nil || isolatedReplyRoute.RequestMessageID != isolatedAskID {
+		t.Fatal("Control-free reply route lost its original ASK")
+	}
+	isolatedReplyContext := store.NetworkDirectContext(isolatedReplyRoute.Bundle,
+		isolatedReplyID, "REPLY", isolatedRequestID, isolatedAskID)
+	isolatedReplyWire, err := e2ee.SealNetworkDirectMessage(secondDirectKey,
+		primaryDirectKey.Public(), isolatedReplyContext, []byte("control-free REPLY"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standaloneCall("/v2/fabric/node/networks/direct/reply", fabric.NetworkDirectReplyInput{
+		NetworkID: networkA, NetworkSessionToken: secondA.SessionToken,
+		RequestID: isolatedRequestID, MessageID: isolatedReplyID,
+		IdempotencyKey: "synthetic-control-free-reply", Ciphertext: isolatedReplyWire},
+		nodeHeaders, http.StatusAccepted, nil)
+	isolatedClaims.Deliveries = nil
+	standaloneCall("/v2/fabric/node/networks/direct/claim",
+		map[string]any{"node_id": nodeID, "consumer_id": "synthetic-control-free", "limit": 10},
+		nodeHeaders, http.StatusOK, &isolatedClaims)
+	if len(isolatedClaims.Deliveries) != 1 || isolatedClaims.Deliveries[0].MessageID != isolatedReplyID {
+		t.Fatal("Control-free Node did not claim its REPLY")
+	}
+	var isolatedReplyAuth store.NetworkDirectDeliveryAuthorization
+	standaloneCall("/v2/fabric/node/networks/direct/authorize",
+		map[string]string{"message_id": isolatedReplyID, "attempt_id": isolatedClaims.Deliveries[0].AttemptID},
+		nodeHeaders, http.StatusOK, &isolatedReplyAuth)
+	if isolatedReplyAuth.NativeSessionID != nativePrimary {
+		t.Fatal("Control-free REPLY authorized the wrong native Thread")
+	}
+	if _, _, err := e2ee.OpenNetworkDirectMessage(primaryDirectKey, secondDirectKey.Public(),
+		isolatedReplyAuth.Context, isolatedClaims.Deliveries[0].Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	if standaloneStatus(directPath+"request-status?request_id="+isolatedRequestID,
+		primaryAHeaders) != http.StatusOK {
+		t.Fatal("Control-free ASK/REPLY has no readable current status")
 	}
 	isolatedHTTP.Close()
 	if err := isolatedStore.Close(); err != nil {

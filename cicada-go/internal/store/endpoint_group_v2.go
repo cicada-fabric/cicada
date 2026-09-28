@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_endpoint_group_memberships_group
 INSERT INTO endpoint_group_memberships(endpoint_id, group_id, status, revision, created_at, updated_at)
 SELECT e.id, e.group_id,
        CASE WHEN e.status = 'left' OR m.status != 'active' OR p.status != 'active'
-                 OR g.state != 'ACTIVE' OR (m.expires_at != '' AND m.expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                 OR g.state != 'ACTIVE' OR cicada_network_expiry_allows(m.expires_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))=0
             THEN 'revoked' ELSE 'active' END,
        1, e.created_at, e.updated_at
 FROM fabric_endpoints e
@@ -102,13 +102,13 @@ JOIN groups g ON g.id = eg.group_id
 JOIN network_mode_v2 nm ON nm.id = 1
 WHERE e.id = ? AND e.migration_state = 'READY' AND e.status != 'left'
   AND eg.status = 'active' AND m.status = 'active' AND p.status = 'active'
-	AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?)
+	AND g.state = 'ACTIVE' AND cicada_network_expiry_allows(m.expires_at, ?)=1
 	AND ((g.network_id = '' AND nm.phase = 'PREPARING') OR
 	 (g.network_id <> '' AND EXISTS (
 	   SELECT 1 FROM networks_v2 n
 	   JOIN network_memberships_v2 nm2 ON nm2.network_id=n.id AND nm2.principal_id=e.principal_id AND nm2.status='active'
 	   JOIN endpoint_network_memberships_v2 en ON en.network_id=n.id AND en.endpoint_id=e.id AND en.status='active'
-	   WHERE n.id=g.network_id AND n.state='ACTIVE' AND (nm2.expires_at='' OR nm2.expires_at>?))))`,
+	   WHERE n.id=g.network_id AND n.state='ACTIVE' AND cicada_network_expiry_allows(nm2.expires_at,?)=1)))`,
 		strings.TrimSpace(groupID), strings.TrimSpace(endpointID), now(), now()).Scan(&active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -191,8 +191,10 @@ func (s *Store) JoinEndpointGroup(endpointID, groupID string) (*EndpointGroupMem
 }
 
 // LeaveEndpointGroup removes only the selected Group from this native
-// Endpoint. The binding is fenced and the Endpoint marked left atomically
-// only when no other authorized Group remains.
+// Endpoint. When no other Group remains, it fences the Group SessionBinding;
+// an active Network enrollment keeps the stable Endpoint live for Network
+// access, while an Endpoint with no remaining Network enrollment is marked
+// left.
 func (s *Store) LeaveEndpointGroup(endpointID, groupID, bindingID string, expectedEpoch uint64, reason string) (string, error) {
 	endpointID, groupID, bindingID = strings.TrimSpace(endpointID), strings.TrimSpace(groupID), strings.TrimSpace(bindingID)
 	s.mu.Lock()
@@ -234,12 +236,25 @@ WHERE endpoint_id = ? AND group_id = ? AND status = 'active'`, timestamp, endpoi
 JOIN memberships m ON m.principal_id = ? AND m.group_id = eg.group_id
 JOIN groups g ON g.id = eg.group_id
 WHERE eg.endpoint_id = ? AND eg.status = 'active' AND m.status = 'active'
-  AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?)
+  AND g.state = 'ACTIVE' AND cicada_network_expiry_allows(m.expires_at, ?)=1
 ORDER BY eg.group_id LIMIT 1`, principalID, endpointID, timestamp).Scan(&remaining)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return rollback(err)
 	}
 	if remaining == "" {
+		var activeNetworkEnrollment int
+		err = tx.QueryRow(`SELECT 1 FROM endpoint_network_memberships_v2 en
+JOIN networks_v2 n ON n.id = en.network_id AND n.state = 'ACTIVE'
+JOIN fabric_endpoints f ON f.id = en.endpoint_id
+JOIN network_memberships_v2 nm ON nm.network_id = en.network_id
+  AND nm.principal_id = f.principal_id AND nm.status = 'active'
+JOIN principals p ON p.id = nm.principal_id AND p.status = 'active'
+WHERE en.endpoint_id = ? AND en.status = 'active'
+  AND cicada_network_expiry_allows(nm.expires_at, ?)=1
+LIMIT 1`, endpointID, timestamp).Scan(&activeNetworkEnrollment)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return rollback(err)
+		}
 		result, err = tx.Exec(`UPDATE session_bindings
 SET status = ?, lease_owner = '', lease_expires_at = '', epoch = epoch + 1,
     version = version + 1, revocation_reason = ?, updated_at = ?
@@ -254,7 +269,15 @@ WHERE id = ? AND endpoint_id = ? AND epoch = ?`, SessionBindingStatusRevoked,
 			}
 			return rollback(ErrSessionBindingStaleEpoch)
 		}
-		if _, err := tx.Exec(`UPDATE fabric_endpoints SET status = 'left', updated_at = ?
+		if activeNetworkEnrollment != 0 {
+			// Group-only leave ends the Group SessionBinding, not the separate
+			// Network registration. Keep the stable native Endpoint live for its
+			// Network access credential while clearing the old Group projection.
+			if _, err := tx.Exec(`UPDATE fabric_endpoints SET group_id = '', binding_id = '', updated_at = ?
+WHERE id = ? AND binding_id = ?`, timestamp, endpointID, bindingID); err != nil {
+				return rollback(err)
+			}
+		} else if _, err := tx.Exec(`UPDATE fabric_endpoints SET status = 'left', updated_at = ?
 WHERE id = ? AND binding_id = ?`, timestamp, endpointID, bindingID); err != nil {
 			return rollback(err)
 		}
@@ -297,6 +320,21 @@ WHERE id = ? AND endpoint_id = ? AND epoch = ?
 	}
 	if _, err := tx.Exec(`UPDATE endpoint_group_memberships
 SET status = 'revoked', revision = revision + 1, updated_at = ?
+WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
+		return rollback(err)
+	}
+	// A global Endpoint leave is also a final withdrawal from every Network
+	// registration on this native Endpoint. Preserve Principal-level Network
+	// membership and other Endpoints, but do not let a later legacy Group Join
+	// reactivate Network discovery or access without a new explicit Network
+	// Join and Owner consent.
+	if _, err := tx.Exec(`UPDATE endpoint_network_memberships_v2
+SET status = 'revoked', revision = revision + 1, updated_at = ?
+WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
+		return rollback(err)
+	}
+	if _, err := tx.Exec(`UPDATE network_access_sessions_v2
+SET status = 'revoked', epoch = epoch + 1, lease_owner = '', lease_expires_at = '', updated_at = ?
 WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
 		return rollback(err)
 	}

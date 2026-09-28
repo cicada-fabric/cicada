@@ -138,7 +138,7 @@ func serve(args []string) error {
 	if err := controlPlane.Start(); err != nil {
 		return err
 	}
-	httpServer := &http.Server{Addr: fmt.Sprintf("%s:%d", *host, *port), Handler: server.NewHandler(controlPlane)}
+	httpServer := newControlHTTPServer(*host, *port, server.NewHandler(controlPlane))
 	shutdownContext, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 	go func() {
@@ -154,6 +154,16 @@ func serve(args []string) error {
 		return nil
 	}
 	return err
+}
+
+func newControlHTTPServer(host string, port int, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              net.JoinHostPort(host, strconv.Itoa(port)),
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		IdleTimeout:       60 * time.Second,
+	}
 }
 
 func validateServeExposure(host, apiToken string) error {

@@ -33,7 +33,7 @@ func (s *Service) ProposeTaskHandoff(actor Actor, input TaskHandoffProposeInput)
 	if card.GroupID != actor.GroupID {
 		return nil, ErrCrossGroupDirectDenied
 	}
-	handoff, err := s.store.ProposeSharedTaskHandoff(store.SharedTaskHandoff{
+	handoff, err := s.store.ProposeSharedTaskHandoffForActor(nativeActorScope(actor), store.SharedTaskHandoff{
 		TaskID: input.TaskID, GroupID: actor.GroupID,
 		FromPrincipalID: actor.PrincipalID, FromEndpointID: actor.EndpointID,
 		ToPrincipalID: card.PrincipalID, ToEndpointID: card.EndpointID,
@@ -74,12 +74,12 @@ func (s *Service) AcceptTaskHandoff(actor Actor, id string, leaseSeconds int) (*
 		}
 	}
 	if len(missing) != 0 {
-		if err := s.store.MarkSharedTaskHandoffMissingArtifacts(id, actor.PrincipalID, actor.EndpointID, missing); err != nil {
+		if err := s.store.MarkSharedTaskHandoffMissingArtifactsForActor(nativeActorScope(actor), id, missing); err != nil {
 			return nil, mapRelayError(err)
 		}
 		return nil, store.ErrSharedTaskHandoffMissingArtifact
 	}
-	task, err := s.store.AcceptSharedTaskHandoff(id, actor.PrincipalID, actor.EndpointID, leaseSeconds)
+	task, err := s.store.AcceptSharedTaskHandoffForActor(nativeActorScope(actor), id, leaseSeconds)
 	if errors.Is(err, store.ErrSharedTaskHandoffConflict) {
 		return nil, ErrConflict
 	}

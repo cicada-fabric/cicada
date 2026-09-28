@@ -3,19 +3,49 @@ package store
 import (
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"modernc.org/sqlite"
 )
+
+func init() {
+	// SQLite directory pages and invitation counts need exact RFC3339Nano
+	// comparisons before LIMIT. Invalid persisted timestamps fail closed.
+	sqlite.MustRegisterDeterministicScalarFunction("cicada_network_expiry_allows", 2,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			value, valueOK := args[0].(string)
+			atText, atOK := args[1].(string)
+			if !valueOK || !atOK {
+				return int64(0), nil
+			}
+			at, err := time.Parse(time.RFC3339Nano, atText)
+			if err != nil || !networkExpiryAllows(value, at) {
+				return int64(0), nil
+			}
+			return int64(1), nil
+		})
+	sqlite.MustRegisterDeterministicScalarFunction("cicada_network_effective_allows", 2,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			value, valueOK := args[0].(string)
+			atText, atOK := args[1].(string)
+			if !valueOK || !atOK {
+				return int64(0), nil
+			}
+			at, err := time.Parse(time.RFC3339Nano, atText)
+			if err != nil || !networkEffectiveAllows(value, at) {
+				return int64(0), nil
+			}
+			return int64(1), nil
+		})
+}
 
 const (
 	NetworkModePreparing = "PREPARING"
@@ -25,6 +55,26 @@ const (
 	NetworkMapPending    = "PENDING"
 	NetworkMapApproved   = "APPROVED"
 )
+
+func networkExpiryAllows(value string, at time.Time) bool {
+	if value == "" {
+		return true
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && expiresAt.After(at)
+}
+
+func networkFutureExpiry(value string, at time.Time) bool {
+	return value != "" && networkExpiryAllows(value, at)
+}
+
+func networkEffectiveAllows(value string, at time.Time) bool {
+	if value == "" {
+		return true
+	}
+	effectiveAt, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && !effectiveAt.After(at)
+}
 
 var (
 	ErrNetworkNotFound   = errors.New("network not found")
@@ -114,104 +164,6 @@ type GroupNetworkMapping struct {
 	GroupVersion int64  `json:"group_version"`
 	Reason       string `json:"reason,omitempty"`
 	UpdatedAt    string `json:"updated_at"`
-}
-
-type NetworkMigrationReport struct {
-	Phase             string                `json:"phase"`
-	Groups            []GroupNetworkMapping `json:"groups"`
-	UnmappedCount     int64                 `json:"unmapped_count"`
-	PendingCount      int64                 `json:"pending_count"`
-	ApprovedCount     int64                 `json:"approved_count"`
-	ActiveMemberships int64                 `json:"active_memberships"`
-	CrossOwnerGroups  int64                 `json:"cross_owner_groups"`
-	Links             int64                 `json:"links"`
-	KeyGrants         int64                 `json:"key_grants"`
-	PendingReceipts   int64                 `json:"pending_receipts"`
-}
-
-func (s *Store) DryRunNetworkMigration() (*NetworkMigrationReport, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return dryRunNetworkMigrationDB(s.db)
-}
-
-// InspectNetworkMigrationReadOnly opens an existing v35 database without
-// initializing or migrating it. The report never writes to the source DB.
-func InspectNetworkMigrationReadOnly(dbPath string) (*NetworkMigrationReport, error) {
-	absPath, err := filepath.Abs(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, ErrNetworkMigration
-	}
-	uri := (&url.URL{Scheme: "file", Path: absPath, RawQuery: "mode=ro"}).String()
-	db, err := sql.Open("sqlite", uri)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-	var state string
-	if err := db.QueryRow(`SELECT state FROM schema_migrations_v2 WHERE version=?`, CurrentV2SchemaVersion).Scan(&state); err != nil || state != v2MigrationApplied {
-		return nil, fmt.Errorf("network migration inventory requires applied v%d schema: %w", CurrentV2SchemaVersion, ErrNetworkMigration)
-	}
-	return dryRunNetworkMigrationDB(db)
-}
-
-func dryRunNetworkMigrationDB(db *sql.DB) (*NetworkMigrationReport, error) {
-	var report NetworkMigrationReport
-	if err := db.QueryRow(`SELECT phase FROM network_mode_v2 WHERE id=1`).Scan(&report.Phase); err != nil {
-		return nil, err
-	}
-	rows, err := db.Query(`SELECT g.id,g.network_id,g.version,COALESCE(m.network_id,''),COALESCE(m.state,''),COALESCE(m.reason,''),COALESCE(m.updated_at,'') FROM groups g LEFT JOIN network_group_mappings_v2 m ON m.group_id=g.id ORDER BY g.id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var g GroupNetworkMapping
-		var assigned, candidate string
-		if err := rows.Scan(&g.GroupID, &assigned, &g.GroupVersion, &candidate, &g.State, &g.Reason, &g.UpdatedAt); err != nil {
-			return nil, err
-		}
-		g.NetworkID = candidate
-		if g.State == "" && assigned != "" {
-			g.NetworkID = assigned
-			g.State = NetworkMapApproved
-		}
-		switch g.State {
-		case NetworkMapPending:
-			report.PendingCount++
-		case NetworkMapApproved:
-			report.ApprovedCount++
-		default:
-			report.UnmappedCount++
-		}
-		report.Groups = append(report.Groups, g)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for _, item := range []struct {
-		dest  *int64
-		query string
-	}{
-		{&report.ActiveMemberships, `SELECT COUNT(*) FROM memberships WHERE status='active'`},
-		{&report.CrossOwnerGroups, `SELECT COUNT(DISTINCT g.id) FROM groups g JOIN memberships m ON m.group_id=g.id JOIN principals p ON p.id=m.principal_id WHERE m.status='active' AND p.owner_id<>g.owner_principal_id`},
-		{&report.Links, `SELECT COUNT(*) FROM communication_links_v2 WHERE state='PROPOSED'`},
-		{&report.KeyGrants, `SELECT COUNT(*) FROM group_endpoint_key_grants_v2`},
-		{&report.PendingReceipts, `SELECT COUNT(*) FROM relay_v2_inbox WHERE state IN ('READY','CLAIMED','INJECTION_UNCERTAIN')`},
-	} {
-		if err := db.QueryRow(item.query).Scan(item.dest); err != nil {
-			return nil, err
-		}
-	}
-	return &report, nil
 }
 
 func (s *Store) QuarantineGroupNetwork(groupID, reason string, expectedVersion int64) error {
@@ -534,17 +486,24 @@ func (s *Store) NetworkGuardGroup(principalID, endpointID, groupID, networkID st
 		return ErrNetworkPermission
 	}
 	var ok int
-	err := s.db.QueryRow(`SELECT 1 FROM groups g
+	var memberExpiry string
+	err := s.db.QueryRow(`SELECT 1,m.expires_at FROM groups g
 JOIN networks_v2 n ON n.id=g.network_id AND n.state='ACTIVE'
 JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=? AND m.status='active'
 JOIN principals p ON p.id=m.principal_id AND p.status='active'
 JOIN endpoint_network_memberships_v2 e ON e.network_id=n.id AND e.endpoint_id=? AND e.status='active'
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.principal_id=p.id AND f.status!='left'
-WHERE g.id=? AND g.network_id=? AND (m.expires_at='' OR m.expires_at>?)`, principalID, endpointID, groupID, networkID, now()).Scan(&ok)
+WHERE g.id=? AND g.network_id=?`, principalID, endpointID, groupID, networkID).Scan(&ok, &memberExpiry)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNetworkPermission
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if !networkExpiryAllows(memberExpiry, time.Now().UTC()) {
+		return ErrNetworkPermission
+	}
+	return nil
 }
 
 func networkGuardPrincipalGroupLocked(db *sql.DB, principalID, groupID string) error {
@@ -562,8 +521,9 @@ func networkGuardPrincipalGroupLocked(db *sql.DB, principalID, groupID string) e
 		return ErrNetworkPermission
 	}
 	var active int
-	err := db.QueryRow(`SELECT 1 FROM networks_v2 n JOIN network_memberships_v2 nm ON nm.network_id=n.id AND nm.principal_id=? AND nm.status='active' JOIN principals p ON p.id=nm.principal_id AND p.status='active' WHERE n.id=? AND n.state='ACTIVE' AND (nm.expires_at='' OR nm.expires_at>?)`, principalID, networkID, now()).Scan(&active)
-	if err != nil {
+	var memberExpiry string
+	err := db.QueryRow(`SELECT 1,nm.expires_at FROM networks_v2 n JOIN network_memberships_v2 nm ON nm.network_id=n.id AND nm.principal_id=? AND nm.status='active' JOIN principals p ON p.id=nm.principal_id AND p.status='active' WHERE n.id=? AND n.state='ACTIVE'`, principalID, networkID).Scan(&active, &memberExpiry)
+	if err != nil || !networkExpiryAllows(memberExpiry, time.Now().UTC()) {
 		return ErrNetworkPermission
 	}
 	return nil
@@ -595,16 +555,18 @@ func networkGuardCommunicationLinkTx(tx *sql.Tx, link *CommunicationLink, at tim
 		{link.TargetPrincipalID, link.TargetEndpointID, "direct.receive"},
 	} {
 		var active int
-		query := `SELECT 1 FROM network_memberships_v2 m JOIN endpoint_network_memberships_v2 e ON e.network_id=m.network_id AND e.endpoint_id=? AND e.status='active'
+		query := `SELECT 1,m.expires_at FROM network_memberships_v2 m JOIN endpoint_network_memberships_v2 e ON e.network_id=m.network_id AND e.endpoint_id=? AND e.status='active'
 		JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.principal_id=m.principal_id AND f.status!='left'
 		JOIN principals p ON p.id=m.principal_id AND p.status='active'
-		WHERE m.network_id=? AND m.principal_id=? AND m.status='active' AND (m.expires_at='' OR m.expires_at>?)`
-		args := []any{side.endpointID, sourceNetwork, side.principalID, at.UTC().Format(time.RFC3339Nano)}
+		WHERE m.network_id=? AND m.principal_id=? AND m.status='active'`
+		args := []any{side.endpointID, sourceNetwork, side.principalID}
 		if link.SourceGroupID != link.TargetGroupID {
 			query += ` AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`
 			args = append(args, side.action)
 		}
-		if err := tx.QueryRow(query, args...).Scan(&active); err != nil {
+		var memberExpiry string
+		if err := tx.QueryRow(query, args...).Scan(&active, &memberExpiry); err != nil ||
+			!networkExpiryAllows(memberExpiry, at) {
 			return ErrNetworkPermission
 		}
 	}
@@ -656,23 +618,23 @@ func networkGuardRelaySecurityTx(tx *sql.Tx, security *RelayMessageSecurity, rec
 		{security.SenderPrincipalID, security.SenderEndpointID, security.SenderGroupID, "direct.send"},
 		{security.ReceiverPrincipalID, security.ReceiverEndpointID, security.ReceiverGroupID, "direct.receive"},
 	} {
-		query := `SELECT 1 FROM network_memberships_v2 nm
+		query := `SELECT 1,nm.expires_at,gm.expires_at FROM network_memberships_v2 nm
 		JOIN endpoint_network_memberships_v2 en ON en.network_id=nm.network_id AND en.endpoint_id=? AND en.status='active'
 		JOIN fabric_endpoints e ON e.id=en.endpoint_id AND e.principal_id=nm.principal_id AND e.status!='left'
 		JOIN principals p ON p.id=nm.principal_id AND p.status='active'
 		JOIN endpoint_group_memberships eg ON eg.endpoint_id=e.id AND eg.group_id=? AND eg.status='active'
 		JOIN memberships gm ON gm.group_id=eg.group_id AND gm.principal_id=p.id AND gm.status='active'
 		JOIN groups g ON g.id=eg.group_id AND g.network_id=nm.network_id AND g.state='ACTIVE'
-		WHERE nm.network_id=? AND nm.principal_id=? AND nm.status='active'
-		AND (nm.expires_at='' OR nm.expires_at>?) AND (gm.expires_at='' OR gm.expires_at>?)`
-		stamp := at.UTC().Format(time.RFC3339Nano)
-		args := []any{side.endpointID, side.groupID, senderNetwork, side.principalID, stamp, stamp}
+		WHERE nm.network_id=? AND nm.principal_id=? AND nm.status='active'`
+		args := []any{side.endpointID, side.groupID, senderNetwork, side.principalID}
 		if security.SenderGroupID != security.ReceiverGroupID {
 			query += ` AND EXISTS(SELECT 1 FROM json_each(nm.grants_json) WHERE value=?)`
 			args = append(args, side.action)
 		}
 		var active int
-		if err := tx.QueryRow(query, args...).Scan(&active); err != nil {
+		var memberExpiry, groupExpiry string
+		if err := tx.QueryRow(query, args...).Scan(&active, &memberExpiry, &groupExpiry); err != nil ||
+			!networkExpiryAllows(memberExpiry, at) || !networkExpiryAllows(groupExpiry, at) {
 			return ErrNetworkPermission
 		}
 		var ownerID, nodeID string
@@ -710,20 +672,32 @@ func networkGuardTaskPrincipalTx(tx *sql.Tx, principalID, groupID string, at tim
 		return ErrNetworkPermission
 	}
 	var active int
-	err := tx.QueryRow(`SELECT 1 FROM networks_v2 n
+	var memberExpiry, groupExpiry string
+	err := tx.QueryRow(`SELECT 1,nm.expires_at,gm.expires_at FROM networks_v2 n
 		JOIN network_memberships_v2 nm ON nm.network_id=n.id AND nm.principal_id=? AND nm.status='active'
 		JOIN principals p ON p.id=nm.principal_id AND p.status='active'
 		JOIN memberships gm ON gm.principal_id=p.id AND gm.group_id=? AND gm.status='active'
-		WHERE n.id=? AND n.state='ACTIVE' AND (nm.expires_at='' OR nm.expires_at>?)
-		AND (gm.expires_at='' OR gm.expires_at>?)`,
-		principalID, groupID, networkID, at.UTC().Format(time.RFC3339Nano), at.UTC().Format(time.RFC3339Nano)).Scan(&active)
-	if err != nil {
+		WHERE n.id=? AND n.state='ACTIVE'`,
+		principalID, groupID, networkID).Scan(&active, &memberExpiry, &groupExpiry)
+	if err != nil || !networkExpiryAllows(memberExpiry, at) || !networkExpiryAllows(groupExpiry, at) {
 		return ErrNetworkPermission
 	}
 	return nil
 }
 
 func networkGuardRelayMessageTx(tx *sql.Tx, messageID, receiverGroupID string, at time.Time) error {
+	var directNetworkID string
+	directErr := tx.QueryRow(`SELECT network_id FROM network_direct_message_routes_v2
+WHERE message_id=?`, messageID).Scan(&directNetworkID)
+	if directErr == nil {
+		if receiverGroupID != "" {
+			return ErrNetworkPermission
+		}
+		return networkGuardDirectMessageTx(tx, messageID, directNetworkID, at)
+	}
+	if !errors.Is(directErr, sql.ErrNoRows) {
+		return directErr
+	}
 	security, err := relayLoadSecurityTx(tx, messageID)
 	if err != nil {
 		return err
@@ -858,7 +832,7 @@ type AcceptedNetworkJoin struct {
 // the invitation and nonce in the same transaction as the scoped membership.
 // A retry with the same exact proof keeps the stable Endpoint and Principal.
 func (s *Store) AcceptNetworkJoin(input AcceptNetworkJoinInput) (*AcceptedNetworkJoin, error) {
-	if input.NetworkID == "" || input.OwnerID == "" || input.TrustDomainID == "" || input.NodeID == "" || input.NativeSessionID == "" || input.Harness == "" || input.EndpointName == "" || input.OwnerKeyID == "" || input.CredentialHash == "" || input.NodeCredentialHash == "" || input.LeaseOwner == "" || input.LeaseExpiresAt <= now() || input.ProofExpiresAt <= now() || !validNetworkGrants(input.Grants) || !isCanonicalDigest(input.ProofNonce) || !isCanonicalDigest(input.ProofDigest) {
+	if input.NetworkID == "" || input.OwnerID == "" || input.TrustDomainID == "" || input.NodeID == "" || input.NativeSessionID == "" || input.Harness == "" || input.EndpointName == "" || input.OwnerKeyID == "" || input.CredentialHash == "" || input.NodeCredentialHash == "" || input.LeaseOwner == "" || !networkFutureExpiry(input.LeaseExpiresAt, time.Now().UTC()) || !networkFutureExpiry(input.ProofExpiresAt, time.Now().UTC()) || !validNetworkGrants(input.Grants) || !isCanonicalDigest(input.ProofNonce) || !isCanonicalDigest(input.ProofDigest) {
 		return nil, ErrNetworkConsent
 	}
 	grantsJSON, err := json.Marshal(input.Grants)
@@ -892,7 +866,7 @@ func (s *Store) AcceptNetworkJoin(input AcceptNetworkJoinInput) (*AcceptedNetwor
 	if err := tx.QueryRow(`SELECT target_owner_id,grants_json,expires_at,consumed_at FROM network_invitations_v2 WHERE token_hash=? AND network_id=?`, tokenDigest(input.InvitationToken), input.NetworkID).Scan(&targetOwner, &invitationGrants, &invitationExpiry, &consumed); err != nil {
 		return nil, ErrNetworkConsent
 	}
-	if targetOwner != input.OwnerID || invitationGrants != string(grantsJSON) || invitationExpiry <= now() {
+	if targetOwner != input.OwnerID || invitationGrants != string(grantsJSON) || !networkFutureExpiry(invitationExpiry, time.Now().UTC()) {
 		return nil, ErrNetworkConsent
 	}
 	if input.Discoverable && !slices.Contains(input.Grants, "directory.publish") {
@@ -1038,7 +1012,7 @@ type RenewNetworkAccessInput struct {
 // RenewNetworkAccess refreshes a directory-only credential. It never touches
 // SessionBinding, native lease epoch, receipt replay state, or writer ownership.
 func (s *Store) RenewNetworkAccess(input RenewNetworkAccessInput) (*AcceptedNetworkJoin, error) {
-	if input.NetworkID == "" || input.EndpointID == "" || input.OwnerID == "" || input.NodeID == "" || input.Harness == "" || input.NativeSessionID == "" || input.NodeCredentialHash == "" || input.CredentialHash == "" || input.LeaseOwner == "" || input.LeaseExpiresAt <= now() {
+	if input.NetworkID == "" || input.EndpointID == "" || input.OwnerID == "" || input.NodeID == "" || input.Harness == "" || input.NativeSessionID == "" || input.NodeCredentialHash == "" || input.CredentialHash == "" || input.LeaseOwner == "" || !networkFutureExpiry(input.LeaseExpiresAt, time.Now().UTC()) {
 		return nil, ErrNetworkPermission
 	}
 	s.mu.Lock()
@@ -1063,7 +1037,7 @@ func (s *Store) RenewNetworkAccess(input RenewNetworkAccessInput) (*AcceptedNetw
 	var result AcceptedNetworkJoin
 	result.EndpointID, result.PrincipalID = input.EndpointID, principalID
 	var memberStatus, expiry, principalStatus string
-	if err := tx.QueryRow(`SELECT m.id,m.revision,m.status,m.expires_at,p.status FROM network_memberships_v2 m JOIN principals p ON p.id=m.principal_id WHERE m.network_id=? AND m.principal_id=?`, input.NetworkID, principalID).Scan(&result.MembershipID, &result.MembershipRevision, &memberStatus, &expiry, &principalStatus); err != nil || memberStatus != "active" || principalStatus != "active" || expiry != "" && expiry <= now() {
+	if err := tx.QueryRow(`SELECT m.id,m.revision,m.status,m.expires_at,p.status FROM network_memberships_v2 m JOIN principals p ON p.id=m.principal_id WHERE m.network_id=? AND m.principal_id=?`, input.NetworkID, principalID).Scan(&result.MembershipID, &result.MembershipRevision, &memberStatus, &expiry, &principalStatus); err != nil || memberStatus != "active" || principalStatus != "active" || !networkExpiryAllows(expiry, time.Now().UTC()) {
 		return nil, ErrNetworkPermission
 	}
 	var endpointStatus string
@@ -1129,17 +1103,18 @@ func (s *Store) NetworkAllows(networkID, principalID, endpointID, action string)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var allowed int
-	err := s.db.QueryRow(`SELECT 1 FROM networks_v2 n
+	var memberExpiry string
+	err := s.db.QueryRow(`SELECT 1,m.expires_at FROM networks_v2 n
 JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=? AND m.status='active'
 JOIN endpoint_network_memberships_v2 e ON e.network_id=n.id AND e.endpoint_id=? AND e.status='active'
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.principal_id=m.principal_id AND f.status!='left'
 JOIN principals p ON p.id=m.principal_id AND p.status='active'
-WHERE n.id=? AND n.state='ACTIVE' AND (m.expires_at='' OR m.expires_at>?)
-AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`, principalID, endpointID, networkID, now(), action).Scan(&allowed)
+WHERE n.id=? AND n.state='ACTIVE'
+AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`, principalID, endpointID, networkID, action).Scan(&allowed, &memberExpiry)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
-	return err == nil && allowed == 1, err
+	return err == nil && allowed == 1 && networkExpiryAllows(memberExpiry, time.Now().UTC()), err
 }
 
 func (s *Store) RevokeNetworkMembership(networkID, principalID string, expectedRevision int64) error {
@@ -1284,9 +1259,10 @@ func (s *Store) ListNetworkDirectory(scope NetworkAccessScope, limit int) ([]Net
 	if err := networkGuardAccessTx(tx, scope, "directory.discover", at); err != nil {
 		return nil, err
 	}
-	stamp := at.Format(time.RFC3339)
+	stamp := at.Format(time.RFC3339Nano)
 	rows, err := tx.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
-CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at>? THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
+CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at!=''
+AND cicada_network_expiry_allows(a.lease_expires_at,?)=1 THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
 FROM endpoint_network_memberships_v2 e
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.status!='left'
 JOIN principals p ON p.id=f.principal_id AND p.status='active'
@@ -1294,7 +1270,7 @@ JOIN network_memberships_v2 m ON m.network_id=e.network_id AND m.principal_id=f.
 JOIN networks_v2 n ON n.id=e.network_id AND n.state='ACTIVE'
 LEFT JOIN network_access_sessions_v2 a ON a.network_id=e.network_id AND a.endpoint_id=e.endpoint_id
 WHERE e.network_id=? AND e.status='active' AND e.discoverable=1
-AND (m.expires_at='' OR m.expires_at>?)
+AND cicada_network_expiry_allows(m.expires_at,?)=1
 AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value='directory.publish')
 ORDER BY e.nickname COLLATE NOCASE,e.endpoint_id LIMIT ?`, stamp, scope.NetworkID, stamp, limit)
 	if err != nil {
@@ -1335,9 +1311,10 @@ func (s *Store) ResolveNetworkDirectory(scope NetworkAccessScope, query string) 
 	if err := networkGuardAccessTx(tx, scope, "directory.discover", at); err != nil {
 		return nil, err
 	}
-	stamp := at.Format(time.RFC3339)
+	stamp := at.Format(time.RFC3339Nano)
 	rows, err := tx.Query(`SELECT e.network_id,e.endpoint_id,e.nickname,
-CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at>? THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
+CASE WHEN f.status!='offline' AND a.status='active' AND a.lease_expires_at!=''
+AND cicada_network_expiry_allows(a.lease_expires_at,?)=1 THEN 'ACCESS_RECENT' ELSE 'UNKNOWN' END
 FROM endpoint_network_memberships_v2 e
 JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.status!='left'
 JOIN principals p ON p.id=f.principal_id AND p.status='active'
@@ -1345,7 +1322,7 @@ JOIN network_memberships_v2 m ON m.network_id=e.network_id AND m.principal_id=f.
 JOIN networks_v2 n ON n.id=e.network_id AND n.state='ACTIVE'
 LEFT JOIN network_access_sessions_v2 a ON a.network_id=e.network_id AND a.endpoint_id=e.endpoint_id
 WHERE e.network_id=? AND e.status='active' AND e.discoverable=1
-AND (m.expires_at='' OR m.expires_at>?)
+AND cicada_network_expiry_allows(m.expires_at,?)=1
 AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value='directory.publish')
 AND ((substr(?,1,3)='ep_' AND e.endpoint_id=?) OR (substr(?,1,3)!='ep_' AND e.nickname=? COLLATE NOCASE))
 ORDER BY e.endpoint_id LIMIT 2`, stamp, scope.NetworkID, stamp, query, query, query, query)
@@ -1408,7 +1385,7 @@ func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token
 	if issuerID != ownerID {
 		var grantsJSON, status, memberExpiry, principalStatus string
 		err := s.db.QueryRow(`SELECT m.grants_json,m.status,m.expires_at,p.status FROM network_memberships_v2 m JOIN principals p ON p.id=m.principal_id WHERE m.network_id=? AND m.principal_id=?`, networkID, issuerID).Scan(&grantsJSON, &status, &memberExpiry, &principalStatus)
-		if err != nil || status != "active" || principalStatus != PrincipalStatusActive || memberExpiry != "" && memberExpiry <= now() {
+		if err != nil || status != "active" || principalStatus != PrincipalStatusActive || !networkExpiryAllows(memberExpiry, time.Now().UTC()) {
 			return ErrNetworkPermission
 		}
 		var issuerGrants []string
@@ -1431,7 +1408,8 @@ func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token
 		}
 	}
 	var pending int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM network_invitations_v2 WHERE network_id=? AND consumed_at='' AND expires_at>?`, networkID, now()).Scan(&pending); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM network_invitations_v2 WHERE network_id=? AND consumed_at='' AND cicada_network_expiry_allows(expires_at,?)=1`,
+		networkID, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&pending); err != nil {
 		return err
 	}
 	if pending >= 256 {

@@ -31,6 +31,7 @@ FILES = (
     "cicada-go/internal/clientwire/testdata/client-control-v1.json",
     "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
     "cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json",
+    "cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json",
 )
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 
@@ -93,6 +94,22 @@ def read_contract(root):
             or "broadcast_permission_enabled:" not in openapi):
         raise ValueError("topology contract omits explicit broadcast permission or its snapshot projection")
     for marker in (
+            "group.create: '#/components/schemas/TopologyCreateGroupAction'",
+            "x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'",
+            "x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'",
+            "network_endpoints_truncated:",
+            "can_create_group:",
+            "network_ids:"):
+        if marker not in openapi:
+            raise ValueError("ACTIVE Network topology contract is incomplete: " + marker)
+    expected_network_key_ops = {"network.key_manifest", "network.key_grant", "network.key_status"}
+    network_key_ops = {operation["id"]: operation for operation in operations
+                       if operation["id"] in expected_network_key_ops}
+    if set(network_key_ops) != expected_network_key_ops or any(
+            set(network_key_ops[name]["roles"]) != {"manager", "external"}
+            for name in expected_network_key_ops):
+        raise ValueError("Network Owner key consent operations are incomplete")
+    for marker in (
             "MonitorBroadcastEnvelopeV2:",
             "x-canonical-json-field-order: [type, version, suite, context, sealed, signature]",
             "x-signature-null-for-signing-bytes: true",
@@ -122,6 +139,32 @@ def read_contract(root):
     signed = b"cicada/fabric/endpoint-key-attestation/v1\x00" + unsigned
     if signed.hex() != attestation.get("signed_input_hex"):
         raise ValueError("Endpoint attestation fixture signed bytes mismatch")
+    direct = json.loads(files["cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json"])
+    if (direct.get("synthetic_only") is not True or
+            "Never initialize a deployment" not in direct.get("warning", "") or
+            direct.get("synthetic_native_session_id") != "native_synthetic_private_locator" or
+            direct.get("native_session_digest") != sha256(
+                b"cicada/network/native-session/v1\x00native_synthetic_private_locator")):
+        raise ValueError("unlabelled or sensitive Network direct public vector")
+    for field, signed_field, digest_field, domain in (
+            ("attestation", "attestation_signed_input_base64", "attestation_signed_sha256",
+             b"cicada/network/direct-key-attestation/v1\x00"),
+            ("owner_grant", "owner_grant_signed_input_base64", "owner_grant_signed_sha256",
+             b"cicada/network/direct-key-grant/v1\x00")):
+        claims = json.loads(direct[field])
+        if not claims.get("signature"):
+            raise ValueError("Network direct public proof lacks a signature")
+        claims["signature"] = None
+        expected = domain + json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode()
+        actual = base64.b64decode(direct[signed_field], validate=True)
+        if actual != expected or sha256(actual) != direct[digest_field]:
+            raise ValueError("Network direct public signed bytes differ")
+    manifest = direct["manifest_canonical_json"].encode()
+    if (sha256(b"cicada/network/direct-key-manifest/v1\x00" + manifest) != direct["manifest_digest"] or
+            json.loads(direct["owner_grant"])["manifest_digest"] != direct["manifest_digest"]):
+        raise ValueError("Network direct public manifest consent differs")
+    if json.loads(direct["network_envelope"])["context"] != direct["network_context"]:
+        raise ValueError("Network direct public envelope context differs")
     monitor = json.loads(files["cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json"])
     if (monitor.get("synthetic_fixture") is not True or monitor.get("never_deploy") is not True
             or "SYNTHETIC" not in monitor.get("warning", "")

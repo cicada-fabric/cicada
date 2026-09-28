@@ -98,6 +98,14 @@ func (s *Store) GetSharedTaskHandoff(id string) (*SharedTaskHandoff, error) {
 }
 
 func (s *Store) ProposeSharedTaskHandoff(input SharedTaskHandoff) (*SharedTaskHandoff, error) {
+	return s.proposeSharedTaskHandoff(input, nil)
+}
+
+func (s *Store) ProposeSharedTaskHandoffForActor(scope NativeActorScope, input SharedTaskHandoff) (*SharedTaskHandoff, error) {
+	return s.proposeSharedTaskHandoff(input, &scope)
+}
+
+func (s *Store) proposeSharedTaskHandoff(input SharedTaskHandoff, scope *NativeActorScope) (*SharedTaskHandoff, error) {
 	if input.TaskID == "" || input.FromPrincipalID == "" || input.FromEndpointID == "" || input.ToPrincipalID == "" || input.ToEndpointID == "" ||
 		input.FromPrincipalID == input.ToPrincipalID && input.FromEndpointID == input.ToEndpointID || strings.TrimSpace(input.PendingWork) == "" {
 		return nil, ErrSharedTaskHandoffConflict
@@ -139,7 +147,7 @@ func (s *Store) ProposeSharedTaskHandoff(input SharedTaskHandoff) (*SharedTaskHa
 		return nil, ErrSharedTaskHandoffConflict
 	}
 	at := time.Now().UTC()
-	if err := networkGuardGroupEndpointTx(tx, input.FromPrincipalID, input.FromEndpointID, input.GroupID, at); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, input.FromPrincipalID, input.FromEndpointID, input.GroupID, "task.submit"); err != nil {
 		return nil, err
 	}
 	if err := networkGuardGroupEndpointTx(tx, input.ToPrincipalID, input.ToEndpointID, input.GroupID, at); err != nil {
@@ -173,6 +181,15 @@ func (s *Store) ProposeSharedTaskHandoff(input SharedTaskHandoff) (*SharedTaskHa
 }
 
 func (s *Store) MarkSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, receiverEndpointID string, refs []string) error {
+	return s.markSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, receiverEndpointID, refs, nil)
+}
+
+func (s *Store) MarkSharedTaskHandoffMissingArtifactsForActor(scope NativeActorScope, id string, refs []string) error {
+	return s.markSharedTaskHandoffMissingArtifacts(id, scope.PrincipalID, scope.EndpointID, refs, &scope)
+}
+
+func (s *Store) markSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, receiverEndpointID string,
+	refs []string, scope *NativeActorScope) error {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -197,7 +214,7 @@ func (s *Store) MarkSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, r
 	if handoff.Status != HandoffProposed || handoff.ToPrincipalID != receiverPrincipalID || handoff.ToEndpointID != receiverEndpointID {
 		return ErrSharedTaskHandoffConflict
 	}
-	if err := networkGuardGroupEndpointTx(tx, receiverPrincipalID, receiverEndpointID, handoff.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, receiverPrincipalID, receiverEndpointID, handoff.GroupID, "task.claim"); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`UPDATE shared_task_v2_handoffs SET missing_artifact_refs_json=?,updated_at=? WHERE id=? AND status=?`, string(encoded), now(), id, HandoffProposed); err != nil {
@@ -216,6 +233,15 @@ func (s *Store) MarkSharedTaskHandoffMissingArtifacts(id, receiverPrincipalID, r
 // AcceptSharedTaskHandoff atomically records acceptance and transfers
 // ownership. The previous epoch is fenced in the same write transaction.
 func (s *Store) AcceptSharedTaskHandoff(id, receiverPrincipalID, receiverEndpointID string, leaseSeconds int) (*SharedTask, error) {
+	return s.acceptSharedTaskHandoff(id, receiverPrincipalID, receiverEndpointID, leaseSeconds, nil)
+}
+
+func (s *Store) AcceptSharedTaskHandoffForActor(scope NativeActorScope, id string, leaseSeconds int) (*SharedTask, error) {
+	return s.acceptSharedTaskHandoff(id, scope.PrincipalID, scope.EndpointID, leaseSeconds, &scope)
+}
+
+func (s *Store) acceptSharedTaskHandoff(id, receiverPrincipalID, receiverEndpointID string,
+	leaseSeconds int, scope *NativeActorScope) (*SharedTask, error) {
 	if leaseSeconds <= 0 {
 		leaseSeconds = 300
 	}
@@ -239,7 +265,7 @@ func (s *Store) AcceptSharedTaskHandoff(id, receiverPrincipalID, receiverEndpoin
 	if handoff.Status != HandoffProposed || handoff.ToPrincipalID != receiverPrincipalID || handoff.ToEndpointID != receiverEndpointID {
 		return nil, ErrSharedTaskHandoffConflict
 	}
-	if err := networkGuardGroupEndpointTx(tx, receiverPrincipalID, receiverEndpointID, handoff.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, receiverPrincipalID, receiverEndpointID, handoff.GroupID, "task.claim"); err != nil {
 		return nil, err
 	}
 	task, err := loadSharedTaskTx(tx, handoff.TaskID)

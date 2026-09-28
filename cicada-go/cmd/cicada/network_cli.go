@@ -171,6 +171,7 @@ func networkConsentSign(args []string, output io.Writer) error {
 	nodeID := flags.String("node", "", "Node ID bound to this Owner")
 	sessionID := flags.String("session", "", "native Session ID")
 	grantsArg := flags.String("grants", "", "exact comma-separated invitation grant set")
+	preset := flags.String("preset", "", "named least-privilege Network permission preset")
 	discoverable := flags.Bool("discoverable", false, "approve this Endpoint's directory disclosure")
 	ttl := flags.Duration("ttl", 5*time.Minute, "proof lifetime, at most 15 minutes")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
@@ -198,14 +199,19 @@ func networkConsentSign(args []string, output io.Writer) error {
 		return errors.New("invitation file is empty")
 	}
 	digest := sha256.Sum256(invitation)
-	var grants []string
-	if *grantsArg != "" {
-		for _, grant := range strings.Split(*grantsArg, ",") {
-			grant = strings.TrimSpace(grant)
-			if grant == "" {
-				return errors.New("grant set contains an empty value")
+	grants, err := selectNetworkPermissionGrants(*grantsArg, *preset, true)
+	if err != nil {
+		return err
+	}
+	if *discoverable {
+		published := false
+		for _, grant := range grants {
+			if grant == "directory.publish" {
+				published = true
 			}
-			grants = append(grants, grant)
+		}
+		if !published {
+			return errors.New("discoverable consent requires the directory.publish grant")
 		}
 	}
 	now := time.Now().UTC()
@@ -310,6 +316,7 @@ func networkCLISession(operation string, args []string, output io.Writer) error 
 	reason := flags.String("reason", "", "optional leave reason")
 	targetOwner := flags.String("target-owner", "", "Owner invited by a scoped Network administrator")
 	grantsArg := flags.String("grants", "", "exact comma-separated invitation grants")
+	preset := flags.String("preset", "", "named least-privilege Network permission preset")
 	invitationPath := flags.String("invitation-file", "", "new private file for invitation token")
 	ttl := flags.Duration("ttl", 15*time.Minute, "invitation lifetime")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 || *statePath == "" {
@@ -348,15 +355,9 @@ func networkCLISession(operation string, args []string, output io.Writer) error 
 	case "leave":
 		method, path, body = http.MethodPost, "/v2/fabric/networks/"+state.NetworkID+"/leave", map[string]string{"reason": *reason}
 	case "admin-invite":
-		grants := []string{}
-		if *grantsArg != "" {
-			for _, grant := range strings.Split(*grantsArg, ",") {
-				grant = strings.TrimSpace(grant)
-				if grant == "" {
-					return errors.New("grant set contains an empty value")
-				}
-				grants = append(grants, grant)
-			}
+		grants, err := selectNetworkPermissionGrants(*grantsArg, *preset, false)
+		if err != nil {
+			return err
 		}
 		method, path, body = http.MethodPost, "/v2/fabric/networks/"+state.NetworkID+"/invitations",
 			map[string]any{"target_owner_id": *targetOwner, "grants": grants, "ttl_seconds": int(ttl.Seconds())}

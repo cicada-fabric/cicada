@@ -43,6 +43,7 @@ var (
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
 	ApprovalID string `json:"approval_id,omitempty"`
+	NetworkID  string `json:"network_id,omitempty"`
 	Target     string `json:"target,omitempty"`
 	LinkID     string `json:"link_id,omitempty"`
 	DataScope  string `json:"data_scope,omitempty"`
@@ -61,6 +62,7 @@ type mcpOutboxScope struct {
 	Workspace       string
 	EndpointID      string
 	GroupID         string
+	NetworkID       string
 }
 
 type mcpOutboxOperation struct {
@@ -75,6 +77,7 @@ type mcpOutboxOperation struct {
 	Workspace       string
 	EndpointID      string
 	GroupID         string
+	NetworkID       string
 	IdempotencyKey  string
 	InputJSON       string
 	InputDigest     string
@@ -194,6 +197,7 @@ CREATE TABLE IF NOT EXISTS mcp_outbox_operations (
   workspace TEXT NOT NULL DEFAULT '',
   endpoint_id TEXT NOT NULL,
   group_id TEXT NOT NULL,
+  network_id TEXT NOT NULL DEFAULT '',
   idempotency_key TEXT NOT NULL,
   input_json TEXT NOT NULL,
   input_digest TEXT NOT NULL,
@@ -203,11 +207,56 @@ CREATE TABLE IF NOT EXISTS mcp_outbox_operations (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS mcp_outbox_scope_key_idx
-  ON mcp_outbox_operations(api_origin, native_session_id, endpoint_id, group_id, idempotency_key);
-CREATE INDEX IF NOT EXISTS mcp_outbox_scope_operation_idx
-  ON mcp_outbox_operations(api_origin, native_session_id, endpoint_id, group_id, operation_id);
 `); err != nil {
+		return closeDB(err)
+	}
+	// Existing private outboxes predate Network direct. Upgrade them in place;
+	// Group rows retain an empty network_id and their prior identity.
+	upgrade, err := db.Begin()
+	if err != nil {
+		return closeDB(err)
+	}
+	defer upgrade.Rollback()
+	var hasNetworkID bool
+	columns, err := upgrade.Query("PRAGMA table_info(mcp_outbox_operations)")
+	if err != nil {
+		return closeDB(err)
+	}
+	for columns.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue sql.NullString
+		if err := columns.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = columns.Close()
+			return closeDB(err)
+		}
+		if name == "network_id" {
+			hasNetworkID = true
+		}
+	}
+	if err := columns.Err(); err != nil {
+		_ = columns.Close()
+		return closeDB(err)
+	}
+	_ = columns.Close()
+	if !hasNetworkID {
+		if _, err := upgrade.Exec("ALTER TABLE mcp_outbox_operations ADD COLUMN network_id TEXT NOT NULL DEFAULT ''"); err != nil {
+			return closeDB(err)
+		}
+		if _, err := upgrade.Exec("DROP INDEX IF EXISTS mcp_outbox_scope_key_idx"); err != nil {
+			return closeDB(err)
+		}
+		if _, err := upgrade.Exec("DROP INDEX IF EXISTS mcp_outbox_scope_operation_idx"); err != nil {
+			return closeDB(err)
+		}
+	}
+	if _, err := upgrade.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS mcp_outbox_scope_key_idx ON mcp_outbox_operations
+(api_origin,native_session_id,endpoint_id,group_id,network_id,idempotency_key);
+CREATE INDEX IF NOT EXISTS mcp_outbox_scope_operation_idx ON mcp_outbox_operations
+(api_origin,native_session_id,endpoint_id,group_id,network_id,operation_id);`); err != nil {
+		return closeDB(err)
+	}
+	if err := upgrade.Commit(); err != nil {
 		return closeDB(err)
 	}
 	if s.path != ":memory:" {
@@ -316,11 +365,11 @@ func (s *mcpOutboxStore) prepareOperation(scope mcpOutboxScope, kind, requestedK
 	var existing mcpOutboxOperation
 	err = scanMCPOutboxOperation(tx.QueryRow(`
 SELECT operation_id, kind, status, api_origin, scope, harness, native_session_id,
-       node_id, workspace, endpoint_id, group_id, idempotency_key, input_json,
+       node_id, workspace, endpoint_id, group_id, network_id, idempotency_key, input_json,
        input_digest, attempt_count, last_error, result_json, created_at, updated_at
 FROM mcp_outbox_operations
-WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id = ? AND idempotency_key = ?`,
-		scope.APIOrigin, scope.NativeSessionID, scope.EndpointID, scope.GroupID, key), &existing)
+WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id = ? AND network_id = ? AND idempotency_key = ?`,
+		scope.APIOrigin, scope.NativeSessionID, scope.EndpointID, scope.GroupID, scope.NetworkID, key), &existing)
 	if err == nil {
 		if !mcpOutboxScopeMatches(existing, scope) {
 			return mcpOutboxOperation{}, false, errMCPOutboxContext
@@ -352,17 +401,17 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 		OperationID: operationID, Kind: kind, Status: mcpOutboxStatusPending,
 		APIOrigin: scope.APIOrigin, Scope: scope.Scope, Harness: scope.Harness,
 		NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID, Workspace: scope.Workspace,
-		EndpointID: scope.EndpointID, GroupID: scope.GroupID, IdempotencyKey: key,
+		EndpointID: scope.EndpointID, GroupID: scope.GroupID, NetworkID: scope.NetworkID, IdempotencyKey: key,
 		InputJSON: inputJSON, InputDigest: inputDigest, CreatedAt: now, UpdatedAt: now,
 	}
 	_, err = tx.Exec(`
 INSERT INTO mcp_outbox_operations (
  operation_id, kind, status, api_origin, scope, harness, native_session_id,
- node_id, workspace, endpoint_id, group_id, idempotency_key, input_json,
+ node_id, workspace, endpoint_id, group_id, network_id, idempotency_key, input_json,
  input_digest, attempt_count, last_error, result_json, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?)`,
 		op.OperationID, op.Kind, op.Status, op.APIOrigin, op.Scope, op.Harness,
-		op.NativeSessionID, op.NodeID, op.Workspace, op.EndpointID, op.GroupID,
+		op.NativeSessionID, op.NodeID, op.Workspace, op.EndpointID, op.GroupID, op.NetworkID,
 		op.IdempotencyKey, op.InputJSON, op.InputDigest, op.CreatedAt, op.UpdatedAt)
 	if err != nil {
 		return mcpOutboxOperation{}, false, fmt.Errorf("%w: write operation: %v", errMCPOutboxPersistence, err)
@@ -376,7 +425,7 @@ INSERT INTO mcp_outbox_operations (
 func scanMCPOutboxOperation(scanner interface{ Scan(...any) error }, op *mcpOutboxOperation) error {
 	return scanner.Scan(
 		&op.OperationID, &op.Kind, &op.Status, &op.APIOrigin, &op.Scope, &op.Harness,
-		&op.NativeSessionID, &op.NodeID, &op.Workspace, &op.EndpointID, &op.GroupID,
+		&op.NativeSessionID, &op.NodeID, &op.Workspace, &op.EndpointID, &op.GroupID, &op.NetworkID,
 		&op.IdempotencyKey, &op.InputJSON, &op.InputDigest, &op.AttemptCount,
 		&op.LastError, &op.ResultJSON, &op.CreatedAt, &op.UpdatedAt,
 	)
@@ -396,7 +445,7 @@ func (s *mcpOutboxStore) load(scope mcpOutboxScope, operationID string) (mcpOutb
 	var op mcpOutboxOperation
 	err = scanMCPOutboxOperation(db.QueryRow(`
 SELECT operation_id, kind, status, api_origin, scope, harness, native_session_id,
-       node_id, workspace, endpoint_id, group_id, idempotency_key, input_json,
+       node_id, workspace, endpoint_id, group_id, network_id, idempotency_key, input_json,
        input_digest, attempt_count, last_error, result_json, created_at, updated_at
 FROM mcp_outbox_operations WHERE operation_id = ?`, operationID), &op)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -415,7 +464,7 @@ func mcpOutboxScopeMatches(op mcpOutboxOperation, scope mcpOutboxScope) bool {
 	return op.APIOrigin == scope.APIOrigin && op.Scope == scope.Scope &&
 		op.Harness == scope.Harness && op.NativeSessionID == scope.NativeSessionID &&
 		op.NodeID == scope.NodeID && op.Workspace == scope.Workspace &&
-		op.EndpointID == scope.EndpointID && op.GroupID == scope.GroupID
+		op.EndpointID == scope.EndpointID && op.GroupID == scope.GroupID && op.NetworkID == scope.NetworkID
 }
 
 func (s *mcpOutboxStore) markAttempt(scope mcpOutboxScope, operationID string) (mcpOutboxOperation, error) {
@@ -429,10 +478,10 @@ func (s *mcpOutboxStore) markAttempt(scope mcpOutboxScope, operationID string) (
 	result, err := db.Exec(`UPDATE mcp_outbox_operations
 SET status = ?, attempt_count = attempt_count + 1, last_error = '', updated_at = ?
 WHERE operation_id = ? AND api_origin = ? AND scope = ? AND harness = ? AND native_session_id = ?
-  AND node_id = ? AND workspace = ? AND endpoint_id = ? AND group_id = ?
+  AND node_id = ? AND workspace = ? AND endpoint_id = ? AND group_id = ? AND network_id = ?
   AND status IN (?, ?)`, mcpOutboxStatusUnknown, now, operationID, scope.APIOrigin,
 		scope.Scope, scope.Harness, scope.NativeSessionID, scope.NodeID, scope.Workspace,
-		scope.EndpointID, scope.GroupID, mcpOutboxStatusPending, mcpOutboxStatusUnknown)
+		scope.EndpointID, scope.GroupID, scope.NetworkID, mcpOutboxStatusPending, mcpOutboxStatusUnknown)
 	if err != nil {
 		return mcpOutboxOperation{}, fmt.Errorf("%w: mark operation uncertain: %v", errMCPOutboxPersistence, err)
 	}
@@ -452,7 +501,7 @@ func (s *mcpOutboxStore) loadLocked(db *sql.DB, scope mcpOutboxScope, operationI
 	var op mcpOutboxOperation
 	err := scanMCPOutboxOperation(db.QueryRow(`
 SELECT operation_id, kind, status, api_origin, scope, harness, native_session_id,
-       node_id, workspace, endpoint_id, group_id, idempotency_key, input_json,
+       node_id, workspace, endpoint_id, group_id, network_id, idempotency_key, input_json,
        input_digest, attempt_count, last_error, result_json, created_at, updated_at
 FROM mcp_outbox_operations WHERE operation_id = ?`, operationID), &op)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -482,10 +531,10 @@ func (s *mcpOutboxStore) markResult(scope mcpOutboxScope, operationID, status, l
 	}
 	_, err = db.Exec(`UPDATE mcp_outbox_operations SET status = ?, last_error = ?, result_json = ?, updated_at = ?
 	WHERE operation_id = ? AND api_origin = ? AND scope = ? AND harness = ? AND native_session_id = ?
-  AND node_id = ? AND workspace = ? AND endpoint_id = ? AND group_id = ?`,
+  AND node_id = ? AND workspace = ? AND endpoint_id = ? AND group_id = ? AND network_id = ?`,
 		status, lastError, resultJSON, mcpOutboxNow(), operationID, scope.APIOrigin,
 		scope.Scope, scope.Harness, scope.NativeSessionID, scope.NodeID, scope.Workspace,
-		scope.EndpointID, scope.GroupID)
+		scope.EndpointID, scope.GroupID, scope.NetworkID)
 	if err != nil {
 		return mcpOutboxOperation{}, fmt.Errorf("%w: persist operation result: %v", errMCPOutboxPersistence, err)
 	}
@@ -624,7 +673,7 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 func mcpOutboxScopeEqual(a, b mcpOutboxScope) bool {
 	return a.APIOrigin == b.APIOrigin && a.Scope == b.Scope && a.Harness == b.Harness &&
 		a.NativeSessionID == b.NativeSessionID && a.NodeID == b.NodeID && a.Workspace == b.Workspace &&
-		a.EndpointID == b.EndpointID && a.GroupID == b.GroupID
+		a.EndpointID == b.EndpointID && a.GroupID == b.GroupID && a.NetworkID == b.NetworkID
 }
 
 func (m *mcpServer) mcpOutboxStatus(operationID string) (any, error) {

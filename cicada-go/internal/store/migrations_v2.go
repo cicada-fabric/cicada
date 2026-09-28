@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 35
+	CurrentV2SchemaVersion = 36
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -346,6 +346,15 @@ var v2Migrations = []v2Migration{
 			"network_invitations_v2", "network_join_consents_v2", "network_access_sessions_v2",
 			"network_group_mappings_v2", "network_mode_v2", "network_message_enrollment_v2"},
 		Apply: func(s *Store) error { return s.initializeNetworkSchema() },
+	},
+	{
+		Version:     36,
+		ID:          "v2.fabric.network_direct_sealed",
+		Description: "add Network-scoped native delivery, owner-approved endpoint keys and sealed Relay routes",
+		Objects: []string{"network_direct_native_bindings_v2", "network_direct_key_candidates_v2",
+			"network_direct_key_grants_v2", "network_direct_key_grant_nonces_v2",
+			"network_direct_message_routes_v2"},
+		Apply: func(s *Store) error { return s.initializeNetworkDirectSchema() },
 	},
 }
 
@@ -759,6 +768,19 @@ func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]le
 		}
 		if count != 1 {
 			return fmt.Errorf("migration object %s is missing", object)
+		}
+	}
+	if migration.ID == "v2.fabric.network_direct_sealed" {
+		for _, trigger := range []string{"network_direct_group_writer_insert_v2",
+			"network_direct_group_writer_update_v2"} {
+			var count int
+			if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master
+WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil {
+				return err
+			}
+			if count != 1 {
+				return fmt.Errorf("migration trigger %s is missing", trigger)
+			}
 		}
 	}
 	if migration.ID == "v2.client.monitor_broadcast_intake_limits" {

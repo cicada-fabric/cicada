@@ -1,6 +1,6 @@
 {
   "catalog_schema_version": 1,
-  "contract_revision": "client-hub-v1.3",
+  "contract_revision": "client-hub-v1.4",
   "wire_version": 1,
   "rpc_route": "/v2/client/rpc",
   "operations": [
@@ -28,6 +28,9 @@
     {"id":"monitor.broadcast_prepare","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-prepare","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-prepare","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastPrepareRequest","result_schema":"MonitorBroadcastPrepareResult"},
     {"id":"monitor.broadcast_recover","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-recover","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-recover","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastRecoverRequest","result_schema":"MonitorBroadcastRecoveredResult"},
     {"id":"monitor.broadcast_status","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-monitor-broadcast-status","result_ref":"docs/client-hub-wire-v1.md#rpc-result-monitor-broadcast-status","boundary":"owner_owned_monitor_broadcast","request_schema":"MonitorBroadcastStatusRequest","result_schema":"MonitorBroadcastStatusResult"},
+    {"id":"network.key_grant","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-network-key-grant","result_ref":"docs/client-hub-wire-v1.md#rpc-result-network-key-grant","boundary":"owner_owned_network_endpoint","request_schema":"NetworkKeyGrantRequest","result_schema":"NetworkKeyGrantResult"},
+    {"id":"network.key_manifest","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-network-key-manifest","result_ref":"docs/client-hub-wire-v1.md#rpc-result-network-key-manifest","boundary":"owner_owned_network_endpoint","request_schema":"NetworkKeyManifestRequest","result_schema":"NetworkKeyManifestResult"},
+    {"id":"network.key_status","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-network-key-status","result_ref":"docs/client-hub-wire-v1.md#rpc-result-network-key-status","boundary":"owner_owned_network_endpoint","request_schema":"NetworkKeyStatusRequest","result_schema":"NetworkKeyStatusResult"},
     {"id":"nodes.confirm","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-confirm","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-confirm","boundary":"authenticated_owner"},
     {"id":"nodes.list","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-list","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-list","boundary":"authenticated_owner"},
     {"id":"nodes.preview","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-nodes-preview","result_ref":"docs/client-hub-wire-v1.md#rpc-result-nodes-preview","boundary":"authenticated_owner"},

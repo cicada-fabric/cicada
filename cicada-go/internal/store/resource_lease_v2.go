@@ -222,7 +222,28 @@ func resourceLeaseCurrent(lease *ResourceLease) bool {
 	return err == nil && lease.State == LeaseActive && time.Now().UTC().Before(deadline)
 }
 
+func resourceLeaseActorTx(tx *sql.Tx, scope *NativeActorScope,
+	lease *ResourceLease, action string) error {
+	if scope == nil {
+		return nil // Explicit trusted-local Store primitive.
+	}
+	if lease.HolderGroupID != scope.GroupID || lease.HolderPrincipalID != scope.PrincipalID {
+		return ErrNetworkPermission
+	}
+	return guardNativeActorTx(tx, *scope, action, time.Now().UTC())
+}
+
 func (s *Store) RenewResourceLease(id string, epoch int64, principalID string, ttlSeconds int) (*ResourceLease, error) {
+	return s.renewResourceLease(id, epoch, principalID, ttlSeconds, nil)
+}
+
+func (s *Store) RenewResourceLeaseForActor(scope NativeActorScope,
+	id string, epoch int64, ttlSeconds int) (*ResourceLease, error) {
+	return s.renewResourceLease(id, epoch, scope.PrincipalID, ttlSeconds, &scope)
+}
+
+func (s *Store) renewResourceLease(id string, epoch int64, principalID string,
+	ttlSeconds int, scope *NativeActorScope) (*ResourceLease, error) {
 	if ttlSeconds <= 0 {
 		ttlSeconds = 300
 	}
@@ -241,6 +262,9 @@ func (s *Store) RenewResourceLease(id string, epoch int64, principalID string, t
 	}
 	lease, err := scanResourceLease(tx.QueryRow(`SELECT `+resourceLeaseColumns+` FROM resource_v2_leases WHERE id=?`, id))
 	if err != nil {
+		return nil, err
+	}
+	if err := resourceLeaseActorTx(tx, scope, lease, "task.claim"); err != nil {
 		return nil, err
 	}
 	if lease.FencingEpoch != epoch || lease.HolderPrincipalID != principalID {
@@ -271,6 +295,16 @@ func (s *Store) RenewResourceLease(id string, epoch int64, principalID string, t
 // QuarantineResourceLease deliberately does not release a live/expired
 // physical resource. A separate stop confirmation reconciles it.
 func (s *Store) QuarantineResourceLease(id string, epoch int64, principalID string) (*ResourceLease, error) {
+	return s.quarantineResourceLease(id, epoch, principalID, nil)
+}
+
+func (s *Store) QuarantineResourceLeaseForActor(scope NativeActorScope,
+	id string, epoch int64) (*ResourceLease, error) {
+	return s.quarantineResourceLease(id, epoch, scope.PrincipalID, &scope)
+}
+
+func (s *Store) quarantineResourceLease(id string, epoch int64, principalID string,
+	scope *NativeActorScope) (*ResourceLease, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.Begin()
@@ -283,6 +317,9 @@ func (s *Store) QuarantineResourceLease(id string, epoch int64, principalID stri
 	}
 	lease, err := scanResourceLease(tx.QueryRow(`SELECT `+resourceLeaseColumns+` FROM resource_v2_leases WHERE id=?`, id))
 	if err != nil {
+		return nil, err
+	}
+	if err := resourceLeaseActorTx(tx, scope, lease, "task.claim"); err != nil {
 		return nil, err
 	}
 	if lease.FencingEpoch != epoch || lease.HolderPrincipalID != principalID {
@@ -338,6 +375,16 @@ func (s *Store) ReconcileResourceLease(resourceID string, expectedEpoch int64, s
 // fencing epoch are checked in the same SQLite transaction as the write.
 // It says nothing about arbitrary filesystem or shell actions.
 func (s *Store) WriteManagedBlob(id string, epoch int64, principalID string, body []byte) (string, error) {
+	return s.writeManagedBlob(id, epoch, principalID, body, nil)
+}
+
+func (s *Store) WriteManagedBlobForActor(scope NativeActorScope,
+	id string, epoch int64, body []byte) (string, error) {
+	return s.writeManagedBlob(id, epoch, scope.PrincipalID, body, &scope)
+}
+
+func (s *Store) writeManagedBlob(id string, epoch int64, principalID string,
+	body []byte, scope *NativeActorScope) (string, error) {
 	if len(body) > 16<<20 {
 		return "", errors.New("managed blob exceeds 16 MiB")
 	}
@@ -353,6 +400,9 @@ func (s *Store) WriteManagedBlob(id string, epoch int64, principalID string, bod
 	}
 	lease, err := scanResourceLease(tx.QueryRow(`SELECT `+resourceLeaseColumns+` FROM resource_v2_leases WHERE id=?`, id))
 	if err != nil {
+		return "", err
+	}
+	if err := resourceLeaseActorTx(tx, scope, lease, "resource.execute"); err != nil {
 		return "", err
 	}
 	if lease.FencingEpoch != epoch || lease.HolderPrincipalID != principalID || lease.Enforcement != LeaseExecutorEnforced || !strings.HasPrefix(lease.ResourceID, "managed_blob/") {

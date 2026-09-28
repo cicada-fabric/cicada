@@ -2,6 +2,7 @@ package fabric
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -58,7 +59,8 @@ func TestLiveRenewedSessionSurvivesLegacyEndpointHousekeeping(t *testing.T) {
 
 func TestExpiredOrLeftSessionStillFailsAfterPresenceHousekeeping(t *testing.T) {
 	t.Run("expired lease", func(t *testing.T) {
-		service, persistence, group := newFabricTestService(t)
+		path := filepath.Join(t.TempDir(), "cicada.sqlite3")
+		service, persistence, group := newFabricTestServiceAtPath(t, path)
 		joined, err := service.Join(JoinInput{GroupID: group.ID, PrincipalName: "expired",
 			Harness: "codex", NativeSessionID: "native-expired", NodeID: "node-expired"})
 		if err != nil {
@@ -68,11 +70,7 @@ func TestExpiredOrLeftSessionStillFailsAfterPresenceHousekeeping(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		past := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
-		if _, err := persistence.RenewSessionBindingLease(actor.BindingID, actor.LeaseOwner,
-			actor.BindingEpoch, past); err != nil {
-			t.Fatal(err)
-		}
+		expireBindingLeaseForTest(t, path, actor.BindingID)
 		if _, err := persistence.MarkStaleEndpoints(time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)); err != nil {
 			t.Fatal(err)
 		}

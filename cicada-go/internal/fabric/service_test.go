@@ -1,16 +1,23 @@
 package fabric
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
 func newFabricTestService(t *testing.T) (*Service, *store.Store, store.Group) {
 	t.Helper()
-	persistence, err := store.New(filepath.Join(t.TempDir(), "cicada.sqlite3"))
+	return newFabricTestServiceAtPath(t, filepath.Join(t.TempDir(), "cicada.sqlite3"))
+}
+
+func newFabricTestServiceAtPath(t *testing.T, path string) (*Service, *store.Store, store.Group) {
+	t.Helper()
+	persistence, err := store.New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +42,26 @@ func newFabricTestService(t *testing.T) (*Service, *store.Store, store.Group) {
 		t.Fatal(err)
 	}
 	return service, persistence, *group
+}
+
+// expireBindingLeaseForTest constructs persisted expiry in a disposable fixture.
+// Production lease renewal correctly rejects past deadlines.
+func expireBindingLeaseForTest(t *testing.T, path, bindingID string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	result, err := db.Exec(`UPDATE session_bindings SET lease_expires_at = ? WHERE id = ?`,
+		time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano), bindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil || updated != 1 {
+		t.Fatalf("expire binding fixture updated %d rows: %v", updated, err)
+	}
 }
 
 func TestExplicitJoinIsIdempotentAndRotatesBindingCredential(t *testing.T) {

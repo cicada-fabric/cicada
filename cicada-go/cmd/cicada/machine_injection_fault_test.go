@@ -28,6 +28,14 @@ func TestNativeProcessFailureAfterStartIsUncertainAndNeverReinjected(t *testing.
 	delivery := fabric.Delivery{MessageID: "msg-fault", RequestID: "rq-fault", Kind: "ask", Digest: "digest-fault", EndpointID: "ep-b", BindingID: "bind-b", BindingEpoch: 1, NativeSessionID: "native-b", Harness: "codex", NodeID: "b", AttemptID: "attempt-b", Body: "synthetic operation"}
 	var layers []string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/fabric/node/networks/direct/claim" {
+			if r.Header.Get("Authorization") != "CicadaNode cicada_node_test-fault" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"deliveries": []fabric.NetworkDirectDelivery{}})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/sealed/claim") {
 			_ = json.NewEncoder(w).Encode(map[string]any{"deliveries": []fabric.NodeSealedDelivery{}})
 			return

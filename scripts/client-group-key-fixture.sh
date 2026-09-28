@@ -67,8 +67,9 @@ if (not isinstance(catalog_object, dict)
         or catalog_object.get('catalog_schema_version') != 1
         or type(catalog_object.get('wire_version')) is not int
         or catalog_object.get('wire_version') != 1
-        or catalog_object.get('contract_revision') != 'client-hub-v1.3'):
-    raise SystemExit('BLOCKED: fixture supports only the authoritative client-hub-v1.3 catalog')
+        or not isinstance(catalog_object.get('contract_revision'), str)
+        or not re.fullmatch(r'client-hub-v1\.(?:3|[4-9]|[1-9][0-9]+)', catalog_object['contract_revision'])):
+    raise SystemExit('BLOCKED: fixture requires an authoritative Client catalog revision at least v1.3')
 revision = source.get('revision')
 catalog = source.get('catalog_sha256')
 fingerprint = source.get('source_fingerprint')
@@ -86,7 +87,7 @@ if (not isinstance(revision, str) or not isinstance(catalog, str)
         or not re.fullmatch(r'[0-9a-f]{64}', fingerprint)
         or not re.fullmatch(r'sha256:[0-9a-f]{64}', image_id)
         or catalog != hashlib.sha256(catalog_bytes).hexdigest()):
-    raise SystemExit('BLOCKED: metadata is dirty, malformed, or not bound to this v1.3 catalog')
+    raise SystemExit('BLOCKED: metadata is dirty, malformed, or not bound to this authoritative catalog')
 print(image_id)
 print(revision)
 print(catalog)

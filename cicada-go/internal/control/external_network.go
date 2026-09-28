@@ -24,17 +24,29 @@ func validateResolvedHost(ctx context.Context, target *url.URL) error {
 	if len(addresses) == 0 {
 		return errors.New("external action host has no addresses")
 	}
+	return validateExternalResolvedAddresses(addresses)
+}
+
+func privateAddress(ip net.IP) bool {
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return true
+	}
+	// Go's IsPrivate/IsGlobalUnicast both permit the shared-address block.
+	// 100.100.100.200 is a metadata endpoint on some hosts.
+	v4 := ip.To4()
+	return v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127
+}
+
+func validateExternalResolvedAddresses(addresses []net.IPAddr) error {
+	if len(addresses) == 0 {
+		return errors.New("external action host has no addresses")
+	}
 	for _, address := range addresses {
 		if privateAddress(address.IP) {
 			return errors.New("external action host resolves to a private or local IP")
 		}
 	}
 	return nil
-}
-
-func privateAddress(ip net.IP) bool {
-	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() ||
-		ip.IsUnspecified() || ip.IsMulticast()
 }
 
 func safeExternalHTTPClient() *http.Client {

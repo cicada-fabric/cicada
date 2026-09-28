@@ -7,6 +7,7 @@ package store
 // Endpoint.
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -662,6 +664,73 @@ func (s *Store) CreateGroup(group Group) (*Group, error) {
 	return s.UpsertGroup(group)
 }
 
+// CreateGroupForNetworkOwner is the encrypted Client's Network-scoped create
+// path. The accepted request supplies current device, owner and Hub identity;
+// Network ownership and insertion share one transaction.
+func (s *Store) CreateGroupForNetworkOwner(group Group, clientRequestID string) (*Group, error) {
+	group.NetworkID = strings.TrimSpace(group.NetworkID)
+	group.OwnerPrincipalID = strings.TrimSpace(group.OwnerPrincipalID)
+	group.Name = strings.TrimSpace(group.Name)
+	if group.NetworkID == "" || strings.TrimSpace(clientRequestID) == "" || group.Name == "" ||
+		strings.TrimSpace(group.ParentGroupID) != "" {
+		return nil, ErrNetworkPermission
+	}
+	if group.ID == "" {
+		group.ID = NewID("grp")
+	}
+	if group.State == "" {
+		group.State = GroupStateActive
+	}
+	if group.Revision <= 0 {
+		group.Revision = 1
+	}
+	if group.Version <= 0 {
+		group.Version = 1
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	actor, err := trustedClientRequestTx(tx, clientRequestID)
+	if err != nil || group.OwnerPrincipalID != actor.OwnerID {
+		return nil, ErrNetworkPermission
+	}
+	var authorized int
+	err = tx.QueryRow(`SELECT 1 FROM networks_v2 n JOIN client_device_hub_config_v2 h ON h.id=1
+JOIN principals p ON p.id=n.owner_id WHERE n.id=? AND n.hub_id=? AND h.hub_id=n.hub_id
+AND n.owner_id=? AND n.state='ACTIVE' AND p.owner_id=p.id AND p.kind=? AND p.status=?`,
+		group.NetworkID, actor.HubID, actor.OwnerID, PrincipalKindHuman, PrincipalStatusActive).Scan(&authorized)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNetworkPermission
+	}
+	if err != nil {
+		return nil, err
+	}
+	timestamp := now()
+	_, err = tx.Exec(`INSERT INTO groups
+(id, network_id, owner_principal_id, trust_domain_id, name, state, purpose, revision,
+ policy_ref, context_policy, isolation_profile, external_mode, version, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		group.ID, group.NetworkID, group.OwnerPrincipalID, group.TrustDomainID,
+		group.Name, group.State, group.Purpose, group.Revision, group.PolicyRef,
+		group.ContextPolicy, group.IsolationProfile, group.ExternalMode,
+		group.Version, timestamp, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create network group: %w", err)
+	}
+	created, err := scanGroup(tx.QueryRow(`SELECT `+groupColumns+` FROM groups WHERE id=?`, group.ID))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
 func (s *Store) GetGroup(id string) (*Group, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -840,7 +909,8 @@ func (s *Store) IsMembershipActive(principalID, groupID string) (bool, error) {
 	if membership.Status != MembershipStatusActive {
 		return false, nil
 	}
-	if membership.ExpiresAt != "" && membership.ExpiresAt <= now() {
+	at := time.Now().UTC()
+	if !networkEffectiveAllows(membership.EffectiveAt, at) || !networkExpiryAllows(membership.ExpiresAt, at) {
 		return false, nil
 	}
 	return true, nil
@@ -857,7 +927,8 @@ func (s *Store) MembershipAllows(principalID, groupID, grant string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	if membership.Status != MembershipStatusActive || (membership.ExpiresAt != "" && membership.ExpiresAt <= now()) {
+	at := time.Now().UTC()
+	if membership.Status != MembershipStatusActive || !networkEffectiveAllows(membership.EffectiveAt, at) || !networkExpiryAllows(membership.ExpiresAt, at) {
 		return false, nil
 	}
 	grant = strings.TrimSpace(grant)
@@ -952,7 +1023,7 @@ WHERE principal_id = ?
     JOIN groups active_g ON active_g.id = eg.group_id
     WHERE eg.endpoint_id = session_bindings.endpoint_id AND eg.status = 'active'
       AND active_m.status = 'active' AND active_g.state = 'ACTIVE'
-      AND (active_m.expires_at = '' OR active_m.expires_at > ?)
+      AND cicada_network_expiry_allows(active_m.expires_at, ?)=1
   )`, SessionBindingStatusRevoked, reason, timestamp, principalID, timestamp); err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -1108,7 +1179,7 @@ JOIN principals p ON p.id = fabric_endpoints.principal_id
 JOIN groups g ON g.id = eg.group_id
 WHERE eg.endpoint_id = fabric_endpoints.id AND eg.group_id = ? AND eg.status = 'active'
   AND m.status = 'active' AND p.status = 'active' AND g.state = 'ACTIVE'
-  AND (m.expires_at = '' OR m.expires_at > ?))`
+  AND cicada_network_expiry_allows(m.expires_at, ?)=1)`
 		args = append(args, groupID, now())
 	}
 	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
@@ -1184,7 +1255,7 @@ func (s *Store) AssociateEndpoint(endpointID, principalID, groupID, bindingID st
 		return rollback(err)
 	}
 	if previousState == EndpointMigrationReady &&
-		(previousPrincipal != principalID || previousGroup != groupID) {
+		(previousPrincipal != principalID || (previousGroup != "" && previousGroup != groupID)) {
 		return rollback(ErrSessionBindingConflict)
 	}
 	if err := s.requireActiveMembershipTx(tx, principalID, groupID); err != nil {
@@ -1520,6 +1591,37 @@ func (s *Store) getSessionBindingLocked(id string) (*SessionBinding, error) {
 	return binding, nil
 }
 
+func getSessionBindingLeaseTx(tx *sql.Tx, id string) (*SessionBinding, error) {
+	binding, err := scanSessionBinding(tx.QueryRow(`SELECT `+sessionBindingColumns+
+		` FROM session_bindings WHERE id = ?`, id))
+	if err != nil {
+		return nil, err
+	}
+	if binding == nil {
+		return nil, ErrSessionBindingNotFound
+	}
+	return binding, nil
+}
+
+func parseSessionBindingLeaseExpiry(value string) (time.Time, error) {
+	expiresAt, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, errors.New("invalid session binding lease expiry")
+	}
+	return expiresAt, nil
+}
+
+func validFutureLeaseExpiry(value string, at time.Time) error {
+	expiresAt, err := parseSessionBindingLeaseExpiry(value)
+	if err != nil {
+		return err
+	}
+	if !expiresAt.After(at) {
+		return ErrSessionBindingLeaseExpired
+	}
+	return nil
+}
+
 func (s *Store) GetSessionBinding(id string) (*SessionBinding, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1632,8 +1734,17 @@ func (s *Store) AcquireSessionBindingLease(bindingID, leaseOwner string, expecte
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	binding, err := s.getSessionBindingLocked(bindingID)
+	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	binding, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	currentTime := time.Now().UTC()
+	if err := validFutureLeaseExpiry(leaseExpiresAt, currentTime); err != nil {
 		return nil, err
 	}
 	if !isActiveBindingStatus(binding.Status) {
@@ -1642,11 +1753,17 @@ func (s *Store) AcquireSessionBindingLease(bindingID, leaseOwner string, expecte
 	if binding.Epoch != expectedEpoch {
 		return nil, ErrSessionBindingStaleEpoch
 	}
-	currentNow := now()
-	if binding.LeaseOwner != "" && binding.LeaseOwner != leaseOwner && binding.LeaseExpiresAt > currentNow {
-		return nil, ErrSessionBindingLeaseHeld
+	if binding.LeaseOwner != "" {
+		currentExpiry, err := parseSessionBindingLeaseExpiry(binding.LeaseExpiresAt)
+		if err != nil {
+			return nil, err
+		}
+		if binding.LeaseOwner != leaseOwner && currentExpiry.After(currentTime) {
+			return nil, ErrSessionBindingLeaseHeld
+		}
 	}
-	result, err := s.db.Exec(`UPDATE session_bindings SET lease_owner = ?, lease_expires_at = ?, status = ?, epoch = CASE WHEN lease_owner = ? THEN epoch ELSE epoch + 1 END, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired') AND (lease_owner = '' OR lease_owner = ? OR lease_expires_at <= ?)`, leaseOwner, leaseExpiresAt, SessionBindingStatusLeased, leaseOwner, currentNow, bindingID, expectedEpoch, leaseOwner, currentNow)
+	result, err := tx.Exec(`UPDATE session_bindings SET lease_owner = ?, lease_expires_at = ?, status = ?, epoch = CASE WHEN lease_owner = ? THEN epoch ELSE epoch + 1 END, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND version = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`,
+		leaseOwner, leaseExpiresAt, SessionBindingStatusLeased, leaseOwner, now(), bindingID, expectedEpoch, binding.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -1657,7 +1774,14 @@ func (s *Store) AcquireSessionBindingLease(bindingID, leaseOwner string, expecte
 	if count == 0 {
 		return nil, ErrSessionBindingStaleEpoch
 	}
-	return s.getSessionBindingLocked(bindingID)
+	updated, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // AcquireBindingLease is a short alias used by node implementations.
@@ -1684,8 +1808,17 @@ func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedE
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	binding, err := s.getSessionBindingLocked(bindingID)
+	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	binding, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	currentTime := time.Now().UTC()
+	if err := validFutureLeaseExpiry(leaseExpiresAt, currentTime); err != nil {
 		return nil, err
 	}
 	if !isActiveBindingStatus(binding.Status) {
@@ -1697,10 +1830,15 @@ func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedE
 	if binding.LeaseOwner != leaseOwner {
 		return nil, ErrSessionBindingLeaseOwner
 	}
-	if binding.LeaseExpiresAt != "" && binding.LeaseExpiresAt <= now() {
+	currentExpiry, err := parseSessionBindingLeaseExpiry(binding.LeaseExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	if !currentExpiry.After(currentTime) {
 		return nil, ErrSessionBindingLeaseExpired
 	}
-	result, err := s.db.Exec(`UPDATE session_bindings SET lease_expires_at = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND lease_owner = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`, leaseExpiresAt, SessionBindingStatusLeased, now(), bindingID, expectedEpoch, leaseOwner)
+	result, err := tx.Exec(`UPDATE session_bindings SET lease_expires_at = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND version = ? AND lease_owner = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`,
+		leaseExpiresAt, SessionBindingStatusLeased, now(), bindingID, expectedEpoch, binding.Version, leaseOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -1711,7 +1849,14 @@ func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedE
 	if count == 0 {
 		return nil, ErrSessionBindingStaleEpoch
 	}
-	return s.getSessionBindingLocked(bindingID)
+	updated, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (s *Store) RenewBindingLease(bindingID, leaseOwner string, expectedEpoch uint64, leaseExpiresAt string) (*SessionBinding, error) {
@@ -1740,8 +1885,17 @@ func (s *Store) RotateSessionBindingCredential(bindingID string, expectedEpoch u
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	binding, err := s.getSessionBindingLocked(bindingID)
+	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	binding, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	currentTime := time.Now().UTC()
+	if err := validFutureLeaseExpiry(leaseExpiresAt, currentTime); err != nil {
 		return nil, err
 	}
 	if !isActiveBindingStatus(binding.Status) {
@@ -1750,11 +1904,17 @@ func (s *Store) RotateSessionBindingCredential(bindingID string, expectedEpoch u
 	if binding.Epoch != expectedEpoch {
 		return nil, ErrSessionBindingStaleEpoch
 	}
-	currentNow := now()
-	if binding.LeaseOwner != "" && binding.LeaseOwner != leaseOwner && binding.LeaseExpiresAt > currentNow {
-		return nil, ErrSessionBindingLeaseHeld
+	if binding.LeaseOwner != "" {
+		currentExpiry, err := parseSessionBindingLeaseExpiry(binding.LeaseExpiresAt)
+		if err != nil {
+			return nil, err
+		}
+		if binding.LeaseOwner != leaseOwner && currentExpiry.After(currentTime) {
+			return nil, ErrSessionBindingLeaseHeld
+		}
 	}
-	result, err := s.db.Exec(`UPDATE session_bindings SET credential_hash = ?, credential_hash_version = credential_hash_version + 1, lease_owner = ?, lease_expires_at = ?, status = ?, epoch = epoch + 1, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired') AND (lease_owner = '' OR lease_owner = ? OR lease_expires_at <= ?)`, newCredentialHash, leaseOwner, leaseExpiresAt, SessionBindingStatusLeased, currentNow, bindingID, expectedEpoch, leaseOwner, currentNow)
+	result, err := tx.Exec(`UPDATE session_bindings SET credential_hash = ?, credential_hash_version = credential_hash_version + 1, lease_owner = ?, lease_expires_at = ?, status = ?, epoch = epoch + 1, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND version = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`,
+		newCredentialHash, leaseOwner, leaseExpiresAt, SessionBindingStatusLeased, now(), bindingID, expectedEpoch, binding.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -1765,7 +1925,14 @@ func (s *Store) RotateSessionBindingCredential(bindingID string, expectedEpoch u
 	if count == 0 {
 		return nil, ErrSessionBindingStaleEpoch
 	}
-	return s.getSessionBindingLocked(bindingID)
+	updated, err := getSessionBindingLeaseTx(tx, bindingID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (s *Store) RotateBindingCredential(bindingID string, expectedEpoch uint64, newCredentialHash, leaseOwner, leaseExpiresAt string) (*SessionBinding, error) {
@@ -1900,7 +2067,8 @@ func (s *Store) ValidateSessionBindingLease(bindingID, leaseOwner string, epoch 
 	if binding.LeaseOwner != leaseOwner {
 		return ErrSessionBindingLeaseOwner
 	}
-	if binding.LeaseExpiresAt == "" || binding.LeaseExpiresAt <= now() {
+	expiresAt, err := parseSessionBindingLeaseExpiry(binding.LeaseExpiresAt)
+	if err != nil || !expiresAt.After(time.Now().UTC()) {
 		return ErrSessionBindingLeaseExpired
 	}
 	return nil

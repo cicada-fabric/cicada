@@ -43,6 +43,13 @@ func TestMCPSealedSendAcrossTwoLogicalNodesWithoutControlBusiness(t *testing.T) 
 	hub := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		path := request.URL.Path
 		switch {
+		case path == "/v2/fabric/node/networks/direct/claim":
+			credential := request.Header.Get("Authorization")
+			if credential != "CicadaNode "+fixture.sourceToken && credential != "CicadaNode "+fixture.targetToken {
+				response.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case path == "/v2/fabric/whoami":
 			if request.Header.Get("Authorization") != "CicadaSession "+sessionToken ||
 				request.Header.Get("Cicada-Group-Scope") != fixture.link.SourceGroupID {

@@ -7,7 +7,7 @@ change persisted identities, message formats, trust grants, or key material.
 
 | Component | Previous | Current choice | Reason and boundary |
 | --- | --- | --- | --- |
-| Go | 1.22.12 | 1.27.1 toolchain (`go 1.25` dependency floor) | Go has no LTS channel; 1.27.1 is the latest patched stable major at review time. Go supports the latest two majors. Build and tests use the pinned toolchain. |
+| Go | 1.22.12 | 1.27.1 toolchain (`go 1.26` current module minimum) | Go has no LTS channel; 1.27.1 is the latest patched stable major at review time. Go supports the latest two majors. Build and tests use the pinned toolchain. The earlier `go 1.25` dependency floor is historical; current direct dependencies require Go 1.26. |
 | Hub runtime | Alpine 3.22 | Alpine 3.24 | Latest supported Alpine stable branch. Alpine has no LTS label. |
 | Node/Codex image runtime | Ubuntu 24.04 LTS | Ubuntu 26.04 LTS | Latest Ubuntu LTS. The official Codex shell installer remains the sole Codex install method. |
 | CIRCL | 1.6.3 | 1.6.5 | Upstream maintenance includes an ML-DSA aliasing fix and stricter key parsing. Keep existing wire algorithms and stored keys. CIRCL's published advisory ranges were already fixed by 1.6.3; this is maintenance, not a claim that our old pin matched a published advisory. |

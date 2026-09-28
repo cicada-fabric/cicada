@@ -23,10 +23,20 @@ func Inspect(path string) (Snapshot, error) {
 	return readArchive(context.Background(), file, "", MaxArchiveBytes)
 }
 
-// UnpackFile validates and atomically replaces target with an archive.
+// UnpackFile validates an archive and replaces target. Existing target data is
+// kept in a unique sibling backup while the replacement is installed and is
+// restored if that install fails. The two renames are not crash-atomic: a
+// process or host failure between them may require recovery from that backup.
 func UnpackFile(ctx context.Context, archivePath, target string) (Snapshot, error) {
+	return unpackFile(ctx, archivePath, target, os.Rename)
+}
+
+func unpackFile(ctx context.Context, archivePath, target string, rename func(string, string) error) (Snapshot, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if rename == nil {
+		return Snapshot{}, errors.New("snapshot rename operation is required")
 	}
 	if strings.TrimSpace(target) == "" {
 		return Snapshot{}, errors.New("snapshot target is required")
@@ -57,19 +67,47 @@ func UnpackFile(ctx context.Context, archivePath, target string) (Snapshot, erro
 	if closeErr != nil {
 		return Snapshot{}, closeErr
 	}
-	backup := target + ".old"
-	_ = os.RemoveAll(backup)
-	if _, err := os.Lstat(target); err == nil {
-		if err := os.Rename(target, backup); err != nil {
-			return Snapshot{}, err
-		}
-	}
-	if err := os.Rename(temporary, target); err != nil {
-		_ = os.Rename(backup, target)
+	if err := replaceSnapshotTarget(temporary, target, rename); err != nil {
 		return Snapshot{}, err
 	}
-	_ = os.RemoveAll(backup)
 	return result, nil
+}
+
+func replaceSnapshotTarget(temporary, target string, rename func(string, string) error) error {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return rename(temporary, target)
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("snapshot target cannot be a symlink")
+	}
+	backupDir, err := os.MkdirTemp(filepath.Dir(target), ".cicada-snapshot-backup-")
+	if err != nil {
+		return err
+	}
+	backup := filepath.Join(backupDir, "original")
+	if err := rename(target, backup); err != nil {
+		_ = os.RemoveAll(backupDir)
+		return err
+	}
+	if err := rename(temporary, target); err != nil {
+		restoreErr := rename(backup, target)
+		if restoreErr == nil {
+			_ = os.RemoveAll(backupDir)
+			return err
+		}
+		// Retain the uniquely owned backup directory when rollback fails so the
+		// only copy of the previous target remains available for recovery.
+		return fmt.Errorf("replace snapshot target failed: %v; restore original from %s failed: %w",
+			err, backup, restoreErr)
+	}
+	if err := os.RemoveAll(backupDir); err != nil {
+		return fmt.Errorf("snapshot applied but private backup cleanup failed: %w", err)
+	}
+	return nil
 }
 
 func readArchive(ctx context.Context, input io.Reader, destination string, max int64) (Snapshot, error) {

@@ -26,9 +26,22 @@ func TestReadOnlyExternalActionBoundary(t *testing.T) {
 }
 
 func TestExternalNetworkRejectsPrivateDestinations(t *testing.T) {
-	for _, address := range []string{"127.0.0.1", "10.0.0.1", "::1", "fc00::1"} {
+	for _, address := range []string{"127.0.0.1", "10.0.0.1", "::1", "fc00::1", "100.64.0.1", "100.100.100.200", "100.127.255.254"} {
 		if !privateAddress(net.ParseIP(address)) {
 			t.Errorf("private address was accepted: %s", address)
+		}
+		if _, err := validateExternalURL("http://" + address + "/"); err == nil && net.ParseIP(address).To4() != nil {
+			t.Errorf("literal external URL accepted non-public address: %s", address)
+		}
+	}
+	if err := validateExternalResolvedAddresses([]net.IPAddr{
+		{IP: net.ParseIP("8.8.8.8")}, {IP: net.ParseIP("100.100.100.200")},
+	}); err == nil {
+		t.Fatal("resolved host with shared-address destination was accepted")
+	}
+	for _, address := range []string{"100.63.255.255", "100.128.0.0", "8.8.8.8"} {
+		if privateAddress(net.ParseIP(address)) {
+			t.Errorf("public address rejected: %s", address)
 		}
 	}
 	target, err := url.Parse("http://localhost:8080")

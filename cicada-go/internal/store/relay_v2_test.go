@@ -70,6 +70,12 @@ func setupRelaySealedReceiver(t *testing.T, store *Store, endpointID, principalI
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Sealed claims require a current native lease. Preserve the fixture's epoch
+	// while supplying its explicit, parseable deadline.
+	if _, err := store.db.Exec(`UPDATE session_bindings SET lease_expires_at = ? WHERE id = ?`,
+		time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), binding.ID); err != nil {
+		t.Fatal(err)
+	}
 	return binding
 }
 

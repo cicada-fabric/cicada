@@ -72,6 +72,16 @@ func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing
 			_ = json.NewEncoder(response).Encode(card)
 			return
 		}
+		if path == "/v2/fabric/node/networks/direct/claim" {
+			credential := request.Header.Get("Authorization")
+			if credential != "CicadaNode "+tokens[fixture.sourceNodeID] &&
+				credential != "CicadaNode "+tokens[fixture.targetNodeID] {
+				response.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+			return
+		}
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) < 4 || parts[0] != "v2" || parts[1] != "relay" || parts[2] != "nodes" {
 			t.Errorf("Control/business route invoked: %s %s", request.Method, path)

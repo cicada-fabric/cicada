@@ -34,7 +34,11 @@ func validatePublicGitHost(ctx context.Context, rawURL string) error {
 }
 
 func publicIP(ip net.IP) bool {
-	return ip != nil && !ip.IsLoopback() && !ip.IsPrivate() &&
-		!ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() &&
-		!ip.IsUnspecified() && !ip.IsMulticast()
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	// Shared-address space is not Internet-routable, even though Go reports
+	// it as global unicast. It can contain host metadata endpoints.
+	v4 := ip.To4()
+	return v4 == nil || v4[0] != 100 || v4[1] < 64 || v4[1] > 127
 }

@@ -205,7 +205,9 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	if strings.Contains(request.URL.Path, "/v2/relay/nodes/") {
+	nodeRoute := strings.Contains(request.URL.Path, "/v2/relay/nodes/") ||
+		strings.HasPrefix(request.URL.Path, "/v2/fabric/node/networks/direct/")
+	if nodeRoute {
 		token := machineNodeToken()
 		if token == "" {
 			return errors.New("CICADA_NODE_TOKEN or CICADA_NODE_TOKEN_FILE is required for Relay Node APIs")
@@ -215,7 +217,7 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 		setMachineAuth(request)
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
-	if strings.Contains(request.URL.Path, "/v2/relay/nodes/") {
+	if nodeRoute {
 		client.CheckRedirect = rejectNodeRedirect
 	}
 	response, err := client.Do(request)

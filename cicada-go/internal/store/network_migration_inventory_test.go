@@ -43,9 +43,13 @@ type networkV34Cell struct {
 // so this test snapshots every pre-v35 table even if future Network migrations
 // add more tables.
 func networkV34AddedTables() map[string]struct{} {
+	return networkMigrationAddedObjectsAfterVersion(34)
+}
+
+func networkMigrationAddedObjectsAfterVersion(version int) map[string]struct{} {
 	added := make(map[string]struct{})
 	for _, migration := range v2Migrations {
-		if migration.Version <= 34 {
+		if migration.Version <= version {
 			continue
 		}
 		for _, object := range migration.Objects {
@@ -53,6 +57,76 @@ func networkV34AddedTables() map[string]struct{} {
 		}
 	}
 	return added
+}
+
+var networkV36Triggers = []string{
+	"network_direct_group_writer_insert_v2",
+	"network_direct_group_writer_update_v2",
+}
+
+// setSyntheticNetworkSchemaVersion removes only versioned Network objects
+// newer than targetVersion from a disposable test database. Iterate objects
+// in reverse migration order so child tables disappear before their parents.
+func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion int) {
+	t.Helper()
+	if targetVersion < 36 {
+		// These v36 triggers are attached to the historical session_bindings
+		// table, so dropping v36 tables alone does not remove them.
+		for _, trigger := range networkV36Triggers {
+			if _, err := db.Exec(`DROP TRIGGER IF EXISTS ` + networkV34QuoteIdentifier(trigger)); err != nil {
+				t.Fatalf("remove synthetic v36 trigger %s: %v", trigger, err)
+			}
+		}
+	}
+	for migrationIndex := len(v2Migrations) - 1; migrationIndex >= 0; migrationIndex-- {
+		migration := v2Migrations[migrationIndex]
+		if migration.Version <= targetVersion {
+			continue
+		}
+		for objectIndex := len(migration.Objects) - 1; objectIndex >= 0; objectIndex-- {
+			object := migration.Objects[objectIndex]
+			if _, err := db.Exec(`DROP TABLE IF EXISTS ` + networkV34QuoteIdentifier(object)); err != nil {
+				t.Fatalf("remove synthetic migration object %s: %v", object, err)
+			}
+		}
+	}
+	if targetVersion < 35 {
+		if _, err := db.Exec(`DROP INDEX IF EXISTS groups_network_idx`); err != nil {
+			t.Fatalf("remove synthetic v35 Group index: %v", err)
+		}
+		columns, err := db.Query(`PRAGMA table_info(groups)`)
+		if err != nil {
+			t.Fatalf("inspect synthetic Group schema: %v", err)
+		}
+		hasNetworkID := false
+		for columns.Next() {
+			var sequence, notNull, primaryKey int
+			var name, kind string
+			var defaultValue any
+			if err := columns.Scan(&sequence, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+				columns.Close()
+				t.Fatal(err)
+			}
+			if name == "network_id" {
+				hasNetworkID = true
+			}
+		}
+		if err := columns.Err(); err != nil {
+			columns.Close()
+			t.Fatal(err)
+		}
+		if err := columns.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if hasNetworkID {
+			if _, err := db.Exec(`ALTER TABLE groups DROP COLUMN network_id`); err != nil {
+				t.Fatalf("remove synthetic v35 Group column: %v", err)
+			}
+		}
+	}
+	if _, err := db.Exec(`DELETE FROM schema_migrations_v2 WHERE version > ?`, targetVersion); err != nil {
+		t.Fatalf("remove synthetic migration ledger after v%d: %v", targetVersion, err)
+	}
 }
 
 func networkV34QuoteIdentifier(value string) string {
@@ -88,9 +162,16 @@ func networkV34WriteFrame(destination hash.Hash, value []byte) {
 // exception is groups.network_id, which v35 adds as an explicit migration
 // column; table-level mutation of Group's other fields remains detectable.
 func snapshotNetworkV34Data(t *testing.T, db *sql.DB, extraGroupColumns ...string) map[string]networkV34TableDigest {
+	return snapshotNetworkMigrationData(t, db, 34, extraGroupColumns...)
+}
+
+func snapshotNetworkMigrationData(t *testing.T, db *sql.DB, beforeVersion int, extraGroupColumns ...string) map[string]networkV34TableDigest {
 	t.Helper()
-	added := networkV34AddedTables()
-	ignoredGroupColumns := map[string]bool{"network_id": true}
+	added := networkMigrationAddedObjectsAfterVersion(beforeVersion)
+	ignoredGroupColumns := map[string]bool{}
+	if beforeVersion < 35 {
+		ignoredGroupColumns["network_id"] = true
+	}
 	for _, column := range extraGroupColumns {
 		ignoredGroupColumns[column] = true
 	}
@@ -215,19 +296,23 @@ WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 		result[name] = networkV34TableDigest{Count: len(encodedRows), Digest: hex.EncodeToString(digest.Sum(nil))}
 	}
 
-	ledger, err := snapshotNetworkV34Ledger(t, db)
+	ledger, err := snapshotNetworkMigrationLedger(t, db, beforeVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result["schema_migrations_v2[version<=34]"] = ledger
+	result[fmt.Sprintf("schema_migrations_v2[version<=%d]", beforeVersion)] = ledger
 	return result
 }
 
 func snapshotNetworkV34Ledger(t *testing.T, db *sql.DB) (networkV34TableDigest, error) {
+	return snapshotNetworkMigrationLedger(t, db, 34)
+}
+
+func snapshotNetworkMigrationLedger(t *testing.T, db *sql.DB, beforeVersion int) (networkV34TableDigest, error) {
 	t.Helper()
 	rows, err := db.Query(`SELECT version,migration_id,description,checksum,state,attempts,
 source_count,target_count,verification_json,started_at,applied_at,last_error,created_at,updated_at
-FROM schema_migrations_v2 WHERE version<=34 ORDER BY version`)
+FROM schema_migrations_v2 WHERE version<=? ORDER BY version`, beforeVersion)
 	if err != nil {
 		return networkV34TableDigest{}, err
 	}
@@ -661,21 +746,9 @@ func TestNetworkV34UpgradeInterruptionPreservesCompleteLedgerAndMappingScope(t *
 	t.Logf("synthetic v34 inventory: tables=%d nonempty_tables=%d; row bodies and keys are represented only by SHA-256 digests",
 		len(before), nonempty)
 
-	// Recreate a v34 database by removing only objects introduced after v34.
-	for object := range networkV34AddedTables() {
-		if _, err := s.db.Exec(`DROP TABLE IF EXISTS ` + networkV34QuoteIdentifier(object)); err != nil {
-			t.Fatalf("form v34 schema by removing %s: %v", object, err)
-		}
-	}
-	if _, err := s.db.Exec(`DROP INDEX IF EXISTS groups_network_idx`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec(`ALTER TABLE groups DROP COLUMN network_id`); err != nil {
-		t.Fatalf("form v34 Group schema: %v", err)
-	}
-	if _, err := s.db.Exec(`DELETE FROM schema_migrations_v2 WHERE version>34`); err != nil {
-		t.Fatal(err)
-	}
+	// Recreate a v34 database by removing every later object, including v36
+	// triggers attached to the historical SessionBinding table.
+	setSyntheticNetworkSchemaVersion(t, s.db, 34)
 	var highest int
 	if err := s.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&highest); err != nil || highest != 34 {
 		t.Fatalf("fixture is not v34: version=%d err=%v", highest, err)
@@ -826,6 +899,165 @@ func TestNetworkV34UpgradeInterruptionPreservesCompleteLedgerAndMappingScope(t *
 	}
 	assertNetworkV35GroupsUnchanged(t, groupsBeforeActivate, snapshotNetworkV35Groups(t, reopened.db))
 	assertNetworkV34DataEqual(t, mappingBaseline, snapshotNetworkV34Data(t, reopened.db, "revision", "version", "updated_at"))
+}
+
+func TestNetworkV36UpgradeInterruptionPreservesCompleteV35Ledger(t *testing.T) {
+	f := newUserMonitorBroadcastFixture(t)
+	s := f.sealed.store
+	seedNetworkV35ExistingLedger(t, f)
+	seedNetworkV35Inventory(t, f)
+	path := f.sealed.dbPath
+	before := snapshotNetworkMigrationData(t, s.db, 35)
+	for _, table := range []string{
+		"networks_v2", "network_memberships_v2", "endpoint_network_memberships_v2",
+		"network_invitations_v2", "network_join_consents_v2", "network_access_sessions_v2",
+		"network_group_mappings_v2", "network_mode_v2", "network_message_enrollment_v2",
+		"shared_tasks_v2", "shared_task_v2_results", "communication_links_v2",
+		"group_endpoint_key_grants_v2", "artifact_v2_refs", "artifact_v2_grants",
+	} {
+		if before[table].Count == 0 {
+			t.Fatalf("synthetic v35 preservation fixture did not populate %s", table)
+		}
+	}
+
+	// Recreate a v35 source by removing only v36 objects, triggers, and ledger.
+	setSyntheticNetworkSchemaVersion(t, s.db, 35)
+	var highest int
+	if err := s.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&highest); err != nil || highest != 35 {
+		t.Fatalf("fixture is not v35: version=%d err=%v", highest, err)
+	}
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, s.db, 35))
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	injected := errors.New("synthetic v36 migration interruption")
+	failed, err := openStoreWithMigrationHook(path, func(migrationID, phase string) error {
+		if migrationID == "v2.fabric.network_direct_sealed" && phase == "after_apply" {
+			return injected
+		}
+		return nil
+	})
+	if failed != nil {
+		_ = failed.Close()
+	}
+	if !errors.Is(err, injected) {
+		t.Fatalf("v36 interruption result: %v", err)
+	}
+	check, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check.SetMaxOpenConns(1)
+	var state string
+	if err := check.QueryRow(`SELECT state FROM schema_migrations_v2 WHERE version=36`).Scan(&state); err != nil || state != v2MigrationFailed {
+		t.Fatalf("v36 failed state=%q err=%v", state, err)
+	}
+	var attempts int
+	if err := check.QueryRow(`SELECT attempts FROM schema_migrations_v2 WHERE version=36`).Scan(&attempts); err != nil || attempts != 1 {
+		t.Fatalf("v36 failed attempts=%d err=%v", attempts, err)
+	}
+	for object := range networkMigrationAddedObjectsAfterVersion(35) {
+		var count int
+		if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, object).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("failed v36 left Network Direct table %s (count=%d): %v", object, count, err)
+		}
+	}
+	for _, trigger := range networkV36Triggers {
+		var count int
+		if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("failed v36 left Network Direct trigger %s (count=%d): %v", trigger, count, err)
+		}
+	}
+	var v35State string
+	if err := check.QueryRow(`SELECT state FROM schema_migrations_v2 WHERE version=35`).Scan(&v35State); err != nil || v35State != v2MigrationApplied {
+		t.Fatalf("v36 failure changed v35 ledger state=%q err=%v", v35State, err)
+	}
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, check, 35))
+	if err := check.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatalf("retry v35→v36 after interruption: %v", err)
+	}
+	defer reopened.Close()
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, reopened.db, 35))
+	entry, err := reopened.readV2Migration(36)
+	if err != nil || entry == nil || entry.MigrationID != "v2.fabric.network_direct_sealed" || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v36 did not retry exactly once: %+v err=%v", entry, err)
+	}
+	for _, trigger := range networkV36Triggers {
+		var count int
+		if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("successful v36 retry did not restore trigger %s (count=%d): %v", trigger, count, err)
+		}
+	}
+}
+
+func seedNetworkV35Inventory(t *testing.T, f *userMonitorBroadcastFixture) {
+	t.Helper()
+	s := f.sealed.store
+	hubID, err := s.GetClientHubID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	network, err := s.CreateNetwork(Network{ID: "migration_v35_network", HubID: hubID,
+		Name: "synthetic v35 Network", OwnerID: f.sealed.ownerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, err := s.GetGroup(f.sealed.groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PrepareGroupNetworkMapping(group.ID, network.ID, "synthetic v35 mapping reason", group.Version); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ApproveGroupNetworkMapping(group.ID, network.ID, group.Version); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IssueNetworkInvitation(network.ID, "synthetic_v35_invited_owner", f.sealed.ownerID,
+		"synthetic-v35-invitation-token-0000000000000000",
+		time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), []string{"directory.discover"}); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(`INSERT INTO network_memberships_v2
+(id,network_id,principal_id,grants_json,status,expires_at,revision,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?)`, "migration_v35_membership", network.ID, f.sealed.source.principal,
+		`["directory.discover"]`, "active", "", 1, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO endpoint_network_memberships_v2
+(network_id,endpoint_id,status,revision,nickname,discoverable,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?)`, network.ID, f.sealed.source.id, "active", 1,
+		"synthetic v35 endpoint", 0, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO network_access_sessions_v2
+(id,network_id,endpoint_id,principal_id,native_session_id,node_id,epoch,lease_owner,lease_expires_at,status,credential_hash,owner_key_id,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, "migration_v35_access", network.ID, f.sealed.source.id,
+		f.sealed.source.principal, f.sealed.source.binding.NativeSessionID, f.sealed.source.nodeID,
+		1, "synthetic-v35-lease", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+		"active", strings.Repeat("a", 64), f.sealed.ownerKeyID, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO network_join_consents_v2
+(token_hash,network_id,owner_id,native_session_hash,expires_at,consumed_at,endpoint_id,proof_digest,created_at)
+VALUES(?,?,?,?,?,?,?,?,?)`, tokenDigest("synthetic-v35-consent-token-000000000000"), network.ID,
+		f.sealed.ownerID, tokenDigest(f.sealed.source.binding.NativeSessionID), stamp,
+		stamp, f.sealed.source.id, tokenDigest("synthetic-v35-owner-proof"), stamp); err != nil {
+		t.Fatal(err)
+	}
+	for _, messageID := range []string{"migration_v34_sealed_request", "migration_v34_sealed_reply"} {
+		if _, err := s.db.Exec(`INSERT INTO network_message_enrollment_v2
+(message_id,network_id,sender_membership_revision,sender_endpoint_revision,receiver_membership_revision,receiver_endpoint_revision)
+VALUES(?,?,?,?,?,?)`, messageID, network.ID, 1, 1, 1, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func networkV35MappingsDigest(t *testing.T, db *sql.DB) string {

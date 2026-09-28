@@ -113,7 +113,7 @@ func newMCPEndpointKeyFixture(t *testing.T) *mcpEndpointKeyFixture {
 	return fixture
 }
 
-func TestCicadaMCPAdvertisesEndpointKeyCandidateToolWithoutArguments(t *testing.T) {
+func TestCicadaMCPAdvertisesEndpointKeyCandidateToolWithOnlyNetworkSelector(t *testing.T) {
 	for _, tool := range cicadaMCPTools() {
 		if tool["name"] != "cicada_publish_endpoint_key_candidate" {
 			continue
@@ -123,7 +123,7 @@ func TestCicadaMCPAdvertisesEndpointKeyCandidateToolWithoutArguments(t *testing.
 			t.Fatalf("input schema has type %T", tool["inputSchema"])
 		}
 		properties, ok := schema["properties"].(map[string]any)
-		if !ok || len(properties) != 0 || schema["additionalProperties"] != false {
+		if !ok || len(properties) != 1 || schema["additionalProperties"] != false || properties["network_id"] == nil {
 			t.Fatalf("tool accepts model-supplied identity fields: %#v", schema)
 		}
 		return
@@ -152,7 +152,7 @@ func TestCicadaPublishEndpointKeyCandidateRejectsMismatchedNativeContext(t *test
 
 func TestCicadaPublishEndpointKeyCandidateRejectsModelSuppliedIdentity(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
-	if _, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", map[string]any{"endpoint_id": "forged-endpoint"}); err == nil || !strings.Contains(err.Error(), "accepts no arguments") {
+	if _, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", map[string]any{"endpoint_id": "forged-endpoint"}); err == nil || !strings.Contains(err.Error(), "accepts only network_id") {
 		t.Fatalf("model-supplied endpoint error = %v", err)
 	}
 	if got := fixture.requestCount.Load(); got != 0 {

@@ -111,25 +111,8 @@ func TestNetworkV35UpgradePreservesV34ClientAndMonitorState(t *testing.T) {
 	s := f.sealed.store
 
 	// Reconstruct the exact additive v34 schema boundary from a current test
-	// fixture: retain all historical rows, remove only v35 objects and ledger.
-	for _, ddl := range []string{
-		`DROP TABLE network_message_enrollment_v2`,
-		`DROP TABLE network_access_sessions_v2`,
-		`DROP TABLE network_join_consents_v2`,
-		`DROP TABLE network_invitations_v2`,
-		`DROP TABLE endpoint_network_memberships_v2`,
-		`DROP TABLE network_memberships_v2`,
-		`DROP TABLE network_group_mappings_v2`,
-		`DROP TABLE networks_v2`,
-		`DROP TABLE network_mode_v2`,
-		`DROP INDEX groups_network_idx`,
-		`ALTER TABLE groups DROP COLUMN network_id`,
-		`DELETE FROM schema_migrations_v2 WHERE version=35`,
-	} {
-		if _, err := s.db.Exec(ddl); err != nil {
-			t.Fatalf("form v34 schema: %v", err)
-		}
-	}
+	// fixture, including later Network migrations. Retain every historical row.
+	setSyntheticNetworkSchemaVersion(t, s.db, 34)
 	var highest int
 	if err := s.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&highest); err != nil || highest != 34 {
 		t.Fatalf("not a v34 ledger: version=%d err=%v", highest, err)

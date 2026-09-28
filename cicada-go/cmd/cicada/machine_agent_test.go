@@ -466,6 +466,12 @@ func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFilt
 			}
 			response.Header().Set("Content-Type", "application/json")
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/fabric/node/networks/direct/claim":
+			if request.Header.Get("Authorization") != "CicadaNode "+identity.RelayToken {
+				response.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case "/v2/relay/nodes/" + nodeID + "/jobs":
 			if request.Method != http.MethodGet {
 				t.Errorf("jobs poll method=%s", request.Method)
@@ -547,6 +553,8 @@ func TestMachineAgentStopsWhenBoundNodeCredentialIsRevoked(t *testing.T) {
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case "/v2/relay/nodes/" + nodeID + "/claim":
 			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case "/v2/fabric/node/networks/direct/claim":
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case "/v2/relay/nodes/" + nodeID + "/jobs":
 			response.WriteHeader(http.StatusUnauthorized)

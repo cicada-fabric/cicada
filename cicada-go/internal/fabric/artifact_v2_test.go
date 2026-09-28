@@ -60,6 +60,13 @@ func TestArtifactV2ExactScopeRevocationAndDigestGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	actor = grantArtifactRole(t, persistence, actor, "artifact.read", "artifact.publish", "artifact.share")
+	// The legacy row has no Worker/Goal provenance. A trusted migration first
+	// scopes it to this exact Actor; later native publications can version it.
+	if _, err := persistence.CreateArtifactRefV2(store.ArtifactRefV2Input{ArtifactID: legacy.ID,
+		GroupID: actor.GroupID, ProducerPrincipalID: actor.PrincipalID,
+		ProducerEndpointID: actor.EndpointID, Scopes: []string{store.ArtifactRefV2ScopeMetadata}}); err != nil {
+		t.Fatal(err)
+	}
 	ref, err := service.CreateArtifactRefV2(actor, store.ArtifactRefV2Input{
 		ArtifactID: legacy.ID, WorkspaceID: workspace.ID, Digest: artifactTestDigest(content), Size: int64(len(content)),
 		RelativePath: "result.txt", Scopes: []string{store.ArtifactRefV2ScopeMetadata, store.ArtifactRefV2ScopeSummary, store.ArtifactRefV2ScopeDigest, store.ArtifactRefV2ScopeContent},
@@ -116,6 +123,11 @@ func TestArtifactV2RejectsTraversalAndSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	actor = grantArtifactRole(t, persistence, actor, "artifact.read", "artifact.publish")
+	if _, err := persistence.CreateArtifactRefV2(store.ArtifactRefV2Input{ArtifactID: legacy.ID,
+		GroupID: actor.GroupID, ProducerPrincipalID: actor.PrincipalID,
+		ProducerEndpointID: actor.EndpointID, Scopes: []string{store.ArtifactRefV2ScopeMetadata}}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.CreateArtifactRefV2(actor, store.ArtifactRefV2Input{ArtifactID: legacy.ID, WorkspaceID: workspace.ID, Digest: artifactTestDigest(content), RelativePath: "../secret.txt", Scopes: []string{store.ArtifactRefV2ScopeContent}}); !errors.Is(err, store.ErrArtifactRefV2UnsafePath) && !errors.Is(err, ErrArtifactV2PathTraversal) {
 		t.Fatalf("traversal path accepted: %v", err)
 	}

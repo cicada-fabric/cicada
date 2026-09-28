@@ -324,17 +324,26 @@ func scanArtifactRefV2(row interface{ Scan(...any) error }) (*ArtifactRefV2, str
 	return &ref, relativePath, nil
 }
 
+type artifactRefV2Executor interface {
+	QueryRow(string, ...any) *sql.Row
+	Exec(string, ...any) (sql.Result, error)
+}
+
 func (s *Store) createArtifactRefV2Locked(input ArtifactRefV2Input) (*ArtifactRefV2, error) {
 	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
 		return nil, err
 	}
+	return createArtifactRefV2WithDB(s.db, input)
+}
+
+func createArtifactRefV2WithDB(db artifactRefV2Executor, input ArtifactRefV2Input) (*ArtifactRefV2, error) {
 	input, err := normalizeArtifactRefV2(input)
 	if err != nil {
 		return nil, err
 	}
 	var legacy Artifact
 	var goalID, workerID, workspaceID, digest, evidence sql.NullString
-	err = s.db.QueryRow(`SELECT id, goal_id, worker_id, workspace_id, name, path, kind, digest, evidence, status, created_at FROM artifacts WHERE id = ?`, input.ArtifactID).
+	err = db.QueryRow(`SELECT id, goal_id, worker_id, workspace_id, name, path, kind, digest, evidence, status, created_at FROM artifacts WHERE id = ?`, input.ArtifactID).
 		Scan(&legacy.ID, &goalID, &workerID, &workspaceID, &legacy.Name, &legacy.Path, &legacy.Kind, &digest, &evidence, &legacy.Status, &legacy.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrArtifactRefV2NotFound
@@ -374,7 +383,7 @@ func (s *Store) createArtifactRefV2Locked(input ArtifactRefV2Input) (*ArtifactRe
 		return nil, ErrArtifactRefV2UnsafePath
 	}
 	if input.Version <= 0 {
-		if err := s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) + 1 FROM artifact_v2_refs WHERE artifact_id = ?`, input.ArtifactID).Scan(&input.Version); err != nil {
+		if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) + 1 FROM artifact_v2_refs WHERE artifact_id = ?`, input.ArtifactID).Scan(&input.Version); err != nil {
 			return nil, err
 		}
 	}
@@ -396,7 +405,7 @@ func (s *Store) createArtifactRefV2Locked(input ArtifactRefV2Input) (*ArtifactRe
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.Exec(`INSERT INTO artifact_v2_refs
+	_, err = db.Exec(`INSERT INTO artifact_v2_refs
 (id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
  name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -407,7 +416,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	if err != nil {
 		var existing ArtifactRefV2
 		var existingScopes, existingPath string
-		lookupErr := s.db.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
+		lookupErr := db.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
  name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at
  FROM artifact_v2_refs WHERE artifact_id = ? AND version = ?`, input.ArtifactID, input.Version).Scan(
 			&existing.ID, &existing.ArtifactID, &existing.Version, &existing.GroupID, &existing.WorkspaceID,
@@ -423,7 +432,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 		return nil, fmt.Errorf("create artifact ref v2: %w", err)
 	}
-	ref, _, err := scanArtifactRefV2(s.db.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
+	ref, _, err := scanArtifactRefV2(db.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
  name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at
  FROM artifact_v2_refs WHERE id = ?`, input.ID))
 	return ref, err
@@ -433,6 +442,61 @@ func (s *Store) CreateArtifactRefV2(input ArtifactRefV2Input) (*ArtifactRefV2, e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.createArtifactRefV2Locked(input)
+}
+
+// CreateArtifactRefV2ForActor fences the actual publication against the
+// current native writer and Network scope in the same transaction.
+func (s *Store) CreateArtifactRefV2ForActor(scope NativeActorScope, input ArtifactRefV2Input) (*ArtifactRefV2, error) {
+	if input.GroupID != scope.GroupID || input.ProducerPrincipalID != scope.PrincipalID ||
+		input.ProducerEndpointID != scope.EndpointID {
+		return nil, ErrNetworkPermission
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.publish", time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	// The legacy row has no native Actor column. Require a trustworthy
+	// Worker/Goal provenance chain, or an already scoped reference produced
+	// by this exact Actor. Unmapped legacy rows need the trusted-local
+	// migration primitive; knowing an Artifact ID never grants publication.
+	var ownsSource int
+	if err := tx.QueryRow(`SELECT EXISTS(
+ SELECT 1 FROM artifacts a
+ JOIN workers w ON w.id=a.worker_id AND w.goal_id=a.goal_id
+ JOIN goals g ON g.id=w.goal_id AND g.owner_id<>''
+ JOIN fabric_endpoints e ON e.id=? AND e.owner=g.owner_id
+   AND e.machine_id=w.machine_id AND e.harness=w.harness
+   AND e.native_session_id=w.thread_id
+ WHERE a.id=? AND (a.workspace_id IS NULL OR a.workspace_id=''
+   OR EXISTS(SELECT 1 FROM workspaces ws WHERE ws.id=a.workspace_id AND ws.goal_id=a.goal_id))
+ UNION ALL
+ SELECT 1 FROM artifact_v2_refs r
+ WHERE r.artifact_id=? AND r.group_id=? AND r.producer_principal_id=?
+   AND r.producer_endpoint_id=? AND r.status='available'
+ LIMIT 1)`, scope.EndpointID, input.ArtifactID, input.ArtifactID,
+		scope.GroupID, scope.PrincipalID, scope.EndpointID).Scan(&ownsSource); err != nil {
+		return nil, err
+	}
+	if ownsSource != 1 {
+		return nil, ErrNetworkPermission
+	}
+	ref, err := createArtifactRefV2WithDB(tx, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ref, nil
 }
 
 // CreateArtifactV2 is a concise compatibility alias.
@@ -793,6 +857,167 @@ func (s *Store) RevokeArtifactRefV2(id, reason string) (*ArtifactRefV2, error) {
  name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at
  FROM artifact_v2_refs WHERE id = ?`, id))
 	return ref, scanErr
+}
+
+func artifactRefGroupTx(tx *sql.Tx, refID string) (string, error) {
+	var groupID string
+	if err := tx.QueryRow(`SELECT group_id FROM artifact_v2_refs WHERE id=?`, refID).Scan(&groupID); err != nil {
+		return "", ErrArtifactRefV2NotFound
+	}
+	return groupID, nil
+}
+
+// The actor-scoped mutations keep the native writer, current Network and
+// referenced Group checks in the same write transaction as the ledger edit.
+// Existing unscoped methods remain explicit trusted-local primitives.
+func (s *Store) CreateArtifactRefV2GrantForActor(scope NativeActorScope,
+	input ArtifactRefV2GrantInput) (*ArtifactRefV2Grant, error) {
+	var err error
+	input, err = normalizeArtifactGrant(input)
+	if err != nil {
+		return nil, err
+	}
+	if input.GrantorPrincipalID != scope.PrincipalID {
+		return nil, ErrNetworkPermission
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.share", time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	var groupID, scopesJSON string
+	if err := tx.QueryRow(`SELECT group_id,scopes_json FROM artifact_v2_refs WHERE id=?`,
+		input.ArtifactRefID).Scan(&groupID, &scopesJSON); err != nil || groupID != scope.GroupID {
+		return nil, ErrNetworkPermission
+	}
+	allowed, err := artifactV2DecodeStrings(scopesJSON)
+	if err != nil || !artifactV2ScopesAllowed(input.Scopes, allowed) {
+		return nil, ErrArtifactRefV2ScopeDenied
+	}
+	if input.GranteeGroupID != "" {
+		var sourceNetwork, targetNetwork string
+		if err := tx.QueryRow(`SELECT network_id FROM groups WHERE id=?`, scope.GroupID).Scan(&sourceNetwork); err != nil {
+			return nil, ErrNetworkPermission
+		}
+		if err := tx.QueryRow(`SELECT network_id FROM groups WHERE id=?`, input.GranteeGroupID).Scan(&targetNetwork); err != nil || sourceNetwork != targetNetwork {
+			return nil, ErrNetworkPermission
+		}
+	}
+	if input.ID == "" {
+		input.ID = NewID("artifact-grant")
+	}
+	stamp := now()
+	encoded, err := artifactV2JSON(input.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`INSERT INTO artifact_v2_grants
+(id, artifact_ref_id, grantee_group_id, grantee_principal_id, grantor_principal_id, scopes_json,
+ status, expires_at, revoked_at, revocation_reason, revision, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, 'active', ?, '', '', 1, ?, ?)`, input.ID, input.ArtifactRefID,
+		input.GranteeGroupID, input.GranteePrincipalID, input.GrantorPrincipalID,
+		encoded, input.ExpiresAt, stamp, stamp); err != nil {
+		return nil, err
+	}
+	grant, err := scanArtifactRefV2Grant(tx.QueryRow(`SELECT id, artifact_ref_id, grantee_group_id, grantee_principal_id,
+ grantor_principal_id, scopes_json, status, expires_at, revoked_at, revocation_reason, revision, created_at, updated_at
+ FROM artifact_v2_grants WHERE id=?`, input.ID))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func (s *Store) RevokeArtifactRefV2GrantForActor(scope NativeActorScope,
+	id, reason string) (*ArtifactRefV2Grant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.share", time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	var refID string
+	if err := tx.QueryRow(`SELECT artifact_ref_id FROM artifact_v2_grants WHERE id=?`,
+		strings.TrimSpace(id)).Scan(&refID); err != nil {
+		return nil, ErrArtifactRefV2GrantNotFound
+	}
+	groupID, err := artifactRefGroupTx(tx, refID)
+	if err != nil || groupID != scope.GroupID {
+		return nil, ErrNetworkPermission
+	}
+	stamp := now()
+	if _, err := tx.Exec(`UPDATE artifact_v2_grants SET status='revoked',revoked_at=?,revocation_reason=?,revision=revision+1,updated_at=? WHERE id=?`,
+		stamp, strings.TrimSpace(reason), stamp, strings.TrimSpace(id)); err != nil {
+		return nil, err
+	}
+	grant, err := scanArtifactRefV2Grant(tx.QueryRow(`SELECT id, artifact_ref_id, grantee_group_id, grantee_principal_id,
+ grantor_principal_id, scopes_json, status, expires_at, revoked_at, revocation_reason, revision, created_at, updated_at
+ FROM artifact_v2_grants WHERE id=?`, strings.TrimSpace(id)))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func (s *Store) RevokeArtifactRefV2ForActor(scope NativeActorScope,
+	id, reason string) (*ArtifactRefV2, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.initializeArtifactV2SchemaLocked(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := guardNativeActorTx(tx, scope, "artifact.share", time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	groupID, err := artifactRefGroupTx(tx, strings.TrimSpace(id))
+	if err != nil || groupID != scope.GroupID {
+		return nil, ErrNetworkPermission
+	}
+	result, err := tx.Exec(`UPDATE artifact_v2_refs SET status=?,updated_at=? WHERE id=? AND status<>?`,
+		ArtifactRefV2StatusRevoked, now(), strings.TrimSpace(id), ArtifactRefV2StatusRevoked)
+	if err != nil {
+		return nil, err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return nil, ErrArtifactRefV2NotFound
+	}
+	_ = reason
+	ref, _, err := scanArtifactRefV2(tx.QueryRow(`SELECT id, artifact_id, version, group_id, workspace_id, producer_principal_id, producer_endpoint_id,
+ name, kind, summary, digest, size, mime_type, scopes_json, relative_path, status, created_at, updated_at
+ FROM artifact_v2_refs WHERE id=?`, strings.TrimSpace(id)))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ref, nil
 }
 
 func artifactV2MembershipAllows(membership *Membership, action string) bool {

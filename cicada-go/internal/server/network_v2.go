@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
@@ -65,12 +66,16 @@ func (h *Handler) fabricV2Network(response http.ResponseWriter, request *http.Re
 
 	remainder := strings.TrimPrefix(request.URL.Path, "/v2/fabric/networks/")
 	parts := strings.Split(remainder, "/")
+	if len(parts) == 3 && parts[0] != "" && parts[1] == "direct" {
+		h.fabricV2NetworkDirectSession(response, request, parts[0], parts[2])
+		return
+	}
 	if len(parts) != 2 || parts[0] == "" {
 		writeError(response, http.StatusNotFound, errors.New("Network route not found"))
 		return
 	}
 	networkID, operation := parts[0], parts[1]
-	if operation != "directory" && operation != "resolve" && operation != "leave" && operation != "invitations" {
+	if operation != "whoami" && operation != "directory" && operation != "resolve" && operation != "leave" && operation != "invitations" {
 		writeError(response, http.StatusNotFound, errors.New("Network route not found"))
 		return
 	}
@@ -85,6 +90,13 @@ func (h *Handler) fabricV2Network(response http.ResponseWriter, request *http.Re
 		return
 	}
 	switch operation {
+	case "whoami":
+		if request.Method != http.MethodGet {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"network_id": actor.NetworkID,
+			"endpoint_id": actor.EndpointID, "principal_id": actor.PrincipalID})
 	case "invitations":
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -159,6 +171,14 @@ func (h *Handler) fabricV2Network(response http.ResponseWriter, request *http.Re
 // New Network routes expose only stable denial classes. An invitation,
 // membership or hidden Endpoint must not become an existence oracle.
 func networkV2Error(response http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrRelayResourceExhausted) {
+		var limit *store.RelayAdmissionError
+		if errors.As(err, &limit) && limit.RetryAfterSeconds > 0 {
+			response.Header().Set("Retry-After", strconv.Itoa(limit.RetryAfterSeconds))
+		}
+		writeError(response, http.StatusTooManyRequests, errors.New("Network direct relay is busy"))
+		return
+	}
 	switch {
 	case errors.Is(err, fabricpkg.ErrUnauthenticated):
 		writeError(response, http.StatusUnauthorized, errors.New("Network session is unavailable"))
@@ -166,10 +186,14 @@ func networkV2Error(response http.ResponseWriter, err error) {
 		writeError(response, http.StatusConflict, errors.New("AMBIGUOUS Network nickname"))
 	case errors.Is(err, fabricpkg.ErrNotFoundOrNotAuthorized):
 		writeError(response, http.StatusNotFound, errors.New("Network resource unavailable"))
+	case errors.Is(err, store.ErrNetworkDirectKeyUnavailable):
+		writeError(response, http.StatusNotFound, errors.New("Network resource unavailable"))
 	case errors.Is(err, fabricpkg.ErrPermissionDenied), errors.Is(err, store.ErrNetworkPermission),
 		errors.Is(err, store.ErrNetworkConsent):
 		writeError(response, http.StatusForbidden, errors.New("Network operation denied"))
-	case errors.Is(err, store.ErrNetworkConflict), errors.Is(err, store.ErrNetworkMigration):
+	case errors.Is(err, store.ErrNetworkConflict), errors.Is(err, store.ErrNetworkMigration),
+		errors.Is(err, store.ErrRelayIdempotencyConflict), errors.Is(err, store.ErrRelayMessageConflict),
+		errors.Is(err, store.ErrRelayRequestTerminal):
 		writeError(response, http.StatusConflict, errors.New("Network scope conflict"))
 	default:
 		writeError(response, http.StatusInternalServerError, errors.New("Network operation failed"))

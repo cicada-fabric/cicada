@@ -35,10 +35,14 @@ func networkOperatorCommand(operation string, args []string, output io.Writer) e
 	targetOwner := flags.String("target-owner", "", "invited Owner ID")
 	invitationPath := flags.String("invitation-file", "", "private invitation token file")
 	grantsArg := flags.String("grants", "", "exact comma-separated grants")
+	preset := flags.String("preset", "", "named least-privilege Network permission preset")
 	ttl := flags.Duration("ttl", 15*time.Minute, "invitation lifetime")
 	principalID := flags.String("principal", "", "Network member Principal ID")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 || *dbPath == "" {
 		return errors.New(networkOperatorUsage)
+	}
+	if operation != "invite" && (*preset != "" || *grantsArg != "") {
+		return errors.New("--preset/--grants are only valid for network invite")
 	}
 	info, err := os.Lstat(*dbPath)
 	if err != nil {
@@ -120,15 +124,9 @@ func networkOperatorCommand(operation string, args []string, output io.Writer) e
 		if err != nil {
 			return err
 		}
-		grants := []string{}
-		if *grantsArg != "" {
-			for _, grant := range strings.Split(*grantsArg, ",") {
-				grant = strings.TrimSpace(grant)
-				if grant == "" {
-					return errors.New("grant set contains an empty value")
-				}
-				grants = append(grants, grant)
-			}
+		grants, err := selectNetworkPermissionGrants(*grantsArg, *preset, true)
+		if err != nil {
+			return err
 		}
 		secret := make([]byte, 32)
 		if _, err := rand.Read(secret); err != nil {

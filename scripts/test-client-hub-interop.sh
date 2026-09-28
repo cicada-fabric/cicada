@@ -90,7 +90,12 @@ if suite == "network-m1":
     scope = ["same_hub_two_networks", "operator_mapping_activation",
              "same_session_multi_network_registration", "network_member_not_group_member",
              "filtered_discovery", "scoped_alias_ambiguity", "network_admin_grant_scope",
-             "membership_revocation", "legacy_group_scope", "pending_group_quarantine"]
+             "membership_revocation", "legacy_group_scope", "pending_group_quarantine",
+             "encrypted_owner_topology_snapshot_multiple_networks",
+             "owner_approved_network_direct_key_candidate_and_grant",
+             "network_only_direct_sealed_send_claim_authorize_receipt",
+             "network_only_direct_sealed_ask_reply_route_status",
+             "control_free_http_network_direct_ask_reply_claim_authorize"]
 else:
     schema_version = "cicada.client-hub-interop.v1"
     test_name = "TestClientDockerHubSmoke"

@@ -28,6 +28,10 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		h.fabricV2Network(response, request)
 		return
 	}
+	if strings.HasPrefix(request.URL.Path, "/v2/fabric/node/networks/direct/") {
+		h.fabricV2NetworkDirectNode(response, request)
+		return
+	}
 	if request.URL.Path == "/v2/fabric/join" {
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))

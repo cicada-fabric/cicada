@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,6 +42,100 @@ func TestPackInspectAndUnpackAreContentAddressed(t *testing.T) {
 	if err != nil || string(content) != "ready" {
 		t.Fatalf("restored content=%q err=%v", content, err)
 	}
+}
+
+func TestUnpackPreservesExistingTargetOldSibling(t *testing.T) {
+	root := t.TempDir()
+	archivePath := writeSnapshotArchive(t, root, "new snapshot")
+	target := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "original.txt"), []byte("original target"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target+".old", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target+".old", "sentinel.txt"), []byte("keep existing sibling"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := UnpackFile(context.Background(), archivePath, target); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(target, "snapshot.txt"))
+	if err != nil || string(content) != "new snapshot" {
+		t.Fatalf("restored target content=%q err=%v", content, err)
+	}
+	sentinel, err := os.ReadFile(filepath.Join(target+".old", "sentinel.txt"))
+	if err != nil || string(sentinel) != "keep existing sibling" {
+		t.Fatalf("preexisting target.old sentinel=%q err=%v", sentinel, err)
+	}
+}
+
+func TestUnpackRestoresOriginalTargetWhenReplacementFails(t *testing.T) {
+	root := t.TempDir()
+	archivePath := writeSnapshotArchive(t, root, "new snapshot")
+	target := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "original.txt"), []byte("original target"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target+".old", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target+".old", "sentinel.txt"), []byte("keep existing sibling"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	replaceFailed := false
+	rename := func(old, new string) error {
+		if new == target && old != target && !replaceFailed {
+			replaceFailed = true
+			return errors.New("synthetic replacement failure")
+		}
+		return os.Rename(old, new)
+	}
+	if _, err := unpackFile(context.Background(), archivePath, target, rename); err == nil || !strings.Contains(err.Error(), "synthetic replacement failure") {
+		t.Fatalf("restore error=%v, want injected replacement error", err)
+	}
+	if !replaceFailed {
+		t.Fatal("replacement failure was not injected")
+	}
+	content, err := os.ReadFile(filepath.Join(target, "original.txt"))
+	if err != nil || string(content) != "original target" {
+		t.Fatalf("original target was not restored: content=%q err=%v", content, err)
+	}
+	sentinel, err := os.ReadFile(filepath.Join(target+".old", "sentinel.txt"))
+	if err != nil || string(sentinel) != "keep existing sibling" {
+		t.Fatalf("preexisting target.old sentinel=%q err=%v", sentinel, err)
+	}
+	backups, err := filepath.Glob(filepath.Join(root, ".cicada-snapshot-backup-*"))
+	if err != nil || len(backups) != 0 {
+		t.Fatalf("owned backup not cleaned after successful rollback: backups=%v err=%v", backups, err)
+	}
+}
+
+func writeSnapshotArchive(t *testing.T, root, content string) string {
+	t.Helper()
+	source := filepath.Join(root, "source")
+	if err := os.MkdirAll(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "snapshot.txt"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	if _, err := Pack(context.Background(), source, &archive); err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(root, "snapshot.tar")
+	if err := os.WriteFile(archivePath, archive.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return archivePath
 }
 
 func TestSnapshotRejectsSymlinksAndTraversal(t *testing.T) {

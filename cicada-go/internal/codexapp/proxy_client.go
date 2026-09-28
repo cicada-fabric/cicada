@@ -339,7 +339,7 @@ func (c *ProxyClient) request(ctx context.Context, method string, params any) (m
 			c.Close()
 			return nil, errors.New("Codex app-server returned invalid JSON-RPC data")
 		}
-		if responseID, ok := numberAsInt64(message["id"]); ok && responseID == id {
+		if responseID, ok := numberAsInt64(message["id"]); ok && responseID == id && message["method"] == nil {
 			if _, exists := message["error"]; exists {
 				return nil, fmt.Errorf("Codex app-server %s request failed", method)
 			}

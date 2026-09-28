@@ -149,9 +149,19 @@ func containsGrant(grants []string, action string) bool {
 	return false
 }
 
+func networkLeaseCurrent(value string, at time.Time) bool {
+	expiresAt, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && expiresAt.After(at)
+}
+
+func networkMembershipCurrent(value string, at time.Time) bool {
+	return value == "" || networkLeaseCurrent(value, at)
+}
+
 func (s *Service) AuthenticateForNetwork(sessionToken, networkID string) (NetworkActor, error) {
 	access, err := s.store.GetNetworkAccessSessionByHash(HashSessionCredential(sessionToken))
-	if err != nil || access.Status != "active" || access.NetworkID != strings.TrimSpace(networkID) || access.LeaseExpiresAt <= s.now().UTC().Format(time.RFC3339Nano) {
+	if err != nil || access.Status != "active" || access.NetworkID != strings.TrimSpace(networkID) ||
+		!networkLeaseCurrent(access.LeaseExpiresAt, s.now()) {
 		return NetworkActor{}, ErrUnauthenticated
 	}
 	endpoint, err := s.store.GetEndpointV2(access.EndpointID)
@@ -171,7 +181,8 @@ func (s *Service) AuthenticateForNetwork(sessionToken, networkID string) (Networ
 		return NetworkActor{}, ErrUnauthenticated
 	}
 	membership, err := s.store.GetNetworkMembership(access.NetworkID, access.PrincipalID)
-	if err != nil || membership.Status != "active" || membership.ExpiresAt != "" && membership.ExpiresAt <= s.now().UTC().Format(time.RFC3339Nano) {
+	if err != nil || membership.Status != "active" ||
+		!networkMembershipCurrent(membership.ExpiresAt, s.now()) {
 		return NetworkActor{}, ErrPermissionDenied
 	}
 	enrollment, err := s.store.GetEndpointNetworkMembership(access.NetworkID, access.EndpointID)
@@ -183,7 +194,8 @@ func (s *Service) AuthenticateForNetwork(sessionToken, networkID string) (Networ
 
 func (s *Service) authorizeNetwork(actor NetworkActor, action string) error {
 	access, err := s.store.GetNetworkAccessSessionByID(actor.BindingID)
-	if err != nil || access.NetworkID != actor.NetworkID || access.EndpointID != actor.EndpointID || access.PrincipalID != actor.PrincipalID || access.Epoch != actor.BindingEpoch || access.LeaseOwner != actor.LeaseOwner || access.Status != "active" || access.LeaseExpiresAt <= s.now().UTC().Format(time.RFC3339Nano) {
+	if err != nil || access.NetworkID != actor.NetworkID || access.EndpointID != actor.EndpointID || access.PrincipalID != actor.PrincipalID || access.Epoch != actor.BindingEpoch || access.LeaseOwner != actor.LeaseOwner || access.Status != "active" ||
+		!networkLeaseCurrent(access.LeaseExpiresAt, s.now()) {
 		return ErrPermissionDenied
 	}
 	endpoint, err := s.store.GetEndpointV2(actor.EndpointID)
@@ -199,11 +211,13 @@ func (s *Service) authorizeNetwork(actor NetworkActor, action string) error {
 		return ErrPermissionDenied
 	}
 	membership, err := s.store.GetNetworkMembership(actor.NetworkID, actor.PrincipalID)
-	if err != nil || membership.ID != actor.MembershipID || membership.Revision != actor.MembershipRevision {
+	if err != nil || membership.ID != actor.MembershipID || membership.Revision != actor.MembershipRevision ||
+		membership.Status != "active" || !networkMembershipCurrent(membership.ExpiresAt, s.now()) {
 		return ErrPermissionDenied
 	}
 	enrollment, err := s.store.GetEndpointNetworkMembership(actor.NetworkID, actor.EndpointID)
-	if err != nil || enrollment.Revision != actor.EndpointMembershipRevision {
+	if err != nil || enrollment.Revision != actor.EndpointMembershipRevision ||
+		enrollment.Status != "active" {
 		return ErrPermissionDenied
 	}
 	if action == "" {

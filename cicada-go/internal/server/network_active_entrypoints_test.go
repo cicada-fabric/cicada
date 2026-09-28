@@ -16,6 +16,16 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
+func TestNetworkDirectAdmissionReturnsRetryableHTTPStatus(t *testing.T) {
+	response := httptest.NewRecorder()
+	networkV2Error(response, &store.RelayAdmissionError{Scope: "synthetic", Limit: 1,
+		Pending: 1, RetryAfterSeconds: 7})
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "7" {
+		t.Fatalf("Network direct capacity status=%d retry_after=%q", response.Code,
+			response.Header().Get("Retry-After"))
+	}
+}
+
 // This is an ACTIVE Network over an actual HTTP listener with no Control
 // object. The Node credential and Owner signature are separate inputs, while
 // the Group and Network sessions remain separate after the same Thread joins.
@@ -116,6 +126,9 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	if got := call(http.MethodGet, "/v2/fabric/networks/"+networkID+"/directory", networkAuth, "", nil); got != http.StatusOK {
 		t.Fatalf("Control-free Network directory status=%d", got)
 	}
+	if got := call(http.MethodGet, "/v2/fabric/networks/"+networkID+"/whoami", "Cicada-Network-Session "+joinedNetworkOnly.SessionToken, "", nil); got != http.StatusOK {
+		t.Fatalf("Network-only current identity status=%d", got)
+	}
 	if got := call(http.MethodGet, "/v2/fabric/whoami", groupAuth, group.ID, nil); got != http.StatusOK {
 		t.Fatalf("Control-free Group whoami status=%d", got)
 	}
@@ -128,6 +141,18 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	if got := call(http.MethodGet, "/v2/fabric/networks/"+networkID+"/directory", groupAuth, group.ID, nil); got != http.StatusUnauthorized {
 		t.Fatalf("Group credential reached Network directory: %d", got)
 	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/native-binding", groupAuth, group.ID, map[string]any{}); got != http.StatusUnauthorized {
+		t.Fatalf("Group credential reached Network direct binding: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/native-binding", "Bearer synthetic-operator-token", "", map[string]any{}); got != http.StatusUnauthorized {
+		t.Fatalf("global operator bearer became a Network direct session: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/node/networks/direct/send", networkAuth, "", map[string]any{}); got != http.StatusUnauthorized {
+		t.Fatalf("Network access token became a Node sender credential: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/native-binding", networkAuth, "", map[string]any{}); got != http.StatusForbidden {
+		t.Fatalf("directory-only Network scope created a direct native binding: %d", got)
+	}
 	if got := call(http.MethodPost, "/v2/fabric/send", groupAuth, group.ID, map[string]string{"body": "retired"}); got != http.StatusGone {
 		t.Fatalf("authenticated legacy plaintext send status=%d, want 410", got)
 	}
@@ -135,7 +160,7 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	grants := append(append([]string(nil), member.Grants...), "task.read")
+	grants := append(append([]string(nil), member.Grants...), "task.read", "task.claim", "task.submit")
 	if _, err := persistence.UpdateMembershipAuthorization(member.ID, member.Roles,
 		grants, member.Authorization, member.Version); err != nil {
 		t.Fatal(err)
@@ -146,6 +171,29 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	}
 	if _, err := service.ListTasks(groupActor, 10); err != nil {
 		t.Fatalf("current Group actor lost legitimate Task read: %v", err)
+	}
+	task, err := persistence.CreateSharedTask(store.SharedTask{GroupID: group.ID,
+		Objective: "synthetic route-guard task", AcceptanceCriteria: "route guard blocks stale actor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = persistence.ReadySharedTask(task.ID, task.Revision, "synthetic-reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyArtifact, err := persistence.CreateArtifact(store.Artifact{ID: "synthetic-route-guard-artifact",
+		Name: "synthetic evidence", Path: "synthetic-evidence.txt", Kind: "evidence",
+		Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactRef, err := persistence.CreateArtifactRefV2(store.ArtifactRefV2Input{
+		ID: "synthetic-route-guard-ref", ArtifactID: legacyArtifact.ID, GroupID: group.ID,
+		Digest: legacyArtifact.Digest, Summary: "synthetic route-guard metadata",
+		Scopes: []string{store.ArtifactRefV2ScopeMetadata, store.ArtifactRefV2ScopeSummary},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	networkActor, err := service.AuthenticateForNetwork(joinedWithGroup.SessionToken, networkID)
 	if err != nil {
@@ -159,6 +207,63 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	}
 	if got := call(http.MethodGet, "/v2/fabric/tasks", groupAuth, group.ID, nil); got != http.StatusForbidden {
 		t.Fatalf("stale Group actor Task HTTP status=%d, want 403", got)
+	}
+
+	// One finite route inventory exercises the shared Group-session Guard at
+	// each existing handler family after the Network enrollment is revoked.
+	// Inputs use real Endpoint, Task, and Artifact IDs; aliases enter the same
+	// handler and must not reach a read or mutation before authorization.
+	routeCases := []struct {
+		name, method, path, authorization, groupScope string
+		body                                          any
+		want                                          int
+	}{
+		{"directory/whoami", http.MethodGet, "/v2/fabric/whoami", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"directory/members", http.MethodGet, "/v2/fabric/members", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"directory/list-alias", http.MethodGet, "/v2/fabric/list", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"directory/find", http.MethodPost, "/v2/fabric/find", groupAuth, group.ID, map[string]string{"query": groupJoined.Endpoint.ID}, http.StatusForbidden},
+		{"directory/resolve-alias", http.MethodPost, "/v2/fabric/resolve", groupAuth, group.ID, map[string]string{"query": groupJoined.Endpoint.ID}, http.StatusForbidden},
+		{"directory/inspect-alias", http.MethodPost, "/v2/fabric/inspect", groupAuth, group.ID, map[string]string{"query": groupJoined.Endpoint.ID}, http.StatusForbidden},
+		{"relay/legacy-send", http.MethodPost, "/v2/fabric/send", groupAuth, group.ID, map[string]string{"target": groupJoined.Endpoint.ID, "body": "synthetic retired route"}, http.StatusForbidden},
+		{"relay/legacy-ask", http.MethodPost, "/v2/fabric/ask", groupAuth, group.ID, map[string]string{"target": groupJoined.Endpoint.ID, "question": "synthetic retired route"}, http.StatusForbidden},
+		{"relay/legacy-reply", http.MethodPost, "/v2/fabric/reply", groupAuth, group.ID, map[string]string{"request_id": "synthetic-request", "body": "synthetic retired route"}, http.StatusForbidden},
+		{"relay/receive", http.MethodPost, "/v2/fabric/receive", groupAuth, group.ID, map[string]any{"limit": 10}, http.StatusForbidden},
+		{"relay/heartbeat", http.MethodPost, "/v2/fabric/heartbeat", groupAuth, group.ID, map[string]any{}, http.StatusForbidden},
+		{"endpoint-keys/read", http.MethodGet, "/v2/fabric/endpoint-keys/" + groupJoined.Endpoint.ID, groupAuth, group.ID, nil, http.StatusForbidden},
+		{"tasks/list", http.MethodGet, "/v2/fabric/tasks", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"tasks/read", http.MethodGet, "/v2/fabric/tasks/" + task.ID, groupAuth, group.ID, nil, http.StatusForbidden},
+		{"tasks/claim", http.MethodPost, "/v2/fabric/tasks/claim", groupAuth, group.ID, map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "idempotency_key": "synthetic-claim"}, http.StatusForbidden},
+		{"tasks/release", http.MethodPost, "/v2/fabric/tasks/release", groupAuth, group.ID, map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "owner_epoch": task.OwnerEpoch}, http.StatusForbidden},
+		{"tasks/renew", http.MethodPost, "/v2/fabric/tasks/renew", groupAuth, group.ID, map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "owner_epoch": task.OwnerEpoch, "lease_seconds": 60}, http.StatusForbidden},
+		{"tasks/result", http.MethodPost, "/v2/fabric/tasks/result", groupAuth, group.ID, map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "owner_epoch": task.OwnerEpoch, "summary": "synthetic result"}, http.StatusForbidden},
+		{"tasks/accept", http.MethodPost, "/v2/fabric/tasks/accept", groupAuth, group.ID, map[string]any{"task_id": task.ID, "result_id": "synthetic-result", "expected_revision": task.Revision}, http.StatusForbidden},
+		{"tasks/handoff-propose", http.MethodPost, "/v2/fabric/tasks/handoffs", groupAuth, group.ID, map[string]any{"task_id": task.ID, "target": groupJoined.Endpoint.ID, "expected_revision": task.Revision, "owner_epoch": task.OwnerEpoch, "pending_work": "synthetic pending work"}, http.StatusForbidden},
+		{"tasks/handoff-read", http.MethodGet, "/v2/fabric/tasks/handoffs/synthetic-handoff", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"request/read", http.MethodGet, "/v2/fabric/requests/synthetic-request", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"request/cancel", http.MethodPost, "/v2/fabric/requests/synthetic-request/cancel", groupAuth, group.ID, map[string]string{"reason": "synthetic cancellation"}, http.StatusForbidden},
+		{"artifact/list", http.MethodGet, "/v2/artifacts", groupAuth, "", nil, http.StatusForbidden},
+		{"artifact/read", http.MethodGet, "/v2/artifacts/" + artifactRef.ID + "?scope=summary", groupAuth, "", nil, http.StatusForbidden},
+		{"artifact/grant", http.MethodPost, "/v2/artifacts/" + artifactRef.ID + "/grant", groupAuth, "", map[string]any{"grantee_group_id": group.ID, "scopes": []string{store.ArtifactRefV2ScopeSummary}}, http.StatusForbidden},
+		{"artifact/revoke", http.MethodPost, "/v2/artifacts/" + artifactRef.ID + "/revoke", groupAuth, "", map[string]string{"reason": "synthetic"}, http.StatusForbidden},
+		{"lease/renew", http.MethodPost, "/v2/fabric/leases/synthetic-lease/renew", groupAuth, group.ID, map[string]any{"fencing_epoch": 1, "ttl_seconds": 60}, http.StatusForbidden},
+		{"federation/request", http.MethodGet, "/v2/fabric/federation/synthetic-request", groupAuth, group.ID, nil, http.StatusForbidden},
+		{"federation/accept", http.MethodPost, "/v2/fabric/federation/synthetic-request/accept", groupAuth, group.ID, map[string]any{}, http.StatusForbidden},
+		{"representative/claim", http.MethodPost, "/v2/fabric/representatives/synthetic-assignment/claim", groupAuth, group.ID, map[string]any{"lease_seconds": 60}, http.StatusForbidden},
+		{"management/group-cards", http.MethodGet, "/v1/group-cards", networkAuth, "", nil, http.StatusUnauthorized},
+		{"management/federation", http.MethodGet, "/v1/federation/contracts", networkAuth, "", nil, http.StatusUnauthorized},
+		{"management/representatives", http.MethodGet, "/v1/federation/representatives", networkAuth, "", nil, http.StatusUnauthorized},
+		{"management/groups", http.MethodGet, "/v1/groups", networkAuth, "", nil, http.StatusUnauthorized},
+		{"management/endpoints", http.MethodGet, "/v2/management/endpoints", networkAuth, "", nil, http.StatusUnauthorized},
+	}
+	for _, test := range routeCases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := call(test.method, test.path, test.authorization, test.groupScope, test.body); got != test.want {
+				t.Fatalf("%s %s status=%d want=%d", test.method, test.path, got, test.want)
+			}
+		})
+	}
+	if after, err := persistence.GetSharedTask(task.ID); err != nil || after.Revision != task.Revision || after.Status != task.Status {
+		t.Fatalf("denied route attempts changed Task: before=%#v after=%#v err=%v", task, after, err)
 	}
 }
 

@@ -2,8 +2,8 @@ package fabric
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -260,7 +260,8 @@ func TestNodeOldBindingCanReconcileUncertaintyButCannotClaimInjection(t *testing
 }
 
 func TestNodeClaimAndReceiptRejectExpiredBindingLease(t *testing.T) {
-	service, persistence, group := newFabricTestService(t)
+	path := filepath.Join(t.TempDir(), "cicada.sqlite3")
+	service, _, group := newFabricTestServiceAtPath(t, path)
 	_, actorA := joinFabricPeer(t, service, group.ID, "a", "native-a-expiry", "node-a")
 	b, actorB := joinFabricPeer(t, service, group.ID, "b", "native-b-expiry", "node-b")
 	if _, err := service.Ask(actorA, AskInput{Target: b.Endpoint.ID, Question: "lease boundary"}); err != nil {
@@ -270,10 +271,7 @@ func TestNodeClaimAndReceiptRejectExpiredBindingLease(t *testing.T) {
 	if err != nil || len(deliveries) != 1 {
 		t.Fatalf("claim=%#v err=%v", deliveries, err)
 	}
-	if _, err := persistence.RenewSessionBindingLease(actorB.BindingID, actorB.LeaseOwner, actorB.BindingEpoch,
-		time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)); err != nil {
-		t.Fatal(err)
-	}
+	expireBindingLeaseForTest(t, path, actorB.BindingID)
 	if _, err := service.RecordNodeReceipt("node-b", NodeReceiptInput{
 		AttemptID: deliveries[0].AttemptID, MessageID: deliveries[0].MessageID,
 		Digest: deliveries[0].Digest, EndpointID: deliveries[0].EndpointID,

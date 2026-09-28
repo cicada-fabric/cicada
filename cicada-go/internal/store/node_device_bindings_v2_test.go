@@ -129,6 +129,75 @@ func TestNodeDeviceBindingCodeExpiresAndCannotBeClaimedAcrossHub(t *testing.T) {
 	}
 }
 
+func TestNodeDeviceBindingExpiryUsesInstantsAndFailsClosed(t *testing.T) {
+	invalidExpiries := []struct {
+		name  string
+		value func() string
+	}{
+		{
+			name: "expired instant with future-looking offset text",
+			value: func() string {
+				return time.Now().UTC().Add(-time.Minute).
+					In(time.FixedZone("ahead", 14*60*60)).Format(time.RFC3339Nano)
+			},
+		},
+		{name: "malformed", value: func() string { return "not-an-rfc3339-expiry" }},
+		{name: "empty", value: func() string { return "" }},
+	}
+	for index, testCase := range invalidExpiries {
+		t.Run(testCase.name, func(t *testing.T) {
+			s, _, _, device := newClientDeviceFixture(t)
+			credentialDigest := nodeBindingTestCredentialDigest(fmt.Sprintf("invalid expiry credential %d", index))
+			codeDigest := nodeBindingTestCodeDigest(fmt.Sprintf("invalid expiry code %d", index))
+			request, err := s.CreatePendingNodeDeviceBinding(fmt.Sprintf("node-expiry-%d", index), "expiry test",
+				credentialDigest, codeDigest, time.Now().UTC().Add(10*time.Minute))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(`UPDATE node_device_binding_requests_v2 SET expires_at=? WHERE id=?`, testCase.value(), request.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.PreviewPendingNodeDeviceBinding("owner_a", device.DeviceID, codeDigest); !errors.Is(err, ErrNodeDeviceBindingExpired) {
+				t.Fatalf("preview accepted invalid/expired code: %v", err)
+			}
+			if _, err := s.ConfirmPendingNodeDeviceBinding("owner_a", device.DeviceID, codeDigest); !errors.Is(err, ErrNodeDeviceBindingExpired) {
+				t.Fatalf("confirmation accepted invalid/expired code: %v", err)
+			}
+			if _, err := s.GetNodeCredentialByHash(credentialDigest); !errors.Is(err, ErrNodeCredentialNotFound) {
+				t.Fatalf("invalid/expired code activated a Node credential: %v", err)
+			}
+		})
+	}
+}
+
+func TestNodeDeviceBindingCleanupUsesInstantExpiry(t *testing.T) {
+	s, _, _, _ := newClientDeviceFixture(t)
+	credentialDigest := nodeBindingTestCredentialDigest("expired offset cleanup candidate")
+	codeDigest := nodeBindingTestCodeDigest("expired offset cleanup candidate")
+	request, err := s.CreatePendingNodeDeviceBinding("node-expiry-cleanup", "expiry cleanup",
+		credentialDigest, codeDigest, time.Now().UTC().Add(10*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredOffset := time.Now().UTC().Add(-time.Minute).
+		In(time.FixedZone("ahead", 14*60*60)).Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(`UPDATE node_device_binding_requests_v2 SET expires_at=? WHERE id=?`, expiredOffset, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreatePendingNodeDeviceBinding("node-expiry-cleanup-trigger", "cleanup trigger",
+		nodeBindingTestCredentialDigest("cleanup trigger"), nodeBindingTestCodeDigest("cleanup trigger"),
+		time.Now().UTC().Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := s.db.QueryRow(`SELECT state FROM node_device_binding_requests_v2 WHERE id=?`, request.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != NodeDeviceBindingExpired {
+		t.Fatalf("expired offset request state=%q, want EXPIRED", state)
+	}
+}
+
 func TestNodeDeviceCodeRateLimitAndReissueRules(t *testing.T) {
 	s, _, _, _ := newClientDeviceFixture(t)
 	nodeID := "node-rate-limit"

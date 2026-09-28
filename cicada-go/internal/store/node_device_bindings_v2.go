@@ -168,7 +168,7 @@ func (s *Store) CreatePendingNodeDeviceBinding(nodeID, nodeName, credentialDiges
 	stamp := preciseNow.Format(time.RFC3339Nano)
 	_, err = tx.Exec(`UPDATE node_device_binding_requests_v2 SET state='EXPIRED', version=version+1,
 node_credential_digest=''
-WHERE state='PENDING' AND expires_at <= ?`, stamp)
+WHERE state='PENDING' AND (expires_at='' OR cicada_network_expiry_allows(expires_at,?)=0)`, stamp)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ node_credential_digest='' WHERE state='PENDING' AND node_id=? AND node_credentia
 	}
 	var pending int
 	if err := tx.QueryRow(`SELECT count(*) FROM node_device_binding_requests_v2
-WHERE state='PENDING' AND expires_at>?`, stamp).Scan(&pending); err != nil {
+WHERE state='PENDING' AND expires_at<>'' AND cicada_network_expiry_allows(expires_at,?)=1`, stamp).Scan(&pending); err != nil {
 		return nil, err
 	}
 	if pending >= nodeDeviceBindingMaxPending {
@@ -274,7 +274,7 @@ FROM node_device_binding_requests_v2 WHERE code_digest=?`, codeDigest).Scan(
 		return nil, err
 	}
 	if request.State != NodeDeviceBindingPending || request.HubID != hubID ||
-		request.ExpiresAt <= time.Now().UTC().Format(time.RFC3339Nano) {
+		!networkFutureExpiry(request.ExpiresAt, time.Now().UTC()) {
 		return nil, ErrNodeDeviceBindingExpired
 	}
 	return &request, nil
@@ -323,9 +323,11 @@ FROM node_device_binding_requests_v2 WHERE code_digest=?`, codeDigest).Scan(
 	if err != nil {
 		return nil, err
 	}
-	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	if request.State != NodeDeviceBindingPending || request.HubID != hubID || request.ExpiresAt <= stamp {
-		if request.State == NodeDeviceBindingPending && request.ExpiresAt <= stamp {
+	now := time.Now().UTC()
+	stamp := now.Format(time.RFC3339Nano)
+	requestExpiryValid := networkFutureExpiry(request.ExpiresAt, now)
+	if request.State != NodeDeviceBindingPending || request.HubID != hubID || !requestExpiryValid {
+		if request.State == NodeDeviceBindingPending && !requestExpiryValid {
 			_, _ = tx.Exec(`UPDATE node_device_binding_requests_v2 SET state='EXPIRED', version=version+1,
 node_credential_digest='' WHERE id=? AND state='PENDING' AND version=?`, request.ID, request.Version)
 			if err := tx.Commit(); err != nil {
@@ -343,7 +345,8 @@ node_credential_digest='' WHERE id=? AND state='PENDING' AND version=?`, request
 	}
 	result, err := tx.Exec(`UPDATE node_device_binding_requests_v2 SET state='CONFIRMED', version=version+1,
 confirmed_at=?, node_credential_digest=''
-WHERE id=? AND state='PENDING' AND version=? AND expires_at>?`, stamp, request.ID, request.Version, stamp)
+WHERE id=? AND state='PENDING' AND version=? AND expires_at<>''
+AND cicada_network_expiry_allows(expires_at,?)=1`, stamp, request.ID, request.Version, stamp)
 	if err != nil {
 		return nil, err
 	}

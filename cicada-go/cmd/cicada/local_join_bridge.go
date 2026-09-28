@@ -65,6 +65,7 @@ type localJoinResponse struct {
 	Version          int                          `json:"version"`
 	Join             *fabricpkg.JoinResult        `json:"join,omitempty"`
 	NetworkJoin      *fabricpkg.NetworkJoinResult `json:"network_join,omitempty"`
+	NetworkDirect    *localNetworkDirectResult    `json:"network_direct,omitempty"`
 	SealedSend       *localSealedSendResult       `json:"sealed_send,omitempty"`
 	SealedRPC        *localSealedRPCResult        `json:"sealed_rpc,omitempty"`
 	LocalGroup       *localGroupResult            `json:"local_group,omitempty"`
@@ -381,6 +382,20 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 			return
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkJoin: joined})
+		return
+	}
+	if strings.HasPrefix(header.Operation, "network_direct_") {
+		var request localNetworkDirectRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Network direct request"})
+			return
+		}
+		result, err := b.networkDirect(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: safeLocalJoinError(err), Retryable: localSealedSendRetryable(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkDirect: result})
 		return
 	}
 	if header.Operation == "sealed_send" {

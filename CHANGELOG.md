@@ -7,20 +7,27 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 Planned public product releases use the `0.1.x` line. Historical `0.2.0`,
 `0.3.0-dev`, and `0.4.0-dev` entries and the retired historical `v0.2.0` tag
-describe prototype checkpoints; this product version line does not change Architecture
-v2.3, Client wire v1, or the frozen v1.3 contract. The bounded Network M1
-foundation checkpoint passed; overall M1 remains incomplete under the
-[validation matrix](docs/network-m1-validation.md).
+describe prototype checkpoints. Current development keeps Architecture v2.3
+and Client wire v1, while the Hub implementation uses schema v36 and Client
+contract `client-hub-v1.4` (36 catalog operations). M1 now includes explicit
+Network topology, Owner-approved Network direct key grants, sealed Network
+SEND/ASK/REPLY over Hub HTTP/Node delivery, and current-epoch guards on existing
+paths. See the [service contract](docs/network-m1-contract.md),
+[validation matrix](docs/network-m1-validation.md), and
+[code audit](docs/m1-code-audit.md).
 
-The ACTIVE Network authorization/migration hardening bounded checkpoint passed
-full Go/vet, focused race, contract checks and separate disposable Client/Network
-Docker gates on its recorded dirty source fingerprint. It adds current Network
-checks to existing collaboration paths and fences Group key grants made before
-an approved Network mapping. Focused HTTP tests cover Control-free sealed
-Ask/Reply and rejection of peer enqueues after Network revocation. Client v1.3
-remains 33 operations and Hub schema remains v35. ACTIVE
-Client Group creation needs a later contract revision; real native Runtime,
-Android, two physical machines and public HTTPS are not run in this candidate.
+The M1 backend acceptance matrix passed on dirty source fingerprint
+`479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe`
+(`HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2` plus worktree): full Go
+(25 packages, 894 top-level tests), vet, focused race (5 packages, 16 tests),
+contract/eight Python tests, and separate disposable Client and Network Docker
+gates all passed. Earlier fixture failures and an interrupted race run remain
+historical, not passes; see the [validation matrix](docs/network-m1-validation.md).
+The post-upgrade dependency scan passed on earlier fingerprint `05a486a4`; pins
+did not change, and that scan is not attributed to the final source. This is
+unreleased development work, not a `0.1.x` release. M2 has not started.
+Android v1.4, real native Runtime, physical dual-Node, and public HTTPS are
+**NOT_RUN**.
 
 ## 0.4.0-dev — historical prototype, unreleased
 

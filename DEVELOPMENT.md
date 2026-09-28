@@ -1,8 +1,18 @@
 # Cicada development environment
 
 The current unreleased version is `0.1.0-dev`; planned public product releases
-use `0.1.x`. This does not change Architecture v2.3, Client wire v1, or the
-frozen `client-hub-v1.3` contract. The root
+use `0.1.x`. The current Hub uses Store schema v36 and Client contract
+`client-hub-v1.4` (36 catalog operations, wire v1); the M1 backend acceptance
+matrix passed on dirty source fingerprint
+`479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe`
+(`HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2` plus worktree) and remains
+unreleased. Full Go/vet/focused race, contract/Python and two independent
+disposable Docker gates passed; see the [validation record](docs/network-m1-validation.md).
+Android v1.4, real native Runtime, physical dual-Node and public HTTPS are
+**NOT_RUN**; M2 is next and has not started. The historical Monitor acceptance
+below remains attributed to the frozen `client-hub-v1.3` contract and its
+original candidate. This does not change Architecture v2.3 or Client wire v1.
+The root
 [`docker-compose.yml`](docker-compose.yml) is a legacy single-host development
 layout with three roles: `control`, an optional `worker` profile that currently
 runs `sleep infinity`, and an optional Telegram connector. It does not describe
@@ -14,9 +24,14 @@ The current architecture and evidence are in [CICADA.md](CICADA.md), the
 [status matrix](docs/architecture-v2-status.md), and the
 [Client↔Hub contract](docs/android-client-hub-contract.md).
 
-The Control core is a static Go binary. The independent Android repository
-connects through the versioned Client↔Hub HTTP/JSON and PQ packet contract;
-this repository does not ship Android UI or local STT.
+The Control core is a static Go binary. `scripts/build-release.sh` emits five
+OS/architecture-specific binaries and checksums; distribute only the artifact
+for the host platform, not all five bundled together. The lightweight Hub OCI
+runtime contains the service binary, CA certificates and runtime files, not
+the Go builder, tests, Codex, or model credentials. The independent Android
+repository connects through the versioned Client↔Hub HTTP/JSON and PQ packet
+contract; this repository does not ship Android UI or local STT. Image-size
+and idle-footprint measurements are separate evidence, not assumed here.
 
 The two repositories follow the [joint development and acceptance workflow](docs/client-hub-development.md).
 The operation catalog is authoritative for role allowlists; export a versioned
@@ -45,7 +60,11 @@ physical Android/dual-Node operation and public HTTPS remain **NOT_RUN**;
 unattended cold wake remains **UNSUPPORTED**. This is a bounded acceptance, not
 a general prompt-injection defense. Earlier `81d8f1f` denials and `d76e630`/
 `28bd462` failures are historical attempts, not the final candidate result.
-Agent Network M1+ and Group Journal/Discussion remain proposed and unimplemented.
+At that historical Monitor checkpoint, Agent Network M1+ and Group
+Journal/Discussion were proposed and unimplemented. Current Network M1
+implementation and gate status are recorded in
+[the M1 validation matrix](docs/network-m1-validation.md) and
+[the code audit](docs/m1-code-audit.md).
 The older v1.2.1 Android PASS and idle-Hub measurements remain attributed to
 their original source and image, as recorded in the [status matrix](docs/architecture-v2-status.md).
 

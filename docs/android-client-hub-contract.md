@@ -1,6 +1,8 @@
 # Android Client ↔ Hub/Control 协作契约
 
-状态：**Hub v1.3 服务端契约已加入 consent-bound Monitor broadcast 与显式 `message.broadcast` Membership 权限；Android 独立实现和互操作均未因此验收。Client 开发者此前报告当前固定在 v1.1（实现 `179e0ef`、文档 `b298fd8`），此前结果不能算作 v1.2 或 v1.3 验收**。当前可调用接口、字段与加密字节规则见 [Client wire v1](client-hub-wire-v1.md)，精简调用顺序与最小请求见 [Android interop v1](client-hub-interop-v1.md)，OpenAPI 见 [draft](client-hub-v1.openapi.yaml)。客户端仓库为 `../CICADA_CLIENT`；本仓库的 `CICADA.md` 是架构依据。首版 Client **只开发 Android**。手机是 Client，Control/Directory/Relay/权威面板状态运行于 Hub，原生 Thread 与 Node Agent 运行于 Node；三种部署职责允许同机。
+当前 Hub-side v1.4 开发候选沿用加密 wire v1；ACTIVE Network 拓扑选择与 Network-only Endpoint key 同意由已认证 Owner 的加密设备会话发起，`topology.snapshot` 的 Network 卡是有界可见信息，`can_create_group` 和公共能力目录都不能代替当前服务端授权。`topology.apply` 的 `group.create` action 在 ACTIVE 必须显式选本人拥有的 Network；`network.key_manifest/grant/status` 由 Owner 独立检查 Node 发布的候选并签 ML-DSA proof。独立 Android 仓库未修改或验收 v1.4；本段仅描述 Hub 服务端候选，见 [wire v1](client-hub-wire-v1.md) 与 [OpenAPI](client-hub-v1.openapi.yaml)。
+
+历史状态（固定 v1.3）：**Hub v1.3 服务端契约已加入 consent-bound Monitor broadcast 与显式 `message.broadcast` Membership 权限；Android 独立实现和互操作均未因此验收。Client 开发者此前报告当前固定在 v1.1（实现 `179e0ef`、文档 `b298fd8`），此前结果不能算作 v1.2 或 v1.3 验收**。当前可调用接口、字段与加密字节规则见 [Client wire v1](client-hub-wire-v1.md)，精简调用顺序与最小请求见 [Android interop v1](client-hub-interop-v1.md)，OpenAPI 见 [draft](client-hub-v1.openapi.yaml)。客户端仓库为 `../CICADA_CLIENT`；本仓库的 `CICADA.md` 是架构依据。首版 Client **只开发 Android**。手机是 Client，Control/Directory/Relay/权威面板状态运行于 Hub，原生 Thread 与 Node Agent 运行于 Node；三种部署职责允许同机。
 
 该 Android 证据对应未标注精确源码 revision 的 resident Hub，不能自动认证当前核心版本。两仓按 [联合开发规范](client-hub-development.md) 固定协议、构建来源和验收范围；operation 来源为 [catalog](../cicada-go/internal/clientcontract/catalog.json)。
 

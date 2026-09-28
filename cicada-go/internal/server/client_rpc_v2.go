@@ -318,6 +318,38 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid Group Endpoint key grant status request")
 		}
 		return h.control.ClientGroupEndpointKeyGrantStatus(ownerID, input.GroupID, input.EndpointID)
+	case "network.key_manifest":
+		var input struct {
+			NetworkID  string `json:"network_id"`
+			EndpointID string `json:"endpoint_id"`
+			OwnerKeyID string `json:"owner_key_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" || input.OwnerKeyID == "" {
+			return nil, errors.New("invalid Network Endpoint key manifest request")
+		}
+		return h.control.ClientPreviewNetworkDirectKeyGrant(ownerID, input.NetworkID, input.EndpointID, input.OwnerKeyID)
+	case "network.key_grant":
+		var input struct {
+			NetworkID   string `json:"network_id"`
+			EndpointID  string `json:"endpoint_id"`
+			SignedProof []byte `json:"signed_proof"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" || len(input.SignedProof) == 0 {
+			return nil, errors.New("invalid Network Endpoint key grant")
+		}
+		return h.control.ClientAcceptNetworkDirectKeyGrant(ownerID, clientRequestID, input.NetworkID, input.EndpointID, input.SignedProof)
+	case "network.key_status":
+		var input struct {
+			NetworkID  string `json:"network_id"`
+			EndpointID string `json:"endpoint_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" {
+			return nil, errors.New("invalid Network Endpoint key status request")
+		}
+		return h.control.ClientNetworkDirectKeyGrantStatus(ownerID, input.NetworkID, input.EndpointID)
 	case "nodes.preview":
 		var input struct {
 			UserCode string `json:"user_code"`
@@ -409,7 +441,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
 			return nil, errors.New("invalid topology change request")
 		}
-		return h.control.ApplyClientTopologyChange(ownerID, input)
+		return h.control.ApplyClientTopologyChangeForClientRequest(ownerID, clientRequestID, input)
 	case "approvals.list":
 		var input struct {
 			PendingOnly bool `json:"pending_only"`

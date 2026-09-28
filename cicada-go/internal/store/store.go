@@ -406,8 +406,8 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("create state directory: %w", err)
+	if err := protectSQLiteState(path); err != nil {
+		return nil, err
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -420,7 +420,72 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := protectSQLiteFiles(path); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return store, nil
+}
+
+// The SQLite file contains ratchet secrets. Protect the enclosing StateDir
+// before opening SQLite, since SQLite itself may create WAL/SHM files with the
+// process umask. Existing state is tightened in place without replacing data.
+func protectSQLiteState(path string) error {
+	if strings.TrimSpace(path) == "" || path == ":memory:" {
+		return errors.New("SQLite state requires a private file path")
+	}
+	dir := filepath.Clean(filepath.Dir(path))
+	if dir == "." || dir == ".." || dir == string(filepath.Separator) {
+		return errors.New("SQLite state requires a dedicated directory")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create state directory: %w", err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 ||
+		info.Mode()&os.ModeSticky != 0 {
+		return errors.New("SQLite state directory must be a private real directory")
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("protect state directory: %w", err)
+	}
+	if err := protectSQLiteFiles(path); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err == nil {
+		return file.Close()
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create private SQLite state: %w", err)
+	}
+	return protectSQLiteFile(path)
+}
+
+func protectSQLiteFiles(path string) error {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err := protectSQLiteFile(path + suffix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func protectSQLiteFile(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect SQLite state file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("SQLite state file %q is not a regular file", path)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("protect SQLite state file: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) initialize() error {

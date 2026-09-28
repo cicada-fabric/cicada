@@ -62,9 +62,9 @@ func (s *Service) CreateArtifactRefV2(actor Actor, input store.ArtifactRefV2Inpu
 	if err := s.store.InitializeArtifactV2Schema(); err != nil {
 		return nil, err
 	}
-	ref, err := s.store.CreateArtifactRefV2(input)
+	ref, err := s.store.CreateArtifactRefV2ForActor(nativeActorScope(actor), input)
 	if err != nil {
-		return nil, err
+		return nil, mapRelayError(err)
 	}
 	// A supplied relative locator is checked against the persisted workspace
 	// root before the ref can be used for content reads.  Metadata publication
@@ -88,48 +88,29 @@ func (s *Service) GrantArtifactRefV2(actor Actor, input ArtifactRefGrantInput) (
 	if err := s.Authorize(actor, "artifact.share"); err != nil {
 		return nil, err
 	}
-	ref, err := s.store.GetArtifactRefV2(input.ArtifactRefID)
-	if err != nil {
-		return nil, err
-	}
-	if ref.GroupID != actor.GroupID {
-		return nil, ErrPermissionDenied
-	}
 	grant := store.ArtifactRefV2GrantInput{
 		ArtifactRefID: input.ArtifactRefID, GranteeGroupID: strings.TrimSpace(input.GranteeGroupID),
 		GranteePrincipalID: strings.TrimSpace(input.GranteePrincipalID), GrantorPrincipalID: actor.PrincipalID,
 		Scopes: input.Scopes, ExpiresAt: input.ExpiresAt,
 	}
-	return s.store.CreateArtifactRefV2Grant(grant)
+	result, err := s.store.CreateArtifactRefV2GrantForActor(nativeActorScope(actor), grant)
+	return result, mapRelayError(err)
 }
 
 func (s *Service) RevokeArtifactRefV2Grant(actor Actor, grantID, reason string) (*store.ArtifactRefV2Grant, error) {
 	if err := s.Authorize(actor, "artifact.share"); err != nil {
 		return nil, err
 	}
-	grant, err := s.store.GetArtifactRefV2Grant(grantID)
-	if err != nil {
-		return nil, err
-	}
-	ref, err := s.store.GetArtifactRefV2(grant.ArtifactRefID)
-	if err != nil || ref.GroupID != actor.GroupID {
-		return nil, ErrPermissionDenied
-	}
-	return s.store.RevokeArtifactRefV2Grant(grantID, reason)
+	result, err := s.store.RevokeArtifactRefV2GrantForActor(nativeActorScope(actor), grantID, reason)
+	return result, mapRelayError(err)
 }
 
 func (s *Service) RevokeArtifactRefV2(actor Actor, refID, reason string) (*store.ArtifactRefV2, error) {
 	if err := s.Authorize(actor, "artifact.share"); err != nil {
 		return nil, err
 	}
-	ref, err := s.store.GetArtifactRefV2(refID)
-	if err != nil {
-		return nil, err
-	}
-	if ref.GroupID != actor.GroupID {
-		return nil, ErrPermissionDenied
-	}
-	return s.store.RevokeArtifactRefV2(refID, reason)
+	result, err := s.store.RevokeArtifactRefV2ForActor(nativeActorScope(actor), refID, reason)
+	return result, mapRelayError(err)
 }
 
 // AuthorizeArtifactRefV2 is intentionally small and side-effect free.  All

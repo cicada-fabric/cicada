@@ -1,16 +1,31 @@
 # Architecture v2.3 实施计划
 
-## 当前范围与历史门禁（2026-09-27）
+## 当前 M1 候选与历史门禁（2026-09-28）
 
-**当前检查点（2026-09-28）：ACTIVE Network 授权与迁移加固，本有界检查点 PASS。** 已实现目录 AccessScope 与可见卡同一 Store 事务核验、Request 状态/取消及旧消息 enrollment revision 复验、Task/Handoff 读取时的 native Actor 守卫和写入时的当前 Network/Node 守卫、Task 验收时的精确 Actor 复验、Artifact 元数据/列表的 Endpoint 级读取守卫，以及 Group key proof 在映射、Network 撤权和 Endpoint leave 后的签名 revision fence。旧 Group/Endpoint 关系、Grant、原生 writer 与其他 Network 授权不随这些 fence 自动变更；PREPARING 中仍未映射的旧 Group 保留旧行为。已补跨 Store 撤权、旧已接受和未接受 proof、fresh consent、Task/Request 与 Artifact 负例，以及 v34 升级保全和中断回滚的合成检查。最终整仓 Go、vet、聚焦 Network/ACTIVE 四包 race、合同及八项 Python 检查、默认 Client 与 Network 两个 Docker 门禁均 PASS；测试前后源码 fingerprint 同为 `1738095ea36e47655808857ce1934a72241bab1d8bb860d62f24299964c38d00`。本次结果归属 `HEAD 975ce8e` 加未提交工作树，不能单独归因于该 commit；整体 M1 仍未完成。
+**当前 M1 后端矩阵 PASS（2026-09-28）。** Hub schema v36 与独立 `client-hub-v1.4` 合同（encrypted wire v1、36 项操作）已接入：Owner 设备可在 `topology.snapshot` 查看有界 Network/Endpoint 拓扑，`topology.apply` 的 `group.create` action 在 ACTIVE Hub 显式选择同网 Network；Network-only Endpoint 可发布独立密钥候选，经 Owner 签当前 manifest 后使用 Network scope 的密封 SEND/ASK/REPLY，不需伪 Group 或共享原生 writer。Node/Relay 与 Client 管理信道保持分离，capability 不代替逐请求授权。冻结源码 fingerprint `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 前后不变：全 Go 25 包、vet、16 个聚焦 race 用例、合同与八项 Python、默认 Client 和 Network 两套独立 disposable real-TCP Docker 门禁均 PASS；结果属于 HEAD `733ca86` **加 dirty 工作树**，不能只归因于 HEAD。Android、真实 native Runtime、双物理 Node、公网 HTTPS仍 **NOT_RUN**。见 [门禁记录](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Client 结果](../.cicada-data/m1-final-20260928/accepted/client-docker/result.json)、[Network 结果](../.cicada-data/m1-final-20260928/accepted/network-docker/result.json)、[M1 验收矩阵](network-m1-validation.md)和[公开合同](client-hub-wire-v1.md)。
 
-**下一步仍属 M1。** 先实现 Network-only、没有共同 Group 的获授权密封私聊；再由独立 Client 合同所有者设计 ACTIVE Network Group topology selector 与互操作验收；随后关闭其余旧入口、历史读取、Node claim/注入、权限预设及管理员越权验收矩阵。以上缺口闭合前不启动 M2 Journal/Discussion。Android、真实原生 Runtime、双物理 Node 和公网 HTTPS 分开记录，不由合成测试推断。
+**历史有界检查点（2026-09-28）：ACTIVE Network 授权与迁移加固 PASS，仅归属当时源码。** 已实现目录 AccessScope 与可见卡同一 Store 事务核验、Request 状态/取消及旧消息 enrollment revision 复验、Task/Handoff 读取时的 native Actor 守卫和写入时的当前 Network/Node 守卫、Task 验收时的精确 Actor 复验、Artifact 元数据/列表的 Endpoint 级读取守卫，以及 Group key proof 在映射、Network 撤权和 Endpoint leave 后的签名 revision fence。旧 Group/Endpoint 关系、Grant、原生 writer 与其他 Network 授权不随这些 fence 自动变更；PREPARING 中仍未映射的旧 Group 保留旧行为。已补跨 Store 撤权、旧已接受和未接受 proof、fresh consent、Task/Request 与 Artifact 负例，以及 v34 升级保全和中断回滚的合成检查。当时整仓 Go、vet、聚焦 Network/ACTIVE 四包 race、合同及八项 Python 检查、默认 Client 与 Network 两个 Docker 门禁均 PASS；测试前后源码 fingerprint 同为 `1738095ea36e47655808857ce1934a72241bab1d8bb860d62f24299964c38d00`。该结果归属 `HEAD 975ce8e` 加当时未提交工作树，不能单独归因于该 commit，也不是当前 v1.4/v36 候选的最终门禁；整体 M1 当时仍未完成。
+
+**本轮停止于 M1 后端验收，不启动 M2。** Network-only 密封 E2EE 私聊、ACTIVE v1.4 Owner 拓扑/同网建组、迁移保全与各入口 Guard/撤权矩阵已进入上述后端确定性与一次性 Hub HTTP 门禁。该 PASS 不外推至真实原生 Runtime、Android、双物理 Node 或公网 HTTPS；它们各自仍是 **NOT_RUN**。M2 Journal/Discussion 仅作为下一阶段目标。
+
+M1 接口按独立组件组合：原 Thread 经已验证 Node 注册 Endpoint；Endpoint 可分别加入多个 Network；Group 只归属一个 Network，成员和角色在该 Group 内另行授权。HTTP/MCP/CLI 选择同一个已登记 scope 并复用核心 Guard；选择器不创建权限，不将 Network 伪装成 Group，不另起 Agent 或模型服务。错误与结果按各自授权边界稳定返回。
+
+**M1 后的面板阶段（本轮不实施）：** Hub 自带受认证、分权的 Web 面板以无限画布操作 Endpoint、Group、连线与可选 Monitor。先复用 M1 的 Owner Network 选择、拓扑读取、同网建组与精确授权原语；后续另定小批量、带版本的 Control action 合同，供框选/拖拽/连线预览影响后原子提交。布局数据不成为权限源；跨用户连线需双方授权，同一 Endpoint 在多 Group 只是引用，跨 Hub 通信须显式选择共同权威 Hub。此仓库拥有 Hub 附带面板及其后端；独立 CICADA_CLIENT 仓库拥有 Android 原生或嵌入界面。面板服务端不持有 Node peer 私钥或生成 Owner 批准证明，普通消息仍走 Node E2EE/Relay。此项是 M1 验收后的阶段目标，不增加本轮服务、依赖或 Android 改动。
+
+```mermaid
+flowchart LR
+  T[原 Thread] --> E[Endpoint]
+  E --> NA[Network A 登记]
+  E --> NB[Network B 登记]
+  NA --> GA[Group A 成员/角色]
+  NB --> GB[Group B 成员/角色]
+```
 
 **历史重大检查点：PASS（仅限固定 v1.3 候选）。** Clean Hub source `25013b51915124fa1da25e5fd37088eadf0e3d2d` and image `sha256:a1cf39e4b341cda7d5f80a13b8c3272964f43e5341eadbae1b6caafb6a68a31c` passed full Go tests, vet, focused race, contract/export/verify and exact-image disposable TCP gates. The fixed native runner `0d532f2e3bb57a9c82df4967044e4f40861c45a6` reports one read-only preview, one separate dispatch and successful receive/context assertions in both original recipient Threads. Client reported all 10 selectors and the final strict read-only status pass; the Core scoped ciphertext scan and Intake's independent Hub-state audit passed; Android/native fixture and emulator cleanup exited `0`, with no owned containers or fixture directory remaining. These results remain attributed to those pinned identities; evidence is in the [25013b5 candidate record](client-hub-v13-25013b5-validation.md), [native runbook](client-monitor-native-fixture.md), and [Client's final validation](../../CICADA_CLIENT/docs/client-monitor-v13-25013b5-native-validation.md).
 
 The `0cda61460757246789970782584b1e904173e653` clean `dev` base was the M1 starting point. Relative to `25013b5`, its changes under `cicada-go` and `scripts` were limited to `monitor_broadcast_android_native_test.go` and the fixed native fixture runner; the application implementation was unchanged. The prior Go/vet/focused-race/TCP and native evidence serves as a baseline only, not as M1 acceptance. That baseline's Node-local read-only preview is bound to the original confirmed approval; its deterministic tests prove review does not mutate approval/replay/outcome state or create an outbox, and that stale or mismatched authorization fails closed. See [Monitor preview and approval evidence](monitor-broadcast-approval-review.md).
 
-**当前实施范围：M1 Network identity、Guard、迁移与既有入口收口。** `b0081a0` 的限定 Network foundation checkpoint 已通过分离的 Network 与默认 Client Docker 门禁、focused race、full vet、冻结合同及七项 Python 检查。初次整仓 Go 测试仅因旧 migration test 的 v34 ledger 期望失败；`f9d3c7e` 只修正该断言，随后完整 Store suite 通过，其余包在初次运行已通过。整体 M1 仍 **NOT_COMPLETE**，详见[验收矩阵](network-m1-validation.md)和[操作合同](network-m1-contract.md)。Network-only 无 Group Endpoint 不能私聊；不同 Group 的双方可各凭本 Network 的有效 Group 与双边 Owner Link 授权使用既有密封私聊。冻结 Client v1.3 `group.create` 无 Network selector，在 ACTIVE Hub 被拒；默认 PREPARING Client 门禁不能证明 ACTIVE 兼容。M1 native Runtime、Android、双物理 Node 与公网 HTTPS 均 **NOT_RUN**。先补足 M1 入口和验收缺口，再推进 M2；native TUI adapter 可行性仅作下一项有界调查。本轮不实施 M2 Journal/Discussion、M3 授权路由/未读、M4 委托再分组、M5 多 Hub，也不修改独立 Client。此前 `81d8f1f` 自动审查拒绝保留为历史，不影响当前 M1 授权。
+**历史 M1 foundation 阶段：Network identity、Guard、迁移与既有入口收口。** `b0081a0` 的限定 Network foundation checkpoint 已通过分离的 Network 与默认 Client Docker 门禁、focused race、full vet、冻结合同及七项 Python 检查。初次整仓 Go 测试仅因旧 migration test 的 v34 ledger 期望失败；`f9d3c7e` 只修正该断言，随后完整 Store suite 通过，其余包在初次运行已通过。该时点整体 M1 仍 **NOT_COMPLETE**，详见[验收矩阵](network-m1-validation.md)和[操作合同](network-m1-contract.md)。当时 Network-only 无 Group Endpoint 不能私聊；不同 Group 的双方可各凭本 Network 的有效 Group 与双边 Owner Link 授权使用既有密封私聊。冻结 Client v1.3 `group.create` 无 Network selector，在 ACTIVE Hub 被拒；默认 PREPARING Client 门禁不能证明 ACTIVE 兼容。当时 M1 native Runtime、Android、双物理 Node 与公网 HTTPS 均 **NOT_RUN**。当时计划先补足 M1 入口和验收缺口，再推进 M2；native TUI adapter 可行性仅作下一项有界调查。本轮不实施 M2 Journal/Discussion、M3 授权路由/未读、M4 委托再分组、M5 多 Hub，也不修改独立 Client。此前 `81d8f1f` 自动审查拒绝保留为历史，不影响当前 M1 授权。
 
 任意授权 Thread 对默认通过 HubRelay 传递密文。M1 后的下一项 adapter 检查仅考虑一项 direct 例外：两个目标 Thread 必须位于同一物理宿主机、同一 Codex 账号，且 Node 能调用可用 native API 精确触达目标；相同 Hub/Network/Node label 均不够。direct 只替代传输，Nickname/Endpoint 必须先解析为唯一 Thread，Network/Group/Link/SessionBinding Guard 仍独立执行。工具在模型会话中可见，不代表 Go Node 获得了可独立调用的 API；可用性通过前保持 HubRelay 默认。现有同 Node 密封路径已把正文留在 Node 本地账本/队列，授权 metadata 仍可经 Hub Guard；通用 TUI 直连适配器尚未实现，Node 也不会因此自动发现或 Join 账号下所有 Thread。详见[本机原生直连可行性](native-local-direct-design.md)。
 
@@ -18,7 +33,7 @@ The `0cda61460757246789970782584b1e904173e653` clean `dev` base was the M1 start
 
 Network 是 Group 之上的私有 tenant/授权范围，不改变 Node/Hub/Client 部署实体，也不增加 User/Control/Worker/Monitor 之外的参与者。一个 Hub 可托管多个 Network；每个 Network 只由一个权威 Hub 承载。编号使用 M1–M5，避免与 `docs/client-hub-development.md` 的 N1–N6 冲突。
 
-**本轮执行 M1。** M1 的新增 Network 操作需要独立版本化合同，不回填冻结的 v1.3 catalog/wire/image；新合同由 Client/Core/Suite 所有者在同一范围评审。M2–M5 仍按下表依赖推进，不为每个阶段额外设立普遍审批门槛。
+**本轮执行 M1。** 新增 Network Owner 操作已放入独立 `client-hub-v1.4` 候选，不回填冻结的 v1.3 catalog/image；encrypted wire 仍为 v1，新合同与 Hub 实现、公开向量和检查同批验收。M2–M5 仍按下表依赖推进，不为每个阶段额外设立普遍审批门槛。
 
 | 阶段 | 最小交付与验收 | 依赖 / 明确不做 |
 |---|---|---|

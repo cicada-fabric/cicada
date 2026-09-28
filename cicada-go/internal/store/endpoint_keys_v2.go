@@ -132,8 +132,8 @@ WHERE e.id = ?`, endpointID).Scan(&dbPrincipalID, &ownerID, &endpointNodeID,
   JOIN memberships m ON m.principal_id = ? AND m.group_id = eg.group_id
   JOIN groups g ON g.id = eg.group_id
   WHERE eg.endpoint_id = ? AND eg.status = 'active' AND m.status = 'active'
-    AND g.state = 'ACTIVE' AND (m.effective_at = '' OR m.effective_at <= ?)
-    AND (m.expires_at = '' OR m.expires_at > ?)
+    AND g.state = 'ACTIVE' AND cicada_network_effective_allows(m.effective_at, ?)=1
+    AND cicada_network_expiry_allows(m.expires_at, ?)=1
 )`, dbPrincipalID, endpointID, now(), now()).Scan(&activeJoin); err != nil {
 		return rollback(err)
 	}

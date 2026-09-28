@@ -45,7 +45,7 @@ wake. No path auto-joins or exposes all Threads in an account. See the
 | Hub | Minimal OCI image, non-root service, private persistent volume, SQLite; no Codex runtime or model credential required for Fabric. Control model calls are optional management capabilities with a separately configured boundary. | `docker/Dockerfile.hub` builds the Go service, runs as UID/GID 1000, and stores Hub state under `/state`. It contains no Codex binary, model configuration, or provider credential. This is a lightweight development/test Hub image, not a signed production release. |
 | Node | Host-user service is the default for a user's existing native Codex environment. A dedicated Docker Node is useful for an isolated runtime or test fixture when its runtime integration is intentionally provisioned. A bounded same-host direct-adapter check follows M1. | `scripts/install-cicada-worker.sh` installs a host binary and optional systemd service. The root `docker-compose.yml` worker profile is an inspection container running `sleep infinity`, not the production Node supervisor. |
 | Plugin / MCP | Thin workflow and tool entry point. It uses a verified native Session and explicit Join; installation alone grants no endpoint or Network access. | `.agents/plugins/cicada` bundles workflow material and the local `cicada mcp` server. Runtime session identity must be verified by the adapter. |
-| Android Client | Independent APK and versioned Client contract. It is not part of Hub or Node deployment. | Android is maintained in `../CICADA_CLIENT`; this repository's frozen v1.3 Client contract still describes owner management operations. M1 does not modify the Client repository. |
+| Android Client | Independent APK and versioned Client contract. It is not part of Hub or Node deployment. | Android is maintained in `../CICADA_CLIENT`; the current Hub contract is `client-hub-v1.4`. This repository does not modify the Client repository, and Android M1 interoperability remains separate evidence. |
 | Web panel | Operator interface for the currently implemented management surface. | The embedded PWA uses the legacy bearer-token channel. It is not the formal post-quantum Android Client and does not satisfy the Android↔Control E2EE requirement. |
 
 An Agent runtime must not receive the Docker daemon socket or an automatic
@@ -68,11 +68,15 @@ See Docker's [Engine security guidance](https://docs.docker.com/engine/security/
 
 ## Current runnable packaging
 
-`docker/Dockerfile.hub` is the lightweight Hub target: a static Go build, an
-Alpine runtime, a non-root `cicada` user, `/state` and `/workspace` mount
-points, and a health check. `scripts/build-hub-image.sh` records build
-provenance. It is appropriate for disposable protocol and integration tests;
-it is not evidence of an installer or deployment readiness.
+`docker/Dockerfile.hub` builds a static Go service into a minimal Alpine runtime
+with CA certificates, a non-root `cicada` user, `/state` and `/workspace` mount
+points, and a health check. The deployed Hub stage contains the runtime binary,
+not the Go builder, test binary, Codex, or model credentials.
+`scripts/build-hub-image.sh` records build provenance. The image is used for
+disposable protocol and integration tests; it is not evidence of a signed
+installer or deployment readiness. Root is measuring the final image and idle
+footprint separately; this document does not invent size or performance
+numbers.
 
 The existing root `docker-compose.yml` and `docker/Dockerfile` are an older
 Control/Codex development stack. The image includes Codex and a model config;
@@ -94,13 +98,13 @@ Their default repository reference is `main`, so they are not a reproducible
 release pin by themselves. No release or resident deployment is created by
 this task.
 
-The bounded Network foundation on `b0081a0` passed separate disposable Docker
-Client and Network gates; test-only `f9d3c7e` corrected a v35 ledger fixture and
-the full Store package recheck passed. Overall M1 remains incomplete; see the
-[exact validation matrix](network-m1-validation.md). The frozen Client v1.3
-`group.create` has no Network selector: its default PREPARING gate does not
-establish ACTIVE compatibility, and an ACTIVE Hub rejects a new Group without
-an explicit Network. The host Codex update check through proxy port 7890 exited
+The current implementation uses Hub schema v36 and Client contract v1.4; the
+latest integrated gate status and exact source identities are in the
+[validation matrix](network-m1-validation.md). M1 is not complete until the
+final Go/race gates pass. Client v1.4 `group.create` carries an explicit
+`network_id`, required on an ACTIVE Hub for a Network the authenticated owner
+controls. A v1.3 Client has no selector; a v1.3 PREPARING smoke does not
+establish ACTIVE compatibility. The host Codex update check through proxy port 7890 exited
 `0` and reported latest `0.157.1`; `docker/Dockerfile` pins Codex `0.157.1` for
 development images. The update used the shell installer, without npm or
 resident deployment replacement. Codex version is distinct from CICADA's
@@ -120,7 +124,7 @@ Pin and record each identity independently:
 
 | Identity | What it identifies |
 | --- | --- |
-| CICADA software version | Current unreleased line `0.1.0-dev`; planned public product releases use `v0.1.x`. This version line is independent of Architecture v2.3, Client wire v1, contract v1.3, schema version, and the retired historical prototype tag `v0.2.0`. |
+| CICADA software version | Current unreleased line `0.1.0-dev`; planned public product releases use `v0.1.x`. This version line is independent of Architecture v2.3, Client wire v1, contract `client-hub-v1.4`, schema version, and the retired historical prototype tag `v0.2.0`. |
 | Git revision and dirty flag | Source history and whether the source tree had changes |
 | Source fingerprint | The complete source input used for a build |
 | Client contract revision | The published Client operation/schema contract |
@@ -136,6 +140,13 @@ The Hub backup excludes Node subtrees. Schema migrations may be forward-only;
 restarting an old binary against a newer schema is not a rollback plan. Keep
 the data and keys when stopping a deployment; do not delete a state directory
 to make an upgrade appear clean. See [migration boundaries](architecture-v2-migration.md).
+
+`scripts/build-release.sh` produces five OS/architecture-specific static
+binaries plus checksums. A deployment downloads the one binary matching its
+platform; the five artifacts are not one combined runtime package. The Hub OCI
+runtime likewise excludes the builder and test image. No public `0.1.x`
+release exists yet, and final image-size/idle measurements are recorded
+separately when available.
 
 ## M1 distribution acceptance
 

@@ -77,7 +77,8 @@ func (s *Service) ClaimTask(actor Actor, input TaskClaimInput) (*store.SharedTas
 	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
-	task, err := s.store.ClaimSharedTask(input.TaskID, input.ExpectedRevision, actor.PrincipalID, actor.EndpointID, input.IdempotencyKey, input.LeaseSeconds)
+	task, err := s.store.ClaimSharedTaskForActor(nativeActorScope(actor), input.TaskID,
+		input.ExpectedRevision, input.IdempotencyKey, input.LeaseSeconds)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskDependency) {
 		return nil, ErrConflict
 	}
@@ -91,7 +92,8 @@ func (s *Service) ReleaseTask(actor Actor, input TaskReleaseInput) (*store.Share
 	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
-	task, err := s.store.ReleaseSharedTaskClaim(input.TaskID, input.ExpectedRevision, input.OwnerEpoch, actor.PrincipalID, actor.EndpointID)
+	task, err := s.store.ReleaseSharedTaskClaimForActor(nativeActorScope(actor), input.TaskID,
+		input.ExpectedRevision, input.OwnerEpoch)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
@@ -105,7 +107,8 @@ func (s *Service) RenewTask(actor Actor, input TaskRenewInput) (*store.SharedTas
 	if _, err := s.taskForActor(actor, input.TaskID, "task.claim"); err != nil {
 		return nil, err
 	}
-	task, err := s.store.RenewSharedTaskClaim(input.TaskID, input.ExpectedRevision, input.OwnerEpoch, actor.PrincipalID, actor.EndpointID, input.LeaseSeconds)
+	task, err := s.store.RenewSharedTaskClaimForActor(nativeActorScope(actor), input.TaskID,
+		input.ExpectedRevision, input.OwnerEpoch, input.LeaseSeconds)
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
@@ -119,7 +122,8 @@ func (s *Service) SubmitTaskResult(actor Actor, input TaskResultInput) (*store.S
 	if _, err := s.taskForActor(actor, input.TaskID, "task.submit"); err != nil {
 		return nil, err
 	}
-	result, err := s.store.SubmitSharedTaskResult(input.TaskID, actor.PrincipalID, actor.EndpointID, input.OwnerEpoch, input.ExpectedRevision, input.Summary, input.Evidence)
+	result, err := s.store.SubmitSharedTaskResultForActor(nativeActorScope(actor), input.TaskID,
+		input.OwnerEpoch, input.ExpectedRevision, input.Summary, input.Evidence)
 	if errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return result, ErrConflict
 	}

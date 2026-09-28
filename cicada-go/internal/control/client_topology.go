@@ -10,24 +10,38 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-const ClientTopologyContractVersion = 1
+const ClientTopologyContractVersion = 2
 
 // ClientTopologySnapshot is a metadata-only owner view for the management
 // Client. It intentionally excludes credentials, capabilities, message bodies,
 // prompts, key material, and link contract digests.
 type ClientTopologySnapshot struct {
-	ContractVersion  int                      `json:"contract_version"`
-	OwnerPrincipalID string                   `json:"owner_principal_id"`
-	CapturedAt       string                   `json:"captured_at"`
-	ReadConsistency  string                   `json:"read_consistency"`
-	Groups           []ClientTopologyGroup    `json:"groups"`
-	Memberships      []ClientTopologyMember   `json:"memberships"`
-	Endpoints        []ClientTopologyEndpoint `json:"endpoints"`
-	Links            []ClientTopologyLink     `json:"links"`
+	ContractVersion           int                      `json:"contract_version"`
+	OwnerPrincipalID          string                   `json:"owner_principal_id"`
+	CapturedAt                string                   `json:"captured_at"`
+	ReadConsistency           string                   `json:"read_consistency"`
+	NetworksTruncated         bool                     `json:"networks_truncated"`
+	NetworkEndpointsTruncated bool                     `json:"network_endpoints_truncated"`
+	Networks                  []ClientTopologyNetwork  `json:"networks"`
+	Groups                    []ClientTopologyGroup    `json:"groups"`
+	Memberships               []ClientTopologyMember   `json:"memberships"`
+	Endpoints                 []ClientTopologyEndpoint `json:"endpoints"`
+	Links                     []ClientTopologyLink     `json:"links"`
+}
+
+// ClientTopologyNetwork is the smallest owner-managed Network selector. It
+// carries no membership roster, Endpoint directory, grants, or invitation.
+type ClientTopologyNetwork struct {
+	NetworkID      string `json:"network_id"`
+	Name           string `json:"name"`
+	State          string `json:"state"`
+	Version        int64  `json:"version"`
+	CanCreateGroup bool   `json:"can_create_group"`
 }
 
 type ClientTopologyGroup struct {
 	GroupID       string `json:"group_id"`
+	NetworkID     string `json:"network_id,omitempty"`
 	ParentGroupID string `json:"parent_group_id,omitempty"`
 	Name          string `json:"name"`
 	State         string `json:"state"`
@@ -51,6 +65,7 @@ type ClientTopologyEndpoint struct {
 	Name            string   `json:"name"`
 	PrincipalID     string   `json:"principal_id"`
 	GroupIDs        []string `json:"group_ids"`
+	NetworkIDs      []string `json:"network_ids"`
 	NodeID          string   `json:"node_id,omitempty"`
 	Harness         string   `json:"harness,omitempty"`
 	NativeSessionID string   `json:"native_session_id,omitempty"`
@@ -173,6 +188,14 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerID)
+	networks, networksTruncated, err := c.store.ListOwnerNetworkTopology(ownerID, 100)
+	if err != nil {
+		return nil, err
+	}
+	enrollments, enrollmentsTruncated, err := c.store.ListOwnerNetworkEndpointEnrollments(ownerID, 1000)
+	if err != nil {
+		return nil, err
+	}
 	groups, err := c.store.ListGroups(store.GroupFilter{Owner: ownerID, Limit: 1000})
 	if err != nil {
 		return nil, err
@@ -181,10 +204,18 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 	view := &ClientTopologySnapshot{
 		ContractVersion: ClientTopologyContractVersion, OwnerPrincipalID: ownerID,
 		CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), ReadConsistency: "best_effort",
+		NetworksTruncated: networksTruncated, NetworkEndpointsTruncated: enrollmentsTruncated,
+		Networks:    make([]ClientTopologyNetwork, 0),
 		Groups:      make([]ClientTopologyGroup, 0, len(groups)),
 		Memberships: make([]ClientTopologyMember, 0),
 		Endpoints:   make([]ClientTopologyEndpoint, 0),
 		Links:       make([]ClientTopologyLink, 0),
+	}
+	for _, network := range networks {
+		view.Networks = append(view.Networks, ClientTopologyNetwork{
+			NetworkID: network.NetworkID, Name: network.Name, State: network.State,
+			Version: network.Version, CanCreateGroup: network.OwnerID == ownerID && network.State == store.NetworkStateActive,
+		})
 	}
 	for _, group := range groups {
 		if group.OwnerPrincipalID != ownerID {
@@ -201,7 +232,8 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 			parentID = ""
 		}
 		view.Groups = append(view.Groups, ClientTopologyGroup{
-			GroupID: group.ID, ParentGroupID: parentID, Name: group.Name, State: group.State, Version: group.Version,
+			GroupID: group.ID, NetworkID: group.NetworkID, ParentGroupID: parentID,
+			Name: group.Name, State: group.State, Version: group.Version,
 		})
 		memberships, err := c.store.ListMemberships(store.MembershipFilter{GroupID: group.ID, Limit: 1000})
 		if err != nil {
@@ -254,7 +286,7 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 			if entryIndex < 0 {
 				entry := ClientTopologyEndpoint{
 					EndpointID: endpoint.ID, Name: endpoint.Name, PrincipalID: principal.ID,
-					GroupIDs: []string{}, NodeID: endpoint.MachineID, Harness: endpoint.Harness,
+					GroupIDs: []string{}, NetworkIDs: []string{}, NodeID: endpoint.MachineID, Harness: endpoint.Harness,
 					NativeSessionID: endpoint.NativeSessionID, Presence: endpoint.Status,
 				}
 				if binding, bindingErr := c.store.GetActiveSessionBinding(endpoint.ID); bindingErr == nil {
@@ -267,6 +299,25 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 			}
 			view.Endpoints[entryIndex].GroupIDs = append(view.Endpoints[entryIndex].GroupIDs, group.ID)
 		}
+	}
+	for _, enrollment := range enrollments {
+		entryIndex := -1
+		for i := range view.Endpoints {
+			if view.Endpoints[i].EndpointID == enrollment.EndpointID {
+				entryIndex = i
+				break
+			}
+		}
+		if entryIndex < 0 {
+			view.Endpoints = append(view.Endpoints, ClientTopologyEndpoint{
+				EndpointID: enrollment.EndpointID, Name: enrollment.Name, PrincipalID: enrollment.PrincipalID,
+				GroupIDs: []string{}, NetworkIDs: []string{}, NodeID: enrollment.NodeID,
+				Harness: enrollment.Harness, NativeSessionID: enrollment.NativeSessionID,
+				Presence: enrollment.Status,
+			})
+			entryIndex = len(view.Endpoints) - 1
+		}
+		view.Endpoints[entryIndex].NetworkIDs = append(view.Endpoints[entryIndex].NetworkIDs, enrollment.NetworkID)
 	}
 	links, err := c.store.ListCommunicationLinksForOwner(ownerID, 200)
 	if err != nil {
@@ -288,6 +339,7 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 	sort.Slice(view.Endpoints, func(i, j int) bool { return view.Endpoints[i].EndpointID < view.Endpoints[j].EndpointID })
 	for i := range view.Endpoints {
 		sort.Strings(view.Endpoints[i].GroupIDs)
+		sort.Strings(view.Endpoints[i].NetworkIDs)
 	}
 	sort.Slice(view.Links, func(i, j int) bool { return view.Links[i].LinkID < view.Links[j].LinkID })
 	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
@@ -301,6 +353,17 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 // reuses Control and Store authorization/CAS checks. Cross-owner proposals
 // still require the separate invitation path and remain non-routable.
 func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action ClientTopologyAction) (*ClientTopologyChangeResult, error) {
+	return c.applyClientTopologyChange(authenticatedOwnerID, "", action)
+}
+
+// ApplyClientTopologyChangeForClientRequest carries the Server-accepted
+// request ID into new Network-scoped mutations. The Store rechecks its current
+// encrypted device session inside the same transaction as Group creation.
+func (c *Control) ApplyClientTopologyChangeForClientRequest(authenticatedOwnerID, clientRequestID string, action ClientTopologyAction) (*ClientTopologyChangeResult, error) {
+	return c.applyClientTopologyChange(authenticatedOwnerID, clientRequestID, action)
+}
+
+func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestID string, action ClientTopologyAction) (*ClientTopologyChangeResult, error) {
 	if err := c.ValidateClientSessionOwner(authenticatedOwnerID); err != nil {
 		return nil, err
 	}
@@ -314,11 +377,15 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 		input := action.CreateGroup
 		parentID := strings.TrimSpace(input.ParentGroupID)
 		if parentID != "" {
-			if _, err := c.clientOwnedGroup(ownerID, parentID); err != nil {
+			parent, err := c.clientOwnedGroup(ownerID, parentID)
+			if err != nil {
 				return nil, err
 			}
+			if parent.NetworkID != strings.TrimSpace(input.Group.NetworkID) {
+				return nil, store.ErrNetworkConflict
+			}
 		}
-		group, err := c.createGroupForOwner(ownerID, input.Group)
+		group, err := c.createGroupForOwner(ownerID, input.Group, clientRequestID)
 		if err != nil {
 			return nil, err
 		}
@@ -589,7 +656,8 @@ func (c *Control) clientOwnedEndpoint(ownerID, endpointID string) (*store.Endpoi
 }
 
 func projectClientTopologyGroup(group store.Group) *ClientTopologyGroup {
-	return &ClientTopologyGroup{GroupID: group.ID, ParentGroupID: group.ParentGroupID, Name: group.Name, State: group.State, Version: group.Version}
+	return &ClientTopologyGroup{GroupID: group.ID, NetworkID: group.NetworkID,
+		ParentGroupID: group.ParentGroupID, Name: group.Name, State: group.State, Version: group.Version}
 }
 
 func projectClientTopologyMember(membership store.Membership, displayName string) *ClientTopologyMember {

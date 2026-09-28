@@ -245,7 +245,7 @@ func validateExternalURL(raw string) (*url.URL, error) {
 	if sensitiveQuery(target.Query()) {
 		return nil, errors.New("external action url cannot contain credential-like query parameters")
 	}
-	if ip := net.ParseIP(target.Hostname()); ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast()) {
+	if ip := net.ParseIP(target.Hostname()); ip != nil && privateAddress(ip) {
 		return nil, errors.New("external action url cannot target a private or local IP")
 	}
 	target.Host = strings.ToLower(target.Host)

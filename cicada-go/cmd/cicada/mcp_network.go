@@ -200,6 +200,9 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 	if err != nil || state.APIOrigin != origin {
 		return nil, errors.New("Network session state belongs to a different Hub origin")
 	}
+	if isMCPNetworkDirectTool(name) {
+		return m.networkDirectToolLocked(name, arguments, context, state)
+	}
 	method, path := http.MethodGet, "/v2/fabric/networks/"+networkID+"/directory"
 	var payload any
 	switch name {

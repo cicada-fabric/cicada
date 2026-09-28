@@ -27,6 +27,7 @@ type machineRelayJournalEntry struct {
 	RequestID         string                      `json:"request_id,omitempty"`
 	Kind              string                      `json:"kind,omitempty"`
 	GroupID           string                      `json:"group_id,omitempty"`
+	NetworkID         string                      `json:"network_id,omitempty"`
 	SenderEndpointID  string                      `json:"sender_endpoint_id,omitempty"`
 	ReplyTo           string                      `json:"reply_to,omitempty"`
 	Digest            string                      `json:"digest"`
@@ -239,6 +240,19 @@ func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID strin
 			return err
 		}
 	}
+	var networkDirectPayload struct {
+		Deliveries []fabric.NetworkDirectDelivery `json:"deliveries"`
+	}
+	if err := machineAPIJSON(ctx, base+"/v2/fabric/node/networks/direct/claim", http.MethodPost,
+		map[string]any{"node_id": machineID, "consumer_id": machineRelayConsumerID(machineID), "limit": 50},
+		&networkDirectPayload); err != nil {
+		return fmt.Errorf("claim Network direct sealed deliveries: %w", err)
+	}
+	for _, delivery := range networkDirectPayload.Deliveries {
+		if err := acceptMachineNetworkDirectDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
+			return err
+		}
+	}
 	var payload struct {
 		Deliveries []fabric.Delivery `json:"deliveries"`
 	}
@@ -306,6 +320,14 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 			if entry.PayloadMode == "SEALED_V1" {
 				recoveryErr := recoverMachineSealedInboxSave(ctx, base, stateDir, machineID, inbox, entry)
 				if recoveryErr != nil {
+					if entry.AuthorizationKind == "network-direct" && machineAPIHasStatus(recoveryErr,
+						http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusGone) {
+						if err := journal.remove(entry.MessageID); err != nil {
+							return err
+						}
+						index--
+						continue
+					}
 					// The remote claim can expire and be reissued under a new attempt.
 					// Keep the journal until that happens; it is the only recovery
 					// pointer to the ciphertext already committed in nodekeys.
@@ -328,6 +350,29 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 		}
 		if err != nil {
 			return fmt.Errorf("read local relay delivery %s: %w", entry.MessageID, err)
+		}
+		if entry.AuthorizationKind == "network-direct" {
+			if delivery.State == nodeinbox.FAILED {
+				if err := journal.remove(entry.MessageID); err != nil {
+					return err
+				}
+				index--
+				continue
+			}
+			if _, authErr := fetchMachineNetworkDirectAuthorization(ctx, base, entry.MessageID, entry.AttemptID); authErr != nil {
+				if machineAPIHasStatus(authErr, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusGone) {
+					if delivery.State == nodeinbox.NODE_RECEIVED {
+						if err := retireMachineNetworkDirectDenied(ctx, inbox, journal, nodeinbox.Claim{Delivery: *delivery}, entry); err != nil {
+							return err
+						}
+					} else if err := journal.remove(entry.MessageID); err != nil {
+						return err
+					}
+					index--
+					continue
+				}
+				return authErr
+			}
 		}
 		if !entry.NodeReceived {
 			if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptNodeReceived, ""); err != nil {
@@ -437,7 +482,9 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 		}
 		if entry.PayloadMode == "SEALED_V1" {
 			var drainErr error
-			if entry.AuthorizationKind == "same-group" {
+			if entry.AuthorizationKind == "network-direct" {
+				drainErr = drainMachineNetworkDirectClaim(ctx, base, machineID, stateDir, inbox, journal, *claim, *entry)
+			} else if entry.AuthorizationKind == "same-group" {
 				drainErr = drainMachineCrossNodeGroupRelayClaim(ctx, base, machineID, stateDir, inbox, journal, *claim, *entry)
 			} else {
 				drainErr = drainMachineSealedRelayClaim(ctx, base, machineID, stateDir, inbox, journal, *claim, *entry)
@@ -587,6 +634,9 @@ func failMachineRelayDelivery(ctx context.Context, base, machineID string, inbox
 
 func reportMachineRelayReceiptReliably(ctx context.Context, base, machineID string, entry machineRelayJournalEntry, layer, reason string) error {
 	endpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/receipts"
+	if entry.AuthorizationKind == "network-direct" {
+		endpoint = base + "/v2/fabric/node/networks/direct/receipt"
+	}
 	payload := fabric.NodeReceiptInput{
 		AttemptID: entry.AttemptID, MessageID: entry.MessageID, Digest: entry.Digest,
 		EndpointID: entry.EndpointID, BindingID: entry.BindingID,

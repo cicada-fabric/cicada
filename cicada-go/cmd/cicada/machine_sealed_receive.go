@@ -422,6 +422,9 @@ func machineSealedDeliveryFromJournal(machineID string, entry machineRelayJourna
 // fresh exact-attempt authorization and current local Owner trust.
 func recoverMachineSealedInboxSave(ctx context.Context, base, stateDir, machineID string,
 	inbox *nodeinbox.Inbox, entry machineRelayJournalEntry) error {
+	if entry.AuthorizationKind == "network-direct" {
+		return recoverMachineNetworkDirectInboxSave(ctx, base, stateDir, machineID, inbox, entry)
+	}
 	if entry.AuthorizationKind == "same-group" {
 		return recoverMachineCrossNodeGroupInboxSave(ctx, base, stateDir, machineID, inbox, entry)
 	}

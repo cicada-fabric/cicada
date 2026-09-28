@@ -62,6 +62,8 @@ func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 			return true
 		case method == http.MethodPost && path == targetPrefix+"/claim":
 			return true
+		case method == http.MethodPost && path == "/v2/fabric/node/networks/direct/claim":
+			return true
 		case method == http.MethodGet && path == targetPrefix+"/sealed/"+fixture.messageID+"/authorization":
 			return true
 		case method == http.MethodPost && path == targetPrefix+"/receipts":

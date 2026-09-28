@@ -76,14 +76,15 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 			}
 		}
 	}
-	if got := len(OperationsForRole(RoleManager)); got != 33 {
-		t.Errorf("manager operation count = %d, want 33", got)
+	if got := len(OperationsForRole(RoleManager)); got != 36 {
+		t.Errorf("manager operation count = %d, want 36", got)
 	}
-	if got := len(OperationsForRole(RoleExternal)); got != 25 {
-		t.Errorf("external operation count = %d, want 25", got)
+	if got := len(OperationsForRole(RoleExternal)); got != 28 {
+		t.Errorf("external operation count = %d, want 28", got)
 	}
 	if Allows(RoleExternal, "intent.submit") || Allows(RoleExternal, "goal.result") || Allows(RoleExternal, "approvals.decide") ||
-		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleExternal, "monitor.broadcast_prepare") ||
+		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleExternal, "network.key_manifest") ||
+		!Allows(RoleExternal, "monitor.broadcast_prepare") ||
 		!Allows(RoleManager, "monitor.broadcast_confirm") || !Allows(RoleManager, "intent.submit") ||
 		Allows(Role("unknown"), "session.capabilities") {
 		t.Fatal("catalog role authorization does not preserve the current owner boundary")
@@ -97,6 +98,16 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 	if !strings.Contains(openAPIText, "membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'") ||
 		!strings.Contains(openAPIText, "broadcast_permission_enabled:") {
 		t.Fatal("OpenAPI does not describe the explicit broadcast permission action and topology snapshot field")
+	}
+	for _, marker := range []string{
+		"group.create: '#/components/schemas/TopologyCreateGroupAction'",
+		"x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'",
+		"x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'",
+		"network_endpoints_truncated:", "can_create_group:", "network_ids:",
+	} {
+		if !strings.Contains(openAPIText, marker) {
+			t.Fatalf("OpenAPI omits ACTIVE Network topology %q", marker)
+		}
 	}
 	assertOpenAPIOperationsMatchCatalog(t, definition)
 }

@@ -6,7 +6,19 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 ## 当前整改顺序
 
-> 2026-09-28 M1 ACTIVE 权限迁移**有界检查点 PASS**：全 Go/vet、聚焦 race、合同检查与两套独立 disposable Docker 门禁通过，见 [当前状态](architecture-v2-status.md) 和 [验证矩阵](network-m1-validation.md)。这不改变 `client-hub-v1.3`、33 项操作、wire 合同或 schema v35，也不表示整体 M1 完成。现有 `group.create` 不带 Network selector，在 ACTIVE Hub 上申请新 Group 会被拒绝；修复须走下一轮独立 Client 合同修订和两仓协作。通过的默认 Client 门禁运行于 PREPARING Hub，不能代替 ACTIVE Client topology 验收。真实 native Runtime、Android、双物理机和公网 HTTPS 本轮 **NOT_RUN**。
+> **2026-09-28 当前 M1 后端矩阵 PASS。** `client-hub-v1.4` 保持 encrypted Client wire v1，Hub schema v36、catalog 36 项操作。`topology.snapshot` 有界投影已认证 Owner 自有或其 Endpoint 当前登记的 Network 卡与 Network-only Endpoint；`topology.apply` 的 `group.create` action 在 ACTIVE 明确 `network_id` 并由当前 Owner/设备和同网父 Group Guard 审核。`network.key_manifest/grant/status` 三项 Owner scoped RPC 让 Node 公布独立候选后由 Owner 签当前 manifest；它们不暴露 peer 私钥，不替 Node 发送消息。catalog/OpenAPI/wire/合成公开签名向量和真实加密 HTTP 定向测试同批维护；capability 仅说明实现可用，设备会话、Owner 签名与当前 Guard 才决定授权。冻结源码 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 的全 Go/vet/聚焦 race、合同/八项 Python 与两套独立 disposable Docker 门禁均 PASS，见[当前状态](architecture-v2-status.md)和[后端验证矩阵](network-m1-validation.md)。独立 Android 仓库未改，v1.4 Android、真实 native Runtime、双物理 Node 与公网 HTTPS 均 **NOT_RUN**；本轮止于 M1 后端，M2 尚未开始。
+
+> **历史 2026-09-28 M1 ACTIVE 权限迁移有界检查点 PASS：** 当时全 Go/vet、聚焦 race、合同检查与两套独立 disposable Docker 门禁通过，见 [当时状态](architecture-v2-status.md) 和 [验证矩阵](network-m1-validation.md)。该候选仍为 `client-hub-v1.3`、33 项操作、wire v1、schema v35；当时 `group.create` 无 Network selector，在 ACTIVE Hub 被拒。旧默认 Client 门禁运行于 PREPARING Hub，不能代替当前 v1.4 ACTIVE Client 或 Android 验收。真实 native Runtime、Android、双物理机和公网 HTTPS 当时 **NOT_RUN**。
+
+### 后续独立 Android v1.4 对接提示（尚未启动）
+
+仅在取得本轮冻结 Hub 源码身份、完整 `client-hub-v1.4` 协议包及其 SHA-256 后，在独立 Client 仓库按 [wire v1](client-hub-wire-v1.md)、[OpenAPI](client-hub-v1.openapi.yaml)和 [Owner 合同](android-client-hub-contract.md)实现；先用 `python3 scripts/client-contract.py verify` 核对包，再验证加密 `session.capabilities` 对当前设备的实际授权。v1.3 的 33 项操作、Android/Monitor 证据和固定镜像继续只作历史结果，不当成 v1.4 的兼容或 PASS 证明；v1.4 候选目录有 36 项操作，wire framing 仍是 v1。
+
+对 ACTIVE Hub，从 `topology.snapshot` 的 version 2 视图选择当前 Owner 可见 Network 与 Network-only Endpoint；Network 卡最多 100、Network Endpoint 登记最多 1000，`networks_truncated`/`network_endpoints_truncated` 为真时不得将缺页当作全量空结果。通过 `topology.apply` 的 `group.create` action 显式提交 `network_id`，验证同网父 Group 与 Owner/设备当前权限；NetworkAdmin 或全局管理 bearer 均不能代替 Owner。能力目录和 `can_create_group` 只是提示，不是许可。
+
+Network-only 密封私聊的同意路径：Node 先在其受信 Network/native binding 下公布独立公钥候选；Client 调 `network.key_manifest`，逐字段核验 Hub/Network/Endpoint/Node/原生 Thread 摘要、binding epoch、公钥，并用该 Endpoint 公钥验自签证明；确认本机 Owner 身份后由 Owner 私钥签当前 manifest，以 `network.key_grant` 提交 canonical proof，`network.key_status` 观察 `active/stale`。Node 端须独立 pin 双方 Owner 公钥，不能仅信 Hub 返回的候选。用包内公开合成向量 `cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json` 验完整签名字节、摘要和篡改拒绝；该向量不可用于部署。撤权、换 key、binding/登记 revision 改变需重新同意。Client 不持有 Node peer 私钥，也不代 Node 发布候选或发送正文；Network directory 与 direct SEND/ASK/REPLY 分别按当前 grant 验权，不要求伪 Group。
+
+后续验收需单列 Android v1.4 的真实加密 HTTP、错误与响应丢失恢复、Owner 跨 Network 可见性及 key consent 的正反例；真实 native Runtime、双物理 Node 与公网 HTTPS 另列 **NOT_RUN** 直到实测。此提示只移交合同与验收边界，不启动 Client 实施。
 
 > 2026-09-27: frozen v1.3 artifact and disposable TCP gate **PASS**; see the
 > [frozen validation record](client-hub-v13-validation.md). Clean source
@@ -22,8 +34,8 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 > Node, and public HTTPS remain **NOT_RUN**. Network M1 started from clean `dev` /
 > `0cda61460757246789970782584b1e904173e653`. The bounded Network foundation
 > checkpoint at `b0081a0` passed separate disposable Network and default Client
-> Docker gates; `f9d3c7e` only fixed a stale migration test assertion. Overall M1
-> remains **NOT_COMPLETE**; see the [validation matrix](network-m1-validation.md)
+> Docker gates; `f9d3c7e` only fixed a stale migration test assertion. At that
+> historical point M1 remained **NOT_COMPLETE**; see the [validation matrix](network-m1-validation.md)
 > and [Network contract](network-m1-contract.md). Frozen v1.3 `group.create` has no
 > Network selector and is rejected on an ACTIVE Hub. The passing default PREPARING
 > Client gate is not an ACTIVE topology test. A Network-only Endpoint without a
@@ -37,7 +49,7 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 ### 2026-09-27 Monitor v1.3 冻结前候选状态快照
 
-当前共享开发树中的候选目录为 `client-hub-v1.3`，33 项操作，catalog SHA-256
+当时共享开发树中的候选目录为 `client-hub-v1.3`，33 项操作，catalog SHA-256
 `808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`。
 `python3 scripts/client-contract.py check` 和七项合同/恢复 Python 测试通过。
 四项新增 RPC 为 `monitor.broadcast_prepare/confirm/status/recover`；它们通过

@@ -4,7 +4,7 @@
 >
 > **面向用户：自主个人 AI 管家。面向 Agent：跨运行时、跨机器、可持久化的协作与组织底座。**
 >
-> 用户通过面板组织可嵌套 Group 和授权通信连线；同一 Thread 可加入多个 Group，Monitor 可选。Control 管理系统并服务用户，但不成为普通 Agent 消息的中转人。
+> 用户通过 Hub 附带的认证面板，在可缩放的无限画布上框选 Thread 建 Group、拖拽分组、画授权通信连线并指定可选 Monitor；同一 Thread 可被多个 Group 引用而不复制原生会话。Control 管理系统并服务用户，但不成为普通 Agent 消息的中转人。
 
 **文档版本：Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport**
 **修订日期：2026-09-27**
@@ -111,7 +111,7 @@
 
 **升级组织模型，不等于把 CICADA 降级成只有消息和 Group 的基础库。**
 
-架构 v2.3 将 Network 定为 Group 之上的租户与授权边界，并为 Group 增加拟议的持久 Journal 与 Discussion 空间；这不改变物理 Node/Hub/Client 或逻辑 User/Control/Worker/Monitor 四类参与者。Network M1 正在实施，尚未通过验收；后续 M2–M5 仍为目标。当前未发布产品版本为 `0.1.0-dev`，计划公开产品版本使用 `0.1.x`；客户端 wire version 1 与已冻结的 v1.3 合同不变。
+架构 v2.3 将 Network 定为 Group 之上的租户与授权边界，并为 Group 增加拟议的持久 Journal 与 Discussion 空间；这不改变物理 Node/Hub/Client 或逻辑 User/Control/Worker/Monitor 四类参与者。M1–M5 的当前实现与验收状态见 [架构状态](docs/architecture-v2-status.md)；软件版本、Client wire 与合同修订分别见 [发布状态](docs/status.md)和[Client 开发边界](docs/client-hub-development.md)，不由本规范的示例或历史记录推定。
 
 任意已授权 Thread 对之间默认通过 HubRelay 传递密文。只有两个目标 Thread 位于同一物理宿主机、同一 Codex 账号，且 Node 能调用可用的原生 API 精确触达目标 Thread 时，才允许用本机 direct transport 替代 HubRelay；这仍需先解析唯一目标并独立通过当前 Join、Network/Group/Link 与 SessionBinding Guard。相同 Hub、Network、Node 标签、工作区或机器地址都不足以启用 direct transport。模型会话能看见某个 TUI 工具不表示 Go Node 可以独立调用它；通用 TUI 直连适配器尚未实现。在该 API 可用性经过验收前保持 HubRelay 默认。显式 Join 仍是必要条件，不能把账号下所有 Thread 自动暴露给 Node。现有同 Node sealed 路径已将正文留在 Node 本地账本和 native queue，Hub 只参与授权 metadata 检查；其本地写入成功不等于 Thread 已消费或冷唤醒。
 
@@ -144,6 +144,8 @@
 已有 Thread 可以后续绑定 Worker；一个只用于咨询的 Group 可以后续服务多个 Goal；Control 创建的 Worker 可以被用户直接打开原生会话。转换必须显式记录所有权、角色、工作范围和自动化权限，不得偷偷改变原生会话的控制权。
 
 用户退出 Client 不应终止授权范围内的工作。用户明确暂停或撤销授权，则必须产生可执行的限制，而不是仅在聊天记录中写一句“暂停了”。
+
+产品界面先让基础操作简单，再逐步呈现复杂权限与协作能力。Thread/Endpoint、Network 登记、Group、角色和连线保持独立对象与职责；多处出现同一 Endpoint 只是引用。Hub 面板、Android Client、MCP 与 CLI 组合相同的小型受权原语，返回一致的类型化结果、错误和版本；公开 capability 只说明功能可用，不能替代设备、Owner 与当前服务端 Guard 授权。实现仍以一个轻量 Go Hub/Node binary 和可选 Docker 为主，不为“积木式体验”预建插件框架或微服务。
 
 ### 1.5 非目标
 
@@ -261,7 +263,7 @@ Agent identity continuity ≠ Native context continuity
 | INV-28 | 对加密、监控覆盖率、跨运行时兼容性和真实测试的宣传不得超过证据。 |
 | INV-29 | 既有可用能力优先迁移和复用，不为追求架构外形而无证据地推倒重写。 |
 | INV-30 | 用户注意力是首要产品指标；自治应减少干扰，而不是制造通知和协作风暴。 |
-| INV-31 | 同一 Node 的 Endpoint 消息不经中心 Relay；跨 Node 或跨用户的单条消息最多经过一个双方共同连接的 Hub Relay。 |
+| INV-31 | 已授权 Thread 对默认经唯一共同 Hub Relay 传密文；仅同物理宿主、同 Codex 账号且 Node 可调用精确目标的原生 API 时，本机 direct 路径才零中心 Relay。相同 Node 标签不足以改变路径。 |
 | INV-32 | Hub 的 Control、Directory、Relay、数据库和反向代理均不得持有普通 peer 消息的解密私钥或获取正文；实际旧路径例外必须明确标为兼容缺口。 |
 | INV-33 | Network 是私有租户/授权范围，不是部署实体、全局目录或第五类参与者；一个 Hub 可承载多个 Network，每个 Network 只有一个权威 Hub。 |
 | INV-34 | 每个 Group 恰属一个 Network；嵌套只允许在同一 Network 内，父子关系不继承成员、目录、消息、任务、密钥或权限。 |
@@ -312,7 +314,7 @@ flowchart TB
     GO -. cross-cutting .-> RT
 ```
 
-图中的双向连线表示**经用户授权的 Endpoint 通信关系**，不是物理 TCP 点对点。连线可以跨 Group，也可以连向另一个用户已批准的 Endpoint；Group 嵌套只组织视图，不自动继承明文权限。同 Node 使用本地投递，跨 Node 最多经过一个双方共同连接的 Hub Relay。Control 虚线只表示管理关系。
+图中的双向连线表示**经用户授权的 Endpoint 通信关系**，不是物理 TCP 点对点。连线可以跨 Group，也可以连向另一个用户已批准的 Endpoint；Group 嵌套只组织视图，不自动继承明文权限。默认经一个双方共同连接的 Hub Relay；只有满足本机 direct 条件时才使用零 Relay 本地路径。Control 虚线只表示管理关系。
 
 ### 4.2 六类职责与两个横切平面
 
@@ -373,8 +375,8 @@ Client -> Control API
 Native Session -> MCP Frontend -> Fabric/Coordination API
 Control -> Fabric Client -> authorized management query
 Node -> Hub Relay persistent outbound HTTPS stream; Relay returns wake hints on that stream
-Sender MCP -> local native adapter -> exact SessionBinding（同 Node，零中心 Relay）
-Node -> Hub Relay -> target Node -> exact SessionBinding（跨 Node，单 Relay）
+Sender MCP -> local native adapter -> exact SessionBinding（同宿主、同 Codex 账号且原生 API 可达时，零中心 Relay）
+Node -> Hub Relay -> target Node -> exact SessionBinding（其他已授权路径，单 Relay）
 Node -> authorized stores / Guard / Artifact APIs
 Optional GroupGateway -> Coordination + Policy（仅获授权的审阅/策略，不作默认传话）
 ```
@@ -634,12 +636,12 @@ Presence 重建可以是最终一致，但任务 claim、授权决定和 Lease �
 
 ```text
 Agent A -> MCP tools -> local Directory/Guard（按需）
-同 Node: Agent A -> sender-side local adapter -> native queue B
-跨 Node: Agent A -> Node A -> one shared Hub Relay -> Node B -> native queue B
-回复沿同一已授权连线返回，仍只使用一个 Hub Relay
+本机 direct 条件成立: Agent A -> sender-side local adapter -> native queue B
+默认: Agent A -> Node A -> one shared Hub Relay -> Node B -> native queue B
+回复沿同一已授权连线返回，并遵守所选路径
 ```
 
-Control 不理解这条消息，Monitor 不必转述这条消息，用户不必复制这条消息。同 Node 的在线快路径可以由发送方 MCP 进程在本地授权后直接调用真实 Codex `queue --thread`；离线、重启和去重仍需本机 durable inbox/outbox。跨 Node 的 Node 只主动建立到 Hub 的持久 HTTPS 连接，Relay 沿该连接发无正文 wake hint，Node 再领取密文和写回执；Relay 不主动拨入 Node。
+Control 不理解这条消息，Monitor 不必转述这条消息，用户不必复制这条消息。满足本机 direct 条件时，在线快路径才可由发送方 MCP/Node 在本地授权后调用可验证的原生 Thread API；该通用适配器仍待验收，不能把示意命令当作已实现接口。离线、重启和去重仍需本机 durable inbox/outbox。默认 HubRelay 路径上，Node 只主动建立到 Hub 的持久 HTTPS 连接，Relay 沿该连接发无正文 wake hint，Node 再领取密文和写回执；Relay 不主动拨入 Node。
 
 ### 9.2 自主不等于无边界
 
@@ -661,7 +663,7 @@ Agent 不得自行授予角色、邀请外部成员、扩大 Group 明文范围�
 
 普通工作交流按每条消息的 Group/通信连线可见性授权查询；单播只投递给被寻址者。获授权的 Thread 可以向明确选定的一个 Group 广播，用户也可以在受信 Client 发起指令，让指定 Monitor 在授权范围内形成并发送广播。广播固定 `group_id`、发送者、原始发起者、审批引用、成员快照版本、消息 ID 与每个接收者的独立 Delivery；默认不跨父/子组、不跨同一 Thread 的其他 Group。Monitor 作为实际发送者时保留“代表用户发起”的可核验来源，不能凭模型文本自称获得用户批准。
 
-广播向该 Group 在发送时有接收权的 Endpoint 扇出，每个接收者分别检查撤销和当前权限；同一 Endpoint 即使有多个相关 Membership 也只收到同一广播的一份有效投递。发送端本地加密适配器为每个授权接收者封装正文，Hub 只持有密文和必要路由。每个接收者的物理路径独立遵守同 Node 零中心 Relay、跨 Node 最多一个 Hub Relay。广播默认是 `SEND`，不要求全员回复；是否唤醒每个原生 Thread 由 Group 的通知/预算策略决定，不能把“可查”或“进入 inbox”等同“立即启动所有模型”。
+广播向该 Group 在发送时有接收权的 Endpoint 扇出，每个接收者分别检查撤销和当前权限；同一 Endpoint 即使有多个相关 Membership 也只收到同一广播的一份有效投递。发送端本地加密适配器为每个授权接收者封装正文，Hub 只持有密文和必要路由。每个接收者默认经唯一 Hub Relay；满足本机 direct 条件的路径才零中心 Relay。广播默认是 `SEND`，不要求全员回复；是否唤醒每个原生 Thread 由 Group 的通知/预算策略决定，不能把“可查”或“进入 inbox”等同“立即启动所有模型”。
 
 Monitor 可订阅获准的轻量事件，只有明确获授阅读范围时才可读正文。同一 Thread 的多组成员身份不自动把 A 组消息复制到 B 组历史。广播需有接收者数量上限、队列背压、限速和失败逐人可见状态，不能因部分成功就报告全员已收到。
 
@@ -719,12 +721,12 @@ state: ACTIVE
 ### 10.3 每条消息的物理路径
 
 ```text
-同 Node：A 的 MCP/本地适配器 -> 精确 native queue -> B       （0 个中心 Relay）
-跨 Node：A -> Node A -> 一个共同 Hub Relay -> Node B -> B    （1 个 Relay）
-跨用户：双方 Node 均主动连接选定的一个 Hub，路径同上       （1 个 Relay）
+本机 direct 条件成立：A 的 MCP/本地适配器 -> 精确 native queue -> B（0 个中心 Relay）
+默认已授权路径：A -> Node A -> 一个共同 Hub Relay -> Node B -> B（1 个 Relay）
+跨用户：仍默认共同 Hub Relay；不能只凭同机跳过身份与双方授权
 ```
 
-同 Node 的在线快路径允许发送方本地 MCP 适配器在验证目标绑定和连线授权后直接调用官方 `codex queue --thread`，不强制通过常驻 Node 进程；本地持久 outbox/inbox、去重、撤销检查及不确定注入状态仍不可省略。其他用户的 Thread 即使共用一台机器，也须满足双方身份、授权和端点加密边界。Node 只建立出站 HTTPS 持久连接；Hub Relay 沿已有连接发 wake hint，消息正文由目标 Node 领取。Hub 不必也不能依赖向 Node 建立入站连接。
+本机 direct 快路径须同时验证同物理宿主、同 Codex 账号、精确目标绑定、连线授权和可独立调用的原生 API；通用适配器仍待验收。本地持久 outbox/inbox、去重、撤销检查及不确定注入状态仍不可省略。其他用户的 Thread 即使共用一台机器，也须满足双方身份、授权和端点加密边界。默认路径中 Node 只建立出站 HTTPS 持久连接；Hub Relay 沿已有连接发 wake hint，消息正文由目标 Node 领取。Hub 不必也不能依赖向 Node 建立入站连接。
 
 每条跨节点消息只能选择一个共同可达的 Hub；不能串联“发送方 Hub → 接收方 Hub”。拥有不同 Home Hub 的用户如要通信，双方必须额外连接同一个选定 Hub，或者使用真实可达的直连路径。没有共同可达的传输就报告不可达；短暂离线则在选定 Hub 的 durable mailbox 中等待，不能把无路由说成已投递。
 
@@ -950,7 +952,7 @@ Control 的规划或汇总业务停用后，已合法加入、具备有效授权
 
 默认采用 **at-least-once 传输 + 持久去重 + 幂等业务提交**。这不是对任意模型行为或外部动作的 exactly-once 承诺。
 
-发送端应先将消息写入 durable outbox。同 Node 消息写本机授权 inbox 后直接投递原生会话，不经过中心 Relay；跨 Node 消息由唯一选定的 Hub Relay 在事务中持久化密文与投递状态，提交成功才返回持久接收回执。接收 Node 先写 durable inbox，再尝试投递原生会话。断线和重启后使用同一消息身份重发，不创建一个语义相同但 ID 全新的请求。
+发送端应先将消息写入 durable outbox。满足本机 direct 条件的消息写本机授权 inbox 后可直接投递原生会话；其余已授权消息由唯一选定的 Hub Relay 在事务中持久化密文与投递状态，提交成功才返回持久接收回执。接收 Node 先写 durable inbox，再尝试投递原生会话。断线和重启后使用同一消息身份重发，不创建一个语义相同但 ID 全新的请求。
 
 ```text
 Sender outbox commit
@@ -1652,7 +1654,9 @@ Goal -> Group -> Role/Task -> Endpoint -> Native Session
 
 ### 27.3 管理图编辑
 
-拖拽映射为类型化、带版本的操作。创建观察关系、变更代表、移动成员、绑定 Workspace 和提高预算的权限不同。UI 先展示实际影响；后台统一授权，不能依赖前端是否隐藏按钮。
+Hub 附带的 Web 面板以无限画布呈现当前 Hub/Network 中获准可见的 Endpoint、Group 和连线。框选建立 Group、拖拽调整分组、画线请求通信、指定 Monitor 应当像组合积木一样直观；多 Client 连接同一 Hub 时各自保持认证、分权和明确的当前 Hub/Network 选择。画布坐标和视觉包含关系只是布局，既不创建 Membership，也不继承历史、密钥或发送权。同一 Endpoint 在多个 Group 的图形是对同一原 Thread 的引用，不克隆 SessionBinding 或 writer。
+
+每个手势须转成类型化、带版本且可审查的 Control 管理操作。创建观察关系、变更代表、移动成员、绑定 Workspace 和提高预算的权限不同；连线必须显示准确的通信范围，跨用户连线按双方各自 Owner 的授权办理。UI 先展示实际影响，后台统一 Guard，不能依赖前端是否隐藏按钮。Hub/面板不能因此持有 Node peer 私钥或替 Owner 生成批准证明；普通 peer 正文仍经 Node E2EE 与授权 Relay 路径，而非面板万能管理 API。不同 Hub 的 Network 如需建立同一通信关系，必须让双方显式选择共同权威 Hub，不能暗中多跳或复制身份。
 
 修改共享权限时明确显示谁新增可读范围，不能把“移动一个方框”悄悄变成分享全部项目文件。
 
@@ -2115,7 +2119,7 @@ Monitor 的业务观察覆盖与 Guard 的执行拦截覆盖分别报告，不�
 | ID | 测试 | 必须观察到的结果 |
 |---|---|---|
 | V35 | A 直连异组 B | 无有效连线时拒绝；双方授权后允许直达，旧 API 不能绕过或另行扩大范围 |
-| V36 | 合法跨组/跨用户 Ask | 按选定连线直达原生 B；同 Node 零 Hub Relay，跨 Node 最多一个 Hub Relay，路径与 actor 可审计 |
+| V36 | 合法跨组/跨用户 Ask | 按选定连线抵达原生 B；默认一个 Hub Relay，仅满足本机 direct 条件时零 Relay，路径与 actor 可审计 |
 | V37 | 对方仅接受请求尚未完成 | 本地显示 ACCEPTED，不提前完成 Task/Goal |
 | V38 | 可选 Monitor 离线 | 普通授权直连继续；明确要求审阅的请求等待，组内仍可工作 |
 | V39 | 可选审阅者故障切换/双活 | 要求审阅的同一请求仅由有效 owner 审阅；无审阅策略的连线不受影响 |
@@ -2161,12 +2165,12 @@ Monitor 的业务观察覆盖与 Guard 的执行拦截覆盖分别报告，不�
 |---|---|---|
 | V65 | 同一真实 Thread 加入两个 Group 并分别 Leave | Endpoint/native Session ID 不变；退出其中一组不撤销另一组权限；敏感组限制可拒绝共享会话 |
 | V66 | 面板嵌套 Group、重复拖放、形成环 | 版本化关系持久、幂等；父子不继承明文访问；环被拒绝 |
-| V67 | 同 Node 两 Thread 互问 | 真实本地 Codex queue/原会话回复；Hub Relay 业务调用计数为零；本地重启后消息可恢复 |
+| V67 | 同物理宿主、同 Codex 账号且原生 API 可达的两 Thread 互问 | 真实原生目标会话回复；Hub Relay 业务调用计数为零；本地重启后消息可恢复；通用适配器须另验收 |
 | V68 | Docker 中 Node A/B 网络互不可达但均可出站连常驻 Hub | 双向 Ask/Reply 经且仅经该 Hub Relay；Relay 无入站 Node 连接、无消息明文 |
 | V69 | 两用户、各有 Node/Thread，连接选定单 Hub | 双方批准窄范围连线才可通信；撤销与异组枚举受阻；不串联两个 Hub |
 | V70 | 多组 Thread 收到两个同名目标或不同 scope 请求 | 解析与发送带明确 Group/连线身份；歧义拒绝，模型不能自填 group 换权 |
 | V71 | 断开 SSE/Hub/Node 并恢复 | durable 队列保留；重连立即对账、低频兜底；重复 wake 不重复原生高风险注入 |
-| V72 | 已授权 Thread 在 Group A 广播，含本地及远端成员 | 每个有效接收者恰有一个逻辑 Delivery；本机零 Hub Relay、远端一个 Hub Relay；父/子组和 Thread 的 Group B 不自动收到 |
+| V72 | 已授权 Thread 在 Group A 广播，含本地及远端成员 | 每个有效接收者恰有一个逻辑 Delivery；默认一个 Hub Relay，仅满足本机 direct 条件的收件路径零 Relay；父/子组和 Thread 的 Group B 不自动收到 |
 | V73 | 用户通过 Monitor 发起广播 | 真实用户发起/批准记录与 Monitor 发送身份分离；伪造用户批准被拒；成员撤销、单接收者失败和限额均逐人可见 |
 | V74 | 同一 Hub 托管两个 Network | 跨 Network 的读取、搜索、路由和写入默认拒绝；每个 Group 只属于一个 Network |
 | V75 | Network 普通成员访问目录、私聊和 Task offer | 仅各自明确授权的 Network action 可用；无需虚构共同 Group；不能读取私有 Group 或历史 |
@@ -2293,7 +2297,7 @@ Worker/Monitor ID 和观察关系尽量保留，角色绑定到 Principal/Group 
 
 交付：嵌套 Group 关系、Endpoint-Group 多对多加入、CommunicationLink、双端授权与版本化撤销、Group/连线范围的路由和密钥、来源保留、跨组及跨用户负面测试。旧代表请求只读迁移与退役计划独立记录。
 
-退出条件：A1 与 B1 在授权连线上直接完成原生 Ask/Reply；未授权直连被拒；同 Thread 多 Group 身份稳定且范围不混淆；Monitor 缺席不阻止普通直连；同 Node 零中心 Relay、跨 Node 至多一个盲 Hub Relay；收到请求不被标成任务完成。
+退出条件：A1 与 B1 在授权连线上完成原生 Ask/Reply；未授权路由被拒；同 Thread 多 Group 身份稳定且范围不混淆；Monitor 缺席不阻止普通通信；默认唯一盲 Hub Relay，满足本机 direct 条件时零中心 Relay；收到请求不被标成任务完成。
 
 v2-A 至 v2-C 是既有升级的基础闭环；它们的目标与退出条件继续保留，不把本轮新增的 M1–M5 规划误认为这些基础能力全部完成。
 
@@ -2325,7 +2329,7 @@ Network 是 Hub 内的逻辑 tenant 与授权 scope，不新增部署实体或 U
 
 - **M1 — Network identity, Guard and migration:** 同一现有 Hub 上至少两个 Network；NetworkMembership、单 Network Group 绑定、受限 NetworkAdmin grants、邀请/显式 Join、Thread owner 确认、最小权限目录/EndpointCard 和少量清晰 presets；迁移 dry-run；跨租户读写、昵称歧义、撤权、旧 API 绕过和管理员越权须拒绝。M1 不含多 Hub 路由或持久协作空间。
 - **M2 — 加密 Group Journal 与 Discussion:** 授权的 Journal append/list/get、Discussion topic/reply/list/get，可信生产者、稳定幂等、有限游标分页、追加式更正、独立 Evidence ACL、读者快照、历史 grant 与保留行为。先选定经审查的 NIST 密封和读者密钥方案；证明 Hub 仅存密文，新成员默认不能读加入前历史，既有成员可在授权期内补读，撤权后的新内容不泄露。正文、扇出、分页、保留和提示队列要有明确上限。
-- **M3 — 授权路由与轻量同步:** 在现有即时消息中显式引用选定 Journal/topic，连接获准的 Network 私聊、Task offer 与逐收件者广播；复用 Node→Hub 出站长连接传合并的 Journal/Discussion 游标提示，Endpoint 分页拉取并维护本地未读。提示不推正文或完整成员表，不默认唤醒模型；即时消息继续遵守其原有密文投递语义。同 Node 仍零 Hub Relay，跨 Node 至多一个盲 Hub Relay。
+- **M3 — 授权路由与轻量同步:** 在现有即时消息中显式引用选定 Journal/topic，连接获准的 Network 私聊、Task offer 与逐收件者广播；复用 Node→Hub 出站长连接传合并的 Journal/Discussion 游标提示，Endpoint 分页拉取并维护本地未读。提示不推正文或完整成员表，不默认唤醒模型；即时消息继续遵守其原有密文投递语义：默认唯一盲 Hub Relay，仅满足本机 direct 条件时零 Relay。
 - **M4 — 委托再分组:** Monitor 先提出建议；仅在精确、可撤销的 Network/Group/操作/期限委托下按拓扑版本 CAS 执行并审计。不得自授权、扩大读者、自动复制旧历史/key、迁移 Thread 上下文或本地 writer；涉及读者或历史扩权另走有权用户审批。
 - **M5 — 多 Hub Node 与 Client 互操作:** 各 Hub 的 Endpoint registration、Node credential、订阅、序号/重放状态独立，Node 对同一 native Thread 维持唯一本地 writer owner/串行队列；Client 另有版本化合同与每 Hub 独立 identity pin、设备密钥、session/replay 状态，UI 明确 active Hub、Network 与目标。不得有 Hub-to-Hub 转发或公开的全局 Thread ID；Client 仓库 Owner 单独实现，不回填冻结的 v1.3。
 
@@ -2461,7 +2465,7 @@ Group、消息、租约、任务和管理层均有相关先例。CICADA 的价�
 | ADR-14 | 保留现有 Go 与加密能力 | 减少无关重写和安全回归；通过渐进迁移重构边界 |
 | ADR-15 | E2EE 明确实际解密终点 | 避免把存储加密、链路加密和终端加密混称 |
 | ADR-16 | 公开来源只支持其实际说明范围 | 不以 README 或外部规模替代本项目验证 |
-| ADR-17 | A2A 后置，显式 CommunicationLink 属于基础能力 | 先证明本地零 Relay、远端单 Relay 和跨组直达，再扩展互操作 |
+| ADR-17 | A2A 后置，显式 CommunicationLink 属于基础能力 | 先证明默认单 Relay、满足本机 direct 条件时零 Relay，以及跨组授权路由，再扩展互操作 |
 | ADR-19 | 单个公共 Cicada Hub 组合部署 Control/Directory/Relay/面板 | Node 只主动连接；逻辑职责独立；Hub 不持有 peer 解密材料 |
 | ADR-18 | 成功以用户价值和实测证据衡量 | 不以 Agent 数量、Token 消耗和漂亮图替代可用性 |
 
@@ -2541,7 +2545,7 @@ Group A/Child: 嵌套子组；同一个 A1 Thread 同时加入 Group A 和 Child
 Unjoined native session U
 
 Nodes 只可主动连接唯一共同 Hub；Node-1 与 Node-2/3 网络相互隔离
-同 Node A1↔A2 的本机路径不得调用 Hub Relay
+满足本机 direct 条件的 A1↔A2 路径不得调用 Hub Relay；其余默认走唯一共同 Hub Relay
 Alice↔Bob 的连线需双方用户授权，密文由 Endpoint 本地处理
 Control business: 可单独禁用
 Directory / Relay / State / Authorization: 持续运行
@@ -2559,7 +2563,7 @@ Docker 验收需要实际常驻 Hub、真实出站流、离线/重连、重复�
 
 A1 的同一个真实 Thread 加入两个 Group，保持相同 native Session 和 Endpoint ID；两条 Group 加入关系分别授权、撤销和显示。用户在面板把 A1 与异组 B1 建立限定范围的通信连线。A1 沿该连线直接 Ask B1，B1 在原生会话产生有来源的结果，回复回到 A1 的原始会话，不经过 MA/MB。删除连线后再次直接发送必须被拒绝；未被授权的其他 B 组成员仍不可枚举。
 
-同 Node 演示需证明没有 Hub Relay 业务调用；跨 Node 演示需证明只有一个共同 Hub Relay，双方 Node 均主动连接，Hub 不持有正文密钥。可选 Monitor 审阅单独测试，不得拿旧版 MA→MB 演示冒充本路径。真实多机、跨用户和后量子端点加密分别给出证据，未运行则标记缺口。
+本机 direct 演示须先证明同物理宿主、同 Codex 账号及可调用的原生目标 API，再证明无 Hub Relay 业务调用；默认 HubRelay 演示须证明只有一个共同 Hub，双方 Node 均主动连接，Hub 不持有正文密钥。可选 Monitor 审阅单独测试，不得拿旧版 MA→MB 演示冒充本路径。真实多机、跨用户和后量子端点加密分别给出证据，未运行则标记缺口。
 
 ### 39.4 演示 G3：Control 不在通信关键路径
 
@@ -2693,7 +2697,7 @@ CICADA 的底层可以复杂，但用户体验应该简单：已有会话可以�
  -> Control 管理事情、资源与组织
  -> 用户管理嵌套 Group、同 Thread 多组 Membership 与授权连线
  -> Agent 沿连线直接协作；Monitor 按需观察或审阅
- -> Fabric 本地零中心 Relay、跨节点最多一个盲 Hub Relay
+ -> Fabric 默认唯一盲 Hub Relay；满足本机 direct 条件时零中心 Relay
  -> 执行器与 Guard 落实真实权限与资源约束
  -> Evidence 支撑结果，持久状态支撑恢复
  -> Control 向用户给出准确、必要的汇报

@@ -1172,6 +1172,13 @@ func readJSON(request *http.Request, target any) error {
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return err
+		}
+		return errors.New("request body must contain exactly one JSON value")
+	}
 	return nil
 }
 

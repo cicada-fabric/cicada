@@ -250,7 +250,7 @@ AND NOT EXISTS (
     AND current_binding.endpoint_id = fabric_endpoints.id
     AND current_binding.status IN ('active', 'leased', 'online', 'ready', 'acquired')
     AND current_binding.lease_owner <> ''
-    AND current_binding.lease_expires_at > ?
+    AND current_binding.lease_expires_at<>'' AND cicada_network_expiry_allows(current_binding.lease_expires_at, ?)=1
 )`
 
 func (s *Store) MarkStaleEndpoints(cutoff string) ([]string, error) {

@@ -20,31 +20,31 @@ func (s *Service) RenewResourceLease(actor Actor, id string, epoch int64, ttlSec
 	if _, err := s.resourceLeaseForActor(actor, id, "task.claim"); err != nil {
 		return nil, err
 	}
-	lease, err := s.store.RenewResourceLease(id, epoch, actor.PrincipalID, ttlSeconds)
+	lease, err := s.store.RenewResourceLeaseForActor(nativeActorScope(actor), id, epoch, ttlSeconds)
 	if errors.Is(err, store.ErrResourceStaleEpoch) || errors.Is(err, store.ErrResourceLeaseExpired) {
 		return nil, ErrConflict
 	}
-	return lease, err
+	return lease, mapRelayError(err)
 }
 
 func (s *Service) QuarantineResourceLease(actor Actor, id string, epoch int64) (*store.ResourceLease, error) {
 	if _, err := s.resourceLeaseForActor(actor, id, "task.claim"); err != nil {
 		return nil, err
 	}
-	lease, err := s.store.QuarantineResourceLease(id, epoch, actor.PrincipalID)
+	lease, err := s.store.QuarantineResourceLeaseForActor(nativeActorScope(actor), id, epoch)
 	if errors.Is(err, store.ErrResourceStaleEpoch) {
 		return nil, ErrConflict
 	}
-	return lease, err
+	return lease, mapRelayError(err)
 }
 
 func (s *Service) WriteManagedBlob(actor Actor, id string, epoch int64, body []byte) (string, error) {
 	if _, err := s.resourceLeaseForActor(actor, id, "resource.execute"); err != nil {
 		return "", err
 	}
-	digest, err := s.store.WriteManagedBlob(id, epoch, actor.PrincipalID, body)
+	digest, err := s.store.WriteManagedBlobForActor(nativeActorScope(actor), id, epoch, body)
 	if errors.Is(err, store.ErrResourceStaleEpoch) || errors.Is(err, store.ErrResourceLeaseExpired) {
 		return "", ErrConflict
 	}
-	return digest, err
+	return digest, mapRelayError(err)
 }

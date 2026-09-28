@@ -29,9 +29,13 @@ func (h *Handler) ArtifactV2(response http.ResponseWriter, request *http.Request
 		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
 		return
 	}
-	actor, err := h.fabricService.Authenticate(token)
+	actor, err := h.fabricService.AuthenticateForGroup(token, request.Header.Get("Cicada-Group-Scope"))
 	if err != nil {
-		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
+		if errors.Is(err, fabricpkg.ErrUnauthenticated) {
+			writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
+		} else {
+			artifactV2Error(response, err)
+		}
 		return
 	}
 	remainder, matched := artifactV2Remainder(request.URL.Path)

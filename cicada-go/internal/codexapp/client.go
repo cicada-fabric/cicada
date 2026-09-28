@@ -180,7 +180,7 @@ func (c *Client) Request(ctx context.Context, method string, params any) (map[st
 		if message == nil {
 			continue
 		}
-		if responseID, ok := numberAsInt64(message["id"]); ok && responseID == id {
+		if responseID, ok := numberAsInt64(message["id"]); ok && responseID == id && message["method"] == nil {
 			if _, exists := message["error"]; exists {
 				return nil, fmt.Errorf("codex %s returned an error", method)
 			}

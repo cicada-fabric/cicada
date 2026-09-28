@@ -433,6 +433,8 @@ func (f *machineSealedReceiveFixture) serverForNode(t *testing.T, nodeID, nodeTo
 		case request.URL.Path == "/v2/relay/nodes/"+nodeID+"/claim":
 			response.Header().Set("Content-Type", "application/json")
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case request.URL.Path == "/v2/fabric/node/networks/direct/claim":
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case request.URL.Path == "/v2/relay/nodes/"+nodeID+"/receipts":
 			var input fabric.NodeReceiptInput
 			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
@@ -1167,6 +1169,8 @@ func TestMachineSealedReceiveRejectsStaleAttemptBeforeNativeQueue(t *testing.T) 
 			}
 			response.WriteHeader(http.StatusNotFound)
 		case request.URL.Path == "/v2/relay/nodes/"+fixture.targetNodeID+"/claim":
+			_, _ = response.Write([]byte(`{"deliveries":[]}`))
+		case request.URL.Path == "/v2/fabric/node/networks/direct/claim":
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
 		case request.URL.Path == "/v2/relay/nodes/"+fixture.targetNodeID+"/receipts":
 			var input fabric.NodeReceiptInput

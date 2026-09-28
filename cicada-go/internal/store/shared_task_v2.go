@@ -363,6 +363,15 @@ func (s *Store) ReadySharedTask(id string, expectedRevision int64, actor string)
 }
 
 func (s *Store) ClaimSharedTask(id string, expectedRevision int64, principalID, endpointID, key string, leaseSeconds int) (*SharedTask, error) {
+	return s.claimSharedTask(id, expectedRevision, principalID, endpointID, key, leaseSeconds, nil)
+}
+
+func (s *Store) ClaimSharedTaskForActor(scope NativeActorScope, id string, expectedRevision int64, key string, leaseSeconds int) (*SharedTask, error) {
+	return s.claimSharedTask(id, expectedRevision, scope.PrincipalID, scope.EndpointID, key, leaseSeconds, &scope)
+}
+
+func (s *Store) claimSharedTask(id string, expectedRevision int64, principalID, endpointID, key string,
+	leaseSeconds int, scope *NativeActorScope) (*SharedTask, error) {
 	if principalID == "" || endpointID == "" || strings.TrimSpace(key) == "" {
 		return nil, errors.New("claim actor and idempotency key are required")
 	}
@@ -386,7 +395,7 @@ func (s *Store) ClaimSharedTask(id string, expectedRevision int64, principalID, 
 	if err != nil {
 		return nil, err
 	}
-	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, principalID, endpointID, task.GroupID, "task.claim"); err != nil {
 		return nil, err
 	}
 	if task.ClaimKey == key && task.OwnerPrincipalID == principalID && task.OwnerEndpointID == endpointID && task.Status == SharedTaskClaimed && sharedTaskLeaseActive(task.LeaseExpiresAt) {
@@ -429,6 +438,16 @@ func (s *Store) ClaimSharedTask(id string, expectedRevision int64, principalID, 
 // epoch immediately. A paused native session cannot later submit an
 // authoritative result under the old epoch, even before another claim.
 func (s *Store) ReleaseSharedTaskClaim(id string, expectedRevision, ownerEpoch int64, principalID, endpointID string) (*SharedTask, error) {
+	return s.releaseSharedTaskClaim(id, expectedRevision, ownerEpoch, principalID, endpointID, nil)
+}
+
+func (s *Store) ReleaseSharedTaskClaimForActor(scope NativeActorScope, id string,
+	expectedRevision, ownerEpoch int64) (*SharedTask, error) {
+	return s.releaseSharedTaskClaim(id, expectedRevision, ownerEpoch, scope.PrincipalID, scope.EndpointID, &scope)
+}
+
+func (s *Store) releaseSharedTaskClaim(id string, expectedRevision, ownerEpoch int64,
+	principalID, endpointID string, scope *NativeActorScope) (*SharedTask, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.Begin()
@@ -443,7 +462,7 @@ func (s *Store) ReleaseSharedTaskClaim(id string, expectedRevision, ownerEpoch i
 	if err != nil {
 		return nil, err
 	}
-	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, principalID, endpointID, task.GroupID, "task.claim"); err != nil {
 		return nil, err
 	}
 	if task.OwnerPrincipalID != principalID || task.OwnerEndpointID != endpointID || task.OwnerEpoch != ownerEpoch {
@@ -479,6 +498,16 @@ func (s *Store) ReleaseSharedTaskClaim(id string, expectedRevision, ownerEpoch i
 }
 
 func (s *Store) RenewSharedTaskClaim(id string, expectedRevision, ownerEpoch int64, principalID, endpointID string, leaseSeconds int) (*SharedTask, error) {
+	return s.renewSharedTaskClaim(id, expectedRevision, ownerEpoch, principalID, endpointID, leaseSeconds, nil)
+}
+
+func (s *Store) RenewSharedTaskClaimForActor(scope NativeActorScope, id string,
+	expectedRevision, ownerEpoch int64, leaseSeconds int) (*SharedTask, error) {
+	return s.renewSharedTaskClaim(id, expectedRevision, ownerEpoch, scope.PrincipalID, scope.EndpointID, leaseSeconds, &scope)
+}
+
+func (s *Store) renewSharedTaskClaim(id string, expectedRevision, ownerEpoch int64,
+	principalID, endpointID string, leaseSeconds int, scope *NativeActorScope) (*SharedTask, error) {
 	if leaseSeconds <= 0 {
 		leaseSeconds = 300
 	}
@@ -499,7 +528,7 @@ func (s *Store) RenewSharedTaskClaim(id string, expectedRevision, ownerEpoch int
 	if err != nil {
 		return nil, err
 	}
-	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, principalID, endpointID, task.GroupID, "task.claim"); err != nil {
 		return nil, err
 	}
 	if task.OwnerPrincipalID != principalID || task.OwnerEndpointID != endpointID || task.OwnerEpoch != ownerEpoch || !sharedTaskLeaseActive(task.LeaseExpiresAt) {
@@ -573,6 +602,16 @@ func (s *Store) ReconcileExpiredSharedTaskClaim(id string, expectedRevision int6
 // SubmitSharedTaskResult retains a stale owner's answer as non-authoritative
 // evidence. It never changes current task state or accepted result.
 func (s *Store) SubmitSharedTaskResult(taskID, principalID, endpointID string, ownerEpoch, expectedRevision int64, summary string, evidence []string) (*SharedTaskResult, error) {
+	return s.submitSharedTaskResult(taskID, principalID, endpointID, ownerEpoch, expectedRevision, summary, evidence, nil)
+}
+
+func (s *Store) SubmitSharedTaskResultForActor(scope NativeActorScope, taskID string,
+	ownerEpoch, expectedRevision int64, summary string, evidence []string) (*SharedTaskResult, error) {
+	return s.submitSharedTaskResult(taskID, scope.PrincipalID, scope.EndpointID, ownerEpoch, expectedRevision, summary, evidence, &scope)
+}
+
+func (s *Store) submitSharedTaskResult(taskID, principalID, endpointID string, ownerEpoch, expectedRevision int64,
+	summary string, evidence []string, scope *NativeActorScope) (*SharedTaskResult, error) {
 	if strings.TrimSpace(summary) == "" || principalID == "" || endpointID == "" {
 		return nil, errors.New("result summary and actor are required")
 	}
@@ -597,7 +636,7 @@ func (s *Store) SubmitSharedTaskResult(taskID, principalID, endpointID string, o
 	if err != nil {
 		return nil, err
 	}
-	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, task.GroupID, time.Now().UTC()); err != nil {
+	if err := guardSharedTaskMutationActorTx(tx, scope, principalID, endpointID, task.GroupID, "task.submit"); err != nil {
 		return nil, err
 	}
 	authoritative := sharedTaskLeaseActive(task.LeaseExpiresAt) && task.Revision == expectedRevision && task.OwnerEpoch == ownerEpoch && task.OwnerPrincipalID == principalID && task.OwnerEndpointID == endpointID &&

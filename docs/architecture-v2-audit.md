@@ -1,5 +1,15 @@
 # Architecture v2.3 当前事实审计
 
+## 2026-09-28 M1 Network backend 验收通过
+
+当前 v36 backend 候选在 `HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2`、`dirty=true`、源码指纹 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 上通过全 25 个 Go 包测试、vet、gofmt、16 项精准 race，以及隔离的 Client 与 Network disposable Docker 门禁；门禁前后源码指纹一致。证据见 [本轮 Go 门禁](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Docker 门禁](../.cicada-data/m1-final-20260928/accepted/docker-gates.json)、[M1 代码审计](m1-code-audit.md)与 [M1 验证矩阵](network-m1-validation.md)。这是该 dirty 候选的 backend 验收，不是仅凭 HEAD 的干净构建，也不代表 Android、真实 native Runtime、物理设备或公网 HTTPS 已运行。
+
+本轮 v36 为无 Group 的 Network Endpoint 增加真实 native delivery binding、Endpoint 公钥候选、Owner 接受的 key grant、一次性 nonce 与消息路由五类账本。Network membership、目录、原生 writer、公钥授权和密封 Relay 各守其职；direct SEND/ASK/REPLY 复用原有 Relay request、inbox、attempt、receipt 状态机和 Node 本地持久 outbox/inbox，不建立影子 Group 或新常驻 worker。Group SessionBinding 与 Network access session 均不能单独充当另一种授权。跨 Network 的相同 Endpoint 与 idempotency key 在独立 scope 内处理；撤权、重新加入或真正 native writer 接管不得让旧尝试恢复。
+
+Endpoint 自证明和 Owner key grant 使用固定 canonical 签名输入；Node 在加密和解密前用本地独立固定的 Owner 公钥验证 Hub 返回的证据。Owner 预览可见原生 Thread locator，peer bundle 不返回该 locator；Node 还要比对 Owner 签名 manifest 内的 native Session digest 与本地已验证 Thread。公开向量仅含标明为 synthetic 的材料，不能用于部署。现有 Group-only native writer 与 Network-only 路由的共存、恢复、最终注入授权及真实 HTTP/Client v1.4 门禁已纳入本轮合成与 disposable HTTP 验收；真实 native Runtime、Android、物理设备和公网 HTTPS 尚未验证。
+
+本轮跨入口审计还修复两项确定问题：双向 JSON-RPC 中 server request 的数值 ID 可与 client request 碰撞，旧 stdio 与 WebSocket adapter 会把它误当 response；两种 adapter 现先按 method 区分请求/响应，fake 协议回归覆盖同 ID。Hub SQLite 含 ratchet 密钥，原默认 StateDir/DB 权限可能受 umask 022 影响向其他本机 UID 开放；Store 初始化现将专用目录收紧为 0700、DB 与已有 WAL/SHM/journal 收紧为 0600，拒绝目标 symlink，保留既有数据。原生 SessionBinding lease 与 mapped Network 授权期限均改按 RFC3339Nano 实际时间比较，坏日期拒绝；目录分页前的 SQL 期限过滤也使用同一精确判断。上述修复已纳入顶部列出的最终门禁。
+
 ## 2026-09-28 M1 ACTIVE 入口与撤权复审（有界检查点 PASS）
 
 本轮候选保持 Hub schema v35 和冻结的 Client `client-hub-v1.3` / 33 operations。Network access credential 与原生 Group SessionBinding 分离：前者只可访问当前 Network 的目录和获授邀请操作；它不能凭 `Cicada-Group-Scope`、请求体中的 Node ID 或 operator bearer 取得 Group、Node、device、approval 权限。同一原生 Thread 可分别加入 A/B，A 的续期或退出不更换 B 的 access session，也不替换 Group native writer。ACTIVE 未映射 Group 继续拒绝；Control 业务服务为 nil 时，Fabric HTTP 的合法密封 ASK/REPLY 可独立完成。

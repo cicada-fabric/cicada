@@ -139,7 +139,7 @@ func (e *RelayAdmissionError) Error() string {
 	if retrySeconds <= 0 {
 		retrySeconds = DefaultRelayAdmissionRetryAfterSec
 	}
-	return fmt.Sprintf("%s: pending %s Ask limit %d reached (%d); retry after %ds",
+	return fmt.Sprintf("%s: pending %s limit %d reached (%d); retry after %ds",
 		ErrRelayResourceExhausted, e.Scope, e.Limit, e.Pending, retrySeconds)
 }
 
@@ -264,6 +264,9 @@ type RelayMessageInput struct {
 	// Only the correlated Link reply transaction may persist a sealed Reply;
 	// the generic sealed message API must not create an orphan reverse route.
 	sealedReplyAuthorized bool
+	// Set only by the Network direct sealed Store transaction after it has
+	// checked both current Network enrollments and owner-approved Endpoint keys.
+	networkDirectAuthorized bool
 }
 
 // RelaySealedV1Route contains the clear routing envelope that accompanies an
@@ -1171,7 +1174,7 @@ func relayAcquireAdmissionGuardTx(tx *sql.Tx) error {
 }
 
 func relayPendingAskCountTx(tx *sql.Tx, scope, principalID, groupID, receiverEndpointID, currentTime string) (int, error) {
-	const pendingPredicate = `state IN (?, ?) AND (expires_at = '' OR expires_at > ?)`
+	const pendingPredicate = `state IN (?, ?) AND cicada_network_expiry_allows(expires_at, ?) = 1`
 	var query string
 	var args []any
 	switch scope {
@@ -1417,8 +1420,15 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 	if security.SenderEndpointID == "" {
 		security.SenderEndpointID = message.FromEndpointID
 	}
-	if err := networkGuardRelaySecurityTx(tx, &security, security.ReceiverGroupID, time.Now().UTC()); err != nil {
-		return nil, false, err
+	if input.networkDirectAuthorized {
+		if payloadMode != RelayPayloadModeSealedV1 || security.SenderGroupID != "" ||
+			security.ReceiverGroupID != "" || security.AuthorizationRef == "" {
+			return nil, false, ErrNetworkPermission
+		}
+	} else {
+		if err := networkGuardRelaySecurityTx(tx, &security, security.ReceiverGroupID, time.Now().UTC()); err != nil {
+			return nil, false, err
+		}
 	}
 	if payloadMode == RelayPayloadModePlaintext {
 		if err := rejectPlaintextSealedPeerTx(tx, security.SenderEndpointID, security.ReceiverEndpointID); err != nil {
@@ -1451,8 +1461,15 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 		if len(ciphertext) == 0 {
 			return nil, false, errors.New("sealed relay ciphertext is required")
 		}
-		if err := validateRelayMessageRoute(message, security); err != nil {
-			return nil, false, err
+		if !input.networkDirectAuthorized {
+			if err := validateRelayMessageRoute(message, security); err != nil {
+				return nil, false, err
+			}
+		} else if message.ID == "" || message.FromEndpointID == "" ||
+			message.ToEndpointID == "" || security.SenderPrincipalID == "" ||
+			security.ReceiverPrincipalID == "" || message.FromEndpointID != security.SenderEndpointID ||
+			message.ToEndpointID != security.ReceiverEndpointID {
+			return nil, false, ErrNetworkPermission
 		}
 		digest = relayCiphertextDigest(ciphertext)
 		if security.Digest != "" && security.Digest != digest {
@@ -1565,8 +1582,10 @@ WHERE sender_principal_id = ? AND sender_group_id = ? AND idempotency_key = ?`,
 		}
 		return nil, false, fmt.Errorf("create relay message security metadata: %w", err)
 	}
-	if err := networkCaptureRelayMessageEnrollmentTx(tx, &security); err != nil {
-		return nil, false, err
+	if !input.networkDirectAuthorized {
+		if err := networkCaptureRelayMessageEnrollmentTx(tx, &security); err != nil {
+			return nil, false, err
+		}
 	}
 	_, err = tx.Exec(`INSERT INTO relay_v2_message_payloads
 (message_id, payload_mode, ciphertext) VALUES (?, ?, ?)`, message.ID, payloadMode, ciphertext)
@@ -2390,7 +2409,7 @@ AND (e.id IS NULL OR e.migration_state != 'READY' OR EXISTS (
   JOIN groups g ON g.id = eg.group_id
   WHERE eg.endpoint_id = e.id AND eg.group_id = i.receiver_group_id
     AND eg.status = 'active' AND m.status = 'active' AND p.status = 'active'
-    AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?)))
+    AND g.state = 'ACTIVE' AND cicada_network_expiry_allows(m.expires_at, ?) = 1))
 ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, now(), input.Limit)
 	if err != nil {
 		return nil, err
@@ -2514,6 +2533,7 @@ JOIN fabric_endpoints e ON e.id = i.recipient_endpoint_id
 JOIN session_bindings sb ON sb.id = i.binding_id
 WHERE i.recipient_endpoint_id = ? AND i.state = 'READY'
 AND COALESCE((SELECT p.payload_mode FROM relay_v2_message_payloads p WHERE p.message_id = i.message_id), 'PLAINTEXT') = 'SEALED_V1'
+AND NOT EXISTS (SELECT 1 FROM network_direct_message_routes_v2 direct WHERE direct.message_id=i.message_id)
 AND NOT EXISTS (
   SELECT 1 FROM relay_v2_message_security same_group_security
   WHERE same_group_security.message_id = i.message_id
@@ -2521,7 +2541,7 @@ AND NOT EXISTS (
 AND e.migration_state = ? AND e.binding_id = i.binding_id
 AND sb.endpoint_id = e.id
 AND sb.epoch = i.binding_epoch AND sb.status IN ('active', 'leased', 'online', 'ready', 'acquired')
-AND (sb.lease_expires_at = '' OR sb.lease_expires_at > ?)
+AND sb.lease_expires_at <> '' AND cicada_network_expiry_allows(sb.lease_expires_at, ?) = 1
 AND EXISTS (
   SELECT 1 FROM endpoint_group_memberships eg
   JOIN memberships m ON m.principal_id = e.principal_id AND m.group_id = eg.group_id
@@ -2529,7 +2549,7 @@ AND EXISTS (
   JOIN groups g ON g.id = eg.group_id
   WHERE eg.endpoint_id = e.id AND eg.group_id = i.receiver_group_id
     AND eg.status = 'active' AND m.status = 'active' AND p.status = 'active'
-    AND g.state = 'ACTIVE' AND (m.expires_at = '' OR m.expires_at > ?))
+    AND g.state = 'ACTIVE' AND cicada_network_expiry_allows(m.expires_at, ?) = 1)
 ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, EndpointMigrationReady, now(), now(), input.Limit)
 	if err != nil {
 		return nil, err
@@ -2747,7 +2767,8 @@ FROM relay_v2_inbox i JOIN fabric_messages f ON f.id = i.message_id
 LEFT JOIN relay_v2_requests r ON r.request_id = f.request_id
 WHERE i.recipient_endpoint_id = ? AND i.binding_id = ? AND i.binding_epoch = ?
   AND i.state = 'READY'
-  AND (r.request_id IS NULL OR (r.state IN (?, ?) AND (r.expires_at = '' OR r.expires_at > ?)))
+  AND NOT EXISTS (SELECT 1 FROM network_direct_message_routes_v2 direct WHERE direct.message_id=i.message_id)
+  AND (r.request_id IS NULL OR (r.state IN (?, ?) AND cicada_network_expiry_allows(r.expires_at, ?) = 1))
 ORDER BY i.sequence`, endpointID, oldBindingID, oldBindingEpoch,
 		FabricRequestOpen, FabricRequestCancelRequested, now())
 	if err != nil {
@@ -2781,7 +2802,9 @@ ORDER BY i.sequence`, endpointID, oldBindingID, oldBindingEpoch,
 	// the epoch which originally sent each envelope.
 	senderUpdate, err := tx.Exec(`UPDATE relay_v2_requests SET sender_binding_id = ?, sender_binding_epoch = ?, updated_at = ?
 WHERE sender_endpoint_id = ? AND sender_binding_id = ? AND sender_binding_epoch = ?
-  AND state IN (?, ?)`, newBindingID, newBindingEpoch, timestamp, endpointID,
+  AND state IN (?, ?)
+  AND NOT EXISTS (SELECT 1 FROM network_direct_message_routes_v2 direct
+    WHERE direct.message_id=relay_v2_requests.message_id)`, newBindingID, newBindingEpoch, timestamp, endpointID,
 		oldBindingID, oldBindingEpoch, FabricRequestOpen, FabricRequestCancelRequested)
 	if err != nil {
 		return 0, err
@@ -2967,6 +2990,21 @@ WHERE recipient_endpoint_id = ? AND consumer_id = ? AND binding_id = ?`, endpoin
 // receipt or advancing inbox/cursor state.  A forged receiver, digest, epoch,
 // or attempt therefore has no state-changing path.
 func (s *Store) RecordRelayReceipt(receipt RelayReceipt) (*RelayReceipt, error) {
+	return s.recordRelayReceipt(receipt, "")
+}
+
+// RecordNetworkDirectReceipt requires the current Node credential in the same
+// write transaction that advances the shared Relay attempt/receipt state.
+func (s *Store) RecordNetworkDirectReceipt(credentialDigest string,
+	receipt RelayReceipt) (*RelayReceipt, error) {
+	if !validNodeCredentialDigest(credentialDigest) {
+		return nil, ErrRelayInvalidReceipt
+	}
+	return s.recordRelayReceipt(receipt, credentialDigest)
+}
+
+func (s *Store) recordRelayReceipt(receipt RelayReceipt,
+	credentialDigest string) (*RelayReceipt, error) {
 	receipt.AttemptID = relayString(receipt.AttemptID)
 	receipt.MessageID = relayString(receipt.MessageID)
 	receipt.Digest = relayString(receipt.Digest)
@@ -2998,6 +3036,21 @@ func (s *Store) RecordRelayReceipt(receipt RelayReceipt) (*RelayReceipt, error) 
 		return nil, ErrRelayDeliveryNotFound
 	}
 	if !relayReceiptMatchesAttempt(receipt, attempt) {
+		return nil, ErrRelayInvalidReceipt
+	}
+	direct, err := isNetworkDirectMessageTx(tx, receipt.MessageID)
+	if err != nil {
+		return nil, err
+	}
+	if direct {
+		if credentialDigest == "" {
+			return nil, ErrRelayInvalidReceipt
+		}
+		if err := networkGuardDirectReceiptTx(tx, credentialDigest, receipt,
+			time.Now().UTC()); err != nil {
+			return nil, ErrRelayStaleReceipt
+		}
+	} else if credentialDigest != "" {
 		return nil, ErrRelayInvalidReceipt
 	}
 	if existing, err := relayReceiptExistingTx(tx, receipt); err != nil {
@@ -3557,7 +3610,7 @@ func (s *Store) SweepExpiredFabricRequests(limit int) ([]FabricRequest, error) {
 	}
 	defer tx.Rollback()
 	rows, err := tx.Query(`SELECT request_id FROM relay_v2_requests
-WHERE state IN (?, ?) AND expires_at <> '' AND expires_at <= ?
+WHERE state IN (?, ?) AND expires_at <> '' AND cicada_network_expiry_allows(expires_at, ?) = 0
 ORDER BY expires_at, request_id LIMIT ?`, FabricRequestOpen, FabricRequestCancelRequested, now(), limit)
 	if err != nil {
 		return nil, err

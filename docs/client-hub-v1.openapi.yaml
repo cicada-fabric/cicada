@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.3
+  x-contract-revision: client-hub-v1.4
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -371,7 +371,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.3}
+        contract_revision: {const: client-hub-v1.4}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -549,8 +549,21 @@ components:
         monitor.broadcast_status:
           request: '#/components/schemas/MonitorBroadcastStatusRequest'
           result: '#/components/schemas/MonitorBroadcastStatusResult'
+        network.key_grant:
+          request: '#/components/schemas/NetworkKeyGrantRequest'
+          result: '#/components/schemas/NetworkKeyGrantResult'
+        network.key_manifest:
+          request: '#/components/schemas/NetworkKeyManifestRequest'
+          result: '#/components/schemas/NetworkKeyManifestResult'
+        network.key_status:
+          request: '#/components/schemas/NetworkKeyStatusRequest'
+          result: '#/components/schemas/NetworkKeyStatusResult'
       x-topology-apply-action-schemas:
+        group.create: '#/components/schemas/TopologyCreateGroupAction'
         membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+      x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'
+      x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'
+      x-topology-group-projection-schema: '#/components/schemas/ClientTopologyGroup'
       x-topology-member-projection-schema: '#/components/schemas/ClientTopologyMember'
       enum:
         - session.capabilities
@@ -578,6 +591,9 @@ components:
         - group.key_manifest
         - group.key_grant
         - group.key_status
+        - network.key_grant
+        - network.key_manifest
+        - network.key_status
         - monitor.broadcast_confirm
         - monitor.broadcast_prepare
         - monitor.broadcast_recover
@@ -594,7 +610,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.3}
+        contract_revision: {const: client-hub-v1.4}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -1124,3 +1140,198 @@ components:
           description: Current explicit message.broadcast grant configuration; Monitor role alone does not enable it.
         status: {type: string}
         version: {type: integer, minimum: 1}
+
+    TopologyCreateGroupAction:
+      type: object
+      additionalProperties: false
+      required: [kind, create_group]
+      properties:
+        kind: {const: group.create}
+        create_group:
+          $ref: '#/components/schemas/ClientTopologyCreateGroup'
+
+    ClientTopologyCreateGroup:
+      type: object
+      additionalProperties: false
+      required: [group]
+      properties:
+        group:
+          $ref: '#/components/schemas/ClientTopologyCreateGroupInput'
+        parent_group_id: {type: string}
+      description: Parent must belong to the same Network. A cross-Network parent is denied before insertion.
+
+    ClientTopologyCreateGroupInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        network_id:
+          type: string
+          description: Required when Hub Network mode is ACTIVE; the authenticated Owner must own this active Network.
+        name: {type: string, minLength: 1}
+        purpose: {type: string}
+        policy_ref: {type: string}
+        context_policy: {type: string}
+        isolation_profile: {type: string}
+        external_mode: {type: string}
+
+    ClientTopologySnapshot:
+      type: object
+      additionalProperties: false
+      required: [contract_version, owner_principal_id, captured_at, read_consistency, networks_truncated, network_endpoints_truncated, networks, groups, memberships, endpoints, links]
+      properties:
+        contract_version: {const: 2}
+        owner_principal_id: {type: string}
+        captured_at: {type: string, format: date-time}
+        read_consistency: {const: best_effort}
+        networks_truncated: {type: boolean}
+        network_endpoints_truncated: {type: boolean}
+        networks:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyNetwork'}
+        groups:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyGroup'}
+        memberships:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyMember'}
+        endpoints:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyEndpoint'}
+        links:
+          type: array
+          items: {type: object}
+
+    ClientTopologyNetwork:
+      type: object
+      additionalProperties: false
+      required: [network_id, name, state, version, can_create_group]
+      properties:
+        network_id: {type: string}
+        name: {type: string}
+        state: {type: string, enum: [ACTIVE, PAUSED]}
+        version: {type: integer, minimum: 1}
+        can_create_group:
+          type: boolean
+          description: True only for an active Network owned by this authenticated Client Owner; it is not a separate authorization token.
+
+    ClientTopologyGroup:
+      type: object
+      additionalProperties: false
+      required: [group_id, name, state, version]
+      properties:
+        group_id: {type: string}
+        network_id: {type: string}
+        parent_group_id: {type: string}
+        name: {type: string}
+        state: {type: string}
+        version: {type: integer, minimum: 1}
+      description: network_id is present for mapped Groups; PREPARING legacy unmapped Groups may omit it.
+
+    ClientTopologyEndpoint:
+      type: object
+      additionalProperties: false
+      required: [endpoint_id, name, principal_id, group_ids, network_ids, presence]
+      properties:
+        endpoint_id: {type: string}
+        name: {type: string}
+        principal_id: {type: string}
+        group_ids: {type: array, items: {type: string}}
+        network_ids: {type: array, items: {type: string}}
+        node_id: {type: string}
+        harness: {type: string}
+        native_session_id: {type: string}
+        presence: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        binding_status: {type: string}
+      description: Only this Owner's Endpoints; Network-only Endpoints may have empty group_ids and no Group binding.
+
+    NetworkKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, owner_key_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+
+    NetworkKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, signed_proof]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerNetworkDirectKeyGrant JSON bytes, signed by the Owner key.
+
+    NetworkKeyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+
+    NetworkKeyCandidate:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, principal_id, owner_id, node_id, binding_id, binding_epoch, public_identity, fingerprint, attestation, version]
+      properties:
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        fingerprint: {type: string}
+        attestation: {type: string, contentEncoding: base64}
+        version: {type: integer, minimum: 1}
+
+    NetworkKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [version, hub_id, network_id, endpoint_id, principal_id, owner_id, node_id, native_session_id, native_session_digest, binding_id, binding_epoch, membership_revision, endpoint_enrollment_revision, candidate, digest]
+      properties:
+        version: {const: 1}
+        hub_id: {type: string}
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        native_session_id: {type: string}
+        native_session_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_enrollment_revision: {type: integer, minimum: 1}
+        candidate: {$ref: '#/components/schemas/NetworkKeyCandidate'}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: Only the authenticated Endpoint Owner can preview the raw native session ID; peer bundles omit it.
+
+    NetworkKeyGrantResult:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, owner_id, owner_key_id, manifest_digest, proof_digest, nonce, state, revision, accepted_at]
+      properties:
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        nonce: {type: string}
+        state: {type: string, enum: [active, stale]}
+        revision: {type: integer, minimum: 1}
+        accepted_at: {type: string, format: date-time}
+
+    NetworkKeyStatusResult:
+      allOf:
+        - $ref: '#/components/schemas/NetworkKeyGrantResult'
+      description: The same record may report state=stale after a binding, enrollment, or candidate change.

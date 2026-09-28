@@ -142,6 +142,95 @@ func TestNetworkSignedJoinIsIndependentOfGroupAndRevocable(t *testing.T) {
 	if err != nil || rejoined.EndpointID != accepted.EndpointID || rejoined.PrincipalID != accepted.PrincipalID || rejoined.MembershipRevision <= retried.MembershipRevision || rejoined.EndpointRevision <= retried.EndpointRevision {
 		t.Fatalf("fresh consent failed to restore original identity: %#v %v", rejoined, err)
 	}
+	// A syntactically later wall-clock string in a +14 offset can already
+	// represent a past instant. Current access, discovery and renewal must
+	// evaluate that instant instead of SQLite TEXT order.
+	pastOffset := time.Now().UTC().Add(-time.Minute).In(time.FixedZone("ahead", 14*3600)).
+		Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(`UPDATE network_memberships_v2 SET expires_at=? WHERE network_id=? AND principal_id=?`,
+		pastOffset, network.ID, accepted.PrincipalID); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := s.NetworkAllows(network.ID, accepted.PrincipalID,
+		accepted.EndpointID, "directory.discover"); err != nil || allowed {
+		t.Fatalf("expired offset membership allowed=%v err=%v", allowed, err)
+	}
+	rejoinedScope := NetworkAccessScope{NetworkID: network.ID, PrincipalID: accepted.PrincipalID,
+		EndpointID: accepted.EndpointID, AccessSessionID: rejoined.AccessSessionID,
+		AccessEpoch: rejoined.AccessSessionEpoch, LeaseOwner: join.LeaseOwner,
+		MembershipID: rejoined.MembershipID, MembershipRevision: rejoined.MembershipRevision,
+		EndpointMembershipRevision: rejoined.EndpointRevision}
+	if _, err := s.ListNetworkDirectory(rejoinedScope, 10); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("expired offset membership listed directory: %v", err)
+	}
+	if _, err := s.RenewNetworkAccess(RenewNetworkAccessInput{NetworkID: network.ID,
+		EndpointID: accepted.EndpointID, OwnerID: "owner_a", NodeID: "network-node",
+		Harness: "codex", NativeSessionID: "synthetic-native-session",
+		NodeCredentialHash: credentialDigest, CredentialHash: "synthetic-late-renewal",
+		LeaseOwner:     join.LeaseOwner,
+		LeaseExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)}); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("expired offset membership renewed: %v", err)
+	}
+	if _, err := s.db.Exec(`UPDATE network_memberships_v2 SET expires_at='not-a-date'
+WHERE network_id=? AND principal_id=?`, network.ID, accepted.PrincipalID); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := s.NetworkAllows(network.ID, accepted.PrincipalID,
+		accepted.EndpointID, "directory.discover"); err != nil || allowed {
+		t.Fatalf("malformed membership expiry allowed=%v err=%v", allowed, err)
+	}
+}
+
+func TestNetworkExpiryPrecisionAndMalformedValues(t *testing.T) {
+	at := time.Date(2026, 9, 28, 3, 0, 0, 500_000_000, time.UTC)
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{"", true},
+		{"2026-09-28T03:00:00Z", false},
+		{"2026-09-28T03:00:00.6Z", true},
+		{"2026-09-28T04:00:00.6+01:00", true},
+		{"2026-09-28T04:00:00+01:00", false},
+		{"not-a-date", false},
+	} {
+		if got := networkExpiryAllows(test.value, at); got != test.want {
+			t.Fatalf("networkExpiryAllows(%q)=%t, want %t", test.value, got, test.want)
+		}
+	}
+	s, err := New(filepath.Join(t.TempDir(), "state", "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, value := range []string{"2026-09-28T03:00:00Z", "2026-09-28T03:00:00.6Z",
+		"2026-09-28T04:00:00.6+01:00", "not-a-date"} {
+		var got int
+		if err := s.db.QueryRow(`SELECT cicada_network_expiry_allows(?,?)`,
+			value, at.Format(time.RFC3339Nano)).Scan(&got); err != nil ||
+			(got == 1) != networkExpiryAllows(value, at) {
+			t.Fatalf("SQL expiry differs from Go for %q: %d %v", value, got, err)
+		}
+	}
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{"", true},
+		{"2026-09-28T03:00:00Z", true},
+		{"2026-09-28T03:00:00.6Z", false},
+		{"2026-09-28T04:00:00+01:00", true},
+		{"2026-09-28T04:00:00.6+01:00", false},
+		{"not-a-date", false},
+	} {
+		var got int
+		if err := s.db.QueryRow(`SELECT cicada_network_effective_allows(?,?)`,
+			test.value, at.Format(time.RFC3339Nano)).Scan(&got); err != nil ||
+			(got == 1) != test.want || networkEffectiveAllows(test.value, at) != test.want {
+			t.Fatalf("effective start %q: SQL=%d Go=%t want=%t err=%v", test.value,
+				got, networkEffectiveAllows(test.value, at), test.want, err)
+		}
+	}
 }
 
 func TestNetworkMigrationMappingIsVersionedAndOneWay(t *testing.T) {
