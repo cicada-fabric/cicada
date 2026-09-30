@@ -137,7 +137,7 @@ class SttAcceptanceTest {
             null
         } as Promise
 
-        speechModule().startListening(promise)
+        speechModule().startListening("permission-test-recording", promise)
 
         assertEquals("MIC_PERMISSION", rejectedCode.get())
     }

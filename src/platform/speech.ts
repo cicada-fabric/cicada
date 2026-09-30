@@ -19,7 +19,7 @@ export interface SpeechDevice {
   installModel(id: string): Promise<string>;
   removeModel(id: string): Promise<string>;
   selectModel(id: string): Promise<void>;
-  startListening(): Promise<void>;
+  startListening(sessionId: string): Promise<void>;
   stopListening(): Promise<void>;
 }
 

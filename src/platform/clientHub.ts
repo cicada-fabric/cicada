@@ -8,9 +8,53 @@ import {
   monitorStatusResultFromNative,
 } from './monitorBroadcast';
 
-export const CLIENT_HUB_V13_REVISION = 'client-hub-v1.3' as const;
-export const CLIENT_HUB_V13_CATALOG_SHA256 =
-  '808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377' as const;
+import {CLIENT_HUB_REVISION} from './clientHubContract';
+import {captureProfileMethod} from './hubProfileScope';
+export {CLIENT_HUB_REVISION, CLIENT_HUB_CATALOG_SHA256} from './clientHubContract';
+
+export interface HubProfileScope {
+  readonly profileId: string;
+  readonly selectionGeneration: number;
+}
+
+export interface HubProfileSummary {
+  profileId: string;
+  label: string;
+  pinned: boolean;
+  enrolled: boolean;
+  hubId?: string;
+  baseUrl?: string;
+  activeNetworkId?: string;
+  pendingOperationId?: string;
+  enrollmentRecoveryRequired?: boolean;
+  uncertainNeedsReconciliation?: boolean;
+  networkGrantReconciliationRequired?: boolean;
+  networkGrantUncertainOperationId?: string;
+}
+
+export interface HubProfileRegistry {
+  profiles: HubProfileSummary[];
+  activeScope: HubProfileScope;
+}
+
+export interface NetworkKeyPreviewRequest {
+  networkId: string;
+  endpointId: string;
+  ownerKeyId: string;
+}
+export interface NetworkKeyGrantRequest extends NetworkKeyPreviewRequest {
+  expectedDigest: string;
+  signedProofBase64: string;
+}
+export interface VerifiedNetworkManifest {
+  ok: boolean;
+  verified: true;
+  result: Record<string, unknown>;
+}
+export interface NetworkKeyResponse {
+  ok: boolean;
+  result?: Record<string, unknown>;
+}
 
 export type ClientRpcOperation =
   | 'session.capabilities'
@@ -39,6 +83,9 @@ export type ClientRpcOperation =
   | 'group.key_manifest'
   | 'group.key_grant'
   | 'group.key_status'
+  | 'network.key_manifest'
+  | 'network.key_grant'
+  | 'network.key_status'
   | 'link.key_manifest'
   | 'link.key_grants'
   | 'link.key_grant'
@@ -49,14 +96,15 @@ export type ClientRpcOperation =
 export type MonitorBroadcastRpcOperation = Extract<ClientRpcOperation,
   'monitor.broadcast_prepare' | 'monitor.broadcast_confirm' |
   'monitor.broadcast_recover' | 'monitor.broadcast_status'>;
-export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation, MonitorBroadcastRpcOperation>;
+export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation,
+  MonitorBroadcastRpcOperation | 'network.key_manifest' | 'network.key_grant' | 'network.key_status'>;
 
 // Link key consent remains unavailable until its separate contract is verified.
 export type ClientHubAdvertisedOperation = ClientRpcOperation;
 
 export interface ClientHubCapabilities {
   contract: string;
-  contract_revision: typeof CLIENT_HUB_V13_REVISION;
+  contract_revision: typeof CLIENT_HUB_REVISION;
   catalog_sha256: string;
   status: 'partial' | 'not_ready' | string;
   planned_platform: string;
@@ -151,13 +199,16 @@ export interface ClientGoalResult {
 export interface ClientHubSessionCapabilities {
   owner_id: string;
   role: 'manager' | 'external' | string;
-  contract_revision: typeof CLIENT_HUB_V13_REVISION;
+  contract_revision: typeof CLIENT_HUB_REVISION;
   catalog_sha256: string;
   rpc_recovery?: boolean;
   available_rpc_operations: ClientHubAdvertisedOperation[];
 }
 
 export interface ClientHubStatus {
+  profileId?: string;
+  selectionGeneration?: number;
+  activeNetworkId?: string;
   nativeAvailable: boolean;
   pinned: boolean;
   enrolled: boolean;
@@ -180,11 +231,16 @@ export interface ClientHubStatus {
   pendingOperation?: ClientRpcOperation;
   outcomeUncertainOperationId?: string;
   uncertainNeedsReconciliation?: boolean;
+  networkGrantReconciliationRequired?: boolean;
+  networkGrantUncertainOperationId?: string;
   allowedOperations: ClientRpcOperation[];
   error?: string;
 }
 
 export interface NativeClientHubStatus {
+  profileId?: string;
+  selectionGeneration?: number;
+  activeNetworkId?: string;
   pinned: boolean;
   enrolled: boolean;
   sessionCapabilitiesReady: boolean;
@@ -205,6 +261,8 @@ export interface NativeClientHubStatus {
   pendingOperation?: string;
   outcomeUncertainOperationId?: string;
   uncertainNeedsReconciliation?: boolean;
+  networkGrantReconciliationRequired?: boolean;
+  networkGrantUncertainOperationId?: string;
   allowedOperations: string[];
 }
 
@@ -244,6 +302,10 @@ export interface ClientHubNativeBridge {
   getGroupKeyStatus(input: {groupId: string; endpointId: string}): Promise<{
     ok: boolean; result?: Record<string, unknown>;
   }>;
+  previewNetworkKey(input: NetworkKeyPreviewRequest): Promise<VerifiedNetworkManifest>;
+  previewNetworkKeyGrant(input: NetworkKeyGrantRequest): Promise<VerifiedNetworkManifest>;
+  grantNetworkKey(input: NetworkKeyGrantRequest): Promise<NetworkKeyResponse>;
+  getNetworkKeyStatus(input: {networkId: string; endpointId: string}): Promise<NetworkKeyResponse>;
   getMonitorBroadcastOperations?(): Promise<{operations: MonitorBroadcastOperation[]}>;
   monitorBroadcastPrepare?(input: {operationId?: string; groupId: string;
     monitorEndpointId: string; body: string}): Promise<unknown>;
@@ -257,6 +319,7 @@ export interface ClientHubNativeBridge {
 
 export interface ClientHubApi extends Omit<ClientHubNativeBridge,
   'getStatus' | 'getGroupKeyStatus' | 'rpc' | 'getMonitorBroadcastOperations' |
+  'getNetworkKeyStatus' |
   'monitorBroadcastPrepare' | 'monitorBroadcastRecover' |
   'monitorBroadcastBodyMatches' |
   'monitorBroadcastConfirm' | 'monitorBroadcastStatus'> {
@@ -268,6 +331,9 @@ export interface ClientHubApi extends Omit<ClientHubNativeBridge,
     ok: boolean; result?: Record<string, unknown>;
   }>;
   readonly monitorBroadcastReady: boolean;
+  readonly networkKeyConsentReady: boolean;
+  readonly scope: HubProfileScope;
+  networkKeyStatus(input: {networkId: string; endpointId: string}): Promise<NetworkKeyResponse>;
   getMonitorBroadcastOperations(): Promise<{operations: MonitorBroadcastOperation[]}>;
   monitorBroadcastPrepare(input: {operationId?: string; groupId: string;
     monitorEndpointId: string; body: string}): Promise<MonitorBroadcastPreview>;
@@ -279,7 +345,60 @@ export interface ClientHubApi extends Omit<ClientHubNativeBridge,
   monitorBroadcastStatus(input: {previewId: string}): Promise<MonitorBroadcastStatus>;
 }
 
-const native = NativeModules.CicadaClientHub as ClientHubNativeBridge | undefined;
+type RawProfileBridge = {
+  listHubProfiles(): Promise<HubProfileRegistry>;
+  createHubProfile(input: {label: string; scope: HubProfileScope}): Promise<HubProfileRegistry>;
+  activateHubProfile(input: {profileId: string; scope: HubProfileScope}): Promise<HubProfileRegistry>;
+  removeHubProfile(input: {profileId: string; scope: HubProfileScope}): Promise<HubProfileRegistry>;
+  setActiveNetwork(input: {networkId: string; scope: HubProfileScope}): Promise<HubProfileRegistry>;
+};
+const rawNative = NativeModules.CicadaClientHub as
+  (ClientHubNativeBridge & RawProfileBridge) | undefined;
+
+export const clientHubBridgeReadiness = Object.freeze({
+  monitorBroadcastReady: Boolean(rawNative?.getMonitorBroadcastOperations &&
+    rawNative.monitorBroadcastPrepare && rawNative.monitorBroadcastRecover &&
+    rawNative.monitorBroadcastBodyMatches && rawNative.monitorBroadcastConfirm &&
+    rawNative.monitorBroadcastStatus),
+  networkKeyConsentReady: ['previewNetworkKey', 'previewNetworkKeyGrant',
+    'grantNetworkKey', 'getNetworkKeyStatus'].every(name => rawNative &&
+      typeof rawNative[name as keyof ClientHubNativeBridge] === 'function'),
+});
+
+/** Each facade captures its selection. Old callbacks cannot target a newly selected Hub or Network. */
+function bindNativeProfile(scope: HubProfileScope): ClientHubNativeBridge | undefined {
+  if (Platform.OS !== 'android' || !rawNative) return undefined;
+  const methods = [
+    'getStatus', 'fetchHubMetadata', 'pinHub', 'createDeviceIdentity',
+    'startNewDeviceEnrollment', 'enroll', 'recoverEnrollment', 'rpc',
+    'recoverPending', 'retryPendingExact', 'previewGroupKey', 'grantGroupKey',
+    'getGroupKeyStatus', 'previewNetworkKey', 'previewNetworkKeyGrant',
+    'grantNetworkKey', 'getNetworkKeyStatus', 'getMonitorBroadcastOperations',
+    'monitorBroadcastPrepare', 'monitorBroadcastRecover', 'monitorBroadcastBodyMatches',
+    'monitorBroadcastConfirm', 'monitorBroadcastStatus',
+  ] as const;
+  return Object.fromEntries(methods.filter(name => typeof rawNative[name] === 'function')
+    .map(name => [name, captureProfileMethod(scope, input => {
+      const method = rawNative[name] as unknown as
+        (options: Record<string, unknown>) => Promise<unknown>;
+      return method.call(rawNative, input);
+    })])) as unknown as ClientHubNativeBridge;
+}
+
+export const hubProfiles = {
+  available: Boolean(Platform.OS === 'android' && rawNative?.listHubProfiles),
+  list: (): Promise<HubProfileRegistry> => rawNative ? rawNative.listHubProfiles() :
+    Promise.resolve({profiles: [{profileId: 'unavailable', label: 'Hub', pinned: false,
+      enrolled: false}], activeScope: {profileId: 'unavailable', selectionGeneration: 1}}),
+  create: (label: string, scope: HubProfileScope) => rawNative ?
+    rawNative.createHubProfile({label, scope: {...scope}}) : unavailable(),
+  activate: (profileId: string, scope: HubProfileScope) => rawNative ?
+    rawNative.activateHubProfile({profileId, scope: {...scope}}) : unavailable(),
+  remove: (profileId: string, scope: HubProfileScope) => rawNative ?
+    rawNative.removeHubProfile({profileId, scope: {...scope}}) : unavailable(),
+  selectNetwork: (networkId: string, scope: HubProfileScope) => rawNative ?
+    rawNative.setActiveNetwork({networkId, scope: {...scope}}) : unavailable(),
+};
 
 const unavailableStatus: ClientHubStatus = {
   nativeAvailable: false,
@@ -304,6 +423,7 @@ const operationNames: ClientRpcOperation[] = [
   'link.list',
   'link.invite_create', 'link.invite_preview', 'link.invite_accept',
   'group.key_manifest', 'group.key_grant', 'group.key_status',
+  'network.key_manifest', 'network.key_grant', 'network.key_status',
   'link.key_manifest', 'link.key_grants', 'link.key_grant',
   'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
   'monitor.broadcast_recover', 'monitor.broadcast_status',
@@ -323,7 +443,12 @@ const normalizeStatus = (value: NativeClientHubStatus): ClientHubStatus => ({
  * sequence persistence, response verification and private-key handling stay
  * inside the Android bridge. This facade never exposes a /v1 bearer route.
  */
-export const clientHub: ClientHubApi = Platform.OS === 'android' && native ? {
+export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
+  const scope = Object.freeze({...selection});
+  const native = bindNativeProfile(scope);
+  return Platform.OS === 'android' && native ? {
+  scope,
+  networkKeyConsentReady: clientHubBridgeReadiness.networkKeyConsentReady,
   monitorBroadcastReady: Boolean(native.getMonitorBroadcastOperations &&
     native.monitorBroadcastPrepare && native.monitorBroadcastRecover &&
     native.monitorBroadcastBodyMatches && native.monitorBroadcastConfirm &&
@@ -348,6 +473,10 @@ export const clientHub: ClientHubApi = Platform.OS === 'android' && native ? {
   previewGroupKey: input => native.previewGroupKey(input),
   grantGroupKey: input => native.grantGroupKey(input),
   groupKeyStatus: input => native.getGroupKeyStatus(input),
+  previewNetworkKey: input => native.previewNetworkKey(input),
+  previewNetworkKeyGrant: input => native.previewNetworkKeyGrant(input),
+  grantNetworkKey: input => native.grantNetworkKey(input),
+  networkKeyStatus: input => native.getNetworkKeyStatus(input),
   getMonitorBroadcastOperations: async () => {
     if (!native.getMonitorBroadcastOperations) return unavailable();
     return native.getMonitorBroadcastOperations();
@@ -383,6 +512,8 @@ export const clientHub: ClientHubApi = Platform.OS === 'android' && native ? {
     );
   },
 } : {
+  scope,
+  networkKeyConsentReady: false,
   monitorBroadcastReady: false,
   getStatus: async () => unavailableStatus,
   fetchHubMetadata: () => unavailable(),
@@ -398,6 +529,10 @@ export const clientHub: ClientHubApi = Platform.OS === 'android' && native ? {
   previewGroupKey: () => unavailable(),
   grantGroupKey: () => unavailable(),
   groupKeyStatus: () => unavailable(),
+  previewNetworkKey: () => unavailable(),
+  previewNetworkKeyGrant: () => unavailable(),
+  grantNetworkKey: () => unavailable(),
+  networkKeyStatus: () => unavailable(),
   getMonitorBroadcastOperations: () => unavailable(),
   monitorBroadcastPrepare: () => unavailable(),
   monitorBroadcastRecover: () => unavailable(),
@@ -405,15 +540,17 @@ export const clientHub: ClientHubApi = Platform.OS === 'android' && native ? {
   monitorBroadcastConfirm: () => unavailable(),
   monitorBroadcastStatus: () => unavailable(),
 };
+}
 
 export function operationAllowed(
   status: ClientHubStatus,
   operation: ClientRpcOperation,
 ): boolean {
+  if (operation === 'network.key_grant' && status.networkGrantReconciliationRequired) return false;
   if (status.uncertainNeedsReconciliation && [
     'goal.lifecycle', 'topology.apply', 'devices.revoke', 'nodes.confirm',
     'nodes.revoke', 'approvals.decide', 'intent.submit', 'link.invite_create',
-    'link.invite_accept', 'group.key_grant', 'monitor.broadcast_prepare',
+    'link.invite_accept', 'group.key_grant', 'network.key_grant', 'monitor.broadcast_prepare',
     'monitor.broadcast_confirm',
   ].includes(operation)) return false;
   return status.nativeAvailable && status.remoteEnabled &&

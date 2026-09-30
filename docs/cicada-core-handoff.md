@@ -1,4 +1,69 @@
-# Handoff: CICADA Client ↔ fixed Hub `client-hub-v1.3`
+# CICADA Client handoff — `client-hub-v1.4`
+
+**Date:** 2026-09-30
+
+**Branch:** `dev/react-native`
+
+**Delivery:** one local implementation and validation checkpoint; no push or merge.
+
+## Current scope
+
+The current Client implementation targets clean Core `f30892fcd79a27bfe5604575deaecebe52c5ec50` and full Hub image `sha256:56956f8a3d50b7e0445eef4017ba7cecff0ced570694cf8d8c3bb964e060aef7`. Archive `445017efe9085303942892c1bd1eaa2812c708f78389dbc59f906af8f535c324` and catalog `7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54` are independent pins. Imported payloads match the exact committed Core source, and manifest/image metadata record a clean source. Current Core working-tree changes are outside this delivery.
+
+Implemented: independent Hub profiles, explicit Hub/ACTIVE Network selection, topology v2, scoped Group creation, and dedicated verified Network key preview/Owner-proof review/grant/status. Every native call captures a profile and selection generation. A switch fences old callbacks and replaces the UI state; pending enrollment, ciphertext, counters and Monitor records remain in the originating profile. A different Hub ID requires a new profile and independently generated keys. Legacy storage is adopted in place.
+
+The Network path independently validates full public keys, candidate self-attestation and exact signed bytes, native Session commitment, all scoped identities/epochs/revisions, manifest digest and external Owner proof. It rereads encrypted capabilities, current topology and manifest before sealing. Raw recovered packets cannot become consent evidence. The phone confirms after Owner proof verification and never holds the Owner private key.
+
+An independent durable Network grant fence retains the original operation ID, counters and signed ciphertext after `OUTCOME_UNCERTAIN`. A generic snapshot, another uncertain read, profile switching, trust replacement or device reset cannot release or overwrite it. New grants and deletion of the originating profile remain refused; read-only key status stays available. Dedicated correlation of the original proof with authoritative Network status is not yet implemented, so this safety fence does not automatically unlock. Actual Network recovery faults remain **NOT_RUN**.
+
+The [current validation record](client-hub-v1.4-f30892f-validation.md) is authoritative for current APK hashes, command exits, per-item status and evidence. Historical records below preserve their original source/APK attribution.
+
+Final compiled source fingerprint: `5e7a72fa5a15c2077f03e1fe8b7bd578bcd8b8f549704522e3cd90b1a507b437` (80 files). Instrumentation APK SHA-256: `0d7feb3c886072a23da7e9d9a291a0a814ac9955a7445cf91a2c4f7326ece0a3`. The actual local Client checkpoint ID is provided in the completion message and private delivery record; tested checkout `b627e70` plus changes is not represented as a clean-source APK. Both Client emulators/proxies and Core's owned Hub/network/fixture were removed with independently verified absence; cleanup diagnostic retries remain recorded. No resident service was changed.
+
+## Core dependencies
+
+- **BLOCKED:** positive real-Hub Network consent. Fixed `f30892f` has the signing library but no external Network key signing CLI. A separate dirty candidate signer was supplied for device enrollment, with its provenance recorded separately. The complete pinned native Endpoint/Owner-consent fixture remains undelivered. Core plans a separate delivery with the signer, full production-shape vector and disposable fixture. The Client does not accept its incomplete published manifest as a production preview.
+- The v1.4 canonical manifest digest omits `native_session_id` after clearing the `omitempty` field and retains `"digest":""`. The published vector fixes its exact bytes; the wire prose should explicitly describe omission. Both Network attestation and Owner proof sign canonical input ending in `"signature":null`.
+- **PASS:** final APK `abbc2be65bccc1e4e3f2490288949ba587786b9890bbd1b5f2bb74b2feb5c760` passed 45 Kotlin tests, 23 JavaScript checks, actual offline connection UI, and fresh-device real-Hub enrollment, encrypted capabilities, ACTIVE topology/selection and Network-scoped Group creation. All three native Hub selectors returned ADB/driver `0/0`; final sequence is `7`, `pending=false`. Core owns operator setup/private credentials; Client did not read its database. Candidate 3 results remain separately attributed.
+- **BLOCKED:** automatic Network grant outcome reconciliation in Client. The independent durable lock remains closed until the original proof/scope is specifically correlated with authoritative key status; generic snapshots do not unlock it. Synthetic authenticated-response regression passed, but actual Network fault injection and automatic unlock are **NOT_RUN**.
+- Physical Android, public HTTPS, current-version native Codex/Monitor execution, and production lifecycle acceptance must remain separately reported. Historical PASS results do not certify this checkpoint.
+
+## Review prompt for the Core maintainer
+
+```text
+Review CICADA_CLIENT read-only on dev/react-native. Read
+AGENTS.md, docs/client-hub-v1.4-f30892f-validation.md,
+docs/cicada-core-handoff.md, and the local checkpoint.
+
+Match the exact clean f30892f source, complete sha256:56956f8a... image,
+archive 445017ef..., and catalog 7a9e4209... from the full pins in the report.
+Distinguish deterministic Kotlin tests and emulator UI checks from real
+fixed-Hub encrypted interoperability. Do not transfer older v1.3 PASS results.
+
+For Network key consent, deliver a separately pinned external Owner signer
+(binary/source SHA), a complete production-shape public vector, and a safe
+once-only ACTIVE Network/native Endpoint fixture. Keep Node bearer, Owner
+private key and model credentials outside Android, APKs, Git and public logs.
+Confirm canonical manifest omission of native_session_id, digest:"", and
+signature:null in both signed Network claim formats. Preserve original pending
+packets and counters on transport uncertainty. Do not use an unsigned proof,
+a synthetic native Thread, or current dirty Core source to complete acceptance.
+
+Review the independent durable Network UNCERTAIN fence and help validate
+original proof/scope correlation against network.key_status. Client automatic
+reconciliation is not implemented; a generic snapshot must never unlock it.
+Keep this Client limitation distinct from a missing server endpoint.
+
+Check all Client commit author/committer identities against the server global
+Git configuration. Keep this checkpoint local; do not merge, publish or replace
+resident services.
+```
+
+---
+
+## Historical v1.3 handoff
+
+### Fixed Hub `client-hub-v1.3`
 
 **Date:** 2026-09-27
 

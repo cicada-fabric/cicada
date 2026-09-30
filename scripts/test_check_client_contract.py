@@ -12,7 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check-client-contract.py"
-SNAPSHOT = REPO / "contracts/client-hub-v1.3-be0269e"
+SNAPSHOT = REPO / "contracts/client-hub-v1.4-f30892f"
 CATALOG = "cicada-go/internal/clientcontract/catalog.json"
 
 
@@ -41,7 +41,7 @@ class ContractCheckerTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertNotIn("PASS", result.stdout)
 
-    def test_historical_defaults_remain_valid(self):
+    def test_current_approved_defaults_remain_valid(self):
         result = self.run_checker(use_default=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(self.manifest["catalog_sha256"], result.stdout)

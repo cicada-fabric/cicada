@@ -40,20 +40,23 @@ import kotlin.math.floor
  * Public methods are synchronous so instrumentation tests can exercise the
  * exact same code as the React Native bridge. Call them off the UI thread.
  */
-class ClientHubSession(context: Context) {
+class ClientHubSession(context: Context, internal val profileId: String = "legacy") {
     private val appContext = context.applicationContext
-    private val directory = File(appContext.noBackupFilesDir, "client-hub").apply {
+    private val directory = profileDirectory(appContext, profileId).apply {
         if (!exists() && !mkdirs()) throw HubSessionException("STORAGE_UNAVAILABLE", "Cannot create private Hub state directory")
     }
     private val stateFile = AtomicFile(File(directory, "session-state.json"))
     private val privateKeyFile = AtomicFile(File(directory, "device-key.wrap.json"))
     private val gson = com.google.gson.Gson()
+    private val wrappingKeyAlias = if (profileId == "legacy") KEY_ALIAS else "$KEY_ALIAS.$profileId"
+    private val wrappingKeyAad = if (profileId == "legacy") KEY_AAD else
+        ("cicada/android/client-device-key/wrap/profile/v1\u0000" + profileId).toByteArray(StandardCharsets.UTF_8)
 
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.3"
-        private const val CATALOG_SHA256 = "808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377"
+        private const val CONTRACT_REVISION = "client-hub-v1.4"
+        private const val CATALOG_SHA256 = "7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54"
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
         private const val MAX_PACKET_BYTES = 256 * 1024
@@ -61,7 +64,18 @@ class ClientHubSession(context: Context) {
         private const val MAX_METADATA_BYTES = 256 * 1024
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
-        private val PROCESS_LOCK = ReentrantLock()
+        internal val PROCESS_LOCK = ReentrantLock()
+
+        internal fun validateProfileId(profileId: String) {
+            if (profileId != "legacy" && !profileId.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
+                throw HubSessionException("INVALID_PROFILE_ID", "Hub profile identifier is invalid")
+            }
+        }
+
+        internal fun profileDirectory(context: Context, profileId: String): File {
+            validateProfileId(profileId)
+            return File(context.noBackupFilesDir, if (profileId == "legacy") "client-hub" else "client-hub-profiles/$profileId")
+        }
         private val RPC_OPERATIONS = setOf(
             "session.capabilities", "status.snapshot", "status.changes", "goal.lifecycle",
             "topology.snapshot", "topology.apply", "devices.list", "devices.revoke",
@@ -69,13 +83,14 @@ class ClientHubSession(context: Context) {
             "approvals.list", "approvals.decide", "goal.result", "intent.get", "intent.status",
             "intent.list", "intent.submit", "link.list", "link.invite_create", "link.invite_preview",
             "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status",
+            "network.key_manifest", "network.key_grant", "network.key_status",
             "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status",
             "monitor.broadcast_recover",
         )
         private val MUTATING_RPC_OPERATIONS = setOf(
             "goal.lifecycle", "topology.apply", "devices.revoke", "nodes.confirm",
             "nodes.revoke", "approvals.decide", "intent.submit", "link.invite_create",
-            "link.invite_accept", "group.key_grant", "monitor.broadcast_prepare",
+            "link.invite_accept", "group.key_grant", "network.key_grant", "monitor.broadcast_prepare",
             "monitor.broadcast_confirm",
         )
         private val MONITOR_OPERATION_STATES = setOf(
@@ -151,6 +166,7 @@ class ClientHubSession(context: Context) {
     )
 
     private data class State(
+        var activeNetworkId: String? = null,
         var pin: Pin? = null,
         var enrollment: Enrollment? = null,
         var ownerApprovalPublicIdentityJson: String? = null,
@@ -166,6 +182,8 @@ class ClientHubSession(context: Context) {
         var sessionError: String? = null,
         var previousDeviceMayRemainOnHub: Boolean = false,
         var retiredPending: Pending? = null,
+        /** First uncertain Network grant; generic read reconciliation must never retire this fence. */
+        var networkGrantUncertainPending: Pending? = null,
         var pending: Pending? = null,
         var enrollmentAttempt: EnrollmentAttempt? = null,
         var monitorOperations: MutableMap<String, MonitorOperation> = linkedMapOf(),
@@ -219,6 +237,10 @@ class ClientHubSession(context: Context) {
         val old = state.pin
         val canonicalIdentity = control.toJson()
         if (old != null && (old.baseUrl != base || old.hubId != normalizedHubId ||
+                old.controlPublicIdentityJson != canonicalIdentity)) {
+            requireNetworkGrantReconciled(state)
+        }
+        if (old != null && (old.baseUrl != base || old.hubId != normalizedHubId ||
                 old.controlPublicIdentityJson != canonicalIdentity) &&
             (state.pending != null || state.enrollmentAttempt != null || hasUnresolvedMonitorOperation(state))) {
             if (state.enrollmentAttempt != null) {
@@ -226,11 +248,15 @@ class ClientHubSession(context: Context) {
             }
             throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Keep the original Hub address and trust pin while enrollment or an encrypted RPC is unresolved")
         }
+        if (old != null && old.hubId != normalizedHubId) {
+            throw HubSessionException("PROFILE_HUB_ID_MISMATCH", "Create an independent profile with its own device identity before trusting a different Hub")
+        }
         if (old != null && (old.hubId != normalizedHubId || old.controlPublicIdentityJson != canonicalIdentity)) {
             // A changed trust anchor invalidates the prior enrolled authority and replay state.
             state.previousDeviceMayRemainOnHub = state.enrollment != null || state.previousDeviceMayRemainOnHub
             if (state.pending != null) state.retiredPending = state.pending
             state.enrollment = null
+            state.activeNetworkId = null
             state.ownerApprovalPublicIdentityJson = null
             state.nextSequence = 1
             state.lastResponseSequence = 0
@@ -260,7 +286,8 @@ class ClientHubSession(context: Context) {
 
     /** Generates a device key once, wrapping its private bytes before any disk write. */
     fun createDeviceIdentity(): JsonObject = PROCESS_LOCK.withLock {
-        val alreadyExists = privateKeyFile.baseFile.exists()
+        val alreadyExists = hasAtomicFile(privateKeyFile)
+        if (!alreadyExists) requireNetworkGrantReconciled(readState())
         val identity = if (alreadyExists) {
             loadDeviceIdentity()
         } else {
@@ -283,6 +310,7 @@ class ClientHubSession(context: Context) {
      */
     fun startNewDeviceEnrollment(): JsonObject = PROCESS_LOCK.withLock {
         val state = readState()
+        requireNetworkGrantReconciled(state)
         if (state.pin == null) throw HubSessionException("HUB_NOT_PINNED", "Pin a Hub before creating an enrolled device identity")
         if (state.enrollmentAttempt != null) {
             throw HubSessionException("ENROLLMENT_RECOVERY_REQUIRED", "Enrollment outcome is unknown; do not replace its device identity before Hub reconciliation")
@@ -296,6 +324,7 @@ class ClientHubSession(context: Context) {
         state.previousDeviceMayRemainOnHub = state.enrollment != null || state.previousDeviceMayRemainOnHub
         if (state.pending != null) state.retiredPending = state.pending
         state.enrollment = null
+        state.activeNetworkId = null
         state.ownerApprovalPublicIdentityJson = null
         state.nextSequence = 1
         state.lastResponseSequence = 0
@@ -335,6 +364,7 @@ class ClientHubSession(context: Context) {
         ownerDeviceGrantBase64: String,
     ): JsonObject = PROCESS_LOCK.withLock {
         val state = readState()
+        requireNetworkGrantReconciled(state)
         val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Pin the Hub through an independent trusted channel first")
         if (state.enrollment != null) throw HubSessionException("ALREADY_ENROLLED", "This local device already has an enrollment")
         if (state.enrollmentAttempt != null) {
@@ -397,6 +427,7 @@ class ClientHubSession(context: Context) {
     /** Resends the exact persisted enrollment bytes, even when the original Grant has expired. */
     fun recoverEnrollment(): JsonObject = PROCESS_LOCK.withLock {
         val state = readState()
+        requireNetworkGrantReconciled(state)
         if (state.enrollment != null) throw HubSessionException("ALREADY_ENROLLED", "Device enrollment already completed")
         val attempt = state.enrollmentAttempt
             ?: throw HubSessionException("NO_PENDING_ENROLLMENT", "There is no device enrollment to recover")
@@ -436,6 +467,7 @@ class ClientHubSession(context: Context) {
             throw HubSessionException("INVALID_ENROLLMENT_RESPONSE", "Hub returned an enrollment that does not match this request")
         }
         state.enrollment = Enrollment(owner, device, epoch, keyVersion, deviceState)
+        state.activeNetworkId = null
         state.monitorOperations.clear()
         state.retiredMonitorOperationIds.clear()
         state.nextSequence = 1
@@ -467,6 +499,9 @@ class ClientHubSession(context: Context) {
         }
         if (operation.startsWith("monitor.broadcast_")) {
             throw HubSessionException("VERIFIED_MONITOR_FLOW_REQUIRED", "Use the dedicated Monitor broadcast flow")
+        }
+        if (operation.startsWith("network.key_")) {
+            throw HubSessionException("VERIFIED_NETWORK_FLOW_REQUIRED", "Use the verified Network Endpoint key consent flow")
         }
         val state = readState()
         requireReadyForRpc(state)
@@ -861,6 +896,238 @@ class ClientHubSession(context: Context) {
         }, null)
     }
 
+    /** A verified Owner preview for the explicitly selected Network; it grants no peer permission. */
+    fun previewNetworkKey(networkId: String, endpointId: String, ownerKeyId: String): JsonObject =
+        PROCESS_LOCK.withLock {
+            val state = readState()
+            val owner = requireNetworkOwner(state, networkId, ownerKeyId)
+            requireNetworkAvailability(state, setOf("topology.snapshot", "network.key_manifest"))
+            verifiedNetworkManifest(state, networkId, endpointId, owner)
+        }
+
+    /** Verifies an external Owner proof against a newly read, identical complete manifest. */
+    fun previewNetworkKeyGrant(networkId: String, endpointId: String, ownerKeyId: String,
+                               expectedDigest: String, signedProofBase64: String): JsonObject =
+        PROCESS_LOCK.withLock {
+            val state = readState()
+            val owner = requireNetworkOwner(state, networkId, ownerKeyId)
+            val proof = decodeNetworkOwnerProof(expectedDigest, signedProofBase64)
+            requireNetworkAvailability(state, setOf("topology.snapshot", "network.key_manifest"))
+            verifiedNetworkManifestForOwnerProof(state, networkId, endpointId, owner,
+                expectedDigest, proof)
+        }
+
+    /** Keeps Owner private material external and verifies scope and expiry again before sealing. */
+    fun grantNetworkKey(networkId: String, endpointId: String, ownerKeyId: String,
+                        expectedDigest: String, signedProofBase64: String): JsonObject =
+        PROCESS_LOCK.withLock {
+            val state = readState()
+            requireNetworkGrantReconciled(state)
+            val owner = requireNetworkOwner(state, networkId, ownerKeyId)
+            val proof = decodeNetworkOwnerProof(expectedDigest, signedProofBase64)
+            requireNetworkAvailability(state, setOf("topology.snapshot", "network.key_manifest", "network.key_grant"))
+            val verified = verifiedNetworkManifestForOwnerProof(state, networkId, endpointId,
+                owner, expectedDigest, proof).getAsJsonObject("result")
+            val response = createAndSend(state, "network.key_grant", JsonObject(), bodyBuilder = { _, _, _ ->
+                // No cached preview or caller-supplied digest can replace the just-verified manifest.
+                verifyNetworkOwnerProof(proof, verified, owner)
+                JsonObject().apply {
+                    addProperty("network_id", networkId)
+                    addProperty("endpoint_id", endpointId)
+                    addProperty("signed_proof", signedProofBase64)
+                }
+            })
+            verifyNetworkGrantResult(response, state, networkId, endpointId, owner,
+                expectedDigest, proof)
+            response
+        }
+
+    /** Status may remain stale after revocation; it is not evidence of current peer permission. */
+    fun networkKeyStatus(networkId: String, endpointId: String): JsonObject = PROCESS_LOCK.withLock {
+        val state = readState()
+        val owner = requireNetworkOwner(state, networkId, null)
+        requireNetworkAvailability(state, setOf("network.key_status"))
+        val response = createAndSend(state, "network.key_status", JsonObject().apply {
+            addProperty("network_id", networkId)
+            addProperty("endpoint_id", endpointId)
+        })
+        verifyNetworkGrantResult(response, state, networkId, endpointId, owner)
+        response
+    }
+
+    private fun requireNetworkOwner(state: State, networkId: String,
+                                    ownerKeyId: String?): ClientWireCrypto.PublicIdentity {
+        requireReadyForRpc(state)
+        if (state.pending != null) {
+            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the original encrypted request before Network key consent")
+        }
+        if (state.activeNetworkId == null || state.activeNetworkId != networkId) {
+            throw HubSessionException("NETWORK_SELECTION_REQUIRED", "Select this Network explicitly in the active Hub profile")
+        }
+        if (!state.sessionCapabilitiesReady || state.role !in setOf("manager", "external")) {
+            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "Read current encrypted Owner session capabilities first")
+        }
+        val publicJson = state.ownerApprovalPublicIdentityJson
+            ?: throw HubSessionException("OWNER_PUBLIC_KEY_REQUIRED", "Re-enroll with an independently trusted Owner approval key")
+        val owner = try { ClientWireCrypto.PublicIdentity.parse(parseObject(publicJson, "Invalid owner key")) }
+            catch (_: Exception) { throw HubSessionException("OWNER_PUBLIC_KEY_INVALID", "Saved Owner approval key is invalid") }
+        if (ownerKeyId != null && owner.id != ownerKeyId) {
+            throw HubSessionException("OWNER_KEY_ID_MISMATCH", "Selected Owner key differs from the independent enrollment trust key")
+        }
+        return owner
+    }
+
+    private fun requireNetworkGrantReconciled(state: State) {
+        if (state.networkGrantUncertainPending != null) {
+            throw HubSessionException("NETWORK_GRANT_RECONCILIATION_REQUIRED", "The original Network key grant outcome is unresolved; Client has not completed dedicated authoritative reconciliation for that grant. Keep its original ciphertext; a general snapshot cannot authorize another grant or reset this profile")
+        }
+    }
+
+    private fun validateNetworkGrantFence(pending: Pending): Pending {
+        if (pending.operation != "network.key_grant" || pending.operationId.isBlank() ||
+            pending.sequence < 1 || pending.packetJson.isBlank() ||
+            pending.expectedResponseSequence?.let { it < 1 } == true) {
+            throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Network grant reconciliation fence is invalid")
+        }
+        return pending
+    }
+
+    /** Public availability is an additional restriction; only encrypted capabilities authorize. */
+    private fun requireNetworkAvailability(state: State, operations: Set<String>) {
+        // Obvious local denials must not consume a sequence or create any pending request.
+        operations.forEach { validateOperation(state, it) }
+        validateOperation(state, "session.capabilities")
+        val current = createAndSend(state, "session.capabilities", JsonObject())
+        if (current.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true ||
+            !state.sessionCapabilitiesReady || state.role !in setOf("manager", "external")) {
+            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "Hub did not confirm current encrypted Owner session capabilities")
+        }
+        // finishResponse checked exact Owner, contract and catalog; authorization may have narrowed.
+        operations.forEach { validateOperation(state, it) }
+        val capabilities = fetchHubMetadata(state.pin!!.baseUrl).getAsJsonObject("capabilities")
+        val listName = if (state.role == "external") "external_rpc_operations" else "available_rpc_operations"
+        val advertised = capabilities.get(listName)?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.mapNotNull { item -> item.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString }
+            ?.toSet() ?: emptySet()
+        val e2ee = capabilities.get("client_control_pq_e2ee")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true
+        val authenticated = capabilities.get("authenticated_client_session")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true
+        if (!e2ee || !authenticated || !advertised.containsAll(operations)) {
+            throw HubSessionException("NETWORK_OPERATION_UNAVAILABLE", "This Owner role's current public operation catalog does not advertise the requested Network flow")
+        }
+    }
+
+    private fun verifiedNetworkManifest(state: State, networkId: String, endpointId: String,
+                                        owner: ClientWireCrypto.PublicIdentity): JsonObject {
+        val endpoint = freshNetworkEndpoint(state, networkId, endpointId)
+        val response = createAndSend(state, "network.key_manifest", JsonObject().apply {
+            addProperty("network_id", networkId)
+            addProperty("endpoint_id", endpointId)
+            addProperty("owner_key_id", owner.id)
+        })
+        val manifest = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true || manifest == null) {
+            throw HubSessionException("NETWORK_MANIFEST_UNAVAILABLE", "Hub did not return a current Network Endpoint key manifest")
+        }
+        try {
+            NetworkKeyConsent.verifyManifest(manifest, state.pin!!.hubId, state.enrollment!!.ownerId,
+                networkId, endpointId)
+            require(requiredString(manifest, "principal_id") == requiredString(endpoint, "principal_id") &&
+                requiredString(manifest, "node_id") == requiredString(endpoint, "node_id") &&
+                requiredString(manifest, "native_session_id") == requiredString(endpoint, "native_session_id"))
+            // Topology's optional binding fields are Group leases, not Network direct bindings.
+            // Network binding/revisions are covered by the complete signed candidate and manifest.
+        } catch (_: Exception) {
+            throw HubSessionException("NETWORK_MANIFEST_INVALID", "Network self-attestation, public key, native binding or manifest digest does not match current Owner topology")
+        }
+        return response.deepCopy().apply { addProperty("verified", true) }
+    }
+
+    private fun freshNetworkEndpoint(state: State, networkId: String, endpointId: String): JsonObject {
+        val response = createAndSend(state, "topology.snapshot", JsonObject())
+        val snapshot = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        try {
+            require(response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true &&
+                snapshot != null && longValue(snapshot, "contract_version") == 2L &&
+                requiredString(snapshot, "owner_principal_id") == state.enrollment!!.ownerId &&
+                requiredString(snapshot, "read_consistency") == "best_effort")
+            val network = snapshot.getAsJsonArray("networks").map { it.asJsonObject }
+                .single { optionalString(it, "network_id") == networkId }
+            require(requiredString(network, "state") == "ACTIVE" && longValue(network, "version") > 0)
+            val endpoint = snapshot.getAsJsonArray("endpoints").map { it.asJsonObject }
+                .single { optionalString(it, "endpoint_id") == endpointId }
+            require(endpoint.getAsJsonArray("network_ids").any { item ->
+                item.isJsonPrimitive && item.asJsonPrimitive.isString && item.asString == networkId
+            })
+            require(listOf("principal_id", "node_id", "native_session_id").all {
+                requiredString(endpoint, it).isNotBlank()
+            } && optionalString(endpoint, "presence") != "left")
+            return endpoint
+        } catch (_: Exception) {
+            throw HubSessionException("NETWORK_ENDPOINT_NOT_AUTHORIZED", "The selected Endpoint is absent from this Owner's current ACTIVE Network projection, or its native identity is incomplete")
+        }
+    }
+
+    private fun decodeNetworkOwnerProof(expectedDigest: String, signedProofBase64: String): ByteArray {
+        if (!expectedDigest.matches(Regex("[0-9a-f]{64}"))) {
+            throw HubSessionException("NETWORK_CONSENT_MISMATCH", "The reviewed Network manifest digest is invalid")
+        }
+        if (signedProofBase64.length > 43_692) {
+            throw HubSessionException("NETWORK_OWNER_PROOF_INVALID", "Owner Network proof exceeds the protocol limit")
+        }
+        return try { decodeCanonicalBase64(signedProofBase64).also { require(it.isNotEmpty() && it.size <= 32 * 1024) } }
+            catch (_: Exception) { throw HubSessionException("NETWORK_OWNER_PROOF_INVALID", "Owner Network proof is not bounded canonical base64") }
+    }
+
+    private fun verifiedNetworkManifestForOwnerProof(state: State, networkId: String, endpointId: String,
+                                                     owner: ClientWireCrypto.PublicIdentity,
+                                                     expectedDigest: String, proof: ByteArray): JsonObject {
+        val verified = verifiedNetworkManifest(state, networkId, endpointId, owner)
+        val manifest = verified.getAsJsonObject("result")
+        if (requiredString(manifest, "digest") != expectedDigest) {
+            throw HubSessionException("NETWORK_MANIFEST_STALE", "Network registration, native binding or key changed; review and independently sign a new complete manifest")
+        }
+        verifyNetworkOwnerProof(proof, manifest, owner)
+        return verified
+    }
+
+    private fun verifyNetworkOwnerProof(proof: ByteArray, manifest: JsonObject,
+                                        owner: ClientWireCrypto.PublicIdentity) {
+        try { NetworkKeyConsent.verifyOwnerProof(proof, manifest, owner) }
+        catch (_: Exception) {
+            throw HubSessionException("NETWORK_OWNER_PROOF_INVALID", "Owner Network signature, expiry or complete manifest binding is invalid")
+        }
+    }
+
+    private fun verifyNetworkGrantResult(response: JsonObject, state: State, networkId: String,
+                                         endpointId: String, owner: ClientWireCrypto.PublicIdentity,
+                                         expectedDigest: String? = null, proof: ByteArray? = null) {
+        if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true) return
+        try {
+            val result = response.getAsJsonObject("result")
+            require(requiredString(result, "network_id") == networkId &&
+                requiredString(result, "endpoint_id") == endpointId &&
+                requiredString(result, "owner_id") == state.enrollment!!.ownerId &&
+                requiredString(result, "owner_key_id") == owner.id &&
+                requiredString(result, "manifest_digest").matches(Regex("[0-9a-f]{64}")) &&
+                requiredString(result, "proof_digest").matches(Regex("[0-9a-f]{64}")) &&
+                requiredString(result, "nonce").matches(Regex("[0-9a-f]{64}")) &&
+                requiredString(result, "state") in setOf("active", "stale") &&
+                longValue(result, "revision") > 0)
+            GroupKeyManifestVerifier.parseCanonicalUtc(requiredString(result, "accepted_at"))
+            if (expectedDigest != null && proof != null) {
+                val proofJson = JsonParser.parseString(String(proof, StandardCharsets.UTF_8)).asJsonObject
+                require(requiredString(result, "state") == "active" &&
+                    requiredString(result, "manifest_digest") == expectedDigest &&
+                    requiredString(result, "proof_digest") == NetworkKeyConsent.sha256(proof) &&
+                    requiredString(result, "nonce") == requiredString(proofJson, "nonce"))
+            }
+        } catch (_: Exception) {
+            throw HubSessionException("NETWORK_GRANT_RESULT_INVALID", "Authenticated Network grant metadata does not match this Owner and reviewed proof; reconcile with key status")
+        }
+    }
+
     private fun verifiedGroupManifestForOwnerProof(state: State, groupId: String,
                                                     endpointId: String, ownerKeyId: String,
                                                     expectedDigest: String,
@@ -1005,6 +1272,8 @@ class ClientHubSession(context: Context) {
         val state = readState()
         val pending = state.pending
         val result = JsonObject().apply {
+            addProperty("profileId", profileId)
+            state.activeNetworkId?.let { addProperty("activeNetworkId", it) }
             addProperty("pinned", state.pin != null)
             addProperty("enrolled", state.enrollment != null)
             addProperty("sessionCapabilitiesReady", state.sessionCapabilitiesReady)
@@ -1016,8 +1285,11 @@ class ClientHubSession(context: Context) {
             addProperty("previousDeviceMayRemainOnHub", state.previousDeviceMayRemainOnHub)
             addProperty("hasRetiredPending", state.retiredPending != null)
             addProperty("enrollmentRecoveryRequired", state.enrollmentAttempt != null)
+            addProperty("hasUnresolvedMonitorOperations", hasUnresolvedMonitorOperation(state))
             state.outcomeUncertainOperationId?.let { addProperty("outcomeUncertainOperationId", it) }
             addProperty("uncertainNeedsReconciliation", state.uncertainNeedsReconciliation)
+            addProperty("networkGrantReconciliationRequired", state.networkGrantUncertainPending != null)
+            state.networkGrantUncertainPending?.let { addProperty("networkGrantUncertainOperationId", it.operationId) }
             state.enrollmentAttempt?.let { attempt ->
                 addProperty("pendingEnrollmentOwnerId", attempt.ownerId)
                 addProperty("pendingEnrollmentDeviceId", attempt.deviceId)
@@ -1040,6 +1312,55 @@ class ClientHubSession(context: Context) {
             }
         }
         result
+    }
+
+    /** Selection is local; a fresh authenticated projection must first authorize its scope. */
+    internal fun setActiveNetwork(networkId: String, beforePersistSelection: () -> Unit = {}): JsonObject = PROCESS_LOCK.withLock {
+        val selected = networkId.trim()
+        if (selected.isEmpty() || selected.length > 256) {
+            throw HubSessionException("INVALID_NETWORK_ID", "Select a current authorized Network")
+        }
+        val state = readState()
+        requireReadyForRpc(state)
+        if (state.pending != null) throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the original request before selecting a Network")
+        validateOperation(state, "topology.snapshot")
+        val response = createAndSend(state, "topology.snapshot", JsonObject())
+        val snapshot = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true ||
+            snapshot == null || longValue(snapshot, "contract_version") != 2L ||
+            requiredString(snapshot, "owner_principal_id") != state.enrollment!!.ownerId ||
+            optionalString(snapshot, "read_consistency") != "best_effort") {
+            throw HubSessionException("NETWORK_TOPOLOGY_INVALID", "Hub did not return an authenticated Owner Network projection")
+        }
+        val network = snapshot.get("networks")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.filter { it.isJsonObject }?.map { it.asJsonObject }
+            ?.singleOrNull { optionalString(it, "network_id") == selected }
+        if (network == null || optionalString(network, "state") != "ACTIVE") {
+            throw HubSessionException("NETWORK_NOT_AUTHORIZED", "The selected Network is not currently ACTIVE and visible to this Owner")
+        }
+        // The registry generation is advanced first so a failed state write still fences old callbacks.
+        beforePersistSelection()
+        state.activeNetworkId = selected
+        writeState(state)
+        getStatus()
+    }
+
+    internal fun ensureProfileRemovable() = PROCESS_LOCK.withLock {
+        val state = readState()
+        requireNetworkGrantReconciled(state)
+        if (state.pending != null || state.enrollmentAttempt != null || state.recoveryBlocked ||
+            state.uncertainNeedsReconciliation || hasUnresolvedMonitorOperation(state)) {
+            throw HubSessionException("PROFILE_RECOVERY_REQUIRED", "Resolve the original enrollment, encrypted request and Monitor state before removing this Hub profile")
+        }
+    }
+
+    /** Local removal never revokes the device on its Hub. The caller must confirm that boundary. */
+    internal fun deleteProfileState() = PROCESS_LOCK.withLock {
+        ensureProfileRemovable()
+        deleteDeviceWrappingKey()
+        if (!directory.deleteRecursively()) {
+            throw HubSessionException("PROFILE_STORAGE_FAILED", "Could not remove local Hub profile state")
+        }
     }
 
     private fun createAndSend(
@@ -1193,6 +1514,9 @@ class ClientHubSession(context: Context) {
         state.recoveryBlocked = false
         state.sessionError = if (uncertain) "OUTCOME_UNCERTAIN" else null
         if (uncertain) {
+            if (route.operation == "network.key_grant" && state.networkGrantUncertainPending == null) {
+                state.networkGrantUncertainPending = pending
+            }
             state.outcomeUncertainOperationId = pending.operationId
             state.uncertainNeedsReconciliation = true
             state.retiredPending = pending
@@ -1296,7 +1620,7 @@ class ClientHubSession(context: Context) {
         if (state.pin == null) throw HubSessionException("HUB_NOT_PINNED", "Pin the Hub through an independent trusted channel first")
         if (state.authFenced) throw HubSessionException("CLIENT_SESSION_AUTH_FENCED", "Hub rejected Client authentication; remote RPC is disabled")
         if (state.enrollment == null) throw HubSessionException("DEVICE_NOT_ENROLLED", "Enroll this device with an owner-signed grant first")
-        if (!privateKeyFile.baseFile.exists()) throw HubSessionException("DEVICE_KEY_MISSING", "Device private key is unavailable")
+        if (!hasAtomicFile(privateKeyFile)) throw HubSessionException("DEVICE_KEY_MISSING", "Device private key is unavailable")
     }
 
     private fun validateOperation(state: State, operation: String) {
@@ -1368,7 +1692,7 @@ class ClientHubSession(context: Context) {
     }
 
     private fun loadDeviceIdentity(): ClientWireCrypto.Identity {
-        if (!privateKeyFile.baseFile.exists()) throw HubSessionException("DEVICE_KEY_MISSING", "Generate a device identity before enrollment")
+        if (!hasAtomicFile(privateKeyFile)) throw HubSessionException("DEVICE_KEY_MISSING", "Generate a device identity before enrollment")
         val wrapped = try {
             privateKeyFile.openRead().use { input -> JsonParser.parseReader(java.io.InputStreamReader(input, StandardCharsets.UTF_8)).asJsonObject }
         } catch (_: Exception) {
@@ -1382,7 +1706,7 @@ class ClientHubSession(context: Context) {
         val plaintext = try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateWrappingKey(create = false), GCMParameterSpec(128, nonce))
-            cipher.updateAAD(KEY_AAD)
+            cipher.updateAAD(wrappingKeyAad)
             cipher.doFinal(ciphertext)
         } catch (_: Exception) {
             throw HubSessionException("DEVICE_KEY_UNAVAILABLE", "Android Keystore could not unwrap the device identity")
@@ -1401,7 +1725,7 @@ class ClientHubSession(context: Context) {
         val plaintext = privateJson.toByteArray(StandardCharsets.UTF_8)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateWrappingKey(create = true))
-        cipher.updateAAD(KEY_AAD)
+        cipher.updateAAD(wrappingKeyAad)
         val ciphertext = try {
             cipher.doFinal(plaintext)
         } finally {
@@ -1428,12 +1752,12 @@ class ClientHubSession(context: Context) {
     private fun getOrCreateWrappingKey(create: Boolean): SecretKey {
         try {
             val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val existing = store.getKey(KEY_ALIAS, null) as? SecretKey
+            val existing = store.getKey(wrappingKeyAlias, null) as? SecretKey
             if (existing != null) return existing
             if (!create) throw HubSessionException("DEVICE_KEY_UNAVAILABLE", "Android Keystore wrapping key is missing")
             val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
             val spec = KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
+                wrappingKeyAlias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
             )
                 .setKeySize(256)
@@ -1455,7 +1779,7 @@ class ClientHubSession(context: Context) {
         try {
             privateKeyFile.delete()
             val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+            if (store.containsAlias(wrappingKeyAlias)) store.deleteEntry(wrappingKeyAlias)
         } catch (_: Exception) {
             throw HubSessionException("DEVICE_KEY_RESET_FAILED", "Could not remove the prior local device identity")
         }
@@ -1559,7 +1883,7 @@ class ClientHubSession(context: Context) {
         source: MonitorBroadcastCrypto.ConsentEndpoint,
     ) {
         require(requiredString(snapshot, "owner_principal_id") == ownerId &&
-            longValue(snapshot, "contract_version") == 1L &&
+            longValue(snapshot, "contract_version") == 2L &&
             requiredString(snapshot, "read_consistency") == "best_effort") {
             "Topology snapshot scope is invalid"
         }
@@ -2044,13 +2368,14 @@ class ClientHubSession(context: Context) {
     }
 
     private fun readState(): State {
-        if (!stateFile.baseFile.exists()) return State()
+        if (!hasAtomicFile(stateFile)) return State()
         val json = try {
             stateFile.openRead().use { input -> JsonParser.parseReader(java.io.InputStreamReader(input, StandardCharsets.UTF_8)).asJsonObject }
         } catch (_: Exception) {
             throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Hub session state cannot be read")
         }
         val state = State()
+        state.activeNetworkId = optionalString(json, "activeNetworkId")
         state.pin = json.getAsJsonObject("pin")?.let { value ->
             Pin(
                 requiredString(value, "baseUrl"),
@@ -2088,6 +2413,25 @@ class ClientHubSession(context: Context) {
                 requiredString(value, "packetJson"),
                 optionalString(value, "monitorOperationId"),
             )
+        }
+        state.networkGrantUncertainPending = json.get("networkGrantUncertainPending")?.let { element ->
+            if (element.isJsonNull) null else {
+                try {
+                    val value = element.asJsonObject
+                    validateNetworkGrantFence(Pending(
+                        requiredString(value, "operation"), requiredString(value, "operationId"),
+                        longValue(value, "sequence"), optionalLong(value, "expectedResponseSequence"),
+                        requiredString(value, "packetJson"), optionalString(value, "monitorOperationId"),
+                    ))
+                } catch (_: Exception) {
+                    throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Network grant reconciliation fence is invalid")
+                }
+            }
+        }
+        // Older builds kept only one retired request. Preserve a surviving Network grant even
+        // if a generic snapshot already cleared its transient UNCERTAIN flags. No read resets it.
+        if (state.networkGrantUncertainPending == null && state.retiredPending?.operation == "network.key_grant") {
+            state.networkGrantUncertainPending = validateNetworkGrantFence(state.retiredPending!!)
         }
         state.allowedOperations = json.getAsJsonArray("allowedOperations")?.mapNotNull { element ->
             if (element.isJsonPrimitive && element.asJsonPrimitive.isString) element.asString else null
@@ -2178,8 +2522,12 @@ class ClientHubSession(context: Context) {
         return state
     }
 
+    private fun hasAtomicFile(file: AtomicFile): Boolean = file.baseFile.exists() ||
+        File(file.baseFile.path + ".bak").exists()
+
     private fun writeState(state: State) {
         val json = JsonObject()
+        state.activeNetworkId?.let { json.addProperty("activeNetworkId", it) }
         state.pin?.let { pin ->
             json.add("pin", JsonObject().apply {
                 addProperty("baseUrl", pin.baseUrl)
@@ -2212,6 +2560,16 @@ class ClientHubSession(context: Context) {
         json.addProperty("uncertainNeedsReconciliation", state.uncertainNeedsReconciliation)
         state.retiredPending?.let { pending ->
             json.add("retiredPending", JsonObject().apply {
+                addProperty("operation", pending.operation)
+                addProperty("operationId", pending.operationId)
+                addProperty("sequence", pending.sequence)
+                pending.expectedResponseSequence?.let { addProperty("expectedResponseSequence", it) }
+                addProperty("packetJson", pending.packetJson)
+                pending.monitorOperationId?.let { addProperty("monitorOperationId", it) }
+            })
+        }
+        state.networkGrantUncertainPending?.let { pending ->
+            json.add("networkGrantUncertainPending", JsonObject().apply {
                 addProperty("operation", pending.operation)
                 addProperty("operationId", pending.operationId)
                 addProperty("sequence", pending.sequence)

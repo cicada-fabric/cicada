@@ -77,7 +77,11 @@ public final class CicadaSpeechModule extends ReactContextBaseJavaModule {
         else promise.reject("MODEL_SELECT_FAILED", "模型未安装或不可用");
     }
 
-    @ReactMethod public void startListening(Promise promise) {
+    @ReactMethod public void startListening(String sessionId, Promise promise) {
+        if (sessionId == null || sessionId.isEmpty() || sessionId.length() > 256) {
+            promise.reject("INVALID_SPEECH_SESSION", "A local recording session is required");
+            return;
+        }
         ModelCatalog.ModelSpec selected = models.selected();
         if (selected == null) {
             promise.reject("MODEL_NOT_SELECTED", "请先安装并选择本地语音模型");
@@ -92,16 +96,22 @@ public final class CicadaSpeechModule extends ReactContextBaseJavaModule {
         stt = "vosk".equals(selected.engine) ? new OfflineStt() : new SherpaOfflineStt(selected);
         stt.start(models.modelDir(selected), new SttSession.Listener() {
             @Override public void onStatus(String status) {
-                emitStatus(status);
+                WritableMap event = Arguments.createMap();
+                event.putString("message", status);
+                event.putString("sessionId", sessionId);
+                emit("CicadaSpeechStatus", event);
             }
             @Override public void onText(String text, boolean partial) {
                 WritableMap event = Arguments.createMap();
                 event.putString("text", text);
                 event.putBoolean("partial", partial);
+                event.putString("sessionId", sessionId);
                 emit("CicadaSpeechResult", event);
             }
             @Override public void onStopped() {
-                emit("CicadaSpeechStopped", null);
+                WritableMap event = Arguments.createMap();
+                event.putString("sessionId", sessionId);
+                emit("CicadaSpeechStopped", event);
             }
         });
         promise.resolve(null);

@@ -27,20 +27,45 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { task ->
         Thread(task, "cicada-client-hub").apply { isDaemon = true }
     }
-    private val session by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ClientHubSession(reactApplicationContext) }
+    private val profiles by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { HubProfileStore(reactApplicationContext) }
 
     override fun getName(): String = "CicadaClientHub"
 
     @com.facebook.react.bridge.ReactMethod
-    fun getStatus(promise: Promise) = run(promise) { session.getStatus() }
+    fun listHubProfiles(promise: Promise) = run(promise) { profiles.listHubProfiles() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun fetchHubMetadata(options: ReadableMap, promise: Promise) = run(promise) {
+    fun createHubProfile(options: ReadableMap, promise: Promise) = run(promise) {
+        profiles.createHubProfile(requiredString(options, "label"), requiredScope(options))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun activateHubProfile(options: ReadableMap, promise: Promise) = run(promise) {
+        profiles.activateHubProfile(requiredString(options, "profileId"), requiredScope(options))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun removeHubProfile(options: ReadableMap, promise: Promise) = run(promise) {
+        profiles.removeHubProfile(requiredString(options, "profileId"), requiredScope(options))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun getStatus(options: ReadableMap, promise: Promise) = run(promise) {
+        profiles.getStatus(requiredScope(options))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun setActiveNetwork(options: ReadableMap, promise: Promise) = run(promise) {
+        profiles.setActiveNetwork(requiredString(options, "networkId"), requiredScope(options))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun fetchHubMetadata(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.fetchHubMetadata(requiredString(options, "baseUrl"))
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun pinHub(options: ReadableMap, promise: Promise) = run(promise) {
+    fun pinHub(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.pinHub(
             requiredString(options, "baseUrl"),
             requiredString(options, "hubId"),
@@ -49,13 +74,13 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun createDeviceIdentity(promise: Promise) = run(promise) { session.createDeviceIdentity() }
+    fun createDeviceIdentity(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.createDeviceIdentity() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun startNewDeviceEnrollment(promise: Promise) = run(promise) { session.startNewDeviceEnrollment() }
+    fun startNewDeviceEnrollment(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.startNewDeviceEnrollment() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun enroll(options: ReadableMap, promise: Promise) = run(promise) {
+    fun enroll(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.enroll(
             requiredString(options, "ownerId"),
             requiredString(options, "ownerKeyId"),
@@ -66,10 +91,10 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun recoverEnrollment(promise: Promise) = run(promise) { session.recoverEnrollment() }
+    fun recoverEnrollment(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.recoverEnrollment() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun rpc(options: ReadableMap, promise: Promise) = run(promise) {
+    fun rpc(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         val operation = requiredString(options, "operation")
         val body = options.getMap("body")?.let(::readableMapToJson)
             ?: throw HubSessionException("INVALID_RPC_BODY", "Encrypted RPC body must be a JSON object")
@@ -78,37 +103,62 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun recoverPending(promise: Promise) = run(promise) { session.recoverPending() }
+    fun recoverPending(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.recoverPending() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun retryPendingExact(promise: Promise) = run(promise) { session.retryPendingExact() }
+    fun retryPendingExact(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.retryPendingExact() }
 
     @com.facebook.react.bridge.ReactMethod
-    fun previewGroupKey(options: ReadableMap, promise: Promise) = run(promise) {
+    fun previewGroupKey(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.previewGroupKey(requiredString(options, "groupId"),
             requiredString(options, "endpointId"), requiredString(options, "ownerKeyId"))
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun grantGroupKey(options: ReadableMap, promise: Promise) = run(promise) {
+    fun grantGroupKey(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.grantGroupKey(requiredString(options, "groupId"),
             requiredString(options, "endpointId"), requiredString(options, "ownerKeyId"),
             requiredString(options, "expectedDigest"), requiredString(options, "signedProofBase64"))
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun getGroupKeyStatus(options: ReadableMap, promise: Promise) = run(promise) {
+    fun getGroupKeyStatus(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.groupKeyStatus(requiredString(options, "groupId"),
             requiredString(options, "endpointId"))
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun getMonitorBroadcastOperations(promise: Promise) = run(promise) {
+    fun previewNetworkKey(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.previewNetworkKey(requiredString(options, "networkId"),
+            requiredString(options, "endpointId"), requiredString(options, "ownerKeyId"))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun previewNetworkKeyGrant(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.previewNetworkKeyGrant(requiredString(options, "networkId"),
+            requiredString(options, "endpointId"), requiredString(options, "ownerKeyId"),
+            requiredString(options, "expectedDigest"), requiredString(options, "signedProofBase64"))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun grantNetworkKey(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.grantNetworkKey(requiredString(options, "networkId"),
+            requiredString(options, "endpointId"), requiredString(options, "ownerKeyId"),
+            requiredString(options, "expectedDigest"), requiredString(options, "signedProofBase64"))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun getNetworkKeyStatus(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.networkKeyStatus(requiredString(options, "networkId"), requiredString(options, "endpointId"))
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun getMonitorBroadcastOperations(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastOperations()
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun monitorBroadcastBodyMatches(options: ReadableMap, promise: Promise) = run(promise) {
+    fun monitorBroadcastBodyMatches(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastBodyMatches(
             requiredString(options, "previewId"),
             requiredString(options, "body"),
@@ -116,7 +166,7 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun monitorBroadcastPrepare(options: ReadableMap, promise: Promise) = run(promise) {
+    fun monitorBroadcastPrepare(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastPrepare(
             requiredString(options, "groupId"),
             requiredString(options, "monitorEndpointId"),
@@ -126,12 +176,12 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun monitorBroadcastRecover(options: ReadableMap, promise: Promise) = run(promise) {
+    fun monitorBroadcastRecover(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastRecover(requiredString(options, "operationId"))
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun monitorBroadcastConfirm(options: ReadableMap, promise: Promise) = run(promise) {
+    fun monitorBroadcastConfirm(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastConfirm(
             requiredString(options, "previewId"),
             requiredString(options, "body"),
@@ -140,7 +190,7 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun monitorBroadcastStatus(options: ReadableMap, promise: Promise) = run(promise) {
+    fun monitorBroadcastStatus(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         session.monitorBroadcastStatus(requiredString(options, "previewId"))
     }
 
@@ -158,6 +208,19 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
         } catch (_: Exception) {
             promise.reject("CLIENT_HUB_UNAVAILABLE", "Client Hub worker is unavailable")
         }
+    }
+
+    private fun runScoped(options: ReadableMap, promise: Promise, action: (ClientHubSession) -> JsonObject) =
+        run(promise) { profiles.withActiveScope(requiredScope(options), action) }
+
+    private fun requiredScope(options: ReadableMap): HubProfileStore.Scope {
+        val scope = try { options.getMap("scope") } catch (_: Exception) { null }
+            ?: throw HubSessionException("INVALID_PROFILE_SCOPE", "A captured Hub profile scope is required")
+        val generation = try { scope.getDouble("selectionGeneration") } catch (_: Exception) { Double.NaN }
+        if (!generation.isFinite() || generation < 1 || generation > 9_007_199_254_740_991.0 || generation % 1 != 0.0) {
+            throw HubSessionException("INVALID_PROFILE_SCOPE", "Hub profile selection generation is invalid")
+        }
+        return HubProfileStore.Scope(requiredString(scope, "profileId"), generation.toLong())
     }
 
     private fun requiredString(map: ReadableMap, key: String): String = optionalString(map, key)

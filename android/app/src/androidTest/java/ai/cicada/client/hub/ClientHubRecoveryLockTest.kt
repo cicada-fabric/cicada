@@ -383,12 +383,26 @@ class ClientHubRecoveryLockTest {
 
             fun snapshot(permission: Boolean = true, status: String = "active", bindingEpoch: Long = 3) =
                 JsonObject().apply {
-                    addProperty("contract_version", 1)
+                    addProperty("contract_version", 2)
                     addProperty("owner_principal_id", "owner-preflight")
+                    addProperty("captured_at", "2026-09-30T12:00:00Z")
                     addProperty("read_consistency", "best_effort")
+                    addProperty("networks_truncated", false)
+                    addProperty("network_endpoints_truncated", false)
+                    add("networks", JsonArray().apply {
+                        add(JsonObject().apply {
+                            addProperty("network_id", "network-preflight")
+                            addProperty("name", "Synthetic preflight Network")
+                            addProperty("state", "ACTIVE")
+                            addProperty("version", 1)
+                            addProperty("can_create_group", true)
+                        })
+                    })
                     add("groups", JsonArray().apply {
                         add(JsonObject().apply {
                             addProperty("group_id", "group-preflight")
+                            addProperty("network_id", "network-preflight")
+                            addProperty("name", "Synthetic preflight Group")
                             addProperty("state", "ACTIVE")
                             // These management CAS versions are intentionally distinct from
                             // the signed Group manifest revisions in the source consent card.
@@ -398,17 +412,21 @@ class ClientHubRecoveryLockTest {
                     add("endpoints", JsonArray().apply {
                         add(JsonObject().apply {
                             addProperty("endpoint_id", source.endpointId)
+                            addProperty("name", "Synthetic preflight Monitor")
                             addProperty("principal_id", source.principalId)
                             addProperty("node_id", source.nodeId)
                             addProperty("binding_id", source.bindingId)
                             addProperty("binding_epoch", bindingEpoch)
                             addProperty("binding_status", "leased")
                             add("group_ids", JsonArray().apply { add("group-preflight") })
+                            add("network_ids", JsonArray().apply { add("network-preflight") })
+                            addProperty("presence", "online")
                         })
                     })
                     add("memberships", JsonArray().apply {
                         add(JsonObject().apply {
                             addProperty("group_id", "group-preflight")
+                            addProperty("membership_id", "membership-source-preflight")
                             addProperty("principal_id", source.principalId)
                             addProperty("role", "monitor")
                             addProperty("status", status)
@@ -417,6 +435,7 @@ class ClientHubRecoveryLockTest {
                             addProperty("version", 730)
                         })
                     })
+                    add("links", JsonArray())
                 }
 
             fun accept(value: JsonObject) {
@@ -432,6 +451,7 @@ class ClientHubRecoveryLockTest {
             }
 
             accept(snapshot())
+            reject(snapshot().apply { addProperty("contract_version", 1) })
             reject(snapshot(permission = false))
             reject(snapshot(status = "revoked"))
             reject(snapshot(bindingEpoch = 4))
@@ -547,7 +567,7 @@ class ClientHubRecoveryLockTest {
     }
 
     private companion object {
-        const val CONTRACT_REVISION = "client-hub-v1.3"
-        const val CATALOG_SHA256 = "808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377"
+        const val CONTRACT_REVISION = "client-hub-v1.4"
+        const val CATALOG_SHA256 = "7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54"
     }
 }

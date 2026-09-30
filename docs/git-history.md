@@ -4,6 +4,16 @@
 
 Commit complete, validated milestones. Keep implementation, related fixes, tests and evidence together. Consolidate unpublished incremental commits before synchronization; preserve published history. Push the explicitly authorized branch and keep local recovery references private.
 
+Use the server's global `user.name` and `user.email` directly for both author and committer. Do not override them through repository configuration, command options, environment variables, or co-author trailers. Before committing, compare `git var GIT_AUTHOR_IDENT` and `git var GIT_COMMITTER_IDENT` with `git config --global`. Local pre-commit and pre-push hooks enforce this policy; the push check also examines every commit reachable from the proposed branch tip. These local hooks are installed in `.git/hooks` and are not transferred by cloning.
+
+### Identity audit — 2026-09-30
+
+At 09:59 UTC, the remote default branch `dev/react-native` pointed to `b627e7051aaa738ed0736c27f07085e31f4be40a`. All seven remote commits and all 41 locally referenced commits, including the private recovery history, had author and committer `DaiVernon <205618093@qq.com>`, matching the server's global configuration. None contained co-author trailers. There were no repository identity overrides, and the effective hooks directory was `.git/hooks`.
+
+The live GitHub contributors and contributor statistics APIs each returned only `hbswcsyzx`, with seven contributions. Each remote commit's GitHub author and committer association also resolved to that account. No current API result associated a contribution with `client`. The unauthenticated repository HTML rendered a loading placeholder for its Contributors section; it did not expose the completed browser view. An older or different browser display is therefore not sufficient evidence of a new commit with an incorrect identity. No history rewrite or push was necessary for this audit.
+
+A repeated live audit at 11:16 UTC confirmed the same remote tip, seven remote commits, 41 locally referenced commits, and sole GitHub contributor. `git ls-remote` found only `dev/react-native`, with no remote tags. Both effective identities came from `/home/zyf/.gitconfig`; no identity environment override or repository identity setting was present. The local pre-commit and full-history pre-push checks each exited `0`. The rendered Contributors HTML still contained a loading skeleton, so the cause of a different browser display remains unconfirmed.
+
 ## 2026-09-27 consolidation
 
 The 34 unpublished commits after `2fed94249cd03f799f15f1abd828064d13f26df2` were consolidated into three milestones. The published base was preserved, so synchronization uses a normal fast-forward push to `origin/dev/react-native`.

@@ -7,9 +7,15 @@ import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import {speechDevice} from './src/platform/speech';
 import type {SpeechModel} from './src/platform/speech';
 import {
-  CLIENT_HUB_V13_CATALOG_SHA256, CLIENT_HUB_V13_REVISION,
-  clientHub, operationAllowed,
+  CLIENT_HUB_CATALOG_SHA256, CLIENT_HUB_REVISION,
+  clientHubBridgeReadiness, operationAllowed,
 } from './src/platform/clientHub';
+import {HubConnections} from './src/components/HubConnections';
+import type {HubConnection} from './src/components/HubConnections';
+import {NetworkKeyConsentPanel} from './src/components/NetworkKeyConsentPanel';
+import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
+import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
+import {speechEventBelongsToSession} from './src/platform/hubProfileScope';
 import type {
   ClientGoalArtifactReference, ClientGoalResult, ClientGoalResultWorker,
   ClientHubGenericRpcOperation,
@@ -48,11 +54,7 @@ type ClientStatusSnapshot = {
   nodes?: JsonObject[]; endpoints?: JsonObject[]; workers?: JsonObject[];
   goals?: JsonObject[]; groups?: JsonObject[]; tasks?: JsonObject[];
 };
-type ClientTopologySnapshot = {
-  captured_at?: string; read_consistency?: string;
-  groups?: JsonObject[]; memberships?: JsonObject[]; endpoints?: JsonObject[];
-  links?: JsonObject[];
-};
+type ClientTopologySnapshot = NetworkTopologySnapshot;
 type StatusChange = {id?: string; change_type?: string; entity_type?: string;
   entity_id?: string; state?: unknown; observed_at?: string; created_at?: string};
 type StatusChangesPage = {completeness?: string; events?: StatusChange[];
@@ -94,6 +96,7 @@ const safeHubError = (error: unknown) => {
   if (/403|FENCED|REVOK/i.test(code)) {
     return 'Hub 已隔离此设备会话；远程功能关闭。请核对授权状态后再继续。';
   }
+  if (code === 'PROFILE_HUB_ID_MISMATCH') return '此连接已固定其他 Hub；请新建独立连接，保留原设备身份与待恢复请求。';
   return code ? `安全连接操作失败（${code}）。请检查身份固定和网络，再读取 Hub 权威状态。` :
     '安全连接操作未成功。请检查配置和网络，再读取 Hub 权威状态。';
 };
@@ -213,31 +216,42 @@ const capsAllows = (caps: ClientHubCapabilities | null, capability: keyof Client
   operation: ClientRpcOperation, status: ClientHubStatus) =>
   Boolean(caps?.client_control_pq_e2ee === true && caps.authenticated_client_session === true &&
     caps[capability] === true && operationAllowed(status, operation));
-const hubCatalogMatchesV13 = (caps: ClientHubCapabilities | null) => Boolean(
-  caps?.contract_revision === CLIENT_HUB_V13_REVISION &&
-  caps.catalog_sha256 === CLIENT_HUB_V13_CATALOG_SHA256 &&
+const hubCatalogMatches = (caps: ClientHubCapabilities | null) => Boolean(
+  caps?.contract_revision === CLIENT_HUB_REVISION &&
+  caps.catalog_sha256 === CLIENT_HUB_CATALOG_SHA256 &&
   caps.client_control_pq_e2ee === true && caps.authenticated_client_session === true);
 const monitorOperationAllowed = (caps: ClientHubCapabilities | null,
   session: ClientHubSessionCapabilities | null, status: ClientHubStatus,
   operation: typeof MONITOR_RPC_OPERATIONS[number]) => {
-  return monitorCatalogAllows(caps, session, status, clientHub.monitorBroadcastReady,
-    CLIENT_HUB_V13_REVISION, CLIENT_HUB_V13_CATALOG_SHA256) &&
-    hubCatalogMatchesV13(caps) && operationAllowed(status, operation);
+  return monitorCatalogAllows(caps, session, status, clientHubBridgeReadiness.monitorBroadcastReady,
+    CLIENT_HUB_REVISION, CLIENT_HUB_CATALOG_SHA256) &&
+    hubCatalogMatches(caps) && operationAllowed(status, operation);
 };
 const monitorSessionBlocksWrites = (status: ClientHubStatus) => Boolean(
   status.pendingOperationId || status.uncertainNeedsReconciliation || status.recoveryBlocked ||
   status.authFenced || status.remoteEnabled !== true || status.sessionCapabilitiesReady !== true);
 const monitorFeatureAvailable = (caps: ClientHubCapabilities | null,
   session: ClientHubSessionCapabilities | null, status: ClientHubStatus) =>
-  monitorCatalogAllows(caps, session, status, clientHub.monitorBroadcastReady,
-    CLIENT_HUB_V13_REVISION, CLIENT_HUB_V13_CATALOG_SHA256);
+  monitorCatalogAllows(caps, session, status, clientHubBridgeReadiness.monitorBroadcastReady,
+    CLIENT_HUB_REVISION, CLIENT_HUB_CATALOG_SHA256);
 
 function App(): React.JSX.Element {
   return <SafeAreaProvider><StatusBar barStyle="dark-content" />
-    <Client /></SafeAreaProvider>;
+    <HubConnections>{connection => <Client
+      key={connection.api.scope.profileId + ':' + connection.api.scope.selectionGeneration}
+      connection={connection} />}</HubConnections></SafeAreaProvider>;
 }
 
-function Client(): React.JSX.Element {
+function Client({connection}: {connection: HubConnection}): React.JSX.Element {
+  const clientHub = connection.api;
+  const setVoiceBusy = connection.setVoiceBusy;
+  const mountedRef = useRef(true);
+  const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceSessionRef = useRef('');
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (voiceTimerRef.current) clearTimeout(voiceTimerRef.current);
+  }, []);
   const [tab, setTab] = useState<Tab>('today');
   const pageScrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -353,10 +367,12 @@ function Client(): React.JSX.Element {
   const selectedModel = models.find(model => model.selected);
   const realSession = hubStatus.nativeAvailable && hubStatus.remoteEnabled &&
     hubStatus.sessionCapabilitiesReady;
+  const activeNetwork = explicitActiveNetwork(topologySnapshot, hubStatus.activeNetworkId);
+  const selectedNetworkGroups = groupsInNetwork(topologySnapshot, hubStatus.activeNetworkId);
   const monitorOwnerId = sessionCapabilities?.owner_id || hubStatus.ownerId || ownerId;
   const monitorBodyInspection = inspectMonitorBody(monitorBody);
   const monitorBodyBytes = monitorBodyInspection.byteLength;
-  const monitorActiveGroups = (topologySnapshot?.groups || []).filter(group =>
+  const monitorActiveGroups = selectedNetworkGroups.filter(group =>
     field(group, 'state').toUpperCase() === 'ACTIVE');
   const selectedMonitorGroup = monitorActiveGroups.find(group =>
     field(group, 'group_id') === monitorGroupId);
@@ -372,9 +388,9 @@ function Client(): React.JSX.Element {
       field(member, 'principal_id') === field(endpoint, 'principal_id') &&
       membershipHasMonitorRole(member) && membershipAllowsBroadcast(member)) &&
     Boolean(monitorOwnerId));
-  const monitorTopologyApplyAllowed = Boolean(hubCatalogMatchesV13(hubCapabilities) &&
-    sessionCapabilities?.contract_revision === CLIENT_HUB_V13_REVISION &&
-    sessionCapabilities.catalog_sha256 === CLIENT_HUB_V13_CATALOG_SHA256 &&
+  const monitorTopologyApplyAllowed = Boolean(hubCatalogMatches(hubCapabilities) &&
+    sessionCapabilities?.contract_revision === CLIENT_HUB_REVISION &&
+    sessionCapabilities.catalog_sha256 === CLIENT_HUB_CATALOG_SHA256 &&
     sessionCapabilities.available_rpc_operations.includes('topology.apply') &&
     capsAllows(hubCapabilities, 'topology_management', 'topology.apply', hubStatus));
   const monitorFeatureReady = monitorFeatureAvailable(
@@ -478,8 +494,8 @@ function Client(): React.JSX.Element {
       session?.available_rpc_operations.includes(operation));
   const goalResultAvailable = (capabilities = hubCapabilities,
     session = sessionCapabilities, status = hubStatus) => Boolean(
-    session?.role === 'manager' && session.contract_revision === CLIENT_HUB_V13_REVISION &&
-    capabilities?.contract_revision === CLIENT_HUB_V13_REVISION &&
+    session?.role === 'manager' && session.contract_revision === CLIENT_HUB_REVISION &&
+    capabilities?.contract_revision === CLIENT_HUB_REVISION &&
     session.catalog_sha256 === capabilities.catalog_sha256 &&
     capsAllows(capabilities, 'control_intents', 'goal.result', status) &&
     session.available_rpc_operations.includes('goal.result'));
@@ -1635,7 +1651,22 @@ function Client(): React.JSX.Element {
           finally { setTopologyActionBusy(false); }
         }}]);
   const applyTopology = async (action: Record<string, unknown>, title: string) => {
-    Alert.alert(title, '此操作将提交给 Hub，并按对象版本校验。', [
+    if (!activeNetwork) {
+      setHubMessage('请先明确选择 ACTIVE Network。');
+      return;
+    }
+    const selectedGroups = new Set(selectedNetworkGroups.map(group => field(group, 'group_id')));
+    const kind = field(action, 'kind');
+    const affectedGroup = Object.values(action).filter(value => typeof value === 'object' && value !== null)
+      .map(asObject).flatMap(value => [field(value, 'group_id'), field(value, 'parent_group_id'),
+        field(asObject(value.proposal), 'source_group_id'), field(asObject(value.proposal), 'target_group_id')])
+      .filter(Boolean);
+    if (affectedGroup.some(id => !selectedGroups.has(id)) ||
+      (kind === 'group.create' && field(asObject(asObject(action.create_group).group), 'network_id') !== activeNetwork.network_id)) {
+      setHubMessage('Group 操作必须属于当前明确选择的 Network；请重读拓扑并核对 ID。');
+      return;
+    }
+    Alert.alert(title, `Hub ${hubStatus.hubId}\nNetwork ${activeNetwork.network_id}\n\n此操作将提交给 Hub，并按对象版本校验。`, [
       {text: '取消', style: 'cancel'},
       {text: '提交', onPress: async () => {
         invalidateMonitorPreview('Hub 拓扑写入会使 Monitor 预览失效；需重读 roster 并重新准备。');
@@ -1659,17 +1690,21 @@ function Client(): React.JSX.Element {
     ]);
   };
   const createGroup = () => {
-    const name = groupName.trim();
-    if (!name) return;
-    applyTopology({kind: 'group.create', create_group: {
-      group: {name}, ...(parentGroupId.trim() ? {parent_group_id: parentGroupId.trim()} : {}),
-    }}, '创建 Group');
+    try {
+      const action = createGroupRequest(topologySnapshot, hubStatus.activeNetworkId,
+        groupName, parentGroupId);
+      applyTopology({...action}, '创建 Group');
+    } catch (error) { setHubMessage(errorMessage(error)); }
   };
   const previewGroupKey = async () => {
     const groupId = keyGroupId.trim();
     const endpointId = keyEndpointId.trim();
     const ownerKeyId = keyOwnerId.trim();
     if (!groupId || !endpointId || !ownerKeyId) return;
+    if (!selectedNetworkGroups.some(group => field(group, 'group_id') === groupId)) {
+      setHubMessage('请使用当前 Network 中的 Group。');
+      return;
+    }
     setKeyConsentBusy(true);
     setVerifiedKeyManifest(null);
     setKeySignedProof('');
@@ -1780,6 +1815,7 @@ function Client(): React.JSX.Element {
   useEffect(() => {
     refreshModels();
     const status = DeviceEventEmitter.addListener('CicadaSpeechStatus', event => {
+      if (event?.sessionId && event.sessionId !== voiceSessionRef.current) return;
       const message = String(event?.message || '');
       setVoiceStatus(message);
       if (message.includes('下载') || message.includes('安装') || message.includes('校验')) {
@@ -1787,6 +1823,7 @@ function Client(): React.JSX.Element {
       }
     });
     const result = DeviceEventEmitter.addListener('CicadaSpeechResult', event => {
+      if (!speechEventBelongsToSession(voiceSessionRef.current, event)) return;
       const text = String(event?.text || '').trim();
       if (!text) return;
       if (event.partial) setVoiceStatus('识别中：' + text);
@@ -1795,10 +1832,13 @@ function Client(): React.JSX.Element {
         setVoiceStatus('转写完成，可编辑后发送');
       }
     });
-    const stopped = DeviceEventEmitter.addListener('CicadaSpeechStopped',
-      () => setRecording(false));
+    const stopped = DeviceEventEmitter.addListener('CicadaSpeechStopped', event => {
+      if (!speechEventBelongsToSession(voiceSessionRef.current, event)) return;
+      setRecording(false);
+      setVoiceBusy(false);
+    });
     return () => { status.remove(); result.remove(); stopped.remove(); };
-  }, []);
+  }, [setVoiceBusy]);
 
   const initializeHubSessionRef = useRef(initializeHubSession);
   initializeHubSessionRef.current = initializeHubSession;
@@ -1891,8 +1931,10 @@ function Client(): React.JSX.Element {
   }, [tab, realSession, hubCapabilities]);
 
   const stopVoice = async () => {
+    if (voiceTimerRef.current) { clearTimeout(voiceTimerRef.current); voiceTimerRef.current = null; }
     try { await speechDevice?.stopListening(); } catch {}
     setRecording(false);
+    connection.setVoiceBusy(false);
   };
   const closeComposer = () => {
     stopVoice();
@@ -1901,11 +1943,13 @@ function Client(): React.JSX.Element {
     setVoiceStatus('');
   };
   const startVoice = async () => {
+    if (!mountedRef.current) return;
     if (recording) {
       await stopVoice();
       setVoiceStatus('录音已停止 · 转写结果可编辑');
       return;
     }
+    voiceSessionRef.current = '';
     if (!speechDevice) {
       setVoiceStatus('此平台的离线语音适配尚未接入，可直接输入文字');
       return;
@@ -1915,17 +1959,23 @@ function Client(): React.JSX.Element {
       return;
     }
     if (Platform.OS === 'android') {
+      connection.setVoiceBusy(true);
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+      if (!mountedRef.current) return;
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        connection.setVoiceBusy(false);
         setVoiceStatus('未获得麦克风权限，仍可直接输入文字');
         return;
       }
     }
     try {
-      await speechDevice.startListening();
+      voiceSessionRef.current = clientHub.scope.profileId + ':' +
+        clientHub.scope.selectionGeneration + ':' + Date.now().toString(36);
+      await speechDevice.startListening(voiceSessionRef.current);
       setRecording(true);
     } catch {
+      connection.setVoiceBusy(false);
       setVoiceStatus('无法启动本地转写，请重试或直接输入文字');
     }
   };
@@ -1933,7 +1983,13 @@ function Client(): React.JSX.Element {
     setCompose(true);
     setVoiceStatus(selectedModel ? selectedModel.name + ' 已就绪 · 录音不会上传'
       : '未安装模型 · 可直接输入文字');
-    if (voice) setTimeout(() => { startVoice(); }, 180);
+    if (voice) {
+      connection.setVoiceBusy(true);
+      voiceTimerRef.current = setTimeout(() => {
+        voiceTimerRef.current = null;
+        startVoice().finally(() => { if (!recording && !voiceSessionRef.current) connection.setVoiceBusy(false); });
+      }, 180);
+    }
   };
   const installModel = async (model: SpeechModel) => {
     if (!speechDevice || modelBusyId) return;
@@ -2328,13 +2384,35 @@ function Client(): React.JSX.Element {
             <Text style={s.description}>{(topologySnapshot?.groups || []).length} 个 Group · {(topologySnapshot?.memberships || []).length} 个 Membership · {(topologySnapshot?.endpoints || []).length} 个 Endpoint</Text>
             <Text style={s.small}>来源：topology.snapshot · {topologySnapshot?.captured_at || '尚未读取'}</Text>
           </Card>
+          <Card><Text style={s.cardTitle}>当前 Network</Text>
+            <Text style={s.description}>{activeNetwork ? activeNetwork.name + ' · ' + activeNetwork.network_id :
+              '请选择一个 ACTIVE Network'}</Text>
+            {(topologySnapshot?.networks || []).slice(0, 100).map(network =>
+              <Button key={network.network_id} title={network.name + ' · ' + network.state}
+                secondary={network.network_id !== hubStatus.activeNetworkId}
+                disabled={network.state !== 'ACTIVE' || recording || hubBusy || topologyActionBusy}
+                onPress={() => Alert.alert('选择 Network', network.name + '\n' + network.network_id +
+                  '\n\n未发送的文字和授权预览将清空；Hub 会话与原请求计数保留。', [
+                  {text: '取消', style: 'cancel'},
+                  {text: '选择', onPress: () => {
+                    connection.selectNetwork(network.network_id).catch(error => {
+                      if (mountedRef.current) setHubMessage('Network 选择未完成：' + safeHubError(error));
+                    });
+                  }},
+                ])} />)}
+            {!!(topologySnapshot?.networks_truncated || topologySnapshot?.network_endpoints_truncated) &&
+              <Notice>Hub 返回的 Network 或 Endpoint 列表不完整；不可见记录不代表不存在。</Notice>}
+          </Card>
+          <NetworkKeyConsentPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
+            publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
+            onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />
           {monitorFeatureReady && <>
             <ActionCard title={showMonitorPanel ? '收起 Monitor 广播' : 'Monitor 广播'}
               body="向一个同 Owner Group 中已固定的收件人 roster 发送精确文本；先逐项审核，再由 Android 安全桥加密批准。"
               onPress={() => setShowMonitorPanel(open => !open)} />
             <View collapsable={false} nativeID="monitor-panel-host">
             {showMonitorPanel && <>
-              <Notice>Monitor 入口已由 v1.3 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。</Notice>
+              <Notice>Monitor 入口已由当前 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。</Notice>
               {!!monitorMessage && <Text style={s.small}>{monitorMessage}</Text>}
               <Card>
                 <Section name="1 · 选择确切 Group" action="重读拓扑" onPress={() => {
@@ -2528,7 +2606,7 @@ function Client(): React.JSX.Element {
               <TextInput style={s.hubInput} value={parentGroupId} onChangeText={setParentGroupId}
                 placeholder="父 Group ID（可选；留空创建根 Group）" accessibilityLabel="父 Group ID" />
               <Button title="提交创建" onPress={createGroup} secondary={topologyActionBusy}
-                disabled={topologyActionBusy || !groupName.trim()} />
+                disabled={topologyActionBusy || !groupName.trim() || !activeNetwork?.can_create_group} />
             </Card>}
             {showTopologyEditor && <>
             <TextInput style={s.hubInput} value={joinEndpointId} onChangeText={setJoinEndpointId}
@@ -2574,7 +2652,7 @@ function Client(): React.JSX.Element {
             </>}
           </>}
           {showTopologyEditor && <>
-          <VisibleItems items={topologySnapshot?.groups || []} renderItem={group => <Card key={field(group, 'group_id')}>
+          <VisibleItems items={selectedNetworkGroups} renderItem={group => <Card key={field(group, 'group_id')}>
             <Text style={s.cardTitle}>{field(group, 'name') || field(group, 'group_id')}</Text>
             <Text style={s.description}>{field(group, 'group_id')} · {field(group, 'state')} · v{field(group, 'version')}</Text>
             <Text style={s.small}>父 Group：{field(group, 'parent_group_id') || '无'} · 来源：topology.snapshot · {topologySnapshot?.captured_at || '观察时间未知'}</Text>
@@ -2584,7 +2662,8 @@ function Client(): React.JSX.Element {
           </Card>} />
           <Section name="Membership" />
           <Notice>`message.broadcast` 是每个 Membership 的独立权限；`monitor` 角色不会自动授予。所有变更使用当前版本提交，失败或断线后以新 topology.snapshot 对账。</Notice>
-          <VisibleItems items={topologySnapshot?.memberships || []} renderItem={member => {
+          <VisibleItems items={(topologySnapshot?.memberships || []).filter(member =>
+            selectedNetworkGroups.some(group => field(group, 'group_id') === field(member, 'group_id')))} renderItem={member => {
             const hasPermission = typeof member.broadcast_permission_enabled === 'boolean';
             const permissionEnabled = member.broadcast_permission_enabled === true;
             const version = Number(member.version);
@@ -2594,7 +2673,7 @@ function Client(): React.JSX.Element {
               <Text style={s.cardTitle}>{field(member, 'display_name') || field(member, 'principal_id')}</Text>
               <Text style={s.description}>Group {field(member, 'group_id')} · {field(member, 'role')} · {field(member, 'status')} · v{field(member, 'version')}</Text>
               <Text style={s.small}>message.broadcast：{hasPermission ?
-                (permissionEnabled ? '已明确允许' : '未允许') : '未由 v1.3 snapshot 确认'}
+                (permissionEnabled ? '已明确允许' : '未允许') : '未由当前 snapshot 确认'}
                 {' · Monitor 角色本身不改变此值'}</Text>
               {canToggle && <View style={s.modelActions}>
                 <Button title={permissionEnabled ? '撤销广播权限' : '明确允许广播'} secondary
@@ -2603,7 +2682,8 @@ function Client(): React.JSX.Element {
             </Card>;
           }} />
           <Section name="Endpoints" />
-          <VisibleItems items={topologySnapshot?.endpoints || []} renderItem={endpoint => <Card key={field(endpoint, 'endpoint_id')}>
+          <VisibleItems items={(topologySnapshot?.endpoints || []).filter(endpoint =>
+            Array.isArray(endpoint.network_ids) && endpoint.network_ids.includes(hubStatus.activeNetworkId))} renderItem={endpoint => <Card key={field(endpoint, 'endpoint_id')}>
             <Text style={s.cardTitle}>{field(endpoint, 'name') || field(endpoint, 'endpoint_id')}</Text>
             <Text style={s.description}>{field(endpoint, 'endpoint_id')} · {field(endpoint, 'presence')} · Groups {(Array.isArray(endpoint.group_ids) ? endpoint.group_ids : []).join(', ')}</Text>
           </Card>} />
@@ -2824,6 +2904,13 @@ function Client(): React.JSX.Element {
       <Pill text={realSession ? `E2EE · ${sessionCapabilities?.role || hubStatus.role || '已认证'}` :
         hubStatus.authFenced ? '授权已隔离' : hubStatus.pinned ? '未建立会话' : '未连接'}
         tone={realSession ? 'green' : 'amber'} />
+    </View>
+    <View style={s.connectionBar}>
+      <Pressable onPress={connection.openProfiles} disabled={recording}
+        accessibilityLabel="管理 Hub 连接"><Text style={s.connectionText}>
+          {connection.profile.label} · {hubStatus.hubId || '未固定身份'}
+      </Text></Pressable>
+      <Text style={s.connectionText}>{activeNetwork?.name || hubStatus.activeNetworkId || '未选择 Network'}</Text>
     </View>
     <ScrollView key={tab} ref={pageScrollRef} style={s.scroll} contentContainerStyle={s.content}>
       {page()}
@@ -3208,6 +3295,8 @@ const s = StyleSheet.create({
   screen: {flex: 1, backgroundColor: c.white},
   header: {height: 76, flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 22, backgroundColor: c.white},
+  connectionBar: {paddingHorizontal: 22, paddingBottom: 12, gap: 4},
+  connectionText: {fontSize: 12, color: c.muted},
   logo: {width: 38, height: 38, borderRadius: 14, backgroundColor: c.ink,
     alignItems: 'center', justifyContent: 'center'},
   logoText: {fontSize: 18, fontWeight: '700', color: c.white},
