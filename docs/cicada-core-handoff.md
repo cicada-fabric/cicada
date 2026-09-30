@@ -5,6 +5,22 @@
 **Branch:** `dev/react-native`
 **Delivery:** one local implementation and validation checkpoint; no push or merge.
 
+## Local Release packaging checkpoint
+
+The [Release packaging validation report](release-packaging-validation.md) records the subsequent bounded packaging work from Client `feb0cd2`. The immutable Docker toolchain, source fingerprint, actual ABI APK sizes and SHA-256 values, native-library/ELF inventory, exact commands and preparation failures have separate evidence. These local unsigned artifacts and disposable signed test copies are distinct from the framework and fixed-Hub APKs below. No Hub interface, operation gate or signing authority changes as part of packaging.
+
+The per-ABI Release profile preserves the default Debug APK path, uses R8/resource shrinking and retains the existing STT and crypto dependencies. The original four-ABI Debug package was already natively stripped; the new measurements do not attribute its existing stripping to this checkpoint. Physical Android, ARM runtime, public HTTPS and fresh live Hub acceptance remain separate unrun gates.
+
+- **PASS:** offline build and unsigned artifact audit for all four existing ABIs. ARM64 is 58,052,430 bytes, compared with the archived 296,177,563-byte four-ABI Debug file; this is an APK-file comparison, not installed size or an isolated R8 saving.
+- **PASS:** final Release x86_64 Android 15/API 35 offline startup; 5/5 independent public Kotlin crypto vectors; one real Paraformer inference and Vosk native-binding smoke after a fixture-only staging correction on the same APK. The original failed STT attempt remains recorded. No transcript was logged.
+- **FAIL:** Release operation-policy instrumentation is 3/4. One test fails before capability assertions because it reflects on private method names that R8 changes. Existing public rejection tests passed; no production keep rule or test hook was added to mask this gap. Replace that test's private reflection with a public-behavior fixture in a later checkpoint.
+- **PASS:** exact-owned emulator removal and disposable signing-secret cleanup. Commands, exit codes, counts, durations and failed attempts are in the packaging report and restricted evidence.
+- **NOT_RUN:** ARM/x86 runtime, physical Android, public HTTPS, live Hub/native execution, iOS and native HarmonyOS for these Release APKs. Earlier Debug or fixed-Hub acceptance is not transferred.
+
+Unsigned ARM64 SHA-256: `aa35dcecf44e7a84996dbc485e283e684cba8adb4e62c37503d679d570e71205`; unsigned x86_64 SHA-256: `78e3538522d54826d391b1e3873499dfecc0eeb2eac5499a0442cec7cec53940`. Installed disposable x86_64 app SHA-256: `07d0e8bbe00c5e4488a3f19f65a20537091b3513a80a89dceef18dad49e0f41c`; test APK SHA-256: `d46634bad52d9ddb2d977709a4607be886deb04f2c074249f1dc23cbb85f4e38`. The complete table identifies all four unsigned artifacts. Their compiled-source fingerprint is `38fb1820bff51f81048f74c50dcae26aa2ef85bd9013c8d51f62b511a95cb2eb` (92 files), built from `feb0cd2` plus this checkpoint. The local completion receipt at `/gpu1-share/data/cicada-client/release-packaging-20260930/evidence/delivery-checkpoint.redacted.json` identifies the milestone commit and confirms matching committed source bytes. This remains an observed checkout build, not a rebuilt clean-commit APK.
+
+Packaging review request: read this section and `docs/release-packaging-validation.md`; reconcile the final source fingerprint, four unsigned APK hashes and separately signed test copies with their command receipts. Preserve the policy reflection failure and initial staging failure. Keep all deferred protocol gates closed, and do not extend fixed v1.5 acceptance or count this as live Hub, physical-device or production-release validation.
+
 ## Shared-space v2 local framework
 
 The [shared-space v2 framework report](shared-space-v2-framework.md) records the gated review UI and independent candidate-proof work following Client `eb0db6f3d095b60b0f2f73bcfda0079ba33ad846`. Its public vector is from ongoing Core development, rather than a newly pinned contract. The fixed v1.5 report below remains tied to its original APKs and source. Candidate-vector tests do not enable an operation or extend live acceptance. Proposal/delegation UI is a blocked overview, with no fetch, approval, issue or revoke path.

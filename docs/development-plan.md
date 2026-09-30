@@ -14,6 +14,8 @@ Completed in this checkpoint: 54 Kotlin and 29 JavaScript tests; independent exa
 
 Subsequent [shared-space v2 framework work](shared-space-v2-framework.md) adds a collapsed, scope-bound local review panel and independent candidate-only complete-status proof verifier. The public Core vector is WIP; it is separate from the fixed protocol snapshot. All ten v2 operations and three Link key operations stay disabled. A local reading marker cannot become approval. The next integration must validate per-Owner external signatures and explicit confirmation separately from native Join and final dual-proof status. Proposal/delegation UI currently explains the blocked lifecycle rather than fetching or applying a proposal.
 
+The bounded [Release packaging checkpoint](release-packaging-validation.md) selects the existing ABIs explicitly, enables managed-code/resource optimization and retains the native crypto/STT dependencies. It records actual unsigned artifacts separately from disposable signed test copies. Local package size and emulator inference do not replace a clean future Hub contract, native consent acceptance, physical-device measurements or public HTTPS validation; the protocol gates remain unchanged.
+
 ## Historical v1.4 checkpoint
 
 **Historical checkpoint:** 2026-09-30, branch `dev/react-native`, clean Hub `f30892fcd79a27bfe5604575deaecebe52c5ec50`, protocol `client-hub-v1.4`, catalog `7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54`. The [v1.4 validation record](client-hub-v1.4-f30892f-validation.md) provides complete pins, commands, APK hashes and outcome boundaries.

@@ -8,7 +8,17 @@ react {
     autolinkLibrariesWithApp()
 }
 
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+
+def clientTestBuildType = providers.gradleProperty("clientTestBuildType").getOrElse("debug")
+if (!(clientTestBuildType in ["debug", "release"])) {
+    throw new GradleException("clientTestBuildType must be 'debug' or 'release'")
+}
+
+def clientAbiSplits = providers.gradleProperty("clientAbiSplits").getOrElse("false")
+if (!(clientAbiSplits in ["true", "false"])) {
+    throw new GradleException("clientAbiSplits must be 'true' or 'false'")
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -24,6 +34,16 @@ android {
         versionName "0.1.0-dev"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+    splits {
+        abi {
+            // Preserve the universal debug APK unless release packaging opts in.
+            enable clientAbiSplits.toBoolean()
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            universalApk false
+        }
+    }
+    testBuildType clientTestBuildType
     buildTypes {
         debug {
             // Only the isolated emulator -> host-loopback development Hub uses HTTP.
@@ -32,7 +52,9 @@ android {
         release {
             manifestPlaceholders = [cleartextTrafficPermitted: "false"]
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // No release signingConfig is set; release APKs remain unsigned.
         }
     }
 }
