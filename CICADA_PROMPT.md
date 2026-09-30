@@ -1,5 +1,11 @@
 请在当前 CICADA 仓库上执行一次重大架构升级。
 
+## 2026-09-30 当前轮次：M2 有界实施
+
+当前实施授权是从干净 `dev` / `7c4194155d6c0c342671299e447c907f0b1d94d6` 开始，交付同一权威 Hub、同 Owner ACTIVE Network Group 的加密 Journal 与 Discussion。保留以下 M1 段落作为 2026-09-28 历史指令与验收来源；其中“本轮只做 M1／不启动 M2”不再约束当前轮次。M3 通知、M4 再分组、M5 多 Hub、面板和独立 Android 仓库仍不在当前范围。Core、Surface、Validation 分别负责状态/密码与迁移、HTTP/MCP/Node bridge/合同、独立门禁；由主任务在最终验证后做一个检查点提交，不能把 dirty 构建仅归于 HEAD。
+
+M2 闭环是 Joined 原 Thread 经 MCP→受信 Node 本地验证与 NIST 逐读者密封→Hub 保存密文并逐次 Guard→当前授权 Node 拉取单份密文并解密→MCP 返回有界正文。Journal append/list/get 和更正、Discussion topic/reply/list/get 和状态 CAS，独立 `space.read`、`space.write`、`space.moderate` Group grant、单调 sequence、幂等、加入后的 `read_from_seq`、保留期与当前 fence 同时实现。正文≤16 KiB、读者≤32、页≤16、保留≤30 天。新成员旧历史必须有单条记录的 Owner 离线精确签名 grant 和重新封装的解密材料；不能把普通 Endpoint key grant 当共享历史 key。现有同 Owner Group key 证明仅支持 same-owner board，本轮对 cross-owner board fail closed。Client v1.4 管理 catalog、encrypted wire v1 与 Android 内容入口不变；不启动真实模型、不修改常驻环境或真密钥。按 [M2 计划](docs/architecture-v2-plan.md) 的退出门槛分别记录确定性、一次性 Docker、native、Android、物理设备、公网 HTTPS 结果；skip 不算 pass。
+
 仓库根目录新版 CICADA.md 是本轮已经采纳的目标架构：
 Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport。
 
@@ -7,7 +13,7 @@ Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay 
 完整验收矩阵、G1–G5 演示路径和 v2-A 至 v2-E 的阶段划分。
 如果根目录也有 CICADA_PROMPT.md，请完整读取并执行其中要求。
 
-## 2026-09-28 当前检查点：M1 后端矩阵通过
+## 历史 2026-09-28 检查点：M1 后端矩阵通过（以下“本轮”均指当时）
 
 本轮目标以 `CICADA.md` 的 Architecture v2.3 为准：物理部署仍是 Node、Hub、Client，逻辑参与者仍是 User、Control、Worker、Monitor；Network 是 Group 之上的私有租户/授权范围，不是新部署实体或第五类参与者。每个 Network 只有一个权威 Hub、每个 Group 只属一个 Network；同一 Thread/Endpoint 可在多个 Network 各有 scoped 注册并加入多个 Group，各 Hub 的 SessionBinding/registry 独立，而 Node 对同一原生 Session 只允许一个当前投递 owner 和串行 writer。NetworkMembership、Group Membership、Endpoint 加入关系，以及目录发现、私聊、广播和 Task grant 各自独立；Network 成员身份不自动加入 Group 或暴露私有 Group 历史。多 Hub 注册使用各自的凭据与状态，不做 Hub-to-Hub 转发。
 

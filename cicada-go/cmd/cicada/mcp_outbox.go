@@ -42,15 +42,19 @@ var (
 // The idempotency key is stored in its own column so it cannot accidentally
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
-	ApprovalID string `json:"approval_id,omitempty"`
-	NetworkID  string `json:"network_id,omitempty"`
-	Target     string `json:"target,omitempty"`
-	LinkID     string `json:"link_id,omitempty"`
-	DataScope  string `json:"data_scope,omitempty"`
-	Body       string `json:"body,omitempty"`
-	Question   string `json:"question,omitempty"`
-	RequestID  string `json:"request_id,omitempty"`
-	ExpiresAt  string `json:"expires_at,omitempty"`
+	ApprovalID   string `json:"approval_id,omitempty"`
+	NetworkID    string `json:"network_id,omitempty"`
+	Target       string `json:"target,omitempty"`
+	LinkID       string `json:"link_id,omitempty"`
+	DataScope    string `json:"data_scope,omitempty"`
+	Body         string `json:"body,omitempty"`
+	Question     string `json:"question,omitempty"`
+	RequestID    string `json:"request_id,omitempty"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
+	TopicID      string `json:"topic_id,omitempty"`
+	CorrectsID   string `json:"corrects_id,omitempty"`
+	TopicVersion int64  `json:"expected_topic_version,omitempty"`
+	SpaceStatus  string `json:"space_status,omitempty"`
 }
 
 type mcpOutboxScope struct {
@@ -386,6 +390,25 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return mcpOutboxOperation{}, false, fmt.Errorf("%w: inspect operation: %v", errMCPOutboxPersistence, err)
 	}
+	if strings.HasPrefix(kind, "space_") {
+		// A Group Space record cannot outlive 30 days. Preserve all retry
+		// identities through that window, then expire only this surface's
+		// local plaintext outbox. Unknown attempts are never silently
+		// discarded while their Hub record could still be retained.
+		cutoff := time.Now().UTC().Add(-31 * 24 * time.Hour).Format(time.RFC3339Nano)
+		if _, err := tx.Exec(`DELETE FROM mcp_outbox_operations
+WHERE kind LIKE 'space_%' AND updated_at < ?`, cutoff); err != nil {
+			return mcpOutboxOperation{}, false, fmt.Errorf("%w: prune Group Space operations: %v", errMCPOutboxPersistence, err)
+		}
+		var count int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM mcp_outbox_operations
+WHERE kind LIKE 'space_%'`).Scan(&count); err != nil {
+			return mcpOutboxOperation{}, false, fmt.Errorf("%w: count Group Space operations: %v", errMCPOutboxPersistence, err)
+		}
+		if count >= 512 {
+			return mcpOutboxOperation{}, false, errors.New("Group Space local outbox quota is full")
+		}
+	}
 	operationID := reservedID
 	if operationID == "" {
 		operationID, err = newMCPOutboxID("op")
@@ -640,6 +663,9 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 	}
 	if op.Kind == "broadcast" {
 		return m.dispatchBroadcastMCPOutbox(store, scope, op)
+	}
+	if strings.HasPrefix(op.Kind, "space_") {
+		return m.dispatchGroupSpaceMCPOutbox(store, scope, op)
 	}
 	if op.Kind == "monitor_broadcast" {
 		return m.dispatchMonitorBroadcastMCPOutbox(store, scope, op)

@@ -1,5 +1,15 @@
 # Architecture v2.3 当前事实审计
 
+## 2026-09-30 M2 Group Spaces 后端有界验收审计
+
+冻结源码 fingerprint `76becd7a479dfd801427fc470c376517227f67b293392d4cd7e314f5fa5b6e7c` 前后一致；全 Go 25 包 1292 tests PASS、0 FAIL、11 opt-in Docker/native SKIP，vet EXIT0，见 [accepted Go gate](../.cicada-data/m2-20260930/accepted/go-gates.json)。SKIP 不计 PASS。六包聚焦 race 与 M2、Client、Network M1 三套独立 disposable Docker 门禁均 EXIT0；gofmt、Client v1.4 合同、八项 Python、shell 语法、diff 检查亦 EXIT0。各层证据见 [M2 validation](group-spaces-m2-validation.md)、[race](../.cicada-data/m2-20260930/accepted/race.json)、[本地检查](../.cicada-data/m2-20260930/accepted/local-checks.json)及 [M2](../.cicada-data/m2-20260930/accepted/group-spaces-m2-docker/result.json)、[Client](../.cicada-data/m2-20260930/accepted/client-docker/result.json)、[Network](../.cicada-data/m2-20260930/accepted/network-m1-docker/result.json) Docker 结果。
+
+边界审查实测 32 名合法读者和 16 KiB 正文时，commit JSON 为 2,116,357 B，16 页读投影为 2,530,333 B；Node/HTTP 与持久 sealed cache 因此采用 4 MiB 有界上限。每份新 reader envelope、历史重封装都从既有 Node `(Endpoint,key)` 持久出站序号账本单独预留，不能误用 Group-local record sequence；已经缓存的丢响应重试复用原字节且不前进序号。聚焦 MCP 测试包含这个精确重试/序号性质和 Topic resolve/get/reopen CAS。
+
+当前候选从 `dev` `7c4194155d6c0c342671299e447c907f0b1d94d6` 起步，源码仍为 dirty 工作树；不能把测试归于单独 HEAD。M2 新链使用现有 Node 凭据与 Joined Group Session 双重鉴权；Hub/Store 当前 Network、Group、Endpoint、绑定 epoch、membership/lease 与 `space.read/write/moderate` Guard 在 prepare、commit、get/list 和单记录历史步骤分别复查。Node 核对原 Codex session record、Hub current binding、独立安装的 Owner 公钥、当前或签入时刻的 Endpoint key proof、外层重封装者与内层原作者签名，才将 16 KiB 内正文返回 MCP。Hub 只持久化逐读者密文、签名证明和受限路由元数据；Node bearer 与私钥不出 Unix 桥。跨 Owner Group、明文 HTTP 降级、模型自称 Owner 批准和旧成员原 ciphertext 对新成员的自动扩权都拒绝。
+
+聚焦合成两 Node MCP 测试已通过原作者与另一读者解密、丢 commit 响应后的原字节重试、模型伪造 sender、撤写拒绝、撤读再授后的 cutoff 拒绝与独立 Owner 离线签精确旧记录后的重封装读取。该证据只覆盖测试中的合成 Codex session record 和 in-process Hub HTTP handler；独立 disposable real-TCP Docker、合法容量上限、全 Go/vet/race 和源码指纹均已在上方对应候选证据中独立验证。M2 [合同](group-spaces-m2-contract.md)取代旧 [设计提案](group-collaboration-spaces-design.md)中的拟议接口名；Client v1.4 管理合同、Android 内容界面、真实原生 Runtime、物理 Node、公网 HTTPS 没有借此获得 PASS。
+
 ## 2026-09-28 M1 Network backend 验收通过
 
 当前 v36 backend 候选在 `HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2`、`dirty=true`、源码指纹 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 上通过全 25 个 Go 包测试、vet、gofmt、16 项精准 race，以及隔离的 Client 与 Network disposable Docker 门禁；门禁前后源码指纹一致。证据见 [本轮 Go 门禁](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Docker 门禁](../.cicada-data/m1-final-20260928/accepted/docker-gates.json)、[M1 代码审计](m1-code-audit.md)与 [M1 验证矩阵](network-m1-validation.md)。这是该 dirty 候选的 backend 验收，不是仅凭 HEAD 的干净构建，也不代表 Android、真实 native Runtime、物理设备或公网 HTTPS 已运行。

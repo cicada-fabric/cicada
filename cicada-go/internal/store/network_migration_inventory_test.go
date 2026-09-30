@@ -64,11 +64,26 @@ var networkV36Triggers = []string{
 	"network_direct_group_writer_update_v2",
 }
 
+var networkV37Triggers = []string{
+	"group_space_join_insert_v2", "group_space_join_update_v2",
+	"group_space_member_insert_v2", "group_space_member_update_v2",
+	"group_space_network_member_update_v2",
+	"group_space_network_endpoint_insert_v2",
+	"group_space_network_endpoint_update_v2",
+}
+
 // setSyntheticNetworkSchemaVersion removes only versioned Network objects
 // newer than targetVersion from a disposable test database. Iterate objects
 // in reverse migration order so child tables disappear before their parents.
 func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion int) {
 	t.Helper()
+	if targetVersion < 37 {
+		for _, trigger := range networkV37Triggers {
+			if _, err := db.Exec(`DROP TRIGGER IF EXISTS ` + networkV34QuoteIdentifier(trigger)); err != nil {
+				t.Fatalf("remove synthetic v37 trigger %s: %v", trigger, err)
+			}
+		}
+	}
 	if targetVersion < 36 {
 		// These v36 triggers are attached to the historical session_bindings
 		// table, so dropping v36 tables alone does not remove them.
@@ -992,6 +1007,74 @@ func TestNetworkV36UpgradeInterruptionPreservesCompleteV35Ledger(t *testing.T) {
 		var count int
 		if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("successful v36 retry did not restore trigger %s (count=%d): %v", trigger, count, err)
+		}
+	}
+}
+
+func TestGroupSpaceV37InterruptionPreservesV36IdentityKeysAndReplay(t *testing.T) {
+	f := newUserMonitorBroadcastFixture(t)
+	seedNetworkV35ExistingLedger(t, f)
+	seedNetworkV35Inventory(t, f)
+	s := f.sealed.store
+	path := f.sealed.dbPath
+	before := snapshotNetworkMigrationData(t, s.db, 36)
+	for _, table := range []string{"contacts", "peer_sessions", "peer_messages",
+		"group_endpoint_key_grants_v2", "endpoint_key_candidates_v2", "network_memberships_v2"} {
+		if before[table].Count == 0 {
+			t.Fatalf("synthetic v36 fixture lacks %s", table)
+		}
+	}
+	setSyntheticNetworkSchemaVersion(t, s.db, 36)
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, s.db, 36))
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	injected := errors.New("synthetic v37 interruption")
+	failed, err := openStoreWithMigrationHook(path, func(id, phase string) error {
+		if id == "v2.fabric.group_spaces" && phase == "after_apply" {
+			return injected
+		}
+		return nil
+	})
+	if failed != nil {
+		_ = failed.Close()
+	}
+	if !errors.Is(err, injected) {
+		t.Fatalf("v37 interruption: %v", err)
+	}
+	check, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check.SetMaxOpenConns(1)
+	for object := range networkMigrationAddedObjectsAfterVersion(36) {
+		var count int
+		if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`,
+			object).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("failed v37 left %s: count=%d err=%v", object, count, err)
+		}
+	}
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, check, 36))
+	if err := check.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	assertNetworkV34DataEqual(t, before, snapshotNetworkMigrationData(t, reopened.db, 36))
+	entry, err := reopened.readV2Migration(37)
+	if err != nil || entry == nil || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v37 retry ledger: entry=%#v err=%v", entry, err)
+	}
+	for _, trigger := range networkV37Triggers {
+		var count int
+		if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?`,
+			trigger).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("v37 trigger %s: count=%d err=%v", trigger, count, err)
 		}
 	}
 }

@@ -1,5 +1,9 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-09-30 M2 v37 增量迁移候选
+
+从干净 `dev` `7c4194155d6c0c342671299e447c907f0b1d94d6` 的 Hub v36 出发，M2 在原库增量加入 Group Space sequence、每 Endpoint read cutoff、record/reservation、逐读者密文、topic CAS、历史 manifest/grant 与保留 tombstone 账本（schema v37），不改 Client v1.4 catalog、encrypted wire v1、旧 Endpoint/Group/Network/Link/消息/Approval/key/replay 行或 Node 私钥。现有有效 Group 成员只有具 `space.read` 的明确授权才得到当前窗口；失去再恢复读 grant 开始新的 `read_from_seq`，不由历史 Group key proof 推断旧读权。历史单条 grant 持久保存 Owner exact-record 签名、原 ciphertext digest、当前 recipient key/join/Network revision 与一个新 envelope；缺任何一项不放行旧记录。Core 迁移采用既有可重复 ledger，过期清理每请求限量执行并保留每 Group 最多 4096 条、清理后最多 30 天的 tombstone；它只在 live record/tombstone 窗口内阻止旧幂等 ID 重用，旧 record ID/密封 Context 不复活；新表受每 Group 512 retained records、64 active reservations、64 MiB retained bytes、32 readers 与 30 天保留上限约束。Node 本地新增私有 sealed retry cache，MCP 复用已有私有 outbox，不建立新服务或恢复旧 plaintext。增量升级、回滚、保全、backup/restore 的最终 PASS 只以本轮冻结源码和独立验证记录为准。
+
 ## 2026-09-28 v36 Network direct 增量（backend 门禁通过）
 
 当前 dirty 候选 `HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2`、源码指纹 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 的全 Go、vet、gofmt、精准 race、独立 Client 与 Network disposable Docker 门禁均通过，门禁前后指纹一致。详见 [门禁记录](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Docker 结果](../.cicada-data/m1-final-20260928/accepted/docker-gates.json)、[代码审计](m1-code-audit.md)与 [M1 验证矩阵](network-m1-validation.md)。这些是合成迁移和一次性 Hub 验证，不是生产 StateDir 备份/恢复演练。

@@ -7,14 +7,14 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 suite=client
 if [[ "${1:-}" == "--suite" ]]; then
   [[ $# -eq 2 ]] || {
-    printf 'Usage: %s [--suite client|network-m1]\n' "$0" >&2
+    printf 'Usage: %s [--suite client|network-m1|group-spaces-m2]\n' "$0" >&2
     exit 2
   }
   suite="$2"
   shift 2
 fi
 [[ $# -eq 0 ]] || {
-  printf 'Usage: %s [--suite client|network-m1]\n' "$0" >&2
+  printf 'Usage: %s [--suite client|network-m1|group-spaces-m2]\n' "$0" >&2
   exit 2
 }
 case "$suite" in
@@ -24,9 +24,12 @@ case "$suite" in
   network-m1)
     test_selector='^TestNetworkM1DockerHub$'
     ;;
+  group-spaces-m2)
+    test_selector='^TestGroupSpacesM2(HTTPHistoryRetentionAndTopicCAS|DockerHub)$'
+    ;;
   *)
     printf 'Unknown interop suite: %s\n' "$suite" >&2
-    printf 'Usage: %s [--suite client|network-m1]\n' "$0" >&2
+    printf 'Usage: %s [--suite client|network-m1|group-spaces-m2]\n' "$0" >&2
     exit 2
     ;;
 esac
@@ -38,6 +41,7 @@ for command_name in python3 docker git; do
 done
 default_output_suite=client-interop
 if [[ "$suite" == network-m1 ]]; then default_output_suite=network-m1-interop; fi
+if [[ "$suite" == group-spaces-m2 ]]; then default_output_suite=group-spaces-m2-interop; fi
 output_root="${CICADA_INTEROP_OUTPUT:-${repo_root}/.cicada-data/${default_output_suite}/$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 mkdir -p "$output_root"
 output_root="$(cd "$output_root" && pwd -P)"
@@ -96,6 +100,14 @@ if suite == "network-m1":
              "network_only_direct_sealed_send_claim_authorize_receipt",
              "network_only_direct_sealed_ask_reply_route_status",
              "control_free_http_network_direct_ask_reply_claim_authorize"]
+elif suite == "group-spaces-m2":
+    schema_version = "cicada.group-spaces-m2-interop.v1"
+    test_name = "TestGroupSpacesM2DockerHub"
+    level = "real_tcp_disposable_hub_group_spaces_m2"
+    scope = ["synthetic_two_node_credentials", "trusted_group_sessions",
+             "per_reader_sealed_journal", "self_read_and_peer_read",
+             "mismatched_node_session_denial", "topic_status_cas_and_stale_retry",
+             "control_management_routes_not_exercised"]
 else:
     schema_version = "cicada.client-hub-interop.v1"
     test_name = "TestClientDockerHubSmoke"
@@ -118,6 +130,13 @@ result = {
 }
 if suite == "client":
     result["recovery_fault_test"] = {"name": "TestClientDockerHubRecoveryFixture", "exit_code": int(test_exit)}
+if suite == "group-spaces-m2":
+    result["additional_tests"] = [
+        {"name": "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS", "exit_code": int(test_exit),
+         "level": "real_tcp_new_fabric_handler_control_free"},
+    ]
+    result["native_harness_session"] = "SYNTHETIC_FIXTURE_ONLY"
+    result["physical_nodes"] = "NOT_RUN"
 (Path(output) / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 print(f"{status}: {output}/result.json")
 PY
@@ -195,7 +214,7 @@ PY
 
 phase=protocol_test
 set +e
-if [[ "$suite" == network-m1 ]]; then
+if [[ "$suite" == network-m1 || "$suite" == group-spaces-m2 ]]; then
   docker run --rm --name "$test_container" --network host \
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
     -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
@@ -222,7 +241,9 @@ import sys
 raw, destination, exit_code, suite = sys.argv[1:]
 events = []
 required = ({"TestNetworkM1DockerHub"} if suite == "network-m1" else
-            {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture"})
+            ({"TestGroupSpacesM2DockerHub", "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS"}
+             if suite == "group-spaces-m2" else
+             {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture"}))
 passed = set()
 for line in Path(raw).read_text(errors="replace").splitlines():
     try:

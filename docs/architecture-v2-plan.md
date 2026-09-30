@@ -1,12 +1,22 @@
 # Architecture v2.3 实施计划
 
-## 当前 M1 候选与历史门禁（2026-09-28）
+## 当前执行：M2 Group Journal / Discussion（2026-09-30）
+
+本轮从干净 `dev` / `7c4194155d6c0c342671299e447c907f0b1d94d6` 开始，只实现一个权威 Hub 内、同 Owner 的 ACTIVE Network Group 协作空间。Core 负责 SQLite 迁移、Store/Fabric Guard、读者快照、逐读者密封格式与密钥证明；Surface 负责 Hub Node HTTP、现有 MCP 与受保护 Node Unix bridge、M2 协议合同；Validation 负责独立确定性与一次性 Docker HTTP 验收，最终单个检查点由主任务统一提交。各自测试结果须归属最后冻结的源码，而非单独归于起点 HEAD。
+
+最小真实链是：当前显式 Joined 原生 Thread 通过 MCP 请求，受信 Node 复核本地 session 与 Hub/Network/Group fence，使用已有 NIST 套件按固定读者快照逐人封装正文，Hub 仅排序并保存密文；另一当前授权的 Node 分页取得其单份密文，经 Owner 证明和本地密钥核验后向 MCP 返回有限正文。Journal 有 append/list/get 和追加式更正，Discussion 有 topic/reply/list/get 与状态 CAS。每次写入、页读、单对象读均查当前 `space.read`、`space.write` 或 `space.moderate` 的独立 Group grant、加入起点、保留期与版本。正文上限 16 KiB、读者上限 32、页上限 16、保留不超过 30 天；重试复用原始密文字节，重复 ID 与不同内容冲突。Hub 无正文、明文索引或 Endpoint 私钥。
+
+新成员默认从加入后的 `read_from_seq` 读取。M2 还须提供**单记录**旧历史授予：由仍能读取旧记录的当前读者本地解密原作者签名内容并重新封装，Owner 离线签精确 Hub/Network/Group/record、原密文摘要、目标加入 revision/公钥、期限与 nonce；Hub 当前 Guard 核对证明、范围和解密材料。普通 Group Endpoint key grant 不是共享历史 key，旧引用的 Evidence/Artifact 继续独立鉴权。该有界机制不代表批量回填或跨 Owner Group 支持；现有 Group key 同意只有同 Owner 可验证，跨 Owner board 本轮明确拒绝。
+
+退出门槛：聚焦权限/幂等/CAS/迁移/保留测试与越 Network/Group、撤权、新成员旧历史拒绝；独立 disposable Hub 上真实加密 HTTP 的 MCP→Node→Hub→Node→MCP 往返，Hub 密文审计及清理；全 Go/vet、相关 race 与既有 Client 合同门禁。Android v1.4、真实 native Runtime、双物理 Node、公网 HTTPS 分层报告，未运行不得计 PASS。`client-hub-v1.4` 管理 catalog 和 encrypted wire v1 保持不变；本轮不开发 Android board、通知/unread 路由、Monitor 再分组、多 Hub 或 UI，不启动模型、不改独立 Client、不碰常驻部署或真密钥。
+
+## M1 候选与历史门禁（2026-09-28，以下为当时快照）
 
 **当前 M1 后端矩阵 PASS（2026-09-28）。** Hub schema v36 与独立 `client-hub-v1.4` 合同（encrypted wire v1、36 项操作）已接入：Owner 设备可在 `topology.snapshot` 查看有界 Network/Endpoint 拓扑，`topology.apply` 的 `group.create` action 在 ACTIVE Hub 显式选择同网 Network；Network-only Endpoint 可发布独立密钥候选，经 Owner 签当前 manifest 后使用 Network scope 的密封 SEND/ASK/REPLY，不需伪 Group 或共享原生 writer。Node/Relay 与 Client 管理信道保持分离，capability 不代替逐请求授权。冻结源码 fingerprint `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 前后不变：全 Go 25 包、vet、16 个聚焦 race 用例、合同与八项 Python、默认 Client 和 Network 两套独立 disposable real-TCP Docker 门禁均 PASS；结果属于 HEAD `733ca86` **加 dirty 工作树**，不能只归因于 HEAD。Android、真实 native Runtime、双物理 Node、公网 HTTPS仍 **NOT_RUN**。见 [门禁记录](../.cicada-data/m1-final-20260928/accepted/go-gates.json)、[Client 结果](../.cicada-data/m1-final-20260928/accepted/client-docker/result.json)、[Network 结果](../.cicada-data/m1-final-20260928/accepted/network-docker/result.json)、[M1 验收矩阵](network-m1-validation.md)和[公开合同](client-hub-wire-v1.md)。
 
 **历史有界检查点（2026-09-28）：ACTIVE Network 授权与迁移加固 PASS，仅归属当时源码。** 已实现目录 AccessScope 与可见卡同一 Store 事务核验、Request 状态/取消及旧消息 enrollment revision 复验、Task/Handoff 读取时的 native Actor 守卫和写入时的当前 Network/Node 守卫、Task 验收时的精确 Actor 复验、Artifact 元数据/列表的 Endpoint 级读取守卫，以及 Group key proof 在映射、Network 撤权和 Endpoint leave 后的签名 revision fence。旧 Group/Endpoint 关系、Grant、原生 writer 与其他 Network 授权不随这些 fence 自动变更；PREPARING 中仍未映射的旧 Group 保留旧行为。已补跨 Store 撤权、旧已接受和未接受 proof、fresh consent、Task/Request 与 Artifact 负例，以及 v34 升级保全和中断回滚的合成检查。当时整仓 Go、vet、聚焦 Network/ACTIVE 四包 race、合同及八项 Python 检查、默认 Client 与 Network 两个 Docker 门禁均 PASS；测试前后源码 fingerprint 同为 `1738095ea36e47655808857ce1934a72241bab1d8bb860d62f24299964c38d00`。该结果归属 `HEAD 975ce8e` 加当时未提交工作树，不能单独归因于该 commit，也不是当前 v1.4/v36 候选的最终门禁；整体 M1 当时仍未完成。
 
-**本轮停止于 M1 后端验收，不启动 M2。** Network-only 密封 E2EE 私聊、ACTIVE v1.4 Owner 拓扑/同网建组、迁移保全与各入口 Guard/撤权矩阵已进入上述后端确定性与一次性 Hub HTTP 门禁。该 PASS 不外推至真实原生 Runtime、Android、双物理 Node 或公网 HTTPS；它们各自仍是 **NOT_RUN**。M2 Journal/Discussion 仅作为下一阶段目标。
+**当时轮次停止于 M1 后端验收，未启动 M2。** Network-only 密封 E2EE 私聊、ACTIVE v1.4 Owner 拓扑/同网建组、迁移保全与各入口 Guard/撤权矩阵已进入上述后端确定性与一次性 Hub HTTP 门禁。该 PASS 不外推至真实原生 Runtime、Android、双物理 Node 或公网 HTTPS；它们各自仍是 **NOT_RUN**。M2 Journal/Discussion 仅作为下一阶段目标。
 
 M1 接口按独立组件组合：原 Thread 经已验证 Node 注册 Endpoint；Endpoint 可分别加入多个 Network；Group 只归属一个 Network，成员和角色在该 Group 内另行授权。HTTP/MCP/CLI 选择同一个已登记 scope 并复用核心 Guard；选择器不创建权限，不将 Network 伪装成 Group，不另起 Agent 或模型服务。错误与结果按各自授权边界稳定返回。
 
@@ -33,7 +43,7 @@ The `0cda61460757246789970782584b1e904173e653` clean `dev` base was the M1 start
 
 Network 是 Group 之上的私有 tenant/授权范围，不改变 Node/Hub/Client 部署实体，也不增加 User/Control/Worker/Monitor 之外的参与者。一个 Hub 可托管多个 Network；每个 Network 只由一个权威 Hub 承载。编号使用 M1–M5，避免与 `docs/client-hub-development.md` 的 N1–N6 冲突。
 
-**本轮执行 M1。** 新增 Network Owner 操作已放入独立 `client-hub-v1.4` 候选，不回填冻结的 v1.3 catalog/image；encrypted wire 仍为 v1，新合同与 Hub 实现、公开向量和检查同批验收。M2–M5 仍按下表依赖推进，不为每个阶段额外设立普遍审批门槛。
+**2026-09-28 当时执行 M1。** 新增 Network Owner 操作已放入独立 `client-hub-v1.4` 候选，不回填冻结的 v1.3 catalog/image；encrypted wire 仍为 v1，新合同与 Hub 实现、公开向量和检查同批验收。M2–M5 仍按下表依赖推进，不为每个阶段额外设立普遍审批门槛。
 
 | 阶段 | 最小交付与验收 | 依赖 / 明确不做 |
 |---|---|---|
@@ -43,7 +53,7 @@ Network 是 Group 之上的私有 tenant/授权范围，不改变 Node/Hub/Clien
 | M4 — Delegated topology and regrouping | Monitor 先提出二次分组；仅在精确、可撤销 delegation 下按拓扑版本 CAS 执行并审计 | 无自授权、无隐式历史 key/读者扩张、无自动 Thread/context 迁移；扩大可见性走现有 Owner/User Approval。 |
 | M5 — Multi-Hub Node and Client interop | Node 按 Hub 隔离 credential、Endpoint registration、订阅、序号和 replay 状态；地址为 `(hub_id, network_id, endpoint_id)`；同一 native Thread 仍由一个本地 writer 仲裁。未来 Client 独立合同、每 Hub identity pin/device key/session/counter，明确 active Hub/Network | 依赖 M1–M4 已稳定 scope/Guard/route。禁止 Hub-to-Hub forwarding 和公开全局 Thread ID；Client 由其仓库 Owner 实现，不修改或回填冻结的 v1.3。 |
 
-M1 的首个可运行验收切片必须包含：同 Hub 双 Network 的数据/授权隔离；每 Network 最小成员邀请和 Thread owner Join；默认权限预设与按资源 scope 的 Guard；最小授权目录/私聊；撤权、scope 伪造、昵称歧义、NetworkAdmin 越权和旧 API 绕过拒绝；用户可读的拓扑/发现结果；schema migration 预演、回滚边界、全 Go 和 disposable Docker 门禁。Network membership 本身不赋予共同 Group 权限；Network-scoped directory/direct-message/task grants 可在没有共同 Group 时工作，但不能泄露私有 Group、历史或未分享 Artifact。M2–M4 的提出式 API 与加密/授权边界见[Group Journal and Discussion 设计](group-collaboration-spaces-design.md)；它们均为 PROPOSED。M5 保留原计划的跨 Hub Node 和独立 Client 多 Hub 范围。
+M1 的首个可运行验收切片必须包含：同 Hub 双 Network 的数据/授权隔离；每 Network 最小成员邀请和 Thread owner Join；默认权限预设与按资源 scope 的 Guard；最小授权目录/私聊；撤权、scope 伪造、昵称歧义、NetworkAdmin 越权和旧 API 绕过拒绝；用户可读的拓扑/发现结果；schema migration 预演、回滚边界、全 Go 和 disposable Docker 门禁。Network membership 本身不赋予共同 Group 权限；Network-scoped directory/direct-message/task grants 可在没有共同 Group 时工作，但不能泄露私有 Group、历史或未分享 Artifact。这是 M1 时点的原计划：当时 M2–M4 均为提案；当前 M2 已有 [实现合同](group-spaces-m2-contract.md)，M3/M4 仍为提案。M5 保留原计划的跨 Hub Node 和独立 Client 多 Hub 范围。
 
 旧Group到Network的映射不得按Owner机械拆开（可能破坏已有跨Owner共同Group/Link），也不得为了保留连通而合成一个大Network。迁移输入必须显式列出旧Group→Network；缺失、多解或会扩大已有可见性的映射停在pending供用户确认。保留Endpoint/Group/Link ID、Thread、receipt、密钥、审批和旧Grant历史；按新scope逐项验证现有精确授权，覆盖不足时双方重新授权，不自动重信任或复制旧Group key。NetworkAdmin仅有该Network的管理grant，不持有Node命令执行、成员设备/私钥、原生历史或用户审批权。
 

@@ -56,6 +56,35 @@ Use the Fabric tools directly:
   one authorized Network. `network_id` selects that scope; it grants no access.
 - `cicada_network_leave` revokes only the selected Network registration. Network
   access state is separate from Group session state and the native writer.
+- `cicada_journal_append/list/get` record or read a small encrypted checkpoint
+  in the currently selected joined Group. Use `corrects_id` to append a
+  correction; an entry is not an Approval or an accepted Task result.
+- `cicada_discussion_topic_create/reply/list/get/resolve/reopen` keep a durable
+  encrypted Group topic. Resolve and reopen require the current topic version;
+  resolving a topic does not approve an action or complete a Task.
+- `cicada_space_history_manifest` prepares a single old record for a current
+  recipient. A current old reader must be able to decrypt the original; the
+  manifest alone grants nothing. Save and review the returned `history_grant`
+  JSON on the Owner's trusted machine. The Owner can sign it with the existing
+  `0600` key using `cicada owner space-history-sign --private FILE --manifest
+  FILE --expect-owner-id ID --expect-record-id ID
+  --expect-recipient-endpoint-id ID`.
+- `cicada_space_history_share` accepts only that command's complete base64
+  `owner_proof`; the Node derives the manifest ID, checks local Owner trust and
+  current Guard, and re-seals the original signed body for that one reader.
+  Never treat a model statement as Owner approval or place the Owner private
+  key in a tool argument.
+
+Group Space tools use the trusted local Node bridge for encryption and
+decryption. Their current scope comes from `cicada_use_group` and the active
+native binding, never a model-supplied Group, sender, Owner consent, or key.
+An authorized member can page retained records from its read cutoff after a
+disconnect. A new member does not gain earlier history through Join or an
+Endpoint key grant; a separate Owner-signed, record-specific history grant and
+sealed material are required. Linked Evidence and Artifacts have their own
+read authorization. These tools currently support only same-Owner Groups;
+cross-Owner board access fails closed. The Client management catalog does not
+provide Android board contents.
 
 Never guess when resolution is ambiguous. Show the candidate addresses and use
 workspace, Goal, or Machine context to disambiguate; ask the user only if that

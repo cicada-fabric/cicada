@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 36
+	CurrentV2SchemaVersion = 37
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -355,6 +355,16 @@ var v2Migrations = []v2Migration{
 			"network_direct_key_grants_v2", "network_direct_key_grant_nonces_v2",
 			"network_direct_message_routes_v2"},
 		Apply: func(s *Store) error { return s.initializeNetworkDirectSchema() },
+	},
+	{
+		Version:     37,
+		ID:          "v2.fabric.group_spaces",
+		Description: "add encrypted Group Journal and Discussion records with reader windows",
+		Objects: []string{"group_space_sequences_v2", "group_space_audience_v2",
+			"group_space_records_v2", "group_space_readers_v2", "group_space_topics_v2",
+			"group_space_history_manifests_v2", "group_space_history_grants_v2",
+			"group_space_tombstones_v2"},
+		Apply: func(s *Store) error { return s.initializeGroupSpaceSchema() },
 	},
 }
 

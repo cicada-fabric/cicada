@@ -5,6 +5,21 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
+The 2026-09-30 M2 candidate adds Hub schema v37 and same-owner ACTIVE Group
+Journal/Discussion through the current native MCP→Node→Hub→Node path: bounded
+per-reader ciphertext, current read/write/moderate Guard, topic CAS, retention,
+durable exact retry, and one-record offline Owner-signed history sharing. The
+[M2 contract](docs/group-spaces-m2-contract.md) defines the HTTP/MCP surface.
+Focused synthetic two-Node tests, full Go/vet, focused race, contract checks,
+and three separate disposable M2/Client/Network Docker gates pass on the same
+frozen dirty source; see [M2 validation](docs/group-spaces-m2-validation.md).
+Client `client-hub-v1.4` management catalog (36 operations) and
+encrypted wire v1 remain unchanged. Android board content, real native Runtime,
+physical dual-Node and public HTTPS are not validated by this candidate.
+
+The following M1 paragraph records the 2026-09-28 schema-v36 checkpoint and
+its validation only; it is not the current M2 result.
+
 Planned public product releases use the `0.1.x` line. Historical `0.2.0`,
 `0.3.0-dev`, and `0.4.0-dev` entries and the retired historical `v0.2.0` tag
 describe prototype checkpoints. Current development keeps Architecture v2.3
@@ -25,7 +40,8 @@ gates all passed. Earlier fixture failures and an interrupted race run remain
 historical, not passes; see the [validation matrix](docs/network-m1-validation.md).
 The post-upgrade dependency scan passed on earlier fingerprint `05a486a4`; pins
 did not change, and that scan is not attributed to the final source. This is
-unreleased development work, not a `0.1.x` release. M2 has not started.
+unreleased development work, not a `0.1.x` release. At that M1 checkpoint,
+M2 had not started.
 Android v1.4, real native Runtime, physical dual-Node, and public HTTPS are
 **NOT_RUN**.
 

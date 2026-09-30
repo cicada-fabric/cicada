@@ -1,7 +1,7 @@
 # Group Journal and Discussion spaces
 
-**Status:** proposed architecture only; no Journal or Discussion API is implemented by this document.
-**Scope:** documentation and milestone planning. Frozen Client Hub v1.3, wire version 1, software version and existing cryptographic suite do not change here.
+**Status:** M2 Journal/Discussion implementation candidate is defined by the [M2 contract](group-spaces-m2-contract.md); this document preserves the original broader M2–M4 design proposal. The operation names below were proposed before implementation and are not the current wire API. M3 notifications and M4 regrouping remain proposals.
+**Scope:** design rationale and milestone planning. Current Client Hub v1.4 management catalog, encrypted wire v1 and existing cryptographic suite do not change for M2.
 **Related:** [CICADA architecture](../CICADA.md), [Agent Networks](agent-networks-design.md), [implementation plan](architecture-v2-plan.md).
 
 ## Three different kinds of collaboration
@@ -20,7 +20,7 @@ The model may propose or create a record only through the relevant authorized to
 
 Each Journal entry and Discussion topic belongs to exactly one `(hub_id, network_id, group_id)`. It has a stable object ID, authenticated producer Endpoint, creation time, monotonic Group-local sequence or revision, idempotency key, parent/correction reference when relevant, retention class, and separately authorized Evidence references. Public Hub metadata may index a digest of the ciphertext only; do not persist a bare plaintext-body hash that could enable dictionary guessing. If a plaintext digest is required for endpoint verification, keep it inside the authenticated encrypted content. The authenticated connection determines the producer; a model-supplied `author_id` is never authority.
 
-The following operation family is **PROPOSED**, not a frozen method list or Client contract:
+The following operation family was **PROPOSED** before M2 implementation; actual M2 HTTP/MCP names and limits are in the [contract](group-spaces-m2-contract.md):
 
 | Operation family | Minimum behavior |
 |---|---|
@@ -38,7 +38,7 @@ The Journal is an encrypted logical log, not a Hub-hosted plaintext shared file.
 
 Each fetched body is decrypted only by an authorized Endpoint. The existing Endpoint key-grant proves an Endpoint key binding; it is not itself a shared Group-content key. Before M2, select and review either per-reader public-key envelopes using existing approved primitives or a separately reviewed Group content-key/rotation design. In either case, bind the encrypted record to a fixed authorized reader snapshot and prove a newly added reader cannot decrypt pre-join history, while revoked readers cannot decrypt future writes. Do not imply that a Group content key or rotation path already exists. Producer signature/authentication and evidence integrity are checked independently of model claims. `EvidenceRef` identifies a separate object; mentioning or linking it does not grant access to its Artifact, file or source conversation. Fetching an Evidence target runs its own current authorization check and may return denied even when the Journal entry is readable.
 
-History starts at a clear per-member `read_from_seq` cutoff. An authorized member can page missed records from that cutoff after a temporary disconnect without requesting a new history grant each time; normal reads still run the current Guard. A newly added member receives no records before its join cutoff by default. Access to earlier entries requires a separate scoped history grant naming the sequence range and retention window. A changed reader set does not automatically grant access to older ciphertext. Any re-encryption or reader-set change must use a reviewed content-key/envelope strategy with an explicit recipient set. A late sync fetches only records allowed by the current cutoff and cursor policy.
+History starts at a clear per-member `read_from_seq` cutoff. An authorized member can page missed records from that cutoff after a temporary disconnect without requesting a new history grant each time; normal reads still run the current Guard. A newly added member receives no records before its join cutoff by default. M2 access to an earlier entry requires a separately Owner-signed grant for **one exact record**, its original ciphertext digest, one current recipient key and a retention deadline; a current old reader supplies the original signed content in a new recipient envelope. The earlier proposed range grant is not implemented. A changed reader set does not automatically grant access to older ciphertext. A late sync fetches only records allowed by the current cutoff and cursor policy.
 
 Revocation prevents future reads, writes and cursor fetches at each authoritative connected Guard checkpoint. Offline Nodes must fail closed or use only a bounded authorization lease while they cannot refresh current state. No system can recall plaintext or ciphertext already copied by a recipient, erase an original Thread's model memory, or promise instantaneous revocation through a network partition. Retention expiry/deletion is a separate audited policy action; append-only correction semantics do not override required retention deletion.
 
@@ -71,7 +71,7 @@ Moving an Agent between Groups also moves model activity into a different logica
 
 ## Delivery sequence and evidence
 
-These milestones extend the Network roadmap; all Journal/Discussion methods remain proposed until separately implemented and versioned. The bounded Monitor checkpoint is complete, but it is not evidence that any milestone below is implemented or tested.
+These milestones extend the Network roadmap. M2 Journal/Discussion now has the separate implementation [contract](group-spaces-m2-contract.md); M3 notifications and M4 regrouping remain proposed. The bounded Monitor checkpoint does not prove either later milestone.
 
 1. **M1 — tenant identity and Guard:** two isolated Networks on one Hub, explicit Group-to-Network mapping, scoped membership/admin grants, minimum discovery, revocation and migration dry-run.
 2. **M2 — Journal and Discussion:** encrypted append/list/get, topic/reply, producer attribution, idempotency, bounded cursor pagination, separate Evidence ACL, `read_from_seq`, and retention behavior. Choose and review the content encryption/reader-snapshot scheme; the existing Endpoint key grant is not a shared Group-content key. Prove cross-Group/Network isolation, ciphertext-only Hub storage, new-member cutoff, revoked-reader forward isolation, and bounded body/fan-out/page/retention/hint queues.

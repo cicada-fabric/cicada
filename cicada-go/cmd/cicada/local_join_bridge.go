@@ -71,6 +71,7 @@ type localJoinResponse struct {
 	LocalGroup       *localGroupResult            `json:"local_group,omitempty"`
 	CrossNodeGroup   *crossNodeGroupResult        `json:"cross_node_group,omitempty"`
 	GroupBroadcast   *groupBroadcastResult        `json:"group_broadcast,omitempty"`
+	GroupSpace       *groupSpaceLocalResult       `json:"group_space,omitempty"`
 	MonitorBroadcast *monitorBroadcastResult      `json:"monitor_broadcast,omitempty"`
 	Retryable        bool                         `json:"retryable,omitempty"`
 	Error            string                       `json:"error,omitempty"`
@@ -462,6 +463,23 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
 			GroupBroadcast: result})
+		return
+	}
+	if strings.HasPrefix(header.Operation, "space_") {
+		var request groupSpaceLocalRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: "invalid local Group Space request"})
+			return
+		}
+		result, err := b.groupSpace(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: safeLocalJoinError(err), Retryable: localSealedSendRetryable(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+			GroupSpace: result})
 		return
 	}
 	if strings.HasPrefix(header.Operation, "cross_node_group_") {

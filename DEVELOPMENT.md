@@ -1,15 +1,29 @@
 # Cicada development environment
 
+The current 2026-09-30 M2 candidate uses Hub schema v37 for same-owner,
+single-Hub ACTIVE Group Journal/Discussion, with the existing Node/MCP process
+and no new service or dependency. See the [M2 contract](docs/group-spaces-m2-contract.md)
+for the dual-credential Node HTTP routes, current Group grants, encrypted
+per-reader records and offline Owner-signed single-record history workflow.
+The existing `client-hub-v1.4` management catalog and Client wire v1 are
+unchanged. The focused synthetic MCP/Unix/Hub/two-Node test and frozen
+full Go/vet, race, contract and three disposable Docker gates pass; see the
+[M2 validation](docs/group-spaces-m2-validation.md) and
+[status matrix](docs/architecture-v2-status.md). Do not use a resident Hub,
+real Owner key or model Runtime as a disposable test fixture. The following
+schema-v36 M1 acceptance paragraph describes its 2026-09-28 source only.
+
 The current unreleased version is `0.1.0-dev`; planned public product releases
-use `0.1.x`. The current Hub uses Store schema v36 and Client contract
-`client-hub-v1.4` (36 catalog operations, wire v1); the M1 backend acceptance
+use `0.1.x`. At the 2026-09-28 M1 checkpoint, Hub used Store schema v36
+and Client contract `client-hub-v1.4` (36 catalog operations, wire v1);
+the M1 backend acceptance
 matrix passed on dirty source fingerprint
 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe`
 (`HEAD=733ca8640f86f4944b4f8d8f7c38f6cd929212f2` plus worktree) and remains
 unreleased. Full Go/vet/focused race, contract/Python and two independent
 disposable Docker gates passed; see the [validation record](docs/network-m1-validation.md).
 Android v1.4, real native Runtime, physical dual-Node and public HTTPS are
-**NOT_RUN**; M2 is next and has not started. The historical Monitor acceptance
+**NOT_RUN**; M2 was next and had not started at that M1 checkpoint. The historical Monitor acceptance
 below remains attributed to the frozen `client-hub-v1.3` contract and its
 original candidate. This does not change Architecture v2.3 or Client wire v1.
 The root
