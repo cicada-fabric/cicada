@@ -287,7 +287,7 @@ func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing
 	}
 	defer targetInbox.Close()
 	for i := 0; i < 2; i++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL,
 			fixture.targetNodeID, targetInbox, fixture.stateDir); err != nil {
 			t.Fatal(err)
 		}
@@ -324,7 +324,7 @@ func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing
 	}
 	defer sourceInbox.Close()
 	for i := 0; i < 2; i++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL,
 			fixture.sourceNodeID, sourceInbox, fixture.stateDir); err != nil {
 			t.Fatal(err)
 		}

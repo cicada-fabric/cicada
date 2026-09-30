@@ -64,12 +64,12 @@ import sys
 
 root = os.fsencode(sys.argv[1])
 paths = subprocess.run(
-    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore"],
+    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore", b"scripts/build-web-panel.sh", b"scripts/write-web-panel-manifest.py"],
     check=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.DEVNULL,
 ).stdout.split(b"\0")
-digest = hashlib.sha256(b"cicada-hub-build-inputs-v2\0")
+digest = hashlib.sha256(b"cicada-hub-build-inputs-v3\0")
 for relative in sorted(path for path in set(paths) if path):
     absolute = os.path.join(root, relative)
     try:

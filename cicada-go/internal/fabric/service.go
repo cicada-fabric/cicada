@@ -20,6 +20,8 @@ type Service struct {
 	joinMu        sync.Mutex
 	nodeEventsMu  sync.Mutex
 	nodeEvents    map[string]map[chan struct{}]struct{}
+	spaceEventsMu sync.Mutex
+	spaceEvents   map[string]map[chan struct{}]struct{}
 }
 
 func NewService(persistence *store.Store, ownerID, trustDomainID string) (*Service, error) {
@@ -99,8 +101,8 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 	// an unavailable Group. Legacy Groups owned by this Service may have an
 	// empty trust-domain field; those inherit the Service's configured default.
 	groupTrustDomainID := strings.TrimSpace(group.TrustDomainID)
-	if strings.TrimSpace(group.OwnerPrincipalID) != ownerID ||
-		(groupTrustDomainID != "" && groupTrustDomainID != trustDomainID) {
+	foreignGroup := strings.TrimSpace(group.OwnerPrincipalID) != ownerID
+	if !foreignGroup && groupTrustDomainID != "" && groupTrustDomainID != trustDomainID {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
 	capabilities, err := sanitizeCapabilities(input.Capabilities)
@@ -144,6 +146,13 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 			return nil, ErrPermissionDenied
 		}
 	}
+	// Foreign Group admission is only a rejoin of this Node's existing native
+	// Endpoint. Reject an unknown session before resolveJoinPrincipal can create
+	// a Principal as a side effect of an unauthorized Join.
+	if foreignGroup && (previous == nil || previous.Owner != ownerID ||
+		previous.MachineID != input.NodeID || previous.PrincipalID == "") {
+		return nil, ErrNotFoundOrNotAuthorized
+	}
 	if group.NetworkID != "" && previous == nil {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -152,11 +161,27 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 	if err != nil {
 		return nil, err
 	}
-	if group.NetworkID != "" {
+	if group.NetworkID != "" && !foreignGroup {
 		if createdPrincipal || previous == nil || previous.PrincipalID != principal.ID ||
 			s.store.NetworkGuardGroup(principal.ID, previous.ID, group.ID, group.NetworkID) != nil {
 			return nil, ErrNotFoundOrNotAuthorized
 		}
+	}
+	var foreignPriorEpoch uint64
+	var foreignBindingID string
+	if foreignGroup {
+		if group.NetworkID == "" || createdPrincipal || previous == nil || previous.PrincipalID != principal.ID ||
+			previous.Owner != ownerID || previous.MachineID != input.NodeID {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+		priorBinding, priorErr := s.store.GetActiveSessionBinding(previous.ID)
+		if priorErr != nil || priorBinding == nil || priorBinding.NodeID != input.NodeID ||
+			priorBinding.NativeSessionID != input.NativeSessionID ||
+			s.store.CheckCrossOwnerGroupJoin(ownerID, previous.ID, group.ID, input.NodeID,
+				priorBinding.ID, priorBinding.Epoch) != nil {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+		foreignPriorEpoch, foreignBindingID = priorBinding.Epoch, priorBinding.ID
 	}
 	membership, err := s.store.GetMembershipByPrincipalGroup(principal.ID, input.GroupID)
 	if err != nil {
@@ -226,7 +251,12 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 		if binding.LeaseOwner != "" {
 			leaseOwner = binding.LeaseOwner
 		}
-		binding, err = s.store.RotateSessionBindingCredential(binding.ID, binding.Epoch, credentialHash, leaseOwner, leaseExpiresAt)
+		if foreignGroup {
+			binding, err = s.store.RotateAndJoinEndpointGroupCrossOwner(ownerID, endpoint.ID, group.ID,
+				input.NodeID, binding.ID, binding.Epoch, credentialHash, leaseOwner, leaseExpiresAt)
+		} else {
+			binding, err = s.store.RotateSessionBindingCredential(binding.ID, binding.Epoch, credentialHash, leaseOwner, leaseExpiresAt)
+		}
 		if err == nil {
 			// A stable Endpoint may have messages queued while its adapter was
 			// disconnected. Move only READY rows from the exact prior epoch to
@@ -256,7 +286,11 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.store.JoinEndpointGroup(endpoint.ID, input.GroupID); err != nil {
+	if foreignGroup {
+		if binding.ID != foreignBindingID || binding.Epoch != foreignPriorEpoch+1 {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+	} else if _, err := s.store.JoinEndpointGroup(endpoint.ID, input.GroupID); err != nil {
 		return nil, err
 	}
 	endpoint, err = s.store.GetEndpointV2(endpoint.ID)

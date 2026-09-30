@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.4
+  x-contract-revision: client-hub-v1.5
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -371,7 +371,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.4}
+        contract_revision: {const: client-hub-v1.5}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -558,6 +558,36 @@ components:
         network.key_status:
           request: '#/components/schemas/NetworkKeyStatusRequest'
           result: '#/components/schemas/NetworkKeyStatusResult'
+        space.foreign_endpoint_join:
+          request: '#/components/schemas/CrossOwnerEndpointJoinRequest'
+          result: '#/components/schemas/CrossOwnerEndpointJoinResult'
+        space.foreign_member_admit:
+          request: '#/components/schemas/CrossOwnerMemberAdmitRequest'
+          result: '#/components/schemas/CrossOwnerMemberAdmitResult'
+        space.foreign_member_revoke:
+          request: '#/components/schemas/CrossOwnerMemberRevokeRequest'
+          result: '#/components/schemas/CrossOwnerMemberAdmitResult'
+        space.key_admission_v2:
+          request: '#/components/schemas/CrossOwnerKeyProofRequest'
+          result: '#/components/schemas/CrossOwnerKeyProofResult'
+        space.key_consent_v2:
+          request: '#/components/schemas/CrossOwnerKeyProofRequest'
+          result: '#/components/schemas/CrossOwnerKeyProofResult'
+        space.key_manifest_v2:
+          request: '#/components/schemas/CrossOwnerKeyScopeRequest'
+          result: '#/components/schemas/CrossOwnerKeyManifestResult'
+        space.key_status_v2:
+          request: '#/components/schemas/CrossOwnerKeyScopeRequest'
+          result: '#/components/schemas/CrossOwnerKeyStatusResult'
+        topology.delegation_issue:
+          request: '#/components/schemas/RegroupDelegationIssueRequest'
+          result: '#/components/schemas/RegroupDelegationResult'
+        topology.delegation_revoke:
+          request: '#/components/schemas/RegroupDelegationRevokeRequest'
+          result: '#/components/schemas/RegroupDelegationResult'
+        topology.regroup_proposal:
+          request: '#/components/schemas/RegroupProposalRequest'
+          result: '#/components/schemas/RegroupProposalResult'
       x-topology-apply-action-schemas:
         group.create: '#/components/schemas/TopologyCreateGroupAction'
         membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
@@ -573,6 +603,16 @@ components:
         - goal.result
         - topology.snapshot
         - topology.apply
+        - topology.delegation_issue
+        - topology.delegation_revoke
+        - topology.regroup_proposal
+        - space.foreign_member_admit
+        - space.foreign_member_revoke
+        - space.foreign_endpoint_join
+        - space.key_manifest_v2
+        - space.key_consent_v2
+        - space.key_admission_v2
+        - space.key_status_v2
         - devices.list
         - devices.revoke
         - nodes.preview
@@ -610,7 +650,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.4}
+        contract_revision: {const: client-hub-v1.5}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -721,6 +761,229 @@ components:
         group_id: {type: string, minLength: 1, maxLength: 256}
         monitor_endpoint_id: {type: string, minLength: 1, maxLength: 256}
         body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    RegroupProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_id]
+      properties:
+        proposal_id: {type: string, minLength: 1, maxLength: 256}
+
+    RegroupProposalInput:
+      type: object
+      additionalProperties: false
+      required: [operation_id, network_id, source_group_id, target_group_id, action, expected_source_version, expected_target_version]
+      properties:
+        operation_id: {type: string}
+        network_id: {type: string}
+        source_group_id: {type: string}
+        target_group_id: {type: string}
+        action: {type: string, enum: [SET_PARENT, CREATE_CHILD]}
+        new_group_name: {type: string, maxLength: 80}
+        expected_source_version: {type: integer, minimum: 1}
+        expected_target_version: {type: integer, minimum: 1}
+
+    RegroupProposalResult:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, hub_id, owner_id, endpoint_id, principal_id, binding_id, binding_epoch, input, state, created_at, expires_at]
+      properties:
+        proposal_id: {type: string}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        input: {$ref: '#/components/schemas/RegroupProposalInput'}
+        state: {type: string, enum: [PROPOSED, APPLIED]}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        delegation:
+          description: Current delegation when issued; present so an Owner can recover an uncertain response.
+          $ref: '#/components/schemas/RegroupDelegationResult'
+
+    RegroupDelegationIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, expires_at, max_uses]
+      properties:
+        proposal_id: {type: string, minLength: 1, maxLength: 256}
+        expires_at: {type: string, format: date-time}
+        max_uses: {const: 1}
+
+    RegroupDelegationRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [delegation_id, expected_version]
+      properties:
+        delegation_id: {type: string, minLength: 1, maxLength: 256}
+        expected_version: {type: integer, minimum: 1}
+
+    RegroupDelegationResult:
+      type: object
+      additionalProperties: false
+      required: [delegation_id, proposal_id, hub_id, owner_id, network_id, source_group_id, target_group_id, action, expected_source_version, expected_target_version, expires_at, max_uses, use_count, state, version, created_at]
+      properties:
+        delegation_id: {type: string}
+        proposal_id: {type: string}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        network_id: {type: string}
+        source_group_id: {type: string}
+        target_group_id: {type: string}
+        action: {type: string, enum: [SET_PARENT, CREATE_CHILD]}
+        expected_source_version: {type: integer, minimum: 1}
+        expected_target_version: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+        max_uses: {const: 1}
+        use_count: {type: integer, minimum: 0, maximum: 1}
+        state: {type: string, enum: [ACTIVE, REVOKED, EXHAUSTED]}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+
+    CrossOwnerMemberAdmitRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id, grants, expires_at, expected_group_revision, expected_membership_revision]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        grants:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, enum: [space.read, space.write, space.moderate]}
+          description: space.read is required; no history or peer delivery grant is implied.
+        expires_at: {type: string, format: date-time}
+        expected_group_revision: {type: integer, minimum: 1}
+        expected_membership_revision: {type: integer, minimum: 0}
+    CrossOwnerMemberAdmitResult:
+      type: object
+      additionalProperties: false
+      required: [admission_id, hub_id, network_id, group_id, group_revision, endpoint_id, principal_id, endpoint_owner_id, group_owner_id, membership_id, membership_revision, grants, expires_at, state]
+      properties:
+        admission_id: {type: string}
+        hub_id: {type: string}
+        network_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        endpoint_owner_id: {type: string}
+        group_owner_id: {type: string}
+        membership_id: {type: string}
+        membership_revision: {type: integer, minimum: 1}
+        grants: {type: array, items: {type: string}}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+    CrossOwnerMemberRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id, expected_membership_revision]
+      properties:
+        admission_id: {type: string, minLength: 1}
+        expected_membership_revision: {type: integer, minimum: 1}
+    CrossOwnerEndpointJoinRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id, expected_binding_id, expected_binding_epoch, shared_context_risk_acknowledged]
+      properties:
+        admission_id: {type: string, minLength: 1}
+        expected_binding_id: {type: string, minLength: 1}
+        expected_binding_epoch: {type: integer, minimum: 1}
+        shared_context_risk_acknowledged: {const: true}
+    CrossOwnerEndpointJoinResult:
+      type: object
+      additionalProperties: false
+      required: [join_consent_id, admission_id, group_id, endpoint_id, endpoint_owner_id, node_id, binding_id, expected_binding_epoch, shared_context_risk_acknowledged, expires_at, state]
+      properties:
+        join_consent_id: {type: string}
+        admission_id: {type: string}
+        group_id: {type: string}
+        endpoint_id: {type: string}
+        endpoint_owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        expected_binding_epoch: {type: integer, minimum: 1}
+        shared_context_risk_acknowledged: {const: true}
+        applied_binding_epoch: {type: integer, minimum: 1}
+        applied_join_revision: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+    CrossOwnerKeyScopeRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+    CrossOwnerKeyProofRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id, owner_key_id, signed_proof_base64]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        signed_proof_base64: {type: string, contentEncoding: base64, maxLength: 22000}
+    CrossOwnerKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [version, operation, hub_id, network_id, group_id, group_revision, endpoint_id, principal_id, endpoint_owner_id, group_owner_id, node_id, binding_id, binding_epoch, membership_revision, endpoint_join_revision, candidate_version, candidate_key_id, candidate_fingerprint, candidate_proof_digest, candidate_public_identity, candidate_attestation, candidate_binding_digest, capabilities, cross_owner_context_shared, history_included, expires_at, digest]
+      properties:
+        version: {const: 2}
+        operation: {const: 'group-endpoint-key-grant:v2:cross-owner'}
+        hub_id: {type: string}
+        network_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        endpoint_owner_id: {type: string}
+        group_owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_join_revision: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        candidate_key_id: {type: string}
+        candidate_fingerprint: {type: string}
+        candidate_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_public_identity: {type: object}
+        candidate_attestation: {type: string, contentEncoding: base64}
+        candidate_binding_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        capabilities: {type: array, items: {type: string}}
+        cross_owner_context_shared: {const: true}
+        history_included: {const: false}
+        expires_at: {type: string, format: date-time}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+    CrossOwnerKeyProofResult:
+      type: object
+      additionalProperties: false
+      required: [proof_id, group_id, endpoint_id, signer_owner_id, signer_side, owner_key_id, manifest_digest, accepted_at, current_status]
+      properties:
+        proof_id: {type: string}
+        group_id: {type: string}
+        endpoint_id: {type: string}
+        signer_owner_id: {type: string}
+        signer_side: {type: string, enum: [ENDPOINT, GROUP]}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        accepted_at: {type: string, format: date-time}
+        current_status: {type: string}
+        signed_proof: {type: string, contentEncoding: base64}
+    CrossOwnerKeyStatusResult:
+      type: object
+      additionalProperties: false
+      required: [manifest, current]
+      properties:
+        manifest: {$ref: '#/components/schemas/CrossOwnerKeyManifestResult'}
+        endpoint_consent: {$ref: '#/components/schemas/CrossOwnerKeyProofResult'}
+        group_admission: {$ref: '#/components/schemas/CrossOwnerKeyProofResult'}
+        current: {type: boolean}
 
     MonitorBroadcastConfirmRequest:
       type: object

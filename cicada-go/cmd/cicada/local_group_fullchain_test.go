@@ -285,7 +285,7 @@ func TestMCPSealedSameNodeGroupAskReplyFullChain(t *testing.T) {
 	}
 	defer targetInbox.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineLocalGroupDeliveries(context.Background(), bridge, targetInbox); err != nil {
+		if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), bridge, targetInbox); err != nil {
 			t.Fatalf("drain local REQUEST attempt %d: %v", attempt, err)
 		}
 	}
@@ -369,7 +369,7 @@ func TestMCPSealedSameNodeGroupAskReplyFullChain(t *testing.T) {
 	}
 	defer sourceInbox.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineLocalGroupDeliveries(context.Background(), bridge, sourceInbox); err != nil {
+		if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), bridge, sourceInbox); err != nil {
 			t.Fatalf("drain local REPLY attempt %d: %v", attempt, err)
 		}
 	}
@@ -680,7 +680,7 @@ func TestMCPSealedSameNodeAskRevokedBeforeDrainIsRejectedWithoutQueue(t *testing
 		t.Fatal(err)
 	}
 	defer inbox.Close()
-	if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
 		t.Fatalf("revoked pending ASK drain returned an unexpected error: %v", err)
 	}
 	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.stateDir, f.nodeID))
@@ -722,7 +722,7 @@ func TestMCPSealedSameNodeAskGuard503SurvivesRestartAndRecoversOnce(t *testing.T
 		}
 	}()
 	f.failNextGuard.Store(true)
-	if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err == nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err == nil {
 		t.Fatal("temporary Guard 503 did not leave local drain retryable")
 	}
 	if _, err := os.Stat(queueCount); !errors.Is(err, os.ErrNotExist) {
@@ -752,7 +752,7 @@ func TestMCPSealedSameNodeAskGuard503SurvivesRestartAndRecoversOnce(t *testing.T
 		t.Fatal(err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
+		if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
 			t.Fatalf("recovered local ASK drain failed: %v", err)
 		}
 	}
@@ -778,7 +778,7 @@ func TestMCPSealedSameNodeQueueFailureIsUncertainAndNeverRetried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
 		t.Fatalf("queue failure should be durably classified, not retried as a drain error: %v", err)
 	}
 	count, err := os.ReadFile(queueCount)
@@ -794,7 +794,7 @@ func TestMCPSealedSameNodeQueueFailureIsUncertainAndNeverRetried(t *testing.T) {
 	}
 	defer inbox.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
+		if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, inbox); err != nil {
 			t.Fatalf("uncertain delivery recovery attempted an unsafe reinjection: %v", err)
 		}
 	}

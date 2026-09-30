@@ -91,22 +91,7 @@ func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput, cl
 	if err != nil {
 		return nil, err
 	}
-	if input.ContextPolicy == "" {
-		input.ContextPolicy = "group_scoped"
-	}
-	if input.IsolationProfile == "" {
-		input.IsolationProfile = "trusted_host"
-	}
-	if input.ExternalMode == "" {
-		input.ExternalMode = "monitor_mediated"
-	}
-	groupInput := store.Group{
-		NetworkID:        strings.TrimSpace(input.NetworkID),
-		OwnerPrincipalID: owner.ID, TrustDomainID: owner.TrustDomainID, Name: input.Name,
-		State: store.GroupStateActive, Purpose: strings.TrimSpace(input.Purpose),
-		PolicyRef: strings.TrimSpace(input.PolicyRef), ContextPolicy: input.ContextPolicy,
-		IsolationProfile: input.IsolationProfile, ExternalMode: input.ExternalMode,
-	}
+	groupInput := groupInputForOwner(owner, input)
 	var group *store.Group
 	if groupInput.NetworkID == "" {
 		group, err = c.store.CreateGroup(groupInput)
@@ -124,6 +109,25 @@ func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput, cl
 		return nil, err
 	}
 	return group, nil
+}
+
+func groupInputForOwner(owner *store.Principal, input GroupCreateInput) store.Group {
+	if input.ContextPolicy == "" {
+		input.ContextPolicy = "group_scoped"
+	}
+	if input.IsolationProfile == "" {
+		input.IsolationProfile = "trusted_host"
+	}
+	if input.ExternalMode == "" {
+		input.ExternalMode = "monitor_mediated"
+	}
+	return store.Group{
+		NetworkID:        strings.TrimSpace(input.NetworkID),
+		OwnerPrincipalID: owner.ID, TrustDomainID: owner.TrustDomainID, Name: input.Name,
+		State: store.GroupStateActive, Purpose: strings.TrimSpace(input.Purpose),
+		PolicyRef: strings.TrimSpace(input.PolicyRef), ContextPolicy: input.ContextPolicy,
+		IsolationProfile: input.IsolationProfile, ExternalMode: input.ExternalMode,
+	}
 }
 
 func (c *Control) Groups() ([]store.Group, error) {

@@ -719,19 +719,9 @@ func (c *Control) MarkNotificationRead(id string) (*store.Notification, error) {
 }
 
 func (c *Control) notify(goalID, kind, priority, title, body string) {
-	notification, err := c.store.CreateNotification(store.Notification{
+	_, _ = c.store.CreateNotification(store.Notification{
 		GoalID: goalID, Kind: kind, Priority: priority, Title: title, Body: body,
 	})
-	if err == nil {
-		// Push delivery is best-effort and bounded by the web-push client
-		// timeout. It runs asynchronously so a slow push service never delays
-		// worker recovery or the durable local notification inbox.
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			c.deliverPushNotification(ctx, notification)
-		}()
-	}
 }
 
 func (c *Control) Identity() e2ee.PublicIdentity {

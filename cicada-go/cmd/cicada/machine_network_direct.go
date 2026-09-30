@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -81,7 +79,7 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 			return nil, err
 		}
 	}
-	if bundle.NetworkID != request.NetworkID || bundle.HubID != strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) ||
+	if bundle.NetworkID != request.NetworkID || bundle.HubID != machinePinnedHubID(b.ctx) ||
 		bundle.Sender.Manifest.EndpointID != request.EndpointID || bundle.Receiver.Manifest.EndpointID != request.TargetEndpointID ||
 		bundle.Sender.Manifest.BindingID != binding.ID || bundle.Sender.Manifest.BindingEpoch != binding.Epoch {
 		return nil, errors.New("Network direct route does not match this native source")
@@ -170,7 +168,7 @@ func (b *machineAgentJoinBridge) verifyNetworkDirectSource(request localNetworkD
 
 func (b *machineAgentJoinBridge) publishNetworkDirectKey(request localNetworkDirectRequest,
 	actor networkDirectCurrentActor, binding *store.NetworkDirectNativeBinding) (*localNetworkDirectResult, error) {
-	hubID := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	hubID := machinePinnedHubID(b.ctx)
 	if hubID == "" {
 		return nil, errors.New("CICADA_HUB_ID must be pinned before Network direct key publication")
 	}
@@ -208,7 +206,7 @@ func (b *machineAgentJoinBridge) fetchNetworkDirectPeerBundle(request localNetwo
 	}
 	var bundle store.NetworkDirectPeerBundle
 	if err := decodeStrictBridgeJSON(data, &bundle); err != nil || bundle.NetworkID != request.NetworkID ||
-		bundle.HubID != strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) ||
+		bundle.HubID != machinePinnedHubID(b.ctx) ||
 		bundle.Sender.Manifest.EndpointID != request.EndpointID || bundle.Receiver.Manifest.EndpointID != targetEndpointID {
 		return nil, errors.New("Hub returned invalid Network direct peer evidence")
 	}

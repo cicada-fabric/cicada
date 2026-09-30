@@ -32,6 +32,7 @@ FILES = (
     "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
     "cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json",
     "cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json",
+    "cicada-go/internal/store/testdata/network-direct-key-production-v1.json",
 )
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 
@@ -165,6 +166,32 @@ def read_contract(root):
         raise ValueError("Network direct public manifest consent differs")
     if json.loads(direct["network_envelope"])["context"] != direct["network_context"]:
         raise ValueError("Network direct public envelope context differs")
+    production = json.loads(files["cicada-go/internal/store/testdata/network-direct-key-production-v1.json"])
+    manifest = production.get("manifest", {})
+    if production.get("synthetic_only") is not True or "Never initialize a deployment" not in production.get("warning", ""):
+        raise ValueError("unlabelled Network production-shape vector")
+    claims = dict(manifest)
+    claims.pop("native_session_id", None)
+    claims["digest"] = ""
+    canonical_claims = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode()
+    if (canonical_claims != production.get("canonical_claims", "").encode() or
+            sha256(b"cicada/network/direct-key-manifest/v1\x00" + canonical_claims) != production.get("manifest_digest") or
+            manifest.get("digest") != production.get("manifest_digest") or
+            sha256(b"cicada/network/native-session/v1\x00" + manifest.get("native_session_id", "").encode()) != manifest.get("native_session_digest")):
+        raise ValueError("Network production-shape canonical claims differ")
+    for proof, encoded_proof, signed_field, digest_field, domain in (
+            (manifest["candidate"]["attestation"], True, "attestation_signed_input_base64", "attestation_signed_sha256",
+             b"cicada/network/direct-key-attestation/v1\x00"),
+            (production["owner_proof"], False, "owner_grant_signed_input_base64", "owner_grant_signed_sha256",
+             b"cicada/network/direct-key-grant/v1\x00")):
+        decoded = json.loads(base64.b64decode(proof, validate=True) if encoded_proof else proof)
+        if not decoded.get("signature"):
+            raise ValueError("Network production-shape proof lacks a signature")
+        decoded["signature"] = None
+        expected = domain + json.dumps(decoded, ensure_ascii=False, separators=(",", ":")).encode()
+        actual = base64.b64decode(production[signed_field], validate=True)
+        if actual != expected or sha256(actual) != production[digest_field]:
+            raise ValueError("Network production-shape proof bytes differ")
     monitor = json.loads(files["cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json"])
     if (monitor.get("synthetic_fixture") is not True or monitor.get("never_deploy") is not True
             or "SYNTHETIC" not in monitor.get("warning", "")

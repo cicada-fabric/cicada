@@ -32,24 +32,17 @@ curl -X POST http://127.0.0.1:8787/v1/notifications/NOTIFICATION_ID/read
 Notifications are stored in the same SQLite state as Goals and survive a
 Control restart. They never contain peer plaintext or private E2EE key data.
 
-## Browser push
+## Retired browser Push
 
-The embedded Personal Client can register a browser Push subscription. Configure
-VAPID credentials in the Control environment first:
+The former browser Push path used one Hub-wide management bearer to register
+subscriptions, then sent each P0/P1/P2 notification's title and body to every
+stored subscription. It had no per-Owner or per-device authorization. The
+current Hub has no browser Push caller or notification delivery transport, so
+that global fanout is disabled. The old `/v1/notifications/push/config` and
+`/v1/notifications/push/subscriptions` routes return `410 Gone`.
 
-```bash
-go run ./cmd/cicada push-vapid-keys # prints a public/private pair
-# set CICADA_PUSH_VAPID_PUBLIC_KEY, CICADA_PUSH_VAPID_PRIVATE_KEY, and
-# CICADA_PUSH_VAPID_SUBJECT (for example, mailto:owner@example.com)
-```
-
-After the client has an authenticated session, open **Remote access** and
-choose **Enable push notifications**. Control stores only the subscription
-endpoint and its public encryption keys. P0, P1, and P2 notifications are
-encrypted with Web Push and delivered to registered browsers; P3 timeline
-events stay in the durable event stream. A push service response of 404 or 410
-automatically removes the stale subscription.
-
-The public VAPID key is available at `GET /v1/notifications/push/config`.
-Subscriptions are registered with `POST /v1/notifications/push/subscriptions`
-and removed with `DELETE /v1/notifications/push/subscriptions/SUBSCRIPTION_ID`.
+The legacy `push_subscriptions` SQLite table and rows are retained as inert
+historical data; this retirement does not drop, rewrite, or reassign them.
+Existing `CICADA_PUSH_VAPID_*` environment values have no effect. Durable
+P0–P3 notification records and their read state remain in the Store; this
+change retires only the external browser Push transport.

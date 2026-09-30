@@ -382,7 +382,7 @@ func TestMCPSealedSameGroupCrossNodeAskReplyFullChain(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer inbox.Close()
-		if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL, nodeB, inbox, stateDir); err != nil {
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL, nodeB, inbox, stateDir); err != nil {
 			t.Fatalf("process receiver Node Group inbox: %v", err)
 		}
 		return argsPath, countPath
@@ -555,7 +555,7 @@ func TestMCPSealedSameGroupCrossNodeAskReplyFullChain(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer inbox.Close()
-		if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL, nodeA, inbox, stateDir); err != nil {
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL, nodeA, inbox, stateDir); err != nil {
 			t.Fatalf("process source Node REPLY inbox: %v", err)
 		}
 		return argsPath, countPath
@@ -644,7 +644,7 @@ func TestMCPSealedSameGroupCrossNodeAskReplyFullChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL, nodeB, deniedInbox, stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL, nodeB, deniedInbox, stateDir); err != nil {
 		_ = deniedInbox.Close()
 		t.Fatalf("process final-Guard-denied delivery: %v", err)
 	}
@@ -728,7 +728,7 @@ func TestCommunicationLinkSealedInboxRetainsGroupForScopedReceive(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer inbox.Close()
-	if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL,
 		fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("process Link sealed delivery: %v", err)
 	}
@@ -800,7 +800,7 @@ func TestCommunicationLinkSealedRecoveryRetainsGroupForScopedReceive(t *testing.
 		t.Fatalf("recover Link sealed inbox save: %v", err)
 	}
 	installMachineSealedFakeCodex(t, false, fixture.targetToken)
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.targetNodeID,
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.targetNodeID,
 		inbox, fixture.stateDir); err != nil {
 		t.Fatalf("drain recovered Link sealed delivery: %v", err)
 	}

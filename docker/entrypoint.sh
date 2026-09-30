@@ -10,23 +10,25 @@ if [[ ! -e "${CODEX_HOME}/config.toml" && -f /etc/codex/config.toml ]]; then
   install -m 600 /etc/codex/config.toml "${CODEX_HOME}/config.toml"
 fi
 
-# Keep an existing persistent Codex state aligned with the repository's
-# selected model. Earlier Codex versions may have migrated this line to a
-# different default; the explicit Cicada runtime contract is gpt-5.5.
-if [[ -f "${CODEX_HOME}/config.toml" ]]; then
-  config_tmp="${CODEX_HOME}/config.toml.tmp.$$"
-  if grep -qE '^model[[:space:]]*=' "${CODEX_HOME}/config.toml"; then
-    sed -E 's/^model[[:space:]]*=.*/model = "gpt-5.5"/' \
-      "${CODEX_HOME}/config.toml" >"${config_tmp}"
-  else
-    cat "${CODEX_HOME}/config.toml" >"${config_tmp}"
-    printf '\nmodel = "gpt-5.5"\n' >>"${config_tmp}"
-  fi
-  chmod 0600 "${config_tmp}"
-  # A previous container may have created the file as root. Replacing it via
-  # the writable state directory still works for the unprivileged runtime user.
-  mv -f "${config_tmp}" "${CODEX_HOME}/config.toml"
-fi
+configured_codex_value() {
+  local key="$1"
+  [[ -f "${CODEX_HOME}/config.toml" ]] || return 0
+  awk -v key="$key" '
+    /^[[:space:]]*\[/ { exit }
+    {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      if (line !~ ("^" key "[[:space:]]*=")) next
+      sub(/^[^=]*=[[:space:]]*/, "", line)
+      if (line ~ /^"[^"]*"/) {
+        sub(/^"/, "", line)
+        sub(/".*/, "", line)
+        print line
+      }
+      exit
+    }
+  ' "${CODEX_HOME}/config.toml"
+}
 
 case "${1:-shell}" in
   shell)
@@ -42,8 +44,13 @@ case "${1:-shell}" in
     ;;
   health)
     version="$(codex --version 2>/dev/null | head -n 1)"
-    jq -cn --arg version "$version" \
-      '{status:"ok", codex_version:$version, model:"gpt-5.5", provider:"basil"}'
+    model="$(configured_codex_value model)"
+    provider="$(configured_codex_value model_provider)"
+    jq -cn --arg version "$version" --arg model "$model" --arg provider "$provider" \
+      '{status:"ok", codex_version:$version,
+        model:(if $model == "" then null else $model end),
+        provider:(if $provider == "" then null else $provider end),
+        configuration_source:"CODEX_HOME/config.toml"}'
     ;;
   *)
     exec "$@"

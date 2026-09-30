@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -183,7 +182,7 @@ func crossNodeGroupLocalRequest(request crossNodeGroupRequest, operation string)
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKey(groupID, sourceEndpointID,
 	targetEndpointID string) (crossNodeGroupPeerKey, error) {
-	expectedHubID := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	expectedHubID := machinePinnedHubID(b.ctx)
 	if expectedHubID == "" {
 		return crossNodeGroupPeerKey{}, errors.New("CICADA_HUB_ID must be pinned locally before cross-Node Group messaging")
 	}
@@ -682,7 +681,7 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if len(delivery.Ciphertext) == 0 || machineSealedCiphertextDigest(delivery.Ciphertext) != delivery.Digest {
 		return machineSealedOpenResult{}, errors.New("same-Group sealed ciphertext digest is invalid")
 	}
-	expectedHubID := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	expectedHubID := machinePinnedHubID(ctx)
 	if expectedHubID == "" || authorization.Sender.Grant == nil || authorization.Receiver.Grant == nil ||
 		authorization.Sender.Grant.Manifest.HubID != expectedHubID ||
 		authorization.Receiver.Grant.Manifest.HubID != expectedHubID {
@@ -944,7 +943,11 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry,
 			"exact native-session wake is not available for harness "+entry.Harness)
 	}
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, machineCrossNodeGroupRelayPrompt(entry, claim.Payload)); err != nil {
+	operation, err := machineRelayNativeOperation(ctx, claim, entry)
+	if err != nil {
+		return err
+	}
+	if err := executeMachineNativeCodex(ctx, claim.SessionID, machineCrossNodeGroupRelayPrompt(entry, claim.Payload), operation); err != nil {
 		var uncertain *nativeInjectionUncertainError
 		if errors.As(err, &uncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)

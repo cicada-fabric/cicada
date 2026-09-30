@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -193,7 +192,7 @@ func (b *machineAgentJoinBridge) groupBroadcast(request groupBroadcastRequest) (
 }
 
 func (b *machineAgentJoinBridge) fetchGroupBroadcastSnapshot(request groupBroadcastRequest) (*store.SameGroupBroadcastV2Snapshot, error) {
-	expectedHubID := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	expectedHubID := machinePinnedHubID(b.ctx)
 	if expectedHubID == "" {
 		return nil, errors.New("CICADA_HUB_ID must be pinned locally before Group broadcast")
 	}

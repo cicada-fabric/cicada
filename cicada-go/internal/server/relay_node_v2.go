@@ -407,6 +407,8 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 	}
 	events, unsubscribe := h.fabricService.SubscribeNodeEvents(nodeID)
 	defer unsubscribe()
+	spaceEvents, unsubscribeSpaces := h.fabricService.SubscribeNodeSpaceEvents(nodeID)
+	defer unsubscribeSpaces()
 	response.Header().Set("Content-Type", "text/event-stream")
 	response.Header().Set("Cache-Control", "no-cache, no-transform")
 	response.Header().Set("X-Accel-Buffering", "no")
@@ -438,6 +440,16 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 				return
 			}
 			if _, err := io.WriteString(response, "event: wake\ndata: claim\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-spaceEvents:
+			// A space hint carries no Group, reader or record coordinates. The
+			// Node must reconcile its own current subscriptions through Guard.
+			if !credentialCurrentIfDue() {
+				return
+			}
+			if _, err := io.WriteString(response, "event: space\ndata: sync\n\n"); err != nil {
 				return
 			}
 			flusher.Flush()

@@ -49,7 +49,7 @@ func (m *mcpServer) dispatchSealedRPCMCPOutbox(outbox *mcpOutboxStore,
 	} else {
 		request.Operation = "sealed_reply"
 	}
-	result, err := requestMachineAgentSealedRPC(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentSealedRPC(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)
@@ -129,7 +129,7 @@ func (m *mcpServer) sealedRPCControl(operation, requestID, linkID, reason string
 	if err != nil {
 		return nil, err
 	}
-	result, err := requestMachineAgentSealedRPC(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentSealedRPC(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

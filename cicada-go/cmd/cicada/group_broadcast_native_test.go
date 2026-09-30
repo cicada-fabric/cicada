@@ -332,7 +332,7 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 		t.Fatal("open disposable Node-local broadcast inbox")
 	}
 	defer inbox.Close()
-	if err := processMachineLocalGroupDeliveries(ctx, bridge, inbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(ctx, bridge, inbox); err != nil {
 		t.Fatalf("Node could not queue the accepted broadcast to both native recipients (%T)", err)
 	}
 	for _, participant := range participants[1:] {

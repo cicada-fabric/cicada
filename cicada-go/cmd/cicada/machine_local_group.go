@@ -195,7 +195,11 @@ func drainMachineLocalGroupClaim(ctx context.Context, bridge *machineAgentJoinBr
 		return err
 	}
 	prompt := machineLocalGroupPrompt(record, claim.Payload)
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt); err != nil {
+	operation, err := machineNativeOperation(ctx, claim, authorization.Target.BindingID)
+	if err != nil {
+		return err
+	}
+	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation); err != nil {
 		receipt := localGroupReceipt(claim)
 		var uncertain *nativeInjectionUncertainError
 		if errors.As(err, &uncertain) {
@@ -208,6 +212,9 @@ func drainMachineLocalGroupClaim(ctx context.Context, bridge *machineAgentJoinBr
 		}
 		_, recordErr := inbox.RecordFailed(ctx, receipt, "native queue did not start")
 		return recordErr
+	}
+	if err := requireMachineNativeQueueOutcome(ctx, claim.SessionID, operation); err != nil {
+		return err
 	}
 	receipt := localGroupReceipt(claim)
 	_, err = inbox.RecordCodexQueueAccepted(ctx, receipt)

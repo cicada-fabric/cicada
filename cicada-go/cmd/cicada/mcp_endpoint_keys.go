@@ -92,7 +92,7 @@ func (m *mcpServer) publishEndpointKeyCandidate(arguments map[string]any) (any, 
 		return nil, errors.New("current Cicada session Principal does not match its cached server context")
 	}
 
-	stateDir := endpointKeyNodeStateBase()
+	stateDir := m.endpointKeyNodeStateBase()
 	if stateDir == "" {
 		return nil, errors.New("endpoint key publication requires CICADA_NODE_STATE_DIR or CICADA_STATE_DIR")
 	}
@@ -168,6 +168,13 @@ func endpointKeyNodeStateBase() string {
 		return value
 	}
 	return strings.TrimSpace(os.Getenv("CICADA_STATE_DIR"))
+}
+
+func (m *mcpServer) endpointKeyNodeStateBase() string {
+	if m != nil && m.hubStateDir != "" {
+		return m.hubStateDir
+	}
+	return endpointKeyNodeStateBase()
 }
 
 func endpointKeyCandidateFromResult(result any) (store.EndpointKeyCandidate, error) {

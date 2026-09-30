@@ -2,7 +2,6 @@ package control
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -376,27 +375,17 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 	case ClientTopologyCreateGroup:
 		input := action.CreateGroup
 		parentID := strings.TrimSpace(input.ParentGroupID)
-		if parentID != "" {
-			parent, err := c.clientOwnedGroup(ownerID, parentID)
-			if err != nil {
-				return nil, err
-			}
-			if parent.NetworkID != strings.TrimSpace(input.Group.NetworkID) {
-				return nil, store.ErrNetworkConflict
-			}
-		}
-		group, err := c.createGroupForOwner(ownerID, input.Group, clientRequestID)
+		owner, err := c.store.GetPrincipal(ownerID)
 		if err != nil {
 			return nil, err
 		}
-		// Group creation has no Store transaction that includes SetGroupParent;
-		// this is an intentionally visible two-step operation. A parent update
-		// error can leave the newly created group as a root Group.
-		if parentID != "" {
-			group, err = c.store.SetGroupParent(group.ID, parentID, group.Version)
-			if err != nil {
-				return nil, fmt.Errorf("group was created but parent assignment failed: %w", err)
+		group, err := c.store.CreateClientTopologyGroupAtomic(
+			groupInputForOwner(owner, input.Group), parentID, clientRequestID)
+		if err != nil {
+			if errors.Is(err, store.ErrGroupParentOwnerScope) {
+				return nil, ErrPermissionDenied
 			}
+			return nil, err
 		}
 		result.Group = projectClientTopologyGroup(*group)
 	case ClientTopologySetParent:

@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 37
+	CurrentV2SchemaVersion = 41
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -365,6 +365,35 @@ var v2Migrations = []v2Migration{
 			"group_space_history_manifests_v2", "group_space_history_grants_v2",
 			"group_space_tombstones_v2"},
 		Apply: func(s *Store) error { return s.initializeGroupSpaceSchema() },
+	},
+	{
+		Version:     38,
+		ID:          "v2.fabric.group_space_read_state",
+		Description: "add explicit per-Endpoint Group Space read cursor",
+		Objects:     []string{"group_space_read_state_v2", "group_space_change_sequences_v2"},
+		Apply:       func(s *Store) error { return s.initializeGroupSpaceReadStateSchema() },
+	},
+	{
+		Version:     39,
+		ID:          "v2.fabric.delegated_regroup",
+		Description: "add Monitor regroup proposals, exact Owner delegation and atomic audit",
+		Objects:     []string{"regroup_proposals_v2", "regroup_delegations_v2", "regroup_audit_v2"},
+		Apply:       func(s *Store) error { return s.initializeDelegatedRegroupSchema() },
+	},
+	{
+		Version:     40,
+		ID:          "v2.fabric.multi_owner_group_space",
+		Description: "add exact foreign Group membership admission, Endpoint Owner join consent and dual Owner space key evidence",
+		Objects: []string{"cross_owner_group_admissions_v2", "cross_owner_group_joins_v2",
+			"cross_owner_group_key_proofs_v2"},
+		Apply: func(s *Store) error { return s.initializeCrossOwnerGroupSpaceSchema() },
+	},
+	{
+		Version:     41,
+		ID:          "v2.client.atomic_topology_group_create",
+		Description: "bind Client group.create recovery to one atomic Group, owner membership and parent insertion",
+		Objects:     []string{"client_topology_group_create_guard_v2", "client_topology_group_creates_v2"},
+		Apply:       func(s *Store) error { return s.initializeClientTopologyGroupCreateSchema() },
 	},
 }
 

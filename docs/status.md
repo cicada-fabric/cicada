@@ -168,6 +168,10 @@ Implemented at that baseline:
   durable subscription registration, stale endpoint cleanup, and a Personal
   Client enablement flow.
 
+The browser Push bullet records this historical baseline. The 2026-09-30 dev
+candidate retires that ownerless fanout and its browser transport; durable
+notifications remain. See [notification status](notifications.md).
+
 The release deliberately keeps its boundaries explicit. The installable PWA is
 the existing browser interface, not Android v1. The separate Android app is
 the first native Client target; its local STT and Client↔Control NIST PQ E2EE

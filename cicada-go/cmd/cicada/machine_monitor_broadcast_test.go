@@ -39,7 +39,7 @@ func TestMachineMonitorNotificationEmptyListDoesNotCreateInbox(t *testing.T) {
 
 	inboxPath := filepath.Join(t.TempDir(), "node-state", "monitor-broadcast-inbox.sqlite")
 	var inbox *nodeinbox.Inbox
-	if err := processMachineMonitorBroadcastNotifications(context.Background(), f.local.bridge, &inbox, inboxPath); err != nil {
+	if err := processPinnedTestMachineMonitorBroadcastNotifications(context.Background(), f.local.bridge, &inbox, inboxPath); err != nil {
 		t.Fatalf("process valid empty Monitor notice list: %v", err)
 	}
 	if inbox != nil {
@@ -77,7 +77,7 @@ func TestMachineMonitorNotificationRejectsNestedHubHintBeforeInboxOpen(t *testin
 	inboxPath := filepath.Join(t.TempDir(), "node-state", "monitor-broadcast-inbox.sqlite")
 	var inbox *nodeinbox.Inbox
 	bridge := monitorBroadcastTestBridge(f.local.bridge, proxy.URL)
-	err := processMachineMonitorBroadcastNotifications(context.Background(), bridge, &inbox, inboxPath)
+	err := processPinnedTestMachineMonitorBroadcastNotifications(context.Background(), bridge, &inbox, inboxPath)
 	if err == nil || !strings.Contains(err.Error(), "invalid Node or Hub hint") {
 		t.Fatalf("malformed nested Hub hint was not rejected: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestMachineMonitorNotificationRechecksClientGuardBeforeInjection(t *testing
 	inboxPath := machineMonitorBroadcastInboxPath(f.local.stateDir, f.local.nodeID)
 	var inbox *nodeinbox.Inbox
 	bridge := monitorBroadcastTestBridge(f.local.bridge, proxy.URL)
-	if err := processMachineMonitorBroadcastNotifications(context.Background(), bridge, &inbox, inboxPath); err != nil {
+	if err := processPinnedTestMachineMonitorBroadcastNotifications(context.Background(), bridge, &inbox, inboxPath); err != nil {
 		t.Fatalf("process revoked Monitor notice: %v", err)
 	}
 	if inbox == nil {

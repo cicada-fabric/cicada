@@ -610,7 +610,7 @@ func androidNativeDeliver(t *testing.T, ctx context.Context, root string, fixtur
 		}
 	}
 	var noticeInbox *nodeinbox.Inbox
-	if err := processMachineMonitorBroadcastNotifications(ctx, localBridge, &noticeInbox,
+	if err := processPinnedTestMachineMonitorBroadcastNotifications(ctx, localBridge, &noticeInbox,
 		machineMonitorBroadcastInboxPath(filepath.Join(root, "node-state"), fixture.LocalNodeID)); err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func androidNativeDeliver(t *testing.T, ctx context.Context, root string, fixtur
 		t.Fatal(err)
 	}
 	defer localInbox.Close()
-	if err := processMachineLocalGroupDeliveries(ctx, localBridge, localInbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(ctx, localBridge, localInbox); err != nil {
 		t.Fatal(err)
 	}
 	remoteInbox, err := nodeinbox.Open(machineNodeInboxPath(filepath.Join(root, "remote-node-state"), fixture.RemoteNodeID))
@@ -684,7 +684,7 @@ func androidNativeDeliver(t *testing.T, ctx context.Context, root string, fixtur
 	}
 	defer remoteInbox.Close()
 	t.Setenv("CICADA_NODE_TOKEN", remoteBridge.nodeToken)
-	if err := processMachineFabricDeliveriesV2(ctx, fixture.HubURL, fixture.RemoteNodeID,
+	if err := processPinnedTestMachineFabricDeliveries(ctx, fixture.HubURL, fixture.RemoteNodeID,
 		remoteInbox, filepath.Join(root, "remote-node-state")); err != nil {
 		t.Fatal(err)
 	}

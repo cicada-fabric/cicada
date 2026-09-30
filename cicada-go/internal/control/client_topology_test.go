@@ -232,6 +232,43 @@ func TestApplyClientTopologyGroupParentAndExplicitRoleCAS(t *testing.T) {
 	}
 }
 
+func TestClientTopologyNestedCreateDoesNotLeaveRootAfterParentGrantRevocation(t *testing.T) {
+	c := newClientStatusControl(t, time.Minute)
+	ownerID := c.Identity().ID
+	parent, err := c.CreateGroup(GroupCreateInput{Name: "nested-parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := c.store.ListGroups(store.GroupFilter{Owner: ownerID, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.store.RevokeMembershipForPrincipalGroup(ownerID, parent.ID, "synthetic revoke"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := c.ApplyClientTopologyChange(ownerID, ClientTopologyAction{
+		Kind: ClientTopologyCreateGroup,
+		CreateGroup: &ClientTopologyCreateGroupAction{
+			Group: GroupCreateInput{Name: "must-not-survive"}, ParentGroupID: parent.ID,
+		},
+	})
+	if !errors.Is(err, store.ErrNetworkPermission) || result != nil {
+		t.Fatalf("revoked parent accepted nested Group: %+v, %v", result, err)
+	}
+	after, err := c.store.ListGroups(store.GroupFilter{Owner: ownerID, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("failed nested create left %d extra Groups", len(after)-len(before))
+	}
+	for _, group := range after {
+		if group.Name == "must-not-survive" {
+			t.Fatal("failed nested create left a root Group")
+		}
+	}
+}
+
 func TestApplyClientTopologyJoinLeaveIsOwnerScopedAndFenced(t *testing.T) {
 	c := newClientStatusControl(t, time.Minute)
 	ownerID := c.Identity().ID

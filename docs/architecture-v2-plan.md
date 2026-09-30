@@ -1,14 +1,22 @@
 # Architecture v2.3 实施计划
 
-## 当前执行：M2 Group Journal / Discussion（2026-09-30）
+## 当前执行：Architecture v2.3 全剩余闭环（2026-09-30）
 
-本轮从干净 `dev` / `7c4194155d6c0c342671299e447c907f0b1d94d6` 开始，只实现一个权威 Hub 内、同 Owner 的 ACTIVE Network Group 协作空间。Core 负责 SQLite 迁移、Store/Fabric Guard、读者快照、逐读者密封格式与密钥证明；Surface 负责 Hub Node HTTP、现有 MCP 与受保护 Node Unix bridge、M2 协议合同；Validation 负责独立确定性与一次性 Docker HTTP 验收，最终单个检查点由主任务统一提交。各自测试结果须归属最后冻结的源码，而非单独归于起点 HEAD。
+本轮在 `dev` HEAD `f30892fcd79a27bfe5604575deaecebe52c5ec50` 的 M2 检查点上继续实现剩余目标；代码、源码身份与集中验收由根任务统一冻结。M1/M2 的既有结果仍只归属于其原始 fingerprint 和镜像。`docs/completion-ledger.md` 是 V01–V88/G1–G5 的逐项剩余账本；本文件提供五条路线和各自出口，不把未运行的设备、Runtime 或公网路径记为 PASS。
 
-最小真实链是：当前显式 Joined 原生 Thread 通过 MCP 请求，受信 Node 复核本地 session 与 Hub/Network/Group fence，使用已有 NIST 套件按固定读者快照逐人封装正文，Hub 仅排序并保存密文；另一当前授权的 Node 分页取得其单份密文，经 Owner 证明和本地密钥核验后向 MCP 返回有限正文。Journal 有 append/list/get 和追加式更正，Discussion 有 topic/reply/list/get 与状态 CAS。每次写入、页读、单对象读均查当前 `space.read`、`space.write` 或 `space.moderate` 的独立 Group grant、加入起点、保留期与版本。正文上限 16 KiB、读者上限 32、页上限 16、保留不超过 30 天；重试复用原始密文字节，重复 ID 与不同内容冲突。Hub 无正文、明文索引或 Endpoint 私钥。
+**本轮证据与出口（2026-09-30）：** `5414d6edee44e2be1cad04d10181fd1a23ccd3bf0004fa3fb7bb66776448de83` 的[后端门禁](../.cicada-data/architecture-wide-accepted-20260930T121202Z/gates-summary.json)为 1,307 Go PASS / 11 SKIP / 25 包、vet、13 项 race、八项 Python及三套 disposable real-TCP Docker PASS；同一 dirty source 与 Hub image `sha256:6a21824109c755cc47b345d0cd63b97c49b0d51306420c160ba4ab7b8aa9b475` 的[Chrome 151 browser gate](../.cicada-data/hub-web-panel-browser/20260930t131113z-251515-c3ac163f/result.json)在 loopback fixture PASS，`UNCERTAIN` 写故障注入和公网 HTTPS NOT_RUN。其后 `e13b3848…` 的[全 Go 门禁](../.cicada-data/architecture-wide-finalfix-20260930T123606Z/gates-summary.json)为 1,308 PASS / 11 SKIP / 25 包及 vet/Python PASS，但真实 CLI 0.159.2 在最终 route allowlist FAIL；`434c4eb6…` 的[原生重试](../.cicada-data/architecture-wide-nativefix-20260930T125600Z/gates-summary.json)因模型截短 synthetic Group ID 于首个 Join FAIL，未运行 ASK/REPLY。旧 backend/browser PASS 不转移给新源码。nested `group.create` 已改为 v41 单事务，隔离 checkout Store/Control 全包与定向 race PASS；M5 durable native-outcome 路径与 v41 同在主仓 [c33f… 有界检查点](v01-group-panel-checkpoint-validation.md)通过全 Go/race/迁移门禁；同源三套 Docker、Chrome 151 浏览器和受控真实 Codex 同 Group ASK/REPLY 也各有独立 PASS。下一波补齐 M3 即时引用/Network Task offer；Network offer 正文必须沿用端点密封语义，不以 Hub 明文“public offer”代替授权密文。当前 v0.1.x 不加入 OpenAI/dot/GPT-Live/ChatGPT plugin 功能或依赖；它们只列于 [v0.2.x 接入路线](v02-openai-integration-roadmap.md)。
 
-新成员默认从加入后的 `read_from_seq` 读取。M2 还须提供**单记录**旧历史授予：由仍能读取旧记录的当前读者本地解密原作者签名内容并重新封装，Owner 离线签精确 Hub/Network/Group/record、原密文摘要、目标加入 revision/公钥、期限与 nonce；Hub 当前 Guard 核对证明、范围和解密材料。普通 Group Endpoint key grant 不是共享历史 key，旧引用的 Evidence/Artifact 继续独立鉴权。该有界机制不代表批量回填或跨 Owner Group 支持；现有 Group key 同意只有同 Owner 可验证，跨 Owner board 本轮明确拒绝。
+1. **Group Space M3 cursor/unread**：Core、Hub Node HTTP、Node Unix bridge、MCP 与 SSE 使用同一当前 Guard。Sync 仅回传不含正文的序号/类别 hint，不隐式 mark-read，不唤醒模型；read-state 与单调显式 mark-read 单独授权。出口：跨 Group/越权/撤权拒绝、no-backfill、保留边界、掉线重连后重新对账、SSE 无敏感元数据，Node sync 不触发 native queue。
+2. **Monitor M4 delegated regroup**：Monitor 仅提交 proposal；Owner 签精确 Network/Group/action/version/期限/nonce 委托后，Hub 执行一次性 CAS 并留下审计。出口：过期、撤权、重放、扩大读者、伪造 Owner、旧版本与并发写入全部拒绝；不复制历史 key、不自动批准跨 Owner board。
+3. **M5 multi-Hub Node/Client fencing**：每个 Hub 使用独立注册、凭据、游标/replay 与授权；Node 对同一个原生 Session 仍只有一个有效 writer。旧测试只覆盖 origin/token pin 与本地 writer 串行化/epoch 审计；新 durable native-outcome 测试在 `c33f…` 有界门禁 PASS；完整两 Hub 服务仍未运行。出口：2 Hubs + 2 Nodes、两侧 Node 只出站；同 native message ID 碰撞、credential transplant、old-writer epoch 和 Control nil 均以真实服务路径拒绝/隔离，并证明无 Hub-to-Hub 转发。fake harness 不得冒充模型消费。
+4. **Hub editable Web canvas**：新 UI 复用现有 Client v1.x 后量子加密 wire、`clientwire`/`e2ee`；Go WASM 小适配器加原生 SVG/DOM，无新 crypto。`5414…` 与 `c33f…` 各自的真实 Chrome 151 loopback gate 已通过加密 Owner pin/设备/vault/topology/status/canvas 正向链。Owner 写入继续走加密 Client 请求和服务端 Guard，布局不是授权。出口仍包括拒绝旧 bearer 写、拓扑 CAS/幂等/并发拖放、双 Owner Link 两侧确认、`UNCERTAIN` 故障恢复与公网 HTTPS；这些不由正向 Browser PASS 自动证明。
+5. **Deployment + G1–G5 demo**：单个轻量 Hub Compose、不带 Codex 或模型/管理密钥；可选真实 Node agent 仅主动连 Hub，先打印短时设备码，由已认证 Client 预览并显式确认。出口：本地启动/health、持久 Hub state、Node 自有受限 state、重启不丢授权、Pin 过期/撤销失败关闭；串联现有 CLI/MCP 的明确 Join→Ask/Reply→历史/space→委托→多 Hub 选择路径。安装脚本不会 curl 未发布 artifact；部署和 native 模型验收由操作者显式执行。
 
-退出门槛：聚焦权限/幂等/CAS/迁移/保留测试与越 Network/Group、撤权、新成员旧历史拒绝；独立 disposable Hub 上真实加密 HTTP 的 MCP→Node→Hub→Node→MCP 往返，Hub 密文审计及清理；全 Go/vet、相关 race 与既有 Client 合同门禁。Android v1.4、真实 native Runtime、双物理 Node、公网 HTTPS 分层报告，未运行不得计 PASS。`client-hub-v1.4` 管理 catalog 和 encrypted wire v1 保持不变；本轮不开发 Android board、通知/unread 路由、Monitor 再分组、多 Hub 或 UI，不启动模型、不改独立 Client、不碰常驻部署或真密钥。
+共通不变量：不改独立 `CICADA_CLIENT` 仓库；v40 的新记录跨 Owner Group board 仅在精确双 Owner admission、join 与 key proof 下工作，跨 Owner 历史继续拒绝；不弱化密码终点、不让设备码取代登录授权；不把“入队”报告成“消费”；不更新 resident/global CLI；不替换常驻服务、不清理旧 state。一次性开发 Hub 与现有数据目录分开，迁移始终增量且可审计。
+
+## 历史检查点：M2 Group Journal / Discussion（2026-09-30）
+
+以下 M2 说明保留原验收范围和证据；文档中“本轮不实施 M3–M5/UI”的句子只属于此历史切片，已由上方全剩余授权取代。
 
 ## M1 候选与历史门禁（2026-09-28，以下为当时快照）
 
@@ -53,7 +61,7 @@ Network 是 Group 之上的私有 tenant/授权范围，不改变 Node/Hub/Clien
 | M4 — Delegated topology and regrouping | Monitor 先提出二次分组；仅在精确、可撤销 delegation 下按拓扑版本 CAS 执行并审计 | 无自授权、无隐式历史 key/读者扩张、无自动 Thread/context 迁移；扩大可见性走现有 Owner/User Approval。 |
 | M5 — Multi-Hub Node and Client interop | Node 按 Hub 隔离 credential、Endpoint registration、订阅、序号和 replay 状态；地址为 `(hub_id, network_id, endpoint_id)`；同一 native Thread 仍由一个本地 writer 仲裁。未来 Client 独立合同、每 Hub identity pin/device key/session/counter，明确 active Hub/Network | 依赖 M1–M4 已稳定 scope/Guard/route。禁止 Hub-to-Hub forwarding 和公开全局 Thread ID；Client 由其仓库 Owner 实现，不修改或回填冻结的 v1.3。 |
 
-M1 的首个可运行验收切片必须包含：同 Hub 双 Network 的数据/授权隔离；每 Network 最小成员邀请和 Thread owner Join；默认权限预设与按资源 scope 的 Guard；最小授权目录/私聊；撤权、scope 伪造、昵称歧义、NetworkAdmin 越权和旧 API 绕过拒绝；用户可读的拓扑/发现结果；schema migration 预演、回滚边界、全 Go 和 disposable Docker 门禁。Network membership 本身不赋予共同 Group 权限；Network-scoped directory/direct-message/task grants 可在没有共同 Group 时工作，但不能泄露私有 Group、历史或未分享 Artifact。这是 M1 时点的原计划：当时 M2–M4 均为提案；当前 M2 已有 [实现合同](group-spaces-m2-contract.md)，M3/M4 仍为提案。M5 保留原计划的跨 Hub Node 和独立 Client 多 Hub 范围。
+M1 的首个可运行验收切片必须包含：同 Hub 双 Network 的数据/授权隔离；每 Network 最小成员邀请和 Thread owner Join；默认权限预设与按资源 scope 的 Guard；最小授权目录/私聊；撤权、scope 伪造、昵称歧义、NetworkAdmin 越权和旧 API 绕过拒绝；用户可读的拓扑/发现结果；schema migration 预演、回滚边界、全 Go 和 disposable Docker 门禁。Network membership 本身不赋予共同 Group 权限；Network-scoped directory/direct-message/task grants 可在没有共同 Group 时工作，但不能泄露私有 Group、历史或未分享 Artifact。这是 M1 时点的原计划：当时 M2–M4 均为提案；现在 M2 有 [实现合同](group-spaces-m2-contract.md)，M3 cursor/unread 与 M4 精确委托已有确定性后端覆盖，而 M3 引用/Network Task offer、真实产品流程仍未闭环。M5 保留跨 Hub Node 和独立 Client 多 Hub 范围。
 
 旧Group到Network的映射不得按Owner机械拆开（可能破坏已有跨Owner共同Group/Link），也不得为了保留连通而合成一个大Network。迁移输入必须显式列出旧Group→Network；缺失、多解或会扩大已有可见性的映射停在pending供用户确认。保留Endpoint/Group/Link ID、Thread、receipt、密钥、审批和旧Grant历史；按新scope逐项验证现有精确授权，覆盖不足时双方重新授权，不自动重信任或复制旧Group key。NetworkAdmin仅有该Network的管理grant，不持有Node命令执行、成员设备/私钥、原生历史或用户审批权。
 

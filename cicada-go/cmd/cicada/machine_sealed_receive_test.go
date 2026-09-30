@@ -525,7 +525,7 @@ func TestMachineSealedReceivePersistsInjectsExactThreadAndDedupes(t *testing.T) 
 	defer inbox.Close()
 
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 			fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 			t.Fatalf("process sealed delivery attempt %d: %v", attempt, err)
 		}
@@ -581,7 +581,7 @@ func TestMachineSealedRequestDecryptsAndQueuesExactNativeSession(t *testing.T) {
 	defer inbox.Close()
 
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 			fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 			t.Fatalf("process sealed REQUEST attempt %d: %v", attempt, err)
 		}
@@ -706,7 +706,7 @@ func TestMachineSealedReplyReturnsToOriginalRequesterSession(t *testing.T) {
 	}
 	defer inbox.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 			fixture.sourceNodeID, inbox, fixture.stateDir); err != nil {
 			t.Fatalf("process sealed REPLY attempt %d: %v", attempt, err)
 		}
@@ -858,7 +858,7 @@ func TestMachineSealedReplyRecoversCrashBeforeInboxSave(t *testing.T) {
 		fixture.sourceNodeID, fixture.stateDir, inbox, journal); err != nil {
 		t.Fatalf("recover sealed REPLY inbox after crash: %v", err)
 	}
-	if err := drainMachineRelayInbox(context.Background(), server.URL,
+	if err := drainPinnedTestMachineRelayInbox(context.Background(), server.URL,
 		fixture.sourceNodeID, fixture.stateDir, inbox, journal); err != nil {
 		t.Fatalf("drain recovered sealed REPLY: %v", err)
 	}
@@ -934,7 +934,7 @@ func TestMachineSealedReceiveRecoversCrashBetweenJournalAndInbox(t *testing.T) {
 	var receipts []string
 	server := fixture.server(t, &receipts)
 	defer server.Close()
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 		fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatal(err)
 	}
@@ -998,7 +998,7 @@ func TestMachineSealedRequestRecoversCrashBetweenJournalAndInbox(t *testing.T) {
 	var receipts []string
 	server := fixture.server(t, &receipts)
 	defer server.Close()
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 		fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("recover sealed REQUEST: %v", err)
 	}
@@ -1076,7 +1076,7 @@ func TestMachineSealedReceiveRechecksRevocationBeforeNativeQueue(t *testing.T) {
 	var receipts []string
 	server := fixture.server(t, &receipts)
 	defer server.Close()
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 		fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("process revoked sealed delivery: %v", err)
 	}
@@ -1191,7 +1191,7 @@ func TestMachineSealedReceiveRejectsStaleAttemptBeforeNativeQueue(t *testing.T) 
 		}
 	}))
 	defer server.Close()
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 		fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("process stale sealed attempt: %v", err)
 	}
@@ -1222,7 +1222,7 @@ func TestMachineSealedReceiveNativeQueueFailureIsUncertainAndNeverRetried(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := processMachineFabricDeliveriesV2(context.Background(), server.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
 			fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 			inbox.Close()
 			t.Fatalf("uncertain process attempt %d: %v", attempt, err)

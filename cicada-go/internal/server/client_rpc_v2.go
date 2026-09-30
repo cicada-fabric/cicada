@@ -59,7 +59,8 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 	requestBinding := store.AcceptClientRequestInput{
 		OwnerID: device.OwnerID, DeviceID: device.DeviceID,
 		SessionEpoch: opened.Route.SessionEpoch, Sequence: opened.Route.Sequence,
-		OperationID: opened.Route.OperationID, CiphertextDigest: hex.EncodeToString(digest[:]),
+		OperationID: opened.Route.OperationID, RouteOperation: opened.Route.Operation,
+		CiphertextDigest: hex.EncodeToString(digest[:]),
 	}
 	accepted, err := h.control.AcceptClientControlRequest(requestBinding)
 	if err != nil {
@@ -442,6 +443,115 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid topology change request")
 		}
 		return h.control.ApplyClientTopologyChangeForClientRequest(ownerID, clientRequestID, input)
+	case "space.foreign_member_admit":
+		var input struct {
+			GroupID                    string   `json:"group_id"`
+			EndpointID                 string   `json:"endpoint_id"`
+			Grants                     []string `json:"grants"`
+			ExpiresAt                  string   `json:"expires_at"`
+			ExpectedGroupRevision      int64    `json:"expected_group_revision"`
+			ExpectedMembershipRevision *int64   `json:"expected_membership_revision"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" || len(input.Grants) == 0 ||
+			input.ExpiresAt == "" || input.ExpectedGroupRevision <= 0 ||
+			input.ExpectedMembershipRevision == nil || *input.ExpectedMembershipRevision < 0 {
+			return nil, errors.New("invalid cross-Owner Group admission request")
+		}
+		return h.control.AdmitCrossOwnerGroupMemberForClientRequest(clientRequestID, ownerID,
+			input.GroupID, input.EndpointID, input.Grants, input.ExpiresAt,
+			input.ExpectedGroupRevision, *input.ExpectedMembershipRevision)
+	case "space.foreign_endpoint_join":
+		var input struct {
+			AdmissionID                   string `json:"admission_id"`
+			ExpectedBindingID             string `json:"expected_binding_id"`
+			ExpectedBindingEpoch          uint64 `json:"expected_binding_epoch"`
+			SharedContextRiskAcknowledged bool   `json:"shared_context_risk_acknowledged"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.AdmissionID == "" || input.ExpectedBindingID == "" || input.ExpectedBindingEpoch == 0 ||
+			!input.SharedContextRiskAcknowledged {
+			return nil, errors.New("invalid foreign Endpoint Group Join consent")
+		}
+		return h.control.ConsentCrossOwnerGroupJoinForClientRequest(clientRequestID, ownerID,
+			input.AdmissionID, input.ExpectedBindingID, input.ExpectedBindingEpoch,
+			input.SharedContextRiskAcknowledged)
+	case "space.foreign_member_revoke":
+		var input struct {
+			AdmissionID                string `json:"admission_id"`
+			ExpectedMembershipRevision *int64 `json:"expected_membership_revision"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.AdmissionID == "" || input.ExpectedMembershipRevision == nil ||
+			*input.ExpectedMembershipRevision <= 0 {
+			return nil, errors.New("invalid cross-Owner Group admission revoke request")
+		}
+		return h.control.RevokeCrossOwnerGroupAdmissionForClientRequest(clientRequestID, ownerID,
+			input.AdmissionID, *input.ExpectedMembershipRevision)
+	case "space.key_manifest_v2", "space.key_status_v2":
+		var input struct {
+			GroupID    string `json:"group_id"`
+			EndpointID string `json:"endpoint_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" {
+			return nil, errors.New("invalid cross-Owner Group key scope")
+		}
+		if operation == "space.key_manifest_v2" {
+			return h.control.PreviewCrossOwnerGroupKeyManifestForClientRequest(clientRequestID,
+				ownerID, input.GroupID, input.EndpointID)
+		}
+		return h.control.GetCrossOwnerGroupKeyStatusForClientRequest(clientRequestID,
+			ownerID, input.GroupID, input.EndpointID)
+	case "space.key_consent_v2", "space.key_admission_v2":
+		var input struct {
+			GroupID     string `json:"group_id"`
+			EndpointID  string `json:"endpoint_id"`
+			OwnerKeyID  string `json:"owner_key_id"`
+			SignedProof []byte `json:"signed_proof_base64"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 20*1024, &input); err != nil ||
+			input.GroupID == "" || input.EndpointID == "" || input.OwnerKeyID == "" ||
+			len(input.SignedProof) == 0 || len(input.SignedProof) > 16*1024 {
+			return nil, errors.New("invalid cross-Owner Group key proof")
+		}
+		side := store.CrossOwnerKeySideEndpoint
+		if operation == "space.key_admission_v2" {
+			side = store.CrossOwnerKeySideGroup
+		}
+		return h.control.AcceptCrossOwnerGroupKeyProofForClientRequest(clientRequestID,
+			ownerID, input.GroupID, input.EndpointID, input.OwnerKeyID, side, input.SignedProof)
+	case "topology.regroup_proposal":
+		var input struct {
+			ProposalID string `json:"proposal_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil || input.ProposalID == "" {
+			return nil, errors.New("invalid regroup proposal request")
+		}
+		return h.control.GetRegroupProposalForClientRequest(clientRequestID, ownerID, input.ProposalID)
+	case "topology.delegation_issue":
+		var input struct {
+			ProposalID string `json:"proposal_id"`
+			ExpiresAt  string `json:"expires_at"`
+			MaxUses    int    `json:"max_uses"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.ProposalID == "" || input.ExpiresAt == "" || input.MaxUses < 1 || input.MaxUses > 1 {
+			return nil, errors.New("invalid regroup delegation request")
+		}
+		return h.control.IssueRegroupDelegationForClientRequest(clientRequestID, ownerID,
+			input.ProposalID, input.ExpiresAt, input.MaxUses)
+	case "topology.delegation_revoke":
+		var input struct {
+			DelegationID    string `json:"delegation_id"`
+			ExpectedVersion int64  `json:"expected_version"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.DelegationID == "" || input.ExpectedVersion <= 0 {
+			return nil, errors.New("invalid regroup delegation revocation")
+		}
+		return h.control.RevokeRegroupDelegationForClientRequest(clientRequestID, ownerID,
+			input.DelegationID, input.ExpectedVersion)
 	case "approvals.list":
 		var input struct {
 			PendingOnly bool `json:"pending_only"`

@@ -9,6 +9,6 @@ if [[ -z "$name" || ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
 fi
 
 workspace="/workspace/$name"
-model="${CICADA_TEST_MODEL:-gpt-5.5}"
+model="${CICADA_TEST_MODEL:-gpt-5.6-luna}"
 docker compose exec -T control mkdir -p "$workspace"
 exec docker compose exec -it control codex -C "$workspace" --model "$model"

@@ -16,10 +16,14 @@ import (
 // runMachineRelayEventStream keeps one outbound connection to Relay. A wake
 // hint only schedules the durable claim path; no message is consumed here.
 func runMachineRelayEventStream(ctx context.Context, base, machineID string, wake chan<- struct{}, revoked chan<- error) {
+	runMachineRelayEventStreamWithSpaces(ctx, base, machineID, wake, nil, revoked)
+}
+
+func runMachineRelayEventStreamWithSpaces(ctx context.Context, base, machineID string, wake, space chan<- struct{}, revoked chan<- error) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		openedAt := time.Now()
-		connected, err := streamMachineRelayEvents(ctx, base, machineID, wake)
+		connected, err := streamMachineRelayEventsWithSpaces(ctx, base, machineID, wake, space)
 		if ctx.Err() != nil {
 			return
 		}
@@ -63,7 +67,14 @@ func relayEventReconnectDelay(backoff time.Duration) time.Duration {
 }
 
 func streamMachineRelayEvents(ctx context.Context, base, machineID string, wake chan<- struct{}) (bool, error) {
-	token := machineNodeToken()
+	return streamMachineRelayEventsWithSpaces(ctx, base, machineID, wake, nil)
+}
+
+func streamMachineRelayEventsWithSpaces(ctx context.Context, base, machineID string, wake, space chan<- struct{}) (bool, error) {
+	if !machineHubOriginMatches(ctx, base) {
+		return false, errors.New("Relay event stream escaped its pinned Hub origin")
+	}
+	token := machineNodeTokenFor(ctx)
 	if token == "" {
 		return false, errors.New("Node credential is not available")
 	}
@@ -97,6 +108,12 @@ func streamMachineRelayEvents(ctx context.Context, base, machineID string, wake 
 			if event == "ready" || event == "wake" {
 				select {
 				case wake <- struct{}{}:
+				default:
+				}
+			}
+			if (event == "space" || event == "ready") && space != nil {
+				select {
+				case space <- struct{}{}:
 				default:
 				}
 			}

@@ -138,6 +138,9 @@ func machineNodeAPIJSON(ctx context.Context, endpoint, method, nodeToken string,
 	if err != nil {
 		return err
 	}
+	if !machineHubOriginMatches(ctx, endpoint) {
+		return errors.New("Node request escaped its pinned Hub origin")
+	}
 	request.Header.Set("Authorization", "CicadaNode "+nodeToken)
 	request.Header.Set("Accept", "application/json")
 	if payload != nil {
@@ -190,6 +193,9 @@ func machineAPIHasStatus(err error, statuses ...int) bool {
 }
 
 func machineAPIJSON(ctx context.Context, endpoint, method string, payload, target any) error {
+	if !machineHubOriginMatches(ctx, endpoint) {
+		return errors.New("Node request escaped its pinned Hub origin")
+	}
 	var body io.Reader
 	if payload != nil {
 		data, err := json.Marshal(payload)
@@ -208,12 +214,15 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 	nodeRoute := strings.Contains(request.URL.Path, "/v2/relay/nodes/") ||
 		strings.HasPrefix(request.URL.Path, "/v2/fabric/node/networks/direct/")
 	if nodeRoute {
-		token := machineNodeToken()
+		token := machineNodeTokenFor(ctx)
 		if token == "" {
 			return errors.New("CICADA_NODE_TOKEN or CICADA_NODE_TOKEN_FILE is required for Relay Node APIs")
 		}
 		request.Header.Set("Authorization", "CicadaNode "+token)
 	} else {
+		if hub, ok := machineHubFrom(ctx); ok && hub.MultiHub {
+			return errors.New("Control management is unavailable in multi-Hub relay-only mode")
+		}
 		setMachineAuth(request)
 	}
 	client := &http.Client{Timeout: 30 * time.Second}

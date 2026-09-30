@@ -94,7 +94,7 @@ func (m *mcpServer) dispatchLocalGroupMCPOutbox(outbox *mcpOutboxStore,
 		request.Operation = "local_reply"
 		request.OperationCreatedAt = ""
 	}
-	result, err := requestMachineAgentLocalGroup(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentLocalGroup(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)
@@ -165,7 +165,7 @@ func (m *mcpServer) localGroupRequestControl(operation, requestID, reason string
 	} else {
 		return nil, false, errors.New("unsupported same-Group request control")
 	}
-	result, err := requestMachineAgentCrossNodeGroup(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentCrossNodeGroup(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

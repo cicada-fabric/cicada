@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 const mcpGroupSpaceMaxBody = 16 * 1024
@@ -28,6 +29,17 @@ func (m *mcpServer) groupSpaceMCPTool(name string, arguments map[string]any) (an
 		allowed = map[string]bool{"topic_id": true, "expected_topic_version": true, "idempotency_key": true}
 	case "cicada_journal_list":
 		allowed = map[string]bool{"cursor": true, "limit": true}
+	case "cicada_space_sync":
+		allowed = map[string]bool{"after_seq": true, "limit": true}
+	case "cicada_space_read_state":
+		allowed = map[string]bool{}
+	case "cicada_space_mark_read":
+		allowed = map[string]bool{"through_seq": true}
+	case "cicada_regroup_propose":
+		allowed = map[string]bool{"network_id": true, "target_group_id": true, "action": true,
+			"new_group_name": true, "expected_source_version": true, "expected_target_version": true, "idempotency_key": true}
+	case "cicada_regroup_apply":
+		allowed = map[string]bool{"proposal_id": true, "delegation_id": true}
 	case "cicada_discussion_list":
 		allowed = map[string]bool{"topic_id": true, "cursor": true, "limit": true}
 	case "cicada_journal_get", "cicada_discussion_get":
@@ -42,6 +54,12 @@ func (m *mcpServer) groupSpaceMCPTool(name string, arguments map[string]any) (an
 	}
 	if name == "cicada_space_history_manifest" || name == "cicada_space_history_share" {
 		return m.historyGroupSpaceMCP(name, arguments)
+	}
+	if name == "cicada_space_sync" || name == "cicada_space_read_state" || name == "cicada_space_mark_read" {
+		return m.syncGroupSpaceMCP(name, arguments)
+	}
+	if name == "cicada_regroup_propose" || name == "cicada_regroup_apply" {
+		return m.regroupMCP(name, arguments)
 	}
 	if strings.HasSuffix(name, "_list") || strings.HasSuffix(name, "_get") {
 		return m.readGroupSpaceMCP(name, arguments)
@@ -71,6 +89,98 @@ func (m *mcpServer) groupSpaceMCPTool(name string, arguments map[string]any) (an
 		stringArgument(arguments, "idempotency_key"))
 }
 
+func (m *mcpServer) regroupMCP(name string, arguments map[string]any) (any, error) {
+	scope, err := m.currentMCPOutboxScope()
+	if err != nil {
+		return nil, err
+	}
+	operation := mcpOutboxOperation{APIOrigin: scope.APIOrigin, Scope: scope.Scope,
+		Harness: scope.Harness, NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID,
+		Workspace: scope.Workspace, EndpointID: scope.EndpointID, GroupID: scope.GroupID}
+	request, err := m.groupSpaceTrustedRequest(operation, mcpOutboxInput{})
+	if err != nil {
+		return nil, err
+	}
+	if name == "cicada_regroup_propose" {
+		request.Operation = "space_regroup_propose"
+		request.RegroupInput = &store.RegroupProposalInput{
+			OperationID:           stringArgument(arguments, "idempotency_key"),
+			NetworkID:             stringArgument(arguments, "network_id"),
+			SourceGroupID:         scope.GroupID,
+			TargetGroupID:         stringArgument(arguments, "target_group_id"),
+			Action:                stringArgument(arguments, "action"),
+			NewGroupName:          stringArgument(arguments, "new_group_name"),
+			ExpectedSourceVersion: int64(intArgument(arguments, "expected_source_version")),
+			ExpectedTargetVersion: int64(intArgument(arguments, "expected_target_version")),
+		}
+		if request.RegroupInput.OperationID == "" || request.RegroupInput.NetworkID == "" ||
+			request.RegroupInput.TargetGroupID == "" || request.RegroupInput.ExpectedSourceVersion <= 0 ||
+			request.RegroupInput.ExpectedTargetVersion <= 0 ||
+			(request.RegroupInput.Action != store.RegroupSetParent && request.RegroupInput.Action != store.RegroupCreateChild) {
+			return nil, errors.New("regroup proposal requires exact current scope and expected versions")
+		}
+	} else {
+		request.Operation = "space_regroup_apply"
+		request.ProposalID = stringArgument(arguments, "proposal_id")
+		request.DelegationID = stringArgument(arguments, "delegation_id")
+		if request.ProposalID == "" || request.DelegationID == "" {
+			return nil, errors.New("regroup apply requires exact proposal and delegation")
+		}
+	}
+	result, err := requestMachineAgentGroupSpace(m.joinSocketPath(harness.SessionContext{
+		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
+		MachineID: request.NodeID, Workspace: request.Workspace,
+	}), request)
+	if err != nil {
+		return nil, err
+	}
+	if name == "cicada_regroup_propose" {
+		if result.RegroupProposal == nil || result.RegroupProposal.Input.SourceGroupID != scope.GroupID {
+			return nil, errors.New("local Node returned mismatched regroup proposal")
+		}
+	} else if result.RegroupApply == nil || result.RegroupApply.ProposalID != request.ProposalID {
+		return nil, errors.New("local Node returned mismatched regroup result")
+	}
+	return result, nil
+}
+
+func (m *mcpServer) syncGroupSpaceMCP(name string, arguments map[string]any) (any, error) {
+	scope, err := m.currentMCPOutboxScope()
+	if err != nil {
+		return nil, err
+	}
+	operation := mcpOutboxOperation{APIOrigin: scope.APIOrigin, Scope: scope.Scope,
+		Harness: scope.Harness, NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID,
+		Workspace: scope.Workspace, EndpointID: scope.EndpointID, GroupID: scope.GroupID}
+	request, err := m.groupSpaceTrustedRequest(operation, mcpOutboxInput{})
+	if err != nil {
+		return nil, err
+	}
+	request.Operation = "space_" + strings.TrimPrefix(name, "cicada_space_")
+	request.AfterSeq = int64(intArgument(arguments, "after_seq"))
+	request.ThroughSeq = int64(intArgument(arguments, "through_seq"))
+	request.Limit = intArgument(arguments, "limit")
+	if request.AfterSeq < 0 || request.Limit < 0 || request.Limit > 16 ||
+		(name == "cicada_space_mark_read" && request.ThroughSeq < 0) {
+		return nil, errors.New("invalid Group Space sequence or page limit")
+	}
+	result, err := requestMachineAgentGroupSpace(m.joinSocketPath(harness.SessionContext{
+		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
+		MachineID: request.NodeID, Workspace: request.Workspace,
+	}), request)
+	if err != nil {
+		return nil, err
+	}
+	if name == "cicada_space_sync" {
+		if result.Sync == nil || result.Sync.GroupID != scope.GroupID {
+			return nil, errors.New("local Node returned mismatched Group Space sync")
+		}
+	} else if result.ReadState == nil || result.ReadState.GroupID != scope.GroupID {
+		return nil, errors.New("local Node returned mismatched Group Space read state")
+	}
+	return result, nil
+}
+
 func (m *mcpServer) historyGroupSpaceMCP(name string, arguments map[string]any) (any, error) {
 	scope, err := m.currentMCPOutboxScope()
 	if err != nil {
@@ -95,7 +205,7 @@ func (m *mcpServer) historyGroupSpaceMCP(name string, arguments map[string]any) 
 	} else if request.OwnerProof == "" || len(request.OwnerProof) > 24000 {
 		return nil, errors.New("history share requires a bounded Owner proof")
 	}
-	result, err := requestMachineAgentGroupSpace(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentGroupSpace(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)
@@ -138,7 +248,7 @@ func (m *mcpServer) dispatchGroupSpaceMCPOutbox(outbox *mcpOutboxStore,
 		return m.recordGroupSpaceMCPError(outbox, scope, operation, err)
 	}
 	request.Operation = operation.Kind
-	result, err := requestMachineAgentGroupSpace(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentGroupSpace(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)
@@ -200,7 +310,7 @@ func (m *mcpServer) readGroupSpaceMCP(name string, arguments map[string]any) (an
 	if request.Limit < 0 || request.Limit > 16 {
 		return nil, errors.New("Group Space page limit must be at most 16")
 	}
-	result, err := requestMachineAgentGroupSpace(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentGroupSpace(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

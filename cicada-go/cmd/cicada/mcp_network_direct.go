@@ -55,7 +55,7 @@ func (m *mcpServer) networkDirectToolLocked(name string, arguments map[string]an
 		request := localNetworkDirectRequest{Version: localJoinProtocolVersion, Operation: "network_direct_publish_key",
 			NetworkID: state.NetworkID, EndpointID: state.EndpointID, SessionToken: state.SessionToken,
 			Harness: context.Harness, NativeSessionID: context.NativeSessionID, Workspace: context.Workspace, NodeID: context.MachineID}
-		return requestMachineAgentNetworkDirect(defaultMCPJoinSocketPath(context), request)
+		return requestMachineAgentNetworkDirect(m.joinSocketPath(context), request)
 	case "cicada_request_status", "request_status", "cicada_request_cancel", "cicada_cancel", "request_cancel", "cancel":
 		requestID := stringArgument(arguments, "request_id")
 		if requestID == "" {
@@ -214,7 +214,7 @@ func (m *mcpServer) dispatchMCPNetworkOutbox(outbox *mcpOutboxStore, scope mcpOu
 	default:
 		return nil, errors.New("unsupported Network direct outbox operation")
 	}
-	result, err := requestMachineAgentNetworkDirect(defaultMCPJoinSocketPath(context), request)
+	result, err := requestMachineAgentNetworkDirect(m.joinSocketPath(context), request)
 	if err != nil {
 		unknown, persistErr := outbox.markError(scope, op.OperationID, mcpOutboxStatusUnknown, err)
 		if persistErr != nil {

@@ -57,7 +57,7 @@ func TestNativeProcessFailureAfterStartIsUncertainAndNeverReinjected(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := processMachineFabricDeliveriesV2(context.Background(), remote.URL, "b", inbox, root); err != nil {
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), remote.URL, "b", inbox, root); err != nil {
 			inbox.Close()
 			t.Fatal(err)
 		}

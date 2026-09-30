@@ -1,128 +1,21 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#07110f">
-  <title>Cicada Control</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/assets/app.css">
-</head>
-<body>
-  <header class="masthead">
-    <div>
-      <p class="eyebrow">AUTONOMOUS PERSONAL AI MANAGER</p>
-      <h1>Cicada</h1>
-      <p class="muted">Control plane <span class="dot">·</span> <span id="identity">connecting…</span></p>
-    </div>
-    <div class="live"><span></span> live</div>
-  </header>
-
-  <main>
-    <section aria-labelledby="today-title">
-      <div class="section-title">
-        <div><p class="eyebrow">OVERVIEW</p><h2 id="today-title">Today</h2></div>
-        <time id="updated-at" class="muted"></time>
-      </div>
-      <div class="stats">
-        <article><strong id="running-count">—</strong><span>running</span></article>
-        <article><strong id="approval-count">—</strong><span>need approval</span></article>
-        <article><strong id="completed-count">—</strong><span>completed</span></article>
-      </div>
-    </section>
-
-    <div class="columns">
-      <section aria-labelledby="ask-title">
-        <p class="eyebrow">INTENT</p>
-        <h2 id="ask-title">Ask Cicada</h2>
-        <form id="goal-form">
-          <label for="objective">What outcome do you want?</label>
-          <textarea id="objective" rows="4" required maxlength="8000" placeholder="Inspect this project, verify the result, and tell me only when it is done."></textarea>
-          <div class="voice-row">
-            <button type="button" id="voice-input" class="secondary" aria-label="Dictate your intent">Speak</button>
-            <span id="voice-status" class="muted" role="status" aria-live="polite"></span>
-          </div>
-          <label for="intent-kind">Route as</label>
-          <select id="intent-kind">
-            <option value="auto">Decide from my words</option>
-            <option value="goal">Goal — execute an outcome</option>
-            <option value="idea">Idea — capture without executing</option>
-            <option value="research">Research — investigate first</option>
-            <option value="question">Question — answer without changing things</option>
-          </select>
-          <label for="criteria">Success criteria <span class="muted">optional</span></label>
-          <input id="criteria" maxlength="4000" placeholder="Tests pass and evidence is recorded">
-          <label for="attachments">Files or images <span class="muted">optional, 8 MB each</span></label>
-          <input id="attachments" type="file" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
-          <label for="reference-link">Reference link <span class="muted">optional</span></label>
-          <input id="reference-link" type="url" maxlength="2000" placeholder="https://…">
-          <button type="submit">Start goal</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="approvals-title">
-        <div class="section-title">
-          <div><p class="eyebrow">YOUR DECISION</p><h2 id="approvals-title">Approvals</h2></div>
-        </div>
-        <div id="approvals" class="empty">loading…</div>
-      </section>
-    </div>
-
-    <section aria-labelledby="fabric-title">
-      <div class="section-title">
-        <div><p class="eyebrow">FABRIC DIRECTORY</p><h2 id="fabric-title">Network</h2></div>
-        <span id="fabric-summary" class="muted">loading…</span>
-      </div>
-      <div id="fabric-endpoints" class="endpoint-list empty">loading…</div>
-    </section>
-
-    <section aria-labelledby="goals-title">
-      <div class="section-title">
-        <div><p class="eyebrow">OUTCOMES</p><h2 id="goals-title">Goals</h2></div>
-      </div>
-      <div id="goals" class="goal-list empty">loading…</div>
-    </section>
-
-    <section aria-labelledby="groups-title">
-      <div class="section-title">
-        <div><p class="eyebrow">COLLABORATION</p><h2 id="groups-title">Groups and shared work</h2></div>
-        <span id="group-summary" class="muted">loading…</span>
-      </div>
-      <div id="management-groups" class="management-list empty">loading…</div>
-    </section>
-
-    <section aria-labelledby="notifications-title">
-      <div class="section-title">
-        <div><p class="eyebrow">ONLY WHAT MATTERS</p><h2 id="notifications-title">Notifications</h2></div>
-      </div>
-      <div id="notifications" class="empty">loading…</div>
-    </section>
-
-    <details id="access-panel">
-      <summary>Remote access</summary>
-      <form id="token-form" class="token-form">
-        <label for="api-token">API bearer token</label>
-        <input id="api-token" type="password" autocomplete="off" placeholder="Required when Control authentication is enabled">
-        <div class="button-row">
-          <button type="submit">Use for this tab</button>
-          <button type="button" id="clear-token" class="secondary">Clear</button>
-        </div>
-      </form>
-      <p class="muted">The token stays in this browser tab and is never rendered into the page.</p>
-      <div class="push-settings">
-        <button type="button" id="push-enable" class="secondary" hidden>Enable push notifications</button>
-        <span id="push-status" class="muted" role="status" aria-live="polite"></span>
-      </div>
-    </details>
-
-    <div id="message" role="status" aria-live="polite"></div>
-  </main>
-  <script src="/assets/goal-detail.js" defer></script>
-  <script src="/assets/attachments.js" defer></script>
-  <script src="/assets/voice.js" defer></script>
-  <script src="/assets/push.js" defer></script>
-  <script src="/assets/events.js" defer></script>
-  <script src="/assets/management.js" defer></script>
-  <script src="/assets/app.js" defer></script>
-</body>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>CICADA Hub · Topology</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/panel.css">
+    <script type="module" src="/assets/panel.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CICADA Hub"><span class="brand-mark">C</span><span>CICADA <b>HUB</b></span></a>
+      <div id="identity-line" class="identity-line">Connecting to this Hub…</div>
+      <span id="wire-state" class="wire-state">unverified</span>
+    </header>
+    <main id="app" aria-live="polite"><div class="boot-card"><h1>Loading secure panel</h1><p id="boot-message">Checking the local WebCrypto build…</p></div></main>
+    <noscript>This Hub panel requires JavaScript and WebAssembly.</noscript>
+  </body>
 </html>

@@ -50,7 +50,7 @@ func (m *mcpServer) receiveMCPInbox(cursor string, limit int) (any, error) {
 		BindingID: trusted.BindingID, BindingEpoch: trusted.BindingEpoch,
 		Cursor: cursor, Limit: limit,
 	}
-	result, err := requestMachineAgentLocalGroup(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentLocalGroup(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

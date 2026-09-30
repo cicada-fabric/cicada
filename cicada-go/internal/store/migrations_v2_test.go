@@ -55,7 +55,8 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		34: v2MigrationApplied,
 		35: v2MigrationApplied,
 		36: v2MigrationApplied,
-		37: v2MigrationApplied,
+		37: v2MigrationApplied, 38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied,
+		41: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -115,7 +116,8 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		34: v2MigrationApplied,
 		35: v2MigrationApplied,
 		36: v2MigrationApplied,
-		37: v2MigrationApplied,
+		37: v2MigrationApplied, 38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied,
+		41: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := reopened.readV2Migration(migration.Version)
@@ -133,6 +135,53 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 	}
 	if latest != CurrentV2SchemaVersion {
 		t.Fatalf("unexpected current v2 schema version: got %d want %d", latest, CurrentV2SchemaVersion)
+	}
+}
+
+func TestClientTopologyV41MigrationInterruptionRollsBackAndReopens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "cicada.sqlite3")
+	seedLegacyV1State(t, path)
+	injected := errors.New("synthetic v41 interruption")
+	failed, err := openStoreWithMigrationHook(path, func(id, phase string) error {
+		if id == "v2.client.atomic_topology_group_create" && phase == "after_apply" {
+			return injected
+		}
+		return nil
+	})
+	if failed != nil {
+		_ = failed.Close()
+	}
+	if !errors.Is(err, injected) {
+		t.Fatalf("v41 interruption was not reported: %v", err)
+	}
+	check, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table'
+AND name IN ('client_topology_group_create_guard_v2','client_topology_group_creates_v2')`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("interrupted v41 left %d tables", count)
+	}
+	if err := check.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	assertLegacyStatePreserved(t, reopened)
+	entry, err := reopened.readV2Migration(41)
+	if err != nil || entry == nil || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v41 retry ledger=%+v err=%v", entry, err)
+	}
+	if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table'
+AND name IN ('client_topology_group_create_guard_v2','client_topology_group_creates_v2')`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("v41 tables after restart=%d err=%v", count, err)
 	}
 }
 
@@ -234,7 +283,8 @@ func TestV2MigrationFailureRollsBackSchemaAndResumes(t *testing.T) {
 		34: v2MigrationApplied,
 		35: v2MigrationApplied,
 		36: v2MigrationApplied,
-		37: v2MigrationApplied,
+		37: v2MigrationApplied, 38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied,
+		41: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(3)
 	if err != nil {
@@ -315,7 +365,8 @@ func TestEndpointKeyCandidateMigrationRollsBackAndReopensWithLegacyState(t *test
 		34: v2MigrationApplied,
 		35: v2MigrationApplied,
 		36: v2MigrationApplied,
-		37: v2MigrationApplied,
+		37: v2MigrationApplied, 38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied,
+		41: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(14)
 	if err != nil {
@@ -396,7 +447,8 @@ func TestV2MigrationsConcurrentOpenSerializesLedger(t *testing.T) {
 		34: v2MigrationApplied,
 		35: v2MigrationApplied,
 		36: v2MigrationApplied,
-		37: v2MigrationApplied,
+		37: v2MigrationApplied, 38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied,
+		41: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)

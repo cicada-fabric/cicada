@@ -17,6 +17,11 @@ change persisted identities, message formats, trust grants, or key material.
 | GitHub Actions JavaScript runtime | GitHub action majors using older Node | Current compatible releases pinned by commit SHA, all declaring Node.js 24 | CICADA does not run Node.js itself, but its CI actions do. These actions require a recent runner; workflow execution remains unverified until CI runs, and self-hosted runners need version checks. |
 | Node.js | none in this repository | none | Node.js 26 is *Current*, while Node.js 24 is *LTS* on this date. Any Client-side Node pin belongs in the separate Client repository and should follow its tested LTS policy. |
 
+Retirement note (2026-09-30 dev candidate): the Web Push Go row records the
+2026-09-24 dependency review. The ownerless legacy browser Push transport was
+subsequently retired, and Web Push Go is no longer a current Go dependency.
+Durable notifications remain; see [notification status](notifications.md).
+
 The dependency refresh passed `go test -count=1 ./...`, `go vet ./...`,
 format checks, and the disposable real-TCP Docker Hub protocol gate on the
 current worktree. These checks verify compatibility with the test databases,

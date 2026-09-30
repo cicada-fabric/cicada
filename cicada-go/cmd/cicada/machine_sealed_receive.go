@@ -543,7 +543,11 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 		return fmt.Errorf("begin sealed injection for %s: %w", entry.MessageID, err)
 	}
 	prompt := machineSealedRelayPrompt(entry, claim.Payload)
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt); err != nil {
+	operation, err := machineRelayNativeOperation(ctx, claim, entry)
+	if err != nil {
+		return err
+	}
+	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation); err != nil {
 		var uncertain *nativeInjectionUncertainError
 		if errors.As(err, &uncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)

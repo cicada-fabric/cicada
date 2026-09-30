@@ -67,7 +67,7 @@ func (b *machineAgentJoinBridge) reportMonitorNotification(n store.UserMonitorBr
 	if err := b.monitorBroadcastHub(http.MethodPost, "/"+url.PathEscape(n.PreviewID)+"/receipt", "", input, &response); err != nil {
 		return err
 	}
-	if !monitorBroadcastHubMatches(response.HubID) || response.Notification == nil ||
+	if !monitorBroadcastHubMatchesFor(b.ctx, response.HubID) || response.Notification == nil ||
 		response.Notification.ReceiptState != receipt || !sameMonitorBroadcastNotification(*response.Notification, n) {
 		return errors.New("Monitor notification receipt is uncorrelated")
 	}
@@ -94,11 +94,11 @@ func processMachineMonitorBroadcastNotifications(ctx context.Context, bridge *ma
 	if err := bridge.monitorBroadcastHub(http.MethodGet, "", "", nil, &response); err != nil {
 		return err
 	}
-	if !monitorBroadcastHubMatches(response.HubID) || len(response.Notifications) > 16 {
+	if !monitorBroadcastHubMatchesFor(ctx, response.HubID) || len(response.Notifications) > 16 {
 		return errors.New("Monitor notice list does not match the configured Hub")
 	}
 	for _, listed := range response.Notifications {
-		if validateMonitorBroadcastNotification(listed, listed.PreviewID, bridge.nodeID, false) != nil {
+		if validateMonitorBroadcastNotificationFor(ctx, listed, listed.PreviewID, bridge.nodeID, false) != nil {
 			return errors.New("Monitor notice list contains an invalid Node or Hub hint")
 		}
 	}
@@ -181,10 +181,16 @@ func drainMachineMonitorBroadcastNotification(ctx context.Context, bridge *machi
 		"Do not substitute text or create a new broadcast. Transport acceptance does not prove recipient consumption.",
 		current.GroupID, current.PreviewID)
 	receipt := localGroupReceipt(claim)
-	queueErr := executeMachineNativeCodex(ctx, claim.SessionID, prompt)
+	operation, err := machineNativeOperation(ctx, claim, current.BindingID)
+	if err != nil {
+		return err
+	}
+	queueErr := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation)
 	var recorded *nodeinbox.Delivery
 	if queueErr == nil {
-		recorded, err = inbox.RecordCodexQueueAccepted(ctx, receipt)
+		if err = requireMachineNativeQueueOutcome(ctx, claim.SessionID, operation); err == nil {
+			recorded, err = inbox.RecordCodexQueueAccepted(ctx, receipt)
+		}
 	} else {
 		var uncertain *nativeInjectionUncertainError
 		if errors.As(queueErr, &uncertain) {

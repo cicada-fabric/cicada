@@ -158,7 +158,7 @@ func TestMCPSealedSameNodeGroupAskReplyNative(t *testing.T) {
 	configDisabled := nativeCodexConfig(cicadaBinary, hub.URL, stateDir, mcpStateDir, nodeID, false, "")
 	model := strings.TrimSpace(os.Getenv("CICADA_NATIVE_MODEL"))
 	if model == "" {
-		model = "gpt-5.5"
+		model = "gpt-5.6-luna"
 	}
 
 	ctx, cancel := nativeE2EContext(t)
@@ -723,6 +723,18 @@ func nativeCodexConfig(binary, apiURL, stateDir, mcpStateDir, nodeID string, ena
 		",CICADA_MCP_STATE_DIR=" + strconv.Quote(mcpStateDir) +
 		",CICADA_MACHINE_ID=" + strconv.Quote(nodeID) +
 		",CICADA_HARNESS=\"codex\",CICADA_API_TOKEN=\"\",CICADA_API_TOKEN_FILE=\"\"}"
+	// Codex may filter the environment inherited by a stdio MCP subprocess.
+	// Pin the same local session-record root used by the parent native turn;
+	// CODEX_THREAD_ID below still names only the exact resumed Thread.
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if codexHome == "" {
+		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+			codexHome = filepath.Join(home, ".codex")
+		}
+	}
+	if codexHome != "" {
+		envTable = strings.TrimSuffix(envTable, "}") + ",CODEX_HOME=" + strconv.Quote(codexHome) + "}"
+	}
 	if nativeThreadID != "" {
 		envTable = strings.TrimSuffix(envTable, "}") + ",CODEX_THREAD_ID=" + strconv.Quote(nativeThreadID) + "}"
 	}
@@ -735,6 +747,34 @@ func nativeCodexConfig(binary, apiURL, stateDir, mcpStateDir, nodeID string, ena
 		"--config", "mcp_servers.cicada.command=" + strconv.Quote(binary),
 		"--config", "mcp_servers.cicada.args=" + array,
 		"--config", "mcp_servers.cicada.env=" + envTable,
+	}
+}
+
+func TestNativeCodexMCPConfigPinsPrivateSessionHomeAndExactThread(t *testing.T) {
+	privateHome := filepath.Join(t.TempDir(), "private codex home")
+	t.Setenv("CODEX_HOME", privateHome)
+	t.Setenv("CODEX_THREAD_ID", "ambient-wrong-thread")
+	t.Setenv("CODEX_SESSION_ID", "ambient-wrong-session")
+	const exactThread = "01999d8a-2833-7356-b50e-1023a845852e"
+	config := nativeCodexConfig("/synthetic/cicada", "http://127.0.0.1:1",
+		"/synthetic/node", "/synthetic/mcp", "synthetic-node", true, exactThread)
+	var childEnv string
+	for index := 0; index+1 < len(config); index++ {
+		if config[index] == "--config" && strings.HasPrefix(config[index+1], "mcp_servers.cicada.env=") {
+			childEnv = strings.TrimPrefix(config[index+1], "mcp_servers.cicada.env=")
+		}
+	}
+	if childEnv == "" || !strings.Contains(childEnv, "CODEX_HOME="+strconv.Quote(privateHome)) ||
+		!strings.Contains(childEnv, "CODEX_THREAD_ID="+strconv.Quote(exactThread)) ||
+		strings.Contains(childEnv, "ambient-wrong") || strings.Contains(childEnv, "CODEX_SESSION_ID") {
+		t.Fatal("stdio MCP configuration lost the private session root or exact resumed Thread")
+	}
+	parentEnv := nativeCodexEnvironment([]string{
+		"CODEX_HOME=" + privateHome, "CODEX_THREAD_ID=ambient-wrong-thread",
+		"CODEX_SESSION_ID=ambient-wrong-session",
+	})
+	if len(parentEnv) != 1 || parentEnv[0] != "CODEX_HOME="+privateHome {
+		t.Fatal("native Codex parent did not keep its private home while removing ambient Thread IDs")
 	}
 }
 
@@ -837,7 +877,7 @@ func nativeE2EContext(t *testing.T) (context.Context, context.CancelFunc) {
 func nativeE2ERequireInjection(t *testing.T, ctx context.Context, bridge *machineAgentJoinBridge,
 	inbox *nodeinbox.Inbox, messageID, targetSession string) nodeinbox.Delivery {
 	t.Helper()
-	if err := processMachineLocalGroupDeliveries(ctx, bridge, inbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(ctx, bridge, inbox); err != nil {
 		t.Fatalf("Node local sealed delivery failed at native queue handoff (%T)", err)
 	}
 	delivery, err := inbox.Get(ctx, messageID)

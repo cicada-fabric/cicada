@@ -15,6 +15,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -387,13 +388,27 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 		}
 		switch delivery.State {
 		case nodeinbox.INJECTION_UNCERTAIN:
-			if entry.QueueAccepted {
+			recoveryClaim := nodeinbox.Claim{Delivery: *delivery}
+			op, opErr := machineRelayNativeOperation(ctx, recoveryClaim, entry)
+			if opErr != nil {
+				return opErr
+			}
+			outcome, outcomeErr := machineNativeQueueOutcome(ctx, recoveryClaim.SessionID, op)
+			if outcomeErr != nil {
+				return outcomeErr
+			}
+			if outcome == nodelock.NativeQueueAccepted {
 				if err := completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal,
-					nodeinbox.Claim{Delivery: *delivery}, entry); err != nil {
+					recoveryClaim, entry); err != nil {
 					return err
 				}
 				index--
 				continue
+			}
+			if entry.QueueAccepted {
+				if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) { entry.QueueAccepted = false }); err != nil {
+					return err
+				}
 			}
 			if entry.UncertainSent {
 				continue
@@ -517,7 +532,11 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 			}
 			continue
 		}
-		if err := executeMachineNativeCodex(ctx, claim.SessionID, machineRelayPrompt(*entry, claim.Payload)); err != nil {
+		operation, err := machineRelayNativeOperation(ctx, *claim, *entry)
+		if err != nil {
+			return err
+		}
+		if err := executeMachineNativeCodex(ctx, claim.SessionID, machineRelayPrompt(*entry, claim.Payload), operation); err != nil {
 			var uncertain *nativeInjectionUncertainError
 			if errors.As(err, &uncertain) {
 				receipt := machineRelayReceipt(*claim, nodeinbox.INJECTION_UNCERTAIN)
@@ -554,6 +573,9 @@ func machineRelayReceipt(claim nodeinbox.Claim, state nodeinbox.State) nodeinbox
 // consumed. It never infers RUNTIME_INJECTED from a zero queue exit.
 func completeMachineRelayCodexQueue(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox,
 	journal *machineRelayJournal, claim nodeinbox.Claim, entry machineRelayJournalEntry) error {
+	if err := requireMachineRelayQueueOutcome(ctx, claim, entry); err != nil {
+		return fmt.Errorf("verify durable native queue for %s: %w", entry.MessageID, err)
+	}
 	if !entry.QueueAccepted {
 		if err := journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
 			entry.QueueAccepted = true
@@ -671,12 +693,34 @@ func (e *nativeInjectionUncertainError) Error() string {
 }
 func (e *nativeInjectionUncertainError) Unwrap() error { return e.cause }
 
-func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt string) error {
+func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt string, operation nodelock.NativeOperation) error {
 	if strings.TrimSpace(nativeSessionID) == "" || prompt == "" {
 		return errors.New("v2 relay delivery is missing its native session or body")
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	hub, ok := machineHubFrom(parent)
+	if !ok || hub.HubID == "" || operation.HubID != hub.HubID || operation.NodeID != hub.NodeID {
+		return errors.New("exact native queue requires a pinned Hub and operation scope")
+	}
+	writer, err := nodelock.AcquireNativeWriter(ctx, hub.WriterRoot, hub.WriterScope, "codex", nativeSessionID)
+	if err != nil {
+		return fmt.Errorf("acquire exact native writer: %w", err)
+	}
+	defer writer.Close()
+	state, err := writer.BeginNativeOperation(operation)
+	if errors.Is(err, nodelock.ErrNativeOperationUncertain) {
+		return &nativeInjectionUncertainError{cause: err}
+	}
+	if err != nil {
+		return fmt.Errorf("begin durable native operation: %w", err)
+	}
+	if state == nodelock.NativeQueueAccepted {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	binary := strings.TrimSpace(os.Getenv("CICADA_CODEX_BIN"))
 	if binary == "" {
 		binary = "codex"
@@ -686,14 +730,23 @@ func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt s
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
+		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeNotStarted); finishErr != nil {
+			return &nativeInjectionUncertainError{cause: finishErr}
+		}
 		return fmt.Errorf("codex queue could not start: %w", err)
 	}
 	if err := command.Wait(); err != nil {
+		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeUncertain); finishErr != nil {
+			return &nativeInjectionUncertainError{cause: finishErr}
+		}
 		if ctx.Err() != nil {
 			return &nativeInjectionUncertainError{cause: ctx.Err()}
 		}
 		// A nonzero exit is not proof that the runtime made no durable write.
 		// Without a native idempotency receipt, do not turn this into a retry.
+		return &nativeInjectionUncertainError{cause: err}
+	}
+	if err := writer.FinishNativeOperation(operation, nodelock.NativeQueueAccepted); err != nil {
 		return &nativeInjectionUncertainError{cause: err}
 	}
 	return nil

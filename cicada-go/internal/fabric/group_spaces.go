@@ -11,6 +11,12 @@ type GroupSpaceListInput = store.GroupSpaceListInput
 type GroupSpaceGetInput = store.GroupSpaceGetInput
 type GroupSpaceRecord = store.GroupSpaceRecord
 type GroupSpacePage = store.GroupSpacePage
+type GroupSpaceHint = store.GroupSpaceHint
+type GroupSpaceSyncInput = store.GroupSpaceSyncInput
+type GroupSpaceSyncResult = store.GroupSpaceSyncResult
+type GroupSpaceReadStateInput = store.GroupSpaceReadStateInput
+type GroupSpaceMarkReadInput = store.GroupSpaceMarkReadInput
+type GroupSpaceReadState = store.GroupSpaceReadState
 type GroupSpaceHistoryManifestInput = store.GroupSpaceHistoryManifestInput
 type GroupSpaceHistoryManifest = store.GroupSpaceHistoryManifest
 type GroupSpaceHistoryCommitInput = store.GroupSpaceHistoryCommitInput
@@ -56,7 +62,40 @@ func (s *Service) CommitGroupSpaceWrite(nodeToken, sessionToken string,
 	if err != nil {
 		return nil, err
 	}
-	return s.store.CommitGroupSpaceWrite(actor, in)
+	record, err := s.store.CommitGroupSpaceWrite(actor, in)
+	if err == nil {
+		for _, nodeID := range store.GroupSpaceReaderNodes(record) {
+			s.NotifyNodeSpaceHint(nodeID)
+		}
+	}
+	return record, err
+}
+
+func (s *Service) SyncGroupSpace(nodeToken, sessionToken string,
+	in GroupSpaceSyncInput) (*GroupSpaceSyncResult, error) {
+	actor, err := s.groupSpaceActor(nodeToken, sessionToken, in.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.SyncGroupSpace(actor, in)
+}
+
+func (s *Service) GetGroupSpaceReadState(nodeToken, sessionToken string,
+	in GroupSpaceReadStateInput) (*GroupSpaceReadState, error) {
+	actor, err := s.groupSpaceActor(nodeToken, sessionToken, in.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.GetGroupSpaceReadState(actor, in)
+}
+
+func (s *Service) MarkGroupSpaceRead(nodeToken, sessionToken string,
+	in GroupSpaceMarkReadInput) (*GroupSpaceReadState, error) {
+	actor, err := s.groupSpaceActor(nodeToken, sessionToken, in.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.MarkGroupSpaceRead(actor, in)
 }
 
 func (s *Service) ListGroupSpace(nodeToken, sessionToken string,

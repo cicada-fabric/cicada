@@ -53,7 +53,11 @@ type GroupSpaceEndpointEvidence struct {
 	KeyID              string                     `json:"key_id"`
 	PublicIdentity     e2ee.PublicIdentity        `json:"public_identity"`
 	Grant              OwnerGroupEndpointKeyGrant `json:"grant"`
-	Candidate          EndpointKeyCandidate       `json:"candidate"`
+	// Empty for the frozen same-Owner v1 snapshot: omitempty preserves its
+	// existing signed context bytes and stored ciphertext protocol.
+	EvidenceProtocol    string                    `json:"evidence_protocol,omitempty"`
+	CrossOwnerKeyStatus *CrossOwnerGroupKeyStatus `json:"cross_owner_key_status,omitempty"`
+	Candidate           EndpointKeyCandidate      `json:"candidate"`
 }
 
 type GroupSpacePrepareInput struct {
@@ -476,6 +480,17 @@ func guardGroupSpaceActorTx(tx *sql.Tx, actor GroupSpaceActor, action string, at
 		endpointNode != nodeID || endpointOwner != ownerID {
 		return ErrGroupSpaceDenied
 	}
+	var groupOwnerID string
+	if tx.QueryRow(`SELECT p.owner_id FROM groups g JOIN principals p ON p.id=g.owner_principal_id
+WHERE g.id=?`, actor.Scope.GroupID).Scan(&groupOwnerID) != nil {
+		return ErrGroupSpaceDenied
+	}
+	if endpointOwner != groupOwnerID {
+		status, err := crossOwnerGroupKeyStatusTx(tx, actor.Scope.GroupID, actor.Scope.EndpointID, at)
+		if err != nil || !status.Current {
+			return ErrGroupSpaceDenied
+		}
+	}
 	return nil
 }
 
@@ -513,7 +528,7 @@ WHERE e.id=?`, groupID, endpointID).Scan(&principalID, &ownerID, &nodeID,
 		&networkID, &hubID, &groupRevision, &memberStatus, &memberExpiry,
 		&memberEffective, &memberRevision, &joinStatus, &joinRevision,
 		&bindingStatus, &bindingEpoch)
-	if err != nil || principalID == "" || ownerID == "" || ownerID != groupOwnerID ||
+	if err != nil || principalID == "" || ownerID == "" ||
 		endpointStatus == "left" || migrationState != EndpointMigrationReady ||
 		memberStatus != "active" || joinStatus != "active" ||
 		!isActiveBindingStatus(bindingStatus) || bindingEpoch == 0 ||
@@ -523,6 +538,9 @@ WHERE e.id=?`, groupID, endpointID).Scan(&principalID, &ownerID, &nodeID,
 	}
 	if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, groupID, at); err != nil {
 		return GroupSpaceEndpointEvidence{}, ErrGroupSpaceDenied
+	}
+	if ownerID != groupOwnerID {
+		return crossOwnerGroupSpaceEndpointEvidenceTx(tx, groupID, endpointID, at)
 	}
 	grant, err := readLatestGroupEndpointKeyGrant(tx, ownerID, groupID, endpointID)
 	if err != nil {
@@ -862,7 +880,7 @@ AND cicada_network_expiry_allows(reservation_expires_at,?)=1`,
 	var producer GroupSpaceEndpointEvidence
 	for _, id := range ids {
 		evidence, err := groupSpaceEndpointEvidenceTx(tx, in.GroupID, id, at)
-		if err != nil || evidence.OwnerID != ownerID {
+		if err != nil {
 			return nil, ErrGroupSpaceNotReady
 		}
 		readers = append(readers, evidence)
@@ -1017,7 +1035,8 @@ func (s *Store) CommitGroupSpaceWrite(actor GroupSpaceActor, in GroupSpaceCommit
 			current.BindingEpoch != reader.BindingEpoch ||
 			current.MembershipRevision != reader.MembershipRevision ||
 			current.JoinRevision != reader.JoinRevision ||
-			current.Grant.Manifest.Digest != reader.Grant.Manifest.Digest {
+			current.Grant.Manifest.Digest != reader.Grant.Manifest.Digest ||
+			crossOwnerEvidenceDigest(current) != crossOwnerEvidenceDigest(reader) {
 			return nil, ErrGroupSpaceConflict
 		}
 		if _, err := tx.Exec(`UPDATE group_space_readers_v2 SET ciphertext=? WHERE record_id=? AND endpoint_id=? AND key_id=?`,
@@ -1065,9 +1084,22 @@ WHERE topic_id=? AND group_id=? AND version=?`, snapshot.Status,
 	} else if snapshot.Kind == GroupSpaceKindTopicStatus {
 		topicVersion = snapshot.ExpectedTopicVersion + 1
 	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO group_space_change_sequences_v2(group_id,next_seq) VALUES(?,1)`,
+		snapshot.GroupID); err != nil {
+		return nil, err
+	}
+	var commitSeq int64
+	if err := tx.QueryRow(`SELECT next_seq FROM group_space_change_sequences_v2 WHERE group_id=?`,
+		snapshot.GroupID).Scan(&commitSeq); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE group_space_change_sequences_v2 SET next_seq=next_seq+1 WHERE group_id=?`,
+		snapshot.GroupID); err != nil {
+		return nil, err
+	}
 	_, err = tx.Exec(`UPDATE group_space_records_v2 SET state='COMMITTED',ciphertext_digest=?,
-topic_version=?,committed_at=? WHERE record_id=? AND state='PREPARED'`,
-		digest, topicVersion, at.Format(time.RFC3339Nano), snapshot.RecordID)
+topic_version=?,committed_at=?,commit_seq=? WHERE record_id=? AND state='PREPARED'`,
+		digest, topicVersion, at.Format(time.RFC3339Nano), commitSeq, snapshot.RecordID)
 	if err != nil {
 		return nil, err
 	}

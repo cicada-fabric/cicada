@@ -678,7 +678,7 @@ func TestMCPMonitorBroadcastClientV13Native(t *testing.T) {
 		t.Fatal("exact-sequence public Monitor confirmation did not persist")
 	}
 	var noticeInbox *nodeinbox.Inbox
-	if err := processMachineMonitorBroadcastNotifications(ctx, bridgeA, &noticeInbox,
+	if err := processPinnedTestMachineMonitorBroadcastNotifications(ctx, bridgeA, &noticeInbox,
 		machineMonitorBroadcastInboxPath(participants[0].stateDir, participants[0].nodeID)); err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +750,7 @@ func TestMCPMonitorBroadcastClientV13Native(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer localInbox.Close()
-	if err := processMachineLocalGroupDeliveries(ctx, bridgeA, localInbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(ctx, bridgeA, localInbox); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CICADA_NODE_TOKEN", remoteNodeToken)
@@ -759,7 +759,7 @@ func TestMCPMonitorBroadcastClientV13Native(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remoteInbox.Close()
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, participants[2].nodeID,
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, participants[2].nodeID,
 		remoteInbox, participants[2].stateDir); err != nil {
 		t.Fatal(err)
 	}

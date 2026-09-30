@@ -10,10 +10,22 @@ ENV http_proxy=${HTTP_PROXY} \
     all_proxy=${ALL_PROXY} \
     no_proxy=${NO_PROXY}
 
+RUN apk add --no-cache python3 gzip
+
 WORKDIR /src
 COPY cicada-go/go.mod cicada-go/go.sum ./
 RUN go mod download
 COPY cicada-go/ ./
+COPY scripts/write-web-panel-manifest.py /tmp/write-web-panel-manifest.py
+RUN mkdir -p /src/internal/server/ui/generated \
+    && GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -trimpath \
+       -o /tmp/cicada-webcrypto.wasm ./cmd/cicada-webcrypto \
+    && runtime="$(go env GOROOT)/lib/wasm/wasm_exec.js" \
+    && if [ ! -f "$runtime" ]; then runtime="$(go env GOROOT)/misc/wasm/wasm_exec.js"; fi \
+    && cp "$runtime" /src/internal/server/ui/generated/wasm_exec.js \
+    && gzip -n -9 -c /tmp/cicada-webcrypto.wasm > /src/internal/server/ui/generated/cicada-webcrypto.wasm.gz \
+    && python3 /tmp/write-web-panel-manifest.py /src/internal/server/ui/generated "$(go version)" /tmp/cicada-webcrypto.wasm \
+    && rm -f /tmp/cicada-webcrypto.wasm
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/cicada ./cmd/cicada
 
 FROM ubuntu:26.04
@@ -23,7 +35,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG TZ=Etc/UTC
 ARG CICADA_UID=1000
 ARG CICADA_GID=1000
-ARG CODEX_RELEASE=0.157.1
+ARG CODEX_RELEASE=0.159.2
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY

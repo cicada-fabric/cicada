@@ -23,7 +23,13 @@ import (
 const machineNodeRecoveryPendingFileName = "recovery-pending.json"
 
 func runMachineAgent(args []string) error {
+	return runMachineAgentWithContext(context.Background(), args, nil)
+}
+
+func runMachineAgentWithContext(parent context.Context, args []string, pinned *machineHubContext) error {
 	flags := flag.NewFlagSet("machine agent", flag.ContinueOnError)
+	hubsFile := flags.String("hubs-file", "", "private local multi-Hub registry JSON")
+	stateRoot := flags.String("state-root", "", "shared native-writer and Hub state root for multi-Hub mode")
 	id := flags.String("id", envOr("CICADA_MACHINE_ID", ""), "stable machine ID")
 	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
@@ -35,6 +41,12 @@ func runMachineAgent(args []string) error {
 	lanPort := flags.Int("lan-port", lanDiscoveryPort, "UDP LAN discovery port")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *hubsFile != "" {
+		if pinned != nil || *stateRoot == "" || !*relayOnly || *lanDiscovery || len(flags.Args()) != 0 {
+			return errors.New("multi-Hub mode requires --state-root and --relay-only, with no LAN discovery")
+		}
+		return runMachineMultiHubAgent(*hubsFile, *stateRoot, *interval, *once)
 	}
 	*id = strings.TrimSpace(*id)
 	if strings.TrimSpace(*id) == "" {
@@ -69,14 +81,17 @@ func runMachineAgent(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load local Node identity: %w", err)
 	}
-	// Relay helpers read the bearer from a mode-0600 file. Keep it out of the
-	// process environment so it cannot leak to unrelated child processes.
-	if err := os.Setenv("CICADA_NODE_TOKEN", ""); err != nil {
-		return fmt.Errorf("clear Node credential environment: %w", err)
+	// Hub-specific authority is carried only by this Agent context. No global
+	// token/environment mutation can transplant one Hub's bearer to another.
+	if pinned == nil {
+		pinned = &machineHubContext{HubID: strings.TrimSpace(os.Getenv("CICADA_HUB_ID")),
+			Origin: base, NodeID: *id, StateDir: *stateDir, WriterRoot: *stateDir,
+			WriterScope: machineNativeWriterScope()}
 	}
-	if err := os.Setenv("CICADA_NODE_TOKEN_FILE", machineNodeCredentialPath(*stateDir, *id)); err != nil {
-		return fmt.Errorf("configure local Node credential file: %w", err)
+	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
+		return errors.New("Node Hub context does not match pinned local coordinates")
 	}
+	pinned.Token = nodeIdentity.RelayToken
 	inboxPath := machineNodeInboxPath(*stateDir, *id)
 	if err := os.MkdirAll(filepath.Dir(inboxPath), 0o700); err != nil {
 		return fmt.Errorf("create machine node state directory: %w", err)
@@ -103,8 +118,9 @@ func runMachineAgent(args []string) error {
 			_ = monitorInbox.Close()
 		}
 	}()
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	ctx = withMachineHubContext(ctx, *pinned)
 	if *lanDiscovery {
 		if *lanPort < 1 || *lanPort > 65535 {
 			return errors.New("LAN discovery port must be between 1 and 65535")
@@ -190,7 +206,7 @@ func runMachineAgent(args []string) error {
 	var localBridge *machineAgentJoinBridge
 	var localWake <-chan struct{}
 	processMonitor := func() error {
-		if *relayOnly || !relayAuthorized || strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) == "" {
+		if *relayOnly || !relayAuthorized || machinePinnedHubID(ctx) == "" {
 			return nil
 		}
 		bridge := &machineAgentJoinBridge{ctx: ctx, stateDir: *stateDir,
@@ -263,10 +279,12 @@ func runMachineAgent(args []string) error {
 	// immediately wake it after durable commit, without an inbound Node port.
 	// The ticker below still reconciles missed hints after a disconnect.
 	wake := make(chan struct{}, 1)
+	spaceWake := make(chan struct{}, 1)
 	relayRevoked := make(chan error, 1)
 	if relayAuthorized {
-		go runMachineRelayEventStream(relayContext, base, *id, wake, relayRevoked)
+		go runMachineRelayEventStreamWithSpaces(relayContext, base, *id, wake, spaceWake, relayRevoked)
 	}
+	go runMachineSpaceSyncWorker(relayContext, localBridge, spaceWake, *interval)
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
 	for {

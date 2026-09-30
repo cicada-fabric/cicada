@@ -13,18 +13,20 @@ import (
 // GroupSpaceEndpointEvidence mirrors the public Store projection without
 // importing Store (which itself uses nodekeys for existing key manifests).
 type GroupSpaceEndpointEvidence struct {
-	EndpointID         string                 `json:"endpoint_id"`
-	PrincipalID        string                 `json:"principal_id"`
-	OwnerID            string                 `json:"owner_id"`
-	NodeID             string                 `json:"node_id"`
-	BindingID          string                 `json:"binding_id"`
-	BindingEpoch       uint64                 `json:"binding_epoch"`
-	MembershipRevision int64                  `json:"membership_revision"`
-	JoinRevision       int64                  `json:"join_revision"`
-	KeyID              string                 `json:"key_id"`
-	PublicIdentity     e2ee.PublicIdentity    `json:"public_identity"`
-	Grant              GroupEndpointKeyGrant  `json:"grant"`
-	Candidate          GroupSpaceKeyCandidate `json:"candidate"`
+	EndpointID          string                    `json:"endpoint_id"`
+	PrincipalID         string                    `json:"principal_id"`
+	OwnerID             string                    `json:"owner_id"`
+	NodeID              string                    `json:"node_id"`
+	BindingID           string                    `json:"binding_id"`
+	BindingEpoch        uint64                    `json:"binding_epoch"`
+	MembershipRevision  int64                     `json:"membership_revision"`
+	JoinRevision        int64                     `json:"join_revision"`
+	KeyID               string                    `json:"key_id"`
+	PublicIdentity      e2ee.PublicIdentity       `json:"public_identity"`
+	Grant               GroupEndpointKeyGrant     `json:"grant"`
+	EvidenceProtocol    string                    `json:"evidence_protocol,omitempty"`
+	CrossOwnerKeyStatus *CrossOwnerGroupKeyStatus `json:"cross_owner_key_status,omitempty"`
+	Candidate           GroupSpaceKeyCandidate    `json:"candidate"`
 }
 
 // GroupSpaceKeyCandidate matches Store's JSON projection exactly, including
@@ -52,6 +54,12 @@ type GroupSpaceKeyCandidate struct {
 func (s *CryptoState) VerifyGroupSpaceEndpointKey(ctx context.Context,
 	hubID, groupID string, evidence GroupSpaceEndpointEvidence,
 	at time.Time) (e2ee.PublicIdentity, error) {
+	if evidence.EvidenceProtocol == crossOwnerGroupSpaceEvidenceProtocol {
+		return s.verifyCrossOwnerGroupSpaceEndpointKey(ctx, hubID, groupID, evidence, at)
+	}
+	if evidence.EvidenceProtocol != "" || evidence.CrossOwnerKeyStatus != nil {
+		return e2ee.PublicIdentity{}, ErrGroupEndpointKeyGrantInvalid
+	}
 	if evidence.Grant.CurrentStatus != groupEndpointKeyGrantCurrent ||
 		evidence.Candidate.State != "CANDIDATE" {
 		return e2ee.PublicIdentity{}, ErrGroupEndpointKeyGrantStale
@@ -79,6 +87,12 @@ func (s *CryptoState) VerifyGroupSpaceHistoricalEndpointKey(ctx context.Context,
 func (s *CryptoState) verifyGroupSpaceEndpointKeyAt(ctx context.Context,
 	hubID, groupID string, evidence GroupSpaceEndpointEvidence,
 	at time.Time) (e2ee.PublicIdentity, error) {
+	if evidence.EvidenceProtocol == crossOwnerGroupSpaceEvidenceProtocol {
+		return s.verifyCrossOwnerGroupSpaceEndpointKey(ctx, hubID, groupID, evidence, at)
+	}
+	if evidence.EvidenceProtocol != "" || evidence.CrossOwnerKeyStatus != nil {
+		return e2ee.PublicIdentity{}, ErrGroupEndpointKeyGrantInvalid
+	}
 	if ctx == nil || ctx.Err() != nil || at.IsZero() || hubID == "" || groupID == "" {
 		return e2ee.PublicIdentity{}, ErrGroupEndpointKeyGrantInvalid
 	}

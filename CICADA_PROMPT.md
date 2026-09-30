@@ -1,10 +1,20 @@
 请在当前 CICADA 仓库上执行一次重大架构升级。
 
-## 2026-09-30 当前轮次：M2 有界实施
+## 2026-09-30 当前轮次：完成 Architecture v2.3 全剩余切片
 
-当前实施授权是从干净 `dev` / `7c4194155d6c0c342671299e447c907f0b1d94d6` 开始，交付同一权威 Hub、同 Owner ACTIVE Network Group 的加密 Journal 与 Discussion。保留以下 M1 段落作为 2026-09-28 历史指令与验收来源；其中“本轮只做 M1／不启动 M2”不再约束当前轮次。M3 通知、M4 再分组、M5 多 Hub、面板和独立 Android 仓库仍不在当前范围。Core、Surface、Validation 分别负责状态/密码与迁移、HTTP/MCP/Node bridge/合同、独立门禁；由主任务在最终验证后做一个检查点提交，不能把 dirty 构建仅归于 HEAD。
+当前用户已授权从 M2 checkpoint 连续完成全部剩余框架：M3 cursor/unread，M4 Owner-signed Monitor regroup delegation，M5 independent multi-Hub Node/Client state，Hub E2EE Web canvas，以及现代轻量 Hub/可选 Node 部署和 G1–G5 可回放演示。代码由各职责切片并行完成、根任务在冻结后统一验收/提交；本轮源起点为 `dev` HEAD `f30892fcd79a27bfe5604575deaecebe52c5ec50`，旧 M1/M2/native 证据继续归属其真实 source fingerprint、镜像、APK 与 Runtime，不能只归于起点 HEAD。
 
-M2 闭环是 Joined 原 Thread 经 MCP→受信 Node 本地验证与 NIST 逐读者密封→Hub 保存密文并逐次 Guard→当前授权 Node 拉取单份密文并解密→MCP 返回有界正文。Journal append/list/get 和更正、Discussion topic/reply/list/get 和状态 CAS，独立 `space.read`、`space.write`、`space.moderate` Group grant、单调 sequence、幂等、加入后的 `read_from_seq`、保留期与当前 fence 同时实现。正文≤16 KiB、读者≤32、页≤16、保留≤30 天。新成员旧历史必须有单条记录的 Owner 离线精确签名 grant 和重新封装的解密材料；不能把普通 Endpoint key grant 当共享历史 key。现有同 Owner Group key 证明仅支持 same-owner board，本轮对 cross-owner board fail closed。Client v1.4 管理 catalog、encrypted wire v1 与 Android 内容入口不变；不启动真实模型、不修改常驻环境或真密钥。按 [M2 计划](docs/architecture-v2-plan.md) 的退出门槛分别记录确定性、一次性 Docker、native、Android、物理设备、公网 HTTPS 结果；skip 不算 pass。
+逐项状态来源和五条路线出口见 [剩余实施计划](docs/architecture-v2-plan.md) 与 [V01–V88/G1–G5 完成账本](docs/completion-ledger.md)。代码存在、Go 合成测试、disposable TCP、Android、真实 native Runtime、physical-device 与 public HTTPS 是不同证据层；最终未运行项目保持 `NOT_RUN`/`BLOCKED`，skip 不算 pass。cross-owner Group board/history 暂继续 fail-closed，直到双方明确签名、密钥、撤权和旧历史语义实现；不得绕开边界、共享 key 或自授权。Hub Web UI 复用现有 Client v1.x 应用层 E2EE，不引入新密码或 legacy bearer 写入。
+
+部署入口仅提供用户显式执行的本机 Compose/Node 命令：Hub 镜像不带 Codex/provider credentials；Node 自己本地产生 bearer，仅发送摘要发起 10 分钟设备码，须由经过认证的 Android Client 分开 Preview/Confirm；Node 只发起到 Hub 的 outbound HTTPS/SSE。脚本不从 GitHub 下载未发布的 artifact，不自动替用户部署/迁移，不清除既有目录。此次不触碰独立 Client 仓库、resident containers、真实密钥和 host/global Codex 更新。Native runtime 准备已在无凭据、无宿主目录挂载的一次性容器中完成：旧 `0.157.1` 镜像内官方 `codex update` 退出 1；官方 installer fallback 退出 0 并得到 `0.159.2`，详见 DEVELOPMENT.md。此结果只说明本地 runtime image 准备，不代表 native acceptance。
+
+下面 M2 与 M1 的原范围段落保留作为历史实现/验收快照；其“不实施 M3–M5/UI”表述不限制当前已授权目标。
+
+## 历史 2026-09-30：M2 有界实施
+
+M2 实现范围是从 `dev` / `7c4194155d6c0c342671299e447c907f0b1d94d6` 起步，交付同一权威 Hub、同 Owner ACTIVE Network Group 的加密 Journal 与 Discussion。Core 负责 SQLite 迁移、Store/Fabric Guard、读者快照、逐读者密封格式与密钥证明；Surface 负责 Hub Node HTTP、现有 MCP 与受保护 Node Unix bridge、M2 协议合同；Validation 负责独立确定性与一次性 Docker HTTP 验收。
+
+M2 闭环是 Joined 原 Thread 经 MCP→受信 Node 本地验证与 NIST 逐读者密封→Hub 保存密文并逐次 Guard→当前授权 Node 拉取单份密文并解密→MCP 返回有界正文。Journal append/list/get 和更正、Discussion topic/reply/list/get 和状态 CAS，独立 `space.read`、`space.write`、`space.moderate` Group grant、单调 sequence、幂等、加入后的 `read_from_seq`、保留期与当前 fence 同时实现。正文≤16 KiB、读者≤32、页≤16、保留≤30 天。新成员旧历史使用单记录 Owner 离线精确签名 grant 和重新封装；不能把普通 Endpoint key grant 当共享历史 key。cross-owner board 当时 fail-closed。Client v1.4 管理 catalog、encrypted wire v1 与 Android 内容入口不变。
 
 仓库根目录新版 CICADA.md 是本轮已经采纳的目标架构：
 Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport。

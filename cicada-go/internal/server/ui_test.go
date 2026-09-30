@@ -2,149 +2,132 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/control"
 )
 
-func TestEmbeddedClientAssets(t *testing.T) {
+func TestEmbeddedHubPanelAssetsAndFailClosedCryptoBuild(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
-	})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
-
-	tests := []struct {
-		path        string
-		contentType string
-		contains    string
-	}{
-		{path: "/", contentType: "text/html", contains: "FABRIC DIRECTORY"},
-		{path: "/assets/app.css", contentType: "text/css", contains: ".stats"},
-		{path: "/assets/app.js", contentType: "text/javascript", contains: "sessionStorage"},
-		{path: "/assets/goal-detail.js", contentType: "text/javascript", contains: "View raw output"},
-		{path: "/assets/management.js", contentType: "text/javascript", contains: "Receipt"},
-		{path: "/assets/attachments.js", contentType: "text/javascript", contains: "content_base64"},
-		{path: "/assets/events.js", contentType: "text/javascript", contains: "EventSource"},
-		{path: "/assets/push.js", contentType: "text/javascript", contains: "PushManager"},
-		{path: "/manifest.webmanifest", contentType: "application/manifest+json", contains: "Cicada Control"},
-		{path: "/sw.js", contentType: "text/javascript", contains: "cicada-static-v3"},
-		{path: "/icon.svg", contentType: "image/svg+xml", contains: "#70d5ae"},
-	}
-	for _, test := range tests {
+	for _, test := range []struct{ path, contentType, contains string }{
+		{"/", "text/html", "CICADA Hub"},
+		{"/assets/panel.css", "text/css", ".stage"},
+		{"/assets/panel.js", "text/javascript", "fetchAndValidateHubIdentity"},
+		{"/assets/panel-bootstrap.js", "text/javascript", "WebAssembly.instantiate"},
+		{"/assets/panel-client.js", "text/javascript", "indexedDB"},
+		{"/assets/panel-model.js", "text/javascript", "screenPointToWorld"},
+		{"/assets/panel-canvas.js", "text/javascript", "installCanvasControls"},
+		{"/assets/panel-canvas-controls.js", "text/javascript", "Shared Thread memory"},
+		{"/assets/panel-dom.js", "text/javascript", "createElementNS"},
+		{"/icon.svg", "image/svg+xml", "<svg"},
+	} {
 		t.Run(test.path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, request)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+			if response.Code != http.StatusOK || !strings.HasPrefix(response.Header().Get("Content-Type"), test.contentType) ||
+				!strings.Contains(response.Body.String(), test.contains) {
+				t.Fatalf("status=%d content-type=%q body prefix=%q", response.Code, response.Header().Get("Content-Type"), response.Body.String()[:min(120, response.Body.Len())])
 			}
-			if !strings.HasPrefix(response.Header().Get("Content-Type"), test.contentType) {
-				t.Fatalf("content type=%q", response.Header().Get("Content-Type"))
-			}
-			if !strings.Contains(response.Body.String(), test.contains) {
-				t.Fatalf("response does not contain %q", test.contains)
-			}
-			if response.Header().Get("X-Content-Type-Options") != "nosniff" {
-				t.Fatal("embedded client asset is missing nosniff")
-			}
-			if !strings.Contains(response.Header().Get("Content-Security-Policy"), "script-src 'self'") {
-				t.Fatal("embedded client asset is missing its content security policy")
+			if response.Header().Get("X-Content-Type-Options") != "nosniff" ||
+				response.Header().Get("Referrer-Policy") != "no-referrer" ||
+				!strings.Contains(response.Header().Get("Content-Security-Policy"), "'wasm-unsafe-eval'") {
+				t.Fatal("Hub panel response is missing the restrictive security headers")
 			}
 		})
 	}
-}
-
-func TestServiceWorkerDoesNotCachePrivateRoutes(t *testing.T) {
-	data, err := clientFiles.ReadFile("ui/sw.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	script := string(data)
-	if strings.Contains(script, "'/v1") || strings.Contains(script, "\"/v1") {
-		t.Fatal("service worker must not cache Control API routes")
-	}
-	if !strings.Contains(script, "'/icon.svg'") {
-		t.Fatal("service worker must cache the install icon")
-	}
-	if !strings.Contains(script, "'/assets/management.js'") {
-		t.Fatal("service worker must cache the Group management view")
-	}
-	if !strings.Contains(script, "addEventListener('push'") || !strings.Contains(script, "showNotification") {
-		t.Fatal("service worker push delivery integration is missing")
+	for _, path := range []string{"/assets/panel.manifest.json", "/assets/wasm_exec.js", "/assets/cicada-webcrypto.wasm"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		_, assetErr := clientFiles.ReadFile(clientAssets[path].file)
+		if errors.Is(assetErr, nil) {
+			if response.Code != http.StatusOK {
+				t.Fatalf("generated asset %q exists but status=%d", path, response.Code)
+			}
+		} else if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("missing generated asset %q returned %d, want fail-closed 503", path, response.Code)
+		}
 	}
 }
 
-func TestClientIncludesProgressiveVoiceInput(t *testing.T) {
-	data, err := clientFiles.ReadFile("ui/voice.js")
-	if err != nil {
-		t.Fatal(err)
+func TestHubPanelDoesNotExposeOldBearerUIOrUnsafeDOMSinks(t *testing.T) {
+	for _, path := range []string{"/assets/voice.js", "/assets/management.js", "/assets/push.js", "/sw.js", "/manifest.webmanifest"} {
+		if isPublicClientPath(path) {
+			t.Fatalf("obsolete panel route %q remains public", path)
+		}
+		response := httptest.NewRecorder()
+		serveClient(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("obsolete panel route %q status=%d", path, response.Code)
+		}
 	}
-	if !strings.Contains(string(data), "SpeechRecognition") || !strings.Contains(string(data), "webkitSpeechRecognition") {
-		t.Fatal("client voice input integration is missing")
-	}
-	if !strings.Contains(string(data), "speechSynthesis") {
-		t.Fatal("client voice output integration is missing")
-	}
-}
-
-func TestClientIncludesPushSubscriptionIntegration(t *testing.T) {
-	data, err := clientFiles.ReadFile("ui/push.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "pushManager.subscribe") || !strings.Contains(string(data), "/v1/notifications/push/subscriptions") {
-		t.Fatal("client push subscription integration is missing")
-	}
-}
-
-func TestGroupManagementViewIsWiredIntoHomePage(t *testing.T) {
-	index, err := clientFiles.ReadFile("ui/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	html := string(index)
-	if !strings.Contains(html, "Groups and shared work") || !strings.Contains(html, "management-groups") {
-		t.Fatal("home page is missing the Group management view")
-	}
-	if !strings.Contains(html, "/assets/management.js") {
-		t.Fatal("home page does not load the Group management client")
+	for _, path := range []string{"ui/panel.js", "ui/panel-bootstrap.js", "ui/panel-client.js", "ui/panel-model.js", "ui/panel-canvas.js", "ui/panel-canvas-controls.js", "ui/panel-dom.js"} {
+		data, err := clientFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(data)
+		for _, forbidden := range []string{"innerHTML", "localStorage", "Authorization: Bearer", "/v1/"} {
+			if strings.Contains(script, forbidden) {
+				t.Fatalf("%s contains forbidden unsafe/legacy integration %q", path, forbidden)
+			}
+		}
 	}
 }
 
-func TestEmbeddedClientBootstrapsWithAPITokenEnabled(t *testing.T) {
+func TestHubPanelRelativeModuleImportsHavePublicRoutes(t *testing.T) {
+	imports := regexp.MustCompile(`from\s+['"]\./([^'"]+)['"]`)
+	for _, asset := range clientAssets {
+		if !strings.HasPrefix(asset.file, "ui/") || !strings.HasSuffix(asset.file, ".js") {
+			continue
+		}
+		source, err := clientFiles.ReadFile(asset.file)
+		if err != nil {
+			t.Fatalf("read module %q: %v", asset.file, err)
+		}
+		for _, match := range imports.FindAllSubmatch(source, -1) {
+			path := "/assets/" + string(match[1])
+			target, ok := clientAssets[path]
+			if !ok {
+				t.Fatalf("module %q imports %q without a Hub asset route", asset.file, path)
+			}
+			if _, err := clientFiles.ReadFile(target.file); err != nil {
+				t.Fatalf("module %q imports unavailable asset %q: %v", asset.file, path, err)
+			}
+		}
+	}
+}
+
+func TestHubPanelRemainsPublicWithManagementBearerConfigured(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
-		APIToken: "test-api-token",
-	})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-panel-test-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
-
-	for _, path := range []string{"/", "/assets/app.css", "/assets/app.js", "/assets/goal-detail.js", "/assets/management.js", "/assets/attachments.js", "/assets/voice.js", "/assets/push.js", "/assets/events.js", "/manifest.webmanifest", "/sw.js", "/icon.svg"} {
-		request := httptest.NewRequest(http.MethodGet, path, nil)
+	for _, path := range []string{"/", "/assets/panel.js", "/assets/panel-bootstrap.js", "/assets/panel-canvas.js",
+		"/assets/panel-canvas-controls.js", "/assets/panel-dom.js"} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
-			t.Fatalf("public client path %q status=%d body=%s", path, response.Code, response.Body.String())
+			t.Fatalf("panel asset %q status=%d", path, response.Code)
 		}
 	}
-	request := httptest.NewRequest(http.MethodGet, "/v1/identity", nil)
 	response := httptest.NewRecorder()
-	response.Body.Reset()
-	handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/identity", nil))
 	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("protected API status=%d body=%s", response.Code, response.Body.String())
+		t.Fatalf("legacy Control API remains unprotected: %d", response.Code)
 	}
 }

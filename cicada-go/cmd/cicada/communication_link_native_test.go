@@ -325,7 +325,7 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 	if err != nil {
 		t.Fatal("open target Node durable inbox")
 	}
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.targetNodeID, bInbox, fixture.stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.targetNodeID, bInbox, fixture.stateDir); err != nil {
 		_ = bInbox.Close()
 		t.Fatalf("target Node failed to queue the sealed ASK to B's original Thread: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 	if err != nil {
 		t.Fatal("open source Node durable inbox")
 	}
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.sourceNodeID, aInbox, fixture.stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.sourceNodeID, aInbox, fixture.stateDir); err != nil {
 		_ = aInbox.Close()
 		t.Fatalf("source Node failed to queue B's reply to A's original Thread: %v", err)
 	}

@@ -83,7 +83,7 @@ func (m *mcpServer) dispatchBroadcastMCPOutbox(outbox *mcpOutboxStore,
 		OperationID: operation.OperationID, BroadcastID: broadcastID,
 		Body: input.Body, Offset: offset,
 	}
-	result, err := requestMachineAgentGroupBroadcast(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentGroupBroadcast(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

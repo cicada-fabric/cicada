@@ -43,7 +43,7 @@ machines_json="$(curl -fsS http://127.0.0.1:${CICADA_API_PORT:-8787}/v1/machines
 jq -e '.machines | length >= 2' >/dev/null <<<"$machines_json"
 
 codex_version="$(docker compose exec -T control codex --version)"
-test_model="${CICADA_TEST_MODEL:-gpt-5.5}"
+test_model="${CICADA_TEST_MODEL:-gpt-5.6-luna}"
 doctor_json="$(docker compose exec -T control codex doctor -c "model=\"${test_model}\"" --json)"
 docker compose exec -T control sh -lc \
   'test -f /etc/codex/config.toml && test -f "$CODEX_HOME/config.toml" && touch "$CODEX_HOME/.cicada-write-test" && rm "$CODEX_HOME/.cicada-write-test" && test "${CICADA_INTENT_PLANNER_BIN:-}" = codex && test "${CICADA_COMPLETION_VERIFIER_BIN:-}" = codex'

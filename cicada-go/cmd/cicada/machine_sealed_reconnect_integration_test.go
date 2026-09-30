@@ -191,7 +191,7 @@ func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 			firstStream.TLS, firstStream.RemoteAddr != "")
 	}
 	waitForWake("initial ready reconciliation")
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("initial empty sealed claim reconciliation: %v", err)
 	}
 	if _, err := os.Stat(queueCountPath); !os.IsNotExist(err) {
@@ -283,7 +283,7 @@ func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 		t.Fatalf("offline ASK reached fake Codex before reconnect ready reconciliation: stat err=%v", err)
 	}
 	waitForWake("ready reconciliation wake after reconnect")
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("claim/decrypt/queue sealed ASK after reconnect wake: %v", err)
 	}
 	queueCount, err := os.ReadFile(queueCountPath)
@@ -320,7 +320,7 @@ func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 		t.Fatalf("idempotent offline ASK retry changed identity: %#v", duplicateAccepted)
 	}
 	waitForWake("duplicate idempotent ASK wake")
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 		t.Fatalf("process duplicate sealed ASK wake: %v", err)
 	}
 	queueCount, err = os.ReadFile(queueCountPath)

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,22 @@ import (
 // It creates persistent Codex Threads and makes real provider calls, so it is
 // opt-in. The test records native IDs only from thread.started and verifies
 // each ID against Codex's local session record before Join and after resume.
+
+func nativeCrossNodeJoinConfig(base []string, groupID string) []string {
+	config := append([]string(nil), base...)
+	return append(config, "--config", "mcp_servers.cicada.env.CICADA_GROUP_ID="+strconv.Quote(groupID))
+}
+
+func TestNativeCrossNodeJoinConfigPinsExactGroupForEmptyArguments(t *testing.T) {
+	const exact = "group_native_cross_node_d6d026c29ab9a0bd"
+	base := []string{"--config", "mcp_servers.cicada.enabled=true"}
+	config := nativeCrossNodeJoinConfig(base, exact)
+	if len(config) != len(base)+2 || config[len(config)-2] != "--config" ||
+		config[len(config)-1] != "mcp_servers.cicada.env.CICADA_GROUP_ID="+strconv.Quote(exact) ||
+		len(base) != 2 {
+		t.Fatal("native cross-Node fixture lost or truncated the configured exact Group ID")
+	}
+}
 func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if strings.TrimSpace(os.Getenv("CICADA_CROSS_NODE_NATIVE_E2E")) != "1" {
 		t.Skip("set CICADA_CROSS_NODE_NATIVE_E2E=1 to run the real Codex cross-Node sealed ASK/REPLY test")
@@ -163,7 +180,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 			return
 		}
 		path := r.URL.Path
-		allowed := nativeCrossNodeHubPathAllowed(path)
+		allowed := nativeCrossNodeHubPathAllowed(r.Method, path)
 		captureMu.Lock()
 		if strings.HasPrefix(path, "/v2/control/") {
 			controlBusinessCalls++
@@ -243,7 +260,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	t.Setenv("CICADA_CODEX_BIN", codexBinary)
 	model := strings.TrimSpace(os.Getenv("CICADA_NATIVE_MODEL"))
 	if model == "" {
-		model = "gpt-5.5"
+		model = "gpt-5.6-luna"
 	}
 
 	configDisabledA := nativeCodexConfig(cicadaBinary, hub.URL, stateDirA, mcpStateA, nodeA, false, "")
@@ -273,17 +290,17 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if _, err := nativeCodexThreadStarted(bInitial); err != nil {
 		t.Fatalf("Codex B did not emit a real thread.started event: %v", err)
 	}
-	configA := nativeCodexConfig(cicadaBinary, hub.URL, stateDirA, mcpStateA, nodeA, true, aThreadID)
-	configB := nativeCodexConfig(cicadaBinary, hub.URL, stateDirB, mcpStateB, nodeB, true, bThreadID)
+	configA := nativeCrossNodeJoinConfig(nativeCodexConfig(cicadaBinary, hub.URL, stateDirA, mcpStateA, nodeA, true, aThreadID), groupID)
+	configB := nativeCrossNodeJoinConfig(nativeCodexConfig(cicadaBinary, hub.URL, stateDirB, mcpStateB, nodeB, true, bThreadID), groupID)
 	joinNative := func(workspace, nativeID string, config []string) ([]byte, string, error) {
-		prompt := fmt.Sprintf("At this safe point, call cicada_join exactly once with group_id %q. Do not call other Cicada tools. Finish with READY.", groupID)
+		prompt := "At this safe point, call cicada_join exactly once with empty JSON arguments {}. The exact Group ID is already pinned in the trusted MCP configuration. Do not call other Cicada tools. Finish with READY."
 		output, resumedID, turnErr := runNativeCodexTurn(ctx, codexBinary, workspace, model, config, nativeID, prompt)
 		if turnErr == nil && !nativeCrossNodeToolCompleted(output, "cicada_join") &&
 			!nativeCrossNodeToolAttempted(output, "") {
 			// The model may end a turn without attempting the MCP tool. The
 			// native Session remains unjoined, so one explicit same-Thread
 			// follow-up is safe; never repeat an attempted or uncertain Join.
-			prompt = fmt.Sprintf("Your previous turn made no MCP tool call. In this same existing Thread, call cicada_join now exactly once with group_id %q. Finish with READY after the tool returns.", groupID)
+			prompt = "Your previous turn made no MCP tool call. In this same existing Thread, call cicada_join now exactly once with empty JSON arguments {}. The trusted MCP configuration supplies the exact Group ID. Finish with READY after the tool returns."
 			return runNativeCodexTurn(ctx, codexBinary, workspace, model, config, nativeID, prompt)
 		}
 		return output, resumedID, turnErr
@@ -318,6 +335,15 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if aEndpoint.ID == bEndpoint.ID || aEndpoint.MachineID == bEndpoint.MachineID {
 		t.Fatal("explicitly joined endpoints do not belong to distinct logical Nodes")
 	}
+	aJoinBinding, aBindingErr := persistence.GetSessionBindingByNativeSession(aThreadID)
+	bJoinBinding, bBindingErr := persistence.GetSessionBindingByNativeSession(bThreadID)
+	if aBindingErr != nil || bBindingErr != nil || aJoinBinding == nil || bJoinBinding == nil ||
+		aJoinBinding.Epoch == 0 || bJoinBinding.Epoch == 0 {
+		t.Fatal("joined native Threads lack current binding epochs")
+	}
+	t.Logf("native stage joined: A node=%s endpoint=%s thread=%s binding_epoch=%d; B node=%s endpoint=%s thread=%s binding_epoch=%d",
+		nodeA, aEndpoint.ID, nativeThreadIDLabel(aThreadID), aJoinBinding.Epoch,
+		nodeB, bEndpoint.ID, nativeThreadIDLabel(bThreadID), bJoinBinding.Epoch)
 
 	trustOwner := func(stateDir, nodeID string) {
 		t.Helper()
@@ -413,6 +439,8 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if err := nativeE2EAssertDatabasePrivateTextAbsent(databasePath, question, alphaMarker, betaMarker); err != nil {
 		t.Fatalf("Hub database plaintext check failed: %v", err)
 	}
+	t.Logf("native stage sealed ASK: request=%s message=%s source=%s target=%s original_thread=%s ciphertext_and_db_privacy=true",
+		askSnapshot.RequestID, askSnapshot.MessageID, aEndpoint.ID, bEndpoint.ID, nativeThreadIDLabel(aThreadID))
 
 	// The test drives the same outbound-only Node poller used by cicada-node.
 	// It calls one Hub, decrypts only inside logical Node B, writes to B's
@@ -423,7 +451,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if err != nil {
 		t.Fatal("open Node B durable inbox")
 	}
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, nodeB, bInbox, stateDirB); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, nodeB, bInbox, stateDirB); err != nil {
 		_ = bInbox.Close()
 		t.Fatalf("Node B failed to claim and queue the sealed ASK to its original Thread: %v", err)
 	}
@@ -490,6 +518,8 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if err := nativeE2EAssertDatabasePrivateTextAbsent(databasePath, question, alphaMarker, betaMarker); err != nil {
 		t.Fatalf("Hub database plaintext check after REPLY failed: %v", err)
 	}
+	t.Logf("native stage sealed REPLY: request=%s message=%s source=%s target=%s original_thread=%s ciphertext_and_db_privacy=true",
+		askSnapshot.RequestID, replySnapshot.MessageID, bEndpoint.ID, aEndpoint.ID, nativeThreadIDLabel(bThreadID))
 
 	t.Setenv("CICADA_NODE_TOKEN", tokenA)
 	t.Setenv("CICADA_NODE_TOKEN_FILE", "")
@@ -497,7 +527,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if err != nil {
 		t.Fatal("open Node A durable inbox")
 	}
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, nodeA, aInbox, stateDirA); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, nodeA, aInbox, stateDirA); err != nil {
 		_ = aInbox.Close()
 		t.Fatalf("Node A failed to claim and queue B's reply to its original Thread: %v", err)
 	}
@@ -525,6 +555,8 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	if !nativeE2EResultContains(aResumed, alphaMarker) || !nativeE2EResultContains(aResumed, betaMarker) {
 		t.Fatal("Codex A final answer did not retain its original context and B's sealed response")
 	}
+	t.Logf("native stage original Thread resumed: endpoint=%s thread=%s own_context=true sealed_reply_context=true",
+		aEndpoint.ID, nativeThreadIDLabel(aThreadID))
 
 	// Include all Hub request and response bodies in the privacy assertion.
 	captureMu.Lock()
@@ -574,10 +606,16 @@ func nativeE2EWorkspace(t *testing.T, prefix string) string {
 	return workspace
 }
 
-func nativeCrossNodeHubPathAllowed(path string) bool {
+func nativeCrossNodeHubPathAllowed(method, path string) bool {
 	if strings.HasPrefix(path, "/v2/control/") || path == "/v2/fabric/send" ||
 		path == "/v2/fabric/ask" || path == "/v2/fabric/reply" || path == "/v2/fabric/receive" {
 		return false
+	}
+	// The shared Node delivery loop polls this exact sealed Network-direct
+	// queue even when the test has only same-Group messages. It does not send
+	// peer content or authorize a Network-direct delivery by itself.
+	if path == "/v2/fabric/node/networks/direct/claim" {
+		return method == http.MethodPost
 	}
 	if strings.HasPrefix(path, "/v2/fabric/") {
 		switch path {
@@ -597,6 +635,25 @@ func nativeCrossNodeHubPathAllowed(path string) bool {
 		strings.Contains(path, "/sealed/") ||
 		strings.HasSuffix(path, "/claim") ||
 		strings.HasSuffix(path, "/receipts")
+}
+
+func TestNativeCrossNodeHubPathAllowsOnlyExactNetworkDirectClaimPoll(t *testing.T) {
+	for _, test := range []struct {
+		method, path string
+		allowed      bool
+	}{
+		{http.MethodPost, "/v2/fabric/node/networks/direct/claim", true},
+		{http.MethodGet, "/v2/fabric/node/networks/direct/claim", false},
+		{http.MethodPost, "/v2/fabric/node/networks/direct/authorize", false},
+		{http.MethodPost, "/v2/fabric/node/networks/direct/receipt", false},
+		{http.MethodPost, "/v2/control/anything", false},
+		{http.MethodPost, "/v2/fabric/send", false},
+	} {
+		if got := nativeCrossNodeHubPathAllowed(test.method, test.path); got != test.allowed {
+			t.Fatalf("native Hub route allowlist: %s %s allowed=%t, want %t",
+				test.method, test.path, got, test.allowed)
+		}
+	}
 }
 
 func nativeCrossNodeContainsPath(paths []string, suffix string) bool {

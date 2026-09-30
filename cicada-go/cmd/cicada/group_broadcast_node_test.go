@@ -408,7 +408,7 @@ func TestMCPBroadcastLocalAndRemoteSealedFullChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineLocalGroupDeliveries(context.Background(), f.bridge, localInbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, localInbox); err != nil {
 		t.Fatalf("local sealed broadcast delivery failed: %v", err)
 	}
 	_ = localInbox.Close()
@@ -434,7 +434,7 @@ func TestMCPBroadcastLocalAndRemoteSealedFullChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL,
 		remoteNodeID, remoteInbox, f.stateDir); err != nil {
 		t.Fatalf("remote sealed broadcast delivery failed: %v", err)
 	}

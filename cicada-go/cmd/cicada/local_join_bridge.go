@@ -20,6 +20,7 @@ import (
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 const localJoinProtocolVersion = 1
@@ -78,16 +79,18 @@ type localJoinResponse struct {
 }
 
 type machineAgentJoinBridge struct {
-	listener  net.Listener
-	path      string
-	baseURL   string
-	stateDir  string
-	nodeID    string
-	nodeToken string
-	ctx       context.Context
-	localWake chan struct{}
-	wg        sync.WaitGroup
-	closeOnce sync.Once
+	listener      net.Listener
+	path          string
+	baseURL       string
+	stateDir      string
+	nodeID        string
+	nodeToken     string
+	ctx           context.Context
+	localWake     chan struct{}
+	wg            sync.WaitGroup
+	closeOnce     sync.Once
+	spaceSyncMu   sync.Mutex
+	spaceSyncNext int
 }
 
 func machineAgentJoinSocketPath(stateDir, nodeID string) string {
@@ -235,6 +238,11 @@ func verifyCodexSessionRecord(nativeSessionID, workspace string) error {
 }
 
 func startMachineAgentJoinBridge(ctx context.Context, stateDir, baseURL, nodeID, nodeToken string) (*machineAgentJoinBridge, error) {
+	if hub, ok := machineHubFrom(ctx); ok &&
+		(hub.Origin != strings.TrimRight(baseURL, "/") || hub.NodeID != nodeID ||
+			hub.StateDir != stateDir || hub.Token != nodeToken) {
+		return nil, errors.New("local Node bridge does not match its pinned Hub context")
+	}
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" || strings.TrimSpace(nodeToken) == "" {
 		return nil, errors.New("Node identity is required to start the local Join bridge")
@@ -609,6 +617,16 @@ func (b *machineAgentJoinBridge) join(request localJoinRequest) (*fabricpkg.Join
 		if err := b.publishJoinedLocalEndpointKey(&joined); err != nil {
 			return nil, fmt.Errorf("joined native Thread, but could not publish its local Endpoint key: %w", err)
 		}
+	}
+	// The current Join is the trusted source for a bounded local sync watch.
+	// It does not assert space.read; every later page still passes Hub Guard.
+	if err := b.rememberGroupSpaceSubscription(groupSpaceLocalRequest{
+		localSealedSendRequest: localSealedSendRequest{
+			GroupID: request.GroupID, SessionToken: joined.SessionToken,
+			BindingEpoch: joined.BindingEpoch,
+		},
+	}, store.GroupSpaceEndpointEvidence{EndpointID: joined.Endpoint.ID}, nil); err != nil {
+		return nil, fmt.Errorf("joined native Thread, but could not persist its Group Space sync watch: %w", err)
 	}
 	return &joined, nil
 }

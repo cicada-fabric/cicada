@@ -44,7 +44,7 @@ func (m *mcpServer) dispatchSealedMCPOutbox(outbox *mcpOutboxStore,
 		}
 		return mcpOutboxPublicResult(failed), nil
 	}
-	result, err := requestMachineAgentSealedSend(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentSealedSend(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)

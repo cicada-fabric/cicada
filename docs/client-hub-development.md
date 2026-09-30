@@ -4,9 +4,15 @@
 Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端侧
 密钥与手机生命周期。当前由本仓库落实服务端与联调工具，不修改 Client。
 
-## 当前整改顺序
+## 当前整改顺序（2026-09-30）
 
-> **2026-09-28 当前 M1 后端矩阵 PASS。** `client-hub-v1.4` 保持 encrypted Client wire v1，Hub schema v36、catalog 36 项操作。`topology.snapshot` 有界投影已认证 Owner 自有或其 Endpoint 当前登记的 Network 卡与 Network-only Endpoint；`topology.apply` 的 `group.create` action 在 ACTIVE 明确 `network_id` 并由当前 Owner/设备和同网父 Group Guard 审核。`network.key_manifest/grant/status` 三项 Owner scoped RPC 让 Node 公布独立候选后由 Owner 签当前 manifest；它们不暴露 peer 私钥，不替 Node 发送消息。catalog/OpenAPI/wire/合成公开签名向量和真实加密 HTTP 定向测试同批维护；capability 仅说明实现可用，设备会话、Owner 签名与当前 Guard 才决定授权。冻结源码 `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 的全 Go/vet/聚焦 race、合同/八项 Python 与两套独立 disposable Docker 门禁均 PASS，见[当前状态](architecture-v2-status.md)和[后端验证矩阵](network-m1-validation.md)。独立 Android 仓库未改，v1.4 Android、真实 native Runtime、双物理 Node 与公网 HTTPS 均 **NOT_RUN**；本轮止于 M1 后端，M2 尚未开始。
+本轮 CICADA worktree 从 M2 checkpoint `f30892fcd79a27bfe5604575deaecebe52c5ec50` 延续；M2 既有全 Go/vet/race、contract 与三套 disposable real-TCP Docker **PASS** 只归属其 dirty source fingerprint `76becd7…`。M3 Node/MCP/SSE 合同当前在本仓 dirty tree 实现中，须和 frozen source 一起验；M4 Owner delegation/M5 多 Hub Node 若改变 Client 可见能力，应版本化更新 `client-hub-v1.4` 合同和 checks。Hub Web canvas 只能通过 Client v1.x 的后量子 encrypted packet 调用既有/新增 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有、本轮只读。
+
+独立 Client handoff 当前固定 `b627e70`；latest v1.3 Monitor native report 证明的是固定旧 Hub/source 的 bounded chain 与两个 logical Nodes，不能泛化为当前 v1.4 M2/M3/M5 Android、两个 physical Nodes、完整 React Native 生命周期或公网 HTTPS PASS。外部报告来源和准确 build/run identity 以该 handoff 的验证文档字段为准，不归因到 Client 仓库 HEAD。详见[剩余验收账本](completion-ledger.md)。
+
+### 历史 2026-09-28 M1 后端矩阵 PASS（保持原归属）
+
+`client-hub-v1.4` encrypted Client wire v1、Hub schema v36、catalog 36 项操作；`topology.snapshot` 的 Owner Network/Endpoint 视图、ACTIVE `group.create(network_id)`、Network endpoint `key_manifest/grant/status` 与 Network-scoped SEND/ASK/REPLY 后端通过。冻结源码 fingerprint `479386745593bf9dee679513cb2038cff08530abcc65fab1482736c4d837e3fe` 的 Go/vet/race、合同/Python 和 Client/Network disposable Docker 门禁均 PASS；见[当时状态](architecture-v2-status.md)和[后端验证矩阵](network-m1-validation.md)。这是 M1 backend evidence，不能推出当前 M2/M3/M4/M5/Android/native/public HTTPS PASS。
 
 > **历史 2026-09-28 M1 ACTIVE 权限迁移有界检查点 PASS：** 当时全 Go/vet、聚焦 race、合同检查与两套独立 disposable Docker 门禁通过，见 [当时状态](architecture-v2-status.md) 和 [验证矩阵](network-m1-validation.md)。该候选仍为 `client-hub-v1.3`、33 项操作、wire v1、schema v35；当时 `group.create` 无 Network selector，在 ACTIVE Hub 被拒。旧默认 Client 门禁运行于 PREPARING Hub，不能代替当前 v1.4 ACTIVE Client 或 Android 验收。真实 native Runtime、Android、双物理机和公网 HTTPS 当时 **NOT_RUN**。
 
@@ -170,11 +176,17 @@ python3 scripts/client-contract.py export --output .cicada-data/contracts
 是否 dirty、镜像 ID/digest、APK SHA-256、契约 revision/hash 及证据路径。
 工作树有修改时必须附源码内容摘要，不能宣称镜像等同该 commit。
 
-当前 `source_fingerprint` 覆盖 Git 已跟踪及未忽略的 `cicada-go/`、
-`docker/Dockerfile.hub`、`.dockerignore` 文件内容与权限。它标识源码输入；
-构建工具、基础镜像的解析版本和构建参数仍可能改变产物。基础镜像目前使用
-版本标签，尚未锁定 registry digest，因此不承诺逐字节可复现构建。运行和
-验收必须锁定本次 Docker build 生成的完整 image ID，不能用可变 tag 代替。
+当前 `source_fingerprint` 使用 v3 输入范围：Git 已跟踪及未忽略的
+`cicada-go/`、`docker/Dockerfile.hub`、`.dockerignore`、
+`scripts/build-web-panel.sh` 与 `scripts/write-web-panel-manifest.py`；摘要包含
+相对路径、文件权限和内容（符号链接则摘要其目标）。它是受限的构建源码
+标识，不包含整个仓库，也不是完整构建可复现性证明。`docker/Dockerfile.hub`
+目前使用 `golang:1.27.1-alpine` 与 `alpine:3.24` 版本标签，尚未锁定
+registry digest；builder 缓存、基础镜像标签解析及构建参数也会影响最终镜像。
+`scripts/build-web-panel.sh` 的本地 WASM/Node 检查另用固定 digest 的
+`golang:1.27.1-bookworm` builder，这不代表生产 Hub Dockerfile 的基础镜像已
+按 digest 锁定。运行和验收必须锁定本次 Docker build 生成并记录的完整 image
+ID，不能用可变 tag 代替。
 
 结果区分 `PASS`、`FAIL`、`NOT_RUN`、`BLOCKED`；模拟 Harness 与真实原生
 Runtime 不合并。合同检查通过、构建成功、Hub 协议联调、Android 联调、

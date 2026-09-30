@@ -69,8 +69,9 @@ type NetworkDirectKeyManifest struct {
 }
 
 // CanonicalDigest is shared by Hub persistence and the Node command's peer
-// evidence verification. The Owner-only raw native locator and digest field
-// are absent from the signed public claims.
+// evidence verification. The Owner-only raw native locator is absent from
+// signed public claims through omitempty; the digest field is encoded as an
+// empty string so every signer hashes the same production JSON shape.
 func (manifest NetworkDirectKeyManifest) CanonicalDigest() (string, error) {
 	encoded, err := manifest.CanonicalClaims()
 	if err != nil {

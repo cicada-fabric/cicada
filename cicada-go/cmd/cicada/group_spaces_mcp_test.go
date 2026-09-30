@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/clientwire"
+	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
@@ -43,7 +45,14 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 	for _, thread := range []string{"thread_spaces_a", "thread_spaces_b"} {
 		writeCodexSessionRecord(t, codexHome, thread, workspace)
 	}
-	dbPath := filepath.Join(root, "hub.sqlite3")
+	hubStateDir := filepath.Join(root, "hub-state")
+	manager, err := control.New(control.Config{StateDir: hubStateDir,
+		WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-manager-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Shutdown(context.Background())
+	dbPath := filepath.Join(hubStateDir, "cicada.sqlite3")
 	persistence, err := store.New(dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +122,7 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := serverpkg.NewFabricHandler(service, "")
+	clientHandler := serverpkg.NewHandler(manager)
 	var proxyMu sync.Mutex
 	var loseFirstCommit bool
 	var lostCommit bool
@@ -131,6 +141,10 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 			proxyMu.Unlock()
 		}
 		r.Body = io.NopCloser(bytes.NewReader(data))
+		if r.URL.Path == "/v2/client/rpc" {
+			clientHandler.ServeHTTP(w, r)
+			return
+		}
 		proxyMu.Lock()
 		if strings.HasPrefix(r.URL.Path, "/v2/fabric/node/spaces/") {
 			nodeSpaceCalls++
@@ -343,6 +357,32 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 	if err != nil || !bytes.Equal(cacheBefore, cacheAfter) || reserveNext() != beforeRetrySequence+1 {
 		t.Fatalf("lost commit retry resealed or advanced outbound crypto sequence: %v", err)
 	}
+	// B joined before the append and has never called space_sync. No SSE
+	// stream is running in this fixture, so a background reconciliation must
+	// recover the durable commit watermark without native wake or mark-read.
+	watchBefore, err := bridgeB.loadSpaceSubscriptions()
+	if err != nil || len(watchBefore.Items) != 1 || watchBefore.Items[0].FetchedSeq != 0 {
+		t.Fatalf("Join did not register an unread Group Space watch: %#v %v", watchBefore, err)
+	}
+	readBefore, err := service.GetGroupSpaceReadState(tokenB, b.sessionToken,
+		fabric.GroupSpaceReadStateInput{GroupID: groupID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bridgeB.reconcileGroupSpaces(); err != nil {
+		t.Fatal(err)
+	}
+	watchAfter, err := bridgeB.loadSpaceSubscriptions()
+	if err != nil || len(watchAfter.Items) != 1 || watchAfter.Items[0].FetchedSeq < 1 ||
+		watchAfter.Items[0].Watermark != "commit_v1" || watchAfter.Items[0].HubID != hubID {
+		t.Fatalf("lost SSE did not recover B's guarded commit cursor: %#v %v", watchAfter, err)
+	}
+	readAfter, err := service.GetGroupSpaceReadState(tokenB, b.sessionToken,
+		fabric.GroupSpaceReadStateInput{GroupID: groupID})
+	if err != nil || readAfter.ReadSeq != readBefore.ReadSeq || readAfter.UnreadCount == 0 ||
+		readAfter.LatestSeq < watchAfter.Items[0].FetchedSeq {
+		t.Fatalf("background sync incorrectly marked read or lost unread: %#v %#v %v", readBefore, readAfter, err)
+	}
 	setThread(nodeB, "thread_spaces_b")
 	page := spaceMCPCall(t, b, "cicada_journal_list", map[string]any{"limit": float64(16)})
 	pageJSON, _ := json.Marshal(page)
@@ -512,6 +552,101 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 	historicalJSON, _ := json.Marshal(historical)
 	if !bytes.Contains(historicalJSON, []byte(body)) {
 		t.Fatalf("Owner-granted later reader could not locally decrypt historical record: %s", historicalJSON)
+	}
+	// M4: a real Monitor MCP proposal, encrypted Owner delegation, guarded
+	// Monitor MCP apply, then the Owner's encrypted topology projection.
+	monitorMember, err := persistence.GetMembershipByPrincipalGroup(endpointA.PrincipalID, groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.UpdateMembershipAuthorization(monitorMember.ID, []string{"monitor"},
+		monitorMember.Grants, monitorMember.Authorization, monitorMember.Version); err != nil {
+		t.Fatal(err)
+	}
+	currentGroup, err := persistence.GetGroup(groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setThread(nodeA, "thread_spaces_a")
+	proposedValue := spaceMCPCall(t, a, "cicada_regroup_propose", map[string]any{
+		"network_id": netID, "target_group_id": groupID, "action": "CREATE_CHILD",
+		"new_group_name": "synthetic delegated child", "expected_source_version": float64(currentGroup.Version),
+		"expected_target_version": float64(currentGroup.Version), "idempotency_key": "synthetic-m4-regroup"})
+	proposedJSON, _ := json.Marshal(proposedValue)
+	var proposed groupSpaceLocalResult
+	if err := json.Unmarshal(proposedJSON, &proposed); err != nil || proposed.RegroupProposal == nil ||
+		proposed.RegroupProposal.ProposalID == "" {
+		t.Fatalf("Monitor MCP proposal: %s %v", proposedJSON, err)
+	}
+	ownerRPCSequence := uint64(0)
+	ownerRPC := func(operation string, input any, output any) {
+		t.Helper()
+		ownerRPCSequence++
+		binding := clientwire.Binding{HubID: hubID, OwnerID: ownerID, DeviceID: deviceID,
+			SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
+		route := clientwire.Route{Version: clientwire.Version, Direction: clientwire.DirectionRequest,
+			HubID: hubID, OwnerID: ownerID, DeviceID: deviceID, SessionEpoch: 1,
+			Sequence: ownerRPCSequence, OperationID: fmt.Sprintf("synthetic-regroup-rpc-%d", ownerRPCSequence),
+			Operation: operation, SenderKeyID: clientKey.Public().ID, SenderKeyVersion: 1,
+			ReceiverKeyID: manager.ClientControlPublicIdentity().ID, ReceiverKeyVersion: 1}
+		body, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := clientwire.SealRequest(clientKey, manager.ClientControlPublicIdentity(), binding, route, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := hub.Client().Post(hub.URL+"/v2/client/rpc", "application/json", bytes.NewReader(packet))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		responseData, err := io.ReadAll(response.Body)
+		if err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("encrypted %s: %d %v %s", operation, response.StatusCode, err, responseData)
+		}
+		opened, err := clientwire.OpenResponse(clientKey, manager.ClientControlPublicIdentity(), binding, responseData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			OK     bool            `json:"ok"`
+			Result json.RawMessage `json:"result"`
+			Error  any             `json:"error"`
+		}
+		if err := json.Unmarshal(opened.Plaintext, &result); err != nil || !result.OK {
+			t.Fatalf("encrypted %s rejected: %s %v", operation, opened.Plaintext, err)
+		}
+		if err := json.Unmarshal(result.Result, output); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var delegation store.RegroupDelegation
+	ownerRPC("topology.delegation_issue", map[string]any{
+		"proposal_id": proposed.RegroupProposal.ProposalID,
+		"expires_at":  time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), "max_uses": 1}, &delegation)
+	if delegation.ProposalID != proposed.RegroupProposal.ProposalID || delegation.DelegationID == "" {
+		t.Fatalf("Owner delegation is not bound to Monitor proposal: %+v", delegation)
+	}
+	appliedValue := spaceMCPCall(t, a, "cicada_regroup_apply", map[string]any{
+		"proposal_id": proposed.RegroupProposal.ProposalID, "delegation_id": delegation.DelegationID})
+	appliedJSON, _ := json.Marshal(appliedValue)
+	var applied groupSpaceLocalResult
+	if err := json.Unmarshal(appliedJSON, &applied); err != nil || applied.RegroupApply == nil ||
+		applied.RegroupApply.Group.ParentGroupID != groupID || applied.RegroupApply.AuditID == "" {
+		t.Fatalf("Monitor MCP apply: %s %v", appliedJSON, err)
+	}
+	var topology control.ClientTopologySnapshot
+	ownerRPC("topology.snapshot", map[string]any{}, &topology)
+	found := false
+	for _, card := range topology.Groups {
+		if card.GroupID == applied.RegroupApply.Group.ID && card.ParentGroupID == groupID && card.NetworkID == netID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Owner snapshot omitted delegated child: %#v", topology.Groups)
 	}
 }
 

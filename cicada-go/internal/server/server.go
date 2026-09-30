@@ -134,6 +134,17 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		writeError(response, http.StatusUnauthorized, errors.New("missing or invalid API bearer token"))
 		return
 	}
+	// The old browser Push service registered subscriptions against a single
+	// Hub-wide bearer and broadcast complete notification text to every row.
+	// Keep an explicit tombstone so old clients cannot mistake removal for a
+	// transient route failure. Durable notification records and the remaining
+	// local history surface are independent of browser Push delivery.
+	if request.URL.Path == "/v1/notifications/push/config" ||
+		request.URL.Path == "/v1/notifications/push/subscriptions" ||
+		strings.HasPrefix(request.URL.Path, "/v1/notifications/push/subscriptions/") {
+		writeError(response, http.StatusGone, errors.New("browser Push API is retired"))
+		return
+	}
 	if isPublicClientPath(request.URL.Path) {
 		serveClient(response, request)
 		return
@@ -361,14 +372,6 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	if strings.HasPrefix(request.URL.Path, "/v1/actions/") {
 		h.action(response, request)
-		return
-	}
-	if request.URL.Path == "/v1/notifications/push/config" {
-		h.pushConfiguration(response, request)
-		return
-	}
-	if request.URL.Path == "/v1/notifications/push/subscriptions" || strings.HasPrefix(request.URL.Path, "/v1/notifications/push/subscriptions/") {
-		h.pushSubscription(response, request)
 		return
 	}
 	if request.URL.Path == "/v1/notifications" && request.Method == http.MethodGet {

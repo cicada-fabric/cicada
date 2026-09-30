@@ -36,6 +36,10 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		h.fabricV2NodeSpaces(response, request)
 		return
 	}
+	if strings.HasPrefix(request.URL.Path, "/v2/fabric/node/regroup/") {
+		h.fabricV2NodeRegroup(response, request)
+		return
+	}
 	if request.URL.Path == "/v2/fabric/join" {
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))

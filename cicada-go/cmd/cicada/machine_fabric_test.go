@@ -64,7 +64,7 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL, "node-v2", inbox, root); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL, "node-v2", inbox, root); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(arguments)
@@ -86,7 +86,7 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 
 	// The relay may hand the same immutable message to a later attempt. The
 	// SQLite message identity prevents a second native injection.
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL, "node-v2", inbox, root); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL, "node-v2", inbox, root); err != nil {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(arguments)
@@ -195,7 +195,7 @@ func TestMachineRelayV2ReportsRecoveredInjectionUncertain(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := processMachineFabricDeliveriesV2(context.Background(), server.URL, "node-uncertain", second, root); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL, "node-uncertain", second, root); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(layers, ",") != "NODE_RECEIVED,INJECTION_UNCERTAIN" {

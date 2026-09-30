@@ -24,6 +24,7 @@ import (
 
 type mcpServer struct {
 	baseURL           string
+	hubStateDir       string
 	endpointID        string
 	sessionToken      string
 	sessionGroupID    string
@@ -102,10 +103,44 @@ func runMCP(args []string) error {
 	flags := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	apiURL := flags.String("api-url", envOr("CICADA_API_URL", "http://127.0.0.1:8787"), "Cicada Hub URL")
 	endpointID := flags.String("endpoint", strings.TrimSpace(os.Getenv("CICADA_ENDPOINT_ID")), "existing Endpoint ID")
+	hubID := flags.String("hub-id", "", "exact Hub selection from local multi-Hub registry")
+	hubsFile := flags.String("hubs-file", "", "local multi-Hub registry JSON")
+	stateRoot := flags.String("state-root", "", "local multi-Hub state root")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, mcpSessionStatePath())
+	statePath := mcpSessionStatePath()
+	hubStateDir := ""
+	if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
+		if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
+			return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
+		}
+		entries, err := loadMachineHubConfig(*hubsFile)
+		if err != nil {
+			return err
+		}
+		root, err := filepath.Abs(*stateRoot)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.HubID != *hubID {
+				continue
+			}
+			*apiURL = entry.ControlURL
+			hubStateDir = machineHubStateDir(root, entry)
+			statePath = filepath.Join(hubStateDir, "mcp", "sessions.json")
+			break
+		}
+		if hubStateDir == "" {
+			return errors.New("selected Hub ID is absent from local registry")
+		}
+	}
+	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)
+	server.hubStateDir = hubStateDir
+	if hubStateDir != "" {
+		server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
+	}
 	defer close(server.stop)
 	// A cached credential is considered usable only after the trusted harness
 	// context and the server both validate it. Missing state is ordinary: MCP
@@ -131,6 +166,13 @@ func runMCP(args []string) error {
 			return fmt.Errorf("encode MCP response: %w", err)
 		}
 	}
+}
+
+func (m *mcpServer) joinSocketPath(context harness.SessionContext) string {
+	if m != nil && m.hubStateDir != "" {
+		return machineAgentJoinSocketPath(m.hubStateDir, context.MachineID)
+	}
+	return defaultMCPJoinSocketPath(context)
 }
 
 func (m *mcpServer) handle(request mcpRequest) (mcpResponse, bool) {
@@ -235,6 +277,11 @@ func cicadaMCPTools() []map[string]any {
 		{"name": "cicada_journal_append", "description": "Append an encrypted, durable checkpoint in the selected joined Group. A correction names an existing entry; it does not replace it or grant approval.", "inputSchema": object(map[string]any{"body": stringField("Checkpoint body, at most 16 KiB"), "corrects_id": stringField("Optional earlier Journal record ID"), "idempotency_key": stringField("Stable retry key")}, "body")},
 		{"name": "cicada_journal_list", "description": "Read a bounded page of authorized Journal records from the selected Group; current Guard is checked on every page.", "inputSchema": object(map[string]any{"cursor": stringField("Opaque Group scope cursor"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 16}})},
 		{"name": "cicada_journal_get", "description": "Read one authorized Journal record from the selected Group.", "inputSchema": object(map[string]any{"record_id": stringField("Journal record ID")}, "record_id")},
+		{"name": "cicada_space_sync", "description": "Fetch a bounded page of metadata-only Group Space changes for the selected joined Group. The current Guard is checked each time; this does not mark records read or wake the model.", "inputSchema": object(map[string]any{"after_seq": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 16}}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true}},
+		{"name": "cicada_space_read_state", "description": "Read the current Group Space unread count and explicit read marker for this Endpoint.", "inputSchema": object(map[string]any{}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true}},
+		{"name": "cicada_space_mark_read", "description": "Explicitly advance this Endpoint's read marker in the selected Group through a previously seen sequence; this does not grant access to old history.", "inputSchema": object(map[string]any{"through_seq": map[string]any{"type": "integer", "minimum": 0}}, "through_seq")},
+		{"name": "cicada_regroup_propose", "description": "As the selected Group's current Monitor, propose an exact same-Network parent change or empty child Group. Proposal alone changes no topology; only an encrypted Owner Client request can issue its narrow delegation.", "inputSchema": object(map[string]any{"network_id": stringField("Current Network ID"), "target_group_id": stringField("Exact target or parent Group"), "action": map[string]any{"type": "string", "enum": []string{"SET_PARENT", "CREATE_CHILD"}}, "new_group_name": stringField("Required only for CREATE_CHILD"), "expected_source_version": map[string]any{"type": "integer", "minimum": 1}, "expected_target_version": map[string]any{"type": "integer", "minimum": 1}, "idempotency_key": stringField("Stable proposal operation ID")}, "network_id", "target_group_id", "action", "expected_source_version", "expected_target_version", "idempotency_key")},
+		{"name": "cicada_regroup_apply", "description": "Apply one exact, current Owner-issued delegation from the original Monitor Session. The Hub rechecks scope, versions, expiry and use count atomically.", "inputSchema": object(map[string]any{"proposal_id": stringField("Exact proposal ID"), "delegation_id": stringField("Owner-issued exact delegation ID")}, "proposal_id", "delegation_id")},
 		{"name": "cicada_discussion_topic_create", "description": "Create an encrypted Discussion topic in the selected joined Group.", "inputSchema": object(map[string]any{"body": stringField("Topic body, at most 16 KiB"), "idempotency_key": stringField("Stable retry key")}, "body")},
 		{"name": "cicada_discussion_reply", "description": "Append an encrypted reply to one Group Discussion topic.", "inputSchema": object(map[string]any{"topic_id": stringField("Discussion topic ID"), "body": stringField("Reply body, at most 16 KiB"), "idempotency_key": stringField("Stable retry key")}, "topic_id", "body")},
 		{"name": "cicada_discussion_list", "description": "Read bounded authorized Discussion topics or replies in the selected Group.", "inputSchema": object(map[string]any{"topic_id": stringField("Optional topic ID; omit to list topics"), "cursor": stringField("Opaque Group scope cursor"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 16}})},
@@ -392,6 +439,8 @@ func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error)
 		return m.submitMCPOutbox("broadcast", mcpOutboxInput{Body: body},
 			stringArgument(arguments, "idempotency_key"))
 	case "cicada_journal_append", "cicada_journal_list", "cicada_journal_get",
+		"cicada_space_sync", "cicada_space_read_state", "cicada_space_mark_read",
+		"cicada_regroup_propose", "cicada_regroup_apply",
 		"cicada_discussion_topic_create", "cicada_discussion_reply", "cicada_discussion_list",
 		"cicada_discussion_get", "cicada_discussion_resolve", "cicada_discussion_reopen",
 		"cicada_space_history_manifest", "cicada_space_history_share":
@@ -534,6 +583,7 @@ func validateMCPArguments(name string, arguments map[string]any) error {
 			}
 		case "network_id":
 			if !strings.HasPrefix(name, "cicada_network_") && !isMCPNetworkDirectTool(name) &&
+				name != "cicada_regroup_propose" &&
 				name != "cicada_operation_status" && name != "cicada_operation_retry" {
 				return errors.New("network_id is only accepted by Network tools or an explicit direct scope")
 			}
@@ -814,7 +864,7 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 			return m.currentPublicJoinResult(), nil
 		}
 	}
-	socketPath := defaultMCPJoinSocketPath(context)
+	socketPath := m.joinSocketPath(context)
 	joinedResult, err := requestMachineAgentJoin(socketPath, localJoinRequest{
 		Version: localJoinProtocolVersion, GroupID: groupID, Harness: context.Harness,
 		NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
@@ -1060,6 +1110,8 @@ func sanitizeMCPToolResult(value any) any {
 func isCicadaMCPTool(name string) bool {
 	switch name {
 	case "cicada_journal_append", "cicada_journal_list", "cicada_journal_get",
+		"cicada_space_sync", "cicada_space_read_state", "cicada_space_mark_read",
+		"cicada_regroup_propose", "cicada_regroup_apply",
 		"cicada_discussion_topic_create", "cicada_discussion_reply", "cicada_discussion_list",
 		"cicada_discussion_get", "cicada_discussion_resolve", "cicada_discussion_reopen",
 		"cicada_space_history_manifest", "cicada_space_history_share":

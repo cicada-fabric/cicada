@@ -67,7 +67,7 @@ func (b *machineAgentJoinBridge) reportMonitorBroadcastOutcomes(request monitorB
 		request.SessionToken, wire, &response); err != nil {
 		return &localSealedSendError{message: "Monitor outcome report is unconfirmed; reconcile the same operation", retryable: true}
 	}
-	if !monitorBroadcastHubMatches(response.HubID) || response.PreviewID != request.PreviewID ||
+	if !monitorBroadcastHubMatchesFor(b.ctx, response.HubID) || response.PreviewID != request.PreviewID ||
 		response.BroadcastID != input.BroadcastID || response.OperationID != input.OperationID ||
 		response.SnapshotDigest != input.SnapshotDigest || len(response.Results) != len(snapshot.Recipients) {
 		return errors.New("Monitor outcome receipt is uncorrelated")

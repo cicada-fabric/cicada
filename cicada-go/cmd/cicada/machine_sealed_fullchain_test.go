@@ -231,7 +231,7 @@ func TestMCPSealedSendAcrossTwoLogicalNodesWithoutControlBusiness(t *testing.T) 
 	}
 	defer inbox.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := processMachineFabricDeliveriesV2(context.Background(), hub.URL,
+		if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL,
 			fixture.targetNodeID, inbox, fixture.stateDir); err != nil {
 			t.Fatalf("process target sealed delivery %d: %v", attempt, err)
 		}

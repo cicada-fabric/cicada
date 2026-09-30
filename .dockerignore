@@ -4,7 +4,7 @@
 .env.*
 !.env.example
 .cicada-data
+/cicada-go/internal/server/ui/generated/
 __pycache__
 *.py[cod]
 *.log
-

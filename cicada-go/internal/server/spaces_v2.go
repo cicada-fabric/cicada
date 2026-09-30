@@ -95,6 +95,42 @@ func (h *Handler) fabricV2NodeSpaces(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, value)
+	case "sync":
+		var input store.GroupSpaceSyncInput
+		if err := decodeStrictClientJSON(r.Body, 4096, &input); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid Group Space sync request"))
+			return
+		}
+		value, err := h.fabricService.SyncGroupSpace(nodeToken, sessionToken, input)
+		if err != nil {
+			groupSpaceHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+	case "read-state":
+		var input store.GroupSpaceReadStateInput
+		if err := decodeStrictClientJSON(r.Body, 4096, &input); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid Group Space read-state request"))
+			return
+		}
+		value, err := h.fabricService.GetGroupSpaceReadState(nodeToken, sessionToken, input)
+		if err != nil {
+			groupSpaceHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+	case "mark-read":
+		var input store.GroupSpaceMarkReadInput
+		if err := decodeStrictClientJSON(r.Body, 4096, &input); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid Group Space mark-read request"))
+			return
+		}
+		value, err := h.fabricService.MarkGroupSpaceRead(nodeToken, sessionToken, input)
+		if err != nil {
+			groupSpaceHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
 	case "history/manifest":
 		var input store.GroupSpaceHistoryManifestInput
 		if err := decodeStrictClientJSON(r.Body, 4096, &input); err != nil {

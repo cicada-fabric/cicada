@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"reflect"
-	"strings"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
@@ -29,12 +27,17 @@ func fetchMachineNetworkDirectAuthorization(ctx context.Context, base, messageID
 
 func verifyMachineNetworkDirectAuthorization(machineID string, delivery fabric.NetworkDirectDelivery,
 	auth store.NetworkDirectDeliveryAuthorization) error {
+	return verifyMachineNetworkDirectAuthorizationWithContext(context.Background(), machineID, delivery, auth)
+}
+
+func verifyMachineNetworkDirectAuthorizationWithContext(ctx context.Context, machineID string, delivery fabric.NetworkDirectDelivery,
+	auth store.NetworkDirectDeliveryAuthorization) error {
 	if delivery.PayloadMode != store.RelayPayloadModeSealedV1 || delivery.NetworkID == "" ||
 		delivery.NodeID != machineID || auth.NetworkID != delivery.NetworkID ||
 		auth.MessageID != delivery.MessageID || auth.AttemptID != delivery.AttemptID ||
 		auth.EndpointID != delivery.RecipientEndpointID || auth.NativeSessionID != delivery.NativeSessionID ||
 		auth.BindingID != delivery.BindingID || auth.BindingEpoch != delivery.BindingEpoch ||
-		auth.Digest != delivery.Digest || auth.Bundle.HubID != strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) ||
+		auth.Digest != delivery.Digest || auth.Bundle.HubID != machinePinnedHubID(ctx) ||
 		auth.Bundle.NetworkID != delivery.NetworkID || auth.Context.NetworkID != delivery.NetworkID ||
 		auth.Context.MessageID != delivery.MessageID || auth.Context.ReceiverEndpointID != auth.EndpointID ||
 		len(delivery.Ciphertext) == 0 || machineSealedCiphertextDigest(delivery.Ciphertext) != delivery.Digest {
@@ -61,7 +64,7 @@ func verifyMachineNetworkDirectAuthorization(machineID string, delivery fabric.N
 
 func openMachineNetworkDirectDelivery(ctx context.Context, stateDir, machineID string,
 	delivery fabric.NetworkDirectDelivery, auth store.NetworkDirectDeliveryAuthorization) (machineSealedOpenResult, error) {
-	if err := verifyMachineNetworkDirectAuthorization(machineID, delivery, auth); err != nil {
+	if err := verifyMachineNetworkDirectAuthorizationWithContext(ctx, machineID, delivery, auth); err != nil {
 		return machineSealedOpenResult{}, err
 	}
 	identity, err := nodekeys.LoadOrCreate(machineNodeStateDir(stateDir, machineID), auth.EndpointID)
@@ -276,7 +279,11 @@ func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateD
 	if entry.Harness != "codex" {
 		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "exact native wake unavailable")
 	}
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, machineNetworkDirectPrompt(entry, claim.Payload)); err != nil {
+	operation, err := machineRelayNativeOperation(ctx, claim, entry)
+	if err != nil {
+		return err
+	}
+	if err := executeMachineNativeCodex(ctx, claim.SessionID, machineNetworkDirectPrompt(entry, claim.Payload), operation); err != nil {
 		var uncertain *nativeInjectionUncertainError
 		if errors.As(err, &uncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)

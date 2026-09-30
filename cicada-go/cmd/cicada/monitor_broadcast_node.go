@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -132,7 +131,11 @@ func (b *machineAgentJoinBridge) monitorBroadcastHub(method, suffix, sessionToke
 }
 
 func monitorBroadcastHubMatches(hubID string) bool {
-	pinned := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	return monitorBroadcastHubMatchesFor(context.Background(), hubID)
+}
+
+func monitorBroadcastHubMatchesFor(ctx context.Context, hubID string) bool {
+	pinned := machinePinnedHubID(ctx)
 	return pinned != "" && hubID == pinned
 }
 
@@ -145,8 +148,8 @@ func (b *machineAgentJoinBridge) monitorBroadcastNotification(previewID string) 
 		return nil, err
 	}
 	n := response.Notification
-	if !monitorBroadcastHubMatches(response.HubID) || n == nil ||
-		validateMonitorBroadcastNotification(*n, previewID, b.nodeID, true) != nil {
+	if !monitorBroadcastHubMatchesFor(b.ctx, response.HubID) || n == nil ||
+		validateMonitorBroadcastNotificationFor(b.ctx, *n, previewID, b.nodeID, true) != nil {
 		return nil, errors.New("Monitor notification does not match the configured Node and Hub")
 	}
 	return n, nil
@@ -157,12 +160,17 @@ func (b *machineAgentJoinBridge) monitorBroadcastNotification(previewID string) 
 // immediately before BeginInjection.
 func validateMonitorBroadcastNotification(n store.UserMonitorBroadcastV2Notification,
 	expectedPreviewID, expectedNodeID string, includeTerminalReceipts bool) error {
+	return validateMonitorBroadcastNotificationFor(context.Background(), n, expectedPreviewID, expectedNodeID, includeTerminalReceipts)
+}
+
+func validateMonitorBroadcastNotificationFor(ctx context.Context, n store.UserMonitorBroadcastV2Notification,
+	expectedPreviewID, expectedNodeID string, includeTerminalReceipts bool) error {
 	if expectedPreviewID == "" {
 		expectedPreviewID = n.PreviewID
 	}
 	if expectedNodeID == "" || n.NodeID != expectedNodeID || !validMonitorApprovalID(n.PreviewID) ||
 		n.PreviewID != expectedPreviewID || !validMonitorNotificationToken(n.HubID) ||
-		!monitorBroadcastHubMatches(n.HubID) || !validMonitorNotificationToken(n.BroadcastID) ||
+		!monitorBroadcastHubMatchesFor(ctx, n.HubID) || !validMonitorNotificationToken(n.BroadcastID) ||
 		len(n.BroadcastID) != 35 || !strings.HasPrefix(n.BroadcastID, "bc_") ||
 		!validMonitorNotificationToken(n.GroupID) || !validMonitorNotificationToken(n.MonitorEndpointID) ||
 		!validMonitorNotificationToken(n.BindingID) || n.BindingEpoch == 0 ||
@@ -275,7 +283,7 @@ func (b *machineAgentJoinBridge) monitorBroadcast(request monitorBroadcastReques
 			return nil, errors.New("Monitor review requires exact consent-bound signed payload evidence")
 		}
 	}
-	if !monitorBroadcastHubMatches(c.HubID) || c.ApprovalID != n.PreviewID || c.BroadcastID != n.BroadcastID ||
+	if !monitorBroadcastHubMatchesFor(b.ctx, c.HubID) || c.ApprovalID != n.PreviewID || c.BroadcastID != n.BroadcastID ||
 		c.GroupID != request.GroupID || c.OwnerID != request.OwnerID || c.MonitorEndpointID != request.EndpointID ||
 		c.MonitorBindingID != request.BindingID || c.MonitorBindingEpoch != request.BindingEpoch ||
 		c.BodySHA256 != n.BodyDigest || c.RecipientSnapshotSHA256 != n.SnapshotDigest || c.ExpiresAt != n.ExpiresAt ||

@@ -8,3 +8,5 @@ __pycache__/
 # Runtime state and credentials are kept outside the repository by default.
 .cicada-data/
 
+# Built WebAssembly and matching Go browser runtime are embedded into Hub images.
+/cicada-go/internal/server/ui/generated/

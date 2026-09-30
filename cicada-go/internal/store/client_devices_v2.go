@@ -73,6 +73,7 @@ type AcceptClientRequestInput struct {
 	SessionEpoch     uint64
 	Sequence         uint64
 	OperationID      string
+	RouteOperation   string
 	CiphertextDigest string
 }
 
@@ -570,6 +571,7 @@ func (s *Store) AcceptClientRequest(input AcceptClientRequestInput) (*ClientRequ
 		return nil, err
 	}
 	if !validateClientDeviceToken(input.DeviceID) || !validateClientDeviceToken(input.OperationID) ||
+		len(input.RouteOperation) > 128 ||
 		input.SessionEpoch == 0 || input.Sequence == 0 ||
 		input.SessionEpoch > uint64(^uint64(0)>>1) || input.Sequence > uint64(^uint64(0)>>1) ||
 		!canonicalClientDigest(input.CiphertextDigest) {
@@ -609,6 +611,11 @@ FROM client_device_requests_v2 WHERE owner_id = ? AND device_id = ? AND session_
 		if request.OperationID != input.OperationID || request.CiphertextDigest != input.CiphertextDigest {
 			return nil, ErrClientRequestConflict
 		}
+		var previousRoute string
+		if err := tx.QueryRow(`SELECT route_operation FROM client_device_requests_v2 WHERE id=?`,
+			request.ID).Scan(&previousRoute); err != nil || previousRoute != input.RouteOperation {
+			return nil, ErrClientRequestConflict
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -646,10 +653,10 @@ WHERE owner_id = ? AND device_id = ? AND state = 'ACTIVE' AND session_epoch = ? 
 		return nil, ErrClientRequestSequence
 	}
 	_, err = tx.Exec(`INSERT INTO client_device_requests_v2
-(id, owner_id, device_id, session_epoch, sequence, operation_id, ciphertext_digest,
- status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PROCESSING', ?, ?)`,
+(id, owner_id, device_id, session_epoch, sequence, operation_id, route_operation, ciphertext_digest,
+ status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PROCESSING', ?, ?)`,
 		request.ID, request.OwnerID, request.DeviceID, request.SessionEpoch, request.Sequence,
-		request.OperationID, request.CiphertextDigest, stamp, stamp)
+		request.OperationID, input.RouteOperation, request.CiphertextDigest, stamp, stamp)
 	if err != nil {
 		return nil, fmt.Errorf("persist Client request replay state: %w", err)
 	}

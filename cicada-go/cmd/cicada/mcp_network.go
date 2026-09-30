@@ -123,7 +123,7 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 		if err != nil || state.APIOrigin != origin {
 			return nil, errors.New("Network session state belongs to a different Hub origin")
 		}
-		renewed, err := requestMachineAgentNetworkRenew(defaultMCPJoinSocketPath(context), localNetworkRenewRequest{
+		renewed, err := requestMachineAgentNetworkRenew(m.joinSocketPath(context), localNetworkRenewRequest{
 			NetworkID: networkID, EndpointID: state.EndpointID, Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		})
@@ -163,7 +163,7 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 		if err != nil {
 			return nil, err
 		}
-		joined, err := requestMachineAgentNetworkJoin(defaultMCPJoinSocketPath(context), localNetworkJoinRequest{
+		joined, err := requestMachineAgentNetworkJoin(m.joinSocketPath(context), localNetworkJoinRequest{
 			NetworkID: networkID, InvitationToken: string(bytes.TrimSpace(invitation)),
 			OwnerJoinProof: string(bytes.TrimSpace(proof)), Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,

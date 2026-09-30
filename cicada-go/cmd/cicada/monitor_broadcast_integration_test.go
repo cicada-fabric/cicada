@@ -495,7 +495,7 @@ func TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineLocalGroupDeliveries(context.Background(), f.local.bridge, localInbox); err != nil {
+	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.local.bridge, localInbox); err != nil {
 		t.Fatal(err)
 	}
 	_ = localInbox.Close()
@@ -514,7 +514,7 @@ func TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processMachineFabricDeliveriesV2(context.Background(), f.hub.URL,
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), f.hub.URL,
 		f.remoteNodeID, remoteInbox, f.local.stateDir); err != nil {
 		t.Fatal(err)
 	}
@@ -678,7 +678,7 @@ func TestMonitorBroadcastNoticeQueuesOnlyMetadataOnce(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = processMachineMonitorBroadcastNotifications(context.Background(), f.local.bridge, &inbox,
+				err = processPinnedTestMachineMonitorBroadcastNotifications(context.Background(), f.local.bridge, &inbox,
 					machineMonitorBroadcastInboxPath(f.local.stateDir, f.local.nodeID))
 				if closeErr := inbox.Close(); closeErr != nil {
 					t.Fatal(closeErr)

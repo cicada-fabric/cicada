@@ -30,17 +30,22 @@ const (
 
 type groupSpaceLocalRequest struct {
 	localSealedSendRequest
-	OperationID          string `json:"operation_id,omitempty"`
-	RecordID             string `json:"record_id,omitempty"`
-	TopicID              string `json:"topic_id,omitempty"`
-	CorrectsID           string `json:"corrects_id,omitempty"`
-	ExpectedTopicVersion int64  `json:"expected_topic_version,omitempty"`
-	Status               string `json:"status,omitempty"`
-	Cursor               string `json:"cursor,omitempty"`
-	Limit                int    `json:"limit,omitempty"`
-	RecipientEndpointID  string `json:"recipient_endpoint_id,omitempty"`
-	OwnerKeyID           string `json:"owner_key_id,omitempty"`
-	OwnerProof           string `json:"owner_proof,omitempty"`
+	OperationID          string                      `json:"operation_id,omitempty"`
+	RecordID             string                      `json:"record_id,omitempty"`
+	TopicID              string                      `json:"topic_id,omitempty"`
+	CorrectsID           string                      `json:"corrects_id,omitempty"`
+	ExpectedTopicVersion int64                       `json:"expected_topic_version,omitempty"`
+	Status               string                      `json:"status,omitempty"`
+	Cursor               string                      `json:"cursor,omitempty"`
+	Limit                int                         `json:"limit,omitempty"`
+	RecipientEndpointID  string                      `json:"recipient_endpoint_id,omitempty"`
+	OwnerKeyID           string                      `json:"owner_key_id,omitempty"`
+	OwnerProof           string                      `json:"owner_proof,omitempty"`
+	AfterSeq             int64                       `json:"after_seq,omitempty"`
+	ThroughSeq           int64                       `json:"through_seq,omitempty"`
+	RegroupInput         *store.RegroupProposalInput `json:"regroup_input,omitempty"`
+	ProposalID           string                      `json:"proposal_id,omitempty"`
+	DelegationID         string                      `json:"delegation_id,omitempty"`
 }
 
 type groupSpacePublicRecord struct {
@@ -61,10 +66,14 @@ type groupSpacePublicRecord struct {
 }
 
 type groupSpaceLocalResult struct {
-	Record       *groupSpacePublicRecord      `json:"record,omitempty"`
-	Records      []groupSpacePublicRecord     `json:"records,omitempty"`
-	NextCursor   string                       `json:"next_cursor,omitempty"`
-	HistoryGrant *e2ee.GroupSpaceHistoryGrant `json:"history_grant,omitempty"`
+	Record          *groupSpacePublicRecord      `json:"record,omitempty"`
+	Records         []groupSpacePublicRecord     `json:"records,omitempty"`
+	NextCursor      string                       `json:"next_cursor,omitempty"`
+	HistoryGrant    *e2ee.GroupSpaceHistoryGrant `json:"history_grant,omitempty"`
+	Sync            *store.GroupSpaceSyncResult  `json:"sync,omitempty"`
+	ReadState       *store.GroupSpaceReadState   `json:"read_state,omitempty"`
+	RegroupProposal *store.RegroupProposal       `json:"regroup_proposal,omitempty"`
+	RegroupApply    *store.RegroupApplyResult    `json:"regroup_apply,omitempty"`
 }
 
 func requestMachineAgentGroupSpace(socketPath string, request groupSpaceLocalRequest) (*groupSpaceLocalResult, error) {
@@ -102,11 +111,15 @@ func requestMachineAgentGroupSpace(socketPath string, request groupSpaceLocalReq
 }
 
 func (b *machineAgentJoinBridge) groupSpaceHTTP(sessionToken, route string, input any, output any) error {
+	return b.groupSpaceHTTPWithContext(b.ctx, sessionToken, route, input, output)
+}
+
+func (b *machineAgentJoinBridge) groupSpaceHTTPWithContext(parent context.Context, sessionToken, route string, input any, output any) error {
 	encoded, err := json.Marshal(input)
 	if err != nil || len(encoded) > groupSpaceHTTPMaxBytes {
 		return errors.New("invalid bounded Group Space request")
 	}
-	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		b.baseURL+"/v2/fabric/node/spaces/"+route, bytes.NewReader(encoded))
@@ -342,6 +355,12 @@ func (b *machineAgentJoinBridge) groupSpace(request groupSpaceLocalRequest) (*gr
 	if err != nil {
 		return nil, err
 	}
+	if request.Operation == "space_sync" || request.Operation == "space_read_state" || request.Operation == "space_mark_read" {
+		return b.syncGroupSpace(request, actor)
+	}
+	if request.Operation == "space_regroup_propose" || request.Operation == "space_regroup_apply" {
+		return b.regroupSpace(request)
+	}
 	stateDir := machineNodeStateDir(b.stateDir, b.nodeID)
 	identity, err := nodekeys.LoadOrCreate(stateDir, actor.EndpointID)
 	if err != nil {
@@ -359,6 +378,44 @@ func (b *machineAgentJoinBridge) groupSpace(request groupSpaceLocalRequest) (*gr
 		return b.readGroupSpace(request, actor, identity, cryptoState)
 	}
 	return b.writeGroupSpace(request, actor, identity, cryptoState)
+}
+
+func (b *machineAgentJoinBridge) syncGroupSpace(request groupSpaceLocalRequest,
+	actor store.GroupSpaceEndpointEvidence) (*groupSpaceLocalResult, error) {
+	result := &groupSpaceLocalResult{}
+	switch request.Operation {
+	case "space_sync":
+		var value store.GroupSpaceSyncResult
+		if err := b.groupSpaceHTTP(request.SessionToken, "sync", store.GroupSpaceSyncInput{
+			GroupID: request.GroupID, AfterSeq: request.AfterSeq, Limit: request.Limit}, &value); err != nil {
+			return nil, err
+		}
+		if value.GroupID != request.GroupID || value.NextSeq < request.AfterSeq || value.LatestSeq < value.NextSeq || len(value.Hints) > 16 {
+			return nil, errors.New("Hub returned mismatched Group Space sync")
+		}
+		result.Sync = &value
+		if err := b.rememberGroupSpaceSubscription(request, actor, &value); err != nil {
+			return nil, err
+		}
+	case "space_read_state", "space_mark_read":
+		var value store.GroupSpaceReadState
+		var input any = store.GroupSpaceReadStateInput{GroupID: request.GroupID}
+		route := "read-state"
+		if request.Operation == "space_mark_read" {
+			input = store.GroupSpaceMarkReadInput{GroupID: request.GroupID, ThroughSeq: request.ThroughSeq}
+			route = "mark-read"
+		}
+		if err := b.groupSpaceHTTP(request.SessionToken, route, input, &value); err != nil {
+			return nil, err
+		}
+		if value.GroupID != request.GroupID || value.ReadSeq > value.LatestSeq {
+			return nil, errors.New("Hub returned mismatched Group Space read state")
+		}
+		result.ReadState = &value
+	default:
+		return nil, errors.New("invalid Group Space sync operation")
+	}
+	return result, nil
 }
 
 func groupSpaceWriteKind(operation string) string {
@@ -403,7 +460,7 @@ func (b *machineAgentJoinBridge) writeGroupSpace(request groupSpaceLocalRequest,
 	if kind == store.GroupSpaceKindTopic {
 		expectedTopicID = snapshot.RecordID
 	}
-	if snapshot.HubID == "" || snapshot.HubID != strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) ||
+	if snapshot.HubID == "" || snapshot.HubID != machinePinnedHubID(b.ctx) ||
 		snapshot.NetworkID == "" || snapshot.GroupID != request.GroupID ||
 		snapshot.OperationID != request.OperationID || snapshot.Kind != kind ||
 		snapshot.TopicID != expectedTopicID || snapshot.CorrectsID != request.CorrectsID ||
@@ -579,7 +636,7 @@ func (b *machineAgentJoinBridge) openGroupSpaceRecordSigned(record store.GroupSp
 	cryptoState *nodekeys.CryptoState) (groupSpacePublicRecord, []byte, error) {
 	snapshot := record.Snapshot
 	if snapshot.GroupID != groupID || snapshot.HubID == "" ||
-		snapshot.HubID != strings.TrimSpace(os.Getenv("CICADA_HUB_ID")) ||
+		snapshot.HubID != machinePinnedHubID(b.ctx) ||
 		snapshot.NetworkID == "" || snapshot.RecordID == "" || snapshot.Sequence <= 0 ||
 		snapshot.Producer.EndpointID == "" || snapshot.ReaderSnapshotDigest == "" ||
 		record.ReaderCiphertext.EndpointID != readerID ||

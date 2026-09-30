@@ -76,11 +76,11 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 			}
 		}
 	}
-	if got := len(OperationsForRole(RoleManager)); got != 36 {
-		t.Errorf("manager operation count = %d, want 36", got)
+	if got := len(OperationsForRole(RoleManager)); got != 46 {
+		t.Errorf("manager operation count = %d, want 46", got)
 	}
-	if got := len(OperationsForRole(RoleExternal)); got != 28 {
-		t.Errorf("external operation count = %d, want 28", got)
+	if got := len(OperationsForRole(RoleExternal)); got != 38 {
+		t.Errorf("external operation count = %d, want 38", got)
 	}
 	if Allows(RoleExternal, "intent.submit") || Allows(RoleExternal, "goal.result") || Allows(RoleExternal, "approvals.decide") ||
 		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleExternal, "network.key_manifest") ||
@@ -93,6 +93,13 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 	for _, operationID := range monitorOperations {
 		if !Allows(RoleManager, operationID) || !Allows(RoleExternal, operationID) {
 			t.Errorf("owner-scoped Monitor operation %s must be catalogued for both owner roles", operationID)
+		}
+	}
+	for _, operationID := range []string{"topology.regroup_proposal", "topology.delegation_issue", "topology.delegation_revoke",
+		"space.foreign_member_admit", "space.foreign_member_revoke", "space.foreign_endpoint_join", "space.key_manifest_v2", "space.key_consent_v2",
+		"space.key_admission_v2", "space.key_status_v2"} {
+		if !Allows(RoleManager, operationID) || !Allows(RoleExternal, operationID) {
+			t.Errorf("v1.5 owner operation %s is missing for a role", operationID)
 		}
 	}
 	if !strings.Contains(openAPIText, "membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'") ||

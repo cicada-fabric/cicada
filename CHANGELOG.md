@@ -5,14 +5,41 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
-The 2026-09-30 M2 candidate adds Hub schema v37 and same-owner ACTIVE Group
+Current unreleased work includes M3 commit-order Group Space sync and explicit
+unread markers, M4 exact Owner-delegated regrouping, v40 dual-Owner new-record
+Group boards, v41 atomic nested Group creation, a Hub E2EE canvas and a bounded
+M5 durable native-outcome path. Cross-owner history stays fail-closed; new
+cross-owner records require independent admission, context-risk consent, join
+and key proofs. Source `5414…` passed a bounded Go/vet/race/three-Docker gate
+and a separate real Chrome 151 loopback encrypted canvas gate; its uncertain-
+write fault injection and public HTTPS were not run. Source `e13b…` passed
+1,308 Go tests (11 SKIP), vet and eight Python tests, but real Codex 0.159.2
+failed at the final route allowlist; `434c…` failed at first Join after a
+model-shortened synthetic Group ID. The combined v41/M5 dirty source `c33f…`
+passed 1,336 Go tests (11 SKIP),
+vet, 36 focused race tests, eight Python tests, three disposable Docker
+suites, a separate Chrome 151 loopback canvas gate and one controlled real
+Codex same-Group ASK/REPLY run; see the
+[bounded checkpoint](docs/v01-group-panel-checkpoint-validation.md). Current
+Android v1.5, physical Nodes and public HTTPS remain unrun. The local Hub and
+optional Node entry is documented in
+[`docs/distribution.md`](docs/distribution.md); this is not a public release.
+
+The legacy browser Push fanout has been retired from the current candidate:
+`notify` still persists priority/history, existing subscription rows remain
+available for migration, and old subscribe/key routes return 410. The
+retirement was included in the `c33f…` bounded gate.
+
+### Historical M2 checkpoint — 2026-09-30 (not the current candidate)
+
+The historical M2 candidate added Hub schema v37 and same-owner ACTIVE Group
 Journal/Discussion through the current native MCP→Node→Hub→Node path: bounded
 per-reader ciphertext, current read/write/moderate Guard, topic CAS, retention,
 durable exact retry, and one-record offline Owner-signed history sharing. The
 [M2 contract](docs/group-spaces-m2-contract.md) defines the HTTP/MCP surface.
-Focused synthetic two-Node tests, full Go/vet, focused race, contract checks,
-and three separate disposable M2/Client/Network Docker gates pass on the same
-frozen dirty source; see [M2 validation](docs/group-spaces-m2-validation.md).
+Its focused synthetic two-Node tests, full Go/vet, focused race, contract checks,
+and three separate disposable M2/Client/Network Docker gates passed on the
+frozen dirty source recorded in [M2 validation](docs/group-spaces-m2-validation.md).
 Client `client-hub-v1.4` management catalog (36 operations) and
 encrypted wire v1 remain unchanged. Android board content, real native Runtime,
 physical dual-Node and public HTTPS are not validated by this candidate.
@@ -20,11 +47,11 @@ physical dual-Node and public HTTPS are not validated by this candidate.
 The following M1 paragraph records the 2026-09-28 schema-v36 checkpoint and
 its validation only; it is not the current M2 result.
 
-Planned public product releases use the `0.1.x` line. Historical `0.2.0`,
+Planned public product releases use the `0.1.x` line. Optional OpenAI/dot/GPT-Live/ChatGPT plugin integration is documented for a later [v0.2.x roadmap](docs/v02-openai-integration-roadmap.md) only; it adds no current v0.1.x dependency. Historical `0.2.0`,
 `0.3.0-dev`, and `0.4.0-dev` entries and the retired historical `v0.2.0` tag
 describe prototype checkpoints. Current development keeps Architecture v2.3
-and Client wire v1, while the Hub implementation uses schema v36 and Client
-contract `client-hub-v1.4` (36 catalog operations). M1 now includes explicit
+and Client wire v1, while the unreleased Hub worktree uses schema v41 and Client
+contract `client-hub-v1.5`. The historical M1 v36 slice includes explicit
 Network topology, Owner-approved Network direct key grants, sealed Network
 SEND/ASK/REPLY over Hub HTTP/Node delivery, and current-epoch guards on existing
 paths. See the [service contract](docs/network-m1-contract.md),

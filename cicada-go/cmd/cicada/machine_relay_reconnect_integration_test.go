@@ -257,7 +257,7 @@ func TestMachineRelayReconnectClaimsDurableOfflineMessage(t *testing.T) {
 	}
 	close(reconnectGate)
 	awaitSignal("ready reconciliation wake after reconnect", wake)
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, "node-reconnect", inbox, root); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, "node-reconnect", inbox, root); err != nil {
 		t.Fatalf("claim and queue offline message after reconnect: %v", err)
 	}
 	queued, err := os.ReadFile(queueCountPath)
@@ -275,7 +275,7 @@ func TestMachineRelayReconnectClaimsDurableOfflineMessage(t *testing.T) {
 		t.Fatalf("same-key Ask retry changed durable request identity: first=%#v retry=%#v err=%v", accepted, retry, err)
 	}
 	awaitSignal("duplicate idempotent wake", wake)
-	if err := processMachineFabricDeliveriesV2(ctx, hub.URL, "node-reconnect", inbox, root); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(ctx, hub.URL, "node-reconnect", inbox, root); err != nil {
 		t.Fatalf("process duplicate wake: %v", err)
 	}
 	queued, err = os.ReadFile(queueCountPath)
