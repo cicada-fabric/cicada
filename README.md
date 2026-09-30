@@ -41,6 +41,8 @@ Current emulator acceptance passed 54 Kotlin tests, 29 JavaScript tests, exact a
 
 Network consent still requires independently pinned Owner public keys, full Endpoint attestation, a fresh manifest, an external Owner signature, and explicit phone confirmation. Complete native Network consent and its dedicated uncertain-outcome reconciliation remain unvalidated. A generic snapshot cannot clear the durable Network grant fence. Cross-user messaging remains unavailable while `external_thread_links=false`. OpenAI Dot/Live integration is planning only.
 
+The [shared-space v2 framework](docs/shared-space-v2-framework.md) adds a gated review panel and candidate-proof verification without enabling shared-space, delegation or proposal RPCs. Its public synthetic vector is from ongoing Core development and has separate validation attribution. Each Owner must eventually confirm its own signature through its own Client; a local scope-reading marker grants no authority.
+
 Historical [v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md), native Monitor results, and older APKs retain their original sources, images, and scope. No current dirty Core source is substituted for this delivery.
 
 ## Build and local development

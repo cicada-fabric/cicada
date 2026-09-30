@@ -1,11 +1,26 @@
-# CICADA Client handoff — `client-hub-v1.5`
+# CICADA Client integration handoff
 
 **Date:** 2026-09-30
 
 **Branch:** `dev/react-native`
 **Delivery:** one local implementation and validation checkpoint; no push or merge.
 
-## Current delivery
+## Shared-space v2 local framework
+
+The [shared-space v2 framework report](shared-space-v2-framework.md) records the gated review UI and independent candidate-proof work following Client `eb0db6f3d095b60b0f2f73bcfda0079ba33ad846`. Its public vector is from ongoing Core development, rather than a newly pinned contract. The fixed v1.5 report below remains tied to its original APKs and source. Candidate-vector tests do not enable an operation or extend live acceptance. Proposal/delegation UI is a blocked overview, with no fetch, approval, issue or revoke path.
+
+The completed-status verifier requires two independently trusted Owner public identities and current external authority values. It verifies Endpoint self-attestation v1 with its final `signature:null`, while OwnerLinkKeyGrant v2 signs ten ordered claims without a signature field. This is not the first Owner's manifest-preview or signing workflow. Each Owner must later confirm its own side through its own Client before complete dual-proof status exists.
+
+- **PASS:** offline Docker build, 22 JavaScript tests, TypeScript, ESLint, exact 9 Kotlin verifier tests and 4 native operation-policy tests; ADB and test-driver exits `0`. The real offline Management UI showed the collapsed/expanded unavailable state without a fixture or actionable consent control. Owned emulators were removed and confirmed absent.
+- **FAIL, corrected:** the initial resource-limit test required the wrong parser rejection reason. Its original failed receipt remains available. The corrected test preserves both integer-overflow and oversized-token refusal, and all nine verifier tests passed after rebuilding on a fresh emulator. Production verification was unchanged.
+- **BLOCKED:** positive shared-space consent/admission, delegation/proposal and Link key operations remain closed pending the new pinned proof and authority delivery. No live v2 acceptance or native-session authority is claimed.
+- **NOT_RUN:** connected scope selection in the new panel, physical Android, public HTTPS and fresh native execution for this framework APK. Historical fixed-image evidence is not transferred.
+
+Framework product APK SHA-256 is `2ecb5d25f193b1b59c574b51c6383bf4d19617f028ce3b4a926a070113657758`; instrumentation APK SHA-256 is `0a42a512d54d7070d1d22285e4eff2c64ade0885700898962181cb6d20736e22`. The 91-file compiled-source fingerprint is `3d99c7901e0710183f7489e8d0416057a39c5149ac45d116fe47bf7d1d614842`, built from `eb0db6f` plus framework changes. The framework report lists exact commands, exits and restricted evidence paths. Its completion receipt identifies the local milestone commit separately from that dirty-source build.
+
+**Core dependency:** provide an authenticated, minimal, exact-admission read for the Endpoint Owner before shared-context acknowledgement and native Join. The fixed catalog has no preview operation, its topology is Owner-scoped, and key-manifest v2 is available only after the later Join. Core acknowledged this gap; Client has not guessed a route or treated an admission ID as consent. Include the clarified preview, complete proof types and native authority fixture in a new clean pinned package before any positive operation can be enabled.
+
+## Fixed v1.5 delivery
 
 This checkpoint targets clean Core `bd79ff93c90ecafc28a2471dd9523444903b39e6`, protocol `client-hub-v1.5`, and immutable Hub image `sha256:4c321cd8f91a1e19befabd1f5c8983be46e6aed811614c68bd6f62ad06584771`. The independently verified archive SHA-256 is `98ce7f02d03dd8291ff7361e46e22ed893f493d242fcb238a948bf869a2a5d0b`; the catalog SHA-256 is `a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68`. Current dirty Core source is outside this delivery.
 
@@ -32,7 +47,9 @@ The final APK pair was built from checkout `3e5ef5f7c0d045160a7b49bebb3b6ecdd8fc
 
 ```text
 Review CICADA_CLIENT read-only on dev/react-native. Read AGENTS.md,
-docs/client-hub-v1.5-bd79ff9-validation.md and this handoff. Match the exact
+docs/shared-space-v2-framework.md, docs/client-hub-v1.5-bd79ff9-validation.md
+and this handoff. Keep the local candidate framework APKs and synthetic vector
+separate from fixed v1.5 live results. Match the exact
 clean bd79ff93c90ecafc28a2471dd9523444903b39e6 delivery, full immutable
 image, archive and catalog pins in the report. Current dirty Core is excluded.
 
@@ -46,7 +63,13 @@ Ten new v1.5 Space/delegation/proposal operations and three Link key operations
 are deliberately gated. Deliver independent complete v2 signature vectors,
 external dual-Owner signing and a native authority fixture in a newly pinned
 clean contract. Preserve ENDPOINT-to-SOURCE and GROUP-to-TARGET mapping,
-signature:null canonical bytes, exact domains/digests and fresh authority.
+proof-specific canonical bytes, exact domains/digests and fresh authority.
+Endpoint attestation v1 includes a final signature:null field; OwnerLinkKeyGrant
+v2 signs ten ordered claims without a signature key. Do not generalize one
+proof's encoding to another. Each Owner confirms its own side; complete
+dual-proof status verification follows both submissions, not the first one.
+Deliver the Endpoint Owner's trusted exact-admission preview before risk
+acknowledgement and native Join; an admission ID alone is not consent.
 Never use an unsigned proof, synthetic native Thread or count-only permission
 assertion as acceptance. Keep physical Android, public HTTPS and new native
 Codex/Monitor execution separate from deterministic/emulator evidence.

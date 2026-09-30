@@ -13,6 +13,7 @@ import {
 import {HubConnections} from './src/components/HubConnections';
 import type {HubConnection} from './src/components/HubConnections';
 import {NetworkKeyConsentPanel} from './src/components/NetworkKeyConsentPanel';
+import {SharedSpaceConsentPanel} from './src/components/SharedSpaceConsentPanel';
 import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
 import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
 import {speechEventBelongsToSession} from './src/platform/hubProfileScope';
@@ -2322,13 +2323,14 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     if (tab === 'panel') return <>
       <Heading eyebrow="Hub 管理面板" title="管理"
         subtitle="手机发起操作，权威状态由 Hub 更新。" />
+      <SharedSpaceConsentPanel status={hubStatus} topology={topologySnapshot}
+        publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities} />
       {!hubStatus.remoteEnabled || !hubStatus.sessionCapabilitiesReady ? <>
         <Notice>尚未建立经认证的后量子加密会话。远程管理功能关闭；请先在「我的」中固定 Hub 身份并登记 OwnerDeviceGrant。</Notice>
         <ActionCard title="配置安全连接" body="手动核对 Hub 公钥、登记设备并建立加密会话"
           onPress={() => setTab('settings')} />
       </> : <>
         <Notice>Control 会话：{sessionCapabilities?.role || hubStatus.role || '未知角色'} · 授权来自加密 session.capabilities · 所有变更在 Hub 端校验。</Notice>
-        <Notice>跨用户共享空间与委托管理尚未开放。现有 Group 操作仅在当前授权范围内生效。</Notice>
         {!!hubMessage && <Text style={s.small}>{hubMessage}</Text>}
         {capsAllows(hubCapabilities, 'device_binding', 'nodes.preview', hubStatus) && <>
           <Section name="登记 Node" />
