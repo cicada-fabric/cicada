@@ -6,6 +6,8 @@
 
 **Scope:** Local unsigned APK packaging and bounded offline runtime verification. No store release or live Hub acceptance. The fixed v1.5 Hub delivery remains unchanged; current dirty Core work and an unfrozen v1.6 are excluded.
 
+**Subsequent test-only correction:** [Release public-interface policy validation](release-policy-public-validation.md) replaces the private-reflection test and passes its four policy tests against this same optimized product payload. It has separately identified instrumentation, signing and source evidence. The original 3/4 result below remains unchanged; the later test result does not transfer to the original test APK or extend Hub acceptance.
+
 ## Configuration and provenance
 
 The release helper requires a complete immutable Docker image ID and uses the existing locked dependencies. The tested toolchain image is `sha256:55cbde534463c21c8f7540c6293b0bd2b72ce8aa794ee395bf27a05630754358`. Docker data remains under `/gpu1-share/data/docker-root`; caches and restricted evidence remain under `/gpu1-share/data/cicada-client`.

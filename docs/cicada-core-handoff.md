@@ -5,6 +5,21 @@
 **Branch:** `dev/react-native`
 **Delivery:** one local implementation and validation checkpoint; no push or merge.
 
+## Release public-interface policy test correction
+
+The [bounded policy correction report](release-policy-public-validation.md) follows packaging Client `329a65942a2e10e5d658cfe58472bb53bad2cb7d`. Luna(max) replaced the positive test's private-method reflection with public `rpc`/`getStatus` behavior and an in-memory synthetic signed/encrypted response. Device private-key access is not exposed to the test responder; its Control identity exists only in memory. The other three public rejection tests retain their semantics.
+
+- **PASS:** instrumentation-only offline build, exit `0`; all four unsigned product APK hashes unchanged; target R8 task `UP-TO-DATE`.
+- **PASS:** one owned offline Android 15/API 35/x86_64 run, `OK (4 tests)`, zero failures, ADB/driver exits `0`, 0.764 seconds. Manager/external cases start with unready capabilities, then verify the exact filtered operation set, counters and pending cleanup through the public session path.
+- **PASS:** exact-owned emulator and fresh disposable signing-secret cleanup. The original policy FAIL and original STT staging FAIL remain in their existing records.
+- **NOT_RUN:** crypto/STT reruns, live Hub, native Worker, physical Android, public HTTPS, iOS and native HarmonyOS. Production source, keep rules, authority, dependencies, contract pins and deferred gates were not changed.
+
+Reused unsigned x86_64 product SHA-256: `78e3538522d54826d391b1e3873499dfecc0eeb2eac5499a0442cec7cec53940`. Installed app copy: `656f218133d74f6d3f95b3fd8aba64754dde4c7a62e02296e09a6b621e155cb5`; installed new test APK: `4270a762fe1c62da4917a8f0be2a0988e1ca78671eb8ec2e6d83b05ad1e3937b`. A fresh disposable certificate was necessary because the prior test private key had been deleted; non-signature product payloads match exactly.
+
+New instrumentation checkout fingerprint: `64409378c261e6a1ae6b7327f86a4118d6866e8564ac48cbff018aa50dbcd6da` (92 files). Unchanged product-only input fingerprint: `25e905b0ef67df24cacdc16ddaf190e2e1edfaae9438ab69ca07041c80ef8e7f` (60 files). The product retains the packaging source attribution below. Client commit and matching committed-source verification are recorded in `/gpu1-share/data/cicada-client/release-policy-public-20260930/evidence/delivery-checkpoint.redacted.json`. Runtime evidence is `/gpu1-share/data/cicada-client/v15-deterministic-release-policy-public-20260930/evidence/`.
+
+Core review request: reconcile this report's test-only diff, original product hash, new instrumentation/signing hashes, actual four-test count, command exits and exact-owned cleanup. Keep the process-scoped synthetic transport distinct from live Hub/TLS acceptance and preserve the original failed-run attribution. No push, merge or publication is part of this delivery.
+
 ## Local Release packaging checkpoint
 
 The [Release packaging validation report](release-packaging-validation.md) records the subsequent bounded packaging work from Client `feb0cd2`. The immutable Docker toolchain, source fingerprint, actual ABI APK sizes and SHA-256 values, native-library/ELF inventory, exact commands and preparation failures have separate evidence. These local unsigned artifacts and disposable signed test copies are distinct from the framework and fixed-Hub APKs below. No Hub interface, operation gate or signing authority changes as part of packaging.

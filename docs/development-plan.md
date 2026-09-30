@@ -16,6 +16,8 @@ Subsequent [shared-space v2 framework work](shared-space-v2-framework.md) adds a
 
 The bounded [Release packaging checkpoint](release-packaging-validation.md) selects the existing ABIs explicitly, enables managed-code/resource optimization and retains the native crypto/STT dependencies. It records actual unsigned artifacts separately from disposable signed test copies. Local package size and emulator inference do not replace a clean future Hub contract, native consent acceptance, physical-device measurements or public HTTPS validation; the protocol gates remain unchanged.
 
+The subsequent [Release policy test correction](release-policy-public-validation.md) passes all four policy tests through public session behavior and synthetic authenticated responses against the unchanged optimized product. Only instrumentation was rebuilt; the original reflection failure remains separately recorded. This local test does not advance live Hub, native consent, physical-device or public HTTPS gates.
+
 ## Historical v1.4 checkpoint
 
 **Historical checkpoint:** 2026-09-30, branch `dev/react-native`, clean Hub `f30892fcd79a27bfe5604575deaecebe52c5ec50`, protocol `client-hub-v1.4`, catalog `7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54`. The [v1.4 validation record](client-hub-v1.4-f30892f-validation.md) provides complete pins, commands, APK hashes and outcome boundaries.
