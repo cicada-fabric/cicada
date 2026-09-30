@@ -55,8 +55,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.4"
-        private const val CATALOG_SHA256 = "7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54"
+        private const val CONTRACT_REVISION = "client-hub-v1.5"
+        private const val CATALOG_SHA256 = "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68"
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
         private const val MAX_PACKET_BYTES = 256 * 1024
@@ -86,6 +86,15 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "network.key_manifest", "network.key_grant", "network.key_status",
             "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status",
             "monitor.broadcast_recover",
+        )
+        // These v1.5 contract operations require independent Owner consent/delegation UI and
+        // proof verification that this Client has not implemented. Hub advertisement cannot
+        // authorize the generic bridge to substitute for those workflows, including reads.
+        private val UNIMPLEMENTED_CONSENT_OPERATIONS = setOf(
+            "space.foreign_member_admit", "space.foreign_member_revoke",
+            "space.foreign_endpoint_join", "space.key_manifest_v2", "space.key_consent_v2",
+            "space.key_admission_v2", "space.key_status_v2", "topology.delegation_issue",
+            "topology.delegation_revoke", "topology.regroup_proposal",
         )
         private val MUTATING_RPC_OPERATIONS = setOf(
             "goal.lifecycle", "topology.apply", "devices.revoke", "nodes.confirm",
@@ -503,6 +512,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (operation.startsWith("network.key_")) {
             throw HubSessionException("VERIFIED_NETWORK_FLOW_REQUIRED", "Use the verified Network Endpoint key consent flow")
         }
+        requireImplementedOperation(operation)
         val state = readState()
         requireReadyForRpc(state)
         if (state.pending != null) {
@@ -1623,8 +1633,17 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (!hasAtomicFile(privateKeyFile)) throw HubSessionException("DEVICE_KEY_MISSING", "Device private key is unavailable")
     }
 
+    private fun requireImplementedOperation(operation: String) {
+        if (operation in UNIMPLEMENTED_CONSENT_OPERATIONS) {
+            throw HubSessionException("CLIENT_CONSENT_FLOW_UNAVAILABLE", "This Client has not implemented the independent Owner consent and delegation workflow for this operation")
+        }
+        if (operation !in RPC_OPERATIONS) {
+            throw HubSessionException("UNSUPPORTED_RPC_OPERATION", "This Client does not implement this RPC operation")
+        }
+    }
+
     private fun validateOperation(state: State, operation: String) {
-        if (operation !in RPC_OPERATIONS) throw HubSessionException("UNSUPPORTED_RPC_OPERATION", "Operation is not in the Client RPC contract")
+        requireImplementedOperation(operation)
         if (state.uncertainNeedsReconciliation && operation in MUTATING_RPC_OPERATIONS) {
             throw HubSessionException("BUSINESS_RECONCILIATION_REQUIRED", "Read an authenticated Hub status snapshot before another write")
         }
@@ -2435,7 +2454,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         state.allowedOperations = json.getAsJsonArray("allowedOperations")?.mapNotNull { element ->
             if (element.isJsonPrimitive && element.asJsonPrimitive.isString) element.asString else null
-        } ?: emptyList()
+        }?.distinct()?.filter { it in RPC_OPERATIONS } ?: emptyList()
         state.pending = json.getAsJsonObject("pending")?.let { value ->
             Pending(
                 requiredString(value, "operation"),

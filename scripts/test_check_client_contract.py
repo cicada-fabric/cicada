@@ -12,7 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check-client-contract.py"
-SNAPSHOT = REPO / "contracts/client-hub-v1.4-f30892f"
+SNAPSHOT = REPO / "contracts/client-hub-v1.5-bd79ff9"
 CATALOG = "cicada-go/internal/clientcontract/catalog.json"
 
 
@@ -45,6 +45,20 @@ class ContractCheckerTest(unittest.TestCase):
         result = self.run_checker(use_default=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(self.manifest["catalog_sha256"], result.stdout)
+
+    def test_historical_snapshot_requires_its_own_explicit_pins(self):
+        historical = REPO / "contracts/client-hub-v1.4-f30892f"
+        args = ("--snapshot-dir", str(historical))
+        self.assert_rejected(self.run_checker(*args, use_default=True))
+        result = self.run_checker(
+            *args,
+            "--source-revision", "f30892fcd79a27bfe5604575deaecebe52c5ec50",
+            "--catalog-sha256", "7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54",
+            "--contract-revision", "client-hub-v1.4",
+            use_default=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("PASS client-hub-v1.4", result.stdout)
 
     def test_explicit_source_and_catalog_are_independent_pins(self):
         # Synthetic public metadata tests the CLI; it is not a new Hub artifact.

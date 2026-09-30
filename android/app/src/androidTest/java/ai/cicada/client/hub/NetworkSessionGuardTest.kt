@@ -323,8 +323,8 @@ class NetworkSessionGuardTest {
             addProperty("lastResponseSequence", 3)
             addProperty("role", "manager")
             addProperty("sessionCapabilitiesReady", true)
-            addProperty("validatedContractRevision", "client-hub-v1.4")
-            addProperty("validatedCatalogSha256", "7a9e42094083d68b34e979aa5898140e862027777962650c8a4b18a323314d54")
+            addProperty("validatedContractRevision", "client-hub-v1.5")
+            addProperty("validatedCatalogSha256", "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68")
             add("allowedOperations", JsonArray().apply {
                 listOf("session.capabilities", "topology.snapshot", "network.key_manifest",
                     "network.key_grant", "network.key_status").forEach(::add)

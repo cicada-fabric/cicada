@@ -1,4 +1,64 @@
-# CICADA Client handoff — `client-hub-v1.4`
+# CICADA Client handoff — `client-hub-v1.5`
+
+**Date:** 2026-09-30
+
+**Branch:** `dev/react-native`
+**Delivery:** one local implementation and validation checkpoint; no push or merge.
+
+## Current delivery
+
+This checkpoint targets clean Core `bd79ff93c90ecafc28a2471dd9523444903b39e6`, protocol `client-hub-v1.5`, and immutable Hub image `sha256:4c321cd8f91a1e19befabd1f5c8983be46e6aed811614c68bd6f62ad06584771`. The independently verified archive SHA-256 is `98ce7f02d03dd8291ff7361e46e22ed893f493d242fcb238a948bf869a2a5d0b`; the catalog SHA-256 is `a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68`. Current dirty Core source is outside this delivery.
+
+The [v1.5 validation report](client-hub-v1.5-bd79ff9-validation.md) identifies the tested source fingerprint, exact APKs, commands, exits, evidence and remaining acceptance items. Historical records below retain their original images, sources and APKs.
+
+The authenticated v1.5 catalog contains 46 operations. The Client admits only its 33 implemented operations, subject to the encrypted session role, scope and existing recovery fences. All seven new cross-Owner Space operations, three new topology delegation/proposal operations, and three unverified Link key operations remain closed, even when advertised by a Hub. The management UI explains that shared-space and delegation management is unavailable. Ordinary cross-user messaging remains disabled when `external_thread_links=false`; `status_events=false` does not expose an event feature.
+
+Existing profile isolation, explicit ACTIVE Network selection, Group management, local speech transcription, persistent enrollment/RPC recovery, Monitor consent records, and the independent durable Network uncertain-outcome fence are retained. No legacy `/v1` bearer path or Hub/Node bearer is introduced.
+
+## Acceptance and remaining dependencies
+
+- **PASS:** archive payloads, fixed Git bytes, clean source metadata, catalog and full image provenance; Docker build and executable checks; 29 JavaScript tests; final APK's 54 independent Kotlin policy/vector/profile/recovery-lock tests; fresh offline React Native UI.
+- **PASS:** complete public production-shape Network vector in independent Kotlin tests, including exact signed inputs, native Session commitment, full public keys and negative mutants. This is synthetic proof verification and does not establish live native Network consent.
+- **PASS:** fresh fixed-Hub encrypted enrollment/capabilities/topology, exact authenticated external 25-operation allowlist, scoped Group creation and foreign-Owner denial with Core's independent authority audit, and 201/200 original-request recovery. The recovered full response and envelope hashes equal the original dropped response. Bounded connected management UI passed; created Group row/name visibility remains unobserved within that bounded view.
+- **PASS:** three independent Android sessions recover the original signed packet as 409 `STILL_PROCESSING`, authenticated encrypted `OUTCOME_UNCERTAIN` after Core's confirmed `FAULT_READY` and single restart, and 409 `RECOVERY_UNAVAILABLE`. Pending/retired ciphertext, operation identity and counters are preserved; the uncertain outer-RPC fence releases only after an authorized read-only snapshot. These helper-driven outer-ledger faults do not establish business execution or native Worker progress. All four live sessions have independently checked exact external 25-operation allowlists.
+- **PASS:** exact-owned cleanup. The emulator, five Client carriers and all Android reverse mappings were removed. Core removed its four disposable Hub fixtures and secret state; Client independently confirmed all 18 Core-owned resource absences. Core's receipt records six resident containers unchanged. Exact commands, exits and cleanup evidence are in the validation report.
+- **BLOCKED:** positive v2 shared-space consent/admission and delegation/proposal workflows. Core confirmed the future signed-role mapping `ENDPOINT → SOURCE` and `GROUP → TARGET`; no mapping contradiction remains. A separately pinned delivery must supply complete independent v2 canonical/signature vectors, proof and authority validation, external dual-Owner signing and explicit Client confirmation before these operations are enabled.
+- **BLOCKED / NOT_RUN:** complete live Network key consent and dedicated original-proof/status reconciliation. The durable Network grant fence remains closed after uncertainty. Generic snapshot reconciliation must not release it.
+- **NOT_RUN:** physical Android, public HTTPS, fresh v1.5 native Node/Codex/Monitor execution, iOS, native HarmonyOS and fresh speech-model execution. Earlier version results are not transferred. Dot/Live remains planning only.
+
+The final APK pair was built from checkout `3e5ef5f7c0d045160a7b49bebb3b6ecdd8fc5461` plus changes, with compiled source fingerprint `0a59f8f101f4fd61cf406874e1e441bbc02f0376bbea55c22d92cc58e7a3f948`. Product APK SHA-256 is `5bba1c02fb2b0233006661bd4a67fd3f60811c270cc825f9337c7f4170aaa1ee`; instrumentation APK SHA-256 is `11d8dc7166d539cc91e342553d740f969923d48667498c0c3cf105c5f0a8b5f9`. The completion message and private `delivery-checkpoint.redacted.json` identify the local milestone commit; this does not make the build a clean-source build.
+
+## Review prompt for the Core maintainer
+
+```text
+Review CICADA_CLIENT read-only on dev/react-native. Read AGENTS.md,
+docs/client-hub-v1.5-bd79ff9-validation.md and this handoff. Match the exact
+clean bd79ff93c90ecafc28a2471dd9523444903b39e6 delivery, full immutable
+image, archive and catalog pins in the report. Current dirty Core is excluded.
+
+Reconcile each live Android selector, command exit, original pending packet,
+operation/counter continuity, APK SHA and independent authority evidence.
+Keep 201/200 loss, STILL_PROCESSING, OUTCOME_UNCERTAIN and
+RECOVERY_UNAVAILABLE distinct. Outer-ledger faults do not prove real business
+execution or Network-grant reconciliation. Check owned-resource teardown.
+
+Ten new v1.5 Space/delegation/proposal operations and three Link key operations
+are deliberately gated. Deliver independent complete v2 signature vectors,
+external dual-Owner signing and a native authority fixture in a newly pinned
+clean contract. Preserve ENDPOINT-to-SOURCE and GROUP-to-TARGET mapping,
+signature:null canonical bytes, exact domains/digests and fresh authority.
+Never use an unsigned proof, synthetic native Thread or count-only permission
+assertion as acceptance. Keep physical Android, public HTTPS and new native
+Codex/Monitor execution separate from deterministic/emulator evidence.
+
+No credentials or Owner private keys belong in Android, APKs, Git or public
+logs. Do not edit Client files, push, merge, publish or change resident services
+as part of this review.
+```
+
+---
+
+## Historical v1.4 handoff
 
 **Date:** 2026-09-30
 

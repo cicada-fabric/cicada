@@ -2328,6 +2328,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           onPress={() => setTab('settings')} />
       </> : <>
         <Notice>Control 会话：{sessionCapabilities?.role || hubStatus.role || '未知角色'} · 授权来自加密 session.capabilities · 所有变更在 Hub 端校验。</Notice>
+        <Notice>跨用户共享空间与委托管理尚未开放。现有 Group 操作仅在当前授权范围内生效。</Notice>
         {!!hubMessage && <Text style={s.small}>{hubMessage}</Text>}
         {capsAllows(hubCapabilities, 'device_binding', 'nodes.preview', hubStatus) && <>
           <Section name="登记 Node" />

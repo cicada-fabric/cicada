@@ -10,6 +10,11 @@ import {
 
 import {CLIENT_HUB_REVISION} from './clientHubContract';
 import {captureProfileMethod} from './hubProfileScope';
+import {
+  DEFERRED_CLIENT_CONSENT_OPERATIONS, IMPLEMENTED_CLIENT_RPC_OPERATIONS,
+  UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
+} from './clientHubOperationPolicy';
+import type {CatalogClientRpcOperation, DeferredClientConsentOperation} from './clientHubOperationPolicy';
 export {CLIENT_HUB_REVISION, CLIENT_HUB_CATALOG_SHA256} from './clientHubContract';
 
 export interface HubProfileScope {
@@ -56,48 +61,14 @@ export interface NetworkKeyResponse {
   result?: Record<string, unknown>;
 }
 
-export type ClientRpcOperation =
-  | 'session.capabilities'
-  | 'status.snapshot'
-  | 'status.changes'
-  | 'goal.lifecycle'
-  | 'goal.result'
-  | 'topology.snapshot'
-  | 'topology.apply'
-  | 'devices.list'
-  | 'devices.revoke'
-  | 'nodes.preview'
-  | 'nodes.confirm'
-  | 'nodes.list'
-  | 'nodes.revoke'
-  | 'approvals.list'
-  | 'approvals.decide'
-  | 'intent.get'
-  | 'intent.status'
-  | 'intent.list'
-  | 'intent.submit'
-  | 'link.list'
-  | 'link.invite_create'
-  | 'link.invite_preview'
-  | 'link.invite_accept'
-  | 'group.key_manifest'
-  | 'group.key_grant'
-  | 'group.key_status'
-  | 'network.key_manifest'
-  | 'network.key_grant'
-  | 'network.key_status'
-  | 'link.key_manifest'
-  | 'link.key_grants'
-  | 'link.key_grant'
-  | 'monitor.broadcast_prepare'
-  | 'monitor.broadcast_confirm'
-  | 'monitor.broadcast_recover'
-  | 'monitor.broadcast_status';
+export type ClientRpcOperation = CatalogClientRpcOperation;
 export type MonitorBroadcastRpcOperation = Extract<ClientRpcOperation,
   'monitor.broadcast_prepare' | 'monitor.broadcast_confirm' |
   'monitor.broadcast_recover' | 'monitor.broadcast_status'>;
 export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation,
-  MonitorBroadcastRpcOperation | 'network.key_manifest' | 'network.key_grant' | 'network.key_status'>;
+  DeferredClientConsentOperation | MonitorBroadcastRpcOperation |
+  'network.key_manifest' | 'network.key_grant' | 'network.key_status' |
+  typeof UNVERIFIED_LINK_KEY_OPERATIONS[number]>;
 
 // Link key consent remains unavailable until its separate contract is verified.
 export type ClientHubAdvertisedOperation = ClientRpcOperation;
@@ -416,24 +387,15 @@ const unavailable = async (): Promise<never> => {
 };
 
 const operationNames: ClientRpcOperation[] = [
-  'session.capabilities', 'status.snapshot', 'status.changes', 'goal.lifecycle', 'goal.result',
-  'topology.snapshot', 'topology.apply', 'devices.list', 'devices.revoke',
-  'nodes.preview', 'nodes.confirm', 'nodes.list', 'nodes.revoke', 'approvals.list',
-  'approvals.decide', 'intent.get', 'intent.status', 'intent.list', 'intent.submit',
-  'link.list',
-  'link.invite_create', 'link.invite_preview', 'link.invite_accept',
-  'group.key_manifest', 'group.key_grant', 'group.key_status',
-  'network.key_manifest', 'network.key_grant', 'network.key_status',
-  'link.key_manifest', 'link.key_grants', 'link.key_grant',
-  'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
-  'monitor.broadcast_recover', 'monitor.broadcast_status',
+  ...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
+  ...UNVERIFIED_LINK_KEY_OPERATIONS,
 ];
 const isRpcOperation = (value: string): value is ClientRpcOperation =>
   operationNames.includes(value as ClientRpcOperation);
 const normalizeStatus = (value: NativeClientHubStatus): ClientHubStatus => ({
   ...value,
   nativeAvailable: true,
-  allowedOperations: value.allowedOperations.filter(isRpcOperation),
+  allowedOperations: value.allowedOperations.filter(isImplementedClientRpcOperation),
   pendingOperation: value.pendingOperation && isRpcOperation(value.pendingOperation) ?
     value.pendingOperation : undefined,
 });
@@ -467,7 +429,12 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
     }
     return native.rpc({operation: 'goal.result', body: {intent_id: input.intent_id}}) as Promise<ClientGoalResult>;
   },
-  rpc: input => native.rpc(input),
+  rpc: input => {
+    if (!isImplementedClientRpcOperation(input.operation)) {
+      return Promise.reject(new Error('CLIENT_CONSENT_FLOW_UNAVAILABLE'));
+    }
+    return native.rpc(input);
+  },
   recoverPending: () => native.recoverPending(),
   retryPendingExact: () => native.retryPendingExact(),
   previewGroupKey: input => native.previewGroupKey(input),
@@ -546,14 +513,5 @@ export function operationAllowed(
   status: ClientHubStatus,
   operation: ClientRpcOperation,
 ): boolean {
-  if (operation === 'network.key_grant' && status.networkGrantReconciliationRequired) return false;
-  if (status.uncertainNeedsReconciliation && [
-    'goal.lifecycle', 'topology.apply', 'devices.revoke', 'nodes.confirm',
-    'nodes.revoke', 'approvals.decide', 'intent.submit', 'link.invite_create',
-    'link.invite_accept', 'group.key_grant', 'network.key_grant', 'monitor.broadcast_prepare',
-    'monitor.broadcast_confirm',
-  ].includes(operation)) return false;
-  return status.nativeAvailable && status.remoteEnabled &&
-    status.sessionCapabilitiesReady && !status.pendingOperationId &&
-    status.allowedOperations.includes(operation);
+  return clientHubOperationAllowed(status, operation);
 }
