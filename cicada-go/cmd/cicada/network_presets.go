@@ -13,17 +13,29 @@ var networkPermissionPresets = map[string][]string{
 	"directory_guest":       {"directory.discover"},
 	"network_collaborator":  {"direct.receive", "direct.send", "directory.discover", "directory.publish"},
 	"network_admin_inviter": {"network.admin.invite"},
+	"network_task_worker":   {"task.offer.claim", "task.offer.list", "task.offer.result"},
+	"network_task_publisher": {"directory.discover", "directory.publish",
+		"task.offer.accept", "task.offer.list", "task.offer.publish"},
+	"network_broadcast_publisher": {"broadcast.publish"},
+	"network_broadcast_receiver":  {"broadcast.receive"},
 }
 
-// Network M1 exposes only these grants through the current operator workflow.
-// Store wire validation retains future enum values, but accepting a Group or
-// planned Task grant here would create an invitation that M1 cannot enforce.
+// The operator workflow exposes only grants enforced by the current Network
+// Guard. Selecting a preset is an explicit invitation choice; it does not
+// infer authority from a member role or update existing grants.
 var networkM1PermissionGrants = map[string]bool{
 	"directory.discover":   true,
 	"directory.publish":    true,
 	"direct.receive":       true,
 	"direct.send":          true,
 	"network.admin.invite": true,
+	"task.offer.publish":   true,
+	"task.offer.list":      true,
+	"task.offer.claim":     true,
+	"task.offer.result":    true,
+	"task.offer.accept":    true,
+	"broadcast.publish":    true,
+	"broadcast.receive":    true,
 }
 
 func selectNetworkPermissionGrants(grantsArg, preset string, ownerMayGrantAdmin bool) ([]string, error) {

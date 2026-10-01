@@ -1,6 +1,8 @@
 package fabric
 
 import (
+	"errors"
+
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -22,6 +24,7 @@ type NetworkDirectAskInput struct {
 	TargetEndpointID    string `json:"target_endpoint_id"`
 	MessageID           string `json:"message_id"`
 	RequestID           string `json:"request_id"`
+	ParentRequestID     string `json:"parent_request_id,omitempty"`
 	IdempotencyKey      string `json:"idempotency_key,omitempty"`
 	ExpiresAt           string `json:"expires_at"`
 	Ciphertext          []byte `json:"ciphertext"`
@@ -31,6 +34,16 @@ type NetworkDirectReplyInput struct {
 	NetworkID           string `json:"network_id"`
 	NetworkSessionToken string `json:"network_session_token"`
 	RequestID           string `json:"request_id"`
+	MessageID           string `json:"message_id"`
+	IdempotencyKey      string `json:"idempotency_key,omitempty"`
+	Ciphertext          []byte `json:"ciphertext"`
+}
+
+type NetworkCollaborationSendInput struct {
+	NetworkID           string `json:"network_id"`
+	NetworkSessionToken string `json:"network_session_token"`
+	Purpose             string `json:"purpose"`
+	TargetEndpointID    string `json:"target_endpoint_id"`
 	MessageID           string `json:"message_id"`
 	IdempotencyKey      string `json:"idempotency_key,omitempty"`
 	Ciphertext          []byte `json:"ciphertext"`
@@ -64,6 +77,15 @@ func (s *Service) PublishNetworkDirectKeyCandidate(actor NetworkActor,
 func (s *Service) NetworkDirectPeerKey(actor NetworkActor,
 	targetEndpointID string) (*store.NetworkDirectPeerBundle, error) {
 	bundle, err := s.store.NetworkDirectPeerKey(networkDirectoryScope(actor), targetEndpointID)
+	if err == store.ErrNetworkPermission || err == store.ErrNetworkDirectKeyUnavailable {
+		return nil, ErrNotFoundOrNotAuthorized
+	}
+	return bundle, err
+}
+
+func (s *Service) NetworkCollaborationPeerKey(actor NetworkActor,
+	targetEndpointID, purpose string) (*store.NetworkDirectPeerBundle, error) {
+	bundle, err := s.store.NetworkCollaborationPeerKey(networkDirectoryScope(actor), targetEndpointID, purpose)
 	if err == store.ErrNetworkPermission || err == store.ErrNetworkDirectKeyUnavailable {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
@@ -108,6 +130,25 @@ func (s *Service) SendNetworkDirectSealed(nodeToken string,
 	return record, err
 }
 
+func (s *Service) SendNetworkCollaborationSealed(nodeToken string,
+	input NetworkCollaborationSendInput) (*store.RelaySealedV1Record, error) {
+	actor, err := s.networkDirectSender(nodeToken, input.NetworkSessionToken, input.NetworkID)
+	if err != nil {
+		return nil, err
+	}
+	record, err := s.store.EnqueueNetworkCollaborationSealedSend(store.NetworkCollaborationSendInput{
+		Scope: networkDirectoryScope(actor), NodeCredentialDigest: HashSessionCredential(nodeToken),
+		Purpose: input.Purpose, TargetEndpointID: input.TargetEndpointID,
+		MessageID: input.MessageID, IdempotencyKey: input.IdempotencyKey, Ciphertext: input.Ciphertext})
+	if err == store.ErrNetworkPermission || err == store.ErrNetworkDirectKeyUnavailable {
+		return nil, ErrPermissionDenied
+	}
+	if err == nil {
+		s.notifyNetworkDirectTarget(record.Route.ReceiverEndpointID)
+	}
+	return record, err
+}
+
 func (s *Service) AskNetworkDirectSealed(nodeToken string,
 	input NetworkDirectAskInput) (*store.FabricRequest, error) {
 	actor, err := s.networkDirectSender(nodeToken, input.NetworkSessionToken, input.NetworkID)
@@ -119,7 +160,17 @@ func (s *Service) AskNetworkDirectSealed(nodeToken string,
 			Scope: networkDirectoryScope(actor), NodeCredentialDigest: HashSessionCredential(nodeToken),
 			TargetEndpointID: input.TargetEndpointID, MessageID: input.MessageID,
 			IdempotencyKey: input.IdempotencyKey, Ciphertext: input.Ciphertext},
-		RequestID: input.RequestID, ExpiresAt: input.ExpiresAt})
+		RequestID: input.RequestID, ParentRequestID: input.ParentRequestID,
+		ExpiresAt: input.ExpiresAt})
+	if errors.Is(err, store.ErrRelayCausalParentInvalid) {
+		return nil, ErrPermissionDenied
+	}
+	if errors.Is(err, store.ErrRelayCausalCycle) {
+		return nil, ErrConflict
+	}
+	if errors.Is(err, store.ErrRelayCausalBudget) {
+		return nil, ErrConflict
+	}
 	if err == store.ErrNetworkPermission || err == store.ErrNetworkDirectKeyUnavailable {
 		return nil, ErrPermissionDenied
 	}

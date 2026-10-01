@@ -30,6 +30,7 @@ type EndpointMessageContext struct {
 	Kind                       string `json:"kind"`
 	RequestID                  string `json:"request_id,omitempty"`
 	ReplyTo                    string `json:"reply_to,omitempty"`
+	ParentRequestID            string `json:"parent_request_id,omitempty"`
 	SenderEndpointID           string `json:"sender_endpoint_id"`
 	SenderPrincipalID          string `json:"sender_principal_id"`
 	SenderOwnerID              string `json:"sender_owner_id"`
@@ -66,7 +67,7 @@ func (context EndpointMessageContext) validate() error {
 			return errors.New("endpoint envelope requires bounded canonical identities")
 		}
 	}
-	for _, value := range []string{context.RequestID, context.ReplyTo, context.LinkID, context.TransportHubID} {
+	for _, value := range []string{context.RequestID, context.ReplyTo, context.ParentRequestID, context.LinkID, context.TransportHubID} {
 		if !canonicalEndpointToken(value, false) {
 			return errors.New("endpoint envelope has invalid optional identity")
 		}
@@ -79,7 +80,7 @@ func (context EndpointMessageContext) validate() error {
 	}
 	switch context.Kind {
 	case "SEND":
-		if context.RequestID != "" || context.ReplyTo != "" {
+		if context.RequestID != "" || context.ReplyTo != "" || context.ParentRequestID != "" {
 			return errors.New("SEND cannot carry request correlation")
 		}
 	case "REQUEST":

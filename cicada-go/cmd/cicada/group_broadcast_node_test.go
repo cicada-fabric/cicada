@@ -322,11 +322,15 @@ func TestMCPBroadcastLocalAndRemoteSealedFullChain(t *testing.T) {
 	if err := f.bridge.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if f.bridgeCancel != nil {
+		f.bridgeCancel()
+	}
+	f.bridgeCtx, f.bridgeCancel = context.WithCancel(f.machineContextForNodeAt(f.nodeID, f.nodeToken, hub.URL))
 	f.bridge, err = startMachineAgentJoinBridge(f.bridgeCtx, f.stateDir, hub.URL, f.nodeID, f.nodeToken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	remoteBridgeCtx, cancelRemoteBridge := context.WithCancel(context.Background())
+	remoteBridgeCtx, cancelRemoteBridge := context.WithCancel(f.machineContextForNodeAt(remoteNodeID, remoteToken, hub.URL))
 	t.Cleanup(cancelRemoteBridge)
 	remoteBridge, err := startMachineAgentJoinBridge(remoteBridgeCtx, f.stateDir,
 		hub.URL, remoteNodeID, remoteToken)
@@ -462,6 +466,70 @@ func TestMCPBroadcastLocalAndRemoteSealedFullChain(t *testing.T) {
 	wantRemoteSendPath := "/v2/relay/nodes/" + f.nodeID + "/group/sealed/send"
 	if !containsString(paths, wantSnapshotPath) || !containsString(paths, wantRemoteSendPath) {
 		t.Fatalf("Hub did not observe snapshot plus sealed remote SEND: %v", paths)
+	}
+}
+
+// Keep the native broadcast's all-local recipient shape covered without a
+// paid Runtime. This exercises the production MCP outbox, Node bridge,
+// snapshot authorization, and local sealed-send persistence; it does not
+// inject into or consume from either recipient's Codex Thread.
+func TestMCPBroadcastTwoLocalRecipientsSealedFullChain(t *testing.T) {
+	f := newLocalGroupFailureFixture(t)
+	const thirdNativeID = "native_local_failure_c"
+	const body = "synthetic all-local broadcast body"
+	writeCodexSessionRecord(t, os.Getenv("CODEX_HOME"), thirdNativeID, f.workspace)
+	thirdMCP := f.joinSession(t, thirdNativeID)
+
+	f.sourceMCP.sessionMu.RLock()
+	sourceCard := f.sourceMCP.sessionPublic.NetworkCard
+	f.sourceMCP.sessionMu.RUnlock()
+	f.targetMCP.sessionMu.RLock()
+	targetCard := f.targetMCP.sessionPublic.NetworkCard
+	f.targetMCP.sessionMu.RUnlock()
+	thirdMCP.sessionMu.RLock()
+	thirdCard := thirdMCP.sessionPublic.NetworkCard
+	thirdMCP.sessionMu.RUnlock()
+
+	broadcastOwner, broadcastOwnerKey := grantGroupBroadcastSend(t, f.store, f.ownerID, f.groupID,
+		sourceCard.PrincipalID, sourceCard.EndpointID,
+		targetCard.PrincipalID, targetCard.EndpointID,
+		thirdCard.PrincipalID, thirdCard.EndpointID)
+	trustBroadcastOwnerKey(t, f.stateDir, f.nodeID, f.ownerID, broadcastOwner, broadcastOwnerKey.KeyID)
+
+	t.Setenv("CICADA_MACHINE_ID", f.nodeID)
+	t.Setenv("CODEX_THREAD_ID", f.nativeA)
+	t.Setenv("CODEX_SESSION_ID", "session-"+f.nativeA)
+	resultValue, err := f.sourceMCP.callTool("cicada_broadcast", map[string]any{
+		"group_id": f.groupID, "body": body,
+	})
+	if err != nil {
+		t.Fatalf("MCP broadcast did not complete: %v", err)
+	}
+	result, ok := resultValue.(map[string]any)
+	if !ok || result["status"] != mcpOutboxStatusSent || result["complete"] != true ||
+		result["recipient_count"] != float64(2) {
+		t.Fatalf("two-local broadcast did not report accepted delivery state: %#v", resultValue)
+	}
+	children, ok := result["recipients"].([]any)
+	if !ok || len(children) != 2 {
+		t.Fatalf("two-local broadcast omitted recipient state: %#v", resultValue)
+	}
+	states := make(map[string]string, len(children))
+	for _, item := range children {
+		child, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("invalid recipient result type: %T", item)
+		}
+		endpointID, _ := child["endpoint_id"].(string)
+		state, _ := child["state"].(string)
+		failureCode, _ := child["failure_code"].(string)
+		if endpointID == "" || state != "ACCEPTED" || failureCode != "" {
+			t.Fatalf("local child not durably accepted: state=%q failure_code=%q", state, failureCode)
+		}
+		states[endpointID] = state
+	}
+	if len(states) != 2 || states[targetCard.EndpointID] != "ACCEPTED" || states[thirdCard.EndpointID] != "ACCEPTED" {
+		t.Fatalf("broadcast did not persist exactly both local recipients: states=%v", states)
 	}
 }
 

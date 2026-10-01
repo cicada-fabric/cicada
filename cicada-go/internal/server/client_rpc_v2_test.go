@@ -14,7 +14,6 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
-	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -392,26 +391,14 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		topologySnapshotResult.Result.OwnerPrincipalID != ownerID {
 		t.Fatalf("invalid encrypted topology snapshot: err=%v result=%s", err, openedTopologySnapshot.Plaintext)
 	}
-	nodeToken, nodeDigest, err := fabricpkg.NewNodeCredential()
-	if err != nil {
-		t.Fatal(err)
+	pairRequest := func(method, path string, body []byte) (int, []byte) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(method, path, bytes.NewReader(body)))
+		return recorder.Code, recorder.Body.Bytes()
 	}
-	startBody, err := json.Marshal(map[string]string{
-		"node_id": "phone-linked-node", "node_name": "Phone linked node", "credential_digest": nodeDigest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	started := httptest.NewRecorder()
-	handler.ServeHTTP(started, httptest.NewRequest(http.MethodPost, "/v2/nodes/device-code", bytes.NewReader(startBody)))
-	if started.Code != http.StatusCreated || bytes.Contains(started.Body.Bytes(), []byte(nodeDigest)) ||
-		bytes.Contains(started.Body.Bytes(), []byte(nodeToken)) {
-		t.Fatalf("public Node start failed or leaked credential: status=%d body=%s", started.Code, started.Body.String())
-	}
-	var challenge control.NodeDeviceCode
-	if err := json.Unmarshal(started.Body.Bytes(), &challenge); err != nil || challenge.UserCode == "" {
-		t.Fatalf("invalid public Node code: err=%v body=%s", err, started.Body.String())
-	}
+	nodeToken, nodeDigest, _, _, challenge, startBody := startPQNodeDeviceCodeFixture(t, pairRequest,
+		"phone-linked-node", "Phone linked node")
 	tooFast := httptest.NewRecorder()
 	handler.ServeHTTP(tooFast, httptest.NewRequest(http.MethodPost, "/v2/nodes/device-code", bytes.NewReader(startBody)))
 	if tooFast.Code != http.StatusTooManyRequests {
@@ -446,27 +433,53 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	preview := callNodeRPC(9, "nodes.preview", codeBody)
-	if !bytes.Contains(preview, []byte(`"node_id":"phone-linked-node"`)) || bytes.Contains(preview, []byte(nodeDigest)) {
-		t.Fatalf("owner preview lacked Node or leaked digest: %s", preview)
+	var previewEnvelope struct {
+		OK     bool                          `json:"ok"`
+		Result store.NodeControlKeyCandidate `json:"result"`
 	}
-	confirmation := callNodeRPC(10, "nodes.confirm", codeBody)
+	if err := json.Unmarshal(preview, &previewEnvelope); err != nil || !previewEnvelope.OK ||
+		previewEnvelope.Result.NodeID != "phone-linked-node" ||
+		previewEnvelope.Result.RequestID != challenge.Candidate.RequestID ||
+		previewEnvelope.Result.CandidateDigest == "" || previewEnvelope.Result.Version <= 0 ||
+		bytes.Contains(preview, []byte(nodeDigest)) {
+		t.Fatalf("owner preview lacked exact Node candidate or leaked credential: err=%v result=%s", err, preview)
+	}
+	confirmBody, err := json.Marshal(map[string]any{"user_code": challenge.UserCode,
+		"candidate_digest":  previewEnvelope.Result.CandidateDigest,
+		"candidate_version": previewEnvelope.Result.Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation := callNodeRPC(10, "nodes.confirm", confirmBody)
 	var confirmed struct {
-		OK     bool                    `json:"ok"`
-		Result store.NodeDeviceBinding `json:"result"`
+		OK     bool                        `json:"ok"`
+		Result store.NodeControlKeyBinding `json:"result"`
 	}
 	if err := json.Unmarshal(confirmation, &confirmed); err != nil || !confirmed.OK ||
-		confirmed.Result.State != "ACTIVE" || confirmed.Result.OwnerID != ownerID {
+		confirmed.Result.State != store.NodeControlKeyActive || confirmed.Result.OwnerID != ownerID ||
+		confirmed.Result.NodeID != "phone-linked-node" || confirmed.Result.ApprovedCandidateDigest != previewEnvelope.Result.CandidateDigest {
 		t.Fatalf("owner confirmation failed: err=%v result=%s", err, confirmation)
+	}
+	statusRequest := httptest.NewRequest(http.MethodGet,
+		"/v2/node/device-code/"+previewEnvelope.Result.RequestID+"/status?node_id=phone-linked-node", nil)
+	statusRequest.Header.Set("Authorization", "CicadaNode "+nodeToken)
+	nodePairingResponse := httptest.NewRecorder()
+	handler.ServeHTTP(nodePairingResponse, statusRequest)
+	var pairingStatus store.NodeControlKeyCandidate
+	if nodePairingResponse.Code != http.StatusOK || json.Unmarshal(nodePairingResponse.Body.Bytes(), &pairingStatus) != nil ||
+		pairingStatus.State != store.NodeControlPairingConfirmed || pairingStatus.BindingID != confirmed.Result.OwnerBindingID ||
+		pairingStatus.BindingVersion != confirmed.Result.BindingVersion {
+		t.Fatalf("Node pairing status omitted confirmed binding: status=%d body=%s", nodePairingResponse.Code, nodePairingResponse.Body.String())
 	}
 	if authenticated, err := manager.Fabric().AuthenticateNode(nodeToken); err != nil || authenticated != "phone-linked-node" {
 		t.Fatalf("confirmed Node not authenticated: id=%q err=%v", authenticated, err)
 	}
 	bindings := callNodeRPC(11, "nodes.list", []byte(`{}`))
-	if !bytes.Contains(bindings, []byte(confirmed.Result.ID)) || bytes.Contains(bindings, []byte(nodeDigest)) {
+	if !bytes.Contains(bindings, []byte(confirmed.Result.OwnerBindingID)) || bytes.Contains(bindings, []byte(nodeDigest)) {
 		t.Fatalf("binding list missing Node or leaked digest: %s", bindings)
 	}
 	revokeBody, err := json.Marshal(map[string]any{
-		"binding_id": confirmed.Result.ID, "expected_version": confirmed.Result.Version,
+		"binding_id": confirmed.Result.OwnerBindingID, "expected_version": confirmed.Result.BindingVersion,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-import { boxContains, layoutTopology, normalizeBox, screenPointToWorld } from './panel-model.js';
+import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld } from './panel-model.js';
 import { installCanvasControls } from './panel-canvas-controls.js';
 import { button, html, svg } from './panel-dom.js';
 
@@ -19,8 +19,11 @@ export class CanvasPanel {
     this.lock = options.lock;
     this.pending = options.pending;
     this.networkId = this.topology.networks?.[0]?.network_id || '';
+    this.networkDirectory = { networkId: '', endpoints: [], nextCursor: '', loading: false, error: '' };
     this.selection = new Set();
     this.plan = [];
+    this.planReview = '';
+    this.pendingLinkGesture = null;
     this.view = { x: 90, y: 25, scale: 0.82 };
     this.mode = 'select';
     this.drag = null;
@@ -35,8 +38,15 @@ export class CanvasPanel {
     title.append(html('span', 'chip good', `Network · ${this.networkName()}`));
     title.append(button('Refresh snapshots', () => this.reload(), 'btn quiet'));
     const tools = html('div', 'stage-tools');
-    this.modeButton = button('Box select', () => { this.mode = this.mode === 'select' ? 'pan' : 'select'; this.modeButton.textContent = this.mode === 'select' ? 'Box select' : 'Pan canvas'; }, 'btn');
-    tools.append(this.modeButton, button('−', () => this.zoomAt(.82), 'btn'), button('+', () => this.zoomAt(1.22), 'btn'));
+    this.modeButtons = new Map();
+    for (const [mode, label] of [['select', 'Select'], ['pan', 'Pan'], ['join', 'Drag to Group'], ['link', 'Draw Link']]) {
+      const modeButton = button(label, () => this.setMode(mode), 'btn canvas-mode');
+      modeButton.setAttribute('aria-pressed', mode === this.mode ? 'true' : 'false');
+      modeButton.classList.toggle('active-tool', mode === this.mode);
+      this.modeButtons.set(mode, modeButton);
+      tools.append(modeButton);
+    }
+    tools.append(button('−', () => this.zoomAt(.82), 'btn'), button('+', () => this.zoomAt(1.22), 'btn'));
     this.svgRoot = svg('svg', { role: 'img', 'aria-label': 'Hub topology canvas', tabindex: '0' });
     this.world = svg('g', { class: 'world' });
     this.selectionRect = svg('rect', { class: 'selection-box', visibility: 'hidden' });
@@ -99,7 +109,28 @@ export class CanvasPanel {
     this.svgRoot.addEventListener('pointerdown', event => this.beginPointer(event));
     this.svgRoot.addEventListener('pointermove', event => this.movePointer(event));
     this.svgRoot.addEventListener('pointerup', event => this.endPointer(event));
-    this.svgRoot.addEventListener('pointercancel', () => { this.drag = null; this.selectionRect.setAttribute('visibility', 'hidden'); });
+    this.svgRoot.addEventListener('pointercancel', () => this.cancelPointer());
+  }
+
+  setMode(mode) {
+    if (!['select', 'pan', 'join', 'link'].includes(mode)) return;
+    this.cancelPointer();
+    this.mode = mode;
+    for (const [key, modeButton] of this.modeButtons || []) {
+      modeButton.setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+      modeButton.classList.toggle('active-tool', key === mode);
+    }
+    const hint = { select: 'Select Endpoints or drag a box.', pan: 'Drag empty canvas space to pan.',
+      join: 'Drag an Endpoint reference onto a Group to preview one join.',
+      link: 'Drag from an Endpoint reference to another to prepare a Link proposal.' }[mode];
+    this.setMessage(hint);
+  }
+
+  cancelPointer() {
+    this.drag = null;
+    this.selectionRect?.setAttribute('visibility', 'hidden');
+    this.gesturePath?.remove();
+    this.gesturePath = null;
   }
 
   localPoint(event) {
@@ -118,6 +149,21 @@ export class CanvasPanel {
       this.renderSide();
       return;
     }
+    if (target && (this.mode === 'join' || this.mode === 'link')) {
+      const start = this.localPoint(event);
+      const endpointId = target.getAttribute('data-endpoint-id');
+      const groupId = target.getAttribute('data-group-ref') || '';
+      const ref = this.scene?.endpointRefs.find(item => item.endpoint.endpoint_id === endpointId && item.groupId === groupId);
+      if (!ref) return;
+      this.svgRoot.setPointerCapture(event.pointerId);
+      this.drag = { pointerId: event.pointerId, start, last: start, mode: this.mode,
+        endpointId, groupId, worldStart: { x: ref.x + 73, y: ref.y + 25 } };
+      this.gesturePath = svg('path', { class: 'gesture-line', d: `M ${this.drag.worldStart.x} ${this.drag.worldStart.y} L ${this.drag.worldStart.x} ${this.drag.worldStart.y}` });
+      this.world.append(this.gesturePath);
+      this.setMessage(this.mode === 'join' ? 'Drop over a Group to review an Endpoint join.' : 'Drop over another Endpoint reference to review a Link proposal.');
+      return;
+    }
+    if (this.mode === 'join' || this.mode === 'link') return;
     this.svgRoot.setPointerCapture(event.pointerId);
     const start = this.localPoint(event);
     this.drag = { pointerId: event.pointerId, start, last: start, mode: this.mode,
@@ -131,6 +177,11 @@ export class CanvasPanel {
   movePointer(event) {
     if (!this.drag || this.drag.pointerId !== event.pointerId) return;
     const point = this.localPoint(event);
+    if (this.drag.mode === 'join' || this.drag.mode === 'link') {
+      const worldPoint = screenPointToWorld(point, this.view);
+      this.gesturePath?.setAttribute('d', `M ${this.drag.worldStart.x} ${this.drag.worldStart.y} L ${worldPoint.x} ${worldPoint.y}`);
+      return;
+    }
     if (this.drag.mode === 'pan') {
       this.view.x += point.x - this.drag.last.x;
       this.view.y += point.y - this.drag.last.y;
@@ -144,6 +195,26 @@ export class CanvasPanel {
 
   endPointer(event) {
     if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+    if (this.drag.mode === 'join' || this.drag.mode === 'link') {
+      const gesture = this.drag;
+      const hit = document.elementFromPoint?.(event.clientX, event.clientY) || event.target;
+      if (gesture.mode === 'join') {
+        const groupTarget = hit.closest?.('[data-group-drop-id]');
+        if (groupTarget) this.previewEndpointJoin(gesture.endpointId, groupTarget.getAttribute('data-group-drop-id'));
+        else this.setMessage('No Group was targeted. No topology action was prepared.');
+      } else {
+        const endpointTarget = hit.closest?.('[data-endpoint-id]');
+        if (endpointTarget) this.prepareLinkGesture(gesture, {
+          endpointId: endpointTarget.getAttribute('data-endpoint-id'),
+          groupId: endpointTarget.getAttribute('data-group-ref') || ''
+        });
+        else this.setMessage('No target Endpoint was selected. No Link proposal was prepared.');
+      }
+      this.cancelPointer();
+      this.render();
+      this.renderSide();
+      return;
+    }
     if (this.drag.mode === 'select') {
       const worldEnd = screenPointToWorld(this.localPoint(event), this.view);
       const box = normalizeBox(this.drag.worldStart, worldEnd);
@@ -190,8 +261,9 @@ export class CanvasPanel {
       const count = scene.endpointRefs.filter(ref => ref.groupId === group.group_id).length;
       const height = Math.max(185, 84 + Math.ceil(count / 2) * 66 + 14);
       this.world.append(svg('rect', { x: position.x, y: position.y, width: 350, height,
-        class: group.parent_group_id ? 'group-box child' : 'group-box' }));
-      this.world.append(svg('text', { x: position.x + 17, y: position.y + 27, class: 'group-label' }, group.name));
+        class: group.parent_group_id ? 'group-box child' : 'group-box', 'data-group-drop-id': group.group_id }));
+      this.world.append(svg('text', { x: position.x + 17, y: position.y + 27, class: 'group-label',
+        'data-group-drop-id': group.group_id }, group.name));
       const parentName = scene.groups.find(item => item.group_id === group.parent_group_id)?.name;
       const meta = parentName ? `nested under ${parentName} · v${group.version}` : `network root · v${group.version}`;
       this.world.append(svg('text', { x: position.x + 18, y: position.y + 45, class: 'group-meta' }, meta));
@@ -218,7 +290,7 @@ export class CanvasPanel {
   drawEndpoint(ref) {
     const endpoint = ref.endpoint;
     const group = svg('g', { class: this.selection.has(endpoint.endpoint_id) ? 'endpoint selected' : 'endpoint',
-      'data-endpoint-id': endpoint.endpoint_id, tabindex: '0', role: 'button',
+      'data-endpoint-id': endpoint.endpoint_id, 'data-group-ref': ref.groupId, tabindex: '0', role: 'button',
       'aria-label': `${endpoint.name || endpoint.endpoint_id}, ${endpoint.presence || 'presence unknown'}` });
     group.append(svg('rect', { x: ref.x, y: ref.y, width: 146, height: 50, class: 'endpoint-card', rx: 9 }));
     group.append(svg('text', { x: ref.x + 10, y: ref.y + 19, class: 'endpoint-name' }, endpoint.name || endpoint.endpoint_id));
@@ -226,6 +298,29 @@ export class CanvasPanel {
     const state = status?.known ? `${status.state}${status.stale ? ' · stale' : ''}` : 'presence unknown';
     group.append(svg('text', { x: ref.x + 10, y: ref.y + 37, class: 'endpoint-meta' }, `${state} · ${ref.groupId || 'unassigned'}`));
     this.world.append(group);
+  }
+
+  async previewEndpointJoin(endpointId, groupId) {
+    try {
+      const endpoint = this.topology.endpoints?.find(item => item.endpoint_id === endpointId);
+      if (!endpoint) throw new Error('Endpoint is no longer visible in this Owner snapshot. Refresh before continuing.');
+      let intent;
+      if (groupHasMember(this.topology, endpoint, groupId)) {
+        intent = endpointJoinGesture(this.topology, endpointId, groupId, this.networkId);
+      } else {
+        if (!(endpoint.network_ids || []).includes(this.networkId)) {
+          throw new Error('Only an Endpoint enrolled in the selected Network can be admitted to this Group.');
+        }
+        this.setMessage('Fetching an exact Owner-scoped admission preview. No Group membership is being written.');
+        const preview = await this.rpc('topology.endpoint_admission_preview', {
+          network_id: this.networkId, group_id: groupId, endpoint_id: endpointId
+        });
+        intent = endpointAdmissionGesture(this.topology, endpointId, groupId, this.networkId, preview);
+      }
+      this.queueAction(intent.action, intent.review);
+    } catch (error) {
+      this.setMessage(error.message);
+    }
   }
 
 }

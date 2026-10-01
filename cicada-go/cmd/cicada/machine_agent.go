@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -91,6 +93,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
 		return errors.New("Node Hub context does not match pinned local coordinates")
 	}
+	pinned.RequireNativeContext = true
 	pinned.Token = nodeIdentity.RelayToken
 	inboxPath := machineNodeInboxPath(*stateDir, *id)
 	if err := os.MkdirAll(filepath.Dir(inboxPath), 0o700); err != nil {
@@ -101,6 +104,43 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return fmt.Errorf("open machine node inbox: %w", err)
 	}
 	defer inbox.Close()
+	pinned.ProviderInbox = inbox
+	writerRoot := strings.TrimSpace(pinned.WriterRoot)
+	if writerRoot == "" {
+		writerRoot = *stateDir
+	}
+	if err := os.MkdirAll(writerRoot, 0o700); err != nil {
+		return fmt.Errorf("create shared native writer root: %w", err)
+	}
+	providerLedger, providerLedgerErr := nodeinbox.OpenProviderAdmissionLedger(
+		filepath.Join(writerRoot, "node-provider-admission.sqlite3"))
+	if providerLedgerErr != nil {
+		fmt.Fprintln(os.Stderr, "Node provider admission ledger:", providerLedgerErr)
+	} else {
+		pinned.ProviderAdmissions = providerLedger
+		defer providerLedger.Close()
+	}
+	nativeContexts, nativeContextErr := nodeinbox.OpenNativeContextRegistry(
+		filepath.Join(writerRoot, "node-native-context-history.sqlite3"))
+	if nativeContextErr != nil {
+		// Current native scope cannot be proven without the shared history. The
+		// Agent remains alive for independent peer transport and management, while
+		// native delivery hooks reject the missing registry.
+		fmt.Fprintln(os.Stderr, "Node native-context history:", nativeContextErr)
+	} else {
+		pinned.NativeContexts = nativeContexts
+		defer nativeContexts.Close()
+	}
+	if !*relayOnly {
+		resourceExecutions, resourceErr := nodelock.OpenResourceExecutionManager(writerRoot)
+		if resourceErr != nil {
+			// Management fails closed at the execution boundary. Keep Relay and
+			// peer service alive while an operator repairs the local state root.
+			fmt.Fprintln(os.Stderr, "Node resource execution authority:", resourceErr)
+		} else {
+			pinned.ResourceExecutions = resourceExecutions
+		}
+	}
 	// Local peer delivery has a separate inbox and ledger. The remote Relay
 	// journal must never claim its messages or report Hub receipts for them.
 	localInbox, err := nodeinbox.Open(machineLocalGroupInboxPath(*stateDir, *id))
@@ -120,12 +160,15 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}()
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	var agentWorkers sync.WaitGroup
 	ctx = withMachineHubContext(ctx, *pinned)
 	if *lanDiscovery {
 		if *lanPort < 1 || *lanPort > 65535 {
 			return errors.New("LAN discovery port must be between 1 and 65535")
 		}
+		agentWorkers.Add(1)
 		go func() {
+			defer agentWorkers.Done()
 			if err := serveLANDiscovery(ctx, *id, *name, *lanPort); err != nil && ctx.Err() == nil {
 				fmt.Fprintln(os.Stderr, "LAN discovery:", err)
 			}
@@ -135,26 +178,34 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		if *relayOnly {
 			return nil
 		}
-		capabilities := control.DiscoverMachineCapabilities()
+		capabilities := machineNodePhysicalResourceCapabilities(control.DiscoverMachineCapabilities())
 		capabilities["role"] = "worker"
 		capabilities["harnesses"] = discoveredMachineHarnesses()
 		return sendMachineNodeWorkerHeartbeat(ctx, base, *id, nodeIdentity.RelayToken, "available", capabilities)
 	}
 	relayContext, cancelRelay := context.WithCancel(ctx)
-	defer cancelRelay()
-	relayAuthorized := true
+	var relayAuthorized atomic.Bool
+	relayAuthorized.Store(true)
+	var relayBound atomic.Bool
+	relayReady := make(chan struct{})
+	var relayReadyOnce sync.Once
+	markRelayReady := func() {
+		relayReadyOnce.Do(func() {
+			relayBound.Store(true)
+			close(relayReady)
+		})
+	}
 	disableRelay := func(err error) {
-		if !relayAuthorized {
+		if !relayAuthorized.CompareAndSwap(true, false) {
 			return
 		}
-		relayAuthorized = false
 		cancelRelay()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Node authorization was rejected; stopping the machine agent:", err)
 		}
 	}
 	heartbeatRelay := func() error {
-		if !relayAuthorized {
+		if !relayAuthorized.Load() || !relayBound.Load() {
 			return nil
 		}
 		if err := sendMachineNodeHeartbeat(ctx, base, *id, nodeIdentity.RelayToken); err != nil {
@@ -167,7 +218,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return nil
 	}
 	processRelay := func() error {
-		if !relayAuthorized {
+		if !relayAuthorized.Load() || !relayBound.Load() {
 			return nil
 		}
 		err := processMachineFabricDeliveriesV2(ctx, base, *id, inbox, *stateDir)
@@ -177,27 +228,90 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		}
 		return err
 	}
-	processJobs := func() error {
+	processJobs := func(agentCtx context.Context) error {
 		if *relayOnly {
 			return nil
 		}
-		jobs, err := pollMachineJobs(ctx, base, *id, nodeIdentity.RelayToken)
+		client, err := machineNodeControlClientFromContext(agentCtx, nodeWorkerJobsEndpoint(base, *id), nodeIdentity.RelayToken)
+		if err != nil {
+			return err
+		}
+		executionCtx, err := machineNodeExecutionContext(agentCtx, client)
+		if err != nil {
+			return err
+		}
+		runClaimed := func(claimed machineJob) error {
+			prepared, admission, err := prepareMachineNodeClaimExecution(executionCtx, client, claimed)
+			if err != nil {
+				if admission != nil && admission.Admitted &&
+					(errors.Is(err, nodelock.ErrResourceExecutionBusy) ||
+						errors.Is(err, errMachineNodePhysicalResourceClaim)) {
+					// This exact Hub claim asked for a physical resource that is
+					// quarantined or not mapped by the Node operator. No provider
+					// process started; return a truthful terminal result so the
+					// single durable claim slot cannot block unrelated Workers.
+					if err := client.beginClaimExecution(claimed); err != nil {
+						return err
+					}
+					result := machineJobResult{Status: "failed",
+						Error: "physical resource is unavailable or not authorized on this Node; provider was not started"}
+					if outcomeErr := recordMachineNodeProviderOutcome(executionCtx, claimed, result); outcomeErr != nil {
+						return fmt.Errorf("record non-started physical resource outcome: %w", outcomeErr)
+					}
+					if err := reportMachineJobReliably(ctx, base, *id, nodeIdentity.RelayToken,
+						claimed, result, *interval); err != nil {
+						return err
+					}
+					return client.finishClaimExecution(claimed)
+				}
+				return err
+			}
+			claimed = prepared
+			if err := client.beginClaimExecution(claimed); err != nil {
+				hub, ok := machineHubFrom(executionCtx)
+				if ok && hub.ProviderAdmissions != nil {
+					_, _ = hub.ProviderAdmissions.RecordProviderAdmissionOutcome(executionCtx, nodeinbox.ProviderAdmissionOutcome{
+						ExecutionID: claimed.executionID, ProviderID: claimed.providerID,
+						Class: nodeinbox.ProviderOutcomeFailedNotInjected,
+					})
+				}
+				return err
+			}
+			result := executeMachineJobWithHeartbeats(executionCtx, base, *id, nodeIdentity.RelayToken, *interval, claimed)
+			if result.Status != "completed" && strings.HasPrefix(result.Error, "restore workspace snapshot: ") {
+				fmt.Fprintf(os.Stderr, "Node Worker stage=workspace_snapshot_restore cause=%s\n",
+					machineNodeSnapshotFailureCause(strings.TrimPrefix(result.Error, "restore workspace snapshot: ")))
+			}
+			if err := recordMachineNodeProviderOutcome(executionCtx, claimed, result); err != nil {
+				result = machineJobResult{Status: "failed", ThreadID: result.ThreadID,
+					WorkspaceRevision: result.WorkspaceRevision,
+					Error:             "provider outcome could not be durably recorded; execution will not be retried automatically"}
+			}
+			if result.ResourceStopState == machineResourceStopUnverified {
+				if err := client.markClaimResourceStopUnverified(claimed); err != nil {
+					return fmt.Errorf("persist resource stop-unverified fence before Worker result: %w", err)
+				}
+			}
+			if err := reportMachineJobReliably(ctx, base, *id, nodeIdentity.RelayToken, claimed, result, *interval); err != nil {
+				return err
+			}
+			return client.finishClaimExecution(claimed)
+		}
+		if recovered, err := client.claimTicketJob(); err != nil {
+			return err
+		} else if recovered != nil {
+			return runClaimed(*recovered)
+		}
+		jobs, err := pollMachineJobs(executionCtx, base, *id, nodeIdentity.RelayToken)
 		if err != nil {
 			return err
 		}
 		for _, job := range jobs {
-			claimed, claimErr := claimMachineJob(ctx, base, *id, nodeIdentity.RelayToken, job)
+			claimed, claimErr := claimMachineJob(executionCtx, base, *id, nodeIdentity.RelayToken, job)
 			if claimErr != nil {
-				// A second agent may have claimed the job between polling and
-				// claiming. Continue polling instead of treating that as a
-				// machine failure.
-				if machineAPIHasStatus(claimErr, http.StatusConflict) {
-					continue
-				}
 				return claimErr
 			}
-			result := executeMachineJobWithHeartbeats(ctx, base, *id, nodeIdentity.RelayToken, *interval, claimed)
-			if err := reportMachineJobReliably(ctx, base, *id, nodeIdentity.RelayToken, claimed, result, *interval); err != nil {
+			if err := runClaimed(claimed); err != nil {
 				return err
 			}
 		}
@@ -206,7 +320,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	var localBridge *machineAgentJoinBridge
 	var localWake <-chan struct{}
 	processMonitor := func() error {
-		if *relayOnly || !relayAuthorized || machinePinnedHubID(ctx) == "" {
+		if *relayOnly || !relayAuthorized.Load() || !relayBound.Load() || machinePinnedHubID(ctx) == "" {
 			return nil
 		}
 		bridge := &machineAgentJoinBridge{ctx: ctx, stateDir: *stateDir,
@@ -220,27 +334,11 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return processMachineLocalGroupDeliveries(ctx, localBridge, localInbox)
 	}
 	process := func() error {
-		// A local Guard outage must not starve remote Relay deliveries or
-		// unrelated management jobs on the same Node.
+		// Keep the local peer and Relay path independent from Control management.
 		localErr := processLocal()
 		relayErr := processRelay()
 		monitorErr := processMonitor()
-		jobErr := processJobs()
-		return errors.Join(localErr, relayErr, monitorErr, jobErr)
-	}
-	for {
-		if err := awaitMachineNodeBinding(ctx, base, *id, *name, nodeIdentity.RelayToken,
-			credentialDigest, *once, os.Stderr); err != nil {
-			if *once || ctx.Err() != nil {
-				return err
-			}
-			fmt.Fprintln(os.Stderr, err)
-			if err := waitMachineNodeBindingPoll(ctx); err != nil {
-				return nil
-			}
-			continue
-		}
-		break
+		return errors.Join(localErr, relayErr, monitorErr)
 	}
 	if !*once {
 		bridge, err := startMachineAgentJoinBridge(ctx, *stateDir, base, *id, nodeIdentity.RelayToken)
@@ -251,17 +349,91 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		localBridge = bridge
 		localWake = bridge.localWake
 	}
+	// Cancel child contexts and join all Agent-owned workers before closing the
+	// bridge, inbox databases, or releasing the Node singleton lock.
+	defer func() {
+		stop()
+		cancelRelay()
+		agentWorkers.Wait()
+	}()
+	// Relay binding is an existing peer capability. Probe it independently so
+	// an Owner waiting on a new Node-Control key does not stop already-approved
+	// peer traffic. A fresh Node is enrolled through the PQ candidate flow.
+	probeBound, probeErr := probeMachineNodeBinding(ctx, base, *id, nodeIdentity.RelayToken)
+	if probeErr != nil {
+		if *once {
+			return fmt.Errorf("check existing Relay Node binding: %w", probeErr)
+		}
+		fmt.Fprintln(os.Stderr, "Relay Node binding probe:", probeErr)
+	}
+	if probeBound {
+		markRelayReady()
+	}
+	if *once {
+		if !(*relayOnly && probeBound) {
+			if err := awaitMachineNodeControlBinding(ctx, *stateDir, base, *id, *name,
+				nodeIdentity.RelayToken, credentialDigest, true, !*relayOnly, os.Stderr); err != nil {
+				return err
+			}
+		}
+		markRelayReady()
+	} else {
+		// One bounded management worker owns pairing, heartbeat, and jobs.
+		// It may wait for Owner approval or run a long Worker task without
+		// blocking local peer delivery, Relay reconciliation, or event wakes.
+		agentWorkers.Add(1)
+		go func() {
+			defer agentWorkers.Done()
+			if !(*relayOnly && probeBound) {
+				for {
+					err := awaitMachineNodeControlBinding(ctx, *stateDir, base, *id, *name,
+						nodeIdentity.RelayToken, credentialDigest, false, !*relayOnly, os.Stderr)
+					if err == nil {
+						break
+					}
+					if ctx.Err() != nil {
+						return
+					}
+					fmt.Fprintln(os.Stderr, "Node-Control binding:", err)
+					if waitMachineNodeBindingPoll(ctx) != nil {
+						return
+					}
+				}
+			}
+			markRelayReady()
+			if *relayOnly {
+				return
+			}
+			for {
+				if err := recoverMachineNodeControlOutbox(ctx, base, *id, nodeIdentity.RelayToken); err != nil {
+					fmt.Fprintln(os.Stderr, "Node-Control outbox recovery:", err)
+					timer := time.NewTimer(*interval)
+					select {
+					case <-ctx.Done():
+						timer.Stop()
+						return
+					case <-timer.C:
+					}
+					continue
+				}
+				if err := send(); err != nil {
+					fmt.Fprintln(os.Stderr, "Node-Control heartbeat:", err)
+				}
+				if err := processJobs(ctx); err != nil {
+					fmt.Fprintln(os.Stderr, "Node-Control jobs:", err)
+				}
+				timer := time.NewTimer(*interval)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+		}()
+	}
 	if err := heartbeatRelay(); err != nil {
 		return err
-	}
-	if err := send(); err != nil {
-		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
-			return nodeCredentialRevokedError(err)
-		}
-		if *once {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, err)
 	}
 	if err := process(); err != nil {
 		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
@@ -273,6 +445,14 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		fmt.Fprintln(os.Stderr, err)
 	}
 	if *once {
+		if !*relayOnly {
+			if err := send(); err != nil {
+				return err
+			}
+			if err := processJobs(ctx); err != nil {
+				return fmt.Errorf("process machine jobs: %w", err)
+			}
+		}
 		return nil
 	}
 	// The Node initiates and maintains this outbound connection. Relay can
@@ -281,12 +461,26 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	wake := make(chan struct{}, 1)
 	spaceWake := make(chan struct{}, 1)
 	relayRevoked := make(chan error, 1)
-	if relayAuthorized {
-		go runMachineRelayEventStreamWithSpaces(relayContext, base, *id, wake, spaceWake, relayRevoked)
-	}
-	go runMachineSpaceSyncWorker(relayContext, localBridge, spaceWake, *interval)
+	agentWorkers.Add(1)
+	go func() {
+		defer agentWorkers.Done()
+		select {
+		case <-ctx.Done():
+			return
+		case <-relayReady:
+			if relayAuthorized.Load() {
+				runMachineRelayEventStreamWithSpaces(relayContext, base, *id, wake, spaceWake, relayRevoked)
+			}
+		}
+	}()
+	agentWorkers.Add(1)
+	go func() {
+		defer agentWorkers.Done()
+		runMachineSpaceSyncWorker(relayContext, localBridge, spaceWake, *interval)
+	}()
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
+	var relayReadyCase <-chan struct{} = relayReady
 	for {
 		select {
 		case <-ctx.Done():
@@ -294,6 +488,14 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		case err := <-relayRevoked:
 			disableRelay(err)
 			return nodeCredentialRevokedError(err)
+		case <-relayReadyCase:
+			relayReadyCase = nil
+			if err := heartbeatRelay(); err != nil {
+				return err
+			}
+			if err := processRelay(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
 		case <-wake:
 			if err := heartbeatRelay(); err != nil {
 				return err
@@ -314,13 +516,6 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		case <-ticker.C:
 			if err := heartbeatRelay(); err != nil {
 				return err
-			}
-			if err := send(); err != nil {
-				if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
-					return nodeCredentialRevokedError(err)
-				}
-				fmt.Fprintln(os.Stderr, err)
-				continue
 			}
 			if err := process(); err != nil {
 				if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden) {
@@ -366,7 +561,9 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeT
 	executionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	revoked := make(chan error, 1)
+	heartbeatDone := make(chan struct{})
 	go func() {
+		defer close(heartbeatDone)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -386,6 +583,8 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeT
 		}
 	}()
 	finish := func(result machineJobResult) machineJobResult {
+		cancel()
+		<-heartbeatDone
 		select {
 		case err := <-revoked:
 			return machineJobResult{Status: "failed", Error: err.Error()}
@@ -395,7 +594,7 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeT
 	}
 	if job.WorkspaceSnapshotDigest != "" {
 		if job.WorkspaceID == "" {
-			return machineJobResult{Status: "failed", Error: "workspace snapshot requires a workspace ID"}
+			return finish(machineJobResult{Status: "failed", Error: "workspace snapshot requires a workspace ID"})
 		}
 		if err := downloadBoundNodeSnapshot(executionCtx, base, machineID, nodeToken, job, workspace); err != nil {
 			return finish(machineJobResult{Status: "failed", Error: "restore workspace snapshot: " + err.Error()})
@@ -403,6 +602,7 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeT
 	}
 	done := make(chan machineJobResult, 1)
 	go func() {
+		defer close(done)
 		done <- executeMachineJobWithApproval(executionCtx, job, &machineApprovalBridge{
 			BaseURL: base, NodeID: machineID, NodeToken: nodeToken,
 		})
@@ -421,9 +621,15 @@ func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeT
 			}
 			return finish(result)
 		case err := <-revoked:
+			cancel()
+			<-done // Cancellation is not proof that the Runtime has exited.
+			<-heartbeatDone
 			return machineJobResult{Status: "failed", Error: err.Error()}
 		case <-ctx.Done():
-			return machineJobResult{Status: "failed", Error: ctx.Err().Error()}
+			cancel()
+			<-done // Keep Node ownership until the child confirms termination.
+			<-heartbeatDone
+			return machineJobResult{Status: "failed", Error: "Node stopped while the Worker outcome was uncertain"}
 		}
 	}
 }

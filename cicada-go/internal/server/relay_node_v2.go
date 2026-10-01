@@ -10,6 +10,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/control"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -154,6 +155,21 @@ func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	if parts[1] == "jobs" {
+		if len(parts) == 2 || validNodeApprovalRoute(parts) || len(parts) == 4 &&
+			parts[2] != "" && (parts[3] == "claim" || parts[3] == "result") {
+			writeError(response, http.StatusUpgradeRequired,
+				errors.New("MIGRATION_BLOCKED: Node Worker management requires Owner-approved Node-Control encryption"))
+			return
+		}
+		if len(parts) == 5 && parts[2] != "" && parts[3] == "snapshot" &&
+			(parts[4] == "upload" || parts[4] == "download") {
+			direction := nodewire.SnapshotDirectionUpload
+			if parts[4] == "download" {
+				direction = nodewire.SnapshotDirectionDownload
+			}
+			h.relayNodeWorkerSnapshotStream(response, request, nodeID, parts[2], direction, token)
+			return
+		}
 		if validNodeApprovalRoute(parts) {
 			h.relayNodeWorkerApprovals(response, request, nodeID, token, parts)
 			return
@@ -219,6 +235,11 @@ func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Reques
 				return
 			}
 			authorization, err := h.fabricService.RevalidateNodeLocalDelivery(token, input)
+			if errors.Is(err, store.ErrSealedTaskHandoffPending) {
+				response.Header().Set("Cache-Control", "no-store")
+				writeJSON(response, http.StatusTooEarly, map[string]string{"code": "HANDOFF_PENDING"})
+				return
+			}
 			if err != nil {
 				writeError(response, http.StatusNotFound, errors.New("local authorization unavailable"))
 				return

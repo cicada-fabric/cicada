@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/control"
@@ -14,8 +16,11 @@ import (
 
 func TestExternalAgentCompletesApprovedBrowserAction(t *testing.T) {
 	root := t.TempDir()
+	const managerToken = "synthetic-external-agent-manager-token"
+	t.Setenv("CICADA_API_TOKEN", managerToken)
 	controlPlane, err := control.New(control.Config{
 		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		APIToken: managerToken,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +63,22 @@ func TestExternalAgentCompletesApprovedBrowserAction(t *testing.T) {
 	}
 	profile := filepath.Join(root, "profile")
 	t.Setenv("CICADA_BROWSER_PROFILE_DIR", profile)
-	api := httptest.NewServer(server.NewHandler(controlPlane))
+	controlHandler := server.NewHandler(controlPlane)
+	api := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		recorded := httptest.NewRecorder()
+		controlHandler.ServeHTTP(recorded, request)
+		if recorded.Code >= http.StatusInternalServerError {
+			t.Errorf("synthetic External Agent request %s %s returned %d: %s",
+				request.Method, request.URL.Path, recorded.Code, strings.TrimSpace(recorded.Body.String()))
+		}
+		for name, values := range recorded.Header() {
+			for _, value := range values {
+				response.Header().Add(name, value)
+			}
+		}
+		response.WriteHeader(recorded.Code)
+		_, _ = response.Write(recorded.Body.Bytes())
+	}))
 	defer api.Close()
 	if err := runExternalAgent([]string{"--once", "--control-url", api.URL, "--browser-bin", runner}); err != nil {
 		t.Fatal(err)

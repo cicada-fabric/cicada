@@ -95,6 +95,67 @@ func TestArtifactV2ExactScopeRevocationAndDigestGuard(t *testing.T) {
 	}
 }
 
+func TestArtifactV2ListDoesNotBypassReferenceScopes(t *testing.T) {
+	service, persistence, group := newFabricTestService(t)
+	root := t.TempDir()
+	content := []byte("content-only fixture")
+	if err := os.WriteFile(filepath.Join(root, "content.txt"), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := persistence.CreateWorkspace("workspace-content-only", "", root, "test", "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := persistence.CreateArtifact(store.Artifact{
+		ID: "legacy-content-only", WorkspaceID: workspace.ID, Name: "sensitive-name.txt",
+		Path: "content.txt", Kind: "sensitive-kind", Digest: artifactTestDigest(content),
+		Evidence: "sensitive summary",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := service.Join(JoinInput{
+		GroupID: group.ID, PrincipalName: "content-only-reader", EndpointName: "content-only-reader",
+		Harness: "codex", NativeSessionID: "artifact-content-only-session", NodeID: "node-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := service.Authenticate(joined.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor = grantArtifactRole(t, persistence, actor, "artifact.read")
+	ref, err := persistence.CreateArtifactRefV2(store.ArtifactRefV2Input{
+		ArtifactID: legacy.ID, GroupID: actor.GroupID, ProducerPrincipalID: actor.PrincipalID,
+		ProducerEndpointID: actor.EndpointID, WorkspaceID: workspace.ID,
+		Digest: artifactTestDigest(content), Scopes: []string{store.ArtifactRefV2ScopeContent},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := service.ListArtifactRefsV2(actor, 10)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("list content-only ref: %#v err=%v", listed, err)
+	}
+	if listed[0].ID != ref.ID || listed[0].Name != "" || listed[0].Kind != "" ||
+		listed[0].WorkspaceID != "" || listed[0].ProducerEndpointID != "" ||
+		listed[0].Summary != "" || listed[0].Digest != "" {
+		t.Fatalf("list exposed fields outside the ref's scopes: %#v", listed[0])
+	}
+	if _, err := service.ReadArtifactRefV2(actor, ArtifactRefReadInput{
+		ArtifactRefID: ref.ID, Scopes: []string{store.ArtifactRefV2ScopeSummary},
+	}); !errors.Is(err, store.ErrArtifactRefV2ScopeDenied) {
+		t.Fatalf("summary read unexpectedly bypassed its scope: %v", err)
+	}
+	read, err := service.ReadArtifactRefV2(actor, ArtifactRefReadInput{
+		ArtifactRefID: ref.ID, Scopes: []string{store.ArtifactRefV2ScopeContent},
+	})
+	if err != nil || string(read.Content) != string(content) {
+		t.Fatalf("authorized content read=%q err=%v", read.Content, err)
+	}
+}
+
 func TestArtifactV2RejectsTraversalAndSymlinkEscape(t *testing.T) {
 	service, persistence, group := newFabricTestService(t)
 	root := t.TempDir()

@@ -217,8 +217,18 @@ func (s *Store) CreateSharedTask(task SharedTask) (*SharedTask, error) {
 }
 
 func acquireSharedTaskWrite(tx *sql.Tx) error {
-	_, err := tx.Exec(`UPDATE shared_task_v2_guard SET touched_at=? WHERE id=1`, now())
-	return err
+	updated, err := tx.Exec(`UPDATE shared_task_v2_guard SET touched_at=? WHERE id=1`, now())
+	if err != nil {
+		return err
+	}
+	count, err := updated.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrSharedTaskConflict
+	}
+	return nil
 }
 
 func sharedTaskEvent(tx *sql.Tx, task *SharedTask, kind, actor string, data any) error {

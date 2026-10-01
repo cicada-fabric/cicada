@@ -70,6 +70,9 @@ func TestMachineRelayReconnectClaimsDurableOfflineMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Direct-call test contexts pin the same Hub ID as the installed Node. The
+	// Fabric-only Handler intentionally omits the Client/Control key endpoint.
+	t.Setenv("CICADA_HUB_ID", hubID)
 	deviceID := "synthetic-reconnect-owner-device"
 	grant, err := ownerKey.SignOwnerDeviceGrant(owner.ID, deviceID, ownerDevice.Public(), hubID,
 		e2ee.OwnerDevicePurposeControl, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))

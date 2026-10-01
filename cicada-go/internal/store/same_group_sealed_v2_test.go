@@ -289,6 +289,7 @@ func TestSameGroupSealedV1ClaimAndAskReplyRecheckExactAttempt(t *testing.T) {
 		f.targetNode.nodeCredential, messageID, claims[0].AttemptID)
 	if err != nil || authorization.EndpointID != f.target.id ||
 		authorization.NativeSessionID != "native_"+f.target.id ||
+		authorization.ParentRequestID != "" ||
 		authorization.Sender.NativeSessionID != "" ||
 		authorization.Receiver.NativeSessionID != "native_"+f.target.id {
 		t.Fatalf("exact receiver pre-injection authorization failed or leaked a remote session: authorization=%#v err=%v", authorization, err)
@@ -356,6 +357,7 @@ func TestSameGroupSealedV1ClaimAndAskReplyRecheckExactAttempt(t *testing.T) {
 		f.sourceNode.nodeCredential, replyID, sourceClaims[0].AttemptID)
 	if err != nil || sourceAuthorization.EndpointID != f.source.id ||
 		sourceAuthorization.NativeSessionID != "native_"+f.source.id ||
+		sourceAuthorization.ParentRequestID != "" ||
 		sourceAuthorization.Sender.NativeSessionID != "" {
 		t.Fatalf("reverse pre-injection authorization failed: authorization=%#v err=%v", sourceAuthorization, err)
 	}
@@ -453,7 +455,7 @@ func TestSameGroupSealedV1StaleBindingCancelsAskAndReleasesQuota(t *testing.T) {
 			t.Fatal(err)
 		}
 		pending, err := relayPendingAskCountTx(tx,
-			RelayAdmissionScopeReceiver, "", "", f.target.id,
+			RelayAdmissionScopeReceiver, "", "", "", f.target.id,
 			time.Now().UTC().Format(time.RFC3339Nano))
 		_ = tx.Rollback()
 		if err != nil || pending != 0 {

@@ -19,27 +19,27 @@ func (h *Handler) nodeDeviceCode(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusServiceUnavailable, errors.New("Node binding is unavailable"))
 		return
 	}
-	var input struct {
-		NodeID           string `json:"node_id"`
-		NodeName         string `json:"node_name"`
-		CredentialDigest string `json:"credential_digest"`
-	}
-	if err := decodeStrictClientJSON(request.Body, 4096, &input); err != nil {
+	var input nodeControlPairingInput
+	if err := decodeStrictClientJSON(request.Body, 96*1024, &input); err != nil {
 		writeError(response, http.StatusBadRequest, errors.New("invalid Node device code request"))
 		return
 	}
-	code, err := h.control.StartNodeDeviceBinding(input.NodeID, input.NodeName, input.CredentialDigest)
+	challenge, err := h.control.StartNodeControlDeviceBinding(input.controlInput())
 	if err != nil {
 		if errors.Is(err, store.ErrNodeDeviceBindingRateLimited) {
 			writeError(response, http.StatusTooManyRequests, errors.New("Node device code request rate limited"))
 			return
 		}
-		if errors.Is(err, store.ErrNodeDeviceBindingConflict) {
-			writeError(response, http.StatusConflict, errors.New("Node binding request already pending or active"))
+		if errors.Is(err, store.ErrNodeControlPairingConflict) {
+			writeError(response, http.StatusConflict, errors.New("Node-Control pairing request already pending"))
 			return
 		}
-		writeError(response, http.StatusBadRequest, errors.New("Node binding request rejected"))
+		if errors.Is(err, store.ErrNodeControlMigrationBlocked) {
+			writeError(response, http.StatusUpgradeRequired, errors.New("MIGRATION_BLOCKED: use Owner-approved Node-Control key upgrade"))
+			return
+		}
+		writeError(response, http.StatusBadRequest, errors.New("Node-Control device-code request rejected"))
 		return
 	}
-	writeJSON(response, http.StatusCreated, code)
+	writeJSON(response, http.StatusCreated, challenge)
 }

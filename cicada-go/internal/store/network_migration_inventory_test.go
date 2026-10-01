@@ -48,15 +48,60 @@ func networkV34AddedTables() map[string]struct{} {
 
 func networkMigrationAddedObjectsAfterVersion(version int) map[string]struct{} {
 	added := make(map[string]struct{})
+	earlier := networkMigrationObjectsThroughVersion(version)
 	for _, migration := range v2Migrations {
-		if migration.Version <= version {
+		for _, object := range migration.Objects {
+			if migration.Version > version {
+				added[object] = struct{}{}
+			}
+		}
+	}
+	// Migration Objects also names tables/indexes that an additive migration
+	// modifies in place. Such an object belongs to the older schema boundary
+	// and must remain in preservation snapshots and synthetic downgrade inputs.
+	for object := range earlier {
+		delete(added, object)
+	}
+	return added
+}
+
+func networkMigrationObjectsThroughVersion(version int) map[string]struct{} {
+	objects := make(map[string]struct{})
+	for _, migration := range v2Migrations {
+		if migration.Version > version {
 			continue
 		}
 		for _, object := range migration.Objects {
-			added[object] = struct{}{}
+			objects[object] = struct{}{}
 		}
 	}
-	return added
+	// v26 created these indexes as part of its initializer, but that historical
+	// migration's ledger Object list only recorded the table. Preserve them in
+	// synthetic pre-v51 schemas: v51 rebuilds the table and lists the indexes,
+	// which would otherwise make this downgrade fixture drop v26-owned state.
+	if version >= 26 {
+		objects["external_thread_invites_v2_digest_idx"] = struct{}{}
+		objects["external_thread_invites_v2_link_idx"] = struct{}{}
+	}
+	return objects
+}
+
+func dropSyntheticMigrationObject(t *testing.T, db *sql.DB, name string) {
+	t.Helper()
+	var kind string
+	err := db.QueryRow(`SELECT type FROM sqlite_master WHERE name=? AND type IN ('table','index','trigger')`, name).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("inspect synthetic migration object %s: %v", name, err)
+	}
+	if kind != "table" && kind != "index" && kind != "trigger" {
+		t.Fatalf("unsupported synthetic migration object %s type %q", name, kind)
+	}
+	if _, err := db.Exec(`DROP ` + strings.ToUpper(kind) + ` IF EXISTS ` + networkV34QuoteIdentifier(name)); err != nil {
+		t.Fatalf("remove synthetic migration object %s: %v", name, err)
+	}
 }
 
 var networkV36Triggers = []string{
@@ -93,6 +138,7 @@ func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion in
 			}
 		}
 	}
+	preservedObjects := networkMigrationObjectsThroughVersion(targetVersion)
 	for migrationIndex := len(v2Migrations) - 1; migrationIndex >= 0; migrationIndex-- {
 		migration := v2Migrations[migrationIndex]
 		if migration.Version <= targetVersion {
@@ -100,9 +146,10 @@ func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion in
 		}
 		for objectIndex := len(migration.Objects) - 1; objectIndex >= 0; objectIndex-- {
 			object := migration.Objects[objectIndex]
-			if _, err := db.Exec(`DROP TABLE IF EXISTS ` + networkV34QuoteIdentifier(object)); err != nil {
-				t.Fatalf("remove synthetic migration object %s: %v", object, err)
+			if _, older := preservedObjects[object]; older {
+				continue
 			}
+			dropSyntheticMigrationObject(t, db, object)
 		}
 	}
 	if targetVersion < 35 {

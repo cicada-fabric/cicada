@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -509,6 +510,59 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 			}
 			continue
 		}
+		if entry.Harness != "codex" {
+			if err := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, *claim, *entry,
+				"exact native-session wake is not available for harness "+entry.Harness); err != nil {
+				return err
+			}
+			continue
+		}
+		var scope *nodeinbox.NativeContextScopeInput
+		scopeDecision := &nodeinbox.NativeContextScopeDecision{Accepted: true,
+			NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
+		if _, managed := machineHubFrom(ctx); managed {
+			authorization, authErr := fetchMachineRelayNativeWakeAuthorization(ctx, base, machineID, *claim, *entry)
+			if authErr != nil {
+				if definitiveMachineWakeAuthorizationFailure(authErr) {
+					if rejectErr := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, *claim, *entry,
+						"current native wake authorization is unavailable"); rejectErr != nil {
+						return rejectErr
+					}
+				} else {
+					if abandonErr := inbox.AbandonClaim(ctx, claim.AttemptID); abandonErr != nil {
+						return fmt.Errorf("defer relay delivery %s while native wake authority is unavailable: %w", claim.MessageID, abandonErr)
+					}
+					return nil
+				}
+				continue
+			}
+			scopeInput, scopeErr := machineNativeContextScopeFromMetadata(ctx, authorization.Harness,
+				authorization.NativeSessionID, authorization.EndpointID, authorization.BindingID,
+				authorization.BindingEpoch, authorization.NativeContextScope)
+			if scopeErr != nil {
+				if rejectErr := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, *claim, *entry,
+					"current native context scope does not match the pinned Hub"); rejectErr != nil {
+					return rejectErr
+				}
+				continue
+			}
+			scopeDecision, scopeErr = checkMachineNativeContext(ctx, scopeInput)
+			if scopeErr != nil {
+				if definitiveMachineNativeContextFailure(scopeErr) {
+					if rejectErr := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, *claim, *entry,
+						"current native context scope was not accepted"); rejectErr != nil {
+						return rejectErr
+					}
+				} else {
+					if abandonErr := inbox.AbandonClaim(ctx, claim.AttemptID); abandonErr != nil {
+						return fmt.Errorf("defer relay delivery %s while native context history is unavailable: %w", claim.MessageID, abandonErr)
+					}
+					return nil
+				}
+				continue
+			}
+			scope = &scopeInput
+		}
 		if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
 			if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
 				if !entry.UncertainSent {
@@ -525,20 +579,23 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 			}
 			return fmt.Errorf("begin injection for %s: %w", claim.MessageID, err)
 		}
-		if entry.Harness != "codex" {
-			if err := failMachineRelayDelivery(ctx, base, machineID, inbox, journal, *claim, *entry,
-				"exact native-session wake is not available for harness "+entry.Harness); err != nil {
-				return err
-			}
-			continue
-		}
 		operation, err := machineRelayNativeOperation(ctx, *claim, *entry)
 		if err != nil {
 			return err
 		}
-		if err := executeMachineNativeCodex(ctx, claim.SessionID, machineRelayPrompt(*entry, claim.Payload), operation); err != nil {
+		prompt := machineRelayPrompt(*entry, claim.Payload)
+		if scopeDecision.SharedMemoryRisk {
+			prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native Codex Thread is known to have been used in more than one Cicada Group or Network scope. Treat earlier content as potentially visible and do not assume Cicada can erase or isolate Runtime history.\n" + prompt
+		}
+		var queueErr error
+		if scope != nil {
+			queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, *scope)
+		} else {
+			queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation)
+		}
+		if queueErr != nil {
 			var uncertain *nativeInjectionUncertainError
-			if errors.As(err, &uncertain) {
+			if errors.As(queueErr, &uncertain) {
 				receipt := machineRelayReceipt(*claim, nodeinbox.INJECTION_UNCERTAIN)
 				receipt.Error = "native queue process started but injection could not be confirmed"
 				if _, recordErr := inbox.Acknowledge(ctx, receipt); recordErr != nil {
@@ -549,7 +606,7 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 				}
 				continue
 			}
-			if failErr := failMachineRelayDelivery(ctx, base, machineID, inbox, journal, *claim, *entry, err.Error()); failErr != nil {
+			if failErr := failMachineRelayDelivery(ctx, base, machineID, inbox, journal, *claim, *entry, queueErr.Error()); failErr != nil {
 				return failErr
 			}
 			continue
@@ -558,6 +615,31 @@ func drainMachineRelayInbox(ctx context.Context, base, machineID, stateDir strin
 			return err
 		}
 	}
+}
+
+func fetchMachineRelayNativeWakeAuthorization(ctx context.Context, base, machineID string,
+	claim nodeinbox.Claim, entry machineRelayJournalEntry) (*store.RelayNativeWakeAuthorization, error) {
+	// The inbox Claim carries its local consumer-attempt ID. The Hub guard is
+	// keyed by the remote relay attempt saved in the durable journal.
+	if strings.TrimSpace(entry.AttemptID) == "" {
+		return nil, errors.New("relay journal has no remote attempt ID for native wake authorization")
+	}
+	var authorization store.RelayNativeWakeAuthorization
+	endpoint := strings.TrimRight(base, "/") + "/v2/relay/nodes/" + url.PathEscape(machineID) +
+		"/deliveries/" + url.PathEscape(claim.MessageID) + "/authorization?attempt_id=" +
+		url.QueryEscape(entry.AttemptID)
+	if err := machineAPIJSON(ctx, endpoint, http.MethodGet, nil, &authorization); err != nil {
+		return nil, err
+	}
+	if authorization.NodeID != machineID || authorization.MessageID != claim.MessageID ||
+		authorization.AttemptID != entry.AttemptID || authorization.Digest != claim.Digest ||
+		authorization.EndpointID != entry.EndpointID || authorization.BindingID != entry.BindingID ||
+		authorization.BindingEpoch != entry.BindingEpoch || authorization.NativeSessionID != claim.SessionID ||
+		authorization.Harness != entry.Harness || authorization.GroupID != entry.GroupID ||
+		authorization.PrincipalID == "" || authorization.LeaseOwner == "" {
+		return nil, errors.New("current native wake authorization does not match the exact Node inbox attempt")
+	}
+	return &authorization, nil
 }
 
 func machineRelayReceipt(claim nodeinbox.Claim, state nodeinbox.State) nodeinbox.Receipt {
@@ -654,6 +736,41 @@ func failMachineRelayDelivery(ctx context.Context, base, machineID string, inbox
 	return journal.remove(entry.MessageID)
 }
 
+func rejectMachineRelayClaimBeforeInjection(ctx context.Context, base, machineID string,
+	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim,
+	entry machineRelayJournalEntry, reason string) error {
+	if err := inbox.RejectBeforeInjection(ctx, claim, reason); err != nil {
+		return fmt.Errorf("record pre-injection relay rejection for %s: %w", claim.MessageID, err)
+	}
+	if entry.FailedSent {
+		return journal.remove(claim.MessageID)
+	}
+	if err := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, "FAILED", reason); err != nil {
+		return fmt.Errorf("report pre-injection relay rejection for %s: %w", claim.MessageID, err)
+	}
+	return journal.remove(claim.MessageID)
+}
+
+func definitiveMachineWakeAuthorizationFailure(err error) bool {
+	var apiErr *machineAPIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
+		http.StatusConflict, http.StatusGone:
+		return true
+	default:
+		return false
+	}
+}
+
+func definitiveMachineNativeContextFailure(err error) bool {
+	return errors.Is(err, nodeinbox.ErrNativeContextScopeInvalid) ||
+		errors.Is(err, nodeinbox.ErrNativeContextScopeConflict) ||
+		errors.Is(err, nodeinbox.ErrNativeContextHistoryAtLimit)
+}
+
 func reportMachineRelayReceiptReliably(ctx context.Context, base, machineID string, entry machineRelayJournalEntry, layer, reason string) error {
 	endpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/receipts"
 	if entry.AuthorizationKind == "network-direct" {
@@ -693,9 +810,13 @@ func (e *nativeInjectionUncertainError) Error() string {
 }
 func (e *nativeInjectionUncertainError) Unwrap() error { return e.cause }
 
-func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt string, operation nodelock.NativeOperation) error {
+func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt string,
+	operation nodelock.NativeOperation, scopes ...nodeinbox.NativeContextScopeInput) error {
 	if strings.TrimSpace(nativeSessionID) == "" || prompt == "" {
 		return errors.New("v2 relay delivery is missing its native session or body")
+	}
+	if len(scopes) > 1 {
+		return errors.New("native queue received ambiguous scope evidence")
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
@@ -717,6 +838,18 @@ func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt s
 	}
 	if state == nodelock.NativeQueueAccepted {
 		return nil
+	}
+	if len(scopes) == 1 {
+		if scopes[0].NativeSessionID != nativeSessionID || scopes[0].HubID != hub.HubID ||
+			scopes[0].EndpointID != operation.EndpointID || scopes[0].BindingID != operation.BindingID ||
+			scopes[0].BindingEpoch != operation.BindingEpoch {
+			return errors.New("native scope differs from the exact queue operation binding")
+		}
+		if _, err := checkMachineNativeContext(ctx, scopes[0]); err != nil {
+			return fmt.Errorf("check current native scope before queue injection: %w", err)
+		}
+	} else if _, managed := machineHubFrom(ctx); managed && hub.RequireNativeContext {
+		return errors.New("managed native queue has no current trusted context-scope evidence")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

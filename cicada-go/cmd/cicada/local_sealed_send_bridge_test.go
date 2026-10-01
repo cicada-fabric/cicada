@@ -394,6 +394,10 @@ func localSealedSendTestBundle(t *testing.T, sourceIdentity *e2ee.Identity) (nod
 	}
 	return nodekeys.PeerKeyAuthorizationBundle{
 		Manifest: manifest, LinkState: "PROPOSED",
+		SourceContextScope: nodekeys.PeerNativeContextScope{HubID: contract.TransportHubID,
+			GroupID: contract.SourceGroupID, GroupContextPolicy: "group_scoped"},
+		TargetContextScope: nodekeys.PeerNativeContextScope{HubID: contract.TransportHubID,
+			GroupID: contract.TargetGroupID, GroupContextPolicy: "group_scoped"},
 		SourceGrant: nodekeys.PeerOwnerKeyGrantEvidence{Side: string(e2ee.OwnerLinkGrantSideSource),
 			OwnerID: "owner-source", OwnerKeyID: sourceOwnerKey.Public().ID,
 			OwnerPublicIdentity: sourceOwnerKey.Public(), OwnerKeyState: "ACTIVE", OwnerKeyVersion: 1,

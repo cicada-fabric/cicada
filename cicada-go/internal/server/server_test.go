@@ -45,8 +45,12 @@ func TestSignedConnectorWebhookIsDurable(t *testing.T) {
 	list := httptest.NewRequest(http.MethodGet, "/v1/connectors/events?connector=mail", nil)
 	listResponse := httptest.NewRecorder()
 	NewHandler(controlPlane).ServeHTTP(listResponse, list)
-	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "mail-1") {
-		t.Fatalf("webhook event missing from list: status=%d body=%s", listResponse.Code, listResponse.Body.String())
+	if listResponse.Code != http.StatusServiceUnavailable || strings.Contains(listResponse.Body.String(), "mail-1") {
+		t.Fatalf("anonymous Manager event list was not closed after signed ingress: status=%d body=%s", listResponse.Code, listResponse.Body.String())
+	}
+	events, err := controlPlane.ExternalEvents("mail")
+	if err != nil || len(events) != 1 || events[0].ExternalID != "mail-1" {
+		t.Fatalf("signed provider event was not durably ingested: events=%#v err=%v", events, err)
 	}
 }
 
@@ -133,13 +137,14 @@ func TestWorkerRawLogEndpointIsBoundedAndAuthenticated(t *testing.T) {
 
 func TestSignedContactAnnouncementEndpoint(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-contact-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer controlPlane.Shutdown(context.Background())
 	request := httptest.NewRequest(http.MethodPost, "/v1/identity/announcement", strings.NewReader(`{"label":"Alice"}`))
 	request.Header.Set("content-type", "application/json")
+	request.Header.Set("Authorization", "Bearer synthetic-contact-manager-token")
 	response := httptest.NewRecorder()
 	NewHandler(controlPlane).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
@@ -152,7 +157,7 @@ func TestSignedContactAnnouncementEndpoint(t *testing.T) {
 
 func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-permission-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +165,7 @@ func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 	handler := NewHandler(controlPlane)
 	create := httptest.NewRequest(http.MethodPost, "/v1/permissions", strings.NewReader(`{"subject_type":"contact","subject_id":"contact_bob","action":"peer.message","effect":"deny"}`))
 	create.Header.Set("content-type", "application/json")
+	create.Header.Set("Authorization", "Bearer synthetic-permission-manager-token")
 	createdResponse := httptest.NewRecorder()
 	handler.ServeHTTP(createdResponse, create)
 	if createdResponse.Code != http.StatusOK {
@@ -172,12 +178,14 @@ func TestPermissionAPIIsDurableAndDeletable(t *testing.T) {
 		t.Fatalf("invalid permission response: %s err=%v", createdResponse.Body.String(), err)
 	}
 	list := httptest.NewRequest(http.MethodGet, "/v1/permissions?subject_type=contact&subject_id=contact_bob", nil)
+	list.Header.Set("Authorization", "Bearer synthetic-permission-manager-token")
 	listResponse := httptest.NewRecorder()
 	handler.ServeHTTP(listResponse, list)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), permission.ID) {
 		t.Fatalf("permission list missing created rule: status=%d body=%s", listResponse.Code, listResponse.Body.String())
 	}
 	remove := httptest.NewRequest(http.MethodDelete, "/v1/permissions/"+permission.ID, nil)
+	remove.Header.Set("Authorization", "Bearer synthetic-permission-manager-token")
 	removeResponse := httptest.NewRecorder()
 	handler.ServeHTTP(removeResponse, remove)
 	if removeResponse.Code != http.StatusNoContent {

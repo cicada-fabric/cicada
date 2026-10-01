@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
@@ -36,7 +35,7 @@ func (m *mcpServer) receiveMCPInbox(cursor string, limit int) (any, error) {
 		return nil, err
 	}
 	if !trusted.LocalPeerDeliveryPresent {
-		return m.api(http.MethodPost, "/v2/fabric/receive", fabric.ReceiveInput{Cursor: cursor, Limit: limit})
+		return nil, fabric.ErrPlaintextInboxReceiveRetired
 	}
 	if trusted.LocalPeerDelivery != "sealed_v1" {
 		return nil, errors.New("unsupported peer-delivery capability; no Hub inbox fallback")

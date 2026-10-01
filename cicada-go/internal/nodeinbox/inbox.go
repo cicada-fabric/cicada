@@ -355,6 +355,21 @@ CREATE TABLE IF NOT EXISTS node_inbox_attempts (
 );
 CREATE INDEX IF NOT EXISTS node_inbox_attempt_message_idx
   ON node_inbox_attempts(message_id, claimed_at);
+
+CREATE TABLE IF NOT EXISTS node_provider_admission_v1 (
+  execution_id TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('IN_PROGRESS','BACKOFF','COMPLETED','FAILED','INJECTION_UNCERTAIN','EXHAUSTED')),
+  attempts INTEGER NOT NULL CHECK(attempts>=0),
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  next_retry_at_ms INTEGER NOT NULL DEFAULT 0,
+  last_class TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(execution_id,provider_id)
+);
+CREATE INDEX IF NOT EXISTS node_provider_admission_retention_v1_idx
+  ON node_provider_admission_v1(updated_at_ms,state);
+
 `)
 	if err != nil {
 		return fmt.Errorf("initialize node inbox schema: %w", err)

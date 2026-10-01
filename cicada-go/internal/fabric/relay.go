@@ -154,6 +154,22 @@ func validateExpiry(raw string, current time.Time) (string, error) {
 	return parsed.UTC().Format(time.RFC3339Nano), nil
 }
 
+func validateAskExpiry(raw string, current time.Time) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return current.Add(store.DefaultRelayAskLifetime).Format(time.RFC3339Nano), nil
+	}
+	canonical, err := validateExpiry(raw, current)
+	if err != nil {
+		return "", err
+	}
+	deadline, err := time.Parse(time.RFC3339Nano, canonical)
+	if err != nil || deadline.After(current.Add(store.MaxRelayAskLifetime)) {
+		return "", errors.New("Ask expiry must be within the next 24 hours")
+	}
+	return canonical, nil
+}
+
 func (s *Service) Send(actor Actor, input SendInput) (*store.RelayMessageRecord, error) {
 	if err := s.Authorize(actor, "message.send"); err != nil {
 		return nil, err
@@ -203,7 +219,7 @@ func (s *Service) Ask(actor Actor, input AskInput) (*RequestView, error) {
 	if err != nil {
 		return nil, err
 	}
-	expiresAt, err := validateExpiry(input.ExpiresAt, s.now())
+	expiresAt, err := validateAskExpiry(input.ExpiresAt, s.now())
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +236,8 @@ func (s *Service) Ask(actor Actor, input AskInput) (*RequestView, error) {
 		SenderBindingEpoch: actor.BindingEpoch, ReceiverEndpointID: target.EndpointID,
 		ReceiverPrincipalID: target.PrincipalID, ReceiverGroupID: target.GroupID,
 		ReceiverBindingID: target.BindingID, ReceiverBindingEpoch: target.BindingEpoch,
-		IdempotencyKey: strings.TrimSpace(input.IdempotencyKey), ExpiresAt: expiresAt,
+		ParentRequestID: input.ParentRequestID,
+		IdempotencyKey:  strings.TrimSpace(input.IdempotencyKey), ExpiresAt: expiresAt,
 		AuthorizationRef: actor.MembershipID, Body: body, Metadata: input.Metadata,
 	})
 	if err != nil {
@@ -475,6 +492,8 @@ func requestView(request *store.FabricRequest) *RequestView {
 
 func mapRelayError(err error) error {
 	switch {
+	case errors.Is(err, store.ErrRelayCausalBudget):
+		return fmt.Errorf("%w: %v", ErrConflict, err)
 	case errors.Is(err, store.ErrRelayResourceExhausted):
 		return err
 	case errors.Is(err, store.ErrRelayIdempotencyConflict), errors.Is(err, store.ErrRelayMessageConflict):
@@ -483,6 +502,10 @@ func mapRelayError(err error) error {
 		return fmt.Errorf("%w: %v", ErrStaleBinding, err)
 	case errors.Is(err, store.ErrRelayRequestTerminal):
 		return fmt.Errorf("%w: %v", ErrRequestTerminal, err)
+	case errors.Is(err, store.ErrRelayCausalParentInvalid):
+		return ErrPermissionDenied
+	case errors.Is(err, store.ErrRelayCausalCycle):
+		return fmt.Errorf("%w: %v", ErrConflict, err)
 	case errors.Is(err, store.ErrRelayPlaintextSealedPeer):
 		return fmt.Errorf("%w: %v", ErrPermissionDenied, err)
 	case errors.Is(err, store.ErrNetworkPermission):

@@ -601,6 +601,9 @@ func (s *Store) UpsertGroup(group Group) (*Group, error) {
 	if group.Name == "" {
 		return nil, errors.New("group name is required")
 	}
+	if !validGroupContextPolicy(group.ContextPolicy) {
+		return nil, ErrNetworkConflict
+	}
 	if group.State == "" {
 		group.State = GroupStateActive
 	}
@@ -619,12 +622,18 @@ func (s *Store) UpsertGroup(group Group) (*Group, error) {
 			return nil, ErrNetworkNotFound
 		}
 	}
-	var existingNetwork string
-	if err := s.db.QueryRow(`SELECT network_id FROM groups WHERE id=?`, group.ID).Scan(&existingNetwork); err == nil {
+	var existingNetwork, existingContextPolicy string
+	if err := s.db.QueryRow(`SELECT network_id,context_policy FROM groups WHERE id=?`, group.ID).
+		Scan(&existingNetwork, &existingContextPolicy); err == nil {
 		if group.NetworkID == "" {
 			group.NetworkID = existingNetwork
 		}
 		if existingNetwork != group.NetworkID {
+			return nil, ErrNetworkConflict
+		}
+		if group.ContextPolicy == "" {
+			group.ContextPolicy = existingContextPolicy
+		} else if group.ContextPolicy != existingContextPolicy {
 			return nil, ErrNetworkConflict
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {

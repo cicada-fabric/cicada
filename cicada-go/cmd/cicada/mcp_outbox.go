@@ -42,19 +42,27 @@ var (
 // The idempotency key is stored in its own column so it cannot accidentally
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
-	ApprovalID   string `json:"approval_id,omitempty"`
-	NetworkID    string `json:"network_id,omitempty"`
-	Target       string `json:"target,omitempty"`
-	LinkID       string `json:"link_id,omitempty"`
-	DataScope    string `json:"data_scope,omitempty"`
-	Body         string `json:"body,omitempty"`
-	Question     string `json:"question,omitempty"`
-	RequestID    string `json:"request_id,omitempty"`
-	ExpiresAt    string `json:"expires_at,omitempty"`
-	TopicID      string `json:"topic_id,omitempty"`
-	CorrectsID   string `json:"corrects_id,omitempty"`
-	TopicVersion int64  `json:"expected_topic_version,omitempty"`
-	SpaceStatus  string `json:"space_status,omitempty"`
+	ApprovalID               string `json:"approval_id,omitempty"`
+	NetworkID                string `json:"network_id,omitempty"`
+	TaskID                   string `json:"task_id,omitempty"`
+	SnapshotDigest           string `json:"snapshot_digest,omitempty"`
+	Targets                  string `json:"targets,omitempty"`
+	OwnerEpoch               int64  `json:"owner_epoch,omitempty"`
+	ExpectedRevision         int64  `json:"expected_revision,omitempty"`
+	Target                   string `json:"target,omitempty"`
+	RequestedTarget          string `json:"requested_target,omitempty"`
+	LinkID                   string `json:"link_id,omitempty"`
+	DataScope                string `json:"data_scope,omitempty"`
+	Body                     string `json:"body,omitempty"`
+	Question                 string `json:"question,omitempty"`
+	RequestID                string `json:"request_id,omitempty"`
+	ParentRequestID          string `json:"parent_request_id,omitempty"`
+	ExpiresAt                string `json:"expires_at,omitempty"`
+	TopicID                  string `json:"topic_id,omitempty"`
+	CorrectsID               string `json:"corrects_id,omitempty"`
+	TopicVersion             int64  `json:"expected_topic_version,omitempty"`
+	SpaceStatus              string `json:"space_status,omitempty"`
+	RequiredArtifactRefsJSON string `json:"required_artifact_refs_json,omitempty"`
 }
 
 type mcpOutboxScope struct {
@@ -483,6 +491,43 @@ FROM mcp_outbox_operations WHERE operation_id = ?`, operationID), &op)
 	return op, nil
 }
 
+// findByIdempotencyKey recovers an existing user-level operation before a
+// composite tool performs fresh reads that could change after an uncertain
+// response. The caller still compares the saved immutable intent and scope.
+func (s *mcpOutboxStore) findByIdempotencyKey(scope mcpOutboxScope, requestedKey string) (*mcpOutboxOperation, error) {
+	key, err := normalizeMCPOutboxKey(requestedKey)
+	if err != nil {
+		return nil, err
+	}
+	if key == "" {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	db, err := s.withDBLocked()
+	if err != nil {
+		return nil, err
+	}
+	var op mcpOutboxOperation
+	err = scanMCPOutboxOperation(db.QueryRow(`
+SELECT operation_id, kind, status, api_origin, scope, harness, native_session_id,
+       node_id, workspace, endpoint_id, group_id, network_id, idempotency_key, input_json,
+       input_digest, attempt_count, last_error, result_json, created_at, updated_at
+FROM mcp_outbox_operations WHERE api_origin=? AND native_session_id=? AND endpoint_id=?
+  AND group_id=? AND network_id=? AND idempotency_key=?`, scope.APIOrigin,
+		scope.NativeSessionID, scope.EndpointID, scope.GroupID, scope.NetworkID, key), &op)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: find operation by idempotency key: %v", errMCPOutboxPersistence, err)
+	}
+	if !mcpOutboxScopeMatches(op, scope) {
+		return nil, errMCPOutboxContext
+	}
+	return &op, nil
+}
+
 func mcpOutboxScopeMatches(op mcpOutboxOperation, scope mcpOutboxScope) bool {
 	return op.APIOrigin == scope.APIOrigin && op.Scope == scope.Scope &&
 		op.Harness == scope.Harness && op.NativeSessionID == scope.NativeSessionID &&
@@ -646,6 +691,43 @@ func (m *mcpServer) submitMCPOutbox(kind string, input mcpOutboxInput, key strin
 	return m.dispatchMCPOutbox(store, scope, op)
 }
 
+func (m *mcpServer) recoverReferencedMCPOutbox(kind, key, requestedBody string, rawRefs any) (any, bool, error) {
+	requested, err := parseGroupSpaceReferenceRequest(rawRefs)
+	if err != nil || len(requested) == 0 || strings.TrimSpace(key) == "" {
+		return nil, false, err
+	}
+	scope, err := m.currentMCPOutboxScope()
+	if err != nil {
+		return nil, false, err
+	}
+	store, err := m.ensureMCPOutbox()
+	if err != nil {
+		return nil, false, err
+	}
+	prior, err := store.findByIdempotencyKey(scope, key)
+	if err != nil || prior == nil {
+		return nil, false, err
+	}
+	if prior.Kind != kind {
+		return nil, true, errMCPOutboxConflict
+	}
+	var saved mcpOutboxInput
+	if json.Unmarshal([]byte(prior.InputJSON), &saved) != nil {
+		return nil, true, errMCPOutboxConflict
+	}
+	savedBody := saved.Body
+	if kind == "ask" {
+		savedBody = saved.Question
+	}
+	if !groupSpaceMessageIntentMatches(savedBody, requestedBody, requested) {
+		return nil, true, errMCPOutboxConflict
+	}
+	// This mirrors submitMCPOutbox: an existing uncertain/pending operation is
+	// surfaced with its stable operation ID and retried only by the explicit
+	// recovery tool, never silently re-sealed from newly read coordinates.
+	return mcpOutboxPublicResult(*prior), true, nil
+}
+
 func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScope, op mcpOutboxOperation) (any, error) {
 	current, err := m.currentMCPOutboxScope()
 	if err != nil {
@@ -669,6 +751,13 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 	}
 	if op.Kind == "monitor_broadcast" {
 		return m.dispatchMonitorBroadcastMCPOutbox(store, scope, op)
+	}
+	if op.Kind == "sealed_task_handoff" {
+		return m.dispatchCrossNodeGroupMCPOutbox(store, scope, op, func() mcpOutboxInput {
+			var input mcpOutboxInput
+			_ = json.Unmarshal([]byte(op.InputJSON), &input)
+			return input
+		}())
 	}
 	if op.Kind == "send" || op.Kind == "ask" || op.Kind == "reply" {
 		var input mcpOutboxInput
@@ -765,6 +854,29 @@ func mcpOutboxPublicResult(op mcpOutboxOperation) map[string]any {
 	if op.Kind == "broadcast" || op.Kind == "monitor_broadcast" {
 		if broadcastID, err := mcpBroadcastID(op.OperationID); err == nil {
 			result["broadcast_id"] = broadcastID
+		}
+	}
+	if op.Kind == "network_task_offer" || op.Kind == "network_task_result" {
+		var input mcpOutboxInput
+		if json.Unmarshal([]byte(op.InputJSON), &input) == nil {
+			result["task_id"] = input.TaskID
+			result["network_id"] = input.NetworkID
+			if op.Kind == "network_task_offer" {
+				if input.Targets == "" {
+					result["recipient_count"] = 0
+				} else {
+					result["recipient_count"] = len(strings.Split(input.Targets, ","))
+				}
+			} else {
+				result["owner_epoch"] = input.OwnerEpoch
+			}
+		}
+	}
+	if op.Kind == "sealed_task_handoff" {
+		result["handoff_id"] = op.OperationID
+		var input mcpOutboxInput
+		if json.Unmarshal([]byte(op.InputJSON), &input) == nil && input.TaskID != "" {
+			result["task_id"] = input.TaskID
 		}
 	}
 	// A timeout can happen after Hub durable acceptance and before the MCP

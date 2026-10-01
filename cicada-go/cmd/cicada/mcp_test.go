@@ -38,8 +38,6 @@ func TestCicadaMCPAdvertisesExplicitFabricTools(t *testing.T) {
 		"cicada_task_claim":           false,
 		"cicada_task_submit":          false,
 		"cicada_task_accept":          false,
-		"cicada_task_handoff_propose": false,
-		"cicada_task_handoff_accept":  false,
 		"cicada_artifact_read":        false,
 	}
 	for _, tool := range cicadaMCPTools() {
@@ -51,6 +49,138 @@ func TestCicadaMCPAdvertisesExplicitFabricTools(t *testing.T) {
 	for name, found := range required {
 		if !found {
 			t.Fatalf("MCP tool %q is missing", name)
+		}
+	}
+}
+
+func TestGroupSpaceReferenceToolsAreExplicitAndClosed(t *testing.T) {
+	want := []string{"cicada_send", "cicada_ask", "cicada_reply", "cicada_broadcast",
+		"cicada_network_task_offer", "cicada_network_task_result", "cicada_network_broadcast"}
+	tools := make(map[string]map[string]any)
+	for _, raw := range cicadaMCPTools() {
+		if name, ok := raw["name"].(string); ok {
+			tools[name] = raw
+		}
+	}
+	for _, name := range want {
+		tool := tools[name]
+		if tool == nil {
+			t.Fatalf("reference-capable tool %s is not advertised", name)
+		}
+		schema, _ := tool["inputSchema"].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		if _, ok := properties["record_refs"]; !ok || schema["additionalProperties"] != false {
+			t.Fatalf("%s does not expose a closed record_refs schema", name)
+		}
+	}
+	validRefs := []any{map[string]any{"record_id": "journal_synthetic", "kind": "JOURNAL"}}
+	for _, name := range want {
+		args := map[string]any{"record_refs": validRefs}
+		if err := validateMCPArguments(name, args); err != nil {
+			t.Fatalf("%s rejected the declared record_refs property: %v", name, err)
+		}
+	}
+	for _, name := range []string{"cicada_network_task_offer", "cicada_network_task_result", "cicada_network_broadcast"} {
+		if err := validateMCPArguments(name, map[string]any{"record_refs": validRefs, "group_id": "forged"}); err == nil {
+			t.Fatalf("%s let record references smuggle a caller-selected Group", name)
+		}
+	}
+}
+
+func TestRetiredPeerTaskHandoffProposeIsNotAdvertisedAndNewSealedAcceptRoutes(t *testing.T) {
+	retired := []string{"cicada_task_handoff_propose"}
+	newAcceptAdvertised := false
+	for _, tool := range cicadaMCPTools() {
+		name, _ := tool["name"].(string)
+		if name == "cicada_task_handoff_accept" {
+			newAcceptAdvertised = true
+		}
+		for _, nameRetired := range retired {
+			if name == nameRetired {
+				t.Fatalf("retired peer plaintext Task handoff tool %q is still advertised", name)
+			}
+		}
+	}
+	if !newAcceptAdvertised {
+		t.Fatal("sealed Task handoff accept is not advertised")
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		if request.Method == http.MethodPost && request.URL.Path == "/v2/fabric/tasks/sealed-handoffs/handoff_synthetic_1234567890/accept" {
+			var input fabricpkg.SealedTaskHandoffAcceptInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode sealed Task handoff acceptance: %v", err)
+				http.Error(response, "bad input", http.StatusBadRequest)
+				return
+			}
+			if input.HandoffID != "handoff_synthetic_1234567890" || input.ExpectedVersion != 7 || input.LeaseSeconds != 3600 {
+				t.Errorf("sealed Task handoff accept input = %#v", input)
+			}
+			_ = json.NewEncoder(response).Encode(map[string]any{"accepted": true})
+			return
+		}
+		http.Error(response, "unexpected Task handoff request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	fixture := &mcpOutboxHTTPFixture{server: server, token: "session-token"}
+	serverMCP := mcpOutboxTestServer(t, fixture, filepath.Join(t.TempDir(), "mcp", "sessions.json"),
+		"thread-handoff-accept", "endpoint-a", "group-a")
+	for _, name := range retired {
+		if !isCicadaMCPTool(name) {
+			t.Fatalf("retired compatibility name %q is no longer recognized", name)
+		}
+		if _, err := serverMCP.callTool(name, map[string]any{"pending_work": "synthetic plaintext"}); !errors.Is(err, errPeerTaskHandoffRetired) {
+			t.Errorf("retired MCP call %q returned %v", name, err)
+		}
+	}
+	if _, err := serverMCP.callTool("cicada_task_handoff_accept", map[string]any{
+		"handoff_id": "handoff_synthetic_1234567890", "lease_seconds": 3600,
+	}); !errors.Is(err, errPeerTaskHandoffRetired) {
+		t.Fatalf("legacy Task handoff accept arguments returned %v, want explicit retirement", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("retired Task handoff calls issued %d HTTP requests", requests.Load())
+	}
+	if _, err := serverMCP.callTool("cicada_task_handoff_accept", map[string]any{
+		"handoff_id": "handoff_synthetic_1234567890", "expected_version": 7, "lease_seconds": 3601,
+	}); err == nil {
+		t.Fatal("sealed Task handoff lease above the Core maximum was accepted")
+	}
+	for _, invalid := range []map[string]any{
+		{"handoff_id": "handoff_synthetic_1234567890", "expected_version": float64(1.5)},
+		{"handoff_id": "handoff_synthetic_1234567890", "expected_version": 7, "lease_seconds": "3600"},
+		{"handoff_id": "handoff_synthetic_1234567890", "expected_version": 7, "lease_seconds": true},
+	} {
+		if _, err := serverMCP.callTool("cicada_task_handoff_accept", invalid); err == nil {
+			t.Errorf("non-integral or mistyped handoff integer was accepted: %#v", invalid)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("invalid handoff integer issued %d HTTP requests", requests.Load())
+	}
+	if _, err := serverMCP.callTool("cicada_task_handoff_accept", map[string]any{
+		"handoff_id": "handoff_synthetic_1234567890", "expected_version": 7, "lease_seconds": 3600,
+	}); err != nil {
+		t.Fatalf("sealed Task handoff accept was blocked before its handler: %v", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("sealed Task handoff accept issued %d requests, want 1", requests.Load())
+	}
+}
+
+func TestSealedTaskHandoffArtifactVersionUsesStrictInteger(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for name, value := range map[string]any{
+		"fraction": float64(1.5),
+		"overflow": uint64(^uint64(0)),
+		"string":   "1",
+	} {
+		_, _, err := parseTaskHandoffRefs([]any{map[string]any{
+			"artifact_ref_id": "artifact_synthetic_1234567890", "version": value, "digest": digest,
+		}})
+		if err == nil {
+			t.Errorf("Artifact reference version %s was accepted: %#v", name, value)
 		}
 	}
 }
@@ -111,7 +241,7 @@ func TestCicadaMCPToolsRequireExplicitJoin(t *testing.T) {
 		"cicada_representative_claim", "cicada_federate_request", "cicada_federation_accept",
 		"cicada_federation_result", "cicada_federation_accept_result", "cicada_federation_status",
 		"cicada_task_list", "cicada_task_claim", "cicada_task_submit", "cicada_task_accept",
-		"cicada_task_handoff_propose", "cicada_task_handoff_accept", "cicada_artifact_read",
+		"cicada_artifact_read",
 	} {
 		if _, err := mcp.callTool(name, map[string]any{}); err == nil || !strings.Contains(err.Error(), "cicada_join") {
 			t.Fatalf("tool %s did not require explicit join: %v", name, err)

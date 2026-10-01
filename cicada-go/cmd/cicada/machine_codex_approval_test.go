@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
 func fakeApprovalCodex(t *testing.T, root string) (string, string) {
@@ -57,6 +60,104 @@ done
 }
 
 func TestRemoteCodexApprovalReturnsToOriginalAppServerTurn(t *testing.T) {
+	var hubKey *e2ee.Identity
+	var binding nodewire.Binding
+	var mu sync.Mutex
+	var packets [][]byte
+	var createCount, polls int
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v2/node/control/rpc" ||
+			request.Header.Get("Authorization") != "CicadaNode synthetic-node-token" {
+			t.Errorf("Node-Control request did not use the pinned RPC route and Node credential: %s %s auth=%q",
+				request.Method, request.URL.Path, request.Header.Get("Authorization"))
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		packet, err := ioReadAllBounded(request)
+		if err != nil {
+			t.Errorf("read Node-Control request: %v", err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		opened, err := nodewire.OpenRequest(hubKey, binding.NodeKey, binding, packet)
+		if err != nil {
+			t.Errorf("open sealed Node-Control request: %v", err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		packets = append(packets, append([]byte(nil), packet...))
+		packetCount := len(packets)
+		mu.Unlock()
+		if opened.Route.Operation == "node.approvals.create" {
+			if packetCount == 1 {
+				response.WriteHeader(http.StatusServiceUnavailable) // Simulate a lost create response.
+				return
+			}
+			var input struct {
+				WorkerID  string         `json:"worker_id"`
+				Attempt   int            `json:"attempt"`
+				RequestID string         `json:"request_id"`
+				Method    string         `json:"method"`
+				Request   map[string]any `json:"request"`
+			}
+			if err := decodeMachineNodeControlJSON(opened.Plaintext, &input); err != nil || input.WorkerID != "worker-a" ||
+				input.Attempt != 3 || input.RequestID == "" || input.Method != "item/commandExecution/requestApproval" ||
+				input.Request["threadId"] != "native-thread-a" || input.Request["turnId"] != "native-turn-a" {
+				t.Errorf("invalid Node-Control approval submission: %#v err=%v", input, err)
+			}
+			mu.Lock()
+			createCount++
+			mu.Unlock()
+			result := map[string]any{"approval_id": "approval-a", "goal_id": "goal-a",
+				"worker_id": "worker-a", "attempt": 3, "status": "pending", "created": true}
+			sealed, err := nodewire.SealResponse(hubKey, binding.NodeKey, binding,
+				nodeControlTestResponseRoute(opened.Route), nodeControlTestEnvelope(t, opened.Route, true, result, ""))
+			if err != nil {
+				t.Errorf("seal approval create response: %v", err)
+				response.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write(sealed)
+			return
+		}
+		if opened.Route.Operation == "node.approvals.status" {
+			var input struct {
+				WorkerID   string `json:"worker_id"`
+				Attempt    int    `json:"attempt"`
+				ApprovalID string `json:"approval_id"`
+			}
+			if err := decodeMachineNodeControlJSON(opened.Plaintext, &input); err != nil ||
+				input.WorkerID != "worker-a" || input.Attempt != 3 || input.ApprovalID != "approval-a" {
+				t.Errorf("invalid Node-Control approval status request: %#v err=%v", input, err)
+			}
+			mu.Lock()
+			polls++
+			count := polls
+			mu.Unlock()
+			status, decision := "pending", ""
+			if count > 1 {
+				status, decision = "resolved", "accept"
+			}
+			result := map[string]any{"approval_id": "approval-a", "goal_id": "goal-a",
+				"worker_id": "worker-a", "attempt": 3, "status": status, "decision": decision}
+			sealed, err := nodewire.SealResponse(hubKey, binding.NodeKey, binding,
+				nodeControlTestResponseRoute(opened.Route), nodeControlTestEnvelope(t, opened.Route, true, result, ""))
+			if err != nil {
+				t.Errorf("seal approval status response: %v", err)
+				response.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write(sealed)
+			return
+		}
+		t.Errorf("unexpected sealed Node-Control operation: %s", opened.Route.Operation)
+		response.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+	_, ctx, hubKey, binding := newMachineNodeControlRecoveryFixture(t, server.URL)
 	root := t.TempDir()
 	bin, capture := fakeApprovalCodex(t, root)
 	t.Setenv("CICADA_CODEX_BIN", bin)
@@ -64,106 +165,131 @@ func TestRemoteCodexApprovalReturnsToOriginalAppServerTurn(t *testing.T) {
 	t.Setenv("CICADA_WORKSPACE_ROOT", root)
 	t.Setenv("CICADA_API_TOKEN", "should-never-reach-child")
 	t.Setenv("CICADA_NODE_TOKEN", "should-never-reach-child")
-	job := machineJob{GoalID: "goal-a", WorkerID: "worker-a", MachineID: "node-a",
+	job := machineJob{GoalID: "goal-a", WorkerID: "worker-a", MachineID: "node-recovery-test",
 		Harness: "codex", Workspace: filepath.Join(root, "goal-a"), Attempt: 3,
-		Prompt: "perform one approval-gated action"}
-	var mu sync.Mutex
-	var posts, polls int
-	var firstID string
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if got := request.Header.Get("Authorization"); got != "CicadaNode node-secret" {
-			t.Errorf("Node approval authorization=%q", got)
-		}
-		response.Header().Set("Content-Type", "application/json")
-		if request.Method == http.MethodPost && request.URL.Path == "/v2/relay/nodes/node-a/jobs/worker-a/approvals" {
-			var input struct {
-				Attempt   int            `json:"attempt"`
-				RequestID string         `json:"request_id"`
-				Method    string         `json:"method"`
-				Request   map[string]any `json:"request"`
-			}
-			if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.Attempt != 3 ||
-				input.RequestID == "" || input.Method != "item/commandExecution/requestApproval" ||
-				input.Request["threadId"] != "native-thread-a" || input.Request["turnId"] != "native-turn-a" {
-				t.Errorf("invalid Node approval submission: %#v err=%v", input, err)
-			}
-			mu.Lock()
-			posts++
-			if firstID == "" {
-				firstID = input.RequestID
-			} else if firstID != input.RequestID {
-				t.Errorf("retry changed Node approval request ID")
-			}
-			count := posts
-			mu.Unlock()
-			if count == 1 {
-				response.WriteHeader(http.StatusServiceUnavailable)
-				return
-			}
-			_, _ = response.Write([]byte(`{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":3,"status":"pending"}`))
-			return
-		}
-		if request.Method == http.MethodGet && request.URL.Path == "/v2/relay/nodes/node-a/jobs/worker-a/approvals/approval-a" {
-			if request.URL.Query().Get("attempt") != "3" || request.URL.Query().Get("wait_ms") != "20000" {
-				t.Errorf("approval poll query=%s", request.URL.RawQuery)
-			}
-			mu.Lock()
-			polls++
-			count := polls
-			mu.Unlock()
-			if count == 1 {
-				_, _ = response.Write([]byte(`{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":3,"status":"pending"}`))
-			} else {
-				_, _ = response.Write([]byte(`{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":3,"status":"resolved","decision":"accept"}`))
-			}
-			return
-		}
-		t.Errorf("unexpected Node approval route: %s %s", request.Method, request.URL.Path)
-		response.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		Prompt: "perform one approval-gated action", executionID: "execution-approval",
+		providerID: "codex", leaseID: "lease-approval"}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	result := executeMachineJobWithApproval(ctx, job, &machineApprovalBridge{
-		BaseURL: server.URL, NodeID: "node-a", NodeToken: "node-secret"})
-	if result.Status != "completed" || result.ThreadID != "native-thread-a" ||
-		result.Summary != "APPROVED_DONE" {
-		t.Fatalf("approval did not continue the same native turn: %#v", result)
+		BaseURL: server.URL, NodeID: "node-recovery-test", NodeToken: "synthetic-node-token"})
+	if result.Status != "completed" || result.ThreadID != "native-thread-a" || result.Summary != "APPROVED_DONE" {
+		t.Fatalf("Node-Control approval did not resume the original native turn: %#v", result)
 	}
 	mu.Lock()
-	if posts != 2 || polls != 2 || firstID == "" {
-		t.Errorf("approval retry/poll counts: posts=%d polls=%d request=%q", posts, polls, firstID)
+	if createCount != 1 || polls != 2 || len(packets) != 4 || !bytes.Equal(packets[0], packets[1]) {
+		t.Errorf("sealed approval retry/poll state: creates=%d polls=%d packets=%d exact_retry=%v",
+			createCount, polls, len(packets), len(packets) >= 2 && bytes.Equal(packets[0], packets[1]))
 	}
 	mu.Unlock()
 	data, err := os.ReadFile(capture)
 	if err != nil || !strings.Contains(string(data), `"id":77`) ||
 		!strings.Contains(string(data), `"decision":"accept"`) {
-		t.Fatalf("native app-server approval reply missing: %s err=%v", data, err)
+		t.Fatalf("native app-server approval reply was not delivered to its request: %s err=%v", data, err)
 	}
 }
 
 func TestRemoteCodexApprovalRejectsStaleHubAttempt(t *testing.T) {
+	var hubKey *e2ee.Identity
+	var binding nodewire.Binding
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v2/node/control/rpc" ||
+			request.Header.Get("Authorization") != "CicadaNode synthetic-node-token" {
+			t.Errorf("stale approval used the wrong Node-Control route/credential: %s %s auth=%q",
+				request.Method, request.URL.Path, request.Header.Get("Authorization"))
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		packet, err := ioReadAllBounded(request)
+		if err != nil {
+			t.Errorf("read sealed stale approval request: %v", err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		opened, err := nodewire.OpenRequest(hubKey, binding.NodeKey, binding, packet)
+		if err != nil || opened.Route.Operation != "node.approvals.create" {
+			t.Errorf("stale test did not receive the sealed approval create: route=%#v err=%v", opened.Route, err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			WorkerID  string         `json:"worker_id"`
+			Attempt   int            `json:"attempt"`
+			RequestID string         `json:"request_id"`
+			Method    string         `json:"method"`
+			Request   map[string]any `json:"request"`
+		}
+		if err := decodeMachineNodeControlJSON(opened.Plaintext, &input); err != nil ||
+			input.WorkerID != "worker-a" || input.Attempt != 3 || input.RequestID == "" ||
+			input.Method != "item/commandExecution/requestApproval" ||
+			input.Request["threadId"] != "native-thread-a" {
+			t.Errorf("stale test received a different Worker claim: %#v err=%v", input, err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusConflict)
+		_, _ = response.Write([]byte(`{"error":"stale Worker attempt"}`))
+	}))
+	defer server.Close()
+	_, ctx, hubKey, binding := newMachineNodeControlRecoveryFixture(t, server.URL)
 	root := t.TempDir()
 	bin, capture := fakeApprovalCodex(t, root)
 	t.Setenv("CICADA_CODEX_BIN", bin)
 	t.Setenv("CICADA_TEST_APPROVAL_CAPTURE", capture)
 	t.Setenv("CICADA_WORKSPACE_ROOT", root)
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.WriteHeader(http.StatusConflict)
-		_, _ = response.Write([]byte(`{"error":"stale Worker attempt"}`))
-	}))
-	defer server.Close()
-	job := machineJob{GoalID: "goal-a", WorkerID: "worker-a", MachineID: "node-a",
-		Harness: "codex", Workspace: filepath.Join(root, "goal-a"), Attempt: 3}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	job := machineJob{GoalID: "goal-a", WorkerID: "worker-a", MachineID: "node-recovery-test",
+		Harness: "codex", Workspace: filepath.Join(root, "goal-a"), ThreadID: "native-thread-a", Attempt: 3,
+		Prompt: "reject stale approval", executionID: "execution-stale-approval",
+		providerID: "codex", leaseID: "lease-stale-approval"}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	result := executeMachineJobWithApproval(ctx, job, &machineApprovalBridge{
-		BaseURL: server.URL, NodeID: "node-a", NodeToken: "node-secret"})
+		BaseURL: server.URL, NodeID: "node-recovery-test", NodeToken: "synthetic-node-token"})
 	if result.Status != "failed" || result.ThreadID != "native-thread-a" || result.Error == "" {
 		t.Fatalf("stale approval did not fail closed: %#v", result)
 	}
 	data, err := os.ReadFile(capture)
 	if err != nil || !strings.Contains(string(data), `"decision":"decline"`) {
 		t.Fatalf("Codex did not receive explicit decline on stale approval: %s err=%v", data, err)
+	}
+}
+
+func TestMachineApprovalStateDecodesNodeControlCreateAndStatusDTOs(t *testing.T) {
+	job := machineJob{GoalID: "goal-a", WorkerID: "worker-a", Attempt: 4}
+	cases := []struct {
+		name string
+		body string
+		want machineApprovalState
+	}{
+		{
+			name: "created response includes creation result",
+			body: `{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":4,"status":"pending","decision":"","created":true}`,
+			want: machineApprovalState{ApprovalID: "approval-a", GoalID: "goal-a", WorkerID: "worker-a",
+				Attempt: 4, Status: "pending", Created: true},
+		},
+		{
+			name: "status response omits creation result",
+			body: `{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":4,"status":"resolved","decision":"accept"}`,
+			want: machineApprovalState{ApprovalID: "approval-a", GoalID: "goal-a", WorkerID: "worker-a",
+				Attempt: 4, Status: "resolved", Decision: "accept"},
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var got machineApprovalState
+			if err := decodeMachineNodeControlJSON([]byte(test.body), &got); err != nil {
+				t.Fatalf("decode production Node-Control DTO: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("decoded DTO=%#v want=%#v", got, test.want)
+			}
+			if err := validateMachineApprovalState(got, job); err != nil {
+				t.Fatalf("validate production Node-Control DTO: %v", err)
+			}
+		})
+	}
+	var unknown machineApprovalState
+	if err := decodeMachineNodeControlJSON([]byte(`{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":4,"status":"pending","new_field":"unreviewed"}`), &unknown); err == nil {
+		t.Fatal("strict Node-Control approval decoder accepted an unknown field")
 	}
 }

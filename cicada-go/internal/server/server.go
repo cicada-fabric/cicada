@@ -51,11 +51,51 @@ func isArtifactV2Path(path string) bool {
 	return false
 }
 
+func isLegacyManagerPath(path, method string) bool {
+	if path == "/v2/fabric/join" || path == "/v2/management/endpoints" || strings.HasPrefix(path, "/v2/management/endpoints/") {
+		return true
+	}
+	if path != "/v1" && !strings.HasPrefix(path, "/v1/") {
+		return false
+	}
+	// These provider ingress routes authenticate each event with a configured
+	// connector signature. They do not expose the Manager's event queue or its
+	// triage and reply controls.
+	if method == http.MethodPost {
+		switch path {
+		case "/v1/connectors/events", "/v1/connectors/email", "/v1/connectors/calendar",
+			"/v1/connectors/documents", "/v1/connectors/x", "/v1/connectors/wechat",
+			"/v1/connectors/qq", "/v1/connectors/slack", "/v1/connectors/discord":
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")
 	if request.Method == http.MethodOptions {
 		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// Node management has its own Owner-approved application-key channel.
+	// These handlers perform Node credential/key checks themselves; they do
+	// not inherit the legacy Manager bearer or its plaintext API boundary.
+	switch request.URL.Path {
+	case "/v2/node/identity":
+		h.nodeControlIdentity(response, request)
+		return
+	case "/v2/node/control/rpc":
+		h.nodeControlRPC(response, request)
+		return
+	case "/v2/node/control/key-upgrade":
+		h.nodeControlKeyUpgrade(response, request)
+		return
+	}
+	if strings.HasPrefix(request.URL.Path, "/v2/node/device-code/") &&
+		strings.HasSuffix(request.URL.Path, "/status") {
+		h.nodeControlPairingStatus(response, request)
 		return
 	}
 	// Client enrollment and encrypted management traffic have their own trust
@@ -91,7 +131,7 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 			"catalog_sha256":                  clientcontract.CatalogSHA256(),
 			"status":                          status,
 			"planned_platform":                "android",
-			"legacy_management_api_available": h.control != nil,
+			"legacy_management_api_available": h.control != nil && h.apiToken != "",
 			"client_control_pq_e2ee":          clientReady,
 			"authenticated_client_session":    clientReady,
 			"status_snapshot":                 clientReady,
@@ -143,6 +183,15 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		request.URL.Path == "/v1/notifications/push/subscriptions" ||
 		strings.HasPrefix(request.URL.Path, "/v1/notifications/push/subscriptions/") {
 		writeError(response, http.StatusGone, errors.New("browser Push API is retired"))
+		return
+	}
+	// The legacy Manager API holds plaintext management state and has no
+	// caller identity of its own. If the operator has not configured its
+	// bearer, fail closed instead of making that surface anonymous. Client,
+	// Node, Fabric Session, and Artifact routes keep their own route and
+	// authentication checks below.
+	if h.apiToken == "" && isLegacyManagerPath(request.URL.Path, request.Method) {
+		writeError(response, http.StatusServiceUnavailable, errors.New("legacy management API is disabled because CICADA_API_TOKEN is not configured"))
 		return
 	}
 	if isPublicClientPath(request.URL.Path) {

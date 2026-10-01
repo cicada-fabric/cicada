@@ -17,7 +17,7 @@ import (
 
 func TestExternalEventTriageEndpoint(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), WebhookSecret: "secret"})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-triage-manager-token", WebhookSecret: "secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,6 +30,7 @@ func TestExternalEventTriageEndpoint(t *testing.T) {
 	receive.Header.Set("X-Cicada-Event-ID", "mail:triage-1")
 	receive.Header.Set("X-Cicada-Event-Type", "message.created")
 	receive.Header.Set("X-Cicada-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	receive.Header.Set("Authorization", "Bearer synthetic-triage-manager-token")
 	receiveResponse := httptest.NewRecorder()
 	handler := NewHandler(controlPlane)
 	handler.ServeHTTP(receiveResponse, receive)
@@ -44,6 +45,7 @@ func TestExternalEventTriageEndpoint(t *testing.T) {
 	}
 	triage := httptest.NewRequest(http.MethodPost, "/v1/connectors/events/"+received.ID+"/triage", strings.NewReader(`{"status":"action_required"}`))
 	triage.Header.Set("Content-Type", "application/json")
+	triage.Header.Set("Authorization", "Bearer synthetic-triage-manager-token")
 	triageResponse := httptest.NewRecorder()
 	handler.ServeHTTP(triageResponse, triage)
 	if triageResponse.Code != http.StatusOK || !strings.Contains(triageResponse.Body.String(), `"status":"action_required"`) {

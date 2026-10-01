@@ -51,6 +51,7 @@ type localSealedRPCRequest struct {
 	DataScope          string `json:"data_scope,omitempty"`
 	ExpiresAt          string `json:"expires_at,omitempty"`
 	RequestID          string `json:"request_id,omitempty"`
+	ParentRequestID    string `json:"parent_request_id,omitempty"`
 	Reason             string `json:"reason,omitempty"`
 	Body               string `json:"body,omitempty"`
 }
@@ -156,7 +157,7 @@ func validateLocalSealedRPCRequest(request localSealedRPCRequest, nodeID string)
 	}
 	for _, value := range []string{request.EndpointID, request.PrincipalID, request.OwnerID,
 		request.GroupID, request.BindingID, request.LinkID, request.OperationID,
-		request.IdempotencyKey, request.RequestID, request.DataScope} {
+		request.IdempotencyKey, request.RequestID, request.ParentRequestID, request.DataScope} {
 		if len(value) > 256 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\x00") {
 			return errors.New("invalid trusted local sealed RPC context")
 		}
@@ -181,10 +182,14 @@ func validateLocalSealedRPCRequest(request localSealedRPCRequest, nodeID string)
 				return errors.New("sealed ASK has an invalid operation creation time")
 			}
 		}
+		if len(request.ParentRequestID) > 256 || request.ParentRequestID != strings.TrimSpace(request.ParentRequestID) ||
+			strings.ContainsAny(request.ParentRequestID, "\r\n\x00") {
+			return errors.New("sealed ASK parent request ID is invalid")
+		}
 	case "sealed_reply":
 		if request.OperationID == "" || request.IdempotencyKey == "" || request.RequestID == "" ||
 			request.Body == "" || request.DataScope != "" || request.ExpiresAt != "" ||
-			request.OperationCreatedAt != "" || request.Reason != "" {
+			request.OperationCreatedAt != "" || request.ParentRequestID != "" || request.Reason != "" {
 			return errors.New("invalid trusted local sealed REPLY")
 		}
 		if _, _, err := localSealedRPCIDs(request.OperationID); err != nil {
@@ -192,13 +197,13 @@ func validateLocalSealedRPCRequest(request localSealedRPCRequest, nodeID string)
 		}
 	case "sealed_status":
 		if request.RequestID == "" || request.OperationID != "" || request.IdempotencyKey != "" ||
-			request.DataScope != "" || request.ExpiresAt != "" || request.OperationCreatedAt != "" ||
+			request.ParentRequestID != "" || request.DataScope != "" || request.ExpiresAt != "" || request.OperationCreatedAt != "" ||
 			request.Body != "" || request.Reason != "" {
 			return errors.New("invalid trusted local sealed status request")
 		}
 	case "sealed_cancel":
 		if request.RequestID == "" || request.OperationID != "" || request.IdempotencyKey != "" ||
-			request.DataScope != "" || request.ExpiresAt != "" || request.OperationCreatedAt != "" ||
+			request.ParentRequestID != "" || request.DataScope != "" || request.ExpiresAt != "" || request.OperationCreatedAt != "" ||
 			request.Body != "" {
 			return errors.New("invalid trusted local sealed cancellation")
 		}
@@ -245,12 +250,6 @@ func (b *machineAgentJoinBridge) sealedAsk(request localSealedRPCRequest, card f
 		return nil, err
 	}
 	defer state.Close()
-	if !localCardMatchesLinkSource(card, request, b.nodeID) ||
-		!localManifestSideMatchesRequest(manifest.Source, request, b.nodeID) ||
-		manifest.Source.KeyID != identity.Public().ID ||
-		!sameLocalPublicIdentity(manifest.Source.PublicIdentity, identity.Public()) {
-		return nil, errors.New("current native session does not match the selected Link source binding")
-	}
 	messageID, requestID, _ := localSealedRPCIDs(request.OperationID)
 	contract, _ := parseLocalLinkContract(manifest.ContractCanonical)
 	linkExpiry, err := time.Parse(time.RFC3339Nano, contract.ExpiresAt)
@@ -261,8 +260,19 @@ func (b *machineAgentJoinBridge) sealedAsk(request localSealedRPCRequest, card f
 	if err != nil {
 		return nil, err
 	}
-	route := localSealedRoute(manifest, contract, messageID, "REQUEST", requestID, "")
-	local, peer, scope := localSealedPinContext(manifest, identity.Public(), b.nodeID, false)
+	localSide, _, reverse, ok := localLinkSidesForEndpoint(manifest, request.EndpointID)
+	if !ok || (reverse && contract.Direction != "bidirectional") ||
+		!localManifestSideMatchesRequest(localSide, request, b.nodeID) ||
+		localSide.KeyID != identity.Public().ID || !sameLocalPublicIdentity(localSide.PublicIdentity, identity.Public()) ||
+		!localCardMatchesLinkSide(card, localSide, request, b.nodeID) {
+		return nil, errors.New("current native session is not an authorized sender for this Link direction")
+	}
+	route := localSealedRoute(manifest, contract, messageID, "REQUEST", requestID, "",
+		request.EndpointID, request.ParentRequestID)
+	if route.MessageID == "" {
+		return nil, errors.New("Link does not authorize this ASK direction")
+	}
+	local, peer, scope := localSealedPinContext(manifest, identity.Public(), b.nodeID, reverse)
 	if _, err := state.PinOwnerGrantedCrossGroupPeerKey(b.ctx, scope, local, peer, bundle); err != nil {
 		return nil, fmt.Errorf("verify local trust and bilateral Link grants: %w", err)
 	}
@@ -279,7 +289,8 @@ func (b *machineAgentJoinBridge) sealedAsk(request localSealedRPCRequest, card f
 	accepted, err := b.postSealedLinkAsk(fabricpkg.NodeSealedLinkAskInput{
 		LinkID: request.LinkID, MessageID: messageID, RequestID: requestID,
 		IdempotencyKey: request.IdempotencyKey, DataScope: request.DataScope,
-		ExpiresAt: expiresAt.Format(time.RFC3339Nano), Ciphertext: outbound.Envelope,
+		ParentRequestID: request.ParentRequestID,
+		ExpiresAt:       expiresAt.Format(time.RFC3339Nano), Ciphertext: outbound.Envelope,
 	})
 	if err != nil {
 		return nil, err
@@ -338,9 +349,18 @@ func (b *machineAgentJoinBridge) sealedReply(request localSealedRPCRequest, card
 		return nil, err
 	}
 	manifest := bundle.Manifest
-	if !sealedRequestMatchesManifest(requestStatus, manifest) ||
+	contract, err := parseLocalLinkContract(manifest.ContractCanonical)
+	if err != nil || !sealedRequestMatchesManifest(requestStatus, manifest, contract.Direction) ||
 		!localCardMatchesStatusReceiver(card, request, requestStatus, b.nodeID) ||
-		manifest.Target.OwnerID != request.OwnerID || manifest.Target.NodeID != b.nodeID {
+		requestStatus.ReceiverEndpointID != request.EndpointID {
+		return nil, errors.New("current native session is not the original authorized responder")
+	}
+	localSide, _, reverse, ok := localLinkSidesForEndpoint(manifest, request.EndpointID)
+	// A target on a forward-only Link may send the correlated REPLY for the
+	// exact forward REQUEST. sealedRequestMatchesManifest above proves that
+	// original durable route; reverse ASK initiation remains bidirectional-only.
+	if !ok ||
+		!localManifestSideMatchesRequest(localSide, request, b.nodeID) {
 		return nil, errors.New("current native session is not the original authorized responder")
 	}
 	messageID, _, err := localSealedRPCIDs(request.OperationID)
@@ -367,13 +387,16 @@ func (b *machineAgentJoinBridge) sealedReply(request localSealedRPCRequest, card
 		return nil, err
 	}
 	defer state.Close()
-	if manifest.Target.KeyID != identity.Public().ID ||
-		!sameLocalPublicIdentity(manifest.Target.PublicIdentity, identity.Public()) {
+	if localSide.KeyID != identity.Public().ID ||
+		!sameLocalPublicIdentity(localSide.PublicIdentity, identity.Public()) {
 		return nil, errors.New("current native session does not match the original responder key")
 	}
-	contract, _ := parseLocalLinkContract(manifest.ContractCanonical)
-	route := localSealedRoute(manifest, contract, messageID, "REPLY", request.RequestID, requestStatus.MessageID)
-	local, peer, scope := localSealedPinContext(manifest, identity.Public(), b.nodeID, true)
+	route := localSealedRoute(manifest, contract, messageID, "REPLY", request.RequestID,
+		requestStatus.MessageID, request.EndpointID, requestStatus.ParentRequestID)
+	if route.MessageID == "" {
+		return nil, errors.New("original request route is no longer authorized for a reply")
+	}
+	local, peer, scope := localSealedPinContext(manifest, identity.Public(), b.nodeID, reverse)
 	if _, err := state.PinOwnerGrantedCrossGroupPeerKey(b.ctx, scope, local, peer, bundle); err != nil {
 		return nil, fmt.Errorf("verify local trust and bilateral Link grants: %w", err)
 	}
@@ -517,10 +540,26 @@ func validateLocalSealedLinkBundle(bundle nodekeys.PeerKeyAuthorizationBundle,
 	return nil
 }
 
-func localCardMatchesLinkSource(card fabricpkg.NetworkCard, request localSealedRPCRequest, nodeID string) bool {
-	return card.EndpointID == request.EndpointID && card.GroupID == request.GroupID &&
-		card.PrincipalID == request.PrincipalID && card.NodeID == nodeID &&
-		card.BindingID == request.BindingID && card.BindingEpoch == request.BindingEpoch &&
+func localLinkSidesForEndpoint(manifest nodekeys.PeerKeyAuthorizationManifest,
+	endpointID string) (local, peer nodekeys.PeerKeyManifestSide, reverse, ok bool) {
+	switch endpointID {
+	case manifest.Source.EndpointID:
+		return manifest.Source, manifest.Target, false, true
+	case manifest.Target.EndpointID:
+		return manifest.Target, manifest.Source, true, true
+	default:
+		return nodekeys.PeerKeyManifestSide{}, nodekeys.PeerKeyManifestSide{}, false, false
+	}
+}
+
+func localCardMatchesLinkSide(card fabricpkg.NetworkCard, side nodekeys.PeerKeyManifestSide,
+	request localSealedRPCRequest, nodeID string) bool {
+	return card.EndpointID == side.EndpointID && card.EndpointID == request.EndpointID &&
+		card.GroupID == side.GroupID && card.GroupID == request.GroupID &&
+		card.PrincipalID == side.PrincipalID && card.PrincipalID == request.PrincipalID &&
+		card.NodeID == nodeID && side.NodeID == nodeID &&
+		card.BindingID == side.BindingID && card.BindingID == request.BindingID &&
+		card.BindingEpoch == side.BindingEpoch && card.BindingEpoch == request.BindingEpoch &&
 		card.NativeSessionID == request.NativeSessionID && harness.Canonical(card.Harness) == "codex" &&
 		filepath.Clean(card.Workspace) == filepath.Clean(request.Workspace)
 }
@@ -563,17 +602,22 @@ func localSealedPinContext(manifest nodekeys.PeerKeyAuthorizationManifest,
 }
 
 func localSealedRoute(manifest nodekeys.PeerKeyAuthorizationManifest,
-	contract localLinkContract, messageID, kind, requestID, replyTo string) e2ee.EndpointMessageContext {
-	requestKind := kind == "REQUEST"
+	contract localLinkContract, messageID, kind, requestID, replyTo, senderEndpointID, parentRequestID string) e2ee.EndpointMessageContext {
 	sender, receiver := manifest.Source, manifest.Target
 	senderMembershipRevision := contract.ScopeSnapshot.SourceMembershipRevision
 	receiverMembershipRevision := contract.ScopeSnapshot.TargetMembershipRevision
-	if !requestKind {
+	if senderEndpointID == manifest.Target.EndpointID {
 		sender, receiver = manifest.Target, manifest.Source
 		senderMembershipRevision, receiverMembershipRevision = receiverMembershipRevision, senderMembershipRevision
+	} else if senderEndpointID != manifest.Source.EndpointID {
+		return e2ee.EndpointMessageContext{}
+	}
+	if kind != "REQUEST" && kind != "REPLY" && parentRequestID != "" {
+		return e2ee.EndpointMessageContext{}
 	}
 	return e2ee.EndpointMessageContext{
 		MessageID: messageID, Kind: kind, RequestID: requestID, ReplyTo: replyTo,
+		ParentRequestID:  parentRequestID,
 		SenderEndpointID: sender.EndpointID, SenderPrincipalID: sender.PrincipalID,
 		SenderOwnerID: sender.OwnerID, SenderGroupID: sender.GroupID,
 		SenderMembershipRevision: senderMembershipRevision, SenderBindingEpoch: sender.BindingEpoch,
@@ -597,15 +641,27 @@ func sealedRequestLinkID(status *store.FabricRequest) (string, error) {
 }
 
 func sealedRequestMatchesManifest(status *store.FabricRequest,
-	manifest nodekeys.PeerKeyAuthorizationManifest) bool {
-	return status != nil && status.AuthorizationRef == localSealedAuthorizationRef+manifest.LinkID &&
-		status.SenderEndpointID == manifest.Source.EndpointID &&
+	manifest nodekeys.PeerKeyAuthorizationManifest, direction string) bool {
+	if status == nil || status.AuthorizationRef != localSealedAuthorizationRef+manifest.LinkID ||
+		status.MessageID == "" || status.RequestID == "" || status.VisibilityPolicyRef == "" {
+		return false
+	}
+	forward := status.SenderEndpointID == manifest.Source.EndpointID &&
 		status.SenderPrincipalID == manifest.Source.PrincipalID && status.SenderGroupID == manifest.Source.GroupID &&
 		status.SenderBindingID == manifest.Source.BindingID && status.SenderBindingEpoch == manifest.Source.BindingEpoch &&
 		status.ReceiverEndpointID == manifest.Target.EndpointID &&
 		status.ReceiverPrincipalID == manifest.Target.PrincipalID && status.ReceiverGroupID == manifest.Target.GroupID &&
-		status.ReceiverBindingID == manifest.Target.BindingID && status.ReceiverBindingEpoch == manifest.Target.BindingEpoch &&
-		status.MessageID != "" && status.RequestID != "" && status.VisibilityPolicyRef != ""
+		status.ReceiverBindingID == manifest.Target.BindingID && status.ReceiverBindingEpoch == manifest.Target.BindingEpoch
+	if forward {
+		return true
+	}
+	reverse := status.SenderEndpointID == manifest.Target.EndpointID &&
+		status.SenderPrincipalID == manifest.Target.PrincipalID && status.SenderGroupID == manifest.Target.GroupID &&
+		status.SenderBindingID == manifest.Target.BindingID && status.SenderBindingEpoch == manifest.Target.BindingEpoch &&
+		status.ReceiverEndpointID == manifest.Source.EndpointID &&
+		status.ReceiverPrincipalID == manifest.Source.PrincipalID && status.ReceiverGroupID == manifest.Source.GroupID &&
+		status.ReceiverBindingID == manifest.Source.BindingID && status.ReceiverBindingEpoch == manifest.Source.BindingEpoch
+	return reverse && direction == "bidirectional"
 }
 
 func localCardMatchesStatusReceiver(card fabricpkg.NetworkCard, request localSealedRPCRequest,

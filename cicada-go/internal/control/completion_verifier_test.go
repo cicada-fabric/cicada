@@ -88,6 +88,71 @@ func TestCompletionVerifierFailureDegradesWithoutBlocking(t *testing.T) {
 	}
 }
 
+func TestExplicitModelCompletionVerifierFailsClosedWhenUnavailable(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	verdict := controlPlane.verifyCompletion(context.Background(), store.Goal{
+		Resources: map[string]any{"completion_verifier": "model"},
+	}, store.Worker{Harness: "shell"}, "bounded evidence")
+	if verdict.Accepted || !verdict.RequiresAttention || verdict.Source != "unavailable" ||
+		!strings.Contains(verdict.Rationale, "not configured") {
+		t.Fatalf("explicit model requirement silently degraded: %#v", verdict)
+	}
+}
+
+func TestUnknownCompletionVerifierModeFailsClosed(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	verdict := controlPlane.verifyCompletion(context.Background(), store.Goal{
+		Resources: map[string]any{"completion_verifier": "future-mode"},
+	}, store.Worker{Harness: "shell"}, "bounded evidence")
+	if verdict.Accepted || !verdict.RequiresAttention || verdict.Source != "unavailable" ||
+		!strings.Contains(verdict.Rationale, "Unsupported completion verifier mode") {
+		t.Fatalf("unknown verifier mode silently passed: %#v", verdict)
+	}
+}
+
+func TestInvalidCompletionVerifierConfigurationFailsClosed(t *testing.T) {
+	for name, configuredValue := range map[string]any{
+		"null":       nil,
+		"boolean":    true,
+		"number":     1,
+		"empty mode": "  ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			controlPlane := newTestControl(t, "success")
+			verdict := controlPlane.verifyCompletion(context.Background(), store.Goal{
+				Resources: map[string]any{"completion_verifier": configuredValue},
+			}, store.Worker{Harness: "shell"}, "bounded evidence")
+			if verdict.Accepted || !verdict.RequiresAttention || verdict.Source != "unavailable" {
+				t.Fatalf("invalid verifier configuration silently passed: %#v", verdict)
+			}
+		})
+	}
+}
+
+func TestCompletionVerdictDecoderRequiresExactSchemaObject(t *testing.T) {
+	valid := []byte(`{"decision":"accept","confidence":0.99,"rationale":"checked","correction":""}`)
+	verdict, err := decodeModelCompletionVerdict(valid)
+	if err != nil || verdict.Decision != "accept" || verdict.Rationale != "checked" {
+		t.Fatalf("valid verdict failed decode: %#v err=%v", verdict, err)
+	}
+	for name, data := range map[string][]byte{
+		"missing required field": []byte(`{"decision":"accept","confidence":0.99,"rationale":"checked"}`),
+		"unknown field":          []byte(`{"decision":"accept","confidence":0.99,"rationale":"checked","correction":"","extra":true}`),
+		"trailing value":         []byte(`{"decision":"accept","confidence":0.99,"rationale":"checked","correction":""} {}`),
+		"wrong top-level type":   []byte(`[]`),
+		"case-variant key":       []byte(`{"Decision":"accept","confidence":0.99,"rationale":"checked","correction":""}`),
+		"duplicate key":          []byte(`{"decision":"accept","decision":"revise","confidence":0.99,"rationale":"checked","correction":""}`),
+		"null string":            []byte(`{"decision":null,"confidence":0.99,"rationale":"checked","correction":""}`),
+		"string confidence":      []byte(`{"decision":"accept","confidence":"0.99","rationale":"checked","correction":""}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeModelCompletionVerdict(data); err == nil {
+				t.Fatalf("invalid verdict was accepted: %s", data)
+			}
+		})
+	}
+}
+
 func TestShellCompletionUsesLocalCheckUnlessModelIsExplicit(t *testing.T) {
 	controlPlane := newTestControl(t, "success")
 	controlPlane.config.CompletionVerifierBin = filepath.Join(t.TempDir(), "must-not-run")

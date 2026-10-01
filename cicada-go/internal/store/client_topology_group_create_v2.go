@@ -39,7 +39,7 @@ func (s *Store) CreateClientTopologyGroupAtomic(group Group, parentID, clientReq
 	parentID = strings.TrimSpace(parentID)
 	clientRequestID = strings.TrimSpace(clientRequestID)
 	if group.ID != "" || group.ParentGroupID != "" || group.Name == "" || group.OwnerPrincipalID == "" ||
-		(group.State != "" && group.State != GroupStateActive) {
+		(group.State != "" && group.State != GroupStateActive) || !validGroupContextPolicy(group.ContextPolicy) {
 		return nil, ErrNetworkPermission
 	}
 	group.State = GroupStateActive

@@ -20,13 +20,19 @@ import (
 
 type EventHandler func(method string, params map[string]any)
 type RequestHandler func(id any, method string, params map[string]any) any
+type ProcessStarter func(*exec.Cmd) error
+type ProcessWaiter func(*exec.Cmd) error
 
 type Client struct {
 	process       *exec.Cmd
+	processWaiter ProcessWaiter
 	stdin         io.WriteCloser
 	scanner       *bufio.Scanner
 	writeMu       sync.Mutex
 	readMu        sync.Mutex
+	closeMu       sync.Mutex
+	closeErr      error
+	closed        bool
 	nextID        int64
 	onEvent       EventHandler
 	onRequest     RequestHandler
@@ -92,7 +98,16 @@ func (c *Client) InitializeExperimental(ctx context.Context, clientName, title, 
 // for its human decision. Replies still use the original server request ID.
 func StartAsync(ctx context.Context, binary, cwd string, env []string,
 	onEvent EventHandler, onRequest RequestHandler) (*Client, error) {
-	client, err := Start(ctx, binary, cwd, env, onEvent, onRequest)
+	return StartAsyncWithLifecycle(ctx, binary, cwd, env, onEvent, onRequest, nil, nil)
+}
+
+// StartAsyncWithLifecycle is the narrow Node execution hook. The caller may
+// reserve a durable physical resource before process start and own the root
+// Cmd.Wait observation. Control's ordinary local execution uses StartAsync.
+func StartAsyncWithLifecycle(ctx context.Context, binary, cwd string, env []string,
+	onEvent EventHandler, onRequest RequestHandler, starter ProcessStarter,
+	waiter ProcessWaiter) (*Client, error) {
+	client, err := StartWithLifecycle(ctx, binary, cwd, env, onEvent, onRequest, starter, waiter)
 	if err == nil {
 		client.asyncRequests = true
 	}
@@ -103,12 +118,21 @@ func StartAsync(ctx context.Context, binary, cwd string, env []string,
 // caller supplies an environment with its own CODEX_HOME and no Hub secrets.
 func Start(ctx context.Context, binary, cwd string, env []string,
 	onEvent EventHandler, onRequest RequestHandler) (*Client, error) {
+	return StartWithLifecycle(ctx, binary, cwd, env, onEvent, onRequest, nil, nil)
+}
+
+// StartWithLifecycle configures one app-server process while allowing the
+// caller to own its start/wait boundary without importing Node policy here.
+func StartWithLifecycle(ctx context.Context, binary, cwd string, env []string,
+	onEvent EventHandler, onRequest RequestHandler, starter ProcessStarter,
+	waiter ProcessWaiter) (*Client, error) {
 	if strings.TrimSpace(binary) == "" {
 		binary = "codex"
 	}
 	// Plugins are outside the Worker execution boundary. Disabling them also
 	// avoids a plugin update delaying approval handling on startup.
 	process := exec.CommandContext(ctx, binary, "app-server", "--stdio", "--disable", "plugins")
+	configureAppServerProcess(process)
 	process.Dir = cwd
 	process.Env = env
 	stdout, err := process.StdoutPipe()
@@ -120,12 +144,26 @@ func Start(ctx context.Context, binary, cwd string, env []string,
 		return nil, err
 	}
 	process.Stderr = os.Stderr
-	if err := process.Start(); err != nil {
-		return nil, err
+	start := starter
+	if start == nil {
+		start = func(command *exec.Cmd) error { return command.Start() }
+	}
+	if err := start(process); err != nil {
+		var cleanupErr error
+		if process.Process != nil {
+			if process.Cancel != nil {
+				cancelErr := process.Cancel()
+				if cancelErr != nil && !errors.Is(cancelErr, os.ErrProcessDone) {
+					cleanupErr = errors.Join(cleanupErr, cancelErr)
+				}
+			}
+			cleanupErr = errors.Join(cleanupErr, process.Wait(), waitAppServerProcessTree(process))
+		}
+		return nil, errors.Join(err, cleanupErr)
 	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
-	return &Client{process: process, stdin: stdin, scanner: scanner,
+	return &Client{process: process, processWaiter: waiter, stdin: stdin, scanner: scanner,
 		nextID: 1, onEvent: onEvent, onRequest: onRequest}, nil
 }
 
@@ -137,16 +175,49 @@ func (c *Client) PID() int {
 }
 
 func (c *Client) Close() {
+	_ = c.CloseAndWait()
+}
+
+// CloseAndWait asks the app-server process group to stop, waits for the direct
+// child, and confirms the group is gone before its caller releases any native
+// writer lease. The runtime's parent process exit alone is not sufficient.
+func (c *Client) CloseAndWait() error {
 	if c == nil {
-		return
+		return nil
 	}
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed {
+		return c.closeErr
+	}
+	c.closed = true
 	c.writeMu.Lock()
-	_ = c.stdin.Close()
-	c.writeMu.Unlock()
-	if c.process.Process != nil {
-		_ = c.process.Process.Kill()
+	var closeErr error
+	if c.stdin != nil {
+		closeErr = c.stdin.Close()
 	}
-	_ = c.process.Wait()
+	c.writeMu.Unlock()
+	var waitErr error
+	if c.process != nil && c.process.Process != nil {
+		if c.process.ProcessState == nil && c.process.Cancel != nil {
+			cancelErr := c.process.Cancel()
+			if cancelErr != nil && !errors.Is(cancelErr, os.ErrProcessDone) {
+				closeErr = errors.Join(closeErr, cancelErr)
+			}
+		}
+		if c.processWaiter != nil {
+			waitErr = c.processWaiter(c.process)
+		} else {
+			waitErr = c.process.Wait()
+		}
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
+			waitErr = nil // A signalled/nonzero exit still proves Cmd.Wait completed.
+		}
+		closeErr = errors.Join(closeErr, waitErr, waitAppServerProcessTree(c.process))
+	}
+	c.closeErr = closeErr
+	return c.closeErr
 }
 
 func (c *Client) write(message map[string]any) error {

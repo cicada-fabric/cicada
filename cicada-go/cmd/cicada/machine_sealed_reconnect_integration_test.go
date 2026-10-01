@@ -28,6 +28,13 @@ import (
 // evidence here; this test does not claim a real Runtime wake or model consume.
 func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 	fixture := newMachineSealedReceiveFixtureWithActions(t, false, "ask", []string{"ask", "reply"})
+	hubID, err := fixture.store.GetClientHubID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This direct Agent harness uses the configured Hub identity when it
+	// checks the fixture's authoritative native-context projection.
+	t.Setenv("CICADA_HUB_ID", hubID)
 	const privateText = "private message for the original session"
 	if bytes.Contains(fixture.ciphertext, []byte(privateText)) {
 		t.Fatal("synthetic endpoint envelope unexpectedly contains its plaintext")

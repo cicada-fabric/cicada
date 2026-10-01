@@ -77,22 +77,28 @@ func networkEffectiveAllows(value string, at time.Time) bool {
 }
 
 var (
-	ErrNetworkNotFound   = errors.New("network not found")
-	ErrNetworkPermission = errors.New("network permission denied")
-	ErrNetworkConflict   = errors.New("network version or scope conflict")
-	ErrNetworkMigration  = errors.New("network migration is not ready")
-	ErrNetworkConsent    = errors.New("network join requires current invitation and owner consent")
+	ErrNetworkNotFound           = errors.New("network not found")
+	ErrNetworkPermission         = errors.New("network permission denied")
+	ErrNetworkConflict           = errors.New("network version or scope conflict")
+	ErrNetworkMigration          = errors.New("network migration is not ready")
+	ErrNetworkConsent            = errors.New("network join requires current invitation and owner consent")
+	ErrNetworkTaskPending        = errors.New("Network Task metadata is not committed yet")
+	ErrNetworkTaskExpired        = errors.New("Network Task route has expired")
+	ErrNetworkTaskUnavailable    = errors.New("Network Task route is no longer available")
+	ErrNetworkTaskAlreadyClaimed = errors.New("Network Task offer was already claimed")
+	ErrNetworkTaskLeaseExpired   = errors.New("Network Task claim lease has expired")
 )
 
 type Network struct {
-	ID        string `json:"network_id"`
-	HubID     string `json:"hub_id"`
-	Name      string `json:"name"`
-	OwnerID   string `json:"owner_id"`
-	State     string `json:"state"`
-	Version   int64  `json:"version"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID            string `json:"network_id"`
+	HubID         string `json:"hub_id"`
+	Name          string `json:"name"`
+	OwnerID       string `json:"owner_id"`
+	State         string `json:"state"`
+	ContextPolicy string `json:"context_policy,omitempty"`
+	Version       int64  `json:"version"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type NetworkMembership struct {
@@ -264,6 +270,11 @@ CREATE INDEX IF NOT EXISTS groups_network_idx ON groups(network_id,state,id);
 	return nil
 }
 
+func (s *Store) initializeRelayLinkNetworkEnrollmentSchema() error {
+	return s.ensureColumn("network_message_enrollment_v2", "receiver_network_id",
+		`ALTER TABLE network_message_enrollment_v2 ADD COLUMN receiver_network_id TEXT NOT NULL DEFAULT ''`)
+}
+
 func tokenDigest(raw string) string {
 	digest := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(digest[:])
@@ -304,6 +315,9 @@ func (s *Store) CreateNetwork(network Network) (*Network, error) {
 	if network.State != NetworkStateActive && network.State != NetworkStatePaused {
 		return nil, ErrNetworkConflict
 	}
+	if !validNetworkContextPolicy(network.ContextPolicy) {
+		return nil, ErrNetworkConflict
+	}
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -315,7 +329,7 @@ func (s *Store) CreateNetwork(network Network) (*Network, error) {
 	if err := s.db.QueryRow(`SELECT kind,status FROM principals WHERE id=?`, network.OwnerID).Scan(&ownerKind, &ownerStatus); err != nil || ownerKind != PrincipalKindHuman || ownerStatus != PrincipalStatusActive {
 		return nil, ErrNetworkPermission
 	}
-	_, err := s.db.Exec(`INSERT INTO networks_v2(id,hub_id,name,owner_id,state,version,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)`, network.ID, network.HubID, network.Name, network.OwnerID, network.State, timestamp, timestamp)
+	_, err := s.db.Exec(`INSERT INTO networks_v2(id,hub_id,name,owner_id,state,context_policy,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?)`, network.ID, network.HubID, network.Name, network.OwnerID, network.State, network.ContextPolicy, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create network: %w", err)
 	}
@@ -327,7 +341,7 @@ func (s *Store) GetNetwork(id string) (*Network, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var n Network
-	err := s.db.QueryRow(`SELECT id,hub_id,name,owner_id,state,version,created_at,updated_at FROM networks_v2 WHERE id=?`, strings.TrimSpace(id)).Scan(&n.ID, &n.HubID, &n.Name, &n.OwnerID, &n.State, &n.Version, &n.CreatedAt, &n.UpdatedAt)
+	err := s.db.QueryRow(`SELECT id,hub_id,name,owner_id,state,context_policy,version,created_at,updated_at FROM networks_v2 WHERE id=?`, strings.TrimSpace(id)).Scan(&n.ID, &n.HubID, &n.Name, &n.OwnerID, &n.State, &n.ContextPolicy, &n.Version, &n.CreatedAt, &n.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNetworkNotFound
 	}
@@ -340,7 +354,7 @@ func (s *Store) GetNetwork(id string) (*Network, error) {
 func (s *Store) ListNetworks() ([]Network, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id,hub_id,name,owner_id,state,version,created_at,updated_at FROM networks_v2 ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id,hub_id,name,owner_id,state,context_policy,version,created_at,updated_at FROM networks_v2 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +362,7 @@ func (s *Store) ListNetworks() ([]Network, error) {
 	var out []Network
 	for rows.Next() {
 		var n Network
-		if err := rows.Scan(&n.ID, &n.HubID, &n.Name, &n.OwnerID, &n.State, &n.Version, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.HubID, &n.Name, &n.OwnerID, &n.State, &n.ContextPolicy, &n.Version, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -530,6 +544,11 @@ func networkGuardPrincipalGroupLocked(db *sql.DB, principalID, groupID string) e
 }
 
 func networkGuardCommunicationLinkTx(tx *sql.Tx, link *CommunicationLink, at time.Time) error {
+	return networkGuardCommunicationLinkDirectionTx(tx, link, false, at)
+}
+
+func networkGuardCommunicationLinkDirectionTx(tx *sql.Tx, link *CommunicationLink,
+	reverse bool, at time.Time) error {
 	var sourceNetwork, targetNetwork, phase string
 	if err := tx.QueryRow(`SELECT network_id FROM groups WHERE id=?`, link.SourceGroupID).Scan(&sourceNetwork); err != nil {
 		return ErrNetworkPermission
@@ -543,24 +562,42 @@ func networkGuardCommunicationLinkTx(tx *sql.Tx, link *CommunicationLink, at tim
 	if sourceNetwork == "" && targetNetwork == "" && phase == NetworkModePreparing {
 		return nil
 	}
-	if sourceNetwork == "" || sourceNetwork != targetNetwork {
+	if sourceNetwork == "" || targetNetwork == "" {
 		return ErrNetworkPermission
 	}
-	var hubID, networkState string
-	if err := tx.QueryRow(`SELECT hub_id,state FROM networks_v2 WHERE id=?`, sourceNetwork).Scan(&hubID, &networkState); err != nil || networkState != NetworkStateActive || hubID != link.TransportHubID {
+	if link.TransportHubID == "" {
 		return ErrNetworkPermission
 	}
-	for _, side := range []struct{ principalID, endpointID, action string }{
-		{link.SourcePrincipalID, link.SourceEndpointID, "direct.send"},
-		{link.TargetPrincipalID, link.TargetEndpointID, "direct.receive"},
-	} {
+	var sourceHub, sourceState, targetHub, targetState string
+	if err := tx.QueryRow(`SELECT hub_id,state FROM networks_v2 WHERE id=?`, sourceNetwork).Scan(&sourceHub, &sourceState); err != nil ||
+		sourceState != NetworkStateActive || sourceHub != link.TransportHubID {
+		return ErrNetworkPermission
+	}
+	if targetNetwork == sourceNetwork {
+		targetHub, targetState = sourceHub, sourceState
+	} else if err := tx.QueryRow(`SELECT hub_id,state FROM networks_v2 WHERE id=?`, targetNetwork).Scan(&targetHub, &targetState); err != nil ||
+		targetState != NetworkStateActive || targetHub != link.TransportHubID || targetHub != sourceHub {
+		return ErrNetworkPermission
+	}
+	crossNetwork := sourceNetwork != targetNetwork
+	sides := []struct{ networkID, principalID, endpointID, action string }{
+		{sourceNetwork, link.SourcePrincipalID, link.SourceEndpointID, "direct.send"},
+		{targetNetwork, link.TargetPrincipalID, link.TargetEndpointID, "direct.receive"},
+	}
+	if reverse {
+		sides = []struct{ networkID, principalID, endpointID, action string }{
+			{targetNetwork, link.TargetPrincipalID, link.TargetEndpointID, "direct.send"},
+			{sourceNetwork, link.SourcePrincipalID, link.SourceEndpointID, "direct.receive"},
+		}
+	}
+	for _, side := range sides {
 		var active int
 		query := `SELECT 1,m.expires_at FROM network_memberships_v2 m JOIN endpoint_network_memberships_v2 e ON e.network_id=m.network_id AND e.endpoint_id=? AND e.status='active'
 		JOIN fabric_endpoints f ON f.id=e.endpoint_id AND f.principal_id=m.principal_id AND f.status!='left'
 		JOIN principals p ON p.id=m.principal_id AND p.status='active'
 		WHERE m.network_id=? AND m.principal_id=? AND m.status='active'`
-		args := []any{side.endpointID, sourceNetwork, side.principalID}
-		if link.SourceGroupID != link.TargetGroupID {
+		args := []any{side.endpointID, side.networkID, side.principalID}
+		if crossNetwork || link.SourceGroupID != link.TargetGroupID {
 			query += ` AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`
 			args = append(args, side.action)
 		}
@@ -573,10 +610,160 @@ func networkGuardCommunicationLinkTx(tx *sql.Tx, link *CommunicationLink, at tim
 	return nil
 }
 
+// networkGuardCommunicationLinkRouteTx applies the current narrow Link and
+// Network policy to a persisted or not-yet-enqueued Link route. Authorization
+// Ref is only a selector: this function reloads the Link, checks its exact
+// Endpoint/Group route, immutable Group→Network assignments, same-Hub
+// topology, Link actions, and current per-Network direct grants.
+func networkGuardCommunicationLinkRouteTx(tx *sql.Tx, route RelaySealedV1Route,
+	security *RelayMessageSecurity, receiverGroupID string, at time.Time) error {
+	if security == nil || route.MessageID == "" || security.MessageID != route.MessageID ||
+		receiverGroupID == "" || receiverGroupID != security.ReceiverGroupID ||
+		route.SenderEndpointID != security.SenderEndpointID ||
+		route.ReceiverEndpointID != security.ReceiverEndpointID ||
+		!strings.HasPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
+		return ErrCommunicationLinkRelayDenied
+	}
+	linkID := strings.TrimPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix)
+	if linkID == "" || strings.TrimSpace(linkID) != linkID {
+		return ErrCommunicationLinkRelayDenied
+	}
+	link, err := scanCommunicationLink(tx.QueryRow(`SELECT `+communicationLinkColumns+`
+FROM communication_links_v2 WHERE id=?`, linkID))
+	if err != nil || link == nil || link.State != CommunicationLinkProposed ||
+		link.TransportHubID == "" {
+		return ErrCommunicationLinkRelayDenied
+	}
+	reverse := false
+	expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup := "", "", ""
+	expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup := "", "", ""
+	switch route.Kind {
+	case "send":
+		if route.RequestID != "" || route.ReplyTo != "" ||
+			!containsWord(link.Actions, "send") {
+			return ErrCommunicationLinkRelayDenied
+		}
+		var ok bool
+		reverse, ok = communicationLinkAskDirection(link, route.SenderEndpointID, route.ReceiverEndpointID)
+		if !ok || (reverse && link.Direction != "bidirectional") {
+			return ErrCommunicationLinkRelayDenied
+		}
+		if reverse {
+			expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup =
+				link.TargetEndpointID, link.TargetPrincipalID, link.TargetGroupID
+			expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup =
+				link.SourceEndpointID, link.SourcePrincipalID, link.SourceGroupID
+		} else {
+			expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup =
+				link.SourceEndpointID, link.SourcePrincipalID, link.SourceGroupID
+			expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup =
+				link.TargetEndpointID, link.TargetPrincipalID, link.TargetGroupID
+		}
+	case "ask":
+		if route.RequestID == "" || route.ReplyTo != "" || !containsWord(link.Actions, "ask") {
+			return ErrCommunicationLinkRelayDenied
+		}
+		var ok bool
+		reverse, ok = communicationLinkAskDirection(link, route.SenderEndpointID, route.ReceiverEndpointID)
+		if !ok {
+			return ErrCommunicationLinkRelayDenied
+		}
+		if reverse {
+			expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup =
+				link.TargetEndpointID, link.TargetPrincipalID, link.TargetGroupID
+			expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup =
+				link.SourceEndpointID, link.SourcePrincipalID, link.SourceGroupID
+		} else {
+			expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup =
+				link.SourceEndpointID, link.SourcePrincipalID, link.SourceGroupID
+			expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup =
+				link.TargetEndpointID, link.TargetPrincipalID, link.TargetGroupID
+		}
+	case "reply":
+		if route.RequestID == "" || route.ReplyTo == "" ||
+			(link.Direction != "forward" && link.Direction != "bidirectional") ||
+			!containsWord(link.Actions, "ask") || !containsWord(link.Actions, "reply") {
+			return ErrCommunicationLinkRelayDenied
+		}
+		replyRequest, requestErr := relayLoadRequestTx(tx, route.RequestID)
+		if requestErr != nil || replyRequest == nil || replyRequest.MessageID != route.ReplyTo ||
+			replyRequest.AuthorizationRef != communicationLinkAuthorizationRefPrefix+link.ID ||
+			!communicationLinkReplyRouteStateAllows(replyRequest, route.MessageID) {
+			return ErrCommunicationLinkRelayDenied
+		}
+		askReverse, ok := communicationLinkAskDirection(link,
+			replyRequest.SenderEndpointID, replyRequest.ReceiverEndpointID)
+		if !ok || (askReverse && link.Direction != "bidirectional") {
+			return ErrCommunicationLinkRelayDenied
+		}
+		expectedSenderEndpoint, expectedSenderPrincipal, expectedSenderGroup =
+			replyRequest.ReceiverEndpointID, replyRequest.ReceiverPrincipalID, replyRequest.ReceiverGroupID
+		expectedReceiverEndpoint, expectedReceiverPrincipal, expectedReceiverGroup =
+			replyRequest.SenderEndpointID, replyRequest.SenderPrincipalID, replyRequest.SenderGroupID
+		reverse = expectedSenderEndpoint == link.TargetEndpointID
+	default:
+		return ErrCommunicationLinkRelayDenied
+	}
+	if route.SenderEndpointID != expectedSenderEndpoint ||
+		route.ReceiverEndpointID != expectedReceiverEndpoint ||
+		receiverGroupID != expectedReceiverGroup ||
+		security.SenderEndpointID != expectedSenderEndpoint ||
+		security.SenderPrincipalID != expectedSenderPrincipal ||
+		security.SenderGroupID != expectedSenderGroup ||
+		security.ReceiverEndpointID != expectedReceiverEndpoint ||
+		security.ReceiverPrincipalID != expectedReceiverPrincipal ||
+		security.ReceiverGroupID != expectedReceiverGroup {
+		return ErrCommunicationLinkRelayDenied
+	}
+	if err := validateCurrentCommunicationLinkScope(tx, link, at); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	if err := networkGuardCommunicationLinkDirectionTx(tx, link, reverse, at); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	if err := guardDedicatedThreadGroupEndpointTx(tx,
+		expectedSenderEndpoint, expectedSenderGroup, at); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	if err := guardDedicatedThreadGroupEndpointTx(tx,
+		expectedReceiverEndpoint, expectedReceiverGroup, at); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	return nil
+}
+
+func communicationLinkReplyRouteStateAllows(request *FabricRequest, messageID string) bool {
+	if request == nil || messageID == "" {
+		return false
+	}
+	switch request.State {
+	case FabricRequestOpen, FabricRequestCancelRequested, FabricRequestCancelled, FabricRequestExpired:
+		return true
+	case FabricRequestReplied:
+		return request.ReplyMessageID == messageID
+	case FabricRequestLateResult:
+		return request.LateResultMessageID == messageID
+	default:
+		return false
+	}
+}
+
 func networkGuardRelaySecurityTx(tx *sql.Tx, security *RelayMessageSecurity, receiverGroupID string, at time.Time) error {
 	var phase string
 	if err := tx.QueryRow(`SELECT phase FROM network_mode_v2 WHERE id=1`).Scan(&phase); err != nil {
 		return err
+	}
+	if security != nil {
+		for _, side := range []struct{ endpointID, groupID string }{
+			{security.SenderEndpointID, security.SenderGroupID},
+			{security.ReceiverEndpointID, security.ReceiverGroupID},
+		} {
+			if side.endpointID != "" && side.groupID != "" {
+				if err := guardDedicatedThreadGroupEndpointTx(tx, side.endpointID, side.groupID, at); err != nil {
+					return ErrNetworkPermission
+				}
+			}
+		}
 	}
 	if receiverGroupID == "" {
 		if phase == NetworkModePreparing {
@@ -702,20 +889,44 @@ WHERE message_id=?`, messageID).Scan(&directNetworkID)
 	if err != nil {
 		return err
 	}
+	if strings.HasPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
+		record, recordErr := relaySealedV1RecordTx(tx, messageID)
+		if recordErr != nil || record == nil || record.PayloadMode != RelayPayloadModeSealedV1 ||
+			record.Security.AuthorizationRef != security.AuthorizationRef {
+			return ErrCommunicationLinkRelayDenied
+		}
+		if err := networkGuardCommunicationLinkRouteTx(tx, record.Route, security, receiverGroupID, at); err != nil {
+			return ErrCommunicationLinkRelayDenied
+		}
+		return networkVerifyRelayMessageEnrollmentTx(tx, security)
+	}
 	if err := networkGuardRelaySecurityTx(tx, security, receiverGroupID, at); err != nil {
 		return err
+	}
+	return networkVerifyRelayMessageEnrollmentTx(tx, security)
+}
+
+func networkVerifyRelayMessageEnrollmentTx(tx *sql.Tx, security *RelayMessageSecurity) error {
+	if security == nil {
+		return ErrNetworkPermission
 	}
 	networkID, err := networkRelayGroupIDTx(tx, security.SenderGroupID)
 	if err != nil || networkID == "" {
 		// The compatible PREPARING path is handled by the current-scope guard.
 		return nil
 	}
+	receiverNetworkID, err := networkRelayGroupIDTx(tx, security.ReceiverGroupID)
+	if err != nil || receiverNetworkID == "" {
+		return ErrNetworkPermission
+	}
 	var expected [4]int64
-	err = tx.QueryRow(`SELECT sender_membership_revision,sender_endpoint_revision,
+	var enrolledReceiverNetwork string
+	err = tx.QueryRow(`SELECT receiver_network_id,sender_membership_revision,sender_endpoint_revision,
 		receiver_membership_revision,receiver_endpoint_revision
-		FROM network_message_enrollment_v2 WHERE message_id=? AND network_id=?`, messageID, networkID).
-		Scan(&expected[0], &expected[1], &expected[2], &expected[3])
-	if err != nil {
+		FROM network_message_enrollment_v2 WHERE message_id=? AND network_id=?`, security.MessageID, networkID).
+		Scan(&enrolledReceiverNetwork, &expected[0], &expected[1], &expected[2], &expected[3])
+	if err != nil || (enrolledReceiverNetwork != "" && enrolledReceiverNetwork != receiverNetworkID) ||
+		(enrolledReceiverNetwork == "" && receiverNetworkID != networkID) {
 		// A message queued before explicit mapping has no Network authority.
 		return ErrNetworkPermission
 	}
@@ -723,7 +934,7 @@ WHERE message_id=?`, messageID).Scan(&directNetworkID)
 	if err != nil || senderMembership != expected[0] || senderEndpoint != expected[1] {
 		return ErrNetworkPermission
 	}
-	receiverMembership, receiverEndpoint, err := networkEnrollmentRevisionTx(tx, networkID, security.ReceiverPrincipalID, security.ReceiverEndpointID)
+	receiverMembership, receiverEndpoint, err := networkEnrollmentRevisionTx(tx, receiverNetworkID, security.ReceiverPrincipalID, security.ReceiverEndpointID)
 	if err != nil || receiverMembership != expected[2] || receiverEndpoint != expected[3] {
 		return ErrNetworkPermission
 	}
@@ -751,17 +962,24 @@ func networkCaptureRelayMessageEnrollmentTx(tx *sql.Tx, security *RelayMessageSe
 	if err != nil || networkID == "" {
 		return nil
 	}
+	receiverNetworkID, err := networkRelayGroupIDTx(tx, security.ReceiverGroupID)
+	if err != nil || receiverNetworkID == "" ||
+		(receiverNetworkID != networkID &&
+			!strings.HasPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix)) {
+		return ErrNetworkPermission
+	}
 	senderMembership, senderEndpoint, err := networkEnrollmentRevisionTx(tx, networkID, security.SenderPrincipalID, security.SenderEndpointID)
 	if err != nil {
 		return ErrNetworkPermission
 	}
-	receiverMembership, receiverEndpoint, err := networkEnrollmentRevisionTx(tx, networkID, security.ReceiverPrincipalID, security.ReceiverEndpointID)
+	receiverMembership, receiverEndpoint, err := networkEnrollmentRevisionTx(tx, receiverNetworkID, security.ReceiverPrincipalID, security.ReceiverEndpointID)
 	if err != nil {
 		return ErrNetworkPermission
 	}
 	_, err = tx.Exec(`INSERT INTO network_message_enrollment_v2
-		(message_id,network_id,sender_membership_revision,sender_endpoint_revision,receiver_membership_revision,receiver_endpoint_revision)
-		VALUES(?,?,?,?,?,?)`, security.MessageID, networkID, senderMembership, senderEndpoint, receiverMembership, receiverEndpoint)
+		(message_id,network_id,receiver_network_id,sender_membership_revision,sender_endpoint_revision,receiver_membership_revision,receiver_endpoint_revision)
+		VALUES(?,?,?,?,?,?,?)`, security.MessageID, networkID, receiverNetworkID,
+		senderMembership, senderEndpoint, receiverMembership, receiverEndpoint)
 	return err
 }
 
@@ -1354,7 +1572,7 @@ func validNetworkGrants(grants []string) bool {
 	if len(grants) > 32 {
 		return false
 	}
-	allowed := map[string]bool{"directory.discover": true, "directory.publish": true, "direct.send": true, "direct.receive": true, "task.offer.list": true, "task.offer.claim": true, "broadcast.publish": true, "broadcast.receive": true, "network.admin.invite": true, "network.admin.directory_policy": true, "network.admin.task_policy": true, "network.admin.broadcast_policy": true}
+	allowed := map[string]bool{"directory.discover": true, "directory.publish": true, "direct.send": true, "direct.receive": true, "task.offer.publish": true, "task.offer.list": true, "task.offer.claim": true, "task.offer.result": true, "task.offer.accept": true, "broadcast.publish": true, "broadcast.receive": true, "network.admin.invite": true, "network.admin.directory_policy": true, "network.admin.task_policy": true, "network.admin.broadcast_policy": true}
 	for i, g := range grants {
 		if !allowed[g] {
 			return false

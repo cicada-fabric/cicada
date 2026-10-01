@@ -30,12 +30,13 @@ type NetworkRenewInput struct {
 }
 
 type NetworkJoinResult struct {
-	Endpoint       store.Endpoint `json:"endpoint"`
-	NetworkID      string         `json:"network_id"`
-	SessionToken   string         `json:"session_token"`
-	BindingID      string         `json:"binding_id"`
-	BindingEpoch   uint64         `json:"binding_epoch"`
-	LeaseExpiresAt string         `json:"lease_expires_at"`
+	Endpoint           store.Endpoint                   `json:"endpoint"`
+	NetworkID          string                           `json:"network_id"`
+	NativeContextScope store.NativeContextScopeMetadata `json:"native_context_scope"`
+	SessionToken       string                           `json:"session_token"`
+	BindingID          string                           `json:"binding_id"`
+	BindingEpoch       uint64                           `json:"binding_epoch"`
+	LeaseExpiresAt     string                           `json:"lease_expires_at"`
 }
 
 type NetworkActor struct {
@@ -137,7 +138,11 @@ func (s *Service) JoinNetworkForNodeCredential(nodeToken string, input NetworkJo
 	if err != nil {
 		return nil, err
 	}
-	return &NetworkJoinResult{Endpoint: *endpoint, NetworkID: network.ID, SessionToken: token, BindingID: accepted.AccessSessionID, BindingEpoch: accepted.AccessSessionEpoch, LeaseExpiresAt: networkLease(input.LeaseSeconds, s.now())}, nil
+	contextScope := store.NativeContextScopeMetadata{HubID: network.HubID, NetworkID: network.ID,
+		NetworkContextPolicy: network.ContextPolicy}
+	return &NetworkJoinResult{Endpoint: *endpoint, NetworkID: network.ID, NativeContextScope: contextScope,
+		SessionToken: token, BindingID: accepted.AccessSessionID, BindingEpoch: accepted.AccessSessionEpoch,
+		LeaseExpiresAt: networkLease(input.LeaseSeconds, s.now())}, nil
 }
 
 func containsGrant(grants []string, action string) bool {
@@ -315,7 +320,11 @@ func (s *Service) RenewNetworkForNodeCredential(nodeToken string, input NetworkR
 	if err != nil {
 		return nil, err
 	}
-	return &NetworkJoinResult{Endpoint: *endpoint, NetworkID: input.NetworkID, SessionToken: token, BindingID: accepted.AccessSessionID, BindingEpoch: accepted.AccessSessionEpoch, LeaseExpiresAt: lease}, nil
+	contextScope := store.NativeContextScopeMetadata{HubID: network.HubID, NetworkID: network.ID,
+		NetworkContextPolicy: network.ContextPolicy}
+	return &NetworkJoinResult{Endpoint: *endpoint, NetworkID: input.NetworkID, NativeContextScope: contextScope,
+		SessionToken: token, BindingID: accepted.AccessSessionID, BindingEpoch: accepted.AccessSessionEpoch,
+		LeaseExpiresAt: lease}, nil
 }
 
 // IssueNetworkInvitation is a narrow NetworkAdmin action. The access session

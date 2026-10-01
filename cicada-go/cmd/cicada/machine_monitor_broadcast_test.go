@@ -18,7 +18,7 @@ import (
 
 func monitorBroadcastTestBridge(base *machineAgentJoinBridge, baseURL string) *machineAgentJoinBridge {
 	return &machineAgentJoinBridge{baseURL: baseURL, stateDir: base.stateDir,
-		nodeID: base.nodeID, nodeToken: base.nodeToken, ctx: context.Background()}
+		nodeID: base.nodeID, nodeToken: base.nodeToken, ctx: base.ctx}
 }
 
 func relayRecordedMonitorResponse(response http.ResponseWriter, recorded *httptest.ResponseRecorder, body []byte) {

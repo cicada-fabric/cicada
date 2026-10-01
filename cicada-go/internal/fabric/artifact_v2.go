@@ -138,23 +138,7 @@ func (s *Service) ReadArtifactRefV2(actor Actor, input ArtifactRefReadInput) (*s
 	if err != nil {
 		return nil, err
 	}
-	projected := *ref
-	projected.Scopes = append([]string(nil), scopes...)
-	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeMetadata) {
-		projected.WorkspaceID = ""
-		projected.ProducerPrincipalID = ""
-		projected.ProducerEndpointID = ""
-		projected.Name = ""
-		projected.Kind = ""
-		projected.Size = 0
-		projected.MIMEType = ""
-	}
-	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeSummary) {
-		projected.Summary = ""
-	}
-	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeDigest) {
-		projected.Digest = ""
-	}
+	projected := projectArtifactRefV2Read(*ref, scopes)
 	result := &store.ArtifactRefV2Authorized{Ref: projected, Scopes: scopes}
 	if containsArtifactScope(scopes, store.ArtifactRefV2ScopeContent) {
 		content, err := s.readArtifactContent(ref)
@@ -185,6 +169,10 @@ func (s *Service) ResolveArtifactRefsV2(actor Actor, refIDs, scopes []string) ([
 	if len(refIDs) == 0 {
 		return []store.ArtifactRefV2{}, nil
 	}
+	projectedScopes, err := artifactScopes(scopes)
+	if err != nil {
+		return nil, err
+	}
 	seen := make(map[string]struct{}, len(refIDs))
 	result := make([]store.ArtifactRefV2, 0, len(refIDs))
 	for _, refID := range refIDs {
@@ -200,7 +188,7 @@ func (s *Service) ResolveArtifactRefsV2(actor Actor, refIDs, scopes []string) ([
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, *ref)
+		result = append(result, projectArtifactRefV2Read(*ref, projectedScopes))
 	}
 	return result, nil
 }
@@ -210,6 +198,26 @@ func (s *Service) ListArtifactRefsV2(actor Actor, limit int) ([]store.ArtifactRe
 		return nil, err
 	}
 	return s.store.ListArtifactRefsV2ForActor(nativeActorScope(actor), limit)
+}
+
+func projectArtifactRefV2Read(ref store.ArtifactRefV2, scopes []string) store.ArtifactRefV2 {
+	ref.Scopes = append([]string(nil), scopes...)
+	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeMetadata) {
+		ref.WorkspaceID = ""
+		ref.ProducerPrincipalID = ""
+		ref.ProducerEndpointID = ""
+		ref.Name = ""
+		ref.Kind = ""
+		ref.Size = 0
+		ref.MIMEType = ""
+	}
+	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeSummary) {
+		ref.Summary = ""
+	}
+	if !containsArtifactScope(scopes, store.ArtifactRefV2ScopeDigest) {
+		ref.Digest = ""
+	}
+	return ref
 }
 
 // ValidateGatewayArtifactRefs checks the source actor's current membership,

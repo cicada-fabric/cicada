@@ -297,9 +297,13 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 	if err != nil {
 		return nil, err
 	}
+	contextScope, err := nativeContextScopeForGroup(s.store, *group)
+	if err != nil {
+		return nil, err
+	}
 	card := s.networkCard(*endpoint, binding, input.GroupID)
 	return &JoinResult{
-		Endpoint: *endpoint, NetworkCard: card, SessionToken: token,
+		Endpoint: *endpoint, NetworkCard: card, NativeContextScope: contextScope, SessionToken: token,
 		BindingID: binding.ID, BindingEpoch: binding.Epoch,
 		LeaseExpiresAt: binding.LeaseExpiresAt, Reused: reused,
 	}, nil

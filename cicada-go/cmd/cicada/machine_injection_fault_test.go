@@ -25,9 +25,16 @@ func TestNativeProcessFailureAfterStartIsUncertainAndNeverReinjected(t *testing.
 	}
 	t.Setenv("CICADA_CODEX_BIN", binary)
 	t.Setenv("CICADA_NODE_TOKEN", "cicada_node_test-fault")
-	delivery := fabric.Delivery{MessageID: "msg-fault", RequestID: "rq-fault", Kind: "ask", Digest: "digest-fault", EndpointID: "ep-b", BindingID: "bind-b", BindingEpoch: 1, NativeSessionID: "native-b", Harness: "codex", NodeID: "b", AttemptID: "attempt-b", Body: "synthetic operation"}
+	delivery := fabric.Delivery{MessageID: "msg-fault", RequestID: "rq-fault", Kind: "ask", Digest: "digest-fault", EndpointID: "ep-b", GroupID: "group-b", BindingID: "bind-b", BindingEpoch: 1, NativeSessionID: "native-b", Harness: "codex", NodeID: "b", AttemptID: "attempt-b", Body: "synthetic operation"}
 	var layers []string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/node/identity" {
+			if r.Header.Get("Authorization") != "" {
+				t.Errorf("public Hub identity included Authorization")
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"hub_id": "hub-fault"})
+			return
+		}
 		if r.URL.Path == "/v2/fabric/node/networks/direct/claim" {
 			if r.Header.Get("Authorization") != "CicadaNode cicada_node_test-fault" {
 				w.WriteHeader(http.StatusUnauthorized)
@@ -42,6 +49,18 @@ func TestNativeProcessFailureAfterStartIsUncertainAndNeverReinjected(t *testing.
 		}
 		if strings.HasSuffix(r.URL.Path, "/claim") {
 			_ = json.NewEncoder(w).Encode(map[string]any{"deliveries": []fabric.Delivery{delivery}})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/authorization") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"node_id": delivery.NodeID, "message_id": delivery.MessageID,
+				"attempt_id": delivery.AttemptID, "digest": delivery.Digest,
+				"endpoint_id": delivery.EndpointID, "principal_id": "principal-fault",
+				"harness": delivery.Harness, "binding_id": delivery.BindingID,
+				"binding_epoch": delivery.BindingEpoch, "native_session_id": delivery.NativeSessionID,
+				"lease_owner": "lease-fault", "group_id": delivery.GroupID,
+				"native_context_scope": map[string]any{"hub_id": "hub-fault", "group_id": delivery.GroupID},
+			})
 			return
 		}
 		var receipt fabric.NodeReceiptInput

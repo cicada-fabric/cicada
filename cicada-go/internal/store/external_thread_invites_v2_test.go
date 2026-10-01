@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -182,6 +183,56 @@ func TestExternalThreadInviteAcceptsOnceCreatesNonRoutableProposedLink(t *testin
 	}
 	if _, err := f.store.PreviewExternalThreadInvite(secondInvite.Token); err != nil {
 		t.Fatalf("independent pending invite was affected by first acceptance: %v", err)
+	}
+}
+
+func TestExternalThreadInviteBidirectionalDirectionIsPreviewedAndFrozen(t *testing.T) {
+	f := newExternalThreadInviteTestFixture(t)
+	input := ExternalThreadInviteInput{
+		OwnerID: f.source.ownerID, SourceEndpointID: f.source.endpointID,
+		SourceGroupID: f.source.groupID, HubID: f.hubID, Direction: "bidirectional",
+		Actions: []string{"ask", "reply", "send"}, DataScopes: []string{"thread.message"},
+		ExpiresAt: time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339Nano),
+	}
+	invite, err := f.store.CreateExternalThreadInvite(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := f.store.PreviewExternalThreadInvite(invite.Token)
+	if err != nil || preview.Direction != "bidirectional" {
+		t.Fatalf("bidirectional invite was not explicitly previewed: %#v err=%v", preview, err)
+	}
+	accepted, err := f.store.AcceptExternalThreadInvite(invite.Token, f.target.ownerID,
+		f.target.endpointID, f.target.groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := f.store.GetCommunicationLinkForOwner(accepted.LinkID, f.target.ownerID)
+	if err != nil || link.Direction != "bidirectional" || link.State != CommunicationLinkProposed {
+		t.Fatalf("acceptance changed or activated previewed direction: link=%#v err=%v", link, err)
+	}
+	if _, err := f.store.PreviewExternalThreadInvite(invite.Token); !errors.Is(err, ErrExternalThreadInviteUnavailable) {
+		t.Fatalf("consumed bidirectional invitation remained previewable: %v", err)
+	}
+
+	input.Direction = "forward"
+	input.ExpiresAt = time.Now().UTC().Add(25 * time.Minute).Format(time.RFC3339Nano)
+	forward, err := f.store.CreateExternalThreadInvite(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwardAccepted, err := f.store.AcceptExternalThreadInvite(forward.Token, f.target.ownerID,
+		f.target.endpointID, f.target.groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwardLink, err := f.store.GetCommunicationLinkForOwner(forwardAccepted.LinkID, f.source.ownerID)
+	if err != nil || forwardLink.Direction != "forward" || forwardLink.ContractDigest == link.ContractDigest {
+		t.Fatalf("signed Link contract digest did not bind its direction: bidirectional=%#v forward=%#v err=%v", link, forwardLink, err)
+	}
+	input.Direction = "automatic"
+	if _, err := f.store.CreateExternalThreadInvite(input); err == nil {
+		t.Fatal("unrecognized direction was silently normalized")
 	}
 }
 
@@ -441,6 +492,20 @@ func TestExternalThreadInviteMigrationRollsBackAndPreservesLegacyRows(t *testing
 		31: v2MigrationApplied, 32: v2MigrationApplied, 33: v2MigrationApplied,
 		34: v2MigrationApplied, 35: v2MigrationApplied, 36: v2MigrationApplied, 37: v2MigrationApplied,
 		38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied, 41: v2MigrationApplied,
+		42: v2MigrationApplied,
+		43: v2MigrationApplied,
+		44: v2MigrationApplied,
+		45: v2MigrationApplied,
+		46: v2MigrationApplied,
+		47: v2MigrationApplied,
+		48: v2MigrationApplied,
+		49: v2MigrationApplied,
+		50: v2MigrationApplied,
+		51: v2MigrationApplied,
+		52: v2MigrationApplied,
+		53: v2MigrationApplied,
+		54: v2MigrationApplied,
+		55: v2MigrationApplied,
 	})
 	var legacyRows int
 	if err := reopened.db.QueryRow(`SELECT count(*) FROM fabric_messages WHERE id = 'fabric_message_legacy'`).Scan(&legacyRows); err != nil {
@@ -448,5 +513,124 @@ func TestExternalThreadInviteMigrationRollsBackAndPreservesLegacyRows(t *testing
 	}
 	if legacyRows != 1 {
 		t.Fatalf("legacy Fabric message row was not preserved after v26 retry: %d", legacyRows)
+	}
+}
+
+func TestExternalThreadInviteDirectionV51MigrationRollsBackAndPreservesRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "cicada.sqlite3")
+	seedLegacyV1State(t, path)
+	injected := errors.New("stop after external Thread direction table rebuild")
+	failed, err := openStoreWithMigrationHook(path, func(id, phase string) error {
+		if id == "v2.collaboration.external_thread_invite_direction" && phase == "after_apply" {
+			return injected
+		}
+		return nil
+	})
+	if failed != nil {
+		_ = failed.Close()
+	}
+	if !errors.Is(err, injected) {
+		t.Fatalf("v51 migration interruption = %v", err)
+	}
+	check, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var attempts int
+	if err := check.QueryRow(`SELECT state, attempts FROM schema_migrations_v2 WHERE version=51`).Scan(&state, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if state != v2MigrationFailed || attempts != 1 {
+		t.Fatalf("interrupted v51 ledger state=%q attempts=%d", state, attempts)
+	}
+	var tempTable int
+	if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2_v51'`).Scan(&tempTable); err != nil || tempTable != 0 {
+		t.Fatalf("interrupted v51 left temporary table=%d err=%v", tempTable, err)
+	}
+	var schema string
+	if err := check.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2'`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(schema), "'bidirectional'") {
+		t.Fatal("interrupted v51 changed the original forward-only table")
+	}
+	_, err = check.Exec(`INSERT INTO external_thread_invites_v2
+(invite_id, token_digest, source_endpoint_id, source_group_id, source_owner_id,
+ source_principal_id, source_node_id, source_membership_revision, source_join_revision,
+ source_group_version, hub_id, direction, actions_json, data_scopes_json, expires_at,
+ state, created_at)
+VALUES ('invite_legacy_pending', ?, 'ep_source', 'group_source', 'owner_source',
+ 'principal_source', 'node_source', 4, 5, 6, 'hub_synthetic', 'forward', '["ask"]',
+ '["thread.message"]', '2099-01-01T00:00:00Z', 'PENDING', '2026-01-01T00:00:00Z')`, strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = check.Exec(`INSERT INTO external_thread_invites_v2
+(invite_id, token_digest, source_endpoint_id, source_group_id, source_owner_id,
+ source_principal_id, source_node_id, source_membership_revision, source_join_revision,
+ source_group_version, hub_id, direction, actions_json, data_scopes_json, expires_at,
+ state, target_owner_id, target_endpoint_id, target_group_id, communication_link_id,
+ created_at, accepted_at)
+VALUES ('invite_legacy_accepted', ?, 'ep_source', 'group_source', 'owner_source',
+ 'principal_source', 'node_source', 4, 5, 6, 'hub_synthetic', 'forward', '["ask","reply"]',
+ '["thread.message"]', '2099-01-01T00:00:00Z', 'ACCEPTED', 'owner_target', 'ep_target',
+ 'group_target', 'link_legacy', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')`, strings.Repeat("b", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := check.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	rows, err := reopened.db.Query(`SELECT invite_id, token_digest, direction, state, expires_at,
+communication_link_id, accepted_at FROM external_thread_invites_v2 ORDER BY invite_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type savedInvite struct{ id, digest, direction, state, expires, linkID, acceptedAt string }
+	var saved []savedInvite
+	for rows.Next() {
+		var item savedInvite
+		if err := rows.Scan(&item.id, &item.digest, &item.direction, &item.state, &item.expires, &item.linkID, &item.acceptedAt); err != nil {
+			_ = rows.Close()
+			t.Fatal(err)
+		}
+		saved = append(saved, item)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := []savedInvite{
+		{id: "invite_legacy_accepted", digest: strings.Repeat("b", 64), direction: "forward", state: "ACCEPTED",
+			expires: "2099-01-01T00:00:00Z", linkID: "link_legacy", acceptedAt: "2026-01-02T00:00:00Z"},
+		{id: "invite_legacy_pending", digest: strings.Repeat("a", 64), direction: "forward", state: "PENDING",
+			expires: "2099-01-01T00:00:00Z"},
+	}
+	if len(saved) != len(want) {
+		t.Fatalf("v51 changed invite row count: got %#v want %#v", saved, want)
+	}
+	for i := range want {
+		if saved[i] != want[i] {
+			t.Fatalf("v51 changed legacy invite row %d: got %#v want %#v", i, saved[i], want[i])
+		}
+	}
+	if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2_v51'`).Scan(&tempTable); err != nil || tempTable != 0 {
+		t.Fatalf("successful v51 retained temporary table=%d err=%v", tempTable, err)
+	}
+	for _, index := range []string{"external_thread_invites_v2_digest_idx", "external_thread_invites_v2_link_idx", "external_thread_invites_v2_source_idx"} {
+		var count int
+		if err := reopened.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?`, index).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("v51 did not restore index %s: count=%d err=%v", index, count, err)
+		}
+	}
+	entry, err := reopened.readV2Migration(51)
+	if err != nil || entry == nil || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v51 retry ledger=%#v err=%v", entry, err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -40,6 +41,14 @@ func TestControlBusinessDisabledPeerRPC(t *testing.T) {
 	}
 	if request.RequestID == "" || request.MessageID == "" || request.State != store.FabricRequestOpen {
 		t.Fatalf("ask was not durably accepted: %#v", request)
+	}
+	deadline, err := time.Parse(time.RFC3339Nano, request.ExpiresAt)
+	if err != nil || !deadline.After(time.Now().UTC()) || deadline.After(time.Now().UTC().Add(store.DefaultRelayAskLifetime+time.Minute)) {
+		t.Fatalf("Ask did not receive its bounded finite default deadline: %q %v", request.ExpiresAt, err)
+	}
+	if _, err := service.Ask(actorA, AskInput{Target: b.Endpoint.ID, Question: "overlong synthetic wait",
+		ExpiresAt: time.Now().UTC().Add(store.MaxRelayAskLifetime + time.Hour).Format(time.RFC3339Nano)}); err == nil {
+		t.Fatal("Ask accepted a deadline beyond the 24-hour bound")
 	}
 	mailboxB, err := service.Receive(actorB, ReceiveInput{Limit: 10})
 	if err != nil {

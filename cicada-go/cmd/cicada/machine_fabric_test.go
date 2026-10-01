@@ -41,6 +41,13 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 	}
 	var layers []string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v2/node/identity" {
+			if got := request.Header.Get("Authorization"); got != "" {
+				t.Errorf("public Node-Control Hub identity authorization=%q", got)
+			}
+			_ = json.NewEncoder(response).Encode(map[string]string{"hub_id": "hub-node-v2"})
+			return
+		}
 		if got := request.Header.Get("Authorization"); got != "CicadaNode cicada_node_test-v2" {
 			t.Errorf("relay authorization = %q", got)
 		}
@@ -49,6 +56,16 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.NodeSealedDelivery{}})
 		case strings.HasSuffix(request.URL.Path, "/claim"):
 			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.Delivery{delivery}})
+		case strings.HasSuffix(request.URL.Path, "/authorization"):
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"node_id": delivery.NodeID, "message_id": delivery.MessageID,
+				"attempt_id": delivery.AttemptID, "digest": delivery.Digest,
+				"endpoint_id": delivery.EndpointID, "principal_id": "principal-v2",
+				"harness": delivery.Harness, "binding_id": delivery.BindingID,
+				"binding_epoch": delivery.BindingEpoch, "native_session_id": delivery.NativeSessionID,
+				"lease_owner": "lease-v2", "group_id": delivery.GroupID,
+				"native_context_scope": map[string]any{"hub_id": "hub-node-v2", "group_id": delivery.GroupID},
+			})
 		case strings.HasSuffix(request.URL.Path, "/receipts"):
 			var input fabric.NodeReceiptInput
 			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
@@ -95,6 +112,150 @@ func TestMachineRelayV2PersistsBeforeExactInjectionAndDedupes(t *testing.T) {
 	}
 	if got := strings.Count(string(data), "queue\n"); got != 1 {
 		t.Fatalf("native queue count after duplicate = %d, want 1", got)
+	}
+}
+
+func TestMachineRelayTemporaryNativeAuthorizationOutageKeepsDeliveryClaimable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_NODE_TOKEN", "cicada_node_test-auth-outage")
+	t.Setenv("CICADA_NODE_TOKEN_FILE", "")
+	delivery := fabric.Delivery{MessageID: "msg-auth-outage", RequestID: "rq-auth-outage",
+		Kind: "ask", Digest: "digest-auth-outage", SenderEndpointID: "ep-origin",
+		EndpointID: "ep-auth-outage", GroupID: "group-auth-outage", BindingID: "binding-auth-outage",
+		BindingEpoch: 7, Harness: "codex", NativeSessionID: "native-auth-outage",
+		NodeID: "node-auth-outage", AttemptID: "attempt-auth-outage", Body: "synthetic retryable message"}
+	var receipts []string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v2/node/identity" {
+			if request.Header.Get("Authorization") != "" {
+				t.Errorf("public Hub key identity unexpectedly required a Node credential")
+			}
+			_ = json.NewEncoder(response).Encode(map[string]string{"hub_id": "hub-auth-outage"})
+			return
+		}
+		if got := request.Header.Get("Authorization"); got != "CicadaNode cicada_node_test-auth-outage" {
+			t.Errorf("peer Relay request %s authorization=%q", request.URL.Path, got)
+		}
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/sealed/claim"),
+			strings.HasSuffix(request.URL.Path, "/group/sealed/claim"),
+			request.URL.Path == "/v2/fabric/node/networks/direct/claim":
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []any{}})
+		case strings.HasSuffix(request.URL.Path, "/claim"):
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.Delivery{delivery}})
+		case strings.HasSuffix(request.URL.Path, "/authorization"):
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = response.Write([]byte(`{"error":"temporary authorization outage"}`))
+		case strings.HasSuffix(request.URL.Path, "/receipts"):
+			var input fabric.NodeReceiptInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode peer receipt: %v", err)
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			receipts = append(receipts, input.Layer)
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected peer Relay route: %s %s", request.Method, request.URL.Path)
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	inbox, err := nodeinbox.Open(machineNodeInboxPath(root, "node-auth-outage"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inbox.Close()
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
+		"node-auth-outage", inbox, root); err != nil {
+		t.Fatalf("temporary native authorization outage terminated peer reconciliation: %v", err)
+	}
+	stored, err := inbox.Get(context.Background(), delivery.MessageID)
+	if err != nil || stored == nil || stored.State != nodeinbox.NODE_RECEIVED ||
+		stored.AttemptID != "" || stored.ConsumerID != "" {
+		t.Fatalf("temporary authority failure did not release only the pre-injection claim: delivery=%#v err=%v",
+			stored, err)
+	}
+	if strings.Join(receipts, ",") != string(fabric.ReceiptNodeReceived) {
+		t.Fatalf("temporary authority failure was misreported as a terminal receipt: %v", receipts)
+	}
+}
+
+func TestMachineRelayRevokedNativeAuthorizationRejectsClaimBeforeInjection(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	queueMarker := filepath.Join(root, "queue-marker")
+	queue := filepath.Join(root, "fake-codex")
+	if err := os.WriteFile(queue, []byte("#!/bin/sh\nprintf invoked >> '"+queueMarker+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_CODEX_BIN", queue)
+	t.Setenv("CICADA_NODE_TOKEN", "cicada_node_test-revoked-wake")
+	t.Setenv("CICADA_NODE_TOKEN_FILE", "")
+	delivery := fabric.Delivery{MessageID: "msg-revoked-wake", RequestID: "rq-revoked-wake",
+		Kind: "ask", Digest: "digest-revoked-wake", SenderEndpointID: "ep-origin",
+		EndpointID: "ep-revoked-wake", GroupID: "group-revoked-wake", BindingID: "binding-revoked-wake",
+		BindingEpoch: 4, Harness: "codex", NativeSessionID: "native-revoked-wake",
+		NodeID: "node-revoked-wake", AttemptID: "remote-attempt-revoked-wake", Body: "synthetic revoked delivery"}
+	var receipts []string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v2/node/identity" {
+			_ = json.NewEncoder(response).Encode(map[string]string{"hub_id": "hub-revoked-wake"})
+			return
+		}
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/sealed/claim"),
+			strings.HasSuffix(request.URL.Path, "/group/sealed/claim"),
+			request.URL.Path == "/v2/fabric/node/networks/direct/claim":
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []any{}})
+		case strings.HasSuffix(request.URL.Path, "/claim"):
+			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": []fabric.Delivery{delivery}})
+		case strings.HasSuffix(request.URL.Path, "/authorization"):
+			if request.URL.Query().Get("attempt_id") != delivery.AttemptID {
+				t.Errorf("native authorization used attempt_id=%q, want remote relay attempt %q",
+					request.URL.Query().Get("attempt_id"), delivery.AttemptID)
+			}
+			response.WriteHeader(http.StatusNotFound)
+			_, _ = response.Write([]byte(`{"error":"current native wake authorization unavailable"}`))
+		case strings.HasSuffix(request.URL.Path, "/receipts"):
+			var input fabric.NodeReceiptInput
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Errorf("decode peer receipt: %v", err)
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			receipts = append(receipts, input.Layer)
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected peer Relay route: %s %s", request.Method, request.URL.Path)
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	inbox, err := nodeinbox.Open(machineNodeInboxPath(root, delivery.NodeID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inbox.Close()
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), server.URL,
+		delivery.NodeID, inbox, root); err != nil {
+		t.Fatalf("definitive revoked native authorization terminated reconciliation: %v", err)
+	}
+	stored, err := inbox.Get(context.Background(), delivery.MessageID)
+	if err != nil || stored == nil || stored.State != nodeinbox.FAILED {
+		t.Fatalf("revoked authorization did not permanently reject the pre-injection claim: delivery=%#v err=%v",
+			stored, err)
+	}
+	if _, err := os.Stat(queueMarker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("native Codex queue ran despite revoked authorization: stat err=%v", err)
+	}
+	if strings.Join(receipts, ",") != "NODE_RECEIVED,FAILED" {
+		t.Fatalf("revoked authorization receipt sequence = %v, want NODE_RECEIVED then FAILED", receipts)
 	}
 }
 

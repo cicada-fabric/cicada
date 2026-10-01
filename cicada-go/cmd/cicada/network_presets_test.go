@@ -21,6 +21,10 @@ func TestNetworkPermissionPresetsHaveExactLeastPrivilegeGrants(t *testing.T) {
 		{"directory_guest", []string{"directory.discover"}},
 		{"network_collaborator", []string{"direct.receive", "direct.send", "directory.discover", "directory.publish"}},
 		{"network_admin_inviter", []string{"network.admin.invite"}},
+		{"network_task_worker", []string{"task.offer.claim", "task.offer.list", "task.offer.result"}},
+		{"network_task_publisher", []string{"directory.discover", "directory.publish", "task.offer.accept", "task.offer.list", "task.offer.publish"}},
+		{"network_broadcast_publisher", []string{"broadcast.publish"}},
+		{"network_broadcast_receiver", []string{"broadcast.receive"}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -29,11 +33,30 @@ func TestNetworkPermissionPresetsHaveExactLeastPrivilegeGrants(t *testing.T) {
 				t.Fatalf("preset grants=%v want=%v err=%v", grants, test.grants, err)
 			}
 			for _, grant := range grants {
-				if strings.HasPrefix(grant, "broadcast.") || strings.HasPrefix(grant, "task.") || grant == "*" {
-					t.Fatalf("preset expanded to unimplemented or broad authority: %q", grant)
+				broadcastGrantForPreset := test.name == "network_broadcast_publisher" && grant == "broadcast.publish" ||
+					test.name == "network_broadcast_receiver" && grant == "broadcast.receive"
+				if strings.HasPrefix(grant, "broadcast.") && !broadcastGrantForPreset || grant == "*" {
+					t.Fatalf("preset expanded to broad authority: %q", grant)
+				}
+				if strings.HasPrefix(test.name, "network_task_") && strings.HasPrefix(grant, "direct.") {
+					t.Fatalf("Task preset %s also grants unrelated private direct messaging: %q", test.name, grant)
 				}
 			}
 		})
+	}
+	for _, preset := range []string{"directory_guest", "network_collaborator", "network_admin_inviter", "network_broadcast_publisher", "network_broadcast_receiver"} {
+		grants, err := selectNetworkPermissionGrants("", preset, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, grant := range grants {
+			if strings.HasPrefix(grant, "task.offer.") {
+				t.Fatalf("existing preset %s silently gained Task authority", preset)
+			}
+			if strings.HasPrefix(preset, "network_broadcast_") && strings.HasPrefix(grant, "direct.") {
+				t.Fatalf("broadcast preset %s granted unrelated private direct authority", preset)
+			}
+		}
 	}
 	if _, err := selectNetworkPermissionGrants("directory.discover", "network_collaborator", true); err == nil {
 		t.Fatal("accepted both --grants and --preset")
@@ -41,7 +64,7 @@ func TestNetworkPermissionPresetsHaveExactLeastPrivilegeGrants(t *testing.T) {
 	if _, err := selectNetworkPermissionGrants("", "network_admin_inviter", false); err == nil {
 		t.Fatal("NetworkAdmin preset could regrant NetworkAdmin authority")
 	}
-	for _, grant := range []string{"message.send", "task.read", "task.offer.claim", "broadcast.publish", "future.unknown"} {
+	for _, grant := range []string{"message.send", "task.read", "broadcast.delete", "future.unknown"} {
 		if _, err := selectNetworkPermissionGrants(grant, "", true); err == nil {
 			t.Fatalf("accepted unsupported Network M1 grant %q", grant)
 		}
@@ -49,6 +72,14 @@ func TestNetworkPermissionPresetsHaveExactLeastPrivilegeGrants(t *testing.T) {
 	if grants, err := selectNetworkPermissionGrants("directory.publish,direct.send", "", true); err != nil ||
 		!slices.Equal(grants, []string{"direct.send", "directory.publish"}) {
 		t.Fatalf("valid explicit Network grants=%v err=%v", grants, err)
+	}
+	for _, grant := range []string{"broadcast.publish", "broadcast.receive"} {
+		if grants, err := selectNetworkPermissionGrants(grant, "", true); err != nil || !slices.Equal(grants, []string{grant}) {
+			t.Fatalf("Owner cannot grant enforced Broadcast permission %s: %v %v", grant, grants, err)
+		}
+		if _, err := selectNetworkPermissionGrants(grant, "", false); err == nil {
+			t.Fatalf("NetworkAdmin silently regranted Broadcast permission %s", grant)
+		}
 	}
 }
 
@@ -87,6 +118,10 @@ func TestNetworkOperatorInviteUsesPresetAsStoredExactInvitationGrants(t *testing
 		{"directory_guest", []string{"directory.discover"}},
 		{"network_collaborator", []string{"direct.receive", "direct.send", "directory.discover", "directory.publish"}},
 		{"network_admin_inviter", []string{"network.admin.invite"}},
+		{"network_task_worker", []string{"task.offer.claim", "task.offer.list", "task.offer.result"}},
+		{"network_task_publisher", []string{"directory.discover", "directory.publish", "task.offer.accept", "task.offer.list", "task.offer.publish"}},
+		{"network_broadcast_publisher", []string{"broadcast.publish"}},
+		{"network_broadcast_receiver", []string{"broadcast.receive"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			invitationPath := filepath.Join(privateDir, test.name+".invitation")

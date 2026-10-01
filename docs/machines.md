@@ -26,6 +26,20 @@ cicada machine agent --id gpu2 --name 'GPU server 2' \
   --control-url https://hub.example --state-dir /var/lib/cicada-node --relay-only
 ```
 
+The checkout installer uses this relay-only behavior by default. Opt into the
+single-Node managed Worker and Monitor notice handlers only when that host is
+intended to execute its authorized local work:
+
+```bash
+CICADA_CONTROL_URL=https://hub.example \
+CICADA_MACHINE_ID=gpu2 \
+scripts/install-cicada-worker.sh --mode managed
+```
+
+Managed mode uses the same Node-scoped bearer and does not auto-join, enroll or
+approve a Thread, Group or Node. The Owner still confirms the displayed device
+code; multi-Hub agents remain relay-only.
+
 The `/client/device` verification path is reserved for the separately developed
 Android Client and is not a Hub-hosted approval page yet. Node Relay calls do
 not start until owner confirmation. Remote HTTP is rejected for Node enrollment;
@@ -71,6 +85,18 @@ retries result delivery without declaring the Machine available in between; it
 never logs the token or private network addresses. The complete execution and
 shared-workspace contract is in
 [`remote-execution.md`](remote-execution.md).
+
+Managed Node Workers do not reserve the whole host by default. A Worker only
+uses the physical-resource execution fence when its authenticated Hub claim
+contains `resources.physical_resource_id` and that exact canonical ID is also
+configured locally as `CICADA_NODE_RESOURCE_ID` (for example, `gpu/0`). A
+missing or mismatched local mapping fails closed before starting the provider.
+If a Worker completes but the Node cannot prove that every process using an
+explicitly leased resource has stopped, it reports the business result and
+keeps that resource quarantined. A process-group exit alone is not stop proof;
+the quarantine blocks later jobs for that same resource but does not retain the
+Node's single Worker claim slot or block jobs that use no physical resource.
+There is currently no automatic release of an unverified quarantine.
 
 The discovery code records executable paths and interface names, never command
 output, IP addresses, or credentials. GPU and disk probing have short

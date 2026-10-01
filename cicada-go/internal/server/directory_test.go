@@ -23,7 +23,7 @@ func TestDirectoryAnnouncementAndRendezvousEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-directory-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,12 +31,14 @@ func TestDirectoryAnnouncementAndRendezvousEndpoints(t *testing.T) {
 	handler := NewHandler(controlPlane)
 	receive := httptest.NewRequest(http.MethodPost, "/v1/directory/records", strings.NewReader(`{"announcement":`+string(announcement)+`}`))
 	receive.Header.Set("content-type", "application/json")
+	receive.Header.Set("Authorization", "Bearer synthetic-directory-manager-token")
 	receiveResponse := httptest.NewRecorder()
 	handler.ServeHTTP(receiveResponse, receive)
 	if receiveResponse.Code != http.StatusAccepted {
 		t.Fatalf("rendezvous status=%d body=%s", receiveResponse.Code, receiveResponse.Body.String())
 	}
 	list := httptest.NewRequest(http.MethodGet, "/v1/directory/records", nil)
+	list.Header.Set("Authorization", "Bearer synthetic-directory-manager-token")
 	listResponse := httptest.NewRecorder()
 	handler.ServeHTTP(listResponse, list)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "peer.example") {

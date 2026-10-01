@@ -18,22 +18,24 @@ type RelayNativeWakeAuthorizationInput struct {
 // needed by a Node to revalidate a native wake. It never returns message data,
 // session credentials, or keys.
 type RelayNativeWakeAuthorization struct {
-	NodeID             string `json:"node_id"`
-	MessageID          string `json:"message_id"`
-	AttemptID          string `json:"attempt_id"`
-	Digest             string `json:"digest"`
-	EndpointID         string `json:"endpoint_id"`
-	Harness            string `json:"harness"`
-	BindingID          string `json:"binding_id"`
-	BindingEpoch       uint64 `json:"binding_epoch"`
-	NativeSessionID    string `json:"native_session_id"`
-	LeaseOwner         string `json:"lease_owner"`
-	LeaseExpiresAt     string `json:"lease_expires_at"`
-	GroupID            string `json:"group_id"`
-	GroupJoinRevision  int64  `json:"group_join_revision"`
-	MembershipRevision int64  `json:"membership_revision"`
-	Mode               string `json:"mode"`
-	ContextContinuity  string `json:"context_continuity"`
+	NodeID             string                     `json:"node_id"`
+	MessageID          string                     `json:"message_id"`
+	AttemptID          string                     `json:"attempt_id"`
+	Digest             string                     `json:"digest"`
+	EndpointID         string                     `json:"endpoint_id"`
+	PrincipalID        string                     `json:"principal_id"`
+	Harness            string                     `json:"harness"`
+	BindingID          string                     `json:"binding_id"`
+	BindingEpoch       uint64                     `json:"binding_epoch"`
+	NativeSessionID    string                     `json:"native_session_id"`
+	LeaseOwner         string                     `json:"lease_owner"`
+	LeaseExpiresAt     string                     `json:"lease_expires_at"`
+	GroupID            string                     `json:"group_id"`
+	NativeContextScope NativeContextScopeMetadata `json:"native_context_scope"`
+	GroupJoinRevision  int64                      `json:"group_join_revision"`
+	MembershipRevision int64                      `json:"membership_revision"`
+	Mode               string                     `json:"mode"`
+	ContextContinuity  string                     `json:"context_continuity"`
 }
 
 // AuthorizeRelayNativeWakeForNodeCredential rechecks the exact current claim,
@@ -68,7 +70,7 @@ func (s *Store) AuthorizeRelayNativeWakeForNodeCredential(credentialDigest, node
 	nowText := time.Now().UTC().Format(time.RFC3339Nano)
 	var authorization RelayNativeWakeAuthorization
 	err = tx.QueryRow(`SELECT a.message_id, a.attempt_id, a.digest,
- e.id, e.harness, sb.id, sb.epoch, sb.native_session_id, sb.lease_owner,
+ e.id, p.id, e.harness, sb.id, sb.epoch, sb.native_session_id, sb.lease_owner,
  sb.lease_expires_at, i.receiver_group_id, eg.revision, m.revision, sb.mode,
  sb.context_continuity
 FROM relay_v2_delivery_attempts a
@@ -110,7 +112,7 @@ WHERE a.attempt_id=? AND a.message_id=? AND a.state='CLAIMED'
 	LIMIT 1`, input.AttemptID, input.MessageID, nodeID, nodeOwnerID, nodeID,
 		nowText, nodeOwnerID, nowText, nowText).Scan(
 		&authorization.MessageID, &authorization.AttemptID, &authorization.Digest,
-		&authorization.EndpointID, &authorization.Harness, &authorization.BindingID,
+		&authorization.EndpointID, &authorization.PrincipalID, &authorization.Harness, &authorization.BindingID,
 		&authorization.BindingEpoch, &authorization.NativeSessionID, &authorization.LeaseOwner,
 		&authorization.LeaseExpiresAt, &authorization.GroupID, &authorization.GroupJoinRevision,
 		&authorization.MembershipRevision, &authorization.Mode, &authorization.ContextContinuity)
@@ -120,6 +122,11 @@ WHERE a.attempt_id=? AND a.message_id=? AND a.state='CLAIMED'
 	if err != nil {
 		return nil, err
 	}
+	scope, err := readNativeContextScopeForEndpointTx(tx, authorization.EndpointID, authorization.GroupID)
+	if err != nil {
+		return nil, ErrRelayNativeWakeAuthorizationUnavailable
+	}
+	authorization.NativeContextScope = scope
 	if err := networkGuardRelayMessageTx(tx, input.MessageID, authorization.GroupID, time.Now().UTC()); err != nil {
 		return nil, ErrRelayNativeWakeAuthorizationUnavailable
 	}

@@ -121,3 +121,48 @@ printf '%%s' '{"decision":"accept","confidence":0.99,"rationale":"verified","cor
 		t.Fatalf("revoked Node token remained active: %v", err)
 	}
 }
+
+func TestExplicitModelVerifierOutageFailsBoundNodeResultWithoutReclaim(t *testing.T) {
+	c, ownerID, _ := newNodeBindingControl(t)
+	_, credentialDigest, err := fabricpkg.NewNodeCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const nodeID = "node-required-verifier"
+	challenge, err := c.StartNodeDeviceBinding(nodeID, "Required verifier Node", credentialDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ConfirmNodeDeviceCode(ownerID, "android", challenge.UserCode); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.store.RecordBoundNodeMachineHeartbeat(credentialDigest, "available",
+		map[string]any{"harnesses": []string{"codex"}}); err != nil {
+		t.Fatal(err)
+	}
+	goal, err := c.CreateGoalForOwner(ownerID, GoalInput{
+		Objective: "retain a bound Node result when required verification is unavailable",
+		MachineID: nodeID, Harness: "codex",
+		Resources: map[string]any{"completion_verifier": "model"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := c.ClaimBoundNodeRemoteWorker(credentialDigest, nodeID, goal.Worker.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const candidate = "bound result retained for manager review"
+	worker, err := c.CompleteBoundNodeRemoteWorker(credentialDigest, nodeID, goal.Worker.ID,
+		claimed.Attempt, "completed", candidate, "thread-required-verifier", "", "")
+	if err != nil || worker == nil || worker.Status != "failed" || worker.Summary != candidate {
+		t.Fatalf("bound Node verifier outage did not retain a failed result: worker=%#v err=%v", worker, err)
+	}
+	if _, err := c.ClaimBoundNodeRemoteWorker(credentialDigest, nodeID, goal.Worker.ID); err == nil {
+		t.Fatal("bound Node Worker was made claimable after verifier outage")
+	}
+	currentGoal, err := c.Goal(goal.ID)
+	if err != nil || currentGoal == nil || currentGoal.Status != "failed" {
+		t.Fatalf("bound Node Goal did not fail closed: goal=%#v err=%v", currentGoal, err)
+	}
+}

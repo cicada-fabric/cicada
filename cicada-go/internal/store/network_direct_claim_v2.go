@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -31,7 +32,7 @@ func directRecordValidForClaimTx(tx *sql.Tx, item *RelayInboxItem,
 		record.Security.AuthorizationRef != networkDirectAuthorizationPrefix+networkID {
 		return ErrNetworkPermission
 	}
-	if err := networkGuardDirectMessageTx(tx, item.MessageID, networkID, at); err != nil {
+	if err := networkGuardStoredSealedMessageTx(tx, item.MessageID, networkID, at); err != nil {
 		return err
 	}
 	if item.RequestID == "" {
@@ -62,33 +63,64 @@ func directRecordValidForClaimTx(tx *sql.Tx, item *RelayInboxItem,
 }
 
 func networkDirectDeliveryContextTx(tx *sql.Tx, record *RelaySealedV1Record,
-	networkID string, at time.Time) (*e2ee.NetworkDirectContext, *NetworkDirectPeerBundle, error) {
-	sender, err := readNetworkDirectPeerKeyEvidenceTx(tx, networkID,
-		record.Route.SenderEndpointID, at)
-	if err != nil {
-		return nil, nil, err
+	networkID string, at time.Time) (*e2ee.NetworkDirectContext,
+	*e2ee.NetworkCollaborationMessageContext, *NetworkDirectPeerBundle, error) {
+	var purpose string
+	if err := tx.QueryRow(`SELECT key_purpose FROM network_direct_message_routes_v2 WHERE message_id=?`,
+		record.Route.MessageID).Scan(&purpose); err != nil {
+		return nil, nil, nil, err
 	}
-	receiver, err := readNetworkDirectPeerKeyEvidenceTx(tx, networkID,
-		record.Route.ReceiverEndpointID, at)
+	contextScope, err := readNativeContextScopeForNetworkTx(tx, networkID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	bundle := &NetworkDirectPeerBundle{HubID: sender.Manifest.HubID,
-		NetworkID: networkID, Sender: sender, Receiver: receiver}
+	var sender, receiver NetworkDirectPeerKeyEvidence
+	bundle := &NetworkDirectPeerBundle{NetworkID: networkID, NativeContextScope: contextScope}
+	if purpose == "DIRECT" {
+		sender, err = readNetworkDirectPeerKeyEvidenceTx(tx, networkID, record.Route.SenderEndpointID, at)
+		if err == nil {
+			receiver, err = readNetworkDirectPeerKeyEvidenceTx(tx, networkID, record.Route.ReceiverEndpointID, at)
+		}
+	} else {
+		sender, err = readNetworkCollaborationPeerKeyEvidenceTx(tx, networkID,
+			record.Route.SenderEndpointID, purpose, at)
+		if err == nil {
+			receiver, err = readNetworkCollaborationPeerKeyEvidenceTx(tx, networkID,
+				record.Route.ReceiverEndpointID, purpose, at)
+		}
+		bundle.Purpose = purpose
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	bundle.HubID, bundle.Sender, bundle.Receiver = sender.Manifest.HubID, sender, receiver
 	if receiver.Manifest.HubID != bundle.HubID {
-		return nil, nil, ErrNetworkPermission
+		return nil, nil, nil, ErrNetworkPermission
 	}
 	kind := map[string]string{"send": "SEND", "ask": "REQUEST", "reply": "REPLY"}[record.Route.Kind]
 	if kind == "" {
-		return nil, nil, ErrNetworkPermission
+		return nil, nil, nil, ErrNetworkPermission
 	}
-	context := networkDirectContext(bundle, record.Route.MessageID, kind,
-		record.Route.RequestID, record.Route.ReplyTo)
-	if err := e2ee.VerifyNetworkDirectMessage(sender.Manifest.Candidate.Public,
-		context, record.Ciphertext); err != nil {
-		return nil, nil, ErrNetworkPermission
+	parentRequestID, err := relayParentRequestForSealedRouteTx(tx, record.Route)
+	if err != nil {
+		return nil, nil, nil, ErrNetworkPermission
 	}
-	return &context, bundle, nil
+	if bundle.Purpose == "" {
+		context := networkDirectContext(bundle, record.Route.MessageID, kind,
+			record.Route.RequestID, record.Route.ReplyTo, parentRequestID)
+		if err := e2ee.VerifyNetworkDirectMessage(sender.Manifest.Candidate.Public,
+			context, record.Ciphertext); err != nil {
+			return nil, nil, nil, ErrNetworkPermission
+		}
+		return &context, nil, bundle, nil
+	}
+	context, err := networkCollaborationContext(bundle, record.Route.MessageID)
+	if err != nil || context.Route.Kind != kind || context.Route.RequestID != record.Route.RequestID ||
+		context.Route.ReplyTo != record.Route.ReplyTo || e2ee.VerifyNetworkCollaborationMessage(
+		sender.Manifest.Candidate.Public, *context, record.Ciphertext) != nil {
+		return nil, nil, nil, ErrNetworkPermission
+	}
+	return nil, context, bundle, nil
 }
 
 func (s *Store) ClaimNetworkDirectSealedInbox(input NetworkDirectClaimInput) ([]NetworkDirectClaimedDelivery, error) {
@@ -157,10 +189,67 @@ WHERE i.message_id=?`, candidate.messageID))
 		if err != nil {
 			return nil, err
 		}
+		legacyTaskRoute, err := networkTaskLegacyDirectRouteTx(tx,
+			candidate.networkID, item.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		if legacyTaskRoute {
+			if err := failQueuedSameGroupSealedV1Tx(tx, item, record, at,
+				"TASK_MIGRATION_BLOCKED"); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if candidate.ownerID != ownerID || directRecordValidForClaimTx(tx, item,
 			record, candidate.networkID, at) != nil {
 			if err := failQueuedSameGroupSealedV1Tx(tx, item, record, at,
 				"Network direct enrollment or route is no longer current"); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		_, taskErr := networkTaskDeliveryForRouteTx(tx, candidate.networkID,
+			item.MessageID, record.Route.SenderEndpointID, record.Route.ReceiverEndpointID, at)
+		if errors.Is(taskErr, ErrNetworkTaskPending) {
+			// A task offer/result SEND is durably queued before its CAS metadata is
+			// committed. Leave it READY with no attempt or receipt; Publish/Submit
+			// emits a fresh Node wake after the metadata commit.
+			continue
+		}
+		if taskErr != nil {
+			reason := "Network Task route metadata is no longer valid"
+			switch {
+			case errors.Is(taskErr, ErrNetworkTaskMigrationBlocked):
+				reason = "TASK_MIGRATION_BLOCKED"
+			case errors.Is(taskErr, ErrNetworkTaskExpired):
+				reason = "TASK_EXPIRED"
+			case errors.Is(taskErr, ErrNetworkTaskAlreadyClaimed):
+				reason = "TASK_ALREADY_CLAIMED"
+			case errors.Is(taskErr, ErrNetworkTaskLeaseExpired):
+				reason = "TASK_LEASE_EXPIRED"
+			case errors.Is(taskErr, ErrNetworkTaskUnavailable):
+				reason = "TASK_ROUTE_UNAVAILABLE"
+			}
+			if err := failQueuedSameGroupSealedV1Tx(tx, item, record, at, reason); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		_, broadcastErr := networkBroadcastDeliveryForRouteTx(tx,
+			candidate.networkID, item.MessageID, record.Route.SenderEndpointID,
+			record.Route.ReceiverEndpointID, at)
+		if errors.Is(broadcastErr, ErrNetworkBroadcastPending) {
+			// As with Task metadata, a fixed recipient snapshot may commit after the
+			// per-reader sealed SEND. Keep the route READY until it does.
+			continue
+		}
+		if broadcastErr != nil {
+			reason := "BROADCAST_ROUTE_UNAVAILABLE"
+			if errors.Is(broadcastErr, ErrNetworkBroadcastExpired) {
+				reason = "BROADCAST_EXPIRED"
+			}
+			if err := failQueuedSameGroupSealedV1Tx(tx, item, record, at, reason); err != nil {
 				return nil, err
 			}
 			continue
@@ -266,6 +355,22 @@ WHERE attempt_id=? AND layer NOT IN (?,?,?,?))`, attemptID,
 		return nil, ErrNetworkPermission
 	}
 	record, err := relaySealedV1RecordTx(tx, messageID)
+	if err == nil {
+		legacyTaskRoute, legacyErr := networkTaskLegacyDirectRouteTx(tx, networkID, messageID)
+		if legacyErr != nil {
+			return nil, legacyErr
+		}
+		if legacyTaskRoute {
+			if failErr := failClaimedSameGroupSealedV1Tx(tx, item, attempt,
+				time.Now().UTC(), "TASK_MIGRATION_BLOCKED"); failErr != nil {
+				return nil, failErr
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+			return nil, ErrNetworkTaskMigrationBlocked
+		}
+	}
 	if err != nil || directRecordValidForClaimTx(tx, item, record, networkID,
 		time.Now().UTC()) != nil {
 		if record != nil {
@@ -279,16 +384,70 @@ WHERE attempt_id=? AND layer NOT IN (?,?,?,?))`, attemptID,
 		}
 		return nil, ErrNetworkPermission
 	}
-	context, bundle, err := networkDirectDeliveryContextTx(tx, record,
+	taskAuthorization, taskErr := networkTaskDeliveryForRouteTx(tx, networkID,
+		messageID, record.Route.SenderEndpointID, record.Route.ReceiverEndpointID,
+		time.Now().UTC())
+	if errors.Is(taskErr, ErrNetworkTaskPending) {
+		// This is a retryable commit-order race. Do not create a Node-visible
+		// authorization until task metadata is durable.
+		return nil, ErrNetworkTaskPending
+	}
+	if taskErr != nil {
+		reason := "Network Task route metadata is no longer valid"
+		switch {
+		case errors.Is(taskErr, ErrNetworkTaskMigrationBlocked):
+			reason = "TASK_MIGRATION_BLOCKED"
+		case errors.Is(taskErr, ErrNetworkTaskExpired):
+			reason = "TASK_EXPIRED"
+		case errors.Is(taskErr, ErrNetworkTaskAlreadyClaimed):
+			reason = "TASK_ALREADY_CLAIMED"
+		case errors.Is(taskErr, ErrNetworkTaskLeaseExpired):
+			reason = "TASK_LEASE_EXPIRED"
+		case errors.Is(taskErr, ErrNetworkTaskUnavailable):
+			reason = "TASK_ROUTE_UNAVAILABLE"
+		}
+		if failErr := failClaimedSameGroupSealedV1Tx(tx, item, attempt,
+			time.Now().UTC(), reason); failErr != nil {
+			return nil, failErr
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, ErrNetworkPermission
+	}
+	broadcastAuthorization, broadcastErr := networkBroadcastDeliveryForRouteTx(tx,
+		networkID, messageID, record.Route.SenderEndpointID,
+		record.Route.ReceiverEndpointID, time.Now().UTC())
+	if errors.Is(broadcastErr, ErrNetworkBroadcastPending) {
+		return nil, ErrNetworkBroadcastPending
+	}
+	if broadcastErr != nil {
+		if failErr := failClaimedSameGroupSealedV1Tx(tx, item, attempt,
+			time.Now().UTC(), "BROADCAST_ROUTE_UNAVAILABLE"); failErr != nil {
+			return nil, failErr
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, ErrNetworkPermission
+	}
+	context, collaborationContext, bundle, err := networkDirectDeliveryContextTx(tx, record,
 		networkID, time.Now().UTC())
 	if err != nil {
 		return nil, ErrNetworkPermission
 	}
 	result := &NetworkDirectDeliveryAuthorization{NetworkID: networkID,
-		EndpointID: item.RecipientEndpointID, NativeSessionID: nativeID,
+		NativeContextScope: bundle.NativeContextScope,
+		EndpointID:         item.RecipientEndpointID, NativeSessionID: nativeID,
 		BindingID: bindingID, BindingEpoch: bindingEpoch,
 		MessageID: messageID, AttemptID: attemptID, Digest: item.Digest,
-		Context: *context, Bundle: *bundle}
+		NetworkTask: taskAuthorization, CollaborationContext: collaborationContext,
+		NetworkBroadcast: broadcastAuthorization, Bundle: *bundle}
+	if context != nil {
+		result.Context = *context
+	} else if collaborationContext != nil {
+		result.Context = collaborationContext.Route
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -316,5 +475,32 @@ WHERE route.message_id=? AND route.receiver_endpoint_id=?`, receipt.MessageID,
 		bindingEpoch != receipt.BindingEpoch {
 		return ErrNetworkPermission
 	}
-	return networkGuardDirectMessageTx(tx, receipt.MessageID, networkID, at)
+	if err := networkGuardStoredSealedMessageTx(tx, receipt.MessageID, networkID, at); err != nil {
+		return err
+	}
+	if _, _, reserved := networkTaskIDFromMessageID(receipt.MessageID); reserved {
+		var senderID, receiverID string
+		if err := tx.QueryRow(`SELECT sender_endpoint_id,receiver_endpoint_id
+FROM network_direct_message_routes_v2 WHERE message_id=? AND network_id=?`,
+			receipt.MessageID, networkID).Scan(&senderID, &receiverID); err != nil {
+			return ErrNetworkPermission
+		}
+		if _, err := networkTaskDeliveryForRouteTx(tx, networkID,
+			receipt.MessageID, senderID, receiverID, at); err != nil {
+			return err
+		}
+	}
+	if _, reserved := networkBroadcastIDFromMessageID(receipt.MessageID); reserved {
+		var senderID, receiverID string
+		if err := tx.QueryRow(`SELECT sender_endpoint_id,receiver_endpoint_id
+FROM network_direct_message_routes_v2 WHERE message_id=? AND network_id=?`,
+			receipt.MessageID, networkID).Scan(&senderID, &receiverID); err != nil {
+			return ErrNetworkPermission
+		}
+		if _, err := networkBroadcastDeliveryForRouteTx(tx, networkID,
+			receipt.MessageID, senderID, receiverID, at); err != nil {
+			return err
+		}
+	}
+	return nil
 }

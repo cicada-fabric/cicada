@@ -15,7 +15,7 @@ import (
 func TestRemoteWorkerDispatchAPICompletesGoal(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-worker-manager-token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,9 @@ func TestRemoteWorkerDispatchAPICompletesGoal(t *testing.T) {
 	}
 	handler := NewHandler(controlPlane)
 	jobsResponse := httptest.NewRecorder()
-	handler.ServeHTTP(jobsResponse, httptest.NewRequest(http.MethodGet, "/v1/machines/remote-test/jobs", nil))
+	jobsRequest := httptest.NewRequest(http.MethodGet, "/v1/machines/remote-test/jobs", nil)
+	jobsRequest.Header.Set("Authorization", "Bearer synthetic-worker-manager-token")
+	handler.ServeHTTP(jobsResponse, jobsRequest)
 	if jobsResponse.Code != http.StatusOK || !strings.Contains(jobsResponse.Body.String(), goal.Worker.ID) {
 		t.Fatalf("jobs status=%d body=%s", jobsResponse.Code, jobsResponse.Body.String())
 	}
@@ -72,6 +74,7 @@ func TestRemoteWorkerDispatchAPICompletesGoal(t *testing.T) {
 		}
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body)))
 		request.Header.Set("content-type", "application/json")
+		request.Header.Set("Authorization", "Bearer synthetic-worker-manager-token")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		return response

@@ -277,6 +277,9 @@ func TestNetworkMigrationMappingIsVersionedAndOneWay(t *testing.T) {
 	if err := s.ActivateNetworkMode(); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.PrepareGroupNetworkMapping(group.ID, networkB.ID, "post-activation remap", group.Version+1); !errors.Is(err, ErrNetworkConflict) {
+		t.Fatalf("active Group Network assignment changed after explicit approval: %v", err)
+	}
 	if err := s.NetworkGuardGroup("unknown", "unknown", group.ID, networkB.ID); !errors.Is(err, ErrNetworkPermission) {
 		t.Fatalf("forged Network accepted: %v", err)
 	}

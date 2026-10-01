@@ -163,13 +163,19 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 		if err != nil {
 			return nil, err
 		}
-		joined, err := requestMachineAgentNetworkJoin(m.joinSocketPath(context), localNetworkJoinRequest{
+		joined, nativeScope, recovery, err := requestMachineAgentNetworkJoinWithScopeAndRecovery(m.joinSocketPath(context), localNetworkJoinRequest{
 			NetworkID: networkID, InvitationToken: string(bytes.TrimSpace(invitation)),
 			OwnerJoinProof: string(bytes.TrimSpace(proof)), Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		})
 		if err != nil {
+			if recovery, ok := localJoinRecoveryFromError(err); ok {
+				return *recovery, nil
+			}
 			return nil, err
+		}
+		if nativeScope == nil || !nativeScope.Accepted {
+			return nil, errors.New("trusted local Node omitted an accepted native context scope decision")
 		}
 		origin, err := normalizeMCPAPIOrigin(m.baseURL)
 		if err != nil {
@@ -183,7 +189,8 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 			return nil, err
 		}
 		return map[string]any{"status": "joined", "network_id": networkID,
-			"endpoint_id": joined.Endpoint.ID, "lease_expires_at": joined.LeaseExpiresAt}, nil
+			"endpoint_id": joined.Endpoint.ID, "lease_expires_at": joined.LeaseExpiresAt,
+			"native_context_scope": nativeScope, "join_recovery": recovery}, nil
 	}
 	data, err := readPrivateNetworkFile(statePath, 16*1024)
 	if err != nil {
@@ -199,6 +206,12 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 	origin, err := normalizeMCPAPIOrigin(m.baseURL)
 	if err != nil || state.APIOrigin != origin {
 		return nil, errors.New("Network session state belongs to a different Hub origin")
+	}
+	if isMCPNetworkTaskTool(name) {
+		return m.networkTaskToolLocked(name, arguments, context, state)
+	}
+	if isMCPNetworkBroadcastTool(name) {
+		return m.networkBroadcastToolLocked(name, arguments, context, state)
 	}
 	if isMCPNetworkDirectTool(name) {
 		return m.networkDirectToolLocked(name, arguments, context, state)

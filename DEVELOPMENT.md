@@ -1,28 +1,29 @@
 # Cicada development environment
 
-The current work starts from the historical M2 checkpoint at `dev` HEAD
-`f30892fcd79a27bfe5604575deaecebe52c5ec50`. M2's frozen evidence remains
-attributed to its recorded dirty source fingerprint in
-[`docs/group-spaces-m2-validation.md`](docs/group-spaces-m2-validation.md).
-The current worktree contains M3 cursor/unread, M4 delegated regrouping,
-v40 dual-Owner new-record Group boards, v41 atomic nested Group creation,
-and an editable Hub canvas. The newer M5 durable native-outcome path and the
-combined schema-v41 source passed the bounded frozen
-[c33f… gate](docs/v01-group-panel-checkpoint-validation.md): 1,336 Go PASS /
-11 SKIP / 0 FAIL in 25 packages, vet, 36 focused race PASS, eight Python
-PASS, three disposable Docker suites, Chrome 151 loopback Browser and
-controlled real Codex CLI 0.159.2 same-Group ASK/REPLY across two logical
-Node state roots in one container. Earlier bounded gates
-remain attributed to their own fingerprints: `5414…` passed full Go/vet/race,
-three disposable Docker suites and a real Chrome 151 encrypted canvas run
-on a loopback Hub; `e13b…` passed 1,308 Go tests (11 SKIP) and vet but its
-real Codex 0.159.2 run failed at the route allowlist; `434c…` failed at the
-first native Join after the model shortened a synthetic Group ID. The browser
-run did not exercise `UNCERTAIN` fault injection or public HTTPS. Current
-Android v1.5, physical Nodes, public HTTPS and complete G1–G5 demonstrations
-remain unaccepted; see the
-[`architecture status`](docs/architecture-v2-status.md) and
-[`V01–V88/G1–G5 ledger`](docs/completion-ledger.md).
+**2026-10-01 final framework checkpoint — PASS (bounded backend; clean handoff metadata follows):** final dirty bd79-based source `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` retains production code from 54f with corrected private-socket test fixtures and two new public proof vectors. Contract remains v1.6/wire 1/55 operations. Final full Go PASS: 27 packages, 1,092 top-level + 547 subtests, 12 top-level SKIP, 0 FAIL; vet EXIT 0; repaired fixture selector and race each passed 3 top-level + 3 subtests. Independent contract check/export/verify, Python26 and shell20 PASS. No skip is a pass. Earlier 54f Browser/three Docker suites and bounded native multi-Hub Join passed; 54f full Go recorded three fixture failures, retained separately. 432f native ASK/REPLY (282.74 s), 432f plus test-overlay broadcast (298.14 s, both original Threads consumed) and Worker approval (76.83 s) passed; joined V68 passed on 840a test-helper overlay with recording fake queue. These results keep their own source identities. Android v1.6, physical dual-Node and public HTTPS are NOT_RUN; pure PQ TLS is NOT_IMPLEMENTED. Final clean commit/image/bundle are queried from `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`; this is not a push or release. [Evidence and retained failures](docs/v01-completion-checkpoint-validation.md).
+
+The historical f55 v0.1.x candidate was source snapshot
+`final-code-git-snapshot-20261001T102124Z`, fingerprint
+`f55b5255628030857ac88bd7edbd6da7da1b63d543014c76111f9219f46ad255` (dirty
+base `bd79ff93c90ecafc28a2471dd9523444903b39e6`) and Hub image
+`sha256:da88805eaa1987a1c6e06448fc5cddf7d4ce368e8b5eeb3071a1406dad2cb977`.
+Full Go, vet, v1.6/55-operation contract, 19 Python tests and the three
+disposable Docker suites passed on f55. Prior 432f Go/race/Browser/M5 results do not
+transfer to f55. On 432f, V68 and real Worker approval failed; the first
+Node-Control HTTP driver failed but a later protocol-only overlay passed. Its
+Client Docker suite failed on a stale pairing fixture, then the Client-only
+repair passed on separate source/image `cf168…`; that does not turn the 432f
+three-suite run into PASS. Android v1.6, native peer results specifically on f55, physical
+dual Nodes and public HTTPS remain NOT_RUN. See the
+[checkpoint report](docs/v01-completion-checkpoint-validation.md),
+[architecture status](docs/architecture-v2-status.md) and
+[V01–V88/G1–G5 ledger](docs/completion-ledger.md). The f55 source/image are frozen but remain a dirty development candidate; do
+not treat the candidate contract as a Client handoff or release.
+
+The candidate catalog is Client `client-hub-v1.6` with 55 operations. The
+independent Android repository remains owned by `../CICADA_CLIENT`; this
+repository does not edit it. The bounded Android v1.5 result is pinned to its
+own bd79 Hub/source/APK/package and does not validate this v1.6 candidate.
 
 ## Local Hub and optional Node
 
@@ -82,19 +83,22 @@ for Android contract ownership and evidence attribution. Android, disposable
 Docker, real native Runtime, physical-device, and public HTTPS checks are
 separate result layers; a skipped test is not a pass.
 
-The Node runtime image currently defaults to the official Codex CLI standalone
-release `0.159.2`. Its update preparation used one disposable container from
-the old image `cicada-codex:monitor-native-0.157.1`
+`docker/Dockerfile` currently sets `CODEX_RELEASE=0.159.2` as its build
+argument default. Runtime preparation evidence is separate: from old image
+`cicada-codex:monitor-native-0.157.1`
 (`sha256:742214d7f2b7f0cd6a4f5bd5ed1d55d0026c25de0f654dc868cfdf70882cf264`),
-with no credential or host-directory mount. In that container,
-`codex update` exited 1. The official installer fallback
-`curl -fsSL https://chatgpt.com/codex/install.sh | sh` exited 0 and reported
-`codex-cli 0.159.2`; the resulting local image is tagged
-`cicada-codex:monitor-native-update-20260930`, image ID
-`sha256:97cd6f07551fb4f794fca95d7b97e5e3e85131b3d7cdb682a43b47a904b2d5d6`.
-This records a local runtime preparation only; it is not a CICADA release or a
-native acceptance result. The image source and version remain distinct from
-the current unreleased CICADA source and software version.
+a disposable no-credential/no-host-mount `codex update` exited 1; the official
+installer fallback exited 0 and produced local CLI 0.159.2 image
+`cicada-codex:monitor-native-update-20260930`
+(`sha256:97cd6f07551fb4f794fca95d7b97e5e3e85131b3d7cdb682a43b47a904b2d5d6`).
+A later disposable no-credential container ran `CODEX_NON_INTERACTIVE=1 codex
+update` successfully from 0.159.2 to 0.159.3. Its local image is
+`cicada-codex:native-current-20260930`,
+`sha256:5e69783da6d888efe70c429cdadc5a11312c59e0509bab296ce5d509bde94f57`; the
+queue help check found `--thread` and `--message`. These are local runtime
+preparation results, not a CICADA release or proof that a model/native gate
+passed. Keep the Dockerfile build default, prepared runtime image/version, and
+CICADA source/image identities distinct.
 
 Historical product and runtime acceptance remains linked from the
 [`architecture status`](docs/architecture-v2-status.md),

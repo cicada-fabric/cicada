@@ -14,7 +14,7 @@ import (
 
 func TestGoalEventStreamReplaysDurableEvents(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-event-stream-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +29,7 @@ func TestGoalEventStreamReplaysDurableEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Authorization", "Bearer synthetic-event-stream-manager-token")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)

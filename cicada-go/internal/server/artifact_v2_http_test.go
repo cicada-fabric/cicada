@@ -48,7 +48,7 @@ func artifactV2HTTPJoin(t *testing.T, manager *control.Control, groupID, name st
 	return joined
 }
 
-func artifactV2HTTPPublish(t *testing.T, handler http.Handler, manager *control.Control, databasePath string, group *store.Group, joined *fabricpkg.JoinResult, managementAuthorization string) (*store.Artifact, *store.ArtifactRefV2) {
+func artifactV2HTTPPublish(t *testing.T, handler http.Handler, manager *control.Control, databasePath string, group *store.Group, joined *fabricpkg.JoinResult) (*store.Artifact, *store.ArtifactRefV2) {
 	t.Helper()
 	actor, err := manager.Fabric().Authenticate(joined.SessionToken)
 	if err != nil {
@@ -81,22 +81,19 @@ func artifactV2HTTPPublish(t *testing.T, handler http.Handler, manager *control.
 	content := []byte("private artifact fixture")
 	digest := sha256.Sum256(content)
 	digestHex := hex.EncodeToString(digest[:])
-	legacyResponse := artifactV2HTTPCall(t, handler, http.MethodPost, "/v1/artifacts", managementAuthorization, store.Artifact{
-		Name: "fixture.txt", Path: "fixture.txt", Kind: "evidence", Digest: digestHex, Evidence: "private artifact evidence",
-	})
-	if legacyResponse.Code != http.StatusCreated {
-		t.Fatalf("legacy artifact setup status=%d body=%s", legacyResponse.Code, legacyResponse.Body.String())
-	}
-	var legacy store.Artifact
-	if err := json.Unmarshal(legacyResponse.Body.Bytes(), &legacy); err != nil {
-		t.Fatal(err)
-	}
-	// The v1 row has no Worker/Goal/native provenance. A trusted migration
-	// first binds it to this exact Actor; the HTTP request then publishes a
-	// distinct immutable version under the normal current-session Guard.
+	// Seed a historical v1 row as a test fixture directly. The v1 HTTP route is
+	// a legacy Manager surface and this test must not depend on anonymous access
+	// to create its starting state.
 	database, err := store.New(databasePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	legacy, createErr := database.CreateArtifact(store.Artifact{
+		Name: "fixture.txt", Path: "fixture.txt", Kind: "evidence", Digest: digestHex, Evidence: "private artifact evidence",
+	})
+	if createErr != nil {
+		_ = database.Close()
+		t.Fatalf("seed historical artifact row: %v", createErr)
 	}
 	seed, seedErr := database.CreateArtifactRefV2(store.ArtifactRefV2Input{
 		ArtifactID: legacy.ID, GroupID: group.ID, ProducerPrincipalID: actor.PrincipalID,
@@ -120,7 +117,7 @@ func artifactV2HTTPPublish(t *testing.T, handler http.Handler, manager *control.
 	if ref.ID == "" || ref.ID == seed.ID || ref.Version != 2 {
 		t.Fatalf("HTTP did not publish a distinct scoped version: seed=%#v result=%#v", seed, ref)
 	}
-	return &legacy, &ref
+	return legacy, &ref
 }
 
 func TestLegacyArtifactHTTPFailsClosedAfterScopedArtifactRefExists(t *testing.T) {
@@ -136,7 +133,7 @@ func TestLegacyArtifactHTTPFailsClosedAfterScopedArtifactRefExists(t *testing.T)
 		t.Fatal(err)
 	}
 	joined := artifactV2HTTPJoin(t, manager, group.ID, "publisher")
-	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), group, joined, "")
+	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), group, joined)
 	if ref.ID == "" {
 		t.Fatal("scoped ArtifactRef was not created")
 	}
@@ -170,7 +167,7 @@ func TestArtifactV2HTTPRejectsWrongGroupAndRevokedMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerSession := artifactV2HTTPJoin(t, manager, ownerGroup.ID, "owner-publisher")
-	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), ownerGroup, ownerSession, "")
+	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), ownerGroup, ownerSession)
 	otherSession := artifactV2HTTPJoin(t, manager, otherGroup.ID, "other-reader")
 	readPath := "/v2/artifacts/" + ref.ID + "?scope=summary"
 	wrongGroup := artifactV2HTTPCall(t, handler, http.MethodGet, readPath, "CicadaSession "+otherSession.SessionToken, nil)
@@ -206,7 +203,7 @@ func TestConfiguredManagementBearerRetainsLegacyArtifactAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := artifactV2HTTPJoin(t, manager, group.ID, "publisher")
-	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), group, joined, "Bearer management-token")
+	_, ref := artifactV2HTTPPublish(t, handler, manager, filepath.Join(root, "state", "cicada.sqlite3"), group, joined)
 
 	unauthorized := artifactV2HTTPCall(t, handler, http.MethodGet, "/v1/artifacts", "", nil)
 	if unauthorized.Code != http.StatusUnauthorized {

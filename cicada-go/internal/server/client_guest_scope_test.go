@@ -16,7 +16,6 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
-	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -145,25 +144,46 @@ func TestExternalClientDeviceCanOnlyUseFederatedOperations(t *testing.T) {
 	if ok, result := call(3, "nodes.list", `{}`); !ok || string(result) != `[]` {
 		t.Fatalf("guest cannot inspect own Node bindings: ok=%t result=%s", ok, result)
 	}
-	_, digest, err := fabricpkg.NewNodeCredential()
+	pairRequest := func(method, path string, body []byte) (int, []byte) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(method, path, bytes.NewReader(body)))
+		return recorder.Code, recorder.Body.Bytes()
+	}
+	nodeToken, _, _, _, challenge, _ := startPQNodeDeviceCodeFixture(t, pairRequest, "guest-node", "Guest Node")
+	previewBody, err := json.Marshal(map[string]string{"user_code": challenge.UserCode})
 	if err != nil {
 		t.Fatal(err)
 	}
-	challenge, err := manager.StartNodeDeviceBinding("guest-node", "Guest Node", digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	codeBody, err := json.Marshal(map[string]string{"user_code": challenge.UserCode})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok, result := call(4, "nodes.preview", string(codeBody)); !ok ||
-		!bytes.Contains(result, []byte(`guest-node`)) {
+	var preview store.NodeControlKeyCandidate
+	if ok, result := call(4, "nodes.preview", string(previewBody)); !ok ||
+		json.Unmarshal(result, &preview) != nil || preview.NodeID != "guest-node" ||
+		preview.RequestID != challenge.Candidate.RequestID || preview.CandidateDigest == "" || preview.Version <= 0 {
 		t.Fatalf("guest Node preview failed: ok=%t result=%s", ok, result)
 	}
-	if ok, result := call(5, "nodes.confirm", string(codeBody)); !ok ||
-		!bytes.Contains(result, []byte(`guest-node`)) {
+	confirmBody, err := json.Marshal(map[string]any{"user_code": challenge.UserCode,
+		"candidate_digest": preview.CandidateDigest, "candidate_version": preview.Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var confirmed store.NodeControlKeyBinding
+	if ok, result := call(5, "nodes.confirm", string(confirmBody)); !ok ||
+		json.Unmarshal(result, &confirmed) != nil || confirmed.NodeID != "guest-node" || confirmed.State != store.NodeControlKeyActive {
 		t.Fatalf("guest Node confirmation failed: ok=%t result=%s", ok, result)
+	}
+	statusRequest := httptest.NewRequest(http.MethodGet,
+		"/v2/node/device-code/"+preview.RequestID+"/status?node_id=guest-node", nil)
+	statusRequest.Header.Set("Authorization", "CicadaNode "+nodeToken)
+	statusResponse := httptest.NewRecorder()
+	handler.ServeHTTP(statusResponse, statusRequest)
+	if statusResponse.Code != http.StatusOK {
+		t.Fatalf("guest Node pairing status=%d body=%s", statusResponse.Code, statusResponse.Body.String())
+	}
+	var pairingStatus store.NodeControlKeyCandidate
+	if err := json.Unmarshal(statusResponse.Body.Bytes(), &pairingStatus); err != nil ||
+		pairingStatus.State != store.NodeControlPairingConfirmed || pairingStatus.BindingID != confirmed.OwnerBindingID ||
+		pairingStatus.BindingVersion != confirmed.BindingVersion {
+		t.Fatalf("guest Node status omitted confirmed binding fence: err=%v result=%s", err, statusResponse.Body.String())
 	}
 	if ok, result := call(6, "nodes.list", `{}`); !ok ||
 		!bytes.Contains(result, []byte(`guest-node`)) || bytes.Contains(result, []byte(`control-local`)) {

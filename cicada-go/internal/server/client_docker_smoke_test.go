@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,8 +11,10 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/clientwire"
+	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -134,8 +137,37 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeStart, err := json.Marshal(map[string]string{
+	var nodeHub control.NodeControlHubIdentity
+	if err := json.Unmarshal(call(http.MethodGet, "/v2/node/identity", nil, "", http.StatusOK), &nodeHub); err != nil ||
+		nodeHub.HubID != hub.HubID || nodeHub.KeyVersion == 0 || nodeHub.Fingerprint == "" {
+		t.Fatalf("invalid Node-Control Hub identity: err=%v", err)
+	}
+	nodeKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestNonce := make([]byte, 32)
+	if _, err := rand.Read(requestNonce); err != nil {
+		t.Fatal(err)
+	}
+	transcript, err := nodewire.PairingProofTranscript(nodewire.PairingProofContext{
+		HubID: nodeHub.HubID, NodeID: "docker-client-node", RequestNonce: requestNonce,
+		CredentialDigest: nodeDigest, NodePublicIdentity: nodeKey.Public(),
+		HubPublicIdentity: nodeHub.PublicIdentity, HubKeyVersion: nodeHub.KeyVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proofPacket, err := e2ee.Seal(nodeKey, nodeHub.PublicIdentity, transcript, nodewire.PairingProofAAD(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeStart, err := json.Marshal(map[string]any{
 		"node_id": "docker-client-node", "node_name": "Docker Client Node", "credential_digest": nodeDigest,
+		"request_nonce": requestNonce, "node_public_identity": nodeKey.Public(),
+		"node_fingerprint": nodewire.IdentityFingerprint(nodeKey.Public()), "proof_packet": proofPacket,
+		"hub_id": nodeHub.HubID, "hub_public_identity": nodeHub.PublicIdentity,
+		"hub_key_version": nodeHub.KeyVersion, "hub_fingerprint": nodeHub.Fingerprint,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +203,22 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if !bytes.Contains(preview, []byte(`"node_id":"docker-client-node"`)) || bytes.Contains(preview, []byte(nodeDigest)) {
 		t.Fatalf("Docker Node preview invalid: %s", preview)
 	}
-	confirmation := callEncrypted(3, "nodes.confirm", codeBody)
+	var previewEnvelope struct {
+		OK     bool                          `json:"ok"`
+		Result store.NodeControlKeyCandidate `json:"result"`
+	}
+	if err := json.Unmarshal(preview, &previewEnvelope); err != nil || !previewEnvelope.OK ||
+		previewEnvelope.Result.NodeID != "docker-client-node" ||
+		previewEnvelope.Result.CandidateDigest == "" || previewEnvelope.Result.Version == 0 {
+		t.Fatalf("Docker Node preview omitted the exact approval candidate: err=%v", err)
+	}
+	confirmBody, err := json.Marshal(map[string]any{"user_code": deviceCode.UserCode,
+		"candidate_digest":  previewEnvelope.Result.CandidateDigest,
+		"candidate_version": previewEnvelope.Result.Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation := callEncrypted(3, "nodes.confirm", confirmBody)
 	if !bytes.Contains(confirmation, []byte(`"state":"ACTIVE"`)) || bytes.Contains(confirmation, []byte(nodeToken)) {
 		t.Fatalf("Docker Node confirmation invalid: %s", confirmation)
 	}

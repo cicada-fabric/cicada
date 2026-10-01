@@ -59,6 +59,8 @@ func main() {
 		var err error
 		if len(os.Args) > 2 && os.Args[2] == "network-key-sign" {
 			err = ownerNetworkKeySignCommand(os.Args[3:], os.Stdout)
+		} else if len(os.Args) > 2 && os.Args[2] == "network-collaboration-key-sign" {
+			err = ownerNetworkCollaborationKeySignCommand(os.Args[3:], os.Stdout)
 		} else if len(os.Args) > 2 && os.Args[2] == "device-grant-sign" {
 			err = ownerDeviceGrantSignCommand(os.Args[3:], os.Stdout)
 		} else {
@@ -199,6 +201,9 @@ func clientCommand(args []string) error {
 	case "machine":
 		if len(args) >= 2 && args[1] == "agent" {
 			return runMachineAgent(args[2:])
+		}
+		if len(args) >= 2 && args[1] == "node-control" {
+			return machineNodeControlOperatorCommand(args[2:], os.Stdout)
 		}
 		if len(args) >= 2 && (args[1] == "trust-owner-key" || args[1] == "revoke-owner-key") {
 			return machineOwnerKeyTrustCommand(args[1], args[2:], os.Stdout)

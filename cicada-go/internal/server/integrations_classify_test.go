@@ -17,7 +17,7 @@ import (
 
 func TestExternalEventClassifierRequiresDecisionMarker(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), WebhookSecret: "secret"})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-classify-manager-token", WebhookSecret: "secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +39,7 @@ func TestExternalEventClassifierRequiresDecisionMarker(t *testing.T) {
 		receive.Header.Set("X-Cicada-Event-ID", sample.id)
 		receive.Header.Set("X-Cicada-Event-Type", "message.created")
 		receive.Header.Set("X-Cicada-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		receive.Header.Set("Authorization", "Bearer synthetic-classify-manager-token")
 		receiveResponse := httptest.NewRecorder()
 		handler.ServeHTTP(receiveResponse, receive)
 		if receiveResponse.Code != http.StatusAccepted {
@@ -51,6 +52,7 @@ func TestExternalEventClassifierRequiresDecisionMarker(t *testing.T) {
 			t.Fatal(err)
 		}
 		classify := httptest.NewRequest(http.MethodPost, "/v1/connectors/events/"+received.ID+"/classify", nil)
+		classify.Header.Set("Authorization", "Bearer synthetic-classify-manager-token")
 		classifyResponse := httptest.NewRecorder()
 		handler.ServeHTTP(classifyResponse, classify)
 		if classifyResponse.Code != http.StatusOK || !strings.Contains(classifyResponse.Body.String(), `"status":"`+sample.status+`"`) {

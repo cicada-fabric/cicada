@@ -42,6 +42,19 @@ WHERE source_node_id <> '' AND request_id <> ''`)
 
 func (s *Store) CreateBoundNodeApproval(credentialDigest, requestedNodeID, workerID string,
 	attempt int, requestID, method string, request json.RawMessage) (*Approval, bool, error) {
+	return s.createBoundNodeApproval(credentialDigest, requestedNodeID, workerID, attempt, requestID, method, request, nil)
+}
+
+// CreateBoundNodeApprovalNodeControl checks the live application key epoch
+// and exact admitted RPC in the same transaction as approval insertion.
+func (s *Store) CreateBoundNodeApprovalNodeControl(input NodeControlRPCInput, workerID string,
+	attempt int, requestID, method string, request json.RawMessage) (*Approval, bool, error) {
+	return s.createBoundNodeApproval(input.CredentialDigest, input.NodeID, workerID, attempt,
+		requestID, method, request, &input)
+}
+
+func (s *Store) createBoundNodeApproval(credentialDigest, requestedNodeID, workerID string,
+	attempt int, requestID, method string, request json.RawMessage, guard *NodeControlRPCInput) (*Approval, bool, error) {
 	credentialDigest = strings.TrimSpace(credentialDigest)
 	requestedNodeID = strings.TrimSpace(requestedNodeID)
 	workerID = strings.TrimSpace(workerID)
@@ -60,6 +73,11 @@ func (s *Store) CreateBoundNodeApproval(credentialDigest, requestedNodeID, worke
 		return nil, false, err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return nil, false, err
+		}
+	}
 	ownerID, err := currentBoundNodeOwnerTx(tx, credentialDigest, requestedNodeID)
 	if err != nil {
 		return nil, false, ErrNodeApprovalNotAuthorized
@@ -95,6 +113,17 @@ VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`, approvalID, goalID, workerID,
 	if err != nil {
 		return nil, false, err
 	}
+	if guard != nil {
+		payload, err := json.Marshal(map[string]any{"approval_id": approvalID,
+			"method": method, "attempt": attempt})
+		if err != nil {
+			return nil, false, err
+		}
+		if _, err := tx.Exec(`INSERT INTO events(goal_id,worker_id,type,payload_json,created_at)
+VALUES (?,?, 'ApprovalRequested', ?, ?)`, goalID, workerID, string(payload), createdAt); err != nil {
+			return nil, false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
@@ -104,6 +133,18 @@ VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`, approvalID, goalID, workerID,
 
 func (s *Store) GetBoundNodeApproval(credentialDigest, requestedNodeID, workerID string,
 	attempt int, approvalID string) (*Approval, error) {
+	return s.getBoundNodeApproval(credentialDigest, requestedNodeID, workerID, attempt, approvalID, nil)
+}
+
+// GetBoundNodeApprovalNodeControl verifies the caller's current key epoch
+// even if stale-attempt reconciliation needs to cancel an approval row.
+func (s *Store) GetBoundNodeApprovalNodeControl(input NodeControlRPCInput, workerID string,
+	attempt int, approvalID string) (*Approval, error) {
+	return s.getBoundNodeApproval(input.CredentialDigest, input.NodeID, workerID, attempt, approvalID, &input)
+}
+
+func (s *Store) getBoundNodeApproval(credentialDigest, requestedNodeID, workerID string,
+	attempt int, approvalID string, guard *NodeControlRPCInput) (*Approval, error) {
 	credentialDigest = strings.TrimSpace(credentialDigest)
 	requestedNodeID = strings.TrimSpace(requestedNodeID)
 	workerID = strings.TrimSpace(workerID)
@@ -118,6 +159,11 @@ func (s *Store) GetBoundNodeApproval(credentialDigest, requestedNodeID, workerID
 		return nil, err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return nil, err
+		}
+	}
 	ownerID, err := currentBoundNodeOwnerTx(tx, credentialDigest, requestedNodeID)
 	if err != nil {
 		return nil, ErrNodeApprovalNotAuthorized

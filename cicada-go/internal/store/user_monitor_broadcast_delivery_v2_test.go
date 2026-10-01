@@ -293,7 +293,8 @@ func TestUserMonitorBroadcastV2NodeNoticeScopeAndReceipts(t *testing.T) {
 	if n.HubID == "" || n.PreviewID != r.PreviewID || n.BroadcastID != r.BroadcastID ||
 		n.NodeID != f.sealed.source.nodeID || n.NativeSessionID != f.sealed.source.binding.NativeSessionID ||
 		n.BindingID != f.sealed.source.binding.ID || n.BindingEpoch != f.sealed.source.binding.Epoch ||
-		n.ReceiptState != UserMonitorBroadcastV2NoticePending {
+		n.ReceiptState != UserMonitorBroadcastV2NoticePending || n.NativeContextScope == nil ||
+		n.NativeContextScope.HubID == "" || n.NativeContextScope.GroupID != n.GroupID {
 		t.Fatalf("notice lacks exact route: %+v", n)
 	}
 	other, err := f.sealed.store.ListUserMonitorBroadcastV2Notifications(f.sealed.targetNode.nodeCredential, 16)
@@ -316,7 +317,9 @@ func TestUserMonitorBroadcastV2NodeNoticeScopeAndReceipts(t *testing.T) {
 	if _, err := f.sealed.store.RecordUserMonitorBroadcastV2NotificationReceipt(bad); !errors.Is(err, ErrUserMonitorBroadcastV2Denied) {
 		t.Fatalf("wrong Node receipt persisted: %v", err)
 	}
-	if got, err := f.sealed.store.RecordUserMonitorBroadcastV2NotificationReceipt(receipt); err != nil || got.ReceiptState != UserMonitorBroadcastV2NoticeNodeAccepted {
+	if got, err := f.sealed.store.RecordUserMonitorBroadcastV2NotificationReceipt(receipt); err != nil ||
+		got.ReceiptState != UserMonitorBroadcastV2NoticeNodeAccepted || got.NativeContextScope == nil ||
+		*got.NativeContextScope != *n.NativeContextScope {
 		t.Fatalf("Node receipt failed: %+v %v", got, err)
 	}
 	if _, err := f.sealed.store.RecordUserMonitorBroadcastV2NotificationReceipt(receipt); err != nil {

@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 41
+	CurrentV2SchemaVersion = 55
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -394,6 +394,135 @@ var v2Migrations = []v2Migration{
 		Description: "bind Client group.create recovery to one atomic Group, owner membership and parent insertion",
 		Objects:     []string{"client_topology_group_create_guard_v2", "client_topology_group_creates_v2"},
 		Apply:       func(s *Store) error { return s.initializeClientTopologyGroupCreateSchema() },
+	},
+	{
+		Version:     42,
+		ID:          "v2.fabric.network_task_offers",
+		Description: "add Network scoped sealed SharedTask offers, claim leases and independent result acceptance",
+		Objects:     []string{"network_task_offers_v2", "network_task_readers_v2", "network_task_results_v2"},
+		Apply:       func(s *Store) error { return s.initializeNetworkTaskSchema() },
+	},
+	{
+		Version:     43,
+		ID:          "v2.relay.ask_sender_endpoint_budget",
+		Description: "bound pending Relay Ask fanout per sender Endpoint and index expiry accounting",
+		Apply:       func(s *Store) error { return s.initializeRelaySenderEndpointAskIndex() },
+	},
+	{
+		Version:     44,
+		ID:          "v2.relay.link_network_enrollment",
+		Description: "record both immutable Network scopes for sealed Link Relay enrollment fences",
+		// The table itself is introduced by v35; v44 only adds receiver_network_id.
+		// Do not re-register it as a newly-created object or synthetic historical
+		// downgrade fixtures will incorrectly delete the v35 source table.
+		Apply: func(s *Store) error { return s.initializeRelayLinkNetworkEnrollmentSchema() },
+	},
+	{
+		Version:     45,
+		ID:          "v2.fabric.sealed_shared_task_handoff",
+		Description: "bind metadata-only SharedTask responsibility transfer to a sealed SEND and current Artifact ACLs",
+		Objects:     []string{"shared_task_sealed_handoffs_v2"},
+		Apply:       func(s *Store) error { return s.initializeSealedSharedTaskHandoffSchema() },
+	},
+	{
+		Version:     46,
+		ID:          "v2.collaboration.link_metadata_review",
+		Description: "add bilateral versioned Link review policy and metadata-only reviewer lease queue",
+		Objects: []string{
+			"communication_link_review_policy_heads_v2", "communication_link_review_policy_grants_v2",
+			"communication_link_message_reviews_v2", "communication_link_message_review_candidates_v2",
+			"communication_link_review_events_v2",
+		},
+		Apply: func(s *Store) error { return s.initializeCommunicationLinkReviewSchema() },
+	},
+	{
+		Version:     47,
+		ID:          "v2.fabric.typed_network_collaboration_keys",
+		Description: "add distinct Task and Broadcast Owner key consent with immutable purpose-bound route revisions",
+		Objects:     []string{"network_collaboration_key_grants_v2", "network_collaboration_key_grant_nonces_v2"},
+		Apply:       func(s *Store) error { return s.initializeNetworkCollaborationKeySchema() },
+	},
+	{
+		Version:     48,
+		ID:          "v2.fabric.network_broadcast_metadata",
+		Description: "add fixed-snapshot Network Broadcast metadata and recipient delivery references",
+		Objects:     []string{"network_broadcasts_v2", "network_broadcast_recipients_v2"},
+		Apply:       func(s *Store) error { return s.initializeNetworkBroadcastSchema() },
+	},
+	{
+		Version:     49,
+		ID:          "v2.node.control_pq_bindings",
+		Description: "add Owner-approved Node-Control PQ key pairing, immutable bindings, and exact RPC replay state",
+		Objects: []string{
+			"node_control_key_requests_v1", "node_control_key_requests_v1_pending_node_idx",
+			"node_control_key_requests_v1_expiry_idx", "node_control_key_request_candidate_immutable_v1",
+			"node_control_key_bindings_v1", "node_control_key_bindings_v1_epoch_idx",
+			"node_control_key_bindings_v1_active_node_idx", "node_control_key_bindings_v1_credential_idx",
+			"node_control_key_binding_immutable_v1", "node_control_owner_binding_revoke_v1",
+			"node_control_rpc_sequences_v1", "node_control_rpc_inbox_v1",
+			"node_control_rpc_read_retention_v1_idx", "node_control_rpc_action_count_v1_idx",
+			"node_control_rpc_response_cache_v1_idx", "node_control_rpc_request_immutable_v1",
+		},
+		Apply: func(s *Store) error { return s.InitializeNodeControlV1Schema() },
+	},
+	{
+		Version:     50,
+		ID:          "v2.relay.causal_ask_budget",
+		Description: "add bounded, server-derived request ancestry and finite causal Ask root budgets",
+		Objects:     []string{"relay_v2_requests_causal_root_idx"},
+		Apply:       func(s *Store) error { return s.initializeRelayCausalAskSchema() },
+	},
+	{
+		Version:     51,
+		ID:          "v2.collaboration.external_thread_invite_direction",
+		Description: "allow explicitly previewed bidirectional external Thread invites while preserving existing forward invites",
+		Objects: []string{
+			"external_thread_invites_v2", "external_thread_invites_v2_digest_idx",
+			"external_thread_invites_v2_link_idx", "external_thread_invites_v2_source_idx",
+		},
+		Apply: func(s *Store) error { return s.expandExternalThreadInviteDirectionV2Schema() },
+	},
+	{
+		Version:     52,
+		ID:          "v2.fabric.dedicated_thread_context_policy",
+		Description: "add immutable Network context scope and retained native context history guards",
+		Objects: []string{
+			"session_bindings_native_history_v52_idx",
+			"endpoint_network_memberships_endpoint_history_v52_idx",
+			"network_access_sessions_endpoint_history_v52_idx",
+		},
+		Apply: func(s *Store) error { return s.initializeDedicatedThreadPolicySchema() },
+	},
+	{
+		Version:     53,
+		ID:          "v2.node.workspace_snapshot_rpc_retention",
+		Description: "index Node-Control workspace snapshot upload actions and download reads within existing bounded retention",
+		Objects: []string{
+			"node_control_rpc_snapshot_read_v1_idx",
+			"node_control_rpc_snapshot_action_v1_idx",
+		},
+		Apply: func(s *Store) error { return s.InitializeNodeControlSnapshotV1Schema() },
+	},
+	{
+		Version:     54,
+		ID:          "v2.task.local_sealed_handoff_route",
+		Description: "bind same-Node sealed Task handoff metadata to immutable endpoint route proof",
+		Objects: []string{
+			"shared_task_local_handoff_routes_v54",
+			"shared_task_local_handoff_route_target_v54_idx",
+			"shared_task_local_handoff_route_immutable_v54",
+		},
+		Apply: func(s *Store) error { return s.initializeLocalSealedTaskHandoffSchemaV2() },
+	},
+	{
+		Version:     55,
+		ID:          "v2.node.snapshot_rpc_response_projection",
+		Description: "retain an idempotent snapshot download manifest or terminal error with the exact Node-Control request route",
+		Objects: []string{
+			"node_control_snapshot_rpc_responses_v1",
+			"node_control_snapshot_rpc_response_guard_v1",
+		},
+		Apply: func(s *Store) error { return s.InitializeNodeControlSnapshotRPCProjectionV1Schema() },
 	},
 }
 
@@ -802,11 +931,30 @@ ON CONFLICT(version) DO UPDATE SET
 func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]legacyInventory) error {
 	for _, object := range migration.Objects {
 		var count int
-		if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, object).Scan(&count); err != nil {
+		if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = ?`, object).Scan(&count); err != nil {
 			return fmt.Errorf("inspect object %s: %w", object, err)
 		}
 		if count != 1 {
 			return fmt.Errorf("migration object %s is missing", object)
+		}
+	}
+	if migration.ID == "v2.relay.ask_sender_endpoint_budget" {
+		var count int
+		if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?`,
+			"relay_v2_requests_sender_endpoint_idx").Scan(&count); err != nil {
+			return fmt.Errorf("inspect Relay sender Endpoint Ask index: %w", err)
+		}
+		if count != 1 {
+			return errors.New("Relay Ask sender Endpoint migration did not install its index")
+		}
+	}
+	if migration.ID == "v2.relay.link_network_enrollment" {
+		columns, err := existingColumns(s.db, "network_message_enrollment_v2", []string{"receiver_network_id"})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 1 {
+			return errors.New("Link Relay enrollment target Network column is missing")
 		}
 	}
 	if migration.ID == "v2.fabric.network_direct_sealed" {
@@ -820,6 +968,35 @@ WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil {
 			if count != 1 {
 				return fmt.Errorf("migration trigger %s is missing", trigger)
 			}
+		}
+	}
+	if migration.ID == "v2.fabric.typed_network_collaboration_keys" {
+		columns, err := existingColumns(s.db, "network_direct_message_routes_v2", []string{"key_purpose"})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 1 {
+			return errors.New("typed Network collaboration purpose column is missing")
+		}
+	}
+	if migration.ID == "v2.relay.causal_ask_budget" {
+		columns, err := existingColumns(s.db, "relay_v2_requests", []string{
+			"parent_request_id", "causal_root_request_id", "causal_depth",
+		})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 3 {
+			return errors.New("causal Ask lineage columns are missing")
+		}
+	}
+	if migration.ID == "v2.fabric.dedicated_thread_context_policy" {
+		columns, err := existingColumns(s.db, "networks_v2", []string{"context_policy"})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 1 {
+			return errors.New("Network dedicated Thread context policy column is missing")
 		}
 	}
 	if migration.ID == "v2.client.monitor_broadcast_intake_limits" {
@@ -944,6 +1121,50 @@ WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil {
 			if indexCount != 1 {
 				return fmt.Errorf("external Thread invite index %s is missing", indexName)
 			}
+		}
+	}
+	if migration.ID == "v2.collaboration.external_thread_invite_direction" {
+		columns, err := existingColumns(s.db, "external_thread_invites_v2", []string{
+			"invite_id", "token_digest", "source_endpoint_id", "source_group_id", "source_owner_id",
+			"source_principal_id", "source_node_id", "source_membership_revision", "source_join_revision",
+			"source_group_version", "hub_id", "direction", "actions_json", "data_scopes_json", "expires_at",
+			"state", "target_owner_id", "target_endpoint_id", "target_group_id", "communication_link_id",
+			"created_at", "accepted_at",
+		})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 22 {
+			return errors.New("expanded external Thread invite table is missing required columns")
+		}
+		var schema string
+		if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2'`).Scan(&schema); err != nil {
+			return err
+		}
+		if !strings.Contains(strings.ToLower(schema), "'bidirectional'") {
+			return errors.New("external Thread invite direction constraint was not expanded")
+		}
+	}
+	if migration.ID == "v2.collaboration.external_thread_invite_direction" {
+		columns, err := existingColumns(s.db, "external_thread_invites_v2", []string{
+			"invite_id", "token_digest", "source_endpoint_id", "source_group_id", "source_owner_id",
+			"source_principal_id", "source_node_id", "source_membership_revision", "source_join_revision",
+			"source_group_version", "hub_id", "direction", "actions_json", "data_scopes_json", "expires_at",
+			"state", "target_owner_id", "target_endpoint_id", "target_group_id", "communication_link_id",
+			"created_at", "accepted_at",
+		})
+		if err != nil {
+			return err
+		}
+		if len(columns) != 22 {
+			return errors.New("expanded external Thread invite table is missing required columns")
+		}
+		var schema string
+		if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2'`).Scan(&schema); err != nil {
+			return err
+		}
+		if !strings.Contains(strings.ToLower(schema), "'bidirectional'") {
+			return errors.New("external Thread invite direction constraint was not expanded")
 		}
 	}
 	if err := verifySQLiteIntegrity(s.db); err != nil {

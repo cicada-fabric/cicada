@@ -309,11 +309,31 @@ func TestLegacyFabricRejectsReadyV2EndpointsAndRelayMessages(t *testing.T) {
 		t.Fatalf("legacy join updated READY endpoint: %v", err)
 	}
 
+	// A legacy endpoint without a current Group association is not a valid
+	// receiver route, even for a Store-level sealed-envelope visibility test.
+	if _, err := controlPlane.store.CreateFabricRequest(store.FabricRequest{
+		RequestID: "rq-ready-v2-unjoined", MessageID: "msg-ready-v2-unjoined",
+		SenderEndpointID: ready.ID, SenderPrincipalID: "principal-" + ready.ID,
+		SenderGroupID: "group-" + ready.ID, ReceiverEndpointID: legacy.ID,
+		ReceiverGroupID: "missing-receiver-group", Body: "blocked unjoined route",
+	}); !errors.Is(err, store.ErrNetworkPermission) {
+		t.Fatalf("endpoint route with no current receiver Group was accepted: %v", err)
+	}
+
+	readyReceiver, err := controlPlane.JoinEndpoint(EndpointJoinInput{
+		Name: "ready-receiver", Harness: "codex", NativeSessionID: "thread-ready-receiver",
+		MachineID: "ready-receiver-machine", Visibility: "fabric",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	markFabricEndpointReady(t, controlPlane, readyReceiver.ID)
 	request, err := controlPlane.store.CreateFabricRequest(store.FabricRequest{
 		RequestID: "rq-ready-v2", MessageID: "msg-ready-v2",
-		SenderEndpointID: ready.ID, SenderPrincipalID: "principal-ready",
-		SenderGroupID: "group-ready", ReceiverEndpointID: legacy.ID,
-		ReceiverGroupID: "group-ready", Body: "v2 envelope",
+		SenderEndpointID: ready.ID, SenderPrincipalID: "principal-" + ready.ID,
+		SenderGroupID: "group-" + ready.ID, ReceiverEndpointID: readyReceiver.ID,
+		ReceiverPrincipalID: "principal-" + readyReceiver.ID,
+		ReceiverGroupID:     "group-" + readyReceiver.ID, Body: "v2 envelope",
 	})
 	if err != nil {
 		t.Fatal(err)

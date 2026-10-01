@@ -3,12 +3,14 @@ set -euo pipefail
 
 usage() {
   printf 'usage: %s [--image IMAGE] [--interop-test-image IMAGE] [--metadata-file PATH]\n' "$0" >&2
+  printf '       %s --source-info-only --metadata-file PATH\n' "$0" >&2
   exit 2
 }
 
 image_name="${CICADA_HUB_IMAGE:-cicada-codex:hub-dev}"
 test_image_name=""
 metadata_file=""
+source_info_only=false
 while (($#)); do
   case "$1" in
     --image)
@@ -26,6 +28,10 @@ while (($#)); do
       metadata_file="$2"
       shift 2
       ;;
+    --source-info-only)
+      source_info_only=true
+      shift
+      ;;
     *)
       usage
       ;;
@@ -36,7 +42,12 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 dockerfile="${repo_root}/docker/Dockerfile.hub"
 catalog_file="${repo_root}/cicada-go/internal/clientcontract/catalog.json"
 
-for command_name in docker git python3 sha256sum; do
+[[ "$source_info_only" != true || -n "$metadata_file" ]] || usage
+required_commands=(git python3 sha256sum)
+if [[ "$source_info_only" != true ]]; then
+  required_commands+=(docker)
+fi
+for command_name in "${required_commands[@]}"; do
   command -v "$command_name" >/dev/null 2>&1 || {
     printf 'build-hub-image: required command unavailable: %s\n' "$command_name" >&2
     exit 1
@@ -64,12 +75,12 @@ import sys
 
 root = os.fsencode(sys.argv[1])
 paths = subprocess.run(
-    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore", b"scripts/build-web-panel.sh", b"scripts/write-web-panel-manifest.py"],
+    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore", b"scripts/build-web-panel.sh", b"scripts/write-web-panel-manifest.py", b"scripts/build-hub-image.sh", b".github/workflows/release.yml"],
     check=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.DEVNULL,
 ).stdout.split(b"\0")
-digest = hashlib.sha256(b"cicada-hub-build-inputs-v3\0")
+digest = hashlib.sha256(b"cicada-hub-build-inputs-v4\0")
 for relative in sorted(path for path in set(paths) if path):
     absolute = os.path.join(root, relative)
     try:
@@ -107,6 +118,58 @@ verify_source_snapshot() {
      "$current_fingerprint" == "$source_fingerprint" && "$current_catalog_sha256" == "$catalog_sha256" ]]
 }
 
+build_version="${CICADA_BUILD_VERSION:-0.1.0-dev}"
+webcrypto_manifest_sha256="${CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256:-unknown}"
+[[ "$build_version" =~ ^[0-9A-Za-z.+-]+$ ]] || {
+  printf 'build-hub-image: invalid CICADA_BUILD_VERSION\n' >&2
+  exit 2
+}
+if [[ "$webcrypto_manifest_sha256" != unknown && ! "$webcrypto_manifest_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'build-hub-image: invalid WebCrypto manifest SHA-256\n' >&2
+  exit 2
+fi
+
+if [[ "$source_info_only" == true ]]; then
+  if ! verify_source_snapshot; then
+    printf 'build-hub-image: source changed while source metadata was being collected\n' >&2
+    exit 1
+  fi
+  python3 - "$metadata_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" <<'PY'
+import json
+import os
+import sys
+import tempfile
+
+path, revision, dirty, source_fingerprint, catalog_sha256 = sys.argv[1:]
+result = {
+    "schema_version": "cicada.hub-build-source.v1",
+    "source": {
+        "revision": revision,
+        "dirty": dirty == "true",
+        "source_fingerprint": source_fingerprint,
+        "catalog_sha256": catalog_sha256,
+    },
+}
+directory = os.path.dirname(os.path.abspath(path))
+os.makedirs(directory, mode=0o700, exist_ok=True)
+fd, temporary = tempfile.mkstemp(prefix=".hub-source-", dir=directory)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        json.dump(result, output, sort_keys=True, indent=2)
+        output.write("\n")
+    os.replace(temporary, path)
+finally:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+PY
+  printf 'Hub source revision: %s\nHub source dirty: %s\nHub source fingerprint: %s\nCatalog SHA-256: %s\n' \
+    "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256"
+  exit 0
+fi
+
 build_args=(
   --build-arg "CICADA_UID=${CICADA_UID:-$(id -u)}"
   --build-arg "CICADA_GID=${CICADA_GID:-$(id -g)}"
@@ -114,6 +177,8 @@ build_args=(
   --build-arg "CICADA_BUILD_DIRTY=${dirty}"
   --build-arg "CICADA_BUILD_SOURCE_FINGERPRINT=${source_fingerprint}"
   --build-arg "CICADA_BUILD_CATALOG_SHA256=${catalog_sha256}"
+  --build-arg "CICADA_BUILD_VERSION=${build_version}"
+  --build-arg "CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=${webcrypto_manifest_sha256}"
 )
 
 add_proxy_args() {

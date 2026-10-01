@@ -13,6 +13,13 @@ jobs:
   binaries:
     name: release binaries
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      revision: ${{ steps.build.outputs.revision }}
+      dirty: ${{ steps.build.outputs.dirty }}
+      source_fingerprint: ${{ steps.build.outputs.source_fingerprint }}
+      hub_webcrypto_manifest_sha256: ${{ steps.build.outputs.hub_webcrypto_manifest_sha256 }}
+      catalog_sha256: ${{ steps.build.outputs.catalog_sha256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
@@ -20,8 +27,13 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0, Node 24
         with:
           go-version: '1.27.1'
+      - name: Check release and installer packaging
+        run: python3 scripts/test-release-packaging.py
       - name: Build checksummed release set
+        id: build
         run: scripts/build-release.sh "${GITHUB_REF_NAME#v}" dist
+      - name: Smoke test release binary, embedded WebCrypto and provenance
+        run: python3 scripts/test-release-packaging.py dist
       - name: Publish binaries and checksums
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3, Node 24
         with:
@@ -31,6 +43,7 @@ jobs:
   image:
     name: publish OCI image
     runs-on: ubuntu-latest
+    needs: binaries
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
@@ -48,11 +61,42 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=latest
+      - name: Calculate Hub source metadata
+        id: hub-source
+        run: |
+          scripts/build-hub-image.sh --source-info-only --metadata-file .cicada-data/release-hub-source.json
+          python3 - .cicada-data/release-hub-source.json >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import os
+          import sys
+          with open(sys.argv[1], encoding="utf-8") as source:
+              metadata = json.load(source)["source"]
+          binary_revision = os.environ["BINARY_REVISION"]
+          binary_dirty = os.environ["BINARY_DIRTY"] == "true"
+          binary_catalog = os.environ["BINARY_CATALOG_SHA256"]
+          if (metadata["revision"] != binary_revision or metadata["dirty"] != binary_dirty or
+                  metadata["catalog_sha256"] != binary_catalog):
+              raise SystemExit("binary and Hub build source identities disagree")
+          for name in ("revision", "source_fingerprint", "catalog_sha256"):
+              print(f"{name}={metadata[name]}")
+          print(f"dirty={str(metadata['dirty']).lower()}")
+          PY
+        env:
+          BINARY_REVISION: ${{ needs.binaries.outputs.revision }}
+          BINARY_DIRTY: ${{ needs.binaries.outputs.dirty }}
+          BINARY_CATALOG_SHA256: ${{ needs.binaries.outputs.catalog_sha256 }}
       - name: Build and push image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0, Node 24
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/Dockerfile.hub
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CICADA_BUILD_VERSION=${{ needs.binaries.outputs.version }}
+            CICADA_BUILD_REVISION=${{ steps.hub-source.outputs.revision }}
+            CICADA_BUILD_DIRTY=${{ steps.hub-source.outputs.dirty }}
+            CICADA_BUILD_SOURCE_FINGERPRINT=${{ steps.hub-source.outputs.source_fingerprint }}
+            CICADA_BUILD_CATALOG_SHA256=${{ steps.hub-source.outputs.catalog_sha256 }}
+            CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=${{ needs.binaries.outputs.hub_webcrypto_manifest_sha256 }}

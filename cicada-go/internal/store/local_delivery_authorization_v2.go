@@ -38,22 +38,27 @@ type LocalDeliveryRevalidationInput struct {
 	SourceBindingEpoch uint64 `json:"source_binding_epoch"`
 	TargetEndpointID   string `json:"target_endpoint_id"`
 	Action             string `json:"action"`
+	MessageID          string `json:"message_id,omitempty"`
+	MessageDigest      string `json:"message_digest,omitempty"`
 }
 
 // LocalDeliveryEndpointAuthorization is the bounded, current identity and
 // binding snapshot a same-Node adapter needs to derive its EndpointMessageContext.
 // It deliberately contains no message body, history, workspace, or locator.
 type LocalDeliveryEndpointAuthorization struct {
-	EndpointID         string `json:"endpoint_id"`
-	PrincipalID        string `json:"principal_id"`
-	OwnerID            string `json:"owner_id"`
-	GroupID            string `json:"group_id"`
-	NodeID             string `json:"node_id"`
-	MembershipRevision int64  `json:"membership_revision"`
-	GroupJoinRevision  int64  `json:"group_join_revision"`
-	BindingID          string `json:"binding_id"`
-	BindingEpoch       uint64 `json:"binding_epoch"`
-	NativeSessionID    string `json:"native_session_id,omitempty"`
+	EndpointID           string `json:"endpoint_id"`
+	PrincipalID          string `json:"principal_id"`
+	OwnerID              string `json:"owner_id"`
+	GroupID              string `json:"group_id"`
+	NetworkID            string `json:"network_id,omitempty"`
+	GroupContextPolicy   string `json:"group_context_policy,omitempty"`
+	NetworkContextPolicy string `json:"network_context_policy,omitempty"`
+	NodeID               string `json:"node_id"`
+	MembershipRevision   int64  `json:"membership_revision"`
+	GroupJoinRevision    int64  `json:"group_join_revision"`
+	BindingID            string `json:"binding_id"`
+	BindingEpoch         uint64 `json:"binding_epoch"`
+	NativeSessionID      string `json:"native_session_id,omitempty"`
 }
 
 type LocalDeliveryKeyCandidate struct {
@@ -68,14 +73,16 @@ type LocalDeliveryKeyCandidate struct {
 // must re-request it immediately before local queue injection; the revision
 // changes when any authorization, binding, owner, or candidate changes.
 type LocalDeliveryAuthorization struct {
-	Action                string                             `json:"action"`
-	AuthorizationRevision string                             `json:"authorization_revision"`
-	AuthorizedAt          string                             `json:"authorized_at"`
-	ValidUntil            string                             `json:"valid_until"`
-	Source                LocalDeliveryEndpointAuthorization `json:"source"`
-	SourceKey             LocalDeliveryKeyCandidate          `json:"source_key_candidate"`
-	Target                LocalDeliveryEndpointAuthorization `json:"target"`
-	TargetKey             LocalDeliveryKeyCandidate          `json:"target_key_candidate"`
+	HubID                 string                                  `json:"hub_id"`
+	Action                string                                  `json:"action"`
+	AuthorizationRevision string                                  `json:"authorization_revision"`
+	AuthorizedAt          string                                  `json:"authorized_at"`
+	ValidUntil            string                                  `json:"valid_until"`
+	Source                LocalDeliveryEndpointAuthorization      `json:"source"`
+	SourceKey             LocalDeliveryKeyCandidate               `json:"source_key_candidate"`
+	Target                LocalDeliveryEndpointAuthorization      `json:"target"`
+	TargetKey             LocalDeliveryKeyCandidate               `json:"target_key_candidate"`
+	TaskHandoff           *SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
 }
 
 type localDeliveryEndpointSnapshot struct {
@@ -190,6 +197,9 @@ func (s *Store) AuthorizeLocalDeliveryForNodeCredential(nodeCredentialDigest, se
 	if err != nil {
 		return nil, err
 	}
+	if err := setLocalDeliveryHubIDTx(tx, result); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -211,7 +221,9 @@ func (s *Store) RevalidateLocalDeliveryForNodeCredential(nodeCredentialDigest st
 	if !validNodeCredentialDigest(nodeCredentialDigest) || input.GroupID == "" || len(input.GroupID) > 256 ||
 		input.SourceEndpointID == "" || len(input.SourceEndpointID) > 256 || input.SourceBindingID == "" ||
 		len(input.SourceBindingID) > 256 || input.SourceBindingEpoch == 0 || input.TargetEndpointID == "" ||
-		len(input.TargetEndpointID) > 256 || (input.Action != "message.send" && input.Action != "message.ask" && input.Action != "message.reply") {
+		len(input.TargetEndpointID) > 256 || (input.Action != "message.send" && input.Action != "message.ask" && input.Action != "message.reply") ||
+		(len(input.MessageID) == 0) != (len(input.MessageDigest) == 0) || len(input.MessageID) > 256 ||
+		(input.MessageDigest != "" && !validSHA256Digest(input.MessageDigest)) {
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
 
@@ -278,10 +290,30 @@ func (s *Store) RevalidateLocalDeliveryForNodeCredential(nodeCredentialDigest st
 	if err != nil {
 		return nil, err
 	}
+	if err := setLocalDeliveryHubIDTx(tx, result); err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(input.MessageID, sealedTaskHandoffMessagePrefix) {
+		handoff, err := authorizeLocalSealedTaskHandoffDeliveryTx(tx, input, source, target, sourceKey, targetKey, nowTime)
+		if err != nil {
+			return nil, err
+		}
+		result.TaskHandoff = handoff
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func setLocalDeliveryHubIDTx(tx *sql.Tx, authorization *LocalDeliveryAuthorization) error {
+	if authorization == nil {
+		return ErrLocalDeliveryNotAuthorized
+	}
+	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&authorization.HubID); err != nil || authorization.HubID == "" {
+		return ErrLocalDeliveryNotAuthorized
+	}
+	return nil
 }
 
 func readCurrentBoundNodeOwnerTx(tx *sql.Tx, credentialDigest string) (nodeID, ownerID string,
@@ -340,13 +372,14 @@ func readLocalDeliverySourceTx(tx *sql.Tx, sessionCredentialDigest, groupID, now
 p.owner_id, e.owner, eg.group_id, e.machine_id, eg.revision,
 sb.id, sb.epoch, sb.status, sb.lease_owner, sb.lease_expires_at,
 e.status, e.migration_state, p.status, m.effective_at, m.expires_at,
-g.state, g.revision, m.revision
+g.state, g.revision, m.revision, g.context_policy, g.network_id, COALESCE(n.context_policy,'')
 FROM session_bindings sb
 JOIN fabric_endpoints e ON e.binding_id=sb.id AND e.id=sb.endpoint_id
 JOIN principals p ON p.id=sb.principal_id AND p.id=e.principal_id
 JOIN memberships m ON m.principal_id=p.id AND m.group_id=?
 JOIN endpoint_group_memberships eg ON eg.endpoint_id=e.id AND eg.group_id=m.group_id
 JOIN groups g ON g.id=m.group_id
+LEFT JOIN networks_v2 n ON n.id=g.network_id
 WHERE sb.credential_hash=? AND sb.status='leased' AND sb.lease_owner!=''
   AND e.migration_state='READY' AND e.status!='left'
   AND sb.node_id=e.machine_id AND sb.native_session_id=e.native_session_id
@@ -360,7 +393,8 @@ LIMIT 1`, groupID, sessionCredentialDigest, nowText, nowText).Scan(
 		&endpoint.BindingStatus, &endpoint.LeaseOwner, &endpoint.LeaseExpiresAt, &endpoint.EndpointStatus,
 		&endpoint.MigrationState, &endpoint.PrincipalStatus, &endpoint.MembershipStart,
 		&endpoint.MembershipExpiry, &endpoint.GroupState, &endpoint.GroupRevision,
-		&endpoint.MembershipRevision)
+		&endpoint.MembershipRevision, &endpoint.GroupContextPolicy, &endpoint.NetworkID,
+		&endpoint.NetworkContextPolicy)
 	if err != nil {
 		return endpoint, err
 	}
@@ -414,12 +448,14 @@ FROM memberships WHERE principal_id=? AND group_id=?`, principalID, groupID).
 const localDeliveryTargetSelect = `SELECT e.id, e.name, e.native_session_id, e.principal_id, p.owner_id, e.owner, eg.group_id,
 	e.machine_id, eg.revision, sb.id, sb.epoch, sb.status,
 sb.lease_owner, sb.lease_expires_at, e.status, e.migration_state,
-p.status, m.effective_at, m.expires_at, g.state, g.revision, m.revision
+p.status, m.effective_at, m.expires_at, g.state, g.revision, m.revision,
+g.context_policy, g.network_id, COALESCE(n.context_policy,'')
 FROM fabric_endpoints e
 JOIN principals p ON p.id=e.principal_id
 JOIN memberships m ON m.principal_id=p.id AND m.group_id=?
 JOIN endpoint_group_memberships eg ON eg.endpoint_id=e.id AND eg.group_id=m.group_id
 JOIN groups g ON g.id=m.group_id
+LEFT JOIN networks_v2 n ON n.id=g.network_id
 JOIN session_bindings sb ON sb.id=e.binding_id AND sb.endpoint_id=e.id
 WHERE e.migration_state='READY' AND e.status!='left'
   AND eg.status='active' AND m.status='active' AND p.status='active' AND g.state='ACTIVE'
@@ -465,7 +501,8 @@ func scanLocalDeliveryEndpoint(row interface{ Scan(...any) error }) (localDelive
 		&endpoint.LeaseOwner, &endpoint.LeaseExpiresAt, &endpoint.EndpointStatus,
 		&endpoint.MigrationState, &endpoint.PrincipalStatus, &endpoint.MembershipStart,
 		&endpoint.MembershipExpiry, &endpoint.GroupState, &endpoint.GroupRevision,
-		&endpoint.MembershipRevision)
+		&endpoint.MembershipRevision, &endpoint.GroupContextPolicy, &endpoint.NetworkID,
+		&endpoint.NetworkContextPolicy)
 	if err != nil {
 		return localDeliveryEndpointSnapshot{}, err
 	}
@@ -579,6 +616,10 @@ func localDeliveryAuthorizationRevision(action string, nodeCredentialVersion, no
 		TargetKeyVersion                                      int64
 		TargetKeyID, TargetProofDigest                        string
 		GroupRevision                                         int64
+		SourceNetworkID, SourceGroupContextPolicy             string
+		SourceNetworkContextPolicy                            string
+		TargetNetworkID, TargetGroupContextPolicy             string
+		TargetNetworkContextPolicy                            string
 	}{
 		Action: action, NodeID: source.NodeID, NodeCredentialVersion: nodeCredentialVersion,
 		NodeBindingVersion: nodeBindingVersion, SourceEndpoint: source.EndpointID,
@@ -593,7 +634,11 @@ func localDeliveryAuthorizationRevision(action string, nodeCredentialVersion, no
 		TargetBindingID: target.BindingID, TargetBindingEpoch: target.BindingEpoch,
 		TargetKeyVersion: targetKey.Version,
 		TargetKeyID:      targetKey.KeyID, TargetProofDigest: targetKey.ProofDigest,
-		GroupRevision: source.GroupRevision,
+		GroupRevision:   source.GroupRevision,
+		SourceNetworkID: source.NetworkID, SourceGroupContextPolicy: source.GroupContextPolicy,
+		SourceNetworkContextPolicy: source.NetworkContextPolicy,
+		TargetNetworkID:            target.NetworkID, TargetGroupContextPolicy: target.GroupContextPolicy,
+		TargetNetworkContextPolicy: target.NetworkContextPolicy,
 	}
 	encoded, err := json.Marshal(material)
 	if err != nil {

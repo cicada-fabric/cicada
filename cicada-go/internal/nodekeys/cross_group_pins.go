@@ -75,14 +75,27 @@ type PeerOwnerKeyGrantEvidence struct {
 	SignedProof         []byte              `json:"signed_proof"`
 }
 
+// PeerNativeContextScope mirrors the current Store scope projection without
+// importing Store. It is Hub authorization metadata, not part of the signed
+// Owner key grant and never a source of native identity.
+type PeerNativeContextScope struct {
+	HubID                string `json:"hub_id"`
+	NetworkID            string `json:"network_id,omitempty"`
+	GroupID              string `json:"group_id,omitempty"`
+	GroupContextPolicy   string `json:"group_context_policy,omitempty"`
+	NetworkContextPolicy string `json:"network_context_policy,omitempty"`
+}
+
 // PeerKeyAuthorizationBundle mirrors the Store's
 // CommunicationLinkAuthorizationBundle while avoiding a Store import cycle.
 // LinkState is informational. PROPOSED means the link is not a route grant.
 type PeerKeyAuthorizationBundle struct {
-	Manifest    PeerKeyAuthorizationManifest `json:"manifest"`
-	SourceGrant PeerOwnerKeyGrantEvidence    `json:"source_grant"`
-	TargetGrant PeerOwnerKeyGrantEvidence    `json:"target_grant"`
-	LinkState   string                       `json:"link_state"`
+	Manifest           PeerKeyAuthorizationManifest `json:"manifest"`
+	SourceGrant        PeerOwnerKeyGrantEvidence    `json:"source_grant"`
+	TargetGrant        PeerOwnerKeyGrantEvidence    `json:"target_grant"`
+	LinkState          string                       `json:"link_state"`
+	SourceContextScope PeerNativeContextScope       `json:"source_context_scope"`
+	TargetContextScope PeerNativeContextScope       `json:"target_context_scope"`
 }
 
 // OwnerKeyTrust is the independently expected Owner signing key known to this
@@ -383,6 +396,10 @@ func verifyPeerOwnerKeyBundle(scope PeerPinScope, local PeerPinLocalEndpoint,
 	if err := matchManifestSidesToContract(manifest, contract); err != nil {
 		return verifiedOwnerKeyBundle{}, fmt.Errorf("%w: %v", ErrPeerPinGrantInvalid, err)
 	}
+	if err := validatePeerContextScopes(bundle.SourceContextScope, bundle.TargetContextScope,
+		manifest.Source, manifest.Target, contract.TransportHubID); err != nil {
+		return verifiedOwnerKeyBundle{}, fmt.Errorf("%w: %v", ErrPeerPinGrantInvalid, err)
+	}
 	localSide, peerSide, err := matchExpectedSides(manifest, local, expectedPeer, scope)
 	if err != nil {
 		return verifiedOwnerKeyBundle{}, err
@@ -426,6 +443,26 @@ func verifyPeerOwnerKeyBundle(scope PeerPinScope, local PeerPinLocalEndpoint,
 	return verifiedOwnerKeyBundle{manifest: manifest, peerCandidate: peerCandidate,
 		sourceTrust: sourceTrust, targetTrust: targetTrust,
 		linkExpiry: contractExpiry, sourceExpiry: sourceExpiry, targetExpiry: targetExpiry}, nil
+}
+
+func validatePeerContextScopes(source, target PeerNativeContextScope,
+	sourceSide, targetSide PeerKeyManifestSide, transportHubID string) error {
+	if transportHubID == "" || source.HubID == "" || source.HubID != target.HubID ||
+		source.HubID != transportHubID || target.HubID != transportHubID ||
+		source.GroupID != sourceSide.GroupID || target.GroupID != targetSide.GroupID ||
+		!validPeerContextScope(source) || !validPeerContextScope(target) {
+		return errors.New("current Link context scope does not match Hub and manifest sides")
+	}
+	return nil
+}
+
+func validPeerContextScope(scope PeerNativeContextScope) bool {
+	if scope.HubID == "" || scope.GroupID == "" ||
+		(scope.NetworkID != "" && validateCryptoToken("context Network ID", scope.NetworkID) != nil) {
+		return false
+	}
+	return (scope.GroupContextPolicy == "" || scope.GroupContextPolicy == "group_scoped" || scope.GroupContextPolicy == "dedicated_thread") &&
+		(scope.NetworkContextPolicy == "" || scope.NetworkContextPolicy == "dedicated_thread")
 }
 
 func validateLocalPinEndpoint(local PeerPinLocalEndpoint, scope PeerPinScope) error {

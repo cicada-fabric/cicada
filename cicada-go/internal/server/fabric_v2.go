@@ -175,17 +175,10 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
-		var input fabricpkg.ReceiveInput
-		if err := readOptionalJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		result, err := h.fabricService.Receive(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusOK, result)
+		// Historical plaintext inbox rows remain available to trusted internal
+		// recovery code, but this Hub route must never disclose them remotely.
+		// In particular, reject before decoding the caller's body.
+		writeError(response, http.StatusGone, fabricpkg.ErrPlaintextInboxReceiveRetired)
 	case "/v2/fabric/federate":
 		if request.Method != http.MethodPost {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -203,6 +196,11 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		}
 		if request.URL.Path == "/v2/fabric/tasks" || strings.HasPrefix(request.URL.Path, "/v2/fabric/tasks/") {
 			h.fabricV2Task(response, request, actor)
+			return
+		}
+		if request.URL.Path == "/v2/fabric/link-reviews" || strings.HasPrefix(request.URL.Path, "/v2/fabric/link-reviews/") {
+			h.fabricV2CommunicationLinkReview(response, request, actor,
+				strings.TrimPrefix(request.URL.Path, "/v2/fabric/link-reviews"))
 			return
 		}
 		if strings.HasPrefix(request.URL.Path, "/v2/fabric/requests/") {

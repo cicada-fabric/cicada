@@ -26,6 +26,14 @@ func TestNetworkDirectAdmissionReturnsRetryableHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestNetworkTaskPendingAuthorizationUsesRetryableHTTP425(t *testing.T) {
+	response := httptest.NewRecorder()
+	networkV2Error(response, store.ErrNetworkTaskPending)
+	if response.Code != http.StatusTooEarly {
+		t.Fatalf("uncommitted Network Task route status=%d, want 425", response.Code)
+	}
+}
+
 // This is an ACTIVE Network over an actual HTTP listener with no Control
 // object. The Node credential and Owner signature are separate inputs, while
 // the Group and Network sessions remain separate after the same Thread joins.
@@ -128,6 +136,12 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	}
 	if got := call(http.MethodGet, "/v2/fabric/networks/"+networkID+"/whoami", "Cicada-Network-Session "+joinedNetworkOnly.SessionToken, "", nil); got != http.StatusOK {
 		t.Fatalf("Network-only current identity status=%d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/broadcasts/preview", networkAuth, "", nil); got != http.StatusForbidden {
+		t.Fatalf("Network direct/directory grants implicitly enabled Broadcast preview: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/broadcasts/preview", groupAuth, "", nil); got != http.StatusUnauthorized {
+		t.Fatalf("Group credential reached Network Broadcast preview: %d", got)
 	}
 	if got := call(http.MethodGet, "/v2/fabric/whoami", groupAuth, group.ID, nil); got != http.StatusOK {
 		t.Fatalf("Control-free Group whoami status=%d", got)

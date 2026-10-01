@@ -30,8 +30,12 @@ FILES = (
     "cicada-go/internal/clientwire/testdata/README.md",
     "cicada-go/internal/clientwire/testdata/client-control-v1.json",
     "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
+    "cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json",
+    "cicada-go/internal/e2ee/testdata/cross-owner-group-key-v2.json",
     "cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json",
     "cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json",
+    "cicada-go/internal/e2ee/testdata/network-collaboration-key-consent-v1.json",
+    "cicada-go/internal/e2ee/testdata/network-collaboration-broadcast-consent-v1.json",
     "cicada-go/internal/store/testdata/network-direct-key-production-v1.json",
 )
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024
@@ -110,6 +114,12 @@ def read_contract(root):
             set(network_key_ops[name]["roles"]) != {"manager", "external"}
             for name in expected_network_key_ops):
         raise ValueError("Network Owner key consent operations are incomplete")
+    directory = next((operation for operation in operations if operation["id"] == "network.directory"), None)
+    if (directory is None or set(directory["roles"]) != {"manager", "external"}
+            or directory.get("request_schema") != "NetworkDirectoryRequest"
+            or directory.get("result_schema") != "NetworkDirectoryResult"
+            or "Only currently enrolled, discoverable Endpoints" not in openapi):
+        raise ValueError("opted-in Network directory operation or privacy projection is incomplete")
     for marker in (
             "MonitorBroadcastEnvelopeV2:",
             "x-canonical-json-field-order: [type, version, suite, context, sealed, signature]",
@@ -166,6 +176,193 @@ def read_contract(root):
         raise ValueError("Network direct public manifest consent differs")
     if json.loads(direct["network_envelope"])["context"] != direct["network_context"]:
         raise ValueError("Network direct public envelope context differs")
+    collaboration = json.loads(files["cicada-go/internal/e2ee/testdata/network-collaboration-key-consent-v1.json"])
+    if (collaboration.get("fixture_version") != 1 or collaboration.get("synthetic_only") is not True or
+            collaboration.get("warning") != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT" or
+            collaboration.get("purpose") != "TASK" or
+            collaboration.get("native_session_digest") != sha256(
+                b"cicada/network/native-session/v1\x00" +
+                collaboration.get("synthetic_native_session_id", "").encode())):
+        raise ValueError("unlabelled Network collaboration proof vector")
+    manifest = collaboration.get("manifest_canonical_json", "").encode()
+    expected_manifest_digest = sha256(
+        b"cicada/network/collaboration-key-manifest/v1\x00TASK\x00" + manifest)
+    if collaboration.get("collaboration_manifest_digest") != expected_manifest_digest:
+        raise ValueError("Network collaboration manifest digest differs")
+    grant = json.loads(collaboration.get("owner_grant_json", "{}"))
+    claims = dict(grant)
+    if (grant.get("purpose") != "TASK" or
+            grant.get("manifest_digest") != expected_manifest_digest or
+            grant.get("owner_key_id") != collaboration.get("owner_public_identity", {}).get("id") or
+            not grant.get("signature")):
+        raise ValueError("Network collaboration Owner proof claims differ")
+    claims["signature"] = None
+    unsigned = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode()
+    canonical_unsigned = collaboration.get("canonical_unsigned_json", "").encode()
+    signed = b"cicada/network/collaboration-key-grant/v1\x00" + unsigned
+    if (unsigned != canonical_unsigned or
+            b'"signature":null' not in unsigned or
+            base64.b64decode(collaboration.get("signed_input_base64", ""), validate=True) != signed or
+            bytes.fromhex(collaboration.get("signed_input_hex", "")) != signed or
+            sha256(signed) != collaboration.get("signed_input_sha256")):
+        raise ValueError("Network collaboration Owner proof signed bytes differ")
+    review = json.loads(files["cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json"])
+    review_domain = b"cicada/communication-link/review-policy-owner-approval/v1\x00"
+    review_claim_order = [
+        "version", "owner_id", "link_id", "contract_digest", "policy_digest",
+        "expected_link_version", "policy_version", "side", "issued_at", "expires_at", "nonce",
+    ]
+    review_wire_order = review_claim_order + ["signature"]
+    if (review.get("fixture_version") != 1 or review.get("synthetic_only") is not True or
+            review.get("warning") != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT" or
+            review.get("algorithm") != "ML-DSA-65" or
+            review.get("signing_domain") != "cicada/communication-link/review-policy-owner-approval/v1\\x00" or
+            review.get("signing_domain_hex") != review_domain.hex() or
+            review.get("claims_field_order") != review_claim_order):
+        raise ValueError("unlabelled OwnerLinkReviewPolicyProof vector or wrong production domain/order")
+    review_identity = review.get("owner_public_identity", {})
+    review_proof_raw = review.get("proof_json", "").encode()
+    review_proof = json.loads(review_proof_raw)
+    if (list(review_proof) != review_wire_order or
+            review.get("mldsa_public_key_base64") != review_identity.get("signing_public") or
+            review_proof.get("owner_id") != "owner_synthetic_review_policy" or
+            review_proof.get("link_id") != "link_synthetic_review_policy" or
+            not review_proof.get("signature")):
+        raise ValueError("OwnerLinkReviewPolicyProof public key/scope/wire fields differ")
+    review_signature = base64.b64decode(review_proof["signature"], validate=True)
+    if (base64.b64encode(review_signature).decode() != review.get("signature_base64") or
+            json.dumps(review_proof, ensure_ascii=False, separators=(",", ":")).encode() != review_proof_raw or
+            sha256(review_proof_raw) != review.get("proof_sha256")):
+        raise ValueError("OwnerLinkReviewPolicyProof signature or canonical proof JSON differs")
+    review_claims = dict(review_proof)
+    review_claims.pop("signature")
+    review_unsigned = json.dumps(review_claims, ensure_ascii=False, separators=(",", ":")).encode()
+    if (list(review_claims) != review_claim_order or
+            review_unsigned.decode() != review.get("canonical_unsigned_json")):
+        raise ValueError("OwnerLinkReviewPolicyProof must sign exactly 11 ordered claims without signature")
+    review_signed = review_domain + review_unsigned
+    try:
+        review_signed_hex = bytes.fromhex(review.get("signed_bytes_hex", ""))
+        review_signed_base64 = base64.b64decode(review.get("signed_bytes_base64", ""), validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("OwnerLinkReviewPolicyProof signed bytes encoding is invalid") from error
+    if (review_signed != review_signed_hex or review_signed != review_signed_base64 or
+            sha256(review_signed) != review.get("signed_bytes_sha256")):
+        raise ValueError("OwnerLinkReviewPolicyProof signed bytes/hash differ from ordered production claims")
+    broadcast = json.loads(files["cicada-go/internal/e2ee/testdata/network-collaboration-broadcast-consent-v1.json"])
+    broadcast_domain = b"cicada/network/collaboration-key-grant/v1\x00"
+    broadcast_claim_order = [
+        "version", "purpose", "hub_id", "network_id", "endpoint_id", "owner_id",
+        "owner_key_id", "manifest_digest", "issued_at", "expires_at", "nonce", "signature",
+    ]
+    if (broadcast.get("fixture_version") != 1 or broadcast.get("synthetic_only") is not True or
+            broadcast.get("warning") != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT" or
+            broadcast.get("purpose") != "BROADCAST" or
+            broadcast.get("signing_domain") != "cicada/network/collaboration-key-grant/v1\\x00" or
+            broadcast.get("claims_field_order") != broadcast_claim_order or
+            broadcast.get("manifest_canonical_json") != collaboration.get("manifest_canonical_json")):
+        raise ValueError("unlabelled or incomplete BROADCAST-purpose Network collaboration vector")
+    broadcast_manifest = broadcast["manifest_canonical_json"].encode()
+    expected_broadcast_digest = sha256(
+        b"cicada/network/collaboration-key-manifest/v1\x00BROADCAST\x00" + broadcast_manifest)
+    broadcast_grant_raw = broadcast.get("owner_grant_json", "").encode()
+    broadcast_grant = json.loads(broadcast_grant_raw)
+    if (expected_broadcast_digest != broadcast.get("collaboration_manifest_digest") or
+            broadcast_grant.get("purpose") != "BROADCAST" or
+            broadcast_grant.get("manifest_digest") != expected_broadcast_digest or
+            broadcast_grant.get("owner_key_id") != broadcast.get("owner_public_identity", {}).get("id") or
+            not broadcast_grant.get("signature")):
+        raise ValueError("BROADCAST grant is not bound to its purpose-specific manifest and Owner key")
+    if (list(broadcast_grant) != broadcast_claim_order or
+            json.dumps(broadcast_grant, ensure_ascii=False, separators=(",", ":")).encode() != broadcast_grant_raw):
+        raise ValueError("BROADCAST Owner grant wire field order/canonical JSON differs")
+    broadcast_claims = dict(broadcast_grant)
+    broadcast_signature = broadcast_claims["signature"]
+    broadcast_claims["signature"] = None
+    broadcast_unsigned = json.dumps(broadcast_claims, ensure_ascii=False, separators=(",", ":")).encode()
+    if (list(broadcast_claims) != broadcast_claim_order or
+            broadcast_unsigned.decode() != broadcast.get("canonical_unsigned_json")):
+        raise ValueError("BROADCAST Owner grant must sign ordered claims with signature:null")
+    broadcast_signed = broadcast_domain + broadcast_unsigned
+    try:
+        broadcast_signed_hex = bytes.fromhex(broadcast.get("signed_input_hex", ""))
+        broadcast_signed_base64 = base64.b64decode(broadcast.get("signed_input_base64", ""), validate=True)
+        broadcast_signature_bytes = base64.b64decode(broadcast_signature, validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("BROADCAST Owner grant signature or signed bytes encoding is invalid") from error
+    task_grant = json.loads(collaboration["owner_grant_json"])
+    if (broadcast_signed != broadcast_signed_hex or broadcast_signed != broadcast_signed_base64 or
+            sha256(broadcast_signed) != broadcast.get("signed_input_sha256") or
+            broadcast_signature != broadcast.get("signature_base64") or not broadcast_signature_bytes or
+            task_grant.get("purpose") != "TASK" or
+            task_grant.get("manifest_digest") == expected_broadcast_digest or
+            task_grant.get("signature") == broadcast_signature):
+        raise ValueError("BROADCAST vector reused TASK bytes/digest or has inconsistent signed input")
+    cross = json.loads(files["cicada-go/internal/e2ee/testdata/cross-owner-group-key-v2.json"])
+    if (cross.get("fixture_version") != 1 or
+            cross.get("warning") != "PUBLIC SYNTHETIC TEST KEYS — NEVER USE IN A DEPLOYMENT"):
+        raise ValueError("unlabelled cross-owner Group key vector")
+    manifest = cross.get("manifest", {})
+    if (manifest.get("operation") != "group-endpoint-key-grant:v2:cross-owner" or
+            manifest.get("endpoint_owner_id") == manifest.get("group_owner_id") or
+            manifest.get("cross_owner_context_shared") is not True or
+            manifest.get("history_included") is not False or
+            manifest.get("candidate_public_identity", {}).get("id") != manifest.get("candidate_key_id")):
+        raise ValueError("cross-owner Group key vector is not an exact two-Owner, no-history scope")
+    candidate_attestation = base64.b64decode(manifest.get("candidate_attestation", ""), validate=True)
+    if sha256(candidate_attestation) != manifest.get("candidate_proof_digest"):
+        raise ValueError("cross-owner Endpoint proof digest differs from manifest")
+    binding = {
+        "hub_id": manifest["hub_id"], "network_id": manifest["network_id"],
+        "group_id": manifest["group_id"], "endpoint_id": manifest["endpoint_id"],
+        "binding_id": manifest["binding_id"], "binding_epoch": manifest["binding_epoch"],
+        "candidate_key_id": manifest["candidate_key_id"],
+        "candidate_version": manifest["candidate_version"],
+        "fingerprint": manifest["candidate_fingerprint"],
+        "proof_digest": manifest["candidate_proof_digest"],
+    }
+    binding_bytes = json.dumps(binding, ensure_ascii=False, separators=(",", ":")).encode()
+    expected_binding = sha256(b"cicada/group/cross-owner-key-binding/v2\x00" + binding_bytes)
+    if expected_binding != manifest.get("candidate_binding_digest"):
+        raise ValueError("cross-owner Endpoint binding digest differs")
+    unsigned_manifest = dict(manifest)
+    unsigned_manifest["digest"] = ""
+    manifest_bytes = json.dumps(unsigned_manifest, ensure_ascii=False, separators=(",", ":")).encode()
+    expected_manifest = sha256(b"cicada/group/cross-owner-key-manifest/v2\x00" + manifest_bytes)
+    if expected_manifest != manifest.get("digest"):
+        raise ValueError("cross-owner manifest digest differs")
+    for proof_key, owner_key, owner_field, label in (
+            ("endpoint_consent", "endpoint_owner_public_identity", "endpoint_owner_id", "ENDPOINT"),
+            ("group_admission", "group_owner_public_identity", "group_owner_id", "GROUP")):
+        proof = cross.get(proof_key, {})
+        owner = cross.get(owner_key, {})
+        if (proof.get("signer_owner_id") != manifest.get(owner_field) or
+                proof.get("signer_side") != label or proof.get("owner_key_id") != owner.get("id") or
+                proof.get("manifest_digest") != manifest.get("digest") or
+                proof.get("current_status") != "CURRENT" or not proof.get("signed_proof")):
+            raise ValueError("cross-owner proof is not bound to its distinct Owner side")
+        grant = json.loads(base64.b64decode(proof["signed_proof"], validate=True))
+        if (grant.get("owner_id") != manifest.get(owner_field) or
+                grant.get("link_id") != manifest.get("operation") or
+                grant.get("contract_digest") != manifest.get("digest") or
+                grant.get("key_binding_digest") != manifest.get("candidate_binding_digest") or
+                grant.get("expected_link_version") != manifest.get("candidate_version") or
+                grant.get("side") != ("SOURCE" if label == "ENDPOINT" else "TARGET")):
+            raise ValueError("cross-owner owner-key grant claims differ from the signed manifest role")
+        # Match OwnerLinkKeyGrant.claims() exactly. Production signs this
+        # ordered claims struct; the wire signature is not part of the signed
+        # bytes (and is never serialized as `signature: null`).
+        claim_fields = ("version", "owner_id", "link_id", "contract_digest",
+                        "key_binding_digest", "expected_link_version", "side",
+                        "issued_at", "expires_at", "nonce")
+        signed_claims = {field: grant[field] for field in claim_fields}
+        signed_grant = b"cicada/communication-link/owner-key-grant/v2\x00" + json.dumps(
+            signed_claims, ensure_ascii=False, separators=(",", ":")).encode()
+        expected_signed_b64 = cross.get(proof_key + "_signed_input_base64")
+        expected_signed_sha256 = cross.get(proof_key + "_signed_input_sha256")
+        if (base64.b64encode(signed_grant).decode() != expected_signed_b64 or
+                sha256(signed_grant) != expected_signed_sha256):
+            raise ValueError("cross-owner Owner signed bytes or digest differ from public vector")
     production = json.loads(files["cicada-go/internal/store/testdata/network-direct-key-production-v1.json"])
     manifest = production.get("manifest", {})
     if production.get("synthetic_only") is not True or "Never initialize a deployment" not in production.get("warning", ""):

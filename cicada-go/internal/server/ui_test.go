@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -94,6 +95,11 @@ func TestHubPanelRelativeModuleImportsHavePublicRoutes(t *testing.T) {
 		}
 		source, err := clientFiles.ReadFile(asset.file)
 		if err != nil {
+			if strings.HasPrefix(asset.file, "ui/generated/") && errors.Is(err, fs.ErrNotExist) {
+				// Generated assets are optional in a clean source checkout;
+				// TestEmbeddedHubPanelAssetsAndFailClosedCryptoBuild checks their 503 response.
+				continue
+			}
 			t.Fatalf("read module %q: %v", asset.file, err)
 		}
 		for _, match := range imports.FindAllSubmatch(source, -1) {

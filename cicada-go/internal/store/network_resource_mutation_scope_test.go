@@ -61,7 +61,20 @@ VALUES(?,?,'active',1,'resource actor',0,?,?)`, network.ID, endpoint.ID, stamp, 
 		GroupID: group.ID, NetworkID: network.ID, MembershipID: membership.ID,
 		MembershipRevision: membership.Revision, BindingID: binding.ID,
 		BindingEpoch: binding.Epoch, LeaseOwner: binding.LeaseOwner}
-	task := claimedResourceTask(t, f.store, group.ID, scope.PrincipalID, scope.EndpointID)
+	task, err := f.store.CreateSharedTask(SharedTask{GroupID: group.ID,
+		Objective: "network resource mutation", AcceptanceCriteria: "current actor fenced"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = f.store.ReadySharedTask(task.ID, task.Revision, "manager")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = f.store.ClaimSharedTaskForActor(scope, task.ID, task.Revision,
+		"claim-network-resource-mutation", 300)
+	if err != nil {
+		t.Fatalf("current mapped Network actor claim: %v", err)
+	}
 	lease, err := f.store.AcquireResourceLease(ResourceLeaseRequest{ResourceID: "managed_blob/network_resource/write",
 		GroupID: group.ID, TaskID: task.ID, PrincipalID: scope.PrincipalID, TTLSeconds: 300})
 	if err != nil {

@@ -14,11 +14,12 @@ func TestSharedTaskHandoffAtomicallyFencesOldOwnerAndRetainsSideEffects(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err = s.ClaimSharedTask(task.ID, task.Revision, "principal-old", "ep-old", "old-claim", 300)
+	task, err = claimPreparingSharedTaskFixture(t, s, task.ID, task.Revision,
+		"principal-old", "ep-old", "old-claim", 300)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal, err := s.ProposeSharedTaskHandoff(SharedTaskHandoff{
+	proposal, err := proposePreparingSharedTaskHandoffFixture(t, s, SharedTaskHandoff{
 		TaskID: task.ID, GroupID: groupID, FromPrincipalID: "principal-old", FromEndpointID: "ep-old",
 		ToPrincipalID: "principal-new", ToEndpointID: "ep-new", FromOwnerEpoch: task.OwnerEpoch, TaskRevision: task.Revision,
 		PendingWork: "verify result", WorkspaceState: "clean worktree at rev abc",

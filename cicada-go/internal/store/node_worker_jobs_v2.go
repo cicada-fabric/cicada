@@ -284,6 +284,17 @@ response_file, workspace, created_at, updated_at FROM workers WHERE id=?`, worke
 // conditioned on the live Node credential, active binding owner, machine
 // relation, Goal owner and queued state in the same SQLite statement.
 func (s *Store) ClaimBoundNodeWorker(credentialDigest, requestedNodeID, workerID string) (*Worker, error) {
+	return s.claimBoundNodeWorker(credentialDigest, requestedNodeID, workerID, nil)
+}
+
+// ClaimBoundNodeWorkerNodeControl is the Node-Control variant. It verifies
+// the admitted encrypted request and current key epoch in the same transaction
+// as the worker claim.
+func (s *Store) ClaimBoundNodeWorkerNodeControl(input NodeControlRPCInput, workerID string) (*Worker, error) {
+	return s.claimBoundNodeWorker(input.CredentialDigest, input.NodeID, workerID, &input)
+}
+
+func (s *Store) claimBoundNodeWorker(credentialDigest, requestedNodeID, workerID string, guard *NodeControlRPCInput) (*Worker, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.Begin()
@@ -291,6 +302,11 @@ func (s *Store) ClaimBoundNodeWorker(credentialDigest, requestedNodeID, workerID
 		return nil, err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return nil, err
+		}
+	}
 	stamp := now()
 	result, err := tx.Exec(`UPDATE workers AS worker SET status='running', attempt=attempt+1,
 started_at=?, ended_at=NULL, pid=NULL, updated_at=?
@@ -327,6 +343,16 @@ response_file, workspace, created_at, updated_at FROM workers WHERE id=?`, worke
 // stale attempts, other owners, revoked credentials, and wrong-machine results
 // produce no result-processing side effects.
 func (s *Store) BeginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID string, attempt int) (*Worker, error) {
+	return s.beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID, attempt, nil)
+}
+
+// BeginBoundNodeWorkerResultNodeControl also requires the exact Node-Control
+// request to remain PROCESSING under the currently active binding epoch.
+func (s *Store) BeginBoundNodeWorkerResultNodeControl(input NodeControlRPCInput, workerID string, attempt int) (*Worker, error) {
+	return s.beginBoundNodeWorkerResult(input.CredentialDigest, input.NodeID, workerID, attempt, &input)
+}
+
+func (s *Store) beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID string, attempt int, guard *NodeControlRPCInput) (*Worker, error) {
 	if attempt <= 0 {
 		return nil, ErrNodeWorkerNotAuthorized
 	}
@@ -337,6 +363,11 @@ func (s *Store) BeginBoundNodeWorkerResult(credentialDigest, requestedNodeID, wo
 		return nil, err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return nil, err
+		}
+	}
 	stamp := now()
 	result, err := tx.Exec(`UPDATE workers AS worker SET status='verifying', updated_at=?
 WHERE worker.id=? AND worker.machine_id=? AND worker.attempt=?
@@ -400,6 +431,13 @@ func (s *Store) UpdateBoundNodeWorkerAtAttempt(credentialDigest, requestedNodeID
 	return s.updateWorkerAtAttempt(credentialDigest, requestedNodeID, id, requestedNodeID, from, to, attempt, update)
 }
 
+// UpdateBoundNodeWorkerAtAttemptNodeControl fences the final result commit to
+// the live Node key epoch and this exact still-processing encrypted request.
+func (s *Store) UpdateBoundNodeWorkerAtAttemptNodeControl(input NodeControlRPCInput, id, from, to string, attempt int, update WorkerUpdate) (*Worker, error) {
+	return s.updateWorkerAtAttemptWithNodeControl(input.CredentialDigest, input.NodeID, id, input.NodeID,
+		from, to, attempt, update, &input)
+}
+
 // RecoverBoundNodeWorkerAfterRevocation makes an admitted but not-yet-final
 // result explicitly recoverable when the Node loses authorization during
 // verification. It records no result data and cannot affect another attempt.
@@ -437,6 +475,11 @@ response_file, workspace, created_at, updated_at FROM workers WHERE id=?`, id))
 }
 
 func (s *Store) updateWorkerAtAttempt(credentialDigest, requestedNodeID, id, machineID, from, to string, attempt int, update WorkerUpdate) (*Worker, error) {
+	return s.updateWorkerAtAttemptWithNodeControl(credentialDigest, requestedNodeID, id, machineID,
+		from, to, attempt, update, nil)
+}
+
+func (s *Store) updateWorkerAtAttemptWithNodeControl(credentialDigest, requestedNodeID, id, machineID, from, to string, attempt int, update WorkerUpdate, guard *NodeControlRPCInput) (*Worker, error) {
 	assignments := []string{"status=?", "updated_at=?"}
 	args := []any{to, now()}
 	if update.ClearPID {
@@ -487,6 +530,11 @@ func (s *Store) updateWorkerAtAttempt(credentialDigest, requestedNodeID, id, mac
 		return nil, err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return nil, err
+		}
+	}
 	result, err := tx.Exec(query, args...)
 	if err != nil {
 		return nil, err
@@ -533,6 +581,16 @@ func scanNodeWorker(row interface{ Scan(...any) error }) (*Worker, error) {
 }
 
 func (s *Store) RecordBoundNodeMachineHeartbeat(credentialDigest, status string, capabilities map[string]any) error {
+	return s.recordBoundNodeMachineHeartbeat(credentialDigest, status, capabilities, nil)
+}
+
+// RecordBoundNodeMachineHeartbeatNodeControl rejects a heartbeat whose
+// binding/key epoch or admitted packet changed before the database write.
+func (s *Store) RecordBoundNodeMachineHeartbeatNodeControl(input NodeControlRPCInput, status string, capabilities map[string]any) error {
+	return s.recordBoundNodeMachineHeartbeat(input.CredentialDigest, status, capabilities, &input)
+}
+
+func (s *Store) recordBoundNodeMachineHeartbeat(credentialDigest, status string, capabilities map[string]any, guard *NodeControlRPCInput) error {
 	status = strings.TrimSpace(status)
 	if status != "" && status != "available" && status != "idle" && status != "busy" {
 		return fmt.Errorf("%w: status must be available, idle, or busy", ErrNodeMachineHeartbeatInput)
@@ -555,6 +613,11 @@ func (s *Store) RecordBoundNodeMachineHeartbeat(credentialDigest, status string,
 		return err
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if err := verifyNodeControlRPCProcessingTx(tx, *guard); err != nil {
+			return err
+		}
+	}
 	var nodeID, nodeName, ownerID, machineOwnerID string
 	err = tx.QueryRow(`SELECT credential.node_id, binding.node_name, binding.owner_id, machine.owner_id
 FROM fabric_node_credentials credential

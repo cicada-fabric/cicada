@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -85,6 +86,54 @@ func (c *Control) BoundNodeMachineJobs(credentialDigest, nodeID string) ([]Machi
 		jobs = append(jobs, job)
 	}
 	return jobs, nil
+}
+
+// BoundNodeMachineJobsBounded incrementally materializes only the queue prefix
+// that fits a caller-supplied JSON body budget. It never claims or removes
+// omitted work; a later poll sees the same remainder. An individually
+// oversized first job is reported explicitly so it cannot disappear behind an
+// empty success response.
+func (c *Control) BoundNodeMachineJobsBounded(credentialDigest, nodeID string,
+	maxJSONBytes int) ([]MachineJob, bool, error) {
+	if maxJSONBytes <= len(`{"jobs":[]}`) {
+		return nil, false, errors.New("Node Worker list byte budget is too small")
+	}
+	ids, err := c.store.ListBoundNodeWorkerIDs(credentialDigest, nodeID, 100)
+	if err != nil {
+		return nil, false, err
+	}
+	jobs := make([]MachineJob, 0, len(ids))
+	used := len(`{"jobs":[]}`)
+	for _, id := range ids {
+		worker, err := c.store.GetBoundNodeWorker(credentialDigest, nodeID, id)
+		if errors.Is(err, store.ErrNodeWorkerUnavailable) || errors.Is(err, store.ErrNodeWorkerNotAuthorized) {
+			continue
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		job, err := c.remoteJob(*worker)
+		if err != nil {
+			return nil, false, err
+		}
+		encoded, err := json.Marshal(job)
+		if err != nil {
+			return nil, false, err
+		}
+		added := len(encoded)
+		if len(jobs) > 0 {
+			added++ // comma between complete JSON job values
+		}
+		if used+added > maxJSONBytes {
+			if len(jobs) == 0 {
+				return nil, true, nil
+			}
+			break
+		}
+		jobs = append(jobs, job)
+		used += added
+	}
+	return jobs, false, nil
 }
 
 func (c *Control) remoteJob(worker store.Worker) (MachineJob, error) {
@@ -214,6 +263,17 @@ func (c *Control) ClaimRemoteWorker(workerID, machineID string) (MachineJob, err
 // the legacy claim and delegates the authoritative state transition to the
 // Node-scoped Store guard.
 func (c *Control) ClaimBoundNodeRemoteWorker(credentialDigest, nodeID, workerID string) (MachineJob, error) {
+	return c.claimBoundNodeRemoteWorker(credentialDigest, nodeID, workerID, nil)
+}
+
+// ClaimBoundNodeRemoteWorkerNodeControl carries the exact encrypted RPC guard
+// into the Store transaction that changes a Worker from queued to running.
+func (c *Control) ClaimBoundNodeRemoteWorkerNodeControl(input store.NodeControlRPCInput, workerID string) (MachineJob, error) {
+	return c.claimBoundNodeRemoteWorker(input.CredentialDigest, input.NodeID, workerID, &input)
+}
+
+func (c *Control) claimBoundNodeRemoteWorker(credentialDigest, nodeID, workerID string,
+	guard *store.NodeControlRPCInput) (MachineJob, error) {
 	if isLocalMachine(strings.TrimSpace(nodeID)) {
 		return MachineJob{}, ErrWorkerUnavailable
 	}
@@ -240,21 +300,31 @@ func (c *Control) ClaimBoundNodeRemoteWorker(credentialDigest, nodeID, workerID 
 			return MachineJob{}, permissionErr
 		}
 	}
-	claimed, err := c.store.ClaimBoundNodeWorker(credentialDigest, nodeID, worker.ID)
+	var claimed *store.Worker
+	var commands []store.Command
+	if guard != nil {
+		claimed, commands, err = c.store.ClaimBoundNodeWorkerControlRPC(*guard, worker.ID)
+	} else {
+		claimed, err = c.store.ClaimBoundNodeWorker(credentialDigest, nodeID, worker.ID)
+	}
 	if err != nil {
 		return MachineJob{}, err
 	}
-	commands, err := c.store.ClaimPendingCommandsForWorker(claimed.GoalID, claimed.ID)
-	if err != nil {
-		_, _ = c.store.UpdateWorkerAtAttempt(claimed.ID, nodeID, "running", "queued", claimed.Attempt,
-			store.WorkerUpdate{ClearPID: true})
-		return MachineJob{}, err
+	if guard == nil {
+		commands, err = c.store.ClaimPendingCommandsForWorker(claimed.GoalID, claimed.ID)
+		if err != nil {
+			_, _ = c.store.UpdateWorkerAtAttempt(claimed.ID, nodeID, "running", "queued", claimed.Attempt,
+				store.WorkerUpdate{ClearPID: true})
+			return MachineJob{}, err
+		}
 	}
 	job := c.machineJob(*goal, *claimed, commands)
-	_ = c.store.SetMachineStatus(nodeID, "busy")
-	_, _ = c.store.UpdateGoal(claimed.GoalID, "running", "")
-	_, _ = c.store.AppendEvent(claimed.GoalID, claimed.ID, "WorkerStarted", map[string]any{
-		"attempt": claimed.Attempt, "remote": true, "machine_id": nodeID,
-	})
+	if guard == nil {
+		_ = c.store.SetMachineStatus(nodeID, "busy")
+		_, _ = c.store.UpdateGoal(claimed.GoalID, "running", "")
+		_, _ = c.store.AppendEvent(claimed.GoalID, claimed.ID, "WorkerStarted", map[string]any{
+			"attempt": claimed.Attempt, "remote": true, "machine_id": nodeID,
+		})
+	}
 	return job, nil
 }

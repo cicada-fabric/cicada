@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // EndpointGroupMembership records which Groups a single stable Endpoint has
@@ -56,6 +57,9 @@ ON CONFLICT(endpoint_id, group_id) DO NOTHING;
 }
 
 func upsertEndpointGroupMembershipTx(tx *sql.Tx, endpointID, groupID string) error {
+	if err := guardDedicatedThreadGroupEndpointTx(tx, endpointID, groupID, time.Now().UTC()); err != nil {
+		return err
+	}
 	timestamp := now()
 	_, err := tx.Exec(`INSERT INTO endpoint_group_memberships
   (endpoint_id, group_id, status, revision, created_at, updated_at)

@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -24,6 +25,14 @@ class ContractBundleTest(unittest.TestCase):
             path.write_bytes(data)
             return contract.verify_bundle(path)
 
+    def copied_contract(self, directory):
+        root = Path(directory)
+        for name, data in self.files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        return root
+
     def test_export_is_reproducible_and_complete(self):
         first = contract.archive_bytes(self.files, self.manifest)
         self.assertEqual(first, contract.archive_bytes(self.files, self.manifest))
@@ -39,6 +48,38 @@ class ContractBundleTest(unittest.TestCase):
         files.pop(contract.CATALOG)
         with self.assertRaisesRegex(ValueError, "incomplete"):
             self.verify(contract.archive_bytes(files, self.manifest))
+
+    def test_pq_client_vectors_are_bundled(self):
+        required = {
+            "cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json",
+            "cicada-go/internal/e2ee/testdata/network-collaboration-broadcast-consent-v1.json",
+        }
+        self.assertTrue(required.issubset(self.files))
+        review = json.loads(self.files[next(name for name in required if "owner-link" in name)])
+        broadcast = json.loads(self.files[next(name for name in required if "broadcast-consent" in name)])
+        self.assertEqual(len(review["claims_field_order"]), 11)
+        self.assertEqual(broadcast["purpose"], "BROADCAST")
+
+    def test_review_policy_vector_rejects_claim_order_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.copied_contract(directory)
+            path = root / "cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json"
+            vector = json.loads(path.read_text())
+            vector["claims_field_order"][0], vector["claims_field_order"][1] = (
+                vector["claims_field_order"][1], vector["claims_field_order"][0])
+            path.write_text(json.dumps(vector))
+            with self.assertRaisesRegex(ValueError, "wrong production domain/order"):
+                contract.read_contract(root)
+
+    def test_broadcast_vector_rejects_task_relabel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.copied_contract(directory)
+            path = root / "cicada-go/internal/e2ee/testdata/network-collaboration-broadcast-consent-v1.json"
+            vector = json.loads(path.read_text())
+            vector["purpose"] = "TASK"
+            path.write_text(json.dumps(vector))
+            with self.assertRaisesRegex(ValueError, "BROADCAST-purpose"):
+                contract.read_contract(root)
 
     def test_unsafe_archive_is_never_extracted(self):
         for name, kind in (("../outside", tarfile.REGTYPE), (contract.CATALOG, tarfile.SYMTYPE)):

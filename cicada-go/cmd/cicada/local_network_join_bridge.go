@@ -15,23 +15,29 @@ import (
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/nodeinbox"
 )
 
 func (b *machineAgentJoinBridge) joinNetwork(request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, error) {
+	joined, _, err := b.joinNetworkWithScope(request)
+	return joined, err
+}
+
+func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, error) {
 	if request.Version != localJoinProtocolVersion || request.Operation != "network_join" ||
 		strings.TrimSpace(request.NetworkID) == "" || strings.TrimSpace(request.InvitationToken) == "" ||
 		strings.TrimSpace(request.OwnerJoinProof) == "" {
-		return nil, errors.New("incomplete Network Join request")
+		return nil, nil, errors.New("incomplete Network Join request")
 	}
 	if strings.TrimSpace(request.Harness) != "codex" || harness.Canonical(request.Harness) != "codex" {
-		return nil, errors.New("Network Join requires a verified Codex session")
+		return nil, nil, errors.New("Network Join requires a verified Codex session")
 	}
 	if strings.TrimSpace(request.NativeSessionID) == "" || len(request.NativeSessionID) > 512 ||
 		len(request.Workspace) > 4096 || !filepath.IsAbs(request.Workspace) {
-		return nil, errors.New("invalid native Codex session context")
+		return nil, nil, errors.New("invalid native Codex session context")
 	}
 	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	endpointName := strings.TrimSpace(request.EndpointName)
 	if endpointName == "" {
@@ -50,33 +56,51 @@ func (b *machineAgentJoinBridge) joinNetwork(request localNetworkJoinRequest) (*
 	}
 	payload, err := json.Marshal(input)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
 	defer cancel()
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		b.baseURL+"/v2/fabric/node/networks/join", bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
 	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
 	response, err := client.Do(httpRequest)
 	if err != nil {
-		return nil, errors.New("could not reach the Hub for Network Join")
+		return nil, nil, errors.New("could not reach the Hub for Network Join")
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("Hub rejected Network Join with HTTP %d", response.StatusCode)
+		return nil, nil, fmt.Errorf("Hub rejected Network Join with HTTP %d", response.StatusCode)
 	}
 	var joined fabricpkg.NetworkJoinResult
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2*1024*1024)).Decode(&joined); err != nil ||
 		strings.TrimSpace(joined.SessionToken) == "" || strings.TrimSpace(joined.Endpoint.ID) == "" ||
 		joined.NetworkID != request.NetworkID {
-		return nil, errors.New("Hub returned an invalid Network Join result")
+		return nil, nil, errors.New("Hub returned an invalid Network Join result")
 	}
-	return &joined, nil
+	decision := &nodeinbox.NativeContextScopeDecision{Accepted: true, ContextPolicy: joined.NativeContextScope.NetworkContextPolicy,
+		NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
+	if _, managed := machineHubFrom(b.ctx); managed {
+		decision, err = recordMachineNativeContextMetadata(b.ctx, request.Harness, request.NativeSessionID,
+			joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch, joined.NativeContextScope)
+		if err != nil {
+			return nil, nil, b.blockCommittedLocalJoin("NETWORK", joined.NativeContextScope.HubID, "",
+				joined.NetworkID, joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch,
+				joined.LeaseExpiresAt, err)
+		}
+	}
+	if decision == nil || !decision.Accepted {
+		return nil, nil, b.blockCommittedLocalJoin("NETWORK", joined.NativeContextScope.HubID, "",
+			joined.NetworkID, joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch,
+			joined.LeaseExpiresAt, errors.New("native context scope was not accepted"))
+	}
+	b.markLocalJoinRecoveryResolved("NETWORK", joined.NativeContextScope.HubID, "", joined.NetworkID,
+		joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch, joined.LeaseExpiresAt, decision.NativeHistoryCoverage)
+	return &joined, decision, nil
 }
 
 func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
@@ -158,36 +182,49 @@ func requestMachineAgentNetworkRenew(socketPath string, request localNetworkRene
 }
 
 func requestMachineAgentNetworkJoin(socketPath string, request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, error) {
+	joined, _, err := requestMachineAgentNetworkJoinWithScope(socketPath, request)
+	return joined, err
+}
+
+func requestMachineAgentNetworkJoinWithScope(socketPath string, request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	joined, scope, _, err := requestMachineAgentNetworkJoinWithScopeAndRecovery(socketPath, request)
+	return joined, scope, err
+}
+
+func requestMachineAgentNetworkJoinWithScopeAndRecovery(socketPath string, request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, *localJoinRecoveryStatus, error) {
 	if strings.TrimSpace(socketPath) == "" {
-		return nil, errLocalJoinBridgeUnavailable
+		return nil, nil, nil, errLocalJoinBridgeUnavailable
 	}
 	connection, err := netDialLocalBridge(socketPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer connection.Close()
 	_ = connection.SetDeadline(time.Now().Add(35 * time.Second))
 	request.Version = localJoinProtocolVersion
 	request.Operation = "network_join"
 	if err := json.NewEncoder(connection).Encode(request); err != nil {
-		return nil, errors.New("could not send Network Join request to the local Node")
+		return nil, nil, nil, errors.New("could not send Network Join request to the local Node")
 	}
 	if unixConnection, ok := connection.(*net.UnixConn); ok {
 		if err := unixConnection.CloseWrite(); err != nil {
-			return nil, errors.New("could not finish local Network Join request")
+			return nil, nil, nil, errors.New("could not finish local Network Join request")
 		}
 	}
 	decoder := json.NewDecoder(io.LimitReader(connection, 2*1024*1024))
 	decoder.DisallowUnknownFields()
 	var response localJoinResponse
 	if err := decoder.Decode(&response); err != nil || response.Version != localJoinProtocolVersion {
-		return nil, errors.New("local Node returned an invalid Network Join response")
+		return nil, nil, nil, errors.New("local Node returned an invalid Network Join response")
+	}
+	if response.JoinRecovery != nil && response.JoinRecovery.Status == localJoinBlockedStatus {
+		return nil, nil, nil, &localJoinCommittedScopeBlockedError{Status: *response.JoinRecovery}
 	}
 	if response.Error != "" {
-		return nil, errors.New(response.Error)
+		return nil, nil, nil, errors.New(response.Error)
 	}
 	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" || response.NetworkJoin.NetworkID != request.NetworkID {
-		return nil, errors.New("local Node returned an incomplete Network Join result")
+		return nil, nil, nil, errors.New("local Node returned an incomplete Network Join result")
 	}
-	return response.NetworkJoin, nil
+	return response.NetworkJoin, response.NativeContextScope, response.JoinRecovery, nil
 }

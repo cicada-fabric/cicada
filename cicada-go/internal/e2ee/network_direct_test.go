@@ -33,6 +33,7 @@ func TestNetworkDirectEnvelopeBindsNetworkAndEnrollment(t *testing.T) {
 	}
 	for name, change := range map[string]func(*NetworkDirectContext){
 		"network":             func(c *NetworkDirectContext) { c.NetworkID = "net_b" },
+		"causal parent":       func(c *NetworkDirectContext) { c.ParentRequestID = "rq_parent" },
 		"hub":                 func(c *NetworkDirectContext) { c.HubID = "hub_other" },
 		"sender enrollment":   func(c *NetworkDirectContext) { c.SenderEnrollmentRevision++ },
 		"receiver membership": func(c *NetworkDirectContext) { c.ReceiverMembershipRevision++ },
@@ -53,6 +54,41 @@ func TestNetworkDirectEnvelopeBindsNetworkAndEnrollment(t *testing.T) {
 	tampered, _ := json.Marshal(envelope)
 	if _, _, err := OpenNetworkDirectMessage(receiver, sender.Public(), context, tampered); err == nil {
 		t.Fatal("tampered untrusted header opened")
+	}
+	askContext := context
+	askContext.Kind = "REQUEST"
+	askContext.RequestID = "rq_child"
+	askContext.MessageID = "msg_child"
+	askContext.ParentRequestID = "rq_parent"
+	askWire, err := SealNetworkDirectMessage(sender, receiver.Public(), askContext,
+		[]byte("synthetic child ask"), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, sequence, err = OpenNetworkDirectMessage(receiver, sender.Public(), askContext, askWire)
+	if err != nil || string(opened) != "synthetic child ask" || sequence != 8 {
+		t.Fatalf("open causal request: sequence=%d err=%v", sequence, err)
+	}
+	changedParent := askContext
+	changedParent.ParentRequestID = "rq_other_parent"
+	if _, _, err := OpenNetworkDirectMessage(receiver, sender.Public(), changedParent, askWire); err == nil {
+		t.Fatal("changed causal parent opened child ask")
+	}
+	replyContext := askContext
+	replyContext.Kind = "REPLY"
+	replyContext.MessageID = "msg_reply"
+	replyContext.ReplyTo = "msg_child"
+	replyWire, err := SealNetworkDirectMessage(sender, receiver.Public(), replyContext,
+		[]byte("synthetic causal reply"), 9)
+	if err != nil {
+		t.Fatalf("REPLY with route-derived causal parent rejected: %v", err)
+	}
+	if opened, sequence, err = OpenNetworkDirectMessage(receiver, sender.Public(), replyContext, replyWire); err != nil || string(opened) != "synthetic causal reply" || sequence != 9 {
+		t.Fatalf("open causal REPLY: sequence=%d err=%v", sequence, err)
+	}
+	replyContext.ParentRequestID = "rq_other_parent"
+	if _, _, err := OpenNetworkDirectMessage(receiver, sender.Public(), replyContext, replyWire); err == nil {
+		t.Fatal("changed REPLY causal parent opened")
 	}
 }
 

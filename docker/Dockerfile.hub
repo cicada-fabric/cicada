@@ -11,6 +11,8 @@ ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
 ARG CICADA_BUILD_CATALOG_SHA256=unknown
+ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=unknown
 
 ENV http_proxy=${HTTP_PROXY} \
     https_proxy=${HTTPS_PROXY} \
@@ -32,8 +34,12 @@ RUN mkdir -p /src/internal/server/ui/generated \
     && gzip -n -9 -c /tmp/cicada-webcrypto.wasm > /src/internal/server/ui/generated/cicada-webcrypto.wasm.gz \
     && python3 /tmp/write-web-panel-manifest.py /src/internal/server/ui/generated "$(go version)" /tmp/cicada-webcrypto.wasm \
     && rm -f /tmp/cicada-webcrypto.wasm
+RUN if [ "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256" != unknown ]; then \
+      python3 -c 'import hashlib,sys; actual=hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(); sys.exit(0 if actual == sys.argv[2] else 1)' \
+        /src/internal/server/ui/generated/panel.manifest.json "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256"; \
+    fi
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+    -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Version=${CICADA_BUILD_VERSION} -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
     -o /out/cicada ./cmd/cicada
 
 # This target runs the existing real-TCP Docker Hub protocol smoke test. It is
@@ -43,6 +49,8 @@ ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
 ARG CICADA_BUILD_CATALOG_SHA256=unknown
+ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=unknown
 LABEL org.opencontainers.image.title="CICADA Hub interop test runner" \
       org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
       org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
@@ -59,14 +67,18 @@ ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
 ARG CICADA_BUILD_CATALOG_SHA256=unknown
+ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=unknown
 
 LABEL org.opencontainers.image.title="CICADA Hub" \
       org.opencontainers.image.description="CICADA Hub HTTP service without Codex or model credentials" \
+      org.opencontainers.image.version="${CICADA_BUILD_VERSION}" \
       org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
       org.cicada.role="hub" \
       org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
       org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
-      org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}"
+      org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}" \
+      org.cicada.build.webcrypto-manifest-sha256="${CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256}"
 
 RUN apk add --no-cache ca-certificates \
     && addgroup -g "${CICADA_GID}" cicada \

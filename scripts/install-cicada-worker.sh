@@ -6,13 +6,20 @@ usage() {
 Usage:
   CICADA_CONTROL_URL=https://hub.example.org \
   CICADA_MACHINE_ID=node-lab-a \
-  scripts/install-cicada-worker.sh
+  scripts/install-cicada-worker.sh [--mode relay|managed]
 
 Build the Node agent from this checkout (or use CICADA_BINARY_PATH), persist
 its local identity under a private state directory, then run the real agent in
-the foreground. The Node prints a 10-minute pairing code. In the authenticated
-Android Client, preview the exact Node and confirm it explicitly. This script
-does not pass a Hub bearer or provider key to the Hub and opens no inbound port.
+the foreground. Mode defaults to relay. Select --mode managed only when this
+Node should also process authorized Worker jobs and Monitor notices. The Node
+prints a 10-minute pairing code. In the authenticated Android Client, preview
+the exact Node and confirm it explicitly. This script does not pass a Hub
+bearer or provider key to the Hub, automatically join a Thread or Group, or
+approve the Node, and it opens no inbound port.
+
+Modes:
+  relay       Fabric message delivery only; safe default, no Worker polling
+  managed     Also process Node-authorized Worker jobs and Monitor notices
 
 Environment:
   CICADA_CONTROL_URL       Hub URL; HTTPS remotely, loopback HTTP for local use
@@ -33,7 +40,32 @@ if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
   usage
   exit 0
 fi
-[[ $# -eq 0 ]] || die "unknown argument: $1"
+
+mode='relay'
+while (($#)); do
+  case "$1" in
+    --mode)
+      (($# >= 2)) || die "--mode requires relay or managed"
+      mode="$2"
+      shift 2
+      ;;
+    --mode=*)
+      mode="${1#--mode=}"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+case "$mode" in
+  relay|managed) ;;
+  *) die "mode must be relay or managed" ;;
+esac
 
 need() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
@@ -73,11 +105,16 @@ state_dir="${CICADA_NODE_STATE_DIR:-${XDG_STATE_HOME:-$user_home/.local/state}/c
 install -d -m 0700 "$state_dir"
 chmod 0700 "$state_dir"
 
-printf 'Hub URL: %s\nNode ID: %s\nNode state: %s (mode 0700)\n' "$control_url" "$node_id" "$state_dir"
+printf 'Hub URL: %s\nNode ID: %s\nNode mode: %s\nNode state: %s (mode 0700)\n' "$control_url" "$node_id" "$mode" "$state_dir"
 printf 'Starting outbound-only Node agent. Pairing code is short-lived; confirm it in the authenticated Android Client.\n'
-"$binary_path" machine agent \
-  --id "$node_id" \
-  --name "$node_name" \
-  --control-url "$control_url" \
-  --state-dir "$state_dir" \
-  --relay-only
+agent_args=(
+  machine agent
+  --id "$node_id"
+  --name "$node_name"
+  --control-url "$control_url"
+  --state-dir "$state_dir"
+)
+if [[ "$mode" == relay ]]; then
+  agent_args+=(--relay-only)
+fi
+"$binary_path" "${agent_args[@]}"

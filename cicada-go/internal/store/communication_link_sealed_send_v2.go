@@ -43,16 +43,18 @@ type CommunicationLinkSealedSend struct {
 // durable inbox record and independently verify the owner signatures before
 // opening the endpoint envelope or injecting it into a native session.
 type CommunicationLinkSealedDeliveryAuthorization struct {
-	AttemptID       string                               `json:"attempt_id"`
-	MessageID       string                               `json:"message_id"`
-	Digest          string                               `json:"digest"`
-	EndpointID      string                               `json:"endpoint_id"`
-	BindingID       string                               `json:"binding_id"`
-	BindingEpoch    uint64                               `json:"binding_epoch"`
-	NativeSessionID string                               `json:"native_session_id"`
-	DataScope       string                               `json:"data_scope"`
-	Route           RelaySealedV1Route                   `json:"route"`
-	Bundle          CommunicationLinkAuthorizationBundle `json:"bundle"`
+	AttemptID          string                               `json:"attempt_id"`
+	MessageID          string                               `json:"message_id"`
+	Digest             string                               `json:"digest"`
+	EndpointID         string                               `json:"endpoint_id"`
+	BindingID          string                               `json:"binding_id"`
+	BindingEpoch       uint64                               `json:"binding_epoch"`
+	NativeSessionID    string                               `json:"native_session_id"`
+	DataScope          string                               `json:"data_scope"`
+	ParentRequestID    string                               `json:"parent_request_id,omitempty"`
+	NativeContextScope NativeContextScopeMetadata           `json:"native_context_scope"`
+	Route              RelaySealedV1Route                   `json:"route"`
+	Bundle             CommunicationLinkAuthorizationBundle `json:"bundle"`
 }
 
 // AuthorizeClaimedCommunicationLinkSealedSend is the receive-side Guard for
@@ -106,9 +108,16 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 	if err != nil || link == nil || link.TransportHubID != hubID {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
-	endpointID, expectedNodeID, expectedOwnerID := link.TargetEndpointID, link.TargetNodeID, link.TargetOwnerID
-	if record.Route.Kind == "reply" {
-		endpointID, expectedNodeID, expectedOwnerID = link.SourceEndpointID, link.SourceNodeID, link.SourceOwnerID
+	endpointID, expectedNodeID, expectedOwnerID, principalID := "", "", "", ""
+	switch item.RecipientEndpointID {
+	case link.SourceEndpointID:
+		endpointID, expectedNodeID, expectedOwnerID, principalID = link.SourceEndpointID,
+			link.SourceNodeID, link.SourceOwnerID, link.SourcePrincipalID
+	case link.TargetEndpointID:
+		endpointID, expectedNodeID, expectedOwnerID, principalID = link.TargetEndpointID,
+			link.TargetNodeID, link.TargetOwnerID, link.TargetPrincipalID
+	default:
+		return nil, ErrCommunicationLinkRelayDenied
 	}
 	if nodeID != expectedNodeID || ownerID != expectedOwnerID || endpointID != item.RecipientEndpointID {
 		return nil, ErrCommunicationLinkRelayDenied
@@ -120,20 +129,27 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 	if err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
-	principalID := link.TargetPrincipalID
-	if record.Route.Kind == "reply" {
-		principalID = link.SourcePrincipalID
-	}
 	binding, err := readCommunicationLinkGrantBinding(tx, endpointID,
 		principalID, nodeID, time.Now().UTC())
 	if err != nil || binding.ID != item.BindingID || binding.Epoch != item.BindingEpoch {
+		return nil, ErrCommunicationLinkRelayDenied
+	}
+	parentRequestID, err := relayParentRequestForSealedRouteTx(tx, record.Route)
+	if err != nil {
+		return nil, ErrCommunicationLinkRelayDenied
+	}
+	scope, err := readNativeContextScopeForEndpointTx(tx, item.RecipientEndpointID,
+		record.Security.ReceiverGroupID)
+	if err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
 	result := &CommunicationLinkSealedDeliveryAuthorization{
 		AttemptID: attemptID, MessageID: messageID, Digest: item.Digest,
 		EndpointID: item.RecipientEndpointID, BindingID: binding.ID,
 		BindingEpoch: binding.Epoch, NativeSessionID: binding.NativeSessionID,
-		DataScope: record.Security.VisibilityPolicyRef, Route: record.Route, Bundle: *bundle,
+		DataScope: record.Security.VisibilityPolicyRef, ParentRequestID: parentRequestID,
+		NativeContextScope: scope,
+		Route:              record.Route, Bundle: *bundle,
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -145,8 +161,9 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 // owner-bound Nodes, the proposed cross-owner Link, the current binding/key
 // candidate manifest and both independent key-bound owner grants in the same
 // transaction that durably stores the exact SEALED_V1 BLOB and Relay inbox.
-// It only accepts a source-to-target SEND over the currently configured Hub;
-// same-Node links must use the local zero-Relay path.
+// It accepts the source-to-target direction for a forward Link and either
+// direction for a bidirectional Link, always deriving the caller from its
+// current Node credential. Same-Node links must use the local zero-Relay path.
 func (s *Store) EnqueueCommunicationLinkSealedSend(input CommunicationLinkSealedSend) (*RelaySealedV1Record, error) {
 	input.NodeCredentialDigest = strings.TrimSpace(input.NodeCredentialDigest)
 	input.LinkID = strings.TrimSpace(input.LinkID)
@@ -170,28 +187,32 @@ func (s *Store) EnqueueCommunicationLinkSealedSend(input CommunicationLinkSealed
 	defer tx.Rollback()
 
 	now := time.Now().UTC()
-	link, manifest, err := authorizeCommunicationLinkSealedSourceTx(tx,
+	link, manifest, reverse, err := authorizeCommunicationLinkSealedActionTx(tx,
 		input.NodeCredentialDigest, input.LinkID, input.DataScope, "send", now)
 	if err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
-
-	context := sealedLinkForwardEndpointContext(link, manifest, input.MessageID, "SEND", "")
-	if err := validateOpaqueEndpointMessage(input.Ciphertext, context, manifest.Source.PublicIdentity); err != nil {
+	sender, receiver := communicationLinkAskRoles(link, manifest, reverse)
+	context := sealedLinkEndpointContext(link, manifest, input.MessageID, "SEND", "", "", "", reverse)
+	senderIdentity := manifest.Source.PublicIdentity
+	if reverse {
+		senderIdentity = manifest.Target.PublicIdentity
+	}
+	if err := validateOpaqueEndpointMessage(input.Ciphertext, context, senderIdentity); err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
 
 	relayInput, err := relaySealedV1Message(RelaySealedV1Input{
 		Route: RelaySealedV1Route{MessageID: input.MessageID,
-			SenderEndpointID: link.SourceEndpointID, ReceiverEndpointID: link.TargetEndpointID, Kind: "send"},
+			SenderEndpointID: sender.endpointID, ReceiverEndpointID: receiver.endpointID, Kind: "send"},
 		Security: RelayMessageSecurity{
 			MessageID:        input.MessageID,
-			SenderEndpointID: link.SourceEndpointID, SenderPrincipalID: link.SourcePrincipalID,
-			SenderGroupID: link.SourceGroupID, SenderBindingID: manifest.Source.BindingID,
-			SenderBindingEpoch: manifest.Source.BindingEpoch,
-			ReceiverEndpointID: link.TargetEndpointID, ReceiverPrincipalID: link.TargetPrincipalID,
-			ReceiverGroupID: link.TargetGroupID, ReceiverBindingID: manifest.Target.BindingID,
-			ReceiverBindingEpoch: manifest.Target.BindingEpoch,
+			SenderEndpointID: sender.endpointID, SenderPrincipalID: sender.principalID,
+			SenderGroupID: sender.groupID, SenderBindingID: sender.bindingID,
+			SenderBindingEpoch: sender.bindingEpoch,
+			ReceiverEndpointID: receiver.endpointID, ReceiverPrincipalID: receiver.principalID,
+			ReceiverGroupID: receiver.groupID, ReceiverBindingID: receiver.bindingID,
+			ReceiverBindingEpoch: receiver.bindingEpoch,
 			VisibilityPolicyRef:  input.DataScope,
 			AuthorizationRef:     communicationLinkAuthorizationRefPrefix + link.ID,
 		}, Ciphertext: input.Ciphertext, IdempotencyKey: input.IdempotencyKey,
@@ -199,6 +220,7 @@ func (s *Store) EnqueueCommunicationLinkSealedSend(input CommunicationLinkSealed
 	if err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
+	relayInput.communicationLinkAuthorized = true
 	accepted, _, err := relayEnqueuePayloadTx(tx, relayInput, RelayPayloadModeSealedV1, input.Ciphertext)
 	if err != nil {
 		return nil, err
@@ -208,6 +230,9 @@ func (s *Store) EnqueueCommunicationLinkSealedSend(input CommunicationLinkSealed
 	}
 	record, err := relaySealedV1RecordTx(tx, accepted.Message.ID)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureCommunicationLinkMessageReviewTx(tx, *link, record, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -222,17 +247,34 @@ func (s *Store) EnqueueCommunicationLinkSealedSend(input CommunicationLinkSealed
 // from surviving revocation, cancellation, key rotation, membership changes
 // or a stale SessionBinding.
 func validateQueuedCommunicationLinkSealedSendTx(tx *sql.Tx, record *RelaySealedV1Record, at time.Time) error {
-	if record == nil {
+	return validateQueuedCommunicationLinkSealedSendWithReviewTx(tx, record, at, false)
+}
+
+func validateQueuedCommunicationLinkSealedSendWithReviewTx(tx *sql.Tx, record *RelaySealedV1Record,
+	at time.Time, allowWaitingReview bool) error {
+	if record == nil || record.PayloadMode != RelayPayloadModeSealedV1 ||
+		record.Route.MessageID == "" || record.Route.MessageID != record.Security.MessageID ||
+		record.Security.Digest != relayCiphertextDigest(record.Ciphertext) ||
+		record.Route.SenderEndpointID != record.Security.SenderEndpointID ||
+		record.Route.ReceiverEndpointID != record.Security.ReceiverEndpointID ||
+		record.Security.ReceiverGroupID == "" {
 		return ErrCommunicationLinkRelayDenied
 	}
-	// Claim and pre-injection authorization must pin the enrollment that
-	// existed when this ciphertext was enqueued. Current Link grants alone
-	// cannot make an old message valid after a revoked member joins again.
-	if err := networkGuardRelayMessageTx(tx, record.Route.MessageID, record.Security.ReceiverGroupID, at); err != nil {
+	if err := networkGuardCommunicationLinkRouteTx(tx, record.Route, &record.Security,
+		record.Security.ReceiverGroupID, at); err != nil {
 		return ErrCommunicationLinkRelayDenied
 	}
 	if record.Route.Kind == "reply" {
-		return validateQueuedCommunicationLinkSealedReplyTx(tx, record, at)
+		if err := validateQueuedCommunicationLinkSealedReplyTx(tx, record, at); err != nil {
+			return ErrCommunicationLinkRelayDenied
+		}
+		if err := networkVerifyRelayMessageEnrollmentTx(tx, &record.Security); err != nil {
+			return ErrCommunicationLinkRelayDenied
+		}
+		if err := communicationLinkReviewGateTx(tx, record, at, allowWaitingReview); err != nil {
+			return err
+		}
+		return nil
 	}
 	if !strings.HasPrefix(record.Security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
 		return nil
@@ -242,6 +284,8 @@ func validateQueuedCommunicationLinkSealedSendTx(tx *sql.Tx, record *RelaySealed
 		return ErrCommunicationLinkRelayDenied
 	}
 	action, contextKind := "", ""
+	var request *FabricRequest
+	var err error
 	switch record.Route.Kind {
 	case "send":
 		if record.Route.RequestID != "" || record.Route.ReplyTo != "" {
@@ -252,7 +296,7 @@ func validateQueuedCommunicationLinkSealedSendTx(tx *sql.Tx, record *RelaySealed
 		if record.Route.RequestID == "" || record.Route.ReplyTo != "" {
 			return ErrCommunicationLinkRelayDenied
 		}
-		request, err := relayLoadRequestTx(tx, record.Route.RequestID)
+		request, err = relayLoadRequestTx(tx, record.Route.RequestID)
 		if err != nil || request == nil || request.State != FabricRequestOpen ||
 			relayParseExpired(request.ExpiresAt, at) || request.MessageID != record.Route.MessageID ||
 			request.Digest != record.Security.Digest ||
@@ -277,7 +321,7 @@ func validateQueuedCommunicationLinkSealedSendTx(tx *sql.Tx, record *RelaySealed
 	link, err := scanCommunicationLink(tx.QueryRow(`SELECT `+communicationLinkColumns+`
 FROM communication_links_v2 WHERE id=?`, linkID))
 	if err != nil || link.State != CommunicationLinkProposed ||
-		(link.Direction != "forward" && (action != "ask" || link.Direction != "bidirectional")) ||
+		(link.Direction != "forward" && link.Direction != "bidirectional") ||
 		link.SourceOwnerID == link.TargetOwnerID || link.SourceNodeID == link.TargetNodeID ||
 		link.TransportHubID == "" || !containsWord(link.Actions, action) ||
 		!containsWord(link.DataScopes, record.Security.VisibilityPolicyRef) {
@@ -309,22 +353,44 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 		CommunicationLinkGrantTarget, at); err != nil {
 		return ErrCommunicationLinkRelayDenied
 	}
-	security := record.Security
-	if security.AuthorizationRef != communicationLinkAuthorizationRefPrefix+link.ID ||
-		security.MessageID != record.Route.MessageID || security.SenderEndpointID != link.SourceEndpointID ||
-		security.SenderPrincipalID != link.SourcePrincipalID || security.SenderGroupID != link.SourceGroupID ||
-		security.SenderBindingID != manifest.Source.BindingID || security.SenderBindingEpoch != manifest.Source.BindingEpoch ||
-		security.ReceiverEndpointID != link.TargetEndpointID || security.ReceiverPrincipalID != link.TargetPrincipalID ||
-		security.ReceiverGroupID != link.TargetGroupID || security.ReceiverBindingID != manifest.Target.BindingID ||
-		security.ReceiverBindingEpoch != manifest.Target.BindingEpoch ||
-		record.Route.SenderEndpointID != link.SourceEndpointID ||
-		record.Route.ReceiverEndpointID != link.TargetEndpointID {
+	reverse, routeOK := communicationLinkAskDirection(link, record.Route.SenderEndpointID,
+		record.Route.ReceiverEndpointID)
+	if !routeOK || (reverse && link.Direction != "bidirectional") || (action == "ask" && request == nil) {
 		return ErrCommunicationLinkRelayDenied
 	}
-	context := sealedLinkForwardEndpointContext(link, manifest, security.MessageID,
-		contextKind, record.Route.RequestID)
-	if err := validateOpaqueEndpointMessage(record.Ciphertext, context, manifest.Source.PublicIdentity); err != nil {
+	sender, receiver := communicationLinkAskRoles(link, manifest, reverse)
+	security := record.Security
+	if security.AuthorizationRef != communicationLinkAuthorizationRefPrefix+link.ID ||
+		security.MessageID != record.Route.MessageID || security.SenderEndpointID != sender.endpointID ||
+		security.SenderPrincipalID != sender.principalID || security.SenderGroupID != sender.groupID ||
+		security.SenderBindingID != sender.bindingID || security.SenderBindingEpoch != sender.bindingEpoch ||
+		security.ReceiverEndpointID != receiver.endpointID || security.ReceiverPrincipalID != receiver.principalID ||
+		security.ReceiverGroupID != receiver.groupID || security.ReceiverBindingID != receiver.bindingID ||
+		security.ReceiverBindingEpoch != receiver.bindingEpoch ||
+		record.Route.SenderEndpointID != sender.endpointID ||
+		record.Route.ReceiverEndpointID != receiver.endpointID {
 		return ErrCommunicationLinkRelayDenied
+	}
+	context := sealedLinkEndpointContext(link, manifest, security.MessageID,
+		contextKind, record.Route.RequestID, "", "", reverse)
+	senderIdentity := manifest.Source.PublicIdentity
+	if action == "ask" {
+		context = sealedLinkAskEndpointContext(link, manifest, security.MessageID,
+			record.Route.RequestID, request.ParentRequestID, reverse)
+	}
+	if reverse {
+		senderIdentity = manifest.Target.PublicIdentity
+	}
+	if err := validateOpaqueEndpointMessage(record.Ciphertext, context, senderIdentity); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	// Enrollment revisions are captured at enqueue and checked again here.
+	// A fresh membership cannot revive a queued cross-Network Link message.
+	if err := networkVerifyRelayMessageEnrollmentTx(tx, &record.Security); err != nil {
+		return ErrCommunicationLinkRelayDenied
+	}
+	if err := communicationLinkReviewGateTx(tx, record, at, allowWaitingReview); err != nil {
+		return err
 	}
 	return nil
 }
@@ -379,6 +445,9 @@ WHERE i.recipient_endpoint_id=? AND i.state='READY' AND payload.payload_mode='SE
 			return err
 		}
 		if err := validateQueuedCommunicationLinkSealedSendTx(tx, record, at); err != nil {
+			if errors.Is(err, ErrCommunicationLinkReviewPending) {
+				continue
+			}
 			timestamp := at.UTC().Format(time.RFC3339Nano)
 			reason := "communication link authorization is no longer current"
 			if record.Route.Kind == "ask" {

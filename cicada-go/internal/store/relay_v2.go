@@ -76,15 +76,19 @@ const (
 // CANCEL_REQUESTED and has not passed its expiry deadline.
 const (
 	RelayAdmissionScopeSenderPrincipal = "sender_principal"
+	RelayAdmissionScopeSenderEndpoint  = "sender_endpoint"
 	RelayAdmissionScopeSenderGroup     = "sender_group"
 	RelayAdmissionScopeReceiver        = "receiver_endpoint"
 	RelayAdmissionScopeGlobal          = "global"
 
-	DefaultRelayPendingAsksPerPrincipal = 64
-	DefaultRelayPendingAsksPerGroup     = 256
-	DefaultRelayPendingAsksPerReceiver  = 64
-	DefaultRelayPendingAsksGlobal       = 1024
-	DefaultRelayAdmissionRetryAfterSec  = 1
+	DefaultRelayPendingAsksPerSenderEndpoint = 16
+	DefaultRelayPendingAsksPerPrincipal      = 64
+	DefaultRelayPendingAsksPerGroup          = 256
+	DefaultRelayPendingAsksPerReceiver       = 64
+	DefaultRelayPendingAsksGlobal            = 1024
+	DefaultRelayAdmissionRetryAfterSec       = 1
+	DefaultRelayAskLifetime                  = 30 * time.Minute
+	MaxRelayAskLifetime                      = 24 * time.Hour
 )
 
 // RelayAdmissionLimits controls the maximum number of pending Ask records in
@@ -195,6 +199,9 @@ var (
 type FabricRequest struct {
 	RequestID            string `json:"request_id"`
 	MessageID            string `json:"message_id"`
+	ParentRequestID      string `json:"parent_request_id,omitempty"`
+	CausalRootRequestID  string `json:"-"`
+	CausalDepth          int    `json:"-"`
 	SenderEndpointID     string `json:"sender_endpoint_id"`
 	SenderPrincipalID    string `json:"sender_principal_id"`
 	SenderGroupID        string `json:"sender_group_id"`
@@ -267,6 +274,9 @@ type RelayMessageInput struct {
 	// Set only by the Network direct sealed Store transaction after it has
 	// checked both current Network enrollments and owner-approved Endpoint keys.
 	networkDirectAuthorized bool
+	// Set only by a CommunicationLink Store transaction after it has checked
+	// the exact Link, key manifest, bilateral Owner grants and current bindings.
+	communicationLinkAuthorized bool
 }
 
 // RelaySealedV1Route contains the clear routing envelope that accompanies an
@@ -651,6 +661,18 @@ VALUES (1, 64, 256, 64, 1024, 1);`); err != nil {
 	return nil
 }
 
+// initializeRelaySenderEndpointAskIndex adds the V21 sender-Endpoint-scoped
+// pending Ask lookup index in its own additive migration. Keep it out of
+// relayV2Schema so an already-applied historical Relay migration never changes
+// its checksum or performs an unledgered schema write on every Open.
+func (s *Store) initializeRelaySenderEndpointAskIndex() error {
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS relay_v2_requests_sender_endpoint_idx
+  ON relay_v2_requests(sender_endpoint_id, state, expires_at);`); err != nil {
+		return fmt.Errorf("initialize Relay sender Endpoint Ask index: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) initializeRelayV2Schema() error {
 	if _, err := s.db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
 		return fmt.Errorf("configure relay v2 sqlite busy timeout: %w", err)
@@ -890,7 +912,8 @@ func scanRelayRequest(row interface{ Scan(...any) error }) (*FabricRequest, erro
 		&request.ExpiresAt, &request.CancelRequestedAt, &request.CancelledAt,
 		&request.ExpiredAt, &request.RepliedAt, &request.LateResultAt,
 		&request.ReplyMessageID, &request.LateResultMessageID, &request.CreatedAt,
-		&request.UpdatedAt)
+		&request.UpdatedAt, &request.ParentRequestID, &request.CausalRootRequestID,
+		&request.CausalDepth)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -907,7 +930,8 @@ receiver_principal_id, receiver_group_id, receiver_binding_id,
 receiver_binding_epoch, digest, idempotency_key, visibility_policy_ref,
 authorization_ref, state, expires_at, cancel_requested_at, cancelled_at,
 expired_at, replied_at, late_result_at, reply_message_id,
-late_result_message_id, created_at, updated_at`
+late_result_message_id, created_at, updated_at, parent_request_id,
+causal_root_request_id, causal_depth`
 
 func scanRelayAttempt(row interface{ Scan(...any) error }) (*RelayDeliveryAttempt, error) {
 	var attempt RelayDeliveryAttempt
@@ -1127,6 +1151,7 @@ func relayValidateExistingRequestTx(tx *sql.Tx, existing *FabricRequest, candida
 		candidateRequest.ReceiverEndpointID != existing.ReceiverEndpointID ||
 		candidateRequest.ReceiverPrincipalID != existing.ReceiverPrincipalID ||
 		candidateRequest.ReceiverGroupID != existing.ReceiverGroupID ||
+		candidateRequest.ParentRequestID != existing.ParentRequestID ||
 		(candidateRequest.IdempotencyKey != "" && candidateRequest.IdempotencyKey != existing.IdempotencyKey) {
 		if existing.IdempotencyKey != "" || candidateRequest.IdempotencyKey != "" {
 			return ErrRelayIdempotencyConflict
@@ -1173,7 +1198,8 @@ func relayAcquireAdmissionGuardTx(tx *sql.Tx) error {
 	return relayAcquireWriteGuardTx(tx)
 }
 
-func relayPendingAskCountTx(tx *sql.Tx, scope, principalID, groupID, receiverEndpointID, currentTime string) (int, error) {
+func relayPendingAskCountTx(tx *sql.Tx, scope, senderEndpointID, principalID, groupID,
+	receiverEndpointID, currentTime string) (int, error) {
 	const pendingPredicate = `state IN (?, ?) AND cicada_network_expiry_allows(expires_at, ?) = 1`
 	var query string
 	var args []any
@@ -1181,6 +1207,9 @@ func relayPendingAskCountTx(tx *sql.Tx, scope, principalID, groupID, receiverEnd
 	case RelayAdmissionScopeSenderPrincipal:
 		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_principal_id = ?`
 		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, principalID}
+	case RelayAdmissionScopeSenderEndpoint:
+		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_endpoint_id = ?`
+		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, senderEndpointID}
 	case RelayAdmissionScopeSenderGroup:
 		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_group_id = ?`
 		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, groupID}
@@ -1205,13 +1234,14 @@ func relayCheckPendingAskQuotaTx(tx *sql.Tx, security RelayMessageSecurity, limi
 		name  string
 		limit int
 	}{
+		{RelayAdmissionScopeSenderEndpoint, DefaultRelayPendingAsksPerSenderEndpoint},
 		{RelayAdmissionScopeSenderPrincipal, limits.PerSenderPrincipal},
 		{RelayAdmissionScopeSenderGroup, limits.PerSenderGroup},
 		{RelayAdmissionScopeReceiver, limits.PerReceiver},
 		{RelayAdmissionScopeGlobal, limits.Global},
 	}
 	for _, scope := range scopes {
-		pending, err := relayPendingAskCountTx(tx, scope.name, security.SenderPrincipalID,
+		pending, err := relayPendingAskCountTx(tx, scope.name, security.SenderEndpointID, security.SenderPrincipalID,
 			security.SenderGroupID, security.ReceiverEndpointID, currentTime)
 		if err != nil {
 			return fmt.Errorf("count relay admission scope %s: %w", scope.name, err)
@@ -1425,7 +1455,22 @@ func relayEnqueuePayloadTx(tx *sql.Tx, input RelayMessageInput, payloadMode stri
 			security.ReceiverGroupID != "" || security.AuthorizationRef == "" {
 			return nil, false, ErrNetworkPermission
 		}
+	} else if input.communicationLinkAuthorized {
+		if payloadMode != RelayPayloadModeSealedV1 ||
+			!strings.HasPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
+			return nil, false, ErrNetworkPermission
+		}
+		if err := networkGuardCommunicationLinkRouteTx(tx, RelaySealedV1Route{
+			MessageID: message.ID, RequestID: message.RequestID, ReplyTo: message.ReplyTo,
+			SenderEndpointID: security.SenderEndpointID, ReceiverEndpointID: security.ReceiverEndpointID,
+			Kind: message.Kind,
+		}, &security, security.ReceiverGroupID, time.Now().UTC()); err != nil {
+			return nil, false, ErrNetworkPermission
+		}
 	} else {
+		if strings.HasPrefix(security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
+			return nil, false, ErrNetworkPermission
+		}
 		if err := networkGuardRelaySecurityTx(tx, &security, security.ReceiverGroupID, time.Now().UTC()); err != nil {
 			return nil, false, err
 		}
@@ -1891,6 +1936,9 @@ FROM relay_v2_admission_config WHERE id = 1`))
 	if err := relayCheckPendingAskQuotaTx(tx, record.Security, limits, now()); err != nil {
 		return nil, err
 	}
+	if err := relayDeriveCausalLineageTx(tx, &request, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	timestamp := now()
 	request.State = FabricRequestOpen
 	request.Digest = record.Security.Digest
@@ -1904,8 +1952,8 @@ FROM relay_v2_admission_config WHERE id = 1`))
  receiver_binding_epoch, digest, idempotency_key, visibility_policy_ref,
  authorization_ref, state, expires_at, cancel_requested_at, cancelled_at,
  expired_at, replied_at, late_result_at, reply_message_id, late_result_message_id,
- created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', '', '', ?, ?)`,
+ created_at, updated_at, parent_request_id, causal_root_request_id, causal_depth)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', '', '', ?, ?, ?, ?, ?)`,
 		request.RequestID, record.Message.ID, record.Security.SenderEndpointID,
 		record.Security.SenderPrincipalID, record.Security.SenderGroupID,
 		record.Security.SenderBindingID, record.Security.SenderBindingEpoch,
@@ -1913,7 +1961,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ''
 		record.Security.ReceiverGroupID, record.Security.ReceiverBindingID,
 		record.Security.ReceiverBindingEpoch, record.Security.Digest, record.Security.IdempotencyKey,
 		record.Security.VisibilityPolicyRef, record.Security.AuthorizationRef,
-		FabricRequestOpen, relayString(request.ExpiresAt), timestamp, timestamp)
+		FabricRequestOpen, relayString(request.ExpiresAt), timestamp, timestamp,
+		request.ParentRequestID, request.CausalRootRequestID, request.CausalDepth)
 	if err != nil {
 		return nil, fmt.Errorf("create relay request: %w", err)
 	}
@@ -2582,6 +2631,11 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, EndpointMigrationReady,
 		record, err := relaySealedV1RecordTx(tx, item.MessageID)
 		if err != nil {
 			return nil, err
+		}
+		if strings.HasPrefix(record.Security.AuthorizationRef, communicationLinkAuthorizationRefPrefix) {
+			if err := communicationLinkReviewGateTx(tx, record, time.Now().UTC(), false); err != nil {
+				continue
+			}
 		}
 		if record.Route.RequestID != item.RequestID {
 			continue

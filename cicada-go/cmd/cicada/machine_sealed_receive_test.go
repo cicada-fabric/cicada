@@ -57,7 +57,8 @@ func newMachineSealedReceiveRequestFixture(t *testing.T) *machineSealedReceiveFi
 }
 
 func newMachineSealedReceiveReplyFixture(t *testing.T) *machineSealedReceiveFixture {
-	return newMachineSealedReceiveFixtureWithActions(t, true, "ask", []string{"ask", "reply"})
+	return newMachineSealedReceiveFixtureWithActionsAndDirection(t, true, "ask",
+		[]string{"ask", "reply"}, "forward")
 }
 
 func newMachineSealedReceiveFixtureWithSeed(t *testing.T, seedMessage bool) *machineSealedReceiveFixture {
@@ -70,8 +71,13 @@ func newMachineSealedReceiveFixtureWithSeedAndRouteKind(t *testing.T, seedMessag
 
 func newMachineSealedReceiveFixtureWithActions(t *testing.T, seedMessage bool,
 	routeKind string, actions []string) *machineSealedReceiveFixture {
-	return newMachineSealedReceiveFixtureWithActionsForNativeSessions(t, seedMessage,
-		routeKind, actions, "", "")
+	return newMachineSealedReceiveFixtureWithActionsAndDirection(t, seedMessage, routeKind, actions, "forward")
+}
+
+func newMachineSealedReceiveFixtureWithActionsAndDirection(t *testing.T, seedMessage bool,
+	routeKind string, actions []string, direction string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t, seedMessage,
+		routeKind, actions, []string{"message.ask"}, "", "", false, direction)
 }
 
 func newMachineSealedReceiveFixtureWithActionsForNativeSessions(t *testing.T, seedMessage bool,
@@ -95,6 +101,14 @@ func newMachineSealedReceiveFixtureWithDeferredOwnerGrantsForNativeSessions(t *t
 func newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t *testing.T, seedMessage bool,
 	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string,
 	deferOwnerGrants bool) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t, seedMessage,
+		routeKind, actions, endpointGrants, sourceNativeSessionID, targetNativeSessionID,
+		deferOwnerGrants, "forward")
+}
+
+func newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t *testing.T, seedMessage bool,
+	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string,
+	deferOwnerGrants bool, direction string) *machineSealedReceiveFixture {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "hub.sqlite3")
 	state, err := store.New(databasePath)
@@ -218,7 +232,7 @@ func newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t *test
 	}
 	invite, err := state.CreateExternalThreadInvite(store.ExternalThreadInviteInput{
 		OwnerID: source.ownerID, SourceEndpointID: source.endpointID,
-		SourceGroupID: source.groupID, HubID: hubID,
+		SourceGroupID: source.groupID, HubID: hubID, Direction: direction,
 		Actions: actions, DataScopes: []string{"thread.message"},
 		ExpiresAt: time.Now().UTC().Add(30 * time.Minute).Truncate(time.Second).Format(time.RFC3339),
 	})
@@ -383,6 +397,17 @@ func (f *machineSealedReceiveFixture) serverForNode(t *testing.T, nodeID, nodeTo
 	receipts *[]string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && request.URL.Path == "/v2/node/identity" {
+			hubID, err := f.store.GetClientHubID()
+			if err != nil {
+				t.Errorf("read test Hub identity: %v", err)
+				http.Error(response, "identity unavailable", http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(map[string]string{"hub_id": hubID})
+			return
+		}
 		if got := request.Header.Get("Authorization"); got != "CicadaNode "+nodeToken {
 			t.Errorf("Node authorization=%q", got)
 			response.WriteHeader(http.StatusUnauthorized)
@@ -755,6 +780,51 @@ func TestMachineSealedReplyReturnsToOriginalRequesterSession(t *testing.T) {
 	stored, err := inbox.Get(context.Background(), replyMessageID)
 	if err != nil || stored.State != nodeinbox.CONSUMPTION_UNCONFIRMED || string(stored.Payload) != replyPlaintext {
 		t.Fatalf("original requester durable REPLY=%#v error=%v", stored, err)
+	}
+}
+
+func TestMachineSealedForwardLinkAllowsReplyButRejectsReverseNewRoutes(t *testing.T) {
+	fixture := newMachineSealedReceiveFixtureWithActionsAndDirection(t, false, "ask",
+		[]string{"ask", "reply"}, "forward")
+	bundle, err := fixture.store.GetCommunicationLinkAuthorizationBundleForNodeCredential(
+		fabric.HashSessionCredential(fixture.sourceToken), fixture.link.ID)
+	if err != nil {
+		t.Fatalf("read current forward Link authorization: %v", err)
+	}
+	converted, err := machineNodeKeyBundle(*bundle)
+	if err != nil {
+		t.Fatalf("convert current Link authorization: %v", err)
+	}
+	manifest := converted.Manifest
+
+	cases := []struct {
+		name  string
+		route store.RelaySealedV1Route
+		want  bool
+	}{
+		{name: "forward ASK", route: store.RelaySealedV1Route{MessageID: "ask-forward",
+			Kind: "ask", RequestID: "request-forward", SenderEndpointID: manifest.Source.EndpointID,
+			ReceiverEndpointID: manifest.Target.EndpointID}, want: true},
+		{name: "correlated reverse REPLY", route: store.RelaySealedV1Route{MessageID: "reply-correlated",
+			Kind: "reply", RequestID: "request-forward", ReplyTo: "ask-forward",
+			SenderEndpointID: manifest.Target.EndpointID, ReceiverEndpointID: manifest.Source.EndpointID}, want: true},
+		{name: "reverse SEND", route: store.RelaySealedV1Route{MessageID: "send-reverse",
+			Kind: "send", SenderEndpointID: manifest.Target.EndpointID,
+			ReceiverEndpointID: manifest.Source.EndpointID}},
+		{name: "reverse ASK", route: store.RelaySealedV1Route{MessageID: "ask-reverse",
+			Kind: "ask", RequestID: "request-reverse", SenderEndpointID: manifest.Target.EndpointID,
+			ReceiverEndpointID: manifest.Source.EndpointID}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, _, _, err := machineSealedRouteSides(manifest, test.route, fixture.dataScope)
+			if test.want && err != nil {
+				t.Fatalf("authorized route rejected: %v", err)
+			}
+			if !test.want && err == nil {
+				t.Fatal("forward-only Link accepted a reverse new route")
+			}
+		})
 	}
 }
 
@@ -1144,6 +1214,17 @@ func TestMachineSealedReceiveRejectsStaleAttemptBeforeNativeQueue(t *testing.T) 
 	}
 	var receipts []string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && request.URL.Path == "/v2/node/identity" {
+			hubID, err := fixture.store.GetClientHubID()
+			if err != nil {
+				t.Errorf("read test Hub identity: %v", err)
+				http.Error(response, "identity unavailable", http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(map[string]string{"hub_id": hubID})
+			return
+		}
 		if got := request.Header.Get("Authorization"); got != "CicadaNode "+fixture.targetToken {
 			t.Errorf("Node authorization=%q", got)
 			response.WriteHeader(http.StatusUnauthorized)
@@ -1298,7 +1379,7 @@ func TestMachineSealedJournalDoesNotPersistCiphertextAndRetainsAttemptFlagsCorre
 }
 
 func TestMachineSealedAuthorizationRequiresExactCurrentAttemptAndBinding(t *testing.T) {
-	delivery, authorization := machineSealedValidationFixture()
+	delivery, authorization := machineSealedValidationFixture(t)
 	if err := validateMachineSealedClaimAuthorization("node_target", delivery, authorization); err != nil {
 		t.Fatalf("valid sealed assignment rejected: %v", err)
 	}
@@ -1346,7 +1427,7 @@ func TestMachineSealedRecoveryKeepsJournalWhenOldAttemptAuthorizationIsGone(t *t
 		t.Fatal(err)
 	}
 	defer inbox.Close()
-	delivery, _ := machineSealedValidationFixture()
+	delivery, _ := machineSealedValidationFixture(t)
 	journal, err := openMachineRelayJournal(root, nodeID)
 	if err != nil {
 		t.Fatal(err)
@@ -1374,7 +1455,8 @@ func TestMachineSealedRecoveryKeepsJournalWhenOldAttemptAuthorizationIsGone(t *t
 	}
 }
 
-func machineSealedValidationFixture() (fabric.NodeSealedDelivery, store.CommunicationLinkSealedDeliveryAuthorization) {
+func machineSealedValidationFixture(t *testing.T) (fabric.NodeSealedDelivery, store.CommunicationLinkSealedDeliveryAuthorization) {
+	t.Helper()
 	route := store.RelaySealedV1Route{MessageID: "msg_exact", SenderEndpointID: "ep_source",
 		ReceiverEndpointID: "ep_target", Kind: "send"}
 	security := store.RelayMessageSecurity{
@@ -1385,8 +1467,27 @@ func machineSealedValidationFixture() (fabric.NodeSealedDelivery, store.Communic
 		ReceiverBindingID: "binding_target", ReceiverBindingEpoch: 7,
 		VisibilityPolicyRef: "thread.message", AuthorizationRef: machineCommunicationLinkAuthorizationRefPrefix + "link_exact",
 	}
+	contract := localLinkContract{
+		LinkID:           "link_exact",
+		SourceEndpointID: "ep_source", SourcePrincipalID: "pr_source", SourceGroupID: "group_source",
+		SourceOwnerID: "owner_source", SourceNodeID: "node_source",
+		TargetEndpointID: "ep_target", TargetPrincipalID: "pr_target", TargetGroupID: "group_target",
+		TargetOwnerID: "owner_target", TargetNodeID: "node_target",
+		Direction: "forward", Actions: []string{"send"}, DataScopes: []string{"thread.message"},
+		TransportHubID: "hub_exact", ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+		ScopeSnapshot: store.CommunicationLinkScopeSnapshot{
+			SourceMembershipRevision: 1, SourceGroupVersion: 1,
+			TargetMembershipRevision: 1, TargetGroupVersion: 1,
+		},
+	}
+	contractCanonical, err := json.Marshal(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractHash := sha256.Sum256(append([]byte("cicada/communication-link/proposal/v1\x00"), contractCanonical...))
 	manifest := store.CommunicationLinkKeyManifest{
-		LinkID: "link_exact", LinkVersion: 9,
+		LinkID: "link_exact", LinkVersion: 9, ContractDigest: hex.EncodeToString(contractHash[:]),
+		ContractCanonical: contractCanonical,
 		Source: store.CommunicationLinkKeySide{EndpointID: "ep_source", PrincipalID: "pr_source",
 			GroupID: "group_source", BindingID: "binding_source", BindingEpoch: 4},
 		Target: store.CommunicationLinkKeySide{EndpointID: "ep_target", PrincipalID: "pr_target",

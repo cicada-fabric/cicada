@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/buildinfo"
 	"github.com/cicada-ai/cicada/internal/codexapp"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 )
 
 // A Node owns the live Codex process. The Hub owns durable approval state and
@@ -34,6 +36,7 @@ type machineApprovalState struct {
 	Attempt    int    `json:"attempt"`
 	Status     string `json:"status"`
 	Decision   string `json:"decision,omitempty"`
+	Created    bool   `json:"created,omitempty"`
 }
 
 func (b machineApprovalBridge) endpoint(job machineJob) string {
@@ -182,12 +185,83 @@ func waitMachineApprovalRetry(ctx context.Context) error {
 	}
 }
 
+func acquireManagedMachineCodexWriter(ctx context.Context, job machineJob,
+	nativeID string) (*nodelock.NativeWriterLock, error) {
+	hub, ok := machineHubFrom(ctx)
+	if !ok || hub.HubID == "" || hub.NodeID == "" || hub.WriterRoot == "" || hub.WriterScope == "" ||
+		(job.MachineID != "" && job.MachineID != hub.NodeID) {
+		return nil, errors.New("managed Codex execution lacks its trusted Hub writer scope")
+	}
+	writer, err := nodelock.AcquireNativeWriter(ctx, hub.WriterRoot, hub.WriterScope, "codex", nativeID)
+	if err != nil {
+		return nil, fmt.Errorf("acquire managed native writer: %w", err)
+	}
+	return writer, nil
+}
+
 func executeMachineCodexWithApproval(ctx context.Context, job machineJob, workspace, responseFile string,
-	bridge machineApprovalBridge) machineJobResult {
+	bridge machineApprovalBridge) (result machineJobResult) {
 	runCtx, cancel := context.WithCancel(ctx)
 	var approvalErr error
 	var approvalMu sync.Mutex
 	threadID := job.ThreadID
+	var app *codexapp.Client
+	var nativeWriter *nodelock.NativeWriterLock
+	var resourceExecution *nodelock.ResourceExecution
+	var resourceRequest nodelock.ResourceExecutionRequest
+	releaseWriter := true
+	defer func() {
+		cancel()
+		var stopErr error
+		if app != nil {
+			stopErr = app.CloseAndWait()
+			app = nil
+		}
+		if resourceExecution != nil {
+			result.providerStarted = true
+			if stopErr == nil {
+				stopErr = confirmMachineNodeResourceStop(resourceExecution, resourceRequest)
+			}
+			if stopErr != nil {
+				_ = resourceExecution.Quarantine()
+				result.ResourceStopState = machineResourceStopUnverified
+			}
+		}
+		if stopErr != nil {
+			quarantineMachineNativeWriter(nativeWriter)
+			releaseWriter = false
+			if result.Status != "completed" && result.Error == "" {
+				result.Error = "Codex app-server stopped producing a business result; resource stop remains unverified"
+			}
+		}
+		if result.ResourceStopState == machineResourceStopUnverified {
+			quarantineMachineNativeWriter(nativeWriter)
+			releaseWriter = false
+		}
+		if nativeWriter != nil && releaseWriter {
+			if err := nativeWriter.CheckCurrent(); err != nil {
+				result = machineJobResult{Status: "failed", ThreadID: threadID,
+					Error: "native writer ownership changed before Worker result publication"}
+			}
+			_ = nativeWriter.Close()
+		}
+	}()
+	acquireWriter := func(nativeID string) error {
+		writer, err := acquireManagedMachineCodexWriter(runCtx, job, nativeID)
+		if err != nil {
+			return err
+		}
+		nativeWriter = writer
+		return nil
+	}
+	// Existing native IDs are locked before the app-server can resume them.
+	// New threads receive unique IDs from the Runtime, then acquire the same
+	// shared lease before turn/start.
+	if threadID != "" {
+		if err := acquireWriter(threadID); err != nil {
+			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
+		}
+	}
 	model := envOr("CICADA_CODEX_MODEL", "gpt-5.6-luna")
 	childEnv := append(machineWorkerEnvironment(os.Environ(), true),
 		"CODEX_HOME="+envOr("CODEX_HOME", "/state"))
@@ -204,6 +278,7 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			decision, err = bridge.requestDecision(runCtx, job, id, method, params)
 		}
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Node approval request failed cause=%s\n", machineApprovalFailureCause(err))
 			approvalMu.Lock()
 			approvalErr = err
 			approvalMu.Unlock()
@@ -211,16 +286,40 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 		}
 		return map[string]any{"decision": decision}
 	}
-	app, err := codexapp.StartAsync(runCtx, envOr("CICADA_CODEX_BIN", "codex"), workspace,
-		childEnv, nil, onRequest)
+	var starter codexapp.ProcessStarter
+	var waiter codexapp.ProcessWaiter
+	if hub, managed := machineHubFrom(runCtx); managed {
+		if job.executionID == "" || job.providerID == "" || job.leaseID == "" ||
+			(job.resourceID == "" && job.fencingEpoch != 0) {
+			return machineJobResult{Status: "failed", ThreadID: threadID,
+				Error: "managed Codex app-server lacks its durable provider execution identity"}
+		}
+		if job.resourceID != "" {
+			if hub.ResourceExecutions == nil || job.fencingEpoch <= 0 {
+				return machineJobResult{Status: "failed", ThreadID: threadID,
+					Error: "managed Codex app-server physical-resource lease lacks its trusted execution fence"}
+			}
+			resourceRequest = nodelock.ResourceExecutionRequest{ResourceID: job.resourceID,
+				LeaseID: job.leaseID, FencingEpoch: job.fencingEpoch, ExecutionID: job.executionID}
+			starter = func(command *exec.Cmd) error {
+				var startErr error
+				resourceExecution, startErr = hub.ResourceExecutions.StartCommand(resourceRequest, command)
+				return startErr
+			}
+			waiter = func(_ *exec.Cmd) error {
+				if resourceExecution == nil {
+					return errors.New("managed Codex root process has no resource execution owner")
+				}
+				return resourceExecution.Wait()
+			}
+		}
+	}
+	var err error
+	app, err = codexapp.StartAsyncWithLifecycle(runCtx, envOr("CICADA_CODEX_BIN", "codex"), workspace,
+		childEnv, nil, onRequest, starter, waiter)
 	if err != nil {
-		cancel()
 		return machineJobResult{Status: "failed", Error: err.Error()}
 	}
-	defer func() {
-		cancel()
-		app.Close()
-	}()
 	if _, err := app.Request(runCtx, "initialize", map[string]any{
 		"clientInfo": map[string]any{"name": "cicada-node", "title": "Cicada Node",
 			"version": buildinfo.Version},
@@ -240,6 +339,12 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			return machineJobResult{Status: "failed", Error: err.Error()}
 		}
 		threadID = nestedMachineString(result, "thread", "id")
+		if threadID == "" {
+			return machineJobResult{Status: "failed", Error: "Codex did not return a native Thread ID"}
+		}
+		if err := acquireWriter(threadID); err != nil {
+			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
+		}
 	} else {
 		result, err := app.Request(runCtx, "thread/resume", map[string]any{
 			"threadId": threadID, "model": model, "cwd": workspace,
@@ -252,9 +357,6 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			return machineJobResult{Status: "failed", ThreadID: threadID,
 				Error: "Codex did not confirm the exact native Thread on resume"}
 		}
-	}
-	if threadID == "" {
-		return machineJobResult{Status: "failed", Error: "Codex did not return a native Thread ID"}
 	}
 	if _, err := app.Request(runCtx, "turn/start", map[string]any{
 		"threadId": threadID,
@@ -282,12 +384,43 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			Summary: limitText(summary, 16000), Error: "turn status: " + status}
 	}
 	if summary != "" {
+		if err := nativeWriter.CheckCurrent(); err != nil {
+			return machineJobResult{Status: "failed", ThreadID: threadID,
+				Error: "native writer ownership changed before Worker result publication"}
+		}
 		if err := os.WriteFile(responseFile, []byte(summary+"\n"), 0o600); err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
 		}
 	}
 	return machineJobResult{Status: "completed", ThreadID: threadID,
 		Summary: limitText(strings.TrimSpace(summary), 16000)}
+}
+
+func machineApprovalFailureCause(err error) string {
+	if err == nil {
+		return "none"
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "different worker attempt"):
+		return "worker_attempt_mismatch"
+	case strings.Contains(message, "different native thread") || strings.Contains(message, "incomplete native identity"):
+		return "native_identity_mismatch"
+	case strings.Contains(message, "not offered"):
+		return "decision_not_offered"
+	case strings.Contains(message, "approval") && strings.Contains(message, "unavailable"):
+		return "approval_unavailable"
+	case strings.Contains(message, "http 401") || strings.Contains(message, "unauthorized"):
+		return "node_authorization"
+	case strings.Contains(message, "http 409") || strings.Contains(message, "conflict") || strings.Contains(message, "stale"):
+		return "stale_or_conflict"
+	case strings.Contains(message, "http "):
+		return "hub_http_error"
+	case strings.Contains(message, "retry") || strings.Contains(message, "context deadline"):
+		return "retry_or_timeout"
+	default:
+		return "approval_protocol"
+	}
 }
 
 func nestedMachineString(value map[string]any, keys ...string) string {

@@ -357,7 +357,7 @@ func TestMachineNodeWorkerAPIRejectsWrongCredentialWithoutGlobalFallback(t *test
 	var requestCount int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requestCount++
-		if request.Method != http.MethodGet || request.URL.Path != "/v2/relay/nodes/node-a/jobs" {
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/node/control/rpc" {
 			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
 		}
 		if got := request.Header.Get("Authorization"); got != "CicadaNode wrong-node-token" {
@@ -367,11 +367,18 @@ func TestMachineNodeWorkerAPIRejectsWrongCredentialWithoutGlobalFallback(t *test
 		_, _ = response.Write([]byte("revoked Node credential"))
 	}))
 	defer server.Close()
+	client, ctx, _, _ := newMachineNodeControlRecoveryFixture(t, server.URL)
+	hub, ok := machineHubFrom(ctx)
+	if !ok {
+		t.Fatal("paired Node-Control fixture lacks its trusted Hub context")
+	}
+	hub.Token = "wrong-node-token"
+	ctx = withMachineHubContext(ctx, hub)
 
 	var payload struct {
 		Jobs []machineJob `json:"jobs"`
 	}
-	err := machineNodeAPIJSON(context.Background(), nodeWorkerJobsEndpoint(server.URL, "node-a"),
+	err := machineNodeAPIJSON(ctx, nodeWorkerJobsEndpoint(server.URL, client.nodeID),
 		http.MethodGet, "wrong-node-token", nil, &payload)
 	if !machineAPIHasStatus(err, http.StatusUnauthorized) {
 		t.Fatalf("wrong Node credential error=%v", err)
@@ -381,12 +388,18 @@ func TestMachineNodeWorkerAPIRejectsWrongCredentialWithoutGlobalFallback(t *test
 	}
 }
 
-func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFiltersChild(t *testing.T) {
+func TestMachineAgentRelayOnlySkipsWorkerManagementAndFiltersChildCredentials(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, "state")
 	const nodeID = "node-worker-a"
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	identity, _, err := loadOrCreateMachineNodeIdentity(stateDir, nodeID)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(machineNodeStateDir(stateDir, nodeID), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	legacyTokenFile := filepath.Join(root, "legacy.token")
@@ -402,15 +415,6 @@ func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFilt
 		t.Setenv(variable, filepath.Join(root, "missing-"+variable))
 	}
 
-	workspace := filepath.Join(root, "workspaces", "goals", "node-job")
-	job := machineJob{
-		WorkerID: "worker-a", GoalID: "goal-a", MachineID: nodeID,
-		Harness: "shell", Workspace: workspace,
-		ResponseFile: filepath.Join(workspace, ".cicada-last-message"),
-		Prompt:       "run a bounded shell task", Attempt: 0,
-		Resources: map[string]any{"argv": []any{"/bin/sh", "-c",
-			`test -z "${CICADA_API_TOKEN:-}" && test -z "${CICADA_API_TOKEN_FILE:-}" && test -z "${CICADA_NODE_TOKEN:-}" && test -z "${CICADA_NODE_TOKEN_FILE:-}" && printf CHILD_CREDENTIALS_FILTERED`}},
-	}
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		paths = append(paths, request.URL.Path)
@@ -430,20 +434,9 @@ func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFilt
 			response.Header().Set("Content-Type", "text/event-stream")
 			_, _ = response.Write([]byte("event: ready\ndata: claim\n\n"))
 		case "/v2/relay/nodes/" + nodeID + "/heartbeat":
-			var body map[string]any
-			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-				t.Errorf("decode Node heartbeat: %v", err)
-			}
-			if len(body) == 0 {
-				response.WriteHeader(http.StatusNoContent)
-				return
-			}
-			if body["status"] != "available" {
-				t.Errorf("Node availability heartbeat=%#v", body)
-			}
-			capabilities, _ := body["capabilities"].(map[string]any)
-			if capabilities["role"] != "worker" {
-				t.Errorf("Node worker capabilities=%#v", capabilities)
+			body, _ := io.ReadAll(request.Body)
+			if string(body) != `{}` {
+				t.Errorf("relay-only heartbeat body=%q, want empty object", body)
 			}
 			response.WriteHeader(http.StatusNoContent)
 		case "/v2/relay/nodes/" + nodeID + "/sealed/claim":
@@ -472,48 +465,35 @@ func TestMachineAgentNodeWorkerNoWorkspaceProtocolSubsetUsesOneCredentialAndFilt
 				return
 			}
 			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case "/v2/relay/nodes/" + nodeID + "/jobs":
-			if request.Method != http.MethodGet {
-				t.Errorf("jobs poll method=%s", request.Method)
-			}
-			response.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(response).Encode(map[string]any{"jobs": []machineJob{job}})
-		case "/v2/relay/nodes/" + nodeID + "/jobs/worker-a/claim":
-			var body map[string]any
-			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || len(body) != 0 {
-				t.Errorf("claim body=%#v err=%v; Node path is the assignment scope", body, err)
-			}
-			claimed := job
-			claimed.Attempt = 1
-			response.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(response).Encode(claimed)
-		case "/v2/relay/nodes/" + nodeID + "/jobs/worker-a/result":
-			var body map[string]any
-			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-				t.Errorf("decode Worker result: %v", err)
-			}
-			if body["attempt"] != float64(1) || body["status"] != "completed" ||
-				body["summary"] != "CHILD_CREDENTIALS_FILTERED" {
-				t.Errorf("Worker result=%#v", body)
-			}
-			if _, exists := body["machine_id"]; exists {
-				t.Errorf("Worker result supplied its own machine scope: %#v", body)
-			}
-			response.Header().Set("Content-Type", "application/json")
-			_, _ = response.Write([]byte(`{"id":"worker-a","status":"completed"}`))
 		default:
-			t.Errorf("unexpected Node API route: %s %s", request.Method, request.URL.Path)
+			t.Errorf("unexpected relay-only route: %s %s", request.Method, request.URL.Path)
 			response.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
 	if err := runMachineAgent([]string{"--id", nodeID, "--name", "Worker A", "--control-url", server.URL,
-		"--state-dir", stateDir, "--interval", "1h", "--once"}); err != nil {
+		"--state-dir", stateDir, "--interval", "1h", "--once", "--relay-only"}); err != nil {
 		t.Fatalf("run machine agent: %v", err)
 	}
-	if len(paths) < 6 {
-		t.Fatalf("Worker chain made too few Node API requests: %v", paths)
+	if len(paths) < 5 {
+		t.Fatalf("relay-only path made too few peer requests: %v", paths)
+	}
+	for _, path := range paths {
+		if strings.Contains(path, "/jobs") || path == "/v2/node/control/rpc" || path == "/v2/node/identity" {
+			t.Fatalf("relay-only agent entered Worker management: %v", paths)
+		}
+	}
+
+	workspace := filepath.Join(root, "workspaces", "goals", "node-job")
+	result := executeMachineJob(context.Background(), machineJob{
+		Harness: "shell", Workspace: workspace,
+		ResponseFile: filepath.Join(workspace, ".cicada-last-message"),
+		Resources: map[string]any{"argv": []any{"/bin/sh", "-c",
+			`test -z "${CICADA_API_TOKEN:-}" && test -z "${CICADA_API_TOKEN_FILE:-}" && test -z "${CICADA_NODE_TOKEN:-}" && test -z "${CICADA_NODE_TOKEN_FILE:-}" && printf CHILD_CREDENTIALS_FILTERED`}},
+	})
+	if result.Status != "completed" || result.Summary != "CHILD_CREDENTIALS_FILTERED" {
+		t.Fatalf("Worker child environment did not filter Hub/Node credentials: %#v", result)
 	}
 }
 
@@ -522,6 +502,12 @@ func TestMachineAgentStopsWhenBoundNodeCredentialIsRevoked(t *testing.T) {
 	const nodeID = "node-revoked-a"
 	identity, _, err := loadOrCreateMachineNodeIdentity(stateDir, nodeID)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(machineNodeStateDir(stateDir, nodeID), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CICADA_API_TOKEN", "legacy-global-token")
@@ -538,44 +524,28 @@ func TestMachineAgentStopsWhenBoundNodeCredentialIsRevoked(t *testing.T) {
 		case "/v2/relay/nodes/" + nodeID + "/heartbeat":
 			response.WriteHeader(http.StatusNoContent)
 		case "/v2/relay/nodes/" + nodeID + "/sealed/claim":
-			response.Header().Set("Content-Type", "application/json")
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case "/v2/relay/nodes/" + nodeID + "/group/sealed/claim":
-			if request.Method != http.MethodPost {
-				t.Errorf("same-Group sealed claim method=%s", request.Method)
-			}
-			var input fabric.NodeClaimInput
-			if err := json.NewDecoder(request.Body).Decode(&input); err != nil ||
-				input.ConsumerID != machineRelayConsumerID(nodeID) || input.Limit != 50 {
-				t.Errorf("same-Group sealed claim=%#v err=%v", input, err)
-			}
-			response.Header().Set("Content-Type", "application/json")
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case "/v2/relay/nodes/" + nodeID + "/claim":
-			response.Header().Set("Content-Type", "application/json")
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case "/v2/fabric/node/networks/direct/claim":
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case "/v2/relay/nodes/" + nodeID + "/jobs":
 			response.WriteHeader(http.StatusUnauthorized)
 			_, _ = response.Write([]byte("Node credential revoked"))
 		default:
-			if strings.HasPrefix(request.URL.Path, "/v1/") {
-				t.Errorf("revoked Node token fell back to legacy route %s", request.URL.Path)
-			}
+			t.Errorf("unexpected relay-only request after binding probe: %s", request.URL.Path)
 			response.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
 	err = runMachineAgent([]string{"--id", nodeID, "--name", "Revoked Node", "--control-url", server.URL,
-		"--state-dir", stateDir, "--interval", "1h", "--once"})
+		"--state-dir", stateDir, "--interval", "1h", "--once", "--relay-only"})
 	if !machineAPIHasStatus(err, http.StatusUnauthorized) || !strings.Contains(err.Error(), "stopping machine agent") {
 		t.Fatalf("revoked Node credential did not stop the agent: %v", err)
 	}
+	if len(paths) != 3 || paths[0] != "/v2/relay/nodes/"+nodeID+"/events" ||
+		paths[1] != "/v2/relay/nodes/"+nodeID+"/heartbeat" ||
+		paths[2] != "/v2/relay/nodes/"+nodeID+"/sealed/claim" {
+		t.Fatalf("revoked Relay Node made unexpected requests: %v", paths)
+	}
 	for _, path := range paths {
-		if strings.HasPrefix(path, "/v1/") {
-			t.Fatalf("revoked Node credential fell back to %s", path)
+		if strings.HasPrefix(path, "/v1/") || strings.Contains(path, "/jobs") || path == "/v2/node/control/rpc" {
+			t.Fatalf("revoked Relay Node entered legacy or Worker management: %v", paths)
 		}
 	}
 }

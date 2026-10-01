@@ -44,6 +44,7 @@ type ClientTopologyGroup struct {
 	ParentGroupID string `json:"parent_group_id,omitempty"`
 	Name          string `json:"name"`
 	State         string `json:"state"`
+	ContextPolicy string `json:"context_policy"`
 	Version       int64  `json:"version"`
 }
 
@@ -95,6 +96,7 @@ const (
 	ClientTopologyCreateGroup            ClientTopologyActionKind = "group.create"
 	ClientTopologySetParent              ClientTopologyActionKind = "group.set_parent"
 	ClientTopologyJoinGroup              ClientTopologyActionKind = "endpoint.join_group"
+	ClientTopologyAdmitEndpoint          ClientTopologyActionKind = "endpoint.admit_group"
 	ClientTopologyLeaveGroup             ClientTopologyActionKind = "endpoint.leave_group"
 	ClientTopologyBindRole               ClientTopologyActionKind = "membership.bind_role"
 	ClientTopologySetBroadcastPermission ClientTopologyActionKind = "membership.set_broadcast_permission"
@@ -110,6 +112,7 @@ type ClientTopologyAction struct {
 	CreateGroup            *ClientTopologyCreateGroupAction            `json:"create_group,omitempty"`
 	SetParent              *ClientTopologySetParentAction              `json:"set_parent,omitempty"`
 	JoinGroup              *ClientTopologyJoinGroupAction              `json:"join_group,omitempty"`
+	AdmitEndpoint          *ClientTopologyAdmitEndpointAction          `json:"admit_endpoint,omitempty"`
 	LeaveGroup             *ClientTopologyLeaveGroupAction             `json:"leave_group,omitempty"`
 	BindRole               *ClientTopologyBindRoleAction               `json:"bind_role,omitempty"`
 	SetBroadcastPermission *ClientTopologySetBroadcastPermissionAction `json:"set_broadcast_permission,omitempty"`
@@ -131,6 +134,10 @@ type ClientTopologySetParentAction struct {
 type ClientTopologyJoinGroupAction struct {
 	EndpointID string `json:"endpoint_id"`
 	GroupID    string `json:"group_id"`
+}
+
+type ClientTopologyAdmitEndpointAction struct {
+	Admission store.ClientTopologyEndpointAdmissionInput `json:"admission"`
 }
 
 type ClientTopologyLeaveGroupAction struct {
@@ -173,6 +180,7 @@ type ClientTopologyChangeResult struct {
 	Changed          bool                           `json:"changed"`
 	Group            *ClientTopologyGroup           `json:"group,omitempty"`
 	EndpointGroup    *store.EndpointGroupMembership `json:"endpoint_group,omitempty"`
+	EndpointMember   *ClientTopologyMember          `json:"endpoint_member,omitempty"`
 	RemainingGroupID string                         `json:"remaining_group_id,omitempty"`
 	Membership       *ClientTopologyMember          `json:"membership,omitempty"`
 	Link             *ClientTopologyLink            `json:"link,omitempty"`
@@ -420,6 +428,22 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 			return nil, err
 		}
 		result.EndpointGroup = joined
+	case ClientTopologyAdmitEndpoint:
+		input := action.AdmitEndpoint.Admission
+		member, endpointGroup, err := c.store.AdmitClientTopologyEndpointForClientRequest(
+			clientRequestID, ownerID, input)
+		if err != nil {
+			return nil, err
+		}
+		principal, err := c.store.GetPrincipal(member.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		if principal == nil || principal.OwnerID != ownerID {
+			return nil, ErrPermissionDenied
+		}
+		result.EndpointMember = projectClientTopologyMember(*member, principal.DisplayName)
+		result.EndpointGroup = endpointGroup
 	case ClientTopologyLeaveGroup:
 		input := action.LeaveGroup
 		if _, err := c.clientOwnedGroup(ownerID, input.GroupID); err != nil {
@@ -579,7 +603,7 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 func validateClientTopologyUnion(action ClientTopologyAction) error {
 	count := 0
 	for _, present := range []bool{
-		action.CreateGroup != nil, action.SetParent != nil, action.JoinGroup != nil,
+		action.CreateGroup != nil, action.SetParent != nil, action.JoinGroup != nil, action.AdmitEndpoint != nil,
 		action.LeaveGroup != nil, action.BindRole != nil, action.SetBroadcastPermission != nil, action.ProposeLink != nil,
 		action.RevokeLink != nil,
 	} {
@@ -594,6 +618,7 @@ func validateClientTopologyUnion(action ClientTopologyAction) error {
 		ClientTopologyCreateGroup:            action.CreateGroup != nil,
 		ClientTopologySetParent:              action.SetParent != nil,
 		ClientTopologyJoinGroup:              action.JoinGroup != nil,
+		ClientTopologyAdmitEndpoint:          action.AdmitEndpoint != nil,
 		ClientTopologyLeaveGroup:             action.LeaveGroup != nil,
 		ClientTopologyBindRole:               action.BindRole != nil,
 		ClientTopologySetBroadcastPermission: action.SetBroadcastPermission != nil,
@@ -646,7 +671,8 @@ func (c *Control) clientOwnedEndpoint(ownerID, endpointID string) (*store.Endpoi
 
 func projectClientTopologyGroup(group store.Group) *ClientTopologyGroup {
 	return &ClientTopologyGroup{GroupID: group.ID, NetworkID: group.NetworkID,
-		ParentGroupID: group.ParentGroupID, Name: group.Name, State: group.State, Version: group.Version}
+		ParentGroupID: group.ParentGroupID, Name: group.Name, State: group.State,
+		ContextPolicy: group.ContextPolicy, Version: group.Version}
 }
 
 func projectClientTopologyMember(membership store.Membership, displayName string) *ClientTopologyMember {

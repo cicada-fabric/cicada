@@ -50,6 +50,11 @@ async function modelChecks(uiDir) {
     '2026-09-30T00:00:00.000Z');
   assert.equal(writeDescriptor.operationID, 'op-uncertain-write');
   assert.deepEqual(writeDescriptor.scope, { groupIds: ['group-a'], endpointIds: ['endpoint-a'] });
+  const admissionFence = model.makeSemanticWriteFence('topology.apply', 'op-uncertain-admission', 'c'.repeat(64),
+    { kind: 'endpoint.admit_group', admit_endpoint: { admission: {
+      network_id: 'network-a', group_id: 'group-a', endpoint_id: 'endpoint-c' } } }, '2026-09-30T00:00:00.000Z');
+  assert.deepEqual(admissionFence.scope, { networkId: 'network-a', groupIds: ['group-a'], endpointIds: ['endpoint-c'] },
+    'uncertain Endpoint admission keeps the exact Network/Group/Endpoint write scope fenced');
   const legacyFence = model.recoveredWriteFence({ operation: 'topology.apply', operationId: 'op-legacy-write', createdAt: 'old' }, 'b'.repeat(64));
   assert.equal(legacyFence.digestBasis, 'legacy-sealed-packet', 'pre-fence pending writes still recover into a conservative fence');
   assert.equal(legacyFence.packetSha256, 'b'.repeat(64));
@@ -91,14 +96,64 @@ async function modelChecks(uiDir) {
   'another tab cannot replace the exact enrollment request');
 
   const topology = { networks: [], groups: [
-    { group_id: 'group-root', network_id: 'network-a', name: 'Root', version: 2 },
-    { group_id: 'group-child', network_id: 'network-a', parent_group_id: 'group-root', name: 'Child', version: 1 }
+    { group_id: 'group-root', network_id: 'network-a', name: 'Root', state: 'active', version: 2 },
+    { group_id: 'group-child', network_id: 'network-a', parent_group_id: 'group-root', name: 'Child', state: 'active', version: 1 }
   ], memberships: [{ group_id: 'group-root', principal_id: 'principal-a', status: 'active' }],
-  endpoints: [{ endpoint_id: 'endpoint-a', principal_id: 'principal-a', name: 'Agent', group_ids: ['group-root', 'group-child'], network_ids: ['network-a'] }], links: [] };
+  endpoints: [{ endpoint_id: 'endpoint-a', principal_id: 'principal-a', owner_id: 'owner-a', name: 'Agent', group_ids: ['group-root', 'group-child'], network_ids: ['network-a'] }], links: [] };
   assert.equal(model.groupHasMember(topology, topology.endpoints[0], 'group-root'), true);
   const scene = model.layoutTopology(topology, 'network-a');
   assert.equal(scene.endpointRefs.length, 2, 'one endpoint should have a visual reference in each Group');
   assert.notDeepEqual(scene.groupPos.get('group-root'), scene.groupPos.get('group-child'));
+
+  const gestureTopology = { ...topology,
+    groups: [...topology.groups, { group_id: 'group-new', network_id: 'network-a', name: 'New', state: 'active', context_policy: 'group_scoped' }],
+    memberships: [...topology.memberships, { group_id: 'group-new', principal_id: 'principal-a', status: 'active' }],
+    endpoints: [...topology.endpoints,
+      { endpoint_id: 'endpoint-b', principal_id: 'principal-b', owner_id: 'owner-b', name: 'Receiver',
+        group_ids: ['group-child'], network_ids: ['network-a'] }],
+  };
+  gestureTopology.memberships.push({ group_id: 'group-child', principal_id: 'principal-b', status: 'active' });
+  const joinIntent = model.endpointJoinGesture(gestureTopology, 'endpoint-a', 'group-new', 'network-a');
+  assert.deepEqual(joinIntent.action, { kind: 'endpoint.join_group',
+    join_group: { endpoint_id: 'endpoint-a', group_id: 'group-new' } });
+  assert.match(joinIntent.review, /preserves the Endpoint's other Group references/);
+  assert.match(joinIntent.review, /Canvas position grants no access/);
+  assert.throws(() => model.endpointJoinGesture(gestureTopology, 'endpoint-a', 'group-new', 'network-other'), /selected Network/);
+  assert.throws(() => model.endpointJoinGesture({ ...gestureTopology,
+    memberships: gestureTopology.memberships.filter(member => member.group_id !== 'group-new') },
+  'endpoint-a', 'group-new', 'network-a'), /no active membership/);
+  const networkOnlyEndpoint = { endpoint_id: 'endpoint-network-only', principal_id: 'principal-a', owner_id: 'owner-a',
+    name: 'Network only', group_ids: [], network_ids: ['network-a'] };
+  const admissionTopology = { ...gestureTopology, owner_principal_id: 'owner-a',
+    endpoints: [...gestureTopology.endpoints, networkOnlyEndpoint],
+    memberships: gestureTopology.memberships.filter(member => member.principal_id !== 'principal-a' || member.group_id !== 'group-new') };
+  const admissionPreview = { owner_principal_id: 'owner-a', network_id: 'network-a', network_name: 'Network A',
+    network_version: 3, group_id: 'group-new', group_name: 'New', group_version: 2, group_context_policy: 'group_scoped',
+    endpoint_id: 'endpoint-network-only', endpoint_name: 'Network only', endpoint_principal_id: 'principal-a',
+    endpoint_migration_state: 'MIGRATION_PENDING_GROUP', network_membership_revision: 4, endpoint_network_revision: 2,
+    network_access_binding_id: 'access-binding', network_access_epoch: 5, native_binding_id: 'native-binding', native_binding_epoch: 7,
+    membership_revision: 0, endpoint_group_revision: 0, admission_roles: ['member'], admission_grants: [],
+    history_included: false, key_grant_created: false, existing_thread_memory_retained: true };
+  const admissionIntent = model.endpointAdmissionGesture(admissionTopology, networkOnlyEndpoint.endpoint_id,
+    'group-new', 'network-a', admissionPreview);
+  assert.equal(admissionIntent.action.kind, 'endpoint.admit_group');
+  assert.equal(admissionIntent.action.admit_endpoint.admission.expected_endpoint_migration_state, 'MIGRATION_PENDING_GROUP');
+  assert.match(admissionIntent.review, /no Worker\/Monitor role/);
+  assert.match(admissionIntent.review, /not cleared or isolated/);
+  assert.throws(() => model.endpointAdmissionGesture(admissionTopology, networkOnlyEndpoint.endpoint_id,
+    'group-new', 'network-a', { ...admissionPreview, membership_status: 'revoked', membership_revision: 4 }), /stale/);
+  assert.throws(() => model.endpointAdmissionGesture(admissionTopology, networkOnlyEndpoint.endpoint_id,
+    'group-new', 'network-a', { ...admissionPreview, admission_grants: ['worker'] }), /stale/);
+  assert.throws(() => model.endpointAdmissionGesture(admissionTopology, networkOnlyEndpoint.endpoint_id,
+    'group-new', 'network-a', { ...admissionPreview, group_context_policy: 'dedicated' }), /stale/);
+  const linkPair = model.linkGesturePair(gestureTopology, 'endpoint-a', 'group-root',
+    'endpoint-b', 'group-child', 'network-a');
+  assert.equal(linkPair.sourceEndpointId, 'endpoint-a');
+  assert.equal(linkPair.targetEndpointId, 'endpoint-b');
+  assert.match(linkPair.review, /different Owners/);
+  assert.match(linkPair.review, /does not activate routing/);
+  assert.throws(() => model.linkGesturePair(gestureTopology, 'endpoint-a', 'group-root',
+    'endpoint-a', 'group-child', 'network-a'), /two distinct Endpoint references/);
 }
 
 async function wasmChecks(wasmPath, runtimePath) {
@@ -193,6 +248,21 @@ async function staticChecks(uiDir) {
   assert.match(app, /cryptoApi\.generateIdentity\(\{\}\)/, 'WASM facade receives its required object argument');
   assert.match(app, /createDeviceDraftState\(state, location\.origin, vault, manifest\)/,
     'device creation uses the same draft guard tested for concurrent tabs');
+  const canvas = await readFile(path.join(uiDir, 'panel-canvas.js'), 'utf8');
+  assert.match(canvas, /Drag to Group/);
+  assert.match(canvas, /Draw Link/);
+  assert.match(canvas, /data-group-drop-id/);
+  assert.match(canvas, /previewEndpointJoin/);
+  assert.match(canvas, /topology\.endpoint_admission_preview/);
+  assert.match(canvas, /endpointAdmissionGesture/);
+  assert.match(canvas, /document\.elementFromPoint/);
+  const controls = await readFile(path.join(uiDir, 'panel-canvas-controls.js'), 'utf8');
+  assert.match(controls, /topology\.apply/);
+  assert.match(controls, /Preview next selected Endpoint/);
+  assert.match(controls, /network\.directory/);
+  assert.match(controls, /Read-only Endpoint cards published by current Network members/);
+  assert.match(controls, /Group creation and its parent relation are one versioned topology action/);
+  assert.match(controls, /does not create an active route/);
 }
 
 async function main() {

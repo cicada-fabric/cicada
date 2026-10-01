@@ -25,7 +25,27 @@ func (c *Control) CreateBoundNodeWorkerApproval(credentialDigest, nodeID, worker
 	return approval, true, nil
 }
 
+// CreateBoundNodeWorkerApprovalNodeControl carries the application key epoch
+// fence into the approval INSERT transaction.
+func (c *Control) CreateBoundNodeWorkerApprovalNodeControl(input store.NodeControlRPCInput,
+	workerID string, attempt int, requestID, method string,
+	request json.RawMessage) (*store.Approval, bool, error) {
+	approval, created, err := c.store.CreateBoundNodeApprovalNodeControl(input,
+		workerID, attempt, requestID, method, request)
+	if err != nil || !created {
+		return approval, created, err
+	}
+	c.notify(approval.GoalID, "approval.requested", "P1", "Approval required",
+		"Codex is waiting for a human decision for "+approval.Method+" (approval "+approval.ID+").")
+	return approval, true, nil
+}
+
 func (c *Control) BoundNodeWorkerApproval(credentialDigest, nodeID, workerID string,
 	attempt int, approvalID string) (*store.Approval, error) {
 	return c.store.GetBoundNodeApproval(credentialDigest, nodeID, workerID, attempt, approvalID)
+}
+
+func (c *Control) BoundNodeWorkerApprovalNodeControl(input store.NodeControlRPCInput,
+	workerID string, attempt int, approvalID string) (*store.Approval, error) {
+	return c.store.GetBoundNodeApprovalNodeControl(input, workerID, attempt, approvalID)
 }

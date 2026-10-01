@@ -67,9 +67,17 @@ func (b *machineAgentJoinBridge) reportMonitorNotification(n store.UserMonitorBr
 	if err := b.monitorBroadcastHub(http.MethodPost, "/"+url.PathEscape(n.PreviewID)+"/receipt", "", input, &response); err != nil {
 		return err
 	}
-	if !monitorBroadcastHubMatchesFor(b.ctx, response.HubID) || response.Notification == nil ||
-		response.Notification.ReceiptState != receipt || !sameMonitorBroadcastNotification(*response.Notification, n) {
-		return errors.New("Monitor notification receipt is uncorrelated")
+	hubMatches := monitorBroadcastHubMatchesFor(b.ctx, response.HubID)
+	notificationPresent := response.Notification != nil
+	receiptMatches := notificationPresent && response.Notification.ReceiptState == receipt
+	metadataMatches := notificationPresent && sameMonitorBroadcastNotification(*response.Notification, n)
+	if !hubMatches || !notificationPresent || !receiptMatches || !metadataMatches {
+		metadataFields := "missing_notification"
+		if notificationPresent {
+			metadataFields = strings.Join(monitorNotificationMismatchFields(*response.Notification, n), ",")
+		}
+		return fmt.Errorf("Monitor notification receipt is uncorrelated (hub=%t notification=%t receipt=%t metadata_fields=%s)",
+			hubMatches, notificationPresent, receiptMatches, metadataFields)
 	}
 	// This acknowledges an already persisted fact. It must match the original
 	// notice exactly, but crossing its deadline during injection does not erase
@@ -78,9 +86,67 @@ func (b *machineAgentJoinBridge) reportMonitorNotification(n store.UserMonitorBr
 }
 
 func sameMonitorBroadcastNotification(a, b store.UserMonitorBroadcastV2Notification) bool {
-	a.ReceiptState = ""
-	b.ReceiptState = ""
-	return a == b
+	return len(monitorNotificationMismatchFields(a, b)) == 0
+}
+
+func monitorNotificationMismatchFields(a, b store.UserMonitorBroadcastV2Notification) []string {
+	var mismatches []string
+	if a.HubID != b.HubID {
+		mismatches = append(mismatches, "hub_id")
+	}
+	if a.PreviewID != b.PreviewID {
+		mismatches = append(mismatches, "preview_id")
+	}
+	if a.BroadcastID != b.BroadcastID {
+		mismatches = append(mismatches, "broadcast_id")
+	}
+	if a.GroupID != b.GroupID {
+		mismatches = append(mismatches, "group_id")
+	}
+	if (a.NativeContextScope == nil) != (b.NativeContextScope == nil) {
+		mismatches = append(mismatches, "native_context_scope")
+	} else if a.NativeContextScope != nil && *a.NativeContextScope != *b.NativeContextScope {
+		if a.NativeContextScope.HubID != b.NativeContextScope.HubID {
+			mismatches = append(mismatches, "scope.hub_id")
+		}
+		if a.NativeContextScope.NetworkID != b.NativeContextScope.NetworkID {
+			mismatches = append(mismatches, "scope.network_id")
+		}
+		if a.NativeContextScope.GroupID != b.NativeContextScope.GroupID {
+			mismatches = append(mismatches, "scope.group_id")
+		}
+		if a.NativeContextScope.GroupContextPolicy != b.NativeContextScope.GroupContextPolicy {
+			mismatches = append(mismatches, "scope.group_policy")
+		}
+		if a.NativeContextScope.NetworkContextPolicy != b.NativeContextScope.NetworkContextPolicy {
+			mismatches = append(mismatches, "scope.network_policy")
+		}
+	}
+	if a.MonitorEndpointID != b.MonitorEndpointID {
+		mismatches = append(mismatches, "monitor_endpoint_id")
+	}
+	if a.NodeID != b.NodeID {
+		mismatches = append(mismatches, "node_id")
+	}
+	if a.NativeSessionID != b.NativeSessionID {
+		mismatches = append(mismatches, "native_session_id")
+	}
+	if a.BindingID != b.BindingID {
+		mismatches = append(mismatches, "binding_id")
+	}
+	if a.BindingEpoch != b.BindingEpoch {
+		mismatches = append(mismatches, "binding_epoch")
+	}
+	if a.BodyDigest != b.BodyDigest {
+		mismatches = append(mismatches, "body_digest")
+	}
+	if a.SnapshotDigest != b.SnapshotDigest {
+		mismatches = append(mismatches, "snapshot_digest")
+	}
+	if a.ExpiresAt != b.ExpiresAt {
+		mismatches = append(mismatches, "expires_at")
+	}
+	return mismatches
 }
 
 // Management notices have their own durable inbox. The peer inbox cannot
@@ -172,6 +238,25 @@ func drainMachineMonitorBroadcastNotification(ctx context.Context, bridge *machi
 		current.NativeSessionID != claim.SessionID || current.BindingEpoch != claim.BindingEpoch {
 		return inbox.RejectBeforeInjection(ctx, claim, "Monitor notice target changed")
 	}
+	var nativeScope nodeinbox.NativeContextScopeInput
+	decision := &nodeinbox.NativeContextScopeDecision{Accepted: true,
+		NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
+	if _, managed := machineHubFrom(ctx); managed && current.NativeContextScope != nil {
+		nativeScope, err = machineNativeContextScopeFromMetadata(ctx, "codex",
+			current.NativeSessionID, current.MonitorEndpointID, current.BindingID,
+			current.BindingEpoch, *current.NativeContextScope)
+		if err != nil {
+			return inbox.RejectBeforeInjection(ctx, claim, "Monitor native context scope is unavailable")
+		}
+		decision, err = checkMachineNativeContext(ctx, nativeScope)
+		if err != nil {
+			return inbox.RejectBeforeInjection(ctx, claim, "Monitor native context scope was not accepted")
+		}
+	} else if hub, managed := machineHubFrom(ctx); managed {
+		if hub.RequireNativeContext {
+			return inbox.RejectBeforeInjection(ctx, claim, "Monitor authorization has no authoritative native context scope")
+		}
+	}
 	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
 		return err
 	}
@@ -180,12 +265,20 @@ func drainMachineMonitorBroadcastNotification(ctx context.Context, bridge *machi
 		"cicada_monitor_broadcast with approval_id %s to validate current user authority and send the exact sealed content. "+
 		"Do not substitute text or create a new broadcast. Transport acceptance does not prove recipient consumption.",
 		current.GroupID, current.PreviewID)
+	if decision.SharedMemoryRisk {
+		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native Codex Thread is known to have been used in more than one Cicada Group or Network scope. Treat earlier content as potentially visible and do not assume Cicada can erase or isolate Runtime history.\n" + prompt
+	}
 	receipt := localGroupReceipt(claim)
 	operation, err := machineNativeOperation(ctx, claim, current.BindingID)
 	if err != nil {
 		return err
 	}
-	queueErr := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation)
+	var queueErr error
+	if nativeScope.NativeSessionID != "" {
+		queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, nativeScope)
+	} else {
+		queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation)
+	}
 	var recorded *nodeinbox.Delivery
 	if queueErr == nil {
 		if err = requireMachineNativeQueueOutcome(ctx, claim.SessionID, operation); err == nil {

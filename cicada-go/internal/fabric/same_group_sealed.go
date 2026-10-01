@@ -28,6 +28,7 @@ type NodeSameGroupSealedV1AskInput struct {
 	TargetEndpointID string `json:"target_endpoint_id"`
 	MessageID        string `json:"message_id"`
 	RequestID        string `json:"request_id"`
+	ParentRequestID  string `json:"parent_request_id,omitempty"`
 	IdempotencyKey   string `json:"idempotency_key,omitempty"`
 	DataScope        string `json:"data_scope"`
 	ExpiresAt        string `json:"expires_at"`
@@ -67,8 +68,9 @@ func (s *Service) AskNodeSameGroupSealedV1Message(nodeToken string,
 		NodeCredentialDigest: HashSessionCredential(nodeToken),
 		GroupID:              input.GroupID, SourceEndpointID: input.SourceEndpointID,
 		TargetEndpointID: input.TargetEndpointID, MessageID: input.MessageID,
-		RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,
-		DataScope: input.DataScope, ExpiresAt: input.ExpiresAt,
+		RequestID: input.RequestID, ParentRequestID: input.ParentRequestID,
+		IdempotencyKey: input.IdempotencyKey,
+		DataScope:      input.DataScope, ExpiresAt: input.ExpiresAt,
 		Ciphertext: input.Ciphertext,
 	})
 	if err != nil {

@@ -39,19 +39,20 @@ type UserMonitorBroadcastV2Delivery struct {
 // A notification is a bounded routing hint, never a command to broadcast.
 // Its receipt reports Node persistence/native queue handling only.
 type UserMonitorBroadcastV2Notification struct {
-	HubID             string `json:"hub_id"`
-	PreviewID         string `json:"preview_id"`
-	BroadcastID       string `json:"broadcast_id"`
-	GroupID           string `json:"group_id"`
-	MonitorEndpointID string `json:"monitor_endpoint_id"`
-	NodeID            string `json:"node_id"`
-	NativeSessionID   string `json:"native_session_id"`
-	BindingID         string `json:"binding_id"`
-	BindingEpoch      uint64 `json:"binding_epoch"`
-	BodyDigest        string `json:"body_digest"`
-	SnapshotDigest    string `json:"snapshot_digest"`
-	ExpiresAt         string `json:"expires_at"`
-	ReceiptState      string `json:"receipt_state"`
+	HubID              string                      `json:"hub_id"`
+	PreviewID          string                      `json:"preview_id"`
+	BroadcastID        string                      `json:"broadcast_id"`
+	GroupID            string                      `json:"group_id"`
+	NativeContextScope *NativeContextScopeMetadata `json:"native_context_scope,omitempty"`
+	MonitorEndpointID  string                      `json:"monitor_endpoint_id"`
+	NodeID             string                      `json:"node_id"`
+	NativeSessionID    string                      `json:"native_session_id"`
+	BindingID          string                      `json:"binding_id"`
+	BindingEpoch       uint64                      `json:"binding_epoch"`
+	BodyDigest         string                      `json:"body_digest"`
+	SnapshotDigest     string                      `json:"snapshot_digest"`
+	ExpiresAt          string                      `json:"expires_at"`
+	ReceiptState       string                      `json:"receipt_state"`
 }
 
 type UserMonitorBroadcastV2NotificationReceiptInput struct {
@@ -249,6 +250,10 @@ func userMonitorNotificationTx(tx *sql.Tx, nodeID, ownerID, previewID string,
 		return nil, ErrUserMonitorBroadcastV2Denied
 	}
 	source := r.Snapshot.Source
+	contextScope, err := readNativeContextScopeForEndpointTx(tx, source.EndpointID, r.GroupID)
+	if err != nil {
+		return nil, ErrUserMonitorBroadcastV2Denied
+	}
 	if r.Status == UserMonitorBroadcastV2DispatchAuthorized &&
 		(r.consumeNodeID != nodeID || r.consumeBindingID != source.BindingID || r.consumeBindingEpoch != source.BindingEpoch) {
 		return nil, ErrUserMonitorBroadcastV2Denied
@@ -262,8 +267,9 @@ func userMonitorNotificationTx(tx *sql.Tx, nodeID, ownerID, previewID string,
 		return nil, err
 	}
 	return &UserMonitorBroadcastV2Notification{HubID: req.hubID, PreviewID: r.PreviewID,
-		BroadcastID: r.BroadcastID, GroupID: r.GroupID, MonitorEndpointID: r.MonitorEndpointID,
-		NodeID: nodeID, NativeSessionID: source.NativeSessionID, BindingID: source.BindingID,
+		BroadcastID: r.BroadcastID, GroupID: r.GroupID, NativeContextScope: &contextScope,
+		MonitorEndpointID: r.MonitorEndpointID,
+		NodeID:            nodeID, NativeSessionID: source.NativeSessionID, BindingID: source.BindingID,
 		BindingEpoch: source.BindingEpoch, BodyDigest: r.BodyDigest,
 		SnapshotDigest: r.SnapshotDigest, ExpiresAt: r.ExpiresAt, ReceiptState: state}, nil
 }
@@ -455,11 +461,16 @@ SET receipt_state=?,updated_at=? WHERE preview_id=? AND receipt_state='NODE_ACCE
 	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&hubID); err != nil {
 		return nil, err
 	}
+	contextScope, err := readNativeContextScopeForEndpointTx(tx, snapshot.Source.EndpointID, r.GroupID)
+	if err != nil {
+		return nil, ErrUserMonitorBroadcastV2Denied
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &UserMonitorBroadcastV2Notification{HubID: hubID, PreviewID: r.PreviewID, BroadcastID: r.BroadcastID,
-		GroupID: r.GroupID, MonitorEndpointID: r.MonitorEndpointID, NodeID: nodeID,
+		GroupID: r.GroupID, NativeContextScope: &contextScope,
+		MonitorEndpointID: r.MonitorEndpointID, NodeID: nodeID,
 		NativeSessionID: snapshot.Source.NativeSessionID, BindingID: input.BindingID,
 		BindingEpoch: input.BindingEpoch, BodyDigest: r.BodyDigest, SnapshotDigest: r.SnapshotDigest,
 		ExpiresAt: r.ExpiresAt, ReceiptState: existingState}, nil

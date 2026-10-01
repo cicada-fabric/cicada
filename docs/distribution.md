@@ -57,6 +57,23 @@ CICADA_MACHINE_ID=node-lab-a \
 scripts/install-cicada-worker.sh
 ```
 
+The installer defaults to `--mode relay`. To also let this Node process its
+Node-authorized Worker queue and Monitor notices, opt in explicitly:
+
+```sh
+CICADA_CONTROL_URL=https://hub.example.org \
+CICADA_MACHINE_ID=node-lab-a \
+scripts/install-cicada-worker.sh --mode managed
+```
+
+`--mode relay` runs outbound Fabric delivery only; `--mode managed` enables
+the existing single-Node Worker and Monitor processing paths. Both use the
+Node's own bearer and local state. Managed mode does not join a Thread or Group,
+approve the pending Node, or grant it broader server permissions. The Owner
+still reviews the exact device code in the authenticated Client before Relay
+or managed work is authorized. Choose managed mode only on a host where local
+Codex and configured Worker execution are intended.
+
 For same-host development, `CICADA_CONTROL_URL=http://127.0.0.1:8788` is
 accepted. Remote Node enrollment requires HTTPS. The script builds the Go
 binary from this checkout (or uses an explicit local `CICADA_BINARY_PATH`),
@@ -67,14 +84,15 @@ inbound port. The Node generates and retains its own bearer locally, submits
 only its digest to `POST /v2/nodes/device-code`, and waits for owner binding.
 
 The agent prints a 10-minute pairing code. In the already authenticated
-Android Client, the Owner must inspect the exact pending Node with `nodes.preview`
-and separately call `nodes.confirm`. `/client/device` is a Client navigation
-route; the Hub does not host a browser approval page. The device code is not
-login, a password bypass or an authorization grant. After confirmation the
-Node opens outbound Relay SSE/HTTP only. `--relay-only` excludes legacy Control
-Worker-management polling. Ctrl-C stops the foreground agent but preserves the
-Node identity and inbox state. A real native Thread still needs the local
-Codex runtime; queue acceptance is not a general model-consumption or cold-wake
+Android Client, the Owner must inspect the exact pending Node with
+`nodes.preview` and separately call `nodes.confirm`. `/client/device` is a
+Client navigation route; the Hub does not host a browser approval page. The
+device code is not login, a password bypass or an authorization grant. In
+relay mode the Node processes outbound Relay SSE/HTTP only. In managed mode it
+also polls and executes the Worker jobs authorized for its Node credential and
+processes Monitor notices. Ctrl-C stops the foreground agent but preserves the
+Node identity and inbox state. A real native Thread still needs the local Codex
+runtime; queue acceptance is not a general model-consumption or cold-wake
 receipt.
 
 The unreleased multi-Hub Node entry accepts `cicada machine agent --hubs-file
@@ -88,11 +106,11 @@ automatically. Back it up and review a stopped migration before switching.
 
 The native writer lock serializes one OS user's harness/native Session ID only
 among processes configured with the same `--state-root`. Its persisted epoch
-records acquisition order; it does not fence completion receipts from an old
-writer. A different StateRoot can bypass this lock, so this candidate does not
-claim machine-wide native writer fencing. Multi-Hub HTTP credential isolation
-has focused tests, while a disposable two-Node full native ASK/REPLY run remains
-unverified.
+orders writers, and the durable native-outcome CAS rejects a completion from a
+stale writer epoch. A different StateRoot can bypass the local lock, so this
+does not claim machine-wide writer exclusion. Multi-Hub HTTP credential
+isolation has focused tests, while a disposable two-Node full native ASK/REPLY
+run remains unverified.
 
 ## Version and upgrade boundaries
 
@@ -102,9 +120,9 @@ Keep these identities separate in every build/deployment record:
 |---|---|
 | CICADA software version | Current unreleased line `0.1.0-dev`; Architecture v2.3 is a product/architecture target. |
 | Git revision and dirty flag | Source revision and whether uncommitted changes were present. |
-| Source fingerprint | Complete source input used by a build; a dirty build is not identified by HEAD alone. |
-| Client contract revision and wire | Current Android management contract `client-hub-v1.4`, encrypted wire v1; separate from internal Node MCP APIs. |
-| SQLite schema | Current accepted M2 checkpoint v37; later dirty migrations need their own frozen evidence. |
+| Source fingerprint | Hash of the source/build inputs used by a binary release; a dirty build is not identified by HEAD alone. |
+| Client contract revision and wire | Current Android management contract `client-hub-v1.5`, encrypted wire v1; separate from internal Node MCP APIs. |
+| SQLite schema | Clean `bd79ff9` baseline is v41; the current dirty WIP adds v42 Network Task and v44 cross-Network Link enrollment migrations. The WIP schema is not a released or frozen upgrade point. |
 | OCI image ID/digest | Exact local build or registry artifact, distinct from source and software versions. |
 | Codex CLI version | Node Runtime version, separate from Hub image and CICADA version. |
 
@@ -113,6 +131,19 @@ Before upgrading a stateful Hub, stop its writer, use the existing Hub
 retain Owner keys and Node-local state separately. Do not open a newer schema
 with an older binary, delete a state directory to simulate rollback, or assume
 that the Hub backup includes Node subtrees. No public `0.1.x` release is
-available. See [migration boundaries](architecture-v2-migration.md) and the
+available. `scripts/build-release.sh` stages the Go 1.27.1 WebCrypto runtime,
+compressed WASM and generated manifest into a temporary Go source copy before
+cross-compiling, then embeds version, revision, dirty state and source
+fingerprint in each binary and writes `BUILD-METADATA.json` plus `SHA256SUMS`.
+The release workflow publishes the Hub-only OCI image from
+`docker/Dockerfile.hub`, which contains no Codex CLI or provider credentials.
+It derives the image source fingerprint and catalog digest through
+`scripts/build-hub-image.sh --source-info-only`, checks the generated WebCrypto
+manifest against the binary job's manifest, and passes version, revision,
+dirty flag and source fingerprints into the Hub build. Binary and Hub image
+fingerprints cover different build inputs and must be read with their artifact
+type; neither is a substitute for the image digest. These packaging paths are
+not a signed production installer. See
+[migration boundaries](architecture-v2-migration.md) and the
 [current acceptance ledger](completion-ledger.md) before treating an internal
 or historical checkpoint as a release qualification.

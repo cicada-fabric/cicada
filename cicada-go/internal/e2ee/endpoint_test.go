@@ -53,6 +53,7 @@ func TestEndpointEnvelopeBindsKeysRouteAndRequest(t *testing.T) {
 		"receiver group":  func(c *EndpointMessageContext) { c.ReceiverGroupID = "grp_other" },
 		"link revision":   func(c *EndpointMessageContext) { c.LinkRevision++ },
 		"request":         func(c *EndpointMessageContext) { c.RequestID = "rq_other" },
+		"causal parent":   func(c *EndpointMessageContext) { c.ParentRequestID = "rq_parent" },
 		"binding epoch":   func(c *EndpointMessageContext) { c.ReceiverBindingEpoch++ },
 		"member revision": func(c *EndpointMessageContext) { c.SenderMembershipRevision++ },
 		"Hub":             func(c *EndpointMessageContext) { c.TransportHubID = "hub_other" },
@@ -113,8 +114,21 @@ func TestEndpointEnvelopeRejectsMalformedCorrelationAndUnknownFields(t *testing.
 	context := endpointTestContext(sender.Public(), receiver.Public())
 	context.Kind = "REPLY"
 	if _, err := SealEndpointMessage(sender, receiver.Public(), context, []byte("answer"), 1); err == nil {
-		t.Fatal("reply without parent message id accepted")
+		t.Fatal("reply without request correlation accepted")
 	}
+	context.RequestID = "rq_parent"
+	context.ReplyTo = "msg_parent"
+	context.ParentRequestID = "rq_causal_parent"
+	wireReply, err := SealEndpointMessage(sender, receiver.Public(), context, []byte("answer"), 1)
+	if err != nil {
+		t.Fatalf("REPLY with route-derived causal parent was rejected: %v", err)
+	}
+	changedReply := context
+	changedReply.ParentRequestID = "rq_other_parent"
+	if _, _, err := OpenEndpointMessage(receiver, sender.Public(), changedReply, wireReply); err == nil {
+		t.Fatal("changed REPLY causal parent opened")
+	}
+	context.ParentRequestID = ""
 	context.ReplyTo = "msg_parent"
 	context.LinkID = "link bad\npolicy"
 	if _, err := SealEndpointMessage(sender, receiver.Public(), context, []byte("answer"), 1); err == nil {

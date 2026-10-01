@@ -195,6 +195,39 @@ func TestGroupSpacePrepareRejectsWrongScopeAndInactiveAuthorization(t *testing.T
 	}
 }
 
+func TestGroupSpaceDedicatedThreadPolicyGuardsReadAndWrite(t *testing.T) {
+	f := newGroupSpaceTestFixture(t)
+	created, _ := f.commit(t, f.prepare(t, "synthetic_dedicated_guard_seed", GroupSpaceKindJournal),
+		[]byte("synthetic encrypted Group Space record"))
+	sibling, err := f.sealed.store.CreateGroup(Group{ID: "grp_dedicated_guard_sibling",
+		NetworkID: f.networkID, OwnerPrincipalID: f.sealed.ownerID,
+		TrustDomainID: f.sealed.ownerID, Name: "ordinary sibling", State: GroupStateActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.sealed.store.CreateMembership(Membership{PrincipalID: f.sealed.source.principal,
+		GroupID: sibling.ID, Role: "member", Status: MembershipStatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.sealed.store.JoinEndpointGroup(f.sealed.source.id, sibling.ID); err != nil {
+		t.Fatalf("ordinary same-Network sharing setup failed: %v", err)
+	}
+	if _, err := f.sealed.store.db.Exec(`UPDATE groups SET context_policy=? WHERE id=?`,
+		DedicatedThreadContextPolicy, f.sealed.groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.sealed.store.GetGroupSpace(f.actor(t, f.sealed.source), GroupSpaceGetInput{
+		GroupID: f.sealed.groupID, RecordID: created.Snapshot.RecordID,
+	}); !errors.Is(err, ErrGroupSpaceDenied) {
+		t.Fatalf("dedicated Group returned old shared Thread context: %v", err)
+	}
+	if _, err := f.sealed.store.PrepareGroupSpaceWrite(f.actor(t, f.sealed.source),
+		GroupSpacePrepareInput{GroupID: f.sealed.groupID, OperationID: "synthetic_dedicated_guard_write",
+			Kind: GroupSpaceKindJournal}); !errors.Is(err, ErrGroupSpaceDenied) {
+		t.Fatalf("dedicated Group allowed write through existing shared Thread context: %v", err)
+	}
+}
+
 func TestGroupSpaceCommitRechecksReaderAndTopicVersion(t *testing.T) {
 	t.Run("reader revoked", func(t *testing.T) {
 		f := newGroupSpaceTestFixture(t)

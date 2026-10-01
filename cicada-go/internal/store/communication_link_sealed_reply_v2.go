@@ -56,8 +56,15 @@ func (s *Store) EnqueueCommunicationLinkSealedReply(input CommunicationLinkSeale
 	if err != nil || request == nil || input.DataScope != request.VisibilityPolicyRef {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
+	askReverse, validDirection := communicationLinkAskDirection(link,
+		request.SenderEndpointID, request.ReceiverEndpointID)
+	if !validDirection {
+		return nil, ErrCommunicationLinkRelayDenied
+	}
+	askSender, askReceiver := communicationLinkAskRoles(link, manifest, askReverse)
+	replySender, replyReceiver := askReceiver, askSender
 	nodeID, ownerID, hubID, err := readActiveOwnerBoundNodeTx(tx, input.NodeCredentialDigest)
-	if err != nil || nodeID != link.TargetNodeID || ownerID != link.TargetOwnerID || hubID != link.TransportHubID {
+	if err != nil || nodeID != replySender.nodeID || ownerID != replySender.ownerID || hubID != link.TransportHubID {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
 	// A deadline reached before this transaction makes the result late without
@@ -100,9 +107,12 @@ func (s *Store) EnqueueCommunicationLinkSealedReply(input CommunicationLinkSeale
 			previous.Route.Kind != "reply" || !bytes.Equal(previous.Ciphertext, input.Ciphertext) {
 			return nil, ErrRelayIdempotencyConflict
 		}
-		if err := validateOpaqueEndpointMessage(input.Ciphertext,
-			sealedLinkReverseEndpointContext(link, manifest, input.MessageID,
-				request.RequestID, request.MessageID), manifest.Target.PublicIdentity); err != nil {
+		replyContext := sealedLinkReplyEndpointContext(link, manifest, request, input.MessageID)
+		replyIdentity := manifest.Target.PublicIdentity
+		if replySender.endpointID == link.SourceEndpointID {
+			replyIdentity = manifest.Source.PublicIdentity
+		}
+		if err := validateOpaqueEndpointMessage(input.Ciphertext, replyContext, replyIdentity); err != nil {
 			return nil, ErrCommunicationLinkRelayDenied
 		}
 		if err := tx.Commit(); err != nil {
@@ -119,9 +129,12 @@ func (s *Store) EnqueueCommunicationLinkSealedReply(input CommunicationLinkSeale
 	} else if existing != nil {
 		return nil, ErrRelayMessageConflict
 	}
-	context := sealedLinkReverseEndpointContext(link, manifest, input.MessageID,
-		request.RequestID, request.MessageID)
-	if err := validateOpaqueEndpointMessage(input.Ciphertext, context, manifest.Target.PublicIdentity); err != nil {
+	context := sealedLinkReplyEndpointContext(link, manifest, request, input.MessageID)
+	replyIdentity := manifest.Target.PublicIdentity
+	if replySender.endpointID == link.SourceEndpointID {
+		replyIdentity = manifest.Source.PublicIdentity
+	}
+	if err := validateOpaqueEndpointMessage(input.Ciphertext, context, replyIdentity); err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
 	idempotencyKey := input.IdempotencyKey
@@ -131,17 +144,17 @@ func (s *Store) EnqueueCommunicationLinkSealedReply(input CommunicationLinkSeale
 	relayInput, err := relaySealedV1Message(RelaySealedV1Input{
 		Route: RelaySealedV1Route{
 			MessageID: input.MessageID, RequestID: request.RequestID, ReplyTo: request.MessageID,
-			SenderEndpointID: link.TargetEndpointID, ReceiverEndpointID: link.SourceEndpointID,
+			SenderEndpointID: replySender.endpointID, ReceiverEndpointID: replyReceiver.endpointID,
 			Kind: "reply",
 		},
 		Security: RelayMessageSecurity{
 			MessageID:        input.MessageID,
-			SenderEndpointID: link.TargetEndpointID, SenderPrincipalID: link.TargetPrincipalID,
-			SenderGroupID: link.TargetGroupID, SenderBindingID: manifest.Target.BindingID,
-			SenderBindingEpoch: manifest.Target.BindingEpoch,
-			ReceiverEndpointID: link.SourceEndpointID, ReceiverPrincipalID: link.SourcePrincipalID,
-			ReceiverGroupID: link.SourceGroupID, ReceiverBindingID: manifest.Source.BindingID,
-			ReceiverBindingEpoch: manifest.Source.BindingEpoch,
+			SenderEndpointID: replySender.endpointID, SenderPrincipalID: replySender.principalID,
+			SenderGroupID: replySender.groupID, SenderBindingID: replySender.bindingID,
+			SenderBindingEpoch: replySender.bindingEpoch,
+			ReceiverEndpointID: replyReceiver.endpointID, ReceiverPrincipalID: replyReceiver.principalID,
+			ReceiverGroupID: replyReceiver.groupID, ReceiverBindingID: replyReceiver.bindingID,
+			ReceiverBindingEpoch: replyReceiver.bindingEpoch,
 			VisibilityPolicyRef:  input.DataScope,
 			AuthorizationRef:     communicationLinkAuthorizationRefPrefix + link.ID,
 		},
@@ -150,6 +163,7 @@ func (s *Store) EnqueueCommunicationLinkSealedReply(input CommunicationLinkSeale
 	if err != nil {
 		return nil, ErrCommunicationLinkRelayDenied
 	}
+	relayInput.communicationLinkAuthorized = true
 	relayInput.sealedReplyAuthorized = true
 	accepted, reused, err := relayEnqueuePayloadTx(tx, relayInput, RelayPayloadModeSealedV1, input.Ciphertext)
 	if err != nil {
@@ -220,6 +234,13 @@ reply_message_id=?, updated_at=? WHERE request_id=? AND state=?`,
 	if err != nil || request == nil {
 		return nil, ErrRelayRequestNotFound
 	}
+	record, err := relaySealedV1RecordTx(tx, accepted.Message.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureCommunicationLinkMessageReviewTx(tx, *link, record, nowTime); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -279,7 +300,9 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 		return nil, nil, nil, nil, ErrCommunicationLinkRelayDenied
 	}
 	manifest, err := readCommunicationLinkKeyManifest(tx, *link, at)
-	if err != nil || !sealedRequestMatchesLink(request, ask, link, manifest) {
+	reverse, ok := communicationLinkAskDirection(link,
+		request.SenderEndpointID, request.ReceiverEndpointID)
+	if err != nil || !ok || !sealedRequestMatchesLink(request, ask, link, manifest) {
 		return nil, nil, nil, nil, ErrCommunicationLinkRelayDenied
 	}
 	if _, err := readCurrentCommunicationLinkAuthorizationProof(tx, *link, *manifest,
@@ -290,9 +313,13 @@ FROM communication_links_v2 WHERE id=?`, linkID))
 		CommunicationLinkGrantTarget, at); err != nil {
 		return nil, nil, nil, nil, ErrCommunicationLinkRelayDenied
 	}
-	context := sealedLinkForwardEndpointContext(link, manifest, request.MessageID,
-		"REQUEST", request.RequestID)
-	if err := validateOpaqueEndpointMessage(ask.Ciphertext, context, manifest.Source.PublicIdentity); err != nil {
+	context := sealedLinkAskEndpointContext(link, manifest, request.MessageID,
+		request.RequestID, request.ParentRequestID, reverse)
+	senderIdentity := manifest.Source.PublicIdentity
+	if reverse {
+		senderIdentity = manifest.Target.PublicIdentity
+	}
+	if err := validateOpaqueEndpointMessage(ask.Ciphertext, context, senderIdentity); err != nil {
 		return nil, nil, nil, nil, ErrCommunicationLinkRelayDenied
 	}
 	return request, ask, link, manifest, nil
@@ -303,13 +330,19 @@ func sealedRequestMatchesLink(request *FabricRequest, ask *RelaySealedV1Record,
 	if request == nil || ask == nil || link == nil || manifest == nil {
 		return false
 	}
+	reverse, ok := communicationLinkAskDirection(link,
+		request.SenderEndpointID, request.ReceiverEndpointID)
+	if !ok {
+		return false
+	}
+	sender, receiver := communicationLinkAskRoles(link, manifest, reverse)
 	security := ask.Security
-	return request.SenderEndpointID == link.SourceEndpointID &&
-		request.SenderPrincipalID == link.SourcePrincipalID && request.SenderGroupID == link.SourceGroupID &&
-		request.SenderBindingID == manifest.Source.BindingID && request.SenderBindingEpoch == manifest.Source.BindingEpoch &&
-		request.ReceiverEndpointID == link.TargetEndpointID &&
-		request.ReceiverPrincipalID == link.TargetPrincipalID && request.ReceiverGroupID == link.TargetGroupID &&
-		request.ReceiverBindingID == manifest.Target.BindingID && request.ReceiverBindingEpoch == manifest.Target.BindingEpoch &&
+	return request.SenderEndpointID == sender.endpointID &&
+		request.SenderPrincipalID == sender.principalID && request.SenderGroupID == sender.groupID &&
+		request.SenderBindingID == sender.bindingID && request.SenderBindingEpoch == sender.bindingEpoch &&
+		request.ReceiverEndpointID == receiver.endpointID &&
+		request.ReceiverPrincipalID == receiver.principalID && request.ReceiverGroupID == receiver.groupID &&
+		request.ReceiverBindingID == receiver.bindingID && request.ReceiverBindingEpoch == receiver.bindingEpoch &&
 		security.MessageID == request.MessageID && security.SenderEndpointID == request.SenderEndpointID &&
 		security.SenderPrincipalID == request.SenderPrincipalID && security.SenderGroupID == request.SenderGroupID &&
 		security.SenderBindingID == request.SenderBindingID && security.SenderBindingEpoch == request.SenderBindingEpoch &&
@@ -354,22 +387,32 @@ func validateQueuedCommunicationLinkSealedReplyTx(tx *sql.Tx, record *RelaySeale
 		request.State != FabricRequestReplied || request.ReplyMessageID != record.Route.MessageID {
 		return ErrCommunicationLinkRelayDenied
 	}
+	reverseAsk, ok := communicationLinkAskDirection(link,
+		request.SenderEndpointID, request.ReceiverEndpointID)
+	if !ok {
+		return ErrCommunicationLinkRelayDenied
+	}
+	askSender, askReceiver := communicationLinkAskRoles(link, manifest, reverseAsk)
+	replySender, replyReceiver := askReceiver, askSender
 	security := record.Security
 	if security.AuthorizationRef != communicationLinkAuthorizationRefPrefix+link.ID ||
 		security.VisibilityPolicyRef != request.VisibilityPolicyRef ||
-		security.SenderEndpointID != link.TargetEndpointID || security.SenderPrincipalID != link.TargetPrincipalID ||
-		security.SenderGroupID != link.TargetGroupID || security.SenderBindingID != manifest.Target.BindingID ||
-		security.SenderBindingEpoch != manifest.Target.BindingEpoch ||
-		security.ReceiverEndpointID != link.SourceEndpointID || security.ReceiverPrincipalID != link.SourcePrincipalID ||
-		security.ReceiverGroupID != link.SourceGroupID || security.ReceiverBindingID != manifest.Source.BindingID ||
-		security.ReceiverBindingEpoch != manifest.Source.BindingEpoch ||
-		record.Route.SenderEndpointID != link.TargetEndpointID ||
-		record.Route.ReceiverEndpointID != link.SourceEndpointID {
+		security.SenderEndpointID != replySender.endpointID || security.SenderPrincipalID != replySender.principalID ||
+		security.SenderGroupID != replySender.groupID || security.SenderBindingID != replySender.bindingID ||
+		security.SenderBindingEpoch != replySender.bindingEpoch ||
+		security.ReceiverEndpointID != replyReceiver.endpointID || security.ReceiverPrincipalID != replyReceiver.principalID ||
+		security.ReceiverGroupID != replyReceiver.groupID || security.ReceiverBindingID != replyReceiver.bindingID ||
+		security.ReceiverBindingEpoch != replyReceiver.bindingEpoch ||
+		record.Route.SenderEndpointID != replySender.endpointID ||
+		record.Route.ReceiverEndpointID != replyReceiver.endpointID {
 		return ErrCommunicationLinkRelayDenied
 	}
-	context := sealedLinkReverseEndpointContext(link, manifest, record.Route.MessageID,
-		request.RequestID, request.MessageID)
-	if err := validateOpaqueEndpointMessage(record.Ciphertext, context, manifest.Target.PublicIdentity); err != nil {
+	context := sealedLinkReplyEndpointContext(link, manifest, request, record.Route.MessageID)
+	senderIdentity := manifest.Target.PublicIdentity
+	if replySender.endpointID == link.SourceEndpointID {
+		senderIdentity = manifest.Source.PublicIdentity
+	}
+	if err := validateOpaqueEndpointMessage(record.Ciphertext, context, senderIdentity); err != nil {
 		return ErrCommunicationLinkRelayDenied
 	}
 	return nil

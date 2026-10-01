@@ -1,10 +1,22 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 当前剩余项目执行状态（2026-09-30）
+**2026-10-01 final framework checkpoint — PASS (bounded backend; clean handoff metadata follows):** final dirty bd79-based source `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` retains production code from 54f with corrected private-socket test fixtures and two new public proof vectors. Contract remains v1.6/wire 1/55 operations. Final full Go PASS: 27 packages, 1,092 top-level + 547 subtests, 12 top-level SKIP, 0 FAIL; vet EXIT 0; repaired fixture selector and race each passed 3 top-level + 3 subtests. Independent contract check/export/verify, Python26 and shell20 PASS. No skip is a pass. Earlier 54f Browser/three Docker suites and bounded native multi-Hub Join passed; 54f full Go recorded three fixture failures, retained separately. 432f native ASK/REPLY (282.74 s), 432f plus test-overlay broadcast (298.14 s, both original Threads consumed) and Worker approval (76.83 s) passed; joined V68 passed on 840a test-helper overlay with recording fake queue. These results keep their own source identities. Android v1.6, physical dual-Node and public HTTPS are NOT_RUN; pure PQ TLS is NOT_IMPLEMENTED. Final clean commit/image/bundle are queried from `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`; this is not a push or release. [Evidence and retained failures](v01-completion-checkpoint-validation.md).
 
-当前源基线是 `dev` HEAD `f30892fcd79a27bfe5604575deaecebe52c5ec50` 加 dirty 工作树；M1/M2 的既有 PASS 仍归属各自旧 fingerprint。`5414d6edee44e2be1cad04d10181fd1a23ccd3bf0004fa3fb7bb66776448de83` 在[后端门禁](../.cicada-data/architecture-wide-accepted-20260930T121202Z/gates-summary.json)前后不变：1,307 Go PASS、11 SKIP、25 包 PASS、vet PASS、13 项 race PASS、八项 Python PASS、三套 disposable real-TCP Docker PASS。后续 `e13b3848…` 的[Go 门禁](../.cicada-data/architecture-wide-finalfix-20260930T123606Z/gates-summary.json)为 1,308 PASS、11 SKIP、25 包、vet 与八项 Python PASS，但该源码的真实 native gate FAIL；`434c4eb6…` 的[下一 native 重试](../.cicada-data/architecture-wide-nativefix-20260930T125600Z/gates-summary.json)也 FAIL。M3 cursor/显式未读、M4 精确委托、v40 双 Owner 新记录 Group board 有确定性后端覆盖。v41 原子 nested `group.create` 已实现并通过隔离 checkout 的 Store/Control 全包及定向 race，主仓 `c33f…` 冻结 Go/race/迁移门禁已 PASS。更新的 M5 durable native-outcome 测试也在同一有界门禁 PASS；旧 writer 串行化/epoch 审计不冒充该测试。M3 即时引用/Network Task offer、M5 完整两 Hub 产品互操作及跨 Owner 历史仍是后续工作。最终 [c33f 检查点](v01-group-panel-checkpoint-validation.md)另在同源前后通过 1,336 Go/11 SKIP/0 FAIL、25 包、vet、36 race、八项 Python、三套 Docker，并以独立 Chrome 151 loopback gate 和受控真实 Codex CLI 0.159.2 双逻辑 Node 同 Group ASK/REPLY gate PASS；后者不是 V68 双网络 namespace 或 unattended cold wake。逐项范围见[完成账本](completion-ledger.md)。
+## 历史 f55 与前序验收记录（2026-10-01）
 
-正在执行的剩余路线见[当前计划](architecture-v2-plan.md)。上述 Docker 只证明指定的真实 TCP Hub/Go 协议范围；其中 Group Spaces 使用合成 native session，不是模型消费。新版 CLI 0.159.2 首次因 stdio MCP helper 缺 `CODEX_HOME` FAIL；`e13b…` 在最终 route allowlist FAIL（之前 ASK/REPLY 子断言通过），`434c…` 因模型提供截短 synthetic Group ID 在首个 Join FAIL（该轮无 ASK/REPLY），均不是 native PASS。[Chrome 151 真实浏览器门禁](../.cicada-data/hub-web-panel-browser/20260930t131113z-251515-c3ac163f/result.json)在 `5414…` / Hub image `sha256:6a21824109c755cc47b345d0cd63b97c49b0d51306420c160ba4ab7b8aa9b475` 的 loopback fixture **PASS**，覆盖手动 pin、生产 Go WASM、加密 vault、设备加入、topology/status/canvas 与可见 Group；`UNCERTAIN` 写故障注入与公网 HTTPS **NOT_RUN**。最终 `c33f…` 浏览器另在 image `sha256:6940829857d0135fd21349a55a367dc530f4c3cf4c3282aa62c841729af3d123` 上独立 PASS，见[验证记录](v01-group-panel-checkpoint-validation.md)；其 `UNCERTAIN` 注入仍 NOT_RUN。当前 Android v1.5 和 public HTTPS 均 `NOT_RUN`；旧 `f30892f` Client APK4 证据不转移给当前 v1.5。v0.2.x 可选 OpenAI/dot/GPT-Live/ChatGPT plugin 方向仅在[路线文档](v02-openai-integration-roadmap.md)中规划，当前预定 v0.1.x 不增此类功能或依赖。
+此前 f55 产品候选曾冻结为只读 snapshot `final-code-git-snapshot-20261001T102124Z`，source fingerprint `f55b5255628030857ac88bd7edbd6da7da1b63d543014c76111f9219f46ad255`，基于 dirty `bd79ff93c90ecafc28a2471dd9523444903b39e6`；Hub image `sha256:da88805eaa1987a1c6e06448fc5cddf7d4ce368e8b5eeb3071a1406dad2cb977`，build metadata 标为 dirty candidate。v1.6/55-op candidate 未交付独立 Client。f55 的全 Go 1,079 top-level + 535 subtests、26 packages PASS、12 SKIP、0 FAIL，vet、55-op contract、19 Python 与 Client/Network M1/Group Spaces M2 三套 Docker 均 PASS。其 Browser 已独立 PASS；432f 的 M5、NodeControl overlay、V68 与 Worker 证据未转移；旧 V68/Worker 失败保留；后续 840a joined gate 与 432f Worker-driver overlay PASS 各自独立。详细指纹和 evidence map 见[检查点验收报告](v01-completion-checkpoint-validation.md)及[逐项完成账本](completion-ledger.md)。
+
+432f 的全 Go 为 1,079 top-level PASS、535 subtest PASS、26 packages PASS、12 SKIP、0 FAIL；全 `go vet` PASS，20 项/四包聚焦 race PASS，19 项 Python 和 20 个 shell syntax PASS，55-operation contract 与公开向量 PASS，生产 Go WASM/Node 24 checks PASS。Chrome 151 loopback 浏览器流程 PASS，但不含公网 HTTPS 或 uncertain-write fault injection，也未把本轮新增 Canvas pointer gestures 单独列为断言。五 target release package build 和 7/7 packaging test PASS 归属独立 fingerprint `c411c709…`。新鲜 idle Hub 仅有一次 13.2 MiB image / 30.3 MiB RSS 测量，不是负载或容量指标。
+
+先前 432f 互操作层有失败与独立修复：其三套 Docker suite 中 network-m1 与 group-spaces-m2 PASS，Client suite 因旧 pairing test fixture 在 `TestClientDockerHubSmoke` 收到 400 而 FAIL。只改测试 fixture 后，Client suite 在 source `cf168780…` 和不同 Hub/test image 上 PASS；不能称为 432f 三套 Docker 全 PASS。Node-Control HTTP 首轮 `TestNodeControlV1HTTPProtocolFlow` 失败，随后独立 driver overlay 在 432f product source 上通过同一 `HTTP_PROTOCOL` selector；overlay 使用 synthetic identity，不是 Node agent/native recovery。早期真实 Worker approval run 在 `native_approval_not_observed` FAIL；现已确认 driver host cwd/container mount 不匹配，修复 driver 后 432f+test overlay 真实 PASS（76.83 秒），旧 FAIL 保留。V68 joined driver 前两次分别 FAIL 于 `fabric_only_control_absent` 和 `real_node_join`；后续 840a helper overlay joined Docker PASS（recording fake queue），不覆写旧失败。M5 bounded test 在两个 production Fabric Handler/SQLite 与 relay-only Agent 的同一 Go 进程内通过真实 TCP；不等同两 Hub 进程、隔离 Docker Node namespace 或原生通信验收。
+
+固定 bd79 的 Android v1.5 bounded recovery 是独立通过项，仅归属它自己的 Hub/source/APK/catalog，不能转移到 v1.6 candidate。当前 v1.6 Android、f55 同源 native peer、两个隔离 Hub 进程、双物理 Node、公网 HTTPS、capacity stress、provider-native throttling、生产 stop/reconciliation 均 **NOT_RUN**；V68 在独立 840a test-helper overlay 上已 PASS；final 2858 production-equivalent source gate **PASS**。432f peer ASK/REPLY 与 test-overlay broadcast 的真实 PASS 保持独立归属。不因完整 Go、浏览器、M5 同进程或 Worker approval 尝试而推断这些层通过。
+
+### 代码与证据的当前关系
+
+Candidate catalog/OpenAPI/wire 已声明 v1.6 的 55 项操作。Owner purpose-key / Link reviewer RPC、network directory/admission、显式 Link direction、Network Task/Broadcast、typed GroupSpace refs、causal ASK、双向 Link、same-Node/cross-Node handoff、NodeControl pairing/RPC/snapshot、native scope history、provider admission 与 managed resource executor 已接线至不同层。其代码存在与 432f 部分确定性测试通过，不代表所有 route lifecycle、撤权、恢复、真实运行时或 Android 接受。
+
+432f 以外的 Client fixture repair、M5 same-process gate、release build 均在本报告和账本中分别标记身份。更早的 c7 compile/full-Go failures 与 49dca full-Go failures继续归属其历史快照。旧矩阵快照从这里开始仅作历史记录；当前 ID 状态以 [completion-ledger.md](completion-ledger.md) 的矩阵与新验收报告为准。
 
 ## 历史 M2 候选（2026-09-30，以下结果保持原归属）
 
@@ -659,7 +671,9 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 
 离线公钥引导的可复现命令与边界见 [owner approval bootstrap](owner-approval-bootstrap.md)。
 
-## V01–V73 验收快照
+## 历史 V01–V73 验收快照（非本检查点矩阵）
+
+以下表格保留早期各 ID 描述与其来源时点；其中“当前”字样不得覆盖上方 2026-10-01 状态或 [completion-ledger.md](completion-ledger.md)。
 
 这里的 PASS 只代表表中写明的范围；`PARTIAL` 与 `NOT_RUN/BLOCKED` 不计入通过。
 
@@ -685,7 +699,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V18 | PASS | 非破坏 receive、opaque cursor 与重启测试保留未确认消息。 |
 | V19 | PASS | 过期后的回复记录为 `LATE_RESULT`，不重开请求。 |
 | V20 | PARTIAL | 有 cancel requested/cancelled/late 状态；native 实际停止和副作用确认未支持。 |
-| V21 | NOT_RUN | Ask wait-cycle 检测/预算未实现。 |
+| V21 | PARTIAL | Store/Fabric 派生 parent/root/depth；MCP/outbox 与 Group/Link/Network ASK 传递受信 parent，REPLY 从原请求 route 继承。 | 验收持久 lineage/cycle/预算边界；永久预算保持 409/terminal，不得换新 root，只有临时 admission quota 是 429 + Retry-After。 |
 | V22 | PARTIAL | Ask admission quota 已实现；Group 广播有固定 32 人上限和每批 8 人，但独立 wake 预算、限速与大规模 fan-out 压力验收尚未实现。 |
 | V23 | PARTIAL | HTTP/MCP/`fabric v2` CLI 共用 Fabric Service；CLI 拒绝跨 API origin 和错误 native context 的缓存凭据。旧 `/v1/threads/*`、`/v1/fabric/*`、`/v1/endpoints` 全部 HTTP 路由及 `cicada endpoint` 命令已移除并有拒绝测试；历史表/内部迁移路径尚在。 |
 | V24 | PARTIAL | inbox 按 receiver Endpoint 定址，其他成员不被自动唤醒；组内共享历史的授权读取语义仍待补齐。 |
@@ -698,7 +712,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V31 | PASS | `TestControlBusinessDisabledPeerRPC` 不构造 Control，组内 ask/reply 成功。 |
 | V32 | PASS | 全量 Control/Goal/Worker/Approval 回归通过；未删除现有管理功能。 |
 | V33 | PARTIAL | Store/Node inbox/journal restart 测试通过；未在真实双机链路逐窗口重启网络服务。 |
-| V34 | NOT_RUN | Runtime provider 限流与有界退避验收未实现。 |
+| V34 | PARTIAL（ledger；Runtime throttle 未接通） | Runtime 目前只记录 COMPLETED、FAILED_NOT_INJECTED、INJECTION_UNCERTAIN，未产生 RATE_LIMITED_NOT_INJECTED 或 RETRYABLE_NOT_INJECTED；ledger 有 bounded backoff/reconcile 状态。 | `ProviderAdmissionOutcome` 无 Attempt；开启结构化 retry 前需 old-attempt fence 与测试。这是未来开通安全门禁，不是已观察的跨 attempt Runtime bug；真实 provider throttle/backoff 仍 NOT_RUN。 |
 | V35 | PARTIAL | 无连线的 stable ID 异组直连被拒；当前双方 key-bound Grant 下的单收件人密文 SEND/ASK/REPLY 经一个 Hub 直达，撤权/超 scope 拒绝有定向测试。真实双 owner Link Ask/Reply 已由两个真实 Codex Thread 验收；双物理 Node 和无人值守 cold wake 仍缺。 |
 | V36 | PARTIAL（真实 Codex、同机双逻辑 Node） | 密文 REQUEST 与关联的反向 REPLY 在 Hub Store 中独立持久；Node 凭据保护 HTTP Ask/Reply/status/cancel。MCP 通过受信本机桥绑定当前原生 Session；fake Codex 两逻辑 Node 全链测试通过，`TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative` 也以两个 owner 的真实 Thread 完成 sealed Link request/reply，原 ID 保持、Hub 不见正文、Control business call 为 0。 | 原生测试使用受控 `codex exec resume`；双物理机和无人值守 cold wake 未验证。旧 MA→MB 演示不能代替新 G2。 |
 | V37 | PASS | `ACCEPTED`、`IN_PROGRESS`、`RESULT_ACCEPTED`、`CLOSED` 分离。 |
@@ -707,12 +721,12 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V40 | PARTIAL | 旧结果保留 producer/evidence/provenance；新直达和广播来源未测。 |
 | V41 | PARTIAL | 当前双端 key-bound Grant 的 Link SEND/ASK/REPLY 对动作、scope、期限、撤权和绑定在入队/领取/注入前重查；fake 两逻辑 Node 全链与真实双 owner Codex sealed Ask/Reply 均通过。2026-09-24 同 Node 同 Group sealed 路径是本地 Group 授权切片，不代表同 Node 跨 Group Link；尚缺双物理机和更广拒绝/恢复矩阵。 |
 | V42 | PARTIAL | 既有 Contact revoke/E2EE 状态保留；v13 提案可按预期版本撤销，但跨用户已激活连线、广播待投递项与端点密钥撤销尚未实现。 |
-| V43–V52 | PARTIAL | v7–v10 Shared Task/Lease/Handoff/SideEffect 与 v6 scoped Artifact 已有 Store/HTTP 测试；真实 GPU/workspace 执行器强制、外部副作用和完整恢复矩阵未通过。 |
+| V43–V52 | PARTIAL | Store/Fabric SharedTask CAS、v45 cross-Node metadata handoff、v54 same-Node local sealed handoff proof/metadata route、`nodelock.ResourceExecutionManager` managed process framework。 | 当前 driver/Node restart、外部 SideEffect reconciliation、GPU/workspace 普遍强制 fencing 与 stop-confirmed lease release 均未验收；handoff 不代表进程已停止。 |
 | V53 | PASS | Actor 来自 Session credential；未知 sender/group/role 字段和错误 scheme 被拒。 |
 | V54 | PARTIAL | peer body 不会创建 Approval，HTTP 严格字段拒绝伪造；缺专门的正文 prompt-injection 验收。 |
 | V55 | PARTIAL | Federation 保留 actor/provenance；尚无 Guard 对真实恶意 Monitor 指令的执行入口演练。 |
-| V56 | PARTIAL | membership revoke 阻止 Fabric read/write；跨组 Artifact/search/export 统一 guard 尚未实现。 |
-| V57 | PARTIAL | 既有 Contact E2EE 重放/篡改测试通过且未降级；Endpoint context-bound ML-KEM/ML-DSA/AES-GCM、ML-DSA-65 attestation、v22/v27 Owner grants 与 Node 本地 Owner trust 已接入 Link 和 same-Group `SEALED_V1` SEND/ASK/REPLY。跨 Node Link/同组 Hub Relay 只存密文；同 Node 同组使用本地账本。双 owner sealed Link Ask/Reply 已有同机双逻辑 Node 的真实 Codex 验收；双物理机仍缺。旧或无 sealed-delivery capability 的 Session 仍有旧明文兼容边界；三 Thread native broadcast 的 opt-in 已运行但完整验收未通过，广播授权矩阵仍不完整。 |
+| V56 | PARTIAL | Artifact exact-scope/revocation/digest guards and traversal/symlink denial are implemented and tested (`TestArtifactV2ExactScopeRevocationAndDigestGuard`, `TestArtifactV2ListDoesNotBypassReferenceScopes`, `TestArtifactV2RejectsTraversalAndSymlinkEscape`). Search/export and all historical refs are not exhaustively accepted. |
+| V57 | PARTIAL | Endpoint ML-KEM/ML-DSA/AES-GCM、Owner grants、Node trust 与 local/cross-Node sealed SEND/ASK/REPLY 已连接 MCP/ledger/Relay。432f native ASK/REPLY PASS；432f＋native-test overlay broadcast PASS 且两 original Threads 消耗。新 plaintext peer write 返回410，历史明文仍保留。物理双 Node、完整跨 Owner/广播授权矩阵、纯 PQ TLS 未完成；不将 overlay PASS 转移给 finalFP。 |
 | V58 | PARTIAL | 合成 Hub StateDir 的 backup/verify/restore 与 Contact/session/replay counter 对照通过；Node 子树离线备份/校验/隔离恢复保留 Endpoint 私钥、crypto-state sequence/outbox、入站密文和 replay，含四个 WAL 库与锁竞争测试。显式 Link SEND 已接入 Node 原生 queue，崩溃/重复/不确定注入有 fake Codex 测试。 | Node 私钥与 crypto-state 不在 Hub 备份；MCP/Codex 外部状态不在 Node 子树备份。真实生产设备恢复、rollback fencing 和恢复后计数对账未验收。 |
 | V59 | PARTIAL | secret scan、token-only-hash、0600 token files、child env filtering 已验证；未覆盖生产 crash dump。 |
 | V60 | PASS（事务测试） | 版本化迁移账本、中断回滚/重跑、并发打开与旧记录保留测试通过；真实掉电/备份恢复未验收。 |
@@ -720,9 +734,9 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V62 | PARTIAL | 授权每次查权威 SQLite、无扩权 cache；未注入权威服务故障黑盒测试。 |
 | V63 | PASS | 缺少双物理机/自主 MCP/迁移条件均明确标记，不计为通过。 |
 | V64 | NOT_RUN | 未运行压力测试，也未声明真实多 Agent 容量。 |
-| V65–V70 | PARTIAL | 同 Thread 多 Group 服务/HTTP/MCP scope、独立撤权和同机双容器原生 Ask/Reply 有证据；v12 Group 父子关系 API 防环/版本/不继承授权有测试。双 owner Link 与同 owner 同组跨 Node 的密文 ASK/REPLY fake full-chain 均通过。V67 同 Node 同 Group sealed 路径与 V69 双 owner 单 Hub sealed Link Ask/Reply 均已有真实 Codex Thread 验收；跨 owner 测试限同机两个逻辑 Node，并由 driver 受控 resume。V66 面板拖拽、V68 双物理 Node、cold wake 与完整多组/拒绝组合仍未验收。 |
-| V71 | PARTIAL | 新增 `TestMachineSealedAskReconnectClaimsDurableOfflineMessage` 在一条 TLS/TCP SSE 链中验证 sealed Link ASK 离线持久化、新连接 ready、Node 生产 claim/decrypt/inbox、fake queue 去重和分层回执，普通及 `-race` 均通过。另有双私有网桥门禁证明两个 Node 只能出站到同一 Hub、彼此及 Hub→Node 不可拨入；该门禁和 SSE 测试仍是两个隔离子链。真实双物理机、真实 Codex 消费及 Node/Hub 逐窗口重启未验收。 |
-| V72 | PARTIAL | 同 owner 同 Group 的 Agent-initiated 本地+跨 Node 逐人密文广播通过两个逻辑 Node/fake Codex full-chain。早期普通广播三 Thread 尝试因夹具/结果解析/自动审批失败的历史记录保留；当前通过的是 V73 用户经 Monitor 发起的限定链路，见本表 V73 和 `client-hub-v13-25013b5-validation.md`。不把 Monitor PASS 归因给普通 Agent 广播；物理双 Node、通知预算与各类故障恢复全链仍未验收。 |
+| V65–V70 | PARTIAL | 当前 UI 代码有 Endpoint→Group admission preview/explicit confirm、Link proposal gesture 与 box select；旧 Chrome PASS 只覆盖当时冻结源码的 pin/vault/enrollment/topology/status，不涵盖新手势。V68 是两个相互隔离 Docker Node namespaces 接入同一 Hub，不要求分离物理主机。 | 新手势需 current-source browser 验证 preview/CAS、stale denial/no-write 与 Link proposal inactive；V68 joined gate、cold wake、完整多组/拒绝组合仍未通过统一验收。 |
+| V71 | PARTIAL | SSE/offline durable claim tests与 840a joined Docker gate 已证明两 Node outbound-only、Hub restart 两次、DB persist、exact outbox retry、reconnect dedup/wrongACKdeny。后者 recording fake queue；全部故障窗口、物理双 Node与 fault期间真实 native 消耗未验收。 |
+| V72 | PASS（限定 same-Group native broadcast） | 432f product＋owned-test overlay PASS298.14s，两个 original recipient Threads 消耗广播并保留上下文；旧失败仍保留且不归 Monitor PASS 或 finalFP。物理双 Node、通知预算、完整故障/授权矩阵仍未验收。 |
 | V73 | PASS（限定链路） | 固定候选 `25013b5` 的同一 original Monitor Thread 完成一次只读 preview、一次独立 dispatch；两原生 recipient Thread receive/context assertions 通过。Client 10 selectors/final strict status、Core scoped ciphertext scan、Intake Hub state audit 与 cleanup 均 PASS；Hub 记录一条原审批，两个 unique recipient outcomes：local `NODE_REPORTED`、remote `RELAY_PERSISTED`。派发授权和这些 outcome 不证明普遍模型正确性；物理双 Node、完整 RN 同意 UI、公网 HTTPS 未验收。详见 [bounded candidate report](client-hub-v13-25013b5-validation.md)。 |
 
 ## G1–G5 演示状态
@@ -739,7 +753,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 
 现有 v2 HTTP 路由在 `server/fabric_v2.go`、`server/relay_node_v2.go` 和 `server/relay_node_group_sealed_v2.go`：除既有 Fabric/Node API 外，Node-only `/v2/relay/nodes/{node_id}/group/sealed/{peer-key,send,ask,reply,claim,requests/*,deliveries/*/authorization}` 承载 same-Group 跨 Node 密文路径，并以 Node credential 鉴权。MCP `mcp.go` 只在 `cicada_join` 后使用 `CicadaSession`，支持 `cicada_use_group` 和 `cicada_leave_group`；选定的 `Cicada-Group-Scope` 仍由服务端校验双重 Membership。当前 MCP Join 只调用受信 Node 本机桥，不再把管理 bearer 作为回退；服务端仍保留独立的管理/Node Join 入口，模型提交的 `principal_id`、sender、role、approval 字段不作为身份依据。Link 的同 owner 提案/撤销经加密 Client `topology.apply` 完成；旧 `/v1/communication-links` HTTP 路由已删除。v14 `/v2/fabric/endpoint-keys` 登记当前绑定的候选公钥；Node-only Link/same-Group 授权证据查询供本地 Owner trust 复核。显式 Link 的 `cicada_send/ask/reply` 与同 owner、同 Group、异 Node 的 sealed peer API 均由本地 Node 桥从可信 Session 推导身份、目标和 request correlation；Hub 保存不透明密文并在入队/claim/注入前复查授权，不调用 Control。相同 Node 的 sealed `cicada_send/ask/reply` 走本机账本/inbox，不经 Hub Relay 消息路由，但发送/注入前仍可查询 Hub Guard/Directory。sealed `cicada_receive` 经 Node 本机桥，从两个 Node inbox 数据库只读合并当前 native Session/Group 的已注入消息；只有没有 sealed-delivery capability 的旧 Session 才保留 Hub receive fallback。旧无 sealed capability Session 的同组写路径仍可能保存明文；sealed Session 不静默降级。同 owner、同 Group 的 sealed `cicada_broadcast` 已有 fake full-chain；跨 owner 和用户经 Monitor 广播未实现。
 
-旧版/未密封的 v2 Relay `Receive` 是带 opaque cursor 的查看；Node 的 claim/receipt 才改变投递 attempt。未密封 peer body 仍可保存在 `fabric_messages` 明文列；跨 Node Link/same-Group sealed payload 存在 `relay_v2_message_payloads` 密文 BLOB，同 Node 同 Group sealed payload 存在 Node-local crypto ledger/inbox。sealed `cicada_receive` 只查询 Node inbox 可见表，且读取只读，不执行消费确认或 crash recovery。不能把旧路径的明文事实推广到已密封消息，也不能把新密文路径推广到仍未 sealed-capable 的旧 Session 或尚未实现的广播。
+旧版/未密封的 v2 Relay `Receive` 是带 opaque cursor 的查看；Node 的 claim/receipt 才改变投递 attempt。未密封 peer body 仍可保存在 `fabric_messages` 明文列；跨 Node Link/same-Group sealed payload 存在 `relay_v2_message_payloads` 密文 BLOB，同 Node 同 Group sealed payload 存在 Node-local crypto ledger/inbox。sealed `cicada_receive` 只查询 Node inbox 可见表，且读取只读，不执行消费确认或 crash recovery。不能把旧路径的明文事实推广到已密封消息，也不能把新密文路径推广到仍未 sealed-capable 的旧 Session 或历史未 sealed 的广播记录。
 
 ## 运行证据边界
 

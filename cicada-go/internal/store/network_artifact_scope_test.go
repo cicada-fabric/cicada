@@ -76,8 +76,17 @@ VALUES(?,?,'active',1,'artifact agent',0,?,?)`, network.ID, endpoint.ID, stamp, 
 		[]string{ArtifactRefV2ScopeMetadata}, time.Now().UTC()); err != nil {
 		t.Fatalf("current Endpoint metadata read: %v", err)
 	}
-	if refs, err := f.store.ListArtifactRefsV2ForActor(scope, 10); err != nil || len(refs) != 1 {
+	if _, err := f.store.AuthorizeArtifactRefV2ForActor(scope, ref.ID,
+		[]string{ArtifactRefV2ScopeSummary}, time.Now().UTC()); !errors.Is(err, ErrArtifactRefV2ScopeDenied) {
+		t.Fatalf("single-ref summary read ignored its missing scope: %v", err)
+	}
+	refs, err := f.store.ListArtifactRefsV2ForActor(scope, 10)
+	if err != nil || len(refs) != 1 {
 		t.Fatalf("current Endpoint list: %#v %v", refs, err)
+	}
+	if refs[0].ID != ref.ID || refs[0].Name != "evidence" || refs[0].Summary != "" || refs[0].Digest != "" ||
+		len(refs[0].Scopes) != 1 || refs[0].Scopes[0] != ArtifactRefV2ScopeMetadata {
+		t.Fatalf("list exposed fields denied by the reference scopes: %#v", refs[0])
 	}
 	if err := f.store.LeaveEndpointNetwork(network.ID, endpoint.ID, 1); err != nil {
 		t.Fatal(err)

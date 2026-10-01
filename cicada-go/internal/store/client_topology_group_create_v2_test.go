@@ -323,11 +323,12 @@ func TestClientTopologyGroupCreateV41MigrationRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := f.store.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&version); err != nil || version != 41 {
-		t.Fatalf("schema version=%d err=%v", version, err)
+	if err := f.store.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&version); err != nil || version != CurrentV2SchemaVersion {
+		t.Fatalf("schema version=%d want=%d err=%v", version, CurrentV2SchemaVersion, err)
 	}
 	// Keep this independent of the fixture Store's lifetime and prove that a
-	// second handle sees the v41 request map and existing parent Group.
+	// second handle sees the v41 request map and existing parent Group after
+	// all current additive migrations have also been applied.
 	var path string
 	if err := f.store.db.QueryRow(`PRAGMA database_list`).Scan(new(int), new(string), &path); err != nil {
 		t.Fatal(err)

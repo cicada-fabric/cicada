@@ -32,6 +32,11 @@ Neither command grants a message route. The Node must still fetch current
 authorization for the **exact Relay claim**, verify both signed grants and
 the endpoint envelope, and check the native binding before injection. The
 Node Agent connects these checks for explicit single-recipient `SEALED_V1`
-SEND. These commands alone do not enable a route: the current Link, both
+SEND/ASK/REPLY and same-Group sealed delivery. These commands alone do not enable a route: the current Link, both
 Owner grants, Endpoint keys, membership, binding and exact Relay attempt must
-also pass. Only two-logical-Node/fake-Codex acceptance has run so far.
+also pass. The earlier two-logical-Node/fake-Codex gate is historical. Source-specific
+real native same-Group ASK/REPLY and broadcast consumption now have bounded PASS
+evidence in the [checkpoint report](v01-completion-checkpoint-validation.md);
+those results do not prove physical dual-Node or every cross-Owner native
+authority/consent scenario. Application-layer NodeControl PQ authentication is
+separate from these Owner pins; pure PQ TLS remains NOT_IMPLEMENTED.

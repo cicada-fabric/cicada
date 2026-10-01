@@ -13,7 +13,7 @@ func claimSideEffectTask(t *testing.T, s *Store, groupID, principalID, endpointI
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := s.ClaimSharedTask(task.ID, ready.Revision, principalID, endpointID, "claim-"+principalID, 300)
+	claimed, err := claimPreparingSharedTaskFixture(t, s, task.ID, ready.Revision, principalID, endpointID, "claim-"+principalID, 300)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestSharedTaskSideEffectCompletionAndHandoffReconciliationView(t *testing.T
 		t.Fatal(err)
 	}
 
-	proposal, err := s.ProposeSharedTaskHandoff(SharedTaskHandoff{
+	proposal, err := proposePreparingSharedTaskHandoffFixture(t, s, SharedTaskHandoff{
 		TaskID: oldTask.ID, GroupID: groupID, FromPrincipalID: oldTask.OwnerPrincipalID, FromEndpointID: oldTask.OwnerEndpointID,
 		ToPrincipalID: "principal-new-effect", ToEndpointID: "endpoint-new-effect", FromOwnerEpoch: oldTask.OwnerEpoch,
 		TaskRevision: oldTask.Revision, PendingWork: "check remote deployment receipt", WorkspaceState: "clean",
@@ -159,7 +159,7 @@ func TestSharedTaskSideEffectRetryRequiresProvenNotAppliedOutcome(t *testing.T) 
 	if _, err := s.MarkSharedTaskSideEffectStarted(oldTask.ID, input.Key, input.Digest, oldTask.OwnerPrincipalID, oldTask.OwnerEndpointID, oldTask.OwnerEpoch); err != nil {
 		t.Fatal(err)
 	}
-	proposal, err := s.ProposeSharedTaskHandoff(SharedTaskHandoff{
+	proposal, err := proposePreparingSharedTaskHandoffFixture(t, s, SharedTaskHandoff{
 		TaskID: oldTask.ID, GroupID: groupID, FromPrincipalID: oldTask.OwnerPrincipalID, FromEndpointID: oldTask.OwnerEndpointID,
 		ToPrincipalID: "principal-retry-owner", ToEndpointID: "endpoint-retry-owner", FromOwnerEpoch: oldTask.OwnerEpoch,
 		TaskRevision: oldTask.Revision, PendingWork: "inspect remote state before retry", WorkspaceState: "clean",

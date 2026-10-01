@@ -13,28 +13,54 @@ import (
 func sealedReplyInputForFixture(t *testing.T, f *linkSealedSendTestFixture,
 	ask CommunicationLinkSealedAsk, messageID string) CommunicationLinkSealedReply {
 	t.Helper()
-	return sealedReplyInputWithContext(t, f, ask, messageID,
-		sealedLinkReverseEndpointContext(f.link, f.manifest, messageID, ask.RequestID, ask.MessageID),
-		f.targetEndpointKey)
+	reverseAsk := ask.NodeCredentialDigest == f.targetOwner.nodeCredential
+	askSender, askReceiver := communicationLinkAskRoles(f.link, f.manifest, reverseAsk)
+	request := &FabricRequest{
+		RequestID: ask.RequestID, MessageID: ask.MessageID,
+		SenderEndpointID: askSender.endpointID, SenderPrincipalID: askSender.principalID,
+		SenderGroupID: askSender.groupID, SenderBindingID: askSender.bindingID,
+		SenderBindingEpoch: askSender.bindingEpoch,
+		ReceiverEndpointID: askReceiver.endpointID, ReceiverPrincipalID: askReceiver.principalID,
+		ReceiverGroupID: askReceiver.groupID, ReceiverBindingID: askReceiver.bindingID,
+		ReceiverBindingEpoch: askReceiver.bindingEpoch,
+	}
+	context := sealedLinkReplyEndpointContext(f.link, f.manifest, request, messageID)
+	return sealedReplyInputWithContext(t, f, ask, messageID, context, replyEndpointKeyForContext(f, context))
 }
 
 func sealedReplyInputWithContext(t *testing.T, f *linkSealedSendTestFixture,
 	ask CommunicationLinkSealedAsk, messageID string, context e2ee.EndpointMessageContext,
 	signer *e2ee.Identity) CommunicationLinkSealedReply {
 	t.Helper()
-	wire, err := e2ee.SealEndpointMessage(signer, f.manifest.Source.PublicIdentity,
+	recipient := f.manifest.Source.PublicIdentity
+	credential := f.targetOwner.nodeCredential
+	if context.ReceiverEndpointID == f.link.TargetEndpointID {
+		recipient = f.manifest.Target.PublicIdentity
+	}
+	if context.SenderEndpointID == f.link.SourceEndpointID {
+		credential = f.sourceOwner.nodeCredential
+	}
+	wire, err := e2ee.SealEndpointMessage(signer, recipient,
 		context, []byte("private answer"), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return CommunicationLinkSealedReply{
-		NodeCredentialDigest: f.targetOwner.nodeCredential,
+		NodeCredentialDigest: credential,
 		RequestID:            ask.RequestID,
 		MessageID:            messageID,
 		IdempotencyKey:       "idem_" + messageID,
 		DataScope:            f.dataScope,
 		Ciphertext:           wire,
 	}
+}
+
+func replyEndpointKeyForContext(f *linkSealedSendTestFixture,
+	context e2ee.EndpointMessageContext) *e2ee.Identity {
+	if context.SenderEndpointID == f.link.SourceEndpointID {
+		return f.sourceEndpointKey
+	}
+	return f.targetEndpointKey
 }
 
 func enqueueSealedAskForReply(t *testing.T, f *linkSealedSendTestFixture) CommunicationLinkSealedAsk {

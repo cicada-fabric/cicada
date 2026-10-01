@@ -160,6 +160,7 @@ func TestMCPSealedSameNodeGroupAskReplyFullChain(t *testing.T) {
 		fabricHandler.ServeHTTP(response, request)
 	}))
 	defer hub.Close()
+	ctx = pinnedNativeTestHubContext(ctx, hubID, nodeID, stateDir, hub.URL, nodeToken)
 	bridge, err := startMachineAgentJoinBridge(ctx, stateDir, hub.URL, nodeID, nodeToken)
 	if err != nil {
 		t.Fatal(err)
@@ -451,8 +452,10 @@ func containsPath(paths []string, expected string) bool {
 
 type localGroupFailureFixture struct {
 	store         *store.Store
+	nativeHistory *nodeinbox.NativeContextRegistry
 	stateDir      string
 	groupID       string
+	hubID         string
 	ownerID       string
 	nodeID        string
 	nodeToken     string
@@ -503,6 +506,9 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 		if f.store != nil {
 			_ = f.store.Close()
 		}
+		if f.nativeHistory != nil {
+			_ = f.nativeHistory.Close()
+		}
 	})
 	owner, err := f.store.CreatePrincipal(store.Principal{
 		ID: f.ownerID, Kind: store.PrincipalKindHuman, OwnerID: f.ownerID,
@@ -534,6 +540,7 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.hubID = hubID
 	now := time.Now().UTC()
 	grant, err := ownerIdentity.SignOwnerDeviceGrant(f.ownerID, deviceID,
 		clientIdentity.Public(), hubID, e2ee.OwnerDevicePurposeControl,
@@ -566,12 +573,13 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 	}
 	fabricHandler := serverpkg.NewFabricHandler(service, "")
 	allowed := map[string]bool{
-		"/v2/fabric/node/join":                              true,
-		"/v2/fabric/whoami":                                 true,
-		"/v2/fabric/endpoint-keys":                          true,
-		"/v2/fabric/resolve":                                true,
-		"/v2/relay/nodes/" + f.nodeID + "/local/authorize":  true,
-		"/v2/relay/nodes/" + f.nodeID + "/local/revalidate": true,
+		"/v2/fabric/node/join":                                      true,
+		"/v2/fabric/whoami":                                         true,
+		"/v2/fabric/endpoint-keys":                                  true,
+		"/v2/fabric/resolve":                                        true,
+		"/v2/relay/nodes/" + f.nodeID + "/local/authorize":          true,
+		"/v2/relay/nodes/" + f.nodeID + "/local/revalidate":         true,
+		"/v2/relay/nodes/" + f.nodeID + "/group/broadcast/snapshot": true,
 	}
 	f.hub = httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v2/relay/nodes/"+f.nodeID+"/local/revalidate" &&
@@ -586,7 +594,11 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 		}
 		fabricHandler.ServeHTTP(response, request)
 	}))
-	f.bridgeCtx, f.bridgeCancel = context.WithCancel(context.Background())
+	f.nativeHistory, err = nodeinbox.OpenNativeContextRegistry(filepath.Join(f.stateDir, "native-context-history.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.bridgeCtx, f.bridgeCancel = context.WithCancel(f.machineContextForNode(f.nodeID, f.nodeToken))
 	if err := f.restartBridge(); err != nil {
 		t.Fatal(err)
 	}
@@ -601,6 +613,18 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 	f.sourceMCP = f.joinSession(t, f.nativeA)
 	f.targetMCP = f.joinSession(t, f.nativeB)
 	return f
+}
+
+func (f *localGroupFailureFixture) machineContextForNode(nodeID, nodeToken string) context.Context {
+	return f.machineContextForNodeAt(nodeID, nodeToken, f.hub.URL)
+}
+
+func (f *localGroupFailureFixture) machineContextForNodeAt(nodeID, nodeToken, origin string) context.Context {
+	return withMachineHubContext(context.Background(), machineHubContext{
+		HubID: f.hubID, Origin: origin, NodeID: nodeID, StateDir: f.stateDir, Token: nodeToken,
+		WriterRoot: f.stateDir, WriterScope: machineNativeWriterScope(),
+		RequireNativeContext: true, NativeContexts: f.nativeHistory,
+	})
 }
 
 func (f *localGroupFailureFixture) joinSession(t *testing.T, nativeID string) *mcpServer {

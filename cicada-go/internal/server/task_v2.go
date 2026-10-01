@@ -8,47 +8,23 @@ import (
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 )
 
+const retiredPeerTaskHandoffMessage = "Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources."
+
 func (h *Handler) fabricV2Task(response http.ResponseWriter, request *http.Request, actor fabricpkg.Actor) {
 	path := strings.TrimPrefix(request.URL.Path, "/v2/fabric/tasks")
+	if strings.HasPrefix(path, "/sealed-handoffs") {
+		h.fabricV2SealedTaskHandoff(response, request, actor, strings.TrimPrefix(path, "/sealed-handoffs"))
+		return
+	}
 	if path == "/handoffs" && request.Method == http.MethodPost {
-		var input fabricpkg.TaskHandoffProposeInput
-		if err := readJSON(request, &input); err != nil {
-			writeError(response, http.StatusBadRequest, err)
-			return
-		}
-		handoff, err := h.fabricService.ProposeTaskHandoff(actor, input)
-		if err != nil {
-			fabricV2Error(response, err)
-			return
-		}
-		writeJSON(response, http.StatusCreated, handoff)
+		writeError(response, http.StatusGone, errors.New(retiredPeerTaskHandoffMessage))
 		return
 	}
 	if strings.HasPrefix(path, "/handoffs/") {
 		parts := strings.Split(strings.TrimPrefix(path, "/handoffs/"), "/")
-		if len(parts) == 1 && parts[0] != "" && request.Method == http.MethodGet {
-			handoff, err := h.fabricService.GetTaskHandoff(actor, parts[0])
-			if err != nil {
-				fabricV2Error(response, err)
-				return
-			}
-			writeJSON(response, http.StatusOK, handoff)
-			return
-		}
-		if len(parts) == 2 && parts[0] != "" && parts[1] == "accept" && request.Method == http.MethodPost {
-			var input struct {
-				LeaseSeconds int `json:"lease_seconds"`
-			}
-			if err := readOptionalJSON(request, &input); err != nil {
-				writeError(response, http.StatusBadRequest, err)
-				return
-			}
-			task, err := h.fabricService.AcceptTaskHandoff(actor, parts[0], input.LeaseSeconds)
-			if err != nil {
-				fabricV2Error(response, err)
-				return
-			}
-			writeJSON(response, http.StatusOK, task)
+		if (len(parts) == 1 && parts[0] != "" && request.Method == http.MethodGet) ||
+			(len(parts) == 2 && parts[0] != "" && parts[1] == "accept" && request.Method == http.MethodPost) {
+			writeError(response, http.StatusGone, errors.New(retiredPeerTaskHandoffMessage))
 			return
 		}
 		writeError(response, http.StatusNotFound, errors.New("task handoff route not found"))

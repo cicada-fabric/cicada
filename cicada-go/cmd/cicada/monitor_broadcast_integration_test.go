@@ -95,7 +95,7 @@ func newMonitorBroadcastIntegrationFixtureWithRemote(t *testing.T, withRemote bo
 			"client_"+f.local.nodeID, hex.EncodeToString(codeDigest[:])); err != nil {
 			t.Fatal(err)
 		}
-		remoteCtx, remoteCancel := context.WithCancel(context.Background())
+		remoteCtx, remoteCancel := context.WithCancel(f.local.machineContextForNode(f.remoteNodeID, f.remoteToken))
 		remoteBridge, err := startMachineAgentJoinBridge(remoteCtx, f.local.stateDir,
 			f.local.hub.URL, f.remoteNodeID, f.remoteToken)
 		if err != nil {
@@ -270,6 +270,11 @@ func newMonitorBroadcastIntegrationFixtureWithRemote(t *testing.T, withRemote bo
 	if err := f.local.bridge.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if f.local.bridgeCancel != nil {
+		f.local.bridgeCancel()
+	}
+	f.local.bridgeCtx, f.local.bridgeCancel = context.WithCancel(
+		f.local.machineContextForNodeAt(f.local.nodeID, f.local.nodeToken, f.hub.URL))
 	f.local.bridge, err = startMachineAgentJoinBridge(f.local.bridgeCtx, f.local.stateDir,
 		f.hub.URL, f.local.nodeID, f.local.nodeToken)
 	if err != nil {
@@ -731,14 +736,28 @@ func TestMonitorBroadcastLostOutcomeReceiptRetainsStableChildren(t *testing.T) {
 		f.hub.Config.Handler.ServeHTTP(w, r)
 	}))
 	defer proxy.Close()
-	bridge := &machineAgentJoinBridge{ctx: context.Background(), baseURL: proxy.URL,
+	bridge := &machineAgentJoinBridge{ctx: f.local.machineContextForNodeAt(f.local.nodeID, f.local.nodeToken, proxy.URL), baseURL: proxy.URL,
 		nodeID: f.local.nodeID, nodeToken: f.local.nodeToken, stateDir: f.local.stateDir}
-	if _, err := bridge.monitorBroadcast(f.request); err == nil || !localSealedSendRetryable(err) {
-		t.Fatalf("lost outcome receipt falsely reported a confirmed operation: %v", err)
+	first, firstErr := bridge.monitorBroadcast(f.request)
+	if firstErr == nil || !localSealedSendRetryable(firstErr) {
+		t.Fatalf("lost outcome receipt falsely reported a confirmed operation: %v", firstErr)
+	}
+	if first == nil || first.Progress == nil || len(first.Progress.Recipients) != 1 ||
+		first.Progress.Recipients[0].State != "ACCEPTED" {
+		t.Fatalf("synthetic lost receipt occurred before an accepted child: %+v", first)
 	}
 	result, err := bridge.monitorBroadcast(f.request)
-	if err != nil || result.Progress == nil || result.Progress.Recipients[0].State != "ACCEPTED" {
-		t.Fatalf("same operation could not recover after lost report receipt: %+v %v", result, err)
+	if err != nil || result == nil || result.Progress == nil || len(result.Progress.Recipients) != 1 ||
+		result.Progress.Recipients[0].State != "ACCEPTED" {
+		if result != nil && result.Progress != nil {
+			f.hubMu.Lock()
+			paths := append([]string(nil), f.hubPaths...)
+			f.hubMu.Unlock()
+			t.Fatalf("same operation could not recover after lost report receipt: progress=%+v first=%+v first_err=%v hub_paths=%v retry_err=%v",
+				*result.Progress, first, firstErr, paths, err)
+		}
+		t.Fatalf("same operation could not recover after lost report receipt: result=%+v first=%+v first_err=%v retry_err=%v",
+			result, first, firstErr, err)
 	}
 	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID))
 	if err != nil {

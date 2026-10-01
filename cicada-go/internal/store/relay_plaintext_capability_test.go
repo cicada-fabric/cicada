@@ -16,7 +16,7 @@ func TestStorePlaintextWritesFailClosedForCurrentEndpointCapability(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	if _, err := persistence.EnqueueRelayMessage(RelayMessageInput{
+	if _, err := createPreparingRelayMessageFixture(t, persistence, RelayMessageInput{
 		Message: FabricMessage{ID: "msg-downgrade", FromEndpointID: "ep-a", ToEndpointID: "ep-b", Kind: "send", Body: "private body"},
 		Security: RelayMessageSecurity{SenderEndpointID: "ep-a", SenderPrincipalID: "principal-a", SenderGroupID: "group-a",
 			ReceiverEndpointID: "ep-b", ReceiverPrincipalID: "principal-b", ReceiverGroupID: "group-a"},

@@ -266,9 +266,177 @@ func TestNetworkDirectKeyGrantFirstAcceptancePersistsAndResignIsStable(t *testin
 		retry.RequestID != ask.RequestID {
 		t.Fatalf("sealed ask retry: %#v %v", retry, err)
 	}
+	parentDelivery, err := s.ClaimNetworkDirectSealedInbox(NetworkDirectClaimInput{
+		NodeID: nodeID, ConsumerID: "synthetic-direct-parent-received", Limit: 10,
+		CredentialDigest: credentialDigest})
+	if err != nil || len(parentDelivery) != 1 || parentDelivery[0].MessageID != askMessageID {
+		t.Fatalf("causal parent ASK claim: %#v %v", parentDelivery, err)
+	}
+	parentAuthorization, err := s.AuthorizeClaimedNetworkDirectDelivery(credentialDigest,
+		parentDelivery[0].MessageID, parentDelivery[0].AttemptID)
+	if err != nil || parentAuthorization.Context.ParentRequestID != "" {
+		t.Fatalf("root ASK authorization changed its empty-parent AAD: %#v %v", parentAuthorization, err)
+	}
+	parentReceipt := RelayReceipt{AttemptID: parentDelivery[0].AttemptID,
+		MessageID: parentDelivery[0].MessageID, Digest: parentDelivery[0].Digest,
+		TargetEndpointID: parentDelivery[0].RecipientEndpointID,
+		BindingID:        parentDelivery[0].BindingID,
+		BindingEpoch:     parentDelivery[0].BindingEpoch, Layer: RelayReceiptNodeReceived}
+	if _, err := s.RecordNetworkDirectReceipt(credentialDigest, parentReceipt); err != nil {
+		t.Fatalf("causal parent ASK receipt: %v", err)
+	}
+
+	const thirdInvitation = "synthetic-direct-invitation-cccccccccccccccccccccccc"
+	if err := s.IssueNetworkInvitation("net_direct", "owner_a", "owner_a", thirdInvitation,
+		time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), grants); err != nil {
+		t.Fatal(err)
+	}
+	thirdNative := "native_network_direct_third"
+	thirdProof, err := owner.SignOwnerNetworkJoinGrant("owner_a", bound.HubID, "net_direct",
+		nodeID, thirdNative, NetworkInvitationDigest(thirdInvitation), owner.Public().ID,
+		grants, false, time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var thirdClaims struct {
+		Nonce     string `json:"nonce"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.Unmarshal(thirdProof, &thirdClaims); err != nil {
+		t.Fatal(err)
+	}
+	thirdJoin, err := s.AcceptNetworkJoin(AcceptNetworkJoinInput{
+		NetworkID: "net_direct", OwnerID: "owner_a", TrustDomainID: "domain",
+		NodeID: nodeID, NativeSessionID: thirdNative, Harness: "codex",
+		EndpointName: "direct-agent-third", InvitationToken: thirdInvitation,
+		ProofNonce: thirdClaims.Nonce, ProofDigest: NetworkInvitationDigest(string(thirdProof)),
+		ProofExpiresAt: thirdClaims.ExpiresAt, OwnerKeyID: owner.Public().ID,
+		OwnerJoinProof: string(thirdProof), NodeCredentialHash: credentialDigest,
+		Grants: grants, CredentialHash: "direct-access-hash-third",
+		LeaseOwner: "direct-access-lease-third", LeaseExpiresAt: leaseExpiry,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdScope := NetworkAccessScope{NetworkID: "net_direct", PrincipalID: thirdJoin.PrincipalID,
+		EndpointID: thirdJoin.EndpointID, AccessSessionID: thirdJoin.AccessSessionID,
+		AccessEpoch: thirdJoin.AccessSessionEpoch, LeaseOwner: "direct-access-lease-third",
+		MembershipID: thirdJoin.MembershipID, MembershipRevision: thirdJoin.MembershipRevision,
+		EndpointMembershipRevision: thirdJoin.EndpointRevision}
+	thirdBinding, err := s.EnsureNetworkDirectNativeBinding(thirdScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdAttestation, err := thirdKey.SignNetworkDirectKeyAttestation(bound.HubID,
+		"net_direct", thirdJoin.EndpointID, thirdJoin.PrincipalID, nodeID,
+		thirdBinding.ID, thirdBinding.Epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RegisterNetworkDirectKeyCandidate(thirdScope, thirdAttestation); err != nil {
+		t.Fatal(err)
+	}
+	thirdManifest, err := s.PreviewNetworkDirectKeyGrant("owner_a", "net_direct",
+		thirdJoin.EndpointID, owner.Public().ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdOwnerProof, err := owner.SignOwnerNetworkDirectKeyGrant(bound.HubID, "net_direct",
+		thirdJoin.EndpointID, "owner_a", thirdManifest.Digest,
+		time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AcceptNetworkDirectKeyGrant("owner_a", "net_direct", thirdJoin.EndpointID,
+		thirdOwnerProof); err != nil {
+		t.Fatal(err)
+	}
+	thirdBundle, err := s.NetworkDirectPeerKey(secondScope, thirdJoin.EndpointID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedRequestID, nestedMessageID := "rq_synthetic_direct_nested", "msg_synthetic_direct_nested"
+	nestedContext := NetworkDirectContext(thirdBundle, nestedMessageID, "REQUEST",
+		nestedRequestID, "", ask.RequestID)
+	nestedWire, err := e2ee.SealNetworkDirectMessage(secondKey, thirdKey.Public(),
+		nestedContext, []byte("synthetic nested request"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedRequest, err := s.EnqueueNetworkDirectSealedAsk(NetworkDirectAskInput{
+		NetworkDirectSendInput: NetworkDirectSendInput{Scope: secondScope,
+			NodeCredentialDigest: credentialDigest, TargetEndpointID: thirdJoin.EndpointID,
+			MessageID: nestedMessageID, IdempotencyKey: "nested-once", Ciphertext: nestedWire},
+		RequestID: nestedRequestID, ParentRequestID: ask.RequestID, ExpiresAt: deadline,
+	})
+	if err != nil || nestedRequest.ParentRequestID != ask.RequestID || nestedRequest.CausalDepth != 1 {
+		t.Fatalf("nested direct ASK did not retain Store-derived ancestry: %#v %v", nestedRequest, err)
+	}
+	nestedDelivery, err := s.ClaimNetworkDirectSealedInbox(NetworkDirectClaimInput{
+		NodeID: nodeID, ConsumerID: "synthetic-direct-nested-received", Limit: 10,
+		CredentialDigest: credentialDigest})
+	if err != nil || len(nestedDelivery) != 1 || nestedDelivery[0].MessageID != nestedMessageID {
+		t.Fatalf("nested direct ASK claim: %#v %v", nestedDelivery, err)
+	}
+	nestedAuthorization, err := s.AuthorizeClaimedNetworkDirectDelivery(credentialDigest,
+		nestedDelivery[0].MessageID, nestedDelivery[0].AttemptID)
+	if err != nil || nestedAuthorization.Context.ParentRequestID != ask.RequestID {
+		t.Fatalf("nested ASK authorization omitted exact causal parent: %#v %v", nestedAuthorization, err)
+	}
+	nestedReceipt := RelayReceipt{AttemptID: nestedDelivery[0].AttemptID,
+		MessageID: nestedDelivery[0].MessageID, Digest: nestedDelivery[0].Digest,
+		TargetEndpointID: nestedDelivery[0].RecipientEndpointID,
+		BindingID:        nestedDelivery[0].BindingID,
+		BindingEpoch:     nestedDelivery[0].BindingEpoch, Layer: RelayReceiptNodeReceived}
+	if _, err := s.RecordNetworkDirectReceipt(credentialDigest, nestedReceipt); err != nil {
+		t.Fatalf("nested ASK receipt: %v", err)
+	}
+	nestedReplyRoute, err := s.NetworkDirectReplyPeerKey(thirdScope,
+		credentialDigest, nestedRequestID)
+	if err != nil || nestedReplyRoute.ParentRequestID != ask.RequestID {
+		t.Fatalf("nested reply route did not derive request ancestry: %#v %v", nestedReplyRoute, err)
+	}
+	nestedReplyID := "msg_synthetic_direct_nested_reply"
+	nestedReplyContext := NetworkDirectContext(nestedReplyRoute.Bundle, nestedReplyID,
+		"REPLY", nestedRequestID, nestedMessageID, nestedReplyRoute.ParentRequestID)
+	nestedReplyWire, err := e2ee.SealNetworkDirectMessage(thirdKey, secondKey.Public(),
+		nestedReplyContext, []byte("synthetic nested reply"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.EnqueueNetworkDirectSealedReply(NetworkDirectReplyInput{
+		Scope: thirdScope, NodeCredentialDigest: credentialDigest, RequestID: nestedRequestID,
+		MessageID: nestedReplyID, IdempotencyKey: "nested-reply-once", Ciphertext: nestedReplyWire,
+	}); err != nil {
+		t.Fatalf("nested reply with route-derived parent: %v", err)
+	}
+	nestedReplyDelivery, err := s.ClaimNetworkDirectSealedInbox(NetworkDirectClaimInput{
+		NodeID: nodeID, ConsumerID: "synthetic-direct-nested-reply-received", Limit: 10,
+		CredentialDigest: credentialDigest})
+	if err != nil || len(nestedReplyDelivery) != 1 || nestedReplyDelivery[0].MessageID != nestedReplyID {
+		t.Fatalf("nested direct REPLY claim: %#v %v", nestedReplyDelivery, err)
+	}
+	nestedReplyAuthorization, err := s.AuthorizeClaimedNetworkDirectDelivery(credentialDigest,
+		nestedReplyDelivery[0].MessageID, nestedReplyDelivery[0].AttemptID)
+	if err != nil || nestedReplyAuthorization.Context.ParentRequestID != ask.RequestID {
+		t.Fatalf("nested REPLY authorization lost original causal parent: %#v %v", nestedReplyAuthorization, err)
+	}
+	nestedReplyReceipt := RelayReceipt{AttemptID: nestedReplyDelivery[0].AttemptID,
+		MessageID: nestedReplyDelivery[0].MessageID, Digest: nestedReplyDelivery[0].Digest,
+		TargetEndpointID: nestedReplyDelivery[0].RecipientEndpointID,
+		BindingID:        nestedReplyDelivery[0].BindingID,
+		BindingEpoch:     nestedReplyDelivery[0].BindingEpoch, Layer: RelayReceiptNodeReceived}
+	if _, err := s.RecordNetworkDirectReceipt(credentialDigest, nestedReplyReceipt); err != nil {
+		t.Fatalf("nested REPLY receipt: %v", err)
+	}
+
 	route, err := s.NetworkDirectReplyPeerKey(secondScope, credentialDigest, requestID)
 	if err != nil || route.RequestMessageID != askMessageID ||
-		route.Bundle.Receiver.Manifest.EndpointID != joined.EndpointID {
+		route.ParentRequestID != "" || route.Bundle.Receiver.Manifest.EndpointID != joined.EndpointID {
 		t.Fatalf("reply route: %#v %v", route, err)
 	}
 	replyMessageID := "msg_synthetic_direct_reply"

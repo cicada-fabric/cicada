@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -66,6 +67,29 @@ type NetworkDirectKeyManifest struct {
 	EndpointEnrollmentRevision int64                     `json:"endpoint_enrollment_revision"`
 	Candidate                  NetworkDirectKeyCandidate `json:"candidate"`
 	Digest                     string                    `json:"digest"`
+}
+
+// NetworkCollaborationKeyManifest commits one exact public Endpoint key to a
+// separately approved Task or Broadcast purpose. The embedded direct-key
+// manifest retains its public shape; purpose is included in the outer digest.
+type NetworkCollaborationKeyManifest struct {
+	Purpose string                   `json:"purpose"`
+	Key     NetworkDirectKeyManifest `json:"key_manifest"`
+	Digest  string                   `json:"digest"`
+}
+
+type OwnerNetworkCollaborationKeyGrant struct {
+	Purpose        string `json:"purpose"`
+	NetworkID      string `json:"network_id"`
+	EndpointID     string `json:"endpoint_id"`
+	OwnerID        string `json:"owner_id"`
+	OwnerKeyID     string `json:"owner_key_id"`
+	ManifestDigest string `json:"manifest_digest"`
+	ProofDigest    string `json:"proof_digest"`
+	Nonce          string `json:"nonce"`
+	State          string `json:"state"`
+	Revision       int64  `json:"revision"`
+	AcceptedAt     string `json:"accepted_at"`
 }
 
 // CanonicalDigest is shared by Hub persistence and the Node command's peer
@@ -182,6 +206,58 @@ CREATE INDEX IF NOT EXISTS network_direct_message_routes_v2_sender_idx
 	return nil
 }
 
+func (s *Store) initializeNetworkCollaborationKeySchema() error {
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS network_collaboration_key_grants_v2 (
+  purpose TEXT NOT NULL CHECK(purpose IN ('TASK','BROADCAST')),
+  network_id TEXT NOT NULL, endpoint_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+  owner_key_id TEXT NOT NULL, manifest_digest TEXT NOT NULL, proof_digest TEXT NOT NULL,
+  proof BLOB NOT NULL, nonce TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL CHECK(state IN ('active','revoked')),
+  revision INTEGER NOT NULL CHECK(revision>0), accepted_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  PRIMARY KEY(purpose,network_id,endpoint_id),
+  FOREIGN KEY(network_id,endpoint_id) REFERENCES network_direct_key_candidates_v2(network_id,endpoint_id)
+);
+CREATE INDEX IF NOT EXISTS network_collaboration_key_grants_v2_endpoint_idx
+  ON network_collaboration_key_grants_v2(network_id,endpoint_id,purpose,state);
+CREATE TABLE IF NOT EXISTS network_collaboration_key_grant_nonces_v2 (
+  nonce TEXT PRIMARY KEY, purpose TEXT NOT NULL, network_id TEXT NOT NULL,
+  endpoint_id TEXT NOT NULL, proof_digest TEXT NOT NULL, accepted_at TEXT NOT NULL
+);`); err != nil {
+		return fmt.Errorf("initialize Network collaboration key grants: %w", err)
+	}
+	rows, err := s.db.Query(`PRAGMA table_info(network_direct_message_routes_v2)`)
+	if err != nil {
+		return err
+	}
+	hasPurpose := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "key_purpose" {
+			hasPurpose = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !hasPurpose {
+		if _, err := s.db.Exec(`ALTER TABLE network_direct_message_routes_v2
+ADD COLUMN key_purpose TEXT NOT NULL DEFAULT 'DIRECT'`); err != nil {
+			return fmt.Errorf("add Network route key purpose: %w", err)
+		}
+	}
+	return nil
+}
+
 func readNetworkDirectNativeBindingTx(tx *sql.Tx, endpointID string) (*NetworkDirectNativeBinding, error) {
 	var binding NetworkDirectNativeBinding
 	err := tx.QueryRow(`SELECT id,endpoint_id,principal_id,node_id,native_session_id,epoch,status,last_group_lease_owner
@@ -201,6 +277,17 @@ func networkGuardDirectAccessTx(tx *sql.Tx, scope NetworkAccessScope, at time.Ti
 	return networkGuardAccessTx(tx, scope, "direct.receive", at)
 }
 
+func networkGuardNetworkKeyAccessTx(tx *sql.Tx, scope NetworkAccessScope, at time.Time) error {
+	for _, action := range []string{"direct.send", "direct.receive",
+		"task.offer.publish", "task.offer.list", "task.offer.claim", "task.offer.result", "task.offer.accept",
+		"broadcast.publish", "broadcast.receive"} {
+		if err := networkGuardAccessTx(tx, scope, action, at); err == nil {
+			return nil
+		}
+	}
+	return ErrNetworkPermission
+}
+
 // EnsureNetworkDirectNativeBinding registers a real native destination after
 // rechecking the current access session, owner-bound Node and enrollment in
 // this transaction. It does not grant a second writer to the Node process.
@@ -212,7 +299,7 @@ func (s *Store) EnsureNetworkDirectNativeBinding(scope NetworkAccessScope) (*Net
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := networkGuardDirectAccessTx(tx, scope, time.Now().UTC()); err != nil {
+	if err := networkGuardNetworkKeyAccessTx(tx, scope, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	var principalID, nodeID, nativeID string
@@ -283,7 +370,7 @@ func (s *Store) RegisterNetworkDirectKeyCandidate(scope NetworkAccessScope, proo
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := networkGuardDirectAccessTx(tx, scope, time.Now().UTC()); err != nil {
+	if err := networkGuardNetworkKeyAccessTx(tx, scope, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	binding, err := readNetworkDirectNativeBindingTx(tx, scope.EndpointID)
@@ -354,6 +441,18 @@ attestation=?,version=?,updated_at=? WHERE network_id=? AND endpoint_id=?`, bind
 
 func readNetworkDirectKeyManifestTx(tx *sql.Tx, ownerID, networkID, endpointID string,
 	at time.Time) (*NetworkDirectKeyManifest, error) {
+	manifest, grants, err := readNetworkKeyManifestBaseTx(tx, ownerID, networkID, endpointID, at)
+	if err != nil {
+		return nil, err
+	}
+	if !containsNetworkDirectGrant(grants) {
+		return nil, ErrNetworkPermission
+	}
+	return manifest, nil
+}
+
+func readNetworkKeyManifestBaseTx(tx *sql.Tx, ownerID, networkID, endpointID string,
+	at time.Time) (*NetworkDirectKeyManifest, []string, error) {
 	var manifest NetworkDirectKeyManifest
 	manifest.Version, manifest.NetworkID, manifest.EndpointID = 1, networkID, endpointID
 	var networkState, endpointStatus, principalStatus, memberStatus, enrollmentStatus, memberExpiry string
@@ -372,28 +471,25 @@ WHERE n.id=?`, endpointID, networkID).Scan(&manifest.HubID, &networkState,
 	if err != nil || manifest.OwnerID != ownerID || networkState != NetworkStateActive ||
 		endpointStatus == "left" || principalStatus != PrincipalStatusActive ||
 		memberStatus != "active" || enrollmentStatus != "active" {
-		return nil, ErrNetworkDirectKeyUnavailable
+		return nil, nil, ErrNetworkDirectKeyUnavailable
 	}
 	if memberExpiry != "" {
 		deadline, err := time.Parse(time.RFC3339Nano, memberExpiry)
 		if err != nil || !deadline.After(at) {
-			return nil, ErrNetworkDirectKeyUnavailable
+			return nil, nil, ErrNetworkDirectKeyUnavailable
 		}
 	}
 	if err := requireCurrentOwnerBoundGroupNodeTx(tx, manifest.NodeID, ownerID, manifest.HubID); err != nil {
-		return nil, ErrNetworkDirectKeyUnavailable
+		return nil, nil, ErrNetworkDirectKeyUnavailable
 	}
 	var grants []string
 	if err := json.Unmarshal([]byte(grantsJSON), &grants); err != nil {
-		return nil, ErrNetworkDirectKeyUnavailable
-	}
-	if !containsNetworkDirectGrant(grants) {
-		return nil, ErrNetworkPermission
+		return nil, nil, ErrNetworkDirectKeyUnavailable
 	}
 	binding, err := readNetworkDirectNativeBindingTx(tx, endpointID)
 	if err != nil || binding.Status != "active" || binding.PrincipalID != manifest.PrincipalID ||
 		binding.NodeID != manifest.NodeID || binding.NativeSessionID != manifest.NativeSessionID {
-		return nil, ErrNetworkDirectKeyUnavailable
+		return nil, nil, ErrNetworkDirectKeyUnavailable
 	}
 	manifest.BindingID, manifest.BindingEpoch = binding.ID, binding.Epoch
 	manifest.NativeSessionDigest = e2ee.NetworkDirectNativeSessionDigest(manifest.NativeSessionID)
@@ -401,14 +497,56 @@ WHERE n.id=?`, endpointID, networkID).Scan(&manifest.HubID, &networkState,
 	if err != nil || candidate.OwnerID != ownerID || candidate.PrincipalID != manifest.PrincipalID ||
 		candidate.NodeID != manifest.NodeID || candidate.BindingID != binding.ID ||
 		candidate.BindingEpoch != binding.Epoch {
-		return nil, ErrNetworkDirectKeyUnavailable
+		return nil, nil, ErrNetworkDirectKeyUnavailable
 	}
 	manifest.Candidate = *candidate
 	manifest.Digest, err = manifest.CanonicalDigest()
 	if err != nil {
+		return nil, nil, err
+	}
+	return &manifest, grants, nil
+}
+
+func collaborationPurposeValid(purpose string) bool {
+	return purpose == e2ee.NetworkCollaborationPurposeTask ||
+		purpose == e2ee.NetworkCollaborationPurposeBroadcast
+}
+
+func containsNetworkCollaborationKeyGrant(grants []string, purpose string) bool {
+	for _, grant := range grants {
+		if purpose == e2ee.NetworkCollaborationPurposeTask && strings.HasPrefix(grant, "task.offer.") {
+			return true
+		}
+		if purpose == e2ee.NetworkCollaborationPurposeBroadcast &&
+			(grant == "broadcast.publish" || grant == "broadcast.receive") {
+			return true
+		}
+	}
+	return false
+}
+
+func collaborationManifest(purpose string, key NetworkDirectKeyManifest) (*NetworkCollaborationKeyManifest, error) {
+	claims, err := key.CanonicalClaims()
+	if err != nil {
 		return nil, err
 	}
-	return &manifest, nil
+	return &NetworkCollaborationKeyManifest{Purpose: purpose, Key: key,
+		Digest: e2ee.NetworkCollaborationManifestDigest(purpose, claims)}, nil
+}
+
+func readNetworkCollaborationKeyManifestTx(tx *sql.Tx, ownerID, networkID, endpointID,
+	purpose string, at time.Time) (*NetworkCollaborationKeyManifest, error) {
+	if !collaborationPurposeValid(purpose) {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	key, grants, err := readNetworkKeyManifestBaseTx(tx, ownerID, networkID, endpointID, at)
+	if err != nil {
+		return nil, err
+	}
+	if !containsNetworkCollaborationKeyGrant(grants, purpose) {
+		return nil, ErrNetworkPermission
+	}
+	return collaborationManifest(purpose, *key)
 }
 
 func containsNetworkDirectGrant(grants []string) bool {
@@ -433,6 +571,32 @@ func (s *Store) PreviewNetworkDirectKeyGrant(ownerID, networkID, endpointID, own
 		return nil, ErrNetworkDirectKeyUnavailable
 	}
 	manifest, err := readNetworkDirectKeyManifestTx(tx, ownerID, networkID, endpointID, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return manifest, nil
+}
+
+func (s *Store) PreviewNetworkCollaborationKeyGrant(ownerID, networkID, endpointID,
+	purpose, ownerKeyID string) (*NetworkCollaborationKeyManifest, error) {
+	if !collaborationPurposeValid(purpose) {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var state string
+	if err := tx.QueryRow(`SELECT state FROM owner_approval_keys_v2 WHERE owner_id=? AND key_id=?`, ownerID, ownerKeyID).Scan(&state); err != nil || state != OwnerApprovalKeyActive {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	manifest, err := readNetworkCollaborationKeyManifestTx(tx, ownerID, networkID, endpointID, purpose, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -581,6 +745,213 @@ func (s *Store) GetNetworkDirectKeyGrant(ownerID, networkID, endpointID string) 
 			grant.State = "stale"
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func readOwnerNetworkCollaborationKeyGrantTx(tx *sql.Tx, purpose, networkID,
+	endpointID string) (*OwnerNetworkCollaborationKeyGrant, []byte, error) {
+	var grant OwnerNetworkCollaborationKeyGrant
+	var proof []byte
+	err := tx.QueryRow(`SELECT purpose,network_id,endpoint_id,owner_id,owner_key_id,
+manifest_digest,proof_digest,proof,nonce,state,revision,accepted_at
+FROM network_collaboration_key_grants_v2 WHERE purpose=? AND network_id=? AND endpoint_id=?`,
+		purpose, networkID, endpointID).Scan(&grant.Purpose, &grant.NetworkID,
+		&grant.EndpointID, &grant.OwnerID, &grant.OwnerKeyID, &grant.ManifestDigest,
+		&grant.ProofDigest, &proof, &grant.Nonce, &grant.State, &grant.Revision, &grant.AcceptedAt)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &grant, proof, nil
+}
+
+func (s *Store) AcceptNetworkCollaborationKeyGrant(authenticatedOwnerID,
+	networkID, endpointID, purpose string, proof []byte) (*OwnerNetworkCollaborationKeyGrant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	grant, err := acceptNetworkCollaborationKeyGrantTx(tx, authenticatedOwnerID,
+		networkID, endpointID, purpose, proof, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func acceptNetworkCollaborationKeyGrantTx(tx *sql.Tx, ownerID, networkID,
+	endpointID, purpose string, proof []byte, at time.Time) (*OwnerNetworkCollaborationKeyGrant, error) {
+	if !collaborationPurposeValid(purpose) || len(proof) == 0 || len(proof) > 32*1024 || at.IsZero() {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	manifest, err := readNetworkCollaborationKeyManifestTx(tx, ownerID, networkID, endpointID, purpose, at)
+	if err != nil {
+		return nil, err
+	}
+	var proposed e2ee.OwnerNetworkCollaborationKeyGrant
+	if err := json.Unmarshal(proof, &proposed); err != nil || proposed.Purpose != purpose {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	var state, publicJSON string
+	if err := tx.QueryRow(`SELECT state,public_identity_json FROM owner_approval_keys_v2
+WHERE owner_id=? AND key_id=?`, ownerID, proposed.OwnerKeyID).Scan(&state, &publicJSON); err != nil || state != OwnerApprovalKeyActive {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	var public e2ee.PublicIdentity
+	if err := json.Unmarshal([]byte(publicJSON), &public); err != nil {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	expected := e2ee.OwnerNetworkCollaborationKeyGrant{Purpose: purpose,
+		HubID: manifest.Key.HubID, NetworkID: networkID, EndpointID: endpointID,
+		OwnerID: ownerID, ManifestDigest: manifest.Digest}
+	verified, err := e2ee.VerifyOwnerNetworkCollaborationKeyGrant(proof, public, expected, at)
+	if err != nil {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	hash := sha256.Sum256(proof)
+	proofDigest := hex.EncodeToString(hash[:])
+	var oldPurpose, oldNetwork, oldEndpoint, oldDigest string
+	err = tx.QueryRow(`SELECT purpose,network_id,endpoint_id,proof_digest
+FROM network_collaboration_key_grant_nonces_v2 WHERE nonce=?`, verified.Nonce).Scan(
+		&oldPurpose, &oldNetwork, &oldEndpoint, &oldDigest)
+	if err == nil && (oldPurpose != purpose || oldNetwork != networkID ||
+		oldEndpoint != endpointID || oldDigest != proofDigest) {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	current, _, err := readOwnerNetworkCollaborationKeyGrantTx(tx, purpose, networkID, endpointID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if oldNetwork != "" {
+		if current == nil || current.ProofDigest != proofDigest || current.State != "active" {
+			return nil, ErrNetworkDirectKeyUnavailable
+		}
+		return current, nil
+	}
+	stamp := at.UTC().Format(time.RFC3339Nano)
+	if _, err := tx.Exec(`INSERT INTO network_collaboration_key_grant_nonces_v2
+(nonce,purpose,network_id,endpoint_id,proof_digest,accepted_at) VALUES(?,?,?,?,?,?)`,
+		verified.Nonce, purpose, networkID, endpointID, proofDigest, stamp); err != nil {
+		return nil, err
+	}
+	revision := int64(1)
+	if current == nil {
+		_, err = tx.Exec(`INSERT INTO network_collaboration_key_grants_v2
+(purpose,network_id,endpoint_id,owner_id,owner_key_id,manifest_digest,proof_digest,proof,nonce,state,revision,accepted_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,'active',1,?,?)`, purpose, networkID, endpointID, ownerID,
+			verified.OwnerKeyID, manifest.Digest, proofDigest, proof, verified.Nonce, stamp, stamp)
+	} else {
+		revision = current.Revision + 1
+		_, err = tx.Exec(`UPDATE network_collaboration_key_grants_v2 SET owner_id=?,owner_key_id=?,
+manifest_digest=?,proof_digest=?,proof=?,nonce=?,state='active',revision=?,accepted_at=?,updated_at=?
+WHERE purpose=? AND network_id=? AND endpoint_id=?`, ownerID, verified.OwnerKeyID,
+			manifest.Digest, proofDigest, proof, verified.Nonce, revision, stamp, stamp,
+			purpose, networkID, endpointID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &OwnerNetworkCollaborationKeyGrant{Purpose: purpose, NetworkID: networkID,
+		EndpointID: endpointID, OwnerID: ownerID, OwnerKeyID: verified.OwnerKeyID,
+		ManifestDigest: manifest.Digest, ProofDigest: proofDigest, Nonce: verified.Nonce,
+		State: "active", Revision: revision, AcceptedAt: stamp}, nil
+}
+
+func (s *Store) GetNetworkCollaborationKeyGrant(ownerID, networkID,
+	endpointID, purpose string) (*OwnerNetworkCollaborationKeyGrant, error) {
+	if !collaborationPurposeValid(purpose) {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	grant, _, err := readOwnerNetworkCollaborationKeyGrantTx(tx, purpose, networkID, endpointID)
+	if err != nil || grant.OwnerID != ownerID {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	manifest, err := readNetworkCollaborationKeyManifestTx(tx, ownerID, networkID, endpointID, purpose, time.Now().UTC())
+	if err != nil || manifest.Digest != grant.ManifestDigest {
+		grant.State = "stale"
+	} else {
+		var keyState string
+		if err := tx.QueryRow(`SELECT state FROM owner_approval_keys_v2 WHERE owner_id=? AND key_id=?`,
+			ownerID, grant.OwnerKeyID).Scan(&keyState); err != nil || keyState != OwnerApprovalKeyActive {
+			grant.State = "stale"
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+// RevokeNetworkCollaborationKeyGrant records an exact Owner revocation without
+// deleting the accepted proof or nonce history. Existing routes retain their
+// saved revision and therefore stay denied even if the Owner later approves a
+// fresh grant for the same Endpoint.
+func (s *Store) RevokeNetworkCollaborationKeyGrant(ownerID, networkID,
+	endpointID, purpose string, expectedRevision int64) (*OwnerNetworkCollaborationKeyGrant, error) {
+	if !collaborationPurposeValid(purpose) || ownerID == "" || networkID == "" ||
+		endpointID == "" || expectedRevision <= 0 {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var endpointOwner string
+	if err := tx.QueryRow(`SELECT owner FROM fabric_endpoints WHERE id=?`, endpointID).Scan(&endpointOwner); err != nil || endpointOwner != ownerID {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	grant, _, err := readOwnerNetworkCollaborationKeyGrantTx(tx, purpose, networkID, endpointID)
+	if err != nil || grant.OwnerID != ownerID {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	if grant.State == "revoked" && (grant.Revision == expectedRevision || grant.Revision == expectedRevision+1) {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return grant, nil
+	}
+	if grant.State != "active" || grant.Revision != expectedRevision {
+		return nil, ErrNetworkConflict
+	}
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	updated, err := tx.Exec(`UPDATE network_collaboration_key_grants_v2
+SET state='revoked',revision=revision+1,updated_at=?
+WHERE purpose=? AND network_id=? AND endpoint_id=? AND owner_id=?
+AND state='active' AND revision=?`, stamp, purpose, networkID, endpointID,
+		ownerID, expectedRevision)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := updated.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if changed != 1 {
+		return nil, ErrNetworkConflict
+	}
+	grant.State = "revoked"
+	grant.Revision++
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}

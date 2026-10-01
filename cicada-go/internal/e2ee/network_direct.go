@@ -250,6 +250,7 @@ type NetworkDirectContext struct {
 	Kind                       string `json:"kind"`
 	RequestID                  string `json:"request_id,omitempty"`
 	ReplyTo                    string `json:"reply_to,omitempty"`
+	ParentRequestID            string `json:"parent_request_id,omitempty"`
 	SenderEndpointID           string `json:"sender_endpoint_id"`
 	SenderPrincipalID          string `json:"sender_principal_id"`
 	SenderOwnerID              string `json:"sender_owner_id"`
@@ -275,7 +276,7 @@ func (context NetworkDirectContext) validate() error {
 			return ErrInvalidEnvelope
 		}
 	}
-	for _, value := range []string{context.RequestID, context.ReplyTo} {
+	for _, value := range []string{context.RequestID, context.ReplyTo, context.ParentRequestID} {
 		if !canonicalEndpointToken(value, false) {
 			return ErrInvalidEnvelope
 		}
@@ -288,7 +289,7 @@ func (context NetworkDirectContext) validate() error {
 	}
 	switch context.Kind {
 	case "SEND":
-		if context.RequestID != "" || context.ReplyTo != "" {
+		if context.RequestID != "" || context.ReplyTo != "" || context.ParentRequestID != "" {
 			return ErrInvalidEnvelope
 		}
 	case "REQUEST":

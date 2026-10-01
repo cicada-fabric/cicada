@@ -14,6 +14,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientcontract"
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -169,6 +170,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			SourceEndpointID string   `json:"source_endpoint_id"`
 			SourceGroupID    string   `json:"source_group_id"`
 			HubID            string   `json:"hub_id"`
+			Direction        string   `json:"direction,omitempty"`
 			Actions          []string `json:"actions,omitempty"`
 			DataScopes       []string `json:"data_scopes"`
 			ExpiresAt        string   `json:"expires_at"`
@@ -179,7 +181,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		}
 		return h.control.CreateClientExternalThreadInvite(ownerID, store.ExternalThreadInviteInput{
 			SourceEndpointID: input.SourceEndpointID, SourceGroupID: input.SourceGroupID,
-			HubID: input.HubID, Actions: input.Actions, DataScopes: input.DataScopes,
+			HubID: input.HubID, Direction: input.Direction, Actions: input.Actions, DataScopes: input.DataScopes,
 			ExpiresAt: input.ExpiresAt,
 		})
 	case "link.invite_preview":
@@ -273,6 +275,42 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		}
 		return h.control.ClientRecordCommunicationLinkKeyGrant(ownerID,
 			input.LinkID, input.Side, input.OwnerKeyID, input.SignedProof)
+	case "link.review_policy_preview":
+		var input struct {
+			LinkID string                              `json:"link_id"`
+			Policy store.CommunicationLinkReviewPolicy `json:"policy"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.LinkID == "" {
+			return nil, errors.New("invalid Communication Link review-policy preview")
+		}
+		return h.control.ClientPreviewCommunicationLinkReviewPolicy(ownerID, input.LinkID, input.Policy)
+	case "link.review_policy_grant":
+		var input struct {
+			LinkID                string                              `json:"link_id"`
+			OwnerKeyID            string                              `json:"owner_key_id"`
+			ExpectedPolicyVersion int64                               `json:"expected_policy_version"`
+			Policy                store.CommunicationLinkReviewPolicy `json:"policy"`
+			SignedProof           []byte                              `json:"signed_proof"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.LinkID == "" || input.OwnerKeyID == "" || input.ExpectedPolicyVersion <= 0 || len(input.SignedProof) == 0 {
+			return nil, errors.New("invalid Communication Link review-policy Owner grant")
+		}
+		var proof e2ee.OwnerLinkReviewPolicyProof
+		if err := json.Unmarshal(input.SignedProof, &proof); err != nil || proof.OwnerID != ownerID || proof.LinkID != input.LinkID ||
+			proof.PolicyVersion != uint64(input.ExpectedPolicyVersion) {
+			return nil, errors.New("review-policy proof does not match the authenticated Owner and requested version")
+		}
+		return h.control.ClientRecordCommunicationLinkReviewPolicy(ownerID, input.LinkID,
+			string(proof.Side), input.OwnerKeyID, input.ExpectedPolicyVersion, input.Policy, input.SignedProof)
+	case "link.review_policy_status":
+		var input struct {
+			LinkID string `json:"link_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.LinkID == "" {
+			return nil, errors.New("invalid Communication Link review-policy status request")
+		}
+		return h.control.ClientCommunicationLinkReviewPolicy(ownerID, input.LinkID)
 	case "group.key_manifest":
 		var input struct {
 			GroupID    string `json:"group_id"`
@@ -351,6 +389,47 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid Network Endpoint key status request")
 		}
 		return h.control.ClientNetworkDirectKeyGrantStatus(ownerID, input.NetworkID, input.EndpointID)
+	case "network.collaboration_key_manifest":
+		var input struct {
+			NetworkID  string `json:"network_id"`
+			EndpointID string `json:"endpoint_id"`
+			Purpose    string `json:"purpose"`
+			OwnerKeyID string `json:"owner_key_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" || input.OwnerKeyID == "" ||
+			(input.Purpose != e2ee.NetworkCollaborationPurposeTask && input.Purpose != e2ee.NetworkCollaborationPurposeBroadcast) {
+			return nil, errors.New("invalid Network collaboration key manifest request")
+		}
+		return h.control.ClientPreviewNetworkCollaborationKeyGrant(ownerID, input.NetworkID,
+			input.EndpointID, input.Purpose, input.OwnerKeyID)
+	case "network.collaboration_key_grant":
+		var input struct {
+			NetworkID   string `json:"network_id"`
+			EndpointID  string `json:"endpoint_id"`
+			Purpose     string `json:"purpose"`
+			SignedProof []byte `json:"signed_proof"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" || len(input.SignedProof) == 0 ||
+			(input.Purpose != e2ee.NetworkCollaborationPurposeTask && input.Purpose != e2ee.NetworkCollaborationPurposeBroadcast) {
+			return nil, errors.New("invalid Network collaboration key grant")
+		}
+		return h.control.ClientAcceptNetworkCollaborationKeyGrant(ownerID, clientRequestID,
+			input.NetworkID, input.EndpointID, input.Purpose, input.SignedProof)
+	case "network.collaboration_key_status":
+		var input struct {
+			NetworkID  string `json:"network_id"`
+			EndpointID string `json:"endpoint_id"`
+			Purpose    string `json:"purpose"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.NetworkID == "" || input.EndpointID == "" ||
+			(input.Purpose != e2ee.NetworkCollaborationPurposeTask && input.Purpose != e2ee.NetworkCollaborationPurposeBroadcast) {
+			return nil, errors.New("invalid Network collaboration key grant status request")
+		}
+		return h.control.ClientNetworkCollaborationKeyGrantStatus(ownerID,
+			input.NetworkID, input.EndpointID, input.Purpose)
 	case "nodes.preview":
 		var input struct {
 			UserCode string `json:"user_code"`
@@ -358,15 +437,19 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.UserCode == "" {
 			return nil, errors.New("invalid Node device code preview")
 		}
-		return h.control.PreviewNodeDeviceCode(ownerID, callerDeviceID, input.UserCode)
+		return h.control.PreviewNodeControlDeviceCode(ownerID, callerDeviceID, input.UserCode)
 	case "nodes.confirm":
 		var input struct {
-			UserCode string `json:"user_code"`
+			UserCode         string `json:"user_code"`
+			CandidateDigest  string `json:"candidate_digest"`
+			CandidateVersion int64  `json:"candidate_version"`
 		}
-		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.UserCode == "" {
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
+			input.UserCode == "" || input.CandidateDigest == "" || input.CandidateVersion <= 0 {
 			return nil, errors.New("invalid Node device code confirmation")
 		}
-		return h.control.ConfirmNodeDeviceCode(ownerID, callerDeviceID, input.UserCode)
+		return h.control.ConfirmNodeControlDeviceCode(ownerID, callerDeviceID, input.UserCode,
+			input.CandidateDigest, input.CandidateVersion)
 	case "nodes.list":
 		var input struct{}
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
@@ -443,6 +526,37 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			return nil, errors.New("invalid topology change request")
 		}
 		return h.control.ApplyClientTopologyChangeForClientRequest(ownerID, clientRequestID, input)
+	case "topology.endpoint_admission_preview":
+		var input struct {
+			NetworkID  string `json:"network_id"`
+			GroupID    string `json:"group_id"`
+			EndpointID string `json:"endpoint_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.NetworkID == "" || input.GroupID == "" || input.EndpointID == "" {
+			return nil, errors.New("invalid same-Owner Endpoint admission preview")
+		}
+		return h.control.PreviewClientTopologyEndpointAdmissionForClientRequest(clientRequestID,
+			ownerID, input.NetworkID, input.GroupID, input.EndpointID)
+	case "network.directory":
+		var input struct {
+			NetworkID       string `json:"network_id"`
+			AfterEndpointID string `json:"after_endpoint_id,omitempty"`
+			Limit           *int   `json:"limit,omitempty"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil ||
+			input.NetworkID == "" || len(input.AfterEndpointID) > 256 {
+			return nil, errors.New("invalid opted-in Network directory request")
+		}
+		limit := 64
+		if input.Limit != nil {
+			limit = *input.Limit
+		}
+		if limit < 1 || limit > 64 {
+			return nil, errors.New("Network directory page limit must be between 1 and 64")
+		}
+		return h.control.ListClientOwnerNetworkEndpointCardsForRequest(clientRequestID,
+			ownerID, input.NetworkID, input.AfterEndpointID, limit)
 	case "space.foreign_member_admit":
 		var input struct {
 			GroupID                    string   `json:"group_id"`
@@ -461,6 +575,15 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		return h.control.AdmitCrossOwnerGroupMemberForClientRequest(clientRequestID, ownerID,
 			input.GroupID, input.EndpointID, input.Grants, input.ExpiresAt,
 			input.ExpectedGroupRevision, *input.ExpectedMembershipRevision)
+	case "space.foreign_endpoint_preview":
+		var input struct {
+			AdmissionID string `json:"admission_id"`
+		}
+		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 4096, &input); err != nil || input.AdmissionID == "" {
+			return nil, errors.New("invalid exact cross-Owner Endpoint admission preview")
+		}
+		return h.control.PreviewCrossOwnerGroupPreconsentForClientRequest(clientRequestID,
+			ownerID, input.AdmissionID)
 	case "space.foreign_endpoint_join":
 		var input struct {
 			AdmissionID                   string `json:"admission_id"`

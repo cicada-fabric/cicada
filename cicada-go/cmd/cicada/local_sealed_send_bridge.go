@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
@@ -115,6 +114,12 @@ func requestMachineAgentSealedSend(socketPath string, request localSealedSendReq
 
 // netDialLocalBridge is a small seam for the socket protocol tests.
 var netDialLocalBridge = func(path string) (localBridgeConn, error) {
+	if err := validateMachineAgentJoinSocketForDial(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOENT) {
+			return nil, errLocalJoinBridgeUnavailable
+		}
+		return nil, errors.New("local Node socket path is not trusted")
+	}
 	connection, err := net.DialTimeout("unix", path, 2*time.Second)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
@@ -189,50 +194,37 @@ func (b *machineAgentJoinBridge) sealedSend(request localSealedSendRequest) (*lo
 		return nil, errors.New("the selected Communication Link is not available")
 	}
 	manifest := bundle.Manifest
-	if manifest.Source.EndpointID != request.EndpointID || manifest.Source.GroupID != request.GroupID ||
-		manifest.Source.PrincipalID != request.PrincipalID || manifest.Source.OwnerID != request.OwnerID ||
-		manifest.Source.NodeID != b.nodeID || manifest.Source.BindingID != request.BindingID ||
-		manifest.Source.BindingEpoch != request.BindingEpoch || manifest.Source.KeyID != identity.Public().ID {
-		return nil, errors.New("current native session does not match the selected Link source binding")
-	}
-	if manifest.Target.EndpointID == "" || manifest.Target.EndpointID == request.EndpointID ||
-		manifest.Target.GroupID == request.GroupID || manifest.LinkID != request.LinkID {
-		return nil, errors.New("selected Communication Link has an invalid single-recipient route")
-	}
 	contract, err := parseLocalLinkContract(manifest.ContractCanonical)
-	if err != nil || contract.LinkID != request.LinkID || contract.SourceEndpointID != request.EndpointID ||
+	if err != nil || contract.LinkID != request.LinkID || contract.SourceEndpointID != manifest.Source.EndpointID ||
 		contract.TargetEndpointID != manifest.Target.EndpointID || contract.TransportHubID == "" ||
 		!containsLocalString(contract.Actions, "send") || !containsLocalString(contract.DataScopes, request.DataScope) {
 		return nil, errors.New("selected Communication Link does not authorize this SEND scope")
 	}
-	local := nodekeys.PeerPinLocalEndpoint{
-		EndpointID: request.EndpointID, GroupID: request.GroupID, PrincipalID: request.PrincipalID,
-		OwnerID: request.OwnerID, NodeID: b.nodeID, BindingID: request.BindingID,
-		BindingEpoch: request.BindingEpoch, KeyID: identity.Public().ID, Public: identity.Public(),
+	localSide, peerSide, reverse, ok := localLinkSidesForEndpoint(manifest, request.EndpointID)
+	if !ok || (reverse && contract.Direction != "bidirectional") ||
+		!localManifestSideMatchesRequest(localSide, localSealedRPCRequest{
+			EndpointID: request.EndpointID, OwnerID: request.OwnerID, PrincipalID: request.PrincipalID,
+			GroupID: request.GroupID, BindingID: request.BindingID, BindingEpoch: request.BindingEpoch,
+		}, b.nodeID) || localSide.KeyID != identity.Public().ID ||
+		!sameLocalPublicIdentity(localSide.PublicIdentity, identity.Public()) ||
+		!localCardMatchesLinkSide(card, localSide, localSealedRPCRequest{
+			EndpointID: request.EndpointID, PrincipalID: request.PrincipalID, GroupID: request.GroupID,
+			BindingID: request.BindingID, BindingEpoch: request.BindingEpoch,
+			NativeSessionID: request.NativeSessionID, Workspace: request.Workspace,
+		}, b.nodeID) {
+		return nil, errors.New("current native session does not match an authorized Link sender binding")
 	}
-	peer := nodekeys.PeerPinIdentity{
-		EndpointID: manifest.Target.EndpointID, GroupID: manifest.Target.GroupID,
-		PrincipalID: manifest.Target.PrincipalID, OwnerID: manifest.Target.OwnerID,
+	if peerSide.EndpointID == "" || peerSide.EndpointID == request.EndpointID ||
+		peerSide.GroupID == request.GroupID || manifest.LinkID != request.LinkID {
+		return nil, errors.New("selected Communication Link has an invalid single-recipient route")
 	}
-	scope := nodekeys.PeerPinScope{
-		LocalEndpointID: request.EndpointID, LocalGroupID: request.GroupID,
-		PeerEndpointID: peer.EndpointID, PeerGroupID: peer.GroupID,
-		CommunicationLinkID: request.LinkID,
-	}
+	local, peer, scope := localSealedPinContext(manifest, identity.Public(), b.nodeID, reverse)
 	if _, err := state.PinOwnerGrantedCrossGroupPeerKey(b.ctx, scope, local, peer, bundle); err != nil {
 		return nil, fmt.Errorf("verify local trust and bilateral Link grants: %w", err)
 	}
-	route := e2ee.EndpointMessageContext{
-		MessageID: request.MessageID, Kind: "SEND",
-		SenderEndpointID: manifest.Source.EndpointID, SenderPrincipalID: manifest.Source.PrincipalID,
-		SenderOwnerID: manifest.Source.OwnerID, SenderGroupID: manifest.Source.GroupID,
-		SenderMembershipRevision: contract.ScopeSnapshot.SourceMembershipRevision,
-		SenderBindingEpoch:       manifest.Source.BindingEpoch, SenderKeyID: manifest.Source.KeyID,
-		ReceiverEndpointID: manifest.Target.EndpointID, ReceiverPrincipalID: manifest.Target.PrincipalID,
-		ReceiverOwnerID: manifest.Target.OwnerID, ReceiverGroupID: manifest.Target.GroupID,
-		ReceiverMembershipRevision: contract.ScopeSnapshot.TargetMembershipRevision,
-		ReceiverBindingEpoch:       manifest.Target.BindingEpoch, ReceiverKeyID: manifest.Target.KeyID,
-		LinkID: request.LinkID, LinkRevision: manifest.LinkVersion, TransportHubID: contract.TransportHubID,
+	route := localSealedRoute(manifest, contract, request.MessageID, "SEND", "", "", request.EndpointID, "")
+	if route.MessageID == "" {
+		return nil, errors.New("selected Communication Link does not authorize this SEND direction")
 	}
 	plaintext := []byte(request.Body)
 	operationID, err := nodekeys.EndpointMessageOperationID(route, plaintext)
@@ -410,7 +402,7 @@ func (b *machineAgentJoinBridge) httpWithAuthorization(method, path string, body
 		return nil, &localSealedSendError{message: "Hub returned an invalid Node Relay response", retryable: true}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		retryable := response.StatusCode == http.StatusRequestTimeout ||
+		retryable := response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
 			response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
 		return nil, &localSealedSendError{
 			message: fmt.Sprintf("Node Relay request failed with HTTP %d", response.StatusCode), retryable: retryable,

@@ -21,32 +21,41 @@ const networkDirectPendingSendsPerSender = 64
 // cross an Owner boundary. The receiving Node must compare OwnerPublic with
 // its own independently pinned owner-key registry before trusting the proof.
 type NetworkDirectPeerKeyEvidence struct {
-	Manifest    NetworkDirectKeyManifest   `json:"manifest"`
-	Grant       OwnerNetworkDirectKeyGrant `json:"grant"`
-	GrantProof  []byte                     `json:"grant_proof"`
-	OwnerPublic e2ee.PublicIdentity        `json:"owner_public_identity"`
+	Manifest                NetworkDirectKeyManifest           `json:"manifest"`
+	Grant                   OwnerNetworkDirectKeyGrant         `json:"grant"`
+	GrantProof              []byte                             `json:"grant_proof"`
+	CollaborationManifest   *NetworkCollaborationKeyManifest   `json:"collaboration_manifest,omitempty"`
+	CollaborationGrant      *OwnerNetworkCollaborationKeyGrant `json:"collaboration_grant,omitempty"`
+	CollaborationGrantProof []byte                             `json:"collaboration_grant_proof,omitempty"`
+	OwnerPublic             e2ee.PublicIdentity                `json:"owner_public_identity"`
 }
 
 type NetworkDirectPeerBundle struct {
-	HubID     string                       `json:"hub_id"`
-	NetworkID string                       `json:"network_id"`
-	Sender    NetworkDirectPeerKeyEvidence `json:"sender"`
-	Receiver  NetworkDirectPeerKeyEvidence `json:"receiver"`
+	HubID              string                       `json:"hub_id"`
+	NetworkID          string                       `json:"network_id"`
+	Purpose            string                       `json:"purpose,omitempty"`
+	NativeContextScope NativeContextScopeMetadata   `json:"native_context_scope"`
+	Sender             NetworkDirectPeerKeyEvidence `json:"sender"`
+	Receiver           NetworkDirectPeerKeyEvidence `json:"receiver"`
 }
 
 // NetworkDirectDeliveryAuthorization is returned only for an exact claimed
 // attempt after current Node, enrollment, key and native route checks.
 type NetworkDirectDeliveryAuthorization struct {
-	NetworkID       string                    `json:"network_id"`
-	EndpointID      string                    `json:"endpoint_id"`
-	NativeSessionID string                    `json:"native_session_id"`
-	BindingID       string                    `json:"binding_id"`
-	BindingEpoch    uint64                    `json:"binding_epoch"`
-	MessageID       string                    `json:"message_id"`
-	AttemptID       string                    `json:"attempt_id"`
-	Digest          string                    `json:"digest"`
-	Context         e2ee.NetworkDirectContext `json:"context"`
-	Bundle          NetworkDirectPeerBundle   `json:"bundle"`
+	NetworkID            string                                   `json:"network_id"`
+	NativeContextScope   NativeContextScopeMetadata               `json:"native_context_scope"`
+	EndpointID           string                                   `json:"endpoint_id"`
+	NativeSessionID      string                                   `json:"native_session_id"`
+	BindingID            string                                   `json:"binding_id"`
+	BindingEpoch         uint64                                   `json:"binding_epoch"`
+	MessageID            string                                   `json:"message_id"`
+	AttemptID            string                                   `json:"attempt_id"`
+	Digest               string                                   `json:"digest"`
+	Context              e2ee.NetworkDirectContext                `json:"context"`
+	CollaborationContext *e2ee.NetworkCollaborationMessageContext `json:"collaboration_context,omitempty"`
+	Bundle               NetworkDirectPeerBundle                  `json:"bundle"`
+	NetworkTask          *NetworkTaskDeliveryAuthorization        `json:"network_task,omitempty"`
+	NetworkBroadcast     *NetworkBroadcastDeliveryAuthorization   `json:"network_broadcast,omitempty"`
 }
 
 func networkDirectMembershipAllowsTx(tx *sql.Tx, networkID, endpointID,
@@ -117,6 +126,50 @@ WHERE owner_id=? AND key_id=?`, ownerID, grant.OwnerKeyID).Scan(&ownerState, &pu
 		GrantProof: proof, OwnerPublic: ownerPublic}, nil
 }
 
+func readNetworkCollaborationPeerKeyEvidenceTx(tx *sql.Tx, networkID, endpointID,
+	purpose string, at time.Time) (NetworkDirectPeerKeyEvidence, error) {
+	var ownerID string
+	if err := tx.QueryRow(`SELECT owner FROM fabric_endpoints WHERE id=?`, endpointID).Scan(&ownerID); err != nil {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	manifest, err := readNetworkCollaborationKeyManifestTx(tx, ownerID, networkID, endpointID, purpose, at)
+	if err != nil {
+		return NetworkDirectPeerKeyEvidence{}, err
+	}
+	grant, proof, err := readOwnerNetworkCollaborationKeyGrantTx(tx, purpose, networkID, endpointID)
+	if err != nil || grant.State != "active" || grant.OwnerID != ownerID || grant.Purpose != purpose ||
+		grant.ManifestDigest != manifest.Digest {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	var ownerState, publicJSON string
+	if err := tx.QueryRow(`SELECT state,public_identity_json FROM owner_approval_keys_v2
+WHERE owner_id=? AND key_id=?`, ownerID, grant.OwnerKeyID).Scan(&ownerState, &publicJSON); err != nil ||
+		ownerState != OwnerApprovalKeyActive {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	var ownerPublic e2ee.PublicIdentity
+	if err := json.Unmarshal([]byte(publicJSON), &ownerPublic); err != nil {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	acceptedAt, err := time.Parse(time.RFC3339Nano, grant.AcceptedAt)
+	if err != nil {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	expected := e2ee.OwnerNetworkCollaborationKeyGrant{Purpose: purpose, HubID: manifest.Key.HubID,
+		NetworkID: networkID, EndpointID: endpointID, OwnerID: ownerID,
+		ManifestDigest: manifest.Digest}
+	verified, err := e2ee.VerifyOwnerNetworkCollaborationKeyGrant(proof, ownerPublic, expected, acceptedAt)
+	hash := sha256.Sum256(proof)
+	if err != nil || verified.Nonce != grant.Nonce || grant.ProofDigest != hex.EncodeToString(hash[:]) {
+		return NetworkDirectPeerKeyEvidence{}, ErrNetworkDirectKeyUnavailable
+	}
+	manifest.Key.NativeSessionID = ""
+	manifest.Key.Digest = ""
+	return NetworkDirectPeerKeyEvidence{Manifest: manifest.Key,
+		CollaborationManifest: manifest, CollaborationGrant: grant,
+		CollaborationGrantProof: proof, OwnerPublic: ownerPublic}, nil
+}
+
 func readNetworkDirectPeerBundleTx(tx *sql.Tx, scope NetworkAccessScope,
 	targetEndpointID string, at time.Time) (*NetworkDirectPeerBundle, error) {
 	if targetEndpointID == scope.EndpointID || targetEndpointID == "" {
@@ -142,8 +195,103 @@ func readNetworkDirectPeerBundleTx(tx *sql.Tx, scope NetworkAccessScope,
 	if receiver.Manifest.HubID != sender.Manifest.HubID {
 		return nil, ErrNetworkPermission
 	}
+	contextScope, err := readNativeContextScopeForNetworkTx(tx, scope.NetworkID)
+	if err != nil {
+		return nil, ErrNetworkPermission
+	}
 	return &NetworkDirectPeerBundle{HubID: sender.Manifest.HubID,
-		NetworkID: scope.NetworkID, Sender: sender, Receiver: receiver}, nil
+		NetworkID: scope.NetworkID, NativeContextScope: contextScope,
+		Sender: sender, Receiver: receiver}, nil
+}
+
+func collaborationRoleActions(purpose string) (senderActions, receiverActions []string) {
+	switch purpose {
+	case e2ee.NetworkCollaborationPurposeTask:
+		return []string{"task.offer.publish", "task.offer.result"},
+			[]string{"task.offer.list", "task.offer.accept"}
+	case e2ee.NetworkCollaborationPurposeBroadcast:
+		return []string{"broadcast.publish"}, []string{"broadcast.receive"}
+	default:
+		return nil, nil
+	}
+}
+
+func networkAllowsAnyActionTx(tx *sql.Tx, networkID, endpointID,
+	principalID string, actions []string, at time.Time) error {
+	for _, action := range actions {
+		if networkDirectMembershipAllowsTx(tx, networkID, endpointID, principalID, action, at) == nil {
+			return nil
+		}
+	}
+	return ErrNetworkPermission
+}
+
+func readNetworkCollaborationPeerBundleTx(tx *sql.Tx, scope NetworkAccessScope,
+	targetEndpointID, purpose string, at time.Time) (*NetworkDirectPeerBundle, error) {
+	if !collaborationPurposeValid(purpose) || targetEndpointID == "" || targetEndpointID == scope.EndpointID {
+		return nil, ErrNetworkPermission
+	}
+	senderActions, receiverActions := collaborationRoleActions(purpose)
+	if len(senderActions) == 0 {
+		return nil, ErrNetworkPermission
+	}
+	if err := networkAllowsAnyActionTx(tx, scope.NetworkID, scope.EndpointID,
+		scope.PrincipalID, senderActions, at); err != nil {
+		return nil, err
+	}
+	sender, err := readNetworkCollaborationPeerKeyEvidenceTx(tx, scope.NetworkID,
+		scope.EndpointID, purpose, at)
+	if err != nil || sender.Manifest.PrincipalID != scope.PrincipalID ||
+		sender.Manifest.MembershipRevision != scope.MembershipRevision ||
+		sender.Manifest.EndpointEnrollmentRevision != scope.EndpointMembershipRevision {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	receiver, err := readNetworkCollaborationPeerKeyEvidenceTx(tx, scope.NetworkID,
+		targetEndpointID, purpose, at)
+	if err != nil {
+		return nil, ErrNetworkDirectKeyUnavailable
+	}
+	if err := networkAllowsAnyActionTx(tx, scope.NetworkID, targetEndpointID,
+		receiver.Manifest.PrincipalID, receiverActions, at); err != nil {
+		return nil, err
+	}
+	if receiver.Manifest.HubID != sender.Manifest.HubID {
+		return nil, ErrNetworkPermission
+	}
+	contextScope, err := readNativeContextScopeForNetworkTx(tx, scope.NetworkID)
+	if err != nil {
+		return nil, ErrNetworkPermission
+	}
+	return &NetworkDirectPeerBundle{HubID: sender.Manifest.HubID,
+		NetworkID: scope.NetworkID, Purpose: purpose, NativeContextScope: contextScope,
+		Sender: sender, Receiver: receiver}, nil
+}
+
+// NetworkCollaborationPeerKey supplies purpose-specific public key consent.
+// `TASK` and `BROADCAST` evidence is separate from Direct v1 and cannot be
+// used for ordinary direct traffic.
+func (s *Store) NetworkCollaborationPeerKey(scope NetworkAccessScope,
+	targetEndpointID, purpose string) (*NetworkDirectPeerBundle, error) {
+	if !strings.HasPrefix(targetEndpointID, "ep_") || len(targetEndpointID) > 256 ||
+		!collaborationPurposeValid(purpose) {
+		return nil, ErrNetworkPermission
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	bundle, err := readNetworkCollaborationPeerBundleTx(tx, scope, targetEndpointID,
+		purpose, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return bundle, nil
 }
 
 // NetworkDirectPeerKey is an exact Endpoint lookup; nickname resolution still
@@ -172,11 +320,18 @@ func (s *Store) NetworkDirectPeerKey(scope NetworkAccessScope,
 }
 
 func networkDirectContext(bundle *NetworkDirectPeerBundle, messageID, kind,
-	requestID, replyTo string) e2ee.NetworkDirectContext {
+	requestID, replyTo string, parentRequestID ...string) e2ee.NetworkDirectContext {
 	sender, receiver := bundle.Sender.Manifest, bundle.Receiver.Manifest
+	parent := ""
+	if len(parentRequestID) == 1 {
+		parent = parentRequestID[0]
+	} else if len(parentRequestID) > 1 {
+		parent = "\x00"
+	}
 	return e2ee.NetworkDirectContext{
 		HubID: bundle.HubID, NetworkID: bundle.NetworkID,
 		MessageID: messageID, Kind: kind, RequestID: requestID, ReplyTo: replyTo,
+		ParentRequestID:  parent,
 		SenderEndpointID: sender.EndpointID, SenderPrincipalID: sender.PrincipalID,
 		SenderOwnerID: sender.OwnerID, SenderMembershipRevision: sender.MembershipRevision,
 		SenderEnrollmentRevision: sender.EndpointEnrollmentRevision,
@@ -188,11 +343,19 @@ func networkDirectContext(bundle *NetworkDirectPeerBundle, messageID, kind,
 	}
 }
 
+func networkCollaborationContext(bundle *NetworkDirectPeerBundle, messageID string) (*e2ee.NetworkCollaborationMessageContext, error) {
+	if bundle == nil || !collaborationPurposeValid(bundle.Purpose) {
+		return nil, ErrNetworkPermission
+	}
+	return &e2ee.NetworkCollaborationMessageContext{Purpose: bundle.Purpose,
+		Route: networkDirectContext(bundle, messageID, "SEND", "", "")}, nil
+}
+
 // NetworkDirectContext is the exact route builder shared by Node sealing and
 // Hub admission. The Hub still derives its own Bundle and verifies the wire.
 func NetworkDirectContext(bundle *NetworkDirectPeerBundle, messageID, kind,
-	requestID, replyTo string) e2ee.NetworkDirectContext {
-	return networkDirectContext(bundle, messageID, kind, requestID, replyTo)
+	requestID, replyTo string, parentRequestID ...string) e2ee.NetworkDirectContext {
+	return networkDirectContext(bundle, messageID, kind, requestID, replyTo, parentRequestID...)
 }
 
 type NetworkDirectSendInput struct {
@@ -206,8 +369,9 @@ type NetworkDirectSendInput struct {
 
 type NetworkDirectAskInput struct {
 	NetworkDirectSendInput
-	RequestID string
-	ExpiresAt string
+	RequestID       string
+	ParentRequestID string
+	ExpiresAt       string
 }
 
 type NetworkDirectReplyInput struct {
@@ -222,6 +386,7 @@ type NetworkDirectReplyInput struct {
 type NetworkDirectReplyRoute struct {
 	RequestID        string                   `json:"request_id"`
 	RequestMessageID string                   `json:"request_message_id"`
+	ParentRequestID  string                   `json:"parent_request_id,omitempty"`
 	Bundle           *NetworkDirectPeerBundle `json:"bundle"`
 }
 
@@ -257,6 +422,12 @@ func (s *Store) NetworkDirectReplyPeerKey(scope NetworkAccessScope,
 	if err := networkGuardDirectMessageTx(tx, request.MessageID, scope.NetworkID, at); err != nil {
 		return nil, err
 	}
+	parentRequestID, err := relayParentRequestForSealedRouteTx(tx, RelaySealedV1Route{
+		MessageID: request.MessageID, RequestID: request.RequestID, Kind: "ask",
+	})
+	if err != nil {
+		return nil, ErrNetworkPermission
+	}
 	bundle, err := readNetworkDirectPeerBundleTx(tx, scope, request.SenderEndpointID, at)
 	if err != nil || bundle.Receiver.Manifest.PrincipalID != request.SenderPrincipalID ||
 		bundle.Receiver.Manifest.BindingID != request.SenderBindingID ||
@@ -267,15 +438,21 @@ func (s *Store) NetworkDirectReplyPeerKey(scope NetworkAccessScope,
 		return nil, err
 	}
 	return &NetworkDirectReplyRoute{RequestID: requestID,
-		RequestMessageID: request.MessageID, Bundle: bundle}, nil
+		RequestMessageID: request.MessageID, ParentRequestID: parentRequestID,
+		Bundle: bundle}, nil
 }
 
 func networkDirectSourceNodeCredentialTx(tx *sql.Tx, scope NetworkAccessScope,
 	credentialDigest string) error {
+	return networkSourceNodeCredentialActionTx(tx, scope, credentialDigest, "direct.send")
+}
+
+func networkSourceNodeCredentialActionTx(tx *sql.Tx, scope NetworkAccessScope,
+	credentialDigest, action string) error {
 	if !validNodeCredentialDigest(credentialDigest) {
 		return ErrNetworkPermission
 	}
-	if err := networkGuardAccessTx(tx, scope, "direct.send", time.Now().UTC()); err != nil {
+	if err := networkGuardAccessTx(tx, scope, action, time.Now().UTC()); err != nil {
 		return err
 	}
 	var current int
@@ -310,21 +487,33 @@ func networkDirectIdempotencyKey(networkID, key string) string {
 func insertNetworkDirectRouteTx(tx *sql.Tx, bundle *NetworkDirectPeerBundle,
 	messageID string) error {
 	sender, receiver := bundle.Sender, bundle.Receiver
+	purpose := bundle.Purpose
+	senderGrantRevision, receiverGrantRevision := sender.Grant.Revision, receiver.Grant.Revision
+	if purpose != "" {
+		purpose = bundle.Purpose
+		if sender.CollaborationGrant == nil || receiver.CollaborationGrant == nil {
+			return ErrNetworkDirectKeyUnavailable
+		}
+		senderGrantRevision, receiverGrantRevision = sender.CollaborationGrant.Revision,
+			receiver.CollaborationGrant.Revision
+	} else {
+		purpose = "DIRECT"
+	}
 	_, err := tx.Exec(`INSERT INTO network_direct_message_routes_v2
 (message_id,network_id,sender_endpoint_id,sender_principal_id,receiver_endpoint_id,
 receiver_principal_id,sender_membership_revision,sender_enrollment_revision,
 receiver_membership_revision,receiver_enrollment_revision,sender_binding_id,
 sender_binding_epoch,receiver_binding_id,receiver_binding_epoch,
-sender_key_grant_revision,receiver_key_grant_revision,sender_key_id,receiver_key_id,created_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, messageID, bundle.NetworkID,
+sender_key_grant_revision,receiver_key_grant_revision,sender_key_id,receiver_key_id,created_at,key_purpose)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, messageID, bundle.NetworkID,
 		sender.Manifest.EndpointID, sender.Manifest.PrincipalID,
 		receiver.Manifest.EndpointID, receiver.Manifest.PrincipalID,
 		sender.Manifest.MembershipRevision, sender.Manifest.EndpointEnrollmentRevision,
 		receiver.Manifest.MembershipRevision, receiver.Manifest.EndpointEnrollmentRevision,
 		sender.Manifest.BindingID, sender.Manifest.BindingEpoch,
 		receiver.Manifest.BindingID, receiver.Manifest.BindingEpoch,
-		sender.Grant.Revision, receiver.Grant.Revision,
-		sender.Manifest.Candidate.Public.ID, receiver.Manifest.Candidate.Public.ID, now())
+		senderGrantRevision, receiverGrantRevision,
+		sender.Manifest.Candidate.Public.ID, receiver.Manifest.Candidate.Public.ID, now(), purpose)
 	return err
 }
 
@@ -369,6 +558,89 @@ func (s *Store) EnqueueNetworkDirectSealedSend(input NetworkDirectSendInput) (*R
 	return record, nil
 }
 
+type NetworkCollaborationSendInput struct {
+	Scope                NetworkAccessScope
+	NodeCredentialDigest string
+	Purpose              string
+	TargetEndpointID     string
+	MessageID            string
+	IdempotencyKey       string
+	Ciphertext           []byte
+}
+
+// EnqueueNetworkCollaborationSealedSend admits one purpose-bound SEND with
+// typed Owner key proofs and action grants. It uses the existing opaque Relay
+// queue but writes `key_purpose`, immutable enrollment/key revisions, and a
+// distinct sealed-envelope domain. Direct v1 authorization remains separate.
+func (s *Store) EnqueueNetworkCollaborationSealedSend(input NetworkCollaborationSendInput) (*RelaySealedV1Record, error) {
+	if !collaborationPurposeValid(input.Purpose) || input.MessageID == "" || input.TargetEndpointID == "" ||
+		len(input.Ciphertext) == 0 || len(input.Ciphertext) > 256*1024 || len(input.IdempotencyKey) > 256 {
+		return nil, ErrNetworkPermission
+	}
+	senderAction, receiverAction, err := networkCollaborationMessageActions(input.MessageID, input.Purpose)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := networkSourceNodeCredentialActionTx(tx, input.Scope,
+		input.NodeCredentialDigest, senderAction); err != nil {
+		return nil, err
+	}
+	if err := networkDirectMembershipAllowsTx(tx, input.Scope.NetworkID, input.TargetEndpointID,
+		networkTaskPrincipalTx(tx, input.TargetEndpointID), receiverAction, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	bundle, err := readNetworkCollaborationPeerBundleTx(tx, input.Scope,
+		input.TargetEndpointID, input.Purpose, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	record, reused, err := enqueueNetworkDirectPayloadTx(tx, bundle, "send", input.MessageID,
+		"", "", input.IdempotencyKey, input.Ciphertext)
+	if err != nil {
+		return nil, err
+	}
+	if !reused {
+		if err := networkDirectCheckSendQuotaTx(tx, bundle); err != nil {
+			return nil, err
+		}
+	} else if err := networkGuardCollaborationMessageTx(tx, record.Route.MessageID,
+		input.Scope.NetworkID, input.Purpose, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+func networkCollaborationMessageActions(messageID, purpose string) (string, string, error) {
+	switch purpose {
+	case e2ee.NetworkCollaborationPurposeTask:
+		taskID, suffix, reserved := networkTaskIDFromMessageID(messageID)
+		if !reserved || taskID == "" {
+			return "", "", ErrNetworkPermission
+		}
+		if strings.HasPrefix(suffix, "offer:") && len(suffix) > len("offer:") {
+			return "task.offer.publish", "task.offer.list", nil
+		}
+		if strings.HasPrefix(suffix, "result:") {
+			return "task.offer.result", "task.offer.accept", nil
+		}
+	case e2ee.NetworkCollaborationPurposeBroadcast:
+		if broadcastID, reserved := networkBroadcastIDFromMessageID(messageID); reserved && broadcastID != "" {
+			return "broadcast.publish", "broadcast.receive", nil
+		}
+	}
+	return "", "", ErrNetworkPermission
+}
+
 func networkDirectCheckSendQuotaTx(tx *sql.Tx, bundle *NetworkDirectPeerBundle) error {
 	var pending int
 	err := tx.QueryRow(`SELECT count(*) FROM (SELECT 1 FROM network_direct_message_routes_v2 route
@@ -396,15 +668,24 @@ LIMIT ?)`,
 
 func enqueueNetworkDirectPayloadTx(tx *sql.Tx, bundle *NetworkDirectPeerBundle,
 	kind, messageID, requestID, replyTo, callerIdempotencyKey string,
-	ciphertext []byte) (*RelaySealedV1Record, bool, error) {
+	ciphertext []byte, parentRequestID ...string) (*RelaySealedV1Record, bool, error) {
 	contextKind := map[string]string{"send": "SEND", "ask": "REQUEST", "reply": "REPLY"}[kind]
 	if contextKind == "" || messageID == "" || len(ciphertext) == 0 || len(ciphertext) > 256*1024 {
 		return nil, false, ErrNetworkPermission
 	}
-	context := networkDirectContext(bundle, messageID, contextKind, requestID, replyTo)
-	if err := e2ee.VerifyNetworkDirectMessage(bundle.Sender.Manifest.Candidate.Public,
-		context, ciphertext); err != nil {
-		return nil, false, ErrNetworkPermission
+	if bundle.Purpose == "" {
+		context := networkDirectContext(bundle, messageID, contextKind, requestID, replyTo, parentRequestID...)
+		if err := e2ee.VerifyNetworkDirectMessage(bundle.Sender.Manifest.Candidate.Public,
+			context, ciphertext); err != nil {
+			return nil, false, ErrNetworkPermission
+		}
+	} else {
+		context, err := networkCollaborationContext(bundle, messageID)
+		if err != nil || context.Route.Kind != contextKind || context.Route.RequestID != requestID ||
+			context.Route.ReplyTo != replyTo || e2ee.VerifyNetworkCollaborationMessage(
+			bundle.Sender.Manifest.Candidate.Public, *context, ciphertext) != nil {
+			return nil, false, ErrNetworkPermission
+		}
 	}
 	idempotencyKey := networkDirectIdempotencyKey(bundle.NetworkID, callerIdempotencyKey)
 	security := RelayMessageSecurity{MessageID: messageID,
@@ -440,8 +721,13 @@ func enqueueNetworkDirectPayloadTx(tx *sql.Tx, bundle *NetworkDirectPeerBundle,
 		if err := insertNetworkDirectRouteTx(tx, bundle, accepted.Message.ID); err != nil {
 			return nil, false, err
 		}
-	} else if err := networkGuardDirectMessageTx(tx, accepted.Message.ID,
-		bundle.NetworkID, time.Now().UTC()); err != nil {
+	} else if bundle.Purpose == "" {
+		if err := networkGuardDirectMessageTx(tx, accepted.Message.ID,
+			bundle.NetworkID, time.Now().UTC()); err != nil {
+			return nil, false, err
+		}
+	} else if err := networkGuardCollaborationMessageTx(tx, accepted.Message.ID,
+		bundle.NetworkID, bundle.Purpose, time.Now().UTC()); err != nil {
 		return nil, false, err
 	}
 	record, err := relaySealedV1RecordTx(tx, accepted.Message.ID)
@@ -482,6 +768,7 @@ func (s *Store) EnqueueNetworkDirectSealedAsk(input NetworkDirectAskInput) (*Fab
 			previous.SenderEndpointID != input.Scope.EndpointID ||
 			previous.SenderPrincipalID != input.Scope.PrincipalID ||
 			previous.ReceiverEndpointID != input.TargetEndpointID ||
+			previous.ParentRequestID != input.ParentRequestID ||
 			previous.AuthorizationRef != networkDirectAuthorizationPrefix+input.Scope.NetworkID ||
 			previous.ExpiresAt != input.ExpiresAt ||
 			previous.IdempotencyKey != networkDirectIdempotencyKey(input.Scope.NetworkID,
@@ -503,7 +790,7 @@ func (s *Store) EnqueueNetworkDirectSealedAsk(input NetworkDirectAskInput) (*Fab
 		}
 		return previous, nil
 	}
-	if !expires.After(at) || expires.After(at.Add(24*time.Hour)) {
+	if !expires.After(at) || expires.After(at.Add(MaxRelayAskLifetime)) {
 		return nil, ErrNetworkPermission
 	}
 	bundle, err := readNetworkDirectPeerBundleTx(tx, input.Scope, input.TargetEndpointID, at)
@@ -516,14 +803,14 @@ func (s *Store) EnqueueNetworkDirectSealedAsk(input NetworkDirectAskInput) (*Fab
 		return nil, ErrRelayIdempotencyConflict
 	}
 	record, reused, err := enqueueNetworkDirectPayloadTx(tx, bundle, "ask", input.MessageID,
-		input.RequestID, "", input.IdempotencyKey, input.Ciphertext)
+		input.RequestID, "", input.IdempotencyKey, input.Ciphertext, input.ParentRequestID)
 	if err != nil {
 		return nil, err
 	}
 	if reused {
 		previous, err := relayLoadRequestByMessageTx(tx, record.Route.MessageID)
 		if err != nil || previous == nil || previous.RequestID != input.RequestID ||
-			previous.ExpiresAt != input.ExpiresAt {
+			previous.ExpiresAt != input.ExpiresAt || previous.ParentRequestID != input.ParentRequestID {
 			return nil, ErrRelayIdempotencyConflict
 		}
 		if err := tx.Commit(); err != nil {
@@ -543,6 +830,7 @@ FROM relay_v2_admission_config WHERE id=1`))
 	}
 	timestamp := now()
 	request := &FabricRequest{RequestID: input.RequestID, MessageID: input.MessageID,
+		ParentRequestID:      input.ParentRequestID,
 		SenderEndpointID:     bundle.Sender.Manifest.EndpointID,
 		SenderPrincipalID:    bundle.Sender.Manifest.PrincipalID,
 		SenderBindingID:      bundle.Sender.Manifest.BindingID,
@@ -556,20 +844,25 @@ FROM relay_v2_admission_config WHERE id=1`))
 		AuthorizationRef:    networkDirectAuthorizationPrefix + bundle.NetworkID,
 		State:               FabricRequestOpen, ExpiresAt: input.ExpiresAt,
 		CreatedAt: timestamp, UpdatedAt: timestamp}
+	if err := relayDeriveCausalLineageTx(tx, request, at); err != nil {
+		return nil, err
+	}
 	_, err = tx.Exec(`INSERT INTO relay_v2_requests
 (request_id,message_id,sender_endpoint_id,sender_principal_id,sender_group_id,
 sender_binding_id,sender_binding_epoch,receiver_endpoint_id,receiver_principal_id,
 receiver_group_id,receiver_binding_id,receiver_binding_epoch,digest,idempotency_key,
 visibility_policy_ref,authorization_ref,state,expires_at,cancel_requested_at,
 cancelled_at,expired_at,replied_at,late_result_at,reply_message_id,
-late_result_message_id,created_at,updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','','','','','',?,?)`,
+late_result_message_id,created_at,updated_at,parent_request_id,
+causal_root_request_id,causal_depth)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','','','','','',?,?,?,?,?)`,
 		request.RequestID, request.MessageID, request.SenderEndpointID,
 		request.SenderPrincipalID, request.SenderGroupID, request.SenderBindingID,
 		request.SenderBindingEpoch, request.ReceiverEndpointID, request.ReceiverPrincipalID,
 		request.ReceiverGroupID, request.ReceiverBindingID, request.ReceiverBindingEpoch,
 		request.Digest, request.IdempotencyKey, request.VisibilityPolicyRef,
-		request.AuthorizationRef, request.State, request.ExpiresAt, timestamp, timestamp)
+		request.AuthorizationRef, request.State, request.ExpiresAt, timestamp, timestamp,
+		request.ParentRequestID, request.CausalRootRequestID, request.CausalDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -612,6 +905,12 @@ func (s *Store) EnqueueNetworkDirectSealedReply(input NetworkDirectReplyInput) (
 		input.Scope.NetworkID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
+	parentRequestID, err := relayParentRequestForSealedRouteTx(tx, RelaySealedV1Route{
+		MessageID: request.MessageID, RequestID: request.RequestID, Kind: "ask",
+	})
+	if err != nil {
+		return nil, ErrNetworkPermission
+	}
 	if request.State == FabricRequestReplied {
 		if request.ReplyMessageID != input.MessageID {
 			return nil, ErrRelayRequestTerminal
@@ -646,7 +945,7 @@ func (s *Store) EnqueueNetworkDirectSealedReply(input NetworkDirectReplyInput) (
 		return nil, ErrNetworkPermission
 	}
 	record, reused, err := enqueueNetworkDirectPayloadTx(tx, bundle, "reply", input.MessageID,
-		input.RequestID, request.MessageID, input.IdempotencyKey, input.Ciphertext)
+		input.RequestID, request.MessageID, input.IdempotencyKey, input.Ciphertext, parentRequestID)
 	if err != nil {
 		return nil, err
 	}
@@ -744,18 +1043,24 @@ func networkGuardDirectMessageTx(tx *sql.Tx, messageID, networkID string, at tim
 	var senderBindingID, receiverBindingID, senderKeyID, receiverKeyID string
 	var senderBindingEpoch, receiverBindingEpoch uint64
 	var senderGrantRev, receiverGrantRev int64
+	var keyPurpose string
 	err := tx.QueryRow(`SELECT network_id,sender_endpoint_id,sender_principal_id,
 receiver_endpoint_id,receiver_principal_id,sender_membership_revision,
 sender_enrollment_revision,receiver_membership_revision,receiver_enrollment_revision,
 sender_binding_id,sender_binding_epoch,receiver_binding_id,receiver_binding_epoch,
-sender_key_grant_revision,receiver_key_grant_revision,sender_key_id,receiver_key_id
+sender_key_grant_revision,receiver_key_grant_revision,sender_key_id,receiver_key_id,key_purpose
 FROM network_direct_message_routes_v2 WHERE message_id=?`, messageID).Scan(&savedNetwork,
 		&senderID, &senderPrincipal, &receiverID, &receiverPrincipal, &senderMemberRev,
 		&senderEnrollmentRev, &receiverMemberRev, &receiverEnrollmentRev,
 		&senderBindingID, &senderBindingEpoch, &receiverBindingID, &receiverBindingEpoch,
-		&senderGrantRev, &receiverGrantRev, &senderKeyID, &receiverKeyID)
-	if err != nil || savedNetwork != networkID {
+		&senderGrantRev, &receiverGrantRev, &senderKeyID, &receiverKeyID, &keyPurpose)
+	if err != nil || savedNetwork != networkID || keyPurpose != "DIRECT" {
 		return ErrNetworkPermission
+	}
+	for _, endpointID := range []string{senderID, receiverID} {
+		if err := guardDedicatedThreadNetworkTrafficTx(tx, endpointID, networkID, at); err != nil {
+			return ErrNetworkPermission
+		}
 	}
 	for _, side := range []struct {
 		endpointID, principalID, action, bindingID, keyID string
@@ -794,6 +1099,110 @@ FROM network_direct_message_routes_v2 WHERE message_id=?`, messageID).Scan(&save
 		if err := tx.QueryRow(`SELECT state FROM owner_approval_keys_v2
 WHERE owner_id=? AND key_id=?`, ownerID, grant.OwnerKeyID).Scan(&keyState); err != nil ||
 			keyState != OwnerApprovalKeyActive {
+			return ErrNetworkPermission
+		}
+	}
+	return nil
+}
+
+func networkGuardStoredSealedMessageTx(tx *sql.Tx, messageID, networkID string, at time.Time) error {
+	var purpose string
+	if err := tx.QueryRow(`SELECT key_purpose FROM network_direct_message_routes_v2
+WHERE message_id=? AND network_id=?`, messageID, networkID).Scan(&purpose); err != nil {
+		return ErrNetworkPermission
+	}
+	if purpose == "DIRECT" {
+		return networkGuardDirectMessageTx(tx, messageID, networkID, at)
+	}
+	return networkGuardCollaborationMessageTx(tx, messageID, networkID, purpose, at)
+}
+
+func networkGuardCollaborationMessageTx(tx *sql.Tx, messageID, networkID,
+	purpose string, at time.Time) error {
+	if !collaborationPurposeValid(purpose) {
+		return ErrNetworkPermission
+	}
+	var savedNetwork, senderID, receiverID, senderPrincipal, receiverPrincipal string
+	var senderMemberRev, senderEnrollmentRev, receiverMemberRev, receiverEnrollmentRev int64
+	var senderBindingID, receiverBindingID, senderKeyID, receiverKeyID, keyPurpose string
+	var senderBindingEpoch, receiverBindingEpoch uint64
+	var senderGrantRev, receiverGrantRev int64
+	err := tx.QueryRow(`SELECT network_id,sender_endpoint_id,sender_principal_id,
+receiver_endpoint_id,receiver_principal_id,sender_membership_revision,
+sender_enrollment_revision,receiver_membership_revision,receiver_enrollment_revision,
+sender_binding_id,sender_binding_epoch,receiver_binding_id,receiver_binding_epoch,
+sender_key_grant_revision,receiver_key_grant_revision,sender_key_id,receiver_key_id,key_purpose
+FROM network_direct_message_routes_v2 WHERE message_id=?`, messageID).Scan(&savedNetwork,
+		&senderID, &senderPrincipal, &receiverID, &receiverPrincipal, &senderMemberRev,
+		&senderEnrollmentRev, &receiverMemberRev, &receiverEnrollmentRev,
+		&senderBindingID, &senderBindingEpoch, &receiverBindingID, &receiverBindingEpoch,
+		&senderGrantRev, &receiverGrantRev, &senderKeyID, &receiverKeyID, &keyPurpose)
+	if err != nil || savedNetwork != networkID || keyPurpose != purpose {
+		return ErrNetworkPermission
+	}
+	for _, endpointID := range []string{senderID, receiverID} {
+		if err := guardDedicatedThreadNetworkTrafficTx(tx, endpointID, networkID, at); err != nil {
+			return ErrNetworkPermission
+		}
+	}
+	senderAction, receiverAction, err := networkCollaborationMessageActions(messageID, purpose)
+	if err != nil {
+		return err
+	}
+	for _, side := range []struct {
+		endpointID, principalID, action, bindingID, keyID string
+		memberRevision, enrollmentRevision, grantRevision int64
+		bindingEpoch                                      uint64
+	}{
+		{senderID, senderPrincipal, senderAction, senderBindingID, senderKeyID,
+			senderMemberRev, senderEnrollmentRev, senderGrantRev, senderBindingEpoch},
+		{receiverID, receiverPrincipal, receiverAction, receiverBindingID, receiverKeyID,
+			receiverMemberRev, receiverEnrollmentRev, receiverGrantRev, receiverBindingEpoch},
+	} {
+		if err := networkDirectMembershipAllowsTx(tx, networkID, side.endpointID,
+			side.principalID, side.action, at); err != nil {
+			return err
+		}
+		var ownerID string
+		if err := tx.QueryRow(`SELECT owner FROM fabric_endpoints WHERE id=?`, side.endpointID).Scan(&ownerID); err != nil {
+			return ErrNetworkPermission
+		}
+		manifest, err := readNetworkCollaborationKeyManifestTx(tx, ownerID,
+			networkID, side.endpointID, purpose, at)
+		if err != nil || manifest.Key.PrincipalID != side.principalID ||
+			manifest.Key.MembershipRevision != side.memberRevision ||
+			manifest.Key.EndpointEnrollmentRevision != side.enrollmentRevision ||
+			manifest.Key.BindingID != side.bindingID || manifest.Key.BindingEpoch != side.bindingEpoch ||
+			manifest.Key.Candidate.Public.ID != side.keyID {
+			return ErrNetworkPermission
+		}
+		grant, proof, err := readOwnerNetworkCollaborationKeyGrantTx(tx, purpose,
+			networkID, side.endpointID)
+		if err != nil || grant.State != "active" || grant.Revision != side.grantRevision ||
+			grant.ManifestDigest != manifest.Digest {
+			return ErrNetworkPermission
+		}
+		var keyState, publicJSON string
+		if err := tx.QueryRow(`SELECT state,public_identity_json FROM owner_approval_keys_v2
+WHERE owner_id=? AND key_id=?`, ownerID, grant.OwnerKeyID).Scan(&keyState, &publicJSON); err != nil ||
+			keyState != OwnerApprovalKeyActive {
+			return ErrNetworkPermission
+		}
+		var ownerPublic e2ee.PublicIdentity
+		if err := json.Unmarshal([]byte(publicJSON), &ownerPublic); err != nil {
+			return ErrNetworkPermission
+		}
+		acceptedAt, err := time.Parse(time.RFC3339Nano, grant.AcceptedAt)
+		if err != nil {
+			return ErrNetworkPermission
+		}
+		expected := e2ee.OwnerNetworkCollaborationKeyGrant{Purpose: purpose,
+			HubID: manifest.Key.HubID, NetworkID: networkID, EndpointID: side.endpointID,
+			OwnerID: ownerID, ManifestDigest: manifest.Digest}
+		verified, err := e2ee.VerifyOwnerNetworkCollaborationKeyGrant(proof,
+			ownerPublic, expected, acceptedAt)
+		hash := sha256.Sum256(proof)
+		if err != nil || verified.Nonce != grant.Nonce || grant.ProofDigest != hex.EncodeToString(hash[:]) {
 			return ErrNetworkPermission
 		}
 	}

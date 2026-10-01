@@ -56,6 +56,43 @@ func TestOwnerGrantedCrossGroupPeerPinRequiresBilateralLocalTrust(t *testing.T) 
 	}
 }
 
+func TestOwnerGrantedCrossGroupPeerPinRejectsMismatchedCurrentContextScope(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*PeerKeyAuthorizationBundle)
+	}{
+		{name: "wrong Hub", mutate: func(bundle *PeerKeyAuthorizationBundle) {
+			bundle.SourceContextScope.HubID = "hub_other"
+		}},
+		{name: "wrong source Group", mutate: func(bundle *PeerKeyAuthorizationBundle) {
+			bundle.SourceContextScope.GroupID = "group_other"
+		}},
+		{name: "unknown policy", mutate: func(bundle *PeerKeyAuthorizationBundle) {
+			bundle.TargetContextScope.GroupContextPolicy = "model_selected_isolation"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state, err := OpenCryptoState(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			fixture := newCrossGroupPinFixture(t, "owner_same", "owner_same")
+			installFixtureOwnerTrust(t, state, fixture)
+			bundle := fixture.bundle
+			test.mutate(&bundle)
+			if _, err := state.PinOwnerGrantedCrossGroupPeerKey(context.Background(), fixture.scope,
+				fixture.local, fixture.peer, bundle); !errors.Is(err, ErrPeerPinGrantInvalid) {
+				t.Fatalf("mismatched current context scope was accepted: %v", err)
+			}
+			if _, err := state.GetOwnerGrantedCrossGroupPeerPin(context.Background(), fixture.scope,
+				fixture.local, fixture.peer, fixture.bundle); !errors.Is(err, ErrPeerPinNotFound) {
+				t.Fatalf("rejected context scope persisted a peer pin: %v", err)
+			}
+		})
+	}
+}
+
 func TestOwnerGrantedCrossGroupPeerPinRejectsHubForgedCandidate(t *testing.T) {
 	state, err := OpenCryptoState(t.TempDir())
 	if err != nil {
@@ -318,7 +355,8 @@ func newCrossGroupPinFixtureAt(t *testing.T, sourceOwnerID, targetOwnerID string
 		TargetEndpointID: peer.EndpointID, TargetPrincipalID: peer.PrincipalID,
 		TargetGroupID: peer.GroupID, TargetOwnerID: peer.OwnerID, TargetNodeID: peerNode.NodeID,
 		Direction: "bidirectional", Actions: []string{"ask", "reply", "send"},
-		DataScopes: []string{"benchmark.public_result"}, ExpiresAt: linkExpiry,
+		DataScopes: []string{"benchmark.public_result"}, TransportHubID: "hub_cross_group_pin",
+		ExpiresAt: linkExpiry,
 		ScopeSnapshot: peerLinkScopeSnapshot{SourceMembershipRevision: 2, SourceJoinRevision: 3,
 			SourceGroupVersion: 4, TargetMembershipRevision: 5, TargetJoinRevision: 6, TargetGroupVersion: 7},
 	}
@@ -356,6 +394,10 @@ func newCrossGroupPinFixtureAt(t *testing.T, sourceOwnerID, targetOwnerID string
 	return crossGroupPinFixture{now: now, localKey: localIdentity, peerKey: peerIdentity,
 		scope: scope, local: local, peer: peer,
 		bundle: PeerKeyAuthorizationBundle{Manifest: manifest, LinkState: "PROPOSED",
+			SourceContextScope: PeerNativeContextScope{HubID: contract.TransportHubID,
+				GroupID: local.GroupID, GroupContextPolicy: "group_scoped"},
+			TargetContextScope: PeerNativeContextScope{HubID: contract.TransportHubID,
+				GroupID: peer.GroupID, GroupContextPolicy: "group_scoped"},
 			SourceGrant: PeerOwnerKeyGrantEvidence{Side: "SOURCE", OwnerID: sourceOwnerID,
 				OwnerKeyID: sourceOwnerKey.Public().ID, OwnerPublicIdentity: sourceOwnerKey.Public(),
 				OwnerKeyState: NodeOwnerKeyTrustActive, OwnerKeyVersion: 1,

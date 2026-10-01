@@ -19,13 +19,14 @@ type NodeSealedLinkSendInput struct {
 }
 
 type NodeSealedLinkAskInput struct {
-	LinkID         string `json:"link_id"`
-	MessageID      string `json:"message_id"`
-	RequestID      string `json:"request_id"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"`
-	DataScope      string `json:"data_scope"`
-	ExpiresAt      string `json:"expires_at"`
-	Ciphertext     []byte `json:"ciphertext"`
+	LinkID          string `json:"link_id"`
+	MessageID       string `json:"message_id"`
+	RequestID       string `json:"request_id"`
+	IdempotencyKey  string `json:"idempotency_key,omitempty"`
+	DataScope       string `json:"data_scope"`
+	ExpiresAt       string `json:"expires_at"`
+	ParentRequestID string `json:"parent_request_id,omitempty"`
+	Ciphertext      []byte `json:"ciphertext"`
 }
 
 type NodeSealedLinkReplyInput struct {
@@ -70,7 +71,8 @@ func (s *Service) AskNodeSealedLinkMessage(nodeToken string, input NodeSealedLin
 		NodeCredentialDigest: HashSessionCredential(nodeToken),
 		LinkID:               input.LinkID, MessageID: input.MessageID, RequestID: input.RequestID,
 		IdempotencyKey: input.IdempotencyKey, DataScope: input.DataScope,
-		ExpiresAt: input.ExpiresAt, Ciphertext: input.Ciphertext,
+		ExpiresAt: input.ExpiresAt, ParentRequestID: input.ParentRequestID,
+		Ciphertext: input.Ciphertext,
 	})
 	if err != nil {
 		return nil, err

@@ -400,15 +400,15 @@ func (c *fabricV2CLI) find(operation string, args []string) error {
 func (c *fabricV2CLI) receive(args []string) error {
 	flags := flag.NewFlagSet("fabric v2 receive", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	cursor := flags.String("cursor", "", "Opaque inbox cursor")
-	limit := flags.Int("limit", 0, "Maximum number of messages")
+	flags.String("cursor", "", "Retired plaintext inbox cursor")
+	flags.Int("limit", 0, "Retired plaintext inbox page size")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if len(flags.Args()) != 0 {
 		return errors.New("usage: cicada fabric v2 receive [--cursor CURSOR] [--limit N]")
 	}
-	return c.sessionRequest(http.MethodPost, "/v2/fabric/receive", fabricpkg.ReceiveInput{Cursor: strings.TrimSpace(*cursor), Limit: *limit})
+	return fabricpkg.ErrPlaintextInboxReceiveRetired
 }
 
 func (c *fabricV2CLI) requestStatus(args []string) error {

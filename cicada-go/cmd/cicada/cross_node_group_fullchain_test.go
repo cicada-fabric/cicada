@@ -214,6 +214,8 @@ func TestMCPSealedSameGroupCrossNodeAskReplyFullChain(t *testing.T) {
 		dataPlane.ServeHTTP(w, r)
 	}))
 	defer hub.Close()
+	ctxA = pinnedNativeTestHubContext(ctxA, hubID, nodeA, stateDir, hub.URL, tokenA)
+	ctxB = pinnedNativeTestHubContext(ctxB, hubID, nodeB, stateDir, hub.URL, tokenB)
 	bridgeA, err := startMachineAgentJoinBridge(ctxA, stateDir, hub.URL, nodeA, tokenA)
 	if err != nil {
 		t.Fatal(err)
@@ -321,17 +323,27 @@ func TestMCPSealedSameGroupCrossNodeAskReplyFullChain(t *testing.T) {
 	grantEndpoint(source.endpointID)
 	grantEndpoint(target.endpointID)
 
-	// The trusted Hub identity is local configuration, independent of Store's
-	// Hub response. Missing and mismatched values fail before encryption/send.
-	t.Setenv("CICADA_HUB_ID", "")
-	if _, err := bridgeA.fetchCrossNodeGroupPeerKey(group.ID, source.endpointID, target.endpointID); err == nil {
+	// The trusted Hub identity is explicit local context, independent of the
+	// Store response. Missing and mismatched identities fail before encryption.
+	newHubIdentityProbeBridge := func(hubID string) *machineAgentJoinBridge {
+		return &machineAgentJoinBridge{
+			ctx:       pinnedNativeTestHubContext(context.Background(), hubID, nodeA, stateDir, hub.URL, tokenA),
+			stateDir:  stateDir,
+			baseURL:   hub.URL,
+			nodeID:    nodeA,
+			nodeToken: tokenA,
+		}
+	}
+	missingHubBridge := newHubIdentityProbeBridge("")
+	if _, err := missingHubBridge.fetchCrossNodeGroupPeerKey(group.ID,
+		source.endpointID, target.endpointID); err == nil {
 		t.Fatal("missing local Hub ID accepted current grant evidence")
 	}
-	t.Setenv("CICADA_HUB_ID", "hub_wrong_cross_node_group")
-	if _, err := bridgeA.fetchCrossNodeGroupPeerKey(group.ID, source.endpointID, target.endpointID); err == nil {
+	wrongHubBridge := newHubIdentityProbeBridge("hub_wrong_cross_node_group")
+	if _, err := wrongHubBridge.fetchCrossNodeGroupPeerKey(group.ID,
+		source.endpointID, target.endpointID); err == nil {
 		t.Fatal("peer evidence from a different Hub passed the local Hub identity check")
 	}
-	t.Setenv("CICADA_HUB_ID", hubID)
 	peerKey, err := bridgeA.fetchCrossNodeGroupPeerKey(group.ID, source.endpointID, target.endpointID)
 	if err != nil || peerKey.Receiver.NativeSessionID != "" {
 		t.Fatalf("correct Hub evidence was rejected or leaked receiver native identity: %#v err=%v", peerKey, err)

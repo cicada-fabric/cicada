@@ -203,9 +203,12 @@ JOIN endpoint_network_memberships_v2 en ON en.network_id=n.id AND en.endpoint_id
 WHERE g.id=?`, ownerID, actor.HubID, endpointID, groupID).Scan(
 		&a.NetworkID, &a.GroupRevision, &groupState, &networkState, &a.PrincipalID,
 		&a.EndpointOwnerID, &endpointState, &principalState, &networkMemberState, &networkExpiry, &enrollmentState, &contextPolicy)
-	if err != nil || groupState != GroupStateActive || contextPolicy != "group_scoped" || networkState != NetworkStateActive || endpointState == "left" ||
+	if err != nil || groupState != GroupStateActive || !configuredGroupContextPolicy(contextPolicy) || networkState != NetworkStateActive || endpointState == "left" ||
 		principalState != PrincipalStatusActive || networkMemberState != "active" || enrollmentState != "active" ||
 		!networkExpiryAllows(networkExpiry, at) || a.EndpointOwnerID == "" || a.EndpointOwnerID == ownerID {
+		return nil, ErrCrossOwnerGroupDenied
+	}
+	if err := guardDedicatedThreadGroupEndpointTx(tx, endpointID, groupID, at); err != nil {
 		return nil, ErrCrossOwnerGroupDenied
 	}
 	if a.GroupRevision != expectedGroupRevision {
@@ -425,13 +428,13 @@ JOIN network_memberships_v2 nm ON nm.network_id=n.id AND nm.principal_id=m.princ
 WHERE g.id=?`, a.HubID, a.NetworkID, a.PrincipalID, a.EndpointID, a.GroupID).Scan(
 		&groupRevision, &groupState, &networkState, &memberID, &memberRevision, &memberState, &memberExpiry,
 		&endpointOwner, &principalID, &endpointState, &enrollmentState, &networkMemberState, &networkMemberExpiry, &contextPolicy)
-	if err != nil || groupRevision != a.GroupRevision || groupState != GroupStateActive || contextPolicy != "group_scoped" || networkState != NetworkStateActive ||
+	if err != nil || groupRevision != a.GroupRevision || groupState != GroupStateActive || !configuredGroupContextPolicy(contextPolicy) || networkState != NetworkStateActive ||
 		memberID != a.MembershipID || memberRevision != a.MembershipRevision || memberState != MembershipStatusActive ||
 		!networkExpiryAllows(memberExpiry, at) || endpointOwner != a.EndpointOwnerID || principalID != a.PrincipalID ||
 		endpointState == "left" || enrollmentState != "active" || networkMemberState != "active" || !networkExpiryAllows(networkMemberExpiry, at) {
 		return ErrCrossOwnerGroupDenied
 	}
-	return nil
+	return guardDedicatedThreadGroupEndpointTx(tx, a.EndpointID, a.GroupID, at)
 }
 
 // CheckCrossOwnerGroupJoin verifies both encrypted Owner decisions before a

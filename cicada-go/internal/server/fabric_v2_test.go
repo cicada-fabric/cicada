@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -38,7 +39,7 @@ func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testin
 	}
 	// This handler has no *control.Control at all. Any accidental call into
 	// planner/reporting/worker management would therefore panic or fail.
-	handler := NewFabricHandler(service, "")
+	handler := NewFabricHandler(service, "synthetic-legacy-join-token")
 	joinBody := map[string]any{
 		"group_id": group.ID, "principal_id": "forged-principal",
 		"principal_name": "a", "endpoint_name": "a", "harness": "codex",
@@ -47,6 +48,7 @@ func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testin
 	encoded, _ := json.Marshal(joinBody)
 	join := httptest.NewRequest(http.MethodPost, "/v2/fabric/join", bytes.NewReader(encoded))
 	join.Header.Set("Content-Type", "application/json")
+	join.Header.Set("Authorization", "Bearer synthetic-legacy-join-token")
 	joinedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(joinedResponse, join)
 	if joinedResponse.Code != http.StatusCreated {
@@ -83,6 +85,7 @@ func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testin
 	encoded, _ = json.Marshal(joinBody)
 	joinB := httptest.NewRequest(http.MethodPost, "/v2/fabric/join", bytes.NewReader(encoded))
 	joinB.Header.Set("Content-Type", "application/json")
+	joinB.Header.Set("Authorization", "Bearer synthetic-legacy-join-token")
 	joinedBResponse := httptest.NewRecorder()
 	handler.ServeHTTP(joinedBResponse, joinB)
 	if joinedBResponse.Code != http.StatusCreated {
@@ -106,14 +109,32 @@ func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testin
 		t.Fatalf("seed historical plaintext request: %v", err)
 	}
 
-	receiveB := httptest.NewRequest(http.MethodPost, "/v2/fabric/receive", bytes.NewReader([]byte(`{}`)))
+	actorB, err := service.AuthenticateForGroup(joinedB.SessionToken, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeB, err := service.Receive(actorB, fabricpkg.ReceiveInput{Limit: 8})
+	if err != nil || len(beforeB.Messages) != 1 || beforeB.Messages[0].Message == nil ||
+		beforeB.Messages[0].Message.RequestID != historical.RequestID || beforeB.Messages[0].Message.Body != "historical question" {
+		t.Fatalf("historical Store inbox before retired route = %#v, err=%v", beforeB, err)
+	}
+	bodyProbe := &fabricV2BodyReadProbe{}
+	receiveB := httptest.NewRequest(http.MethodPost, "/v2/fabric/receive", nil)
+	receiveB.Body = bodyProbe
 	receiveB.Header.Set("Authorization", "CicadaSession "+joinedB.SessionToken)
 	receiveB.Header.Set("Content-Type", "application/json")
 	receiveBResponse := httptest.NewRecorder()
 	handler.ServeHTTP(receiveBResponse, receiveB)
-	if receiveBResponse.Code != http.StatusOK || !bytes.Contains(receiveBResponse.Body.Bytes(), []byte(historical.RequestID)) ||
-		!bytes.Contains(receiveBResponse.Body.Bytes(), []byte("historical question")) {
+	if receiveBResponse.Code != http.StatusGone || !bytes.Contains(receiveBResponse.Body.Bytes(), []byte(fabricpkg.ErrPlaintextInboxReceiveRetired.Error())) {
 		t.Fatalf("B receive status=%d body=%s", receiveBResponse.Code, receiveBResponse.Body.String())
+	}
+	if bodyProbe.reads != 0 {
+		t.Fatalf("retired receive route read request body %d times", bodyProbe.reads)
+	}
+	afterB, err := service.Receive(actorB, fabricpkg.ReceiveInput{Limit: 8})
+	if err != nil || len(afterB.Messages) != 1 || afterB.Messages[0].Message == nil ||
+		afterB.Messages[0].Message.RequestID != historical.RequestID || afterB.Messages[0].Message.Body != "historical question" {
+		t.Fatalf("historical Store inbox after retired route = %#v, err=%v", afterB, err)
 	}
 
 	if _, err := persistence.SubmitFabricReply(store.FabricReply{
@@ -125,15 +146,25 @@ func TestFabricJoinAndHistoricalReadsWorkWithoutControlBusinessService(t *testin
 		t.Fatalf("seed historical plaintext reply: %v", err)
 	}
 
-	receiveA := httptest.NewRequest(http.MethodPost, "/v2/fabric/receive", bytes.NewReader([]byte(`{}`)))
-	receiveA.Header.Set("Authorization", "CicadaSession "+joined.SessionToken)
-	receiveA.Header.Set("Content-Type", "application/json")
-	receiveAResponse := httptest.NewRecorder()
-	handler.ServeHTTP(receiveAResponse, receiveA)
-	if receiveAResponse.Code != http.StatusOK || !bytes.Contains(receiveAResponse.Body.Bytes(), []byte(`"body":"historical answer"`)) {
-		t.Fatalf("A receive status=%d body=%s", receiveAResponse.Code, receiveAResponse.Body.String())
+	actorA, err := service.AuthenticateForGroup(joined.SessionToken, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiveA, err := service.Receive(actorA, fabricpkg.ReceiveInput{Limit: 8})
+	if err != nil || len(receiveA.Messages) != 1 || receiveA.Messages[0].Message == nil ||
+		receiveA.Messages[0].Message.Body != "historical answer" {
+		t.Fatalf("historical internal Store receive = %#v, err=%v", receiveA, err)
 	}
 }
+
+type fabricV2BodyReadProbe struct{ reads int }
+
+func (p *fabricV2BodyReadProbe) Read([]byte) (int, error) {
+	p.reads++
+	return 0, errors.New("unexpected body read")
+}
+
+func (*fabricV2BodyReadProbe) Close() error { return nil }
 
 func TestFabricV2ResourceExhaustedUses429AndRetryAfter(t *testing.T) {
 	response := httptest.NewRecorder()

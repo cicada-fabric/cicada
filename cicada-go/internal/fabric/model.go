@@ -29,16 +29,17 @@ const (
 )
 
 var (
-	ErrAmbiguous                   = errors.New("endpoint address is ambiguous")
-	ErrNotFoundOrNotAuthorized     = errors.New("not found or not authorized")
-	ErrUnauthenticated             = errors.New("fabric session is not authenticated")
-	ErrPermissionDenied            = errors.New("fabric permission denied")
-	ErrConflict                    = errors.New("fabric object conflicts with existing state")
-	ErrStaleBinding                = errors.New("session binding is stale")
-	ErrCrossGroupDirectDenied      = errors.New("direct cross-group endpoint communication is denied")
-	ErrRequestTerminal             = errors.New("request is already terminal")
-	ErrRepresentativeUnavailable   = errors.New("group representative is unavailable")
-	ErrFederationBodyWritesRetired = errors.New("legacy Monitor Federation body writes are retired; use an explicitly authorized sealed Communication Link")
+	ErrAmbiguous                    = errors.New("endpoint address is ambiguous")
+	ErrNotFoundOrNotAuthorized      = errors.New("not found or not authorized")
+	ErrUnauthenticated              = errors.New("fabric session is not authenticated")
+	ErrPermissionDenied             = errors.New("fabric permission denied")
+	ErrConflict                     = errors.New("fabric object conflicts with existing state")
+	ErrStaleBinding                 = errors.New("session binding is stale")
+	ErrCrossGroupDirectDenied       = errors.New("direct cross-group endpoint communication is denied")
+	ErrRequestTerminal              = errors.New("request is already terminal")
+	ErrRepresentativeUnavailable    = errors.New("group representative is unavailable")
+	ErrFederationBodyWritesRetired  = errors.New("legacy Monitor Federation body writes are retired; use an explicitly authorized sealed Communication Link")
+	ErrPlaintextInboxReceiveRetired = errors.New("legacy Hub plaintext inbox receive is retired; use cicada_receive through an authorized Node with sealed peer delivery")
 )
 
 // Actor is derived from a verified SessionBinding credential. Callers never
@@ -83,13 +84,14 @@ type JoinInput struct {
 }
 
 type JoinResult struct {
-	Endpoint       store.Endpoint `json:"endpoint"`
-	NetworkCard    NetworkCard    `json:"network_card"`
-	SessionToken   string         `json:"session_token"`
-	BindingID      string         `json:"binding_id"`
-	BindingEpoch   uint64         `json:"binding_epoch"`
-	LeaseExpiresAt string         `json:"lease_expires_at"`
-	Reused         bool           `json:"reused"`
+	Endpoint           store.Endpoint                   `json:"endpoint"`
+	NetworkCard        NetworkCard                      `json:"network_card"`
+	NativeContextScope store.NativeContextScopeMetadata `json:"native_context_scope"`
+	SessionToken       string                           `json:"session_token"`
+	BindingID          string                           `json:"binding_id"`
+	BindingEpoch       uint64                           `json:"binding_epoch"`
+	LeaseExpiresAt     string                           `json:"lease_expires_at"`
+	Reused             bool                             `json:"reused"`
 }
 
 type NetworkCard struct {
@@ -147,11 +149,12 @@ type SendInput struct {
 }
 
 type AskInput struct {
-	Target         string         `json:"target"`
-	Question       string         `json:"question"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	ExpiresAt      string         `json:"expires_at,omitempty"`
+	Target          string         `json:"target"`
+	Question        string         `json:"question"`
+	ParentRequestID string         `json:"parent_request_id,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
+	IdempotencyKey  string         `json:"idempotency_key,omitempty"`
+	ExpiresAt       string         `json:"expires_at,omitempty"`
 }
 
 type ReplyInput struct {

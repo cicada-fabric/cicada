@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,11 +19,12 @@ import (
 const completionVerdictSchema = `{"type":"object","additionalProperties":false,"properties":{"decision":{"type":"string","enum":["accept","revise"]},"confidence":{"type":"number","minimum":0,"maximum":1},"rationale":{"type":"string"},"correction":{"type":"string"}},"required":["decision","confidence","rationale","correction"]}`
 
 type completionVerdict struct {
-	Accepted   bool
-	Confidence float64
-	Rationale  string
-	Correction string
-	Source     string
+	Accepted          bool
+	RequiresAttention bool
+	Confidence        float64
+	Rationale         string
+	Correction        string
+	Source            string
 }
 
 type modelCompletionVerdict struct {
@@ -40,8 +43,18 @@ func (c *Control) verifyCompletion(parent context.Context, goal store.Goal, work
 			Correction: "Provide a concrete final summary with the result, verification performed, and evidence produced.",
 		}
 	}
-	mode, _ := goal.Resources["completion_verifier"].(string)
+	modeValue, explicitlyConfigured := goal.Resources["completion_verifier"]
+	mode, validModeType := modeValue.(string)
+	if explicitlyConfigured && !validModeType {
+		return completionVerdict{Accepted: false, RequiresAttention: true, Source: "unavailable",
+			Rationale: "Invalid completion_verifier configuration: expected one of model, deterministic, or off as a string."}
+	}
 	mode = strings.ToLower(strings.TrimSpace(mode))
+	if explicitlyConfigured && mode == "" {
+		return completionVerdict{Accepted: false, RequiresAttention: true, Source: "unavailable",
+			Rationale: "Invalid completion_verifier configuration: expected model, deterministic, or off."}
+	}
+	required := mode == "model"
 	if mode == "off" {
 		return completionVerdict{Accepted: true, Source: "disabled", Rationale: "Completion verifier is disabled for this Goal."}
 	}
@@ -49,15 +62,20 @@ func (c *Control) verifyCompletion(parent context.Context, goal store.Goal, work
 		return completionVerdict{Accepted: true, Source: "deterministic", Rationale: "Non-empty completion evidence passed the local check."}
 	}
 	if mode != "" && mode != "model" {
-		return completionVerdict{Accepted: true, Source: "deterministic", Rationale: "Unknown completion verifier mode; used the local check."}
+		return completionVerdict{Accepted: false, RequiresAttention: true, Source: "unavailable",
+			Rationale: fmt.Sprintf("Unsupported completion verifier mode %q; use model, deterministic, or off.", mode)}
 	}
 	if strings.TrimSpace(c.config.CompletionVerifierBin) == "" {
-		return completionVerdict{Accepted: true, Source: "disabled", Rationale: "Completion verifier is disabled."}
+		if required {
+			return completionVerdict{Accepted: false, RequiresAttention: true, Source: "unavailable",
+				Rationale: "Completion verification is required but CICADA_COMPLETION_VERIFIER_BIN is not configured."}
+		}
+		return completionVerdict{Accepted: true, Source: "disabled", Rationale: "Optional completion verifier is not configured."}
 	}
 	verdict, err := c.runCompletionVerifier(parent, goal, worker, summary)
 	if err != nil {
 		return completionVerdict{
-			Accepted: true, Source: "unavailable",
+			Accepted: !required, RequiresAttention: required, Source: "unavailable",
 			Rationale: tail("Completion verifier unavailable: "+err.Error(), 1000),
 		}
 	}
@@ -108,8 +126,8 @@ func (c *Control) runCompletionVerifier(parent context.Context, goal store.Goal,
 	if err != nil {
 		return modelCompletionVerdict{}, err
 	}
-	var verdict modelCompletionVerdict
-	if err := json.Unmarshal(data, &verdict); err != nil {
+	verdict, err := decodeModelCompletionVerdict(data)
+	if err != nil {
 		return modelCompletionVerdict{}, fmt.Errorf("decode completion verdict: %w", err)
 	}
 	if verdict.Decision != "accept" && verdict.Decision != "revise" {
@@ -119,6 +137,86 @@ func (c *Control) runCompletionVerifier(parent context.Context, goal store.Goal,
 		return modelCompletionVerdict{}, errors.New("completion verdict confidence must be between 0 and 1")
 	}
 	return verdict, nil
+}
+
+func decodeModelCompletionVerdict(data []byte) (modelCompletionVerdict, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return modelCompletionVerdict{}, err
+	}
+	if delim, ok := token.(json.Delim); !ok || delim != '{' {
+		return modelCompletionVerdict{}, errors.New("completion verdict must be a JSON object")
+	}
+	fields := make(map[string]json.RawMessage, 4)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return modelCompletionVerdict{}, err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return modelCompletionVerdict{}, errors.New("completion verdict object key is not a string")
+		}
+		switch key {
+		case "decision", "confidence", "rationale", "correction":
+		default:
+			return modelCompletionVerdict{}, fmt.Errorf("completion verdict contains unknown field %q", key)
+		}
+		if _, exists := fields[key]; exists {
+			return modelCompletionVerdict{}, fmt.Errorf("completion verdict contains duplicate field %q", key)
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return modelCompletionVerdict{}, err
+		}
+		fields[key] = value
+	}
+	if _, err := decoder.Token(); err != nil { // consume the closing object delimiter
+		return modelCompletionVerdict{}, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return modelCompletionVerdict{}, errors.New("completion verdict contains trailing JSON")
+		}
+		return modelCompletionVerdict{}, err
+	}
+	if len(fields) != 4 {
+		return modelCompletionVerdict{}, errors.New("completion verdict must include decision, confidence, rationale, and correction")
+	}
+	var verdict modelCompletionVerdict
+	for _, key := range []string{"decision", "rationale", "correction"} {
+		raw := bytes.TrimSpace(fields[key])
+		if len(raw) == 0 || raw[0] != '"' {
+			return modelCompletionVerdict{}, fmt.Errorf("completion verdict field %q must be a string", key)
+		}
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return modelCompletionVerdict{}, err
+		}
+		switch key {
+		case "decision":
+			verdict.Decision = value
+		case "rationale":
+			verdict.Rationale = value
+		case "correction":
+			verdict.Correction = value
+		}
+	}
+	confidenceRaw := bytes.TrimSpace(fields["confidence"])
+	if len(confidenceRaw) == 0 || (confidenceRaw[0] != '-' && (confidenceRaw[0] < '0' || confidenceRaw[0] > '9')) {
+		return modelCompletionVerdict{}, errors.New(`completion verdict field "confidence" must be a number`)
+	}
+	confidence, err := strconv.ParseFloat(string(confidenceRaw), 64)
+	if err != nil {
+		return modelCompletionVerdict{}, fmt.Errorf("completion verdict field %q must be a number: %w", "confidence", err)
+	}
+	verdict.Confidence = confidence
+	return modelCompletionVerdict{
+		Decision: verdict.Decision, Confidence: verdict.Confidence,
+		Rationale: verdict.Rationale, Correction: verdict.Correction,
+	}, nil
 }
 
 func completionVerifierFiles() (string, string, func(), error) {

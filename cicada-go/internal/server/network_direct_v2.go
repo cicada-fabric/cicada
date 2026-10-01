@@ -35,6 +35,18 @@ func (h *Handler) fabricV2NetworkDirectNode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		writeJSON(w, http.StatusAccepted, value)
+	case "collaboration-send":
+		var input fabricpkg.NetworkCollaborationSendInput
+		if err := decodeStrictClientJSON(r.Body, 256*1024, &input); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid Network collaboration send"))
+			return
+		}
+		value, err := h.fabricService.SendNetworkCollaborationSealed(nodeToken, input)
+		if err != nil {
+			networkV2Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, value)
 	case "ask":
 		var input fabricpkg.NetworkDirectAskInput
 		if err := decodeStrictClientJSON(r.Body, 256*1024, &input); err != nil {
@@ -176,6 +188,26 @@ func (h *Handler) fabricV2NetworkDirectSession(w http.ResponseWriter, r *http.Re
 			return
 		}
 		value, err := h.fabricService.NetworkDirectPeerKey(actor, input.TargetEndpointID)
+		if err != nil {
+			networkV2Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+	case "collaboration-peer-key":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		var input struct {
+			TargetEndpointID string `json:"target_endpoint_id"`
+			Purpose          string `json:"purpose"`
+		}
+		if err := decodeStrictClientJSON(r.Body, 4096, &input); err != nil ||
+			input.TargetEndpointID == "" || (input.Purpose != "TASK" && input.Purpose != "BROADCAST") {
+			writeError(w, http.StatusBadRequest, errors.New("invalid Network collaboration peer key request"))
+			return
+		}
+		value, err := h.fabricService.NetworkCollaborationPeerKey(actor, input.TargetEndpointID, input.Purpose)
 		if err != nil {
 			networkV2Error(w, err)
 			return

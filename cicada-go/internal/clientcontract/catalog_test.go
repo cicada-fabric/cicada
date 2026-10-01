@@ -76,11 +76,11 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 			}
 		}
 	}
-	if got := len(OperationsForRole(RoleManager)); got != 46 {
-		t.Errorf("manager operation count = %d, want 46", got)
+	if got := len(OperationsForRole(RoleManager)); got != 55 {
+		t.Errorf("manager operation count = %d, want 55", got)
 	}
-	if got := len(OperationsForRole(RoleExternal)); got != 38 {
-		t.Errorf("external operation count = %d, want 38", got)
+	if got := len(OperationsForRole(RoleExternal)); got != 47 {
+		t.Errorf("external operation count = %d, want 47", got)
 	}
 	if Allows(RoleExternal, "intent.submit") || Allows(RoleExternal, "goal.result") || Allows(RoleExternal, "approvals.decide") ||
 		!Allows(RoleExternal, "group.key_manifest") || !Allows(RoleExternal, "network.key_manifest") ||
@@ -100,6 +100,21 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 		"space.key_admission_v2", "space.key_status_v2"} {
 		if !Allows(RoleManager, operationID) || !Allows(RoleExternal, operationID) {
 			t.Errorf("v1.5 owner operation %s is missing for a role", operationID)
+		}
+	}
+	if !Allows(RoleManager, "space.foreign_endpoint_preview") || !Allows(RoleExternal, "space.foreign_endpoint_preview") {
+		t.Fatal("v1.6 exact pre-consent preview is missing from one Owner role")
+	}
+	if !Allows(RoleManager, "topology.endpoint_admission_preview") || !Allows(RoleExternal, "topology.endpoint_admission_preview") {
+		t.Fatal("same-Owner endpoint admission preview is missing from one Owner role")
+	}
+	if !Allows(RoleManager, "network.directory") || !Allows(RoleExternal, "network.directory") {
+		t.Fatal("read-only opted-in Network directory is missing from one Owner role")
+	}
+	for _, operationID := range []string{"link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
+		"network.collaboration_key_manifest", "network.collaboration_key_grant", "network.collaboration_key_status"} {
+		if !Allows(RoleManager, operationID) || !Allows(RoleExternal, operationID) {
+			t.Errorf("v1.6 Owner operation %s is missing for a role", operationID)
 		}
 	}
 	if !strings.Contains(openAPIText, "membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'") ||

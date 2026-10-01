@@ -16,7 +16,7 @@ import (
 
 func TestAttachmentEndpointStoresAndReturnsMetadata(t *testing.T) {
 	root := t.TempDir()
-	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	controlPlane, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-attachment-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,6 +25,7 @@ func TestAttachmentEndpointStoresAndReturnsMetadata(t *testing.T) {
 	payload := `{"name":"photo.txt","mime_type":"text/plain","content_base64":"` + base64.StdEncoding.EncodeToString([]byte("photo")) + `"}`
 	request := httptest.NewRequest(http.MethodPost, "/v1/attachments", strings.NewReader(payload))
 	request.Header.Set("content-type", "application/json")
+	request.Header.Set("Authorization", "Bearer synthetic-attachment-manager-token")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
@@ -35,6 +36,7 @@ func TestAttachmentEndpointStoresAndReturnsMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	get := httptest.NewRequest(http.MethodGet, "/v1/attachments/"+attachment.ID, nil)
+	get.Header.Set("Authorization", "Bearer synthetic-attachment-manager-token")
 	getResponse := httptest.NewRecorder()
 	handler.ServeHTTP(getResponse, get)
 	if getResponse.Code != http.StatusOK || !strings.Contains(getResponse.Body.String(), "photo.txt") {

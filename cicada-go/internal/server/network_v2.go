@@ -66,8 +66,16 @@ func (h *Handler) fabricV2Network(response http.ResponseWriter, request *http.Re
 
 	remainder := strings.TrimPrefix(request.URL.Path, "/v2/fabric/networks/")
 	parts := strings.Split(remainder, "/")
+	if len(parts) == 3 && parts[0] != "" && parts[1] == "tasks" {
+		h.fabricV2NetworkTask(response, request, parts[0], parts[2])
+		return
+	}
 	if len(parts) == 3 && parts[0] != "" && parts[1] == "direct" {
 		h.fabricV2NetworkDirectSession(response, request, parts[0], parts[2])
+		return
+	}
+	if len(parts) == 3 && parts[0] != "" && parts[1] == "broadcasts" {
+		h.fabricV2NetworkBroadcast(response, request, parts[0], parts[2])
 		return
 	}
 	if len(parts) != 2 || parts[0] == "" {
@@ -180,6 +188,13 @@ func networkV2Error(response http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, store.ErrNetworkTaskPending):
+		// A Relay SEND may become READY just before its sealed Task metadata is
+		// committed. Nodes must defer this exact attempt without opening, ACKing
+		// or injecting its ciphertext.
+		writeError(response, http.StatusTooEarly, errors.New("Network Task route metadata is pending"))
+	case errors.Is(err, store.ErrNetworkBroadcastPending):
+		writeError(response, http.StatusTooEarly, errors.New("Network Broadcast route metadata is pending"))
 	case errors.Is(err, fabricpkg.ErrUnauthenticated):
 		writeError(response, http.StatusUnauthorized, errors.New("Network session is unavailable"))
 	case errors.Is(err, fabricpkg.ErrAmbiguous):
@@ -192,9 +207,16 @@ func networkV2Error(response http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrNetworkConsent):
 		writeError(response, http.StatusForbidden, errors.New("Network operation denied"))
 	case errors.Is(err, store.ErrNetworkConflict), errors.Is(err, store.ErrNetworkMigration),
+		errors.Is(err, fabricpkg.ErrConflict), errors.Is(err, store.ErrRelayCausalBudget),
 		errors.Is(err, store.ErrRelayIdempotencyConflict), errors.Is(err, store.ErrRelayMessageConflict),
-		errors.Is(err, store.ErrRelayRequestTerminal):
+		errors.Is(err, store.ErrRelayRequestTerminal), errors.Is(err, store.ErrNetworkTaskAlreadyClaimed),
+		errors.Is(err, store.ErrNetworkTaskExpired), errors.Is(err, store.ErrNetworkTaskLeaseExpired),
+		errors.Is(err, store.ErrNetworkTaskUnavailable), errors.Is(err, store.ErrNetworkBroadcastSnapshotChanged),
+		errors.Is(err, store.ErrNetworkBroadcastRecipientLimit), errors.Is(err, store.ErrNetworkBroadcastCandidateLimit),
+		errors.Is(err, store.ErrNetworkBroadcastQuota):
 		writeError(response, http.StatusConflict, errors.New("Network scope conflict"))
+	case errors.Is(err, store.ErrNetworkBroadcastExpired), errors.Is(err, store.ErrNetworkBroadcastUnavailable):
+		writeError(response, http.StatusNotFound, errors.New("Network Broadcast unavailable"))
 	default:
 		writeError(response, http.StatusInternalServerError, errors.New("Network operation failed"))
 	}

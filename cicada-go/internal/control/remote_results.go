@@ -12,6 +12,7 @@ import (
 type boundNodeResultFence struct {
 	credentialDigest string
 	nodeID           string
+	nodeControlRPC   *store.NodeControlRPCInput
 }
 
 // CompleteRemoteWorker persists a result returned by the legacy machine API
@@ -38,7 +39,7 @@ func (c *Control) CompleteRemoteWorker(workerID, machineID, status, summary, thr
 	if verifying == nil {
 		return nil, ErrWorkerUnavailable
 	}
-	return c.completeRemoteWorkerAdmitted(verifying, status, summary, threadID, failure, nil, workspaceRevision...)
+	return c.completeRemoteWorkerAdmitted(verifying, status, summary, threadID, failure, nil, "", workspaceRevision...)
 }
 
 // CompleteBoundNodeRemoteWorker admits a result only when the credential is
@@ -54,10 +55,34 @@ func (c *Control) CompleteBoundNodeRemoteWorker(credentialDigest, nodeID, worker
 		return nil, err
 	}
 	return c.completeRemoteWorkerAdmitted(worker, status, summary, threadID, failure,
-		&boundNodeResultFence{credentialDigest: credentialDigest, nodeID: nodeID}, workspaceRevision)
+		&boundNodeResultFence{credentialDigest: credentialDigest, nodeID: nodeID}, "", workspaceRevision)
 }
 
-func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, summary, threadID, failure string, fence *boundNodeResultFence, workspaceRevision ...string) (*store.Worker, error) {
+// CompleteBoundNodeRemoteWorkerNodeControl admits and commits a Worker result
+// only while the exact encrypted request and its key epoch remain active.
+func (c *Control) CompleteBoundNodeRemoteWorkerNodeControl(input store.NodeControlRPCInput,
+	workerID string, attempt int, status, summary, threadID, failure, workspaceRevision,
+	resourceStopState string) (*store.Worker, error) {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status != "completed" && status != "failed" {
+		return nil, errors.New("worker result status must be completed or failed")
+	}
+	resourceStopState = strings.ToUpper(strings.TrimSpace(resourceStopState))
+	if resourceStopState != "" && resourceStopState != "UNVERIFIED" {
+		return nil, errors.New("worker resource stop state is invalid")
+	}
+	worker, err := c.store.BeginBoundNodeWorkerResultNodeControl(input, workerID, attempt)
+	if err != nil {
+		return nil, err
+	}
+	fence := &boundNodeResultFence{credentialDigest: input.CredentialDigest,
+		nodeID: input.NodeID, nodeControlRPC: &input}
+	return c.completeRemoteWorkerAdmitted(worker, status, summary, threadID, failure, fence,
+		resourceStopState, workspaceRevision)
+}
+
+func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, summary, threadID, failure string,
+	fence *boundNodeResultFence, resourceStopState string, workspaceRevision ...string) (*store.Worker, error) {
 	if worker == nil {
 		return nil, ErrWorkerUnavailable
 	}
@@ -78,10 +103,18 @@ func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, sum
 		}
 		verdict := c.verifyCompletion(context.Background(), *goal, *worker, summary)
 		if !verdict.Accepted {
+			if verdict.RequiresAttention {
+				return c.failRemoteCompletionVerification(goal, worker, summary, threadID, verdict,
+					fence, workspaceRevision...)
+			}
 			return c.rejectRemoteCompletion(goal, worker, summary, threadID, verdict, fence, workspaceRevision...)
 		}
+		completionWarning := ""
+		if resourceStopState == "UNVERIFIED" {
+			completionWarning = "business result completed; physical resource stop is unverified and the Node resource remains quarantined"
+		}
 		updated, err := c.finishRemoteResult(worker, "completed", store.WorkerUpdate{
-			ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: stringPtr(""),
+			ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: stringPtr(completionWarning),
 			ThreadID: stringPtr(threadID), Summary: &summary,
 		}, fence)
 		if err != nil {
@@ -99,6 +132,10 @@ func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, sum
 			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "ArtifactProduced", map[string]any{"artifact_id": artifact.ID, "path": artifact.Path, "kind": artifact.Kind})
 		}
 		_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerCompleted", map[string]any{"summary": tail(summary, 4000), "remote": true})
+		if resourceStopState == "UNVERIFIED" {
+			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerResourceStopUnverified",
+				map[string]any{"state": resourceStopState})
+		}
 		if c.completeGoalWhenWorkersFinish(goal, worker.ID, summary, evidence) {
 			c.notify(goal.ID, "goal.completed", "P2", "Goal completed", summary)
 		}
@@ -162,8 +199,13 @@ func (c *Control) finishRemoteResult(worker *store.Worker, nextStatus string, up
 	var updated *store.Worker
 	var err error
 	if fence != nil {
-		updated, err = c.store.UpdateBoundNodeWorkerAtAttempt(fence.credentialDigest, fence.nodeID,
-			worker.ID, "verifying", nextStatus, worker.Attempt, update)
+		if fence.nodeControlRPC != nil {
+			updated, err = c.store.UpdateBoundNodeWorkerAtAttemptNodeControl(*fence.nodeControlRPC,
+				worker.ID, "verifying", nextStatus, worker.Attempt, update)
+		} else {
+			updated, err = c.store.UpdateBoundNodeWorkerAtAttempt(fence.credentialDigest, fence.nodeID,
+				worker.ID, "verifying", nextStatus, worker.Attempt, update)
+		}
 	} else {
 		updated, err = c.store.UpdateWorkerAtAttempt(worker.ID, worker.MachineID,
 			"verifying", nextStatus, worker.Attempt, update)
@@ -182,6 +224,26 @@ func (c *Control) finishRemoteResult(worker *store.Worker, nextStatus string, up
 	if updated == nil {
 		return nil, ErrWorkerUnavailable
 	}
+	return updated, nil
+}
+
+func (c *Control) failRemoteCompletionVerification(goal *store.Goal, worker *store.Worker,
+	summary, threadID string, verdict completionVerdict, fence *boundNodeResultFence,
+	workspaceRevision ...string) (*store.Worker, error) {
+	message := tail("Required completion verification is unavailable: "+verdict.Rationale, 4000)
+	updated, err := c.finishRemoteResult(worker, "failed", store.WorkerUpdate{
+		ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: &message,
+		ThreadID: stringPtr(threadID), Summary: &summary,
+	}, fence)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, ErrWorkerUnavailable
+	}
+	c.recordCompletionVerdict(goal.ID, worker.ID, verdict)
+	c.recordAdmittedWorkspaceRevision(worker, fence, workspaceRevision...)
+	c.finishCompletionVerificationFailure(goal, worker.ID, worker.Attempt, message)
 	return updated, nil
 }
 

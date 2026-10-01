@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelocal"
 	"github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -102,6 +104,7 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 	var hubSawPlaintext bool
 	var controlBusinessCalls int
 	var capturedSnapshot *store.SameGroupBroadcastV2Snapshot
+	var hubResponseClasses = make(map[string]int)
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, readErr := io.ReadAll(io.LimitReader(r.Body, 2*1024*1024+1))
 		_ = r.Body.Close()
@@ -134,6 +137,16 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 		fabricHandler.ServeHTTP(recorder, r)
 		responseBody := recorder.Body.Bytes()
 		captureMu.Lock()
+		routeClass := "OTHER"
+		switch {
+		case strings.HasSuffix(path, "/local/authorize"):
+			routeClass = "LOCAL_AUTHORIZE"
+		case strings.HasSuffix(path, "/local/revalidate"):
+			routeClass = "LOCAL_REVALIDATE"
+		case strings.HasSuffix(path, "/group/broadcast/snapshot"):
+			routeClass = "BROADCAST_SNAPSHOT"
+		}
+		hubResponseClasses[fmt.Sprintf("%s:%dxx", routeClass, recorder.Code/100)]++
 		for _, value := range privateText {
 			if value != "" && bytes.Contains(responseBody, []byte(value)) {
 				hubSawPlaintext = true
@@ -174,6 +187,7 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
 	t.Setenv("CICADA_CODEX_BIN", codexBinary)
 	mcpStateRoot := os.Getenv("CICADA_MCP_STATE_DIR")
+	ctx = pinnedNativeTestHubContext(ctx, hubID, nodeID, stateDir, hub.URL, nodeToken)
 	bridge, err := startMachineAgentJoinBridge(ctx, stateDir, hub.URL, nodeID, nodeToken)
 	if err != nil {
 		t.Fatal("start disposable local Node bridge")
@@ -285,7 +299,57 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 		t.Fatal("broadcast outbox did not record the complete two-recipient immutable snapshot")
 	}
 	if progress.Status != mcpOutboxStatusSent {
-		t.Fatalf("broadcast outbox status is %s, want SENT", progress.Status)
+		// Observe only presence of the two derived ledger records. Do not retry
+		// delivery or expose their ciphertext, route, body, or native identifiers.
+		ledgerPresence := make(map[string]int)
+		ledger, ledgerErr := nodelocal.Open(machineLocalGroupLedgerPath(stateDir, nodeID))
+		if ledgerErr != nil {
+			ledgerPresence["OPEN_FAILED"]++
+		} else {
+			for _, participant := range participants[1:] {
+				childID := groupBroadcastChildOperationID(broadcastID, participant.endpoint.ID)
+				messageID, _, idErr := localSealedRPCIDs(childID)
+				if idErr != nil {
+					ledgerPresence["ID_INVALID"]++
+					continue
+				}
+				_, readErr := ledger.GetMessage(ctx, messageID)
+				switch {
+				case readErr == nil:
+					ledgerPresence["PRESENT"]++
+				case errors.Is(readErr, nodelocal.ErrMessageNotFound):
+					ledgerPresence["ABSENT"]++
+				default:
+					ledgerPresence["READ_FAILED"]++
+				}
+			}
+			_ = ledger.Close()
+		}
+		childOutcomes := make(map[string]int)
+		for _, recipient := range progress.Recipients {
+			state := "OTHER"
+			switch recipient.State {
+			case "ACCEPTED", "FAILED", "UNKNOWN":
+				state = recipient.State
+			}
+			failureCode := ""
+			switch recipient.FailureCode {
+			case "", "DELIVERY_REJECTED", "DELIVERY_OUTCOME_UNKNOWN":
+				failureCode = recipient.FailureCode
+			default:
+				failureCode = "OTHER"
+			}
+			childOutcomes[state+":"+failureCode]++
+		}
+		captureMu.Lock()
+		unexpectedPathCount := len(unexpectedPaths)
+		responseClasses := make(map[string]int, len(hubResponseClasses))
+		for key, count := range hubResponseClasses {
+			responseClasses[key] = count
+		}
+		captureMu.Unlock()
+		t.Fatalf("broadcast outbox status is %s, want SENT; phase=BEFORE_EXPLICIT_NATIVE_QUEUE child_outcomes=%v ledger_presence=%v hub_response_classes=%v unexpected_hub_path_count=%d",
+			progress.Status, childOutcomes, ledgerPresence, responseClasses, unexpectedPathCount)
 	}
 	messageIDs := make(map[string]string, 2)
 	for _, recipient := range progress.Recipients {
@@ -416,6 +480,30 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 		participants[1].endpoint.ID, nativeThreadIDLabel(participants[1].threadID),
 		participants[2].endpoint.ID, nativeThreadIDLabel(participants[2].threadID),
 		broadcastID, messageIDs[participants[1].endpoint.ID], messageIDs[participants[2].endpoint.ID])
+}
+
+func TestNativeBroadcastFixturePinsLocalNativeContext(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal("protect synthetic native context fixture")
+	}
+	authorization := store.LocalDeliveryAuthorization{HubID: "hub_synthetic_native_broadcast"}
+	endpoint := store.LocalDeliveryEndpointAuthorization{
+		EndpointID: "ep_synthetic_native_broadcast", OwnerID: "owner_synthetic_native_broadcast",
+		GroupID: "group_synthetic_native_broadcast", BindingID: "binding_synthetic_native_broadcast", BindingEpoch: 1,
+	}
+	bridge := &machineAgentJoinBridge{ctx: context.Background(), stateDir: stateDir,
+		baseURL: "http://127.0.0.1:1", nodeID: "node_synthetic_native_broadcast"}
+	if _, err := bridge.recordLocalNativeContext(authorization, endpoint, "codex", "thread_synthetic_native_broadcast");
+		err == nil || err.Error() != "current Node Hub context is not pinned for native scope history" {
+		t.Fatal("unpinned native broadcast fixture must be rejected before ledger acceptance")
+	}
+	bridge.ctx = pinnedNativeTestHubContext(bridge.ctx, authorization.HubID, bridge.nodeID,
+		stateDir, bridge.baseURL, "synthetic-unused-node-token")
+	decision, err := bridge.recordLocalNativeContext(authorization, endpoint, "codex", "thread_synthetic_native_broadcast")
+	if err != nil || decision == nil || !decision.Accepted {
+		t.Fatalf("pinned synthetic native broadcast fixture must satisfy the native context Guard: %v", err)
+	}
 }
 
 func nativeBroadcastCodexConfig(binary, apiURL, stateDir, mcpStateDir, nodeID string,

@@ -1,14 +1,20 @@
 # Client / Hub 联合开发与验收
 
+**2026-10-01 final framework checkpoint — PASS (bounded backend; clean handoff metadata follows):** final dirty bd79-based source `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` retains production code from 54f with corrected private-socket test fixtures and two new public proof vectors. Contract remains v1.6/wire 1/55 operations. Final full Go PASS: 27 packages, 1,092 top-level + 547 subtests, 12 top-level SKIP, 0 FAIL; vet EXIT 0; repaired fixture selector and race each passed 3 top-level + 3 subtests. Independent contract check/export/verify, Python26 and shell20 PASS. No skip is a pass. Earlier 54f Browser/three Docker suites and bounded native multi-Hub Join passed; 54f full Go recorded three fixture failures, retained separately. 432f native ASK/REPLY (282.74 s), 432f plus test-overlay broadcast (298.14 s, both original Threads consumed) and Worker approval (76.83 s) passed; joined V68 passed on 840a test-helper overlay with recording fake queue. These results keep their own source identities. Android v1.6, physical dual-Node and public HTTPS are NOT_RUN; pure PQ TLS is NOT_IMPLEMENTED. Final clean commit/image/bundle are queried from `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`; this is not a push or release. [Evidence and retained failures](v01-completion-checkpoint-validation.md).
+
 本规范将两个仓库作为一个产品协作，但分别构建和发布。CICADA 拥有
 Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端侧
 密钥与手机生命周期。当前由本仓库落实服务端与联调工具，不修改 Client。
 
-## 当前整改顺序（2026-09-30）
+## 当前整改顺序（2026-10-01）
 
-本轮 CICADA worktree 从 M2 checkpoint `f30892fcd79a27bfe5604575deaecebe52c5ec50` 延续；M2 既有全 Go/vet/race、contract 与三套 disposable real-TCP Docker **PASS** 只归属其 dirty source fingerprint `76becd7…`。M3 Node/MCP/SSE 合同当前在本仓 dirty tree 实现中，须和 frozen source 一起验；M4 Owner delegation/M5 多 Hub Node 若改变 Client 可见能力，应版本化更新 `client-hub-v1.4` 合同和 checks。Hub Web canvas 只能通过 Client v1.x 的后量子 encrypted packet 调用既有/新增 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有、本轮只读。
+当前 Hub/Node 开发以 clean `dev` `bd79ff93` 为基线。冻结 Client 合同仍为 `client-hub-v1.5` 的 46 项操作/Hub schema v41；本仓当前源码的 candidate contract 已推进到 `client-hub-v1.6`，catalog 源列 55 个 operation ID，并含 Network directory/Endpoint admission、六项 Network purpose-key 与 Link reviewer Owner RPC、显式 Link invitation direction 和 Node pairing proof 字段。v1.6 dirty 开发包已经 check/export/verify；最终 clean checkpoint 与完整独立 Client 交付仍待 metadata。v1.5 Android bounded evidence 只归它实际测试的 Client、Hub 源码、合同包和镜像身份，不转移给 candidate。新增 Network Task/Node MCP 能力不自动扩充 Android operation catalog。Hub Web canvas 仍只通过 Client v1.x 的后量子 encrypted packet 调用 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有，本仓只读。
 
-独立 Client handoff 当前固定 `b627e70`；latest v1.3 Monitor native report 证明的是固定旧 Hub/source 的 bounded chain 与两个 logical Nodes，不能泛化为当前 v1.4 M2/M3/M5 Android、两个 physical Nodes、完整 React Native 生命周期或公网 HTTPS PASS。外部报告来源和准确 build/run identity 以该 handoff 的验证文档字段为准，不归因到 Client 仓库 HEAD。详见[剩余验收账本](completion-ledger.md)。
+此前 f55 candidate 曾冻结为 dirty bd79-based source `f55b5255628030857ac88bd7edbd6da7da1b63d543014c76111f9219f46ad255` 与 Hub image `sha256:da88805eaa1987a1c6e06448fc5cddf7d4ce368e8b5eeb3071a1406dad2cb977`；不是 clean handoff。Full Go、vet、v1.6/55-operation contract、19 项 Python 与三套 disposable Docker 均已在 f55 PASS。前序 432f 的 Go/race/WASM/Browser/M5 证据不转移给 f55。432f 的 Client Docker 初次 FAIL、cf168 Client-only repair PASS、V68 FAIL、真实 Worker approval FAIL 与 Node-Control HTTP first FAIL/later protocol overlay PASS 均保持各自归属。Android v1.6、双物理 Node、公网 HTTPS 与 f55 同源 peer-native 仍 NOT_RUN；432f peer-native PASS 见上方独立归属。详见[检查点报告](v01-completion-checkpoint-validation.md)；在最终验证和完整协议包 metadata 到位前，不交付 Client。
+
+以下 `f30892f`、`b627e70` 与 v1.4 文字记录当时的 M2/M1 交接与验收，不描述当前候选状态。M2 既有全 Go/vet/race、合同与三套 disposable real-TCP Docker **PASS** 只归属其当时 dirty source fingerprint `76becd7…`。
+
+独立 Client 的 v1.5 APK3 有界 Android recovery evidence 归属 Client commit `eb0db6f3d095b60b0f2f73bcfda0079ba33ad846` 与固定 bd79 Hub/source/APK/package，证明 Base、PROCESSING、UNCERTAIN transport recovery 等已记录范围；它不是 v1.6，也不证明当前 candidate。更早 `b627e70` handoff 与 v1.3 Monitor native report 仍是其自身固定旧 Hub/source 上的历史 bounded chain，不外推到当前 v1.6、双物理 Node、完整 React Native 生命周期或公网 HTTPS。所有外部结果按验证文档记录的实际 binary/APK/source/image 归属，不按仓库 HEAD 推断。详见[剩余验收账本](completion-ledger.md)与[检查点报告](v01-completion-checkpoint-validation.md)。
 
 ### 历史 2026-09-28 M1 后端矩阵 PASS（保持原归属）
 
@@ -16,7 +22,7 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 > **历史 2026-09-28 M1 ACTIVE 权限迁移有界检查点 PASS：** 当时全 Go/vet、聚焦 race、合同检查与两套独立 disposable Docker 门禁通过，见 [当时状态](architecture-v2-status.md) 和 [验证矩阵](network-m1-validation.md)。该候选仍为 `client-hub-v1.3`、33 项操作、wire v1、schema v35；当时 `group.create` 无 Network selector，在 ACTIVE Hub 被拒。旧默认 Client 门禁运行于 PREPARING Hub，不能代替当前 v1.4 ACTIVE Client 或 Android 验收。真实 native Runtime、Android、双物理机和公网 HTTPS 当时 **NOT_RUN**。
 
-### 后续独立 Android v1.4 对接提示（尚未启动）
+### 历史独立 Android v1.4 对接提示（当时尚未启动）
 
 仅在取得本轮冻结 Hub 源码身份、完整 `client-hub-v1.4` 协议包及其 SHA-256 后，在独立 Client 仓库按 [wire v1](client-hub-wire-v1.md)、[OpenAPI](client-hub-v1.openapi.yaml)和 [Owner 合同](android-client-hub-contract.md)实现；先用 `python3 scripts/client-contract.py verify` 核对包，再验证加密 `session.capabilities` 对当前设备的实际授权。v1.3 的 33 项操作、Android/Monitor 证据和固定镜像继续只作历史结果，不当成 v1.4 的兼容或 PASS 证明；v1.4 候选目录有 36 项操作，wire framing 仍是 v1。
 

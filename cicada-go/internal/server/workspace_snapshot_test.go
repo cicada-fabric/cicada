@@ -18,7 +18,7 @@ import (
 func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := control.New(control.Config{
-		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
+		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-snapshot-manager-token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +38,7 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 	handler := NewHandler(controlPlane)
 	request := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspace.ID+"/snapshot", &archive)
 	request.Header.Set("content-type", "application/x-cicada-workspace-tar")
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
@@ -55,6 +56,7 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 		t.Fatalf("workspace snapshot not persisted: %#v err=%v", workspace, err)
 	}
 	request = httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspace.ID+"/snapshot/"+uploaded.Digest, nil)
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("X-Cicada-Snapshot-Digest") != uploaded.Digest {
@@ -63,6 +65,7 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 	// The digest endpoint is the authenticated cross-Control replication
 	// source. It must serve the same verified archive without a Workspace ID.
 	request = httptest.NewRequest(http.MethodGet, "/v1/snapshots/"+uploaded.Digest, nil)
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("X-Cicada-Snapshot-Digest") != uploaded.Digest || response.Body.Len() == 0 {
@@ -72,12 +75,14 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 	request = httptest.NewRequest(http.MethodPost, "/v1/snapshots", bytes.NewReader(replicatedArchive))
 	request.Header.Set("X-Cicada-Snapshot-Digest", uploaded.Digest)
 	request.Header.Set("X-Cicada-Workspace-Path", workspace.Path)
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusAccepted || !bytes.Contains(response.Body.Bytes(), []byte(workspace.ID)) {
 		t.Fatalf("replication upload status=%d body=%s", response.Code, response.Body.String())
 	}
 	request = httptest.NewRequest(http.MethodPost, "/v1/snapshots/gc", nil)
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"retained"`)) {
@@ -96,6 +101,7 @@ func TestWorkspaceSnapshotUploadDownloadAndRestore(t *testing.T) {
 		t.Fatalf("restored content=%q err=%v", content, err)
 	}
 	request = httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspace.ID+"/snapshot/"+uploaded.Digest[:63]+"0", nil)
+	request.Header.Set("Authorization", "Bearer synthetic-snapshot-manager-token")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNotFound {

@@ -629,7 +629,10 @@ FROM artifact_v2_refs WHERE group_id=? ORDER BY updated_at DESC,id LIMIT ?`, sco
 			return nil, err
 		}
 		if ref != nil {
-			result = append(result, *ref)
+			// Listing is another read path, not a way around the per-reference
+			// scope check used by Get. Keep the opaque identity and allowed-scope
+			// summary, but do not return fields whose read scopes this ref lacks.
+			result = append(result, projectArtifactRefV2Scopes(*ref, ref.Scopes))
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -642,6 +645,26 @@ FROM artifact_v2_refs WHERE group_id=? ORDER BY updated_at DESC,id LIMIT ?`, sco
 		return nil, err
 	}
 	return result, nil
+}
+
+func projectArtifactRefV2Scopes(ref ArtifactRefV2, scopes []string) ArtifactRefV2 {
+	ref.Scopes = append([]string(nil), scopes...)
+	if !artifactV2ScopesAllowed([]string{ArtifactRefV2ScopeMetadata}, scopes) {
+		ref.WorkspaceID = ""
+		ref.ProducerPrincipalID = ""
+		ref.ProducerEndpointID = ""
+		ref.Name = ""
+		ref.Kind = ""
+		ref.Size = 0
+		ref.MIMEType = ""
+	}
+	if !artifactV2ScopesAllowed([]string{ArtifactRefV2ScopeSummary}, scopes) {
+		ref.Summary = ""
+	}
+	if !artifactV2ScopesAllowed([]string{ArtifactRefV2ScopeDigest}, scopes) {
+		ref.Digest = ""
+	}
+	return ref
 }
 
 func normalizeArtifactGrant(input ArtifactRefV2GrantInput) (ArtifactRefV2GrantInput, error) {

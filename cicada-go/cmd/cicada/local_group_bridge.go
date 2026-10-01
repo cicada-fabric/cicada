@@ -30,28 +30,35 @@ const localGroupProtocolVersion = 1
 // comes from the joined native Session and the durable MCP outbox. The Node
 // independently rechecks both the Codex record and Hub Session binding.
 type localGroupRequest struct {
-	Version            int    `json:"version"`
-	Operation          string `json:"operation"`
-	Harness            string `json:"harness"`
-	NativeSessionID    string `json:"native_session_id"`
-	NodeID             string `json:"node_id"`
-	Workspace          string `json:"workspace"`
-	SessionToken       string `json:"session_token"`
-	EndpointID         string `json:"endpoint_id"`
-	PrincipalID        string `json:"principal_id"`
-	OwnerID            string `json:"owner_id"`
-	GroupID            string `json:"group_id"`
-	BindingID          string `json:"binding_id"`
-	BindingEpoch       uint64 `json:"binding_epoch"`
-	OperationID        string `json:"operation_id,omitempty"`
-	OperationCreatedAt string `json:"operation_created_at,omitempty"`
-	IdempotencyKey     string `json:"idempotency_key,omitempty"`
-	Target             string `json:"target,omitempty"`
-	RequestID          string `json:"request_id,omitempty"`
-	Reason             string `json:"reason,omitempty"`
-	Body               string `json:"body,omitempty"`
-	Cursor             string `json:"cursor,omitempty"`
-	Limit              int    `json:"limit,omitempty"`
+	Version              int                                  `json:"version"`
+	Operation            string                               `json:"operation"`
+	Harness              string                               `json:"harness"`
+	NativeSessionID      string                               `json:"native_session_id"`
+	NodeID               string                               `json:"node_id"`
+	Workspace            string                               `json:"workspace"`
+	SessionToken         string                               `json:"session_token"`
+	EndpointID           string                               `json:"endpoint_id"`
+	PrincipalID          string                               `json:"principal_id"`
+	OwnerID              string                               `json:"owner_id"`
+	GroupID              string                               `json:"group_id"`
+	BindingID            string                               `json:"binding_id"`
+	BindingEpoch         uint64                               `json:"binding_epoch"`
+	OperationID          string                               `json:"operation_id,omitempty"`
+	OperationCreatedAt   string                               `json:"operation_created_at,omitempty"`
+	IdempotencyKey       string                               `json:"idempotency_key,omitempty"`
+	Target               string                               `json:"target,omitempty"`
+	RequestID            string                               `json:"request_id,omitempty"`
+	Reason               string                               `json:"reason,omitempty"`
+	Body                 string                               `json:"body,omitempty"`
+	Cursor               string                               `json:"cursor,omitempty"`
+	Limit                int                                  `json:"limit,omitempty"`
+	TaskHandoffID        string                               `json:"task_handoff_id,omitempty"`
+	TaskID               string                               `json:"task_id,omitempty"`
+	ExpectedRevision     int64                                `json:"expected_revision,omitempty"`
+	OwnerEpoch           int64                                `json:"owner_epoch,omitempty"`
+	HandoffMessageID     string                               `json:"handoff_message_id,omitempty"`
+	ExpiresAt            string                               `json:"expires_at,omitempty"`
+	RequiredArtifactRefs []store.SealedTaskHandoffArtifactRef `json:"required_artifact_refs,omitempty"`
 }
 
 type localGroupResult struct {
@@ -66,6 +73,9 @@ type localGroupResult struct {
 	LateMessageID    string                     `json:"late_message_id,omitempty"`
 	Messages         []nodeinbox.VisibleMessage `json:"messages,omitempty"`
 	NextCursor       string                     `json:"next_cursor,omitempty"`
+	MessageDigest    string                     `json:"message_digest,omitempty"`
+	SenderProof      []byte                     `json:"sender_proof,omitempty"`
+	SharedMemoryRisk bool                       `json:"shared_memory_risk,omitempty"`
 }
 
 func requestMachineAgentLocalGroup(socketPath string, request localGroupRequest) (*localGroupResult, error) {
@@ -106,7 +116,13 @@ func requestMachineAgentLocalGroup(socketPath string, request localGroupRequest)
 	if request.RequestID != "" && response.LocalGroup.RequestID != request.RequestID {
 		return nil, &localSealedSendError{message: "local Node returned an uncorrelated Group result", retryable: true}
 	}
-	if request.OperationID != "" {
+	if request.Operation == "local_task_handoff" || request.Operation == "local_task_handoff_recover" {
+		if response.LocalGroup.MessageID != request.HandoffMessageID ||
+			len(response.LocalGroup.MessageDigest) != 64 ||
+			(request.Operation == "local_task_handoff" && len(response.LocalGroup.SenderProof) == 0) {
+			return nil, &localSealedSendError{message: "local Node returned an uncorrelated sealed Task handoff", retryable: true}
+		}
+	} else if request.OperationID != "" {
 		messageID, requestID, idErr := localSealedRPCIDs(request.OperationID)
 		if idErr != nil || response.LocalGroup.MessageID != messageID ||
 			(request.Operation == "local_ask" && response.LocalGroup.RequestID != requestID) {
@@ -126,7 +142,8 @@ func validateLocalGroupRequest(request localGroupRequest, nodeID string) error {
 		return errors.New("invalid trusted local Group context")
 	}
 	for _, value := range []string{request.EndpointID, request.PrincipalID, request.OwnerID, request.GroupID,
-		request.BindingID, request.OperationID, request.IdempotencyKey, request.Target, request.RequestID} {
+		request.BindingID, request.OperationID, request.IdempotencyKey, request.Target, request.RequestID,
+		request.TaskHandoffID, request.TaskID, request.HandoffMessageID} {
 		if len(value) > 256 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\x00") {
 			return errors.New("invalid trusted local Group context")
 		}
@@ -178,6 +195,49 @@ func validateLocalGroupRequest(request localGroupRequest, nodeID string) error {
 			request.OperationID != "" || request.IdempotencyKey != "" || request.OperationCreatedAt != "" ||
 			(request.Operation != "local_cancel" && request.Reason != "") {
 			return errors.New("invalid trusted local Group request control")
+		}
+	case "local_task_handoff":
+		if request.OperationID == "" || request.IdempotencyKey == "" || request.Target == "" ||
+			request.TaskHandoffID == "" || request.TaskID == "" || request.ExpectedRevision <= 0 ||
+			request.OwnerEpoch <= 0 || request.HandoffMessageID == "" || request.ExpiresAt == "" ||
+			request.Body == "" || request.RequestID != "" || request.OperationCreatedAt == "" ||
+			request.Reason != "" || len(request.RequiredArtifactRefs) > 32 {
+			return errors.New("invalid local sealed Task handoff")
+		}
+		if _, _, err := localSealedRPCIDs(request.OperationID); err != nil {
+			return err
+		}
+		handoffID, deadline, ok := parseTaskHandoffMessageID(request.HandoffMessageID)
+		expires, err := time.Parse(time.RFC3339Nano, request.ExpiresAt)
+		if !ok || handoffID != request.TaskHandoffID || err != nil ||
+			deadline.UnixMilli() != expires.UnixMilli() || expires.Nanosecond()%1_000_000 != 0 {
+			return errors.New("local sealed Task handoff ID and deadline do not match")
+		}
+		created, err := time.Parse(time.RFC3339Nano, request.OperationCreatedAt)
+		if err != nil || created.After(time.Now().UTC().Add(time.Minute)) ||
+			!expires.After(created) || expires.Sub(created) > 24*time.Hour {
+			return errors.New("local sealed Task handoff creation time is invalid")
+		}
+	case "local_task_handoff_notify":
+		if request.TaskHandoffID == "" || request.Target != "" || request.Body != "" ||
+			request.TaskID != "" || request.OperationID != "" || request.IdempotencyKey != "" ||
+			request.ExpectedRevision != 0 || request.OwnerEpoch != 0 || request.HandoffMessageID != "" ||
+			request.ExpiresAt != "" || len(request.RequiredArtifactRefs) != 0 ||
+			request.RequestID != "" || request.OperationCreatedAt != "" || request.Reason != "" {
+			return errors.New("invalid local Task handoff wake request")
+		}
+	case "local_task_handoff_recover":
+		if request.TaskHandoffID == "" || request.HandoffMessageID == "" ||
+			request.Target != "" || request.Body != "" || request.TaskID != "" ||
+			request.OperationID != "" || request.IdempotencyKey != "" ||
+			request.ExpectedRevision != 0 || request.OwnerEpoch != 0 || request.ExpiresAt != "" ||
+			len(request.RequiredArtifactRefs) != 0 || request.RequestID != "" ||
+			request.OperationCreatedAt != "" || request.Reason != "" {
+			return errors.New("invalid local Task handoff recovery request")
+		}
+		handoffID, _, ok := parseTaskHandoffMessageID(request.HandoffMessageID)
+		if !ok || handoffID != request.TaskHandoffID {
+			return errors.New("local Task handoff recovery ID does not match its route")
 		}
 	default:
 		return errors.New("unsupported local Group operation")
@@ -418,6 +478,16 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 	switch request.Operation {
 	case "local_send", "local_ask", "local_reply":
 		return b.submitLocalGroupMessage(ledger, request, fence)
+	case "local_task_handoff":
+		if fence != nil {
+			return nil, errors.New("Task handoff cannot use a broadcast snapshot")
+		}
+		return b.submitLocalSealedTaskHandoff(ledger, request)
+	case "local_task_handoff_notify":
+		b.signalLocalGroupDelivery()
+		return &localGroupResult{State: "READY", Delivery: "LOCAL_WAKE", PayloadMode: "SEALED_V1"}, nil
+	case "local_task_handoff_recover":
+		return b.recoverLocalSealedTaskHandoff(ledger, request)
 	case "local_status", "local_cancel":
 		stored, err := ledger.GetRequest(b.ctx, request.RequestID)
 		if err != nil {
@@ -495,6 +565,16 @@ func (b *machineAgentJoinBridge) submitLocalGroupMessage(ledger *nodelocal.Ledge
 	if err := validateLocalGroupAuthorizationForSource(authorization, request); err != nil {
 		return nil, err
 	}
+	sourceContext, err := b.recordLocalNativeContext(*authorization, authorization.Source,
+		request.Harness, request.NativeSessionID)
+	if err != nil {
+		return nil, err
+	}
+	targetContext, err := b.recordLocalNativeContext(*authorization, authorization.Target,
+		request.Harness, authorization.Target.NativeSessionID)
+	if err != nil {
+		return nil, err
+	}
 	if request.Operation == "local_reply" &&
 		(authorization.Target.EndpointID != original.Route.SourceEndpointID ||
 			authorization.Target.BindingID != original.Route.SourceBindingID ||
@@ -565,7 +645,7 @@ func (b *machineAgentJoinBridge) submitLocalGroupMessage(ledger *nodelocal.Ledge
 		MessageID: accepted.MessageID, RequestID: requestID,
 		TargetEndpointID: authorization.Target.EndpointID,
 		State:            string(accepted.State), Delivery: delivery,
-		PayloadMode: "SEALED_V1",
+		PayloadMode: "SEALED_V1", SharedMemoryRisk: sourceContext.SharedMemoryRisk || targetContext.SharedMemoryRisk,
 	}
 	if request.Operation == "local_ask" {
 		result.ExpiresAt = expiresAt.Format(time.RFC3339Nano)
@@ -587,7 +667,7 @@ func (b *machineAgentJoinBridge) signalLocalGroupDelivery() {
 // or the Node restarted. The durable ledger stores no session credential;
 // only the already bound Node credential may recheck an exact persisted route.
 func (b *machineAgentJoinBridge) revalidateLocalGroupRoute(
-	route nodelocal.Route) (*store.LocalDeliveryAuthorization, error) {
+	route nodelocal.Route, messageID, messageDigest string) (*store.LocalDeliveryAuthorization, error) {
 	guardAction, err := localGroupGuardAction(route.Action)
 	if err != nil {
 		return nil, err
@@ -597,6 +677,7 @@ func (b *machineAgentJoinBridge) revalidateLocalGroupRoute(
 		SourceBindingID:    route.SourceBindingID,
 		SourceBindingEpoch: route.SourceBindingEpoch,
 		TargetEndpointID:   route.TargetEndpointID, Action: guardAction,
+		MessageID: messageID, MessageDigest: messageDigest,
 	}
 	encoded, err := json.Marshal(input)
 	if err != nil {
@@ -629,6 +710,12 @@ func (b *machineAgentJoinBridge) revalidateLocalGroupRoute(
 	currentRoute.AuthorizationValidUntil = route.AuthorizationValidUntil
 	if currentRoute != route {
 		return nil, errors.New("current local delivery authorization is stale for the persisted route")
+	}
+	if _, err := b.recordLocalNativeContext(current, current.Source, "codex", route.SourceSessionID); err != nil {
+		return nil, err
+	}
+	if _, err := b.recordLocalNativeContext(current, current.Target, "codex", route.TargetSessionID); err != nil {
+		return nil, err
 	}
 	return &current, nil
 }

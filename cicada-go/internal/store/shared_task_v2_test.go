@@ -54,6 +54,11 @@ func TestSharedTaskConcurrentClaimAndStaleCandidate(t *testing.T) {
 	}
 	results := make([]claimResult, 24)
 	for i := range results {
+		principalID := "principal-" + string(rune('a'+i))
+		endpointID := "ep-" + string(rune('a'+i))
+		preparingNetworkActorFixture(t, s, task.GroupID, principalID, endpointID)
+	}
+	for i := range results {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -74,7 +79,8 @@ func TestSharedTaskConcurrentClaimAndStaleCandidate(t *testing.T) {
 	if winners != 1 || winner.OwnerEpoch != 1 {
 		t.Fatalf("winners=%d winner=%#v", winners, winner)
 	}
-	retry, err := s.ClaimSharedTask(task.ID, ready.Revision, winner.OwnerPrincipalID, winner.OwnerEndpointID, winner.ClaimKey, 300)
+	retry, err := claimPreparingSharedTaskFixture(t, s, task.ID, ready.Revision,
+		winner.OwnerPrincipalID, winner.OwnerEndpointID, winner.ClaimKey, 300)
 	if err != nil || retry.Revision != winner.Revision {
 		t.Fatalf("idempotent claim retry=%#v err=%v", retry, err)
 	}
@@ -82,7 +88,8 @@ func TestSharedTaskConcurrentClaimAndStaleCandidate(t *testing.T) {
 	if err != nil || released.Status != SharedTaskReady {
 		t.Fatalf("release=%#v err=%v", released, err)
 	}
-	newOwner, err := s.ClaimSharedTask(task.ID, released.Revision, "new-principal", "new-endpoint", "new-key", 300)
+	newOwner, err := claimPreparingSharedTaskFixture(t, s, task.ID, released.Revision,
+		"new-principal", "new-endpoint", "new-key", 300)
 	if err != nil || newOwner.OwnerEpoch <= winner.OwnerEpoch {
 		t.Fatalf("reclaim=%#v err=%v", newOwner, err)
 	}
@@ -135,7 +142,8 @@ func TestSharedTaskDependenciesPreventCyclesAndPrematureClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err = s.ClaimSharedTask(c.ID, c.Revision, "worker", "ep-worker", "claim-c", 300)
+	c, err = claimPreparingSharedTaskFixture(t, s, c.ID, c.Revision,
+		"worker", "ep-worker", "claim-c", 300)
 	if err != nil {
 		t.Fatal(err)
 	}

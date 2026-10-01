@@ -99,7 +99,7 @@ func resourceEnforcement(resourceID string) (string, error) {
 	switch {
 	case len(parts) == 4 && parts[0] == "machine" && parts[2] == "gpu" && validResourceToken(parts[1]):
 		index, err := strconv.Atoi(parts[3])
-		if err != nil || index < 0 {
+		if err != nil || index < 0 || strconv.Itoa(index) != parts[3] {
 			return "", ErrResourceInvalid
 		}
 		return LeaseAdvisory, nil
@@ -110,6 +110,56 @@ func resourceEnforcement(resourceID string) (string, error) {
 	default:
 		return "", ErrResourceInvalid
 	}
+}
+
+// rejectActiveLegacyGPUAliasesTx prevents old noncanonical IDs such as gpu/00
+// or gpu/+0 from bypassing the canonical gpu/0 authority row. Historical
+// rows remain untouched and continue blocking the physical resource until an
+// explicit stop confirmation/reconciliation releases their authority.
+func rejectActiveLegacyGPUAliasesTx(tx *sql.Tx, resourceID string) error {
+	parts := strings.Split(resourceID, "/")
+	if len(parts) != 4 || parts[0] != "machine" || parts[2] != "gpu" {
+		return nil
+	}
+	prefix := strings.Join(parts[:3], "/") + "/"
+	// Resource IDs use ASCII tokens and SQLite's BINARY primary-key collation.
+	// Replacing the final slash with '0' gives the exclusive upper bound for
+	// this exact prefix and keeps the legacy scan on the resource_id index.
+	upper := prefix[:len(prefix)-1] + "0"
+	rows, err := tx.Query(`SELECT resource_id FROM resource_v2_authority
+WHERE resource_id>=? AND resource_id<? AND state IN (?,?) ORDER BY resource_id`,
+		prefix, upper, ResourceActive, ResourceQuarantined)
+	if err != nil {
+		return err
+	}
+	var conflictingAlias string
+	for rows.Next() {
+		var existing string
+		if err := rows.Scan(&existing); err != nil {
+			rows.Close()
+			return err
+		}
+		if existing == resourceID {
+			continue
+		}
+		indexText := strings.TrimPrefix(existing, prefix)
+		index, err := strconv.Atoi(indexText)
+		if err == nil && index >= 0 && strconv.Itoa(index) == parts[3] {
+			conflictingAlias = existing
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if conflictingAlias != "" {
+		return ErrResourceBusy
+	}
+	return nil
 }
 
 const resourceLeaseColumns = `id,resource_id,holder_group_id,holder_task_id,holder_principal_id,fencing_epoch,mode,enforcement,state,expires_at,created_at,updated_at`
@@ -156,6 +206,9 @@ func (s *Store) AcquireResourceLease(input ResourceLeaseRequest) (*ResourceLease
 	defer tx.Rollback()
 	// Acquire a serialized SQLite writer before inspecting the shared authority.
 	if _, err = tx.Exec(`INSERT OR IGNORE INTO resource_v2_authority(resource_id,fencing_epoch,state,updated_at) VALUES(?,0,?,?)`, input.ResourceID, ResourceAvailable, now()); err != nil {
+		return nil, err
+	}
+	if err := rejectActiveLegacyGPUAliasesTx(tx, input.ResourceID); err != nil {
 		return nil, err
 	}
 	var epoch int64

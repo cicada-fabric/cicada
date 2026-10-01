@@ -281,13 +281,16 @@ func networkCLIJoin(args []string, output io.Writer) error {
 	if *socketPath == "" {
 		*socketPath = defaultMCPJoinSocketPath(context)
 	}
-	joined, err := requestMachineAgentNetworkJoin(*socketPath, localNetworkJoinRequest{
+	joined, nativeScope, recovery, err := requestMachineAgentNetworkJoinWithScopeAndRecovery(*socketPath, localNetworkJoinRequest{
 		NetworkID: *networkID, InvitationToken: string(bytes.TrimSpace(invitation)),
 		OwnerJoinProof: string(bytes.TrimSpace(proof)), Harness: context.Harness,
 		NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		EndpointName: *endpointName,
 	})
 	if err != nil {
+		if recovery, ok := localJoinRecoveryFromError(err); ok {
+			return json.NewEncoder(output).Encode(recovery)
+		}
 		return err
 	}
 	origin, err := normalizeMCPAPIOrigin(envOr("CICADA_API_URL", "http://127.0.0.1:8787"))
@@ -303,7 +306,7 @@ func networkCLIJoin(args []string, output io.Writer) error {
 	return json.NewEncoder(output).Encode(map[string]any{
 		"status": "joined", "network_id": joined.NetworkID, "endpoint_id": joined.Endpoint.ID,
 		"binding_id": joined.BindingID, "binding_epoch": joined.BindingEpoch,
-		"lease_expires_at": joined.LeaseExpiresAt,
+		"lease_expires_at": joined.LeaseExpiresAt, "native_context_scope": nativeScope, "join_recovery": recovery,
 	})
 }
 

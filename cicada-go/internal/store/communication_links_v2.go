@@ -20,10 +20,11 @@ var (
 	ErrCommunicationLinkScope    = errors.New("communication link endpoint/group scope is not active")
 )
 
-// CommunicationLink is a durable proposal, not yet a route. Existing manager
-// bearer credentials are also used for Node enrollment, so they cannot prove
-// an independent user's consent. There is deliberately no ACTIVE transition
-// until authenticated bilateral grants and endpoint ciphertext are available.
+// CommunicationLink is a durable proposal contract. Its row remains PROPOSED
+// while the effective route is derived from both current signed Owner grants,
+// the unchanged Endpoint/Group scope, current key/binding revisions and expiry.
+// REVOKED suppresses that route. Manager bearer credentials are also used for
+// Node enrollment, so they cannot prove an independent user's consent.
 type CommunicationLink struct {
 	ID                string                         `json:"link_id"`
 	SourceEndpointID  string                         `json:"source_endpoint_id"`

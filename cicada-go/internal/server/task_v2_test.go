@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -115,5 +117,90 @@ func TestSharedTaskManagementAndPeerClaimUseSeparateAuthorizedEntrypoints(t *tes
 	}
 	if won.OwnerEndpointID != joined.Endpoint.ID || won.Status != store.SharedTaskClaimed {
 		t.Fatalf("wrong claim owner: %#v", won)
+	}
+
+	receiverJoin := call(http.MethodPost, "/v2/fabric/join", "Bearer manager-only", map[string]any{
+		"group_id": group.ID, "principal_name": "receiver", "endpoint_name": "receiver", "harness": "codex", "native_session_id": "native-receiver", "node_id": "node-b",
+	})
+	if receiverJoin.Code != http.StatusCreated {
+		t.Fatalf("receiver join: %d %s", receiverJoin.Code, receiverJoin.Body.String())
+	}
+	var receiver fabric.JoinResult
+	if err = json.Unmarshal(receiverJoin.Body.Bytes(), &receiver); err != nil {
+		t.Fatal(err)
+	}
+	receiverActor, err := manager.Fabric().Authenticate(receiver.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiverMemberships, err := manager.GroupMembers(group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, receiverMembership := range receiverMemberships {
+		if receiverMembership.ID == receiverActor.MembershipID {
+			if _, err = manager.BindMembershipRole(group.ID, receiverMembership.ID, "worker", receiverMembership.Version); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	receiverActor, err = manager.Fabric().Authenticate(receiver.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskOwnerActor, err := manager.Fabric().Authenticate(joined.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical, err := manager.Fabric().ProposeTaskHandoff(taskOwnerActor, fabric.TaskHandoffProposeInput{
+		TaskID: won.ID, Target: receiver.Endpoint.ID, ExpectedRevision: won.Revision, OwnerEpoch: won.OwnerEpoch,
+		PendingWork: "preserve this historical proposal",
+	})
+	if err != nil {
+		t.Fatalf("prepare historical handoff row: %v", err)
+	}
+	retiredRoutes := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{http.MethodPost, "/v2/fabric/tasks/handoffs", map[string]any{"task_id": won.ID, "target": receiver.Endpoint.ID, "pending_work": "must never persist this prose"}},
+		{http.MethodGet, "/v2/fabric/tasks/handoffs/" + historical.ID, nil},
+		{http.MethodPost, "/v2/fabric/tasks/handoffs/" + historical.ID + "/accept", map[string]any{"lease_seconds": 300}},
+	}
+	for _, route := range retiredRoutes {
+		response := call(route.method, route.path, "CicadaSession "+joined.SessionToken, route.body)
+		if response.Code != http.StatusGone || !bytes.Contains(response.Body.Bytes(), []byte(retiredPeerTaskHandoffMessage)) ||
+			bytes.Contains(response.Body.Bytes(), []byte("must never persist this prose")) {
+			t.Fatalf("retired route %s %s was not a stable, non-echoing 410: %d %s", route.method, route.path, response.Code, response.Body.String())
+		}
+	}
+	preserved, err := manager.Fabric().GetTaskHandoff(receiverActor, historical.ID)
+	if err != nil || preserved.Status != store.HandoffProposed || preserved.PendingWork != "preserve this historical proposal" {
+		t.Fatalf("retired compatibility routes changed historical proposal: %#v err=%v", preserved, err)
+	}
+	database, err := sql.Open("sqlite", filepath.Join(root, "state", "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var handoffCount int
+	if err = database.QueryRow(`SELECT count(*) FROM shared_task_v2_handoffs WHERE task_id=?`, won.ID).Scan(&handoffCount); err != nil {
+		t.Fatal(err)
+	}
+	if handoffCount != 1 {
+		t.Fatalf("retired POST created or removed historical handoff rows: count=%d", handoffCount)
+	}
+	var after store.SharedTask
+	afterResponse := call(http.MethodGet, "/v2/fabric/tasks/"+won.ID, "CicadaSession "+joined.SessionToken, nil)
+	if afterResponse.Code != http.StatusOK || json.Unmarshal(afterResponse.Body.Bytes(), &after) != nil {
+		t.Fatalf("read Task after retired routes: %d %s", afterResponse.Code, afterResponse.Body.String())
+	}
+	if after.Revision != won.Revision || after.Status != won.Status || after.OwnerEndpointID != won.OwnerEndpointID || after.OwnerEpoch != won.OwnerEpoch {
+		t.Fatalf("retired routes changed Task responsibility: before=%#v after=%#v", won, after)
+	}
+	if _, err = manager.Fabric().AcceptTaskHandoff(taskOwnerActor, historical.ID, 300); !errors.Is(err, fabric.ErrNotFoundOrNotAuthorized) {
+		t.Fatalf("test fixture handoff was not still awaiting its target: %v", err)
 	}
 }

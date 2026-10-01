@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -21,11 +22,31 @@ func pinnedNativeTestContext(ctx context.Context, nodeID, stateDir, origin strin
 		return ctx
 	}
 	hubID := strings.TrimSpace(os.Getenv("CICADA_HUB_ID"))
+	if hubID == "" && strings.TrimSpace(origin) != "" {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+			strings.TrimRight(origin, "/")+"/v2/node/identity", nil)
+		if err == nil {
+			response, requestErr := http.DefaultClient.Do(request)
+			if requestErr == nil {
+				var identity struct {
+					HubID string `json:"hub_id"`
+				}
+				if response.StatusCode == http.StatusOK && json.NewDecoder(response.Body).Decode(&identity) == nil {
+					hubID = strings.TrimSpace(identity.HubID)
+				}
+				_ = response.Body.Close()
+			}
+		}
+	}
 	if hubID == "" {
 		hubID = "hub_synthetic_direct_call_fixture"
 	}
-	return withMachineHubContext(ctx, machineHubContext{HubID: hubID, Origin: origin, NodeID: nodeID, Token: machineNodeToken(),
-		StateDir: stateDir, WriterRoot: stateDir, WriterScope: machineNativeWriterScope()})
+	return pinnedNativeTestHubContext(ctx, hubID, nodeID, stateDir, origin, machineNodeToken())
+}
+
+func pinnedNativeTestHubContext(ctx context.Context, hubID, nodeID, stateDir, origin, token string) context.Context {
+	return withMachineHubContext(ctx, machineHubContext{HubID: hubID, Origin: origin, NodeID: nodeID,
+		Token: token, StateDir: stateDir, WriterRoot: stateDir, WriterScope: machineNativeWriterScope()})
 }
 
 func processPinnedTestMachineFabricDeliveries(ctx context.Context, base, nodeID string, inbox *nodeinbox.Inbox, stateDir string) error {
@@ -37,10 +58,20 @@ func drainPinnedTestMachineRelayInbox(ctx context.Context, base, nodeID, stateDi
 }
 
 func processPinnedTestMachineLocalGroupDeliveries(ctx context.Context, bridge *machineAgentJoinBridge, inbox *nodeinbox.Inbox) error {
+	if bridge != nil {
+		if _, ok := machineHubFrom(bridge.ctx); ok {
+			ctx = bridge.ctx
+		}
+	}
 	return processMachineLocalGroupDeliveries(pinnedNativeTestContext(ctx, bridge.nodeID, bridge.stateDir, bridge.baseURL), bridge, inbox)
 }
 
 func processPinnedTestMachineMonitorBroadcastNotifications(ctx context.Context, bridge *machineAgentJoinBridge, inbox **nodeinbox.Inbox, path string) error {
+	if bridge != nil {
+		if _, ok := machineHubFrom(bridge.ctx); ok {
+			ctx = bridge.ctx
+		}
+	}
 	return processMachineMonitorBroadcastNotifications(pinnedNativeTestContext(ctx, bridge.nodeID, bridge.stateDir, bridge.baseURL), bridge, inbox, path)
 }
 

@@ -480,6 +480,10 @@ func guardGroupSpaceActorTx(tx *sql.Tx, actor GroupSpaceActor, action string, at
 		endpointNode != nodeID || endpointOwner != ownerID {
 		return ErrGroupSpaceDenied
 	}
+	if err := guardDedicatedThreadGroupEndpointTx(tx, actor.Scope.EndpointID,
+		actor.Scope.GroupID, at); err != nil {
+		return ErrGroupSpaceDenied
+	}
 	var groupOwnerID string
 	if tx.QueryRow(`SELECT p.owner_id FROM groups g JOIN principals p ON p.id=g.owner_principal_id
 WHERE g.id=?`, actor.Scope.GroupID).Scan(&groupOwnerID) != nil {

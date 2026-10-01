@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -42,6 +43,11 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 	if request.Operation != "network_direct_send" && request.Operation != "network_direct_ask" && request.Operation != "network_direct_reply" {
 		return nil, errors.New("unsupported Network direct operation")
 	}
+	if len(request.ParentRequestID) > 256 || request.ParentRequestID != strings.TrimSpace(request.ParentRequestID) ||
+		strings.ContainsAny(request.ParentRequestID, "\r\n\x00") ||
+		request.Operation != "network_direct_ask" && request.ParentRequestID != "" {
+		return nil, errors.New("parent request is valid only for a bounded Network ASK")
+	}
 	if request.OperationID == "" || request.IdempotencyKey == "" || request.Body == "" || len(request.Body) > 64*1024 {
 		return nil, errors.New("incomplete Network direct operation")
 	}
@@ -49,13 +55,50 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 	if err != nil {
 		return nil, err
 	}
+	if request.TaskID != "" {
+		if request.Operation != "network_direct_send" || request.RequestID != "" ||
+			!validNetworkTaskID(request.TaskID) {
+			return nil, errors.New("invalid Network Task sealed SEND")
+		}
+		if request.OwnerEpoch == 0 {
+			messageID = request.TaskID + ":offer:" + request.OperationID[3:]
+		} else if request.OwnerEpoch > 0 {
+			messageID = fmt.Sprintf("%s:result:%d:%s", request.TaskID, request.OwnerEpoch, request.OperationID[3:])
+		} else {
+			return nil, errors.New("invalid Network Task owner epoch")
+		}
+		if err := validateNetworkTaskSealedPayload(messageID, []byte(request.Body)); err != nil {
+			return nil, err
+		}
+	} else if request.OwnerEpoch != 0 {
+		return nil, errors.New("Network Task epoch requires a task ID")
+	}
+	if request.CollaborationPurpose == e2ee.NetworkCollaborationPurposeBroadcast {
+		if request.Operation != "network_direct_send" || request.TaskID != "" ||
+			!validNetworkBroadcastID(request.BroadcastID) {
+			return nil, errors.New("Network Broadcast requires one explicit reserved broadcast route")
+		}
+		messageID = request.BroadcastID + ":reader:" + request.OperationID[3:]
+		if _, err := decodeNetworkBroadcastSealedPayload(messageID, []byte(request.Body)); err != nil {
+			return nil, err
+		}
+	} else if request.BroadcastID != "" {
+		return nil, errors.New("broadcast ID requires BROADCAST-purpose endpoint consent")
+	}
 	if request.Operation == "network_direct_ask" && request.RequestID == "" {
 		request.RequestID = generatedRequestID
 	}
 	var bundle *store.NetworkDirectPeerBundle
 	var originalMessageID string
+	purpose := request.CollaborationPurpose
+	if request.TaskID != "" {
+		if purpose != "" && purpose != e2ee.NetworkCollaborationPurposeTask {
+			return nil, errors.New("Network Task requires TASK-purpose endpoint consent")
+		}
+		purpose = e2ee.NetworkCollaborationPurposeTask
+	}
 	if request.Operation == "network_direct_reply" {
-		if request.RequestID == "" || request.TargetEndpointID != "" {
+		if purpose != "" || request.RequestID == "" || request.TargetEndpointID != "" {
 			return nil, errors.New("Network direct reply requires only the original request ID")
 		}
 		encoded, _ := json.Marshal(map[string]string{"network_id": request.NetworkID, "network_session_token": request.SessionToken, "request_id": request.RequestID})
@@ -74,7 +117,14 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 		if request.TargetEndpointID == "" || request.TargetEndpointID == request.EndpointID {
 			return nil, errors.New("Network direct target is invalid")
 		}
-		bundle, err = b.fetchNetworkDirectPeerBundle(request, request.TargetEndpointID)
+		if purpose != "" {
+			if purpose != e2ee.NetworkCollaborationPurposeTask && purpose != e2ee.NetworkCollaborationPurposeBroadcast {
+				return nil, errors.New("unsupported Network collaboration purpose")
+			}
+			bundle, err = b.fetchNetworkCollaborationPeerBundle(request, request.TargetEndpointID, purpose)
+		} else {
+			bundle, err = b.fetchNetworkDirectPeerBundle(request, request.TargetEndpointID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -91,13 +141,39 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 	if request.Operation == "network_direct_reply" {
 		kind = "REPLY"
 	}
-	route := store.NetworkDirectContext(bundle, messageID, kind, request.RequestID, originalMessageID)
-	ciphertext, err := b.sealNetworkDirect(request, bundle, route)
+	route := store.NetworkDirectContext(bundle, messageID, kind, request.RequestID, originalMessageID,
+		request.ParentRequestID)
+	var ciphertext []byte
+	if purpose != "" {
+		if kind != "SEND" {
+			return nil, errors.New("Network collaboration messages must use sealed SEND")
+		}
+		ciphertext, err = b.sealNetworkCollaboration(request, bundle, purpose, route)
+	} else {
+		ciphertext, err = b.sealNetworkDirect(request, bundle, route)
+	}
 	if err != nil {
 		return nil, err
 	}
 	switch request.Operation {
 	case "network_direct_send":
+		if purpose != "" {
+			encoded, _ := json.Marshal(fabric.NetworkCollaborationSendInput{NetworkID: request.NetworkID,
+				NetworkSessionToken: request.SessionToken, Purpose: purpose,
+				TargetEndpointID: request.TargetEndpointID, MessageID: messageID,
+				IdempotencyKey: request.IdempotencyKey, Ciphertext: ciphertext})
+			data, err := b.nodeHTTP(http.MethodPost, "/v2/fabric/node/networks/direct/collaboration-send", encoded)
+			if err != nil {
+				return nil, err
+			}
+			var record store.RelaySealedV1Record
+			if err := decodeStrictBridgeJSON(data, &record); err != nil || record.Route.MessageID != messageID {
+				return nil, errors.New("Hub returned invalid Network collaboration SEND receipt")
+			}
+			return &localNetworkDirectResult{NetworkID: request.NetworkID, MessageID: messageID,
+				TargetEndpointID: request.TargetEndpointID, State: "RELAY_PERSISTED",
+				PayloadMode: store.RelayPayloadModeSealedV1}, nil
+		}
 		encoded, _ := json.Marshal(fabric.NetworkDirectSendInput{NetworkID: request.NetworkID, NetworkSessionToken: request.SessionToken,
 			TargetEndpointID: request.TargetEndpointID, MessageID: messageID, IdempotencyKey: request.IdempotencyKey, Ciphertext: ciphertext})
 		data, err := b.nodeHTTP(http.MethodPost, "/v2/fabric/node/networks/direct/send", encoded)
@@ -116,7 +192,8 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 		}
 		encoded, _ := json.Marshal(fabric.NetworkDirectAskInput{NetworkID: request.NetworkID, NetworkSessionToken: request.SessionToken,
 			TargetEndpointID: request.TargetEndpointID, MessageID: messageID, RequestID: request.RequestID,
-			IdempotencyKey: request.IdempotencyKey, ExpiresAt: request.ExpiresAt, Ciphertext: ciphertext})
+			ParentRequestID: request.ParentRequestID, IdempotencyKey: request.IdempotencyKey,
+			ExpiresAt: request.ExpiresAt, Ciphertext: ciphertext})
 		data, err := b.nodeHTTP(http.MethodPost, "/v2/fabric/node/networks/direct/ask", encoded)
 		if err != nil {
 			return nil, err
@@ -213,6 +290,26 @@ func (b *machineAgentJoinBridge) fetchNetworkDirectPeerBundle(request localNetwo
 	return &bundle, nil
 }
 
+func (b *machineAgentJoinBridge) fetchNetworkCollaborationPeerBundle(request localNetworkDirectRequest,
+	targetEndpointID, purpose string) (*store.NetworkDirectPeerBundle, error) {
+	encoded, _ := json.Marshal(map[string]string{"target_endpoint_id": targetEndpointID, "purpose": purpose})
+	data, err := b.httpWithAuthorization(http.MethodPost,
+		"/v2/fabric/networks/"+urlPath(request.NetworkID)+"/direct/collaboration-peer-key",
+		encoded, "Cicada-Network-Session "+request.SessionToken, "")
+	if err != nil {
+		return nil, err
+	}
+	var bundle store.NetworkDirectPeerBundle
+	if err := decodeStrictBridgeJSON(data, &bundle); err != nil || bundle.NetworkID != request.NetworkID ||
+		bundle.HubID != machinePinnedHubID(b.ctx) || bundle.Purpose != purpose ||
+		bundle.Sender.Manifest.EndpointID != request.EndpointID || bundle.Receiver.Manifest.EndpointID != targetEndpointID ||
+		bundle.Sender.CollaborationManifest == nil || bundle.Receiver.CollaborationManifest == nil ||
+		bundle.Sender.CollaborationManifest.Purpose != purpose || bundle.Receiver.CollaborationManifest.Purpose != purpose {
+		return nil, errors.New("Hub returned invalid Network collaboration peer evidence")
+	}
+	return &bundle, nil
+}
+
 func networkDirectEvidence(side store.NetworkDirectPeerKeyEvidence) (nodekeys.NetworkDirectEvidence, error) {
 	manifest := side.Manifest
 	digest, err := manifest.CanonicalDigest()
@@ -235,6 +332,36 @@ func networkDirectEvidence(side store.NetworkDirectPeerKeyEvidence) (nodekeys.Ne
 		ExpectedGrant: e2ee.OwnerNetworkDirectKeyGrant{Version: 1, HubID: manifest.HubID, NetworkID: manifest.NetworkID,
 			EndpointID: manifest.EndpointID, OwnerID: manifest.OwnerID, OwnerKeyID: side.Grant.OwnerKeyID,
 			ManifestDigest: digest}, GrantProof: side.GrantProof, AcceptedAt: acceptedAt, OwnerPublic: side.OwnerPublic}, nil
+}
+
+func networkCollaborationEvidence(side store.NetworkDirectPeerKeyEvidence,
+	purpose string) (nodekeys.NetworkCollaborationEvidence, error) {
+	manifest := side.Manifest
+	collaboration := side.CollaborationManifest
+	grant := side.CollaborationGrant
+	if collaboration == nil || grant == nil || collaboration.Purpose != purpose ||
+		grant.State != "active" || grant.Purpose != purpose ||
+		grant.ManifestDigest != collaboration.Digest || grant.OwnerID != manifest.OwnerID {
+		return nodekeys.NetworkCollaborationEvidence{}, errors.New("Network collaboration Owner grant or manifest is invalid")
+	}
+	canonical, err := manifest.CanonicalClaims()
+	outerCanonical, outerErr := collaboration.Key.CanonicalClaims()
+	if err != nil || outerErr != nil || !bytes.Equal(canonical, outerCanonical) ||
+		e2ee.NetworkCollaborationManifestDigest(purpose, canonical) != collaboration.Digest ||
+		collaboration.Digest != grant.ManifestDigest {
+		return nodekeys.NetworkCollaborationEvidence{}, errors.New("Network collaboration manifest digest is invalid")
+	}
+	attestation := e2ee.NetworkDirectKeyAttestation{Version: 1, HubID: manifest.HubID,
+		NetworkID: manifest.NetworkID, EndpointID: manifest.EndpointID, PrincipalID: manifest.PrincipalID,
+		NodeID: manifest.NodeID, BindingID: manifest.BindingID, BindingEpoch: manifest.BindingEpoch,
+		Public: manifest.Candidate.Public}
+	ownerGrant := e2ee.OwnerNetworkCollaborationKeyGrant{Version: 1, Purpose: purpose,
+		HubID: manifest.HubID, NetworkID: manifest.NetworkID, EndpointID: manifest.EndpointID,
+		OwnerID: manifest.OwnerID, OwnerKeyID: grant.OwnerKeyID, ManifestDigest: grant.ManifestDigest}
+	return nodekeys.NetworkCollaborationEvidence{ManifestCanonical: canonical, Purpose: purpose,
+		ExpectedAttestation: attestation, Attestation: manifest.Candidate.Attestation,
+		ExpectedGrant: ownerGrant, GrantProof: side.CollaborationGrantProof,
+		OwnerPublic: side.OwnerPublic}, nil
 }
 
 func (b *machineAgentJoinBridge) sealNetworkDirect(request localNetworkDirectRequest,
@@ -273,6 +400,46 @@ func (b *machineAgentJoinBridge) sealNetworkDirect(request localNetworkDirectReq
 	}
 	if len(sealed.Envelope) == 0 || bytes.Equal(sealed.Envelope, []byte(request.Body)) {
 		return nil, errors.New("Network direct ciphertext is unavailable")
+	}
+	return sealed.Envelope, nil
+}
+
+func (b *machineAgentJoinBridge) sealNetworkCollaboration(request localNetworkDirectRequest,
+	bundle *store.NetworkDirectPeerBundle, purpose string, route e2ee.NetworkDirectContext) ([]byte, error) {
+	identity, err := nodekeys.LoadOrCreate(machineNodeStateDir(b.stateDir, b.nodeID), request.EndpointID)
+	if err != nil {
+		return nil, err
+	}
+	if identity.Public().ID != bundle.Sender.Manifest.Candidate.Public.ID ||
+		bundle.Sender.Manifest.NodeID != b.nodeID ||
+		bundle.Sender.Manifest.NativeSessionDigest != e2ee.NetworkDirectNativeSessionDigest(request.NativeSessionID) {
+		return nil, errors.New("Owner-approved Network collaboration source differs from this verified native Thread")
+	}
+	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(b.stateDir, b.nodeID))
+	if err != nil {
+		return nil, err
+	}
+	defer state.Close()
+	sender, err := networkCollaborationEvidence(bundle.Sender, purpose)
+	if err != nil {
+		return nil, err
+	}
+	receiver, err := networkCollaborationEvidence(bundle.Receiver, purpose)
+	if err != nil {
+		return nil, err
+	}
+	messageContext := e2ee.NetworkCollaborationMessageContext{Purpose: purpose, Route: route}
+	opID, err := nodekeys.NetworkCollaborationOperationID(messageContext, []byte(request.Body))
+	if err != nil {
+		return nil, err
+	}
+	sealed, err := state.SealOutboundNetworkCollaborationMessage(b.ctx, identity,
+		messageContext, sender, receiver, opID, []byte(request.Body))
+	if err != nil {
+		return nil, fmt.Errorf("seal Network collaboration message: %w", err)
+	}
+	if len(sealed.Envelope) == 0 || bytes.Equal(sealed.Envelope, []byte(request.Body)) {
+		return nil, errors.New("Network collaboration ciphertext is unavailable")
 	}
 	return sealed.Envelope, nil
 }

@@ -269,7 +269,8 @@ func relayNodeSameGroupSealedWriteError(response http.ResponseWriter, err error)
 		writeError(response, http.StatusTooManyRequests, err)
 	case errors.Is(err, store.ErrRelayIdempotencyConflict),
 		errors.Is(err, store.ErrRelayMessageConflict),
-		errors.Is(err, store.ErrRelayRequestTerminal):
+		errors.Is(err, store.ErrRelayRequestTerminal),
+		errors.Is(err, store.ErrRelayCausalBudget):
 		writeError(response, http.StatusConflict, err)
 	default:
 		writeError(response, http.StatusInternalServerError, errors.New("same-Group sealed action could not be accepted"))

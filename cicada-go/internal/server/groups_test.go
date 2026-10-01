@@ -15,7 +15,7 @@ import (
 
 func TestGroupManagementHTTPIsSeparateFromPeerFabric(t *testing.T) {
 	root := t.TempDir()
-	manager, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	manager, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-group-manager-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,6 +24,7 @@ func TestGroupManagementHTTPIsSeparateFromPeerFabric(t *testing.T) {
 
 	create := httptest.NewRequest(http.MethodPost, "/v1/groups", bytes.NewBufferString(`{"name":"kernel","purpose":"test"}`))
 	create.Header.Set("Content-Type", "application/json")
+	create.Header.Set("Authorization", "Bearer synthetic-group-manager-token")
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, create)
 	if created.Code != http.StatusCreated {
@@ -38,6 +39,7 @@ func TestGroupManagementHTTPIsSeparateFromPeerFabric(t *testing.T) {
 	}
 
 	members := httptest.NewRequest(http.MethodGet, "/v1/groups/"+group.ID+"/members", nil)
+	members.Header.Set("Authorization", "Bearer synthetic-group-manager-token")
 	listed := httptest.NewRecorder()
 	handler.ServeHTTP(listed, members)
 	if listed.Code != http.StatusOK {

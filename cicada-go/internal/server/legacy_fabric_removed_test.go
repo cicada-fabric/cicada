@@ -16,7 +16,7 @@ import (
 // bearer. They must not remain a shortcut around v2 session authentication.
 func TestLegacyFabricPeerRoutesAreRemoved(t *testing.T) {
 	root := t.TempDir()
-	manager, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")})
+	manager, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-retired-route-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,9 @@ func TestLegacyFabricPeerRoutesAreRemoved(t *testing.T) {
 		{http.MethodPost, "/v1/machines/node-a/fabric-deliveries/message-a"},
 	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+		request := httptest.NewRequest(test.method, test.path, nil)
+		request.Header.Set("Authorization", "Bearer synthetic-retired-route-token")
+		handler.ServeHTTP(response, request)
 		if response.Code != http.StatusNotFound {
 			t.Errorf("legacy peer route %s %s remains available: status=%d body=%s",
 				test.method, test.path, response.Code, response.Body.String())

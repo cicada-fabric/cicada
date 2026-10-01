@@ -3,18 +3,174 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
+
+func TestSealedHandoffRetryTransferred(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	fixture.sourceCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
+	fixture.directoryTargets = map[string]fabricpkg.NetworkCard{
+		"receiver-alias": {
+			PrincipalID: "principal-b", EndpointID: "endpoint-b", GroupID: "group-b",
+			Name: "receiver-alias", Harness: "codex", NodeID: "node-b", Status: "online",
+			Capabilities: map[string]any{"local_peer_delivery": "sealed_v1"},
+		},
+	}
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
+	server := mcpOutboxTestServer(t, fixture, filepath.Join(t.TempDir(), "mcp", "sessions.json"),
+		"thread-handoff", "endpoint-a", "group-b")
+	scope, err := server.currentMCPOutboxScope()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbox, err := server.ensureMCPOutbox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour).Truncate(time.Millisecond)
+	expiresText := expiresAt.Format(time.RFC3339Nano)
+	input := mcpOutboxInput{TaskID: "task_synthetic_12345678901234567890", Target: "endpoint-b",
+		RequestedTarget: "receiver-alias", ExpectedRevision: 8, OwnerEpoch: 3,
+		Body: "synthetic sealed handoff context", ExpiresAt: expiresText, RequiredArtifactRefsJSON: "[]"}
+	operation, created, err := outbox.prepare(scope, "sealed_task_handoff", "handoff-retry-key", input)
+	if err != nil || !created {
+		t.Fatalf("prepare durable handoff: created=%v err=%v", created, err)
+	}
+	if _, err := outbox.markError(scope, operation.OperationID, mcpOutboxStatusUnknown,
+		errors.New("simulated lost proposal response")); err != nil {
+		t.Fatal(err)
+	}
+	messageID := "shared-task-handoff.v1:" + strconv.FormatInt(expiresAt.UnixMilli(), 10) + ":" + operation.OperationID
+	digest := strings.Repeat("a", 64)
+	fixture.mu.Lock()
+	fixture.taskHandoffResponse = store.SealedSharedTaskHandoff{
+		ID: operation.OperationID, TaskID: input.TaskID, GroupID: scope.GroupID,
+		FromPrincipalID: "principal-a", FromEndpointID: scope.EndpointID,
+		ToPrincipalID: "principal-b", ToEndpointID: input.Target,
+		TaskRevision: input.ExpectedRevision, FromOwnerEpoch: input.OwnerEpoch,
+		MessageID: messageID, MessageDigest: digest, RequiredArtifactRefs: []store.SealedTaskHandoffArtifactRef{},
+		ExpiresAt: expiresText, Status: store.SealedTaskHandoffTransferred, Version: 2,
+	}
+	fixture.mu.Unlock()
+
+	socketPath := machineAgentJoinSocketPath(stateDir, "node-a")
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		_ = listener.Close()
+		t.Fatalf("make synthetic Node socket private: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	requests := make(chan crossNodeGroupRequest, 1)
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		var request crossNodeGroupRequest
+		if decodeErr := json.NewDecoder(connection).Decode(&request); decodeErr != nil {
+			return
+		}
+		requests <- request
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{
+			Version: localJoinProtocolVersion,
+			CrossNodeGroup: &crossNodeGroupResult{MessageID: messageID, TargetEndpointID: input.Target,
+				State: "RELAY_ACCEPTED", Delivery: "RELAY_PERSISTED", PayloadMode: store.RelayPayloadModeSealedV1,
+				Digest: digest},
+		})
+	}()
+
+	arguments := map[string]any{
+		"task_id": input.TaskID, "target": input.RequestedTarget, "body": input.Body,
+		"expires_at": expiresText, "idempotency_key": operation.IdempotencyKey,
+	}
+	result, err := server.callTool("cicada_task_handoff_send", arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := result.(map[string]any)
+	if public["operation_id"] != operation.OperationID || public["status"] != mcpOutboxStatusSent {
+		t.Fatalf("retry did not recover the exact outbox operation: %#v", public)
+	}
+	var recovered map[string]any
+	encoded, _ := json.Marshal(public["result"])
+	if err := json.Unmarshal(encoded, &recovered); err != nil {
+		t.Fatal(err)
+	}
+	handoff, _ := recovered["handoff"].(map[string]any)
+	if handoff["status"] != store.SealedTaskHandoffTransferred {
+		t.Fatalf("transferred proposal was not recovered: %#v", handoff)
+	}
+	select {
+	case nodeRequest := <-requests:
+		if nodeRequest.Operation != "cross_node_task_handoff" || nodeRequest.TargetEndpointID != input.Target ||
+			nodeRequest.TaskID != input.TaskID || nodeRequest.ExpectedRevision != input.ExpectedRevision ||
+			nodeRequest.OwnerEpoch != input.OwnerEpoch || nodeRequest.HandoffMessageID != messageID {
+			t.Fatalf("retry changed its durable Node request: %#v", nodeRequest)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry did not query the durable local Node operation")
+	}
+	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 1 ||
+		fixture.taskHandoffGetCalls.Load() != 1 || fixture.taskHandoffProposalCalls.Load() != 0 {
+		t.Fatalf("retry did not resolve its durable target exactly once or reproposed: task=%d resolve=%d GET=%d POST=%d",
+			fixture.taskGetCalls.Load(), fixture.resolveCalls.Load(), fixture.taskHandoffGetCalls.Load(),
+			fixture.taskHandoffProposalCalls.Load())
+	}
+
+	// Exact repeat is returned from the durable SENT result. Same-key edits to
+	// body, requested target or deadline cannot replace the original packet.
+	if _, err := server.callTool("cicada_task_handoff_send", arguments); err != nil {
+		t.Fatalf("exact same-key retry failed: %v", err)
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"body":   func(args map[string]any) { args["body"] = "changed body" },
+		"target": func(args map[string]any) { args["target"] = "different-alias" },
+		"deadline": func(args map[string]any) {
+			args["expires_at"] = expiresAt.Add(time.Minute).Format(time.RFC3339Nano)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := make(map[string]any, len(arguments))
+			for key, value := range arguments {
+				changed[key] = value
+			}
+			mutate(changed)
+			if _, err := server.callTool("cicada_task_handoff_send", changed); !errors.Is(err, errMCPOutboxConflict) {
+				t.Fatalf("changed same-key %s returned %v, want conflict", name, err)
+			}
+		})
+	}
+	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 1 ||
+		fixture.taskHandoffGetCalls.Load() != 1 || fixture.taskHandoffProposalCalls.Load() != 0 {
+		t.Fatalf("cached retry or intent conflict touched network: task=%d resolve=%d GET=%d POST=%d",
+			fixture.taskGetCalls.Load(), fixture.resolveCalls.Load(), fixture.taskHandoffGetCalls.Load(),
+			fixture.taskHandoffProposalCalls.Load())
+	}
+}
 
 type mcpOutboxFixtureSession struct {
 	nativeSession string
@@ -28,18 +184,25 @@ type mcpOutboxFixtureSession struct {
 }
 
 type mcpOutboxHTTPFixture struct {
-	server               *httptest.Server
-	requests             atomic.Int32
-	whoamiCalls          atomic.Int32
-	resolveCalls         atomic.Int32
-	mu                   sync.Mutex
-	preflightGroupScopes []string
-	token                string
-	workspace            string
-	sourceCapabilities   map[string]any
-	targetCapabilities   map[string]any
-	targetNodeID         string
-	currentSession       mcpOutboxFixtureSession
+	server                   *httptest.Server
+	requests                 atomic.Int32
+	receiveCalls             atomic.Int32
+	whoamiCalls              atomic.Int32
+	resolveCalls             atomic.Int32
+	taskGetCalls             atomic.Int32
+	taskHandoffGetCalls      atomic.Int32
+	taskHandoffProposalCalls atomic.Int32
+	taskHandoffPostCalls     atomic.Int32
+	mu                       sync.Mutex
+	preflightGroupScopes     []string
+	token                    string
+	workspace                string
+	sourceCapabilities       map[string]any
+	targetCapabilities       map[string]any
+	targetNodeID             string
+	directoryTargets         map[string]fabricpkg.NetworkCard
+	currentSession           mcpOutboxFixtureSession
+	taskHandoffResponse      any
 }
 
 func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
@@ -54,6 +217,11 @@ func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 	}
 	fixture.server = httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		expectedAuthorization := "CicadaSession " + fixture.token
+		if request.URL.Path == "/v2/fabric/receive" {
+			fixture.receiveCalls.Add(1)
+			http.Error(response, "legacy plaintext receive must not be called", http.StatusGone)
+			return
+		}
 		if request.URL.Path == "/v2/fabric/whoami" {
 			fixture.whoamiCalls.Add(1)
 			if request.Header.Get("Authorization") != expectedAuthorization {
@@ -86,11 +254,50 @@ func newMCPOutboxHTTPFixture(t *testing.T) *mcpOutboxHTTPFixture {
 				t.Errorf("decode Directory resolve: %v", err)
 				return
 			}
-			_ = json.NewEncoder(response).Encode(fabricpkg.NetworkCard{
-				PrincipalID: "principal-b", EndpointID: input.Query, GroupID: session.group,
-				Name: input.Query, Harness: "codex", NodeID: fixture.targetNodeID, Status: "online",
-				Capabilities: fixture.targetCapabilities,
-			})
+			card, found := fixture.directoryTargets[input.Query]
+			if !found {
+				card = fabricpkg.NetworkCard{
+					PrincipalID: "principal-b", EndpointID: input.Query, GroupID: session.group,
+					Name: input.Query, Harness: "codex", NodeID: fixture.targetNodeID, Status: "online",
+					Capabilities: fixture.targetCapabilities,
+				}
+			}
+			_ = json.NewEncoder(response).Encode(card)
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/v2/fabric/tasks/sealed-handoffs/") {
+			if request.Method == http.MethodGet {
+				fixture.taskHandoffGetCalls.Add(1)
+				fixture.mu.Lock()
+				handoff := fixture.taskHandoffResponse
+				fixture.mu.Unlock()
+				if handoff == nil {
+					http.NotFound(response, request)
+					return
+				}
+				_ = json.NewEncoder(response).Encode(handoff)
+				return
+			}
+			if request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/accept") {
+				var input fabricpkg.SealedTaskHandoffAcceptInput
+				if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+					t.Errorf("decode sealed Task handoff acceptance: %v", err)
+					http.Error(response, "bad input", http.StatusBadRequest)
+					return
+				}
+				fixture.taskHandoffPostCalls.Add(1)
+				_ = json.NewEncoder(response).Encode(map[string]any{"accepted": true})
+				return
+			}
+			if request.Method == http.MethodPost {
+				fixture.taskHandoffProposalCalls.Add(1)
+				http.Error(response, "unexpected duplicate proposal", http.StatusConflict)
+				return
+			}
+		}
+		if strings.HasPrefix(request.URL.Path, "/v2/fabric/tasks/") && request.Method == http.MethodGet {
+			fixture.taskGetCalls.Add(1)
+			http.Error(response, "unexpected Task reread", http.StatusInternalServerError)
 			return
 		}
 		if strings.HasPrefix(request.URL.Path, "/v2/fabric/requests/") && request.Method == http.MethodGet {
@@ -225,11 +432,30 @@ func TestMCPOutboxUnsealedSendFailsClosedAndRetryNeverPostsPlaintext(t *testing.
 	}
 }
 
+func TestMCPReceiveWithoutSealedNodeCapabilityDoesNotFallbackToHub(t *testing.T) {
+	fixture := newMCPOutboxHTTPFixture(t)
+	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
+	server := mcpOutboxTestServer(t, fixture, statePath, "thread-receive", "endpoint-a", "group-a")
+	if _, err := server.callTool("cicada_receive", map[string]any{"limit": 8}); !errors.Is(err, fabricpkg.ErrPlaintextInboxReceiveRetired) {
+		t.Fatalf("receive without Node sealed-delivery capability error = %v", err)
+	}
+	if fixture.whoamiCalls.Load() != 1 {
+		t.Fatalf("expected one authenticated capability refresh, got %d", fixture.whoamiCalls.Load())
+	}
+	if fixture.receiveCalls.Load() != 0 || fixture.requests.Load() != 0 {
+		t.Fatalf("receive fell back to legacy Hub inbox: receive=%d peer=%d", fixture.receiveCalls.Load(), fixture.requests.Load())
+	}
+}
+
 func TestMCPOutboxAskUsesSelectedGroupAndNeverFallsBackToHubPlaintext(t *testing.T) {
 	fixture := newMCPOutboxHTTPFixture(t)
 	fixture.sourceCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
 	fixture.targetCapabilities = map[string]any{"local_peer_delivery": "sealed_v1"}
-	stateDir := filepath.Join(t.TempDir(), "node-state")
+	stateRoot := t.TempDir()
+	if err := os.Chmod(stateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(stateRoot, "node-state")
 	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	first := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-b")
@@ -238,8 +464,8 @@ func TestMCPOutboxAskUsesSelectedGroupAndNeverFallsBackToHubPlaintext(t *testing
 		t.Fatal(err)
 	}
 	operationID := mcpOutboxOperationID(t, result)
-	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
-		t.Fatalf("unavailable sealed Node attempt result = %#v, want terminal FAILED", result)
+	if public := result.(map[string]any); public["status"] != mcpOutboxStatusUnknown || public["retryable"] != true {
+		t.Fatalf("unavailable sealed Node attempt result = %#v, want retryable UNKNOWN", result)
 	}
 	_ = first.outbox.close()
 	wrongGroup := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
@@ -486,7 +712,11 @@ func TestMCPOutboxFilesArePrivate(t *testing.T) {
 // Hub peer-message fallback when that bridge is unavailable.
 func TestMCPOutboxExplicitLinkAskNeverPostsPlaintextToHub(t *testing.T) {
 	fixture := newMCPOutboxHTTPFixture(t)
-	t.Setenv("CICADA_NODE_STATE_DIR", filepath.Join(t.TempDir(), "node-state"))
+	stateRoot := t.TempDir()
+	if err := os.Chmod(stateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_NODE_STATE_DIR", filepath.Join(stateRoot, "node-state"))
 	statePath := filepath.Join(t.TempDir(), "mcp", "sessions.json")
 	server := mcpOutboxTestServer(t, fixture, statePath, "thread-a", "endpoint-a", "group-a")
 	result, err := server.callTool("cicada_ask", map[string]any{
@@ -495,8 +725,8 @@ func TestMCPOutboxExplicitLinkAskNeverPostsPlaintextToHub(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := result.(map[string]any)["status"]; got != mcpOutboxStatusFailed {
-		t.Fatalf("unavailable sealed Node bridge result = %#v, want terminal FAILED", result)
+	if public := result.(map[string]any); public["status"] != mcpOutboxStatusUnknown || public["retryable"] != true {
+		t.Fatalf("unavailable sealed Node bridge result = %#v, want retryable UNKNOWN", result)
 	}
 	if fixture.requests.Load() != 0 || fixture.resolveCalls.Load() != 0 {
 		t.Fatalf("explicit Link Ask reached Hub peer endpoint or Directory target resolution: peer=%d resolve=%d", fixture.requests.Load(), fixture.resolveCalls.Load())

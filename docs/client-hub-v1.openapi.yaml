@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.5
+  x-contract-revision: client-hub-v1.6
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -371,7 +371,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.5}
+        contract_revision: {const: client-hub-v1.6}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -537,6 +537,24 @@ components:
         cicada-go/internal/clientcontract/catalog.json.
       x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
       x-rpc-request-result-schemas:
+        link.invite_accept:
+          request: '#/components/schemas/LinkInviteAcceptRequest'
+          result: '#/components/schemas/LinkInviteAcceptResult'
+        link.invite_create:
+          request: '#/components/schemas/LinkInviteCreateRequest'
+          result: '#/components/schemas/LinkInviteCreateResult'
+        link.invite_preview:
+          request: '#/components/schemas/LinkInvitePreviewRequest'
+          result: '#/components/schemas/LinkInvitePreviewResult'
+        link.review_policy_grant:
+          request: '#/components/schemas/LinkReviewPolicyGrantRequest'
+          result: '#/components/schemas/LinkReviewPolicyStatusResult'
+        link.review_policy_preview:
+          request: '#/components/schemas/LinkReviewPolicyPreviewRequest'
+          result: '#/components/schemas/LinkReviewPolicyPreviewResult'
+        link.review_policy_status:
+          request: '#/components/schemas/LinkReviewPolicyStatusRequest'
+          result: '#/components/schemas/LinkReviewPolicyStatusResult'
         monitor.broadcast_confirm:
           request: '#/components/schemas/MonitorBroadcastConfirmRequest'
           result: '#/components/schemas/MonitorBroadcastConfirmResult'
@@ -549,6 +567,18 @@ components:
         monitor.broadcast_status:
           request: '#/components/schemas/MonitorBroadcastStatusRequest'
           result: '#/components/schemas/MonitorBroadcastStatusResult'
+        network.directory:
+          request: '#/components/schemas/NetworkDirectoryRequest'
+          result: '#/components/schemas/NetworkDirectoryResult'
+        network.collaboration_key_grant:
+          request: '#/components/schemas/NetworkCollaborationKeyGrantRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyGrantResult'
+        network.collaboration_key_manifest:
+          request: '#/components/schemas/NetworkCollaborationKeyManifestRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyManifestResult'
+        network.collaboration_key_status:
+          request: '#/components/schemas/NetworkCollaborationKeyStatusRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyGrantResult'
         network.key_grant:
           request: '#/components/schemas/NetworkKeyGrantRequest'
           result: '#/components/schemas/NetworkKeyGrantResult'
@@ -561,6 +591,9 @@ components:
         space.foreign_endpoint_join:
           request: '#/components/schemas/CrossOwnerEndpointJoinRequest'
           result: '#/components/schemas/CrossOwnerEndpointJoinResult'
+        space.foreign_endpoint_preview:
+          request: '#/components/schemas/CrossOwnerEndpointPreviewRequest'
+          result: '#/components/schemas/CrossOwnerEndpointPreviewResult'
         space.foreign_member_admit:
           request: '#/components/schemas/CrossOwnerMemberAdmitRequest'
           result: '#/components/schemas/CrossOwnerMemberAdmitResult'
@@ -588,9 +621,13 @@ components:
         topology.regroup_proposal:
           request: '#/components/schemas/RegroupProposalRequest'
           result: '#/components/schemas/RegroupProposalResult'
+        topology.endpoint_admission_preview:
+          request: '#/components/schemas/TopologyEndpointAdmissionPreviewRequest'
+          result: '#/components/schemas/TopologyEndpointAdmissionPreviewResult'
       x-topology-apply-action-schemas:
         group.create: '#/components/schemas/TopologyCreateGroupAction'
         membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+        endpoint.admit_group: '#/components/schemas/TopologyAdmitEndpointAction'
       x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'
       x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'
       x-topology-group-projection-schema: '#/components/schemas/ClientTopologyGroup'
@@ -603,11 +640,13 @@ components:
         - goal.result
         - topology.snapshot
         - topology.apply
+        - topology.endpoint_admission_preview
         - topology.delegation_issue
         - topology.delegation_revoke
         - topology.regroup_proposal
         - space.foreign_member_admit
         - space.foreign_member_revoke
+        - space.foreign_endpoint_preview
         - space.foreign_endpoint_join
         - space.key_manifest_v2
         - space.key_consent_v2
@@ -628,12 +667,19 @@ components:
         - link.key_manifest
         - link.key_grants
         - link.key_grant
+        - link.review_policy_preview
+        - link.review_policy_grant
+        - link.review_policy_status
         - group.key_manifest
         - group.key_grant
         - group.key_status
         - network.key_grant
         - network.key_manifest
         - network.key_status
+        - network.collaboration_key_manifest
+        - network.collaboration_key_grant
+        - network.collaboration_key_status
+        - network.directory
         - monitor.broadcast_confirm
         - monitor.broadcast_prepare
         - monitor.broadcast_recover
@@ -650,7 +696,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.5}
+        contract_revision: {const: client-hub-v1.6}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -691,6 +737,90 @@ components:
         target:
           $ref: '#/components/schemas/CommunicationLinkKeySide'
         digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    LinkReviewPolicy:
+      type: object
+      additionalProperties: false
+      required: [mode, reviewers, max_failovers, reviewer_lease_seconds, max_review_age_seconds]
+      properties:
+        mode: {type: string, enum: [NONE, METADATA]}
+        reviewers:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [endpoint_id, group_id]
+            properties:
+              endpoint_id: {type: string, minLength: 1}
+              group_id: {type: string, minLength: 1}
+        max_failovers: {type: integer, minimum: 0, maximum: 8}
+        reviewer_lease_seconds: {type: integer, minimum: 0, maximum: 3600}
+        max_review_age_seconds: {type: integer, minimum: 0, maximum: 86400}
+      description: >-
+        For NONE all numeric fields and reviewers must be empty/zero. METADATA
+        requires reviewers and bounds validated by the Hub. Reviewers see only
+        bounded message metadata, never plaintext/ciphertext keys or prompt
+        content; this does not claim to eliminate prompt-injection risk.
+
+    LinkReviewPolicyPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, policy]
+      properties:
+        link_id: {type: string, minLength: 1}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+    LinkReviewPolicyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, owner_key_id, expected_policy_version, policy, signed_proof]
+      properties:
+        link_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        expected_policy_version: {type: integer, minimum: 1}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerLinkReviewPolicyProof JSON.
+    LinkReviewPolicyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1}
+    LinkReviewPolicyPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_id, contract_digest, link_version,
+        expected_policy_version, policy_version, policy_digest, policy, maximum_proof_expires_at]
+      properties:
+        link_id: {type: string}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        link_version: {type: integer, minimum: 1}
+        expected_policy_version: {type: integer, minimum: 0}
+        policy_version: {type: integer, minimum: 1}
+        policy_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        maximum_proof_expires_at: {type: string, format: date-time}
+    LinkReviewPolicyStatusResult:
+      type: object
+      additionalProperties: false
+      required: [link_id, link_version, policy_version, policy_digest, policy, current, accepted_sides]
+      properties:
+        link_id: {type: string}
+        link_version: {type: integer, minimum: 1}
+        policy_version: {type: integer, minimum: 0}
+        policy_digest: {type: string}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        current: {type: boolean}
+        accepted_sides: {type: array, maxItems: 2, items: {type: string, enum: [SOURCE, TARGET]}}
+        expires_at: {type: string, format: date-time}
+      description: >-
+        Policy status only. It contains no reviewed message body or message
+        ciphertext and does not establish native/model consumption.
 
     CommunicationLinkKeySide:
       type: object
@@ -912,6 +1042,44 @@ components:
         applied_join_revision: {type: integer, minimum: 1}
         expires_at: {type: string, format: date-time}
         state: {type: string, enum: [ACTIVE, REVOKED]}
+    CrossOwnerEndpointPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id]
+      properties:
+        admission_id: {type: string, minLength: 1}
+    CrossOwnerEndpointPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [hub_id, network_id, group_id, group_name, group_owner_id, group_owner_name, endpoint_id, endpoint_name, principal_id, endpoint_owner_id, endpoint_owner_name, admission_id, admission_state, grants, expires_at, group_revision, membership_id, membership_revision, binding_id, binding_epoch, context_policy, cross_owner_context_shared, history_included]
+      properties:
+        hub_id: {type: string, minLength: 1}
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        group_name: {type: string, minLength: 1}
+        group_owner_id: {type: string, minLength: 1}
+        group_owner_name: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        endpoint_name: {type: string, minLength: 1}
+        principal_id: {type: string, minLength: 1}
+        endpoint_owner_id: {type: string, minLength: 1}
+        endpoint_owner_name: {type: string, minLength: 1}
+        admission_id: {type: string, minLength: 1}
+        admission_state: {type: string, const: ACTIVE}
+        grants:
+          type: array
+          items: {type: string, enum: [space.read, space.write, space.moderate]}
+          minItems: 1
+          maxItems: 3
+        expires_at: {type: string, format: date-time}
+        group_revision: {type: integer, minimum: 1}
+        membership_id: {type: string, minLength: 1}
+        membership_revision: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1}
+        binding_epoch: {type: integer, minimum: 1}
+        context_policy: {type: string, const: group_scoped}
+        cross_owner_context_shared: {type: boolean, const: true}
+        history_included: {type: boolean, const: false}
     CrossOwnerKeyScopeRequest:
       type: object
       additionalProperties: false
@@ -1385,6 +1553,102 @@ components:
         Changes only the explicit message.broadcast permission for an active
         same-owner Membership. Monitor role assignment does not imply this permission.
 
+    TopologyAdmitEndpointAction:
+      type: object
+      additionalProperties: false
+      required: [kind, admit_endpoint]
+      properties:
+        kind: {const: endpoint.admit_group}
+        admit_endpoint:
+          type: object
+          additionalProperties: false
+          required: [admission]
+          properties:
+            admission:
+              $ref: '#/components/schemas/ClientTopologyEndpointAdmissionInput'
+
+    ClientTopologyEndpointAdmissionInput:
+      type: object
+      additionalProperties: false
+      required: [network_id, group_id, endpoint_id, expected_endpoint_migration_state,
+        expected_network_version, expected_group_version, expected_network_membership_revision,
+        expected_endpoint_network_revision, network_access_binding_id, network_access_epoch,
+        native_binding_id, native_binding_epoch, expected_membership_revision, expected_endpoint_group_revision]
+      properties:
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        expected_endpoint_migration_state: {type: string, enum: [READY, MIGRATION_PENDING_GROUP]}
+        expected_network_version: {type: integer, minimum: 1}
+        expected_group_version: {type: integer, minimum: 1}
+        expected_network_membership_revision: {type: integer, minimum: 1}
+        expected_endpoint_network_revision: {type: integer, minimum: 1}
+        network_access_binding_id: {type: string, minLength: 1}
+        network_access_epoch: {type: integer, minimum: 1}
+        native_binding_id: {type: string, minLength: 1}
+        native_binding_epoch: {type: integer, minimum: 1}
+        existing_group_binding_id: {type: string}
+        existing_group_binding_epoch: {type: integer, minimum: 0}
+        expected_membership_revision: {type: integer, minimum: 0}
+        expected_endpoint_group_revision: {type: integer, minimum: 0}
+      description: >-
+        Exact Owner-reviewed CAS tuple from topology.endpoint_admission_preview.
+        The Hub rechecks current same-Owner Network/Endpoint enrollment and Node
+        binding before making only a member Membership plus Group reference. It
+        creates no Worker/Monitor grant, history grant, or Group key grant.
+
+    TopologyEndpointAdmissionPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, group_id, endpoint_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+
+    TopologyEndpointAdmissionPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [owner_principal_id, network_id, network_name, network_version, group_id, group_name,
+        group_version, group_context_policy, endpoint_id, endpoint_name, endpoint_principal_id,
+        endpoint_migration_state, network_membership_revision, endpoint_network_revision,
+        network_access_binding_id, network_access_epoch, native_binding_id, native_binding_epoch,
+        membership_revision, endpoint_group_revision, admission_roles, admission_grants,
+        history_included, key_grant_created, existing_thread_memory_retained]
+      properties:
+        owner_principal_id: {type: string}
+        network_id: {type: string}
+        network_name: {type: string}
+        network_version: {type: integer, minimum: 1}
+        group_id: {type: string}
+        group_name: {type: string}
+        group_version: {type: integer, minimum: 1}
+        group_context_policy: {type: string}
+        endpoint_id: {type: string}
+        endpoint_name: {type: string}
+        endpoint_principal_id: {type: string}
+        endpoint_migration_state: {type: string, enum: [READY, MIGRATION_PENDING_GROUP]}
+        network_membership_revision: {type: integer, minimum: 1}
+        endpoint_network_revision: {type: integer, minimum: 1}
+        network_access_binding_id: {type: string}
+        network_access_epoch: {type: integer, minimum: 1}
+        native_binding_id: {type: string}
+        native_binding_epoch: {type: integer, minimum: 1}
+        existing_group_binding_id: {type: string}
+        existing_group_binding_epoch: {type: integer, minimum: 0}
+        membership_status: {type: string}
+        membership_revision: {type: integer, minimum: 0}
+        endpoint_group_status: {type: string}
+        endpoint_group_revision: {type: integer, minimum: 0}
+        admission_roles: {type: array, const: [member], items: {type: string}}
+        admission_grants: {type: array, maxItems: 0, items: {type: string}}
+        history_included: {type: boolean, const: false}
+        key_grant_created: {type: boolean, const: false}
+        existing_thread_memory_retained: {type: boolean, const: true}
+      description: >-
+        Current-Hub same-Owner pre-consent review. This metadata does not include
+        native locators, keys, historical records, or another Owner's data.
+
     ClientTopologyMember:
       type: object
       additionalProperties: false
@@ -1481,15 +1745,16 @@ components:
     ClientTopologyGroup:
       type: object
       additionalProperties: false
-      required: [group_id, name, state, version]
+      required: [group_id, name, state, context_policy, version]
       properties:
         group_id: {type: string}
         network_id: {type: string}
         parent_group_id: {type: string}
         name: {type: string}
         state: {type: string}
+        context_policy: {type: string}
         version: {type: integer, minimum: 1}
-      description: network_id is present for mapped Groups; PREPARING legacy unmapped Groups may omit it.
+      description: network_id is present for mapped Groups; PREPARING legacy unmapped Groups may omit it. context_policy names the current Thread context scope for Owner review.
 
     ClientTopologyEndpoint:
       type: object
@@ -1509,6 +1774,111 @@ components:
         binding_epoch: {type: integer, minimum: 1}
         binding_status: {type: string}
       description: Only this Owner's Endpoints; Network-only Endpoints may have empty group_ids and no Group binding.
+
+    NetworkDirectoryRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        after_endpoint_id: {type: string, maxLength: 256}
+        limit: {type: integer, minimum: 1, maximum: 64, default: 64}
+      description: >-
+        Reads one page for this exact encrypted RPC request. Results include only
+        opted-in Endpoints in an active Network owned by the authenticated Owner.
+    NetworkDirectoryResult:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoints]
+      properties:
+        network_id: {type: string}
+        endpoints:
+          type: array
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [network_id, endpoint_id, alias, presence]
+            properties:
+              network_id: {type: string}
+              endpoint_id: {type: string}
+              alias: {type: string}
+              presence: {type: string, enum: [ACCESS_RECENT, UNKNOWN]}
+        next_cursor: {type: string, maxLength: 256}
+      description: >-
+        Only currently enrolled, discoverable Endpoints that explicitly granted
+        directory.publish are returned. Cards contain network_id, endpoint_id,
+        alias and coarse presence only. They are read-only and confer no authority.
+
+    NetworkCollaborationKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose, owner_key_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        owner_key_id: {type: string, minLength: 1}
+      description: >-
+        Previews a purpose-separated key-consent manifest for the exact current
+        Endpoint enrollment and key candidate. This operation does not grant
+        Task or Broadcast action permissions.
+    NetworkCollaborationKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose, signed_proof]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerNetworkCollaborationKeyGrant JSON bytes.
+      description: >-
+        Accepts one current Owner signature for the exact Network, Endpoint,
+        purpose and manifest digest. The accepted Client operation must be
+        bound to network.collaboration_key_grant.
+    NetworkCollaborationKeyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+    NetworkCollaborationKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [purpose, key_manifest, digest]
+      properties:
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        key_manifest: {$ref: '#/components/schemas/NetworkKeyManifestResult'}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: >-
+        The purpose is part of the outer digest. The Owner must independently
+        verify the candidate self-attestation and signing bytes before signing.
+    NetworkCollaborationKeyGrantResult:
+      type: object
+      additionalProperties: false
+      required: [purpose, network_id, endpoint_id, owner_id, owner_key_id,
+        manifest_digest, proof_digest, nonce, state, revision, accepted_at]
+      properties:
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        nonce: {type: string, pattern: '^[0-9a-f]{64}$'}
+        state: {type: string, enum: [active, stale, revoked]}
+        revision: {type: integer, minimum: 1}
+        accepted_at: {type: string, format: date-time}
+      description: >-
+        Purpose-specific consent metadata only. Task and Broadcast still
+        require independent task.offer.* or broadcast.* authorization. It does
+        not grant direct messaging and exposes no private key or peer payload.
 
     NetworkKeyManifestRequest:
       type: object

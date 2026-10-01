@@ -18,6 +18,8 @@ func newRelayV2TestStore(t *testing.T) *Store {
 		store.Close()
 		t.Fatal(err)
 	}
+	preparingRelaySealedSenderFixture(t, store)
+	preparingNetworkActorFixture(t, store, "group-a", "principal-b", "ep-b")
 	return store
 }
 
@@ -48,6 +50,7 @@ func setupRelaySealedGroup(t *testing.T, store *Store) {
 	if _, err := store.CreateGroup(Group{ID: "group-a", Name: "group-a", State: GroupStateActive}); err != nil {
 		t.Fatal(err)
 	}
+	preparingRelaySealedSenderFixture(t, store)
 }
 
 func setupRelaySealedReceiver(t *testing.T, store *Store, endpointID, principalID, bindingID string) *SessionBinding {
@@ -495,13 +498,13 @@ func TestRelayV2IdempotencyUsesSenderScopeAndDigest(t *testing.T) {
 
 	firstInput := relayTestAsk("rq-one", "msg-one", "digest-one", "operation-1", "first body")
 	firstInput.RequestID = ""
-	first, err := store.CreateFabricRequest(firstInput)
+	first, err := createPreparingRelayRequestFixture(t, store, firstInput)
 	if err != nil {
 		t.Fatal(err)
 	}
 	retry := relayTestAsk("rq-retry", "msg-retry", "digest-one", "operation-1", "first body")
 	retry.RequestID = ""
-	second, err := store.CreateFabricRequest(retry)
+	second, err := createPreparingRelayRequestFixture(t, store, retry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +512,7 @@ func TestRelayV2IdempotencyUsesSenderScopeAndDigest(t *testing.T) {
 		t.Fatalf("same scoped key/digest did not return original row: first=%#v second=%#v", first, second)
 	}
 	conflict := relayTestAsk("rq-conflict", "msg-conflict", "digest-two", "operation-1", "changed body")
-	if _, err := store.CreateFabricRequest(conflict); !errors.Is(err, ErrRelayIdempotencyConflict) {
+	if _, err := createPreparingRelayRequestFixture(t, store, conflict); !errors.Is(err, ErrRelayIdempotencyConflict) {
 		t.Fatalf("different digest did not conflict: %v", err)
 	}
 
@@ -517,7 +520,8 @@ func TestRelayV2IdempotencyUsesSenderScopeAndDigest(t *testing.T) {
 	differentScope.RequestID = "rq-other-scope"
 	differentScope.MessageID = "msg-other-scope"
 	differentScope.SenderPrincipalID = "principal-other"
-	created, err := store.CreateFabricRequest(differentScope)
+	differentScope.SenderEndpointID = "ep-other"
+	created, err := createPreparingRelayRequestFixture(t, store, differentScope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +549,7 @@ func TestRelayV2ConcurrentIdempotentCreateAndSingleClaim(t *testing.T) {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			results[index], errorsSeen[index] = store.CreateFabricRequest(input)
+			results[index], errorsSeen[index] = createPreparingRelayRequestFixture(t, store, input)
 		}(index)
 	}
 	group.Wait()
@@ -580,7 +584,7 @@ func TestRelayV2CursorSurvivesReadDisconnectAndRestart(t *testing.T) {
 	if err := store.initializeRelayV2Schema(); err != nil {
 		t.Fatal(err)
 	}
-	request, err := store.CreateFabricRequest(relayTestAsk("rq-cursor", "msg-cursor", "digest-cursor", "operation-cursor", "body"))
+	request, err := createPreparingRelayRequestFixture(t, store, relayTestAsk("rq-cursor", "msg-cursor", "digest-cursor", "operation-cursor", "body"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +636,7 @@ func TestRelayV2CursorSurvivesReadDisconnectAndRestart(t *testing.T) {
 func TestRelayV2ForgedAckRejectedAndFailureRequeues(t *testing.T) {
 	store := newRelayV2TestStore(t)
 	defer store.Close()
-	_, err := store.CreateFabricRequest(relayTestAsk("rq-ack", "msg-ack", "digest-ack", "operation-ack", "body"))
+	_, err := createPreparingRelayRequestFixture(t, store, relayTestAsk("rq-ack", "msg-ack", "digest-ack", "operation-ack", "body"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,7 +683,7 @@ func TestRelayV2RebindsOnlyPendingRowsForExactEndpoint(t *testing.T) {
 		}
 	}
 	request := relayTestAsk("rq-rebind", "msg-rebind", "digest-rebind", "operation-rebind", "body")
-	if _, err := store.CreateFabricRequest(request); err != nil {
+	if _, err := createPreparingRelayRequestFixture(t, store, request); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.RebindPendingRelayInbox("ep-a", "binding-b", 7, "binding-a-new", 8); !errors.Is(err, ErrRelayBindingMismatch) {
@@ -709,7 +713,7 @@ func TestRelayV2ExpiryCancelAndLateReplyAreAtomic(t *testing.T) {
 	requestInput.SenderBindingID = "binding-a"
 	requestInput.SenderBindingEpoch = 11
 	requestInput.ExpiresAt = time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
-	request, err := store.CreateFabricRequest(requestInput)
+	request, err := createPreparingRelayRequestFixture(t, store, requestInput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,7 +766,7 @@ WHERE request_id = ? ORDER BY event_id DESC LIMIT 1`, request.RequestID).Scan(&e
 	}
 
 	cancelInput := relayTestAsk("rq-cancel", "msg-cancel", "digest-cancel", "operation-cancel", "cancel body")
-	cancelled, err := store.CreateFabricRequest(cancelInput)
+	cancelled, err := createPreparingRelayRequestFixture(t, store, cancelInput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -784,7 +788,7 @@ func TestRelayV2RecoversStaleClaimByReceiptBoundary(t *testing.T) {
 		}
 	}
 	first := relayTestAsk("rq-stale-before-node", "msg-stale-before-node", "digest-before-node", "stale-before-node", "body")
-	if _, err := store.CreateFabricRequest(first); err != nil {
+	if _, err := createPreparingRelayRequestFixture(t, store, first); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := store.ClaimRelayInbox(RelayClaimInput{RecipientEndpointID: "ep-b", ConsumerID: "node", BindingID: "binding-b", BindingEpoch: 7, Limit: 1})
@@ -822,7 +826,7 @@ func TestRelayV2RecoversStaleClaimByReceiptBoundary(t *testing.T) {
 func TestRelayV2ReceiptCannotRegressAfterRuntimeOrApplicationAck(t *testing.T) {
 	persistence := newRelayV2TestStore(t)
 	defer persistence.Close()
-	if _, err := persistence.CreateFabricRequest(relayTestAsk("rq-monotonic", "msg-monotonic", "digest-monotonic", "operation-monotonic", "body")); err != nil {
+	if _, err := createPreparingRelayRequestFixture(t, persistence, relayTestAsk("rq-monotonic", "msg-monotonic", "digest-monotonic", "operation-monotonic", "body")); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := persistence.ClaimRelayInbox(RelayClaimInput{
@@ -872,7 +876,7 @@ func TestRelayV2ReceiptCannotRegressAfterRuntimeOrApplicationAck(t *testing.T) {
 func TestRelayV2CodexRecoveryStagesAreDurableWithoutDeliveryProgress(t *testing.T) {
 	persistence := newRelayV2TestStore(t)
 	defer persistence.Close()
-	if _, err := persistence.CreateFabricRequest(relayTestAsk("rq-codex-stages", "msg-codex-stages", "digest-codex-stages", "operation-codex-stages", "body")); err != nil {
+	if _, err := createPreparingRelayRequestFixture(t, persistence, relayTestAsk("rq-codex-stages", "msg-codex-stages", "digest-codex-stages", "operation-codex-stages", "body")); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := persistence.ClaimRelayInbox(RelayClaimInput{
@@ -921,7 +925,7 @@ func TestRelayV2CodexRecoveryStagesAreDurableWithoutDeliveryProgress(t *testing.
 func TestRelayV2StaleAttemptCannotOverwriteNewInboxClaim(t *testing.T) {
 	persistence := newRelayV2TestStore(t)
 	defer persistence.Close()
-	if _, err := persistence.CreateFabricRequest(relayTestAsk("rq-attempt-fence", "msg-attempt-fence", "digest-attempt-fence", "operation-attempt-fence", "body")); err != nil {
+	if _, err := createPreparingRelayRequestFixture(t, persistence, relayTestAsk("rq-attempt-fence", "msg-attempt-fence", "digest-attempt-fence", "operation-attempt-fence", "body")); err != nil {
 		t.Fatal(err)
 	}
 	first, err := persistence.ClaimRelayInbox(RelayClaimInput{

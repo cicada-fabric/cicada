@@ -117,6 +117,10 @@ func newLocalSealedRPCTestFixture(t *testing.T, stateDir string) localSealedRPCT
 	}
 	bundle := nodekeys.PeerKeyAuthorizationBundle{
 		Manifest: manifest, LinkState: "PROPOSED",
+		SourceContextScope: nodekeys.PeerNativeContextScope{HubID: contract.TransportHubID,
+			GroupID: contract.SourceGroupID, GroupContextPolicy: "group_scoped"},
+		TargetContextScope: nodekeys.PeerNativeContextScope{HubID: contract.TransportHubID,
+			GroupID: contract.TargetGroupID, GroupContextPolicy: "group_scoped"},
 		SourceGrant: nodekeys.PeerOwnerKeyGrantEvidence{
 			Side: string(e2ee.OwnerLinkGrantSideSource), OwnerID: "owner-source",
 			OwnerKeyID: sourceOwnerKey.Public().ID, OwnerPublicIdentity: sourceOwnerKey.Public(),
@@ -367,6 +371,21 @@ func TestLocalSealedReplyDerivesReverseRouteFromNodeStatus(t *testing.T) {
 	request.LinkID = fixture.bundle.Manifest.LinkID
 	request.RequestID = original.RequestID
 	request.Body = "private reply body"
+	contract, err := parseLocalLinkContract(fixture.bundle.Manifest.ContractCanonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sealedRequestMatchesManifest(&original, fixture.bundle.Manifest, contract.Direction) {
+		t.Fatalf("synthetic original request does not match its signed Link route: sender=%s/%s receiver=%s/%s direction=%s",
+			original.SenderEndpointID, original.SenderBindingID, original.ReceiverEndpointID,
+			original.ReceiverBindingID, contract.Direction)
+	}
+	if !localCardMatchesStatusReceiver(card, request, &original, nodeID) {
+		t.Fatalf("synthetic responder card does not match original route: endpoint=%s binding=%s epoch=%d native_session_match=%t workspace_match=%t",
+			card.EndpointID, card.BindingID, card.BindingEpoch,
+			card.NativeSessionID == request.NativeSessionID,
+			filepath.Clean(card.Workspace) == filepath.Clean(request.Workspace))
+	}
 	result, err := requestMachineAgentSealedRPC(machineAgentJoinSocketPath(stateDir, nodeID), request)
 	if err != nil {
 		t.Fatalf("sealed REPLY: %v", err)

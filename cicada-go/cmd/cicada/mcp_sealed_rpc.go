@@ -41,7 +41,7 @@ func (m *mcpServer) dispatchSealedRPCMCPOutbox(outbox *mcpOutboxStore,
 		BindingEpoch: trusted.BindingEpoch, OperationID: operation.OperationID,
 		IdempotencyKey: operation.IdempotencyKey, LinkID: input.LinkID,
 		DataScope: input.DataScope, ExpiresAt: input.ExpiresAt,
-		RequestID: input.RequestID, Body: contextInput.Body,
+		RequestID: input.RequestID, ParentRequestID: input.ParentRequestID, Body: contextInput.Body,
 	}
 	if operation.Kind == "ask" {
 		request.Operation = "sealed_ask"

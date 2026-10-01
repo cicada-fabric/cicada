@@ -12,11 +12,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 )
 
 type machineHubContext struct {
 	HubID, Origin, NodeID, StateDir, Token, WriterRoot, WriterScope string
 	MultiHub                                                        bool
+	RequireNativeContext                                            bool
+	ProviderInbox                                                   *nodeinbox.Inbox
+	ProviderAdmissions                                              *nodeinbox.ProviderAdmissionLedger
+	NativeContexts                                                  *nodeinbox.NativeContextRegistry
+	ResourceExecutions                                              *nodelock.ResourceExecutionManager
 }
 
 type machineHubContextKey struct{}

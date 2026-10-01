@@ -16,21 +16,26 @@ import (
 )
 
 type localNetworkDirectRequest struct {
-	Version          int    `json:"version"`
-	Operation        string `json:"operation"`
-	NetworkID        string `json:"network_id"`
-	EndpointID       string `json:"endpoint_id"`
-	SessionToken     string `json:"network_session_token"`
-	Harness          string `json:"harness"`
-	NativeSessionID  string `json:"native_session_id"`
-	Workspace        string `json:"workspace"`
-	NodeID           string `json:"node_id"`
-	OperationID      string `json:"operation_id"`
-	IdempotencyKey   string `json:"idempotency_key"`
-	TargetEndpointID string `json:"target_endpoint_id,omitempty"`
-	RequestID        string `json:"request_id,omitempty"`
-	ExpiresAt        string `json:"expires_at,omitempty"`
-	Body             string `json:"body,omitempty"`
+	Version              int    `json:"version"`
+	Operation            string `json:"operation"`
+	NetworkID            string `json:"network_id"`
+	EndpointID           string `json:"endpoint_id"`
+	SessionToken         string `json:"network_session_token"`
+	Harness              string `json:"harness"`
+	NativeSessionID      string `json:"native_session_id"`
+	Workspace            string `json:"workspace"`
+	NodeID               string `json:"node_id"`
+	OperationID          string `json:"operation_id"`
+	TaskID               string `json:"task_id,omitempty"`
+	OwnerEpoch           int64  `json:"owner_epoch,omitempty"`
+	CollaborationPurpose string `json:"collaboration_purpose,omitempty"`
+	BroadcastID          string `json:"broadcast_id,omitempty"`
+	IdempotencyKey       string `json:"idempotency_key"`
+	TargetEndpointID     string `json:"target_endpoint_id,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	ParentRequestID      string `json:"parent_request_id,omitempty"`
+	ExpiresAt            string `json:"expires_at,omitempty"`
+	Body                 string `json:"body,omitempty"`
 }
 
 type localNetworkDirectResult struct {
@@ -90,7 +95,8 @@ func (m *mcpServer) networkDirectToolLocked(name string, arguments map[string]an
 			return nil, errors.New("Network direct scope cannot use a Group Link")
 		}
 		input := mcpOutboxInput{NetworkID: state.NetworkID, Target: stringArgument(arguments, "target"),
-			RequestID: stringArgument(arguments, "request_id"), ExpiresAt: stringArgument(arguments, "expires_at")}
+			RequestID: stringArgument(arguments, "request_id"), ExpiresAt: stringArgument(arguments, "expires_at"),
+			ParentRequestID: stringArgument(arguments, "parent_request_id")}
 		kind := "network_send"
 		switch name {
 		case "cicada_send":
@@ -192,10 +198,17 @@ func (m *mcpServer) dispatchMCPNetworkOutbox(outbox *mcpOutboxStore, scope mcpOu
 		}
 		return mcpOutboxPublicResult(failed), nil
 	}
+	if op.Kind == "network_task_offer" || op.Kind == "network_task_result" {
+		return m.dispatchNetworkTaskOutbox(outbox, scope, op, context, state, input)
+	}
+	if op.Kind == "network_broadcast" {
+		return m.dispatchNetworkBroadcastOutbox(outbox, scope, op, context, state, input)
+	}
 	request := localNetworkDirectRequest{Version: localJoinProtocolVersion, NetworkID: state.NetworkID, EndpointID: state.EndpointID,
 		SessionToken: state.SessionToken, Harness: context.Harness, NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		NodeID: context.MachineID, OperationID: op.OperationID, IdempotencyKey: op.IdempotencyKey,
-		TargetEndpointID: input.Target, RequestID: input.RequestID, ExpiresAt: input.ExpiresAt, Body: input.Body}
+		TargetEndpointID: input.Target, RequestID: input.RequestID, ExpiresAt: input.ExpiresAt, Body: input.Body,
+		TaskID: input.TaskID, OwnerEpoch: input.OwnerEpoch, ParentRequestID: input.ParentRequestID}
 	if op.Kind == "network_ask" && request.ExpiresAt == "" {
 		created, err := time.Parse(time.RFC3339Nano, op.CreatedAt)
 		if err != nil {
@@ -205,6 +218,8 @@ func (m *mcpServer) dispatchMCPNetworkOutbox(outbox *mcpOutboxStore, scope mcpOu
 	}
 	switch op.Kind {
 	case "network_send":
+		request.Operation = "network_direct_send"
+	case "network_task_offer_send", "network_task_result_send":
 		request.Operation = "network_direct_send"
 	case "network_ask":
 		request.Operation = "network_direct_ask"

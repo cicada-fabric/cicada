@@ -27,11 +27,24 @@ type machineJob struct {
 	Prompt                  string         `json:"prompt"`
 	Resources               map[string]any `json:"resources"`
 	Attempt                 int            `json:"attempt"`
+
+	// The following authority is reconstructed from the exact sealed claim
+	// response and local Owner-approved binding. It never comes from Worker
+	// JSON or peer-controlled task content.
+	executionID  string `json:"-"`
+	providerID   string `json:"-"`
+	resourceID   string `json:"-"`
+	leaseID      string `json:"-"`
+	fencingEpoch int64  `json:"-"`
 }
 
 type machineJobResult struct {
 	Status, Summary, ThreadID, Error, WorkspaceRevision, WorkspaceSnapshotDigest string
+	ResourceStopState                                                            string
+	providerStarted                                                              bool
 }
+
+const machineResourceStopUnverified = "UNVERIFIED"
 
 type machineAPIError struct {
 	StatusCode int
@@ -62,8 +75,9 @@ func reportMachineJob(ctx context.Context, base, nodeID, nodeToken string, job m
 	payload := map[string]any{
 		"attempt": job.Attempt, "status": result.Status,
 		"summary": limitText(result.Summary, 16000), "thread_id": result.ThreadID,
-		"error":              limitText(result.Error, 4000),
-		"workspace_revision": result.WorkspaceRevision,
+		"error":               limitText(result.Error, 4000),
+		"workspace_revision":  result.WorkspaceRevision,
+		"resource_stop_state": result.ResourceStopState,
 	}
 	endpoint := nodeWorkerJobEndpoint(base, nodeID, job.WorkerID, "result")
 	return machineNodeAPIJSON(ctx, endpoint, http.MethodPost, nodeToken, payload, nil)
@@ -82,7 +96,7 @@ func reportMachineJobReliably(ctx context.Context, base, nodeID, nodeToken strin
 	}
 	for {
 		err := reportMachineJob(ctx, base, nodeID, nodeToken, job, result)
-		if err == nil || machineAPIHasStatus(err, http.StatusNotFound, http.StatusConflict) {
+		if err == nil {
 			return nil
 		}
 		var apiErr *machineAPIError
@@ -126,41 +140,15 @@ func machineNodeAPIJSON(ctx context.Context, endpoint, method, nodeToken string,
 	if nodeToken == "" {
 		return errors.New("Node credential is required for Node-scoped Worker APIs")
 	}
-	var body io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		body = bytes.NewReader(data)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	operation, rpcPayload, err := machineNodeControlRequestForEndpoint(parsed, method, payload)
 	if err != nil {
 		return err
 	}
-	if !machineHubOriginMatches(ctx, endpoint) {
-		return errors.New("Node request escaped its pinned Hub origin")
-	}
-	request.Header.Set("Authorization", "CicadaNode "+nodeToken)
-	request.Header.Set("Accept", "application/json")
-	if payload != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
-	response, err := client.Do(request)
+	client, err := machineNodeControlClientFromContext(ctx, endpoint, nodeToken)
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return &machineAPIError{StatusCode: response.StatusCode, Status: response.Status,
-			Body: strings.TrimSpace(string(data))}
-	}
-	if target != nil && len(data) > 0 {
-		return json.Unmarshal(data, target)
-	}
-	return nil
+	return client.call(ctx, nodeToken, operation, rpcPayload, target)
 }
 
 func sendMachineNodeWorkerHeartbeat(ctx context.Context, base, nodeID, nodeToken, status string, capabilities map[string]any) error {

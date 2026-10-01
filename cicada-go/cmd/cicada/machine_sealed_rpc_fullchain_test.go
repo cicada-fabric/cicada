@@ -214,8 +214,15 @@ func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing
 	}))
 	defer hub.Close()
 
+	hubID, err := fixture.store.GetClientHubID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CICADA_HUB_ID", hubID)
 	for _, node := range []struct{ id, token string }{{fixture.sourceNodeID, fixture.sourceToken}, {fixture.targetNodeID, fixture.targetToken}} {
-		bridge, err := startMachineAgentJoinBridge(context.Background(), fixture.stateDir, hub.URL, node.id, node.token)
+		bridgeCtx := pinnedNativeTestHubContext(context.Background(), hubID, node.id,
+			fixture.stateDir, hub.URL, node.token)
+		bridge, err := startMachineAgentJoinBridge(bridgeCtx, fixture.stateDir, hub.URL, node.id, node.token)
 		if err != nil {
 			t.Fatal(err)
 		}

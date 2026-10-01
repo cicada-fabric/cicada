@@ -33,7 +33,7 @@ func TestOwnerGrantedCrossGroupOutboundMessageIsDurableAndExactOnRetry(t *testin
 		ReceiverOwnerID: target.OwnerID, ReceiverGroupID: target.GroupID,
 		ReceiverMembershipRevision: 5, ReceiverBindingEpoch: target.BindingEpoch,
 		ReceiverKeyID: target.KeyID, LinkID: f.bundle.Manifest.LinkID,
-		LinkRevision: f.bundle.Manifest.LinkVersion,
+		LinkRevision: f.bundle.Manifest.LinkVersion, TransportHubID: "hub_cross_group_pin",
 	}
 	plaintext := []byte("private cross-group result")
 	operationID, err := EndpointMessageOperationID(route, plaintext)
@@ -106,7 +106,7 @@ func TestOwnerGrantedCrossGroupInboundMessageRequiresCurrentTrustAndExactRoute(t
 		ReceiverOwnerID: target.OwnerID, ReceiverGroupID: target.GroupID,
 		ReceiverMembershipRevision: 5, ReceiverBindingEpoch: target.BindingEpoch,
 		ReceiverKeyID: target.KeyID, LinkID: f.bundle.Manifest.LinkID,
-		LinkRevision: f.bundle.Manifest.LinkVersion,
+		LinkRevision: f.bundle.Manifest.LinkVersion, TransportHubID: "hub_cross_group_pin",
 	}
 	wire, err := e2ee.SealEndpointMessage(f.localKey, f.peerKey.Public(), route,
 		[]byte("private result"), 1)
@@ -172,7 +172,7 @@ func TestOwnerGrantedCrossGroupRequestRequiresAskGrantAndExactCorrelation(t *tes
 		ReceiverOwnerID: target.OwnerID, ReceiverGroupID: target.GroupID,
 		ReceiverMembershipRevision: 5, ReceiverBindingEpoch: target.BindingEpoch,
 		ReceiverKeyID: target.KeyID, LinkID: f.bundle.Manifest.LinkID,
-		LinkRevision: f.bundle.Manifest.LinkVersion,
+		LinkRevision: f.bundle.Manifest.LinkVersion, TransportHubID: "hub_cross_group_pin",
 	}
 	plaintext := []byte("What is the current result?")
 	operationID, err := EndpointMessageOperationID(requestRoute, plaintext)
@@ -296,7 +296,7 @@ func TestOwnerGrantedCrossGroupReplyUsesReverseRouteAndExplicitReplyGrant(t *tes
 		ReceiverOwnerID: source.OwnerID, ReceiverGroupID: source.GroupID,
 		ReceiverMembershipRevision: 2, ReceiverBindingEpoch: source.BindingEpoch,
 		ReceiverKeyID: source.KeyID, LinkID: f.bundle.Manifest.LinkID,
-		LinkRevision: f.bundle.Manifest.LinkVersion,
+		LinkRevision: f.bundle.Manifest.LinkVersion, TransportHubID: "hub_cross_group_pin",
 	}
 	plaintext := []byte("result from the original responder")
 	operationID, err := EndpointMessageOperationID(route, plaintext)

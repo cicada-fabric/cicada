@@ -41,6 +41,17 @@ func (l *NativeWriterLock) Close() error {
 	return err
 }
 
+// CheckCurrent verifies that this lease still owns the persisted writer epoch.
+// Call it before publishing a result derived from native state.
+func (l *NativeWriterLock) CheckCurrent() error {
+	if l == nil {
+		return ErrNativeWriterStale
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.checkCurrent()
+}
+
 func AcquireNativeWriter(ctx context.Context, stateRoot, accountScope, harness, nativeID string) (*NativeWriterLock, error) {
 	if ctx == nil || strings.TrimSpace(stateRoot) == "" || strings.TrimSpace(accountScope) == "" ||
 		strings.TrimSpace(harness) == "" || strings.TrimSpace(nativeID) == "" {

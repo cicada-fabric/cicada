@@ -1,6 +1,10 @@
 package control
 
-import "github.com/cicada-ai/cicada/internal/store"
+import (
+	"strings"
+
+	"github.com/cicada-ai/cicada/internal/store"
+)
 
 func (c *Control) recordCompletionVerdict(goalID, workerID string, verdict completionVerdict) {
 	eventType := "WorkerCompletionVerified"
@@ -13,6 +17,26 @@ func (c *Control) recordCompletionVerdict(goalID, workerID string, verdict compl
 		"source": verdict.Source, "confidence": verdict.Confidence,
 		"rationale": verdict.Rationale, "correction": verdict.Correction,
 	})
+}
+
+func (c *Control) finishCompletionVerificationFailure(goal *store.Goal, workerID string, attempt int, message string) {
+	if goal == nil {
+		return
+	}
+	message = tail(strings.TrimSpace(message), 4000)
+	if message == "" {
+		message = "Required completion verification is unavailable; the Worker result was retained for review."
+	}
+	_, _ = c.store.UpdateGoal(goal.ID, "failed", message)
+	_, _ = c.store.AppendEvent(goal.ID, workerID, "WorkerFailed", map[string]any{
+		"error": message, "reason": "required_completion_verification_unavailable",
+	})
+	_, _ = c.store.AppendEvent(goal.ID, workerID, "GoalBlocked", map[string]any{
+		"attempt": attempt, "reason": message,
+	})
+	c.parkFailedIdeaResearch(goal, message)
+	c.notify(goal.ID, "goal.blocked", "P0", "Goal needs attention", message)
+	_ = c.store.SetMachineStatus(goal.MachineID, "available")
 }
 
 func (c *Control) rejectLocalCompletion(goal *store.Goal, workerID string, attempt int, summary string, verdict completionVerdict) (string, bool) {

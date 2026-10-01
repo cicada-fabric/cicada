@@ -73,6 +73,10 @@ func (m *mcpServer) dispatchLocalGroupMCPOutbox(outbox *mcpOutboxStore,
 	if card.NodeID != trusted.NodeID {
 		return m.dispatchCrossNodeGroupMCPOutbox(outbox, scope, operation, input)
 	}
+	if operation.Kind == "ask" && input.ParentRequestID != "" {
+		return m.recordSealedRPCError(outbox, scope, operation,
+			errors.New("causal ASK is unavailable for same-Node local delivery; the local inbox has no ancestry ledger"))
+	}
 	request := localGroupRequest{
 		Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
 		NodeID: trusted.NodeID, Workspace: trusted.Workspace,

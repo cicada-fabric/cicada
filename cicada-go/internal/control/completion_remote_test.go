@@ -95,3 +95,47 @@ func TestRemoteCompletionRequeuesWithVerifierCorrection(t *testing.T) {
 		t.Fatalf("corrected remote Goal did not complete: %#v err=%v", final, err)
 	}
 }
+
+func TestExplicitModelVerifierOutageRetainsRemoteResultWithoutRequeue(t *testing.T) {
+	controlPlane := newTestControl(t, "success")
+	if _, err := controlPlane.RegisterMachine("remote-required-verifier", "Remote verifier", map[string]any{"harnesses": []string{"shell"}}, "available"); err != nil {
+		t.Fatal(err)
+	}
+	goal, err := controlPlane.CreateGoal(GoalInput{
+		Objective: "retain a result when required verification is unavailable",
+		MachineID: "remote-required-verifier", Harness: "shell",
+		Resources: map[string]any{"argv": []any{"/bin/true"}, "completion_verifier": "model"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controlPlane.ClaimRemoteWorker(goal.Worker.ID, "remote-required-verifier"); err != nil {
+		t.Fatal(err)
+	}
+	const candidate = "completed result retained for manager review"
+	worker, err := controlPlane.CompleteRemoteWorker(goal.Worker.ID, "remote-required-verifier",
+		"completed", candidate, "thread-verifier-outage", "")
+	if err != nil || worker == nil || worker.Status != "failed" || worker.Summary != candidate ||
+		!strings.Contains(worker.LastError, "Required completion verification is unavailable") {
+		t.Fatalf("required verifier outage did not retain and fail the result safely: worker=%#v err=%v", worker, err)
+	}
+	currentGoal, err := controlPlane.Goal(goal.ID)
+	if err != nil || currentGoal == nil || currentGoal.Status != "failed" {
+		t.Fatalf("Goal did not enter a blocked terminal state: goal=%#v err=%v", currentGoal, err)
+	}
+	if _, err := controlPlane.ClaimRemoteWorker(goal.Worker.ID, "remote-required-verifier"); err == nil {
+		t.Fatal("verifier outage requeued Worker side effects")
+	}
+	artifacts, err := controlPlane.store.ListArtifacts(goal.ID)
+	if err != nil || len(artifacts) != 0 {
+		t.Fatalf("unverified completion created accepted artifacts: %#v err=%v", artifacts, err)
+	}
+	events, err := controlPlane.Events(goal.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := eventTypes(events)
+	if !types["WorkerCompletionVerificationUnavailable"] || !types["GoalBlocked"] || types["WorkerRecovered"] || types["WorkerCompleted"] {
+		t.Fatalf("verifier outage lifecycle events are inconsistent: %v", types)
+	}
+}

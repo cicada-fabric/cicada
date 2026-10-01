@@ -151,21 +151,22 @@ func envOr(name, fallback string) string {
 func (c *Control) APIToken() string { return c.config.APIToken }
 
 type Control struct {
-	config             Config
-	store              *store.Store
-	fabric             *fabricpkg.Service
-	snapshotStore      *workspacecas.Store
-	mu                 sync.Mutex
-	running            map[string]runningWorker
-	identity           *e2ee.Identity
-	clientIdentity     *e2ee.Identity
-	approvalMu         sync.Mutex
-	approvalDecisionMu sync.Mutex
-	approvalWaiters    map[string]chan string
-	sessionMu          sync.Mutex
-	shutdown           chan struct{}
-	wg                 sync.WaitGroup
-	closed             bool
+	config              Config
+	store               *store.Store
+	fabric              *fabricpkg.Service
+	snapshotStore       *workspacecas.Store
+	mu                  sync.Mutex
+	running             map[string]runningWorker
+	identity            *e2ee.Identity
+	clientIdentity      *e2ee.Identity
+	nodeControlIdentity *e2ee.Identity
+	approvalMu          sync.Mutex
+	approvalDecisionMu  sync.Mutex
+	approvalWaiters     map[string]chan string
+	sessionMu           sync.Mutex
+	shutdown            chan struct{}
+	wg                  sync.WaitGroup
+	closed              bool
 }
 
 type runningWorker struct {
@@ -227,6 +228,15 @@ func New(config Config) (*Control, error) {
 		return nil, err
 	}
 	control.clientIdentity = clientIdentity
+	// Node Control has a distinct application key from both the Hub's peer
+	// identity and the Client management identity. Keep its lifecycle isolated
+	// so a pairing-key rotation cannot silently change either other boundary.
+	nodeControlIdentity, err := loadIdentity(filepath.Join(config.StateDir, "e2ee", "node-control-identity.json"))
+	if err != nil {
+		persistence.Close()
+		return nil, err
+	}
+	control.nodeControlIdentity = nodeControlIdentity
 	fabricService, err := fabricpkg.NewService(persistence, identity.Public().ID, identity.Public().ID)
 	if err != nil {
 		persistence.Close()
@@ -2056,6 +2066,19 @@ func (c *Control) workerLoop(ctx context.Context, workerID, recoveryPrompt strin
 				return
 			}
 			if !verdict.Accepted {
+				if verdict.RequiresAttention {
+					failure := tail("Required completion verification is unavailable: "+verdict.Rationale, 4000)
+					failed := "failed"
+					failedWorker, updateErr := c.store.UpdateWorkerAtAttempt(workerID, worker.MachineID,
+						"running", failed, attempt, store.WorkerUpdate{
+							ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: &failure,
+							Summary: &summary, ThreadID: stringPtr(worker.ThreadID),
+						})
+					if updateErr == nil && failedWorker != nil {
+						c.finishCompletionVerificationFailure(goal, workerID, attempt, failure)
+					}
+					return
+				}
 				var retry bool
 				prompt, retry = c.rejectLocalCompletion(goal, workerID, attempt, summary, verdict)
 				if !retry {

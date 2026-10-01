@@ -1,4 +1,44 @@
-# Legacy Contact peer-link encryption
+# Endpoint encryption and historical Contact crypto
+
+## Current implementation boundary (2026-10-01)
+
+Current sealed peer paths connect MCP SEND/ASK/REPLY and same-Group recipient
+fan-out to Node-local Endpoint crypto, exact-ciphertext outbox/inbox and native
+Thread delivery. Cross-Node `SEALED_V1` Relay persists opaque Endpoint ciphertext;
+same-Node delivery uses the Node-local ledger. New plaintext Fabric peer writes
+are retired before body read (HTTP 410). Historical plaintext rows remain
+historical plaintext; deleting an ingress cannot retroactively encrypt them.
+Node adapters decrypt for the authorized Endpoint after checking current scope,
+Owner proofs, Membership, binding and replay state. Hub routing does not grant
+permission or supply independent Owner trust.
+
+NodeControl v55 adds application-layer ML-KEM/ML-DSA authenticated key upgrade and
+sealed control RPC; Client-Control management is also decrypted at its intended
+Hub Control endpoint. Those management endpoints are distinct from peer Endpoint
+content. This does not cover every Node metadata request or implement pure PQ
+TLS. **Pure PQ TLS profile: NOT_IMPLEMENTED**; ordinary modern HTTPS/TLS is not
+an equivalent implementation of the adopted PQ-only transport requirement.
+
+`internal/nodebackup` and `cicada machine backup|verify|restore` now provide a
+private, maintenance-locked offline Node state backup with integrity checks and
+quarantined restore. Node private state is separate from Hub SQLite backup;
+restore is not permission to resume uncertain injection or roll counters back.
+Explicit reconciliation and current-authority checks remain required. Backups
+contain sensitive state and must retain the same private storage boundary.
+
+The source-specific real native ASK/REPLY, broadcast and Worker results, bounded
+Docker recovery evidence, original failures and unrun Android/physical/public
+HTTPS gates are in the [checkpoint report](v01-completion-checkpoint-validation.md).
+These bounded results do not establish full-system PQ transport or complete
+fault recovery.
+
+## Historical Contact and v14–v16 implementation record
+
+The following text records the earlier Contact and isolated Endpoint increments.
+Its statements that Endpoint crypto was not wired, Fabric body was plaintext,
+Node backup was absent or native injection remained separate describe that dated
+stage, not current implementation. Preserve its key/ratchet and migration
+history; use the current boundary above for present capabilities.
 
 This page describes historical Contact crypto state and the remaining Contact
 identity-management API. The `/v1/peer-messages` and `/v1/federation/messages`

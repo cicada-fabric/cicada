@@ -26,7 +26,7 @@ var (
 )
 
 // ExternalThreadInviteInput is an authenticated local owner's request to
-// invite one other owner to a bounded forward contract. OwnerID must be
+// invite one other owner to a bounded forward or bidirectional contract. OwnerID must be
 // derived by the caller from the authenticated Client session. An omitted
 // Actions list defaults to ask+reply; acceptance cannot broaden either list.
 type ExternalThreadInviteInput struct {
@@ -34,6 +34,7 @@ type ExternalThreadInviteInput struct {
 	SourceEndpointID string
 	SourceGroupID    string
 	HubID            string
+	Direction        string
 	Actions          []string
 	DataScopes       []string
 	ExpiresAt        string
@@ -147,6 +148,79 @@ CREATE INDEX IF NOT EXISTS external_thread_invites_v2_source_idx
 	return nil
 }
 
+// expandExternalThreadInviteDirectionV2Schema preserves every existing invite
+// while widening only the direction constraint. Older invitation rows remain
+// forward and keep their digest, token scope, expiry, acceptance and Link refs.
+func (s *Store) expandExternalThreadInviteDirectionV2Schema() error {
+	columns, err := existingColumns(s.db, "external_thread_invites_v2", []string{
+		"invite_id", "token_digest", "source_endpoint_id", "source_group_id", "source_owner_id",
+		"source_principal_id", "source_node_id", "source_membership_revision", "source_join_revision",
+		"source_group_version", "hub_id", "direction", "actions_json", "data_scopes_json", "expires_at",
+		"state", "target_owner_id", "target_endpoint_id", "target_group_id", "communication_link_id",
+		"created_at", "accepted_at",
+	})
+	if err != nil {
+		return err
+	}
+	if len(columns) != 22 {
+		return errors.New("external Thread invite table is missing columns required for direction upgrade")
+	}
+	_, err = s.db.Exec(`
+CREATE TABLE external_thread_invites_v2_v51 (
+  invite_id TEXT PRIMARY KEY,
+  token_digest TEXT NOT NULL CHECK(length(token_digest) = 64),
+  source_endpoint_id TEXT NOT NULL,
+  source_group_id TEXT NOT NULL,
+  source_owner_id TEXT NOT NULL,
+  source_principal_id TEXT NOT NULL,
+  source_node_id TEXT NOT NULL,
+  source_membership_revision INTEGER NOT NULL CHECK(source_membership_revision > 0),
+  source_join_revision INTEGER NOT NULL CHECK(source_join_revision > 0),
+  source_group_version INTEGER NOT NULL CHECK(source_group_version > 0),
+  hub_id TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK(direction IN ('forward', 'bidirectional')),
+  actions_json TEXT NOT NULL CHECK(actions_json IN
+    ('["ask"]', '["ask","reply"]', '["ask","reply","send"]', '["ask","send"]', '["reply","send"]', '["send"]')),
+  data_scopes_json TEXT NOT NULL CHECK(data_scopes_json <> '[]'),
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'PENDING' CHECK(state IN ('PENDING', 'ACCEPTED')),
+  target_owner_id TEXT NOT NULL DEFAULT '',
+  target_endpoint_id TEXT NOT NULL DEFAULT '',
+  target_group_id TEXT NOT NULL DEFAULT '',
+  communication_link_id TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  accepted_at TEXT NOT NULL DEFAULT '',
+  CHECK ((state = 'PENDING' AND target_owner_id = '' AND target_endpoint_id = '' AND
+          target_group_id = '' AND communication_link_id = '' AND accepted_at = '') OR
+         (state = 'ACCEPTED' AND target_owner_id <> '' AND target_endpoint_id <> '' AND
+          target_group_id <> '' AND communication_link_id <> '' AND accepted_at <> '')),
+  CHECK (state <> 'ACCEPTED' OR communication_link_id <> '')
+);
+INSERT INTO external_thread_invites_v2_v51
+(invite_id, token_digest, source_endpoint_id, source_group_id, source_owner_id,
+ source_principal_id, source_node_id, source_membership_revision, source_join_revision,
+ source_group_version, hub_id, direction, actions_json, data_scopes_json, expires_at, state,
+ target_owner_id, target_endpoint_id, target_group_id, communication_link_id, created_at, accepted_at)
+SELECT invite_id, token_digest, source_endpoint_id, source_group_id, source_owner_id,
+ source_principal_id, source_node_id, source_membership_revision, source_join_revision,
+ source_group_version, hub_id, direction, actions_json, data_scopes_json, expires_at, state,
+ target_owner_id, target_endpoint_id, target_group_id, communication_link_id, created_at, accepted_at
+FROM external_thread_invites_v2;
+DROP TABLE external_thread_invites_v2;
+ALTER TABLE external_thread_invites_v2_v51 RENAME TO external_thread_invites_v2;
+CREATE UNIQUE INDEX external_thread_invites_v2_digest_idx
+  ON external_thread_invites_v2(token_digest);
+CREATE UNIQUE INDEX external_thread_invites_v2_link_idx
+  ON external_thread_invites_v2(communication_link_id) WHERE communication_link_id <> '';
+CREATE INDEX external_thread_invites_v2_source_idx
+  ON external_thread_invites_v2(source_owner_id, state, expires_at);
+`)
+	if err != nil {
+		return fmt.Errorf("expand external Thread invite direction: %w", err)
+	}
+	return nil
+}
+
 func scanExternalThreadInvite(row v2Scanner) (*externalThreadInviteRow, error) {
 	var invite externalThreadInviteRow
 	err := row.Scan(&invite.id, &invite.tokenDigest, &invite.sourceEndpointID,
@@ -223,6 +297,13 @@ func (s *Store) CreateExternalThreadInvite(input ExternalThreadInviteInput) (*Ex
 	if input.OwnerID == "" || input.SourceEndpointID == "" || input.SourceGroupID == "" || input.HubID == "" {
 		return nil, ErrExternalThreadInviteScope
 	}
+	input.Direction = strings.ToLower(strings.TrimSpace(input.Direction))
+	if input.Direction == "" {
+		input.Direction = "forward"
+	}
+	if input.Direction != "forward" && input.Direction != "bidirectional" {
+		return nil, errors.New("external Thread invite direction must be forward or bidirectional")
+	}
 	if len(input.Actions) == 0 {
 		input.Actions = []string{"ask", "reply"}
 	}
@@ -290,10 +371,10 @@ func (s *Store) CreateExternalThreadInvite(input ExternalThreadInviteInput) (*Ex
  source_principal_id, source_node_id, source_membership_revision, source_join_revision,
  source_group_version, hub_id, direction, actions_json, data_scopes_json, expires_at, state,
  created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'forward', ?, ?, ?, 'PENDING', ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)`,
 		id, digestText, input.SourceEndpointID, input.SourceGroupID, source.ownerID,
 		source.principalID, source.nodeID, source.membershipRevision, source.joinRevision,
-		source.groupVersion, hubID, string(actionsJSON), string(scopesJSON), expiresAt, createdAt)
+		source.groupVersion, hubID, input.Direction, string(actionsJSON), string(scopesJSON), expiresAt, createdAt)
 	if err != nil {
 		return nil, fmt.Errorf("persist external Thread invite: %w", err)
 	}
@@ -339,7 +420,7 @@ func decodeExternalThreadInviteTerms(invite *externalThreadInviteRow) ([]string,
 }
 
 func validateExternalThreadInviteSource(tx *sql.Tx, invite *externalThreadInviteRow, hubID string, at time.Time) (linkEndpointScope, error) {
-	if hubID != invite.hubID || invite.direction != "forward" {
+	if hubID != invite.hubID || (invite.direction != "forward" && invite.direction != "bidirectional") {
 		return linkEndpointScope{}, ErrExternalThreadInviteUnavailable
 	}
 	if _, _, err := decodeExternalThreadInviteTerms(invite); err != nil {
@@ -417,7 +498,7 @@ WHERE e.id = ?`, invite.sourceGroupID, invite.sourceEndpointID).Scan(&endpointNa
 		SourceEndpointLabel: inviteDisplayLabel(endpointName, "Endpoint"),
 		SourceGroupLabel:    inviteDisplayLabel(groupName, "Group"),
 		HubID:               invite.hubID,
-		Direction:           "forward",
+		Direction:           invite.direction,
 		Actions:             actions,
 		DataScopes:          dataScopes,
 		ExpiresAt:           invite.expiresAt,
@@ -482,7 +563,7 @@ func (s *Store) AcceptExternalThreadInvite(
 	proposal := CommunicationLinkProposal{
 		SourceEndpointID: invite.sourceEndpointID, SourceGroupID: invite.sourceGroupID,
 		TargetEndpointID: targetEndpointID, TargetGroupID: targetGroupID,
-		Direction: "forward", Actions: actions, DataScopes: dataScopes,
+		Direction: invite.direction, Actions: actions, DataScopes: dataScopes,
 		TransportHubID: transportHubID, ExpiresAt: linkExpiry,
 	}
 	link, err := insertCommunicationLinkProposalTx(tx, proposal, source, target, currentTime)

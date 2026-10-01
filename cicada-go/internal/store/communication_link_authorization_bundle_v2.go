@@ -24,10 +24,12 @@ type CommunicationLinkAuthorizationProof struct {
 }
 
 type CommunicationLinkAuthorizationBundle struct {
-	Manifest    CommunicationLinkKeyManifest        `json:"manifest"`
-	SourceGrant CommunicationLinkAuthorizationProof `json:"source_grant"`
-	TargetGrant CommunicationLinkAuthorizationProof `json:"target_grant"`
-	LinkState   string                              `json:"link_state"`
+	Manifest           CommunicationLinkKeyManifest        `json:"manifest"`
+	SourceGrant        CommunicationLinkAuthorizationProof `json:"source_grant"`
+	TargetGrant        CommunicationLinkAuthorizationProof `json:"target_grant"`
+	LinkState          string                              `json:"link_state"`
+	SourceContextScope NativeContextScopeMetadata          `json:"source_context_scope"`
+	TargetContextScope NativeContextScopeMetadata          `json:"target_context_scope"`
 }
 
 // getCommunicationLinkAuthorizationBundleForNodeScope is only for internal
@@ -127,9 +129,17 @@ FROM communication_links_v2 WHERE id=? AND
 	if err != nil {
 		return nil, err
 	}
+	sourceScope, err := readNativeContextScopeForEndpointTx(tx, link.SourceEndpointID, link.SourceGroupID)
+	if err != nil {
+		return nil, ErrCommunicationLinkScope
+	}
+	targetScope, err := readNativeContextScopeForEndpointTx(tx, link.TargetEndpointID, link.TargetGroupID)
+	if err != nil {
+		return nil, ErrCommunicationLinkScope
+	}
 	return &CommunicationLinkAuthorizationBundle{
 		Manifest: *manifest, SourceGrant: source, TargetGrant: target,
-		LinkState: link.State,
+		LinkState: link.State, SourceContextScope: sourceScope, TargetContextScope: targetScope,
 	}, nil
 }
 

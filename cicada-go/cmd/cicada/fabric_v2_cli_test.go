@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,43 +83,20 @@ func TestFabricV2CLIJoinUsesManagementBearerAndStoresSessionCredential(t *testin
 	}
 }
 
-func TestFabricV2CLIHistoricalReceiveUsesSessionBindingWithoutIdentityFields(t *testing.T) {
-	t.Setenv("CICADA_API_TOKEN", "management-token")
-	t.Setenv("CICADA_API_TOKEN_FILE", "")
-	t.Setenv(fabricV2SessionTokenEnv, "")
-	tokenPath := filepath.Join(t.TempDir(), "session.token")
-
-	var receiveBody map[string]any
+func TestFabricV2CLIPlaintextReceiveFailsClosedWithoutHubRequest(t *testing.T) {
+	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/v2/fabric/receive" {
-			t.Fatalf("unexpected receive route: %s %s", request.Method, request.URL.Path)
-		}
-		if got := request.Header.Get("Authorization"); got != "CicadaSession cicada_session_peer-secret" {
-			t.Fatalf("receive authorization = %q", got)
-		}
-		if err := json.NewDecoder(request.Body).Decode(&receiveBody); err != nil {
-			t.Fatalf("decode receive body: %v", err)
-		}
-		_ = json.NewEncoder(response).Encode(map[string]any{"messages": []any{}})
+		requests++
+		http.Error(response, "unexpected HTTP request", http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	if err := writeFabricV2SessionState(tokenPath, fabricV2SessionState{
-		APIOrigin: server.URL, Harness: "codex", NativeSessionID: "native-peer",
-		NodeID: "node-peer", GroupID: "grp-peer", EndpointID: "ep-peer",
-		SessionToken: "cicada_session_peer-secret",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(fabricV2SessionFileEnv, tokenPath)
 
 	var output strings.Builder
-	if err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output); err != nil {
-		t.Fatal(err)
+	if err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output); !errors.Is(err, fabricpkg.ErrPlaintextInboxReceiveRetired) {
+		t.Fatalf("plaintext receive CLI error = %v, want explicit retirement", err)
 	}
-	for _, field := range []string{"sender", "sender_endpoint_id", "principal_id", "group_id", "role", "approval"} {
-		if _, ok := receiveBody[field]; ok {
-			t.Fatalf("historical receive accepted caller identity field %q", field)
-		}
+	if requests != 0 {
+		t.Fatalf("retired CLI receive issued %d Hub requests", requests)
 	}
 }
 
@@ -150,7 +128,7 @@ func TestFabricV2CLIRequiresExplicitJoinCredential(t *testing.T) {
 	defer server.Close()
 
 	var output strings.Builder
-	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
+	err := fabricV2CommandOutput(server.URL, []string{"whoami"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "no active Cicada session credential") {
 		t.Fatalf("missing-session error = %v", err)
 	}
@@ -182,7 +160,7 @@ func TestFabricV2CLISessionFileRejectsOriginAndNativeContextReuse(t *testing.T) 
 	}
 	t.Setenv(fabricV2SessionFileEnv, tokenPath)
 	var output strings.Builder
-	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
+	err := fabricV2CommandOutput(server.URL, []string{"whoami"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "different API origin") {
 		t.Fatalf("cross-origin error = %v", err)
 	}
@@ -197,7 +175,7 @@ func TestFabricV2CLISessionFileRejectsOriginAndNativeContextReuse(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err = fabricV2CommandOutput(server.URL, []string{"receive"}, &output)
+	err = fabricV2CommandOutput(server.URL, []string{"whoami"}, &output)
 	if err == nil || !strings.Contains(err.Error(), "different native session") {
 		t.Fatalf("cross-session error = %v", err)
 	}
@@ -216,7 +194,7 @@ func TestFabricV2CLIRedactsSessionCredentialFromAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := fabricV2CommandOutput(server.URL, []string{"receive"}, &strings.Builder{})
+	err := fabricV2CommandOutput(server.URL, []string{"whoami"}, &strings.Builder{})
 	if err == nil || strings.Contains(err.Error(), "cicada_session_error-secret") || !strings.Contains(err.Error(), "<redacted>") {
 		t.Fatalf("redacted API error = %v", err)
 	}
