@@ -179,7 +179,7 @@ export function SharedSpaceConsentPanel({status, topology, publicCapabilities,
 
         <Text style={styles.sectionTitle}>委托与重组提案</Text>
         <Text style={styles.small}>Monitor proposal 只是提案，不是 User Approval。未来委托须绑定精确 proposal、Group 版本、到期时间与一次性 max_uses=1，并按版本 CAS 撤销；当前读取、签发、撤销均关闭。</Text>
-        <Text style={styles.small}>已由本地实现策略关闭 {SHARED_SPACE_CLOSED_OPERATIONS.length} 个 v1.5 space、delegation、regroup 与 Link key 操作；Hub 广告不能开放这些操作。</Text>
+        <Text style={styles.small}>尚未完成独立证明与授权核验的 {SHARED_SPACE_CLOSED_OPERATIONS.length} 项操作保持关闭。拓扑委托使用单独的手机确认流程。</Text>
       </>}
     </View>}
   </View>;

@@ -39,6 +39,7 @@ MATRIX = (
     ('owner-link-review-policy-vectors', 'OwnerLinkReviewPolicyV1VectorTest', 3),
     ('network-collaboration-broadcast-vectors', 'NetworkCollaborationBroadcastConsentV1VectorTest', 3),
     ('network-collaboration-task-vectors', 'NetworkCollaborationTaskV1VectorTest', 3),
+    ('regroup-delegation-validation', 'RegroupDelegationValidationTest', 8),
 )
 
 # The delegated v1.5 helpers resolve these values in their own module globals.

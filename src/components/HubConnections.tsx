@@ -80,7 +80,7 @@ export function HubConnections({children}: {
     if (!registry || voiceBusyRef.current || busyRef.current) return;
     const scope = {...registry.activeScope};
     Alert.alert('移除本机配置？',
-      item.label + ' 的本机密钥将删除。此操作不会撤销 Hub 上的设备。存在未解决的登记、RPC、Network 授权或 Monitor 操作时不能移除。', [
+      item.label + ' 的本机密钥将删除。此操作不会撤销 Hub 上的设备。存在未解决的登记、RPC、Network 授权、Regroup 委托或 Monitor 操作时不能移除。', [
         {text: '取消', style: 'cancel'},
         {text: '移除', style: 'destructive', onPress: () => {
           change(() => hubProfiles.remove(item.profileId, scope)).catch(() => undefined);
@@ -118,7 +118,8 @@ export function HubConnections({children}: {
               <Text style={styles.note}>{item.enrolled ? '设备已登记' : '设备未登记'}
                 {item.activeNetworkId ? ' · Network ' + item.activeNetworkId : ' · 未选择 Network'}</Text>
               {!!(item.pendingOperationId || item.enrollmentRecoveryRequired ||
-                item.uncertainNeedsReconciliation || item.networkGrantReconciliationRequired) &&
+                item.uncertainNeedsReconciliation || item.networkGrantReconciliationRequired ||
+                item.regroupReconciliationRequired) &&
                 <Text style={styles.note}>原请求待恢复或对账</Text>}
               {!active && <View style={styles.actions}>
                 <Pressable disabled={busy || voiceBusy} onPress={() => activate(item)}>

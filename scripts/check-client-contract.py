@@ -13,8 +13,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6-f4e4725"
-SOURCE_REVISION = "f4e4725c5d81c54b166f4291b9d450c70954e6df"
+ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6-4fb241b"
+SOURCE_REVISION = "4fb241b5e824eb752ceb85586089f44c408e1e7e"
 CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
 CONTRACT_REVISION = "client-hub-v1.6"
 WIRE_VERSION = 1

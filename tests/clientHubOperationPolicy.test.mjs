@@ -22,8 +22,8 @@ test('local operation policy accounts for every operation in the independently i
   assert.equal(expected.length, 55);
   assert.equal(new Set(actual).size, 55);
   assert.deepEqual(actual, expected);
-  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 35);
-  assert.equal(DEFERRED_CLIENT_CONSENT_OPERATIONS.length, 10);
+  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 38);
+  assert.equal(DEFERRED_CLIENT_CONSENT_OPERATIONS.length, 7);
   assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 7);
 });
 
@@ -62,9 +62,18 @@ test('OUTCOME_UNCERTAIN permits authoritative reads and refuses management mutat
     assert.equal(clientHubOperationAllowed(state, op), true, op);
   }
   for (const op of ['topology.apply', 'intent.submit', 'approvals.decide', 'network.key_grant',
-    'group.key_grant', 'monitor.broadcast_prepare', 'monitor.broadcast_confirm']) {
+    'group.key_grant', 'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
+    'topology.delegation_issue', 'topology.delegation_revoke']) {
     assert.equal(clientHubOperationAllowed(state, op), false, op);
   }
+});
+
+test('delegation business fence survives a generic snapshot and permits only proposal inspection', () => {
+  const state = {...session(), regroupReconciliationRequired: true, uncertainNeedsReconciliation: false};
+  assert.equal(clientHubOperationAllowed(state, 'topology.delegation_issue'), false);
+  assert.equal(clientHubOperationAllowed(state, 'topology.delegation_revoke'), false);
+  assert.equal(clientHubOperationAllowed(state, 'topology.regroup_proposal'), true);
+  assert.equal(clientHubOperationAllowed(state, 'status.snapshot'), true);
 });
 
 test('Network reconciliation fence survives generic reconciliation and preserves read access', () => {

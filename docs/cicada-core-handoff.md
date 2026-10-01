@@ -1,8 +1,193 @@
 # CICADA Client integration handoff
 
-## Active integration checkpoint — clean Hub `f4e4725`, Client-Control v1.6
+## Active integration target — clean Hub `4fb241b`, Client-Control v1.6
 
-The current integration target is the independently pinned clean Hub commit
+The current integration target is clean Core commit
+`4fb241b5e824eb752ceb85586089f44c408e1e7e`, protocol `client-hub-v1.6`,
+wire 1, catalog SHA-256
+`1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`, and
+source fingerprint
+`31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`.
+The successor archive SHA-256 is
+`9ada56ced408e90fbdf2a224897cf43fee2d325e6963f8f1714b0ef888f4f689`.
+The exact Hub image is
+`sha256:a48ce4b096f4d003ed6f8586674f4c175ce8616005dc65e7cbf9e9edaededf65`;
+the interop test image is
+`sha256:e2268a08ef1b27619ff6dc7039e8f883518130c5292384967d973cb759b3b810`.
+The imported snapshot is
+[`contracts/client-hub-v1.6-4fb241b/manifest.json`](../contracts/client-hub-v1.6-4fb241b/manifest.json).
+Its redacted import receipt is `/gpu1-share/data/cicada-client/v16-4fb241b-20261001/provenance/contract-import.redacted.json`, SHA-256
+`d67b2c2592998e2bb7d5e0cdf8c20fac9838a319ec79de5d36968c8ccc984f75`.
+
+The [current validation report](client-hub-v1.6-4fb241b-management-validation.md) records the final guarded artifacts:
+
+| Item | Value |
+|---|---|
+| App APK SHA-256 | `93d49088524c09c1d74466137e9503e388774a196a202539eec58c8d8d51ae9d` |
+| Instrumentation APK SHA-256 | `041f6af9b7f4ecd20abd7c5b00275fe73336fe41e0522c9f3d05a03b8328cf02` |
+| Compiled source fingerprint, 110 files | `e758625224b056a32a0ddb0d498606a6a49522f623a6c0173704a4896641cffb` |
+| Final offline gates | **PASS**: Docker build, 56 JavaScript tests, TypeScript, lint, 71 Kotlin tests/13 selectors and five UI checks; exits 0 |
+| Final APK live Hub acceptance | **NOT_RUN** |
+| Native Endpoint/Monitor acceptance | **BLOCKED** after the Core native Join failure below |
+| Physical Android / public HTTPS | **NOT_RUN** |
+
+The Client commit is the milestone containing this report. The post-commit delivery receipt at `/gpu1-share/data/cicada-client/v16-4fb241b-20261001/provenance/client-delivery.redacted.json` records its full commit, compiled source fingerprint, APK hashes and evidence index without a recursive document hash. The final owned emulator was removed; the six resident containers were unchanged.
+
+Earlier pair `9a6…`/`3cbe…` alone owns the connected Directory read, saved-fixture Group-scope read, external-role oracle, exact enrollment/RPC 201/200 recovery and Node pairing UI PASS receipts. The oracle allowed 30 of 47 advertised operations from the 38-operation local set, with none of 17 closed. Its Group-scope read asserted the snapshot Owner and two ACTIVE Groups in one Network, not per-Group Owner fields or Monitor Membership. The external signer used the Owner private key outside Android; Android did not read/import it. All main and secondary disposable Hub/Node/emulator/carrier environments were cleaned. These earlier connected results are not attributed to the final guarded APKs.
+
+The current Client implements 38 of 55 operations and leaves 17 closed.
+`network.directory` and `topology.endpoint_admission_preview` are metadata-only
+reads. The explicit regroup panel reads one named proposal and provides a
+confirmed one-use issue plus version-CAS revoke, but neither that UI nor local
+Kotlin validators establish a live Core authority result. `principal_id` is
+the Monitor actor and must not be treated as the Human Owner. `CREATE_CHILD`
+permits the same source and target Group ID; `SET_PARENT` requires distinct
+IDs. Regroup issue expiry is future, one-use, at most 24 hours and bounded by
+proposal expiry. Recovery of a still-pending original packet may accept its
+validated cached `COMPLETED` result. After authenticated terminal
+`OUTCOME_UNCERTAIN`, however, the current Core contract offers no later
+correlated result or clearing route: preserve original ciphertext/counters and
+leave the fence blocked indefinitely pending a separately authorized
+reconciliation contract. Neither `status.snapshot` nor proposal metadata
+clears it.
+
+### Earlier Node pairing UI PASS; native Join FAIL
+
+The earlier app `9a6…` exercised candidate-bound Node pairing; its
+panel/parser, five focused tests, TypeScript, focused lint and build pass. The
+emulator UI flow passed against same-Hub attach-3 public pins at
+`/home/zyf/CICADA_native_e2e/.cicada-data/m4-native-attach-3/node-pairing-public-pins.json`
+(SHA-256 `98c8dc0fe6e498b14d224f0ae368c3cbed251587313c2c18ab0554f6c418b333`,
+candidate v1, expiry `2026-10-01T19:54:32Z`). It checked all candidate fields
+against independent public pins, confirmed both trust controls, sent the
+preview-bound confirmation through the product Alert, and refreshed
+`nodes.list` to verify the same authorized Node and positive binding version.
+The `nodes.confirm` RPC returned only an acknowledgment; `nodes.list` supplied
+the binding record.
+The redacted receipt is
+`/gpu1-share/data/cicada-client/v16-deterministic-offline-management-20261001-final/android/node-pairing-ui.redacted.json`,
+SHA-256 `b9b26faea3d2ecdfc7469898892a684097717be8a662ec70641956fd16a35815`;
+all 143 UI steps exited `0`, and no code or UI dump was persisted. Its original
+receipt is kept in `history/` with a metadata-only correction record. The
+command wrapper receipt `node-pairing-ui-command.redacted.json` has SHA-256
+`261de4b594ac5f457a8b28f1a40cbfcc8211fc1d9d21fbc5a4b4fe13c2267c09` and exit
+`0`; it binds the public pins and the tested earlier APK hashes. The
+candidate has expired; refresh before any later attempt. Five earlier UI
+helper attempts are preserved at `history/node-ui-attempt-{1..5}.redacted.json`
+and did not complete a prior confirmation.
+
+Pairing confirms a Hub binding and does not establish native Thread Join.
+Core's redacted controller result reports current Node authority HTTP 200 and
+two CLI turns on the same original Thread, followed by a native Join tool
+failure with Hub HTTP 404. Core's failure classification says Fabric requires
+an existing Endpoint when the Group has non-empty `NetworkID`; Network
+enrollment is a separate prerequisite, not a direct Group bootstrap route.
+The exact redacted Core receipts are `result.json` (SHA-256
+`bb44440bcd8f3a0a13f0d51a22f2a55fa208be99b3ec68885d360ae3dae229b3`) and
+`join-failure-classification.json` (SHA-256
+`9beb504c287c81c9734ea445771760178f2530578fbbf6dcfaddbe7bbe9e5e03`) under
+`/home/zyf/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/`.
+All 13 recorded subprocess phases exited `0`; the Join tool itself failed.
+The actual controller terminal exit was `1`, witnessed by the exec session and
+recorded in `controller-execution.redacted.json` (SHA-256
+`b26d1f918644f98b079546e656e43ab2ba4d9f40247b915ef5dec3bb79a70ffe`). That
+receipt explicitly says the full argv was not retained; do not reconstruct
+or publish an inferred command. Core cleaned the Node/runtime.
+No native Endpoint admission preview, regroup proposal/issue/revoke,
+or Monitor application has passed. The confirmation response is acknowledgment-only; `nodes.list` returned the
+binding. The wire result table labels the relevant record
+`NodeDeviceBinding`, while the Core path uses `NodeControlKeyBinding`; the UI
+flow does not resolve this pinned result-shape discrepancy.
+
+The earlier Client saved-fixture selector command and receipt are recorded in
+the validation report (`group-scope-current.redacted.json`, SHA-256
+`0833612aae9512bb86c4e9ddd90d85d93063f968e58fdc8f7765e170031efe94`). It
+does not assert per-Group `owner_principal_id` or Monitor Membership; the
+Node pairing evidence also exports no per-Node Owner field. Do not infer
+either authority relation from the Owner-domain snapshot or authorized
+`nodes.list` result alone.
+
+Final secondary fixture cleanup passed with receipt SHA-256
+`aa3e31cb59846b7b10ceca46914069036aadda01926035a8a528ffbfcb6d28c8`.
+Subsequent main-fixture cleanup passed with receipt SHA-256
+`9b2467ab7bfa3572476c4f8848c2f3ace0005e58f8271ccf35222313d61c59ff`: the
+owned Hub/network/emulator and fixture root were absent, carrier PIDs and
+reverse mappings were gone, and six resident containers were unchanged.
+
+### Active Core maintainer prompt — clean 4fb241b
+
+> On clean Core `4fb241b5e824eb752ceb85586089f44c408e1e7e` and its pinned
+> `client-hub-v1.6` contract, preserve the current authority Guards and supply
+> a disposable, redacted acceptance fixture. Follow the supported native
+> Endpoint/Network enrollment path first: a fresh Session's direct Join into
+> a Group with non-empty `NetworkID` failed HTTP 404 because the required
+> Endpoint did not yet exist; Network enrollment is a separate prerequisite,
+> not a direct Group bootstrap route. Then provide an exact Monitor-created
+> regroup proposal with Monitor Principal distinct from Human Owner, current
+> source/target Group versions, Node binding/epoch, and the Monitor's explicit
+> current Membership in the target Group with its revision. Do not infer
+> Membership from Group existence or proposal visibility, and do not invent
+> Thread authority. Exercise `SET_PARENT` and same-ID `CREATE_CHILD`, Owner
+> device confirmation through encrypted Client RPC, one-use expiry,
+> stale-version refusal, delegation-version-CAS revoke, and Monitor replay
+> refusal. Keep the Node DTO mismatch explicit until wire and implementation
+> semantics are aligned: the wire names `NodeDeviceBinding`, while the
+> implementation path reports `NodeControlKeyBinding`. Preserve the Client's
+> terminal `OUTCOME_UNCERTAIN` fence; a generic snapshot or proposal
+> projection cannot clear it. If future reconciliation is required, define a
+> separately authorized, operation-correlated Core result/clear contract.
+> Return exact pins, commands, exits, redacted receipts, and cleanup status;
+> do not add unpinned APIs or weaken Guards.
+
+### Core-owned fixture and acceptance request
+
+Please provide a disposable fixture on the exact 4fb241b image for these
+existing v1.6 operations. Supply redacted evidence and public IDs only; keep
+Node credentials, Owner private keys and native/model credentials outside the
+Client and repository.
+
+1. For `network.directory` and `topology.endpoint_admission_preview`, bind a
+   current Owner, ACTIVE Network, opted-in directory Endpoint and joined native
+   Endpoint to complete attestation, Node, native Session and current binding
+   identities/revisions. Include stale/expired/revoked binding cases. The
+   preview must return exact current CAS coordinates and must not create an
+   admission, Join, key, history grant or route.
+2. Provide an exact Monitor-created regroup proposal with Monitor Principal
+   distinct from Human Owner, Endpoint and Node binding, ACTIVE Network,
+   ACTIVE source/target Groups and current versions. Include the Monitor's
+   separate explicit current Membership in the target Group and its revision;
+   Core's Guard requires this record, which ACTIVE Group rows alone do not
+   establish. Cover `SET_PARENT` with distinct Group IDs and `CREATE_CHILD`
+   with identical source/target ID.
+3. Exercise Owner confirmation through the encrypted Client device session;
+   verify exact proposal/Hub/Owner/Network scope, current Group-version checks,
+   one-use expiry, exact delegation result, version-CAS revoke, stale CAS
+   refusal and Monitor application replay refusal. Revoke must remain testable
+   after Group versions change when its reviewed delegation ID/version is still
+   current.
+4. Induce issue and revoke response loss only in this owned disposable
+   fixture. While the exact packet remains pending, show original-packet
+   recovery and a correlated cached `COMPLETED` result. Separately show that a
+   terminal authenticated `OUTCOME_UNCERTAIN` retains original ciphertext and
+   counters and leaves the regroup fence blocked indefinitely under the
+   current contract. No later completion or clearing route is defined;
+   neither a generic snapshot nor the proposal's current delegation projection
+   may clear that fence or authorize a new operation ID. Any future manual
+   reconciliation requires a separately authorized Core contract.
+5. Return exact image/fixture pins, command exits and redacted receipts, plus
+   cleanup status. Do not add production routes or shared-Hub fault switches
+   for this validation.
+
+The corrected final Client guard requires unique current Principal Memberships in both source and target Groups, Endpoint association with both Groups, positive projected Membership versions and a current source Monitor role. Rendering and both confirmation checks use current topology; Kotlin rechecks fresh authority before sealing. The roles-only Monitor case is accepted. These local controls passed synthetic regressions, not live Monitor acceptance.
+
+Provide a fresh complete native Network/Endpoint and explicit target-admission fixture before repeating live acceptance. If the supported bootstrap requires a successor Core version, deliver a clean full commit, complete contract archive, catalog hash and immutable image proof first; do not patch the accepted 4fb241b archive or transfer any earlier result. Record exact command argv and process exits for the next native run. The current 17 closed operations and terminal regroup uncertainty fence remain unchanged.
+
+## Historical bounded integration checkpoint — clean Hub `f4e4725`, Client-Control v1.6
+
+This section preserves the earlier f4e4725 evidence and request. It is not the
+active target above and does not certify the 4fb241b image or APK.
+
+The f4 checkpoint target was the independently pinned clean Hub commit
 `f4e4725c5d81c54b166f4291b9d450c70954e6df`, protocol `client-hub-v1.6`,
 and immutable local image
 `sha256:6a7e0af78d3d14369f451760541b54d49a6e9505a1c813aa1124186176d4f5c9`.
@@ -10,7 +195,7 @@ The catalog SHA-256 is
 `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`;
 the archive SHA-256 is
 `54234527064c5923f9b40d4ac2f602c702e6dbc47fe7b52185da823c97c10fbd`.
-See [the v1.6 validation record](client-hub-v1.6-f4e4725-validation.md)
+See [the historical f4 v1.6 validation record](client-hub-v1.6-f4e4725-validation.md)
 for commands, actual artifacts and per-layer results. Sections below retain
 historical checkpoint evidence and do not certify the v1.6 image or APK.
 
@@ -30,7 +215,7 @@ an abbreviated opaque candidate attestation, which the verifier does not treat
 as a trust anchor. No collaboration grant or policy approval path is enabled.
 Network direct-grant business uncertainty cannot be cleared by `status.snapshot`.
 
-### Bounded v1.6 acceptance and delivery
+### Historical bounded v1.6 acceptance and delivery
 
 | Item | Result | Evidence |
 |---|---|---|
@@ -71,7 +256,10 @@ No real Owner/Node/model credential entered the APK or Git. Android's synthetic
 device keys were destroyed with its owned VM, and Core fixture cleanup removed
 both synthetic Owner private keys. No resident deployment was changed.
 
-### Integration request to the CICADA maintainer
+### Historical f4e4725 integration request (superseded)
+
+The following request applied to the f4e4725 checkpoint and is retained as
+history. Use the active 4fb241b fixture request above for current work.
 
 ```text
 Review CICADA_CLIENT dev/react-native and the v1.6 validation record.

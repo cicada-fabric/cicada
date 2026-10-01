@@ -24,10 +24,10 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 V15_HOST_PATH = ROOT / 'scripts/interop/v15-host-stdio-carrier.py'
 V16_DRIVER_PATH = ROOT / 'scripts/interop/v16-android-deterministic.py'
-CORE_REVISION = 'f4e4725c5d81c54b166f4291b9d450c70954e6df'
-SOURCE_FINGERPRINT = 'c3d22f3d69ee668bb29215100ba78a33acf107fd1e03443a48e4651c70e44c4b'
+CORE_REVISION = '4fb241b5e824eb752ceb85586089f44c408e1e7e'
+SOURCE_FINGERPRINT = '31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2'
 CATALOG_SHA256 = '1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c'
-HUB_IMAGE = 'sha256:6a7e0af78d3d14369f451760541b54d49a6e9505a1c813aa1124186176d4f5c9'
+HUB_IMAGE = 'sha256:a48ce4b096f4d003ed6f8586674f4c175ce8616005dc65e7cbf9e9edaededf65'
 SCHEMA = 'cicada.client-v16-host-stdio-carrier.v1'
 ALLOWED = {
     ('GET', '/v2/client/identity'),

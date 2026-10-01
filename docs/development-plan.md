@@ -1,33 +1,32 @@
 # CICADA Client development and validation plan
 
-## Current v1.6 — Development checkpoint and next gates
+## Current v1.6 checkpoint
 
-**Target:** clean Hub `f4e4725c5d81c54b166f4291b9d450c70954e6df`, `client-hub-v1.6`, wire 1, 55 catalog operations. Fixed source, archive, catalog, fingerprint and image pins are recorded in the [v1.6 validation report](client-hub-v1.6-f4e4725-validation.md). The imported contract checker passed in Docker with exit code 0; this verifies the offline contract package only.
+**Target:** clean Hub `4fb241b5e824eb752ceb85586089f44c408e1e7e`, `client-hub-v1.6`, wire 1, 55 catalog operations. The [validation report](client-hub-v1.6-4fb241b-management-validation.md) records the fixed archive, catalog, source and immutable image pins. No successor or dirty Core source is accepted implicitly.
 
-The local policy currently implements 35 catalog operations and keeps 20 closed. It adds two display-only reads, `network.directory` and `topology.endpoint_admission_preview`. Seven further v1.6 methods remain closed: `space.foreign_endpoint_preview`, three `network.collaboration_key_*` methods and three `link.review_policy_*` methods. Preserve the prior seven cross-Owner Space consent/admission gates, three topology delegation/proposal gates and three Link key gates. See the [backend contract matrix](backend-contract.md#current-v16--contract-implementation-and-authorization).
+The Client locally implements 38 operations and keeps 17 closed. Current Directory/admission controls are bounded metadata reads. Regroup provides one named proposal review, explicit one-use issue and version-CAS revoke. Issue requires unique explicit ACTIVE source/target Principal Memberships with positive projected versions, Endpoint association with both Groups, and the source Monitor role. Fresh topology and lifecycle checks fence stale consent. A projected Membership version is not the Core database revision. Terminal authenticated regroup `OUTCOME_UNCERTAIN` preserves original ciphertext/counters and keeps the write fence blocked; snapshots cannot clear it.
 
-The v1.6 Policy, BROADCAST and TASK vectors are public synthetic fixtures, not authority fixtures. Policy signs eleven claims without a signature field; BROADCAST and TASK each sign twelve claims with `signature:null`, under separate purpose handling. They do not establish a current Owner trust key, complete Endpoint proof, live binding or native Join. The final app/test build, 63 Kotlin tests, 34 JavaScript tests, offline UI, current encrypted v1.6 capabilities, exact external-role intersection and original-byte response recovery passed in the bounded run. Positive native Endpoint authority and wider live faults remain separate gates. No v1.5 PASS transfers to this target.
-
-| Gate | Current state | Next evidence |
+| Gate | Status | Evidence and remaining work |
 |---|---|---|
-| Contract bundle import | **PASS** | Metadata/archive/source/catalog/file hashes, pinned commit and both full local image IDs match the imported snapshot. |
-| Offline contract checker | **PASS**, exit 0 | Docker checker receipt identifies the v1.6 contract and 21 payload files. |
-| Kotlin Policy/BROADCAST/TASK vector selectors | **PASS: 9 tests** | Final Android matrix has 63 passing tests; synthetic proofs do not establish native authority. |
-| Android app and instrumentation build | **PASS**, exit 0 | Exact final APK/source hashes and immutable offline build command are in the validation record. |
-| Encrypted v1.6 session and current capabilities | **PASS** | Fresh Owner Grant, encrypted revision/catalog and exact 47-to-27 external-role operation intersection. |
-| Fixed-image Client/Hub interoperability | **PASS**, bounded | Enrollment 201 and RPC 200 response-loss recovery; empty directory. Wider ledger faults, revocation, nonempty/current Endpoint paths remain NOT_RUN/BLOCKED. |
-| Native current Endpoint and Owner authority | **BLOCKED / NOT_RUN** | Core must provide a disposable live native Endpoint fixture with complete attestation, matching Node/Session/binding, current Network membership/enrollment revisions, and independently trusted Owner proof. |
-| Physical Android, public HTTPS, iOS and native HarmonyOS | **NOT_RUN** | Validate separately. A future native HarmonyOS client requires ArkUI/ArkTS; React Native TSX is not a native HarmonyOS app. |
+| Imported contract / immutable Hub image | **PASS** | Exact 4fb241b provenance in the validation report |
+| Final guarded build | **PASS**, exit 0 | App `93d490…`, test `041f6a…`, compiled source `e758625224b056a32a0ddb0d498606a6a49522f623a6c0173704a4896641cffb` (110 files) |
+| JavaScript / TypeScript / lint | **PASS**, exits 0 | 56 tests, TypeScript; lint 22 warnings, no errors |
+| Final Kotlin matrix | **PASS**, exit 0 | 71 tests/13 selectors, including 8 regroup checks and valid roles-only Monitor |
+| Final offline UI and owned cleanup | **PASS**, exits 0 | Five checks; fresh network-isolated emulator removed; six residents unchanged |
+| Earlier connected capabilities, Directory, Group-scope, 201/200 recovery and Node pairing UI | **PASS on earlier `9a6…`/`3cbe…` only** | Exact receipts retained; none transfers to final guarded artifacts |
+| Final guarded APK live Hub checks | **NOT_RUN** | Repeat only with a fresh approved complete fixed-image fixture |
+| Core native Join attempt | **FAIL**, controller 1, tool HTTP 404 | Required Endpoint/Network bootstrap was absent; exact argv not retained |
+| Current native Endpoint admission preview / Monitor regroup | **BLOCKED / NOT_RUN** | Requires a real native Network Join, current binding, explicit target Membership and Monitor proposal |
+| Candidate guarded APK `533142…` | **FAIL**, driver 1 / ADB 0 | Valid roles-only case rejected; fixed in final APK; candidate UI not run |
+| Physical Android / public HTTPS / iOS / native HarmonyOS | **NOT_RUN** | Separate environment acceptance |
 
-### Ordered v1.6 work
+## Next ordered gates
 
-1. Keep the 13 prior gates and seven new operations closed. Do not expose proposal, approval, admission, key-grant or message-sending success from catalog presence, a Hub advertisement or a synthetic vector. The two new read operations remain display-only and still require local support, encrypted capability and current server authorization.
-2. Run independent Android vector verification for the eleven-claim Policy proof, the twelve-claim BROADCAST grant with final `signature:null`, and the separate twelve-claim TASK grant. Reject cross-purpose signatures and wrong Owner/key/scope/revision/expiry. Keep Endpoint attestation v1 and OwnerLinkKeyGrant v2 encoders separate.
-3. Build the Client and instrumentation APK in Docker and run the exact Android test selectors. Record APK/source hashes, commands and exits. Do not infer build or Android test success from contract checker success.
-4. Verify encrypted `session.capabilities`, server Guard, revocation and recovery against the exact v1.6 Hub image. Preserve the original ciphertext and durable business evidence across uncertain outcomes.
-5. Obtain the missing Core native Endpoint fixture: complete canonical Endpoint attestation v1 and matching candidate public identity; actual Endpoint/Principal/Owner/Node identity; native Session ID/digest; current binding ID/epoch; Network membership and Endpoint enrollment revisions; and an independently trusted Owner key signing the exact current purpose manifest. For foreign admission, add both Owner-side decisions, exact scope and fresh Node Join evidence.
-6. Keep the direct `network.key_grant` business uncertainty fence until a dedicated `network.key_status` read correlates the original proof and status. `status.snapshot` only reconciles the outer RPC outcome and cannot clear this business fence.
-7. Run physical Android, public HTTPS, speech-model device measurements, iOS and native HarmonyOS only with their own evidence. Host inference and prior-platform results do not count.
+1. Preserve all earlier artifact and failure receipts; the final Client commit is recorded in `/gpu1-share/data/cicada-client/v16-4fb241b-20261001/provenance/client-delivery.redacted.json`.
+2. Obtain a supported native Network/Endpoint bootstrap and explicit Owner Group admission fixture. If it requires a new Core contract, independently verify its complete clean delivery before changing pins.
+3. On that complete fixture, rerun final-APK encrypted capabilities/recovery, Node pairing, Endpoint preview and explicit Monitor delegation. Verify stale CAS, expiry, revoke, one-use application and replay refusal without synthetic Threads.
+4. Keep all 17 unsupported consent/proof operations closed. Implement each only after its independent Owner proof, current authority, explicit confirmation and recovery semantics are complete; see the [readiness audit](client-hub-v1.6-operation-readiness.md).
+5. Run physical-device key boundaries and public HTTPS independently. No emulator or historical native result substitutes for either.
 
 ## Historical v1.5 — Development checkpoint
 

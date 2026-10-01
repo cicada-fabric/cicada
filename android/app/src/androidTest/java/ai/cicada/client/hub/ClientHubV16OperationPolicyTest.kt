@@ -148,7 +148,7 @@ class ClientHubV16OperationPolicyTest {
         assertFalse(status.has("role"))
         assertEquals(0, status.getAsJsonArray("allowedOperations").size())
         assertUnchanged(box, "SESSION_CAPABILITIES_REQUIRED") { box.session.rpc("intent.submit", JsonObject()) }
-        assertUnchanged(box, "CLIENT_CONSENT_FLOW_UNAVAILABLE") { box.session.rpc("topology.regroup_proposal", JsonObject()) }
+        assertUnchanged(box, "VERIFIED_REGROUP_FLOW_REQUIRED") { box.session.rpc("topology.regroup_proposal", JsonObject()) }
     }
 
     /** One-shot in-memory Control response for the public encrypted RPC path. */
@@ -445,12 +445,12 @@ class ClientHubV16OperationPolicyTest {
         private const val RESPONSE_SEQUENCE = 10L
         private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "group.key_manifest",
             "network.key_manifest", "monitor.broadcast_recover", "network.directory",
-            "topology.endpoint_admission_preview")
+            "topology.endpoint_admission_preview", "topology.regroup_proposal",
+            "topology.delegation_issue", "topology.delegation_revoke")
         // Exact v1.5/v1.6 deferred consent and proof routes, independent of the implementation set.
         private val NEW_CONSENT_OPERATIONS = listOf(
             "space.foreign_member_admit", "space.foreign_member_revoke", "space.foreign_endpoint_join",
             "space.key_manifest_v2", "space.key_consent_v2", "space.key_admission_v2", "space.key_status_v2",
-            "topology.delegation_issue", "topology.delegation_revoke", "topology.regroup_proposal",
             "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
             "network.collaboration_key_grant", "network.collaboration_key_status",
             "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",

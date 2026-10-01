@@ -8,15 +8,15 @@ export const IMPLEMENTED_CLIENT_RPC_OPERATIONS = [
   'group.key_manifest', 'group.key_grant', 'group.key_status',
   'network.key_manifest', 'network.key_grant', 'network.key_status',
   'network.directory', 'topology.endpoint_admission_preview',
+  'topology.regroup_proposal', 'topology.delegation_issue', 'topology.delegation_revoke',
   'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
   'monitor.broadcast_recover', 'monitor.broadcast_status',
 ] as const;
 
-/** Separate dual-Owner consent, admission and delegated proposal flows are not implemented. */
+/** Separate dual-Owner consent and admission flows are not implemented. */
 export const DEFERRED_CLIENT_CONSENT_OPERATIONS = [
   'space.foreign_member_admit', 'space.foreign_member_revoke', 'space.foreign_endpoint_join',
   'space.key_manifest_v2', 'space.key_consent_v2', 'space.key_admission_v2', 'space.key_status_v2',
-  'topology.delegation_issue', 'topology.delegation_revoke', 'topology.regroup_proposal',
 ] as const;
 
 export const UNVERIFIED_LINK_KEY_OPERATIONS = [
@@ -43,6 +43,7 @@ const mutating = new Set<string>([
   'goal.lifecycle', 'topology.apply', 'devices.revoke', 'nodes.confirm', 'nodes.revoke',
   'approvals.decide', 'intent.submit', 'link.invite_create', 'link.invite_accept',
   'group.key_grant', 'network.key_grant', 'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
+  'topology.delegation_issue', 'topology.delegation_revoke',
 ]);
 
 export function isImplementedClientRpcOperation(value: unknown): value is ImplementedClientRpcOperation {
@@ -58,12 +59,15 @@ interface OperationSession {
   pendingOperationId?: string;
   uncertainNeedsReconciliation?: boolean;
   networkGrantReconciliationRequired?: boolean;
+  regroupReconciliationRequired?: boolean;
   allowedOperations: readonly string[];
 }
 
 export function clientHubOperationAllowed(status: OperationSession, operation: string): boolean {
   if (!isImplementedClientRpcOperation(operation)) return false;
   if (operation === 'network.key_grant' && status.networkGrantReconciliationRequired) return false;
+  if (status.regroupReconciliationRequired &&
+      ['topology.delegation_issue', 'topology.delegation_revoke'].includes(operation)) return false;
   if (status.uncertainNeedsReconciliation && mutating.has(operation)) return false;
   return status.nativeAvailable === true && status.remoteEnabled === true &&
     status.sessionCapabilitiesReady === true && !status.authFenced && !status.recoveryBlocked &&

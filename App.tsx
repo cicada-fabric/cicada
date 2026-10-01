@@ -13,6 +13,9 @@ import {
 import {HubConnections} from './src/components/HubConnections';
 import type {HubConnection} from './src/components/HubConnections';
 import {NetworkKeyConsentPanel} from './src/components/NetworkKeyConsentPanel';
+import {NetworkDiscoveryPanel} from './src/components/NetworkDiscoveryPanel';
+import {RegroupDelegationPanel} from './src/components/RegroupDelegationPanel';
+import {NodePairingPanel} from './src/components/NodePairingPanel';
 import {SharedSpaceConsentPanel} from './src/components/SharedSpaceConsentPanel';
 import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
 import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
@@ -60,7 +63,6 @@ type StatusChange = {id?: string; change_type?: string; entity_type?: string;
   entity_id?: string; state?: unknown; observed_at?: string; created_at?: string};
 type StatusChangesPage = {completeness?: string; events?: StatusChange[];
   cursor?: string; has_more?: boolean; excluded_change_sources?: string[]};
-type NodePreview = JsonObject;
 type HubIntentStatus = JsonObject;
 type IntentOperation = Extract<ClientRpcOperation, 'intent.get' | 'intent.list' | 'intent.status' | 'intent.submit'>;
 type GoalResult = ClientGoalResult;
@@ -317,8 +319,6 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
   const [recoveredInvite, setRecoveredInvite] = useState<JsonObject | null>(null);
   const clientDevicesGeneration = useRef(0);
   const [approvals, setApprovals] = useState<JsonObject[]>([]);
-  const [nodeCode, setNodeCode] = useState('');
-  const [nodePreview, setNodePreview] = useState<NodePreview | null>(null);
   const [intentHistory, setIntentHistory] = useState<JsonObject[]>([]);
   const [intentHistoryVisibleCount, setIntentHistoryVisibleCount] = useState(8);
   const [intentHistoryBusy, setIntentHistoryBusy] = useState(false);
@@ -1566,47 +1566,6 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
         }},
       ]);
   };
-  const previewNode = async () => {
-    if (!nodeCode.trim()) return;
-    setTopologyActionBusy(true);
-    setNodePreview(null);
-    try {
-      const result = await rpcIfAllowed('device_binding', 'nodes.preview',
-        {user_code: nodeCode.trim()});
-      if (result) setNodePreview(asObject(result));
-      else setHubMessage('Node 预览功能未获当前会话授权');
-    } catch (error) { setHubMessage('Node 预览失败：' + safeHubError(error)); }
-    finally { setTopologyActionBusy(false); }
-  };
-  const confirmNode = async () => {
-    if (!nodePreview || !nodeCode.trim()) return;
-    Alert.alert('确认绑定 Node？',
-      `${field(nodePreview, 'node_name') || field(nodePreview, 'node_id')}\n请确认这是你希望授权的设备。`, [
-        {text: '取消', style: 'cancel'},
-        {text: '确认绑定', onPress: async () => {
-          setTopologyActionBusy(true);
-          let accepted = false;
-          try {
-            await rpc('nodes.confirm', {user_code: nodeCode.trim()});
-            accepted = true;
-            setNodeCode('');
-            setNodePreview(null);
-            await refreshNodeBindings();
-            await refreshRemoteData();
-            setHubMessage('Hub 已确认 Node 绑定并重读权威状态；实际在线仍以 Node 心跳为准。');
-          } catch (error) {
-            if (accepted) {
-              setNodesList([]);
-              setHubMessage('Hub 已确认 Node 绑定，但后续状态未能完整重读：' + safeHubError(error));
-            } else {
-              setHubMessage('Node 绑定未确认成功：' + safeHubError(error));
-              await refreshNodeBindings().catch(() => setNodesList([]));
-            }
-          }
-          finally { setTopologyActionBusy(false); }
-        }},
-      ]);
-  };
   const revokeNode = (binding: JsonObject) => Alert.alert('撤销 Node 绑定？',
     `${field(binding, 'node_name') || field(binding, 'node_id')} · v${field(binding, 'version')}`, [
       {text: '取消', style: 'cancel'},
@@ -2332,23 +2291,11 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
       </> : <>
         <Notice>Control 会话：{sessionCapabilities?.role || hubStatus.role || '未知角色'} · 授权来自加密 session.capabilities · 所有变更在 Hub 端校验。</Notice>
         {!!hubMessage && <Text style={s.small}>{hubMessage}</Text>}
-        {capsAllows(hubCapabilities, 'device_binding', 'nodes.preview', hubStatus) && <>
-          <Section name="登记 Node" />
-          <Text style={s.description}>输入 Node 本机显示的一次性 user code。先预览身份，再单独确认；Node bearer 保留在 Node。</Text>
-          <TextInput style={s.hubInput} value={nodeCode} onChangeText={setNodeCode}
-            placeholder="ABCD-EFGH-JKLM" autoCapitalize="characters" autoCorrect={false}
-            accessibilityLabel="Node 一次性 user code" />
-          <Button title={topologyActionBusy ? '处理中…' : '预览 Node 身份'}
-            onPress={() => { void previewNode(); }} secondary={topologyActionBusy}
-            disabled={topologyActionBusy || !nodeCode.trim()} />
-          {nodePreview && <Card>
-            <Text style={s.cardTitle}>待确认 Node</Text>
-            <Text style={s.description}>{field(nodePreview, 'node_name')} · {field(nodePreview, 'node_id')}</Text>
-            <Text style={s.small}>状态：{field(nodePreview, 'state')} · 到期：{field(nodePreview, 'expires_at')}</Text>
-            <View style={s.modelActions}><Button title="确认绑定 Node"
-              onPress={() => { void confirmNode(); }} disabled={topologyActionBusy} /></View>
-          </Card>}
-        </>}
+        <NodePairingPanel status={hubStatus} publicCapabilities={hubCapabilities}
+          sessionCapabilities={sessionCapabilities} api={clientHub}
+          onRefresh={async () => {
+            await refreshHubStatus(); await refreshNodeBindings(); await refreshRemoteData();
+          }} />
         {operationAllowed(hubStatus, 'nodes.list') && <>
           <Section name="已登记 Node" action="刷新" onPress={() => {
             refreshNodeBindings().catch(error => setHubMessage('Node 列表读取失败：' + safeHubError(error)));
@@ -2409,6 +2356,11 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           <NetworkKeyConsentPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
             publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
             onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />
+          <NetworkDiscoveryPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
+            publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities} />
+          {clientHub.regroupDelegationReady && <RegroupDelegationPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
+            publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
+            onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />}
           {monitorFeatureReady && <>
             <ActionCard title={showMonitorPanel ? '收起 Monitor 广播' : 'Monitor 广播'}
               body="向一个同 Owner Group 中已固定的收件人 roster 发送精确文本；先逐项审核，再由 Android 安全桥加密批准。"

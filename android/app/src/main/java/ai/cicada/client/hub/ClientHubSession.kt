@@ -25,6 +25,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -65,6 +66,11 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
         internal val PROCESS_LOCK = ReentrantLock()
+        private val regroupReviews = linkedMapOf<String, RegroupReview>()
+        private val regroupLifecycleGeneration = AtomicLong(1)
+
+        // Lifecycle callbacks must not wait on an RPC's network lock on the UI thread.
+        internal fun clearRegroupReviews() { regroupLifecycleGeneration.incrementAndGet() }
 
         internal fun validateProfileId(profileId: String) {
             if (profileId != "legacy" && !profileId.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
@@ -85,6 +91,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status",
             "network.key_manifest", "network.key_grant", "network.key_status",
             "network.directory", "topology.endpoint_admission_preview",
+            "topology.regroup_proposal", "topology.delegation_issue", "topology.delegation_revoke",
             "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status",
             "monitor.broadcast_recover",
         )
@@ -93,8 +100,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         private val UNIMPLEMENTED_CONSENT_OPERATIONS = setOf(
             "space.foreign_member_admit", "space.foreign_member_revoke",
             "space.foreign_endpoint_join", "space.key_manifest_v2", "space.key_consent_v2",
-            "space.key_admission_v2", "space.key_status_v2", "topology.delegation_issue",
-            "topology.delegation_revoke", "topology.regroup_proposal",
+            "space.key_admission_v2", "space.key_status_v2",
             "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
             "network.collaboration_key_grant", "network.collaboration_key_status",
             "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
@@ -104,6 +110,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "nodes.revoke", "approvals.decide", "intent.submit", "link.invite_create",
             "link.invite_accept", "group.key_grant", "network.key_grant", "monitor.broadcast_prepare",
             "monitor.broadcast_confirm",
+            "topology.delegation_issue", "topology.delegation_revoke",
         )
         private val MONITOR_OPERATION_STATES = setOf(
             "PREPARE_PENDING", "PREPARE_UNCERTAIN", "PREPARED", "APPROVED",
@@ -196,6 +203,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         var retiredPending: Pending? = null,
         /** First uncertain Network grant; generic read reconciliation must never retire this fence. */
         var networkGrantUncertainPending: Pending? = null,
+        /** Original uncertain delegation ciphertext; a generic snapshot cannot retire this fence. */
+        var regroupUncertainPending: Pending? = null,
+        var regroupWriteContext: JsonObject? = null,
         var pending: Pending? = null,
         var enrollmentAttempt: EnrollmentAttempt? = null,
         var monitorOperations: MutableMap<String, MonitorOperation> = linkedMapOf(),
@@ -208,6 +218,19 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         val network: JsonObject,
         val group: JsonObject? = null,
         val endpoint: JsonObject? = null,
+    )
+
+    private data class RegroupReview(
+        val id: String,
+        val selectionGeneration: Long,
+        val lifecycleGeneration: Long,
+        val hubId: String,
+        val ownerId: String,
+        val deviceId: String,
+        val sessionEpoch: Long,
+        val networkId: String,
+        val expiresAt: Instant,
+        val proposal: JsonObject,
     )
 
     /** Fetches public metadata only. This method never establishes or changes trust. */
@@ -512,6 +535,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
 
     /** Starts one encrypted RPC after persisting sequence and exact request bytes. */
     fun rpc(operation: String, body: JsonObject, operationId: String? = null): JsonObject = PROCESS_LOCK.withLock {
+        if (operation in setOf("topology.regroup_proposal", "topology.delegation_issue", "topology.delegation_revoke")) {
+            throw HubSessionException("VERIFIED_REGROUP_FLOW_REQUIRED", "Use the scope-bound Owner delegation review flow")
+        }
         if (operation.startsWith("group.key_")) {
             throw HubSessionException("VERIFIED_GROUP_FLOW_REQUIRED", "Use the verified Group key consent flow")
         }
@@ -535,6 +561,169 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             return@withLock topologyEndpointAdmissionPreview(state, body, operationId)
         }
         createAndSend(state, operation, body, operationId)
+    }
+
+    /** Reads one exact proposal and binds a short-lived local review to this selection. */
+    fun previewRegroupDelegation(proposalId: String, selectionGeneration: Long): JsonObject = PROCESS_LOCK.withLock {
+        require(selectionGeneration > 0)
+        val selector = requestToken(JsonObject().apply { addProperty("proposal_id", proposalId) }, "proposal_id")
+        regroupReviews.remove(directory.absolutePath)
+        val lifecycle = regroupLifecycleGeneration.get()
+        val state = readState()
+        val (proposal, _) = readRegroupProjection(state, selector)
+        if (lifecycle != regroupLifecycleGeneration.get()) {
+            throw HubSessionException("REGROUP_REVIEW_STALE", "App left the foreground during this review")
+        }
+        val now = Instant.now()
+        regroupReviews.entries.removeAll { it.value.expiresAt <= now }
+        if (regroupReviews.size >= 128) throw HubSessionException("REGROUP_REVIEW_CAPACITY", "Too many unresolved local reviews")
+        val review = RegroupReview(UUID.randomUUID().toString(), selectionGeneration, lifecycle, state.pin!!.hubId,
+            state.enrollment!!.ownerId, state.enrollment!!.deviceId, state.enrollment!!.sessionEpoch,
+            state.activeNetworkId!!, now.plusSeconds(120), proposal)
+        regroupReviews[directory.absolutePath] = review
+        JsonObject().apply { addProperty("reviewId", review.id); add("proposal", proposal.deepCopy()) }
+    }
+
+    /** Grants only the exact reviewed action once; the server still guards versions and execution. */
+    fun issueRegroupDelegation(reviewId: String, expiresAt: String, confirmed: Boolean,
+                              selectionGeneration: Long): JsonObject = PROCESS_LOCK.withLock {
+        if (!confirmed) throw HubSessionException("EXPLICIT_CONFIRMATION_REQUIRED", "Confirm the exact one-use delegation")
+        val state = readState()
+        requireRegroupReconciled(state)
+        val review = consumeRegroupReview(state, reviewId, selectionGeneration)
+        val (proposal, topology) = readRegroupProjection(state, requiredString(review.proposal, "proposal_id"),
+            "topology.delegation_issue")
+        try {
+            require(proposal == review.proposal)
+            RegroupDelegationValidation.currentIssue(proposal, topology, Instant.now())
+            RegroupDelegationValidation.issueExpiry(proposal, expiresAt, Instant.now())
+        } catch (_: Exception) {
+            throw HubSessionException("REGROUP_REVIEW_STALE", "Proposal, Group versions, binding or expiry changed; review again")
+        }
+        val body = JsonObject().apply {
+            addProperty("proposal_id", requiredString(proposal, "proposal_id"))
+            addProperty("expires_at", expiresAt)
+            addProperty("max_uses", 1)
+        }
+        sendRegroupMutation(state, "topology.delegation_issue", body, proposal, review)
+    }
+
+    /** Revokes only the exact current delegation ID/version shown in this device's review. */
+    fun revokeRegroupDelegation(reviewId: String, delegationId: String, expectedVersion: Long,
+                               confirmed: Boolean, selectionGeneration: Long): JsonObject = PROCESS_LOCK.withLock {
+        if (!confirmed) throw HubSessionException("EXPLICIT_CONFIRMATION_REQUIRED", "Confirm the exact delegation revocation")
+        if (expectedVersion < 1 || expectedVersion >= 9_007_199_254_740_991L) {
+            throw HubSessionException("INVALID_REGROUP_VERSION", "Delegation CAS version is invalid")
+        }
+        val state = readState()
+        requireRegroupReconciled(state)
+        val review = consumeRegroupReview(state, reviewId, selectionGeneration)
+        val (proposal, _) = readRegroupProjection(state, requiredString(review.proposal, "proposal_id"),
+            "topology.delegation_revoke")
+        val delegation = proposal.get("delegation")?.takeIf { it.isJsonObject }?.asJsonObject
+        if (proposal != review.proposal || delegation == null ||
+            optionalString(delegation, "delegation_id") != delegationId ||
+            optionalString(delegation, "state") != "ACTIVE" || longValue(delegation, "version") != expectedVersion) {
+            throw HubSessionException("REGROUP_REVIEW_STALE", "The exact delegation changed; read and confirm its current version")
+        }
+        val body = JsonObject().apply {
+            addProperty("delegation_id", delegationId)
+            addProperty("expected_version", expectedVersion)
+        }
+        sendRegroupMutation(state, "topology.delegation_revoke", body, proposal, review)
+    }
+
+    private fun consumeRegroupReview(state: State, reviewId: String, selectionGeneration: Long): RegroupReview {
+        val review = regroupReviews.remove(directory.absolutePath)
+        val enrollment = state.enrollment
+        if (review == null || review.id != reviewId || review.selectionGeneration != selectionGeneration ||
+            review.lifecycleGeneration != regroupLifecycleGeneration.get() ||
+            review.expiresAt <= Instant.now() || review.hubId != state.pin?.hubId ||
+            enrollment == null || review.ownerId != enrollment.ownerId || review.deviceId != enrollment.deviceId ||
+            review.sessionEpoch != enrollment.sessionEpoch || review.networkId != state.activeNetworkId) {
+            throw HubSessionException("REGROUP_REVIEW_STALE", "Local review expired or its Hub, device or selection changed")
+        }
+        return review
+    }
+
+    private fun readRegroupProjection(state: State, proposalId: String,
+                                      writeOperation: String? = null): Pair<JsonObject, JsonObject> {
+        requireReadyForRpc(state)
+        if (state.pending != null) throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the original ciphertext first")
+        val networkId = state.activeNetworkId ?: throw HubSessionException("NETWORK_SELECTION_REQUIRED", "Select a Network explicitly")
+        val operations = setOf("topology.snapshot", "topology.regroup_proposal") + listOfNotNull(writeOperation)
+        requireNetworkAvailability(state, operations)
+        val response = createAndSend(state, "topology.regroup_proposal", JsonObject().apply {
+            addProperty("proposal_id", proposalId)
+        })
+        if (response.get("ok")?.asBoolean != true) {
+            throw HubSessionException("REGROUP_PROPOSAL_UNAVAILABLE", "Hub did not authorize the exact proposal read")
+        }
+        val topologyResponse = createAndSend(state, "topology.snapshot", JsonObject())
+        try {
+            require(topologyResponse.get("ok")?.asBoolean == true)
+            val topology = topologyResponse.getAsJsonObject("result")
+            val proposal = RegroupDelegationValidation.proposal(response.getAsJsonObject("result"), topology,
+                state.pin!!.hubId, state.enrollment!!.ownerId, networkId, proposalId)
+            return proposal to topology
+        } catch (_: Exception) {
+            throw HubSessionException("REGROUP_PROJECTION_INVALID", "Hub proposal does not match the selected Owner topology")
+        }
+    }
+
+    private fun sendRegroupMutation(state: State, operation: String, body: JsonObject,
+                                    proposal: JsonObject, review: RegroupReview): JsonObject {
+        val context = JsonObject().apply {
+            addProperty("operation", operation)
+            for (key in listOf("proposal_id", "hub_id", "owner_id")) add(key, proposal.get(key).deepCopy())
+            add("input", proposal.getAsJsonObject("input").deepCopy())
+            add("request", body.deepCopy())
+        }
+        return createAndSend(state, operation, body, beforePersist = { _, _, _ ->
+            if (review.lifecycleGeneration != regroupLifecycleGeneration.get() || review.expiresAt <= Instant.now()) {
+                throw HubSessionException("REGROUP_REVIEW_STALE", "Foreground review expired before dispatch")
+            }
+            state.regroupUncertainPending = state.pending
+            state.regroupWriteContext = context
+        })
+    }
+
+    /** Runs for both ordinary responses and original-packet recovery before clearing pending. */
+    private fun applyRegroupRpcResult(state: State, pending: Pending, body: JsonObject,
+                                      ok: Boolean, uncertain: Boolean) {
+        if (pending.operation !in setOf("topology.delegation_issue", "topology.delegation_revoke")) return
+        val original = state.regroupUncertainPending
+        val context = state.regroupWriteContext
+        if (original == null || original.operationId != pending.operationId ||
+            original.packetJson != pending.packetJson || context == null ||
+            optionalString(context, "operation") != pending.operation) {
+            throw HubSessionException("REGROUP_RECOVERY_CONTEXT_INVALID", "The original delegation recovery context is missing")
+        }
+        if (uncertain) return
+        if (ok) {
+            try {
+                val result = RegroupDelegationValidation.delegation(body.getAsJsonObject("result"), context)
+                val request = context.getAsJsonObject("request")
+                if (pending.operation == "topology.delegation_issue") {
+                    require(requiredString(result, "state") == "ACTIVE" && longValue(result, "version") == 1L &&
+                        Instant.parse(requiredString(result, "expires_at")) == Instant.parse(requiredString(request, "expires_at")))
+                } else {
+                    require(requiredString(result, "delegation_id") == requiredString(request, "delegation_id") &&
+                        requiredString(result, "state") == "REVOKED" &&
+                        longValue(result, "version") == longValue(request, "expected_version") + 1)
+                }
+            } catch (_: Exception) {
+                throw HubSessionException("REGROUP_DELEGATION_INVALID", "Authenticated result differs from the original confirmed delegation; keep pending")
+            }
+        }
+        state.regroupUncertainPending = null
+        state.regroupWriteContext = null
+    }
+
+    private fun requireRegroupReconciled(state: State) {
+        if (state.regroupUncertainPending != null) {
+            throw HubSessionException("REGROUP_RECONCILIATION_REQUIRED", "Keep the original uncertain delegation ciphertext; a snapshot or proposal projection cannot prove this operation's outcome")
+        }
     }
 
     /** Safe Monitor operation index, suitable for restoring UI recovery after process death. */
@@ -1003,6 +1192,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     }
 
     private fun requireNetworkGrantReconciled(state: State) {
+        requireRegroupReconciled(state)
         if (state.networkGrantUncertainPending != null) {
             throw HubSessionException("NETWORK_GRANT_RECONCILIATION_REQUIRED", "The original Network key grant outcome is unresolved; Client has not completed dedicated authoritative reconciliation for that grant. Keep its original ciphertext; a general snapshot cannot authorize another grant or reset this profile")
         }
@@ -1540,6 +1730,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             addProperty("hasUnresolvedMonitorOperations", hasUnresolvedMonitorOperation(state))
             state.outcomeUncertainOperationId?.let { addProperty("outcomeUncertainOperationId", it) }
             addProperty("uncertainNeedsReconciliation", state.uncertainNeedsReconciliation)
+            addProperty("regroupReconciliationRequired", state.regroupUncertainPending != null)
+            state.regroupUncertainPending?.let { addProperty("regroupUncertainOperationId", it.operationId) }
             addProperty("networkGrantReconciliationRequired", state.networkGrantUncertainPending != null)
             state.networkGrantUncertainPending?.let { addProperty("networkGrantUncertainOperationId", it.operationId) }
             state.enrollmentAttempt?.let { attempt ->
@@ -1553,6 +1745,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             if (state.enrollment != null) {
                 addProperty("ownerId", state.enrollment!!.ownerId)
                 addProperty("deviceId", state.enrollment!!.deviceId)
+                addProperty("sessionEpoch", state.enrollment!!.sessionEpoch)
             }
             if (state.role != null) addProperty("role", state.role)
             if (state.sessionError != null) addProperty("sessionError", state.sessionError)
@@ -1592,6 +1785,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         // The registry generation is advanced first so a failed state write still fences old callbacks.
         beforePersistSelection()
+        regroupReviews.remove(directory.absolutePath)
         state.activeNetworkId = selected
         writeState(state)
         getStatus()
@@ -1761,6 +1955,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             state.sessionCapabilitiesReady = false
         }
         if (processMonitorResponse) applyMonitorRpcResult(state, route, pending, body, operationId, ok, uncertain)
+        applyRegroupRpcResult(state, pending, body, ok, uncertain)
         state.lastResponseSequence = opened.route.sequence
         state.pending = null
         state.recoveryBlocked = false
@@ -2694,6 +2889,30 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (state.networkGrantUncertainPending == null && state.retiredPending?.operation == "network.key_grant") {
             state.networkGrantUncertainPending = validateNetworkGrantFence(state.retiredPending!!)
         }
+        json.get("regroupUncertainPending")?.let { element ->
+            try {
+                require(element.isJsonObject)
+                val value = element.asJsonObject
+                val pending = Pending(requiredString(value, "operation"), requiredString(value, "operationId"),
+                    longValue(value, "sequence"), optionalLong(value, "expectedResponseSequence"),
+                    requiredString(value, "packetJson"))
+                require(pending.operation in setOf("topology.delegation_issue", "topology.delegation_revoke") &&
+                    pending.operationId.isNotBlank() && pending.sequence > 0 &&
+                    pending.expectedResponseSequence?.let { it > 0 } == true && pending.packetJson.isNotBlank())
+                val context = json.get("regroupWriteContext")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: throw IllegalArgumentException("Missing delegation context")
+                requireExactObjectFields(context, setOf("operation", "proposal_id", "hub_id", "owner_id", "input", "request"),
+                    setOf("operation", "proposal_id", "hub_id", "owner_id", "input", "request"))
+                require(optionalString(context, "operation") == pending.operation && context.toString().length <= 8192)
+                state.regroupUncertainPending = pending
+                state.regroupWriteContext = context
+            } catch (_: Exception) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Saved delegation recovery fence is invalid")
+            }
+        }
+        if (state.regroupUncertainPending == null && json.has("regroupWriteContext")) {
+            throw HubSessionException("SESSION_STORAGE_INVALID", "Delegation context has no original ciphertext")
+        }
         state.allowedOperations = json.getAsJsonArray("allowedOperations")?.mapNotNull { element ->
             if (element.isJsonPrimitive && element.asJsonPrimitive.isString) element.asString else null
         }?.distinct()?.filter { it in RPC_OPERATIONS } ?: emptyList()
@@ -2838,6 +3057,17 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 addProperty("packetJson", pending.packetJson)
                 pending.monitorOperationId?.let { addProperty("monitorOperationId", it) }
             })
+        }
+        state.regroupUncertainPending?.let { pending ->
+            json.add("regroupUncertainPending", JsonObject().apply {
+                addProperty("operation", pending.operation)
+                addProperty("operationId", pending.operationId)
+                addProperty("sequence", pending.sequence)
+                pending.expectedResponseSequence?.let { addProperty("expectedResponseSequence", it) }
+                addProperty("packetJson", pending.packetJson)
+            })
+            json.add("regroupWriteContext", state.regroupWriteContext
+                ?: throw HubSessionException("SESSION_STORAGE_INVALID", "Original delegation context is missing"))
         }
         json.add("allowedOperations", JsonArray().apply { state.allowedOperations.forEach(::add) })
         state.pending?.let { pending ->

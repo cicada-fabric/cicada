@@ -23,6 +23,8 @@ CATALOG = CONTRACT / 'cicada-go/internal/clientcontract/catalog.json'
 CONTRACT_REVISION = 'client-hub-v1.5'
 CATALOG_SHA256 = 'a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68'
 CORE_REVISION = 'bd79ff93c90ecafc28a2471dd9523444903b39e6'
+EXPECTED_COUNTS = (33, 33, 25)
+SCHEMA = 'cicada.client-v15-role-oracle.v1'
 LOCAL_IMPLEMENTED = {
     'session.capabilities', 'status.snapshot', 'status.changes', 'goal.lifecycle',
     'topology.snapshot', 'topology.apply', 'devices.list', 'devices.revoke',
@@ -78,7 +80,7 @@ def verify_contract():
             if role in item['roles']:
                 role_operations[role].add(item['id'])
     expected = {role: LOCAL_IMPLEMENTED & role_operations[role] for role in role_operations}
-    if len(LOCAL_IMPLEMENTED) != 33 or len(expected['manager']) != 33 or len(expected['external']) != 25:
+    if (len(LOCAL_IMPLEMENTED), len(expected['manager']), len(expected['external'])) != EXPECTED_COUNTS:
         raise ValueError('the pinned role allowlists do not match the Android supported-operation contract')
     if LOCAL_IMPLEMENTED & DEFERRED_CONSENT or LOCAL_IMPLEMENTED & UNSUPPORTED_LINK_KEYS:
         raise ValueError('the local supported-operation list unexpectedly contains gated operations')
@@ -167,7 +169,7 @@ def main():
         errors.append('active_enrollment_does_not_match_prepared_device')
 
     summary = {
-        'schema': 'cicada.client-v15-role-oracle.v1',
+        'schema': SCHEMA,
         'result': 'PASS' if not errors else 'FAIL',
         'tag': args.tag,
         'authenticated_role': role if role in expected else None,

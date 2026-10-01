@@ -3,6 +3,7 @@ package ai.cicada.client.hub
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.NativeModule
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -23,11 +24,24 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /** Narrow React Native bridge. All cryptography and networking stay native. */
-class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
+class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBaseJavaModule(context), LifecycleEventListener {
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { task ->
         Thread(task, "cicada-client-hub").apply { isDaemon = true }
     }
     private val profiles by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { HubProfileStore(reactApplicationContext) }
+
+    init { context.addLifecycleEventListener(this) }
+
+    override fun onHostResume() = Unit
+    override fun onHostPause() = ClientHubSession.clearRegroupReviews()
+    override fun onHostDestroy() = ClientHubSession.clearRegroupReviews()
+
+    override fun invalidate() {
+        reactApplicationContext.removeLifecycleEventListener(this)
+        ClientHubSession.clearRegroupReviews()
+        worker.shutdown()
+        super.invalidate()
+    }
 
     override fun getName(): String = "CicadaClientHub"
 
@@ -107,6 +121,29 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
 
     @com.facebook.react.bridge.ReactMethod
     fun retryPendingExact(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.retryPendingExact() }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun previewRegroupDelegation(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.previewRegroupDelegation(requiredString(options, "proposalId"), requiredScope(options).selectionGeneration)
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun issueRegroupDelegation(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.issueRegroupDelegation(requiredString(options, "reviewId"), requiredString(options, "expiresAt"),
+            options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed"),
+            requiredScope(options).selectionGeneration)
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun revokeRegroupDelegation(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        val version = options.getDouble("expectedVersion")
+        if (!version.isFinite() || version < 1 || version >= 9_007_199_254_740_991.0 || version % 1 != 0.0) {
+            throw HubSessionException("INVALID_REGROUP_VERSION", "Delegation CAS version is invalid")
+        }
+        session.revokeRegroupDelegation(requiredString(options, "reviewId"), requiredString(options, "delegationId"),
+            version.toLong(), options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed"),
+            requiredScope(options).selectionGeneration)
+    }
 
     @com.facebook.react.bridge.ReactMethod
     fun previewGroupKey(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->

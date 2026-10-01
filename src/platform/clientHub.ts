@@ -9,6 +9,7 @@ import {
 } from './monitorBroadcast';
 
 import {CLIENT_HUB_REVISION} from './clientHubContract';
+import type {RegroupProposal, RegroupDelegationRpcResponse} from './regroupDelegation';
 import {captureProfileMethod} from './hubProfileScope';
 import {
   DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
@@ -38,6 +39,8 @@ export interface HubProfileSummary {
   uncertainNeedsReconciliation?: boolean;
   networkGrantReconciliationRequired?: boolean;
   networkGrantUncertainOperationId?: string;
+  regroupReconciliationRequired?: boolean;
+  regroupUncertainOperationId?: string;
 }
 
 export interface HubProfileRegistry {
@@ -71,6 +74,7 @@ export type MonitorBroadcastRpcOperation = Extract<ClientRpcOperation,
 export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation,
   DeferredClientConsentOperation | DeferredV16RpcOperation | MonitorBroadcastRpcOperation |
   'network.key_manifest' | 'network.key_grant' | 'network.key_status' |
+  'topology.regroup_proposal' | 'topology.delegation_issue' | 'topology.delegation_revoke' |
   typeof UNVERIFIED_LINK_KEY_OPERATIONS[number]>;
 
 // Link key consent remains unavailable until its separate contract is verified.
@@ -207,11 +211,14 @@ export interface ClientHubStatus {
   uncertainNeedsReconciliation?: boolean;
   networkGrantReconciliationRequired?: boolean;
   networkGrantUncertainOperationId?: string;
+  regroupReconciliationRequired?: boolean;
+  regroupUncertainOperationId?: string;
   allowedOperations: ClientRpcOperation[];
   error?: string;
 }
 
 export interface NativeClientHubStatus {
+  sessionEpoch?: number;
   profileId?: string;
   selectionGeneration?: number;
   activeNetworkId?: string;
@@ -237,6 +244,8 @@ export interface NativeClientHubStatus {
   uncertainNeedsReconciliation?: boolean;
   networkGrantReconciliationRequired?: boolean;
   networkGrantUncertainOperationId?: string;
+  regroupReconciliationRequired?: boolean;
+  regroupUncertainOperationId?: string;
   allowedOperations: string[];
 }
 
@@ -268,6 +277,10 @@ export interface ClientHubNativeBridge {
   }): Promise<unknown>;
   recoverPending(): Promise<unknown>;
   retryPendingExact(): Promise<unknown>;
+  previewRegroupDelegation(input: {proposalId: string}): Promise<{reviewId: string; proposal: RegroupProposal}>;
+  issueRegroupDelegation(input: {reviewId: string; expiresAt: string; confirmed: true}): Promise<RegroupDelegationRpcResponse>;
+  revokeRegroupDelegation(input: {reviewId: string; delegationId: string; expectedVersion: number;
+    confirmed: true}): Promise<RegroupDelegationRpcResponse>;
   previewGroupKey(input: {groupId: string; endpointId: string; ownerKeyId: string}): Promise<{
     ok: boolean; verified: true; result: Record<string, unknown>;
   }>;
@@ -306,6 +319,7 @@ export interface ClientHubApi extends Omit<ClientHubNativeBridge,
   }>;
   readonly monitorBroadcastReady: boolean;
   readonly networkKeyConsentReady: boolean;
+  readonly regroupDelegationReady: boolean;
   readonly scope: HubProfileScope;
   networkKeyStatus(input: {networkId: string; endpointId: string}): Promise<NetworkKeyResponse>;
   getMonitorBroadcastOperations(): Promise<{operations: MonitorBroadcastOperation[]}>;
@@ -350,6 +364,7 @@ function bindNativeProfile(scope: HubProfileScope): ClientHubNativeBridge | unde
     'grantNetworkKey', 'getNetworkKeyStatus', 'getMonitorBroadcastOperations',
     'monitorBroadcastPrepare', 'monitorBroadcastRecover', 'monitorBroadcastBodyMatches',
     'monitorBroadcastConfirm', 'monitorBroadcastStatus',
+    'previewRegroupDelegation', 'issueRegroupDelegation', 'revokeRegroupDelegation',
   ] as const;
   return Object.fromEntries(methods.filter(name => typeof rawNative[name] === 'function')
     .map(name => [name, captureProfileMethod(scope, input => {
@@ -414,6 +429,8 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
   return Platform.OS === 'android' && native ? {
   scope,
   networkKeyConsentReady: clientHubBridgeReadiness.networkKeyConsentReady,
+  regroupDelegationReady: ['previewRegroupDelegation', 'issueRegroupDelegation', 'revokeRegroupDelegation']
+    .every(name => typeof native[name as keyof ClientHubNativeBridge] === 'function'),
   monitorBroadcastReady: Boolean(native.getMonitorBroadcastOperations &&
     native.monitorBroadcastPrepare && native.monitorBroadcastRecover &&
     native.monitorBroadcastBodyMatches && native.monitorBroadcastConfirm &&
@@ -440,6 +457,9 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
   },
   recoverPending: () => native.recoverPending(),
   retryPendingExact: () => native.retryPendingExact(),
+  previewRegroupDelegation: input => typeof native.previewRegroupDelegation === 'function' ? native.previewRegroupDelegation(input) : unavailable(),
+  issueRegroupDelegation: input => typeof native.issueRegroupDelegation === 'function' ? native.issueRegroupDelegation(input) : unavailable(),
+  revokeRegroupDelegation: input => typeof native.revokeRegroupDelegation === 'function' ? native.revokeRegroupDelegation(input) : unavailable(),
   previewGroupKey: input => native.previewGroupKey(input),
   grantGroupKey: input => native.grantGroupKey(input),
   groupKeyStatus: input => native.getGroupKeyStatus(input),
@@ -484,6 +504,7 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
 } : {
   scope,
   networkKeyConsentReady: false,
+  regroupDelegationReady: false,
   monitorBroadcastReady: false,
   getStatus: async () => unavailableStatus,
   fetchHubMetadata: () => unavailable(),
@@ -496,6 +517,9 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
   rpc: () => unavailable(),
   recoverPending: () => unavailable(),
   retryPendingExact: () => unavailable(),
+  previewRegroupDelegation: () => unavailable(),
+  issueRegroupDelegation: () => unavailable(),
+  revokeRegroupDelegation: () => unavailable(),
   previewGroupKey: () => unavailable(),
   grantGroupKey: () => unavailable(),
   groupKeyStatus: () => unavailable(),
