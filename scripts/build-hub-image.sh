@@ -41,6 +41,7 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 dockerfile="${repo_root}/docker/Dockerfile.hub"
 catalog_file="${repo_root}/cicada-go/internal/clientcontract/catalog.json"
+inventory_helper="${repo_root}/scripts/hub-build-input-inventory.py"
 
 [[ "$source_info_only" != true || -n "$metadata_file" ]] || usage
 required_commands=(git python3 sha256sum)
@@ -53,10 +54,32 @@ for command_name in "${required_commands[@]}"; do
     exit 1
   }
 done
-[[ -f "$dockerfile" && -f "$catalog_file" ]] || {
-  printf 'build-hub-image: Dockerfile or embedded client contract catalog is missing\n' >&2
+[[ -f "$dockerfile" && -f "$catalog_file" && -f "$inventory_helper" ]] || {
+  printf 'build-hub-image: Dockerfile, embedded client contract catalog, or inventory helper is missing\n' >&2
   exit 1
 }
+
+inventory_temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/cicada-hub-inputs.XXXXXXXX")"
+chmod 0700 "$inventory_temp_dir"
+source_inventory_file="${inventory_temp_dir}/inventory.json"
+trap 'rm -rf -- "$inventory_temp_dir"' EXIT
+
+if [[ -n "$metadata_file" ]]; then
+  python3 - "$repo_root" "$metadata_file" <<'PY'
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+destination = pathlib.Path(sys.argv[2]).resolve()
+try:
+    relative = destination.relative_to(root).as_posix()
+except ValueError:
+    raise SystemExit(0)
+if relative != ".cicada-data" and not relative.startswith(".cicada-data/"):
+    raise SystemExit("build-hub-image: metadata output must be outside the checkout or under ignored .cicada-data")
+PY
+fi
 
 revision="$(git -C "$repo_root" rev-parse HEAD)"
 if [[ -z "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]]; then
@@ -101,11 +124,39 @@ for relative in sorted(path for path in set(paths) if path):
 print(digest.hexdigest())
 PY
 }
-source_fingerprint="$(compute_source_fingerprint)"
+
+capture_source_snapshot() {
+  local first_fingerprint second_fingerprint inventory_fingerprint
+  first_fingerprint="$(compute_source_fingerprint)"
+  if ! python3 "$inventory_helper" capture --root "$repo_root" --output "$source_inventory_file"; then
+    printf 'build-hub-image: failed to capture Hub build-input inventory\n' >&2
+    return 1
+  fi
+  second_fingerprint="$(compute_source_fingerprint)"
+  inventory_fingerprint="$(python3 - "$source_inventory_file" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    print(json.load(source)["source_fingerprint_v4"]["sha256"])
+PY
+  )"
+  if [[ "$first_fingerprint" != "$second_fingerprint" || "$second_fingerprint" != "$inventory_fingerprint" ]]; then
+    printf 'build-hub-image: source changed or v4 inventory recomputation disagrees\n' >&2
+    return 1
+  fi
+  if ! python3 "$inventory_helper" verify --root "$repo_root" --expected "$source_inventory_file"; then
+    printf 'build-hub-image: source changed while build metadata was being collected\n' >&2
+    return 1
+  fi
+  source_fingerprint="$second_fingerprint"
+}
+
+source_fingerprint=""
+capture_source_snapshot
 catalog_sha256="$(sha256sum "$catalog_file" | cut -d ' ' -f 1)"
 
 verify_source_snapshot() {
-  local current_revision current_dirty current_fingerprint current_catalog_sha256
+  local current_revision current_dirty current_fingerprint current_catalog_sha256 inventory_fingerprint
   current_revision="$(git -C "$repo_root" rev-parse HEAD)"
   if [[ -z "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]]; then
     current_dirty=false
@@ -114,8 +165,17 @@ verify_source_snapshot() {
   fi
   current_fingerprint="$(compute_source_fingerprint)"
   current_catalog_sha256="$(sha256sum "$catalog_file" | cut -d ' ' -f 1)"
+  inventory_fingerprint="$(python3 - "$source_inventory_file" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    print(json.load(source)["source_fingerprint_v4"]["sha256"])
+PY
+  )"
+  python3 "$inventory_helper" verify --root "$repo_root" --expected "$source_inventory_file" >/dev/null 2>&1 || return 1
   [[ "$current_revision" == "$revision" && "$current_dirty" == "$dirty" &&
-     "$current_fingerprint" == "$source_fingerprint" && "$current_catalog_sha256" == "$catalog_sha256" ]]
+     "$current_fingerprint" == "$source_fingerprint" && "$current_fingerprint" == "$inventory_fingerprint" &&
+     "$current_catalog_sha256" == "$catalog_sha256" ]]
 }
 
 build_version="${CICADA_BUILD_VERSION:-0.1.0-dev}"
@@ -134,13 +194,15 @@ if [[ "$source_info_only" == true ]]; then
     printf 'build-hub-image: source changed while source metadata was being collected\n' >&2
     exit 1
   fi
-  python3 - "$metadata_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, revision, dirty, source_fingerprint, catalog_sha256 = sys.argv[1:]
+path, inventory_path, revision, dirty, source_fingerprint, catalog_sha256 = sys.argv[1:]
+with open(inventory_path, encoding="utf-8") as source:
+    input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build-source.v1",
     "source": {
@@ -148,6 +210,7 @@ result = {
         "dirty": dirty == "true",
         "source_fingerprint": source_fingerprint,
         "catalog_sha256": catalog_sha256,
+        "input_inventory": input_inventory,
     },
 }
 directory = os.path.dirname(os.path.abspath(path))
@@ -219,7 +282,7 @@ add_proxy_args
 build_log="$(mktemp "${TMPDIR:-/tmp}/cicada-hub-build.XXXXXXXX")"
 image_ids="$(mktemp -d "${TMPDIR:-/tmp}/cicada-hub-images.XXXXXXXX")"
 chmod 0600 "$build_log"
-cleanup() { rm -f "$build_log"; rm -rf -- "$image_ids"; }
+cleanup() { rm -f "$build_log"; rm -rf -- "$image_ids" "$inventory_temp_dir"; }
 trap cleanup EXIT
 
 build_target() {
@@ -256,13 +319,15 @@ if [[ -n "$test_image_name" ]]; then
   test_image_id="$(cat "$image_ids/interop-test")"
 fi
 if [[ -n "$metadata_file" ]]; then
-  python3 - "$metadata_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id = sys.argv[1:]
+path, inventory_path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id = sys.argv[1:]
+with open(inventory_path, encoding="utf-8") as source:
+    input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build.v1",
     "source": {
@@ -270,6 +335,7 @@ result = {
         "dirty": dirty == "true",
         "source_fingerprint": source_fingerprint,
         "catalog_sha256": catalog_sha256,
+        "input_inventory": input_inventory,
     },
     "image": {
         "reference": reference,

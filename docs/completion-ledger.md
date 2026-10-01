@@ -1,23 +1,14 @@
 # Architecture v2.3 completion ledger
 
-**Current 2026-10-01 bounded transport/recovery checkpoint: PARTIAL.** See the
-[new checkpoint record](v01-transport-recovery-checkpoint-validation.md) for
-source-separated adapter/contract/backup/native/Client evidence and retained
-failures. The original integrated adapter's enabled race exited nonzero after
-passing assertions; independent repaired standard/race gates now pass, with no
-proven crash cause. Archive-v2 focused/CLI and G1 real-4 pass on separate sources;
-G1 retains `CONSUMPTION_UNCONFIRMED`. M4's two failed attempts are retained, and
-attach-3 actual phone pairing passes but native Join fails after two real CLI
-turns, without Endpoint/proposal; post-failure local-record/context checks remain
-NOT_RUN. Actual app UI pairing ran in an emulator; physical Android is NOT_RUN.
-Stable dirty `750cc4…` main combined
-Go/build/vet/contract/Python and optional PQ race pass; later changed code/image
-needs separate validation. Later `6ab2d9…` server/Python/shell incremental gates
-pass on their own inputs. Product PQ TLS, certificate
-lifecycle and post-restore reconnect remain incomplete. V64 is now PARTIAL for
-an independent 1-CPU/128-MiB actual-TCP sample; it is not a global capacity PASS;
-there is no completion-percentage increase or wholesale PARTIAL-to-PASS change.
-The C4/f4 and earlier summaries below are historical source-specific receipts.
+**Current 2026-10-01 Main checkpoint: source QA PASS; exact-image gate pending; v0.1 PARTIAL.**
+The [current status table](architecture-v2-status.md)
+records the integrated Network Join/renew, self-identity and optional PQ work,
+both exact-source QA receipts, input inventory hashes, nonpaid preflight and
+remaining acceptance. The clean `fe565b4` image is a prior immutable delivery
+without build-time inventory capture. The new image/bundle and exact-image gate
+are pending. This ledger keeps the 36/88 matrix-row count (not effort), G1
+`CONSUMPTION_UNCONFIRMED`, V64 bounded PARTIAL, and all dated source/image/APK
+failures tied to their original evidence. See the [transport/recovery record](v01-transport-recovery-checkpoint-validation.md).
 
 **Historical 2026-10-01 C4 unified checkpoint — PASS (bounded; v0.1.x remains incomplete):** the frozen source snapshot is [`closure-20261001T165647Z`](../.cicada-data/next-checkpoint/closure-20261001T165647Z/gate-summary.json), fingerprint `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`, based on dirty `dev` revision `f4e4725c5d81c54b166f4291b9d450c70954e6df`; catalog SHA-256 is `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`. Pinned Go 1.27.1 full Go passed: 27 packages, 1,105 top-level tests and 553 subtests, 12 skips, 0 failures; build, vet, contract check and Python 26 passed. All three disposable Docker suites actually ran their named test and passed ([Client](../.cicada-data/next-checkpoint/closure-20261001T165647Z/client-interop/result.json), [Network M1](../.cicada-data/next-checkpoint/closure-20261001T165647Z/network-m1-interop/result.json), [Group Spaces M2](../.cicada-data/next-checkpoint/closure-20261001T165647Z/group-spaces-m2-interop/result.json)); the 12-step loopback Browser gate passed in 29.755 seconds and cleaned its owned fixtures. Native Runtime on this candidate, physical Nodes and public HTTPS are **NOT_RUN**; product pure-PQ TLS is **NOT_IMPLEMENTED**. The gate records `full_v01_acceptance=INCOMPLETE`; a bounded checkpoint is not Architecture v2.3 completion.
 
@@ -127,7 +118,7 @@ The five-target release build and seven packaging tests passed under separate bu
 | V84 | PASS (M2 one-record, same-owner only) | `GetGroupSpaceHistoryManifest`, `GrantGroupSpaceHistorySealed`; M2 history test and `internal/e2ee/group_space_history.go` | v40 supports separately authorized new cross-owner Board records, not cross-owner historical grants; history remains fail closed. |
 | V85 | PASS (M2 same-owner backend) | `internal/store/group_spaces_v2.go`; `internal/e2ee/group_spaces.go`; `TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS`; `TestGroupSpacesMCPAcrossNodesWithLostCommitResponse` | Real native authoring/reading and product UI are NOT_RUN. |
 | V86 | PARTIAL (current M3 deterministic backend) | `TestGroupSpaceSyncUsesCommitOrderAndRetainsWatermarkAfterPurge`; Node/MCP sync and body-free SSE hint paths; three c33f disposable Docker suites PASS | Real native unread behavior, Android content surface and cross-resource Journal references remain unaccepted. |
-| V87 | PARTIAL (current M4 deterministic backend) | `TestDelegatedRegroupExactOwnerConsentCASAndAudit`; Owner route-purpose and encrypted Client management wiring | Owner/Monitor native product flow and real user/device acceptance remain unrun; tests do not turn a proposal into user approval. |
+| V87 | PARTIAL (deterministic backend plus bounded proposal evidence) | `TestDelegatedRegroupExactOwnerConsentCASAndAudit`; current nonpaid own Join/WhoAmI/CANDIDATE preflight without Directory/peer-traffic grants; separate historical paid Monitor proposal used synthetic operator `directory.read` CAS | Peer Directory/traffic remain guarded. Encrypted Owner Group-grant UX, genuine native approval/delegation, successful CAS/apply/audit, revoke/expiry/stale/current-binding cases and physical-device acceptance remain unaccepted. |
 | V88 | PARTIAL (v40 bounded cross-owner board) | `TestCrossOwnerGroupAdmissionJoinAndDualKeyBoard`; `TestCrossOwnerGroupSpaceKeyRequiresBothIndependentLocalOwnerPinsAndProofs` | New-record dual-Owner admission/key proof works in deterministic tests; cross-owner history remains denied, and real Client/native join/content UX is unrun. |
 
 ## Golden paths
@@ -148,11 +139,11 @@ The five-target release build and seven packaging tests passed under separate bu
 | v2-B native async/recovery | PARTIAL; durable sealed paths and selected native Codex paths exist | Real dual-physical-Node + one-Hub isolation, human foreground safety, kill-window recovery and explicit capability matrix. |
 | v2-C memberships/links/broadcast | PARTIAL; bilateral sealed single-recipient route works in bounded scopes | Complete routes, selected zero/one relay, two-user revocation, physical broadcast and optional review policy. |
 | v2-D task/resource/evidence | PARTIAL; task CAS and managed-blob executor fencing exist | Distinguish enforced operations from advisory GPU/workspace leases; real long-job stop/isolate/reconcile and evidence acceptance. |
-| v2-E product/interop | PARTIAL; C4 production-WASM/encrypted-vault/enroll/canvas/cross-tab Browser gate passed 12 steps, plus separately pinned Client v1.6 Android/Hub bounded checks against clean f4 | Candidate contract v1.6.1; previous clean Client delivery remains v1.6. Physical Android and public HTTPS NOT_RUN. C4 uncertain-write fence was a controlled synthetic interrupted-state injection; actual process-kill fault window, production stop/status-push and pure PQ TLS remain unaccepted/NOT_IMPLEMENTED. |
+| v2-E product/interop | PARTIAL; historical C4 browser and clean f4 Client checks retain their sources | Current contract is v1.6.1 / wire 1 / 55 operations with Hub schema v55. Client d580 offline build/JS/Kotlin/UI checks pass on its APKs; original build-time mode capture/provenance remains BLOCKED, and dd1 is retrospective only. Main PQ code is integrated but has no new image acceptance. Physical Android/public HTTPS remain NOT_RUN; certificate lifecycle and actual process-kill/stop reconciliation remain gaps. |
 | M1 Network identity/Guard/migration | Backend PASS on fingerprint `479386…`; Android/native/physical/public layers NOT_RUN | Re-run backend regression at final freeze; do not relabel the earlier dirty-source run. |
 | M2 encrypted Journal/Discussion | Backend PASS on fingerprint `76becd…`; that historical M2 candidate was same-owner, one Hub | Current v40 dual-Owner new-record path has its own c33f deterministic gate; historical M2 PASS does not prove it. Real Runtime/Android/device/public HTTPS remain separate. |
 | M3 scoped cursor/unread hints | PASS (bounded deterministic backend), PARTIAL overall | Commit-order watermark, explicit read marker, current Guard and body-free wake have current Go gate coverage; native/browser/Android and Journal references remain separate. |
-| M4 delegated regrouping | PASS (bounded deterministic backend), PARTIAL overall | Exact Owner route/delegation, topology CAS and audit have Go coverage. Attach-3 actual Android app UI (emulator) Node preview/confirmation/list passes on pinned APKs; seed and Join resume use the same UUID, but Join fails, leaving no Endpoint/proposal; post-failure local-record/context checks are NOT_RUN. Earlier attempts remain FAIL. Owner/Monitor proposal/delegation/apply/revoke flow remains unaccepted. |
+| M4 delegated regrouping | PASS (bounded deterministic backend), PARTIAL overall | Exact Owner route/delegation, topology CAS and audit have Go coverage. Attach-3 emulator UI passed but its native Join failed; preserve that receipt. A separate historical real-1 proposal stayed PROPOSED after a synthetic operator `directory.read` CAS. Current default-HTTP preflight without Directory/peer-traffic grants passes own Join/WhoAmI/CANDIDATE, while peer Directory/key/SEND remain guarded; it is not a real native Runtime PASS. Encrypted Owner grant, authorized apply/delegation/revoke and physical acceptance remain. |
 | M5 multi-Hub Node/Client | PARTIAL (bounded native multi-Hub Join PASS) | 54f original-Thread Hub B→A Join/whoami passed with isolated pins/credentials/Endpoint/cache and explicit shared-memory risk; earlier same-process service evidence retains its source. Independent Hub processes, physical Nodes, peer payloads and Android multi-Hub recovery remain separate. |
 | M2+ cross-owner boards | PASS (bounded dual-Owner Store/Nodekeys backend), PARTIAL overall | v40 new-record admission, consent and key proofs have deterministic coverage; cross-owner history remains denied; Android/native product flow is unrun. |
 

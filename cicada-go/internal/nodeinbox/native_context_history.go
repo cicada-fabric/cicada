@@ -137,6 +137,25 @@ func (r *NativeContextRegistry) Close() error {
 // new Endpoint creation never deletes previous scope rows.
 func (r *NativeContextRegistry) CheckAndRecordNativeContext(ctx context.Context,
 	input NativeContextScopeInput) (*NativeContextScopeDecision, error) {
+	return r.checkAndRecordNativeContext(ctx, input, false)
+}
+
+// CheckAndRecordNetworkEnrollmentContext observes Network enrollment scope,
+// not a native writer binding. Access credential rotation keeps its stable
+// enrollment binding ID and introduces no new native context. Preserve the
+// first actually observed epoch for this exact enrollment/scope/policy and
+// refresh only its last-seen time on renewal. Dedicated-scope checks still run
+// every time, and genuinely new observations retain the ordinary history caps.
+func (r *NativeContextRegistry) CheckAndRecordNetworkEnrollmentContext(ctx context.Context,
+	input NativeContextScopeInput) (*NativeContextScopeDecision, error) {
+	if strings.TrimSpace(input.GroupID) != "" || strings.TrimSpace(input.NetworkID) == "" {
+		return nil, ErrNativeContextScopeInvalid
+	}
+	return r.checkAndRecordNativeContext(ctx, input, true)
+}
+
+func (r *NativeContextRegistry) checkAndRecordNativeContext(ctx context.Context,
+	input NativeContextScopeInput, networkEnrollment bool) (*NativeContextScopeDecision, error) {
 	input, identityDigest, accountDigest, err := normalizeNativeContextScopeInput(input)
 	if err != nil {
 		return nil, err
@@ -198,6 +217,19 @@ WHERE identity_digest=? AND hub_id=? AND network_id=? AND group_id=? AND context
 		input.EndpointID, input.BindingID, input.BindingEpoch).Scan(&exactExisting); err != nil {
 		return nil, err
 	}
+	var enrollmentRecordID string
+	if networkEnrollment {
+		err := tx.QueryRowContext(ctx, `SELECT record_id FROM node_native_context_history_v1
+WHERE identity_digest=? AND hub_id=? AND network_id=? AND group_id=? AND context_policy=? AND endpoint_id=? AND binding_id=?
+ORDER BY first_seen_ms,binding_epoch,record_id LIMIT 1`, identityDigest, input.HubID, input.NetworkID, input.GroupID,
+			input.ContextPolicy, input.EndpointID, input.BindingID).Scan(&enrollmentRecordID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if enrollmentRecordID != "" {
+			exactExisting = 1
+		}
+	}
 	if existing >= r.perIdentityCap && exactExisting == 0 {
 		return nil, ErrNativeContextHistoryAtLimit
 	}
@@ -210,20 +242,27 @@ WHERE identity_digest=? AND hub_id=? AND network_id=? AND group_id=? AND context
 		return nil, ErrNativeContextHistoryAtLimit
 	}
 	nowMS := time.Now().UTC().UnixMilli()
-	recordID, err := randomNativeContextRecordID()
-	if err != nil {
-		return nil, err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO node_native_context_history_v1
+	if enrollmentRecordID != "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE node_native_context_history_v1 SET last_seen_ms=? WHERE record_id=?`,
+			nowMS, enrollmentRecordID); err != nil {
+			return nil, err
+		}
+	} else {
+		recordID, err := randomNativeContextRecordID()
+		if err != nil {
+			return nil, err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO node_native_context_history_v1
 (record_id,identity_digest,account_digest,harness,hub_id,network_id,group_id,context_policy,
  endpoint_id,binding_id,binding_epoch,first_seen_ms,last_seen_ms)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(identity_digest,hub_id,network_id,group_id,context_policy,endpoint_id,binding_id,binding_epoch)
 DO UPDATE SET last_seen_ms=excluded.last_seen_ms`, recordID, identityDigest, accountDigest, input.Harness,
-		input.HubID, input.NetworkID, input.GroupID, input.ContextPolicy, input.EndpointID,
-		input.BindingID, input.BindingEpoch, nowMS, nowMS)
-	if err != nil {
-		return nil, fmt.Errorf("record native context scope: %w", err)
+			input.HubID, input.NetworkID, input.GroupID, input.ContextPolicy, input.EndpointID,
+			input.BindingID, input.BindingEpoch, nowMS, nowMS)
+		if err != nil {
+			return nil, fmt.Errorf("record native context scope: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit native context history: %w", err)

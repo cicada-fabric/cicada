@@ -948,7 +948,10 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 	request.Header.Set("Authorization", "CicadaNode "+strings.TrimSpace(token))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	clientHTTP := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+	clientHTTP, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
 	response, err := clientHTTP.Do(request)
 	if err != nil {
 		return nil, err
@@ -1126,7 +1129,10 @@ func requestMachineNodeControlJSON(ctx context.Context, endpoint, method, token 
 	if token != "" {
 		request.Header.Set("Authorization", "CicadaNode "+token)
 	}
-	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 15*time.Second)
+	if err != nil {
+		return err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return err

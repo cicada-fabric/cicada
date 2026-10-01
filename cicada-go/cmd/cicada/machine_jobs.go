@@ -214,7 +214,10 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 		}
 		setMachineAuth(request)
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return err
+	}
 	if nodeRoute {
 		client.CheckRedirect = rejectNodeRedirect
 	}

@@ -1,24 +1,28 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-01 bounded transport / recovery checkpoint — PARTIAL
+## 2026-10-01 current Main integration — source QA PASS; image gate pending
 
-The current consolidation is the
+The current evidence and limits are kept together here; detailed receipts stay
+in the source-specific validation records.
+
+| Area | Current source and result |
+| --- | --- |
+| Product identities | Software `0.1.0-dev`; Hub schema v55; Client `client-hub-v1.6.1`, wire 1, 55 operations; catalog `6748449e…`. |
+| Prior clean delivery | `fe565b4`, source `6ab2d94a…`, image `sha256:df7a7f47…`; exact-image smoke and processing/uncertain/legacy recovery PASS. Report `e0b01697…`. Immutable and predates build-input inventory capture. |
+| Integrated dirty Main | Base `fe565b4`; Network Join/renew identity binding with bounded renewal history, self-only WhoAmI/key-candidate guard, strict optional direct Hub/Node PQ listener/client with CURRENT Store checks and ordered shutdown. Both Join/renew constructors use the per-Hub transport helper. |
+| Full Go/PQ source | Fingerprint `fb8f0d8be8fbc786d8ee434dde3974d8ffe295aa0c99ac97eea9b44e4ceace62`; full Go 1,144 top + 646 sub, 13 explicit skips; focused race 41 + 51; tagged PQ standard/race 16 + 48 each; PQ module race 23 + 36; vet/build/contract/Python 65 tests + 35 subtests passed. Original receipt [summary](../.cicada-data/combined-qa-20261001/summary.json), SHA `6ba077ca0317ef81fee3301d2e3699cb386b7909f17a394b37f29d31c891d5ce`. Its whole-tree gofmt finding in `group_broadcast_native_test.go` remains retained against that source. |
+| Format-only follow-up | Final source fingerprint `648162e9f52c2a14091f0537368097a2002dffb49b3f60a9e27fb43a07941985`; full `cmd/cicada` 291 top + 119 sub passed with 7 explicit skips, all 760 Go files formatted, 21 shell files and 23 Python files syntax-checked, contract and diff passed. All other 792 of 793 build inputs were unchanged; normalized original/final source matches. Follow-up [summary](../.cicada-data/combined-qa-20261001/format-followup/summary.json), SHA `60188405cade5b789e91a858abacec1e7a7bfe959e6ad85071b6cb5eb58533da`; original full Go/PQ counts are not reassigned to this fingerprint. |
+| Build-input inventory | Original source inventory `4435bfe3…`; final source inventory `3e0f6e1e…`, stable before/after each run. New source-only/image metadata records exact inputs. The clean image above and its report predate this capture; no retrospective rows are claimed. See [inventory definition](hub-build-input-provenance.md). |
+| Nonpaid preflight | `PREFLIGHT_PASS_NATIVE_NOT_RUN`, exit 0, zero models, cleanup true, unchanged source; receipt `397ff47b…`. The synthetic member completed own Join/WhoAmI/CANDIDATE without `directory.read` or peer-traffic grants; peer Directory/key and SEND stayed guarded. The Monitor retained its four role grants and had no `directory.read` or peer-traffic grants; its proposal remained `PROPOSED`, topology unchanged, no apply. Not native Runtime/PQ/Android/public HTTPS. |
+| Client review-policy status | Clean, unpushed Client `dev` checkpoint `65d6a399122055e1bd38dfb70fa93686806bee36`; 39 implemented / 16 closed operations; offline 67 JS, 5 Kotlin host and 11 checker tests plus app/test builds passed; lint had 0 errors / 23 warnings. Two synthetic-session tests compiled but were NOT_RUN; no live Hub/Node/model/runtime claim. Redacted receipt SHA `e8919709dfc53d30b0663c16af2e9b822bebc6a4599be6e5705ff063023c89a7`. |
+| Remaining | Encrypted Owner Group-permission UX; real native foreground/uncertain-consumption cases; PQ certificate enrollment/rotation/expiry/revocation/restore and packaging acceptance; archive reconciliation; physical Nodes/Android/public HTTPS. Overall Architecture v2.3/v0.1 PARTIAL; 36/88 is matrix rows, not effort. G1 `CONSUMPTION_UNCONFIRMED`; V64 bounded PARTIAL. |
+
+The sequential source gates close the combined source QA checkpoint; the exact
+new clean image/bundle and image interop gate remain pending. The historical
+paid native proposal used a synthetic operator `directory.read` CAS; see the
+[native validation record](v01-native-network-monitor-validation.md). Detailed
+receipt and retained-failure attribution is in the
 [transport/recovery record](v01-transport-recovery-checkpoint-validation.md).
-Independent adapter and repaired process gates PASS, historical main teardown
-FAIL, contract-only PASS, archive-v2 focused/CLI gates and G1 real-4 PASS retain
-separate sources. G1 queue state remains `CONSUMPTION_UNCONFIRMED`; M4's two
-failed attempts, attach-3 phone pairing PASS and native Join FAIL/no proposal
-remain separate; M4 is PARTIAL. Combined
-Go/build/vet/contract/Python and optional PQ race pass on stable dirty `750cc4…`
-inputs. Later `6ab2d9…` server/Python/shell gates pass separately; this does not
-relabel the old full suite or accept a new delivered image. M4's failed Join
-short-circuits subsequent local-record/context checks, which remain NOT_RUN.
-Production Hub/Node PQ TLS, certificate lifecycle and product recovery remain
-incomplete; physical/public HTTPS are NOT_RUN. V64 has a separately sourced
-bounded 1-CPU/128-MiB sample and remains PARTIAL, without a global capacity PASS.
-The matrix stays
-PARTIAL overall. C4 and older results below are historical and retain their own
-source/image/APK attribution, rather than certifying this new candidate.
 
 ## Historical 2026-10-01 C4 unified checkpoint — bounded PASS
 
@@ -32,9 +36,9 @@ Directory-only active Network members may register their own native binding for 
 
 The isolated Go 1.27.1 probe exited 0 for synthetic TLS 1.3 mutual authentication using pure ML-KEM-1024 and synthetic ML-DSA-65 certificates. Both endpoints negotiated `TLS_AES_128_GCM_SHA256`; an X25519-only client was rejected. This is a standard-library capability probe only; it does **not** meet the specified pure ML-KEM-768 + ML-DSA-65 + `TLS_AES_256_GCM_SHA384` profile and does not exercise a CICADA HTTP server or Node client. The exact source/logs/exit/hash record is [`next-checkpoint/pq-transport-audit`](../.cicada-data/next-checkpoint/pq-transport-audit/summary.json), run in image `golang:1.27.1` ID `sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244` with container networking disabled.
 
-Current CICADA Control and Fabric listeners use plain `ListenAndServe`; `CICADA_API_TOKEN` authenticates but does not encrypt a non-loopback listener. `docker/Dockerfile.hub` defaults to binding all container interfaces, and owned disposable HTTP fixtures depend on it; the outer host-published port/network is separately constrained by each fixture. Compose itself uses host loopback. Do not claim that all such fixture bindings imply public reachability, or that their isolation configures production TLS. Remote Node clients require an HTTPS URL; Go's default client verifies the server chain against system roots and checks the hostname, but the product does not configure a TLS client certificate, Hub ML-DSA pin, PQ group/suite gate or mTLS. Node identity is carried by application credentials and NodeControl binding. NodeControl sealed body protection remains application-layer protection, while HTTP bearer, outer route/key-version/operation/sequence metadata, size and timing remain visible. Normal peer E2EE is also independent of TLS.
+At the historical probe snapshot, CICADA Control and Fabric listeners used plain `ListenAndServe`; `CICADA_API_TOKEN` authenticated but did not encrypt a non-loopback listener. The `0.0.0.0` container bind and disposable fixture boundaries described here are probe-time observations, not current PQ acceptance. At that snapshot the Node client had no PQ TLS client certificate, ML-DSA pin, curve/suite gate or mTLS; NodeControl application E2EE and peer E2EE remained separate from transport encryption. See the current integration row above and the [Node PQ validation](v01-node-pqtls-runtime-validation.md).
 
-**Current boundary:** production CICADA PQ TLS wiring is **NOT_IMPLEMENTED**; the optional OpenSSL adapter separately demonstrates the exact profile. The historical Go 1.27.1 standard-library probe **cannot express this exact profile** (no pure ML-KEM-768 and no TLS 1.3 cipher-suite configuration). Public HTTPS deployment **NOT_RUN**. Go full-suite/backend PASS lines above retain their original source fingerprints and do not include this standalone probe as product acceptance. Next work is explicit separation of isolated development HTTP fixtures from a verifiable production PQ endpoint, with no token-based plaintext bypass; see the [implementation steps](architecture-v2-plan.md#2026-10-01-pq-transport-implementation-steps-not-yet-implemented).
+**Boundary at the historical probe snapshot:** the Go 1.27.1 standard-library probe could not express the exact profile. The optional OpenSSL adapter and later Main wiring do not change that result. Current source QA passed across the `fb8f0d8…` full Go/PQ run and `648162e…` format-only follow-up; the new-image gate remains pending and public HTTPS is **NOT_RUN**. See the [current integration table](architecture-v2-status.md) and [remaining sequence](architecture-v2-plan.md#2026-10-01-next-sequence--source-qa-pass-exact-image-pending).
 
 ## 历史 f55 与前序验收记录（2026-10-01）
 

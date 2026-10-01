@@ -219,7 +219,11 @@ func (b *machineAgentJoinBridge) fetchGroupBroadcastSnapshot(request groupBroadc
 	httpRequest.Header.Set("X-Cicada-Session", request.SessionToken)
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Cache-Control", "no-store")
-	response, err := (&http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(httpRequest)
+	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(httpRequest)
 	if err != nil {
 		return nil, &localSealedSendError{message: "could not reach the pinned Hub broadcast snapshot", retryable: true}
 	}

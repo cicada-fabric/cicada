@@ -1,25 +1,15 @@
 # Architecture v2.3 当前事实审计
 
-## 2026-10-01 bounded transport / recovery checkpoint — PARTIAL
+## 2026-10-01 current Main integration audit — source-specific status
 
-Current facts and provenance are centralized in the
-[transport/recovery checkpoint](v01-transport-recovery-checkpoint-validation.md).
-The optional exact-profile OpenSSL adapter exists, but clean `1547f2e`'s enabled
-race process gate failed at teardown. The independent repaired standard/race
-process gates pass, with no proven crash cause. Dirty `750cc4…` main combined
-Go/build/vet/contract/Python and optional PQ race now pass on stable code inputs.
-Contract v1.6.1 corrects documentation without changing
-55-operation authority. Archive-v2 focused/repaired CLI gates and G1 real-4
-pass on separate sources; G1 retains `CONSUMPTION_UNCONFIRMED`. M4 attach-1 and
-attach-2 fail; attach-3 actual phone pairing passes but native Join fails after
-two real CLI turns, with no Endpoint/proposal; post-failure local-record/context
-checks are NOT_RUN. Later `6ab2d9…` server/Python/shell incremental gates pass
-on their own inputs. Product PQ TLS and post-restore reconnect
-remain incomplete. The sections below retain their historical tested sources;
-PASS counts and completion percentages do not increase; V64 is PARTIAL for its
-separate bounded sample.
+The [status table](architecture-v2-status.md)
+owns current identities, source-specific QA receipts, inventory hashes,
+preflight and remaining acceptance. The original full-suite source is
+`fb8f0d8…`; the formatting-only follow-up source is `648162e…`. These separate
+receipts do not imply a new image. Architecture v2.3/v0.1 remain PARTIAL;
+36/88 is a matrix-row count, not effort.
 
-## 2026-10-01 Network directory-only native binding guard correction
+## Historical 2026-10-01 Network directory-only native binding guard correction
 
 On dirty source `f4e4725c5d81c54b166f4291b9d450c70954e6df`, the five-file correction fingerprint is `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a` (per-file hashes and commands: [focused evidence](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json)). `EnsureNetworkDirectNativeBinding` now requires current Network membership/session/identity scope but does not require a direct-send/receive, Task, or Broadcast action grant. The Group admission path remains separately authorized and persists only member role; no traffic permission, key grant, or key material is inferred. Candidate/key publication and peer/traffic routes keep their existing action-purpose guards.
 
@@ -43,13 +33,13 @@ This is a transport capability diagnostic, not a new CICADA build/test acceptanc
 
 The evidence is independent of product source identity: the repo HEAD at probe start was `f4e4725c5d81c54b166f4291b9d450c70954e6df`; the subsequently frozen closure candidate `d205771bee22a79ec2c55e47f733d2b46e533c582e3c108e35b4c60c3c0cf0bb` did not supply the standalone probe. Neither the candidate's Go/full-gate result nor its Docker evidence is transferred to this diagnostic.
 
-The production `serve` and `serve-fabric` paths call `ListenAndServe` without a TLS config; `validateServeExposure` accepts non-loopback when an API bearer is present. `docker/Dockerfile.hub` defaults to `serve --host 0.0.0.0`, while owned fixtures rely on this internal container bind and apply their own network/host-port boundaries. Compose explicitly uses host loopback, and several Docker fixtures publish to `127.0.0.1`; that does not make every external deployment loopback-only. The existing `main_security_test.go` currently treats a configured token as sufficient to accept a non-loopback listener. `CICADA_API_TOKEN`/`CicadaNode` authentication does not encrypt HTTP.
+At the exposure-audit snapshot, the production `serve` and `serve-fabric` paths called `ListenAndServe` without a TLS config; `validateServeExposure` accepted non-loopback when an API bearer was present. `docker/Dockerfile.hub` defaulted to `serve --host 0.0.0.0`, while owned fixtures relied on this internal bind with their own network/host-port boundaries. Compose used host loopback, and Docker fixture publication did not make all external deployments loopback-only. At that time `main_security_test.go` treated a configured token as sufficient for non-loopback exposure. Bearer authentication did not encrypt HTTP.
 
-Remote Node enrollment checks the `https` scheme; Node HTTP clients use Go's default transport, which verifies the server certificate chain against default/system roots and verifies the URL hostname. No production `tls.Config`, TLS client certificate/mTLS, Hub ML-DSA pin, PQ curve allowlist or TLS 1.3 suite gate was found. Node auth remains application bearer/NodeControl-key authorization. An HTTPS terminator is an HTTP plaintext trust endpoint: it can see bearer headers and non-app-encrypted JSON. NodeControl's sealed RPC and snapshot body are separately encrypted to the approved Node/Hub identity; their outer route/binding/operation/sequence, request sizes and timing remain metadata. Ordinary peer confidentiality is separately enforced by its recipient application envelope and is not supplied by TLS.
+At that snapshot, remote Node enrollment checked the `https` scheme and clients used Go's default system-root/hostname-verifying transport; product TLS client certificate/mTLS, Hub ML-DSA pin and exact PQ group/suite gates were absent. Node auth remained application bearer/NodeControl-key authorization. The application E2EE and visible metadata boundaries described here remain independent of transport TLS.
 
-Primary-source checks: [Go 1.27 release notes](https://go.dev/doc/go1.27) and [crypto/tls API](https://pkg.go.dev/crypto/tls); [TLS ML-KEM draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) and [TLS ML-DSA draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/); [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final), and [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881.html). Go 1.27.1 source in the probe image lists hybrid ML-KEM-768 groups and pure ML-KEM-1024, but no pure ML-KEM-768; its public `CipherSuites` field only configures TLS 1.0–1.2, not TLS 1.3. Therefore the exact profile is **NOT_SUPPORTED by that standard-library API**. The optional OpenSSL adapter now demonstrates it independently; production CICADA endpoint wiring remains **NOT_IMPLEMENTED**. A post-negotiation check can reject a wrong suite, not select the required one. No substitute algorithm or classical/hybrid path is accepted by this audit.
+Primary-source checks: [Go 1.27 release notes](https://go.dev/doc/go1.27) and [crypto/tls API](https://pkg.go.dev/crypto/tls); [TLS ML-KEM draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) and [TLS ML-DSA draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/); [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final), and [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881.html). Go 1.27.1 source in the probe image listed hybrid ML-KEM-768 groups and pure ML-KEM-1024, but no pure ML-KEM-768; its public `CipherSuites` field only configured TLS 1.0–1.2, not TLS 1.3. That standard-library limitation remains the probe's result. At audit time the optional OpenSSL adapter had demonstrated the profile but product endpoint wiring had not yet reached Main; later Main integration and its source-specific status are listed above. No cryptographic specification changed.
 
-Next implementation planning must first isolate the owned disposable HTTP fixture mode from production exposure: the Dockerfile's `0.0.0.0` container bind is used by current gates, so a blanket non-loopback rejection would break fixtures. The fixture path must be explicitly identified and bounded by private container networking and loopback-only host publication (or equivalent verified isolation); a token is never the justification for plaintext production exposure. Production remote serving still needs actual integration of the now-demonstrated exact-profile adapter and certificate/current-epoch authority; an ordinary TLS reverse proxy does not make the Node-to-Hub connection pure PQ if it terminates TLS. No listener, key, dependency or deployment was changed in this audit.
+At the time of this exposure audit, implementation planning called for separating disposable HTTP fixtures from production listener exposure. Later Main integration supplies direct PQ listener/client and current-authority wiring; exact-image acceptance and new image remain pending. This audit changed no listener, key, dependency or deployment.
 
 ## 2026-10-01 Native context history coverage boundary
 

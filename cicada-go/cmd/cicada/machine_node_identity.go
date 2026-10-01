@@ -189,7 +189,10 @@ func requestMachineNodeDeviceCode(ctx context.Context, base, nodeID, nodeName, c
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	client := http.Client{Timeout: 15 * time.Second, CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 15*time.Second)
+	if err != nil {
+		return nil, err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
@@ -296,7 +299,10 @@ func probeMachineNodeBinding(ctx context.Context, base, nodeID, token string) (b
 	}
 	request.Header.Set("Accept", "text/event-stream")
 	request.Header.Set("Authorization", "CicadaNode "+token)
-	client := http.Client{CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 0)
+	if err != nil {
+		return false, err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return false, err
@@ -324,7 +330,10 @@ func sendMachineNodeHeartbeat(ctx context.Context, base, nodeID, token string) e
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "CicadaNode "+token)
-	client := http.Client{Timeout: 10 * time.Second, CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 10*time.Second)
+	if err != nil {
+		return err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return err

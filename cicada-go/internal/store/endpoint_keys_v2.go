@@ -79,6 +79,18 @@ CREATE INDEX IF NOT EXISTS endpoint_key_candidates_v2_node_idx
 // Rejoining with the same public identity refreshes its proof and binding
 // coordinates; a different key requires an explicit, separate rotation flow.
 func (s *Store) RegisterEndpointKeyCandidate(endpointID, principalID, bindingID string, epoch uint64, attestation []byte) (*EndpointKeyCandidate, error) {
+	return s.registerEndpointKeyCandidate(nil, endpointID, principalID, bindingID, epoch, attestation)
+}
+
+// RegisterEndpointKeyCandidateForActor publishes only the authenticated caller's
+// public candidate. Its selected Group authority is rechecked in the write
+// transaction; publication grants neither directory access nor peer key consent.
+func (s *Store) RegisterEndpointKeyCandidateForActor(scope NativeActorScope, attestation []byte) (*EndpointKeyCandidate, error) {
+	return s.registerEndpointKeyCandidate(&scope, scope.EndpointID, scope.PrincipalID,
+		scope.BindingID, scope.BindingEpoch, attestation)
+}
+
+func (s *Store) registerEndpointKeyCandidate(scope *NativeActorScope, endpointID, principalID, bindingID string, epoch uint64, attestation []byte) (*EndpointKeyCandidate, error) {
 	endpointID = strings.TrimSpace(endpointID)
 	principalID = strings.TrimSpace(principalID)
 	bindingID = strings.TrimSpace(bindingID)
@@ -99,6 +111,16 @@ func (s *Store) RegisterEndpointKeyCandidate(endpointID, principalID, bindingID 
 	rollback := func(cause error) (*EndpointKeyCandidate, error) {
 		_ = tx.Rollback()
 		return nil, cause
+	}
+	if scope != nil {
+		// Acquire the SQLite writer before reading authority, including when
+		// another Store handle concurrently revokes this selected Group.
+		if _, err := tx.Exec(`UPDATE fabric_endpoints SET updated_at=updated_at WHERE id=?`, endpointID); err != nil {
+			return rollback(err)
+		}
+		if err := guardNativeSelfTx(tx, *scope, time.Now().UTC()); err != nil {
+			return rollback(err)
+		}
 	}
 
 	var dbPrincipalID, ownerID, endpointNodeID, endpointStatus, migrationState, currentEndpointBindingID, principalStatus string

@@ -28,7 +28,11 @@ func (b *machineAgentJoinBridge) regroupHTTP(sessionToken, route string, input, 
 	r.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
 	r.Header.Set("Cicada-Regroup-Session", "CicadaSession "+sessionToken)
 	r.Header.Set("Content-Type", "application/json")
-	response, err := (&http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(r)
+	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(r)
 	if err != nil {
 		return &localSealedSendError{message: "could not reach authorized Hub regroup route", retryable: true}
 	}

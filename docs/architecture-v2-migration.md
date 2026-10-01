@@ -1,21 +1,23 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-01 bounded transport / recovery migration boundary
+## 2026-10-01 current migration boundary — additive work, no new schema
 
-The [current checkpoint](v01-transport-recovery-checkpoint-validation.md) separates
-contract v1.6.1's documentation/revision correction from Node archive-v2 recovery
-work. The contract changes no wire framing, DTO, authorization or Hub schema.
+Current schema remains v55; the contract is `client-hub-v1.6.1` / wire 1 / 55
+operations. The integrated Join/renew binding, self-identity guard and optional
+PQ listener/client do not add a Hub migration or change Client wire framing.
+The prior clean `fe565b4` image predates build-time input inventory capture;
+current image-build metadata is described in
+[Hub build-input provenance](hub-build-input-provenance.md). Exact-source QA
+attribution and the still-pending new image gate are in the
+[status table](architecture-v2-status.md).
+
 Archive v2 includes provider/native-history sidecars and writer-lock metadata
 under shared Agent lifetime versus offline exclusive WriterRoot ownership.
-Independent focused race and the corrected CLI package rerun pass; the earlier
-full-run fixture failure is retained. The later stable dirty `750cc4…` main
-full Go gate passes; it does not accept production restore or a changed source.
-Restored/legacy missing fences remain
-quarantined, with no product clear/reconnect command. No production upgrade,
-rollback, counter reset, state deletion or reconnect is accepted by these tests.
-C4's backup and migration limits below remain attributed to that historical run.
+Restored or legacy-missing fences remain quarantined; no product clear/reconnect
+command exists. These synthetic backup/restore gates do not accept production
+reconciliation, rollback, counter reset or state deletion.
 
-## 2026-10-01 Network native identity binding authorization correction (no migration)
+## Historical 2026-10-01 Network native identity binding authorization correction (no migration)
 
 The directory-only self-binding correction separates registration of a current Network native identity/scope from traffic-purpose authorization. A currently joined member with valid session, Node/Endpoint identity and current scope/revisions may register the binding used by Group admission; that operation does not create an action grant, peer key, or key material. Group admission continues to use its explicit `group.manage` authorization and adds only member role. Direct traffic, Task, Broadcast, peer-key and key-candidate operations retain their action-purpose guards.
 

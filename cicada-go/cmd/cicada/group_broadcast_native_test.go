@@ -494,8 +494,7 @@ func TestNativeBroadcastFixturePinsLocalNativeContext(t *testing.T) {
 	}
 	bridge := &machineAgentJoinBridge{ctx: context.Background(), stateDir: stateDir,
 		baseURL: "http://127.0.0.1:1", nodeID: "node_synthetic_native_broadcast"}
-	if _, err := bridge.recordLocalNativeContext(authorization, endpoint, "codex", "thread_synthetic_native_broadcast");
-		err == nil || err.Error() != "current Node Hub context is not pinned for native scope history" {
+	if _, err := bridge.recordLocalNativeContext(authorization, endpoint, "codex", "thread_synthetic_native_broadcast"); err == nil || err.Error() != "current Node Hub context is not pinned for native scope history" {
 		t.Fatal("unpinned native broadcast fixture must be rejected before ledger acceptance")
 	}
 	bridge.ctx = pinnedNativeTestHubContext(bridge.ctx, authorization.HubID, bridge.nodeID,

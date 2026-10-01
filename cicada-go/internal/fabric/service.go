@@ -489,16 +489,11 @@ func (s *Service) LeaveGroup(actor Actor, reason string) (string, error) {
 }
 
 func (s *Service) WhoAmI(actor Actor) (*NetworkCard, error) {
-	if err := s.Authorize(actor, "directory.read"); err != nil {
+	// Inspecting the caller's own current binding does not enumerate peers.
+	// Store verifies the selected membership and native lease in the read transaction.
+	endpoint, binding, err := s.store.GetNativeSelfForActor(nativeActorScope(actor))
+	if err != nil {
 		return nil, err
-	}
-	endpoint, err := s.store.GetEndpointV2(actor.EndpointID)
-	if err != nil || endpoint.BindingID != actor.BindingID {
-		return nil, ErrNotFoundOrNotAuthorized
-	}
-	binding, err := s.store.GetSessionBinding(actor.BindingID)
-	if err != nil || binding.Epoch != actor.BindingEpoch {
-		return nil, ErrStaleBinding
 	}
 	card := s.networkCard(*endpoint, binding, actor.GroupID)
 	card.NativeSessionID = binding.NativeSessionID

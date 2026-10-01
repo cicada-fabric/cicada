@@ -5,25 +5,35 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
-Current unreleased work includes M3 commit-order Group Space sync and explicit
-unread markers, M4 exact Owner-delegated regrouping, v40 dual-Owner new-record
-Group boards, v41 atomic nested Group creation, a Hub E2EE canvas and a bounded
-M5 durable native-outcome path. Cross-owner history stays fail-closed; new
-cross-owner records require independent admission, context-risk consent, join
-and key proofs. Source `5414…` passed a bounded Go/vet/race/three-Docker gate
-and a separate real Chrome 151 loopback encrypted canvas gate; its uncertain-
-write fault injection and public HTTPS were not run. Source `e13b…` passed
-1,308 Go tests (11 SKIP), vet and eight Python tests, but real Codex 0.159.2
-failed at the final route allowlist; `434c…` failed at first Join after a
-model-shortened synthetic Group ID. The combined v41/M5 dirty source `c33f…`
-passed 1,336 Go tests (11 SKIP),
-vet, 36 focused race tests, eight Python tests, three disposable Docker
-suites, a separate Chrome 151 loopback canvas gate and one controlled real
-Codex same-Group ASK/REPLY run; see the
-[bounded checkpoint](docs/v01-group-panel-checkpoint-validation.md). Current
-Android v1.5, physical Nodes and public HTTPS remain unrun. The local Hub and
-optional Node entry is documented in
+Current Hub schema is v55; Client contract is `client-hub-v1.6.1`, encrypted
+wire v1, 55 operations, catalog `6748449e…`; software remains `0.1.0-dev`.
+Main integrates Network Join/renew identity binding, own-only endpoint
+WhoAmI/key-candidate access, and optional direct Hub/Node PQ transport with
+current Store guards. Combined source QA passed across exact sources
+`fb8f0d8…` (full Go/PQ) and `648162e…` (format-only follow-up); the new clean
+image/bundle and exact-image gate are pending. The prior clean `fe565b4` image
+remains immutable and predates input-inventory capture. See the [current status](docs/architecture-v2-status.md).
+
+The latest nonpaid default-HTTP preflight completed own Join/WhoAmI/CANDIDATE
+for a synthetic member without `directory.read` or peer-traffic grants; peer
+Directory/key and SEND remained guarded. The Monitor retained its four role
+grants without Directory/peer-traffic grants; its proposal stayed `PROPOSED`,
+topology unchanged, with no apply. It is not a real native Runtime, PQ, Android or public HTTPS result. The
+earlier paid proposal's synthetic operator `directory.read` workaround remains
+historical. Overall v0.1 is PARTIAL; 36/88 is a matrix-row count, not effort.
+The local Hub and optional Node entry is documented in
 [`docs/distribution.md`](docs/distribution.md); this is not a public release.
+
+### Historical c33f bounded M3/M4/M5 checkpoint
+
+The c33f source's Group Space sync/unread markers, exact Owner regrouping,
+v40 dual-Owner new-record Boards, v41 atomic nested Group creation, Hub E2EE
+canvas and durable native-outcome path retain their own bounded Go/vet/race,
+Docker, browser and native receipts in the
+[checkpoint record](docs/v01-group-panel-checkpoint-validation.md). Its
+uncertain-write test was controlled injection; physical Android, Nodes and
+public HTTPS were not run. Those results do not transfer to current integrated
+Main without the current-source gates above.
 
 The legacy browser Push fanout has been retired from the current candidate:
 `notify` still persists priority/history, existing subscription rows remain
@@ -44,14 +54,14 @@ Client `client-hub-v1.4` management catalog (36 operations) and
 encrypted wire v1 remain unchanged. Android board content, real native Runtime,
 physical dual-Node and public HTTPS are not validated by this candidate.
 
-The following M1 paragraph records the 2026-09-28 schema-v36 checkpoint and
-its validation only; it is not the current M2 result.
+The following M1 paragraph records only the historical 2026-09-28 schema-v36
+checkpoint and its validation.
 
 Planned public product releases use the `0.1.x` line. Optional OpenAI/dot/GPT-Live/ChatGPT plugin integration is documented for a later [v0.2.x roadmap](docs/v02-openai-integration-roadmap.md) only; it adds no current v0.1.x dependency. Historical `0.2.0`,
 `0.3.0-dev`, and `0.4.0-dev` entries and the retired historical `v0.2.0` tag
 describe prototype checkpoints. Current development keeps Architecture v2.3
-and Client wire v1, while the unreleased Hub worktree uses schema v41 and Client
-contract `client-hub-v1.5`. The historical M1 v36 slice includes explicit
+and Client wire v1; the unreleased Hub uses schema v55 and Client contract
+`client-hub-v1.6.1`. The historical M1 v36 slice includes explicit
 Network topology, Owner-approved Network direct key grants, sealed Network
 SEND/ASK/REPLY over Hub HTTP/Node delivery, and current-epoch guards on existing
 paths. See the [service contract](docs/network-m1-contract.md),

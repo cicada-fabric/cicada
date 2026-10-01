@@ -16,6 +16,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -23,6 +24,10 @@ import (
 // This mode reads the existing trust identity, never generates a replacement,
 // and constructs no Control instance, planner, job scheduler or reporter.
 func serveFabricOnly(host string, port int, config control.Config) error {
+	return serveFabricOnlyWithTransport(host, port, config, nil)
+}
+
+func serveFabricOnlyWithTransport(host string, port int, config control.Config, pqConfig *nodetransport.Config) error {
 	identityPath := config.IdentityFile
 	if identityPath == "" {
 		identityPath = filepath.Join(config.StateDir, "e2ee", "identity.json")
@@ -47,14 +52,8 @@ func serveFabricOnly(host string, port int, config control.Config) error {
 	httpServer := &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(port)), Handler: server.NewFabricHandler(service, config.APIToken), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = httpServer.Shutdown(shutdown)
-	}()
 	fmt.Printf("Cicada Fabric listening on %s (Control business disabled)\n", httpServer.Addr)
-	err = httpServer.ListenAndServe()
+	err = serveProductHTTP(ctx, httpServer, service, pqConfig)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

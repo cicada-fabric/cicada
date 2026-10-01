@@ -124,15 +124,20 @@ func serve(args []string) error {
 	host := flags.String("host", envOr("CICADA_API_HOST", "127.0.0.1"), "listen host")
 	port := flags.Int("port", envInt("CICADA_API_PORT", 8787), "listen port")
 	fabricOnly := flags.Bool("fabric-only", false, "serve an existing Fabric state without starting Control business services")
+	pqConfigPath := flags.String("node-pqtls-config", strings.TrimSpace(os.Getenv("CICADA_HUB_NODE_PQTLS_CONFIG")), "private enrolled Node listener configuration")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	config := control.DefaultConfig()
+	pqConfig, err := loadHubPQTransport(*pqConfigPath)
+	if err != nil {
+		return err
+	}
 	if err := validateServeExposure(*host, config.APIToken); err != nil {
 		return err
 	}
 	if *fabricOnly {
-		return serveFabricOnly(*host, *port, config)
+		return serveFabricOnlyWithTransport(*host, *port, config, pqConfig)
 	}
 	controlPlane, err := control.New(config)
 	if err != nil {
@@ -144,19 +149,8 @@ func serve(args []string) error {
 	httpServer := newControlHTTPServer(*host, *port, server.NewHandler(controlPlane))
 	shutdownContext, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
-	go func() {
-		<-shutdownContext.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = httpServer.Shutdown(shutdown)
-		_ = controlPlane.Shutdown(shutdown)
-	}()
 	fmt.Printf("Cicada Control listening on %s\n", httpServer.Addr)
-	err = httpServer.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
+	return serveManagedProductHTTP(shutdownContext, httpServer, controlPlane, pqConfig)
 }
 
 func newControlHTTPServer(host string, port int, handler http.Handler) *http.Server {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ type machineHubContext struct {
 	ProviderAdmissions                                              *nodeinbox.ProviderAdmissionLedger
 	NativeContexts                                                  *nodeinbox.NativeContextRegistry
 	ResourceExecutions                                              *nodelock.ResourceExecutionManager
+	NodeTransport                                                   http.RoundTripper
 }
 
 type machineHubContextKey struct{}
@@ -65,10 +67,11 @@ func machineHubOriginMatches(ctx context.Context, endpoint string) bool {
 }
 
 type machineHubConfig struct {
-	HubID      string `json:"hub_id"`
-	ControlURL string `json:"control_url"`
-	NodeID     string `json:"node_id"`
-	Name       string `json:"name,omitempty"`
+	HubID       string `json:"hub_id"`
+	ControlURL  string `json:"control_url"`
+	NodeID      string `json:"node_id"`
+	Name        string `json:"name,omitempty"`
+	PQTLSConfig string `json:"pqtls_config,omitempty"`
 }
 
 type machineHubConfigFile struct {
@@ -99,7 +102,7 @@ func runMachineMultiHubAgent(configPath, stateRoot string, interval time.Duratio
 			name = entry.NodeID
 		}
 		args := []string{"--id", entry.NodeID, "--name", name, "--control-url", entry.ControlURL,
-			"--state-dir", hubState, "--interval", interval.String(), "--relay-only"}
+			"--state-dir", hubState, "--interval", interval.String(), "--relay-only", "--pqtls-config", entry.PQTLSConfig}
 		if once {
 			args = append(args, "--once")
 		}

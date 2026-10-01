@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -61,10 +62,14 @@ func fabricV2CommandOutput(baseURL string, args []string, output io.Writer) erro
 	if len(args) == 0 {
 		return errors.New(fabricV2Usage)
 	}
+	httpClient, err := machineNodeHTTPClient(context.Background(), 30*time.Second)
+	if err != nil {
+		return err
+	}
 	client := &fabricV2CLI{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		output:  output,
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    httpClient,
 	}
 	if client.baseURL == "" {
 		return errors.New("Cicada API URL is required")

@@ -10,18 +10,18 @@ import (
 // currently leased native Session. It does not establish another user's pin,
 // approve a CommunicationLink, or enable ciphertext routing.
 func (s *Service) RegisterEndpointKeyCandidate(actor Actor, attestation []byte) (*store.EndpointKeyCandidate, error) {
-	if err := s.Authorize(actor, "directory.read"); err != nil {
-		return nil, err
-	}
-	return s.store.RegisterEndpointKeyCandidate(actor.EndpointID, actor.PrincipalID,
-		actor.BindingID, actor.BindingEpoch, attestation)
+	return s.store.RegisterEndpointKeyCandidateForActor(nativeActorScope(actor), attestation)
 }
 
-// EndpointKeyCandidate only exposes a public candidate for an Endpoint the
-// caller can already resolve in its selected Group. A stale Node or binding
+// EndpointKeyCandidate exposes the caller's own current public candidate, or
+// a peer the caller can resolve in its selected Group. A stale Node or binding
 // snapshot is withheld until that Endpoint reattests its current binding.
 func (s *Service) EndpointKeyCandidate(actor Actor, target string) (*store.EndpointKeyCandidate, error) {
-	card, err := s.Resolve(actor, ResolveInput{Query: strings.TrimSpace(target)})
+	target = strings.TrimSpace(target)
+	if target == actor.EndpointID {
+		return s.store.GetOwnEndpointKeyCandidateForActor(nativeActorScope(actor))
+	}
+	card, err := s.Resolve(actor, ResolveInput{Query: target})
 	if err != nil {
 		return nil, err
 	}

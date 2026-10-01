@@ -373,6 +373,10 @@ func (client *machineNodeControlClient) resumeNodeControlSnapshotLocked(ctx cont
 	if !machineHubOriginMatches(ctx, endpoint) {
 		return snapshot.Snapshot{}, "", errors.New("Node snapshot stream escaped its pinned Hub origin")
 	}
+	clientHTTP, err := machineNodeHTTPClient(ctx, 20*time.Minute)
+	if err != nil {
+		return snapshot.Snapshot{}, "", err
+	}
 	reader, writer := io.Pipe()
 	writeDone := make(chan error, 1)
 	go func() {
@@ -393,7 +397,7 @@ func (client *machineNodeControlClient) resumeNodeControlSnapshotLocked(ctx cont
 	request.Header.Set("Authorization", "CicadaNode "+strings.TrimSpace(token))
 	request.Header.Set("Content-Type", machineNodeSnapshotContentType)
 	request.Header.Set("Accept", machineNodeSnapshotContentType)
-	response, err := (&http.Client{Timeout: 20 * time.Minute, CheckRedirect: rejectNodeRedirect}).Do(request)
+	response, err := clientHTTP.Do(request)
 	if err != nil {
 		_ = reader.CloseWithError(err)
 		<-writeDone

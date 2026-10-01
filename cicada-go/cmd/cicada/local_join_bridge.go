@@ -443,7 +443,9 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		}
 		joined, decision, err := b.joinNetworkWithScope(request)
 		if err != nil {
-			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))
+			response := localJoinErrorResponse(err)
+			response.NetworkJoin, response.NativeContextScope = joined, decision
+			_ = json.NewEncoder(connection).Encode(response)
 			return
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkJoin: joined,
@@ -458,7 +460,9 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		}
 		joined, err := b.renewNetwork(request)
 		if err != nil {
-			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: safeLocalJoinError(err)})
+			response := localJoinErrorResponse(err)
+			response.NetworkJoin = joined
+			_ = json.NewEncoder(connection).Encode(response)
 			return
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, NetworkJoin: joined})
@@ -681,7 +685,10 @@ func (b *machineAgentJoinBridge) joinWithScope(request localJoinRequest) (*fabri
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
-	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return nil, nil, err
+	}
 	response, err := client.Do(httpRequest)
 	if err != nil {
 		return nil, nil, errors.New("could not reach the Hub for local Thread Join")

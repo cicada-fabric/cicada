@@ -86,7 +86,10 @@ func streamMachineRelayEventsWithSpaces(ctx context.Context, base, machineID str
 	request.Header.Set("Accept", "text/event-stream")
 	request.Header.Set("Authorization", "CicadaNode "+token)
 	// The Node bearer is scoped to this Hub. Never forward it through a redirect.
-	client := http.Client{CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(ctx, 0)
+	if err != nil {
+		return false, err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return false, err

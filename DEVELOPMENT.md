@@ -1,6 +1,21 @@
 # Cicada development environment
 
-**2026-10-01 final framework checkpoint — PASS (bounded backend; clean handoff metadata follows):** final dirty bd79-based source `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` retains production code from 54f with corrected private-socket test fixtures and two new public proof vectors. Contract remains v1.6/wire 1/55 operations. Final full Go PASS: 27 packages, 1,092 top-level + 547 subtests, 12 top-level SKIP, 0 FAIL; vet EXIT 0; repaired fixture selector and race each passed 3 top-level + 3 subtests. Independent contract check/export/verify, Python26 and shell20 PASS. No skip is a pass. Earlier 54f Browser/three Docker suites and bounded native multi-Hub Join passed; 54f full Go recorded three fixture failures, retained separately. 432f native ASK/REPLY (282.74 s), 432f plus test-overlay broadcast (298.14 s, both original Threads consumed) and Worker approval (76.83 s) passed; joined V68 passed on 840a test-helper overlay with recording fake queue. These results keep their own source identities. Android v1.6, physical dual-Node and public HTTPS are NOT_RUN; pure PQ TLS is NOT_IMPLEMENTED. Final clean commit/image/bundle are queried from `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`; this is not a push or release. [Evidence and retained failures](docs/v01-completion-checkpoint-validation.md).
+## 2026-10-01 current source checkpoint — exact-image gate pending
+
+Current contract is Client `client-hub-v1.6.1` / wire 1 / 55 operations, Hub
+schema v55 and software `0.1.0-dev`. Main integrates Network Join/renew
+identity binding, self-only Endpoint identity/key-candidate access and strict
+optional direct Hub/Node PQ transport with current Store guards. Source QA passed across the
+full `fb8f0d8…` Go/PQ run and format-only `648162e…` follow-up; neither is a new
+clean image. The last delivered clean `fe565b4` image predates input-inventory
+capture, and its metadata/report remain unchanged. A new clean image/bundle and
+exact-image gate are pending. See the [current status table](docs/architecture-v2-status.md)
+and [build-input inventory rules](docs/hub-build-input-provenance.md). Overall
+v0.1 remains PARTIAL; dated failures and device-layer results keep their source.
+
+### Historical 2026-10-01 framework checkpoint — bounded PASS
+
+Final dirty bd79-based source `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` retains production code from 54f with corrected private-socket test fixtures and two new public proof vectors. Contract was v1.6/wire 1/55 operations. Final full Go PASS: 27 packages, 1,092 top-level + 547 subtests, 12 top-level SKIP, 0 FAIL; vet EXIT 0; repaired fixture selector and race each passed 3 top-level + 3 subtests. Independent contract check/export/verify, Python26 and shell20 PASS. No skip is a pass. Earlier 54f Browser/three Docker suites and bounded native multi-Hub Join passed; 54f full Go recorded three fixture failures, retained separately. 432f native ASK/REPLY (282.74 s), 432f plus test-overlay broadcast (298.14 s, both original Threads consumed) and Worker approval (76.83 s) passed; joined V68 passed on 840a test-helper overlay with recording fake queue. These results keep their own source identities. Android v1.6, physical dual-Node and public HTTPS are NOT_RUN; pure PQ TLS is NOT_IMPLEMENTED at that checkpoint. Final clean commit/image/bundle are queried from `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`; this is not a push or release. [Evidence and retained failures](docs/v01-completion-checkpoint-validation.md).
 
 The historical f55 v0.1.x candidate was source snapshot
 `final-code-git-snapshot-20261001T102124Z`, fingerprint
@@ -20,10 +35,10 @@ dual Nodes and public HTTPS remain NOT_RUN. See the
 [V01–V88/G1–G5 ledger](docs/completion-ledger.md). The f55 source/image are frozen but remain a dirty development candidate; do
 not treat the candidate contract as a Client handoff or release.
 
-The candidate catalog is Client `client-hub-v1.6` with 55 operations. The
+The current catalog is Client `client-hub-v1.6.1` with 55 operations. The
 independent Android repository remains owned by `../CICADA_CLIENT`; this
-repository does not edit it. The bounded Android v1.5 result is pinned to its
-own bd79 Hub/source/APK/package and does not validate this v1.6 candidate.
+repository does not edit it. Historical Android v1.5 results stay pinned to
+their bd79 Hub/source/APK/package and do not validate the current candidate.
 
 ## Local Hub and optional Node
 

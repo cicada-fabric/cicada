@@ -392,7 +392,11 @@ func (b *machineAgentJoinBridge) httpWithAuthorization(method, path string, body
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := (&http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(request)
+	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, &localSealedSendError{message: "could not reach the authorized Hub Node Relay", retryable: true}
 	}

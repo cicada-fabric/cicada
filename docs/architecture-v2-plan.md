@@ -1,62 +1,45 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-01 transport / recovery next sequence (bounded checkpoint PARTIAL)
+## 2026-10-01 next sequence — source QA PASS; exact image pending
 
-The optional OpenSSL 3.5.9 adapter now demonstrates the mandated pure
-MLKEM768 / ML-DSA-65 / `TLS_AES_256_GCM_SHA384` profile. Its thread-cleanup
-repair, archive-v2 backup and contract v1.6.1 have bounded independent gates;
-main combined Go/build/vet/contract/Python and optional PQ race pass on stable
-dirty `750cc4…` inputs. Later capacity/driver inputs have their own incremental
-gates passing on `6ab2d9…`. M4 actual app UI pairing in the emulator passes but
-native Join fails without an Endpoint/proposal; post-failure context checks are
-NOT_RUN. New clean delivery remains pending. See the
-[current evidence record](v01-transport-recovery-checkpoint-validation.md).
-Architecture v2.3 and v0.1 remain incomplete; the sequence below is remaining
-v0.1 work, with historical sources retained separately.
+The [current status table](architecture-v2-status.md)
+owns current identities and exact-source receipts. Main integrates Network
+Join/renew identity binding, self-only WhoAmI/key-candidate access, and direct
+Hub/Node PQ listener/client with CURRENT Store guards and ordered shutdown.
+The full Go/PQ result belongs to source `fb8f0d8…`; a formatting-only source
+`648162e…` follow-up passed the complete cmd package and static checks with
+normalized source equivalence. Neither result accepts a clean image. Historical
+transport, paid native, Client/APK and failure records below retain their own
+source attribution. Architecture v2.3/v0.1 remain PARTIAL.
 
 <a id="2026-10-01-pq-transport-implementation-steps-not-yet-implemented"></a>
 
-1. **Close the remaining bounded receipts and delivery gate.** Retain
-   clean `1547f2e`'s teardown FAIL and the old focused negative-control PASS;
-   neither proves the crash cause. Combined Go/default and optional-profile
-   process gates pass on `750cc4…`; any later code integration requires its own
-   source/gate record. Keep native and
-   Client receipts tied to their own source/image/APKs, then separately validate
-   any new clean delivery image. A dirty build is not identified by HEAD alone.
-2. **Wire direct Hub/Node PQ TLS and certificate enrollment.** Preserve explicit
-   isolated HTTP fixtures and their network boundaries. Add dedicated PQ CA,
-   SAN/pin enrollment and mTLS to the real listener and outbound Node client;
-   inspect actual group, suite, complete certificate algorithms and HTTP/1.1 SSE
-   state. Prove deadlines, disconnect/reconnect, process exit and unavailable
-   builds. No Go TLS fallback, hybrid/MLKEM1024 substitution or terminating proxy
-   can claim this profile. Keep NodeControl/Endpoint E2EE and keys separate.
-3. **Bind transport to current authorization and lifecycle.** Recheck current
-   owner, Node binding/epoch and request Guard even on an established verified
-   connection; public availability is not device permission. Define certificate
-   rotation/revocation and stale-connection handling, private runtime packaging
-   and explicit per-process loader paths. Default unavailable builds, arm64,
-   Client transport and public HTTPS need their own acceptance; the adapter's
-   16-connection sample is not a production capacity gate.
-4. **Complete post-restore reconciliation before reconnect.** Archive v2 now
-   captures selected Node state plus allowlisted provider/native-history and
-   durable writer/resource fences under offline exclusive WriterRoot ownership.
-   Restored or legacy-missing fences stay quarantined. Add explicit exact
-   ticket/generation/key/counter reconciliation and confirmed-stop checks before
-   any clear/reconnect action; never recreate empty ledgers, reset epochs or
-   replay uncertain execution. Prove crashes and conflicts on disposable state.
-5. **Close remaining native/Client and deployment paths.** Preserve G1's bounded
-   real-4 PASS, original context and exact-receive evidence alongside its
-   `CONSUMPTION_UNCONFIRMED` queue state and earlier FAIL attempts. The next
-   separate native slice connects Join/renew to directory-only Network identity
-   binding through existing APIs/helpers before explicit Owner Group admission;
-   no new roles, Group grants or traffic authority are inferred. It is outside
-   this frozen checkpoint. Finish M4 actual preview/CAS, consent, Monitor/model, fault and revoke cases on explicit
-   sources. Then run capacity, physical Nodes/Android and public HTTPS as
-   separate gates. V64 now has an independent bounded PARTIAL sample, without
-   a global capacity PASS; no resident replacement,
-   key rotation, push or release is authorized by this plan.
+1. **Freeze and deliver the reviewed source.** Keep the original full Go/PQ
+   receipt on `fb8f0d8…` and the formatting-only follow-up on `648162e…` distinct.
+   Produce a new clean image only after the doc/code checkpoint, capture its
+   input inventory at build time, and run the exact-image Client/Hub gate.
+2. **Complete product PQ acceptance.** Run the optional packaging audit for the
+   integrated listener/client, then separately validate default fail-closed
+   builds, arm64 availability, private runtime packaging and exact-image PQ
+   interop. Automatic Owner enrollment, rotation, expiry, revocation and restore
+   remain unimplemented or unaccepted; the existing private pin config is not
+   an Owner approval workflow.
+3. **Finish Group permission and Client review paths.** Add the narrow encrypted
+   Owner Group-grant preview/apply contract, Guard and checks without widening
+   roles or inferring peer traffic/history authority.
+4. **Keep native and recovery evidence separate.** Preserve the historical paid
+   real-1 synthetic-directory-grant limitation and the current default-HTTP
+   preflight's `PREFLIGHT_PASS_NATIVE_NOT_RUN` label. G1 remains
+   `CONSUMPTION_UNCONFIRMED`; real native foreground/busy wake, uncertain
+   consumption, authorized apply/revoke and physical Nodes/Android need their
+   own current-source gates. Archive restore still needs exact generation/key/
+   counter reconciliation and confirmed-stop checks before reconnect.
+5. **Close remaining deployment layers.** Public HTTPS, physical Android,
+   physical Nodes and fleet capacity are independent gates. V64 remains a bounded
+   PARTIAL sample. No resident replacement, key rotation, push or release is
+   included in this development sequence.
 
-## 2026-10-01 Directory-only Network binding correction (completed focused slice)
+## Historical 2026-10-01 Directory-only Network binding correction (focused slice)
 
 The native-binding registration used to require a direct traffic-purpose grant, blocking a directory-only member from the identity binding needed for Group admission. The focused correction separates identity/scope registration from action authorization: current Network membership and session/identity/revision checks remain mandatory, while SEND/ASK, Task, Broadcast, peer-key and key-candidate actions retain their existing purpose guards. Group admission still requires its explicit Group-management authorization and adds only member role. The Store and production HTTP focused/race gates passed on owned five-file fingerprint `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a`; see [the evidence record](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json), including the preserved initial timeout. This slice makes no schema, wire, key-format or cryptographic change and does not accept the separate Node intent work.
 

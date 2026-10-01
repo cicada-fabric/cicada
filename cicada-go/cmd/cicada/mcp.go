@@ -947,7 +947,14 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 	if groupID = strings.TrimSpace(groupID); groupID != "" {
 		request.Header.Set("Cicada-Group-Scope", groupID)
 	}
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	client := &http.Client{Timeout: 30 * time.Second}
+	if strings.HasPrefix(path, "/v2/fabric/") || strings.HasPrefix(path, "/v2/relay/") || strings.HasPrefix(path, "/v2/artifacts") || strings.HasPrefix(path, "/v2/artifact-refs") {
+		client, err = machineNodeHTTPClient(request.Context(), 30*time.Second)
+		if err != nil {
+			return nil, err
+		}
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("Cicada Hub request failed: %w", err)
 	}

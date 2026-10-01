@@ -283,7 +283,11 @@ func (b *machineAgentJoinBridge) fetchLocalGroupAuthorization(sessionToken strin
 	request.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
 	request.Header.Set("X-Cicada-Session", sessionToken)
 	request.Header.Set("Content-Type", "application/json")
-	response, err := (&http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(request)
+	client, err := machineNodeHTTPClient(b.ctx, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, &localSealedSendError{message: "could not reach Hub Guard for local Group authorization", retryable: true}
 	}

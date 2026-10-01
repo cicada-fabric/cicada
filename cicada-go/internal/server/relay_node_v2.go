@@ -417,7 +417,7 @@ func relayNodeJobError(response http.ResponseWriter, h *Handler, nodeID, token s
 // relayNodeEvents keeps a Node-initiated HTTPS connection open. Hints contain
 // no message content and never replace the durable claim/receipt protocol.
 func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Request, nodeID, token string) {
-	if !h.relayNodeCredentialCurrent(nodeID, token) {
+	if !h.relayNodeCredentialCurrent(nodeID, token) || !nodePQTransportCurrent(request.Context()) {
 		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
 		return
 	}
@@ -444,14 +444,24 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 			return true
 		}
 		lastCredentialCheck = time.Now()
-		return h.relayNodeCredentialCurrent(nodeID, token)
+		return h.relayNodeCredentialCurrent(nodeID, token) && nodePQTransportCurrent(request.Context())
 	}
 	heartbeat := time.NewTicker(25 * time.Second)
 	defer heartbeat.Stop()
+	var transportRecheck <-chan time.Time
+	if _, strict := request.Context().Value(nodeTransportCheckKey{}).(nodeTransportCheck); strict {
+		ticker := time.NewTicker(relayNodeStreamRevalidateInterval)
+		defer ticker.Stop()
+		transportRecheck = ticker.C
+	}
 	for {
 		select {
 		case <-request.Context().Done():
 			return
+		case <-transportRecheck:
+			if !nodePQTransportCurrent(request.Context()) {
+				return
+			}
 		case <-events:
 			// An already-open stream is still an authenticated Node capability.
 			// Check at most once per second during active streams so revocation
@@ -476,7 +486,7 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 			flusher.Flush()
 		case <-heartbeat.C:
 			// Credential rotation/revocation fences an already-open stream.
-			if !h.relayNodeCredentialCurrent(nodeID, token) {
+			if !h.relayNodeCredentialCurrent(nodeID, token) || !nodePQTransportCurrent(request.Context()) {
 				return
 			}
 			lastCredentialCheck = time.Now()

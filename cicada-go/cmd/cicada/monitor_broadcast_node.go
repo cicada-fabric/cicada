@@ -109,7 +109,11 @@ func (b *machineAgentJoinBridge) monitorBroadcastHub(method, suffix, sessionToke
 	if sessionToken != "" {
 		request.Header.Set("X-Cicada-Session", sessionToken)
 	}
-	response, err := (&http.Client{Timeout: 15 * time.Second, CheckRedirect: rejectNodeRedirect}).Do(request)
+	client, err := machineNodeHTTPClient(ctx, 15*time.Second)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return &localSealedSendError{message: "Monitor management Hub unavailable", retryable: true}
 	}

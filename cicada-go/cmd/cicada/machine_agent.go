@@ -35,6 +35,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	id := flags.String("id", envOr("CICADA_MACHINE_ID", ""), "stable machine ID")
 	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
+	pqConfig := flags.String("pqtls-config", strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")), "private enrolled Node PQ TLS configuration")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "durable Node state directory")
 	interval := flags.Duration("interval", machineAgentInterval(), "heartbeat interval")
 	once := flags.Bool("once", false, "register, heartbeat, and process the current job queue once")
@@ -88,6 +89,12 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
 		return errors.New("Node Hub context does not match pinned local coordinates")
+	}
+	if err := configureMachinePQTransport(pinned, *pqConfig); err != nil {
+		return err
+	}
+	if transport, ok := pinned.NodeTransport.(interface{ CloseIdleConnections() }); ok {
+		defer transport.CloseIdleConnections()
 	}
 	writerRoot := strings.TrimSpace(pinned.WriterRoot)
 	if writerRoot == "" {

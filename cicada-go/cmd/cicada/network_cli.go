@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,9 +22,19 @@ import (
 
 const networkUsage = "usage: cicada network consent-sign|join|renew|directory|resolve|leave|admin-invite|mcp-scope [options]"
 
+// Keep this shared constructor's established signature for MCP callers.
+// Configuration errors become a failing transport, never a default fallback.
 func networkHTTPClient() *http.Client {
-	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+	client, err := machineNodeHTTPClient(context.Background(), 30*time.Second)
+	if err != nil {
+		return &http.Client{Transport: machineFailedTransport{err}, Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+	}
+	return client
 }
+
+type machineFailedTransport struct{ err error }
+
+func (t machineFailedTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, t.err }
 
 func validNetworkRouteID(value string) bool {
 	if value == "" || value == "." || value == ".." || len(value) > 256 {
@@ -378,7 +389,11 @@ func networkCLISession(operation string, args []string, output io.Writer) error 
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := networkHTTPClient().Do(request)
+	client, err := machineNodeHTTPClient(context.Background(), 30*time.Second)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return err
 	}
