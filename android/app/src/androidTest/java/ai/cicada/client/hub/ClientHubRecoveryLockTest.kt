@@ -567,7 +567,7 @@ class ClientHubRecoveryLockTest {
     }
 
     private companion object {
-        const val CONTRACT_REVISION = "client-hub-v1.5"
-        const val CATALOG_SHA256 = "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68"
+        const val CONTRACT_REVISION = "client-hub-v1.6"
+        const val CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
     }
 }

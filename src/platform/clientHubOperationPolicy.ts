@@ -7,6 +7,7 @@ export const IMPLEMENTED_CLIENT_RPC_OPERATIONS = [
   'link.list', 'link.invite_create', 'link.invite_preview', 'link.invite_accept',
   'group.key_manifest', 'group.key_grant', 'group.key_status',
   'network.key_manifest', 'network.key_grant', 'network.key_status',
+  'network.directory', 'topology.endpoint_admission_preview',
   'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
   'monitor.broadcast_recover', 'monitor.broadcast_status',
 ] as const;
@@ -22,10 +23,20 @@ export const UNVERIFIED_LINK_KEY_OPERATIONS = [
   'link.key_manifest', 'link.key_grants', 'link.key_grant',
 ] as const;
 
+/** v1.6 routes held closed until their independent proof/current-authority paths are complete. */
+export const DEFERRED_V16_RPC_OPERATIONS = [
+  'space.foreign_endpoint_preview',
+  'network.collaboration_key_manifest', 'network.collaboration_key_grant',
+  'network.collaboration_key_status',
+  'link.review_policy_preview', 'link.review_policy_grant', 'link.review_policy_status',
+] as const;
+
 export type ImplementedClientRpcOperation = typeof IMPLEMENTED_CLIENT_RPC_OPERATIONS[number];
 export type DeferredClientConsentOperation = typeof DEFERRED_CLIENT_CONSENT_OPERATIONS[number];
+export type DeferredV16RpcOperation = typeof DEFERRED_V16_RPC_OPERATIONS[number];
 export type CatalogClientRpcOperation = ImplementedClientRpcOperation |
-  DeferredClientConsentOperation | typeof UNVERIFIED_LINK_KEY_OPERATIONS[number];
+  DeferredClientConsentOperation | DeferredV16RpcOperation |
+  typeof UNVERIFIED_LINK_KEY_OPERATIONS[number];
 
 const implemented = new Set<string>(IMPLEMENTED_CLIENT_RPC_OPERATIONS);
 const mutating = new Set<string>([

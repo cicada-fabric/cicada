@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFERRED_CLIENT_CONSENT_OPERATIONS, IMPLEMENTED_CLIENT_RPC_OPERATIONS,
+  DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
+  IMPLEMENTED_CLIENT_RPC_OPERATIONS,
   UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
 } from '../src/platform/clientHubOperationPolicy.ts';
 import {
@@ -17,6 +18,9 @@ const blockedOperations = [
   'space.foreign_member_admit', 'space.foreign_member_revoke', 'space.foreign_endpoint_join',
   'space.key_manifest_v2', 'space.key_consent_v2', 'space.key_admission_v2', 'space.key_status_v2',
   'topology.delegation_issue', 'topology.delegation_revoke', 'topology.regroup_proposal',
+  'space.foreign_endpoint_preview', 'network.collaboration_key_manifest',
+  'network.collaboration_key_grant', 'network.collaboration_key_status',
+  'link.review_policy_preview', 'link.review_policy_grant', 'link.review_policy_status',
   'link.key_manifest', 'link.key_grants', 'link.key_grant',
 ];
 
@@ -79,11 +83,12 @@ const endpointScope = (authority = readyAuthority()) => {
   return result.scope;
 };
 
-test('every v1.5 shared-space, delegation, regroup and Link key operation stays closed when advertised', () => {
+test('all 20 deferred v1.5 and v1.6 consent/proof operations stay closed when advertised', () => {
   assert.deepEqual([...SHARED_SPACE_CLOSED_OPERATIONS].sort(), [...blockedOperations].sort());
-  assert.equal(SHARED_SPACE_CLOSED_OPERATIONS.length, 13);
+  assert.equal(SHARED_SPACE_CLOSED_OPERATIONS.length, 20);
   const state = status({allowedOperations: [
     ...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
+    ...DEFERRED_V16_RPC_OPERATIONS,
     ...UNVERIFIED_LINK_KEY_OPERATIONS,
   ]});
   for (const operation of blockedOperations) {

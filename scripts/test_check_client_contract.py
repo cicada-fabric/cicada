@@ -12,7 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check-client-contract.py"
-SNAPSHOT = REPO / "contracts/client-hub-v1.5-bd79ff9"
+SNAPSHOT = REPO / "contracts/client-hub-v1.6-f4e4725"
 CATALOG = "cicada-go/internal/clientcontract/catalog.json"
 
 

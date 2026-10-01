@@ -1,5 +1,104 @@
 # CICADA Client integration handoff
 
+## Active integration checkpoint — clean Hub `f4e4725`, Client-Control v1.6
+
+The current integration target is the independently pinned clean Hub commit
+`f4e4725c5d81c54b166f4291b9d450c70954e6df`, protocol `client-hub-v1.6`,
+and immutable local image
+`sha256:6a7e0af78d3d14369f451760541b54d49a6e9505a1c813aa1124186176d4f5c9`.
+The catalog SHA-256 is
+`1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`;
+the archive SHA-256 is
+`54234527064c5923f9b40d4ac2f602c702e6dbc47fe7b52185da823c97c10fbd`.
+See [the v1.6 validation record](client-hub-v1.6-f4e4725-validation.md)
+for commands, actual artifacts and per-layer results. Sections below retain
+historical checkpoint evidence and do not certify the v1.6 image or APK.
+
+The 55-operation catalog is an advertisement. Local implementation, fresh
+encrypted role authorization, exact Owner/Network scope, current authority,
+and the server Guard remain independent conditions. The original 13 closed
+operations remain closed. Seven additional v1.6 proof/consent operations are
+closed. The two candidate read operations perform fresh authorization and
+projection checks; Endpoint admission preview never authorizes an admission,
+native Join, key grant, history access or message delivery. Positive Endpoint
+preview requires a separately delivered current native-authority fixture.
+
+Independent Policy, TASK and BROADCAST synthetic vector checks establish only
+canonical byte and signature compatibility. They do not establish deployment
+Owner trust or a complete current Endpoint proof. The BROADCAST fixture carries
+an abbreviated opaque candidate attestation, which the verifier does not treat
+as a trust anchor. No collaboration grant or policy approval path is enabled.
+Network direct-grant business uncertainty cannot be cleared by `status.snapshot`.
+
+### Bounded v1.6 acceptance and delivery
+
+| Item | Result | Evidence |
+|---|---|---|
+| Clean bundle / exact Hub and interop image provenance | PASS | `v16-f4e4725-20261001/provenance/contract-import.redacted.json` |
+| Contract checker and negative import cases | PASS, exits 0 | 21 payloads; 10 negative tests; `checks/contract-check.json`, `checks/contract-rejections.json` |
+| Final Debug app/test build | PASS, exit 0 | `build/build.receipt.json`; source fingerprint `1fca907f2e4f727f2a29e626c2e1e754e54036055dcd74f4cea5d1a21779226f` (102 files) |
+| Independent Kotlin vectors and local guards | PASS, 63 tests | Final matrix: 12 selectors, adb/driver 0/0; Policy/TASK/BROADCAST account for 9 synthetic vector tests |
+| JavaScript / type check / lint | PASS, exits 0 | 34 tests; lint has 21 warnings and zero errors |
+| Offline Android product UI | PASS, exit 0 | Five scope/connection checks; no connected UI claim |
+| Encrypted v1.6 capability/catalog and exact role intersection | PASS | External role: 47 advertised, exact 27 locally allowed; `role-oracle.redacted.json` |
+| Enrollment 201 loss and original Grant/request recovery | PASS, 0/0 | Two selectors; same request SHA and registration bytes; no replacement nonce |
+| RPC 200 loss and original ciphertext `COMPLETED` recovery | PASS, 0/0 | Two selectors; same request and cached envelope SHA; sequence 8 / next 9; pending cleared |
+| Empty directory and unselected foreign Network refusal | PASS, bounded | Fresh ACTIVE scope; zero cards; local refusal precedes transport |
+| Nonempty directory / positive Endpoint preview and native authority | BLOCKED / NOT_RUN | No native Endpoint in the disposable fixture; no operable preview UI |
+| Three ledger recovery faults / live replay / revocation | NOT_RUN | No new v1.6-owned ledger-fault fixture; old evidence is not transferred |
+| Native Node/Codex/Monitor/consent; physical Android; public HTTPS | NOT_RUN | Separate current-image/platform acceptance required |
+| Fresh speech-model execution; iOS; native HarmonyOS | NOT_RUN | Existing STT retained; no new inference or platform claim |
+| Owned carriers, reverse mappings, VMs and Hub/Network/key cleanup | PASS | Coordinators/inner carriers 0; proxies requested SIGTERM (-15); cleanup 0; owned resources absent |
+
+Evidence prefix is `/gpu1-share/data/cicada-client/`. Final Android evidence is
+`v16-deterministic-f4e4725-20261001-final/android/`; build/check/fixture evidence
+is `v16-f4e4725-20261001/`. Every selector command and exit is retained there.
+The exact app SHA-256 is
+`b853346ecd185a4713b1f90838275e456972f85fdd1cbddd9b527dc761511c46`;
+the test APK SHA-256 is
+`4effb0bc069039865f028c75251b2aef9d99a19fefc20d159194bfa9bcb4072b`.
+The source base is Client `9b17f8fb25bb8f3e66e03e0190b63a022e93a895` plus the
+recorded fingerprint. The final Client commit and filtered-Git comparison are
+in `v16-f4e4725-20261001/delivery.redacted.json`; the containing Git commit
+identifies this report without a circular self-reference. This is one coherent
+local milestone; no push or merge.
+
+Initial Long/Int compilation failure, Policy test fixture identity mismatch,
+and two staging mistakes remain in restricted history with original artifacts.
+They are corrected and excluded from the final acceptance counts. The added
+staging CLI was syntax checked but not independently executed after cleanup.
+No real Owner/Node/model credential entered the APK or Git. Android's synthetic
+device keys were destroyed with its owned VM, and Core fixture cleanup removed
+both synthetic Owner private keys. No resident deployment was changed.
+
+### Integration request to the CICADA maintainer
+
+```text
+Review CICADA_CLIENT dev/react-native and the v1.6 validation record.
+Reconcile source/Client/APK fingerprints and receipt command exits with the
+clean f4e4725 archive, catalog and full local Hub image ID. Preserve all
+historical failures and do not transfer older native Android PASS results.
+
+Provide an owned, disposable Node/current-authority fixture on the exact
+f4e4725 image: explicit native Join, opted-in directory.publish enrollment,
+and current Network access/native bindings for one exact Owner, Network,
+Group and Endpoint. Supply only public IDs and the declared read-only fixture
+entry point. Node bearer and native/model credentials must stay outside Client.
+The intended Android calls are encrypted network.directory and
+ topology.endpoint_admission_preview. The preview must return exact current
+CAS coordinates and history_included=false/key_grant_created=false; it must
+not create admission or keys. Provide stale/expired/revoked binding controls
+for refusal tests without changing a shared Hub or exposing a production fault
+switch. Until these conditions exist, the positive preview remains BLOCKED.
+
+Keep the seven v1.6 proof/consent entries and original thirteen gates closed.
+A full candidate Endpoint attestation and independently trusted current Owner
+projection are required before a future collaboration/policy grant flow.
+Keep Network direct-grant business reconciliation separate from outer RPC
+recovery. Physical Android and public HTTPS remain separate acceptance items.
+```
+
+
 **Date:** 2026-09-30
 
 **Branch:** `dev/react-native`

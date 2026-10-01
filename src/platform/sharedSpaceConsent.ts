@@ -2,7 +2,8 @@ import type {
   ClientHubCapabilities, ClientHubSessionCapabilities, ClientHubStatus,
 } from './clientHub';
 import {
-  DEFERRED_CLIENT_CONSENT_OPERATIONS, UNVERIFIED_LINK_KEY_OPERATIONS,
+  DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
+  UNVERIFIED_LINK_KEY_OPERATIONS,
 } from './clientHubOperationPolicy.ts';
 import {
   NETWORK_CATALOG_SHA256, NETWORK_CONTRACT_REVISION,
@@ -12,9 +13,10 @@ import type {
   NetworkTopologyRecord, NetworkTopologySnapshot,
 } from './networkTopology.ts';
 
-/** v1.5 operations whose complete dual-Owner flow is not implemented by this Client. */
+/** Operations whose complete proof/current-authority or consent flow is not implemented. */
 export const SHARED_SPACE_CLOSED_OPERATIONS = [
   ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
+  ...DEFERRED_V16_RPC_OPERATIONS,
   ...UNVERIFIED_LINK_KEY_OPERATIONS,
 ] as const;
 
@@ -85,7 +87,7 @@ const positiveIntegerField = (value: NetworkTopologyRecord, key: string): number
   Number.isSafeInteger(value[key]) && Number(value[key]) > 0 ? Number(value[key]) : null;
 
 /**
- * Shared-space review is available only when the current encrypted v1.5 session
+ * Shared-space review is available only when the current encrypted v1.6 session
  * authorized a real topology snapshot for this profile, Hub, Owner and ACTIVE Network.
  */
 export function sharedSpaceAuthority(input: SharedSpaceAuthorityInput): SharedSpaceAuthority {
@@ -114,7 +116,7 @@ export function sharedSpaceAuthority(input: SharedSpaceAuthorityInput): SharedSp
       sessionCapabilities.catalog_sha256 !== NETWORK_CATALOG_SHA256 ||
       sessionCapabilities.owner_id !== status.ownerId ||
       !['manager', 'external'].includes(sessionCapabilities.role)) {
-    return {ready: false, reason: 'Hub v1.5 固定目录或加密 session.capabilities 未确认当前 Owner 的拓扑读取权限。'};
+    return {ready: false, reason: 'Hub v1.6 固定目录或加密 session.capabilities 未确认当前 Owner 的拓扑读取权限。'};
   }
   const publicOperations = sessionCapabilities.role === 'external' ?
     capabilities.external_rpc_operations : capabilities.available_rpc_operations;

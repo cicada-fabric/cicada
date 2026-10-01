@@ -55,8 +55,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.5"
-        private const val CATALOG_SHA256 = "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68"
+        private const val CONTRACT_REVISION = "client-hub-v1.6"
+        private const val CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
         private const val MAX_PACKET_BYTES = 256 * 1024
@@ -84,17 +84,20 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "intent.list", "intent.submit", "link.list", "link.invite_create", "link.invite_preview",
             "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status",
             "network.key_manifest", "network.key_grant", "network.key_status",
+            "network.directory", "topology.endpoint_admission_preview",
             "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status",
             "monitor.broadcast_recover",
         )
-        // These v1.5 contract operations require independent Owner consent/delegation UI and
-        // proof verification that this Client has not implemented. Hub advertisement cannot
-        // authorize the generic bridge to substitute for those workflows, including reads.
+        // These v1.5/v1.6 operations have no complete local owner-proof/current-authority path.
+        // Hub advertisement cannot authorize the generic bridge to substitute for those flows.
         private val UNIMPLEMENTED_CONSENT_OPERATIONS = setOf(
             "space.foreign_member_admit", "space.foreign_member_revoke",
             "space.foreign_endpoint_join", "space.key_manifest_v2", "space.key_consent_v2",
             "space.key_admission_v2", "space.key_status_v2", "topology.delegation_issue",
             "topology.delegation_revoke", "topology.regroup_proposal",
+            "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
+            "network.collaboration_key_grant", "network.collaboration_key_status",
+            "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
         )
         private val MUTATING_RPC_OPERATIONS = setOf(
             "goal.lifecycle", "topology.apply", "devices.revoke", "nodes.confirm",
@@ -199,6 +202,12 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         var retiredMonitorOperationIds: MutableSet<String> = linkedSetOf(),
         var outcomeUncertainOperationId: String? = null,
         var uncertainNeedsReconciliation: Boolean = false,
+    )
+
+    private data class V16OwnerNetworkProjection(
+        val network: JsonObject,
+        val group: JsonObject? = null,
+        val endpoint: JsonObject? = null,
     )
 
     /** Fetches public metadata only. This method never establishes or changes trust. */
@@ -519,6 +528,12 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact pending encrypted request before starting another RPC")
         }
         validateOperation(state, operation)
+        if (operation == "network.directory") {
+            return@withLock networkDirectoryRead(state, body, operationId)
+        }
+        if (operation == "topology.endpoint_admission_preview") {
+            return@withLock topologyEndpointAdmissionPreview(state, body, operationId)
+        }
         createAndSend(state, operation, body, operationId)
     }
 
@@ -1026,6 +1041,233 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (!e2ee || !authenticated || !advertised.containsAll(operations)) {
             throw HubSessionException("NETWORK_OPERATION_UNAVAILABLE", "This Owner role's current public operation catalog does not advertise the requested Network flow")
         }
+    }
+
+    /** Reads only the authenticated Owner's bounded, explicitly opted-in Network directory. */
+    private fun networkDirectoryRead(state: State, body: JsonObject, operationId: String?): JsonObject {
+        requireExactBodyFields(body, setOf("network_id", "after_endpoint_id", "limit"), setOf("network_id"))
+        val networkId = requestToken(body, "network_id")
+        if (state.activeNetworkId != networkId) {
+            throw HubSessionException("NETWORK_SELECTION_REQUIRED", "Select this Network explicitly in the active Hub profile")
+        }
+        val after = body.get("after_endpoint_id")?.let { requestToken(body, "after_endpoint_id") }
+        val limit = body.get("limit")?.let { requestInteger(body, "limit", 1, 64) } ?: 64L
+        val request = JsonObject().apply {
+            addProperty("network_id", networkId)
+            after?.let { addProperty("after_endpoint_id", it) }
+            addProperty("limit", limit)
+        }
+        requireNetworkAvailability(state, setOf("topology.snapshot", "network.directory"))
+        freshOwnerNetworkProjection(state, networkId)
+        val response = createAndSend(state, "network.directory", request, operationId)
+        validateNetworkDirectoryResult(response, networkId, limit)
+        return response
+    }
+
+    /** Freshly previews one same-Owner endpoint admission; this method never applies it. */
+    private fun topologyEndpointAdmissionPreview(
+        state: State,
+        body: JsonObject,
+        operationId: String?,
+    ): JsonObject {
+        requireExactBodyFields(body, setOf("network_id", "group_id", "endpoint_id"),
+            setOf("network_id", "group_id", "endpoint_id"))
+        val networkId = requestToken(body, "network_id")
+        val groupId = requestToken(body, "group_id")
+        val endpointId = requestToken(body, "endpoint_id")
+        if (state.activeNetworkId != networkId) {
+            throw HubSessionException("NETWORK_SELECTION_REQUIRED", "Select this Network explicitly in the active Hub profile")
+        }
+        requireNetworkAvailability(state, setOf("topology.snapshot", "topology.endpoint_admission_preview"))
+        val projection = freshOwnerNetworkProjection(state, networkId, groupId, endpointId)
+        val group = projection.group!!
+        val endpoint = projection.endpoint!!
+        val response = createAndSend(state, "topology.endpoint_admission_preview", JsonObject().apply {
+            addProperty("network_id", networkId)
+            addProperty("group_id", groupId)
+            addProperty("endpoint_id", endpointId)
+        }, operationId)
+        validateEndpointAdmissionPreview(response, state.enrollment!!.ownerId, networkId,
+            groupId, endpointId, projection.network, group, endpoint)
+        return response
+    }
+
+    /** Fetches a fresh Owner projection immediately before a v1.6 scoped read. */
+    private fun freshOwnerNetworkProjection(
+        state: State,
+        networkId: String,
+        groupId: String? = null,
+        endpointId: String? = null,
+    ): V16OwnerNetworkProjection {
+        val response = createAndSend(state, "topology.snapshot", JsonObject())
+        val snapshot = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        try {
+            require(response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true &&
+                snapshot != null && longValue(snapshot, "contract_version") == 2L &&
+                requiredString(snapshot, "owner_principal_id") == state.enrollment!!.ownerId &&
+                requiredString(snapshot, "read_consistency") == "best_effort")
+            val networks = snapshot.get("networks")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException("Network list is missing")
+            val network = networks.filter { it.isJsonObject }.map { it.asJsonObject }
+                .single { optionalString(it, "network_id") == networkId }
+            require(requiredString(network, "state") == "ACTIVE" &&
+                network.get("can_create_group")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true &&
+                longValue(network, "version") > 0L)
+            if (groupId == null && endpointId == null) return V16OwnerNetworkProjection(network)
+
+            val groups = snapshot.get("groups")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException("Group list is missing")
+            val group = groups.filter { it.isJsonObject }.map { it.asJsonObject }
+                .single { optionalString(it, "group_id") == groupId }
+            require(requiredString(group, "state") == "ACTIVE" &&
+                requiredString(group, "network_id") == networkId && longValue(group, "version") > 0L)
+
+            val endpoints = snapshot.get("endpoints")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException("Endpoint list is missing")
+            val endpoint = endpoints.filter { it.isJsonObject }.map { it.asJsonObject }
+                .single { optionalString(it, "endpoint_id") == endpointId }
+            val endpointNetworks = endpoint.get("network_ids")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException("Endpoint Network list is missing")
+            require(endpointNetworks.any { it.isJsonPrimitive && it.asJsonPrimitive.isString && it.asString == networkId } &&
+                requiredString(endpoint, "principal_id").isNotBlank() &&
+                optionalString(endpoint, "presence") != "left")
+            return V16OwnerNetworkProjection(network, group, endpoint)
+        } catch (_: Exception) {
+            throw HubSessionException("NETWORK_TOPOLOGY_INVALID", "The current Owner topology does not contain the exact ACTIVE Network and same-Owner preview scope")
+        }
+    }
+
+    private fun validateNetworkDirectoryResult(response: JsonObject, networkId: String, requestedLimit: Long) {
+        val result = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        try {
+            require(response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true &&
+                result != null)
+            requireExactObjectFields(result, setOf("network_id", "endpoints", "next_cursor"),
+                setOf("network_id", "endpoints"))
+            require(requiredString(result, "network_id") == networkId)
+            val endpoints = result.get("endpoints")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException("Directory endpoint list is missing")
+            require(endpoints.size() <= 64 && endpoints.size().toLong() <= requestedLimit)
+            val seen = HashSet<String>()
+            endpoints.forEach { item ->
+                require(item.isJsonObject)
+                val card = item.asJsonObject
+                requireExactObjectFields(card, setOf("network_id", "endpoint_id", "alias", "presence"),
+                    setOf("network_id", "endpoint_id", "alias", "presence"))
+                require(requiredString(card, "network_id") == networkId)
+                val endpointId = responseToken(card, "endpoint_id")
+                require(seen.add(endpointId))
+                require(displayString(card, "alias").length <= 256)
+                require(requiredString(card, "presence") in setOf("ACCESS_RECENT", "UNKNOWN"))
+            }
+            result.get("next_cursor")?.let { cursor ->
+                require(cursor.isJsonPrimitive && cursor.asJsonPrimitive.isString &&
+                    cursor.asString.length in 1..256)
+            }
+        } catch (_: Exception) {
+            throw HubSessionException("NETWORK_DIRECTORY_INVALID", "Hub returned an invalid bounded Network directory page")
+        }
+    }
+
+    private fun validateEndpointAdmissionPreview(
+        response: JsonObject,
+        ownerId: String,
+        networkId: String,
+        groupId: String,
+        endpointId: String,
+        network: JsonObject,
+        group: JsonObject,
+        endpoint: JsonObject,
+    ) {
+        val result = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+        val required = setOf(
+            "owner_principal_id", "network_id", "network_name", "network_version", "group_id", "group_name",
+            "group_version", "group_context_policy", "endpoint_id", "endpoint_name", "endpoint_principal_id",
+            "endpoint_migration_state", "network_membership_revision", "endpoint_network_revision",
+            "network_access_binding_id", "network_access_epoch", "native_binding_id", "native_binding_epoch",
+            "membership_revision", "endpoint_group_revision", "admission_roles", "admission_grants",
+            "history_included", "key_grant_created", "existing_thread_memory_retained",
+        )
+        val allowed = required + setOf(
+            "existing_group_binding_id", "existing_group_binding_epoch", "membership_status", "endpoint_group_status",
+        )
+        try {
+            require(response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true &&
+                result != null)
+            requireExactObjectFields(result, allowed, required)
+            require(responseToken(result, "owner_principal_id") == ownerId &&
+                responseToken(result, "network_id") == networkId && responseToken(result, "group_id") == groupId &&
+                responseToken(result, "endpoint_id") == endpointId)
+            require(displayString(result, "network_name") == displayString(network, "name") &&
+                longValue(result, "network_version") == longValue(network, "version") &&
+                displayString(result, "group_name") == displayString(group, "name") &&
+                longValue(result, "group_version") == longValue(group, "version") &&
+                displayString(result, "group_context_policy") == displayString(group, "context_policy") &&
+                responseToken(result, "endpoint_principal_id") == responseToken(endpoint, "principal_id") &&
+                displayString(result, "endpoint_name") == displayString(endpoint, "name"))
+            require(responseToken(result, "endpoint_migration_state") in setOf("READY", "MIGRATION_PENDING_GROUP"))
+            listOf("network_membership_revision", "endpoint_network_revision", "network_access_epoch",
+                "native_binding_epoch").forEach { require(longValue(result, it) > 0L) }
+            listOf("membership_revision", "endpoint_group_revision").forEach { require(longValue(result, it) >= 0L) }
+            listOf("network_access_binding_id", "native_binding_id").forEach { responseToken(result, it) }
+            require(result.getAsJsonArray("admission_roles").size() == 1 &&
+                result.getAsJsonArray("admission_roles")[0].asString == "member" &&
+                result.getAsJsonArray("admission_grants").size() == 0)
+            require(requiredBoolean(result, "history_included") == false &&
+                requiredBoolean(result, "key_grant_created") == false &&
+                requiredBoolean(result, "existing_thread_memory_retained"))
+            result.get("existing_group_binding_id")?.let { responseToken(result, "existing_group_binding_id") }
+            result.get("existing_group_binding_epoch")?.let { require(longValue(result, "existing_group_binding_epoch") >= 0L) }
+            result.get("membership_status")?.let { displayString(result, "membership_status") }
+            result.get("endpoint_group_status")?.let { displayString(result, "endpoint_group_status") }
+        } catch (_: Exception) {
+            throw HubSessionException("TOPOLOGY_ADMISSION_PREVIEW_INVALID", "Hub returned an invalid or stale same-Owner Endpoint admission preview")
+        }
+    }
+
+    private fun requireExactBodyFields(value: JsonObject, allowed: Set<String>, required: Set<String>) {
+        if (value.entrySet().any { it.key !in allowed } || required.any { !value.has(it) || value.get(it).isJsonNull }) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Client read request does not match the supported v1.6 shape")
+        }
+    }
+
+    private fun requireExactObjectFields(value: JsonObject, allowed: Set<String>, required: Set<String>) {
+        require(value.entrySet().all { it.key in allowed } && required.all { value.has(it) && !value.get(it).isJsonNull })
+    }
+
+    private fun requestToken(value: JsonObject, key: String): String {
+        val token = optionalString(value, key)
+        if (token == null || token.isBlank() || token != token.trim() || token.length > 256) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Client read request contains an invalid selector")
+        }
+        return token
+    }
+
+    private fun requestInteger(value: JsonObject, key: String, minimum: Long, maximum: Long): Long {
+        val number = value.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+            ?.asString?.toLongOrNull()
+        if (number == null || number !in minimum..maximum) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Client read request contains an invalid page limit")
+        }
+        return number
+    }
+
+    private fun responseToken(value: JsonObject, key: String): String {
+        val token = optionalString(value, key)
+        require(token != null && token.isNotBlank() && token == token.trim() && token.length <= 256)
+        return token!!
+    }
+
+    private fun displayString(value: JsonObject, key: String): String {
+        val text = optionalString(value, key)
+        require(text != null && text.length <= 1024)
+        return text!!
+    }
+
+    private fun requiredBoolean(value: JsonObject, key: String): Boolean {
+        val item = value.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }
+            ?: throw IllegalArgumentException("Boolean result field is invalid")
+        return item.asBoolean
     }
 
     private fun verifiedNetworkManifest(state: State, networkId: String, endpointId: String,

@@ -9,9 +9,9 @@ The shared application is written in TypeScript and React Native. **Android is t
 - **Status and work:** Read authenticated snapshots and partial changes for authorized Nodes, Endpoints, Workers, Goals, Groups, and Tasks. Submit user-confirmed text or reviewed speech transcripts to Control, inspect Intent dispatch, and read bounded Goal results when the session permits it. Intent, Goal, Worker, and Artifact states remain distinct.
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
 - **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
-- **Network consent:** The implementation supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. See the [current validation record](docs/client-hub-v1.5-bd79ff9-validation.md) for the tested scope and remaining integration requirements.
+- **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The v1.6 collaboration-key grants remain gated. See the [current v1.6 validation record](docs/client-hub-v1.6-f4e4725-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md) for their separate scope.
 - **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The Hub remains authoritative for every write.
-- **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; native delivery has not been rerun on v1.5.
+- **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
 - **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It can recover a lost response with the original packet through `/v2/client/rpc/recover`. An uncertain business outcome remains visible until reconciled with authoritative state.
 
 ## Security boundary
@@ -20,30 +20,33 @@ Client-to-Control business RPC uses the Client-Control v1 post-quantum protocol:
 
 The Client does not use legacy `/v1` management bearer APIs, store Hub or Node bearer credentials, or read the Hub database. This encrypted channel terminates at Control so Control can process the request. It does not prove that ordinary peer messages are unreadable to the Hub. Cross-user Thread messaging remains unavailable while the server advertises `external_thread_links=false`.
 
-The Endpoint attestation v1 signature input includes the final `"signature":null` field. The Android verifier handles canonical Go RFC3339Nano timestamps. Historical v1.2.1 acceptance covers a real native Codex Endpoint, independent external Owner signing, explicit Android confirmation, and encrypted `group.key_manifest → group.key_grant → group.key_status` with `CURRENT`, then `STALE` after binding expiry and `PROOF_EXPIRED` after proof expiry. See the [Group key acceptance report](docs/client-group-key-v1.2.1-disposable-validation.md) for its exact APKs and rejection tests. Those results do not certify the current v1.5 target. Physical Android and public HTTPS remain untested.
+The Endpoint attestation v1 signature input includes the final `"signature":null` field. The Android verifier handles canonical Go RFC3339Nano timestamps. Historical v1.2.1 acceptance covers a real native Codex Endpoint, independent external Owner signing, explicit Android confirmation, and encrypted `group.key_manifest → group.key_grant → group.key_status` with `CURRENT`, then `STALE` after binding expiry and `PROOF_EXPIRED` after proof expiry. See the [Group key acceptance report](docs/client-group-key-v1.2.1-disposable-validation.md) for its exact APKs and rejection tests. Those results do not certify the current v1.6 target. Physical Android and public HTTPS remain untested.
 
-## Fixed Hub integration target
+## Current Hub integration target: v1.6
 
-The Client pins the clean v1.5 delivery below. Contract, image, independent Kotlin tests, Android product checks, and disposable Hub interoperability have separate results in the [current validation record](docs/client-hub-v1.5-bd79ff9-validation.md). Historical acceptance is not transferred to this target.
+The current contract snapshot is clean Core revision `f4e4725c5d81c54b166f4291b9d450c70954e6df`, `client-hub-v1.6`, wire 1, with 55 catalog operations. The imported snapshot and current evidence are recorded in the [v1.6 validation report](docs/client-hub-v1.6-f4e4725-validation.md).
 
 | Item | Fixed value |
 |---|---|
-| Hub source revision | `bd79ff93c90ecafc28a2471dd9523444903b39e6` |
-| Protocol / wire | `client-hub-v1.5` / `1` |
-| Protocol archive SHA-256 | `98ce7f02d03dd8291ff7361e46e22ed893f493d242fcb238a948bf869a2a5d0b` |
-| Catalog SHA-256 | `a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68` |
-| Full local Docker image ID | `sha256:4c321cd8f91a1e19befabd1f5c8983be46e6aed811614c68bd6f62ad06584771` |
-| Clean Hub source fingerprint | `586ca8adbbcf9ea18c83f03e59267ad848c10792452520f5d499ef08ae340f17` |
+| Hub source revision | `f4e4725c5d81c54b166f4291b9d450c70954e6df` |
+| Protocol / wire | `client-hub-v1.6` / `1` |
+| Protocol archive SHA-256 | `54234527064c5923f9b40d4ac2f602c702e6dbc47fe7b52185da823c97c10fbd` |
+| Catalog SHA-256 | `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c` |
+| Clean Core source fingerprint | `c3d22f3d69ee668bb29215100ba78a33acf107fd1e03443a48e4651c70e44c4b` |
+| Local Hub Docker image ID | `sha256:6a7e0af78d3d14369f451760541b54d49a6e9505a1c813aa1124186176d4f5c9` |
+| Local interop image ID | `sha256:565aeffa59cacc00d871c1e81a836a992fca4a04633ea2ce21d015af3523aad4` |
 
-The [imported snapshot](contracts/client-hub-v1.5-bd79ff9/manifest.json) is immutable and contains the 46-operation catalog. The Client permits only 33 locally implemented operations, subject to current encrypted authorization and the server Guard. Ten new shared-space consent/admission and topology delegation/proposal operations are explicitly disabled at both application and native boundaries until independent proof verification and explicit consent flows are implemented. The three Link key operations remain disabled. A Hub advertisement or an Agent proposal does not grant User Approval, access to history, or permission to send a message.
+The [imported snapshot](contracts/client-hub-v1.6-f4e4725/manifest.json) contains the 55-operation catalog. The Client locally implements 35 operations and keeps 20 closed. Two new operations have read adapters: `network.directory` and `topology.endpoint_admission_preview`; neither has a dedicated product UI control yet. The other seven new v1.6 operations remain closed, and the existing 13 shared-space, topology delegation/proposal, and Link-key gates remain closed. A catalog entry, public capability, or synthetic proof does not authorize an operation; encrypted `session.capabilities`, current authority, local policy, and the server Guard still apply.
 
-Current emulator acceptance passed 54 Kotlin tests, 29 JavaScript tests, exact authenticated external-role permissions in four fresh sessions, scoped Group creation, foreign-Owner denial, and original-byte recovery after lost enrollment/RPC responses. Three isolated outer-RPC faults passed: `STILL_PROCESSING`, signed `OUTCOME_UNCERTAIN` after a confirmed fault and single Hub restart, and `RECOVERY_UNAVAILABLE`. These fault fixtures do not establish real Worker execution or business-level exactly-once delivery. Connected management UI checks cover the recorded bounded view; the created Group card was not observed there.
+The current checkpoint passed 63 Kotlin tests, 34 JavaScript tests, the Android build and offline UI, encrypted v1.6 capabilities, empty directory reads, and original-byte enrollment/RPC response recovery on the pinned Hub. Positive native Endpoint consent, nonempty discovery, broader faults, connected UI, physical Android and public HTTPS remain unaccepted. Exact APKs, commands and limitations are in the [validation report](docs/client-hub-v1.6-f4e4725-validation.md).
 
-Network consent still requires independently pinned Owner public keys, full Endpoint attestation, a fresh manifest, an external Owner signature, and explicit phone confirmation. Complete native Network consent and its dedicated uncertain-outcome reconciliation remain unvalidated. A generic snapshot cannot clear the durable Network grant fence. Cross-user messaging remains unavailable while `external_thread_links=false`. OpenAI Dot/Live integration is planning only.
+## Historical acceptance
 
-The [shared-space v2 framework](docs/shared-space-v2-framework.md) adds a gated review panel and candidate-proof verification without enabling shared-space, delegation or proposal RPCs. Its public synthetic vector is from ongoing Core development and has separate validation attribution. Each Owner must eventually confirm its own signature through its own Client; a local scope-reading marker grants no authority.
-
-Historical [v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md), native Monitor results, and older APKs retain their original sources, images, and scope. No current dirty Core source is substituted for this delivery.
+The [v1.5 validation](docs/client-hub-v1.5-bd79ff9-validation.md),
+[shared-space framework](docs/shared-space-v2-framework.md), and
+[Release packaging report](docs/release-packaging-validation.md) retain their
+original source, APK, image, commands and limitations. Earlier native Group,
+Monitor and Worker results remain version-specific; they do not certify v1.6.
 
 ## Build and local development
 
@@ -55,7 +58,7 @@ python3 scripts/check-client-contract.py
 ./scripts/docker-build-android-test.sh
 ```
 
-The contract checker defaults to the approved `bd79ff9` v1.5 snapshot. For a separately delivered candidate, first verify its archive SHA-256 against the trusted handoff, then supply the extracted snapshot and independent expected pins explicitly:
+The contract checker defaults to the approved `f4e4725` v1.6 snapshot. For a separately delivered candidate, first verify its archive SHA-256 against the trusted handoff, then supply the extracted snapshot and independent expected pins explicitly:
 
 ```bash
 python3 scripts/check-client-contract.py \
@@ -76,10 +79,10 @@ For local unsigned per-ABI Release APKs, use `scripts/docker-build-release.sh` w
 - [Git milestones and validation provenance](docs/git-history.md)
 - [Product behavior](docs/product.md), [development plan](docs/development-plan.md), and [model selection](docs/model-selection.md)
 - [Backend contract](docs/backend-contract.md), [Hub interface requests and completed items](docs/hub-interface-requests-v12.md), and [core team handoff](docs/cicada-core-handoff.md)
-- [Current v1.5 implementation and validation](docs/client-hub-v1.5-bd79ff9-validation.md) and [historical v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md)
+- [Current v1.6 contract and validation](docs/client-hub-v1.6-f4e4725-validation.md), [historical v1.5 validation](docs/client-hub-v1.5-bd79ff9-validation.md), and [historical v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md)
 - [Historical v1.3 candidate validation](docs/client-monitor-v13-25013b5-native-validation.md), [historical native attempt](docs/client-monitor-v13-81d8f1f-native-validation.md), [historical recall attempt](docs/client-monitor-v13-81d8f1f-recall-validation.md), and [historical Set H acceptance](docs/client-hub-v1.3-be0269e-validation.md)
 - [Historical v1.2.1 validation](docs/client-hub-v1.2.1-967dbd-validation.md) and [historical v1.2 validation against `41beaf0`](docs/client-hub-v1.2-41beaf0-validation.md)
 - [Disposable Group Endpoint key acceptance](docs/client-group-key-v1.2.1-disposable-validation.md)
 - [Two-Owner encrypted authorization acceptance](docs/client-two-owner-v1.2.1-967dbd-validation.md) — own-Group controls, cross-Owner rejection, Hub signature rejection and device revocation using explicitly synthetic Endpoints
 
-The historical fixed v1.2.1 image passed the emulator-based real Node/Codex approval and result flow; see the validation report for the exact APK and run evidence. Physical Android devices and public HTTPS have not been tested. Do not transfer those results to the current v1.5 target.
+The historical fixed v1.2.1 image passed the emulator-based real Node/Codex approval and result flow; see the validation report for the exact APK and run evidence. Physical Android devices and public HTTPS have not been tested. Do not transfer those results to the current v1.6 target.

@@ -1,6 +1,40 @@
-# Client ↔ Hub contract: `client-hub-v1.5`
+# Client ↔ Hub contract: `client-hub-v1.6`
 
-## Current v1.5 — Contract implementation and authorization
+## Current v1.6 — Contract implementation and authorization
+
+**Target:** clean Hub `f4e4725c5d81c54b166f4291b9d450c70954e6df`, `client-hub-v1.6`, wire 1, 55 catalog operations. The imported bundle, catalog and image pins are in the [v1.6 validation record](client-hub-v1.6-f4e4725-validation.md). The local Hub and interop image IDs are immutable Docker image IDs, not published registry releases.
+
+The current Client allowlist contains 35 of the 55 catalog operations. It adds two display-only reads to the fixed v1.5 baseline; all seven other new v1.6 operations remain closed. The original 13 shared-space, topology delegation/proposal and Link-key gates remain closed. The two read adapters have no new operable UI controls in this checkpoint; Endpoint preview positive interoperability is still BLOCKED. A catalog entry or public capability never substitutes for encrypted `session.capabilities`, current authority, local implementation, and the server Guard.
+
+| New v1.6 operation | Catalog boundary | Client treatment |
+|---|---|---|
+| `network.directory` | Current Network Owner, opted-in directory cards | Display-only read. A bounded card does not reveal Owner, Node/native locator, Group, key, or workspace, and does not authorize joining or messaging. |
+| `topology.endpoint_admission_preview` | Same-Owner current Network Endpoint admission preview | Display-only read. It returns current revisions for a possible later CAS; it does not change membership or grant keys/history. |
+| `space.foreign_endpoint_preview` | Exact admission reviewed by the foreign Endpoint Owner | Closed. A preview is not Endpoint Join, admission approval, or history access. |
+| `network.collaboration_key_manifest` | Current Network Owner and purpose-bound Endpoint manifest | Closed. Requires a verified current Endpoint key candidate and binding, plus separate `TASK` or `BROADCAST` purpose review. |
+| `network.collaboration_key_grant` | Owner proof for exact current manifest and purpose | Closed. Requires independent Owner proof, exact current authority, explicit consent and server Guard. A key grant does not authorize `task.offer.*`, `broadcast.*`, or `direct.*`. |
+| `network.collaboration_key_status` | Authenticated Owner's exact purpose grant | Closed pending a complete current-authority and dedicated status/reconciliation path. `active`, `stale`, and `revoked` are distinct from task or broadcast execution. |
+| `link.review_policy_preview` | Current Link side policy preview | Closed. The preview digest, Link version, policy version and reviewers must be reviewed before proof creation. |
+| `link.review_policy_grant` | One Owner proof for exact candidate Link policy | Closed. Each Link Owner must independently sign the same policy digest and version; one proof cannot stand for both sides. |
+| `link.review_policy_status` | Current metadata-only policy and signed sides | Closed until the complete current Link/policy authority and dual-side result are independently checked. It reveals no Link message content. |
+
+The seven new closed operations are `space.foreign_endpoint_preview`, the three `network.collaboration_key_*` methods, and the three `link.review_policy_*` methods. The preserved 13 gates are seven cross-Owner Space consent/admission methods, three topology delegation/proposal methods and three Link key methods. Do not open any of these closed operations based on catalog or Hub advertisement alone; require its implemented Client flow, applicable independent proof and current authority, encrypted capability, and server Guard.
+
+### Public vectors and authority boundary
+
+The v1.6 bundle carries three public synthetic proof vectors. `owner-link-review-policy-proof-v1.json` (SHA-256 `aab0a7074fb32523f75bb89f9a61f4725d9f462c2d83eec33d23f79609fc5907`) signs eleven ordered Policy claims with no `signature` field. `network-collaboration-broadcast-consent-v1.json` (SHA-256 `c18b237047a6963b95844a1a32307794e6b353150313b77ab2ce84393b0ab8ea`) signs twelve ordered `BROADCAST` claims including final `"signature":null`. The separate TASK vector (SHA-256 `ad073291703a01513c27fc729439a6bfa8502a8df8f8138a7ed1c3863a4d0c64`) has its own purpose and twelve-claim shape. Endpoint attestation v1 signs the ordered DTO including final `"signature":null`; OwnerLinkKeyGrant v2 signs exactly ten claims without a signature field. Keep all four encodings distinct.
+
+All three vectors use synthetic public keys and signatures. They verify byte formats and cryptographic consistency only; they do not establish a trusted Owner key, current Endpoint or Link authority, admission, native Join, or a live Network binding. In the BROADCAST vector the candidate `attestation` decodes to an opaque placeholder, and its `fingerprint` is synthetic. Neither is a complete Endpoint attestation or a current-authority proof. An independently trusted current Owner key and authenticated current context must be supplied separately.
+
+The remaining Core fixture must bind a complete candidate Endpoint to an actual current authority view: full canonical Endpoint attestation v1 and its ML-DSA verification under the candidate public identity; Endpoint, Principal, Owner and Node identities; native Session identifier/digest; current binding identifier/epoch; Network membership revision and Endpoint enrollment revision; and the trusted Owner public key and exact purpose grant. The current collaboration vectors contain the identity and revision-shaped fields but only synthetic session/binding values and opaque attestation bytes. Core must provide a disposable current native Endpoint fixture showing those fields belong to the same joined Endpoint before Android can claim native current-authority acceptance. For foreign admission, a separate fixture must also show the Endpoint Owner's exact admission review, Group Owner admission, fresh Node Join and resulting current membership; each Owner approves only its own side.
+
+The durable direct-Network grant uncertainty fence remains separate from outer RPC recovery. A generic `status.snapshot` can reconcile an outer RPC outcome but cannot release an uncertain direct `network.key_grant`; it must retain the original signed proof, packet, and counters until dedicated `network.key_status` correlation completes. Profile changes or reset must not replace unresolved proof evidence. The new collaboration-key grant methods remain closed and require their own purpose-specific status evidence.
+
+### v1.6 evidence status
+
+The clean contract import passed provenance verification: the archive SHA-256, metadata SHA-256, pinned source revision, source fingerprint, catalog hash, 21 payload files and both complete local image IDs are recorded in the [validation report](client-hub-v1.6-f4e4725-validation.md). The offline checker passed in Docker with exit code 0. This is contract validation only. The Android build, 63 Kotlin tests, 34 JavaScript tests, offline UI, encrypted v1.6 capability/role intersection, empty directory read, and original-byte 201/200 response-loss recovery passed in the documented bounded run. Positive current native Endpoint acceptance, wider recovery faults, revocation, connected UI, physical Android and public HTTPS remain separate BLOCKED/NOT_RUN gates. No v1.5 Android or native result transfers to v1.6.
+
+## Historical v1.5 checkpoint
 
 **Target:** clean Hub `bd79ff93c90ecafc28a2471dd9523444903b39e6`, `client-hub-v1.5`, wire 1, 46 catalog operations. The complete archive, catalog and immutable image pins are in [the validation record](client-hub-v1.5-bd79ff9-validation.md). Only that image is accepted for this checkpoint; older results and current dirty Core work remain separately attributed.
 

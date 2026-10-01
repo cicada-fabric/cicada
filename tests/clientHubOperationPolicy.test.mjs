@@ -2,31 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
-  DEFERRED_CLIENT_CONSENT_OPERATIONS, IMPLEMENTED_CLIENT_RPC_OPERATIONS,
+  DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
+  IMPLEMENTED_CLIENT_RPC_OPERATIONS,
   UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
 } from '../src/platform/clientHubOperationPolicy.ts';
 
 const catalog = JSON.parse(readFileSync(new URL(
-  '../contracts/client-hub-v1.5-bd79ff9/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
+  '../contracts/client-hub-v1.6-f4e4725/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
 )));
 const session = () => ({
   nativeAvailable: true, remoteEnabled: true, sessionCapabilitiesReady: true,
   allowedOperations: [...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
-    ...UNVERIFIED_LINK_KEY_OPERATIONS],
+    ...DEFERRED_V16_RPC_OPERATIONS, ...UNVERIFIED_LINK_KEY_OPERATIONS],
 });
 
-test('local operation policy accounts for every operation in the independently imported v1.5 catalog', () => {
+test('local operation policy accounts for every operation in the independently imported v1.6 catalog', () => {
   const expected = catalog.operations.map(value => value.id).sort();
   const actual = session().allowedOperations.sort();
-  assert.equal(expected.length, 46);
-  assert.equal(new Set(actual).size, 46);
+  assert.equal(expected.length, 55);
+  assert.equal(new Set(actual).size, 55);
   assert.deepEqual(actual, expected);
-  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 33);
+  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 35);
   assert.equal(DEFERRED_CLIENT_CONSENT_OPERATIONS.length, 10);
+  assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 7);
 });
 
 test('advertised permission never enables unimplemented consent, delegation or link key flows', () => {
-  for (const op of [...DEFERRED_CLIENT_CONSENT_OPERATIONS, ...UNVERIFIED_LINK_KEY_OPERATIONS,
+  for (const op of [...DEFERRED_CLIENT_CONSENT_OPERATIONS, ...DEFERRED_V16_RPC_OPERATIONS,
+    ...UNVERIFIED_LINK_KEY_OPERATIONS,
     'future.unknown_operation', '', ' space.key_consent_v2']) {
     assert.equal(isImplementedClientRpcOperation(op), false);
     assert.equal(clientHubOperationAllowed(session(), op), false, op);

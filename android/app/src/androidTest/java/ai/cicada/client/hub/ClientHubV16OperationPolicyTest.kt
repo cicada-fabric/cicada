@@ -31,7 +31,7 @@ import java.util.UUID
 
 /** Synthetic local policy tests. They do not certify real Hub consent or delegation execution. */
 @RunWith(AndroidJUnit4::class)
-class ClientHubV15OperationPolicyTest {
+class ClientHubV16OperationPolicyTest {
     private data class Sandbox(
         val session: ClientHubSession,
         val stateFile: File,
@@ -56,7 +56,7 @@ class ClientHubV15OperationPolicyTest {
     }
 
     @Test
-    fun authenticatedV15CapabilitiesExposeOnlyImplementedOperations() = sandbox { box ->
+    fun authenticatedV16CapabilitiesExposeOnlyImplementedOperations() = sandbox { box ->
         ClientWireCrypto.Identity.generate().use { control ->
             val deviceJson = box.devicePublicIdentity
                 ?: throw AssertionError("Public Client identity was not created")
@@ -74,7 +74,7 @@ class ClientHubV15OperationPolicyTest {
                 assertFalse(before.has("role"))
                 assertEquals(0, before.getAsJsonArray("allowedOperations").size())
 
-                val operationId = "synthetic-v15-capabilities-$role"
+                val operationId = "synthetic-v16-capabilities-$role"
                 val responder = SyntheticCapabilitiesResponder(
                     control,
                     device,
@@ -229,13 +229,13 @@ class ClientHubV15OperationPolicyTest {
             }
             val responseRouteText = ClientWireCrypto.Route.parse(responseRouteJson).toJson()
             val responseBody = JsonObject().apply {
-                addProperty("request_id", "synthetic-v15-request-$role")
+                addProperty("request_id", "synthetic-v16-request-$role")
                 addProperty("operation_id", operationId)
                 addProperty("ok", true)
                 add("result", JsonObject().apply {
                     addProperty("owner_id", SYNTHETIC_OWNER_ID)
                     addProperty("role", role)
-                    addProperty("contract_revision", "client-hub-v1.5")
+                    addProperty("contract_revision", "client-hub-v1.6")
                     addProperty("catalog_sha256", CATALOG_SHA256)
                     add("available_rpc_operations", operations)
                 })
@@ -380,7 +380,7 @@ class ClientHubV15OperationPolicyTest {
 
     private fun sandbox(prepared: Boolean = true, action: (Sandbox) -> Unit) {
         val target = InstrumentationRegistry.getInstrumentation().targetContext
-        val root = File(target.cacheDir, "v15-operation-policy-${UUID.randomUUID()}").apply { check(mkdirs()) }
+        val root = File(target.cacheDir, "v16-operation-policy-${UUID.randomUUID()}").apply { check(mkdirs()) }
         val context = object : ContextWrapper(target) {
             override fun getApplicationContext(): Context = this
             override fun getNoBackupFilesDir(): File = root
@@ -395,17 +395,17 @@ class ClientHubV15OperationPolicyTest {
             addProperty("lastResponseSequence", 9)
             addProperty("role", "manager")
             addProperty("sessionCapabilitiesReady", true)
-            addProperty("validatedContractRevision", "client-hub-v1.5")
-            addProperty("validatedCatalogSha256", "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68")
+            addProperty("validatedContractRevision", "client-hub-v1.6")
+            addProperty("validatedCatalogSha256", CATALOG_SHA256)
             add("allowedOperations", advertisement())
             add("pin", JsonObject().apply {
                 addProperty("baseUrl", "https://127.0.0.1:1")
-                addProperty("hubId", "synthetic-v15-policy-hub")
+                addProperty("hubId", SYNTHETIC_HUB_ID)
                 addProperty("controlPublicIdentityJson", fixture.getAsJsonObject("receiver_public_identity").toString())
             })
             add("enrollment", JsonObject().apply {
-                addProperty("ownerId", "synthetic-v15-policy-owner")
-                addProperty("deviceId", "synthetic-v15-policy-device")
+                addProperty("ownerId", SYNTHETIC_OWNER_ID)
+                addProperty("deviceId", SYNTHETIC_DEVICE_ID)
                 addProperty("sessionEpoch", 1)
                 addProperty("deviceKeyVersion", 1)
                 addProperty("state", "ACTIVE")
@@ -433,23 +433,27 @@ class ClientHubV15OperationPolicyTest {
 
     companion object {
         private const val UNKNOWN_OPERATION = "future.unverified_consent"
-        private const val SYNTHETIC_HUB_ID = "synthetic-v15-policy-hub"
-        private const val SYNTHETIC_OWNER_ID = "synthetic-v15-policy-owner"
-        private const val SYNTHETIC_DEVICE_ID = "synthetic-v15-policy-device"
+        private const val SYNTHETIC_HUB_ID = "synthetic-v16-policy-hub"
+        private const val SYNTHETIC_OWNER_ID = "synthetic-v16-policy-owner"
+        private const val SYNTHETIC_DEVICE_ID = "synthetic-v16-policy-device"
         private const val SYNTHETIC_HOST = "127.0.0.1"
         private const val SYNTHETIC_PORT = 1
         private const val SYNTHETIC_RPC_PATH = "/v2/client/rpc"
         private const val PACKET_DOMAIN = "cicada/client-control/packet/v1\u0000"
-        private const val CATALOG_SHA256 = "a6c108afae4823c2551ca1a07f203c751c69359afa05d4c6559daaad255d3e68"
+        private const val CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
         private const val REQUEST_SEQUENCE = 11L
         private const val RESPONSE_SEQUENCE = 10L
         private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "group.key_manifest",
-            "network.key_manifest", "monitor.broadcast_recover")
-        // Exact newly delivered v1.5 catalog identifiers, independent of the implementation set.
+            "network.key_manifest", "monitor.broadcast_recover", "network.directory",
+            "topology.endpoint_admission_preview")
+        // Exact v1.5/v1.6 deferred consent and proof routes, independent of the implementation set.
         private val NEW_CONSENT_OPERATIONS = listOf(
             "space.foreign_member_admit", "space.foreign_member_revoke", "space.foreign_endpoint_join",
             "space.key_manifest_v2", "space.key_consent_v2", "space.key_admission_v2", "space.key_status_v2",
             "topology.delegation_issue", "topology.delegation_revoke", "topology.regroup_proposal",
+            "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
+            "network.collaboration_key_grant", "network.collaboration_key_status",
+            "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
         )
     }
 }

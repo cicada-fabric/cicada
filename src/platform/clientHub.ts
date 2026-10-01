@@ -11,10 +11,13 @@ import {
 import {CLIENT_HUB_REVISION} from './clientHubContract';
 import {captureProfileMethod} from './hubProfileScope';
 import {
-  DEFERRED_CLIENT_CONSENT_OPERATIONS, IMPLEMENTED_CLIENT_RPC_OPERATIONS,
+  DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
+  IMPLEMENTED_CLIENT_RPC_OPERATIONS,
   UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
 } from './clientHubOperationPolicy';
-import type {CatalogClientRpcOperation, DeferredClientConsentOperation} from './clientHubOperationPolicy';
+import type {
+  CatalogClientRpcOperation, DeferredClientConsentOperation, DeferredV16RpcOperation,
+} from './clientHubOperationPolicy';
 export {CLIENT_HUB_REVISION, CLIENT_HUB_CATALOG_SHA256} from './clientHubContract';
 
 export interface HubProfileScope {
@@ -66,7 +69,7 @@ export type MonitorBroadcastRpcOperation = Extract<ClientRpcOperation,
   'monitor.broadcast_prepare' | 'monitor.broadcast_confirm' |
   'monitor.broadcast_recover' | 'monitor.broadcast_status'>;
 export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation,
-  DeferredClientConsentOperation | MonitorBroadcastRpcOperation |
+  DeferredClientConsentOperation | DeferredV16RpcOperation | MonitorBroadcastRpcOperation |
   'network.key_manifest' | 'network.key_grant' | 'network.key_status' |
   typeof UNVERIFIED_LINK_KEY_OPERATIONS[number]>;
 
@@ -388,7 +391,7 @@ const unavailable = async (): Promise<never> => {
 
 const operationNames: ClientRpcOperation[] = [
   ...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
-  ...UNVERIFIED_LINK_KEY_OPERATIONS,
+  ...DEFERRED_V16_RPC_OPERATIONS, ...UNVERIFIED_LINK_KEY_OPERATIONS,
 ];
 const isRpcOperation = (value: string): value is ClientRpcOperation =>
   operationNames.includes(value as ClientRpcOperation);

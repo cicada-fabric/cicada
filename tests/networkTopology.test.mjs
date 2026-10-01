@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NETWORK_CATALOG_SHA256, NETWORK_CONTRACT_REVISION, NETWORK_KEY_REQUIRED_OPERATIONS,
+  ENDPOINT_ADMISSION_PREVIEW_REQUIRED_OPERATIONS, NETWORK_CATALOG_SHA256,
+  NETWORK_CONTRACT_REVISION, NETWORK_DIRECTORY_REQUIRED_OPERATIONS, NETWORK_KEY_REQUIRED_OPERATIONS,
   createGroupRequest, endpointsInNetwork, explicitActiveNetwork, groupsInNetwork,
-  networkKeyConsentAllows,
+  endpointAdmissionPreviewFromRpc, networkDirectoryPageFromRpc, networkKeyConsentAllows,
+  ownerNetworkReadAllows,
 } from '../src/platform/networkTopology.ts';
 
 const snapshot = () => ({
@@ -140,4 +142,88 @@ test('pending or fenced sessions disable operations; uncertainty permits only au
     networkGrantReconciliationRequired: true};
   assert.equal(allows(publicCapabilities(), session(), snapshotReconciled), false);
   assert.equal(allows(publicCapabilities(), session(), snapshotReconciled, true, snapshot(), 'network.key_status'), true);
+});
+
+test('Network directory page rejects wrong scope, excess cards, duplicate IDs and private fields', () => {
+  const page = {
+    network_id: 'network-a',
+    endpoints: [
+      {network_id: 'network-a', endpoint_id: 'endpoint-a', alias: 'A', presence: 'UNKNOWN'},
+      {network_id: 'network-a', endpoint_id: 'endpoint-b', alias: 'B', presence: 'ACCESS_RECENT'},
+    ],
+    next_cursor: 'cursor-next',
+  };
+  assert.deepEqual(networkDirectoryPageFromRpc(page, 'network-a', 2), page);
+  assert.equal(networkDirectoryPageFromRpc({...page, network_id: 'network-b'}, 'network-a', 2), null);
+  assert.equal(networkDirectoryPageFromRpc(page, 'network-a', 1), null);
+  assert.equal(networkDirectoryPageFromRpc({...page, private_locator: '/node/session'}, 'network-a', 2), null);
+  assert.equal(networkDirectoryPageFromRpc({...page, endpoints: [page.endpoints[0], page.endpoints[0]]},
+    'network-a', 2), null);
+  assert.equal(networkDirectoryPageFromRpc({...page, endpoints: [
+    {...page.endpoints[0], secret: 'not-in-directory-contract'},
+  ]}, 'network-a', 2), null);
+});
+
+test('endpoint admission preview is exact-scope, public-only and tied to fresh Owner topology', () => {
+  const topology = snapshot();
+  topology.groups[0] = {...topology.groups[0], version: 4, context_policy: 'group_scoped'};
+  topology.endpoints.push({endpoint_id: 'endpoint-preview', name: 'Endpoint A',
+    principal_id: 'owner-a', network_ids: ['network-a'], group_ids: [], presence: 'ONLINE'});
+  const preview = {
+    owner_principal_id: 'owner-a', network_id: 'network-a', network_name: 'Shared name', network_version: 1,
+    group_id: 'group-a', group_name: 'Parent', group_version: 4, group_context_policy: 'group_scoped',
+    endpoint_id: 'endpoint-preview', endpoint_name: 'Endpoint A', endpoint_principal_id: 'owner-a',
+    endpoint_migration_state: 'READY', network_membership_revision: 1, endpoint_network_revision: 2,
+    network_access_binding_id: 'access-binding-a', network_access_epoch: 3,
+    native_binding_id: 'native-binding-a', native_binding_epoch: 4,
+    membership_revision: 0, endpoint_group_revision: 0, admission_roles: ['member'], admission_grants: [],
+    history_included: false, key_grant_created: false, existing_thread_memory_retained: true,
+  };
+  assert.deepEqual(endpointAdmissionPreviewFromRpc(preview, topology,
+    'network-a', 'group-a', 'endpoint-preview'), preview);
+  assert.equal(endpointAdmissionPreviewFromRpc({...preview, network_id: 'network-b'}, topology,
+    'network-a', 'group-a', 'endpoint-preview'), null);
+  assert.equal(endpointAdmissionPreviewFromRpc({...preview, native_session_id: 'private-locator'}, topology,
+    'network-a', 'group-a', 'endpoint-preview'), null);
+  assert.equal(endpointAdmissionPreviewFromRpc({...preview, group_version: 3}, topology,
+    'network-a', 'group-a', 'endpoint-preview'), null);
+  assert.equal(endpointAdmissionPreviewFromRpc({...preview, history_included: true}, topology,
+    'network-a', 'group-a', 'endpoint-preview'), null);
+  const staleTopology = {...topology, owner_principal_id: 'owner-old'};
+  assert.equal(endpointAdmissionPreviewFromRpc(preview, staleTopology,
+    'network-a', 'group-a', 'endpoint-preview'), null);
+});
+
+test('new Owner reads require fresh public and encrypted grants for the selected active scope', () => {
+  const capabilities = {
+    contract_revision: NETWORK_CONTRACT_REVISION, catalog_sha256: NETWORK_CATALOG_SHA256,
+    client_control_pq_e2ee: true, authenticated_client_session: true, topology_management: true,
+    available_rpc_operations: [...NETWORK_DIRECTORY_REQUIRED_OPERATIONS,
+      ...ENDPOINT_ADMISSION_PREVIEW_REQUIRED_OPERATIONS],
+    external_rpc_operations: [...NETWORK_DIRECTORY_REQUIRED_OPERATIONS,
+      ...ENDPOINT_ADMISSION_PREVIEW_REQUIRED_OPERATIONS],
+  };
+  const grant = {
+    owner_id: 'owner-a', role: 'manager', contract_revision: NETWORK_CONTRACT_REVISION,
+    catalog_sha256: NETWORK_CATALOG_SHA256,
+    available_rpc_operations: [...NETWORK_DIRECTORY_REQUIRED_OPERATIONS,
+      ...ENDPOINT_ADMISSION_PREVIEW_REQUIRED_OPERATIONS],
+  };
+  const state = {...status(), allowedOperations: [...NETWORK_DIRECTORY_REQUIRED_OPERATIONS,
+    ...ENDPOINT_ADMISSION_PREVIEW_REQUIRED_OPERATIONS]};
+  assert.equal(ownerNetworkReadAllows(capabilities, grant, state, snapshot(), 'network.directory'), true);
+  assert.equal(ownerNetworkReadAllows(capabilities, grant, state, snapshot(),
+    'topology.endpoint_admission_preview'), true);
+  assert.equal(ownerNetworkReadAllows(capabilities, {...grant, role: 'network-admin'}, state,
+    snapshot(), 'network.directory'), false);
+  assert.equal(ownerNetworkReadAllows({...capabilities, available_rpc_operations: []}, grant, state,
+    snapshot(), 'network.directory'), false);
+  assert.equal(ownerNetworkReadAllows(capabilities, {...grant, available_rpc_operations: []}, state,
+    snapshot(), 'network.directory'), false);
+  assert.equal(ownerNetworkReadAllows(capabilities, grant, {...state, pendingOperationId: 'pending-1'},
+    snapshot(), 'network.directory'), false);
+  assert.equal(ownerNetworkReadAllows(capabilities, grant, state,
+    {...snapshot(), owner_principal_id: 'owner-stale'}, 'network.directory'), false);
+  assert.equal(ownerNetworkReadAllows(capabilities, grant, {...state, activeNetworkId: undefined},
+    snapshot(), 'network.directory'), false);
 });
