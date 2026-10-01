@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real Node pairing panel on an owned v1.6 Android emulator.
+"""Exercise the real Node pairing panel on an owned v1.6.1 Android emulator.
 
 The driver never calls Client RPCs itself. It types the Core-issued short code
 through an in-memory Docker STDIN pipe, checks the visible candidate against
@@ -26,11 +26,12 @@ spec = importlib.util.spec_from_file_location('v16_ui_owner', HERE / 'v16-androi
 v16 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(v16)
 driver = v16.driver
-REVISION = '4fb241b5e824eb752ceb85586089f44c408e1e7e'
-CATALOG = '1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c'
+REVISION = 'fe565b41bb1aa86d400a0ec98c528c856d0b9579'
+CATALOG = '6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b'
+CONTRACT_REVISION = 'client-hub-v1.6.1'
 HANDOFF_SCHEMA = 'cicada.native-monitor-pairing-handoff.v1'
-ROLE_SCHEMA = 'cicada.client-v16-role-oracle.v1'
-GROUPS_SCHEMA = 'cicada.client-v16-monitor-groups.v1'
+ROLE_SCHEMA = 'cicada.client-v161-role-oracle.v1'
+GROUPS_SCHEMA = 'cicada.client-v161-monitor-groups.v1'
 UI_XML = '/data/local/tmp/cicada-node-pairing-ui.xml'
 
 HANDOFF_FIELDS = {
@@ -466,10 +467,10 @@ def run(args):
     ui = None
     state = None
     try:
-        state = v16.owned_state(evidence)  # Exact v1.6 emulator/container/network ownership gate.
+        state = v16.owned_state(evidence)  # Exact v1.6.1 emulator/container/network ownership gate.
         verify_owned_node(scope, pins)
         artifacts = read_private_json(evidence / 'android-artifacts.json', 32 * 1024)
-        if artifacts.get('contract_revision') != 'client-hub-v1.6' or \
+        if artifacts.get('contract_revision') != CONTRACT_REVISION or \
                 not HEX256.fullmatch(artifacts.get('app_sha256', '')):
             raise SafeFailure('owned_Android_APK_pin_missing')
         archived_apk = evidence / 'installed-app.private.apk'
@@ -599,9 +600,12 @@ def run(args):
             raise SafeFailure('Core_candidate_expired_before_confirm')
         ui.tap('confirm-via-product-Alert', final_confirm)
 
-        # The panel must report the post-ACK nodes.list refresh. Then find the
-        # matching binding card and require its exact Node ID and authorized UI.
-        ui.expect_visible('已读取 Hub 的 nodes.list 权威状态', contains=True, attempts=24)
+        # The product must report that it validated the typed nodes.confirm
+        # NodeControlKeyBinding and correlated it with the distinct authoritative
+        # nodes.list NodeDeviceBinding. A generic RPC ACK is not binding proof.
+        ui.expect_visible(
+            '已核对 nodes.confirm 的 Node-Control 绑定证据，并在 nodes.list 找到同一 ACTIVE/authorized 绑定。Node 在线状态仍由其心跳报告。',
+            contains=False, attempts=24)
         for root, texts in ui.collect_visible_text(attempts=24):
             matching_rows = [text for text in texts if text.startswith('Node ' + scope['node_id'] + ' · ')
                 and '授权：有效' in text]
@@ -624,7 +628,7 @@ def run(args):
     finally:
         code[:] = b'\0' * len(code)
         receipt = {
-            'schema': 'cicada.client-v16-node-pairing-ui.v1', 'result': result, 'reason': reason,
+            'schema': 'cicada.client-v161-node-pairing-ui.v1', 'result': result, 'reason': reason,
             'android_run_id': state.get('run_id') if state else None,
             'client_apk_sha256': artifacts.get('app_sha256'),
             'core_source_revision': REVISION,
@@ -640,6 +644,10 @@ def run(args):
             'candidate_fields_matched': candidate_checks,
             'owner_source': 'authenticated_role_oracle_owner_hash_plus_current_Client_panel_authority_gate',
             'network_source': 'selected_Network_UI_before_code_plus_current_Client_panel_scope_gate',
+            'nodes_confirm_result_type': 'NodeControlKeyBinding',
+            'nodes_confirm_result_and_nodes_list_correlation_reported_by_product_UI': result == 'PASS',
+            'generic_nodes_confirm_ack_used_as_binding_proof': False,
+            'nodes_list_authority_projection': 'NodeDeviceBinding',
             'binding_verified_from_refreshed_nodes_list_ui': binding_verified,
             'no_RPC_injection': True, 'short_code_logged_or_persisted': False,
             'uiautomator_dump_persisted': False, 'network_or_Rpc_route_modified': False,
@@ -651,7 +659,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--evidence', required=True, help='owned v1.6 Android evidence directory under Client data root')
+    parser.add_argument('--evidence', required=True, help='owned v1.6.1 Android evidence directory under Client data root')
     parser.add_argument('--handoff', required=True, help='Core mode-0600 Node pairing handoff JSON')
     parser.add_argument('--public-pins', required=True, help='Core mode-0600 Node-Control public pin JSON')
     args = parser.parse_args()

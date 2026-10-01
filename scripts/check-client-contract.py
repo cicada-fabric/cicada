@@ -13,12 +13,17 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6-4fb241b"
-SOURCE_REVISION = "4fb241b5e824eb752ceb85586089f44c408e1e7e"
-CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
-CONTRACT_REVISION = "client-hub-v1.6"
+ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6.1-fe565b4"
+SOURCE_REVISION = "fe565b41bb1aa86d400a0ec98c528c856d0b9579"
+CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
+CONTRACT_REVISION = "client-hub-v1.6.1"
 WIRE_VERSION = 1
 CATALOG_PATH = "cicada-go/internal/clientcontract/catalog.json"
+CURRENT_COVERAGE = {
+    "android_interop": "NOT_RUN",
+    "inner_rpc_shapes": "partial_prose_references",
+    "native_runtime": "NOT_RUN",
+}
 SOURCE_REVISION_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -163,6 +168,9 @@ def verify_snapshot(
             "manifest catalog SHA-256 does not match the expected value")
     require(type(manifest.get("wire_version")) is int and manifest["wire_version"] == WIRE_VERSION,
             "manifest wire version does not match the supported version")
+    if expected_contract_revision == CONTRACT_REVISION:
+        require(manifest.get("coverage") == CURRENT_COVERAGE,
+                "manifest validation coverage does not match the v1.6.1 delivery")
 
     listed = manifest.get("files")
     require(isinstance(listed, dict) and bool(listed), "manifest files must be a non-empty object")

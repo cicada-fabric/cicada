@@ -1,5 +1,16 @@
 # Client-Control v1.6: remaining operation readiness
 
+**Provenance gate: BLOCKED.** The v1.6.1 public archive and pinned Git blobs match, but the independent raw-permission build fingerprint is not yet reproducible. No complete import, live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md).
+
+
+## Active checkpoint — Client-Control v1.6.1
+
+The final corrected checkpoint passed the pinned offline build, 59 JavaScript tests, TypeScript, ESLint (22 warnings, no errors), 74 Kotlin tests across 14 selectors, and five offline UI checks; every gate exited 0. App/test APK SHA-256 values are `6262d427f3c99c3e7de217bada71d8615da52c1166f59d077b4886a5e1576816` and `abbb764d459c60f8f31a7e92e22455754c804fdba48e7d99885bd2d53d552dec`; compiled source FP is `0b89a85d5c332faffb980851501c474942f28c1b047562e0daa547f27a32d7f0` over 112 files. The owned emulator was removed and six resident containers were unchanged. These are local checks, not live Hub or native Monitor acceptance. The full Client commit is recorded in `/gpu1-share/data/cicada-client/v161-fe565b4-20261001/provenance/client-delivery.redacted.json` after the milestone commit.
+
+The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, protocol `client-hub-v1.6.1`, wire 1, catalog `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b` and immutable Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. See the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md) for archive/source pins, exact DTO verification, commands, artifacts and individual acceptance states. Earlier evidence below is historical and does not establish this checkpoint.
+
+No new Hub, Node or model runtime is started in this checkpoint. Current encrypted runtime capabilities, native Endpoint/Monitor acceptance, physical Android and public HTTPS remain unaccepted. The 38-operation local policy and 17 closed operations are retained; no advertisement or synthetic proof authorizes a closed operation. Terminal regroup `OUTCOME_UNCERTAIN` retains its exact ciphertext/counters and dedicated fence.
+
 ## Successor checkpoint update — clean Core `4fb241b`
 
 The current Core target is clean commit `4fb241b5e824eb752ceb85586089f44c408e1e7e`, still `client-hub-v1.6`, wire 1, with the unchanged 55-operation catalog (`1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`). The successor bundle SHA-256 is `9ada56ced408e90fbdf2a224897cf43fee2d325e6963f8f1714b0ef888f4f689`; Core fingerprint is `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`; Hub image is `sha256:a48ce4b096f4d003ed6f8586674f4c175ce8616005dc65e7cbf9e9edaededf65`. The exact snapshot and external redacted import receipt are linked from the [successor management validation report](client-hub-v1.6-4fb241b-management-validation.md). The f4e4725 acceptance remains historical and is not reattributed to this successor.

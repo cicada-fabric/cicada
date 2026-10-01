@@ -17,7 +17,7 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
 
-/** Independent Kotlin checks for the pinned v1.6 BROADCAST public vector; TASK is separate. */
+/** Independent Kotlin checks for the pinned v1.6.1 BROADCAST public vector; TASK is separate. */
 @RunWith(AndroidJUnit4::class)
 class NetworkCollaborationBroadcastConsentV1VectorTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()

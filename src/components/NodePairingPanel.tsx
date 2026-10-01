@@ -4,7 +4,8 @@ import type {
   ClientHubApi, ClientHubCapabilities, ClientHubSessionCapabilities, ClientHubStatus,
 } from '../platform/clientHub';
 import {
-  NodePairingLifecycle, nodeControlKeyCandidateFromRpc, nodePairingOperationAllowed,
+  NodePairingLifecycle, nodeControlKeyBindingFromConfirmRpc, nodeControlKeyCandidateFromRpc,
+  nodeDeviceBindingFromList, nodePairingOperationAllowed,
   nodePairingScopeKey, sameNodeControlKeyCandidate,
 } from '../platform/nodePairing';
 import type {
@@ -16,7 +17,7 @@ interface Props {
   status: ClientHubStatus;
   publicCapabilities: ClientHubCapabilities | null;
   sessionCapabilities: ClientHubSessionCapabilities | null;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<unknown>;
 }
 
 interface ReviewState {
@@ -46,7 +47,7 @@ function failureMessage(error: unknown): string {
     case 'NODE_PAIRING_STALE':
       return 'Hub、Owner、设备或权限范围已变化；候选已清除，请重新核对。';
     case 'NODE_PAIRING_RESULT_INVALID':
-      return 'Hub 返回的 Node 候选不符合当前 v1.6 结构；没有确认任何绑定。';
+      return 'Node 配对响应未通过当前身份与审批证据核对；请刷新 nodes.list 核实权威状态。';
     default:
       return '操作未得到可验证结果；请重新读取当前 Hub 状态后再决定。';
   }
@@ -192,6 +193,15 @@ export function NodePairingPanel({api, status, publicCapabilities, sessionCapabi
     }
     return latest;
   };
+  const currentAfterConfirmation = async (token: NodePairingRequestToken): Promise<ClientHubStatus | null> => {
+    if (!mounted.current || !foreground.current ||
+        !lifecycle.current.isCurrent(token, scopeKeyRef.current)) return null;
+    const latest = await api.getStatus();
+    if (!mounted.current || !foreground.current ||
+        !lifecycle.current.isCurrent(token, scopeKeyRef.current) ||
+        nodePairingScopeKey(latest, publicCapabilities, sessionCapabilities, api.scope) !== token.scopeKey) return null;
+    return latest;
+  };
 
   const preview = async () => {
     const requestedCode = codeRef.current.trim();
@@ -261,7 +271,7 @@ export function NodePairingPanel({api, status, publicCapabilities, sessionCapabi
         settled = true;
         void (async () => {
           try {
-            await checkCurrentStatus(token, requestedCode, 'nodes.confirm');
+            const confirmStatus = await checkCurrentStatus(token, requestedCode, 'nodes.confirm');
             if (!current(token, requestedCode)) return;
             if (Date.parse(fresh.expires_at) <= Date.now()) {
               setReview(null);
@@ -278,6 +288,8 @@ export function NodePairingPanel({api, status, publicCapabilities, sessionCapabi
             if (!envelope.ok) throw Object.assign(new Error('confirmation refused'), {code: envelope.errorCode});
             if (!current(token, requestedCode)) return;
 
+            const confirmedBinding = nodeControlKeyBindingFromConfirmRpc(envelope.result, fresh, confirmStatus);
+
             lifecycle.current.invalidate();
             codeRef.current = '';
             setCode('');
@@ -286,17 +298,27 @@ export function NodePairingPanel({api, status, publicCapabilities, sessionCapabi
             setHubNodeControlTrusted(false);
             const refreshScope = scopeKeyRef.current;
             const refreshToken = lifecycle.current.capture(refreshScope);
-            setMessage('加密确认请求已被 Hub 接受；正在读取已登记 Node 的权威列表。响应内容未当作绑定凭据。');
+            if (!confirmedBinding) {
+              setMessage('Hub 已确认接收加密请求，但返回的 Node-Control 绑定证据无法与本次审阅候选对应。正在刷新 nodes.list；不要重试旧 code。');
+            } else {
+              setMessage('已核对 nodes.confirm 的公开 Node-Control 绑定证据，正在读取 nodes.list 核对同一 Owner 绑定。');
+            }
             try {
-              await onRefresh();
-              if (mounted.current && foreground.current &&
-                  lifecycle.current.isCurrent(refreshToken, scopeKeyRef.current)) {
-                setMessage('已读取 Hub 的 nodes.list 权威状态。请在“已登记 Node”列表核对 ACTIVE 绑定；Node 在线状态仍由其心跳报告。');
+              const listValue = await onRefresh();
+              const latest = await currentAfterConfirmation(refreshToken);
+              if (!latest) return;
+              if (!confirmedBinding) {
+                setMessage('已刷新 nodes.list，但确认响应证据未通过审阅候选核对；请在 Hub 核实当前绑定，不要重试旧 code。');
+              } else if (nodeDeviceBindingFromList(listValue, confirmedBinding, latest)) {
+                setMessage('已核对 nodes.confirm 的 Node-Control 绑定证据，并在 nodes.list 找到同一 ACTIVE/authorized 绑定。Node 在线状态仍由其心跳报告。');
+              } else {
+                setMessage('确认响应的公开绑定证据已核对；nodes.list 尚未找到同一 ACTIVE/authorized 绑定版本。请刷新 Hub 状态，不要重试旧候选。');
               }
             } catch {
-              if (mounted.current && foreground.current &&
-                  lifecycle.current.isCurrent(refreshToken, scopeKeyRef.current)) {
-                setMessage('Hub 已接受加密确认请求，但 nodes.list 刷新失败。请刷新权威状态；不要重试旧候选。');
+              if (mounted.current && foreground.current && lifecycle.current.isCurrent(refreshToken, scopeKeyRef.current)) {
+                setMessage(confirmedBinding ?
+                  '已核对确认响应的公开绑定证据，但 nodes.list 刷新失败。请刷新权威状态；不要重试旧候选。' :
+                  'Hub 已确认接收加密请求，但绑定证据无法核对且 nodes.list 刷新失败。请刷新权威状态；不要重试旧 code。');
               }
             }
           } catch (error) {
@@ -377,7 +399,7 @@ export function NodePairingPanel({api, status, publicCapabilities, sessionCapabi
         {trustedCheck('我通过独立可信渠道核对了 Hub Node-Control key ID 与 fingerprint；这不是手机固定的 Client-Control Hub key。',
           hubNodeControlTrusted, busy, () => setHubNodeControlTrusted(value => !value))}
         <Text style={styles.notice}>
-          此候选仅供密钥身份审阅。确认前会重新读取候选并核对 digest/version；确认后只把响应视为请求 ACK，再读取 nodes.list 权威状态。
+          此候选仅供密钥身份审阅。确认前会重新读取候选并核对 digest/version；确认后核对公开审批证据，并用同一 Owner 绑定 ID 与 nodes.list 对照。
         </Text>
         <Action title={busy ? '正在再次核对…' : '核对完整信息并确认'}
           disabled={busy || !foreground.current || !confirmAllowed || !nodeTrusted || !hubNodeControlTrusted}

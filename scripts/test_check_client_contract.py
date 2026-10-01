@@ -12,7 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check-client-contract.py"
-SNAPSHOT = REPO / "contracts/client-hub-v1.6-4fb241b"
+SNAPSHOT = REPO / "contracts/client-hub-v1.6.1-fe565b4"
 CATALOG = "cicada-go/internal/clientcontract/catalog.json"
 
 
@@ -45,6 +45,34 @@ class ContractCheckerTest(unittest.TestCase):
         result = self.run_checker(use_default=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(self.manifest["catalog_sha256"], result.stdout)
+        self.assertIn("PASS client-hub-v1.6.1", result.stdout)
+
+    def test_v161_keeps_the_55_operations_and_reports_actual_validation_scope(self):
+        catalog = json.loads((self.root / CATALOG).read_text())
+        previous = json.loads(
+            (REPO / "contracts/client-hub-v1.6-4fb241b" / CATALOG).read_text()
+        )
+        self.assertEqual("/v2/client/rpc", catalog["rpc_route"])
+        self.assertEqual(55, len(catalog["operations"]))
+        self.assertEqual(previous["operations"], catalog["operations"])
+        self.assertEqual(
+            {
+                "android_interop": "NOT_RUN",
+                "inner_rpc_shapes": "partial_prose_references",
+                "native_runtime": "NOT_RUN",
+            },
+            self.manifest["coverage"],
+        )
+
+        for field, value in (
+            ("android_interop", "PASS"),
+            ("inner_rpc_shapes", "complete"),
+            ("native_runtime", "PASS"),
+        ):
+            with self.subTest(field=field):
+                changed = {**self.manifest, "coverage": {**self.manifest["coverage"], field: value}}
+                self.save_manifest(changed)
+                self.assert_rejected(self.run_checker())
 
     def test_historical_snapshot_requires_its_own_explicit_pins(self):
         historical = REPO / "contracts/client-hub-v1.4-f30892f"

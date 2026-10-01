@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run the Client v1.6 offline Android selector matrix in an owned emulator.
+"""Run the Client v1.6.1 offline Android selector matrix in an owned emulator.
 
-The command reuses the v1.5 instrumentation driver, but records v1.6 run IDs,
-ownership labels, and the v1.6 selector matrix. It never starts or contacts a
+The command reuses the v1.5 instrumentation driver, but records v1.6.1 run IDs,
+ownership labels, and the v1.6.1 selector matrix. It never starts or contacts a
 Hub. APK hashes are mandatory before an emulator can start.
 """
 
@@ -24,8 +24,14 @@ v15 = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(v15)
 driver = v15.driver
 
-SCHEMA = 'cicada.client-v16-deterministic.v1'
-LABEL = 'org.cicada.client-v16-deterministic'
+SCHEMA = 'cicada.client-v161-deterministic.v1'
+LABEL = 'org.cicada.client-v161-deterministic'
+CONTRACT_REVISION = 'client-hub-v1.6.1'
+CORE_REVISION = 'fe565b41bb1aa86d400a0ec98c528c856d0b9579'
+CORE_SOURCE_FINGERPRINT = '6ab2d94a26dd41082f3177006095408b25d4e8c05cd54315db6c325be92eb5be'
+CATALOG_SHA256 = '6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b'
+HUB_IMAGE = 'sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589'
+INTEROP_IMAGE = 'sha256:a6a88de73b1c8c00b38fafb4e9236c404b52b06165527a0b4e097c0f17f3a6be'
 MATRIX = (
     ('hub-profiles', 'HubProfileStoreTest', 10),
     ('network-key-vectors', 'NetworkKeyConsentVectorTest', 6),
@@ -39,6 +45,7 @@ MATRIX = (
     ('owner-link-review-policy-vectors', 'OwnerLinkReviewPolicyV1VectorTest', 3),
     ('network-collaboration-broadcast-vectors', 'NetworkCollaborationBroadcastConsentV1VectorTest', 3),
     ('network-collaboration-task-vectors', 'NetworkCollaborationTaskV1VectorTest', 3),
+    ('node-control-key-binding', 'NodeControlKeyBindingVerifierTest', 3),
     ('regroup-delegation-validation', 'RegroupDelegationValidationTest', 8),
 )
 
@@ -60,32 +67,37 @@ def owned_state(evidence):
         'evidence': str(evidence),
         'network': 'none',
     }
-    if state != expected or not re.fullmatch(r'v16-deterministic-[A-Za-z0-9_-]{1,80}', state['run_id']):
-        raise ValueError('v1.6 emulator ownership marker mismatch')
+    if state != expected or not re.fullmatch(r'v16-deterministic-v161-[A-Za-z0-9_-]{1,80}', state['run_id']):
+        raise ValueError('v1.6.1 emulator ownership marker mismatch')
     actual = subprocess.check_output([
         'docker', 'inspect', '--format',
         '{{.Image}} {{index .Config.Labels "' + LABEL + '"}} {{.HostConfig.NetworkMode}}',
         state['container'],
     ], text=True).strip().split()
     if actual != [driver.IMAGE, state['run_id'], 'none']:
-        raise ValueError('refusing to operate a foreign v1.6 emulator')
+        raise ValueError('refusing to operate a foreign v1.6.1 emulator')
     attached = json.loads(subprocess.check_output([
         'docker', 'inspect', '--format', '{{json .NetworkSettings.Networks}}', state['container'],
     ], text=True))
     if set(attached) != {'none'}:
-        raise ValueError('the v1.6 emulator must remain detached from Docker networks')
+        raise ValueError('the v1.6.1 emulator must remain detached from Docker networks')
     return state
 
 
 def start(evidence, args):
     run_id = evidence.parent.name
-    if not re.fullmatch(r'v16-deterministic-[A-Za-z0-9_-]{1,80}', run_id):
-        raise ValueError('unsafe v1.6 evidence run name')
+    if not re.fullmatch(r'v16-deterministic-v161-[A-Za-z0-9_-]{1,80}', run_id):
+        raise ValueError('unsafe v1.6.1 evidence run name')
     if (evidence / 'android-driver.json').exists():
         raise ValueError('this evidence directory already owns an emulator')
 
     artifacts = {
-        'contract_revision': 'client-hub-v1.6',
+        'contract_revision': CONTRACT_REVISION,
+        'core_source_revision': CORE_REVISION,
+        'core_source_fingerprint': CORE_SOURCE_FINGERPRINT,
+        'catalog_sha256': CATALOG_SHA256,
+        'pinned_hub_image_id': HUB_IMAGE,
+        'pinned_interop_image_id': INTEROP_IMAGE,
         'client_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=driver.REPO, text=True).strip(),
         'observed_checkout_source_fingerprint': v15.source_fingerprint(),
         'source_observation': 'checkout observed at emulator start; CLI APK hashes identify installed binaries',
@@ -144,7 +156,7 @@ def test(evidence, state):
     result = v15.install_and_test(evidence, state)
     summary_path = evidence / 'deterministic-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
-    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision='client-hub-v1.6')
+    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION)
     driver.save(summary_path, summary)
     return result
 
@@ -153,7 +165,7 @@ def ui(evidence, state):
     result = v15.ui_smoke(evidence, state)
     summary_path = evidence / 'ui-smoke-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
-    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision='client-hub-v1.6')
+    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION)
     driver.save(summary_path, summary)
     return result
 

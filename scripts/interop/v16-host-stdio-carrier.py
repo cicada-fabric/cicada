@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Relay the five Client-Control v2 routes to one pinned v1.6 Core fixture.
+"""Relay the five Client-Control v2 routes to one pinned v1.6.1 Core fixture.
 
 The Android emulator stays in Docker network-none mode. An ADB reverse mapping
 connects its dynamic loopback origin to the in-emulator listener; that listener
@@ -24,11 +24,12 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 V15_HOST_PATH = ROOT / 'scripts/interop/v15-host-stdio-carrier.py'
 V16_DRIVER_PATH = ROOT / 'scripts/interop/v16-android-deterministic.py'
-CORE_REVISION = '4fb241b5e824eb752ceb85586089f44c408e1e7e'
-SOURCE_FINGERPRINT = '31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2'
-CATALOG_SHA256 = '1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c'
-HUB_IMAGE = 'sha256:a48ce4b096f4d003ed6f8586674f4c175ce8616005dc65e7cbf9e9edaededf65'
-SCHEMA = 'cicada.client-v16-host-stdio-carrier.v1'
+CORE_REVISION = 'fe565b41bb1aa86d400a0ec98c528c856d0b9579'
+SOURCE_FINGERPRINT = '6ab2d94a26dd41082f3177006095408b25d4e8c05cd54315db6c325be92eb5be'
+CATALOG_SHA256 = '6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b'
+HUB_IMAGE = 'sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589'
+CONTRACT_REVISION = 'client-hub-v1.6.1'
+SCHEMA = 'cicada.client-v161-host-stdio-carrier.v1'
 ALLOWED = {
     ('GET', '/v2/client/identity'),
     ('GET', '/v2/client/capabilities'),
@@ -108,7 +109,7 @@ def _labels_match(actual, expected):
 
 def verify_hub(fixture_path, public_path, recovery_mode=None):
     if recovery_mode is not None:
-        raise ValueError('v1.6 carrier refuses recovery_mode without a matching Core fixture')
+        raise ValueError('v1.6.1 carrier refuses recovery_mode without a matching Core fixture')
 
     root = _fixture_root(fixture_path)
     marker = _private_json(fixture_path)
@@ -127,10 +128,10 @@ def verify_hub(fixture_path, public_path, recovery_mode=None):
             marker.get('source_revision') != CORE_REVISION or \
             marker.get('source_fingerprint') != SOURCE_FINGERPRINT or \
             marker.get('catalog_sha256') != CATALOG_SHA256 or \
-            marker.get('contract_revision') != 'client-hub-v1.6' or \
+            marker.get('contract_revision') != CONTRACT_REVISION or \
             marker.get('image_id') != HUB_IMAGE or marker.get('container') != expected_container or \
             marker.get('network') != expected_network:
-        raise ValueError('Core fixture marker does not match the v1.6 pins')
+        raise ValueError('Core fixture marker does not match the v1.6.1 pins')
 
     host_port = marker.get('host_port')
     if type(host_port) is not int or not 1024 <= host_port <= 65535:
@@ -146,8 +147,8 @@ def verify_hub(fixture_path, public_path, recovery_mode=None):
             public.get('source_revision') != CORE_REVISION or \
             public.get('source_fingerprint') != SOURCE_FINGERPRINT or \
             public.get('catalog_sha256') != CATALOG_SHA256 or \
-            public.get('contract_revision') != 'client-hub-v1.6':
-        raise ValueError('client-public v2 does not match the Core v1.6 fixture pins')
+            public.get('contract_revision') != CONTRACT_REVISION:
+        raise ValueError('client-public v2 does not match the Core v1.6.1 fixture pins')
 
     fixture = {
         'container': expected_container,
@@ -172,12 +173,12 @@ def verify_hub(fixture_path, public_path, recovery_mode=None):
             'org.cicada.client-catalog.sha256': CATALOG_SHA256,
             'org.cicada.role': 'hub',
     }):
-        raise ValueError('Core Hub image ID or provenance labels do not match the v1.6 pins')
+        raise ValueError('Core Hub image ID or provenance labels do not match the v1.6.1 pins')
     if not hub.get('State', {}).get('Running') or hub.get('Id', '') == '' or \
             not re.fullmatch(r'[0-9a-f]{64}', hub.get('Id', '')) or \
             hub.get('Image') != HUB_IMAGE or hub.get('Config', {}).get('Image') != HUB_IMAGE or \
             not _labels_match(hub_labels, expected_labels):
-        raise ValueError('Core Hub container ID, image, or fixture labels do not match the v1.6 pins')
+        raise ValueError('Core Hub container ID, image, or fixture labels do not match the v1.6.1 pins')
     if network.get('Id', '') == '' or not re.fullmatch(r'[0-9a-f]{64}', network.get('Id', '')) or \
             network.get('Driver') != 'bridge' or network.get('Internal') is not False or \
             not _labels_match(network_labels, {key: expected_labels[key] for key in (
@@ -223,13 +224,13 @@ def verify_emulator(module, evidence):
         raise ValueError('full CLI app and test APK SHA-256 values are required')
     state = module.owned_state(evidence)
     if state.get('network') != 'none':
-        raise ValueError('the v1.6 Android emulator must stay network-none')
+        raise ValueError('the v1.6.1 Android emulator must stay network-none')
     actual = json.loads(subprocess.check_output(['docker', 'inspect', state['container']], text=True))[0]
     if actual.get('HostConfig', {}).get('NetworkMode') != 'none' or \
             set(actual.get('NetworkSettings', {}).get('Networks', {})) != {'none'}:
         raise ValueError('refusing to route through a networked or foreign emulator')
     artifacts = json.loads((evidence / 'android-artifacts.json').read_text())
-    if artifacts.get('contract_revision') != 'client-hub-v1.6' or \
+    if artifacts.get('contract_revision') != CONTRACT_REVISION or \
             artifacts.get('app_sha256') != _EXPECTED_APP_SHA256 or \
             artifacts.get('test_sha256') != _EXPECTED_TEST_SHA256:
         raise ValueError('the active emulator APKs do not match the CLI-provided full hashes')
@@ -242,7 +243,7 @@ def load_driver():
 
 def run(args):
     if args.recovery_mode is not None:
-        raise ValueError('v1.6 carrier refuses recovery_mode without a matching Core fixture')
+        raise ValueError('v1.6.1 carrier refuses recovery_mode without a matching Core fixture')
     if args.app_sha256 is None or args.test_sha256 is None or \
             not re.fullmatch(r'[0-9a-f]{64}', args.app_sha256) or \
             not re.fullmatch(r'[0-9a-f]{64}', args.test_sha256):
@@ -304,7 +305,7 @@ def main():
     except (ValueError, OSError, KeyError, TypeError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired, json.JSONDecodeError):
         print(json.dumps({'result': 'FAIL', 'tag': args.tag,
-            'reason': 'v1.6 fixture verification or bounded opaque relay failed'}),
+            'reason': 'v1.6.1 fixture verification or bounded opaque relay failed'}),
             file=sys.stderr, flush=True)
         raise SystemExit(1)
 

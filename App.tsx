@@ -1465,6 +1465,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     const value = await rpcIfAllowed('client_device_management', 'nodes.list', {}) as
       JsonObject[] | undefined;
     if (value) setNodesList(value);
+    return value;
   };
   const fetchClientDevices = async () => {
     const generation = clientDevicesGeneration.current;
@@ -2294,7 +2295,10 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
         <NodePairingPanel status={hubStatus} publicCapabilities={hubCapabilities}
           sessionCapabilities={sessionCapabilities} api={clientHub}
           onRefresh={async () => {
-            await refreshHubStatus(); await refreshNodeBindings(); await refreshRemoteData();
+            await refreshHubStatus();
+            const bindings = await refreshNodeBindings();
+            await refreshRemoteData();
+            return bindings;
           }} />
         {operationAllowed(hubStatus, 'nodes.list') && <>
           <Section name="已登记 Node" action="刷新" onPress={() => {

@@ -201,6 +201,7 @@ export interface ClientHubStatus {
   baseUrl?: string;
   hubId?: string;
   ownerId?: string;
+  ownerKeyId?: string;
   deviceId?: string;
   sessionEpoch?: number;
   role?: 'manager' | 'external' | string;
@@ -218,6 +219,7 @@ export interface ClientHubStatus {
 }
 
 export interface NativeClientHubStatus {
+  ownerKeyId?: string;
   sessionEpoch?: number;
   profileId?: string;
   selectionGeneration?: number;

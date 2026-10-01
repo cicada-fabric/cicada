@@ -235,7 +235,7 @@ class ClientHubV16OperationPolicyTest {
                 add("result", JsonObject().apply {
                     addProperty("owner_id", SYNTHETIC_OWNER_ID)
                     addProperty("role", role)
-                    addProperty("contract_revision", "client-hub-v1.6")
+                    addProperty("contract_revision", "client-hub-v1.6.1")
                     addProperty("catalog_sha256", CATALOG_SHA256)
                     add("available_rpc_operations", operations)
                 })
@@ -395,7 +395,7 @@ class ClientHubV16OperationPolicyTest {
             addProperty("lastResponseSequence", 9)
             addProperty("role", "manager")
             addProperty("sessionCapabilitiesReady", true)
-            addProperty("validatedContractRevision", "client-hub-v1.6")
+            addProperty("validatedContractRevision", "client-hub-v1.6.1")
             addProperty("validatedCatalogSha256", CATALOG_SHA256)
             add("allowedOperations", advertisement())
             add("pin", JsonObject().apply {
@@ -440,14 +440,14 @@ class ClientHubV16OperationPolicyTest {
         private const val SYNTHETIC_PORT = 1
         private const val SYNTHETIC_RPC_PATH = "/v2/client/rpc"
         private const val PACKET_DOMAIN = "cicada/client-control/packet/v1\u0000"
-        private const val CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
+        private const val CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
         private const val REQUEST_SEQUENCE = 11L
         private const val RESPONSE_SEQUENCE = 10L
         private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "group.key_manifest",
             "network.key_manifest", "monitor.broadcast_recover", "network.directory",
             "topology.endpoint_admission_preview", "topology.regroup_proposal",
             "topology.delegation_issue", "topology.delegation_revoke")
-        // Exact v1.5/v1.6 deferred consent and proof routes, independent of the implementation set.
+        // Exact v1.5/v1.6.1 deferred consent and proof routes, independent of the implementation set.
         private val NEW_CONSENT_OPERATIONS = listOf(
             "space.foreign_member_admit", "space.foreign_member_revoke", "space.foreign_endpoint_join",
             "space.key_manifest_v2", "space.key_consent_v2", "space.key_admission_v2", "space.key_status_v2",

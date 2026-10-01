@@ -16,7 +16,7 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
 
-/** Independent Kotlin checks for the pinned clean v1.6 public Policy vector. */
+/** Independent Kotlin checks for the pinned clean v1.6.1 public Policy vector. */
 @RunWith(AndroidJUnit4::class)
 class OwnerLinkReviewPolicyV1VectorTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()

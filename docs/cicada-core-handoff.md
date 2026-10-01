@@ -1,6 +1,21 @@
 # CICADA Client integration handoff
 
-## Active integration target — clean Hub `4fb241b`, Client-Control v1.6
+**Provenance gate: BLOCKED.** The v1.6.1 public archive and pinned Git blobs match, but the independent raw-permission build fingerprint is not yet reproducible. No complete import, live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md).
+
+
+## Active checkpoint — Client-Control v1.6.1
+
+The final corrected checkpoint passed the pinned offline build, 59 JavaScript tests, TypeScript, ESLint (22 warnings, no errors), 74 Kotlin tests across 14 selectors, and five offline UI checks; every gate exited 0. App/test APK SHA-256 values are `6262d427f3c99c3e7de217bada71d8615da52c1166f59d077b4886a5e1576816` and `abbb764d459c60f8f31a7e92e22455754c804fdba48e7d99885bd2d53d552dec`; compiled source FP is `0b89a85d5c332faffb980851501c474942f28c1b047562e0daa547f27a32d7f0` over 112 files. The owned emulator was removed and six resident containers were unchanged. These are local checks, not live Hub or native Monitor acceptance. The full Client commit is recorded in `/gpu1-share/data/cicada-client/v161-fe565b4-20261001/provenance/client-delivery.redacted.json` after the milestone commit.
+
+The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, protocol `client-hub-v1.6.1`, wire 1, catalog `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b` and immutable Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. See the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md) for archive/source pins, exact DTO verification, commands, artifacts and individual acceptance states. Earlier evidence below is historical and does not establish this checkpoint.
+
+No new Hub, Node or model runtime is started in this checkpoint. Current encrypted runtime capabilities, native Endpoint/Monitor acceptance, physical Android and public HTTPS remain unaccepted. The 38-operation local policy and 17 closed operations are retained; no advertisement or synthetic proof authorizes a closed operation. Terminal regroup `OUTCOME_UNCERTAIN` retains its exact ciphertext/counters and dedicated fence.
+
+### Current Core maintainer prompt
+
+> Review the Client v1.6.1 deterministic checkpoint against immutable Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, catalog `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b` and Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. Supply independently reproducible clean build-input provenance, including full filesystem permission bits: Git records only executable bits, while build-inputs-v4 hashes full `stat.S_IMODE`. Confirm the distinct `NodeControlKeyBinding` confirmation and `NodeDeviceBinding` list/revoke DTOs without changing the accepted image or claiming old Android evidence. Preserve encrypted original-packet recovery and terminal regroup uncertainty fences. A later real Monitor fixture must use supported Network/Endpoint bootstrap, explicit current source/target Membership and the same genuine native Session; synthetic authority is not acceptable. This checkpoint starts no Hub, Node or model runtime. Return exact pins, reproducible commands, individual exits and redacted evidence; request a separately authorized acceptance run before any new native/model fixture.
+
+## Historical integration target — clean Hub `4fb241b`, Client-Control v1.6
 
 The current integration target is clean Core commit
 `4fb241b5e824eb752ceb85586089f44c408e1e7e`, protocol `client-hub-v1.6`,
@@ -114,7 +129,7 @@ Subsequent main-fixture cleanup passed with receipt SHA-256
 owned Hub/network/emulator and fixture root were absent, carrier PIDs and
 reverse mappings were gone, and six resident containers were unchanged.
 
-### Active Core maintainer prompt — clean 4fb241b
+### Historical Core maintainer prompt — clean 4fb241b
 
 > On clean Core `4fb241b5e824eb752ceb85586089f44c408e1e7e` and its pinned
 > `client-hub-v1.6` contract, preserve the current authority Guards and supply

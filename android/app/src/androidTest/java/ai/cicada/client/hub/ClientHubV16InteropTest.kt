@@ -11,15 +11,15 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.security.MessageDigest
 
-/** Real encrypted reads against a fresh, independently pinned v1.6 disposable fixture. */
+/** Real encrypted reads against a fresh, independently pinned v1.6.1 disposable fixture. */
 @RunWith(AndroidJUnit4::class)
 class ClientHubV16InteropTest {
     private val target get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val profiles get() = HubProfileStore(target)
     private val args get() = InstrumentationRegistry.getArguments()
     private val runId get() = args.getString("run_id")
-        ?.takeIf { it.matches(Regex("v16-[A-Za-z0-9_-]{1,80}")) }
-        ?: error("A bounded v16 run ID is required")
+        ?.takeIf { it.matches(Regex("v16-deterministic-v161-[A-Za-z0-9_-]{1,80}")) }
+        ?: error("A bounded v1.6.1 run ID is required")
     private val deviceId get() = "phone-$runId"
     private val directory get() = File(target.noBackupFilesDir, "network-v16/$runId")
     private fun hash(value: String) = MessageDigest.getInstance("SHA-256")
@@ -94,13 +94,13 @@ class ClientHubV16InteropTest {
     }
     private fun verifyDirectory(initialScope: HubProfileStore.Scope, fixture: JsonObject, public: JsonObject) {
         var scope = initialScope
-        assertEquals("client-hub-v1.6", text(public, "contract_revision"))
+        assertEquals("client-hub-v1.6.1", text(public, "contract_revision"))
         assertEquals(CATALOG, text(public, "catalog_sha256"))
         assertFalse(public.get("external_thread_links").asBoolean)
         assertFalse(public.get("status_events").asBoolean)
         assertEquals(55, public.getAsJsonArray("available_rpc_operations").map { it.asString }.toSet().size)
         val caps = rpc(scope, "session.capabilities")
-        assertEquals("client-hub-v1.6", text(caps, "contract_revision"))
+        assertEquals("client-hub-v1.6.1", text(caps, "contract_revision"))
         assertEquals(CATALOG, text(caps, "catalog_sha256"))
         assertEquals(text(fixture, "owner_id"), text(caps, "owner_id"))
         val topology = rpc(scope, "topology.snapshot")
@@ -140,7 +140,7 @@ class ClientHubV16InteropTest {
         assertEquals(sequence + 3, after.get("nextSequence").asLong)
         assertFalse(after.has("pendingOperationId"))
         save("directory.redacted.json", JsonObject().apply {
-            addProperty("result", "PASS"); addProperty("contract_revision", "client-hub-v1.6")
+            addProperty("result", "PASS"); addProperty("contract_revision", "client-hub-v1.6.1")
             addProperty("catalog_sha256", CATALOG); addProperty("owner_id_sha256", hash(text(caps, "owner_id")))
             addProperty("network_id_sha256", hash(text(fixture, "network_id")))
             addProperty("role", text(caps, "role")); addProperty("allowed_operations", allowed.size)
@@ -165,7 +165,7 @@ class ClientHubV16InteropTest {
         fun verifySavedFixture(saved: JsonObject) {
             assertEquals(setOf("schema", "run_id", "hub_id", "owner_id", "network_id", "network_version",
                 "groups", "device_public_identity_ref"), saved.keySet())
-            assertEquals("cicada.client-v16-monitor-groups.v1", text(saved, "schema"))
+            assertEquals("cicada.client-v161-monitor-groups.v1", text(saved, "schema"))
             assertEquals(runId, text(saved, "run_id"))
             assertEquals(hubId, text(saved, "hub_id"))
             assertEquals(ownerId, text(saved, "owner_id"))
@@ -243,7 +243,7 @@ class ClientHubV16InteropTest {
         assertTrue("A prior partial fixture must be reconciled before retry", groupNames.none { it in existingNames })
 
         val created = groupNames.map { name ->
-            // group.create has no expected-version field in the v1.6 wire contract;
+            // group.create has no expected-version field in the v1.6.1 wire contract;
             // capture and recheck the current ACTIVE Network before each exact scoped action.
             snapshot = rpc(scope, "topology.snapshot")
             currentNetwork(snapshot)
@@ -290,7 +290,7 @@ class ClientHubV16InteropTest {
             }
         }
         val output = JsonObject().apply {
-            addProperty("schema", "cicada.client-v16-monitor-groups.v1")
+            addProperty("schema", "cicada.client-v161-monitor-groups.v1")
             addProperty("run_id", runId)
             addProperty("hub_id", hubId)
             addProperty("owner_id", ownerId)
@@ -329,7 +329,7 @@ class ClientHubV16InteropTest {
         val groupFixture = read("fixture-groups.private.json")
         assertEquals(setOf("schema", "run_id", "hub_id", "owner_id", "network_id", "network_version",
             "groups", "device_public_identity_ref"), groupFixture.keySet())
-        assertEquals("cicada.client-v16-monitor-groups.v1", text(groupFixture, "schema"))
+        assertEquals("cicada.client-v161-monitor-groups.v1", text(groupFixture, "schema"))
         assertEquals(runId, text(groupFixture, "run_id"))
         assertEquals(hubId, text(groupFixture, "hub_id"))
         assertEquals(ownerId, text(groupFixture, "owner_id"))
@@ -429,6 +429,6 @@ class ClientHubV16InteropTest {
         })
     }
     companion object {
-        private const val CATALOG = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
+        private const val CATALOG = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
     }
 }

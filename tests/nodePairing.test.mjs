@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NodePairingLifecycle, nodeControlKeyCandidateFromRpc, nodePairingOperationAllowed,
+  NodePairingLifecycle, nodeControlKeyBindingFromConfirmRpc, nodeControlKeyCandidateFromRpc,
+  nodeDeviceBindingFromList, nodePairingOperationAllowed,
   nodePairingScopeKey, sameNodeControlKeyCandidate,
 } from '../src/platform/nodePairing.ts';
 import {CLIENT_HUB_CATALOG_SHA256, CLIENT_HUB_REVISION} from '../src/platform/clientHubContract.ts';
@@ -23,7 +24,7 @@ const status = (overrides = {}) => ({
   remoteEnabled: true, authFenced: false, recoveryBlocked: false,
   enrollmentRecoveryRequired: false, uncertainNeedsReconciliation: false,
   pendingOperationId: undefined, hubId: 'hub-a', ownerId: 'owner-human-a',
-  deviceId: 'phone-a', sessionEpoch: 3, allowedOperations: operations,
+  ownerKeyId: 'owner-key-a', deviceId: 'phone-a', sessionEpoch: 3, allowedOperations: operations,
   ...overrides,
 });
 const publicCaps = (overrides = {}) => ({
@@ -38,6 +39,32 @@ const sessionCaps = (overrides = {}) => ({
   ...overrides,
 });
 const apiScope = {profileId: 'profile-a', selectionGeneration: 8};
+const identity = id => ({id, kem_public: 'AQID', signing_public: 'BAUG'});
+const confirmation = (candidateValue = candidate(), overrides = {}) => ({
+  owner_binding_id: 'owner-binding-1', owner_id: 'owner-human-a', hub_id: 'hub-a',
+  node_id: candidateValue.node_id, node_name: candidateValue.node_name,
+  client_device_id: 'phone-a', owner_key_id: 'owner-key-a', node_credential_version: 1,
+  binding_version: 1, node_key_id: candidateValue.node_key_id,
+  node_public_identity: identity(candidateValue.node_key_id),
+  node_key_fingerprint: candidateValue.node_key_fingerprint, node_key_version: 1,
+  node_key_epoch: candidateValue.node_key_epoch, hub_key_id: candidateValue.hub_node_control_key_id,
+  hub_public_identity: identity(candidateValue.hub_node_control_key_id),
+  hub_key_fingerprint: candidateValue.hub_node_control_fingerprint,
+  hub_key_version: candidateValue.hub_node_control_key_version,
+  approved_request_id: candidateValue.request_id, approved_request_version: candidateValue.version,
+  approved_candidate_digest: candidateValue.candidate_digest,
+  approved_owner_device_id: 'phone-a', approved_owner_key_id: 'owner-key-a',
+  approved_at: '2026-10-01T12:02:00Z', state: 'ACTIVE', version: 1,
+  ...overrides,
+});
+const listedBinding = (confirmValue = confirmation(), overrides = {}) => ({
+  id: confirmValue.owner_binding_id, owner_id: confirmValue.owner_id, hub_id: confirmValue.hub_id,
+  node_id: confirmValue.node_id, node_name: confirmValue.node_name,
+  client_device_id: confirmValue.client_device_id, owner_key_id: confirmValue.owner_key_id,
+  node_credential_version: confirmValue.node_credential_version, state: 'ACTIVE', authorized: true,
+  version: confirmValue.binding_version, created_at: '2026-10-01T12:00:00Z',
+  updated_at: '2026-10-01T12:02:00Z', ...overrides,
+});
 
 test('candidate parser accepts exact INITIAL and UPGRADE metadata without equating Owner and Node principal', () => {
   const initial = nodeControlKeyCandidateFromRpc(candidate(), 'hub-a', now);
@@ -128,4 +155,79 @@ test('review scope changes and lifecycle invalidation make old callbacks stale',
     publicCaps(), sessionCaps(), apiScope)), false);
   lifecycle.invalidate();
   assert.equal(lifecycle.isCurrent(token, original), false);
+});
+
+test('nodes.confirm parser binds exact pinned public approval evidence to fresh candidate and status', () => {
+  const parsedCandidate = nodeControlKeyCandidateFromRpc(candidate(), 'hub-a', now);
+  assert.ok(parsedCandidate);
+  const parsed = nodeControlKeyBindingFromConfirmRpc(confirmation(), parsedCandidate, status());
+  assert.ok(parsed);
+  assert.equal(parsed.owner_binding_id, 'owner-binding-1');
+  assert.equal(parsed.node_public_identity.id, parsedCandidate.node_key_id);
+  assert.equal(parsed.hub_public_identity.id, parsedCandidate.hub_node_control_key_id);
+  assert.equal(parsed.approved_candidate_digest, parsedCandidate.candidate_digest);
+
+  const invalid = [
+    {unexpected: true}, {owner_id: 'owner-other'}, {hub_id: 'hub-other'},
+    {client_device_id: 'phone-other'}, {owner_key_id: 'owner-key-other'},
+    {node_id: 'node-other'}, {node_name: 'other'}, {node_key_id: 'node-key-other'},
+    {node_key_fingerprint: 'd'.repeat(64)}, {node_key_epoch: 7},
+    {hub_key_id: 'hub-node-control-other'}, {hub_key_fingerprint: 'd'.repeat(64)},
+    {hub_key_version: 3}, {approved_request_id: 'request-other'},
+    {approved_request_version: 5}, {approved_candidate_digest: 'd'.repeat(64)},
+    {approved_owner_device_id: 'phone-other'}, {approved_owner_key_id: 'owner-key-other'},
+    {approved_at: 'invalid'}, {approved_at: '2026-10-01T12:06:00Z'}, {state: 'REVOKED'},
+    {version: 0}, {binding_version: 2}, {node_public_identity: identity('node-key-other')},
+    {hub_public_identity: identity('hub-key-other')},
+    {node_public_identity: {...identity('node-key-1'), private_key: 'never accepted'}},
+    {node_public_identity: {...identity('node-key-1'), kem_public: 'not-base64'}},
+  ];
+  for (const patch of invalid) {
+    assert.equal(nodeControlKeyBindingFromConfirmRpc(confirmation(undefined, patch), parsedCandidate, status()), null,
+      JSON.stringify(patch));
+  }
+  for (const current of [status({ownerId: 'owner-other'}), status({ownerKeyId: 'owner-key-other'}),
+    status({deviceId: 'phone-other'}), status({sessionEpoch: 0}), status({hubId: 'hub-other'})]) {
+    assert.equal(nodeControlKeyBindingFromConfirmRpc(confirmation(), parsedCandidate, current), null);
+  }
+});
+
+test('upgrade confirm binds prior owner binding and incremented credential binding version', () => {
+  const upgradeRaw = candidate({mode: 'UPGRADE', binding_id: 'owner-binding-existing', binding_version: 8});
+  const parsedCandidate = nodeControlKeyCandidateFromRpc(upgradeRaw, 'hub-a', now);
+  assert.ok(parsedCandidate);
+  assert.ok(nodeControlKeyBindingFromConfirmRpc(confirmation(upgradeRaw, {
+    owner_binding_id: 'owner-binding-existing', binding_version: 9,
+  }), parsedCandidate, status()));
+  assert.equal(nodeControlKeyBindingFromConfirmRpc(confirmation(upgradeRaw, {
+    owner_binding_id: 'owner-binding-other', binding_version: 9,
+  }), parsedCandidate, status()), null);
+  assert.equal(nodeControlKeyBindingFromConfirmRpc(confirmation(upgradeRaw, {
+    owner_binding_id: 'owner-binding-existing', binding_version: 8,
+  }), parsedCandidate, status()), null);
+});
+
+test('nodes.list must contain the exact ACTIVE authorized owner binding from nodes.confirm', () => {
+  const parsedCandidate = nodeControlKeyCandidateFromRpc(candidate(), 'hub-a', now);
+  const parsedConfirm = nodeControlKeyBindingFromConfirmRpc(confirmation(), parsedCandidate, status());
+  assert.ok(parsedCandidate && parsedConfirm);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm)], parsedConfirm, status())?.id,
+    parsedConfirm.owner_binding_id);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {id: 'other-binding'})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {version: 2})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {authorized: false})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {state: 'REVOKED'})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {owner_key_id: 'owner-key-other'})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {updated_at: 'not-a-date'})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm, {private_key: 'never accepted'})], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm), listedBinding(parsedConfirm)], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([], parsedConfirm, status()), null);
+  assert.equal(nodeDeviceBindingFromList([listedBinding(parsedConfirm)], parsedConfirm,
+    status({ownerKeyId: 'owner-key-other'})), null);
+  const historical = listedBinding(parsedConfirm, {
+    id: 'old-owner-binding', state: 'REVOKED', authorized: false, version: 4,
+    revoked_at: '2026-09-30T12:00:00Z',
+  });
+  assert.equal(nodeDeviceBindingFromList([historical, listedBinding(parsedConfirm)], parsedConfirm, status())?.id,
+    parsedConfirm.owner_binding_id);
 });

@@ -56,8 +56,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.6"
-        private const val CATALOG_SHA256 = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
+        private const val CONTRACT_REVISION = "client-hub-v1.6.1"
+        private const val CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
         private const val MAX_PACKET_BYTES = 256 * 1024
@@ -1746,6 +1746,10 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 addProperty("ownerId", state.enrollment!!.ownerId)
                 addProperty("deviceId", state.enrollment!!.deviceId)
                 addProperty("sessionEpoch", state.enrollment!!.sessionEpoch)
+                state.ownerApprovalPublicIdentityJson?.let { ownerJson ->
+                    val owner = ClientWireCrypto.PublicIdentity.parse(parseObject(ownerJson, "Owner identity is invalid"))
+                    addProperty("ownerKeyId", owner.id)
+                }
             }
             if (state.role != null) addProperty("role", state.role)
             if (state.sessionError != null) addProperty("sessionError", state.sessionError)
@@ -1953,6 +1957,18 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             state.validatedContractRevision = null
             state.validatedCatalogSha256 = null
             state.sessionCapabilitiesReady = false
+        }
+        if (route.operation == "nodes.confirm" && ok) {
+            val result = body.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: throw HubSessionException("NODE_PAIRING_RESULT_INVALID", "Node confirmation omitted public binding evidence")
+            val ownerJson = state.ownerApprovalPublicIdentityJson
+                ?: throw HubSessionException("OWNER_IDENTITY_REQUIRED", "Node confirmation requires the trusted enrollment Owner identity")
+            val owner = ClientWireCrypto.PublicIdentity.parse(parseObject(ownerJson, "Owner identity is invalid"))
+            try {
+                NodeControlKeyBindingVerifier.verify(result, route.hubId, route.ownerId, route.deviceId, owner.id)
+            } catch (_: IllegalArgumentException) {
+                throw HubSessionException("NODE_PAIRING_RESULT_INVALID", "Node confirmation public keys or approval scope are invalid")
+            }
         }
         if (processMonitorResponse) applyMonitorRpcResult(state, route, pending, body, operationId, ok, uncertain)
         applyRegroupRpcResult(state, pending, body, ok, uncertain)

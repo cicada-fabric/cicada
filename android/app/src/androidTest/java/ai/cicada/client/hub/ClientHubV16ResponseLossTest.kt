@@ -12,7 +12,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
-/** Response-loss recovery against the isolated v1.6 public Hub fixture. */
+/** Response-loss recovery against the isolated v1.6.1 public Hub fixture. */
 @RunWith(AndroidJUnit4::class)
 class ClientHubV16ResponseLossTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
@@ -20,8 +20,8 @@ class ClientHubV16ResponseLossTest {
     private val profiles get() = HubProfileStore(target)
     private val args get() = InstrumentationRegistry.getArguments()
     private val runId get() = args.getString("run_id")
-        ?.takeIf { it.matches(Regex("v16-[A-Za-z0-9_-]{1,80}")) }
-        ?: error("A bounded v1.6 run_id is required")
+        ?.takeIf { it.matches(Regex("v16-deterministic-v161-[A-Za-z0-9_-]{1,80}")) }
+        ?: error("A bounded v1.6.1 run_id is required")
     private val scenario get() = args.getString("scenario")
         ?.takeIf { it in setOf("enrollment", "completed") }
         ?: error("An isolated response-loss scenario is required")
@@ -55,7 +55,7 @@ class ClientHubV16ResponseLossTest {
         catch (error: HubSessionException) { assertEquals(code, error.errorCode) } }
     private fun enrolled(scope: HubProfileStore.Scope, session: ClientHubSession) {
         val stored = state(scope)
-        assertEquals("client-hub-v1.6", text(stored, "validatedContractRevision"))
+        assertEquals("client-hub-v1.6.1", text(stored, "validatedContractRevision"))
         assertEquals(CATALOG, text(stored, "validatedCatalogSha256"))
         assertTrue(session.getStatus().get("enrolled").asBoolean)
         assertTrue(session.getStatus().get("sessionCapabilitiesReady").asBoolean)
@@ -92,7 +92,7 @@ class ClientHubV16ResponseLossTest {
             assertEquals(hash(exactRequest), hash(storedRequest))
             assertEquals(grantHash, text(preserved, "grantSha256"))
             save("enrollment-loss.redacted.json", JsonObject().apply {
-                addProperty("status", "PASS"); addProperty("contract_revision", "client-hub-v1.6")
+                addProperty("status", "PASS"); addProperty("contract_revision", "client-hub-v1.6.1")
                 addProperty("catalog_sha256", CATALOG); addProperty("request_sha256", hash(exactRequest))
                 addProperty("grant_sha256", grantHash); addProperty("profile_id_sha256", hash(scope.profileId))
                 addProperty("pending_enrollment", true); addProperty("replacement_refused", true)
@@ -114,7 +114,7 @@ class ClientHubV16ResponseLossTest {
             assertEquals(1L, session.getStatus().get("nextSequence").asLong)
             val capabilities = session.rpc("session.capabilities", JsonObject())
             assertTrue(capabilities.get("ok").asBoolean)
-            assertEquals("client-hub-v1.6", text(capabilities.getAsJsonObject("result"), "contract_revision"))
+            assertEquals("client-hub-v1.6.1", text(capabilities.getAsJsonObject("result"), "contract_revision"))
             assertEquals(CATALOG, text(capabilities.getAsJsonObject("result"), "catalog_sha256"))
             assertEquals(hash(text(read(File(directory, "setup-public.json")), "owner_id")),
                 hash(text(capabilities.getAsJsonObject("result"), "owner_id")))
@@ -153,7 +153,7 @@ class ClientHubV16ResponseLossTest {
             assertEquals(hash(exactPacket), hash(text(stillPending, "packetJson")))
             assertEquals(hash(operationId), hash(text(stillPending, "operationId")))
             save("rpc-loss.redacted.json", JsonObject().apply {
-                addProperty("status", "PASS"); addProperty("contract_revision", "client-hub-v1.6")
+                addProperty("status", "PASS"); addProperty("contract_revision", "client-hub-v1.6.1")
                 addProperty("catalog_sha256", CATALOG); addProperty("operation", "status.snapshot")
                 addProperty("operation_id_sha256", hash(operationId)); addProperty("packet_sha256", hash(exactPacket))
                 addProperty("request_sequence", sequence); addProperty("expected_response_sequence",
@@ -194,7 +194,7 @@ class ClientHubV16ResponseLossTest {
         }
     }
     companion object {
-        private const val CATALOG = "1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c"
+        private const val CATALOG = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
         private const val MAX_BYTES = 4 * 1024 * 1024
     }
 }
