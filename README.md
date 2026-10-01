@@ -15,7 +15,7 @@ The shared application is written in TypeScript and React Native. **Android is t
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
 - **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
 - **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The v1.6 collaboration-key grants remain gated. See the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md) for their separate scope.
-- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The current policy locally implements 38 of 55 operations, including bounded Directory/admission metadata reads and an explicitly confirmed one-use Monitor regroup delegation flow. Seventeen operations remain closed; the Hub remains authoritative for every write.
+- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The current policy locally implements 39 of 55 operations, including bounded Directory/admission reads, explicit one-use Monitor regroup delegation, and user-triggered Link review-policy status metadata. Sixteen operations remain closed; the Hub remains authoritative for every write. The new status slice has its own [validation record](docs/client-link-review-policy-status-v1.6.1-validation.md) and has not undergone live Hub or Android runtime acceptance.
 - **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
 - **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. A still-pending regroup operation may finish through a validated cached response; terminal authenticated `OUTCOME_UNCERTAIN` retains its original ciphertext and dedicated fence indefinitely under the current Core contract, with no later clearing route. See the [historical successor validation report](docs/client-hub-v1.6-4fb241b-management-validation.md).
 
@@ -29,7 +29,7 @@ The Endpoint attestation v1 signature input includes the final `"signature":null
 
 ## Current Hub integration target: v1.6.1
 
-The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, Client-Control v1.6.1, wire 1. The verified public snapshot and exact artifact-level results are recorded in the [v1.6.1 validation report](docs/client-hub-v1.6.1-fe565b4-validation.md). Its 55-operation catalog preserves the local 38-operation policy and 17 closed operations.
+The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, Client-Control v1.6.1, wire 1. The verified public snapshot and exact artifact-level results are recorded in the [v1.6.1 validation report](docs/client-hub-v1.6.1-fe565b4-validation.md). Its 55-operation catalog is unchanged. The current local policy implements 39 operations and keeps 16 closed; the new status-only implementation is recorded separately from the prior 38-operation APKs.
 
 | Item | Fixed value |
 |---|---|
@@ -41,9 +41,15 @@ The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c52
 | Local Hub Docker image ID | `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589` |
 | Local interop image ID | `sha256:a6a88de73b1c8c00b38fafb4e9236c404b52b06165527a0b4e097c0f17f3a6be` |
 
-The final offline checkpoint passed the Docker build, 59 JavaScript tests, TypeScript, ESLint, 74 Kotlin tests and five UI checks. The owned emulator was cleaned; six resident containers were unchanged.
+The prior `d580975` offline checkpoint passed the Docker build, 59 JavaScript tests, TypeScript, ESLint, 74 Kotlin tests and five UI checks. The owned emulator was cleaned; six resident containers were unchanged.
 
 Node confirmation now validates the complete `NodeControlKeyBinding` public keys and exact approval scope, then correlates the separate `NodeDeviceBinding` list projection. These checks preserve independent pin review and explicit user confirmation. Core image tests are a separate layer from Android acceptance. Current live Hub, native runtime, physical Android and public HTTPS results remain unaccepted; older APK or Hub-version results do not transfer. The [4fb241b management report](docs/client-hub-v1.6-4fb241b-management-validation.md) remains historical evidence.
+
+## Latest bounded implementation
+
+The [Link review policy status checkpoint](docs/client-link-review-policy-status-v1.6.1-validation.md) adds one read-only metadata view using a fresh encrypted Link list and exact Link ID/version. Default NONE with `current=true` is unconfigured, not approval by both Owners. This flow does not sign proofs, change policies, grant keys or enable messages. Its new checks and APKs are separately attributed; the prior offline and live results do not transfer.
+
+This checkpoint passed 67 JavaScript tests, five independent Kotlin host-JVM tests, 11 contract-checker regressions, TypeScript, lint and both Debug APK builds in offline Docker containers; all exits were 0. Encrypted Hub and Android runtime acceptance for this new operation remain **NOT_RUN**, awaiting a fresh clean Core candidate.
 
 ## Historical acceptance
 

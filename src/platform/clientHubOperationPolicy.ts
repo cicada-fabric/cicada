@@ -5,6 +5,7 @@ export const IMPLEMENTED_CLIENT_RPC_OPERATIONS = [
   'nodes.preview', 'nodes.confirm', 'nodes.list', 'nodes.revoke',
   'approvals.list', 'approvals.decide', 'intent.get', 'intent.status', 'intent.list', 'intent.submit',
   'link.list', 'link.invite_create', 'link.invite_preview', 'link.invite_accept',
+  'link.review_policy_status',
   'group.key_manifest', 'group.key_grant', 'group.key_status',
   'network.key_manifest', 'network.key_grant', 'network.key_status',
   'network.directory', 'topology.endpoint_admission_preview',
@@ -28,7 +29,7 @@ export const DEFERRED_V16_RPC_OPERATIONS = [
   'space.foreign_endpoint_preview',
   'network.collaboration_key_manifest', 'network.collaboration_key_grant',
   'network.collaboration_key_status',
-  'link.review_policy_preview', 'link.review_policy_grant', 'link.review_policy_status',
+  'link.review_policy_preview', 'link.review_policy_grant',
 ] as const;
 
 export type ImplementedClientRpcOperation = typeof IMPLEMENTED_CLIENT_RPC_OPERATIONS[number];

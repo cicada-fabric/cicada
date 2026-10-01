@@ -29,13 +29,15 @@ oracle.CONTRACT_REVISION = 'client-hub-v1.6.1'
 oracle.CATALOG_SHA256 = '6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b'
 oracle.CORE_REVISION = 'fe565b41bb1aa86d400a0ec98c528c856d0b9579'
 regroup = {'topology.regroup_proposal', 'topology.delegation_issue', 'topology.delegation_revoke'}
-oracle.LOCAL_IMPLEMENTED |= regroup | {'network.directory', 'topology.endpoint_admission_preview'}
+oracle.LOCAL_IMPLEMENTED |= regroup | {
+    'network.directory', 'topology.endpoint_admission_preview', 'link.review_policy_status',
+}
 oracle.DEFERRED_CONSENT = (oracle.DEFERRED_CONSENT - regroup) | {
     'space.foreign_endpoint_preview', 'network.collaboration_key_manifest',
     'network.collaboration_key_grant', 'network.collaboration_key_status',
-    'link.review_policy_manifest', 'link.review_policy_grant', 'link.review_policy_status',
+    'link.review_policy_preview', 'link.review_policy_grant',
 }
-oracle.EXPECTED_COUNTS = (38, 38, 30)
+oracle.EXPECTED_COUNTS = (39, 39, 31)
 oracle.SCHEMA = 'cicada.client-v161-role-oracle.v1'
 oracle.load_runner = lambda: runner
 

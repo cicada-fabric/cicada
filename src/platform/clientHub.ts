@@ -75,6 +75,7 @@ export type ClientHubGenericRpcOperation = Exclude<ClientRpcOperation,
   DeferredClientConsentOperation | DeferredV16RpcOperation | MonitorBroadcastRpcOperation |
   'network.key_manifest' | 'network.key_grant' | 'network.key_status' |
   'topology.regroup_proposal' | 'topology.delegation_issue' | 'topology.delegation_revoke' |
+  'link.review_policy_status' |
   typeof UNVERIFIED_LINK_KEY_OPERATIONS[number]>;
 
 // Link key consent remains unavailable until its separate contract is verified.
@@ -277,6 +278,7 @@ export interface ClientHubNativeBridge {
     body: Record<string, unknown>;
     operationId?: string;
   }): Promise<unknown>;
+  linkReviewPolicyStatus?(input: {linkId: string; expectedLinkVersion: number}): Promise<unknown>;
   recoverPending(): Promise<unknown>;
   retryPendingExact(): Promise<unknown>;
   previewRegroupDelegation(input: {proposalId: string}): Promise<{reviewId: string; proposal: RegroupProposal}>;
@@ -307,7 +309,7 @@ export interface ClientHubNativeBridge {
 }
 
 export interface ClientHubApi extends Omit<ClientHubNativeBridge,
-  'getStatus' | 'getGroupKeyStatus' | 'rpc' | 'getMonitorBroadcastOperations' |
+  'getStatus' | 'getGroupKeyStatus' | 'rpc' | 'linkReviewPolicyStatus' | 'getMonitorBroadcastOperations' |
   'getNetworkKeyStatus' |
   'monitorBroadcastPrepare' | 'monitorBroadcastRecover' |
   'monitorBroadcastBodyMatches' |
@@ -322,7 +324,9 @@ export interface ClientHubApi extends Omit<ClientHubNativeBridge,
   readonly monitorBroadcastReady: boolean;
   readonly networkKeyConsentReady: boolean;
   readonly regroupDelegationReady: boolean;
+  readonly linkReviewPolicyStatusReady: boolean;
   readonly scope: HubProfileScope;
+  linkReviewPolicyStatus(input: {linkId: string; expectedLinkVersion: number}): Promise<unknown>;
   networkKeyStatus(input: {networkId: string; endpointId: string}): Promise<NetworkKeyResponse>;
   getMonitorBroadcastOperations(): Promise<{operations: MonitorBroadcastOperation[]}>;
   monitorBroadcastPrepare(input: {operationId?: string; groupId: string;
@@ -353,6 +357,7 @@ export const clientHubBridgeReadiness = Object.freeze({
   networkKeyConsentReady: ['previewNetworkKey', 'previewNetworkKeyGrant',
     'grantNetworkKey', 'getNetworkKeyStatus'].every(name => rawNative &&
       typeof rawNative[name as keyof ClientHubNativeBridge] === 'function'),
+  linkReviewPolicyStatusReady: typeof rawNative?.linkReviewPolicyStatus === 'function',
 });
 
 /** Each facade captures its selection. Old callbacks cannot target a newly selected Hub or Network. */
@@ -363,7 +368,7 @@ function bindNativeProfile(scope: HubProfileScope): ClientHubNativeBridge | unde
     'startNewDeviceEnrollment', 'enroll', 'recoverEnrollment', 'rpc',
     'recoverPending', 'retryPendingExact', 'previewGroupKey', 'grantGroupKey',
     'getGroupKeyStatus', 'previewNetworkKey', 'previewNetworkKeyGrant',
-    'grantNetworkKey', 'getNetworkKeyStatus', 'getMonitorBroadcastOperations',
+    'grantNetworkKey', 'getNetworkKeyStatus', 'linkReviewPolicyStatus', 'getMonitorBroadcastOperations',
     'monitorBroadcastPrepare', 'monitorBroadcastRecover', 'monitorBroadcastBodyMatches',
     'monitorBroadcastConfirm', 'monitorBroadcastStatus',
     'previewRegroupDelegation', 'issueRegroupDelegation', 'revokeRegroupDelegation',
@@ -431,6 +436,7 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
   return Platform.OS === 'android' && native ? {
   scope,
   networkKeyConsentReady: clientHubBridgeReadiness.networkKeyConsentReady,
+  linkReviewPolicyStatusReady: typeof native.linkReviewPolicyStatus === 'function',
   regroupDelegationReady: ['previewRegroupDelegation', 'issueRegroupDelegation', 'revokeRegroupDelegation']
     .every(name => typeof native[name as keyof ClientHubNativeBridge] === 'function'),
   monitorBroadcastReady: Boolean(native.getMonitorBroadcastOperations &&
@@ -452,11 +458,16 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
     return native.rpc({operation: 'goal.result', body: {intent_id: input.intent_id}}) as Promise<ClientGoalResult>;
   },
   rpc: input => {
+    if ((input.operation as ClientRpcOperation) === 'link.review_policy_status') {
+      return Promise.reject(new Error('VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED'));
+    }
     if (!isImplementedClientRpcOperation(input.operation)) {
       return Promise.reject(new Error('CLIENT_CONSENT_FLOW_UNAVAILABLE'));
     }
     return native.rpc(input);
   },
+  linkReviewPolicyStatus: input => typeof native.linkReviewPolicyStatus === 'function' ?
+    native.linkReviewPolicyStatus(input) : unavailable(),
   recoverPending: () => native.recoverPending(),
   retryPendingExact: () => native.retryPendingExact(),
   previewRegroupDelegation: input => typeof native.previewRegroupDelegation === 'function' ? native.previewRegroupDelegation(input) : unavailable(),
@@ -506,6 +517,7 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
 } : {
   scope,
   networkKeyConsentReady: false,
+  linkReviewPolicyStatusReady: false,
   regroupDelegationReady: false,
   monitorBroadcastReady: false,
   getStatus: async () => unavailableStatus,
@@ -517,6 +529,7 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
   recoverEnrollment: () => unavailable(),
   goalResult: () => unavailable(),
   rpc: () => unavailable(),
+  linkReviewPolicyStatus: () => unavailable(),
   recoverPending: () => unavailable(),
   retryPendingExact: () => unavailable(),
   previewRegroupDelegation: () => unavailable(),

@@ -17,6 +17,7 @@ import {NetworkDiscoveryPanel} from './src/components/NetworkDiscoveryPanel';
 import {RegroupDelegationPanel} from './src/components/RegroupDelegationPanel';
 import {NodePairingPanel} from './src/components/NodePairingPanel';
 import {SharedSpaceConsentPanel} from './src/components/SharedSpaceConsentPanel';
+import {LinkReviewPolicyStatusPanel} from './src/components/LinkReviewPolicyStatusPanel';
 import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
 import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
 import {speechEventBelongsToSession} from './src/platform/hubProfileScope';
@@ -24,7 +25,7 @@ import type {
   ClientGoalArtifactReference, ClientGoalResult, ClientGoalResultWorker,
   ClientHubGenericRpcOperation,
   ClientHubCandidate, ClientHubCapabilities, ClientHubSessionCapabilities,
-  ClientHubStatus, ClientRpcOperation,
+  ClientHubStatus, ClientRpcOperation, HubProfileScope,
 } from './src/platform/clientHub';
 import {
   MONITOR_BROADCAST_BODY_MAX_BYTES, MONITOR_BROADCAST_MAX_RECIPIENTS,
@@ -2664,7 +2665,10 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
         {hubCapabilities?.external_link_invites === true &&
           operationAllowed(hubStatus, 'link.list') && <LinkProposalPanel
             key={`${hubStatus.hubId || ''}/${hubStatus.ownerId || ''}/${hubStatus.deviceId || ''}/${hubStatus.sessionEpoch || ''}`}
-            status={hubStatus} capabilities={hubCapabilities} request={rpc}
+            status={hubStatus} capabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
+            apiScope={clientHub.scope} getCurrentStatus={() => clientHub.getStatus()}
+            linkReviewPolicyStatusReady={clientHub.linkReviewPolicyStatusReady}
+            readLinkReviewPolicyStatus={input => clientHub.linkReviewPolicyStatus(input)} request={rpc}
             recoveredInvite={recoveredInvite}
             clearRecoveredInvite={() => setRecoveredInvite(null)} />}
       </>}
@@ -2924,9 +2928,15 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
 type LinkListEntry = {link: JsonObject; my_side: string};
 
 /** Proposal metadata only. The token is never persisted, logged, or sent outside sealed RPC. */
-function LinkProposalPanel({status, capabilities, request, recoveredInvite, clearRecoveredInvite}: {
+function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope, getCurrentStatus,
+  linkReviewPolicyStatusReady, readLinkReviewPolicyStatus, request, recoveredInvite, clearRecoveredInvite}: {
   status: ClientHubStatus;
   capabilities: ClientHubCapabilities;
+  sessionCapabilities: ClientHubSessionCapabilities | null;
+  apiScope: HubProfileScope;
+  getCurrentStatus: () => Promise<ClientHubStatus>;
+  linkReviewPolicyStatusReady: boolean;
+  readLinkReviewPolicyStatus: (input: {linkId: string; expectedLinkVersion: number}) => Promise<unknown>;
   request: (operation: ClientHubGenericRpcOperation, body: Record<string, unknown>) => Promise<unknown>;
   recoveredInvite: JsonObject | null;
   clearRecoveredInvite: () => void;
@@ -2936,6 +2946,7 @@ function LinkProposalPanel({status, capabilities, request, recoveredInvite, clea
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [listError, setListError] = useState(false);
+  const [linkListGeneration, setLinkListGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [sourceEndpointId, setSourceEndpointId] = useState('');
@@ -2966,6 +2977,9 @@ function LinkProposalPanel({status, capabilities, request, recoveredInvite, clea
 
   const readLinks = async (nextCursor = '') => {
     if (!allowed('link.list')) return false;
+    setLinkListGeneration(generation => generation + 1);
+    setListError(true);
+    if (!nextCursor) { setLinks([]); setLoaded(false); }
     setBusy(true);
     setMessage('正在通过加密会话读取本人 Link 提案…');
     try {
@@ -3110,6 +3124,13 @@ function LinkProposalPanel({status, capabilities, request, recoveredInvite, clea
         <Text style={s.description}>{field(link, 'source_endpoint_id')} / {field(link, 'source_group_id')} → {field(link, 'target_endpoint_id')} / {field(link, 'target_group_id')}</Text>
         <Text style={s.small}>我的方向：{item.my_side || '未知'} · 动作：{(Array.isArray(link.actions) ? link.actions : []).join(', ')} · 范围：{(Array.isArray(link.data_scopes) ? link.data_scopes : []).join(', ')}</Text>
         <Text style={s.small}>到期：{field(link, 'expires_at')} · Hub 版本 v{field(link, 'version')} · 来源：加密 link.list</Text>
+        {!listError && Number.isSafeInteger(version) && version > 0 &&
+          <LinkReviewPolicyStatusPanel key={`${field(link, 'link_id')}/${linkListGeneration}`}
+            status={status} publicCapabilities={capabilities} sessionCapabilities={sessionCapabilities}
+            apiScope={apiScope} linkId={field(link, 'link_id')} linkVersion={version}
+            listGeneration={linkListGeneration}
+            linkReviewPolicyStatusReady={linkReviewPolicyStatusReady}
+            readStatus={readLinkReviewPolicyStatus} getCurrentStatus={getCurrentStatus} />}
         {field(link, 'state') === 'PROPOSED' && !listError &&
           Number.isSafeInteger(version) && version > 0 && allowed('topology.apply') &&
           <View style={s.modelActions}><Button title="撤销提案" secondary disabled={busy}

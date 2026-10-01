@@ -22,9 +22,9 @@ test('local operation policy accounts for every operation in the independently i
   assert.equal(expected.length, 55);
   assert.equal(new Set(actual).size, 55);
   assert.deepEqual(actual, expected);
-  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 38);
+  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 39);
   assert.equal(DEFERRED_CLIENT_CONSENT_OPERATIONS.length, 7);
-  assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 7);
+  assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 6);
 });
 
 test('advertised permission never enables unimplemented consent, delegation or link key flows', () => {
@@ -45,6 +45,29 @@ test('a locally implemented operation still requires its encrypted session permi
     'topology.snapshot'), false);
 });
 
+test('link review-policy status is a read gated by its exact current encrypted session capability', () => {
+  const operation = 'link.review_policy_status';
+  assert.equal(isImplementedClientRpcOperation(operation), true);
+  assert.equal(DEFERRED_V16_RPC_OPERATIONS.includes(operation), false);
+  assert.equal(clientHubOperationAllowed(session(), operation), true);
+
+  // A locally supported read does not infer permission when session.capabilities omits it.
+  assert.equal(clientHubOperationAllowed({...session(), allowedOperations: []}, operation), false);
+  assert.equal(clientHubOperationAllowed({...session(), sessionCapabilitiesReady: false}, operation), false);
+
+  for (const fence of [
+    {nativeAvailable: false}, {authFenced: true}, {recoveryBlocked: true},
+    {pendingOperationId: 'original-operation'},
+  ]) {
+    assert.equal(clientHubOperationAllowed({...session(), ...fence}, operation), false,
+      JSON.stringify(fence));
+  }
+
+  // Read-only status remains available for reconciliation after an uncertain outcome.
+  assert.equal(clientHubOperationAllowed({...session(), uncertainNeedsReconciliation: true},
+    operation), true);
+});
+
 test('pending packets and authentication or recovery fences refuse every new operation', () => {
   for (const fence of [
     {nativeAvailable: false}, {remoteEnabled: false}, {sessionCapabilitiesReady: false},
@@ -58,7 +81,8 @@ test('pending packets and authentication or recovery fences refuse every new ope
 
 test('OUTCOME_UNCERTAIN permits authoritative reads and refuses management mutations', () => {
   const state = {...session(), uncertainNeedsReconciliation: true};
-  for (const op of ['status.snapshot', 'topology.snapshot', 'intent.status', 'goal.result']) {
+  for (const op of ['status.snapshot', 'topology.snapshot', 'intent.status', 'goal.result',
+    'link.review_policy_status']) {
     assert.equal(clientHubOperationAllowed(state, op), true, op);
   }
   for (const op of ['topology.apply', 'intent.submit', 'approvals.decide', 'network.key_grant',

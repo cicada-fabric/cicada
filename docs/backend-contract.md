@@ -1,11 +1,22 @@
-# Client ↔ Hub contract: `client-hub-v1.6`
+# Client ↔ Hub contract: `client-hub-v1.6.1`
+
+## Current bounded slice — Link review policy status
+
+Only `link.review_policy_status` is added to the local implementation set. It reads one exact Link from encrypted `link.list` through a dedicated, scope-bound native path. The policy now accounts for **39 implemented and 16 closed operations** out of 55. This is an implementation count, not live acceptance. The existing v1.6.1 contract and image pins are unchanged.
+
+The view reports Hub metadata only. Default NONE with policy version 0, empty digest/sides and `current=true` is explicitly unconfigured. It does not establish Owner signature verification, bilateral approval, reviewer decisions, Link activation or message permission. Original-packet recovery and all uncertain-write fences remain in force. No private Owner key, signer, policy write or key Grant is added.
+
+See the [dedicated validation record](client-link-review-policy-status-v1.6.1-validation.md) for the new source/artifact attribution and offline checks. New encrypted Hub, Android runtime, Node, model, physical-device and public HTTPS acceptance remain **NOT_RUN**. A live gate awaits the final clean Core candidate. Historical evidence below keeps its original commits and APKs.
+
+Offline verification is **PASS**: 67 JavaScript tests, five pure Kotlin tests, 11 checker regressions, type/lint checks, public-contract role intersections and both APK builds, all exit 0. The synthetic Session recovery cases are compiled only and remain **NOT_RUN**.
+
 
 **Provenance supplement:** independent retrospective reconstruction now reproduces the immutable v4 fingerprint from all 773 pinned inputs, exit 0. Original build-time per-file mode capture remains **NOT_PROVIDED**. The earlier BLOCKED record is preserved; current live acceptance stays unrun. See the [separate supplement](client-hub-v1.6.1-fe565b4-provenance-supplement.md).
 
 **Prior checkpoint provenance gate: BLOCKED.** At milestone `d580975`, the archive and pinned Git blobs matched, but the raw-permission fingerprint was not yet independently reproducible. That original result remains preserved; the supplement above records the later retrospective match. No live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md).
 
 
-## Active checkpoint — Client-Control v1.6.1
+## Prior checkpoint — Client-Control v1.6.1
 
 The final corrected checkpoint passed the pinned offline build, 59 JavaScript tests, TypeScript, ESLint (22 warnings, no errors), 74 Kotlin tests across 14 selectors, and five offline UI checks; every gate exited 0. App/test APK SHA-256 values are `6262d427f3c99c3e7de217bada71d8615da52c1166f59d077b4886a5e1576816` and `abbb764d459c60f8f31a7e92e22455754c804fdba48e7d99885bd2d53d552dec`; compiled source FP is `0b89a85d5c332faffb980851501c474942f28c1b047562e0daa547f27a32d7f0` over 112 files. The owned emulator was removed and six resident containers were unchanged. These are local checks, not live Hub or native Monitor acceptance. The full Client commit is recorded in `/gpu1-share/data/cicada-client/v161-fe565b4-20261001/provenance/client-delivery.redacted.json` after the milestone commit.
 
@@ -13,7 +24,7 @@ The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c52
 
 No new Hub, Node or model runtime is started in this checkpoint. Current encrypted runtime capabilities, native Endpoint/Monitor acceptance, physical Android and public HTTPS remain unaccepted. The 38-operation local policy and 17 closed operations are retained; no advertisement or synthetic proof authorizes a closed operation. Terminal regroup `OUTCOME_UNCERTAIN` retains its exact ciphertext/counters and dedicated fence.
 
-## Current v1.6 — Contract implementation and authorization
+## Historical v1.6 — Contract implementation and authorization
 
 **Target:** clean Hub successor `4fb241b5e824eb752ceb85586089f44c408e1e7e`, `client-hub-v1.6`, wire 1, 55 catalog operations. The current imported bundle, catalog, source fingerprint and image pins are in the [4fb241b management validation record](client-hub-v1.6-4fb241b-management-validation.md). The prior [f4e4725 v1.6 validation](client-hub-v1.6-f4e4725-validation.md) is historical and remains attributed to its own bundle, source and images. The local Hub and interop IDs are immutable Docker image IDs, not published registry releases.
 

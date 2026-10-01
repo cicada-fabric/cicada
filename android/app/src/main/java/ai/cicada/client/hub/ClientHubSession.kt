@@ -63,6 +63,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         private const val MAX_PACKET_BYTES = 256 * 1024
         private const val MAX_RESPONSE_BYTES = 256 * 1024
         private const val MAX_METADATA_BYTES = 256 * 1024
+        private const val LINK_STATUS_LIST_LIMIT = 100
+        private const val MAX_LINK_STATUS_LIST_PAGES = 64
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
         internal val PROCESS_LOCK = ReentrantLock()
@@ -87,7 +89,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "topology.snapshot", "topology.apply", "devices.list", "devices.revoke",
             "nodes.preview", "nodes.confirm", "nodes.list", "nodes.revoke",
             "approvals.list", "approvals.decide", "goal.result", "intent.get", "intent.status",
-            "intent.list", "intent.submit", "link.list", "link.invite_create", "link.invite_preview",
+            "intent.list", "intent.submit", "link.list", "link.review_policy_status", "link.invite_create", "link.invite_preview",
             "link.invite_accept", "group.key_manifest", "group.key_grant", "group.key_status",
             "network.key_manifest", "network.key_grant", "network.key_status",
             "network.directory", "topology.endpoint_admission_preview",
@@ -103,7 +105,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "space.key_admission_v2", "space.key_status_v2",
             "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
             "network.collaboration_key_grant", "network.collaboration_key_status",
-            "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
+            "link.review_policy_preview", "link.review_policy_grant",
         )
         private val MUTATING_RPC_OPERATIONS = setOf(
             "goal.lifecycle", "topology.apply", "devices.revoke", "nodes.confirm",
@@ -207,6 +209,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         var regroupUncertainPending: Pending? = null,
         var regroupWriteContext: JsonObject? = null,
         var pending: Pending? = null,
+        var linkReviewStatusReadContext: LinkReviewStatusReadContext? = null,
         var enrollmentAttempt: EnrollmentAttempt? = null,
         var monitorOperations: MutableMap<String, MonitorOperation> = linkedMapOf(),
         var retiredMonitorOperationIds: MutableSet<String> = linkedSetOf(),
@@ -231,6 +234,19 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         val networkId: String,
         val expiresAt: Instant,
         val proposal: JsonObject,
+    )
+
+    /** Public metadata needed to validate the exact original status response, including recovery. */
+    private data class LinkReviewStatusReadContext(
+        val linkId: String,
+        val linkVersion: Long,
+        val mySide: String,
+        val hubId: String,
+        val ownerId: String,
+        val deviceId: String,
+        val sessionEpoch: Long,
+        val operationId: String,
+        val sequence: Long,
     )
 
     /** Fetches public metadata only. This method never establishes or changes trust. */
@@ -535,6 +551,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
 
     /** Starts one encrypted RPC after persisting sequence and exact request bytes. */
     fun rpc(operation: String, body: JsonObject, operationId: String? = null): JsonObject = PROCESS_LOCK.withLock {
+        if (operation == "link.review_policy_status") {
+            throw HubSessionException("VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED", "Use the fresh owner-scoped Link policy status read flow")
+        }
         if (operation in setOf("topology.regroup_proposal", "topology.delegation_issue", "topology.delegation_revoke")) {
             throw HubSessionException("VERIFIED_REGROUP_FLOW_REQUIRED", "Use the scope-bound Owner delegation review flow")
         }
@@ -1233,6 +1252,105 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
+    /** Reads the current metadata-only Link policy after a fresh authenticated Owner list check. */
+    fun linkReviewPolicyStatus(linkId: String, expectedLinkVersion: Long): JsonObject = PROCESS_LOCK.withLock {
+        val selector = try {
+            LinkReviewPolicyStatusValidation.validateLinkId(linkId)
+        } catch (_: LinkReviewPolicyStatusValidationException) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Link policy status selector is invalid")
+        }
+        try {
+            LinkReviewPolicyStatusValidation.validateExpectedLinkVersion(expectedLinkVersion)
+        } catch (_: LinkReviewPolicyStatusValidationException) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Link policy status version is invalid")
+        }
+
+        val state = readState()
+        requireReadyForRpc(state)
+        if (state.pending != null || state.linkReviewStatusReadContext != null) {
+            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact pending encrypted request before reading Link policy status")
+        }
+        if (state.recoveryBlocked) {
+            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Resolve the existing encrypted recovery fence before reading Link policy status")
+        }
+        if (!state.sessionCapabilitiesReady || state.role !in setOf("manager", "external")) {
+            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "First read current encrypted Owner session capabilities")
+        }
+        validateOperation(state, "link.list")
+        validateOperation(state, "link.review_policy_status")
+
+        val selection = freshOwnerLinkSelection(state, selector)
+        if (selection.linkVersion != expectedLinkVersion) {
+            throw HubSessionException("LINK_REVIEW_LINK_STALE", "Selected Link changed; refresh the Link list before reading its policy status")
+        }
+        val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Hub pin is missing")
+        val enrollment = state.enrollment ?: throw HubSessionException("DEVICE_NOT_ENROLLED", "Device enrollment is missing")
+        val response = createAndSend(
+            state,
+            "link.review_policy_status",
+            JsonObject().apply { addProperty("link_id", selection.linkId) },
+            beforePersist = { operationId, sequence, requestBody ->
+                requireExactBodyFields(requestBody, setOf("link_id"), setOf("link_id"))
+                if (optionalString(requestBody, "link_id") != selection.linkId || state.pending?.operation != "link.review_policy_status") {
+                    throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Link status request differs from its authenticated selection")
+                }
+                state.linkReviewStatusReadContext = LinkReviewStatusReadContext(
+                    selection.linkId,
+                    selection.linkVersion,
+                    selection.mySide,
+                    pin.hubId,
+                    enrollment.ownerId,
+                    enrollment.deviceId,
+                    enrollment.sessionEpoch,
+                    operationId,
+                    sequence,
+                )
+            },
+        )
+        if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true) {
+            throw HubSessionException("LINK_REVIEW_STATUS_UNAVAILABLE", "Hub did not return the requested Link policy status")
+        }
+        response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject?.deepCopy()
+            ?: throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Hub returned no Link policy status DTO")
+    }
+
+    private fun freshOwnerLinkSelection(state: State, linkId: String): LinkReviewPolicySelection {
+        val seenCursors = HashSet<String>()
+        val seenLinkIds = HashSet<String>()
+        var cursor: String? = null
+        repeat(MAX_LINK_STATUS_LIST_PAGES) {
+            val request = JsonObject().apply {
+                addProperty("limit", LINK_STATUS_LIST_LIMIT)
+                cursor?.let { addProperty("cursor", it) }
+            }
+            val response = createAndSend(state, "link.list", request)
+            if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true) {
+                throw HubSessionException("LINK_REVIEW_LIST_UNAVAILABLE", "Hub did not return the current Owner Link list")
+            }
+            val result = response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: throw HubSessionException("LINK_REVIEW_LIST_INVALID", "Hub returned no Link list page")
+            val page = try {
+                LinkReviewPolicyStatusValidation.parseLinkListPage(result)
+            } catch (_: LinkReviewPolicyStatusValidationException) {
+                throw HubSessionException("LINK_REVIEW_LIST_INVALID", "Hub returned an invalid or unbounded Owner Link list page")
+            }
+            for (item in page.links) {
+                if (!seenLinkIds.add(item.linkId)) {
+                    throw HubSessionException("LINK_REVIEW_LIST_INVALID", "Hub repeated a Link while paging the Owner list")
+                }
+                if (item.linkId == linkId) return item
+            }
+            if (!page.hasMore) {
+                throw HubSessionException("LINK_REVIEW_LINK_UNAVAILABLE", "Selected Link is not present in the authenticated Owner list")
+            }
+            if (!seenCursors.add(page.cursor)) {
+                throw HubSessionException("LINK_REVIEW_LIST_INVALID", "Hub repeated a Link list cursor")
+            }
+            cursor = page.cursor
+        }
+        throw HubSessionException("LINK_REVIEW_LIST_TOO_LARGE", "Owner Link list exceeded the bounded page limit")
+    }
+
     /** Reads only the authenticated Owner's bounded, explicitly opted-in Network directory. */
     private fun networkDirectoryRead(state: State, body: JsonObject, operationId: String?): JsonObject {
         requireExactBodyFields(body, setOf("network_id", "after_endpoint_id", "limit"), setOf("network_id"))
@@ -1874,6 +1992,32 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
+    private fun validateLinkReviewStatusContext(
+        context: LinkReviewStatusReadContext,
+        state: State,
+        pending: Pending,
+        route: ClientWireCrypto.Route,
+    ) {
+        val enrollment = state.enrollment
+        val pin = state.pin
+        try {
+            LinkReviewPolicyStatusValidation.validateLinkId(context.linkId)
+            LinkReviewPolicyStatusValidation.validateExpectedLinkVersion(context.linkVersion)
+        } catch (_: LinkReviewPolicyStatusValidationException) {
+            throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status selection is malformed")
+        }
+        if (pending.operation != "link.review_policy_status" || route.operation != pending.operation ||
+            context.operationId != pending.operationId || context.operationId != route.operationId ||
+            context.sequence != pending.sequence || context.sequence != route.sequence ||
+            context.mySide !in setOf("SOURCE", "TARGET") ||
+            context.hubId != route.hubId || pin?.hubId != route.hubId ||
+            context.ownerId != route.ownerId || enrollment?.ownerId != route.ownerId ||
+            context.deviceId != route.deviceId || enrollment?.deviceId != route.deviceId ||
+            context.sessionEpoch != route.sessionEpoch || enrollment?.sessionEpoch != route.sessionEpoch) {
+            throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status route no longer matches its selected Hub, Owner, device and Link")
+        }
+    }
+
     private fun finishResponse(
         state: State,
         device: ClientWireCrypto.Identity,
@@ -1911,6 +2055,22 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             if (ok || optionalString(recovery, "state") != "UNCERTAIN" ||
                 longValue(recovery, "request_sequence") != pending.sequence) {
                 throw HubSessionException("INVALID_ENCRYPTED_RESPONSE", "Uncertain response does not match original request")
+            }
+        }
+
+        if (route.operation == "link.review_policy_status") {
+            val context = state.linkReviewStatusReadContext
+                ?: throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status selection is missing")
+            validateLinkReviewStatusContext(context, state, pending, route)
+            if (ok) {
+                val result = body.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Encrypted Link status response omitted its result")
+                try {
+                    LinkReviewPolicyStatusValidation.validateStatus(result, context.linkId, context.linkVersion)
+                } catch (error: LinkReviewPolicyStatusValidationException) {
+                    val code = if (error.code == "LINK_REVIEW_STATUS_SCOPE_MISMATCH") error.code else "LINK_REVIEW_STATUS_INVALID"
+                    throw HubSessionException(code, "Encrypted Link policy status is malformed or differs from the selected Link version")
+                }
             }
         }
 
@@ -1972,6 +2132,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         if (processMonitorResponse) applyMonitorRpcResult(state, route, pending, body, operationId, ok, uncertain)
         applyRegroupRpcResult(state, pending, body, ok, uncertain)
+        if (route.operation == "link.review_policy_status") state.linkReviewStatusReadContext = null
         state.lastResponseSequence = opened.route.sequence
         state.pending = null
         state.recoveryBlocked = false
@@ -2942,6 +3103,43 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 optionalString(value, "monitorOperationId"),
             )
         }
+        if (json.has("linkReviewStatusReadContext")) {
+            try {
+                val value = json.get("linkReviewStatusReadContext")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: throw IllegalArgumentException("Link status context is not an object")
+                requireExactObjectFields(value,
+                    setOf("link_id", "link_version", "my_side", "hub_id", "owner_id", "device_id", "session_epoch", "operation_id", "sequence"),
+                    setOf("link_id", "link_version", "my_side", "hub_id", "owner_id", "device_id", "session_epoch", "operation_id", "sequence"))
+                val context = LinkReviewStatusReadContext(
+                    LinkReviewPolicyStatusValidation.validateLinkId(requiredString(value, "link_id")),
+                    longValue(value, "link_version"),
+                    requiredString(value, "my_side"),
+                    requiredString(value, "hub_id"),
+                    requiredString(value, "owner_id"),
+                    requiredString(value, "device_id"),
+                    longValue(value, "session_epoch"),
+                    requiredString(value, "operation_id"),
+                    longValue(value, "sequence"),
+                )
+                val pending = state.pending ?: throw IllegalArgumentException("Link status context has no pending packet")
+                require(context.hubId.length <= 256 && context.ownerId.length <= 256 && context.deviceId.length <= 256 &&
+                    context.operationId.length <= 256)
+                LinkReviewPolicyStatusValidation.validateExpectedLinkVersion(context.linkVersion)
+                require(context.mySide in setOf("SOURCE", "TARGET") &&
+                    context.hubId.isNotBlank() && context.ownerId.isNotBlank() && context.deviceId.isNotBlank() &&
+                    context.sessionEpoch > 0L && context.operationId.isNotBlank() && context.sequence > 0L &&
+                    pending.operation == "link.review_policy_status" && pending.operationId == context.operationId &&
+                    pending.sequence == context.sequence && state.pin?.hubId == context.hubId &&
+                    state.enrollment?.ownerId == context.ownerId && state.enrollment?.deviceId == context.deviceId &&
+                    state.enrollment?.sessionEpoch == context.sessionEpoch)
+                state.linkReviewStatusReadContext = context
+            } catch (_: Exception) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Link policy status recovery context is invalid")
+            }
+        }
+        if (state.pending?.operation == "link.review_policy_status" && state.linkReviewStatusReadContext == null) {
+            throw HubSessionException("SESSION_STORAGE_INVALID", "Original Link policy status packet has no saved selection context")
+        }
         state.enrollmentAttempt = json.getAsJsonObject("enrollmentAttempt")?.let { value ->
             EnrollmentAttempt(
                 requiredString(value, "ownerId"),
@@ -3095,6 +3293,32 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 addProperty("packetJson", pending.packetJson)
                 pending.monitorOperationId?.let { addProperty("monitorOperationId", it) }
             })
+        }
+        state.linkReviewStatusReadContext?.let { context ->
+            val pending = state.pending
+            if (pending == null || pending.operation != "link.review_policy_status" ||
+                pending.operationId != context.operationId || pending.sequence != context.sequence) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Link policy status context has no exact original packet")
+            }
+            LinkReviewPolicyStatusValidation.validateLinkId(context.linkId)
+            LinkReviewPolicyStatusValidation.validateExpectedLinkVersion(context.linkVersion)
+            if (context.mySide !in setOf("SOURCE", "TARGET")) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Link policy status Owner side is invalid")
+            }
+            json.add("linkReviewStatusReadContext", JsonObject().apply {
+                addProperty("link_id", context.linkId)
+                addProperty("link_version", context.linkVersion)
+                addProperty("my_side", context.mySide)
+                addProperty("hub_id", context.hubId)
+                addProperty("owner_id", context.ownerId)
+                addProperty("device_id", context.deviceId)
+                addProperty("session_epoch", context.sessionEpoch)
+                addProperty("operation_id", context.operationId)
+                addProperty("sequence", context.sequence)
+            })
+        }
+        if (state.pending?.operation == "link.review_policy_status" && state.linkReviewStatusReadContext == null) {
+            throw HubSessionException("SESSION_STORAGE_INVALID", "Original Link policy status packet has no saved selection context")
         }
         state.enrollmentAttempt?.let { attempt ->
             json.add("enrollmentAttempt", JsonObject().apply {

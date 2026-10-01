@@ -50,6 +50,11 @@ class ClientHubV16OperationPolicyTest {
             assertArrayEquals(original, box.stateFile.readBytes())
             assertFalse(box.wrappedKeyFile.exists())
         }
+        expectCode("VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED") {
+            box.session.rpc("link.review_policy_status", JsonObject().apply { addProperty("link_id", "synthetic-link") })
+        }
+        assertArrayEquals(original, box.stateFile.readBytes())
+        assertFalse(box.wrappedKeyFile.exists())
         expectCode("UNSUPPORTED_RPC_OPERATION") { box.session.rpc(UNKNOWN_OPERATION, JsonObject()) }
         assertArrayEquals(original, box.stateFile.readBytes())
         assertFalse(box.wrappedKeyFile.exists())
@@ -129,6 +134,9 @@ class ClientHubV16OperationPolicyTest {
         for (operation in NEW_CONSENT_OPERATIONS) {
             assertUnchanged(box, "CLIENT_CONSENT_FLOW_UNAVAILABLE") { box.session.rpc(operation, JsonObject(), "replacement-attempt") }
         }
+        assertUnchanged(box, "VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED") {
+            box.session.rpc("link.review_policy_status", JsonObject().apply { addProperty("link_id", "replacement") }, "replacement-attempt")
+        }
         assertUnchanged(box, "UNSUPPORTED_RPC_OPERATION") { box.session.rpc(UNKNOWN_OPERATION, JsonObject()) }
         val persisted = JsonParser.parseString(box.stateFile.readText()).asJsonObject
         assertEquals(pending, persisted.getAsJsonObject("pending"))
@@ -151,18 +159,100 @@ class ClientHubV16OperationPolicyTest {
         assertUnchanged(box, "VERIFIED_REGROUP_FLOW_REQUIRED") { box.session.rpc("topology.regroup_proposal", JsonObject()) }
     }
 
+    @Test
+    fun linkReviewStatusUsesFreshOwnerListAndRecoversTheExactOriginalPacket() = sandbox { box ->
+        ClientWireCrypto.Identity.generate().use { control ->
+            val deviceJson = box.devicePublicIdentity ?: throw AssertionError("Public Client identity was not created")
+            val device = ClientWireCrypto.PublicIdentity.parse(deviceJson)
+            val initial = box.initialState.deepCopy().apply {
+                add("pin", getAsJsonObject("pin").deepCopy().apply {
+                    addProperty("controlPublicIdentityJson", control.publicIdentity.toJson())
+                })
+            }
+            box.stateFile.writeText(initial.toString())
+            val responder = SyntheticLinkStatusResponder(control, device, loseFirstStatusResponse = true)
+            SyntheticHttpsTransport.install(responder)
+            try {
+                expectCode("NETWORK_ERROR") { box.session.linkReviewPolicyStatus("synthetic-link", 4L) }
+                val pendingState = JsonParser.parseString(box.stateFile.readText()).asJsonObject
+                val pending = pendingState.getAsJsonObject("pending")
+                val originalPacket = pending.get("packetJson").asString
+                assertEquals("link.review_policy_status", pending.get("operation").asString)
+                val savedContext = pendingState.getAsJsonObject("linkReviewStatusReadContext")
+                assertEquals("synthetic-link", savedContext.get("link_id").asString)
+                assertEquals(4L, savedContext.get("link_version").asLong)
+                assertEquals("SOURCE", savedContext.get("my_side").asString)
+                assertEquals(pending.get("operationId").asString, savedContext.get("operation_id").asString)
+                assertEquals(pending.get("sequence").asLong, savedContext.get("sequence").asLong)
+                assertEquals(13L, pendingState.get("nextSequence").asLong)
+                assertEquals(10L, pendingState.get("lastResponseSequence").asLong)
+
+                val recovered = box.session.recoverPending()
+                assertTrue(recovered.get("ok").asBoolean)
+                assertEquals("synthetic-link", recovered.getAsJsonObject("result").get("link_id").asString)
+                assertEquals(1, responder.recoveryCount)
+                assertEquals(originalPacket, responder.recoveredOriginalPacket)
+                val recoveredState = JsonParser.parseString(box.stateFile.readText()).asJsonObject
+                assertFalse(recoveredState.has("pending"))
+                assertFalse(recoveredState.has("linkReviewStatusReadContext"))
+                assertEquals(13L, recoveredState.get("nextSequence").asLong)
+                assertEquals(11L, recoveredState.get("lastResponseSequence").asLong)
+
+                val directDto = box.session.linkReviewPolicyStatus("synthetic-link", 4L)
+                assertEquals("synthetic-link", directDto.get("link_id").asString)
+                assertEquals(4L, directDto.get("link_version").asLong)
+                assertEquals(0L, directDto.get("policy_version").asLong)
+                assertEquals(listOf("link.list", "link.review_policy_status", "link.list", "link.review_policy_status"), responder.rpcOperations)
+                assertEquals(15L, JsonParser.parseString(box.stateFile.readText()).asJsonObject.get("nextSequence").asLong)
+            } finally {
+                SyntheticHttpsTransport.clear(responder)
+            }
+        }
+    }
+
+    @Test
+    fun linkReviewStatusRejectsStaleListVersionBeforeIssuingStatusRpc() = sandbox { box ->
+        ClientWireCrypto.Identity.generate().use { control ->
+            val deviceJson = box.devicePublicIdentity ?: throw AssertionError("Public Client identity was not created")
+            val device = ClientWireCrypto.PublicIdentity.parse(deviceJson)
+            val initial = box.initialState.deepCopy().apply {
+                add("pin", getAsJsonObject("pin").deepCopy().apply {
+                    addProperty("controlPublicIdentityJson", control.publicIdentity.toJson())
+                })
+            }
+            box.stateFile.writeText(initial.toString())
+            val responder = SyntheticLinkStatusResponder(control, device, linkVersion = 5L)
+            SyntheticHttpsTransport.install(responder)
+            try {
+                expectCode("LINK_REVIEW_LINK_STALE") { box.session.linkReviewPolicyStatus("synthetic-link", 4L) }
+                assertEquals(listOf("link.list"), responder.rpcOperations)
+                val after = JsonParser.parseString(box.stateFile.readText()).asJsonObject
+                assertFalse(after.has("pending"))
+                assertFalse(after.has("linkReviewStatusReadContext"))
+                assertEquals(12L, after.get("nextSequence").asLong)
+                assertEquals(10L, after.get("lastResponseSequence").asLong)
+            } finally {
+                SyntheticHttpsTransport.clear(responder)
+            }
+        }
+    }
+
     /** One-shot in-memory Control response for the public encrypted RPC path. */
+    private interface SyntheticResponder {
+        fun respond(url: URL, method: String, requestBytes: ByteArray): ByteArray
+    }
+
     private class SyntheticCapabilitiesResponder(
         private val control: ClientWireCrypto.Identity,
         private val device: ClientWireCrypto.PublicIdentity,
         private val role: String,
         private val operationId: String,
         private val operations: JsonArray,
-    ) {
+    ) : SyntheticResponder {
         var requestCount: Int = 0
             private set
 
-        fun respond(url: URL, method: String, requestBytes: ByteArray): ByteArray {
+        override fun respond(url: URL, method: String, requestBytes: ByteArray): ByteArray {
             if (url.protocol != "https" || url.host != SYNTHETIC_HOST || url.port != SYNTHETIC_PORT ||
                 url.path != SYNTHETIC_RPC_PATH || url.query != null || url.ref != null || url.userInfo != null ||
                 method != "POST" || requestBytes.isEmpty()
@@ -278,16 +368,151 @@ class ClientHubV16OperationPolicyTest {
         }
     }
 
+    /** Synthetic encrypted link.list/status endpoint used to exercise saved-scope recovery. */
+    private class SyntheticLinkStatusResponder(
+        private val control: ClientWireCrypto.Identity,
+        private val device: ClientWireCrypto.PublicIdentity,
+        private val linkVersion: Long = 4L,
+        private val loseFirstStatusResponse: Boolean = false,
+    ) : SyntheticResponder {
+        val rpcOperations = mutableListOf<String>()
+        var recoveryCount = 0
+            private set
+        var recoveredOriginalPacket: String? = null
+            private set
+        private var lostStatusPacket: String? = null
+        private var cachedStatusResponse: String? = null
+        private var didLoseStatusResponse = false
+
+        override fun respond(url: URL, method: String, requestBytes: ByteArray): ByteArray {
+            if (url.protocol != "https" || url.host != SYNTHETIC_HOST || url.port != SYNTHETIC_PORT ||
+                url.path !in setOf(SYNTHETIC_RPC_PATH, SYNTHETIC_RPC_RECOVER_PATH) || url.query != null ||
+                url.ref != null || url.userInfo != null || method != "POST" || requestBytes.isEmpty()) {
+                throw IOException("Synthetic Link status transport rejected the request")
+            }
+            val packetText = String(requestBytes, StandardCharsets.UTF_8)
+            val packet = JsonParser.parseString(packetText).asJsonObject
+            val requestRouteJson = packet.getAsJsonObject("route")
+            val requestRoute = ClientWireCrypto.Route.parse(requestRouteJson)
+            if (requestRoute.toJson() != requestRouteJson.toString() || requestRoute.hubId != SYNTHETIC_HUB_ID ||
+                requestRoute.ownerId != SYNTHETIC_OWNER_ID || requestRoute.deviceId != SYNTHETIC_DEVICE_ID ||
+                requestRoute.sessionEpoch != 1L || requestRoute.operation !in setOf("link.list", "link.review_policy_status")) {
+                throw IOException("Synthetic Link status transport rejected the encrypted route")
+            }
+            if (url.path == SYNTHETIC_RPC_RECOVER_PATH) {
+                recoveryCount += 1
+                if (recoveryCount != 1 || packetText != lostStatusPacket) {
+                    throw IOException("Synthetic recovery did not receive the exact original status packet")
+                }
+                recoveredOriginalPacket = packetText
+                return cachedStatusResponse?.toByteArray(StandardCharsets.UTF_8)
+                    ?: throw IOException("Synthetic cached status response is missing")
+            }
+
+            val expectedOperation = when (rpcOperations.size) {
+                0, 2 -> "link.list"
+                1, 3 -> "link.review_policy_status"
+                else -> throw IOException("Synthetic Link status transport received an unexpected RPC")
+            }
+            if (requestRoute.operation != expectedOperation || requestRoute.sequence != 11L + rpcOperations.size) {
+                throw IOException("Synthetic Link status transport received an unexpected operation sequence")
+            }
+            rpcOperations += requestRoute.operation
+            val result = if (requestRoute.operation == "link.list") linkListResult() else defaultStatusResult()
+            val response = responsePacket(requestRouteJson, requestRoute.sequence - 1L, requestRoute.operationId, result)
+            if (requestRoute.operation == "link.review_policy_status" && loseFirstStatusResponse && !didLoseStatusResponse) {
+                didLoseStatusResponse = true
+                lostStatusPacket = packetText
+                cachedStatusResponse = response
+                throw IOException("Synthetic lost Link status response")
+            }
+            return response.toByteArray(StandardCharsets.UTF_8)
+        }
+
+        private fun linkListResult(): JsonObject = JsonObject().apply {
+            add("links", JsonArray().apply {
+                add(JsonObject().apply {
+                    add("link", JsonObject().apply {
+                        addProperty("link_id", "synthetic-link")
+                        addProperty("source_endpoint_id", "source-endpoint")
+                        addProperty("source_group_id", "source-group")
+                        addProperty("target_endpoint_id", "target-endpoint")
+                        addProperty("target_group_id", "target-group")
+                        addProperty("direction", "forward")
+                        add("actions", JsonArray().apply { add("ask") })
+                        add("data_scopes", JsonArray().apply { add("metadata") })
+                        addProperty("expires_at", "2030-01-01T00:00:00Z")
+                        addProperty("state", "ACCEPTED")
+                        addProperty("version", linkVersion)
+                    })
+                    addProperty("my_side", "SOURCE")
+                })
+            })
+            addProperty("cursor", "")
+            addProperty("has_more", false)
+        }
+
+        private fun defaultStatusResult(): JsonObject = JsonObject().apply {
+            addProperty("link_id", "synthetic-link")
+            addProperty("link_version", linkVersion)
+            addProperty("policy_version", 0)
+            addProperty("policy_digest", "")
+            add("policy", JsonObject().apply {
+                addProperty("mode", "NONE")
+                add("reviewers", JsonArray())
+                addProperty("max_failovers", 0)
+                addProperty("reviewer_lease_seconds", 0)
+                addProperty("max_review_age_seconds", 0)
+            })
+            addProperty("current", true)
+            add("accepted_sides", JsonArray())
+        }
+
+        private fun responsePacket(requestRouteJson: JsonObject, responseSequence: Long,
+                                   operationId: String, result: JsonObject): String {
+            val responseRouteJson = JsonObject().apply {
+                addProperty("version", requestRouteJson.get("version").asLong)
+                addProperty("direction", "RESPONSE")
+                addProperty("hub_id", requestRouteJson.get("hub_id").asString)
+                addProperty("owner_id", requestRouteJson.get("owner_id").asString)
+                addProperty("device_id", requestRouteJson.get("device_id").asString)
+                addProperty("session_epoch", requestRouteJson.get("session_epoch").asLong)
+                addProperty("sequence", responseSequence)
+                addProperty("operation_id", operationId)
+                addProperty("operation", requestRouteJson.get("operation").asString)
+                addProperty("sender_key_id", control.publicIdentity.id)
+                addProperty("sender_key_version", requestRouteJson.get("receiver_key_version").asLong)
+                addProperty("receiver_key_id", requestRouteJson.get("sender_key_id").asString)
+                addProperty("receiver_key_version", requestRouteJson.get("sender_key_version").asLong)
+            }
+            val responseRouteText = ClientWireCrypto.Route.parse(responseRouteJson).toJson()
+            val responseBody = JsonObject().apply {
+                addProperty("request_id", "synthetic-link-status-$responseSequence")
+                addProperty("operation_id", operationId)
+                addProperty("ok", true)
+                add("result", result)
+            }
+            val aad = (PACKET_DOMAIN + responseRouteText).toByteArray(StandardCharsets.UTF_8)
+            val envelope = ClientWireCrypto.sealRawEnvelope(
+                control, device, responseSequence, aad, responseBody.toString().toByteArray(StandardCharsets.UTF_8),
+            )
+            return JsonObject().apply {
+                add("route", JsonParser.parseString(responseRouteText))
+                addProperty("envelope", Base64.encodeToString(envelope.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP))
+            }.toString()
+        }
+    }
+
     /**
      * This process-lifetime URL factory only serves the exact synthetic RPC route.
      * It has no socket/TLS fallback, and the active private-key responder is cleared after use.
      */
     private object SyntheticHttpsTransport {
-        @Volatile private var active: SyntheticCapabilitiesResponder? = null
+        @Volatile private var active: SyntheticResponder? = null
         private var installed = false
 
         @Synchronized
-        fun install(responder: SyntheticCapabilitiesResponder) {
+        fun install(responder: SyntheticResponder) {
             if (active != null) throw IllegalStateException("A synthetic RPC responder is already active")
             if (!installed) {
                 URL.setURLStreamHandlerFactory(object : URLStreamHandlerFactory {
@@ -296,7 +521,7 @@ class ClientHubV16OperationPolicyTest {
                         return object : URLStreamHandler() {
                             override fun openConnection(url: URL): URLConnection {
                                 if (url.host != SYNTHETIC_HOST || url.port != SYNTHETIC_PORT ||
-                                    url.path != SYNTHETIC_RPC_PATH || url.query != null ||
+                                    url.path !in setOf(SYNTHETIC_RPC_PATH, SYNTHETIC_RPC_RECOVER_PATH) || url.query != null ||
                                     url.ref != null || url.userInfo != null
                                 ) {
                                     throw IOException("Synthetic policy transport rejected the HTTPS target")
@@ -312,7 +537,7 @@ class ClientHubV16OperationPolicyTest {
         }
 
         @Synchronized
-        fun clear(responder: SyntheticCapabilitiesResponder) {
+        fun clear(responder: SyntheticResponder) {
             if (active !== responder) throw IllegalStateException("Synthetic RPC responder ownership changed")
             active = null
         }
@@ -439,6 +664,7 @@ class ClientHubV16OperationPolicyTest {
         private const val SYNTHETIC_HOST = "127.0.0.1"
         private const val SYNTHETIC_PORT = 1
         private const val SYNTHETIC_RPC_PATH = "/v2/client/rpc"
+        private const val SYNTHETIC_RPC_RECOVER_PATH = "/v2/client/rpc/recover"
         private const val PACKET_DOMAIN = "cicada/client-control/packet/v1\u0000"
         private const val CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
         private const val REQUEST_SEQUENCE = 11L
@@ -446,14 +672,14 @@ class ClientHubV16OperationPolicyTest {
         private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "group.key_manifest",
             "network.key_manifest", "monitor.broadcast_recover", "network.directory",
             "topology.endpoint_admission_preview", "topology.regroup_proposal",
-            "topology.delegation_issue", "topology.delegation_revoke")
+            "topology.delegation_issue", "topology.delegation_revoke", "link.review_policy_status")
         // Exact v1.5/v1.6.1 deferred consent and proof routes, independent of the implementation set.
         private val NEW_CONSENT_OPERATIONS = listOf(
             "space.foreign_member_admit", "space.foreign_member_revoke", "space.foreign_endpoint_join",
             "space.key_manifest_v2", "space.key_consent_v2", "space.key_admission_v2", "space.key_status_v2",
             "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
             "network.collaboration_key_grant", "network.collaboration_key_status",
-            "link.review_policy_preview", "link.review_policy_grant", "link.review_policy_status",
+            "link.review_policy_preview", "link.review_policy_grant",
         )
     }
 }

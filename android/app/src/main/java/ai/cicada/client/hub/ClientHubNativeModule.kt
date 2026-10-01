@@ -108,6 +108,16 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     fun recoverEnrollment(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session -> session.recoverEnrollment() }
 
     @com.facebook.react.bridge.ReactMethod
+    fun linkReviewPolicyStatus(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        val expectedLinkVersion = try { options.getDouble("expectedLinkVersion") } catch (_: Exception) { Double.NaN }
+        if (!expectedLinkVersion.isFinite() || expectedLinkVersion < 1 ||
+            expectedLinkVersion > 9_007_199_254_740_991.0 || expectedLinkVersion % 1 != 0.0) {
+            throw HubSessionException("INVALID_LINK_REVIEW_VERSION", "Link review expected version is invalid")
+        }
+        session.linkReviewPolicyStatus(requiredString(options, "linkId"), expectedLinkVersion.toLong())
+    }
+
+    @com.facebook.react.bridge.ReactMethod
     fun rpc(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
         val operation = requiredString(options, "operation")
         val body = options.getMap("body")?.let(::readableMapToJson)
