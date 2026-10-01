@@ -57,6 +57,10 @@ const browserDownloads = path.join(browserDir, 'downloads');
 const browserImports = path.join(browserDir, 'imports');
 const hubContainer = `cicada-webpanel-${suffix}-hub`;
 const browserContainer = `cicada-webpanel-${suffix}-chromium`;
+const nodeContainer = `cicada-webpanel-${suffix}-node`;
+const nodeStateDir = path.join(fixtureDir, 'node-state');
+let nodeWasCreated = false;
+let hubHostPort = '';
 const dockerNetwork = `cicada-webpanel-${suffix}-net`;
 const browserOriginHost = 'localhost';
 const hubNetworkAlias = `cicada-webpanel-${suffix}-hub`;
@@ -81,7 +85,9 @@ const result = {
     topology_apply_group_visible: 'NOT_RUN',
     cross_tab_pending_request_refusal: 'NOT_RUN',
     first_tab_pending_cleared_after_release: 'NOT_RUN',
-    uncertain_write_fence: 'NOT_RUN_NO_FAULT_INJECTION',
+    uncertain_write_fence: 'NOT_RUN',
+    response_loss_exact_recovery: 'NOT_RUN',
+    canvas_pointer_keyboard_group_link_monitor: 'NOT_RUN',
   },
   fixture_cleanup: { status: 'NOT_RUN' },
 };
@@ -327,6 +333,7 @@ async function createPage(port, initialURL) {
   if (!response.ok) fail(`Chromium could not create a page target (HTTP ${response.status})`);
   const target = await response.json();
   const page = await CDP.connect(target.webSocketDebuggerUrl);
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.send('Page.enable');
   await page.send('Runtime.enable');
   await page.send('DOM.enable');
@@ -426,6 +433,7 @@ async function startHubContainer() {
     ...fixtureLabels(),
     '--label', `org.cicada.fixture.image-id=${hubImageId}`,
     '--network', dockerNetwork, '--network-alias', hubNetworkAlias,
+    '-p', '127.0.0.1::8787',
     '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
     '--env-file', hubEnvPath,
     '-v', `${stateDir}:/state`, '-v', `${workspaceDir}:/workspace`,
@@ -435,6 +443,7 @@ async function startHubContainer() {
   ];
   await docker(args);
   hubWasCreated = true;
+  hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
 }
 
 async function runCandidateCLI(args, mounts = []) {
@@ -798,6 +807,371 @@ async function runBrowserFlow() {
     fail(`First-tab refresh did not resolve cleanly after release (request ${beforePauseState.nextRequestSequence}->${finalState.nextRequestSequence}, response ${beforePauseState.nextResponseSequence}->${finalState.nextResponseSequence}, pending=${finalState.pending})`);
   }
   markStep('first_tab_pending_cleared_after_release');
+  await runResponseLossAndUncertainty(password);
+  await runInteractionAndFaultFlow(password);
+}
+
+// Fixture setup uses actual PQ Owner approval and Node-authenticated APIs.
+// The adapter session labels below are synthetic, never native-runtime evidence.
+async function ownerFixtureRPC(password, operation, input) {
+  return pageA.evaluate(`(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();let key;try{const state=await c.getState(db);let blob=await c.decryptIdentityBlob(state.vault,${JSON.stringify(password)});key=cicadaWebCrypto.importIdentity({identity_blob:blob});blob='';if(!key.ok)throw Error('fixture key import');const reply=await c.callRPC(db,cicadaWebCrypto,{handle:key.handle},${JSON.stringify(operation)},${JSON.stringify(input)});if(!reply.ok)throw Error('fixture RPC denied');return reply.result;}finally{if(key?.handle)cicadaWebCrypto.forgetIdentity({handle:key.handle});db.close();}})()`, 30000);
+}
+
+async function syntheticNodeEndpoints(password) {
+  phase = 'synthetic_node_owner_approval';
+  const nodeID = `browser-node-${suffix.slice(-8)}`;
+  await docker(['run', '-d', '--name', nodeContainer, ...fixtureLabels(),
+    '--label', `org.cicada.fixture.image-id=${hubImageId}`, '--network', `container:${hubContainer}`,
+    '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
+    '-v', `${nodeStateDir}:/node-state`, '-e', `CICADA_HUB_ID=${hubId}`,
+    hubImageId, 'machine', 'agent', '--id', nodeID, '--name', 'Synthetic browser adapter',
+    '--control-url', 'http://127.0.0.1:8787', '--state-dir', '/node-state', '--interval', '1s', '--relay-only']);
+  nodeWasCreated = true;
+  const local = path.join(nodeStateDir, 'nodes', `node-${nodeID}`);
+  let code = '';
+  const deadline = Date.now() + 30000;
+  while (!code && Date.now() < deadline) {
+    try { code = JSON.parse(await readFile(path.join(local, 'node-control-state.json'), 'utf8')).pending_pairing_user_code || ''; }
+    catch { /* Node has not published its PQ candidate yet. */ }
+    if (!code) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!code) fail('Synthetic Node did not publish a PQ pairing candidate');
+  const preview = await ownerFixtureRPC(password, 'nodes.preview', { user_code: code });
+  if (preview.node_id !== nodeID || !preview.candidate_digest || !preview.version) fail('Owner preview did not bind the exact synthetic Node candidate');
+  const confirmed = await ownerFixtureRPC(password, 'nodes.confirm', { user_code: code,
+    candidate_digest: preview.candidate_digest, candidate_version: preview.version });
+  if (confirmed.node_id !== nodeID || confirmed.state !== 'ACTIVE') fail('Owner did not confirm the exact synthetic Node');
+  const token = (await readFile(path.join(local, 'relay.token'), 'utf8')).trim();
+  const endpoints = [];
+  for (let index = 0; index < 2; index++) {
+    const session = `synthetic-browser-session-${suffix.slice(-8)}-${index}`;
+    const inviteName = `browser-${index}.invite`, proofName = `browser-${index}.proof`;
+    const grants = 'directory.discover,directory.publish';
+    await docker(['stop', '--time', '10', nodeContainer]);
+    await docker(['stop', '--time', '10', hubContainer]);
+    await runCandidateCLI(['network', 'invite', '--db', '/state/cicada.sqlite3', '--network', networkId,
+      '--target-owner', ownerId, '--invitation-file', `/owner-private/${inviteName}`, '--grants', grants, '--ttl', '15m'],
+    [`${stateDir}:/state`, `${ownerPrivateDir}:/owner-private`]);
+    await runCandidateCLI(['network', 'consent-sign', '--owner-private', '/owner-private/owner-private.json',
+      '--proof-file', `/owner-private/${proofName}`, '--invitation-file', `/owner-private/${inviteName}`,
+      '--owner', ownerId, '--hub', hubId, '--network', networkId, '--node', nodeID,
+      '--session', session, '--grants', grants, '--discoverable'], [`${ownerPrivateDir}:/owner-private`]);
+    await docker(['start', hubContainer]); await waitHub(hubContainer);
+    hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
+    await docker(['start', nodeContainer]);
+    const response = await fetch(`http://127.0.0.1:${hubHostPort}/v2/fabric/node/networks/join`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `CicadaNode ${token}` },
+      body: JSON.stringify({ network_id: networkId, invitation_token: (await readFile(path.join(ownerPrivateDir, inviteName), 'utf8')).trim(),
+        owner_join_proof: (await readFile(path.join(ownerPrivateDir, proofName), 'utf8')).trim(), harness: 'codex',
+        native_session_id: session, endpoint_name: `Synthetic Browser Endpoint ${index}` }) });
+    if (response.status !== 201) fail(`Synthetic Node-authenticated Network Join rejected (HTTP ${response.status})`);
+    const joined = await response.json();
+    if (!joined.endpoint?.endpoint_id || joined.network_id !== networkId) fail('Synthetic Network Join returned inconsistent scope');
+    const bindingResponse = await fetch(`http://127.0.0.1:${hubHostPort}/v2/fabric/networks/${networkId}/direct/native-binding`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Cicada-Network-Session ${joined.session_token}` }, body: '{}' });
+    if (bindingResponse.status !== 200) fail(`Directory-only native-binding registration rejected (HTTP ${bindingResponse.status})`);
+    const binding = await bindingResponse.json();
+    if (binding.endpoint_id !== joined.endpoint.endpoint_id || binding.node_id !== nodeID ||
+        binding.native_session_id !== session || binding.status !== 'active' || !binding.binding_id || binding.epoch < 1) {
+      fail('Synthetic native-binding scope did not match exact enrolled Endpoint');
+    }
+    endpoints.push(joined.endpoint.endpoint_id);
+  }
+  result.synthetic_adapter = { owner_pq_confirmed: true, network_join_protocol: 'PASS', native_binding_protocol: 'PASS',
+    endpoint_ids: endpoints, native_session_verification: 'NOT_RUN', model_calls: 0 };
+  return endpoints;
+}
+
+async function cardField(page, title, tag, index, value) {
+  const changed = await page.evaluate(`(()=>{const c=[...document.querySelectorAll('.side .card')].find(x=>x.querySelector('h2')?.textContent===${JSON.stringify(title)});const e=c?.querySelectorAll(${JSON.stringify(tag)})[${index}];if(!e)return false;e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  if (!changed) fail(`Canvas field missing in ${title}`);
+}
+
+async function elementBox(page, selector) {
+  return page.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return{x:b.x,y:b.y,width:b.width,height:b.height};})()`);
+}
+
+async function pointerDrag(page, from, to, expectedGroupID = '') {
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y });
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1 });
+  for (let i = 1; i <= 6; i++) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', button: 'left',
+    x: from.x + (to.x - from.x) * i / 6, y: from.y + (to.y - from.y) * i / 6, buttons: 1 });
+  // CDP acknowledgements can precede delivery of coalesced pointer moves.
+  await page.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  const outline = await page.evaluate(`(()=>{const svg=document.querySelector('.stage svg');const r=svg?.querySelector('.selection-box');const b=svg?.getBoundingClientRect();return r&&b?{visible:r.getAttribute('visibility'),x:Number(r.getAttribute('x')),y:Number(r.getAttribute('y')),width:Number(r.getAttribute('width')),height:Number(r.getAttribute('height')),svgX:b.x,svgY:b.y}:null;})()`);
+  if (expectedGroupID) {
+    const hit = await page.evaluate(`(()=>{const e=document.elementFromPoint(${to.x},${to.y});return{type:e?.tagName||'NONE',matches_target:e?.closest('[data-group-drop-id]')?.getAttribute('data-group-drop-id')===${JSON.stringify(expectedGroupID)}};})()`);
+    result.group_drop_diagnostic = [...(result.group_drop_diagnostic || []), hit];
+    if (!hit.matches_target) fail('Actual Group drop point was obscured before pointer release');
+  }
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1 });
+  return outline;
+}
+
+async function visibleGroupDropPoint(groupID) {
+  const box = await elementBox(pageA, `[data-group-drop-id="${groupID}"]`);
+  if (!box) fail('Exact Group drop rectangle is absent');
+  for (const y of [0.5, 0.7, 0.3, 0.85]) for (const x of [0.5, 0.7, 0.3, 0.85]) {
+    const point = { x: box.x + box.width * x, y: box.y + box.height * y };
+    const hit = await pageA.evaluate(`(()=>{const e=document.elementFromPoint(${point.x},${point.y});return{type:e?.tagName||'NONE',matches_target:e?.closest('[data-group-drop-id]')?.getAttribute('data-group-drop-id')===${JSON.stringify(groupID)}};})()`);
+    if (hit.matches_target) {
+      result.group_drop_diagnostic = [...(result.group_drop_diagnostic || []), hit];
+      return point;
+    }
+  }
+  fail('No visible Group drop point matches the exact target');
+}
+
+async function fitCanvasTargets(selectors) {
+  await pageA.evaluate('window.scrollTo(0,0)');
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const svg = await elementBox(pageA, '.stage svg');
+    const boxes = await Promise.all(selectors.map(selector => elementBox(pageA, selector)));
+    if (!svg || boxes.some(box => !box)) fail('Canvas targets are absent before a pointer gesture');
+    const bounds = { left: Math.min(...boxes.map(box => box.x)), top: Math.min(...boxes.map(box => box.y)),
+      right: Math.max(...boxes.map(box => box.x + box.width)), bottom: Math.max(...boxes.map(box => box.y + box.height)) };
+    const visible = { left: svg.x + 15, right: svg.x + svg.width - 15,
+      top: svg.y + 120, bottom: Math.min(svg.y + svg.height - 45, 985) };
+    if (bounds.left >= visible.left && bounds.right <= visible.right && bounds.top >= visible.top && bounds.bottom <= visible.bottom) {
+      await buttonClick(pageA, 'Select');
+      return;
+    }
+    if (bounds.right - bounds.left > visible.right - visible.left || bounds.bottom - bounds.top > visible.bottom - visible.top) {
+      await buttonClick(pageA, '−');
+      continue;
+    }
+    const dx = Math.max(-svg.width / 3, Math.min(svg.width / 3, (visible.left + visible.right - bounds.left - bounds.right) / 2));
+    const dy = Math.max(-svg.height / 3, Math.min(svg.height / 3, (visible.top + visible.bottom - bounds.top - bounds.bottom) / 2));
+    await buttonClick(pageA, 'Pan');
+    const from = { x: svg.x + svg.width / 2, y: svg.y + svg.height / 2 };
+    await pointerDrag(pageA, from, { x: from.x + dx, y: from.y + dy });
+  }
+  fail('Product zoom/pan could not place all gesture targets inside the SVG viewport');
+}
+
+async function installAdmissionDiagnostic() {
+  await pageA.evaluate(`(async()=>{const {CanvasPanel}=await import('/assets/panel-canvas.js');const original=CanvasPanel.prototype.previewEndpointJoin;CanvasPanel.prototype.previewEndpointJoin=async function(endpointId,groupId){const snapshot=this.topology;const endpoint=(snapshot.endpoints||[]).find(x=>x.endpoint_id===endpointId);const group=(snapshot.groups||[]).find(x=>x.group_id===groupId);const networkId=this.networkId;const rpc=this.rpc;this.rpc=async(operation,input)=>{const p=await rpc(operation,input);if(operation==='topology.endpoint_admission_preview'){globalThis.cicadaAdmissionDiagnostic={
+    endpoint_visible:!!endpoint,group_visible:!!group,group_active:String(group?.state).toLowerCase()==='active',
+    snapshot_network_matches:group?.network_id===networkId,endpoint_network_matches:(endpoint?.network_ids||[]).includes(networkId),
+    existing_endpoint_reference:(endpoint?.group_ids||[]).includes(groupId),preview_present:!!p,
+    owner_matches:p?.owner_principal_id===snapshot.owner_principal_id,network_matches:p?.network_id===networkId,
+    group_matches:p?.group_id===groupId,endpoint_matches:p?.endpoint_id===endpointId,principal_matches:p?.endpoint_principal_id===endpoint?.principal_id,
+    context_policy_matches:p?.group_context_policy===group?.context_policy,migration_allowed:['READY','MIGRATION_PENDING_GROUP'].includes(p?.endpoint_migration_state),
+    roles_array:Array.isArray(p?.admission_roles),roles_member_only:Array.isArray(p?.admission_roles)&&p.admission_roles.length===1&&p.admission_roles[0]==='member',
+    grants_array:Array.isArray(p?.admission_grants),grants_empty:Array.isArray(p?.admission_grants)&&p.admission_grants.length===0,
+    no_history:p?.history_included===false,no_key_grant:p?.key_grant_created===false,memory_retained:p?.existing_thread_memory_retained===true,
+    no_membership_status:!p?.membership_status,membership_revision_zero:p?.membership_revision===0,
+    no_endpoint_group_status:!p?.endpoint_group_status,endpoint_group_revision_zero:p?.endpoint_group_revision===0,
+    migration_enum:['READY','MIGRATION_PENDING_GROUP'].includes(p?.endpoint_migration_state)?p.endpoint_migration_state:'OTHER',
+    membership_status_enum:['','active','revoked'].includes(p?.membership_status||'')?(p.membership_status||''):'OTHER',
+    endpoint_group_status_enum:['','active','revoked'].includes(p?.endpoint_group_status||'')?(p.endpoint_group_status||''):'OTHER'};}return p;};try{return await original.call(this,endpointId,groupId);}finally{this.rpc=rpc;}};})()`);
+}
+
+async function committedAction() {
+  const before = pageA.rpcRequestCount;
+  await buttonClick(pageA, 'Commit this one action');
+  await evaluateUntil(pageA, 'document.querySelector(".status-banner")?.textContent || ""',
+    value => value.includes('Authoritative topology and status snapshots refreshed'), 30000, 'authenticated action and both snapshots');
+  await waitForRPCCount(pageA, before + 3);
+  await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{return !(await c.getState(db)).device?.pending;}finally{db.close();}})()`, Boolean, 30000, 'exact action packet and snapshots resolved');
+}
+
+async function runInteractionAndFaultFlow(password) {
+  const endpointIDs = await syntheticNodeEndpoints(password);
+  phase = 'canvas_pointer_keyboard_interactions';
+  await buttonClick(pageA, 'Refresh snapshots');
+  await evaluateUntil(pageA, `document.querySelectorAll('[data-endpoint-id]').length`, value => value >= 2);
+  await fitCanvasTargets(endpointIDs.map(id => `[data-endpoint-id="${id}"]`));
+  const refs = await Promise.all(endpointIDs.map(id => elementBox(pageA, `[data-endpoint-id="${id}"]`)));
+  if (refs.some(item => !item)) fail('Enrolled synthetic endpoints did not reach Owner canvas');
+  const from = { x: Math.min(...refs.map(b => b.x)) - 5, y: Math.min(...refs.map(b => b.y)) - 5 };
+  const to = { x: Math.max(...refs.map(b => b.x + b.width)) + 5, y: Math.max(...refs.map(b => b.y + b.height)) + 5 };
+  await pageA.evaluate(`(()=>{globalThis.cicadaPointerDiagnostic=[];for(const type of ['pointerdown','pointermove','pointerup','lostpointercapture'])document.addEventListener(type,e=>{if(globalThis.cicadaPointerDiagnostic.length<32)globalThis.cicadaPointerDiagnostic.push({type:e.type,x:e.clientX,y:e.clientY,id:e.pointerId,target:e.target.tagName,buttons:e.buttons,capture:document.querySelector('.stage svg')?.hasPointerCapture(e.pointerId)});},{capture:true});})()`);
+  const beforeGesture = pageA.rpcRequestCount;
+  const outline = await pointerDrag(pageA, from, to);
+  result.pointer_box_diagnostic = { from, to, refs, outline, events: await pageA.evaluate("globalThis.cicadaPointerDiagnostic") };
+  if (!outline || outline.visible !== 'visible' || Math.abs(outline.x - (from.x - outline.svgX)) > 1 ||
+      Math.abs(outline.y - (from.y - outline.svgY)) > 1 || Math.abs(outline.width - (to.x - from.x)) > 1 ||
+      Math.abs(outline.height - (to.y - from.y)) > 1) fail('Box outline does not match the actual pointer rectangle at canvas scale');
+  const selected = await pageA.evaluate('document.querySelectorAll(".endpoint.selected").length');
+  if (selected !== 2 || pageA.rpcRequestCount !== beforeGesture) fail('Box selection changed authorization or missed visible endpoints');
+  await pageA.evaluate(`document.querySelector('[data-endpoint-id="${endpointIDs[0]}"]').focus()`);
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  if (await pageA.evaluate('document.querySelectorAll(".endpoint.selected").length') !== 1) fail('Keyboard endpoint selection failed');
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, modifiers: 2 });
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, modifiers: 2 });
+  if (await pageA.evaluate('document.querySelectorAll(".endpoint.selected").length') !== 0) fail('Modified Space did not toggle Endpoint selection');
+  const canvas = await elementBox(pageA, '.stage svg');
+  await pageA.evaluate("document.querySelector('.stage svg').focus()");
+  await pageA.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: canvas.x + 20, y: canvas.y + 140, button: 'left', buttons: 1, clickCount: 1 });
+  await pageA.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: canvas.x + 35, y: canvas.y + 155, button: 'left', buttons: 1 });
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await pageA.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: canvas.x + 35, y: canvas.y + 155, button: 'left', buttons: 0, clickCount: 1 });
+  if (await pageA.evaluate('document.querySelector(".selection-box")?.getAttribute("visibility")') !== 'hidden' ||
+      pageA.rpcRequestCount !== beforeGesture) fail('Escape failed to cancel a local gesture without a management write');
+  result.canvas_keyboard = { enter_select: true, modified_space_toggle: true, escape_cancel: true, gesture_management_writes: 0 };
+  const groupID = await pageA.evaluate(`document.querySelector('text.group-label')?.previousElementSibling?.getAttribute('data-group-drop-id')`);
+  if (!groupID) fail('Created Group drop target is unavailable');
+  await installAdmissionDiagnostic();
+  for (const id of endpointIDs) {
+    phase = `canvas_endpoint_admission_${endpointIDs.indexOf(id)}`;
+    await fitCanvasTargets([`[data-endpoint-id="${id}"]`, `[data-group-drop-id="${groupID}"]`]);
+    await buttonClick(pageA, 'Drag to Group');
+    const source = await elementBox(pageA, `[data-endpoint-id="${id}"]`);
+    const target = await visibleGroupDropPoint(groupID);
+    const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+    const startHit = await pageA.evaluate(`(()=>{const e=document.elementFromPoint(${start.x},${start.y});return{type:e?.tagName||'NONE',matches_target:e?.closest('[data-endpoint-id]')?.getAttribute('data-endpoint-id')===${JSON.stringify(id)}};})()`);
+    result.endpoint_drag_start_diagnostic = [...(result.endpoint_drag_start_diagnostic || []), startHit];
+    if (!startHit.matches_target) fail('Actual Endpoint drag start does not match its visible reference');
+    await pointerDrag(pageA, start, target, groupID);
+    await evaluateUntil(pageA, 'document.querySelector(".side")?.innerText || ""', value => value.includes('endpoint.admit_group'));
+    await committedAction();
+    if (!await elementBox(pageA, `[data-endpoint-id="${id}"][data-group-ref="${groupID}"]`)) fail('Admission did not add exact Group reference');
+  }
+  phase = 'canvas_link_proposal';
+  await fitCanvasTargets(endpointIDs.map(id => `[data-endpoint-id="${id}"][data-group-ref="${groupID}"]`));
+  await buttonClick(pageA, 'Draw Link');
+  const a = await elementBox(pageA, `[data-endpoint-id="${endpointIDs[0]}"][data-group-ref="${groupID}"]`);
+  const b = await elementBox(pageA, `[data-endpoint-id="${endpointIDs[1]}"][data-group-ref="${groupID}"]`);
+  const beforeLink = pageA.rpcRequestCount;
+  await pointerDrag(pageA, { x: a.x + a.width / 2, y: a.y + a.height / 2 }, { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  await evaluateUntil(pageA, "document.querySelector('.status-banner')?.textContent || ''", value => value.includes('Propose a Link between'), 30000, 'pointer Link pair prepared for review');
+  if (pageA.rpcRequestCount !== beforeLink) fail('Drawing a Link submitted a write before review');
+  await buttonClick(pageA, 'Preview Link proposal');
+  await evaluateUntil(pageA, 'document.querySelector(".side")?.innerText || ""', value => value.includes('link.propose'));
+  await committedAction();
+  await evaluateUntil(pageA, 'document.querySelector(".side")?.innerText || ""', value => value.includes('PROPOSED'));
+  const linkSnapshot = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const proposedLinks = linkSnapshot.links.filter(link => link.source_endpoint_id === endpointIDs[0] && link.target_endpoint_id === endpointIDs[1] &&
+    link.source_group_id === groupID && link.target_group_id === groupID);
+  if (proposedLinks.length !== 1 || proposedLinks[0].state !== 'PROPOSED' || proposedLinks[0].version < 1 ||
+      proposedLinks[0].direction !== 'bidirectional' || !proposedLinks[0].actions.includes('send') || !proposedLinks[0].data_scopes.includes('thread.message')) {
+    fail('Reviewed Link did not remain a single inactive scoped proposal');
+  }
+  result.canvas_link = { exact_scoped_proposal: true, inactive: true, pointer_prepared_review: true };
+  phase = 'canvas_monitor_role_and_permission';
+  const memberships = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const member = memberships.memberships.find(item => item.principal_id === memberships.endpoints.find(e => e.endpoint_id === endpointIDs[0]).principal_id && item.group_id === groupID);
+  await cardField(pageA, 'Membership & Monitor settings', 'select', 0, member.membership_id);
+  await cardField(pageA, 'Membership & Monitor settings', 'select', 1, 'monitor');
+  await buttonClick(pageA, 'Preview role update'); await committedAction();
+  const afterRole = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const roleMember = afterRole.memberships.find(item => item.membership_id === member.membership_id);
+  if (!roleMember || roleMember.role !== 'monitor' || !roleMember.roles?.includes('monitor') ||
+      roleMember.broadcast_permission_enabled !== false || roleMember.version <= member.version) fail('Monitor role implicitly granted broadcast or failed to persist with a new CAS version');
+  await cardField(pageA, 'Membership & Monitor settings', 'select', 0, member.membership_id);
+  await cardField(pageA, 'Membership & Monitor settings', 'select', 2, 'true');
+  await buttonClick(pageA, 'Preview permission change'); await committedAction();
+  const afterPermission = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const permissionMember = afterPermission.memberships.find(item => item.membership_id === member.membership_id);
+  if (!permissionMember || permissionMember.role !== 'monitor' || !permissionMember.roles?.includes('monitor') ||
+      permissionMember.broadcast_permission_enabled !== true || permissionMember.version <= roleMember.version) fail('Explicit broadcast permission did not persist separately with a new CAS version');
+  result.canvas_monitor = { role_persisted: true, role_change_broadcast_disabled: true, explicit_broadcast_enabled: true, distinct_cas_versions: true };
+  markStep('canvas_pointer_keyboard_group_link_monitor');
+}
+
+async function pendingFingerprint() {
+  return pageA.evaluate(`(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{const p=(await c.getState(db)).device?.pending;if(!p)return null;const bytes=Uint8Array.from(atob(p.packet),x=>x.charCodeAt(0));const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));return{operationId:p.operationId,operation:p.operation,requestSequence:p.requestSequence,responseSequence:p.responseSequence,packetSha256:Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('')};}finally{db.close();}})()`);
+}
+
+async function loseGroupResponse(name) {
+  await cardField(pageA, 'Create Group', 'input', 0, name);
+  await buttonClick(pageA, 'Preview Group creation');
+  await pageA.send('Fetch.enable', { patterns: [{ urlPattern: '*://*/v2/client/rpc', requestStage: 'Response' }] });
+  const responsePromise = pageA.waitEvent('Fetch.requestPaused', event => event.responseStatusCode === 200, 30000);
+  await buttonClick(pageA, 'Commit this one action');
+  const response = await responsePromise;
+  const pending = await pendingFingerprint();
+  if (!pending || pending.operation !== 'topology.apply') fail('Committed response loss did not retain the exact management packet');
+  await pageA.send('Fetch.failRequest', { requestId: response.requestId, errorReason: 'ConnectionClosed' });
+  await pageA.send('Fetch.disable');
+  await evaluateUntil(pageA, 'document.querySelector("#app")?.innerText || ""', value => value.includes('Resolve the saved Client request'));
+  const retained = await pendingFingerprint();
+  if (JSON.stringify(retained) !== JSON.stringify(pending)) fail('Lost response replaced the original packet or sequence');
+  return pending;
+}
+
+async function fixtureRequestState(pending, interrupt = false) {
+  // Only the exact run-owned, completed request can be interrupted. All crypto,
+  // device authority, digest, response reservation and sequence counters remain.
+  const code = `import sqlite3,json,sys\ndb=sqlite3.connect(sys.argv[1]);db.execute('PRAGMA foreign_keys=ON');row=db.execute('SELECT id,status,ciphertext_digest,sequence FROM client_device_requests_v2 WHERE owner_id=? AND operation_id=?',(sys.argv[2],sys.argv[3])).fetchone()\nassert row and row[1]=='COMPLETED' and row[2]==sys.argv[4] and row[3]==int(sys.argv[5])\nreservation=db.execute('SELECT reserved_response_sequence FROM client_device_request_recovery_v2 WHERE request_id=?',(row[0],)).fetchone();assert reservation and reservation[0]==int(sys.argv[6])\nif sys.argv[7]=='interrupt':\n db.execute(\"UPDATE client_device_requests_v2 SET status='PROCESSING',response_packet=NULL WHERE id=? AND status='COMPLETED'\",(row[0],));assert db.execute('SELECT changes()').fetchone()[0]==1;db.commit()\nprint(json.dumps({'matched_exact_request':True,'response_reservation_preserved':True,'interrupted_state_injected':sys.argv[7]=='interrupt'}));db.close()`;
+  const output = await checked('python3', ['-B', '-c', code, path.join(stateDir, 'cicada.sqlite3'),
+    ownerId, pending.operationId, pending.packetSha256, String(pending.requestSequence),
+    String(pending.responseSequence), interrupt ? 'interrupt' : 'observe']);
+  return JSON.parse(output);
+}
+
+async function runResponseLossAndUncertainty(password) {
+  phase = 'committed_response_loss_exact_recovery';
+  const lostName = `Lost Response ${suffix.slice(-8)}`;
+  const pending = await loseGroupResponse(lostName);
+  await fixtureRequestState(pending);
+  const recoveryRequests = [];
+  pageA.listeners.get('Network.requestWillBeSent').push(event => {
+    if (event.request?.url?.endsWith('/v2/client/rpc/recover')) recoveryRequests.push(event.requestId);
+  });
+  await buttonClick(pageA, 'Recover exact pending operation');
+  await evaluateUntil(pageA, 'document.querySelector(".workspace") !== null && !document.querySelector(".fence-card")');
+  const recovered = await readIndexedDBState(pageA);
+  if (recovered.pending || recovered.writeFence || recoveryRequests.length !== 1) fail('Lost completed response did not recover exactly once');
+  if (await pageA.evaluate(`[...document.querySelectorAll('text.group-label')].filter(e=>e.textContent===${JSON.stringify(lostName)}).length`) !== 1) fail('Lost response created zero or duplicate Groups');
+  result.response_loss = { original_packet_sha256: pending.packetSha256, exact_recovery_requests: 1,
+    group_count_after_recovery: 1, replacement_management_write: false };
+  markStep('response_loss_exact_recovery');
+
+  phase = 'durable_interrupted_state_uncertainty';
+  const uncertainName = `Uncertain Response ${suffix.slice(-8)}`;
+  const interrupted = await loseGroupResponse(uncertainName);
+  if (nodeWasCreated) await docker(['stop', '--time', '10', nodeContainer]);
+  await docker(['stop', '--time', '10', hubContainer]);
+  result.uncertain_fault = await fixtureRequestState(interrupted, true);
+  result.uncertain_fault.scope = 'controlled synthetic durable interrupted-state injection after response loss; not an actual kill-window proof';
+  await docker(['start', hubContainer]); await waitHub(hubContainer);
+    hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
+  if (nodeWasCreated) await docker(['start', nodeContainer]);
+  if (JSON.stringify(await pendingFingerprint()) !== JSON.stringify(interrupted)) fail('Hub restart changed browser pending ciphertext');
+  await buttonClick(pageA, 'Recover exact pending operation');
+  await evaluateUntil(pageA, 'document.querySelector(".fence-card") !== null');
+  const fenced = await readIndexedDBState(pageA);
+  if (fenced.pending || !fenced.writeFence) fail('Authenticated uncertainty did not separate durable semantic fence from resolved packet');
+  const writesBefore = pageA.rpcRequestCount;
+  await cardField(pageA, 'Create Group', 'input', 0, 'Must not be written');
+  await buttonClick(pageA, 'Preview Group creation');
+  if (pageA.rpcRequestCount !== writesBefore || await pageA.evaluate('document.querySelector(".side")?.innerText.includes("Exact action preview")')) fail('Uncertain fence allowed a replacement write');
+  await pageA.send('Page.reload');
+  await evaluateUntil(pageA, 'document.querySelector("#unlock-password") !== null');
+  await setInputValue(pageA, '#unlock-password', password); await buttonClick(pageA, 'Unlock device key');
+  await evaluateUntil(pageA, 'document.querySelector(".fence-card") !== null');
+  if (!(await readIndexedDBState(pageA)).writeFence) fail('Uncertain fence was lost on reload/unlock');
+  await pageB.send('Page.reload');
+  await evaluateUntil(pageB, 'document.querySelector("#unlock-password") !== null');
+  await setInputValue(pageB, '#unlock-password', password); await buttonClick(pageB, 'Unlock device key');
+  await evaluateUntil(pageB, 'document.querySelector(".fence-card") !== null');
+  const secondTabBefore = pageB.rpcRequestCount;
+  await cardField(pageB, 'Create Group', 'input', 0, 'Second tab must not write');
+  await buttonClick(pageB, 'Preview Group creation');
+  if (pageB.rpcRequestCount !== secondTabBefore) fail('Second tab bypassed the durable uncertain write fence');
+  const authorizedLabel = 'I reviewed this state; authorize a new write';
+  if (!await pageA.evaluate(`([...document.querySelectorAll('button')].find(e=>e.textContent===${JSON.stringify(authorizedLabel)}))?.disabled`)) fail('Fence authorization was enabled without explicit fresh review');
+  const beforeReview = pageA.rpcRequestCount;
+  await buttonClick(pageA, 'Refresh topology and status for review');
+  await evaluateUntil(pageA, `([...document.querySelectorAll('button')].find(e=>e.textContent===${JSON.stringify(authorizedLabel)}))?.disabled === false`);
+  if (pageA.rpcRequestCount !== beforeReview + 2 || !(await readIndexedDBState(pageA)).writeFence) fail('Both snapshots did not preserve the uncertain fence for explicit review');
+  const dialogPromise = pageA.waitEvent('Page.javascriptDialogOpening');
+  // Runtime.evaluate does not return while a modal is open; dispatch concurrently.
+  const click = buttonClick(pageA, authorizedLabel);
+  const dialog = await dialogPromise;
+  if (dialog.type !== 'confirm' || !dialog.message.includes(interrupted.operationId)) fail('Explicit authorization dialog lost exact uncertain operation');
+  await pageA.send('Page.handleJavaScriptDialog', { accept: true }); await click;
+  await evaluateUntil(pageA, 'document.querySelector(".fence-card") === null');
+  if ((await readIndexedDBState(pageA)).writeFence || pageA.rpcRequestCount !== beforeReview + 2) fail('Review authorization replayed a write or failed to clear the semantic fence');
+  if (await pageA.evaluate(`[...document.querySelectorAll('text.group-label')].filter(e=>e.textContent===${JSON.stringify(uncertainName)}).length`) !== 1) fail('Uncertain recovery duplicated the original Group');
+  result.uncertain_fault = { ...result.uncertain_fault, original_packet_sha256: interrupted.packetSha256,
+    authenticated_uncertain_response: true, reload_and_cross_tab_fence: true,
+    review_snapshots: 2, explicit_review_authorization: true, authorization_replayed_write: false };
+  markStep('uncertain_write_fence');
 }
 
 async function cleanup() {
@@ -806,13 +1180,14 @@ async function cleanup() {
     docker_network_removed: false, fixture_directory_removed: false };
   try { pageA?.close(); } catch { /* best effort */ }
   try { pageB?.close(); } catch { /* best effort */ }
+  cleaned.node_container_removed = !nodeWasCreated || await removeOwnedContainer(nodeContainer, hubImageId);
   if (browserWasCreated) cleaned.chromium_container_removed = await removeOwnedContainer(browserContainer, chromiumImageId);
   if (hubWasCreated) cleaned.hub_container_removed = await removeOwnedContainer(hubContainer, hubImageId);
   if (networkWasCreated) cleaned.docker_network_removed = await removeOwnedNetwork();
   await rm(fixtureDir, { recursive: true, force: true });
   const fixtureCheck = await run('test', ['-e', fixtureDir]);
   cleaned.fixture_directory_removed = fixtureCheck.code !== 0;
-  const cleanupOkay = (!browserWasCreated || cleaned.chromium_container_removed) &&
+  const cleanupOkay = cleaned.node_container_removed && (!browserWasCreated || cleaned.chromium_container_removed) &&
     (!hubWasCreated || cleaned.hub_container_removed) && (!networkWasCreated || cleaned.docker_network_removed) &&
     cleaned.fixture_directory_removed;
   result.fixture_cleanup = { status: cleanupOkay ? 'PASS' : 'FAIL', ...cleaned };
@@ -825,10 +1200,11 @@ async function main() {
   catch { fail('Evidence directory already exists or cannot be created; refusing to overwrite it'); }
   await chmod(outputDir, 0o700);
   await ensureDir(fixtureDir);
-  for (const directory of [stateDir, workspaceDir, ownerPrivateDir, ownerPublicDir, browserDownloads, browserImports]) await ensureDir(directory);
+  for (const directory of [stateDir, workspaceDir, ownerPrivateDir, ownerPublicDir, browserDownloads, browserImports, nodeStateDir]) await ensureDir(directory);
   await writeFile(hubEnvPath, `CICADA_API_TOKEN=synthetic-${randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
 
   result.scripts.browser_gate_sha256 = await fileSHA256(scriptPath);
+  result.desktop_viewport = { width: 1440, height: 1000, device_scale_factor: 1, mobile: false };
   const buildMetadata = JSON.parse(await readFile(metadataPath, 'utf8'));
   if (!buildMetadata.image?.id || !buildMetadata.source?.source_fingerprint) fail('Build metadata is missing candidate image or source fingerprint');
   const hubImage = await inspectImage(hubRef);
@@ -868,6 +1244,8 @@ try {
   topFailure = error;
   result.status = phase === 'prerequisites' || phase === 'chromium_image' ? 'BLOCKED' : 'FAIL';
   result.failure = { phase, reason: error?.message || 'unknown failure' };
+  if (pageA) { try { result.admission_diagnostic = await pageA.evaluate('globalThis.cicadaAdmissionDiagnostic || null'); } catch { /* browser may have closed */ } }
+  if (pageA) { try { result.failure.canvas_banner = await pageA.evaluate("document.querySelector('.status-banner')?.textContent || ''"); } catch { /* browser may have closed */ } }
 } finally {
   try { await cleanup(); }
   catch (error) {

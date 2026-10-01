@@ -9,6 +9,219 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 )
 
+// newDirectoryOnlyNetworkFixture models a signed, current Network Join with
+// no direct, Task, or Broadcast authority. The Endpoint intentionally starts
+// without a native binding or any Network key material.
+func newDirectoryOnlyNetworkFixture(t *testing.T) networkTaskFixture {
+	t.Helper()
+	s, owner, _, device := newClientDeviceFixture(t)
+	if _, err := s.db.Exec(`UPDATE principals SET trust_domain_id='domain' WHERE id='owner_a'`); err != nil {
+		t.Fatal(err)
+	}
+	const nodeID, networkID, nativeID = "node_directory_only", "net_directory_only", "native_directory_only"
+	credential := nodeBindingTestCredentialDigest("synthetic-directory-only-node-token")
+	codeDigest := nodeBindingTestCodeDigest("synthetic-directory-only-device-code")
+	bound, err := s.CreatePendingNodeDeviceBinding(nodeID, nodeID, credential, codeDigest,
+		time.Now().UTC().Add(10*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConfirmPendingNodeDeviceBinding("owner_a", device.DeviceID, codeDigest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateNetwork(Network{ID: networkID, HubID: bound.HubID,
+		Name: "Directory-only synthetic Network", OwnerID: "owner_a"}); err != nil {
+		t.Fatal(err)
+	}
+	grants := []string{"directory.discover", "directory.publish"}
+	invitation := "synthetic-directory-only-invitation-aaaaaaaaaaaaaaaa"
+	if err := s.IssueNetworkInvitation(networkID, "owner_a", "owner_a", invitation,
+		time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), grants); err != nil {
+		t.Fatal(err)
+	}
+	proof, err := owner.SignOwnerNetworkJoinGrant("owner_a", bound.HubID, networkID,
+		nodeID, nativeID, NetworkInvitationDigest(invitation), owner.Public().ID, grants, false,
+		time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Nonce     string `json:"nonce"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.Unmarshal(proof, &claims); err != nil {
+		t.Fatal(err)
+	}
+	joined, err := s.AcceptNetworkJoin(AcceptNetworkJoinInput{
+		NetworkID: networkID, OwnerID: "owner_a", TrustDomainID: "domain", NodeID: nodeID,
+		NativeSessionID: nativeID, Harness: "codex", EndpointName: "directory-only",
+		InvitationToken: invitation, ProofNonce: claims.Nonce,
+		ProofDigest: NetworkInvitationDigest(string(proof)), ProofExpiresAt: claims.ExpiresAt,
+		OwnerKeyID: owner.Public().ID, OwnerJoinProof: string(proof), NodeCredentialHash: credential,
+		Grants: grants, CredentialHash: "directory-only-access-credential",
+		LeaseOwner: "directory-only-lease", LeaseExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := NetworkAccessScope{NetworkID: networkID, PrincipalID: joined.PrincipalID,
+		EndpointID: joined.EndpointID, AccessSessionID: joined.AccessSessionID,
+		AccessEpoch: joined.AccessSessionEpoch, LeaseOwner: "directory-only-lease",
+		MembershipID: joined.MembershipID, MembershipRevision: joined.MembershipRevision,
+		EndpointMembershipRevision: joined.EndpointRevision}
+	return networkTaskFixture{s: s, owner: owner, publisher: networkTaskTestEndpoint{scope: scope},
+		credential: credential}
+}
+
+func TestNetworkDirectoryOnlyNativeBindingDoesNotGrantTrafficOrKeys(t *testing.T) {
+	f := newDirectoryOnlyNetworkFixture(t)
+	binding, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope)
+	if err != nil || binding == nil || binding.EndpointID != f.publisher.scope.EndpointID ||
+		binding.PrincipalID != f.publisher.scope.PrincipalID || binding.NodeID != "node_directory_only" ||
+		binding.NativeSessionID != "native_directory_only" || binding.Status != "active" || binding.Epoch == 0 {
+		t.Fatalf("directory-only member could not register only its current native identity: %#v %v", binding, err)
+	}
+	var grantsJSON string
+	if err := f.s.db.QueryRow(`SELECT grants_json FROM network_memberships_v2 WHERE id=?`,
+		f.publisher.scope.MembershipID).Scan(&grantsJSON); err != nil {
+		t.Fatal(err)
+	}
+	var grants []string
+	if err := json.Unmarshal([]byte(grantsJSON), &grants); err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 2 || grants[0] != "directory.discover" || grants[1] != "directory.publish" {
+		t.Fatalf("native identity registration changed explicit Network grants: %v", grants)
+	}
+
+	endpointKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hubID, err := f.s.GetClientHubID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := endpointKey.SignNetworkDirectKeyAttestation(hubID,
+		f.publisher.scope.NetworkID, f.publisher.scope.EndpointID, f.publisher.scope.PrincipalID,
+		binding.NodeID, binding.ID, binding.Epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.RegisterNetworkDirectKeyCandidate(f.publisher.scope, proof); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("directory-only native binding published a direct key candidate: %v", err)
+	}
+	var candidateCount int
+	if err := f.s.db.QueryRow(`SELECT count(*) FROM network_direct_key_candidates_v2 WHERE network_id=? AND endpoint_id=?`,
+		f.publisher.scope.NetworkID, f.publisher.scope.EndpointID).Scan(&candidateCount); err != nil || candidateCount != 0 {
+		t.Fatalf("rejected key publication left candidate state: count=%d err=%v", candidateCount, err)
+	}
+	if _, err := f.s.NetworkDirectPeerKey(f.publisher.scope, "ep_synthetic_target"); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("directory-only native binding authorized peer key lookup: %v", err)
+	}
+	if _, err := f.s.EnqueueNetworkDirectSealedSend(NetworkDirectSendInput{
+		Scope: f.publisher.scope, NodeCredentialDigest: f.credential,
+		TargetEndpointID: "ep_synthetic_target", MessageID: "direct_synthetic_directory_only",
+		Ciphertext: []byte("synthetic sealed bytes"),
+	}); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("directory-only native binding authorized SEND: %v", err)
+	}
+	if _, err := f.s.PublishNetworkTaskOffer(f.publisher.scope, NetworkTaskOfferInput{
+		TaskID:          "ntask_synthetic_directory_only",
+		ExpiresAt:       time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+		OfferMessageIDs: []string{"synthetic_unrouted_offer"},
+	}); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("directory-only native binding authorized Task publication: %v", err)
+	}
+	if _, err := f.s.PreviewNetworkBroadcastRecipients(f.publisher.scope); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("directory-only native binding authorized Broadcast preview: %v", err)
+	}
+	tx, err := f.s.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := networkGuardAccessTx(tx, f.publisher.scope, "", time.Now().UTC()); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatalf("traffic guard accepted an empty action: %v", err)
+	}
+	_ = tx.Rollback()
+}
+
+func TestNetworkNativeBindingRejectsNonCurrentMemberScope(t *testing.T) {
+	f := newDirectoryOnlyNetworkFixture(t)
+	for _, test := range []struct {
+		name   string
+		mutate func(*NetworkAccessScope)
+	}{
+		{name: "unjoined endpoint", mutate: func(scope *NetworkAccessScope) { scope.EndpointID = "ep_not_joined" }},
+		{name: "wrong principal", mutate: func(scope *NetworkAccessScope) { scope.PrincipalID = "pr_synthetic_foreign" }},
+		{name: "wrong access session", mutate: func(scope *NetworkAccessScope) { scope.AccessSessionID = "nas_synthetic_foreign" }},
+		{name: "stale membership revision", mutate: func(scope *NetworkAccessScope) { scope.MembershipRevision++ }},
+		{name: "stale endpoint revision", mutate: func(scope *NetworkAccessScope) { scope.EndpointMembershipRevision++ }},
+		{name: "wrong lease owner", mutate: func(scope *NetworkAccessScope) { scope.LeaseOwner = "stale-lease-owner" }},
+		{name: "wrong Network", mutate: func(scope *NetworkAccessScope) { scope.NetworkID = "net_foreign_scope" }},
+	} {
+		scope := f.publisher.scope
+		test.mutate(&scope)
+		if _, err := f.s.EnsureNetworkDirectNativeBinding(scope); !errors.Is(err, ErrNetworkPermission) {
+			t.Fatalf("%s scope obtained native binding: %v", test.name, err)
+		}
+	}
+	t.Run("stale epoch", func(t *testing.T) {
+		f := newDirectoryOnlyNetworkFixture(t)
+		if _, err := f.s.db.Exec(`UPDATE network_access_sessions_v2 SET epoch=epoch+1 WHERE id=?`,
+			f.publisher.scope.AccessSessionID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope); !errors.Is(err, ErrNetworkPermission) {
+			t.Fatalf("stale Network access epoch obtained native binding: %v", err)
+		}
+	})
+	t.Run("expired session or membership", func(t *testing.T) {
+		for _, update := range []struct {
+			name string
+			sql  string
+			arg  string
+		}{
+			{name: "session", sql: `UPDATE network_access_sessions_v2 SET lease_expires_at=? WHERE id=?`, arg: "session"},
+			{name: "membership", sql: `UPDATE network_memberships_v2 SET expires_at=? WHERE id=?`, arg: "membership"},
+		} {
+			t.Run(update.name, func(t *testing.T) {
+				f := newDirectoryOnlyNetworkFixture(t)
+				key := f.publisher.scope.AccessSessionID
+				if update.arg == "membership" {
+					key = f.publisher.scope.MembershipID
+				}
+				if _, err := f.s.db.Exec(update.sql, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), key); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope); !errors.Is(err, ErrNetworkPermission) {
+					t.Fatalf("expired Network identity obtained native binding: %v", err)
+				}
+			})
+		}
+	})
+	t.Run("revoked membership", func(t *testing.T) {
+		f := newDirectoryOnlyNetworkFixture(t)
+		if _, err := f.s.db.Exec(`UPDATE network_memberships_v2 SET status='revoked' WHERE id=?`,
+			f.publisher.scope.MembershipID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope); !errors.Is(err, ErrNetworkPermission) {
+			t.Fatalf("revoked Network member obtained native binding: %v", err)
+		}
+	})
+	t.Run("endpoint rebound to another Node", func(t *testing.T) {
+		f := newDirectoryOnlyNetworkFixture(t)
+		if _, err := f.s.db.Exec(`UPDATE fabric_endpoints SET machine_id='node_foreign' WHERE id=?`,
+			f.publisher.scope.EndpointID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope); !errors.Is(err, ErrNetworkPermission) {
+			t.Fatalf("Endpoint rebound to another Node retained native binding authority: %v", err)
+		}
+	})
+}
+
 func TestNetworkDirectKeyGrantFirstAcceptancePersistsAndResignIsStable(t *testing.T) {
 	s, owner, _, device := newClientDeviceFixture(t)
 	if _, err := s.db.Exec(`UPDATE principals SET trust_domain_id='domain' WHERE id='owner_a'`); err != nil {

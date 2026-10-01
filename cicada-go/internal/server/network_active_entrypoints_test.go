@@ -104,7 +104,7 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 
 	hub := httptest.NewServer(NewFabricHandler(service, "synthetic-operator-token"))
 	defer hub.Close()
-	call := func(method, path, authorization, groupScope string, body any) int {
+	callResponse := func(method, path, authorization, groupScope string, body any) *http.Response {
 		t.Helper()
 		var encoded []byte
 		if body != nil {
@@ -126,6 +126,11 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
+		return response
+	}
+	call := func(method, path, authorization, groupScope string, body any) int {
+		t.Helper()
+		response := callResponse(method, path, authorization, groupScope, body)
 		defer response.Body.Close()
 		return response.StatusCode
 	}
@@ -164,8 +169,42 @@ func TestActiveNetworkHTTPWorksWithoutControlAndSeparatesCredentials(t *testing.
 	if got := call(http.MethodPost, "/v2/fabric/node/networks/direct/send", networkAuth, "", map[string]any{}); got != http.StatusUnauthorized {
 		t.Fatalf("Network access token became a Node sender credential: %d", got)
 	}
-	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/native-binding", networkAuth, "", map[string]any{}); got != http.StatusForbidden {
-		t.Fatalf("directory-only Network scope created a direct native binding: %d", got)
+	response := callResponse(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/native-binding",
+		networkAuth, "", map[string]any{})
+	var nativeBinding store.NetworkDirectNativeBinding
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		t.Fatalf("directory-only current Network member could not register its native identity: %d", response.StatusCode)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&nativeBinding); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if nativeBinding.ID == "" || nativeBinding.EndpointID != joinedWithGroup.Endpoint.ID ||
+		nativeBinding.PrincipalID != joinedWithGroup.Endpoint.PrincipalID || nativeBinding.NodeID != nodeID ||
+		nativeBinding.NativeSessionID != "native-active-http" || nativeBinding.Epoch == 0 || nativeBinding.Status != "active" {
+		t.Fatalf("native identity registration returned an unexpected binding: %+v", nativeBinding)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/broadcasts/preview", networkAuth, "", nil); got != http.StatusForbidden {
+		t.Fatalf("native identity registration enabled Broadcast preview: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/key-candidate", networkAuth, "",
+		map[string][]byte{"attestation": []byte("synthetic invalid proof")}); got != http.StatusForbidden {
+		t.Fatalf("directory-only native binding enabled key publication: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/networks/"+networkID+"/direct/peer-key", networkAuth, "",
+		map[string]string{"target_endpoint_id": joinedNetworkOnly.Endpoint.ID}); got != http.StatusNotFound {
+		t.Fatalf("directory-only native binding enabled peer key lookup: %d", got)
+	}
+	if got := call(http.MethodGet, "/v2/fabric/networks/"+networkID+"/tasks/list?limit=10", networkAuth, "", nil); got != http.StatusForbidden {
+		t.Fatalf("directory-only native binding enabled Task access: %d", got)
+	}
+	if got := call(http.MethodPost, "/v2/fabric/node/networks/direct/send", "CicadaNode "+nodeToken, "",
+		fabric.NetworkDirectSendInput{NetworkID: networkID, NetworkSessionToken: joinedWithGroup.SessionToken,
+			TargetEndpointID: joinedNetworkOnly.Endpoint.ID, MessageID: "direct_synthetic_directory_only",
+			Ciphertext: []byte("synthetic sealed bytes")}); got != http.StatusForbidden {
+		t.Fatalf("directory-only native binding enabled direct SEND: %d", got)
 	}
 	if got := call(http.MethodPost, "/v2/fabric/send", groupAuth, group.ID, map[string]string{"body": "retired"}); got != http.StatusGone {
 		t.Fatalf("authenticated legacy plaintext send status=%d, want 410", got)

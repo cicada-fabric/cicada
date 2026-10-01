@@ -31,11 +31,12 @@ type machineJob struct {
 	// The following authority is reconstructed from the exact sealed claim
 	// response and local Owner-approved binding. It never comes from Worker
 	// JSON or peer-controlled task content.
-	executionID  string `json:"-"`
-	providerID   string `json:"-"`
-	resourceID   string `json:"-"`
-	leaseID      string `json:"-"`
-	fencingEpoch int64  `json:"-"`
+	executionID     string `json:"-"`
+	providerID      string `json:"-"`
+	providerAttempt int    `json:"-"`
+	resourceID      string `json:"-"`
+	leaseID         string `json:"-"`
+	fencingEpoch    int64  `json:"-"`
 }
 
 type machineJobResult struct {

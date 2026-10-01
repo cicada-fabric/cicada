@@ -250,6 +250,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 					// quarantined or not mapped by the Node operator. No provider
 					// process started; return a truthful terminal result so the
 					// single durable claim slot cannot block unrelated Workers.
+					claimed = prepared
 					if err := client.beginClaimExecution(claimed); err != nil {
 						return err
 					}
@@ -272,7 +273,8 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 				if ok && hub.ProviderAdmissions != nil {
 					_, _ = hub.ProviderAdmissions.RecordProviderAdmissionOutcome(executionCtx, nodeinbox.ProviderAdmissionOutcome{
 						ExecutionID: claimed.executionID, ProviderID: claimed.providerID,
-						Class: nodeinbox.ProviderOutcomeFailedNotInjected,
+						Attempt: claimed.providerAttempt,
+						Class:   nodeinbox.ProviderOutcomeFailedNotInjected,
 					})
 				}
 				return err

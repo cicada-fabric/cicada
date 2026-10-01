@@ -27,6 +27,39 @@ async function modelChecks(uiDir) {
   const point = { x: 125, y: 87 };
   const roundTrip = model.worldPointToScreen(model.screenPointToWorld(point, view), view);
   assert.ok(Math.abs(roundTrip.x - point.x) < 1e-9 && Math.abs(roundTrip.y - point.y) < 1e-9);
+  const canvasSource = (await readFile(path.join(uiDir, 'panel-canvas.js'), 'utf8'))
+    .replace(/^import .*;$/gm, '').replace('export class CanvasPanel', 'class CanvasPanel');
+  const canvasContext = { ...model, installCanvasControls() {}, globalThis: {} };
+  vm.runInNewContext(`${canvasSource}\nglobalThis.CanvasPanel = CanvasPanel;`, canvasContext);
+  const CanvasPanel = canvasContext.globalThis.CanvasPanel;
+  const attrs = {};
+  const panel = Object.create(CanvasPanel.prototype);
+  panel.view = view;
+  panel.selectionRect = { setAttribute(key, value) { attrs[key] = value; } };
+  panel.updateSelectionRect({ x: 10, y: 20 }, { x: 40, y: 60 });
+  assert.equal(attrs.x, view.x + 10 * view.scale, 'selection outline uses screen coordinates');
+  assert.equal(attrs.y, view.y + 20 * view.scale);
+  assert.equal(attrs.width, 30 * view.scale);
+  assert.equal(attrs.height, 40 * view.scale);
+  const listeners = {};
+  panel.svgRoot = { addEventListener(name, callback) { listeners[name] = callback; },
+    hasPointerCapture() { return false; } };
+  panel.selection = new Set();
+  const endpoint = { getAttribute(name) { return name === 'data-endpoint-id' ? 'keyboard-endpoint' : 'group-a'; }, focus() {} };
+  panel.world = { querySelectorAll() { return [endpoint]; } };
+  panel.render = panel.renderSide = panel.setMessage = () => {};
+  panel.attachCanvasEvents();
+  let prevented = false;
+  const key = (value, shiftKey = false) => listeners.keydown({ key: value, shiftKey,
+    target: { closest() { return endpoint; } }, preventDefault() { prevented = true; } });
+  key('Enter');
+  assert.equal(panel.selection.has('keyboard-endpoint'), true);
+  assert.equal(prevented, true);
+  key(' ', true);
+  assert.equal(panel.selection.size, 0, 'modified Space toggles selection without a write');
+  panel.drag = { pointerId: 1 };
+  key('Escape');
+  assert.equal(panel.drag, null, 'Escape cancels an in-flight gesture');
   const box = model.normalizeBox({ x: 50, y: 40 }, { x: 10, y: 5 });
   assert.deepEqual(box, { x: 10, y: 5, width: 40, height: 35 });
   assert.equal(model.boxContains(box, { x: 20, y: 12, width: 8, height: 8 }), true);

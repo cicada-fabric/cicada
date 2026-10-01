@@ -142,21 +142,29 @@ type machineNodeControlState struct {
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
 // decoded in memory after restart; an EXECUTING ticket is never redispatched.
 type machineNodeControlClaimTicket struct {
-	ResponsePacket   []byte `json:"response_packet"`
-	WorkerID         string `json:"worker_id"`
-	Attempt          int    `json:"attempt"`
-	Phase            string `json:"phase"`
-	ClaimOperationID string `json:"claim_operation_id"`
-	ClaimSequence    uint64 `json:"claim_sequence"`
-	BindingID        string `json:"binding_id"`
-	BindingVersion   uint64 `json:"binding_version"`
-	NodeKeyEpoch     uint64 `json:"node_key_epoch"`
-	ExecutionID      string `json:"execution_id"`
-	ProviderID       string `json:"provider_id"`
-	ResourceID       string `json:"resource_id,omitempty"`
-	LeaseID          string `json:"lease_id"`
-	FencingEpoch     int64  `json:"fencing_epoch,omitempty"`
+	Version                 int    `json:"version"`
+	ResponsePacket          []byte `json:"response_packet"`
+	WorkerID                string `json:"worker_id"`
+	Attempt                 int    `json:"attempt"`
+	Phase                   string `json:"phase"`
+	ClaimOperationID        string `json:"claim_operation_id"`
+	ClaimSequence           uint64 `json:"claim_sequence"`
+	BindingID               string `json:"binding_id"`
+	BindingVersion          uint64 `json:"binding_version"`
+	NodeKeyEpoch            uint64 `json:"node_key_epoch"`
+	ExecutionID             string `json:"execution_id"`
+	ProviderID              string `json:"provider_id"`
+	ProviderAttempt         int    `json:"provider_attempt,omitempty"`
+	ProviderAdmissionIntent string `json:"provider_admission_intent,omitempty"`
+	ResourceID              string `json:"resource_id,omitempty"`
+	LeaseID                 string `json:"lease_id"`
+	FencingEpoch            int64  `json:"fencing_epoch,omitempty"`
 }
+
+const (
+	machineNodeControlLegacyClaimTicketVersion = 1
+	machineNodeControlClaimTicketVersion       = 2
+)
 
 type machineNodeControlClient struct {
 	mu                 sync.Mutex
@@ -820,7 +828,9 @@ func (client *machineNodeControlClient) claimTicketJob() (*machineJob, error) {
 	if err != nil || opened.Route.Direction != nodewire.DirectionResponse || opened.Route.Operation != "node.jobs.claim" {
 		return nil, errors.New("durable claim ticket failed Node-Control response authentication")
 	}
-	if ticket.ClaimOperationID == "" || ticket.ClaimSequence == 0 ||
+	if ticket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(ticket.ProviderAdmissionIntent) ||
+		ticket.ClaimOperationID == "" || ticket.ClaimSequence == 0 ||
 		opened.Route.OperationID != ticket.ClaimOperationID || opened.Route.Sequence != ticket.ClaimSequence ||
 		ticket.BindingID != client.state.BindingID || ticket.BindingVersion != client.state.BindingVersion ||
 		ticket.NodeKeyEpoch != client.state.NodeKeyEpoch || ticket.ExecutionID == "" ||
@@ -849,10 +859,13 @@ func (client *machineNodeControlClient) claimTicketJob() (*machineJob, error) {
 func (client *machineNodeControlClient) beginClaimExecution(job machineJob) error {
 	client.mu.Lock()
 	defer client.mu.Unlock()
-	if client.state.ClaimTicket == nil || client.state.ClaimTicket.Phase != "READY" ||
+	if client.state.ClaimTicket == nil || client.state.ClaimTicket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(client.state.ClaimTicket.ProviderAdmissionIntent) ||
+		client.state.ClaimTicket.Phase != "READY" ||
 		client.state.ClaimTicket.WorkerID != job.WorkerID || client.state.ClaimTicket.Attempt != job.Attempt ||
 		client.state.ClaimTicket.ExecutionID != job.executionID ||
 		client.state.ClaimTicket.ProviderID != job.providerID ||
+		job.providerAttempt <= 0 || client.state.ClaimTicket.ProviderAttempt != job.providerAttempt ||
 		client.state.ClaimTicket.ResourceID != job.resourceID ||
 		client.state.ClaimTicket.LeaseID != job.leaseID ||
 		client.state.ClaimTicket.FencingEpoch != job.fencingEpoch ||
@@ -872,10 +885,15 @@ func (client *machineNodeControlClient) beginClaimExecution(job machineJob) erro
 func (client *machineNodeControlClient) finishClaimExecution(job machineJob) error {
 	client.mu.Lock()
 	defer client.mu.Unlock()
-	if client.state.ClaimTicket == nil ||
+	if client.state.ClaimTicket == nil || client.state.ClaimTicket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(client.state.ClaimTicket.ProviderAdmissionIntent) ||
 		(client.state.ClaimTicket.Phase != "EXECUTING" &&
 			client.state.ClaimTicket.Phase != "RESOURCE_STOP_UNVERIFIED") ||
-		client.state.ClaimTicket.WorkerID != job.WorkerID || client.state.ClaimTicket.Attempt != job.Attempt {
+		client.state.ClaimTicket.WorkerID != job.WorkerID || client.state.ClaimTicket.Attempt != job.Attempt ||
+		client.state.ClaimTicket.ExecutionID != job.executionID || client.state.ClaimTicket.ProviderID != job.providerID ||
+		job.providerAttempt <= 0 || client.state.ClaimTicket.ProviderAttempt != job.providerAttempt ||
+		client.state.ClaimTicket.ResourceID != job.resourceID || client.state.ClaimTicket.LeaseID != job.leaseID ||
+		client.state.ClaimTicket.FencingEpoch != job.fencingEpoch {
 		return errors.New("completed Worker does not match its durable Node-Control claim ticket")
 	}
 	previous := cloneMachineNodeControlState(client.state)
@@ -891,8 +909,11 @@ func (client *machineNodeControlClient) markClaimResourceStopUnverified(job mach
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	ticket := client.state.ClaimTicket
-	if ticket == nil || ticket.Phase != "EXECUTING" || ticket.WorkerID != job.WorkerID ||
+	if ticket == nil || ticket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(ticket.ProviderAdmissionIntent) ||
+		ticket.Phase != "EXECUTING" || ticket.WorkerID != job.WorkerID ||
 		ticket.Attempt != job.Attempt || ticket.ExecutionID != job.executionID ||
+		ticket.ProviderAttempt != job.providerAttempt || job.providerAttempt <= 0 ||
 		ticket.ResourceID != job.resourceID || ticket.LeaseID != job.leaseID ||
 		ticket.FencingEpoch != job.fencingEpoch || ticket.FencingEpoch <= 0 {
 		return errors.New("resource stop warning does not match the exact executing claim ticket")

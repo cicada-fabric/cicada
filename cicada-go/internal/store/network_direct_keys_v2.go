@@ -290,7 +290,9 @@ func networkGuardNetworkKeyAccessTx(tx *sql.Tx, scope NetworkAccessScope, at tim
 
 // EnsureNetworkDirectNativeBinding registers a real native destination after
 // rechecking the current access session, owner-bound Node and enrollment in
-// this transaction. It does not grant a second writer to the Node process.
+// this transaction. This self-binding grants no Network traffic permission and
+// publishes or returns no Endpoint key; each operation has its own guard. It
+// does not grant a second writer to the Node process.
 func (s *Store) EnsureNetworkDirectNativeBinding(scope NetworkAccessScope) (*NetworkDirectNativeBinding, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -299,7 +301,7 @@ func (s *Store) EnsureNetworkDirectNativeBinding(scope NetworkAccessScope) (*Net
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := networkGuardNetworkKeyAccessTx(tx, scope, time.Now().UTC()); err != nil {
+	if err := networkGuardNetworkMemberScopeTx(tx, scope, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	var principalID, nodeID, nativeID string

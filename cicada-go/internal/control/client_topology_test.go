@@ -141,6 +141,34 @@ func TestClientTopologySnapshotScopesMetadataAndOmitsSecrets(t *testing.T) {
 	}
 }
 
+func TestClientTopologySnapshotProjectsCurrentGroupContextPolicies(t *testing.T) {
+	c := newClientStatusControl(t, time.Minute)
+	ownerID := c.Identity().ID
+	ordinary, err := c.CreateGroup(GroupCreateInput{
+		Name: "ordinary context", ContextPolicy: "group_scoped",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dedicated, err := c.CreateGroup(GroupCreateInput{
+		Name: "dedicated context", ContextPolicy: store.DedicatedThreadContextPolicy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := c.BuildClientTopologySnapshot(ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies := make(map[string]string, len(snapshot.Groups))
+	for _, group := range snapshot.Groups {
+		policies[group.GroupID] = group.ContextPolicy
+	}
+	if policies[ordinary.ID] != "group_scoped" || policies[dedicated.ID] != store.DedicatedThreadContextPolicy {
+		t.Fatalf("topology snapshot omitted or changed Group context policy: groups=%#v", snapshot.Groups)
+	}
+}
+
 func TestApplyClientTopologyGroupParentAndExplicitRoleCAS(t *testing.T) {
 	c := newClientStatusControl(t, time.Minute)
 	ownerID := c.Identity().ID

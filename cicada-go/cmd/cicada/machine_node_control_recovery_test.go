@@ -241,7 +241,34 @@ func TestMachineNodeControlClaimTicketSurvivesRestartWithoutPlaintextState(t *te
 		recovered.Prompt != "synthetic private prompt" {
 		t.Fatalf("sealed claim ticket did not recover exact job: %#v err=%v", recovered, err)
 	}
+	// Establish the provider generation durably before forcing the later
+	// resource-fence write to fail. This keeps the test focused on the resource
+	// fence window; the separate generation-fence test covers a crash between
+	// ledger Admit and persisting ProviderAttempt.
+	reopened.mu.Lock()
+	providerIntent := reopened.state.ClaimTicket.ProviderAdmissionIntent
+	reopened.mu.Unlock()
+	providerDecision, err := providerLedger.AdmitProviderAttempt(ctx, nodeinbox.ProviderAdmissionRequest{
+		ExecutionID: recovered.executionID, ProviderID: recovered.providerID, AdmissionIntent: providerIntent})
+	if err != nil || providerDecision == nil || !providerDecision.Admitted || providerDecision.Attempt <= 0 {
+		t.Fatalf("admit recovered provider generation: decision=%#v err=%v", providerDecision, err)
+	}
+	reopened.mu.Lock()
+	reopened.state.ClaimTicket.ProviderAttempt = providerDecision.Attempt
+	if err := reopened.persistLocked(); err != nil {
+		reopened.mu.Unlock()
+		t.Fatal(err)
+	}
+	reopened.mu.Unlock()
+	recovered.providerAttempt = providerDecision.Attempt
 	originalStatePath := reopened.statePath
+	stateBytesBeforeFence, err := os.ReadFile(originalStatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(stateBytesBeforeFence, []byte("synthetic private prompt")) {
+		t.Fatal("Node persisted the decrypted Worker prompt with the provider generation")
+	}
 	blockedParent := filepath.Join(client.stateDir, "blocked-parent")
 	if err := os.WriteFile(blockedParent, []byte("synthetic"), 0o600); err != nil {
 		t.Fatal(err)
@@ -259,7 +286,7 @@ func TestMachineNodeControlClaimTicketSurvivesRestartWithoutPlaintextState(t *te
 	reopened.statePath = originalStatePath
 	reopened.mu.Unlock()
 	diskAfterFailedFence, err := os.ReadFile(originalStatePath)
-	if err != nil || !bytes.Equal(stateBytes, diskAfterFailedFence) {
+	if err != nil || !bytes.Equal(stateBytesBeforeFence, diskAfterFailedFence) {
 		t.Fatalf("failed fence persistence changed durable ticket bytes: err=%v", err)
 	}
 	prepared, admission, err := prepareMachineNodeClaimExecution(ctx, reopened, *recovered)
@@ -405,13 +432,18 @@ func TestMachineNodeRejectsPhysicalResourceOutsideOperatorMapping(t *testing.T) 
 }
 
 func installMachineNodeRecoveryClaimTicket(client *machineNodeControlClient, job machineJob) error {
+	intent, err := newMachineNodeProviderAdmissionIntent()
+	if err != nil {
+		return err
+	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	client.state.ClaimTicket = &machineNodeControlClaimTicket{
+		Version:  machineNodeControlClaimTicketVersion,
 		WorkerID: job.WorkerID, Attempt: job.Attempt, Phase: "READY",
 		BindingID: client.state.BindingID, BindingVersion: client.state.BindingVersion,
 		NodeKeyEpoch: client.state.NodeKeyEpoch, ExecutionID: job.executionID,
-		ProviderID: job.providerID, LeaseID: job.leaseID,
+		ProviderID: job.providerID, ProviderAdmissionIntent: intent, LeaseID: job.leaseID,
 	}
 	return client.persistLocked()
 }

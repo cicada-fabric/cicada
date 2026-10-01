@@ -238,10 +238,9 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 		if _, ok := ownedGroups[parentID]; !ok {
 			parentID = ""
 		}
-		view.Groups = append(view.Groups, ClientTopologyGroup{
-			GroupID: group.ID, NetworkID: group.NetworkID, ParentGroupID: parentID,
-			Name: group.Name, State: group.State, Version: group.Version,
-		})
+		projectedGroup := projectClientTopologyGroup(group)
+		projectedGroup.ParentGroupID = parentID
+		view.Groups = append(view.Groups, *projectedGroup)
 		memberships, err := c.store.ListMemberships(store.MembershipFilter{GroupID: group.ID, Limit: 1000})
 		if err != nil {
 			return nil, err

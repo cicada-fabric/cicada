@@ -1407,14 +1407,34 @@ WHERE endpoint_id=? AND group_id IN (SELECT id FROM groups WHERE network_id=?)`,
 	return tx.Commit()
 }
 
-// networkGuardAccessTx and the directory query share one SQLite snapshot.
-// Revocation committed by another Store instance before this read begins is
-// therefore observed before any card can be returned.
+// networkGuardNetworkMemberScopeTx verifies the current authenticated Network
+// identity and membership scope without granting an operation. It is used
+// only for self-binding records that establish where an already admitted
+// Endpoint's native session lives; callers must still use an action guard for
+// traffic, key access, and other Network operations.
+func networkGuardNetworkMemberScopeTx(tx *sql.Tx, scope NetworkAccessScope, at time.Time) error {
+	return networkGuardCurrentScopeTx(tx, scope, "", at)
+}
+
+// networkGuardAccessTx is the operation guard for Network actions. Empty
+// actions are never accepted here; the member-scope-only case has a separate
+// narrowly named helper above.
 func networkGuardAccessTx(tx *sql.Tx, scope NetworkAccessScope, action string, at time.Time) error {
+	if strings.TrimSpace(action) == "" {
+		return ErrNetworkPermission
+	}
+	return networkGuardCurrentScopeTx(tx, scope, action, at)
+}
+
+// networkGuardCurrentScopeTx shares the exact current identity, membership,
+// epoch, lease, enrollment, Owner, and Node checks for operation guards and
+// self-binding. A non-empty action additionally requires that exact grant in
+// the same SQLite snapshot.
+func networkGuardCurrentScopeTx(tx *sql.Tx, scope NetworkAccessScope, action string, at time.Time) error {
 	if scope.NetworkID == "" || scope.PrincipalID == "" || scope.EndpointID == "" ||
 		scope.AccessSessionID == "" || scope.AccessEpoch == 0 || scope.LeaseOwner == "" ||
 		scope.MembershipID == "" || scope.MembershipRevision <= 0 ||
-		scope.EndpointMembershipRevision <= 0 || action == "" {
+		scope.EndpointMembershipRevision <= 0 {
 		return ErrNetworkPermission
 	}
 	var leaseExpiry, membershipExpiry string
@@ -1439,10 +1459,10 @@ JOIN owner_approval_keys_v2 ak ON ak.owner_id=f.owner
 WHERE a.id=? AND a.network_id=? AND a.principal_id=? AND a.endpoint_id=?
   AND a.epoch=? AND a.lease_owner=? AND a.status='active'
   AND m.id=? AND m.revision=? AND en.revision=?
-  AND EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?)`,
+	  AND (?='' OR EXISTS(SELECT 1 FROM json_each(m.grants_json) WHERE value=?))`,
 		scope.AccessSessionID, scope.NetworkID, scope.PrincipalID, scope.EndpointID,
 		scope.AccessEpoch, scope.LeaseOwner, scope.MembershipID,
-		scope.MembershipRevision, scope.EndpointMembershipRevision, action).
+		scope.MembershipRevision, scope.EndpointMembershipRevision, action, action).
 		Scan(&leaseExpiry, &membershipExpiry)
 	if err != nil {
 		return ErrNetworkPermission
@@ -1460,8 +1480,10 @@ WHERE a.id=? AND a.network_id=? AND a.principal_id=? AND a.endpoint_id=?
 	return nil
 }
 
-// ListNetworkDirectory runs caller and publisher checks in one transaction.
-// It never loads private Group names, workspace paths, native IDs or keys.
+// ListNetworkDirectory runs caller and publisher checks in one transaction,
+// so a revocation committed by another Store before this read begins is
+// observed before any card can be returned. It never loads private Group
+// names, workspace paths, native IDs or keys.
 func (s *Store) ListNetworkDirectory(scope NetworkAccessScope, limit int) ([]NetworkDirectoryEntry, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 100

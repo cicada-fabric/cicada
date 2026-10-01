@@ -108,6 +108,46 @@ func TestClientTopologySameOwnerEndpointAdmissionIsPreviewedAndMinimal(t *testin
 	}
 }
 
+func TestClientTopologyDirectoryOnlyNetworkMemberAdmissionAddsOnlyGroupMembership(t *testing.T) {
+	f := newDirectoryOnlyNetworkFixture(t)
+	if _, err := f.s.EnsureNetworkDirectNativeBinding(f.publisher.scope); err != nil {
+		t.Fatalf("register current native identity without Network traffic grants: %v", err)
+	}
+	group := topologyAdmissionGroup(t, f)
+	preview := topologyAdmissionPreview(t, f, group, f.publisher, 101)
+	if preview.AdmissionRoles == nil || len(preview.AdmissionRoles) != 1 || preview.AdmissionRoles[0] != "member" ||
+		len(preview.AdmissionGrants) != 0 || preview.HistoryIncluded || preview.KeyGrantCreated {
+		t.Fatalf("directory-only admission preview expanded authority: %+v", preview)
+	}
+	member, endpointGroup, err := f.s.AdmitClientTopologyEndpointForClientRequest(
+		clientTopologyAdmissionRequest(t, f.s, "topology.apply", 102), "owner_a", topologyAdmissionInput(*preview))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if member.Status != MembershipStatusActive || member.Role != "member" || len(member.Grants) != 0 ||
+		endpointGroup.Status != "active" || endpointGroup.EndpointID != preview.EndpointID ||
+		endpointGroup.GroupID != group.ID {
+		t.Fatalf("directory-only admission did not remain member-only: member=%+v endpointGroup=%+v", member, endpointGroup)
+	}
+	var directCandidateCount, collaborationGrantCount, groupKeyGrantCount int
+	if err := f.s.db.QueryRow(`SELECT count(*) FROM network_direct_key_candidates_v2 WHERE network_id=? AND endpoint_id=?`,
+		preview.NetworkID, preview.EndpointID).Scan(&directCandidateCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.db.QueryRow(`SELECT count(*) FROM network_collaboration_key_grants_v2 WHERE network_id=? AND endpoint_id=?`,
+		preview.NetworkID, preview.EndpointID).Scan(&collaborationGrantCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.db.QueryRow(`SELECT count(*) FROM group_endpoint_key_grants_v2 WHERE group_id=? AND endpoint_id=?`,
+		preview.GroupID, preview.EndpointID).Scan(&groupKeyGrantCount); err != nil {
+		t.Fatal(err)
+	}
+	if directCandidateCount != 0 || collaborationGrantCount != 0 || groupKeyGrantCount != 0 {
+		t.Fatalf("member-only admission created network or Group key authority: direct=%d collaboration=%d group=%d",
+			directCandidateCount, collaborationGrantCount, groupKeyGrantCount)
+	}
+}
+
 func TestClientTopologyEndpointAdmissionFencesOwnerAndCurrentTopology(t *testing.T) {
 	t.Run("wrong hub network denied", func(t *testing.T) {
 		f := newNetworkTaskFixture(t)

@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+const providerAdmissionIntentSchemaV1 = `
+CREATE TABLE IF NOT EXISTS node_provider_admission_intents_v1 (
+ execution_id TEXT NOT NULL, provider_id TEXT NOT NULL,
+ attempt INTEGER NOT NULL CHECK(attempt>0),
+ intent_hash TEXT NOT NULL CHECK(length(intent_hash)=64),
+ created_at_ms INTEGER NOT NULL,
+ PRIMARY KEY(execution_id,provider_id,attempt),
+ UNIQUE(execution_id,provider_id,intent_hash),
+ FOREIGN KEY(execution_id,provider_id)
+  REFERENCES node_provider_admission_v1(execution_id,provider_id) ON DELETE CASCADE
+);`
+
 // ProviderAdmissionLedger is a Node-wide sidecar, opened below the shared
 // WriterRoot so provider backoff is consistent across per-Hub inboxes.
 type ProviderAdmissionLedger struct {
@@ -43,6 +55,10 @@ CREATE INDEX IF NOT EXISTS node_provider_admission_retention_v1_idx
  ON node_provider_admission_v1(updated_at_ms,state);`); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize provider admission ledger: %w", err)
+	}
+	if _, err := db.Exec(providerAdmissionIntentSchemaV1); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("initialize provider admission intent schema: %w", err)
 	}
 	return &ProviderAdmissionLedger{inbox: &Inbox{db: db}}, nil
 }
@@ -114,17 +130,22 @@ const (
 )
 
 var (
-	ErrProviderAdmissionInvalid  = errors.New("provider admission input is invalid")
-	ErrProviderAdmissionCapacity = errors.New("provider admission ledger is at capacity")
-	ErrProviderAdmissionUnknown  = errors.New("provider admission record is unavailable")
+	ErrProviderAdmissionInvalid        = errors.New("provider admission input is invalid")
+	ErrProviderAdmissionCapacity       = errors.New("provider admission ledger is at capacity")
+	ErrProviderAdmissionUnknown        = errors.New("provider admission record is unavailable")
+	ErrProviderAdmissionStaleAttempt   = errors.New("provider admission attempt generation is stale")
+	ErrProviderAdmissionIntentMissing  = errors.New("provider admission intent is missing")
+	ErrProviderAdmissionIntentMismatch = errors.New("provider admission intent does not match the durable attempt")
+	ErrProviderAdmissionIntentUnbound  = errors.New("legacy provider admission has no durable intent binding")
 )
 
 // ProviderAdmissionRequest identifies one stable execution attempt and one
 // provider. Reusing the pair is idempotent; callers must not mint a new ID to
 // bypass exhausted or uncertain state.
 type ProviderAdmissionRequest struct {
-	ExecutionID string
-	ProviderID  string
+	ExecutionID     string
+	ProviderID      string
+	AdmissionIntent string
 }
 
 // ProviderAdmissionDecision is a bounded scheduling result. A false Admitted
@@ -147,6 +168,7 @@ type ProviderAdmissionDecision struct {
 type ProviderAdmissionOutcome struct {
 	ExecutionID string        `json:"execution_id"`
 	ProviderID  string        `json:"provider_id"`
+	Attempt     int           `json:"attempt"`
 	Class       string        `json:"class"`
 	RetryAfter  time.Duration `json:"retry_after,omitempty"`
 }
@@ -159,6 +181,7 @@ type ProviderAdmissionOutcome struct {
 type ProviderAdmissionReconciliation struct {
 	ExecutionID    string `json:"execution_id"`
 	ProviderID     string `json:"provider_id"`
+	Attempt        int    `json:"attempt"`
 	Resolution     string `json:"resolution"`
 	IdempotencyKey string `json:"idempotency_key"`
 	EvidenceID     string `json:"evidence_id"`
@@ -170,6 +193,10 @@ type ProviderAdmissionReconciliation struct {
 func (i *Inbox) AdmitProviderAttempt(ctx context.Context,
 	request ProviderAdmissionRequest) (*ProviderAdmissionDecision, error) {
 	request, err := normalizeProviderAdmissionRequest(request)
+	if err != nil {
+		return nil, err
+	}
+	intentHash, err := providerAdmissionIntentHash(request.AdmissionIntent)
 	if err != nil {
 		return nil, err
 	}
@@ -206,17 +233,39 @@ VALUES(?,?,?,1,?,?,0,'')`, request.ExecutionID, request.ProviderID,
 		if err != nil {
 			return nil, fmt.Errorf("record provider admission: %w", err)
 		}
+		if err := insertProviderAdmissionIntentTx(ctx, tx, request, 1, intentHash, nowMS); err != nil {
+			return nil, err
+		}
 		decision = &ProviderAdmissionDecision{ExecutionID: request.ExecutionID, ProviderID: request.ProviderID,
 			State: ProviderAdmissionInProgress, Attempt: 1, Admitted: true}
 	} else if err != nil {
 		return nil, err
 	} else {
 		switch decision.State {
+		case ProviderAdmissionInProgress:
+			if err := requireProviderAdmissionIntentTx(ctx, tx, request, decision.Attempt, intentHash); err != nil {
+				return nil, err
+			}
+			// Only a replay carrying the intent already durably paired to this
+			// generation may recover admission after a lost local ticket write.
+			decision.Admitted = true
 		case ProviderAdmissionBackoff:
+			if err := requireProviderAdmissionIntentBoundTx(ctx, tx, request, decision.Attempt); err != nil {
+				return nil, err
+			}
 			var createdMS int64
 			if err := tx.QueryRowContext(ctx, `SELECT created_at_ms FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`,
 				request.ExecutionID, request.ProviderID).Scan(&createdMS); err != nil {
 				return nil, err
+			}
+			var previousAttempt int
+			intentErr := tx.QueryRowContext(ctx, `SELECT attempt FROM node_provider_admission_intents_v1
+WHERE execution_id=? AND provider_id=? AND intent_hash=?`, request.ExecutionID, request.ProviderID, intentHash).Scan(&previousAttempt)
+			if intentErr == nil {
+				return nil, ErrProviderAdmissionIntentMismatch
+			}
+			if !errors.Is(intentErr, sql.ErrNoRows) {
+				return nil, intentErr
 			}
 			if decision.Attempt >= providerAdmissionMaxAttempts || nowMS-createdMS >= providerAdmissionMaxAge.Milliseconds() {
 				decision.State = ProviderAdmissionExhausted
@@ -235,14 +284,22 @@ WHERE execution_id=? AND provider_id=? AND state=?`, ProviderAdmissionExhausted,
 				decision.Admitted = true
 				decision.Retryable = false
 				decision.NextRetryAt = ""
-				if _, err := tx.ExecContext(ctx, `UPDATE node_provider_admission_v1 SET state=?,attempts=?,next_retry_at_ms=0,updated_at_ms=?
+				result, err := tx.ExecContext(ctx, `UPDATE node_provider_admission_v1 SET state=?,attempts=?,next_retry_at_ms=0,updated_at_ms=?
 WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, ProviderAdmissionInProgress,
 					decision.Attempt, nowMS, request.ExecutionID, request.ProviderID,
-					ProviderAdmissionBackoff, decision.Attempt-1); err != nil {
+					ProviderAdmissionBackoff, decision.Attempt-1)
+				if err != nil {
+					return nil, err
+				}
+				changed, err := result.RowsAffected()
+				if err != nil || changed != 1 {
+					return nil, ErrProviderAdmissionStaleAttempt
+				}
+				if err := insertProviderAdmissionIntentTx(ctx, tx, request, decision.Attempt, intentHash, nowMS); err != nil {
 					return nil, err
 				}
 			}
-		case ProviderAdmissionInProgress, ProviderAdmissionCompleted, ProviderAdmissionFailed,
+		case ProviderAdmissionCompleted, ProviderAdmissionFailed,
 			ProviderAdmissionInjectionUncertain, ProviderAdmissionExhausted:
 			decision.Retryable = decision.State == ProviderAdmissionBackoff
 		default:
@@ -260,6 +317,9 @@ WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, ProviderAdmi
 // INJECTION_UNCERTAIN remains terminal until a separate trusted reconciliation.
 func (i *Inbox) RecordProviderAdmissionOutcome(ctx context.Context,
 	outcome ProviderAdmissionOutcome) (*ProviderAdmissionDecision, error) {
+	if outcome.Attempt <= 0 {
+		return nil, ErrProviderAdmissionInvalid
+	}
 	request, err := normalizeProviderAdmissionRequest(ProviderAdmissionRequest{
 		ExecutionID: outcome.ExecutionID, ProviderID: outcome.ProviderID,
 	})
@@ -287,6 +347,9 @@ func (i *Inbox) RecordProviderAdmissionOutcome(ctx context.Context,
 FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request.ExecutionID, request.ProviderID), request)
 	if err != nil {
 		return nil, err
+	}
+	if decision.Attempt != outcome.Attempt {
+		return nil, ErrProviderAdmissionStaleAttempt
 	}
 	if decision.State != ProviderAdmissionInProgress {
 		// An exact repeat of the terminal outcome is safe to recover after a lost
@@ -334,12 +397,19 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 	case ProviderOutcomeInjectionUncertain:
 		state = ProviderAdmissionInjectionUncertain
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE node_provider_admission_v1 SET state=?,next_retry_at_ms=?,updated_at_ms=?,last_class=?
+	result, err := tx.ExecContext(ctx, `UPDATE node_provider_admission_v1 SET state=?,next_retry_at_ms=?,updated_at_ms=?,last_class=?
 WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, state, nextRetryMS,
 		now.UnixMilli(), outcome.Class, request.ExecutionID, request.ProviderID,
-		ProviderAdmissionInProgress, decision.Attempt)
+		ProviderAdmissionInProgress, outcome.Attempt)
 	if err != nil {
 		return nil, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if changed != 1 {
+		return nil, ErrProviderAdmissionStaleAttempt
 	}
 	decision.State = state
 	decision.Admitted = false
@@ -375,6 +445,15 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 	if err != nil {
 		return nil, fmt.Errorf("inspect provider attempt: %w", err)
 	}
+	if request.AdmissionIntent != "" {
+		intentHash, hashErr := providerAdmissionIntentHash(request.AdmissionIntent)
+		if hashErr != nil {
+			return nil, hashErr
+		}
+		if matchErr := requireProviderAdmissionIntentDB(ctx, i.db, request, decision.Attempt, intentHash); matchErr != nil {
+			return nil, matchErr
+		}
+	}
 	return decision, nil
 }
 
@@ -383,6 +462,9 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 // schedule another attempt. Exact evidence/decision retries are idempotent.
 func (i *Inbox) ReconcileProviderInjectionUncertain(ctx context.Context,
 	reconciliation ProviderAdmissionReconciliation) (*ProviderAdmissionDecision, error) {
+	if reconciliation.Attempt <= 0 {
+		return nil, ErrProviderAdmissionInvalid
+	}
 	request, err := normalizeProviderAdmissionRequest(ProviderAdmissionRequest{
 		ExecutionID: reconciliation.ExecutionID, ProviderID: reconciliation.ProviderID,
 	})
@@ -427,6 +509,9 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 	if err != nil {
 		return nil, err
 	}
+	if decision.Attempt != reconciliation.Attempt {
+		return nil, ErrProviderAdmissionStaleAttempt
+	}
 	var previousClass string
 	if err := tx.QueryRowContext(ctx, `SELECT last_class FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`,
 		request.ExecutionID, request.ProviderID).Scan(&previousClass); err != nil {
@@ -442,8 +527,8 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 		return nil, ErrInvalidState
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE node_provider_admission_v1 SET state=?,next_retry_at_ms=0,updated_at_ms=?,last_class=?
-WHERE execution_id=? AND provider_id=? AND state=?`, terminalState, observedAt.UTC().UnixMilli(), lastClass,
-		request.ExecutionID, request.ProviderID, ProviderAdmissionInjectionUncertain)
+WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, terminalState, observedAt.UTC().UnixMilli(), lastClass,
+		request.ExecutionID, request.ProviderID, ProviderAdmissionInjectionUncertain, reconciliation.Attempt)
 	if err != nil {
 		return nil, err
 	}
@@ -487,4 +572,74 @@ func normalizeProviderAdmissionRequest(request ProviderAdmissionRequest) (Provid
 		return ProviderAdmissionRequest{}, ErrProviderAdmissionInvalid
 	}
 	return request, nil
+}
+
+func providerAdmissionIntentHash(intent string) (string, error) {
+	if intent != strings.TrimSpace(intent) || len(intent) != 64 || strings.ToLower(intent) != intent || strings.ContainsAny(intent, "\x00\r\n") {
+		return "", ErrProviderAdmissionIntentMissing
+	}
+	decoded, err := hex.DecodeString(intent)
+	if err != nil || len(decoded) != 32 {
+		return "", ErrProviderAdmissionIntentMissing
+	}
+	digest := sha256.Sum256([]byte("cicada/provider-admission-intent/v1\x00" + intent))
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func insertProviderAdmissionIntentTx(ctx context.Context, tx *sql.Tx, request ProviderAdmissionRequest,
+	attempt int, intentHash string, nowMS int64) error {
+	if attempt <= 0 || intentHash == "" {
+		return ErrProviderAdmissionInvalid
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO node_provider_admission_intents_v1
+(execution_id,provider_id,attempt,intent_hash,created_at_ms) VALUES(?,?,?,?,?)`,
+		request.ExecutionID, request.ProviderID, attempt, intentHash, nowMS); err != nil {
+		return fmt.Errorf("bind provider admission intent to generation: %w", err)
+	}
+	return nil
+}
+
+func requireProviderAdmissionIntentTx(ctx context.Context, tx *sql.Tx, request ProviderAdmissionRequest,
+	attempt int, intentHash string) error {
+	var persistedHash string
+	err := tx.QueryRowContext(ctx, `SELECT intent_hash FROM node_provider_admission_intents_v1
+WHERE execution_id=? AND provider_id=? AND attempt=?`, request.ExecutionID, request.ProviderID, attempt).Scan(&persistedHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrProviderAdmissionIntentUnbound
+	}
+	if err != nil {
+		return err
+	}
+	if persistedHash != intentHash {
+		return ErrProviderAdmissionIntentMismatch
+	}
+	return nil
+}
+
+func requireProviderAdmissionIntentBoundTx(ctx context.Context, tx *sql.Tx,
+	request ProviderAdmissionRequest, attempt int) error {
+	var exists int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM node_provider_admission_intents_v1
+WHERE execution_id=? AND provider_id=? AND attempt=?`, request.ExecutionID, request.ProviderID, attempt).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrProviderAdmissionIntentUnbound
+	}
+	return err
+}
+
+func requireProviderAdmissionIntentDB(ctx context.Context, db *sql.DB, request ProviderAdmissionRequest,
+	attempt int, intentHash string) error {
+	var persistedHash string
+	err := db.QueryRowContext(ctx, `SELECT intent_hash FROM node_provider_admission_intents_v1
+WHERE execution_id=? AND provider_id=? AND attempt=?`, request.ExecutionID, request.ProviderID, attempt).Scan(&persistedHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrProviderAdmissionIntentUnbound
+	}
+	if err != nil {
+		return err
+	}
+	if persistedHash != intentHash {
+		return ErrProviderAdmissionIntentMismatch
+	}
+	return nil
 }

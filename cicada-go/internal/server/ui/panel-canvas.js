@@ -1,4 +1,4 @@
-import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld } from './panel-model.js';
+import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld, worldPointToScreen } from './panel-model.js';
 import { installCanvasControls } from './panel-canvas-controls.js';
 import { button, html, svg } from './panel-dom.js';
 
@@ -110,6 +110,28 @@ export class CanvasPanel {
     this.svgRoot.addEventListener('pointermove', event => this.movePointer(event));
     this.svgRoot.addEventListener('pointerup', event => this.endPointer(event));
     this.svgRoot.addEventListener('pointercancel', () => this.cancelPointer());
+    this.svgRoot.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.cancelPointer();
+        this.setMessage('Canvas gesture cancelled. No topology action was submitted.');
+        return;
+      }
+      const target = event.target.closest?.('[data-endpoint-id]');
+      if (!target || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      const id = target.getAttribute('data-endpoint-id');
+      if (event.shiftKey || event.metaKey || event.ctrlKey) {
+        this.selection.has(id) ? this.selection.delete(id) : this.selection.add(id);
+      } else {
+        this.selection.clear(); this.selection.add(id);
+      }
+      const groupId = target.getAttribute('data-group-ref') || '';
+      this.render(); this.renderSide();
+      [...this.world.querySelectorAll('[data-endpoint-id]')].find(item =>
+        item.getAttribute('data-endpoint-id') === id &&
+        item.getAttribute('data-group-ref') === groupId)?.focus();
+    });
   }
 
   setMode(mode) {
@@ -127,6 +149,8 @@ export class CanvasPanel {
   }
 
   cancelPointer() {
+    const pointerId = this.drag?.pointerId;
+    if (pointerId !== undefined && this.svgRoot?.hasPointerCapture(pointerId)) this.svgRoot.releasePointerCapture(pointerId);
     this.drag = null;
     this.selectionRect?.setAttribute('visibility', 'hidden');
     this.gesturePath?.remove();
@@ -232,7 +256,7 @@ export class CanvasPanel {
   }
 
   updateSelectionRect(a, b) {
-    const box = normalizeBox(a, b);
+    const box = normalizeBox(worldPointToScreen(a, this.view), worldPointToScreen(b, this.view));
     for (const [key, value] of Object.entries(box)) this.selectionRect.setAttribute(key, value);
   }
 

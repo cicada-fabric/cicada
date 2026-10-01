@@ -20,14 +20,16 @@ import (
 const machineNodeControlOperatorUsage = "usage: cicada machine node-control inspect|mark-uncertain|reconcile-provider --state-dir DIR --node-id ID [--writer-root DIR]"
 
 type machineNodeControlOperatorClaim struct {
-	WorkerID     string `json:"worker_id"`
-	Attempt      int    `json:"attempt"`
-	Phase        string `json:"phase"`
-	ExecutionID  string `json:"execution_id"`
-	ProviderID   string `json:"provider_id"`
-	ResourceID   string `json:"resource_id,omitempty"`
-	LeaseID      string `json:"lease_id"`
-	FencingEpoch int64  `json:"fencing_epoch,omitempty"`
+	Version         int    `json:"version"`
+	WorkerID        string `json:"worker_id"`
+	Attempt         int    `json:"attempt"`
+	Phase           string `json:"phase"`
+	ExecutionID     string `json:"execution_id"`
+	ProviderID      string `json:"provider_id"`
+	ProviderAttempt int    `json:"provider_attempt,omitempty"`
+	ResourceID      string `json:"resource_id,omitempty"`
+	LeaseID         string `json:"lease_id"`
+	FencingEpoch    int64  `json:"fencing_epoch,omitempty"`
 }
 
 type machineNodeControlOperatorReport struct {
@@ -90,9 +92,10 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 		PendingOperation: state.PendingOperation, PendingSequence: state.PendingSequence}
 	if state.ClaimTicket != nil {
 		ticket := state.ClaimTicket
-		report.Claim = &machineNodeControlOperatorClaim{WorkerID: ticket.WorkerID, Attempt: ticket.Attempt,
+		report.Claim = &machineNodeControlOperatorClaim{Version: ticket.Version, WorkerID: ticket.WorkerID, Attempt: ticket.Attempt,
 			Phase: ticket.Phase, ExecutionID: ticket.ExecutionID, ProviderID: ticket.ProviderID,
-			ResourceID: ticket.ResourceID, LeaseID: ticket.LeaseID, FencingEpoch: ticket.FencingEpoch}
+			ProviderAttempt: ticket.ProviderAttempt,
+			ResourceID:      ticket.ResourceID, LeaseID: ticket.LeaseID, FencingEpoch: ticket.FencingEpoch}
 	}
 	if action == "inspect" {
 		if err := populateMachineNodeControlOperatorStatus(*writerRoot, state, &report); err != nil {
@@ -105,8 +108,16 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 		return errors.New("stop the Node Agent before operator reconciliation; its execution ownership is still active")
 	}
 	defer operatorLock.Close()
-	if state.ClaimTicket == nil || state.ClaimTicket.ExecutionID == "" || state.ClaimTicket.ProviderID == "" {
+	if state.ClaimTicket == nil ||
+		(state.ClaimTicket.Version != machineNodeControlClaimTicketVersion &&
+			state.ClaimTicket.Version != machineNodeControlLegacyClaimTicketVersion) ||
+		state.ClaimTicket.ExecutionID == "" || state.ClaimTicket.ProviderID == "" ||
+		state.ClaimTicket.ProviderAttempt <= 0 {
 		return errors.New("no exact durable Worker claim is available for explicit reconciliation")
+	}
+	if state.ClaimTicket.Version == machineNodeControlClaimTicketVersion &&
+		!validMachineNodeProviderAdmissionIntent(state.ClaimTicket.ProviderAdmissionIntent) {
+		return errors.New("new Worker claim lacks its durable provider admission intent")
 	}
 	ledger, err := openExistingMachineProviderAdmissionLedger(filepath.Join(*writerRoot, "node-provider-admission.sqlite3"))
 	if err != nil {
@@ -116,6 +127,9 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 	ctx := context.Background()
 	request := nodeinbox.ProviderAdmissionRequest{ExecutionID: state.ClaimTicket.ExecutionID,
 		ProviderID: state.ClaimTicket.ProviderID}
+	if state.ClaimTicket.Version == machineNodeControlClaimTicketVersion {
+		request.AdmissionIntent = state.ClaimTicket.ProviderAdmissionIntent
+	}
 	switch action {
 	case "mark-uncertain":
 		if state.ClaimTicket.Phase != "EXECUTING" {
@@ -126,7 +140,8 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 		}
 		decision, err := ledger.RecordProviderAdmissionOutcome(ctx, nodeinbox.ProviderAdmissionOutcome{
 			ExecutionID: request.ExecutionID, ProviderID: request.ProviderID,
-			Class: nodeinbox.ProviderOutcomeInjectionUncertain})
+			Attempt: state.ClaimTicket.ProviderAttempt,
+			Class:   nodeinbox.ProviderOutcomeInjectionUncertain})
 		if err != nil {
 			return fmt.Errorf("record explicit uncertain provider outcome: %w", err)
 		}
@@ -155,6 +170,7 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 		}
 		decision, err := ledger.ReconcileProviderInjectionUncertain(ctx, nodeinbox.ProviderAdmissionReconciliation{
 			ExecutionID: request.ExecutionID, ProviderID: request.ProviderID,
+			Attempt:    state.ClaimTicket.ProviderAttempt,
 			Resolution: resolution, IdempotencyKey: idempotencyKey,
 			EvidenceID: evidenceID, ObservedAt: parsed.UTC().Format(time.RFC3339Nano)})
 		if err != nil {

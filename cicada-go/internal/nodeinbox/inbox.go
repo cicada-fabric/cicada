@@ -374,6 +374,9 @@ CREATE INDEX IF NOT EXISTS node_provider_admission_retention_v1_idx
 	if err != nil {
 		return fmt.Errorf("initialize node inbox schema: %w", err)
 	}
+	if _, err := i.db.Exec(providerAdmissionIntentSchemaV1); err != nil {
+		return fmt.Errorf("initialize provider admission intent schema: %w", err)
+	}
 	// Backfill once and commit its marker atomically. Reopening a busy Node
 	// inbox must not repeatedly scan its entire historical delivery table.
 	tx, err := i.db.Begin()

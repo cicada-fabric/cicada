@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -45,12 +46,34 @@ func newMachineNodeControlClaimTicket(ctx context.Context, state machineNodeCont
 	}, "\x00")))
 	leaseDigest := sha256.Sum256([]byte("cicada/node-control/resource-lease/v1\x00" +
 		hex.EncodeToString(executionDigest[:]) + "\x00" + route.OperationID))
-	return machineNodeControlClaimTicket{ResponsePacket: append([]byte(nil), responsePacket...),
-		WorkerID: job.WorkerID, Attempt: job.Attempt, Phase: "READY",
+	admissionIntent, err := newMachineNodeProviderAdmissionIntent()
+	if err != nil {
+		return machineNodeControlClaimTicket{}, err
+	}
+	return machineNodeControlClaimTicket{Version: machineNodeControlClaimTicketVersion,
+		ResponsePacket: append([]byte(nil), responsePacket...),
+		WorkerID:       job.WorkerID, Attempt: job.Attempt, Phase: "READY",
 		ClaimOperationID: route.OperationID, ClaimSequence: route.Sequence,
 		BindingID: state.BindingID, BindingVersion: state.BindingVersion, NodeKeyEpoch: state.NodeKeyEpoch,
 		ExecutionID: "nodeexec_" + hex.EncodeToString(executionDigest[:]), ProviderID: providerID,
-		LeaseID: "nodelease_" + hex.EncodeToString(leaseDigest[:])}, nil
+		ProviderAdmissionIntent: admissionIntent,
+		LeaseID:                 "nodelease_" + hex.EncodeToString(leaseDigest[:])}, nil
+}
+
+func newMachineNodeProviderAdmissionIntent() (string, error) {
+	var intent [32]byte
+	if _, err := rand.Read(intent[:]); err != nil {
+		return "", fmt.Errorf("create local provider admission intent: %w", err)
+	}
+	return hex.EncodeToString(intent[:]), nil
+}
+
+func validMachineNodeProviderAdmissionIntent(intent string) bool {
+	if len(intent) != 64 || strings.ToLower(intent) != intent || strings.ContainsAny(intent, "\x00\r\n") {
+		return false
+	}
+	decoded, err := hex.DecodeString(intent)
+	return err == nil && len(decoded) == 32
 }
 
 func applyMachineNodeControlClaimTicket(job *machineJob, ticket machineNodeControlClaimTicket) {
@@ -58,6 +81,7 @@ func applyMachineNodeControlClaimTicket(job *machineJob, ticket machineNodeContr
 		return
 	}
 	job.executionID, job.providerID = ticket.ExecutionID, ticket.ProviderID
+	job.providerAttempt = ticket.ProviderAttempt
 	job.resourceID, job.leaseID, job.fencingEpoch = ticket.ResourceID, ticket.LeaseID, ticket.FencingEpoch
 }
 
@@ -217,16 +241,43 @@ func prepareMachineNodeClaimExecution(ctx context.Context, client *machineNodeCo
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	ticket := client.state.ClaimTicket
-	if ticket == nil || ticket.Phase != "READY" || ticket.WorkerID != job.WorkerID ||
+	if ticket == nil || ticket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(ticket.ProviderAdmissionIntent) ||
+		ticket.Phase != "READY" || ticket.WorkerID != job.WorkerID ||
 		ticket.Attempt != job.Attempt || ticket.ExecutionID != job.executionID ||
+		(ticket.ProviderAttempt > 0 && ticket.ProviderAttempt != job.providerAttempt) ||
+		(ticket.ProviderAttempt == 0 && job.providerAttempt != 0) ||
 		ticket.ProviderID != job.providerID || ticket.LeaseID != job.leaseID ||
 		ticket.BindingID != client.state.BindingID || ticket.BindingVersion != client.state.BindingVersion ||
 		ticket.NodeKeyEpoch != client.state.NodeKeyEpoch {
 		return job, nil, errors.New("managed Worker claim does not match its exact durable Node-Control ticket")
 	}
+	request := nodeinbox.ProviderAdmissionRequest{ExecutionID: ticket.ExecutionID,
+		ProviderID: ticket.ProviderID, AdmissionIntent: ticket.ProviderAdmissionIntent}
 	admit := func() (*nodeinbox.ProviderAdmissionDecision, error) {
-		decision, err := providerLedger.AdmitProviderAttempt(ctx, nodeinbox.ProviderAdmissionRequest{
-			ExecutionID: ticket.ExecutionID, ProviderID: ticket.ProviderID})
+		if ticket.ProviderAttempt > 0 {
+			// A durable generation is an exact recovery token, never permission to
+			// advance a BACKOFF row. Read-only inspection prevents a stale or
+			// mismatched READY ticket from mutating the sidecar before rejection.
+			decision, err := providerLedger.InspectProviderAttempt(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+			if decision == nil || decision.Attempt != ticket.ProviderAttempt {
+				return nil, nodeinbox.ErrProviderAdmissionStaleAttempt
+			}
+			if decision.State != nodeinbox.ProviderAdmissionInProgress {
+				if decision.State == nodeinbox.ProviderAdmissionBackoff && decision.Retryable {
+					return decision, fmt.Errorf("provider attempt is held until %s", decision.NextRetryAt)
+				}
+				return decision, fmt.Errorf("provider attempt requires explicit reconciliation (state %s)", decision.State)
+			}
+			decision.Admitted = true
+			job.providerAttempt = ticket.ProviderAttempt
+			return decision, nil
+		}
+
+		decision, err := providerLedger.AdmitProviderAttempt(ctx, request)
 		if err != nil {
 			return nil, err
 		}
@@ -238,6 +289,16 @@ func prepareMachineNodeClaimExecution(ctx context.Context, client *machineNodeCo
 				return decision, fmt.Errorf("provider attempt is held until %s", decision.NextRetryAt)
 			}
 			return decision, fmt.Errorf("provider attempt requires explicit reconciliation (state %s)", decision.State)
+		}
+		if decision.Attempt <= 0 {
+			return nil, nodeinbox.ErrProviderAdmissionInvalid
+		}
+		previous := cloneMachineNodeControlState(client.state)
+		ticket.ProviderAttempt = decision.Attempt
+		job.providerAttempt = decision.Attempt
+		if err := client.persistLocked(); err != nil {
+			client.state = previous
+			return nil, fmt.Errorf("persist provider attempt generation before execution: %w", err)
 		}
 		return decision, nil
 	}
@@ -325,8 +386,12 @@ func recordMachineNodeProviderOutcome(ctx context.Context, job machineJob, resul
 	} else if result.providerStarted {
 		class = nodeinbox.ProviderOutcomeInjectionUncertain
 	}
+	if job.providerAttempt <= 0 {
+		return errors.New("managed provider outcome lacks its exact admitted attempt generation")
+	}
 	_, err := providerLedger.RecordProviderAdmissionOutcome(ctx, nodeinbox.ProviderAdmissionOutcome{
-		ExecutionID: job.executionID, ProviderID: job.providerID, Class: class})
+		ExecutionID: job.executionID, ProviderID: job.providerID,
+		Attempt: job.providerAttempt, Class: class})
 	return err
 }
 
@@ -360,7 +425,9 @@ func persistMachineNodeClaimResourceFence(client *machineNodeControlClient,
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	ticket := client.state.ClaimTicket
-	if ticket == nil || ticket.Phase != "READY" || ticket.WorkerID != job.WorkerID ||
+	if ticket == nil || ticket.Version != machineNodeControlClaimTicketVersion ||
+		!validMachineNodeProviderAdmissionIntent(ticket.ProviderAdmissionIntent) ||
+		ticket.Phase != "READY" || ticket.WorkerID != job.WorkerID ||
 		ticket.Attempt != job.Attempt || ticket.ExecutionID != job.executionID ||
 		ticket.ResourceID != job.resourceID || ticket.FencingEpoch != job.fencingEpoch ||
 		(ticket.ResourceID != "" && ticket.FencingEpoch <= 0) ||
