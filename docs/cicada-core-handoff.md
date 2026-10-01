@@ -1,6 +1,8 @@
 # CICADA Client integration handoff
 
-**Provenance gate: BLOCKED.** The v1.6.1 public archive and pinned Git blobs match, but the independent raw-permission build fingerprint is not yet reproducible. No complete import, live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md).
+**Provenance supplement:** independent retrospective reconstruction now reproduces the immutable v4 fingerprint from all 773 pinned inputs, exit 0. Original build-time per-file mode capture remains **NOT_PROVIDED**. The earlier BLOCKED record is preserved; current live acceptance stays unrun. See the [separate supplement](client-hub-v1.6.1-fe565b4-provenance-supplement.md).
+
+**Prior checkpoint provenance gate: BLOCKED.** At milestone `d580975`, the archive and pinned Git blobs matched, but the raw-permission fingerprint was not yet independently reproducible. That original result remains preserved; the supplement above records the later retrospective match. No live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](client-hub-v1.6.1-fe565b4-validation.md).
 
 
 ## Active checkpoint — Client-Control v1.6.1
@@ -11,7 +13,7 @@ The deterministic integration target is clean Core `fe565b41bb1aa86d400a0ec98c52
 
 No new Hub, Node or model runtime is started in this checkpoint. Current encrypted runtime capabilities, native Endpoint/Monitor acceptance, physical Android and public HTTPS remain unaccepted. The 38-operation local policy and 17 closed operations are retained; no advertisement or synthetic proof authorizes a closed operation. Terminal regroup `OUTCOME_UNCERTAIN` retains its exact ciphertext/counters and dedicated fence.
 
-### Current Core maintainer prompt
+### Prior Core maintainer prompt (before the supplement)
 
 > Review the Client v1.6.1 deterministic checkpoint against immutable Core `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, catalog `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b` and Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. Supply independently reproducible clean build-input provenance, including full filesystem permission bits: Git records only executable bits, while build-inputs-v4 hashes full `stat.S_IMODE`. Confirm the distinct `NodeControlKeyBinding` confirmation and `NodeDeviceBinding` list/revoke DTOs without changing the accepted image or claiming old Android evidence. Preserve encrypted original-packet recovery and terminal regroup uncertainty fences. A later real Monitor fixture must use supported Network/Endpoint bootstrap, explicit current source/target Membership and the same genuine native Session; synthetic authority is not acceptable. This checkpoint starts no Hub, Node or model runtime. Return exact pins, reproducible commands, individual exits and redacted evidence; request a separately authorized acceptance run before any new native/model fixture.
 

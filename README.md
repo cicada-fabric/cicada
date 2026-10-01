@@ -1,6 +1,8 @@
 # CICADA Client
 
-**Provenance gate: BLOCKED.** The v1.6.1 public archive and pinned Git blobs match, but the independent raw-permission build fingerprint is not yet reproducible. No complete import, live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](docs/client-hub-v1.6.1-fe565b4-validation.md).
+**Provenance supplement:** independent retrospective reconstruction now reproduces the immutable v4 fingerprint from all 773 pinned inputs, exit 0. Original build-time per-file mode capture remains **NOT_PROVIDED**. The earlier BLOCKED record is preserved; current live acceptance stays unrun. See the [separate supplement](docs/client-hub-v1.6.1-fe565b4-provenance-supplement.md).
+
+**Prior checkpoint provenance gate: BLOCKED.** At milestone `d580975`, the archive and pinned Git blobs matched, but the raw-permission fingerprint was not yet independently reproducible. That original result remains preserved; the supplement above records the later retrospective match. No live Hub or native-runtime acceptance is claimed; see the [v1.6.1 validation record](docs/client-hub-v1.6.1-fe565b4-validation.md).
 
 
 CICADA Client is the mobile entry point for a CICADA environment. It lets an authorized user inspect Hub state, submit confirmed text or locally transcribed speech to Control, and perform supported management actions. Control and authoritative management state usually run on a Hub; native Threads and their Workers run on Nodes. The Client does not inject input directly into a native Worker session.
