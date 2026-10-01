@@ -1,7 +1,8 @@
 # Optional OpenSSL 3.5.9 transport checkpoint
 
-Status: isolated transport package; no Hub/Node adapter integration or production
-acceptance. Adopted architecture remains `CICADA.md`. This note records the new
+Status: optional transport package plus independently validated thread-cleanup
+repair; no Hub/Node production wiring or product acceptance. Adopted architecture
+remains `CICADA.md`. This note records the new
 implementation and its validation boundary, not a change to enrollment or the
 public contract.
 
@@ -84,6 +85,14 @@ Handshake deadlines are cleared before returning a connection; SSE verifies
 operation beyond the handshake timeout, disconnect, handler cancellation, and
 reconnection.
 
+Nondefault OpenSSL library contexts also require per-OS-thread cleanup before
+the context is freed. Serialized CGo calls may use different Go runtime threads;
+serialization alone does not satisfy that lifetime requirement. The repaired
+bridge calls `OPENSSL_thread_stop_ex` before returning from context-using C calls
+and, after freeing SSL/provider objects, before `OSSL_LIB_CTX_free`. It preserves
+`SSL_get_error` in the same C call immediately after I/O. A subprocess test
+checks bounded connection lifecycle followed by actual process exit.
+
 Each connection currently owns its own provider/library context/SSL context and
 reloads configured material. This favors simple lifetime isolation over reuse;
 there is no shared-context scalability claim. `TestTransportResourceMeasurements`
@@ -137,7 +146,7 @@ and the compiler/Go executable hashes are recorded in the private evidence.
 
 ## Validation and handoff boundary
 
-The isolated, network-disabled disposable Docker gate runs package tests, race,
+The original isolated, network-disabled disposable Docker gate runs package tests, race,
 vet, CGo-off/default-build tests, unsupported Windows/macOS/js-wasm/Linux-arm64
 stub cross-compiles, and CICADA command test-binary/CGo-off build checks. Tests
 cover the exact positive profile, certificate/SPKI pins, wrong CA/pin/SAN,
@@ -147,15 +156,31 @@ identity aliases, lifecycle, bounded admission, and HTTP/1.1 SSE. Rejected peers
 never reach the test HTTP credentials/body handler. Tests generate private,
 visibly synthetic certificates and delete them after execution.
 
-The final handoff is `.cicada-data/PARALLEL_REPORT.md` and
-`.cicada-data/PARALLEL_STATUS.json`, with source SHA maps, exact executed counts,
+The original isolated handoff in `/home/zyf/CICADA_pqtls` is
+`.cicada-data/PARALLEL_REPORT.md` and `.cicada-data/PARALLEL_STATUS.json`, with
+source SHA maps, exact executed counts,
 skips, exits, log hashes, measured amd64 runtime/test-binary bytes, and sampled
 resource results. A skip is not a pass. The CICADA command does not import this
 package: its optional-tag binary delta is metadata, not adapter shipping cost.
 The package enabled/stub test-binary delta includes different test code and is
 not an isolated production overhead measure.
 
-Production HTTP routes, browser/Android/Client interop, reverse proxies, real
-native Runtime, physical devices, public HTTPS, deployments, and arm64 execution
-are **NOT_RUN**. This checkpoint starts no production listener, changes no real
+The module was integrated as `1547f2e`. Its clean main enabled-race first attempt
+failed for a missing fixture environment; the second passed 22 top + 36 subtest
+assertions but exited 1 with SIGSEGV during race finalization. Both are retained
+FAIL results, separate from the independent adapter PASS and the main stub's
+3 top + 13 sub PASS. The subsequent two-file dirty repair on `1547f2e` passes
+standard and race gates, each 23 top + 36 sub with process exit 0, plus the
+focused subprocess and vet, on pinned offline UID-1000 execution. The original
+focused negative control also passed: the requirement correction is **not a
+proven causal explanation** for the earlier SIGSEGV. Source/report hashes and
+the separately passing stable-source main Go/PQ gate are in the
+[transport/recovery checkpoint](v01-transport-recovery-checkpoint-validation.md).
+Original binary sizes, resource samples and arm64 stub compilation remain tied
+to the original adapter source; they are not repair or product measurements.
+
+Adapter integration with production HTTP routes, browser/Android/Client,
+reverse proxies or real native Runtime, and physical devices, public HTTPS,
+deployments and arm64 execution remain **NOT_RUN**. Separately attributed native
+HTTP/Client checks do not accept this transport. This checkpoint starts no production listener, changes no real
 keys or deployment, and stops at the isolated package ownership boundary.

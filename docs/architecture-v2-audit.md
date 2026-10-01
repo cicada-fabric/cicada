@@ -1,12 +1,31 @@
 # Architecture v2.3 当前事实审计
 
+## 2026-10-01 bounded transport / recovery checkpoint — PARTIAL
+
+Current facts and provenance are centralized in the
+[transport/recovery checkpoint](v01-transport-recovery-checkpoint-validation.md).
+The optional exact-profile OpenSSL adapter exists, but clean `1547f2e`'s enabled
+race process gate failed at teardown. The independent repaired standard/race
+process gates pass, with no proven crash cause. Dirty `750cc4…` main combined
+Go/build/vet/contract/Python and optional PQ race now pass on stable code inputs.
+Contract v1.6.1 corrects documentation without changing
+55-operation authority. Archive-v2 focused/repaired CLI gates and G1 real-4
+pass on separate sources; G1 retains `CONSUMPTION_UNCONFIRMED`. M4 attach-1 and
+attach-2 fail; attach-3 actual phone pairing passes but native Join fails after
+two real CLI turns, with no Endpoint/proposal; post-failure local-record/context
+checks are NOT_RUN. Later `6ab2d9…` server/Python/shell incremental gates pass
+on their own inputs. Product PQ TLS and post-restore reconnect
+remain incomplete. The sections below retain their historical tested sources;
+PASS counts and completion percentages do not increase; V64 is PARTIAL for its
+separate bounded sample.
+
 ## 2026-10-01 Network directory-only native binding guard correction
 
 On dirty source `f4e4725c5d81c54b166f4291b9d450c70954e6df`, the five-file correction fingerprint is `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a` (per-file hashes and commands: [focused evidence](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json)). `EnsureNetworkDirectNativeBinding` now requires current Network membership/session/identity scope but does not require a direct-send/receive, Task, or Broadcast action grant. The Group admission path remains separately authorized and persists only member role; no traffic permission, key grant, or key material is inferred. Candidate/key publication and peer/traffic routes keep their existing action-purpose guards.
 
 The six Store selectors and the production HTTP entrypoint selector passed on that owned-source fingerprint. Focused race selectors passed for three Store selectors (120.830 s) and the HTTP selector (17.788 s); logs are `store-focused-final2.log`, `server-focused-4.log`, `store-race-focused-final.log`, and `server-race.log` in the evidence directory. An earlier broader Store race run timed out after five minutes during repeated migration-fixture setup; it was not a race report or a pass and remains recorded as such in `store-race.log`. This is a bounded guard correction, not full-suite, Browser, Client, or Node-intent acceptance. No schema, wire, key, or cryptographic format changed.
 
-## 2026-10-01 C4 unified checkpoint (bounded PASS; architecture remains incomplete)
+## Historical 2026-10-01 C4 unified checkpoint (bounded PASS)
 
 The frozen C4 source fingerprint is `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2` (dirty `dev` based on `f4e4725c5d81c54b166f4291b9d450c70954e6df`, catalog v1.6/55 operations). The full Go gate passed with 1,105 top-level tests, 553 subtests, 27 packages, 12 skips and no failures; build, vet, contract and Python 26 also passed. The Client, Network M1 and Group Spaces M2 Docker tests ran and passed, as did the 12-step loopback Browser gate. See the [canonical ledger entry](completion-ledger.md#architecture-v23-completion-ledger) and [frozen gate evidence](../.cicada-data/next-checkpoint/closure-20261001T165647Z/gate-summary.json). C4 still does not accept native Runtime, physical Nodes or public HTTPS; pure PQ product TLS is not implemented.
 
@@ -18,7 +37,7 @@ Provider outcome writes now carry an exact positive `Attempt` and update only th
 
 Legacy version-1 tickets and legacy admission rows without an exact intent binding remain held and fail closed. They are not silently assigned a token, retried or migrated; explicit local reconciliation requires an exact ticket/generation and, for resource-bound work, an exact confirmed-stop fence. The provider ledger's bounded admission/backoff and uncertainty state are implemented, but the Runtime does not yet emit structured provider rate-limit/retry outcomes; real provider throttling remains unaccepted. Focused race evidence is retained in [`provider-admission-wal-intent-20261001`](../.cicada-data/provider-admission-wal-intent-20261001/run-20261001T161224Z/go-test-race.log); full acceptance belongs to C4, not that earlier focused run.
 
-## 2026-10-01 Go 1.27.1 PQ transport capability and exposure audit
+## Historical 2026-10-01 Go 1.27.1 PQ transport capability and exposure audit
 
 This is a transport capability diagnostic, not a new CICADA build/test acceptance and not a change to `CICADA.md`'s cryptographic requirements. The standalone synthetic probe used container `golang:1.27.1` (`sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244`) with `--network none`; source, exact command, toolchain source excerpt, raw stdout/stderr, exit code and file hashes are retained under [`../.cicada-data/next-checkpoint/pq-transport-audit/`](../.cicada-data/next-checkpoint/pq-transport-audit/). It established local TLS 1.3 mutual authentication using synthetic ML-DSA-65 certificates and pure ML-KEM-1024, negotiated `TLS_AES_128_GCM_SHA256`, and rejected an X25519-only client. It exited 0. This does not satisfy the specified pure ML-KEM-768 plus `TLS_AES_256_GCM_SHA384` profile and does not exercise CICADA's server, Node, proxy, deployment or application protocol.
 
@@ -28,9 +47,9 @@ The production `serve` and `serve-fabric` paths call `ListenAndServe` without a 
 
 Remote Node enrollment checks the `https` scheme; Node HTTP clients use Go's default transport, which verifies the server certificate chain against default/system roots and verifies the URL hostname. No production `tls.Config`, TLS client certificate/mTLS, Hub ML-DSA pin, PQ curve allowlist or TLS 1.3 suite gate was found. Node auth remains application bearer/NodeControl-key authorization. An HTTPS terminator is an HTTP plaintext trust endpoint: it can see bearer headers and non-app-encrypted JSON. NodeControl's sealed RPC and snapshot body are separately encrypted to the approved Node/Hub identity; their outer route/binding/operation/sequence, request sizes and timing remain metadata. Ordinary peer confidentiality is separately enforced by its recipient application envelope and is not supplied by TLS.
 
-Primary-source checks: [Go 1.27 release notes](https://go.dev/doc/go1.27) and [crypto/tls API](https://pkg.go.dev/crypto/tls); [TLS ML-KEM draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) and [TLS ML-DSA draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/); [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final), and [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881.html). Go 1.27.1 source in the probe image lists hybrid ML-KEM-768 groups and pure ML-KEM-1024, but no pure ML-KEM-768; its public `CipherSuites` field only configures TLS 1.0–1.2, not TLS 1.3. Therefore the exact existing profile is currently **NOT_SUPPORTED by this standard-library API and NOT_IMPLEMENTED by CICADA**. A post-negotiation check can reject a wrong suite, not select the required one. No substitute algorithm or classical/hybrid path is accepted by this audit.
+Primary-source checks: [Go 1.27 release notes](https://go.dev/doc/go1.27) and [crypto/tls API](https://pkg.go.dev/crypto/tls); [TLS ML-KEM draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mlkem/) and [TLS ML-DSA draft](https://datatracker.ietf.org/doc/draft-ietf-tls-mldsa/); [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final), and [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881.html). Go 1.27.1 source in the probe image lists hybrid ML-KEM-768 groups and pure ML-KEM-1024, but no pure ML-KEM-768; its public `CipherSuites` field only configures TLS 1.0–1.2, not TLS 1.3. Therefore the exact profile is **NOT_SUPPORTED by that standard-library API**. The optional OpenSSL adapter now demonstrates it independently; production CICADA endpoint wiring remains **NOT_IMPLEMENTED**. A post-negotiation check can reject a wrong suite, not select the required one. No substitute algorithm or classical/hybrid path is accepted by this audit.
 
-Next implementation planning must first isolate the owned disposable HTTP fixture mode from production exposure: the Dockerfile's `0.0.0.0` container bind is used by current gates, so a blanket non-loopback rejection would break fixtures. The fixture path must be explicitly identified and bounded by private container networking and loopback-only host publication (or equivalent verified isolation); a token is never the justification for plaintext production exposure. Production remote serving must wait for a verifiable implementation of the exact profile or an explicit versioned spec decision; an ordinary TLS reverse proxy does not make the Node-to-Hub connection pure PQ if it terminates TLS. No listener, key, dependency or deployment was changed in this audit.
+Next implementation planning must first isolate the owned disposable HTTP fixture mode from production exposure: the Dockerfile's `0.0.0.0` container bind is used by current gates, so a blanket non-loopback rejection would break fixtures. The fixture path must be explicitly identified and bounded by private container networking and loopback-only host publication (or equivalent verified isolation); a token is never the justification for plaintext production exposure. Production remote serving still needs actual integration of the now-demonstrated exact-profile adapter and certificate/current-epoch authority; an ordinary TLS reverse proxy does not make the Node-to-Hub connection pure PQ if it terminates TLS. No listener, key, dependency or deployment was changed in this audit.
 
 ## 2026-10-01 Native context history coverage boundary
 

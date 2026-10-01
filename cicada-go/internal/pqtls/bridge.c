@@ -21,6 +21,14 @@
 struct pq_connection { OSSL_LIB_CTX *lib; OSSL_PROVIDER *provider; SSL_CTX *ctx; SSL *ssl; BIO_METHOD *bio_method; EVP_MD *digest; pq_peer *peers; size_t peer_count; };
 static const unsigned char h1[] = {8,'h','t','t','p','/','1','.','1'};
 
+// CGo may run successive calls for one connection on different OS threads.
+// Stop this context's thread-local OpenSSL state before each C call returns;
+// otherwise freeing the context can leave stale state on other Go runtime
+// threads until process exit.
+static void pq_thread_stop(pq_connection *c) {
+    if (c && c->lib) OPENSSL_thread_stop_ex(c->lib);
+}
+
 // Use MSG_NOSIGNAL per write, not a process-global SIGPIPE disposition.
 // The BIO owns only its fd metadata. Go owns and closes the socket itself.
 static int socket_create(BIO *b) { BIO_set_init(b,0); BIO_set_data(b,NULL); return 1; }
@@ -151,6 +159,7 @@ pq_connection *pq_new(const char *cert, const char *key, const char *ca,
     }
     // SSL's socket BIO does not own fd. The Go Conn is its sole owner.
     if (fd >= 0 && !socket_attach(c,fd)) goto fail;
+    pq_thread_stop(c);
     return c;
 fail:
     ERR_clear_error(); pq_free(c); return NULL;
@@ -158,7 +167,9 @@ fail:
 void pq_free(pq_connection *c) {
     if (!c) return;
     SSL_free(c->ssl); BIO_meth_free(c->bio_method); SSL_CTX_free(c->ctx); EVP_MD_free(c->digest); OPENSSL_free(c->peers);
-    OSSL_PROVIDER_unload(c->provider); OSSL_LIB_CTX_free(c->lib); OPENSSL_free(c);
+    OSSL_PROVIDER_unload(c->provider);
+    pq_thread_stop(c);
+    OSSL_LIB_CTX_free(c->lib); OPENSSL_free(c);
 }
 // SSL_get_error must run in the same C call/thread immediately after the IO.
 static int result(pq_connection *c, int n) {
@@ -171,15 +182,16 @@ static int result(pq_connection *c, int n) {
     return 0;
 }
 int pq_handshake(pq_connection *c) {
-    ERR_clear_error(); int n = SSL_do_handshake(c->ssl); return result(c,n);
+    ERR_clear_error(); int n = SSL_do_handshake(c->ssl); int r=result(c,n); pq_thread_stop(c); return r;
 }
 int pq_read(pq_connection *c, void *buf, size_t len, size_t *n) {
-    ERR_clear_error(); int r = SSL_read_ex(c->ssl,buf,len,n); return result(c,r);
+    ERR_clear_error(); int nread = SSL_read_ex(c->ssl,buf,len,n); int r=result(c,nread); pq_thread_stop(c); return r;
 }
 int pq_write(pq_connection *c, const void *buf, size_t len, size_t *n) {
-    ERR_clear_error(); int r = SSL_write_ex(c->ssl,buf,len,n); return result(c,r);
+    ERR_clear_error(); int nwritten = SSL_write_ex(c->ssl,buf,len,n); int r=result(c,nwritten); pq_thread_stop(c); return r;
 }
 int pq_snapshot(pq_connection *c, pq_state *s) {
+    int ok=0;
     memset(s,0,sizeof(*s));
     X509 *peer = SSL_get0_peer_certificate(c->ssl);
     STACK_OF(X509) *chain = SSL_get0_verified_chain(c->ssl);
@@ -190,29 +202,36 @@ int pq_snapshot(pq_connection *c, pq_state *s) {
         SSL_get_verify_result(c->ssl) != X509_V_OK ||
         !SSL_get_peer_signature_type_nid(c->ssl,&signature) || signature != NID_ML_DSA_65 ||
         !SSL_get0_peer_signature_name(c->ssl,&signature_name) || strcmp(signature_name,"mldsa65") ||
-        SSL_session_reused(c->ssl)) return 0;
-    for (int i=0;i<sk_X509_num(chain);i++) if (!pure_certificate(sk_X509_value(chain,i))) return 0;
+        SSL_session_reused(c->ssl)) goto done;
+    for (int i=0;i<sk_X509_num(chain);i++) if (!pure_certificate(sk_X509_value(chain,i))) goto done;
     const char *group = SSL_group_to_name(c->ssl,SSL_get_negotiated_group(c->ssl));
     const char *cipher = SSL_CIPHER_get_name(SSL_get_current_cipher(c->ssl));
     const unsigned char *a=NULL; unsigned int alen=0;
     SSL_get0_alpn_selected(c->ssl,&a,&alen);
     if (!group || strcmp(group,"MLKEM768") || strcmp(cipher,"TLS_AES_256_GCM_SHA384") ||
-        alen!=8 || memcmp(a,"http/1.1",8)) return 0;
-    if (!certificate_digest(c,peer,0,s->certificate) || !certificate_digest(c,peer,1,s->spki)) return 0;
+        alen!=8 || memcmp(a,"http/1.1",8)) goto done;
+    if (!certificate_digest(c,peer,0,s->certificate) || !certificate_digest(c,peer,1,s->spki)) goto done;
     strcpy(s->version,SSL_get_version(c->ssl)); strcpy(s->group,group);
     strcpy(s->cipher,cipher); strcpy(s->signature,"ML-DSA-65"); strcpy(s->alpn,"http/1.1");
     s->verification=SSL_get_verify_result(c->ssl);
-    return 1;
+    ok=1;
+done:
+    pq_thread_stop(c);
+    return ok;
 }
 int pq_hostname(pq_connection *c,const char *host) {
     X509 *peer=SSL_get0_peer_certificate(c->ssl);
-    return peer && X509_check_host(peer,host,0,
+    int ok=peer && X509_check_host(peer,host,0,
         X509_CHECK_FLAG_NO_WILDCARDS | X509_CHECK_FLAG_NEVER_CHECK_SUBJECT,NULL)==1;
+    pq_thread_stop(c);
+    return ok;
 }
 int pq_localname(pq_connection *c,const char *host) {
     X509 *local=SSL_CTX_get0_certificate(c->ctx);
-    return local && X509_check_host(local,host,0,
+    int ok=local && X509_check_host(local,host,0,
         X509_CHECK_FLAG_NO_WILDCARDS | X509_CHECK_FLAG_NEVER_CHECK_SUBJECT,NULL)==1;
+    pq_thread_stop(c);
+    return ok;
 }
 int pq_event(void) { return eventfd(0,EFD_CLOEXEC | EFD_NONBLOCK); }
 void pq_signal(int fd) { uint64_t one=1; ssize_t n; do { n=write(fd,&one,sizeof(one)); } while(n<0 && errno==EINTR); }

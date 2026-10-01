@@ -79,10 +79,6 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
 		return err
 	}
-	nodeIdentity, credentialDigest, err := loadOrCreateMachineNodeIdentity(*stateDir, *id)
-	if err != nil {
-		return fmt.Errorf("load local Node identity: %w", err)
-	}
 	// Hub-specific authority is carried only by this Agent context. No global
 	// token/environment mutation can transplant one Hub's bearer to another.
 	if pinned == nil {
@@ -92,6 +88,26 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
 		return errors.New("Node Hub context does not match pinned local coordinates")
+	}
+	writerRoot := strings.TrimSpace(pinned.WriterRoot)
+	if writerRoot == "" {
+		writerRoot = *stateDir
+	}
+	writerRootLock, err := nodelock.AcquireWriterRoot(writerRoot)
+	if err != nil {
+		return fmt.Errorf("acquire shared Node WriterRoot lock: %w", err)
+	}
+	defer writerRootLock.Close()
+	rootQuarantined, rootErr := nodebackup.WriterRootRecoveryQuarantineActive(writerRoot)
+	if rootErr != nil {
+		return fmt.Errorf("inspect shared WriterRoot recovery quarantine: %w", rootErr)
+	}
+	if rootQuarantined {
+		return errors.New("shared WriterRoot is quarantined after restore; reconcile shared fences before starting any Hub Agent")
+	}
+	nodeIdentity, credentialDigest, err := loadOrCreateMachineNodeIdentity(*stateDir, *id)
+	if err != nil {
+		return fmt.Errorf("load local Node identity: %w", err)
 	}
 	pinned.RequireNativeContext = true
 	pinned.Token = nodeIdentity.RelayToken
@@ -105,13 +121,6 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	defer inbox.Close()
 	pinned.ProviderInbox = inbox
-	writerRoot := strings.TrimSpace(pinned.WriterRoot)
-	if writerRoot == "" {
-		writerRoot = *stateDir
-	}
-	if err := os.MkdirAll(writerRoot, 0o700); err != nil {
-		return fmt.Errorf("create shared native writer root: %w", err)
-	}
 	providerLedger, providerLedgerErr := nodeinbox.OpenProviderAdmissionLedger(
 		filepath.Join(writerRoot, "node-provider-admission.sqlite3"))
 	if providerLedgerErr != nil {

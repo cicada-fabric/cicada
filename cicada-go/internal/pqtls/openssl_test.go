@@ -21,15 +21,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
 
 var fixtureDirectory, opensslExecutable string
 var hubConfig, nodeConfig, otherNodeConfig Config
+
+const libctxCleanupChildEnv = "CICADA_PQTLS_LIBCTX_CLEANUP_CHILD"
 
 func TestMain(m *testing.M) {
 	opensslExecutable = os.Getenv("PQTLS_TEST_OPENSSL")
@@ -278,6 +282,82 @@ func TestConcurrentDuplex(t *testing.T) {
 		}
 	}
 }
+
+// This process-level regression forces one SSL connection's read/write calls
+// onto distinct locked OS threads, then checks the test process can exit cleanly.
+// OpenSSL documents that non-default library-context thread-local state must be
+// stopped on every thread before that context is freed.
+func TestLibctxThreadCleanupBeforeProcessExit(t *testing.T) {
+	if os.Getenv(libctxCleanupChildEnv) != "1" {
+		child := exec.Command(os.Args[0], "-test.run=^TestLibctxThreadCleanupBeforeProcessExit$")
+		child.Env = append(os.Environ(), libctxCleanupChildEnv+"=1")
+		_, err := child.CombinedOutput()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+					t.Fatalf("TLS worker subprocess terminated during process cleanup (signal=%s)", status.Signal())
+				}
+				t.Fatalf("TLS worker subprocess failed to exit cleanly (exit=%d)", exitErr.ExitCode())
+			}
+			t.Fatalf("TLS worker subprocess failed to exit cleanly (%T)", err)
+		}
+		return
+	}
+
+	a, b := pair(t)
+	deadline := time.Now().Add(5 * time.Second)
+	if err := a.SetDeadline(deadline); err != nil {
+		t.Fatal("set client deadline")
+	}
+	if err := b.SetDeadline(deadline); err != nil {
+		t.Fatal("set server deadline")
+	}
+	left := bytes.Repeat([]byte("synthetic-thread-local-left"), 8192)
+	right := bytes.Repeat([]byte("synthetic-thread-local-right"), 8192)
+	results := make(chan error, 4)
+	var workers sync.WaitGroup
+	write := func(conn *Conn, data []byte) {
+		defer workers.Done()
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		written, err := conn.Write(data)
+		if err == nil && written != len(data) {
+			err = io.ErrShortWrite
+		}
+		results <- err
+	}
+	read := func(conn *Conn, want []byte) {
+		defer workers.Done()
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		got := make([]byte, len(want))
+		_, err := io.ReadFull(conn, got)
+		if err == nil && !bytes.Equal(got, want) {
+			err = errors.New("synthetic duplex payload mismatch")
+		}
+		results <- err
+	}
+	workers.Add(4)
+	go write(a, left)
+	go read(b, left)
+	go write(b, right)
+	go read(a, right)
+	workers.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatal("synthetic duplex transfer failed")
+		}
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal("close client TLS connection")
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal("close server TLS connection")
+	}
+}
+
 func TestReadDeadlineChangeAndCloseBlocked(t *testing.T) {
 	a, b := pair(t)
 	done := make(chan error, 1)

@@ -11,7 +11,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/nodebackup"
 )
 
-const machineRecoveryUsage = "usage: cicada machine recovery inspect --backup DIR --state-dir DIR"
+const machineRecoveryUsage = "usage: cicada machine recovery inspect --backup DIR --state-dir DIR [--writer-root DIR]"
 
 func machineRecoveryCommand(args []string) error {
 	return machineRecoveryCommandOutput(args, os.Stdout)
@@ -26,13 +26,17 @@ func machineRecoveryCommandOutput(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	backupDir := flags.String("backup", "", "verified Node backup directory")
 	stateDir := flags.String("state-dir", "", "restored Node StateDir")
+	writerRoot := flags.String("writer-root", "", "shared Node WriterRoot (defaults to --state-dir)")
 	if err := flags.Parse(args[2:]); err != nil {
 		return fmt.Errorf("%s: %w", machineRecoveryUsage, err)
 	}
 	if len(flags.Args()) != 0 || strings.TrimSpace(*backupDir) == "" || strings.TrimSpace(*stateDir) == "" {
 		return errors.New(machineRecoveryUsage)
 	}
-	report, err := nodebackup.Inspect(*backupDir, *stateDir)
+	if strings.TrimSpace(*writerRoot) == "" {
+		*writerRoot = *stateDir
+	}
+	report, err := nodebackup.InspectWithWriterRoot(*backupDir, *stateDir, *writerRoot)
 	if err != nil {
 		return err
 	}

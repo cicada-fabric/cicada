@@ -1,27 +1,80 @@
 # Architecture v2.3 实施计划
 
+## 2026-10-01 transport / recovery next sequence (bounded checkpoint PARTIAL)
+
+The optional OpenSSL 3.5.9 adapter now demonstrates the mandated pure
+MLKEM768 / ML-DSA-65 / `TLS_AES_256_GCM_SHA384` profile. Its thread-cleanup
+repair, archive-v2 backup and contract v1.6.1 have bounded independent gates;
+main combined Go/build/vet/contract/Python and optional PQ race pass on stable
+dirty `750cc4…` inputs. Later capacity/driver inputs have their own incremental
+gates passing on `6ab2d9…`. M4 actual app UI pairing in the emulator passes but
+native Join fails without an Endpoint/proposal; post-failure context checks are
+NOT_RUN. New clean delivery remains pending. See the
+[current evidence record](v01-transport-recovery-checkpoint-validation.md).
+Architecture v2.3 and v0.1 remain incomplete; the sequence below is remaining
+v0.1 work, with historical sources retained separately.
+
+<a id="2026-10-01-pq-transport-implementation-steps-not-yet-implemented"></a>
+
+1. **Close the remaining bounded receipts and delivery gate.** Retain
+   clean `1547f2e`'s teardown FAIL and the old focused negative-control PASS;
+   neither proves the crash cause. Combined Go/default and optional-profile
+   process gates pass on `750cc4…`; any later code integration requires its own
+   source/gate record. Keep native and
+   Client receipts tied to their own source/image/APKs, then separately validate
+   any new clean delivery image. A dirty build is not identified by HEAD alone.
+2. **Wire direct Hub/Node PQ TLS and certificate enrollment.** Preserve explicit
+   isolated HTTP fixtures and their network boundaries. Add dedicated PQ CA,
+   SAN/pin enrollment and mTLS to the real listener and outbound Node client;
+   inspect actual group, suite, complete certificate algorithms and HTTP/1.1 SSE
+   state. Prove deadlines, disconnect/reconnect, process exit and unavailable
+   builds. No Go TLS fallback, hybrid/MLKEM1024 substitution or terminating proxy
+   can claim this profile. Keep NodeControl/Endpoint E2EE and keys separate.
+3. **Bind transport to current authorization and lifecycle.** Recheck current
+   owner, Node binding/epoch and request Guard even on an established verified
+   connection; public availability is not device permission. Define certificate
+   rotation/revocation and stale-connection handling, private runtime packaging
+   and explicit per-process loader paths. Default unavailable builds, arm64,
+   Client transport and public HTTPS need their own acceptance; the adapter's
+   16-connection sample is not a production capacity gate.
+4. **Complete post-restore reconciliation before reconnect.** Archive v2 now
+   captures selected Node state plus allowlisted provider/native-history and
+   durable writer/resource fences under offline exclusive WriterRoot ownership.
+   Restored or legacy-missing fences stay quarantined. Add explicit exact
+   ticket/generation/key/counter reconciliation and confirmed-stop checks before
+   any clear/reconnect action; never recreate empty ledgers, reset epochs or
+   replay uncertain execution. Prove crashes and conflicts on disposable state.
+5. **Close remaining native/Client and deployment paths.** Preserve G1's bounded
+   real-4 PASS, original context and exact-receive evidence alongside its
+   `CONSUMPTION_UNCONFIRMED` queue state and earlier FAIL attempts. The next
+   separate native slice connects Join/renew to directory-only Network identity
+   binding through existing APIs/helpers before explicit Owner Group admission;
+   no new roles, Group grants or traffic authority are inferred. It is outside
+   this frozen checkpoint. Finish M4 actual preview/CAS, consent, Monitor/model, fault and revoke cases on explicit
+   sources. Then run capacity, physical Nodes/Android and public HTTPS as
+   separate gates. V64 now has an independent bounded PARTIAL sample, without
+   a global capacity PASS; no resident replacement,
+   key rotation, push or release is authorized by this plan.
+
 ## 2026-10-01 Directory-only Network binding correction (completed focused slice)
 
 The native-binding registration used to require a direct traffic-purpose grant, blocking a directory-only member from the identity binding needed for Group admission. The focused correction separates identity/scope registration from action authorization: current Network membership and session/identity/revision checks remain mandatory, while SEND/ASK, Task, Broadcast, peer-key and key-candidate actions retain their existing purpose guards. Group admission still requires its explicit Group-management authorization and adds only member role. The Store and production HTTP focused/race gates passed on owned five-file fingerprint `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a`; see [the evidence record](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json), including the preserved initial timeout. This slice makes no schema, wire, key-format or cryptographic change and does not accept the separate Node intent work.
 
-## 2026-10-01 C4 unified checkpoint
+## Historical 2026-10-01 C4 unified checkpoint
 
 The frozen dirty source fingerprint is `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`, based on `f4e4725c5d81c54b166f4291b9d450c70954e6df` with Client v1.6/wire 1/55 operations. Full Go passed (1,105 top-level + 553 subtests, 27 packages, 12 skips, 0 failures); build, vet, contract, Python 26, all three actual Docker protocol tests, and the 12-step Browser gate passed. The v0.1.x scope remains incomplete: native Runtime on this candidate, physical Nodes and public HTTPS are NOT_RUN; product pure-PQ TLS is NOT_IMPLEMENTED. Use the [completion ledger](completion-ledger.md) and [C4 gate summary](../.cicada-data/next-checkpoint/closure-20261001T165647Z/gate-summary.json) for provenance and retained earlier failures.
 
-## 2026-10-01 PQ transport implementation steps (not yet implemented)
+## Historical standard-library PQ capability diagnostic
 
-The exact transport profile remains pure ML-KEM-768, ML-DSA-65 authentication and `TLS_AES_256_GCM_SHA384`. A Go 1.27.1 isolated probe demonstrated only a neighboring configuration—pure ML-KEM-1024, synthetic ML-DSA-65 certificates and actual `TLS_AES_128_GCM_SHA256`—so it is capability evidence, not profile acceptance. Go's current public standard-library API does not expose pure ML-KEM-768 or TLS 1.3 cipher-suite selection. Do not silently substitute ML-KEM-1024, a hybrid group or an ordinary TLS terminator; do not change the cryptographic specification in `CICADA.md` as an implementation shortcut.
+The earlier Go 1.27.1 one-file probe negotiated pure ML-KEM-1024 with synthetic
+ML-DSA-65 certificates and `TLS_AES_128_GCM_SHA256`; it did not meet the adopted
+profile or run CICADA interop. Its [probe record](../.cicada-data/next-checkpoint/pq-transport-audit/summary.json)
+and [exposure audit](architecture-v2-pq-transport.md) retain that provenance.
+Exact-profile feasibility is now separately demonstrated by the optional
+[OpenSSL adapter](pqtls-openssl-transport.md); production endpoint work remains
+in the current sequence above. No cryptographic specification is changed.
 
-The implementation sequence is:
-
-1. **Separate fixture HTTP from production exposure.** The Hub image currently defaults to `serve --host 0.0.0.0`; owned Docker gates depend on an all-interface bind inside the container. Inventory and preserve that disposable path, prove its network namespace and loopback-only host publication, and expose it only through an explicit test-fixture mode. Do not infer safety from `CICADA_API_TOKEN`. Keep the normal local Compose listener on loopback. No production listener change is included in this documentation checkpoint.
-2. **Resolve exact-profile feasibility before wiring TLS.** Recheck the pinned Go release/API and TLS ML-KEM/ML-DSA profile status. Until the exact group, certificate authentication and suite can be enforced and independently observed, remote production service is not certified PQ-only. Any proposed spec change must be versioned and reviewed separately; a successful ML-KEM-1024 probe is not permission to change the mandated profile.
-3. **Build one verifiable production endpoint only after the profile is implementable.** A future slice must identify trusted Hub certificate/pin enrollment, Node client auth and rotation/revocation without reusing peer keys or frozen Client wire identity; use direct Hub TLS or a non-terminating L4 path. A terminating proxy is a plaintext endpoint and may not be used to claim end-to-end Node-to-Hub PQ TLS.
-4. **Preserve application protection and prove negotiation.** NodeControl sealed RPC/snapshots and peer recipient E2EE remain separate from transport TLS. Tests must assert actual TLS version, pure key exchange, both peer certificate chains and signature algorithms, exact TLS 1.3 cipher, pin/rotation rejection and no fallback, while preserving loopback fixtures. The current one-file probe is not a CICADA interop gate.
-
-The capability probe and current exposure evidence are recorded in [`architecture-v2-pq-transport.md`](architecture-v2-pq-transport.md) and the ignored [probe bundle](../.cicada-data/next-checkpoint/pq-transport-audit/summary.json). Its source and result are independent of product checkpoint fingerprints; earlier full Go, Docker, browser and native results keep their original source/image identities.
-
-## 当前实现框架与依赖出口（2026-10-01）
+## 历史 C4/f55 实现框架与依赖出口（2026-10-01）
 
 此前 f55 frozen candidate 是只读 snapshot `final-code-git-snapshot-20261001T102124Z`，fingerprint `f55b5255628030857ac88bd7edbd6da7da1b63d543014c76111f9219f46ad255`，基于 dirty `dev` revision `bd79ff93c90ecafc28a2471dd9523444903b39e6`；对应 Hub image `sha256:da88805eaa1987a1c6e06448fc5cddf7d4ce368e8b5eeb3071a1406dad2cb977`。catalog 为 v1.6/55 operations，SHA-256 `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`，未交付独立 Client。f55 全 Go、vet、v1.6/55-op contract、19 Python 和 Client/Network M1/Group Spaces M2 三套 Docker gate 均通过。它的 Browser 已独立 PASS；focused race、M5、V68 与 native gate 尚无同源验收。前序 432f 的 Go/race/Browser/M5/failed gates 见 [checkpoint validation](v01-completion-checkpoint-validation.md)，均不自动转给 f55。旧 `f308…`、`c33f…`、c7/49dca 和 Android/APK 报告继续保留其原 source/image/APK。
 
@@ -369,6 +422,8 @@ Codex Ask/Reply 均已通过，跨 owner 结果限定同机两个逻辑 Node 与
 每步保持 Go 全包回归可运行；部分完成只标该切片，不能把 fake Codex、同机逻辑隔离或旧 MA→MB 演示冒充真实原生、双物理机或新版广播完成。
 
 ### 可靠性切片：Node 一致点备份已落地，重新联网对账仍待实现
+
+上述旧 Node-subtree 切片现由 archive v2 扩展：选定 Node 加上共用 provider/native-history SQLite 与 `.native-writers`、`nodes/.locks` 持久 fence，Agent 的 WriterRoot 生命周期共享锁与离线独占锁互斥。恢复共用 fence 或 legacy 缺失状态仍隔离，尚无受权解除/重连命令。见 [当前归档边界](node-backup.md)和[分源验收](v01-transport-recovery-checkpoint-validation.md)；下方原切片说明和测试不能转为设备级恢复通过。
 
 当前 `migration backup` 只管理 Hub StateDir 的 SQLite/文件快照，不能替代 Node 备份。Node 的 `nodes/node-{id}` 下分散保存 `identity.json`、`relay.token`、`endpoint-keys/`、`node-crypto-state.sqlite`、远端 `inbox.sqlite`、本地 `local-messages.sqlite3`/`local-inbox.sqlite3` 和 `relay-journal.json`；MCP Session/outbox 与 Codex 原生 Session 记录还可能位于各自独立的状态目录。若只复制其中一个数据库，会破坏 outbox、重放计数、原生注入状态与密钥的对应关系。
 

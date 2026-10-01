@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -155,7 +156,19 @@ func validateOwnedFixturePaths(dbPath, fixtureRoot string, allowMissingDB bool) 
 }
 
 func bootstrap(raw []string) error {
-	dbPath, root, err := args("bootstrap", raw)
+	flags := flag.NewFlagSet("cicada-v68fixture bootstrap", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	db := flags.String("db", "", "fixture Hub SQLite database")
+	directory := flags.String("fixture", "", "owned mode-0700 fixture root")
+	threadA := flags.String("native-thread-a", "", "real thread.started UUID; positioning input only, not Join evidence")
+	threadB := flags.String("native-thread-b", "", "real thread.started UUID; positioning input only, not Join evidence")
+	if err := flags.Parse(raw); err != nil || len(flags.Args()) != 0 || *db == "" || *directory == "" {
+		return errors.New("bootstrap requires --db and --fixture")
+	}
+	if err := validateNativeThreads(*threadA, *threadB); err != nil {
+		return err
+	}
+	dbPath, root, err := validateOwnedFixturePaths(*db, *directory, true)
 	if err != nil {
 		return err
 	}
@@ -250,6 +263,9 @@ func bootstrap(raw []string) error {
 		ThreadA: "thread_v68_a_" + fixtureSuffix,
 		ThreadB: "thread_v68_b_" + fixtureSuffix, DeviceID: deviceID,
 		SourceState: filepath.Join(root, "node-a-state"), TargetState: filepath.Join(root, "node-b-state")}
+	if *threadA != "" {
+		meta.ThreadA, meta.ThreadB = *threadA, *threadB
+	}
 	for _, node := range []struct{ id, state string }{{meta.NodeA, meta.SourceState}, {meta.NodeB, meta.TargetState}} {
 		token, digest, err := fabric.NewNodeCredential()
 		if err != nil {
@@ -269,6 +285,20 @@ func bootstrap(raw []string) error {
 		}
 	}
 	return writeJSONExclusive(filepath.Join(root, "fixture.json"), meta, 0o600)
+}
+
+// These coordinates never create a SessionBinding or a native session record.
+// The native driver must independently observe thread.started and perform Join.
+func validateNativeThreads(a, b string) error {
+	if a == "" && b == "" {
+		return nil // Preserve the recording-queue V68 fixture's existing default.
+	}
+	canonical := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	if !canonical.MatchString(a) || !canonical.MatchString(b) || a == b ||
+		a == "00000000-0000-0000-0000-000000000000" || b == "00000000-0000-0000-0000-000000000000" {
+		return errors.New("native fixture inputs require two distinct nonzero canonical lowercase UUIDs")
+	}
+	return nil
 }
 
 func provisionNodeState(stateDir, nodeID, token, ownerID, ownerKeyID string,

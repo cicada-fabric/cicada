@@ -36,6 +36,8 @@ type RecoveryInspectReport struct {
 	CryptoCounterWatermark string                  `json:"crypto_counter_watermark"`
 	NativeRuntimeCheck     string                  `json:"native_runtime_check"`
 	ExternalMCPState       string                  `json:"external_mcp_state"`
+	SharedWriterRootCheck  string                  `json:"shared_writer_root_check,omitempty"`
+	SharedWriterRootHeld   bool                    `json:"shared_writer_root_held,omitempty"`
 }
 
 type CryptoStateInspection struct {
@@ -167,6 +169,46 @@ func Inspect(backupDir, targetStateDir string) (_ *RecoveryInspectReport, retErr
 	} else {
 		report.LocalMessages = LocalMessagesInspection{Present: false}
 	}
+	return report, nil
+}
+
+// InspectWithWriterRoot also takes the shared-root coordination lock and
+// reports whether the archived fences match the restored common WriterRoot.
+// It never clears either Node or WriterRoot quarantine markers.
+func InspectWithWriterRoot(backupDir, targetStateDir, writerRoot string) (*RecoveryInspectReport, error) {
+	lock, err := nodelock.AcquireWriterRoot(writerRoot)
+	if err != nil {
+		return nil, fmt.Errorf("acquire shared WriterRoot inspection lock: %w", err)
+	}
+	defer lock.Close()
+	report, err := Inspect(backupDir, targetStateDir)
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := Verify(backupDir)
+	if err != nil {
+		return nil, err
+	}
+	active, markerErr := WriterRootRecoveryQuarantineActive(writerRoot)
+	if markerErr != nil {
+		return nil, markerErr
+	}
+	if active {
+		report.SharedWriterRootHeld = true
+		report.SharedWriterRootCheck = "quarantined_pending_manual_reconciliation"
+		return report, nil
+	}
+	if manifest.FormatVersion != CurrentFormatVersion || manifest.SharedWriterRoot == nil {
+		report.SharedWriterRootHeld = true
+		report.SharedWriterRootCheck = "legacy_archive_missing_shared_fences"
+		return report, nil
+	}
+	if err := sharedRootMatchesManifest(writerRoot, manifest.SharedWriterRoot); err != nil {
+		report.SharedWriterRootHeld = true
+		report.SharedWriterRootCheck = "shared_fence_mismatch_or_missing"
+		return report, nil
+	}
+	report.SharedWriterRootCheck = "matches_archive_bundle_but_reconciliation_required"
 	return report, nil
 }
 

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.6
+  x-contract-revision: client-hub-v1.6.1
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -189,12 +189,14 @@ paths:
     post:
       operationId: beginNodeDeviceBinding
       description: >-
-        Public Node bootstrap. The Node generates and keeps its bearer locally;
-        credential_digest is SHA-256(token) in unpadded base64url. Hub stores
-        only the digest and returns a short code plus a relative path for the
-        independent Android Client. The path /client/device is not served by
-        this repository. An authenticated encrypted Client RPC nodes.preview
-        followed by nodes.confirm is required to activate the credential.
+        Public Node bootstrap with a signed/encrypted Node key-possession proof
+        to the independently pinned GET /v2/node/identity application key.
+        The Node retains its bearer and private key locally; credential_digest
+        is SHA-256(token) in unpadded base64url. The response includes a short
+        code, public candidate and relative /client/device path (not served here).
+        Owner confirmation uses separate encrypted Client RPC nodes.preview
+        and nodes.confirm with the exact candidate_digest and candidate_version.
+        The approved response is NodeControlKeyBinding, never a bearer credential.
       requestBody:
         required: true
         content:
@@ -218,6 +220,12 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
           description: Node is already bound or has a conflicting pending request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '426':
+          description: MIGRATION_BLOCKED; an existing binding requires Owner-approved Node-Control key upgrade.
           content:
             application/json:
               schema:
@@ -371,7 +379,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.6}
+        contract_revision: {const: client-hub-v1.6.1}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -464,7 +472,7 @@ components:
     NodeDeviceCodeRequest:
       type: object
       additionalProperties: false
-      required: [node_id, node_name, credential_digest]
+      required: [node_id, node_name, credential_digest, request_nonce, node_public_identity, node_fingerprint, proof_packet, hub_id, hub_public_identity, hub_key_version, hub_fingerprint]
       properties:
         node_id: {type: string, minLength: 1}
         node_name: {type: string, minLength: 1, maxLength: 128}
@@ -472,16 +480,149 @@ components:
           type: string
           pattern: '^[A-Za-z0-9_-]{43}$'
           description: Unpadded base64url SHA-256 digest of the Node bearer.
+        request_nonce:
+          type: string
+          contentEncoding: base64
+          description: Fresh 16-64 byte nonce committed by the Node-Control pairing proof.
+        node_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        node_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_packet:
+          type: string
+          contentEncoding: base64
+          description: Signed/encrypted proof_packet using nodewire.PairingProofTranscript and PairingProofAAD, sequence 1.
+        hub_id: {type: string, minLength: 1}
+        hub_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        hub_key_version: {type: integer, minimum: 1}
+        hub_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
 
     NodeDeviceCode:
       type: object
       additionalProperties: false
-      required: [user_code, verification_uri]
+      required: [user_code, verification_uri, candidate]
       properties:
         user_code:
           type: string
           pattern: '^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$'
         verification_uri: {type: string, const: /client/device}
+        candidate:
+          $ref: '#/components/schemas/NodeControlKeyCandidate'
+
+    NodesPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [user_code]
+      properties:
+        user_code: {type: string, minLength: 1}
+
+    NodesConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [user_code, candidate_digest, candidate_version]
+      description: Exact pending preview CAS; omissions or changed digest/version are encrypted business refusals and do not consume the code.
+      properties:
+        user_code: {type: string, minLength: 1}
+        candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_version: {type: integer, minimum: 1}
+
+    NodesListRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+
+    NodesRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [binding_id, expected_version]
+      properties:
+        binding_id: {type: string, minLength: 1}
+        expected_version: {type: integer, minimum: 1}
+
+    NodeControlKeyCandidate:
+      type: object
+      additionalProperties: false
+      required: [request_id, version, mode, hub_id, node_id, node_name, node_key_id, node_key_fingerprint, hub_node_control_key_id, hub_node_control_key_version, hub_node_control_fingerprint, node_key_epoch, candidate_digest, expires_at, state]
+      properties:
+        request_id: {type: string}
+        version: {type: integer, minimum: 1}
+        mode: {type: string, enum: [INITIAL, UPGRADE]}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        node_key_id: {type: string}
+        node_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        hub_node_control_key_id: {type: string}
+        hub_node_control_key_version: {type: integer, minimum: 1}
+        hub_node_control_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        node_key_epoch: {type: integer, minimum: 1}
+        candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [PENDING, CONFIRMED, EXPIRED, CANCELLED]}
+        binding_id: {type: string}
+        binding_version: {type: integer, minimum: 1}
+
+    NodeControlKeyBinding:
+      type: object
+      additionalProperties: false
+      description: Owner-approved Node application key and public approval evidence. No credentials, private keys or operation body. Not the nodes.list/revoke projection and not a TLS key binding.
+      required: [owner_binding_id, owner_id, hub_id, node_id, node_name, client_device_id, owner_key_id, node_credential_version, binding_version, node_key_id, node_public_identity, node_key_fingerprint, node_key_version, node_key_epoch, hub_key_id, hub_public_identity, hub_key_fingerprint, hub_key_version, approved_request_id, approved_request_version, approved_candidate_digest, approved_owner_device_id, approved_owner_key_id, approved_at, state, version]
+      properties:
+        owner_binding_id: {type: string}
+        owner_id: {type: string}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        client_device_id: {type: string}
+        owner_key_id: {type: string}
+        node_credential_version: {type: integer, minimum: 1}
+        binding_version: {type: integer, minimum: 1}
+        node_key_id: {type: string}
+        node_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        node_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        node_key_version: {type: integer, minimum: 1}
+        node_key_epoch: {type: integer, minimum: 1}
+        hub_key_id: {type: string}
+        hub_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        hub_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        hub_key_version: {type: integer, minimum: 1}
+        approved_request_id: {type: string}
+        approved_request_version: {type: integer, minimum: 1, description: Pending preview version approved by the Owner.}
+        approved_candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        approved_owner_device_id: {type: string}
+        approved_owner_key_id: {type: string}
+        approved_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+        version: {type: integer, minimum: 1}
+        revoked_at: {type: string, format: date-time}
+
+    NodeDeviceBinding:
+      type: object
+      additionalProperties: false
+      required: [id, owner_id, hub_id, node_id, node_name, client_device_id, owner_key_id, node_credential_version, state, authorized, version, created_at, updated_at]
+      description: Authoritative nodes.list/revoke owner credential projection, distinct from nodes.confirm NodeControlKeyBinding. ACTIVE may have authorized=false after Owner-key revocation.
+      properties:
+        id: {type: string}
+        owner_id: {type: string}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        client_device_id: {type: string}
+        owner_key_id: {type: string}
+        node_credential_version: {type: integer, minimum: 1}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+        authorized: {type: boolean}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+
+    NodeDeviceBindingList:
+      type: array
+      items:
+        $ref: '#/components/schemas/NodeDeviceBinding'
 
     Packet:
       type: object
@@ -537,6 +678,18 @@ components:
         cicada-go/internal/clientcontract/catalog.json.
       x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
       x-rpc-request-result-schemas:
+        nodes.preview:
+          request: '#/components/schemas/NodesPreviewRequest'
+          result: '#/components/schemas/NodeControlKeyCandidate'
+        nodes.confirm:
+          request: '#/components/schemas/NodesConfirmRequest'
+          result: '#/components/schemas/NodeControlKeyBinding'
+        nodes.list:
+          request: '#/components/schemas/NodesListRequest'
+          result: '#/components/schemas/NodeDeviceBindingList'
+        nodes.revoke:
+          request: '#/components/schemas/NodesRevokeRequest'
+          result: '#/components/schemas/NodeDeviceBinding'
         link.invite_accept:
           request: '#/components/schemas/LinkInviteAcceptRequest'
           result: '#/components/schemas/LinkInviteAcceptResult'
@@ -696,7 +849,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.6}
+        contract_revision: {const: client-hub-v1.6.1}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'

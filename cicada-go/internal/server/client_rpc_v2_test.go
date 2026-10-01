@@ -6,16 +6,68 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
+
+// Compare actual decrypted JSON names with the published flat Node schema.
+// Typed unmarshalling alone would accept the old, incomplete result document.
+func assertNodeContractFields(t *testing.T, result json.RawMessage, schema string) {
+	t.Helper()
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate Node contract")
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(source), "../../../docs/client-hub-v1.openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, block, ok := strings.Cut(string(data), "    "+schema+":\n")
+	if !ok {
+		t.Fatalf("missing published Node schema %s", schema)
+	}
+	properties := make(map[string]bool)
+	var required []string
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "     ") {
+			break
+		}
+		if strings.HasPrefix(line, "        ") && !strings.HasPrefix(line, "         ") {
+			name, _, found := strings.Cut(strings.TrimSpace(line), ":")
+			if found {
+				properties[name] = true
+			}
+		}
+		if fields, found := strings.CutPrefix(line, "      required: ["); found {
+			required = strings.Split(strings.TrimSuffix(fields, "]"), ", ")
+		}
+	}
+	var actual map[string]json.RawMessage
+	if err := json.Unmarshal(result, &actual); err != nil || len(properties) == 0 || len(required) == 0 {
+		t.Fatal("Node result or published property declaration is invalid")
+	}
+	for name := range actual {
+		if !properties[name] {
+			t.Errorf("Node result field %s is absent from published %s", name, schema)
+		}
+	}
+	for _, name := range required {
+		if _, exists := actual[name]; !exists {
+			t.Errorf("Node result omits required %s field %s", schema, name)
+		}
+	}
+}
 
 func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	root := t.TempDir()
@@ -397,7 +449,7 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		handler.ServeHTTP(recorder, httptest.NewRequest(method, path, bytes.NewReader(body)))
 		return recorder.Code, recorder.Body.Bytes()
 	}
-	nodeToken, nodeDigest, _, _, challenge, startBody := startPQNodeDeviceCodeFixture(t, pairRequest,
+	nodeToken, nodeDigest, nodeKey, nodeHubIdentity, challenge, startBody := startPQNodeDeviceCodeFixture(t, pairRequest,
 		"phone-linked-node", "Phone linked node")
 	tooFast := httptest.NewRecorder()
 	handler.ServeHTTP(tooFast, httptest.NewRequest(http.MethodPost, "/v2/nodes/device-code", bytes.NewReader(startBody)))
@@ -407,11 +459,13 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	if _, err := manager.Fabric().AuthenticateNode(nodeToken); err == nil {
 		t.Fatal("Node token authenticated before owner confirmation")
 	}
-	callNodeRPC := func(sequence uint64, operation string, body []byte) []byte {
+	nodeRPCSequence := uint64(8)
+	callNodeRPC := func(t *testing.T, operation string, body []byte) []byte {
 		t.Helper()
+		nodeRPCSequence++
 		nodeRoute := route
-		nodeRoute.Sequence = sequence
-		nodeRoute.OperationID = "op-node-" + operation + "-" + strconv.FormatUint(sequence, 10)
+		nodeRoute.Sequence = nodeRPCSequence
+		nodeRoute.OperationID = "op-node-" + operation + "-" + strconv.FormatUint(nodeRPCSequence, 10)
 		nodeRoute.Operation = operation
 		nodePacket, err := clientwire.SealRequest(deviceKey, identity.ControlPublicIdentity, binding, nodeRoute, body)
 		if err != nil {
@@ -422,17 +476,41 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		if nodeResponse.Code != http.StatusOK {
 			t.Fatalf("Node RPC %s status=%d body=%s", operation, nodeResponse.Code, nodeResponse.Body.String())
 		}
+		if len(body) > 2 && bytes.Contains(nodeResponse.Body.Bytes(), body) ||
+			bytes.Contains(nodeResponse.Body.Bytes(), []byte(nodeToken)) ||
+			bytes.Contains(nodeResponse.Body.Bytes(), []byte(nodeDigest)) {
+			t.Fatal("encrypted Node RPC response exposed request body or credential")
+		}
 		openedNode, err := clientwire.OpenResponse(deviceKey, identity.ControlPublicIdentity, binding, nodeResponse.Body.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
 		return openedNode.Plaintext
 	}
+	contractResult := func(t *testing.T, plaintext []byte, schema string) json.RawMessage {
+		t.Helper()
+		var envelope struct {
+			OK     bool            `json:"ok"`
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal(plaintext, &envelope); err != nil || !envelope.OK {
+			t.Fatal("Node contract operation did not succeed")
+		}
+		assertNodeContractFields(t, envelope.Result, schema)
+		for _, secret := range []string{nodeToken, nodeDigest, challenge.UserCode,
+			`"credential_digest"`, `"proof_packet"`, `"user_code"`, `"private_key"`, `"body"`, `"text"`} {
+			if bytes.Contains(envelope.Result, []byte(secret)) {
+				t.Fatal("Node projection exposed a credential or operation-body field")
+			}
+		}
+		return envelope.Result
+	}
 	codeBody, err := json.Marshal(map[string]string{"user_code": challenge.UserCode})
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview := callNodeRPC(9, "nodes.preview", codeBody)
+	preview := callNodeRPC(t, "nodes.preview", codeBody)
+	contractResult(t, preview, "NodeControlKeyCandidate")
 	var previewEnvelope struct {
 		OK     bool                          `json:"ok"`
 		Result store.NodeControlKeyCandidate `json:"result"`
@@ -442,7 +520,54 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		previewEnvelope.Result.RequestID != challenge.Candidate.RequestID ||
 		previewEnvelope.Result.CandidateDigest == "" || previewEnvelope.Result.Version <= 0 ||
 		bytes.Contains(preview, []byte(nodeDigest)) {
-		t.Fatalf("owner preview lacked exact Node candidate or leaked credential: err=%v result=%s", err, preview)
+		t.Fatal("owner preview lacked exact Node candidate or leaked credential")
+	}
+	for _, name := range []string{"missing-CAS", "missing-digest", "missing-version", "changed-digest", "changed-version"} {
+		t.Run("nodes-confirm-"+name, func(t *testing.T) {
+			input := map[string]any{"user_code": challenge.UserCode,
+				"candidate_digest":  previewEnvelope.Result.CandidateDigest,
+				"candidate_version": previewEnvelope.Result.Version}
+			switch name {
+			case "missing-CAS":
+				delete(input, "candidate_digest")
+				delete(input, "candidate_version")
+			case "missing-digest":
+				delete(input, "candidate_digest")
+			case "missing-version":
+				delete(input, "candidate_version")
+			case "changed-digest":
+				input["candidate_digest"] = strings.Repeat("0", 64)
+			case "changed-version":
+				input["candidate_version"] = previewEnvelope.Result.Version + 1
+			}
+			body, err := json.Marshal(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rejected := callNodeRPC(t, "nodes.confirm", body)
+			var response struct {
+				OK     bool            `json:"ok"`
+				Error  string          `json:"error"`
+				Result json.RawMessage `json:"result"`
+			}
+			if err := json.Unmarshal(rejected, &response); err != nil || response.OK || response.Error == "" || len(response.Result) != 0 {
+				t.Fatal("omitted or changed CAS was not an encrypted business refusal")
+			}
+			if bytes.Contains(rejected, []byte(nodeToken)) || bytes.Contains(rejected, []byte(nodeDigest)) ||
+				bytes.Contains(rejected, []byte(challenge.UserCode)) || bytes.Contains(rejected, body) {
+				t.Fatal("CAS refusal exposed credential or confirmation body")
+			}
+			current := contractResult(t, callNodeRPC(t, "nodes.preview", codeBody), "NodeControlKeyCandidate")
+			var pending store.NodeControlKeyCandidate
+			if err := json.Unmarshal(current, &pending); err != nil || pending.State != store.NodeControlPairingPending ||
+				pending.RequestID != previewEnvelope.Result.RequestID || pending.Version != previewEnvelope.Result.Version ||
+				pending.CandidateDigest != previewEnvelope.Result.CandidateDigest {
+				t.Fatal("CAS refusal consumed or changed pending preview")
+			}
+			if _, err := manager.Fabric().AuthenticateNode(nodeToken); err == nil {
+				t.Fatal("CAS refusal activated Node credential")
+			}
+		})
 	}
 	confirmBody, err := json.Marshal(map[string]any{"user_code": challenge.UserCode,
 		"candidate_digest":  previewEnvelope.Result.CandidateDigest,
@@ -450,7 +575,8 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	confirmation := callNodeRPC(10, "nodes.confirm", confirmBody)
+	confirmation := callNodeRPC(t, "nodes.confirm", confirmBody)
+	confirmationResult := contractResult(t, confirmation, "NodeControlKeyBinding")
 	var confirmed struct {
 		OK     bool                        `json:"ok"`
 		Result store.NodeControlKeyBinding `json:"result"`
@@ -459,6 +585,24 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 		confirmed.Result.State != store.NodeControlKeyActive || confirmed.Result.OwnerID != ownerID ||
 		confirmed.Result.NodeID != "phone-linked-node" || confirmed.Result.ApprovedCandidateDigest != previewEnvelope.Result.CandidateDigest {
 		t.Fatalf("owner confirmation failed: err=%v result=%s", err, confirmation)
+	}
+	if confirmed.Result.OwnerBindingID == "" || confirmed.Result.BindingVersion == 0 ||
+		confirmed.Result.ApprovedRequestID != previewEnvelope.Result.RequestID ||
+		confirmed.Result.ApprovedRequestVersion != previewEnvelope.Result.Version ||
+		confirmed.Result.ApprovedOwnerDeviceID != binding.DeviceID || confirmed.Result.ApprovedOwnerKeyID != ownerKey.Public().ID ||
+		confirmed.Result.NodeKeyID != nodeKey.Public().ID || confirmed.Result.HubKeyID != nodeHubIdentity.PublicIdentity.ID ||
+		confirmed.Result.NodeKeyFingerprint != nodewire.IdentityFingerprint(nodeKey.Public()) ||
+		confirmed.Result.HubKeyFingerprint != nodewire.IdentityFingerprint(nodeHubIdentity.PublicIdentity) ||
+		!bytes.Equal(confirmed.Result.NodePublicIdentity.KEMPublic, nodeKey.Public().KEMPublic) ||
+		!bytes.Equal(confirmed.Result.NodePublicIdentity.SigningPublic, nodeKey.Public().SigningPublic) ||
+		!bytes.Equal(confirmed.Result.HubPublicIdentity.KEMPublic, nodeHubIdentity.PublicIdentity.KEMPublic) ||
+		!bytes.Equal(confirmed.Result.HubPublicIdentity.SigningPublic, nodeHubIdentity.PublicIdentity.SigningPublic) {
+		t.Fatal("confirmation public identity or exact Owner-approved candidate evidence is incorrect")
+	}
+	var confirmationFields map[string]json.RawMessage
+	json.Unmarshal(confirmationResult, &confirmationFields)
+	if confirmationFields["id"] != nil || confirmationFields["authorized"] != nil || confirmationFields["created_at"] != nil {
+		t.Fatal("confirmation was confused with the authoritative list projection")
 	}
 	statusRequest := httptest.NewRequest(http.MethodGet,
 		"/v2/node/device-code/"+previewEnvelope.Result.RequestID+"/status?node_id=phone-linked-node", nil)
@@ -474,9 +618,25 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	if authenticated, err := manager.Fabric().AuthenticateNode(nodeToken); err != nil || authenticated != "phone-linked-node" {
 		t.Fatalf("confirmed Node not authenticated: id=%q err=%v", authenticated, err)
 	}
-	bindings := callNodeRPC(11, "nodes.list", []byte(`{}`))
+	bindings := callNodeRPC(t, "nodes.list", []byte(`{}`))
 	if !bytes.Contains(bindings, []byte(confirmed.Result.OwnerBindingID)) || bytes.Contains(bindings, []byte(nodeDigest)) {
 		t.Fatalf("binding list missing Node or leaked digest: %s", bindings)
+	}
+	var listedNodes struct {
+		OK     bool              `json:"ok"`
+		Result []json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(bindings, &listedNodes); err != nil || !listedNodes.OK || len(listedNodes.Result) != 1 {
+		t.Fatal("authoritative Node binding list has unexpected shape")
+	}
+	assertNodeContractFields(t, listedNodes.Result[0], "NodeDeviceBinding")
+	var deviceBinding store.NodeDeviceBinding
+	if err := json.Unmarshal(listedNodes.Result[0], &deviceBinding); err != nil ||
+		deviceBinding.ID != confirmed.Result.OwnerBindingID || uint64(deviceBinding.Version) != confirmed.Result.BindingVersion || !deviceBinding.Authorized {
+		t.Fatal("Node list does not project the confirmed Owner binding")
+	}
+	if bytes.Contains(listedNodes.Result[0], []byte(`"owner_binding_id"`)) || bytes.Contains(listedNodes.Result[0], []byte(`"node_public_identity"`)) {
+		t.Fatal("Node list returned the confirmation application-key DTO")
 	}
 	revokeBody, err := json.Marshal(map[string]any{
 		"binding_id": confirmed.Result.OwnerBindingID, "expected_version": confirmed.Result.BindingVersion,
@@ -484,14 +644,15 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeRevocation := callNodeRPC(12, "nodes.revoke", revokeBody)
+	nodeRevocation := callNodeRPC(t, "nodes.revoke", revokeBody)
+	contractResult(t, nodeRevocation, "NodeDeviceBinding")
 	if !bytes.Contains(nodeRevocation, []byte(`"state":"REVOKED"`)) {
 		t.Fatalf("binding revocation failed: %s", nodeRevocation)
 	}
 	if _, err := manager.Fabric().AuthenticateNode(nodeToken); err == nil {
 		t.Fatal("revoked Node still authenticated")
 	}
-	changes := callNodeRPC(13, "status.changes", []byte(`{}`))
+	changes := callNodeRPC(t, "status.changes", []byte(`{}`))
 	var changed struct {
 		OK     bool                            `json:"ok"`
 		Result control.ClientStatusChangesPage `json:"result"`
@@ -505,7 +666,7 @@ func TestClientV2OwnerGrantAndEncryptedSnapshotAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unchanged := callNodeRPC(14, "status.changes", changesBody)
+	unchanged := callNodeRPC(t, "status.changes", changesBody)
 	var next struct {
 		OK     bool                            `json:"ok"`
 		Result control.ClientStatusChangesPage `json:"result"`

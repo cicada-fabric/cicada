@@ -1,12 +1,27 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-10-01 bounded transport / recovery migration boundary
+
+The [current checkpoint](v01-transport-recovery-checkpoint-validation.md) separates
+contract v1.6.1's documentation/revision correction from Node archive-v2 recovery
+work. The contract changes no wire framing, DTO, authorization or Hub schema.
+Archive v2 includes provider/native-history sidecars and writer-lock metadata
+under shared Agent lifetime versus offline exclusive WriterRoot ownership.
+Independent focused race and the corrected CLI package rerun pass; the earlier
+full-run fixture failure is retained. The later stable dirty `750cc4…` main
+full Go gate passes; it does not accept production restore or a changed source.
+Restored/legacy missing fences remain
+quarantined, with no product clear/reconnect command. No production upgrade,
+rollback, counter reset, state deletion or reconnect is accepted by these tests.
+C4's backup and migration limits below remain attributed to that historical run.
+
 ## 2026-10-01 Network native identity binding authorization correction (no migration)
 
 The directory-only self-binding correction separates registration of a current Network native identity/scope from traffic-purpose authorization. A currently joined member with valid session, Node/Endpoint identity and current scope/revisions may register the binding used by Group admission; that operation does not create an action grant, peer key, or key material. Group admission continues to use its explicit `group.manage` authorization and adds only member role. Direct traffic, Task, Broadcast, peer-key and key-candidate operations retain their action-purpose guards.
 
 This is an authorization-guard correction only: no Hub schema/DDL, migration version, wire/DTO, key, ciphertext, signature, or cryptographic format changed. No migration or data rewrite is required. The focused Store/HTTP and Store/HTTP race results belong only to source fingerprint `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a`; commands, per-file source hashes and the retained initial timeout are in [the evidence record](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json). Node provider intent/generation fencing is a separate later slice and is summarized below.
 
-## 2026-10-01 C4 migration and Node-local state boundary
+## Historical 2026-10-01 C4 migration and Node-local state boundary
 
 The C4 candidate uses Hub `CurrentV2SchemaVersion=55`; migration v55 (`v2.node.snapshot_rpc_response_projection`) additively creates `node_control_snapshot_rpc_responses_v1` and `node_control_snapshot_rpc_response_guard_v1`. The projection records a completed Node-Control snapshot-download manifest or terminal error bound to the inbox request digest and route digest; its foreign key follows the inbox's bounded retention. It does not rewrite snapshot payloads, credentials, keys or replay counters. Migration/reopen and the C4 synthetic gates do not constitute a production StateDir upgrade, rollback or restore rehearsal; the backup tools still separate Hub state from the Node subtree, and an older binary must not open a newer schema.
 
@@ -35,7 +50,7 @@ The current Hub migration range v42–v55 is additive. Existing migration IDs/ch
 | v54 | `v2.task.local_sealed_handoff_route` | Adds same-Node sealed handoff route metadata/proof state; the local envelope/body remains off Hub relay. |
 | v55 | `v2.node.snapshot_rpc_response_projection` | Adds the exact-request-bound download manifest/error projection and guard described above; foreign-key retention follows the completed inbox row. |
 
-The Node-wide provider admission sidecar is separate from this Hub migration ledger. It is stored at `WriterRoot/node-provider-admission.sqlite3`; the existing Node backup command copies only `nodes/node-{id}/`, so that backup currently does **not** cover the provider attempt/intent records or counters. Preserve the sidecar separately and verify it together with the corresponding Node ClaimTickets before restoring/reconnecting. If it is missing or mismatched, recovery must remain fail-closed: do not recreate an empty ledger, infer an attempt from a ticket, reset counters, or discard existing records, keys or replay state. The existing backup/restore PASS is not an attempt-fence recovery PASS, and a consistent multi-file sidecar-plus-ticket restore/upgrade procedure has not been accepted. Hub backup still excludes `nodes/`; no test in C4 migrated, restored or downgraded a production StateDir.
+At the C4 source checkpoint, the Node backup tool archived only `nodes/node-{id}/` and did **not** cover provider-attempt sidecars or counters; C4's backup PASS remains attributed to that source. The current format-v2 `machine backup`/`restore` adds one selected Node subtree plus allowlisted provider-admission/intent SQLite, native-context history SQLite, `.native-writers` durable epochs/operation records and `nodes/.locks` resource records. An all-Agent shared lifetime lock excludes offline exclusive nonblocking WriterRoot backup/restore. Live flock files are not restored as ownership. Existing changed or conflicting fences, keys, counters and foreign Node subtrees are not replaced; exact restored bundles remain quarantined, and legacy v1 restore records missing shared fences. See [Node backup and WriterRoot recovery](node-backup.md) and the [current validation boundary](v01-transport-recovery-checkpoint-validation.md). No marker is cleared automatically; these synthetic tests do not accept production restore, post-restore reconciliation or reconnect. Hub backup still excludes `nodes/`; C4 did not migrate, restore or downgrade a production StateDir.
 
 ## 2026-10-01 v0.1.x migration/build acceptance boundary
 
@@ -345,20 +360,22 @@ cicada migration restore --backup BACKUP_DIR --state-dir NEW_EMPTY_STATE_DIR
 Node 子树有单独的离线命令：
 
 ```bash
-cicada machine backup --id NODE_ID --state-dir PATH --output NEW_BACKUP_DIR
+cicada machine backup --id NODE_ID --state-dir PATH --writer-root WRITER_ROOT --output NEW_BACKUP_DIR
 cicada machine verify --backup BACKUP_DIR
-cicada machine restore --backup BACKUP_DIR --state-dir PATH
+cicada machine restore --backup BACKUP_DIR --state-dir PATH --writer-root WRITER_ROOT
 ```
 
-Backup 和 Restore 获取位于 `nodes/.locks` 的非阻塞独占维护锁；Agent 与直接 Node 写入者持有共享锁时，命令 fail-fast 并且不会发布输出。锁覆盖整个 Node 子树复制；对其中发现的 SQLite 数据库逐一执行 WAL 截断 checkpoint，持有 `BEGIN EXCLUSIVE` 到所有文件复制和源哈希复核完成。任何未 checkpoint 的 WAL、rollback journal、其他 socket、symlink、特殊文件、校验失败或已有输出目录都会使操作失败。Checkpoint 后的空 WAL 和可重建 SHM 不进入 payload，而在 manifest 中列明；根目录的陈旧 `join.sock` 也只在独占锁下跳过并列入 manifest。备份目录与文件分别使用 `0700` 和 `0600`，manifest 只存 Node ID、相对路径、大小、SHA-256 与 SQLite 完整性元数据，不存文件内容、密钥或凭据。MCP session/outbox 状态和 Codex 原生记录位于 Node 子树之外，明确不属于该命令边界。
+`--writer-root` 默认为 `--state-dir`；使用不同路径时必须指定实际共用根，不能把多 Hub 的 fencing 状态拆开。Backup 和 Restore 先获取选定 Node 的独占维护锁，再非阻塞获取 WriterRoot 独占锁；任一 Agent 持有共用 WriterRoot 生命周期共享锁时立即拒绝，不停止运行进程。archive v2 包含选定 Node 子树和上方列出的共用 sidecar/持久 fence，具体边界见 [node-backup.md](node-backup.md)。锁覆盖整个复制；SQLite 做 WAL checkpoint、完整性和源哈希复核。未登记 WAL、rollback journal、socket、symlink、特殊文件、校验失败或已有输出会使操作失败。空 WAL/可重建 SHM 及选定 Node 的陈旧 `join.sock` 不作为有效载荷恢复。WriterRoot/覆盖目录必须 owner-private `0700`，文件不可向 group/other 开放；命令拒绝宽松权限，不自动 chmod。私有 manifest 只存相对路径、大小、哈希与 SQLite 元数据，不存内容/密钥。外部 MCP session/outbox 和 Codex 原生会话正文仍不在此归档中。
 
 Restore 只允许同一 Node ID 的目标子树不存在或为空；发布前先在 `nodes/.recovery-pending/` 写入并同步外置私有隔离登记，再原子发布带 `recovery-pending.json` 的副本。Node Agent 在维护锁内看到任一隔离信号都会拒绝启动；误删子树内标记不能直接放行。发布前失败会清掉本次登记，发布可能已提交时保留登记；崩溃可能留下需未来受权对账处理的孤儿登记。该命令建立的是隔离的 Node 子树副本，不代表完成了原生会话恢复或外部状态对账；重新联网前须按 Node binding epoch、密文 outbox/replay 序号以及未确认注入/副作用逐项 reconciliation，不能直接重放或恢复旧计数。`TestNodeBackupWALRestoreQuarantineAndManifestPrivacy`、`TestNodeBackupRejectsLiveAgentAndDirectWriter`、`TestNodeBackupCorruptionAndExtraWALRefuseRestore` 覆盖合成 Node 树与 WAL、锁竞争、私有 manifest、损坏拒绝及隔离恢复；尚无真实生产 Node 或物理设备恢复演练。
 
-`cicada machine recovery inspect --backup BACKUP_DIR --state-dir PATH` 只做恢复前检查：持有同一独占维护锁，核对 marker 中的 manifest 摘要、恢复文件清单/哈希及 SQLite 完整性，并以 immutable read-only 连接给出本地序号、outbox/replay 与 inbox 状态的有限计数。它不打开会在启动时恢复状态的 `nodeinbox.Open`，不启动 Agent、不连 Hub、不改数据库或 marker，且始终报告仍处于 quarantine。Hub 对旧 binding epoch 的接受情况、服务端/对端 crypto counter 高水位、Node 子树外的 MCP 会话/队列、Codex 原生 Session 所有权及模型是否消费消息都无法由该离线副本证明；不得依据 inspect 输出自行清除 marker 或启动恢复的 Node。缺少/损坏 marker、文件或 manifest 声明的数据库会 fail closed。`TestRecoveryInspectIsReadOnlyAndReportsUncertainty`、`TestRecoveryInspectRejectsRestoredTreeCorruption` 与 `TestRecoveryInspectRejectsMissingMarker` 覆盖合成状态；它们不构成生产恢复授权或原生会话连续性证明。
+`cicada machine recovery inspect --backup BACKUP_DIR --state-dir PATH --writer-root WRITER_ROOT` 只做恢复前检查：持有同一独占维护锁，核对 marker 中的 manifest 摘要、恢复文件清单/哈希及 SQLite 完整性，并以 immutable read-only 连接给出本地序号、outbox/replay 与 inbox 状态的有限计数。它不打开会在启动时恢复状态的 `nodeinbox.Open`，不启动 Agent、不连 Hub、不改数据库或 marker，且始终报告仍处于 quarantine。Hub 对旧 binding epoch 的接受情况、服务端/对端 crypto counter 高水位、Node 子树外的 MCP 会话/队列、Codex 原生 Session 所有权及模型是否消费消息都无法由该离线副本证明；不得依据 inspect 输出自行清除 marker 或启动恢复的 Node。缺少/损坏 marker、文件或 manifest 声明的数据库会 fail closed。`TestRecoveryInspectIsReadOnlyAndReportsUncertainty`、`TestRecoveryInspectRejectsRestoredTreeCorruption` 与 `TestRecoveryInspectRejectsMissingMarker` 覆盖合成状态；它们不构成生产恢复授权或原生会话连续性证明。
 
 备份恢复不是随意回滚：签发新凭据、递增 binding/owner epoch、推进 E2EE counter 或触发原生/外部副作用后，恢复旧状态可能重用计数或失去对外部事实的认知。此时须隔离联网，验证密钥与计数的新旧序关系，对未确认注入/副作用做 fencing 和 reconciliation，然后前滚。不能删除 SQLite 行或重置信任让测试变绿。
 
 ## 验收状态
+
+当前 archive-v2 合成备份/锁/隔离恢复有独立聚焦及 CLI 包验收，后续 dirty `750cc4…` 主仓全 Go 也通过；此前完整三包 fixture 失败保留，不转移给后续变更源码。WriterRoot pending 或 legacy missing-fences 标记不会自动清除；真实恢复和重新联网未验收。其余历史迁移项保留原来源。
 
 | 项目 | 当前状态 |
 |---|---|
@@ -379,7 +396,7 @@ Restore 只允许同一 Node ID 的目标子树不存在或为空；发布前先
 | v28 同组广播快照与本机收件元数据 | 增量新增不可变的 `group_broadcast_v2_snapshots` 和 `group_broadcast_v2_snapshot_recipients`；来源必须同时具有 broadcast/send 权限，收件人只限同 owner、当前精确 Group 的 receive 成员。Node 本地 inbox 增加可信 kind/correlation/sender 元数据，不重写旧消息正文。Store 迁移/回滚、Hub HTTP 与两个逻辑 Node/fake Codex full-chain 通过；真实 native 广播及生产恢复未验证。 |
 | 旧 Endpoint pending、READY 隔离旧 v1 API | 已实现并测试 |
 | 合成 Hub StateDir inventory/backup/verify/restore | 已实现并测试；`nodes/` 被排除，含 Node 文件的旧归档自动 Verify/Restore 拒绝 |
-| 合成 Node-subtree backup/verify/quarantined restore | 已实现并测试：锁竞争拒绝、SQLite WAL checkpoint/保留、私有 metadata manifest、损坏及未登记 WAL 拒绝、空目标隔离恢复 |
+| 合成 Node + WriterRoot archive-v2 backup/verify/quarantined restore | 选定 Node 子树及 allowlisted shared sidecar/fence；shared Agent/offline-exclusive 锁、SQLite/WAL、私有 manifest、冲突拒绝与隔离恢复有合成测试。legacy 缺失 fence 保持隔离；无自动 clear/reconnect |
 | 真实生产 StateDir 备份/恢复与重新联网对账 | 未运行 |
 | 多 Group Endpoint 关系与作用域服务接入 | v11 additive schema、Store/Service/HTTP/MCP 定向测试和同机双容器真实原生多组通过 |
 | Group 嵌套管理边界 | v12 additive schema、版本化管理 API 与防环/不继承 Fabric 权限测试通过；面板拖拽未实现 |

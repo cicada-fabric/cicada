@@ -7,6 +7,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -49,6 +50,52 @@ def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 
 
+def node_schema(openapi, name):
+    """Read the flat field declarations in our Node schemas, not arbitrary YAML."""
+    match = re.search(r"^    " + re.escape(name) + r":\n(.*?)(?=^    \S|\Z)",
+                      openapi, re.MULTILINE | re.DOTALL)
+    if not match:
+        raise ValueError("missing Node schema: " + name)
+    block = match.group(1)
+    properties = set(re.findall(r"^        ([a-z_]+):", block, re.MULTILINE))
+    required = re.search(r"^      required: \[([^\]]*)\]", block, re.MULTILINE)
+    return block, properties, set(required.group(1).split(", ")) if required else set()
+
+
+def check_node_pairing_contract(openapi, wire):
+    mappings = {
+        "nodes.preview": ("NodesPreviewRequest", "NodeControlKeyCandidate"),
+        "nodes.confirm": ("NodesConfirmRequest", "NodeControlKeyBinding"),
+        "nodes.list": ("NodesListRequest", "NodeDeviceBindingList"),
+        "nodes.revoke": ("NodesRevokeRequest", "NodeDeviceBinding"),
+    }
+    for operation, (request, result) in mappings.items():
+        mapping = (f"        {operation}:\n          request: '#/components/schemas/{request}'"
+                   f"\n          result: '#/components/schemas/{result}'")
+        if mapping not in openapi:
+            raise ValueError("Node request/result mapping drift: " + operation)
+    expected = {
+        "NodeControlKeyBinding": "owner_binding_id owner_id hub_id node_id node_name client_device_id owner_key_id node_credential_version binding_version node_key_id node_public_identity node_key_fingerprint node_key_version node_key_epoch hub_key_id hub_public_identity hub_key_fingerprint hub_key_version approved_request_id approved_request_version approved_candidate_digest approved_owner_device_id approved_owner_key_id approved_at state version revoked_at",
+        "NodeDeviceBinding": "id owner_id hub_id node_id node_name client_device_id owner_key_id node_credential_version state authorized version created_at updated_at revoked_at",
+        "NodeControlKeyCandidate": "request_id version mode hub_id node_id node_name node_key_id node_key_fingerprint hub_node_control_key_id hub_node_control_key_version hub_node_control_fingerprint node_key_epoch candidate_digest expires_at state binding_id binding_version",
+        "NodesConfirmRequest": "user_code candidate_digest candidate_version",
+        "NodeDeviceCodeRequest": "node_id node_name credential_digest request_nonce node_public_identity node_fingerprint proof_packet hub_id hub_public_identity hub_key_version hub_fingerprint",
+        "NodeDeviceCode": "user_code verification_uri candidate",
+    }
+    for name, fields in expected.items():
+        block, properties, required = node_schema(openapi, name)
+        optional = {"revoked_at"} if name.endswith("Binding") else (
+            {"binding_id", "binding_version"} if name == "NodeControlKeyCandidate" else set())
+        if (properties != set(fields.split()) or required != properties - optional
+                or "      additionalProperties: false\n" not in block):
+            raise ValueError("Node schema field/required drift: " + name)
+    for operation, shape in (("confirm", "NodeControlKeyBinding"), ("list", "NodeDeviceBinding")):
+        row = next((line for line in wire.splitlines()
+                    if f'id="rpc-result-nodes-{operation}"' in line), "")
+        if f"`{shape}`" not in row or operation == "confirm" and "`nodes.list`" in row:
+            raise ValueError("Node wire result projection drift: " + operation)
+
+
 def read_contract(root):
     files = {name: (root / name).read_bytes() for name in FILES}
     catalog = json.loads(files[CATALOG])
@@ -72,6 +119,7 @@ def read_contract(root):
     openapi = files["docs/client-hub-v1.openapi.yaml"].decode()
     if "x-contract-revision: " + catalog["contract_revision"] not in openapi:
         raise ValueError("OpenAPI/catalog contract revision mismatch")
+    check_node_pairing_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
     for operation in operations:
         request_schema = operation.get("request_schema")
         result_schema = operation.get("result_schema")

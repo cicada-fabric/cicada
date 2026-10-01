@@ -1,8 +1,12 @@
 # Client / Hub 联合开发与验收
 
-**当前已交付基线（2026-10-01）：** clean `dev` commit `f4e4725c5d81c54b166f4291b9d450c70954e6df`，source fingerprint `c3d22f3d69ee668bb29215100ba78a33acf107fd1e03443a48e4651c70e44c4b`；合同 `client-hub-v1.6`、wire `1`、catalog `55` 项。完整 bundle、catalog、Hub/interop image pins 与来源映射见本机 `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json` 和 [交接说明](client-hub-handoff.md)。这是本地 clean 交付，不是 push/release。独立 Client 已在固定 f4 Hub 上完成有界 Android/Kotlin/加密互操作验收，见 [Client v1.6 报告](../../CICADA_CLIENT/docs/client-hub-v1.6-f4e4725-validation.md)；其 clean Client 交付 commit 为 `9cf2b81c256b6a3f17681f28993e7857726e2121`（最终 clean commit rebuild NOT_RUN）；35 项本地实现不等于全部 55 项开放，20 项仍关闭，native current Endpoint consent 与更广故障矩阵另未验收。物理双 Node、公网 HTTPS 不因该报告变为 PASS；pure PQ TLS 仍 NOT_IMPLEMENTED。
+**当前已交付基线（2026-10-01）：** clean `dev` commit `4fb241b5e824eb752ceb85586089f44c408e1e7e`，source fingerprint `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`；合同 `client-hub-v1.6`、wire `1`、软件 `0.1.0-dev`、catalog `55` 项（SHA-256 `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`）。完整 bundle、Hub/interop image pins、clean source 和 exact-image disposable gate PASS 见本机 `/home/zyf/CICADA/.cicada-data/next-checkpoint/closure-20261001T165647Z/clean-delivery/metadata.json`；这是本地 clean 交付，不是 push/release。该镜像的 Android、real native Runtime 为 NOT_RUN，物理 Node、公网 HTTPS 亦未验收，产品 pure PQ TLS 尚未接入。
 
-**当前 recovery/panel 检查点：C4 PASS（有界后端；dirty-source 验收）。** 本轮修改不升级合同、wire 或 catalog。旧 f4、2858、432f/54f native 与 Client 结果均保持原来源，不转移到新 candidate；新验收见 [recovery/panel 检查点](v01-recovery-panel-checkpoint-validation.md)。此前最终 dirty `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` 的 Go 27 packages、1,092 top-level + 547 subtests PASS、12 top-level SKIP、vet/contract/Python26/shell20，以及各 native overlay 的独立结果仍按 [旧检查点报告](v01-completion-checkpoint-validation.md)归属；skip 不是 pass。
+**当前修订候选：`client-hub-v1.6.1`。** 修正 `nodes.confirm` 的 `NodeControlKeyBinding` 结果与现行配对/预览说明，不改变 wire `1`、软件版本、55 个 operation 或权限。catalog 的 revision header 随修订变化，其 raw-byte SHA 必须另记；不重标已交付的 v1.6 bundle/image。此文不宣称 v1.6.1 package/image 已构建交付或独立 Client 已验收。
+
+历史 f4 clean bundle、metadata 和 Android/Kotlin 结果仍归原源，见 `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/metadata.json`、[历史交接说明](client-hub-handoff.md)与 [Client v1.6 f4 报告](../../CICADA_CLIENT/docs/client-hub-v1.6-f4e4725-validation.md)。其 clean Client commit 为 `9cf2b81c256b6a3f17681f28993e7857726e2121`（最终 clean commit rebuild NOT_RUN）；35 项本地实现不等于 55 项全部开放，20 项仍关闭。旧 Android/native 结果不转移到当前修订。
+
+**已交付 recovery/panel 检查点：C4 PASS（有界后端；原 dirty-source 验收）。** 该检查点未升级合同、wire 或 catalog，现已纳入上述 clean 4fb 交付。旧 f4、2858、432f/54f native 与 Client 结果均保持原来源，不转移到新 candidate；新验收见 [recovery/panel 检查点](v01-recovery-panel-checkpoint-validation.md)。此前最终 dirty `2858c57ec3bc33f5f4d03f4f8c75ec6c13f89fd128a3a8a493b7c7605af51e17` 的 Go 27 packages、1,092 top-level + 547 subtests PASS、12 top-level SKIP、vet/contract/Python26/shell20，以及各 native overlay 的独立结果仍按 [旧检查点报告](v01-completion-checkpoint-validation.md)归属；skip 不是 pass。
 
 本规范将两个仓库作为一个产品协作，但分别构建和发布。CICADA 拥有
 Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端侧
@@ -10,7 +14,7 @@ Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端
 
 ## 当前整改顺序（2026-10-01）
 
-当前开发以已交付 clean f4 为基线；新 recovery/panel 源码已独立冻结为 C4 `31dccec5…`，exact `c104b7bc…` 镜像的完整 Chromium canvas/recovery gate 已通过；同源 Go 27 包、1,105 top-level + 553 subtests PASS/12 SKIP/0 FAIL，以及 vet、contract、Python26、三套各自镜像的 disposable Docker gate 均通过。最终 clean checkpoint/交付 metadata 另行记录，不能把 dirty build 仅归于 f4 HEAD。此前 clean bd79 的 v1.5/46-operation 交付是历史，已由独立 v1.6/55-operation bundle 接续，不能再称当前冻结合同。v1.6 包包含 Network directory/Endpoint admission、Network purpose-key、Link reviewer Owner RPC、显式 Link invitation direction 与 Node pairing proof 字段；可用目录不替代 encrypted `session.capabilities`、逐入口 Owner consent 和服务端 Guard。新增 Network Task/Node MCP 能力不自动扩充 Android operation catalog。Hub Web canvas 仅通过后量子 encrypted Client packet 调用 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有，本仓只读。
+当前修订以已交付 clean 4fb 为基线；recovery/panel 原 dirty 源码曾独立冻结为 C4 `31dccec5…`，exact `c104b7bc…` 镜像的完整 Chromium canvas/recovery gate 已通过；同源 Go 27 包、1,105 top-level + 553 subtests PASS/12 SKIP/0 FAIL，以及 vet、contract、Python26、三套各自镜像的 disposable Docker gate 均通过。最终 clean checkpoint/交付 metadata 见上述 4fb 记录；原 dirty build 不能仅归于当时 f4 HEAD。此前 clean bd79 的 v1.5/46-operation 交付是历史，已由独立 v1.6/55-operation bundle 接续，不能再称当前冻结合同。v1.6 包包含 Network directory/Endpoint admission、Network purpose-key、Link reviewer Owner RPC、显式 Link invitation direction 与 Node pairing proof 字段；可用目录不替代 encrypted `session.capabilities`、逐入口 Owner consent 和服务端 Guard。新增 Network Task/Node MCP 能力不自动扩充 Android operation catalog。Hub Web canvas 仅通过后量子 encrypted Client packet 调用 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有，本仓只读。
 
 历史 f55 candidate 曾冻结为 dirty bd79-based source `f55b5255628030857ac88bd7edbd6da7da1b63d543014c76111f9219f46ad255` 与 Hub image `sha256:da88805eaa1987a1c6e06448fc5cddf7d4ce368e8b5eeb3071a1406dad2cb977`；不是 clean handoff。Full Go、vet、v1.6/55-operation contract、19 项 Python 与三套 disposable Docker 均已在 f55 PASS。前序 432f 的 Go/race/WASM/Browser/M5 证据不转移给 f55。432f 的 Client Docker 初次 FAIL、cf168 Client-only repair PASS、V68 FAIL、真实 Worker approval FAIL 与 Node-Control HTTP first FAIL/later protocol overlay PASS 均保持各自归属。该 f55 阶段 Android v1.6、双物理 Node、公网 HTTPS 与 f55 同源 peer-native 为 NOT_RUN；432f peer-native PASS 见上方独立归属。详见[检查点报告](v01-completion-checkpoint-validation.md)；该历史阶段的交付等待已结束：clean f4 metadata/bundle 已交付；本段结果仍只归旧源。
 
@@ -184,9 +188,11 @@ python3 scripts/client-contract.py export --output .cicada-data/contracts
 是否 dirty、镜像 ID/digest、APK SHA-256、契约 revision/hash 及证据路径。
 工作树有修改时必须附源码内容摘要，不能宣称镜像等同该 commit。
 
-当前 `source_fingerprint` 使用 v3 输入范围：Git 已跟踪及未忽略的
+当前 `source_fingerprint` 使用 `scripts/build-hub-image.sh` 的 v4 输入范围
+（域前缀 `cicada-hub-build-inputs-v4\0`）：Git 已跟踪及未忽略的
 `cicada-go/`、`docker/Dockerfile.hub`、`.dockerignore`、
-`scripts/build-web-panel.sh` 与 `scripts/write-web-panel-manifest.py`；摘要包含
+`scripts/build-web-panel.sh`、`scripts/write-web-panel-manifest.py`、
+`scripts/build-hub-image.sh` 与 `.github/workflows/release.yml`；摘要包含
 相对路径、文件权限和内容（符号链接则摘要其目标）。它是受限的构建源码
 标识，不包含整个仓库，也不是完整构建可复现性证明。`docker/Dockerfile.hub`
 目前使用 `golang:1.27.1-alpine` 与 `alpine:3.24` 版本标签，尚未锁定

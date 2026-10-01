@@ -154,6 +154,9 @@ func TestMachineMultiHubAgentUsesTwoIndependentProductionFabricServices(t *testi
 	}
 
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	entries := []machineHubConfig{
 		{HubID: hubA.hubID, ControlURL: hubA.httpServer.URL, NodeID: nodeID, Name: "synthetic A"},
 		{HubID: hubB.hubID, ControlURL: hubB.httpServer.URL, NodeID: nodeID, Name: "synthetic B"},

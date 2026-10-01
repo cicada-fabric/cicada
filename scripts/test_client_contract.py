@@ -93,6 +93,24 @@ class ContractBundleTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "unsafe"):
                     self.verify(output.getvalue())
 
+    def test_node_pairing_contract_rejects_result_and_cas_drift(self):
+        mutations = (
+            ("docs/client-hub-v1.openapi.yaml", "result: '#/components/schemas/NodeControlKeyBinding'", "result: '#/components/schemas/NodeDeviceBinding'", "mapping drift"),
+            ("docs/client-hub-v1.openapi.yaml", "        owner_binding_id: {type: string}", "        credential_digest: {type: string}", "field/required drift"),
+            ("docs/client-hub-v1.openapi.yaml", "required: [user_code, candidate_digest, candidate_version]", "required: [user_code]", "field/required drift"),
+            ("docs/client-hub-v1.openapi.yaml", "required: [user_code, verification_uri, candidate]", "required: [user_code, verification_uri]", "field/required drift"),
+            ("docs/client-hub-wire-v1.md", '`nodes.confirm` | `NodeControlKeyBinding`', '`nodes.confirm` | `NodeDeviceBinding`', "wire result projection drift"),
+        )
+        for name, old, new, error in mutations:
+            with self.subTest(file=name, mutation=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / name
+                text = path.read_text()
+                self.assertEqual(text.count(old), 1)
+                path.write_text(text.replace(old, new))
+                with self.assertRaisesRegex(ValueError, error):
+                    contract.read_contract(root)
+
 
 if __name__ == "__main__":
     unittest.main()

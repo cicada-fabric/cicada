@@ -12,7 +12,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/nodebackup"
 )
 
-const machineBackupUsage = "usage: cicada machine backup --id ID --state-dir DIR --output NEW_DIR | verify --backup DIR | restore --backup DIR --state-dir DIR"
+const machineBackupUsage = "usage: cicada machine backup --id ID --state-dir DIR [--writer-root DIR] --output NEW_DIR | verify --backup DIR | restore --backup DIR --state-dir DIR [--writer-root DIR]"
 
 func machineBackupCommand(args []string) error {
 	return machineBackupCommandOutput(args, os.Stdout)
@@ -27,6 +27,7 @@ func machineBackupCommandOutput(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	id := flags.String("id", "", "stable Node ID")
 	stateDir := flags.String("state-dir", "", "Node StateDir")
+	writerRoot := flags.String("writer-root", "", "shared Node WriterRoot (defaults to --state-dir)")
 	backupDir := flags.String("backup", "", "Node backup directory")
 	outputDir := flags.String("output", "", "new Node backup directory")
 	if err := flags.Parse(args[1:]); err != nil {
@@ -40,7 +41,10 @@ func machineBackupCommandOutput(args []string, output io.Writer) error {
 		if strings.TrimSpace(*id) == "" || strings.TrimSpace(*stateDir) == "" || strings.TrimSpace(*outputDir) == "" {
 			return errors.New("machine backup requires explicit --id, --state-dir, and --output")
 		}
-		report, err := nodebackup.Backup(*stateDir, *id, *outputDir)
+		if strings.TrimSpace(*writerRoot) == "" {
+			*writerRoot = *stateDir
+		}
+		report, err := nodebackup.BackupWithWriterRoot(*stateDir, *id, *writerRoot, *outputDir)
 		if err != nil {
 			return err
 		}
@@ -58,7 +62,10 @@ func machineBackupCommandOutput(args []string, output io.Writer) error {
 		if strings.TrimSpace(*backupDir) == "" || strings.TrimSpace(*stateDir) == "" {
 			return errors.New("machine restore requires explicit --backup and --state-dir")
 		}
-		report, err := nodebackup.Restore(*backupDir, *stateDir)
+		if strings.TrimSpace(*writerRoot) == "" {
+			*writerRoot = *stateDir
+		}
+		report, err := nodebackup.RestoreWithWriterRoot(*backupDir, *stateDir, *writerRoot)
 		if err != nil {
 			return err
 		}

@@ -1,8 +1,10 @@
-// Package nodebackup provides a private, offline copy of one Node-owned state
-// subtree. It deliberately does not include the Hub StateDir or files stored
-// beside the Node subtree, such as MCP session/outbox state and native Codex
-// records. A successful restore is quarantined until a separate reconciliation
-// step confirms binding epochs, crypto counters, and uncertain native work.
+// Package nodebackup provides private, offline Node backups. The legacy v1
+// helpers copy one Node-owned subtree; WriterRoot-aware v2 helpers also copy
+// the bounded shared fencing state needed by multiple Hub contexts. Neither
+// format includes Hub StateDir or arbitrary files beside Node state, such as
+// MCP session/outbox state and native Codex records. Restores remain
+// quarantined; this package does not clear the marker or reconcile binding
+// epochs, crypto counters, shared fences, and uncertain native work.
 package nodebackup
 
 import (
@@ -27,13 +29,14 @@ import (
 )
 
 const (
-	FormatVersion   = 1
-	manifestName    = "manifest.json"
-	payloadName     = "payload"
-	recoveryMarker  = "recovery-pending.json"
-	privateFileMode = os.FileMode(0o600)
-	privateDirMode  = os.FileMode(0o700)
-	maxManifestSize = 8 << 20
+	FormatVersion        = 1
+	CurrentFormatVersion = 2
+	manifestName         = "manifest.json"
+	payloadName          = "payload"
+	recoveryMarker       = "recovery-pending.json"
+	privateFileMode      = os.FileMode(0o600)
+	privateDirMode       = os.FileMode(0o700)
+	maxManifestSize      = 8 << 20
 )
 
 var (
@@ -48,15 +51,16 @@ var (
 // Manifest contains only recovery metadata. File contents, key material,
 // credentials, ciphertext, and message data are never serialized here.
 type Manifest struct {
-	FormatVersion    int                   `json:"format_version"`
-	Complete         bool                  `json:"complete"`
-	NodeID           string                `json:"node_id"`
-	CreatedAt        string                `json:"created_at"`
-	Directories      []string              `json:"directories"`
-	Files            []FileEntry           `json:"files"`
-	Databases        []DatabaseEntry       `json:"databases"`
-	Sidecars         []OmittedSidecar      `json:"omitted_sqlite_sidecars,omitempty"`
-	RuntimeOmissions []OmittedRuntimeEntry `json:"omitted_runtime_entries,omitempty"`
+	FormatVersion    int                       `json:"format_version"`
+	Complete         bool                      `json:"complete"`
+	NodeID           string                    `json:"node_id"`
+	CreatedAt        string                    `json:"created_at"`
+	Directories      []string                  `json:"directories"`
+	Files            []FileEntry               `json:"files"`
+	Databases        []DatabaseEntry           `json:"databases"`
+	Sidecars         []OmittedSidecar          `json:"omitted_sqlite_sidecars,omitempty"`
+	RuntimeOmissions []OmittedRuntimeEntry     `json:"omitted_runtime_entries,omitempty"`
+	SharedWriterRoot *SharedWriterRootManifest `json:"shared_writer_root,omitempty"`
 }
 
 // FileEntry describes one copied file. File bytes are always stored with
@@ -113,6 +117,18 @@ type diskEntry struct {
 // subtree. The Node maintenance lock covers SQLite checkpointing and every
 // copied file so Agent and direct Node writers cannot split the snapshot.
 func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr error) {
+	return backup(stateDir, nodeID, "", destinationDir)
+}
+
+// BackupWithWriterRoot creates a format-v2 archive containing the selected
+// Node subtree and all four shared fencing areas under WriterRoot. Both the
+// Node maintenance lock and shared WriterRoot exclusive lock are nonblocking;
+// backup requires all Hubs/Agents using that root to be stopped.
+func BackupWithWriterRoot(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupReport, retErr error) {
+	return backup(stateDir, nodeID, writerRoot, destinationDir)
+}
+
+func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupReport, retErr error) {
 	stateRoot, err := canonicalPath(stateDir)
 	if err != nil {
 		return nil, err
@@ -129,6 +145,16 @@ func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr er
 	if pathWithin(nodeDir, destinationDir) {
 		return nil, errors.New("Node backup destination must be outside the Node state subtree")
 	}
+	var sharedSnapshot *sharedWriterSnapshot
+	if strings.TrimSpace(writerRoot) != "" {
+		writerRoot, err = canonicalPath(writerRoot)
+		if err != nil {
+			return nil, err
+		}
+		if pathWithin(writerRoot, destinationDir) {
+			return nil, errors.New("Node backup destination must be outside the shared WriterRoot")
+		}
+	}
 	lock, err := nodelock.AcquireMaintenanceExclusive(stateRoot, nodeID)
 	if err != nil {
 		if errors.Is(err, nodelock.ErrBusy) {
@@ -141,6 +167,22 @@ func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr er
 			retErr = errors.Join(retErr, fmt.Errorf("release Node maintenance lock: %w", closeErr))
 		}
 	}()
+	if writerRoot != "" {
+		writerLock, err := nodelock.AcquireWriterRootExclusive(writerRoot)
+		if err != nil {
+			return nil, fmt.Errorf("acquire exclusive shared WriterRoot lock: %w", err)
+		}
+		defer func() {
+			if closeErr := writerLock.Close(); closeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("release shared WriterRoot lock: %w", closeErr))
+			}
+		}()
+		sharedSnapshot, err = captureSharedWriterRoot(writerRoot)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot shared WriterRoot fencing state: %w", err)
+		}
+		defer func() { retErr = errors.Join(retErr, sharedSnapshot.Close()) }()
+	}
 	if err := verifyNodeStateDirectory(stateRoot, nodeDir); err != nil {
 		return nil, err
 	}
@@ -211,13 +253,24 @@ func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr er
 	if err := os.Mkdir(payloadRoot, privateDirMode); err != nil {
 		return nil, fmt.Errorf("create backup payload directory: %w", err)
 	}
+	var sharedPayloadRoot string
+	if sharedSnapshot != nil {
+		sharedPayloadRoot = filepath.Join(temporary, sharedPayloadName)
+		if err := os.Mkdir(sharedPayloadRoot, privateDirMode); err != nil {
+			return nil, fmt.Errorf("create shared WriterRoot backup payload: %w", err)
+		}
+	}
 	for _, rel := range entries.dirs {
 		if err := os.MkdirAll(filepath.Join(payloadRoot, filepath.FromSlash(rel)), privateDirMode); err != nil {
 			return nil, fmt.Errorf("create backup directory %s: %w", rel, err)
 		}
 	}
 
-	manifest := Manifest{FormatVersion: FormatVersion, Complete: true, NodeID: nodeID,
+	formatVersion := FormatVersion
+	if sharedSnapshot != nil {
+		formatVersion = CurrentFormatVersion
+	}
+	manifest := Manifest{FormatVersion: formatVersion, Complete: true, NodeID: nodeID,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 		Directories: append([]string(nil), entries.dirs...),
 		Sidecars:    sidecars, RuntimeOmissions: append([]OmittedRuntimeEntry(nil), entries.runtime...)}
@@ -263,6 +316,16 @@ func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr er
 		manifest.Databases = append(manifest.Databases, database)
 	}
 	sort.Slice(manifest.Databases, func(i, j int) bool { return manifest.Databases[i].Path < manifest.Databases[j].Path })
+	if sharedSnapshot != nil {
+		sharedManifest, err := writeSharedWriterSnapshot(sharedSnapshot, sharedPayloadRoot)
+		if err != nil {
+			return nil, fmt.Errorf("copy shared WriterRoot fencing snapshot: %w", err)
+		}
+		manifest.SharedWriterRoot = &sharedManifest
+		if err := syncTreeDirectories(sharedPayloadRoot, sharedManifest.Directories); err != nil {
+			return nil, fmt.Errorf("sync shared WriterRoot payload: %w", err)
+		}
+	}
 	if err := validateTreeMatch(entries, manifest.Files, manifest.Directories, omittedPaths, manifest.RuntimeOmissions); err != nil {
 		return nil, fmt.Errorf("Node state changed during backup: %w", err)
 	}
@@ -287,6 +350,11 @@ func Backup(stateDir, nodeID, destinationDir string) (_ *BackupReport, retErr er
 	}
 	if err := syncTreeDirectories(payloadRoot, manifest.Directories); err != nil {
 		return nil, fmt.Errorf("sync Node backup payload: %w", err)
+	}
+	if sharedSnapshot != nil {
+		if err := syncDirectory(sharedPayloadRoot); err != nil {
+			return nil, fmt.Errorf("sync shared WriterRoot payload root: %w", err)
+		}
 	}
 	if err := syncDirectory(temporary); err != nil {
 		return nil, fmt.Errorf("sync Node backup staging directory: %w", err)
@@ -321,8 +389,17 @@ func Verify(backupDir string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect Node backup contents: %w", err)
 	}
-	if len(rootEntries) != 2 || rootEntries[0].Name() != manifestName || rootEntries[1].Name() != payloadName {
+	wantRootEntries := []string{manifestName, payloadName}
+	if manifest.FormatVersion == CurrentFormatVersion {
+		wantRootEntries = append(wantRootEntries, sharedPayloadName)
+	}
+	if len(rootEntries) != len(wantRootEntries) {
 		return nil, ErrBackupInvalid
+	}
+	for i, want := range wantRootEntries {
+		if rootEntries[i].Name() != want {
+			return nil, ErrBackupInvalid
+		}
 	}
 	payloadRoot := filepath.Join(backupDir, payloadName)
 	if err := verifyPrivateDirectory(payloadRoot); err != nil {
@@ -330,6 +407,15 @@ func Verify(backupDir string) (*Manifest, error) {
 	}
 	if err := verifyPayloadInventory(payloadRoot, manifest); err != nil {
 		return nil, err
+	}
+	if manifest.FormatVersion == CurrentFormatVersion {
+		sharedRoot := filepath.Join(backupDir, sharedPayloadName)
+		if err := verifyPrivateDirectory(sharedRoot); err != nil {
+			return nil, fmt.Errorf("inspect shared WriterRoot backup payload: %w", err)
+		}
+		if err := verifySharedPayload(sharedRoot, manifest.SharedWriterRoot); err != nil {
+			return nil, fmt.Errorf("verify shared WriterRoot backup payload: %w", err)
+		}
 	}
 	for i, database := range manifest.Databases {
 		if i > 0 && manifest.Databases[i-1].Path >= database.Path {
@@ -357,9 +443,21 @@ func Restore(backupDir, targetStateDir string) (_ *RestoreReport, retErr error) 
 	return restoreWithPublisher(backupDir, targetStateDir, publishRestoreDirectory)
 }
 
+// RestoreWithWriterRoot restores the Node subtree and shared WriterRoot fence
+// bundle under one bounded offline maintenance window. The root remains
+// quarantined after restore; no API in this package clears that marker.
+func RestoreWithWriterRoot(backupDir, targetStateDir, writerRoot string) (_ *RestoreReport, retErr error) {
+	return restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot, publishRestoreDirectory)
+}
+
 // restoreWithPublisher keeps the filesystem publication boundary injectable so
 // tests can exercise failures after the recovery registry has been created.
 func restoreWithPublisher(backupDir, targetStateDir string,
+	publish func(source, destination string) (bool, error)) (_ *RestoreReport, retErr error) {
+	return restoreWithWriterRootPublisher(backupDir, targetStateDir, "", publish)
+}
+
+func restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot string,
 	publish func(source, destination string) (bool, error)) (_ *RestoreReport, retErr error) {
 	if publish == nil {
 		return nil, errors.New("Node restore publisher is required")
@@ -392,9 +490,32 @@ func restoreWithPublisher(backupDir, targetStateDir string,
 			retErr = errors.Join(retErr, fmt.Errorf("release Node maintenance lock: %w", closeErr))
 		}
 	}()
+	if strings.TrimSpace(writerRoot) != "" {
+		writerRoot, err = canonicalPath(writerRoot)
+		if err != nil {
+			return nil, err
+		}
+		if pathWithin(backupDir, writerRoot) || pathWithin(writerRoot, backupDir) {
+			return nil, errors.New("shared WriterRoot restore target must be outside the backup directory")
+		}
+		writerLock, err := nodelock.AcquireWriterRootExclusive(writerRoot)
+		if err != nil {
+			return nil, fmt.Errorf("acquire exclusive shared WriterRoot lock: %w", err)
+		}
+		defer func() {
+			if closeErr := writerLock.Close(); closeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("release shared WriterRoot maintenance lock: %w", closeErr))
+			}
+		}()
+	}
 
 	if err := ensureRestoreTargetNewOrEmpty(nodeDir); err != nil {
 		return nil, err
+	}
+	if writerRoot != "" {
+		if err := installSharedWriterRoot(writerRoot, backupDir, manifest); err != nil {
+			return nil, err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(nodeDir), privateDirMode); err != nil {
 		return nil, fmt.Errorf("create Node restore parent: %w", err)
@@ -1131,7 +1252,12 @@ func readManifest(path string) (*Manifest, error) {
 }
 
 func validateManifest(manifest *Manifest) error {
-	if manifest == nil || manifest.FormatVersion != FormatVersion || !manifest.Complete || validateNodeID(manifest.NodeID) != nil {
+	if manifest == nil || (manifest.FormatVersion != FormatVersion && manifest.FormatVersion != CurrentFormatVersion) ||
+		!manifest.Complete || validateNodeID(manifest.NodeID) != nil {
+		return ErrBackupInvalid
+	}
+	if manifest.FormatVersion == FormatVersion && manifest.SharedWriterRoot != nil ||
+		manifest.FormatVersion == CurrentFormatVersion && validateSharedWriterRootManifest(manifest.SharedWriterRoot) != nil {
 		return ErrBackupInvalid
 	}
 	if _, err := time.Parse(time.RFC3339Nano, manifest.CreatedAt); err != nil {

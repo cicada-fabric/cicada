@@ -1,6 +1,26 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-01 C4 unified checkpoint — bounded PASS
+## 2026-10-01 bounded transport / recovery checkpoint — PARTIAL
+
+The current consolidation is the
+[transport/recovery record](v01-transport-recovery-checkpoint-validation.md).
+Independent adapter and repaired process gates PASS, historical main teardown
+FAIL, contract-only PASS, archive-v2 focused/CLI gates and G1 real-4 PASS retain
+separate sources. G1 queue state remains `CONSUMPTION_UNCONFIRMED`; M4's two
+failed attempts, attach-3 phone pairing PASS and native Join FAIL/no proposal
+remain separate; M4 is PARTIAL. Combined
+Go/build/vet/contract/Python and optional PQ race pass on stable dirty `750cc4…`
+inputs. Later `6ab2d9…` server/Python/shell gates pass separately; this does not
+relabel the old full suite or accept a new delivered image. M4's failed Join
+short-circuits subsequent local-record/context checks, which remain NOT_RUN.
+Production Hub/Node PQ TLS, certificate lifecycle and product recovery remain
+incomplete; physical/public HTTPS are NOT_RUN. V64 has a separately sourced
+bounded 1-CPU/128-MiB sample and remains PARTIAL, without a global capacity PASS.
+The matrix stays
+PARTIAL overall. C4 and older results below are historical and retain their own
+source/image/APK attribution, rather than certifying this new candidate.
+
+## Historical 2026-10-01 C4 unified checkpoint — bounded PASS
 
 Frozen source fingerprint `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2` (dirty `dev` based on `f4e4725c5d81c54b166f4291b9d450c70954e6df`, v1.6/wire 1/55 operations) passed full Go: 1,105 top-level tests, 553 subtests, 27 packages, 12 skips, 0 failures. Build, vet, contract, Python 26, three actual Docker protocol tests and the 12-step Browser gate passed. C3 Docker pre-execution permission failures and Browser topology projection failure remain separately recorded; C4 reran those gates after fixes. Native Runtime on C4, physical Nodes and public HTTPS are **NOT_RUN**; product pure-PQ TLS is **NOT_IMPLEMENTED**. Architecture v2.3 remains **PARTIAL**; see the [completion ledger](completion-ledger.md) and [C4 gate summary](../.cicada-data/next-checkpoint/closure-20261001T165647Z/gate-summary.json).
 
@@ -8,13 +28,13 @@ Frozen source fingerprint `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d
 
 Directory-only active Network members may register their own native binding for Group admission. The registration checks current session, identity, membership, scope and revisions but creates no direct-send/receive, Task, Broadcast, peer-key or key-grant authority. Existing action-purpose checks still govern key candidates and traffic. Six focused Store selectors, one production HTTP selector, three Store race selectors and the HTTP race selector passed on five-file source fingerprint `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a`; exact per-file hashes and retained first timeout are in [the evidence record](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json). This is not a full-suite or browser/native result. No schema/wire/key change. The separate Node provider-intent work is included in the C4 checkpoint above and in the [completion ledger](completion-ledger.md); this focused correction did not include it.
 
-## 2026-10-01 PQ transport capability diagnostic — NOT product TLS acceptance
+## Historical 2026-10-01 Go PQ capability diagnostic — NOT product TLS acceptance
 
 The isolated Go 1.27.1 probe exited 0 for synthetic TLS 1.3 mutual authentication using pure ML-KEM-1024 and synthetic ML-DSA-65 certificates. Both endpoints negotiated `TLS_AES_128_GCM_SHA256`; an X25519-only client was rejected. This is a standard-library capability probe only; it does **not** meet the specified pure ML-KEM-768 + ML-DSA-65 + `TLS_AES_256_GCM_SHA384` profile and does not exercise a CICADA HTTP server or Node client. The exact source/logs/exit/hash record is [`next-checkpoint/pq-transport-audit`](../.cicada-data/next-checkpoint/pq-transport-audit/summary.json), run in image `golang:1.27.1` ID `sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244` with container networking disabled.
 
 Current CICADA Control and Fabric listeners use plain `ListenAndServe`; `CICADA_API_TOKEN` authenticates but does not encrypt a non-loopback listener. `docker/Dockerfile.hub` defaults to binding all container interfaces, and owned disposable HTTP fixtures depend on it; the outer host-published port/network is separately constrained by each fixture. Compose itself uses host loopback. Do not claim that all such fixture bindings imply public reachability, or that their isolation configures production TLS. Remote Node clients require an HTTPS URL; Go's default client verifies the server chain against system roots and checks the hostname, but the product does not configure a TLS client certificate, Hub ML-DSA pin, PQ group/suite gate or mTLS. Node identity is carried by application credentials and NodeControl binding. NodeControl sealed body protection remains application-layer protection, while HTTP bearer, outer route/key-version/operation/sequence metadata, size and timing remain visible. Normal peer E2EE is also independent of TLS.
 
-**Status:** CICADA pure PQ TLS **NOT_IMPLEMENTED**; current Go 1.27.1 standard-library public configuration **cannot express this exact profile** (no pure ML-KEM-768 and no TLS 1.3 cipher-suite configuration). Public HTTPS deployment **NOT_RUN**. Go full-suite/backend PASS lines above retain their original source fingerprints and do not include this standalone probe as product acceptance. Next work is explicit separation of isolated development HTTP fixtures from a verifiable production PQ endpoint, with no token-based plaintext bypass; see the [implementation steps](architecture-v2-plan.md#2026-10-01-pq-transport-implementation-steps-not-yet-implemented).
+**Current boundary:** production CICADA PQ TLS wiring is **NOT_IMPLEMENTED**; the optional OpenSSL adapter separately demonstrates the exact profile. The historical Go 1.27.1 standard-library probe **cannot express this exact profile** (no pure ML-KEM-768 and no TLS 1.3 cipher-suite configuration). Public HTTPS deployment **NOT_RUN**. Go full-suite/backend PASS lines above retain their original source fingerprints and do not include this standalone probe as product acceptance. Next work is explicit separation of isolated development HTTP fixtures from a verifiable production PQ endpoint, with no token-based plaintext bypass; see the [implementation steps](architecture-v2-plan.md#2026-10-01-pq-transport-implementation-steps-not-yet-implemented).
 
 ## 历史 f55 与前序验收记录（2026-10-01）
 
@@ -496,6 +516,8 @@ Hub 按同一 attempt 验收且拒绝重复结果；旧 pending 审批在 Hub �
 
 ## 2026-09-24 Node 子树离线备份与隔离恢复
 
+本段保留 9 月 24 日 Node-subtree 验收。当前 archive v2 已扩展共用 WriterRoot sidecar/持久 fence 和所有 Agent 共享生命周期锁，见 [当前备份边界](node-backup.md)与[分源验收](v01-transport-recovery-checkpoint-validation.md)。格式扩展不提升本矩阵状态；恢复后对账、受权解隔离/重连和真实设备演练仍未完成。
+
 Node Agent 现在持有单实例锁和生命周期共享维护锁；独立的 MCP Endpoint
 密钥发布及 Owner key trust CLI 写入同样持共享锁。`cicada machine
 backup/verify/restore` 以独占维护锁复制一个 Node 子树，检查 SQLite WAL、
@@ -741,13 +763,13 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V55 | PARTIAL | Federation 保留 actor/provenance；尚无 Guard 对真实恶意 Monitor 指令的执行入口演练。 |
 | V56 | PARTIAL | Artifact exact-scope/revocation/digest guards and traversal/symlink denial are implemented and tested (`TestArtifactV2ExactScopeRevocationAndDigestGuard`, `TestArtifactV2ListDoesNotBypassReferenceScopes`, `TestArtifactV2RejectsTraversalAndSymlinkEscape`). Search/export and all historical refs are not exhaustively accepted. |
 | V57 | PARTIAL | Endpoint ML-KEM/ML-DSA/AES-GCM、Owner grants、Node trust 与 local/cross-Node sealed SEND/ASK/REPLY 已连接 MCP/ledger/Relay。432f native ASK/REPLY PASS；432f＋native-test overlay broadcast PASS 且两 original Threads 消耗。新 plaintext peer write 返回410，历史明文仍保留。物理双 Node、完整跨 Owner/广播授权矩阵、纯 PQ TLS 未完成；不将 overlay PASS 转移给 finalFP。 |
-| V58 | PARTIAL | 合成 Hub StateDir 的 backup/verify/restore 与 Contact/session/replay counter 对照通过；Node 子树离线备份/校验/隔离恢复保留 Endpoint 私钥、crypto-state sequence/outbox、入站密文和 replay，含四个 WAL 库与锁竞争测试。显式 Link SEND 已接入 Node 原生 queue，崩溃/重复/不确定注入有 fake Codex 测试。 | Node 私钥与 crypto-state 不在 Hub 备份；MCP/Codex 外部状态不在 Node 子树备份。真实生产设备恢复、rollback fencing 和恢复后计数对账未验收。 |
+| V58 | PARTIAL | 合成 Hub StateDir 的 backup/verify/restore 与 Contact/session/replay counter 对照通过；Node 子树离线备份/校验/隔离恢复及当前 archive-v2 共用 WriterRoot sidecar/fence、Agent shared/offline-exclusive 锁有合成证据（见顶部新检查点）；保留 Endpoint 私钥、crypto-state sequence/outbox、入站密文和 replay，含四个 WAL 库与锁竞争测试。显式 Link SEND 已接入 Node 原生 queue，崩溃/重复/不确定注入有 fake Codex 测试。 | Node 私钥与 crypto-state 不在 Hub 备份；MCP/Codex 外部状态不在 Node 子树备份。真实生产设备恢复、rollback fencing 和恢复后计数对账未验收。 |
 | V59 | PARTIAL | secret scan、token-only-hash、0600 token files、child env filtering 已验证；未覆盖生产 crash dump。 |
 | V60 | PASS（事务测试） | 版本化迁移账本、中断回滚/重跑、并发打开与旧记录保留测试通过；真实掉电/备份恢复未验收。 |
 | V61 | PARTIAL | READY v2 Endpoint/message 不能经旧 Directory/message/machine API 绕过；旧公开 `/v1/fabric/*`、Thread queue/message、Contact peer/federation ingress、Contact session 查询/轮换、`/v1/endpoints` 和管理 bearer `/v1/communication-links` HTTP 路由已退役。旧 Control→Contact Relay 发送器及未被服务入口调用的 Control peer 转发方法也已删除；内置面板已切到 `/v2/management/endpoints`，历史 Contact ratchet 方法与数据库仍待迁移对账。 |
 | V62 | PARTIAL | 授权每次查权威 SQLite、无扩权 cache；未注入权威服务故障黑盒测试。 |
 | V63 | PASS | 缺少双物理机/自主 MCP/迁移条件均明确标记，不计为通过。 |
-| V64 | NOT_RUN | 未运行压力测试，也未声明真实多 Agent 容量。 |
+| V64 | PARTIAL（有界真实 TCP 样本） | 独立 `c23ef9…`/4fb 单 Hub、1 CPU/128 MiB、64 合成 Endpoint、两逻辑 Node/16 worker 的 run-2 PASS；ASK cap/429、cancel/reply/retry 有证据，run-1 fixture FAIL 保留。见[当前来源和指标](v01-transport-recovery-checkpoint-validation.md)。不保证真实多 Agent、native、物理机、公网 HTTPS 或当前 main/PQ 容量；PASS 计数不变。 |
 | V65–V70 | PARTIAL | 当前 UI 代码有 Endpoint→Group admission preview/explicit confirm、Link proposal gesture 与 box select；旧 Chrome PASS 只覆盖当时冻结源码的 pin/vault/enrollment/topology/status，不涵盖新手势。V68 是两个相互隔离 Docker Node namespaces 接入同一 Hub，不要求分离物理主机。 | 新手势需 current-source browser 验证 preview/CAS、stale denial/no-write 与 Link proposal inactive；V68 joined gate、cold wake、完整多组/拒绝组合仍未通过统一验收。 |
 | V71 | PARTIAL | SSE/offline durable claim tests与 840a joined Docker gate 已证明两 Node outbound-only、Hub restart 两次、DB persist、exact outbox retry、reconnect dedup/wrongACKdeny。后者 recording fake queue；全部故障窗口、物理双 Node与 fault期间真实 native 消耗未验收。 |
 | V72 | PASS（限定 same-Group native broadcast） | 432f product＋owned-test overlay PASS298.14s，两个 original recipient Threads 消耗广播并保留上下文；旧失败仍保留且不归 Monitor PASS 或 finalFP。物理双 Node、通知预算、完整故障/授权矩阵仍未验收。 |

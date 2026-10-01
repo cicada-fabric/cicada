@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 )
@@ -33,17 +34,18 @@ type machineNodeControlOperatorClaim struct {
 }
 
 type machineNodeControlOperatorReport struct {
-	NodeID           string                               `json:"node_id"`
-	HubID            string                               `json:"hub_id,omitempty"`
-	BindingID        string                               `json:"binding_id,omitempty"`
-	BindingVersion   uint64                               `json:"binding_version,omitempty"`
-	NodeKeyEpoch     uint64                               `json:"node_key_epoch,omitempty"`
-	PendingOperation string                               `json:"pending_operation,omitempty"`
-	PendingSequence  uint64                               `json:"pending_sequence,omitempty"`
-	Claim            *machineNodeControlOperatorClaim     `json:"claim,omitempty"`
-	Provider         *nodeinbox.ProviderAdmissionDecision `json:"provider_admission,omitempty"`
-	Resource         *machineNodeControlOperatorResource  `json:"resource_execution,omitempty"`
-	Action           string                               `json:"action,omitempty"`
+	NodeID                string                               `json:"node_id"`
+	HubID                 string                               `json:"hub_id,omitempty"`
+	BindingID             string                               `json:"binding_id,omitempty"`
+	BindingVersion        uint64                               `json:"binding_version,omitempty"`
+	NodeKeyEpoch          uint64                               `json:"node_key_epoch,omitempty"`
+	PendingOperation      string                               `json:"pending_operation,omitempty"`
+	PendingSequence       uint64                               `json:"pending_sequence,omitempty"`
+	Claim                 *machineNodeControlOperatorClaim     `json:"claim,omitempty"`
+	Provider              *nodeinbox.ProviderAdmissionDecision `json:"provider_admission,omitempty"`
+	Resource              *machineNodeControlOperatorResource  `json:"resource_execution,omitempty"`
+	Action                string                               `json:"action,omitempty"`
+	WriterRootQuarantined bool                                 `json:"writer_root_quarantined,omitempty"`
 }
 
 type machineNodeControlOperatorResource struct {
@@ -83,13 +85,35 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 	if strings.TrimSpace(*writerRoot) == "" {
 		*writerRoot = *stateDir
 	}
+	var err error
+	var agentLock *nodelock.AgentLock
+	if action != "inspect" {
+		agentLock, err = nodelock.AcquireAgent(*stateDir, *nodeID)
+		if err != nil {
+			return errors.New("stop the Node Agent before operator reconciliation; its execution ownership is still active")
+		}
+		defer agentLock.Close()
+	}
+	writerRootLock, err := nodelock.AcquireWriterRoot(*writerRoot)
+	if err != nil {
+		return fmt.Errorf("acquire shared Node WriterRoot lock: %w", err)
+	}
+	defer writerRootLock.Close()
+	rootQuarantined, err := nodebackup.WriterRootRecoveryQuarantineActive(*writerRoot)
+	if err != nil {
+		return fmt.Errorf("inspect shared WriterRoot recovery quarantine: %w", err)
+	}
+	if rootQuarantined && action != "inspect" {
+		return errors.New("shared WriterRoot is quarantined after restore; reconcile shared fences before operator writes")
+	}
 	state, err := readMachineNodeControlLocalState(*stateDir, *nodeID)
 	if err != nil {
 		return err
 	}
 	report := machineNodeControlOperatorReport{NodeID: state.NodeID, HubID: state.HubID,
 		BindingID: state.BindingID, BindingVersion: state.BindingVersion, NodeKeyEpoch: state.NodeKeyEpoch,
-		PendingOperation: state.PendingOperation, PendingSequence: state.PendingSequence}
+		PendingOperation: state.PendingOperation, PendingSequence: state.PendingSequence,
+		WriterRootQuarantined: rootQuarantined}
 	if state.ClaimTicket != nil {
 		ticket := state.ClaimTicket
 		report.Claim = &machineNodeControlOperatorClaim{Version: ticket.Version, WorkerID: ticket.WorkerID, Attempt: ticket.Attempt,
@@ -103,11 +127,6 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 		}
 		return json.NewEncoder(output).Encode(report)
 	}
-	operatorLock, err := nodelock.AcquireAgent(*stateDir, *nodeID)
-	if err != nil {
-		return errors.New("stop the Node Agent before operator reconciliation; its execution ownership is still active")
-	}
-	defer operatorLock.Close()
 	if state.ClaimTicket == nil ||
 		(state.ClaimTicket.Version != machineNodeControlClaimTicketVersion &&
 			state.ClaimTicket.Version != machineNodeControlLegacyClaimTicketVersion) ||
