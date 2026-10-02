@@ -89,7 +89,7 @@ reproduce the teardown SIGSEGV, so this requirement violation is not a proven
 root cause of that crash. The repaired C bridge calls `OPENSSL_thread_stop_ex`
 before returning from context-using C calls and before freeing the nondefault
 library context; serialized calls may run on different Go OS threads.
-The independent [repair result](/home/zyf/CICADA_pqtls_repair/.cicada-data/pqtls-thread-stop-20261001/run3/RESULTS.json)
+The independent [repair result](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_pqtls_repair/pqtls-thread-stop-20261001/run3/RESULTS.json)
 has SHA-256 `f622c116006e4c7a1f4c628e46115e4b77686984a813e12c9b00532c89ac15d8`.
 It records dirty base `1547f2e`, `bridge.c` SHA
 `5b2090b670a39e49b77db7c49e14b37eb80c581cb0ca303c8976f365c268b13d`
@@ -121,7 +121,7 @@ plaintext trust endpoint. Application NodeControl/Endpoint E2EE remains separate
 The contract-only source fingerprint is
 `dd6d06d7055c846efe39d4d5f477ab6318650f47cd2a0741be861d14c1396bb4`
 (dirty `4fb241b` base). Its source map/report/gates are in
-`/home/zyf/CICADA_client_contract_fix/.cicada-data/CONTRACT_REPAIR_REPORT.md`.
+`/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_client_contract_fix/CONTRACT_REPAIR_REPORT.md`.
 The 55 operation definitions/roles and wire framing are unchanged. Changing the
 catalog revision header changes its raw SHA from `1ef2723f…` to
 `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b`.
@@ -153,7 +153,7 @@ constraints are in [Node backup and WriterRoot recovery](node-backup.md).
 
 ### Bounded capacity source
 
-The independent [run-2 result](/home/zyf/CICADA_capacity/.cicada-data/hub-bounded-capacity-20261001/run-2/result.json)
+The independent [run-2 result](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_capacity/hub-bounded-capacity-20261001/run-2/result.json)
 SHA is `95edb38c0d69445e75a24e5bf332ede9896fbce81bdd00608ea58fc88c7da6c1`.
 It identifies dirty `4fb241b`, Hub-build fingerprint
 `c23ef957d5520bfacfa433133d94a73e12cc29eb54c2cf4acc6ab45ad4689d84`,

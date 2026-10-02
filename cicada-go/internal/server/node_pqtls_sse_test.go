@@ -100,10 +100,17 @@ func (w *nodeSSEReadyWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (w *nodeSSEReadyWriter) Flush() {
-	w.ResponseWriter.(http.Flusher).Flush()
+func (w *nodeSSEReadyWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *nodeSSEReadyWriter) FlushError() error {
+	if err := http.NewResponseController(w.ResponseWriter).Flush(); err != nil {
+		return err
+	}
 	w.o.flushedOnce.Do(func() { close(w.o.flushed) })
+	return nil
 }
+
+func (w *nodeSSEReadyWriter) Flush() { _ = w.FlushError() }
 
 func nodeSSERevoke(db *store.Store, service *fabric.Service, fixture nodeTLSProcessFixture) error {
 	current, err := db.GetNodeTLSAuthorityReservationLocal(fixture.RequestID)

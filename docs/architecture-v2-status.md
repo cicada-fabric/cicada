@@ -1,15 +1,25 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-02 checkpoint — finite source acceptance; product PARTIAL
+## 2026-10-02 current status — finite lanes scoped; v0.1 PARTIAL
 
-15路径被测Main源码（1061路径、dirty `25bc586`/`f203…`）已通过一次全default Go及有限Control/Server TLS native/race；17项实际SKIP仍是未验项目。
-TLS恢复保持只读与quarantine；M5真实双Hub传输、历史组件、Client和Codex Runtime各自归属，不能合并为整体v0.1/v2.3完成。
-完整来源、结果和剩余边界见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)；下方旧current段保留其原时点。
+本检查点基线为 `52cc2f6e0f97829332be372cb302cdb9f0ab0558`，来源域分别列出；当前 `dev` 以 `git rev-parse HEAD` 为准。软件 `0.1.0-dev`、Architecture v2.3、Hub schema 57、Client contract `client-hub-v1.6.4`、wire 1、55项 catalog 分别记录；catalog SHA-256 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。其余结果是各自冻结的候选或artifact证据，不自动成为该HEAD的全仓回归。
+
+| Lane | 当前结果 | 尚未证明 |
+|---|---|---|
+| 17路径组合 | bounded candidate QA；Server 126 top/138 sub，NodeInbox 35/11；0 fail，4个明确Docker fixture SKIP。19路径派生候选新纳入公开负测试源码，但组合Go门禁未运行 | 全仓、未覆盖fixture与实际产品运行；19路径候选不得继承17路径receipt |
+| M5 多Hub | `SCOPED_PASS`：2 Hub/2 Node，6条非空 sealed messages及相关请求，66条命令；Control nil，两次503探测后行未变 | native消费、模型/Agent业务完成、注入与更广故障边界 |
+| Shipped PQ | clean52 shipped artifact：1 top/3 sub PASS，无skip | 独立双Hub PQ、native Runtime、Android或公网HTTPS |
+| SSE | 19 top/33 sub、8次成功test execution、0 skip；7次 `./internal/server` 与1次 native-validity，非8个不同package。normal/race/Native/NotAfter子矩阵按receipt限定 | 两个保留的harness失败仍阻止整体写成全PASS；SSE deadline/撤销路径按本轮矩阵记录。native非HTTP terminal错误、read-idle与总订阅上限仍待窄验 |
+| Native | Native04缺echo原FAIL保留；Native05 B durable `REPLIED`含原seed beta/answer且A已Receive，A第5自动turn未完成。Native06原fixture-sentinel FAIL；独立5/5 AskReply连续性SCOPED PASS；single-copy helper与公开负测试另有PASS。 | full Golden与full Hub-blind/native whole-gate PASS未确认；5/5 context/history连续性观察已通过。original fullHubBlind helpercheck exit1且Hub日志未保留，故仍NOT_CONFIRMED。各测试来源见验证记录；无更多paid Native运行。 |
+| Client | F4真实UI长proof按钮位于viewport外，**FAIL/BLOCKED**保留；Target零写入/零Alert，Source proof过期。F5在Source KEY review第11步 **FAIL/BLOCKED**：签名请求的UTC RFC3339Nano尾零格式被拒；没有Source签名/Grant或任何Target操作 | Client `508ca333` 已完成离线修正：40 Kotlin tests / 5 classes、0 fail/skip，Native/Android-test 编译与双 debug APK build exit 0；新 APK pair 在线验收 **NOT_RUN**；F5实际五操作链未完成，Alert与bilateral未运行；不重试旧grant/fixture |
+| 外部部署 | 本轮有限门禁不覆盖生产部署/恢复 | 实体双设备、公网HTTPS、真实生产恢复各自结果 |
+
+整体仍为 **PARTIAL**。项目约85%进度估计不是验收百分比。精确delta、receipt、计数、fail/skip归属见[当前验证记录](v01-clean52-current-checkpoint-validation.md)；各历史表仍只表示其来源时点。
 
 ## Historical status entries before this checkpoint
 
 
-## 2026-10-02 current status — integrated candidate, acceptance PASS（有限范围）
+## Historical 2026-10-02 status — integrated candidate, acceptance PASS（有限范围）
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入

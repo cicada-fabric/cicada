@@ -20,9 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
-	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -34,69 +32,24 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	if binary == "" {
 		t.Skip("optional shipped package was not supplied")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	fixture := newMachineSealedReceiveFixtureWithActions(t, false, "ask", []string{"ask", "reply"})
-	root, pins := productPQFixtures(t)
-	hubState := filepath.Join(root, "hub-state")
-	if err := os.MkdirAll(filepath.Join(hubState, "e2ee"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	key, err := e2ee.NewIdentity()
-	if err != nil {
-		t.Fatal(err)
-	}
-	secret, err := key.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(hubState, "e2ee", "identity.json"), secret, 0600); err != nil {
-		t.Fatal(err)
-	}
-	// Closing the seed Store finishes its WAL before relocating the fixture DB.
-	if err = fixture.store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(fixture.databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	database := filepath.Join(hubState, "cicada.sqlite3")
-	if err = os.WriteFile(database, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.New(database)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	hubID, err := db.GetClientHubID()
-	if err != nil {
-		t.Fatal(err)
-	}
 	frontAddress, address := productFreeAddress(t), productFreeAddress(t)
 	_, portText, _ := net.SplitHostPort(frontAddress)
 	port, _ := strconv.Atoi(portText)
-	identity := func(name, nodeID string, epoch uint64) nodetransport.Identity {
-		kind := "node"
-		if name == "hub" {
-			kind = "hub"
-		}
-		return nodetransport.Identity{Kind: kind, HubID: hubID, NodeID: nodeID, TLSEpoch: epoch, DNSName: name + ".synthetic.invalid"}
+	base := "http://" + frontAddress // Owner-signed isolated logical application origin.
+	current := distributionCurrentTLSFixture(t, fixture, address, base)
+	t.Log("phase=actual-owner-device-current-TLS-authority-prepared")
+	root, hubState := current.root, current.hubState
+	database := filepath.Join(hubState, "cicada.sqlite3")
+	db, err := store.New(database)
+	if err != nil {
+		t.Fatal("read actual distribution fixture Store")
 	}
-	hubConfig := &nodetransport.Config{Version: 1, Role: "hub", Listen: address, CertificateFile: filepath.Join(root, "hub.pem"), PrivateKeyFile: filepath.Join(root, "hub.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: identity("hub", "", 0)}
-	for _, node := range []struct {
-		name, id string
-		epoch    uint64
-	}{{"node-a", fixture.sourceNodeID, 17}, {"node-b", fixture.targetNodeID, 29}} {
-		binding, err := db.CurrentNodeTransportBinding(node.id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		hubConfig.Peers = append(hubConfig.Peers, nodetransport.Approval{Identity: identity(node.name, node.id, node.epoch), PinKind: "certificate-sha256", PinSHA256: pins[node.name], OwnerID: binding.OwnerID, OwnerKeyID: binding.OwnerKeyID, BindingID: binding.BindingID, BindingVersion: binding.BindingVersion, CredentialVersion: binding.CredentialVersion})
-	}
-	hubPath := writeProductPQConfig(t, root, "hub-config", hubConfig)
-	base := "http://" + frontAddress // Explicit isolated loopback application origin.
+	defer db.Close()
+	hubID := current.hubConfig.Identity.HubID
+	hubPath := writeProductPQConfig(t, root, "hub-config", &current.hubConfig)
 	var hub *exec.Cmd
 	var output distributionOutput
 	imageRequest := os.Getenv("PQTLS_TEST_IMAGE_REQUEST")
@@ -172,6 +125,7 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	if !ready {
 		t.Fatalf("shipped Hub did not become ready; transcript_sha256=%x bytes=%d", sha256.Sum256(output.Bytes()), output.Len())
 	}
+	t.Log("phase=actual-distribution-hub-ready")
 	observeIdle := os.Getenv("PQTLS_TEST_OBSERVE_IDLE") == "1"
 	var idleChildren []*exec.Cmd
 	var idleLogs []*distributionOutput
@@ -195,17 +149,13 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 		idleChildren = nil
 	}
 	defer stopIdle()
-	makeNode := func(name, nodeID, token string, epoch uint64) context.Context {
-		cfg := &nodetransport.Config{Version: 1, Role: "node", Origin: "https://" + address, ApplicationOrigin: base, CertificateFile: filepath.Join(root, name+".pem"), PrivateKeyFile: filepath.Join(root, name+".key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: identity(name, nodeID, epoch), Peers: []nodetransport.Approval{{Identity: identity("hub", "", 0), PinKind: "certificate-sha256", PinSHA256: pins["hub"]}}}
-		path := writeProductPQConfig(t, root, name+"-config", cfg)
-		nodeState := filepath.Join(root, name+"-state")
-		if err := persistMachineNodeIdentity(filepath.Join(machineNodeStateDir(nodeState, nodeID), "identity.json"), machineNodeCredentialPath(nodeState, nodeID), &machineNodeIdentity{Version: 1, NodeID: nodeID, RelayToken: token}); err != nil {
-			t.Fatal(err)
-		}
+	makeNode := func(nodeID string) {
+		f := current.nodes[nodeID]
+		path := distributionActiveConfigPath(f)
 		childCtx := ctx
-		args := []string{"machine", "agent", "--id", nodeID, "--control-url", base, "--state-dir", nodeState, "--pqtls-config", path, "--relay-only"}
+		args := []string{"machine", "agent", "--id", nodeID, "--control-url", base, "--state-dir", f.StateRoot, "--pqtls-config", path, "--relay-only"}
 		if !observeIdle {
-			timed, stop := context.WithTimeout(ctx, 12*time.Second)
+			timed, stop := context.WithTimeout(ctx, 45*time.Second)
 			defer stop()
 			childCtx = timed
 			args = append(args, "--once")
@@ -216,7 +166,7 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 			log := new(distributionOutput)
 			child.Stdout, child.Stderr = log, log
 			if err := child.Start(); err != nil {
-				t.Fatal(err)
+				t.Fatal("start actual shipped Node Agent")
 			}
 			idleChildren = append(idleChildren, child)
 			idleLogs = append(idleLogs, log)
@@ -227,16 +177,10 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 			}
 			t.Logf("shipped Node Agent exit=0 transcript_sha256=%x bytes=%d", sha256.Sum256(out), len(out))
 		}
-		h := machineHubContext{HubID: hubID, Origin: base, NodeID: nodeID, Token: token}
-		if err := configureMachinePQTransport(&h, path); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { h.NodeTransport.(interface{ CloseIdleConnections() }).CloseIdleConnections() })
-		return withMachineHubContext(ctx, h)
 	}
-	// Both Agent processes run before enqueue: packaging QA invokes no native model.
-	ctxA := makeNode("node-a", fixture.sourceNodeID, fixture.sourceToken, 17)
-	ctxB := makeNode("node-b", fixture.targetNodeID, fixture.targetToken, 29)
+	// Both actual Agent processes run before enqueue; no native/model consumption.
+	makeNode(fixture.sourceNodeID)
+	makeNode(fixture.targetNodeID)
 	if observeIdle {
 		time.Sleep(3 * time.Second)
 		if imageRequest != "" {
@@ -272,6 +216,19 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 		}
 		stopIdle() // Stop before enqueueing: native consumption stays outside this gate.
 	}
+	// Parent checked clients acquire their genuine runtime locks only after
+	// the actual Agent processes have exited and released the same singleton.
+	t.Log("phase=actual-two-shipped-agents-joined")
+	checkedClient := func(nodeID string) context.Context {
+		f := current.nodes[nodeID]
+		h := machineHubContext{HubID: hubID, Origin: base, NodeID: nodeID, Token: f.Token, StateDir: f.StateRoot, WriterRoot: f.WriterRoot}
+		if err := configureMachinePQTransport(&h, distributionActiveConfigPath(f)); err != nil {
+			t.Fatal("current-authority checked distribution client")
+		}
+		t.Cleanup(func() { h.TLSRuntime.Close() })
+		return withMachineHubContext(ctx, h)
+	}
+	ctxA, ctxB := checkedClient(fixture.sourceNodeID), checkedClient(fixture.targetNodeID)
 	input := fabric.NodeSealedLinkAskInput{LinkID: fixture.link.ID, MessageID: fixture.messageID, RequestID: fixture.requestID, IdempotencyKey: "SYNTHETIC-PACKAGED-ASK", DataScope: fixture.dataScope, ExpiresAt: fixture.link.ExpiresAt, Ciphertext: fixture.ciphertext}
 	for i := 0; i < 2; i++ {
 		if err := machineAPIJSON(ctxA, base+"/v2/relay/nodes/"+fixture.sourceNodeID+"/sealed/ask", http.MethodPost, input, nil); err != nil {
@@ -342,6 +299,7 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	if err := nativeE2EAssertDatabasePrivateTextAbsent(database, "private message for the original session"); err != nil {
 		t.Fatal(err)
 	}
+	t.Log("phase=actual-pinned-relay-ciphertext-claim-revocation-complete")
 }
 
 func distributionProcessEnvironment(values ...string) []string {

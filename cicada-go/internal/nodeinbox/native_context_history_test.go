@@ -1,12 +1,20 @@
 package nodeinbox
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func nativeContextHistoryInput() NativeContextScopeInput {
@@ -333,5 +341,320 @@ func TestNetworkEnrollmentObservationRetainsHistoricalRowsAndDedicatedScopeGuard
 	otherNetwork.ContextPolicy = NativeContextPolicyDedicatedNetwork
 	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), otherNetwork); !errors.Is(err, ErrNativeContextScopeConflict) {
 		t.Fatalf("dedicated Network scope ignored preserved history: %v", err)
+	}
+}
+
+// These children use the actual registry entrypoint in separate OS processes.
+// The parent holds an existing private database lock and releases both children
+// together; no test shim changes SQLite or the production open implementation.
+func TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory(t *testing.T) {
+	if path := os.Getenv("CICADA_SYNTHETIC_NATIVE_CONTEXT_OPEN_CHILD"); path != "" {
+		if _, err := fmt.Fprintln(os.Stdout, "READY"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := bufio.NewReader(os.Stdin).ReadByte(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fmt.Fprintln(os.Stdout, "OPENING"); err != nil {
+			t.Fatal(err)
+		}
+		started := time.Now()
+		registry, err := OpenNativeContextRegistry(path)
+		if os.Getenv("CICADA_SYNTHETIC_NATIVE_CONTEXT_EXPECT_TIMEOUT") == "1" {
+			if err == nil {
+				registry.Close()
+				t.Fatal("held exclusive lock incorrectly permitted registry open")
+			}
+			if !strings.Contains(err.Error(), "initialize shared Node context registry") || time.Since(started) < 4*time.Second || time.Since(started) > 8*time.Second {
+				t.Fatalf("open did not fail within bounded busy timeout: %v duration %s", err, time.Since(started))
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer registry.Close()
+		var rows int
+		var epoch uint64
+		if err = registry.db.QueryRow(`SELECT count(*),min(binding_epoch) FROM node_native_context_history_v1`).Scan(&rows, &epoch); err != nil || rows != 1 || epoch != 1 {
+			t.Fatalf("parallel open lost retained history: rows%d epoch%d err%v", rows, epoch, err)
+		}
+		input := nativeContextHistoryInput()
+		input.HubID = "foreign-hub"
+		input.EndpointID = "foreign-endpoint"
+		input.BindingID = "foreign-binding"
+		if _, err = registry.CheckAndRecordNativeContext(context.Background(), input); !errors.Is(err, ErrNativeContextScopeConflict) {
+			t.Fatalf("parallel reopen bypassed dedicated scope guard: %v", err)
+		}
+		return
+	}
+	for _, test := range []struct {
+		name     string
+		children int
+		timeout  bool
+	}{{"release-to-two-concurrent-processes", 2, false}, {"held-lock-fails-closed-within-budget", 1, true}} {
+		t.Run(test.name, func(t *testing.T) {
+			path := nativeContextHistoryTestPath(t)
+			r, err := OpenNativeContextRegistry(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := nativeContextHistoryInput()
+			input.ContextPolicy = NativeContextPolicyDedicatedThread
+			if _, err = r.CheckAndRecordNativeContext(context.Background(), input); err != nil {
+				t.Fatal(err)
+			}
+			if err = r.Close(); err != nil {
+				t.Fatal(err)
+			}
+			locker, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer locker.Close()
+			locker.SetMaxOpenConns(1)
+			// DELETE mode makes an EXCLUSIVE lock deterministic before the child's
+			// production journal_mode=WAL pragma. All files remain fixture-private.
+			if _, err = locker.Exec(`PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE;`); err != nil {
+				t.Fatal(err)
+			}
+			held := true
+			defer func() {
+				if held {
+					_, _ = locker.Exec("ROLLBACK")
+				}
+			}()
+			type child struct {
+				cmd    *exec.Cmd
+				input  io.WriteCloser
+				output *bufio.Reader
+				stderr *bytes.Buffer
+				done   chan error
+			}
+			children := []*child{}
+			for n := 0; n < test.children; n++ {
+				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory$")
+				cmd.Env = append(os.Environ(), "CICADA_SYNTHETIC_NATIVE_CONTEXT_OPEN_CHILD="+path)
+				if test.timeout {
+					cmd.Env = append(cmd.Env, "CICADA_SYNTHETIC_NATIVE_CONTEXT_EXPECT_TIMEOUT=1")
+				}
+				stdout, err := cmd.StdoutPipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				stdin, err := cmd.StdinPipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				stderr := &bytes.Buffer{}
+				cmd.Stderr = stderr
+				if err = cmd.Start(); err != nil {
+					t.Fatal(err)
+				}
+				c := &child{cmd: cmd, input: stdin, output: bufio.NewReader(stdout), stderr: stderr, done: make(chan error, 1)}
+				children = append(children, c)
+				line, err := c.output.ReadString('\n')
+				if err != nil || line != "READY\n" {
+					t.Fatalf("child barrier unavailable: %q %v", line, err)
+				}
+			}
+			for _, c := range children {
+				if _, err = c.input.Write([]byte("x")); err != nil {
+					t.Fatal(err)
+				}
+				c.input.Close()
+			}
+			for _, c := range children {
+				line, err := c.output.ReadString('\n')
+				if err != nil || line != "OPENING\n" {
+					t.Fatalf("child did not enter production open: %q %v", line, err)
+				}
+				go func(c *child) { _, _ = io.Copy(io.Discard, c.output); c.done <- c.cmd.Wait() }(c)
+			}
+			if !test.timeout {
+				for _, c := range children {
+					select {
+					case err := <-c.done:
+						t.Fatalf("registry open ignored held lock: %v %s", err, c.stderr.String())
+					case <-time.After(200 * time.Millisecond):
+					}
+				}
+				if _, err = locker.Exec("COMMIT"); err != nil {
+					t.Fatal(err)
+				}
+				held = false
+			}
+			for _, c := range children {
+				if err = <-c.done; err != nil {
+					t.Fatalf("cross-process production open: %v %s", err, c.stderr.String())
+				}
+			}
+			if held {
+				if _, err = locker.Exec("ROLLBACK"); err != nil {
+					t.Fatal(err)
+				}
+				held = false
+			}
+			var rows int
+			var epoch uint64
+			if err = locker.QueryRow(`SELECT count(*),min(binding_epoch) FROM node_native_context_history_v1`).Scan(&rows, &epoch); err != nil || rows != 1 || epoch != 1 {
+				t.Fatalf("open/timeout changed retained history: rows%d epoch%d err%v", rows, epoch, err)
+			}
+		})
+	}
+}
+
+func TestNativeContextHistoryConcurrentProcessesRecordOneDedicatedScope(t *testing.T) {
+	if path := os.Getenv("CICADA_SYNTHETIC_NATIVE_CONTEXT_RECORD_CHILD"); path != "" {
+		registry, err := OpenNativeContextRegistry(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer registry.Close()
+		fmt.Fprintln(os.Stdout, "READY")
+		if _, err = bufio.NewReader(os.Stdin).ReadByte(); err != nil {
+			t.Fatal(err)
+		}
+		input := nativeContextHistoryInput()
+		input.ContextPolicy = NativeContextPolicyDedicatedThread
+		input.HubID = os.Getenv("CICADA_SYNTHETIC_NATIVE_CONTEXT_CHILD_HUB")
+		_, err = registry.CheckAndRecordNativeContext(context.Background(), input)
+		if err == nil {
+			fmt.Fprintln(os.Stdout, "ACCEPTED")
+		} else if errors.Is(err, ErrNativeContextScopeConflict) {
+			fmt.Fprintln(os.Stdout, "CONFLICT")
+		} else {
+			t.Fatalf("cross-process current-scope decision failed: %v", err)
+		}
+		return
+	}
+	path := nativeContextHistoryTestPath(t)
+	registry, err := OpenNativeContextRegistry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.Close()
+	type child struct {
+		cmd    *exec.Cmd
+		input  io.WriteCloser
+		output *bufio.Reader
+		stderr *bytes.Buffer
+	}
+	children := []child{}
+	for _, hub := range []string{"hub-a", "hub-b"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestNativeContextHistoryConcurrentProcessesRecordOneDedicatedScope$")
+		cmd.Env = append(os.Environ(), "CICADA_SYNTHETIC_NATIVE_CONTEXT_RECORD_CHILD="+path, "CICADA_SYNTHETIC_NATIVE_CONTEXT_CHILD_HUB="+hub)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stderr := &bytes.Buffer{}
+		cmd.Stderr = stderr
+		if err = cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		c := child{cmd, stdin, bufio.NewReader(stdout), stderr}
+		children = append(children, c)
+		line, err := c.output.ReadString('\n')
+		if err != nil || line != "READY\n" {
+			t.Fatalf("recording child readiness: %q %v", line, err)
+		}
+	}
+	locker, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locker.Close()
+	locker.SetMaxOpenConns(1)
+	if _, err = locker.Exec("BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	held := true
+	defer func() {
+		if held {
+			_, _ = locker.Exec("ROLLBACK")
+		}
+	}()
+	for _, c := range children {
+		if _, err = c.input.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		c.input.Close()
+	}
+	// Hold the writer lock while both production check-and-record calls enter.
+	// IMMEDIATE prevents either process from reading a stale pre-writer snapshot.
+	time.Sleep(200 * time.Millisecond)
+	if _, err = locker.Exec("COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	held = false
+	decisions := map[string]int{}
+	for _, c := range children {
+		line, err := c.output.ReadString('\n')
+		if err != nil {
+			t.Fatalf("decision output: %v %s", err, c.stderr.String())
+		}
+		decisions[strings.TrimSpace(line)]++
+		_, _ = io.Copy(io.Discard, c.output)
+		if err = c.cmd.Wait(); err != nil {
+			t.Fatalf("recording subprocess: %v %s", err, c.stderr.String())
+		}
+	}
+	if decisions["ACCEPTED"] != 1 || decisions["CONFLICT"] != 1 || len(decisions) != 2 {
+		t.Fatalf("scope authority was not one-success/one-conflict: %v", decisions)
+	}
+	var rows int
+	var policy string
+	if err = locker.QueryRow(`SELECT count(*),min(context_policy) FROM node_native_context_history_v1`).Scan(&rows, &policy); err != nil || rows != 1 || policy != NativeContextPolicyDedicatedThread {
+		t.Fatalf("concurrent scope lost/duplicated history: %d %s %v", rows, policy, err)
+	}
+}
+
+func TestNativeContextHistoryEscapesPrivatePathAndKeepsMemoryIsolated(t *testing.T) {
+	directory := filepath.Dir(nativeContextHistoryTestPath(t))
+	path := filepath.Join(directory, "native ?#%&=history.sqlite3")
+	r, err := OpenNativeContextRegistry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.CheckAndRecordNativeContext(context.Background(), nativeContextHistoryInput()); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if info, err := os.Stat(path); err != nil || info.Mode() != 0600 {
+		t.Fatalf("escaped filename changed path/private mode: %v", err)
+	}
+	r, err = OpenNativeContextRegistry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	var rows int
+	if err = r.db.QueryRow("SELECT count(*) FROM node_native_context_history_v1").Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("escaped path lost history: %d %v", rows, err)
+	}
+	first, err := OpenNativeContextRegistry(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := OpenNativeContextRegistry(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if _, err = first.CheckAndRecordNativeContext(context.Background(), nativeContextHistoryInput()); err != nil {
+		t.Fatal(err)
+	}
+	if err = second.db.QueryRow("SELECT count(*) FROM node_native_context_history_v1").Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("separate in-memory registry leaked history: %d %v", rows, err)
 	}
 }

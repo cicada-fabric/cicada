@@ -1,15 +1,26 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-02 checkpoint plan — frozen finite QA; remaining product gates
+## 2026-10-02 current plan — bounded evidence accepted; product remains PARTIAL
 
-本检查点的15路径源码与两项组合QA已封存；后续文档增量不继承被测full-source fingerprint。
-下一出口分别是新clean工件归属、Client五操作终态、Codex0.160.0启动诊断与真实Golden路径，以及未验Join/ACTIVE Network/消息故障、物理设备和公网HTTPS。
-不扩大已完成QA或改写旧FAIL/SKIP；精确来源和各出口见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)。
+本检查点基线为 `52cc2f6e0f97829332be372cb302cdb9f0ab0558`，来源域分别列出；当前 `dev` 以 `git rev-parse HEAD` 为准。本候选只更新文档，不把候选测试树或旧镜像归到该提交。软件 `0.1.0-dev`、Architecture v2.3、Hub schema 57、Client contract `client-hub-v1.6.4`、wire 1 与 catalog 55 是不同版本域；catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+有限回归、PQ、SSE 和 M5 结果均按各自来源记录，不能合并推导为全仓、真实 Codex Golden、Android 五操作或发布通过。整体验收仍为 **PARTIAL**；约85%仅是项目进度估计，不是验收项计数或通过比例。具体范围与失败/跳过见[当前检查点验证](v01-clean52-current-checkpoint-validation.md)。
+
+| 下一出口 | 当前状态 | 退出条件 |
+|---|---|---|
+| 17路径组合有限QA | 候选树 `52cc2f6` 基线；9条命令退出0；Server/NodeInbox二进制结果中保留4个Docker fixture SKIP。另有19路径派生源码候选加入公开负测试，但未执行组合Go门禁 | 保持17路径receipt原归属；19路径delta需独立验收，SKIP不得转 PASS |
+| M5 双Hub非空消息 | run-04 `SCOPED_PASS`：2 Hub、2 Node、6条非空消息及相关请求 | 仅保留该门禁范围；patched dirty Node 与 clean52 Hub 不作同源归属 |
+| Shipped PQ与SSE | clean52 PQ artifact gate PASS；SSE有限正/竞态/Native矩阵保留两项真实harness失败 | 不扩大到新运行时、公共HTTPS或整个产品 |
+| Client Link 五操作 | F4 **FAIL/BLOCKED**保留；F5 在 Source KEY review 的第11步 **FAIL/BLOCKED**，签名请求时间格式被拒 | Client `508ca333` 已完成离线修正：40 Kotlin tests / 5 classes、0 fail/skip，Native/Android-test 编译与双 debug APK build exit 0；新 APK pair 在线验收 **NOT_RUN**；不重试旧 grant/fixture，任何新在线链路另行授权 |
+| Native | Native06原始fixture-sentinel运行FAIL；独立5/5 AskReply连续性观察SCOPED_PASS。另有single-copy helper、公开负测试与source `59bdebf`的DB/WAL/SHM及queue/history窄检查PASS；Hub日志未保留 | 按验证记录分列各来源；full Hub-blind/native whole-gate PASS仍未确认；不再付费运行 |
+| 外部运行接受 | 真实生产恢复/部署、实体双设备及公网HTTPS仍未由这些门禁证明 | 按各自独立环境和来源验收；保持与合成、Go、SSE测试分列 |
+
+Headscale/Tailscale仅作为只读对照；未复用代码或增加依赖。不要用其网络控制面替代CICADA Owner Guard/E2EE。历史计划、失败和旧工件保留其原来源；勿以旧 clean-25bc/Hub41b7 F4 fixture 代表 clean52 Main。
 
 ## Historical plans before this checkpoint
 
 
-## 2026-10-02 current plan — source-attributed scoped QA passed; clean delivery pending
+## Historical 2026-10-02 plan — source-attributed scoped QA passed; clean delivery pending
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入

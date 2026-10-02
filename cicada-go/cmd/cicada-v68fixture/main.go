@@ -384,6 +384,25 @@ func approve(raw []string) error {
 	return nil
 }
 
+func v68ExpectedPayloadMatches(profile string, payload []byte, reply bool) bool {
+	switch profile {
+	case "legacy-v68":
+		marker := "CICADA-V68-PLAINTEXT-NEVER-IN-RELAY"
+		if reply {
+			marker = "CICADA-V68-REPLY-ONLY-OPAQUE"
+		}
+		return len(payload) > 0 && bytes.Contains(payload, []byte(marker))
+	case "managed-native":
+		pattern := `^CICADA-MANAGED-PLAINTEXT-NEVER-IN-RELAY:[0-9a-f]{16}$`
+		if reply {
+			pattern = `^CICADA-MANAGED-REPLY-ONLY-OPAQUE:CICADA-ORIGINAL-B-[0-9a-f]{32}$`
+		}
+		return regexp.MustCompile(pattern).Match(payload)
+	default:
+		return false
+	}
+}
+
 func check(raw []string) error {
 	flags := flag.NewFlagSet("cicada-v68fixture check", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -393,9 +412,17 @@ func check(raw []string) error {
 	plaintext := flags.String("plaintext-file", "", "private file with expected payload; never printed")
 	replyPlaintext := flags.String("reply-plaintext-file", "", "private file with expected reply; never printed")
 	requestID := flags.String("request-id", "", "ASK lifecycle request ID")
+	payloadProfile := flags.String("payload-profile", "legacy-v68", "expected payload profile: legacy-v68 or managed-native")
 	if err := flags.Parse(raw); err != nil || len(flags.Args()) != 0 || *dbPath == "" || *root == "" ||
 		*messageID == "" || *plaintext == "" || *replyPlaintext == "" || *requestID == "" {
 		return errors.New("check requires --db, --fixture, --message-id, --request-id, --plaintext-file, and --reply-plaintext-file")
+	}
+	if *payloadProfile != "legacy-v68" && *payloadProfile != "managed-native" {
+		return errors.New("unknown expected payload profile")
+	}
+	payloadMarker := "CICADA-V68-PLAINTEXT-NEVER-IN-RELAY"
+	if *payloadProfile == "managed-native" {
+		payloadMarker = "CICADA-MANAGED-PLAINTEXT-NEVER-IN-RELAY"
 	}
 	validatedDB, rootAbs, err := validateOwnedFixturePaths(*dbPath, *root, false)
 	if err != nil {
@@ -410,8 +437,7 @@ func check(raw []string) error {
 		return errors.New("expected payload must be a regular mode-0600 private fixture file")
 	}
 	expectedPayload, err := os.ReadFile(*plaintext)
-	if err != nil || len(expectedPayload) == 0 ||
-		!bytes.Contains(expectedPayload, []byte("CICADA-V68-PLAINTEXT-NEVER-IN-RELAY")) {
+	if err != nil || !v68ExpectedPayloadMatches(*payloadProfile, expectedPayload, false) {
 		return errors.New("expected payload file is missing or empty")
 	}
 	replyInfo, err := os.Lstat(*replyPlaintext)
@@ -419,8 +445,7 @@ func check(raw []string) error {
 		return errors.New("expected reply must be a regular mode-0600 private fixture file")
 	}
 	expectedReply, err := os.ReadFile(*replyPlaintext)
-	if err != nil || len(expectedReply) == 0 ||
-		!bytes.Contains(expectedReply, []byte("CICADA-V68-REPLY-ONLY-OPAQUE")) {
+	if err != nil || !v68ExpectedPayloadMatches(*payloadProfile, expectedReply, true) {
 		return errors.New("expected reply file is missing or empty")
 	}
 	persistence, err := store.New(validatedDB)
@@ -433,7 +458,7 @@ func check(raw []string) error {
 		record.Route.MessageID != *messageID || record.Route.Kind != "ask" ||
 		record.Route.SenderEndpointID == "" || record.Route.ReceiverEndpointID == "" ||
 		record.Security.SenderGroupID != meta.GroupID || record.Security.ReceiverGroupID != meta.GroupID ||
-		bytes.Contains(record.Ciphertext, []byte("CICADA-V68-PLAINTEXT-NEVER-IN-RELAY")) {
+		bytes.Contains(record.Ciphertext, []byte(payloadMarker)) {
 		return errors.New("sealed relay record is absent or its opaque bytes do not match the fixture sentinel expectations")
 	}
 	if bytes.Contains(record.Ciphertext, expectedPayload) {

@@ -15,6 +15,64 @@ import (
 )
 
 const relayNodeStreamRevalidateInterval = time.Second
+const relayNodeStreamWriteTimeout = 5 * time.Second
+
+// Establish deadline and flush support before registering either subscription.
+// A wrapper must forward these capabilities or expose its underlying writer.
+func relayNodeStreamController(w http.ResponseWriter) (*http.ResponseController, error) {
+	current := w
+	flushable, deadlineSupported := false, false
+	for depth := 0; depth < 32 && current != nil; depth++ {
+		if _, ok := current.(interface{ FlushError() error }); ok {
+			flushable = true
+		}
+		if _, ok := current.(http.Flusher); ok {
+			flushable = true
+		}
+		if _, ok := current.(interface{ SetWriteDeadline(time.Time) error }); ok {
+			deadlineSupported = true
+		}
+		if flushable && deadlineSupported {
+			break
+		}
+		next, ok := current.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			break
+		}
+		current = next.Unwrap()
+	}
+	if !flushable || !deadlineSupported {
+		return nil, http.ErrNotSupported
+	}
+	controller := http.NewResponseController(w)
+	if err := controller.SetWriteDeadline(time.Now().Add(relayNodeStreamWriteTimeout)); err != nil {
+		return nil, err
+	}
+	if err := controller.SetWriteDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
+	return controller, nil
+}
+
+// Write and flush share one budget, rather than granting each a fresh timeout.
+// Clearing only after success permits the 25-second idle keepalive interval.
+// A failure retains the deadline for net/http finalization after handler return.
+func relayNodeStreamFrame(w http.ResponseWriter, controller *http.ResponseController, frame string) error {
+	if err := controller.SetWriteDeadline(time.Now().Add(relayNodeStreamWriteTimeout)); err != nil {
+		return err
+	}
+	n, err := io.WriteString(w, frame)
+	if err != nil {
+		return err
+	}
+	if n != len(frame) {
+		return io.ErrShortWrite
+	}
+	if err := controller.Flush(); err != nil {
+		return err
+	}
+	return controller.SetWriteDeadline(time.Time{})
+}
 
 func (h *Handler) relayNodeV2(response http.ResponseWriter, request *http.Request) {
 	remainder := strings.Trim(strings.TrimPrefix(request.URL.Path, "/v2/relay/nodes/"), "/")
@@ -421,9 +479,10 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
 		return
 	}
-	flusher, ok := response.(http.Flusher)
-	if !ok {
-		writeError(response, http.StatusInternalServerError, errors.New("streaming is unavailable"))
+	controller, err := relayNodeStreamController(response)
+	if err != nil {
+		// Do not attempt an unbounded error-body write through this writer.
+		response.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	events, unsubscribe := h.fabricService.SubscribeNodeEvents(nodeID)
@@ -433,11 +492,9 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", "text/event-stream")
 	response.Header().Set("Cache-Control", "no-cache, no-transform")
 	response.Header().Set("X-Accel-Buffering", "no")
-	response.WriteHeader(http.StatusOK)
-	if _, err := io.WriteString(response, "event: ready\ndata: claim\n\n"); err != nil {
+	if err := relayNodeStreamFrame(response, controller, "event: ready\ndata: claim\n\n"); err != nil {
 		return
 	}
-	flusher.Flush()
 	lastCredentialCheck := time.Now()
 	credentialCurrentIfDue := func() bool {
 		if !nodePQTransportValidityCurrent(request.Context()) {
@@ -473,30 +530,27 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 			if !credentialCurrentIfDue() {
 				return
 			}
-			if _, err := io.WriteString(response, "event: wake\ndata: claim\n\n"); err != nil {
+			if err := relayNodeStreamFrame(response, controller, "event: wake\ndata: claim\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-spaceEvents:
 			// A space hint carries no Group, reader or record coordinates. The
 			// Node must reconcile its own current subscriptions through Guard.
 			if !credentialCurrentIfDue() {
 				return
 			}
-			if _, err := io.WriteString(response, "event: space\ndata: sync\n\n"); err != nil {
+			if err := relayNodeStreamFrame(response, controller, "event: space\ndata: sync\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-heartbeat.C:
 			// Credential rotation/revocation fences an already-open stream.
 			if !h.relayNodeCredentialCurrent(nodeID, token) || !nodePQTransportCurrent(request.Context()) {
 				return
 			}
 			lastCredentialCheck = time.Now()
-			if _, err := io.WriteString(response, ": keepalive\n\n"); err != nil {
+			if err := relayNodeStreamFrame(response, controller, ": keepalive\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
 		}
 	}
 }

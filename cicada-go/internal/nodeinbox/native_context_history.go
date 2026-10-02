@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -93,13 +95,27 @@ func openNativeContextRegistry(path string, perIdentityCap, globalHistoryCap int
 			return nil, err
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	dsn := "file::memory:"
+	if path != ":memory:" {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve shared Node context registry: %w", err)
+		}
+		dsn = (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String()
+	}
+	// Driver options apply the bounded busy handler before its initialization
+	// pragmas and acquire the writer reservation before reading scope history.
+	// This serializes check-and-record across processes without stale snapshots.
+	parameters := url.Values{"_busy_timeout": {"5000"}, "_txlock": {"immediate"}}
+	db, err := sql.Open("sqlite", dsn+"?"+parameters.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("open shared Node context registry: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+	// Configure the retained connection before WAL recovery or schema access.
+	// Parallel Hub workers can open this shared WriterRoot database together.
+	if _, err := db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS node_native_context_history_v1 (
  record_id TEXT PRIMARY KEY, identity_digest TEXT NOT NULL, account_digest TEXT NOT NULL,
  harness TEXT NOT NULL, hub_id TEXT NOT NULL, network_id TEXT NOT NULL, group_id TEXT NOT NULL,
