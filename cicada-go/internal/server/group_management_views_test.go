@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -73,25 +74,31 @@ func TestGroupManagementReadViewsShowTaskEvidenceAndUnknownReceipt(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err = manager.Fabric().ClaimTask(actor, fabric.TaskClaimInput{
+	claimed, err := manager.Fabric().ClaimTask(actor, fabric.TaskClaimInput{
 		TaskID: task.ID, ExpectedRevision: task.Revision, IdempotencyKey: "management-view-claim",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := manager.Fabric().SubmitTaskResult(actor, fabric.TaskResultInput{
-		TaskID: task.ID, ExpectedRevision: task.Revision, OwnerEpoch: task.OwnerEpoch,
-		Summary: "Throughput measured", Evidence: []string{"artifact://run-17", "event://benchmark-17"},
-	})
-	if err != nil {
-		t.Fatal(err)
+	// Plain peer submissions cannot populate the legitimate management view.
+	if _, err = manager.Fabric().SubmitTaskResult(actor, fabric.TaskResultInput{
+		TaskID: task.ID, ExpectedRevision: claimed.Revision, OwnerEpoch: claimed.OwnerEpoch,
+		Summary: "unclassified peer summary", Evidence: []string{"synthetic"},
+	}); !errors.Is(err, store.ErrSharedTaskPeerPlaintext) {
+		t.Fatalf("plaintext peer submit: %v", err)
 	}
-
 	persistence, err := store.New(filepath.Join(root, "state", "cicada.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer persistence.Close()
+	// This fixture is an explicit trusted management write, not a peer API.
+	result, err := persistence.SubmitSharedTaskResult(task.ID, actor.PrincipalID, actor.EndpointID,
+		claimed.OwnerEpoch, claimed.Revision, "Throughput measured", []string{"artifact://run-17", "event://benchmark-17"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	expires := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 	contract, err := persistence.CreateFederationContract(store.FederationContract{
 		ID: "view-contract", SourceGroupID: source.ID, TargetGroupID: target.ID,

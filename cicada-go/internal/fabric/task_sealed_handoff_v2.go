@@ -141,7 +141,7 @@ func (s *Service) GetSealedTaskHandoff(actor Actor,
 // immutable Artifact versions inside the same Store transaction as the owner
 // epoch/revision change. This guard also applies to direct HTTP callers.
 func (s *Service) AcceptSealedTaskHandoff(actor Actor,
-	input SealedTaskHandoffAcceptInput) (*store.SharedTask, error) {
+	input SealedTaskHandoffAcceptInput) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
@@ -150,5 +150,5 @@ func (s *Service) AcceptSealedTaskHandoff(actor Actor,
 	if err != nil {
 		return nil, sealedTaskHandoffError(err)
 	}
-	return task, nil
+	return store.ProjectSharedTaskPeer(task), nil
 }

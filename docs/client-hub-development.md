@@ -1,5 +1,51 @@
 # Client / Hub 联合开发与验收
 
+## 2026-10-02 current Core candidate — v1.6.4, no Client runtime repin
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已机械集成 **86 路径 = panel 6 + review policy 13 + Task privacy 30 + D2 TLS 27 + N2 reliability 10**。
+机械集成证明精确源码合并与保全，不能替代运行验收。当前统一 QA 为 **SCOPED_PASS**：41 个有限命令，243 top-level＋308 subtests，
+0 fail/0 skip，30 条test-binary执行记录（18 unique SHA）；D2独立51命令的有限检查亦PASS。
+这些结果仅归ec160/STD4380，不是全仓、real Runtime或新clean交付PASS。
+完整身份、各范围、证据入口和下一出口见[本检查点验证](v01-group-peer-runtime-checkpoint-validation.md)。
+
+本轮review-policy合同补齐fresh Guard资格投影与原双侧Owner审批proof；
+公开目录表示availability，encrypted session capabilities、独立Owner pin/proof和当前服务端Guard
+共同决定caller权限。Hub返回Owner public key仅是discovery，不能自动信任。
+资格snapshot不是外部签名credential，缓存/恢复response不是fresh authorization。
+首次单侧grant丢响应保持original packet与uncertainty fence，不能用active-head metadata推断成功。
+
+Android 既有已验收运行基线仍为 clean 144 / v1.6.1；e8 / v1.6.3 导入与
+offline Kotlin candidate checks 只归原来源。Client 当前本地策略为 **39 implemented / 16 closed**，
+五项 `link.key_manifest`、`link.key_grants`、`link.key_grant`、
+`link.review_policy_preview`、`link.review_policy_grant` 及独立 directory permission
+extension 继续关闭，待新 clean 工件交付后分别验收、逐项开放。
+`link.review_policy_status` 已实现 metadata 读取，不在这五项中；它不授予签名、路由或投递权限。
+
+独立Client的[e8/v1.6.3 import与offline候选报告](../../CICADA_CLIENT/docs/client-hub-v1.6.3-e8a029d-validation.md)
+及[operation readiness](../../CICADA_CLIENT/docs/client-hub-v1.6-operation-readiness.md)保持原来源。
+新clean交付后才能锁定实际commit/image/package/catalog，再分别验encrypted capability、Android
+consent/status/refusal/recovery；Node/真实native/model/物理设备/公网HTTPS分开。
+本轮Task metadata接口不自动增加Android operation或角色权限；当前catalog仍55项。
+
+
+本组合实际[QA receipt](../.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](../.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+## Historical Core deliveries, Client tooling and runtime records
+
+以下clean144、旧integrated v1.6.3/carrier与旧APK状态都是当时记录，不表示本轮已交付或repin。
+后文通用两仓开发流程继续适用；历史N1–N5的PASS只归其精确source/image/APK。
+
 **Historical clean Hub delivery (2026-10-01):** revision `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, source fingerprint `6ab2d94a26dd41082b3177006095408b25d4e8c05cd54315db6c325be92eb5be`, image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. This v1.6.1/55-operation artifact and its bundle/report remain immutable; metadata predates additive input inventory capture. See the [historical delivery record](v01-transport-recovery-checkpoint-validation.md).
 
 **Delivered clean Main checkpoint (2026-10-02):** Main `144e079`, standard source `e64f2449…`, exact 806-input inventory; STD Hub/interop and separate clean PQ image/package passed bounded gates. Clean Client `2ce183373429dddcb21259b54b3b261ae010bd55` delivered against v1.6.1; redacted receipt SHA `9069d2c4fa2dbd279fd1eca35eccc4b7bd0b8a9102651d6a724ca7ca4c60384f`, 40-entry evidence manifest SHA `5b0830b4130a9fde09873c8e6b7393d3f52aa868a67d416fa7ca6e06c8dd5b5d`. These source/APK-specific checks do not accept Android Node/Worker runtime, physical-device or public HTTPS behavior.

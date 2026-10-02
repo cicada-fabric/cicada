@@ -271,3 +271,140 @@ func TestOwnerLinkReviewPolicyProofIsPurposeSeparatedAndExact(t *testing.T) {
 		t.Fatal("tampered policy digest verified")
 	}
 }
+
+// Both public approvals use independently pinned synthetic identities. Hub-returned
+// keys in status are correlation data, never an identity trust bootstrap.
+func TestPublishedBilateralLinkReviewPolicyClientEvidence(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "link-review-policy-client-evidence-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		SyntheticOnly    bool     `json:"synthetic_only"`
+		Warning          string   `json:"warning"`
+		CanonicalPolicy  string   `json:"canonical_policy_json"`
+		PolicyDigest     string   `json:"policy_digest"`
+		VerifiedAt       string   `json:"verified_at"`
+		SigningDomainHex string   `json:"signing_domain_hex"`
+		ClaimsFieldOrder []string `json:"claims_field_order"`
+		Proofs           []struct {
+			Side         OwnerLinkGrantSide `json:"side"`
+			OwnerID      string             `json:"owner_id"`
+			Identity     PublicIdentity     `json:"owner_public_identity"`
+			Claims       string             `json:"canonical_unsigned_json"`
+			SignedBase64 string             `json:"signed_bytes_base64"`
+			SignedHex    string             `json:"signed_bytes_hex"`
+			SignedHash   string             `json:"signed_bytes_sha256"`
+			Signature    string             `json:"signature_base64"`
+			Wire         string             `json:"proof_json"`
+			Hash         string             `json:"proof_sha256"`
+		} `json:"proofs"`
+		Status struct {
+			LinkID        string `json:"link_id"`
+			Contract      string `json:"contract_digest"`
+			LinkVersion   uint64 `json:"link_version"`
+			PolicyVersion uint64 `json:"policy_version"`
+			PolicyDigest  string `json:"policy_digest"`
+			VerifiedAt    string `json:"verified_at"`
+			Approvals     []struct {
+				Side          OwnerLinkGrantSide `json:"side"`
+				OwnerID       string             `json:"owner_id"`
+				CurrentStatus string             `json:"current_status"`
+				Evidence      struct {
+					KeyID    string         `json:"owner_key_id"`
+					Identity PublicIdentity `json:"owner_public_identity"`
+					State    string         `json:"owner_key_state"`
+					Version  uint64         `json:"owner_key_version"`
+					Proof    []byte         `json:"signed_proof"`
+				} `json:"evidence"`
+			} `json:"owner_approvals"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatal(err)
+	}
+	if !v.SyntheticOnly || v.Warning != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT" || len(v.Proofs) != 2 || len(v.Status.Approvals) != 2 {
+		t.Fatal("fixture must contain clearly synthetic bilateral evidence")
+	}
+	now, err := time.Parse(time.RFC3339Nano, v.VerifiedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Status.VerifiedAt != v.VerifiedAt || vectorDigest(v.CanonicalPolicy) != v.PolicyDigest || v.Status.PolicyDigest != v.PolicyDigest || v.SigningDomainHex != hex.EncodeToString([]byte(ownerLinkReviewPolicyDomain)) {
+		t.Fatal("policy/domain/snapshot correlation differs")
+	}
+	wantOrder := []string{"version", "owner_id", "link_id", "contract_digest", "policy_digest", "expected_link_version", "policy_version", "side", "issued_at", "expires_at", "nonce"}
+	if len(v.ClaimsFieldOrder) != len(wantOrder) {
+		t.Fatal("claim count differs")
+	}
+	for i := range wantOrder {
+		if v.ClaimsFieldOrder[i] != wantOrder[i] {
+			t.Fatal("claim order differs")
+		}
+	}
+	for i, row := range v.Proofs {
+		t.Run(string(row.Side), func(t *testing.T) {
+			side := []OwnerLinkGrantSide{OwnerLinkGrantSideSource, OwnerLinkGrantSideTarget}[i]
+			approval := v.Status.Approvals[i]
+			if row.Side != side || approval.Side != side || row.OwnerID != approval.OwnerID || approval.CurrentStatus != "VERIFIED" || approval.Evidence.State != "ACTIVE" || approval.Evidence.Version != 1 || approval.Evidence.KeyID != row.Identity.ID {
+				t.Fatal("approval correlation differs")
+			}
+			identityWire, _ := json.Marshal(row.Identity)
+			statusIdentity, _ := json.Marshal(approval.Evidence.Identity)
+			if !bytes.Equal(identityWire, statusIdentity) || !bytes.Equal([]byte(row.Wire), approval.Evidence.Proof) {
+				t.Fatal("status changed original proof or public identity")
+			}
+			proof, err := VerifyOwnerLinkReviewPolicy([]byte(row.Wire), row.Identity, row.OwnerID, v.Status.LinkID, v.Status.Contract, v.PolicyDigest, v.Status.LinkVersion, v.Status.PolicyVersion, side, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims, _ := json.Marshal(proof.claims())
+			signed, _ := ownerLinkReviewPolicySignedBytes(proof)
+			if string(claims) != row.Claims || !bytes.Equal(signed, mustDecodeVectorBase64(t, row.SignedBase64)) || hex.EncodeToString(signed) != row.SignedHex || vectorDigest(string(signed)) != row.SignedHash || vectorDigest(row.Wire) != row.Hash || !bytes.Equal(proof.Signature, mustDecodeVectorBase64(t, row.Signature)) {
+				t.Fatal("published proof signing bytes/hash differ")
+			}
+			verify := func(wire []byte, key PublicIdentity, at time.Time) error {
+				_, err := VerifyOwnerLinkReviewPolicy(wire, key, row.OwnerID, v.Status.LinkID, v.Status.Contract, v.PolicyDigest, v.Status.LinkVersion, v.Status.PolicyVersion, side, at)
+				return err
+			}
+			for name, mutate := range map[string]func(*OwnerLinkReviewPolicyProof){
+				"version": func(p *OwnerLinkReviewPolicyProof) { p.Version++ }, "owner": func(p *OwnerLinkReviewPolicyProof) { p.OwnerID += "_other" }, "link": func(p *OwnerLinkReviewPolicyProof) { p.LinkID += "_other" }, "contract": func(p *OwnerLinkReviewPolicyProof) { p.ContractDigest = vectorDigest("other") }, "policy": func(p *OwnerLinkReviewPolicyProof) { p.PolicyDigest = vectorDigest("other") }, "link-version": func(p *OwnerLinkReviewPolicyProof) { p.ExpectedLinkVersion++ }, "policy-version": func(p *OwnerLinkReviewPolicyProof) { p.PolicyVersion++ }, "side": func(p *OwnerLinkReviewPolicyProof) {
+					p.Side = []OwnerLinkGrantSide{OwnerLinkGrantSideTarget, OwnerLinkGrantSideSource}[i]
+				}, "issued": func(p *OwnerLinkReviewPolicyProof) { p.IssuedAt = "2026-10-02T12:01:00Z" }, "expiry": func(p *OwnerLinkReviewPolicyProof) { p.ExpiresAt = "2026-10-02T15:00:00Z" }, "nonce": func(p *OwnerLinkReviewPolicyProof) { p.Nonce = vectorDigest("other") }, "signature": func(p *OwnerLinkReviewPolicyProof) {
+					p.Signature = append([]byte(nil), p.Signature...)
+					p.Signature[0] ^= 1
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					changed := proof
+					mutate(&changed)
+					wire, _ := json.Marshal(changed)
+					if verify(wire, row.Identity, now) == nil {
+						t.Fatal("mutated approval accepted")
+					}
+				})
+			}
+			if verify([]byte(row.Wire), v.Proofs[1-i].Identity, now) == nil {
+				t.Fatal("peer key substitution accepted")
+			}
+			expires, _ := time.Parse(time.RFC3339Nano, proof.ExpiresAt)
+			if verify([]byte(row.Wire), row.Identity, expires) == nil {
+				t.Fatal("expired approval accepted")
+			}
+			if _, err := VerifyOwnerLinkGrant([]byte(row.Wire), row.Identity, row.OwnerID, v.Status.LinkID, v.Status.Contract, v.Status.LinkVersion, side, now); err == nil {
+				t.Fatal("policy proof accepted under ordinary grant domain")
+			}
+			var object map[string]json.RawMessage
+			json.Unmarshal([]byte(row.Wire), &object)
+			reordered, _ := json.Marshal(object)
+			if verify(reordered, row.Identity, now) == nil {
+				t.Fatal("reordered wire accepted")
+			}
+			object["reviewer_qualifications"] = json.RawMessage(`[]`)
+			unknown, _ := json.Marshal(object)
+			if verify(unknown, row.Identity, now) == nil {
+				t.Fatal("unsigned qualification claim accepted")
+			}
+		})
+	}
+}

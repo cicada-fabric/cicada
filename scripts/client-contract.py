@@ -34,6 +34,7 @@ FILES = (
     "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
     "cicada-go/internal/e2ee/testdata/link-client-proof-v2.json",
     "cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json",
+    "cicada-go/internal/e2ee/testdata/link-review-policy-client-evidence-v1.json",
     "cicada-go/internal/e2ee/testdata/cross-owner-group-key-v2.json",
     "cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json",
     "cicada-go/internal/e2ee/testdata/network-direct-key-consent-v1.json",
@@ -61,7 +62,7 @@ def node_schema(openapi, name):
     block = match.group(1)
     properties = set(re.findall(r"^        ([a-z_]+):", block, re.MULTILINE))
     required = re.search(r"^      required: \[([^\]]*)\]", block, re.MULTILINE)
-    return block, properties, set(required.group(1).split(", ")) if required else set()
+    return block, properties, {field.strip() for field in required.group(1).split(",")} if required else set()
 
 
 def check_node_pairing_contract(openapi, wire):
@@ -110,6 +111,103 @@ def check_link_review_policy_contract(openapi, wire):
             or '"expected_policy_version":0' not in wire
             or "`expected_policy_version + 1`" not in wire):
         raise ValueError("review policy current/next version semantics drift")
+
+    shapes = {
+        "LinkReviewPolicyPreviewResult": ("link_id side owner_id contract_digest link_version expected_policy_version policy_version policy_digest policy maximum_proof_expires_at verified_at reviewer_qualifications", ""),
+        "LinkReviewerQualification": ("endpoint_id group_id membership_revision join_revision group_version binding_id binding_epoch lease_expires_at action", ""),
+        "LinkReviewPolicyStatusResult": ("link_id link_version contract_digest policy_version policy_digest policy current accepted_sides verified_at owner_approvals expires_at", "expires_at"),
+        "LinkReviewPolicyOwnerApproval": ("side owner_id current_status evidence", "evidence"),
+        "LinkReviewPolicyOwnerEvidence": ("owner_key_id owner_public_identity owner_key_state owner_key_version signed_proof accepted_at", ""),
+    }
+    for name, (fields, optional) in shapes.items():
+        block, properties, required = node_schema(openapi, name)
+        if (properties != set(fields.split()) or required != properties - set(optional.split())
+                or "      additionalProperties: false\n" not in block):
+            raise ValueError("review policy evidence field/required drift: " + name)
+    status, _, _ = node_schema(openapi, "LinkReviewPolicyStatusResult")
+    approval, _, _ = node_schema(openapi, "LinkReviewPolicyOwnerApproval")
+    evidence, _, _ = node_schema(openapi, "LinkReviewPolicyOwnerEvidence")
+    qualification, _, _ = node_schema(openapi, "LinkReviewerQualification")
+    if ("maxItems: 8" not in preview or "maxItems: 2" not in status
+            or "#/components/schemas/LinkReviewerQualification" not in preview
+            or "#/components/schemas/LinkReviewPolicyOwnerApproval" not in status
+            or "#/components/schemas/LinkReviewPolicyOwnerEvidence" not in approval
+            or "enum: [MISSING, VERIFIED, OWNER_KEY_REVOKED, PROOF_EXPIRED, SCOPE_STALE, INVALID]" not in approval
+            or "action: {const: link.review}" not in qualification
+            or "owner_key_state: {const: ACTIVE}" not in evidence
+            or "owner_key_version: {type: integer, minimum: 1}" not in evidence
+            or "maxLength: 21848" not in evidence
+            or "#/components/schemas/PublicIdentity" not in evidence):
+        raise ValueError("review policy evidence bounds/state/reference drift")
+
+
+def check_review_policy_client_vector(vector):
+    domain = b"cicada/communication-link/review-policy-owner-approval/v1\x00"
+    order = ["version", "owner_id", "link_id", "contract_digest", "policy_digest",
+             "expected_link_version", "policy_version", "side", "issued_at", "expires_at", "nonce"]
+    if (vector.get("fixture_version") != 1 or vector.get("synthetic_only") is not True
+            or vector.get("warning") != "PUBLIC SYNTHETIC TEST KEY — NEVER USE IN A DEPLOYMENT"
+            or vector.get("algorithm") != "ML-DSA-65"
+            or vector.get("signing_domain") != "cicada/communication-link/review-policy-owner-approval/v1\\x00"
+            or vector.get("signing_domain_hex") != domain.hex()
+            or vector.get("claims_field_order") != order):
+        raise ValueError("review policy client vector domain/order/label drift")
+    canonical = vector["canonical_policy_json"]
+    policy = json.loads(canonical)
+    if (json.dumps(policy, ensure_ascii=False, separators=(",", ":")) != canonical
+            or sha256(canonical.encode()) != vector.get("policy_digest")):
+        raise ValueError("review policy client vector canonical policy/digest drift")
+    preview, status = vector["preview"], vector["status"]
+    preview_fields = set("link_id side owner_id contract_digest link_version expected_policy_version policy_version policy_digest policy maximum_proof_expires_at verified_at reviewer_qualifications".split())
+    status_fields = set("link_id link_version contract_digest policy_version policy_digest policy current accepted_sides verified_at owner_approvals expires_at".split())
+    qualification_fields = set("endpoint_id group_id membership_revision join_revision group_version binding_id binding_epoch lease_expires_at action".split())
+    evidence_fields = set("owner_key_id owner_public_identity owner_key_state owner_key_version signed_proof accepted_at".split())
+    if (set(preview) != preview_fields or set(status) != status_fields
+            or not 0 < len(preview["reviewer_qualifications"]) <= 8
+            or any(set(q) != qualification_fields for q in preview["reviewer_qualifications"])
+            or any(set(a) != {"side", "owner_id", "current_status", "evidence"}
+                   or set(a["evidence"]) != evidence_fields for a in status["owner_approvals"])
+            or any(preview[k] != status[k] for k in ("link_id", "link_version", "contract_digest", "policy_version"))
+            or preview["policy_version"] != preview["expected_policy_version"] + 1):
+        raise ValueError("review policy client vector exact response shape/tuple drift")
+    for result in (preview, status):
+        if (result.get("policy") != policy or result.get("policy_digest") != vector["policy_digest"]
+                or result.get("verified_at") != vector["verified_at"]):
+            raise ValueError("review policy client vector snapshot/policy drift")
+    if (status.get("current") is not True or status.get("accepted_sides") != ["SOURCE", "TARGET"]
+            or [row.get("side") for row in vector["proofs"]] != ["SOURCE", "TARGET"]
+            or [row.get("side") for row in status["owner_approvals"]] != ["SOURCE", "TARGET"]
+            or len(preview["reviewer_qualifications"]) != len(policy["reviewers"])):
+        raise ValueError("review policy client vector bilateral/qualification drift")
+    for reviewer, qualification in zip(policy["reviewers"], preview["reviewer_qualifications"]):
+        if (any(qualification.get(k) != reviewer[k] for k in ("endpoint_id", "group_id"))
+                or qualification.get("action") != "link.review"
+                or any(qualification.get(k, 0) <= 0 for k in ("membership_revision", "join_revision", "group_version", "binding_epoch"))):
+            raise ValueError("review policy client vector qualification drift")
+    for row, approval in zip(vector["proofs"], status["owner_approvals"]):
+        raw = row["proof_json"].encode()
+        proof = json.loads(raw)
+        claims = {k: v for k, v in proof.items() if k != "signature"}
+        unsigned = json.dumps(claims, ensure_ascii=False, separators=(",", ":"))
+        signed = domain + unsigned.encode()
+        identity, evidence = row["owner_public_identity"], approval["evidence"]
+        if (list(proof) != order + ["signature"] or unsigned != row["canonical_unsigned_json"]
+                or json.dumps(proof, ensure_ascii=False, separators=(",", ":")).encode() != raw
+                or len(raw) > 16384 or sha256(raw) != row["proof_sha256"]
+                or signed.hex() != row["signed_bytes_hex"]
+                or base64.b64encode(signed).decode() != row["signed_bytes_base64"]
+                or sha256(signed) != row["signed_bytes_sha256"]
+                or proof["signature"] != row["signature_base64"]
+                or identity["signing_public"] != row["mldsa_public_key_base64"]
+                or approval["current_status"] != "VERIFIED" or evidence["owner_key_state"] != "ACTIVE"
+                or evidence["owner_key_version"] <= 0 or evidence["owner_public_identity"] != identity
+                or evidence["owner_key_id"] != identity["id"]
+                or base64.b64decode(evidence["signed_proof"], validate=True) != raw
+                or proof["side"] != row["side"] or approval["side"] != row["side"]
+                or proof["owner_id"] != row["owner_id"] or approval["owner_id"] != row["owner_id"]
+                or proof["policy_digest"] != vector["policy_digest"]
+                or any(proof[pk] != status[rk] for pk, rk in (("link_id", "link_id"), ("contract_digest", "contract_digest"), ("expected_link_version", "link_version"), ("policy_version", "policy_version")))):
+            raise ValueError("review policy client vector proof/evidence/correlation drift")
 
 
 def check_group_directory_permission_contract(openapi, wire):
@@ -414,6 +512,7 @@ def read_contract(root):
     if (review_signed != review_signed_hex or review_signed != review_signed_base64 or
             sha256(review_signed) != review.get("signed_bytes_sha256")):
         raise ValueError("OwnerLinkReviewPolicyProof signed bytes/hash differ from ordered production claims")
+    check_review_policy_client_vector(json.loads(files["cicada-go/internal/e2ee/testdata/link-review-policy-client-evidence-v1.json"]))
     broadcast = json.loads(files["cicada-go/internal/e2ee/testdata/network-collaboration-broadcast-consent-v1.json"])
     broadcast_domain = b"cicada/network/collaboration-key-grant/v1\x00"
     broadcast_claim_order = [

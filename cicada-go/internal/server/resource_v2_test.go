@@ -58,7 +58,7 @@ func TestManagedResourceHTTPExecutesOnlyCurrentFencedLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err = manager.Fabric().ClaimTask(actor, fabric.TaskClaimInput{TaskID: task.ID, ExpectedRevision: task.Revision, IdempotencyKey: "claim-1"})
+	_, err = manager.Fabric().ClaimTask(actor, fabric.TaskClaimInput{TaskID: task.ID, ExpectedRevision: task.Revision, IdempotencyKey: "claim-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

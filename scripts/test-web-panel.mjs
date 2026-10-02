@@ -133,6 +133,47 @@ async function modelChecks(uiDir) {
     { group_id: 'group-child', network_id: 'network-a', parent_group_id: 'group-root', name: 'Child', state: 'active', version: 1 }
   ], memberships: [{ group_id: 'group-root', principal_id: 'principal-a', status: 'active' }],
   endpoints: [{ endpoint_id: 'endpoint-a', principal_id: 'principal-a', owner_id: 'owner-a', name: 'Agent', group_ids: ['group-root', 'group-child'], network_ids: ['network-a'] }], links: [] };
+  const nesting = { ...topology, networks: [{ network_id: 'network-a', state: 'active' }] };
+  const rootIntent = model.groupParentGesture(nesting, 'group-child', '', 'network-a');
+  assert.deepEqual(rootIntent.action, { kind: 'group.set_parent', set_parent: {
+    group_id: 'group-child', parent_group_id: '', expected_group_version: 1 } });
+  assert.match(rootIntent.review, /no Membership, role, permission, history/);
+  assert.equal(model.groupParentGesture(nesting, 'group-child', 'group-root', 'network-a'), null);
+  assert.throws(() => model.groupParentGesture(nesting, 'group-root', 'group-child', 'network-a'), /cycle/);
+  assert.throws(() => model.groupParentGesture(nesting, 'group-child', 'group-child', 'network-a'), /cycle/);
+  assert.throws(() => model.groupParentGesture(nesting, 'group-child', '', 'foreign'), /selected active Network/);
+  assert.throws(() => model.groupParentGesture(nesting, 'missing', '', 'network-a'), /current visible/);
+  for (const version of [0, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => model.groupParentGesture({ ...nesting, groups: nesting.groups.map(group =>
+      group.group_id === 'group-child' ? { ...group, version } : group) }, 'group-child', '', 'network-a'), /current visible/);
+  }
+  for (const changed of [{ network_id: 'foreign' }, { state: 'archived' }, { parent_group_id: 'missing' }]) {
+    assert.throws(() => model.groupParentGesture({ ...nesting, groups: nesting.groups.map(group =>
+      group.group_id === 'group-root' ? { ...group, ...changed } : group) }, 'group-child', 'group-root', 'network-a'));
+  }
+  const controlsSource = (await readFile(path.join(uiDir, 'panel-canvas-controls.js'), 'utf8'))
+    .replace(/^import .*;$/gm, '').replace('export function', 'function');
+  vm.runInNewContext(`${controlsSource}\ninstallCanvasControls(globalThis.CanvasPanel);`, canvasContext);
+  const parentPanel = Object.create(CanvasPanel.prototype);
+  Object.assign(parentPanel, { topology: nesting, networkId: 'network-a', plan: [],
+    renderSide() {}, setMessage(message) { this.message = message; } });
+  parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'network-a', version: 1 }, '');
+  assert.equal(parentPanel.plan[0].set_parent.expected_group_version, 1);
+  parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'foreign', version: 1 }, '');
+  assert.equal(parentPanel.plan.length, 0, 'scope change rejects and clears old nesting preview');
+  parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'network-a', version: 2 }, '');
+  assert.equal(parentPanel.plan.length, 0, 'in-flight version change cannot create a new preview');
+  parentPanel.writeFence = { operationID: 'uncertain' };
+  parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'network-a', version: 1 }, '');
+  assert.equal(parentPanel.plan.length, 0, 'durable uncertain fence rejects valid nesting intent');
+  assert.match(parentPanel.message, /uncertain outcome/);
+  parentPanel.writeFence = null;
+  parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'network-a', version: 1 }, 'group-root');
+  assert.equal(parentPanel.plan.length, 0, 'duplicate placement remains a no-op');
+  const newer = model.groupParentGesture({ ...nesting, groups: nesting.groups.map(group =>
+    group.group_id === 'group-child' ? { ...group, version: 2 } : group) }, 'group-child', '', 'network-a');
+  assert.equal(newer.action.set_parent.expected_group_version, 2);
+  assert.equal(rootIntent.action.set_parent.expected_group_version, 1, 'saved preview never silently advances its CAS');
   assert.equal(model.groupHasMember(topology, topology.endpoints[0], 'group-root'), true);
   const scene = model.layoutTopology(topology, 'network-a');
   assert.equal(scene.endpointRefs.length, 2, 'one endpoint should have a visual reference in each Group');
@@ -302,6 +343,10 @@ async function main() {
   const wasmPath = option('--wasm');
   const runtimePath = option('--wasm-exec');
   const uiDir = option('--ui');
+  if (process.argv.includes('--model-only')) {
+    if (!uiDir) throw new Error('--model-only requires --ui DIR');
+    await modelChecks(uiDir); await staticChecks(uiDir); return;
+  }
   if (!wasmPath || !runtimePath || !uiDir) throw new Error('usage: test-web-panel.mjs --wasm FILE --wasm-exec FILE --ui DIR');
   await modelChecks(uiDir);
   await staticChecks(uiDir);
@@ -309,7 +354,7 @@ async function main() {
 }
 
 main().then(() => {
-  process.stdout.write('Web panel model and real Go WASM PQ/Wire checks passed.\n');
+  process.stdout.write(process.argv.includes('--model-only') ? 'Web panel model/static checks passed; Go WASM NOT_RUN.\n' : 'Web panel model and real Go WASM PQ/Wire checks passed.\n');
   process.exit(0);
 }).catch(error => {
   process.stderr.write(`Web panel check failed: ${error?.stack || error}\n`);

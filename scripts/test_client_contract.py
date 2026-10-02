@@ -89,6 +89,34 @@ class ContractBundleTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "review policy current CAS range drift"):
                 contract.read_contract(root)
 
+    def test_review_policy_evidence_rejects_schema_drift(self):
+        for old, new in (
+                ("maximum_proof_expires_at, verified_at, reviewer_qualifications]", "maximum_proof_expires_at, reviewer_qualifications]"),
+                ("action: {const: link.review}", "action: {const: link.send}"),
+                ("enum: [MISSING, VERIFIED, OWNER_KEY_REVOKED, PROOF_EXPIRED, SCOPE_STALE, INVALID]", "enum: [MISSING, VERIFIED]"),
+                ("maxLength: 21848", "maxLength: 21849")):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                path.write_text(path.read_text().replace(old, new))
+                with self.assertRaisesRegex(ValueError, "review policy evidence"):
+                    contract.read_contract(root)
+
+    def test_review_policy_client_vector_rejects_mutations(self):
+        name = "cicada-go/internal/e2ee/testdata/link-review-policy-client-evidence-v1.json"
+        self.assertIn(name, self.files)
+        for mutate in (
+                lambda v: v["claims_field_order"].reverse(),
+                lambda v: v.update(policy_digest="0" * 64),
+                lambda v: v["preview"]["reviewer_qualifications"][0].update(action="link.send"),
+                lambda v: v["status"]["owner_approvals"][0]["evidence"].update(owner_key_id="wrong"),
+                lambda v: v["status"]["owner_approvals"].reverse(),
+                lambda v: v["proofs"][0].update(signed_bytes_sha256="0" * 64)):
+            vector = json.loads(self.files[name])
+            mutate(vector)
+            with self.assertRaisesRegex(ValueError, "review policy client vector"):
+                contract.check_review_policy_client_vector(vector)
+
     def test_broadcast_vector_rejects_task_relabel(self):
         with tempfile.TemporaryDirectory() as directory:
             root = self.copied_contract(directory)

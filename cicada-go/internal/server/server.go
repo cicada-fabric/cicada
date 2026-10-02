@@ -21,9 +21,10 @@ import (
 )
 
 type Handler struct {
-	control       *control.Control
-	fabricService *fabricpkg.Service
-	apiToken      string
+	control        *control.Control
+	fabricService  *fabricpkg.Service
+	apiToken       string
+	nodeTLSCurrent NodeTLSCurrentReader
 }
 
 func NewHandler(controlPlane *control.Control) http.Handler {
@@ -31,6 +32,7 @@ func NewHandler(controlPlane *control.Control) http.Handler {
 	if controlPlane != nil {
 		handler.apiToken = strings.TrimSpace(controlPlane.APIToken())
 		handler.fabricService = controlPlane.Fabric()
+		handler.nodeTLSCurrent = controlPlane.NodeTLSCurrentStatusPacket
 	}
 	return handler
 }
@@ -40,6 +42,12 @@ func NewHandler(controlPlane *control.Control) http.Handler {
 // keeping Directory, Relay, Authorization, and State reachable.
 func NewFabricHandler(service *fabricpkg.Service, apiToken string) http.Handler {
 	return &Handler{fabricService: service, apiToken: strings.TrimSpace(apiToken)}
+}
+
+// NewFabricHandlerWithNodeTLSCurrent adds only a read-only authenticated
+// current-authority provider. Control business remains absent.
+func NewFabricHandlerWithNodeTLSCurrent(service *fabricpkg.Service, apiToken string, reader NodeTLSCurrentReader) http.Handler {
+	return &Handler{fabricService: service, apiToken: strings.TrimSpace(apiToken), nodeTLSCurrent: reader}
 }
 
 func isArtifactV2Path(path string) bool {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodelock"
+	"github.com/cicada-ai/cicada/internal/nodetransport"
 )
 
 type machineHubContext struct {
@@ -27,6 +28,7 @@ type machineHubContext struct {
 	NativeContexts                                                  *nodeinbox.NativeContextRegistry
 	ResourceExecutions                                              *nodelock.ResourceExecutionManager
 	NodeTransport                                                   http.RoundTripper
+	TLSRuntime                                                      *nodetransport.Runtime
 }
 
 type machineHubContextKey struct{}

@@ -321,6 +321,7 @@ type nodeSealedSendReceipt struct {
 	MessageID   string `json:"message_id"`
 	PayloadMode string `json:"payload_mode"`
 	OutboxState string `json:"outbox_state"`
+	Sequence    int64  `json:"sequence"`
 }
 
 func (b *machineAgentJoinBridge) postSealedLinkMessage(input fabricpkg.NodeSealedLinkSendInput) (nodeSealedSendReceipt, error) {

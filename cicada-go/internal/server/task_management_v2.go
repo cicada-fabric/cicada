@@ -8,6 +8,24 @@ import (
 )
 
 func (h *Handler) groupTasks(response http.ResponseWriter, request *http.Request, groupID string, parts []string) {
+	if len(parts) == 1 && parts[0] == "peer-shell" {
+		if request.Method != http.MethodPost {
+			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		var input store.SharedTaskPeerShellInput
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		task, err := h.control.CreateSharedTaskPeerShell(groupID, input)
+		if err != nil {
+			taskManagementError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, task)
+		return
+	}
 	if len(parts) == 1 && parts[0] == "results" {
 		if request.Method != http.MethodGet {
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -52,6 +70,18 @@ func (h *Handler) groupTasks(response http.ResponseWriter, request *http.Request
 		return
 	}
 	switch parts[1] {
+	case "peer-assignment":
+		var input store.SharedTaskPeerAssignmentInput
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		assignment, err := h.control.AssignSharedTaskPeerBody(groupID, parts[0], input)
+		if err != nil {
+			taskManagementError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, assignment)
 	case "dependencies":
 		var input struct {
 			DependsOnID      string `json:"depends_on_id"`

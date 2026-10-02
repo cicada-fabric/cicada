@@ -51,28 +51,62 @@ type CommunicationLinkReviewPolicy struct {
 	MaxReviewAgeSeconds  int                         `json:"max_review_age_seconds"`
 }
 
+// Qualification is a current Hub snapshot, never a durable signing credential.
+type CommunicationLinkReviewerQualification struct {
+	EndpointID         string `json:"endpoint_id"`
+	GroupID            string `json:"group_id"`
+	MembershipRevision int64  `json:"membership_revision"`
+	JoinRevision       int64  `json:"join_revision"`
+	GroupVersion       int64  `json:"group_version"`
+	BindingID          string `json:"binding_id"`
+	BindingEpoch       uint64 `json:"binding_epoch"`
+	LeaseExpiresAt     string `json:"lease_expires_at"`
+	Action             string `json:"action"`
+}
+
+type CommunicationLinkReviewOwnerEvidence struct {
+	OwnerKeyID          string              `json:"owner_key_id"`
+	OwnerPublicIdentity e2ee.PublicIdentity `json:"owner_public_identity"`
+	OwnerKeyState       string              `json:"owner_key_state"`
+	OwnerKeyVersion     int64               `json:"owner_key_version"`
+	SignedProof         []byte              `json:"signed_proof"`
+	AcceptedAt          string              `json:"accepted_at"`
+}
+
+type CommunicationLinkReviewOwnerApproval struct {
+	Side          string                                `json:"side"`
+	OwnerID       string                                `json:"owner_id"`
+	CurrentStatus string                                `json:"current_status"`
+	Evidence      *CommunicationLinkReviewOwnerEvidence `json:"evidence,omitempty"`
+}
+
 type CommunicationLinkReviewPolicyStatus struct {
-	LinkID        string                        `json:"link_id"`
-	LinkVersion   int64                         `json:"link_version"`
-	PolicyVersion int64                         `json:"policy_version"`
-	PolicyDigest  string                        `json:"policy_digest"`
-	Policy        CommunicationLinkReviewPolicy `json:"policy"`
-	Current       bool                          `json:"current"`
-	AcceptedSides []string                      `json:"accepted_sides"`
-	ExpiresAt     string                        `json:"expires_at,omitempty"`
+	ContractDigest string                                 `json:"contract_digest"`
+	VerifiedAt     string                                 `json:"verified_at"`
+	OwnerApprovals []CommunicationLinkReviewOwnerApproval `json:"owner_approvals"`
+	LinkID         string                                 `json:"link_id"`
+	LinkVersion    int64                                  `json:"link_version"`
+	PolicyVersion  int64                                  `json:"policy_version"`
+	PolicyDigest   string                                 `json:"policy_digest"`
+	Policy         CommunicationLinkReviewPolicy          `json:"policy"`
+	Current        bool                                   `json:"current"`
+	AcceptedSides  []string                               `json:"accepted_sides"`
+	ExpiresAt      string                                 `json:"expires_at,omitempty"`
 }
 
 type CommunicationLinkReviewPolicyPreview struct {
-	LinkID                string                        `json:"link_id"`
-	Side                  string                        `json:"side"`
-	OwnerID               string                        `json:"owner_id"`
-	ContractDigest        string                        `json:"contract_digest"`
-	LinkVersion           int64                         `json:"link_version"`
-	ExpectedPolicyVersion int64                         `json:"expected_policy_version"`
-	PolicyVersion         int64                         `json:"policy_version"`
-	PolicyDigest          string                        `json:"policy_digest"`
-	Policy                CommunicationLinkReviewPolicy `json:"policy"`
-	MaximumProofExpiresAt string                        `json:"maximum_proof_expires_at"`
+	VerifiedAt             string                                   `json:"verified_at"`
+	ReviewerQualifications []CommunicationLinkReviewerQualification `json:"reviewer_qualifications"`
+	LinkID                 string                                   `json:"link_id"`
+	Side                   string                                   `json:"side"`
+	OwnerID                string                                   `json:"owner_id"`
+	ContractDigest         string                                   `json:"contract_digest"`
+	LinkVersion            int64                                    `json:"link_version"`
+	ExpectedPolicyVersion  int64                                    `json:"expected_policy_version"`
+	PolicyVersion          int64                                    `json:"policy_version"`
+	PolicyDigest           string                                   `json:"policy_digest"`
+	Policy                 CommunicationLinkReviewPolicy            `json:"policy"`
+	MaximumProofExpiresAt  string                                   `json:"maximum_proof_expires_at"`
 }
 
 func (s *Store) initializeCommunicationLinkReviewSchema() error {
@@ -214,23 +248,24 @@ func normalizeCommunicationLinkReviewPolicy(input CommunicationLinkReviewPolicy)
 	return input, encoded, hex.EncodeToString(digest[:]), nil
 }
 
-func validateCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
-	policy CommunicationLinkReviewPolicy, now time.Time) error {
+func qualifyCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
+	policy CommunicationLinkReviewPolicy, now time.Time) ([]CommunicationLinkReviewerQualification, error) {
+	result := make([]CommunicationLinkReviewerQualification, 0, len(policy.Reviewers))
 	for _, reviewer := range policy.Reviewers {
 		if reviewer.GroupID != link.SourceGroupID && reviewer.GroupID != link.TargetGroupID {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
 		if reviewer.EndpointID == link.SourceEndpointID || reviewer.EndpointID == link.TargetEndpointID {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
 		current, err := readLinkEndpointScope(tx, reviewer.EndpointID, reviewer.GroupID, now)
 		if err != nil {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
 		binding, err := readCommunicationLinkGrantBinding(tx, reviewer.EndpointID,
 			current.principalID, current.nodeID, now)
 		if err != nil {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
 		scope := NativeActorScope{PrincipalID: current.principalID,
 			EndpointID: reviewer.EndpointID, GroupID: reviewer.GroupID,
@@ -239,13 +274,24 @@ func validateCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
 		if err := tx.QueryRow(`SELECT m.id,g.network_id FROM memberships m
 JOIN groups g ON g.id=m.group_id WHERE m.principal_id=? AND m.group_id=?`,
 			current.principalID, reviewer.GroupID).Scan(&scope.MembershipID, &scope.NetworkID); err != nil {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
 		if err := guardNativeActorTx(tx, scope, "link.review", now); err != nil {
-			return ErrCommunicationLinkReviewPolicy
+			return nil, ErrCommunicationLinkReviewPolicy
 		}
+		result = append(result, CommunicationLinkReviewerQualification{EndpointID: reviewer.EndpointID,
+			GroupID: reviewer.GroupID, MembershipRevision: current.membershipRevision,
+			JoinRevision: current.joinRevision, GroupVersion: current.groupVersion,
+			BindingID: binding.ID, BindingEpoch: binding.Epoch, LeaseExpiresAt: binding.LeaseExpiresAt,
+			Action: "link.review"})
 	}
-	return nil
+	return result, nil
+}
+
+func validateCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
+	policy CommunicationLinkReviewPolicy, now time.Time) error {
+	_, err := qualifyCommunicationLinkReviewersTx(tx, link, policy, now)
+	return err
 }
 
 // PreviewCommunicationLinkReviewPolicyForOwner returns the exact canonical
@@ -282,7 +328,8 @@ func (s *Store) PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID str
 	if err := validateCurrentCommunicationLinkScope(tx, link, now); err != nil {
 		return nil, err
 	}
-	if err := validateCommunicationLinkReviewersTx(tx, link, policy, now); err != nil {
+	qualifications, err := qualifyCommunicationLinkReviewersTx(tx, link, policy, now)
+	if err != nil {
 		return nil, err
 	}
 	if err := communicationLinkReviewPolicyNoInflightTx(tx, linkID, now); err != nil {
@@ -292,13 +339,17 @@ func (s *Store) PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID str
 	if err != nil || version == int64(^uint64(0)>>1) {
 		return nil, ErrCommunicationLinkReviewConflict
 	}
+	preview := &CommunicationLinkReviewPolicyPreview{VerifiedAt: now.Format(time.RFC3339Nano), ReviewerQualifications: qualifications, LinkID: link.ID, Side: side, OwnerID: ownerID,
+		ContractDigest: link.ContractDigest, LinkVersion: link.Version,
+		ExpectedPolicyVersion: version, PolicyVersion: version + 1,
+		PolicyDigest: digest, Policy: policy, MaximumProofExpiresAt: link.ExpiresAt}
+	if err := validateCommunicationLinkReviewEvidenceResultSize(preview); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &CommunicationLinkReviewPolicyPreview{LinkID: link.ID, Side: side, OwnerID: ownerID,
-		ContractDigest: link.ContractDigest, LinkVersion: link.Version,
-		ExpectedPolicyVersion: version, PolicyVersion: version + 1,
-		PolicyDigest: digest, Policy: policy, MaximumProofExpiresAt: link.ExpiresAt}, nil
+	return preview, nil
 }
 
 // RecordCommunicationLinkReviewPolicyForOwner stores one distinct-purpose
@@ -359,7 +410,6 @@ func (s *Store) RecordCommunicationLinkReviewPolicyForOwner(linkID, side, keyID 
 	if err != nil || expiryErr != nil || proofExpiryTime.After(linkExpiry) {
 		return nil, ErrCommunicationLinkReviewPolicy
 	}
-	proofExpiry := verified.ExpiresAt
 	if currentVersion != expectedPolicyVersion {
 		// A lost response after the second Owner advanced the head is recoverable
 		// only with the byte-identical proof that performed that exact transition.
@@ -376,22 +426,20 @@ WHERE link_id=? AND policy_version=? AND policy_digest=? AND side=? AND owner_id
 			link.ID, currentVersion, policyDigest, side, ownerID, keyID, verified.Nonce).Scan(&existing); err != nil || !bytes.Equal(existing, signedProof) {
 			return nil, ErrCommunicationLinkReviewConflict
 		}
-		acceptedSides, err := communicationLinkReviewAcceptedSidesTx(tx, link.ID, currentVersion, policyDigest, now)
-		if err != nil || len(acceptedSides) != 2 {
+		status, err := readCommunicationLinkReviewPolicyEvidenceTx(tx, *link, currentVersion, policyDigest, now, true)
+		if err != nil {
+			return nil, err
+		}
+		if !status.Current {
 			return nil, ErrCommunicationLinkReviewConflict
 		}
-		activePolicy, activeExpiry, err := readCurrentCommunicationLinkReviewPolicyTx(tx, *link, now)
-		if err != nil {
+		if err := validateCommunicationLinkReviewEvidenceResultSize(status); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-		return &CommunicationLinkReviewPolicyStatus{
-			LinkID: link.ID, LinkVersion: link.Version, PolicyVersion: currentVersion,
-			PolicyDigest: policyDigest, Policy: activePolicy, Current: true,
-			AcceptedSides: acceptedSides, ExpiresAt: activeExpiry,
-		}, nil
+		return status, nil
 	}
 	if err := communicationLinkReviewPolicyNoInflightTx(tx, linkID, now); err != nil {
 		return nil, err
@@ -440,15 +488,11 @@ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, NewID("linkreviewgrant"), link.ID, policyV
 			return nil, err
 		}
 	}
-	acceptedSides, err := communicationLinkReviewAcceptedSidesTx(tx, link.ID, int64(policyVersion), policyDigest, now)
+	status, err := readCommunicationLinkReviewPolicyEvidenceTx(tx, *link, int64(policyVersion), policyDigest, now, true)
 	if err != nil {
 		return nil, err
 	}
-	current := false
-	if len(acceptedSides) == 2 {
-		if currentVersion != expectedPolicyVersion {
-			return nil, ErrCommunicationLinkReviewConflict
-		}
+	if len(status.AcceptedSides) == 2 {
 		stamp := now.Format(time.RFC3339Nano)
 		result, err := tx.Exec(`INSERT INTO communication_link_review_policy_heads_v2(link_id,policy_version,policy_digest,updated_at)
 VALUES(?,?,?,?) ON CONFLICT(link_id) DO UPDATE SET policy_version=excluded.policy_version,
@@ -462,21 +506,15 @@ WHERE communication_link_review_policy_heads_v2.policy_version=?`,
 		if err != nil || changed != 1 {
 			return nil, ErrCommunicationLinkReviewConflict
 		}
-		current = true
-		activePolicy, activeExpiry, activeErr := readCurrentCommunicationLinkReviewPolicyTx(tx, *link, now)
-		if activeErr != nil {
-			return nil, activeErr
-		}
-		policy, proofExpiry = activePolicy, activeExpiry
+		status.Current = true
+	}
+	if err := validateCommunicationLinkReviewEvidenceResultSize(status); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &CommunicationLinkReviewPolicyStatus{
-		LinkID: link.ID, LinkVersion: link.Version, PolicyVersion: int64(policyVersion),
-		PolicyDigest: policyDigest, Policy: policy, Current: current,
-		AcceptedSides: acceptedSides, ExpiresAt: proofExpiry,
-	}, nil
+	return status, nil
 }
 
 func (s *Store) GetCommunicationLinkReviewPolicyForOwner(linkID, ownerID string) (*CommunicationLinkReviewPolicyStatus, error) {
@@ -499,29 +537,18 @@ func (s *Store) GetCommunicationLinkReviewPolicyForOwner(linkID, ownerID string)
 	if err != nil {
 		return nil, err
 	}
-	if version == 0 {
-		return &CommunicationLinkReviewPolicyStatus{LinkID: link.ID, LinkVersion: link.Version,
-			PolicyVersion: 0, Policy: CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewNone,
-				Reviewers: []CommunicationLinkReviewer{}}, Current: true, AcceptedSides: []string{}}, nil
-	}
-	policy, expiresAt, err := readCurrentCommunicationLinkReviewPolicyTx(tx, *link, time.Now().UTC())
+	now := time.Now().UTC()
+	status, err := readCommunicationLinkReviewPolicyEvidenceTx(tx, *link, version, digest, now, true)
 	if err != nil {
 		return nil, err
 	}
-	sides, err := communicationLinkReviewAcceptedSidesTx(tx, link.ID, version, digest, time.Now().UTC())
-	if err != nil {
+	if err := validateCommunicationLinkReviewEvidenceResultSize(status); err != nil {
 		return nil, err
-	}
-	_, _, digestCheck, err := normalizeCommunicationLinkReviewPolicy(policy)
-	if err != nil || digestCheck != digest {
-		return nil, ErrCommunicationLinkReviewPolicy
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &CommunicationLinkReviewPolicyStatus{LinkID: link.ID, LinkVersion: link.Version,
-		PolicyVersion: version, PolicyDigest: digest, Policy: policy, Current: true,
-		AcceptedSides: sides, ExpiresAt: expiresAt}, nil
+	return status, nil
 }
 
 func communicationLinkReviewHeadTx(tx *sql.Tx, linkID string) (int64, string, error) {
@@ -556,38 +583,142 @@ WHERE sec.authorization_ref=? AND i.state IN ('READY','CLAIMED','UNCERTAIN')`, c
 	return nil
 }
 
-func communicationLinkReviewAcceptedSidesTx(tx *sql.Tx, linkID string, version int64, digest string, now time.Time) ([]string, error) {
-	result := make([]string, 0, 2)
+// This tuple-scoped reader selects at most four retained rows per side. Both
+// presentation and runtime use the same verified rows; signed bytes are copied
+// unchanged, and public key discovery never supplies an independent Owner pin.
+func readCommunicationLinkReviewPolicyEvidenceTx(tx *sql.Tx, link CommunicationLink,
+	version int64, digest string, now time.Time, checkScope bool) (*CommunicationLinkReviewPolicyStatus, error) {
+	status := &CommunicationLinkReviewPolicyStatus{LinkID: link.ID, LinkVersion: link.Version,
+		ContractDigest: link.ContractDigest, PolicyVersion: version, PolicyDigest: digest,
+		VerifiedAt: now.Format(time.RFC3339Nano), AcceptedSides: []string{},
+		OwnerApprovals: []CommunicationLinkReviewOwnerApproval{}}
+	var scopeErr error
+	if checkScope {
+		if err := networkGuardCommunicationLinkTx(tx, &link, now); err != nil && !errors.Is(err, ErrNetworkPermission) {
+			return nil, err
+		}
+		scopeErr = validateCurrentCommunicationLinkScope(tx, &link, now)
+		if scopeErr != nil && !errors.Is(scopeErr, ErrCommunicationLinkScope) && !errors.Is(scopeErr, ErrCommunicationLinkNotFound) {
+			return nil, scopeErr
+		}
+	}
+	if version == 0 {
+		status.Policy = CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewNone, Reviewers: []CommunicationLinkReviewer{}}
+		status.Current = scopeErr == nil
+		return status, nil
+	}
+	var policyJSON string
+	if err := tx.QueryRow(`SELECT policy_json FROM communication_link_review_policy_grants_v2
+WHERE link_id=? AND policy_version=? AND policy_digest=? ORDER BY accepted_at DESC,id DESC LIMIT 1`,
+		link.ID, version, digest).Scan(&policyJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCommunicationLinkReviewPolicy
+		}
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(policyJSON), &status.Policy); err != nil {
+		return nil, ErrCommunicationLinkReviewPolicy
+	}
+	_, canonical, checkDigest, err := normalizeCommunicationLinkReviewPolicy(status.Policy)
+	if err != nil || checkDigest != digest || string(canonical) != policyJSON {
+		return nil, ErrCommunicationLinkReviewPolicy
+	}
+	linkExpiry, err := time.Parse(time.RFC3339Nano, link.ExpiresAt)
+	if err != nil {
+		return nil, ErrCommunicationLinkReviewPolicy
+	}
+	type grant struct {
+		ownerID, keyID, policyJSON, contractDigest, expires, acceptedAt string
+		linkVersion                                                     int64
+		proof                                                           []byte
+	}
 	for _, side := range []string{CommunicationLinkGrantSource, CommunicationLinkGrantTarget} {
-		rows, err := tx.Query(`SELECT proof_expires_at FROM communication_link_review_policy_grants_v2
-WHERE link_id=? AND policy_version=? AND policy_digest=? AND side=?`, linkID, version, digest, side)
+		approval := CommunicationLinkReviewOwnerApproval{Side: side, OwnerID: communicationLinkGrantOwner(link, side), CurrentStatus: "MISSING"}
+		rows, err := tx.Query(`SELECT owner_id,key_id,policy_json,link_version,contract_digest,proof_expires_at,signed_proof,accepted_at
+FROM communication_link_review_policy_grants_v2 WHERE link_id=? AND policy_version=? AND policy_digest=? AND side=?
+ORDER BY accepted_at DESC,id DESC LIMIT ?`, link.ID, version, digest, side, communicationLinkReviewMaxOwnerProofs)
 		if err != nil {
 			return nil, err
 		}
-		valid := false
+		grants := []grant{}
 		for rows.Next() {
-			var raw string
-			if err := rows.Scan(&raw); err != nil {
+			var row grant
+			if err := rows.Scan(&row.ownerID, &row.keyID, &row.policyJSON, &row.linkVersion, &row.contractDigest, &row.expires, &row.proof, &row.acceptedAt); err != nil {
 				rows.Close()
 				return nil, err
 			}
-			expires, err := time.Parse(time.RFC3339Nano, raw)
-			if err == nil && expires.After(now) {
-				valid = true
-				break
-			}
+			grants = append(grants, row)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
 		}
 		if err := rows.Close(); err != nil {
 			return nil, err
 		}
-		if err := rows.Err(); err != nil {
-			return nil, err
+		for _, row := range grants {
+			// The first diagnostic is deterministic; a later valid row may supersede it.
+			reason := "INVALID"
+			if row.linkVersion != link.Version || row.contractDigest != link.ContractDigest || row.ownerID != approval.OwnerID {
+				reason = "SCOPE_STALE"
+			} else if row.policyJSON == policyJSON {
+				key, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id,key_id,public_identity_json,state,version,created_at,updated_at,revoked_at FROM owner_approval_keys_v2 WHERE owner_id=? AND key_id=?`, row.ownerID, row.keyID))
+				if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, ErrOwnerApprovalKeyNotFound) && !errors.Is(err, ErrOwnerApprovalKeyConflict) {
+					return nil, err
+				}
+				if err == nil && key.OwnerID == row.ownerID && key.KeyID == row.keyID && key.Public.ID == row.keyID && key.Version > 0 {
+					if key.State != OwnerApprovalKeyActive {
+						reason = "OWNER_KEY_REVOKED"
+					} else {
+						verifyAt := now
+						// Authenticate expired proofs before classifying them; never expose them.
+						var claims e2ee.OwnerLinkReviewPolicyProof
+						if json.Unmarshal(row.proof, &claims) == nil {
+							if expiry, e := time.Parse(time.RFC3339Nano, claims.ExpiresAt); e == nil && !expiry.After(now) {
+								verifyAt = expiry.Add(-time.Nanosecond)
+							}
+						}
+						proof, err := e2ee.VerifyOwnerLinkReviewPolicy(row.proof, key.Public, row.ownerID, link.ID, link.ContractDigest, digest, uint64(link.Version), uint64(version), e2ee.OwnerLinkGrantSide(side), verifyAt)
+						proofExpiry, expiryErr := time.Parse(time.RFC3339Nano, proof.ExpiresAt)
+						acceptedAt, acceptedErr := time.Parse(time.RFC3339Nano, row.acceptedAt)
+						if err == nil && expiryErr == nil && proof.ExpiresAt == row.expires && !proofExpiry.After(linkExpiry) && acceptedErr == nil && acceptedAt.UTC().Format(time.RFC3339Nano) == row.acceptedAt && !acceptedAt.After(now) {
+							if !proofExpiry.After(now) {
+								reason = "PROOF_EXPIRED"
+							} else if scopeErr == nil {
+								approval.CurrentStatus = "VERIFIED"
+								approval.Evidence = &CommunicationLinkReviewOwnerEvidence{OwnerKeyID: key.KeyID, OwnerPublicIdentity: key.Public,
+									OwnerKeyState: key.State, OwnerKeyVersion: key.Version, SignedProof: append([]byte(nil), row.proof...), AcceptedAt: row.acceptedAt}
+								status.AcceptedSides = append(status.AcceptedSides, side)
+								if status.ExpiresAt == "" {
+									status.ExpiresAt = proof.ExpiresAt
+								} else {
+									prior, _ := time.Parse(time.RFC3339Nano, status.ExpiresAt)
+									if proofExpiry.Before(prior) {
+										status.ExpiresAt = proof.ExpiresAt
+									}
+								}
+								break
+							}
+						}
+					}
+				}
+			}
+			if approval.CurrentStatus == "MISSING" {
+				approval.CurrentStatus = reason
+			}
 		}
-		if valid {
-			result = append(result, side)
+		if scopeErr != nil {
+			approval.CurrentStatus = "SCOPE_STALE"
+			approval.Evidence = nil
 		}
+		status.OwnerApprovals = append(status.OwnerApprovals, approval)
 	}
-	return result, nil
+	headVersion, headDigest, err := communicationLinkReviewHeadTx(tx, link.ID)
+	if err != nil {
+		return nil, err
+	}
+	status.Current = scopeErr == nil && len(status.AcceptedSides) == 2 && headVersion == version && headDigest == digest
+	return status, nil
 }
 
 func readCurrentCommunicationLinkReviewPolicyTx(tx *sql.Tx, link CommunicationLink, now time.Time) (CommunicationLinkReviewPolicy, string, error) {
@@ -595,96 +726,28 @@ func readCurrentCommunicationLinkReviewPolicyTx(tx *sql.Tx, link CommunicationLi
 	if err != nil {
 		return CommunicationLinkReviewPolicy{}, "", err
 	}
-	if version == 0 {
-		return CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewNone, Reviewers: []CommunicationLinkReviewer{}}, "", nil
-	}
-	rows, err := tx.Query(`SELECT side,owner_id,key_id,policy_json,link_version,contract_digest,proof_expires_at,signed_proof
-FROM communication_link_review_policy_grants_v2 WHERE link_id=? AND policy_version=? AND policy_digest=?
-ORDER BY side,accepted_at DESC`, link.ID, version, digest)
+	status, err := readCommunicationLinkReviewPolicyEvidenceTx(tx, link, version, digest, now, false)
 	if err != nil {
 		return CommunicationLinkReviewPolicy{}, "", err
 	}
-	type grant struct {
-		side, ownerID, keyID, policyJSON, contractDigest, expires string
-		linkVersion                                               int64
-		proof                                                     []byte
-	}
-	grants := map[string][]grant{}
-	for rows.Next() {
-		var row grant
-		if err := rows.Scan(&row.side, &row.ownerID, &row.keyID, &row.policyJSON, &row.linkVersion,
-			&row.contractDigest, &row.expires, &row.proof); err != nil {
-			rows.Close()
-			return CommunicationLinkReviewPolicy{}, "", err
-		}
-		grants[row.side] = append(grants[row.side], row)
-	}
-	if err := rows.Close(); err != nil {
-		return CommunicationLinkReviewPolicy{}, "", err
-	}
-	if err := rows.Err(); err != nil {
-		return CommunicationLinkReviewPolicy{}, "", err
-	}
-	selected := map[string]grant{}
-	linkExpiry, expiryErr := time.Parse(time.RFC3339, link.ExpiresAt)
-	if expiryErr != nil {
+	if !status.Current {
 		return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
 	}
-	for _, side := range []string{CommunicationLinkGrantSource, CommunicationLinkGrantTarget} {
-		ownerID := communicationLinkGrantOwner(link, side)
-		found := false
-		for _, row := range grants[side] {
-			if row.linkVersion != link.Version || row.contractDigest != link.ContractDigest || row.ownerID != ownerID {
-				continue
-			}
-			key, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id,key_id,public_identity_json,state,version,created_at,updated_at,revoked_at FROM owner_approval_keys_v2 WHERE owner_id=? AND key_id=?`, row.ownerID, row.keyID))
-			if err != nil || key.State != OwnerApprovalKeyActive {
-				continue
-			}
-			proof, err := e2ee.VerifyOwnerLinkReviewPolicy(row.proof, key.Public, row.ownerID, link.ID,
-				link.ContractDigest, digest, uint64(link.Version), uint64(version), e2ee.OwnerLinkGrantSide(side), now)
-			if err != nil {
-				continue
-			}
-			proofExpiry, err := time.Parse(time.RFC3339Nano, proof.ExpiresAt)
-			if err != nil || proofExpiry.After(linkExpiry) {
-				continue
-			}
-			var candidate CommunicationLinkReviewPolicy
-			if err := json.Unmarshal([]byte(row.policyJSON), &candidate); err != nil {
-				continue
-			}
-			_, canonical, policyDigest, err := normalizeCommunicationLinkReviewPolicy(candidate)
-			if err != nil || policyDigest != digest || string(canonical) != row.policyJSON {
-				continue
-			}
-			selected[side] = row
-			found = true
-			break
-		}
-		if !found {
-			return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
-		}
-	}
-	source, target := selected[CommunicationLinkGrantSource], selected[CommunicationLinkGrantTarget]
-	if source.policyJSON != target.policyJSON {
-		return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
-	}
-	var policy CommunicationLinkReviewPolicy
-	if err := json.Unmarshal([]byte(source.policyJSON), &policy); err != nil {
-		return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
-	}
-	sourceExpiry, err := time.Parse(time.RFC3339Nano, source.expires)
+	return status.Policy, status.ExpiresAt, nil
+}
+
+// The existing encrypted Client serializer limits plaintext to 64 KiB. Reserve
+// the exact RPC wrapper plus worst-case HTML escaping for both correlation
+// tokens (wire tokens are at most 256 bytes). This is a public projection check,
+// never a runtime policy rule; grant failures roll back all writes and CAS.
+func validateCommunicationLinkReviewEvidenceResultSize(result any) error {
+	encoded, err := json.Marshal(map[string]any{"request_id": strings.Repeat("<", 256),
+		"operation_id": strings.Repeat("<", 256), "ok": true, "result": result})
 	if err != nil {
-		return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
+		return err
 	}
-	targetExpiry, err := time.Parse(time.RFC3339Nano, target.expires)
-	if err != nil {
-		return CommunicationLinkReviewPolicy{}, "", ErrCommunicationLinkReviewPolicy
+	if len(encoded) > 64*1024 {
+		return ErrCommunicationLinkReviewPolicy
 	}
-	expires := source.expires
-	if targetExpiry.Before(sourceExpiry) {
-		expires = target.expires
-	}
-	return policy, expires, nil
+	return nil
 }

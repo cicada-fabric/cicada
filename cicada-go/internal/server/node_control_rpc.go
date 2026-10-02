@@ -133,7 +133,7 @@ func (h *Handler) nodeControlRPC(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return
 	}
-	if h.control == nil || h.fabricService == nil {
+	if h.fabricService == nil {
 		writeError(response, http.StatusServiceUnavailable, errors.New("Node-Control RPC is unavailable"))
 		return
 	}
@@ -156,6 +156,14 @@ func (h *Handler) nodeControlRPC(response http.ResponseWriter, request *http.Req
 		return
 	}
 	route := packet.Route
+	if nodewire.IsTLSCurrentRoute(route) {
+		h.nodeTLSCurrentStatus(response, request, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
+		return
+	}
+	if h.control == nil {
+		writeError(response, http.StatusServiceUnavailable, errors.New("Node-Control RPC is unavailable"))
+		return
+	}
 	if route.Operation == nodewire.RecoveryOperation {
 		h.nodeControlRecoveryStatus(response, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
 		return

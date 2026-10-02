@@ -206,7 +206,7 @@ func assertOpenAPIOperationsMatchCatalog(t *testing.T, definition Definition) {
 
 func TestClientLinkProofCatalogPreservesOperationsAndOwnerBoundaries(t *testing.T) {
 	definition := CatalogDefinition()
-	if definition.ContractRevision != "client-hub-v1.6.3" || definition.WireVersion != 1 || len(definition.Operations) != 55 {
+	if definition.ContractRevision != "client-hub-v1.6.4" || definition.WireVersion != 1 || len(definition.Operations) != 55 {
 		t.Fatal("Link evidence changed framing or operation inventory")
 	}
 	schemas := map[string][2]string{
@@ -226,5 +226,26 @@ func TestClientLinkProofCatalogPreservesOperationsAndOwnerBoundaries(t *testing.
 	}
 	if len(schemas) != 0 {
 		t.Fatal("missing existing Link key operation")
+	}
+}
+
+func TestReviewPolicyEvidenceCatalogPreservesOwnerSchemas(t *testing.T) {
+	expected := map[string][3]string{
+		"link.review_policy_preview": {"LinkReviewPolicyPreviewRequest", "LinkReviewPolicyPreviewResult", "current_link_side_policy_preview"},
+		"link.review_policy_grant":   {"LinkReviewPolicyGrantRequest", "LinkReviewPolicyStatusResult", "current_link_side_owner_proof"},
+		"link.review_policy_status":  {"LinkReviewPolicyStatusRequest", "LinkReviewPolicyStatusResult", "current_link_side_policy_status"},
+	}
+	for _, op := range CatalogDefinition().Operations {
+		want, ok := expected[op.ID]
+		if !ok {
+			continue
+		}
+		if op.RequestSchema != want[0] || op.ResultSchema != want[1] || op.Boundary != want[2] || len(op.Roles) != 2 || !Allows(RoleManager, op.ID) || !Allows(RoleExternal, op.ID) {
+			t.Fatalf("review policy evidence catalog drift: %s", op.ID)
+		}
+		delete(expected, op.ID)
+	}
+	if len(expected) != 0 {
+		t.Fatalf("missing review policy operations: %v", expected)
 	}
 }

@@ -88,6 +88,14 @@ const result = {
     uncertain_write_fence: 'NOT_RUN',
     response_loss_exact_recovery: 'NOT_RUN',
     canvas_pointer_keyboard_group_link_monitor: 'NOT_RUN',
+    group_parent_preview_no_write: 'NOT_RUN',
+    group_parent_confirm_cas: 'NOT_RUN',
+    group_parent_restart_persistence: 'NOT_RUN',
+    group_parent_repeat_drop_no_change: 'NOT_RUN',
+    group_parent_cycle_rejected: 'NOT_RUN',
+    group_parent_stale_cas_denied: 'NOT_RUN',
+    group_parent_authority_unchanged: 'NOT_RUN',
+    group_parent_uncertain_fence_no_write: 'NOT_RUN',
   },
   fixture_cleanup: { status: 'NOT_RUN' },
 };
@@ -107,6 +115,7 @@ let browserUserAgent = '';
 let hubWasCreated = false;
 let browserWasCreated = false;
 let networkWasCreated = false;
+let nestingFixture;
 let pageA;
 let pageB;
 let fatal = null;
@@ -558,8 +567,7 @@ async function loadChromium() {
   phase = 'chromium_image';
   let inspected = await run('docker', ['image', 'inspect', chromiumRef]);
   if (inspected.code !== 0) {
-    await docker(['pull', chromiumRef], { capture: false });
-    inspected = await run('docker', ['image', 'inspect', chromiumRef]);
+    fail('Pinned Chromium image is absent; this gate does not pull images.');
   }
   if (inspected.code !== 0) fail('Disposable Chromium image could not be pulled or inspected');
   const [image] = JSON.parse(inspected.stdout);
@@ -807,14 +815,137 @@ async function runBrowserFlow() {
     fail(`First-tab refresh did not resolve cleanly after release (request ${beforePauseState.nextRequestSequence}->${finalState.nextRequestSequence}, response ${beforePauseState.nextResponseSequence}->${finalState.nextResponseSequence}, pending=${finalState.pending})`);
   }
   markStep('first_tab_pending_cleared_after_release');
+  await prepareNestingFixture(password);
   await runResponseLossAndUncertainty(password);
   await runInteractionAndFaultFlow(password);
+  await runNestingFlow(password);
 }
 
 // Fixture setup uses actual PQ Owner approval and Node-authenticated APIs.
 // The adapter session labels below are synthetic, never native-runtime evidence.
-async function ownerFixtureRPC(password, operation, input) {
-  return pageA.evaluate(`(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();let key;try{const state=await c.getState(db);let blob=await c.decryptIdentityBlob(state.vault,${JSON.stringify(password)});key=cicadaWebCrypto.importIdentity({identity_blob:blob});blob='';if(!key.ok)throw Error('fixture key import');const reply=await c.callRPC(db,cicadaWebCrypto,{handle:key.handle},${JSON.stringify(operation)},${JSON.stringify(input)});if(!reply.ok)throw Error('fixture RPC denied');return reply.result;}finally{if(key?.handle)cicadaWebCrypto.forgetIdentity({handle:key.handle});db.close();}})()`, 30000);
+async function ownerFixtureRPC(password, operation, input, allowError = false) {
+  return pageA.evaluate(`(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();let key;try{const state=await c.getState(db);let blob=await c.decryptIdentityBlob(state.vault,${JSON.stringify(password)});key=cicadaWebCrypto.importIdentity({identity_blob:blob});blob='';if(!key.ok)throw Error('fixture key import');const reply=await c.callRPC(db,cicadaWebCrypto,{handle:key.handle},${JSON.stringify(operation)},${JSON.stringify(input)});if(${JSON.stringify(allowError)})return reply;if(!reply.ok)throw Error('fixture RPC denied');return reply.result;}finally{if(key?.handle)cicadaWebCrypto.forgetIdentity({handle:key.handle});db.close();}})()`, 30000);
+}
+
+async function prepareNestingFixture(password) {
+  phase = 'group_parent_fixture';
+  const create = async name => (await ownerFixtureRPC(password, 'topology.apply', {
+    kind: 'group.create', create_group: { group: { network_id: networkId, name } }
+  })).group;
+  const parent = await create(`Z V66 Parent ${suffix.slice(-8)}`);
+  const child = await create(`Z V66 Child ${suffix.slice(-8)}`);
+  if (!parent?.group_id || !child?.group_id || child.version < 1) fail('V66 fixture lacks current Groups');
+  nestingFixture = { child: child.group_id, parent: parent.group_id };
+  await buttonClick(pageA, 'Refresh snapshots');
+  await evaluateUntil(pageA, `document.querySelector('[data-group-drag-id="${child.group_id}"]') !== null`);
+}
+
+async function dragGroup(childId, parentId) {
+  const sourceSelector = `[data-group-drag-id="${childId}"]`;
+  const targetSelector = parentId ? `[data-group-drop-id="${parentId}"]` : `[data-network-root-drop-id="${networkId}"]`;
+  await fitCanvasTargets([sourceSelector, targetSelector]);
+  await buttonClick(pageA, 'Nest Group');
+  const source = await elementBox(pageA, sourceSelector);
+  const target = parentId ? await visibleGroupDropPoint(parentId) : await elementBox(pageA, targetSelector);
+  if (!source || !target) fail('Group nesting pointer targets are not visible');
+  const from = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const to = parentId ? target : { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+  const exact = await pageA.evaluate(`document.elementFromPoint(${from.x},${from.y})?.closest('[data-group-drag-id]')?.getAttribute('data-group-drag-id')===${JSON.stringify(childId)}`);
+  if (!exact) fail('Group nesting drag source is not the exact visible Group label');
+  await pointerDrag(pageA, from, to, parentId);
+}
+
+async function runNestingFlow(password) {
+  phase = 'group_parent_preview_and_confirm';
+  const snapshot = () => ownerFixtureRPC(password, 'topology.snapshot', {});
+  const group = (data, id) => data.groups.find(item => item.group_id === id);
+  const authority = data => JSON.stringify({ memberships: data.memberships, endpoints: data.endpoints.map(({presence, ...endpoint}) => endpoint), links: data.links });
+  const refreshNesting = async () => {
+    const device = await readIndexedDBState(pageA);
+    if (device.pending) fail('Nesting refresh begins with an unresolved packet');
+    const requests = pageA.rpcRequestCount;
+    await buttonClick(pageA, 'Refresh snapshots');
+    await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{const d=(await c.getState(db)).device;return !d?.pending&&d.nextRequestSequence===${device.nextRequestSequence + 2}&&d.nextResponseSequence===${device.nextResponseSequence + 2}&&document.querySelector('.status-banner')?.textContent==='Authoritative topology and status snapshots refreshed.';}finally{db.close();}})()`, Boolean, 30000, 'both authenticated nesting snapshots and resolved pending state');
+    await waitForRPCCount(pageA, requests + 2);
+    if (pageA.rpcRequestCount !== requests + 2) fail('Nesting refresh issued unexpected extra RPC');
+    await pageA.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    result.group_parent_refreshes = [...(result.group_parent_refreshes || []),
+      { authenticated_snapshots: 2, pending_resolved: true, exact_request_delta: 2 }];
+  };
+  const before = await snapshot();
+  await refreshNesting();
+  await evaluateUntil(pageA, `document.querySelector('[data-group-drag-id="${nestingFixture.child}"]') !== null`);
+  const count = pageA.rpcRequestCount;
+  await dragGroup(nestingFixture.child, nestingFixture.parent);
+  const preview = await pageA.evaluate(`(()=>{const p=document.querySelector('.side pre');return p?JSON.parse(p.textContent):null;})()`);
+  result.group_parent_preview_diagnostic = { rpc_before: count, rpc_after: pageA.rpcRequestCount, preview_present: !!preview, kind_matches: preview?.kind === 'group.set_parent', child_matches: preview?.set_parent?.group_id === nestingFixture.child, parent_matches: preview?.set_parent?.parent_group_id === nestingFixture.parent, version_matches: preview?.set_parent?.expected_group_version === group(before, nestingFixture.child).version, pending: (await readIndexedDBState(pageA)).pending };
+  if (pageA.rpcRequestCount !== count || preview?.kind !== 'group.set_parent' ||
+      preview.set_parent.group_id !== nestingFixture.child || preview.set_parent.parent_group_id !== nestingFixture.parent ||
+      preview.set_parent.expected_group_version !== group(before, nestingFixture.child).version) fail('Nesting drag lost exact scope/CAS or wrote before confirmation');
+  markStep('group_parent_preview_no_write');
+  await committedAction();
+  let current = await snapshot();
+  if (group(current, nestingFixture.child).parent_group_id !== nestingFixture.parent ||
+      group(current, nestingFixture.child).version !== group(before, nestingFixture.child).version + 1) fail('Confirmed nesting did not apply one child CAS');
+  markStep('group_parent_confirm_cas');
+  if (nodeWasCreated) await docker(['stop', '--time', '10', nodeContainer]);
+  await docker(['stop', '--time', '10', hubContainer]); await docker(['start', hubContainer]);
+  const restarted = await waitHub(hubContainer);
+  if (restarted.identity.hub_id !== hubId || restarted.identity.control_public_identity.id !== controlKeyId) fail('Nesting restart changed Hub pins');
+  hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
+  if (nodeWasCreated) await docker(['start', nodeContainer]);
+  const persisted = await snapshot();
+  if (group(persisted, nestingFixture.child).parent_group_id !== nestingFixture.parent ||
+      group(persisted, nestingFixture.child).version !== group(current, nestingFixture.child).version) fail('Nesting parent/version did not persist');
+  markStep('group_parent_restart_persistence');
+  await refreshNesting();
+  await evaluateUntil(pageA, `document.querySelector('[data-group-drag-id="${nestingFixture.child}"]') !== null`);
+  const repeatCount = pageA.rpcRequestCount;
+  await dragGroup(nestingFixture.child, nestingFixture.parent);
+  if (pageA.rpcRequestCount !== repeatCount || await pageA.evaluate('document.querySelector(".side pre") !== null')) fail('Duplicate parent drop prepared a write');
+  await ownerFixtureRPC(password, 'topology.apply', { kind: 'group.set_parent', set_parent: {
+    group_id: nestingFixture.child, parent_group_id: nestingFixture.parent,
+    expected_group_version: group(current, nestingFixture.child).version } });
+  current = await snapshot();
+  if (group(current, nestingFixture.child).version !== group(persisted, nestingFixture.child).version) fail('Same-parent current CAS was not idempotent');
+  markStep('group_parent_repeat_drop_no_change');
+  const cycleCount = pageA.rpcRequestCount;
+  await dragGroup(nestingFixture.parent, nestingFixture.child);
+  if (pageA.rpcRequestCount !== cycleCount || await pageA.evaluate('document.querySelector(".side pre") !== null')) fail('Ancestor cycle drag prepared a write');
+  const cycle = await ownerFixtureRPC(password, 'topology.apply', { kind: 'group.set_parent', set_parent: {
+    group_id: nestingFixture.parent, parent_group_id: nestingFixture.child,
+    expected_group_version: group(current, nestingFixture.parent).version } }, true);
+  if (cycle.ok !== false || cycle.error !== 'group hierarchy cycle') fail('Authoritative encrypted cycle denial was not exact');
+  markStep('group_parent_cycle_rejected');
+  await dragGroup(nestingFixture.child, '');
+  await committedAction();
+  current = await snapshot();
+  if (group(current, nestingFixture.child).parent_group_id || group(current, nestingFixture.child).version !== group(persisted, nestingFixture.child).version + 1) fail('Explicit Network root drop did not apply one CAS');
+  phase = 'group_parent_stale_preview_cas';
+  // Capture only public failure classification; wrapper calls the original product RPC unchanged.
+  await pageA.evaluate(`(async()=>{const {CanvasPanel}=await import('/assets/panel-canvas.js');const original=CanvasPanel.prototype.applyFirst;CanvasPanel.prototype.applyFirst=async function(){const rpc=this.rpc;this.rpc=async(op,input)=>{try{return await rpc(op,input);}catch(error){if(op==='topology.apply'&&input?.set_parent)globalThis.v66StaleFailure={versionConflict:error.message==='session binding version conflict',operationBound:!!error.operationID};throw error;}};try{return await original.call(this);}finally{this.rpc=rpc;}};})()`);
+  await dragGroup(nestingFixture.child, nestingFixture.parent);
+  const stale = await pageA.evaluate('JSON.parse(document.querySelector(".side pre").textContent)');
+  const otherParent = before.groups.find(item => item.network_id === networkId && item.group_id !== nestingFixture.child && item.group_id !== nestingFixture.parent);
+  if (!otherParent) fail('Current scoped alternate parent is absent');
+  await ownerFixtureRPC(password, 'topology.apply', { kind: 'group.set_parent', set_parent: {
+    group_id: nestingFixture.child, parent_group_id: otherParent.group_id,
+    expected_group_version: stale.set_parent.expected_group_version } });
+  const staleCount = pageA.rpcRequestCount;
+  await committedAction();
+  const denial = await pageA.evaluate('globalThis.v66StaleFailure');
+  current = await snapshot();
+  if (!denial?.versionConflict || !denial.operationBound || pageA.rpcRequestCount !== staleCount + 4 ||
+      group(current, nestingFixture.child).parent_group_id !== otherParent.group_id ||
+      group(current, nestingFixture.child).version !== stale.set_parent.expected_group_version + 1 ||
+      await pageA.evaluate('document.querySelector(".side pre") !== null')) fail('Stale nesting CAS was refreshed, retried or applied');
+  markStep('group_parent_stale_cas_denied');
+  if (authority(current) !== authority(before)) fail('Nesting changed Membership, role/grant, Endpoint reference or Link authority');
+  markStep('group_parent_authority_unchanged');
+  result.group_parent = { child_id: nestingFixture.child, original_parent_id: nestingFixture.parent,
+    final_parent_id: otherParent.group_id, final_child_version: group(current, nestingFixture.child).version,
+    root_previewed: true, root_committed: true, stale_denial_authenticated: true, metadata_authority_unchanged: true,
+    peer_decryption_denial: 'NOT_RUN', uncertain_scope: 'controlled synthetic interrupted state; not an actual kill window' };
 }
 
 async function syntheticNodeEndpoints(password) {
@@ -1136,6 +1267,10 @@ async function runResponseLossAndUncertainty(password) {
   await evaluateUntil(pageA, 'document.querySelector(".fence-card") !== null');
   const fenced = await readIndexedDBState(pageA);
   if (fenced.pending || !fenced.writeFence) fail('Authenticated uncertainty did not separate durable semantic fence from resolved packet');
+  const fenceGestureCount = pageA.rpcRequestCount;
+  await dragGroup(nestingFixture.child, nestingFixture.parent);
+  if (pageA.rpcRequestCount !== fenceGestureCount || await pageA.evaluate('document.querySelector(".side pre") !== null')) fail('Uncertain fence allowed a Group nesting gesture to prepare/write');
+  markStep('group_parent_uncertain_fence_no_write');
   const writesBefore = pageA.rpcRequestCount;
   await cardField(pageA, 'Create Group', 'input', 0, 'Must not be written');
   await buttonClick(pageA, 'Preview Group creation');

@@ -1,6 +1,6 @@
 {
   "catalog_schema_version": 1,
-  "contract_revision": "client-hub-v1.6.3",
+  "contract_revision": "client-hub-v1.6.4",
   "wire_version": 1,
   "rpc_route": "/v2/client/rpc",
   "operations": [

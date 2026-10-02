@@ -1,6 +1,48 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-02 current migration boundary — schema56；恢复与激活分开验
+## 2026-10-02 current migration boundary — schema57 preserves D1 schema56
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已机械集成 **86 路径 = panel 6 + review policy 13 + Task privacy 30 + D2 TLS 27 + N2 reliability 10**。
+机械集成证明精确源码合并与保全，不能替代运行验收。当前统一 QA 为 **SCOPED_PASS**：41 个有限命令，243 top-level＋308 subtests，
+0 fail/0 skip，30 条test-binary执行记录（18 unique SHA）；D2独立51命令的有限检查亦PASS。
+这些结果仅归ec160/STD4380，不是全仓、real Runtime或新clean交付PASS。
+完整身份、各范围、证据入口和下一出口见[本检查点验证](v01-group-peer-runtime-checkpoint-validation.md)。
+
+| 版本 | 精确migration ID | 当前边界 |
+|---|---|---|
+| 56 | `v2.node.tls_authority` | 原D1 authority lifecycle、永久epoch/serial/nonce floors及proof历史保持；本轮不改该entry/initializer |
+| 57 | `v2.task.peer_sealed_references` | 增量assignment/reference sidecars、definition唯一性与immutable refs；合法Control管理prose/history和原Task epoch保留 |
+
+新peer定义/result正文使用既有exact Endpoint Group sealed SEND，Hub Task sidecars只存metadata。
+legacy rows保持management-only或显式unavailable；不重写成“已加密”、不删除历史、不降低epoch。
+55→56→57升级、故障rollback/reopen/checksum与旧管理历史保全必须按实际同源receipt验收，
+本轮统一SCOPED_PASS及D2有限PASS均有实际receipt；合成迁移不能证明生产断电或降级安全。
+
+TLS升级要求停止全部shared writers和Hub签发，再做精确Owner授权offline安装/激活与checked
+Hub/Node restart。旧bundle、签名receipt和ACTIVE标签不是fresh authority；保持独立floors与quarantine。
+普通恢复status仍要求management provider，Control-free Hub的fresh TLS query不补成通用恢复服务。
+恢复metadata不授权解隔离/retry/counter重建；Git回滚不回滚SQLite或外部副作用。
+
+
+本组合实际[QA receipt](../.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](../.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+## Historical migration and backup records before integrated-next-core
+
+以下包括旧“schema56当前、privacy57独立候选”和各旧账本/备份结果，均是当时记录；
+原migration IDs/checksums、source/失败/恢复边界按历史全文保留，不能解释为本组合已生产迁移。
+
+## Historical prior checkpoint — 2026-10-02 current migration boundary — schema56；恢复与激活分开验
 
 当前Hub仍schema56；57是本次dirty变更路径数，Task privacy的schema57属于独立候选。统一源、Client v1.6.3与原48/新组件结果见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)；新组合聚焦QA与STD镜像有界PASS，历史迁移和运行结果不转标当前源。
 

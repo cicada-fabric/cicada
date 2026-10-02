@@ -172,6 +172,12 @@ type Inbox struct {
 	mu                      sync.Mutex
 	closed                  bool
 	routeMetadataTableReady bool
+	nativeRecoveryCursor    nativeRecoveryCursor
+}
+
+type nativeRecoveryCursor struct {
+	createdAt string
+	messageID string
 }
 
 // Open opens or creates a durable Node inbox.  Recovery is part of opening:
@@ -628,6 +634,94 @@ func (i *Inbox) Get(ctx context.Context, messageID string) (*Delivery, error) {
 		return nil, ErrNotFound
 	}
 	return delivery, nil
+}
+
+// NextNativeRecoveryBatch reads original native recovery coordinates without
+// changing durable delivery state. Only the dedicated Monitor notice inbox uses
+// this traversal; rows must be reconciled against an exact native outcome before
+// any terminal receipt or new injection is considered.
+//
+// Each call returns at most 16 rows. The private, in-memory cursor uses immutable
+// stored (created_at, message_id) values and wraps after reaching the tail. An
+// exact full final page needs an empty probe on the next call before reading the
+// head, but no call loads more than limit payloads. Errors leave the cursor alone.
+// New Inbox handles start from the head; repeated restarts can delay later rows.
+func (i *Inbox) NextNativeRecoveryBatch(ctx context.Context, limit int) ([]Delivery, error) {
+	if limit < 1 || limit > 16 {
+		return nil, errors.New("invalid native recovery page limit")
+	}
+	if i == nil {
+		return nil, errors.New("node inbox is closed")
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if err := i.checkOpen(); err != nil {
+		return nil, err
+	}
+	batch, next, err := i.readNativeRecoveryBatch(ctx, i.nativeRecoveryCursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(batch) == 0 && i.nativeRecoveryCursor.messageID != "" {
+		batch, next, err = i.readNativeRecoveryBatch(ctx, nativeRecoveryCursor{}, limit)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(batch) < limit {
+		next = nativeRecoveryCursor{}
+	}
+	i.nativeRecoveryCursor = next
+	return batch, nil
+}
+
+// The extra created_at column retains the original SQL ordering key rather
+// than normalizing a timestamp that might have a different valid spelling.
+const nativeRecoverySelect = `SELECT message_id, digest, endpoint_id, session_id,
+binding_epoch, payload, state, attempt_id, consumer_id, claimed_at, failure,
+created_at, updated_at, created_at FROM node_inbox_deliveries
+WHERE state IN ('INJECTING', 'INJECTION_UNCERTAIN', 'CONSUMPTION_UNCONFIRMED')
+  AND (created_at > ? OR (created_at = ? AND message_id > ?))
+ORDER BY created_at, message_id LIMIT ?`
+
+type nativeRecoveryScanner struct {
+	scanner
+	createdAt *string
+}
+
+func (row nativeRecoveryScanner) Scan(destinations ...any) error {
+	return row.scanner.Scan(append(destinations, row.createdAt)...)
+}
+
+// The caller holds i.mu. Cursor advancement happens only after all row and
+// close errors have been checked, including a failed head query after wrapping.
+func (i *Inbox) readNativeRecoveryBatch(ctx context.Context, after nativeRecoveryCursor, limit int) ([]Delivery, nativeRecoveryCursor, error) {
+	rows, err := i.db.QueryContext(ctx, nativeRecoverySelect, after.createdAt, after.createdAt, after.messageID, limit)
+	if err != nil {
+		return nil, nativeRecoveryCursor{}, fmt.Errorf("query native recovery page: %w", err)
+	}
+	defer rows.Close()
+	batch := make([]Delivery, 0, limit)
+	var next nativeRecoveryCursor
+	for rows.Next() {
+		var createdAt string
+		delivery, err := scanDelivery(nativeRecoveryScanner{scanner: rows, createdAt: &createdAt}, true)
+		if err != nil {
+			return nil, nativeRecoveryCursor{}, fmt.Errorf("scan native recovery page: %w", err)
+		}
+		batch = append(batch, *delivery)
+		next = nativeRecoveryCursor{createdAt: createdAt, messageID: delivery.MessageID}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nativeRecoveryCursor{}, fmt.Errorf("read native recovery page: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nativeRecoveryCursor{}, fmt.Errorf("close native recovery page: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nativeRecoveryCursor{}, err
+	}
+	return batch, next, nil
 }
 
 // Claim atomically assigns one NODE_RECEIVED delivery to consumerID and

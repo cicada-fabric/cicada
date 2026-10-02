@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodelock"
+	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
@@ -308,5 +310,45 @@ func TestMachineRecoveryQueryResponseFaultsNeverWrite(t *testing.T) {
 				t.Fatalf("fault mutated/retried/redirected: %d", requests)
 			}
 		})
+	}
+}
+
+func TestMachineTLSRecoveryQueryRejectsClosedAndForeignMaintenanceScope(t *testing.T) {
+	root, writer := t.TempDir(), t.TempDir()
+	if os.Chmod(root, 0700) != nil || os.Chmod(writer, 0700) != nil {
+		t.Fatal("private scopes")
+	}
+	node, err := nodelock.AcquireMaintenanceExclusive(root, "synthetic-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.Close()
+	wr, err := nodelock.AcquireWriterRootExclusive(writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wr.Close()
+	cap, err := nodetransport.AcquireTLSMaintenanceRead(root, writer, "synthetic-hub", "synthetic-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cap.Close()
+	hub := machineHubContext{StateDir: root, WriterRoot: writer, HubID: "foreign-hub", NodeID: "synthetic-node", Origin: "https://hub.synthetic.invalid"}
+	before, err := recoveryTreeDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = machineTLSRecoveryQuery(context.Background(), cap, &hub, "", nil, "", nodewire.RecoveryRequest{}, nil); !errors.Is(err, nodetransport.ErrTLSInstall) {
+		t.Fatal("foreign maintenance scope accepted", err)
+	}
+	hub.HubID = "synthetic-hub"
+	copyBeforeClose := *cap
+	cap.Close()
+	if _, err = machineTLSRecoveryQuery(context.Background(), &copyBeforeClose, &hub, "", nil, "", nodewire.RecoveryRequest{}, nil); !errors.Is(err, nodetransport.ErrTLSRuntimeClosed) {
+		t.Fatal("closed maintenance copy accepted", err)
+	}
+	after, err := recoveryTreeDigest(root)
+	if err != nil || before != after || hub.TLSRuntime != nil || hub.NodeTransport != nil {
+		t.Fatal("denied recovery mutated/published")
 	}
 }

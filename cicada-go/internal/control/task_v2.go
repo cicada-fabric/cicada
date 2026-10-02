@@ -67,3 +67,19 @@ func (c *Control) ReconcileExpiredSharedTask(groupID, taskID string, revision in
 	}
 	return c.store.ReconcileExpiredSharedTaskClaim(taskID, revision, c.Identity().ID)
 }
+
+// These methods are reached through the manager-bearer management router, never
+// a Fabric session or a peer-supplied role/purpose.
+func (c *Control) CreateSharedTaskPeerShell(groupID string, input store.SharedTaskPeerShellInput) (*store.SharedTask, error) {
+	group, err := c.store.GetGroup(groupID)
+	if err != nil {
+		return nil, err
+	}
+	if group.State != store.GroupStateActive {
+		return nil, errors.New("group is not active")
+	}
+	return c.store.CreateSharedTaskPeerShell(groupID, c.Identity().ID, input)
+}
+func (c *Control) AssignSharedTaskPeerBody(groupID, taskID string, input store.SharedTaskPeerAssignmentInput) (*store.SharedTaskPeerAssignment, error) {
+	return c.store.AssignSharedTaskPeerBody(groupID, taskID, c.Identity().ID, input)
+}

@@ -71,14 +71,14 @@ func TestSharedTaskAuthorizationUsesCurrentSessionMembership(t *testing.T) {
 		t.Fatalf("caller forged claim owner: %#v", claimed)
 	}
 	result, err := service.SubmitTaskResult(actorA, TaskResultInput{TaskID: task.ID, OwnerEpoch: claimed.OwnerEpoch, ExpectedRevision: claimed.Revision, Summary: "done", Evidence: []string{"artifact:verified"}})
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, store.ErrSharedTaskPeerPlaintext) || result != nil {
+		t.Fatalf("plaintext peer result was not rejected: result=%#v err=%v", result, err)
 	}
 	current, err := persistence.GetSharedTask(task.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.AcceptTaskResult(actorA, TaskAcceptInput{TaskID: task.ID, ResultID: result.ID, ExpectedRevision: current.Revision}); !errors.Is(err, ErrPermissionDenied) {
+	if _, err = service.AcceptTaskResult(actorA, TaskAcceptInput{TaskID: task.ID, ResultID: "unclassified-legacy-result", ExpectedRevision: current.Revision}); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("worker self-approved result: %v", err)
 	}
 }

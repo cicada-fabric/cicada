@@ -617,7 +617,7 @@ func (s *Store) SubmitSharedTaskResult(taskID, principalID, endpointID string, o
 
 func (s *Store) SubmitSharedTaskResultForActor(scope NativeActorScope, taskID string,
 	ownerEpoch, expectedRevision int64, summary string, evidence []string) (*SharedTaskResult, error) {
-	return s.submitSharedTaskResult(taskID, scope.PrincipalID, scope.EndpointID, ownerEpoch, expectedRevision, summary, evidence, &scope)
+	return nil, s.rejectPlainSharedTaskResultForActor(scope, taskID, ownerEpoch, expectedRevision)
 }
 
 func (s *Store) submitSharedTaskResult(taskID, principalID, endpointID string, ownerEpoch, expectedRevision int64,
@@ -739,12 +739,18 @@ func (s *Store) acceptSharedTaskResult(taskID, resultID string, expectedRevision
 	if authority != "PENDING" || epoch != task.OwnerEpoch {
 		return nil, ErrSharedTaskStaleOwner
 	}
-	var evidence []string
-	if err = json.Unmarshal([]byte(evidenceJSON), &evidence); err != nil {
-		return nil, err
-	}
-	if len(evidence) == 0 {
-		return nil, fmt.Errorf("result has no inspectable evidence: %w", ErrSharedTaskConflict)
+	if scope != nil {
+		if err = authorizeTaskPeerAcceptanceTx(tx, task, resultID, *scope, time.Now().UTC()); err != nil {
+			return nil, err
+		}
+	} else {
+		var evidence []string
+		if err = json.Unmarshal([]byte(evidenceJSON), &evidence); err != nil {
+			return nil, err
+		}
+		if len(evidence) == 0 {
+			return nil, fmt.Errorf("result has no inspectable evidence: %w", ErrSharedTaskConflict)
+		}
 	}
 	if _, err = tx.Exec(`UPDATE shared_task_v2_results SET authority='ACCEPTED' WHERE id=?`, resultID); err != nil {
 		return nil, err

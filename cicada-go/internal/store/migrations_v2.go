@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 56
+	CurrentV2SchemaVersion = 57
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -530,6 +530,13 @@ var v2Migrations = []v2Migration{
 		Description: "add exact Owner-approved TLS reservation, permanent serial and epoch floors, signed install and activation proofs",
 		Objects:     []string{"node_tls_authority_v1", "node_tls_authority_v1_one_active", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_tls_proof_nonces_v1", "node_tls_application_keys_v1", "node_tls_authority_v1_candidate_immutable", "node_tls_authority_v1_no_delete", "node_tls_proof_nonces_v1_no_delete", "node_tls_proof_nonces_v1_no_update", "node_tls_authority_v1_evidence_immutable", "node_tls_epoch_floors_v1_no_delete", "node_tls_issuer_serial_floors_v1_no_delete", "node_tls_application_keys_v1_no_delete", "node_tls_application_keys_v1_no_update", "node_tls_epoch_floors_v1_monotone", "node_tls_issuer_serial_floors_v1_monotone"},
 		Apply:       func(s *Store) error { return s.initializeNodeTLSAuthorityV1Schema() },
+	},
+	{
+		Version:     57,
+		ID:          "v2.task.peer_sealed_references",
+		Description: "bind metadata-only Task assignments and peer bodies to existing exact Endpoint sealed SEND records",
+		Objects:     []string{"shared_task_peer_assignments_v57", "shared_task_peer_refs_v57", "shared_task_peer_refs_task_v57", "shared_task_peer_definition_one_v57", "shared_task_peer_refs_immutable_v57", "shared_task_peer_refs_no_delete_v57"},
+		Apply:       func(s *Store) error { return s.initializeSharedTaskPeerPrivacySchema() },
 	},
 }
 

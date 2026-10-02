@@ -1,4 +1,4 @@
-import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld, worldPointToScreen } from './panel-model.js';
+import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupParentGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld, worldPointToScreen } from './panel-model.js';
 import { installCanvasControls } from './panel-canvas-controls.js';
 import { button, html, svg } from './panel-dom.js';
 
@@ -39,7 +39,7 @@ export class CanvasPanel {
     title.append(button('Refresh snapshots', () => this.reload(), 'btn quiet'));
     const tools = html('div', 'stage-tools');
     this.modeButtons = new Map();
-    for (const [mode, label] of [['select', 'Select'], ['pan', 'Pan'], ['join', 'Drag to Group'], ['link', 'Draw Link']]) {
+    for (const [mode, label] of [['select', 'Select'], ['pan', 'Pan'], ['join', 'Drag to Group'], ['parent', 'Nest Group'], ['link', 'Draw Link']]) {
       const modeButton = button(label, () => this.setMode(mode), 'btn canvas-mode');
       modeButton.setAttribute('aria-pressed', mode === this.mode ? 'true' : 'false');
       modeButton.classList.toggle('active-tool', mode === this.mode);
@@ -70,6 +70,11 @@ export class CanvasPanel {
   async reload(forFenceReview = false) {
     try {
       const snapshots = await this.refresh();
+      if (this.plan[0]?.set_parent) {
+        this.plan = [];
+        this.planReview = '';
+      }
+      this.cancelPointer();
       this.topology = snapshots.topology;
       this.status = snapshots.status;
       this.writeFence = snapshots.writeFence || null;
@@ -135,7 +140,7 @@ export class CanvasPanel {
   }
 
   setMode(mode) {
-    if (!['select', 'pan', 'join', 'link'].includes(mode)) return;
+    if (!['select', 'pan', 'join', 'parent', 'link'].includes(mode)) return;
     this.cancelPointer();
     this.mode = mode;
     for (const [key, modeButton] of this.modeButtons || []) {
@@ -144,6 +149,7 @@ export class CanvasPanel {
     }
     const hint = { select: 'Select Endpoints or drag a box.', pan: 'Drag empty canvas space to pan.',
       join: 'Drag an Endpoint reference onto a Group to preview one join.',
+      parent: 'Drag a Group label onto another Group or Network root to preview nesting.',
       link: 'Drag from an Endpoint reference to another to prepare a Link proposal.' }[mode];
     this.setMessage(hint);
   }
@@ -164,6 +170,21 @@ export class CanvasPanel {
 
   beginPointer(event) {
     if (event.button !== 0) return;
+    if (this.mode === 'parent') {
+      const source = event.target.closest?.('[data-group-drag-id]');
+      if (!source) return;
+      const groupId = source.getAttribute('data-group-drag-id');
+      const group = this.scene?.groups.find(item => item.group_id === groupId);
+      const position = this.scene?.groupPos.get(groupId);
+      if (!group || !position) return;
+      this.svgRoot.setPointerCapture(event.pointerId);
+      this.drag = { pointerId: event.pointerId, mode: 'parent', groupId,
+        networkId: this.networkId, version: group.version,
+        worldStart: { x: position.x + 175, y: position.y + 27 } };
+      this.gesturePath = svg('path', { class: 'gesture-line', d: `M ${this.drag.worldStart.x} ${this.drag.worldStart.y} L ${this.drag.worldStart.x} ${this.drag.worldStart.y}` });
+      this.world.append(this.gesturePath);
+      return;
+    }
     const target = event.target.closest?.('[data-endpoint-id]');
     if (target && this.mode === 'select') {
       const id = target.getAttribute('data-endpoint-id');
@@ -201,7 +222,7 @@ export class CanvasPanel {
   movePointer(event) {
     if (!this.drag || this.drag.pointerId !== event.pointerId) return;
     const point = this.localPoint(event);
-    if (this.drag.mode === 'join' || this.drag.mode === 'link') {
+    if (['join', 'link', 'parent'].includes(this.drag.mode)) {
       const worldPoint = screenPointToWorld(point, this.view);
       this.gesturePath?.setAttribute('d', `M ${this.drag.worldStart.x} ${this.drag.worldStart.y} L ${worldPoint.x} ${worldPoint.y}`);
       return;
@@ -219,10 +240,16 @@ export class CanvasPanel {
 
   endPointer(event) {
     if (!this.drag || this.drag.pointerId !== event.pointerId) return;
-    if (this.drag.mode === 'join' || this.drag.mode === 'link') {
+    if (['join', 'link', 'parent'].includes(this.drag.mode)) {
       const gesture = this.drag;
       const hit = document.elementFromPoint?.(event.clientX, event.clientY) || event.target;
-      if (gesture.mode === 'join') {
+      if (gesture.mode === 'parent') {
+        const parent = hit.closest?.('[data-group-drop-id]');
+        const root = hit.closest?.('[data-network-root-drop-id]');
+        if (parent || root?.getAttribute('data-network-root-drop-id') === gesture.networkId) {
+          this.prepareGroupParentGesture(gesture, parent?.getAttribute('data-group-drop-id') || '');
+        } else this.setMessage('No Group or Network root was targeted. No action was prepared.');
+      } else if (gesture.mode === 'join') {
         const groupTarget = hit.closest?.('[data-group-drop-id]');
         if (groupTarget) this.previewEndpointJoin(gesture.endpointId, groupTarget.getAttribute('data-group-drop-id'));
         else this.setMessage('No Group was targeted. No topology action was prepared.');
@@ -280,6 +307,12 @@ export class CanvasPanel {
     const scene = layoutTopology(this.topology, this.networkId, this.status);
     this.scene = scene;
     const refByKey = new Map(scene.endpointRefs.map(ref => [`${ref.endpoint.endpoint_id}\u0000${ref.groupId}`, ref]));
+    if (this.networkId) {
+      this.world.append(svg('rect', { x: 60, y: 20, width: 350, height: 45, class: 'group-box',
+        'data-network-root-drop-id': this.networkId }));
+      this.world.append(svg('text', { x: 77, y: 47, class: 'group-meta',
+        'data-network-root-drop-id': this.networkId }, 'Network root · drop Group here'));
+    }
     for (const group of scene.groups) {
       const position = scene.groupPos.get(group.group_id);
       const count = scene.endpointRefs.filter(ref => ref.groupId === group.group_id).length;
@@ -287,7 +320,7 @@ export class CanvasPanel {
       this.world.append(svg('rect', { x: position.x, y: position.y, width: 350, height,
         class: group.parent_group_id ? 'group-box child' : 'group-box', 'data-group-drop-id': group.group_id }));
       this.world.append(svg('text', { x: position.x + 17, y: position.y + 27, class: 'group-label',
-        'data-group-drop-id': group.group_id }, group.name));
+        'data-group-drop-id': group.group_id, 'data-group-drag-id': group.group_id }, group.name));
       const parentName = scene.groups.find(item => item.group_id === group.parent_group_id)?.name;
       const meta = parentName ? `nested under ${parentName} · v${group.version}` : `network root · v${group.version}`;
       this.world.append(svg('text', { x: position.x + 18, y: position.y + 45, class: 'group-meta' }, meta));

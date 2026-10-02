@@ -1,6 +1,50 @@
 # Architecture v2.3 completion ledger
 
-## 2026-10-02 current ledger — 分源记录；Main组合有界PASS
+## 2026-10-02 current ledger — integration complete; QA PASS（有限范围）; product PARTIAL
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已机械集成 **86 路径 = panel 6 + review policy 13 + Task privacy 30 + D2 TLS 27 + N2 reliability 10**。
+机械集成证明精确源码合并与保全，不能替代运行验收。当前统一 QA 为 **SCOPED_PASS**：41 个有限命令，243 top-level＋308 subtests，
+0 fail/0 skip，30 条test-binary执行记录（18 unique SHA）；D2独立51命令的有限检查亦PASS。
+这些结果仅归ec160/STD4380，不是全仓、real Runtime或新clean交付PASS。
+完整身份、各范围、证据入口和下一出口见[本检查点验证](v01-group-peer-runtime-checkpoint-validation.md)。
+
+当前集成状态不增加历史36/88 PASS计数，也不作100%声明。panel/reviewer/privacy/TLS/native
+各自有限门禁和统一源码证据分开；原48race预算FAIL、旧literal预期FAIL与后续有限修正复验、
+early driver FAIL、旧native/Android results保留原来源，不能被最终绿结果覆盖。
+
+Android 既有已验收运行基线仍为 clean 144 / v1.6.1；e8 / v1.6.3 导入与
+offline Kotlin candidate checks 只归原来源。Client 当前本地策略为 **39 implemented / 16 closed**，
+五项 `link.key_manifest`、`link.key_grants`、`link.key_grant`、
+`link.review_policy_preview`、`link.review_policy_grant` 及独立 directory permission
+extension 继续关闭，待新 clean 工件交付后分别验收、逐项开放。
+`link.review_policy_status` 已实现 metadata 读取，不在这五项中；它不授予签名、路由或投递权限。
+
+旧 clean-144 Android/native、e8、原48与各组件结果保持原 source/image/APK/selector
+归属；历史 FAIL、timeout、SKIP 和 NOT_RUN 均保留。本组合实际 native Runtime/model、
+Android、物理设备、公网 HTTPS、生产恢复/部署验收不由 Go、cgo/OpenSSL 或合成门禁推导。
+恢复 metadata 不授权解隔离、重试、重建 counter 或外部副作用重做；整体 v0.1/v2.3 仍为 **PARTIAL**。
+
+
+本组合实际[QA receipt](../.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](../.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+## Historical ledgers, acceptance matrices and phase rows before integrated-next-core
+
+以下“current ledger”、Acceptance matrix、Golden paths、Architecture phases及其v1.6.1/schema55
+文字只保留原时点证据；当前是上方v1.6.4/schema57组合，并仍未完成产品验收。
+历史V66措辞勘误、旧数值及原source/image/APK links均保留。
+
+## Historical prior checkpoint — 2026-10-02 current ledger — 分源记录；Main组合有界PASS
 
 当前57代码＋五文档候选与原48、N1/TLS/reviewer组件、clean e8工件、旧144 Android/native及owned cleanup的完整证据集中见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)。新组合10个聚焦命令及STD镜像门禁 **PASS（有界）**；原48 race预算FAIL、残余PASS与reviewer原120s FAIL分别保留。Client v1.6.3五操作、N2、D2、privacy57和实际产品闭环尚待验收；V66独立新源已通过但未集成Main，不能把组件或旧APK结果当最终PASS。
 

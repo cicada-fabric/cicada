@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.6.3
+  x-contract-revision: client-hub-v1.6.4
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -379,7 +379,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.6.3}
+        contract_revision: {const: client-hub-v1.6.4}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -859,7 +859,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.6.3}
+        contract_revision: {const: client-hub-v1.6.4}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -1024,7 +1024,7 @@ components:
       type: object
       additionalProperties: false
       required: [link_id, side, owner_id, contract_digest, link_version,
-        expected_policy_version, policy_version, policy_digest, policy, maximum_proof_expires_at]
+        expected_policy_version, policy_version, policy_digest, policy, maximum_proof_expires_at, verified_at, reviewer_qualifications]
       properties:
         link_id: {type: string}
         side: {type: string, enum: [SOURCE, TARGET]}
@@ -1036,22 +1036,86 @@ components:
         policy_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
         policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
         maximum_proof_expires_at: {type: string, format: date-time}
+        verified_at: {type: string, format: date-time}
+        reviewer_qualifications:
+          type: array
+          maxItems: 8
+          items: {$ref: '#/components/schemas/LinkReviewerQualification'}
+      description: >-
+        One canonical UTC RFC3339Nano snapshot. Qualifications exactly match the
+        normalized ordered requested reviewers; NONE returns an empty array.
+        Each row is emitted after the current binding and real link.review Guard
+        succeed. Submission rechecks authority; a lease is not a durable grant.
+    LinkReviewerQualification:
+      type: object
+      additionalProperties: false
+      required: [endpoint_id, group_id, membership_revision, join_revision,
+        group_version, binding_id, binding_epoch, lease_expires_at, action]
+      properties:
+        endpoint_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        membership_revision: {type: integer, minimum: 1}
+        join_revision: {type: integer, minimum: 1}
+        group_version: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1}
+        binding_epoch: {type: integer, minimum: 1}
+        lease_expires_at: {type: string, format: date-time}
+        action: {const: link.review}
+    LinkReviewPolicyOwnerEvidence:
+      type: object
+      additionalProperties: false
+      required: [owner_key_id, owner_public_identity, owner_key_state,
+        owner_key_version, signed_proof, accepted_at]
+      properties:
+        owner_key_id: {type: string, minLength: 1}
+        owner_public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          maxLength: 21848
+          description: Exact retained OwnerLinkReviewPolicyProof bytes, never reconstructed.
+        accepted_at: {type: string, format: date-time}
+    LinkReviewPolicyOwnerApproval:
+      type: object
+      additionalProperties: false
+      required: [side, owner_id, current_status]
+      properties:
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string, minLength: 1}
+        current_status: {type: string, enum: [MISSING, VERIFIED, OWNER_KEY_REVOKED, PROOF_EXPIRED, SCOPE_STALE, INVALID]}
+        evidence: {$ref: '#/components/schemas/LinkReviewPolicyOwnerEvidence'}
+      description: Evidence is present only for VERIFIED with current Link scope.
     LinkReviewPolicyStatusResult:
       type: object
       additionalProperties: false
-      required: [link_id, link_version, policy_version, policy_digest, policy, current, accepted_sides]
+      required: [link_id, link_version, contract_digest, policy_version, policy_digest, policy, current, accepted_sides, verified_at, owner_approvals]
       properties:
         link_id: {type: string}
         link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
         policy_version: {type: integer, minimum: 0}
         policy_digest: {type: string}
         policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
         current: {type: boolean}
         accepted_sides: {type: array, maxItems: 2, items: {type: string, enum: [SOURCE, TARGET]}}
+        verified_at: {type: string, format: date-time}
+        owner_approvals:
+          type: array
+          maxItems: 2
+          items: {$ref: '#/components/schemas/LinkReviewPolicyOwnerApproval'}
         expires_at: {type: string, format: date-time}
       description: >-
-        Policy status only. It contains no reviewed message body or message
-        ciphertext and does not establish native/model consumption.
+        Status selects the active head only. A grant result may describe its
+        partial candidate; current requires exact active head and both verified
+        sides. Configured approvals are SOURCE then TARGET; accepted_sides counts
+        verified proofs only. Unconfigured version0 NONE has empty digest,
+        accepted_sides and owner_approvals. Configured NONE still has approvals.
+        Outer Link version/contract describe the current Link; policy tuple retains
+        the selected head. Stale, revoked or expired heads return current=false with bounded policy
+        metadata and per-side reasons; corrupt policy is rejected. No reviewed
+        message body, ciphertext or native/model consumption is established.
 
     CommunicationLinkKeySide:
       type: object

@@ -365,10 +365,16 @@ func reconcileMachineRelayJournal(ctx context.Context, base, machineID, stateDir
 						if err := retireMachineNetworkDirectDenied(ctx, inbox, journal, nodeinbox.Claim{Delivery: *delivery}, entry); err != nil {
 							return err
 						}
-					} else if err := journal.remove(entry.MessageID); err != nil {
-						return err
+						index--
+					} else if delivery.State != nodeinbox.INJECTING && delivery.State != nodeinbox.INJECTION_UNCERTAIN &&
+						delivery.State != nodeinbox.CONSUMPTION_UNCONFIRMED && delivery.State != nodeinbox.RUNTIME_INJECTED {
+						if err := journal.remove(entry.MessageID); err != nil {
+							return err
+						}
+						index--
 					}
-					index--
+					// Post-start outcomes retain their immutable journal coordinates.
+					// Denial cannot prove non-injection or authorize another queue call.
 					continue
 				}
 				return authErr

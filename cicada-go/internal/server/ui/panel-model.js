@@ -33,6 +33,32 @@ export function groupHasMember(snapshot, endpoint, groupId) {
     member.principal_id === endpoint.principal_id && String(member.status).toLowerCase() === 'active');
 }
 
+export function groupParentGesture(snapshot, childId, parentId, networkId) {
+  const groups = snapshot.groups || [];
+  const current = id => groups.find(group => group.group_id === id);
+  const valid = group => group && group.network_id === networkId &&
+    String(group.state).toLowerCase() === 'active' && Number.isSafeInteger(group.version) && group.version > 0;
+  const child = current(childId);
+  if (!networkId || !valid(child) || !(snapshot.networks || []).some(network =>
+      network.network_id === networkId && String(network.state).toLowerCase() === 'active')) {
+    throw new Error('Move must use a current visible Group in the selected active Network.');
+  }
+  const seen = new Set([childId]);
+  for (let id = parentId; id;) {
+    if (seen.has(id)) throw new Error('Group nesting would form a cycle. No write was prepared.');
+    seen.add(id);
+    const parent = current(id);
+    if (!valid(parent)) throw new Error('Parent chain must be current and visible in the selected Network.');
+    id = parent.parent_group_id || '';
+  }
+  if ((child.parent_group_id || '') === parentId) return null;
+  return {
+    action: { kind: 'group.set_parent', set_parent: { group_id: childId,
+      parent_group_id: parentId, expected_group_version: child.version } },
+    review: `Move ${child.name || childId} under ${parentId ? current(parentId).name || parentId : 'Network root'} in ${networkId}, using Group version ${child.version}. This changes only organization: no Membership, role, permission, history, Endpoint reference, Link, or key is inherited. The Hub rechecks current Owner authority, scope, cycle and exact version.`
+  };
+}
+
 export function endpointJoinGesture(snapshot, endpointId, groupId, networkId) {
   const endpoint = (snapshot.endpoints || []).find(item => item.endpoint_id === endpointId);
   const group = (snapshot.groups || []).find(item => item.group_id === groupId);

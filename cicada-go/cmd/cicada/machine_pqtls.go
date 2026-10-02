@@ -2,31 +2,30 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/nodetransport"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 func configureMachinePQTransport(hub *machineHubContext, path string) error {
 	if path == "" {
 		return nil
 	}
-	cfg, err := nodetransport.Load(path, "node")
+	if hub == nil || hub.TLSRuntime != nil || hub.NodeTransport != nil {
+		return nodetransport.ErrTLSInstall
+	}
+	runtime, err := nodetransport.OpenRuntime(context.Background(), nodetransport.RuntimeOptions{StateRoot: hub.StateDir, WriterRoot: hub.WriterRoot, HubID: hub.HubID, NodeID: hub.NodeID, ApplicationOrigin: hub.Origin, ConfigPath: path, OpenLocal: func() (*nodetransport.LocalTLSInstaller, func(), error) { return machineTLSOpenLocal(hub) }, QueryCurrent: func(ctx context.Context, cfg *nodetransport.Config) (*store.NodeTLSAuthoritySnapshot, error) {
+		return machineTLSQueryCurrent(ctx, hub, cfg)
+	}})
 	if err != nil {
 		return err
 	}
-	if cfg.LogicalOrigin() != hub.Origin || cfg.Identity.HubID != hub.HubID || cfg.Identity.NodeID != hub.NodeID {
-		return errors.New("Node PQ transport does not match pinned Hub/Node coordinates")
-	}
-	transport, err := nodetransport.NewTransport(cfg)
-	if err != nil {
-		return err
-	}
-	hub.NodeTransport = transport
+	hub.TLSRuntime = runtime
+	hub.NodeTransport = runtime
 	return nil
 }
 
@@ -35,19 +34,14 @@ func configureMachinePQTransport(hub *machineHubContext, path string) error {
 func machineNodeHTTPClient(ctx context.Context, timeout time.Duration) (*http.Client, error) {
 	client := &http.Client{Timeout: timeout, CheckRedirect: rejectNodeRedirect}
 	if hub, ok := machineHubFrom(ctx); ok {
+		if hub.NodeTransport == nil && strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != "" {
+			return nil, nodetransport.ErrTLSCurrentAuthorityUnavailable
+		}
 		client.Transport = hub.NodeTransport
 		return client, nil
 	}
 	if path := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")); path != "" {
-		cfg, err := nodetransport.Load(path, "node")
-		if err != nil {
-			return nil, err
-		}
-		transport, err := nodetransport.NewTransport(cfg)
-		if err != nil {
-			return nil, err
-		}
-		client.Transport = machineOneShotTransport{transport}
+		return nil, nodetransport.ErrTLSCurrentAuthorityUnavailable
 	}
 	return client, nil
 }

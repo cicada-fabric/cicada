@@ -42,7 +42,11 @@ func TestTaskHandoffPeerAuthorizationAndMissingArtifactIsDurable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err = service.ClaimTask(actorA, TaskClaimInput{TaskID: task.ID, ExpectedRevision: task.Revision, IdempotencyKey: "claim-a"})
+	_, err = service.ClaimTask(actorA, TaskClaimInput{TaskID: task.ID, ExpectedRevision: task.Revision, IdempotencyKey: "claim-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = persistence.GetSharedTask(task.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +87,11 @@ func TestTaskHandoffPeerAuthorizationAndMissingArtifactIsDurable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err = service.ClaimTask(actorA, TaskClaimInput{TaskID: second.ID, ExpectedRevision: second.Revision, IdempotencyKey: "claim-second"})
+	_, err = service.ClaimTask(actorA, TaskClaimInput{TaskID: second.ID, ExpectedRevision: second.Revision, IdempotencyKey: "claim-second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err = persistence.GetSharedTask(second.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

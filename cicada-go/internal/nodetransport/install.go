@@ -767,6 +767,12 @@ func (i *LocalTLSInstaller) Apply(s store.NodeTLSAuthoritySnapshot, at time.Time
 	if e != nil || ack != activation.InstallAckClaims {
 		return nil, ErrTLSInstall
 	}
+	if e = i.activeAuthority(s); e != nil {
+		return nil, e
+	}
+	if e = runtimeCheckAgentMetadata(i); e != nil {
+		return nil, e
+	}
 	cfgJSON, e := json.Marshal(staged.Config)
 	if e != nil {
 		return nil, e
@@ -810,6 +816,9 @@ func (i *LocalTLSInstaller) Apply(s store.NodeTLSAuthoritySnapshot, at time.Time
 		return nil, e
 	}
 	if e = i.activeAuthority(s); e != nil {
+		return nil, e
+	}
+	if e = runtimeProvisionAgentLock(i); e != nil {
 		return nil, e
 	}
 	if e = i.replace(filepath.Join(i.base(), "active.json"), cfgJSON); e != nil {

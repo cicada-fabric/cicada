@@ -1,6 +1,53 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-02 current status — Main组合有界PASS；产品闭环待验
+## 2026-10-02 current status — integrated candidate, acceptance PASS（有限范围）
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已机械集成 **86 路径 = panel 6 + review policy 13 + Task privacy 30 + D2 TLS 27 + N2 reliability 10**。
+机械集成证明精确源码合并与保全，不能替代运行验收。当前统一 QA 为 **SCOPED_PASS**：41 个有限命令，243 top-level＋308 subtests，
+0 fail/0 skip，30 条test-binary执行记录（18 unique SHA）；D2独立51命令的有限检查亦PASS。
+这些结果仅归ec160/STD4380，不是全仓、real Runtime或新clean交付PASS。
+完整身份、各范围、证据入口和下一出口见[本检查点验证](v01-group-peer-runtime-checkpoint-validation.md)。
+
+| 集成范围 | 当前源码事实 | 本组合验收 |
+|---|---|---|
+| panel6 | Group reparent preview/explicit CAS、repeat no-op、cycle/stale拒绝及uncertain-write fence | PASS（有限范围），历史Browser不转移 |
+| policy13 | 当前reviewer qualification、`link.review`/lease Guard、双侧original proof投影，v1.6.4 | PASS（有限范围），Client未repin |
+| privacy30 | metadata-only peer DTO/plaintext deny、可信per-Task exact assignment、sealed refs/current Guard/ArtifactACL | PASS（有限范围）；SEND candidate不等于Task authority |
+| D2 TLS27 | stopped maintenance、fresh current proof、checkedHub/Node restart；无hot reload | PASS（有限范围）；Go native/cgo不是realRuntime |
+| N2 reliability10 | Link/Network-direct/Monitor original notice lifecycle与bounded recovery、Hub202 sequence兼容解码 | PASS（有限范围）；queue成功不证明model消费 |
+
+Android 既有已验收运行基线仍为 clean 144 / v1.6.1；e8 / v1.6.3 导入与
+offline Kotlin candidate checks 只归原来源。Client 当前本地策略为 **39 implemented / 16 closed**，
+五项 `link.key_manifest`、`link.key_grants`、`link.key_grant`、
+`link.review_policy_preview`、`link.review_policy_grant` 及独立 directory permission
+extension 继续关闭，待新 clean 工件交付后分别验收、逐项开放。
+`link.review_policy_status` 已实现 metadata 读取，不在这五项中；它不授予签名、路由或投递权限。
+
+旧 clean-144 Android/native、e8、原48与各组件结果保持原 source/image/APK/selector
+归属；历史 FAIL、timeout、SKIP 和 NOT_RUN 均保留。本组合实际 native Runtime/model、
+Android、物理设备、公网 HTTPS、生产恢复/部署验收不由 Go、cgo/OpenSSL 或合成门禁推导。
+恢复 metadata 不授权解隔离、重试、重建 counter 或外部副作用重做；整体 v0.1/v2.3 仍为 **PARTIAL**。
+
+
+本组合实际[QA receipt](../.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](../.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+## Historical status matrices before integrated-next-core
+
+以下所有旧current段、V编号、PASS/PARTIAL计数和待验表保持原时点与来源；上方current和新验证记录
+才描述86路径组合，不能把历史表相加为当前完成率。
+
+## Historical prior checkpoint — 2026-10-02 current status — Main组合有界PASS；产品闭环待验
 
 当前57代码＋五文档组合的统一source/version与原48命令、失败及工件归属见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)。新组合10个聚焦命令与新STD镜像门禁 **PASS（有界）**，不能写whole-suite PASS；clean e8已交付，旧144 Android/native与owned cleanup保留其原source/APK/profile。
 

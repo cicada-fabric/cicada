@@ -49,7 +49,17 @@ func serveFabricOnlyWithTransport(host string, port int, config control.Config, 
 	if err != nil {
 		return err
 	}
-	httpServer := &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(port)), Handler: server.NewFabricHandler(service, config.APIToken), ReadHeaderTimeout: 10 * time.Second}
+	handler := server.NewFabricHandler(service, config.APIToken)
+	if pqConfig != nil {
+		hubControl, err := control.LoadExistingNodeTLSHubIdentity(filepath.Join(config.StateDir, "e2ee", "node-control-identity.json"))
+		if err != nil {
+			return err
+		}
+		handler = server.NewFabricHandlerWithNodeTLSCurrent(service, config.APIToken, func(credential, nodeID string, packet []byte) ([]byte, error) {
+			return control.ReadNodeTLSCurrentPacket(persistence, hubControl, credential, nodeID, packet)
+		})
+	}
+	httpServer := &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(port)), Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	fmt.Printf("Cicada Fabric listening on %s (Control business disabled)\n", httpServer.Addr)

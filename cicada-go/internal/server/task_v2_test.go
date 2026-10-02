@@ -204,3 +204,44 @@ func TestSharedTaskManagementAndPeerClaimUseSeparateAuthorizedEntrypoints(t *tes
 		t.Fatalf("test fixture handoff was not still awaiting its target: %v", err)
 	}
 }
+
+func TestSharedTaskPeerManagementAssignmentRequiresConfiguredBearer(t *testing.T) {
+	for _, token := range []string{"", "synthetic-manager-bearer"} {
+		t.Run("configured-"+token, func(t *testing.T) {
+			root := t.TempDir()
+			manager, err := control.New(control.Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: token})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer manager.Shutdown(context.Background())
+			group, err := manager.CreateGroup(control.GroupCreateInput{Name: "synthetic privacy management"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			task, err := manager.CreateSharedTask(group.ID, store.SharedTask{Objective: "legal management history", AcceptanceCriteria: "legal management criteria"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler := NewHandler(manager)
+			for _, path := range []string{"/v1/groups/" + group.ID + "/tasks/peer-shell", "/v1/groups/" + group.ID + "/tasks/" + task.ID + "/peer-assignment"} {
+				for _, credential := range []string{"", "Bearer wrong-bearer", "CicadaSession synthetic-peer-credential"} {
+					request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{"publisher_endpoint_id":"untrusted","result_recipient_endpoint_id":"untrusted"}`))
+					request.Header.Set("Authorization", credential)
+					response := httptest.NewRecorder()
+					handler.ServeHTTP(response, request)
+					want := http.StatusUnauthorized
+					if token == "" {
+						want = http.StatusServiceUnavailable
+					}
+					if response.Code != want {
+						t.Fatalf("management guard: got %d want %d", response.Code, want)
+					}
+				}
+			}
+			tasks, err := manager.SharedTasks(group.ID, 100)
+			if err != nil || len(tasks) != 1 || tasks[0].ID != task.ID || tasks[0].Revision != task.Revision || tasks[0].OwnerEpoch != task.OwnerEpoch || tasks[0].Objective != task.Objective || tasks[0].AcceptanceCriteria != task.AcceptanceCriteria {
+				t.Fatal("denied assignment changed management Task history")
+			}
+		})
+	}
+}

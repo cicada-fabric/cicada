@@ -769,6 +769,9 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 			}
 			return mcpOutboxPublicResult(failed), nil
 		}
+		if op.Kind == "send" && input.TaskID != "" {
+			return m.dispatchCrossNodeGroupMCPOutbox(store, scope, op, input)
+		}
 		if input.LinkID != "" {
 			if op.Kind == "send" {
 				return m.dispatchSealedMCPOutbox(store, scope, op)

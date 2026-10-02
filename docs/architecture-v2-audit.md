@@ -1,6 +1,56 @@
 # Architecture v2.3 当前事实审计
 
-## 2026-10-02 integrated candidate — focused QA PASS; clean artifact pending
+## 2026-10-02 current audit — 86-path integration; QA PASS（有限范围）
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已机械集成 **86 路径 = panel 6 + review policy 13 + Task privacy 30 + D2 TLS 27 + N2 reliability 10**。
+机械集成证明精确源码合并与保全，不能替代运行验收。当前统一 QA 为 **SCOPED_PASS**：41 个有限命令，243 top-level＋308 subtests，
+0 fail/0 skip，30 条test-binary执行记录（18 unique SHA）；D2独立51命令的有限检查亦PASS。
+这些结果仅归ec160/STD4380，不是全仓、real Runtime或新clean交付PASS。
+完整身份、各范围、证据入口和下一出口见[本检查点验证](v01-group-peer-runtime-checkpoint-validation.md)。
+
+本轮有限范围已接入：Group nesting的显式Owner动作/CAS；policy preview/grant 的当前
+reviewer permission与leased binding以及双侧原proof投影；Task peer仅返回责任metadata，
+拒绝旧plaintext submit，definition/result绑定已存exact Endpoint Group sealed SEND。
+普通SEND只是candidate，registered reference与当前assignment/ArtifactACL/epoch/CAS才产生Task权威。
+合法Control管理prose/history保留，Hub返回的Owner key是discovery，不能替代独立local pins。
+
+N2复用持native writer后的当前Guard与原attempt/outcome；队列接受仍为
+`CONSUMPTION_UNCONFIRMED`，unknown不自动重投。sealed SEND内部DTO接受既有Hub202的
+`sequence`，保留strict unknown-field decode；Relay序号与Endpoint encrypted序号不同。
+D2支持停止→精确离线维护→checked Hub/Node restart，非热加载或自动续期。
+普通recovery.status仍依赖management provider，Control-free仅独立fresh TLS current query。
+
+Android 既有已验收运行基线仍为 clean 144 / v1.6.1；e8 / v1.6.3 导入与
+offline Kotlin candidate checks 只归原来源。Client 当前本地策略为 **39 implemented / 16 closed**，
+五项 `link.key_manifest`、`link.key_grants`、`link.key_grant`、
+`link.review_policy_preview`、`link.review_policy_grant` 及独立 directory permission
+extension 继续关闭，待新 clean 工件交付后分别验收、逐项开放。
+`link.review_policy_status` 已实现 metadata 读取，不在这五项中；它不授予签名、路由或投递权限。
+
+旧 clean-144 Android/native、e8、原48与各组件结果保持原 source/image/APK/selector
+归属；历史 FAIL、timeout、SKIP 和 NOT_RUN 均保留。本组合实际 native Runtime/model、
+Android、物理设备、公网 HTTPS、生产恢复/部署验收不由 Go、cgo/OpenSSL 或合成门禁推导。
+恢复 metadata 不授权解隔离、重试、重建 counter 或外部副作用重做；整体 v0.1/v2.3 仍为 **PARTIAL**。
+
+
+本组合实际[QA receipt](../.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](../.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+## Historical audits before integrated-next-core
+
+以下旧current段、测试和缺口保留其历史来源；不得把“尚未集成Main”等当时结论外推到上方86路径。
+
+## Historical prior checkpoint — 2026-10-02 integrated candidate — focused QA PASS; clean artifact pending
 
 Main dirty source-input fingerprint `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079` integrates the directory/native/relay/ML-DSA work, the final Monitor/ACK correction and Link-proof patch. Candidate contract `client-hub-v1.6.3` has catalog SHA `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`; wire 1, 55 operations and Hub schema v55 are unchanged. The integrated focused normal gate passed 49 top-level + 128 subtests across six packages, with zero skips/failures and six executed test binaries. Affected vet/build, contract check/export/verify, and Python 15 tests + 17 subtests passed. Source and standard/Go input metadata (835 / 829 entries) matched before and after. The [receipt](../.cicada-data/combined-link-proof-20261002/receipt.json) SHA is `6416728daca6fdf4e95f0b0fc60f06ad6dd4ca77ed910ab7c1f2ba90fe8c12e7`.
 

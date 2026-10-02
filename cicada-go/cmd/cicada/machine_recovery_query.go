@@ -20,7 +20,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodebackup"
-	"github.com/cicada-ai/cicada/internal/nodelock"
+	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
@@ -230,17 +230,17 @@ func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 	if proof.QuarantineStatus != "pending" || proof.AgentMayStart || !nodewire.ValidRecoveryDigest(proof.BackupManifestSHA256) {
 		return errors.New("verified pending restore proof is required")
 	}
-	// Restore/Agent use this same lock order. These locks never stop processes.
-	maintenance, err := nodelock.AcquireMaintenanceExclusive(*stateDir, proof.NodeID)
+	// Read only existing client coordinates before acquiring the genuine
+	// maintenance capability; lineage/state digest are rechecked under its locks.
+	scopeClient, _, err := loadMachineRecoveryClient(*stateDir, proof.NodeID)
 	if err != nil {
 		return err
 	}
-	defer maintenance.Close()
-	writer, err := nodelock.AcquireWriterRootExclusive(*root)
+	cap, err := nodetransport.AcquireTLSMaintenanceRead(*stateDir, *root, scopeClient.state.HubID, proof.NodeID)
 	if err != nil {
 		return err
 	}
-	defer writer.Close()
+	defer cap.Close()
 	after, err := recoveryQueryStateDigest(nodeDir, *stateDir, *root, manifest.NodeID)
 	if err != nil || before != after {
 		return errors.New("restored Node changed during recovery inspection")
@@ -277,15 +277,14 @@ func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 		return errors.New("recovery query has invalid pinned coordinates")
 	}
 	hub := machineHubContext{HubID: client.state.HubID, Origin: client.base, NodeID: client.nodeID, StateDir: *stateDir, Token: token, WriterRoot: *root}
-	if err = configureMachinePQTransport(&hub, *pq); err != nil {
-		return err
-	}
-	if closer, ok := hub.NodeTransport.(interface{ CloseIdleConnections() }); ok {
-		defer closer.CloseIdleConnections()
-	}
 	ctx, cancel := context.WithTimeout(withMachineHubContext(context.Background(), hub), 30*time.Second)
 	defer cancel()
-	status, err := queryMachineRecoveryStatus(ctx, client, token, q, packet)
+	var status nodewire.RecoveryStatus
+	if strings.TrimSpace(*pq) != "" {
+		status, err = machineTLSRecoveryQuery(ctx, cap, &hub, *pq, client, token, q, packet)
+	} else {
+		status, err = queryMachineRecoveryStatus(ctx, client, token, q, packet)
+	}
 	if err != nil {
 		return err
 	}

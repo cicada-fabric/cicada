@@ -1,4 +1,4 @@
-import { actionSummary, linkGesturePair } from './panel-model.js';
+import { actionSummary, groupParentGesture, linkGesturePair } from './panel-model.js';
 import { button, html, selectField, textField } from './panel-dom.js';
 
 export function installCanvasControls(CanvasPanel) {
@@ -19,6 +19,8 @@ export function installCanvasControls(CanvasPanel) {
       const network = selectField('Active Network', networks, this.networkId);
       network.select.addEventListener('change', () => {
         this.networkId = network.select.value;
+        if (this.plan[0]?.set_parent) { this.plan = []; this.planReview = ''; }
+        this.cancelPointer();
         this.networkDirectory = { networkId: '', endpoints: [], nextCursor: '', loading: false, error: '' };
         this.selection.clear(); this.render(); this.renderSide();
       });
@@ -306,6 +308,19 @@ export function installCanvasControls(CanvasPanel) {
     this.plan = [action];
     this.planReview = review;
     this.renderSide();
+  },
+
+  prepareGroupParentGesture(gesture, parentId) {
+    if (this.plan[0]?.set_parent) { this.plan = []; this.planReview = ''; }
+    try {
+      if (gesture.networkId !== this.networkId ||
+          this.topology.groups?.find(group => group.group_id === gesture.groupId)?.version !== gesture.version) {
+        throw new Error('Group scope or version changed during the gesture. Refresh and review again.');
+      }
+      const intent = groupParentGesture(this.topology, gesture.groupId, parentId, this.networkId);
+      if (!intent) { this.setMessage('This Group already has that parent. No write was prepared.'); return; }
+      this.queueAction(intent.action, intent.review);
+    } catch (error) { this.setMessage(error.message); }
   },
 
   prepareLinkReview(sourceEndpointId, sourceGroupId, targetEndpointId, targetGroupId) {

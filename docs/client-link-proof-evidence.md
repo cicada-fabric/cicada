@@ -56,3 +56,58 @@ wrong-side/version, tamper and expiry rejection. Validation command logs, exits,
 binaries and frozen source are retained separately with the delivered delta.
 Android, real native Runtime, physical device and public HTTPS are NOT_RUN for
 this slice; historical results do not certify this candidate.
+
+
+## Review-policy extension — client-hub-v1.6.4
+
+The v1.6.3 key-grant evidence and validation above remain historical evidence of
+that slice. v1.6.4 adds the two missing review-policy inputs together: exact
+Guard-checked reviewer qualification snapshots in preview, and selected original
+Owner approval proofs in grant/status. The authoritative field names, bounds,
+states and partial-candidate/active-head semantics are in the OpenAPI and wire
+contract. Version0 NONE has no Owner approvals; configured signed NONE retains
+the bilateral approval shape. No proof claims, wire version or operation count
+change. This extension needs its own fixed-delivery Client acceptance.
+
+Compare the ordered qualification rows with every requested reviewer and the
+outer Link/side/Owner/version/contract/policy tuple. A fresh decrypted response
+from a pinned Hub is authoritative for its checked DB snapshot, not an externally
+signed reviewer credential. Preview and grant repeat the real Guard; lease time
+does not promise future permission. Verify SOURCE and TARGET policy proofs using
+independently provisioned Owner pins, with the exact canonical policy and fresh
+Link manifest tuple. Returned Owner keys only support discovery and authenticated
+server lifecycle state. Policy proofs do not sign reviewer qualifications,
+manifest digest or Client contract revision, and are a different signing domain
+from key grants.
+
+Persist the original request packet for lost-response recovery. A cached response
+preserves original proof bytes and idempotency but is historical: refresh with a
+new encrypted preview/status and manifest before later signing. Evidence is
+omitted for nonverified proofs or stale Link scope. Corrupt policy rejects;
+noncurrent status is not a fabricated unconfigured NONE.
+
+The public-only synthetic bilateral
+`cicada-go/internal/e2ee/testdata/link-review-policy-client-evidence-v1.json`
+contains normalized policy, both complete identities/original proofs, their exact
+11 ordered claims/domain/signed-byte hashes, and fixed-time preview/status
+examples. It must never initialize a deployment. Android, real native Runtime,
+physical device and public HTTPS acceptance remain separately recorded.
+
+
+For stale heads the outer Link version/contract describe the current Link, while
+policy version/digest/canonical policy retain the selected head tuple; SCOPE_STALE
+omits evidence. Expired or revoked heads are repaired only by existing fresh
+next-version preview, no-inflight checks and two fresh proofs, never reset to
+unconfigured NONE. Active-head-only status cannot resolve an uncertain first-side
+partial grant: retain a durable Client uncertainty fence until exact original
+packet recovery is COMPLETED, or a fresh activated pair contains the exact
+original proof and tuple. Fresh preview and manifest precede signing; changed
+qualifications require explicit reconfirmation. Neither verified_at nor cached
+recovery alone establishes freshness.
+
+The public response projection preflight includes the exact RPC wrapper and
+worst-case HTML escaping of bounded 256-byte request/operation identifiers in
+the existing 64KiB encrypted plaintext limit. Oversized preview/grant/status
+responses are generically denied before commit; grant rolls back rather than
+truncating evidence. Canonical proof parsing rejects padded/reordered outer JSON
+and preserves accepted original bytes. No signature or runtime limit changes.

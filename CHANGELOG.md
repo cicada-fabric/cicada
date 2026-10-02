@@ -5,6 +5,51 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
+### 2026-10-02 integrated-next-core candidate — QA PASS（有限范围）
+
+Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
+完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
+`source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
+当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+`client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
+catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
+
+已集成86路径：panel6 的 Group→Group nesting preview/explicit CAS、repeat/cycle/stale 拒绝；
+policy13 的当前 `link.review`/leased binding Guard、qualification 和双侧 original Owner proof
+投影；privacy30 的 peer metadata DTO、plaintext deny 与精确 sealed definition/result references；
+D2 TLS27 的 fresh current authority、离线维护/checked restart；N2 reliability10 的 Link、
+Network-direct 与 original Monitor notice 注入生命周期/恢复和既有 Hub202 `sequence` 解码修复。
+schema57 增量增加 Task sidecars，保留 D1 schema56 及原迁移账本/历史。
+统一QA **SCOPED_PASS**（41有限命令、243 top＋308 subtests、0 fail/skip、
+30 test-binary执行记录／18 unique SHA），D2独立有限PASS；
+这些结果不是全仓、新clean image、Android或真实native PASS。
+
+Android 既有已验收运行基线仍为 clean 144 / v1.6.1；e8 / v1.6.3 导入与
+offline Kotlin candidate checks 只归原来源。Client 当前本地策略为 **39 implemented / 16 closed**，
+五项 `link.key_manifest`、`link.key_grants`、`link.key_grant`、
+`link.review_policy_preview`、`link.review_policy_grant` 及独立 directory permission
+extension 继续关闭，待新 clean 工件交付后分别验收、逐项开放。
+`link.review_policy_status` 已实现 metadata 读取，不在这五项中；它不授予签名、路由或投递权限。
+
+旧 clean-144 Android/native、e8、原48与各组件结果保持原 source/image/APK/selector
+归属；历史 FAIL、timeout、SKIP 和 NOT_RUN 均保留。本组合实际 native Runtime/model、
+Android、物理设备、公网 HTTPS、生产恢复/部署验收不由 Go、cgo/OpenSSL 或合成门禁推导。
+恢复 metadata 不授权解隔离、重试、重建 counter 或外部副作用重做；整体 v0.1/v2.3 仍为 **PARTIAL**。
+
+来源与未完成出口见[本检查点验证](docs/v01-group-peer-runtime-checkpoint-validation.md)。
+
+
+本组合实际[QA receipt](.cicada-data/integrated-next-core-20261002/qa/receipt.json)
+SHA `567ea1f0c88192c0bd639b9d1a5804cd11a6a68e6a857f6697642d20c2e4256c`；
+[D2 FINAL_REPORT](.cicada-data/integrated-next-core-20261002/d2-qa/main-freeze1/FINAL_REPORT.json)
+SHA `8e58b8a28d263f629279b0bc6cb038b78f9e5ba77bfe07e4559236f4a6d8e89f`。
+两个本轮preflight FAIL保留原证据；新的clean工件交付仍待完成。
+
+### Historical unreleased checkpoints before integrated-next-core
+
+以下原正文逐字保留各时点的来源；其中“current”、schema55/v1.6.1和未来规划均描述当时，
+不覆盖本节集成候选。历史目录权限提案已进入前序实现，但新的Client入口仍待独立验收。
+
 Current Hub schema is v55; Client contract is `client-hub-v1.6.1`, encrypted
 wire v1, 55 operations, catalog `6748449e…`; software remains `0.1.0-dev`.
 Main integrates the committed `06d0a58` runtime/native-identity checkpoint,

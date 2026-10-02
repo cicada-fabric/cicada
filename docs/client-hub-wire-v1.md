@@ -1,6 +1,6 @@
 # Client ↔ Hub wire contract (server implementation)
 
-This document describes the **implemented Hub side** for the separate Android repository. Packet framing is version 1. The delivered `client-hub-v1.6` bundle and its fixed-image evidence remain immutable historical baselines. The prior `client-hub-v1.6.1` correction aligns Node pairing/result documentation with the existing implementation. The prior `client-hub-v1.6.2` candidate adds the explicit Owner Group `directory.read` action and its snapshot field. This `client-hub-v1.6.3` candidate extends current Link key-grant results with complete public Owner proof evidence; wire framing, the 55 RPC operations, Hub schema v55 and cryptographic formats remain unchanged. Its package/image delivery and independent Client acceptance must be recorded separately; this edit does not claim them. `catalog_sha256` is computed over only the exact embedded `internal/clientcontract/catalog.json` bytes, not this whole document or a complete protocol bundle. The public capabilities response keeps `contract=android-hub-v1-draft` and `status=partial` (or `not_ready` when Control is unavailable); the separate pinned identity document keeps `contract=android-hub-v1`. These names serve different endpoints and remain distinct. `available_rpc_operations` lists the resident manager's operations; `external_rpc_operations` lists an enrolled outside owner's restricted operations. After enrollment, call encrypted `session.capabilities` for the actual device's scope and catalog digest. A `true` flag reports a Hub implementation, not independent Android interoperability. `status_events` and routable `external_thread_links` remain `false`. The Hub combines Control, Directory and Relay in development, but only Control decrypts these management packets. Peer Endpoint messages use a different identity and must not enter this RPC.
+This document describes the **implemented Hub side** for the separate Android repository. Packet framing is version 1. The delivered `client-hub-v1.6` bundle and its fixed-image evidence remain immutable historical baselines. The prior `client-hub-v1.6.1` correction aligns Node pairing/result documentation with the existing implementation. The prior `client-hub-v1.6.2` candidate adds the explicit Owner Group `directory.read` action and its snapshot field. The prior `client-hub-v1.6.3` extends current Link key-grant results with complete public Owner proof evidence. This `client-hub-v1.6.4` candidate adds reviewer qualification snapshots and bilateral review-policy proof evidence; wire framing, the 55 RPC operations, Hub schema v55 and cryptographic formats remain unchanged. Its package/image delivery and independent Client acceptance must be recorded separately; this edit does not claim them. `catalog_sha256` is computed over only the exact embedded `internal/clientcontract/catalog.json` bytes, not this whole document or a complete protocol bundle. The public capabilities response keeps `contract=android-hub-v1-draft` and `status=partial` (or `not_ready` when Control is unavailable); the separate pinned identity document keeps `contract=android-hub-v1`. These names serve different endpoints and remain distinct. `available_rpc_operations` lists the resident manager's operations; `external_rpc_operations` lists an enrolled outside owner's restricted operations. After enrollment, call encrypted `session.capabilities` for the actual device's scope and catalog digest. A `true` flag reports a Hub implementation, not independent Android interoperability. `status_events` and routable `external_thread_links` remain `false`. The Hub combines Control, Directory and Relay in development, but only Control decrypts these management packets. Peer Endpoint messages use a different identity and must not enter this RPC.
 
 ## Client contract at a glance
 
@@ -144,8 +144,8 @@ When `ok=false`, `error` replaces `result`; this is a business rejection protect
 | <a id="rpc-result-network-directory"></a>`network.directory` | `{network_id,endpoints:[{network_id,endpoint_id,alias,presence}],next_cursor?}`. Pages contain at most 64 currently eligible, explicitly opted-in entries. The returned Endpoint IDs are display/discovery references only; they do not create topology references, Membership, consent, or message authority. |
 | <a id="rpc-result-network-collaboration-key-manifest"></a>`network.collaboration_key_manifest` | `NetworkCollaborationKeyManifest`: `{purpose,key_manifest,digest}`. The embedded `key_manifest` is the current Owner-only `NetworkDirectKeyManifest`; the outer digest is purpose-separated. An Owner must verify the self-attestation and manifest binding before signing. |
 | <a id="rpc-result-network-collaboration-key-grant"></a><a id="rpc-result-network-collaboration-key-status"></a>`network.collaboration_key_grant`, `network.collaboration_key_status` | `OwnerNetworkCollaborationKeyGrant`: `{purpose,network_id,endpoint_id,owner_id,owner_key_id,manifest_digest,proof_digest,nonce,state,revision,accepted_at}`. Status state is `active`, `stale`, or `revoked`; no private key or peer body is returned. |
-| <a id="rpc-result-link-review-policy-preview"></a>`link.review_policy_preview` | `CommunicationLinkReviewPolicyPreview`: `{link_id,side,owner_id,contract_digest,link_version,expected_policy_version,policy_version,policy_digest,policy,maximum_proof_expires_at}`. |
-| <a id="rpc-result-link-review-policy-grant"></a><a id="rpc-result-link-review-policy-status"></a>`link.review_policy_grant`, `link.review_policy_status` | `CommunicationLinkReviewPolicyStatus`: `{link_id,link_version,policy_version,policy_digest,policy,current,accepted_sides,expires_at?}`. Reviewer decisions and message bodies are separate APIs/data and are never included here. |
+| <a id="rpc-result-link-review-policy-preview"></a>`link.review_policy_preview` | `CommunicationLinkReviewPolicyPreview`: `{link_id,side,owner_id,contract_digest,link_version,expected_policy_version,policy_version,policy_digest,policy,maximum_proof_expires_at,verified_at,reviewer_qualifications}`. |
+| <a id="rpc-result-link-review-policy-grant"></a><a id="rpc-result-link-review-policy-status"></a>`link.review_policy_grant`, `link.review_policy_status` | `CommunicationLinkReviewPolicyStatus`: `{link_id,link_version,contract_digest,policy_version,policy_digest,policy,current,accepted_sides,verified_at,owner_approvals,expires_at?}`. Reviewer decisions and message bodies are separate APIs/data and are never included here. |
 | <a id="rpc-result-devices-list"></a><a id="rpc-result-devices-revoke"></a>`devices.list`, `devices.revoke` | List or single `ClientDevice`: `owner_id,device_id,public_identity,key_id,key_fingerprint,key_version,owner_key_id,state,version,session_epoch,last_request_sequence,next_response_sequence,created_at,updated_at,revoked_at?`. Contains public key material only. |
 | <a id="rpc-result-nodes-preview"></a>`nodes.preview` | `NodeControlKeyCandidate`: `request_id,version,mode,hub_id,node_id,node_name,node_key_id,node_key_fingerprint,hub_node_control_key_id,hub_node_control_key_version,hub_node_control_fingerprint,node_key_epoch,candidate_digest,expires_at,state,binding_id?,binding_version?`. It contains no user code or credential digest. |
 | <a id="rpc-result-nodes-confirm"></a>`nodes.confirm` | `NodeControlKeyBinding`: `owner_binding_id,owner_id,hub_id,node_id,node_name,client_device_id,owner_key_id,node_credential_version,binding_version,node_key_id,node_public_identity,node_key_fingerprint,node_key_version,node_key_epoch,hub_key_id,hub_public_identity,hub_key_fingerprint,hub_key_version,approved_request_id,approved_request_version,approved_candidate_digest,approved_owner_device_id,approved_owner_key_id,approved_at,state,version,revoked_at?`. Public identities use `{id,kem_public,signing_public}`; fingerprints use `nodewire.IdentityFingerprint`. Approval evidence names the exact pending preview digest/version and approving Owner device/key. This is an application-key binding, not a TLS binding; it contains no bearer, credential digest, private key, proof packet or operation body. |
@@ -309,4 +309,84 @@ For current bilateral Link trust evidence, an already bound Node may make `GET /
 
 The bundle is public verification evidence, not an independent trust root or a route grant by itself. The Node must already trust the owner approval keys through its own authorized trust process, verify both owner proofs against the exact current Link contract, manifest, Endpoint identities and binding epochs, and reject stale evidence. Fetching this bundle alone does not authorize a message or expose arbitrary peer data. It does not turn `external_thread_links` on in the Android capability response. This peer-message transport is separate from Control's Worker management logic. A full machine agent gets only its owner-scoped assigned Worker jobs through the Node credential routes above; Control remains authoritative for Worker and Goal state. Relay-only mode delivers Fabric traffic without Worker-management calls. Android submits management intent to Hub/Control and does not proxy execution to a Node.
 
-`/v2/client/capabilities` keeps `status_events=false` and `external_thread_links=false` for the corresponding general Client capabilities. `external_thread_links=false` describes the older external Link capability, not a blanket denial of cross-Owner peer traffic. The separate Network direct route requires both Endpoints to hold current same-Network registrations, exact send/receive grants, independently published keys and Owner-signed manifests; availability never grants caller permission. The older Node-only sealed Link SEND/ASK/REPLY route and its tested limits, including native Link evidence on two logical Nodes, are recorded in [architecture-v2 native validation](architecture-v2-native-validation.md). Delivery and validation provenance are recorded in [Client/Hub development](client-hub-development.md). The delivered v1.6 artifacts and older Android/native reports remain attached to their actual source/image; they do not certify this v1.6.3 candidate or a new Client build. The invitation RPCs establish a bounded cross-owner `PROPOSED` contract; each side must still supply a current key-bound owner Grant. The Node authorization evidence route is a separate Node↔Hub trust boundary; it exposes current public authorization material only to a bound endpoint Node and does not activate routing. `status_changes_partial=true` names the narrower durable snapshot-delta feed. The legacy `/v1/communication-links` manager-bearer HTTP routes have been retired (they return `404`); same-owner Client Link edits use encrypted `topology.apply`. Old `/v1/fabric/*`, manual Thread queue/message and Contact peer ingress routes are retired; plaintext `/v2/fabric/send|ask|reply` writes return `410`. Historical SQLite rows remain for migration and audit.
+`/v2/client/capabilities` keeps `status_events=false` and `external_thread_links=false` for the corresponding general Client capabilities. `external_thread_links=false` describes the older external Link capability, not a blanket denial of cross-Owner peer traffic. The separate Network direct route requires both Endpoints to hold current same-Network registrations, exact send/receive grants, independently published keys and Owner-signed manifests; availability never grants caller permission. The older Node-only sealed Link SEND/ASK/REPLY route and its tested limits, including native Link evidence on two logical Nodes, are recorded in [architecture-v2 native validation](architecture-v2-native-validation.md). Delivery and validation provenance are recorded in [Client/Hub development](client-hub-development.md). The delivered v1.6 artifacts and older Android/native reports remain attached to their actual source/image; they do not certify this v1.6.4 candidate or a new Client build. The invitation RPCs establish a bounded cross-owner `PROPOSED` contract; each side must still supply a current key-bound owner Grant. The Node authorization evidence route is a separate Node↔Hub trust boundary; it exposes current public authorization material only to a bound endpoint Node and does not activate routing. `status_changes_partial=true` names the narrower durable snapshot-delta feed. The legacy `/v1/communication-links` manager-bearer HTTP routes have been retired (they return `404`); same-owner Client Link edits use encrypted `topology.apply`. Old `/v1/fabric/*`, manual Thread queue/message and Contact peer ingress routes are retired; plaintext `/v2/fabric/send|ask|reply` writes return `410`. Historical SQLite rows remain for migration and audit.
+
+
+### Review policy evidence and freshness (client-hub-v1.6.4)
+
+`reviewer_qualifications` is required, max8, in exact normalized policy reviewer
+order; NONE returns `[]`. Each row contains exactly `{endpoint_id,group_id,
+membership_revision,join_revision,group_version,binding_id,binding_epoch,
+lease_expires_at,action}` with positive revisions/epoch and `action=link.review`.
+The Hub reads current membership, Join, Group and exact leased binding and runs
+the real Guard in the same transaction and canonical UTC RFC3339Nano
+`verified_at` snapshot used for the outer Link/Owner/side/version/digest tuple.
+A wildcard grant can satisfy that Guard. No native Session, lease owner, raw
+permission grant or signed qualification is returned. Grant rechecks current
+reviewer authority: a future lease does not guarantee permission remains valid.
+
+Configured `owner_approvals` contains exactly SOURCE then TARGET (max2), each
+`{side,owner_id,current_status,evidence?}`. States are `MISSING`, `VERIFIED`,
+`OWNER_KEY_REVOKED`, `PROOF_EXPIRED`, `SCOPE_STALE`, `INVALID`. Only VERIFIED with
+current Link scope exposes evidence, exactly `{owner_key_id,owner_public_identity,
+owner_key_state,owner_key_version,signed_proof,accepted_at}`. State is ACTIVE and
+key version positive; `signed_proof` is base64 of the exact retained original
+bytes, at most 16384 decoded bytes (21848 base64 characters). The selected proof
+is the newest currently valid matching row (accepted_at DESC, id DESC), examining
+at most four rows per side. Stored expiry must equal verified signed expiry.
+`accepted_sides` counts those verified rows, not expiry-only database records.
+
+Unconfigured version0 NONE returns empty policy digest, accepted_sides and
+owner_approvals; configured signed NONE returns the bilateral approval shape.
+Grant can return its partial candidate (`current=false`) before bilateral CAS
+activation. Status reads the active head only, never pending candidate listings.
+Configured current requires exact head, current Link scope and both verified
+active proofs. Invalidated heads return bounded canonical policy metadata and
+per-side states with current=false; corrupt stored policy rejects, never becomes
+NONE. These results do not certify routing or reviewer/model consumption.
+
+Clients independently pin local and peer Owner identities through authenticated
+exchange or trusted provisioning. Hub-returned identities are discovery, and
+current key state/version are authenticated lifecycle metadata; neither bootstraps
+Owner trust. Verify both original proofs with those pins, exact policy canonical
+bytes/digest and a fresh authenticated Link manifest's Link/version/contract.
+The unchanged policy proof purpose is
+`cicada/communication-link/review-policy-owner-approval/v1\0`, proof version1,
+with exactly 11 ordered claims excluding signature. Policy proofs sign Link
+contract_digest, not contract_revision, manifest_digest or qualification rows.
+A fresh decrypted response from the independently pinned Hub supplies a server
+qualification snapshot, not an independent signed reviewer authority.
+
+Persist the original encrypted request packet before submission. Lost-response
+recovery resends/recoveries use that exact packet and return byte-identical cached
+historical results. Cached verified_at, qualification and status cannot establish
+freshness for later signing; issue a new encrypted preview/status and manifest
+request before confirming a later action. Never rebuild a proof from response
+fields or infer current authorization from a recovered acknowledgement.
+
+
+For a stale retained head, outer `link_version` and `contract_digest` describe the
+CURRENT Link; `policy_version`, `policy_digest` and canonical `policy` describe
+the retained active head or grant tuple. `SCOPE_STALE` omits evidence. Examples:
+version0 NONE has empty approvals/digest; a first-side candidate has one VERIFIED
+approval and one MISSING with current=false; an activated pair has both VERIFIED;
+a changed Link scope has SCOPE_STALE without evidence; revoked keys and expired
+proofs have OWNER_KEY_REVOKED and PROOF_EXPIRED respectively with current=false.
+Repair an expired/revoked head through a fresh next-version preview, the existing
+no-inflight constraint and two fresh proofs. Never reset it to version0 NONE.
+
+Active-head-only status cannot settle OUTCOME_UNCERTAIN for a first-side partial
+grant. Client must retain a durable uncertainty fence until recovery of the exact
+original packet returns COMPLETED, or a fresh activated pair contains the exact
+original proof bytes and tuple. There is no candidate lookup. Before signing,
+fetch fresh preview and manifest; changed qualifications require explicit user
+reconfirmation. A timestamp or successfully recovered packet alone is not proof
+of freshness.
+
+Public preview/grant/status projections are preflighted against the existing
+64KiB encrypted plaintext limit, including the exact RPC wrapper with worst-case
+HTML escaping of the bounded 256-byte request_id and operation_id. Oversized
+results return a generic business denial before commit; grant rolls back. Rows
+and proofs are never truncated. Wire limits, signature domains and runtime
+policy handling remain unchanged. Full canonical proof parsing rejects padded
+or reordered outer JSON; accepted original proof bytes remain unchanged.

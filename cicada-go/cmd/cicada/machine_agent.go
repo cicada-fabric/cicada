@@ -79,14 +79,6 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if err := rejectMachineRecoveryMutation(*stateDir, recoveryWriterRoot, *id); err != nil {
 		return err
 	}
-	agentLock, err := nodelock.AcquireAgent(*stateDir, *id)
-	if err != nil {
-		return fmt.Errorf("acquire Node Agent lock: %w", err)
-	}
-	defer agentLock.Close()
-	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
-		return err
-	}
 	// Hub-specific authority is carried only by this Agent context. No global
 	// token/environment mutation can transplant one Hub's bearer to another.
 	if pinned == nil {
@@ -97,21 +89,28 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
 		return errors.New("Node Hub context does not match pinned local coordinates")
 	}
-	if err := configureMachinePQTransport(pinned, *pqConfig); err != nil {
-		return err
-	}
-	if transport, ok := pinned.NodeTransport.(interface{ CloseIdleConnections() }); ok {
-		defer transport.CloseIdleConnections()
-	}
 	writerRoot := strings.TrimSpace(pinned.WriterRoot)
 	if writerRoot == "" {
 		writerRoot = *stateDir
 	}
-	writerRootLock, err := nodelock.AcquireWriterRoot(writerRoot)
-	if err != nil {
-		return fmt.Errorf("acquire shared Node WriterRoot lock: %w", err)
+	pinned.WriterRoot = writerRoot
+	if err := configureMachinePQTransport(pinned, *pqConfig); err != nil {
+		return err
 	}
-	defer writerRootLock.Close()
+	if pinned.TLSRuntime != nil {
+		defer pinned.TLSRuntime.Close()
+	} else {
+		writerRootLock, err := nodelock.AcquireWriterRoot(writerRoot)
+		if err != nil {
+			return fmt.Errorf("acquire shared Node WriterRoot lock: %w", err)
+		}
+		defer writerRootLock.Close()
+		agentLock, err := nodelock.AcquireAgent(*stateDir, *id)
+		if err != nil {
+			return fmt.Errorf("acquire Node Agent lock: %w", err)
+		}
+		defer agentLock.Close()
+	}
 	rootQuarantined, rootErr := nodebackup.WriterRootRecoveryQuarantineActive(writerRoot)
 	if rootErr != nil {
 		return fmt.Errorf("inspect shared WriterRoot recovery quarantine: %w", rootErr)
@@ -122,7 +121,16 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
 		return err
 	}
-	nodeIdentity, credentialDigest, err := loadOrCreateMachineNodeIdentity(*stateDir, *id)
+	var nodeIdentity *machineNodeIdentity
+	var credentialDigest string
+	if pinned.TLSRuntime != nil {
+		_, token, _, readErr := machineTLSExistingBinding(pinned)
+		err = readErr
+		nodeIdentity = &machineNodeIdentity{Version: machineNodeIdentityVersion, NodeID: *id, RelayToken: token}
+		credentialDigest = hashNodeCredential(token)
+	} else {
+		nodeIdentity, credentialDigest, err = loadOrCreateMachineNodeIdentity(*stateDir, *id)
+	}
 	if err != nil {
 		return fmt.Errorf("load local Node identity: %w", err)
 	}

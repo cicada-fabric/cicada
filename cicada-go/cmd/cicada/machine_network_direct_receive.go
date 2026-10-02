@@ -360,7 +360,26 @@ func recoverMachineNetworkDirectInboxSave(ctx context.Context, base, stateDir, m
 }
 
 func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateDir string,
-	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim, entry machineRelayJournalEntry) error {
+	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim, entry machineRelayJournalEntry) (result error) {
+	injectionBegan, disposed := false, false
+	defer func() {
+		if !injectionBegan && !disposed {
+			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
+		}
+	}()
+	reject := func() error {
+		err := inbox.RejectBeforeInjection(ctx, claim,
+			"current Network direct authorization or local trust verification failed")
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		stored, readErr := inbox.Get(cleanupCtx, claim.MessageID)
+		disposed = readErr == nil && stored.State == nodeinbox.FAILED
+		if disposed && err == nil {
+			err = journal.remove(entry.MessageID)
+		}
+		return errors.Join(err, readErr)
+	}
+
 	delivery, err := machineNetworkDirectDeliveryFromJournal(machineID, entry)
 	if err != nil {
 		return err
@@ -372,7 +391,7 @@ func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateD
 	auth, err := fetchMachineNetworkDirectAuthorization(ctx, base, entry.MessageID, entry.AttemptID)
 	if err != nil {
 		if machineAPIHasStatus(err, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity) {
-			return retireMachineNetworkDirectDenied(ctx, inbox, journal, claim, entry)
+			return reject()
 		}
 		return err
 	}
@@ -382,63 +401,86 @@ func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateD
 	}
 	inbound, readErr := state.GetInbound(ctx, entry.EndpointID, auth.Bundle.Sender.Manifest.Candidate.Public.ID, entry.MessageID)
 	closeErr := state.Close()
-	if readErr != nil || closeErr != nil || inbound.Digest != entry.Digest || machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
-		return retireMachineNetworkDirectDenied(ctx, inbox, journal, claim, entry)
+	if closeErr != nil || (readErr != nil && !errors.Is(readErr, nodekeys.ErrCryptoStateNotFound)) {
+		return errors.Join(readErr, closeErr)
+	}
+	if readErr != nil || inbound.Digest != entry.Digest || machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
+		return reject()
 	}
 	delivery.Ciphertext = inbound.Envelope
 	opened, err := openMachineNetworkDirectDelivery(ctx, stateDir, machineID, delivery, *auth)
-	if err != nil || !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
-		return retireMachineNetworkDirectDenied(ctx, inbox, journal, claim, entry)
-	}
-	final, err := fetchMachineNetworkDirectAuthorization(ctx, base, entry.MessageID, entry.AttemptID)
 	if err != nil {
-		if machineAPIHasStatus(err, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity) {
-			return retireMachineNetworkDirectDenied(ctx, inbox, journal, claim, entry)
-		}
-		// A transient Hub failure does not prove revocation; leave the local
-		// delivery unstarted for a later exact-attempt recheck.
-		return err
-	}
-	if final == nil || !reflect.DeepEqual(*auth, *final) {
-		return retireMachineNetworkDirectDenied(ctx, inbox, journal, claim, entry)
-	}
-	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
-		if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
-			return reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptInjectionUncertain, "")
+		if ctx.Err() != nil {
+			return errors.Join(err, ctx.Err())
 		}
 		return err
+	}
+	if !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
+		return reject()
 	}
 	if entry.Harness != "codex" {
-		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "exact native wake unavailable")
+		return reject()
 	}
 	operation, err := machineRelayNativeOperation(ctx, claim, entry)
 	if err != nil {
 		return err
 	}
-	scope, err := machineNativeContextScopeFromMetadata(ctx, entry.Harness, claim.SessionID,
-		auth.EndpointID, auth.BindingID, auth.BindingEpoch, auth.NativeContextScope)
-	if err != nil {
-		return err
-	}
-	decision, err := checkMachineNativeContext(ctx, scope)
-	if err != nil {
-		return err
-	}
-	prompt := machineNetworkDirectPrompt(entry, claim.Payload)
-	if decision.SharedMemoryRisk {
-		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
-	}
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, scope); err != nil {
+	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
+		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			// Refresh exact current authority only after acquiring the physical writer.
+			current, err := fetchMachineNetworkDirectAuthorization(queueCtx, base, entry.MessageID, entry.AttemptID)
+			if err != nil {
+				if definitiveMachineWakeAuthorizationFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			if err := verifyMachineNetworkDirectAuthorizationWithContext(queueCtx, machineID, delivery, *current); err != nil || !reflect.DeepEqual(*auth, *current) {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Network direct authority changed before native admission")}
+			}
+			scope, err := machineNativeContextScopeFromMetadata(queueCtx, entry.Harness, claim.SessionID,
+				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)
+			if err != nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+			}
+			decision, err := checkMachineNativeContext(queueCtx, scope)
+			if err != nil {
+				if definitiveMachineNativeContextFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			prompt := machineNetworkDirectPrompt(entry, claim.Payload)
+			if decision.SharedMemoryRisk {
+				prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
+			}
+			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
+		}, func(queueCtx context.Context) error {
+			_, err := inbox.BeginInjection(queueCtx, claim.AttemptID)
+			if err == nil {
+				injectionBegan = true
+			}
+			return err
+		})
+	// Completion reacquires the writer, after the runner has closed its lease.
+	if queueErr != nil {
+		var denied *machineNativeDeliveryDeniedError
+		if !injectionBegan {
+			if (errors.As(queueErr, &denied) || machineNativeDeliveryIdentityConflict(queueErr)) && ctx.Err() == nil {
+				return reject()
+			}
+			return queueErr
+		}
 		var uncertain *nativeInjectionUncertainError
-		if errors.As(err, &uncertain) {
+		if errors.As(queueErr, &uncertain) || errors.Is(queueErr, nodeinbox.ErrInjectionUncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)
-			receipt.Error = "native queue started but injection could not be confirmed"
+			receipt.Error = "native queue outcome is uncertain; do not reinject"
 			if _, recordErr := inbox.Acknowledge(ctx, receipt); recordErr != nil {
-				return recordErr
+				return errors.Join(queueErr, recordErr)
 			}
 			return reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal)
 		}
-		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue failed")
+		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue did not start")
 	}
 	return completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal, claim, entry)
 }
@@ -449,9 +491,17 @@ func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateD
 // prevents one revoked item from starving later authorized deliveries.
 func retireMachineNetworkDirectDenied(ctx context.Context, inbox *nodeinbox.Inbox,
 	journal *machineRelayJournal, claim nodeinbox.Claim, entry machineRelayJournalEntry) error {
+	stored, err := inbox.Get(ctx, entry.MessageID)
+	if err != nil {
+		return err
+	}
+	if stored.State == nodeinbox.INJECTING || stored.State == nodeinbox.INJECTION_UNCERTAIN ||
+		stored.State == nodeinbox.CONSUMPTION_UNCONFIRMED || stored.State == nodeinbox.RUNTIME_INJECTED {
+		return nil
+	}
 	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
 		if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
-			return journal.remove(entry.MessageID)
+			return nil
 		}
 		return err
 	}

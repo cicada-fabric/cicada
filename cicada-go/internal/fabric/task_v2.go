@@ -55,22 +55,34 @@ func (s *Service) taskForActor(actor Actor, taskID, action string) (*store.Share
 	return task, nil
 }
 
-func (s *Service) ListTasks(actor Actor, limit int) ([]store.SharedTask, error) {
+func (s *Service) ListTasks(actor Actor, limit int) ([]store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.read"); err != nil {
 		return nil, err
 	}
 	tasks, err := s.store.ListSharedTasksForActor(nativeActorScope(actor), limit)
-	return tasks, mapRelayError(err)
+	if err != nil {
+		return nil, mapRelayError(err)
+	}
+	views := make([]store.SharedTaskPeerView, 0, len(tasks))
+	for i := range tasks {
+		view, viewErr := s.store.GetSharedTaskPeerForActor(nativeActorScope(actor), tasks[i].ID, "task.read")
+		if viewErr != nil {
+			return nil, mapRelayError(viewErr)
+		}
+		views = append(views, *view)
+	}
+	return views, nil
 }
 
-func (s *Service) GetTask(actor Actor, taskID string) (*store.SharedTask, error) {
+func (s *Service) GetTask(actor Actor, taskID string) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.read"); err != nil {
 		return nil, err
 	}
-	return s.taskForActor(actor, taskID, "task.read")
+	task, err := s.store.GetSharedTaskPeerForActor(nativeActorScope(actor), taskID, "task.read")
+	return task, mapRelayError(err)
 }
 
-func (s *Service) ClaimTask(actor Actor, input TaskClaimInput) (*store.SharedTask, error) {
+func (s *Service) ClaimTask(actor Actor, input TaskClaimInput) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
@@ -82,10 +94,10 @@ func (s *Service) ClaimTask(actor Actor, input TaskClaimInput) (*store.SharedTas
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskDependency) {
 		return nil, ErrConflict
 	}
-	return task, mapRelayError(err)
+	return store.ProjectSharedTaskPeer(task), mapRelayError(err)
 }
 
-func (s *Service) ReleaseTask(actor Actor, input TaskReleaseInput) (*store.SharedTask, error) {
+func (s *Service) ReleaseTask(actor Actor, input TaskReleaseInput) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
@@ -97,10 +109,10 @@ func (s *Service) ReleaseTask(actor Actor, input TaskReleaseInput) (*store.Share
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, mapRelayError(err)
+	return store.ProjectSharedTaskPeer(task), mapRelayError(err)
 }
 
-func (s *Service) RenewTask(actor Actor, input TaskRenewInput) (*store.SharedTask, error) {
+func (s *Service) RenewTask(actor Actor, input TaskRenewInput) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.claim"); err != nil {
 		return nil, err
 	}
@@ -112,7 +124,7 @@ func (s *Service) RenewTask(actor Actor, input TaskRenewInput) (*store.SharedTas
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, mapRelayError(err)
+	return store.ProjectSharedTaskPeer(task), mapRelayError(err)
 }
 
 func (s *Service) SubmitTaskResult(actor Actor, input TaskResultInput) (*store.SharedTaskResult, error) {
@@ -130,7 +142,7 @@ func (s *Service) SubmitTaskResult(actor Actor, input TaskResultInput) (*store.S
 	return result, mapRelayError(err)
 }
 
-func (s *Service) AcceptTaskResult(actor Actor, input TaskAcceptInput) (*store.SharedTask, error) {
+func (s *Service) AcceptTaskResult(actor Actor, input TaskAcceptInput) (*store.SharedTaskPeerView, error) {
 	if err := s.Authorize(actor, "task.verify"); err != nil {
 		return nil, err
 	}
@@ -142,5 +154,5 @@ func (s *Service) AcceptTaskResult(actor Actor, input TaskAcceptInput) (*store.S
 	if errors.Is(err, store.ErrSharedTaskConflict) || errors.Is(err, store.ErrSharedTaskStaleOwner) {
 		return nil, ErrConflict
 	}
-	return task, mapRelayError(err)
+	return store.ProjectSharedTaskPeer(task), mapRelayError(err)
 }

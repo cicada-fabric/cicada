@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -550,7 +552,23 @@ func recoverMachineSealedInboxSave(ctx context.Context, base, stateDir, machineI
 
 func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir string,
 	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim,
-	entry machineRelayJournalEntry) error {
+	entry machineRelayJournalEntry) (result error) {
+	injectionBegan, disposed := false, false
+	defer func() {
+		if !injectionBegan && !disposed {
+			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
+		}
+	}()
+	reject := func() error {
+		err := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry,
+			"current Link authorization or local trust verification failed")
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		stored, readErr := inbox.Get(cleanupCtx, claim.MessageID)
+		disposed = readErr == nil && stored.State == nodeinbox.FAILED
+		return err
+	}
+
 	delivery, err := machineSealedDeliveryFromJournal(machineID, entry)
 	if err != nil {
 		return err
@@ -563,13 +581,13 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 	authorization, err := fetchMachineSealedAuthorization(ctx, base, machineID, entry.MessageID, entry.AttemptID)
 	if err != nil {
 		if machineAPIHasStatus(err, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity) {
-			return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
+			return reject()
 		}
 		return fmt.Errorf("recheck current sealed authorization for %s: %w", entry.MessageID, err)
 	}
 	bundle, err := machineNodeKeyBundle(authorization.Bundle)
 	if err != nil {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
+		return reject()
 	}
 	cryptoState, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, machineID))
 	if err != nil {
@@ -582,58 +600,87 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 	}
 	inbound, inboundErr := cryptoState.GetInbound(ctx, authorization.EndpointID, senderKeyID, entry.MessageID)
 	closeErr := cryptoState.Close()
-	if inboundErr != nil || closeErr != nil || inbound.Digest != entry.Digest ||
+	if closeErr != nil || (inboundErr != nil && !errors.Is(inboundErr, nodekeys.ErrCryptoStateNotFound)) {
+		return errors.Join(inboundErr, closeErr)
+	}
+	if inboundErr != nil || inbound.Digest != entry.Digest ||
 		machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
+		return reject()
 	}
 	delivery.Ciphertext = inbound.Envelope
 	opened, err := openMachineSealedDelivery(ctx, stateDir, machineID, delivery, *authorization)
-	if err != nil || !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
-	}
-	scope, err := machineNativeContextScopeFromMetadata(ctx, delivery.Harness, claim.SessionID,
-		authorization.EndpointID, authorization.BindingID, authorization.BindingEpoch,
-		authorization.NativeContextScope)
 	if err != nil {
-		return err
-	}
-	decision, err := checkMachineNativeContext(ctx, scope)
-	if err != nil {
-		return err
-	}
-	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
-		if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
-			if !entry.UncertainSent {
-				if receiptErr := reportMachineRelayReceiptReliably(ctx, base, machineID, entry, fabric.ReceiptInjectionUncertain, ""); receiptErr != nil {
-					return fmt.Errorf("report sealed INJECTION_UNCERTAIN for %s: %w", entry.MessageID, receiptErr)
-				}
-				return journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
-					entry.UncertainSent = true
-				})
-			}
-			return nil
+		if ctx.Err() != nil {
+			return errors.Join(err, ctx.Err())
 		}
-		return fmt.Errorf("begin sealed injection for %s: %w", entry.MessageID, err)
+		return err
 	}
-	prompt := machineSealedRelayPrompt(entry, claim.Payload)
-	if decision.SharedMemoryRisk {
-		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
+	if !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
+		return reject()
+	}
+	if entry.Harness != "codex" {
+		return reject()
 	}
 	operation, err := machineRelayNativeOperation(ctx, claim, entry)
 	if err != nil {
 		return err
 	}
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, scope); err != nil {
+	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
+		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			// Refresh exact current authority only after acquiring the physical writer.
+			current, err := fetchMachineSealedAuthorization(queueCtx, base, machineID, entry.MessageID, entry.AttemptID)
+			if err != nil {
+				if definitiveMachineWakeAuthorizationFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			if err := validateMachineSealedClaimAuthorization(machineID, delivery, *current); err != nil || !reflect.DeepEqual(*authorization, *current) {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Link authority changed before native admission")}
+			}
+			scope, err := machineNativeContextScopeFromMetadata(queueCtx, entry.Harness, claim.SessionID,
+				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)
+			if err != nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+			}
+			decision, err := checkMachineNativeContext(queueCtx, scope)
+			if err != nil {
+				if definitiveMachineNativeContextFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			prompt := machineSealedRelayPrompt(entry, claim.Payload)
+			if decision.SharedMemoryRisk {
+				prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
+			}
+			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
+		}, func(queueCtx context.Context) error {
+			_, err := inbox.BeginInjection(queueCtx, claim.AttemptID)
+			if err == nil {
+				injectionBegan = true
+			}
+			return err
+		})
+	// Completion reacquires the writer, after the runner has closed its lease.
+	if queueErr != nil {
+		var denied *machineNativeDeliveryDeniedError
+		if !injectionBegan {
+			if (errors.As(queueErr, &denied) || machineNativeDeliveryIdentityConflict(queueErr)) && ctx.Err() == nil {
+				return reject()
+			}
+			return queueErr
+		}
 		var uncertain *nativeInjectionUncertainError
-		if errors.As(err, &uncertain) {
+		if errors.As(queueErr, &uncertain) || errors.Is(queueErr, nodeinbox.ErrInjectionUncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)
-			receipt.Error = "native queue process started but injection could not be confirmed"
+			receipt.Error = "native queue outcome is uncertain; do not reinject"
 			if _, recordErr := inbox.Acknowledge(ctx, receipt); recordErr != nil {
-				return recordErr
+				return errors.Join(queueErr, recordErr)
 			}
 			return reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal)
 		}
-		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue failed")
+		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue did not start")
 	}
 	return completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal, claim, entry)
 }

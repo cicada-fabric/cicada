@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -156,9 +157,36 @@ func processMachineMonitorBroadcastNotifications(ctx context.Context, bridge *ma
 	if bridge == nil || inbox == nil || strings.TrimSpace(inboxPath) == "" {
 		return errors.New("Monitor notifications need an authenticated Node and inbox path")
 	}
+	bridge = machineMonitorNotificationBridge(ctx, bridge)
+	var pendingErrors []error
+	if *inbox == nil {
+		existing, err := openExistingMachineMonitorBroadcastInbox(inboxPath)
+		if err != nil {
+			return fmt.Errorf("open Monitor management inbox: %w", err)
+		}
+		*inbox = existing
+	}
+	if *inbox != nil {
+		// Recovery reads original rows independently of the current wake list.
+		// A revoked Client or an expired approval can hide a genuine old queue
+		// acceptance; neither permits a new injection nor erases that observation.
+		batch, err := (*inbox).NextNativeRecoveryBatch(ctx, 16)
+		if err != nil {
+			pendingErrors = append(pendingErrors, err)
+		} else {
+			for _, delivery := range batch {
+				if err := reconcileMachineMonitorNotification(ctx, bridge, *inbox, delivery); err != nil {
+					pendingErrors = append(pendingErrors, err)
+				}
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(append(pendingErrors, err)...)
+	}
 	var response monitorBroadcastNotificationsResponse
 	if err := bridge.monitorBroadcastHub(http.MethodGet, "", "", nil, &response); err != nil {
-		return err
+		return errors.Join(append(pendingErrors, err)...)
 	}
 	if !monitorBroadcastHubMatchesFor(ctx, response.HubID) || len(response.Notifications) > 16 {
 		return errors.New("Monitor notice list does not match the configured Hub")
@@ -169,12 +197,7 @@ func processMachineMonitorBroadcastNotifications(ctx context.Context, bridge *ma
 		}
 	}
 	if *inbox == nil {
-		existing, err := openExistingMachineMonitorBroadcastInbox(inboxPath)
-		if err != nil {
-			return fmt.Errorf("open Monitor management inbox: %w", err)
-		}
-		*inbox = existing
-		if *inbox == nil && len(response.Notifications) != 0 {
+		if len(response.Notifications) != 0 {
 			created, err := nodeinbox.Open(inboxPath)
 			if err != nil {
 				return fmt.Errorf("open Monitor management inbox: %w", err)
@@ -183,7 +206,7 @@ func processMachineMonitorBroadcastNotifications(ctx context.Context, bridge *ma
 		}
 	}
 	if *inbox == nil {
-		return nil
+		return errors.Join(pendingErrors...)
 	}
 	for _, listed := range response.Notifications {
 		// The list is an authenticated, bounded wake hint. The fresh detail read
@@ -197,107 +220,195 @@ func processMachineMonitorBroadcastNotifications(ctx context.Context, bridge *ma
 			EndpointID: listed.MonitorEndpointID, SessionID: listed.NativeSessionID, BindingEpoch: listed.BindingEpoch,
 			GroupID: listed.GroupID, Payload: payload})
 		if err != nil {
-			return err
+			pendingErrors = append(pendingErrors, err)
+			continue
 		}
-		if err := bridge.reportMonitorNotification(listed, delivery.State); err != nil {
-			return err
+		switch delivery.State {
+		case nodeinbox.INJECTING, nodeinbox.INJECTION_UNCERTAIN, nodeinbox.CONSUMPTION_UNCONFIRMED:
+			// Do not make uncertainty terminal before checking the exact durable
+			// native outcome, including a row outside this call's recovery page.
+			err = reconcileMachineMonitorNotification(ctx, bridge, *inbox, *delivery)
+		default:
+			err = bridge.reportMonitorNotification(listed, delivery.State)
+		}
+		if err != nil {
+			pendingErrors = append(pendingErrors, err)
 		}
 	}
 	for drained := 0; drained < 16; drained++ {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(pendingErrors, err)...)
+		}
 		claim, err := (*inbox).Claim(ctx, "monitor-notice:"+bridge.nodeID)
 		if errors.Is(err, nodeinbox.ErrNoDelivery) {
-			return nil
+			return errors.Join(pendingErrors...)
 		}
 		if err != nil {
-			return err
+			return errors.Join(append(pendingErrors, err)...)
 		}
 		if err := drainMachineMonitorBroadcastNotification(ctx, bridge, *inbox, *claim); err != nil {
-			return err
+			return errors.Join(append(pendingErrors, err)...)
 		}
 	}
 	// Process jobs and Relay work after at most one bounded Monitor batch.
-	return nil
+	return errors.Join(pendingErrors...)
+}
+
+// The real bridge owns synchronization and a listener. A request bridge copies
+// only immutable request fields, never its locks or its mutable shared context.
+func machineMonitorNotificationBridge(ctx context.Context, bridge *machineAgentJoinBridge) *machineAgentJoinBridge {
+	return &machineAgentJoinBridge{ctx: ctx, baseURL: bridge.baseURL, stateDir: bridge.stateDir,
+		nodeID: bridge.nodeID, nodeToken: bridge.nodeToken}
+}
+
+func machineMonitorPersistedNotification(ctx context.Context, bridge *machineAgentJoinBridge,
+	delivery nodeinbox.Delivery) (store.UserMonitorBroadcastV2Notification, nodelock.NativeOperation, error) {
+	var original store.UserMonitorBroadcastV2Notification
+	var operation nodelock.NativeOperation
+	if err := decodeStrictBridgeJSON(delivery.Payload, &original); err != nil {
+		return original, operation, errors.New("Monitor notice metadata is invalid")
+	}
+	_, digest, err := monitorNotificationBytes(original)
+	if err != nil || digest != delivery.Digest || !monitorBroadcastHubMatchesFor(ctx, original.HubID) ||
+		original.NodeID != bridge.nodeID || !validMonitorApprovalID(original.PreviewID) ||
+		original.PreviewID != delivery.MessageID || original.MonitorEndpointID != delivery.EndpointID ||
+		original.NativeSessionID != delivery.SessionID || original.BindingEpoch != delivery.BindingEpoch ||
+		!validMonitorNotificationToken(original.BindingID) || delivery.AttemptID == "" {
+		return original, operation, errors.New("Monitor notice does not match its original native attempt")
+	}
+	operation, err = machineNativeOperation(ctx, nodeinbox.Claim{Delivery: delivery}, original.BindingID)
+	return original, operation, err
+}
+
+func reconcileMachineMonitorNotification(ctx context.Context, bridge *machineAgentJoinBridge,
+	inbox *nodeinbox.Inbox, delivery nodeinbox.Delivery) error {
+	original, operation, err := machineMonitorPersistedNotification(ctx, bridge, delivery)
+	if err != nil {
+		return err
+	}
+	// This helper acquires and releases the physical writer. Never invoke it
+	// from a held-writer callback, or replace the exact witness with a Boolean.
+	state, err := machineNativeQueueOutcome(ctx, delivery.SessionID, operation)
+	if err != nil {
+		return fmt.Errorf("read original Monitor native outcome: %w", err)
+	}
+	receipt := localGroupReceipt(nodeinbox.Claim{Delivery: delivery})
+	if state == nodelock.NativeQueueAccepted {
+		deliveryPtr, err := inbox.RecordCodexQueueAccepted(ctx, receipt)
+		if err != nil {
+			return err
+		}
+		delivery = *deliveryPtr
+	} else {
+		if delivery.State == nodeinbox.CONSUMPTION_UNCONFIRMED {
+			return errors.New("Monitor accepted inbox row has no exact durable queue witness")
+		}
+		if delivery.State != nodeinbox.INJECTING && delivery.State != nodeinbox.INJECTION_UNCERTAIN {
+			return errors.New("Monitor recovery row is not an interrupted native attempt")
+		}
+		receipt.State = nodeinbox.INJECTION_UNCERTAIN
+		receipt.Error = "native notice injection outcome is uncertain; do not reinject"
+		deliveryPtr, err := inbox.Acknowledge(ctx, receipt)
+		if err != nil {
+			return err
+		}
+		delivery = *deliveryPtr
+	}
+	// Historical receipt authority fences the original Node/binding/epoch. It
+	// does not re-authorize consent or queue after expiry or Client revocation.
+	return machineMonitorNotificationBridge(ctx, bridge).reportMonitorNotification(original, delivery.State)
 }
 
 func drainMachineMonitorBroadcastNotification(ctx context.Context, bridge *machineAgentJoinBridge,
-	inbox *nodeinbox.Inbox, claim nodeinbox.Claim) error {
-	var original store.UserMonitorBroadcastV2Notification
-	if json.Unmarshal(claim.Payload, &original) != nil || original.PreviewID != claim.MessageID {
-		return inbox.RejectBeforeInjection(ctx, claim, "Monitor notice metadata is invalid")
-	}
-	current, err := bridge.monitorBroadcastNotification(original.PreviewID)
+	inbox *nodeinbox.Inbox, claim nodeinbox.Claim) (result error) {
+	injectionBegan, disposed := false, false
+	defer func() {
+		if !injectionBegan && !disposed {
+			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
+		}
+	}()
+	original, operation, err := machineMonitorPersistedNotification(ctx, bridge, claim.Delivery)
 	if err != nil {
-		if localSealedSendRetryable(err) {
-			_ = inbox.AbandonClaim(ctx, claim.AttemptID)
+		err = inbox.RejectBeforeInjection(ctx, claim, "Monitor notice metadata is invalid")
+		disposed = err == nil
+		return err
+	}
+	reject := func() error {
+		if err := inbox.RejectBeforeInjection(ctx, claim, "Monitor authorization no longer permits notification"); err != nil {
 			return err
 		}
-		return inbox.RejectBeforeInjection(ctx, claim, "Monitor authorization no longer permits notification")
+		disposed = true
+		return machineMonitorNotificationBridge(ctx, bridge).reportMonitorNotification(original, nodeinbox.FAILED)
 	}
-	_, digest, err := monitorNotificationBytes(*current)
-	if err != nil || digest != claim.Digest || current.MonitorEndpointID != claim.EndpointID ||
-		current.NativeSessionID != claim.SessionID || current.BindingEpoch != claim.BindingEpoch {
-		return inbox.RejectBeforeInjection(ctx, claim, "Monitor notice target changed")
-	}
-	var nativeScope nodeinbox.NativeContextScopeInput
-	decision := &nodeinbox.NativeContextScopeDecision{Accepted: true,
-		NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
-	if _, managed := machineHubFrom(ctx); managed && current.NativeContextScope != nil {
-		nativeScope, err = machineNativeContextScopeFromMetadata(ctx, "codex",
-			current.NativeSessionID, current.MonitorEndpointID, current.BindingID,
-			current.BindingEpoch, *current.NativeContextScope)
-		if err != nil {
-			return inbox.RejectBeforeInjection(ctx, claim, "Monitor native context scope is unavailable")
+	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
+		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			requestBridge := machineMonitorNotificationBridge(queueCtx, bridge)
+			current, err := requestBridge.monitorBroadcastNotification(original.PreviewID)
+			if err != nil {
+				if !localSealedSendRetryable(err) && queueCtx.Err() == nil {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			if validateMonitorBroadcastNotificationFor(queueCtx, *current, original.PreviewID, bridge.nodeID, false) != nil ||
+				!sameMonitorBroadcastNotification(original, *current) {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Monitor notice authority changed after writer wait")}
+			}
+			var scopes []nodeinbox.NativeContextScopeInput
+			decision := &nodeinbox.NativeContextScopeDecision{Accepted: true,
+				NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
+			if current.NativeContextScope != nil {
+				scope, err := machineNativeContextScopeFromMetadata(queueCtx, "codex", current.NativeSessionID,
+					current.MonitorEndpointID, current.BindingID, current.BindingEpoch, *current.NativeContextScope)
+				if err != nil {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				decision, err = checkMachineNativeContext(queueCtx, scope)
+				if err != nil {
+					if definitiveMachineNativeContextFailure(err) {
+						return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+					}
+					return "", nil, err
+				}
+				scopes = append(scopes, scope)
+			} else if hub, ok := machineHubFrom(queueCtx); ok && hub.RequireNativeContext {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Monitor authorization has no authoritative native context scope")}
+			}
+			prompt := fmt.Sprintf("Cicada management notice: a pending Monitor broadcast is available for Group %s. "+
+				"This notice is not approval evidence. In this original joined Group context, call "+
+				"cicada_monitor_broadcast with approval_id %s to validate current user authority and send the exact sealed content. "+
+				"Do not substitute text or create a new broadcast. Transport acceptance does not prove recipient consumption.",
+				current.GroupID, current.PreviewID)
+			if decision.SharedMemoryRisk {
+				prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native Codex Thread is known to have been used in more than one Cicada Group or Network scope. Treat earlier content as potentially visible and do not assume Cicada can erase or isolate Runtime history.\n" + prompt
+			}
+			return prompt, scopes, nil
+		}, func(queueCtx context.Context) error {
+			_, err := inbox.BeginInjection(queueCtx, claim.AttemptID)
+			injectionBegan = err == nil
+			return err
+		})
+	// The runner released the writer before any outcome-reader or receipt work.
+	if queueErr != nil {
+		var denied *machineNativeDeliveryDeniedError
+		if !injectionBegan {
+			if (errors.As(queueErr, &denied) || machineNativeDeliveryIdentityConflict(queueErr)) && ctx.Err() == nil {
+				return reject()
+			}
+			return queueErr
 		}
-		decision, err = checkMachineNativeContext(ctx, nativeScope)
-		if err != nil {
-			return inbox.RejectBeforeInjection(ctx, claim, "Monitor native context scope was not accepted")
-		}
-	} else if hub, managed := machineHubFrom(ctx); managed {
-		if hub.RequireNativeContext {
-			return inbox.RejectBeforeInjection(ctx, claim, "Monitor authorization has no authoritative native context scope")
-		}
-	}
-	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
-		return err
-	}
-	prompt := fmt.Sprintf("Cicada management notice: a pending Monitor broadcast is available for Group %s. "+
-		"This notice is not approval evidence. In this original joined Group context, call "+
-		"cicada_monitor_broadcast with approval_id %s to validate current user authority and send the exact sealed content. "+
-		"Do not substitute text or create a new broadcast. Transport acceptance does not prove recipient consumption.",
-		current.GroupID, current.PreviewID)
-	if decision.SharedMemoryRisk {
-		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native Codex Thread is known to have been used in more than one Cicada Group or Network scope. Treat earlier content as potentially visible and do not assume Cicada can erase or isolate Runtime history.\n" + prompt
-	}
-	receipt := localGroupReceipt(claim)
-	operation, err := machineNativeOperation(ctx, claim, current.BindingID)
-	if err != nil {
-		return err
-	}
-	var queueErr error
-	if nativeScope.NativeSessionID != "" {
-		queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, nativeScope)
-	} else {
-		queueErr = executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation)
-	}
-	var recorded *nodeinbox.Delivery
-	if queueErr == nil {
-		if err = requireMachineNativeQueueOutcome(ctx, claim.SessionID, operation); err == nil {
-			recorded, err = inbox.RecordCodexQueueAccepted(ctx, receipt)
-		}
-	} else {
 		var uncertain *nativeInjectionUncertainError
-		if errors.As(queueErr, &uncertain) {
-			receipt.State = nodeinbox.INJECTION_UNCERTAIN
-			receipt.Error = "native notice injection outcome is uncertain"
-			recorded, err = inbox.Acknowledge(ctx, receipt)
-		} else {
-			recorded, err = inbox.RecordFailed(ctx, receipt, "native notice queue did not start")
+		if !errors.As(queueErr, &uncertain) && !errors.Is(queueErr, nodeinbox.ErrInjectionUncertain) {
+			recorded, err := inbox.RecordFailed(ctx, localGroupReceipt(claim), "native notice queue did not start")
+			if err != nil {
+				return errors.Join(queueErr, err)
+			}
+			return machineMonitorNotificationBridge(ctx, bridge).reportMonitorNotification(original, recorded.State)
 		}
 	}
+	delivery, err := inbox.Get(ctx, claim.MessageID)
 	if err != nil {
-		// INJECTING remains durable. Opening this inbox after a crash marks it
-		// uncertain; a missing receipt must never trigger blind reinjection.
-		return err
+		return errors.Join(queueErr, err)
 	}
-	return bridge.reportMonitorNotification(*current, recorded.State)
+	return reconcileMachineMonitorNotification(ctx, bridge, inbox, *delivery)
 }

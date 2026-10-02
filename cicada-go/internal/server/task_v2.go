@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 const retiredPeerTaskHandoffMessage = "Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources."
@@ -53,6 +54,18 @@ func (h *Handler) fabricV2Task(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	switch path {
+	case "/sealed-reference":
+		var input store.SharedTaskSealedRefInput
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		ref, err := h.fabricService.RegisterTaskSealedRef(actor, input)
+		if err != nil {
+			fabricV2Error(response, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, ref)
 	case "/claim":
 		var input fabricpkg.TaskClaimInput
 		if err := readJSON(request, &input); err != nil {
@@ -96,6 +109,10 @@ func (h *Handler) fabricV2Task(response http.ResponseWriter, request *http.Reque
 			return
 		}
 		result, err := h.fabricService.SubmitTaskResult(actor, input)
+		if errors.Is(err, store.ErrSharedTaskPeerPlaintext) {
+			writeError(response, http.StatusGone, err)
+			return
+		}
 		if err != nil {
 			fabricV2Error(response, err)
 			return
