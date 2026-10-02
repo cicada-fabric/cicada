@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Opaque five-route Android carrier for the pinned synthetic v1.6.4 Hub.
+"""Opaque five-route Android carrier for synthetic v1.6.4 Core fixtures.
 
-The default Core receipt and ownership manifest are mandatory trust inputs.
-This adapter performs read-only, selected-field Docker inspections, then reuses
-the existing v1.5 STDIO/HTTP relay framing. It never reads container env values,
-Hub state, Owner private keys, or request/response plaintext semantics.
+F1-F5 retain their historical pin paths. Fresh F6 requires independently
+Root-hashed delivery pins plus matching local delivery metadata. The adapter
+performs read-only selected-field Docker inspections, then reuses the existing
+v1.5 STDIO/HTTP relay framing. It never reads container env values, Hub state,
+Owner private keys, or request/response plaintext semantics.
 """
 
 import argparse
@@ -26,6 +27,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 V16_CARRIER_PATH = ROOT / 'scripts/interop/v16-host-stdio-carrier.py'
 V164_RUNNER_PATH = ROOT / 'scripts/interop/v164-android-deterministic.py'
+F164_PINS_PATH = ROOT / 'scripts/interop/v164-link-fixture-pins.py'
 F1_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-20261002')
 F2_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-02-20261002')
 F3_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-03-20261002')
@@ -37,6 +39,9 @@ CORE_REVISION = '25bc586232db43362c6e03eccef1fa3a0dbec8ee'
 SOURCE_FINGERPRINT = '4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032'
 CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
 HUB_IMAGE = 'sha256:41b7a968293f14d7b7472333dcf64980e95eb68868e85dfdd71fa850f4eecbb4'
+INTEROP_IMAGE = 'sha256:bcb8856c3d766c54c53e6c1dc1dcbe32beb2806c02260442610fde1af21cb6b1'
+F6_APP_SHA256 = '56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67'
+F6_TEST_SHA256 = 'caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6'
 HUB_PORT = 8787
 F1_HUB_ID = 'hub_6ef2ca06267060f9'
 F1_HOST_PORT = 38473
@@ -147,6 +152,16 @@ def _exact_keys(value, expected, label):
         _fail(label + ' fields do not match the pinned schema')
 
 
+def _pinned(config, name, legacy_name):
+    if not isinstance(config, dict):
+        _fail('verified fixture configuration is required')
+    if config.get('f6'):
+        if name not in config:
+            _fail('fresh F6 configuration is missing a verified delivery pin')
+        return config[name]
+    return globals()[legacy_name]
+
+
 def _docker_inspect(kind, resource_id, fields):
     template = '\t'.join('{{json .' + field + '}}' for field in fields)
     try:
@@ -180,11 +195,21 @@ def _discover_owned(flag, root):
 
 def _validate_f3_ready(ready, setup, manifest, config):
     root = config['paths']['root']
-    fixture_label = {
+    if config.get('f6'):
+        fixture_label = config['fixture_label']
+    else:
+        legacy_label = {
         F3_FIXTURE_ROOT: 'client-link-v164-03',
         F4_FIXTURE_ROOT: 'client-link-v164-04',
         F5_FIXTURE_ROOT: 'client-link-v164-05',
-    }[root]
+        }[root]
+        fixture_label = config.get('fixture_label', legacy_label)
+    contract_revision = _pinned(config, 'contract_revision', 'CONTRACT_REVISION')
+    core_revision = _pinned(config, 'core_revision', 'CORE_REVISION')
+    source_fingerprint = _pinned(config, 'source_fingerprint', 'SOURCE_FINGERPRINT')
+    catalog_sha256 = _pinned(config, 'catalog_sha256', 'CATALOG_SHA256')
+    hub_image_id = _pinned(config, 'hub_image_id', 'HUB_IMAGE')
+    interop_image_id = _pinned(config, 'interop_image_id', 'INTEROP_IMAGE')
     _exact_keys(ready, {'schema', 'status', 'scope', 'generated_at', 'source', 'images', 'hub',
         'setup', 'files', 'cleanup', 'custody'}, 'F3 readiness receipt')
     if ready.get('schema') != 'cicada.client-link-v164-fixture-ready.v1' or \
@@ -197,12 +222,14 @@ def _validate_f3_ready(ready, setup, manifest, config):
 
     source = ready.get('source')
     _exact_keys(source, {'contract_revision', 'revision', 'fingerprint', 'catalog_sha256', 'dirty'}, 'F3 source pins')
-    if source != {'contract_revision': CONTRACT_REVISION, 'revision': CORE_REVISION,
-            'fingerprint': SOURCE_FINGERPRINT, 'catalog_sha256': CATALOG_SHA256, 'dirty': False}:
+    if source != {'contract_revision': contract_revision, 'revision': core_revision,
+            'fingerprint': source_fingerprint, 'catalog_sha256': catalog_sha256, 'dirty': False}:
         _fail('F3 source provenance differs from the frozen clean Core pins')
+    if config.get('f6') and (type(source.get('dirty')) is not bool or source['dirty'] is not False):
+        _fail('F6 readiness receipt does not explicitly prove source_dirty=false')
     images = ready.get('images')
     _exact_keys(images, {'hub', 'interop'}, 'F3 image pins')
-    if images != {'hub': HUB_IMAGE, 'interop': 'sha256:bcb8856c3d766c54c53e6c1dc1dcbe32beb2806c02260442610fde1af21cb6b1'}:
+    if images != {'hub': hub_image_id, 'interop': interop_image_id}:
         _fail('F3 image IDs differ from the frozen Hub and interop images')
 
     setup_receipt = ready.get('setup')
@@ -211,12 +238,17 @@ def _validate_f3_ready(ready, setup, manifest, config):
             'actions': 'same fresh PROPOSED Link and current endpoint bindings; one fresh manifest required from Client before consent/signing',
             'all_zero': True, 'command_exit_count': 10}:
         _fail('F3 fixture setup commands are not the exact successful zero-exit preparation')
+    if config.get('f6') and (type(setup_receipt.get('all_zero')) is not bool or
+            type(setup_receipt.get('command_exit_count')) is not int):
+        _fail('F6 fixture setup command result types are invalid')
 
     cleanup = ready.get('cleanup')
     _exact_keys(cleanup, {'hub_and_network_owned_by_fixture', 'keep_live_until_client_terminal_ack'}, 'F3 cleanup receipt')
     if cleanup != {'hub_and_network_owned_by_fixture': fixture_label + ' label and unique fixture path label',
             'keep_live_until_client_terminal_ack': True}:
         _fail('F3/F4 Hub ownership or live-fixture handoff is not authorized')
+    if config.get('f6') and type(cleanup.get('keep_live_until_client_terminal_ack')) is not bool:
+        _fail('F6 cleanup handoff flag must be a JSON boolean')
 
     custody = ready.get('custody')
     _exact_keys(custody, {'host_private_files', 'owner_device_grant_signer_template',
@@ -235,6 +267,8 @@ def _validate_f3_ready(ready, setup, manifest, config):
             custody.get('owner_device_grant_signer_template') != str(root / 'evidence/owner-device-grant-cli.txt') or \
             custody.get('private_bytes_or_signatures_in_evidence') is not False:
         _fail('F3 private-file custody is incomplete or records private bytes')
+    if config.get('f6') and any(type(row.get('contents_recorded')) is not bool for row in custody_rows):
+        _fail('F6 custody records must use explicit JSON booleans')
 
     expected_file_specs = {
         'client_setup': ('public/client-setup.json', '0o644', config['setup_sha256']),
@@ -270,10 +304,12 @@ def _validate_f3_ready(ready, setup, manifest, config):
         _fail('F3 readiness receipt does not bind the pinned Hub, loopback, container, and reference digest')
     health = hub.get('health')
     _exact_keys(health, {'status', 'service', 'revision', 'source_fingerprint', 'catalog_sha256', 'dirty', 'stage', 'version'}, 'F3 health')
-    if health != {'status': 'ok', 'service': 'cicada-control', 'revision': CORE_REVISION,
-            'source_fingerprint': SOURCE_FINGERPRINT, 'catalog_sha256': CATALOG_SHA256,
+    if health != {'status': 'ok', 'service': 'cicada-control', 'revision': core_revision,
+            'source_fingerprint': source_fingerprint, 'catalog_sha256': catalog_sha256,
             'dirty': False, 'stage': 'codex-supervisor', 'version': '0.1.0-dev'}:
         _fail('F3 Hub health is not pinned to the clean Core build')
+    if config.get('f6') and (type(health.get('dirty')) is not bool or health['dirty'] is not False):
+        _fail('F6 Hub health does not explicitly prove source_dirty=false')
     if not isinstance(hub.get('bindings'), list) or len(hub['bindings']) != 2 or \
             not isinstance(hub.get('endpoint_candidates'), list) or len(hub['endpoint_candidates']) != 2:
         _fail('F3 Hub receipt does not contain exactly two endpoint bindings and candidates')
@@ -292,7 +328,8 @@ def _validate_f3_ready(ready, setup, manifest, config):
     for binding in hub['bindings']:
         _exact_keys(binding, {'endpoint_id', 'binding_id', 'epoch', 'lease_expires_at', 'status'}, 'F3 Endpoint binding')
         candidate = candidates.get(binding.get('endpoint_id'))
-        if candidate is None or binding.get('binding_id') != candidate['binding_id'] or \
+        if candidate is None or (config.get('f6') and type(binding.get('epoch')) is not int) or \
+                binding.get('binding_id') != candidate['binding_id'] or \
                 binding.get('epoch') != candidate['epoch'] or binding.get('status') != 'leased' or \
                 binding['binding_id'] in binding_ids or \
                 re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{9}Z', binding.get('lease_expires_at', '')) is None:
@@ -308,17 +345,20 @@ def _validate_f3_ready(ready, setup, manifest, config):
     container = manifest.get('container')
     network = manifest.get('network')
     if not isinstance(container, dict) or not isinstance(network, dict) or \
-            container.get('image_id') != HUB_IMAGE or container.get('user') != '1000:1000' or \
+            container.get('image_id') != hub_image_id or container.get('user') != '1000:1000' or \
             container.get('port_bindings') != {'8787/tcp': [{'HostIp': '127.0.0.1', 'HostPort': str(config['host_port'])}]}:
         _fail('F3 owned manifest Hub image, user, or loopback port is invalid')
-    if root in (F4_FIXTURE_ROOT, F5_FIXTURE_ROOT):
-        fixture_label = 'client-link-v164-04' if root == F4_FIXTURE_ROOT else 'client-link-v164-05'
+    if root in (F4_FIXTURE_ROOT, F5_FIXTURE_ROOT) or config.get('f6'):
+        if config.get('f6'):
+            fixture_label = config['fixture_label']
+        else:
+            fixture_label = 'client-link-v164-04' if root == F4_FIXTURE_ROOT else 'client-link-v164-05'
         expected_labels = {
             'org.cicada.fixture': fixture_label,
             'org.cicada.fixture.dir': str(root),
-            'org.cicada.fixture.source.revision': CORE_REVISION,
-            'org.cicada.fixture.catalog.sha256': CATALOG_SHA256,
-            'org.cicada.fixture.source.fingerprint': SOURCE_FINGERPRINT,
+            'org.cicada.fixture.source.revision': core_revision,
+            'org.cicada.fixture.catalog.sha256': catalog_sha256,
+            'org.cicada.fixture.source.fingerprint': source_fingerprint,
         }
         if any(not isinstance(row, dict) or any(row.get(key) != value for key, value in expected_labels.items())
                 for row in (container.get('labels'), network.get('labels'))):
@@ -334,8 +374,13 @@ def _expected_fixture(ready, setup, manifest, config):
     expected_hub_id = config['hub_id']
     host_port = config['host_port']
     origin = f'http://127.0.0.1:{host_port}'
+    contract_revision = _pinned(config, 'contract_revision', 'CONTRACT_REVISION')
+    core_revision = _pinned(config, 'core_revision', 'CORE_REVISION')
+    source_fingerprint = _pinned(config, 'source_fingerprint', 'SOURCE_FINGERPRINT')
+    catalog_sha256 = _pinned(config, 'catalog_sha256', 'CATALOG_SHA256')
+    hub_image_id = _pinned(config, 'hub_image_id', 'HUB_IMAGE')
     is_f2 = root == F2_FIXTURE_ROOT
-    is_new_ready = root in (F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT)
+    is_new_ready = root in (F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT) or config.get('f6') is True
     if is_new_ready:
         _validate_f3_ready(ready, setup, manifest, config)
     elif is_f2:
@@ -382,9 +427,9 @@ def _expected_fixture(ready, setup, manifest, config):
                 ready.get('fixture_root') != str(root):
             _fail('Core readiness receipt is bound to another fixture or public setup')
         build = ready.get('build')
-        if not isinstance(build, dict) or build.get('contract_revision') != CONTRACT_REVISION or \
-                build.get('source_revision') != CORE_REVISION or build.get('source_fingerprint') != SOURCE_FINGERPRINT or \
-                build.get('catalog_sha256') != CATALOG_SHA256 or build.get('hub_image_id') != HUB_IMAGE or \
+        if not isinstance(build, dict) or build.get('contract_revision') != contract_revision or \
+                build.get('source_revision') != core_revision or build.get('source_fingerprint') != source_fingerprint or \
+                build.get('catalog_sha256') != catalog_sha256 or build.get('hub_image_id') != hub_image_id or \
                 build.get('source_dirty') is not False:
             _fail('Core build pins in the readiness receipt are invalid')
     hub = ready.get('hub')
@@ -422,12 +467,13 @@ def _expected_fixture(ready, setup, manifest, config):
     setup_hub = setup.get('hub')
     if not isinstance(setup_hub, dict) or setup_hub.get('hub_id') != expected_hub_id or \
             setup_hub.get('base_url') != origin or \
-            setup_hub.get('contract_revision') != CONTRACT_REVISION or \
-            setup_hub.get('source_revision') != CORE_REVISION or \
-            setup_hub.get('source_fingerprint') != SOURCE_FINGERPRINT or \
-            setup_hub.get('catalog_sha256') != CATALOG_SHA256 or \
-            setup_hub.get('image_id') != HUB_IMAGE or \
-            (setup_hub.get('build_source_dirty') is not False and setup_hub.get('build_source_dirty') is not None):
+            setup_hub.get('contract_revision') != contract_revision or \
+            setup_hub.get('source_revision') != core_revision or \
+            setup_hub.get('source_fingerprint') != source_fingerprint or \
+            setup_hub.get('catalog_sha256') != catalog_sha256 or \
+            setup_hub.get('image_id') != hub_image_id or \
+            (setup_hub.get('build_source_dirty') is not False if config.get('f6') else
+                (setup_hub.get('build_source_dirty') is not False and setup_hub.get('build_source_dirty') is not None)):
         _fail('Core public setup build or loopback pins are invalid')
     link = setup.get('link')
     if not isinstance(link, dict) or link.get('state') != 'PROPOSED' or \
@@ -460,7 +506,7 @@ def _expected_fixture(ready, setup, manifest, config):
         # Core explicitly attests a renamed F4 network; Docker retains its original
         # HostConfig mode name. Full network ID, attachment and labels stay checked.
         allowed_network_modes.add(network['name'].replace('cicada-cl164-04-', 'cicada-cl164-03-', 1))
-    if container.get('id') != hub['container_id'] or container.get('image_id') != HUB_IMAGE or \
+    if container.get('id') != hub['container_id'] or container.get('image_id') != hub_image_id or \
             container.get('name') != hub.get('container_name') or container.get('user') != '1000:1000' or \
             container.get('network_mode') not in allowed_network_modes or \
             container.get('networks') != [network.get('name')] or \
@@ -478,6 +524,11 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
     config = _CONFIG
     if not isinstance(config, dict):
         _fail('explicit Core fixture pins are required')
+    contract_revision = _pinned(config, 'contract_revision', 'CONTRACT_REVISION')
+    core_revision = _pinned(config, 'core_revision', 'CORE_REVISION')
+    source_fingerprint = _pinned(config, 'source_fingerprint', 'SOURCE_FINGERPRINT')
+    catalog_sha256 = _pinned(config, 'catalog_sha256', 'CATALOG_SHA256')
+    hub_image_id = _pinned(config, 'hub_image_id', 'HUB_IMAGE')
     paths = config['paths']
     expected_pins = {
         'native_topology': str(paths['ready']),
@@ -491,7 +542,7 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
         _fail('all three trusted v1.6.4 Core metadata pins are required')
     _setup_raw, setup = _read_exact_private(paths['setup'], config['setup_sha256'], maximum=32 * 1024)
     _ready_raw, ready = _read_exact_private(paths['ready'], config['ready_sha256'], maximum=64 * 1024)
-    if paths['root'] in (F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT):
+    if paths['root'] in (F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT) or config.get('f6'):
         _read_exact_private(paths['reference'], config['reference_sha256'], maximum=64 * 1024)
     _manifest_raw, manifest = _read_exact_private(paths['manifest'], config['manifest_sha256'], maximum=64 * 1024)
     _expected_fixture(ready, setup, manifest, config)
@@ -505,7 +556,7 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
     ]
     actual_c = _docker_inspect('container', c['id'], container_fields)
     if actual_c.get('Id') != c['id'] or actual_c.get('Name') != '/' + c['name'] or \
-            actual_c.get('Image') != HUB_IMAGE or actual_c.get('Config.Image') != HUB_IMAGE or \
+            actual_c.get('Image') != hub_image_id or actual_c.get('Config.Image') != hub_image_id or \
             actual_c.get('State.Running') is not True or actual_c.get('Config.User') != c['user'] or \
             actual_c.get('Config.Labels') != c.get('labels') or \
             actual_c.get('HostConfig.NetworkMode') != c['network_mode'] or \
@@ -558,17 +609,21 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
         _fail('actual Hub bridge differs from the exact one-container manifest')
 
     image_fields = ['Id', 'Config.Labels']
-    actual_image = _docker_inspect('image', HUB_IMAGE, image_fields)
+    actual_image = _docker_inspect('image', hub_image_id, image_fields)
     image_labels = actual_image.get('Config.Labels') or {}
     pinned_image_labels = {
-        'org.opencontainers.image.revision': CORE_REVISION,
+        'org.opencontainers.image.revision': core_revision,
         'org.cicada.build.dirty': 'false',
-        'org.cicada.build.source-fingerprint': SOURCE_FINGERPRINT,
-        'org.cicada.client-catalog.sha256': CATALOG_SHA256,
+        'org.cicada.build.source-fingerprint': source_fingerprint,
+        'org.cicada.client-catalog.sha256': catalog_sha256,
         'org.cicada.role': 'hub',
     }
-    if actual_image.get('Id') != HUB_IMAGE or any(image_labels.get(k) != v for k, v in pinned_image_labels.items()):
+    if actual_image.get('Id') != hub_image_id or any(image_labels.get(k) != v for k, v in pinned_image_labels.items()):
         _fail('actual immutable Hub image ID or provenance labels differ from the pinned build')
+    if config.get('f6'):
+        actual_interop = _docker_inspect('image', config['interop_image_id'], ['Id'])
+        if actual_interop.get('Id') != config['interop_image_id']:
+            _fail('actual immutable interop image ID differs from the Root-pinned delivery')
     if _discover_owned('container', paths['root']) != [c['id']] or \
             _discover_owned('network', paths['root']) != [n['id']]:
         _fail('current Docker discovery contains extra or missing fixture-owned resources')
@@ -579,16 +634,16 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
         _fail('pinned Core Hub host loopback endpoint is not reachable')
 
     fixture = {
-        'container': c['name'], 'network': n['name'], 'image': HUB_IMAGE,
-        'source_revision': CORE_REVISION, 'client_public': str(paths['setup']),
+        'container': c['name'], 'network': n['name'], 'image': hub_image_id,
+        'source_revision': core_revision, 'client_public': str(paths['setup']),
         'base_url': f"http://127.0.0.1:{config['host_port']}", 'fixture_dir': str(paths['root']),
     }
     public_projection = {
-        'base_url': f"http://127.0.0.1:{config['host_port']}", 'source_revision': CORE_REVISION,
-        'source_fingerprint': SOURCE_FINGERPRINT, 'catalog_sha256': CATALOG_SHA256,
-        'contract_revision': CONTRACT_REVISION,
+        'base_url': f"http://127.0.0.1:{config['host_port']}", 'source_revision': core_revision,
+        'source_fingerprint': source_fingerprint, 'catalog_sha256': catalog_sha256,
+        'contract_revision': contract_revision,
     }
-    hub = {'Id': c['id'], 'Image': HUB_IMAGE, 'Config': {'Image': HUB_IMAGE, 'Labels': c['labels']},
+    hub = {'Id': c['id'], 'Image': hub_image_id, 'Config': {'Image': hub_image_id, 'Labels': c['labels']},
         'State': {'Running': True}}
     network = {'Id': n['id'], 'Name': n['name']}
     return fixture, public_projection, hub, network, '127.0.0.1', config['host_port']
@@ -606,6 +661,33 @@ def _load_module(path, name):
 def _configure(args):
     global _CONFIG
     root = Path(args.fixture_root)
+    pin_args = (
+        getattr(args, 'root_pins', None), getattr(args, 'root_pins_sha256', None),
+        getattr(args, 'delivery_metadata', None), getattr(args, 'delivery_metadata_sha256', None),
+    )
+    if any(value is not None for value in pin_args):
+        if not all(value is not None for value in pin_args):
+            _fail('F6 requires the Root pins path/hash and actual delivery metadata path/hash together')
+        legacy_override_args = (
+            getattr(args, 'setup_sha256', None), getattr(args, 'ready_sha256', None),
+            getattr(args, 'reference_sha256', None), getattr(args, 'manifest_sha256', None),
+            getattr(args, 'hub_id', None), getattr(args, 'hub_port', None),
+        )
+        if any(value is not None for value in legacy_override_args):
+            _fail('F6 refuses legacy per-file or Hub override pins')
+        pins_module = _load_module(F164_PINS_PATH, 'v164_link_fixture_pins')
+        pins = pins_module.read_trusted_delivery(
+            args.root_pins, args.root_pins_sha256, args.delivery_metadata,
+            args.delivery_metadata_sha256,
+        )
+        fixture = pins_module.validate_f6_fixture(pins, root)
+        paths = {
+            'root': fixture['root'], 'setup': fixture['setup'], 'ready': fixture['ready'],
+            'reference': fixture['reference'], 'manifest': fixture['manifest'],
+        }
+        _CONFIG = {**fixture, 'f6': True, 'paths': paths}
+        return _CONFIG
+
     if root not in (F1_FIXTURE_ROOT, F2_FIXTURE_ROOT, F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT):
         _fail('only the five Root-authorized v1.6.4 fixture roots are allowed')
     if root == F1_FIXTURE_ROOT:
@@ -667,6 +749,8 @@ def run(args):
     for value in (args.app_sha256, args.test_sha256):
         if re.fullmatch(r'[0-9a-f]{64}', value or '') is None:
             _fail('full lowercase app and test APK hashes are required')
+    if config.get('f6') and (args.app_sha256 != F6_APP_SHA256 or args.test_sha256 != F6_TEST_SHA256):
+        _fail('fresh F6 carrier accepts only the independently frozen retry-6 APK pair')
     if args.fault != 'none':
         _fail('this bounded synthetic fixture carrier does not inject network faults')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', args.tag):
@@ -675,25 +759,42 @@ def run(args):
         _fail('carrier and Hub loopback ports must be distinct valid high ports')
     _EXPECTED_APP_SHA256, _EXPECTED_TEST_SHA256 = args.app_sha256, args.test_sha256
 
+    contract_revision = _pinned(config, 'contract_revision', 'CONTRACT_REVISION')
+    core_revision = _pinned(config, 'core_revision', 'CORE_REVISION')
+    source_fingerprint = _pinned(config, 'source_fingerprint', 'SOURCE_FINGERPRINT')
+    catalog_sha256 = _pinned(config, 'catalog_sha256', 'CATALOG_SHA256')
+    hub_image_id = _pinned(config, 'hub_image_id', 'HUB_IMAGE')
+    interop_image_id = _pinned(config, 'interop_image_id', 'INTEROP_IMAGE')
+
     carrier = _load_module(V16_CARRIER_PATH, 'v16_host_carrier_for_v164')
-    carrier.CONTRACT_REVISION = CONTRACT_REVISION
-    carrier.CORE_REVISION = CORE_REVISION
-    carrier.SOURCE_FINGERPRINT = SOURCE_FINGERPRINT
-    carrier.CATALOG_SHA256 = CATALOG_SHA256
-    carrier.HUB_IMAGE = HUB_IMAGE
+    carrier.CONTRACT_REVISION = contract_revision
+    carrier.CORE_REVISION = core_revision
+    carrier.SOURCE_FINGERPRINT = source_fingerprint
+    carrier.CATALOG_SHA256 = catalog_sha256
+    carrier.HUB_IMAGE = hub_image_id
     carrier.SCHEMA = SCHEMA
     carrier.ALLOWED = ALLOWED
     carrier._NATIVE_FIXTURE_MODE = True
     carrier._EXPECTED_APP_SHA256 = args.app_sha256
     carrier._EXPECTED_TEST_SHA256 = args.test_sha256
-    carrier.load_driver = lambda: _load_module(V164_RUNNER_PATH, 'v164_android_driver_for_link_carrier')
+    def load_driver():
+        module = _load_module(V164_RUNNER_PATH, 'v164_android_driver_for_link_carrier')
+        module.CONTRACT_REVISION = contract_revision
+        module.CORE_REVISION = core_revision
+        module.CORE_SOURCE_FINGERPRINT = source_fingerprint
+        module.CATALOG_SHA256 = catalog_sha256
+        module.HUB_IMAGE = hub_image_id
+        module.INTEROP_IMAGE = interop_image_id
+        return module
+
+    carrier.load_driver = load_driver
     carrier.verify_hub = verify_hub
     carrier.v15_host.SCHEMA = SCHEMA
-    carrier.v15_host.CONTRACT_REVISION = CONTRACT_REVISION
-    carrier.v15_host.CORE_REVISION = CORE_REVISION
-    carrier.v15_host.SOURCE_FINGERPRINT = SOURCE_FINGERPRINT
-    carrier.v15_host.CATALOG_SHA256 = CATALOG_SHA256
-    carrier.v15_host.HUB_IMAGE = HUB_IMAGE
+    carrier.v15_host.CONTRACT_REVISION = contract_revision
+    carrier.v15_host.CORE_REVISION = core_revision
+    carrier.v15_host.SOURCE_FINGERPRINT = source_fingerprint
+    carrier.v15_host.CATALOG_SHA256 = catalog_sha256
+    carrier.v15_host.HUB_IMAGE = hub_image_id
     carrier.v15_host.ALLOWED = ALLOWED
     carrier.v15_host._EXPECTED_APP_SHA256 = args.app_sha256
     carrier.v15_host._EXPECTED_TEST_SHA256 = args.test_sha256
@@ -715,7 +816,7 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixture-root', default=str(F1_FIXTURE_ROOT),
-        help='one of the five exactly authorized fixture roots')
+        help='an exact F1-F5 root or explicitly Root-pinned fresh F6 root')
     parser.add_argument('--evidence', required=True, help='owned v1.6.4 Android evidence directory')
     parser.add_argument('--tag', required=True, help='unique opaque-carrier evidence tag')
     parser.add_argument('--app-sha256', required=True, help='full SHA-256 of the installed Client APK')
@@ -726,6 +827,10 @@ def main():
     parser.add_argument('--manifest-sha256', help='trusted full SHA-256 of this owned Docker manifest')
     parser.add_argument('--hub-id', help='trusted Hub ID; required for F2/F3/F4/F5')
     parser.add_argument('--hub-port', type=int, help='trusted loopback port; required for F2/F3/F4/F5')
+    parser.add_argument('--root-pins', help='external Root-trusted F6 delivery/fixture pins JSON')
+    parser.add_argument('--root-pins-sha256', help='out-of-band SHA-256 for the Root pins bytes')
+    parser.add_argument('--delivery-metadata', help='local actual clean Core delivery metadata JSON')
+    parser.add_argument('--delivery-metadata-sha256', help='full SHA-256 of the actual delivery metadata')
     parser.add_argument('--fault', choices=('none',), default='none')
     parser.add_argument('--carrier-port', type=int, default=38097)
     parser.add_argument('--android-url-port', type=int)

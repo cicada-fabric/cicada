@@ -403,24 +403,44 @@ def validate_stage(value, name, kind, side, run_id, reference):
         raise ValueError('unsupported bounded staging kind')
 
 
-def check_evidence(evidence):
+def check_evidence(evidence, args):
+    delivery = runner.read_f6_delivery(args)
+    run_id = evidence.parent.name
+    if delivery is None and run_id.startswith('v16-deterministic-v164-f6-'):
+        raise ValueError('F6 artifact verification requires its Root pins and actual delivery metadata')
+    if delivery is not None and not runner.F6_RUN_ID.fullmatch(run_id):
+        raise ValueError('Root-pinned F6 metadata cannot be applied to a legacy evidence run')
     state = runner.owned_state(evidence)
     if state.get('network') != 'none':
         raise ValueError('the owned v1.6.4 emulator must remain offline')
     artifacts, _ = link.read_private_json(evidence / 'android-artifacts.json', maximum=64 * 1024)
-    expected = {
-        'contract_revision': runner.CONTRACT_REVISION,
-        'core_source_revision': runner.CORE_REVISION,
-        'core_source_fingerprint': runner.CORE_SOURCE_FINGERPRINT,
-        'catalog_sha256': CATALOG_SHA256,
-        'pinned_hub_image_id': runner.HUB_IMAGE,
-        'pinned_interop_image_id': runner.INTEROP_IMAGE,
-    }
+    if delivery is None:
+        f6_markers = {
+            'fixture_lane', 'root_delivery_pins_path', 'root_delivery_pins_sha256',
+            'delivery_metadata_path', 'delivery_metadata_sha256', 'fixture_root',
+            'root_delivery_pins', 'validated_f6_fixture',
+        }
+        if state['run_id'].startswith('v16-deterministic-v164-f6-') or any(key in artifacts for key in f6_markers):
+            raise ValueError('F6 artifact verification requires its Root pins and actual delivery metadata')
+        expected = {
+            'contract_revision': runner.CONTRACT_REVISION,
+            'core_source_revision': runner.CORE_REVISION,
+            'core_source_fingerprint': runner.CORE_SOURCE_FINGERPRINT,
+            'catalog_sha256': CATALOG_SHA256,
+            'pinned_hub_image_id': runner.HUB_IMAGE,
+            'pinned_interop_image_id': runner.INTEROP_IMAGE,
+        }
+    else:
+        expected = runner.f6_pinned_artifact_values(args, delivery)
     if any(artifacts.get(key) != value for key, value in expected.items()):
-        raise ValueError('installed emulator artifact metadata does not match the pinned v1.6.4 driver')
+        raise ValueError('installed emulator artifact metadata does not match its independently verified pin inputs')
     for app in ('app', 'test'):
         expected_sha = artifacts.get(app + '_sha256')
         path = evidence / f'installed-{app}.private.apk'
+        if delivery is not None and expected_sha != (runner.F6_APP_SHA256 if app == 'app' else runner.F6_TEST_SHA256):
+            raise ValueError(f'F6 {app} APK does not match its authorized binary pin')
+        if delivery is None and expected_sha in (runner.F6_APP_SHA256, runner.F6_TEST_SHA256):
+            raise ValueError('F6 APKs require Root pins and a fresh F6 evidence run')
         if not isinstance(expected_sha, str) or not HEX64.fullmatch(expected_sha) or path.is_symlink() or \
                 not path.is_file() or digest(path.read_bytes()) != expected_sha:
             raise ValueError(f'installed {app} APK does not match its full recorded SHA-256')
@@ -496,7 +516,7 @@ def stage(evidence, state, args):
     raw = (json.dumps(parsed, separators=(',', ':'), ensure_ascii=False) + '\n').encode()
     if len(raw) > MAX_INPUT:
         raise ValueError('normalized staged JSON exceeds its bound')
-    state, _ = check_evidence(evidence)
+    state, _ = check_evidence(evidence, args)
     output = output_dir(evidence)
     input_copy, staged_sha = save_unique(output, 'staged-' + Path(name).stem, raw)
     remote = remote_file(state, run_id, name)
@@ -616,7 +636,7 @@ def run_selector(evidence, state, args):
                 role = validate_selection(selection, run_id, device)
             if role != side:
                 raise ValueError('active public selection belongs to the other Owner side')
-    state, _artifacts = check_evidence(evidence)
+    state, _artifacts = check_evidence(evidence, args)
     output = output_dir(evidence)
     candidates = receipt_candidates(side, method)
     for index, (name, _phase) in enumerate(candidates, 1):
@@ -679,19 +699,22 @@ def main():
     stage_parser.add_argument('--input', required=True)
     stage_parser.add_argument('--side', choices=sorted(SIDES))
     stage_parser.add_argument('--reference', help='private exported device or exact review handoff')
+    runner.add_delivery_arguments(stage_parser)
     selector = commands.add_parser('selector')
     selector.add_argument('--run-id', required=True)
     selector.add_argument('--method', choices=sorted(SELECTORS), required=True)
     selector.add_argument('--side', choices=sorted(SIDES))
+    runner.add_delivery_arguments(selector)
     export = commands.add_parser('export')
     export.add_argument('--run-id', required=True)
     export.add_argument('--name', choices=sorted(EXPORT_FILES), required=True)
     export.add_argument('--side', choices=sorted(SIDES))
+    runner.add_delivery_arguments(export)
     args = parser.parse_args()
     if not RUN_ID.fullmatch(args.run_id):
         raise ValueError('instrumentation run ID must match v164-[A-Za-z0-9_-]{1,72}')
     evidence = driver.private_evidence(args.evidence)
-    state, _artifacts = check_evidence(evidence)
+    state, _artifacts = check_evidence(evidence, args)
     if args.action == 'stage':
         result = stage(evidence, state, args)
     elif args.action == 'selector':

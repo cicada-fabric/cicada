@@ -34,6 +34,10 @@ CORE_SOURCE_FINGERPRINT = '4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed
 CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
 HUB_IMAGE = 'sha256:41b7a968293f14d7b7472333dcf64980e95eb68868e85dfdd71fa850f4eecbb4'
 INTEROP_IMAGE = 'sha256:bcb8856c3d766c54c53e6c1dc1dcbe32beb2806c02260442610fde1af21cb6b1'
+F6_APP_SHA256 = '56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67'
+F6_TEST_SHA256 = 'caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6'
+FIXTURE_PINS_PATH = Path(__file__).with_name('v164-link-fixture-pins.py')
+F6_RUN_ID = re.compile(r'v16-deterministic-v164-f6-[A-Za-z0-9_-]{1,80}')
 MATRIX = (
     ('client-wire-vectors', 'ClientWirePublicVectorTest', 5),
     ('endpoint-attestation-vectors', 'EndpointAttestationVectorTest', 4),
@@ -43,11 +47,132 @@ MATRIX = (
     ('native-link-authority', 'LinkConsentAuthorityFactoryTest', 5),
     ('durable-link-consent-ledger', 'LinkConsentLedgerTest', 4),
 )
+F6_MATRIX = (
+    ('client-wire-vectors', 'ClientWirePublicVectorTest', 5),
+    ('endpoint-attestation-vectors', 'EndpointAttestationVectorTest', 4),
+    ('link-key-vectors', 'LinkKeyManifestVerifierTest', 7),
+    ('link-policy-canonical-vectors', 'LinkReviewPolicyConsentValidationTest', 9),
+    ('v164-bilateral-policy-evidence', 'LinkReviewPolicyEvidenceV164Test', 13),
+    ('native-link-authority', 'LinkConsentAuthorityFactoryTest', 6),
+    ('durable-link-consent-ledger', 'LinkConsentLedgerTest', 5),
+)
 
 # The delegated v1.5 helpers resolve these values in their own module globals.
 v15.SCHEMA = SCHEMA
 v15.LABEL = LABEL
 v15.MATRIX = MATRIX
+
+
+def add_delivery_arguments(parser):
+    parser.add_argument('--delivery-pins', help='Root-trusted fresh F6 pins JSON')
+    parser.add_argument('--delivery-pins-sha256', help='out-of-band SHA-256 of the exact Root pins bytes')
+    parser.add_argument('--delivery-metadata', help='actual local delivery metadata JSON')
+    parser.add_argument('--delivery-metadata-sha256', help='independently supplied SHA-256 of the exact metadata bytes')
+    parser.add_argument('--fixture-root', help='Root-pinned fresh F6 fixture directory')
+
+
+def read_f6_delivery(args):
+    names = (
+        'delivery_pins', 'delivery_pins_sha256', 'delivery_metadata',
+        'delivery_metadata_sha256', 'fixture_root',
+    )
+    values = [getattr(args, name, None) for name in names]
+    if not any(value is not None for value in values):
+        return None
+    if not all(value is not None for value in values):
+        raise ValueError('F6 requires Root pins, both independent SHA-256 values, actual metadata, and fixture root')
+    if not FIXTURE_PINS_PATH.is_file() or FIXTURE_PINS_PATH.is_symlink():
+        raise ValueError('trusted F6 fixture pin validator is unavailable')
+    spec = importlib.util.spec_from_file_location('v164_link_fixture_pins', FIXTURE_PINS_PATH)
+    if spec is None or spec.loader is None:
+        raise ValueError('trusted F6 fixture pin validator cannot be loaded')
+    pins_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pins_module)
+    pins = pins_module.read_trusted_delivery(
+        args.delivery_pins,
+        args.delivery_pins_sha256,
+        args.delivery_metadata,
+        args.delivery_metadata_sha256,
+    )
+    fixture = pins_module.validate_f6_fixture(pins, args.fixture_root)
+    return pins, fixture
+
+
+def f6_artifact_fields(args, verified=None):
+    """Return the exact trusted pins to record and later recheck from source files."""
+    verified = read_f6_delivery(args) if verified is None else verified
+    if verified is None:
+        return None
+    pins, fixture = verified
+    fixture_record = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in fixture.items()
+    }
+    return {
+        'fixture_lane': 'F6',
+        'root_delivery_pins_path': str(Path(args.delivery_pins)),
+        'root_delivery_pins_sha256': pins['root_pins_sha256'],
+        'delivery_metadata_path': pins['metadata_path'],
+        'delivery_metadata_sha256': pins['delivery_metadata_sha256'],
+        'fixture_root': str(fixture['root']),
+        'root_delivery_pins': pins,
+        'validated_f6_fixture': fixture_record,
+    }
+
+
+def f6_pinned_artifact_values(args, verified=None):
+    verified = read_f6_delivery(args) if verified is None else verified
+    if verified is None:
+        return None
+    pins, _fixture = verified
+    return {
+        'contract_revision': pins['contract_revision'],
+        'core_source_revision': pins['core_revision'],
+        'core_source_fingerprint': pins['source_fingerprint'],
+        'catalog_sha256': pins['catalog_sha256'],
+        'pinned_hub_image_id': pins['hub_image_id'],
+        'pinned_interop_image_id': pins['interop_image_id'],
+        'wire_version': pins['wire_version'],
+        'schema_version': pins['schema_version'],
+        'operation_count': pins['operation_count'],
+        'source_dirty': pins['source_dirty'],
+        'producer_sha256': pins['producer_sha256'],
+        'package_sha256': pins['package_sha256'],
+        **f6_artifact_fields(args, verified),
+    }
+
+
+def validate_existing_f6_artifacts(evidence, args, verified=None):
+    verified = read_f6_delivery(args) if verified is None else verified
+    artifacts_path = evidence / 'android-artifacts.json'
+    if artifacts_path.is_symlink() or not artifacts_path.is_file():
+        raise ValueError('Android artifact receipt is missing or unsafe')
+    artifacts = json.loads(artifacts_path.read_text())
+    if not isinstance(artifacts, dict):
+        raise ValueError('Android artifact receipt must be a JSON object')
+    run_id = evidence.parent.name
+    f6_markers = {
+        'fixture_lane', 'root_delivery_pins_path', 'root_delivery_pins_sha256',
+        'delivery_metadata_path', 'delivery_metadata_sha256', 'fixture_root',
+        'root_delivery_pins', 'validated_f6_fixture',
+    }
+    if verified is None:
+        if run_id.startswith('v16-deterministic-v164-f6-') or any(key in artifacts for key in f6_markers):
+            raise ValueError('F6 artifact verification requires its Root pins and actual delivery metadata')
+        if artifacts.get('app_sha256') == F6_APP_SHA256 or artifacts.get('test_sha256') == F6_TEST_SHA256:
+            raise ValueError('F6 APKs cannot be used with the legacy 25bc selector matrix')
+        return None
+    if F6_RUN_ID.fullmatch(run_id) is None:
+        raise ValueError('Root-pinned F6 metadata cannot be applied to a legacy evidence run')
+    expected = f6_pinned_artifact_values(args, verified)
+    if any(artifacts.get(key) != value for key, value in expected.items()):
+        raise ValueError('saved F6 artifact receipt does not match independently reverified Root pins')
+    for name, sha256 in (('app', F6_APP_SHA256), ('test', F6_TEST_SHA256)):
+        path = evidence / ('installed-' + name + '.private.apk')
+        if artifacts.get(name + '_sha256') != sha256 or path.is_symlink() or not path.is_file() or \
+                hashlib.sha256(path.read_bytes()).hexdigest() != sha256:
+            raise ValueError('saved F6 ' + name + ' APK does not match its authorized binary pin')
+    return artifacts
 
 
 def owned_state(evidence):
@@ -83,7 +208,16 @@ def start(evidence, args):
     run_id = evidence.parent.name
     if not re.fullmatch(r'v16-deterministic-v164-[A-Za-z0-9_-]{1,80}', run_id):
         raise ValueError('unsafe v1.6.4 evidence run name')
-    if (evidence / 'android-driver.json').exists():
+    delivery = read_f6_delivery(args)
+    if delivery is not None:
+        if F6_RUN_ID.fullmatch(run_id) is None:
+            raise ValueError('Root-pinned delivery inputs require a new F6 run ID')
+        if any(evidence.iterdir()):
+            raise ValueError('F6 evidence must use a completely fresh empty directory')
+    elif run_id.startswith('v16-deterministic-v164-f6-'):
+        raise ValueError('F6 run IDs cannot fall back to legacy 25bc defaults')
+    if (evidence / 'android-driver.json').exists() or \
+            delivery is not None and (evidence / 'android-artifacts.json').exists():
         raise ValueError('this evidence directory already owns an emulator')
 
     artifacts = {
@@ -99,11 +233,17 @@ def start(evidence, args):
         'physical_android': 'NOT_RUN',
         'public_https': 'NOT_RUN',
     }
+    if delivery is not None:
+        artifacts.update(f6_pinned_artifact_values(args, delivery))
     for name in ('app', 'test'):
         path = Path(getattr(args, name + '_apk'))
         expected = getattr(args, name + '_sha256')
         if path.is_symlink() or not path.is_file() or not re.fullmatch(r'[0-9a-f]{64}', expected):
             raise ValueError('expected a regular APK and full lowercase SHA-256')
+        if delivery is not None and expected != (F6_APP_SHA256 if name == 'app' else F6_TEST_SHA256):
+            raise ValueError('F6 only accepts the independently authorized application and test APK hashes')
+        if delivery is None and expected in (F6_APP_SHA256, F6_TEST_SHA256):
+            raise ValueError('F6 APKs require Root pins and a fresh F6 evidence run')
         data = path.read_bytes()
         if hashlib.sha256(data).hexdigest() != expected:
             raise ValueError(name + ' APK hash mismatch')
@@ -147,20 +287,30 @@ def start(evidence, args):
     return {'result': 'BOOTING', 'evidence': str(evidence), 'run_id': run_id}
 
 
-def test(evidence, state):
-    result = v15.install_and_test(evidence, state)
+def test(evidence, state, args, verified=None):
+    artifacts = validate_existing_f6_artifacts(evidence, args, verified)
+    selected_matrix = F6_MATRIX if artifacts is not None else MATRIX
+    original_matrix = v15.MATRIX
+    try:
+        v15.MATRIX = selected_matrix
+        result = v15.install_and_test(evidence, state)
+    finally:
+        v15.MATRIX = original_matrix
     summary_path = evidence / 'deterministic-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
-    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION)
+    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION,
+        matrix_lane='F6' if artifacts is not None else 'legacy-25bc')
     driver.save(summary_path, summary)
     return result
 
 
-def ui(evidence, state):
+def ui(evidence, state, args, verified=None):
+    artifacts = validate_existing_f6_artifacts(evidence, args, verified)
     result = v15.ui_smoke(evidence, state)
     summary_path = evidence / 'ui-smoke-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
-    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION)
+    summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION,
+        matrix_lane='F6' if artifacts is not None else 'legacy-25bc')
     driver.save(summary_path, summary)
     return result
 
@@ -207,21 +357,27 @@ def main():
     for name in ('app', 'test'):
         prepare.add_argument('--' + name + '-apk', required=True)
         prepare.add_argument('--' + name + '-sha256', required=True)
-    commands.add_parser('test')
-    commands.add_parser('ui', aliases=['ui-smoke'])
+    add_delivery_arguments(prepare)
+    test_parser = commands.add_parser('test')
+    add_delivery_arguments(test_parser)
+    ui_parser = commands.add_parser('ui', aliases=['ui-smoke'])
+    add_delivery_arguments(ui_parser)
     commands.add_parser('stop')
     args = parser.parse_args()
     evidence = driver.private_evidence(args.evidence)
     if args.action == 'start':
         result = start(evidence, args)
+    elif args.action == 'stop':
+        state = owned_state(evidence)
+        result = stop(evidence, state)
     else:
+        verified = read_f6_delivery(args)
+        validate_existing_f6_artifacts(evidence, args, verified)
         state = owned_state(evidence)
         if args.action == 'test':
-            result = test(evidence, state)
+            result = test(evidence, state, args, verified)
         elif args.action in ('ui', 'ui-smoke'):
-            result = ui(evidence, state)
-        else:
-            result = stop(evidence, state)
+            result = ui(evidence, state, args, verified)
     print(json.dumps(result))
 
 
