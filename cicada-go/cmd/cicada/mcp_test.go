@@ -243,7 +243,20 @@ func TestCicadaMCPToolsRequireExplicitJoin(t *testing.T) {
 		"cicada_task_list", "cicada_task_claim", "cicada_task_submit", "cicada_task_accept",
 		"cicada_artifact_read",
 	} {
-		if _, err := mcp.callTool(name, map[string]any{}); err == nil || !strings.Contains(err.Error(), "cicada_join") {
+		arguments := map[string]any{}
+		switch name {
+		case "cicada_task_submit":
+			arguments = map[string]any{
+				"task_id": "task_synthetic_join_guard", "expected_revision": 1, "owner_epoch": 1,
+				"assignment_version": 1, "content_version": 1, "idempotency_key": "synthetic-join-guard",
+				"artifact_refs": []any{}, "summary": "",
+			}
+		case "cicada_task_accept":
+			arguments = map[string]any{"task_id": "task_synthetic_join_guard",
+				"result_id": "result_synthetic_join_guard", "expected_revision": 1}
+		}
+		if _, err := mcp.callTool(name, arguments); err == nil ||
+			err.Error() != name+" requires an active Cicada session; call cicada_join first" {
 			t.Fatalf("tool %s did not require explicit join: %v", name, err)
 		}
 	}
@@ -252,6 +265,40 @@ func TestCicadaMCPToolsRequireExplicitJoin(t *testing.T) {
 	}
 	if err := mcp.ensureEndpoint(); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("automatic ensureEndpoint was not disabled: %v", err)
+	}
+}
+
+func TestCicadaMCPTaskInputRefusalsPrecedeExplicitJoin(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	mcp := &mcpServer{baseURL: server.URL}
+	for _, test := range []struct {
+		name, tool string
+		arguments  map[string]any
+		want       error
+	}{
+		{"empty_submit", "cicada_task_submit", map[string]any{}, store.ErrSharedTaskPeerPlaintext},
+		{"legacy_plaintext_submit", "cicada_task_submit", map[string]any{
+			"task_id": "task_synthetic_join_guard", "summary": "synthetic retired plaintext",
+			"evidence": []any{"synthetic-evidence"},
+		}, store.ErrSharedTaskPeerPlaintext},
+		{"retired_handoff_propose", "cicada_task_handoff_propose", map[string]any{}, errPeerTaskHandoffRetired},
+		{"legacy_handoff_accept", "cicada_task_handoff_accept", map[string]any{
+			"handoff_id": "handoff_synthetic_join_guard", "lease_seconds": 60,
+		}, errPeerTaskHandoffRetired},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := mcp.callTool(test.tool, test.arguments)
+			if result != nil || !errors.Is(err, test.want) {
+				t.Fatalf("unjoined %s returned result=%v error=%v, want %v", test.tool, result, err, test.want)
+			}
+			if got := requests.Load(); got != 0 {
+				t.Fatalf("refused Task input made %d HTTP requests", got)
+			}
+		})
 	}
 }
 

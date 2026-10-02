@@ -1,5 +1,14 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+## 2026-10-02 checkpoint — finite source acceptance; product PARTIAL
+
+15路径被测Main源码（1061路径、dirty `25bc586`/`f203…`）已通过一次全default Go及有限Control/Server TLS native/race；17项实际SKIP仍是未验项目。
+TLS恢复保持只读与quarantine；M5真实双Hub传输、历史组件、Client和Codex Runtime各自归属，不能合并为整体v0.1/v2.3完成。
+完整来源、结果和剩余边界见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)；下方旧current段保留其原时点。
+
+## Historical status entries before this checkpoint
+
+
 ## 2026-10-02 current status — integrated candidate, acceptance PASS（有限范围）
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；

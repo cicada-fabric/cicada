@@ -5,6 +5,14 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
+### 2026-10-02 current-authority recovery and multi-Hub checkpoint
+
+Added a pure authenticated Fabric-only TLS recovery reader that retains quarantine, corrected four existing test fixtures/expectations, and added a separately attributed two-Hub Docker transport fixture.
+The tested 15-path dirty source passed one full default Go run with 17 explicit skips and finite Control/Server TLS native/race; Runtime/model, Client and broader product acceptance remain separate.
+Software, wire, contract and schema versions are unchanged; this line is unreleased. Exact source, historical failures and limits are in [checkpoint validation](docs/v01-current-authority-multihub-checkpoint-validation.md).
+
+### Historical integrated-next-core entry (original text follows)
+
 ### 2026-10-02 integrated-next-core candidate — QA PASS（有限范围）
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；

@@ -1,5 +1,14 @@
 # Release status
 
+## 2026-10-02 checkpoint — finite QA accepted; unreleased
+
+当前软件仍为`0.1.0-dev`、Architecture v2.3；schema57、Client合同v1.6.4、wire1和55-operation catalog保持各自版本身份。
+15路径被测组合已通过有限QA，尚无对应新clean发行工件或完整产品验收；历史25bc/41b7工件保持原source/image，Client与真实Runtime未由Go/OpenSSL结果通过。
+详情见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)；以下原始发布状态保持当时来源。
+
+## Historical release-status text before this checkpoint
+
+
 The current line is **Cicada 0.1.0-dev**, unreleased on `dev`; Architecture v2.3,
 software version, encrypted Client wire v1, contract revision and Hub schema
 are separate. The M1 backend matrix **passed** on schema v36 and an independent

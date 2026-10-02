@@ -1,5 +1,14 @@
 # Architecture v2.3 实施计划
 
+## 2026-10-02 checkpoint plan — frozen finite QA; remaining product gates
+
+本检查点的15路径源码与两项组合QA已封存；后续文档增量不继承被测full-source fingerprint。
+下一出口分别是新clean工件归属、Client五操作终态、Codex0.160.0启动诊断与真实Golden路径，以及未验Join/ACTIVE Network/消息故障、物理设备和公网HTTPS。
+不扩大已完成QA或改写旧FAIL/SKIP；精确来源和各出口见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)。
+
+## Historical plans before this checkpoint
+
+
 ## 2026-10-02 current plan — source-attributed scoped QA passed; clean delivery pending
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；

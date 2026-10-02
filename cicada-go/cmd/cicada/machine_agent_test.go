@@ -102,6 +102,9 @@ func TestMachineAgentCreatesAndPersistsNodeCredentialLocally(t *testing.T) {
 
 func TestMachineAgentRejectsDuplicateBeforeCreatingNodeIdentity(t *testing.T) {
 	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	const nodeID = "node-duplicate-lock-test"
 	held, err := nodelock.AcquireAgent(stateDir, nodeID)
 	if err != nil {
@@ -124,6 +127,42 @@ func TestMachineAgentRejectsDuplicateBeforeCreatingNodeIdentity(t *testing.T) {
 	}
 	if _, err := os.Stat(machineNodeStateDir(stateDir, nodeID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("duplicate Agent created its Node subtree before rejecting: %v", err)
+	}
+}
+
+func TestMachineAgentRejectsNonPrivateWriterRootBeforeIdentityOrNetwork(t *testing.T) {
+	for _, mode := range []os.FileMode{0o755, 0o770} {
+		t.Run(mode.String(), func(t *testing.T) {
+			stateDir := t.TempDir()
+			if err := os.Chmod(stateDir, mode); err != nil {
+				t.Fatal(err)
+			}
+			const nodeID = "node-non-private-root-test"
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				requests.Add(1)
+			}))
+			defer server.Close()
+			err := runMachineAgent([]string{"--id", nodeID, "--name", nodeID, "--state-dir", stateDir,
+				"--control-url", server.URL, "--interval", "1s", "--once"})
+			if err == nil || !strings.Contains(err.Error(), "shared Node WriterRoot must be a real private directory") {
+				t.Fatalf("non-private WriterRoot error=%v, want private-directory rejection", err)
+			}
+			if requests.Load() != 0 {
+				t.Fatalf("non-private WriterRoot made %d Hub requests", requests.Load())
+			}
+			if _, err := os.Stat(machineNodeStateDir(stateDir, nodeID)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("non-private WriterRoot created its Node subtree: %v", err)
+			}
+			info, err := os.Lstat(stateDir)
+			if err != nil || info.Mode().Perm() != mode {
+				t.Fatalf("Agent changed non-private WriterRoot permissions: info=%v err=%v", info, err)
+			}
+			entries, err := os.ReadDir(stateDir)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("rejected WriterRoot created local state: entries=%v err=%v", entries, err)
+			}
+		})
 	}
 }
 

@@ -21,11 +21,16 @@ import (
 )
 
 type Handler struct {
-	control        *control.Control
-	fabricService  *fabricpkg.Service
-	apiToken       string
-	nodeTLSCurrent NodeTLSCurrentReader
+	control         *control.Control
+	fabricService   *fabricpkg.Service
+	apiToken        string
+	nodeTLSCurrent  NodeTLSCurrentReader
+	nodeTLSRecovery NodeTLSRecoveryReader
 }
+
+// NodeTLSRecoveryReader supplies authenticated read-only recovery metadata.
+// Its caller must provide the actual existing Hub identity and current Store.
+type NodeTLSRecoveryReader func(credentialDigest, nodeID string, packet []byte) ([]byte, error)
 
 func NewHandler(controlPlane *control.Control) http.Handler {
 	handler := &Handler{control: controlPlane}
@@ -47,7 +52,14 @@ func NewFabricHandler(service *fabricpkg.Service, apiToken string) http.Handler 
 // NewFabricHandlerWithNodeTLSCurrent adds only a read-only authenticated
 // current-authority provider. Control business remains absent.
 func NewFabricHandlerWithNodeTLSCurrent(service *fabricpkg.Service, apiToken string, reader NodeTLSCurrentReader) http.Handler {
-	return &Handler{fabricService: service, apiToken: strings.TrimSpace(apiToken), nodeTLSCurrent: reader}
+	return NewFabricHandlerWithNodeTLSReaders(service, apiToken, reader, nil)
+}
+
+// NewFabricHandlerWithNodeTLSReaders adds only pure authentication/state
+// readers. Recovery requires the actual strict Node PQ transport policy;
+// Control business remains absent.
+func NewFabricHandlerWithNodeTLSReaders(service *fabricpkg.Service, apiToken string, current NodeTLSCurrentReader, recovery NodeTLSRecoveryReader) http.Handler {
+	return &Handler{fabricService: service, apiToken: strings.TrimSpace(apiToken), nodeTLSCurrent: current, nodeTLSRecovery: recovery}
 }
 
 func isArtifactV2Path(path string) bool {

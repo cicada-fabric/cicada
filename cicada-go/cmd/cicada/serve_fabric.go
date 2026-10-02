@@ -55,8 +55,10 @@ func serveFabricOnlyWithTransport(host string, port int, config control.Config, 
 		if err != nil {
 			return err
 		}
-		handler = server.NewFabricHandlerWithNodeTLSCurrent(service, config.APIToken, func(credential, nodeID string, packet []byte) ([]byte, error) {
+		handler = server.NewFabricHandlerWithNodeTLSReaders(service, config.APIToken, func(credential, nodeID string, packet []byte) ([]byte, error) {
 			return control.ReadNodeTLSCurrentPacket(persistence, hubControl, credential, nodeID, packet)
+		}, func(credential, nodeID string, packet []byte) ([]byte, error) {
+			return control.ReadNodeTLSRecoveryPacket(persistence, hubControl, credential, nodeID, packet)
 		})
 	}
 	httpServer := &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(port)), Handler: handler, ReadHeaderTimeout: 10 * time.Second}

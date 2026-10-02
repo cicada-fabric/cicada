@@ -133,9 +133,23 @@ func TestNodeTLSAuthoritySchemaAndUnavailableFailClosed(t *testing.T) {
 	digest := nodeBindingTestCredentialDigest("tls-unavailable")
 	candidate := startStoreNodeControlRequest(t, s, "tls-unavailable-node", digest, NodeControlPairingInitial, "", node, hub, "tls-unavailable")
 	confirmStoreNodeControlRequest(t, s, device, candidate, "tls-unavailable")
-	var version int
-	if err := s.db.QueryRow(`SELECT max(version) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&version); err != nil || version != 56 {
-		t.Fatal("TLS schema migration not installed")
+	var tlsMigration *v2Migration
+	for i := range v2Migrations {
+		if v2Migrations[i].Version == 56 {
+			tlsMigration = &v2Migrations[i]
+			break
+		}
+	}
+	if tlsMigration == nil || tlsMigration.ID != "v2.node.tls_authority" {
+		t.Fatal("TLS schema migration definition is missing")
+	}
+	entry, err := s.readV2Migration(56)
+	if err != nil || entry == nil {
+		t.Fatalf("TLS schema migration ledger row is missing: entry=%v err=%v", entry, err)
+	}
+	if entry.Version != 56 || entry.MigrationID != tlsMigration.ID || entry.State != v2MigrationApplied ||
+		entry.Checksum != v2MigrationChecksum(*tlsMigration) || entry.AppliedAt == "" {
+		t.Fatalf("TLS schema migration ledger row is not exactly applied: %#v", entry)
 	}
 	if _, err := s.CurrentNodeTransportBinding(candidate.NodeID); err != nil {
 		t.Fatal("optional ordinary transport binding broken without TLS authority")

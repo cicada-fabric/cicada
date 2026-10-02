@@ -15,6 +15,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodewire"
+	"github.com/cicada-ai/cicada/internal/pqtls"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -160,12 +161,12 @@ func (h *Handler) nodeControlRPC(response http.ResponseWriter, request *http.Req
 		h.nodeTLSCurrentStatus(response, request, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
 		return
 	}
-	if h.control == nil {
-		writeError(response, http.StatusServiceUnavailable, errors.New("Node-Control RPC is unavailable"))
+	if route.Operation == nodewire.RecoveryOperation {
+		h.nodeControlRecoveryStatus(response, request, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
 		return
 	}
-	if route.Operation == nodewire.RecoveryOperation {
-		h.nodeControlRecoveryStatus(response, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
+	if h.control == nil {
+		writeError(response, http.StatusServiceUnavailable, errors.New("Node-Control RPC is unavailable"))
 		return
 	}
 	if !nodeControlOperationAllowed(route.Operation) {
@@ -495,13 +496,39 @@ func writeNodeControlPairingError(response http.ResponseWriter, err error) {
 	}
 }
 
-func (h *Handler) nodeControlRecoveryStatus(w http.ResponseWriter, credentialDigest, nodeID string, packet []byte) {
+func (h *Handler) nodeControlRecoveryStatus(w http.ResponseWriter, r *http.Request, credentialDigest, nodeID string, packet []byte) {
 	if len(packet) > nodewire.MaxRecoveryPacketBytes {
 		writeError(w, http.StatusBadRequest, errors.New("invalid Node recovery packet"))
 		return
 	}
-	response, err := h.control.NodeControlRecoveryStatus(credentialDigest, nodeID, packet)
-	if err != nil {
+	var response []byte
+	var err error
+	if h.nodeTLSRecovery != nil {
+		check, strict := r.Context().Value(nodeTransportCheckKey{}).(nodeTransportCheck)
+		current := func() bool {
+			_, err := pqtls.StateFromContext(r.Context())
+			return err == nil && strict && check != nil && check()
+		}
+		if !current() {
+			writeError(w, http.StatusForbidden, errors.New("enrolled Node PQ transport is required"))
+			return
+		}
+		response, err = h.nodeTLSRecovery(credentialDigest, nodeID, packet)
+		// A read can finish before a concurrent revoke. Recheck the same actual
+		// transport/current policy before admitting response bytes; this cannot
+		// recall bytes already sent after an earlier completed check.
+		if err == nil && !current() {
+			err = errors.New("current Node PQ transport was revoked")
+		}
+	} else if h.control != nil {
+		// Preserve the existing full-Control recovery path, including its
+		// authenticated application envelope when PQ transport is disabled.
+		response, err = h.control.NodeControlRecoveryStatus(credentialDigest, nodeID, packet)
+	} else {
+		writeError(w, http.StatusServiceUnavailable, errors.New("Node recovery is unavailable"))
+		return
+	}
+	if err != nil || len(response) == 0 || len(response) > nodewire.MaxRecoveryPacketBytes {
 		writeError(w, http.StatusForbidden, errors.New("Node recovery rejected by current identity or exact request guard"))
 		return
 	}

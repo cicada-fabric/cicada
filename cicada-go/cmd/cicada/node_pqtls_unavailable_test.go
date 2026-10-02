@@ -50,8 +50,25 @@ func TestProductNodePQUnavailableClientNeverEmitsNodeAuthentication(t *testing.T
 		t.Fatal(err)
 	}
 	t.Setenv("CICADA_NODE_PQTLS_CONFIG", path)
-	err = sendMachineNodeHeartbeat(context.Background(), cfg.Origin, "synthetic-node", "cicada_node_SYNTHETIC_NEVER_ACCEPTED")
-	if !errors.Is(err, pqtls.ErrUnavailable) || received.Load() != 0 {
-		t.Fatal("unavailable Node client fell back or emitted authentication")
+	for _, test := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"no_agent_context", context.Background()},
+		{"pinned_without_checked_transport", withMachineHubContext(context.Background(), machineHubContext{
+			HubID: cfg.Identity.HubID, NodeID: cfg.Identity.NodeID, Origin: cfg.Origin,
+		})},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := sendMachineNodeHeartbeat(test.ctx, cfg.Origin, "synthetic-node", "cicada_node_SYNTHETIC_NEVER_ACCEPTED")
+			t.Logf("observed error=%v authority_unavailable=%t pq_build_unavailable=%t HTTP_received=%d",
+				err, errors.Is(err, nodetransport.ErrTLSCurrentAuthorityUnavailable), errors.Is(err, pqtls.ErrUnavailable), received.Load())
+			if !errors.Is(err, nodetransport.ErrTLSCurrentAuthorityUnavailable) {
+				t.Fatalf("unchecked Node context error=%v, want current-authority rejection", err)
+			}
+			if got := received.Load(); got != 0 {
+				t.Fatalf("unchecked Node context emitted %d HTTP requests", got)
+			}
+		})
 	}
 }

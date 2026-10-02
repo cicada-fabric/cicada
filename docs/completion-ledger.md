@@ -1,5 +1,14 @@
 # Architecture v2.3 completion ledger
 
+## 2026-10-02 checkpoint ledger — accepted finite source; product PARTIAL
+
+被测15路径组合的一次full default Go为1340 top＋1006 sub PASS、17 SKIP；有限TLS native/race各9 top＋52 sub、0 fail/skip。
+旧clean Main的4 FAIL/16 SKIP完整保留；standalone组件与固定M5 Docker结果不迁移到组合未运行项，也不增加历史36/88完成计数。
+逐域证据、Native启动两FAIL和Client待验状态见[本检查点验证](v01-current-authority-multihub-checkpoint-validation.md)。
+
+## Historical ledgers before this checkpoint
+
+
 ## 2026-10-02 current ledger — integration complete; QA PASS（有限范围）; product PARTIAL
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
