@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -812,75 +810,8 @@ func (e *nativeInjectionUncertainError) Unwrap() error { return e.cause }
 
 func executeMachineNativeCodex(parent context.Context, nativeSessionID, prompt string,
 	operation nodelock.NativeOperation, scopes ...nodeinbox.NativeContextScopeInput) error {
-	if strings.TrimSpace(nativeSessionID) == "" || prompt == "" {
-		return errors.New("v2 relay delivery is missing its native session or body")
-	}
-	if len(scopes) > 1 {
-		return errors.New("native queue received ambiguous scope evidence")
-	}
-	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-	defer cancel()
-	hub, ok := machineHubFrom(parent)
-	if !ok || hub.HubID == "" || operation.HubID != hub.HubID || operation.NodeID != hub.NodeID {
-		return errors.New("exact native queue requires a pinned Hub and operation scope")
-	}
-	writer, err := nodelock.AcquireNativeWriter(ctx, hub.WriterRoot, hub.WriterScope, "codex", nativeSessionID)
-	if err != nil {
-		return fmt.Errorf("acquire exact native writer: %w", err)
-	}
-	defer writer.Close()
-	state, err := writer.BeginNativeOperation(operation)
-	if errors.Is(err, nodelock.ErrNativeOperationUncertain) {
-		return &nativeInjectionUncertainError{cause: err}
-	}
-	if err != nil {
-		return fmt.Errorf("begin durable native operation: %w", err)
-	}
-	if state == nodelock.NativeQueueAccepted {
-		return nil
-	}
-	if len(scopes) == 1 {
-		if scopes[0].NativeSessionID != nativeSessionID || scopes[0].HubID != hub.HubID ||
-			scopes[0].EndpointID != operation.EndpointID || scopes[0].BindingID != operation.BindingID ||
-			scopes[0].BindingEpoch != operation.BindingEpoch {
-			return errors.New("native scope differs from the exact queue operation binding")
-		}
-		if _, err := checkMachineNativeContext(ctx, scopes[0]); err != nil {
-			return fmt.Errorf("check current native scope before queue injection: %w", err)
-		}
-	} else if _, managed := machineHubFrom(ctx); managed && hub.RequireNativeContext {
-		return errors.New("managed native queue has no current trusted context-scope evidence")
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	binary := strings.TrimSpace(os.Getenv("CICADA_CODEX_BIN"))
-	if binary == "" {
-		binary = "codex"
-	}
-	command := exec.CommandContext(ctx, binary, "queue", "--thread", nativeSessionID, "--message", prompt)
-	command.Env = machineWorkerEnvironment(os.Environ(), true)
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Start(); err != nil {
-		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeNotStarted); finishErr != nil {
-			return &nativeInjectionUncertainError{cause: finishErr}
-		}
-		return fmt.Errorf("codex queue could not start: %w", err)
-	}
-	if err := command.Wait(); err != nil {
-		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeUncertain); finishErr != nil {
-			return &nativeInjectionUncertainError{cause: finishErr}
-		}
-		if ctx.Err() != nil {
-			return &nativeInjectionUncertainError{cause: ctx.Err()}
-		}
-		// A nonzero exit is not proof that the runtime made no durable write.
-		// Without a native idempotency receipt, do not turn this into a retry.
-		return &nativeInjectionUncertainError{cause: err}
-	}
-	if err := writer.FinishNativeOperation(operation, nodelock.NativeQueueAccepted); err != nil {
-		return &nativeInjectionUncertainError{cause: err}
-	}
-	return nil
+	return runMachineNativeDelivery(parent, nativeSessionID, operation,
+		func(context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			return prompt, scopes, nil
+		}, nil)
 }

@@ -223,7 +223,25 @@ func validateCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
 		if reviewer.EndpointID == link.SourceEndpointID || reviewer.EndpointID == link.TargetEndpointID {
 			return ErrCommunicationLinkReviewPolicy
 		}
-		if _, err := readLinkEndpointScope(tx, reviewer.EndpointID, reviewer.GroupID, now); err != nil {
+		current, err := readLinkEndpointScope(tx, reviewer.EndpointID, reviewer.GroupID, now)
+		if err != nil {
+			return ErrCommunicationLinkReviewPolicy
+		}
+		binding, err := readCommunicationLinkGrantBinding(tx, reviewer.EndpointID,
+			current.principalID, current.nodeID, now)
+		if err != nil {
+			return ErrCommunicationLinkReviewPolicy
+		}
+		scope := NativeActorScope{PrincipalID: current.principalID,
+			EndpointID: reviewer.EndpointID, GroupID: reviewer.GroupID,
+			MembershipRevision: current.membershipRevision,
+			BindingID:          binding.ID, BindingEpoch: binding.Epoch, LeaseOwner: binding.LeaseOwner}
+		if err := tx.QueryRow(`SELECT m.id,g.network_id FROM memberships m
+JOIN groups g ON g.id=m.group_id WHERE m.principal_id=? AND m.group_id=?`,
+			current.principalID, reviewer.GroupID).Scan(&scope.MembershipID, &scope.NetworkID); err != nil {
+			return ErrCommunicationLinkReviewPolicy
+		}
+		if err := guardNativeActorTx(tx, scope, "link.review", now); err != nil {
 			return ErrCommunicationLinkReviewPolicy
 		}
 	}

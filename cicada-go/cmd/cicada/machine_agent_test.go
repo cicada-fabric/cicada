@@ -144,6 +144,10 @@ func TestMachineAgentRefusesPendingRecoveryBeforeIdentityOrNetwork(t *testing.T)
 		requests.Add(1)
 	}))
 	defer server.Close()
+	before, digestErr := recoveryTreeDigest(stateDir)
+	if digestErr != nil {
+		t.Fatal(digestErr)
+	}
 	err := runMachineAgent([]string{"--id", nodeID, "--name", nodeID, "--state-dir", stateDir,
 		"--control-url", server.URL, "--interval", "1s", "--once"})
 	if err == nil || !strings.Contains(err.Error(), "recovery is pending") {
@@ -151,6 +155,10 @@ func TestMachineAgentRefusesPendingRecoveryBeforeIdentityOrNetwork(t *testing.T)
 	}
 	if requests.Load() != 0 {
 		t.Fatalf("Agent made %d Hub requests before rejecting pending recovery", requests.Load())
+	}
+	after, digestErr := recoveryTreeDigest(stateDir)
+	if digestErr != nil || before != after {
+		t.Fatal("quarantined Agent created or changed lock/state bytes or modes")
 	}
 	for _, path := range []string{filepath.Join(nodeDir, "identity.json"),
 		machineNodeCredentialPath(stateDir, nodeID), machineNodeInboxPath(stateDir, nodeID)} {

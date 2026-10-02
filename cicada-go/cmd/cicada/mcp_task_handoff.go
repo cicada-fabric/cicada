@@ -86,14 +86,6 @@ func (m *mcpServer) submitSealedTaskHandoff(scope mcpOutboxScope, arguments map[
 		if existing.Status == mcpOutboxStatusSent || existing.Status == mcpOutboxStatusFailed {
 			return mcpOutboxPublicResult(*existing), nil
 		}
-		if !deadline.After(time.Now().UTC()) {
-			failed, persistErr := outbox.markError(scope, existing.OperationID, mcpOutboxStatusFailed,
-				errors.New("sealed Task handoff expired before its durable retry completed"))
-			if persistErr != nil {
-				return nil, persistErr
-			}
-			return mcpOutboxPublicResult(failed), nil
-		}
 		return m.dispatchMCPOutbox(outbox, scope, *existing)
 	}
 	if !deadline.After(time.Now().UTC()) || deadline.Sub(time.Now().UTC()) > 24*time.Hour {
@@ -120,12 +112,6 @@ func (m *mcpServer) submitSealedTaskHandoff(scope mcpOutboxScope, arguments map[
 	card, err := m.resolveMCPOutboxTarget(operation, target)
 	if err != nil || card.GroupID != scope.GroupID || card.EndpointID == scope.EndpointID || card.NodeID == "" {
 		return nil, errors.New("Task handoff target must resolve to another Endpoint in the current Group")
-	}
-	if card.NodeID == operation.NodeID {
-		capability, present := localPeerDeliveryCapability(card.Capabilities)
-		if !present || capability != "sealed_v1" {
-			return nil, errors.New("same-Node Task handoff requires a current sealed_v1 local peer target")
-		}
 	}
 	input := mcpOutboxInput{TaskID: taskID, Target: card.EndpointID, ExpectedRevision: task.Revision,
 		RequestedTarget: target, OwnerEpoch: task.OwnerEpoch, Body: body, ExpiresAt: canonicalExpiry,

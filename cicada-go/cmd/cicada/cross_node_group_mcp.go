@@ -12,6 +12,7 @@ import (
 
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/nodelocal"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -279,20 +280,38 @@ func (m *mcpServer) dispatchSealedTaskHandoffOutbox(outbox *mcpOutboxStore,
 	if err != nil {
 		return m.recordSealedRPCError(outbox, scope, operation, err)
 	}
-	if !trusted.LocalPeerDeliveryPresent || trusted.LocalPeerDelivery != "sealed_v1" {
-		return m.recordSealedRPCError(outbox, scope, operation,
-			errors.New("same-Group Task handoff requires current sealed_v1 peer delivery"))
-	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, input.ExpiresAt)
 	if err != nil {
 		return m.recordSealedRPCError(outbox, scope, operation, errors.New("durable handoff expiry is invalid"))
 	}
 	expiresAt = time.UnixMilli(expiresAt.UnixMilli()).UTC()
+	// Recover authentic committed history before resolving, sealing or posting.
+	// A proposal response can be lost after the receiver transfers ownership.
+	handoffID := operation.OperationID
+	messageID := "shared-task-handoff.v1:" + strconv.FormatInt(expiresAt.UnixMilli(), 10) + ":" + handoffID
+	existing, found, err := m.getSealedTaskHandoff(scope, handoffID)
+	if err != nil {
+		return m.recordSealedRPCError(outbox, scope, operation, err)
+	}
+	if found {
+		if !validSHA256Hex(existing.MessageDigest) || existing.FromPrincipalID != trusted.PrincipalID ||
+			!sealedTaskHandoffMatches(existing, operation, scope, input, refs, expiresAt, messageID, existing.MessageDigest) {
+			return m.recordSealedRPCError(outbox, scope, operation, errors.New("Hub handoff history conflicts with the exact durable operation"))
+		}
+		delivery := &crossNodeGroupResult{MessageID: existing.MessageID, TargetEndpointID: existing.ToEndpointID,
+			State: existing.Status, Delivery: "RELAY_PERSISTED", PayloadMode: store.RelayPayloadModeSealedV1, Digest: existing.MessageDigest}
+		if existing.Transport == "LOCAL_NODE" {
+			delivery.Delivery = "LOCAL_HISTORICAL"
+		}
+		return m.markSealedTaskHandoffSent(outbox, scope, operation, trusted.SessionToken, *existing, delivery)
+	}
+	if !trusted.LocalPeerDeliveryPresent || trusted.LocalPeerDelivery != "sealed_v1" {
+		return m.recordSealedRPCError(outbox, scope, operation,
+			errors.New("same-Group Task handoff requires current sealed_v1 peer delivery"))
+	}
 	if !expiresAt.After(time.Now().UTC()) || expiresAt.Sub(time.Now().UTC()) > 24*time.Hour {
 		return m.recordSealedRPCError(outbox, scope, operation, errors.New("durable handoff expiry is outside the supported window"))
 	}
-	handoffID := operation.OperationID
-	messageID := "shared-task-handoff.v1:" + strconv.FormatInt(expiresAt.UnixMilli(), 10) + ":" + handoffID
 	request := crossNodeGroupRequest{
 		Operation: "cross_node_task_handoff", Harness: trusted.Harness,
 		NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace,
@@ -311,38 +330,23 @@ func (m *mcpServer) dispatchSealedTaskHandoffOutbox(outbox *mcpOutboxStore,
 		}
 		return m.recordSealedRPCError(outbox, scope, operation, resolveErr)
 	}
-	if card.NodeID == trusted.NodeID {
-		localRequest := localGroupRequest{
-			Operation: "local_task_handoff", Harness: trusted.Harness,
+	{
+		// Always check the source ledger, even if the target has moved Nodes.
+		// An old local packet without committed Hub metadata is uncertain
+		// history, never permission to create a second Remote packet.
+		legacyRequest := localGroupRequest{Operation: "local_task_handoff_recover", Harness: trusted.Harness,
 			NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace,
 			SessionToken: trusted.SessionToken, EndpointID: trusted.EndpointID, PrincipalID: trusted.PrincipalID,
-			OwnerID: trusted.OwnerID, GroupID: trusted.GroupID, BindingID: trusted.BindingID,
-			BindingEpoch: trusted.BindingEpoch, OperationID: operation.OperationID,
-			OperationCreatedAt: operation.CreatedAt, IdempotencyKey: operation.IdempotencyKey,
-			Target: input.Target, Body: input.Body, TaskHandoffID: handoffID, TaskID: input.TaskID,
-			ExpectedRevision: input.ExpectedRevision, OwnerEpoch: input.OwnerEpoch,
-			HandoffMessageID: messageID, ExpiresAt: expiresAt.Format(time.RFC3339Nano),
-			RequiredArtifactRefs: refs,
+			OwnerID: trusted.OwnerID, GroupID: trusted.GroupID, BindingID: trusted.BindingID, BindingEpoch: trusted.BindingEpoch,
+			TaskHandoffID: handoffID, HandoffMessageID: messageID}
+		legacy, legacyErr := requestMachineAgentLocalGroup(defaultMCPJoinSocketPath(harness.SessionContext{
+			Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, MachineID: trusted.NodeID, Workspace: trusted.Workspace}), legacyRequest)
+		if legacyErr == nil || legacy != nil {
+			return m.recordSealedRPCError(outbox, scope, operation, errors.New("existing local Task history requires read-only reconciliation"))
 		}
-		localResult, localErr := requestMachineAgentLocalGroup(defaultMCPJoinSocketPath(harness.SessionContext{
-			Harness: localRequest.Harness, NativeSessionID: localRequest.NativeSessionID,
-			MachineID: localRequest.NodeID, Workspace: localRequest.Workspace,
-		}), localRequest)
-		if localErr != nil {
-			return m.recordSealedRPCError(outbox, scope, operation, localErr)
+		if legacyErr.Error() != nodelocal.ErrMessageNotFound.Error() {
+			return m.recordSealedRPCError(outbox, scope, operation, legacyErr)
 		}
-		if localResult == nil || localResult.MessageID != messageID || localResult.TargetEndpointID != input.Target ||
-			localResult.Delivery != "LOCAL_PERSISTED" || localResult.PayloadMode != "SEALED_V1" ||
-			!validSHA256Hex(localResult.MessageDigest) || len(localResult.SenderProof) == 0 {
-			return m.recordSealedRPCError(outbox, scope, operation,
-				&localSealedSendError{message: "local Node returned an incomplete sealed Task handoff receipt", retryable: true})
-		}
-		delivery := &crossNodeGroupResult{MessageID: localResult.MessageID,
-			TargetEndpointID: localResult.TargetEndpointID, State: localResult.State,
-			Delivery: localResult.Delivery, PayloadMode: localResult.PayloadMode, Digest: localResult.MessageDigest,
-			SharedMemoryRisk: localResult.SharedMemoryRisk}
-		return m.dispatchLocalSealedTaskHandoffProposal(outbox, scope, operation, input, refs,
-			expiresAt, messageID, localResult.SenderProof, delivery, localRequest)
 	}
 	result, err := requestMachineAgentCrossNodeGroup(defaultMCPJoinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
@@ -361,7 +365,7 @@ func (m *mcpServer) dispatchSealedTaskHandoffOutbox(outbox *mcpOutboxStore,
 	// this operation ID. Recover the Hub proposal before issuing another POST:
 	// the first response may have been lost and the receiver may already have
 	// accepted the proposal by the time this retry runs.
-	existing, found, err := m.getSealedTaskHandoff(scope, handoffID)
+	existing, found, err = m.getSealedTaskHandoff(scope, handoffID)
 	if err != nil {
 		return m.recordSealedRPCError(outbox, scope, operation, err)
 	}
@@ -500,7 +504,8 @@ func sealedTaskHandoffMatches(handoff *store.SealedSharedTaskHandoff, operation 
 		handoff.FromOwnerEpoch != input.OwnerEpoch || handoff.MessageID != messageID ||
 		handoff.MessageDigest != digest || handoff.ExpiresAt != expiresAt.Format(time.RFC3339Nano) ||
 		handoff.Version <= 0 || (handoff.Status != store.SealedTaskHandoffProposed &&
-		handoff.Status != store.SealedTaskHandoffTransferred) || len(handoff.RequiredArtifactRefs) != len(refs) {
+		handoff.Status != store.SealedTaskHandoffTransferred && handoff.Status != store.SealedTaskHandoffExpired &&
+		handoff.Status != store.SealedTaskHandoffCancelled) || len(handoff.RequiredArtifactRefs) != len(refs) {
 		return false
 	}
 	for i := range refs {

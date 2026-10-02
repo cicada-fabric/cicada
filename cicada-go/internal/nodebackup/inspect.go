@@ -36,6 +36,7 @@ type RecoveryInspectReport struct {
 	CryptoCounterWatermark string                  `json:"crypto_counter_watermark"`
 	NativeRuntimeCheck     string                  `json:"native_runtime_check"`
 	ExternalMCPState       string                  `json:"external_mcp_state"`
+	TLSMaterialCheck       string                  `json:"tls_material_check"`
 	SharedWriterRootCheck  string                  `json:"shared_writer_root_check,omitempty"`
 	SharedWriterRootHeld   bool                    `json:"shared_writer_root_held,omitempty"`
 }
@@ -133,6 +134,7 @@ func Inspect(backupDir, targetStateDir string) (_ *RecoveryInspectReport, retErr
 		CryptoCounterWatermark: "local_only_not_reconciled",
 		NativeRuntimeCheck:     "not_checked",
 		ExternalMCPState:       "outside_node_backup",
+		TLSMaterialCheck:       tlsRecoveryCheck(backupDir, stateRoot, "", manifest.TLSMaterial),
 	}
 	if err := validateKnownDatabaseLayout(manifest); err != nil {
 		return nil, err
@@ -195,14 +197,13 @@ func InspectWithWriterRoot(backupDir, targetStateDir, writerRoot string) (*Recov
 	}
 	if active {
 		report.SharedWriterRootHeld = true
-		report.SharedWriterRootCheck = "quarantined_pending_manual_reconciliation"
-		return report, nil
 	}
-	if manifest.FormatVersion != CurrentFormatVersion || manifest.SharedWriterRoot == nil {
+	if manifest.SharedWriterRoot == nil {
 		report.SharedWriterRootHeld = true
 		report.SharedWriterRootCheck = "legacy_archive_missing_shared_fences"
 		return report, nil
 	}
+	report.TLSMaterialCheck = tlsRecoveryCheck(backupDir, targetStateDir, writerRoot, manifest.TLSMaterial)
 	if err := sharedRootMatchesManifest(writerRoot, manifest.SharedWriterRoot); err != nil {
 		report.SharedWriterRootHeld = true
 		report.SharedWriterRootCheck = "shared_fence_mismatch_or_missing"
@@ -210,6 +211,50 @@ func InspectWithWriterRoot(backupDir, targetStateDir, writerRoot string) (*Recov
 	}
 	report.SharedWriterRootCheck = "matches_archive_bundle_but_reconciliation_required"
 	return report, nil
+}
+
+// VerifyRecoveryLineage verifies existing restore holds and (for v2) the exact
+// shared fence bundle. The caller must hold exclusive Node maintenance and
+// WriterRoot locks. It acquires no locks, creates no paths and clears no holds.
+// A legacy archive can prove only its missing-fences quarantine, not fence state.
+func VerifyRecoveryLineage(backupDir, stateDir, writerRoot string) error {
+	manifest, err := Verify(backupDir)
+	if err != nil {
+		return err
+	}
+	if err := verifyRecoveryRegistration(recoveryRegistrationPath(stateDir, manifest.NodeID), manifest); err != nil {
+		return err
+	}
+	if err := requireDirectoryIfPresent(filepath.Join(stateDir, "nodes", recoveryRegistryDirectory), privateDirMode.Perm()); err != nil {
+		return err
+	}
+	if err := verifyRecoveryMarker(filepath.Join(nodeStatePath(stateDir, manifest.NodeID), recoveryMarker), manifest); err != nil {
+		return err
+	}
+	marker, present, err := readSharedWriterRecoveryMarker(filepath.Join(writerRoot, sharedWriterRootMarkerName))
+	if err != nil || !present {
+		return fmt.Errorf("existing shared recovery hold is required: %w", ErrBackupInvalid)
+	}
+	if manifest.SharedWriterRoot == nil {
+		if marker.Status != "shared_fences_missing" || marker.NodeID != manifest.NodeID || marker.BackupManifestSHA256 != digestManifest(*manifest) {
+			return fmt.Errorf("legacy restore lost its missing-fences hold: %w", ErrBackupInvalid)
+		}
+		return nil
+	}
+	// The first restored Node may own this marker. A later Node may reuse only
+	// its exact bundle; its own registry and in-tree marker bind its manifest.
+	if marker.Status != "pending" || marker.BundleSHA256 != manifest.SharedWriterRoot.BundleSHA256 {
+		return fmt.Errorf("shared recovery hold does not bind the archive bundle: %w", ErrBackupInvalid)
+	}
+	if manifest.TLSMaterial != nil {
+		if err := validateRetainedTLSFloors(backupDir, writerRoot, manifest.TLSMaterial); err != nil {
+			return err
+		}
+		if err := restoredTLSMatches(stateDir, manifest.TLSMaterial); err != nil {
+			return err
+		}
+	}
+	return sharedRootMatchesManifest(writerRoot, manifest.SharedWriterRoot)
 }
 
 func verifyRecoveryMarker(path string, manifest *Manifest) error {

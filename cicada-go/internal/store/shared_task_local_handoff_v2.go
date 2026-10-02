@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
@@ -115,222 +114,31 @@ func localTaskHandoffArtifactRefsDigest(canonicalJSON []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
+// ProposeLocalSealedSharedTaskHandoffForActor is compatibility history only.
+// Missing history cannot authorize a new local delivery or responsibility change.
 func (s *Store) ProposeLocalSealedSharedTaskHandoffForActor(scope NativeActorScope,
 	input LocalSealedSharedTaskHandoffProposal) (*SealedSharedTaskHandoff, error) {
-	input.HandoffID = strings.TrimSpace(input.HandoffID)
-	input.TaskID = strings.TrimSpace(input.TaskID)
-	input.TargetEndpointID = strings.TrimSpace(input.TargetEndpointID)
-	input.MessageID = strings.TrimSpace(input.MessageID)
-	input.MessageDigest = strings.ToLower(strings.TrimSpace(input.MessageDigest))
-	if !validSameGroupSealedV1Token(input.HandoffID) || strings.Contains(input.HandoffID, ":") ||
-		!validSameGroupSealedV1Token(input.TaskID) || !validSameGroupSealedV1Token(input.TargetEndpointID) ||
-		input.ExpectedRevision <= 0 || input.OwnerEpoch <= 0 || !validSHA256Digest(input.MessageDigest) ||
-		len(input.SenderProof) == 0 || len(input.SenderProof) > 16*1024 {
-		return nil, ErrSealedTaskHandoffConflict
+	handoff, err := s.GetSealedSharedTaskHandoffForActor(scope, input.HandoffID, "task.read")
+	if err != nil {
+		return nil, err
 	}
 	refs, err := normalizeSealedTaskHandoffRefs(input.RequiredArtifactRefs)
 	if err != nil {
 		return nil, err
 	}
-	refsJSON, err := json.Marshal(refs)
-	if err != nil {
-		return nil, err
-	}
-	refsDigest := localTaskHandoffArtifactRefsDigest(refsJSON)
-	at := time.Now().UTC()
-	expiresText, expiresAt, err := normalizeSealedTaskHandoffExpiry(input.ExpiresAt, at)
-	if err != nil {
-		return nil, err
-	}
-	if input.MessageID != sealedTaskHandoffMessageID(expiresAt, input.HandoffID) || len(input.MessageID) > 256 {
+	left, _ := json.Marshal(refs)
+	right, _ := json.Marshal(handoff.RequiredArtifactRefs)
+	digest := sha256.Sum256(input.SenderProof)
+	if handoff.Transport != localSealedTaskHandoffTransport || handoff.LocalRoute == nil ||
+		handoff.FromPrincipalID != scope.PrincipalID || handoff.FromEndpointID != scope.EndpointID ||
+		handoff.TaskID != input.TaskID || handoff.ToEndpointID != input.TargetEndpointID ||
+		handoff.TaskRevision != input.ExpectedRevision || handoff.FromOwnerEpoch != input.OwnerEpoch ||
+		handoff.MessageID != input.MessageID || handoff.MessageDigest != input.MessageDigest ||
+		handoff.ExpiresAt != input.ExpiresAt || string(left) != string(right) ||
+		hex.EncodeToString(digest[:]) != handoff.LocalRoute.SenderProofDigest {
 		return nil, ErrSealedTaskHandoffConflict
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	if err := acquireSharedTaskWrite(tx); err != nil {
-		return nil, err
-	}
-	if existing, existingErr := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
-		` FROM shared_task_sealed_handoffs_v2 WHERE id=?`, input.HandoffID)); existingErr == nil {
-		storedEvidence, evidenceErr := readLocalTaskHandoffEvidenceTx(tx, existing.ID)
-		refsExistingJSON, _ := json.Marshal(existing.RequiredArtifactRefs)
-		refsInputJSON, _ := json.Marshal(refs)
-		proofHash := sha256.Sum256(input.SenderProof)
-		if evidenceErr != nil || storedEvidence == nil ||
-			existing.TaskID != input.TaskID || existing.GroupID != scope.GroupID ||
-			existing.FromPrincipalID != scope.PrincipalID || existing.FromEndpointID != scope.EndpointID ||
-			existing.ToEndpointID != input.TargetEndpointID || existing.TaskRevision != input.ExpectedRevision ||
-			existing.FromOwnerEpoch != input.OwnerEpoch || existing.MessageID != input.MessageID ||
-			existing.MessageDigest != input.MessageDigest || existing.ExpiresAt != expiresText ||
-			string(refsExistingJSON) != string(refsInputJSON) ||
-			hex.EncodeToString(proofHash[:]) != storedEvidence.SenderProofDigest {
-			return nil, ErrSealedTaskHandoffConflict
-		}
-		if err := guardNativeActorTx(tx, scope, "task.read", at); err != nil {
-			return nil, err
-		}
-		stamp := at.Format(time.RFC3339Nano)
-		source, sourceErr := readLocalDeliveryEndpointByIDTx(tx, scope.GroupID, scope.EndpointID, stamp)
-		target, targetErr := readLocalDeliveryEndpointByIDTx(tx, scope.GroupID, input.TargetEndpointID, stamp)
-		if sourceErr != nil || targetErr != nil ||
-			validateLocalDeliveryEndpointSnapshot(source, scope.GroupID, at) != nil ||
-			validateLocalDeliveryEndpointSnapshot(target, scope.GroupID, at) != nil ||
-			source.BindingID != storedEvidence.FromBindingID || source.BindingEpoch != storedEvidence.FromBindingEpoch ||
-			source.MembershipRevision != storedEvidence.FromMembershipRevision || source.GroupJoinRevision != storedEvidence.FromJoinRevision ||
-			target.BindingID != storedEvidence.ToBindingID || target.BindingEpoch != storedEvidence.ToBindingEpoch ||
-			target.MembershipRevision != storedEvidence.ToMembershipRevision || target.GroupJoinRevision != storedEvidence.ToJoinRevision {
-			return nil, ErrSealedTaskHandoffConflict
-		}
-		sourceKey, sourceKeyErr := readCurrentLocalDeliveryKeyTx(tx, source)
-		targetKey, targetKeyErr := readCurrentLocalDeliveryKeyTx(tx, target)
-		if sourceKeyErr != nil || targetKeyErr != nil || sourceKey == nil || targetKey == nil || sourceKey.KeyID != storedEvidence.FromKeyID ||
-			sourceKey.Version != storedEvidence.FromKeyVersion || targetKey.KeyID != storedEvidence.ToKeyID ||
-			targetKey.Version != storedEvidence.ToKeyVersion ||
-			localTaskHandoffPairGuardTx(tx, scope.GroupID, source, target, at, false) != nil {
-			return nil, ErrSealedTaskHandoffConflict
-		}
-		existing.Transport = localSealedTaskHandoffTransport
-		existing.LocalRoute = localTaskHandoffRouteDTO(*storedEvidence)
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		return existing, nil
-	} else if !errors.Is(existingErr, ErrSealedTaskHandoffNotFound) {
-		return nil, existingErr
-	}
-	if err := guardNativeActorTx(tx, scope, "task.submit", at); err != nil {
-		return nil, err
-	}
-	task, err := loadSharedTaskTx(tx, input.TaskID)
-	if err != nil || task.GroupID != scope.GroupID || task.Revision != input.ExpectedRevision ||
-		task.OwnerEpoch != input.OwnerEpoch || task.OwnerPrincipalID != scope.PrincipalID ||
-		task.OwnerEndpointID != scope.EndpointID || !sharedTaskLeaseActive(task.LeaseExpiresAt) ||
-		(task.Status != SharedTaskClaimed && task.Status != SharedTaskRunning) {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	stamp := at.Format(time.RFC3339Nano)
-	source, err := readLocalDeliveryEndpointByIDTx(tx, scope.GroupID, scope.EndpointID, stamp)
-	if err != nil || validateLocalDeliveryEndpointSnapshot(source, scope.GroupID, at) != nil ||
-		source.PrincipalID != scope.PrincipalID || source.BindingID != scope.BindingID ||
-		source.BindingEpoch != scope.BindingEpoch || source.MembershipRevision != scope.MembershipRevision {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	target, err := readLocalDeliveryEndpointByIDTx(tx, scope.GroupID, input.TargetEndpointID, stamp)
-	if err != nil || validateLocalDeliveryEndpointSnapshot(target, scope.GroupID, at) != nil ||
-		target.EndpointID == source.EndpointID || target.NodeID != source.NodeID ||
-		target.PrincipalOwnerID != source.PrincipalOwnerID || target.EndpointOwnerID != source.EndpointOwnerID {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if err := localTaskHandoffPairGuardTx(tx, scope.GroupID, source, target, at, true); err != nil {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	sourceKey, err := readCurrentLocalDeliveryKeyTx(tx, source)
-	if err != nil {
-		return nil, ErrLocalDeliveryTargetKeyUnavailable
-	}
-	targetKey, err := readCurrentLocalDeliveryKeyTx(tx, target)
-	if err != nil {
-		return nil, ErrLocalDeliveryTargetKeyUnavailable
-	}
-	var hubID string
-	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&hubID); err != nil || hubID == "" {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	proofClaims := localTaskHandoffProofClaims(input, expiresText, refsDigest,
-		hubID, scope.GroupID, task, source, target, sourceKey, targetKey)
-	proof, err := e2ee.VerifyLocalTaskHandoffProof(input.SenderProof, sourceKey.Public, proofClaims, at)
-	if err != nil || proof.KeyID != sourceKey.KeyID {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if err := authorizeSealedTaskHandoffArtifactRefsTx(tx, scope.PrincipalID, scope.GroupID, refs, at); err != nil {
-		return nil, ErrSealedTaskHandoffMissingArtifact
-	}
-	proofHash := sha256.Sum256(input.SenderProof)
-	evidence := localSealedTaskHandoffEvidence{NodeID: source.NodeID,
-		FromBindingID: source.BindingID, FromBindingEpoch: source.BindingEpoch,
-		FromMembershipRevision: source.MembershipRevision, FromJoinRevision: source.GroupJoinRevision,
-		FromKeyID: sourceKey.KeyID, FromKeyVersion: sourceKey.Version,
-		ToBindingID: target.BindingID, ToBindingEpoch: target.BindingEpoch,
-		ToMembershipRevision: target.MembershipRevision, ToJoinRevision: target.GroupJoinRevision,
-		ToKeyID: targetKey.KeyID, ToKeyVersion: targetKey.Version,
-		SenderProofDigest: hex.EncodeToString(proofHash[:]), SenderProof: append([]byte(nil), input.SenderProof...)}
-
-	if existing, getErr := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
-		` FROM shared_task_sealed_handoffs_v2 WHERE id=?`, input.HandoffID)); getErr == nil {
-		storedEvidence, evidenceErr := readLocalTaskHandoffEvidenceTx(tx, existing.ID)
-		if evidenceErr == nil && storedEvidence != nil && existing.Status == SealedTaskHandoffProposed &&
-			sealedTaskHandoffEquivalent(*existing, task, target.PrincipalID, target.EndpointID,
-				SealedSharedTaskHandoffProposal{HandoffID: input.HandoffID, TaskID: input.TaskID,
-					ExpectedTargetEndpointID: input.TargetEndpointID, ExpectedRevision: input.ExpectedRevision,
-					OwnerEpoch: input.OwnerEpoch, MessageID: input.MessageID, MessageDigest: input.MessageDigest,
-					ExpiresAt: expiresText, RequiredArtifactRefs: refs}, refs, expiresText) &&
-			localTaskHandoffEvidenceMatches(*storedEvidence, evidence) {
-			if err := tx.QueryRow(`SELECT machine_id FROM fabric_endpoints WHERE id=? AND status!='left'`, existing.ToEndpointID).Scan(&existing.NotifyNodeID); err != nil {
-				return nil, ErrSealedTaskHandoffConflict
-			}
-			existing.Transport = localSealedTaskHandoffTransport
-			existing.LocalRoute = localTaskHandoffRouteDTO(*storedEvidence)
-			if err := tx.Commit(); err != nil {
-				return nil, err
-			}
-			return existing, nil
-		}
-		return nil, ErrSealedTaskHandoffConflict
-	} else if !errors.Is(getErr, ErrSealedTaskHandoffNotFound) {
-		return nil, getErr
-	}
-	var competing int
-	if err := tx.QueryRow(`SELECT count(*) FROM shared_task_sealed_handoffs_v2 WHERE task_id=? AND status=?`,
-		task.ID, SealedTaskHandoffProposed).Scan(&competing); err != nil {
-		return nil, err
-	}
-	if competing != 0 {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	_, err = tx.Exec(`INSERT INTO shared_task_sealed_handoffs_v2
-(id,task_id,group_id,from_principal_id,from_endpoint_id,to_principal_id,to_endpoint_id,
- task_revision,from_owner_epoch,message_id,message_digest,required_artifact_refs_json,
- expires_at,status,version,accepted_at,transferred_at,terminal_reason,created_at,updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'','','',?,?)`, input.HandoffID, task.ID, task.GroupID,
-		scope.PrincipalID, scope.EndpointID, target.PrincipalID, target.EndpointID,
-		task.Revision, task.OwnerEpoch, input.MessageID, input.MessageDigest, string(refsJSON),
-		expiresText, SealedTaskHandoffProposed, stamp, stamp)
-	if err != nil {
-		return nil, err
-	}
-	_, err = tx.Exec(`INSERT INTO shared_task_local_handoff_routes_v54
-(handoff_id,node_id,from_binding_id,from_binding_epoch,from_membership_revision,from_join_revision,
- from_key_id,from_key_version,to_binding_id,to_binding_epoch,to_membership_revision,to_join_revision,
- to_key_id,to_key_version,sender_proof_digest,sender_proof,created_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, input.HandoffID, evidence.NodeID,
-		evidence.FromBindingID, evidence.FromBindingEpoch, evidence.FromMembershipRevision, evidence.FromJoinRevision,
-		evidence.FromKeyID, evidence.FromKeyVersion, evidence.ToBindingID, evidence.ToBindingEpoch,
-		evidence.ToMembershipRevision, evidence.ToJoinRevision, evidence.ToKeyID, evidence.ToKeyVersion,
-		evidence.SenderProofDigest, evidence.SenderProof, stamp)
-	if err != nil {
-		return nil, err
-	}
-	if err := sharedTaskEvent(tx, task, "SEALED_HANDOFF_PROPOSED", scope.PrincipalID,
-		map[string]string{"handoff_id": input.HandoffID, "to_endpoint_id": target.EndpointID, "transport": localSealedTaskHandoffTransport}); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return &SealedSharedTaskHandoff{ID: input.HandoffID, TaskID: task.ID, GroupID: task.GroupID,
-		FromPrincipalID: scope.PrincipalID, FromEndpointID: scope.EndpointID,
-		ToPrincipalID: target.PrincipalID, ToEndpointID: target.EndpointID,
-		TaskRevision: task.Revision, FromOwnerEpoch: task.OwnerEpoch, MessageID: input.MessageID,
-		MessageDigest: input.MessageDigest, RequiredArtifactRefs: refs, ExpiresAt: expiresText,
-		Status: SealedTaskHandoffProposed, Transport: localSealedTaskHandoffTransport,
-		Version: 1, CreatedAt: stamp, UpdatedAt: stamp,
-		NotifyNodeID: target.NodeID, LocalRoute: localTaskHandoffRouteDTO(evidence)}, nil
+	return handoff, nil
 }
 
 func localTaskHandoffProofClaims(input LocalSealedSharedTaskHandoffProposal, expiresAt, refsDigest,
@@ -452,49 +260,8 @@ func enrichSealedTaskHandoffTransportTx(tx *sql.Tx, handoff *SealedSharedTaskHan
 func authorizeLocalSealedTaskHandoffDeliveryTx(tx *sql.Tx, input LocalDeliveryRevalidationInput,
 	source, target localDeliveryEndpointSnapshot, sourceKey, targetKey *LocalDeliveryKeyCandidate,
 	at time.Time) (*SealedTaskHandoffDeliveryAuthorization, error) {
-	handoffID, deadline, ok := parseSealedTaskHandoffMessageID(input.MessageID)
-	if !ok || input.Action != "message.send" || !validSHA256Digest(input.MessageDigest) {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if !deadline.After(at) {
-		return nil, ErrSealedTaskHandoffExpired
-	}
-	handoff, err := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
-		` FROM shared_task_sealed_handoffs_v2 WHERE id=?`, handoffID))
-	if errors.Is(err, ErrSealedTaskHandoffNotFound) {
-		return nil, ErrSealedTaskHandoffPending
-	}
-	if err != nil {
-		return nil, err
-	}
-	if handoff.Status != SealedTaskHandoffProposed || handoff.MessageID != input.MessageID ||
-		handoff.MessageDigest != input.MessageDigest || handoff.ToEndpointID != target.EndpointID ||
-		handoff.FromEndpointID != source.EndpointID || handoff.GroupID != source.GroupID ||
-		handoff.ExpiresAt != deadline.Format(time.RFC3339Nano) ||
-		!parseRFC3339OrZero(handoff.ExpiresAt).After(at) {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	evidence, err := readLocalTaskHandoffEvidenceTx(tx, handoff.ID)
-	if err != nil {
-		return nil, err
-	}
-	if evidence == nil {
-		// Reserved local routes may never fall back to the Hub Relay handoff
-		// route; a missing local record remains retryable only while uncommitted.
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if err := validateLocalTaskHandoffCurrentRouteTx(tx, handoff, evidence, source, target,
-		sourceKey, targetKey, at, false); err != nil {
-		return nil, err
-	}
-	if err := authorizeSealedTaskHandoffArtifactRefsTx(tx, handoff.ToPrincipalID,
-		handoff.GroupID, handoff.RequiredArtifactRefs, at); err != nil {
-		return nil, ErrSealedTaskHandoffMissingArtifact
-	}
-	if err := enrichSealedTaskHandoffTransportTx(tx, handoff); err != nil {
-		return nil, err
-	}
-	return sealedTaskHandoffDeliveryAuthorization(handoff), nil
+	// Old LOCAL_NODE Task history is never a current delivery authorization.
+	return nil, ErrSealedTaskHandoffConflict
 }
 
 func validateLocalTaskHandoffCurrentRouteTx(tx *sql.Tx, handoff *SealedSharedTaskHandoff,
@@ -549,7 +316,7 @@ func validateLocalTaskHandoffCurrentRouteTx(tx *sql.Tx, handoff *SealedSharedTas
 
 func (s *Store) acceptLocalSealedSharedTaskHandoffForActor(scope NativeActorScope,
 	id string, expectedVersion int64, leaseSeconds int) (*SharedTask, error) {
-	if expectedVersion <= 0 {
+	if expectedVersion <= 0 || leaseSeconds < 0 || leaseSeconds > 3600 {
 		return nil, ErrSealedTaskHandoffConflict
 	}
 	if leaseSeconds <= 0 {
@@ -565,9 +332,6 @@ func (s *Store) acceptLocalSealedSharedTaskHandoffForActor(scope NativeActorScop
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := acquireSharedTaskWrite(tx); err != nil {
-		return nil, err
-	}
 	at := time.Now().UTC()
 	handoff, err := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
 		` FROM shared_task_sealed_handoffs_v2 WHERE id=? AND group_id=?`, id, scope.GroupID))
@@ -581,6 +345,11 @@ func (s *Store) acceptLocalSealedSharedTaskHandoffForActor(scope NativeActorScop
 	if handoff.Status == SealedTaskHandoffTransferred && handoff.Version == expectedVersion+1 &&
 		scope.PrincipalID == handoff.ToPrincipalID && scope.EndpointID == handoff.ToEndpointID {
 		if err := guardNativeActorTx(tx, scope, "task.claim", at); err != nil {
+			return nil, err
+		}
+		if err := networkGuardRelaySecurityTx(tx, &RelayMessageSecurity{SenderPrincipalID: handoff.FromPrincipalID,
+			SenderEndpointID: handoff.FromEndpointID, SenderGroupID: handoff.GroupID, ReceiverPrincipalID: handoff.ToPrincipalID,
+			ReceiverEndpointID: handoff.ToEndpointID, ReceiverGroupID: handoff.GroupID}, handoff.GroupID, at); err != nil {
 			return nil, err
 		}
 		target, targetKey, err := currentLocalTaskHandoffEndpointTx(tx, handoff.GroupID, handoff.ToEndpointID, at)
@@ -600,92 +369,16 @@ func (s *Store) acceptLocalSealedSharedTaskHandoffForActor(scope NativeActorScop
 			handoff.RequiredArtifactRefs, at); err != nil {
 			return nil, ErrSealedTaskHandoffMissingArtifact
 		}
+		if task.ClaimKey != "sealed-handoff:"+handoff.ID ||
+			parseRFC3339OrZero(task.LeaseExpiresAt).Sub(parseRFC3339OrZero(handoff.TransferredAt)) != time.Duration(leaseSeconds)*time.Second {
+			return nil, ErrSealedTaskHandoffConflict
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return task, nil
 	}
-	if handoff.Status != SealedTaskHandoffProposed || handoff.Version != expectedVersion ||
-		scope.PrincipalID != handoff.ToPrincipalID || scope.EndpointID != handoff.ToEndpointID {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if !at.Before(parseRFC3339OrZero(handoff.ExpiresAt)) {
-		_, _ = tx.Exec(`UPDATE shared_task_sealed_handoffs_v2 SET status=?,version=version+1,
- terminal_reason=?,updated_at=? WHERE id=? AND status=? AND version=?`,
-			SealedTaskHandoffExpired, "handoff expired before acceptance", at.Format(time.RFC3339Nano),
-			handoff.ID, SealedTaskHandoffProposed, handoff.Version)
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		return nil, ErrSealedTaskHandoffExpired
-	}
-	if err := guardNativeActorTx(tx, scope, "task.claim", at); err != nil {
-		return nil, err
-	}
-	source, sourceKey, err := currentLocalTaskHandoffEndpointTx(tx, handoff.GroupID, handoff.FromEndpointID, at)
-	if err != nil {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	target, targetKey, err := currentLocalTaskHandoffEndpointTx(tx, handoff.GroupID, handoff.ToEndpointID, at)
-	if err != nil {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if err := validateLocalTaskHandoffCurrentRouteTx(tx, handoff, evidence, source, target,
-		sourceKey, targetKey, at, true); err != nil {
-		return nil, err
-	}
-	task, err := loadSharedTaskTx(tx, handoff.TaskID)
-	if err != nil || task.GroupID != handoff.GroupID || task.Revision != handoff.TaskRevision ||
-		task.OwnerEpoch != handoff.FromOwnerEpoch || task.OwnerPrincipalID != handoff.FromPrincipalID ||
-		task.OwnerEndpointID != handoff.FromEndpointID || !sharedTaskLeaseActive(task.LeaseExpiresAt) ||
-		(task.Status != SharedTaskClaimed && task.Status != SharedTaskRunning) {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	if err := authorizeSealedTaskHandoffArtifactRefsTx(tx, scope.PrincipalID, scope.GroupID,
-		handoff.RequiredArtifactRefs, at); err != nil {
-		return nil, ErrSealedTaskHandoffMissingArtifact
-	}
-	updated := at.Format(time.RFC3339Nano)
-	until := at.Add(time.Duration(leaseSeconds) * time.Second).Format(time.RFC3339Nano)
-	result, err := tx.Exec(`UPDATE shared_tasks_v2 SET owner_principal_id=?,owner_endpoint_id=?,
- owner_epoch=owner_epoch+1,claim_key=?,lease_expires_at=?,status=?,revision=revision+1,updated_at=?
- WHERE id=? AND revision=? AND owner_epoch=? AND owner_principal_id=? AND owner_endpoint_id=?`,
-		scope.PrincipalID, scope.EndpointID, "sealed-handoff:"+handoff.ID, until, SharedTaskClaimed,
-		updated, task.ID, handoff.TaskRevision, handoff.FromOwnerEpoch, handoff.FromPrincipalID, handoff.FromEndpointID)
-	if err != nil {
-		return nil, err
-	}
-	changed, err := result.RowsAffected()
-	if err != nil || changed != 1 {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	result, err = tx.Exec(`UPDATE shared_task_sealed_handoffs_v2 SET status=?,version=version+1,
- accepted_at=?,transferred_at=?,updated_at=? WHERE id=? AND status=? AND version=?`,
-		SealedTaskHandoffTransferred, updated, updated, updated, handoff.ID,
-		SealedTaskHandoffProposed, handoff.Version)
-	if err != nil {
-		return nil, err
-	}
-	changed, err = result.RowsAffected()
-	if err != nil || changed != 1 {
-		return nil, ErrSealedTaskHandoffConflict
-	}
-	task, err = loadSharedTaskTx(tx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := sharedTaskEvent(tx, task, "SEALED_HANDOFF_ACCEPTED", scope.PrincipalID,
-		map[string]string{"handoff_id": handoff.ID, "transport": localSealedTaskHandoffTransport}); err != nil {
-		return nil, err
-	}
-	if err := sharedTaskEvent(tx, task, "SEALED_HANDOFF_TRANSFERRED", scope.PrincipalID,
-		map[string]string{"handoff_id": handoff.ID, "transport": localSealedTaskHandoffTransport}); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return task, nil
+	return nil, ErrSealedTaskHandoffConflict
 }
 
 func (s *Store) isLocalSealedTaskHandoff(id string) (bool, error) {

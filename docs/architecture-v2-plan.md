@@ -1,6 +1,22 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-02 current sequence — integrated focused QA passed; clean release pending
+## 2026-10-02 current plan — 组合有界门禁完成，继续产品验收
+
+Main 已集成 Task/Restore/D1、N1、TLS restore fence 和 reviewer资格修复；当前57路径代码＋五份文档的源、版本、工件和命令集中见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)。组合聚焦 QA 与新STD实际镜像门禁 **PASS（有界）**；原48的有界结果、原race失败及残余成功各守来源。clean e8工件已交付并推送，旧144 Android/native与cleanup不转标新组合。
+
+v0.1按下面五个检查点收敛。Root只监督、审查和组装；代码由各Owner代理修改，Client仓库仅其Thread修改。按依赖做必要验证，不逐Thread重复broad Store/full native；关键节点形成一个包含实现和验收记录的实质commit，不发布、替换resident或旋转真实密钥；用户已授权本检查点及时推送dev，其他push不自动执行。
+
+| 检查点 / 依赖 | Owner | 可验证退出条件 |
+| --- | --- | --- |
+| 1. 当前组合门禁 | integration / QA代理；Root审查 | 已退出：10个聚焦命令及新STD实际镜像门禁PASS，源码/Go/STD稳定、零skip；终态docdelta单列，保留历史失败。该出口仅覆盖本次组合范围。 |
+| 2. 三核心Thread及restore fence并行收尾；依赖固定基线 | N1/N2、Task privacy、PQ TLS D2、Restore各Thread | N1/TLS/reviewer已冻结有界组件证据；继续验writer锁后Guard、真实helper/kill与不确定窗口、peer sealed definition/result和可信Task委派、Task/ArtifactACL/current binding/ownerEpoch、TLS startup/SSE/reload/renewal及恢复停止fence。lost ACK不得重复消费，metadata不授权quarantine release/retry；真实Manager管理明文保留。 |
+| 3. 固定Client合同与Hub→Node→原Thread产品闭环；依赖涉及闭环的第2项 | Client Thread；Hub/Node/native各Owner | 固定实际source/image/contract/APK，完成独立Owner pin、双端Link审批、SEND/ASK/Task及原Thread结果链，验证撤权、busy/foreground、失效binding与不确定窗口。v1.6.3五操作保持关闭到验收；旧144 selectors不转标。 |
+| 4. 轻量安装/分发/升级备份资源与旧入口收尾；依赖确定的产品路径 | 分发、Restore、V66与Client各Thread | 对新实际工件验证安装升级/备份恢复与资源读数、owned cleanup；按调用和兼容证据清理旧无调用入口，保留legacy LOCAL历史及原proof/计数。V66复用group.set_parent的独立20-step/8项reparent门禁已PASS；需审阅集成并保留其新源验收，不能直接归Main。 |
+| 5. 统一候选最终回归；依赖前四项必要出口 | QA与各产品Thread；Root审查checkpoint | 固定统一clean候选，完成必要最终回归和actual artifact/protocol门禁；真实native/Android、物理Node、native-over-PQ、publicHTTPS及生产恢复逐项有同源receipt。BLOCKED/NOT_RUN/SKIP不能当PASS，阻塞v0.1的缺口须实测关闭。 |
+
+v0.2外部生态、新harness、Voice等不扩到本轮；不从历史矩阵推导整体百分比或宣称100%。以下原文保留各历史时点与测试来源。
+
+## Historical 2026-10-02 sequence — integrated focused QA passed; clean release pending (pre-e8 artifact / pre-48 snapshot)
 
 <a id="2026-10-01-next-sequence--source-qa-pass-exact-image-pending"></a>
 

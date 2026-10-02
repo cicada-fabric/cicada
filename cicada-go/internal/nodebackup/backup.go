@@ -61,6 +61,7 @@ type Manifest struct {
 	Sidecars         []OmittedSidecar          `json:"omitted_sqlite_sidecars,omitempty"`
 	RuntimeOmissions []OmittedRuntimeEntry     `json:"omitted_runtime_entries,omitempty"`
 	SharedWriterRoot *SharedWriterRootManifest `json:"shared_writer_root,omitempty"`
+	TLSMaterial      *TLSMaterialManifest      `json:"tls_material,omitempty"`
 }
 
 // FileEntry describes one copied file. File bytes are always stored with
@@ -128,6 +129,26 @@ func BackupWithWriterRoot(stateDir, nodeID, writerRoot, destinationDir string) (
 	return backup(stateDir, nodeID, writerRoot, destinationDir)
 }
 
+func rejectQuarantinedBackup(stateDir, nodeID, writerRoot string) error {
+	active, err := RecoveryQuarantineActive(stateDir, nodeID)
+	if err != nil {
+		return err
+	}
+	if active {
+		return errors.New("Node recovery quarantine is pending; refusing backup")
+	}
+	if writerRoot != "" {
+		active, err = WriterRootRecoveryQuarantineActive(writerRoot)
+		if err != nil {
+			return err
+		}
+		if active {
+			return errors.New("WriterRoot recovery quarantine is pending; refusing backup")
+		}
+	}
+	return nil
+}
+
 func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupReport, retErr error) {
 	stateRoot, err := canonicalPath(stateDir)
 	if err != nil {
@@ -142,6 +163,9 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 		return nil, err
 	}
 	nodeDir := nodeStatePath(stateRoot, nodeID)
+	if pathWithin(filepath.Join(stateRoot, tlsMaterialName), destinationDir) {
+		return nil, errors.New("Node backup destination must be outside TLS material")
+	}
 	if pathWithin(nodeDir, destinationDir) {
 		return nil, errors.New("Node backup destination must be outside the Node state subtree")
 	}
@@ -155,6 +179,9 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 			return nil, errors.New("Node backup destination must be outside the shared WriterRoot")
 		}
 	}
+	if err := rejectQuarantinedBackup(stateRoot, nodeID, writerRoot); err != nil {
+		return nil, err
+	}
 	lock, err := nodelock.AcquireMaintenanceExclusive(stateRoot, nodeID)
 	if err != nil {
 		if errors.Is(err, nodelock.ErrBusy) {
@@ -167,6 +194,9 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 			retErr = errors.Join(retErr, fmt.Errorf("release Node maintenance lock: %w", closeErr))
 		}
 	}()
+	if err := rejectQuarantinedBackup(stateRoot, nodeID, writerRoot); err != nil {
+		return nil, err
+	}
 	if writerRoot != "" {
 		writerLock, err := nodelock.AcquireWriterRootExclusive(writerRoot)
 		if err != nil {
@@ -182,6 +212,10 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 			return nil, fmt.Errorf("snapshot shared WriterRoot fencing state: %w", err)
 		}
 		defer func() { retErr = errors.Join(retErr, sharedSnapshot.Close()) }()
+	}
+	tlsSnapshot, err := inventoryTLSMaterial(stateRoot, nodeID, writerRoot)
+	if err != nil {
+		return nil, fmt.Errorf("inventory Node TLS material: %w", err)
 	}
 	if err := verifyNodeStateDirectory(stateRoot, nodeDir); err != nil {
 		return nil, err
@@ -270,6 +304,9 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 	if sharedSnapshot != nil {
 		formatVersion = CurrentFormatVersion
 	}
+	if tlsSnapshot != nil {
+		formatVersion = TLSFormatVersion
+	}
 	manifest := Manifest{FormatVersion: formatVersion, Complete: true, NodeID: nodeID,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 		Directories: append([]string(nil), entries.dirs...),
@@ -324,6 +361,12 @@ func backup(stateDir, nodeID, writerRoot, destinationDir string) (_ *BackupRepor
 		manifest.SharedWriterRoot = &sharedManifest
 		if err := syncTreeDirectories(sharedPayloadRoot, sharedManifest.Directories); err != nil {
 			return nil, fmt.Errorf("sync shared WriterRoot payload: %w", err)
+		}
+	}
+	if tlsSnapshot != nil {
+		manifest.TLSMaterial, err = writeTLSInventory(tlsSnapshot, filepath.Join(temporary, tlsPayloadName), nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("copy Node TLS material: %w", err)
 		}
 	}
 	if err := validateTreeMatch(entries, manifest.Files, manifest.Directories, omittedPaths, manifest.RuntimeOmissions); err != nil {
@@ -390,9 +433,13 @@ func Verify(backupDir string) (*Manifest, error) {
 		return nil, fmt.Errorf("inspect Node backup contents: %w", err)
 	}
 	wantRootEntries := []string{manifestName, payloadName}
-	if manifest.FormatVersion == CurrentFormatVersion {
+	if manifest.SharedWriterRoot != nil {
 		wantRootEntries = append(wantRootEntries, sharedPayloadName)
 	}
+	if manifest.TLSMaterial != nil {
+		wantRootEntries = append(wantRootEntries, tlsPayloadName)
+	}
+	sort.Strings(wantRootEntries)
 	if len(rootEntries) != len(wantRootEntries) {
 		return nil, ErrBackupInvalid
 	}
@@ -408,13 +455,18 @@ func Verify(backupDir string) (*Manifest, error) {
 	if err := verifyPayloadInventory(payloadRoot, manifest); err != nil {
 		return nil, err
 	}
-	if manifest.FormatVersion == CurrentFormatVersion {
+	if manifest.SharedWriterRoot != nil {
 		sharedRoot := filepath.Join(backupDir, sharedPayloadName)
 		if err := verifyPrivateDirectory(sharedRoot); err != nil {
 			return nil, fmt.Errorf("inspect shared WriterRoot backup payload: %w", err)
 		}
 		if err := verifySharedPayload(sharedRoot, manifest.SharedWriterRoot); err != nil {
 			return nil, fmt.Errorf("verify shared WriterRoot backup payload: %w", err)
+		}
+	}
+	if manifest.TLSMaterial != nil {
+		if err := verifyTLSArchive(filepath.Join(backupDir, tlsPayloadName), manifest.TLSMaterial, manifest.NodeID); err != nil {
+			return nil, fmt.Errorf("verify Node TLS archive: %w", err)
 		}
 	}
 	for i, database := range manifest.Databases {
@@ -478,6 +530,11 @@ func restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot string
 	if pathWithin(backupDir, nodeDir) || pathWithin(nodeDir, backupDir) {
 		return nil, errors.New("Node restore target must be outside the backup directory")
 	}
+	// Reject an already published Node before helpers prepare or chmod locks.
+	// Keep the existing locked check below for the publication race.
+	if err := ensureRestoreTargetNewOrEmpty(nodeDir); err != nil {
+		return nil, err
+	}
 	lock, err := nodelock.AcquireMaintenanceExclusive(stateRoot, manifest.NodeID)
 	if err != nil {
 		if errors.Is(err, nodelock.ErrBusy) {
@@ -511,6 +568,18 @@ func restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot string
 
 	if err := ensureRestoreTargetNewOrEmpty(nodeDir); err != nil {
 		return nil, err
+	}
+	if manifest.TLSMaterial != nil {
+		if err := validateRetainedTLSFloors(backupDir, writerRoot, manifest.TLSMaterial); err != nil {
+			return nil, err
+		}
+		if _, err := os.Lstat(recoveryRegistrationPath(stateRoot, manifest.NodeID)); err == nil {
+			if err := restoredTLSMatches(stateRoot, manifest.TLSMaterial); err != nil {
+				return nil, ErrRestoreTargetBusy
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
 	}
 	if writerRoot != "" {
 		if err := installSharedWriterRoot(writerRoot, backupDir, manifest); err != nil {
@@ -589,7 +658,7 @@ func restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot string
 	registryCreated, err := ensureRecoveryRegistration(stateRoot, manifest)
 	if registryCreated {
 		defer func() {
-			if published {
+			if published || manifest.TLSMaterial != nil {
 				return
 			}
 			if cleanupErr := removeRecoveryRegistration(stateRoot, manifest.NodeID); cleanupErr != nil {
@@ -599,6 +668,13 @@ func restoreWithWriterRootPublisher(backupDir, targetStateDir, writerRoot string
 	}
 	if err != nil {
 		return nil, fmt.Errorf("register Node recovery quarantine: %w", err)
+	}
+	// TLS publication can survive a later Node publication failure. Its hold
+	// must survive too; no retry may recreate missing forward material.
+	if manifest.TLSMaterial != nil {
+		if err := installTLSMaterial(backupDir, stateRoot, manifest.TLSMaterial); err != nil {
+			return nil, err
+		}
 	}
 	didPublish, publishErr := publish(staging, nodeDir)
 	published = didPublish
@@ -1252,12 +1328,19 @@ func readManifest(path string) (*Manifest, error) {
 }
 
 func validateManifest(manifest *Manifest) error {
-	if manifest == nil || (manifest.FormatVersion != FormatVersion && manifest.FormatVersion != CurrentFormatVersion) ||
+	if manifest == nil || (manifest.FormatVersion != FormatVersion && manifest.FormatVersion != CurrentFormatVersion && manifest.FormatVersion != TLSFormatVersion) ||
 		!manifest.Complete || validateNodeID(manifest.NodeID) != nil {
 		return ErrBackupInvalid
 	}
 	if manifest.FormatVersion == FormatVersion && manifest.SharedWriterRoot != nil ||
-		manifest.FormatVersion == CurrentFormatVersion && validateSharedWriterRootManifest(manifest.SharedWriterRoot) != nil {
+		manifest.FormatVersion >= CurrentFormatVersion && validateSharedWriterRootManifest(manifest.SharedWriterRoot) != nil {
+		return ErrBackupInvalid
+	}
+	if manifest.FormatVersion == TLSFormatVersion {
+		if err := validateTLSManifest(manifest.TLSMaterial, manifest.NodeID); err != nil {
+			return err
+		}
+	} else if manifest.TLSMaterial != nil {
 		return ErrBackupInvalid
 	}
 	if _, err := time.Parse(time.RFC3339Nano, manifest.CreatedAt); err != nil {

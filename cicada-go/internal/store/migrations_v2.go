@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 55
+	CurrentV2SchemaVersion = 56
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -523,6 +523,13 @@ var v2Migrations = []v2Migration{
 			"node_control_snapshot_rpc_response_guard_v1",
 		},
 		Apply: func(s *Store) error { return s.InitializeNodeControlSnapshotRPCProjectionV1Schema() },
+	},
+	{
+		Version:     56,
+		ID:          "v2.node.tls_authority",
+		Description: "add exact Owner-approved TLS reservation, permanent serial and epoch floors, signed install and activation proofs",
+		Objects:     []string{"node_tls_authority_v1", "node_tls_authority_v1_one_active", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_tls_proof_nonces_v1", "node_tls_application_keys_v1", "node_tls_authority_v1_candidate_immutable", "node_tls_authority_v1_no_delete", "node_tls_proof_nonces_v1_no_delete", "node_tls_proof_nonces_v1_no_update", "node_tls_authority_v1_evidence_immutable", "node_tls_epoch_floors_v1_no_delete", "node_tls_issuer_serial_floors_v1_no_delete", "node_tls_application_keys_v1_no_delete", "node_tls_application_keys_v1_no_update", "node_tls_epoch_floors_v1_monotone", "node_tls_issuer_serial_floors_v1_monotone"},
+		Apply:       func(s *Store) error { return s.initializeNodeTLSAuthorityV1Schema() },
 	},
 }
 

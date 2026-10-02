@@ -95,7 +95,7 @@ func decodeSealedTaskHandoffPayload(plaintext []byte) (*sealedTaskHandoffPayload
 func validateSealedTaskHandoffAuthorization(delivery fabric.NodeSealedDelivery,
 	authorization crossNodeGroupDeliveryAuthorization) error {
 	a := authorization.TaskHandoff
-	if a == nil || a.HandoffID == "" || a.TaskID == "" || a.GroupID == "" ||
+	if a == nil || (a.Transport != "" && a.Transport != "RELAY") || a.LocalRoute != nil || a.HandoffID == "" || a.TaskID == "" || a.GroupID == "" ||
 		a.FromPrincipalID == "" || a.FromEndpointID == "" || a.ToPrincipalID == "" ||
 		a.ToEndpointID == "" || a.TaskRevision <= 0 || a.FromOwnerEpoch <= 0 ||
 		a.MessageID != delivery.MessageID || a.MessageDigest != delivery.Digest ||
@@ -129,11 +129,23 @@ func validateSealedTaskHandoffPayload(authorization *store.SealedTaskHandoffDeli
 	if authorization == nil {
 		return errors.New("reserved Task handoff message has no current Hub authorization")
 	}
+	if (authorization.Transport != "" && authorization.Transport != "RELAY") || authorization.LocalRoute != nil {
+		return errors.New("historical LOCAL_NODE Task metadata cannot authorize Relay delivery")
+	}
+	return matchSealedTaskHandoffPacket(authorization, messageID, route, plaintext)
+}
+
+// matchSealedTaskHandoffPacket verifies immutable history coordinates only.
+// It neither authorizes transport nor checks delivery expiry or ownership.
+func matchSealedTaskHandoffPacket(a *store.SealedTaskHandoffDeliveryAuthorization,
+	messageID string, route store.RelaySealedV1Route, plaintext []byte) error {
+	if a == nil {
+		return errors.New("Task handoff history is missing")
+	}
 	packet, err := decodeSealedTaskHandoffPayload(plaintext)
 	if err != nil {
 		return err
 	}
-	a := authorization
 	if packet.HandoffID != a.HandoffID || packet.TaskID != a.TaskID || packet.GroupID != a.GroupID ||
 		packet.FromPrincipalID != a.FromPrincipalID || packet.FromEndpointID != a.FromEndpointID ||
 		packet.ToPrincipalID != a.ToPrincipalID || packet.ToEndpointID != a.ToEndpointID ||

@@ -1,6 +1,14 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-02 current migration boundary — v1.6.3; no Hub schema migration
+## 2026-10-02 current migration boundary — schema56；恢复与激活分开验
+
+当前Hub仍schema56；57是本次dirty变更路径数，Task privacy的schema57属于独立候选。统一源、Client v1.6.3与原48/新组件结果见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)；新组合聚焦QA与STD镜像有界PASS，历史迁移和运行结果不转标当前源。
+
+D1 migration56保留authority lifecycle和永久epoch/serial/nonce floors，既有migration IDs/checksums、identity、proof和replay计数不改写。TLS-bearing archives使用v3 private-material/witness分区；未选TLS的Node保持v1/v2。archive floor bytes不复制到目标floor：equal epoch要求exact bytes，higher floor不降，旧material保持quarantine。offline inventory不证明签名、证书或当前Hub authority；startup/reconciliation/activation和生产D2恢复另验。
+
+普通same-Node Task handoff经Hub sealed Relay，legacy LOCAL仅准确历史只读，不能自动转移旧PROPOSED。metadata query不授权quarantine release、retry、writer接管或外部副作用重做；Git回滚不恢复SQLite、floors、Node counters或副作用。本次TLS恢复保全与停止fence窄门禁通过；下一出口是生产恢复/激活，privacy57及N2/D2各守新树验收，V66独立通过尚未集成；以下原记录保持历史全文和来源。
+
+## Historical 2026-10-02 migration boundary — v1.6.3; no Hub schema migration (pre-e8 artifact / pre-48 snapshot)
 
 Clean 144 (`144e079`, standard source `e64f2449…`) delivered on Client v1.6.1/wire 1/55 operations and Hub schema v55. Its artifacts and Client delivery remain attributed in the [validation record](v01-clean-artifact-native-checkpoint-validation.md).
 

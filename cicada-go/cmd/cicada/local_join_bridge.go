@@ -565,7 +565,7 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 			GroupSpace: result})
 		return
 	}
-	if strings.HasPrefix(header.Operation, "cross_node_group_") {
+	if strings.HasPrefix(header.Operation, "cross_node_group_") || header.Operation == "cross_node_task_handoff" {
 		var request crossNodeGroupRequest
 		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
 			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,

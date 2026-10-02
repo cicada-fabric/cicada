@@ -108,3 +108,19 @@ func TestSealedTaskHandoffAuthorizationBindsDigestAndCanonicalDeadline(t *testin
 		t.Fatal("non-canonical deadline component was accepted")
 	}
 }
+
+func TestSealedTaskHandoffRemoteRejectsLegacyLocalAuthorization(t *testing.T) {
+	expiry := time.Now().UTC().Add(time.Hour).Truncate(time.Millisecond)
+	id := "synthetic_legacy_handoff"
+	message := "shared-task-handoff.v1:" + strconv.FormatInt(expiry.UnixMilli(), 10) + ":" + id
+	packet := sealedTaskHandoffPayload{Type: sealedTaskHandoffPayloadType, Version: 1, HandoffID: id, TaskID: "synthetic_task", GroupID: "synthetic_group", FromPrincipalID: "synthetic_source", FromEndpointID: "synthetic_source_endpoint", ToPrincipalID: "synthetic_target", ToEndpointID: "synthetic_target_endpoint", TaskRevision: 3, FromOwnerEpoch: 1, MessageID: message, ExpiresAt: expiry.Format(time.RFC3339Nano), RequiredArtifactRefs: []store.SealedTaskHandoffArtifactRef{}, Body: "synthetic history"}
+	plaintext, err := marshalSealedTaskHandoffPayload(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := &store.SealedTaskHandoffDeliveryAuthorization{HandoffID: id, TaskID: packet.TaskID, GroupID: packet.GroupID, FromPrincipalID: packet.FromPrincipalID, FromEndpointID: packet.FromEndpointID, ToPrincipalID: packet.ToPrincipalID, ToEndpointID: packet.ToEndpointID, TaskRevision: 3, FromOwnerEpoch: 1, MessageID: message, ExpiresAt: packet.ExpiresAt, RequiredArtifactRefs: packet.RequiredArtifactRefs, Transport: "LOCAL_NODE", LocalRoute: &store.LocalSealedTaskHandoffRoute{NodeID: "synthetic_node"}}
+	route := store.RelaySealedV1Route{MessageID: message, Kind: "send", SenderEndpointID: packet.FromEndpointID, ReceiverEndpointID: packet.ToEndpointID}
+	if err := validateSealedTaskHandoffPayload(auth, message, route, plaintext); err == nil {
+		t.Fatal("legacy metadata authorized Relay payload")
+	}
+}

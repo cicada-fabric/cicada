@@ -196,10 +196,9 @@ func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKey(groupID, sourceEndpo
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupTaskHandoffPeerKey(groupID, sourceEndpointID,
 	targetEndpointID string) (crossNodeGroupPeerKey, error) {
-	// v45 handoffs use the same currently deployed cross-Node relay primitive
-	// as other sealed Group messages. Same-Node delivery remains unsupported
-	// until a direct local primitive with equivalent route fencing exists.
-	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, false)
+	// Task handoffs use the same one-Hub Relay on either Node topology.
+	// Same Node identity provides no evidence of NativeDirect eligibility.
+	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, true)
 }
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID,
@@ -994,7 +993,25 @@ func recoverMachineCrossNodeGroupInboxSave(ctx context.Context, base, stateDir, 
 
 func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, stateDir string,
 	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim,
-	entry machineRelayJournalEntry) error {
+	entry machineRelayJournalEntry) (result error) {
+	injectionBegan, disposed := false, false
+	defer func() {
+		if !injectionBegan && !disposed {
+			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
+		}
+	}()
+	reject := func() error {
+		err := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry,
+			"current same-Group authorization or local trust verification failed")
+		// RejectBeforeInjection is durable even if its remote receipt fails. Never
+		// attempt to abandon a locally rejected row through the cleanup path.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		stored, readErr := inbox.Get(cleanupCtx, claim.MessageID)
+		disposed = readErr == nil && stored.State == nodeinbox.FAILED
+		return err
+	}
+
 	delivery, err := machineSealedDeliveryFromJournal(machineID, entry)
 	if err != nil {
 		return err
@@ -1007,9 +1024,9 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	authorization, err := fetchCrossNodeGroupDeliveryAuthorization(ctx, base, machineID,
 		entry.MessageID, entry.AttemptID)
 	if err != nil {
-		if machineAPIHasStatus(err, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict,
+		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict,
 			http.StatusGone, http.StatusUnprocessableEntity) {
-			return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
+			return reject()
 		}
 		return fmt.Errorf("recheck current same-Group authorization for %s: %w", entry.MessageID, err)
 	}
@@ -1022,78 +1039,81 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	closeErr := state.Close()
 	if readErr != nil || closeErr != nil || inbound.Digest != entry.Digest ||
 		machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
+		return reject()
 	}
 	delivery.Ciphertext = inbound.Envelope
 	opened, err := openMachineCrossNodeGroupDelivery(ctx, stateDir, machineID, delivery, *authorization)
 	if err != nil || !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
-	}
-	// Crypto verification and durable replay checking can take long enough for
-	// route membership, binding, grant, or Node authorization to change. Fetch
-	// the exact attempt's current Guard result again after opening and compare
-	// every field with the evidence that was just cryptographically verified.
-	finalAuthorization, err := fetchCrossNodeGroupDeliveryAuthorization(ctx, base, machineID,
-		entry.MessageID, entry.AttemptID)
-	if err != nil {
-		if machineAPIHasStatus(err, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict,
-			http.StatusGone, http.StatusUnprocessableEntity) {
-			return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
-		}
-		return fmt.Errorf("final same-Group authorization check for %s: %w", entry.MessageID, err)
-	}
-	if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, *finalAuthorization); err != nil ||
-		!reflect.DeepEqual(*authorization, *finalAuthorization) {
-		return failMachineSealedBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry)
-	}
-	scope, err := machineNativeContextScopeFromMetadata(ctx, delivery.Harness, claim.SessionID,
-		finalAuthorization.EndpointID, finalAuthorization.BindingID, finalAuthorization.BindingEpoch,
-		finalAuthorization.NativeContextScope)
-	if err != nil {
-		return err
-	}
-	decision, err := checkMachineNativeContext(ctx, scope)
-	if err != nil {
-		return err
-	}
-	if _, err := inbox.BeginInjection(ctx, claim.AttemptID); err != nil {
-		if errors.Is(err, nodeinbox.ErrInjectionUncertain) {
-			if !entry.UncertainSent {
-				if receiptErr := reportMachineRelayReceiptReliably(ctx, base, machineID, entry,
-					fabric.ReceiptInjectionUncertain, ""); receiptErr != nil {
-					return fmt.Errorf("report same-Group INJECTION_UNCERTAIN for %s: %w", entry.MessageID, receiptErr)
-				}
-				return journal.update(entry.MessageID, func(entry *machineRelayJournalEntry) {
-					entry.UncertainSent = true
-				})
-			}
-			return nil
-		}
-		return fmt.Errorf("begin same-Group sealed injection for %s: %w", entry.MessageID, err)
+		return reject()
 	}
 	if entry.Harness != "codex" {
-		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry,
-			"exact native-session wake is not available for harness "+entry.Harness)
+		return reject()
 	}
 	operation, err := machineRelayNativeOperation(ctx, claim, entry)
 	if err != nil {
 		return err
 	}
-	prompt := machineCrossNodeGroupRelayPrompt(entry, claim.Payload)
-	if decision.SharedMemoryRisk {
-		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
-	}
-	if err := executeMachineNativeCodex(ctx, claim.SessionID, prompt, operation, scope); err != nil {
+	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
+		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			// The physical writer is already held. Refresh the exact attempt's Hub
+			// Guard after any lock wait, then compare all cryptographically verified
+			// evidence; a previously valid cached authorization is not sufficient.
+			current, err := fetchCrossNodeGroupDeliveryAuthorization(queueCtx, base, machineID,
+				entry.MessageID, entry.AttemptID)
+			if err != nil {
+				if definitiveMachineWakeAuthorizationFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, fmt.Errorf("current same-Group authorization after writer wait: %w", err)
+			}
+			if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, *current); err != nil ||
+				!reflect.DeepEqual(*authorization, *current) {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("same-Group authority changed before native admission")}
+			}
+			scope, err := machineNativeContextScopeFromMetadata(queueCtx, delivery.Harness, claim.SessionID,
+				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)
+			if err != nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+			}
+			decision, err := checkMachineNativeContext(queueCtx, scope)
+			if err != nil {
+				if definitiveMachineNativeContextFailure(err) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				return "", nil, err
+			}
+			prompt := machineCrossNodeGroupRelayPrompt(entry, claim.Payload)
+			if decision.SharedMemoryRisk {
+				prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
+			}
+			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
+		}, func(queueCtx context.Context) error {
+			_, err := inbox.BeginInjection(queueCtx, claim.AttemptID)
+			if err == nil {
+				injectionBegan = true
+			}
+			return err
+		})
+	// runMachineNativeDelivery has closed the writer here. Completion and
+	// recovery acquire it again to verify the durable outcome.
+	if queueErr != nil {
+		var denied *machineNativeDeliveryDeniedError
+		if !injectionBegan {
+			if (errors.As(queueErr, &denied) || machineNativeDeliveryIdentityConflict(queueErr)) && ctx.Err() == nil {
+				return reject()
+			}
+			return queueErr
+		}
 		var uncertain *nativeInjectionUncertainError
-		if errors.As(err, &uncertain) {
+		if errors.As(queueErr, &uncertain) || errors.Is(queueErr, nodeinbox.ErrInjectionUncertain) {
 			receipt := machineRelayReceipt(claim, nodeinbox.INJECTION_UNCERTAIN)
-			receipt.Error = "native queue process started but injection could not be confirmed"
+			receipt.Error = "native queue outcome is uncertain; do not reinject"
 			if _, recordErr := inbox.Acknowledge(ctx, receipt); recordErr != nil {
-				return recordErr
+				return errors.Join(queueErr, recordErr)
 			}
 			return reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal)
 		}
-		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue failed")
+		return failMachineRelayDelivery(ctx, base, machineID, inbox, journal, claim, entry, "native queue did not start")
 	}
 	return completeMachineRelayCodexQueue(ctx, base, machineID, inbox, journal, claim, entry)
 }

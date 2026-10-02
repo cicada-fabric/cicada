@@ -1,6 +1,23 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-02 current status — clean 144 delivered; integrated v1.6.3 focused QA passed
+## 2026-10-02 current status — Main组合有界PASS；产品闭环待验
+
+当前57代码＋五文档组合的统一source/version与原48命令、失败及工件归属见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)。新组合10个聚焦命令与新STD镜像门禁 **PASS（有界）**，不能写whole-suite PASS；clean e8已交付，旧144 Android/native与owned cleanup保留其原source/APK/profile。
+
+| Lane | 当前状态与下一出口 |
+| --- | --- |
+| 新Main组合 | 10个窄门禁PASS，7个实际test binaries；新STD镜像2 top/3 sub、另2 binaries，零skip。 |
+| 原48 Task/Restore/D1 | 有界门禁封存；原race两包预算FAIL保留，samebin残余PASS单列。 |
+| N1 / N2 | N1组件与Control=nil实际协议有界PASS；队列witness合成、消费未确认。N2真实native闭环与更多故障窗口待验。 |
+| TLS restore / D2 | TLS六文件offline floor/WriterRoot fence有界PASS；生产authority、startup/SSE/reload/renewal与激活PARTIAL。NIST算法/profile不等于整体FIPS认证。 |
+| reviewer资格 | 当前link.review＋leased binding Guard修复组件完成；原120s race FAIL与同binary残余PASS保留。Main当前normal/race通过；reviewer/current-policy evidence producer方案与Client验收待执行。 |
+| Task privacy / schema57 | 独立树待验；peer DTO/sealed definition/result、可信委派与ACL/epoch/lost ACK出口尚未完成。合法Manager管理明文保留。 |
+| Client五操作 | v1.6.3保持关闭；fresh manifest给当前scope/binding，Hub Owner公钥仅discovery，独立peer pin须可信外部输入。Client36f127ef来源已独立复核；旧144已自报完成不代新验收。 |
+| V66 | 历史C4确实assert box/Endpoint→Group/PROPOSED Link/recovery；独立671c源20-step/8项reparent PASS，旧首轮FAIL保留；未集成Main。 |
+
+按[五检查点计划](architecture-v2-plan.md)推进；metadata不授予quarantine release/retry或执行接管，整体v0.1仍有待验收项。以下历史正文与数值保留来源，不推导总体完成率。
+
+## Historical 2026-10-02 status — clean 144 delivered; integrated v1.6.3 focused QA passed (pre-e8 artifact / pre-48 snapshot)
 
 Detailed artifact/native attribution is in the [clean artifact/native validation](v01-clean-artifact-native-checkpoint-validation.md). Current Main source-input fingerprint is `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079` (dirty tree), contract v1.6.3, catalog `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`, wire 1 / 55 operations / schema v55. Its integrated focused normal QA passed; exact clean artifacts and Client selectors remain pending. v0.1 is PARTIAL.
 

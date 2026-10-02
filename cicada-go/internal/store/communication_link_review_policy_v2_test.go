@@ -375,3 +375,129 @@ func TestCommunicationLinkReviewPolicyRejectsCASOverflowAndPermitsFinalVersion(t
 		t.Fatalf("exhausted version preview overflowed: %v", err)
 	}
 }
+
+// Candidate eligibility must use the same current native actor authority as
+// actual review. Preview never promises eligibility for a later transaction.
+func TestCommunicationLinkReviewPolicyCurrentReviewerQualification(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		grants []string
+		mutate func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, policy *CommunicationLinkReviewPolicy)
+	}{
+		{name: "no review grant", grants: []string{"message.ask"}},
+		{name: "grant removed after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.db.Exec(`UPDATE memberships SET grants_json='["message.ask"]',revision=revision+1 WHERE id=?`, actor.scope.MembershipID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "membership revoked after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.db.Exec(`UPDATE memberships SET status='revoked',revision=revision+1 WHERE id=?`, actor.scope.MembershipID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "binding expired after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.db.Exec(`UPDATE session_bindings SET lease_expires_at=? WHERE id=?`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), actor.scope.BindingID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "binding released after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.ReleaseSessionBindingLease(actor.scope.BindingID, actor.scope.LeaseOwner, actor.scope.BindingEpoch); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "binding pointer replaced after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.db.Exec(`UPDATE fabric_endpoints SET binding_id='synthetic_missing_reviewer_binding' WHERE id=?`, actor.scope.EndpointID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "native session replaced after preview", grants: []string{"link.review"}, mutate: func(t *testing.T, s *Store, actor communicationLinkReviewTestActor, _ *CommunicationLinkReviewPolicy) {
+			if _, err := s.db.Exec(`UPDATE fabric_endpoints SET native_session_id='synthetic_replaced_reviewer_session' WHERE id=?`, actor.scope.EndpointID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "wrong group after preview", grants: []string{"link.review"}, mutate: func(_ *testing.T, _ *Store, _ communicationLinkReviewTestActor, policy *CommunicationLinkReviewPolicy) {
+			policy.Reviewers[0].GroupID = "synthetic_unrelated_group"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newLinkSealedSendTestFixture(t, true)
+			actor := addCommunicationLinkReviewer(t, f.base.store, "ep_review_eligibility", f.link.SourceOwnerID,
+				f.link.SourceGroupID, test.grants)
+			policy := CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewMetadata,
+				Reviewers:            []CommunicationLinkReviewer{{EndpointID: actor.scope.EndpointID, GroupID: actor.scope.GroupID}},
+				ReviewerLeaseSeconds: 30, MaxReviewAgeSeconds: 600}
+			if test.mutate != nil {
+				if _, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, f.link.SourceOwnerID, policy); err != nil {
+					t.Fatalf("qualified initial preview: %v", err)
+				}
+				test.mutate(t, f.base.store, actor, &policy)
+			}
+			_, _, digest, err := normalizeCommunicationLinkReviewPolicy(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expires, err := time.Parse(time.RFC3339, f.link.ExpiresAt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proof, err := f.sourceOwner.identity.SignOwnerLinkReviewPolicy(f.link.SourceOwnerID,
+				f.link.ID, f.link.ContractDigest, digest, uint64(f.link.Version), 1,
+				e2ee.OwnerLinkGrantSideSource, time.Now().Add(-time.Minute), expires)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, f.link.SourceOwnerID, policy); !errors.Is(err, ErrCommunicationLinkReviewPolicy) || p != nil {
+				t.Fatalf("unqualified reviewer preview not generically rejected: result=%v err=%v", p, err)
+			}
+			if p, err := f.base.store.RecordCommunicationLinkReviewPolicyForOwner(f.link.ID, CommunicationLinkGrantSource,
+				f.sourceOwner.ownerKeyID, 0, policy, proof); !errors.Is(err, ErrCommunicationLinkReviewPolicy) || p != nil {
+				t.Fatalf("unqualified reviewer grant not generically rejected: result=%v err=%v", p, err)
+			}
+			var accepted int
+			if err := f.base.store.db.QueryRow(`SELECT count(*) FROM communication_link_review_policy_grants_v2 WHERE link_id=?`, f.link.ID).Scan(&accepted); err != nil || accepted != 0 {
+				t.Fatalf("rejection persisted Owner consent: count=%d err=%v", accepted, err)
+			}
+		})
+	}
+}
+
+func TestCommunicationLinkReviewPolicyQualifiedCurrentReviewer(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		grants []string
+		renew  bool
+	}{
+		{name: "explicit review grant", grants: []string{"link.review"}},
+		{name: "existing wildcard grant", grants: []string{"*"}},
+		{name: "fresh current binding epoch", grants: []string{"link.review"}, renew: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newLinkSealedSendTestFixture(t, true)
+			actor := addCommunicationLinkReviewer(t, f.base.store, "ep_review_current", f.link.SourceOwnerID,
+				f.link.SourceGroupID, test.grants)
+			policy := CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewMetadata,
+				Reviewers:            []CommunicationLinkReviewer{{EndpointID: actor.scope.EndpointID, GroupID: actor.scope.GroupID}},
+				ReviewerLeaseSeconds: 30, MaxReviewAgeSeconds: 600}
+			if test.renew {
+				released, err := f.base.store.ReleaseSessionBindingLease(actor.scope.BindingID, actor.scope.LeaseOwner, actor.scope.BindingEpoch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.base.store.AcquireSessionBindingLease(released.ID, actor.scope.LeaseOwner, released.Epoch,
+					time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, ownerID := range []string{f.link.SourceOwnerID, f.link.TargetOwnerID} {
+				p, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, ownerID, policy)
+				if err != nil || p == nil || len(p.Policy.Reviewers) != 1 {
+					t.Fatalf("qualified preview: %v", err)
+				}
+			}
+			if p, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, "synthetic_unrelated_owner", policy); !errors.Is(err, ErrCommunicationLinkNotFound) || p != nil {
+				t.Fatalf("third Owner received reviewer policy: result=%v err=%v", p, err)
+			}
+			recordCommunicationLinkReviewPolicy(t, f, policy, 0)
+		})
+	}
+}

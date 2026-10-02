@@ -125,18 +125,13 @@ func TestSealedHandoffRetryTransferred(t *testing.T) {
 		t.Fatalf("transferred proposal was not recovered: %#v", handoff)
 	}
 	select {
-	case nodeRequest := <-requests:
-		if nodeRequest.Operation != "cross_node_task_handoff" || nodeRequest.TargetEndpointID != input.Target ||
-			nodeRequest.TaskID != input.TaskID || nodeRequest.ExpectedRevision != input.ExpectedRevision ||
-			nodeRequest.OwnerEpoch != input.OwnerEpoch || nodeRequest.HandoffMessageID != messageID {
-			t.Fatalf("retry changed its durable Node request: %#v", nodeRequest)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("retry did not query the durable local Node operation")
+	case <-requests:
+		t.Fatal("historical recovery contacted the Node socket")
+	default:
 	}
-	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 1 ||
+	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 0 ||
 		fixture.taskHandoffGetCalls.Load() != 1 || fixture.taskHandoffProposalCalls.Load() != 0 {
-		t.Fatalf("retry did not resolve its durable target exactly once or reproposed: task=%d resolve=%d GET=%d POST=%d",
+		t.Fatalf("history recovery resolved or reposted: task=%d resolve=%d GET=%d POST=%d",
 			fixture.taskGetCalls.Load(), fixture.resolveCalls.Load(), fixture.taskHandoffGetCalls.Load(),
 			fixture.taskHandoffProposalCalls.Load())
 	}
@@ -164,7 +159,7 @@ func TestSealedHandoffRetryTransferred(t *testing.T) {
 			}
 		})
 	}
-	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 1 ||
+	if fixture.taskGetCalls.Load() != 0 || fixture.resolveCalls.Load() != 0 ||
 		fixture.taskHandoffGetCalls.Load() != 1 || fixture.taskHandoffProposalCalls.Load() != 0 {
 		t.Fatalf("cached retry or intent conflict touched network: task=%d resolve=%d GET=%d POST=%d",
 			fixture.taskGetCalls.Load(), fixture.resolveCalls.Load(), fixture.taskHandoffGetCalls.Load(),

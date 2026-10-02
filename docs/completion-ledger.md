@@ -1,6 +1,14 @@
 # Architecture v2.3 completion ledger
 
-**Current 2026-10-02 state: clean 144 is delivered; integrated v1.6.3 focused Main QA passed; clean artifacts and Client selectors remain pending. Overall v0.1 is PARTIAL.**
+## 2026-10-02 current ledger — 分源记录；Main组合有界PASS
+
+当前57代码＋五文档候选与原48、N1/TLS/reviewer组件、clean e8工件、旧144 Android/native及owned cleanup的完整证据集中见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)。新组合10个聚焦命令及STD镜像门禁 **PASS（有界）**；原48 race预算FAIL、残余PASS与reviewer原120s FAIL分别保留。Client v1.6.3五操作、N2、D2、privacy57和实际产品闭环尚待验收；V66独立新源已通过但未集成Main，不能把组件或旧APK结果当最终PASS。
+
+历史矩阵36/88是原时点行数，不是当前整体完成百分比。V66旧限界句“result does not list drag/box/proposal gestures as assertions”不准确：C4真实12聚合steps确实包含pointer box、Endpoint→Group、PROPOSED Link及recovery断言；准确脚本/Chrome151/source/receipt归属见[组合检查点验证](v01-task-restore-d1-checkpoint-validation.md)中的V66说明。保留旧原文并以此纠正，不把历史Browser PASS迁移到新Main。Group→Group reparent drag的repeat/cycle/staleCAS已在独立671c源验收，Main仍待集成。
+
+按[五检查点计划](architecture-v2-plan.md)收敛；metadata不授权quarantine release/retry，BLOCKED/NOT_RUN/SKIP不当PASS，不作100%声明。以下历史正文和数值保留各自测试来源。
+
+**Historical 2026-10-02 state before clean e8 delivery and the 48-file overlay: clean 144 is delivered; integrated v1.6.3 focused Main QA passed; clean artifacts and Client selectors remain pending. Overall v0.1 is PARTIAL.**
 
 Clean Main `144e079`, standard source `e64f2449…`, captured 806 exact build inputs. Its STD/PQ artifacts, bounded native checks and later Client v1.6.1 delivery remain exact-source results in the [clean artifact/native validation](v01-clean-artifact-native-checkpoint-validation.md).
 

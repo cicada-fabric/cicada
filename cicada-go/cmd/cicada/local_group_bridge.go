@@ -509,6 +509,13 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 			return nil, err
 		}
 	}
+	// Retired Task direct delivery is never reopened or signalled by recovery.
+	if request.Operation == "local_task_handoff" || request.Operation == "local_task_handoff_notify" {
+		return nil, errGenericNativeDirectUnsupported
+	}
+	if request.Operation == "local_task_handoff_recover" {
+		return b.recoverLocalSealedTaskHandoff(nil, request)
+	}
 	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(b.stateDir, b.nodeID))
 	if err != nil {
 		return nil, fmt.Errorf("open local Group message ledger: %w", err)
@@ -517,16 +524,6 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 	switch request.Operation {
 	case "local_send", "local_ask", "local_reply":
 		return b.submitLocalGroupMessage(ledger, request, fence)
-	case "local_task_handoff":
-		if fence != nil {
-			return nil, errors.New("Task handoff cannot use a broadcast snapshot")
-		}
-		return b.submitLocalSealedTaskHandoff(ledger, request)
-	case "local_task_handoff_notify":
-		b.signalLocalGroupDelivery()
-		return &localGroupResult{State: "READY", Delivery: "LOCAL_WAKE", PayloadMode: "SEALED_V1"}, nil
-	case "local_task_handoff_recover":
-		return b.recoverLocalSealedTaskHandoff(ledger, request)
 	case "local_status", "local_cancel":
 		stored, err := ledger.GetRequest(b.ctx, request.RequestID)
 		if err != nil {

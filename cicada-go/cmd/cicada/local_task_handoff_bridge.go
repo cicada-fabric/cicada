@@ -1,10 +1,16 @@
 package main
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,155 +22,10 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// submitLocalSealedTaskHandoff persists a normal opaque local SEND first,
-// then returns only its digest and detached source Endpoint proof. The task
-// prose and ciphertext never cross this Hub metadata proposal boundary.
+// New Task handoffs always use the existing sealed Hub Relay.
 func (b *machineAgentJoinBridge) submitLocalSealedTaskHandoff(ledger *nodelocal.Ledger,
 	request localGroupRequest) (*localGroupResult, error) {
-	authorization, err := b.fetchLocalGroupAuthorization(request.SessionToken,
-		store.LocalDeliveryAuthorizationInput{GroupID: request.GroupID, Target: request.Target, Action: "message.send"})
-	if err != nil {
-		return nil, err
-	}
-	if err := validateLocalGroupAuthorizationForSource(authorization, request); err != nil {
-		return nil, err
-	}
-	contextDecision, err := b.recordLocalNativeContext(*authorization, authorization.Source,
-		request.Harness, request.NativeSessionID)
-	if err != nil {
-		return nil, err
-	}
-	targetContextDecision, err := b.recordLocalNativeContext(*authorization, authorization.Target,
-		request.Harness, authorization.Target.NativeSessionID)
-	if err != nil {
-		return nil, err
-	}
-	if authorization.Target.EndpointID == authorization.Source.EndpointID ||
-		authorization.Target.EndpointID == "" || authorization.Target.NodeID != b.nodeID {
-		return nil, errors.New("local Task handoff target is not another Endpoint on this Node")
-	}
-	deadline, err := time.Parse(time.RFC3339Nano, request.ExpiresAt)
-	if err != nil || deadline.Nanosecond()%1_000_000 != 0 ||
-		deadline.Format(time.RFC3339Nano) != request.ExpiresAt || !deadline.After(time.Now().UTC()) {
-		return nil, errors.New("local Task handoff deadline is invalid or expired")
-	}
-	messageHandoffID, messageDeadline, ok := parseTaskHandoffMessageID(request.HandoffMessageID)
-	if !ok || messageHandoffID != request.TaskHandoffID || messageDeadline != deadline {
-		return nil, errors.New("local Task handoff message ID does not match its exact deadline")
-	}
-	createdAt, err := time.Parse(time.RFC3339Nano, request.OperationCreatedAt)
-	if err != nil || createdAt.UTC().Format(time.RFC3339Nano) != request.OperationCreatedAt ||
-		createdAt.After(time.Now().UTC().Add(time.Minute)) || !deadline.After(createdAt) ||
-		deadline.Sub(createdAt) > 24*time.Hour {
-		return nil, errors.New("local Task handoff durable creation time is invalid")
-	}
-	if request.ExpectedRevision <= 0 || request.OwnerEpoch <= 0 {
-		return nil, errors.New("local Task handoff needs a current task revision and owner epoch")
-	}
-	if err := validateLocalTaskHandoffRefs(request.RequiredArtifactRefs); err != nil {
-		return nil, err
-	}
-
-	source, target, err := b.loadLocalGroupIdentities(*authorization)
-	if err != nil {
-		return nil, err
-	}
-	route := localGroupEndpointRoute(*authorization, request.HandoffMessageID, "SEND", "", "")
-	ledgerRoute, err := localGroupLedgerRoute(*authorization, request.NativeSessionID)
-	if err != nil {
-		return nil, err
-	}
-	ledgerRoute.Action = "SEND"
-	packet, err := marshalSealedTaskHandoffPayload(sealedTaskHandoffPayload{
-		Type: sealedTaskHandoffPayloadType, Version: 1,
-		HandoffID: request.TaskHandoffID, TaskID: request.TaskID, GroupID: request.GroupID,
-		FromPrincipalID: authorization.Source.PrincipalID, FromEndpointID: authorization.Source.EndpointID,
-		ToPrincipalID: authorization.Target.PrincipalID, ToEndpointID: authorization.Target.EndpointID,
-		TaskRevision: request.ExpectedRevision, FromOwnerEpoch: request.OwnerEpoch,
-		MessageID: request.HandoffMessageID, ExpiresAt: request.ExpiresAt,
-		RequiredArtifactRefs: request.RequiredArtifactRefs, Body: request.Body,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var record nodelocal.MessageRecord
-	record, err = ledger.GetMessage(b.ctx, request.HandoffMessageID)
-	if err == nil {
-		if record.Kind != nodelocal.KindSend || record.RequestID != "" || record.ReplyToMessageID != "" ||
-			record.Route.SourceEndpointID != authorization.Source.EndpointID ||
-			record.Route.TargetEndpointID != authorization.Target.EndpointID ||
-			record.Route.SourceBindingID != authorization.Source.BindingID ||
-			record.Route.SourceBindingEpoch != authorization.Source.BindingEpoch ||
-			record.Route.TargetBindingID != authorization.Target.BindingID ||
-			record.Route.TargetBindingEpoch != authorization.Target.BindingEpoch ||
-			record.Route.SourceKeyID != authorization.SourceKey.KeyID ||
-			record.Route.TargetKeyID != authorization.TargetKey.KeyID || record.Digest == "" {
-			return nil, nodelocal.ErrMessageConflict
-		}
-	} else if !errors.Is(err, nodelocal.ErrMessageNotFound) {
-		return nil, err
-	} else {
-		cryptoState, openErr := nodekeys.OpenCryptoState(machineNodeStateDir(b.stateDir, b.nodeID))
-		if openErr != nil {
-			return nil, openErr
-		}
-		outbound, sealErr := cryptoState.SealLocalSameGroupMessage(b.ctx, source, target,
-			authorization.SourceKey.Public, authorization.TargetKey.Public, route, packet)
-		closeErr := cryptoState.Close()
-		if sealErr != nil || closeErr != nil {
-			if sealErr != nil {
-				return nil, sealErr
-			}
-			return nil, closeErr
-		}
-		accepted, acceptErr := ledger.AcceptSend(b.ctx, nodelocal.MessageInput{
-			MessageID: request.HandoffMessageID, Route: ledgerRoute, Ciphertext: outbound.Envelope,
-		})
-		if acceptErr != nil {
-			return nil, acceptErr
-		}
-		record, err = ledger.GetMessage(b.ctx, accepted.MessageID)
-		if err != nil || record.Digest != accepted.Digest || record.Kind != nodelocal.KindSend {
-			return nil, nodelocal.ErrMessageConflict
-		}
-	}
-	if err := localTaskHandoffStoredRouteMatches(record.Route, ledgerRoute); err != nil {
-		return nil, err
-	}
-	refsDigest, err := store.SealedTaskHandoffArtifactRefsDigest(request.RequiredArtifactRefs)
-	if err != nil {
-		return nil, err
-	}
-	claims := e2ee.LocalTaskHandoffProofClaims{
-		Version: 1, Purpose: "LOCAL_NODE", HandoffID: request.TaskHandoffID, TaskID: request.TaskID,
-		HubID: authorization.HubID, GroupID: request.GroupID,
-		FromPrincipalID: authorization.Source.PrincipalID, FromOwnerID: authorization.Source.OwnerID,
-		FromEndpointID: authorization.Source.EndpointID, FromBindingID: authorization.Source.BindingID,
-		FromBindingEpoch:       authorization.Source.BindingEpoch,
-		FromMembershipRevision: authorization.Source.MembershipRevision,
-		FromJoinRevision:       authorization.Source.GroupJoinRevision,
-		FromKeyID:              authorization.SourceKey.KeyID, FromKeyVersion: authorization.SourceKey.Version,
-		ToPrincipalID: authorization.Target.PrincipalID, ToOwnerID: authorization.Target.OwnerID,
-		ToEndpointID: authorization.Target.EndpointID, ToBindingID: authorization.Target.BindingID,
-		ToBindingEpoch:       authorization.Target.BindingEpoch,
-		ToMembershipRevision: authorization.Target.MembershipRevision,
-		ToJoinRevision:       authorization.Target.GroupJoinRevision,
-		ToKeyID:              authorization.TargetKey.KeyID, ToKeyVersion: authorization.TargetKey.Version,
-		TaskRevision: request.ExpectedRevision, FromOwnerEpoch: request.OwnerEpoch,
-		MessageID: request.HandoffMessageID, MessageDigest: record.Digest,
-		ExpiresAt: request.ExpiresAt, RequiredArtifactRefsHash: refsDigest,
-		IssuedAt: request.OperationCreatedAt,
-	}
-	proof, err := source.SignLocalTaskHandoffProof(claims)
-	if err != nil {
-		return nil, err
-	}
-	b.signalLocalGroupDelivery()
-	return &localGroupResult{MessageID: record.MessageID, TargetEndpointID: authorization.Target.EndpointID,
-		State: string(record.State), Delivery: "LOCAL_PERSISTED", PayloadMode: "SEALED_V1",
-		MessageDigest: record.Digest, SenderProof: proof,
-		SharedMemoryRisk: contextDecision.SharedMemoryRisk || targetContextDecision.SharedMemoryRisk}, nil
+	return nil, errGenericNativeDirectUnsupported
 }
 
 func (b *machineAgentJoinBridge) recordLocalNativeContext(authorization store.LocalDeliveryAuthorization,
@@ -230,23 +91,237 @@ func effectiveLocalNativeContextPolicy(groupPolicy, networkPolicy string) (strin
 // by this source Endpoint's Node-local ledger. It lets an MCP retry reconcile
 // a Hub proposal after a lost response without resealing or inventing a new
 // message ID/sequence.
-func (b *machineAgentJoinBridge) recoverLocalSealedTaskHandoff(ledger *nodelocal.Ledger,
-	request localGroupRequest) (*localGroupResult, error) {
-	record, err := ledger.GetMessage(b.ctx, request.HandoffMessageID)
+func (b *machineAgentJoinBridge) recoverLocalSealedTaskHandoff(_ *nodelocal.Ledger,
+	request localGroupRequest) (result *localGroupResult, recoverErr error) {
+	path := machineLocalGroupLedgerPath(b.stateDir, b.nodeID)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		parent, parentErr := os.Lstat(filepath.Dir(path))
+		if parentErr != nil || !parent.IsDir() || parent.Mode().Perm() != 0700 {
+			return nil, errors.New("historical Task parent cannot prove absence")
+		}
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if _, sideErr := os.Lstat(path + suffix); !errors.Is(sideErr, os.ErrNotExist) {
+				return nil, errors.New("historical Task main is missing with orphan or unreadable sidecars")
+			}
+		}
+		return nil, nodelocal.ErrMessageNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
-	if record.Kind != nodelocal.KindSend || record.RequestID != "" || record.ReplyToMessageID != "" ||
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return nil, errors.New("historical Task ledger is not a private regular file")
+	}
+	// SQLite read-only readers can change source WAL shared-memory read marks.
+	// Read a private byte snapshot instead; fail closed if any source changes.
+	scratch, err := os.MkdirTemp("", "cicada-task-history-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(scratch)
+	type snapshotFile struct {
+		info   os.FileInfo
+		digest string
+	}
+	files := make(map[string]snapshotFile)
+	const maxHistorySnapshotBytes int64 = 64 * 1024 * 1024
+	var total int64
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		fileInfo, statErr := os.Lstat(path + suffix)
+		if os.IsNotExist(statErr) {
+			continue
+		}
+		if statErr != nil {
+			return nil, statErr
+		}
+		if !fileInfo.Mode().IsRegular() || fileInfo.Mode().Perm() != 0600 {
+			return nil, errors.New("historical Task sidecar is not private and regular")
+		}
+		if fileInfo.Size() < 0 || fileInfo.Size() > maxHistorySnapshotBytes-total {
+			return nil, errors.New("historical Task snapshot exceeds 64 MiB")
+		}
+		total += fileInfo.Size()
+		input, openErr := os.Open(path + suffix)
+		if openErr != nil {
+			return nil, openErr
+		}
+		openedInfo, statErr := input.Stat()
+		if statErr != nil || !os.SameFile(fileInfo, openedInfo) {
+			input.Close()
+			return nil, errors.New("historical Task source identity changed")
+		}
+		hash := sha256.New()
+		var output *os.File
+		var writer io.Writer = hash
+		if suffix != "-shm" {
+			output, err = os.OpenFile(filepath.Join(scratch, "history.sqlite3")+suffix, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err != nil {
+				input.Close()
+				return nil, err
+			}
+			writer = io.MultiWriter(hash, output)
+		}
+		n, copyErr := io.Copy(writer, io.LimitReader(input, fileInfo.Size()+1))
+		closeErr := input.Close()
+		if output != nil {
+			if outErr := output.Close(); copyErr == nil {
+				copyErr = outErr
+			}
+		}
+		if copyErr != nil || closeErr != nil || n != fileInfo.Size() {
+			return nil, errors.New("historical Task source changed while copying")
+		}
+		files[suffix] = snapshotFile{info: fileInfo, digest: hex.EncodeToString(hash.Sum(nil))}
+	}
+	validateSnapshot := func() error {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			fileInfo, statErr := os.Lstat(path + suffix)
+			before, existed := files[suffix]
+			if !existed && os.IsNotExist(statErr) {
+				continue
+			}
+			if statErr != nil || !existed || !os.SameFile(before.info, fileInfo) || fileInfo.Mode() != before.info.Mode() || fileInfo.Size() != before.info.Size() {
+				return errors.New("historical Task source changed during recovery")
+			}
+			input, openErr := os.Open(path + suffix)
+			if openErr != nil {
+				return openErr
+			}
+			hash := sha256.New()
+			n, readErr := io.Copy(hash, io.LimitReader(input, fileInfo.Size()+1))
+			closeErr := input.Close()
+			if readErr != nil || closeErr != nil || n != fileInfo.Size() || hex.EncodeToString(hash.Sum(nil)) != before.digest {
+				return errors.New("historical Task source changed during recovery")
+			}
+		}
+		return nil
+	}
+	if err := validateSnapshot(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := validateSnapshot(); err != nil {
+			result, recoverErr = nil, err
+		}
+	}()
+	databaseURL := url.URL{Scheme: "file", Path: filepath.Join(scratch, "history.sqlite3"), RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", databaseURL.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var integrity string
+	if err := db.QueryRowContext(b.ctx, "PRAGMA quick_check").Scan(&integrity); err != nil || integrity != "ok" {
+		return nil, errors.New("historical Task snapshot is corrupt")
+	}
+	var record nodelocal.MessageRecord
+	var routeJSON string
+	err = db.QueryRowContext(b.ctx, `SELECT message_id,kind,request_id,reply_to_message_id,lower(hex(digest)),route_json,ciphertext,delivery_state
+ FROM node_local_messages WHERE message_id=?`, request.HandoffMessageID).Scan(&record.MessageID, &record.Kind,
+		&record.RequestID, &record.ReplyToMessageID, &record.Digest, &routeJSON, &record.Ciphertext, &record.State)
+	if errors.Is(err, sql.ErrNoRows) {
+		if wal, exists := files["-wal"]; exists && wal.info.Size() > 0 {
+			// SQLite can silently ignore a corrupt WAL and expose an older main
+			// database. An absent row with any WAL is not proof of absent history.
+			return nil, errors.New("historical Task absence is uncertain with an existing WAL")
+		}
+		return nil, nodelocal.ErrMessageNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := decodeStrictBridgeJSON([]byte(routeJSON), &record.Route); err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(record.Ciphertext)
+	if record.Digest != hex.EncodeToString(digest[:]) || record.Kind != nodelocal.KindSend ||
+		record.RequestID != "" || record.ReplyToMessageID != "" ||
 		record.Route.SourceEndpointID != request.EndpointID || record.Route.SourcePrincipalID != request.PrincipalID ||
 		record.Route.SourceOwnerID != request.OwnerID || record.Route.SourceGroupID != request.GroupID ||
-		record.Route.SourceNodeID != b.nodeID || record.Route.SourceBindingID != request.BindingID ||
-		record.Route.SourceBindingEpoch != request.BindingEpoch || record.Route.SourceSessionID != request.NativeSessionID ||
-		record.Digest == "" {
+		record.Route.SourceNodeID != b.nodeID || record.Route.TargetNodeID != b.nodeID ||
+		record.Route.SourceBindingID != request.BindingID || record.Route.SourceBindingEpoch != request.BindingEpoch ||
+		record.Route.SourceSessionID != request.NativeSessionID {
 		return nil, nodelocal.ErrMessageConflict
 	}
-	return &localGroupResult{MessageID: record.MessageID, TargetEndpointID: record.Route.TargetEndpointID,
-		State: string(record.State), Delivery: "LOCAL_PERSISTED", PayloadMode: "SEALED_V1",
-		MessageDigest: record.Digest}, nil
+	// Existing keys and pure cryptographic verification do not advance counters,
+	// record native context or authorize a new delivery of historical content.
+	source, err := nodekeys.LoadExisting(machineNodeStateDir(b.stateDir, b.nodeID), record.Route.SourceEndpointID)
+	if err != nil {
+		return nil, err
+	}
+	target, err := nodekeys.LoadExisting(machineNodeStateDir(b.stateDir, b.nodeID), record.Route.TargetEndpointID)
+	if err != nil {
+		return nil, err
+	}
+	if source.Public().ID != record.Route.SourceKeyID || target.Public().ID != record.Route.TargetKeyID {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	r := record.Route
+	context := e2ee.EndpointMessageContext{MessageID: record.MessageID, Kind: "SEND",
+		SenderEndpointID: r.SourceEndpointID, SenderPrincipalID: r.SourcePrincipalID, SenderOwnerID: r.SourceOwnerID,
+		SenderGroupID: r.SourceGroupID, SenderMembershipRevision: int64(r.SourceMembershipRevision),
+		SenderBindingEpoch: r.SourceBindingEpoch, SenderKeyID: r.SourceKeyID,
+		ReceiverEndpointID: r.TargetEndpointID, ReceiverPrincipalID: r.TargetPrincipalID, ReceiverOwnerID: r.TargetOwnerID,
+		ReceiverGroupID: r.TargetGroupID, ReceiverMembershipRevision: int64(r.TargetMembershipRevision),
+		ReceiverBindingEpoch: r.TargetBindingEpoch, ReceiverKeyID: r.TargetKeyID}
+	plaintext, _, err := e2ee.OpenEndpointMessage(target, source.Public(), context, record.Ciphertext)
+	if err != nil {
+		return nil, err
+	}
+	packet, err := decodeSealedTaskHandoffPayload(plaintext)
+	if err != nil || packet.HandoffID != request.TaskHandoffID || packet.MessageID != record.MessageID {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	httpRequest, err := http.NewRequestWithContext(b.ctx, http.MethodGet,
+		b.baseURL+"/v2/fabric/tasks/sealed-handoffs/"+url.PathEscape(request.TaskHandoffID), nil)
+	if err != nil {
+		return nil, err
+	}
+	httpRequest.Header.Set("Authorization", "CicadaSession "+request.SessionToken)
+	httpRequest.Header.Set("Cicada-Group-Scope", request.GroupID)
+	client, err := machineNodeHTTPClient(b.ctx, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, errors.New("historical Task handoff read authorization rejected")
+	}
+	var handoff store.SealedSharedTaskHandoff
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 64*1024))
+	if err := decoder.Decode(&handoff); err != nil {
+		return nil, err
+	}
+	if handoff.Transport != "LOCAL_NODE" || handoff.LocalRoute == nil || handoff.ID != request.TaskHandoffID ||
+		handoff.MessageID != record.MessageID || handoff.MessageDigest != record.Digest ||
+		handoff.GroupID != r.SourceGroupID || handoff.GroupID != r.TargetGroupID ||
+		handoff.FromPrincipalID != r.SourcePrincipalID || handoff.ToPrincipalID != r.TargetPrincipalID ||
+		handoff.FromEndpointID != r.SourceEndpointID || handoff.ToEndpointID != r.TargetEndpointID ||
+		handoff.LocalRoute.FromBindingID != r.SourceBindingID || handoff.LocalRoute.FromBindingEpoch != r.SourceBindingEpoch ||
+		handoff.LocalRoute.ToBindingID != r.TargetBindingID || handoff.LocalRoute.ToBindingEpoch != r.TargetBindingEpoch ||
+		handoff.LocalRoute.NodeID != b.nodeID || handoff.LocalRoute.FromMembershipRevision != int64(r.SourceMembershipRevision) ||
+		handoff.LocalRoute.ToMembershipRevision != int64(r.TargetMembershipRevision) || handoff.LocalRoute.FromJoinRevision != int64(r.SourceJoinRevision) ||
+		handoff.LocalRoute.ToJoinRevision != int64(r.TargetJoinRevision) || handoff.LocalRoute.FromKeyID != r.SourceKeyID ||
+		handoff.LocalRoute.ToKeyID != r.TargetKeyID || handoff.LocalRoute.FromKeyVersion != int64(r.SourceCandidateVersion) ||
+		handoff.LocalRoute.ToKeyVersion != int64(r.TargetCandidateVersion) || !validSHA256Hex(handoff.LocalRoute.SenderProofDigest) {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	a := &store.SealedTaskHandoffDeliveryAuthorization{HandoffID: handoff.ID, TaskID: handoff.TaskID,
+		GroupID: handoff.GroupID, FromPrincipalID: handoff.FromPrincipalID, FromEndpointID: handoff.FromEndpointID,
+		ToPrincipalID: handoff.ToPrincipalID, ToEndpointID: handoff.ToEndpointID, TaskRevision: handoff.TaskRevision,
+		FromOwnerEpoch: handoff.FromOwnerEpoch, MessageID: handoff.MessageID, ExpiresAt: handoff.ExpiresAt,
+		RequiredArtifactRefs: handoff.RequiredArtifactRefs, Transport: handoff.Transport, LocalRoute: handoff.LocalRoute}
+	if err := matchSealedTaskHandoffPacket(a, record.MessageID, store.RelaySealedV1Route{
+		MessageID: record.MessageID, Kind: "send", SenderEndpointID: r.SourceEndpointID, ReceiverEndpointID: r.TargetEndpointID}, plaintext); err != nil {
+		return nil, err
+	}
+	return &localGroupResult{MessageID: record.MessageID, TargetEndpointID: r.TargetEndpointID,
+		State: string(record.State), Delivery: "LOCAL_HISTORICAL", PayloadMode: "SEALED_V1", MessageDigest: record.Digest}, nil
 }
 
 func validateLocalTaskHandoffRefs(refs []store.SealedTaskHandoffArtifactRef) error {
@@ -273,87 +348,22 @@ func localTaskHandoffStoredRouteMatches(stored, expected nodelocal.Route) error 
 
 func validateLocalTaskHandoffAuthorization(record nodelocal.MessageRecord,
 	authorization store.LocalDeliveryAuthorization) error {
-	reserved := strings.HasPrefix(record.MessageID, "shared-task-handoff.v1:")
-	if !reserved {
-		if authorization.TaskHandoff != nil {
-			return errors.New("ordinary local message unexpectedly has Task handoff authorization")
-		}
-		return nil
+	if strings.HasPrefix(record.MessageID, "shared-task-handoff.v1:") {
+		return errors.New("historical LOCAL_NODE Task handoffs cannot authorize new delivery")
 	}
-	a := authorization.TaskHandoff
-	if authorization.Action != "message.send" || a == nil || a.Transport != "LOCAL_NODE" || a.LocalRoute == nil ||
-		a.HandoffID == "" || a.TaskID == "" || a.Version <= 0 || a.Status != store.SealedTaskHandoffProposed ||
-		a.MessageID != record.MessageID || a.MessageDigest != record.Digest ||
-		a.GroupID != record.Route.TargetGroupID || a.FromPrincipalID != record.Route.SourcePrincipalID ||
-		a.FromEndpointID != record.Route.SourceEndpointID || a.ToPrincipalID != record.Route.TargetPrincipalID ||
-		a.ToEndpointID != record.Route.TargetEndpointID || a.LocalRoute.NodeID != record.Route.SourceNodeID ||
-		a.LocalRoute.NodeID != record.Route.TargetNodeID || a.LocalRoute.SenderProofDigest == "" ||
-		a.LocalRoute.FromBindingID != record.Route.SourceBindingID ||
-		a.LocalRoute.FromBindingEpoch != record.Route.SourceBindingEpoch ||
-		a.LocalRoute.ToBindingID != record.Route.TargetBindingID ||
-		a.LocalRoute.ToBindingEpoch != record.Route.TargetBindingEpoch ||
-		a.LocalRoute.FromMembershipRevision != int64(record.Route.SourceMembershipRevision) ||
-		a.LocalRoute.ToMembershipRevision != int64(record.Route.TargetMembershipRevision) ||
-		a.LocalRoute.FromJoinRevision != int64(record.Route.SourceJoinRevision) ||
-		a.LocalRoute.ToJoinRevision != int64(record.Route.TargetJoinRevision) ||
-		a.LocalRoute.FromKeyID != record.Route.SourceKeyID || a.LocalRoute.ToKeyID != record.Route.TargetKeyID {
-		return errors.New("local Task handoff delivery authorization does not match the stored route")
-	}
-	handoffID, deadline, ok := parseTaskHandoffMessageID(record.MessageID)
-	expires, err := time.Parse(time.RFC3339Nano, a.ExpiresAt)
-	if !ok || handoffID != a.HandoffID || err != nil || deadline != expires ||
-		deadline.Format(time.RFC3339Nano) != a.ExpiresAt || !deadline.After(time.Now().UTC()) {
-		return errors.New("local Task handoff authorization has an invalid or expired deadline")
+	if authorization.TaskHandoff != nil {
+		return errors.New("ordinary local message unexpectedly has Task handoff authorization")
 	}
 	return nil
 }
 
 func localTaskHandoffPayloadMatches(record nodelocal.MessageRecord, authorization store.LocalDeliveryAuthorization,
 	plaintext []byte) error {
-	a := authorization.TaskHandoff
-	reserved := bytes.HasPrefix([]byte(record.MessageID), []byte("shared-task-handoff.v1:"))
-	if !reserved {
-		if a != nil {
-			return errors.New("ordinary local message unexpectedly has Task handoff authorization")
-		}
-		return nil
+	if strings.HasPrefix(record.MessageID, "shared-task-handoff.v1:") {
+		return errors.New("historical LOCAL_NODE Task handoffs cannot authorize new delivery")
 	}
-	if a == nil || a.Transport != "LOCAL_NODE" || a.LocalRoute == nil ||
-		a.MessageID != record.MessageID || a.MessageDigest != record.Digest ||
-		a.GroupID != record.Route.TargetGroupID || a.FromEndpointID != record.Route.SourceEndpointID ||
-		a.ToEndpointID != record.Route.TargetEndpointID || a.Status != store.SealedTaskHandoffProposed ||
-		a.HandoffID == "" || a.TaskID == "" || a.Version <= 0 || a.LocalRoute.NodeID != record.Route.SourceNodeID ||
-		a.LocalRoute.FromBindingID != record.Route.SourceBindingID || a.LocalRoute.FromBindingEpoch != record.Route.SourceBindingEpoch ||
-		a.LocalRoute.ToBindingID != record.Route.TargetBindingID || a.LocalRoute.ToBindingEpoch != record.Route.TargetBindingEpoch ||
-		a.LocalRoute.FromMembershipRevision != int64(record.Route.SourceMembershipRevision) ||
-		a.LocalRoute.ToMembershipRevision != int64(record.Route.TargetMembershipRevision) ||
-		a.LocalRoute.FromJoinRevision != int64(record.Route.SourceJoinRevision) ||
-		a.LocalRoute.ToJoinRevision != int64(record.Route.TargetJoinRevision) ||
-		a.LocalRoute.FromKeyID != record.Route.SourceKeyID || a.LocalRoute.ToKeyID != record.Route.TargetKeyID {
-		return errors.New("local Task handoff delivery authorization does not match the stored route")
-	}
-	deadline, err := time.Parse(time.RFC3339Nano, a.ExpiresAt)
-	messageID, messageDeadline, ok := parseTaskHandoffMessageID(record.MessageID)
-	if err != nil || !ok || messageID != a.HandoffID || !deadline.After(time.Now().UTC()) ||
-		messageDeadline != deadline || deadline.Format(time.RFC3339Nano) != a.ExpiresAt {
-		return errors.New("local Task handoff authorization has an invalid deadline")
-	}
-	packet, err := decodeSealedTaskHandoffPayload(plaintext)
-	if err != nil || packet.HandoffID != a.HandoffID || packet.TaskID != a.TaskID ||
-		packet.GroupID != a.GroupID || packet.FromPrincipalID != a.FromPrincipalID ||
-		packet.FromEndpointID != a.FromEndpointID || packet.ToPrincipalID != a.ToPrincipalID ||
-		packet.ToEndpointID != a.ToEndpointID || packet.TaskRevision != a.TaskRevision ||
-		packet.FromOwnerEpoch != a.FromOwnerEpoch || packet.MessageID != a.MessageID ||
-		packet.ExpiresAt != a.ExpiresAt {
-		return errors.New("decrypted local Task handoff differs from its current Hub authorization")
-	}
-	wantRefs, err := json.Marshal(a.RequiredArtifactRefs)
-	if err != nil {
-		return err
-	}
-	gotRefs, err := json.Marshal(packet.RequiredArtifactRefs)
-	if err != nil || !bytes.Equal(wantRefs, gotRefs) {
-		return errors.New("decrypted local Task handoff Artifact references differ from authorization")
+	if authorization.TaskHandoff != nil {
+		return errors.New("ordinary local message unexpectedly has Task handoff authorization")
 	}
 	return nil
 }

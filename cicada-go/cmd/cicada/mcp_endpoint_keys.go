@@ -96,9 +96,25 @@ func (m *mcpServer) publishEndpointKeyCandidate(arguments map[string]any) (any, 
 	if stateDir == "" {
 		return nil, errors.New("endpoint key publication requires CICADA_NODE_STATE_DIR or CICADA_STATE_DIR")
 	}
+	writerRoot := stateDir
+	if m.writerRoot != "" {
+		writerRoot = m.writerRoot
+	}
+	if err := rejectMachineRecoveryMutation(stateDir, writerRoot, card.NodeID); err != nil {
+		return nil, err
+	}
 	maintenance, err := nodelock.AcquireMaintenance(stateDir, card.NodeID)
 	if err != nil {
 		return nil, fmt.Errorf("lock Node Endpoint identity: %w", err)
+	}
+	defer maintenance.Close()
+	writer, err := nodelock.AcquireWriterRoot(writerRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer writer.Close()
+	if err := rejectMachineRecoveryMutation(stateDir, writerRoot, card.NodeID); err != nil {
+		return nil, err
 	}
 	identity, identityErr := nodekeys.LoadOrCreate(machineNodeStateDir(stateDir, card.NodeID), card.EndpointID)
 	unlockErr := maintenance.Close()
