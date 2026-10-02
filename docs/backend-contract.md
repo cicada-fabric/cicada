@@ -1,4 +1,52 @@
-# Client ↔ Hub contract: `client-hub-v1.6.1`
+# Client ↔ Hub contract: `client-hub-v1.6.4`
+
+## Active integration target — clean v1.6.4
+
+The [fixed 25bc586 delivery](client-hub-v1.6.4-25bc586-validation.md) has passed
+archive/catalog, immutable image metadata and independent 882-entry Git
+inventory verification. The working branch now pins these v1.6.4 values;
+the historical accepted baseline remains the v1.6.1 binary. The current
+v1.6.4 candidate implements five dedicated Link consent operations behind
+fresh Native proof and encrypted capability checks; generic RPC refuses all
+five. It accounts for 44 implemented and 11 closed catalog operations.
+The v1.6.4 preview adds current reviewer
+qualifications; policy status supplies original bilateral Owner proofs.
+Native code must bind fresh authenticated responses to independent full Owner
+pins and preserve unresolved original writes in a durable Link ledger.
+No lifecycle version is inferred from public-key discovery or a manifest.
+The Android key verifier checks each raw Endpoint attestation, full ML-DSA-65
+key and signature, identity/epoch tuple, binding and manifest digest. Policy
+verification checks the complete ordered reviewer qualifications and original
+bilateral Owner proofs; a Hub digest alone cannot authorize a grant. The
+dedicated consent ledger durably retains the exact signed proof and encrypted
+packet before sending. Lost or uncertain responses cannot create a replacement
+operation or clear the dedicated fence through a generic state snapshot.
+
+Owner private keys stay outside the phone. The real React Native flow exports
+the current bounded signing request, validates the returned proof in Kotlin,
+and requires a one-use Android confirmation of its exact scope. Emulator
+automation, external synthetic signer challenges and a human's consent are
+reported separately. Accepted key grants on this fixed Hub are immutable for
+their Link tuple; an expired accepted proof must not be renewed with a new
+nonce in the same fixture. Fresh fixtures are required for a new acceptance
+attempt.
+The current acceptance record separates offline checks, each tested APK,
+synthetic live protocol fixtures and actual phone UI confirmation. None grants
+ordinary cross-user message permission or transfers prior release evidence.
+
+The final F5 business run on app `1811e156…b4686e` and test
+`be72fa25…ee674` passed Source enrollment, encrypted capabilities, independent
+pins and the fresh manifest read. External KEY signing then refused a
+noncanonical expiry exported by the Client (`.050630Z` instead of `.05063Z`).
+The run stopped before Source KEY submission or any Target operation. Bilateral
+KEY/NONE acceptance is BLOCKED, and actual React Native confirmation is
+NOT_RUN on F5. The Client correction reuses the existing Go-compatible UTC
+encoder and preserves historical ledger timestamps and original pending
+bytes. Its new binaries require separate runtime acceptance; they inherit no
+F5 or earlier emulator result.
+
+The following imported-v1.6.3 section retains its original release limitations;
+its missing reviewer guards are not a claim about the new fixed delivery.
 
 ## Clean v1.6.3 import and closed Link consent preparation
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
   IMPLEMENTED_CLIENT_RPC_OPERATIONS,
-  UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
+  clientHubOperationAllowed, isImplementedClientRpcOperation,
 } from '../src/platform/clientHubOperationPolicy.ts';
 import {
   NETWORK_CATALOG_SHA256, NETWORK_CONTRACT_REVISION,
@@ -19,8 +19,6 @@ const blockedOperations = [
   'space.key_manifest_v2', 'space.key_consent_v2', 'space.key_admission_v2', 'space.key_status_v2',
   'space.foreign_endpoint_preview', 'network.collaboration_key_manifest',
   'network.collaboration_key_grant', 'network.collaboration_key_status',
-  'link.review_policy_preview', 'link.review_policy_grant',
-  'link.key_manifest', 'link.key_grants', 'link.key_grant',
 ];
 
 const topology = (overrides = {}) => ({
@@ -82,13 +80,12 @@ const endpointScope = (authority = readyAuthority()) => {
   return result.scope;
 };
 
-test('all 16 deferred v1.5 and v1.6 consent/proof operations stay closed when advertised', () => {
+test('all 11 deferred v1.5 and v1.6 consent/proof operations stay closed when advertised', () => {
   assert.deepEqual([...SHARED_SPACE_CLOSED_OPERATIONS].sort(), [...blockedOperations].sort());
-  assert.equal(SHARED_SPACE_CLOSED_OPERATIONS.length, 16);
+  assert.equal(SHARED_SPACE_CLOSED_OPERATIONS.length, 11);
   const state = status({allowedOperations: [
     ...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
     ...DEFERRED_V16_RPC_OPERATIONS,
-    ...UNVERIFIED_LINK_KEY_OPERATIONS,
   ]});
   for (const operation of blockedOperations) {
     assert.equal(isImplementedClientRpcOperation(operation), false, operation);

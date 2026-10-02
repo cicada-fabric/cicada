@@ -16,7 +16,7 @@ class LinkKeyManifestVerifierTest {
     private val validNow = Instant.parse("2026-10-02T00:00:00Z")
 
     private fun fixture(name: String): JsonObject {
-        val loader = Thread.currentThread().contextClassLoader ?: javaClass.classLoader
+        val loader = javaClass.classLoader
         val input = loader?.getResourceAsStream(name)
             ?: throw AssertionError("Missing public contract vector resource: $name")
         val raw = input.use { it.readBytes() }
@@ -83,6 +83,12 @@ class LinkKeyManifestVerifierTest {
         assertEquals(expected.endpointId, verified.endpointId)
         assertEquals(expected.groupId, verified.groupId)
         assertEquals("pq1-f75d1b3a30a2c8c04939056893dd4c8b", verified.publicIdentity.id)
+        val expectedPeerFingerprint = "sha256:" + sha256(
+            "cicada/nodekeys/peer-key-fingerprint/v1\u0000".toByteArray(StandardCharsets.UTF_8) +
+                verified.publicIdentity.kemPublic + verified.publicIdentity.signingPublic,
+        )
+        assertEquals(expectedPeerFingerprint, verified.keyFingerprint)
+        assertNotEquals("sha256:${verified.publicIdentity.fingerprint()}", verified.keyFingerprint)
 
         val staleEpoch = candidate.deepCopy().apply {
             addProperty("binding_epoch", expected.bindingEpoch + 1)

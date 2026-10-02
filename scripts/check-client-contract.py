@@ -13,10 +13,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6.1-144e079"
-SOURCE_REVISION = "144e079ddf62a4e08f1d1cf9476ab41d25d28f5c"
-CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
-CONTRACT_REVISION = "client-hub-v1.6.1"
+ROOT = Path(__file__).resolve().parent.parent / "contracts" / "client-hub-v1.6.4-25bc586"
+SOURCE_REVISION = "25bc586232db43362c6e03eccef1fa3a0dbec8ee"
+CATALOG_SHA256 = "953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d"
+CONTRACT_REVISION = "client-hub-v1.6.4"
 WIRE_VERSION = 1
 CATALOG_PATH = "cicada-go/internal/clientcontract/catalog.json"
 CURRENT_COVERAGE = {

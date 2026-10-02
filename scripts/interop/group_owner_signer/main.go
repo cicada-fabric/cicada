@@ -131,6 +131,10 @@ func run(args []string) error {
 		return runDeviceGrant(args[1:])
 	case "group-grant":
 		return runGroupGrant(args[1:])
+	case "link-key-grant":
+		return runLinkConsentGrant(args[1:], "KEY")
+	case "link-review-policy":
+		return runLinkConsentGrant(args[1:], "REVIEW_POLICY")
 	case "help", "--help", "-h":
 		fmt.Println(usage())
 		return nil
@@ -142,7 +146,9 @@ func run(args []string) error {
 func usage() string {
 	return "usage:\n" +
 		"  group_owner_signer device-grant --private FILE --device-public FILE --owner ID --device ID --hub ID --expect-device-key ID --out FILE [--expires-in 1h]\n" +
-		"  group_owner_signer group-grant --private FILE --manifest FILE --expect-owner ID --expect-hub ID --expect-group ID --expect-endpoint ID --expect-node ID --expect-principal ID --expect-digest SHA256 --out FILE"
+		"  group_owner_signer group-grant --private FILE --manifest FILE --expect-owner ID --expect-hub ID --expect-group ID --expect-endpoint ID --expect-node ID --expect-principal ID --expect-digest SHA256 --out FILE\n" +
+		"  group_owner_signer link-key-grant --private FILE --request FILE --expect-owner ID --expect-owner-key ID --expect-owner-fingerprint HEX --expect-link ID --expect-version N --expect-contract-digest SHA256 --expect-manifest-digest SHA256 --expect-side SOURCE|TARGET --expect-max-expiry RFC3339NANO --expect-expires-at RFC3339NANO --out FILE\n" +
+		"  group_owner_signer link-review-policy --private FILE --request FILE --expect-owner ID --expect-owner-key ID --expect-owner-fingerprint HEX --expect-link ID --expect-version N --expect-contract-digest SHA256 --expect-policy-digest SHA256 --expect-policy-head N --expect-policy-version N --expect-side SOURCE|TARGET --expect-max-expiry RFC3339NANO --expect-expires-at RFC3339NANO --out FILE"
 }
 
 func runDeviceGrant(args []string) error {

@@ -48,7 +48,11 @@ internal object LinkKeyManifestVerifier {
         "accepted_at", "current_status", "evidence",
     )
     private val retainedStatusRequiredFields = setOf(
-        "link_id", "side", "owner_id", "accepted", "current_status", "evidence",
+        "link_id", "side", "owner_id", "accepted", "current_status",
+    )
+    private val retainedCurrentStatuses = setOf(
+        "MISSING", "ACCEPTED", "KEY_BINDING_STALE", "OWNER_KEY_REVOKED",
+        "PROOF_EXPIRED", "INVALID", "LEGACY_KEY_UNBOUND",
     )
     private val manifestFields = listOf(
         "version", "link_id", "link_version", "contract_digest", "contract_canonical",
@@ -104,6 +108,19 @@ internal object LinkKeyManifestVerifier {
         val version: Long,
     )
 
+    /**
+     * Independently trusted Owner public key. It carries no Hub registration
+     * state or version; those facts must come from a fresh authenticated status.
+     * A local signing key must also be correlated by the native caller to the
+     * current OwnerDeviceGrant/enrollment association. A peer key must come
+     * from an independent trust pin; Hub discovery evidence alone is not trust.
+     */
+    data class OwnerPublicKeyPin(
+        val ownerId: String,
+        val keyId: String,
+        val publicIdentity: ClientWireCrypto.PublicIdentity,
+    )
+
     /** Exact side grant inputs assembled from fresh Link state and a verified manifest. */
     data class CurrentOwnerGrantAuthority(
         val currentOwnerKey: CurrentOwnerKeyAuthority,
@@ -121,6 +138,8 @@ internal object LinkKeyManifestVerifier {
         val groupId: String,
         val ownerId: String,
         val candidateVersion: Long,
+        /** Verified CICADA Node peer-key fingerprint, distinct from Client Owner-key fingerprinting. */
+        val keyFingerprint: String,
         val publicIdentity: ClientWireCrypto.PublicIdentity,
     )
 
@@ -157,6 +176,24 @@ internal object LinkKeyManifestVerifier {
         val verifiedAt: Instant,
         val source: VerifiedOwnerGrant,
         val target: VerifiedOwnerGrant,
+        /** Current Hub lifecycle fields, retained only after matching both full independent pins. */
+        val sourceOwnerKey: CurrentOwnerKeyAuthority,
+        val targetOwnerKey: CurrentOwnerKeyAuthority,
+    )
+
+    /**
+     * One side's currently verified retained consent and current Owner key
+     * lifecycle. This is consent metadata only and says nothing about the
+     * other Link side.
+     */
+    data class VerifiedRetainedOwnerGrantStatus(
+        val linkId: String,
+        val linkVersion: Long,
+        val contractDigest: String,
+        val manifestDigest: String,
+        val verifiedAt: Instant,
+        val ownerGrant: VerifiedOwnerGrant,
+        val currentOwnerKey: CurrentOwnerKeyAuthority,
     )
 
     /**
@@ -258,9 +295,6 @@ internal object LinkKeyManifestVerifier {
         side: String,
         now: Instant = Instant.now(),
     ): VerifiedOwnerGrant {
-        require(rawProof.isNotEmpty() && rawProof.size <= MAX_OWNER_GRANT_BYTES) {
-            "Invalid OwnerLinkKeyGrant size"
-        }
         val linkExpiry = validateCurrentLinkAuthority(currentLink, now)
         val verifiedManifest = verifyManifest(manifestJson, currentLink, now)
         require(side == "SOURCE" || side == "TARGET") { "Invalid OwnerLinkKeyGrant side" }
@@ -280,6 +314,50 @@ internal object LinkKeyManifestVerifier {
                 linkId = currentLink.linkId,
                 contractDigest = verifiedManifest.contractDigest,
                 manifestDigest = verifiedManifest.digest,
+                linkVersion = currentLink.linkVersion,
+                side = side,
+                linkExpiresAt = linkExpiry,
+            ),
+            now,
+        )
+    }
+
+    /**
+     * Verifies an OwnerLinkKeyGrant signature with an independently trusted
+     * full public-key pin and exact verified Link tuple. This proves the proof
+     * was signed by that key; it does not prove that the Hub currently regards
+     * the key as active. Use retained/current status evidence for that claim.
+     */
+    fun verifyOwnerGrant(
+        rawProof: ByteArray,
+        pinnedOwnerKey: OwnerPublicKeyPin,
+        currentLink: CurrentLinkAuthority,
+        manifestJson: JsonObject,
+        side: String,
+        now: Instant = Instant.now(),
+    ): VerifiedOwnerGrant {
+        require(rawProof.isNotEmpty() && rawProof.size <= MAX_OWNER_GRANT_BYTES) {
+            "Invalid OwnerLinkKeyGrant size"
+        }
+        val linkExpiry = validateCurrentLinkAuthority(currentLink, now)
+        val manifest = verifyManifest(manifestJson, currentLink, now)
+        require(side == "SOURCE" || side == "TARGET") { "Invalid OwnerLinkKeyGrant side" }
+        val expectedOwnerId = if (side == "SOURCE") currentLink.source.ownerId
+            else currentLink.target.ownerId
+        validateOwnerPublicKeyPin(pinnedOwnerKey, expectedOwnerId)
+        require(manifest.linkId == currentLink.linkId &&
+            manifest.linkVersion == currentLink.linkVersion && manifest.linkExpiresAt == linkExpiry) {
+            "OwnerLinkKeyGrant authority does not match the verified current Link manifest"
+        }
+        return verifyOwnerGrantProof(
+            rawProof,
+            OwnerGrantProofAuthority(
+                ownerId = expectedOwnerId,
+                keyId = pinnedOwnerKey.keyId,
+                publicIdentity = pinnedOwnerKey.publicIdentity,
+                linkId = manifest.linkId,
+                contractDigest = manifest.contractDigest,
+                manifestDigest = manifest.digest,
                 linkVersion = currentLink.linkVersion,
                 side = side,
                 linkExpiresAt = linkExpiry,
@@ -408,6 +486,185 @@ internal object LinkKeyManifestVerifier {
             verifiedAt = requireNotNull(commonVerifiedAt),
             source = requireNotNull(verifiedBySide["SOURCE"]),
             target = requireNotNull(verifiedBySide["TARGET"]),
+            sourceOwnerKey = trustedSourceOwnerKey,
+            targetOwnerKey = trustedTargetOwnerKey,
+        )
+    }
+
+    /**
+     * Verifies current retained bilateral grants against identity-only trust
+     * pins. Owner registration state/version are taken only from the fresh
+     * authenticated `link.key_grants` evidence, after its complete identity
+     * matches the independently supplied pin; no lifecycle version is inferred.
+     */
+    fun verifyRetainedOwnerConsentsCandidateV164(
+        manifestJson: JsonObject,
+        statuses: List<JsonObject>,
+        currentLink: CurrentLinkAuthority,
+        trustedSourceOwnerPin: OwnerPublicKeyPin,
+        trustedTargetOwnerPin: OwnerPublicKeyPin,
+        now: Instant = Instant.now(),
+    ): VerifiedRetainedOwnerConsents {
+        require(statuses.size == 2) { "Expected both Link Owner consent statuses" }
+        validateOwnerPublicKeyPin(trustedSourceOwnerPin, currentLink.source.ownerId)
+        validateOwnerPublicKeyPin(trustedTargetOwnerPin, currentLink.target.ownerId)
+        val expectedPins = mapOf(
+            "SOURCE" to trustedSourceOwnerPin,
+            "TARGET" to trustedTargetOwnerPin,
+        )
+        val currentKeys = mutableMapOf<String, CurrentOwnerKeyAuthority>()
+        for (status in statuses) {
+            val side = string(status, "side")
+            val pin = expectedPins[side]
+                ?: invalid("Duplicate or invalid retained Link side")
+            require(!currentKeys.containsKey(side)) { "Duplicate retained Link side" }
+            val evidence = status.get("evidence")?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: invalid("Missing retained Link Owner evidence")
+            val evidenceOwnerId = string(status, "owner_id")
+            val evidenceKeyId = string(evidence, "owner_key_id")
+            val evidenceState = string(evidence, "owner_key_state")
+            val evidenceVersion = positiveInteger(evidence, "owner_key_version")
+            val identityJson = evidence.get("owner_public_identity")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: invalid("Missing retained Owner public identity")
+            val evidenceIdentity = ClientWireCrypto.PublicIdentity.parse(identityJson)
+            require(evidenceOwnerId == pin.ownerId && evidenceKeyId == pin.keyId &&
+                evidenceState == "ACTIVE" && evidenceKeyId == evidenceIdentity.id &&
+                pin.publicIdentity.sameAs(evidenceIdentity)) {
+                "Hub-retained Owner key does not match the independent full-key pin"
+            }
+            currentKeys[side] = CurrentOwnerKeyAuthority(
+                ownerId = evidenceOwnerId,
+                keyId = evidenceKeyId,
+                publicIdentity = evidenceIdentity,
+                state = evidenceState,
+                version = evidenceVersion,
+            )
+        }
+        require(currentKeys.keys == setOf("SOURCE", "TARGET")) {
+            "Retained Link status pair is incomplete"
+        }
+        return verifyRetainedOwnerConsentsCandidateV163(
+            manifestJson = manifestJson,
+            statuses = statuses,
+            currentLink = currentLink,
+            trustedSourceOwnerKey = requireNotNull(currentKeys["SOURCE"]),
+            trustedTargetOwnerKey = requireNotNull(currentKeys["TARGET"]),
+            now = now,
+        )
+    }
+
+    /**
+     * Verifies one current retained Link Owner grant against an independent
+     * full-key pin. It returns null for a well-formed status without current
+     * accepted proof evidence; it never infers consent from `accepted=true`
+     * alone or makes a claim about the other side.
+     */
+    fun verifyRetainedOwnerGrantStatusCandidateV164(
+        manifestJson: JsonObject,
+        status: JsonObject,
+        currentLink: CurrentLinkAuthority,
+        trustedOwnerPin: OwnerPublicKeyPin,
+        side: String,
+        now: Instant = Instant.now(),
+    ): VerifiedRetainedOwnerGrantStatus? {
+        require(side == "SOURCE" || side == "TARGET") { "Invalid retained Link Owner side" }
+        val linkExpiry = validateCurrentLinkAuthority(currentLink, now)
+        val manifest = verifyManifest(manifestJson, currentLink, now)
+        val expectedOwnerId = if (side == "SOURCE") currentLink.source.ownerId
+            else currentLink.target.ownerId
+        validateOwnerPublicKeyPin(trustedOwnerPin, expectedOwnerId)
+        require(status.keySet().all { it in retainedStatusFields } &&
+            status.keySet().containsAll(retainedStatusRequiredFields)) {
+            "Invalid retained Link key-grant status fields"
+        }
+        require(string(status, "link_id") == manifest.linkId &&
+            string(status, "side") == side && string(status, "owner_id") == expectedOwnerId) {
+            "Retained Link status does not match the selected Link side"
+        }
+        val accepted = boolean(status, "accepted")
+        val currentStatus = string(status, "current_status")
+        require(currentStatus in retainedCurrentStatuses &&
+            (currentStatus != "ACCEPTED" || accepted)) {
+            "Invalid retained Link current status"
+        }
+        if (status.has("accepted_at")) {
+            val acceptedAt = canonicalUtc(string(status, "accepted_at"))
+            require(acceptedAt <= now) { "Retained Link acceptance time is in the future" }
+        }
+        if (!accepted || currentStatus != "ACCEPTED") return null
+
+        val evidence = status.get("evidence")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: return null
+        require(evidence.keySet() == retainedEvidenceFields) {
+            "Invalid retained Link Owner evidence fields"
+        }
+        val evidenceLinkVersion = positiveInteger(evidence, "link_version")
+        val evidenceContractDigest = string(evidence, "contract_digest")
+        val evidenceManifestDigest = string(evidence, "manifest_digest")
+        val evidenceOwnerKeyId = string(evidence, "owner_key_id")
+        val evidenceKeyState = string(evidence, "owner_key_state")
+        val evidenceKeyVersion = positiveInteger(evidence, "owner_key_version")
+        val verifiedAt = canonicalUtc(string(evidence, "verified_at"))
+        require(verifiedAt <= now && evidenceKeyState == "ACTIVE" &&
+            evidenceLinkVersion == manifest.linkVersion &&
+            evidenceContractDigest == manifest.contractDigest &&
+            evidenceManifestDigest == manifest.digest) {
+            "Retained Link evidence is stale or not current"
+        }
+
+        val identityJson = evidence.get("owner_public_identity")
+            ?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: invalid("Missing retained Owner public identity")
+        val evidenceIdentity = ClientWireCrypto.PublicIdentity.parse(identityJson)
+        require(evidenceOwnerKeyId == trustedOwnerPin.keyId &&
+            evidenceOwnerKeyId == evidenceIdentity.id &&
+            trustedOwnerPin.publicIdentity.sameAs(evidenceIdentity)) {
+            "Hub-retained Owner key does not match the independent full-key pin"
+        }
+        if (status.has("key_id")) {
+            require(string(status, "key_id") == evidenceOwnerKeyId) {
+                "Retained Link status key ID disagrees with Owner evidence"
+            }
+        }
+        if (status.has("manifest_digest")) {
+            require(string(status, "manifest_digest") == manifest.digest) {
+                "Retained Link status manifest digest mismatch"
+            }
+        }
+        val rawProof = decodeCanonicalBase64(
+            string(evidence, "signed_proof"),
+            "retained OwnerLinkKeyGrant",
+        )
+        val currentOwnerKey = CurrentOwnerKeyAuthority(
+            ownerId = expectedOwnerId,
+            keyId = evidenceOwnerKeyId,
+            publicIdentity = evidenceIdentity,
+            state = evidenceKeyState,
+            version = evidenceKeyVersion,
+        )
+        val ownerGrant = verifyOwnerGrantEvidence(
+            rawProof,
+            CurrentOwnerGrantAuthority(
+                currentOwnerKey = currentOwnerKey,
+                ownerId = expectedOwnerId,
+                linkId = manifest.linkId,
+                contractDigest = manifest.contractDigest,
+                manifestDigest = manifest.digest,
+                linkVersion = manifest.linkVersion,
+                side = side,
+                linkExpiresAt = linkExpiry,
+            ),
+            now,
+        )
+        return VerifiedRetainedOwnerGrantStatus(
+            linkId = manifest.linkId,
+            linkVersion = manifest.linkVersion,
+            contractDigest = manifest.contractDigest,
+            manifestDigest = manifest.digest,
+            verifiedAt = verifiedAt,
+            ownerGrant = ownerGrant,
+            currentOwnerKey = currentOwnerKey,
         )
     }
 
@@ -421,20 +678,60 @@ internal object LinkKeyManifestVerifier {
         expected: CurrentOwnerGrantAuthority,
         now: Instant = Instant.now(),
     ): VerifiedOwnerGrant {
+        val ownerKey = expected.currentOwnerKey
+        validateOwnerPublicKeyPin(
+            OwnerPublicKeyPin(ownerKey.ownerId, ownerKey.keyId, ownerKey.publicIdentity),
+            expected.ownerId,
+        )
+        require(ownerKey.state == "ACTIVE" && ownerKey.version > 0) {
+            "Invalid current OwnerLinkKeyGrant authority"
+        }
+        return verifyOwnerGrantProof(
+            rawProof = rawProof,
+            expected = OwnerGrantProofAuthority(
+                ownerId = expected.ownerId,
+                keyId = ownerKey.keyId,
+                publicIdentity = ownerKey.publicIdentity,
+                linkId = expected.linkId,
+                contractDigest = expected.contractDigest,
+                manifestDigest = expected.manifestDigest,
+                linkVersion = expected.linkVersion,
+                side = expected.side,
+                linkExpiresAt = expected.linkExpiresAt,
+            ),
+            now = now,
+        )
+    }
+
+    private data class OwnerGrantProofAuthority(
+        val ownerId: String,
+        val keyId: String,
+        val publicIdentity: ClientWireCrypto.PublicIdentity,
+        val linkId: String,
+        val contractDigest: String,
+        val manifestDigest: String,
+        val linkVersion: Long,
+        val side: String,
+        val linkExpiresAt: Instant,
+    )
+
+    private fun verifyOwnerGrantProof(
+        rawProof: ByteArray,
+        expected: OwnerGrantProofAuthority,
+        now: Instant,
+    ): VerifiedOwnerGrant {
         require(rawProof.isNotEmpty() && rawProof.size <= MAX_OWNER_GRANT_BYTES) {
             "Invalid OwnerLinkKeyGrant size"
         }
-        val ownerKey = expected.currentOwnerKey
-        ownerKey.publicIdentity.validate()
-        require(canonicalToken(ownerKey.ownerId) && canonicalToken(ownerKey.keyId) &&
-            ownerKey.state == "ACTIVE" && ownerKey.version > 0 &&
-            ownerKey.keyId == ownerKey.publicIdentity.id &&
-            canonicalToken(expected.ownerId) && ownerKey.ownerId == expected.ownerId &&
-            canonicalToken(expected.linkId) && expected.linkVersion > 0 &&
+        validateOwnerPublicKeyPin(
+            OwnerPublicKeyPin(expected.ownerId, expected.keyId, expected.publicIdentity),
+            expected.ownerId,
+        )
+        require(canonicalToken(expected.linkId) && expected.linkVersion > 0 &&
             sha256Hex.matches(expected.contractDigest) &&
             sha256Hex.matches(expected.manifestDigest) &&
             expected.side in setOf("SOURCE", "TARGET") && expected.linkExpiresAt > now) {
-            "Invalid current OwnerLinkKeyGrant authority"
+            "Invalid OwnerLinkKeyGrant authority"
         }
 
         val proof = parseObject(rawProof, "OwnerLinkKeyGrant")
@@ -489,13 +786,13 @@ internal object LinkKeyManifestVerifier {
             "OwnerLinkKeyGrant JSON is not canonical"
         }
         val signedBytes = OWNER_GRANT_DOMAIN.toByteArray(UTF8) + claims.toByteArray(UTF8)
-        require(ClientWireCrypto.verify(ownerKey.publicIdentity, signedBytes, signature)) {
+        require(ClientWireCrypto.verify(expected.publicIdentity, signedBytes, signature)) {
             "OwnerLinkKeyGrant ML-DSA signature failed"
         }
 
         return VerifiedOwnerGrant(
             ownerId = ownerId,
-            ownerKeyId = ownerKey.keyId,
+            ownerKeyId = expected.keyId,
             linkId = linkId,
             contractDigest = proofContractDigest,
             manifestDigest = manifestDigest,
@@ -527,6 +824,7 @@ internal object LinkKeyManifestVerifier {
             groupId = groupId,
             ownerId = ownerId,
             candidateVersion = candidateVersion,
+            keyFingerprint = fingerprint,
             publicIdentity = publicIdentity,
         )
 
@@ -796,6 +1094,14 @@ internal object LinkKeyManifestVerifier {
             offset += Character.charCount(codePoint)
         }
         return true
+    }
+
+    private fun validateOwnerPublicKeyPin(pin: OwnerPublicKeyPin, expectedOwnerId: String) {
+        pin.publicIdentity.validate()
+        require(canonicalToken(pin.ownerId) && canonicalToken(pin.keyId) &&
+            pin.ownerId == expectedOwnerId && pin.keyId == pin.publicIdentity.id) {
+            "Invalid independent Owner full-key pin"
+        }
     }
 
     /** Go encoding/json string escaping, including HTML and U+2028/U+2029. */

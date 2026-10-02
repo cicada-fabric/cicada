@@ -19,6 +19,9 @@ import {RegroupDelegationPanel} from './src/components/RegroupDelegationPanel';
 import {NodePairingPanel} from './src/components/NodePairingPanel';
 import {SharedSpaceConsentPanel} from './src/components/SharedSpaceConsentPanel';
 import {LinkReviewPolicyStatusPanel} from './src/components/LinkReviewPolicyStatusPanel';
+import {LinkConsentPanel} from './src/components/LinkConsentPanel';
+import {linkConsentCapabilitiesAllow} from './src/platform/linkConsentFlow';
+import type {LinkConsentApi} from './src/platform/linkConsentFlow';
 import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
 import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
 import {speechEventBelongsToSession} from './src/platform/hubProfileScope';
@@ -2671,6 +2674,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
             key={`${hubStatus.hubId || ''}/${hubStatus.ownerId || ''}/${hubStatus.deviceId || ''}/${hubStatus.sessionEpoch || ''}`}
             status={hubStatus} capabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
             apiScope={clientHub.scope} getCurrentStatus={() => clientHub.getStatus()}
+            linkConsentApi={clientHub.linkConsent}
             linkReviewPolicyStatusReady={clientHub.linkReviewPolicyStatusReady}
             readLinkReviewPolicyStatus={input => clientHub.linkReviewPolicyStatus(input)} request={rpc}
             recoveredInvite={recoveredInvite}
@@ -2761,6 +2765,10 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           <Button title={hubBusy ? '正在重读状态…' : '刷新权威状态与 Intent 历史'} secondary
             onPress={() => { void refreshAfterUncertainOutcome(); }} disabled={hubBusy} />
         </>}
+        {hubStatus.linkConsentReconciliationRequired && <Notice>
+          Link 授权结果仍未确定。原始密文和授权证明保留在此 Hub 配置；普通状态快照不能解除该限制。
+          请通过 Link 授权面板恢复原请求并核对双方当前证明，勿重新提交。
+        </Notice>}
         {hubStatus.enrolled && !hubStatus.sessionCapabilitiesReady &&
           <View style={s.modelActions}><Button title="恢复加密会话" secondary
             onPress={() => { void initializeHubSession(); }} disabled={hubBusy} /></View>}
@@ -2933,11 +2941,12 @@ type LinkListEntry = {link: JsonObject; my_side: string};
 
 /** Proposal metadata only. The token is never persisted, logged, or sent outside sealed RPC. */
 function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope, getCurrentStatus,
-  linkReviewPolicyStatusReady, readLinkReviewPolicyStatus, request, recoveredInvite, clearRecoveredInvite}: {
+  linkConsentApi, linkReviewPolicyStatusReady, readLinkReviewPolicyStatus, request, recoveredInvite, clearRecoveredInvite}: {
   status: ClientHubStatus;
   capabilities: ClientHubCapabilities;
   sessionCapabilities: ClientHubSessionCapabilities | null;
   apiScope: HubProfileScope;
+  linkConsentApi: LinkConsentApi;
   getCurrentStatus: () => Promise<ClientHubStatus>;
   linkReviewPolicyStatusReady: boolean;
   readLinkReviewPolicyStatus: (input: {linkId: string; expectedLinkVersion: number}) => Promise<unknown>;
@@ -3115,8 +3124,8 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
     <Section name="跨用户 Link 提案" action={busy ? '处理中…' : '重读本人提案'}
       onPress={() => { if (!busy) void readLinks(); }} />
     <Notice>{capabilities.external_thread_links ?
-      '此页只管理双方同意的提案；Client 尚未提供普通 peer 消息入口。密钥 Grant 签署待端侧验证器完成。' :
-      'external_thread_links=false：Hub 只开放邀请与 PROPOSED 提案；不显示聊天、消息发送或已连通状态。跨用户 Link 密钥 Grant 仍关闭。'}</Notice>
+      '此页只管理双方同意的提案；Client 尚未提供普通 peer 消息入口。密钥授权须经独立公钥核验、外部 Owner 签名及手机明确确认。' :
+      'external_thread_links=false：Hub 只开放邀请与 PROPOSED 提案；不显示聊天、消息发送或已连通状态。密钥授权只记录精确范围的双方同意，不开放普通消息。'}</Notice>
     {!!message && <Text style={s.small}>{message}</Text>}
     {loaded && links.length === 0 && <Text style={s.small}>当前没有本人可见的 Link 提案。</Text>}
     {links.map(item => {
@@ -3135,6 +3144,10 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
             listGeneration={linkListGeneration}
             linkReviewPolicyStatusReady={linkReviewPolicyStatusReady}
             readStatus={readLinkReviewPolicyStatus} getCurrentStatus={getCurrentStatus} />}
+        {!listError && Number.isSafeInteger(version) && version > 0 && field(link, 'state') === 'PROPOSED' &&
+          linkConsentCapabilitiesAllow(status, capabilities, sessionCapabilities, apiScope, linkConsentApi.linkConsentReady) &&
+          <LinkConsentPanel api={linkConsentApi} scope={apiScope} linkId={field(link, 'link_id')}
+            linkVersion={version} listGeneration={linkListGeneration} />}
         {field(link, 'state') === 'PROPOSED' && !listError &&
           Number.isSafeInteger(version) && version > 0 && allowed('topology.apply') &&
           <View style={s.modelActions}><Button title="撤销提案" secondary disabled={busy}

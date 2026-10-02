@@ -114,7 +114,60 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
             expectedLinkVersion > 9_007_199_254_740_991.0 || expectedLinkVersion % 1 != 0.0) {
             throw HubSessionException("INVALID_LINK_REVIEW_VERSION", "Link review expected version is invalid")
         }
-        session.linkReviewPolicyStatus(requiredString(options, "linkId"), expectedLinkVersion.toLong())
+        session.linkReviewPolicyStatus(requiredString(options, "linkId"), expectedLinkVersion.toLong(),
+            requiredScope(options).selectionGeneration)
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun prepareLinkConsent(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        val policy = if (options.hasKey("policy") && !options.isNull("policy")) {
+            try { options.getMap("policy")?.let(::readableMapToJson) }
+            catch (_: Exception) { throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy must be a JSON object") }
+                ?: throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy must be a JSON object")
+        } else null
+        session.prepareLinkConsent(
+            linkId = requiredString(options, "linkId"),
+            expectedLinkVersion = requiredSafeLong(options, "expectedLinkVersion", minimum = 1L),
+            kind = requiredString(options, "kind"),
+            policyJson = policy,
+            profileGeneration = requiredScope(options).selectionGeneration,
+        )
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun confirmLinkOwnerPin(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.confirmLinkOwnerPin(
+            ownerId = requiredString(options, "ownerId"),
+            publicIdentityJson = requiredString(options, "publicIdentityJson"),
+            expectedFingerprint = requiredString(options, "expectedFingerprint"),
+            confirmed = options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed"),
+            profileGeneration = requiredScope(options).selectionGeneration,
+        )
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun submitLinkConsent(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.submitLinkConsent(
+            reviewId = requiredString(options, "reviewId"),
+            consentDigest = requiredString(options, "consentDigest"),
+            signedProofBase64 = requiredString(options, "signedProofBase64"),
+            confirmed = options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed"),
+            profileGeneration = requiredScope(options).selectionGeneration,
+        )
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun readLinkKeyGrants(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.readLinkKeyGrants(
+            linkId = requiredString(options, "linkId"),
+            expectedLinkVersion = requiredSafeLong(options, "expectedLinkVersion", minimum = 1L),
+            profileGeneration = requiredScope(options).selectionGeneration,
+        )
+    }
+
+    @com.facebook.react.bridge.ReactMethod
+    fun recoverLinkConsent(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
+        session.recoverLinkConsent(requiredScope(options).selectionGeneration)
     }
 
     @com.facebook.react.bridge.ReactMethod
@@ -272,6 +325,14 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
 
     private fun requiredString(map: ReadableMap, key: String): String = optionalString(map, key)
         ?: throw HubSessionException("INVALID_ARGUMENT", "Missing required argument: $key")
+
+    private fun requiredSafeLong(map: ReadableMap, key: String, minimum: Long): Long {
+        val value = try { map.getDouble(key) } catch (_: Exception) { Double.NaN }
+        if (!value.isFinite() || value < minimum.toDouble() || value > 9_007_199_254_740_991.0 || value % 1.0 != 0.0) {
+            throw HubSessionException("INVALID_ARGUMENT", "Argument $key must be a bounded integer")
+        }
+        return value.toLong()
+    }
 
     private fun optionalString(map: ReadableMap, key: String): String? = try {
         if (!map.hasKey(key) || map.isNull(key)) null else map.getString(key)

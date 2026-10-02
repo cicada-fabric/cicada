@@ -3,7 +3,6 @@ import type {
 } from './clientHub';
 import {
   DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
-  UNVERIFIED_LINK_KEY_OPERATIONS,
 } from './clientHubOperationPolicy.ts';
 import {
   NETWORK_CATALOG_SHA256, NETWORK_CONTRACT_REVISION,
@@ -17,7 +16,6 @@ import type {
 export const SHARED_SPACE_CLOSED_OPERATIONS = [
   ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
   ...DEFERRED_V16_RPC_OPERATIONS,
-  ...UNVERIFIED_LINK_KEY_OPERATIONS,
 ] as const;
 
 export type SharedSpaceClosedOperation = typeof SHARED_SPACE_CLOSED_OPERATIONS[number];

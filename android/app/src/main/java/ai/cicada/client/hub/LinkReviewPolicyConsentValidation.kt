@@ -218,7 +218,11 @@ internal object LinkReviewPolicyConsentValidation {
 
     /** Computes the exact no-domain-prefix SHA-256 used by Go's normalized policy DTO. */
     fun policyDigest(policy: LinkReviewPolicyConsentPolicy): String =
-        sha256(encodeGoPolicy(validateReviewedPolicy(policy)).toByteArray(StandardCharsets.UTF_8))
+        sha256(canonicalPolicyJson(policy).toByteArray(StandardCharsets.UTF_8))
+
+    /** Canonical Go encoding shared with the v1.6.4 evidence candidate parser. */
+    internal fun canonicalPolicyJson(policy: LinkReviewPolicyConsentPolicy): String =
+        encodeGoPolicy(validateReviewedPolicy(policy))
 
     /**
      * Verifies this Client's exact Owner proof with a locally trusted Owner key. The preview never

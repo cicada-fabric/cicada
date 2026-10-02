@@ -44,6 +44,8 @@ android {
         }
     }
     testBuildType clientTestBuildType
+    // Pure Kotlin vectors also run in instrumentation through the APK classloader.
+    sourceSets.androidTest.resources.srcDirs = ["src/androidTest/assets"]
     buildTypes {
         debug {
             // Only the isolated emulator -> host-loopback development Hub uses HTTP.

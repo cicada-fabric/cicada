@@ -1,6 +1,107 @@
 # CICADA Client integration handoff
 
-## Current handoff — Link verification and two-Owner status acceptance
+## Active integration — clean v1.6.4 Link consent
+
+Core `25bc586232db43362c6e03eccef1fa3a0dbec8ee` / Client-Control v1.6.4
+has been independently imported and checked against its immutable Hub and
+interop image IDs. Complete archive, catalog, producer and 882-entry Git
+inventory checks pass. See the [fixed delivery validation record](client-hub-v1.6.4-25bc586-validation.md)
+for all pins, commands, exits and the preserved initial Docker UID failure.
+
+The local Native candidate is integrated and its gates are enabled for this
+candidate only. It adds the strict v1.6.4 Link manifest, Owner proof, review
+policy, fresh scope and durable exact-packet recovery path. The phone review
+panel calls dedicated Native methods; generic RPC continues to reject all five
+Link consent operations. The JavaScript layer has no duplicate authority
+shaper or ephemeral consent ledger: durable proof, tuple and packet-fence state
+remain in Kotlin. The candidate implements 44 of 55 catalog operations and
+keeps 11 closed.
+
+Final retry-6 offline evidence: 40 pure Kotlin tests across five classes passed
+with no failures/skips; Native and Android-test Kotlin compilation and both
+Debug x86_64 APK assemblies exited 0. Host receipt SHA-256 is
+`fa7bfc446aa3d0c9ce3b0b305b24cc458e95cbb7b6d444b50d96a3bbf6c3bd94`. App/test
+APK hashes are
+`56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67` /
+`caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`; the
+153-file snapshot SHA is `b6f8eb00b9a0ad61c7fd31947e1925f8d77b15c5ad23d56d39476e26f7d81a80`,
+with 140-file source fingerprint
+`855087a657384177343b6b8868ca51a6d5bfc5a3983382c01b9e7b0e928a2431` and
+110-file Kotlin fingerprint
+`8276380239debfe1dd735636037efc5662656d6835da490342bd25ecb6fe7b1e`. Bounded
+APK resource scan passed (receipt SHA-256
+`262d0bc2bee8d7ee2b715ad997f78e978fbaf2b9c6496c57373301dea798b0f1`). The
+retry-6 pair has no emulator or live Hub results. The earlier 38 Kotlin / 47
+Android test results belong only to retry-4 app/test pair
+`1811e156012eb4996c8740ab875d4ac142bb1979ba0f1b0cfe94c1b6a9b4686e` /
+`d22756ee8169263b5142997b08825dda60f12331734f923ea7c005965a42c288`.
+
+F1 expired before Owner enrollment. F2 retry-2 passed enrollment/capabilities
+then failed local key preparation; retry-3 received Hub `ok=true` but rejected
+post-submit status; retry-4's explicit new consent was refused by the prior-
+grant conflict. F3 passed 27 scoped steps and failed before Target request
+export on a UI selector. F4 passed 27 scoped steps, then the actual UI could
+not reach the confirmation control after external signing/proof paste; zero
+Target KEY/policy writes occurred. F5 used trusted READY/Root GO. Its initial
+runtime preflight failed before any RPC/selector/signer/operation; four
+read-only ADB runtime observations then passed. The actual F5 command passed
+10 steps through Source KEY manifest/export and exited 1 at `source-key-sign`
+(exit 2) because maximum expiry `2026-10-02T15:27:50.050630Z` was not canonical
+RFC3339Nano (`2026-10-02T15:27:50.05063Z`, same instant). No signature, Source
+KEY grant or policy grant was created; Target enrollment, Alert and policy were
+`NOT_RUN`, bilateral KEY/NONE remain blocked. No new proof, nonce or F6 run was
+attempted. Full F5 pins and receipts are in the [validation record](client-hub-v1.6.4-25bc586-validation.md).
+
+F5's 11-transaction carrier stopped with no payload persisted. Core cleanup
+continuation attests only owned F4/F5 resources removed and six resident
+resources unchanged; Client's independent read-only audit found five owned
+container/network/emulator IDs absent (receipt SHA-256
+`889655487ae8cb700c40cd5d7ca0a7ecf6bfb6e804ba539d113616d44836eba7`). The
+be72 test APK had a bounded privacy PASS; no private-key bytes were read.
+
+The candidate implements 44 of 55 catalog operations; 11 remain closed.
+Native-only gates protect all five Link consent operations; generic RPC rejects
+them. Independent Owner pins, current lifecycle evidence, leased reviewer
+`link.review` qualification, exact preview/body/proof matching, one-shot Alert
+confirmation and durable exact-packet recovery stay in Kotlin. External Owner
+signing is required, and Link grants do not turn on ordinary peer messaging.
+The candidate is recorded by the Client milestone commit; its exact commit
+identity is in the external delivery receipt
+`/gpu1-share/data/cicada-client/v164-25bc586-20261002/client-delivery.redacted.json`.
+It is not an accepted release.
+
+### Core follow-up
+
+Core requires a separately authorized new scope before any further live attempt. Keep the exact reviewed text and signed bytes intact;
+never accept an unsigned/null-signature final attestation or Owner proof;
+preserve its contractual signing preimage. Do not alter reviewed content, extend
+the proof TTL, or use Owner renewal to work around the immutable prior proof. The confirmation
+control must be visible to the actual UI flow before a user action is recorded.
+
+> Independently review Client `dev/react-native` and this delivery receipt.
+> Keep Core `25bc586232db43362c6e03eccef1fa3a0dbec8ee`, protocol v1.6.4 and
+> Hub image `sha256:41b7a968293f14d7b7472333dcf64980e95eb68868e85dfdd71fa850f4eecbb4`.
+> Use app `56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67`
+> and test `caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`.
+> For a separately authorized fresh scope against this fixed Hub/image,
+> issue trusted READY pins and Root GO. Use only the retry-6 app/test pair and
+> run the Target actual React Native review through the visible explicit Alert,
+> then complete bilateral KEY and NONE status with both independent Owner pins.
+> Include lost-response and exact-original-packet recovery faults. Preserve the
+> contractual signing preimage and never accept an unsigned/null-signature final
+> attestation or Owner proof. Do not extend TTL, rotate a proof, use a new nonce
+> to evade F5, read or mutate Hub DB from Client, call models, or transfer the
+> retry-4 38/47, be72 F5, or historical v1.6.1 results. Return exact pins,
+> commands, exits, proof/status results and redacted cleanup evidence.
+
+One conservative reconciliation edge remains explicit: the saved consent tuple
+contains peer Owner lifecycle only when a fresh `link.key_grants` read verified
+it. If a terminal policy status reports the peer side VERIFIED but that peer
+lifecycle was absent from the saved tuple, the Native historical-result check
+retains the fence rather than inventing or inferring lifecycle state. Confirm
+Core's link-state guarantee before treating that uncommon case as resolvable.
+
+## Prior handoff — Link verification and two-Owner status acceptance
 
 This milestone keeps the accepted Android runtime at clean Core 144e079 /
 Client-Control v1.6.1. It separately imports the clean e8a029d / v1.6.3

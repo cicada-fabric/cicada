@@ -4,33 +4,32 @@ import {readFileSync} from 'node:fs';
 import {
   DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
   IMPLEMENTED_CLIENT_RPC_OPERATIONS,
-  UNVERIFIED_LINK_KEY_OPERATIONS, clientHubOperationAllowed, isImplementedClientRpcOperation,
+  clientHubOperationAllowed, isImplementedClientRpcOperation,
 } from '../src/platform/clientHubOperationPolicy.ts';
 
 const catalog = JSON.parse(readFileSync(new URL(
-  '../contracts/client-hub-v1.6.1-fe565b4/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
+  '../contracts/client-hub-v1.6.4-25bc586/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
 )));
 const session = () => ({
   nativeAvailable: true, remoteEnabled: true, sessionCapabilitiesReady: true,
   allowedOperations: [...IMPLEMENTED_CLIENT_RPC_OPERATIONS, ...DEFERRED_CLIENT_CONSENT_OPERATIONS,
-    ...DEFERRED_V16_RPC_OPERATIONS, ...UNVERIFIED_LINK_KEY_OPERATIONS],
+    ...DEFERRED_V16_RPC_OPERATIONS],
 });
 
-test('local operation policy accounts for every operation in the independently imported v1.6.1 catalog', () => {
+test('local operation policy accounts for every operation in the independently imported v1.6.4 catalog', () => {
   const expected = catalog.operations.map(value => value.id).sort();
   const actual = session().allowedOperations.sort();
   assert.equal(expected.length, 55);
   assert.equal(new Set(actual).size, 55);
   assert.deepEqual(actual, expected);
-  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 39);
+  assert.equal(IMPLEMENTED_CLIENT_RPC_OPERATIONS.length, 44);
   assert.equal(DEFERRED_CLIENT_CONSENT_OPERATIONS.length, 7);
-  assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 6);
+  assert.equal(DEFERRED_V16_RPC_OPERATIONS.length, 4);
 });
 
 test('advertised permission never enables unimplemented consent, delegation or link key flows', () => {
   for (const op of [...DEFERRED_CLIENT_CONSENT_OPERATIONS, ...DEFERRED_V16_RPC_OPERATIONS,
-    ...UNVERIFIED_LINK_KEY_OPERATIONS,
-    'future.unknown_operation', '', ' space.key_consent_v2']) {
+      'future.unknown_operation', '', ' space.key_consent_v2']) {
     assert.equal(isImplementedClientRpcOperation(op), false);
     assert.equal(clientHubOperationAllowed(session(), op), false, op);
   }
@@ -87,6 +86,18 @@ test('OUTCOME_UNCERTAIN permits authoritative reads and refuses management mutat
   }
   for (const op of ['topology.apply', 'intent.submit', 'approvals.decide', 'network.key_grant',
     'group.key_grant', 'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
+    'topology.delegation_issue', 'topology.delegation_revoke']) {
+    assert.equal(clientHubOperationAllowed(state, op), false, op);
+  }
+});
+
+test('a Link consent fence survives generic reconciliation and blocks fresh mutations', () => {
+  const state = {...session(), linkConsentReconciliationRequired: true, uncertainNeedsReconciliation: false};
+  for (const op of ['status.snapshot', 'link.list', 'link.review_policy_status']) {
+    assert.equal(clientHubOperationAllowed(state, op), true);
+  }
+  for (const op of ['topology.apply', 'intent.submit', 'approvals.decide', 'group.key_grant',
+    'network.key_grant', 'monitor.broadcast_prepare', 'monitor.broadcast_confirm',
     'topology.delegation_issue', 'topology.delegation_revoke']) {
     assert.equal(clientHubOperationAllowed(state, op), false, op);
   }

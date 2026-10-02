@@ -8,13 +8,18 @@ import android.util.AtomicFile
 import android.util.Base64
 import com.cicadaclient.BuildConfig
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.Strictness
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -56,13 +61,16 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.6.1"
-        private const val CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
+        private const val CONTRACT_REVISION = "client-hub-v1.6.4"
+        private const val CATALOG_SHA256 = "953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d"
+        /** Release-gate state for the v1.6.4 Link consent candidate. */
+        internal const val LINK_CONSENT_READY = true
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
         private const val MAX_PACKET_BYTES = 256 * 1024
         private const val MAX_RESPONSE_BYTES = 256 * 1024
         private const val MAX_METADATA_BYTES = 256 * 1024
+        private const val MAX_SESSION_STATE_BYTES = 1_048_576
         private const val LINK_STATUS_LIST_LIMIT = 100
         private const val MAX_LINK_STATUS_LIST_PAGES = 64
         private const val CONNECT_TIMEOUT_MS = 15_000
@@ -94,9 +102,16 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "network.key_manifest", "network.key_grant", "network.key_status",
             "network.directory", "topology.endpoint_admission_preview",
             "topology.regroup_proposal", "topology.delegation_issue", "topology.delegation_revoke",
+            "link.key_manifest", "link.key_grants", "link.key_grant",
+            "link.review_policy_preview", "link.review_policy_grant",
             "monitor.broadcast_prepare", "monitor.broadcast_confirm", "monitor.broadcast_status",
             "monitor.broadcast_recover",
         )
+        private val LINK_CONSENT_OPERATIONS = setOf(
+            "link.key_manifest", "link.key_grants", "link.key_grant",
+            "link.review_policy_status", "link.review_policy_preview", "link.review_policy_grant",
+        )
+        private val OWNER_PUBLIC_IDENTITY_FIELDS = setOf("id", "kem_public", "signing_public")
         // These v1.5/v1.6 operations have no complete local owner-proof/current-authority path.
         // Hub advertisement cannot authorize the generic bridge to substitute for those flows.
         private val UNIMPLEMENTED_CONSENT_OPERATIONS = setOf(
@@ -105,13 +120,14 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             "space.key_admission_v2", "space.key_status_v2",
             "space.foreign_endpoint_preview", "network.collaboration_key_manifest",
             "network.collaboration_key_grant", "network.collaboration_key_status",
+            "link.key_manifest", "link.key_grants", "link.key_grant",
             "link.review_policy_preview", "link.review_policy_grant",
         )
         private val MUTATING_RPC_OPERATIONS = setOf(
             "goal.lifecycle", "topology.apply", "devices.revoke", "nodes.confirm",
             "nodes.revoke", "approvals.decide", "intent.submit", "link.invite_create",
             "link.invite_accept", "group.key_grant", "network.key_grant", "monitor.broadcast_prepare",
-            "monitor.broadcast_confirm",
+            "monitor.broadcast_confirm", "link.key_grant", "link.review_policy_grant",
             "topology.delegation_issue", "topology.delegation_revoke",
         )
         private val MONITOR_OPERATION_STATES = setOf(
@@ -165,6 +181,42 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         val requestJson: String?,
     )
 
+    /** Persisted selector for an in-flight candidate status read; never a trust result. */
+    private data class LinkConsentStatusReadContext(
+        val linkId: String,
+        val linkVersion: Long,
+        val mySide: String,
+        val hubId: String,
+        val ownerId: String,
+        val deviceId: String,
+        val sessionEpoch: Long,
+        val operationId: String,
+        val sequence: Long,
+        val profileGeneration: Long,
+    )
+
+    private data class LinkConsentPreparation(
+        val review: LinkConsentLedger.Review,
+        val authority: VerifiedCurrentLinkAuthority,
+        val ownerGrantStatusRead: FreshLinkOwnerGrantStatusRead,
+        val ownerGrantStatuses: JsonArray,
+        val sourceCurrentKey: LinkKeyManifestVerifier.CurrentOwnerKeyAuthority?,
+        val targetCurrentKey: LinkKeyManifestVerifier.CurrentOwnerKeyAuthority?,
+        val policyStatusRead: LinkConsentLedger.ReadCorrelation?,
+        val policyStatus: JsonObject?,
+        val policyPreview: LinkReviewPolicyV164Preview?,
+        val reviewPolicyStatusBytes: ByteArray?,
+        val reviewPolicyPreviewBytes: ByteArray?,
+        val localPolicyLifecycle: LinkReviewPolicyV164OwnerLifecycle?,
+        val localPolicyPin: LinkReviewPolicyV164OwnerPin?,
+        val policyStatusDisplay: JsonObject?,
+    )
+
+    private data class DirectLinkRead(
+        val result: JsonElement,
+        val correlation: LinkConsentLedger.ReadCorrelation,
+    )
+
     /** Durable identifiers and digests only; Monitor message text is never saved here. */
     private data class MonitorOperation(
         val operationId: String,
@@ -210,6 +262,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         var regroupWriteContext: JsonObject? = null,
         var pending: Pending? = null,
         var linkReviewStatusReadContext: LinkReviewStatusReadContext? = null,
+        var linkConsentStatusReadContext: LinkConsentStatusReadContext? = null,
+        var linkConsentLedger: LinkConsentLedger = LinkConsentLedger.empty(),
         var enrollmentAttempt: EnrollmentAttempt? = null,
         var monitorOperations: MutableMap<String, MonitorOperation> = linkedMapOf(),
         var retiredMonitorOperationIds: MutableSet<String> = linkedSetOf(),
@@ -305,6 +359,10 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             }
             throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Keep the original Hub address and trust pin while enrollment or an encrypted RPC is unresolved")
         }
+        if (old != null && (old.baseUrl != base || old.hubId != normalizedHubId ||
+                old.controlPublicIdentityJson != canonicalIdentity) && state.linkConsentLedger.writeFence != null) {
+            throw HubSessionException("LINK_CONSENT_RECOVERY_REQUIRED", "Resolve the original Link consent packet before changing this Hub pin")
+        }
         if (old != null && old.hubId != normalizedHubId) {
             throw HubSessionException("PROFILE_HUB_ID_MISMATCH", "Create an independent profile with its own device identity before trusting a different Hub")
         }
@@ -330,6 +388,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             state.pending = null
             state.monitorOperations.clear()
             state.retiredMonitorOperationIds.clear()
+            state.linkConsentLedger = state.linkConsentLedger.copy(review = null)
         }
         state.pin = Pin(base, normalizedHubId, canonicalIdentity)
         writeState(state)
@@ -344,7 +403,11 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     /** Generates a device key once, wrapping its private bytes before any disk write. */
     fun createDeviceIdentity(): JsonObject = PROCESS_LOCK.withLock {
         val alreadyExists = hasAtomicFile(privateKeyFile)
-        if (!alreadyExists) requireNetworkGrantReconciled(readState())
+        if (!alreadyExists) {
+            val state = readState()
+            requireNetworkGrantReconciled(state)
+            requireLinkConsentReconciled(state)
+        }
         val identity = if (alreadyExists) {
             loadDeviceIdentity()
         } else {
@@ -368,6 +431,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     fun startNewDeviceEnrollment(): JsonObject = PROCESS_LOCK.withLock {
         val state = readState()
         requireNetworkGrantReconciled(state)
+        requireLinkConsentReconciled(state)
         if (state.pin == null) throw HubSessionException("HUB_NOT_PINNED", "Pin a Hub before creating an enrolled device identity")
         if (state.enrollmentAttempt != null) {
             throw HubSessionException("ENROLLMENT_RECOVERY_REQUIRED", "Enrollment outcome is unknown; do not replace its device identity before Hub reconciliation")
@@ -551,6 +615,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
 
     /** Starts one encrypted RPC after persisting sequence and exact request bytes. */
     fun rpc(operation: String, body: JsonObject, operationId: String? = null): JsonObject = PROCESS_LOCK.withLock {
+        if (operation in LINK_CONSENT_OPERATIONS && operation != "link.review_policy_status") {
+            throw HubSessionException("VERIFIED_LINK_CONSENT_FLOW_REQUIRED", "Use the dedicated native Owner-pinned Link consent flow")
+        }
         GroupDirectoryPermissionValidation.guardGenericRpc(operation, body)
         if (operation == "link.review_policy_status") {
             throw HubSessionException("VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED", "Use the fresh owner-scoped Link policy status read flow")
@@ -1218,6 +1285,12 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
+    private fun requireLinkConsentReconciled(state: State) {
+        if (state.linkConsentLedger.writeFence != null) {
+            throw HubSessionException("LINK_CONSENT_RECOVERY_REQUIRED", "Resolve the original Link consent packet before changing this profile or device key")
+        }
+    }
+
     private fun validateNetworkGrantFence(pending: Pending): Pending {
         if (pending.operation != "network.key_grant" || pending.operationId.isBlank() ||
             pending.sequence < 1 || pending.packetJson.isBlank() ||
@@ -1253,8 +1326,1100 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
-    /** Reads the current metadata-only Link policy after a fresh authenticated Owner list check. */
-    fun linkReviewPolicyStatus(linkId: String, expectedLinkVersion: Long): JsonObject = PROCESS_LOCK.withLock {
+    /** Explicitly pins a full Owner public identity from a separate trusted channel. */
+    fun confirmLinkOwnerPin(
+        ownerId: String,
+        publicIdentityJson: String,
+        expectedFingerprint: String,
+        confirmed: Boolean,
+        profileGeneration: Long,
+    ): JsonObject = PROCESS_LOCK.withLock {
+        requireLinkConsentGate()
+        if (profileGeneration < 1) throw HubSessionException("INVALID_PROFILE_SCOPE", "Hub profile selection generation is invalid")
+        if (!confirmed) throw HubSessionException("OWNER_PIN_CONFIRMATION_REQUIRED", "Confirm the displayed Owner fingerprint before saving this key")
+        val ownerIdentity = try {
+            parseIndependentOwnerIdentity(publicIdentityJson)
+        } catch (_: Exception) {
+            throw HubSessionException("OWNER_PIN_INVALID", "Owner public identity is invalid")
+        }
+        val rawFingerprint = expectedFingerprint.removePrefix("sha256:")
+        if (!rawFingerprint.matches(Regex("^[0-9a-f]{64}$")) || rawFingerprint != ownerIdentity.fingerprint()) {
+            throw HubSessionException("OWNER_PIN_FINGERPRINT_MISMATCH", "Owner fingerprint differs from the independently supplied public identity")
+        }
+        val state = readState()
+        val next = try {
+            state.linkConsentLedger.invalidateReviewForProfileGeneration(profileGeneration)
+                .pinOwner(ownerIdentity, ownerId, rawFingerprint, true, Instant.now()).first
+        } catch (_: Exception) {
+            throw HubSessionException("OWNER_PIN_REJECTED", "Owner public key could not be pinned for this profile")
+        }
+        state.linkConsentLedger = next
+        writeState(state)
+        val pin = next.ownerPin(ownerId, ownerIdentity.id)
+            ?: throw HubSessionException("OWNER_PIN_STORAGE_FAILED", "Saved Owner public key pin could not be read")
+        JsonObject().apply {
+            addProperty("ownerId", pin.ownerId)
+            addProperty("ownerKeyId", pin.keyId)
+            addProperty("ownerKeyFingerprint", "sha256:${pin.fingerprint}")
+            addProperty("pinRevision", pin.pinRevision.toString())
+            addProperty("confirmed", true)
+        }
+    }
+
+    /** Captures a fresh candidate review from authenticated manifest, grant and policy reads. */
+    fun prepareLinkConsent(
+        linkId: String,
+        expectedLinkVersion: Long,
+        kind: String,
+        policyJson: JsonObject?,
+        profileGeneration: Long,
+    ): JsonObject = PROCESS_LOCK.withLock {
+        requireLinkConsentGate()
+        if (profileGeneration < 1) throw HubSessionException("INVALID_PROFILE_SCOPE", "Hub profile selection generation is invalid")
+        val normalizedPolicy = if (kind == "REVIEW_POLICY") parseLinkConsentPolicy(policyJson) else {
+            if (policyJson != null) throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Key grant review does not accept a policy")
+            null
+        }
+        val state = readState()
+        requireLinkConsentSession(state, profileGeneration,
+            if (kind == "KEY") setOf("link.key_manifest", "link.key_grants")
+            else setOf("link.key_manifest", "link.key_grants", "link.review_policy_status", "link.review_policy_preview"),
+            allowFenceRead = false)
+        val oldLedger = state.linkConsentLedger
+        state.linkConsentLedger = oldLedger.invalidateReviewForProfileGeneration(profileGeneration)
+        if (state.linkConsentLedger != oldLedger) writeState(state)
+        val prepared = prepareLinkConsentInternal(state, linkId, expectedLinkVersion, kind, normalizedPolicy, profileGeneration)
+        state.linkConsentLedger = try { state.linkConsentLedger.prepare(prepared.review) } catch (_: Exception) {
+            throw HubSessionException("LINK_CONSENT_REVIEW_INVALID", "Fresh Link authority did not match the independently pinned Owner keys")
+        }
+        writeState(state)
+        linkConsentReviewJson(prepared.review, prepared.policyStatusDisplay)
+    }
+
+    /** Rechecks current authority, verifies the external proof, then durably stages its exact ciphertext. */
+    fun submitLinkConsent(
+        reviewId: String,
+        consentDigest: String,
+        signedProofBase64: String,
+        confirmed: Boolean,
+        profileGeneration: Long,
+    ): JsonObject = PROCESS_LOCK.withLock {
+        requireLinkConsentGate()
+        if (!confirmed) throw HubSessionException("LINK_CONSENT_CONFIRMATION_REQUIRED", "Confirm the exact Link consent scope before submitting the Owner proof")
+        val state = readState()
+        requireLinkConsentSession(state, profileGeneration,
+            setOf("link.key_manifest", "link.key_grants", "link.key_grant", "link.review_policy_status", "link.review_policy_preview", "link.review_policy_grant"),
+            allowFenceRead = false)
+        if (state.uncertainNeedsReconciliation) {
+            throw HubSessionException("BUSINESS_RECONCILIATION_REQUIRED", "Reconcile the previous authenticated Hub outcome before submitting Link consent")
+        }
+        val saved = state.linkConsentLedger.review
+            ?: throw HubSessionException("LINK_CONSENT_REVIEW_EXPIRED", "Prepare a fresh Link consent review before submitting")
+        if (saved.reviewId != reviewId || saved.consentDigest != consentDigest ||
+            saved.tuple.profileGeneration != profileGeneration ||
+            state.linkConsentLedger.writeFence != null) {
+            throw HubSessionException("LINK_CONSENT_REVIEW_STALE", "Link consent review is stale or another original packet is unresolved")
+        }
+        val proofBytes = try {
+            if (signedProofBase64.length !in 4..21_848) throw IllegalArgumentException()
+            val decoded = java.util.Base64.getDecoder().decode(signedProofBase64)
+            if (decoded.isEmpty() || decoded.size > LinkConsentLedger.MAX_PROOF_BYTES ||
+                java.util.Base64.getEncoder().encodeToString(decoded) != signedProofBase64) throw IllegalArgumentException()
+            decoded
+        } catch (_: Exception) {
+            throw HubSessionException("INVALID_LINK_OWNER_PROOF", "Owner-signed proof must be bounded canonical base64")
+        }
+        val policy = saved.policyJson?.let { parseLinkConsentPolicy(JsonParser.parseString(it).asJsonObject) }
+        val fresh = prepareLinkConsentInternal(state, saved.tuple.linkId, saved.tuple.linkVersion,
+            saved.tuple.kind, policy, profileGeneration)
+        if (fresh.review.consentDigest != saved.consentDigest || fresh.review.tuple != saved.tuple) {
+            proofBytes.fill(0)
+            throw HubSessionException("LINK_CONSENT_REVIEW_STALE", "Link, Owner key, policy head or reviewer authority changed; review the new scope")
+        }
+        val originalRequest = parseObject(saved.signingRequestJson, "Saved Owner signing request is invalid")
+        val selectedExpiry = optionalString(originalRequest, "expires_at")?.let { try { Instant.parse(it) } catch (_: Exception) { null } }
+            ?: throw HubSessionException("LINK_CONSENT_REVIEW_INVALID", "Saved Owner signing request expiry is invalid")
+        if (!Instant.now().isBefore(selectedExpiry)) {
+            proofBytes.fill(0)
+            throw HubSessionException("LINK_CONSENT_REVIEW_EXPIRED", "Owner proof signing window expired; prepare a new review")
+        }
+        val localSide = saved.tuple.localSide
+        val localScope = if (localSide == "SOURCE") saved.tuple.source else saved.tuple.target
+        val signedBody = try {
+            if (saved.tuple.kind == "KEY") {
+                val verifiedProof = fresh.authority.verifyOwnerGrant(localSide, proofBytes, Instant.now())
+                if (verifiedProof.ownerId != saved.tuple.ownerId || verifiedProof.ownerKeyId != localScope.ownerKeyId ||
+                    verifiedProof.linkId != saved.tuple.linkId || verifiedProof.linkVersion != saved.tuple.linkVersion ||
+                    verifiedProof.manifestDigest != saved.tuple.manifestDigest || verifiedProof.expiresAt > selectedExpiry) {
+                    throw IllegalArgumentException()
+                }
+                JsonObject().apply {
+                    addProperty("link_id", saved.tuple.linkId)
+                    addProperty("side", localSide)
+                    addProperty("owner_key_id", localScope.ownerKeyId)
+                    addProperty("signed_proof", java.util.Base64.getEncoder().encodeToString(proofBytes))
+                }
+            } else {
+                val preview = fresh.policyPreview ?: throw IllegalArgumentException()
+                val currentLink = fresh.authority.asPolicyCurrentLink()
+                val trustedPin = fresh.localPolicyPin ?: throw IllegalArgumentException()
+                val lifecycle = fresh.localPolicyLifecycle ?: throw IllegalArgumentException()
+                val statusBytes = fresh.policyStatus?.toString()?.toByteArray(StandardCharsets.UTF_8)
+                    ?: throw IllegalArgumentException()
+                val previewBytes = fresh.reviewPolicyPreviewBytes
+                    ?: throw IllegalArgumentException()
+                val request = LinkReviewPolicyEvidenceV164.buildGrantRequest(
+                    cachedPreview = preview,
+                    freshRawPreview = previewBytes,
+                    freshRawStatus = statusBytes,
+                    currentLink = currentLink,
+                    trustedLocalOwnerPin = trustedPin,
+                    trustedLocalOwnerLifecycle = lifecycle,
+                    proofJson = proofBytes,
+                    now = Instant.now(),
+                )
+                JsonParser.parseString(request.toJson()).asJsonObject
+            }
+        } catch (_: Exception) {
+            proofBytes.fill(0)
+            throw HubSessionException("LINK_OWNER_PROOF_INVALID", "Owner signature does not match the fresh Link consent scope")
+        }
+        val refreshedReview = saved.copy(
+            tuple = fresh.review.tuple,
+            consentDigest = fresh.review.consentDigest,
+            manifestRead = fresh.review.manifestRead,
+            statusRead = fresh.review.statusRead,
+            previewRead = fresh.review.previewRead,
+            policyJson = fresh.review.policyJson,
+        )
+        state.linkConsentLedger = try { state.linkConsentLedger.prepare(refreshedReview) } catch (_: Exception) {
+            proofBytes.fill(0)
+            throw HubSessionException("LINK_CONSENT_REVIEW_STALE", "Saved independent Owner pins no longer match the fresh Link authority")
+        }
+        val operation = if (saved.tuple.kind == "KEY") "link.key_grant" else "link.review_policy_grant"
+        val response = try {
+            createAndSend(state, operation, signedBody, beforePersist = { operationId, sequence, _ ->
+                val pending = state.pending
+                    ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link packet was not constructed")
+                val fence = LinkConsentLedger.WriteFence(
+                    operation = operation,
+                    operationId = operationId,
+                    requestSequence = sequence,
+                    expectedResponseSequence = pending.expectedResponseSequence
+                        ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original response sequence was not reserved"),
+                    signedProofJson = String(proofBytes, StandardCharsets.UTF_8),
+                    signedProofSha256 = LinkConsentLedger.digest(proofBytes),
+                    packetJson = pending.packetJson,
+                    packetSha256 = LinkConsentLedger.digest(pending.packetJson.toByteArray(StandardCharsets.UTF_8)),
+                    reviewId = refreshedReview.reviewId,
+                    consentDigest = refreshedReview.consentDigest,
+                    tupleDigest = LinkConsentLedger.digestTuple(refreshedReview.tuple),
+                    state = LinkConsentLedger.FenceState.PENDING,
+                )
+                state.linkConsentLedger = state.linkConsentLedger.stage(fence)
+            })
+        } finally {
+            proofBytes.fill(0)
+        }
+        JsonObject().apply {
+            addProperty("operationId", optionalString(response, "operationId") ?: "")
+            val ok = response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true
+            addProperty("ok", ok)
+            if (ok && saved.tuple.kind == "REVIEW_POLICY") {
+                // finishResponse validates the exact terminal candidate against the
+                // saved tuple and original proof at authenticated verified_at.
+                response.get("policyStatus")?.takeIf { it.isJsonObject }?.let {
+                    add("policyStatus", it.deepCopy())
+                } ?: throw HubSessionException("LINK_REVIEW_POLICY_RESULT_INVALID", "Verified terminal policy status is missing")
+            }
+            optionalString(response, "errorCode")?.let { addProperty("errorCode", it) }
+            response.get("originalOperationCompleted")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+                ?.let { addProperty("originalOperationCompleted", it) }
+            response.get("reconciliationRequired")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+                ?.let { addProperty("reconciliationRequired", it) }
+        }
+    }
+
+    /** Returns native-verified bilateral key proof metadata; never exposes retained proofs. */
+    fun readLinkKeyGrants(linkId: String, expectedLinkVersion: Long, profileGeneration: Long): JsonObject = PROCESS_LOCK.withLock {
+        requireLinkConsentGate()
+        val state = readState()
+        requireLinkConsentSession(state, profileGeneration, setOf("link.key_manifest", "link.key_grants"), allowFenceRead = true)
+        val prepared = prepareLinkConsentInternal(state, linkId, expectedLinkVersion, "KEY", null, profileGeneration)
+        val statuses = strictLinkKeyStatusRows(prepared.ownerGrantStatuses, prepared.authority)
+        val sourceVerified = prepared.sourceCurrentKey != null
+        val targetVerified = prepared.targetCurrentKey != null
+        val bilateral = if (sourceVerified && targetVerified) {
+            try {
+                prepared.authority.verifyOwnerGrants(prepared.ownerGrantStatusRead, prepared.ownerGrantStatuses, Instant.now())
+                true
+            } catch (_: Exception) {
+                throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Current bilateral Owner proof evidence failed native verification")
+            }
+        } else false
+        if (bilateral) resolveKeyGrantFenceIfExact(state, prepared)
+        JsonObject().apply {
+            addProperty("linkId", prepared.authority.currentLink.linkId)
+            addProperty("linkVersion", prepared.authority.currentLink.linkVersion.toString())
+            add("sourceStatus", statuses.first)
+            add("targetStatus", statuses.second)
+            addProperty("bilateralVerified", bilateral)
+            state.linkConsentLedger.writeFence?.let { addProperty("reconciliationRequired", true) }
+        }
+    }
+
+    /** Recovery either replays only the existing exact pending packet or reads fresh proof status. */
+    fun recoverLinkConsent(profileGeneration: Long): JsonObject = PROCESS_LOCK.withLock {
+        requireLinkConsentGate()
+        if (profileGeneration < 1) throw HubSessionException("INVALID_PROFILE_SCOPE", "Hub profile selection generation is invalid")
+        val state = readState()
+        val fence = state.linkConsentLedger.writeFence
+            ?: return@withLock JsonObject().apply { addProperty("reconciliationRequired", false) }
+        if (state.pending != null) {
+            if (state.pending!!.operationId != fence.operationId || state.pending!!.sequence != fence.requestSequence ||
+                state.pending!!.packetJson != fence.packetJson) {
+                throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Saved pending request differs from the original Link consent packet")
+            }
+            recoverPending()
+        } else if (state.authFenced) {
+            return@withLock linkConsentFenceReceipt(readState())
+        } else if (fence.operation == "link.key_grant") {
+            val tuple = state.linkConsentLedger.review?.tuple
+                ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link consent authority tuple is missing")
+            readLinkKeyGrants(tuple.linkId, tuple.linkVersion, profileGeneration)
+        } else {
+            val review = state.linkConsentLedger.review
+                ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link policy authority tuple is missing")
+            val current = readState()
+            requireLinkConsentSession(current, profileGeneration,
+                setOf("link.key_manifest", "link.key_grants", "link.review_policy_status"),
+                allowFenceRead = true)
+            // A partial policy candidate is intentionally not discoverable from the
+            // active-head endpoint. Reconcile only from a fresh manifest/key read and
+            // the active policy head; never re-preview or infer from cached recovery.
+            val fresh = prepareLinkConsentInternal(current, review.tuple.linkId, review.tuple.linkVersion,
+                "KEY", null, profileGeneration)
+            val selection = LinkReviewPolicySelection(
+                linkId = review.tuple.linkId,
+                linkVersion = fresh.authority.currentLink.linkVersion,
+                mySide = fresh.authority.provenance.localSide,
+            )
+            val statusRead = directLinkRead(
+                current, "link.review_policy_status", review.tuple.linkId, profileGeneration,
+                selection = selection,
+            )
+            val status = statusRead.result.takeIf { it.isJsonObject }?.asJsonObject
+                ?: throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "Fresh Link policy status is missing")
+            val parsed = try {
+                LinkReviewPolicyEvidenceV164.validateActiveStatus(
+                    status.toString().toByteArray(StandardCharsets.UTF_8), fresh.authority.asPolicyCurrentLink(), Instant.now())
+            } catch (_: Exception) {
+                throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "Fresh Link policy status failed native verification")
+            }
+            val sourceLifecycle = fresh.sourceCurrentKey
+            val targetLifecycle = fresh.targetCurrentKey
+            val currentTuple = fresh.review.tuple.copy(
+                kind = review.tuple.kind,
+                source = fresh.review.tuple.source.copy(
+                    ownerKeyState = sourceLifecycle?.state,
+                    ownerKeyVersion = sourceLifecycle?.version,
+                ),
+                target = fresh.review.tuple.target.copy(
+                    ownerKeyState = targetLifecycle?.state,
+                    ownerKeyVersion = targetLifecycle?.version,
+                ),
+                expectedPolicyVersion = review.tuple.expectedPolicyVersion,
+                policyVersion = review.tuple.policyVersion,
+                policyDigest = review.tuple.policyDigest,
+                maximumProofExpiresAt = review.tuple.maximumProofExpiresAt,
+                reviewers = review.tuple.reviewers,
+            )
+            val savedPolicy = review.policyJson?.let {
+                try { parseLinkConsentPolicy(JsonParser.parseString(it).asJsonObject) } catch (_: Exception) { null }
+            }
+            val sameReviewedPolicy = if (savedPolicy == null) false else try {
+                LinkReviewPolicyConsentValidation.canonicalPolicyJson(savedPolicy) ==
+                    LinkReviewPolicyConsentValidation.canonicalPolicyJson(parsed.policy)
+            } catch (_: Exception) { false }
+            if (parsed.current && parsed.policyVersion == review.tuple.policyVersion &&
+                parsed.policyDigest == review.tuple.policyDigest &&
+                parsed.linkId == review.tuple.linkId && parsed.linkVersion == review.tuple.linkVersion &&
+                parsed.contractDigest == review.tuple.contractDigest &&
+                fresh.authority.manifest.digest == review.tuple.manifestDigest &&
+                review.tuple.profileGeneration == profileGeneration && currentTuple == review.tuple &&
+                sameReviewedPolicy &&
+                statusRead.correlation.responseSequence > fence.expectedResponseSequence) {
+                val hashes = parsed.ownerApprovals.mapNotNull { it.proofBytesCopy()?.let(LinkConsentLedger::digest) }.toSet()
+                if (fence.signedProofSha256 in hashes) {
+                    val pair = LinkConsentLedger.VerifiedActivatedPair(
+                        linkId = parsed.linkId, linkVersion = parsed.linkVersion,
+                        contractDigest = parsed.contractDigest, manifestDigest = fresh.authority.manifest.digest,
+                        policyDigest = parsed.policyDigest, policyVersion = parsed.policyVersion,
+                        tupleDigest = fence.tupleDigest, includedSignedProofSha256 = hashes,
+                        freshResponseSequence = statusRead.correlation.responseSequence,
+                    )
+                    current.linkConsentLedger = current.linkConsentLedger.resolveActivatedPair(pair)
+                    clearLinkUncertainLatch(current, fence.operationId)
+                    writeState(current)
+                }
+            }
+        }
+        linkConsentFenceReceipt(readState())
+    }
+
+    private fun requireLinkConsentGate() {
+        if (!LINK_CONSENT_READY || !LinkConsentAuthorityFactory.CANDIDATE_READY) {
+            throw HubSessionException("VERIFIED_LINK_CONSENT_FLOW_NOT_READY", "The verified Link consent candidate is not enabled in this Client build")
+        }
+    }
+
+    /**
+     * Checks both public Hub metadata and the already authenticated encrypted
+     * session before any Link read or proof processing. These operations stay
+     * outside the generic RPC dispatcher, which always rejects them.
+     */
+    private fun requireLinkConsentSession(
+        state: State,
+        profileGeneration: Long,
+        operations: Set<String>,
+        allowFenceRead: Boolean,
+    ) {
+        if (profileGeneration < 1) throw HubSessionException("INVALID_PROFILE_SCOPE", "Hub profile selection generation is invalid")
+        requireReadyForRpc(state)
+        if (state.pending != null || state.recoveryBlocked || state.linkReviewStatusReadContext != null ||
+            state.linkConsentStatusReadContext != null) {
+            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact encrypted request before reading Link consent authority")
+        }
+        if (state.linkConsentLedger.writeFence != null && !allowFenceRead) {
+            throw HubSessionException("LINK_CONSENT_RECOVERY_REQUIRED", "Resolve the original Link consent packet before preparing another review")
+        }
+        if (state.uncertainNeedsReconciliation && !allowFenceRead) {
+            throw HubSessionException("BUSINESS_RECONCILIATION_REQUIRED", "Reconcile the previous authenticated Hub outcome before preparing Link consent")
+        }
+        if (!state.sessionCapabilitiesReady || state.role !in setOf("manager", "external") ||
+            "session.capabilities" !in state.allowedOperations) {
+            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "Read the current encrypted Owner session capabilities before Link consent")
+        }
+        val current = try { createAndSend(state, "session.capabilities", JsonObject()) }
+            catch (error: HubSessionException) { throw error }
+            catch (_: Exception) { throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "Could not refresh encrypted Owner session capabilities") }
+        if (current.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true ||
+            !state.sessionCapabilitiesReady || state.role !in setOf("manager", "external")) {
+            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "The Hub did not confirm current encrypted Owner session capabilities")
+        }
+        val required = (operations + "link.list" + "session.capabilities").toSet()
+        if (required.any { it !in RPC_OPERATIONS } || !state.allowedOperations.containsAll(required)) {
+            throw HubSessionException("RPC_OPERATION_NOT_AUTHORIZED", "The authenticated Owner session does not authorize the complete Link consent flow")
+        }
+        val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Hub pin is missing")
+        val metadata = try { fetchHubMetadata(pin.baseUrl).getAsJsonObject("capabilities") }
+            catch (_: Exception) { throw HubSessionException("NETWORK_OPERATION_UNAVAILABLE", "The pinned Hub metadata could not confirm the Link consent contract") }
+        val publicOperations = metadata.get(if (state.role == "external") "external_rpc_operations" else "available_rpc_operations")
+            ?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { item ->
+                item.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+            }?.toSet() ?: emptySet()
+        val e2ee = metadata.get("client_control_pq_e2ee")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true
+        val authenticated = metadata.get("authenticated_client_session")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true
+        if (!e2ee || !authenticated || !publicOperations.containsAll(required)) {
+            throw HubSessionException("NETWORK_OPERATION_UNAVAILABLE", "The pinned Hub public catalog does not advertise the complete Link consent flow")
+        }
+    }
+
+    /** Runs one dedicated RPC and creates correlation only after finishResponse authenticated it. */
+    private fun directLinkRead(
+        state: State,
+        operation: String,
+        linkId: String,
+        profileGeneration: Long,
+        body: JsonObject = JsonObject().apply { addProperty("link_id", linkId) },
+        selection: LinkReviewPolicySelection? = null,
+    ): DirectLinkRead {
+        if (operation !in LINK_CONSENT_OPERATIONS || operation in setOf("link.key_grant", "link.review_policy_grant")) {
+            throw HubSessionException("VERIFIED_LINK_CONSENT_FLOW_REQUIRED", "Only a dedicated Link consent read can create current authority")
+        }
+        if (state.pending != null) throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact encrypted request before reading Link consent authority")
+        if (operation == "link.review_policy_preview") {
+            requireExactBodyFields(body, setOf("link_id", "policy"), setOf("link_id", "policy"))
+        } else {
+            requireExactBodyFields(body, setOf("link_id"), setOf("link_id"))
+        }
+        if (optionalString(body, "link_id") != linkId) {
+            throw HubSessionException("INVALID_CLIENT_READ_REQUEST", "Link read selector differs from its selected authority")
+        }
+        val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Hub pin is missing")
+        val enrollment = state.enrollment ?: throw HubSessionException("DEVICE_NOT_ENROLLED", "Device enrollment is missing")
+        val operationId = UUID.randomUUID().toString()
+        val capturedSequence = state.nextSequence
+        var expectedResponseSequence = 0L
+        val response = try {
+            createAndSend(state, operation, body, operationId = operationId, beforePersist = { savedId, sequence, requestBody ->
+                val pending = state.pending
+                    ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link read was not persisted")
+                if (savedId != operationId || sequence != capturedSequence || pending.operation != operation ||
+                    pending.operationId != operationId || pending.sequence != sequence) {
+                    throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Link read request correlation changed before transmission")
+                }
+                expectedResponseSequence = pending.expectedResponseSequence
+                    ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Link read response sequence was not reserved")
+                if (operation == "link.review_policy_status") {
+                    val selected = selection
+                        ?: throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Candidate policy status requires an authenticated Link selection")
+                    if (state.linkReviewStatusReadContext != null || state.linkConsentStatusReadContext != null ||
+                        selected.linkId != linkId || selected.linkVersion < 1 || selected.mySide !in setOf("SOURCE", "TARGET")) {
+                        throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Candidate Link policy status selection is stale")
+                    }
+                    requireExactBodyFields(requestBody, setOf("link_id"), setOf("link_id"))
+                    state.linkConsentStatusReadContext = LinkConsentStatusReadContext(
+                        linkId = linkId,
+                        linkVersion = selected.linkVersion,
+                        mySide = selected.mySide,
+                        hubId = pin.hubId,
+                        ownerId = enrollment.ownerId,
+                        deviceId = enrollment.deviceId,
+                        sessionEpoch = enrollment.sessionEpoch,
+                        operationId = operationId,
+                        sequence = sequence,
+                        profileGeneration = profileGeneration,
+                    )
+                }
+            })
+        } catch (error: HubSessionException) {
+            throw error
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_READ_UNAVAILABLE", "The encrypted Link authority read did not complete")
+        }
+        if (optionalString(response, "operationId") != operationId ||
+            response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true ||
+            expectedResponseSequence < 1 || state.lastResponseSequence != expectedResponseSequence) {
+            throw HubSessionException("LINK_READ_UNAVAILABLE", "The authenticated Link authority read did not return a complete result")
+        }
+        val result = response.get("result")
+            ?: throw HubSessionException("LINK_READ_INVALID", "The authenticated Link authority read omitted its result")
+        val correlation = LinkConsentLedger.ReadCorrelation(
+            operation = operation,
+            operationId = operationId,
+            requestSequence = capturedSequence,
+            responseSequence = state.lastResponseSequence,
+            origin = "DIRECT",
+        )
+        return DirectLinkRead(result.deepCopy(), correlation)
+    }
+
+    private fun prepareLinkConsentInternal(
+        state: State,
+        linkId: String,
+        expectedLinkVersion: Long,
+        kind: String,
+        policy: LinkReviewPolicyConsentPolicy?,
+        profileGeneration: Long,
+    ): LinkConsentPreparation {
+        if (kind !in setOf("KEY", "REVIEW_POLICY") || (kind == "KEY") != (policy == null)) {
+            throw HubSessionException("INVALID_LINK_CONSENT_KIND", "Link consent kind or policy is invalid")
+        }
+        val operations = if (kind == "KEY") setOf("link.key_manifest", "link.key_grants") else
+            setOf("link.key_manifest", "link.key_grants", "link.review_policy_status", "link.review_policy_preview")
+        if (!state.allowedOperations.containsAll(operations + "link.list")) {
+            throw HubSessionException("RPC_OPERATION_NOT_AUTHORIZED", "The current Owner session does not authorize this Link consent read")
+        }
+        val selection = try { freshOwnerLinkSelection(state, requestToken(JsonObject().apply { addProperty("link_id", linkId) }, "link_id")) }
+            catch (error: HubSessionException) { throw error }
+            catch (_: Exception) { throw HubSessionException("LINK_REVIEW_LIST_INVALID", "Could not authenticate the selected Owner Link") }
+        if (selection.linkVersion != expectedLinkVersion) {
+            throw HubSessionException("LINK_CONSENT_REVIEW_STALE", "The selected Link version changed; refresh before reviewing consent")
+        }
+        val manifestRead = directLinkRead(state, "link.key_manifest", linkId, profileGeneration, selection = selection)
+        val manifestJson = manifestRead.result.takeIf { it.isJsonObject }?.asJsonObject
+            ?: throw HubSessionException("LINK_MANIFEST_INVALID", "The authenticated Link manifest result is not an object")
+        val ownerIds = try { linkManifestOwnerIds(manifestJson) }
+            catch (_: Exception) { throw HubSessionException("LINK_MANIFEST_INVALID", "The authenticated Link manifest owner scope is invalid") }
+        val ledger = state.linkConsentLedger
+        val sourcePinRecord = uniqueOwnerPin(ledger, ownerIds.first)
+        val targetPinRecord = uniqueOwnerPin(ledger, ownerIds.second)
+        val sourcePin = ownerAuthorityPin(sourcePinRecord)
+        val targetPin = ownerAuthorityPin(targetPinRecord)
+        val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Hub pin is missing")
+        val enrollment = state.enrollment ?: throw HubSessionException("DEVICE_NOT_ENROLLED", "Device enrollment is missing")
+        val provenance = FreshLinkManifestRead(
+            profileId = profileId,
+            profileGeneration = profileGeneration,
+            hubId = pin.hubId,
+            ownerId = enrollment.ownerId,
+            deviceId = enrollment.deviceId,
+            sessionEpoch = enrollment.sessionEpoch,
+            operation = manifestRead.correlation.operation,
+            operationId = manifestRead.correlation.operationId,
+            requestSequence = manifestRead.correlation.requestSequence,
+            responseSequence = manifestRead.correlation.responseSequence,
+            authenticatedResultSha256 = LinkConsentAuthorityFactory.manifestResultSha256(manifestJson),
+            selectedLinkId = linkId,
+            selectedLinkVersion = expectedLinkVersion,
+            localSide = selection.mySide,
+        )
+        val authority = try {
+            LinkConsentAuthorityFactory.verifyFreshManifest(provenance, manifestJson, sourcePin, targetPin, Instant.now())
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_MANIFEST_INVALID", "The Link manifest, Endpoint attestations or independent Owner pins did not verify")
+        }
+        val statusRead = directLinkRead(state, "link.key_grants", linkId, profileGeneration, selection = selection)
+        val statusArray = statusRead.result.takeIf { it.isJsonArray }?.asJsonArray
+            ?: throw HubSessionException("LINK_KEY_GRANTS_INVALID", "The authenticated Link key status result is not an array")
+        val statusProvenance = FreshLinkOwnerGrantStatusRead(
+            profileId = profileId,
+            profileGeneration = profileGeneration,
+            hubId = pin.hubId,
+            ownerId = enrollment.ownerId,
+            deviceId = enrollment.deviceId,
+            sessionEpoch = enrollment.sessionEpoch,
+            operation = statusRead.correlation.operation,
+            operationId = statusRead.correlation.operationId,
+            requestSequence = statusRead.correlation.requestSequence,
+            responseSequence = statusRead.correlation.responseSequence,
+            authenticatedResultSha256 = LinkConsentAuthorityFactory.ownerGrantStatusResultSha256(statusArray),
+            selectedLinkId = linkId,
+            selectedLinkVersion = expectedLinkVersion,
+            localSide = selection.mySide,
+            manifestDigest = authority.manifest.digest,
+        )
+        val sourceCurrentKey = try {
+            authority.verifyOwnerGrantStatusForSide(statusProvenance, statusArray, "SOURCE", Instant.now())?.currentOwnerKey
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_KEY_GRANTS_INVALID", "The current source Owner grant proof failed native verification")
+        }
+        val targetCurrentKey = try {
+            authority.verifyOwnerGrantStatusForSide(statusProvenance, statusArray, "TARGET", Instant.now())?.currentOwnerKey
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_KEY_GRANTS_INVALID", "The current target Owner grant proof failed native verification")
+        }
+
+        var policyStatusRead: LinkConsentLedger.ReadCorrelation? = null
+        var policyStatus: JsonObject? = null
+        var preview: LinkReviewPolicyV164Preview? = null
+        var policyPreviewRead: LinkConsentLedger.ReadCorrelation? = null
+        var policyStatusBytes: ByteArray? = null
+        var previewBytes: ByteArray? = null
+        var localPolicyLifecycle: LinkReviewPolicyV164OwnerLifecycle? = null
+        var localPolicyPin: LinkReviewPolicyV164OwnerPin? = null
+        var policyStatusDisplay: JsonObject? = null
+        val reviewers: List<LinkConsentLedger.ReviewerQualification>
+        val expectedPolicyVersion: Long?
+        val policyVersion: Long?
+        val policyDigest: String?
+        val maximumProofExpiresAt: String?
+        if (kind == "REVIEW_POLICY") {
+            val requested = policy ?: throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy is missing")
+            val statusReadResult = directLinkRead(state, "link.review_policy_status", linkId, profileGeneration, selection = selection)
+            policyStatusRead = statusReadResult.correlation
+            policyStatus = statusReadResult.result.takeIf { it.isJsonObject }?.asJsonObject
+                ?: throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "The authenticated Link policy status is not an object")
+            policyStatusBytes = policyStatus!!.toString().toByteArray(StandardCharsets.UTF_8)
+            val currentPolicyStatus = try {
+                LinkReviewPolicyEvidenceV164.validateActiveStatus(
+                    policyStatusBytes!!, authority.asPolicyCurrentLink(), Instant.now())
+            } catch (_: Exception) {
+                throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "The current Link policy status did not verify against both pinned Owners")
+            }
+            policyStatusDisplay = linkPolicyStatusDisplay(currentPolicyStatus)
+            val previewRead = directLinkRead(
+                state, "link.review_policy_preview", linkId, profileGeneration,
+                body = JsonObject().apply {
+                    addProperty("link_id", linkId)
+                    add("policy", JsonParser.parseString(LinkReviewPolicyConsentValidation.canonicalPolicyJson(requested)))
+                },
+                selection = selection,
+            )
+            policyPreviewRead = previewRead.correlation
+            previewBytes = previewRead.result.toString().toByteArray(StandardCharsets.UTF_8)
+            val parsedPreview = try {
+                LinkReviewPolicyEvidenceV164.validatePreview(
+                    rawPreview = previewBytes!!,
+                    reviewedPolicy = requested,
+                    rawCurrentStatus = policyStatusBytes!!,
+                    currentLink = authority.asPolicyCurrentLink(),
+                    now = Instant.now(),
+                )
+            } catch (_: Exception) {
+                throw HubSessionException("LINK_REVIEW_POLICY_PREVIEW_INVALID", "The current Link policy head, preview or reviewer qualifications did not verify")
+            }
+            preview = parsedPreview
+            val localKey = if (selection.mySide == "SOURCE") sourceCurrentKey else targetCurrentKey
+                ?: throw HubSessionException("LINK_OWNER_KEY_NOT_CURRENT", "A fresh accepted local Owner key proof is required before policy consent")
+            if (localKey == null) throw HubSessionException("LINK_OWNER_KEY_NOT_CURRENT", "A fresh accepted local Owner key proof is required before policy consent")
+            localPolicyPin = if (selection.mySide == "SOURCE") authority.asPolicyCurrentLink().sourceOwnerPin
+                else authority.asPolicyCurrentLink().targetOwnerPin
+            localPolicyLifecycle = LinkReviewPolicyV164OwnerLifecycle(
+                ownerId = localKey.ownerId,
+                keyId = localKey.keyId,
+                state = localKey.state,
+                version = localKey.version,
+            )
+            reviewers = parsedPreview.reviewerQualifications.map { qualification ->
+                LinkConsentLedger.ReviewerQualification(
+                    endpointId = qualification.endpointId,
+                    groupId = qualification.groupId,
+                    membershipRevision = qualification.membershipRevision,
+                    joinRevision = qualification.joinRevision,
+                    groupVersion = qualification.groupVersion,
+                    bindingId = qualification.bindingId,
+                    bindingEpoch = qualification.bindingEpoch,
+                    action = qualification.action,
+                    leaseExpiresAt = GroupKeyManifestVerifier.formatCanonicalUtc(qualification.leaseExpiresAt),
+                )
+            }
+            expectedPolicyVersion = parsedPreview.expectedPolicyVersion
+            policyVersion = parsedPreview.policyVersion
+            policyDigest = parsedPreview.policyDigest
+            maximumProofExpiresAt = GroupKeyManifestVerifier.formatCanonicalUtc(parsedPreview.maximumProofExpiresAt)
+        } else {
+            reviewers = emptyList()
+            expectedPolicyVersion = null
+            policyVersion = null
+            policyDigest = null
+            maximumProofExpiresAt = null
+        }
+        val includeOwnerLifecycle = kind == "REVIEW_POLICY"
+        val source = buildLinkSideScope(authority, manifestJson, "SOURCE", sourcePinRecord,
+            if (includeOwnerLifecycle) sourceCurrentKey else null)
+        val target = buildLinkSideScope(authority, manifestJson, "TARGET", targetPinRecord,
+            if (includeOwnerLifecycle) targetCurrentKey else null)
+        val now = Instant.now()
+        val linkExpiry = authority.manifest.linkExpiresAt
+        val signerMaxExpiry = if (kind == "KEY") minOf(linkExpiry, now.plus(5, ChronoUnit.MINUTES))
+            else minOf(preview!!.maximumProofExpiresAt, now.plus(5, ChronoUnit.MINUTES))
+        if (!signerMaxExpiry.isAfter(now)) throw HubSessionException("LINK_CONSENT_REVIEW_EXPIRED", "Link proof expiry is not in the future")
+        val tuple = LinkConsentLedger.AuthorityTuple(
+            profileId = profileId,
+            profileGeneration = profileGeneration,
+            hubId = pin.hubId,
+            ownerId = enrollment.ownerId,
+            deviceId = enrollment.deviceId,
+            sessionEpoch = enrollment.sessionEpoch,
+            linkId = linkId,
+            linkVersion = expectedLinkVersion,
+            contractDigest = authority.manifest.contractDigest,
+            manifestDigest = authority.manifest.digest,
+            localSide = selection.mySide,
+            kind = kind,
+            direction = authority.currentLink.direction,
+            actions = authority.currentLink.actions,
+            dataScopes = authority.currentLink.dataScopes,
+            expiresAt = authority.currentLink.expiresAt,
+            source = source,
+            target = target,
+            expectedPolicyVersion = expectedPolicyVersion,
+            policyVersion = policyVersion,
+            policyDigest = policyDigest,
+            maximumProofExpiresAt = maximumProofExpiresAt,
+            reviewers = reviewers,
+        )
+        val localPinRecord = if (selection.mySide == "SOURCE") sourcePinRecord else targetPinRecord
+        val peerPinRecord = if (selection.mySide == "SOURCE") targetPinRecord else sourcePinRecord
+        val signingRequest = linkConsentSigningRequest(
+            kind = kind,
+            ownerId = enrollment.ownerId,
+            ownerKeyId = localPinRecord.keyId,
+            ownerFingerprint = localPinRecord.fingerprint,
+            linkId = linkId,
+            linkVersion = expectedLinkVersion,
+            contractDigest = authority.manifest.contractDigest,
+            side = selection.mySide,
+            maximumExpiry = signerMaxExpiry,
+            policyExpectedVersion = expectedPolicyVersion,
+            policyVersion = policyVersion,
+            digest = policyDigest ?: authority.manifest.digest,
+        )
+        val review = LinkConsentLedger.Review(
+            reviewId = UUID.randomUUID().toString(),
+            consentDigest = LinkConsentLedger.digestTuple(tuple),
+            tuple = tuple,
+            manifestRead = manifestRead.correlation,
+            statusRead = statusRead.correlation,
+            previewRead = policyPreviewRead,
+            policyJson = if (kind == "REVIEW_POLICY") LinkReviewPolicyConsentValidation.canonicalPolicyJson(policy!!) else null,
+            signingRequestJson = signingRequest,
+            createdAt = GroupKeyManifestVerifier.formatCanonicalUtc(now),
+        )
+        return LinkConsentPreparation(
+            review = review,
+            authority = authority,
+            ownerGrantStatusRead = statusProvenance,
+            ownerGrantStatuses = statusArray.deepCopy(),
+            sourceCurrentKey = sourceCurrentKey,
+            targetCurrentKey = targetCurrentKey,
+            policyStatusRead = policyStatusRead,
+            policyStatus = policyStatus?.deepCopy(),
+            policyPreview = preview,
+            reviewPolicyStatusBytes = policyStatusBytes?.clone(),
+            reviewPolicyPreviewBytes = previewBytes?.clone(),
+            localPolicyLifecycle = localPolicyLifecycle,
+            localPolicyPin = localPolicyPin,
+            policyStatusDisplay = policyStatusDisplay,
+        )
+    }
+
+    private fun linkManifestOwnerIds(manifest: JsonObject): Pair<String, String> {
+        val encoded = optionalString(manifest, "contract_canonical") ?: throw IllegalArgumentException()
+        val bytes = java.util.Base64.getDecoder().decode(encoded)
+        if (bytes.isEmpty() || bytes.size > 64 * 1024 || java.util.Base64.getEncoder().encodeToString(bytes) != encoded) {
+            throw IllegalArgumentException()
+        }
+        val text = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        val contract = parseObject(text, "Link contract is invalid")
+        val source = optionalString(contract, "source_owner_id") ?: throw IllegalArgumentException()
+        val target = optionalString(contract, "target_owner_id") ?: throw IllegalArgumentException()
+        return source to target
+    }
+
+    private fun uniqueOwnerPin(ledger: LinkConsentLedger, ownerId: String): LinkConsentLedger.OwnerPin {
+        val matches = ledger.ownerPins.filter { it.ownerId == ownerId }
+        if (matches.size != 1) throw HubSessionException("OWNER_PIN_REQUIRED", "Confirm exactly one independent full public key pin for each Link Owner")
+        return matches.single()
+    }
+
+    /** Strictly accepts only three public identity fields, with bounded input and no duplicates. */
+    private fun parseIndependentOwnerIdentity(raw: String): ClientWireCrypto.PublicIdentity {
+        val bytes = raw.toByteArray(StandardCharsets.UTF_8)
+        if (bytes.isEmpty() || bytes.size > LinkConsentLedger.MAX_PUBLIC_IDENTITY_BYTES) {
+            throw IllegalArgumentException("Owner public identity size is invalid")
+        }
+        val decoded = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        val fields = linkedMapOf<String, String>()
+        JsonReader(StringReader(decoded)).apply { strictness = Strictness.STRICT }.use { reader ->
+            reader.beginObject()
+            while (reader.hasNext()) {
+                val name = reader.nextName()
+                if (name !in OWNER_PUBLIC_IDENTITY_FIELDS || fields.containsKey(name) ||
+                    reader.peek() != JsonToken.STRING) {
+                    throw IllegalArgumentException("Owner public identity fields are invalid")
+                }
+                fields[name] = reader.nextString()
+            }
+            reader.endObject()
+            if (reader.peek() != JsonToken.END_DOCUMENT || fields.keys != OWNER_PUBLIC_IDENTITY_FIELDS) {
+                throw IllegalArgumentException("Owner public identity fields are invalid")
+            }
+        }
+        val value = JsonObject().apply {
+            addProperty("id", fields.getValue("id"))
+            addProperty("kem_public", fields.getValue("kem_public"))
+            addProperty("signing_public", fields.getValue("signing_public"))
+        }
+        return ClientWireCrypto.PublicIdentity.parse(value)
+    }
+
+    private fun ownerAuthorityPin(record: LinkConsentLedger.OwnerPin): LinkKeyManifestVerifier.OwnerPublicKeyPin {
+        val identity = try { ClientWireCrypto.PublicIdentity.parse(parseObject(record.publicIdentityJson, "Owner public key pin is invalid")) }
+            catch (_: Exception) { throw HubSessionException("OWNER_PIN_INVALID", "Saved independent Owner public key pin is invalid") }
+        if (identity.id != record.keyId || identity.fingerprint() != record.fingerprint) {
+            throw HubSessionException("OWNER_PIN_INVALID", "Saved independent Owner public key pin does not match its fingerprint")
+        }
+        return LinkKeyManifestVerifier.OwnerPublicKeyPin(record.ownerId, record.keyId, identity)
+    }
+
+    private fun buildLinkSideScope(
+        authority: VerifiedCurrentLinkAuthority,
+        manifest: JsonObject,
+        side: String,
+        ownerPin: LinkConsentLedger.OwnerPin,
+        currentOwnerKey: LinkKeyManifestVerifier.CurrentOwnerKeyAuthority?,
+    ): LinkConsentLedger.SideScope {
+        val current = if (side == "SOURCE") authority.currentLink.source else authority.currentLink.target
+        val verifiedCandidate = if (side == "SOURCE") authority.manifest.source else authority.manifest.target
+        val candidate = manifest.get(side.lowercase())?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Link manifest omitted an Endpoint candidate")
+        val bindingId = optionalString(candidate, "binding_id") ?: throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Endpoint binding is invalid")
+        val bindingEpoch = strictLong(candidate, "binding_epoch", 1L, Long.MAX_VALUE)
+        val candidateVersion = strictLong(candidate, "candidate_version", 1L, Long.MAX_VALUE)
+        val keyId = optionalString(candidate, "key_id") ?: throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Endpoint key ID is invalid")
+        val fingerprint = optionalString(candidate, "key_fingerprint") ?: throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Endpoint fingerprint is invalid")
+        val proofDigest = optionalString(candidate, "proof_digest") ?: throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Endpoint proof digest is invalid")
+        if (current.endpointId != verifiedCandidate.endpointId || current.groupId != verifiedCandidate.groupId ||
+            current.ownerId != verifiedCandidate.ownerId || current.bindingId != bindingId ||
+            current.bindingEpoch != bindingEpoch || current.candidateVersion != candidateVersion ||
+            verifiedCandidate.publicIdentity.id != keyId || verifiedCandidate.keyFingerprint != fingerprint ||
+            ownerPin.ownerId != current.ownerId ||
+            currentOwnerKey?.let { it.ownerId != ownerPin.ownerId || it.keyId != ownerPin.keyId ||
+                it.publicIdentity.fingerprint() != ownerPin.fingerprint || it.state != "ACTIVE" || it.version <= 0 } == true) {
+            throw HubSessionException("LINK_MANIFEST_INVALID", "Verified Endpoint or Owner key scope changed")
+        }
+        return LinkConsentLedger.SideScope(
+            endpointId = current.endpointId,
+            groupId = current.groupId,
+            principalId = current.principalId,
+            ownerId = current.ownerId,
+            nodeId = current.nodeId,
+            bindingId = bindingId,
+            bindingEpoch = bindingEpoch,
+            candidateVersion = candidateVersion,
+            keyId = keyId,
+            keyFingerprint = fingerprint,
+            proofDigest = proofDigest,
+            membershipRevision = current.membershipRevision,
+            joinRevision = current.joinRevision,
+            groupVersion = current.groupVersion,
+            ownerKeyId = ownerPin.keyId,
+            ownerFingerprint = ownerPin.fingerprint,
+            ownerKeyState = currentOwnerKey?.state,
+            ownerKeyVersion = currentOwnerKey?.version,
+            ownerPinRevision = ownerPin.pinRevision,
+        )
+    }
+
+    private fun linkConsentSigningRequest(
+        kind: String,
+        ownerId: String,
+        ownerKeyId: String,
+        ownerFingerprint: String,
+        linkId: String,
+        linkVersion: Long,
+        contractDigest: String,
+        side: String,
+        maximumExpiry: Instant,
+        policyExpectedVersion: Long?,
+        policyVersion: Long?,
+        digest: String,
+    ): String = JsonObject().apply {
+        addProperty("schema", "cicada.client.link-consent-signing-request.v1")
+        addProperty("kind", kind)
+        addProperty("owner_id", ownerId)
+        addProperty("owner_key_id", ownerKeyId)
+        addProperty("owner_key_fingerprint", ownerFingerprint)
+        addProperty("link_id", linkId)
+        addProperty("link_version", linkVersion)
+        addProperty("contract_digest", contractDigest)
+        addProperty("side", side)
+        val canonicalExpiry = GroupKeyManifestVerifier.formatCanonicalUtc(maximumExpiry)
+        addProperty("max_expiry", canonicalExpiry)
+        addProperty("expires_at", canonicalExpiry)
+        if (kind == "KEY") addProperty("manifest_digest", digest) else {
+            addProperty("policy_digest", digest)
+            addProperty("expected_policy_version", policyExpectedVersion
+                ?: throw HubSessionException("LINK_CONSENT_REVIEW_INVALID", "Expected review policy head is missing"))
+            addProperty("policy_version", policyVersion
+                ?: throw HubSessionException("LINK_CONSENT_REVIEW_INVALID", "Candidate review policy version is missing"))
+        }
+    }.toString()
+
+    private fun parseLinkConsentPolicy(policy: JsonObject?): LinkReviewPolicyConsentPolicy {
+        if (policy == null) throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy is required")
+        return try {
+            requireExactBodyFields(policy,
+                setOf("mode", "reviewers", "max_failovers", "reviewer_lease_seconds", "max_review_age_seconds"),
+                setOf("mode", "reviewers", "max_failovers", "reviewer_lease_seconds", "max_review_age_seconds"))
+            val mode = optionalString(policy, "mode") ?: throw IllegalArgumentException()
+            val reviewers = policy.get("reviewers")?.takeIf { it.isJsonArray }?.asJsonArray?.map { item ->
+                val row = item.takeIf { it.isJsonObject }?.asJsonObject ?: throw IllegalArgumentException()
+                requireExactBodyFields(row, setOf("endpoint_id", "group_id"), setOf("endpoint_id", "group_id"))
+                LinkReviewPolicyConsentReviewer(
+                    requestToken(row, "endpoint_id"), requestToken(row, "group_id"),
+                )
+            } ?: throw IllegalArgumentException()
+            val candidate = LinkReviewPolicyConsentPolicy(
+                mode = mode,
+                reviewers = reviewers,
+                maxFailovers = strictInt(policy, "max_failovers", 0, Int.MAX_VALUE),
+                reviewerLeaseSeconds = strictInt(policy, "reviewer_lease_seconds", 0, Int.MAX_VALUE),
+                maxReviewAgeSeconds = strictInt(policy, "max_review_age_seconds", 0, Int.MAX_VALUE),
+            )
+            LinkReviewPolicyConsentValidation.canonicalPolicyJson(candidate)
+            candidate
+        } catch (_: Exception) {
+            throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy is malformed or outside the supported bound")
+        }
+    }
+
+    private fun strictLinkKeyStatusRows(
+        array: JsonArray,
+        authority: VerifiedCurrentLinkAuthority,
+    ): Pair<JsonObject, JsonObject> {
+        // The authority verifier already checked the exact array hash, tuple, and
+        // proof contents. This pass creates only the tiny UI metadata projection.
+        if (array.size() != 2) throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Both current Link status rows are required")
+        val rows = array.map { it.takeIf { element -> element.isJsonObject }?.asJsonObject
+            ?: throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Link status row is malformed") }
+        fun project(side: String): JsonObject {
+            val row = rows.singleOrNull { optionalString(it, "side") == side }
+                ?: throw HubSessionException("LINK_KEY_GRANTS_INVALID", "A current Link status side is missing")
+            val currentStatus = optionalString(row, "current_status")
+                ?: throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Current Link status is malformed")
+            val accepted = row.get("accepted")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+                ?: throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Current Link acceptance state is malformed")
+            if (currentStatus !in setOf("MISSING", "ACCEPTED", "KEY_BINDING_STALE", "OWNER_KEY_REVOKED", "PROOF_EXPIRED", "INVALID", "LEGACY_KEY_UNBOUND") ||
+                (currentStatus == "ACCEPTED" && !accepted)) {
+                throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Current Link status is outside the supported state set")
+            }
+            return JsonObject().apply {
+                addProperty("side", side)
+                addProperty("currentStatus", currentStatus)
+                addProperty("accepted", accepted)
+            }
+        }
+        // Keep the factory argument used as a deliberate provenance boundary.
+        if (authority.currentLink.linkId.isBlank()) throw HubSessionException("LINK_KEY_GRANTS_INVALID", "Verified Link authority is unavailable")
+        return project("SOURCE") to project("TARGET")
+    }
+
+    private fun resolveKeyGrantFenceIfExact(state: State, prepared: LinkConsentPreparation) {
+        val fence = state.linkConsentLedger.writeFence ?: return
+        if (fence.operation != "link.key_grant" || prepared.review.tuple.kind != "KEY") return
+        val existing = state.linkConsentLedger.review ?: return
+        if (prepared.review.tuple != existing.tuple || fence.tupleDigest != LinkConsentLedger.digestTuple(existing.tuple) ||
+            prepared.ownerGrantStatusRead.responseSequence <= fence.expectedResponseSequence) return
+        val hashes = try {
+            prepared.ownerGrantStatuses.map { row ->
+                val evidence = row.takeIf { it.isJsonObject }?.asJsonObject?.get("evidence")
+                    ?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: return
+                val encoded = optionalString(evidence, "signed_proof")
+                    ?: return
+                val raw = java.util.Base64.getDecoder().decode(encoded)
+                if (java.util.Base64.getEncoder().encodeToString(raw) != encoded || raw.isEmpty() || raw.size > LinkConsentLedger.MAX_PROOF_BYTES) return
+                LinkConsentLedger.digest(raw)
+            }.toSet()
+        } catch (_: Exception) { return }
+        if (fence.signedProofSha256 !in hashes) return
+        val sourceKey = prepared.sourceCurrentKey ?: return
+        val targetKey = prepared.targetCurrentKey ?: return
+        if (sourceKey.state != "ACTIVE" || targetKey.state != "ACTIVE") return
+        try {
+            state.linkConsentLedger = state.linkConsentLedger.resolveActivatedPair(
+                LinkConsentLedger.VerifiedActivatedPair(
+                    linkId = prepared.authority.currentLink.linkId,
+                    linkVersion = prepared.authority.currentLink.linkVersion,
+                    contractDigest = prepared.authority.manifest.contractDigest,
+                    manifestDigest = prepared.authority.manifest.digest,
+                    policyDigest = null,
+                    policyVersion = null,
+                    tupleDigest = fence.tupleDigest,
+                    includedSignedProofSha256 = hashes,
+                    freshResponseSequence = prepared.ownerGrantStatusRead.responseSequence,
+                ),
+            )
+            clearLinkUncertainLatch(state, fence.operationId)
+            writeState(state)
+        } catch (_: Exception) {
+            // A mismatch keeps the original fence and exact packet intact.
+        }
+    }
+
+    private fun linkConsentReviewJson(review: LinkConsentLedger.Review, policyStatus: JsonObject?): JsonObject {
+        val tuple = review.tuple
+        val local = if (tuple.localSide == "SOURCE") tuple.source else tuple.target
+        val peer = if (tuple.localSide == "SOURCE") tuple.target else tuple.source
+        val maximumExpiry = tuple.maximumProofExpiresAt ?: run {
+            val signer = parseObject(review.signingRequestJson, "Saved Owner signing request is invalid")
+            optionalString(signer, "max_expiry") ?: throw HubSessionException("LINK_CONSENT_REVIEW_INVALID", "Owner signing expiry is missing")
+        }
+        return JsonObject().apply {
+            addProperty("reviewId", review.reviewId)
+            addProperty("consentDigest", review.consentDigest)
+            addProperty("linkId", tuple.linkId)
+            addProperty("linkVersion", tuple.linkVersion.toString())
+            addProperty("side", tuple.localSide)
+            addProperty("manifestDigest", tuple.manifestDigest)
+            addProperty("contractDigest", tuple.contractDigest)
+            addProperty("sourceEndpointId", tuple.source.endpointId)
+            addProperty("sourceGroupId", tuple.source.groupId)
+            addProperty("targetEndpointId", tuple.target.endpointId)
+            addProperty("targetGroupId", tuple.target.groupId)
+            addProperty("direction", tuple.direction)
+            add("actions", JsonArray().apply { tuple.actions.forEach(::add) })
+            add("dataScopes", JsonArray().apply { tuple.dataScopes.forEach(::add) })
+            addProperty("expiresAt", tuple.expiresAt)
+            addProperty("sourceKeyFingerprint", tuple.source.keyFingerprint)
+            addProperty("targetKeyFingerprint", tuple.target.keyFingerprint)
+            tuple.policyDigest?.let { addProperty("policyDigest", it) }
+            tuple.policyVersion?.let { addProperty("policyVersion", it.toString()) }
+            addProperty("maximumProofExpiresAt", maximumExpiry)
+            addProperty("ownerKeyId", local.ownerKeyId)
+            addProperty("ownerKeyFingerprint", "sha256:${local.ownerFingerprint}")
+            addProperty("peerOwnerKeyFingerprint", "sha256:${peer.ownerFingerprint}")
+            add("qualifications", JsonArray().apply {
+                tuple.reviewers.forEach { qualification -> add(JsonObject().apply {
+                    addProperty("endpointId", qualification.endpointId)
+                    addProperty("groupId", qualification.groupId)
+                    addProperty("membershipRevision", qualification.membershipRevision.toString())
+                    addProperty("joinRevision", qualification.joinRevision.toString())
+                    addProperty("groupVersion", qualification.groupVersion.toString())
+                    addProperty("bindingId", qualification.bindingId)
+                    addProperty("bindingEpoch", qualification.bindingEpoch.toString())
+                    addProperty("leaseExpiresAt", qualification.leaseExpiresAt)
+                    addProperty("action", qualification.action)
+                }) }
+            })
+            addProperty("signingRequestJson", review.signingRequestJson)
+            policyStatus?.let { add("currentPolicyStatus", it.deepCopy()) }
+        }
+    }
+
+    private fun linkPolicyStatusDisplay(status: LinkReviewPolicyV164Status): JsonObject {
+        val bySide = status.ownerApprovals.associateBy { it.side }
+        // The wire's unconfigured NONE head has no approval rows or digest.
+        val unconfigured = status.policyVersion == 0L
+        val source = bySide["SOURCE"]
+        val target = bySide["TARGET"]
+        if (!unconfigured && (source == null || target == null)) {
+            throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "Configured policy status omitted an Owner side")
+        }
+        val bilateral = !unconfigured && status.current &&
+            source?.currentStatus == "VERIFIED" && target?.currentStatus == "VERIFIED" &&
+            source.verifiedProof != null && target.verifiedProof != null
+        return JsonObject().apply {
+            addProperty("policyVersion", status.policyVersion.toString())
+            addProperty("digest", status.policyDigest)
+            addProperty("current", status.current)
+            addProperty("sourceStatus", source?.currentStatus ?: "MISSING")
+            addProperty("targetStatus", target?.currentStatus ?: "MISSING")
+            addProperty("bilateralVerified", bilateral)
+        }
+    }
+
+    private fun linkConsentFenceReceipt(state: State): JsonObject = JsonObject().apply {
+        val fence = state.linkConsentLedger.writeFence
+        addProperty("reconciliationRequired", fence != null)
+        fence?.let {
+            addProperty("operation", it.operation)
+            addProperty("operationId", it.operationId)
+            addProperty("requestSequence", it.requestSequence.toString())
+            addProperty("state", it.state.name)
+        }
+    }
+
+    private fun strictLong(value: JsonObject, key: String, minimum: Long, maximum: Long): Long {
+        val token = value.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asString
+            ?: throw IllegalArgumentException("Invalid integer")
+        if (!token.matches(Regex("0|[1-9][0-9]*"))) throw IllegalArgumentException("Invalid integer")
+        val parsed = token.toLongOrNull() ?: throw IllegalArgumentException("Integer out of range")
+        if (parsed !in minimum..maximum) throw IllegalArgumentException("Integer out of range")
+        return parsed
+    }
+
+    private fun strictInt(value: JsonObject, key: String, minimum: Int, maximum: Int): Int =
+        strictLong(value, key, minimum.toLong(), maximum.toLong()).toInt()
+
+    /** Reads a metadata-only policy status through the current scoped profile. */
+    fun linkReviewPolicyStatus(linkId: String, expectedLinkVersion: Long): JsonObject =
+        linkReviewPolicyStatus(linkId, expectedLinkVersion, 1L)
+
+    /**
+     * v1.6.4 adds proof-bearing fields to the status response. This legacy UI
+     * read projects only the bounded metadata fields it already displays; it
+     * never exposes or treats the embedded Owner evidence as verified consent.
+     */
+    fun linkReviewPolicyStatus(
+        linkId: String,
+        expectedLinkVersion: Long,
+        profileGeneration: Long,
+    ): JsonObject = PROCESS_LOCK.withLock {
         val selector = try {
             LinkReviewPolicyStatusValidation.validateLinkId(linkId)
         } catch (_: LinkReviewPolicyStatusValidationException) {
@@ -1267,52 +2432,93 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
 
         val state = readState()
-        requireReadyForRpc(state)
-        if (state.pending != null || state.linkReviewStatusReadContext != null) {
-            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact pending encrypted request before reading Link policy status")
-        }
-        if (state.recoveryBlocked) {
-            throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Resolve the existing encrypted recovery fence before reading Link policy status")
-        }
-        if (!state.sessionCapabilitiesReady || state.role !in setOf("manager", "external")) {
-            throw HubSessionException("SESSION_CAPABILITIES_REQUIRED", "First read current encrypted Owner session capabilities")
-        }
-        validateOperation(state, "link.list")
-        validateOperation(state, "link.review_policy_status")
+        requireLinkConsentSession(state, profileGeneration, setOf("link.review_policy_status"), allowFenceRead = false)
 
         val selection = freshOwnerLinkSelection(state, selector)
         if (selection.linkVersion != expectedLinkVersion) {
             throw HubSessionException("LINK_REVIEW_LINK_STALE", "Selected Link changed; refresh the Link list before reading its policy status")
         }
-        val pin = state.pin ?: throw HubSessionException("HUB_NOT_PINNED", "Hub pin is missing")
-        val enrollment = state.enrollment ?: throw HubSessionException("DEVICE_NOT_ENROLLED", "Device enrollment is missing")
-        val response = createAndSend(
-            state,
-            "link.review_policy_status",
-            JsonObject().apply { addProperty("link_id", selection.linkId) },
-            beforePersist = { operationId, sequence, requestBody ->
-                requireExactBodyFields(requestBody, setOf("link_id"), setOf("link_id"))
-                if (optionalString(requestBody, "link_id") != selection.linkId || state.pending?.operation != "link.review_policy_status") {
-                    throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Link status request differs from its authenticated selection")
-                }
-                state.linkReviewStatusReadContext = LinkReviewStatusReadContext(
-                    selection.linkId,
-                    selection.linkVersion,
-                    selection.mySide,
-                    pin.hubId,
-                    enrollment.ownerId,
-                    enrollment.deviceId,
-                    enrollment.sessionEpoch,
-                    operationId,
-                    sequence,
-                )
-            },
-        )
-        if (response.get("ok")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean != true) {
-            throw HubSessionException("LINK_REVIEW_STATUS_UNAVAILABLE", "Hub did not return the requested Link policy status")
-        }
-        response.get("result")?.takeIf { it.isJsonObject }?.asJsonObject?.deepCopy()
+        val read = directLinkRead(state, "link.review_policy_status", selection.linkId, profileGeneration,
+            selection = selection)
+        val raw = read.result.takeIf { it.isJsonObject }?.asJsonObject
             ?: throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Hub returned no Link policy status DTO")
+        val metadata = sanitizeV164PolicyStatusMetadata(raw, selector, expectedLinkVersion)
+        try {
+            LinkReviewPolicyStatusValidation.validateStatus(metadata, selector, expectedLinkVersion)
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Authenticated Link policy metadata is malformed or out of scope")
+        }
+        metadata
+    }
+
+    private fun sanitizeV164PolicyStatusMetadata(
+        raw: JsonObject,
+        expectedLinkId: String,
+        expectedLinkVersion: Long,
+    ): JsonObject {
+        try {
+            val required = setOf("link_id", "link_version", "contract_digest", "policy_version", "policy_digest",
+                "policy", "current", "accepted_sides", "verified_at", "owner_approvals")
+            val optional = setOf("expires_at")
+            if (!raw.keySet().containsAll(required) || raw.keySet().any { it !in required && it !in optional }) {
+                throw IllegalArgumentException()
+            }
+            if (optionalString(raw, "link_id") != expectedLinkId || strictLong(raw, "link_version", 1L, Long.MAX_VALUE) != expectedLinkVersion ||
+                optionalString(raw, "contract_digest")?.matches(Regex("[0-9a-f]{64}")) != true ||
+                optionalString(raw, "verified_at") == null) throw IllegalArgumentException()
+        val approvals = raw.get("owner_approvals")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException()
+            val policyVersion = strictLong(raw, "policy_version", 0L, Long.MAX_VALUE)
+            if ((policyVersion == 0L && approvals.size() != 0) ||
+                (policyVersion > 0L && approvals.size() != 2)) throw IllegalArgumentException()
+            val statusBySide = linkedMapOf<String, String>()
+            for (item in approvals) {
+                val row = item.takeIf { it.isJsonObject }?.asJsonObject ?: throw IllegalArgumentException()
+                val rowRequired = setOf("side", "owner_id", "current_status")
+                if (!row.keySet().containsAll(rowRequired) || row.keySet().any { it !in rowRequired && it != "evidence" }) {
+                    throw IllegalArgumentException()
+                }
+                val side = optionalString(row, "side") ?: throw IllegalArgumentException()
+                val owner = optionalString(row, "owner_id") ?: throw IllegalArgumentException()
+                val status = optionalString(row, "current_status") ?: throw IllegalArgumentException()
+                if (side !in setOf("SOURCE", "TARGET") || owner.isBlank() ||
+                    status !in setOf("MISSING", "VERIFIED", "OWNER_KEY_REVOKED", "PROOF_EXPIRED", "SCOPE_STALE", "INVALID") ||
+                    statusBySide.put(side, status) != null) throw IllegalArgumentException()
+                row.get("evidence")?.takeUnless { it.isJsonNull }?.let { evidenceElement ->
+                    val evidence = evidenceElement.takeIf { it.isJsonObject }?.asJsonObject ?: throw IllegalArgumentException()
+                    val allowedEvidence = setOf("owner_key_id", "owner_public_identity", "owner_key_state", "owner_key_version", "signed_proof", "accepted_at")
+                    if (!evidence.keySet().containsAll(allowedEvidence) || evidence.keySet().any { it !in allowedEvidence }) {
+                        throw IllegalArgumentException()
+                    }
+                }
+            }
+            if (policyVersion == 0L) {
+                if (statusBySide.isNotEmpty()) throw IllegalArgumentException()
+            } else if (statusBySide.keys != setOf("SOURCE", "TARGET")) {
+                throw IllegalArgumentException()
+            }
+            val accepted = raw.get("accepted_sides")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: throw IllegalArgumentException()
+            val acceptedSides = accepted.map { item ->
+                item.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: throw IllegalArgumentException()
+            }
+            if (acceptedSides != listOf("SOURCE", "TARGET").filter { statusBySide[it] == "VERIFIED" }) {
+                throw IllegalArgumentException()
+            }
+            val sanitized = JsonObject().apply {
+                add("link_id", raw.get("link_id").deepCopy())
+                add("link_version", raw.get("link_version").deepCopy())
+                add("policy_version", raw.get("policy_version").deepCopy())
+                add("policy_digest", raw.get("policy_digest").deepCopy())
+                add("policy", raw.get("policy").deepCopy())
+                add("current", raw.get("current").deepCopy())
+                add("accepted_sides", raw.get("accepted_sides").deepCopy())
+                raw.get("expires_at")?.let { add("expires_at", it.deepCopy()) }
+            }
+            return sanitized
+        } catch (_: Exception) {
+            throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Authenticated Link policy status is malformed")
+        }
     }
 
     private fun freshOwnerLinkSelection(state: State, linkId: String): LinkReviewPolicySelection {
@@ -1767,17 +2973,20 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 when (error.errorCode) {
                     "HTTP_409_STILL_PROCESSING" -> {
                         state.sessionError = "STILL_PROCESSING"
+                        markLinkFenceFromPending(state, LinkConsentLedger.FenceState.STILL_PROCESSING)
                         writeState(state)
                         throw HubSessionException("STILL_PROCESSING", "Original encrypted request is still processing")
                     }
                     "HTTP_409_RECOVERY_UNAVAILABLE" -> {
                         state.recoveryBlocked = true
                         state.sessionError = "RECOVERY_UNAVAILABLE"
+                        markLinkFenceFromPending(state, LinkConsentLedger.FenceState.RECOVERY_UNAVAILABLE)
                         writeState(state)
                         throw HubSessionException("RECOVERY_UNAVAILABLE", "Older uncertain request cannot be safely recovered")
                     }
                     "HTTP_409_RECOVERY_REJECTED" -> {
                         state.sessionError = "RECOVERY_REJECTED"
+                        markLinkFenceFromPending(state, LinkConsentLedger.FenceState.RECOVERY_REJECTED)
                         writeState(state)
                     }
                     "HTTP_403" -> {
@@ -1786,11 +2995,13 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                         state.allowedOperations = emptyList()
                         state.role = null
                         state.sessionError = "RPC_HTTP_403"
+                        markLinkFenceFromPending(state, LinkConsentLedger.FenceState.AUTH_REVOKED)
                         writeState(state)
                     }
                     "HTTP_409" -> {
                         state.recoveryBlocked = true
                         state.sessionError = "RPC_RECOVERY_CONFLICT"
+                        markLinkFenceFromPending(state, LinkConsentLedger.FenceState.UNCERTAIN)
                         writeState(state)
                     }
                 }
@@ -1847,6 +3058,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             addProperty("hasRetiredPending", state.retiredPending != null)
             addProperty("enrollmentRecoveryRequired", state.enrollmentAttempt != null)
             addProperty("hasUnresolvedMonitorOperations", hasUnresolvedMonitorOperation(state))
+            addProperty("linkConsentReconciliationRequired", state.linkConsentLedger.writeFence != null)
+            state.linkConsentLedger.writeFence?.let { addProperty("linkConsentUncertainOperationId", it.operationId) }
             state.outcomeUncertainOperationId?.let { addProperty("outcomeUncertainOperationId", it) }
             addProperty("uncertainNeedsReconciliation", state.uncertainNeedsReconciliation)
             addProperty("regroupReconciliationRequired", state.regroupUncertainPending != null)
@@ -1917,6 +3130,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     internal fun ensureProfileRemovable() = PROCESS_LOCK.withLock {
         val state = readState()
         requireNetworkGrantReconciled(state)
+        requireLinkConsentReconciled(state)
         if (state.pending != null || state.enrollmentAttempt != null || state.recoveryBlocked ||
             state.uncertainNeedsReconciliation || hasUnresolvedMonitorOperation(state)) {
             throw HubSessionException("PROFILE_RECOVERY_REQUIRED", "Resolve the original enrollment, encrypted request and Monitor state before removing this Hub profile")
@@ -2019,6 +3233,117 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
+    private fun validateLinkConsentStatusReadContext(
+        context: LinkConsentStatusReadContext,
+        state: State,
+        pending: Pending,
+        route: ClientWireCrypto.Route,
+    ) {
+        if (pending.operation != "link.review_policy_status" || route.operation != pending.operation ||
+            context.operationId != pending.operationId || context.operationId != route.operationId ||
+            context.sequence != pending.sequence || context.sequence != route.sequence ||
+            context.linkVersion < 1 || context.mySide !in setOf("SOURCE", "TARGET") ||
+            context.hubId != route.hubId || state.pin?.hubId != route.hubId ||
+            context.ownerId != route.ownerId || state.enrollment?.ownerId != route.ownerId ||
+            context.deviceId != route.deviceId || state.enrollment?.deviceId != route.deviceId ||
+            context.sessionEpoch != route.sessionEpoch || state.enrollment?.sessionEpoch != route.sessionEpoch ||
+            context.profileGeneration < 1) {
+            throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original candidate Link policy status route no longer matches its selected session and Link")
+        }
+    }
+
+    /**
+     * Verifies a terminal policy grant at the authenticated result's own historical
+     * verification time. This is for reconciling that exact original packet only;
+     * it does not make the cached result fresh for a later review or signature.
+     */
+    private fun verifyHistoricalLinkPolicyGrantResult(
+        state: State,
+        result: JsonObject,
+        fence: LinkConsentLedger.WriteFence,
+    ): LinkReviewPolicyV164Status? {
+        return try {
+            val review = state.linkConsentLedger.review ?: return null
+            val tuple = review.tuple
+            val policyVersion = tuple.policyVersion ?: return null
+            val policyDigest = tuple.policyDigest ?: return null
+            val expectedPolicyVersion = tuple.expectedPolicyVersion ?: return null
+            if (review.reviewId != fence.reviewId || review.consentDigest != fence.consentDigest ||
+                tuple.kind != "REVIEW_POLICY" || tuple.localSide !in setOf("SOURCE", "TARGET") ||
+                fence.operation != "link.review_policy_grant" ||
+                fence.tupleDigest != LinkConsentLedger.digestTuple(tuple) ||
+                expectedPolicyVersion == Long.MAX_VALUE || policyVersion != expectedPolicyVersion + 1L) return null
+
+            val verifiedAtText = optionalString(result, "verified_at") ?: return null
+            val verifiedAt = Instant.parse(verifiedAtText)
+            if (verifiedAt.toString() != verifiedAtText || verifiedAt > Instant.now()) return null
+
+            fun pinnedPolicyOwner(scope: LinkConsentLedger.SideScope): LinkReviewPolicyV164OwnerPin {
+                val record = state.linkConsentLedger.ownerPin(scope.ownerId, scope.ownerKeyId)
+                    ?: throw IllegalArgumentException("Missing independent Owner pin")
+                if (record.pinRevision != scope.ownerPinRevision || record.fingerprint != scope.ownerFingerprint) {
+                    throw IllegalArgumentException("Owner pin revision differs from the saved review")
+                }
+                val identity = parseIndependentOwnerIdentity(record.publicIdentityJson)
+                if (identity.id != scope.ownerKeyId || identity.fingerprint() != scope.ownerFingerprint) {
+                    throw IllegalArgumentException("Owner public identity differs from the saved review")
+                }
+                return LinkReviewPolicyV164OwnerPin(record.ownerId, record.keyId, identity)
+            }
+
+            val currentLink = LinkReviewPolicyV164CurrentLink(
+                linkId = tuple.linkId,
+                linkVersion = tuple.linkVersion,
+                contractDigest = tuple.contractDigest,
+                localSide = tuple.localSide,
+                sourceOwnerId = tuple.source.ownerId,
+                targetOwnerId = tuple.target.ownerId,
+                sourceEndpointId = tuple.source.endpointId,
+                sourceGroupId = tuple.source.groupId,
+                targetEndpointId = tuple.target.endpointId,
+                targetGroupId = tuple.target.groupId,
+                expiresAt = Instant.parse(tuple.expiresAt),
+                sourceOwnerPin = pinnedPolicyOwner(tuple.source),
+                targetOwnerPin = pinnedPolicyOwner(tuple.target),
+            )
+            val status = LinkReviewPolicyEvidenceV164.validateActiveStatus(
+                result.toString().toByteArray(StandardCharsets.UTF_8), currentLink, verifiedAt,
+            )
+            if (status.linkId != tuple.linkId || status.linkVersion != tuple.linkVersion ||
+                status.contractDigest != tuple.contractDigest || status.policyVersion != policyVersion ||
+                status.policyDigest != policyDigest) return null
+            val savedPolicyJson = review.policyJson ?: return null
+            val savedPolicy = parseLinkConsentPolicy(JsonParser.parseString(savedPolicyJson).asJsonObject)
+            if (LinkReviewPolicyConsentValidation.canonicalPolicyJson(savedPolicy) !=
+                LinkReviewPolicyConsentValidation.canonicalPolicyJson(status.policy)) return null
+
+            val approvals = status.ownerApprovals.associateBy { it.side }
+            for ((side, scope) in listOf("SOURCE" to tuple.source, "TARGET" to tuple.target)) {
+                val approval = approvals[side] ?: return null
+                if (approval.currentStatus == "VERIFIED") {
+                    val expectedLifecycle = LinkReviewPolicyV164OwnerLifecycle(
+                        scope.ownerId,
+                        scope.ownerKeyId,
+                        scope.ownerKeyState ?: return null,
+                        scope.ownerKeyVersion ?: return null,
+                    )
+                    if (approval.ownerLifecycle != expectedLifecycle) return null
+                }
+            }
+            val localApproval = approvals[tuple.localSide] ?: return null
+            if (localApproval.currentStatus != "VERIFIED") return null
+            val localProof = localApproval.proofBytesCopy() ?: return null
+            try {
+                if (LinkConsentLedger.digest(localProof) != fence.signedProofSha256) return null
+            } finally {
+                localProof.fill(0)
+            }
+            status
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun finishResponse(
         state: State,
         device: ClientWireCrypto.Identity,
@@ -2059,15 +3384,69 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             }
         }
 
+        var verifiedLinkPolicyGrantStatus: LinkReviewPolicyV164Status? = null
+        if (route.operation == "link.review_policy_grant") {
+            val fence = state.linkConsentLedger.writeFence
+                ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original policy consent packet is not durably fenced")
+            if (fence.operation != route.operation || fence.operationId != pending.operationId ||
+                fence.requestSequence != pending.sequence ||
+                fence.packetSha256 != LinkConsentLedger.digest(pending.packetJson.toByteArray(StandardCharsets.UTF_8))) {
+                throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Authenticated policy response differs from the original consent packet")
+            }
+            if (ok && !uncertain) {
+                val result = body.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
+                val verified = result?.let { verifyHistoricalLinkPolicyGrantResult(state, it, fence) }
+                if (verified == null) {
+                    // This is an authenticated terminal response, so consume its transport
+                    // sequence. Keep the durable business fence until a fresh active status
+                    // proves the original proof and tuple; never leave a dead transport pending.
+                    state.linkConsentLedger = state.linkConsentLedger.markFenceState(
+                        fence.operationId, fence.requestSequence, LinkConsentLedger.FenceState.UNCERTAIN,
+                    )
+                    state.lastResponseSequence = opened.route.sequence
+                    state.pending = null
+                    state.recoveryBlocked = false
+                    state.sessionError = "LINK_POLICY_RESULT_RECONCILIATION_REQUIRED"
+                    state.uncertainNeedsReconciliation = true
+                    state.outcomeUncertainOperationId = pending.operationId
+                    state.retiredPending = pending
+                    writeState(state)
+                    return JsonObject().apply {
+                        addProperty("requestId", requestId)
+                        addProperty("operationId", operationId)
+                        addProperty("ok", false)
+                        addProperty("errorCode", "LINK_POLICY_RESULT_RECONCILIATION_REQUIRED")
+                        addProperty("originalOperationCompleted", true)
+                        addProperty("reconciliationRequired", true)
+                    }
+                }
+                verifiedLinkPolicyGrantStatus = verified
+            }
+        }
+
         if (route.operation == "link.review_policy_status") {
-            val context = state.linkReviewStatusReadContext
-                ?: throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status selection is missing")
-            validateLinkReviewStatusContext(context, state, pending, route)
-            if (ok) {
+            val candidateContext = state.linkConsentStatusReadContext
+            var legacyStatusScope: Pair<String, Long>? = null
+            if (candidateContext != null) {
+                if (state.linkReviewStatusReadContext != null) {
+                    throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Conflicting Link status contexts are saved")
+                }
+                validateLinkConsentStatusReadContext(candidateContext, state, pending, route)
+            } else {
+                val context = state.linkReviewStatusReadContext
+                    ?: throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status selection is missing")
+                validateLinkReviewStatusContext(context, state, pending, route)
+                legacyStatusScope = context.linkId to context.linkVersion
+            }
+            if (ok && candidateContext == null) {
                 val result = body.get("result")?.takeIf { it.isJsonObject }?.asJsonObject
                     ?: throw HubSessionException("LINK_REVIEW_STATUS_INVALID", "Encrypted Link status response omitted its result")
+                val (linkId, linkVersion) = legacyStatusScope
+                    ?: throw HubSessionException("LINK_REVIEW_STATUS_CONTEXT_INVALID", "Original Link policy status selection is missing")
                 try {
-                    LinkReviewPolicyStatusValidation.validateStatus(result, context.linkId, context.linkVersion)
+                    LinkReviewPolicyStatusValidation.validateStatus(
+                        sanitizeV164PolicyStatusMetadata(result, linkId, linkVersion), linkId, linkVersion,
+                    )
                 } catch (error: LinkReviewPolicyStatusValidationException) {
                     val code = if (error.code == "LINK_REVIEW_STATUS_SCOPE_MISMATCH") error.code else "LINK_REVIEW_STATUS_INVALID"
                     throw HubSessionException(code, "Encrypted Link policy status is malformed or differs from the selected Link version")
@@ -2133,7 +3512,30 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         if (processMonitorResponse) applyMonitorRpcResult(state, route, pending, body, operationId, ok, uncertain)
         applyRegroupRpcResult(state, pending, body, ok, uncertain)
+        if (route.operation in setOf("link.key_grant", "link.review_policy_grant")) {
+            val fence = state.linkConsentLedger.writeFence
+                ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link consent ciphertext is not durably fenced")
+            if (fence.operation != route.operation || fence.operationId != pending.operationId ||
+                fence.requestSequence != pending.sequence ||
+                fence.packetSha256 != LinkConsentLedger.digest(pending.packetJson.toByteArray(StandardCharsets.UTF_8))) {
+                throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Authenticated Link response does not match the original consent packet")
+            }
+            state.linkConsentLedger = if (uncertain) {
+                state.linkConsentLedger.markFenceState(fence.operationId, fence.requestSequence, LinkConsentLedger.FenceState.UNCERTAIN)
+            } else {
+                state.linkConsentLedger.completeOriginal(LinkConsentLedger.VerifiedOriginalCompletion(
+                    operationId = pending.operationId,
+                    requestSequence = pending.sequence,
+                    responseSequence = opened.route.sequence,
+                    packetSha256 = fence.packetSha256,
+                    signedProofSha256 = fence.signedProofSha256,
+                    tupleDigest = fence.tupleDigest,
+                ))
+            }
+            if (!uncertain) clearLinkUncertainLatch(state, pending.operationId)
+        }
         if (route.operation == "link.review_policy_status") state.linkReviewStatusReadContext = null
+        if (route.operation == "link.review_policy_status") state.linkConsentStatusReadContext = null
         state.lastResponseSequence = opened.route.sequence
         state.pending = null
         state.recoveryBlocked = false
@@ -2153,7 +3555,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             addProperty("requestId", requestId)
             addProperty("operationId", operationId)
             addProperty("ok", ok)
-            if (ok && body.has("result")) add("result", body.get("result"))
+            if (ok && route.operation == "link.review_policy_grant") {
+                verifiedLinkPolicyGrantStatus?.let { add("policyStatus", linkPolicyStatusDisplay(it)) }
+            } else if (ok && body.has("result")) add("result", body.get("result"))
             if (!ok && body.has("error")) add("error", body.get("error"))
             if (uncertain) {
                 addProperty("errorCode", "OUTCOME_UNCERTAIN")
@@ -2259,6 +3663,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
 
     private fun validateOperation(state: State, operation: String) {
         requireImplementedOperation(operation)
+        if (state.linkConsentLedger.writeFence != null && operation in MUTATING_RPC_OPERATIONS) {
+            throw HubSessionException("LINK_CONSENT_RECOVERY_REQUIRED", "Resolve the original Link consent packet before another managed write")
+        }
         if (state.uncertainNeedsReconciliation && operation in MUTATING_RPC_OPERATIONS) {
             throw HubSessionException("BUSINESS_RECONCILIATION_REQUIRED", "Read an authenticated Hub status snapshot before another write")
         }
@@ -2312,16 +3719,28 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 state.allowedOperations = emptyList()
                 state.role = null
                 state.sessionError = "RPC_HTTP_403"
+                markLinkFenceFromPending(state, LinkConsentLedger.FenceState.AUTH_REVOKED)
                 // Preserve the signed ciphertext for support/audit; do not keep retrying it.
                 writeState(state)
             } else if (error.errorCode == "HTTP_409") {
                 state.recoveryBlocked = true
                 state.sessionError = "RPC_HTTP_409_UNCERTAIN"
+                markLinkFenceFromPending(state, LinkConsentLedger.FenceState.UNCERTAIN)
                 // A generic conflict does not identify whether the operation ran.
                 // Do not retry or retire the original ciphertext without a Hub protocol.
                 writeState(state)
             }
             throw error
+        }
+    }
+
+    private fun markLinkFenceFromPending(state: State, next: LinkConsentLedger.FenceState) {
+        val pending = state.pending ?: return
+        val fence = state.linkConsentLedger.writeFence ?: return
+        if (pending.operation == fence.operation && pending.operationId == fence.operationId &&
+            pending.sequence == fence.requestSequence &&
+            LinkConsentLedger.digest(pending.packetJson.toByteArray(StandardCharsets.UTF_8)) == fence.packetSha256) {
+            state.linkConsentLedger = state.linkConsentLedger.markFenceState(fence.operationId, fence.requestSequence, next)
         }
     }
 
@@ -2979,6 +4398,15 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (persist) writeState(state)
     }
 
+    /** Clears only the business uncertainty created by this exact Link operation. */
+    private fun clearLinkUncertainLatch(state: State, operationId: String) {
+        if (state.outcomeUncertainOperationId == operationId) {
+            state.outcomeUncertainOperationId = null
+            state.uncertainNeedsReconciliation = false
+            state.sessionError = null
+        }
+    }
+
     private fun pruneMonitorOperations(state: State) {
         val now = Instant.now()
         val removable = state.monitorOperations.values.filter { operation ->
@@ -3004,11 +4432,21 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     private fun readState(): State {
         if (!hasAtomicFile(stateFile)) return State()
         val json = try {
-            stateFile.openRead().use { input -> JsonParser.parseReader(java.io.InputStreamReader(input, StandardCharsets.UTF_8)).asJsonObject }
+            stateFile.openRead().use { input ->
+                if (input.channel.size() > MAX_SESSION_STATE_BYTES) throw IllegalArgumentException("oversized state")
+                JsonParser.parseReader(java.io.InputStreamReader(input, StandardCharsets.UTF_8)).asJsonObject
+            }
         } catch (_: Exception) {
             throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Hub session state cannot be read")
         }
         val state = State()
+        state.linkConsentLedger = try {
+            json.get("linkConsentLedger")?.takeIf { it.isJsonObject }?.let {
+                LinkConsentLedger.decode(it.toString().toByteArray(StandardCharsets.UTF_8))
+            } ?: LinkConsentLedger.empty()
+        } catch (_: Exception) {
+            throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Link consent reconciliation state is invalid")
+        }
         state.activeNetworkId = optionalString(json, "activeNetworkId")
         state.pin = json.getAsJsonObject("pin")?.let { value ->
             Pin(
@@ -3138,7 +4576,36 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 throw HubSessionException("SESSION_STORAGE_INVALID", "Saved Link policy status recovery context is invalid")
             }
         }
-        if (state.pending?.operation == "link.review_policy_status" && state.linkReviewStatusReadContext == null) {
+        if (json.has("linkConsentStatusReadContext")) {
+            try {
+                val value = json.get("linkConsentStatusReadContext")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: throw IllegalArgumentException()
+                requireExactObjectFields(value,
+                    setOf("link_id", "link_version", "my_side", "hub_id", "owner_id", "device_id", "session_epoch", "operation_id", "sequence", "profile_generation"),
+                    setOf("link_id", "link_version", "my_side", "hub_id", "owner_id", "device_id", "session_epoch", "operation_id", "sequence", "profile_generation"))
+                val context = LinkConsentStatusReadContext(
+                    LinkReviewPolicyStatusValidation.validateLinkId(requiredString(value, "link_id")),
+                    longValue(value, "link_version"), requiredString(value, "my_side"),
+                    requiredString(value, "hub_id"), requiredString(value, "owner_id"),
+                    requiredString(value, "device_id"), longValue(value, "session_epoch"),
+                    requiredString(value, "operation_id"), longValue(value, "sequence"),
+                    longValue(value, "profile_generation"),
+                )
+                val pending = state.pending ?: throw IllegalArgumentException()
+                require(context.linkVersion > 0 && context.mySide in setOf("SOURCE", "TARGET") &&
+                    context.hubId.length <= 256 && context.ownerId.length <= 256 && context.deviceId.length <= 256 &&
+                    context.operationId.length <= 256 && context.profileGeneration > 0 &&
+                    pending.operation == "link.review_policy_status" && pending.operationId == context.operationId &&
+                    pending.sequence == context.sequence && state.pin?.hubId == context.hubId &&
+                    state.enrollment?.ownerId == context.ownerId && state.enrollment?.deviceId == context.deviceId &&
+                    state.enrollment?.sessionEpoch == context.sessionEpoch)
+                state.linkConsentStatusReadContext = context
+            } catch (_: Exception) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Saved candidate Link policy status context is invalid")
+            }
+        }
+        if (state.pending?.operation == "link.review_policy_status" &&
+            state.linkReviewStatusReadContext == null && state.linkConsentStatusReadContext == null) {
             throw HubSessionException("SESSION_STORAGE_INVALID", "Original Link policy status packet has no saved selection context")
         }
         state.enrollmentAttempt = json.getAsJsonObject("enrollmentAttempt")?.let { value ->
@@ -3253,6 +4720,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         json.addProperty("previousDeviceMayRemainOnHub", state.previousDeviceMayRemainOnHub)
         json.addProperty("outcomeUncertainOperationId", state.outcomeUncertainOperationId)
         json.addProperty("uncertainNeedsReconciliation", state.uncertainNeedsReconciliation)
+        json.add("linkConsentLedger", state.linkConsentLedger.toJsonObject())
         state.retiredPending?.let { pending ->
             json.add("retiredPending", JsonObject().apply {
                 addProperty("operation", pending.operation)
@@ -3318,7 +4786,23 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 addProperty("sequence", context.sequence)
             })
         }
-        if (state.pending?.operation == "link.review_policy_status" && state.linkReviewStatusReadContext == null) {
+        state.linkConsentStatusReadContext?.let { context ->
+            val pending = state.pending
+            if (pending == null || pending.operation != "link.review_policy_status" ||
+                pending.operationId != context.operationId || pending.sequence != context.sequence ||
+                state.linkReviewStatusReadContext != null) {
+                throw HubSessionException("SESSION_STORAGE_INVALID", "Candidate Link status context has no exact original packet")
+            }
+            json.add("linkConsentStatusReadContext", JsonObject().apply {
+                addProperty("link_id", context.linkId); addProperty("link_version", context.linkVersion)
+                addProperty("my_side", context.mySide); addProperty("hub_id", context.hubId)
+                addProperty("owner_id", context.ownerId); addProperty("device_id", context.deviceId)
+                addProperty("session_epoch", context.sessionEpoch); addProperty("operation_id", context.operationId)
+                addProperty("sequence", context.sequence); addProperty("profile_generation", context.profileGeneration)
+            })
+        }
+        if (state.pending?.operation == "link.review_policy_status" && state.linkReviewStatusReadContext == null &&
+            state.linkConsentStatusReadContext == null) {
             throw HubSessionException("SESSION_STORAGE_INVALID", "Original Link policy status packet has no saved selection context")
         }
         state.enrollmentAttempt?.let { attempt ->
@@ -3357,9 +4841,13 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 })
             }
         })
+        val encodedState = json.toString().toByteArray(StandardCharsets.UTF_8)
+        if (encodedState.size > MAX_SESSION_STATE_BYTES) {
+            throw HubSessionException("SESSION_STORAGE_LIMIT", "Saved Hub state exceeds its storage limit")
+        }
         val output = stateFile.startWrite()
         try {
-            output.write(json.toString().toByteArray(StandardCharsets.UTF_8))
+            output.write(encodedState)
             output.fd.sync()
             stateFile.finishWrite(output)
         } catch (_: Exception) {

@@ -9,8 +9,8 @@ The shared application is written in TypeScript and React Native. **Android is t
 - **Status and work:** Read authenticated snapshots and partial changes for authorized Nodes, Endpoints, Workers, Goals, Groups, and Tasks. Submit user-confirmed text or reviewed speech transcripts to Control, inspect Intent dispatch, and read bounded Goal results when the session permits it. Intent, Goal, Worker, and Artifact states remain distinct.
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
 - **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
-- **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The v1.6 collaboration-key grants remain gated. See the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md) for their separate scope.
-- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The current policy locally implements 39 of 55 operations, including bounded Directory/admission reads, explicit one-use Monitor regroup delegation, and user-triggered Link review-policy status metadata. Sixteen operations remain closed; the Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata does not establish bilateral consent or enable messages.
+- **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The v1.6.4 Link consent candidate is a separate Native flow; its live acceptance is still pending below. See the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md) for their separate scope.
+- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The v1.6.4 local candidate implements 44 of 55 operations, including bounded Directory/admission reads, explicit one-use Monitor regroup delegation, Link review-policy status metadata, and five dedicated Link consent operations. Eleven operations remain closed. The five Link consent operations are always rejected by generic `rpc` and use the dedicated Native flow only. The Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata alone does not establish bilateral consent or enable messages.
 - **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
 - **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. The current snapshot recovery test retains the retired packet after authenticated `OUTCOME_UNCERTAIN`, blocks writes until a fresh authoritative snapshot, and verifies session reconciliation. An uncertain regroup delegation has a separate durable fence: a generic snapshot cannot establish its outcome or clear that fence under the current Core contract. See the [current recovery validation](docs/client-hub-v1.6.1-144e079-validation.md) and [historical regroup validation](docs/client-hub-v1.6-4fb241b-management-validation.md).
 
@@ -42,13 +42,41 @@ Node confirmation now validates the complete `NodeControlKeyBinding` public keys
 
 ## Link status and consent preparation
 
-The [Link review policy status checkpoint](docs/client-link-review-policy-status-v1.6.1-validation.md) adds one read-only metadata view using a fresh encrypted Link list and exact Link ID/version. Default NONE with `current=true` is unconfigured, not approval by both Owners. This flow does not sign proofs, change policies, grant keys or enable messages. Its new checks and APKs are separately attributed; the prior offline and live results do not transfer.
+The active v1.6.4 candidate integrates five dedicated Native Link consent
+operations behind current Hub metadata and encrypted session capability checks;
+the generic RPC dispatcher rejects all five. The candidate implements 44 of 55
+operations and keeps 11 closed. Kotlin owns independently pinned Owner authority,
+proof validation, explicit review freshness and the durable exact-packet recovery
+fence. Owner signing remains external; `key_grants` metadata alone is not proof
+of bilateral consent, and Link grants do not enable ordinary peer messages.
 
-The existing accepted APKs are used for the separate [two-Owner native-fixture status gate](docs/client-link-status-native-fixture-144e079-validation.md). New Link consent preparation adds strict DTOs, independent Kotlin Endpoint and Owner proof verification, explicit one-use scope review, and fenced recovery models. All five consent operations remain closed; these offline models are not a durable native RPC implementation. See [candidate verification and remaining integration inputs](docs/client-link-consent-candidate-validation.md).
+The final retry-6 offline candidate passed 40 pure Kotlin tests across five
+classes, Native and Android-test Kotlin compilation, and both Debug x86_64 APK
+assemblies (exit 0). App/test APK SHA-256 values are
+`56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67` /
+`caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`.
+The bounded APK resource scan passed. These artifacts have no emulator, UI or
+live Hub test results. The earlier 38 Kotlin / 47 Android results belong only
+to retry-4 app `1811e156…b4686e` and test `d22756ee…42c288`; they do not transfer
+to retry-6 or F5's test-only be72 APK.
+
+F3 passed 27 scoped steps, then failed before Target request export on a UI
+selector. F4 passed 27 scoped steps, then failed after exporting/signing the
+Target request because the confirmation control was outside the viewport; no
+Target KEY or policy write occurred. F5's trusted fixture and Root GO were
+received. After 10 setup/manifest/export steps, local signing rejected maximum
+expiry `2026-10-02T15:27:50.050630Z` as noncanonical RFC3339Nano (canonical
+same instant: `2026-10-02T15:27:50.05063Z`). F5 exited 1 before creating a
+signature; no Source grant, Target enrollment/Alert, or policy write occurred,
+and bilateral KEY/NONE remain blocked. No proof or nonce retry was made. Retry-6
+is offline only; Core requires a separately authorized new scope before another
+live attempt. Physical Android, public HTTPS and native Worker/model acceptance
+remain `NOT_RUN`. Full source, artifact, cleanup and attempt receipts are in the
+[v1.6.4 validation record](docs/client-hub-v1.6.4-25bc586-validation.md).
 
 ## Imported clean v1.6.3 delivery
 
-The clean Core `e8a029d79bbdddb75ea376afa76e62a5c8444f59` contract and immutable image identities have been independently verified and imported. The catalog remains at 55 operations. This is a separate [provenance and offline validation record](docs/client-hub-v1.6.3-e8a029d-validation.md): Android runtime pins still target v1.6.1, and no v1.6.3 APK or encrypted runtime acceptance is claimed. Fresh encrypted `link.key_manifest` is the Hub's authoritative current scope; Owner keys still require independent trust. Core has confirmed a reviewer permission/binding guard defect in this fixed release, so policy authorization awaits a separately verified correction.
+The clean Core `e8a029d79bbdddb75ea376afa76e62a5c8444f59` contract and immutable image identities have been independently verified and imported. The catalog remains at 55 operations. This is a separate [provenance and offline validation record](docs/client-hub-v1.6.3-e8a029d-validation.md). That earlier provenance-only milestone retained its then-current v1.6.1 runtime pins. The active candidate now targets v1.6.4; no v1.6.3 APK or runtime result transfers to it. Fresh encrypted `link.key_manifest` is the Hub's authoritative current scope; Owner keys still require independent trust. Core has confirmed a reviewer permission/binding guard defect in this fixed release, so policy authorization awaits a separately verified correction.
 
 ## Prepared Group directory permission extension
 

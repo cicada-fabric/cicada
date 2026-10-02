@@ -2,6 +2,32 @@
 
 ## Current milestone and next gates
 
+The next clean delivery is now available: Core 25bc586 / Client-Control v1.6.4.
+Its archive, catalog, immutable image metadata and 882-entry Git inventory
+have passed independent Client verification. See the [new fixed record](client-hub-v1.6.4-25bc586-validation.md).
+Native manifest authority, bilateral policy evidence, persistent Link recovery
+and the explicit phone confirmation flow are implemented in the current
+candidate. It accounts for 44 implemented and 11 closed catalog operations;
+the five new operations use dedicated Native methods and generic RPC always
+refuses them. The final corrected snapshot passed 40 independent Kotlin tests and built
+both debug APKs in offline Docker (exit 0). Earlier unchanged JavaScript
+checks passed 90 tests, TypeScript and lint in their recorded snapshots. Android checks and every live result are attributed to
+their exact APK pair in the fixed record. The initial live read exposed an
+Endpoint fingerprint-domain error; the corrected retry-4 app retains complete
+proof, binding and Owner-pin checks and passed 47 emulator tests with its
+original test APK. Test-only UI corrections are separately compiled and do
+not inherit those results. The first fresh fixture attempts and their precise
+failures remain in the fixed record. Core ran the final fresh F5 Store
+bootstrap; Client used public metadata and encrypted Android sessions. Its
+first ten business steps passed, then external signing refused the Client's
+noncanonical fractional expiry. No Source KEY grant or Target operation
+followed. The timestamp correction and durable codec compatibility are
+validated offline in a new source snapshot. Complete bilateral acceptance,
+real React Native Alert confirmation and exact-packet recovery remain separate
+gates. F5 is terminal; further runtime work requires a separately authorized
+fresh fixture.
+Historical checks below retain their original source and version attribution.
+
 Completed: the clean e8a029d/v1.6.3 public contract import and immutable image
 verification, independent 835-input source reconstruction, 86 JavaScript and
 16 independent Kotlin candidate checks, and the old144 two-Owner Android Link
@@ -12,22 +38,26 @@ Client-owned emulator/carriers were cleaned; Core separately removed fixture
 Hub/Nodes and their networks, with independently verified exact resource absence.
 No candidate APK or v1.6.3 runtime acceptance is claimed.
 
-1. Independently accept Core's next clean reviewer-guard correction; fixed
-   e8a029d preview/grant currently lacks `link.review` and leased-binding guards.
-2. Add independent full Owner pin/lifecycle inputs and a dedicated native path
-   that binds a fresh authenticated manifest to the current profile/session,
-   verifies Endpoint and Owner proofs, and rechecks before explicit consent.
-3. Reuse persistent pending packets and exact recovery for each new write.
-   Keep unresolved operations fenced; the pure offline model is not storage.
-4. Build one separately attributed APK pair, validate encrypted capabilities
-   against its exact fixed image/catalog, then run authorized native consent,
-   status, refusal and recovery cases. Enable only individually accepted flows.
+1. Completed: independently verify the clean 25bc586 reviewer-guard delivery,
+   including the package, both immutable images and source inventory.
+2. Completed implementation: independently pinned full Owner identities and
+   current lifecycle, Native Endpoint proof verification and fresh consent
+   authority bound to the current profile/session. The corrected Endpoint
+   fingerprint comparison passed retry-4 offline/emulator and scoped live
+   Source checks; bilateral acceptance is separately recorded.
+3. Completed implementation: persist the original encrypted packet and exact
+   write fence atomically. Live recovery requires isolated original-operation
+   fault cases; local ledger tests do not establish those results.
+4. BLOCKED: authorize a separate fresh two-Owner key/policy fixture for the
+   corrected APK and its actual React Native confirmation path. F5 remains
+   FAIL and cannot be restarted. Record future results against their exact
+   APK and immutable Hub, with no automatic enrollment or write retry.
 5. Validate the separate directory permission extension on that new runtime.
    Physical Android and public HTTPS remain NOT_RUN until actually exercised.
 
-All five Link consent operations and the directory extension remain closed.
-The accepted Android policy stays at 39 implemented / 16 closed. Native Goal
-or model execution is a separate acceptance gate from empty fixture resumes.
+The directory extension remains closed. Earlier candidate preparation and
+39/16 policy counts below are historical. Native Goal or model execution is a
+separate acceptance gate from synthetic Link protocol fixtures.
 
 ## Candidate implementation — Group directory permission
 
@@ -42,7 +72,7 @@ delivery is now verified; dedicated integration and separate Android acceptance
 are required to enable the action. Link status acceptance has passed its
 separately attributed fixed-144 gate.
 
-## Active acceptance milestone — clean Core 144e079
+## Historical accepted Android milestone — clean Core 144e079
 
 Use only the immutable Client-Control v1.6.1 pair and public package recorded in
 [current validation](client-hub-v1.6.1-144e079-validation.md). Independent source,

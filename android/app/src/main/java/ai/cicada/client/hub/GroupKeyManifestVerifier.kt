@@ -83,7 +83,8 @@ internal object GroupKeyManifestVerifier {
     private fun canonicalPublic(public: ClientWireCrypto.PublicIdentity): JsonObject =
         JsonParser.parseString(public.toJson()).asJsonObject
 
-    private fun formatCanonicalUtc(instant: Instant): String {
+    /** Encodes UTC timestamps like Go's time.Time.Format(time.RFC3339Nano). */
+    internal fun formatCanonicalUtc(instant: Instant): String {
         val seconds = utcSecondsFormatter.format(instant)
         if (instant.nano == 0) return "${seconds}Z"
         val fraction = instant.nano.toString().padStart(9, '0').trimEnd('0')
