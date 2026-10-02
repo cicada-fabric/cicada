@@ -160,18 +160,32 @@ func TestMachineAgentBinaryRemoteApprovalEndToEnd(t *testing.T) {
 	if err := os.MkdirAll(nodeWorkspaceRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	binary := filepath.Join(root, "cicada")
-	_, sourceFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve integration test source path")
-	}
-	moduleRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
-	buildCtx, cancelBuild := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancelBuild()
-	build := exec.CommandContext(buildCtx, "go", "build", "-buildvcs=false", "-o", binary, "./cmd/cicada")
-	build.Dir = moduleRoot
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build cicada machine agent binary: %v\n%s", err, output)
+	binary := strings.TrimSpace(os.Getenv("CICADA_TEST_MACHINE_AGENT_BINARY"))
+	if binary != "" {
+		if !filepath.IsAbs(binary) {
+			t.Fatal("CICADA_TEST_MACHINE_AGENT_BINARY must be an absolute path")
+		}
+		info, err := os.Stat(binary)
+		if err != nil {
+			t.Fatalf("stat CICADA_TEST_MACHINE_AGENT_BINARY: %v", err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			t.Fatalf("CICADA_TEST_MACHINE_AGENT_BINARY is not an executable regular file: mode=%s", info.Mode())
+		}
+	} else {
+		binary = filepath.Join(root, "cicada")
+		_, sourceFile, _, ok := runtime.Caller(0)
+		if !ok {
+			t.Fatal("resolve integration test source path")
+		}
+		moduleRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
+		buildCtx, cancelBuild := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancelBuild()
+		build := exec.CommandContext(buildCtx, "go", "build", "-buildvcs=false", "-o", binary, "./cmd/cicada")
+		build.Dir = moduleRoot
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build cicada machine agent binary: %v\n%s", err, output)
+		}
 	}
 
 	runAgentOnce := func() ([]byte, error) {

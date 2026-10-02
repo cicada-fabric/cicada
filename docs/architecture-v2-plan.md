@@ -17,6 +17,8 @@
 
 Headscale/Tailscale仅作为只读对照；未复用代码或增加依赖。不要用其网络控制面替代CICADA Owner Guard/E2EE。历史计划、失败和旧工件保留其原来源；勿以旧 clean-25bc/Hub41b7 F4 fixture 代表 clean52 Main。
 
+本次 clean `6e5a897` 的有限 CI、F6 与 Native 状态见[当前验证状态](architecture-v2-status.md)；准备/安装、离线测试或窄 selector PASS 都不关闭 v0.1。下面已提交的完整用户/管理员权限、Network 授权边界及委派流程仍明确延期至 v0.2，不因本轮验收更新而扩入当前范围。
+
 ## v0.2 deferred — 完整用户/管理员权限与委派产品流程
 
 完整普通用户/管理员体系、层级权限配置与管理委派 UX 留待 **v0.2**。v0.1 本轮仅收敛既有 Owner 设备与逐对象 Guard、canvas 真实框选/拖拽建组/独立确认入组/连线提案/持久化及拒绝；不新增角色、重构 ACL、扩展 wire/catalog，亦不把当前 manager（Control identity Owner）55／external（其他 Owner）47 候选操作当作完整 RBAC。`directory.read` 的当前精确 Guard 与已实现 consent 边界保留；完整权限产品设计、预设与委派配置不扩进本轮。

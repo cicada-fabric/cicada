@@ -32,7 +32,9 @@ jobs:
         working-directory: cicada-go
         run: |
           test -z "$(gofmt -l .)"
-          go test -count=1 ./...
+          machine_agent_binary="$RUNNER_TEMP/cicada-machine-agent"
+          go build -buildvcs=false -o "$machine_agent_binary" ./cmd/cicada
+          CICADA_TEST_MACHINE_AGENT_BINARY="$machine_agent_binary" go test -count=1 ./...
           go vet ./...
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, Node 24
         with:

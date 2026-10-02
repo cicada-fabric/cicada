@@ -557,6 +557,10 @@ type sealedReconnectCaptureWriter struct {
 	body   bytes.Buffer
 }
 
+func (w *sealedReconnectCaptureWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func (w *sealedReconnectCaptureWriter) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
