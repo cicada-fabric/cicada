@@ -1,6 +1,45 @@
 # Client ↔ Hub contract: `client-hub-v1.6.1`
 
-## Current bounded slice — Link review policy status
+## Active clean target — Core 144e079
+
+The fixed target is `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`,
+Client-Control v1.6.1, wire 1. The complete immutable image, archive and catalog
+pins, independent source checks, final APK hashes, exact commands and acceptance
+matrix are in the [current validation record](client-hub-v1.6.1-144e079-validation.md).
+The new checkpoint preserves the application, local STT and all sixteen closed
+operations. The corrected final instrumentation APK is distinct from the
+retained first-attempt failure.
+
+Current verified gates include independent provenance for 806 inputs and both
+images, 21 contract payloads, 81 Android Kotlin tests, UI smoke checks, encrypted
+external-role Directory authorization and exact recovery of lost 201 enrollment
+and 200 completed RPC responses. The fresh live synthetic processing case
+passed run/verify (409), the fresh uncertainty retry passed run/verify (signed
+200 plus authoritative snapshot), and legacy recovery passed its Android
+selector and independent carrier/absence checks before teardown. Original
+driver and outer-wrapper failures remain separately recorded; no correction
+is represented as an original driver PASS.
+Actual Link status remains BLOCKED: Core has confirmed that no accepted
+legitimate Endpoint/Link producer is available. No synthetic native identity,
+nonexistent Link, unverified proof or Core Go test substitutes for Android
+acceptance. Physical Android, public HTTPS and current native/model execution
+remain NOT_RUN. No push or merge is performed.
+
+The dated prior sections below retain their original source and artifact
+attribution; they do not describe the current image or transfer acceptance.
+
+## Historical final-gate preparation
+
+Current contract/image pins are unchanged. Corrected role assertions and new
+live test drivers are preparation only; their encrypted runtime cases are
+`NOT_RUN`. The pinned Link policy-grant version conflict has been reported to
+Core, which is preparing a production-entry correction. Policy preview/grant
+remain closed until an independently verified final contract and genuine
+external Owner proof fixture are delivered. See
+[final gate readiness](client-final-gate-readiness.md) for the exact conflict,
+fixture dependencies, isolated recovery producer and reporting requirements.
+
+## Historical implementation slice — Link review policy status
 
 Only `link.review_policy_status` is added to the local implementation set. It reads one exact Link from encrypted `link.list` through a dedicated, scope-bound native path. The policy now accounts for **39 implemented and 16 closed operations** out of 55. This is an implementation count, not live acceptance. The existing v1.6.1 contract and image pins are unchanged.
 

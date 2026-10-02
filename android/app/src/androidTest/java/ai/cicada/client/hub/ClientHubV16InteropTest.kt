@@ -98,7 +98,11 @@ class ClientHubV16InteropTest {
         assertEquals(CATALOG, text(public, "catalog_sha256"))
         assertFalse(public.get("external_thread_links").asBoolean)
         assertFalse(public.get("status_events").asBoolean)
-        assertEquals(55, public.getAsJsonArray("available_rpc_operations").map { it.asString }.toSet().size)
+        val publicOperations = public.getAsJsonArray("available_rpc_operations").map { it.asString }
+        assertEquals("Pinned public catalog operation count changed", 55, publicOperations.size)
+        assertEquals("Pinned public catalog contains duplicate operations",
+            publicOperations.size, publicOperations.toSet().size)
+        assertEquals(PINNED_CATALOG_OPERATIONS, publicOperations.toSet())
         val caps = rpc(scope, "session.capabilities")
         assertEquals("client-hub-v1.6.1", text(caps, "contract_revision"))
         assertEquals(CATALOG, text(caps, "catalog_sha256"))
@@ -114,8 +118,10 @@ class ClientHubV16InteropTest {
         val before = profiles.getStatus(scope)
         assertTrue("Product review scope must expose the authenticated enrollment epoch",
             before.get("sessionEpoch").asLong > 0L)
-        val allowed = before.getAsJsonArray("allowedOperations").map { it.asString }.toSet()
-        assertEquals(if (text(caps, "role") == "external") 30 else 38, allowed.size)
+        val allowedList = before.getAsJsonArray("allowedOperations").map { it.asString }
+        val allowed = allowedList.toSet()
+        assertEquals("Authenticated allowlist contains duplicate operations", allowedList.size, allowed.size)
+        assertRoleCatalogIntersection(text(caps, "role"), allowed)
         val sequence = before.get("nextSequence").asLong
         val directoryResult = rpc(scope, "network.directory", JsonObject().apply {
             addProperty("network_id", text(fixture, "network_id")); addProperty("limit", 64)
@@ -430,5 +436,76 @@ class ClientHubV16InteropTest {
     }
     companion object {
         private const val CATALOG = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
+
+        // Independent v1.6.1 catalog fixture: all operations outside the eight
+        // manager-only entries are assigned to both manager and external roles.
+        private val CATALOG_BOTH_ROLES = setOf(
+            "devices.list", "devices.revoke",
+            "group.key_grant", "group.key_manifest", "group.key_status",
+            "link.invite_accept", "link.invite_create", "link.invite_preview", "link.key_grant",
+            "link.key_grants", "link.key_manifest", "link.list", "link.review_policy_grant",
+            "link.review_policy_preview", "link.review_policy_status",
+            "monitor.broadcast_confirm", "monitor.broadcast_prepare", "monitor.broadcast_recover",
+            "monitor.broadcast_status",
+            "network.collaboration_key_grant", "network.collaboration_key_manifest",
+            "network.collaboration_key_status", "network.directory", "network.key_grant",
+            "network.key_manifest", "network.key_status",
+            "nodes.confirm", "nodes.list", "nodes.preview", "nodes.revoke", "session.capabilities",
+            "space.foreign_endpoint_join", "space.foreign_endpoint_preview", "space.foreign_member_admit",
+            "space.foreign_member_revoke", "space.key_admission_v2", "space.key_consent_v2",
+            "space.key_manifest_v2", "space.key_status_v2", "status.changes", "status.snapshot",
+            "topology.apply", "topology.delegation_issue", "topology.delegation_revoke",
+            "topology.endpoint_admission_preview", "topology.regroup_proposal", "topology.snapshot",
+        )
+        private val CATALOG_MANAGER_ONLY = setOf(
+            "approvals.decide", "approvals.list", "goal.lifecycle", "goal.result",
+            "intent.get", "intent.list", "intent.status", "intent.submit",
+        )
+        private val PINNED_CATALOG_OPERATIONS = CATALOG_BOTH_ROLES + CATALOG_MANAGER_ONLY
+
+        // Product support is intersected with the independent pinned catalog
+        // role vector below, so a catalog operation alone never implies support.
+        private val IMPLEMENTED_OPERATIONS = setOf(
+            "approvals.decide", "approvals.list", "devices.list", "devices.revoke",
+            "goal.lifecycle", "goal.result", "group.key_grant", "group.key_manifest", "group.key_status",
+            "intent.get", "intent.list", "intent.status", "intent.submit",
+            "link.invite_accept", "link.invite_create", "link.invite_preview", "link.list",
+            "link.review_policy_status",
+            "monitor.broadcast_confirm", "monitor.broadcast_prepare", "monitor.broadcast_recover",
+            "monitor.broadcast_status", "network.directory", "network.key_grant", "network.key_manifest",
+            "network.key_status", "nodes.confirm", "nodes.list", "nodes.preview", "nodes.revoke",
+            "session.capabilities", "status.changes", "status.snapshot", "topology.apply",
+            "topology.delegation_issue", "topology.delegation_revoke", "topology.endpoint_admission_preview",
+            "topology.regroup_proposal", "topology.snapshot",
+        )
+        private val CLOSED_OPERATIONS = setOf(
+            "link.key_grant", "link.key_grants", "link.key_manifest", "link.review_policy_grant",
+            "link.review_policy_preview", "network.collaboration_key_grant",
+            "network.collaboration_key_manifest", "network.collaboration_key_status",
+            "space.foreign_endpoint_join", "space.foreign_endpoint_preview", "space.foreign_member_admit",
+            "space.foreign_member_revoke", "space.key_admission_v2", "space.key_consent_v2",
+            "space.key_manifest_v2", "space.key_status_v2",
+        )
+
+        private fun assertRoleCatalogIntersection(role: String, allowed: Set<String>) {
+            assertEquals("Pinned catalog vector must contain 55 unique operations", 55, PINNED_CATALOG_OPERATIONS.size)
+            assertEquals("Client implementation vector must contain 39 operations", 39, IMPLEMENTED_OPERATIONS.size)
+            assertEquals("Closed operation vector must contain 16 operations", 16, CLOSED_OPERATIONS.size)
+            assertTrue("Closed operations must all be in the pinned catalog",
+                PINNED_CATALOG_OPERATIONS.containsAll(CLOSED_OPERATIONS))
+            assertTrue("Closed operations must not be in the implemented vector",
+                IMPLEMENTED_OPERATIONS.intersect(CLOSED_OPERATIONS).isEmpty())
+            val roleCatalog = when (role) {
+                "manager" -> CATALOG_BOTH_ROLES + CATALOG_MANAGER_ONLY
+                "external" -> CATALOG_BOTH_ROLES
+                else -> error("Unknown authenticated catalog role")
+            }
+            val expected = IMPLEMENTED_OPERATIONS.intersect(roleCatalog)
+            assertEquals("Authenticated allowlist differs from the pinned catalog intersection", expected, allowed)
+            assertTrue("link.review_policy_status must be authorized for the authenticated Owner role",
+                "link.review_policy_status" in allowed)
+            assertTrue("A closed operation appeared in the authenticated allowlist",
+                allowed.intersect(CLOSED_OPERATIONS).isEmpty())
+        }
     }
 }

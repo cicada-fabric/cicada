@@ -1,6 +1,87 @@
 # CICADA Client integration handoff
 
-## Current bounded slice — Link review policy status
+## Active clean target — Core 144e079
+
+The fixed target is `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`,
+Client-Control v1.6.1, wire 1. The complete immutable image, archive and catalog
+pins, independent source checks, final APK hashes, exact commands and acceptance
+matrix are in the [current validation record](client-hub-v1.6.1-144e079-validation.md).
+The new checkpoint preserves the application, local STT and all sixteen closed
+operations. The corrected final instrumentation APK is distinct from the
+retained first-attempt failure.
+
+Current verified gates include independent provenance for 806 inputs and both
+images, 21 contract payloads, 81 Android Kotlin tests, UI smoke checks, encrypted
+external-role Directory authorization and exact recovery of lost 201 enrollment
+and 200 completed RPC responses. The fresh live synthetic processing case
+passed run/verify (409), the fresh uncertainty retry passed run/verify (signed
+200 plus authoritative snapshot), and legacy recovery passed its Android
+selector and independent carrier/absence checks before teardown. Original
+driver and outer-wrapper failures remain separately recorded; no correction
+is represented as an original driver PASS.
+Actual Link status remains BLOCKED: Core has confirmed that no accepted
+legitimate Endpoint/Link producer is available. No synthetic native identity,
+nonexistent Link, unverified proof or Core Go test substitutes for Android
+acceptance. Physical Android, public HTTPS and current native/model execution
+remain NOT_RUN. No push or merge is performed.
+
+The dated prior sections below retain their original source and artifact
+attribution; they do not describe the current image or transfer acceptance.
+
+### Current handoff and Core maintainer prompt
+
+Final app/test APK SHA-256:
+`74c680c2dcf1162b4ff5203fc65a54483032555318c553f4fa6bbef8027776d7` /
+`17fd9e576c821eee3c5d7f434e40a29fc320d884d241c8a7c084960dea4f2621`.
+Compiled input fingerprint is
+`8a08d5775a7b6abbd9187fc6c91420f5c9d66b859e1692329a43620565ba0a5e`
+over 118 files. The exact full delivery commit is bound in
+`/gpu1-share/data/cicada-client/client-final-144e079-20261002/provenance/client-delivery.redacted.json`.
+
+| Remaining item | Status | Required Core input |
+|---|---|---|
+| Both Owners read default/current Link policy metadata | BLOCKED | Supported producer with genuine Node/native Endpoints and bilateral Link creation |
+| Configured policy metadata / genuine foreign Owner denial | BLOCKED | Actual Link, independent signed Owner proofs and a real unrelated Owner scope |
+| Current native Node/Worker/model execution from Android | NOT_RUN | Separately scoped native acceptance; Core-only results do not transfer |
+| Physical Android and public HTTPS | NOT_RUN | Actual device and independently pinned HTTPS deployment |
+
+> Review only the clean Core 144e079 / Client-Control v1.6.1 checkpoint and its
+> immutable Hub/interop pair. Check the final APK hashes, source fingerprint,
+> per-command exits and retained failures in the linked validation record and
+> external receipts. Distinguish the authorized synthetic live processing
+> injection from a real concurrent business operation. Preserve the original
+> uncertain/legacy driver failures; use the fresh uncertainty retry and legacy
+> absence/receipt verification before teardown at their stated layers. Keep
+> all sixteen unsupported consent operations closed. Supply a supported
+> disposable producer that obtains real native Session IDs and explicitly
+> joins both Owner Endpoints, creates Groups through encrypted Client RPC,
+> then creates/accepts a bilateral Link through supported APIs. Deliver only
+> public selections and proof material to the Client; keep Owner private keys
+> and Node/model credentials external. Do not fabricate native IDs or database
+> rows. Default NONE/current is unconfigured metadata. The current Link block
+> is independent of passing recovery gates. Plan any later contract or native
+> acceptance as a separate fixed checkpoint; do not transfer Core Go/native
+> results, older APKs or physical/HTTPS claims to this Android record.
+
+## Historical final-gate preparation
+
+The current working tree prepares the next integration gate without changing
+the existing Core, contract or image pins. See
+[final gate readiness](client-final-gate-readiness.md) for the required final
+delivery, reusable drivers, fixture dependencies and execution order.
+The old 38/30 Directory assertions have been replaced by exact independent
+catalog/implementation/role intersections; the current policy remains
+39 implemented and 16 closed operations. The corrected instrumentation and
+new live harness still require a new test APK and their own acceptance records.
+
+No final candidate APK, emulator, encrypted Hub, native Node, model, physical
+Android or public HTTPS run is claimed by this preparation. The independent
+[input inventory tooling](hub-input-inventory-verification.md) has separately
+recorded synthetic and intermediate source-only checks. Those results do not
+accept a new image. Keep the current and historical milestones below unchanged;
+combine necessary code and final evidence at the next complete commit.
+
+## Historical implementation slice — Link review policy status
 
 Only `link.review_policy_status` is added to the local implementation set. It reads one exact Link from encrypted `link.list` through a dedicated, scope-bound native path. The policy now accounts for **39 implemented and 16 closed operations** out of 55. This is an implementation count, not live acceptance. The existing v1.6.1 contract and image pins are unchanged.
 

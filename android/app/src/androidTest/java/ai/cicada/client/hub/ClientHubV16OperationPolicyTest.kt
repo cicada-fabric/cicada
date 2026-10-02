@@ -669,7 +669,7 @@ class ClientHubV16OperationPolicyTest {
         private const val CATALOG_SHA256 = "6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b"
         private const val REQUEST_SEQUENCE = 11L
         private const val RESPONSE_SEQUENCE = 10L
-        private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "group.key_manifest",
+        private val IMPLEMENTED_SAMPLE = listOf("session.capabilities", "status.snapshot", "link.list", "group.key_manifest",
             "network.key_manifest", "monitor.broadcast_recover", "network.directory",
             "topology.endpoint_admission_preview", "topology.regroup_proposal",
             "topology.delegation_issue", "topology.delegation_revoke", "link.review_policy_status")

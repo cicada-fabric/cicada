@@ -239,7 +239,10 @@ def run(args):
             if args.fault == 'enrollment':
                 drop_path, operation = '/v2/client/devices/enroll', ''
             else:
-                drop_path, operation = '/v2/client/rpc', 'status.snapshot'
+                operation = getattr(args, 'rpc_drop_operation', 'status.snapshot')
+                if operation not in ('status.snapshot', 'link.review_policy_status'):
+                    raise ValueError('unsupported response-loss RPC operation')
+                drop_path = '/v2/client/rpc'
             proxy_record = evidence / ('response-loss-' + args.tag + '.private.jsonl')
             proxy_command = [sys.executable, str(PROXY_PATH), '--listen', str(proxy_port), '--target', '8787',
                 '--target-host', target_ip, '--drop-path', drop_path, '--evidence', str(proxy_record)]

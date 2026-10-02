@@ -24,10 +24,10 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 V15_HOST_PATH = ROOT / 'scripts/interop/v15-host-stdio-carrier.py'
 V16_DRIVER_PATH = ROOT / 'scripts/interop/v16-android-deterministic.py'
-CORE_REVISION = 'fe565b41bb1aa86d400a0ec98c528c856d0b9579'
-SOURCE_FINGERPRINT = '6ab2d94a26dd41082f3177006095408b25d4e8c05cd54315db6c325be92eb5be'
+CORE_REVISION = '144e079ddf62a4e08f1d1cf9476ab41d25d28f5c'
+SOURCE_FINGERPRINT = 'e64f244961d56265933dd75feec19d2b74fa934533abf9b750c061f09094a902'
 CATALOG_SHA256 = '6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b'
-HUB_IMAGE = 'sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589'
+HUB_IMAGE = 'sha256:04e8bcb4e22f4a00100b30a57d8cd5b3c65d5d4abe3d09844f5c121c26beb1bb'
 CONTRACT_REVISION = 'client-hub-v1.6.1'
 SCHEMA = 'cicada.client-v161-host-stdio-carrier.v1'
 ALLOWED = {
@@ -294,10 +294,15 @@ def main():
     parser.add_argument('--app-sha256', required=True, help='full SHA-256 of the installed Client APK')
     parser.add_argument('--test-sha256', required=True, help='full SHA-256 of the installed test APK')
     parser.add_argument('--fault', choices=('none', 'enrollment', 'rpc'), default='none')
+    parser.add_argument('--rpc-drop-operation',
+        choices=('status.snapshot', 'link.review_policy_status'), default='status.snapshot',
+        help='public RPC route to drop once with --fault rpc; no payload decryption')
     parser.add_argument('--carrier-port', type=int, default=38097)
     parser.add_argument('--android-url-port', type=int,
         help='expected dynamic client-public port; omitted means read from the pinned public file')
     args = parser.parse_args()
+    if args.rpc_drop_operation != 'status.snapshot' and args.fault != 'rpc':
+        parser.error('--rpc-drop-operation requires --fault rpc')
     args.recovery_mode = None
     os.umask(0o077)
     try:

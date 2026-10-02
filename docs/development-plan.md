@@ -1,6 +1,37 @@
 # CICADA Client development and validation plan
 
-## Current bounded slice — Link review policy status
+## Active acceptance milestone — clean Core 144e079
+
+Use only the immutable Client-Control v1.6.1 pair and public package recorded in
+[current validation](client-hub-v1.6.1-144e079-validation.md). Independent source,
+image and archive verification, the corrected APK build, 81 Kotlin emulator
+checks, UI checks, encrypted Directory authorization and exact 201/200 response
+recovery have passed. Separate processing and uncertainty drivers have passed;
+legacy protocol and the independently corrected absence/receipt checks passed
+before teardown. Every failed attempt and its correction are retained separately.
+The combined local milestone includes the code, formal validation record and
+handoff; the external acceptance manifest and delivery receipt bind the actual
+commit to its tested artifacts.
+
+Keep actual Link status BLOCKED until Core supplies legitimate Endpoint/Link
+creation through supported entries. Keep configured policy and all sixteen
+unsupported consent operations closed. Do not call models, change Core or
+switch to a later candidate during this gate. Physical Android and public HTTPS
+remain NOT_RUN. Prior checkpoint sections retain historical attribution.
+
+
+## Historical final candidate integration preparation
+
+Prepare corrected catalog-role assertions, bounded live Link status selectors
+and isolated original-packet recovery drivers in parallel. Independently
+verify the final clean Core inventory, immutable images and contract package
+before changing pins or building the app/test APK pair once. Preparation is
+not runtime acceptance; every new live case remains `NOT_RUN` until executed
+with its own artifact hashes and command receipts. See
+[final gate readiness](client-final-gate-readiness.md) for the ordered gates,
+precise fixture gaps and the confirmed configured-policy producer defect.
+
+## Historical implementation slice — Link review policy status
 
 Only `link.review_policy_status` is added to the local implementation set. It reads one exact Link from encrypted `link.list` through a dedicated, scope-bound native path. The policy now accounts for **39 implemented and 16 closed operations** out of 55. This is an implementation count, not live acceptance. The existing v1.6.1 contract and image pins are unchanged.
 
