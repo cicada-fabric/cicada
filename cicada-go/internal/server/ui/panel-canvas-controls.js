@@ -1,4 +1,4 @@
-import { actionSummary, groupParentGesture, linkGesturePair } from './panel-model.js';
+import { actionSummary, createdGroupTarget, groupCreationSelection, groupParentGesture, linkGesturePair, linkTransportSelection } from './panel-model.js';
 import { button, html, selectField, textField } from './panel-dom.js';
 
 export function installCanvasControls(CanvasPanel) {
@@ -17,11 +17,11 @@ export function installCanvasControls(CanvasPanel) {
     const networks = (this.topology.networks || []).map(item => ({ value: item.network_id, label: `${item.name} · ${item.state}` }));
     if (networks.length) {
       const network = selectField('Active Network', networks, this.networkId);
+      network.select.setAttribute('data-panel', 'active-network');
       network.select.addEventListener('change', () => {
         this.networkId = network.select.value;
-        if (this.plan[0]?.set_parent) { this.plan = []; this.planReview = ''; }
-        this.cancelPointer();
-        this.networkDirectory = { networkId: '', endpoints: [], nextCursor: '', loading: false, error: '' };
+        this.invalidateIntents();
+        this.message = 'Active Network changed. Previous action previews and created Group selection intent were discarded.';
         this.selection.clear(); this.render(); this.renderSide();
       });
       card.append(network.wrap);
@@ -58,6 +58,7 @@ export function installCanvasControls(CanvasPanel) {
     const networkItems = (this.topology.networks || []).filter(item => item.can_create_group);
     if (!networkItems.length) { card.append(html('p', 'small', 'No active Owner-managed Network currently allows Group creation.')); return card; }
     const networkSelect = selectField('Network', networkItems.map(item => ({ value: item.network_id, label: item.name })), this.networkId);
+    networkSelect.select.disabled = true;
     const parentSelect = selectField('Parent Group', []);
     const updateParentOptions = () => {
       parentSelect.select.replaceChildren();
@@ -70,28 +71,54 @@ export function installCanvasControls(CanvasPanel) {
     networkSelect.select.addEventListener('change', updateParentOptions);
     updateParentOptions();
     const name = textField('New Group name');
+    let scope = this.captureScope();
+    parentSelect.select.addEventListener('change', () => { scope = this.resourceScopeChanged(); });
     card.append(networkSelect.wrap, parentSelect.wrap, name.wrap,
       html('p', 'footer-note', 'Group creation and its parent relation are one versioned topology action. The Hub validates ownership and Network scope; canvas layout is not authority.'),
       button('Preview Group creation', () => {
         const action = { kind: 'group.create', create_group: { group: { network_id: networkSelect.select.value, name: name.input.value.trim() }, parent_group_id: parentSelect.select.value } };
-        this.queueAction(action);
+        try {
+          if (networkSelect.select.value !== scope.networkId) throw new Error('Switch the active Network before creating a Group there.');
+          const selection = groupCreationSelection(this.topology, [...this.selection], scope.networkId);
+          this.queueAction(action, `${selection.endpointIds.length} selected Endpoint(s): ${selection.endpointIds.join(', ') || 'none'}. Group creation adds no Endpoint automatically. After an authenticated refresh, each Endpoint needs its own fresh preview and separate confirmation.`, scope, selection);
+        } catch (error) { this.setMessage(error.message); }
       }, 'btn primary'));
+    card.querySelector('button').setAttribute('data-panel', 'create-group-preview');
     return card;
   },
 
   joinCard() {
     const card = html('section', 'card');
     card.append(html('h2', '', 'Attach selected Endpoints'));
-    const selected = this.selectedEndpoints();
+    const intent = this.createdGroupIntent;
+    let scope = this.captureScope();
+    const selected = intent ? intent.endpointIds.map(id => this.topology.endpoints?.find(item => item.endpoint_id === id)).filter(Boolean) : this.selectedEndpoints();
     card.append(html('p', 'small', `${selected.length} Endpoint(s) selected. Each Group admission or reference is previewed and confirmed separately.`));
     const groups = this.groupsForNetwork();
-    const group = selectField('Target Group', groups.map(item => ({ value: item.group_id, label: item.name })), groups[0]?.group_id || '');
-    card.append(group.wrap, button('Preview next selected Endpoint', async () => {
+    const group = selectField('Target Group', groups.map(item => ({ value: item.group_id, label: item.name })), intent?.groupId || this.joinTargetGroupId || groups[0]?.group_id || '');
+    group.select.addEventListener('change', () => {
+      const groupId = group.select.value;
+      scope = this.resourceScopeChanged();
+      this.joinTargetGroupId = groupId;
+    });
+    if (intent) {
+      group.select.disabled = true;
+      group.select.setAttribute('data-panel', 'created-group-target');
+      group.select.setAttribute('data-group-id', intent.groupId);
+      card.append(html('p', 'small', 'Target locked to the authenticated newly created Group. No Endpoint is added without its own preview and confirmation.'),
+        button('Discard created Group selection intent', () => {
+          this.invalidateIntents(); this.render(); this.renderSide();
+        }, 'btn quiet'));
+    }
+    const preview = button('Preview next selected Endpoint', async () => {
+      if (!this.scopeIsCurrent(scope)) return;
       if (!group.select.value) { this.setMessage('Choose an active Group first.'); return; }
       const endpoint = selected.find(item => !(item.group_ids || []).includes(group.select.value));
       if (!endpoint) { this.setMessage('No selected Endpoint needs a new reference in that Group.'); return; }
       await this.previewEndpointJoin(endpoint.endpoint_id, group.select.value);
-    }, 'btn primary'));
+    }, 'btn primary');
+    preview.setAttribute('data-panel', 'join-selected-preview');
+    card.append(group.wrap, preview);
     return card;
   },
 
@@ -130,25 +157,29 @@ export function installCanvasControls(CanvasPanel) {
 
   async loadNetworkDirectory(afterEndpointID) {
     if (!this.networkId || this.networkDirectory?.loading) return;
+    const scope = this.captureScope();
+    const networkId = scope.networkId;
     const prior = this.networkDirectory?.networkId === this.networkId ? this.networkDirectory :
       { networkId: this.networkId, endpoints: [], nextCursor: '', error: '' };
     this.networkDirectory = { ...prior, loading: true, error: '' };
     this.renderSide();
     try {
       const result = await this.rpc('network.directory', {
-        network_id: this.networkId, limit: 64,
+        network_id: networkId, limit: 64,
         ...(afterEndpointID ? { after_endpoint_id: afterEndpointID } : {})
       });
-      if (result?.network_id !== this.networkId || !Array.isArray(result.endpoints) ||
+      if (!this.scopeIsCurrent(scope)) return;
+      if (result?.network_id !== networkId || !Array.isArray(result.endpoints) ||
           result.endpoints.length > 64 || result.endpoints.some(item => !item ||
-            item.network_id !== this.networkId || typeof item.endpoint_id !== 'string' ||
+            item.network_id !== networkId || typeof item.endpoint_id !== 'string' ||
             typeof item.alias !== 'string' || typeof item.presence !== 'string')) {
         throw new Error('Hub returned an invalid Network directory page.');
       }
       const endpoints = afterEndpointID ? [...prior.endpoints, ...result.endpoints] : result.endpoints;
-      this.networkDirectory = { networkId: this.networkId, endpoints,
+      this.networkDirectory = { networkId, endpoints,
         nextCursor: result.next_cursor || '', loading: false, error: '' };
     } catch (error) {
+      if (!this.scopeIsCurrent(scope)) return;
       this.networkDirectory = { ...prior, loading: false, error: error.message || 'Directory request failed.' };
     }
     this.renderSide();
@@ -161,12 +192,14 @@ export function installCanvasControls(CanvasPanel) {
     if (!members.length) { card.append(html('p', 'small', 'No visible Group Memberships.')); return card; }
     const member = selectField('Membership', members.map(item => ({ value: item.membership_id, label: `${item.display_name || item.principal_id} · ${item.group_id}` })));
     const role = selectField('Role', ['member', 'worker', 'monitor'].map(value => ({ value, label: value })), 'monitor');
+    let scope = this.captureScope();
+    member.select.addEventListener('change', () => { scope = this.resourceScopeChanged(); });
     const roleAction = button('Preview role update', () => {
       const item = members.find(value => value.membership_id === member.select.value);
       if (!item) return;
       this.queueAction({ kind: 'membership.bind_role', bind_role: { group_id: item.group_id,
         membership_id: item.membership_id, role: role.select.value,
-        expected_membership_version: item.version } });
+        expected_membership_version: item.version } }, '', scope);
     }, 'btn');
     const broadcast = selectField('Explicit message.broadcast permission', [
       { value: 'false', label: 'Keep disabled / remove grant' }, { value: 'true', label: 'Enable for this Membership' }], 'false');
@@ -175,7 +208,7 @@ export function installCanvasControls(CanvasPanel) {
       if (!item) return;
       this.queueAction({ kind: 'membership.set_broadcast_permission', set_broadcast_permission: {
         group_id: item.group_id, membership_id: item.membership_id,
-        enabled: broadcast.select.value === 'true', expected_membership_version: item.version } });
+        enabled: broadcast.select.value === 'true', expected_membership_version: item.version } }, '', scope);
     }, 'btn warn');
     card.append(member.wrap, role.wrap, roleAction, html('p', 'footer-note', 'A Monitor role does not grant message.broadcast. That permission is a separate explicit action.'), broadcast.wrap, broadcastAction);
     return card;
@@ -193,17 +226,51 @@ export function installCanvasControls(CanvasPanel) {
     const target = selectField('Target Endpoint', endpointOptions, pair?.targetEndpointId || endpoints[1].endpoint_id);
     const sourceGroup = selectField('Source Group', groupOptions, pair?.sourceGroupId || groupOptions[0]?.value || '');
     const targetGroup = selectField('Target Group', groupOptions, pair?.targetGroupId || groupOptions[0]?.value || '');
+    let scope = this.captureScope();
+    const transport = selectField('Common transport Hub (cross-Node only)', [
+      { value: '', label: 'No Hub selected' },
+      ...(this.pinnedHubId ? [{ value: this.pinnedHubId, label: `Select pinned Hub ${this.pinnedHubId}` }] : [])
+    ]);
+    transport.select.setAttribute('data-panel', 'link-transport-hub');
+    const updateTransport = () => {
+      transport.select.value = '';
+      const sourceNode = endpoints.find(item => item.endpoint_id === source.select.value)?.node_id;
+      const targetNode = endpoints.find(item => item.endpoint_id === target.select.value)?.node_id;
+      transport.select.disabled = !sourceNode || !targetNode || sourceNode === targetNode;
+    };
+    const endpointScopeChanged = () => {
+      scope = this.resourceScopeChanged();
+      updateTransport();
+    };
+    source.select.addEventListener('change', endpointScopeChanged);
+    target.select.addEventListener('change', endpointScopeChanged);
+    for (const field of [sourceGroup, targetGroup, transport]) {
+      field.select.addEventListener('change', () => { scope = this.resourceScopeChanged(); });
+    }
+    updateTransport();
+    if (!transport.select.disabled && pair?.transportHubId === this.pinnedHubId) {
+      transport.select.value = pair.transportHubId;
+    }
     const scopes = textField('Data scopes (comma separated)', 'thread.message');
     const actions = textField('Allowed actions (comma separated)', 'send');
     const expiry = textField('Expires in days', '7', 'number');
-    card.append(source.wrap, sourceGroup.wrap, target.wrap, targetGroup.wrap, actions.wrap, scopes.wrap, expiry.wrap);
-    if (pair) card.append(html('p', 'action-preview', pair.review));
+    card.append(source.wrap, sourceGroup.wrap, target.wrap, targetGroup.wrap, transport.wrap, actions.wrap, scopes.wrap, expiry.wrap);
+    if (pair) {
+      const review = html('p', 'action-preview', pair.review);
+      review.setAttribute('data-panel', 'link-gesture-review');
+      card.append(review);
+    }
     card.append(html('p', 'footer-note', 'A Link proposal remains inactive. Endpoint Owners must separately authorize the required key grants and the other side must accept the proposal.'),
       button('Preview Link proposal', () => {
         let review = '';
+        let transportChoice;
         try {
+          if (!this.scopeIsCurrent(scope)) return;
+          this.clearActionPreview();
+          transportChoice = linkTransportSelection(this.topology, source.select.value, target.select.value, this.pinnedHubId, transport.select.value);
           review = this.prepareLinkReview(source.select.value, sourceGroup.select.value,
             target.select.value, targetGroup.select.value);
+          this.pendingLinkGesture = { ...this.pendingLinkGesture, transportHubId: transportChoice.transportHubId };
         } catch (error) {
           this.setMessage(error.message);
           return;
@@ -212,9 +279,10 @@ export function installCanvasControls(CanvasPanel) {
         const action = { kind: 'link.propose', propose_link: { proposal: {
           source_endpoint_id: source.select.value, source_group_id: sourceGroup.select.value,
           target_endpoint_id: target.select.value, target_group_id: targetGroup.select.value,
+          ...(transportChoice.transportHubId ? { transport_hub_id: transportChoice.transportHubId } : {}),
           direction: 'bidirectional', actions: actions.input.value.split(',').map(value => value.trim()).filter(Boolean),
           data_scopes: scopes.input.value.split(',').map(value => value.trim()).filter(Boolean), expires_at: endTime } } };
-        this.queueAction(action, `${review}\n\nExact proposal: ${action.propose_link.proposal.actions.join(', ')} over ${action.propose_link.proposal.data_scopes.join(', ')} until ${endTime}. Only a proposal is written; it does not create an active route.`);
+        this.queueAction(action, `${review}\n\n${transportChoice.review}\n\nExact proposal: ${action.propose_link.proposal.actions.join(', ')} over ${action.propose_link.proposal.data_scopes.join(', ')} until ${endTime}. Only a proposal is written; it does not create an active route.`, scope);
       }, 'btn primary'));
     return card;
   },
@@ -223,11 +291,12 @@ export function installCanvasControls(CanvasPanel) {
     const card = html('section', 'card');
     card.append(html('h2', '', 'Links'));
     const links = this.topology.links || [];
+    const scope = this.captureScope();
     if (!links.length) { card.append(html('p', 'small', 'No visible Link proposals or active Links.')); return card; }
     for (const link of links.slice(0, 8)) {
       const row = html('div', 'status-row');
       row.append(html('span', '', `${link.source_endpoint_id} ↔ ${link.target_endpoint_id}`), html('span', link.state === 'ACTIVE' ? 'chip good' : 'chip warn', link.state));
-      if (link.state === 'ACTIVE' || link.state === 'active') row.append(button('Revoke', () => this.queueAction({ kind: 'link.revoke', revoke_link: { link_id: link.link_id, expected_link_version: link.version } }), 'btn quiet small'));
+      if (link.state === 'ACTIVE' || link.state === 'active') row.append(button('Revoke', () => this.queueAction({ kind: 'link.revoke', revoke_link: { link_id: link.link_id, expected_link_version: link.version } }, '', scope), 'btn quiet small'));
       card.append(row);
     }
     card.append(html('p', 'footer-note', 'A proposal is not an active cross-Owner Link. Only an accepted, currently authorized Link is active.'));
@@ -243,6 +312,7 @@ export function installCanvasControls(CanvasPanel) {
 
   planCard() {
     const card = html('section', 'card');
+    card.setAttribute('data-panel', 'action-preview-card');
     card.append(html('h2', '', 'Exact action preview'));
     const action = this.plan[0];
     card.append(html('p', '', actionSummary(action)));
@@ -250,8 +320,11 @@ export function installCanvasControls(CanvasPanel) {
     card.append(html('p', 'small', `${this.plan.length} action(s) are queued. Only the first is shown and submitted; each next item requires its own review.`));
     const pre = html('pre');
     pre.textContent = JSON.stringify(action, null, 2);
-    card.append(pre, button('Commit this one action', () => this.applyFirst(), 'btn primary'),
-      button('Discard preview queue', () => { this.plan = []; this.planReview = ''; this.pendingLinkGesture = null; this.renderSide(); }, 'btn quiet'));
+    const commit = button('Commit this one action', () => this.applyFirst(), 'btn primary');
+    commit.setAttribute('data-panel', 'commit-action');
+    commit.disabled = this.applying || this.scopeIsCurrent(this.refreshScope);
+    card.append(pre, commit,
+      button('Discard preview queue', () => { this.invalidateIntents(); this.renderSide(); }, 'btn quiet'));
     return card;
   },
 
@@ -298,14 +371,38 @@ export function installCanvasControls(CanvasPanel) {
     }
   },
 
-  queueAction(action, review = '') {
+  clearActionPreview() {
+    this.previewSequence++;
+    this.plan = [];
+    this.planReview = '';
+    this.planContext = null;
+    this.side.querySelector('[data-panel="action-preview-card"]')?.remove();
+  },
+
+  resourceScopeChanged() {
+    this.invalidateIntents();
+    this.side.querySelector('[data-panel="action-preview-card"]')?.remove();
+    this.side.querySelector('[data-panel="link-gesture-review"]')?.remove();
+    this.setMessage('Resource scope changed. Previous action previews and created Group selection intent were discarded. Prepare a fresh preview.');
+    return this.captureScope();
+  },
+
+  queueAction(action, review = '', scope = this.captureScope(), creationSelection = null) {
+    if (!this.scopeIsCurrent(scope)) return;
+    if (this.applying || this.scopeIsCurrent(this.refreshScope)) {
+      this.setMessage('Wait for the current operation or snapshot refresh before preparing another action.');
+      return;
+    }
     if (this.writeFence) {
       this.setMessage('A prior write has an uncertain outcome. Review fresh topology and status, then explicitly authorize a new write.');
       return;
     }
+    this.previewSequence++;
+    this.plan = []; this.planContext = null; this.planReview = '';
     const errors = this.validateAction(action);
-    if (errors) { this.setMessage(errors); return; }
+    if (errors) { this.setMessage(errors); this.renderSide(); return; }
     this.plan = [action];
+    this.planContext = Object.freeze({ ...scope, creationSelection });
     this.planReview = review;
     this.renderSide();
   },
@@ -338,35 +435,51 @@ export function installCanvasControls(CanvasPanel) {
   },
 
   async applyFirst() {
+    if (this.applying || this.scopeIsCurrent(this.refreshScope)) return;
     if (this.writeFence) {
       this.setMessage('A prior write has an uncertain outcome. Review fresh topology and status, then explicitly authorize a new write.');
       return;
     }
     const action = this.plan[0];
-    if (!action) return;
-    const button = [...this.side.querySelectorAll('button')].find(item => item.textContent === 'Commit this one action');
-    if (button) button.disabled = true;
-    this.message = `Submitting ${action.kind} as one encrypted topology.apply action…`;
-    this.render();
-    try {
-      await this.rpc('topology.apply', action);
-      this.plan.shift();
-      if (!this.plan.length) {
-        this.planReview = '';
-        this.pendingLinkGesture = null;
-      }
-      this.message = `${action.kind} returned an authenticated result. Reloading topology and status before the next action.`;
-      await this.reload();
-    } catch (error) {
-      this.message = `${action.kind} stopped: ${error.message}. Refresh the authoritative snapshots before deciding whether to retry.`;
-      this.plan = [];
-      this.planReview = '';
-      this.pendingLinkGesture = null;
-      this.banner.textContent = this.message;
-      if (error.message.includes('unresolved') || error.message.includes('sequence state')) this.pending?.(error.message);
-      else await this.reload();
+    const context = this.planContext;
+    if (!action || !this.scopeIsCurrent(context)) {
+      this.invalidateIntents(); this.renderSide();
+      return;
     }
-    this.renderSide();
+    const previousTarget = this.createdGroupIntent;
+    const reference = action.join_group || action.admit_endpoint?.admission;
+    const continuesTarget = previousTarget && reference?.group_id === previousTarget.groupId &&
+      previousTarget.endpointIds.includes(reference.endpoint_id);
+    this.applying = true;
+    this.message = `Submitting ${action.kind} as one encrypted topology.apply action…`;
+    this.render(); this.renderSide();
+    try {
+      const result = await this.rpc('topology.apply', action);
+      const sameScope = this.scopeIsCurrent(context);
+      // Only the authenticated result chooses a newly created target. No local
+      // Endpoint list is sent to group.create or automatically written afterward.
+      const selection = context.creationSelection;
+      const targetId = action.create_group ? result?.group?.group_id : continuesTarget ? previousTarget.groupId : '';
+      const targetSelection = action.create_group ? selection : continuesTarget ? previousTarget : null;
+      const refreshed = await this.reload();
+      if (sameScope && refreshed && this.networkId === context.networkId && !this.writeFence && targetSelection?.endpointIds.length) {
+        try {
+          this.createdGroupIntent = createdGroupTarget(this.topology, targetId, targetSelection);
+          this.selection = new Set(this.createdGroupIntent.endpointIds);
+          this.message = 'Authenticated snapshots refreshed. The created Group target is locked; preview and confirm each selected Endpoint separately.';
+          this.render();
+        } catch (error) { this.setMessage(error.message); }
+      }
+    } catch (error) {
+      const message = `${action.kind} stopped: ${error.errorCode ? error.errorCode + ': ' : ''}${error.message}. No automatic retry was submitted.`;
+      this.invalidateIntents();
+      this.setMessage(message);
+      if (error.message.includes('unresolved') || error.message.includes('sequence state')) this.pending?.(message);
+      else await this.reload(false, message);
+    } finally {
+      this.applying = false;
+      this.renderSide();
+    }
   },
 
   async recoverPending() {

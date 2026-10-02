@@ -485,6 +485,16 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 		response.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	releaseStream, admitted := h.fabricService.AdmitNodeSSEStream(nodeID)
+	if !admitted {
+		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Retry-After", "1")
+		response.WriteHeader(http.StatusTooManyRequests)
+		_ = relayNodeStreamFrame(response, controller, "Node event stream capacity is full; retry later.\n")
+		return
+	}
+	defer releaseStream()
 	events, unsubscribe := h.fabricService.SubscribeNodeEvents(nodeID)
 	defer unsubscribe()
 	spaceEvents, unsubscribeSpaces := h.fabricService.SubscribeNodeSpaceEvents(nodeID)

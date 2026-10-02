@@ -155,7 +155,8 @@ async function modelChecks(uiDir) {
     .replace(/^import .*;$/gm, '').replace('export function', 'function');
   vm.runInNewContext(`${controlsSource}\ninstallCanvasControls(globalThis.CanvasPanel);`, canvasContext);
   const parentPanel = Object.create(CanvasPanel.prototype);
-  Object.assign(parentPanel, { topology: nesting, networkId: 'network-a', plan: [],
+  Object.assign(parentPanel, { topology: nesting, networkId: 'network-a', generation: 0, previewSequence: 0, plan: [],
+    side: { querySelector() { return null; } },
     renderSide() {}, setMessage(message) { this.message = message; } });
   parentPanel.prepareGroupParentGesture({ groupId: 'group-child', networkId: 'network-a', version: 1 }, '');
   assert.equal(parentPanel.plan[0].set_parent.expected_group_version, 1);
@@ -228,6 +229,139 @@ async function modelChecks(uiDir) {
   assert.match(linkPair.review, /does not activate routing/);
   assert.throws(() => model.linkGesturePair(gestureTopology, 'endpoint-a', 'group-root',
     'endpoint-a', 'group-child', 'network-a'), /two distinct Endpoint references/);
+
+  const creationSnapshot = { ...admissionTopology, networks: [{ network_id: 'network-a', state: 'ACTIVE' }] };
+  const selectedIds = ['endpoint-a', 'endpoint-network-only', 'endpoint-a'];
+  const selection = model.groupCreationSelection(creationSnapshot, selectedIds, 'network-a');
+  selectedIds.push('foreign-endpoint');
+  assert.deepEqual(selection.endpointIds, ['endpoint-a', 'endpoint-network-only'], 'creation retains exact selected IDs without duplicates');
+  assert.ok(Object.isFrozen(selection) && Object.isFrozen(selection.endpointIds));
+  assert.throws(() => selection.endpointIds.push('injected'), TypeError);
+  assert.throws(() => model.groupCreationSelection(creationSnapshot, ['foreign-endpoint'], 'network-a'), /remain visible/);
+  assert.throws(() => model.groupCreationSelection(creationSnapshot, ['endpoint-a'], 'other-network'), /active Network/);
+  const target = model.createdGroupTarget(creationSnapshot, 'group-new', selection);
+  assert.equal(target.groupId, 'group-new', 'the authenticated Group ID determines the attachment target');
+  assert.deepEqual(target.endpointIds, selection.endpointIds);
+  for (const change of [{ state: 'archived' }, { network_id: 'other-network' }]) {
+    assert.throws(() => model.createdGroupTarget({ ...creationSnapshot, groups: creationSnapshot.groups.map(group =>
+      group.group_id === 'group-new' ? { ...group, ...change } : group) }, 'group-new', selection), /active target/);
+  }
+  assert.throws(() => model.createdGroupTarget({ ...creationSnapshot,
+    endpoints: creationSnapshot.endpoints.filter(endpoint => endpoint.endpoint_id !== 'endpoint-network-only') },
+  'group-new', selection), /remain visible/, 'a missing selected Endpoint cannot silently change the retained selection');
+
+  const placed = { endpoints: [{ endpoint_id: 'source', node_id: 'node-one' },
+    { endpoint_id: 'local', node_id: 'node-one' }, { endpoint_id: 'remote', node_id: 'node-two' }] };
+  assert.equal(model.linkTransportSelection(placed, 'source', 'local', 'pinned-hub', '').transportHubId, '');
+  assert.throws(() => model.linkTransportSelection(placed, 'source', 'local', 'pinned-hub', 'pinned-hub'), /same-Node/);
+  for (const selectedHub of ['', 'foreign-hub']) {
+    assert.throws(() => model.linkTransportSelection(placed, 'source', 'remote', 'pinned-hub', selectedHub), /Explicitly select/);
+  }
+  assert.throws(() => model.linkTransportSelection(placed, 'source', 'remote', '', 'pinned-hub'), /Explicitly select/);
+  const transport = model.linkTransportSelection(placed, 'source', 'remote', 'pinned-hub', 'pinned-hub');
+  assert.equal(transport.transportHubId, 'pinned-hub');
+  assert.match(transport.review, /selection grants no permission/);
+  assert.equal(model.actionSummary({ kind: 'group.create', create_group: {
+    group: { name: 'Child' }, parent_group_id: 'exact-parent' } }), 'Create Group “Child” under exact-parent.');
+  for (const node_id of ['', null, undefined]) {
+    assert.throws(() => model.linkTransportSelection({ endpoints: placed.endpoints.map(endpoint =>
+      endpoint.endpoint_id === 'remote' ? { ...endpoint, node_id } : endpoint) },
+    'source', 'remote', 'pinned-hub', 'pinned-hub'), /Node placements must be known/);
+  }
+
+  const makePanel = () => Object.assign(Object.create(CanvasPanel.prototype), {
+    topology: creationSnapshot, status: {}, networkId: 'network-a', pinnedHubId: 'pinned-hub', generation: 0,
+    previewSequence: 0, plan: [], planContext: null, selection: new Set(selection.endpointIds),
+    side: { querySelector() { return null; } },
+    render() {}, renderSide() {}, cancelPointer() {}, setMessage(message) { this.message = message; }
+  });
+  for (const kind of ['group.create', 'endpoint.admit_group', 'membership.bind_role',
+    'membership.set_broadcast_permission', 'link.propose', 'group.set_parent']) {
+    const scoped = makePanel();
+    const saved = scoped.captureScope();
+    scoped.plan = [{ kind }]; scoped.planContext = saved; scoped.planReview = 'exact saved review';
+    scoped.pendingLinkGesture = { sourceEndpointId: 'source', targetEndpointId: 'remote' };
+    scoped.createdGroupIntent = target;
+    scoped.resourceScopeChanged();
+    assert.equal(scoped.plan.length, 0, `${kind} preview is discarded on scope invalidation`);
+    assert.equal(scoped.planContext, null); assert.equal(scoped.pendingLinkGesture, null);
+    assert.equal(scoped.createdGroupIntent, null); assert.equal(scoped.planReview, '');
+    assert.equal(scoped.scopeIsCurrent(saved), false);
+    scoped.queueAction({ kind: 'group.create', create_group: { group: { name: 'late' } } }, 'late', saved);
+    assert.equal(scoped.plan.length, 0, 'a stale callback cannot enqueue another typed write');
+  }
+  const delayed = makePanel();
+  let releasePreview;
+  let previewCalls = 0;
+  delayed.rpc = async operation => {
+    assert.equal(operation, 'topology.endpoint_admission_preview');
+    previewCalls++;
+    return new Promise(resolve => { releasePreview = resolve; });
+  };
+  const inFlight = delayed.previewEndpointJoin('endpoint-network-only', 'group-new');
+  assert.equal(previewCalls, 1);
+  delayed.resourceScopeChanged();
+  releasePreview(admissionPreview);
+  await inFlight;
+  assert.equal(delayed.plan.length, 0, 'an authenticated late admission preview cannot revive discarded scope');
+  const currentPreview = delayed.previewEndpointJoin('endpoint-network-only', 'group-new');
+  assert.equal(previewCalls, 2, 'the next intent obtains a separate fresh preview');
+  releasePreview(admissionPreview);
+  await currentPreview;
+  assert.equal(delayed.plan.length, 1);
+  assert.equal(delayed.plan[0].admit_endpoint.admission.endpoint_id, 'endpoint-network-only');
+  assert.equal(delayed.plan[0].admit_endpoint.admission.group_id, 'group-new');
+  assert.equal(delayed.scopeIsCurrent(delayed.planContext), true);
+
+  const creating = makePanel();
+  const writes = [];
+  let refreshes = 0;
+  creating.rpc = async (operation, action) => {
+    assert.equal(operation, 'topology.apply');
+    writes.push(action);
+    return { group: { group_id: 'group-new' } };
+  };
+  creating.refresh = async () => {
+    refreshes++;
+    return { topology: creationSnapshot, status: {}, snapshotStartedAt: Date.now() };
+  };
+  const createAction = { kind: 'group.create', create_group: { group: { network_id: 'network-a', name: 'Selected Group' } } };
+  creating.queueAction(createAction, 'review selected IDs', creating.captureScope(), selection);
+  assert.equal(writes.length, 0, 'a local creation preview never writes');
+  await creating.applyFirst();
+  assert.equal(writes.length, 1, 'creation confirmation sends one typed action without automatic membership writes');
+  assert.strictEqual(writes[0], createAction);
+  assert.equal(refreshes, 1, 'creation refreshes authoritative snapshots before choosing a target');
+  assert.equal(creating.createdGroupIntent.groupId, 'group-new');
+  assert.deepEqual(creating.createdGroupIntent.endpointIds, selection.endpointIds);
+  assert.equal(creating.plan.length, 0, 'attachment still needs a fresh independent preview');
+  await creating.reload();
+  assert.equal(creating.createdGroupIntent, null, 'an ordinary refresh discards the local selection intent');
+  assert.equal(writes.length, 1, 'refresh cannot admit another selected Endpoint');
+
+  const stopped = makePanel();
+  let attempts = 0;
+  stopped.rpc = async () => { attempts++; throw Object.assign(new Error('current authority denied'), { errorCode: 'SCOPE_REVOKED' }); };
+  stopped.refresh = creating.refresh;
+  stopped.queueAction(createAction);
+  await stopped.applyFirst();
+  assert.equal(attempts, 1, 'a typed refusal does not retry the action');
+  assert.equal(stopped.plan.length, 0); assert.equal(stopped.createdGroupIntent, null);
+  assert.match(stopped.message, /SCOPE_REVOKED: current authority denied/);
+  assert.match(stopped.message, /Authoritative topology and status snapshots refreshed/,
+    'reconciliation preserves the visible typed rejection');
+
+  const refreshing = makePanel();
+  const oldTopology = refreshing.topology;
+  let releaseRefresh;
+  refreshing.refresh = () => new Promise(resolve => { releaseRefresh = resolve; });
+  refreshing.queueAction(createAction);
+  const waiting = refreshing.reload();
+  assert.equal(refreshing.plan.length, 0, 'a refresh discards every old action before awaiting network results');
+  refreshing.networkId = 'network-b'; refreshing.invalidateIntents();
+  releaseRefresh({ topology: { groups: [] }, status: {} });
+  assert.equal(await waiting, false);
+  assert.strictEqual(refreshing.topology, oldTopology, 'a late snapshot cannot replace a newer selected scope');
 }
 
 async function wasmChecks(wasmPath, runtimePath) {

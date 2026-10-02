@@ -118,13 +118,15 @@ Keep these identities separate in every build/deployment record:
 
 | Identity | Meaning |
 |---|---|
-| CICADA software version | Current unreleased line `0.1.0-dev`; Architecture v2.3 is a product/architecture target. |
+| CICADA software version | Current unreleased line [`0.1.0-dev`](../VERSION); Architecture v2.3 is a product/architecture target. No public `0.1.x` release is available. |
 | Git revision and dirty flag | Source revision and whether uncommitted changes were present. |
 | Source fingerprint | Hash of the source/build inputs used by a binary release; a dirty build is not identified by HEAD alone. |
-| Client contract revision and wire | Current Android management contract `client-hub-v1.5`, encrypted wire v1; separate from internal Node MCP APIs. |
-| SQLite schema | Clean `bd79ff9` baseline is v41; the current dirty WIP adds v42 Network Task and v44 cross-Network Link enrollment migrations. The WIP schema is not a released or frozen upgrade point. |
-| OCI image ID/digest | Exact local build or registry artifact, distinct from source and software versions. |
+| Client contract revision and wire | Current Client contract revision [`client-hub-v1.6.4`](../cicada-go/internal/clientcontract/catalog.json), encrypted wire v1 and 55 operations; catalog SHA-256 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`. Contract/catalog identity is separate from an independently built or accepted Android Client binary and from internal Node MCP APIs. |
+| SQLite schema | Current development Hub supports schema v57 ([`CurrentV2SchemaVersion`](../cicada-go/internal/store/migrations_v2.go#L24)); this source schema level is separate from the software version, Git revision, and image digest. |
+| OCI image ID/digest | Record the exact local build or registry artifact, distinct from source and software versions. Client APK, STD Hub, and PQ Hub/Node artifacts retain separate source/build records and applicable binary/image digests. |
 | Codex CLI version | Node Runtime version, separate from Hub image and CICADA version. |
+
+Complete ordinary-user/admin role-based access control (RBAC) and delegated authorization workflows remain in v0.2 scope; v0.1 continues to enforce its existing identity and owner-scope checks through the server Guard on each operation.
 
 Before upgrading a stateful Hub, stop its writer, use the existing Hub
 `migration backup`/verify tools, review inventory and migration behavior, and

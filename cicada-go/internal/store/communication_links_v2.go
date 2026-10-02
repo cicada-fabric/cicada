@@ -194,6 +194,20 @@ WHERE e.id = ?`, groupID, endpointID).Scan(&scope.principalID, &scope.ownerID,
 }
 
 func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*CommunicationLink, error) {
+	return s.proposeCommunicationLink(input, "")
+}
+
+// ProposeCommunicationLinkForClientRequest keeps a proposal non-routable and
+// fences its same-owner scope against the current accepted Client request.
+func (s *Store) ProposeCommunicationLinkForClientRequest(requestID, ownerID string, input CommunicationLinkProposal) (*CommunicationLink, error) {
+	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(ownerID) == "" ||
+		strings.TrimSpace(input.ActorOwnerID) != strings.TrimSpace(ownerID) {
+		return nil, ErrNetworkPermission
+	}
+	return s.proposeCommunicationLink(input, requestID)
+}
+
+func (s *Store) proposeCommunicationLink(input CommunicationLinkProposal, requestID string) (*CommunicationLink, error) {
 	input.SourceEndpointID = strings.TrimSpace(input.SourceEndpointID)
 	input.SourceGroupID = strings.TrimSpace(input.SourceGroupID)
 	input.TargetEndpointID = strings.TrimSpace(input.TargetEndpointID)
@@ -234,6 +248,36 @@ func (s *Store) ProposeCommunicationLink(input CommunicationLinkProposal) (*Comm
 	}
 	defer tx.Rollback()
 	currentTime := time.Now().UTC()
+	if requestID != "" {
+		actor, err := trustedClientTopologyMutationTx(tx, requestID, input.ActorOwnerID)
+		if err != nil {
+			return nil, err
+		}
+		currentTime = time.Now().UTC()
+		if !expires.After(currentTime) {
+			return nil, ErrCommunicationLinkScope
+		}
+		if input.TransportHubID != "" && input.TransportHubID != actor.HubID {
+			return nil, ErrNetworkPermission
+		}
+		for _, side := range []struct{ endpointID, groupID string }{
+			{input.SourceEndpointID, input.SourceGroupID}, {input.TargetEndpointID, input.TargetGroupID},
+		} {
+			if err := guardClientTopologyGroupTx(tx, actor, side.groupID); err != nil {
+				return nil, err
+			}
+			if err := guardClientTopologyEndpointOwnerTx(tx, actor, side.endpointID); err != nil {
+				return nil, err
+			}
+			var principalID string
+			if err := tx.QueryRow(`SELECT principal_id FROM fabric_endpoints WHERE id=?`, side.endpointID).Scan(&principalID); err != nil {
+				return nil, ErrNetworkPermission
+			}
+			if err := networkGuardGroupEndpointTx(tx, principalID, side.endpointID, side.groupID, currentTime); err != nil {
+				return nil, err
+			}
+		}
+	}
 	source, err := readLinkEndpointScope(tx, input.SourceEndpointID, input.SourceGroupID, currentTime)
 	if err != nil {
 		return nil, err

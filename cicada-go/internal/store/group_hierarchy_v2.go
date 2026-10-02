@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -25,6 +26,22 @@ func (s *Store) initializeGroupHierarchyV2Schema() error {
 // Both groups must be owned within the same trust domain; a future cross-owner
 // hierarchy requires a separate bilateral management contract.
 func (s *Store) SetGroupParent(childID, parentID string, expectedVersion int64) (*Group, error) {
+	return s.setGroupParent(childID, parentID, expectedVersion, "", "")
+}
+
+// SetGroupParentForClientRequest fences placement against the accepted
+// topology.apply request's current device, Owner key and epoch.
+func (s *Store) SetGroupParentForClientRequest(requestID, ownerID, childID, parentID string, expectedVersion int64) (*Group, error) {
+	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(ownerID) == "" {
+		return nil, ErrNetworkPermission
+	}
+	if expectedVersion == math.MaxInt64 {
+		return nil, ErrVersionConflict
+	}
+	return s.setGroupParent(childID, parentID, expectedVersion, requestID, ownerID)
+}
+
+func (s *Store) setGroupParent(childID, parentID string, expectedVersion int64, requestID, ownerID string) (*Group, error) {
 	childID, parentID = strings.TrimSpace(childID), strings.TrimSpace(parentID)
 	if childID == "" {
 		return nil, ErrGroupNotFound
@@ -42,10 +59,24 @@ func (s *Store) SetGroupParent(childID, parentID string, expectedVersion int64) 
 		return nil, err
 	}
 	defer tx.Rollback()
+	if requestID != "" {
+		actor, err := trustedClientTopologyMutationTx(tx, requestID, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		if err := guardClientTopologyGroupTx(tx, actor, childID); err != nil {
+			return nil, err
+		}
+		if parentID != "" {
+			if err := guardClientTopologyGroupTx(tx, actor, parentID); err != nil {
+				return nil, err
+			}
+		}
+	}
 	var owner, trustDomain, currentParent, childNetwork string
-	var version int64
-	err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id, parent_group_id, network_id, version FROM groups WHERE id = ?`, childID).
-		Scan(&owner, &trustDomain, &currentParent, &childNetwork, &version)
+	var version, revision int64
+	err = tx.QueryRow(`SELECT owner_principal_id, trust_domain_id, parent_group_id, network_id, version, revision FROM groups WHERE id = ?`, childID).
+		Scan(&owner, &trustDomain, &currentParent, &childNetwork, &version, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrGroupNotFound
 	}
@@ -53,6 +84,9 @@ func (s *Store) SetGroupParent(childID, parentID string, expectedVersion int64) 
 		return nil, err
 	}
 	if version != expectedVersion {
+		return nil, ErrVersionConflict
+	}
+	if requestID != "" && (version == math.MaxInt64 || revision <= 0 || revision == math.MaxInt64) {
 		return nil, ErrVersionConflict
 	}
 	if parentID != "" {

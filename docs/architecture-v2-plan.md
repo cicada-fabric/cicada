@@ -17,6 +17,14 @@
 
 Headscale/Tailscale仅作为只读对照；未复用代码或增加依赖。不要用其网络控制面替代CICADA Owner Guard/E2EE。历史计划、失败和旧工件保留其原来源；勿以旧 clean-25bc/Hub41b7 F4 fixture 代表 clean52 Main。
 
+## v0.2 deferred — 完整用户/管理员权限与委派产品流程
+
+完整普通用户/管理员体系、层级权限配置与管理委派 UX 留待 **v0.2**。v0.1 本轮仅收敛既有 Owner 设备与逐对象 Guard、canvas 真实框选/拖拽建组/独立确认入组/连线提案/持久化及拒绝；不新增角色、重构 ACL、扩展 wire/catalog，亦不把当前 manager（Control identity Owner）55／external（其他 Owner）47 候选操作当作完整 RBAC。`directory.read` 的当前精确 Guard 与已实现 consent 边界保留；完整权限产品设计、预设与委派配置不扩进本轮。
+
+以下仅是 v0.2 的设计方向，不表示 v0.1 已实现这些角色或授权：Hub 运维负责服务部署与生命周期，不因运维身份取得 Owner 权限、其他 Network 的管理权或私有原生上下文解密权。Network 管理员只能使用用户明确、可撤销地授予该 Network 的拓扑、成员和策略 grants；普通成员仅使用明确授予的协作能力。Monitor 是独立的观察、建议或受委托职能，不自动成为管理员，也不代表 User 批准操作。
+
+v0.2 设计入口为 [Network membership 与权限预设](agent-networks-design.md#membership-and-simple-permission-presets)、[Group roles 与精确 Guard](group-collaboration-spaces-design.md#simple-roles-precise-guard)及 [Monitor proposals 与受控委派](group-collaboration-spaces-design.md#monitor-proposals-and-controlled-regrouping)，对应下方既有 M4 路线。既有 bounded delegation/CAS/audit 后端证据保持原归属，不代表完整用户层级或委派 UI 已接受。后续方案仍须逐项限制对象、动作、版本、期限和撤销：安装不等于 Join，Group 父子不继承权限，角色不代替 broadcast/management grant，Monitor 不自授权，不扩大私有读者/历史或复制密钥，不自动移动原生 Thread 上下文。
+
 ## Historical plans before this checkpoint
 
 

@@ -13,15 +13,18 @@ import (
 )
 
 type Service struct {
-	store         *store.Store
-	ownerID       string
-	trustDomainID string
-	now           func() time.Time
-	joinMu        sync.Mutex
-	nodeEventsMu  sync.Mutex
-	nodeEvents    map[string]map[chan struct{}]struct{}
-	spaceEventsMu sync.Mutex
-	spaceEvents   map[string]map[chan struct{}]struct{}
+	store              *store.Store
+	ownerID            string
+	trustDomainID      string
+	now                func() time.Time
+	joinMu             sync.Mutex
+	nodeEventsMu       sync.Mutex
+	nodeEvents         map[string]map[chan struct{}]struct{}
+	spaceEventsMu      sync.Mutex
+	spaceEvents        map[string]map[chan struct{}]struct{}
+	nodeSSEStreamMu    sync.Mutex
+	nodeSSEStreamCount int
+	nodeSSEStreams     map[string]int
 }
 
 func NewService(persistence *store.Store, ownerID, trustDomainID string) (*Service, error) {

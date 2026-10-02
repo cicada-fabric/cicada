@@ -5,6 +5,54 @@ import (
 	"sync"
 )
 
+const (
+	maxNodeSSEStreamsPerNode    = 4
+	maxNodeSSEStreamsPerService = 256
+)
+
+// AdmitNodeSSEStream reserves one authenticated Node stream slot for the life
+// of an HTTP SSE connection. The returned release function is safe to call
+// more than once. Admission and release are O(1), and no event payload is
+// queued by this counter.
+func (s *Service) AdmitNodeSSEStream(nodeID string) (release func(), admitted bool) {
+	if s == nil {
+		return nil, false
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return nil, false
+	}
+
+	s.nodeSSEStreamMu.Lock()
+	if s.nodeSSEStreamCount >= maxNodeSSEStreamsPerService ||
+		s.nodeSSEStreams[nodeID] >= maxNodeSSEStreamsPerNode {
+		s.nodeSSEStreamMu.Unlock()
+		return nil, false
+	}
+	if s.nodeSSEStreams == nil {
+		s.nodeSSEStreams = make(map[string]int)
+	}
+	s.nodeSSEStreams[nodeID]++
+	s.nodeSSEStreamCount++
+	s.nodeSSEStreamMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.nodeSSEStreamMu.Lock()
+			if current := s.nodeSSEStreams[nodeID]; current > 0 {
+				if current == 1 {
+					delete(s.nodeSSEStreams, nodeID)
+				} else {
+					s.nodeSSEStreams[nodeID] = current - 1
+				}
+				s.nodeSSEStreamCount--
+			}
+			s.nodeSSEStreamMu.Unlock()
+		})
+	}, true
+}
+
 // SubscribeNodeEvents registers an in-process wake hint for one Node. The
 // durable Relay inbox remains authoritative: a missed hint is recovered by
 // claiming after reconnect or during periodic reconciliation. The returned

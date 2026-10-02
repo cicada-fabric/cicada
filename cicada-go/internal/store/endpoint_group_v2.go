@@ -145,6 +145,19 @@ func (s *Store) ListEndpointGroupMemberships(endpointID string) ([]EndpointGroup
 // legacy primary group projection. Callers must authenticate the enrollment
 // action before invoking this store method.
 func (s *Store) JoinEndpointGroup(endpointID, groupID string) (*EndpointGroupMembership, error) {
+	return s.joinEndpointGroup(endpointID, groupID, "", "")
+}
+
+// JoinEndpointGroupForClientRequest checks current Client authority and the
+// Endpoint's current Network/Node scope in the same transaction as the join.
+func (s *Store) JoinEndpointGroupForClientRequest(requestID, ownerID, endpointID, groupID string) (*EndpointGroupMembership, error) {
+	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(ownerID) == "" {
+		return nil, ErrNetworkPermission
+	}
+	return s.joinEndpointGroup(endpointID, groupID, requestID, ownerID)
+}
+
+func (s *Store) joinEndpointGroup(endpointID, groupID, requestID, ownerID string) (*EndpointGroupMembership, error) {
 	endpointID, groupID = strings.TrimSpace(endpointID), strings.TrimSpace(groupID)
 	if endpointID == "" || groupID == "" {
 		return nil, errors.New("endpoint and group are required")
@@ -158,6 +171,19 @@ func (s *Store) JoinEndpointGroup(endpointID, groupID string) (*EndpointGroupMem
 	rollback := func(cause error) (*EndpointGroupMembership, error) {
 		_ = tx.Rollback()
 		return nil, cause
+	}
+	var actor trustedClientRequest
+	if requestID != "" {
+		actor, err = trustedClientTopologyMutationTx(tx, requestID, ownerID)
+		if err != nil {
+			return rollback(err)
+		}
+		if err := guardClientTopologyGroupTx(tx, actor, groupID); err != nil {
+			return rollback(err)
+		}
+		if err := guardClientTopologyEndpointOwnerTx(tx, actor, endpointID); err != nil {
+			return rollback(err)
+		}
 	}
 	var principalID, migrationState, endpointStatus, bindingID, nativeSessionID string
 	if err := tx.QueryRow(`SELECT principal_id, migration_state, status, binding_id, native_session_id FROM fabric_endpoints WHERE id = ?`, endpointID).
@@ -184,8 +210,25 @@ func (s *Store) JoinEndpointGroup(endpointID, groupID string) (*EndpointGroupMem
 	if err := s.requireActiveMembershipTx(tx, principalID, groupID); err != nil {
 		return rollback(err)
 	}
+	if requestID != "" {
+		member, err := scanMembership(tx.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE principal_id=? AND group_id=?`, principalID, groupID))
+		if err != nil {
+			return rollback(err)
+		}
+		at := time.Now().UTC()
+		if member == nil || member.Status != MembershipStatusActive || !networkEffectiveAllows(member.EffectiveAt, at) || !networkExpiryAllows(member.ExpiresAt, at) {
+			return rollback(ErrMembershipNotActive)
+		}
+	}
 	if err := upsertEndpointGroupMembershipTx(tx, endpointID, groupID); err != nil {
 		return rollback(err)
+	}
+	if requestID != "" {
+		// The Network guard requires an explicit join. Validate after the
+		// tentative insert and roll back that insert on any current-scope deny.
+		if err := networkGuardGroupEndpointTx(tx, principalID, endpointID, groupID, time.Now().UTC()); err != nil {
+			return rollback(err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

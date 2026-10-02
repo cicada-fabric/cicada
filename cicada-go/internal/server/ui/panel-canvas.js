@@ -8,6 +8,14 @@ export class CanvasPanel {
     this.db = options.db;
     this.cryptoApi = options.cryptoApi;
     this.identity = options.identity;
+    this.pinnedHubId = options.pinnedHubId || '';
+    this.generation = 0;
+    this.planContext = null;
+    this.createdGroupIntent = null;
+    this.joinTargetGroupId = '';
+    this.refreshScope = null;
+    this.applying = false;
+    this.previewSequence = 0;
     this.topology = options.initialSnapshots.topology;
     this.status = options.initialSnapshots.status;
     this.writeFence = options.initialSnapshots.writeFence || null;
@@ -67,14 +75,36 @@ export class CanvasPanel {
     return this.topology.networks?.find(network => network.network_id === this.networkId)?.name || this.networkId || 'All networks';
   }
 
-  async reload(forFenceReview = false) {
+  captureScope() {
+    return Object.freeze({ generation: this.generation, networkId: this.networkId });
+  }
+
+  scopeIsCurrent(scope) {
+    return Boolean(scope && scope.generation === this.generation && scope.networkId === this.networkId);
+  }
+
+  invalidateIntents() {
+    this.generation++;
+    this.previewSequence++;
+    this.plan = [];
+    this.planReview = '';
+    this.planContext = null;
+    this.pendingLinkGesture = null;
+    this.createdGroupIntent = null;
+    this.joinTargetGroupId = '';
+    this.networkDirectory = { networkId: '', endpoints: [], nextCursor: '', loading: false, error: '' };
+    this.cancelPointer();
+  }
+
+  async reload(forFenceReview = false, outcomeMessage = '') {
+    this.invalidateIntents();
+    const scope = this.captureScope();
+    this.refreshScope = scope;
+    this.setMessage(outcomeMessage || 'Refreshing authoritative snapshots. Previous action previews and created Group selection intent were discarded.');
+    this.renderSide();
     try {
       const snapshots = await this.refresh();
-      if (this.plan[0]?.set_parent) {
-        this.plan = [];
-        this.planReview = '';
-      }
-      this.cancelPointer();
+      if (!this.scopeIsCurrent(scope)) return false;
       this.topology = snapshots.topology;
       this.status = snapshots.status;
       this.writeFence = snapshots.writeFence || null;
@@ -88,14 +118,21 @@ export class CanvasPanel {
           reviewRace = true;
         }
       }
-      this.message = reviewRace ? 'This write became uncertain during the refresh. Refresh again after it resolves before reviewing state.' :
-        'Authoritative topology and status snapshots refreshed.';
+      this.message = outcomeMessage ? `${outcomeMessage} Authoritative topology and status snapshots refreshed.` :
+        reviewRace ? 'This write became uncertain during the refresh. Refresh again after it resolves before reviewing state.' :
+          'Authoritative topology and status snapshots refreshed.';
       this.render();
       this.renderSide();
+      return true;
     } catch (error) {
-      this.message = error.message;
-      this.banner.textContent = `Refresh stopped: ${error.message}`;
+      if (!this.scopeIsCurrent(scope)) return false;
+      this.message = `${outcomeMessage ? outcomeMessage + ' ' : ''}Refresh stopped: ${error.errorCode ? error.errorCode + ': ' : ''}${error.message}`;
+      this.banner.textContent = this.message;
       if (error.message.includes('unresolved') || error.message.includes('sequence state')) this.pending?.(error.message);
+      this.renderSide();
+      return false;
+    } finally {
+      if (this.refreshScope === scope) this.refreshScope = null;
       this.renderSide();
     }
   }
@@ -358,25 +395,39 @@ export class CanvasPanel {
   }
 
   async previewEndpointJoin(endpointId, groupId) {
+    if (this.applying || this.scopeIsCurrent(this.refreshScope)) {
+      this.setMessage('Wait for the current operation or snapshot refresh before preparing another action.');
+      return;
+    }
+    const scope = this.captureScope();
+    const sequence = ++this.previewSequence;
+    this.plan = []; this.planReview = ''; this.planContext = null;
+    this.renderSide();
     try {
       const endpoint = this.topology.endpoints?.find(item => item.endpoint_id === endpointId);
       if (!endpoint) throw new Error('Endpoint is no longer visible in this Owner snapshot. Refresh before continuing.');
       let intent;
       if (groupHasMember(this.topology, endpoint, groupId)) {
-        intent = endpointJoinGesture(this.topology, endpointId, groupId, this.networkId);
+        intent = endpointJoinGesture(this.topology, endpointId, groupId, scope.networkId);
       } else {
-        if (!(endpoint.network_ids || []).includes(this.networkId)) {
+        if (!(endpoint.network_ids || []).includes(scope.networkId)) {
           throw new Error('Only an Endpoint enrolled in the selected Network can be admitted to this Group.');
         }
         this.setMessage('Fetching an exact Owner-scoped admission preview. No Group membership is being written.');
         const preview = await this.rpc('topology.endpoint_admission_preview', {
-          network_id: this.networkId, group_id: groupId, endpoint_id: endpointId
+          network_id: scope.networkId, group_id: groupId, endpoint_id: endpointId
         });
-        intent = endpointAdmissionGesture(this.topology, endpointId, groupId, this.networkId, preview);
+        if (!this.scopeIsCurrent(scope) || sequence !== this.previewSequence) return;
+        intent = endpointAdmissionGesture(this.topology, endpointId, groupId, scope.networkId, preview);
       }
-      this.queueAction(intent.action, intent.review);
+      if (!this.scopeIsCurrent(scope) || sequence !== this.previewSequence) return;
+      this.queueAction(intent.action, intent.review, scope);
     } catch (error) {
-      this.setMessage(error.message);
+      if (this.scopeIsCurrent(scope) && sequence === this.previewSequence) {
+        this.invalidateIntents();
+        this.setMessage(`${error.errorCode ? error.errorCode + ': ' : ''}${error.message}`);
+        this.renderSide();
+      }
     }
   }
 

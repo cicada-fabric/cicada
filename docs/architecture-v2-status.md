@@ -1,6 +1,10 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-02 current status — finite lanes scoped; v0.1 PARTIAL
+## 2026-10-02 current status — PANEL/SSE bounded candidate; v0.1 PARTIAL
+
+本轮 Hub panel 与 Node SSE stream admission 候选基于 Main `dev` 源码 `dd81575b160aa901b642137e54d7a60961e4bd68`；v0.1 与 Architecture v2 仍为 **PARTIAL**。下方 freeze3 panel 及 SSE admission 段落记录本轮有界验收和准确来源。下一张表保留的是 `52cc2f6e0f97829332be372cb302cdb9f0ab0558` 的 prior checkpoint summary；其 source/count/FAIL 原记录不转移为本轮结果。该旧表 SSE 行的 subscriber-limit 待验收仅指当时的 52 来源；本轮 `dd81575` SSE stream admission 有界结果见下文。
+
+### Prior checkpoint summary — 2026-10-02 finite lanes; baseline `52cc2f6`
 
 本检查点基线为 `52cc2f6e0f97829332be372cb302cdb9f0ab0558`，来源域分别列出；当前 `dev` 以 `git rev-parse HEAD` 为准。软件 `0.1.0-dev`、Architecture v2.3、Hub schema 57、Client contract `client-hub-v1.6.4`、wire 1、55项 catalog 分别记录；catalog SHA-256 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。其余结果是各自冻结的候选或artifact证据，不自动成为该HEAD的全仓回归。
 
@@ -15,6 +19,20 @@
 | 外部部署 | 本轮有限门禁不覆盖生产部署/恢复 | 实体双设备、公网HTTPS、真实生产恢复各自结果 |
 
 整体仍为 **PARTIAL**。项目约85%进度估计不是验收百分比。精确delta、receipt、计数、fail/skip归属见[当前验证记录](v01-clean52-current-checkpoint-validation.md)；各历史表仍只表示其来源时点。
+
+### 窄候选：已认证 Node SSE stream admission
+
+基于源码快照 `dd81575b160aa901b642137e54d7a60961e4bd68` 的隔离候选为每个已认证 Node 限 4 个并发 HTTP SSE stream、每个 `fabric.Service` 限 256 个；超额以 `429` 和 `Retry-After: 1` 拒绝，错误帧继续使用现有 5 秒写 deadline。一个 stream 同时最多建立 wake 与 space 两条 cap-1 hint subscription，但只占一个 admission；defer 释放计数。新增的两个 fabric admission 测试及两个 server admission 测试 normal/race 有限 selector 均通过；更宽的旧 SSE race selector 曾因测试反射读取 map 与 unsubscribe 并发而失败，该失败及日志保留，不据此声称更宽 race PASS。已应用的候选仍只代表这些有限 admission selectors，不代表全仓验收。
+
+### 2026-10-02 v0.1 Hub panel freeze3 bounded validation
+
+本节记录有限候选，不代表 Architecture v2 或 v0.1 整体完成。24 路径 patch SHA-256 为 `6bb2b6eae927fcba1250b444307a421d59b0fb245ddd9580624d9ac675c590e8`，pre/post manifest SHA-256 为 `1b3754b73fd1d51df7613e544339cc3b1da23659ac85ebcdb5e6bbf1990c4b3e`。PANEL freeze3 完整源快照有 1,072 个文件，canonical SHA-256 `df825561a2ab5f2b3f493ce5b3b2433bac6f161e7e8cdca9d509e6d4a659193d`、freeze SHA-256 `56c55c8958893b79b8341e1838a0a10aab7428178f64c901262b9e046f061c36`；STD 894 项构建输入 fingerprint 为 `c7fb6548de00f35ce0f7675d76353aa42c825b41e9c602aed98dac36e23af152`。
+
+Go/WASM/Hub build receipts 保持 freeze1 归属（full-freeze SHA `f7c72c7c37581fb9e464307d35fd561023692e83870c00bdafe001990751b7e2`、canonical SHA `c87d5b8c8fead4871826da1007ee04410e63f733a3d58025abb38b79bbd29944`）；Chrome receipt 使用 freeze3。两个 freeze bridge（`freeze1-to-freeze2-bridge.json` SHA `489e856df2fa8f0a4b9c3467ea440628587e9fe62fbccada238586f1dc96c6dc`；`freeze2-to-freeze3-bridge.json` SHA `e08a337e8843f4c8de2c923e61a0f5acbf9ca786a26280f3de4a0b4e1955a5ee`）记录 browser fixture script 的来源变化，并证明 894 项 Hub build inputs、raw modes 与 Git index metadata 相同；这不把 dirty 构建归为 HEAD 单一来源。四个 Go package 的 normal 与 race 有界 selector 共 8 次执行；每种模式 32 top-level / 97 subtest events，合计 64 / 194，0 skip、0 fail。它是 scoped PASS，不是 full Go 或 Client golden。
+
+Chrome 151.0.7922.109 在确切 dirty Hub image `sha256:b06dfd3236359ba6e41422591a5c5a3534cb9b449aaf284a7948340157352f65` 上通过 29/29 个单列步骤；该镜像记录 source revision `dd81575b160aa901b642137e54d7a60961e4bd68`、`source_dirty=true`、STD fingerprint `c7fb6548de00f35ce0f7675d76353aa42c825b41e9c602aed98dac36e23af152`，fresh binary SHA-256 `5a0d1a674ab564f7bb249b4d2be4beafc30abfcdbf3592ef18a72c2ae260081c`。浏览器使用合成 Owner/Node fixture 和 loopback HTTP secure-context override；它不证明真实 native identity/consumption、Android、物理设备/Node 或公网 HTTPS。完整结果、工具/镜像元数据、cleanup、source bridges 与证据索引见 [PANEL freeze3 handoff](../.cicada-data/parallel-panel-52-20261002/handoff-freeze3/README.md)（SHA-256 `88443338c4e887cc8e81c739dde9daa1672f82075e16414159e4f982b1c67ba2`）、[scoped Go receipt](../.cicada-data/parallel-panel-52-20261002/qa-freeze1/RESULTS.json)（`4ba78a82245762c575ded56df86a6b7df00aea20c621178674ccd8350220d3c1`）、[Chrome receipt](../.cicada-data/parallel-panel-52-20261002/browser-freeze3/result.json)（`3e87a0b80d7727ae98420832a8d2832eaced5229cff1a045e9f544cac8651c8a`）、[final report](../.cicada-data/parallel-panel-52-20261002/FINAL_REPORT.json)（`32be40a4d2ac363842ae32b40a52cceef645c8e9549905beacf24feac8ffd6f6`）與 [92-artifact index](../.cicada-data/parallel-panel-52-20261002/artifact-index.json)（`6b4f73ab5f5619b94a3fc9e69c75acb8914c9a957c7406580613a3bb42e33b1d`）。
+
+此前 Chrome freeze1 FAIL（9 PASS / 20 NOT_RUN，sha `ed0c1872baf5a81d3a59f332643e52c6f9f887eaff12a9480da5221ce36bfd15`）和 freeze2 FAIL（20 PASS / 9 NOT_RUN，sha `0801b25675376b686415a55abc1dc4901b33d64a4ebdaf2b28d81a5f49ce349d`）均保留。最初 fixture 的无效合成 Node credential digest 失败（[fixture receipt](../.cicada-data/parallel-panel-52-20261002/qa-baseline-repro/RESULTS.json)，sha `1ad29258610929943dffc03ee2ad49fd1c43cd6b0ffdde2979fb7d9841b1f3fe`）已被分类为 fixture 错误，不作 mutation proof（分类更正 sha `2e5f454c29db0976354a3e83c460d5c6b457f72c79a1bb268d592bb81fddb29c`）；实际未修 baseline 的 15 个 revoke-denial assertions 与 15 个 persisted-side-effect assertions 失败也继续保留（[baseline receipt](../.cicada-data/parallel-panel-52-20261002/qa-baseline-repro-v2/RESULTS.json)，sha `d93605b5ce0cf4588a994fa0e665bd947c2d502c518e5773b0737bcb4eaa9c17`）。本候选 full Go/Client golden、PQ candidate、Android、physical Node/device、real native Runtime 和 public HTTPS 均 **NOT_RUN**；models invoked 为 0。失败归属和分类见 [final report](../.cicada-data/parallel-panel-52-20261002/FINAL_REPORT.json)。
 
 ## Historical status entries before this checkpoint
 
@@ -860,7 +878,7 @@ sealed-capable `cicada_receive` 现在经受信本机桥读取 Node inbox，而�
 | V62 | PARTIAL | 授权每次查权威 SQLite、无扩权 cache；未注入权威服务故障黑盒测试。 |
 | V63 | PASS | 缺少双物理机/自主 MCP/迁移条件均明确标记，不计为通过。 |
 | V64 | PARTIAL（有界真实 TCP 样本） | 独立 `c23ef9…`/4fb 单 Hub、1 CPU/128 MiB、64 合成 Endpoint、两逻辑 Node/16 worker 的 run-2 PASS；ASK cap/429、cancel/reply/retry 有证据，run-1 fixture FAIL 保留。见[当前来源和指标](v01-transport-recovery-checkpoint-validation.md)。不保证真实多 Agent、native、物理机、公网 HTTPS 或当前 main/PQ 容量；PASS 计数不变。 |
-| V65–V70 | PARTIAL | 当前 UI 代码有 Endpoint→Group admission preview/explicit confirm、Link proposal gesture 与 box select；旧 Chrome PASS 只覆盖当时冻结源码的 pin/vault/enrollment/topology/status，不涵盖新手势。V68 是两个相互隔离 Docker Node namespaces 接入同一 Hub，不要求分离物理主机。 | 新手势需 current-source browser 验证 preview/CAS、stale denial/no-write 与 Link proposal inactive；V68 joined gate、cold wake、完整多组/拒绝组合仍未通过统一验收。 |
+| V65–V70 | PARTIAL | 旧 Chrome PASS 只覆盖当时冻结源码；之后的 PANEL freeze3 候选已通过 29 个有界浏览器步骤，source attribution 与 limits 见 [PANEL freeze3 有界验证](#2026-10-02-v01-hub-panel-freeze3-bounded-validation)。V68 是两个相互隔离 Docker Node namespaces 接入同一 Hub，不要求分离物理主机。 | 全量 Golden、cold wake、完整多组/拒绝组合仍未通过统一验收；本次 synthetic 浏览器门禁不证明 Android、真实 native Runtime、物理设备或 public HTTPS。 |
 | V71 | PARTIAL | SSE/offline durable claim tests与 840a joined Docker gate 已证明两 Node outbound-only、Hub restart 两次、DB persist、exact outbox retry、reconnect dedup/wrongACKdeny。后者 recording fake queue；全部故障窗口、物理双 Node与 fault期间真实 native 消耗未验收。 |
 | V72 | PASS（限定 same-Group native broadcast） | 432f product＋owned-test overlay PASS298.14s，两个 original recipient Threads 消耗广播并保留上下文；旧失败仍保留且不归 Monitor PASS 或 finalFP。物理双 Node、通知预算、完整故障/授权矩阵仍未验收。 |
 | V73 | PASS（限定链路） | 固定候选 `25013b5` 的同一 original Monitor Thread 完成一次只读 preview、一次独立 dispatch；两原生 recipient Thread receive/context assertions 通过。Client 10 selectors/final strict status、Core scoped ciphertext scan、Intake Hub state audit 与 cleanup 均 PASS；Hub 记录一条原审批，两个 unique recipient outcomes：local `NODE_REPORTED`、remote `RELAY_PERSISTED`。派发授权和这些 outcome 不证明普遍模型正确性；物理双 Node、完整 RN 同意 UI、公网 HTTPS 未验收。详见 [bounded candidate report](client-hub-v13-25013b5-validation.md)。 |

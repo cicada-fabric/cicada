@@ -260,7 +260,7 @@ async function enterWorkspace() {
     const snapshots = await fetchSnapshots();
     const rpc = (operation, input) => request(operation, input);
     canvas = new CanvasPanel(app, { db, cryptoApi, identity: deviceIdentity,
-      initialSnapshots: snapshots, rpc, refresh: fetchSnapshots,
+      initialSnapshots: snapshots, pinnedHubId: state.pin.hubId, rpc, refresh: fetchSnapshots,
       recover: () => recoverPending(db, cryptoApi, deviceIdentity), lock: lockDevice,
       clearWriteFence: operationID => authorizeNewWriteAfterReview(db, operationID),
       pending: renderPendingRecovery });

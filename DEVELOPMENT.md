@@ -30,7 +30,7 @@ Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
 are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](docs/architecture-v2-status.md)
 owns source inventories, focused receipts and independent device-layer limits.
 
-The directory permission proposal is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. This proposal is deferred to v0.2 with the full ordinary-user/admin permission system; it is planning only and is not current development. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
+The existing encrypted `topology.apply` action `membership.set_directory_permission` independently controls the current `directory.read` grant for an exact same-Owner Group Membership, with Owner-scoped snapshot review, current-request Guard, CAS and revocation. The full ordinary-user/admin permission system, delegation/governance UX and any additional `directory.read` proposal are deferred to v0.2; those additions are planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
 
 ### Historical 2026-10-01 framework checkpoint — bounded PASS
 

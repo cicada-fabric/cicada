@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -1121,6 +1122,152 @@ func (s *Store) UpdateMembershipAuthorization(id string, roles, grants []string,
 		return nil, ErrVersionConflict
 	}
 	return scanMembership(s.db.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE id = ?`, id))
+}
+
+// trustedClientTopologyMutationTx takes SQLite's writer lock before any
+// mutable authority read. An existing second-connection writer therefore
+// commits before this transaction chooses its request/device snapshot.
+func trustedClientTopologyMutationTx(tx *sql.Tx, requestID, ownerID string) (trustedClientRequest, error) {
+	requestID, ownerID = strings.TrimSpace(requestID), strings.TrimSpace(ownerID)
+	if requestID == "" || ownerID == "" {
+		return trustedClientRequest{}, ErrNetworkPermission
+	}
+	if _, err := tx.Exec(`UPDATE client_device_requests_v2 SET updated_at=updated_at WHERE id=?`, requestID); err != nil {
+		return trustedClientRequest{}, err
+	}
+	actor, err := trustedClientRequestTx(tx, requestID)
+	if err != nil {
+		return trustedClientRequest{}, err
+	}
+	if actor.OwnerID != ownerID {
+		return trustedClientRequest{}, ErrNetworkPermission
+	}
+	var operation string
+	if err := tx.QueryRow(`SELECT route_operation FROM client_device_requests_v2 WHERE id=?`, requestID).Scan(&operation); err != nil {
+		return trustedClientRequest{}, err
+	}
+	if operation != "topology.apply" {
+		return trustedClientRequest{}, ErrNetworkPermission
+	}
+	return actor, nil
+}
+
+func guardClientTopologyGroupTx(tx *sql.Tx, actor trustedClientRequest, groupID string) error {
+	var ownerID, networkID, state string
+	if err := tx.QueryRow(`SELECT owner_principal_id,network_id,state FROM groups WHERE id=?`, strings.TrimSpace(groupID)).Scan(&ownerID, &networkID, &state); err != nil ||
+		ownerID != actor.OwnerID || state != GroupStateActive {
+		return ErrNetworkPermission
+	}
+	if networkID == "" {
+		var phase string
+		if tx.QueryRow(`SELECT phase FROM network_mode_v2 WHERE id=1`).Scan(&phase) == nil && phase == NetworkModePreparing {
+			return nil
+		}
+		return ErrNetworkPermission
+	}
+	var allowed int
+	if tx.QueryRow(`SELECT 1 FROM networks_v2 WHERE id=? AND owner_id=? AND hub_id=? AND state='ACTIVE'`,
+		networkID, actor.OwnerID, actor.HubID).Scan(&allowed) != nil {
+		return ErrNetworkPermission
+	}
+	return nil
+}
+
+func guardClientTopologyEndpointOwnerTx(tx *sql.Tx, actor trustedClientRequest, endpointID string) error {
+	var allowed int
+	if tx.QueryRow(`SELECT 1 FROM fabric_endpoints e JOIN principals p ON p.id=e.principal_id
+WHERE e.id=? AND e.migration_state=? AND e.status!='left' AND p.owner_id=? AND p.status='active'`,
+		strings.TrimSpace(endpointID), EndpointMigrationReady, actor.OwnerID).Scan(&allowed) != nil {
+		return ErrNetworkPermission
+	}
+	return nil
+}
+
+// UpdateClientTopologyMembershipAuthorizationForClientRequest is the CAS
+// writer for the existing role and broadcast actions. Its inputs are derived
+// by Control from the same Membership version; this method rechecks current
+// request, Group/Network, Principal and Membership authority before writing.
+func (s *Store) UpdateClientTopologyMembershipAuthorizationForClientRequest(requestID, ownerID, groupID, membershipID string,
+	roles, grants []string, authorization map[string]any, expectedVersion int64) (*Membership, error) {
+	requestID, ownerID = strings.TrimSpace(requestID), strings.TrimSpace(ownerID)
+	groupID, membershipID = strings.TrimSpace(groupID), strings.TrimSpace(membershipID)
+	if requestID == "" || ownerID == "" || groupID == "" || membershipID == "" || expectedVersion <= 0 || expectedVersion == math.MaxInt64 {
+		return nil, ErrNetworkPermission
+	}
+	if roles == nil {
+		roles = []string{}
+	}
+	if grants == nil {
+		grants = []string{}
+	}
+	if authorization == nil {
+		authorization = map[string]any{}
+	}
+	rolesJSON, err := json.Marshal(roles)
+	if err != nil {
+		return nil, err
+	}
+	grantsJSON, err := json.Marshal(grants)
+	if err != nil {
+		return nil, err
+	}
+	authorizationJSON, err := json.Marshal(authorization)
+	if err != nil {
+		return nil, err
+	}
+	role := "member"
+	if len(roles) > 0 && strings.TrimSpace(roles[0]) != "" {
+		role = strings.TrimSpace(roles[0])
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	actor, err := trustedClientTopologyMutationTx(tx, requestID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if err := guardClientTopologyGroupTx(tx, actor, groupID); err != nil {
+		return nil, err
+	}
+	member, err := scanMembership(tx.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE id=?`, membershipID))
+	if err != nil {
+		return nil, err
+	}
+	if member == nil || member.GroupID != groupID {
+		return nil, ErrMembershipNotFound
+	}
+	var allowed int
+	if tx.QueryRow(`SELECT 1 FROM principals WHERE id=? AND owner_id=? AND status='active'`, member.PrincipalID, actor.OwnerID).Scan(&allowed) != nil {
+		return nil, ErrNetworkPermission
+	}
+	at := time.Now().UTC()
+	if member.Status != MembershipStatusActive || !networkEffectiveAllows(member.EffectiveAt, at) || !networkExpiryAllows(member.ExpiresAt, at) {
+		return nil, ErrMembershipNotActive
+	}
+	if member.Version != expectedVersion || member.Revision <= 0 || member.Revision == math.MaxInt64 {
+		return nil, ErrVersionConflict
+	}
+	result, err := tx.Exec(`UPDATE memberships SET role=?,roles_json=?,grants_json=?,authorization_json=?,
+revision=revision+1,version=version+1,updated_at=? WHERE id=? AND version=?`,
+		role, string(rolesJSON), string(grantsJSON), string(authorizationJSON), at.Format(time.RFC3339Nano), membershipID, expectedVersion)
+	if err != nil {
+		return nil, err
+	}
+	if count, err := result.RowsAffected(); err != nil || count != 1 {
+		return nil, ErrVersionConflict
+	}
+	updated, err := scanMembership(tx.QueryRow(`SELECT `+membershipColumns+` FROM memberships WHERE id=?`, membershipID))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (s *Store) getEndpointV2Locked(id string) (*Endpoint, error) {

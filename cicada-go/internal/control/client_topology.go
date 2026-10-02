@@ -376,9 +376,12 @@ func (c *Control) ApplyClientTopologyChange(authenticatedOwnerID string, action 
 }
 
 // ApplyClientTopologyChangeForClientRequest carries the Server-accepted
-// request ID into new Network-scoped mutations. The Store rechecks its current
-// encrypted device session inside the same transaction as Group creation.
+// request ID into Canvas mutations. The Store rechecks its current encrypted
+// device session after taking the SQLite writer lock, before each mutation.
 func (c *Control) ApplyClientTopologyChangeForClientRequest(authenticatedOwnerID, clientRequestID string, action ClientTopologyAction) (*ClientTopologyChangeResult, error) {
+	if strings.TrimSpace(clientRequestID) == "" {
+		return nil, ErrPermissionDenied
+	}
 	return c.applyClientTopologyChange(authenticatedOwnerID, clientRequestID, action)
 }
 
@@ -418,7 +421,13 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 				return nil, err
 			}
 		}
-		group, err := c.store.SetGroupParent(input.GroupID, input.ParentGroupID, input.ExpectedGroupVersion)
+		var group *store.Group
+		var err error
+		if clientRequestID != "" {
+			group, err = c.store.SetGroupParentForClientRequest(clientRequestID, ownerID, input.GroupID, input.ParentGroupID, input.ExpectedGroupVersion)
+		} else {
+			group, err = c.store.SetGroupParent(input.GroupID, input.ParentGroupID, input.ExpectedGroupVersion)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -435,7 +444,12 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 		if _, err := c.store.GetMembershipByPrincipalGroup(endpoint.PrincipalID, input.GroupID); err != nil {
 			return nil, store.ErrMembershipNotActive
 		}
-		joined, err := c.store.JoinEndpointGroup(input.EndpointID, input.GroupID)
+		var joined *store.EndpointGroupMembership
+		if clientRequestID != "" {
+			joined, err = c.store.JoinEndpointGroupForClientRequest(clientRequestID, ownerID, input.EndpointID, input.GroupID)
+		} else {
+			joined, err = c.store.JoinEndpointGroup(input.EndpointID, input.GroupID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -494,7 +508,12 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 		if principal.OwnerID != ownerID {
 			return nil, ErrPermissionDenied
 		}
-		updated, err := c.BindMembershipRole(input.GroupID, input.MembershipID, input.Role, input.ExpectedMembershipVersion)
+		var updated *store.Membership
+		if clientRequestID != "" {
+			updated, err = c.bindClientTopologyMembershipRole(clientRequestID, ownerID, membership, input.Role, input.ExpectedMembershipVersion)
+		} else {
+			updated, err = c.BindMembershipRole(input.GroupID, input.MembershipID, input.Role, input.ExpectedMembershipVersion)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -566,8 +585,13 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 		if len(roles) == 0 {
 			roles = []string{membership.Role}
 		}
-		updated, err := c.store.UpdateMembershipAuthorization(membership.ID, roles, grants,
-			authorization, input.ExpectedMembershipVersion)
+		var updated *store.Membership
+		if clientRequestID != "" {
+			updated, err = c.store.UpdateClientTopologyMembershipAuthorizationForClientRequest(clientRequestID, ownerID,
+				input.GroupID, membership.ID, roles, grants, authorization, input.ExpectedMembershipVersion)
+		} else {
+			updated, err = c.store.UpdateMembershipAuthorization(membership.ID, roles, grants, authorization, input.ExpectedMembershipVersion)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -586,13 +610,20 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 		if _, err := c.clientOwnedEndpoint(ownerID, input.TargetEndpointID); err != nil {
 			return nil, err
 		}
-		link, err := c.store.ProposeCommunicationLink(store.CommunicationLinkProposal{
+		proposal := store.CommunicationLinkProposal{
 			SourceEndpointID: input.SourceEndpointID, SourceGroupID: input.SourceGroupID,
 			TargetEndpointID: input.TargetEndpointID, TargetGroupID: input.TargetGroupID,
 			Direction: input.Direction, Actions: input.Actions, DataScopes: input.DataScopes,
 			TransportHubID: input.TransportHubID, ExpiresAt: input.ExpiresAt,
 			ActorOwnerID: ownerID,
-		})
+		}
+		var link *store.CommunicationLink
+		var err error
+		if clientRequestID != "" {
+			link, err = c.store.ProposeCommunicationLinkForClientRequest(clientRequestID, ownerID, proposal)
+		} else {
+			link, err = c.store.ProposeCommunicationLink(proposal)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -622,6 +653,49 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 		return nil, err
 	}
 	return result, nil
+}
+
+// Use the existing role grant sets without granting broadcast permission.
+// The Store CAS writer verifies this Membership version and current authority.
+func (c *Control) bindClientTopologyMembershipRole(requestID, ownerID string, membership *store.Membership, role string, expectedVersion int64) (*store.Membership, error) {
+	if expectedVersion <= 0 {
+		return nil, errors.New("membership version is required")
+	}
+	role = strings.ToLower(strings.TrimSpace(role))
+	if role != groupRoleMember && role != groupRoleWorker && role != groupRoleMonitor {
+		return nil, errors.New("role must be member, worker, or monitor")
+	}
+	grants := make([]string, 0, len(membership.Grants)+2)
+	seen := make(map[string]struct{}, len(membership.Grants)+2)
+	for _, grant := range membership.Grants {
+		grant = strings.TrimSpace(grant)
+		if grant == "" {
+			continue
+		}
+		if _, roleGrant := roleGrantNames[strings.ToLower(grant)]; roleGrant {
+			continue
+		}
+		if _, duplicate := seen[grant]; duplicate {
+			continue
+		}
+		seen[grant] = struct{}{}
+		grants = append(grants, grant)
+	}
+	for _, grant := range roleBindingGrants[role] {
+		if _, duplicate := seen[grant]; duplicate {
+			continue
+		}
+		seen[grant] = struct{}{}
+		grants = append(grants, grant)
+	}
+	authorization := make(map[string]any, len(membership.Authorization))
+	for grant, value := range membership.Authorization {
+		if _, roleGrant := roleGrantNames[strings.ToLower(strings.TrimSpace(grant))]; !roleGrant {
+			authorization[grant] = value
+		}
+	}
+	return c.store.UpdateClientTopologyMembershipAuthorizationForClientRequest(requestID, ownerID,
+		membership.GroupID, membership.ID, []string{role}, grants, authorization, expectedVersion)
 }
 
 func validateClientTopologyUnion(action ClientTopologyAction) error {

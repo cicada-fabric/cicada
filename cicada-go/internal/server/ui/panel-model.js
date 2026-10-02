@@ -150,6 +150,52 @@ export function linkGesturePair(snapshot, sourceEndpointId, sourceGroupId, targe
   };
 }
 
+// These immutable IDs describe local selection only; they are never RPC fields.
+export function groupCreationSelection(snapshot, selectedIds, networkId) {
+  const network = (snapshot.networks || []).find(item => item.network_id === networkId);
+  if (!network || String(network.state).toLowerCase() !== 'active') {
+    throw new Error('Group creation must use the selected active Network.');
+  }
+  const endpointIds = [...new Set(selectedIds)];
+  for (const id of endpointIds) {
+    const endpoint = (snapshot.endpoints || []).find(item => item.endpoint_id === id);
+    if (!endpoint || (!(endpoint.network_ids || []).includes(networkId) &&
+        !(endpoint.group_ids || []).some(groupId => (snapshot.groups || []).some(group =>
+          group.group_id === groupId && group.network_id === networkId)))) {
+      throw new Error('Selected Endpoints must remain visible in the selected Network.');
+    }
+  }
+  return Object.freeze({ networkId, endpointIds: Object.freeze(endpointIds) });
+}
+
+export function createdGroupTarget(snapshot, groupId, selection) {
+  const group = (snapshot.groups || []).find(item => item.group_id === groupId);
+  if (!selection || !groupId || !group || group.network_id !== selection.networkId ||
+      String(group.state).toLowerCase() !== 'active') {
+    throw new Error('The created Group is not an active target in the refreshed Network. Select and review again.');
+  }
+  const current = groupCreationSelection(snapshot, selection.endpointIds, selection.networkId);
+  return Object.freeze({ ...current, groupId });
+}
+
+export function linkTransportSelection(snapshot, sourceEndpointId, targetEndpointId, pinnedHubId, selectedHubId = '') {
+  const source = (snapshot.endpoints || []).find(item => item.endpoint_id === sourceEndpointId);
+  const target = (snapshot.endpoints || []).find(item => item.endpoint_id === targetEndpointId);
+  if (!source || !target || typeof source.node_id !== 'string' || !source.node_id ||
+      typeof target.node_id !== 'string' || !target.node_id) {
+    throw new Error('Both Endpoint Node placements must be known before proposing a Link. Refresh and review again.');
+  }
+  if (source.node_id === target.node_id) {
+    if (selectedHubId) throw new Error('A same-Node Link must not select a transport Hub.');
+    return { transportHubId: '', review: 'Same Node: no transport Hub is selected.' };
+  }
+  if (!pinnedHubId || selectedHubId !== pinnedHubId) {
+    throw new Error('Explicitly select the currently pinned common Hub for this cross-Node Link. The Hub still verifies both Nodes and current grants.');
+  }
+  return { transportHubId: pinnedHubId,
+    review: `Cross-Node transport: explicitly selected pinned Hub ${pinnedHubId}. The Hub checks both Nodes are currently authorized on this common Hub; this selection grants no permission.` };
+}
+
 export function statusLabel(observation) {
   if (!observation || observation.known !== true) return 'unknown';
   return observation.stale ? `${observation.state} · stale` : String(observation.state || 'unknown');
@@ -265,7 +311,7 @@ export function saveEnrollmentState(state, request, origin) {
 export function actionSummary(action) {
   const label = action.kind;
   if (action.create_group) {
-    const parent = action.parent_group_id ? ` under ${action.parent_group_id}` : ' at network root';
+    const parent = action.create_group.parent_group_id ? ` under ${action.create_group.parent_group_id}` : ' at network root';
     return `Create Group “${action.create_group.group.name}”${parent}.`;
   }
   if (action.join_group) return `Attach Endpoint ${action.join_group.endpoint_id} to Group ${action.join_group.group_id}.`;

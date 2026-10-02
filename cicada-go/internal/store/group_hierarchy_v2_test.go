@@ -3,7 +3,9 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"math"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -75,6 +77,64 @@ func TestGroupHierarchyVersionCycleAndOwnerBoundary(t *testing.T) {
 	got, err := reopened.GetGroup(grandchild.ID)
 	if err != nil || got.ParentGroupID != child.ID {
 		t.Fatalf("restart lost hierarchy: %#v err=%v", got, err)
+	}
+}
+
+func TestClientTopologyMutationGuardHierarchyCASAndScope(t *testing.T) {
+	f := newClientTopologyStoreMutationFixture(t, true)
+	child, parent := f.groups[0], f.groups[1]
+	request := f.request(t, "topology.apply")
+	attached, err := f.store.SetGroupParentForClientRequest(request, "owner_a", child.ID, parent.ID, child.Version)
+	if err != nil || attached.ParentGroupID != parent.ID || attached.Version != child.Version+1 || attached.Revision != child.Revision+1 {
+		t.Fatalf("current parent placement failed: %v", err)
+	}
+	repeated, err := f.store.SetGroupParentForClientRequest(f.request(t, "topology.apply"), "owner_a", child.ID, parent.ID, attached.Version)
+	if err != nil || !reflect.DeepEqual(attached, repeated) {
+		t.Fatalf("same placement changed the Group: %v", err)
+	}
+	for _, tc := range []struct {
+		name, childID, parentID string
+		version                 int64
+		want                    error
+	}{
+		{"stale_CAS", child.ID, "", child.Version, ErrVersionConflict},
+		{"exhausted_CAS", child.ID, "", math.MaxInt64, ErrVersionConflict},
+		{"self_cycle", parent.ID, parent.ID, parent.Version, ErrGroupHierarchyCycle},
+		{"ancestor_cycle", parent.ID, child.ID, parent.Version, ErrGroupHierarchyCycle},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := f.snapshot(t)
+			if _, err := f.store.SetGroupParentForClientRequest(f.request(t, "topology.apply"), "owner_a", tc.childID, tc.parentID, tc.version); !errors.Is(err, tc.want) {
+				t.Fatalf("hierarchy/CAS guard = %v", err)
+			}
+			if !reflect.DeepEqual(before, f.snapshot(t)) {
+				t.Fatal("hierarchy refusal changed persisted business state")
+			}
+		})
+	}
+	for _, tc := range []struct{ name, networkID, trustDomain string }{
+		{"different_trust_domain", child.NetworkID, "other-domain"},
+		{"different_network", "synthetic-other-network", "owner_a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.networkID != child.NetworkID {
+				if _, err := f.store.CreateNetwork(Network{ID: tc.networkID, Name: tc.networkID, HubID: f.hubID, OwnerID: "owner_a", State: NetworkStateActive}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			external, err := f.store.CreateGroup(Group{ID: "synthetic-" + tc.name, Name: tc.name, NetworkID: tc.networkID,
+				OwnerPrincipalID: "owner_a", TrustDomainID: tc.trustDomain, State: GroupStateActive})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := f.snapshot(t)
+			if _, err := f.store.SetGroupParentForClientRequest(f.request(t, "topology.apply"), "owner_a", child.ID, external.ID, attached.Version); !errors.Is(err, ErrGroupParentOwnerScope) {
+				t.Fatalf("hierarchy scope widened: %v", err)
+			}
+			if !reflect.DeepEqual(before, f.snapshot(t)) {
+				t.Fatal("scope refusal changed persisted business state")
+			}
+		})
 	}
 }
 

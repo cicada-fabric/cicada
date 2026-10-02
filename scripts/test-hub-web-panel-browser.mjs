@@ -60,6 +60,9 @@ const browserContainer = `cicada-webpanel-${suffix}-chromium`;
 const nodeContainer = `cicada-webpanel-${suffix}-node`;
 const nodeStateDir = path.join(fixtureDir, 'node-state');
 let nodeWasCreated = false;
+const secondNodeContainer = `cicada-webpanel-${suffix}-node-2`;
+const secondNodeStateDir = path.join(fixtureDir, 'node-state-2');
+let secondNodeWasCreated = false;
 let hubHostPort = '';
 const dockerNetwork = `cicada-webpanel-${suffix}-net`;
 const browserOriginHost = 'localhost';
@@ -96,6 +99,15 @@ const result = {
     group_parent_stale_cas_denied: 'NOT_RUN',
     group_parent_authority_unchanged: 'NOT_RUN',
     group_parent_uncertain_fence_no_write: 'NOT_RUN',
+    selected_group_create_separate_confirmation: 'NOT_RUN',
+    selected_group_endpoint_independent_confirmations: 'NOT_RUN',
+    selected_group_restart_persistence: 'NOT_RUN',
+    canvas_scope_change_discards_all_previews: 'NOT_RUN',
+    canvas_late_admission_preview_rejected: 'NOT_RUN',
+    canvas_late_target_preview_rejected: 'NOT_RUN',
+    cross_node_link_requires_explicit_hub: 'NOT_RUN',
+    cross_node_link_pinned_hub_proposed_metadata: 'NOT_RUN',
+    current_node_authority_admission_denied: 'NOT_RUN',
   },
   fixture_cleanup: { status: 'NOT_RUN' },
 };
@@ -109,6 +121,7 @@ let controlKeyId = '';
 let ownerId = '';
 let ownerKeyId = '';
 let networkId = '';
+let scopeNetworkId = '';
 let groupName = '';
 let browserVersion = '';
 let browserUserAgent = '';
@@ -116,6 +129,8 @@ let hubWasCreated = false;
 let browserWasCreated = false;
 let networkWasCreated = false;
 let nestingFixture;
+let selectedGroupFixture;
+let crossNodeFixture;
 let pageA;
 let pageB;
 let fatal = null;
@@ -540,6 +555,12 @@ async function setupHubFixture(metadata) {
   let activation;
   try { activation = JSON.parse(activationText); } catch { fail('Candidate Hub Network activation returned invalid JSON'); }
   if (activation.phase !== 'ACTIVE') fail('Disposable owner Network did not become ACTIVE');
+  const scopeNetwork = JSON.parse(await runCandidateCLI([
+    'network', 'create', '--db', '/state/cicada.sqlite3', '--hub', hubId,
+    '--name', `ZZ Browser scope Network ${suffix.slice(-8)}`, '--owner', ownerId,
+  ], [`${stateDir}:/state`]));
+  scopeNetworkId = scopeNetwork.network_id;
+  if (!scopeNetworkId || scopeNetworkId === networkId) fail('Disposable second Owner Network was not independently created');
   phase = 'fixture_second_hub_start';
   await docker(['start', hubContainer]);
   const finalHub = await waitHub(hubContainer);
@@ -753,6 +774,7 @@ async function runBrowserFlow() {
   result.browser_vault.password_unlock_after_lock = true;
   markStep('encrypted_indexeddb_vault_and_unlock');
   markStep('encrypted_topology_status_and_canvas');
+  await selectActiveNetwork(networkId);
 
   phase = 'canvas_topology_apply';
   groupName = `Browser Gate Group ${suffix.slice(-8)}`;
@@ -781,6 +803,7 @@ async function runBrowserFlow() {
   await buttonClick(pageB, 'Unlock device key');
   await evaluateUntil(pageB, 'document.querySelector(".workspace") !== null && document.querySelector(".stage svg") !== null',
     Boolean, 60000, 'second-tab authoritative Canvas');
+  await selectActiveNetwork(networkId, pageB);
   const beforePauseState = await readIndexedDBState(pageA);
   const beforePauseRPCCount = pageA.rpcRequestCount;
 
@@ -819,6 +842,7 @@ async function runBrowserFlow() {
   await runResponseLossAndUncertainty(password);
   await runInteractionAndFaultFlow(password);
   await runNestingFlow(password);
+  await runCurrentNodeAdmissionDenial(password);
 }
 
 // Fixture setup uses actual PQ Owner approval and Node-authenticated APIs.
@@ -883,22 +907,28 @@ async function runNestingFlow(password) {
       preview.set_parent.group_id !== nestingFixture.child || preview.set_parent.parent_group_id !== nestingFixture.parent ||
       preview.set_parent.expected_group_version !== group(before, nestingFixture.child).version) fail('Nesting drag lost exact scope/CAS or wrote before confirmation');
   markStep('group_parent_preview_no_write');
+  const parentReview = await pageA.evaluate(`document.querySelector('.side')?.innerText || ''`);
+  if (!parentReview.includes(nestingFixture.child) || !parentReview.includes(nestingFixture.parent) ||
+      !parentReview.includes(group(before, nestingFixture.child).name) || !parentReview.includes(group(before, nestingFixture.parent).name)) {
+    fail('Nesting review did not identify the exact child and parent before confirmation');
+  }
   await committedAction();
   let current = await snapshot();
   if (group(current, nestingFixture.child).parent_group_id !== nestingFixture.parent ||
       group(current, nestingFixture.child).version !== group(before, nestingFixture.child).version + 1) fail('Confirmed nesting did not apply one child CAS');
   markStep('group_parent_confirm_cas');
-  if (nodeWasCreated) await docker(['stop', '--time', '10', nodeContainer]);
+  await fixtureNodes('stop');
   await docker(['stop', '--time', '10', hubContainer]); await docker(['start', hubContainer]);
   const restarted = await waitHub(hubContainer);
   if (restarted.identity.hub_id !== hubId || restarted.identity.control_public_identity.id !== controlKeyId) fail('Nesting restart changed Hub pins');
   hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
-  if (nodeWasCreated) await docker(['start', nodeContainer]);
+  await fixtureNodes('start');
   const persisted = await snapshot();
   if (group(persisted, nestingFixture.child).parent_group_id !== nestingFixture.parent ||
       group(persisted, nestingFixture.child).version !== group(current, nestingFixture.child).version) fail('Nesting parent/version did not persist');
   markStep('group_parent_restart_persistence');
   await refreshNesting();
+  await selectActiveNetwork(networkId);
   await evaluateUntil(pageA, `document.querySelector('[data-group-drag-id="${nestingFixture.child}"]') !== null`);
   const repeatCount = pageA.rpcRequestCount;
   await dragGroup(nestingFixture.child, nestingFixture.parent);
@@ -939,6 +969,9 @@ async function runNestingFlow(password) {
       group(current, nestingFixture.child).parent_group_id !== otherParent.group_id ||
       group(current, nestingFixture.child).version !== stale.set_parent.expected_group_version + 1 ||
       await pageA.evaluate('document.querySelector(".side pre") !== null')) fail('Stale nesting CAS was refreshed, retried or applied');
+  if (!(await pageA.evaluate(`document.querySelector('.status-banner')?.textContent || ''`)).includes('group.set_parent stopped:')) {
+    fail('Authenticated stale CAS denial was erased by the reconciliation refresh');
+  }
   markStep('group_parent_stale_cas_denied');
   if (authority(current) !== authority(before)) fail('Nesting changed Membership, role/grant, Endpoint reference or Link authority');
   markStep('group_parent_authority_unchanged');
@@ -948,17 +981,26 @@ async function runNestingFlow(password) {
     peer_decryption_denial: 'NOT_RUN', uncertain_scope: 'controlled synthetic interrupted state; not an actual kill window' };
 }
 
-async function syntheticNodeEndpoints(password) {
+async function fixtureNodes(action) {
+  for (const [name, created] of [[nodeContainer, nodeWasCreated], [secondNodeContainer, secondNodeWasCreated]]) {
+    if (created) await docker(action === 'stop' ? ['stop', '--time', '10', name] : ['start', name]);
+  }
+}
+
+async function syntheticNodeEndpoints(password, independent = false) {
   phase = 'synthetic_node_owner_approval';
-  const nodeID = `browser-node-${suffix.slice(-8)}`;
-  await docker(['run', '-d', '--name', nodeContainer, ...fixtureLabels(),
+  const nodeID = `browser-node-${suffix.slice(-8)}${independent ? '-2' : ''}`;
+  const container = independent ? secondNodeContainer : nodeContainer;
+  const state = independent ? secondNodeStateDir : nodeStateDir;
+  await docker(['run', '-d', '--name', container, ...fixtureLabels(),
     '--label', `org.cicada.fixture.image-id=${hubImageId}`, '--network', `container:${hubContainer}`,
     '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
-    '-v', `${nodeStateDir}:/node-state`, '-e', `CICADA_HUB_ID=${hubId}`,
-    hubImageId, 'machine', 'agent', '--id', nodeID, '--name', 'Synthetic browser adapter',
+    '-v', `${state}:/node-state`, '-e', `CICADA_HUB_ID=${hubId}`,
+    hubImageId, 'machine', 'agent', '--id', nodeID, '--name', `Synthetic browser adapter${independent ? ' 2' : ''}`,
     '--control-url', 'http://127.0.0.1:8787', '--state-dir', '/node-state', '--interval', '1s', '--relay-only']);
-  nodeWasCreated = true;
-  const local = path.join(nodeStateDir, 'nodes', `node-${nodeID}`);
+  if (independent) secondNodeWasCreated = true;
+  else nodeWasCreated = true;
+  const local = path.join(state, 'nodes', `node-${nodeID}`);
   let code = '';
   const deadline = Date.now() + 30000;
   while (!code && Date.now() < deadline) {
@@ -974,11 +1016,12 @@ async function syntheticNodeEndpoints(password) {
   if (confirmed.node_id !== nodeID || confirmed.state !== 'ACTIVE') fail('Owner did not confirm the exact synthetic Node');
   const token = (await readFile(path.join(local, 'relay.token'), 'utf8')).trim();
   const endpoints = [];
-  for (let index = 0; index < 2; index++) {
-    const session = `synthetic-browser-session-${suffix.slice(-8)}-${index}`;
-    const inviteName = `browser-${index}.invite`, proofName = `browser-${index}.proof`;
+  for (let index = 0; index < (independent ? 1 : 2); index++) {
+    const fixtureIndex = independent ? 2 : index;
+    const session = `synthetic-browser-session-${suffix.slice(-8)}-${fixtureIndex}`;
+    const inviteName = `browser-${fixtureIndex}.invite`, proofName = `browser-${fixtureIndex}.proof`;
     const grants = 'directory.discover,directory.publish';
-    await docker(['stop', '--time', '10', nodeContainer]);
+    await fixtureNodes('stop');
     await docker(['stop', '--time', '10', hubContainer]);
     await runCandidateCLI(['network', 'invite', '--db', '/state/cicada.sqlite3', '--network', networkId,
       '--target-owner', ownerId, '--invitation-file', `/owner-private/${inviteName}`, '--grants', grants, '--ttl', '15m'],
@@ -989,12 +1032,12 @@ async function syntheticNodeEndpoints(password) {
       '--session', session, '--grants', grants, '--discoverable'], [`${ownerPrivateDir}:/owner-private`]);
     await docker(['start', hubContainer]); await waitHub(hubContainer);
     hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
-    await docker(['start', nodeContainer]);
+    await fixtureNodes('start');
     const response = await fetch(`http://127.0.0.1:${hubHostPort}/v2/fabric/node/networks/join`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `CicadaNode ${token}` },
       body: JSON.stringify({ network_id: networkId, invitation_token: (await readFile(path.join(ownerPrivateDir, inviteName), 'utf8')).trim(),
         owner_join_proof: (await readFile(path.join(ownerPrivateDir, proofName), 'utf8')).trim(), harness: 'codex',
-        native_session_id: session, endpoint_name: `Synthetic Browser Endpoint ${index}` }) });
+        native_session_id: session, endpoint_name: `Synthetic Browser Endpoint ${fixtureIndex}` }) });
     if (response.status !== 201) fail(`Synthetic Node-authenticated Network Join rejected (HTTP ${response.status})`);
     const joined = await response.json();
     if (!joined.endpoint?.endpoint_id || joined.network_id !== networkId) fail('Synthetic Network Join returned inconsistent scope');
@@ -1008,8 +1051,10 @@ async function syntheticNodeEndpoints(password) {
     }
     endpoints.push(joined.endpoint.endpoint_id);
   }
-  result.synthetic_adapter = { owner_pq_confirmed: true, network_join_protocol: 'PASS', native_binding_protocol: 'PASS',
+  const adapter = { node_id: nodeID, owner_pq_confirmed: true, network_join_protocol: 'PASS', native_binding_protocol: 'PASS',
     endpoint_ids: endpoints, native_session_verification: 'NOT_RUN', model_calls: 0 };
+  if (independent) result.synthetic_adapter_second_node = adapter;
+  else result.synthetic_adapter = adapter;
   return endpoints;
 }
 
@@ -1102,9 +1147,306 @@ async function committedAction() {
   const before = pageA.rpcRequestCount;
   await buttonClick(pageA, 'Commit this one action');
   await evaluateUntil(pageA, 'document.querySelector(".status-banner")?.textContent || ""',
-    value => value.includes('Authoritative topology and status snapshots refreshed'), 30000, 'authenticated action and both snapshots');
+    value => value.includes('Authoritative topology and status snapshots refreshed') ||
+      value.includes('Authenticated snapshots refreshed. The created Group target is locked'), 30000, 'authenticated action and both snapshots');
   await waitForRPCCount(pageA, before + 3);
   await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{return !(await c.getState(db)).device?.pending;}finally{db.close();}})()`, Boolean, 30000, 'exact action packet and snapshots resolved');
+  if (pageA.rpcRequestCount !== before + 3) fail('One confirmed action did not use exactly one write and two snapshot reads');
+  await pageA.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+}
+
+async function exactPreview() {
+  return pageA.evaluate(`(()=>{const p=document.querySelector('.side pre');return p?JSON.parse(p.textContent):null;})()`);
+}
+
+async function selectActiveNetwork(id, page = pageA) {
+  const changed = await page.evaluate(`(()=>{const e=document.querySelector('[data-panel="active-network"]');if(!e||![...e.options].some(o=>o.value===${JSON.stringify(id)}))return false;e.value=${JSON.stringify(id)};e.dispatchEvent(new Event('change',{bubbles:true}));return document.querySelector('[data-panel="active-network"]')?.value===${JSON.stringify(id)};})()`);
+  if (!changed) fail('The real Owner Active Network selector lacks the exact fixture Network');
+}
+
+async function selectEndpoint(id, groupId) {
+  const selector = `[data-endpoint-id="${id}"][data-group-ref="${groupId}"]`;
+  await fitCanvasTargets([selector]);
+  await pageA.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await pageA.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+}
+
+async function runSelectedGroupFlow(password, endpointIDs, priorGroupID) {
+  phase = 'selected_group_create';
+  const before = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  if (![networkId, scopeNetworkId].every(id => before.networks.some(network => network.network_id === id &&
+      String(network.state).toLowerCase() === 'active'))) fail('Both disposable scope Networks must be actually ACTIVE in the encrypted Owner snapshot');
+  await fitCanvasTargets(endpointIDs.map(id => `[data-endpoint-id="${id}"][data-group-ref="${priorGroupID}"]`));
+  const refs = await Promise.all(endpointIDs.map(id => elementBox(pageA, `[data-endpoint-id="${id}"][data-group-ref="${priorGroupID}"]`)));
+  const count = pageA.rpcRequestCount;
+  await pointerDrag(pageA, { x: Math.min(...refs.map(b => b.x)) - 5, y: Math.min(...refs.map(b => b.y)) - 5 },
+    { x: Math.max(...refs.map(b => b.x + b.width)) + 5, y: Math.max(...refs.map(b => b.y + b.height)) + 5 });
+  const selected = await pageA.evaluate(`[...new Set([...document.querySelectorAll('.endpoint.selected')].map(e=>e.getAttribute('data-endpoint-id')))].sort()`);
+  if (JSON.stringify(selected) !== JSON.stringify([...endpointIDs].sort()) || pageA.rpcRequestCount !== count) {
+    fail('Real marquee did not retain exactly the two selected Endpoint IDs without a management request');
+  }
+  const name = `ZZ Selected Group ${suffix.slice(-8)}`;
+  await cardField(pageA, 'Create Group', 'input', 0, name);
+  await buttonClick(pageA, 'Preview Group creation');
+  const creation = await exactPreview();
+  if (pageA.rpcRequestCount !== count || creation?.kind !== 'group.create' ||
+      creation.create_group.group.network_id !== networkId || creation.create_group.group.name !== name ||
+      Object.keys(creation.create_group).some(key => !['group', 'parent_group_id'].includes(key))) {
+    fail('Selected Group creation wrote early or included an automatic Endpoint/membership payload');
+  }
+  await committedAction();
+  let current = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const created = current.groups.find(group => group.name === name && group.network_id === networkId);
+  if (!created?.group_id || before.groups.some(group => group.group_id === created.group_id) ||
+      endpointIDs.some(id => current.endpoints.find(endpoint => endpoint.endpoint_id === id)?.group_ids?.includes(created.group_id))) {
+    fail('Group creation silently attached a selected Endpoint or failed to return a new same-Network Group');
+  }
+  const locked = () => pageA.evaluate(`(()=>{const e=document.querySelector('[data-panel="created-group-target"]');return e?{id:e.getAttribute('data-group-id'),value:e.value,disabled:e.disabled}:null;})()`);
+  let target = await locked();
+  if (!target?.disabled || target.id !== created.group_id || target.value !== created.group_id || await exactPreview()) {
+    fail('Authenticated Group result did not lock the exact target without another queued write');
+  }
+  markStep('selected_group_create_separate_confirmation');
+  const remaining = new Set(endpointIDs);
+  const confirmations = [];
+  while (remaining.size) {
+    const previewCount = pageA.rpcRequestCount;
+    await buttonClick(pageA, 'Preview next selected Endpoint');
+    await evaluateUntil(pageA, `document.querySelector('.side pre')?.textContent || ''`, value => value.includes('endpoint.admit_group'));
+    const admission = await exactPreview();
+    const id = admission?.admit_endpoint?.admission?.endpoint_id;
+    if (pageA.rpcRequestCount !== previewCount + 1 || !remaining.has(id) ||
+        admission.admit_endpoint.admission.group_id !== created.group_id ||
+        admission.admit_endpoint.admission.network_id !== networkId ||
+        !admission.admit_endpoint.admission.native_binding_id || admission.admit_endpoint.admission.native_binding_epoch < 1) {
+      fail('Selected Endpoint did not get one separate exact current admission preview');
+    }
+    const diagnostic = await pageA.evaluate('globalThis.cicadaAdmissionDiagnostic');
+    if (!diagnostic?.roles_member_only || !diagnostic.grants_empty || !diagnostic.no_history || !diagnostic.no_key_grant) {
+      fail('Selected Endpoint preview expanded role, permission, history or key authority');
+    }
+    await committedAction();
+    current = await ownerFixtureRPC(password, 'topology.snapshot', {});
+    const endpoint = current.endpoints.find(item => item.endpoint_id === id);
+    const member = current.memberships.find(item => item.principal_id === endpoint?.principal_id && item.group_id === created.group_id);
+    if (!endpoint?.group_ids?.includes(created.group_id) || !endpoint.group_ids.includes(priorGroupID) ||
+        !member || member.role !== 'member' || JSON.stringify(member.roles) !== JSON.stringify(['member']) ||
+        member.broadcast_permission_enabled !== false || member.directory_permission_enabled !== false || await exactPreview()) {
+      fail('One confirmed admission changed other references or granted extra roles/permissions');
+    }
+    remaining.delete(id);
+    if ([...remaining].some(other => current.endpoints.find(item => item.endpoint_id === other)?.group_ids?.includes(created.group_id))) {
+      fail('A confirmation silently admitted another selected Endpoint');
+    }
+    target = await locked();
+    if (!target?.disabled || target.id !== created.group_id || target.value !== created.group_id) fail('The created Group target changed between independent confirmations');
+    confirmations.push({ endpoint_id: id, fresh_preview_requests: 1, confirmed_writes: 1, authenticated_snapshot_reads: 2 });
+  }
+  markStep('selected_group_endpoint_independent_confirmations');
+  selectedGroupFixture = { groupId: created.group_id, endpointIDs, priorGroupID };
+  await fixtureNodes('stop');
+  await docker(['stop', '--time', '10', hubContainer]);
+  await docker(['start', hubContainer]);
+  const restarted = await waitHub(hubContainer);
+  if (restarted.identity.hub_id !== hubId || restarted.identity.control_public_identity.id !== controlKeyId) fail('Selected Group restart changed independent Hub pins');
+  hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
+  await fixtureNodes('start');
+  const persisted = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const persistedGroup = persisted.groups.find(group => group.group_id === created.group_id);
+  if (!persistedGroup || persistedGroup.version !== current.groups.find(group => group.group_id === created.group_id).version ||
+      endpointIDs.some(id => !persisted.endpoints.find(endpoint => endpoint.endpoint_id === id)?.group_ids?.includes(created.group_id))) {
+    fail('The independently confirmed new Group and Endpoint references did not persist across restart');
+  }
+  result.selected_group = { group_id: created.group_id, endpoint_ids: endpointIDs, confirmations,
+    no_automatic_admission: true, original_references_preserved: true, restarted_same_pins: true,
+    native_consumption: 'NOT_RUN', history_or_key_grant: false };
+  markStep('selected_group_restart_persistence');
+  await buttonClick(pageA, 'Discard created Group selection intent');
+}
+
+async function runCrossNodeLinkFlow(password, sourceID, groupID) {
+  const [targetID] = await syntheticNodeEndpoints(password, true);
+  await buttonClick(pageA, 'Refresh snapshots');
+  await evaluateUntil(pageA, `document.querySelector('[data-endpoint-id="${targetID}"]') !== null`);
+  await selectEndpoint(targetID, '');
+  await cardField(pageA, 'Attach selected Endpoints', 'select', 0, groupID);
+  await buttonClick(pageA, 'Preview next selected Endpoint');
+  await evaluateUntil(pageA, `document.querySelector('.side pre')?.textContent || ''`, value => value.includes('endpoint.admit_group'));
+  await committedAction();
+  const before = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const source = before.endpoints.find(endpoint => endpoint.endpoint_id === sourceID);
+  const target = before.endpoints.find(endpoint => endpoint.endpoint_id === targetID);
+  if (!source?.node_id || !target?.node_id || source.node_id === target.node_id) fail('Cross-Node fixture did not use two independent Owner-approved Nodes');
+  phase = 'cross_node_explicit_hub';
+  await fitCanvasTargets([sourceID, targetID].map(id => `[data-endpoint-id="${id}"][data-group-ref="${groupID}"]`));
+  await buttonClick(pageA, 'Draw Link');
+  const a = await elementBox(pageA, `[data-endpoint-id="${sourceID}"][data-group-ref="${groupID}"]`);
+  const b = await elementBox(pageA, `[data-endpoint-id="${targetID}"][data-group-ref="${groupID}"]`);
+  const count = pageA.rpcRequestCount;
+  await pointerDrag(pageA, { x: a.x + a.width / 2, y: a.y + a.height / 2 }, { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  await buttonClick(pageA, 'Preview Link proposal');
+  const choice = await pageA.evaluate(`(()=>{const e=document.querySelector('[data-panel="link-transport-hub"]');return e?{value:e.value,disabled:e.disabled}:null;})()`);
+  if (pageA.rpcRequestCount !== count || await exactPreview() || !choice || choice.value !== '' || choice.disabled ||
+      !(await pageA.evaluate(`document.querySelector('.status-banner')?.textContent || ''`)).includes('Explicitly select')) {
+    fail('A cross-Node Link prepared or submitted a write without an explicit common Hub selection');
+  }
+  markStep('cross_node_link_requires_explicit_hub');
+  await cardField(pageA, 'Propose a Link', 'select', 4, hubId);
+  await buttonClick(pageA, 'Preview Link proposal');
+  const preview = await exactPreview();
+  const proposal = preview?.propose_link?.proposal;
+  if (pageA.rpcRequestCount !== count || preview?.kind !== 'link.propose' ||
+      proposal.source_endpoint_id !== sourceID || proposal.target_endpoint_id !== targetID ||
+      proposal.source_group_id !== groupID || proposal.target_group_id !== groupID || proposal.transport_hub_id !== hubId) {
+    fail('Explicit pinned Hub choice was not retained in the exact cross-Node proposal');
+  }
+  await committedAction();
+  const after = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const links = after.links.filter(link => link.source_endpoint_id === sourceID && link.target_endpoint_id === targetID &&
+    link.source_group_id === groupID && link.target_group_id === groupID);
+  if (links.length !== 1 || links[0].state !== 'PROPOSED' || links[0].transport_hub_id !== hubId ||
+      links[0].direction !== 'bidirectional' || JSON.stringify(links[0].actions) !== JSON.stringify(['send']) ||
+      JSON.stringify(links[0].data_scopes) !== JSON.stringify(['thread.message']) || links[0].version < 1) {
+    fail('The reviewed cross-Node Link did not remain one inactive exact proposal with the selected transport Hub');
+  }
+  crossNodeFixture = { sourceID, targetID, groupID, sourceNodeID: source.node_id, targetNodeID: target.node_id,
+    targetPrincipalID: target.principal_id };
+  result.cross_node_link = { source_endpoint_id: sourceID, target_endpoint_id: targetID,
+    source_node_id: source.node_id, target_node_id: target.node_id, transport_hub_id: hubId,
+    link_id: links[0].link_id, state: 'PROPOSED', unselected_hub_writes: 0,
+    native_consumption: 'NOT_RUN', key_consent_or_route_activation: 'NOT_RUN' };
+  markStep('cross_node_link_pinned_hub_proposed_metadata');
+}
+
+async function runLateAdmissionScopeFlow(password) {
+  phase = 'late_admission_scope_change';
+  const savedCount = pageA.rpcRequestCount;
+  await cardField(pageA, 'Create Group', 'input', 0, `Discarded scope preview ${suffix.slice(-8)}`);
+  await buttonClick(pageA, 'Preview Group creation');
+  if ((await exactPreview())?.kind !== 'group.create' || pageA.rpcRequestCount !== savedCount) fail('Scope-change case lacks a real unwritten Group preview');
+  await selectActiveNetwork(scopeNetworkId);
+  if (await exactPreview() || pageA.rpcRequestCount !== savedCount) fail('Actual Network switch retained the prior typed Group preview or wrote it');
+  await selectActiveNetwork(networkId);
+  if (await exactPreview() || pageA.rpcRequestCount !== savedCount) fail('Returning to the old Network revived its discarded write preview');
+  await selectEndpoint(crossNodeFixture.targetID, crossNodeFixture.groupID);
+  await cardField(pageA, 'Attach selected Endpoints', 'select', 0, selectedGroupFixture.groupId);
+  const count = pageA.rpcRequestCount;
+  await pageA.send('Fetch.enable', { patterns: [{ urlPattern: '*://*/v2/client/rpc', requestStage: 'Response' }] });
+  const paused = pageA.waitEvent('Fetch.requestPaused', event => event.responseStatusCode === 200, 30000);
+  await buttonClick(pageA, 'Preview next selected Endpoint');
+  const response = await paused;
+  const pending = await pendingFingerprint();
+  if (!pending || pending.operation !== 'topology.endpoint_admission_preview') fail('Late preview barrier did not hold the actual sealed admission request');
+  await selectActiveNetwork(scopeNetworkId);
+  if (await exactPreview() || await pageA.evaluate(`document.querySelector('[data-panel="created-group-target"]') !== null`) ||
+      pageA.rpcRequestCount !== count + 1) fail('Real Active Network change retained a write preview or submitted a hidden action');
+  markStep('canvas_scope_change_discards_all_previews');
+  await pageA.send('Fetch.continueRequest', { requestId: response.requestId });
+  await pageA.send('Fetch.disable');
+  await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{return !(await c.getState(db)).device?.pending;}finally{db.close();}})()`);
+  await pageA.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  if (await exactPreview() || pageA.rpcRequestCount !== count + 1 ||
+      await pageA.evaluate(`document.querySelector('[data-panel="active-network"]')?.value`) !== scopeNetworkId) {
+    fail('Authenticated late admission response revived the old Network preview');
+  }
+  const state = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  if (state.endpoints.find(endpoint => endpoint.endpoint_id === crossNodeFixture.targetID)?.group_ids?.includes(selectedGroupFixture.groupId)) {
+    fail('Late read-only admission preview wrote an Endpoint reference');
+  }
+  result.late_admission = { actual_sealed_response_barrier: true, from_network_id: networkId,
+    to_network_id: scopeNetworkId, preview_operation_id: pending.operationId,
+    saved_group_preview_discarded: true, authenticated_response_resolved: true, stale_preview_discarded: true, topology_writes: 0 };
+  markStep('canvas_late_admission_preview_rejected');
+  await selectActiveNetwork(networkId);
+  await buttonClick(pageA, 'Refresh snapshots');
+  await evaluateUntil(pageA, `document.querySelector('.status-banner')?.textContent || ''`, value => value.includes('Authoritative topology and status snapshots refreshed'));
+  await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{return !(await c.getState(db)).device?.pending;}finally{db.close();}})()`);
+  await runLateTargetPreviewFlow(password);
+}
+
+async function runLateTargetPreviewFlow(password) {
+  phase = 'late_admission_target_change';
+  const baseline = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const baselineEndpoint = baseline.endpoints.find(item => item.endpoint_id === crossNodeFixture.targetID);
+  if (!baselineEndpoint || baselineEndpoint.principal_id !== crossNodeFixture.targetPrincipalID) fail('Target-change fixture lost its exact enrolled Endpoint Principal');
+  const baselineGroupIDs = [...(baselineEndpoint.group_ids || [])].sort();
+  const memberships = state => state.memberships.filter(member => member.principal_id === baselineEndpoint.principal_id)
+    .sort((a, b) => a.membership_id.localeCompare(b.membership_id));
+  const baselineMemberships = memberships(baseline);
+  const fromGroupID = selectedGroupFixture.groupId;
+  if (baselineGroupIDs.includes(fromGroupID) || baselineMemberships.some(member => member.group_id === fromGroupID)) {
+    fail('Late target preview must begin with an unjoined source Group');
+  }
+  // The earlier same-Node admission may already have used either nesting
+  // Group. Choose another exact, currently ACTIVE Group from actual state.
+  const toGroupID = [nestingFixture.parent, nestingFixture.child].find(id => id !== fromGroupID &&
+    !baselineGroupIDs.includes(id) && !baselineMemberships.some(member => member.group_id === id) &&
+    baseline.groups.some(group => group.group_id === id && group.network_id === networkId && String(group.state).toLowerCase() === 'active'));
+  if (!toGroupID) fail('Late target preview lacks a distinct unjoined current Group');
+  await selectEndpoint(crossNodeFixture.targetID, crossNodeFixture.groupID);
+  await cardField(pageA, 'Attach selected Endpoints', 'select', 0, fromGroupID);
+  const count = pageA.rpcRequestCount;
+  await pageA.send('Fetch.enable', { patterns: [{ urlPattern: '*://*/v2/client/rpc', requestStage: 'Response' }] });
+  const paused = pageA.waitEvent('Fetch.requestPaused', event => event.responseStatusCode === 200, 30000);
+  await buttonClick(pageA, 'Preview next selected Endpoint');
+  const response = await paused;
+  const pending = await pendingFingerprint();
+  if (!pending || pending.operation !== 'topology.endpoint_admission_preview') fail('Target change barrier did not hold the actual encrypted admission response');
+  await cardField(pageA, 'Attach selected Endpoints', 'select', 0, toGroupID);
+  if (await exactPreview() || pageA.rpcRequestCount !== count + 1) fail('Changing Target Group kept a prior preview or wrote a topology action');
+  await pageA.send('Fetch.continueRequest', { requestId: response.requestId });
+  await pageA.send('Fetch.disable');
+  await evaluateUntil(pageA, `(async()=>{const c=await import('/assets/panel-client.js');const db=await c.openPanelDB();try{return !(await c.getState(db)).device?.pending;}finally{db.close();}})()`);
+  await pageA.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  const target = await pageA.evaluate(`(()=>{const card=[...document.querySelectorAll('.side .card')].find(e=>e.querySelector('h2')?.textContent==='Attach selected Endpoints');return card?.querySelector('select')?.value;})()`);
+  if (await exactPreview() || pageA.rpcRequestCount !== count + 1 || target !== toGroupID) {
+    fail('Authenticated late admission response revived the discarded Target Group preview');
+  }
+  const snapshot = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  const endpoint = snapshot.endpoints.find(item => item.endpoint_id === crossNodeFixture.targetID);
+  if (!endpoint || endpoint.principal_id !== baselineEndpoint.principal_id ||
+      [fromGroupID, toGroupID].some(id => endpoint.group_ids?.includes(id)) ||
+      JSON.stringify([...(endpoint.group_ids || [])].sort()) !== JSON.stringify(baselineGroupIDs) ||
+      JSON.stringify(memberships(snapshot)) !== JSON.stringify(baselineMemberships)) {
+    fail('Changing the target during a read-only preview changed persisted Endpoint references or Membership state');
+  }
+  result.late_target_preview = { actual_sealed_response_barrier: true, network_id: networkId,
+    from_group_id: fromGroupID, to_group_id: toGroupID, baseline_group_ids: baselineGroupIDs,
+    baseline_membership_count: baselineMemberships.length, membership_state_unchanged: true,
+    preview_operation_id: pending.operationId, authenticated_response_resolved: true,
+    stale_preview_discarded: true, topology_writes: 0 };
+  markStep('canvas_late_target_preview_rejected');
+}
+
+async function runCurrentNodeAdmissionDenial(password) {
+  phase = 'current_node_authority_admission_denial';
+  await selectEndpoint(crossNodeFixture.targetID, crossNodeFixture.groupID);
+  await cardField(pageA, 'Attach selected Endpoints', 'select', 0, selectedGroupFixture.groupId);
+  const count = pageA.rpcRequestCount;
+  await buttonClick(pageA, 'Preview next selected Endpoint');
+  await evaluateUntil(pageA, `document.querySelector('.side pre')?.textContent || ''`, value => value.includes('endpoint.admit_group'));
+  const preview = await exactPreview();
+  if (pageA.rpcRequestCount !== count + 1 || preview?.admit_endpoint?.admission?.endpoint_id !== crossNodeFixture.targetID ||
+      preview.admit_endpoint.admission.group_id !== selectedGroupFixture.groupId) fail('Current authority negative lacked a separate fresh exact admission preview');
+  const bindings = await ownerFixtureRPC(password, 'nodes.list', {});
+  const binding = bindings.find(item => item.node_id === crossNodeFixture.targetNodeID && item.state === 'ACTIVE' && item.authorized);
+  if (!binding?.id || binding.version < 1) fail('Independent current Node approval is unavailable before revocation');
+  const revoked = await ownerFixtureRPC(password, 'nodes.revoke', { binding_id: binding.id, expected_version: binding.version });
+  if (revoked.state !== 'REVOKED' || revoked.authorized !== false) fail('Encrypted Owner revoke did not fence the exact Node binding');
+  await pageA.evaluate(`(async()=>{const {CanvasPanel}=await import('/assets/panel-canvas.js');const original=CanvasPanel.prototype.applyFirst;CanvasPanel.prototype.applyFirst=async function(){const rpc=this.rpc;this.rpc=async(operation,input)=>{try{return await rpc(operation,input);}catch(error){if(operation==='topology.apply'&&input?.admit_endpoint)globalThis.cicadaCurrentAdmissionFailure={denied:true,operationBound:!!error.operationID};throw error;}};try{return await original.call(this);}finally{this.rpc=rpc;CanvasPanel.prototype.applyFirst=original;}};})()`);
+  await committedAction();
+  const denial = await pageA.evaluate('globalThis.cicadaCurrentAdmissionFailure');
+  const banner = await pageA.evaluate(`document.querySelector('.status-banner')?.textContent || ''`);
+  const state = await ownerFixtureRPC(password, 'topology.snapshot', {});
+  if (!denial?.denied || !denial.operationBound || !banner.includes('endpoint.admit_group stopped:') ||
+      state.memberships.some(member => member.principal_id === crossNodeFixture.targetPrincipalID && member.group_id === selectedGroupFixture.groupId) ||
+      state.endpoints.find(endpoint => endpoint.endpoint_id === crossNodeFixture.targetID)?.group_ids?.includes(selectedGroupFixture.groupId) || await exactPreview()) {
+    fail('The current Node revocation failed to deny the exact previously previewed admission without retry or membership change');
+  }
+  result.current_authority_denial = { exact_node_revoked: true, authenticated_admission_denied: true,
+    visible_denial_after_refresh: true, membership_or_reference_added: false, automatic_retry: false };
+  markStep('current_node_authority_admission_denied');
 }
 
 async function runInteractionAndFaultFlow(password) {
@@ -1170,15 +1512,19 @@ async function runInteractionAndFaultFlow(password) {
   await pointerDrag(pageA, { x: a.x + a.width / 2, y: a.y + a.height / 2 }, { x: b.x + b.width / 2, y: b.y + b.height / 2 });
   await evaluateUntil(pageA, "document.querySelector('.status-banner')?.textContent || ''", value => value.includes('Propose a Link between'), 30000, 'pointer Link pair prepared for review');
   if (pageA.rpcRequestCount !== beforeLink) fail('Drawing a Link submitted a write before review');
+  const sameNodeChoice = await pageA.evaluate(`(()=>{const e=document.querySelector('[data-panel="link-transport-hub"]');return e?{value:e.value,disabled:e.disabled}:null;})()`);
+  if (!sameNodeChoice?.disabled || sameNodeChoice.value !== '') fail('Same-Node Link selected an implicit transport Hub');
   await buttonClick(pageA, 'Preview Link proposal');
   await evaluateUntil(pageA, 'document.querySelector(".side")?.innerText || ""', value => value.includes('link.propose'));
+  if ((await exactPreview())?.propose_link?.proposal?.transport_hub_id) fail('Same-Node proposal acquired transport Hub metadata');
   await committedAction();
   await evaluateUntil(pageA, 'document.querySelector(".side")?.innerText || ""', value => value.includes('PROPOSED'));
   const linkSnapshot = await ownerFixtureRPC(password, 'topology.snapshot', {});
   const proposedLinks = linkSnapshot.links.filter(link => link.source_endpoint_id === endpointIDs[0] && link.target_endpoint_id === endpointIDs[1] &&
     link.source_group_id === groupID && link.target_group_id === groupID);
   if (proposedLinks.length !== 1 || proposedLinks[0].state !== 'PROPOSED' || proposedLinks[0].version < 1 ||
-      proposedLinks[0].direction !== 'bidirectional' || !proposedLinks[0].actions.includes('send') || !proposedLinks[0].data_scopes.includes('thread.message')) {
+      proposedLinks[0].direction !== 'bidirectional' || !proposedLinks[0].actions.includes('send') || !proposedLinks[0].data_scopes.includes('thread.message') ||
+      proposedLinks[0].transport_hub_id) {
     fail('Reviewed Link did not remain a single inactive scoped proposal');
   }
   result.canvas_link = { exact_scoped_proposal: true, inactive: true, pointer_prepared_review: true };
@@ -1201,6 +1547,9 @@ async function runInteractionAndFaultFlow(password) {
       permissionMember.broadcast_permission_enabled !== true || permissionMember.version <= roleMember.version) fail('Explicit broadcast permission did not persist separately with a new CAS version');
   result.canvas_monitor = { role_persisted: true, role_change_broadcast_disabled: true, explicit_broadcast_enabled: true, distinct_cas_versions: true };
   markStep('canvas_pointer_keyboard_group_link_monitor');
+  await runSelectedGroupFlow(password, endpointIDs, groupID);
+  await runCrossNodeLinkFlow(password, endpointIDs[0], groupID);
+  await runLateAdmissionScopeFlow(password);
 }
 
 async function pendingFingerprint() {
@@ -1208,8 +1557,12 @@ async function pendingFingerprint() {
 }
 
 async function loseGroupResponse(name) {
+  await selectActiveNetwork(networkId);
   await cardField(pageA, 'Create Group', 'input', 0, name);
   await buttonClick(pageA, 'Preview Group creation');
+  const preview = await exactPreview();
+  if (preview?.kind !== 'group.create' || preview.create_group?.group?.network_id !== networkId ||
+      preview.create_group.group.name !== name) fail('Response-loss write preview lost its exact fixture Network or Group name');
   await pageA.send('Fetch.enable', { patterns: [{ urlPattern: '*://*/v2/client/rpc', requestStage: 'Response' }] });
   const responsePromise = pageA.waitEvent('Fetch.requestPaused', event => event.responseStatusCode === 200, 30000);
   await buttonClick(pageA, 'Commit this one action');
@@ -1245,26 +1598,33 @@ async function runResponseLossAndUncertainty(password) {
   });
   await buttonClick(pageA, 'Recover exact pending operation');
   await evaluateUntil(pageA, 'document.querySelector(".workspace") !== null && !document.querySelector(".fence-card")');
+  // Exact recovery remounts a new Canvas whose initial Network is not ordered
+  // by this fixture's creation order. Restore A through the real Owner UI.
+  await selectActiveNetwork(networkId);
   const recovered = await readIndexedDBState(pageA);
   if (recovered.pending || recovered.writeFence || recoveryRequests.length !== 1) fail('Lost completed response did not recover exactly once');
+  const lostGroups = (await ownerFixtureRPC(password, 'topology.snapshot', {})).groups.filter(group => group.name === lostName);
+  if (lostGroups.length !== 1 || lostGroups[0].network_id !== networkId) fail('Lost response created zero, duplicate or wrong-Network persisted Groups');
   if (await pageA.evaluate(`[...document.querySelectorAll('text.group-label')].filter(e=>e.textContent===${JSON.stringify(lostName)}).length`) !== 1) fail('Lost response created zero or duplicate Groups');
   result.response_loss = { original_packet_sha256: pending.packetSha256, exact_recovery_requests: 1,
-    group_count_after_recovery: 1, replacement_management_write: false };
+    group_count_after_recovery: 1, authoritative_group_count: lostGroups.length, network_id: networkId,
+    real_active_network_reselected: true, replacement_management_write: false };
   markStep('response_loss_exact_recovery');
 
   phase = 'durable_interrupted_state_uncertainty';
   const uncertainName = `Uncertain Response ${suffix.slice(-8)}`;
   const interrupted = await loseGroupResponse(uncertainName);
-  if (nodeWasCreated) await docker(['stop', '--time', '10', nodeContainer]);
+  await fixtureNodes('stop');
   await docker(['stop', '--time', '10', hubContainer]);
   result.uncertain_fault = await fixtureRequestState(interrupted, true);
   result.uncertain_fault.scope = 'controlled synthetic durable interrupted-state injection after response loss; not an actual kill-window proof';
   await docker(['start', hubContainer]); await waitHub(hubContainer);
     hubHostPort = portFromDocker(await docker(['port', hubContainer, '8787/tcp']));
-  if (nodeWasCreated) await docker(['start', nodeContainer]);
+  await fixtureNodes('start');
   if (JSON.stringify(await pendingFingerprint()) !== JSON.stringify(interrupted)) fail('Hub restart changed browser pending ciphertext');
   await buttonClick(pageA, 'Recover exact pending operation');
   await evaluateUntil(pageA, 'document.querySelector(".fence-card") !== null');
+  await selectActiveNetwork(networkId);
   const fenced = await readIndexedDBState(pageA);
   if (fenced.pending || !fenced.writeFence) fail('Authenticated uncertainty did not separate durable semantic fence from resolved packet');
   const fenceGestureCount = pageA.rpcRequestCount;
@@ -1279,11 +1639,13 @@ async function runResponseLossAndUncertainty(password) {
   await evaluateUntil(pageA, 'document.querySelector("#unlock-password") !== null');
   await setInputValue(pageA, '#unlock-password', password); await buttonClick(pageA, 'Unlock device key');
   await evaluateUntil(pageA, 'document.querySelector(".fence-card") !== null');
+  await selectActiveNetwork(networkId);
   if (!(await readIndexedDBState(pageA)).writeFence) fail('Uncertain fence was lost on reload/unlock');
   await pageB.send('Page.reload');
   await evaluateUntil(pageB, 'document.querySelector("#unlock-password") !== null');
   await setInputValue(pageB, '#unlock-password', password); await buttonClick(pageB, 'Unlock device key');
   await evaluateUntil(pageB, 'document.querySelector(".fence-card") !== null');
+  await selectActiveNetwork(networkId, pageB);
   const secondTabBefore = pageB.rpcRequestCount;
   await cardField(pageB, 'Create Group', 'input', 0, 'Second tab must not write');
   await buttonClick(pageB, 'Preview Group creation');
@@ -1302,10 +1664,13 @@ async function runResponseLossAndUncertainty(password) {
   await pageA.send('Page.handleJavaScriptDialog', { accept: true }); await click;
   await evaluateUntil(pageA, 'document.querySelector(".fence-card") === null');
   if ((await readIndexedDBState(pageA)).writeFence || pageA.rpcRequestCount !== beforeReview + 2) fail('Review authorization replayed a write or failed to clear the semantic fence');
+  const uncertainGroups = (await ownerFixtureRPC(password, 'topology.snapshot', {})).groups.filter(group => group.name === uncertainName);
+  if (uncertainGroups.length !== 1 || uncertainGroups[0].network_id !== networkId) fail('Uncertain recovery lost, duplicated or moved the persisted Group');
   if (await pageA.evaluate(`[...document.querySelectorAll('text.group-label')].filter(e=>e.textContent===${JSON.stringify(uncertainName)}).length`) !== 1) fail('Uncertain recovery duplicated the original Group');
   result.uncertain_fault = { ...result.uncertain_fault, original_packet_sha256: interrupted.packetSha256,
     authenticated_uncertain_response: true, reload_and_cross_tab_fence: true,
-    review_snapshots: 2, explicit_review_authorization: true, authorization_replayed_write: false };
+    review_snapshots: 2, authoritative_group_count: uncertainGroups.length, network_id: networkId,
+    real_active_network_reselected: true, explicit_review_authorization: true, authorization_replayed_write: false };
   markStep('uncertain_write_fence');
 }
 
@@ -1316,13 +1681,14 @@ async function cleanup() {
   try { pageA?.close(); } catch { /* best effort */ }
   try { pageB?.close(); } catch { /* best effort */ }
   cleaned.node_container_removed = !nodeWasCreated || await removeOwnedContainer(nodeContainer, hubImageId);
+  cleaned.second_node_container_removed = !secondNodeWasCreated || await removeOwnedContainer(secondNodeContainer, hubImageId);
   if (browserWasCreated) cleaned.chromium_container_removed = await removeOwnedContainer(browserContainer, chromiumImageId);
   if (hubWasCreated) cleaned.hub_container_removed = await removeOwnedContainer(hubContainer, hubImageId);
   if (networkWasCreated) cleaned.docker_network_removed = await removeOwnedNetwork();
   await rm(fixtureDir, { recursive: true, force: true });
   const fixtureCheck = await run('test', ['-e', fixtureDir]);
   cleaned.fixture_directory_removed = fixtureCheck.code !== 0;
-  const cleanupOkay = cleaned.node_container_removed && (!browserWasCreated || cleaned.chromium_container_removed) &&
+  const cleanupOkay = cleaned.node_container_removed && cleaned.second_node_container_removed && (!browserWasCreated || cleaned.chromium_container_removed) &&
     (!hubWasCreated || cleaned.hub_container_removed) && (!networkWasCreated || cleaned.docker_network_removed) &&
     cleaned.fixture_directory_removed;
   result.fixture_cleanup = { status: cleanupOkay ? 'PASS' : 'FAIL', ...cleaned };
@@ -1335,7 +1701,7 @@ async function main() {
   catch { fail('Evidence directory already exists or cannot be created; refusing to overwrite it'); }
   await chmod(outputDir, 0o700);
   await ensureDir(fixtureDir);
-  for (const directory of [stateDir, workspaceDir, ownerPrivateDir, ownerPublicDir, browserDownloads, browserImports, nodeStateDir]) await ensureDir(directory);
+  for (const directory of [stateDir, workspaceDir, ownerPrivateDir, ownerPublicDir, browserDownloads, browserImports, nodeStateDir, secondNodeStateDir]) await ensureDir(directory);
   await writeFile(hubEnvPath, `CICADA_API_TOKEN=synthetic-${randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
 
   result.scripts.browser_gate_sha256 = await fileSHA256(scriptPath);
