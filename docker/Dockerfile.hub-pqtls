@@ -1,0 +1,104 @@
+# Optional Linux amd64 pure-PQ transport. The normal Alpine image stays CGO0.
+# The named pqtls-stage context contains only the accepted OpenSSL stage.
+FROM --platform=linux/amd64 golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS cicada-builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_REVISION=unknown
+ARG CICADA_BUILD_DIRTY=unknown
+ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
+ARG CICADA_BUILD_CATALOG_SHA256=unknown
+ARG CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=unknown
+ENV http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} all_proxy=${ALL_PROXY} no_proxy=${NO_PROXY}
+RUN test "$TARGETOS/$TARGETARCH" = linux/amd64
+COPY --from=pqtls-stage include/ /opt/pqtls-stage/include/
+COPY --from=pqtls-stage lib/libssl.so.3 lib/libcrypto.so.3 /opt/pqtls-stage/lib/
+COPY --from=pqtls-stage share/licenses/openssl/LICENSE.txt /opt/pqtls-stage/share/licenses/openssl/LICENSE.txt
+RUN ln -s libssl.so.3 /opt/pqtls-stage/lib/libssl.so \
+    && ln -s libcrypto.so.3 /opt/pqtls-stage/lib/libcrypto.so
+COPY scripts/hub-build-input-inventory.py /tmp/hub-build-input-inventory.py
+RUN python3 /tmp/hub-build-input-inventory.py runtime --pqtls-stage /opt/pqtls-stage > /tmp/runtime-inputs.json
+WORKDIR /src
+COPY cicada-go/go.mod cicada-go/go.sum ./
+RUN go mod download
+COPY cicada-go/ ./
+COPY scripts/write-web-panel-manifest.py /tmp/write-web-panel-manifest.py
+RUN mkdir -p internal/server/ui/generated \
+    && CGO_ENABLED=0 GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o /tmp/webcrypto.wasm ./cmd/cicada-webcrypto \
+    && cp /usr/local/go/lib/wasm/wasm_exec.js internal/server/ui/generated/wasm_exec.js \
+    && gzip -n -9 -c /tmp/webcrypto.wasm > internal/server/ui/generated/cicada-webcrypto.wasm.gz \
+    && python3 /tmp/write-web-panel-manifest.py internal/server/ui/generated "$(go version)" /tmp/webcrypto.wasm \
+    && rm /tmp/webcrypto.wasm
+RUN if [ "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256" != unknown ]; then \
+      python3 -c 'import hashlib,sys; sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' \
+        internal/server/ui/generated/panel.manifest.json "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256"; \
+    fi
+ENV CGO_ENABLED=1 CGO_CFLAGS=-I/opt/pqtls-stage/include CGO_LDFLAGS="-L/opt/pqtls-stage/lib -Wl,-rpath,\$ORIGIN/../lib"
+RUN mkdir -p /out/bin /out/lib /out/share/licenses/openssl \
+    && go build -tags cicada_pqtls -trimpath -buildvcs=false \
+       -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Version=${CICADA_BUILD_VERSION} -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+       -o /out/bin/cicada ./cmd/cicada \
+    && cp /opt/pqtls-stage/lib/*.so.3 /out/lib/ \
+    && cp /opt/pqtls-stage/share/licenses/openssl/LICENSE.txt /out/share/licenses/openssl/
+RUN python3 /tmp/hub-build-input-inventory.py go-notices --source /src --destination /out/share/licenses --tags cicada_pqtls
+RUN mkdir -p /out-empty/state /out-empty/workspace /out-empty/home
+RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} source-version=${source:Version}\n' ca-certificates > /tmp/cicada-ca-source.txt \
+    && printf 'Source packages: https://deb.debian.org/debian/pool/main/c/ca-certificates/\nSource browser: https://sources.debian.org/src/ca-certificates/\n' >> /tmp/cicada-ca-source.txt
+
+# This stage has development tools; it is never the product runtime.
+FROM cicada-builder AS interop-test
+ENV PQTLS_TEST_PACKAGE_BINARY=/out/bin/cicada
+ENTRYPOINT ["go", "test", "-tags", "cicada_pqtls", "-count=1", "-json", "-timeout=3m", "-run", "^TestPQDistribution", "./cmd/cicada"]
+
+# Use the pinned official Debian12 amd64 image only as a glibc donor. The
+# shipping image contains no shell, package manager, compiler or TLS CLI.
+FROM --platform=linux/amd64 debian:bookworm-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b AS glibc-runtime
+RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} source-version=${source:Version}\n' libc6 > /tmp/cicada-glibc-source.txt \
+    && printf 'Donor: official debian:bookworm-slim amd64 sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b\nSource packages: https://deb.debian.org/debian/pool/main/g/glibc/\nSource browser: https://sources.debian.org/src/glibc/\n' >> /tmp/cicada-glibc-source.txt
+FROM scratch AS hub-runtime
+ARG CICADA_UID=1000
+ARG CICADA_GID=1000
+ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_REVISION=unknown
+ARG CICADA_BUILD_DIRTY=unknown
+ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
+ARG CICADA_BUILD_CATALOG_SHA256=unknown
+ARG CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=unknown
+LABEL org.opencontainers.image.title="CICADA optional PQ Hub" \
+      org.opencontainers.image.version="${CICADA_BUILD_VERSION}" \
+      org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
+      org.cicada.role="hub" \
+      org.cicada.transport.variant="pqtls-linux-amd64" \
+      org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
+      org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
+      org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}" \
+      org.cicada.build.webcrypto-manifest-sha256="${CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256}" \
+      org.cicada.openssl.version="3.5.9"
+COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
+COPY --from=glibc-runtime /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libnss_dns.so.2 /lib/x86_64-linux-gnu/libnss_dns.so.2
+COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libnss_files.so.2 /lib/x86_64-linux-gnu/libnss_files.so.2
+COPY --from=glibc-runtime /etc/nsswitch.conf /etc/nsswitch.conf
+COPY --from=glibc-runtime /usr/share/doc/libc6/copyright /usr/share/licenses/glibc/copyright
+COPY --from=glibc-runtime /usr/share/common-licenses/LGPL-2.1 /usr/share/licenses/glibc/LGPL-2.1
+COPY --from=glibc-runtime /usr/share/common-licenses/GPL-2 /usr/share/licenses/glibc/GPL-2
+COPY --from=glibc-runtime /tmp/cicada-glibc-source.txt /usr/share/licenses/glibc/SOURCE.txt
+COPY --from=cicada-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=cicada-builder /usr/share/doc/ca-certificates/copyright /usr/share/licenses/ca-certificates/copyright
+COPY --from=cicada-builder /tmp/cicada-ca-source.txt /usr/share/licenses/ca-certificates/SOURCE.txt
+COPY --from=cicada-builder /out/ /opt/cicada-pqtls/
+COPY --from=cicada-builder --chown=${CICADA_UID}:${CICADA_GID} /out-empty/state/ /state/
+COPY --from=cicada-builder --chown=${CICADA_UID}:${CICADA_GID} /out-empty/workspace/ /workspace/
+COPY --from=cicada-builder --chown=${CICADA_UID}:${CICADA_GID} /out-empty/home/ /home/cicada/
+ENV HOME=/home/cicada CICADA_STATE_DIR=/state CICADA_WORKSPACE_ROOT=/workspace \
+    CICADA_INTENT_PLANNER_BIN= CICADA_COMPLETION_VERIFIER_BIN= OPENSSL_CONF=/dev/null
+USER ${CICADA_UID}:${CICADA_GID}
+WORKDIR /workspace
+EXPOSE 8787
+# Health/readiness probes are external; no probe executable is shipped.
+ENTRYPOINT ["/opt/cicada-pqtls/bin/cicada"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8787"]

@@ -24,11 +24,12 @@ type Error struct{ Kind string }
 func (e *Error) Error() string { return "pqtls: " + e.Kind }
 
 var (
-	ErrUnavailable = &Error{Kind: "unavailable"}
-	ErrProfile     = &Error{Kind: "profile_mismatch"}
-	ErrIdentity    = &Error{Kind: "identity_mismatch"}
-	ErrConfig      = &Error{Kind: "invalid_configuration"}
-	ErrHTTPState   = &Error{Kind: "unsupported_http_tls_state"}
+	ErrUnavailable         = &Error{Kind: "unavailable"}
+	ErrProfile             = &Error{Kind: "profile_mismatch"}
+	ErrIdentity            = &Error{Kind: "identity_mismatch"}
+	ErrConfig              = &Error{Kind: "invalid_configuration"}
+	ErrHTTPState           = &Error{Kind: "unsupported_http_tls_state"}
+	ErrCertificateValidity = &Error{Kind: "certificate_validity"}
 )
 
 // Identity is a certificate's explicitly approved connection identity.
@@ -58,16 +59,27 @@ type Config struct {
 	MaxPendingHandshakes int // server only; includes verified, unaccepted peers
 }
 type State struct {
-	TLSVersion         string
-	Group              string
-	CipherSuite        string
-	PeerSignature      string
-	ALPN               string
-	VerificationResult int64
-	HostnameVerified   bool
-	Peer               Identity
-	CertificateSHA256  [32]byte
-	SPKISHA256         [32]byte
+	// Intersection of the actual verified peer chain, including its returned
+	// trust anchor. These immutable dates are observed during verification.
+	VerifiedNotBefore, VerifiedNotAfter time.Time
+	TLSVersion                          string
+	Group                               string
+	CipherSuite                         string
+	PeerSignature                       string
+	ALPN                                string
+	VerificationResult                  int64
+	HostnameVerified                    bool
+	Peer                                Identity
+	CertificateSHA256                   [32]byte
+	SPKISHA256                          [32]byte
+}
+
+// ValidAt checks authority time without extending certificate validity for
+// clock skew. The expiry boundary is conservatively exclusive.
+func (s State) ValidAt(now time.Time) bool {
+	return !s.VerifiedNotBefore.IsZero() && !s.VerifiedNotAfter.IsZero() &&
+		s.VerifiedNotBefore.Before(s.VerifiedNotAfter) &&
+		!now.Before(s.VerifiedNotBefore) && now.Before(s.VerifiedNotAfter)
 }
 
 func validIdentity(v Identity) bool {

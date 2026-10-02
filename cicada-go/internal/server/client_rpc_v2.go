@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -293,12 +294,12 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			SignedProof           []byte                              `json:"signed_proof"`
 		}
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
-			input.LinkID == "" || input.OwnerKeyID == "" || input.ExpectedPolicyVersion <= 0 || len(input.SignedProof) == 0 {
+			input.LinkID == "" || input.OwnerKeyID == "" || input.ExpectedPolicyVersion < 0 || input.ExpectedPolicyVersion == math.MaxInt64 || len(input.SignedProof) == 0 {
 			return nil, errors.New("invalid Communication Link review-policy Owner grant")
 		}
 		var proof e2ee.OwnerLinkReviewPolicyProof
 		if err := json.Unmarshal(input.SignedProof, &proof); err != nil || proof.OwnerID != ownerID || proof.LinkID != input.LinkID ||
-			proof.PolicyVersion != uint64(input.ExpectedPolicyVersion) {
+			proof.PolicyVersion != uint64(input.ExpectedPolicyVersion+1) {
 			return nil, errors.New("review-policy proof does not match the authenticated Owner and requested version")
 		}
 		return h.control.ClientRecordCommunicationLinkReviewPolicy(ownerID, input.LinkID,

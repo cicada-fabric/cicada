@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -290,7 +291,7 @@ func (s *Store) RecordCommunicationLinkReviewPolicyForOwner(linkID, side, keyID 
 	expectedPolicyVersion int64, input CommunicationLinkReviewPolicy, signedProof []byte) (*CommunicationLinkReviewPolicyStatus, error) {
 	linkID, side, keyID = strings.TrimSpace(linkID), strings.TrimSpace(side), strings.TrimSpace(keyID)
 	if linkID == "" || len(linkID) > 256 || side != CommunicationLinkGrantSource && side != CommunicationLinkGrantTarget ||
-		keyID == "" || len(keyID) > 256 || expectedPolicyVersion < 0 || len(signedProof) == 0 || len(signedProof) > 16*1024 {
+		keyID == "" || len(keyID) > 256 || expectedPolicyVersion < 0 || expectedPolicyVersion == math.MaxInt64 || len(signedProof) == 0 || len(signedProof) > 16*1024 {
 		return nil, ErrCommunicationLinkReviewPolicy
 	}
 	policy, policyJSON, policyDigest, err := normalizeCommunicationLinkReviewPolicy(input)

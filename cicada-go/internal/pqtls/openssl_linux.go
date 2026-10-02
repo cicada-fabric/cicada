@@ -12,6 +12,7 @@ import "C"
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -102,6 +103,8 @@ type Conn struct {
 	readDeadline, writeDeadline time.Time
 	local, remote               net.Addr
 	state                       State
+	verified, validityFailed    bool      // guarded by sslMu; handshake has no state yet
+	validityDeadline            time.Time // monotonic bound prevents rollback extending IO
 }
 
 var _ net.Conn = (*Conn)(nil)
@@ -197,7 +200,13 @@ func (c *Conn) verify(cfg Config) error {
 	}
 	state := State{TLSVersion: C.GoString(&s.version[0]), Group: C.GoString(&s.group[0]),
 		CipherSuite: C.GoString(&s.cipher[0]), PeerSignature: C.GoString(&s.signature[0]),
-		ALPN: C.GoString(&s.alpn[0]), VerificationResult: int64(s.verification)}
+		ALPN: C.GoString(&s.alpn[0]), VerificationResult: int64(s.verification),
+		VerifiedNotBefore: time.Unix(int64(s.verified_not_before), 0).UTC(),
+		VerifiedNotAfter:  time.Unix(int64(s.verified_not_after), 0).UTC()}
+	now := time.Now()
+	if !state.ValidAt(now) {
+		return failure(ErrCertificateValidity, "verified chain interval")
+	}
 	copy(state.CertificateSHA256[:], C.GoBytes(unsafe.Pointer(&s.certificate[0]), 32))
 	copy(state.SPKISHA256[:], C.GoBytes(unsafe.Pointer(&s.spki[0]), 32))
 	matched := false
@@ -226,32 +235,67 @@ func (c *Conn) verify(cfg Config) error {
 		return failure(ErrIdentity, "peer pin/SAN")
 	}
 	c.state = state
+	c.validityDeadline = now.Add(state.VerifiedNotAfter.Sub(now))
+	c.verified = true
 	return nil
+}
+
+// Caller holds sslMu. Once invalid, a verified connection cannot regain
+// authority after a clock change; handshake IO has not established state yet.
+func (c *Conn) certificateCurrentLocked(now time.Time) bool {
+	if !c.verified {
+		return true
+	}
+	if c.validityFailed || !c.state.ValidAt(now) || !now.Before(c.validityDeadline) {
+		c.validityFailed = true
+		return false
+	}
+	return true
+}
+
+func (c *Conn) operationDeadlineLocked(writing bool) time.Time {
+	deadline := c.readDeadline
+	if writing {
+		deadline = c.writeDeadline
+	}
+	if c.verified && (deadline.IsZero() || c.validityDeadline.Before(deadline)) {
+		deadline = c.validityDeadline
+	}
+	return deadline
 }
 
 // operate holds the caller's direction gate until poll completes. Close may
 // mark/shutdown/wake immediately, but cannot free descriptors while a gate is
 // active. WANT directions can change independently of the operation deadline.
 func (c *Conn) operate(writing bool, step func() (int, int)) error {
+operation:
 	for {
 		c.sslMu.Lock()
 		if c.closed || c.ssl == nil {
 			c.sslMu.Unlock()
 			return net.ErrClosed
 		}
-		deadline := c.readDeadline
+		now := time.Now()
+		if !c.certificateCurrentLocked(now) {
+			c.sslMu.Unlock()
+			return failure(ErrCertificateValidity, "application IO")
+		}
+		deadline := c.operationDeadlineLocked(writing)
 		event := c.readEvent
 		if writing {
-			deadline = c.writeDeadline
 			event = c.writeEvent
 		}
-		if !deadline.IsZero() && !time.Now().Before(deadline) {
+		if !deadline.IsZero() && !now.Before(deadline) {
 			c.sslMu.Unlock()
 			return os.ErrDeadlineExceeded
 		}
 		result, _ := step()
+		current := c.certificateCurrentLocked(time.Now())
 		fd := c.fd
 		c.sslMu.Unlock()
+		if !current {
+			return failure(ErrCertificateValidity, "application IO")
+		}
 		switch result {
 		case 1:
 			return nil
@@ -269,16 +313,17 @@ func (c *Conn) operate(writing bool, step func() (int, int)) error {
 				c.sslMu.Unlock()
 				return net.ErrClosed
 			}
-			deadline = c.readDeadline
-			if writing {
-				deadline = c.writeDeadline
+			if !c.certificateCurrentLocked(time.Now()) {
+				c.sslMu.Unlock()
+				return failure(ErrCertificateValidity, "application IO")
 			}
+			deadline = c.operationDeadlineLocked(writing)
 			c.sslMu.Unlock()
 			ms := -1
 			if !deadline.IsZero() {
 				remaining := time.Until(deadline)
 				if remaining <= 0 {
-					return os.ErrDeadlineExceeded
+					continue operation // distinguish expiry from caller's deadline
 				}
 				if remaining > 2147483647*time.Millisecond {
 					ms = 2147483647
@@ -303,7 +348,13 @@ func (c *Conn) operate(writing bool, step func() (int, int)) error {
 }
 func (c *Conn) Read(buf []byte) (int, error) {
 	c.readMu.Lock()
-	defer c.readMu.Unlock()
+	var resultErr error
+	defer func() {
+		c.readMu.Unlock()
+		if errors.Is(resultErr, ErrCertificateValidity) {
+			c.Close() // no direction or SSL lock is held during teardown
+		}
+	}()
 	if len(buf) == 0 {
 		return 0, nil
 	}
@@ -312,6 +363,10 @@ func (c *Conn) Read(buf []byte) (int, error) {
 		r := C.pq_read(c.ssl, unsafe.Pointer(&buf[0]), C.size_t(len(buf)), &n)
 		return int(r), int(n)
 	})
+	resultErr = err
+	if errors.Is(err, ErrCertificateValidity) {
+		return 0, &net.OpError{Op: "read", Net: "pqtls", Addr: c.remote, Err: err}
+	}
 	if err != nil && err != io.EOF {
 		return int(n), &net.OpError{Op: "read", Net: "pqtls", Addr: c.remote, Err: err}
 	}

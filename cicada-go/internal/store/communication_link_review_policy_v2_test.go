@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -348,5 +349,29 @@ func TestCommunicationLinkReviewPolicyRejectsPolicyMismatchAndStaleCAS(t *testin
 	got, err = f.base.store.GetCommunicationLinkReviewPolicyForOwner(f.link.ID, f.link.SourceOwnerID)
 	if err != nil || got.PolicyVersion != active.PolicyVersion || got.PolicyDigest != active.PolicyDigest {
 		t.Fatalf("incomplete policy proposal replaced the current head: got=%+v err=%v", got, err)
+	}
+}
+
+func TestCommunicationLinkReviewPolicyRejectsCASOverflowAndPermitsFinalVersion(t *testing.T) {
+	f := newLinkSealedSendTestFixture(t, false)
+	policy := CommunicationLinkReviewPolicy{Mode: CommunicationLinkReviewNone, Reviewers: []CommunicationLinkReviewer{}}
+	if _, err := f.base.store.RecordCommunicationLinkReviewPolicyForOwner(f.link.ID, CommunicationLinkGrantSource, f.sourceOwner.ownerKeyID, math.MaxInt64, policy, []byte("synthetic overflow proof")); !errors.Is(err, ErrCommunicationLinkReviewPolicy) {
+		t.Fatalf("overflow was not rejected as invalid input: %v", err)
+	}
+	recordCommunicationLinkReviewPolicy(t, f, policy, 0)
+	// Fixture-only boundary setup: production transitions still use signed proofs.
+	if _, err := f.base.store.db.Exec(`UPDATE communication_link_review_policy_heads_v2 SET policy_version=? WHERE link_id=?`, int64(math.MaxInt64-1), f.link.ID); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, f.link.SourceOwnerID, policy)
+	if err != nil || preview.ExpectedPolicyVersion != math.MaxInt64-1 || preview.PolicyVersion != math.MaxInt64 {
+		t.Fatalf("final representable preview: %v", err)
+	}
+	active := recordCommunicationLinkReviewPolicy(t, f, policy, math.MaxInt64-1)
+	if active.PolicyVersion != math.MaxInt64 {
+		t.Fatal("final valid policy version refused")
+	}
+	if _, err := f.base.store.PreviewCommunicationLinkReviewPolicyForOwner(f.link.ID, f.link.SourceOwnerID, policy); !errors.Is(err, ErrCommunicationLinkReviewConflict) {
+		t.Fatalf("exhausted version preview overflowed: %v", err)
 	}
 }

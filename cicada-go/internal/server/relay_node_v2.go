@@ -440,6 +440,9 @@ func (h *Handler) relayNodeEvents(response http.ResponseWriter, request *http.Re
 	flusher.Flush()
 	lastCredentialCheck := time.Now()
 	credentialCurrentIfDue := func() bool {
+		if !nodePQTransportValidityCurrent(request.Context()) {
+			return false
+		}
 		if time.Since(lastCredentialCheck) < relayNodeStreamRevalidateInterval {
 			return true
 		}

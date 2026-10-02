@@ -71,6 +71,24 @@ class ContractBundleTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "wrong production domain/order"):
                 contract.read_contract(root)
 
+    def test_review_policy_initial_current_zero_and_next_proof_contract(self):
+        contract.check_link_review_policy_contract(
+            self.files["docs/client-hub-v1.openapi.yaml"].decode(),
+            self.files["docs/client-hub-wire-v1.md"].decode())
+
+    def test_review_policy_rejects_positive_only_current_version_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.copied_contract(directory)
+            path = root / "docs/client-hub-v1.openapi.yaml"
+            text = path.read_text()
+            start = text.index("    LinkReviewPolicyGrantRequest:")
+            before, rest = text[:start], text[start:]
+            path.write_text(before + rest.replace(
+                "expected_policy_version: {type: integer, minimum: 0, maximum: 9223372036854775806}",
+                "expected_policy_version: {type: integer, minimum: 1}", 1))
+            with self.assertRaisesRegex(ValueError, "review policy current CAS range drift"):
+                contract.read_contract(root)
+
     def test_broadcast_vector_rejects_task_relabel(self):
         with tempfile.TemporaryDirectory() as directory:
             root = self.copied_contract(directory)

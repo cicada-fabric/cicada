@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodetransport"
@@ -43,7 +44,7 @@ func WithNodePQTransport(inner http.Handler, service *fabric.Service, cfg *nodet
 			networkID = strings.Split(strings.TrimPrefix(r.URL.Path, "/v2/fabric/networks/"), "/")[0]
 		}
 		check := nodeTransportCheck(func() bool {
-			if state.TLSVersion != "TLSv1.3" || state.Group != "MLKEM768" || state.CipherSuite != "TLS_AES_256_GCM_SHA384" || state.PeerSignature != "ML-DSA-65" || state.ALPN != "http/1.1" || state.VerificationResult != 0 || !state.HostnameVerified {
+			if !state.ValidAt(time.Now()) || state.TLSVersion != "TLSv1.3" || state.Group != "MLKEM768" || state.CipherSuite != "TLS_AES_256_GCM_SHA384" || state.PeerSignature != "ML-DSA-65" || state.ALPN != "http/1.1" || state.VerificationResult != 0 || !state.HostnameVerified {
 				return false
 			}
 			binding, err := service.NodeForTransportAuthorization(r.Header.Get("Authorization"), r.Header.Get("Cicada-Group-Scope"), networkID)
@@ -75,4 +76,14 @@ func nodePQTransportCurrent(ctx context.Context) bool {
 		return check()
 	}
 	return true // Strict listeners install the policy before any enrolled route.
+}
+
+// Cheap event-write fence; current binding/credential checks retain their own
+// rate limit. Only strict listeners carry the trusted connection snapshot.
+func nodePQTransportValidityCurrent(ctx context.Context) bool {
+	if _, strict := ctx.Value(nodeTransportCheckKey{}).(nodeTransportCheck); !strict {
+		return true
+	}
+	state, err := pqtls.StateFromContext(ctx)
+	return err == nil && state.ValidAt(time.Now())
 }

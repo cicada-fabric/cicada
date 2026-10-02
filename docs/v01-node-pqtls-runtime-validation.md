@@ -1,19 +1,28 @@
 # v0.1 Node PQ transport：产品接入检查点
 
-## Main integration status (2026-10-01)
+## Main combined integration status (2026-10-02)
 
-Root has integrated this transport overlay into Main alongside the separate
-native self-identity/history fixes and wired both Network Join/renew HTTP
-constructors to the per-Hub transport helper. Source QA passed across the full
-Go/PQ run on `fb8f0d8…` and the format-only follow-up on final source
-`648162e9f52c2a14091f0537368097a2002dffb49b3f60a9e27fb43a07941985`;
-the [original QA summary](../.cicada-data/combined-qa-20261001/summary.json) and
-[final-source follow-up](../.cicada-data/combined-qa-20261001/format-followup/summary.json)
-retain their separate attribution. The new clean
-image and exact-image gate are still pending. This integration does not claim
-PQ shipping, real native Runtime, Android, physical Node or public HTTPS
-acceptance. All source hashes, counts, failures and limits below describe the
-standalone delivery snapshot only.
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current integrated Main source is `e64f2449…`. Full Go QA passed on the
+pre-policy-fix source `97a008…`, with explicit skips retained; its separate
+799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
+`bab6569…`, and does not cover the later policy fix. Focused shipping script
+checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
+exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
+ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
+
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+The retained-certificate lifetime layer supersedes the standalone snapshot's
+retained-expiry limitation below; see the [lifetime record](v01-node-pqtls-lifetime-validation.md).
+Automatic issuance/rotation and independent certificate revocation remain outside
+that result. The metadata [recovery query](node-recovery-query.md) does not complete
+restore reconciliation or certificate lifecycle. All standalone counts, source
+hashes and failures below retain their original attribution.
 
 ## Standalone delivery snapshot (2026-10-01)
 

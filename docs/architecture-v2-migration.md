@@ -1,21 +1,28 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-01 current migration boundary — additive work, no new schema
+## 2026-10-02 current migration boundary — schema and Client wire unchanged
 
-Current schema remains v55; the contract is `client-hub-v1.6.1` / wire 1 / 55
-operations. The integrated Join/renew binding, self-identity guard and optional
-PQ listener/client do not add a Hub migration or change Client wire framing.
-The prior clean `fe565b4` image predates build-time input inventory capture;
-current image-build metadata is described in
-[Hub build-input provenance](hub-build-input-provenance.md). Exact-source QA
-attribution and the still-pending new image gate are in the
-[status table](architecture-v2-status.md).
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current integrated Main source is `e64f2449…`. Full Go QA passed on the
+pre-policy-fix source `97a008…`, with explicit skips retained; its separate
+799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
+`bab6569…`, and does not cover the later policy fix. Focused shipping script
+checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
+exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
+ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
 
-Archive v2 includes provider/native-history sidecars and writer-lock metadata
-under shared Agent lifetime versus offline exclusive WriterRoot ownership.
-Restored or legacy-missing fences remain quarantined; no product clear/reconnect
-command exists. These synthetic backup/restore gates do not accept production
-reconciliation, rollback, counter reset or state deletion.
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+The recovery operation has a separate authenticated application domain inside the
+existing Node-Control RPC route; ordinary stale sequences remain denied. It adds
+no Hub migration, does not reset keys/counters, and does not restore authority.
+Archive v2 provider/native-history sidecars and writer-lock metadata remain held
+under restored quarantine until independent reconciliation and confirmed-stop
+conditions are satisfied. No product clear/reconnect command is supplied.
 
 ## Historical 2026-10-01 Network native identity binding authorization correction (no migration)
 

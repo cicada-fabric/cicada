@@ -1,17 +1,23 @@
 # Cicada development environment
 
-## 2026-10-01 current source checkpoint — exact-image gate pending
+## 2026-10-02 current checkpoint — source QA passed; image gate pending
 
-Current contract is Client `client-hub-v1.6.1` / wire 1 / 55 operations, Hub
-schema v55 and software `0.1.0-dev`. Main integrates Network Join/renew
-identity binding, self-only Endpoint identity/key-candidate access and strict
-optional direct Hub/Node PQ transport with current Store guards. Source QA passed across the
-full `fb8f0d8…` Go/PQ run and format-only `648162e…` follow-up; neither is a new
-clean image. The last delivered clean `fe565b4` image predates input-inventory
-capture, and its metadata/report remain unchanged. A new clean image/bundle and
-exact-image gate are pending. See the [current status table](docs/architecture-v2-status.md)
-and [build-input inventory rules](docs/hub-build-input-provenance.md). Overall
-v0.1 remains PARTIAL; dated failures and device-layer results keep their source.
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current integrated Main source is `e64f2449…`. Full Go QA passed on the
+pre-policy-fix source `97a008…`, with explicit skips retained; its separate
+799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
+`bab6569…`, and does not cover the later policy fix. Focused shipping script
+checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
+exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
+ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
+
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](docs/architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
 
 ### Historical 2026-10-01 framework checkpoint — bounded PASS
 

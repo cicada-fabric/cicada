@@ -25,6 +25,7 @@ COPY cicada-go/go.mod cicada-go/go.sum ./
 RUN go mod download
 COPY cicada-go/ ./
 COPY scripts/write-web-panel-manifest.py /tmp/write-web-panel-manifest.py
+COPY scripts/hub-build-input-inventory.py /tmp/hub-build-input-inventory.py
 RUN mkdir -p /src/internal/server/ui/generated \
     && GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -trimpath \
        -o /tmp/cicada-webcrypto.wasm ./cmd/cicada-webcrypto \
@@ -41,6 +42,7 @@ RUN if [ "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256" != unknown ]; then \
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Version=${CICADA_BUILD_VERSION} -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
     -o /out/cicada ./cmd/cicada
+RUN CGO_ENABLED=0 python3 /tmp/hub-build-input-inventory.py go-notices --source /src --destination /out/licenses
 
 # This target runs the existing real-TCP Docker Hub protocol smoke test. It is
 # a build-only test image and is never used as the Hub runtime.
@@ -88,6 +90,7 @@ RUN apk add --no-cache ca-certificates \
     && chown -R cicada:cicada /home/cicada /state /workspace
 
 COPY --from=cicada-builder /out/cicada /usr/local/bin/cicada
+COPY --from=cicada-builder /out/licenses/ /usr/share/licenses/cicada/
 
 ENV HOME=/home/cicada \
     CICADA_STATE_DIR=/state \

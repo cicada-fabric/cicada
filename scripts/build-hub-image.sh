@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   printf 'usage: %s [--image IMAGE] [--interop-test-image IMAGE] [--metadata-file PATH]\n' "$0" >&2
   printf '       %s --source-info-only --metadata-file PATH\n' "$0" >&2
+  printf '       optional: --transport pqtls --pqtls-stage ACCEPTED_PREFIX (linux/amd64 only)\n' >&2
   exit 2
 }
 
@@ -11,6 +12,8 @@ image_name="${CICADA_HUB_IMAGE:-cicada-codex:hub-dev}"
 test_image_name=""
 metadata_file=""
 source_info_only=false
+transport=standard
+pq_stage=''
 while (($#)); do
   case "$1" in
     --image)
@@ -32,14 +35,37 @@ while (($#)); do
       source_info_only=true
       shift
       ;;
+    --transport)
+      (($# >= 2)) || usage
+      transport="$2"; shift 2
+      ;;
+    --pqtls-stage)
+      (($# >= 2)) || usage
+      pq_stage="$2"; shift 2
+      ;;
     *)
       usage
       ;;
   esac
 done
+[[ "$transport" == standard || "$transport" == pqtls ]] || usage
+[[ "$transport" == pqtls || -z "$pq_stage" ]] || usage
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 dockerfile="${repo_root}/docker/Dockerfile.hub"
+dockerfile_relative="docker/Dockerfile.hub"
+inventory_args=()
+verify_args=()
+variant_build_args=()
+if [[ "$transport" == pqtls ]]; then
+  [[ -n "$pq_stage" ]] || usage
+  pq_stage="$(cd "$pq_stage" && pwd -P)"
+  dockerfile_relative="docker/Dockerfile.hub-pqtls"
+  dockerfile="$repo_root/$dockerfile_relative"
+  inventory_args=(--transport pqtls --pqtls-stage "$pq_stage")
+  verify_args=(--pqtls-stage "$pq_stage")
+  variant_build_args=(--platform linux/amd64 --build-context "pqtls-stage=$pq_stage")
+fi
 catalog_file="${repo_root}/cicada-go/internal/clientcontract/catalog.json"
 inventory_helper="${repo_root}/scripts/hub-build-input-inventory.py"
 
@@ -89,6 +115,10 @@ else
 fi
 
 compute_source_fingerprint() {
+  if [[ "$transport" == pqtls ]]; then
+    python3 "$inventory_helper" capture --root "$repo_root" "${inventory_args[@]}" --fingerprint-only
+    return
+  fi
   python3 - "$repo_root" <<'PY'
 import hashlib
 import os
@@ -128,23 +158,23 @@ PY
 capture_source_snapshot() {
   local first_fingerprint second_fingerprint inventory_fingerprint
   first_fingerprint="$(compute_source_fingerprint)"
-  if ! python3 "$inventory_helper" capture --root "$repo_root" --output "$source_inventory_file"; then
+  if ! python3 "$inventory_helper" capture --root "$repo_root" "${inventory_args[@]}" --output "$source_inventory_file"; then
     printf 'build-hub-image: failed to capture Hub build-input inventory\n' >&2
     return 1
   fi
   second_fingerprint="$(compute_source_fingerprint)"
-  inventory_fingerprint="$(python3 - "$source_inventory_file" <<'PY'
+  inventory_fingerprint="$(python3 - "$source_inventory_file" "$transport" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as source:
-    print(json.load(source)["source_fingerprint_v4"]["sha256"])
+    print(json.load(source)["fingerprint" if sys.argv[2] == "pqtls" else "source_fingerprint_v4"]["sha256"])
 PY
   )"
   if [[ "$first_fingerprint" != "$second_fingerprint" || "$second_fingerprint" != "$inventory_fingerprint" ]]; then
     printf 'build-hub-image: source changed or v4 inventory recomputation disagrees\n' >&2
     return 1
   fi
-  if ! python3 "$inventory_helper" verify --root "$repo_root" --expected "$source_inventory_file"; then
+  if ! python3 "$inventory_helper" verify --root "$repo_root" "${verify_args[@]}" --expected "$source_inventory_file"; then
     printf 'build-hub-image: source changed while build metadata was being collected\n' >&2
     return 1
   fi
@@ -165,14 +195,14 @@ verify_source_snapshot() {
   fi
   current_fingerprint="$(compute_source_fingerprint)"
   current_catalog_sha256="$(sha256sum "$catalog_file" | cut -d ' ' -f 1)"
-  inventory_fingerprint="$(python3 - "$source_inventory_file" <<'PY'
+  inventory_fingerprint="$(python3 - "$source_inventory_file" "$transport" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as source:
-    print(json.load(source)["source_fingerprint_v4"]["sha256"])
+    print(json.load(source)["fingerprint" if sys.argv[2] == "pqtls" else "source_fingerprint_v4"]["sha256"])
 PY
   )"
-  python3 "$inventory_helper" verify --root "$repo_root" --expected "$source_inventory_file" >/dev/null 2>&1 || return 1
+  python3 "$inventory_helper" verify --root "$repo_root" "${verify_args[@]}" --expected "$source_inventory_file" >/dev/null 2>&1 || return 1
   [[ "$current_revision" == "$revision" && "$current_dirty" == "$dirty" &&
      "$current_fingerprint" == "$source_fingerprint" && "$current_fingerprint" == "$inventory_fingerprint" &&
      "$current_catalog_sha256" == "$catalog_sha256" ]]
@@ -194,17 +224,20 @@ if [[ "$source_info_only" == true ]]; then
     printf 'build-hub-image: source changed while source metadata was being collected\n' >&2
     exit 1
   fi
-  python3 - "$metadata_file" "$source_inventory_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$transport" "$dockerfile_relative" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, inventory_path, revision, dirty, source_fingerprint, catalog_sha256 = sys.argv[1:]
+path, inventory_path, revision, dirty, source_fingerprint, catalog_sha256, transport, dockerfile = sys.argv[1:]
 with open(inventory_path, encoding="utf-8") as source:
     input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build-source.v1",
+    "transport_variant": transport,
+    "pqtls_available": transport == "pqtls",
+    "dockerfile": dockerfile,
     "source": {
         "revision": revision,
         "dirty": dirty == "true",
@@ -289,7 +322,7 @@ build_target() {
   local target="$1"
   local tag="$2"
   if ! docker build --quiet --network=host --target "$target" --iidfile "$image_ids/$target" \
-    "${build_args[@]}" -f "$dockerfile" -t "$tag" "$repo_root" \
+    "${variant_build_args[@]}" "${build_args[@]}" -f "$dockerfile" -t "$tag" "$repo_root" \
     >"$build_log" 2>&1; then
     if ! verify_source_snapshot; then
       printf 'build-hub-image: source changed during the Docker build; rerun from a stable checkout\n' >&2
@@ -319,17 +352,19 @@ if [[ -n "$test_image_name" ]]; then
   test_image_id="$(cat "$image_ids/interop-test")"
 fi
 if [[ -n "$metadata_file" ]]; then
-  python3 - "$metadata_file" "$source_inventory_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" "$transport" "$dockerfile_relative" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, inventory_path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id = sys.argv[1:]
+path, inventory_path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id, transport, dockerfile = sys.argv[1:]
 with open(inventory_path, encoding="utf-8") as source:
     input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build.v1",
+    "transport_variant": transport,
+    "pqtls_available": transport == "pqtls",
     "source": {
         "revision": revision,
         "dirty": dirty == "true",
@@ -340,7 +375,7 @@ result = {
     "image": {
         "reference": reference,
         "id": image_id,
-        "dockerfile": "docker/Dockerfile.hub",
+        "dockerfile": dockerfile,
     },
 }
 if test_id:

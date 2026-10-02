@@ -1,43 +1,42 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-01 next sequence — source QA PASS; exact image pending
+## 2026-10-02 next sequence — source QA/review passed; artifact/image gates pending
 
-The [current status table](architecture-v2-status.md)
-owns current identities and exact-source receipts. Main integrates Network
-Join/renew identity binding, self-only WhoAmI/key-candidate access, and direct
-Hub/Node PQ listener/client with CURRENT Store guards and ordered shutdown.
-The full Go/PQ result belongs to source `fb8f0d8…`; a formatting-only source
-`648162e…` follow-up passed the complete cmd package and static checks with
-normalized source equivalence. Neither result accepts a clean image. Historical
-transport, paid native, Client/APK and failure records below retain their own
-source attribution. Architecture v2.3/v0.1 remain PARTIAL.
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current integrated Main source is `e64f2449…`. Full Go QA passed on the
+pre-policy-fix source `97a008…`, with explicit skips retained; its separate
+799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
+`bab6569…`, and does not cover the later policy fix. Focused shipping script
+checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
+exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
+ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
 
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+<a id="2026-10-01-next-sequence--source-qa-pass-exact-image-pending"></a>
 <a id="2026-10-01-pq-transport-implementation-steps-not-yet-implemented"></a>
 
-1. **Freeze and deliver the reviewed source.** Keep the original full Go/PQ
-   receipt on `fb8f0d8…` and the formatting-only follow-up on `648162e…` distinct.
-   Produce a new clean image only after the doc/code checkpoint, capture its
-   input inventory at build time, and run the exact-image Client/Hub gate.
-2. **Complete product PQ acceptance.** Run the optional packaging audit for the
-   integrated listener/client, then separately validate default fail-closed
-   builds, arm64 availability, private runtime packaging and exact-image PQ
-   interop. Automatic Owner enrollment, rotation, expiry, revocation and restore
-   remain unimplemented or unaccepted; the existing private pin config is not
-   an Owner approval workflow.
-3. **Finish Group permission and Client review paths.** Add the narrow encrypted
-   Owner Group-grant preview/apply contract, Guard and checks without widening
-   roles or inferring peer traffic/history authority.
-4. **Keep native and recovery evidence separate.** Preserve the historical paid
-   real-1 synthetic-directory-grant limitation and the current default-HTTP
-   preflight's `PREFLIGHT_PASS_NATIVE_NOT_RUN` label. G1 remains
-   `CONSUMPTION_UNCONFIRMED`; real native foreground/busy wake, uncertain
-   consumption, authorized apply/revoke and physical Nodes/Android need their
-   own current-source gates. Archive restore still needs exact generation/key/
-   counter reconciliation and confirmed-stop checks before reconnect.
-5. **Close remaining deployment layers.** Public HTTPS, physical Android,
-   physical Nodes and fleet capacity are independent gates. V64 remains a bounded
-   PARTIAL sample. No resident replacement, key rotation, push or release is
-   included in this development sequence.
+1. Freeze the reviewed combined source and checkpoint docs, then build the clean
+   package/image. Build-time input inventory and
+   exact-image Client/Hub and PQ gates must be attributed to their actual source;
+   earlier focused/source-only passes do not accept a clean image.
+2. Keep product certificate lifecycle gaps separate: automatic Owner enrollment,
+   rotation and independent revocation remain outside the private pin workflow.
+   The recovery query is a metadata primitive, not certificate or archive recovery.
+3. The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
+   Prefer the existing encrypted snapshot plus explicit UI preview when sufficient;
+   if a server preview is required, use a separate read-only preview operation.
+   A preview must not run a topology mutation or increment business versions/audit.
+4. Restore still requires exact generation/key/counter reconciliation and confirmed
+   stop before quarantine release/reconnect. Preserve historical paid real-1 and
+   nonpaid preflight attribution; G1 remains `CONSUMPTION_UNCONFIRMED`.
+5. Physical Nodes/Android, public HTTPS and capacity remain separate gates;
+   V64 remains bounded PARTIAL. No resident replacement, key rotation, push or release
+   is included in this checkpoint.
 
 ## Historical 2026-10-01 Directory-only Network binding correction (focused slice)
 

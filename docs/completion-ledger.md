@@ -1,14 +1,29 @@
 # Architecture v2.3 completion ledger
 
-**Current 2026-10-01 Main checkpoint: source QA PASS; exact-image gate pending; v0.1 PARTIAL.**
-The [current status table](architecture-v2-status.md)
-records the integrated Network Join/renew, self-identity and optional PQ work,
-both exact-source QA receipts, input inventory hashes, nonpaid preflight and
-remaining acceptance. The clean `fe565b4` image is a prior immutable delivery
-without build-time inventory capture. The new image/bundle and exact-image gate
-are pending. This ledger keeps the 36/88 matrix-row count (not effort), G1
-`CONSUMPTION_UNCONFIRMED`, V64 bounded PARTIAL, and all dated source/image/APK
-failures tied to their original evidence. See the [transport/recovery record](v01-transport-recovery-checkpoint-validation.md).
+**Current 2026-10-02 Main checkpoint: lifetime and recovery-query integrated;
+combined source QA and shipping script checks passed; final artifact/image gates pending.**
+
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current integrated Main source is `e64f2449…`. Full Go QA passed on the
+pre-policy-fix source `97a008…`, with explicit skips retained; its separate
+799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
+`bab6569…`, and does not cover the later policy fix. Focused shipping script
+checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
+exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
+ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
+
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+The [status table](architecture-v2-status.md) keeps the focused lifetime and Main
+recovery-query receipts, unchanged Client identities, inventory scopes and earlier
+full-suite attribution together. Matrix counts are unchanged: 36/88 is rows, not
+effort; G1 remains `CONSUMPTION_UNCONFIRMED`, V64 bounded PARTIAL. Historical
+failures, isolated lifetime binary `NOT_CAPTURED`, and device-layer results remain
+on their original evidence. No query result authorizes quarantine release.
 
 **Historical 2026-10-01 C4 unified checkpoint — PASS (bounded; v0.1.x remains incomplete):** the frozen source snapshot is [`closure-20261001T165647Z`](../.cicada-data/next-checkpoint/closure-20261001T165647Z/gate-summary.json), fingerprint `31dccec5b771589c1b93eb851d4539932202ad664fd8842e3764d676a99c0fc2`, based on dirty `dev` revision `f4e4725c5d81c54b166f4291b9d450c70954e6df`; catalog SHA-256 is `1ef2723f2a33d055c9bbfcab922a1084a7a5bda3c32c34b5be520c2db9c5389c`. Pinned Go 1.27.1 full Go passed: 27 packages, 1,105 top-level tests and 553 subtests, 12 skips, 0 failures; build, vet, contract check and Python 26 passed. All three disposable Docker suites actually ran their named test and passed ([Client](../.cicada-data/next-checkpoint/closure-20261001T165647Z/client-interop/result.json), [Network M1](../.cicada-data/next-checkpoint/closure-20261001T165647Z/network-m1-interop/result.json), [Group Spaces M2](../.cicada-data/next-checkpoint/closure-20261001T165647Z/group-spaces-m2-interop/result.json)); the 12-step loopback Browser gate passed in 29.755 seconds and cleaned its owned fixtures. Native Runtime on this candidate, physical Nodes and public HTTPS are **NOT_RUN**; product pure-PQ TLS is **NOT_IMPLEMENTED**. The gate records `full_v01_acceptance=INCOMPLETE`; a bounded checkpoint is not Architecture v2.3 completion.
 

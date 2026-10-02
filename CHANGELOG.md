@@ -7,12 +7,23 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 Current Hub schema is v55; Client contract is `client-hub-v1.6.1`, encrypted
 wire v1, 55 operations, catalog `6748449e…`; software remains `0.1.0-dev`.
-Main integrates Network Join/renew identity binding, own-only endpoint
-WhoAmI/key-candidate access, and optional direct Hub/Node PQ transport with
-current Store guards. Combined source QA passed across exact sources
-`fb8f0d8…` (full Go/PQ) and `648162e…` (format-only follow-up); the new clean
-image/bundle and exact-image gate are pending. The prior clean `fe565b4` image
-remains immutable and predates input-inventory capture. See the [current status](docs/architecture-v2-status.md).
+Main integrates the committed `06d0a58` runtime/native-identity checkpoint,
+retained Hub/Node peer-chain lifetime checks and a guarded recovery metadata query.
+The query keeps restored quarantine and existing counters intact; it cannot
+re-execute work or resolve unknown native/provider/resource outcomes.
+
+Link review-policy grants now align the existing preview's current-version CAS
+with the signed next version, including initial `expected_version=0`, stale-CAS
+and overflow rejection. Current source is `e64f2449…`; the fix has independent
+production encrypted HTTP/Store/Server/catalog and final HTTP normal/race QA.
+Contract v1.6.1/55 operations, schema v55 and crypto formats remain unchanged.
+Pre-fix full Go `97a008…`, shipping `bab6569…` and their 799-input proof retain
+that attribution and do not cover the fix. Final actual clean package/image and
+current native/Android acceptance remain NOT_RUN. See the
+[current status](docs/architecture-v2-status.md); historical failures and shipping
+startup/poll/RSS versus driver-context actions remain on their tested sources.
+
+The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
 
 The latest nonpaid default-HTTP preflight completed own Join/WhoAmI/CANDIDATE
 for a synthetic member without `directory.read` or peer-traffic grants; peer

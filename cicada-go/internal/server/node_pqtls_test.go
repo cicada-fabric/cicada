@@ -58,7 +58,7 @@ func TestNetworkSessionTransportDerivesNodeAcrossIndependentAccessEpochs(t *test
 	pin[0] = 0xcd
 	identity := nodetransport.Identity{Kind: "node", HubID: binding.HubID, NodeID: binding.NodeID, TLSEpoch: 29, DNSName: "network-node.synthetic.invalid"}
 	cfg := &nodetransport.Config{Peers: []nodetransport.Approval{{Identity: identity, PinKind: "certificate-sha256", PinSHA256: hex.EncodeToString(pin[:]), OwnerID: binding.OwnerID, OwnerKeyID: binding.OwnerKeyID, BindingID: binding.ID, BindingVersion: binding.Version, CredentialVersion: binding.NodeCredentialVersion}}}
-	state := pqtls.State{TLSVersion: "TLSv1.3", Group: "MLKEM768", CipherSuite: "TLS_AES_256_GCM_SHA384", PeerSignature: "ML-DSA-65", ALPN: "http/1.1", HostnameVerified: true, Peer: identity.TLSIdentity(), CertificateSHA256: pin}
+	state := pqtls.State{VerifiedNotBefore: time.Now().Add(-time.Minute), VerifiedNotAfter: time.Now().Add(time.Hour), TLSVersion: "TLSv1.3", Group: "MLKEM768", CipherSuite: "TLS_AES_256_GCM_SHA384", PeerSignature: "ML-DSA-65", ALPN: "http/1.1", HostnameVerified: true, Peer: identity.TLSIdentity(), CertificateSHA256: pin}
 	ctx := pqtls.HTTPConnContext(context.Background(), syntheticPQStateConn{state: state})
 	handler := WithNodePQTransport(NewFabricHandler(service, ""), service, cfg, true)
 	call := func(token string, stateCtx context.Context) int {
@@ -80,6 +80,28 @@ func TestNetworkSessionTransportDerivesNodeAcrossIndependentAccessEpochs(t *test
 	}
 	if code := call(renewed.SessionToken, ctx); code != http.StatusOK {
 		t.Fatal("independent access epoch invalidated TLS identity")
+	}
+	for _, interval := range []struct {
+		name          string
+		before, after time.Time
+	}{
+		{"missing", time.Time{}, time.Time{}},
+		{"expired", time.Now().Add(-time.Hour), time.Now().Add(-time.Second)},
+		{"future", time.Now().Add(time.Hour), time.Now().Add(2 * time.Hour)},
+		{"inverted", time.Now().Add(time.Hour), time.Now().Add(-time.Hour)},
+	} {
+		t.Run(interval.name, func(t *testing.T) {
+			invalid := state
+			invalid.VerifiedNotBefore, invalid.VerifiedNotAfter = interval.before, interval.after
+			invalidCtx := pqtls.HTTPConnContext(context.Background(), syntheticPQStateConn{state: invalid})
+			if code := call(renewed.SessionToken, invalidCtx); code != http.StatusUnauthorized {
+				t.Fatalf("invalid interval allowed buffered request: %d", code)
+			}
+			checkCtx := context.WithValue(invalidCtx, nodeTransportCheckKey{}, nodeTransportCheck(func() bool { return true }))
+			if nodePQTransportValidityCurrent(checkCtx) {
+				t.Fatal("event-write validity fence trusted an invalid interval")
+			}
+		})
 	}
 	state.Peer.NodeID = "different-node"
 	foreignCtx := pqtls.HTTPConnContext(context.Background(), syntheticPQStateConn{state: state})
@@ -136,7 +158,7 @@ func TestNodeCertificateCannotBorrowOtherNodeAndCurrentAuthorityFencesReuse(t *t
 	identity := nodetransport.Identity{Kind: "node", HubID: bindingA.HubID, NodeID: "node-a", TLSEpoch: 17, DNSName: "node-a.synthetic.invalid"}
 	approval := nodetransport.Approval{Identity: identity, PinKind: "certificate-sha256", PinSHA256: hex.EncodeToString(pin[:]), OwnerID: bindingA.OwnerID, OwnerKeyID: bindingA.OwnerKeyID, BindingID: bindingA.ID, BindingVersion: bindingA.Version, CredentialVersion: bindingA.NodeCredentialVersion}
 	cfg := &nodetransport.Config{Peers: []nodetransport.Approval{approval}}
-	state := pqtls.State{TLSVersion: "TLSv1.3", Group: "MLKEM768", CipherSuite: "TLS_AES_256_GCM_SHA384", PeerSignature: "ML-DSA-65", ALPN: "http/1.1", HostnameVerified: true, Peer: identity.TLSIdentity(), CertificateSHA256: pin}
+	state := pqtls.State{VerifiedNotBefore: time.Now().Add(-time.Minute), VerifiedNotAfter: time.Now().Add(time.Hour), TLSVersion: "TLSv1.3", Group: "MLKEM768", CipherSuite: "TLS_AES_256_GCM_SHA384", PeerSignature: "ML-DSA-65", ALPN: "http/1.1", HostnameVerified: true, Peer: identity.TLSIdentity(), CertificateSHA256: pin}
 	ctx := pqtls.HTTPConnContext(context.Background(), syntheticPQStateConn{state: state})
 	handler := WithNodePQTransport(NewFabricHandler(service, ""), service, cfg, true)
 	call := func(path, authorization string, ctx context.Context) int {

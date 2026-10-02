@@ -691,61 +691,23 @@ func (s *Store) NodeControlKeyForCredential(credentialDigest, nodeID string) (*N
 	if !validNodeCredentialDigest(credentialDigest) || !validNodeBindingID(nodeID) {
 		return nil, ErrNodeControlKeyUnauthorized
 	}
-	var binding NodeControlKeyBinding
-	var nodePublicJSON, hubPublicJSON string
-	err := s.db.QueryRow(`SELECT owner_binding.id,owner_binding.owner_id,owner_binding.hub_id,
-owner_binding.node_id,owner_binding.node_name,owner_binding.client_device_id,owner_binding.owner_key_id,
-owner_binding.node_credential_version,owner_binding.version,owner_binding.node_credential_digest,
-node_key.node_key_id,node_key.node_public_identity_json,node_key.node_fingerprint,node_key.node_key_version,
-node_key.node_key_epoch,node_key.hub_key_id,node_key.hub_public_identity_json,node_key.hub_fingerprint,
-node_key.hub_key_version,node_key.approved_request_id,node_key.approved_request_version,
-node_key.approved_candidate_digest,node_key.approved_owner_device_id,node_key.approved_owner_key_id,
-node_key.approved_at,node_key.state,node_key.version,node_key.revoked_at
-FROM node_owner_bindings_v2 owner_binding
-JOIN fabric_node_credentials credential ON credential.node_id=owner_binding.node_id
- AND credential.status='active' AND credential.version=owner_binding.node_credential_version
- AND credential.credential_hash=owner_binding.node_credential_digest
-JOIN principals principal ON principal.id=owner_binding.owner_id AND principal.kind='human' AND principal.status='active'
-JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=owner_binding.hub_id
-JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=owner_binding.owner_id
- AND owner_key.key_id=owner_binding.owner_key_id AND owner_key.state='ACTIVE'
-JOIN client_devices_v2 device ON device.owner_id=owner_binding.owner_id
- AND device.device_id=owner_binding.client_device_id AND device.state='ACTIVE'
-JOIN node_control_key_bindings_v1 node_key ON node_key.owner_binding_id=owner_binding.id AND node_key.state='ACTIVE'
-WHERE owner_binding.node_credential_digest=? AND owner_binding.node_id=? AND owner_binding.state='ACTIVE'`,
-		credentialDigest, nodeID).Scan(&binding.OwnerBindingID, &binding.OwnerID, &binding.HubID,
-		&binding.NodeID, &binding.NodeName, &binding.ClientDeviceID, &binding.OwnerKeyID,
-		&binding.NodeCredentialVersion, &binding.BindingVersion, &binding.CredentialDigest,
-		&binding.NodeKeyID, &nodePublicJSON, &binding.NodeKeyFingerprint, &binding.NodeKeyVersion,
-		&binding.NodeKeyEpoch, &binding.HubKeyID, &hubPublicJSON, &binding.HubKeyFingerprint,
-		&binding.HubKeyVersion, &binding.ApprovedRequestID, &binding.ApprovedRequestVersion,
-		&binding.ApprovedCandidateDigest, &binding.ApprovedOwnerDeviceID, &binding.ApprovedOwnerKeyID,
-		&binding.ApprovedAt, &binding.State, &binding.Version, &binding.RevokedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		var ownerBinding int
-		if lookupErr := s.db.QueryRow(`SELECT count(*) FROM node_owner_bindings_v2
-WHERE node_id=? AND node_credential_digest=? AND state='ACTIVE'`, nodeID, credentialDigest).Scan(&ownerBinding); lookupErr != nil {
-			return nil, lookupErr
-		}
-		if ownerBinding == 0 {
-			return nil, ErrNodeControlKeyUnauthorized
-		}
-		return nil, ErrNodeControlMigrationBlocked
-	}
+	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	if json.Unmarshal([]byte(nodePublicJSON), &binding.NodePublicIdentity) != nil ||
-		json.Unmarshal([]byte(hubPublicJSON), &binding.HubPublicIdentity) != nil ||
-		e2ee.ValidatePublicIdentity(binding.NodePublicIdentity) != nil ||
-		e2ee.ValidatePublicIdentity(binding.HubPublicIdentity) != nil ||
-		binding.NodePublicIdentity.ID != binding.NodeKeyID || binding.HubPublicIdentity.ID != binding.HubKeyID ||
-		nodeControlFingerprint(binding.NodePublicIdentity) != binding.NodeKeyFingerprint ||
-		nodeControlFingerprint(binding.HubPublicIdentity) != binding.HubKeyFingerprint ||
-		binding.NodeKeyVersion == 0 || binding.NodeKeyEpoch == 0 || binding.HubKeyVersion == 0 {
+	defer tx.Rollback()
+	binding, err := nodeControlCurrentBindingTx(tx, credentialDigest, nodeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		var count int
+		if lookupErr := tx.QueryRow(`SELECT count(*) FROM node_owner_bindings_v2 WHERE node_id=? AND node_credential_digest=? AND state='ACTIVE'`, nodeID, credentialDigest).Scan(&count); lookupErr != nil {
+			return nil, lookupErr
+		}
+		if count > 0 {
+			return nil, ErrNodeControlMigrationBlocked
+		}
 		return nil, ErrNodeControlKeyUnauthorized
 	}
-	return &binding, nil
+	return binding, err
 }
 
 func (s *Store) BeginNodeControlRPC(input NodeControlRPCInput) (*NodeControlRPCRecord, bool, error) {

@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <string.h>
+#include <limits.h>
 
 #if OPENSSL_VERSION_MAJOR != 3 || OPENSSL_VERSION_MINOR != 5 || OPENSSL_VERSION_PATCH != 9
 #error CICADA requires exactly OpenSSL 3.5.9 headers
@@ -192,6 +193,7 @@ int pq_write(pq_connection *c, const void *buf, size_t len, size_t *n) {
 }
 int pq_snapshot(pq_connection *c, pq_state *s) {
     int ok=0;
+    ASN1_TIME *epoch=ASN1_TIME_new();
     memset(s,0,sizeof(*s));
     X509 *peer = SSL_get0_peer_certificate(c->ssl);
     STACK_OF(X509) *chain = SSL_get0_verified_chain(c->ssl);
@@ -203,7 +205,22 @@ int pq_snapshot(pq_connection *c, pq_state *s) {
         !SSL_get_peer_signature_type_nid(c->ssl,&signature) || signature != NID_ML_DSA_65 ||
         !SSL_get0_peer_signature_name(c->ssl,&signature_name) || strcmp(signature_name,"mldsa65") ||
         SSL_session_reused(c->ssl)) goto done;
-    for (int i=0;i<sk_X509_num(chain);i++) if (!pure_certificate(sk_X509_value(chain,i))) goto done;
+    if (!epoch || !ASN1_TIME_set_string_X509(epoch,"19700101000000Z")) goto done;
+    s->verified_not_before=INT64_MIN;
+    s->verified_not_after=INT64_MAX;
+    for (int i=0;i<sk_X509_num(chain);i++) {
+        X509 *cert=sk_X509_value(chain,i);
+        int days=0,seconds=0;
+        if (!pure_certificate(cert) ||
+            !ASN1_TIME_diff(&days,&seconds,epoch,X509_get0_notBefore(cert))) goto done;
+        int64_t before=(int64_t)days*86400+seconds;
+        if (!ASN1_TIME_diff(&days,&seconds,epoch,X509_get0_notAfter(cert))) goto done;
+        int64_t after=(int64_t)days*86400+seconds;
+        if (before>=after) goto done;
+        if (before>s->verified_not_before) s->verified_not_before=before;
+        if (after<s->verified_not_after) s->verified_not_after=after;
+    }
+    if (s->verified_not_before>=s->verified_not_after) goto done;
     const char *group = SSL_group_to_name(c->ssl,SSL_get_negotiated_group(c->ssl));
     const char *cipher = SSL_CIPHER_get_name(SSL_get_current_cipher(c->ssl));
     const unsigned char *a=NULL; unsigned int alen=0;
@@ -216,6 +233,7 @@ int pq_snapshot(pq_connection *c, pq_state *s) {
     s->verification=SSL_get_verify_result(c->ssl);
     ok=1;
 done:
+    ASN1_TIME_free(epoch);
     pq_thread_stop(c);
     return ok;
 }

@@ -156,6 +156,10 @@ func (h *Handler) nodeControlRPC(response http.ResponseWriter, request *http.Req
 		return
 	}
 	route := packet.Route
+	if route.Operation == nodewire.RecoveryOperation {
+		h.nodeControlRecoveryStatus(response, fabric.HashSessionCredential(token), route.NodeID, packetBytes)
+		return
+	}
 	if !nodeControlOperationAllowed(route.Operation) {
 		writeError(response, http.StatusForbidden, errors.New("Node-Control operation is not allowed"))
 		return
@@ -481,4 +485,20 @@ func writeNodeControlPairingError(response http.ResponseWriter, err error) {
 	default:
 		writeError(response, http.StatusBadRequest, errors.New("Node-Control pairing request rejected"))
 	}
+}
+
+func (h *Handler) nodeControlRecoveryStatus(w http.ResponseWriter, credentialDigest, nodeID string, packet []byte) {
+	if len(packet) > nodewire.MaxRecoveryPacketBytes {
+		writeError(w, http.StatusBadRequest, errors.New("invalid Node recovery packet"))
+		return
+	}
+	response, err := h.control.NodeControlRecoveryStatus(credentialDigest, nodeID, packet)
+	if err != nil {
+		writeError(w, http.StatusForbidden, errors.New("Node recovery rejected by current identity or exact request guard"))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(response)
 }

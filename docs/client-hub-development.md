@@ -2,9 +2,29 @@
 
 **最近 clean Hub 交付（2026-10-01，历史基线）：** revision `fe565b41bb1aa86d400a0ec98c528c856d0b9579`，source fingerprint `6ab2d94a26dd41082b3177006095408b25d4e8c05cd54315db6c325be92eb5be`，Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`；合同 `client-hub-v1.6.1`、wire `1`、软件 `0.1.0-dev`、55 operations，catalog SHA-256 `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b`。Bundle SHA-256 为 `b5757b055bc871ef5f19fcc5ffe425813c6dea2ccc8cc64b4e74e1f1dcd8db55`，delivery report SHA-256 为 `e0b0169743c8b55dbb7676fd7aa2ccfb97a3ad6f45fb00f0ebffb3406d9fe0db`; exact-image smoke/recovery gate passed. Its metadata predates the additive build-input inventory and remains immutable. Android/native Runtime, physical Node and public HTTPS were NOT_RUN. See the [delivery record](v01-transport-recovery-checkpoint-validation.md).
 
-**Current integrated Main candidate:** dirty source on the `fe565b4` base, final source fingerprint `648162e9f52c2a14091f0537368097a2002dffb49b3f60a9e27fb43a07941985`, inventory fingerprint `3e0f6e1ebe8cb15681bcd03f73e3c347e5a9871cd1a1368da4ee414f9398904d`. It integrates Network Join/renew identity binding, self-only WhoAmI/key-candidate authorization and strict optional direct Hub/Node PQ transport with current Store checks. Full Go/PQ results remain attributed to original source `fb8f0d8…`; the format-only final-source follow-up and retained original failure are summarized in the [current status table](architecture-v2-status.md). A new clean bundle/image and exact-image gate are pending. No contract, wire, operation or schema change is introduced here; no new Client/PQ delivery or shipping acceptance is claimed. Current build-input inventory rules are in [the provenance note](hub-build-input-provenance.md).
+**Current integrated Main candidate (2026-10-02):**
 
-Current read-only Client checkpoint `65d6a399122055e1bd38dfb70fa93686806bee36` has 39 implemented / 16 closed operations. Offline 67 JS, 5 Kotlin host and 11 checker tests plus app/test builds passed; lint recorded 0 errors / 23 warnings. Two synthetic-session tests compiled but were **NOT_RUN**; this is not live Hub/Node/model/runtime acceptance. Redacted receipt SHA `e8919709dfc53d30b0663c16af2e9b822bebc6a4599be6e5705ff063023c89a7`.
+Main integrates retained-certificate lifetime checks and the recovery metadata
+query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
+tested sources; the query keeps quarantine held and never re-executes work.
+Current Main source is `e64f2449…`, including the Link review-policy current/next-
+version bugfix aligned with the existing preview CAS contract. Its initial b16
+HTTP/Store/Server/catalog and final e64 HTTP normal/race gates have independent
+receipts in the [status table](architecture-v2-status.md). The full Go result on
+`97a008…` and 799-input equality with shipping baseline `bab6569…` are pre-fix
+proofs; they do not cover this eight-file change. Final actual clean package/image
+and current native/Android acceptance remain NOT_RUN. Historical shipping Agent
+startup/poll/RSS and driver-context ASK/heartbeat/revoke keep their source.
+
+Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
+are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
+owns source inventories, focused receipts and independent device-layer limits.
+
+The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
+
+Client HEAD remains `65d6a399122055e1bd38dfb70fa93686806bee36`, with five developer-tooling files uncommitted and no APK/application build-source change or Android Hub repin. Independent clean-Git checks cover **793 build-input entries** of intermediate Main `06d0a58`; 20 synthetic checks PASS. The supplied tooling status is `/gpu1-share/data/cicada-client/hub-input-inventory-20261001/provenance/tooling-status.redacted.json`, SHA-256 `8562219bee5fe4b24ea0ddedd220ac3b0cb39e6077f271b12b32d4b48ba5927d`; independent clean-Git receipt SHA-256 `34c56f1b0f0b6ce8bd6fe76cea7b51289f5305cf4fa7d2b8b1a86cbea0cf38a0`. Initial failure logs are explicitly `NOT_AVAILABLE`, not PASS. This is tooling proof, without a final tooling commit or live Android/native/model acceptance.
+
+That committed Client source has 39 implemented / 16 closed operations. Its earlier offline 67 JS, 5 Kotlin host and 11 checker tests plus app/test builds passed; lint recorded 0 errors / 23 warnings. Two synthetic-session tests compiled but were **NOT_RUN**; this is not live Hub/Node/model/runtime acceptance. Redacted receipt SHA `e8919709dfc53d30b0663c16af2e9b822bebc6a4599be6e5705ff063023c89a7`.
 
 Independent Client `d580975a…` offline build/tests are source/APK-specific; its original build-time mode capture and provenance gate remain BLOCKED. The `dd1db40c…` reconstruction is retrospective and does not rewrite that receipt. The preceding clean `4fb241b`/C4 results below remain historical and keep their original source/image attribution.
 
@@ -16,7 +36,7 @@ Independent Client `d580975a…` offline build/tests are source/APK-specific; it
 Hub/Node/Control、权威状态和协议；CICADA_CLIENT 拥有 Android UI、端侧
 密钥与手机生命周期。当前由本仓库落实服务端与联调工具，不修改 Client。
 
-## 当前整改顺序（2026-10-01）
+## 历史 2026-10-01 recovery/panel 交接顺序（保持原归属）
 
 当前修订以已交付 clean 4fb 为基线；recovery/panel 原 dirty 源码曾独立冻结为 C4 `31dccec5…`，exact `c104b7bc…` 镜像的完整 Chromium canvas/recovery gate 已通过；同源 Go 27 包、1,105 top-level + 553 subtests PASS/12 SKIP/0 FAIL，以及 vet、contract、Python26、三套各自镜像的 disposable Docker gate 均通过。最终 clean checkpoint/交付 metadata 见上述 4fb 记录；原 dirty build 不能仅归于当时 f4 HEAD。此前 clean bd79 的 v1.5/46-operation 交付是历史，已由独立 v1.6/55-operation bundle 接续，不能再称当前冻结合同。v1.6 包包含 Network directory/Endpoint admission、Network purpose-key、Link reviewer Owner RPC、显式 Link invitation direction 与 Node pairing proof 字段；可用目录不替代 encrypted `session.capabilities`、逐入口 Owner consent 和服务端 Guard。新增 Network Task/Node MCP 能力不自动扩充 Android operation catalog。Hub Web canvas 仅通过后量子 encrypted Client packet 调用 Owner 操作，不能把 legacy bearer 或 browser-local state 当授权。Android 仍由 `../CICADA_CLIENT` 所有，本仓只读。
 

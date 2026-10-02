@@ -18,6 +18,9 @@ func machineRecoveryCommand(args []string) error {
 }
 
 func machineRecoveryCommandOutput(args []string, output io.Writer) error {
+	if len(args) >= 2 && args[0] == "recovery" && args[1] == "query" {
+		return machineRecoveryQueryCommand(args[2:], output)
+	}
 	if len(args) == 0 || strings.ToLower(strings.TrimSpace(args[0])) != "recovery" || len(args) < 2 ||
 		strings.ToLower(strings.TrimSpace(args[1])) != "inspect" {
 		return errors.New(machineRecoveryUsage)

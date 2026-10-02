@@ -1,6 +1,7 @@
 #ifndef CICADA_PQTLS_BRIDGE_H
 #define CICADA_PQTLS_BRIDGE_H
 #include <stddef.h>
+#include <stdint.h>
 typedef struct pq_connection pq_connection;
 typedef struct { char dns[254]; unsigned char pin[32]; int spki; } pq_peer;
 int pq_peer_set(pq_peer *, const char *, const unsigned char *, int);
@@ -8,6 +9,7 @@ typedef struct {
     char version[24], group[48], cipher[48], signature[32], alpn[16];
     long verification;
     unsigned char certificate[32], spki[32];
+    int64_t verified_not_before, verified_not_after;
 } pq_state;
 int pq_available(void);
 pq_connection *pq_new(const char *, const char *, const char *, const char *, int, int, const pq_peer *, size_t);

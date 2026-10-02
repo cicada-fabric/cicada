@@ -96,6 +96,20 @@ def check_node_pairing_contract(openapi, wire):
             raise ValueError("Node wire result projection drift: " + operation)
 
 
+def check_link_review_policy_contract(openapi, wire):
+    for name in ("LinkReviewPolicyGrantRequest", "LinkReviewPolicyPreviewResult"):
+        block, _, _ = node_schema(openapi, name)
+        if "expected_policy_version: {type: integer, minimum: 0, maximum: 9223372036854775806}" not in block:
+            raise ValueError("review policy current CAS range drift: " + name)
+    preview, _, _ = node_schema(openapi, "LinkReviewPolicyPreviewResult")
+    grant, _, _ = node_schema(openapi, "LinkReviewPolicyGrantRequest")
+    if ("policy_version: {type: integer, minimum: 1, maximum: 9223372036854775807}" not in preview
+            or "expected_policy_version + 1" not in grant
+            or '"expected_policy_version":0' not in wire
+            or "`expected_policy_version + 1`" not in wire):
+        raise ValueError("review policy current/next version semantics drift")
+
+
 def read_contract(root):
     files = {name: (root / name).read_bytes() for name in FILES}
     catalog = json.loads(files[CATALOG])
@@ -120,6 +134,7 @@ def read_contract(root):
     if "x-contract-revision: " + catalog["contract_revision"] not in openapi:
         raise ValueError("OpenAPI/catalog contract revision mismatch")
     check_node_pairing_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
+    check_link_review_policy_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
     for operation in operations:
         request_schema = operation.get("request_schema")
         result_schema = operation.get("result_schema")

@@ -28,6 +28,8 @@ Environment:
   CICADA_NODE_STATE_DIR    Private local state directory
   CICADA_SOURCE_DIR        CICADA checkout (defaults to this script's checkout)
   CICADA_BINARY_PATH       Optional already-built local cicada binary
+  CICADA_NODE_PQTLS_CONFIG Optional private PQ config; requires the optional
+                           Linux amd64 PQ package via CICADA_BINARY_PATH
 EOF
 }
 
@@ -71,6 +73,20 @@ need() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+validate_state_directory() {
+  local path="$1" remaining component prefix=''
+  [[ "$path" = /* && "$path" != / && "$path" != */ ]] || die "Node state directory must be an absolute canonical path below root"
+  remaining="${path#/}"
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    [[ -n "$component" && "$component" != . && "$component" != .. ]] || die "Node state directory must not contain empty, dot or dot-dot components"
+    prefix="$prefix/$component"
+    [[ ! -L "$prefix" ]] || die "Node state directory must not contain a symlink or symlink ancestor"
+    [[ ! -e "$prefix" || -d "$prefix" ]] || die "Node state path components must be directories"
+    if [[ "$remaining" = */* ]]; then remaining="${remaining#*/}"; else remaining=''; fi
+  done
+}
+
 need hostname
 need install
 need mktemp
@@ -90,6 +106,7 @@ source_dir="${CICADA_SOURCE_DIR:-$repo_root}"
 binary_path="${CICADA_BINARY_PATH:-}"
 build_dir=""
 if [[ -z "$binary_path" ]]; then
+  [[ -z "${CICADA_NODE_PQTLS_CONFIG:-}" ]] || die "PQ transport requires the optional package via CICADA_BINARY_PATH; automatic CGO0 build is unavailable"
   [[ -f "$source_dir/cicada-go/go.mod" ]] || die "CICADA_SOURCE_DIR must point to a CICADA checkout"
   need go
   build_dir="$(mktemp -d "${TMPDIR:-/tmp}/cicada-node-build.XXXXXXXX")"
@@ -98,11 +115,20 @@ if [[ -z "$binary_path" ]]; then
   binary_path="$build_dir/cicada"
 fi
 [[ -x "$binary_path" ]] || die "CICADA_BINARY_PATH is not an executable binary"
+if [[ -n "${CICADA_NODE_PQTLS_CONFIG:-}" ]]; then
+  [[ -z "${LD_LIBRARY_PATH:-}" && -z "${LD_PRELOAD:-}" ]] || die "PQ package requires its relative loader path; remove ambient LD_LIBRARY_PATH/LD_PRELOAD"
+  package_root="$(cd "$(dirname "$binary_path")/.." && pwd -P)"
+  [[ -f "$package_root/BUILD-METADATA.json" && -f "$package_root/SHA256SUMS" &&
+     -f "$package_root/lib/libssl.so.3" && -f "$package_root/lib/libcrypto.so.3" ]] || die "PQ binary must come from the complete optional package"
+  need sha256sum
+  (cd "$package_root" && sha256sum --check --status SHA256SUMS) || die "PQ package checksum verification failed"
+fi
 
 user_home="${HOME:-$(pwd)}"
 state_dir="${CICADA_NODE_STATE_DIR:-${XDG_STATE_HOME:-$user_home/.local/state}/cicada/node}"
-[[ "$state_dir" = /* ]] || die "CICADA_NODE_STATE_DIR must be an absolute path"
+validate_state_directory "$state_dir"
 install -d -m 0700 "$state_dir"
+validate_state_directory "$state_dir"
 chmod 0700 "$state_dir"
 
 printf 'Hub URL: %s\nNode ID: %s\nNode mode: %s\nNode state: %s (mode 0700)\n' "$control_url" "$node_id" "$mode" "$state_dir"
