@@ -199,6 +199,19 @@ def start_carrier(evidence, args, carrier, tag, fault):
         '--carrier-port', str(args.carrier_port)]
     if fault == 'rpc':
         command.extend(['--rpc-drop-operation', RPC_DROP_OPERATION])
+    native_values = (args.native_topology, args.native_topology_sha256, args.fixture_sha256,
+        args.public_sha256, args.native_mounts, args.native_mounts_sha256)
+    if all(value is not None for value in native_values):
+        command.extend([
+            '--native-topology', args.native_topology,
+            '--native-topology-sha256', args.native_topology_sha256,
+            '--fixture-sha256', args.fixture_sha256,
+            '--public-sha256', args.public_sha256,
+            '--native-mounts', args.native_mounts,
+            '--native-mounts-sha256', args.native_mounts_sha256,
+        ])
+    elif any(value is not None for value in native_values):
+        raise ValueError('all six native topology and mount pins must be supplied together')
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
     try:
@@ -325,6 +338,10 @@ def verify_packet_recovery(evidence, tag, recovery_receipt):
 
 
 def run_owner(args):
+    native_values = (args.native_topology, args.native_topology_sha256, args.fixture_sha256,
+        args.public_sha256, args.native_mounts, args.native_mounts_sha256)
+    if any(value is not None for value in native_values) and not all(value is not None for value in native_values):
+        raise ValueError('all six native topology and mount pins must be supplied together')
     runner = load_module(V16_RUNNER, 'v16_status_runner')
     carrier = load_module(V16_CARRIER, 'v16_status_carrier')
     validate_pins(args, runner, carrier)
@@ -333,7 +350,14 @@ def run_owner(args):
             args.run_id != evidence.parent.name:
         raise ValueError('instrumentation run ID must match the owned evidence directory')
     state, artifacts = owned_emulator(evidence, runner, args)
-    fixture, core_public, _hub, _network, _hub_ip, _hub_port = carrier.verify_hub(args.fixture, args.public)
+    fixture, core_public, _hub, _network, _hub_ip, _hub_port = carrier.verify_hub(
+        args.fixture, args.public,
+        native_topology=args.native_topology,
+        native_topology_sha256=args.native_topology_sha256,
+        fixture_sha256=args.fixture_sha256,
+        public_sha256=args.public_sha256,
+        native_mounts=args.native_mounts,
+        native_mounts_sha256=args.native_mounts_sha256)
     if core_public.get('source_revision') != args.core_commit or \
             core_public.get('source_fingerprint') != args.source_fingerprint or \
             core_public.get('catalog_sha256') != args.catalog_sha256 or \
@@ -533,6 +557,12 @@ def main():
     for name in ('evidence', 'fixture', 'public', 'selection', 'run-id', 'tag', 'app-sha256',
             'test-sha256', 'core-commit', 'source-fingerprint', 'catalog-sha256', 'hub-image'):
         run.add_argument('--' + name, required=True)
+    run.add_argument('--native-topology')
+    run.add_argument('--native-topology-sha256')
+    run.add_argument('--fixture-sha256')
+    run.add_argument('--public-sha256')
+    run.add_argument('--native-mounts')
+    run.add_argument('--native-mounts-sha256')
     run.add_argument('--owner', choices=('primary', 'foreign'), required=True)
     run.add_argument('--android-url-port', type=int, required=True)
     run.add_argument('--carrier-port', type=int, default=38097)

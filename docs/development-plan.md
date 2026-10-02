@@ -1,5 +1,34 @@
 # CICADA Client development and validation plan
 
+## Current milestone and next gates
+
+Completed: the clean e8a029d/v1.6.3 public contract import and immutable image
+verification, independent 835-input source reconstruction, 86 JavaScript and
+16 independent Kotlin candidate checks, and the old144 two-Owner Android Link
+status/original-packet recovery gate. See the [candidate proof record](client-link-consent-candidate-validation.md),
+[new delivery provenance](client-hub-v1.6.3-e8a029d-validation.md) and
+[separate Android fixture acceptance](client-link-status-native-fixture-144e079-validation.md).
+Client-owned emulator/carriers were cleaned; Core separately removed fixture
+Hub/Nodes and their networks, with independently verified exact resource absence.
+No candidate APK or v1.6.3 runtime acceptance is claimed.
+
+1. Independently accept Core's next clean reviewer-guard correction; fixed
+   e8a029d preview/grant currently lacks `link.review` and leased-binding guards.
+2. Add independent full Owner pin/lifecycle inputs and a dedicated native path
+   that binds a fresh authenticated manifest to the current profile/session,
+   verifies Endpoint and Owner proofs, and rechecks before explicit consent.
+3. Reuse persistent pending packets and exact recovery for each new write.
+   Keep unresolved operations fenced; the pure offline model is not storage.
+4. Build one separately attributed APK pair, validate encrypted capabilities
+   against its exact fixed image/catalog, then run authorized native consent,
+   status, refusal and recovery cases. Enable only individually accepted flows.
+5. Validate the separate directory permission extension on that new runtime.
+   Physical Android and public HTTPS remain NOT_RUN until actually exercised.
+
+All five Link consent operations and the directory extension remain closed.
+The accepted Android policy stays at 39 implemented / 16 closed. Native Goal
+or model execution is a separate acceptance gate from empty fixture resumes.
+
 ## Candidate implementation — Group directory permission
 
 Prepare the [explicit directory permission flow](group-directory-permission-candidate-validation.md)
@@ -8,9 +37,10 @@ pins. Production entry stays closed. DTO, Owner/scope/version review,
 one-use confirmation and early native refusal are implemented. Offline Docker
 verification passed 79 JavaScript tests, TypeScript, lint and four pure Kotlin
 tests; the formal record preserves the initial lint failure and its correction.
-No APK or runtime is created in this preparation phase. A later complete clean
-contract/image delivery and separate Android acceptance are required to enable
-the action. Existing Link acceptance remains a separate fixed-144 gate.
+No APK or runtime is created in this preparation phase. The clean v1.6.3
+delivery is now verified; dedicated integration and separate Android acceptance
+are required to enable the action. Link status acceptance has passed its
+separately attributed fixed-144 gate.
 
 ## Active acceptance milestone — clean Core 144e079
 
@@ -25,8 +55,8 @@ The combined local milestone includes the code, formal validation record and
 handoff; the external acceptance manifest and delivery receipt bind the actual
 commit to its tested artifacts.
 
-Keep actual Link status BLOCKED until Core supplies legitimate Endpoint/Link
-creation through supported entries. Keep configured policy and all sixteen
+Actual Link status passed its two-Owner native-fixture gate. Keep configured
+policy and all sixteen
 unsupported consent operations closed. Do not call models, change Core or
 switch to a later candidate during this gate. Physical Android and public HTTPS
 remain NOT_RUN. Prior checkpoint sections retain historical attribution.

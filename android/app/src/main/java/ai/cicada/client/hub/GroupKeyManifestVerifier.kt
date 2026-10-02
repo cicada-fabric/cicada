@@ -1,6 +1,5 @@
 package ai.cicada.client.hub
 
-import android.util.Base64
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import org.bouncycastle.crypto.params.MLDSAParameters
@@ -12,6 +11,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.Base64
 import java.util.Locale
 
 /** Independently checks the complete Endpoint proof and both v1 Group digests. */
@@ -55,11 +55,11 @@ internal object GroupKeyManifestVerifier {
     private fun canonicalBase64(source: JsonObject, field: String): ByteArray {
         val encoded = value(source, field)
         val decoded = try {
-            Base64.decode(encoded, Base64.NO_WRAP)
+            Base64.getDecoder().decode(encoded)
         } catch (error: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid Group key base64: $field", error)
         }
-        require(Base64.encodeToString(decoded, Base64.NO_WRAP) == encoded) {
+        require(Base64.getEncoder().encodeToString(decoded) == encoded) {
             "Noncanonical Group key base64: $field"
         }
         return decoded

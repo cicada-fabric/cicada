@@ -1,5 +1,28 @@
 # Client ↔ Hub contract: `client-hub-v1.6.1`
 
+## Clean v1.6.3 import and closed Link consent preparation
+
+The [clean e8a029d record](client-hub-v1.6.3-e8a029d-validation.md) independently
+binds the v1.6.3 archive, catalog, immutable image pair and full 835-input source
+inventory. Android runtime pins remain v1.6.1; encrypted v1.6.3 capabilities and
+APK interoperability are NOT_RUN. The new [Link candidate](client-link-consent-candidate-validation.md)
+validates dedicated DTOs, complete Endpoint/Owner proofs and explicit scope
+review offline. Its five RPCs remain closed and its pending model is ephemeral;
+native integration must reuse persistent original signed-packet recovery.
+
+Fresh authenticated `link.key_manifest` supplies the Hub's current two-sided
+scope in one transaction. Endpoint signatures and Owner proofs are verified
+independently, against full Owner identities trusted through an external pin;
+Hub key discovery is not trust enrollment. Core confirmed a missing
+`link.review`/current reviewer binding guard in e8a029d policy preview/grant.
+METADATA authorization is BLOCKED pending a separately fixed clean delivery.
+The local production operation policy remains 39 implemented / 16 closed.
+
+The old144 APK pair passed a separate [two-Owner Android status/recovery run](client-link-status-native-fixture-144e079-validation.md).
+It verifies unconfigured NONE metadata, selection refusals and original-packet
+recovery only. It does not establish policy approval, key consent, Link
+activation, messages or v1.6.3 runtime acceptance.
+
 ## Candidate extension — explicit Group directory permission
 
 The separately scoped [candidate preparation](group-directory-permission-candidate-validation.md)
@@ -7,8 +30,8 @@ adds no RPC. It prepares `membership.set_directory_permission` within
 `topology.apply`, with required boolean `enabled` and positive Membership CAS
 version, using the explicit snapshot `directory_permission_enabled` flag.
 The subject is one Principal's entire Group Membership, not an individual
-Endpoint. Production UI and native action acceptance remain closed until a
-complete clean v1.6.2 delivery is independently verified. The accepted pins,
+Endpoint. Production UI and native action acceptance remain closed until
+dedicated integration and Android acceptance of the new clean delivery. The accepted pins,
 39-operation local policy, sixteen closed RPCs and uncertainty fences below
 remain unchanged. Candidate source does not inherit accepted APK results.
 
@@ -31,10 +54,9 @@ passed run/verify (409), the fresh uncertainty retry passed run/verify (signed
 selector and independent carrier/absence checks before teardown. Original
 driver and outer-wrapper failures remain separately recorded; no correction
 is represented as an original driver PASS.
-Actual Link status remains BLOCKED: Core has confirmed that no accepted
-legitimate Endpoint/Link producer is available. No synthetic native identity,
-nonexistent Link, unverified proof or Core Go test substitutes for Android
-acceptance. Physical Android, public HTTPS and current native/model execution
+Actual Link status passed the separately attributed fixed-144 two-Owner gate.
+Configured policy, consent writes and messages remain unaccepted. Physical
+Android, public HTTPS and current native/model execution
 remain NOT_RUN. No push or merge is performed.
 
 The dated prior sections below retain their original source and artifact

@@ -54,8 +54,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ('evidence', 'fixture', 'public', 'grant', 'run-id'):
         parser.add_argument('--' + option, required=True)
+    parser.add_argument('--native-topology')
+    parser.add_argument('--native-topology-sha256')
+    parser.add_argument('--fixture-sha256')
+    parser.add_argument('--public-sha256')
+    parser.add_argument('--native-mounts')
+    parser.add_argument('--native-mounts-sha256')
     parser.add_argument('--owner', choices=('primary', 'foreign'), default='primary')
     args = parser.parse_args()
+    native_values = (args.native_topology, args.native_topology_sha256, args.fixture_sha256,
+        args.public_sha256, args.native_mounts, args.native_mounts_sha256)
+    if any(value is not None for value in native_values) and not all(value is not None for value in native_values):
+        raise ValueError('all six native topology and mount pins must be supplied together')
     if not re.fullmatch(r'v16-[A-Za-z0-9_-]{1,80}', args.run_id):
         raise ValueError('invalid v1.6 run ID')
     runner = load('v16_runner_for_fixture', 'v16-android-deterministic.py')
@@ -64,7 +74,16 @@ def main():
     evidence = driver.private_evidence(args.evidence)
     state = runner.owned_state(evidence)
     # Validate the complete, original Core fixture before selecting test aliases.
-    _fixture, core, _hub, _network, _ip, _port = carrier.verify_hub(args.fixture, args.public)
+    native_kwargs = {
+        'native_topology': args.native_topology,
+        'native_topology_sha256': args.native_topology_sha256,
+        'fixture_sha256': args.fixture_sha256,
+        'public_sha256': args.public_sha256,
+        'native_mounts': args.native_mounts,
+        'native_mounts_sha256': args.native_mounts_sha256,
+    }
+    _fixture, core, _hub, _network, _ip, _port = carrier.verify_hub(
+        args.fixture, args.public, **native_kwargs)
     owner_fields = {
         'primary': ('owner_id', 'owner_key_id', 'owner_public_identity', 'network_id'),
         'foreign': ('foreign_owner_id', 'foreign_owner_key_id',

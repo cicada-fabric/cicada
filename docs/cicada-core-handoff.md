@@ -1,5 +1,81 @@
 # CICADA Client integration handoff
 
+## Current handoff — Link verification and two-Owner status acceptance
+
+This milestone keeps the accepted Android runtime at clean Core 144e079 /
+Client-Control v1.6.1. It separately imports the clean e8a029d / v1.6.3
+delivery and prepares five closed Link consent operations. No APK was rebuilt,
+and no old Android result is attributed to v1.6.3. The delivery commit is bound
+after commit in the restricted receipt referenced by the validation records.
+The milestone's evidence index and delivery receipt are respectively
+`/gpu1-share/data/cicada-client/link-consent-candidate-20261002/acceptance-manifest.redacted.json`
+and `client-delivery.redacted.json` in that same private directory. They bind
+the actual Client commit, final source fingerprints, historical APK pair,
+per-command exits and both distinct Core releases.
+
+| Item | Result | Record |
+|---|---|---|
+| Clean v1.6.3 archive, manifest, immutable images and 835-input source reconstruction | PASS | [Pinned e8a029d provenance](client-hub-v1.6.3-e8a029d-validation.md) |
+| Offline Link DTO, scope/confirmation and recovery-model checks | PASS | 86 JavaScript tests, TypeScript and lint; zero added warnings |
+| Independent Kotlin Endpoint/Owner proof and policy checks | PASS | 16 host-JVM tests, including complete retained public synthetic evidence |
+| Strict three-container/three-bridge native fixture adapter | PASS | 13 isolated Python tests and exact live topology/mount verification |
+| v1.6.1 Android enrollment and encrypted capabilities for both Owners | PASS | Two independent profiles and device public keys; two selectors |
+| v1.6.1 Link metadata/refusal/original-packet recovery, both Owners | PASS | Ten selectors and exact same-Link/opposite-side aggregation |
+| Client-owned emulator/carriers and Core-owned fixture cleanup | PASS | Separate cleanup receipts; exact resource absence independently verified |
+| v1.6.3 encrypted runtime, new APK and live consent writes | NOT_RUN | Runtime pins and all five consent operations remain closed |
+| Configured policy, unrelated third Owner and this slice's revocation/process-death cases | NOT_RUN | No corresponding authorized fixtures were run |
+| Current native Goal/model, physical Android and public HTTPS | NOT_RUN | Empty native fixture resumes do not establish these gates |
+| v1.6.3 METADATA policy authorization | BLOCKED | Core-confirmed missing reviewer permission and current-binding guards |
+
+See [Link candidate validation](client-link-consent-candidate-validation.md)
+for command receipts, initial failures and the exact remaining integration work.
+See [two-Owner Android status validation](client-link-status-native-fixture-144e079-validation.md)
+for immutable APKs, compiled source, native fixture attribution, all command
+exits and redacted evidence. The aggregate receipt is
+`/gpu1-share/data/cicada-client/link-144e079-20261002/two-owner-link-status.redacted.json`,
+SHA-256 `ba6f808dbe5368d25d1c819399fb23b72632abf87b76c61289d110a9f7baf4c9`.
+Original failed preflights and UI preparation attempts remain retained.
+Core's separately executed cleanup removed its three containers and three
+bridges. Ten independent Client queries confirmed no exact-ID or fixture-label
+resources remain, including stopped containers. Evidence is
+`/gpu1-share/data/cicada-client/link-144e079-20261002/core-cleanup-absence.redacted.json`,
+SHA-256 `15f38f6af0168658dd84352ec4ca26c62d277e2e045ba848f422f8cab2e7b132`.
+Private fixture files remain under Core supervisor custody; no directory
+deletion or resident-Hub modification is claimed.
+
+Fresh encrypted `link.key_manifest` is the Hub-authoritative single-transaction
+current scope. Client integration must bind that authenticated result to the
+selected profile/session and re-fetch before signing; a second topology API
+is not required. Endpoint self-attestation and Owner consent signatures remain
+independent checks. Hub-discovered full Owner keys do not establish trust:
+local and peer Owner identities require independent pins and current lifecycle
+checks. The offline pending model is ephemeral and cannot replace the existing
+native persistent signed-packet recovery path.
+
+Core confirmed that fixed e8a029d policy preview/grant does not enforce current
+`link.review` permission and a leased reviewer SessionBinding. Runtime review
+guards do not establish policy-grant eligibility. Core is preparing a correction;
+this fixed image is not relabeled. All five Link operations remain closed,
+alongside the Group directory permission extension, pending their respective
+dedicated native integration and Android acceptance. The local policy remains
+39 implemented / 16 closed; ordinary cross-user messaging stays unavailable.
+
+### Next Core maintainer prompt
+
+> Review the Client branch and these three formal records without transferring
+> the old144 APK results to clean e8a029d/v1.6.3. Verify the source inventory,
+> archive/image pins, offline proof vector and the two-Owner Android receipts,
+> including retained original failures. Supply a new clean fixed delivery with
+> preview/grant rejection tests for missing/revoked `link.review`, expired
+> reviewer bindings and current-scope changes. Specify the supported independent
+> Owner identity/pin and key-lifecycle inputs for local and peer Owners. Then
+> coordinate dedicated native manifest/proof/explicit-confirmation/grant/status
+> integration and original-packet recovery using a separately attributed APK.
+> Keep METADATA and all unaccepted consent operations closed until those gates
+> pass. Preserve separately attributed old144 cleanup/absence receipts. Do not
+> place private keys, Node bearer
+> or model credentials in the Client, and do not merge or push this Client work.
+
 ## Candidate handoff — explicit Group directory permission
 
 The [candidate preparation record](group-directory-permission-candidate-validation.md)
@@ -17,12 +93,13 @@ contract checker; all final exits were zero. The initial lint failure remains
 separate. Commands, input hashes and full delivery commit are bound in
 `/gpu1-share/data/cicada-client/group-directory-permission-candidate-20261002/client-delivery.redacted.json`.
 
-Core must supply a complete clean archive, full source and immutable image pair
-before the action can be enabled or tested against a real Hub. The candidate
+The complete clean v1.6.3 archive and immutable image pair are now independently
+verified. Native integration and separate Android acceptance are still required
+before the action can be enabled. The candidate
 record includes the precise next acceptance prompt. Native/model, physical
 Android and public HTTPS remain `NOT_RUN` for this slice; no APK or runtime is
-started during preparation. Actual Link status remains a separate fixed-144
-gate awaiting legitimate public selectors and fixture ownership proofs.
+started during preparation. Actual Link status has now passed its separately
+attributed fixed-144 two-Owner gate above.
 
 ## Active clean target — Core 144e079
 
@@ -43,10 +120,9 @@ passed run/verify (409), the fresh uncertainty retry passed run/verify (signed
 selector and independent carrier/absence checks before teardown. Original
 driver and outer-wrapper failures remain separately recorded; no correction
 is represented as an original driver PASS.
-Actual Link status remains BLOCKED: Core has confirmed that no accepted
-legitimate Endpoint/Link producer is available. No synthetic native identity,
-nonexistent Link, unverified proof or Core Go test substitutes for Android
-acceptance. Physical Android, public HTTPS and current native/model execution
+Actual Link status has passed the bounded two-Owner native-fixture gate above.
+This does not establish configured policy, bilateral consent, Link activation,
+message delivery or a Worker Goal. Physical Android, public HTTPS and current native/model execution
 remain NOT_RUN. No push or merge is performed.
 
 The dated prior sections below retain their original source and artifact
@@ -64,7 +140,7 @@ over 118 files. The exact full delivery commit is bound in
 
 | Remaining item | Status | Required Core input |
 |---|---|---|
-| Both Owners read default/current Link policy metadata | BLOCKED | Supported producer with genuine Node/native Endpoints and bilateral Link creation |
+| Both Owners read default/current Link policy metadata | PASS | Fixed-144 native-fixture Android receipts above |
 | Configured policy metadata / genuine foreign Owner denial | BLOCKED | Actual Link, independent signed Owner proofs and a real unrelated Owner scope |
 | Current native Node/Worker/model execution from Android | NOT_RUN | Separately scoped native acceptance; Core-only results do not transfer |
 | Physical Android and public HTTPS | NOT_RUN | Actual device and independently pinned HTTPS deployment |

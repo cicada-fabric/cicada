@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -204,10 +205,33 @@ def create_profile(evidence, state, profile_label):
     root, field = find_visible(evidence, state, 'new-field-' + profile_label,
         'content-desc', '新 Hub 配置名称', scroll=True)
     tap_node(evidence, state, 'focus-' + profile_label, field)
-    driver.run(evidence, 'device-ui-type-' + profile_label,
-        driver.adb(state) + ['shell', 'input', 'text', profile_label])
-    driver.run(evidence, 'device-ui-hide-keyboard-' + profile_label,
-        driver.adb(state) + ['shell', 'input', 'keyevent', '4'])
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', profile_label):
+        raise ValueError('UI profile preparation requires a bounded ASCII label')
+    # Batched ADB key events can outpace a controlled React Native TextInput
+    # on the software emulator. Type through the same real UI with time for
+    # each change to settle, and verify the whole label before creating it.
+    for index, character in enumerate(profile_label):
+        driver.run(evidence, 'device-ui-type-' + profile_label + '-' + str(index),
+            driver.adb(state) + ['shell', 'input', 'text', character])
+        time.sleep(0.4)
+    typed = save_layout(evidence, state, 'typed-' + profile_label)
+    fields = nodes(typed, 'content-desc', '新 Hub 配置名称')
+    if len(fields) != 1 or fields[0].get('text') != profile_label or \
+            'Hub 连接' not in labels(typed):
+        raise RuntimeError('Profile label did not remain in the visible connection form')
+    # A hardware-keyboard emulator can leave the IME hidden. BACK in that
+    # state dismisses the profile modal or exits the app instead of the IME.
+    ime_command = driver.adb(state) + ['shell', 'dumpsys', 'input_method']
+    ime_state = subprocess.check_output(ime_command, timeout=15).decode(errors='replace')
+    shown = re.findall(r'\bmInputShown=(true|false)\b', ime_state)
+    keyboard_shown = bool(shown) and all(value == 'true' for value in shown)
+    driver.save(evidence / ('device-ui-keyboard-' + profile_label + '.json'), {
+        'command': ime_command, 'exit_code': 0, 'keyboard_shown': keyboard_shown,
+        'raw_ime_state_persisted': False,
+    })
+    if keyboard_shown:
+        driver.run(evidence, 'device-ui-hide-keyboard-' + profile_label,
+            driver.adb(state) + ['shell', 'input', 'keyevent', '4'])
     root, button = find_visible(evidence, state, 'create-button-' + profile_label,
         'text', '创建连接', scroll=True)
     tap_node(evidence, state, 'create-' + profile_label, button)
