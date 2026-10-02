@@ -55,8 +55,13 @@ classes, Native and Android-test Kotlin compilation, and both Debug x86_64 APK
 assemblies (exit 0). App/test APK SHA-256 values are
 `56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67` /
 `caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`.
-The bounded APK resource scan passed. These artifacts have no emulator, UI or
-live Hub test results. The earlier 38 Kotlin / 47 Android results belong only
+The bounded APK resource scan passed. A separately authorized network-none
+emulator run then passed 49 independent Android tests, four real runtime
+property checks and local UI smoke with this exact APK pair. The emulator was
+removed; its immediate post-stop inspection race remains recorded separately
+from the later absence verification. See the [clean dd81575 validation record](docs/client-hub-v1.6.4-dd81575-validation.md)
+for commands, exits and evidence. Live Hub and bilateral consent results remain
+pending. The earlier 38 Kotlin / 47 Android results belong only
 to retry-4 app `1811e156…b4686e` and test `d22756ee…42c288`; they do not transfer
 to retry-6 or F5's test-only be72 APK.
 
@@ -69,10 +74,23 @@ expiry `2026-10-02T15:27:50.050630Z` as noncanonical RFC3339Nano (canonical
 same instant: `2026-10-02T15:27:50.05063Z`). F5 exited 1 before creating a
 signature; no Source grant, Target enrollment/Alert, or policy write occurred,
 and bilateral KEY/NONE remain blocked. No proof or nonce retry was made. Retry-6
-is offline only; Core requires a separately authorized new scope before another
-live attempt. Physical Android, public HTTPS and native Worker/model acceptance
-remain `NOT_RUN`. Full source, artifact, cleanup and attempt receipts are in the
-[v1.6.4 validation record](docs/client-hub-v1.6.4-25bc586-validation.md).
+has separately attributed offline emulator results. The fresh F6 scope targets
+clean Core `dd81575b160aa901b642137e54d7a60961e4bd68`; its archive, 891-input
+inventory and immutable Hub/interop image metadata have been independently
+verified. F6 then independently verified the actual READY, nine public references
+and pinned running Docker identity, and booted a fresh emulator with the frozen
+APKs and four runtime-property checks. Its fixed coordination deadline expired
+before any Android business selector or Owner signing request; encrypted
+capabilities and bilateral KEY/NONE remain `NOT_RUN`. Client/Core owned
+resources were cleaned. A separately authorized next attempt must finish
+emulator bootstrap before final Join/READY starts the short signing window;
+no expired nonce or proof may be reused.
+The subsequent F7 boot-only lane passed fresh bootstrap and bounded private
+adapter checks, then closed at its fixed idle cutoff before new business GO.
+It adds no encrypted runtime or bilateral acceptance result.
+Physical Android, public HTTPS and native Worker/model acceptance
+remain `NOT_RUN`. Full current source, artifact, cleanup and attempt receipts are in the
+[dd81575 validation record](docs/client-hub-v1.6.4-dd81575-validation.md).
 
 ## Imported clean v1.6.3 delivery
 

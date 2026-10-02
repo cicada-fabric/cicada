@@ -9,6 +9,8 @@ Owner private keys, or request/response plaintext semantics.
 """
 
 import argparse
+import base64
+import binascii
 import hashlib
 import importlib.util
 import json
@@ -20,6 +22,7 @@ import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
+import time
 
 sys.dont_write_bytecode = True
 
@@ -33,6 +36,8 @@ F2_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-0
 F3_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-03-20261002')
 F4_FIXTURE_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-04-20261002')
 F5_FIXTURE_ROOT = Path('/gpu1-share/data/cicada-client/v164-25bc586-20261002/fixture-f5')
+F6_MAIN_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-06-20261002')
+F6_MAIN_REVISION = 'dd81575b160aa901b642137e54d7a60961e4bd68'
 
 CONTRACT_REVISION = 'client-hub-v1.6.4'
 CORE_REVISION = '25bc586232db43362c6e03eccef1fa3a0dbec8ee'
@@ -150,6 +155,811 @@ def _read_exact_private(path, expected_sha256, *, maximum):
 def _exact_keys(value, expected, label):
     if not isinstance(value, dict) or set(value) != set(expected):
         _fail(label + ' fields do not match the pinned schema')
+
+
+_F6_READY_FIELDS = {
+    'schema', 'status', 'fixture_root', 'protocol_scope', 'native_runtime', 'model_calls',
+    'public_references', 'source', 'hub', 'client_setup_sha256', 'hub_ready_sha256',
+    'reference_manifest_sha256', 'owned_manifest_sha256', 'coordination_nonce',
+    'coordination_deadline', 'coordination_ttl_seconds', 'cleanup_policy',
+}
+_F6_HUB_FIELDS = {
+    'hub_id', 'base_url', 'container_id', 'network_id', 'link_id', 'link_state',
+    'link_version', 'bindings', 'business_networks', 'review_policy_qualification',
+}
+_F6_REFERENCE_FIELDS = {'path', 'sha256', 'bytes', 'mode', 'relative_path'}
+_F6_REFERENCE_NAMES = {
+    'client_setup', 'custody_manifest', 'fixture_public', 'helper_binary',
+    'helper_provenance', 'helper_source', 'hub_ready', 'reference_manifest', 'runner',
+}
+_F6_PUBLIC_PATHS = {
+    'client_setup': ('public/client-setup.json', 0o100644),
+    'custody_manifest': ('public/custody.json', 0o100600),
+    'fixture_public': ('public/fixture-public.json', 0o100600),
+    'helper_binary': ('bin/cicada-link-v164-fixture', 0o100755),
+    'helper_source': ('helper-src/main.go', 0o100600),
+    'reference_manifest': ('public/reference-manifest.json', 0o100600),
+    'runner': ('fixture.sh', 0o100700),
+}
+_F6_REVIEW_QUALIFICATION = 'METADATA_NOT_PREPARED: KEY+NONE only; no reviewer or link.review grants'
+_F6_SETUP_TOP_FIELDS = {
+    'schema', 'status', 'protocol_scope', 'native_runtime', 'model_calls',
+    'hub', 'owners', 'link', 'client_instructions',
+}
+_F6_SETUP_HUB_FIELDS = {
+    'base_url', 'hub_id', 'control_key_version', 'control_public_identity', 'suite',
+    'image_id', 'source_revision', 'source_fingerprint', 'catalog_sha256', 'contract_revision',
+}
+_F6_SETUP_OWNER_FIELDS = {'link_side', 'owner_id', 'owner_key_id', 'public_identity', 'pin_source'}
+_F6_SETUP_LINK_FIELDS = {'link_id', 'version', 'state', 'expires_at', 'contract_digest'}
+_F6_INSTRUCTION_FIELDS = {
+    'generate_device_identity_on_android', 'obtain_fresh_enrollment_manifest_from_android',
+    'owner_private_keys_for_signing', 'reference_manifest', 'endpoint_identity',
+    'review_policy_qualification',
+}
+_F6_PUBLIC_FIXTURE_FIELDS = {
+    'networks', 'protocol_layers', 'review_policy_qualification', 'bindings',
+    'endpoint_candidates', 'schema', 'status', 'protocol_scope', 'native_runtime',
+    'model_calls', 'build', 'hub_id', 'owners', 'link', 'reference_manifest',
+    'reference_manifest_use', 'endpoint_private_key_policy', 'owner_private_key_policy', 'scope',
+}
+_F6_BUILD_FIELDS = {
+    'revision', 'source_fingerprint', 'catalog_sha256', 'contract_revision',
+    'hub_image_id', 'interop_image_id',
+}
+_F6_PUBLIC_OWNER_FIELDS = {
+    'owner_id', 'owner_key_id', 'public_identity', 'source_of_pin',
+    'hub_registration', 'private_key_policy',
+}
+_F6_BINDING_FIELDS = {'endpoint_id', 'binding_id', 'epoch', 'lease_expires_at', 'status'}
+_F6_CANDIDATE_FIELDS = {'endpoint_id', 'binding_id', 'epoch', 'key_id', 'state', 'version'}
+_F6_NETWORK_FIELDS = {'network_id', 'owner_id', 'group_id', 'state', 'hub_id'}
+_F6_PROTOCOL_FIELDS = {
+    'endpoint_id', 'node_id', 'network_access_binding_id', 'network_access_epoch',
+    'network_access_expires_at', 'native_binding_id', 'native_binding_epoch',
+    'group_membership_roles', 'group_membership_grants', 'native_runtime',
+}
+_F6_PUBLIC_LINK_FIELDS = {
+    'link_id', 'source_endpoint_id', 'source_principal_id', 'source_group_id',
+    'source_owner_id', 'source_node_id', 'target_endpoint_id', 'target_principal_id',
+    'target_group_id', 'target_owner_id', 'target_node_id', 'direction', 'actions',
+    'data_scopes', 'transport_hub_id', 'expires_at', 'scope_snapshot',
+    'contract_digest', 'state', 'version', 'created_at', 'updated_at',
+}
+_F6_LINK_SNAPSHOT_FIELDS = {
+    'source_membership_revision', 'source_join_revision', 'source_group_version',
+    'target_membership_revision', 'target_join_revision', 'target_group_version',
+}
+_F6_MANIFEST_FIELDS = {
+    'version', 'link_id', 'link_version', 'contract_digest', 'contract_canonical',
+    'source', 'target', 'digest',
+}
+_F6_MANIFEST_SIDE_FIELDS = {
+    'endpoint_id', 'group_id', 'principal_id', 'owner_id', 'node_id', 'binding_id',
+    'binding_epoch', 'candidate_version', 'key_id', 'key_fingerprint', 'proof_digest',
+    'public_identity', 'attestation',
+}
+_F6_CONTAINER_FIELDS = {
+    'id', 'name', 'created', 'image_id', 'state', 'entrypoint', 'cmd', 'user', 'labels',
+    'environment_variable_names', 'resource_caps', 'network_mode', 'port_bindings', 'mounts', 'networks',
+}
+_F6_NETWORK_MANIFEST_FIELDS = {'id', 'name', 'driver', 'internal', 'attachable', 'labels', 'containers'}
+_F6_HUB_READY_FIELDS = {'stage', 'base_url', 'health', 'capabilities', 'identity'}
+_F6_HEALTH_FIELDS = {
+    'status', 'service', 'version', 'stage', 'revision', 'dirty', 'source_fingerprint', 'catalog_sha256',
+}
+_F6_IDENTITY_FIELDS = {
+    'contract', 'hub_id', 'control_public_identity', 'control_key_version', 'suite',
+}
+_F6_CAPABILITY_FIELDS = {
+    'contract', 'contract_revision', 'catalog_sha256', 'status', 'planned_platform',
+    'legacy_management_api_available', 'client_control_pq_e2ee', 'authenticated_client_session',
+    'status_snapshot', 'topology_management', 'status_events', 'status_changes_partial',
+    'control_intents', 'device_binding', 'external_thread_links', 'external_link_invites',
+    'external_client_sessions', 'link_key_consent', 'group_endpoint_key_grants',
+    'client_device_enrollment', 'rpc_recovery', 'client_device_management',
+    'approval_read_and_decide', 'queued_goal_lifecycle', 'available_rpc_operations',
+    'external_rpc_operations',
+}
+_F6_LABELS = {
+    'org.cicada.fixture': 'client-link-v164-06',
+}
+
+
+def _f6_sha(value, label):
+    if not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{64}', value) is None:
+        _fail(label + ' must be a full lowercase SHA-256')
+
+
+def _f6_string(value, label, pattern=r'[^\x00-\x1f\x7f]{1,512}'):
+    if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
+        _fail(label + ' has an invalid string value')
+
+
+def _f6_positive_int(value, label):
+    if type(value) is not int or value <= 0:
+        _fail(label + ' must be a positive JSON integer')
+
+
+def _f6_typed_equal(left, right):
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(_f6_typed_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_f6_typed_equal(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _f6_utc_nanoseconds(value, label, *, future=False):
+    if not isinstance(value, str):
+        _fail(label + ' must be a UTC RFC3339Nano string')
+    match = re.fullmatch(r'(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z', value)
+    if match is None or (match.group(2) is not None and match.group(2).endswith('0')):
+        _fail(label + ' must be canonical UTC RFC3339Nano')
+    try:
+        base = datetime.strptime(match.group(1), '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
+    except ValueError:
+        _fail(label + ' is not a valid UTC timestamp')
+    nanos = int((match.group(2) or '').ljust(9, '0') or '0')
+    second = int(base.timestamp())
+    result = second * 1_000_000_000 + nanos
+    if future and result <= time.time_ns():
+        _fail(label + ' is expired')
+    return result
+
+
+def _f6_python_utc(value, label):
+    """Validate the exact `datetime.isoformat()` representation used by fixture.sh."""
+    if not isinstance(value, str):
+        _fail(label + ' must be a canonical Python UTC ISO timestamp')
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        _fail(label + ' is not a valid UTC timestamp')
+    if parsed.utcoffset() != datetime.now(timezone.utc).utcoffset() or parsed.isoformat() != value:
+        _fail(label + ' must use the exact UTC offset form emitted by fixture.sh')
+    return parsed
+
+
+def _f6_parse_json(raw, label):
+    try:
+        value = json.loads(raw.decode('utf-8', errors='strict'),
+            object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+    except (UnicodeError, json.JSONDecodeError, RecursionError):
+        _fail(label + ' is malformed JSON')
+    _check_depth(value)
+    return value
+
+
+def _f6_reference_file(root, name, record, relative_path, expected_mode, *, expected_sha=None):
+    _exact_keys(record, _F6_REFERENCE_FIELDS, 'F6 public reference record')
+    path = root / relative_path
+    if record.get('path') != str(path) or record.get('relative_path') != relative_path:
+        _fail('F6 public reference path does not match its exact fixture-relative path')
+    _f6_sha(record.get('sha256'), 'F6 public reference digest')
+    if expected_sha is not None and record['sha256'] != expected_sha:
+        _fail('F6 public reference digest differs from its Root-pinned digest')
+    if type(record.get('bytes')) is not int or record['bytes'] <= 0:
+        _fail('F6 public reference byte count must be a positive JSON integer')
+    mode = record.get('mode')
+    if not isinstance(mode, str) or mode != oct(expected_mode):
+        _fail('F6 public reference mode does not match the source-pinned mode')
+    try:
+        if not root.is_absolute() or root.is_symlink() or root.resolve(strict=True) != root:
+            _fail('F6 fixture root must be a real nonsymlink directory')
+        current = root
+        for part in Path(relative_path).parts:
+            current = current / part
+            info = current.lstat()
+            if stat.S_ISLNK(info.st_mode):
+                _fail('F6 public reference has a symlink path component')
+            if current != path and not stat.S_ISDIR(info.st_mode):
+                _fail('F6 public reference path has a non-directory ancestor')
+    except OSError:
+        _fail('F6 public reference path is unavailable')
+    try:
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_mode != expected_mode or \
+                before.st_uid != os.getuid() or before.st_nlink != 1 or \
+                before.st_size != record['bytes'] or before.st_size > 32 * 1024 * 1024:
+            _fail('F6 public reference is not the exact owned regular file described by READY')
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+        try:
+            opened = os.fstat(fd)
+            if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mode) != \
+                    (before.st_dev, before.st_ino, before.st_size, before.st_mode):
+                _fail('F6 public reference changed while opening')
+            raw = bytearray()
+            while len(raw) <= 32 * 1024 * 1024:
+                chunk = os.read(fd, min(65536, 32 * 1024 * 1024 + 1 - len(raw)))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            after = os.fstat(fd)
+            if len(raw) != before.st_size or \
+                    (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mode, opened.st_mtime_ns) != \
+                    (after.st_dev, after.st_ino, after.st_size, after.st_mode, after.st_mtime_ns):
+                _fail('F6 public reference changed while reading')
+        finally:
+            os.close(fd)
+    except OSError:
+        _fail('F6 public reference could not be safely opened')
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != record['sha256']:
+        _fail('F6 public reference bytes differ from the READY digest')
+    return bytes(raw), digest
+
+
+def _f6_id(value, label, pattern=r'[A-Za-z0-9_-]{1,128}'):
+    _f6_string(value, label, pattern)
+
+
+def _f6_base64(value, label, expected_size):
+    if not isinstance(value, str) or not value or re.fullmatch(r'[A-Za-z0-9+/]+={0,2}', value) is None:
+        _fail(label + ' must be padded standard Base64')
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error):
+        _fail(label + ' is malformed Base64')
+    if base64.b64encode(decoded).decode('ascii') != value or \
+            (expected_size is not None and len(decoded) != expected_size):
+        _fail(label + ' is noncanonical or has the wrong decoded size')
+    return decoded
+
+
+def _f6_validate_endpoint_attestation(side):
+    """Check the public proof's exact JSON scope and digest, not its signature."""
+    raw = _f6_base64(side.get('attestation'), 'F6 Endpoint attestation', None)
+    if not 0 < len(raw) <= 32 * 1024 or hashlib.sha256(raw).hexdigest() != side.get('proof_digest'):
+        _fail('F6 Endpoint attestation bytes are unbounded or differ from their proof digest')
+    proof = _f6_parse_json(raw, 'F6 Endpoint attestation')
+    proof_fields = {
+        'version', 'endpoint_id', 'principal_id', 'node_id', 'binding_id',
+        'binding_epoch', 'public_identity', 'signature',
+    }
+    _exact_keys(proof, proof_fields, 'F6 Endpoint attestation proof')
+    if type(proof.get('version')) is not int or proof['version'] != 1 or \
+            type(proof.get('binding_epoch')) is not int or \
+            any(proof.get(key) != side.get(source) for key, source in (
+                ('endpoint_id', 'endpoint_id'), ('principal_id', 'principal_id'),
+                ('node_id', 'node_id'), ('binding_id', 'binding_id'),
+                ('binding_epoch', 'binding_epoch'), ('public_identity', 'public_identity'))):
+        _fail('F6 Endpoint attestation JSON claims differ from the manifest tuple')
+    signature = proof.get('signature')
+    if not isinstance(signature, str):
+        _fail('F6 Endpoint attestation signature field is not Base64')
+    _f6_base64(signature, 'F6 Endpoint attestation signature', None)
+    return raw
+
+
+def _f6_validate_setup(setup, config):
+    _exact_keys(setup, _F6_SETUP_TOP_FIELDS, 'F6 public setup')
+    if setup.get('schema') != 'cicada.client-link-v164-client-setup.v1' or \
+            setup.get('status') != 'READY_FOR_ROOT_CLIENT_COORDINATION' or \
+            setup.get('protocol_scope') != 'SYNTHETIC_PROTOCOL_ONLY' or \
+            setup.get('native_runtime') != 'NOT_RUN' or setup.get('model_calls') != 'NONE':
+        _fail('F6 setup is not the exact synthetic, no-native, no-model setup')
+    hub = setup.get('hub')
+    _exact_keys(hub, _F6_SETUP_HUB_FIELDS, 'F6 setup Hub')
+    expected_origin = f"http://127.0.0.1:{config['host_port']}"
+    if hub.get('base_url') != expected_origin or hub.get('hub_id') != config['hub_id'] or \
+            hub.get('control_key_version') != 1 or type(hub.get('control_key_version')) is not int or \
+            hub.get('suite') != 'ML-KEM-768+ML-DSA-65+AES-256-GCM' or \
+            hub.get('image_id') != config['hub_image_id'] or \
+            hub.get('source_revision') != config['core_revision'] or \
+            hub.get('source_fingerprint') != config['source_fingerprint'] or \
+            hub.get('catalog_sha256') != config['catalog_sha256'] or \
+            hub.get('contract_revision') != config['contract_revision']:
+        _fail('F6 setup Hub does not match the independently pinned clean delivery')
+    identity = hub.get('control_public_identity')
+    _exact_keys(identity, {'id', 'kem_public', 'signing_public'}, 'F6 setup Hub public identity')
+    _f6_string(identity.get('id'), 'F6 Hub identity ID', r'pq1-[0-9a-f]{32}')
+    _f6_base64(identity.get('kem_public'), 'F6 Hub KEM public key', 1184)
+    _f6_base64(identity.get('signing_public'), 'F6 Hub signing public key', 1952)
+
+    owners = setup.get('owners')
+    if not isinstance(owners, list) or len(owners) != 2:
+        _fail('F6 setup must contain exactly source and target public Owner pins')
+    owner_ids = []
+    for side, row in zip(('SOURCE', 'TARGET'), owners):
+        _exact_keys(row, _F6_SETUP_OWNER_FIELDS, 'F6 setup Owner pin')
+        if row.get('link_side') != side or row.get('pin_source') != \
+                'host-generated Owner public identity, independently checked before Hub registration':
+            _fail('F6 setup Owner pin source or side is invalid')
+        _f6_id(row.get('owner_id'), 'F6 Owner ID')
+        _f6_string(row.get('owner_key_id'), 'F6 Owner key ID', r'pq1-[0-9a-f]{32}')
+        owner_identity = row.get('public_identity')
+        _exact_keys(owner_identity, {'id', 'kem_public', 'signing_public'}, 'F6 Owner public identity')
+        if owner_identity.get('id') != row.get('owner_key_id'):
+            _fail('F6 setup Owner identity ID differs from its key pin')
+        _f6_base64(owner_identity.get('kem_public'), 'F6 Owner KEM public key', 1184)
+        _f6_base64(owner_identity.get('signing_public'), 'F6 Owner signing public key', 1952)
+        owner_ids.append(row['owner_id'])
+    if len(set(owner_ids)) != 2:
+        _fail('F6 setup Owner IDs must be distinct')
+
+    link = setup.get('link')
+    _exact_keys(link, _F6_SETUP_LINK_FIELDS, 'F6 setup Link')
+    _f6_id(link.get('link_id'), 'F6 Link ID')
+    if type(link.get('version')) is not int or link['version'] != 1 or link.get('state') != 'PROPOSED':
+        _fail('F6 setup must identify one fresh PROPOSED Link version 1')
+    _f6_sha(link.get('contract_digest'), 'F6 Link contract digest')
+    _f6_utc_nanoseconds(link.get('expires_at'), 'F6 Link expiry', future=True)
+    instructions = setup.get('client_instructions')
+    _exact_keys(instructions, _F6_INSTRUCTION_FIELDS, 'F6 client instructions')
+    if type(instructions.get('generate_device_identity_on_android')) is not bool or \
+            instructions['generate_device_identity_on_android'] is not True or \
+            type(instructions.get('obtain_fresh_enrollment_manifest_from_android')) is not bool or \
+            instructions['obtain_fresh_enrollment_manifest_from_android'] is not True or \
+            instructions.get('owner_private_keys_for_signing') != 'host-only mode 0600; never place in APK or send to Hub' or \
+            instructions.get('reference_manifest') != 'offline Store preflight only; fetch a fresh live encrypted manifest before consent/signing' or \
+            instructions.get('endpoint_identity') != 'current candidate identities, bindings, attestations, and leases are in fresh live RPC manifests' or \
+            instructions.get('review_policy_qualification') != _F6_REVIEW_QUALIFICATION:
+        _fail('F6 client instructions exceed the exact KEY/NONE-only synthetic scope')
+    return link, owners
+
+
+def _f6_validate_fixture_public(fixture, reference, setup, config):
+    _exact_keys(fixture, _F6_PUBLIC_FIXTURE_FIELDS, 'F6 public fixture')
+    if fixture.get('schema') != 'cicada.client-link-v164-fixture.v1' or \
+            fixture.get('status') != 'READY_FOR_CLIENT_COORDINATION' or \
+            fixture.get('protocol_scope') != 'SYNTHETIC_PROTOCOL_ONLY' or \
+            fixture.get('native_runtime') != 'NOT_RUN' or fixture.get('model_calls') != 'NONE' or \
+            fixture.get('hub_id') != config['hub_id'] or \
+            fixture.get('reference_manifest_use') != 'offline Store preflight only; Client must fetch and verify a fresh encrypted link.key_manifest before consent or signing' or \
+            fixture.get('endpoint_private_key_policy') != 'host-only mode 0600; never mounted into Hub, helper build container, or APK' or \
+            fixture.get('owner_private_key_policy') != 'host-only mode 0600; never mounted into Hub, helper build container, or APK' or \
+            fixture.get('scope') != 'No Runtime, native Endpoint, model call, physical device, or public HTTPS claim.' or \
+            fixture.get('review_policy_qualification') != _F6_REVIEW_QUALIFICATION:
+        _fail('F6 public fixture contains an unsupported readiness or policy claim')
+    build = fixture.get('build')
+    _exact_keys(build, _F6_BUILD_FIELDS, 'F6 public build pins')
+    expected_build = {
+        'revision': config['core_revision'],
+        'source_fingerprint': config['source_fingerprint'],
+        'catalog_sha256': config['catalog_sha256'],
+        'contract_revision': config['contract_revision'],
+        'hub_image_id': config['hub_image_id'],
+        'interop_image_id': config['interop_image_id'],
+    }
+    if build != expected_build or any(not isinstance(value, str) for value in build.values()):
+        _fail('F6 source/build fields differ from the Root-pinned delivery')
+
+    setup_link, setup_owners = _f6_validate_setup(setup, config)
+    link = fixture.get('link')
+    _exact_keys(link, _F6_PUBLIC_LINK_FIELDS, 'F6 complete synthetic Link')
+    if not isinstance(link, dict) or link.get('link_id') != setup_link['link_id'] or \
+            link.get('version') != setup_link['version'] or type(link.get('version')) is not int or \
+            link.get('state') != setup_link['state'] or link.get('expires_at') != setup_link['expires_at'] or \
+            link.get('contract_digest') != setup_link['contract_digest']:
+        _fail('F6 setup and fixture Link selector disagree')
+    for key in ('source_endpoint_id', 'source_principal_id', 'source_group_id', 'source_owner_id',
+            'source_node_id', 'target_endpoint_id', 'target_principal_id', 'target_group_id',
+            'target_owner_id', 'target_node_id', 'direction', 'transport_hub_id'):
+        _f6_id(link.get(key), 'F6 complete Link ' + key)
+    if link.get('transport_hub_id') != config['hub_id']:
+        _fail('F6 Link is not assigned to the pinned Hub')
+    _f6_utc_nanoseconds(link.get('created_at'), 'F6 Link creation time')
+    _f6_utc_nanoseconds(link.get('updated_at'), 'F6 Link update time')
+    if not isinstance(link.get('actions'), list) or not link['actions'] or \
+            any(not isinstance(value, str) or not value for value in link['actions']) or \
+            not isinstance(link.get('data_scopes'), list) or not link['data_scopes'] or \
+            any(not isinstance(value, str) or not value for value in link['data_scopes']):
+        _fail('F6 Link action and data scope arrays are invalid')
+    snapshot = link.get('scope_snapshot')
+    _exact_keys(snapshot, _F6_LINK_SNAPSHOT_FIELDS, 'F6 Link scope snapshot')
+    for value in snapshot.values():
+        _f6_positive_int(value, 'F6 Link scope revision')
+
+    public_owners = fixture.get('owners')
+    if not isinstance(public_owners, list) or len(public_owners) != 2:
+        _fail('F6 public fixture must contain exactly two public Owner records')
+    for public_owner, setup_owner in zip(public_owners, setup_owners):
+        _exact_keys(public_owner, _F6_PUBLIC_OWNER_FIELDS, 'F6 fixture Owner record')
+        if public_owner.get('owner_id') != setup_owner.get('owner_id') or \
+                public_owner.get('owner_key_id') != setup_owner.get('owner_key_id') or \
+                public_owner.get('public_identity') != setup_owner.get('public_identity') or \
+                public_owner.get('source_of_pin') != 'host-generated Owner public identity, independently checked before Hub registration' or \
+                public_owner.get('hub_registration') != 'ACTIVE public key only; Hub has no Owner private key' or \
+                public_owner.get('private_key_policy') != 'host-only mode 0600; not mounted into Hub, helper build container, or APK':
+            _fail('F6 public fixture Owner record differs from the setup pin')
+
+    if fixture.get('reference_manifest') != reference:
+        _fail('F6 public fixture and separately pinned reference manifest disagree')
+    manifest = reference
+    _exact_keys(manifest, _F6_MANIFEST_FIELDS, 'F6 offline reference manifest')
+    if type(manifest.get('version')) is not int or manifest['version'] != 2 or \
+            manifest.get('link_id') != link['link_id'] or manifest.get('link_version') != link['version'] or \
+            type(manifest.get('link_version')) is not int or \
+            manifest.get('contract_digest') != link['contract_digest']:
+        _fail('F6 offline reference manifest does not bind the selected Link tuple')
+    _f6_string(manifest.get('contract_canonical'), 'F6 reference canonical contract', r'[A-Za-z0-9+/]+={0,2}')
+    _f6_sha(manifest.get('digest'), 'F6 reference manifest digest')
+
+    bindings = fixture.get('bindings')
+    candidates = fixture.get('endpoint_candidates')
+    networks = fixture.get('networks')
+    protocols = fixture.get('protocol_layers')
+    collections = (bindings, candidates, networks, protocols)
+    if any(not isinstance(rows, list) or len(rows) != 2 for rows in collections):
+        _fail('F6 fixture must bind exactly two current Endpoint, network, and protocol records')
+    for rows, fields, label in (
+            (bindings, _F6_BINDING_FIELDS, 'binding'),
+            (candidates, _F6_CANDIDATE_FIELDS, 'candidate'),
+            (networks, _F6_NETWORK_FIELDS, 'business network'),
+            (protocols, _F6_PROTOCOL_FIELDS, 'protocol layer')):
+        for row in rows:
+            _exact_keys(row, fields, 'F6 ' + label)
+
+    side_names = ('source', 'target')
+    link_endpoint_pairs = (
+        ('source_endpoint_id', 'source_group_id', 'source_owner_id', 'source_principal_id', 'source_node_id'),
+        ('target_endpoint_id', 'target_group_id', 'target_owner_id', 'target_principal_id', 'target_node_id'),
+    )
+    network_ids = set()
+    endpoint_ids = set()
+    binding_by_endpoint = {}
+    candidate_by_endpoint = {}
+    network_by_owner = {}
+    protocol_by_endpoint = {}
+    for row in bindings:
+        _f6_id(row.get('endpoint_id'), 'F6 binding Endpoint ID')
+        _f6_id(row.get('binding_id'), 'F6 binding ID')
+        _f6_positive_int(row.get('epoch'), 'F6 binding epoch')
+        _f6_utc_nanoseconds(row.get('lease_expires_at'), 'F6 binding lease', future=True)
+        if row.get('status') != 'leased' or row['endpoint_id'] in binding_by_endpoint:
+            _fail('F6 binding must be a unique current leased binding')
+        binding_by_endpoint[row['endpoint_id']] = row
+    for row in candidates:
+        _f6_id(row.get('endpoint_id'), 'F6 candidate Endpoint ID')
+        _f6_id(row.get('binding_id'), 'F6 candidate binding ID')
+        _f6_string(row.get('key_id'), 'F6 candidate key ID', r'pq1-[0-9a-f]{32}')
+        _f6_positive_int(row.get('epoch'), 'F6 candidate binding epoch')
+        _f6_positive_int(row.get('version'), 'F6 candidate version')
+        if row.get('state') != 'CANDIDATE' or row['endpoint_id'] in candidate_by_endpoint:
+            _fail('F6 Endpoint key candidate must be unique and current')
+        binding = binding_by_endpoint.get(row['endpoint_id'])
+        if binding is None or any(row.get(k) != binding.get(k) for k in ('endpoint_id', 'binding_id', 'epoch')):
+            _fail('F6 Endpoint key candidate differs from its live binding')
+        candidate_by_endpoint[row['endpoint_id']] = row
+    for row in networks:
+        for key in ('network_id', 'owner_id', 'group_id', 'hub_id'):
+            _f6_id(row.get(key), 'F6 business network ' + key)
+        if row.get('state') != 'ACTIVE' or row['network_id'] in network_ids or row['owner_id'] in network_by_owner or \
+                row.get('hub_id') != config['hub_id']:
+            _fail('F6 business network is not one distinct ACTIVE current network at the pinned Hub')
+        network_ids.add(row['network_id'])
+        network_by_owner[row['owner_id']] = row
+    for row in protocols:
+        for key in ('endpoint_id', 'node_id', 'network_access_binding_id', 'native_binding_id'):
+            _f6_id(row.get(key), 'F6 protocol layer ' + key)
+        for key in ('network_access_epoch', 'native_binding_epoch'):
+            _f6_positive_int(row.get(key), 'F6 protocol layer ' + key)
+        _f6_utc_nanoseconds(row.get('network_access_expires_at'), 'F6 NetworkAccess lease', future=True)
+        if row.get('group_membership_roles') != ['member'] or row.get('group_membership_grants') != [] or \
+                row.get('native_runtime') != 'NOT_RUN' or row['endpoint_id'] in protocol_by_endpoint:
+            _fail('F6 protocol layer claims an unsupported membership, grant, or native runtime')
+        protocol_by_endpoint[row['endpoint_id']] = row
+
+    sides = (manifest.get('source'), manifest.get('target'))
+    setup_owner_ids = {row['owner_id'] for row in setup_owners}
+    for index, (side_name, field_tuple, side) in enumerate(zip(side_names, link_endpoint_pairs, sides)):
+        _exact_keys(side, _F6_MANIFEST_SIDE_FIELDS, 'F6 reference manifest ' + side_name + ' side')
+        endpoint_field, group_field, owner_field, principal_field, node_field = field_tuple
+        endpoint_id, group_id, owner_id = link.get(endpoint_field), link.get(group_field), link.get(owner_field)
+        if not all(isinstance(value, str) and value for value in (endpoint_id, group_id, owner_id)) or \
+                side.get('endpoint_id') != endpoint_id or side.get('group_id') != group_id or \
+                side.get('owner_id') != owner_id or side.get('principal_id') != link.get(principal_field) or \
+                side.get('node_id') != link.get(node_field):
+            _fail('F6 reference manifest side differs from the Link endpoint/group/Owner tuple')
+        owner_pin = setup_owners[0 if side_name == 'source' else 1]
+        if owner_id != owner_pin['owner_id']:
+            _fail('F6 Link side Owner differs from its independent public pin')
+        _f6_id(side.get('principal_id'), 'F6 reference manifest principal ID')
+        _f6_id(side.get('node_id'), 'F6 reference manifest Node ID')
+        _f6_id(side.get('binding_id'), 'F6 reference manifest binding ID')
+        _f6_positive_int(side.get('binding_epoch'), 'F6 reference manifest binding epoch')
+        _f6_positive_int(side.get('candidate_version'), 'F6 reference manifest candidate version')
+        _f6_string(side.get('key_id'), 'F6 reference manifest key ID', r'pq1-[0-9a-f]{32}')
+        _f6_string(side.get('key_fingerprint'), 'F6 reference manifest key fingerprint', r'sha256:[0-9a-f]{64}')
+        _f6_sha(side.get('proof_digest'), 'F6 reference manifest proof digest')
+        identity = side.get('public_identity')
+        _exact_keys(identity, {'id', 'kem_public', 'signing_public'}, 'F6 reference Endpoint identity')
+        if identity.get('id') != side.get('key_id'):
+            _fail('F6 reference Endpoint identity differs from its candidate key ID')
+        _f6_base64(identity.get('kem_public'), 'F6 Endpoint KEM public key', 1184)
+        _f6_base64(identity.get('signing_public'), 'F6 Endpoint signing public key', 1952)
+        _f6_validate_endpoint_attestation(side)
+        candidate = candidate_by_endpoint.get(endpoint_id)
+        binding = binding_by_endpoint.get(endpoint_id)
+        protocol = protocol_by_endpoint.get(endpoint_id)
+        network = network_by_owner.get(owner_id)
+        if candidate is None or binding is None or protocol is None or network is None or \
+                candidate.get('key_id') != side.get('key_id') or candidate.get('version') != side.get('candidate_version') or \
+                side.get('binding_id') != binding.get('binding_id') or side.get('binding_epoch') != binding.get('epoch') or \
+                protocol.get('endpoint_id') != endpoint_id or network.get('group_id') != group_id or \
+                protocol.get('node_id') != side.get('node_id'):
+            _fail('F6 current Endpoint, binding, network, and manifest tuple disagree')
+        if networks[index].get('owner_id') != owner_id or networks[index].get('group_id') != group_id or \
+                bindings[index].get('endpoint_id') != endpoint_id or candidates[index].get('endpoint_id') != endpoint_id or \
+                protocols[index].get('endpoint_id') != endpoint_id:
+            _fail('F6 public active-network, binding, candidate, and protocol arrays are not SOURCE/TARGET ordered')
+        endpoint_ids.add(endpoint_id)
+    if len(endpoint_ids) != 2 or set(binding_by_endpoint) != endpoint_ids or \
+            set(candidate_by_endpoint) != endpoint_ids or set(protocol_by_endpoint) != endpoint_ids or \
+            set(network_by_owner) != setup_owner_ids:
+        _fail('F6 fresh synthetic Endpoint/network sides are incomplete or reused')
+    return link, bindings, networks
+
+
+def _f6_validate_custody(document, root):
+    _exact_keys(document, {'schema', 'private_key_root', 'owner_private_files', 'endpoint_private_files', 'not_mounted_into'},
+        'F6 custody manifest')
+    if document.get('schema') != 'cicada.client-link-v164-fixture.v1' or \
+            document.get('private_key_root') != str(root) or \
+            document.get('not_mounted_into') != ['Hub', 'interop helper build container', 'APK']:
+        _fail('F6 custody manifest has unsupported private-key scope')
+    expected = [
+        {'path': 'owner-private/source-owner-private.bin', 'mode': '0600', 'custody': 'host only'},
+        {'path': 'owner-private/target-owner-private.bin', 'mode': '0600', 'custody': 'host only'},
+    ]
+    endpoints = [
+        {'path': 'endpoint-private/source-endpoint-private.bin', 'mode': '0600', 'custody': 'host only'},
+        {'path': 'endpoint-private/target-endpoint-private.bin', 'mode': '0600', 'custody': 'host only'},
+    ]
+    if document.get('owner_private_files') != expected or document.get('endpoint_private_files') != endpoints:
+        _fail('F6 custody manifest does not enumerate only host-private key paths')
+
+
+def _f6_validate_helper_provenance(document, config, refs):
+    fields = {
+        'schema', 'helper_source_path', 'helper_source_sha256', 'helper_binary_path',
+        'helper_binary_sha256', 'builder_image_id', 'builder_entrypoint_override',
+        'helper_source_image_mount', 'private_keys_mounted_during_build', 'shipped_hub_binary_modified',
+    }
+    _exact_keys(document, fields, 'F6 helper provenance')
+    if document.get('schema') != 'cicada.client-link-v164-helper-build.v1' or \
+            document.get('helper_source_path') != 'helper-src/main.go' or \
+            document.get('helper_binary_path') != 'bin/cicada-link-v164-fixture' or \
+            document.get('helper_source_sha256') != refs['helper_source_sha256'] or \
+            document.get('helper_binary_sha256') != refs['helper_binary_sha256'] or \
+            document.get('builder_image_id') != config['interop_image_id'] or \
+            document.get('builder_entrypoint_override') != 'go' or \
+            document.get('helper_source_image_mount') != '/src/cmd/cicada-client-link-v164-fixture-06' or \
+            type(document.get('private_keys_mounted_during_build')) is not bool or \
+            document['private_keys_mounted_during_build'] is not False or \
+            type(document.get('shipped_hub_binary_modified')) is not bool or \
+            document['shipped_hub_binary_modified'] is not False:
+        _fail('F6 helper build provenance differs from the pinned offline toolchain scope')
+
+
+def _f6_validate_hub_ready(document, config, setup):
+    _exact_keys(document, _F6_HUB_READY_FIELDS, 'F6 final Hub readiness probe')
+    origin = f"http://127.0.0.1:{config['host_port']}"
+    if document.get('stage') != 'final' or document.get('base_url') != origin:
+        _fail('F6 final Hub probe does not bind the exact loopback fixture')
+    health = document.get('health')
+    _exact_keys(health, _F6_HEALTH_FIELDS, 'F6 Hub health response')
+    if health.get('status') != 'ok' or health.get('service') != 'cicada-control' or \
+            health.get('revision') != config['core_revision'] or \
+            type(health.get('dirty')) is not bool or health.get('dirty') is not False or \
+            health.get('source_fingerprint') != config['source_fingerprint'] or \
+            health.get('catalog_sha256') != config['catalog_sha256'] or \
+            not isinstance(health.get('version'), str) or not health['version'] or \
+            not isinstance(health.get('stage'), str) or not health['stage']:
+        _fail('F6 Hub health response differs from Root-pinned build provenance')
+    identity = document.get('identity')
+    _exact_keys(identity, _F6_IDENTITY_FIELDS, 'F6 Hub identity response')
+    setup_hub = setup['hub']
+    if identity.get('contract') != 'android-hub-v1' or identity.get('hub_id') != config['hub_id'] or \
+            identity.get('control_key_version') != 1 or type(identity.get('control_key_version')) is not int or \
+            identity.get('control_public_identity') != setup_hub.get('control_public_identity') or \
+            identity.get('suite') != 'ML-KEM-768+ML-DSA-65+AES-256-GCM':
+        _fail('F6 Hub identity response differs from the public setup pin')
+    capabilities = document.get('capabilities')
+    _exact_keys(capabilities, _F6_CAPABILITY_FIELDS, 'F6 Hub capability response')
+    if capabilities.get('contract') != 'android-hub-v1-draft' or \
+            capabilities.get('contract_revision') != config['contract_revision'] or \
+            capabilities.get('catalog_sha256') != config['catalog_sha256'] or \
+            capabilities.get('status') != 'partial' or capabilities.get('planned_platform') != 'android':
+        _fail('F6 Hub capability response differs from the pinned v1.6.4 operation catalog')
+    bool_fields = _F6_CAPABILITY_FIELDS - {'contract', 'contract_revision', 'catalog_sha256', 'status',
+        'planned_platform', 'available_rpc_operations', 'external_rpc_operations'}
+    for field in bool_fields:
+        if type(capabilities.get(field)) is not bool:
+            _fail('F6 Hub capability flags must use explicit JSON booleans')
+    if capabilities.get('client_control_pq_e2ee') is not True or \
+            capabilities.get('authenticated_client_session') is not True or \
+            capabilities.get('link_key_consent') is not True or \
+            capabilities.get('external_thread_links') is not False or \
+            capabilities.get('status_events') is not False:
+        _fail('F6 Hub capability response makes an unsupported secure or Thread-link claim')
+    for field in ('available_rpc_operations', 'external_rpc_operations'):
+        values = capabilities.get(field)
+        if not isinstance(values, list) or any(not isinstance(item, str) or not item for item in values) or \
+                len(values) != len(set(values)):
+            _fail('F6 Hub RPC capability lists must be unique nonempty operation names')
+    if 'link.key_manifest' not in capabilities['available_rpc_operations'] or \
+            'link.key_grants' not in capabilities['available_rpc_operations']:
+        _fail('F6 Hub does not advertise the pinned Link key-review operations')
+
+
+def _f6_validate_manifest(manifest, config, ready):
+    _exact_keys(manifest, {'schema', 'captured_at_utc', 'fixture_dir', 'container', 'network',
+        'secret_environment_values_recorded'}, 'F6 owned Docker manifest')
+    if manifest.get('schema') != 'cicada.client-link-v164-owned-docker-manifest.v1' or \
+            manifest.get('fixture_dir') != str(config['paths']['root']) or \
+            type(manifest.get('secret_environment_values_recorded')) is not bool or \
+            manifest['secret_environment_values_recorded'] is not False:
+        _fail('F6 owned Docker manifest scope is invalid')
+    _f6_python_utc(manifest.get('captured_at_utc'), 'F6 Docker capture time')
+    container = manifest.get('container')
+    network = manifest.get('network')
+    _exact_keys(container, _F6_CONTAINER_FIELDS, 'F6 Hub container manifest')
+    _exact_keys(network, _F6_NETWORK_MANIFEST_FIELDS, 'F6 Hub network manifest')
+    _f6_id(container.get('id'), 'F6 Hub container ID', r'[0-9a-f]{64}')
+    _f6_id(network.get('id'), 'F6 Hub network ID', r'[0-9a-f]{64}')
+    _f6_string(container.get('name'), 'F6 Hub container name', r'cicada-cl164-06-[A-Za-z0-9_-]{1,80}')
+    _f6_string(network.get('name'), 'F6 Hub network name', r'cicada-cl164-06-[A-Za-z0-9_-]{1,80}')
+    expected_ports = {'8787/tcp': [{'HostIp': '127.0.0.1', 'HostPort': str(config['host_port'])}]}
+    if container.get('image_id') != config['hub_image_id'] or \
+            container.get('entrypoint') != ['/usr/local/bin/cicada'] or \
+            container.get('cmd') != ['serve', '--host', '0.0.0.0', '--port', '8787'] or \
+            not isinstance(container.get('user'), str) or re.fullmatch(r'[1-9][0-9]*:[1-9][0-9]*', container['user']) is None or \
+            container.get('network_mode') != network.get('name') or container.get('networks') != [network.get('name')] or \
+            container.get('port_bindings') != expected_ports:
+        _fail('F6 owned Hub container image, command, user, bridge, or port is invalid')
+    state = container.get('state')
+    if not isinstance(state, dict) or state.get('Running') is not True or state.get('Status') != 'running':
+        _fail('F6 owned Hub container is not recorded as running')
+    labels = container.get('labels')
+    network_labels = network.get('labels')
+    expected_labels = {
+        **_F6_LABELS,
+        'org.cicada.fixture.dir': str(config['paths']['root']),
+        'org.cicada.fixture.source.revision': config['core_revision'],
+        'org.cicada.fixture.catalog.sha256': config['catalog_sha256'],
+        'org.cicada.fixture.source.fingerprint': config['source_fingerprint'],
+        'org.cicada.fixture.image.id': config['hub_image_id'],
+    }
+    if not isinstance(labels, dict) or not isinstance(network_labels, dict) or \
+            any(labels.get(key) != value for key, value in expected_labels.items()) or \
+            any(network_labels.get(key) != value for key, value in expected_labels.items()):
+        _fail('F6 owned Hub/network labels do not bind the exact root and clean build')
+    resource_caps = container.get('resource_caps')
+    _exact_keys(resource_caps, {'memory', 'nano_cpus', 'pids_limit'}, 'F6 Hub resource caps')
+    if resource_caps.get('memory') != 536870912 or type(resource_caps.get('memory')) is not int or \
+            resource_caps.get('nano_cpus') != 1000000000 or type(resource_caps.get('nano_cpus')) is not int or \
+            resource_caps.get('pids_limit') != 256 or type(resource_caps.get('pids_limit')) is not int or \
+            not isinstance(container.get('environment_variable_names'), list) or \
+            any(not isinstance(name, str) or not name for name in container['environment_variable_names']) or \
+            container['environment_variable_names'] != sorted(set(container['environment_variable_names'])):
+        _fail('F6 owned Hub resource or environment-name inventory is invalid')
+    mounts = container.get('mounts')
+    expected_mounts = [
+        {'source': str(config['paths']['root'] / 'state'), 'destination': '/state', 'rw': True, 'type': 'bind'},
+        {'source': str(config['paths']['root'] / 'workspace'), 'destination': '/workspace', 'rw': True, 'type': 'bind'},
+    ]
+    if not isinstance(mounts, list) or sorted(mounts, key=lambda row: row.get('destination', '') if isinstance(row, dict) else '') != \
+            sorted(expected_mounts, key=lambda row: row['destination']):
+        _fail('F6 owned Hub mount manifest includes a non-state/workspace source')
+    if network.get('driver') != 'bridge' or type(network.get('internal')) is not bool or network['internal'] is not False or \
+            type(network.get('attachable')) is not bool or network['attachable'] is not False or \
+            not isinstance(network.get('containers'), dict) or set(network['containers']) != {container['id']}:
+        _fail('F6 owned Hub network must be one noninternal, nonattachable bridge')
+    hub = ready['hub']
+    if container['id'] != hub['container_id'] or network['id'] != hub['network_id']:
+        _fail('F6 READY and owned Docker manifest identify different resources')
+
+
+def _validate_f6_ready(ready, setup, manifest, config):
+    """Validate the Main17 READY emitted by the fresh F6 owner coordinator."""
+    if config.get('f6') is not True or config.get('core_revision') != F6_MAIN_REVISION or \
+            config.get('paths', {}).get('root') != F6_MAIN_ROOT or \
+            config.get('source_dirty') is not False or config.get('contract_revision') != 'client-hub-v1.6.4' or \
+            type(config.get('wire_version')) is not int or config['wire_version'] != 1 or \
+            type(config.get('schema_version')) is not int or config['schema_version'] != 57 or \
+            type(config.get('operation_count')) is not int or config['operation_count'] != 55 or \
+            config.get('catalog_sha256') != CATALOG_SHA256 or config.get('fixture_label') != 'client-link-v164-06':
+        _fail('Main17 readiness is permitted only for the Root-pinned clean dd81575 Core F6 fixture')
+    for key in ('source_fingerprint', 'catalog_sha256', 'producer_sha256', 'package_sha256'):
+        _f6_sha(config.get(key), 'Root-pinned F6 ' + key)
+    for key in ('hub_image_id', 'interop_image_id'):
+        if not isinstance(config.get(key), str) or re.fullmatch(r'sha256:[0-9a-f]{64}', config[key]) is None:
+            _fail('Root-pinned F6 image ID is malformed')
+    _exact_keys(ready, _F6_READY_FIELDS, 'F6 Main READY receipt')
+    root = config['paths']['root']
+    if ready.get('schema') != 'cicada.client-link-v164-fixture-ready.v1' or \
+            ready.get('status') != 'READY_FOR_CLIENT_COORDINATION' or \
+            ready.get('fixture_root') != str(root) or \
+            ready.get('protocol_scope') != 'SYNTHETIC_PROTOCOL_ONLY' or \
+            ready.get('native_runtime') != 'NOT_RUN' or \
+            type(ready.get('model_calls')) is not int or ready['model_calls'] != 0 or \
+            ready.get('cleanup_policy') != 'one terminal consumer ACK or fixed deadline; no renewal; fresh private state destroyed':
+        _fail('F6 Main READY does not prove its exact synthetic-only, no-native, no-model scope')
+    _f6_sha(config.get('setup_sha256'), 'Root-pinned F6 setup digest')
+    _f6_sha(config.get('ready_sha256'), 'Root-pinned F6 READY digest')
+    _f6_sha(config.get('reference_sha256'), 'Root-pinned F6 reference digest')
+    _f6_sha(config.get('manifest_sha256'), 'Root-pinned F6 owned-manifest digest')
+    for field, config_field in (
+            ('client_setup_sha256', 'setup_sha256'),
+            ('hub_ready_sha256', None),
+            ('reference_manifest_sha256', 'reference_sha256'),
+            ('owned_manifest_sha256', 'manifest_sha256')):
+        _f6_sha(ready.get(field), 'F6 READY ' + field)
+        if config_field is not None and ready[field] != config[config_field]:
+            _fail('F6 READY four-hash binding differs from Root pins')
+
+    nonce = ready.get('coordination_nonce')
+    if not isinstance(nonce, str) or re.fullmatch(r'[0-9a-f]{48}', nonce) is None:
+        _fail('F6 one-use coordination nonce is malformed')
+    if type(ready.get('coordination_ttl_seconds')) is not int or ready['coordination_ttl_seconds'] != 720:
+        _fail('F6 coordination TTL is not the exact fixed maximum')
+    deadline_ns = _f6_utc_nanoseconds(ready.get('coordination_deadline'), 'F6 coordination deadline')
+    remaining_ns = deadline_ns - time.time_ns()
+    if remaining_ns <= 0 or remaining_ns > 720 * 1_000_000_000:
+        _fail('F6 READY deadline is expired or exceeds the one-use 12-minute TTL')
+
+    refs = ready.get('public_references')
+    _exact_keys(refs, _F6_REFERENCE_NAMES, 'F6 nine-file public reference inventory')
+    hub_ready_rel = refs.get('hub_ready', {}).get('relative_path') if isinstance(refs.get('hub_ready'), dict) else None
+    attempt = re.fullmatch(r'evidence/(attempt-[0-9]{2})/hub-ready-final\.json', hub_ready_rel or '')
+    if attempt is None:
+        _fail('F6 hub-ready reference does not identify one bounded dynamic attempt-NN')
+    dynamic = attempt.group(1)
+    expected_paths = dict(_F6_PUBLIC_PATHS)
+    expected_paths.update({
+        'hub_ready': (f'evidence/{dynamic}/hub-ready-final.json', 0o100600),
+        'helper_provenance': (f'evidence/{dynamic}/helper-provenance.json', 0o100600),
+    })
+    loaded = {}
+    ref_digests = {}
+    for name in sorted(_F6_REFERENCE_NAMES):
+        relative_path, expected_mode = expected_paths[name]
+        raw, digest = _f6_reference_file(root, name, refs[name], relative_path, expected_mode,
+            expected_sha=config['setup_sha256'] if name == 'client_setup' else
+                config['reference_sha256'] if name == 'reference_manifest' else None)
+        ref_digests[name] = digest
+        if name in {'client_setup', 'custody_manifest', 'fixture_public', 'helper_provenance',
+                'hub_ready', 'reference_manifest'}:
+            loaded[name] = _f6_parse_json(raw, 'F6 ' + name)
+        elif name == 'helper_binary':
+            # The helper is opaque executable evidence; it is only hashed and never run here.
+            pass
+    if ready['client_setup_sha256'] != ref_digests['client_setup'] or \
+            ready['hub_ready_sha256'] != ref_digests['hub_ready'] or \
+            ready['reference_manifest_sha256'] != ref_digests['reference_manifest']:
+        _fail('F6 READY hash fields disagree with the verified public-reference bytes')
+    if loaded['client_setup'] != setup:
+        _fail('F6 public setup argument is not the exact hashed public-reference document')
+    _f6_validate_custody(loaded['custody_manifest'], root)
+    _f6_validate_helper_provenance(loaded['helper_provenance'], config, {
+        'helper_source_sha256': ref_digests['helper_source'],
+        'helper_binary_sha256': ref_digests['helper_binary'],
+    })
+    _f6_validate_hub_ready(loaded['hub_ready'], config, setup)
+    fixture_link, bindings, networks = _f6_validate_fixture_public(
+        loaded['fixture_public'], loaded['reference_manifest'], setup, config)
+    source = ready.get('source')
+    _exact_keys(source, _F6_BUILD_FIELDS, 'F6 Main READY source/build pins')
+    if source != loaded['fixture_public'].get('build'):
+        _fail('F6 Main READY source is not the exact fixture-public build projection')
+    hub = ready.get('hub')
+    _exact_keys(hub, _F6_HUB_FIELDS, 'F6 Main READY Hub')
+    expected_origin = f'http://127.0.0.1:{config["host_port"]}'
+    if hub.get('hub_id') != config['hub_id'] or hub.get('base_url') != expected_origin or \
+            not isinstance(hub.get('container_id'), str) or re.fullmatch(r'[0-9a-f]{64}', hub['container_id']) is None or \
+            not isinstance(hub.get('network_id'), str) or re.fullmatch(r'[0-9a-f]{64}', hub['network_id']) is None or \
+            hub.get('link_id') != fixture_link.get('link_id') or \
+            hub.get('link_state') != 'PROPOSED' or \
+            type(hub.get('link_version')) is not int or hub.get('link_version') != 1 or \
+            not _f6_typed_equal(hub.get('bindings'), bindings) or \
+            not _f6_typed_equal(hub.get('business_networks'), networks) or \
+            hub.get('review_policy_qualification') != _F6_REVIEW_QUALIFICATION:
+        _fail('F6 Main READY Hub scope differs from its active public fixture records')
+    _f6_validate_manifest(manifest, config, ready)
+    return loaded
 
 
 def _pinned(config, name, legacy_name):
@@ -366,6 +1176,9 @@ def _validate_f3_ready(ready, setup, manifest, config):
 
 
 def _expected_fixture(ready, setup, manifest, config):
+    if config.get('f6') is True:
+        _validate_f6_ready(ready, setup, manifest, config)
+        return
     root = config['paths']['root']
     setup_path = config['paths']['setup']
     manifest_path = config['paths']['manifest']
@@ -543,7 +1356,8 @@ def verify_hub(_fixture_arg, _public_arg, recovery_mode=None, **native_pins):
     _setup_raw, setup = _read_exact_private(paths['setup'], config['setup_sha256'], maximum=32 * 1024)
     _ready_raw, ready = _read_exact_private(paths['ready'], config['ready_sha256'], maximum=64 * 1024)
     if paths['root'] in (F3_FIXTURE_ROOT, F4_FIXTURE_ROOT, F5_FIXTURE_ROOT) or config.get('f6'):
-        _read_exact_private(paths['reference'], config['reference_sha256'], maximum=64 * 1024)
+        _read_exact_private(paths['reference'], config['reference_sha256'],
+            maximum=32 * 1024 * 1024 if config.get('f6') else 64 * 1024)
     _manifest_raw, manifest = _read_exact_private(paths['manifest'], config['manifest_sha256'], maximum=64 * 1024)
     _expected_fixture(ready, setup, manifest, config)
 

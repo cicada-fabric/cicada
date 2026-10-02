@@ -20,11 +20,13 @@ The v1.6.4 catalog, wire, OpenAPI and two public Link evidence vectors are byte-
 | Root trust envelope (`cicada.client-v164-f6-root-pins.v1`) | `scope=fresh-F6`, exact `fixture_root`, local delivery metadata digest, complete `core` and `images`, exact `fixture` file digests/Hub ID/port/label. Caller supplies its raw-byte SHA-256 through an independent trusted channel. File must be owned, regular, mode 0600 and not symlinked. |
 | Local normalized clean-delivery metadata (`cicada.client-v164-local-delivery.v1`) | Exact authorized Core revision, `source_dirty=false`, source fingerprint, producer and package digests, full immutable Hub/interop image IDs, protocol/catalog/wire/schema/operation count. Its complete bytes must match both the Root envelope and the separately supplied metadata SHA-256. |
 
-Generate normalized metadata only after independently checking the **real** archive manifest/payload/source cleanliness, full Core commit, producer receipt, complete source inventory and actual image IDs/labels. The parser compares those already verified facts and bytes; it does not itself reconstruct the source inventory or certify a build. No new image, package or source fingerprint has been supplied for this preparation record. Tests use explicitly synthetic values and establish no delivery acceptance.
+Generate normalized metadata only after independently checking the **real** archive manifest/payload/source cleanliness, full Core commit, producer receipt, covered source inventory and actual image IDs/labels. The parser compares those already verified facts and bytes; it does not itself reconstruct the source inventory or certify a build. The initial 25-test preparation used synthetic values only. The separately verified clean dd81575 delivery is now recorded in [the fixed delivery report](../../docs/client-hub-v1.6.4-dd81575-validation.md); that provenance result does not establish live acceptance.
 
 Fixed compatibility values remain `client-hub-v1.6.4`, wire 1, schema 57, 55 operations and catalog SHA-256 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`. Missing fields, duplicate JSON keys, boolean/float numeric coercion, changed hashes, dirty/unlisted sources, mismatched images, wrong permissions/symlinks and F5 scope reuse are rejected.
 
-The Root-pinned fixture path must be inside `/gpu1-share/data/cicada-client/v164-<selected seven-character commit prefix>-.../fixture-f6` and use label `client-link-v164-06`. Core owns fixture creation. READY must prove zero preceding Android operations/signatures and bind exact setup/reference/owned-manifest hashes. Carrier retains selected-field checks for Docker IDs, images/labels, mounts, user, loopback port, network membership and ownership. Neither READY nor a Hub response selects a trust pin.
+The Root-pinned fixture path must use the dedicated `/gpu1-share/data/cicada-client/v164-<selected seven-character commit prefix>-.../fixture-f6` layout, or the separately authorized exact Core path `/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-06-20261002` for dd81575 only. No other Core path or symlink alias is accepted. It uses label `client-link-v164-06`. Core owns fixture creation. READY must prove zero preceding Android operations/signatures and bind exact setup/reference/owned-manifest hashes. Carrier retains selected-field checks for Docker IDs, images/labels, mounts, user, loopback port, network membership and ownership. Neither READY nor a Hub response selects a trust pin.
+
+Core owns the private Owner keys for the Main-root fixture. Client may read only public setup/proof/custody metadata and exchange exported requests with an external Core-operated signer. It must not open or mount those private keys. The actual Main producer has been read independently: READY has 17 top-level fields, ten Hub fields and nine public references with exact raw modes, byte counts, paths and digests. The shared resolver reads Root-bound `public/READY.json` and derives the owned manifest from its exact `evidence/attempt-NN/hub-ready-final.json` reference. The carrier validates the complete source and ACTIVE Network relationships separately. A draft and cleaned preparation attempt do not authorize execution.
 
 ## Command interfaces
 
@@ -69,4 +71,16 @@ Receipt: `/gpu1-share/data/cicada-client/v164-f6-preparation-20261002/offline-ad
 
 Source-only comparison receipt: `source-comparison.redacted.json` in that directory, SHA-256 `177ebea73260ae92116625cf9bf033fc83faa3d4e8da39dcc1390c030a16c3ef`. The detailed future execution order is in restricted `execution-plan.md`. The actual harness commit is bound after commit in restricted `adapter-delivery.redacted.json`.
 
-Current fresh-image/READY interoperability, actual 49-test emulator execution, actual Alert, bilateral consent, fault recovery, native Worker/model, physical Android and public HTTPS are **NOT_RUN**. No Hub/emulator/RPC/signer/model operation was executed by this offline adapter check. F1-F5 receipts remain unchanged; this preparation is not an accepted release.
+The initial adapter check performed no Hub/emulator/RPC/signer/model operation. A separate authorized network-none run subsequently passed 49 Android tests, four runtime observations and local UI smoke with the frozen APK pair; see the fixed delivery report for its exact scope, commands and retained cleanup failures. Current fresh-image/READY interoperability, actual Link Alert, bilateral consent, native Worker/model, physical Android and public HTTPS remain **NOT_RUN**; Link fault recovery remains **BLOCKED/NOT_RUN**. F1-F5 receipts remain unchanged; preparation and offline checks are not live release acceptance.
+
+### Exact Main-root correction
+
+The later exact-path allowance and wrong-revision/symlink rejection checks passed a separate network-none Docker run: **27 tests, exit 0**, source unchanged. Receipt: `/gpu1-share/data/cicada-client/v164-f6-preparation-20261002/offline-main-root-check/receipt.redacted.json`, SHA-256 `02a8ce6570dc300d0fa7f0e09a46755bcf506a5ccfba1ede02aecba96a392d60`. The original 25-test receipt remains immutable. This change remains part of the pending F6 acceptance milestone; actual public delivery, READY and execution are still NOT_RUN.
+
+The shared Main READY path correction passed **29 tests, exit 0** in a further
+network-none Docker check. Receipt:
+`/gpu1-share/data/cicada-client/v164-f6-preparation-20261002/offline-main-path-check/receipt.redacted.json`,
+SHA-256 `eaa98dec396d9aa43e279ed75db19ad62b6db6ce41052474ca3df376e2fcac87`.
+This includes draft, Root-digest, mode and unsafe attempt-reference rejection;
+it does not establish the full carrier or live READY gate. Earlier receipts are
+retained unchanged.

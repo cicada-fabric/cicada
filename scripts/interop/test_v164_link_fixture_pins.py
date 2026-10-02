@@ -125,6 +125,91 @@ class LinkFixturePinsTest(unittest.TestCase):
         self.assertEqual(fixture['ready'], self.fixture_root / 'evidence/ready-receipt.json')
         self.assertEqual(fixture['manifest_sha256'], self.pins['fixture']['owned_manifest_sha256'])
 
+    def test_core_owned_f6_root_is_allowed_for_dd81575_delivery(self):
+        core_root = pins_module.CORE_F6_ROOT
+        self.pins['fixture_root'] = str(core_root)
+        self._persist()
+
+        trusted = self._load()
+        ready = self._main_ready(core_root)
+        with mock.patch.object(pins_module, '_read_file', return_value=(b'', self.pins_sha256, ready)):
+            fixture = pins_module.validate_f6_fixture(trusted, core_root)
+        self.assertEqual(fixture['root'], core_root)
+        self.assertEqual(fixture['core_revision'], pins_module.CORE_F6_REVISION)
+        self.assertEqual(fixture['ready'], core_root / 'public/READY.json')
+        self.assertEqual(fixture['manifest'], core_root / 'evidence/attempt-06/owned-hub-manifest.json')
+
+    def _main_ready(self, root):
+        # This mock tests shared path resolution, not the carrier's full receipt
+        # validator. It contains no current fixture identity or proof.
+        ready = dict.fromkeys(pins_module._MAIN_READY_KEYS)
+        ready.update(schema='cicada.client-link-v164-fixture-ready.v1',
+            status='READY_FOR_CLIENT_COORDINATION', fixture_root=str(root),
+            client_setup_sha256=self.pins['fixture']['setup_sha256'],
+            reference_manifest_sha256=self.pins['fixture']['reference_sha256'],
+            owned_manifest_sha256=self.pins['fixture']['owned_manifest_sha256'],
+            hub_ready_sha256='e' * 64)
+        ready['public_references'] = dict.fromkeys(pins_module._MAIN_REFERENCE_NAMES)
+        relative = 'evidence/attempt-06/hub-ready-final.json'
+        ready['public_references']['hub_ready'] = {
+            'path': str(root / relative), 'relative_path': relative,
+            'sha256': 'e' * 64, 'bytes': 200, 'mode': '0o100600',
+        }
+        return ready
+
+    def test_main_path_resolution_rejects_draft_hash_mismatch_and_unsafe_attempt(self):
+        root = pins_module.CORE_F6_ROOT
+        self.pins['fixture_root'] = str(root)
+        self._persist()
+        trusted = self._load()
+        mutations = (
+            lambda ready: ready.update(status='DRAFT_SCHEMA_ONLY_NOT_AUTHORIZED'),
+            lambda ready: ready.update(owned_manifest_sha256='f' * 64),
+            lambda ready: ready.update(hub_ready_sha256='f' * 64),
+            lambda ready: ready['public_references']['hub_ready'].update(relative_path='../private/state.json'),
+            lambda ready: ready['public_references']['hub_ready'].update(path='/tmp/hub-ready-final.json'),
+            lambda ready: ready['public_references']['hub_ready'].update(mode='0o100644'),
+            lambda ready: ready['public_references']['hub_ready'].update(bytes=True),
+        )
+        for mutate in mutations:
+            ready = self._main_ready(root)
+            mutate(ready)
+            with self.subTest(ready=ready), \
+                    mock.patch.object(pins_module, '_read_file', return_value=(b'', self.pins_sha256, ready)):
+                with self.assertRaises(ValueError):
+                    pins_module.validate_f6_fixture(trusted, root)
+
+    def test_main_path_resolution_requires_exact_root_ready_bytes(self):
+        root = pins_module.CORE_F6_ROOT
+        self.pins['fixture_root'] = str(root)
+        self._persist()
+        trusted = self._load()
+        with mock.patch.object(pins_module, '_read_file', side_effect=ValueError('SHA-256 mismatch')) as read:
+            with self.assertRaises(ValueError):
+                pins_module.validate_f6_fixture(trusted, root)
+        read.assert_called_once_with(root / 'public/READY.json',
+            expected_sha256=self.pins['fixture']['ready_sha256'])
+
+    def test_core_owned_f6_root_rejects_other_revision_and_symlink_alias(self):
+        core_root = pins_module.CORE_F6_ROOT
+        self.pins['fixture_root'] = str(core_root)
+        self.pins['core']['revision'] = '25bc586232db43362c6e03eccef1fa3a0dbec8ee'
+        self.delivery['revision'] = '25bc586232db43362c6e03eccef1fa3a0dbec8ee'
+        self._persist()
+        with self.assertRaises(ValueError):
+            self._load()
+
+        target = self.work / 'actual-core-root'
+        target.mkdir()
+        parent_alias = self.work / 'core-parent-alias'
+        parent_alias.symlink_to(target, target_is_directory=True)
+        aliased_root = parent_alias / 'fixture-f6'
+        with mock.patch.object(pins_module, 'CORE_F6_ROOT', aliased_root):
+            with self.assertRaises(ValueError):
+                pins_module._validate_fixture_root(
+                    str(aliased_root), str(aliased_root), pins_module.CORE_F6_REVISION,
+                )
+
     def test_carrier_f6_requires_and_loads_all_external_pins(self):
         from argparse import Namespace
 

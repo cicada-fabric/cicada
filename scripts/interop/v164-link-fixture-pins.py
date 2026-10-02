@@ -26,6 +26,8 @@ AUTHORIZED_CORE_REVISIONS = {
     'dd81575b160aa901b642137e54d7a60961e4bd68',
 }
 CACHE_ROOT = Path('/gpu1-share/data/cicada-client')
+CORE_F6_ROOT = Path('/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-06-20261002')
+CORE_F6_REVISION = 'dd81575b160aa901b642137e54d7a60961e4bd68'
 FIXTURE_LABEL = 'client-link-v164-06'
 HEX64 = re.compile(r'[0-9a-f]{64}')
 IMAGE_ID = re.compile(r'sha256:[0-9a-f]{64}')
@@ -52,6 +54,57 @@ _DELIVERY_KEYS = {
     'package_sha256', 'hub_image_id', 'interop_image_id',
 }
 _MAX_FILE = 64 * 1024
+_MAIN_READY_KEYS = {
+    'schema', 'status', 'fixture_root', 'protocol_scope', 'native_runtime',
+    'model_calls', 'public_references', 'source', 'hub', 'client_setup_sha256',
+    'hub_ready_sha256', 'reference_manifest_sha256', 'owned_manifest_sha256',
+    'coordination_nonce', 'coordination_deadline', 'coordination_ttl_seconds',
+    'cleanup_policy',
+}
+_MAIN_REFERENCE_NAMES = {
+    'client_setup', 'custody_manifest', 'fixture_public', 'helper_binary',
+    'helper_provenance', 'helper_source', 'hub_ready', 'reference_manifest', 'runner',
+}
+
+
+def _main_f6_paths(pins, root):
+    """Resolve Main fixture paths from Root-bound READY bytes, never a draft.
+
+    The carrier independently validates all referenced files and runtime facts.
+    This shared path resolver also serves the Android runner and coordinator.
+    """
+    ready_path = root / 'public/READY.json'
+    _raw, _digest, ready = _read_file(ready_path,
+        expected_sha256=pins['fixture_pins']['ready_sha256'])
+    _exact(ready, _MAIN_READY_KEYS, 'Main F6 READY')
+    if ready['schema'] != 'cicada.client-link-v164-fixture-ready.v1' or \
+            ready['status'] != 'READY_FOR_CLIENT_COORDINATION' or \
+            ready['fixture_root'] != str(root):
+        _fail('Main F6 requires an actual Root-bound READY for the selected root')
+    for field, pin in (
+            ('client_setup_sha256', 'setup_sha256'),
+            ('reference_manifest_sha256', 'reference_sha256'),
+            ('owned_manifest_sha256', 'owned_manifest_sha256')):
+        if ready[field] != pins['fixture_pins'][pin]:
+            _fail('Main F6 READY digests disagree with independently supplied Root pins')
+    refs = ready['public_references']
+    _exact(refs, _MAIN_REFERENCE_NAMES, 'Main F6 public references')
+    hub_ready = refs['hub_ready']
+    _exact(hub_ready, {'path', 'sha256', 'bytes', 'mode', 'relative_path'},
+        'Main F6 Hub readiness reference')
+    relative = hub_ready['relative_path']
+    if not isinstance(relative, str) or \
+            re.fullmatch(r'evidence/attempt-[0-9]{2}/hub-ready-final\.json', relative) is None or \
+            hub_ready['path'] != str(root / relative):
+        _fail('Main F6 Hub readiness path must identify an exact public attempt')
+    _sha(hub_ready['sha256'], 'Main F6 Hub readiness SHA-256')
+    if ready['hub_ready_sha256'] != hub_ready['sha256'] or \
+            type(hub_ready['bytes']) is not int or not 0 < hub_ready['bytes'] <= _MAX_FILE or \
+            hub_ready['mode'] != '0o100600':
+        _fail('Main F6 Hub readiness reference is malformed')
+    attempt = (root / relative).parent
+    _reject_symlink_path_components(attempt)
+    return ready_path, attempt / 'owned-hub-manifest.json'
 
 
 def _fail(message):
@@ -171,6 +224,27 @@ def _validate_fixture(fixture):
         _fail('fixture Hub ID or loopback port is malformed')
 
 
+def _reject_symlink_path_components(path):
+    """Reject symlink aliases in an authorized absolute path, if it exists yet."""
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            # F6 may be pinned before Core creates its leaf directory. Any
+            # existing ancestor has still been checked for symlink aliases.
+            break
+        except OSError:
+            _fail('Core-owned fixture path cannot be safely inspected')
+        if stat.S_ISLNK(info.st_mode):
+            _fail('Core-owned fixture path must not contain symlink components')
+        if current != path and not stat.S_ISDIR(info.st_mode):
+            _fail('Core-owned fixture path has a non-directory ancestor')
+        if current == path and not stat.S_ISDIR(info.st_mode):
+            _fail('Core-owned fixture root is not a directory')
+
+
 def _validate_fixture_root(root_value, expected_value, revision):
     if not isinstance(root_value, str) or not isinstance(expected_value, str) or \
             not isinstance(revision, str):
@@ -178,7 +252,19 @@ def _validate_fixture_root(root_value, expected_value, revision):
     root = Path(root_value)
     expected = Path(expected_value)
     if not root.is_absolute() or root != expected or root.as_posix() != expected_value or \
-            '..' in root.parts or '.' in root.parts or root.name != 'fixture-f6':
+            '..' in root.parts or '.' in root.parts:
+        _fail('fixture root must exactly match the Root-authorized F6 path')
+
+    # One separately authorized Core-owned location supports the clean dd81575
+    # delivery. Keep it literal and revision-bound; it is not a general Core
+    # path fallback and the older 25bc586 delivery remains cache-only.
+    if root == CORE_F6_ROOT and expected_value == CORE_F6_ROOT.as_posix():
+        if revision != CORE_F6_REVISION:
+            _fail('Core-owned F6 fixture root is authorized only for the dd81575 delivery')
+        _reject_symlink_path_components(root)
+        return root
+
+    if root.name != 'fixture-f6':
         _fail('fixture root must exactly match the Root-authorized F6 path')
     try:
         relative = root.relative_to(CACHE_ROOT)
@@ -260,12 +346,16 @@ def validate_f6_fixture(pins, root):
     selected_root = _validate_fixture_root(str(root), pins.get('fixture_root'), pins['core_revision'])
     if pins.get('fixture_label') != FIXTURE_LABEL:
         _fail('verified Root pins do not carry the dedicated F6 ownership label')
+    ready = selected_root / 'evidence/ready-receipt.json'
+    manifest = selected_root / 'evidence/owned-hub-manifest.json'
+    if selected_root == CORE_F6_ROOT:
+        ready, manifest = _main_f6_paths(pins, selected_root)
     return {
         'root': selected_root,
         'setup': selected_root / 'public/client-setup.json',
-        'ready': selected_root / 'evidence/ready-receipt.json',
+        'ready': ready,
         'reference': selected_root / 'public/reference-manifest.json',
-        'manifest': selected_root / 'evidence/owned-hub-manifest.json',
+        'manifest': manifest,
         'setup_sha256': pins['fixture_pins']['setup_sha256'],
         'ready_sha256': pins['fixture_pins']['ready_sha256'],
         'reference_sha256': pins['fixture_pins']['reference_sha256'],

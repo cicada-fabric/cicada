@@ -1,6 +1,157 @@
 # CICADA Client integration handoff
 
-## Active integration — clean v1.6.4 Link consent
+## Active acceptance target — clean v1.6.4 Core `dd81575`
+
+The current F6 target is clean Core
+`dd81575b160aa901b642137e54d7a60961e4bd68`, Client-Control v1.6.4,
+Hub image `sha256:ab189ee06372e4eaa248eac6e3699f7b4e2d9105505e87027f0081d118adc561`
+and interop image `sha256:c926d0f3809572e541414cbb239efdc00ba82d07e16950318199df4c6d5e2679`.
+The [fixed delivery record](client-hub-v1.6.4-dd81575-validation.md) contains
+the complete archive/catalog/source pins, actual commands, exits and receipts.
+Independent verification covers all 24 contract payloads and 891 standard
+build inputs. The original producer outer exit 1 remains **FAIL**; the separate
+corrected review establishes build and contract provenance only.
+
+The frozen product checkpoint remains `508ca333c8ae90d27a8191ac828a7be16b71c7b3`;
+the fixture adapter checkpoint is `6d01e4a82818c0bae9013d4c42ead2b99a9be9c0`.
+App/test APK hashes remain `56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67`
+and `caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`.
+The Main fixture correction and terminal acceptance record are delivered as one
+checkpoint. Its exact final commit is bound after commit in
+`/gpu1-share/data/cicada-client/v164-dd81575-20261002/client-delivery-closure.redacted.json`.
+The original F6 delivery receipt and local recovery reference retain the
+`d93afaf` snapshot used during F7 preparation.
+No product or APK rebuild was performed.
+
+| Gate | Current result |
+|---|---|
+| Archive, catalog, source inventory, selected immutable image metadata | **PASS**, provenance scope only |
+| Frozen APKs: 49 independent Android tests, four real emulator properties, local UI smoke | **PASS**, network-none offline scope only |
+| Offline emulator teardown | **PASS** through a separate absence addendum; original immediate-inspect race and both outer exit-1 attempts remain retained |
+| Actual F6 READY, nine Root-bound public references and immutable running Docker identity | **PASS**, read-only fixture verification only |
+| Fresh F6 emulator boot, frozen APK installs and four properties | **PASS**, bootstrap only; initial pre-Docker missing-directory exit 1 retained |
+| Encrypted enrollment/capabilities and Link business flow | **NOT_RUN**; coordination **BLOCKED** by fixed deadline before any Android business selector |
+| External signing interface | **PASS** for static interface compatibility; actual six signatures **NOT_RUN** |
+| Target actual Link-consent Alert and bilateral KEY/`NONE` | **NOT_RUN** |
+| Link write lost-response/409 recovery | **BLOCKED**; the bounded carrier currently allows only `fault=none` |
+| Native Worker/model, physical Android and public HTTPS | **NOT_RUN** |
+| F6 Client emulator and Core Hub/bridge cleanup | **PASS**, owned resources only; exact absence independently checked |
+
+### F6 terminal outcome and evidence
+
+Formal Root GO arrived at `2026-10-02T18:48:21Z`; the fixed deadline was
+`2026-10-02T18:51:45Z`. Coordinator prepare and actual public/Docker verification
+exited 0. Fresh emulator setup consumed the remaining window, including one
+exit-1 start attempt because the mode-0700 evidence directory was absent.
+The identical command passed after directory creation. Both frozen APK installs
+and all four property reads exited 0. Carrier, onboarding stage, Android
+business selector and encrypted capabilities were **NOT_RUN**. All six signing
+requests, Root approvals and Owner signatures were zero. No pending business
+packet, operation or sequence was created. No renewal, late signature or new
+fixture was attempted.
+
+Run `v164-f6-dd81575-main-20261002` has a private terminal receipt at
+`/gpu1-share/data/cicada-client/v164-f6-preparation-20261002/coordinator-private/runs/v164-f6-dd81575-main-20261002/f6-terminal.redacted.json`,
+SHA-256 `4d4f1c758c755c0a0b0618eece7a496823927721bf04f4499fc77c8bee2090fc`.
+Its immutable original states Core cleanup was pending; the separate
+`core-cleanup-addendum.redacted.json` in the same directory, SHA-256
+`3d1b6dba75f01a17784f2cfd32969b1f0860a277e5e72be60db9ca47d4f495f0`,
+confirms cleanup without rewriting that record.
+
+The Client emulator stop exited 0; final expected missing-object inspect exited
+1. Receipt `/gpu1-share/data/cicada-client/v16-deterministic-v164-f6-dd81575-main-20261002/android/android-teardown.redacted.json`
+has SHA-256 `1df0b57744dc8d34c4115d5b3ad6d393d8192531e946e7fe25ab0186a11669a0`.
+Core's deadline watchdog removed its own Hub/bridge with exit 0. Core receipts,
+actual commands, all delivery pins and individual Android exit records are in
+the [fixed validation record](client-hub-v1.6.4-dd81575-validation.md).
+This attempt establishes fixture/bootstrap correctness only; it does not
+establish bilateral KEY/NONE or a phone consent result.
+
+Core retains all Owner private keys and operates the external signer. The
+Client exports `cicada.client.link-consent-signing-request.v1` and chooses the
+exact proof expiry within five minutes. Core delivered a compatible v2 external
+interface that consumes those unchanged bytes and exact expiry, adapts the
+existing public Android device export, and uses separate Root approval records
+without inventing Native review IDs. Its public usage file SHA-256 is
+`a1c201d58fa4954f378a58e17a6e4d5d0c114828b7eadaac360924a3db6ae7ba`.
+That static check creates no signature or runtime acceptance. The ignored
+Client file coordinator has SHA-256
+`d91a85bf235806b2232550e6d4855bcb96968bf67c84b8a30864523f42923e1d`;
+its final private README has SHA-256
+`2ec764cd29870772a8ad5af1fa23a7d8132f1554b43eda0b37c29a57cf2bd720`.
+It binds actual UI review/submit receipts to the run, Link, exact request and
+proof hashes, and preserves the first Target KEY through the real RN Alert.
+Inert public-key-only
+format examples and their SHA index are under
+`/gpu1-share/data/cicada-client/v164-f6-preparation-20261002/synthetic-request-examples/`;
+they are not actual Android exports and must never be signed or submitted.
+The next separately authorized final Join/READY must wait for signer,
+coordinator and an already booted/installed owned emulator. The first Target
+KEY must use the actual React Native one-use Alert; emulator automation does
+not establish physical or human confirmation. Historical evidence below keeps
+its original source, APK and outcome attribution.
+
+### F7 boot-only preparation closure
+
+Core separately authorized one new emulator bootstrap and exact fixture-07
+private adapter parameters. Frozen APK install, four real properties, guarded
+bootstrap adoption and one positive/eight negative shape checks passed. The
+emulator was ready at `19:08:50.174Z`, before any short Hub lease was started
+by Client. No actual fresh Root five-pin delivery/business GO arrived before
+the fixed idle cutoff `2026-10-02T19:25:08Z`; the watcher removed only its owned
+emulator at that time (stop 0, final missing-object inspect 1).
+
+No Android key export, artifact binding, carrier, RPC, UI or signing request
+ran. Core Root subsequently terminated its PRE and reported no final Group
+Join, Link or READY; Client does not infer Core state from its own bootstrap. Result is
+**BLOCKED_NO_FRESH_ROOT_GO_BEFORE_IDLE_CUTOFF**, with business acceptance
+**NOT_RUN**. All private compatibility adapters remain outside Git/APK;
+there is no product rebuild. The [fixed validation record](client-hub-v1.6.4-dd81575-validation.md)
+contains actual commands, original failures, complete pins and evidence hashes.
+Terminal receipt `/gpu1-share/data/cicada-client/v164-f7-preparation-20261002/f7-preparation-terminal.redacted.json`
+has SHA-256 `e919de2d3d4ff08afcaa7ccfe07598091adc5570278b4688f27bb11b44d789fe`.
+Owned-emulator teardown receipt has SHA-256
+`e58f3c205d90499c8b57fae8062f0fcf0ebeacb35a2df83afffc9ced5115aff4`.
+Core-owned Hub/bridge cleanup also passed: Core removal exit 0, followed by
+two independent Client exact-ID absence queries with expected exit 1. Addendum
+`/gpu1-share/data/cicada-client/v164-f7-preparation-20261002/core-cleanup-addendum.redacted.json`
+has SHA-256 `8d53429501ee1aa946febfa0a5aa91f618c8d55dee9a7168443e9b930a5d288a`;
+it binds Core's original receipt without any Client database/private-path read.
+
+Before a further separately authorized attempt, finish Core helper build and
+fixture adapter preparation first, then have Client boot and confirm readiness,
+and promptly publish the actual Root delivery and GO. Do not reuse either
+expired F6 authorization or the removed F7 emulator, extend idle waiting, or
+claim any Source/Target business pass from these preparation results.
+
+### Prompt for the CICADA core maintainer
+
+> Read the active dd81575 validation record and this handoff from Client
+> `dev/react-native`; review only, without pushing or merging. Preserve F6's
+> fixed-deadline outcome: actual READY/pins/Docker/bootstrap passed, encrypted
+> enrollment and all six external signing phases were NOT_RUN. Do not reuse
+> its nonce, extend expiry, or convert preparation/cleanup into business PASS.
+> Preserve F7's separate boot-only PASS and fixed idle-cutoff closure: no fresh
+> business GO, device export, encrypted RPC or signature occurred. Core's PRE
+> preparation is a separate result, with no final Join/Link/READY acceptance.
+> For a separately authorized fresh attempt, finish and independently check
+> the Core helper build and exact private fixture adapters before Client boot.
+> Then have Client create its
+> private evidence directory, boot its owned emulator, install the unchanged
+> 56684d33 app / caa8a170 test APK pair and record four real runtime properties.
+> Keep Core dd81575, catalog 953486ea and full Hub image ab189ee0 pinned as
+> recorded above. Bring the compatible external Owner signer and Client
+> coordinator into readiness before final Join/READY and Root GO. Then complete
+> Source DeviceGrant, KEY, NONE and Target DeviceGrant, actual React Native KEY
+> Alert, NONE through six separately approved exact request/proof handoffs.
+> Preserve native review ID null when not exported. Keep Owner private keys,
+> Node/Hub bearer and DB exclusively with Core. Require encrypted capabilities
+> and fresh bilateral status; emulator automation is not physical/human consent.
+> Supply a safe disposable fault driver separately for Link recovery coverage.
+> Return commands/exits, immutable pins, raw request/proof hashes, bounded UI
+> evidence, individual PASS/FAIL/BLOCKED/NOT_RUN and owned cleanup receipts.
+
+## Prior integration — clean `25bc586` v1.6.4 Link consent
 
 Core `25bc586232db43362c6e03eccef1fa3a0dbec8ee` / Client-Control v1.6.4
 has been independently imported and checked against its immutable Hub and
