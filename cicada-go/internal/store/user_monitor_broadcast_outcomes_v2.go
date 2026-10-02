@@ -325,8 +325,9 @@ WHERE binding.id=? AND binding.epoch=? AND binding.credential_hash=?
 				(result.Evidence != UserMonitorBroadcastV2EvidenceNode && result.Evidence != UserMonitorBroadcastV2EvidenceRelay) {
 				return nil, ErrUserMonitorBroadcastV2Denied
 			}
-			if recipient.NodeID == nodeID && result.Evidence != UserMonitorBroadcastV2EvidenceNode ||
-				recipient.NodeID != nodeID && result.Evidence != UserMonitorBroadcastV2EvidenceRelay {
+			// Historical local evidence is specific to the reporting Node. Relay
+			// persistence is authoritative for either same-Node or remote routing.
+			if result.Evidence == UserMonitorBroadcastV2EvidenceNode && recipient.NodeID != nodeID {
 				return nil, ErrUserMonitorBroadcastV2Denied
 			}
 			if result.Evidence == UserMonitorBroadcastV2EvidenceRelay &&
@@ -371,10 +372,13 @@ SET state=?,evidence=?,failure_code=?,reported_at=? WHERE preview_id=? AND ordin
 
 func userMonitorRelayChildPersistedTx(tx *sql.Tx, r *UserMonitorBroadcastV2,
 	recipient SameGroupBroadcastV2Endpoint, childID, messageID string) bool {
-	var found int
-	err := tx.QueryRow(`SELECT 1 FROM relay_v2_message_security security
+	var digest string
+	err := tx.QueryRow(`SELECT security.digest FROM relay_v2_message_security security
 JOIN relay_v2_message_payloads payload ON payload.message_id=security.message_id AND payload.payload_mode='SEALED_V1'
 JOIN relay_v2_outbox outbox ON outbox.message_id=security.message_id
+JOIN fabric_messages message ON message.id=security.message_id
+ AND message.kind='send' AND message.request_id='' AND message.reply_to='' AND message.body=''
+ AND message.from_endpoint_id=security.sender_endpoint_id AND message.to_endpoint_id=security.receiver_endpoint_id
 WHERE security.message_id=? AND security.idempotency_key=?
  AND security.sender_endpoint_id=? AND security.sender_principal_id=? AND security.sender_group_id=?
  AND security.sender_binding_id=? AND security.sender_binding_epoch=?
@@ -384,8 +388,14 @@ WHERE security.message_id=? AND security.idempotency_key=?
 		r.Snapshot.Source.EndpointID, r.Snapshot.Source.PrincipalID, r.GroupID,
 		r.Snapshot.Source.BindingID, r.Snapshot.Source.BindingEpoch,
 		recipient.EndpointID, recipient.PrincipalID, r.GroupID,
-		recipient.BindingID, recipient.BindingEpoch, recipient.EndpointID).Scan(&found)
-	return err == nil && found == 1
+		recipient.BindingID, recipient.BindingEpoch, recipient.EndpointID).Scan(&digest)
+	if err != nil {
+		return false
+	}
+	// Reuse the existing immutable ciphertext digest check; joined row presence
+	// alone must not turn missing or corrupted sealed bytes into factual evidence.
+	_, err = relayLoadSealedV1BytesTx(tx, messageID, digest)
+	return err == nil
 }
 
 func readUserMonitorOutcomesTx(tx *sql.Tx, previewID string) ([]UserMonitorBroadcastV2RecipientOutcome, error) {

@@ -1,23 +1,16 @@
 # Architecture v2.3 当前事实审计
 
-## 2026-10-02 combined checkpoint audit — source QA passed; image gate pending
+## 2026-10-02 integrated candidate — focused QA PASS; clean artifact pending
 
-Main integrates retained-certificate lifetime checks and the recovery metadata
-query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
-tested sources; the query keeps quarantine held and never re-executes work.
-Current integrated Main source is `e64f2449…`. Full Go QA passed on the
-pre-policy-fix source `97a008…`, with explicit skips retained; its separate
-799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
-`bab6569…`, and does not cover the later policy fix. Focused shipping script
-checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
-exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
-ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
+Main dirty source-input fingerprint `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079` integrates the directory/native/relay/ML-DSA work, the final Monitor/ACK correction and Link-proof patch. Candidate contract `client-hub-v1.6.3` has catalog SHA `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`; wire 1, 55 operations and Hub schema v55 are unchanged. The integrated focused normal gate passed 49 top-level + 128 subtests across six packages, with zero skips/failures and six executed test binaries. Affected vet/build, contract check/export/verify, and Python 15 tests + 17 subtests passed. Source and standard/Go input metadata (835 / 829 entries) matched before and after. The [receipt](../.cicada-data/combined-link-proof-20261002/receipt.json) SHA is `6416728daca6fdf4e95f0b0fc60f06ad6dd4ca77ed910ab7c1f2ba90fe8c12e7`.
 
-Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
-are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
-owns source inventories, focused receipts and independent device-layer limits.
+This current receipt is a focused combined-source gate; it is not a full default, tagged, or race rerun on `72ec78…`. Earlier full/tagged results and the broad Store race timeout stay attributed to `cb4d`; that timeout is FAIL. The integrated local dirty-source bundle `8b22ceb043067a8e41324f943795f89b9e04d447f30143bef69c43773cc0a2b9` proves contract integrity only. A checkpoint commit, clean v1.6.3 standard/PQ artifacts, exact-image gates and current Client selector remain pending. Overall architecture v2.3/v0.1 remain PARTIAL.
 
-The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
+The final seven-path Monitor/ACK component source `31e36040363e100547303becc5267f7377af4d7dcdf897b7333a6d81885be495` passed focused normal and race at 19 top + 38 subtests each, zero skips/failures; affected vet/build exited 0. Its [receipt](../.cicada-data/combined-directory-relay-csr-20261002/monitor-repair/final/receipt.json) SHA is `40b21ebb5631cf7d60898e612b2cad00b8325c333d420b5a9d1bd73aacc4f304`. The separate 14-file Link-proof component passed focused normal/race and encrypted loopback TCP on `144e079 + Directory15`; its [results](/tmp/cicada-link-client-proof-20261002/results.json) SHA is `51b441940f1b657fae633ff248d1d6c8221dd7fa7c36cb2212c6f663187e7bb0`. Root verified those exact Link14 bytes/raw modes in Main. These component receipts supplement the integrated focused gate, but do not turn it into full/tagged/race acceptance.
+
+A fifth zero-model native fixture used immutable clean-144/v1.6.1, not the v1.6.3 candidate. It is `READY_HELD_LIVE_FOR_CLIENT`: two endpoints joined and a visibly synthetic Owner device RPC created a `PROPOSED` Link with review policies `NONE` and no accepted sides. Its receipt records 97/97 commands exit 0, four native app-server starts and zero model/provider/turn/inject calls. The [execution receipt](/tmp/cicada-client-link-native-fixture-20261002/private-hop-freeze/approved-execution/result.json) SHA is `85ac6f8ff5f01dfac780cc9a4b53209fc9be679026cec1d9b8e0f890c697d4b1`; the independently checked three-container/three-bridge [public topology](/tmp/cicada-client-link-native-fixture-20261002/private-hop-freeze/approved-execution/new-public-topology/public-topology.json) SHA is `db4a30d22d487bc008ab9af87e518bf58a2cbfb8aabc143e3ed29fc284072dda`. It remains held for Client follow-up; cleanup has not run. Four prior fixture failures remain retained. This is not Android approval, Link activation, native Ask/Reply or message consumption.
+
+The Client carrier preflight fails because its legacy exact-one-Hub guard rejects the valid two-Node/three-bridge topology. A dedicated Client correction is in progress against the exact public inventory; selectors are **NOT_RUN**. PQ authority D1, Task handoff and restore validation remain separate worktrees, not integrated or accepted in Main. Same-Node default Hub Relay has bounded component proof; `nativeDirect` remains unsupported. The separate Task worktree review found peer list/get/claim/renew/accept currently return objective or acceptance prose, while `task_submit` summary lacks explicit Manager recipient/purpose. Treat this as a v0.1 security release gap: the next slice needs trusted purpose classification, existing sealed-object transport plus small metadata DTOs for peer definitions/results, Task/ArtifactACL and current binding/ownerEpoch checks, and rejection of legacy plaintext routes. Legitimate Control-management plaintext remains explicit. These boundaries do not change the overall PARTIAL status.
 
 ## Historical 2026-10-01 Network directory-only native binding guard correction
 

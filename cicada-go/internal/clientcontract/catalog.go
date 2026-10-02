@@ -11,7 +11,7 @@ import (
 
 // ContractRevision identifies the cross-repository Client/Hub contract
 // revision. The encrypted Client-Control wire framing remains version 1.
-const ContractRevision = "client-hub-v1.6.1"
+const ContractRevision = "client-hub-v1.6.3"
 
 type Role string
 

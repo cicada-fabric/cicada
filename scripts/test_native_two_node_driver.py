@@ -1,6 +1,10 @@
 """Deterministic negative oracles; these are not native-runtime evidence."""
 import importlib.util
 import json
+import copy
+import hashlib
+import os
+import subprocess
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -97,6 +101,143 @@ class MonitorWaitTests(unittest.TestCase):
                 gate.wait_actual_pairing()
                 verify.assert_called_once()
                 sleep.assert_not_called()
+
+
+class ExactDeliveredPairTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="synthetic-two-node-unit-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.hub = "sha256:" + "1" * 64; self.interop = "sha256:" + "2" * 64
+        self.source = {"revision": "3" * 40, "dirty": False, "source_fingerprint": "4" * 64,
+                       "catalog_sha256": "5" * 64, "input_inventory": {
+                           "schema_version": "cicada.hub-build-input-inventory.v1",
+                           "source_fingerprint_v4": {"sha256": "4" * 64}, "entries": [{"path": "synthetic-code"}]}}
+        self.metadata = {"schema_version": "cicada.hub-build.v1", "transport_variant": "standard",
+                         "pqtls_available": False, "source": self.source,
+                         "image": {"id": self.hub, "dockerfile": "docker/Dockerfile.hub"},
+                         "test_image": {"id": self.interop}}
+        self.labels = {"org.opencontainers.image.revision": "3" * 40, "org.cicada.build.dirty": "false",
+                       "org.cicada.build.source-fingerprint": "4" * 64, "org.cicada.client-catalog.sha256": "5" * 64}
+
+    def gate(self, wrong_interop=False, wrong_go=False):
+        gate = object.__new__(driver.Gate)
+        data = json.dumps(self.metadata).encode(); metadata = self.root / "producer.json"; metadata.write_bytes(data)
+        gate.args = SimpleNamespace(exact_clean_image_metadata=str(metadata),
+                                    exact_clean_image_metadata_sha256=hashlib.sha256(data).hexdigest(),
+                                    runtime_image=driver.RUNTIME, run_native=False)
+        gate.root = self.root; gate.repo = self.root; gate.run_id = "synthetic-owned-pair"
+        gate.containers = {}; gate.images = {}; gate.calls = []
+        gate.result = {"acceptance_mode": "exact-clean-image-pair"}
+        gate.step = lambda name: None
+        def command(argv, **kwargs):
+            self.assertIn("--source-info-only", argv)
+            Path(argv[-1]).write_text(json.dumps({"source": self.source}))
+        gate.command = command
+        def inspect(kind, name):
+            labels = copy.deepcopy(self.labels)
+            if name == self.hub: labels["org.cicada.role"] = "hub"
+            if name == self.interop:
+                labels["org.opencontainers.image.title"] = "CICADA Hub interop test runner"
+                if wrong_interop: labels["org.cicada.build.source-fingerprint"] = "6" * 64
+            return {"Id": name, "Config": {"Labels": labels}}
+        gate.inspect = inspect
+        def docker(*argv, **kwargs):
+            gate.calls.append(argv)
+            self.assertNotIn(argv[0], ("build", "tag", "start", "exec"))
+            if argv[0] == "cp":
+                self.assertIn(":/usr/local/bin/cicada", argv[1]); binary = Path(argv[-1])
+                binary.write_bytes(b"synthetic-delivered-hub-binary"); binary.chmod(0o700)
+            if argv[0] == "run":
+                self.assertIn("none", argv); self.assertIn(self.interop, argv)
+                if argv[-1] == "version":
+                    return b"go version go0.0.0 linux/amd64" if wrong_go else b"go version go1.27.1 linux/amd64"
+                self.assertEqual(argv[-1], "./cmd/cicada-v68fixture")
+                self.assertNotIn("./cmd/cicada", argv)
+                (self.root / "cicada-v68fixture").write_bytes(b"synthetic-approved-owner-fixture")
+            return b""
+        gate.docker = docker
+        return gate
+
+    def test_exact_pair_only_compiles_fixture_and_never_overlays_or_owns_shared_images(self):
+        gate = self.gate(); gate.build()
+        self.assertEqual((gate.hub_image, gate.test_image), (self.hub, self.interop))
+        self.assertEqual(gate.images, {})
+        self.assertEqual(gate.containers, {gate.run_id + "-extract": self.hub})
+        self.assertEqual(gate.result["cicada_binary_sha256"], hashlib.sha256(b"synthetic-delivered-hub-binary").hexdigest())
+        self.assertTrue(gate.result["fixture_provenance"]["synthetic_owner_only"])
+        self.assertFalse(gate.result["binary_provenance"]["hub_overlay"])
+        self.assertEqual(gate.result["fixture_go_version"], "go version go1.27.1 linux/amd64")
+
+    def test_wrong_actual_interop_rejected_before_extract_or_compile(self):
+        gate = self.gate(wrong_interop=True)
+        with self.assertRaises(RuntimeError): gate.build()
+        self.assertEqual(gate.calls, [])
+
+    def test_wrong_actual_go_version_rejected_without_fixture_compile(self):
+        gate = self.gate(wrong_go=True)
+        with self.assertRaisesRegex(RuntimeError, "actual_interop_go_toolchain_not_pinned"): gate.build()
+        self.assertFalse((self.root / "cicada-v68fixture").exists())
+
+    def test_missing_mutable_or_same_interop_id_rejected(self):
+        for image in ({}, {"id": "mutable:tag"}, {"id": self.hub}):
+            with self.subTest(image=image), self.assertRaises(RuntimeError):
+                driver.image_evidence.check_clean_pair({**self.metadata, "test_image": image}, self.source)
+
+    def test_each_interop_label_is_exact(self):
+        labels = {**self.labels, "org.opencontainers.image.title": "CICADA Hub interop test runner"}
+        driver.image_evidence.check_clean_image(self.metadata, {"Id": self.interop, "Config": {"Labels": labels}}, "interop")
+        for key in labels:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                driver.image_evidence.check_clean_image(self.metadata,
+                    {"Id": self.interop, "Config": {"Labels": {**labels, key: "synthetic-wrong"}}}, "interop")
+
+    def preparation(self):
+        return {"status": "PREPARATION_PASS_NATIVE_NOT_RUN", "terminal_exit_code": 0, "models_invoked": 0,
+                "native_model_turn_attempts": 0, "cleanup_owned_resources": True, "source_unchanged_during_gate": True,
+                "build": self.metadata, "acceptance_mode": "exact-clean-image-pair", "script_sha256": "6" * 64,
+                "image_evidence_helper_sha256": "7" * 64, "cicada_binary_sha256": "8" * 64,
+                "fixture_binary_sha256": "9" * 64, "runtime_image_id": driver.RUNTIME,
+                "hub_image_id": self.hub, "interop_image_id": self.interop, "producer_metadata_sha256": "a" * 64}
+
+    def test_paid_preparation_mix_and_false_protocol_preflight_rejected(self):
+        result = self.preparation(); driver.image_evidence.check_preparation(copy.deepcopy(result), result)
+        for key in ("acceptance_mode", "script_sha256", "image_evidence_helper_sha256", "cicada_binary_sha256",
+                    "fixture_binary_sha256", "runtime_image_id", "hub_image_id", "interop_image_id", "producer_metadata_sha256"):
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                driver.image_evidence.check_preparation({**result, key: "synthetic-wrong"}, result)
+        for key, value in (("status", "PREFLIGHT_PASS_NATIVE_NOT_RUN"), ("models_invoked", 1), ("terminal_exit_code", 1),
+                           ("native_model_turn_attempts", 1), ("cleanup_owned_resources", False), ("source_unchanged_during_gate", False)):
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                driver.image_evidence.check_preparation({**result, key: value}, result)
+
+    def test_actual_pair_health_requires_clean_revision_catalog(self):
+        result = self.preparation(); health = {k:self.source[k] for k in ("revision", "dirty", "source_fingerprint", "catalog_sha256")}
+        driver.image_evidence.check_hub_provenance(health, result)
+        for key, value in (("dirty", True), ("revision", "b" * 40), ("catalog_sha256", "c" * 64)):
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                driver.image_evidence.check_hub_provenance({**health, key:value}, result)
+
+    def test_budget_seven_rejects_eighth_and_first_failure_is_not_retried(self):
+        gate = object.__new__(driver.Gate)
+        gate.result = {"schema": "cicada.two-node-native.v1", "native_model_turn_attempts": 7}
+        with self.assertRaisesRegex(RuntimeError, "native_seven_turn_budget_exceeded"):
+            gate.native_turn("a", "synthetic")
+        gate.result = {"schema": "cicada.two-node-native.v1", "native_model_turn_attempts": 0}
+        gate.nodes = {"a": {}}
+        with patch.object(gate, "native_config", side_effect=RuntimeError("synthetic terminal")) as call:
+            with self.assertRaisesRegex(RuntimeError, "synthetic terminal"): gate.native_turn("a", "synthetic")
+            call.assert_called_once()
+        self.assertEqual(gate.result["native_model_turn_attempts"], 1)
+
+    def test_timeout_is_terminal_and_argv_retained_without_retry(self):
+        gate = object.__new__(driver.Gate); gate.result = {"steps": []}; gate.phase = "synthetic-unit"
+        argv = ["synthetic-owned-command", "safe-arg"]
+        with patch.object(driver.subprocess, "run", side_effect=subprocess.TimeoutExpired(argv, 1)) as call:
+            with self.assertRaisesRegex(RuntimeError, "command_timeout_terminal_no_retry"): gate.command(argv, timeout=1)
+            call.assert_called_once()
+        self.assertEqual(gate.result["steps"][0]["argv"], argv)
+        self.assertTrue(gate.result["steps"][0]["timed_out"])
 
 if __name__ == "__main__":
     unittest.main()

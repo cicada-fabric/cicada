@@ -126,6 +126,9 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 		"x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'",
 		"x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'",
 		"network_endpoints_truncated:", "can_create_group:", "network_ids:",
+		"membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'",
+		"directory_permission_enabled:",
+		"required: [group_id, membership_id, enabled, expected_membership_version]",
 	} {
 		if !strings.Contains(openAPIText, marker) {
 			t.Fatalf("OpenAPI omits ACTIVE Network topology %q", marker)
@@ -198,5 +201,30 @@ func assertOpenAPIOperationsMatchCatalog(t *testing.T, definition Definition) {
 		if !expected[operationID] {
 			t.Errorf("OpenAPI operation %q is missing from catalog", operationID)
 		}
+	}
+}
+
+func TestClientLinkProofCatalogPreservesOperationsAndOwnerBoundaries(t *testing.T) {
+	definition := CatalogDefinition()
+	if definition.ContractRevision != "client-hub-v1.6.3" || definition.WireVersion != 1 || len(definition.Operations) != 55 {
+		t.Fatal("Link evidence changed framing or operation inventory")
+	}
+	schemas := map[string][2]string{
+		"link.key_manifest": {"ClientLinkKeyManifestRequest", "CommunicationLinkKeyManifest"},
+		"link.key_grants":   {"ClientLinkKeyGrantsRequest", "CommunicationLinkKeyGrantStatusList"},
+		"link.key_grant":    {"ClientLinkKeyGrantRequest", "CommunicationLinkKeyGrantStatus"},
+	}
+	for _, operation := range definition.Operations {
+		want, ok := schemas[operation.ID]
+		if !ok {
+			continue
+		}
+		if operation.RequestSchema != want[0] || operation.ResultSchema != want[1] || operation.Boundary != "current_link_side" || len(operation.Roles) != 2 || !Allows(RoleManager, operation.ID) || !Allows(RoleExternal, operation.ID) {
+			t.Fatalf("Link proof operation drift: %s", operation.ID)
+		}
+		delete(schemas, operation.ID)
+	}
+	if len(schemas) != 0 {
+		t.Fatal("missing existing Link key operation")
 	}
 }

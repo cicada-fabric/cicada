@@ -8,8 +8,8 @@ import (
 
 // These methods are reachable only through the authenticated encrypted Client
 // RPC. The owner is taken from its durable device binding, not the request
-// body. Key-bound consent remains non-routable until Node trust and sealed
-// Endpoint delivery have been independently implemented and verified.
+// body. Accepted consent evidence is distinct from routing authorization and
+// native consumption. Clients still require independently trusted Owner keys.
 func (c *Control) ClientCommunicationLinkKeyManifest(ownerID, linkID string) (*store.CommunicationLinkKeyManifest, error) {
 	if c == nil || c.store == nil {
 		return nil, errors.New("communication link key registry is unavailable")

@@ -1,26 +1,16 @@
 # Client / Hub 联合开发与验收
 
-**最近 clean Hub 交付（2026-10-01，历史基线）：** revision `fe565b41bb1aa86d400a0ec98c528c856d0b9579`，source fingerprint `6ab2d94a26dd41082b3177006095408b25d4e8c05cd54315db6c325be92eb5be`，Hub image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`；合同 `client-hub-v1.6.1`、wire `1`、软件 `0.1.0-dev`、55 operations，catalog SHA-256 `6748449ea6116164a5f3bcd49992bef7c13d6c03e5232a1f050ae0a97377394b`。Bundle SHA-256 为 `b5757b055bc871ef5f19fcc5ffe425813c6dea2ccc8cc64b4e74e1f1dcd8db55`，delivery report SHA-256 为 `e0b0169743c8b55dbb7676fd7aa2ccfb97a3ad6f45fb00f0ebffb3406d9fe0db`; exact-image smoke/recovery gate passed. Its metadata predates the additive build-input inventory and remains immutable. Android/native Runtime, physical Node and public HTTPS were NOT_RUN. See the [delivery record](v01-transport-recovery-checkpoint-validation.md).
+**Historical clean Hub delivery (2026-10-01):** revision `fe565b41bb1aa86d400a0ec98c528c856d0b9579`, source fingerprint `6ab2d94a26dd41082b3177006095408b25d4e8c05cd54315db6c325be92eb5be`, image `sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589`. This v1.6.1/55-operation artifact and its bundle/report remain immutable; metadata predates additive input inventory capture. See the [historical delivery record](v01-transport-recovery-checkpoint-validation.md).
 
-**Current integrated Main candidate (2026-10-02):**
+**Delivered clean Main checkpoint (2026-10-02):** Main `144e079`, standard source `e64f2449…`, exact 806-input inventory; STD Hub/interop and separate clean PQ image/package passed bounded gates. Clean Client `2ce183373429dddcb21259b54b3b261ae010bd55` delivered against v1.6.1; redacted receipt SHA `9069d2c4fa2dbd279fd1eca35eccc4b7bd0b8a9102651d6a724ca7ca4c60384f`, 40-entry evidence manifest SHA `5b0830b4130a9fde09873c8e6b7393d3f52aa868a67d416fa7ca6e06c8dd5b5d`. These source/APK-specific checks do not accept Android Node/Worker runtime, physical-device or public HTTPS behavior.
 
-Main integrates retained-certificate lifetime checks and the recovery metadata
-query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
-tested sources; the query keeps quarantine held and never re-executes work.
-Current Main source is `e64f2449…`, including the Link review-policy current/next-
-version bugfix aligned with the existing preview CAS contract. Its initial b16
-HTTP/Store/Server/catalog and final e64 HTTP normal/race gates have independent
-receipts in the [status table](architecture-v2-status.md). The full Go result on
-`97a008…` and 799-input equality with shipping baseline `bab6569…` are pre-fix
-proofs; they do not cover this eight-file change. Final actual clean package/image
-and current native/Android acceptance remain NOT_RUN. Historical shipping Agent
-startup/poll/RSS and driver-context ASK/heartbeat/revoke keep their source.
+**Integrated Main candidate:** dirty source-input fingerprint `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079`, contract v1.6.3/catalog `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`, wire 1/55 operations/schema v55. The integrated focused normal gate passed 49 top + 128 subtests across six packages, zero skips/failures; affected vet/build, contract check/export/verify and Python 15 + 17 subtests passed. Stable source/STD input metadata: 835/829. [Receipt](../.cicada-data/combined-link-proof-20261002/receipt.json), SHA `6416728daca6fdf4e95f0b0fc60f06ad6dd4ca77ed910ab7c1f2ba90fe8c12e7`. Full/tagged/race acceptance and exact clean v1.6.3 artifacts remain pending; there is no v1.6.3 Client repin.
 
-Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
-are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
-owns source inventories, focused receipts and independent device-layer limits.
+The Client carrier preflight fails because its prior exact-one-Hub guard rejects the valid two-Node/three-bridge topology. A dedicated correction is underway using the exact public topology inventory; Client selectors and native runtime remain **NOT_RUN**. The fifth zero-model fixture used clean-144/v1.6.1, joined two endpoints and created a synthetic Link in `PROPOSED` state; both review policies were `NONE`, with no accepted sides. Its [receipt](/tmp/cicada-client-link-native-fixture-20261002/private-hop-freeze/approved-execution/result.json) SHA is `85ac6f8ff5f01dfac780cc9a4b53209fc9be679026cec1d9b8e0f890c697d4b1`. It is held for Client follow-up and is not Android approval, Link activation or native Ask/Reply. Four earlier fixture failures remain retained.
 
-The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
+## Historical Client tooling and Link-status snapshots
+
+The older Client notes below retain their tested source and delivery-time status; they do not supersede the clean 144 Client receipt above.
 
 Client HEAD remains `65d6a399122055e1bd38dfb70fa93686806bee36`, with five developer-tooling files uncommitted and no APK/application build-source change or Android Hub repin. Independent clean-Git checks cover **793 build-input entries** of intermediate Main `06d0a58`; 20 synthetic checks PASS. The supplied tooling status is `/gpu1-share/data/cicada-client/hub-input-inventory-20261001/provenance/tooling-status.redacted.json`, SHA-256 `8562219bee5fe4b24ea0ddedd220ac3b0cb39e6077f271b12b32d4b48ba5927d`; independent clean-Git receipt SHA-256 `34c56f1b0f0b6ce8bd6fe76cea7b51289f5305cf4fa7d2b8b1a86cbea0cf38a0`. Initial failure logs are explicitly `NOT_AVAILABLE`, not PASS. This is tooling proof, without a final tooling commit or live Android/native/model acceptance.
 

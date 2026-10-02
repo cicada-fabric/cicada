@@ -56,6 +56,7 @@ type ClientTopologyMember struct {
 	Role                       string   `json:"role"`
 	Roles                      []string `json:"roles,omitempty"`
 	BroadcastPermissionEnabled bool     `json:"broadcast_permission_enabled"`
+	DirectoryPermissionEnabled bool     `json:"directory_permission_enabled"`
 	Status                     string   `json:"status"`
 	Version                    int64    `json:"version"`
 }
@@ -100,6 +101,7 @@ const (
 	ClientTopologyLeaveGroup             ClientTopologyActionKind = "endpoint.leave_group"
 	ClientTopologyBindRole               ClientTopologyActionKind = "membership.bind_role"
 	ClientTopologySetBroadcastPermission ClientTopologyActionKind = "membership.set_broadcast_permission"
+	ClientTopologySetDirectoryPermission ClientTopologyActionKind = "membership.set_directory_permission"
 	ClientTopologyProposeLink            ClientTopologyActionKind = "link.propose"
 	ClientTopologyRevokeLink             ClientTopologyActionKind = "link.revoke"
 )
@@ -116,6 +118,7 @@ type ClientTopologyAction struct {
 	LeaveGroup             *ClientTopologyLeaveGroupAction             `json:"leave_group,omitempty"`
 	BindRole               *ClientTopologyBindRoleAction               `json:"bind_role,omitempty"`
 	SetBroadcastPermission *ClientTopologySetBroadcastPermissionAction `json:"set_broadcast_permission,omitempty"`
+	SetDirectoryPermission *ClientTopologySetDirectoryPermissionAction `json:"set_directory_permission,omitempty"`
 	ProposeLink            *ClientTopologyProposeLinkAction            `json:"propose_link,omitempty"`
 	RevokeLink             *ClientTopologyRevokeLinkAction             `json:"revoke_link,omitempty"`
 }
@@ -158,6 +161,16 @@ type ClientTopologyBindRoleAction struct {
 // message.broadcast grant for one owner-controlled Group Membership. A
 // pointer preserves the distinction between omitted enabled and false.
 type ClientTopologySetBroadcastPermissionAction struct {
+	GroupID                   string `json:"group_id"`
+	MembershipID              string `json:"membership_id"`
+	Enabled                   *bool  `json:"enabled"`
+	ExpectedMembershipVersion int64  `json:"expected_membership_version"`
+}
+
+// ClientTopologySetDirectoryPermissionAction changes only directory.read for
+// the Principal's entire Group Membership, affecting all its joined Endpoints.
+// The accepted encrypted Client request is mandatory; enabled cannot be omitted.
+type ClientTopologySetDirectoryPermissionAction struct {
 	GroupID                   string `json:"group_id"`
 	MembershipID              string `json:"membership_id"`
 	Enabled                   *bool  `json:"enabled"`
@@ -486,6 +499,18 @@ func (c *Control) applyClientTopologyChange(authenticatedOwnerID, clientRequestI
 			return nil, err
 		}
 		result.Membership = projectClientTopologyMember(*updated, principal.DisplayName)
+	case ClientTopologySetDirectoryPermission:
+		input := action.SetDirectoryPermission
+		if input.Enabled == nil {
+			return nil, errors.New("directory permission action requires enabled")
+		}
+		updated, displayName, err := c.store.SetClientGroupDirectoryPermissionForClientRequest(
+			clientRequestID, ownerID, input.GroupID, input.MembershipID,
+			*input.Enabled, input.ExpectedMembershipVersion)
+		if err != nil {
+			return nil, err
+		}
+		result.Membership = projectClientTopologyMember(*updated, displayName)
 	case ClientTopologySetBroadcastPermission:
 		input := action.SetBroadcastPermission
 		if input.Enabled == nil || input.ExpectedMembershipVersion <= 0 {
@@ -604,7 +629,7 @@ func validateClientTopologyUnion(action ClientTopologyAction) error {
 	for _, present := range []bool{
 		action.CreateGroup != nil, action.SetParent != nil, action.JoinGroup != nil, action.AdmitEndpoint != nil,
 		action.LeaveGroup != nil, action.BindRole != nil, action.SetBroadcastPermission != nil, action.ProposeLink != nil,
-		action.RevokeLink != nil,
+		action.RevokeLink != nil, action.SetDirectoryPermission != nil,
 	} {
 		if present {
 			count++
@@ -621,6 +646,7 @@ func validateClientTopologyUnion(action ClientTopologyAction) error {
 		ClientTopologyLeaveGroup:             action.LeaveGroup != nil,
 		ClientTopologyBindRole:               action.BindRole != nil,
 		ClientTopologySetBroadcastPermission: action.SetBroadcastPermission != nil,
+		ClientTopologySetDirectoryPermission: action.SetDirectoryPermission != nil,
 		ClientTopologyProposeLink:            action.ProposeLink != nil,
 		ClientTopologyRevokeLink:             action.RevokeLink != nil,
 	}
@@ -676,10 +702,13 @@ func projectClientTopologyGroup(group store.Group) *ClientTopologyGroup {
 
 func projectClientTopologyMember(membership store.Membership, displayName string) *ClientTopologyMember {
 	broadcastEnabled := false
+	directoryEnabled := membership.Authorization["directory.read"] == true
 	for _, grant := range membership.Grants {
 		if grant == "message.broadcast" {
 			broadcastEnabled = true
-			break
+		}
+		if grant == "directory.read" {
+			directoryEnabled = true
 		}
 	}
 	if membership.Authorization["message.broadcast"] == true {
@@ -689,6 +718,7 @@ func projectClientTopologyMember(membership store.Membership, displayName string
 		MembershipID: membership.ID, PrincipalID: membership.PrincipalID, DisplayName: displayName,
 		GroupID: membership.GroupID, Role: membership.Role, Roles: append([]string(nil), membership.Roles...),
 		BroadcastPermissionEnabled: broadcastEnabled,
+		DirectoryPermissionEnabled: directoryEnabled,
 		Status:                     membership.Status, Version: membership.Version,
 	}
 }

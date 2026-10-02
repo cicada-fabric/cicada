@@ -7,6 +7,7 @@ is permitted. Controlled resume proves safe-point consumption, not busy wake.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,10 @@ import urllib.request
 RUNTIME = "sha256:5e69783da6d888efe70c429cdadc5a11312c59e0509bab296ce5d509bde94f57"
 CODEX = "/home/cicada/.local/bin/codex"
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+image_spec = importlib.util.spec_from_file_location("native_image_evidence", Path(__file__).with_name("native_image_evidence.py"))
+image_evidence = importlib.util.module_from_spec(image_spec)
+image_spec.loader.exec_module(image_evidence)
 
 # Executed inside an owned Node container. The provider credential is never a
 # docker argv/env value and never appears in captured stdout/stderr.
@@ -146,19 +151,27 @@ class Gate:
                                   "owned loopback HTTP Hub forwarding; public HTTPS NOT_RUN",
                                   "controlled native resume; busy autowake NOT_RUN",
                                   "Android and physical dual-Node NOT_RUN"],
-                       "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+                       "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                       "image_evidence_helper_sha256": hashlib.sha256(Path(image_evidence.__file__).read_bytes()).hexdigest(),
+                       "acceptance_mode": "exact-clean-image-pair" if getattr(arguments, "exact_clean_image_metadata", None) else "rebuilt-two-node-fixture",
+                       "native_model_turn_attempts": 0, "models_invoked": 0, "native_turn_budget": 7}
         with os.fdopen(os.open(self.evidence / "executed-driver.py", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
             output.write(Path(__file__).read_bytes())
 
     def command(self, command, input_data=None, timeout=120, log=None):
         start = time.monotonic()
-        process = subprocess.run(command, input=input_data, capture_output=True, timeout=timeout)
+        try:
+            process = subprocess.run(command, input=input_data, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.result["steps"].append({"phase": self.phase, "exit_code": None, "timed_out": True,
+                                         "timeout_seconds": timeout, "argv": list(map(str, command))})
+            raise RuntimeError("command_timeout_terminal_no_retry") from None
         if log:
             with os.fdopen(os.open(self.evidence / log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
                 output.write(process.stdout)
                 output.write(process.stderr)
         self.result["steps"].append({"phase": self.phase, "exit_code": process.returncode,
-                                      "elapsed_seconds": round(time.monotonic() - start, 3)})
+                                      "elapsed_seconds": round(time.monotonic() - start, 3), "argv": list(map(str, command))})
         if process.returncode:
             raise RuntimeError("command_exit_" + str(process.returncode))
         return process.stdout
@@ -174,6 +187,9 @@ class Gate:
         print(json.dumps({"phase": name, "run_id": self.run_id}), flush=True)
 
     def build(self):
+        if getattr(self.args, "exact_clean_image_metadata", None):
+            self.build_exact_pair()
+            return
         self.step("build_same_source")
         build = self.root / "build.json"
         hub_tag, test_tag = self.run_id + ":hub", self.run_id + ":test"
@@ -197,6 +213,50 @@ class Gate:
         self.docker("cp", extract + ":/out/cicada", self.root / "cicada")
         self.root.joinpath("cicada").chmod(0o700)
         self.result["cicada_binary_sha256"] = hashlib.sha256(self.root.joinpath("cicada").read_bytes()).hexdigest()
+
+    def build_exact_pair(self):
+        self.step("verify_exact_delivered_standard_pair")
+        metadata = image_evidence.read_clean_producer(self.args.exact_clean_image_metadata,
+                                                     self.args.exact_clean_image_metadata_sha256)
+        snapshot = self.root / "fixture-source.json"
+        self.command([str(self.repo / "scripts/build-hub-image.sh"), "--source-info-only", "--metadata-file", str(snapshot)])
+        current = json.loads(snapshot.read_text())["source"]
+        hub_id, interop_id = image_evidence.check_clean_pair(metadata, current)
+        image_evidence.check_clean_image(metadata, self.inspect("image", hub_id))
+        image_evidence.check_clean_image(metadata, self.inspect("image", interop_id), "interop")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.args.runtime_image):
+            raise RuntimeError("immutable_runtime_image_required")
+        runtime_id = self.inspect("image", self.args.runtime_image)["Id"]
+        if runtime_id != self.args.runtime_image:
+            raise RuntimeError("immutable_runtime_image_mismatch")
+        self.hub_image, self.test_image = hub_id, interop_id
+        self.result.update(build=metadata, fixture_source_snapshot=current,
+                           producer_metadata_sha256=self.args.exact_clean_image_metadata_sha256,
+                           hub_image_id=hub_id, interop_image_id=interop_id, runtime_image_id=runtime_id)
+        binary_sha, provenance = image_evidence.extract_image_binary(self, hub_id)
+        self.result.update(cicada_binary_sha256=binary_sha, binary_provenance=provenance)
+        version = self.docker("run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+                              "--label", "org.cicada.test.run=" + self.run_id,
+                              "--entrypoint", "go", interop_id, "version").decode().strip()
+        if version != "go version go1.27.1 linux/amd64":
+            raise RuntimeError("actual_interop_go_toolchain_not_pinned")
+        self.result["fixture_go_version"] = version
+        self.docker("run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+                    "--label", "org.cicada.test.run=" + self.run_id,
+                    "-v", str(self.root) + ":/fixture", "-w", "/src", "-e", "GOTOOLCHAIN=local",
+                    "-e", "GOPROXY=off", "-e", "GOSUMDB=off", "-e", "GOMAXPROCS=4", "-e", "CGO_ENABLED=0",
+                    "-e", "GOCACHE=/tmp/native-go-cache", "--entrypoint", "go", interop_id,
+                    "build", "-trimpath", "-o", "/fixture/cicada-v68fixture", "./cmd/cicada-v68fixture",
+                    timeout=300, log="fixture-build.log")
+        fixture = self.root / "cicada-v68fixture"
+        fixture.chmod(0o700)
+        self.result["fixture_binary_sha256"] = hashlib.sha256(fixture.read_bytes()).hexdigest()
+        self.result["fixture_provenance"] = {"synthetic_owner_only": True, "compiled_inside_immutable_interop": interop_id,
+                                             "source_fingerprint": current["source_fingerprint"], "fixture_only": True}
+        if self.args.run_native:
+            data = Path(self.args.preparation_result).read_bytes()
+            image_evidence.check_preparation(json.loads(data), self.result)
+            self.result["preparation_result_sha256"] = hashlib.sha256(data).hexdigest()
 
     def start_nodes(self):
         self.step("isolated_nodes")
@@ -333,6 +393,12 @@ class Gate:
             "config_argv_sha256": hashlib.sha256(json.dumps(config).encode()).hexdigest()})
 
     def native_turn(self, letter, prompt, thread=None, tools=(), markers=()):
+        # This driver's seven turns are distinct from the Monitor subclass's own three-turn budget.
+        if self.result.get("schema") == "cicada.two-node-native.v1":
+            if self.result["native_model_turn_attempts"] >= 7:
+                raise RuntimeError("native_seven_turn_budget_exceeded")
+            self.result["native_model_turn_attempts"] += 1
+            self.result["models_invoked"] = self.result["native_model_turn_attempts"]
         node = self.nodes[letter]
         config = self.native_config(letter, thread, tools)
         self.parse_config_offline(letter, config)
@@ -449,6 +515,9 @@ class Gate:
                 time.sleep(.25)
             if not ready:
                 raise RuntimeError("fabric_only_control_probe_failed")
+            if self.result["acceptance_mode"] == "exact-clean-image-pair":
+                with opener.open(f"http://{node['gateway']}:{ports[0]}/healthz", timeout=2) as response:
+                    image_evidence.check_hub_provenance(json.load(response), self.result)
         self.result["control_business"] = {"enabled": False, "authenticated_management_http_status": 503,
                                             "peer_business_calls": 0, "evidence": "production --fabric-only entry point"}
 
@@ -631,9 +700,23 @@ print(json.dumps(result))
             raise RuntimeError("hub_logged_peer_plaintext")
         self.result["hub_blind"] = {"sealed_ask_reply_oracle": True, "database_wal_log_markers_absent": True,
                                     "node_keys_or_provider_credentials_mounted_to_hub": False}
+        if len(self.result.get("native_turns", [])) != 7 or self.result["native_model_turn_attempts"] != 7:
+            raise RuntimeError("native_seven_actual_turn_receipts_required")
         self.result["status"] = "PASS"
 
     def cleanup(self):
+        if self.result.get("acceptance_mode") == "exact-clean-image-pair" and self.result.get("build"):
+            try:
+                path = self.evidence / "source-after.json"
+                self.command([str(self.repo / "scripts/build-hub-image.sh"), "--source-info-only", "--metadata-file", str(path)],
+                             log="source-after-capture.log")
+                after = json.loads(path.read_text())["source"]
+                self.result["source_unchanged_during_gate"] = after == self.result["fixture_source_snapshot"]
+                if not self.result["source_unchanged_during_gate"]:
+                    raise RuntimeError("source_changed_during_exact_pair_gate")
+            except Exception as error:
+                self.result.update(status="FAIL", failure_phase="source_after_gate", failure_class=type(error).__name__)
+
         clean = True
         for listener in self.forwarders:
             listener.close()
@@ -660,6 +743,7 @@ print(json.dumps(result))
         self.result["cleanup_owned_resources"] = clean
         if not clean:
             self.result["status"] = "FAIL"
+        self.result["terminal_exit_code"] = 0 if self.result["status"] != "FAIL" else 1
         private_json(self.evidence / "result.json", self.result)
 
 
@@ -668,8 +752,15 @@ def main():
     parser.add_argument("--result-dir", required=True)
     parser.add_argument("--runtime-image", default=RUNTIME)
     parser.add_argument("--credential-file", default="/gpu1-share/data/cicada/secrets/cicada.env")
+    parser.add_argument("--exact-clean-image-metadata", help="delivered standard Hub+interop producer receipt")
+    parser.add_argument("--exact-clean-image-metadata-sha256", help="independently supplied complete producer JSON SHA-256")
+    parser.add_argument("--preparation-result", help="matching successful zero-model exact-pair preparation receipt")
     parser.add_argument("--run-native", action="store_true", help="explicitly permit bounded real model turns")
     arguments = parser.parse_args()
+    if bool(arguments.exact_clean_image_metadata) != bool(arguments.exact_clean_image_metadata_sha256):
+        parser.error("exact delivered pair requires metadata and its SHA-256")
+    if arguments.run_native and arguments.exact_clean_image_metadata and not arguments.preparation_result:
+        parser.error("paid exact delivered pair requires --preparation-result")
     gate = Gate(arguments)
     try:
         gate.build()

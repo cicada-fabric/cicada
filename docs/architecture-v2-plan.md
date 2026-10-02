@@ -1,42 +1,21 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-02 next sequence — source QA/review passed; artifact/image gates pending
-
-Main integrates retained-certificate lifetime checks and the recovery metadata
-query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
-tested sources; the query keeps quarantine held and never re-executes work.
-Current integrated Main source is `e64f2449…`. Full Go QA passed on the
-pre-policy-fix source `97a008…`, with explicit skips retained; its separate
-799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
-`bab6569…`, and does not cover the later policy fix. Focused shipping script
-checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
-exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
-ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
-
-Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
-are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
-owns source inventories, focused receipts and independent device-layer limits.
+## 2026-10-02 current sequence — integrated focused QA passed; clean release pending
 
 <a id="2026-10-01-next-sequence--source-qa-pass-exact-image-pending"></a>
-<a id="2026-10-01-pq-transport-implementation-steps-not-yet-implemented"></a>
 
-1. Freeze the reviewed combined source and checkpoint docs, then build the clean
-   package/image. Build-time input inventory and
-   exact-image Client/Hub and PQ gates must be attributed to their actual source;
-   earlier focused/source-only passes do not accept a clean image.
-2. Keep product certificate lifecycle gaps separate: automatic Owner enrollment,
-   rotation and independent revocation remain outside the private pin workflow.
-   The recovery query is a metadata primitive, not certificate or archive recovery.
-3. The next proposed permission slice is an explicit Owner-controlled `directory.read` action for a same-Owner Group Membership, with preview, CAS and revocation. It is planning only. Group Endpoint key `manifest/grant/status`, Monitor role binding and exact regroup delegation already exist; Join does not grant a role, traffic or history permission.
-   Prefer the existing encrypted snapshot plus explicit UI preview when sufficient;
-   if a server preview is required, use a separate read-only preview operation.
-   A preview must not run a topology mutation or increment business versions/audit.
-4. Restore still requires exact generation/key/counter reconciliation and confirmed
-   stop before quarantine release/reconnect. Preserve historical paid real-1 and
-   nonpaid preflight attribution; G1 remains `CONSUMPTION_UNCONFIRMED`.
-5. Physical Nodes/Android, public HTTPS and capacity remain separate gates;
-   V64 remains bounded PARTIAL. No resident replacement, key rotation, push or release
-   is included in this checkpoint.
+Clean Main `144e079`, standard source `e64f2449…`, is the delivered v1.6.1 baseline with 806 exact build inputs and its immutable STD/PQ artifacts. Clean Client `2ce1833…` delivered against that baseline. These results remain attributed to that source and image; see the [clean artifact/native record](v01-clean-artifact-native-checkpoint-validation.md).
+
+The integrated dirty Main source-input fingerprint is `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079`, candidate v1.6.3/catalog `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`, wire 1, 55 operations and schema v55. Its focused normal gate passed 49 top + 128 subtests across six packages, zero skips/failures; affected vet/build, contract check/export/verify and Python 15 + 17 subtests passed. Source/standard metadata stayed stable at 835/829 inputs. See the [integrated receipt](../.cicada-data/combined-link-proof-20261002/receipt.json), SHA `6416728daca6fdf4e95f0b0fc60f06ad6dd4ca77ed910ab7c1f2ba90fe8c12e7`. This is not a full default/tagged/race rerun. A clean checkpoint and exact v1.6.3 STD/PQ artifact gates remain next.
+
+Next sequence:
+
+1. Checkpoint the integrated source with this focused receipt, then produce clean standard/PQ artifacts and run the exact artifact/image gates. The dirty local bundle `8b22ceb…` is contract-integrity evidence only.
+2. The current Client carrier preflight fails under its old exact-one-Hub guard on the valid two-Node/three-bridge topology. Its dedicated correction is underway; selectors remain **NOT_RUN**, and no v1.6.3 repin or Android acceptance is claimed.
+3. A fifth zero-model fixture on clean-144/v1.6.1 reached two joined endpoints and a synthetic `PROPOSED` Link (`NONE` review policies, no accepted sides). It remains held live; cleanup, activation and Android approval have not occurred. The bounded result is not native Ask/Reply acceptance. Four earlier failures remain retained.
+4. PQ authority D1 (`/home/zyf/CICADA_pqtls_authority`), Task handoff (`/home/zyf/CICADA_task_handoff`) and restore validation (`/home/zyf/CICADA_restore_validation`) are separate workstreams and are not integrated or accepted in Main.
+
+The seven-path Monitor/ACK correction passed its own normal/race component gates; the 14-file Link-proof patch also passed separate focused component checks. The earlier `cb4d` full Go/tagged results retain that source attribution; its broad Store race timeout is FAIL. Component evidence does not expand the current integrated receipt into full/tagged/race acceptance. Same-Node default Hub Relay has bounded component proof; `nativeDirect` remains unsupported. The separate Task worktree review found peer list/get/claim/renew/accept return objective or acceptance prose and `task_submit` summary lacks an explicit Manager recipient/purpose. This is a v0.1 security release gap. Next slice: classify trusted purpose, carry peer definitions/results through existing sealed-object transport with small metadata DTOs, enforce Task/ArtifactACL plus current binding/ownerEpoch, and reject legacy plaintext routes; preserve legitimate Control-management plaintext. PQ authority D1 startup/reload/current-authority-floor/renewal remains PARTIAL outside Main. TLS authorization/installation, enrollment/rotation/revocation, full restore reconciliation, physical devices, native-over-PQ, general foreground/uncertain consumption, busy wake and public HTTPS remain unaccepted. Overall v0.1 remains PARTIAL; no 100% completion claim is made.
 
 ## Historical 2026-10-01 Directory-only Network binding correction (focused slice)
 

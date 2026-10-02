@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.6.1
+  x-contract-revision: client-hub-v1.6.3
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -379,7 +379,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.6.1}
+        contract_revision: {const: client-hub-v1.6.3}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -678,6 +678,15 @@ components:
         cicada-go/internal/clientcontract/catalog.json.
       x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
       x-rpc-request-result-schemas:
+        link.key_manifest:
+          request: '#/components/schemas/ClientLinkKeyManifestRequest'
+          result: '#/components/schemas/CommunicationLinkKeyManifest'
+        link.key_grants:
+          request: '#/components/schemas/ClientLinkKeyGrantsRequest'
+          result: '#/components/schemas/CommunicationLinkKeyGrantStatusList'
+        link.key_grant:
+          request: '#/components/schemas/ClientLinkKeyGrantRequest'
+          result: '#/components/schemas/CommunicationLinkKeyGrantStatus'
         nodes.preview:
           request: '#/components/schemas/NodesPreviewRequest'
           result: '#/components/schemas/NodeControlKeyCandidate'
@@ -780,6 +789,7 @@ components:
       x-topology-apply-action-schemas:
         group.create: '#/components/schemas/TopologyCreateGroupAction'
         membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+        membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'
         endpoint.admit_group: '#/components/schemas/TopologyAdmitEndpointAction'
       x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'
       x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'
@@ -849,7 +859,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.6.1}
+        contract_revision: {const: client-hub-v1.6.3}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -872,6 +882,74 @@ components:
         target_grant:
           $ref: '#/components/schemas/CommunicationLinkAuthorizationProof'
         link_state: {const: PROPOSED}
+
+    ClientLinkKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+    ClientLinkKeyGrantsRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+    ClientLinkKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_key_id, signed_proof]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_key_id: {type: string, minLength: 1, maxLength: 256}
+        signed_proof: {type: string, contentEncoding: base64, maxLength: 21848}
+    CommunicationLinkKeyGrantStatusList:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items: {$ref: '#/components/schemas/CommunicationLinkKeyGrantStatus'}
+    CommunicationLinkKeyGrantStatus:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_id, accepted, current_status]
+      properties:
+        link_id: {type: string}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        accepted: {type: boolean}
+        accepted_at: {type: string, format: date-time}
+        current_status: {type: string, enum: [MISSING, ACCEPTED, KEY_BINDING_STALE, OWNER_KEY_REVOKED, PROOF_EXPIRED, INVALID, LEGACY_KEY_UNBOUND]}
+        evidence: {$ref: '#/components/schemas/CommunicationLinkKeyGrantEvidence'}
+      description: >-
+        accepted records historical acceptance. Optional evidence is present only
+        for currently verified ACCEPTED consent. Both sides in a list share one
+        Store snapshot and verified_at. Consent does not establish routing or
+        native consumption. A missing/stale/revoked/expired/corrupt proof omits
+        evidence; do not reuse previously returned evidence as current authority.
+    CommunicationLinkKeyGrantEvidence:
+      type: object
+      additionalProperties: false
+      required: [link_version, contract_digest, manifest_digest, owner_key_id, owner_public_identity, owner_key_state, owner_key_version, signed_proof, verified_at]
+      properties:
+        link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        owner_key_id: {type: string}
+        owner_public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        signed_proof: {type: string, contentEncoding: base64, maxLength: 21848}
+        verified_at: {type: string, format: date-time}
+      description: >-
+        Exact retained canonical OwnerLinkKeyGrant v2 proof and current public key
+        metadata for this Link side only. Hub discovery evidence is not an
+        independent trust anchor. Match an independently trusted Owner key or pin;
+        never auto-trust the Hub key. Independently verify link.key_manifest and
+        correlate its link/version/contract/digest with each signed side; reject
+        any mismatch caused by separate-read races and refresh without signing.
 
     CommunicationLinkKeyManifest:
       type: object
@@ -1684,6 +1762,34 @@ components:
         or task success. INJECTION_UNCERTAIN is not proof of native consumption
         or delivery; reconcile only the same reserved operation ID.
 
+    TopologySetDirectoryPermissionAction:
+      type: object
+      additionalProperties: false
+      required: [kind, set_directory_permission]
+      properties:
+        kind: {const: membership.set_directory_permission}
+        set_directory_permission:
+          $ref: '#/components/schemas/ClientTopologySetDirectoryPermission'
+
+    ClientTopologySetDirectoryPermission:
+      type: object
+      additionalProperties: false
+      required: [group_id, membership_id, enabled, expected_membership_version]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        membership_id: {type: string, minLength: 1, maxLength: 256}
+        enabled: {type: boolean}
+        expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}
+      description: >-
+        Changes only explicit directory.read for an active same-Owner Principal
+        Membership in an active Owner-controlled Network/Group on the current Hub.
+        The accepted encrypted Client request, current Owner/device/key, scope and
+        Membership CAS are checked in one write transaction. This applies to all
+        joined Endpoints of that Principal in this Group, preserves roles and other
+        grants, and advances Membership revision/version. It grants no peer traffic,
+        key or history access and changes no native binding or context. Preview uses
+        the read-only topology.snapshot; legacy management calls cannot apply it.
+
     TopologySetBroadcastPermissionAction:
       type: object
       additionalProperties: false
@@ -1805,7 +1911,7 @@ components:
     ClientTopologyMember:
       type: object
       additionalProperties: false
-      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, status, version]
+      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, directory_permission_enabled, status, version]
       properties:
         membership_id: {type: string}
         principal_id: {type: string}
@@ -1815,6 +1921,9 @@ components:
         roles:
           type: array
           items: {type: string}
+        directory_permission_enabled:
+          type: boolean
+          description: Explicit directory.read grant configuration for this Principal Membership, shared by all its joined Endpoints in this Group; not a Guard decision.
         broadcast_permission_enabled:
           type: boolean
           description: Current explicit message.broadcast grant configuration; Monitor role alone does not enable it.

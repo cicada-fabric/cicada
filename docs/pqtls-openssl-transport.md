@@ -1,53 +1,28 @@
 # Optional OpenSSL 3.5.9 transport checkpoint
 
-Status: optional transport package plus independently validated thread-cleanup
-repair; no Hub/Node production wiring or product acceptance. Adopted architecture
-remains `CICADA.md`. This note records the new
-implementation and its validation boundary, not a change to enrollment or the
-public contract.
+## Current source boundary (2026-10-02)
+
+Clean Main `144e079` includes optional Hub/Node production transport wiring, current Store/Guard checks, per-Hub Node transport selection and certificate-lifetime checks for connections, requests and SSE. Its exact clean STD/PQ artifact gates and limited native evidence remain attributed in the [clean artifact/native validation](v01-clean-artifact-native-checkpoint-validation.md); native STD results do not imply native-over-PQ acceptance.
+
+The integrated dirty Main source-input fingerprint is `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079`, candidate v1.6.3/catalog `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`, wire 1, 55 operations and schema v55. Its focused normal gate passed 49 top + 128 subtests across six packages, zero skips/failures; affected vet/build and contract check/export/verify passed. This is not a full, tagged or race rerun on the integrated source. The exact clean standard/PQ artifacts and image gates are pending.
+
+The tagged CSR/certificate normal/race receipts remain attached to source `cb4d1229…`: CSR 9 + 32 and certificate 9 + 40 top/subtests per run, zero skips/failures, with standard/tagged vet/build 0. On that same source, the broad focused Store race attempt failed on its 20-minute timeout (93 top + 134 subtests passed, zero skips; five packages passed). These results do not transfer to `72ec78…`. The integrated candidate contains C's explicit issuer import, leaf issue and leaf inspection paths. They require a supplied pathLen=0 issuer, explicit trust and matching key; they do not create a CA, Owner authority, filesystem installation, or automatic enrollment/rotation. For an empty-subject issued leaf, SAN is critical; a noncritical CSR request alone is not an issued-certificate violation.
+
+TLS authorization, installation, enrollment, rotation/revocation and verified restore remain open. PQ execution is Linux amd64 only; stub compilation is not arm64 acceptance. Android/physical-device pure-PQ, native Runtime over PQ, Client native runtime and public deployment are NOT_RUN. PQ authority D1 work remains in its separate worktree and is not integrated or accepted in Main; product startup/reload, current-authoritative-floor and renewal remain PARTIAL. Adopted architecture remains `CICADA.md`; this document does not change the public contract.
+
+## Historical standalone adapter checkpoint
+
+The following adapter design and lifecycle details describe the standalone package before Hub/Node production wiring. Their original source-specific validation, sizes, counts and failed attempts remain attributed to that checkpoint; later integration above does not rewrite them.
 
 ## Decision and scope
 
-Keep HTTP handlers, routing, Guard, and application E2EE in Go. Add the optional
-`cicada-go/internal/pqtls` package, backed directly by official OpenSSL 3.5.9
-through CGo. There is no TLS proxy, extra service, wire preface, new Go module, or
-fallback to `crypto/tls`. The package is enabled only with `cicada_pqtls`, CGo,
-Linux, and amd64. All other builds return the typed `ErrUnavailable`; Linux arm64
-is deliberately unavailable pending real arm64 validation.
-
-Both endpoints must negotiate TLS 1.3, pure `MLKEM768`,
-`TLS_AES_256_GCM_SHA384`, ML-DSA-65 CertificateVerify authentication, and ALPN
-`http/1.1`. The C bridge checks actual negotiated values and verification result
-after handshake. Both leaf and verified chain must have ML-DSA-65 public keys and
-certificate signatures. This strict chain requirement needs a dedicated PQ CA.
-Session resumption, tickets, early data, and renegotiation are disabled.
-
-`Config` specifies separate TLS certificate/key files, explicit CA anchors, the
-local Hub/Node identity, and approved peer identities plus certificate-DER SHA-256
-or DER SubjectPublicKeyInfo SHA-256 pins. SAN matching requires an exact DNS
-service identity without subject-CN fallback or wildcards. No OS trust defaults,
-TOFU, or unpinned peer is allowed. Private-key files must be regular, owned by the
-effective process user, owner-readable, and inaccessible to group/others;
-symlinks are rejected. Node and Hub TLS keys must differ and must never reuse
-NodeControl/Endpoint E2EE material.
-
-The OpenSSL certificate verification callback checks the chain, SAN, pin, pure
-certificate algorithms, and distinct TLS keys before a Node sends its client
-Certificate/CertificateVerify. Callback policy is a bounded C-owned copy; it
-retains no Go pointers and does not call Go. A second check maps the verified
-certificate to the configured identity and rejects conflicting identity/epoch
-aliases. The receiving `s_server -msg` test includes a positive control: an
-approved Hub receives one Node Certificate and CertificateVerify, while a Hub
-with a valid CA/hostname but incorrect pin receives neither.
-
-The configured Node binding epoch is only connection metadata. An established
-TLS identity grants no Manager, Endpoint, Group, or peer-data permission. A later
-Hub integration must recheck current owner binding/epoch and `CicadaNode` Guard
-authorization for each request. A successful client-side TLS handshake does not
-prove the server accepted the client pin or grant application authorization.
-The common-Hub topology and narrow same-host direct exception, as well as the
-Endpoint/NodeControl application E2EE boundaries, remain specification concerns
-outside this package.
+Keep HTTP handlers, routing, Guard and application E2EE in Go. The optional
+`cicada-go/internal/pqtls` package uses official OpenSSL 3.5.9 through CGo; it
+adds no proxy, service, wire preface, Go module or fallback to `crypto/tls`.
+The package is enabled only with `cicada_pqtls`, CGo, Linux and amd64. Other
+builds return typed `ErrUnavailable`; Linux arm64 remains unavailable pending
+real arm64 validation. Both endpoints require TLS 1.3, pure `MLKEM768`,
+`TLS_AES_256_GCM_SHA384`, ML-DSA-65 CertificateVerify and ALPN `http/1.1`.
 
 ## Go HTTP and connection lifecycle
 
@@ -160,8 +135,10 @@ The original isolated handoff in `/home/zyf/CICADA_pqtls` is
 `.cicada-data/PARALLEL_REPORT.md` and `.cicada-data/PARALLEL_STATUS.json`, with
 source SHA maps, exact executed counts,
 skips, exits, log hashes, measured amd64 runtime/test-binary bytes, and sampled
-resource results. A skip is not a pass. The CICADA command does not import this
-package: its optional-tag binary delta is metadata, not adapter shipping cost.
+resource results. A skip is not a pass. At that original adapter snapshot the
+CICADA command did not import this package: its measured optional-tag binary
+delta was metadata, not adapter shipping cost. Current product wiring does
+import the package; these historical measurements do not measure that product.
 The package enabled/stub test-binary delta includes different test code and is
 not an isolated production overhead measure.
 
@@ -179,8 +156,10 @@ the separately passing stable-source main Go/PQ gate are in the
 Original binary sizes, resource samples and arm64 stub compilation remain tied
 to the original adapter source; they are not repair or product measurements.
 
-Adapter integration with production HTTP routes, browser/Android/Client,
-reverse proxies or real native Runtime, and physical devices, public HTTPS,
-deployments and arm64 execution remain **NOT_RUN**. Separately attributed native
-HTTP/Client checks do not accept this transport. This checkpoint starts no production listener, changes no real
-keys or deployment, and stops at the isolated package ownership boundary.
+At the original adapter handoff, production HTTP integration,
+browser/Android/Client, reverse proxies, real native Runtime, physical devices,
+public HTTPS, deployments and arm64 execution were **NOT_RUN**. That isolated
+checkpoint started no production listener, changed no real keys or deployment,
+and stopped at the package ownership boundary. Subsequent Hub/Node production
+wiring is recorded above. Separately attributed native HTTP/Client checks still
+do not establish real native Runtime acceptance over this transport.

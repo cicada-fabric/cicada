@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,6 +27,8 @@ import (
 )
 
 const localGroupProtocolVersion = 1
+
+var errGenericNativeDirectUnsupported = errors.New("UNSUPPORTED: generic native direct eligibility is unknown; use Hub Relay")
 
 // localGroupRequest crosses the owner-only Node Unix socket. The model only
 // supplies target/body (or a request ID); every identity and operation ID
@@ -360,6 +365,10 @@ func localGroupEndpointRoute(authorization store.LocalDeliveryAuthorization,
 
 func (b *machineAgentJoinBridge) loadLocalGroupIdentities(
 	authorization store.LocalDeliveryAuthorization) (*e2ee.Identity, *e2ee.Identity, error) {
+	return b.loadLocalGroupIdentitiesMode(authorization, false)
+}
+
+func (b *machineAgentJoinBridge) loadLocalGroupIdentitiesMode(authorization store.LocalDeliveryAuthorization, existingOnly bool) (*e2ee.Identity, *e2ee.Identity, error) {
 	stateDir := machineNodeStateDir(b.stateDir, b.nodeID)
 	if authorization.Source.NodeID != b.nodeID || authorization.Target.NodeID != b.nodeID ||
 		authorization.Source.OwnerID == "" || authorization.Source.OwnerID != authorization.Target.OwnerID ||
@@ -382,11 +391,15 @@ func (b *machineAgentJoinBridge) loadLocalGroupIdentities(
 			return nil, nil, errors.New("local Endpoint candidate proof does not match current binding")
 		}
 	}
-	source, err := nodekeys.LoadOrCreate(stateDir, authorization.Source.EndpointID)
+	load := nodekeys.LoadOrCreate
+	if existingOnly {
+		load = nodekeys.LoadExisting
+	}
+	source, err := load(stateDir, authorization.Source.EndpointID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load local source Endpoint key: %w", err)
 	}
-	target, err := nodekeys.LoadOrCreate(stateDir, authorization.Target.EndpointID)
+	target, err := load(stateDir, authorization.Target.EndpointID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load local target Endpoint key: %w", err)
 	}
@@ -474,6 +487,28 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 	if request.Operation == "local_receive" {
 		return b.receiveLocalGroup(request)
 	}
+	if request.Operation == "local_send" || request.Operation == "local_ask" {
+		result, err := b.replayLegacyLocalGroupMessage(request, fence)
+		if errors.Is(err, nodelocal.ErrMessageNotFound) {
+			return nil, errGenericNativeDirectUnsupported
+		}
+		return result, err
+	}
+	if request.Operation == "local_reply" || request.Operation == "local_status" || request.Operation == "local_cancel" {
+		info, err := os.Lstat(machineLocalGroupLedgerPath(b.stateDir, b.nodeID))
+		if os.IsNotExist(err) {
+			return nil, nodelocal.ErrRequestNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+			return nil, errors.New("legacy local ledger is not a private regular file")
+		}
+		if err := b.authorizeLegacyLocalRequestCaller(request); err != nil {
+			return nil, err
+		}
+	}
 	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(b.stateDir, b.nodeID))
 	if err != nil {
 		return nil, fmt.Errorf("open local Group message ledger: %w", err)
@@ -502,9 +537,19 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 			stored.Route.SourceBindingID == request.BindingID &&
 			stored.Route.SourceBindingEpoch == request.BindingEpoch &&
 			stored.Route.SourceGroupID == request.GroupID
-		if !requester {
-			return nil, errors.New("local request is not owned by the current native session")
+		receiver := stored.Route.TargetEndpointID == request.EndpointID && stored.Route.TargetPrincipalID == request.PrincipalID && stored.Route.TargetSessionID == request.NativeSessionID && stored.Route.TargetBindingID == request.BindingID && stored.Route.TargetBindingEpoch == request.BindingEpoch && stored.Route.TargetGroupID == request.GroupID
+		requester = requester && stored.Route.SourcePrincipalID == request.PrincipalID
+		if (!requester && !receiver) || (request.Operation == "local_cancel" && !requester) {
+			return nil, errors.New("local request is outside the current exact native caller route")
 		}
+		message, err := ledger.GetMessage(b.ctx, stored.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := b.revalidateLocalGroupRoute(stored.Route, stored.MessageID, message.Digest); err != nil {
+			return nil, err
+		}
+
 		if request.Operation == "local_cancel" {
 			stored, err = ledger.CancelRequest(b.ctx, request.RequestID, request.EndpointID)
 			if err != nil {
@@ -722,4 +767,128 @@ func (b *machineAgentJoinBridge) revalidateLocalGroupRoute(
 		return nil, err
 	}
 	return &current, nil
+}
+
+// replayLegacyLocalGroupMessage reads an existing message only. It never seals,
+// reserves a counter, creates a ledger/key, or wakes the native queue. Historical
+// local ledgers did not persist the caller's unused IdempotencyKey; operation ID,
+// authenticated plaintext, deadline and the entire current route are checked.
+func (b *machineAgentJoinBridge) replayLegacyLocalGroupMessage(request localGroupRequest, fence *groupBroadcastDeliveryFence) (*localGroupResult, error) {
+	messageID, requestID, err := localSealedRPCIDs(request.OperationID)
+	if err != nil {
+		return nil, err
+	}
+	path := machineLocalGroupLedgerPath(b.stateDir, b.nodeID)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil, nodelocal.ErrMessageNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return nil, errors.New("legacy local ledger is not a private regular file")
+	}
+	databaseURL := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", databaseURL.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var record nodelocal.MessageRecord
+	var routeJSON string
+	var expires sql.NullInt64
+	err = db.QueryRowContext(b.ctx, "SELECT message_id, kind, request_id, reply_to_message_id, lower(hex(digest)), route_json, ciphertext, CASE WHEN terminal_state = 'REJECTED' THEN 'REJECTED' ELSE delivery_state END, expires_at_us FROM node_local_messages WHERE message_id = ?", messageID).Scan(&record.MessageID, &record.Kind, &record.RequestID, &record.ReplyToMessageID, &record.Digest, &routeJSON, &record.Ciphertext, &record.State, &expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nodelocal.ErrMessageNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := decodeStrictBridgeJSON([]byte(routeJSON), &record.Route); err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(record.Ciphertext)
+	if record.Digest != hex.EncodeToString(digest[:]) {
+		return nil, errors.New("legacy local ciphertext is corrupt")
+	}
+	action, kind, expectedKind := "message.send", "SEND", nodelocal.KindSend
+	if request.Operation == "local_ask" {
+		action, kind, expectedKind = "message.ask", "REQUEST", nodelocal.KindAsk
+	} else {
+		requestID = ""
+	}
+	if record.Kind != expectedKind || record.RequestID != requestID || record.ReplyToMessageID != "" {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	authorization, err := b.fetchLocalGroupAuthorization(request.SessionToken, store.LocalDeliveryAuthorizationInput{GroupID: request.GroupID, Target: request.Target, Action: action})
+	if err != nil {
+		return nil, err
+	}
+	if err := validateLocalGroupAuthorizationForSource(authorization, request); err != nil {
+		return nil, err
+	}
+	if err := fence.validateLocal(authorization); err != nil {
+		return nil, err
+	}
+	current, err := localGroupLedgerRoute(*authorization, request.NativeSessionID)
+	if err != nil {
+		return nil, err
+	}
+	current.AuthorizationValidUntil = record.Route.AuthorizationValidUntil
+	if current != record.Route {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	sender, receiver, err := b.loadLocalGroupIdentitiesMode(*authorization, true)
+	if err != nil {
+		return nil, err
+	}
+	route := localGroupEndpointRoute(*authorization, messageID, kind, requestID, "")
+	plaintext, _, err := e2ee.OpenEndpointMessage(receiver, sender.Public(), route, record.Ciphertext)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(plaintext, []byte(request.Body)) {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	result := &localGroupResult{MessageID: messageID, RequestID: requestID, TargetEndpointID: record.Route.TargetEndpointID, State: string(record.State), Delivery: "LOCAL_PERSISTED", PayloadMode: "SEALED_V1"}
+	if request.Operation == "local_ask" {
+		created, err := time.Parse(time.RFC3339Nano, request.OperationCreatedAt)
+		if err != nil || !expires.Valid || created.Add(localSealedAskDefaultLifetime).UnixMicro() != expires.Int64 {
+			return nil, nodelocal.ErrMessageConflict
+		}
+		result.ExpiresAt = time.UnixMicro(expires.Int64).UTC().Format(time.RFC3339Nano)
+	} else if expires.Valid {
+		return nil, nodelocal.ErrMessageConflict
+	}
+	return result, nil
+}
+
+// GetRequest may expire legacy rows. Check the immutable original parties
+// read-only before invoking any ledger writer, including status and reply.
+func (b *machineAgentJoinBridge) authorizeLegacyLocalRequestCaller(request localGroupRequest) error {
+	databaseURL := url.URL{Scheme: "file", Path: machineLocalGroupLedgerPath(b.stateDir, b.nodeID), RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", databaseURL.String())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var routeJSON string
+	err = db.QueryRowContext(b.ctx, "SELECT m.route_json FROM node_local_requests r JOIN node_local_messages m ON m.message_id=r.ask_message_id WHERE r.request_id=?", request.RequestID).Scan(&routeJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nodelocal.ErrRequestNotFound
+	}
+	if err != nil {
+		return err
+	}
+	var route nodelocal.Route
+	if err := decodeStrictBridgeJSON([]byte(routeJSON), &route); err != nil {
+		return err
+	}
+	sender := route.SourceEndpointID == request.EndpointID && route.SourcePrincipalID == request.PrincipalID && route.SourceOwnerID == request.OwnerID && route.SourceNodeID == request.NodeID && route.SourceBindingID == request.BindingID && route.SourceBindingEpoch == request.BindingEpoch && route.SourceSessionID == request.NativeSessionID && route.SourceGroupID == request.GroupID
+	receiver := route.TargetEndpointID == request.EndpointID && route.TargetPrincipalID == request.PrincipalID && route.TargetOwnerID == request.OwnerID && route.TargetNodeID == request.NodeID && route.TargetBindingID == request.BindingID && route.TargetBindingEpoch == request.BindingEpoch && route.TargetSessionID == request.NativeSessionID && route.TargetGroupID == request.GroupID
+	if (request.Operation == "local_reply" && !receiver) || (request.Operation == "local_cancel" && !sender) || (request.Operation == "local_status" && !sender && !receiver) {
+		return errors.New("legacy request is outside the exact original native caller route")
+	}
+	return nil
 }

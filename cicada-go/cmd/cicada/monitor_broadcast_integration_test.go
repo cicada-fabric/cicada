@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -421,7 +422,7 @@ func TestMonitorBroadcastPreviewRejectsTamperedAndRevokedEvidence(t *testing.T) 
 	}
 }
 
-func TestMonitorBroadcastApprovedClientPayloadExecutesOneLocalSealedChild(t *testing.T) {
+func TestMonitorBroadcastApprovedClientPayloadExecutesOneSameNodeRelayChild(t *testing.T) {
 	f := newMonitorBroadcastIntegrationFixture(t)
 	result, err := f.local.bridge.monitorBroadcast(f.request)
 	if err != nil || result == nil || result.Progress == nil || !result.Progress.Complete ||
@@ -438,23 +439,16 @@ func TestMonitorBroadcastApprovedClientPayloadExecutesOneLocalSealedChild(t *tes
 	if err != nil || retry.Progress == nil || retry.Progress.Recipients[0].MessageID != childID {
 		t.Fatalf("exact Monitor retry changed child identity: %+v %v", retry, err)
 	}
-	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ledger.Close()
-	pending, err := ledger.PendingAll(context.Background(), 8)
-	if err != nil || len(pending) != 1 {
-		t.Fatalf("Monitor retries created multiple local deliveries: %d %v", len(pending), err)
-	}
+	f.assertRelayChildren(t, result.Progress)
+
 	f.hubMu.Lock()
 	defer f.hubMu.Unlock()
 	if f.hubSawBody {
 		t.Fatal("Hub HTTP observed Client broadcast plaintext")
 	}
 	if !containsString(f.hubPaths, "/v2/relay/nodes/"+f.local.nodeID+"/monitor/broadcasts/"+f.preview.PreviewID+"/authorize") ||
-		!containsString(f.hubPaths, "/v2/relay/nodes/"+f.local.nodeID+"/local/authorize") {
-		t.Fatalf("Monitor did not use Node-only approval and local sealed Guard: %v", f.hubPaths)
+		!containsString(f.hubPaths, "/v2/relay/nodes/"+f.local.nodeID+"/group/sealed/send") {
+		t.Fatalf("Monitor did not use Node-only approval and sealed Relay Guard: %v", f.hubPaths)
 	}
 	for _, path := range f.hubPaths {
 		if strings.Contains(path, "/control/") {
@@ -463,7 +457,7 @@ func TestMonitorBroadcastApprovedClientPayloadExecutesOneLocalSealedChild(t *tes
 	}
 }
 
-func TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren(t *testing.T) {
+func TestMonitorBroadcastApprovedClientPayloadPersistsSameNodeAndRemoteRelayChildren(t *testing.T) {
 	f := newMonitorBroadcastIntegrationFixtureWithRemote(t, true)
 	result, err := f.local.bridge.monitorBroadcast(f.request)
 	if err != nil || result == nil || result.Progress == nil || !result.Progress.Complete ||
@@ -476,10 +470,7 @@ func TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren(t *
 		t.Fatalf("Hub did not retain per-recipient outcome evidence: %+v %v", status, err)
 	}
 	for ordinal, recipient := range status.Recipients {
-		wantEvidence := store.UserMonitorBroadcastV2EvidenceNode
-		if f.preview.Snapshot.Recipients[ordinal].NodeID != f.local.nodeID {
-			wantEvidence = store.UserMonitorBroadcastV2EvidenceRelay
-		}
+		wantEvidence := store.UserMonitorBroadcastV2EvidenceRelay
 		if recipient.Ordinal != ordinal || recipient.State != "ACCEPTED" ||
 			recipient.Evidence != wantEvidence || recipient.MessageID == "" {
 			t.Fatalf("Hub mixed local and authoritative Relay acceptance: %+v", recipient)
@@ -496,11 +487,11 @@ func TestMonitorBroadcastApprovedClientPayloadPersistsLocalAndRemoteChildren(t *
 		t.Fatalf("local or remote child missing: %+v", messageByEndpoint)
 	}
 	localArgs, localCount := installMachineSealedFakeCodex(t, false, f.local.nodeToken)
-	localInbox, err := nodeinbox.Open(machineLocalGroupInboxPath(f.local.stateDir, f.local.nodeID))
+	localInbox, err := nodeinbox.Open(machineNodeInboxPath(f.local.stateDir, f.local.nodeID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.local.bridge, localInbox); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), f.hub.URL, f.local.nodeID, localInbox, f.local.stateDir); err != nil {
 		t.Fatal(err)
 	}
 	_ = localInbox.Close()
@@ -560,15 +551,12 @@ func TestMonitorBroadcastMCPUsesLocalSocketAndApprovalIDOnly(t *testing.T) {
 	if err != nil || resultValue.(map[string]any)["operation_id"] != result["operation_id"] {
 		t.Fatalf("Monitor MCP retry changed operation identity: %#v %v", resultValue, err)
 	}
-	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID))
-	if err != nil {
-		t.Fatal(err)
+	childID, _, idErr := localSealedRPCIDs(groupBroadcastChildOperationID(f.preview.BroadcastID, f.preview.Snapshot.Recipients[0].EndpointID))
+	if idErr != nil {
+		t.Fatal(idErr)
 	}
-	defer ledger.Close()
-	pending, err := ledger.PendingAll(context.Background(), 8)
-	if err != nil || len(pending) != 1 {
-		t.Fatalf("Monitor MCP retry created duplicate child: %d %v", len(pending), err)
-	}
+	f.assertRelayChildren(t, &groupBroadcastResult{Recipients: []groupBroadcastRecipientResult{{EndpointID: f.preview.Snapshot.Recipients[0].EndpointID, MessageID: childID, State: "ACCEPTED"}}})
+
 	f.hubMu.Lock()
 	defer f.hubMu.Unlock()
 	if f.hubSawBody {
@@ -759,19 +747,363 @@ func TestMonitorBroadcastLostOutcomeReceiptRetainsStableChildren(t *testing.T) {
 		t.Fatalf("same operation could not recover after lost report receipt: result=%+v first=%+v first_err=%v retry_err=%v",
 			result, first, firstErr, err)
 	}
-	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ledger.Close()
-	pending, err := ledger.PendingAll(context.Background(), 8)
-	if err != nil || len(pending) != 1 {
-		t.Fatalf("report retry duplicated the sealed child: count=%d err=%v", len(pending), err)
-	}
+	f.assertRelayChildren(t, result.Progress)
+
 	statusID := f.acceptClientRequest(t, f.context.ClientSessionEpoch, 3, "synthetic_recovered_status")
 	status, err := f.local.store.GetUserMonitorBroadcastV2OutcomeStatus(statusID, f.preview.PreviewID)
 	if err != nil || len(status.Recipients) != 1 || status.Recipients[0].MessageID != result.Progress.Recipients[0].MessageID ||
-		status.Recipients[0].Evidence != store.UserMonitorBroadcastV2EvidenceNode {
-		t.Fatalf("Hub did not retain correlated Node evidence: %+v %v", status, err)
+		status.Recipients[0].Evidence != store.UserMonitorBroadcastV2EvidenceRelay {
+		t.Fatalf("Hub did not retain correlated Relay evidence: %+v %v", status, err)
 	}
+}
+
+func (f *monitorBroadcastIntegrationFixture) assertRelayChildren(t *testing.T, progress *groupBroadcastResult) {
+	t.Helper()
+	for _, child := range progress.Recipients {
+		record, err := f.local.store.GetRelaySealedV1(child.MessageID)
+		childID := groupBroadcastChildOperationID(f.preview.BroadcastID, child.EndpointID)
+		if err != nil || record == nil || record.PayloadMode != "SEALED_V1" || record.Route.Kind != "send" ||
+			record.Route.SenderEndpointID != f.request.EndpointID || record.Route.ReceiverEndpointID != child.EndpointID ||
+			record.Security.IdempotencyKey != childID || record.OutboxState == "" || len(record.Ciphertext) == 0 {
+			t.Fatalf("Monitor child lacks exact persisted sealed Relay evidence: %+v %v", record, err)
+		}
+		// This fresh recipient's single sealed child keeps its original inbox
+		// sequence across retries; the plaintext-only listing must remain blind.
+		if record.Sequence != 1 {
+			t.Fatalf("Monitor retry changed its sealed Relay inbox sequence: %d", record.Sequence)
+		}
+	}
+	f.assertNoLocalChildren(t)
+}
+
+func TestMonitorBroadcastOutcomeRejectsMissingOrCallerAssertedTransport(t *testing.T) {
+	for _, scenario := range []string{"missing", "unknown", "node guess", "serialized assertion", "foreign local"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newMonitorBroadcastIntegrationFixture(t)
+			child := f.preview.Snapshot.Recipients[0]
+			_, messageID, err := store.UserMonitorBroadcastV2ChildIDs(f.preview.BroadcastID, child.EndpointID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			progress := &groupBroadcastResult{BroadcastID: f.preview.BroadcastID, SnapshotDigest: f.preview.SnapshotDigest, NextOffset: 1,
+				Recipients: []groupBroadcastRecipientResult{{EndpointID: child.EndpointID, NodeID: child.NodeID, MessageID: messageID, State: "ACCEPTED"}}}
+			switch scenario {
+			case "unknown":
+				progress.Recipients[0].transportEvidence = "UNKNOWN"
+			case "serialized assertion":
+				wire, err := json.Marshal(progress)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var decoded groupBroadcastResult
+				if err := json.Unmarshal(wire, &decoded); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal([]byte(`{"transportEvidence":"LOCAL_PERSISTED"}`), &decoded.Recipients[0]); err != nil {
+					t.Fatal(err)
+				}
+				progress = &decoded
+			case "foreign local":
+				progress.Recipients[0].NodeID = "node_foreign"
+				progress.Recipients[0].transportEvidence = "LOCAL_PERSISTED"
+			}
+			f.hubMu.Lock()
+			before := len(f.hubPaths)
+			f.hubMu.Unlock()
+			if err := f.local.bridge.reportMonitorBroadcastOutcomes(f.request, f.preview.Snapshot, progress); err == nil {
+				t.Fatal("unverified child transport became Node outcome evidence")
+			}
+			f.hubMu.Lock()
+			after := len(f.hubPaths)
+			f.hubMu.Unlock()
+			if before != after {
+				t.Fatal("unverified transport posted outcome report")
+			}
+			f.assertNoLocalChildren(t)
+		})
+	}
+}
+
+func TestMonitorBroadcastHistoricalLocalReplayRetainsTransportAndNeverCreatesRelay(t *testing.T) {
+	for _, scenario := range []string{"exact", "corrupt"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newMonitorBroadcastIntegrationFixture(t)
+			var delivery store.UserMonitorBroadcastV2Delivery
+			if err := f.local.bridge.monitorBroadcastHub(http.MethodPost, "/"+f.preview.PreviewID+"/authorize", f.request.SessionToken,
+				map[string]any{"broadcast_id": f.preview.BroadcastID, "operation_id": "op_" + strings.TrimPrefix(f.preview.BroadcastID, "bc_"), "body_sha256": f.preview.BodyDigest, "snapshot_digest": f.preview.SnapshotDigest}, &delivery); err != nil {
+				t.Fatal(err)
+			}
+			// Faithfully seed the old Monitor path: authenticated Client payload
+			// acceptance preceded the historical local child and its peer counter.
+			identity, err := nodekeys.LoadExisting(machineNodeStateDir(f.local.stateDir, f.local.nodeID), f.request.EndpointID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cryptoState, err := nodekeys.OpenCryptoState(machineNodeStateDir(f.local.stateDir, f.local.nodeID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			enrolledAt, err := time.Parse(time.RFC3339Nano, delivery.EnrolledAt)
+			if err != nil {
+				_ = cryptoState.Close()
+				t.Fatal(err)
+			}
+			_, err = cryptoState.OpenUserMonitorBroadcast(context.Background(), identity, delivery.Context, delivery.ClientPublic,
+				delivery.OwnerKeyID, delivery.OwnerDeviceGrant, enrolledAt, delivery.SealedPayload)
+			if err != nil {
+				_ = cryptoState.Close()
+				t.Fatal(err)
+			}
+			if err := cryptoState.Close(); err != nil {
+				t.Fatal(err)
+			}
+			target := delivery.Snapshot.Recipients[0]
+			childID := groupBroadcastChildOperationID(f.preview.BroadcastID, target.EndpointID)
+			request := localGroupRequest{Version: localGroupProtocolVersion, Operation: "local_send", Harness: f.request.Harness, NativeSessionID: f.request.NativeSessionID,
+				NodeID: f.request.NodeID, Workspace: f.request.Workspace, SessionToken: f.request.SessionToken, EndpointID: f.request.EndpointID, PrincipalID: f.request.PrincipalID,
+				OwnerID: f.request.OwnerID, GroupID: f.request.GroupID, BindingID: f.request.BindingID, BindingEpoch: f.request.BindingEpoch,
+				OperationID: childID, IdempotencyKey: childID, Target: target.EndpointID, Body: f.body}
+			path := machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID)
+			ledger, err := nodelocal.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			accepted, err := f.local.bridge.submitLocalGroupMessage(ledger, request, &groupBroadcastDeliveryFence{source: delivery.Snapshot.Source, recipient: target})
+			if err != nil {
+				_ = ledger.Close()
+				t.Fatal(err)
+			}
+			if err := ledger.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "corrupt" {
+				db, err := sql.Open("sqlite", path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec("UPDATE node_local_messages SET ciphertext=? WHERE message_id=?", []byte("synthetic corrupt ciphertext"), accepted.MessageID); err != nil {
+					_ = db.Close()
+					t.Fatal(err)
+				}
+				if err := db.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cryptoPath := filepath.Join(machineNodeStateDir(f.local.stateDir, f.local.nodeID), "node-crypto-state.sqlite")
+			cryptoBefore, err := os.ReadFile(cryptoPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := f.local.bridge.monitorBroadcast(f.request)
+			cryptoAfter, cryptoErr := os.ReadFile(cryptoPath)
+			if cryptoErr != nil || !bytes.Equal(cryptoBefore, cryptoAfter) {
+				t.Fatal("legacy broadcast retry advanced cryptographic state")
+			}
+			if scenario == "exact" {
+				if err != nil || result == nil || result.Progress.Recipients[0].State != "ACCEPTED" || result.Progress.Recipients[0].MessageID != accepted.MessageID {
+					t.Fatalf("exact local history was not recovered: %+v %v", result, err)
+				}
+				statusID := f.acceptClientRequest(t, f.context.ClientSessionEpoch, 3, "legacy_outcome_status")
+				status, err := f.local.store.GetUserMonitorBroadcastV2OutcomeStatus(statusID, f.preview.PreviewID)
+				if err != nil || status.Recipients[0].Evidence != store.UserMonitorBroadcastV2EvidenceNode {
+					t.Fatalf("authenticated local history lost Node attribution: %+v %v", status, err)
+				}
+			} else if result == nil || result.Progress.Recipients[0].State == "ACCEPTED" {
+				t.Fatalf("corrupt legacy history became accepted: %+v %v", result, err)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil || !bytes.Equal(before, after) {
+				t.Fatal("legacy replay changed ledger bytes")
+			}
+			if _, err := f.local.store.GetRelaySealedV1(accepted.MessageID); err == nil {
+				t.Fatal("legacy child was also created on Relay")
+			}
+			f.hubMu.Lock()
+			defer f.hubMu.Unlock()
+			for _, path := range f.hubPaths {
+				if strings.HasSuffix(path, "/group/sealed/send") {
+					t.Fatal("legacy child posted to Relay")
+				}
+			}
+		})
+	}
+}
+
+func TestMonitorBroadcastOutcomeAcknowledgementMonotoneAndExact(t *testing.T) {
+	for _, scenario := range []string{"unknown", "failed", "same accepted", "wrong id", "invalid evidence", "different accepted evidence", "Node lower report", "stored failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			stored := store.UserMonitorBroadcastV2RecipientOutcome{MessageID: "msg_synthetic_original", State: "ACCEPTED", Evidence: store.UserMonitorBroadcastV2EvidenceRelay}
+			reported := store.UserMonitorBroadcastV2RecipientReport{MessageID: stored.MessageID, State: "UNKNOWN", FailureCode: "DELIVERY_OUTCOME_UNKNOWN"}
+			want := true
+			switch scenario {
+			case "failed":
+				reported.State = "FAILED"
+				reported.FailureCode = "DELIVERY_REJECTED"
+			case "same accepted":
+				reported.State = "ACCEPTED"
+				reported.Evidence = stored.Evidence
+				reported.FailureCode = ""
+			case "wrong id":
+				stored.MessageID = "msg_synthetic_other"
+				want = false
+			case "invalid evidence":
+				stored.Evidence = "FORGED"
+				reported.Evidence = "FORGED"
+				reported.State = "ACCEPTED"
+				reported.FailureCode = ""
+				want = false
+			case "different accepted evidence":
+				reported.State = "ACCEPTED"
+				reported.Evidence = store.UserMonitorBroadcastV2EvidenceNode
+				reported.FailureCode = ""
+				want = false
+			case "Node lower report":
+				stored.Evidence = store.UserMonitorBroadcastV2EvidenceNode
+				want = false
+			case "stored failure":
+				stored.FailureCode = "DELIVERY_REJECTED"
+				want = false
+			}
+			if got := monitorOutcomeAcknowledges(stored, reported); got != want {
+				t.Fatalf("acknowledgement=%v want=%v", got, want)
+			}
+		})
+	}
+}
+
+func TestMonitorBroadcastLostOutcomeACKThenTemporaryChild503KeepsMCPRetryable(t *testing.T) {
+	f := newMonitorBroadcastIntegrationFixture(t)
+	var dropOutcome, denySend atomic.Bool
+	var deniedSends atomic.Int64
+	dropOutcome.Store(true)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/group/sealed/send") && denySend.Load() {
+			deniedSends.Add(1)
+			http.Error(w, "synthetic temporary child admission", http.StatusServiceUnavailable)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/outcomes") && dropOutcome.Swap(false) {
+			recorded := httptest.NewRecorder()
+			f.hub.Config.Handler.ServeHTTP(recorded, r)
+			if recorded.Code != http.StatusOK {
+				t.Errorf("upstream outcome did not persist before lost ACK: %d", recorded.Code)
+			}
+			denySend.Store(true)
+			http.Error(w, "synthetic lost outcome ACK", http.StatusServiceUnavailable)
+			return
+		}
+		f.hub.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer proxy.Close()
+	if err := f.local.bridge.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.local.bridgeCancel()
+	f.local.bridgeCtx, f.local.bridgeCancel = context.WithCancel(f.local.machineContextForNodeAt(f.local.nodeID, f.local.nodeToken, proxy.URL))
+	var err error
+	f.local.bridge, err = startMachineAgentJoinBridge(f.local.bridgeCtx, f.local.stateDir, proxy.URL, f.local.nodeID, f.local.nodeToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_THREAD_ID", f.local.nativeA)
+	t.Setenv("CODEX_SESSION_ID", "session-"+f.local.nativeA)
+	_, nativeCount := installMachineSealedFakeCodex(t, false, f.local.nodeToken)
+	operationID := ""
+	call := func() map[string]any {
+		tool, input := "cicada_monitor_broadcast", map[string]any{"approval_id": f.preview.PreviewID}
+		if operationID != "" {
+			tool, input = "cicada_operation_retry", map[string]any{"operation_id": operationID}
+		}
+		value, err := f.local.sourceMCP.callTool(tool, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected MCP result: %T", value)
+		}
+		return result
+	}
+	first := call()
+	if first["status"] != mcpOutboxStatusUnknown || first["retryable"] != true {
+		t.Fatalf("lost ACK was not retryable UNKNOWN: %#v", first)
+	}
+	operationID = first["operation_id"].(string)
+	var inputBefore string
+	var operationCountBefore int
+	if err := f.local.sourceMCP.outbox.db.QueryRow("SELECT input_json FROM mcp_outbox_operations WHERE operation_id=?", operationID).Scan(&inputBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.local.sourceMCP.outbox.db.QueryRow("SELECT count(*) FROM mcp_outbox_operations").Scan(&operationCountBefore); err != nil {
+		t.Fatal(err)
+	}
+	cryptoPath := filepath.Join(machineNodeStateDir(f.local.stateDir, f.local.nodeID), "node-crypto-state.sqlite")
+	cryptoBefore, err := os.ReadFile(cryptoPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgerPath := machineLocalGroupLedgerPath(f.local.stateDir, f.local.nodeID)
+	ledgerBefore, ledgerErr := os.ReadFile(ledgerPath)
+	if ledgerErr != nil && !os.IsNotExist(ledgerErr) {
+		t.Fatal(ledgerErr)
+	}
+	second := call()
+	if deniedSends.Load() != 1 {
+		t.Fatalf("temporary child503 path not exercised: %d", deniedSends.Load())
+	}
+	_, messageID, err := store.UserMonitorBroadcastV2ChildIDs(f.preview.BroadcastID, f.preview.Snapshot.Recipients[0].EndpointID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cryptoAfter, err := os.ReadFile(cryptoPath)
+	if err != nil || !bytes.Equal(cryptoBefore, cryptoAfter) {
+		t.Fatal("503 retry advanced peer cryptographic state")
+	}
+	ledgerAfter, afterErr := os.ReadFile(ledgerPath)
+	if (os.IsNotExist(ledgerErr) != os.IsNotExist(afterErr)) || (ledgerErr == nil && (afterErr != nil || !bytes.Equal(ledgerBefore, ledgerAfter))) {
+		t.Fatal("503 retry created or changed local ledger")
+	}
+	var inputAfter string
+	var operationCountAfter int
+	if err := f.local.sourceMCP.outbox.db.QueryRow("SELECT input_json FROM mcp_outbox_operations WHERE operation_id=?", operationID).Scan(&inputAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.local.sourceMCP.outbox.db.QueryRow("SELECT count(*) FROM mcp_outbox_operations").Scan(&operationCountAfter); err != nil {
+		t.Fatal(err)
+	}
+	if inputBefore != inputAfter || operationCountBefore != operationCountAfter || strings.Contains(inputAfter, f.body) {
+		t.Fatal("503 retry changed immutable MCP input/count or saved approved body")
+	}
+	f.assertRelayChildren(t, &groupBroadcastResult{Recipients: []groupBroadcastRecipientResult{{EndpointID: f.preview.Snapshot.Recipients[0].EndpointID, MessageID: messageID, State: "ACCEPTED"}}})
+	statusID := f.acceptClientRequest(t, f.context.ClientSessionEpoch, 3, "lost_ack_status")
+	status, err := f.local.store.GetUserMonitorBroadcastV2OutcomeStatus(statusID, f.preview.PreviewID)
+	if err != nil || status.Recipients[0].State != "ACCEPTED" || status.Recipients[0].Evidence != store.UserMonitorBroadcastV2EvidenceRelay || status.Recipients[0].MessageID != messageID {
+		t.Fatalf("higher authoritative outcome was downgraded: %+v %v", status, err)
+	}
+	if second["operation_id"] != operationID || second["status"] != mcpOutboxStatusUnknown || second["retryable"] != true {
+		t.Fatalf("accepted historical receipt turned temporary attempt into terminal failure: %#v", second)
+	}
+	if second["error"] != nil {
+		t.Fatalf("valid higher Relay receipt produced an ACK mismatch error: %#v", second)
+	}
+	var progressJSON string
+	if err := f.local.sourceMCP.outbox.db.QueryRow("SELECT result_json FROM mcp_outbox_operations WHERE operation_id=?", operationID).Scan(&progressJSON); err != nil {
+		t.Fatal(err)
+	}
+	if progressJSON == "" {
+		t.Fatal("valid higher Relay receipt discarded UNKNOWN current batch progress")
+	}
+	denySend.Store(false)
+	third := call()
+	if third["operation_id"] != operationID || third["status"] != mcpOutboxStatusSent || third["retryable"] != false {
+		t.Fatalf("same operation failed to recover after temporary503: %#v", third)
+	}
+	if _, err := os.Stat(nativeCount); !os.IsNotExist(err) {
+		t.Fatal("transport receipt claimed or caused native consumption")
+	}
+	f.assertRelayChildren(t, &groupBroadcastResult{Recipients: []groupBroadcastRecipientResult{{EndpointID: f.preview.Snapshot.Recipients[0].EndpointID, MessageID: messageID, State: "ACCEPTED"}}})
 }

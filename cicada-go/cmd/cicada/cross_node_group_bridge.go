@@ -191,7 +191,7 @@ func crossNodeGroupLocalRequest(request crossNodeGroupRequest, operation string)
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKey(groupID, sourceEndpointID,
 	targetEndpointID string) (crossNodeGroupPeerKey, error) {
-	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, false)
+	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, true)
 }
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupTaskHandoffPeerKey(groupID, sourceEndpointID,
@@ -232,7 +232,7 @@ func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKeyMode(groupID, sourceE
 
 func validateCrossNodeGroupPeerKey(peerKey crossNodeGroupPeerKey, groupID, sourceEndpointID,
 	targetEndpointID, sourceNodeID string) error {
-	return validateCrossNodeGroupPeerKeyMode(peerKey, groupID, sourceEndpointID, targetEndpointID, sourceNodeID, false)
+	return validateCrossNodeGroupPeerKeyMode(peerKey, groupID, sourceEndpointID, targetEndpointID, sourceNodeID, true)
 }
 
 func validateCrossNodeGroupPeerKeyMode(peerKey crossNodeGroupPeerKey, groupID, sourceEndpointID,
@@ -309,6 +309,20 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	if err != nil {
 		return nil, err
 	}
+	localOperation := "local_send"
+	if request.Operation == "cross_node_group_ask" {
+		localOperation = "local_ask"
+	}
+	legacy, legacyErr := b.replayLegacyLocalGroupMessage(crossNodeGroupLocalRequest(request, localOperation), fence)
+	if !errors.Is(legacyErr, nodelocal.ErrMessageNotFound) {
+		if legacyErr != nil {
+			return nil, legacyErr
+		}
+		if request.ParentRequestID != "" {
+			return nil, errors.New("legacy local ASK cannot acquire a causal parent")
+		}
+		return &crossNodeGroupResult{MessageID: legacy.MessageID, RequestID: legacy.RequestID, TargetEndpointID: legacy.TargetEndpointID, State: legacy.State, Delivery: legacy.Delivery, PayloadMode: legacy.PayloadMode, ExpiresAt: legacy.ExpiresAt}, nil
+	}
 	peerKey, err := b.fetchCrossNodeGroupPeerKey(request.GroupID, request.EndpointID, request.TargetEndpointID)
 	if err != nil {
 		return nil, err
@@ -342,7 +356,7 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 	}
 	defer state.Close()
 	route.MessageID, route.RequestID, route.ReplyTo, route.Kind = messageID, requestID, replyTo, kind
-	if kind == "REQUEST" {
+	if kind == "REQUEST" || kind == "REPLY" {
 		route.ParentRequestID = request.ParentRequestID
 	} else if request.ParentRequestID != "" {
 		return nil, errors.New("only a same-Group ASK may carry a causal parent")
@@ -497,7 +511,7 @@ func (b *machineAgentJoinBridge) pinCrossNodeGroupPeer(peerKey crossNodeGroupPee
 func crossNodeGroupPinEvidence(peerKey crossNodeGroupPeerKey, local,
 	peer crossNodeGroupEndpointEvidence) (nodekeys.GroupEndpointKeyPinEvidence, error) {
 	if peerKey.HubID == "" || local.Grant == nil || peer.Grant == nil || local.OwnerID != peer.OwnerID ||
-		local.GroupID != peer.GroupID || local.GroupID != peerKey.GroupID || local.NodeID == peer.NodeID {
+		local.GroupID != peer.GroupID || local.GroupID != peerKey.GroupID || local.EndpointID == peer.EndpointID {
 		return nodekeys.GroupEndpointKeyPinEvidence{}, errors.New("same-Group Owner grant evidence is incomplete")
 	}
 	manifest := peer.Grant.Manifest
@@ -647,33 +661,40 @@ func (b *machineAgentJoinBridge) crossNodeGroupReply(request crossNodeGroupReque
 		peerKey.Receiver.GroupID != request.GroupID || peerKey.Sender.OwnerID != request.OwnerID {
 		return nil, errors.New("current Group key evidence does not match the original request route")
 	}
+	// The causal parent is derived from the authenticated original request,
+	// never from a native caller's reply payload.
+	request.ParentRequestID = status.ParentRequestID
 	return b.sealAndSendCrossNodeGroup(request, peerKey, messageID, request.RequestID,
 		status.MessageID, "REPLY", time.Time{})
 }
 
 func (b *machineAgentJoinBridge) crossNodeGroupRequestControl(request crossNodeGroupRequest,
 	card fabric.NetworkCard) (*crossNodeGroupResult, error) {
-	var status store.FabricRequest
-	var err error
+	current, err := b.fetchCrossNodeGroupRequest(request.RequestID)
+	if err != nil {
+		return nil, err
+	}
+	status := *current
+	sender := status.SenderEndpointID == card.EndpointID && status.SenderPrincipalID == card.PrincipalID && status.SenderBindingID == card.BindingID && status.SenderBindingEpoch == card.BindingEpoch
+	receiver := status.ReceiverEndpointID == card.EndpointID && status.ReceiverPrincipalID == card.PrincipalID && status.ReceiverBindingID == card.BindingID && status.ReceiverBindingEpoch == card.BindingEpoch
+	if status.RequestID != request.RequestID || status.SenderGroupID != request.GroupID || status.ReceiverGroupID != request.GroupID || status.VisibilityPolicyRef != store.SameGroupSealedV1DataScope || (!sender && !receiver) || (request.Operation == "cross_node_group_cancel" && !sender) {
+		return nil, errors.New("same-Group request is outside the current exact native caller route")
+	}
 	if request.Operation == "cross_node_group_cancel" {
 		path := "/v2/relay/nodes/" + url.PathEscape(b.nodeID) + "/group/sealed/requests/" + url.PathEscape(request.RequestID) + "/cancel"
-		data, requestErr := b.nodeHTTP(http.MethodPost, path, []byte("{}"))
-		if requestErr != nil {
-			return nil, requestErr
+		data, err := b.nodeHTTP(http.MethodPost, path, []byte("{}"))
+		if err != nil {
+			return nil, err
 		}
-		err = decodeStrictBridgeJSON(data, &status)
-	} else {
-		current, fetchErr := b.fetchCrossNodeGroupRequest(request.RequestID)
-		if fetchErr != nil {
-			return nil, fetchErr
+		var cancelled store.FabricRequest
+		if err := decodeStrictBridgeJSON(data, &cancelled); err != nil {
+			return nil, err
 		}
-		status = *current
-	}
-	if err != nil || status.RequestID != request.RequestID ||
-		status.SenderGroupID != request.GroupID || status.ReceiverGroupID != request.GroupID ||
-		status.VisibilityPolicyRef != store.SameGroupSealedV1DataScope ||
-		(status.SenderEndpointID != card.EndpointID && status.ReceiverEndpointID != card.EndpointID) {
-		return nil, errors.New("Hub returned a same-Group request outside the current native route")
+		// The response must retain the exact route authorized before mutation.
+		if cancelled.RequestID != status.RequestID || cancelled.MessageID != status.MessageID || cancelled.SenderEndpointID != status.SenderEndpointID || cancelled.SenderPrincipalID != status.SenderPrincipalID || cancelled.SenderBindingID != status.SenderBindingID || cancelled.SenderBindingEpoch != status.SenderBindingEpoch || cancelled.ReceiverEndpointID != status.ReceiverEndpointID || cancelled.ReceiverBindingID != status.ReceiverBindingID || cancelled.ReceiverBindingEpoch != status.ReceiverBindingEpoch {
+			return nil, errors.New("Hub cancellation changed request route")
+		}
+		status = cancelled
 	}
 	return &crossNodeGroupResult{
 		MessageID: status.MessageID, RequestID: status.RequestID,

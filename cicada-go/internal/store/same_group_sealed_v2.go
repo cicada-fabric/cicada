@@ -210,7 +210,7 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 	}
 	if sender.GroupID != groupID || receiver.GroupID != groupID ||
 		sender.OwnerID == "" || sender.OwnerID != receiver.OwnerID ||
-		sender.NodeID == receiver.NodeID || sender.Grant.Manifest.HubID != hubID ||
+		sender.Grant.Manifest.HubID != hubID ||
 		receiver.Grant.Manifest.HubID != hubID ||
 		sender.Grant.Manifest.GroupRevision != receiver.Grant.Manifest.GroupRevision {
 		return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
@@ -1421,8 +1421,7 @@ func authorizeSameGroupSealedV1RequestTx(tx *sql.Tx, credentialDigest,
 	receiverNodeID, receiverOwnerID, err := readSameGroupSealedV1HistoricalNodeTx(tx,
 		request.ReceiverEndpointID, request.ReceiverPrincipalID,
 		request.ReceiverBindingID, request.ReceiverBindingEpoch)
-	if err != nil || senderOwnerID == "" || senderOwnerID != receiverOwnerID ||
-		senderNodeID == receiverNodeID {
+	if err != nil || senderOwnerID == "" || senderOwnerID != receiverOwnerID {
 		return nil, ErrSameGroupSealedV1NotFound
 	}
 	if senderOnly {

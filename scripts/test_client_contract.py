@@ -99,6 +99,66 @@ class ContractBundleTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "BROADCAST-purpose"):
                 contract.read_contract(root)
 
+    def test_group_directory_permission_requires_flag_and_current_CAS(self):
+        for old, new in (
+                ("required: [group_id, membership_id, enabled, expected_membership_version]",
+                 "required: [group_id, membership_id, expected_membership_version]"),
+                ("expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}",
+                 "expected_membership_version: {type: integer, minimum: 0}")):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                text = path.read_text()
+                start = text.index("    ClientTopologySetDirectoryPermission:")
+                path.write_text(text[:start] + text[start:].replace(old, new, 1))
+                with self.assertRaisesRegex(ValueError, "Group directory permission flag/CAS schema drift"):
+                    contract.read_contract(root)
+
+    def test_group_directory_permission_snapshot_and_action_cannot_drift(self):
+        for marker in ("directory_permission_enabled", "membership.set_directory_permission"):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                path.write_text(path.read_text().replace(marker, "synthetic_wrong_field"))
+                with self.assertRaisesRegex(ValueError, "Group directory permission action/projection/scope drift"):
+                    contract.read_contract(root)
+
+    def test_link_client_proof_is_bundled_and_checked(self):
+        self.assertIn("cicada-go/internal/e2ee/testdata/link-client-proof-v2.json", self.files)
+        self.assertIn("docs/client-link-proof-evidence.md", self.files)
+        vector = json.loads(self.files["cicada-go/internal/e2ee/testdata/link-client-proof-v2.json"])
+        self.assertEqual([s["side"] for s in vector["statuses"]], ["SOURCE", "TARGET"])
+
+    def test_link_client_proof_rejects_missing_side_or_mismatched_version(self):
+        for change in ("side", "version", "proof", "domain"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "cicada-go/internal/e2ee/testdata/link-client-proof-v2.json"
+                vector = json.loads(path.read_text())
+                if change == "side":
+                    vector["statuses"].pop()
+                elif change == "version":
+                    vector["statuses"][1]["evidence"]["link_version"] += 1
+                elif change == "proof":
+                    vector["statuses"][0]["evidence"]["signed_proof"] = "e30="
+                else:
+                    vector["grant_domain"] = "wrong-domain"
+                path.write_text(json.dumps(vector))
+                with self.assertRaises((ValueError, KeyError)):
+                    contract.read_contract(root)
+
+    def test_link_client_proof_schema_cannot_omit_current_public_key_or_trust(self):
+        for old, new in (("owner_key_state: {const: ACTIVE}", "owner_key_state: {type: string}"),
+                         ("owner_key_version: {type: integer, minimum: 1}", "owner_key_version: {type: integer, minimum: 0}")):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                text = path.read_text()
+                start = text.index("    CommunicationLinkKeyGrantEvidence:")
+                path.write_text(text[:start] + text[start:].replace(old, new, 1))
+                with self.assertRaisesRegex(ValueError, "Client Link proof evidence schema/trust drift"):
+                    contract.read_contract(root)
+
     def test_unsafe_archive_is_never_extracted(self):
         for name, kind in (("../outside", tarfile.REGTYPE), (contract.CATALOG, tarfile.SYMTYPE)):
             with self.subTest(name=name, kind=kind):

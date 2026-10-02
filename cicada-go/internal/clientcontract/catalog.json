@@ -1,6 +1,6 @@
 {
   "catalog_schema_version": 1,
-  "contract_revision": "client-hub-v1.6.1",
+  "contract_revision": "client-hub-v1.6.3",
   "wire_version": 1,
   "rpc_route": "/v2/client/rpc",
   "operations": [
@@ -20,9 +20,9 @@
     {"id":"link.invite_accept","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-invite-accept","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-invite-accept","boundary":"authenticated_owner"},
     {"id":"link.invite_create","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-invite-create","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-invite-create","boundary":"authenticated_owner"},
     {"id":"link.invite_preview","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-invite-preview","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-invite-preview","boundary":"authenticated_owner"},
-    {"id":"link.key_grant","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-grant","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-grant","boundary":"current_link_side"},
-    {"id":"link.key_grants","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-grants","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-grants","boundary":"current_link_side"},
-    {"id":"link.key_manifest","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-manifest","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-manifest","boundary":"current_link_side"},
+    {"id":"link.key_grant","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-grant","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-grant","request_schema":"ClientLinkKeyGrantRequest","result_schema":"CommunicationLinkKeyGrantStatus","boundary":"current_link_side"},
+    {"id":"link.key_grants","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-grants","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-grants","request_schema":"ClientLinkKeyGrantsRequest","result_schema":"CommunicationLinkKeyGrantStatusList","boundary":"current_link_side"},
+    {"id":"link.key_manifest","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-key-manifest","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-key-manifest","request_schema":"ClientLinkKeyManifestRequest","result_schema":"CommunicationLinkKeyManifest","boundary":"current_link_side"},
     {"id":"link.list","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-list","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-list","boundary":"authenticated_owner"},
     {"id":"link.review_policy_grant","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-review-policy-grant","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-review-policy-grant","boundary":"current_link_side_owner_proof","request_schema":"LinkReviewPolicyGrantRequest","result_schema":"LinkReviewPolicyStatusResult"},
     {"id":"link.review_policy_preview","method":"POST","roles":["manager","external"],"request_ref":"docs/client-hub-wire-v1.md#rpc-op-link-review-policy-preview","result_ref":"docs/client-hub-wire-v1.md#rpc-result-link-review-policy-preview","boundary":"current_link_side_policy_preview","request_schema":"LinkReviewPolicyPreviewRequest","result_schema":"LinkReviewPolicyPreviewResult"},

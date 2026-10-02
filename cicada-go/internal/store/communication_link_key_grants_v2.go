@@ -23,14 +23,41 @@ const (
 )
 
 type CommunicationLinkKeyGrantStatus struct {
-	LinkID         string `json:"link_id"`
-	Side           string `json:"side"`
-	OwnerID        string `json:"owner_id"`
-	KeyID          string `json:"key_id,omitempty"`
-	ManifestDigest string `json:"manifest_digest,omitempty"`
-	Accepted       bool   `json:"accepted"`
-	AcceptedAt     string `json:"accepted_at,omitempty"`
-	CurrentStatus  string `json:"current_status"`
+	LinkID         string                             `json:"link_id"`
+	Side           string                             `json:"side"`
+	OwnerID        string                             `json:"owner_id"`
+	KeyID          string                             `json:"key_id,omitempty"`
+	ManifestDigest string                             `json:"manifest_digest,omitempty"`
+	Accepted       bool                               `json:"accepted"`
+	AcceptedAt     string                             `json:"accepted_at,omitempty"`
+	CurrentStatus  string                             `json:"current_status"`
+	Evidence       *CommunicationLinkKeyGrantEvidence `json:"evidence,omitempty"`
+}
+
+// CommunicationLinkKeyGrantEvidence is bounded public discovery evidence for one
+// accepted side, verified with its manifest and current Owner key in one snapshot.
+// Clients must match OwnerPublicIdentity to an independently trusted key or pin;
+// this Hub response does not establish independent trust, routing or consumption.
+type CommunicationLinkKeyGrantEvidence struct {
+	LinkVersion         int64               `json:"link_version"`
+	ContractDigest      string              `json:"contract_digest"`
+	ManifestDigest      string              `json:"manifest_digest"`
+	OwnerKeyID          string              `json:"owner_key_id"`
+	OwnerPublicIdentity e2ee.PublicIdentity `json:"owner_public_identity"`
+	OwnerKeyState       string              `json:"owner_key_state"`
+	OwnerKeyVersion     int64               `json:"owner_key_version"`
+	SignedProof         []byte              `json:"signed_proof"`
+	VerifiedAt          string              `json:"verified_at"`
+}
+
+func keyGrantEvidence(manifest *CommunicationLinkKeyManifest, key *OwnerApprovalKey,
+	proof []byte, at time.Time) *CommunicationLinkKeyGrantEvidence {
+	return &CommunicationLinkKeyGrantEvidence{
+		LinkVersion: manifest.LinkVersion, ContractDigest: manifest.ContractDigest, ManifestDigest: manifest.Digest,
+		OwnerKeyID: key.KeyID, OwnerPublicIdentity: key.Public, OwnerKeyState: key.State,
+		OwnerKeyVersion: key.Version, SignedProof: append([]byte(nil), proof...),
+		VerifiedAt: at.Format(time.RFC3339Nano),
+	}
 }
 
 type storedCommunicationLinkKeyGrant struct {
@@ -103,7 +130,7 @@ WHERE owner_id = ? AND key_id = ?`, ownerID, keyID))
 	if err != nil {
 		return nil, err
 	}
-	if key.State != OwnerApprovalKeyActive {
+	if key.State != OwnerApprovalKeyActive || key.Version <= 0 {
 		return nil, ErrOwnerApprovalKeyConflict
 	}
 	verified, err := e2ee.VerifyOwnerLinkKeyGrant(signedProof, key.Public, ownerID,
@@ -131,7 +158,9 @@ WHERE owner_id = ? AND key_id = ?`, ownerID, keyID))
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-		return keyGrantStatus(prior, CommunicationLinkKeyGrantAccepted), nil
+		status := keyGrantStatus(prior, CommunicationLinkKeyGrantAccepted)
+		status.Evidence = keyGrantEvidence(manifest, key, prior.proof, now)
+		return status, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -151,10 +180,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, link.ID, side, ownerID, keyID, link.Vers
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return keyGrantStatus(storedCommunicationLinkKeyGrant{
+	status := keyGrantStatus(storedCommunicationLinkKeyGrant{
 		linkID: link.ID, side: side, ownerID: ownerID, keyID: keyID,
 		manifestDigest: manifest.Digest, acceptedAt: stamp,
-	}, CommunicationLinkKeyGrantAccepted), nil
+	}, CommunicationLinkKeyGrantAccepted)
+	status.Evidence = keyGrantEvidence(manifest, key, signedProof, now)
+	return status, nil
 }
 
 func (s *Store) GetCommunicationLinkKeyGrantStatuses(linkID, requesterOwnerID string) ([]CommunicationLinkKeyGrantStatus, error) {
@@ -208,6 +239,11 @@ FROM communication_links_v2 WHERE id = ?`, linkID))
 			return nil, err
 		}
 		status := keyGrantStatus(grant, CommunicationLinkKeyGrantAccepted)
+		if grant.ownerID != ownerID || grant.linkID != link.ID || grant.side != side || len(grant.proof) == 0 || len(grant.proof) > 16*1024 {
+			status.CurrentStatus = CommunicationLinkKeyGrantInvalid
+			statuses = append(statuses, *status)
+			continue
+		}
 		if manifestErr != nil || grant.linkVersion != link.Version ||
 			grant.contractDigest != link.ContractDigest || grant.manifestDigest != manifest.Digest {
 			status.CurrentStatus = CommunicationLinkKeyGrantBindingStale
@@ -223,9 +259,16 @@ WHERE owner_id = ? AND key_id = ?`, grant.ownerID, grant.keyID))
 			continue
 		}
 		if err != nil {
+			var syntaxError *json.SyntaxError
+			var typeError *json.UnmarshalTypeError
+			if errors.Is(err, ErrOwnerApprovalKeyConflict) || errors.As(err, &syntaxError) || errors.As(err, &typeError) {
+				status.CurrentStatus = CommunicationLinkKeyGrantInvalid
+				statuses = append(statuses, *status)
+				continue
+			}
 			return nil, err
 		}
-		if key.State != OwnerApprovalKeyActive {
+		if key.State != OwnerApprovalKeyActive || key.Version <= 0 {
 			status.CurrentStatus = CommunicationLinkKeyGrantOwnerKeyRevoked
 			statuses = append(statuses, *status)
 			continue
@@ -241,11 +284,15 @@ WHERE owner_id = ? AND key_id = ?`, grant.ownerID, grant.keyID))
 			statuses = append(statuses, *status)
 			continue
 		}
-		_, err = e2ee.VerifyOwnerLinkKeyGrant(grant.proof, key.Public,
+		verified, err := e2ee.VerifyOwnerLinkKeyGrant(grant.proof, key.Public,
 			ownerID, link.ID, link.ContractDigest, manifest.Digest, uint64(link.Version),
 			e2ee.OwnerLinkGrantSide(side), now)
-		if err != nil {
+		expiry, expiryErr := time.Parse(time.RFC3339Nano, verified.ExpiresAt)
+		linkExpiry, linkExpiryErr := time.Parse(time.RFC3339, link.ExpiresAt)
+		if err != nil || verified.Nonce != grant.nonce || expiryErr != nil || linkExpiryErr != nil || expiry.After(linkExpiry) {
 			status.CurrentStatus = CommunicationLinkKeyGrantInvalid
+		} else {
+			status.Evidence = keyGrantEvidence(manifest, key, grant.proof, now)
 		}
 		statuses = append(statuses, *status)
 	}

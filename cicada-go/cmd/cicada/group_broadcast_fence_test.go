@@ -39,6 +39,16 @@ func TestGroupBroadcastLocalChildRejectsStaleSnapshotBeforePersistence(t *testin
 	}
 	recipient := snapshot.Recipients[0]
 	opID := groupBroadcastChildOperationID(snapshot.BroadcastID, recipient.EndpointID)
+	// Seed the immutable historical child through the pre-fallback primitive.
+	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.stateDir, f.nodeID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	legacy := localGroupRequest{Version: localGroupProtocolVersion, Operation: "local_send", Harness: request.Harness, NativeSessionID: request.NativeSessionID, NodeID: request.NodeID, Workspace: request.Workspace, SessionToken: request.SessionToken, EndpointID: request.EndpointID, PrincipalID: request.PrincipalID, OwnerID: request.OwnerID, GroupID: request.GroupID, BindingID: request.BindingID, BindingEpoch: request.BindingEpoch, OperationID: opID, IdempotencyKey: opID, Target: recipient.EndpointID, Body: request.Body}
+	if _, err := f.bridge.submitLocalGroupMessage(ledger, legacy, &groupBroadcastDeliveryFence{source: snapshot.Source, recipient: recipient}); err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		name   string
 		mutate func(*store.SameGroupBroadcastV2Endpoint)
@@ -58,14 +68,9 @@ func TestGroupBroadcastLocalChildRejectsStaleSnapshotBeforePersistence(t *testin
 			}
 		})
 	}
-	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(f.stateDir, f.nodeID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ledger.Close()
 	pending, err := ledger.PendingAll(context.Background(), 8)
-	if err != nil || len(pending) != 0 {
-		t.Fatalf("rejected broadcast entered the delivery ledger: count=%d err=%v", len(pending), err)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("rejected replay changed the historical delivery ledger: count=%d err=%v", len(pending), err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		if _, err := f.bridge.sendLocalGroupBroadcastChild(request, snapshot.Source, recipient, opID); err != nil {

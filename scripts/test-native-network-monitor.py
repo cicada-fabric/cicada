@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import stat
@@ -25,6 +26,30 @@ GO = "golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be90
 HUB_BASE = "sha256:df7a7f47404e127052a46899be7060539b57196a99a8042e2b853e8c6bdb8589"
 TOOLS = ("cicada_network_join", "cicada_join", "cicada_regroup_propose")
 MONITOR_GRANTS = ["artifact.share", "federation.represent", "task.read", "task.verify"]
+
+
+image_spec = importlib.util.spec_from_file_location("native_image_evidence", Path(__file__).with_name("native_image_evidence.py"))
+image_evidence = importlib.util.module_from_spec(image_spec)
+image_spec.loader.exec_module(image_evidence)
+read_clean_producer = image_evidence.read_clean_producer
+check_clean_producer = image_evidence.check_clean_producer
+check_clean_image = image_evidence.check_clean_image
+check_hub_provenance = image_evidence.check_hub_provenance
+
+def check_matching_preflight(prior, result):
+    if (prior.get("status") != "PREFLIGHT_PASS_NATIVE_NOT_RUN" or prior.get("terminal_exit_code") != 0 or
+            prior.get("models_invoked") != 0 or prior.get("native_model_turn_attempts") != 0 or
+            prior.get("cleanup_owned_resources") is not True or prior.get("source_unchanged_during_gate") is not True or
+            prior.get("build", {}).get("source") != result["build"]["source"]):
+        raise RuntimeError("successful_matching_nonpaid_preflight_required")
+    keys = ("acceptance_mode", "script_sha256", "shared_driver_sha256", "cicada_binary_sha256",
+            "operator_binary_sha256", "runtime_image_id", "go_image_id", "image_evidence_helper_sha256")
+    if result["acceptance_mode"] == "exact-clean-image":
+        keys += ("hub_image_id", "producer_metadata_sha256")
+    else:
+        keys += ("hub_base_image_id",)
+    if any(not result.get(key) or prior.get(key) != result[key] for key in keys):
+        raise RuntimeError("preflight_driver_binary_runtime_image_mismatch")
 
 
 def check_send_denied(result):
@@ -80,12 +105,15 @@ class Gate(native.Gate):
     def __init__(self, args):
         super().__init__(args)
         self.node_letters = "a"
-        self.result.update(schema="cicada.native-network-monitor.v1", native_model_turn_attempts=0,
+        self.result.update(schema="cicada.native-network-monitor.v1", native_model_turn_attempts=0, native_turn_budget=3,
                            operator="synthetic disposable Owner; encrypted wire v1; no Android UI", models_invoked=0,
                            runtime_queue_consumption="CONSUMPTION_UNCONFIRMED; no Group messages are sent in this proposal gate",
                            limits=["one Docker Node on one physical host", "controlled native resumes; busy wake NOT_RUN",
                                    "Android, physical device and public HTTPS NOT_RUN", "proposal only; delegation execution NOT_RUN"])
         self.result["script_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        self.result["shared_driver_sha256"] = hashlib.sha256(Path(native.__file__).read_bytes()).hexdigest()
+        self.result["image_evidence_helper_sha256"] = hashlib.sha256(Path(image_evidence.__file__).read_bytes()).hexdigest()
+        self.result["acceptance_mode"] = "exact-clean-image" if args.exact_clean_image_metadata else "derived-source-fixture"
         self.evidence.joinpath("executed-driver.py").rename(self.evidence / "executed-shared-driver.py")
         with os.fdopen(os.open(self.evidence / "executed-driver.py", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
             output.write(Path(__file__).read_bytes())
@@ -104,13 +132,16 @@ class Gate(native.Gate):
 
     def go(self, *args, log=None, timeout=300):
         return self.docker("run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
-                           "-v", str(self.repo / "cicada-go") + ":/src", "-v", str(self.root) + ":/fixture",
+                           "-v", str(self.repo / "cicada-go") + ":/src:ro", "-v", str(self.root) + ":/fixture",
                            "-v", "/home/zyf/CICADA/.cicada-data/m1-gomodcache:/gomodcache:ro",
                            "-v", "/home/zyf/.cache/go-build:/gocache", "-w", "/src", "-e", "GOTOOLCHAIN=local",
                            "-e", "GOPROXY=off", "-e", "GOMODCACHE=/gomodcache", "-e", "GOCACHE=/gocache",
                            "-e", "CGO_ENABLED=0", "--entrypoint", "go", GO, *args, log=log, timeout=timeout)
 
     def build(self):
+        if self.args.exact_clean_image_metadata:
+            self.build_exact_clean_image()
+            return
         self.step("offline_frozen_source_build")
         metadata_path = self.root / "source.json"
         self.command([str(self.repo / "scripts/build-hub-image.sh"), "--source-info-only", "--metadata-file", str(metadata_path)])
@@ -142,11 +173,46 @@ class Gate(native.Gate):
         self.result["go_image_id"] = self.inspect("image", GO)["Id"]
         self.result["runtime_image_id"] = self.inspect("image", self.args.runtime_image)["Id"]
         self.test_image = GO
+        self.result["binary_provenance"] = {"origin": "rebuilt-derived-fixture", "reported_dirty": True}
+        self.require_preflight()
+
+    def require_preflight(self):
         if self.args.run_native:
-            prior = json.loads(Path(self.args.preflight_result).read_text())
-            if prior.get("status") != "PREFLIGHT_PASS_NATIVE_NOT_RUN" or prior.get("build", {}).get("source") != source or prior.get("script_sha256") != self.result["script_sha256"] or prior.get("cicada_binary_sha256") != self.result["cicada_binary_sha256"] or prior.get("runtime_image_id") != self.result["runtime_image_id"]:
-                raise RuntimeError("successful_preflight_exact_source_driver_binary_runtime_required")
-            self.result["preflight_result_sha256"] = hashlib.sha256(Path(self.args.preflight_result).read_bytes()).hexdigest()
+            path = Path(self.args.preflight_result)
+            data = path.read_bytes()
+            prior = json.loads(data)
+            check_matching_preflight(prior, self.result)
+            self.result["preflight_result_sha256"] = hashlib.sha256(data).hexdigest()
+
+    def build_exact_clean_image(self):
+        self.step("verify_exact_clean_delivered_image")
+        metadata = read_clean_producer(self.args.exact_clean_image_metadata, self.args.exact_clean_image_metadata_sha256)
+        snapshot = self.root / "fixture-source.json"
+        self.command([str(self.repo / "scripts/build-hub-image.sh"), "--source-info-only", "--metadata-file", str(snapshot)])
+        current = json.loads(snapshot.read_text())["source"]
+        image_id = check_clean_producer(metadata, current)
+        check_clean_image(metadata, self.inspect("image", image_id))
+        self.hub_image = image_id
+        self.test_image = GO
+        self.result["build"] = metadata
+        self.result["fixture_source_snapshot"] = current
+        self.result["producer_metadata_sha256"] = self.args.exact_clean_image_metadata_sha256
+        self.result["hub_image_id"] = image_id
+        self.result["go_image_id"] = self.inspect("image", GO)["Id"]
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.args.runtime_image):
+            raise RuntimeError("immutable_runtime_image_required")
+        self.result["runtime_image_id"] = self.inspect("image", self.args.runtime_image)["Id"]
+        if self.result["runtime_image_id"] != self.args.runtime_image:
+            raise RuntimeError("immutable_runtime_image_mismatch")
+        binary_sha, provenance = image_evidence.extract_image_binary(self, image_id)
+        self.result["cicada_binary_sha256"] = binary_sha
+        self.result["binary_provenance"] = provenance
+        self.go("build", "-trimpath", "-o", "/fixture/operator", "./cmd/cicada-native-network-fixture", log="operator-build.log")
+        self.root.joinpath("operator").chmod(0o700)
+        self.result["operator_binary_sha256"] = hashlib.sha256(self.root.joinpath("operator").read_bytes()).hexdigest()
+        self.result["operator_provenance"] = {"fixture_only": True, "source_fingerprint": current["source_fingerprint"],
+                                               "go_image_id": self.result["go_image_id"]}
+        self.require_preflight()
 
     def operator(self, action, *args):
         return self.docker("run", "--rm", "--network", "host" if action == "rpc" else "none", "--user", f"{os.getuid()}:{os.getgid()}",
@@ -229,8 +295,7 @@ class Gate(native.Gate):
                 time.sleep(.2)
         else:
             raise RuntimeError("owned_hub_not_ready")
-        if health.get("source_fingerprint") != self.result["build"]["source"]["source_fingerprint"] or health.get("dirty") is not True:
-            raise RuntimeError("hub_actual_build_provenance_mismatch")
+        check_hub_provenance(health, self.result)
         if mode == "fabric":
             request = urllib.request.Request(self.owner_url + "/v1/machines", headers={"Authorization": "Bearer " + self.root.joinpath("hub.env").read_text().strip().split("=", 1)[1]})
             try:
@@ -588,7 +653,7 @@ print(json.dumps(statuses))
                 self.command([str(self.repo / "scripts/build-hub-image.sh"), "--source-info-only", "--metadata-file", str(self.evidence / "source-after.json")],
                              log="source-after-capture.log")
                 after = json.loads(self.evidence.joinpath("source-after.json").read_text())["source"]
-                self.result["source_unchanged_during_gate"] = after == self.result["build"]["source"]
+                self.result["source_unchanged_during_gate"] = after == self.result.get("fixture_source_snapshot", self.result["build"]["source"])
                 if not self.result["source_unchanged_during_gate"]:
                     self.result.update(status="FAIL", failure_phase="source_after_gate", failure_class="source_changed_during_gate")
             except Exception as error:
@@ -608,10 +673,16 @@ def main():
     parser.add_argument("--result-dir", required=True)
     parser.add_argument("--runtime-image", default=native.RUNTIME)
     parser.add_argument("--hub-base-image", default=HUB_BASE)
+    parser.add_argument("--exact-clean-image-metadata", help="trusted standard producer build receipt; use its immutable image directly")
+    parser.add_argument("--exact-clean-image-metadata-sha256", help="independently supplied complete producer receipt SHA-256")
     parser.add_argument("--credential-file", default="/gpu1-share/data/cicada/secrets/cicada.env")
     parser.add_argument("--run-native", action="store_true")
     parser.add_argument("--preflight-result", help="successful matching source/driver/binary/runtime preflight")
     args = parser.parse_args()
+    if bool(args.exact_clean_image_metadata) != bool(args.exact_clean_image_metadata_sha256):
+        parser.error("exact-clean-image requires metadata and its SHA-256")
+    if args.exact_clean_image_metadata and args.hub_base_image != HUB_BASE:
+        parser.error("exact-clean-image cannot select a replacement Hub base image")
     if args.run_native and not args.preflight_result:
         parser.error("--run-native requires --preflight-result")
     gate = Gate(args)

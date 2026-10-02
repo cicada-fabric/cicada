@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"io"
 	"log"
 	"math/big"
@@ -45,6 +46,25 @@ func TestMain(m *testing.M) {
 	if err := os.MkdirAll(base, 0700); err != nil {
 		log.Print("fixture setup failed")
 		os.Exit(1)
+	}
+	// The CSR-only checkpoint neither generates a CA nor issues certificates.
+	// Run only TestTLSCSR selectors in this mode; transport gates retain their
+	// existing synthetic chain fixture setup below.
+	if os.Getenv("PQTLS_TEST_CSR_ONLY") == "1" {
+		flag.Parse()
+		if flag.Lookup("test.run").Value.String() != "^TestTLSCSR" {
+			log.Print("CSR-only mode requires exactly -test.run=^TestTLSCSR; other selectors are NOT_RUN")
+			os.Exit(1)
+		}
+		os.Exit(m.Run())
+	}
+	if os.Getenv("PQTLS_TEST_CERTIFICATE_ONLY") == "1" {
+		flag.Parse()
+		if flag.Lookup("test.run").Value.String() != "^TestTLSCertificate" {
+			log.Print("Certificate-only mode requires exactly -test.run=^TestTLSCertificate; other selectors are NOT_RUN")
+			os.Exit(1)
+		}
+		os.Exit(m.Run())
 	}
 	var err error
 	fixtureDirectory, err = os.MkdirTemp(base, "synthetic-tls-")

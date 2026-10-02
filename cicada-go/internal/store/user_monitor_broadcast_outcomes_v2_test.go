@@ -466,3 +466,59 @@ func TestUserMonitorBroadcastV2OutcomeReportBoundsBatch(t *testing.T) {
 		t.Fatalf("batch bound failure changed seeded outcomes: rows=%d err=%v", len(rows), err)
 	}
 }
+
+func TestUserMonitorBroadcastV2SameNodeRelayEvidenceRequiresExactPersistence(t *testing.T) {
+	for _, scenario := range []string{"exact", "not persisted", "missing payload", "corrupt payload", "missing outbox", "wrong binding", "wrong envelope"} {
+		t.Run(scenario, func(t *testing.T) {
+			f, r, _ := authorizeUserMonitorOutcomeFixture(t)
+			report := userMonitorOutcomeResult(t, r, 0, UserMonitorBroadcastV2OutcomeAccepted, UserMonitorBroadcastV2EvidenceRelay, "")
+			if report.EndpointID != f.sealed.sameNode.id {
+				t.Fatal("fixture ordinal0 is not sameNode recipient")
+			}
+			if scenario != "not persisted" {
+				ciphertext := f.sealed.seal(t, f.sealed.source, f.sealed.sameNode, f.sealed.sourceNode.nodeCredential, report.MessageID, "SEND", "", "")
+				if _, err := f.sealed.store.EnqueueSameGroupSealedV1Send(SameGroupSealedV1Send{NodeCredentialDigest: f.sealed.sourceNode.nodeCredential, GroupID: r.GroupID,
+					SourceEndpointID: f.sealed.source.id, TargetEndpointID: f.sealed.sameNode.id, MessageID: report.MessageID, IdempotencyKey: report.ChildOperationID,
+					DataScope: SameGroupSealedV1DataScope, Ciphertext: ciphertext}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var query string
+			switch scenario {
+			case "missing payload":
+				query = "DELETE FROM relay_v2_message_payloads WHERE message_id=?"
+			case "corrupt payload":
+				query = "UPDATE relay_v2_message_payloads SET ciphertext=X'00' WHERE message_id=?"
+			case "missing outbox":
+				query = "DELETE FROM relay_v2_outbox WHERE message_id=?"
+			case "wrong binding":
+				query = "UPDATE relay_v2_message_security SET receiver_binding_epoch=receiver_binding_epoch+1 WHERE message_id=?"
+			case "wrong envelope":
+				query = "UPDATE fabric_messages SET kind='reply' WHERE id=?"
+			}
+			if query != "" {
+				if _, err := f.sealed.store.db.Exec(query, report.MessageID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := f.sealed.store.GetUserMonitorBroadcastV2OutcomeStatus(r.confirmRequestID, r.PreviewID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := f.sealed.store.ReportUserMonitorBroadcastV2RecipientOutcomes(userMonitorOutcomeInput(f, r, report))
+			if scenario == "exact" {
+				if err != nil || got[0].State != UserMonitorBroadcastV2OutcomeAccepted || got[0].Evidence != UserMonitorBroadcastV2EvidenceRelay {
+					t.Fatalf("sameNode persisted Relay was not authoritative: %+v %v", got, err)
+				}
+			} else {
+				if !errors.Is(err, ErrUserMonitorBroadcastV2Denied) {
+					t.Fatalf("inexact Relay evidence accepted: %v", err)
+				}
+				after, err := f.sealed.store.GetUserMonitorBroadcastV2OutcomeStatus(r.confirmRequestID, r.PreviewID)
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatal("denied Relay evidence changed durable outcome")
+				}
+			}
+		})
+	}
+}

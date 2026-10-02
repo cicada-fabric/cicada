@@ -361,6 +361,7 @@ func (b *machineAgentJoinBridge) monitorBroadcast(request monitorBroadcastReques
 		}
 		return nil
 	}
+	transportEvidence := make(map[string]string)
 	result.Progress, err = fanoutGroupBroadcastBatch(broadcast, &delivery.Snapshot, b.nodeID,
 		func(recipient store.SameGroupBroadcastV2Endpoint, childID string) (string, error) {
 			if err := currentApproval(); err != nil {
@@ -372,9 +373,17 @@ func (b *machineAgentJoinBridge) monitorBroadcast(request monitorBroadcastReques
 			if err := currentApproval(); err != nil {
 				return "", err
 			}
-			return b.sendRemoteGroupBroadcastChild(broadcast, delivery.Snapshot.Source, recipient, childID)
+			messageID, transport, sendErr := b.sendGroupBroadcastChildWithEvidence(broadcast, delivery.Snapshot.Source, recipient, childID)
+			if sendErr == nil {
+				transportEvidence[recipient.EndpointID] = transport
+			}
+			return messageID, sendErr
 		})
 	if err == nil {
+		for i := range result.Progress.Recipients {
+			child := &result.Progress.Recipients[i]
+			child.transportEvidence = transportEvidence[child.EndpointID]
+		}
 		err = b.reportMonitorBroadcastOutcomes(request, &delivery.Snapshot, result.Progress)
 	}
 	return result, err

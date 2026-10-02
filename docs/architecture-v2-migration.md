@@ -1,28 +1,12 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-02 current migration boundary — schema and Client wire unchanged
+## 2026-10-02 current migration boundary — v1.6.3; no Hub schema migration
 
-Main integrates retained-certificate lifetime checks and the recovery metadata
-query over `06d0a58` (runtime source `648162e…`). Focused receipts retain their
-tested sources; the query keeps quarantine held and never re-executes work.
-Current integrated Main source is `e64f2449…`. Full Go QA passed on the
-pre-policy-fix source `97a008…`, with explicit skips retained; its separate
-799-input proof connects only `97a008…` to the pre-policy-fix shipping baseline
-`bab6569…`, and does not cover the later policy fix. Focused shipping script
-checks retain their `bab6569…` attribution, with artifact skips retained. Clean package/image and
-exact-image acceptance are NOT_RUN. Its real Agent observation covers startup/poll/RSS only;
-ASK/heartbeat/revoke ran in the driver context. Historical `fec658…` is retained.
+Clean 144 (`144e079`, standard source `e64f2449…`) delivered on Client v1.6.1/wire 1/55 operations and Hub schema v55. Its artifacts and Client delivery remain attributed in the [validation record](v01-clean-artifact-native-checkpoint-validation.md).
 
-Client contract `client-hub-v1.6.1`, wire 1, 55 operations and Hub schema v55
-are unchanged; Architecture v2.3/v0.1 remain PARTIAL. The [status table](architecture-v2-status.md)
-owns source inventories, focused receipts and independent device-layer limits.
+Current integrated Main source-input fingerprint `72ec78fb9e03c647f73bf611e52802301b5db7831e32485b8f3d444240aff8b4` on Git HEAD `144e079` (dirty tree) uses candidate contract v1.6.3/catalog `5ab7cda2b9583d102c21113e1a3c0cdeb6764f3751154cf638006ad7036276bf`, still wire 1, 55 operations and schema v55. Its focused six-package normal gate passed 49 top + 128 subtests with no skips/failures; affected vet/build, contract check/export/verify and Python 15 + 17 subtests passed. Before/after source and 835 standard / 829 Go inputs match. See the [receipt](../.cicada-data/combined-link-proof-20261002/receipt.json), SHA `6416728daca6fdf4e95f0b0fc60f06ad6dd4ca77ed910ab7c1f2ba90fe8c12e7`. This is not a full/tagged/race rerun. Clean package/image gates and current Client selectors remain pending.
 
-The recovery operation has a separate authenticated application domain inside the
-existing Node-Control RPC route; ordinary stale sequences remain denied. It adds
-no Hub migration, does not reset keys/counters, and does not restore authority.
-Archive v2 provider/native-history sidecars and writer-lock metadata remain held
-under restored quarantine until independent reconciliation and confirmed-stop
-conditions are satisfied. No product clear/reconnect command is supplied.
+The seven-path Monitor/ACK correction passed separate focused normal/race checks; the 14-file Link-proof patch has separate component evidence on `144e079 + Directory15`. Those receipts and limits are in the [validation record](v01-clean-artifact-native-checkpoint-validation.md). The `cb4d` full Go/tagged results remain attached to that earlier source, and its broad Store race timeout remains FAIL. No Hub migration is introduced; no clean-144 receipt transfers.
 
 ## Historical 2026-10-01 Network native identity binding authorization correction (no migration)
 

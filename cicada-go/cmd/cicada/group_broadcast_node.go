@@ -46,11 +46,13 @@ type groupBroadcastRequest struct {
 }
 
 type groupBroadcastRecipientResult struct {
-	EndpointID  string `json:"endpoint_id"`
-	NodeID      string `json:"node_id"`
-	MessageID   string `json:"message_id,omitempty"`
-	State       string `json:"state"`
-	FailureCode string `json:"failure_code,omitempty"`
+	// Node-derived transport from the verified dispatch; never serialized or supplied by a caller.
+	transportEvidence string
+	EndpointID        string `json:"endpoint_id"`
+	NodeID            string `json:"node_id"`
+	MessageID         string `json:"message_id,omitempty"`
+	State             string `json:"state"`
+	FailureCode       string `json:"failure_code,omitempty"`
 }
 
 type groupBroadcastResult struct {
@@ -349,11 +351,9 @@ func fanoutGroupBroadcastBatch(request groupBroadcastRequest,
 		operationID := groupBroadcastChildOperationID(snapshot.BroadcastID, recipient.EndpointID)
 		var messageID string
 		var err error
-		if recipient.NodeID == sourceNode {
-			messageID, err = sendLocal(recipient, operationID)
-		} else {
-			messageID, err = sendRemote(recipient, operationID)
-		}
+		// Node equality is not native direct eligibility. The Relay bridge also
+		// recovers exact previously persisted local children before creating work.
+		messageID, err = sendRemote(recipient, operationID)
 		if err != nil {
 			child.State = "FAILED"
 			child.FailureCode = "DELIVERY_REJECTED"
@@ -378,28 +378,19 @@ func fanoutGroupBroadcastBatch(request groupBroadcastRequest,
 
 func (b *machineAgentJoinBridge) sendLocalGroupBroadcastChild(request groupBroadcastRequest,
 	source, recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
-	result, err := b.localGroupWithBroadcastFence(localGroupRequest{
-		Version: localGroupProtocolVersion, Operation: "local_send",
-		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
-		NodeID: request.NodeID, Workspace: request.Workspace, SessionToken: request.SessionToken,
-		EndpointID: request.EndpointID, PrincipalID: request.PrincipalID, OwnerID: request.OwnerID,
-		GroupID: request.GroupID, BindingID: request.BindingID, BindingEpoch: request.BindingEpoch,
-		OperationID: operationID, IdempotencyKey: operationID,
-		Target: recipient.EndpointID, Body: request.Body,
-	}, &groupBroadcastDeliveryFence{source: source, recipient: recipient})
-	if err != nil {
-		return "", err
-	}
-	expected, _, _ := localSealedRPCIDs(operationID)
-	if result == nil || result.MessageID != expected || result.TargetEndpointID != recipient.EndpointID ||
-		result.Delivery != "LOCAL_PERSISTED" || result.PayloadMode != "SEALED_V1" {
-		return "", &localSealedSendError{message: "local broadcast child result is uncorrelated", retryable: true}
-	}
-	return result.MessageID, nil
+	// This historical entry also uses Relay for new children. The shared bridge
+	// first authenticates exact old local history without creating or reinjecting it.
+	return b.sendRemoteGroupBroadcastChild(request, source, recipient, operationID)
 }
 
 func (b *machineAgentJoinBridge) sendRemoteGroupBroadcastChild(request groupBroadcastRequest,
 	source, recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, error) {
+	messageID, _, err := b.sendGroupBroadcastChildWithEvidence(request, source, recipient, operationID)
+	return messageID, err
+}
+
+func (b *machineAgentJoinBridge) sendGroupBroadcastChildWithEvidence(request groupBroadcastRequest,
+	source, recipient store.SameGroupBroadcastV2Endpoint, operationID string) (string, string, error) {
 	result, err := b.crossNodeGroupWithBroadcastFence(crossNodeGroupRequest{
 		Version: crossNodeGroupProtocolVersion, Operation: "cross_node_group_send",
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
@@ -410,12 +401,21 @@ func (b *machineAgentJoinBridge) sendRemoteGroupBroadcastChild(request groupBroa
 		IdempotencyKey: operationID, Body: request.Body,
 	}, &groupBroadcastDeliveryFence{source: source, recipient: recipient})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	expected, _, _ := localSealedRPCIDs(operationID)
 	if result == nil || result.MessageID != expected || result.TargetEndpointID != recipient.EndpointID ||
-		result.Delivery != "RELAY_PERSISTED" || result.PayloadMode != "SEALED_V1" {
-		return "", &localSealedSendError{message: "remote broadcast child result is uncorrelated", retryable: true}
+		(result.Delivery != "RELAY_PERSISTED" && result.Delivery != "LOCAL_PERSISTED") || result.PayloadMode != "SEALED_V1" {
+		return "", "", &localSealedSendError{message: "remote broadcast child result is uncorrelated", retryable: true}
 	}
-	return result.MessageID, nil
+	if result.Delivery == "LOCAL_PERSISTED" {
+		switch result.State {
+		case "PENDING", "NODE_INBOX_ACCEPTED":
+		case "REJECTED":
+			return "", "", errors.New("historical local broadcast child was rejected")
+		default:
+			return "", "", &localSealedSendError{message: "historical local broadcast child outcome is uncertain", retryable: true}
+		}
+	}
+	return result.MessageID, result.Delivery, nil
 }

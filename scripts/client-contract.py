@@ -20,6 +20,7 @@ FILES = (
     CATALOG,
     "docs/client-hub-v1.openapi.yaml",
     "docs/client-hub-wire-v1.md",
+    "docs/client-link-proof-evidence.md",
     "docs/android-client-hub-contract.md",
     "docs/client-hub-v13-client-prompt.md",
     "docs/client-hub-development.md",
@@ -31,6 +32,7 @@ FILES = (
     "cicada-go/internal/clientwire/testdata/README.md",
     "cicada-go/internal/clientwire/testdata/client-control-v1.json",
     "cicada-go/internal/e2ee/testdata/endpoint-key-attestation-v1.json",
+    "cicada-go/internal/e2ee/testdata/link-client-proof-v2.json",
     "cicada-go/internal/e2ee/testdata/owner-link-review-policy-proof-v1.json",
     "cicada-go/internal/e2ee/testdata/cross-owner-group-key-v2.json",
     "cicada-go/internal/e2ee/testdata/monitor-broadcast-consent-v2.json",
@@ -110,6 +112,103 @@ def check_link_review_policy_contract(openapi, wire):
         raise ValueError("review policy current/next version semantics drift")
 
 
+def check_group_directory_permission_contract(openapi, wire):
+    action, properties, required = node_schema(openapi, "ClientTopologySetDirectoryPermission")
+    if (properties != {"group_id", "membership_id", "enabled", "expected_membership_version"}
+            or required != properties
+            or "      additionalProperties: false\n" not in action
+            or "enabled: {type: boolean}" not in action
+            or "expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}" not in action):
+        raise ValueError("Group directory permission flag/CAS schema drift")
+    wrapper, properties, required = node_schema(openapi, "TopologySetDirectoryPermissionAction")
+    member, properties_member, required_member = node_schema(openapi, "ClientTopologyMember")
+    if (properties != {"kind", "set_directory_permission"} or required != properties
+            or "      additionalProperties: false\n" not in wrapper
+            or "kind: {const: membership.set_directory_permission}" not in wrapper
+            or "membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'" not in openapi
+            or "directory_permission_enabled" not in properties_member
+            or "directory_permission_enabled" not in required_member
+            or "| `membership.set_directory_permission` |" not in wire
+            or "all of that Principal's joined Endpoints in this Group" not in wire):
+        raise ValueError("Group directory permission action/projection/scope drift")
+
+
+def check_link_client_proof_contract(openapi, wire, vector_data):
+    fields = {"link_version", "contract_digest", "manifest_digest", "owner_key_id",
+              "owner_public_identity", "owner_key_state", "owner_key_version",
+              "signed_proof", "verified_at"}
+    evidence, properties, required = node_schema(openapi, "CommunicationLinkKeyGrantEvidence")
+    status, status_properties, _ = node_schema(openapi, "CommunicationLinkKeyGrantStatus")
+    statuses, _, _ = node_schema(openapi, "CommunicationLinkKeyGrantStatusList")
+    if (properties != fields or required != fields or "evidence" not in status_properties
+            or "owner_key_state: {const: ACTIVE}" not in evidence
+            or "owner_key_version: {type: integer, minimum: 1}" not in evidence
+            or "minItems: 2" not in statuses or "maxItems: 2" not in statuses
+            or "snapshot" not in status or "independently trusted Owner key or pin" not in wire
+            or "MUST NOT auto-trust" not in wire):
+        raise ValueError("Client Link proof evidence schema/trust drift")
+    vector = json.loads(vector_data)
+    def compact(value):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    def raw(value):
+        return base64.b64decode(value, validate=True)
+    domains = {
+        "contract_domain": "cicada/communication-link/proposal/v1\0",
+        "manifest_domain": "cicada/communication-link/key-manifest/v2\0",
+        "attestation_domain": "cicada/fabric/endpoint-key-attestation/v1\0",
+        "grant_domain": "cicada/communication-link/owner-key-grant/v2\0",
+    }
+    if (vector.get("synthetic") is not True
+            or vector.get("warning") != "PUBLIC TEST FIXTURE ONLY; NEVER INITIALIZE A DEPLOYMENT"
+            or any(vector.get(k) != v for k, v in domains.items())):
+        raise ValueError("Client Link proof vector is not synthetic with production domains")
+    manifest = vector["manifest"]
+    claims = {k: manifest[k] for k in ("version", "link_id", "link_version", "contract_digest",
+                                     "contract_canonical", "source", "target")}
+    encoded = compact(claims)
+    contract_input = domains["contract_domain"].encode() + raw(manifest["contract_canonical"])
+    manifest_input = domains["manifest_domain"].encode() + encoded
+    if (raw(vector["manifest_claims_canonical"]) != encoded
+            or raw(vector["contract_signed_input"]) != contract_input
+            or raw(vector["manifest_signed_input"]) != manifest_input
+            or sha256(contract_input) != manifest["contract_digest"]
+            or sha256(manifest_input) != manifest["digest"]):
+        raise ValueError("Client Link proof vector canonical/digest drift")
+    if (len(vector["statuses"]) != 2 or len(vector["grant_signed_inputs"]) != 2
+            or len(vector["attestation_signed_inputs"]) != 2):
+        raise ValueError("Client Link proof vector needs both sides")
+    grant_fields = ("version", "owner_id", "link_id", "contract_digest", "key_binding_digest",
+                    "expected_link_version", "side", "issued_at", "expires_at", "nonce")
+    for i, side_name in enumerate(("source", "target")):
+        side = manifest[side_name]
+        status = vector["statuses"][i]
+        evidence = status["evidence"]
+        proof_bytes = raw(evidence["signed_proof"])
+        proof = json.loads(proof_bytes)
+        attestation = json.loads(raw(side["attestation"]))
+        attestation["signature"] = None
+        grant_claims = {k: proof[k] for k in grant_fields}
+        if (set(evidence) != fields or status["side"] != side_name.upper()
+                or status["current_status"] != "ACCEPTED" or status["accepted"] is not True
+                or status["link_id"] != manifest["link_id"] or status["owner_id"] != side["owner_id"]
+                or evidence["link_version"] != manifest["link_version"]
+                or evidence["contract_digest"] != manifest["contract_digest"]
+                or evidence["manifest_digest"] != manifest["digest"]
+                or evidence["owner_key_id"] != evidence["owner_public_identity"]["id"]
+                or evidence["owner_key_state"] != "ACTIVE" or evidence["owner_key_version"] < 1
+                or evidence["verified_at"] != vector["verification_time"]
+                or proof_bytes != compact(proof)
+                or proof["side"] != status["side"] or proof["owner_id"] != status["owner_id"]
+                or proof["link_id"] != status["link_id"] or proof["version"] != 2
+                or proof["expected_link_version"] != manifest["link_version"]
+                or proof["contract_digest"] != manifest["contract_digest"]
+                or proof["key_binding_digest"] != manifest["digest"]
+                or raw(vector["grant_signed_inputs"][i]) != domains["grant_domain"].encode() + compact(grant_claims)
+                or raw(vector["attestation_signed_inputs"][i]) != domains["attestation_domain"].encode() + compact(attestation)
+                or sha256(raw(side["attestation"])) != side["proof_digest"]):
+            raise ValueError("Client Link proof vector bilateral correlation/bytes drift")
+
+
 def read_contract(root):
     files = {name: (root / name).read_bytes() for name in FILES}
     catalog = json.loads(files[CATALOG])
@@ -135,6 +234,9 @@ def read_contract(root):
         raise ValueError("OpenAPI/catalog contract revision mismatch")
     check_node_pairing_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
     check_link_review_policy_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
+    check_group_directory_permission_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
+    check_link_client_proof_contract(openapi, files["docs/client-hub-wire-v1.md"].decode(),
+                                     files["cicada-go/internal/e2ee/testdata/link-client-proof-v2.json"])
     for operation in operations:
         request_schema = operation.get("request_schema")
         result_schema = operation.get("result_schema")
