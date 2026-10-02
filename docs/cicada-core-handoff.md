@@ -1,5 +1,29 @@
 # CICADA Client integration handoff
 
+## Candidate handoff — explicit Group directory permission
+
+The [candidate preparation record](group-directory-permission-candidate-validation.md)
+documents the read-only v1.6.2 specification, exact existing-topology action,
+independent DTO and confirmation guards, command receipts and remaining release
+inputs. Production entry stays closed. This implementation introduces no RPC
+and does not replace the accepted Core 144e079/v1.6.1 source, APK or runtime
+attribution below. Owner confirmation addresses one Principal's whole Group
+Membership; Join/Monitor roles do not confer `directory.read`. Original pending
+packets and dedicated uncertainty fences remain intact.
+
+Offline Docker checks passed 79 JavaScript tests, TypeScript, lint (zero errors,
+23 existing warnings), four pure Kotlin tests and the unchanged accepted
+contract checker; all final exits were zero. The initial lint failure remains
+separate. Commands, input hashes and full delivery commit are bound in
+`/gpu1-share/data/cicada-client/group-directory-permission-candidate-20261002/client-delivery.redacted.json`.
+
+Core must supply a complete clean archive, full source and immutable image pair
+before the action can be enabled or tested against a real Hub. The candidate
+record includes the precise next acceptance prompt. Native/model, physical
+Android and public HTTPS remain `NOT_RUN` for this slice; no APK or runtime is
+started during preparation. Actual Link status remains a separate fixed-144
+gate awaiting legitimate public selectors and fixture ownership proofs.
+
 ## Active clean target — Core 144e079
 
 The fixed target is `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`,

@@ -1,5 +1,17 @@
 # Client ↔ Hub contract: `client-hub-v1.6.1`
 
+## Candidate extension — explicit Group directory permission
+
+The separately scoped [candidate preparation](group-directory-permission-candidate-validation.md)
+adds no RPC. It prepares `membership.set_directory_permission` within
+`topology.apply`, with required boolean `enabled` and positive Membership CAS
+version, using the explicit snapshot `directory_permission_enabled` flag.
+The subject is one Principal's entire Group Membership, not an individual
+Endpoint. Production UI and native action acceptance remain closed until a
+complete clean v1.6.2 delivery is independently verified. The accepted pins,
+39-operation local policy, sixteen closed RPCs and uncertainty fences below
+remain unchanged. Candidate source does not inherit accepted APK results.
+
 ## Active clean target — Core 144e079
 
 The fixed target is `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`,

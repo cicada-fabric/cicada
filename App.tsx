@@ -14,6 +14,7 @@ import {HubConnections} from './src/components/HubConnections';
 import type {HubConnection} from './src/components/HubConnections';
 import {NetworkKeyConsentPanel} from './src/components/NetworkKeyConsentPanel';
 import {NetworkDiscoveryPanel} from './src/components/NetworkDiscoveryPanel';
+import {GroupDirectoryPermissionPanel} from './src/components/GroupDirectoryPermissionPanel';
 import {RegroupDelegationPanel} from './src/components/RegroupDelegationPanel';
 import {NodePairingPanel} from './src/components/NodePairingPanel';
 import {SharedSpaceConsentPanel} from './src/components/SharedSpaceConsentPanel';
@@ -2363,6 +2364,9 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
             onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />
           <NetworkDiscoveryPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
             publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities} />
+          <GroupDirectoryPermissionPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
+            publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
+            onRefresh={async () => { await refreshHubStatus(); return await refreshTopology(); }} />
           {clientHub.regroupDelegationReady && <RegroupDelegationPanel api={clientHub} status={hubStatus} topology={topologySnapshot}
             publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
             onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />}

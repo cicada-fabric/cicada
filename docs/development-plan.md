@@ -1,5 +1,17 @@
 # CICADA Client development and validation plan
 
+## Candidate implementation — Group directory permission
+
+Prepare the [explicit directory permission flow](group-directory-permission-candidate-validation.md)
+against the read-only v1.6.2 candidate without changing the accepted v1.6.1
+pins. Production entry stays closed. DTO, Owner/scope/version review,
+one-use confirmation and early native refusal are implemented. Offline Docker
+verification passed 79 JavaScript tests, TypeScript, lint and four pure Kotlin
+tests; the formal record preserves the initial lint failure and its correction.
+No APK or runtime is created in this preparation phase. A later complete clean
+contract/image delivery and separate Android acceptance are required to enable
+the action. Existing Link acceptance remains a separate fixed-144 gate.
+
 ## Active acceptance milestone — clean Core 144e079
 
 Use only the immutable Client-Control v1.6.1 pair and public package recorded in

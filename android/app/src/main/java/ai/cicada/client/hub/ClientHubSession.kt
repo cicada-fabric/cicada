@@ -551,6 +551,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
 
     /** Starts one encrypted RPC after persisting sequence and exact request bytes. */
     fun rpc(operation: String, body: JsonObject, operationId: String? = null): JsonObject = PROCESS_LOCK.withLock {
+        GroupDirectoryPermissionValidation.guardGenericRpc(operation, body)
         if (operation == "link.review_policy_status") {
             throw HubSessionException("VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED", "Use the fresh owner-scoped Link policy status read flow")
         }

@@ -11,6 +11,7 @@ import {
 import {CLIENT_HUB_REVISION} from './clientHubContract';
 import type {RegroupProposal, RegroupDelegationRpcResponse} from './regroupDelegation';
 import {captureProfileMethod} from './hubProfileScope';
+import {directoryPermissionActionRequested} from './groupDirectoryPermission';
 import {
   DEFERRED_CLIENT_CONSENT_OPERATIONS, DEFERRED_V16_RPC_OPERATIONS,
   IMPLEMENTED_CLIENT_RPC_OPERATIONS,
@@ -458,6 +459,9 @@ export function createClientHubApi(selection: HubProfileScope): ClientHubApi {
     return native.rpc({operation: 'goal.result', body: {intent_id: input.intent_id}}) as Promise<ClientGoalResult>;
   },
   rpc: input => {
+    if (directoryPermissionActionRequested(input.operation, input.body)) {
+      return Promise.reject(new Error('GROUP_DIRECTORY_PERMISSION_NOT_READY'));
+    }
     if ((input.operation as ClientRpcOperation) === 'link.review_policy_status') {
       return Promise.reject(new Error('VERIFIED_LINK_REVIEW_STATUS_FLOW_REQUIRED'));
     }

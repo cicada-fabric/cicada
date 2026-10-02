@@ -46,6 +46,10 @@ The [Link review policy status checkpoint](docs/client-link-review-policy-status
 
 This checkpoint passed 67 JavaScript tests, five independent Kotlin host-JVM tests, 11 contract-checker regressions, TypeScript, lint and both Debug APK builds in offline Docker containers; all exits were 0. Actual Link status acceptance remains **BLOCKED** pending a legitimate Endpoint/Link fixture. The current clean-image Android recovery gate is recorded separately in the [144e079 acceptance report](docs/client-hub-v1.6.1-144e079-validation.md).
 
+## Prepared Group directory permission extension
+
+The branch prepares an explicit Owner review and enable/revoke flow for one Principal's Group `directory.read` permission through existing topology RPCs. The scope covers all that Principal's joined Endpoints in the named Group and grants discovery only. The production entry remains closed pending independent acceptance of a complete clean v1.6.2 delivery. Candidate implementation and offline results are recorded separately in [Group directory permission preparation](docs/group-directory-permission-candidate-validation.md); they do not replace the accepted v1.6.1 APK or runtime evidence.
+
 ## Historical acceptance
 
 The [v1.5 validation](docs/client-hub-v1.5-bd79ff9-validation.md),
