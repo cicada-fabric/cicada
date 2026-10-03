@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.6.1
+  x-contract-revision: client-hub-v1.6.2
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -379,7 +379,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.6.1}
+        contract_revision: {const: client-hub-v1.6.2}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -780,6 +780,7 @@ components:
       x-topology-apply-action-schemas:
         group.create: '#/components/schemas/TopologyCreateGroupAction'
         membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+        membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'
         endpoint.admit_group: '#/components/schemas/TopologyAdmitEndpointAction'
       x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'
       x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'
@@ -849,7 +850,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.6.1}
+        contract_revision: {const: client-hub-v1.6.2}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -1684,6 +1685,34 @@ components:
         or task success. INJECTION_UNCERTAIN is not proof of native consumption
         or delivery; reconcile only the same reserved operation ID.
 
+    TopologySetDirectoryPermissionAction:
+      type: object
+      additionalProperties: false
+      required: [kind, set_directory_permission]
+      properties:
+        kind: {const: membership.set_directory_permission}
+        set_directory_permission:
+          $ref: '#/components/schemas/ClientTopologySetDirectoryPermission'
+
+    ClientTopologySetDirectoryPermission:
+      type: object
+      additionalProperties: false
+      required: [group_id, membership_id, enabled, expected_membership_version]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        membership_id: {type: string, minLength: 1, maxLength: 256}
+        enabled: {type: boolean}
+        expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}
+      description: >-
+        Changes only explicit directory.read for an active same-Owner Principal
+        Membership in an active Owner-controlled Network/Group on the current Hub.
+        The accepted encrypted Client request, current Owner/device/key, scope and
+        Membership CAS are checked in one write transaction. This applies to all
+        joined Endpoints of that Principal in this Group, preserves roles and other
+        grants, and advances Membership revision/version. It grants no peer traffic,
+        key or history access and changes no native binding or context. Preview uses
+        the read-only topology.snapshot; legacy management calls cannot apply it.
+
     TopologySetBroadcastPermissionAction:
       type: object
       additionalProperties: false
@@ -1805,7 +1834,7 @@ components:
     ClientTopologyMember:
       type: object
       additionalProperties: false
-      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, status, version]
+      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, directory_permission_enabled, status, version]
       properties:
         membership_id: {type: string}
         principal_id: {type: string}
@@ -1815,6 +1844,9 @@ components:
         roles:
           type: array
           items: {type: string}
+        directory_permission_enabled:
+          type: boolean
+          description: Explicit directory.read grant configuration for this Principal Membership, shared by all its joined Endpoints in this Group; not a Guard decision.
         broadcast_permission_enabled:
           type: boolean
           description: Current explicit message.broadcast grant configuration; Monitor role alone does not enable it.

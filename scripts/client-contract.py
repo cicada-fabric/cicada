@@ -110,6 +110,27 @@ def check_link_review_policy_contract(openapi, wire):
         raise ValueError("review policy current/next version semantics drift")
 
 
+def check_group_directory_permission_contract(openapi, wire):
+    action, properties, required = node_schema(openapi, "ClientTopologySetDirectoryPermission")
+    if (properties != {"group_id", "membership_id", "enabled", "expected_membership_version"}
+            or required != properties
+            or "      additionalProperties: false\n" not in action
+            or "enabled: {type: boolean}" not in action
+            or "expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}" not in action):
+        raise ValueError("Group directory permission flag/CAS schema drift")
+    wrapper, properties, required = node_schema(openapi, "TopologySetDirectoryPermissionAction")
+    member, properties_member, required_member = node_schema(openapi, "ClientTopologyMember")
+    if (properties != {"kind", "set_directory_permission"} or required != properties
+            or "      additionalProperties: false\n" not in wrapper
+            or "kind: {const: membership.set_directory_permission}" not in wrapper
+            or "membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'" not in openapi
+            or "directory_permission_enabled" not in properties_member
+            or "directory_permission_enabled" not in required_member
+            or "| `membership.set_directory_permission` |" not in wire
+            or "all of that Principal's joined Endpoints in this Group" not in wire):
+        raise ValueError("Group directory permission action/projection/scope drift")
+
+
 def read_contract(root):
     files = {name: (root / name).read_bytes() for name in FILES}
     catalog = json.loads(files[CATALOG])
@@ -135,6 +156,7 @@ def read_contract(root):
         raise ValueError("OpenAPI/catalog contract revision mismatch")
     check_node_pairing_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
     check_link_review_policy_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
+    check_group_directory_permission_contract(openapi, files["docs/client-hub-wire-v1.md"].decode())
     for operation in operations:
         request_schema = operation.get("request_schema")
         result_schema = operation.get("result_schema")

@@ -289,21 +289,21 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		var input struct {
 			LinkID                string                              `json:"link_id"`
 			OwnerKeyID            string                              `json:"owner_key_id"`
-			ExpectedPolicyVersion int64                               `json:"expected_policy_version"`
+			ExpectedPolicyVersion *int64                              `json:"expected_policy_version"`
 			Policy                store.CommunicationLinkReviewPolicy `json:"policy"`
 			SignedProof           []byte                              `json:"signed_proof"`
 		}
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil ||
-			input.LinkID == "" || input.OwnerKeyID == "" || input.ExpectedPolicyVersion < 0 || input.ExpectedPolicyVersion == math.MaxInt64 || len(input.SignedProof) == 0 {
+			input.LinkID == "" || input.OwnerKeyID == "" || input.ExpectedPolicyVersion == nil || *input.ExpectedPolicyVersion < 0 || *input.ExpectedPolicyVersion == math.MaxInt64 || len(input.SignedProof) == 0 {
 			return nil, errors.New("invalid Communication Link review-policy Owner grant")
 		}
 		var proof e2ee.OwnerLinkReviewPolicyProof
 		if err := json.Unmarshal(input.SignedProof, &proof); err != nil || proof.OwnerID != ownerID || proof.LinkID != input.LinkID ||
-			proof.PolicyVersion != uint64(input.ExpectedPolicyVersion+1) {
+			proof.PolicyVersion != uint64(*input.ExpectedPolicyVersion+1) {
 			return nil, errors.New("review-policy proof does not match the authenticated Owner and requested version")
 		}
 		return h.control.ClientRecordCommunicationLinkReviewPolicy(ownerID, input.LinkID,
-			string(proof.Side), input.OwnerKeyID, input.ExpectedPolicyVersion, input.Policy, input.SignedProof)
+			string(proof.Side), input.OwnerKeyID, *input.ExpectedPolicyVersion, input.Policy, input.SignedProof)
 	case "link.review_policy_status":
 		var input struct {
 			LinkID string `json:"link_id"`

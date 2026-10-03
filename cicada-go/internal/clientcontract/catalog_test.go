@@ -126,6 +126,9 @@ func TestCatalogIsVersionedCompleteAndPointsIntoWireContract(t *testing.T) {
 		"x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'",
 		"x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'",
 		"network_endpoints_truncated:", "can_create_group:", "network_ids:",
+		"membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'",
+		"directory_permission_enabled:",
+		"required: [group_id, membership_id, enabled, expected_membership_version]",
 	} {
 		if !strings.Contains(openAPIText, marker) {
 			t.Fatalf("OpenAPI omits ACTIVE Network topology %q", marker)

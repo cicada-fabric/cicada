@@ -99,6 +99,30 @@ class ContractBundleTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "BROADCAST-purpose"):
                 contract.read_contract(root)
 
+    def test_group_directory_permission_requires_flag_and_current_CAS(self):
+        for old, new in (
+                ("required: [group_id, membership_id, enabled, expected_membership_version]",
+                 "required: [group_id, membership_id, expected_membership_version]"),
+                ("expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}",
+                 "expected_membership_version: {type: integer, minimum: 0}")):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                text = path.read_text()
+                start = text.index("    ClientTopologySetDirectoryPermission:")
+                path.write_text(text[:start] + text[start:].replace(old, new, 1))
+                with self.assertRaisesRegex(ValueError, "Group directory permission flag/CAS schema drift"):
+                    contract.read_contract(root)
+
+    def test_group_directory_permission_snapshot_and_action_cannot_drift(self):
+        for marker in ("directory_permission_enabled", "membership.set_directory_permission"):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                path.write_text(path.read_text().replace(marker, "synthetic_wrong_field"))
+                with self.assertRaisesRegex(ValueError, "Group directory permission action/projection/scope drift"):
+                    contract.read_contract(root)
+
     def test_unsafe_archive_is_never_extracted(self):
         for name, kind in (("../outside", tarfile.REGTYPE), (contract.CATALOG, tarfile.SYMTYPE)):
             with self.subTest(name=name, kind=kind):

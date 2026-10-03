@@ -235,6 +235,25 @@ func TestClientLinkReviewPolicyEncryptedHTTPCurrentCASAndNextProof(t *testing.T)
 			t.Fatal("bilateral preview scope differs")
 		}
 		sourceProof, targetProof := sign(f.source, sourcePreview, uint64(expected+1)), sign(f.target, targetPreview, uint64(expected+1))
+		if expected == 0 {
+			for _, missing := range []string{"omitted", "null"} {
+				t.Run("required-current-CAS-"+missing, func(t *testing.T) {
+					input := reviewPolicyGrantInput(f.link.ID, f.source.ownerKey.Public().ID, 0, policy, sourceProof)
+					if missing == "omitted" {
+						delete(input, "expected_policy_version")
+					} else {
+						input["expected_policy_version"] = nil
+					}
+					if f.call(t, f.source, "link.review_policy_grant", input).OK {
+						t.Fatal("missing/null required current CAS accepted as zero")
+					}
+					state, err := f.store.GetCommunicationLinkReviewPolicyForOwner(f.link.ID, f.source.ownerID)
+					if err != nil || state.PolicyVersion != 0 || len(state.AcceptedSides) != 0 {
+						t.Fatal("missing current CAS wrote policy consent")
+					}
+				})
+			}
+		}
 		reply := f.call(t, f.source, "link.review_policy_grant", reviewPolicyGrantInput(f.link.ID, f.source.ownerKey.Public().ID, expected, policy, sourceProof))
 		var pending store.CommunicationLinkReviewPolicyStatus
 		if !reply.OK || json.Unmarshal(reply.Result, &pending) != nil || pending.Current || len(pending.AcceptedSides) != 1 {
