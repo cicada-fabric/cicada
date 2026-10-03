@@ -108,11 +108,20 @@ PY
 fi
 
 revision="$(git -C "$repo_root" rev-parse HEAD)"
-if [[ -z "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]]; then
-  dirty=false
-else
-  dirty=true
-fi
+read_dirty_state() {
+  local status
+  if ! status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)"; then
+    printf 'build-hub-image: unable to inspect source tree status\n' >&2
+    return 1
+  fi
+  if [[ -z "$status" ]]; then
+    printf 'false'
+  else
+    printf 'true'
+  fi
+}
+
+dirty="$(read_dirty_state)"
 
 compute_source_fingerprint() {
   if [[ "$transport" == pqtls ]]; then
@@ -188,10 +197,8 @@ catalog_sha256="$(sha256sum "$catalog_file" | cut -d ' ' -f 1)"
 verify_source_snapshot() {
   local current_revision current_dirty current_fingerprint current_catalog_sha256 inventory_fingerprint
   current_revision="$(git -C "$repo_root" rev-parse HEAD)"
-  if [[ -z "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)" ]]; then
-    current_dirty=false
-  else
-    current_dirty=true
+  if ! current_dirty="$(read_dirty_state)"; then
+    return 1
   fi
   current_fingerprint="$(compute_source_fingerprint)"
   current_catalog_sha256="$(sha256sum "$catalog_file" | cut -d ' ' -f 1)"

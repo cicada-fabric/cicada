@@ -1,5 +1,13 @@
 # Architecture v2.3 completion ledger
 
+## 2026-10-03 current ledger — bounded checkpoint accepted; product PARTIAL
+
+九文件 dirty Core 候选的全 Go、packaging/PQ/Compose 和 disposable Client Docker 门禁通过。此检查点不增加历史 V01–V88/36-of-88 完成数，也不将 17 SKIP、旧源码收据或 native zero-turn 转成业务 PASS。当前 Android business、real two-turn 与 full real A→B→A **NOT_RUN**，整体 **PARTIAL**。准确来源与剩余出口见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)；完整管理员/RBAC/委派 UX 保持 v0.2 deferred。
+
+## Historical ledgers before the clean-1ca baseline
+
+以下旧 current ledger、矩阵和数字只表示其原测试来源。
+
 ## 2026-10-02 checkpoint ledger — accepted finite source; product PARTIAL
 
 被测15路径组合的一次full default Go为1340 top＋1006 sub PASS、17 SKIP；有限TLS native/race各9 top＋52 sub、0 fail/skip。

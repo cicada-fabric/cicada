@@ -731,11 +731,8 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			(input.Decision != "accept" && input.Decision != "decline") {
 			return nil, errors.New("invalid approval decision")
 		}
-		approval, err := h.control.ClientApproval(ownerID, input.ApprovalID)
-		if err != nil || approval == nil || approval.Status != "pending" {
-			return nil, errors.New("approval is not pending")
-		}
-		return h.control.ResolveApproval(input.ApprovalID, input.Decision)
+		return h.control.ResolveApprovalForClientRequest(clientRequestID, ownerID,
+			input.ApprovalID, input.Decision)
 	default:
 		return nil, errors.New("Client operation is not available")
 	}

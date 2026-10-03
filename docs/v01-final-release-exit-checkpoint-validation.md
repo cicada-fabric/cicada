@@ -1,0 +1,29 @@
+# v0.1 bounded release-exit checkpoint validation — 2026-10-03
+
+Overall v0.1 / Architecture v2.3 remains **PARTIAL**. This checkpoint proves the scopes below, not release, Android business or full real Agent Golden acceptance.
+
+## Source and actual gates
+
+The tested source is a nine-file **dirty** candidate on `1ca0d3b4e074aeda06e71891e79c5a3d9a6baac2`: Approval atomic trusted-request/current Guard, three build/provenance packaging scripts and two Node SQLite/WAL bounded-opener paths. It must not be attributed solely to clean HEAD or to a later documentation commit. Clean-head [hosted CI 37056715636](https://github.com/cicada-fabric/cicada/actions/runs/37056715636) SUCCESS remains separate.
+
+- [Full Go receipt](../.cicada-data/v01-finish-20261002/final-nine-source/evidence/result.json): 30/30 packages PASS, 2,506 test PASS events, 17 explicit SKIP, 0 FAIL; gofmt/build/test/vet exit 0, empty stderr and nine source hashes stable before/after. The JSON records skip names/timestamps, not a reason for every skip. Pinned Go 1.27.1 image digest `69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`. NodeInbox separately 46 PASS/0 fail/skip; Approval Store normal/race each 3 top + 7 sub, Control 3 top and Server 2 top focused PASS keep their tested-source attribution.
+- [Final packaging summary](../.cicada-data/v01-finish-20261002/packaging/final-nine-source-20261003/final-gate-summary.json), SHA-256 `e4bad2d1a98e212029dd88096c7bf1d6a3163f4427f64b4da51e3bd84bfdaaca`: final artifact checks 19/19 PASS, 0 SKIP; PQ shipped gate 1 package / 1 top / 3 sub PASS, owned resources absent; Compose HTTP 200 and cleanup PASS. The 1,074-path canonical source fingerprint `82c81b5a10ea315712637249db14f4a6900e329e3411d60fc10b86436a865040` is stable. STD Hub fingerprint `27a83ef8406da7a4eef4395ac4b2d8e56b554c29f9075fa1f1c22dc12ca545e7`; release STD and PQ fingerprints are separate fields in the receipt. Artifacts were built before these documentation edits.
+- [Disposable Client Docker receipt](../.cicada-data/v01-finish-20261002/client-interop-final-nine-source-20261003/evidence/result.json): 2 top / 3 sub PASS, both packages PASS, 0 fail/skip, exit 0 and owned cleanup true. Actual final STD Hub image is `96ed9ddd…cdc7516`, test image `dd07ddde…d5ed866`; full immutable identities are in the receipt. The initial same-input STD image build metadata is historical; it is not substituted for the final image used by the actual gate.
+
+Software `0.1.0-dev`, Architecture v2.3, schema 57, `client-hub-v1.6.4`, wire 1, catalog 55, Git revision, source/build fingerprints and image identity remain separate. The narrow `approvals.decide` prose clarification requires atomic commit-time current trusted accepted request/Owner/device/key/session epoch and pending runnable approval; no frame, catalog, operation or revision changes. No schema/fixture export is required for this prose-only clarification.
+
+## Preserved failures and limits
+
+Historical dirty-6e5 full Go (2,496 PASS / 17 SKIP) and separate Docker two-test PASS remain in [their summary](../.cicada-data/next-checkpoint/ci-6e5a897/evidence/final-summary.txt), including the original download failure. Seven-source packaging PASS stays seven-source. The [first nine-checkpoint predecessor full-Go attempt](../.cicada-data/v01-finish-20261002/approval-guard-1ca/evidence/full-go-first-attempt.json) failed with missing repository-root mounts plus NodeInbox; the [corrected-root attempt](../.cicada-data/v01-finish-20261002/approval-guard-1ca/evidence/full-root-result.json) retained NodeInbox failure. Actual bounded repro showed `SQLITE_BUSY`; bounded WAL opener retry then passed focused and full gates. Packaging preliminary conditional SKIPs and PQ existing-output-directory failure remain historical attempts; interim summary hashes are not the final receipt.
+
+F8/F9 fixture first-stage failures remain: F9 pinned dd81575/v1.6.4, canonical-producer/legacy-consumer mismatch, zero enroll/Owner requests/sign/RPC/Target RN Alert. Business is **NOT_RUN**, not Main nine-source acceptance; repair `991` is source-specific. Native V04–V09 preparation/driver/cleanup failures remain. V10-r1 had 10 offline checks PASS but actual zero-turn FAIL on strict empty-output handling (`[]`); EOF NOT_ATTEMPTED/UNKNOWN. Subsequent r2 zero-turn PASS proves **LIVE_METADATA_ONLY / EOF** only: no model turn, real two-turn or context-continuity acceptance. Real two-turn and full real A→B→A remain **NOT_RUN**. Physical devices, public HTTPS/production deployment and production upgrade/recovery are also **NOT_RUN**.
+
+## Finite exits and worktree hygiene
+
+Next parallel lanes are Client actual online business, Native authorized original-Thread two-turn evidence, and final consolidation/evidence bridge, as projected in the plan and [release audit](../.cicada-data/v01-finish-20261002/release-audit.json). Full administrator/RBAC/delegation UX stays v0.2; current per-object Owner/session Guard remains v0.1.
+
+Hygiene receipts record ordinary removal of two clean inactive trees (registered 27→25) and two source-preserving ordinary moves (HOME registered 21→17), without force: [removal receipt](../.cicada-data/worktree-hygiene-20261003/clean-two-normal-removal-receipt.json) and [move receipt](../.cicada-data/worktree-hygiene-20261003/home-move-batch-01.json). Removal preserved 370 public evidence files / 27,284,860 bytes with exact hashes/modes; moved source bytes/modes/dirty state were preserved. Reuse active trees; state/ref and integration checks precede removal.
+
+## Documentation validation
+
+Prepared in ignored isolated `docs-1ca`, exact clean 1ca baseline, with seven documentation paths only. Baseline hashes and patch hash are recorded in the adjacent draft manifest. Whitespace validation passed. Documentation changes do not introduce Runtime or Android acceptance; contract checks and exported bundle verification are recorded separately.

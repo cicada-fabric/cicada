@@ -1,5 +1,15 @@
 # Architecture v2.3 当前事实审计
 
+## 2026-10-03 current audit — bounded checkpoint PASS; product PARTIAL
+
+Main 的九文件 dirty 候选基于 `1ca0d3b4`，已接入 Approval commit-time Guard、build provenance/packaging 与 Node SQLite/WAL bounded opener retry。全 Go、工件/PQ/Compose 及 disposable Client Docker 的本轮门禁通过；17 项 Go SKIP 不计 PASS。源码、镜像和历史失败归属见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。
+
+这些结果不是 Android 在线业务或真实双 Agent Golden 验收。Native zero-turn 仅证明 LIVE_METADATA_ONLY 与 EOF；real two-turn、完整 real A→B→A 及 Android business **NOT_RUN**。整体 v0.1／Architecture v2.3 仍 **PARTIAL**；完整管理员/RBAC/委派 UX 属 v0.2。
+
+## Historical audits before the clean-1ca baseline
+
+以下全文保持其当时源码、镜像、APK、Runtime 和结果归属；旧 current 标题不是本节当前结论。
+
 ## 2026-10-02 current audit — 86-path integration; QA PASS（有限范围）
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；

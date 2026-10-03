@@ -57,6 +57,78 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertIn(value, dockerfile)
         self.assertIn("--source-info-only", helper)
 
+    def test_hub_build_fails_closed_on_git_status_errors_before_and_after_build(self):
+        with tempfile.TemporaryDirectory(prefix="cicada-hub-git-status-") as directory:
+            temp = pathlib.Path(directory)
+            source = temp / "source"
+            subprocess.run(["git", "clone", "--shared", "--quiet", str(ROOT), str(source)], check=True, capture_output=True)
+            shutil.copy2(ROOT / "scripts/build-hub-image.sh", source / "scripts/build-hub-image.sh")
+            tools = temp / "tools"
+            tools.mkdir()
+            status_count = temp / "git-status-count"
+            fake_git = tools / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${3:-}\" = status ]; then\n"
+                "  count=0\n"
+                "  [ ! -f \"$SYNTHETIC_GIT_STATUS_COUNT\" ] || count=$(cat \"$SYNTHETIC_GIT_STATUS_COUNT\")\n"
+                "  count=$((count + 1))\n"
+                "  printf '%s\\n' \"$count\" > \"$SYNTHETIC_GIT_STATUS_COUNT\"\n"
+                "  if [ \"$count\" -ge \"$SYNTHETIC_GIT_STATUS_FAIL_AT\" ]; then exit 73; fi\n"
+                "fi\n"
+                "exec /usr/bin/git \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            build_marker = temp / "docker-build-ran"
+            fake_docker = tools / "docker"
+            fake_docker.write_text(
+                "#!/bin/sh\n"
+                "[ \"${1:-}\" = build ] || exit 91\n"
+                "shift\n"
+                "while [ $# -gt 0 ]; do\n"
+                "  if [ \"$1\" = --iidfile ]; then printf 'sha256:synthetic\\n' > \"$2\"; break; fi\n"
+                "  shift\n"
+                "done\n"
+                "printf 'built\\n' > \"$SYNTHETIC_DOCKER_BUILD_MARKER\"\n",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            environment = {
+                **os.environ,
+                "PATH": f"{tools}{os.pathsep}{os.environ.get('PATH', '')}",
+                "SYNTHETIC_GIT_STATUS_COUNT": str(status_count),
+                "SYNTHETIC_DOCKER_BUILD_MARKER": str(build_marker),
+            }
+            helper = source / "scripts/build-hub-image.sh"
+            initial_metadata = temp / "initial-source.json"
+            initial = subprocess.run(
+                [str(helper), "--source-info-only", "--metadata-file", str(initial_metadata)],
+                env={**environment, "SYNTHETIC_GIT_STATUS_FAIL_AT": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(initial.returncode, 0)
+            self.assertIn("unable to inspect source tree status", initial.stderr)
+            self.assertFalse(initial_metadata.exists())
+            self.assertFalse(build_marker.exists())
+
+            status_count.unlink()
+            build_metadata = temp / "image-build.json"
+            after_build = subprocess.run(
+                [str(helper), "--image", "cicada:synthetic-status-failure", "--metadata-file", str(build_metadata)],
+                env={**environment, "SYNTHETIC_GIT_STATUS_FAIL_AT": "2"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(after_build.returncode, 0)
+            self.assertTrue(build_marker.exists())
+            self.assertIn("unable to inspect source tree status", after_build.stderr)
+            self.assertIn("source changed during the Docker build", after_build.stderr)
+            self.assertFalse(build_metadata.exists())
+
     def test_release_build_includes_wasm_generation_and_provenance(self):
         build = (ROOT / "scripts/build-release.sh").read_text(encoding="utf-8")
         self.assertIn("./cmd/cicada-webcrypto", build)
@@ -319,6 +391,14 @@ else: sys.exit(91)
             descriptor = baseline["fingerprint_descriptor"]
             self.assertEqual(bytes.fromhex(descriptor["domain_hex"]), b"cicada-binary-release-inputs-v2\0")
             self.assertIn("scripts/hub-build-input-inventory.py", descriptor["scope"])
+            git_wrapper = tools / "git"
+            git_wrapper.write_text("#!/bin/sh\nif [ \"${3:-}\" = status ]; then exit 73; fi\nexec /usr/bin/git \"$@\"\n")
+            git_wrapper.chmod(0o755)
+            result, output = release("git-status-failure")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unable to inspect source tree status", result.stderr)
+            self.assertFalse(output.exists())
+            git_wrapper.unlink()
             helper = source / "scripts/hub-build-input-inventory.py"
             helper.write_bytes(helper.read_bytes()+b"\n# SYNTHETIC HELPER-ONLY CHANGE\n")
             result, output = release("helper-only")

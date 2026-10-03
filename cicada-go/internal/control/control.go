@@ -1273,15 +1273,10 @@ func (c *Control) CreateArtifact(artifact store.Artifact) (*store.Artifact, erro
 func (c *Control) ResolveApproval(id, decision string) (*store.Approval, error) {
 	c.approvalDecisionMu.Lock()
 	defer c.approvalDecisionMu.Unlock()
-	switch decision {
-	case "approve", "approved", "accept":
-		decision = "accept"
-	case "approve_for_session", "approved_for_session", "acceptForSession":
-		decision = "acceptForSession"
-	case "deny", "denied", "decline", "cancel", "abort":
-		decision = "decline"
-	default:
-		return nil, fmt.Errorf("unsupported approval decision: %s", decision)
+	var err error
+	decision, err = normalizeApprovalDecision(decision)
+	if err != nil {
+		return nil, err
 	}
 	approval, err := c.store.GetApproval(id)
 	if err != nil {
@@ -1309,16 +1304,66 @@ func (c *Control) ResolveApproval(id, decision string) (*store.Approval, error) 
 		if resolved == nil || resolved.Status != "resolved" || resolved.Decision != decision {
 			return nil, errors.New("approval decision conflicted with another writer")
 		}
-		c.approvalMu.Lock()
-		waiter := c.approvalWaiters[id]
-		c.approvalMu.Unlock()
-		if waiter != nil {
-			select {
-			case waiter <- decision:
-			default:
-			}
+		c.notifyApprovalWaiter(id, decision)
+	}
+	return c.finishResolvedApproval(resolved)
+}
+
+// ResolveApprovalForClientRequest keeps an encrypted approval decision bound
+// to the exact currently accepted device request. Store performs the request,
+// device/key epoch, Goal-owner and decision checks in one transaction. Waiters
+// are notified only after that transaction commits successfully.
+func (c *Control) ResolveApprovalForClientRequest(clientRequestID, ownerID,
+	approvalID, decision string) (*store.Approval, error) {
+	clientRequestID, ownerID, approvalID = strings.TrimSpace(clientRequestID),
+		strings.TrimSpace(ownerID), strings.TrimSpace(approvalID)
+	if clientRequestID == "" || ownerID == "" || approvalID == "" {
+		return nil, store.ErrClientApprovalDecisionUnauthorized
+	}
+	c.approvalDecisionMu.Lock()
+	defer c.approvalDecisionMu.Unlock()
+	var err error
+	decision, err = normalizeApprovalDecision(decision)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := c.store.ResolveApprovalForClientRequest(clientRequestID, ownerID, approvalID, decision)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil || resolved.Status != "resolved" || resolved.Decision != decision {
+		return nil, errors.New("approval decision conflicted with another writer")
+	}
+	c.notifyApprovalWaiter(approvalID, decision)
+	return c.finishResolvedApproval(resolved)
+}
+
+func normalizeApprovalDecision(decision string) (string, error) {
+	switch decision {
+	case "approve", "approved", "accept":
+		return "accept", nil
+	case "approve_for_session", "approved_for_session", "acceptForSession":
+		return "acceptForSession", nil
+	case "deny", "denied", "decline", "cancel", "abort":
+		return "decline", nil
+	default:
+		return "", fmt.Errorf("unsupported approval decision: %s", decision)
+	}
+}
+
+func (c *Control) notifyApprovalWaiter(id, decision string) {
+	c.approvalMu.Lock()
+	waiter := c.approvalWaiters[id]
+	c.approvalMu.Unlock()
+	if waiter != nil {
+		select {
+		case waiter <- decision:
+		default:
 		}
 	}
+}
+
+func (c *Control) finishResolvedApproval(resolved *store.Approval) (*store.Approval, error) {
 	if resolved == nil || resolved.Method != "external_action" || resolved.Status != "resolved" {
 		return resolved, nil
 	}

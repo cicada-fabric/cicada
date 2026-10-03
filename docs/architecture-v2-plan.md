@@ -1,5 +1,19 @@
 # Architecture v2.3 实施计划
 
+## 2026-10-03 current plan — bounded checkpoint passed; three parallel exits
+
+九文件 dirty Core 候选的 full Go、packaging/PQ/Compose 与 disposable Client Docker 已通过，来源和失败保全见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。下一步只推进以下三条有限 lane，不扩展 v0.1 为完整 V01–V88 或 v0.2 管理员产品：
+
+1. Client：固定 Hub/source/image/contract/APK，完成实际 online Link 业务及 consent、current Guard、撤权与原 packet recovery；repair `991` 与 F9 旧 fixture 分开验收。
+2. Native：在另行授权的真实原 Thread 两回合中取得请求/回执、TLS 与 consumption/continuity 证据；zero-turn metadata/EOF 不替代 real A→B→A。
+3. Consolidation：归档本轮精确源码与工件、完成检查点记录；复用活跃 worktree，只有确认 state/ref、已集成且干净的 inactive tree 才普通移除，脏树先保全，不 force。
+
+本轮已普通移除 2 个 clean inactive trees 并普通移动 2 个保全的 source trees：registered 27→25，HOME registered 21→17；保全证据和源码归属见中心记录。physical device、public HTTPS/生产升级恢复 **NOT_RUN**；整体 **PARTIAL**，完整管理员/RBAC/委派 UX 留待 v0.2。
+
+## Historical plans before the clean-1ca baseline
+
+以下旧 current 计划保留当时来源与退出条件；不作为本轮新的阻塞清单。
+
 ## 2026-10-02 current plan — bounded evidence accepted; product remains PARTIAL
 
 本检查点基线为 `52cc2f6e0f97829332be372cb302cdb9f0ab0558`，来源域分别列出；当前 `dev` 以 `git rev-parse HEAD` 为准。本候选只更新文档，不把候选测试树或旧镜像归到该提交。软件 `0.1.0-dev`、Architecture v2.3、Hub schema 57、Client contract `client-hub-v1.6.4`、wire 1 与 catalog 55 是不同版本域；catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。

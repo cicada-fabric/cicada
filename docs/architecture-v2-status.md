@@ -1,5 +1,20 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+## 2026-10-03 current status — bounded checkpoint PASS; product PARTIAL
+
+| 范围 | 当前结果 |
+|---|---|
+| 九文件 dirty Core 候选 | full Go、packaging/PQ/Compose、disposable Client Docker **PASS**；Go 17 SKIP 分列 |
+| Android 在线业务 | F9 首阶段失败，业务 **NOT_RUN**；Client repair `991` 单独归属 |
+| Native | zero-turn r2 **PASS: LIVE_METADATA_ONLY / EOF**；real two-turn 与 full real A→B→A **NOT_RUN** |
+| 整体 v0.1／Architecture v2.3 | **PARTIAL**；physical device、public HTTPS/生产恢复 **NOT_RUN** |
+
+精确来源、历史失败及结果边界见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。完整管理员/RBAC/委派 UX 延至 v0.2；当前 Owner/session/逐对象 Guard 保持有效。
+
+## Historical status before the clean-1ca baseline
+
+以下旧 current 段落、计数及 FAIL/SKIP/NOT_RUN 均保留原来源，不能迁移为本轮最终结果。
+
 ## 2026-10-02 current status — clean `6e5a897` base; v0.1 PARTIAL
 
 本页以 clean Core `dev` HEAD `6e5a8976337894e84729d95857d8424c5c4cf469` 为主仓基线。此前该基线范围的有界 Go selectors normal 与 race 各为 32 top-level / 97 subtest events PASS；Chrome 29/29 PASS 仍只归属先前 dd81575 freeze3 dirty Hub image/receipt，不能转作 clean-source Chrome 结果。较早远程 run `37044133045` 的 Core **FAIL** / Docker **SKIPPED** 原样保留，不以之后的修复候选改写该次结果。

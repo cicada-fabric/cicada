@@ -98,8 +98,13 @@ compute_dirty() {
     python3 "$repo_root/scripts/hub-build-input-inventory.py" dirty --root "$repo_root"
     return
   fi
-  if [[ -n "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- \
-      cicada-go scripts/build-release.sh scripts/hub-build-input-inventory.py scripts/write-web-panel-manifest.py .github/workflows/release.yml)" ]]; then
+  local status
+  if ! status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- \
+      cicada-go scripts/build-release.sh scripts/hub-build-input-inventory.py scripts/write-web-panel-manifest.py .github/workflows/release.yml)"; then
+    printf 'build-release: unable to inspect source tree status\n' >&2
+    return 1
+  fi
+  if [[ -n "$status" ]]; then
     printf 'true'
   else
     printf 'false'

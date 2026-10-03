@@ -1,6 +1,10 @@
 # Client / Hub 联合开发与验收
 
-## 2026-10-02 current Core candidate — v1.6.4, no Client runtime repin
+## 2026-10-03 current Core checkpoint
+
+九文件 dirty Core 候选的全 Go 与 disposable Client Docker 通过；Android F9 business **NOT_RUN**，Client repair `991` 保持独立来源。门禁、镜像和剩余业务验收见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。`approvals.decide` 的现有 Guard 补充 commit-time 原子校验说明，不改变 wire、catalog、operation 或合同 revision。下节 c146/ec160 只表示历史来源，未对 Client runtime repin。
+
+## Historical 2026-10-02 Core candidate — v1.6.4, no Client runtime repin
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入

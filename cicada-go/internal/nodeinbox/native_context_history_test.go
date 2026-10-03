@@ -35,6 +35,40 @@ func nativeContextHistoryTestPath(t *testing.T) string {
 	return filepath.Join(directory, "native-context.sqlite3")
 }
 
+const nativeContextChildStdoutLimit = 32 << 10
+
+// boundedNativeContextChildStdout keeps only the diagnostic prefix while
+// continuing to drain a synthetic subprocess so a noisy child cannot block.
+type boundedNativeContextChildStdout struct {
+	buffer    bytes.Buffer
+	truncated bool
+}
+
+func (capture *boundedNativeContextChildStdout) Write(data []byte) (int, error) {
+	remaining := nativeContextChildStdoutLimit - capture.buffer.Len()
+	if remaining > 0 {
+		written := len(data)
+		if written > remaining {
+			written = remaining
+		}
+		_, _ = capture.buffer.Write(data[:written])
+		if written < len(data) {
+			capture.truncated = true
+		}
+	} else if len(data) > 0 {
+		capture.truncated = true
+	}
+	return len(data), nil
+}
+
+func (capture *boundedNativeContextChildStdout) String() string {
+	result := capture.buffer.String()
+	if capture.truncated {
+		result += "\n... synthetic child stdout truncated at 32 KiB ..."
+	}
+	return result
+}
+
 func TestNativeContextHistoryFreshScopeReportsCicadaOnlyCoverage(t *testing.T) {
 	registry, err := OpenNativeContextRegistry(nativeContextHistoryTestPath(t))
 	if err != nil {
@@ -428,14 +462,27 @@ func TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory(t *
 				cmd    *exec.Cmd
 				input  io.WriteCloser
 				output *bufio.Reader
+				stdout *boundedNativeContextChildStdout
 				stderr *bytes.Buffer
 				done   chan error
 			}
 			children := []*child{}
+			readChildMarker := func(c *child, marker string) error {
+				for {
+					line, err := c.output.ReadString('\n')
+					if err != nil {
+						return err
+					}
+					if line == marker+"\n" {
+						return nil
+					}
+					_, _ = c.stdout.Write([]byte(line))
+				}
+			}
 			for n := 0; n < test.children; n++ {
 				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory$")
+				cmd := exec.CommandContext(ctx, os.Args[0], "-test.v", "-test.run", "^TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory$")
 				cmd.Env = append(os.Environ(), "CICADA_SYNTHETIC_NATIVE_CONTEXT_OPEN_CHILD="+path)
 				if test.timeout {
 					cmd.Env = append(cmd.Env, "CICADA_SYNTHETIC_NATIVE_CONTEXT_EXPECT_TIMEOUT=1")
@@ -453,11 +500,10 @@ func TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory(t *
 				if err = cmd.Start(); err != nil {
 					t.Fatal(err)
 				}
-				c := &child{cmd: cmd, input: stdin, output: bufio.NewReader(stdout), stderr: stderr, done: make(chan error, 1)}
+				c := &child{cmd: cmd, input: stdin, output: bufio.NewReader(stdout), stdout: &boundedNativeContextChildStdout{}, stderr: stderr, done: make(chan error, 1)}
 				children = append(children, c)
-				line, err := c.output.ReadString('\n')
-				if err != nil || line != "READY\n" {
-					t.Fatalf("child barrier unavailable: %q %v", line, err)
+				if err := readChildMarker(c, "READY"); err != nil {
+					t.Fatalf("child READY barrier unavailable: %v; child stdout: %s", err, c.stdout.String())
 				}
 			}
 			for _, c := range children {
@@ -467,11 +513,10 @@ func TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory(t *
 				c.input.Close()
 			}
 			for _, c := range children {
-				line, err := c.output.ReadString('\n')
-				if err != nil || line != "OPENING\n" {
-					t.Fatalf("child did not enter production open: %q %v", line, err)
+				if err := readChildMarker(c, "OPENING"); err != nil {
+					t.Fatalf("child OPENING barrier unavailable: %v; child stdout: %s", err, c.stdout.String())
 				}
-				go func(c *child) { _, _ = io.Copy(io.Discard, c.output); c.done <- c.cmd.Wait() }(c)
+				go func(c *child) { _, _ = io.Copy(c.stdout, c.output); c.done <- c.cmd.Wait() }(c)
 			}
 			if !test.timeout {
 				for _, c := range children {
@@ -488,7 +533,7 @@ func TestNativeContextHistoryCrossProcessOpenWaitsForLockAndPreservesHistory(t *
 			}
 			for _, c := range children {
 				if err = <-c.done; err != nil {
-					t.Fatalf("cross-process production open: %v %s", err, c.stderr.String())
+					t.Fatalf("cross-process production open: %v; child stdout: %s; child stderr: %s", err, c.stdout.String(), c.stderr.String())
 				}
 			}
 			if held {

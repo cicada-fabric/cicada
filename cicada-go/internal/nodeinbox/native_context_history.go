@@ -13,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 const (
@@ -103,9 +106,9 @@ func openNativeContextRegistry(path string, perIdentityCap, globalHistoryCap int
 		}
 		dsn = (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String()
 	}
-	// Driver options apply the bounded busy handler before its initialization
-	// pragmas and acquire the writer reservation before reading scope history.
-	// This serializes check-and-record across processes without stale snapshots.
+	// The driver applies busy_timeout before the initialization statements.
+	// _txlock=immediate makes later check-and-record transactions reserve the
+	// writer before reading scope history, avoiding stale snapshots.
 	parameters := url.Values{"_busy_timeout": {"5000"}, "_txlock": {"immediate"}}
 	db, err := sql.Open("sqlite", dsn+"?"+parameters.Encode())
 	if err != nil {
@@ -113,9 +116,15 @@ func openNativeContextRegistry(path string, perIdentityCap, globalHistoryCap int
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	// Configure the retained connection before WAL recovery or schema access.
 	// Parallel Hub workers can open this shared WriterRoot database together.
-	if _, err := db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
+	// SQLite can return SQLITE_BUSY immediately while concurrent openers switch
+	// journal mode, so retry that transition within the same five-second budget
+	// used for an exclusive-lock failure. Other initialization errors fail closed.
+	if err := configureNativeContextRegistryWAL(db, path == ":memory:"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("initialize shared Node context registry: configure WAL: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS node_native_context_history_v1 (
  record_id TEXT PRIMARY KEY, identity_digest TEXT NOT NULL, account_digest TEXT NOT NULL,
  harness TEXT NOT NULL, hub_id TEXT NOT NULL, network_id TEXT NOT NULL, group_id TEXT NOT NULL,
@@ -133,6 +142,47 @@ CREATE INDEX IF NOT EXISTS node_native_context_history_cap_v1_idx
 	}
 	return &NativeContextRegistry{db: db, perIdentityCap: perIdentityCap,
 		globalHistoryCap: globalHistoryCap}, nil
+}
+
+func configureNativeContextRegistryWAL(db *sql.DB, allowMemory bool) error {
+	const retryBudget = 5 * time.Second
+	const sqliteBusyTimeout = 10 * time.Millisecond
+
+	// A short SQLite handler keeps one WAL transition attempt from consuming
+	// the whole retry budget. The bounded Go retry restores the normal 5s
+	// connection timeout immediately afterward in the schema setup below.
+	if _, err := db.Exec(`PRAGMA busy_timeout=10`); err != nil {
+		return fmt.Errorf("set SQLite WAL transition timeout: %w", err)
+	}
+	deadline := time.Now().Add(retryBudget)
+	for {
+		var mode string
+		err := db.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&mode)
+		if err == nil {
+			mode = strings.ToLower(strings.TrimSpace(mode))
+			if mode == "wal" || (allowMemory && mode == "memory") {
+				return nil
+			}
+			return fmt.Errorf("SQLite journal mode is %q, want WAL", mode)
+		}
+		if !isNativeContextRegistrySQLiteBusy(err) {
+			return err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return err
+		}
+		retryDelay := min(sqliteBusyTimeout, remaining)
+		time.Sleep(retryDelay)
+		if !time.Now().Before(deadline) {
+			return err
+		}
+	}
+}
+
+func isNativeContextRegistrySQLiteBusy(err error) bool {
+	var sqliteError *sqlite.Error
+	return errors.As(err, &sqliteError) && sqliteError.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
 func (r *NativeContextRegistry) Close() error {
