@@ -82,11 +82,27 @@ func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRe
 		joined.NetworkID != request.NetworkID {
 		return nil, nil, errors.New("Hub returned an invalid Network Join result")
 	}
+	return b.completeNetworkNativeJoin(&joined, request.Harness, request.NativeSessionID)
+}
+
+func (b *machineAgentJoinBridge) completeNetworkNativeJoin(joined *fabricpkg.NetworkJoinResult, runtime, nativeID string) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	var err error
 	decision := &nodeinbox.NativeContextScopeDecision{Accepted: true, ContextPolicy: joined.NativeContextScope.NetworkContextPolicy,
 		NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
-	if _, managed := machineHubFrom(b.ctx); managed {
-		decision, err = recordMachineNativeContextMetadata(b.ctx, request.Harness, request.NativeSessionID,
+	if hub, managed := machineHubFrom(b.ctx); managed {
+		var scope nodeinbox.NativeContextScopeInput
+		scope, err = machineNativeContextScopeFromMetadata(b.ctx, runtime, nativeID,
 			joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch, joined.NativeContextScope)
+		if err == nil {
+			if hub.NativeContexts == nil {
+				decision, err = checkMachineNativeContext(b.ctx, scope)
+			} else {
+				// Access renewal rotates a directory credential, not native
+				// context. Retain the first actually observed enrollment epoch;
+				// current access/native authority is independently guarded below.
+				decision, err = hub.NativeContexts.CheckAndRecordNetworkEnrollmentContext(b.ctx, scope)
+			}
+		}
 		if err != nil {
 			return nil, nil, b.blockCommittedLocalJoin("NETWORK", joined.NativeContextScope.HubID, "",
 				joined.NetworkID, joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch,
@@ -98,9 +114,19 @@ func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRe
 			joined.NetworkID, joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch,
 			joined.LeaseExpiresAt, errors.New("native context scope was not accepted"))
 	}
+	if joined.Endpoint.PrincipalID == "" || joined.Endpoint.MachineID != b.nodeID ||
+		joined.Endpoint.NativeSessionID != nativeID || joined.BindingID == "" || joined.BindingEpoch == 0 {
+		return nil, nil, errors.New("Hub returned a Network Join identity inconsistent with this original Thread")
+	}
+	if _, _, err := b.ensureNetworkNativeBinding(joined.NetworkID, joined.Endpoint.ID, nativeID,
+		joined.SessionToken, joined.Endpoint.PrincipalID); err != nil {
+		// Native scope is already accepted: retain this current access credential
+		// privately so retry can renew it without repeating Owner consent or Join.
+		return joined, decision, errors.New("NETWORK_NATIVE_BINDING_PENDING: Network access accepted; native identity registration failed; retry Network Join or renewal")
+	}
 	b.markLocalJoinRecoveryResolved("NETWORK", joined.NativeContextScope.HubID, "", joined.NetworkID,
 		joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch, joined.LeaseExpiresAt, decision.NativeHistoryCoverage)
-	return &joined, decision, nil
+	return joined, decision, nil
 }
 
 func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
@@ -143,7 +169,8 @@ func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) 
 		renewed.Endpoint.ID != request.EndpointID {
 		return nil, errors.New("Hub returned an invalid Network Renew result")
 	}
-	return &renewed, nil
+	joined, _, err := b.completeNetworkNativeJoin(&renewed, request.Harness, request.NativeSessionID)
+	return joined, err
 }
 
 func requestMachineAgentNetworkRenew(socketPath string, request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
@@ -171,12 +198,18 @@ func requestMachineAgentNetworkRenew(socketPath string, request localNetworkRene
 	if err := decoder.Decode(&response); err != nil || response.Version != localJoinProtocolVersion {
 		return nil, errors.New("local Node returned an invalid Network Renew response")
 	}
-	if response.Error != "" {
+	if response.JoinRecovery != nil && response.JoinRecovery.Status == localJoinBlockedStatus {
+		return nil, &localJoinCommittedScopeBlockedError{Status: *response.JoinRecovery}
+	}
+	if response.Error != "" && response.NetworkJoin == nil {
 		return nil, errors.New(response.Error)
 	}
 	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" ||
 		response.NetworkJoin.NetworkID != request.NetworkID || response.NetworkJoin.Endpoint.ID != request.EndpointID {
 		return nil, errors.New("local Node returned an incomplete Network Renew result")
+	}
+	if response.Error != "" {
+		return response.NetworkJoin, errors.New(response.Error)
 	}
 	return response.NetworkJoin, nil
 }
@@ -220,11 +253,17 @@ func requestMachineAgentNetworkJoinWithScopeAndRecovery(socketPath string, reque
 	if response.JoinRecovery != nil && response.JoinRecovery.Status == localJoinBlockedStatus {
 		return nil, nil, nil, &localJoinCommittedScopeBlockedError{Status: *response.JoinRecovery}
 	}
-	if response.Error != "" {
+	if response.Error != "" && response.NetworkJoin == nil {
 		return nil, nil, nil, errors.New(response.Error)
 	}
 	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" || response.NetworkJoin.NetworkID != request.NetworkID {
 		return nil, nil, nil, errors.New("local Node returned an incomplete Network Join result")
+	}
+	if response.Error != "" {
+		if response.NativeContextScope == nil || !response.NativeContextScope.Accepted {
+			return nil, nil, nil, errors.New("local Node omitted accepted native scope for partial Network Join")
+		}
+		return response.NetworkJoin, response.NativeContextScope, response.JoinRecovery, errors.New(response.Error)
 	}
 	return response.NetworkJoin, response.NativeContextScope, response.JoinRecovery, nil
 }

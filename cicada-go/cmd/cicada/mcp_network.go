@@ -55,6 +55,45 @@ func privateNetworkScopeDir(root, scope string, create bool) (string, error) {
 	return path, nil
 }
 
+// Publish a complete, synced credential file without replacing an existing
+// session. A crash during the write leaves no truncated final state to renew.
+func writeNewPrivateNetworkSession(path string, data []byte) error {
+	parent := filepath.Dir(path)
+	info, err := os.Lstat(parent)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("Network credential directory must already be private")
+	}
+	temporary, err := os.CreateTemp(parent, ".network-session-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = temporary.Close()
+		_ = os.Remove(temporary.Name())
+	}()
+	if err := temporary.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(temporary.Name(), path); err != nil {
+		return err
+	}
+	directory, err := os.Open(parent)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}
+
 func lockNetworkMCPState(path string) (*flock.Flock, error) {
 	lockPath := path + ".lock"
 	if info, err := os.Lstat(lockPath); err == nil {
@@ -127,12 +166,16 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 			NetworkID: networkID, EndpointID: state.EndpointID, Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		})
-		if err != nil {
+		if err != nil && renewed == nil {
 			return nil, err
 		}
+		renewErr := err
 		state.SessionToken = renewed.SessionToken
 		if err := replacePrivateNetworkFile(statePath, mustJSON(state)); err != nil {
 			return nil, err
+		}
+		if renewErr != nil {
+			return nil, renewErr
 		}
 		return map[string]any{"status": "renewed", "network_id": networkID,
 			"endpoint_id": state.EndpointID, "lease_expires_at": renewed.LeaseExpiresAt}, nil
@@ -168,12 +211,13 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 			OwnerJoinProof: string(bytes.TrimSpace(proof)), Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, Workspace: context.Workspace,
 		})
-		if err != nil {
+		if err != nil && joined == nil {
 			if recovery, ok := localJoinRecoveryFromError(err); ok {
 				return *recovery, nil
 			}
 			return nil, err
 		}
+		joinErr := err
 		if nativeScope == nil || !nativeScope.Accepted {
 			return nil, errors.New("trusted local Node omitted an accepted native context scope decision")
 		}
@@ -185,8 +229,11 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 			EndpointID: joined.Endpoint.ID, Harness: context.Harness,
 			NativeSessionID: context.NativeSessionID, NodeID: context.MachineID,
 			Workspace: context.Workspace, SessionToken: joined.SessionToken}
-		if err := writeNewPrivateNetworkFile(statePath, mustJSON(state)); err != nil {
+		if err := writeNewPrivateNetworkSession(statePath, mustJSON(state)); err != nil {
 			return nil, err
+		}
+		if joinErr != nil {
+			return nil, joinErr
 		}
 		return map[string]any{"status": "joined", "network_id": networkID,
 			"endpoint_id": joined.Endpoint.ID, "lease_expires_at": joined.LeaseExpiresAt,

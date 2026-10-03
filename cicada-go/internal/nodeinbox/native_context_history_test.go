@@ -252,3 +252,86 @@ func TestNativeContextHistoryExactRetrySucceedsAtIdentityAndGlobalCaps(t *testin
 		t.Fatalf("new identity bypassed the small global cap: %v", err)
 	}
 }
+
+func TestNetworkEnrollmentHistoryRetainsActualObservedEpochAcrossRenewal(t *testing.T) {
+	registry, err := openNativeContextRegistry(":memory:", 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registry.Close()
+	input := nativeContextHistoryInput()
+	input.GroupID = ""
+	input.ContextPolicy = ""
+	input.BindingEpoch = 7
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	for epoch := uint64(8); epoch <= 100; epoch++ {
+		input.BindingEpoch = epoch
+		decision, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), input)
+		if err != nil || !decision.Accepted || decision.KnownScopeCount != 1 {
+			t.Fatalf("renewal epoch%d appended token history or lost scope: %v", epoch, err)
+		}
+	}
+	var count int
+	var observedEpoch uint64
+	if err := registry.db.QueryRow(`SELECT count(*),min(binding_epoch) FROM node_native_context_history_v1`).Scan(&count, &observedEpoch); err != nil || count != 1 || observedEpoch != 7 {
+		t.Fatalf("actual first observed epoch changed: count%d epoch%d err%v", count, observedEpoch, err)
+	}
+	newBinding := input
+	newBinding.BindingID = "new-genuine-enrollment"
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), newBinding); !errors.Is(err, ErrNativeContextHistoryAtLimit) {
+		t.Fatalf("new enrollment bypassed history cap: %v", err)
+	}
+	groupBinding := input
+	groupBinding.GroupID = "group-actual-writer"
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), groupBinding); !errors.Is(err, ErrNativeContextScopeInvalid) {
+		t.Fatalf("Group writer was treated as access credential rotation: %v", err)
+	}
+	if _, err := registry.CheckAndRecordNativeContext(context.Background(), input); !errors.Is(err, ErrNativeContextHistoryAtLimit) {
+		t.Fatalf("ordinary binding history stopped recording genuine epochs: %v", err)
+	}
+}
+
+func TestNetworkEnrollmentObservationRetainsHistoricalRowsAndDedicatedScopeGuard(t *testing.T) {
+	registry, err := openNativeContextRegistry(":memory:", 3, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registry.Close()
+	input := nativeContextHistoryInput()
+	input.GroupID = ""
+	input.ContextPolicy = ""
+	for epoch := uint64(3); epoch <= 5; epoch++ {
+		input.BindingEpoch = epoch
+		if _, err := registry.CheckAndRecordNativeContext(context.Background(), input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	input.BindingEpoch = 100
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), input); err != nil {
+		t.Fatal("preserved enrollment at full history cap stopped renewal", err)
+	}
+	var count int
+	var first, last uint64
+	if err := registry.db.QueryRow(`SELECT count(*),min(binding_epoch),max(binding_epoch) FROM node_native_context_history_v1`).Scan(&count, &first, &last); err != nil || count != 3 || first != 3 || last != 5 {
+		t.Fatal("observation purged or rewrote historical provenance")
+	}
+	changedPolicy := input
+	changedPolicy.ContextPolicy = NativeContextPolicyDedicatedNetwork
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), changedPolicy); !errors.Is(err, ErrNativeContextHistoryAtLimit) {
+		t.Fatalf("new policy observation bypassed history cap: %v", err)
+	}
+	otherHub := input
+	otherHub.HubID = "hub-different"
+	otherHub.ContextPolicy = NativeContextPolicyDedicatedNetwork
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), otherHub); !errors.Is(err, ErrNativeContextScopeConflict) {
+		t.Fatalf("dedicated Hub scope ignored preserved history: %v", err)
+	}
+	otherNetwork := input
+	otherNetwork.NetworkID = "net-different"
+	otherNetwork.ContextPolicy = NativeContextPolicyDedicatedNetwork
+	if _, err := registry.CheckAndRecordNetworkEnrollmentContext(context.Background(), otherNetwork); !errors.Is(err, ErrNativeContextScopeConflict) {
+		t.Fatalf("dedicated Network scope ignored preserved history: %v", err)
+	}
+}

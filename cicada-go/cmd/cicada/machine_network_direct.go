@@ -221,23 +221,30 @@ func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest
 }
 
 func (b *machineAgentJoinBridge) verifyNetworkDirectSource(request localNetworkDirectRequest) (networkDirectCurrentActor, *store.NetworkDirectNativeBinding, error) {
-	path := "/v2/fabric/networks/" + urlPath(request.NetworkID)
-	data, err := b.httpWithAuthorization(http.MethodGet, path+"/whoami", nil, "Cicada-Network-Session "+request.SessionToken, "")
+	return b.ensureNetworkNativeBinding(request.NetworkID, request.EndpointID, request.NativeSessionID, request.SessionToken, "")
+}
+
+// This registers only the existing native identity. It grants no traffic,
+// keys, roles, Group membership, or additional native writer lease.
+func (b *machineAgentJoinBridge) ensureNetworkNativeBinding(networkID, endpointID, nativeSessionID, sessionToken, principalID string) (networkDirectCurrentActor, *store.NetworkDirectNativeBinding, error) {
+	path := "/v2/fabric/networks/" + urlPath(networkID)
+	data, err := b.httpWithAuthorization(http.MethodGet, path+"/whoami", nil, "Cicada-Network-Session "+sessionToken, "")
 	if err != nil {
 		return networkDirectCurrentActor{}, nil, err
 	}
 	var actor networkDirectCurrentActor
-	if err := decodeStrictBridgeJSON(data, &actor); err != nil || actor.NetworkID != request.NetworkID || actor.EndpointID != request.EndpointID || actor.PrincipalID == "" {
+	if err := decodeStrictBridgeJSON(data, &actor); err != nil || actor.NetworkID != networkID || actor.EndpointID != endpointID || actor.PrincipalID == "" ||
+		(principalID != "" && actor.PrincipalID != principalID) {
 		return networkDirectCurrentActor{}, nil, errors.New("Network session does not match its trusted Endpoint")
 	}
-	data, err = b.httpWithAuthorization(http.MethodPost, path+"/direct/native-binding", []byte(`{}`), "Cicada-Network-Session "+request.SessionToken, "")
+	data, err = b.httpWithAuthorization(http.MethodPost, path+"/direct/native-binding", []byte(`{}`), "Cicada-Network-Session "+sessionToken, "")
 	if err != nil {
 		return networkDirectCurrentActor{}, nil, err
 	}
 	var binding store.NetworkDirectNativeBinding
-	if err := decodeStrictBridgeJSON(data, &binding); err != nil || binding.EndpointID != request.EndpointID ||
+	if err := decodeStrictBridgeJSON(data, &binding); err != nil || binding.ID == "" || binding.EndpointID != endpointID ||
 		binding.PrincipalID != actor.PrincipalID || binding.NodeID != b.nodeID ||
-		binding.NativeSessionID != request.NativeSessionID || binding.Status != "active" || binding.Epoch == 0 {
+		binding.NativeSessionID != nativeSessionID || binding.Status != "active" || binding.Epoch == 0 {
 		return networkDirectCurrentActor{}, nil, errors.New("Network direct native binding does not match this original Thread")
 	}
 	return actor, &binding, nil
