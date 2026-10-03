@@ -145,6 +145,34 @@ func recoveryTreeDigest(root string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+func recoveryQueryStateDigest(nodeDir, stateDir, writerRoot, nodeID string) (string, error) {
+	nodeDigest, err := recoveryTreeDigest(nodeDir)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	fmt.Fprintln(h, nodeDigest)
+	// These holds lie outside the selected subtree. Do not inventory foreign
+	// Nodes or unrelated WriterRoot state. Exact shared fence bytes are checked
+	// against the verified archive after both exclusive locks are acquired.
+	for _, path := range []string{
+		filepath.Join(stateDir, "nodes", ".recovery-pending", "node-"+urlPath(nodeID)+".json"),
+		filepath.Join(writerRoot, ".writer-root-recovery-pending.json"),
+	} {
+		data, err := recoveryReadPrivateFile(path, 16*1024)
+		if err != nil {
+			return "", err
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%o:%d\n", info.Mode(), len(data))
+		h.Write(data)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("machine recovery query", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -178,7 +206,7 @@ func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 		// nodelock canonicalizes .locks to 0700. Reject other private modes
 		// before that helper can change the restored layout.
 		info, err := os.Lstat(path)
-		if err != nil || info.Mode().Perm() != 0700 {
+		if err != nil || info.Mode() != os.ModeDir|0700 {
 			return errors.New("existing recovery lock directories must have mode 0700")
 		}
 	}
@@ -187,15 +215,15 @@ func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 			return err
 		}
 		info, err := os.Lstat(path)
-		if err != nil || info.Mode().Perm() != 0600 {
+		if err != nil || info.Mode() != 0600 {
 			return errors.New("existing recovery lock files must have mode 0600")
 		}
 	}
-	before, err := recoveryTreeDigest(nodeDir)
+	before, err := recoveryQueryStateDigest(nodeDir, *stateDir, *root, manifest.NodeID)
 	if err != nil {
 		return err
 	}
-	proof, err := nodebackup.Inspect(*backup, *stateDir)
+	proof, err := nodebackup.InspectWithWriterRoot(*backup, *stateDir, *root)
 	if err != nil {
 		return err
 	}
@@ -213,9 +241,12 @@ func machineRecoveryQueryCommand(args []string, output io.Writer) error {
 		return err
 	}
 	defer writer.Close()
-	after, err := recoveryTreeDigest(nodeDir)
+	after, err := recoveryQueryStateDigest(nodeDir, *stateDir, *root, manifest.NodeID)
 	if err != nil || before != after {
 		return errors.New("restored Node changed during recovery inspection")
+	}
+	if err := nodebackup.VerifyRecoveryLineage(*backup, *stateDir, *root); err != nil {
+		return err
 	}
 	manifest, err = nodebackup.Verify(*backup)
 	if err != nil {

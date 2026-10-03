@@ -72,6 +72,13 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if strings.TrimSpace(*stateDir) == "" {
 		return errors.New("machine agent state directory is required")
 	}
+	recoveryWriterRoot := *stateDir
+	if pinned != nil && strings.TrimSpace(pinned.WriterRoot) != "" {
+		recoveryWriterRoot = pinned.WriterRoot
+	}
+	if err := rejectMachineRecoveryMutation(*stateDir, recoveryWriterRoot, *id); err != nil {
+		return err
+	}
 	agentLock, err := nodelock.AcquireAgent(*stateDir, *id)
 	if err != nil {
 		return fmt.Errorf("acquire Node Agent lock: %w", err)
@@ -111,6 +118,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	if rootQuarantined {
 		return errors.New("shared WriterRoot is quarantined after restore; reconcile shared fences before starting any Hub Agent")
+	}
+	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
+		return err
 	}
 	nodeIdentity, credentialDigest, err := loadOrCreateMachineNodeIdentity(*stateDir, *id)
 	if err != nil {

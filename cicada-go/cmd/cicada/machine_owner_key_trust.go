@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 )
@@ -28,6 +29,7 @@ func machineOwnerKeyTrustCommand(operation string, args []string, output io.Writ
 	flags.SetOutput(io.Discard)
 	nodeID := flags.String("id", envOr("CICADA_MACHINE_ID", ""), "stable Node ID")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "Node-local state directory")
+	writerRoot := flags.String("writer-root", "", "shared WriterRoot (defaults to state-dir)")
 	ownerID := flags.String("owner-id", "", "independently verified Owner ID")
 	publicPath := flags.String("public", "", "Owner public identity JSON")
 	expectKeyID := flags.String("expect-key-id", "", "independently verified key ID")
@@ -41,6 +43,9 @@ func machineOwnerKeyTrustCommand(operation string, args []string, output io.Writ
 	}
 	*nodeID = strings.TrimSpace(*nodeID)
 	*stateDir = strings.TrimSpace(*stateDir)
+	if strings.TrimSpace(*writerRoot) == "" {
+		*writerRoot = *stateDir
+	}
 	if operation == "trust-owner-key" {
 		if *publicPath == "" || *expectKeyID == "" || *expectFingerprint == "" ||
 			*keyID != "" || *expectedVersion != 0 {
@@ -50,11 +55,22 @@ func machineOwnerKeyTrustCommand(operation string, args []string, output io.Writ
 		*expectKeyID != "" || *expectFingerprint != "" {
 		return errors.New(machineOwnerKeyTrustUsage)
 	}
+	if err := rejectMachineRecoveryMutation(*stateDir, *writerRoot, *nodeID); err != nil {
+		return err
+	}
 	maintenance, err := nodelock.AcquireMaintenance(*stateDir, *nodeID)
 	if err != nil {
 		return fmt.Errorf("lock Node owner-key trust state: %w", err)
 	}
 	defer maintenance.Close()
+	writer, err := nodelock.AcquireWriterRoot(*writerRoot)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+	if err := rejectMachineRecoveryMutation(*stateDir, *writerRoot, *nodeID); err != nil {
+		return err
+	}
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(*stateDir, *nodeID))
 	if err != nil {
 		return err
@@ -85,6 +101,26 @@ func machineOwnerKeyTrustCommand(operation string, args []string, output io.Writ
 		State       string `json:"state"`
 		Version     int64  `json:"version"`
 	}{trust.OwnerID, trust.KeyID, trust.ExpectedFingerprint, trust.State, trust.Version})
+}
+
+// Check before lock helpers (which can prepare paths), and again while holding
+// their locks before opening any writable key, ledger or crypto database.
+func rejectMachineRecoveryMutation(stateDir, writerRoot, nodeID string) error {
+	active, err := nodebackup.RecoveryQuarantineActive(stateDir, nodeID)
+	if err != nil {
+		return fmt.Errorf("inspect Node recovery quarantine: %w", err)
+	}
+	if active {
+		return errors.New("Node recovery is pending; quarantine requires authenticated recovery query")
+	}
+	active, err = nodebackup.WriterRootRecoveryQuarantineActive(writerRoot)
+	if err != nil {
+		return fmt.Errorf("inspect WriterRoot recovery quarantine: %w", err)
+	}
+	if active {
+		return errors.New("WriterRoot recovery quarantine is pending; use authenticated recovery query")
+	}
+	return nil
 }
 
 func readMachineOwnerPublicIdentity(path string) (e2ee.PublicIdentity, error) {

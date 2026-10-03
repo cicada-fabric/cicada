@@ -202,6 +202,9 @@ func TestMachineRecoveryQueryLostResponsePreservesAllSecretState(t *testing.T) {
 		{"private-lock-directory", filepath.Join(restored, "nodes", ".locks"), 0500, 0700},
 		{"private-Node-lock", filepath.Join(restored, "nodes", ".locks", "node-"+urlPath(client.nodeID)+".maintenance.lock"), 0400, 0600},
 		{"private-WriterRoot-lock", filepath.Join(restored, ".writer-root.maintenance.lock"), 0400, 0600},
+		{"setgid-lock-directory", filepath.Join(restored, "nodes", ".locks"), os.ModeSetgid | 0700, 0700},
+		{"sticky-lock-directory", filepath.Join(restored, "nodes", ".locks"), os.ModeSticky | 0700, 0700},
+		{"setuid-Node-lock", filepath.Join(restored, "nodes", ".locks", "node-"+urlPath(client.nodeID)+".maintenance.lock"), os.ModeSetuid | 0600, 0600},
 	} {
 		t.Run(fault.name, func(t *testing.T) {
 			if err := os.Chmod(fault.path, fault.bad); err != nil {
@@ -222,7 +225,7 @@ func TestMachineRecoveryQueryLostResponsePreservesAllSecretState(t *testing.T) {
 				t.Fatalf("rejected layout changed shared root/Node bytes or modes: %v", err)
 			}
 			info, err := os.Lstat(fault.path)
-			if err != nil || info.Mode().Perm() != fault.bad {
+			if err != nil || info.Mode()&^os.ModeDir != fault.bad {
 				t.Fatal("rejection repaired a lock mode")
 			}
 			mu.Lock()

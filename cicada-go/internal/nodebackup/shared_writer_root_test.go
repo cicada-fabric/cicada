@@ -80,6 +80,73 @@ func TestSharedWriterRootBackupRestorePreservesFencesAndQuarantines(t *testing.T
 	assertSharedFenceStateReadable(t, targetWriterRoot)
 }
 
+func TestSharedWriterRootRepeatRestoreNeverRecreatesMissingFence(t *testing.T) {
+	for _, missing := range []string{"node-provider-admission.sqlite3", "native-epoch"} {
+		t.Run(missing, func(t *testing.T) {
+			base := t.TempDir()
+			source, writer := filepath.Join(base, "source"), filepath.Join(base, "writer")
+			makePrivateDir(t, source)
+			makePrivateDir(t, writer)
+			makeNodeSubtree(t, source, "synthetic-first")
+			makeNodeSubtree(t, source, "synthetic-second")
+			populateSharedWriterRoot(t, writer)
+			first, second := filepath.Join(base, "first"), filepath.Join(base, "second")
+			if _, err := BackupWithWriterRoot(source, "synthetic-first", writer, first); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := BackupWithWriterRoot(source, "synthetic-second", writer, second); err != nil {
+				t.Fatal(err)
+			}
+			target, targetWriter := filepath.Join(base, "target"), filepath.Join(base, "target-writer")
+			makePrivateDir(t, targetWriter)
+			if _, err := RestoreWithWriterRoot(first, target, targetWriter); err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyRecoveryLineage(first, target, targetWriter); err != nil {
+				t.Fatal(err)
+			}
+			manifest, err := Verify(first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(targetWriter, missing)
+			if missing == "native-epoch" {
+				for _, entry := range manifest.SharedWriterRoot.Files {
+					if strings.HasSuffix(entry.Path, ".lock.epoch") {
+						path = filepath.Join(targetWriter, filepath.FromSlash(entry.Path))
+						break
+					}
+				}
+			}
+			markerPath := filepath.Join(targetWriter, sharedWriterRootMarkerName)
+			marker, err := os.ReadFile(markerPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := RestoreWithWriterRoot(second, target, targetWriter); err == nil {
+				t.Fatal("repeat restore recreated missing forward fence")
+			}
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("missing fence was recreated")
+			}
+			after, err := os.ReadFile(markerPath)
+			if err != nil || string(marker) != string(after) {
+				t.Fatal("repeat restore changed recovery hold")
+			}
+			if err := VerifyRecoveryLineage(first, target, targetWriter); err == nil {
+				t.Fatal("query lineage accepted missing fence")
+			}
+			report, err := InspectWithWriterRoot(first, target, targetWriter)
+			if err != nil || !report.SharedWriterRootHeld || report.SharedWriterRootCheck != "shared_fence_mismatch_or_missing" {
+				t.Fatalf("held marker hid missing bundle: %v", err)
+			}
+		})
+	}
+}
+
 func TestSharedWriterRootRestoreRejectsMissingLegacyAndConflictingBundles(t *testing.T) {
 	t.Run("legacy archive establishes permanent shared hold", func(t *testing.T) {
 		backupDir := createMinimalNodeBackup(t, "node-legacy-shared-hold")

@@ -536,7 +536,7 @@ func installSharedWriterRoot(writerRoot, backupDir string, manifest *Manifest) e
 	if err != nil {
 		return err
 	}
-	if manifest.FormatVersion != CurrentFormatVersion || manifest.SharedWriterRoot == nil {
+	if manifest.SharedWriterRoot == nil {
 		if exists {
 			if marker.Status == "shared_fences_missing" && marker.BackupManifestSHA256 == backupDigest {
 				return nil
@@ -562,6 +562,13 @@ func installSharedWriterRoot(writerRoot, backupDir string, manifest *Manifest) e
 		if marker.Status != "pending" || marker.BundleSHA256 != shared.BundleSHA256 {
 			return fmt.Errorf("WriterRoot is quarantined for another or incomplete fence bundle: %w", ErrRestoreTargetBusy)
 		}
+		// A missing file may be lost forward state, not an interrupted first
+		// copy. There is no authentic evidence distinguishing those cases.
+		// Reuse only a complete exact bundle; never recreate a missing fence.
+		if err := sharedRootMatchesManifest(writerRoot, shared); err != nil {
+			return fmt.Errorf("existing restored shared fences are incomplete or changed: %w", ErrRestoreTargetBusy)
+		}
+		return nil
 	} else {
 		present, err := sharedFencePathsPresent(writerRoot)
 		if err != nil {

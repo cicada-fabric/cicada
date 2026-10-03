@@ -252,10 +252,11 @@ func (s *Store) ProposeSealedSharedTaskHandoffForActor(scope NativeActorScope,
 		return nil, err
 	}
 	startedAt := time.Now().UTC()
-	expiresText, expiresAt, err := normalizeSealedTaskHandoffExpiry(input.ExpiresAt, startedAt)
-	if err != nil {
-		return nil, err
+	expiresAt, err := time.Parse(time.RFC3339Nano, input.ExpiresAt)
+	if err != nil || expiresAt.IsZero() || expiresAt.Nanosecond()%1_000_000 != 0 || expiresAt.UTC().Format(time.RFC3339Nano) != input.ExpiresAt {
+		return nil, ErrSealedTaskHandoffConflict
 	}
+	expiresText := input.ExpiresAt
 	wantMessageID := sealedTaskHandoffMessageID(expiresAt, input.HandoffID)
 	if input.MessageID != wantMessageID || len(wantMessageID) > 256 {
 		return nil, ErrSealedTaskHandoffConflict
@@ -267,6 +268,42 @@ func (s *Store) ProposeSealedSharedTaskHandoffForActor(scope NativeActorScope,
 		return nil, err
 	}
 	defer tx.Rollback()
+	// An exact proposal retry reads the original record, even after transfer.
+	// It cannot renew the deadline, replace ciphertext or acquire Task ownership.
+	if existing, historyErr := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
+		` FROM shared_task_sealed_handoffs_v2 WHERE id=?`, input.HandoffID)); historyErr == nil {
+		if err := guardNativeActorTx(tx, scope, "task.read", startedAt); err != nil {
+			return nil, err
+		}
+		left, _ := json.Marshal(existing.RequiredArtifactRefs)
+		if existing.TaskID != input.TaskID || existing.GroupID != scope.GroupID ||
+			existing.FromPrincipalID != scope.PrincipalID || existing.FromEndpointID != scope.EndpointID ||
+			existing.ToEndpointID != input.ExpectedTargetEndpointID || existing.TaskRevision != input.ExpectedRevision ||
+			existing.FromOwnerEpoch != input.OwnerEpoch || existing.MessageID != input.MessageID ||
+			existing.MessageDigest != input.MessageDigest || existing.ExpiresAt != expiresText || string(left) != string(refsJSON) {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		if err := enrichSealedTaskHandoffTransportTx(tx, existing); err != nil {
+			return nil, err
+		}
+		if existing.LocalRoute != nil {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		record, recordErr := relaySealedV1RecordTx(tx, existing.MessageID)
+		if recordErr != nil || record == nil || record.Security.Digest != existing.MessageDigest ||
+			record.Security.SenderBindingID != scope.BindingID || record.Security.SenderBindingEpoch != scope.BindingEpoch {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	} else if !errors.Is(historyErr, ErrSealedTaskHandoffNotFound) {
+		return nil, historyErr
+	}
+	if !expiresAt.After(startedAt) || expiresAt.Sub(startedAt) > sealedTaskHandoffMaxLifetime {
+		return nil, ErrSealedTaskHandoffExpired
+	}
 	if err := acquireSharedTaskWrite(tx); err != nil {
 		return nil, err
 	}
@@ -391,6 +428,27 @@ func (s *Store) GetSealedSharedTaskHandoffForActor(scope NativeActorScope,
 	if scope.EndpointID != handoff.FromEndpointID && scope.EndpointID != handoff.ToEndpointID {
 		return nil, ErrSealedTaskHandoffNotFound
 	}
+	if handoff.LocalRoute != nil {
+		bindingID, epoch, principal := handoff.LocalRoute.FromBindingID, handoff.LocalRoute.FromBindingEpoch, handoff.FromPrincipalID
+		if scope.EndpointID == handoff.ToEndpointID {
+			bindingID, epoch, principal = handoff.LocalRoute.ToBindingID, handoff.LocalRoute.ToBindingEpoch, handoff.ToPrincipalID
+		}
+		if scope.PrincipalID != principal || scope.BindingID != bindingID || scope.BindingEpoch != epoch {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+	} else {
+		record, recordErr := relaySealedV1RecordTx(tx, handoff.MessageID)
+		if recordErr != nil || record == nil || record.Security.Digest != handoff.MessageDigest {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		bindingID, epoch, principal := record.Security.SenderBindingID, record.Security.SenderBindingEpoch, handoff.FromPrincipalID
+		if scope.EndpointID == handoff.ToEndpointID {
+			bindingID, epoch, principal = record.Security.ReceiverBindingID, record.Security.ReceiverBindingEpoch, handoff.ToPrincipalID
+		}
+		if scope.PrincipalID != principal || scope.BindingID != bindingID || scope.BindingEpoch != epoch {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -409,7 +467,7 @@ func (s *Store) AcceptSealedSharedTaskHandoffForActor(scope NativeActorScope,
 	if local {
 		return s.acceptLocalSealedSharedTaskHandoffForActor(scope, id, expectedVersion, leaseSeconds)
 	}
-	if expectedVersion <= 0 {
+	if expectedVersion <= 0 || leaseSeconds < 0 || leaseSeconds > 3600 {
 		return nil, ErrSealedTaskHandoffConflict
 	}
 	if leaseSeconds <= 0 {
@@ -425,9 +483,6 @@ func (s *Store) AcceptSealedSharedTaskHandoffForActor(scope NativeActorScope,
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := acquireSharedTaskWrite(tx); err != nil {
-		return nil, err
-	}
 	at := time.Now().UTC()
 	handoff, err := scanSealedSharedTaskHandoff(tx.QueryRow(`SELECT `+sealedSharedTaskHandoffColumns+
 		` FROM shared_task_sealed_handoffs_v2 WHERE id=? AND group_id=?`, id, scope.GroupID))
@@ -445,6 +500,22 @@ func (s *Store) AcceptSealedSharedTaskHandoffForActor(scope NativeActorScope,
 			(task.Status != SharedTaskClaimed && task.Status != SharedTaskRunning) {
 			return nil, ErrSealedTaskHandoffConflict
 		}
+		if task.Revision != handoff.TaskRevision+1 || task.ClaimKey != "sealed-handoff:"+handoff.ID ||
+			!sharedTaskLeaseActive(task.LeaseExpiresAt) ||
+			parseRFC3339OrZero(task.LeaseExpiresAt).Sub(parseRFC3339OrZero(handoff.TransferredAt)) != time.Duration(leaseSeconds)*time.Second {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		record, recordErr := relaySealedV1RecordTx(tx, handoff.MessageID)
+		if recordErr != nil || record == nil || record.Security.Digest != handoff.MessageDigest {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		pair, _, pairErr := validateQueuedSameGroupSealedV1Tx(tx, record, at)
+		if pairErr != nil || pair.receiver.EndpointID != scope.EndpointID || pair.receiver.PrincipalID != scope.PrincipalID {
+			return nil, ErrSealedTaskHandoffConflict
+		}
+		if err := authorizeSealedTaskHandoffArtifactRefsTx(tx, scope.PrincipalID, scope.GroupID, handoff.RequiredArtifactRefs, at); err != nil {
+			return nil, ErrSealedTaskHandoffMissingArtifact
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -453,6 +524,12 @@ func (s *Store) AcceptSealedSharedTaskHandoffForActor(scope NativeActorScope,
 	if handoff.Status != SealedTaskHandoffProposed || handoff.Version != expectedVersion ||
 		scope.PrincipalID != handoff.ToPrincipalID || scope.EndpointID != handoff.ToEndpointID {
 		return nil, ErrSealedTaskHandoffConflict
+	}
+	if err := guardNativeActorTx(tx, scope, "task.claim", at); err != nil {
+		return nil, err
+	}
+	if err := acquireSharedTaskWrite(tx); err != nil {
+		return nil, err
 	}
 	if !at.Before(parseRFC3339OrZero(handoff.ExpiresAt)) {
 		_, _ = tx.Exec(`UPDATE shared_task_sealed_handoffs_v2 SET status=?,version=version+1,

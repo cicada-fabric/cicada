@@ -85,6 +85,9 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 	if strings.TrimSpace(*writerRoot) == "" {
 		*writerRoot = *stateDir
 	}
+	if err := rejectMachineRecoveryMutation(*stateDir, *writerRoot, *nodeID); err != nil {
+		return err
+	}
 	var err error
 	var agentLock *nodelock.AgentLock
 	if action != "inspect" {
@@ -93,12 +96,21 @@ func machineNodeControlOperatorCommand(args []string, output io.Writer) error {
 			return errors.New("stop the Node Agent before operator reconciliation; its execution ownership is still active")
 		}
 		defer agentLock.Close()
+	} else {
+		maintenance, err := nodelock.AcquireMaintenance(*stateDir, *nodeID)
+		if err != nil {
+			return err
+		}
+		defer maintenance.Close()
 	}
 	writerRootLock, err := nodelock.AcquireWriterRoot(*writerRoot)
 	if err != nil {
 		return fmt.Errorf("acquire shared Node WriterRoot lock: %w", err)
 	}
 	defer writerRootLock.Close()
+	if err := rejectMachineRecoveryMutation(*stateDir, *writerRoot, *nodeID); err != nil {
+		return err
+	}
 	rootQuarantined, err := nodebackup.WriterRootRecoveryQuarantineActive(*writerRoot)
 	if err != nil {
 		return fmt.Errorf("inspect shared WriterRoot recovery quarantine: %w", err)

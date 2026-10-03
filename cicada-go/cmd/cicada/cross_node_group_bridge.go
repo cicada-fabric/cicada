@@ -196,10 +196,9 @@ func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKey(groupID, sourceEndpo
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupTaskHandoffPeerKey(groupID, sourceEndpointID,
 	targetEndpointID string) (crossNodeGroupPeerKey, error) {
-	// v45 handoffs use the same currently deployed cross-Node relay primitive
-	// as other sealed Group messages. Same-Node delivery remains unsupported
-	// until a direct local primitive with equivalent route fencing exists.
-	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, false)
+	// Task handoffs use the same one-Hub Relay on either Node topology.
+	// Same Node identity provides no evidence of NativeDirect eligibility.
+	return b.fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID, targetEndpointID, true)
 }
 
 func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKeyMode(groupID, sourceEndpointID,

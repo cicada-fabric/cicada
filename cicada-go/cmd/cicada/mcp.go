@@ -26,6 +26,7 @@ import (
 type mcpServer struct {
 	baseURL           string
 	hubStateDir       string
+	writerRoot        string
 	endpointID        string
 	sessionToken      string
 	sessionGroupID    string
@@ -116,6 +117,7 @@ func runMCP(args []string) error {
 	}
 	statePath := mcpSessionStatePath()
 	hubStateDir := ""
+	writerRoot := ""
 	if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
 		if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
 			return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
@@ -128,6 +130,7 @@ func runMCP(args []string) error {
 		if err != nil {
 			return err
 		}
+		writerRoot = root
 		for _, entry := range entries {
 			if entry.HubID != *hubID {
 				continue
@@ -143,6 +146,7 @@ func runMCP(args []string) error {
 	}
 	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)
 	server.hubStateDir = hubStateDir
+	server.writerRoot = writerRoot
 	if hubStateDir != "" {
 		server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
 	}

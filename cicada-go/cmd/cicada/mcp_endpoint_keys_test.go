@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,8 +32,74 @@ type mcpEndpointKeyFixture struct {
 	whoamiCount     atomic.Int32
 	keyGetCount     atomic.Int32
 	keyPostCount    atomic.Int32
+	keyAccessProbe  func()
 	authorization   []string
 	authorizationMu sync.Mutex
+}
+
+func TestMCPGroupEndpointKeyPublicationRespectsWriterRootExclusive(t *testing.T) {
+	for _, separate := range []bool{false, true} {
+		t.Run(fmt.Sprint(separate), func(t *testing.T) {
+			fixture := newMCPEndpointKeyFixture(t)
+			state := privateRecoveryTestDir(t)
+			writer := state
+			if separate {
+				writer = privateRecoveryTestDir(t)
+			}
+			fixture.mcp.hubStateDir, fixture.mcp.writerRoot = state, writer
+			exclusive, err := nodelock.AcquireWriterRootExclusive(writer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer exclusive.Close()
+			_, err = fixture.mcp.publishEndpointKeyCandidate(map[string]any{})
+			if !errors.Is(err, nodelock.ErrBusy) {
+				t.Fatalf("root exclusion bypassed: %v", err)
+			}
+			if _, err := os.Lstat(machineNodeStateDir(state, fixture.joinInput.NodeID)); !os.IsNotExist(err) {
+				t.Fatal("blocked publication created key state")
+			}
+			if fixture.keyGetCount.Load() != 0 || fixture.keyPostCount.Load() != 0 {
+				t.Fatal("blocked publication reached candidate paths")
+			}
+		})
+	}
+}
+
+func TestMCPGroupEndpointKeyPublicationRejectsRecoveryBeforeKeyCreation(t *testing.T) {
+	for _, hold := range []string{"node", "registration", "common-writer-root"} {
+		t.Run(hold, func(t *testing.T) {
+			fixture := newMCPEndpointKeyFixture(t)
+			state, writer := t.TempDir(), t.TempDir()
+			fixture.mcp.hubStateDir = state
+			fixture.mcp.writerRoot = writer
+			nodeID := fixture.joinInput.NodeID
+			path := filepath.Join(machineNodeStateDir(state, nodeID), "recovery-pending.json")
+			if hold == "registration" {
+				path = filepath.Join(state, "nodes", ".recovery-pending", "node-"+nodeID+".json")
+			}
+			if hold == "common-writer-root" {
+				path = filepath.Join(writer, ".writer-root-recovery-pending.json")
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("synthetic malformed hold"), 0400); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := recoveryTreeDigest(state)
+			writerBefore, _ := recoveryTreeDigest(writer)
+			_, err := fixture.mcp.publishEndpointKeyCandidate(map[string]any{})
+			if err == nil || !strings.Contains(err.Error(), "quarantine") {
+				t.Fatalf("publication did not fail at quarantine: %v", err)
+			}
+			after, _ := recoveryTreeDigest(state)
+			writerAfter, _ := recoveryTreeDigest(writer)
+			if before != after || writerBefore != writerAfter || fixture.keyPostCount.Load() != 0 || fixture.keyGetCount.Load() != 0 || fixture.whoamiCount.Load() != 1 {
+				t.Fatal("denial created keys or published candidate")
+			}
+		})
+	}
 }
 
 func newMCPEndpointKeyFixture(t *testing.T) *mcpEndpointKeyFixture {
@@ -85,9 +153,15 @@ func newMCPEndpointKeyFixture(t *testing.T) *mcpEndpointKeyFixture {
 			fixture.whoamiCount.Add(1)
 		case "/v2/fabric/endpoint-keys/" + joined.Endpoint.ID:
 			fixture.keyGetCount.Add(1)
+			if fixture.keyAccessProbe != nil {
+				fixture.keyAccessProbe()
+			}
 		case "/v2/fabric/endpoint-keys":
 			if request.Method == http.MethodPost {
 				fixture.keyPostCount.Add(1)
+				if fixture.keyAccessProbe != nil {
+					fixture.keyAccessProbe()
+				}
 			}
 		}
 		fabricHandler.ServeHTTP(response, request)
@@ -111,6 +185,29 @@ func newMCPEndpointKeyFixture(t *testing.T) *mcpEndpointKeyFixture {
 		BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt}
 	fixture.mcp.setSession(joined.SessionToken, joined.Endpoint.ID, joined.NetworkCard.GroupID, trusted, scope, public)
 	return fixture
+}
+
+func TestMCPGroupEndpointKeyPublicationHoldsRootThroughCandidateHTTP(t *testing.T) {
+	fixture := newMCPEndpointKeyFixture(t)
+	root := privateRecoveryTestDir(t)
+	fixture.mcp.hubStateDir, fixture.mcp.writerRoot = root, root
+	var checks atomic.Int32
+	fixture.keyAccessProbe = func() {
+		lock, err := nodelock.AcquireWriterRootExclusive(root)
+		if lock != nil {
+			lock.Close()
+		}
+		if !errors.Is(err, nodelock.ErrBusy) {
+			t.Errorf("candidate HTTP escaped shared root exclusion: %v", err)
+		}
+		checks.Add(1)
+	}
+	if _, err := fixture.mcp.publishEndpointKeyCandidate(map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if checks.Load() != 2 {
+		t.Fatal("did not check both candidate GET and POST")
+	}
 }
 
 func TestCicadaMCPAdvertisesEndpointKeyCandidateToolWithOnlyNetworkSelector(t *testing.T) {
@@ -175,7 +272,7 @@ func TestCicadaPublishEndpointKeyCandidateRequiresExplicitNodeStateDir(t *testin
 
 func TestCicadaPublishEndpointKeyCandidateRegistersAndRepeatsSafely(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
-	t.Setenv("CICADA_NODE_STATE_DIR", t.TempDir())
+	t.Setenv("CICADA_NODE_STATE_DIR", privateRecoveryTestDir(t))
 	first, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +334,7 @@ func TestCicadaPublishEndpointKeyCandidateRegistersAndRepeatsSafely(t *testing.T
 
 func TestCicadaPublishEndpointKeyCandidateWaitsForOfflineMaintenance(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
-	stateDir := t.TempDir()
+	stateDir := privateRecoveryTestDir(t)
 	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
 	offline, err := nodelock.AcquireMaintenanceExclusive(stateDir, fixture.joined.NetworkCard.NodeID)
 	if err != nil {
@@ -288,7 +385,7 @@ func TestCicadaPublishEndpointKeyCandidateWaitsForOfflineMaintenance(t *testing.
 
 func TestCicadaPublishEndpointKeyCandidateRejoinRefreshesSameNodeKey(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
-	t.Setenv("CICADA_NODE_STATE_DIR", t.TempDir())
+	t.Setenv("CICADA_NODE_STATE_DIR", privateRecoveryTestDir(t))
 	first, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -338,7 +435,7 @@ func TestCicadaPublishEndpointKeyCandidateRejoinRefreshesSameNodeKey(t *testing.
 
 func TestCicadaPublishEndpointKeyCandidateFailsClosedOnHubKeyMismatch(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
-	t.Setenv("CICADA_NODE_STATE_DIR", t.TempDir())
+	t.Setenv("CICADA_NODE_STATE_DIR", privateRecoveryTestDir(t))
 	otherIdentity, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal(err)
