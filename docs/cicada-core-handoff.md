@@ -1,65 +1,107 @@
 # CICADA Client integration handoff
 
-## Current F24–F28 outcome — clean Core `0213538`
+## Current F30 outcome — clean Core `0213538`
 
-The [F24–F28 validation report](client-hub-v1.6.4-0213538-f28-validation.md)
-binds the fixed Core images and all five bounded attempts. F24 stopped at the
-cold APK-pin closure check. F25/F26 ended before prepare/business under their
-budget cancellations. F27's prepare failed because its pin used the inner
-Hub-ready digest instead of the raw aggregate READY digest. F28 used the
-calibrated raw digest and passed bootstrap, preparation, bind, carrier, and hot
-preflight.
+The [F30 validation report](client-hub-v1.6.4-0213538-f30-validation.md)
+binds clean Client `b19e84b66cae3887c64cb9e576f11b3cf55f6eee`, its exact APK
+pair, the fixed Core target, actual Root BOOT/GO, and the F30 terminal receipts.
+The live checker passed with `391.828` seconds remaining in the original budget
+at the check. The business plan bound the exact three Root references; the
+authorized Scope bound 27 fields and nine public references. Bootstrap,
+prepare, bind, carrier, and hot preflight passed. SOURCE KEY and SOURCE `NONE`
+produced only partial statuses; TARGET enrollment, capabilities, pins, and
+phone-UI preparation passed.
 
-F28 passed SOURCE enrollment, encrypted capabilities, independent pins, KEY
-submission, and fresh partial status (`SOURCE accepted`, `TARGET missing`,
-`bilateral=false`). SOURCE `NONE` also reached terminal/partial status with
-`current=false`, `bilateral=false`. TARGET enrollment, capabilities, and
-independent pins passed. The Android test failed at `kt295` while waiting for
-the scope row after clicking the current proof-read button. The launcher flow
-exited `1`
-after `100.391` seconds. Target KEY request/signature, positive confirmation
-Alert, Target `NONE`, and bilateral acceptance are **NOT_RUN**. The underlying
-failure cause remains **UNKNOWN**.
+JUnit failed at `kt386` while trying to resolve the explicit Target
+confirmation control `核对并明确授权`. Earlier canonical proof-input and
+request-binding checks passed. The Android flow exited `1`; the positive
+confirmation Alert, Target KEY Hub acceptance, Target `NONE`, and bilateral
+KEY/`NONE` remain **NOT_RUN**. The underlying UI cause is **UNKNOWN**; the test
+does not establish an API, DTO, or lifecycle defect.
 
-The original F28 terminal is **`OUTCOME_UNKNOWN_PRESERVE_PENDING`**. One Root
-business frame ran, no retries occurred, and the exact actor stop/wait, one
-terminal ACK, and owned cleanup completed. The ACK exited `0`; cleanup evidence
-is in the F28 report. Do not replay or rewrite the pending operation. The
-coordinator marker is preserved; no Android session-state export established
-whether an RPC ciphertext was pending. The report binds the F28 APK pair to
-Client source
-`8b1b6c54eff702918c426827a3673f9a112edbcc` and records the current 18 focused
-offline tests and two static checks. The updated instrumentation APK build
-receipt is pending post-commit. Physical Android, public HTTPS, native Worker,
-Link recovery faults, Target confirmation and bilateral consent remain
-**NOT_RUN**.
+The terminal is **`OUTCOME_UNKNOWN_PRESERVE_PENDING`**. Preserve the F30 host
+marker and do not retry: the actual native RPC outcome was not exported. Core
+indexed one Root frame, five signature records, zero retries, one terminal ACK,
+and owned cleanup. The ACK exited `0` before the hard deadline; actor stop and
+owned cleanup passed. Physical Android, public HTTPS, and native Worker
+acceptance remain **NOT_RUN**.
+
+The bounded consent-control correction now uses a stable test ID, diagnostic
+tooltip/View IDs, state restoration, and a 20-second wait for one enabled and
+clickable confirmation control. Its strict nine-field receipt and 22 focused
+Python/JavaScript tests passed; TypeScript and ESLint also passed. These offline
+checks do not validate the Android UI. At this source checkpoint, post-commit
+APK assembly is **NOT_RUN**; its subsequent receipt at
+`/gpu1-share/data/cicada-client/v164-f30-consent-button-wait-20261003/apk-build.receipt.redacted.json`
+will bind the exact source and APKs. A fresh live run remains **NOT_RUN**. The earlier 18 focused checks,
+static checks, and single APK build apply only to Client `b19e84b` and its F30
+APK pair.
 
 ### Next coordination prompt
 
 ```text
-Read this F24–F28 handoff section and
-docs/client-hub-v1.6.4-0213538-f28-validation.md. Keep every failed attempt
-and the F28 terminal OUTCOME_UNKNOWN_PRESERVE_PENDING unchanged. Do not resend,
-regenerate, or silently clear any existing F28 packet, operation, sequence,
-proofs, or pending marker. Do not infer that an unexported Target grant packet
-exists. Its single terminal ACK has already run.
+Read docs/client-hub-v1.6.4-0213538-f30-validation.md. Preserve the F28 and
+F29 failures and the F30 OUTCOME_UNKNOWN_PRESERVE_PENDING marker. Do not retry
+the F30 operation or infer bilateral consent from the Target signing request
+or proof handoff. The positive phone confirmation and Hub acceptance did not
+run; native RPC outcome remains unknown.
 
-Keep clean Core 0213538, the full pinned images and catalog, independent
-SOURCE/TARGET Owner pins, strict proof/lease/time/tuple/fence checks, the
-one-frame Root authorization, and the existing six-flow order. Bind READY by
-its raw aggregate digest; do not substitute the inner Hub-ready digest. Do not
-extend original deadlines, reuse F28 proofs, add retries, or send a new
-business frame from a stale GO.
-
-Wait for a fresh Main Root BOOT that produces actual READY and a fresh Root GO
-bound to the clean source, exact APK pair, fixed Core images, current Scope,
-and new deadlines. Only then perform a separately authorized bounded step.
-Keep Core as sole Owner-signing custodian and preserve actor stop/wait, one
-terminal-ACK, and owned-cleanup rules. Record each encrypted gate, Target
-confirmation, status, and terminal outcome separately. If F28's authoritative
-outcome remains unknown, retain its pending operation. Physical Android,
-public HTTPS and native Worker acceptance remain NOT_RUN until tested.
+The minimal correction is implemented. Bind the exact source and APK pair to
+the commit and subsequent post-commit APK receipt at
+`/gpu1-share/data/cicada-client/v164-f30-consent-button-wait-20261003/apk-build.receipt.redacted.json`.
+The current offline checks do not validate the Android UI. Before another live
+step, require a fresh Root BOOT with actual READY and a fresh GO bound to the exact source,
+APK pair, fixed Core target, Scope, and deadlines. Preserve strict Owner pins,
+proof, lease, tuple, and operation-fence checks; the existing six-flow order;
+one-frame Root authorization; Core signing custody; actor stop/wait; one
+terminal ACK; and owned cleanup. Do not reuse F30's GO, proof handoff, or pending
+operation. Keep each status and terminal outcome separate. Physical Android,
+public HTTPS, and native Worker acceptance remain NOT_RUN until tested.
 ```
+
+## Historical F29 outcome — Root-reference plan failure
+
+F29 used Client `b19e84b66cae3887c64cb9e576f11b3cf55f6eee` and its recorded APK
+pair. The first non-authoritative proposal had three incorrect Root references
+(SHA-256 `940330f6d3ef906c40938cddb17ebaf2ffe1c008aefb731c711d60d9dbeb99ca`).
+A corrected proposal passed static review, but static PASS was not
+authorization or execution; the corrected proposal missed the original
+360-second readiness budget. Bootstrap, bootstrap preflight, and emulator stop
+exited `0`. The terminal at `16:13:35.612855Z` records **FAIL / PlanError /
+NOT_RUN**. Root cancelled before the original hard deadline `16:17:49Z` and
+idle deadline `16:20:52Z`; the generic idle message does not prove actual idle
+expiry. No business frame, signature, or encrypted request was sent.
+
+Core stopped the actor and completed one terminal ACK with exit `0` before the
+hard deadline. The held actor wait exited `143` after SIGTERM. Owned cleanup
+passed. Terminal SHA-256 is
+`75861be2bb625fceaa1f5568d1c55c8220f72cffb1a2dde03f29365670bb531f`; the
+Core closure index is
+`/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-29-clean021-20261003/evidence/attempt-08/stage-actor-terminal-owned-closure-index.redacted.json`,
+SHA-256 `a7b7f3633a63e3679ae144e3b6fe04219f7d9ea23f32844b7ed47c768753b7f5`.
+F29 was an orchestration/plan failure, not product acceptance or rejection.
+
+## Historical F24–F28 outcome — clean Core `0213538`
+
+The [F24–F28 validation report](client-hub-v1.6.4-0213538-f28-validation.md)
+retains each failed attempt. F24 stopped at the cold APK-pin closure check;
+F25/F26 ended before business under their budget cancellations; F27 prepare
+failed on the inner Hub-ready digest instead of raw aggregate READY. F28 passed
+bootstrap, preparation, binding, and hot preflight, then its flow exited `1`
+after the SOURCE partial result and TARGET setup.
+
+F28 SOURCE KEY status was partial (`SOURCE` accepted, `TARGET` missing,
+`bilateral=false`); SOURCE `NONE` remained noncurrent and nonbilateral. TARGET
+enrollment, capabilities, and independent pins passed. The Android test failed
+while waiting for the scope row after reading the current proof. Target KEY
+confirmation, Target `NONE`, and bilateral acceptance were **NOT_RUN**. Its
+terminal remains **`OUTCOME_UNKNOWN_PRESERVE_PENDING`**; one Root frame, no
+retries, one terminal ACK, and owned cleanup are recorded in the report.
+
+F28 used the APK pair from Client `8b1b6c54eff702918c426827a3673f9a112edbcc`.
+Its next-run prompt and 18 focused checks are historical. F30 later used Client
+`b19e84b66cae3887c64cb9e576f11b3cf55f6eee` and a different APK pair. Do not
+transfer any F28 result to F30 or the current consent-control correction.
 
 ## Historical F20–F23 outcome and timestamp correction — clean Core `0213538`
 

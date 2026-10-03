@@ -1,5 +1,6 @@
 package ai.cicada.client.hub
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Instrumentation
 import android.content.Intent
 import android.os.Bundle
@@ -11,11 +12,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cicadaclient.MainActivity
+import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -28,6 +31,7 @@ import java.util.Base64
 @RunWith(AndroidJUnit4::class)
 class LinkConsentPhoneUiTest {
     private val instrumentation: Instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private var priorAccessibilityFlags: Int? = null
     private val target get() = instrumentation.targetContext
     private val args get() = InstrumentationRegistry.getArguments()
     private val runId get() = args.getString("run_id")
@@ -39,6 +43,29 @@ class LinkConsentPhoneUiTest {
     private val reviewReceipt get() = File(directory, "phone-ui-review.redacted.json")
     private val resultReceipt get() = File(directory, "phone-ui-submit.redacted.json")
     private val prepareReceipt get() = File(directory, "phone-ui-prepare.redacted.json")
+    private val consentReceipt get() = File(directory, "phone-ui-consent.redacted.json")
+
+    private val consentReadyHint = "签名证明格式有效；请核对授权范围后继续。"
+    private val consentInvalidHint = "签名证明输入无效，请检查后继续。"
+    private val consentBusyHint = "正在核验，请稍候。"
+
+    private fun enableViewIdReporting() {
+        val automation = instrumentation.uiAutomation
+        val serviceInfo = automation.serviceInfo
+        priorAccessibilityFlags = serviceInfo.flags
+        serviceInfo.flags = serviceInfo.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        automation.setServiceInfo(serviceInfo)
+    }
+
+    @After
+    fun restoreAccessibilityFlags() {
+        val flags = priorAccessibilityFlags ?: return
+        val automation = instrumentation.uiAutomation
+        val serviceInfo = automation.serviceInfo
+        serviceInfo.flags = flags
+        automation.setServiceInfo(serviceInfo)
+        priorAccessibilityFlags = null
+    }
 
     private data class Scope(
         val ownerId: String,
@@ -171,6 +198,87 @@ class LinkConsentPhoneUiTest {
             SystemClock.sleep(150)
         }
         error("Product control was missing or ambiguous: $label")
+    }
+
+    private data class ConsentControl(
+        val target: AccessibilityNodeInfo?,
+        val stage: String,
+        val count: Int,
+        val enabledCount: Int,
+        val busy: Boolean?,
+        val proofReady: Boolean?,
+    )
+
+    private fun isConsentSelector(node: AccessibilityNodeInfo): Boolean {
+        return node.viewIdResourceName == "link-consent-confirm" ||
+            node.text?.toString() == "核对并明确授权" ||
+            node.contentDescription?.toString() == "核对并明确授权" ||
+            node.tooltipText?.toString() in setOf(consentReadyHint, consentInvalidHint, consentBusyHint)
+    }
+
+    private fun consentControl(root: AccessibilityNodeInfo): ConsentControl {
+        val visible = descendants(root).filter { it.isVisibleToUser }
+        val idMatches = visible.filter { it.viewIdResourceName == "link-consent-confirm" }
+        val selectors = if (idMatches.isNotEmpty()) idMatches else visible.filter(::isConsentSelector)
+        val controls = selectors.mapNotNull { node ->
+            if (node.viewIdResourceName == "link-consent-confirm") node else nearestClickable(node)
+        }
+            .distinct()
+        if (controls.isEmpty()) return ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null)
+        if (controls.size > 1) return ConsentControl(null, "CONTROL_MULTIPLE", 2,
+            controls.count { it.isEnabled }.coerceAtMost(2), null, null)
+
+        val target = controls.single()
+        val stateHint = target.tooltipText?.toString()
+            ?: descendants(target).firstNotNullOfOrNull { it.tooltipText?.toString() }
+        return when (stateHint) {
+            consentBusyHint -> ConsentControl(target, "CONTROL_BUSY", 1,
+                if (target.isEnabled) 1 else 0, true, null)
+            consentInvalidHint -> ConsentControl(target, "PROOF_INVALID", 1,
+                if (target.isEnabled) 1 else 0, false, false)
+            consentReadyHint -> if (target.isEnabled) {
+                if (target.isClickable) ConsentControl(target, "CONFIRM_READY", 1, 1, false, true)
+                else ConsentControl(target, "CONTROL_UNCONFIRMED", 1, 1, null, null)
+            } else {
+                ConsentControl(target, "CONTROL_DISABLED", 1, 0, false, true)
+            }
+            else -> ConsentControl(target, "CONTROL_UNCONFIRMED", 1,
+                if (target.isEnabled) 1 else 0, null, null)
+        }
+    }
+
+    /** Receipts contain only fixed stages, bounded counts, and booleans. */
+    private fun recordConsentControl(value: ConsentControl) {
+        require(value.stage in setOf("CONTROL_MISSING", "CONTROL_MULTIPLE", "CONTROL_BUSY",
+            "PROOF_INVALID", "CONTROL_DISABLED", "CONTROL_UNCONFIRMED", "CONFIRM_READY",
+            "ACCESSIBILITY_CLICK_FAILED"))
+        val record = JsonObject().apply {
+            addProperty("schema", "cicada.client-v164-phone-ui-consent.v1")
+            addProperty("result", if (value.stage == "CONFIRM_READY") "PASS" else "FAIL")
+            addProperty("run_id_sha256", hash(runId.toByteArray(StandardCharsets.UTF_8)))
+            addProperty("stage", value.stage)
+            addProperty("control_count", value.count.coerceIn(0, 2))
+            addProperty("enabled_count", value.enabledCount.coerceIn(0, 2))
+            add("busy", value.busy?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            add("proof_ready", value.proofReady?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            addProperty("native_session_methods_called_by_test", false)
+        }
+        writePrivate(consentReceipt, record.toString().toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun awaitEnabledConsentControl(timeoutMs: Long = 20_000): AccessibilityNodeInfo {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        var latest = ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null)
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = uiRoot()
+            if (root != null) {
+                latest = consentControl(root)
+                if (latest.stage == "CONFIRM_READY") return latest.target!!
+            }
+            SystemClock.sleep(200)
+        }
+        recordConsentControl(latest)
+        error("Consent confirmation control did not become ready: ${latest.stage}")
     }
 
     private fun scrollToText(needle: String, timeoutMs: Long = 20_000) {
@@ -311,9 +419,10 @@ class LinkConsentPhoneUiTest {
     fun actualReactNativeLinkConsentAlertUsesCurrentExternallySignedReview() {
         val scope = readScope()
         require(!requestFile.exists() && !proofFile.exists() && !reviewReceipt.exists() &&
-            !resultReceipt.exists() && !prepareReceipt.exists()) {
+            !resultReceipt.exists() && !prepareReceipt.exists() && !consentReceipt.exists()) {
             "This UI run already contains a signer handoff; use a fresh run ID instead of replaying it"
         }
+        enableViewIdReporting()
         val activity = instrumentation.startActivitySync(
             Intent(target, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
         )
@@ -383,7 +492,12 @@ class LinkConsentPhoneUiTest {
         setTextByHint("Owner 签名证明 Base64", signedProof)
         signedProof.toCharArray().fill('\u0000')
         scrollToText("核对并明确授权")
-        clickLabel("核对并明确授权")
+        val consentControl = awaitEnabledConsentControl()
+        if (!consentControl.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            recordConsentControl(ConsentControl(consentControl, "ACCESSIBILITY_CLICK_FAILED", 1, 1, false, true))
+            error("Consent confirmation control could not be activated")
+        }
+        recordConsentControl(ConsentControl(consentControl, "CONFIRM_READY", 1, 1, false, true))
 
         val alertRoot = awaitRoot { root ->
             val texts = visibleText(root)

@@ -72,6 +72,55 @@ Tests run: 1, Failures: 1
             with self.assertRaises(ValueError):
                 interop.validate_phone_ui_prepare_receipt(raw, 'a' * 64)
 
+    def consent_receipt(self, stage='CONFIRM_READY', **fields):
+        return {'schema': 'cicada.client-v164-phone-ui-consent.v1',
+            'result': 'PASS' if stage == 'CONFIRM_READY' else 'FAIL',
+            'run_id_sha256': 'a' * 64, 'stage': stage,
+            'control_count': 1, 'enabled_count': 1, 'busy': False, 'proof_ready': True,
+            'native_session_methods_called_by_test': False, **fields}
+
+    def test_readiness_needs_one_enabled_nonbusy_proof_ready_control(self):
+        self.assertEqual(interop.validate_phone_ui_consent_receipt(
+            json.dumps(self.consent_receipt()).encode(), 'a' * 64)['stage'], 'CONFIRM_READY')
+        for change in ({'control_count': 0}, {'control_count': 2}, {'enabled_count': 0},
+            {'busy': True}, {'proof_ready': False}, {'proof_ready': None}, {'result': 'FAIL'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(**change)).encode(), 'a' * 64)
+
+    def test_control_failures_distinguish_unknown_state_from_disabled_or_busy(self):
+        cases = [
+            ('CONTROL_MISSING', dict(control_count=0, enabled_count=0, busy=None, proof_ready=None)),
+            ('CONTROL_MULTIPLE', dict(control_count=2, busy=None, proof_ready=None)),
+            ('CONTROL_UNCONFIRMED', dict(busy=None, proof_ready=None)),
+            ('CONTROL_BUSY', dict(busy=True, proof_ready=None, enabled_count=0)),
+            ('PROOF_INVALID', dict(proof_ready=False, enabled_count=0)),
+            ('CONTROL_DISABLED', dict(enabled_count=0)),
+            ('ACCESSIBILITY_CLICK_FAILED', {}),
+        ]
+        for stage, changes in cases:
+            with self.subTest(stage=stage):
+                self.assertEqual(interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(stage, **changes)).encode(), 'a' * 64)['stage'], stage)
+        with self.assertRaises(ValueError):
+            interop.validate_phone_ui_consent_receipt(
+                json.dumps(self.consent_receipt('CONTROL_MISSING', control_count=0,
+                    enabled_count=0, busy=False, proof_ready=False)).encode(), 'a' * 64)
+
+    def test_control_receipts_reject_payloads_invalid_types_and_wrong_run(self):
+        for change in ({'tree': 'forbidden'}, {'proof': 'forbidden'}, {'control_count': True},
+            {'control_count': 3}, {'enabled_count': -1}, {'busy': 0}, {'proof_ready': 'true'},
+            {'stage': ['CONFIRM_READY']}, {'stage': 'exception body'}, {'result': 'SUCCESS'},
+            {'run_id_sha256': 'b' * 64}, {'native_session_methods_called_by_test': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(**change)).encode(), 'a' * 64)
+
+    def test_control_receipts_reject_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'{}', b'[]', b'null', b'{"busy":true,"busy":false}', b'x' * 4097, b''):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(raw, 'a' * 64)
+
 
 if __name__ == '__main__':
     unittest.main()

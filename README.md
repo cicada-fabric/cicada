@@ -46,25 +46,32 @@ The candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
 Its archive, catalog and fixed image IDs are recorded in the
 [F19 target record](docs/client-hub-v1.6.4-0213538-f19-validation.md). The
 [F24–F28 report](docs/client-hub-v1.6.4-0213538-f28-validation.md) retains all
-five bounded-run outcomes. F28 passed SOURCE enrollment, encrypted
-capabilities, independent pins and partial SOURCE status; TARGET enrollment,
-capabilities and pins also passed. The Android test failed while waiting for
-the scope row after reading the current proof, before Target KEY, Target NONE,
-or the positive confirmation Alert. Its flow exited `1` after 100.391 seconds;
-the original pending operation remains `OUTCOME_UNKNOWN_PRESERVE_PENDING`.
-Bilateral KEY/`NONE` is not accepted.
+five bounded-run outcomes. The [F30 report](docs/client-hub-v1.6.4-0213538-f30-validation.md)
+records the next clean Client checkpoint and actual Root-authorized run; F29's
+plan failure is retained in the [Core handoff](docs/cicada-core-handoff.md).
 
-F28 used app/test APKs built from source `8b1b6c54eff702918c426827a3673f9a112edbcc`
-(SHA-256 `02b5481da9f3e09c46d02d7e4a853b51d8c2482ceee7b58297ec79a9cbf9a44d` /
-`d1e935afb0edc42f9dc6e3cf19ad78f6a6054553de115972b9f6aea1d3a78dc5`). The
-29-test Kotlin host receipt belongs to that source. Current offline diagnostic
-checks pass 18 focused tests plus TypeScript and targeted ESLint; their receipts
-are recorded in the F28 report. The updated Android instrumentation APK build
-is pending its post-commit receipt. No new live fixture has been run. Physical
-Android, public HTTPS, native Worker acceptance, Link recovery faults and
-bilateral consent remain NOT_RUN. Ordinary cross-user messages remain closed
-while `external_thread_links=false`. The [core handoff](docs/cicada-core-handoff.md)
-contains the fresh-BOOT/GO coordination prompt.
+F30 passed SOURCE KEY submit with partial fresh status and SOURCE `NONE` with
+partial policy status. TARGET enrollment, capabilities, and independent pins
+passed; a Target signing request and proof handoff were created. JUnit then
+failed at `kt386` when the confirmation-control label could not be resolved
+uniquely. The flow exited `1`; the positive confirmation Alert, Target KEY Hub
+acceptance, Target `NONE`, and bilateral KEY/`NONE` were NOT_RUN. Its terminal
+is `OUTCOME_UNKNOWN_PRESERVE_PENDING`; do not retry the original operation.
+F28 and F29 remain their recorded failures and are not reclassified by F30.
+
+F30 used the app/test APK pair built from Client `b19e84b66cae3887c64cb9e576f11b3cf55f6eee`
+(SHA-256 `5f242041c85bb1a2b83c2a0af4f90d3be3abbc26e90a8483bc8703b9d9bc6749` /
+`f236c816218026deea3941bb9a75899ae83d450ca875d4b21dc14bd4dc126d48`). The
+18 focused tests, TypeScript, ESLint, and the single APK build are attributed
+only to that checkpoint. The follow-up consent-control correction now uses a
+stable test ID and bounded wait for a unique enabled confirmation control. Its
+22 focused Python/JavaScript tests and TypeScript/ESLint checks passed. At this
+source checkpoint, post-commit APK assembly is NOT_RUN; its subsequent receipt
+at `/gpu1-share/data/cicada-client/v164-f30-consent-button-wait-20261003/apk-build.receipt.redacted.json`
+will bind the exact source and APKs. A fresh live run remains NOT_RUN. Physical Android,
+public HTTPS, native Worker acceptance, Link recovery faults, and bilateral
+consent remain NOT_RUN. Ordinary cross-user messages remain closed while
+`external_thread_links=false`.
 
 ## Imported clean v1.6.3 delivery
 

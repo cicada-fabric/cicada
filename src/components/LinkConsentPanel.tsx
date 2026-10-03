@@ -280,7 +280,10 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       <Text style={styles.note}>请在外部 Owner 签名器中签署以下请求；手机只接收签名证明。</Text>
       <Text selectable style={styles.note}>{review.signingRequestJson}</Text>
       <Input value={proof} onChange={setProof} placeholder="Owner 签名证明 Base64" multiline />
-      <Action label="核对并明确授权" disabled={busy || !linkOwnerProofInputValid(proof)} onPress={confirm} />
+      <Action label="核对并明确授权" testID="link-consent-confirm" busy={busy}
+        accessibilityHint={busy ? '正在核验，请稍候。' : linkOwnerProofInputValid(proof)
+          ? '签名证明格式有效；请核对授权范围后继续。' : '签名证明输入无效，请检查后继续。'}
+        disabled={busy || !linkOwnerProofInputValid(proof)} onPress={confirm} />
     </View>}
     <Action label="重读双方证明状态" disabled={busy} onPress={() => readGrants()} />
     <Action label="恢复原授权请求" disabled={busy} onPress={() => recover()} />
@@ -295,8 +298,11 @@ function Input({value, onChange, placeholder, multiline = false}: {
     autoCapitalize="none" autoCorrect={false} multiline={multiline} maxLength={21_848} />;
 }
 
-function Action({label, disabled, onPress}: {label: string; disabled: boolean; onPress: () => void}): React.JSX.Element {
-  return <Pressable accessibilityRole="button" accessibilityState={{disabled}} disabled={disabled}
+function Action({label, disabled, busy = false, testID, accessibilityHint, onPress}: {
+  label: string; disabled: boolean; busy?: boolean; testID?: string; accessibilityHint?: string; onPress: () => void;
+}): React.JSX.Element {
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label}
+    accessibilityHint={accessibilityHint} accessibilityState={{disabled, busy}} disabled={disabled}
     style={[styles.button, disabled && styles.disabled]} onPress={onPress}>
     <Text style={styles.buttonText}>{label}</Text>
   </Pressable>;

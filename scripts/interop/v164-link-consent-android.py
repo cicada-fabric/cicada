@@ -163,6 +163,48 @@ def validate_phone_ui_prepare_receipt(raw, expected_run_id_sha256):
     return value['stage']
 
 
+def validate_phone_ui_consent_receipt(raw, expected_run_id_sha256):
+    """Validate button readiness diagnostics; PASS never establishes user consent."""
+    message = 'phone UI consent control receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    stages = {'CONTROL_MISSING', 'CONTROL_MULTIPLE', 'CONTROL_BUSY', 'PROOF_INVALID',
+        'CONTROL_DISABLED', 'CONTROL_UNCONFIRMED', 'CONFIRM_READY', 'ACCESSIBILITY_CLICK_FAILED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'stage', 'control_count', 'enabled_count',
+        'busy', 'proof_ready', 'native_session_methods_called_by_test'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-consent.v1' or \
+            value.get('run_id_sha256') != expected_run_id_sha256 or \
+            not isinstance(value.get('stage'), str) or value['stage'] not in stages or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('result') != ('PASS' if value['stage'] == 'CONFIRM_READY' else 'FAIL') or \
+            any(type(value.get(k)) is not int or not 0 <= value[k] <= 2
+                for k in ('control_count', 'enabled_count')) or \
+            value['enabled_count'] > value['control_count'] or \
+            any(value[k] is not None and type(value[k]) is not bool for k in ('busy', 'proof_ready')):
+        raise ValueError(message)
+    stage, count, enabled = value['stage'], value['control_count'], value['enabled_count']
+    busy, proof_ready = value['busy'], value['proof_ready']
+    if stage in {'CONFIRM_READY', 'ACCESSIBILITY_CLICK_FAILED'}:
+        valid = count == enabled == 1 and busy is False and proof_ready is True
+    elif stage == 'CONTROL_MISSING':
+        valid = count == enabled == 0 and busy is None and proof_ready is None
+    elif stage == 'CONTROL_MULTIPLE':
+        valid = count == 2 and busy is None and proof_ready is None
+    elif stage == 'CONTROL_BUSY':
+        valid = count == 1 and busy is True
+    elif stage == 'PROOF_INVALID':
+        valid = count == 1 and busy is False and proof_ready is False
+    elif stage == 'CONTROL_DISABLED':
+        valid = count == 1 and enabled == 0 and busy is False and proof_ready is True
+    else:
+        valid = count == 1 and busy is None and proof_ready is None
+    if not valid:
+        raise ValueError(message)
+    return value
+
+
 def secret_fields(value):
     if isinstance(value, dict):
         for key, nested in value.items():
