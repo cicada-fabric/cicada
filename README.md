@@ -98,6 +98,14 @@ different runtime metadata formats. No device enrollment, encrypted business
 RPC, Owner signature or Target Alert ran. The fixed deadline was enforced;
 owned cleanup passed. The [core handoff](docs/cicada-core-handoff.md) records
 the original failure and the required runtime preflight correction.
+
+The [bounded acceptance launcher](docs/client-bounded-acceptance-launcher.md)
+now provides one process for offline Android preparation, one Root-authorized
+stdin handoff, immediate carrier/artifact preflight and ordered cleanup. It is
+an acceptance harness; the existing UI, local speech models and frozen APKs are
+unchanged. A new live run requires fresh fixture adapters, exact delivery pins
+and separate Root authorization. Its offline tests cannot establish encrypted
+runtime or bilateral consent acceptance.
 The corrected receipt validator and read-only preflight tools passed nine
 focused Docker regressions. Their live use and bilateral consent remain
 unverified; the next attempt requires a fresh authorized fixture.

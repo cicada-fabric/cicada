@@ -1,6 +1,29 @@
 # CICADA Client development and validation plan
 
-## Current milestone and next gates
+## Current acceptance coordination
+
+The current acceptance-harness work is the
+[bounded single-process launcher](client-bounded-acceptance-launcher.md).
+It preserves the retry-6 APKs and the original F6–F9 evidence. F9's first
+staging command failed before any encrypted Android business request; the
+runtime consumer correction is independently recorded and does not make F9
+a PASS. Fresh Link consent, Target Alert and bilateral status remain NOT_RUN.
+
+1. Freeze the launcher, BOOT/hot helpers, narrow offline tests and their source
+   hashes as one Client checkpoint. No new timed fixture is started here.
+2. Completed read-only provenance: independently verify clean
+   `0213538b62ccf2533eccf546c80fc848804ea8e0` archive, 896 immutable Git inputs,
+   source fingerprint and image metadata. See the [delivery review](client-hub-v1.6.4-0213538-provenance.md).
+   The dd81575 package/images remain historical provenance for their own runs.
+3. Prepare and approve fresh source-derived adapters and the external Owner
+   actor before a separately authorized BOOT. Do not reuse fixture-09.
+4. Use the actual Android READY, fresh Core references/Scope/one GO and a single
+   combined stdin ticket for automatic carrier preflight and six-phase flow.
+   Record each actual result and cleanup; preserve uncertain pending packets.
+5. Keep isolated Link fault cases BLOCKED without a safe declared driver.
+   Native Worker, physical Android and public HTTPS remain NOT_RUN.
+
+## Historical milestone — clean Core 25bc586
 
 The next clean delivery is now available: Core 25bc586 / Client-Control v1.6.4.
 Its archive, catalog, immutable image metadata and 882-entry Git inventory

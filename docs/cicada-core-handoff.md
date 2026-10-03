@@ -1,6 +1,62 @@
 # CICADA Client integration handoff
 
-## Active acceptance target — clean v1.6.4 Core `dd81575`
+## Offline bounded launcher handoff
+
+The [launcher interface and command plan](client-bounded-acceptance-launcher.md)
+defines the single-process BOOT/readiness/ticket/carrier/preflight/flow sequence.
+Core should consume its stdout readiness and deliver one combined plan on the
+same stdin pipe. It must not add polling stages, six separate releases or an
+early terminal acknowledgment. Fresh Core/Client source-derived adapters and a
+new Root-approved delivery remain prerequisites; fixture-09 stays closed.
+
+This change preserves the frozen APK pair and original F9 outcome. No new Hub,
+emulator, device export, registration, Owner signature or business RPC was run.
+The narrow offline evidence and final launcher commit are bound outside Git in
+`/gpu1-share/data/cicada-client/v164-bounded-launcher-offline-20261003/`.
+The final pinned Docker run passed **17 synthetic tests**, exit `0`; two early
+test-fixture failures remain recorded. The aggregate READY and inner Hub-ready
+references are independently bound using the actual Core Scope semantics.
+Live encrypted capabilities, bilateral KEY/`NONE`, Target Alert, native Worker,
+physical Android and public HTTPS remain **NOT_RUN** for this launcher.
+
+### Current coordination prompt
+
+```text
+Review CICADA_CLIENT read-only on dev/react-native. Read
+docs/client-bounded-acceptance-launcher.md and the Git-external launcher
+delivery receipt for the exact Client commit, source hashes, test command/exit
+and frozen APK pair. Retain all original F9 failures and runtime attribution.
+
+Supply actual clean Core archive/image/source metadata; independently pin it
+in bootstrap.target. Refresh and freeze the Core coordinator and Client
+source-derived adapters before requesting a new BOOT. Fixture-09 is closed.
+Keep Owner signing and all private credentials in the Core custody boundary.
+
+After separate Root BOOT authorization, consume actual stdout READY from the
+single launcher process. Only then create the fresh fixture and bind its exact
+nine public references, owned manifest, Scope and one Root GO. Deliver the
+combined business plan through one stdin JSON frame. Do not add model polling,
+six manual releases, automatic operation retries or an early nonce_used ACK.
+ACK belongs only to Core's true terminal/cancel path.
+
+Observe the original fixed idle and business cutoffs. Report each actual
+phase, encrypted capabilities, Target RN Alert, bilateral status and cleanup
+against exact source/APK/image provenance. A driver zero exit is insufficient
+for acceptance. Unrun native, physical-device and public HTTPS gates stay
+NOT_RUN; Link fault recovery remains BLOCKED without a safe isolated driver.
+Do not edit Client, read a Hub database, push or change production deployment.
+```
+
+## Current target provenance — clean Core `0213538`
+
+The [clean delivery review](client-hub-v1.6.4-0213538-provenance.md) independently
+passed all 24 archive payloads, 896 immutable Git inputs, source fingerprint
+reproduction and full Hub/interop image metadata checks. The launcher binds
+those actual values in its Root-approved target. Runtime encrypted capabilities
+and Android Link business remain **NOT_RUN**; no BOOT/business GO is inferred
+from delivery provenance. The frozen product/APK pair below remains separate.
+
+## Historical F6–F9 acceptance target — clean v1.6.4 Core `dd81575`
 
 The fixed F6–F9 target is clean Core
 `dd81575b160aa901b642137e54d7a60961e4bd68`, Client-Control v1.6.4,

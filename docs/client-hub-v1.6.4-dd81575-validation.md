@@ -831,3 +831,31 @@ That F7 preparation HEAD is preserved by local recovery reference
 was consolidated rather than adding a separate documentation-only commit.
 That receipt keeps the running Client HEAD, frozen APK product checkpoint and
 final documentation/harness commit distinct. No push or merge is performed.
+
+## Offline bounded launcher checkpoint — 2026-10-03
+
+The [launcher specification](client-bounded-acceptance-launcher.md) adds one
+supervisor for a Root-approved offline BOOT followed by one independently pinned
+stdin business-plan ticket. Actual carrier READY immediately triggers the
+existing artifact/runtime checks and the declared six-phase driver, without a
+model turn in that interval. The supervisor rejects extra tickets and extended
+deadlines, cleans partial BOOT and orders flow/carrier/emulator teardown.
+
+This checkpoint has no new live run or APK build. F9's original staging failure,
+zero business transactions and runtime-source attribution remain unchanged.
+New BOOT, enrollment, encrypted capabilities, Owner signatures, Target Alert
+and bilateral status are **NOT_RUN**. The `fault=none` restriction remains;
+isolated Link recovery faults remain **BLOCKED**. Native Worker, physical
+Android and public HTTPS are **NOT_RUN**.
+
+The offline cold APK input check exited `0` and took `0.300393` seconds with
+uncontrolled filesystem cache state. It is not a BOOT measurement. Private
+evidence is under
+`/gpu1-share/data/cicada-client/v164-bounded-launcher-offline-20261003/`.
+The final delivery receipt records the narrow Docker test invocation/exit,
+source hashes, launcher Client commit and unchanged APK hashes.
+The final narrow Docker regression is **PASS**, 17 synthetic tests, exit `0`.
+The original draft fixture failures remain retained; no runtime result is
+inferred. Core's later clean 0213538 provenance has its own
+[separate record](client-hub-v1.6.4-0213538-provenance.md), including the actual
+new images/package/fingerprint. It does not replace the dd81575 or F9 evidence.
