@@ -261,11 +261,6 @@ _F6_CAPABILITY_FIELDS = {
     'approval_read_and_decide', 'queued_goal_lifecycle', 'available_rpc_operations',
     'external_rpc_operations',
 }
-_F6_LABELS = {
-    'org.cicada.fixture': 'client-link-v164-06',
-}
-
-
 def _f6_sha(value, label):
     if not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{64}', value) is None:
         _fail(label + ' must be a full lowercase SHA-256')
@@ -274,6 +269,20 @@ def _f6_sha(value, label):
 def _f6_string(value, label, pattern=r'[^\x00-\x1f\x7f]{1,512}'):
     if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
         _fail(label + ' has an invalid string value')
+
+
+def _f6_expected_helper_source_mount(config):
+    # Existing F6 pins predate an explicit helper-mount field. Preserve that
+    # exact baseline while requiring future fixtures to provide the mount from
+    # an independent Root-verified pin; the helper provenance document cannot
+    # authenticate its own expected source path.
+    expected = config.get('helper_source_image_mount')
+    if expected is None and config.get('fixture_label') == 'client-link-v164-06':
+        expected = '/src/cmd/cicada-client-link-v164-fixture-06'
+    if not isinstance(expected, str) or re.fullmatch(
+            r'/src/cmd/cicada-client-link-v164-fixture-[0-9]{2}', expected) is None:
+        _fail('Root pins lack a bounded independent helper source-image mount')
+    return expected
 
 
 def _f6_positive_int(value, label):
@@ -719,6 +728,7 @@ def _f6_validate_helper_provenance(document, config, refs):
         'helper_source_image_mount', 'private_keys_mounted_during_build', 'shipped_hub_binary_modified',
     }
     _exact_keys(document, fields, 'F6 helper provenance')
+    expected_source_mount = _f6_expected_helper_source_mount(config)
     if document.get('schema') != 'cicada.client-link-v164-helper-build.v1' or \
             document.get('helper_source_path') != 'helper-src/main.go' or \
             document.get('helper_binary_path') != 'bin/cicada-link-v164-fixture' or \
@@ -726,7 +736,7 @@ def _f6_validate_helper_provenance(document, config, refs):
             document.get('helper_binary_sha256') != refs['helper_binary_sha256'] or \
             document.get('builder_image_id') != config['interop_image_id'] or \
             document.get('builder_entrypoint_override') != 'go' or \
-            document.get('helper_source_image_mount') != '/src/cmd/cicada-client-link-v164-fixture-06' or \
+            document.get('helper_source_image_mount') != expected_source_mount or \
             type(document.get('private_keys_mounted_during_build')) is not bool or \
             document['private_keys_mounted_during_build'] is not False or \
             type(document.get('shipped_hub_binary_modified')) is not bool or \
@@ -800,8 +810,9 @@ def _f6_validate_manifest(manifest, config, ready):
     _exact_keys(network, _F6_NETWORK_MANIFEST_FIELDS, 'F6 Hub network manifest')
     _f6_id(container.get('id'), 'F6 Hub container ID', r'[0-9a-f]{64}')
     _f6_id(network.get('id'), 'F6 Hub network ID', r'[0-9a-f]{64}')
-    _f6_string(container.get('name'), 'F6 Hub container name', r'cicada-cl164-06-[A-Za-z0-9_-]{1,80}')
-    _f6_string(network.get('name'), 'F6 Hub network name', r'cicada-cl164-06-[A-Za-z0-9_-]{1,80}')
+    resource_name = r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}'
+    _f6_string(container.get('name'), 'F6 Hub container name', resource_name)
+    _f6_string(network.get('name'), 'F6 Hub network name', resource_name)
     expected_ports = {'8787/tcp': [{'HostIp': '127.0.0.1', 'HostPort': str(config['host_port'])}]}
     if container.get('image_id') != config['hub_image_id'] or \
             container.get('entrypoint') != ['/usr/local/bin/cicada'] or \
@@ -816,7 +827,7 @@ def _f6_validate_manifest(manifest, config, ready):
     labels = container.get('labels')
     network_labels = network.get('labels')
     expected_labels = {
-        **_F6_LABELS,
+        'org.cicada.fixture': config['fixture_label'],
         'org.cicada.fixture.dir': str(config['paths']['root']),
         'org.cicada.fixture.source.revision': config['core_revision'],
         'org.cicada.fixture.catalog.sha256': config['catalog_sha256'],

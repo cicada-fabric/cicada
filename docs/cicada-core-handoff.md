@@ -2,7 +2,7 @@
 
 ## Active acceptance target — clean v1.6.4 Core `dd81575`
 
-The current F6 target is clean Core
+The fixed F6–F9 target is clean Core
 `dd81575b160aa901b642137e54d7a60961e4bd68`, Client-Control v1.6.4,
 Hub image `sha256:ab189ee06372e4eaa248eac6e3699f7b4e2d9105505e87027f0081d118adc561`
 and interop image `sha256:c926d0f3809572e541414cbb239efdc00ba82d07e16950318199df4c6d5e2679`.
@@ -30,7 +30,7 @@ No product or APK rebuild was performed.
 | Offline emulator teardown | **PASS** through a separate absence addendum; original immediate-inspect race and both outer exit-1 attempts remain retained |
 | Actual F6 READY, nine Root-bound public references and immutable running Docker identity | **PASS**, read-only fixture verification only |
 | Fresh F6 emulator boot, frozen APK installs and four properties | **PASS**, bootstrap only; initial pre-Docker missing-directory exit 1 retained |
-| Encrypted enrollment/capabilities and Link business flow | **NOT_RUN**; coordination **BLOCKED** by fixed deadline before any Android business selector |
+| Encrypted enrollment/capabilities and Link business flow | **NOT_RUN**; F9 first staging command **FAIL** on runtime receipt compatibility before any Android business selector |
 | External signing interface | **PASS** for static interface compatibility; actual six signatures **NOT_RUN** |
 | Target actual Link-consent Alert and bilateral KEY/`NONE` | **NOT_RUN** |
 | Link write lost-response/409 recovery | **BLOCKED**; the bounded carrier currently allows only `fault=none` |
@@ -124,32 +124,150 @@ and promptly publish the actual Root delivery and GO. Do not reuse either
 expired F6 authorization or the removed F7 emulator, extend idle waiting, or
 claim any Source/Target business pass from these preparation results.
 
+### F8 closure and F9 preparation
+
+F8 closed **BLOCKED_DEADLINE_BEFORE_ANDROID_BUSINESS**. Fresh public fixture
+verification, actual immutable Docker identity, both emulator bootstraps and
+exact artifact binding passed within their limited scopes. The original GO
+existed and was consumed by the binder. The corrected GO separated phone proof
+validity from the unchanged execution stop. RootFlow then exited 1 at the
+`00:34:43Z` deadline before its first business subprocess; its index is `[]`.
+Device exports, enrollment, encrypted capabilities, RPC, six external Owner
+requests/signatures, Source/Target KEY/NONE and Target RN Alert are **NOT_RUN**.
+Carrier startup passed with zero transactions; its outer exit 1 during late
+ADB reverse cleanup and child exit 137 remain **FAIL**. No product/APK rebuild
+was performed. F6/F7 and older business evidence retain their own attribution.
+
+Client emulator/process cleanup and independent exact-ID Hub/bridge absence
+checks passed. Core's watchdog removal exits were 0/0; its receipt was written
+at `00:34:44.234114Z`, 1.234 seconds after the fixed stop, not before it. Core
+private-path destruction remains Core-attested. Complete commands, exits,
+immutable values and evidence hashes are in the [F8 validation section](client-hub-v1.6.4-dd81575-validation.md#f8-terminal-record--2026-10-03).
+Terminal receipt
+`/gpu1-share/data/cicada-client/v164-f8-preparation-20261002/f8-terminal.redacted.json`
+has SHA-256 `82bb25b84bd8f1a50630a9b525fe54b0f08fe737f8a299d088e6ffb82fdc5a2d`.
+
+### F9 terminal outcome and correction
+
+F9 ran once with Client source
+`6b2c552197bb625e31e32d700d84d12685b8f81f` and the unchanged app/test APK
+pair above. Its isolated Core fixture, fixed-image identities, bootstrap and
+artifact binding passed within their limited scopes. The business flow then
+failed at its first source setup staging command, exit `1`, because the
+runtime receipt format written by the bootstrap did not match the consumer.
+No device export, registration, encrypted capabilities, business RPC, Owner
+claim/signature, KEY/`NONE`, Target React Native Alert or bilateral status ran.
+Their result remains **NOT_RUN**. F9 is not a consent acceptance result.
+
+| Gate | F9 result |
+|---|---|
+| Bootstrap / installs / four actual runtime properties | **PASS**, exit `0`, 37.122 seconds |
+| Bootstrap binding | Initial CLI **FAIL** `2`; corrected exact helper mount invocation **PASS** `0` |
+| Carrier startup | **PASS** within startup scope; zero transactions |
+| Source setup staging / business driver | **FAIL**, `1` / `1`, `owned emulator runtime metadata is inconsistent` |
+| Device enrollment, encrypted capabilities, six Owner signatures | **NOT_RUN** |
+| Source/Target KEY and `NONE`, Target actual RN Alert, bilateral status | **NOT_RUN** |
+| Client owned emulator/process cleanup | **PASS**, stop `0`, independent absence recorded |
+| Core owned cleanup | Watchdog `0/0` Core-attested; exact container/network absence independently checked in the terminal audit |
+| Carrier outer shutdown | **FAIL**, `1`; child `137`, ADB reverse cleanup failed during deadline-driven emulator teardown |
+| Native Runtime/model, physical Android, public HTTPS | **NOT_RUN** |
+| Link recovery faults | **BLOCKED**, no isolated fault driver in the bounded lane |
+
+The bootstrap recorded `schema`, `image_id` and four real properties in
+`android-runtime.redacted.json`. The consumer required the older
+`emulator_image_id` and `platform="Android emulator"` projection. The binder
+verified the actual image and property receipts; the subsequent consumer used
+a different format. Original input and failure receipts remain unchanged.
+The fix must validate the actual producer formats and reject conflicting
+fields; it must not remove image, ownership, network, raw-property or APK
+checks to admit the run.
+
+Root GO approved at `01:17:13.969997Z` fixed the hard stop at `01:23:47Z`.
+Carrier metadata was written at `01:20:06.784143898Z`, but Client only polled
+its yielded session at `01:23:17Z` after a context handover. This host scheduling
+gap is retained separately from the compatibility failure. No manual per-sign
+GO was required or requested. The business watcher adopted the same emulator
+with an earlier stop than the original idle watcher. Core cleanup was recorded
+at `01:23:48.740840210Z`, 1.740840210 seconds after the business stop; authority
+was not extended. The Core actor reported zero requests/claims/signatures and
+exit `0`. Client did not rerun the flow or substitute a Native selector for the
+Target UI.
+
+Complete fixed pins, exact commands, exits, receipt hashes and timestamp
+qualifications are in the [F9 terminal record](client-hub-v1.6.4-dd81575-validation.md#f9-terminal-record--2026-10-03).
+The retrospective command journal is
+`/gpu1-share/data/cicada-client/v164-f9-preparation-20261003/f9-command-journal.redacted.json`,
+SHA-256 `31ec5b09ffef5cdbb1d579592e499cbd42e6c88d4143f57718f6ef61557c3099`.
+The original six-phase fixture and private comparison patch stay frozen as
+historical evidence, not a reusable authorization. The formal closure records
+Client source during execution separately from the subsequent fix/document
+checkpoint. No push, merge or product rebuild is performed.
+The final checkpoint is bound after commit in
+`/gpu1-share/data/cicada-client/v164-f9-preparation-20261003/f9-client-delivery-closure.redacted.json`.
+The execution source `6b2c552` is preserved locally at
+`refs/cicada-client/acceptance-snapshots/f9-6b2c552`; it is not an additional
+published commit or approval for a future attempt.
+
+The strict consumer correction and `bootstrap-preflight` / `preflight` CLI are
+implemented. The narrow network-none Docker regression passed **9 tests,
+exit `0`**; corrected live preflight remains **NOT_RUN**. Exact command and
+source hashes are in the validation record. Regression receipt SHA-256 is
+`6e3d6aad3a519e08756084f6ee83d1276dc490add909dae7d9700e1efa7a794d`.
+Independent owned-resource cleanup audit
+`/gpu1-share/data/cicada-client/v164-f9-preparation-20261003/f9-owned-cleanup-audit.redacted.json`
+has SHA-256 `dce895e20f04fc623dad35889b02a4516045a5719377d9046e2df1b161130b44`.
+It verifies three exact IDs and five exact-ID/fixture-label filters, and
+independently observes zero original carrier transactions and zero completed
+coordinator phases with no pending work. Core private-path absence remains an
+attestation. Carrier reverse cleanup failed during teardown; file write times
+do not prove that removal completed before the failed reverse command.
+
+### Next acceptance entry
+
+Resolve the producer/consumer mismatch and run only its narrow offline
+regressions. Before starting a timed Core fixture, one Client entry must boot
+the emulator, install the frozen APKs, record the raw properties and run the
+same read-only runtime validation used by the staging consumer. This preflight
+must not stage inputs, export device identities, sign, register or send RPC.
+After binding a separately authorized fresh delivery, run the full read-only
+artifact preflight, start the carrier and continue the existing six phases
+from one bounded process. Carrier READY must directly release that process;
+manual host polling between stages must not consume the short window. The
+single process must journal UTC start/end, actual argv, timeout and exit for
+every subprocess and stop immediately on failure. Preserve pending packets
+and original operation/counters; no automatic business retry is permitted.
+
+This is a preparation requirement, not permission to create a new Hub, renew
+proofs or reuse F9 Scope, GO, nonce, claims or owner identities. The private
+F9 adapters remain frozen with the original failed guard; a future approved
+entry must import the corrected repository source and independently freeze
+its exact bytes rather than reusing those historical adapters. No broad APK
+matrix or cryptographic test rerun is required for a host harness correction.
+Independent Owner review and the real Target RN Alert remain mandatory.
+
 ### Prompt for the CICADA core maintainer
 
-> Read the active dd81575 validation record and this handoff from Client
-> `dev/react-native`; review only, without pushing or merging. Preserve F6's
-> fixed-deadline outcome: actual READY/pins/Docker/bootstrap passed, encrypted
-> enrollment and all six external signing phases were NOT_RUN. Do not reuse
-> its nonce, extend expiry, or convert preparation/cleanup into business PASS.
-> Preserve F7's separate boot-only PASS and fixed idle-cutoff closure: no fresh
-> business GO, device export, encrypted RPC or signature occurred. Core's PRE
-> preparation is a separate result, with no final Join/Link/READY acceptance.
-> For a separately authorized fresh attempt, finish and independently check
-> the Core helper build and exact private fixture adapters before Client boot.
-> Then have Client create its
-> private evidence directory, boot its owned emulator, install the unchanged
-> 56684d33 app / caa8a170 test APK pair and record four real runtime properties.
-> Keep Core dd81575, catalog 953486ea and full Hub image ab189ee0 pinned as
-> recorded above. Bring the compatible external Owner signer and Client
-> coordinator into readiness before final Join/READY and Root GO. Then complete
-> Source DeviceGrant, KEY, NONE and Target DeviceGrant, actual React Native KEY
-> Alert, NONE through six separately approved exact request/proof handoffs.
-> Preserve native review ID null when not exported. Keep Owner private keys,
-> Node/Hub bearer and DB exclusively with Core. Require encrypted capabilities
-> and fresh bilateral status; emulator automation is not physical/human consent.
-> Supply a safe disposable fault driver separately for Link recovery coverage.
-> Return commands/exits, immutable pins, raw request/proof hashes, bounded UI
-> evidence, individual PASS/FAIL/BLOCKED/NOT_RUN and owned cleanup receipts.
+> Read this handoff and the F9 terminal section of the fixed dd81575 validation
+> record on Client `dev/react-native`. Preserve F6–F9 failures and their original
+> evidence; bootstrap, binding and cleanup PASS do not establish consent.
+> F9 failed its first staging command because bootstrap runtime metadata and
+> the consumer format differed. Device enrollment, encrypted capabilities,
+> Owner signatures and bilateral KEY/NONE were NOT_RUN. The host context
+> handover also delayed flow launch after carrier READY; record that separately.
+> Review the strict Client runtime validator and narrow regressions. Require
+> the same read-only bootstrap preflight before any new timed fixture, followed
+> by a single bounded carrier-to-flow entry with recorded UTC timings. Do not
+> launch a new attempt until those prerequisites are complete. Any fresh run
+> needs separate authorization and new exact Scope/GO, fixture identities and
+> nonce while retaining clean dd81575, catalog 953486ea, immutable Hub ab189ee0
+> and the frozen app/test APK pair. Serve the six exact external Owner claims
+> without manual per-claim coordination delays, retaining independent request
+> and challenge validation. First Target KEY must use the actual RN one-use
+> Alert; ordinary peer messages remain closed. Return encrypted capabilities,
+> bilateral status, exact commands/exits and owned cleanup receipts. Node/Hub
+> bearer, Owner private keys and databases stay with Core. Native Runtime,
+> physical devices, public HTTPS and Link fault recovery require separate
+> acceptance and remain NOT_RUN/BLOCKED here. Do not push or merge.
 
 ## Prior integration — clean `25bc586` v1.6.4 Link consent
 

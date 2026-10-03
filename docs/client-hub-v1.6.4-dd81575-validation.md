@@ -1,10 +1,12 @@
 # Client-Control v1.6.4 validation — Core `dd81575`
 
-**Date:** 2026-10-02  
+**Date:** 2026-10-02; F9 closure updated 2026-10-03
 **Result:** **BUILT_AND_CONTRACT_VERIFIED** (limited to the independently reviewed delivery and frozen contract bundle).  
 **Offline Android result:** **PASS_OFFLINE_ONLY_NOT_F6_HUB_ACCEPTANCE** for the frozen APK's 49-test emulator matrix and local UI smoke; the outer coordinator still exited `1` on its post-stop absence race, as recorded below.  
 **F6 live result:** **BLOCKED_DEADLINE_BEFORE_ANDROID_BUSINESS**. The actual fixture, immutable Docker identity and fresh emulator bootstrap passed. No Android business selector, encrypted capabilities request or Owner signature ran before the fixed deadline.  
-**Scope:** contract and source provenance, independent offline Android evidence, actual Main F6 fixture/Docker verification, and fresh emulator bootstrap/cleanup. These limited passes do not establish bilateral Link acceptance, physical-device acceptance, or production readiness.
+**F8 live result:** **BLOCKED_DEADLINE_BEFORE_ANDROID_BUSINESS**. The fresh public fixture, actual Docker identity, bootstrap binding and carrier startup passed; the first business subprocess never ran. Driver failures are retained below.
+**F9 live result:** **FAIL_RUNTIME_RECEIPT_COMPATIBILITY** at the first staging command. Bootstrap, exact binding and carrier startup passed. Device enrollment, encrypted capabilities, Owner signing and Link business operations remain **NOT_RUN**. The fixed execution stop was enforced without retry or extension.
+**Scope:** contract and source provenance, independent offline Android evidence, actual Main F6–F9 fixture/Docker verification, emulator bootstrap/cleanup, and the original F9 staging failure. These limited passes do not establish bilateral Link acceptance, physical-device acceptance, or production readiness.
 
 ## Fixed artifact identity
 
@@ -507,6 +509,286 @@ SHA-256 `6f50ab36ae51d5cd44f4617be4864d5c61f5c7632c24e4e99ecc05d96f7de81f`.
 Core reports its 80-entry inventory matches and eight private paths are absent.
 Those are Core-attested results; Client's independent scope remains public
 cleanup receipt integrity and exact Docker resource absence.
+
+## F8 terminal record — 2026-10-03
+
+F8 used the fixed artifact identities above, with no product or APK rebuild.
+The Client checkout during execution was
+`f31794abeafc0629003b8dd6240e356b5fd263c0`; it is distinct from the frozen
+product checkpoint `508ca333c8ae90d27a8191ac828a7be16b71c7b3`.
+The Core fixture was `client-link-v164-fixture-08-20261002`, label
+`client-link-v164-08`. Current Core development changes were not used as Hub
+image provenance.
+
+| Gate | F8 result |
+|---|---|
+| PRE and final public receipts, nine references, fixed running Hub image and ownership | **PASS**, read-only verification |
+| Initial emulator and separately authorized business emulator; frozen APK installs and four properties | **PASS**, bootstrap only |
+| Exact current emulator/artifact binding | **PASS**, binding only |
+| Opaque five-route carrier startup | **PASS**, startup only; zero transactions |
+| Carrier outer invocation | **FAIL**, exit 1 while removing ADB reverse after emulator removal; child exit 137 |
+| RootFlow invocation | **FAIL**, exit 1 at fixed-deadline guard before first stage; business acceptance **BLOCKED** |
+| Device export, enrollment and encrypted `session.capabilities` | **NOT_RUN** |
+| Source/Target KEY and `NONE`; Target real React Native Alert | **NOT_RUN** |
+| Six external Owner requests/signatures; RPC packet/operation/sequence | **NOT_RUN**, all counts zero |
+| Owned Client emulators, carrier processes, Core Hub/bridge cleanup | **PASS**, attribution and exact absence checks below |
+| Link lost-response/409 recovery | **BLOCKED**, no approved isolated fault driver |
+| Native Worker/model, physical Android, public HTTPS | **NOT_RUN** |
+
+The initial emulator was ready at `00:00:16.449Z` and removed at its fixed idle
+cutoff `00:25:09Z`. Coordinator prepare then exited 1 because that emulator no
+longer existed. Core Root authorized one fresh business emulator on the same
+F8 fixture; it became ready at `00:29:56.359Z`. Prepare exited 0. The binder
+first rejected the Client preparation directory's mode 0755, then passed at
+`00:31:52Z` after mode 0700 was restored. Carrier attempts also rejected the
+remaining literal `cicada-cl164-06` name check before the private adapter was
+corrected to the actual 08 fixture. These failures remain retained.
+
+Original GO was approved at `00:29:13Z`. The corrected scope/GO, approved at
+`00:33:38Z`, distinguished phone proof validity from the unchanged execution
+stop `00:34:43Z`. Proof expiry may exceed that stop only within the phone's
+original five-minute and current Link/preview limits; signing/submission
+authority and cleanup were not extended. RootFlow reached its deadline guard
+before its first stage subprocess. Its command index is exactly `[]`; only a
+host-generated public setup DTO was created. No phone device key, Grant,
+pending packet, operation, counter or signature was created. Original GO was
+consumed by the bootstrap binder; corrected GO was read by RootFlow, not by a
+second binder. The authoritative terminal record supersedes the source-limited
+timeline addendum's earlier attribution.
+
+### F8 commands and evidence
+
+Client preparation root is
+`/gpu1-share/data/cicada-client/v164-f8-preparation-20261002`.
+Core public evidence root is
+`/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-08-20261002`.
+All Client evidence remains outside Git/APK, in private directories and files.
+
+| Recorded command | Exit / evidence |
+|---|---|
+| `docker run --rm -d … sha256:ac9a2c457b10bb3397785941fc4b7884521b8431d9360b731c93ac6d6ea1521f bash /workspace/scripts/interop/two-owner-emulator.sh` | Both starts 0; full expanded argv in each `emulator-start.json` |
+| Exact emulator ADB `install -r` for both APKs, then four `shell getprop` reads | All 0 in both lanes; API 35, Android 15, x86_64, qemu 1 |
+| `python3 <prep>/adapters/f8-coordinator.py prepare …` | Initial 1; business 0 |
+| `python3 <prep>/f8-bind-boot-artifacts.private.py …` | Initial 1; corrected 0 |
+| `python3 <prep>/adapters/v164-link-fixture-carrier.py …` | Initial validation failures 1; final startup READY, then outer 1, child 137, transactions 0 |
+| `python3 <prep>/f8-root-flow.private.py …` | 1, deadline guard before first stage |
+| `docker stop --time 10 <exact-owned-emulator>` | Both 0; generated stop receipts |
+| Exact full-ID Docker container/network inspections | Expected 1 with explicit missing-object text; independent absence **PASS** |
+
+The complete expanded command journal is
+`<prep>/f8-command-index.redacted.json`, SHA-256
+`7ce685082083c070e70940c16c476a02fb0e1c702623e1a7dd30515bcc1dab24`.
+It distinguishes original generated command receipts from operator-curated
+previous tool invocations; these commands were not replayed during closure.
+
+| Artifact | SHA-256 |
+|---|---|
+| `<prep>/f8-terminal.redacted.json` | `82bb25b84bd8f1a50630a9b525fe54b0f08fe737f8a299d088e6ffb82fdc5a2d` |
+| `<prep>/f8-bootstrap-binding.redacted.json` | `b6947c6c2333119de3c03c0bf5c22bac81b71be98c065d8695bf440a0e523a39` |
+| Core `public/READY.json` | `6cdad9b95f66424fcaa4f714e8be4de1067eb7e5308eddd30e2d40aef0684b15` |
+| Core `public/M5-SCOPE.json` / `public/Root-GO.json` | `3ba129e0090e5ddaea883fab216e4dc5941efe800358f545b0283a3c90544c68` / `c406757f1eca172ea7ff69f0f4759e081e3de18310565c37bb236c23f218c47e` |
+| Core `public/M5-SCOPE-CORRECTED.json` / `public/Root-GO-CORRECTED.json` | `3e65a9848baf3bcb1cd87ca3060c28107af2316c8e217c4ff5aaea6f4cc36aec` / `4c6cb632b02bd501fc313b8e6fbe187d0411a351fa610286f530f29e349e470c` |
+| Business `android-teardown.redacted.json` | `cb4ea950fa1c9429eb152c3422c8f498e99cdd03e6e30bbea708826b51080e47` |
+| Business `stdio-carrier-f6-f8-business-dd81575-main-20261002-stopped.redacted.json` | `8f5ea709223fa5c8e00084bfd3bbbcbaf02dad5522d7dcbefde3b49b996dc8f6` |
+| `<prep>/independent-cleanup-classification-addendum.redacted.json` | `c6a3ff39ed9de1d3dbd1ef6d0fc58dd81f29d11331492dc9969560d13552a6e3` |
+| Core `evidence/attempt-08/cleanup-1790987684234114116.json` | `930509b60780ea96797decf94f0119d2594bfcf61584d6efc630eef76828716e` |
+| Core `evidence/attempt-08/terminal-cleanup-absence.json` | `23a774e73bc2ffffd72e161fdb0b72404e4c67a2bb42222a654ac944ba401766` |
+| Core `public/f8-terminal-evidence-index.json` | `2d7f034b1022563cde951163110e6f96dabc1e64caf547862377984b390eaaca` |
+
+The business evidence directory is
+`/gpu1-share/data/cicada-client/v16-deterministic-v164-f6-f8-business-dd81575-main-20261002/android`;
+the initial lane uses the same path without `business-`. The terminal receipt
+binds both lanes, actual container IDs, immutable images and the complete
+receipt index. Core's original watchdog removed its Hub/bridge with exit 0;
+private-path destruction is **Core-attested**, not a Client database/private
+file observation. Client independently confirmed both emulators, the Hub,
+bridge and carrier processes absent. The original cleanup classifier receipt
+remains `PENDING`: it expected `No such object` for a network whose actual
+explicit absence text was `not found`. The separate correction retains that
+receipt and records the expected full-ID absence; it reruns no business test.
+At F8 closure, F9 was an offline plan only. Its later live outcome is recorded separately below.
+
+### F9 offline carrier correction
+
+The Client carrier now validates bounded safe Docker resource names and the
+exact independently supplied fixture label, while retaining the pinned
+manifest, full container/network IDs, immutable image, ownership, mounts and
+nine public references. Helper provenance requires the independently pinned
+source-image mount; only the exact historical F6 label retains its original
+06 fallback. A later runtime root does not imply a new helper build origin.
+No product or cryptographic verifier changed.
+
+The existing eight structural tests plus one test containing a positive 08
+manifest, wrong-label rejection and wrong-CID rejection passed: **9 tests,
+exit 0**, no live Hub, signing, model or emulator. The exact command was:
+
+```bash
+docker run --rm --pull=never --network=none --user 1000:1000 \
+  -v /home/zyf/CICADA_CLIENT:/workspace:ro -w /workspace \
+  -e PYTHONDONTWRITEBYTECODE=1 \
+  sha256:55cbde534463c21c8f7540c6293b0bd2b72ce8aa794ee395bf27a05630754358 \
+  python3 -B -m unittest scripts.interop.test_v164_f6_ready -v
+```
+
+This is a synthetic shape regression **PASS**, not F9 encrypted/runtime
+acceptance. Carrier receipt
+`/gpu1-share/data/cicada-client/v164-f9-preparation-20261003/carrier-offline-regression.redacted.json`
+has SHA-256 `ac47e0267b7627ba3b107686421316d92ddc40ebf90c7508a6fded9848dc0a74`.
+The complete private preparation then passed one bounded network-none Docker
+run: 11 file AST checks, eight CLI parsers and two exact reused-helper
+provenance checks, exit 0. Its receipt `bounded-offline-preflight.redacted.json`
+in the same directory has SHA-256
+`0e88bc4468da7b675dfac58a5f33ba0d9b3a73629c0e160812da1f5a5f0ff93f`;
+it retains the exact outer Docker argv, every parser argv/exit and output
+hashes. No Core mount, Hub, Android, Owner signing or model call was used.
+Freeze `f9-offline-freeze.redacted.json` has SHA-256
+`4825e38ebbed247232f3dbd47255a13929e66776cd071b3b53769a511b5b0ab2`.
+These checks preceded the F9 live attempt below and establish only offline
+preparation. `client-checkpoint.redacted.json` binds their original Client
+checkpoint; the live outcome does not change those historical results.
+
+## F9 terminal record — 2026-10-03
+
+The actual Client source was `6b2c552197bb625e31e32d700d84d12685b8f81f`.
+The frozen product source, APKs and all fixed delivery identities above remain
+unchanged. Core development changes were not used as this Hub. Runtime fixture
+09 reused the reviewed helper build from 08; it was not attributed to a new
+build. The one approved business flow was attempted once and stopped on its
+first failed subprocess.
+
+| Gate | F9 result / actual exit |
+|---|---|
+| Network-none emulator bootstrap and two frozen APK installs | **PASS**, bootstrap `0`, 37.122 seconds; actual READY `01:06:29.807Z` |
+| API 35 / Android 15 / x86_64 / emulator property receipts | **PASS**, four commands `0`; bootstrap only |
+| Coordinator prepare | **PASS**, `0`; plan only |
+| Bootstrap-to-delivery binding | Initial CLI **FAIL**, `2` for missing `--helper-source-image-mount`; corrected invocation **PASS**, `0`; no business operation in either invocation |
+| Opaque carrier startup | **PASS**, actual `READY`; zero transactions |
+| First `stage-source-setup-public.json` / flow | **FAIL**, subprocess `1` / outer `1`: `owned emulator runtime metadata is inconsistent` |
+| Device export / enrollment / encrypted `session.capabilities` | **NOT_RUN** |
+| Six external Owner claims and signatures | **NOT_RUN**, zero requests and signatures; Core actor exit `0` is Core-attested |
+| Source and Target KEY / `NONE`; actual Target React Native Alert | **NOT_RUN** |
+| Fresh bilateral encrypted status | **NOT_RUN** |
+| Carrier shutdown | Outer **FAIL**, `1`; Docker child `137`, zero transactions; ADB reverse cleanup failed during deadline-driven emulator teardown (Docker exit `128`, driver `1`) |
+| Owned Client emulator and process cleanup | **PASS**, watchdog stop `0`, exact absence inspection `1` |
+| Core-owned Hub/network cleanup | Core reports removal `0/0`; independent exact-ID absence audit is recorded separately; Core private-path deletion is Core-attested |
+| Native Worker/model, physical Android, public HTTPS | **NOT_RUN** |
+| Link write recovery faults | **BLOCKED**, no approved isolated Link fault driver |
+
+### Failure and timing
+
+The bootstrap wrote `android-runtime.redacted.json` with schema
+`cicada.client-v164-deterministic.v1`, `image_id` and four actual properties.
+The staging consumer instead required the legacy producer's
+`emulator_image_id` and `platform="Android emulator"` fields. Neither field
+exists in the actual bootstrap receipt. The binder had verified the image and
+four raw property receipts, but the staging consumer used a different format.
+This is a Client fixture compatibility failure, not a Hub encryption result.
+The original receipt and failed command are immutable evidence; they are not
+patched to make this attempt pass.
+
+Root approved the business Scope at `01:17:13.969997Z`, with a hard stop at
+`01:23:47Z`. The binder completed at `01:19:10.584509Z`. The carrier startup
+receipt file was written at `01:20:06.784143898Z`; this filesystem timestamp
+is not a separately captured READY event timestamp. The Client did not poll
+the yielded carrier session until `01:23:17Z`, following a context handover.
+The stage receipt was written at `01:23:38.939667491Z`, likewise an observed
+filesystem completion timestamp rather than an instrumented start time.
+This host orchestration gap is retained independently of the metadata bug.
+The original idle watcher was replaced only after a business watcher adopted
+the same exact container with the earlier stop. No expiry or claim count was
+extended. No operation, nonce, signature or flow was retried.
+
+Core's sole watchdog cleanup receipt records `01:23:48.740840210Z`,
+1.740840210 seconds after the fixed stop. This is cleanup timing, not an
+extension of signing or submission authority. Carrier's stopped receipt says
+`PASS` for its local payload-persistence check; it does not override its
+actual outer exit `1`. The original reverse cleanup log reports an OCI
+`setns` failure, Docker exit `128` / driver `1`. The reverse receipt was
+written before the stop receipt; filesystem write times do not establish
+which action completed first. The retrospective journal's “after removal”
+wording is therefore classified as a teardown race, not proven action order.
+
+### Commands and evidence
+
+Set `B=/gpu1-share/data/cicada-client/v164-f9-preparation-20261003`,
+`E=/gpu1-share/data/cicada-client/v16-deterministic-v164-f6-f9-dd81575-main-20261003/android`
+and `F=/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-09-20261002`.
+These paths identify historical evidence and must not be reused for a new
+live operation. Exact actual argv and exits are in the journal and referenced
+original receipts; its retrospective capture is explicitly labelled.
+
+| Evidence | SHA-256 / purpose |
+|---|---|
+| `$B/f9-command-journal.redacted.json` | `31ec5b09ffef5cdbb1d579592e499cbd42e6c88d4143f57718f6ef61557c3099`; bootstrap, flow, carrier, first stage and watcher commands/exits |
+| `$B/f9-owned-cleanup-audit.redacted.json` | `dce895e20f04fc623dad35889b02a4516045a5719377d9046e2df1b161130b44`; independent exact-ID/fixture-label checks, captured `01:41:00.456196Z`; three inspect exits `1`, five empty-filter exits `0` |
+| `$B/bootstrap-stage-result.redacted.json` | `b7614686d0efe12d8b3b9fb08cf5e9dd8d0cb1ce412844d935f87629a78a896f`; actual `python3 .../f9-bootstrap-only.private.py --execute --idle-deadline 2026-10-03T01:24:00Z`, exit `0` |
+| `$E/f9-hot-ready.redacted.json` | `3661c0ff1ff5b9bb28cf741335f8e04231a8ceaafbdf31b617333571be997303` |
+| `$B/f9-bootstrap-binding.redacted.json` | `ed652bc3ec33740ac4617dfb3a41693ce3c6727cd938bf712a09f0588a634084`; corrected binder exit `0` |
+| `$B/actual-flow/01-stage-source-setup-public.json.private.json` | `418811111468937c9f2f84fd6d26f5bddf1345e9b2606ce30ce5f3b8fad99d37`; original exact staging argv, exit `1`, error |
+| `$B/actual-flow/command-index.private.json` | `7ccefeb49c49ebd91b9ca3699077040d54ec8ea6bcfc0d2178cbf3bf0a50e684`; one failed subprocess |
+| `$E/android-runtime.redacted.json` | `d5dd216d5d0d28805540433b269fe278e8c20bf2359db52c2e852400e6a344e5`; original metadata mismatch |
+| `$E/business-deadline-watcher-terminal.redacted.json` | `8fe2e6b671f55a44505544ffdc50413ddf9a62cbc1c54902657bcf7eebb3ec2f`; stop `0`, exact absence |
+| `$E/android-teardown.redacted.json` | `8e465a7e5d399f537b9d47eb7378f0897234ad5a1572f4820e682f9c70b39517` |
+| `$F/public/f9-core-terminal-evidence-index.json` | `7d661854804af404a4ef150fe39427d256cbeab53d075df53c27debb74df33ea`; Core's 11 terminal references |
+| `$F/evidence/attempt-08/cleanup-1790990628740840210.json` | `538887f53b952e8e83ee37225da9e143c1307ea8565a4a6e8e098f839f26b90d`; original Core watchdog `0/0` |
+
+The actual independent Hub/Node identifiers stay in restricted evidence.
+Public documentation carries artifact hashes and evidence paths, not device
+codes, Owner keys, session contents or bearer credentials. Ordinary cross-user
+messages remain disabled. No APK rebuild, native execution or production
+change occurred in this attempt.
+
+### Runtime validator correction — offline result
+
+The corrected consumer accepts the exact two documented producer projections.
+It requires the pinned emulator image and Android 15 / API 35 / x86_64 / qemu
+properties, rejects contradictory aliases and unexpected fields, and verifies
+F9's four raw `getprop` command/output/exit receipts. Boolean values cannot
+stand in for integer exit codes. Existing APK, ownership, immutable delivery
+and network checks remain in the staging path.
+
+The new `bootstrap-preflight` command checks the same runtime validator,
+actual owned image/label/network-none, READY marker and bound container ID
+against read-only live Docker ID/status. It makes no Hub or Root delivery
+claim. `preflight` additionally runs the existing artifact/delivery checks
+without staging, exporting, running instrumentation or contacting the Hub.
+They must run on a newly authorized live bootstrap; neither was run on the
+expired, removed F9 emulator. Live corrected preflight and business acceptance
+remain **NOT_RUN**.
+
+The focused Docker regression passed **9 tests, exit `0`**. Cases cover both
+producer formats, mismatched image/properties/network/aliases, incorrect raw
+property commands, missing receipts, boolean exits, mismatched READY/live IDs
+and a stopped container. This delegated test execution is independent of the
+historical F9 live attempt. No APK or cryptographic matrix was rebuilt or
+rerun. The actual command was:
+
+```bash
+docker run --rm --network none \
+  --mount type=bind,src=/home/zyf/CICADA_CLIENT,dst=/workspace,readonly \
+  --mount type=bind,src=/gpu1-share/data/cicada-client,dst=/gpu1-share/data/cicada-client,readonly \
+  --workdir /workspace --entrypoint python3 \
+  sha256:55cbde534463c21c8f7540c6293b0bd2b72ce8aa794ee395bf27a05630754358 \
+  scripts/interop/test_v164_runtime_preflight.py
+```
+
+Receipt `$B/f9-runtime-fix-regression.redacted.json` has SHA-256
+`6e3d6aad3a519e08756084f6ee83d1276dc490add909dae7d9700e1efa7a794d`.
+It records the actual delegated command/exit and root-checked source hashes;
+the full test output remains in the delegated tool transcript, rather than
+being invented in a local raw-output receipt. Consumer source SHA-256 is
+`f4977a693a96836785f89e3deac222c7bcac72b7478ced6b2d88863e8bcbbf72`;
+regression source SHA-256 is
+`bb7b5a19c6621b98ebd1384e4169f03f838e043ed5a0c3bc09a9bd90d5f8801b`.
+The original private F9 adapters are not modified. This is a host acceptance
+tool correction; the fixed product checkpoint and app/test hashes remain
+unchanged. A single bounded carrier-to-flow entry remains a prerequisite for
+the next separately authorized attempt; it has not been certified here.
+The final fix/document checkpoint is bound after commit in
+`$B/f9-client-delivery-closure.redacted.json`. The unpublished milestone was
+consolidated with the F8/F9 preparation checkpoint, while runtime source
+`6b2c552` is retained under local recovery reference
+`refs/cicada-client/acceptance-snapshots/f9-6b2c552`. No push or merge occurred.
 
 ## Remaining acceptance and next coordination
 

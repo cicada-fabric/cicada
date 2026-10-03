@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import sys
 from urllib.parse import urlsplit
 
@@ -52,6 +53,12 @@ MAX_OUTPUT = 512 * 1024
 HEX64 = re.compile(r'[0-9a-f]{64}')
 RUN_ID = re.compile(r'v164-[A-Za-z0-9_-]{1,72}')
 SIDES = {'source', 'target'}
+RUNTIME_PROPERTIES = {
+    'api_level': ('ro.build.version.sdk', '35'),
+    'android_release': ('ro.build.version.release', '15'),
+    'abi': ('ro.product.cpu.abi', 'x86_64'),
+    'emulator': ('ro.kernel.qemu', '1'),
+}
 
 PACKAGE = driver.PACKAGE
 REMOTE_ROOT = 'no_backup/link-v164'
@@ -135,6 +142,112 @@ def secret_fields(value):
 
 def checked_id(value):
     return link.valid_id(value)
+
+
+def validate_runtime_receipt(runtime):
+    """Accept only the exact v1.5 or F9 v1.6.4 producer receipt shape."""
+    properties = {key: value for key, (_property, value) in RUNTIME_PROPERTIES.items()}
+    # The F9 producer records its v1.6.4 schema and image_id. The exact Android
+    # getprop values below identify the platform because this producer omits the
+    # older explicit platform tag.
+    f9 = {'schema': runner.SCHEMA, 'image_id': runner.driver.IMAGE, **properties}
+    if runtime == f9:
+        return 'f9'
+
+    # The v1.5 producer records an explicit platform and emulator_image_id.
+    # Its network field was historically optional, but if present must say none;
+    # the separately checked ownership marker and Docker inspection remain the
+    # authority for the actual network attachment.
+    legacy = {'platform': 'Android emulator', 'emulator_image_id': runner.driver.IMAGE, **properties}
+    if runtime in (legacy, {**legacy, 'network': None}, {**legacy, 'network': 'none'}):
+        return 'legacy'
+    raise ValueError('owned emulator runtime metadata is inconsistent')
+
+
+def read_receipt(evidence, name):
+    return link.read_private_json(evidence / name, maximum=16 * 1024)[0]
+
+
+def validate_f9_property_receipts(evidence, state):
+    """Verify all four raw F9 adb getprop command receipts exactly."""
+    properties = {}
+    for field, (prop, expected_output) in RUNTIME_PROPERTIES.items():
+        receipt = read_receipt(evidence, 'runtime-' + field + '.json')
+        expected = {
+            'command': [*driver.adb(state), 'shell', 'getprop', prop],
+            'result': 'PASS',
+            'output': expected_output,
+        }
+        if set(receipt) != {'command', 'exit_code', 'expected_exit_code', 'result', 'output'} or \
+                type(receipt.get('exit_code')) is not int or receipt['exit_code'] != 0 or \
+                type(receipt.get('expected_exit_code')) is not int or receipt['expected_exit_code'] != 0 or \
+                any(receipt.get(key) != value for key, value in expected.items()):
+            raise ValueError('F9 Android runtime property receipt is inconsistent')
+        properties[field] = receipt['output']
+    return properties
+
+
+def inspect_readonly(argv):
+    try:
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, check=False, timeout=10, text=True)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError('read-only Docker bootstrap inspection failed') from error
+    if result.returncode != 0:
+        raise ValueError('read-only Docker bootstrap inspection failed')
+    return result.stdout.strip()
+
+
+def bootstrap_preflight(evidence, state=None):
+    """Read-only Android boot/runtime check; it does not establish Hub readiness."""
+    state = runner.owned_state(evidence) if state is None else state
+    if state.get('image_id') != runner.driver.IMAGE or state.get('network') != 'none':
+        raise ValueError('bootstrap preflight requires the exact offline emulator image')
+    if not runner.F6_RUN_ID.fullmatch(state['run_id']):
+        raise ValueError('bootstrap preflight requires an F6-format Android evidence run')
+
+    marker = read_receipt(evidence, 'emulator-ready.json')
+    expected_marker = {'result': 'READY', 'adb_port': 5070, 'serial': 'emulator-5640'}
+    if marker != expected_marker:
+        raise ValueError('F9 emulator READY marker is inconsistent')
+
+    id_argv = ['docker', 'inspect', '--format', '{{.Id}}', state['container']]
+    id_receipt = read_receipt(evidence, 'container-id.json')
+    if set(id_receipt) != {'command', 'exit_code', 'expected_exit_code', 'result', 'output'} or \
+            id_receipt.get('command') != id_argv or id_receipt.get('result') != 'PASS' or \
+            type(id_receipt.get('exit_code')) is not int or id_receipt['exit_code'] != 0 or \
+            type(id_receipt.get('expected_exit_code')) is not int or id_receipt['expected_exit_code'] != 0 or \
+            not isinstance(id_receipt.get('output'), str) or not re.fullmatch(r'[0-9a-f]{64}', id_receipt['output']):
+        raise ValueError('F9 container ID receipt is inconsistent')
+    readiness = read_receipt(evidence, 'emulator-readiness.redacted.json')
+    if set(readiness) != {'container_id', 'marker', 'observed_at_utc', 'result'} or \
+            readiness.get('result') != 'READY' or readiness.get('marker') != expected_marker or \
+            readiness.get('container_id') != id_receipt['output'] or \
+            not isinstance(readiness.get('observed_at_utc'), str) or not readiness['observed_at_utc']:
+        raise ValueError('F9 readiness receipt is not bound to the owned container')
+
+    actual_id = inspect_readonly(id_argv)
+    if actual_id != id_receipt['output']:
+        raise ValueError('current Docker container ID differs from the F9 READY receipt')
+    status = inspect_readonly(['docker', 'inspect', '--format',
+        '{{.State.Running}} {{.State.Status}}', state['container']])
+    if status != 'true running':
+        raise ValueError('the owned F9 Android emulator is not running')
+
+    runtime = read_receipt(evidence, 'android-runtime.redacted.json')
+    if validate_runtime_receipt(runtime) != 'f9':
+        raise ValueError('F9 bootstrap preflight requires the F9 runtime receipt shape')
+    properties = validate_f9_property_receipts(evidence, state)
+    return {
+        'result': 'ANDROID_BOOTSTRAP_CHECK_PASS',
+        'run_id': state['run_id'],
+        'container_id': actual_id,
+        'image_id': runner.driver.IMAGE,
+        'network': 'none',
+        'runtime_properties': properties,
+        'hub': 'NOT_CHECKED',
+        'root_delivery': 'NOT_CHECKED',
+    }
 
 
 def canonical_identity_string(raw):
@@ -448,9 +561,9 @@ def check_evidence(evidence, args):
     if runtime_path.is_symlink() or not runtime_path.is_file():
         raise ValueError('owned emulator runtime receipt is missing')
     runtime, _ = link.read_private_json(runtime_path, maximum=16 * 1024)
-    if runtime.get('emulator_image_id') != runner.driver.IMAGE or runtime.get('platform') != 'Android emulator' or \
-            runtime.get('emulator') != '1' or runtime.get('network') not in (None, 'none'):
-        raise ValueError('owned emulator runtime metadata is inconsistent')
+    runtime_kind = validate_runtime_receipt(runtime)
+    if runtime_kind == 'f9':
+        validate_f9_property_receipts(evidence, state)
     return state, artifacts
 
 
@@ -693,6 +806,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('evidence', help='private evidence directory owned by the v1.6.4 emulator driver')
     commands = parser.add_subparsers(dest='action', required=True)
+    commands.add_parser('bootstrap-preflight',
+        help='read-only Android boot/runtime check; makes no Hub or Root delivery claim')
+    preflight = commands.add_parser('preflight',
+        help='read-only F6 artifact, owned-emulator, and runtime checks without running a selector')
+    preflight.add_argument('--run-id', required=True)
+    runner.add_delivery_arguments(preflight)
     stage_parser = commands.add_parser('stage')
     stage_parser.add_argument('--run-id', required=True)
     stage_parser.add_argument('--name', choices=sorted(STAGE_FILES), required=True)
@@ -711,9 +830,18 @@ def main():
     export.add_argument('--side', choices=sorted(SIDES))
     runner.add_delivery_arguments(export)
     args = parser.parse_args()
+    evidence = driver.private_evidence(args.evidence)
+    if args.action == 'bootstrap-preflight':
+        print(json.dumps(bootstrap_preflight(evidence)))
+        return
     if not RUN_ID.fullmatch(args.run_id):
         raise ValueError('instrumentation run ID must match v164-[A-Za-z0-9_-]{1,72}')
-    evidence = driver.private_evidence(args.evidence)
+    if args.action == 'preflight':
+        state, _artifacts = check_evidence(evidence, args)
+        result = bootstrap_preflight(evidence, state)
+        result.update({'action': 'preflight', 'instrumentation_run_id': args.run_id})
+        print(json.dumps(result))
+        return
     state, _artifacts = check_evidence(evidence, args)
     if args.action == 'stage':
         result = stage(evidence, state, args)

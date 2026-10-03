@@ -88,6 +88,19 @@ no expired nonce or proof may be reused.
 The subsequent F7 boot-only lane passed fresh bootstrap and bounded private
 adapter checks, then closed at its fixed idle cutoff before new business GO.
 It adds no encrypted runtime or bilateral acceptance result.
+F8 verified the fresh fixture, both emulator bootstraps and exact artifact
+binding, but reached its fixed deadline before the first Android business
+stage. Enrollment, encrypted capabilities and bilateral consent remain
+`NOT_RUN`; original driver failures and independent cleanup evidence are
+retained. F9 bootstrapped and bound the unchanged APK pair, then its first
+staging command failed because the bootstrap receipt and the consumer used
+different runtime metadata formats. No device enrollment, encrypted business
+RPC, Owner signature or Target Alert ran. The fixed deadline was enforced;
+owned cleanup passed. The [core handoff](docs/cicada-core-handoff.md) records
+the original failure and the required runtime preflight correction.
+The corrected receipt validator and read-only preflight tools passed nine
+focused Docker regressions. Their live use and bilateral consent remain
+unverified; the next attempt requires a fresh authorized fixture.
 Physical Android, public HTTPS and native Worker/model acceptance
 remain `NOT_RUN`. Full current source, artifact, cleanup and attempt receipts are in the
 [dd81575 validation record](docs/client-hub-v1.6.4-dd81575-validation.md).

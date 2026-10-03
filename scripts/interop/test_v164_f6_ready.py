@@ -526,6 +526,47 @@ class MainF6ReadyTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._validate(manifest=bad_manifest)
 
+    def test_f8_manifest_uses_pinned_label_and_rejects_wrong_label_or_container_id(self):
+        config = copy.deepcopy(self.config)
+        root = self.root.parent / 'client-link-v164-fixture-08-20261002'
+        config['paths']['root'] = root
+        config['fixture_label'] = 'client-link-v164-08'
+        config['helper_source_image_mount'] = '/src/cmd/cicada-client-link-v164-fixture-08'
+
+        manifest = copy.deepcopy(self.manifest)
+        manifest['fixture_dir'] = str(root)
+        container = manifest['container']
+        network = manifest['network']
+        container['name'] = 'cicada-cl164-08-hub'
+        network['name'] = 'cicada-cl164-08-network'
+        container['network_mode'] = network['name']
+        container['networks'] = [network['name']]
+        for row in (container['labels'], network['labels']):
+            row['org.cicada.fixture'] = config['fixture_label']
+            row['org.cicada.fixture.dir'] = str(root)
+        for mount in container['mounts']:
+            mount['source'] = str(root / Path(mount['source']).name)
+
+        ready = copy.deepcopy(self.ready)
+        carrier._f6_validate_manifest(manifest, config, ready)
+        refs = ready['public_references']
+        provenance = json.loads((self.root / 'evidence/attempt-06/helper-provenance.json').read_bytes())
+        provenance['helper_source_image_mount'] = config['helper_source_image_mount']
+        carrier._f6_validate_helper_provenance(provenance, config, {
+            'helper_source_sha256': refs['helper_source']['sha256'],
+            'helper_binary_sha256': refs['helper_binary']['sha256'],
+        })
+
+        wrong_label = copy.deepcopy(manifest)
+        wrong_label['container']['labels']['org.cicada.fixture'] = 'client-link-v164-09'
+        with self.assertRaises(ValueError):
+            carrier._f6_validate_manifest(wrong_label, config, ready)
+
+        wrong_container_id = copy.deepcopy(manifest)
+        wrong_container_id['container']['id'] = 'c' * 64
+        with self.assertRaises(ValueError):
+            carrier._f6_validate_manifest(wrong_container_id, config, ready)
+
 
 if __name__ == '__main__':
     unittest.main()
