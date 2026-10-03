@@ -4,9 +4,9 @@ import type {HubProfileScope} from '../platform/clientHub';
 import type {LinkReviewPolicy} from '../platform/linkReviewPolicyStatus';
 import {
   LinkConsentReviewLifecycle, linkConsentReviewFromNative, linkConsentUiScope,
-  linkOwnerProofInputValid, linkKeyGrantReceiptFromNative,
+  linkOwnerProofInputValid, linkKeyGrantReceiptFromNative, linkConsentPrepareStatus,
 } from '../platform/linkConsentFlow';
-import type {LinkConsentApi, LinkConsentKind, LinkConsentReview} from '../platform/linkConsentFlow';
+import type {LinkConsentApi, LinkConsentKind, LinkConsentPrepareStage, LinkConsentReview} from '../platform/linkConsentFlow';
 
 interface Props {
   api: LinkConsentApi;
@@ -32,18 +32,23 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   const [review, setReview] = useState<LinkConsentReview | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [prepareStage, setPrepareStage] = useState<LinkConsentPrepareStage | null>(null);
+  const preparationActive = useRef(false);
   const lifecycle = useRef(new LinkConsentReviewLifecycle());
   const scope = linkConsentUiScope(props.scope, props.linkId, props.linkVersion, props.listGeneration);
   const latest = useRef({scope, api: props.api, foreground: AppState.currentState === 'active'});
   latest.current = {...latest.current, scope, api: props.api};
 
   useEffect(() => {
+    const hadPreparationOrReview = preparationActive.current;
+    preparationActive.current = false;
     lifecycle.current.invalidate();
     setReview(null);
     setProof('');
     setOwnerPublicIdentity('');
     setExpectedFingerprint('');
     setMessage('');
+    setPrepareStage(hadPreparationOrReview ? 'REVIEW_INVALIDATED' : null);
     setBusy(false);
   }, [scope, kind, metadata, reviewerEndpoint, reviewerGroup]);
 
@@ -52,12 +57,15 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
     const subscription = AppState.addEventListener('change', state => {
       latest.current.foreground = state === 'active';
       if (state !== 'active') {
+        const hadPreparationOrReview = preparationActive.current;
+        preparationActive.current = false;
         current.invalidate();
         setReview(null);
         setProof('');
         setOwnerPublicIdentity('');
         setExpectedFingerprint('');
         setMessage('');
+        setPrepareStage(hadPreparationOrReview ? 'REVIEW_INVALIDATED' : null);
         setBusy(false);
       }
     });
@@ -67,31 +75,60 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   if (!props.api.linkConsentReady) return null;
 
   const prepare = async () => {
-    if (busy || !latest.current.foreground) return;
+    if (busy) return;
+    if (!latest.current.foreground) {
+      setPrepareStage('REVIEW_INVALIDATED');
+      return;
+    }
     lifecycle.current.invalidate();
     const generation = lifecycle.current.capture();
     const captured = latest.current;
+    preparationActive.current = true;
     setReview(null);
     setProof('');
     setBusy(true);
+    setPrepareStage('PREPARING');
     setMessage('');
     const policy: LinkReviewPolicy = metadata ? {mode: 'METADATA', reviewers: [{
       endpoint_id: reviewerEndpoint.trim(), group_id: reviewerGroup.trim(),
     }], max_failovers: 0, reviewer_lease_seconds: 60, max_review_age_seconds: 600} : noReviewPolicy;
+    const isCurrent = () => captured.scope === latest.current.scope &&
+      generation === lifecycle.current.capture() && latest.current.foreground;
     try {
-      const raw = await captured.api.prepareLinkConsent({linkId: props.linkId,
-        expectedLinkVersion: props.linkVersion, kind,
-        ...(kind === 'REVIEW_POLICY' ? {policy} : {})});
-      const parsed = linkConsentReviewFromNative(raw, props.linkId, props.linkVersion);
-      if (!parsed) throw new Error('INVALID_NATIVE_LINK_REVIEW');
-      if (latest.current.foreground && lifecycle.current.receive(generation, captured.scope,
-        latest.current.scope, parsed)) setReview(parsed);
-    } catch {
-      if (captured.scope === latest.current.scope && generation === lifecycle.current.capture()) {
-        setMessage('未获得可确认的证明。请核对双方 Owner 公钥固定和当前 Endpoint 绑定后重新读取。');
+      let raw: unknown;
+      try {
+        raw = await captured.api.prepareLinkConsent({linkId: props.linkId,
+          expectedLinkVersion: props.linkVersion, kind,
+          ...(kind === 'REVIEW_POLICY' ? {policy} : {})});
+      } catch {
+        if (isCurrent()) {
+          preparationActive.current = false;
+          setPrepareStage('PREPARE_API_REJECTED');
+        }
+        return;
+      }
+
+      if (!isCurrent()) return;
+      let parsed: LinkConsentReview | null;
+      try {
+        parsed = linkConsentReviewFromNative(raw, props.linkId, props.linkVersion);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed) {
+        if (isCurrent()) {
+          preparationActive.current = false;
+          setPrepareStage('DTO_REJECTED');
+        }
+        return;
+      }
+      if (isCurrent() && lifecycle.current.receive(generation, captured.scope,
+        latest.current.scope, parsed)) {
+        setReview(parsed);
+        setPrepareStage('REVIEW_READY');
       }
     } finally {
-      if (captured.scope === latest.current.scope && generation === lifecycle.current.capture()) setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
@@ -105,9 +142,11 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
         {text: '已独立核对', onPress: () => { (async () => {
           if (!latest.current.foreground || latest.current.scope !== captured.scope) return;
           setBusy(true);
+          preparationActive.current = false;
           lifecycle.current.invalidate();
           setReview(null);
           setProof('');
+          setPrepareStage(null);
           try {
             await captured.api.confirmLinkOwnerPin(input);
             if (latest.current.scope === captured.scope) setMessage('公钥固定已保存。请重新读取 Link 证明。');
@@ -137,8 +176,14 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
           if (!latest.current.foreground || latest.current.scope !== captured.scope) return;
           const accepted = lifecycle.current.consume(captured.scope, reviewed.reviewId,
             reviewed.consentDigest, Date.now());
-          if (!accepted) { setReview(null); setProof(''); setMessage('确认已失效，请重新读取证明。'); return; }
+          if (!accepted) {
+            preparationActive.current = false;
+            setReview(null); setProof(''); setPrepareStage('REVIEW_INVALIDATED');
+            setMessage('确认已失效，请重新读取证明。'); return;
+          }
+          preparationActive.current = false;
           setReview(null); setProof(''); setBusy(true);
+          setPrepareStage(null);
           try {
             await captured.api.submitLinkConsent({reviewId: accepted.reviewId,
               consentDigest: accepted.consentDigest, signedProofBase64, confirmed: true});
@@ -157,7 +202,9 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   const readGrants = async () => {
     const captured = latest.current;
     if (busy || !captured.foreground) return;
+    preparationActive.current = false;
     lifecycle.current.invalidate(); setReview(null); setProof(''); setBusy(true);
+    setPrepareStage(null);
     try {
       const raw = await captured.api.readLinkKeyGrants({linkId: props.linkId, expectedLinkVersion: props.linkVersion});
       const receipt = linkKeyGrantReceiptFromNative(raw, props.linkId, props.linkVersion);
@@ -174,7 +221,9 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   const recover = async () => {
     const captured = latest.current;
     if (busy || !captured.foreground) return;
+    preparationActive.current = false;
     lifecycle.current.invalidate(); setReview(null); setProof(''); setBusy(true);
+    setPrepareStage(null);
     try {
       await captured.api.recoverLinkConsent();
       if (captured.scope === latest.current.scope) setMessage('原包恢复响应已返回。请重新读取当前双方证明状态。');
@@ -182,6 +231,8 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       if (captured.scope === latest.current.scope) setMessage('尚未获得确定结果。设备保留待恢复请求并阻止重复授权。');
     } finally { if (captured.scope === latest.current.scope) setBusy(false); }
   };
+
+  const prepareStatus = prepareStage ? linkConsentPrepareStatus(prepareStage) : null;
 
   return <View style={styles.panel}>
     <Text style={styles.title}>Link 授权</Text>
@@ -204,6 +255,10 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
     <Action label="核对并固定 Owner 公钥" disabled={busy || !ownerId || !ownerPublicIdentity || !expectedFingerprint}
       onPress={pinOwner} />
     <Action label={busy ? '核验中…' : '读取当前证明'} disabled={busy} onPress={() => prepare()} />
+    {prepareStatus && (prepareStage !== 'REVIEW_READY' || review) && <Text
+      testID="link-consent-prepare-state"
+      accessibilityLabel={prepareStatus.accessibilityLabel}
+      accessibilityLiveRegion="polite" style={styles.note}>{prepareStatus.text}</Text>}
     {review && <View style={styles.review}>
       <Text style={styles.title}>{review.side} · Link v{review.linkVersion}</Text>
       <Text style={styles.note}>{review.sourceEndpointId} / {review.sourceGroupId} → {review.targetEndpointId} / {review.targetGroupId}</Text>

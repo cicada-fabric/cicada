@@ -42,36 +42,29 @@ Node confirmation now validates the complete `NodeControlKeyBinding` public keys
 
 ## Current integration candidate: v1.6.4
 
-The active candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
-Its immutable archive, catalog and full image IDs are recorded in the
-[F19 validation report](docs/client-hub-v1.6.4-0213538-f19-validation.md).
-The dedicated Link flow independently verifies Endpoint attestations, external
-Owner signatures and current encrypted evidence. It does not enable ordinary
-cross-user messages while `external_thread_links=false`.
+The candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
+Its archive, catalog and fixed image IDs are recorded in the
+[F19 target record](docs/client-hub-v1.6.4-0213538-f19-validation.md). The
+[F24–F28 report](docs/client-hub-v1.6.4-0213538-f28-validation.md) retains all
+five bounded-run outcomes. F28 passed SOURCE enrollment, encrypted
+capabilities, independent pins and partial SOURCE status; TARGET enrollment,
+capabilities and pins also passed. The Android test failed while waiting for
+the scope row after reading the current proof, before Target KEY, Target NONE,
+or the positive confirmation Alert. Its flow exited `1` after 100.391 seconds;
+the original pending operation remains `OUTCOME_UNKNOWN_PRESERVE_PENDING`.
+Bilateral KEY/`NONE` is not accepted.
 
-The [F20–F23 record](docs/client-hub-v1.6.4-0213538-f23-validation.md)
-binds clean Client `406d8d7` and its exact APK pair. The correction APK passed
-SOURCE enrollment, encrypted capabilities, full manifest/pin verification and
-KEY submission with fresh side-status verification. SOURCE NONE failed;
-its actual typed cause remains unknown. TARGET React Native confirmation and
-bilateral KEY/NONE remain unaccepted. Owned Android and F23 Core cleanup passed.
-
-Core's accepted-at clarification confirms `accepted_at <= verified_at` on the
-Hub clock and signed proof validity `issued_at <= accepted_at < expires_at`;
-`accepted_at` is not checked against Android time. The final focused Docker
-regression passed 29 Kotlin tests, exit `0`; its receipt is
-`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/kotlin-host.receipt.redacted.json` (SHA-256
-`3a9c7de5acf50ffd3da7ea17d0d66143396a49d91463b1aec0093feab912283a`). Local
-proof expiry, lease, signature, Owner-pin and operation-fence checks remain in
-place. The earlier `8af21cc`/K24 build snapshot is immutable historical evidence,
-not live validation. At this source checkpoint, final assembly is pending; its
-post-commit receipt at
-`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/apk-build.receipt.redacted.json`
-will bind the clean commit, command/exit and both APK SHA-256 values when
-completed. Live acceptance, physical Android, public HTTPS and current native
-Codex acceptance are NOT_RUN. The
-[core handoff](docs/cicada-core-handoff.md) contains the next bounded-run prompt.
-Historical results certify only their recorded sources, artifacts and scope.
+F28 used app/test APKs built from source `8b1b6c54eff702918c426827a3673f9a112edbcc`
+(SHA-256 `02b5481da9f3e09c46d02d7e4a853b51d8c2482ceee7b58297ec79a9cbf9a44d` /
+`d1e935afb0edc42f9dc6e3cf19ad78f6a6054553de115972b9f6aea1d3a78dc5`). The
+29-test Kotlin host receipt belongs to that source. Current offline diagnostic
+checks pass 18 focused tests plus TypeScript and targeted ESLint; their receipts
+are recorded in the F28 report. The updated Android instrumentation APK build
+is pending its post-commit receipt. No new live fixture has been run. Physical
+Android, public HTTPS, native Worker acceptance, Link recovery faults and
+bilateral consent remain NOT_RUN. Ordinary cross-user messages remain closed
+while `external_thread_links=false`. The [core handoff](docs/cicada-core-handoff.md)
+contains the fresh-BOOT/GO coordination prompt.
 
 ## Imported clean v1.6.3 delivery
 
@@ -116,7 +109,7 @@ For local unsigned per-ABI Release APKs, use `scripts/docker-build-release.sh` w
 - [Git milestones and validation provenance](docs/git-history.md)
 - [Product behavior](docs/product.md), [development plan](docs/development-plan.md), and [model selection](docs/model-selection.md)
 - [Backend contract](docs/backend-contract.md), [Hub interface requests and completed items](docs/hub-interface-requests-v12.md), and [core team handoff](docs/cicada-core-handoff.md)
-- [Current v1.6.1 validation](docs/client-hub-v1.6.1-144e079-validation.md), [historical fe565b4 checkpoint](docs/client-hub-v1.6.1-fe565b4-validation.md), [historical v1.6 successor management validation](docs/client-hub-v1.6-4fb241b-management-validation.md), [historical f4e4725 v1.6 acceptance](docs/client-hub-v1.6-f4e4725-validation.md), [historical v1.5 validation](docs/client-hub-v1.5-bd79ff9-validation.md), and [historical v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md)
+- [Current v1.6.4 F24–F28 validation](docs/client-hub-v1.6.4-0213538-f28-validation.md), [historical F20–F23 validation](docs/client-hub-v1.6.4-0213538-f23-validation.md), [current v1.6.1 validation](docs/client-hub-v1.6.1-144e079-validation.md), [historical fe565b4 checkpoint](docs/client-hub-v1.6.1-fe565b4-validation.md), [historical v1.6 successor management validation](docs/client-hub-v1.6-4fb241b-management-validation.md), [historical f4e4725 v1.6 acceptance](docs/client-hub-v1.6-f4e4725-validation.md), [historical v1.5 validation](docs/client-hub-v1.5-bd79ff9-validation.md), and [historical v1.4 acceptance](docs/client-hub-v1.4-f30892f-validation.md)
 - [Historical v1.3 candidate validation](docs/client-monitor-v13-25013b5-native-validation.md), [historical native attempt](docs/client-monitor-v13-81d8f1f-native-validation.md), [historical recall attempt](docs/client-monitor-v13-81d8f1f-recall-validation.md), and [historical Set H acceptance](docs/client-hub-v1.3-be0269e-validation.md)
 - [Historical v1.2.1 validation](docs/client-hub-v1.2.1-967dbd-validation.md) and [historical v1.2 validation against `41beaf0`](docs/client-hub-v1.2-41beaf0-validation.md)
 - [Disposable Group Endpoint key acceptance](docs/client-group-key-v1.2.1-disposable-validation.md)

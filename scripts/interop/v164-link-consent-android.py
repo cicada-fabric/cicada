@@ -127,6 +127,42 @@ def parse_json(raw):
     return value
 
 
+def classify_phone_ui_instrumentation(raw, exit_code):
+    """Classify JUnit output without exposing it or trusting adb's exit code alone."""
+    if not isinstance(raw, bytes) or len(raw) > MAX_OUTPUT:
+        return 'INSTRUMENTATION_UNCONFIRMED'
+    text = raw.decode('utf-8', errors='replace')
+    failures = re.findall(r'Tests run:\s*(\d+),\s*Failures:\s*(\d+)', text)
+    if re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|(?m:^\s*Error in )', text) or \
+            any(count != '1' or failed != '0' for count, failed in failures):
+        return 'JUNIT_FAILED'
+    if exit_code is None:
+        return 'RUNNING'
+    if type(exit_code) is not int or exit_code != 0:
+        return 'PROCESS_FAILED'
+    summaries = re.findall(r'(?m:^\s*OK \(1 test\)\s*$)', text)
+    return 'JUNIT_PASSED' if len(summaries) == 1 else 'INSTRUMENTATION_UNCONFIRMED'
+
+
+def validate_phone_ui_prepare_receipt(raw, expected_run_id_sha256):
+    """Accept only the bounded, payload-free stage exported by Android UI automation."""
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError('phone UI preparation receipt is invalid')
+    value = parse_json(raw)
+    stages = {'REVIEW_READY', 'PREPARE_API_REJECTED', 'DTO_REJECTED', 'REVIEW_INVALIDATED',
+        'PREPARE_NOT_STARTED', 'PREPARE_TIMEOUT', 'REVIEW_NOT_VISIBLE'}
+    if set(value) != {'schema', 'result', 'run_id_sha256', 'stage', 'native_session_methods_called_by_test'} or \
+            value.get('schema') != 'cicada.client-v164-phone-ui-prepare.v1' or \
+            value.get('run_id_sha256') != expected_run_id_sha256 or \
+            not isinstance(value.get('stage'), str) or \
+            value.get('stage') not in stages or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('result') != ('PASS' if value.get('stage') == 'REVIEW_READY' else 'FAIL'):
+        raise ValueError('phone UI preparation receipt is invalid')
+    return value['stage']
+
+
 def secret_fields(value):
     if isinstance(value, dict):
         for key, nested in value.items():

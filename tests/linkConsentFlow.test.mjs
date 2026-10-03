@@ -4,7 +4,7 @@ import {
   createLinkConsentApi, linkConsentReviewFromNative, linkOwnerProofInputValid,
   linkConsentUiScope, LinkConsentReviewLifecycle,
   linkKeyGrantReceiptFromNative,
-  linkConsentCapabilitiesAllow,
+  linkConsentCapabilitiesAllow, LINK_CONSENT_PREPARE_STAGES, linkConsentPrepareStatus,
 } from '../src/platform/linkConsentFlow.ts';
 import {CLIENT_HUB_CATALOG_SHA256, CLIENT_HUB_REVISION} from '../src/platform/clientHubContract.ts';
 import {LINK_CONSENT_OPERATIONS} from '../src/platform/linkConsent.ts';
@@ -35,6 +35,39 @@ test('an absent or incomplete dedicated bridge cannot touch native transport', a
     await assert.rejects(api.recoverLinkConsent(), /VERIFIED_LINK_CONSENT_FLOW_NOT_READY/);
   }
   assert.equal(calls, 0);
+});
+
+test('preparation accessibility status uses only fixed stages and sanitized product text', () => {
+  assert.deepEqual(LINK_CONSENT_PREPARE_STAGES, [
+    'PREPARING', 'REVIEW_READY', 'PREPARE_API_REJECTED', 'DTO_REJECTED', 'REVIEW_INVALIDATED',
+  ]);
+  for (const stage of LINK_CONSENT_PREPARE_STAGES) {
+    const status = linkConsentPrepareStatus(stage);
+    assert.equal(status.accessibilityLabel, `CICADA_LINK_PREPARE:${stage}`);
+    assert.ok(status.text.length > 0);
+    assert.doesNotMatch(status.text, /secret|review-a|link-a|Error:/i);
+  }
+  assert.notEqual(linkConsentPrepareStatus('PREPARE_API_REJECTED').text,
+    linkConsentPrepareStatus('DTO_REJECTED').text);
+  assert.equal(linkConsentPrepareStatus('Error: secret API payload'), null);
+});
+
+test('preparation status sanitizer rejects exception and native payload objects', () => {
+  const privateDetail = 'private-response-review-id-and-proof';
+  for (const untrusted of [
+    new Error(privateDetail),
+    {code: 'NATIVE_FAILURE', message: privateDetail, response: {payload: privateDetail}},
+    {stage: 'PREPARE_API_REJECTED', message: privateDetail},
+    `PREPARE_API_REJECTED:${privateDetail}`,
+    null,
+    7,
+  ]) assert.equal(linkConsentPrepareStatus(untrusted), null);
+
+  const apiRejected = linkConsentPrepareStatus('PREPARE_API_REJECTED');
+  const dtoRejected = linkConsentPrepareStatus('DTO_REJECTED');
+  assert.deepEqual(Object.keys(apiRejected).sort(), ['accessibilityLabel', 'text']);
+  assert.deepEqual(Object.keys(dtoRejected).sort(), ['accessibilityLabel', 'text']);
+  assert.equal(JSON.stringify([apiRejected, dtoRejected]).includes(privateDetail), false);
 });
 
 test('native status display never promotes a single Owner or stale grant to bilateral verification', () => {

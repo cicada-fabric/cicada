@@ -5,6 +5,51 @@ import type {ClientHubCapabilities, ClientHubSessionCapabilities, ClientHubStatu
 
 export type LinkConsentKind = 'KEY' | 'REVIEW_POLICY';
 
+/** Fixed, sanitized preparation outcomes for the Link consent UI and UI automation. */
+export const LINK_CONSENT_PREPARE_STAGES = [
+  'PREPARING',
+  'REVIEW_READY',
+  'PREPARE_API_REJECTED',
+  'DTO_REJECTED',
+  'REVIEW_INVALIDATED',
+] as const;
+
+export type LinkConsentPrepareStage = typeof LINK_CONSENT_PREPARE_STAGES[number];
+
+export interface LinkConsentPrepareStatus {
+  readonly accessibilityLabel: `CICADA_LINK_PREPARE:${LinkConsentPrepareStage}`;
+  readonly text: string;
+}
+
+const linkConsentPrepareStatusByStage: Record<LinkConsentPrepareStage, LinkConsentPrepareStatus> = {
+  PREPARING: {
+    accessibilityLabel: 'CICADA_LINK_PREPARE:PREPARING',
+    text: '正在读取当前证明…',
+  },
+  REVIEW_READY: {
+    accessibilityLabel: 'CICADA_LINK_PREPARE:REVIEW_READY',
+    text: '当前证明已读取，请核对双方身份、范围与到期时间。',
+  },
+  PREPARE_API_REJECTED: {
+    accessibilityLabel: 'CICADA_LINK_PREPARE:PREPARE_API_REJECTED',
+    text: '未获得可确认的证明。请核对双方 Owner 公钥固定和当前 Endpoint 绑定后重新读取。',
+  },
+  DTO_REJECTED: {
+    accessibilityLabel: 'CICADA_LINK_PREPARE:DTO_REJECTED',
+    text: '无法安全确认当前证明。请核对双方 Owner 公钥固定和当前 Endpoint 绑定后重新读取。',
+  },
+  REVIEW_INVALIDATED: {
+    accessibilityLabel: 'CICADA_LINK_PREPARE:REVIEW_INVALIDATED',
+    text: '当前证明已失效，请重新读取。',
+  },
+};
+
+/** Unknown values, including exception text, never become UI or accessibility output. */
+export function linkConsentPrepareStatus(stage: unknown): LinkConsentPrepareStatus | null {
+  return typeof stage === 'string' && Object.prototype.hasOwnProperty.call(linkConsentPrepareStatusByStage, stage) ?
+    linkConsentPrepareStatusByStage[stage as LinkConsentPrepareStage] : null;
+}
+
 /** Native Long values cross this boundary as canonical decimal strings. */
 export interface LinkReviewerQualification {
   readonly endpointId: string;

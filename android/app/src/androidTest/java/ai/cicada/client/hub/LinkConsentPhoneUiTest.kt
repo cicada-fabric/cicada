@@ -38,6 +38,7 @@ class LinkConsentPhoneUiTest {
     private val proofFile get() = File(directory, "phone-ui-signed-proof.private.json")
     private val reviewReceipt get() = File(directory, "phone-ui-review.redacted.json")
     private val resultReceipt get() = File(directory, "phone-ui-submit.redacted.json")
+    private val prepareReceipt get() = File(directory, "phone-ui-prepare.redacted.json")
 
     private data class Scope(
         val ownerId: String,
@@ -192,6 +193,45 @@ class LinkConsentPhoneUiTest {
         error("Could not scroll to the requested visible Link review content")
     }
 
+    /** Only fixed UI stages are exported; neither the accessibility tree nor errors are saved. */
+    private fun recordPreparation(stage: String) {
+        require(stage in setOf("REVIEW_READY", "PREPARE_API_REJECTED", "DTO_REJECTED",
+            "REVIEW_INVALIDATED", "PREPARE_NOT_STARTED", "PREPARE_TIMEOUT", "REVIEW_NOT_VISIBLE"))
+        val record = JsonObject().apply {
+            addProperty("schema", "cicada.client-v164-phone-ui-prepare.v1")
+            addProperty("result", if (stage == "REVIEW_READY") "PASS" else "FAIL")
+            addProperty("run_id_sha256", hash(runId.toByteArray(StandardCharsets.UTF_8)))
+            addProperty("stage", stage)
+            addProperty("native_session_methods_called_by_test", false)
+        }
+        writePrivate(prepareReceipt, record.toString().toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun failPreparation(stage: String): Nothing {
+        recordPreparation(stage)
+        error("Link consent preparation did not reach a visible review: $stage")
+    }
+
+    private fun awaitPreparationSettled(timeoutMs: Long = 20_000) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val prefix = "CICADA_LINK_PREPARE:"
+        val rejected = setOf("PREPARE_API_REJECTED", "DTO_REJECTED", "REVIEW_INVALIDATED", "PREPARE_NOT_STARTED")
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = uiRoot()
+            val stages = root?.let { descendants(it) }.orEmpty().filter { it.isVisibleToUser }
+                .mapNotNull { it.contentDescription?.toString() }
+                .filter { it.startsWith(prefix) }
+                .map { it.removePrefix(prefix) }
+            if (stages.size == 1) {
+                val stage = stages.single()
+                if (stage == "REVIEW_READY") return
+                if (stage in rejected) failPreparation(stage)
+            }
+            SystemClock.sleep(200)
+        }
+        failPreparation("PREPARE_TIMEOUT")
+    }
+
     private fun signerRequest(root: AccessibilityNodeInfo): String {
         val marker = "cicada.client.link-consent-signing-request.v1"
         return descendants(root).asSequence().filter { it.isVisibleToUser }
@@ -270,7 +310,8 @@ class LinkConsentPhoneUiTest {
     @Test
     fun actualReactNativeLinkConsentAlertUsesCurrentExternallySignedReview() {
         val scope = readScope()
-        require(!requestFile.exists() && !proofFile.exists() && !reviewReceipt.exists() && !resultReceipt.exists()) {
+        require(!requestFile.exists() && !proofFile.exists() && !reviewReceipt.exists() &&
+            !resultReceipt.exists() && !prepareReceipt.exists()) {
             "This UI run already contains a signer handoff; use a fresh run ID instead of replaying it"
         }
         val activity = instrumentation.startActivitySync(
@@ -292,7 +333,13 @@ class LinkConsentPhoneUiTest {
 
         scrollToText("读取当前证明")
         clickLabel("读取当前证明")
-        scrollToText(" → ")
+        awaitPreparationSettled()
+        try {
+            scrollToText(" → ")
+        } catch (_: IllegalStateException) {
+            failPreparation("REVIEW_NOT_VISIBLE")
+        }
+        recordPreparation("REVIEW_READY")
         val scopeRoot = uiRoot() ?: error("React Native review UI is unavailable")
         val displayedEndpointScope = visibleText(scopeRoot).firstOrNull { it.contains(" → ") }
             ?: error("Displayed Endpoint and Group scope is missing")

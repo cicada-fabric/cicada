@@ -1,48 +1,77 @@
 # CICADA Client integration handoff
 
-## Current F23 outcome and historical-result correction — clean Core `0213538`
+## Current F24–F28 outcome — clean Core `0213538`
+
+The [F24–F28 validation report](client-hub-v1.6.4-0213538-f28-validation.md)
+binds the fixed Core images and all five bounded attempts. F24 stopped at the
+cold APK-pin closure check. F25/F26 ended before prepare/business under their
+budget cancellations. F27's prepare failed because its pin used the inner
+Hub-ready digest instead of the raw aggregate READY digest. F28 used the
+calibrated raw digest and passed bootstrap, preparation, bind, carrier, and hot
+preflight.
+
+F28 passed SOURCE enrollment, encrypted capabilities, independent pins, KEY
+submission, and fresh partial status (`SOURCE accepted`, `TARGET missing`,
+`bilateral=false`). SOURCE `NONE` also reached terminal/partial status with
+`current=false`, `bilateral=false`. TARGET enrollment, capabilities, and
+independent pins passed. The Android test failed at `kt295` while waiting for
+the scope row after clicking the current proof-read button. The launcher flow
+exited `1`
+after `100.391` seconds. Target KEY request/signature, positive confirmation
+Alert, Target `NONE`, and bilateral acceptance are **NOT_RUN**. The underlying
+failure cause remains **UNKNOWN**.
+
+The original F28 terminal is **`OUTCOME_UNKNOWN_PRESERVE_PENDING`**. One Root
+business frame ran, no retries occurred, and the exact actor stop/wait, one
+terminal ACK, and owned cleanup completed. The ACK exited `0`; cleanup evidence
+is in the F28 report. Do not replay or rewrite the pending operation. The
+coordinator marker is preserved; no Android session-state export established
+whether an RPC ciphertext was pending. The report binds the F28 APK pair to
+Client source
+`8b1b6c54eff702918c426827a3673f9a112edbcc` and records the current 18 focused
+offline tests and two static checks. The updated instrumentation APK build
+receipt is pending post-commit. Physical Android, public HTTPS, native Worker,
+Link recovery faults, Target confirmation and bilateral consent remain
+**NOT_RUN**.
+
+### Next coordination prompt
+
+```text
+Read this F24–F28 handoff section and
+docs/client-hub-v1.6.4-0213538-f28-validation.md. Keep every failed attempt
+and the F28 terminal OUTCOME_UNKNOWN_PRESERVE_PENDING unchanged. Do not resend,
+regenerate, or silently clear any existing F28 packet, operation, sequence,
+proofs, or pending marker. Do not infer that an unexported Target grant packet
+exists. Its single terminal ACK has already run.
+
+Keep clean Core 0213538, the full pinned images and catalog, independent
+SOURCE/TARGET Owner pins, strict proof/lease/time/tuple/fence checks, the
+one-frame Root authorization, and the existing six-flow order. Bind READY by
+its raw aggregate digest; do not substitute the inner Hub-ready digest. Do not
+extend original deadlines, reuse F28 proofs, add retries, or send a new
+business frame from a stale GO.
+
+Wait for a fresh Main Root BOOT that produces actual READY and a fresh Root GO
+bound to the clean source, exact APK pair, fixed Core images, current Scope,
+and new deadlines. Only then perform a separately authorized bounded step.
+Keep Core as sole Owner-signing custodian and preserve actor stop/wait, one
+terminal-ACK, and owned-cleanup rules. Record each encrypted gate, Target
+confirmation, status, and terminal outcome separately. If F28's authoritative
+outcome remains unknown, retain its pending operation. Physical Android,
+public HTTPS and native Worker acceptance remain NOT_RUN until tested.
+```
+
+## Historical F20–F23 outcome and timestamp correction — clean Core `0213538`
 
 The [F20–F23 validation record](client-hub-v1.6.4-0213538-f23-validation.md)
-binds clean Client `406d8d7`, its final APK pair and every run's commands,
-exits, pending and actual cleanup. F20/F21 failed before business because of
-plan-data errors. F22 was interrupted by its original deadline after SOURCE
-preparation; no KEY submit completion was established. F23 passed SOURCE
-registration, encrypted capabilities, full manifest/pins and KEY submission
-with fresh side-status verification. SOURCE NONE then failed at `sent.ok`;
-its typed returned reason is UNKNOWN. TARGET and bilateral acceptance remain
-NOT_RUN. Core completed F23 exact actor stop/wait, one ACK and owned cleanup.
-F21/F22 coordinator ACKs were NOT_RUN after their deadline guards rejected.
-
-Independent review identified a remaining historical-result cross-clock check
-and Java/Go timestamp canonicalization mismatch. The correction uses the
-existing strict policy parser at authenticated Hub snapshot time, retains all
-original proof/pin/tuple/fence guards and preserves partial-versus-bilateral
-semantics. Fresh proof and lease validity remain local. The next Android test
-reports only allowlisted outcome codes and typed completion flags.
-
-Core's accepted-at clarification is
-`/home/zyf/CICADA/.cicada-data/client-link-v164-fixture-23-clean021-20261003/evidence/attempt-08/accepted-at-contract-clarification.redacted.json`,
-SHA-256 `128bad5a33028cce13e64a2fc9275b36685daec5b3c3722ef2d5271ac5707b50`.
-It defines `accepted_at` and `verified_at` on the same Hub clock: enforce
-`accepted_at <= verified_at` and, using the verified original signature,
-`issued_at <= accepted_at < expires_at`; do not compare `accepted_at` with
-Android `now`. The accepted-at change preserves canonical timestamp parsing,
-the fresh local proof window, historical snapshot-time proof checks, lease
-bounds, independent Owner pins/signatures, and operation fences.
-
-The final cached Docker regression passed 29 tests, exit `0`, at
-`12:55:37Z–12:56:12Z`. Receipt:
-`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/kotlin-host.receipt.redacted.json`,
-SHA-256 `3a9c7de5acf50ffd3da7ea17d0d66143396a49d91463b1aec0093feab912283a`.
-The earlier immutable `8af21cc`/K24 build snapshot is superseded historical
-evidence, not live validation. The corrected commit and APK pair are pending
-`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/apk-build.receipt.redacted.json`;
-live validation is NOT_RUN and earlier PASS results do not transfer. Core also
-reported a separate candidate-only `CrossOwnerGroupKeyV2Verifier` guard review;
-it has no production RPC call and is not a Link blocker. Keep its authority
-exact-match, proof-period, lease and Owner-pin requirements unchanged. Physical
-Android and public HTTPS remain NOT_RUN. No UI/STT or Core repository change is
-included. No push or merge is performed.
+retains its original APK pair, per-attempt commands, partial SOURCE KEY result,
+SOURCE `NONE` failure with unknown typed cause, and cleanup evidence. Its
+accepted-at clarification uses the Hub clock for `accepted_at <= verified_at`
+and requires the signed proof interval
+`issued_at <= accepted_at < expires_at`; Android `now` is not used for that
+Hub timestamp. The correction preserves canonical timestamp parsing, current
+proof and lease checks, independent pins, and operation fences. Historical
+F20–F23 results do not transfer to the F28 APK pair.
 
 ## Historical F19 diagnosis and snapshot-time correction — clean Core `0213538`
 
