@@ -1,6 +1,31 @@
 # CICADA Client integration handoff
 
-## Current F18 outcome — clean Core `0213538`
+## Current F19 diagnosis and snapshot-time correction — clean Core `0213538`
+
+The [F19 validation record](client-hub-v1.6.4-0213538-f19-validation.md) identifies
+clean Client `d16875bd1d0bb8380808fe95717199dc00de5279`, its exact diagnostic APKs,
+fixed Core/images, commands, exits and immutable evidence. F19 passed Android
+bootstrap, SOURCE registration, encrypted capabilities, pins, manifest and
+native pre-submit signature verification. Fresh status then failed with
+`LOCAL_LINK_OWNER_GRANT_VERIFICATION:VERIFIED_AT_IN_FUTURE`. Pending was
+preserved; Client cleanup passed and Core independently completed actor stop,
+one terminal ACK and owned cleanup. The actual clock difference is UNKNOWN.
+
+Core confirmed that `verified_at` is Hub snapshot metadata and that v1.6.4 does
+not require comparison with the Android clock. The correction removes only
+that extra comparison from KEY evidence and policy preview/status. Signed
+proofs still require local `issued_at <= now < expires_at`; complete signatures,
+independent keys, provenance, shared snapshot, exact tuples and leases remain
+checked. The focused Docker regression passed 23 tests, exit `0`.
+
+Replacement APK assembly and fresh live acceptance are NOT_RUN at this source
+checkpoint; their later receipts must identify the clean correction commit and
+new pair. SOURCE NONE, TARGET enrollment/RN Alert/NONE, physical Android and
+public HTTPS remain NOT_RUN for F19. The record includes the concise next-run
+coordination prompt. Core retains Owner signing custody and terminal ACK; Main
+Root supplies a fresh bounded authorization and the single business frame.
+
+## Historical F18 outcome — clean Core `0213538`
 
 The [F17–F18 record](client-hub-v1.6.4-0213538-f18-validation.md) retains the
 fixed image/APK attribution, exact commands and failures. F17 passed both

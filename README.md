@@ -40,81 +40,32 @@ The prior `d580975` offline checkpoint passed the Docker build, 59 JavaScript te
 
 Node confirmation now validates the complete `NodeControlKeyBinding` public keys and exact approval scope, then correlates the separate `NodeDeviceBinding` list projection. These checks preserve independent pin review and explicit user confirmation. Core image tests are a separate layer from Android acceptance. The current fixed-image Android gate has passed 81 Kotlin tests, UI smoke checks, encrypted enrollment, Directory authorization and exact recovery of lost enrollment and completed RPC responses. It also verified `STILL_PROCESSING` through an authorized synthetic ledger injection, encrypted `OUTCOME_UNCERTAIN` after restart, and `RECOVERY_UNAVAILABLE` at the Android protocol layer with separately corrected cleanup evidence. Original driver failures remain recorded. Native runtime, physical Android and public HTTPS remain unaccepted; older APK or Hub-version results do not transfer. The [4fb241b management report](docs/client-hub-v1.6-4fb241b-management-validation.md) remains historical evidence.
 
-## Link status and consent preparation
+## Current integration candidate: v1.6.4
 
-The active v1.6.4 candidate integrates five dedicated Native Link consent
-operations behind current Hub metadata and encrypted session capability checks;
-the generic RPC dispatcher rejects all five. The candidate implements 44 of 55
-operations and keeps 11 closed. Kotlin owns independently pinned Owner authority,
-proof validation, explicit review freshness and the durable exact-packet recovery
-fence. Owner signing remains external; `key_grants` metadata alone is not proof
-of bilateral consent, and Link grants do not enable ordinary peer messages.
+The active candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
+Its immutable archive, catalog and full image IDs are recorded in the
+[F19 validation report](docs/client-hub-v1.6.4-0213538-f19-validation.md).
+The dedicated Link flow independently verifies Endpoint attestations, external
+Owner signatures and current encrypted evidence. It does not enable ordinary
+cross-user messages while `external_thread_links=false`.
 
-The final retry-6 offline candidate passed 40 pure Kotlin tests across five
-classes, Native and Android-test Kotlin compilation, and both Debug x86_64 APK
-assemblies (exit 0). App/test APK SHA-256 values are
-`56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc67` /
-`caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6`.
-The bounded APK resource scan passed. A separately authorized network-none
-emulator run then passed 49 independent Android tests, four real runtime
-property checks and local UI smoke with this exact APK pair. The emulator was
-removed; its immediate post-stop inspection race remains recorded separately
-from the later absence verification. See the [clean dd81575 validation record](docs/client-hub-v1.6.4-dd81575-validation.md)
-for commands, exits and evidence. Live Hub and bilateral consent results remain
-pending. The earlier 38 Kotlin / 47 Android results belong only
-to retry-4 app `1811e156…b4686e` and test `d22756ee…42c288`; they do not transfer
-to retry-6 or F5's test-only be72 APK.
+F19 used clean Client `d16875b` and its separately identified diagnostic APKs.
+Android bootstrap, SOURCE enrollment, encrypted capabilities, manifest and
+pre-submit signature verification passed. A fresh retained-status read failed
+with `VERIFIED_AT_IN_FUTURE`; pending was preserved and owned cleanup completed.
+The correction separates Hub snapshot metadata from local signed-proof
+validity, as confirmed by the fixed contract. Its 23 focused Kotlin tests passed;
+replacement APK and live results require separate attribution. Bilateral
+KEY/NONE, TARGET React Native confirmation, physical Android and public HTTPS
+remain unaccepted for this candidate.
 
-F3 passed 27 scoped steps, then failed before Target request export on a UI
-selector. F4 passed 27 scoped steps, then failed after exporting/signing the
-Target request because the confirmation control was outside the viewport; no
-Target KEY or policy write occurred. F5's trusted fixture and Root GO were
-received. After 10 setup/manifest/export steps, local signing rejected maximum
-expiry `2026-10-02T15:27:50.050630Z` as noncanonical RFC3339Nano (canonical
-same instant: `2026-10-02T15:27:50.05063Z`). F5 exited 1 before creating a
-signature; no Source grant, Target enrollment/Alert, or policy write occurred,
-and bilateral KEY/NONE remain blocked. No proof or nonce retry was made. Retry-6
-has separately attributed offline emulator results. The fresh F6 scope targets
-clean Core `dd81575b160aa901b642137e54d7a60961e4bd68`; its archive, 891-input
-inventory and immutable Hub/interop image metadata have been independently
-verified. F6 then independently verified the actual READY, nine public references
-and pinned running Docker identity, and booted a fresh emulator with the frozen
-APKs and four runtime-property checks. Its fixed coordination deadline expired
-before any Android business selector or Owner signing request; encrypted
-capabilities and bilateral KEY/NONE remain `NOT_RUN`. Client/Core owned
-resources were cleaned. A separately authorized next attempt must finish
-emulator bootstrap before final Join/READY starts the short signing window;
-no expired nonce or proof may be reused.
-The subsequent F7 boot-only lane passed fresh bootstrap and bounded private
-adapter checks, then closed at its fixed idle cutoff before new business GO.
-It adds no encrypted runtime or bilateral acceptance result.
-F8 verified the fresh fixture, both emulator bootstraps and exact artifact
-binding, but reached its fixed deadline before the first Android business
-stage. Enrollment, encrypted capabilities and bilateral consent remain
-`NOT_RUN`; original driver failures and independent cleanup evidence are
-retained. F9 bootstrapped and bound the unchanged APK pair, then its first
-staging command failed because the bootstrap receipt and the consumer used
-different runtime metadata formats. No device enrollment, encrypted business
-RPC, Owner signature or Target Alert ran. The fixed deadline was enforced;
-owned cleanup passed. The [core handoff](docs/cicada-core-handoff.md) records
-the original failure and the required runtime preflight correction.
-
-The [bounded acceptance launcher](docs/client-bounded-acceptance-launcher.md)
-now provides one process for offline Android preparation, one Root-authorized
-stdin handoff, immediate carrier/artifact preflight and ordered cleanup. It is
-an acceptance harness; the existing UI, local speech models and frozen APKs are
-unchanged. A new live run requires fresh fixture adapters, exact delivery pins
-and separate Root authorization. Its offline tests cannot establish encrypted
-runtime or bilateral consent acceptance.
-The subsequent [clean 0213538 F10 attempt](docs/client-hub-v1.6.4-0213538-f10-validation.md)
-passed Android bootstrap and cleanup. Core fixture preparation failed on a
-missing delivery input; encrypted business acceptance remains `NOT_RUN`.
-The corrected receipt validator and read-only preflight tools passed nine
-focused Docker regressions. Their live use and bilateral consent remain
-unverified; the next attempt requires a fresh authorized fixture.
-Physical Android, public HTTPS and native Worker/model acceptance
-remain `NOT_RUN`. Full current source, artifact, cleanup and attempt receipts are in the
-[dd81575 validation record](docs/client-hub-v1.6.4-dd81575-validation.md).
+The [core handoff](docs/cicada-core-handoff.md) contains the current coordination
+prompt. Earlier attempts remain in the [F17–F18 record](docs/client-hub-v1.6.4-0213538-f18-validation.md),
+[F10 record](docs/client-hub-v1.6.4-0213538-f10-validation.md) and
+[earlier v1.6.4 record](docs/client-hub-v1.6.4-dd81575-validation.md).
+The [bounded launcher](docs/client-bounded-acceptance-launcher.md) provides one
+owned emulator, one authorized business frame, fixed deadlines and cleanup.
+Historical results certify only their recorded artifacts.
 
 ## Imported clean v1.6.3 delivery
 

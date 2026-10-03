@@ -113,6 +113,53 @@ class LinkReviewPolicyEvidenceV164Test {
     }
 
     @Test
+    fun hubSnapshotMetadataDoesNotReplaceLocalProofAndLeaseValidity() {
+        val futureSnapshot = now.plusNanos(1)
+        val status = vector.getAsJsonObject("status").deepCopy().apply {
+            addProperty("verified_at", futureSnapshot.toString())
+        }
+        val verified = LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(status), authority, now)
+        assertEquals(futureSnapshot, verified.verifiedAt)
+        assertEquals(listOf("SOURCE", "TARGET"), verified.acceptedSides)
+        assertTrue(verified.ownerApprovals.all { it.verifiedProof != null })
+
+        val preview = vector.getAsJsonObject("preview").deepCopy().apply {
+            addProperty("verified_at", futureSnapshot.toString())
+        }
+        val head = previousHeadStatus().apply { addProperty("verified_at", futureSnapshot.toString()) }
+        val candidate = LinkReviewPolicyEvidenceV164.validatePreview(
+            bytes(preview), reviewedPolicy(preview.getAsJsonObject("policy")), bytes(head), authority, now,
+        )
+        assertEquals(futureSnapshot, candidate.verifiedAt)
+        assertTrue(candidate.reviewerQualifications.all { it.leaseExpiresAt > now })
+        val proofBytes = proofJson(sourceProof)
+        val claims = JsonParser.parseString(String(proofBytes, StandardCharsets.UTF_8)).asJsonObject
+        val beforeIssue = Instant.parse(claims.get("issued_at").asString).minusNanos(1)
+        expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
+            LinkReviewPolicyEvidenceV164.buildGrantRequest(
+                candidate, bytes(preview), bytes(head), authority, sourcePin, sourceLifecycle,
+                proofBytes, beforeIssue,
+            )
+        }
+        val expiry = Instant.parse(claims.get("expires_at").asString)
+        // Keep the Link valid to isolate rejection of the original signed proof at its expiry.
+        expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateActiveStatus(
+                bytes(status), authority.copy(expiresAt = expiry.plusSeconds(60)), expiry,
+            )
+        }
+        val expiredLease = preview.deepCopy().apply {
+            getAsJsonArray("reviewer_qualifications")[0].asJsonObject
+                .addProperty("lease_expires_at", now.toString())
+        }
+        expect("LINK_REVIEW_POLICY_V164_QUALIFICATION_MISMATCH") {
+            LinkReviewPolicyEvidenceV164.validatePreview(
+                bytes(expiredLease), candidate.policy, bytes(head), authority, now,
+            )
+        }
+    }
+
+    @Test
     fun currentFalsePartialGrantRemainsDiagnosticAndCannotBecomeBilateralConsent() {
         val candidate = candidate()
         val partial = vector.getAsJsonObject("status").deepCopy().apply {

@@ -240,7 +240,8 @@ internal object LinkReviewPolicyEvidenceV164 {
             root, "maximum_proof_expires_at", "LINK_REVIEW_POLICY_V164_PREVIEW_INVALID",
         )
         val verifiedAt = canonicalUtc(root, "verified_at", "LINK_REVIEW_POLICY_V164_PREVIEW_INVALID")
-        if (verifiedAt > now || !maximumProofExpiresAt.isAfter(now) ||
+        // Hub snapshot metadata uses the Hub clock; proof and lease validity use local now.
+        if (!maximumProofExpiresAt.isAfter(now) ||
             maximumProofExpiresAt > currentLink.expiresAt ||
             sha256(canonicalPolicyJson.toByteArray(StandardCharsets.UTF_8)) != policyDigest) {
             invalid("LINK_REVIEW_POLICY_V164_PREVIEW_INVALID")
@@ -361,7 +362,7 @@ internal object LinkReviewPolicyEvidenceV164 {
         )
         val current = boolean(root, "current", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         val verifiedAt = canonicalUtc(root, "verified_at", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
-        if (verifiedAt > now) invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
+        // Fresh authenticated provenance establishes freshness; this is not a local clock bound.
         val acceptedSides = stringArray(root, "accepted_sides", 2, "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         if (acceptedSides.any { it !in SIDES } || acceptedSides.distinct().size != acceptedSides.size) {
             invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")

@@ -339,8 +339,19 @@ class LinkKeyManifestVerifierTest {
         val futureEvidence = sourceStatus.deepCopy().apply {
             getAsJsonObject("evidence").addProperty("verified_at", now.plusNanos(1).toString())
         }
-        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.VERIFIED_AT_IN_FUTURE) {
-            verify(futureEvidence)
+        val acceptedFutureEvidence = verify(futureEvidence)
+        assertEquals("SOURCE", acceptedFutureEvidence?.ownerGrant?.side)
+        assertEquals(sourceKey.keyId, acceptedFutureEvidence?.currentOwnerKey?.keyId)
+        assertEquals(now.plusNanos(1), acceptedFutureEvidence?.verifiedAt)
+
+        val noncanonicalFutureEvidence = sourceStatus.deepCopy().apply {
+            getAsJsonObject("evidence").addProperty(
+                "verified_at",
+                "2026-10-02T04:39:19.524412945000Z",
+            )
+        }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.OWNER_GRANT_CANONICAL_ENCODING_INVALID) {
+            verify(noncanonicalFutureEvidence)
         }
 
         val wrongPin = LinkKeyManifestVerifier.OwnerPublicKeyPin(
@@ -377,6 +388,52 @@ class LinkKeyManifestVerifierTest {
         assertEquals("LOCAL_LINK_OWNER_GRANT_VERIFICATION:UNKNOWN", unknown.message)
         assertEquals(null, unknown.cause)
         assertEquals(false, unknown.message.orEmpty().contains(secretMarker))
+    }
+
+    @Test fun signedOwnerGrantValidityUsesLocalNowNotHubVerificationMetadata() {
+        val vector = fixture("link-client-proof-v2.json")
+        val manifestJson = vector.getAsJsonObject("manifest")
+        val current = currentLinkFromVector(manifestJson)
+        val statuses = vector.getAsJsonArray("statuses").map { it.asJsonObject }
+        val sourceStatus = statuses.single { it.get("side").asString == "SOURCE" }
+        val sourceKey = trustedOwnerKey(sourceStatus)
+        val now = Instant.parse(vector.get("verification_time").asString)
+        val manifest = LinkKeyManifestVerifier.verifyManifest(manifestJson, current, now)
+        val rawProof = Base64.getDecoder().decode(
+            sourceStatus.getAsJsonObject("evidence").get("signed_proof").asString,
+        )
+        val proofJson = JsonParser.parseString(String(rawProof, StandardCharsets.UTF_8)).asJsonObject
+        val issuedAt = Instant.parse(proofJson.get("issued_at").asString)
+        val proofExpiresAt = Instant.parse(proofJson.get("expires_at").asString)
+        val authority = LinkKeyManifestVerifier.CurrentOwnerGrantAuthority(
+            currentOwnerKey = sourceKey,
+            ownerId = sourceKey.ownerId,
+            linkId = manifest.linkId,
+            contractDigest = manifest.contractDigest,
+            manifestDigest = manifest.digest,
+            linkVersion = manifest.linkVersion,
+            side = "SOURCE",
+            // Keep the enclosing Link valid just past the proof expiry so this checks the grant window.
+            linkExpiresAt = proofExpiresAt.plusSeconds(1),
+        )
+
+        val valid = LinkKeyManifestVerifier.verifyOwnerGrantEvidence(rawProof, authority, now)
+        assertEquals("SOURCE", valid.side)
+
+        assertRejected("A not-yet-issued signed OwnerLinkKeyGrant was accepted") {
+            LinkKeyManifestVerifier.verifyOwnerGrantEvidence(
+                rawProof,
+                authority,
+                issuedAt.minusNanos(1),
+            )
+        }
+        assertRejected("An expired signed OwnerLinkKeyGrant was accepted") {
+            LinkKeyManifestVerifier.verifyOwnerGrantEvidence(
+                rawProof,
+                authority,
+                proofExpiresAt.plusNanos(1),
+            )
+        }
     }
 
     @Test fun ownerGrantVerifierRejectsOversizedInputBeforeAnyAuthorityCanBeTrusted() {

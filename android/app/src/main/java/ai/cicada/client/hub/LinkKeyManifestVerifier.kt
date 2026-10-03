@@ -420,8 +420,8 @@ internal object LinkKeyManifestVerifier {
             val evidenceKeyState = string(evidence, "owner_key_state")
             val evidenceKeyVersion = positiveInteger(evidence, "owner_key_version")
             val verifiedAt = canonicalUtc(string(evidence, "verified_at"))
-            require(verifiedAt <= now && (commonVerifiedAt == null || commonVerifiedAt == verifiedAt)) {
-                "Retained Link statuses do not share one nonfuture Hub snapshot"
+            require(commonVerifiedAt == null || commonVerifiedAt == verifiedAt) {
+                "Retained Link statuses do not share one Hub snapshot"
             }
             commonVerifiedAt = verifiedAt
 
@@ -606,9 +606,7 @@ internal object LinkKeyManifestVerifier {
         val evidenceKeyState = string(evidence, "owner_key_state")
         val evidenceKeyVersion = positiveInteger(evidence, "owner_key_version")
         val verifiedAt = canonicalUtc(string(evidence, "verified_at"))
-        require(verifiedAt <= now) {
-            "Retained Link verification time is in the future"
-        }
+        // Hub snapshot time is metadata; signed Owner proof validity uses local now below.
         require(evidenceKeyState == "ACTIVE" &&
             evidenceLinkVersion == manifest.linkVersion &&
             evidenceContractDigest == manifest.contractDigest &&
