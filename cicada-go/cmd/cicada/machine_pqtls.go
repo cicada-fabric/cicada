@@ -37,7 +37,9 @@ func machineNodeHTTPClient(ctx context.Context, timeout time.Duration) (*http.Cl
 		if hub.NodeTransport == nil && strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != "" {
 			return nil, nodetransport.ErrTLSCurrentAuthorityUnavailable
 		}
-		client.Transport = hub.NodeTransport
+		if hub.NodeTransport != nil {
+			client.Transport = machinePQDiagnosticTransport{base: hub.NodeTransport}
+		}
 		return client, nil
 	}
 	if path := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")); path != "" {

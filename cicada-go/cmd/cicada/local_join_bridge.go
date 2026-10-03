@@ -73,6 +73,7 @@ type localJoinResponse struct {
 	JoinRecovery       *localJoinRecoveryStatus              `json:"join_recovery,omitempty"`
 	NetworkDirect      *localNetworkDirectResult             `json:"network_direct,omitempty"`
 	SealedSend         *localSealedSendResult                `json:"sealed_send,omitempty"`
+	MCPMetadata        *localMCPMetadataResult               `json:"mcp_metadata,omitempty"`
 	SealedRPC          *localSealedRPCResult                 `json:"sealed_rpc,omitempty"`
 	LocalGroup         *localGroupResult                     `json:"local_group,omitempty"`
 	CrossNodeGroup     *crossNodeGroupResult                 `json:"cross_node_group,omitempty"`
@@ -529,6 +530,22 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		}
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
 			MonitorBroadcast: result})
+		return
+	}
+	if strings.HasPrefix(header.Operation, "mcp_metadata_") {
+		var request localMCPMetadataRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: "invalid protected MCP metadata request"})
+			return
+		}
+		result, err := b.mcpMetadata(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion,
+				Error: safeLocalJoinError(err), Retryable: localSealedSendRetryable(err)})
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, MCPMetadata: result})
 		return
 	}
 	if header.Operation == "group_broadcast" {

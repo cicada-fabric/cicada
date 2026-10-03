@@ -347,6 +347,11 @@ func (b *machineAgentJoinBridge) nodeHTTP(method, path string, body []byte) ([]b
 	return b.httpWithAuthorization(method, path, body, "CicadaNode "+b.nodeToken, "")
 }
 
+func (b *machineAgentJoinBridge) nodeHTTPBusiness(method, path string, body []byte, operation, requestID, messageID string) ([]byte, error) {
+	ctx := withMachinePQDiagnostic(b.ctx, operation, requestID, messageID)
+	return b.httpWithAuthorizationContext(ctx, method, path, body, "CicadaNode "+b.nodeToken, "")
+}
+
 func (b *machineAgentJoinBridge) verifyCurrentMCPBinding(sessionToken, groupID string) (fabricpkg.NetworkCard, error) {
 	if strings.TrimSpace(sessionToken) == "" {
 		return fabricpkg.NetworkCard{}, errors.New("current Cicada session credential is required")
@@ -376,7 +381,12 @@ func (b *machineAgentJoinBridge) verifyCurrentMCPBinding(sessionToken, groupID s
 
 func (b *machineAgentJoinBridge) httpWithAuthorization(method, path string, body []byte,
 	authorization, groupID string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
+	return b.httpWithAuthorizationContext(b.ctx, method, path, body, authorization, groupID)
+}
+
+func (b *machineAgentJoinBridge) httpWithAuthorizationContext(parent context.Context, method, path string, body []byte,
+	authorization, groupID string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	var reader io.Reader
 	if len(body) > 0 {

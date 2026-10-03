@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -42,6 +43,15 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	current := distributionCurrentTLSFixture(t, fixture, address, base)
 	t.Log("phase=actual-owner-device-current-TLS-authority-prepared")
 	root, hubState := current.root, current.hubState
+	diagnosticsDir := filepath.Join(root, "owned-pqtls-diagnostics")
+	if err := os.Mkdir(diagnosticsDir, 0700); err != nil {
+		t.Fatal("create private diagnostic directory")
+	}
+	if err := os.Chmod(diagnosticsDir, 0700); err != nil {
+		t.Fatal("protect private diagnostic directory")
+	}
+	mcpDiagnosticPath := filepath.Join(diagnosticsDir, "mcp-client.jsonl")
+	t.Setenv("CICADA_PQTLS_DIAGNOSTIC_FILE", mcpDiagnosticPath)
 	database := filepath.Join(hubState, "cicada.sqlite3")
 	db, err := store.New(database)
 	if err != nil {
@@ -161,7 +171,9 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 			args = append(args, "--once")
 		}
 		child := exec.CommandContext(childCtx, binary, args...)
-		child.Env = distributionProcessEnvironment("CICADA_HUB_ID=" + hubID)
+		diagnosticPath := filepath.Join(diagnosticsDir, "node-"+nodeID+".jsonl")
+		child.Env = distributionProcessEnvironment("CICADA_HUB_ID="+hubID,
+			"CICADA_PQTLS_DIAGNOSTIC_FILE="+diagnosticPath)
 		if observeIdle {
 			log := new(distributionOutput)
 			child.Stdout, child.Stderr = log, log
@@ -226,12 +238,16 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 			t.Fatal("current-authority checked distribution client")
 		}
 		t.Cleanup(func() { h.TLSRuntime.Close() })
-		return withMachineHubContext(ctx, h)
+		return withMachineHubContext(withMachinePQDiagnostic(ctx, "protected-MCP-metadata", "", ""), h)
 	}
 	ctxA, ctxB := checkedClient(fixture.sourceNodeID), checkedClient(fixture.targetNodeID)
+	t.Run("protected-MCP-metadata-over-current-PQTLS", func(t *testing.T) {
+		assertPQProtectedMCPMetadata(t, fixture, current, db, base, ctxA)
+	})
 	input := fabric.NodeSealedLinkAskInput{LinkID: fixture.link.ID, MessageID: fixture.messageID, RequestID: fixture.requestID, IdempotencyKey: "SYNTHETIC-PACKAGED-ASK", DataScope: fixture.dataScope, ExpiresAt: fixture.link.ExpiresAt, Ciphertext: fixture.ciphertext}
 	for i := 0; i < 2; i++ {
-		if err := machineAPIJSON(ctxA, base+"/v2/relay/nodes/"+fixture.sourceNodeID+"/sealed/ask", http.MethodPost, input, nil); err != nil {
+		askContext := withMachinePQDiagnostic(ctxA, "sealed-ask", fixture.requestID, fixture.messageID)
+		if err := machineAPIJSON(askContext, base+"/v2/relay/nodes/"+fixture.sourceNodeID+"/sealed/ask", http.MethodPost, input, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -285,6 +301,39 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	}
 	if len(claimed.Deliveries) != 1 || claimed.Deliveries[0].NodeID != fixture.targetNodeID || !bytes.Equal(claimed.Deliveries[0].Ciphertext, fixture.ciphertext) {
 		t.Fatal("packaged durable claim mismatch")
+	}
+	replyMessageID := "msg_pqtls_fixture_reply"
+	link, manifest := fixture.link, fixture.manifest
+	replyContextData := e2ee.EndpointMessageContext{
+		MessageID: replyMessageID, Kind: "REPLY", RequestID: fixture.requestID, ReplyTo: fixture.messageID,
+		SenderEndpointID: link.TargetEndpointID, SenderPrincipalID: link.TargetPrincipalID,
+		SenderOwnerID: link.TargetOwnerID, SenderGroupID: link.TargetGroupID,
+		SenderMembershipRevision: link.ScopeSnapshot.TargetMembershipRevision,
+		SenderBindingEpoch:       manifest.Target.BindingEpoch, SenderKeyID: manifest.Target.KeyID,
+		ReceiverEndpointID: link.SourceEndpointID, ReceiverPrincipalID: link.SourcePrincipalID,
+		ReceiverOwnerID: link.SourceOwnerID, ReceiverGroupID: link.SourceGroupID,
+		ReceiverMembershipRevision: link.ScopeSnapshot.SourceMembershipRevision,
+		ReceiverBindingEpoch:       manifest.Source.BindingEpoch, ReceiverKeyID: manifest.Source.KeyID,
+		LinkID: link.ID, LinkRevision: link.Version, TransportHubID: link.TransportHubID,
+	}
+	replyCiphertext, err := e2ee.SealEndpointMessage(fixture.targetKey, manifest.Source.PublicIdentity,
+		replyContextData, []byte("synthetic packaged reply"), 1)
+	if err != nil {
+		t.Fatal("prepare synthetic endpoint-sealed REPLY")
+	}
+	reply := fabric.NodeSealedLinkReplyInput{RequestID: fixture.requestID, MessageID: replyMessageID,
+		IdempotencyKey: "SYNTHETIC-PACKAGED-REPLY", DataScope: fixture.dataScope, Ciphertext: replyCiphertext}
+	replyContext := withMachinePQDiagnostic(ctxB, "sealed-reply", reply.RequestID, reply.MessageID)
+	if err := machineAPIJSON(replyContext, base+"/v2/relay/nodes/"+fixture.targetNodeID+"/sealed/reply", http.MethodPost, reply, nil); err != nil {
+		t.Fatal("actual checked PQTLS sealed REPLY request failed")
+	}
+	assertMeasuredPQDiagnosticRoutes(t, mcpDiagnosticPath,
+		[]string{"fabric-whoami", "fabric-find", "fabric-resolve", "fabric-heartbeat", "fabric-ask", "fabric-reply"}, nil)
+	if machinePQDiagnosticFailures.Load() != 0 {
+		t.Fatal("opt-in PQTLS diagnostic sink reported an incomplete write")
+	}
+	for _, nodeID := range []string{fixture.sourceNodeID, fixture.targetNodeID} {
+		assertMeasuredPQDiagnosticRoutes(t, filepath.Join(diagnosticsDir, "node-"+nodeID+".jsonl"), []string{"relay-events"}, []string{"ready"})
 	}
 	binding, err := db.CurrentNodeTransportBinding(fixture.targetNodeID)
 	if err != nil {

@@ -729,7 +729,7 @@ func (b *machineAgentJoinBridge) postSealedLinkAsk(input fabricpkg.NodeSealedLin
 		return localSealedAskReceipt{}, err
 	}
 	path := "/v2/relay/nodes/" + url.PathEscape(b.nodeID) + "/sealed/ask"
-	response, err := b.nodeHTTP(http.MethodPost, path, data)
+	response, err := b.nodeHTTPBusiness(http.MethodPost, path, data, "sealed-ask", input.RequestID, input.MessageID)
 	if err != nil {
 		return localSealedAskReceipt{}, err
 	}
@@ -746,7 +746,7 @@ func (b *machineAgentJoinBridge) postSealedLinkReply(input fabricpkg.NodeSealedL
 		return localSealedReplyReceipt{}, err
 	}
 	path := "/v2/relay/nodes/" + url.PathEscape(b.nodeID) + "/sealed/reply"
-	response, err := b.nodeHTTP(http.MethodPost, path, data)
+	response, err := b.nodeHTTPBusiness(http.MethodPost, path, data, "sealed-reply", input.RequestID, input.MessageID)
 	if err != nil {
 		return localSealedReplyReceipt{}, err
 	}

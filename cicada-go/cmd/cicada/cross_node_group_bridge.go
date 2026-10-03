@@ -410,7 +410,7 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 			return nil, err
 		}
 		path := "/v2/relay/nodes/" + url.PathEscape(b.nodeID) + "/group/sealed/reply"
-		response, err := b.nodeHTTP(http.MethodPost, path, data)
+		response, err := b.nodeHTTPBusiness(http.MethodPost, path, data, "sealed-reply", request.RequestID, messageID)
 		if err != nil {
 			return nil, err
 		}
@@ -443,7 +443,7 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 		return nil, err
 	}
 	path := "/v2/relay/nodes/" + url.PathEscape(b.nodeID) + "/group/sealed/ask"
-	response, err := b.nodeHTTP(http.MethodPost, path, data)
+	response, err := b.nodeHTTPBusiness(http.MethodPost, path, data, "sealed-ask", requestID, messageID)
 	if err != nil {
 		return nil, err
 	}

@@ -71,6 +71,7 @@ func streamMachineRelayEvents(ctx context.Context, base, machineID string, wake 
 }
 
 func streamMachineRelayEventsWithSpaces(ctx context.Context, base, machineID string, wake, space chan<- struct{}) (bool, error) {
+	ctx = withMachinePQDiagnostic(ctx, "relay-sse", "", "")
 	if !machineHubOriginMatches(ctx, base) {
 		return false, errors.New("Relay event stream escaped its pinned Hub origin")
 	}
@@ -109,6 +110,7 @@ func streamMachineRelayEventsWithSpaces(ctx context.Context, base, machineID str
 		line := scanner.Text()
 		if line == "" {
 			if event == "ready" || event == "wake" {
+				recordMachinePQDiagnosticEvent(ctx, event)
 				select {
 				case wake <- struct{}{}:
 				default:

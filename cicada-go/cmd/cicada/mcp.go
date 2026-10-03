@@ -25,6 +25,7 @@ import (
 
 type mcpServer struct {
 	baseURL           string
+	pqtlsSelected     bool
 	hubStateDir       string
 	writerRoot        string
 	endpointID        string
@@ -118,6 +119,7 @@ func runMCP(args []string) error {
 	statePath := mcpSessionStatePath()
 	hubStateDir := ""
 	writerRoot := ""
+	pqtlsSelected := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != ""
 	if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
 		if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
 			return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
@@ -136,6 +138,7 @@ func runMCP(args []string) error {
 				continue
 			}
 			*apiURL = entry.ControlURL
+			pqtlsSelected = strings.TrimSpace(entry.PQTLSConfig) != ""
 			hubStateDir = machineHubStateDir(root, entry)
 			statePath = filepath.Join(hubStateDir, "mcp", "sessions.json")
 			break
@@ -145,6 +148,7 @@ func runMCP(args []string) error {
 		}
 	}
 	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)
+	server.pqtlsSelected = pqtlsSelected
 	server.hubStateDir = hubStateDir
 	server.writerRoot = writerRoot
 	if hubStateDir != "" {
@@ -938,11 +942,13 @@ func (m *mcpServer) apiForGroup(method, path string, body any, groupID string) (
 
 func (m *mcpServer) requestWithGroup(method, path string, body any, authorization, groupID string) (any, error) {
 	var reader io.Reader
+	var encodedBody []byte
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
+		encodedBody = encoded
 		reader = bytes.NewReader(encoded)
 	}
 	request, err := http.NewRequest(method, m.baseURL+path, reader)
@@ -960,6 +966,12 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	if strings.HasPrefix(path, "/v2/fabric/") || strings.HasPrefix(path, "/v2/relay/") || strings.HasPrefix(path, "/v2/artifacts") || strings.HasPrefix(path, "/v2/artifact-refs") {
+		if m.pqtlsSelected {
+			if strings.HasPrefix(path, "/v2/fabric/") {
+				return m.requestPQMetadata(method, path, encodedBody, authorization, groupID)
+			}
+			return nil, errors.New("protected MCP route has no checked local Node transport path for the selected PQ Hub")
+		}
 		client, err = machineNodeHTTPClient(request.Context(), 30*time.Second)
 		if err != nil {
 			return nil, err
