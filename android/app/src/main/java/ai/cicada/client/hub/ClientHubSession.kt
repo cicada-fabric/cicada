@@ -1886,13 +1886,15 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         )
         val sourceCurrentKey = try {
             authority.verifyOwnerGrantStatusForSide(statusProvenance, statusArray, "SOURCE", Instant.now())?.currentOwnerKey
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             throw HubSessionException("LINK_KEY_GRANTS_INVALID", "The current source Owner grant proof failed native verification")
+                .apply { initCause(LinkOwnerGrantVerificationFailure.from(error)) }
         }
         val targetCurrentKey = try {
             authority.verifyOwnerGrantStatusForSide(statusProvenance, statusArray, "TARGET", Instant.now())?.currentOwnerKey
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             throw HubSessionException("LINK_KEY_GRANTS_INVALID", "The current target Owner grant proof failed native verification")
+                .apply { initCause(LinkOwnerGrantVerificationFailure.from(error)) }
         }
 
         var policyStatusRead: LinkConsentLedger.ReadCorrelation? = null

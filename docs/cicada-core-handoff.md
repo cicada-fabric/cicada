@@ -1,6 +1,37 @@
 # CICADA Client integration handoff
 
-## Current F10 outcome — clean Core `0213538`
+## Current F18 outcome — clean Core `0213538`
+
+The [F17–F18 record](client-hub-v1.6.4-0213538-f18-validation.md) retains the
+fixed image/APK attribution, exact commands and failures. F17 passed both
+independent device enrollments and encrypted capabilities, then rejected a
+stale Source profile selection. The corrected Source-three/Target-three host
+order passed 17 offline state-machine checks and the read-only plan check.
+
+F18 passed Source enrollment, capabilities, independent pins and manifest
+verification. Its external Owner KEY proof passed native pre-submit verification
+and the Hub returned `ok`; a fresh retained-status read then failed local
+verification. The launcher exited `1`, preserved pending and cleaned its owned
+Android/carrier resources. Core separately attested actor stop, terminal ACK
+and cleanup. The exact underlying predicate is **UNKNOWN** because the original
+exception was replaced; no plaintext status response was persisted.
+
+A minimal Client diagnostic now preserves only an allowlisted local reason in
+the exception cause. Public errors and all signature, pin, generation and time
+guards are preserved. Its published-vector Docker regression passed eight
+tests, exit `0`; the first build-driver configuration failure remains recorded.
+The replacement APK pair and fresh live acceptance are **NOT_RUN** at this
+checkpoint. Bilateral KEY/NONE, Target RN Alert, physical Android and public
+HTTPS remain **NOT_RUN** for this attempt. Do not replay F18 or weaken time
+checks based on the unproven clock-skew hypothesis.
+
+Next: freeze one APK pair from this committed diagnostic source, update only
+the necessary Client driver pins, and let Main Root supply a fresh bounded
+BOOT/Scope/GO and the single business frame. Core retains sole custody of Owner
+signing and terminal ACK. Report the actual local reason and each live gate
+separately; the diagnostic regression is not proof of a repaired live flow.
+
+## Historical F10 outcome — clean Core `0213538`
 
 The [F10 acceptance record](client-hub-v1.6.4-0213538-f10-validation.md) binds the
 actual Client checkpoint, frozen APKs, full images, commands/exits and original

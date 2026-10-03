@@ -296,6 +296,89 @@ class LinkKeyManifestVerifierTest {
         }
     }
 
+    @Test fun publishedOwnerGrantStatusVectorHasStableSanitizedVerificationFailures() {
+        val vector = fixture("link-client-proof-v2.json")
+        val manifestJson = vector.getAsJsonObject("manifest")
+        val current = currentLinkFromVector(manifestJson)
+        val statuses = vector.getAsJsonArray("statuses").map { it.asJsonObject }
+        val sourceStatus = statuses.single { it.get("side").asString == "SOURCE" }
+        val targetStatus = statuses.single { it.get("side").asString == "TARGET" }
+        val sourceKey = trustedOwnerKey(sourceStatus)
+        val targetKey = trustedOwnerKey(targetStatus)
+        val sourcePin = LinkKeyManifestVerifier.OwnerPublicKeyPin(
+            ownerId = sourceKey.ownerId,
+            keyId = sourceKey.keyId,
+            publicIdentity = sourceKey.publicIdentity,
+        )
+        val now = Instant.parse(vector.get("verification_time").asString)
+
+        fun verify(
+            status: JsonObject = sourceStatus.deepCopy(),
+            pin: LinkKeyManifestVerifier.OwnerPublicKeyPin = sourcePin,
+            at: Instant = now,
+        ) = LinkKeyManifestVerifier.verifyRetainedOwnerGrantStatusCandidateV164(
+            manifestJson = manifestJson.deepCopy(),
+            status = status,
+            currentLink = current,
+            trustedOwnerPin = pin,
+            side = "SOURCE",
+            now = at,
+        )
+
+        val accepted = verify()
+        assertEquals("SOURCE", accepted?.ownerGrant?.side)
+        assertEquals(sourceKey.keyId, accepted?.currentOwnerKey?.keyId)
+
+        val futureAcceptance = sourceStatus.deepCopy().apply {
+            addProperty("accepted_at", now.plusNanos(1).toString())
+        }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.ACCEPTED_AT_IN_FUTURE) {
+            verify(futureAcceptance)
+        }
+
+        val futureEvidence = sourceStatus.deepCopy().apply {
+            getAsJsonObject("evidence").addProperty("verified_at", now.plusNanos(1).toString())
+        }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.VERIFIED_AT_IN_FUTURE) {
+            verify(futureEvidence)
+        }
+
+        val wrongPin = LinkKeyManifestVerifier.OwnerPublicKeyPin(
+            ownerId = sourceKey.ownerId,
+            keyId = sourceKey.keyId,
+            publicIdentity = targetKey.publicIdentity,
+        )
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.OWNER_PIN_MISMATCH) {
+            verify(pin = wrongPin)
+        }
+
+        val tamperedProof = sourceStatus.deepCopy().apply {
+            val evidence = getAsJsonObject("evidence")
+            val proof = Base64.getDecoder().decode(evidence.get("signed_proof").asString)
+            proof[proof.lastIndex] = (proof.last().toInt() xor 1).toByte()
+            evidence.addProperty("signed_proof", Base64.getEncoder().encodeToString(proof))
+        }
+        assertSafeOwnerGrantFailure { verify(tamperedProof) }
+
+        val proofJson = JsonParser.parseString(
+            String(
+                Base64.getDecoder().decode(
+                    sourceStatus.getAsJsonObject("evidence").get("signed_proof").asString,
+                ),
+                StandardCharsets.UTF_8,
+            ),
+        ).asJsonObject
+        val afterExpiry = Instant.parse(proofJson.get("expires_at").asString).plusNanos(1)
+        assertSafeOwnerGrantFailure { verify(at = afterExpiry) }
+
+        val secretMarker = "synthetic-private-error-marker"
+        val unknown = LinkOwnerGrantVerificationFailure.from(IllegalStateException(secretMarker))
+        assertEquals(LinkOwnerGrantVerificationReason.UNKNOWN, unknown.reason)
+        assertEquals("LOCAL_LINK_OWNER_GRANT_VERIFICATION:UNKNOWN", unknown.message)
+        assertEquals(null, unknown.cause)
+        assertEquals(false, unknown.message.orEmpty().contains(secretMarker))
+    }
+
     @Test fun ownerGrantVerifierRejectsOversizedInputBeforeAnyAuthorityCanBeTrusted() {
         val (candidate, _) = endpointCandidate()
         val publicIdentity = ClientWireCrypto.PublicIdentity.parse(
@@ -529,4 +612,30 @@ class LinkKeyManifestVerifierTest {
 
     private fun assertRetainedRejected(message: String, block: () -> Unit) =
         assertRejected(message, block)
+
+    private fun assertOwnerGrantFailure(
+        expected: LinkOwnerGrantVerificationReason,
+        block: () -> Unit,
+    ) {
+        try {
+            block()
+            fail("Owner grant verification unexpectedly succeeded: $expected")
+        } catch (error: IllegalArgumentException) {
+            val failure = LinkOwnerGrantVerificationFailure.from(error)
+            assertEquals(expected, failure.reason)
+            assertEquals("LOCAL_LINK_OWNER_GRANT_VERIFICATION:${expected.name}", failure.message)
+            assertEquals(null, failure.cause)
+        }
+    }
+
+    private fun assertSafeOwnerGrantFailure(block: () -> Unit) {
+        try {
+            block()
+            fail("Owner grant verification unexpectedly succeeded")
+        } catch (error: IllegalArgumentException) {
+            val failure = LinkOwnerGrantVerificationFailure.from(error)
+            assertEquals("LOCAL_LINK_OWNER_GRANT_VERIFICATION:${failure.reason.name}", failure.message)
+            assertEquals(null, failure.cause)
+        }
+    }
 }

@@ -606,7 +606,10 @@ internal object LinkKeyManifestVerifier {
         val evidenceKeyState = string(evidence, "owner_key_state")
         val evidenceKeyVersion = positiveInteger(evidence, "owner_key_version")
         val verifiedAt = canonicalUtc(string(evidence, "verified_at"))
-        require(verifiedAt <= now && evidenceKeyState == "ACTIVE" &&
+        require(verifiedAt <= now) {
+            "Retained Link verification time is in the future"
+        }
+        require(evidenceKeyState == "ACTIVE" &&
             evidenceLinkVersion == manifest.linkVersion &&
             evidenceContractDigest == manifest.contractDigest &&
             evidenceManifestDigest == manifest.digest) {
