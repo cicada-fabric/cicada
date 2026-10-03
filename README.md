@@ -106,6 +106,9 @@ an acceptance harness; the existing UI, local speech models and frozen APKs are
 unchanged. A new live run requires fresh fixture adapters, exact delivery pins
 and separate Root authorization. Its offline tests cannot establish encrypted
 runtime or bilateral consent acceptance.
+The subsequent [clean 0213538 F10 attempt](docs/client-hub-v1.6.4-0213538-f10-validation.md)
+passed Android bootstrap and cleanup. Core fixture preparation failed on a
+missing delivery input; encrypted business acceptance remains `NOT_RUN`.
 The corrected receipt validator and read-only preflight tools passed nine
 focused Docker regressions. Their live use and bilateral consent remain
 unverified; the next attempt requires a fresh authorized fixture.

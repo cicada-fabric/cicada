@@ -9,14 +9,16 @@ staging command failed before any encrypted Android business request; the
 runtime consumer correction is independently recorded and does not make F9
 a PASS. Fresh Link consent, Target Alert and bilateral status remain NOT_RUN.
 
-1. Freeze the launcher, BOOT/hot helpers, narrow offline tests and their source
-   hashes as one Client checkpoint. No new timed fixture is started here.
+1. Completed launcher checkpoint `7f428d7`: freeze BOOT/hot helpers, narrow
+   offline tests and their source hashes.
 2. Completed read-only provenance: independently verify clean
    `0213538b62ccf2533eccf546c80fc848804ea8e0` archive, 896 immutable Git inputs,
    source fingerprint and image metadata. See the [delivery review](client-hub-v1.6.4-0213538-provenance.md).
    The dd81575 package/images remain historical provenance for their own runs.
-3. Prepare and approve fresh source-derived adapters and the external Owner
-   actor before a separately authorized BOOT. Do not reuse fixture-09.
+3. [F10 bootstrap and cleanup passed](client-hub-v1.6.4-0213538-f10-validation.md),
+   but Core preparation failed on missing `std-producer.json`. Preserve that
+   failure. Core must fix dependency delivery/preflight; Client prepares a
+   small COLD namespace successor before a fresh Root-approved window.
 4. Use the actual Android READY, fresh Core references/Scope/one GO and a single
    combined stdin ticket for automatic carrier preflight and six-phase flow.
    Record each actual result and cleanup; preserve uncertain pending packets.

@@ -1,5 +1,48 @@
 # CICADA Client integration handoff
 
+## Current F10 outcome — clean Core `0213538`
+
+The [F10 acceptance record](client-hub-v1.6.4-0213538-f10-validation.md) binds the
+actual Client checkpoint, frozen APKs, full images, commands/exits and original
+receipt hashes. Android BOOT, installs, four properties, bootstrap preflight
+and owned emulator cleanup are **PASS**. Core preparation is **FAIL** because
+its clean delivery lacked `std-producer.json`. Root cancelled the single
+launcher through stdin EOF (outer exit `1`) before delivering a business ticket.
+Encrypted capabilities and bilateral Link flows remain **NOT_RUN**.
+
+The Client independently verified original Core failure receipts and its own
+terminal/journal, and confirmed the exact emulator ID no longer exists.
+No fixture retry, signature, enrollment, business RPC or ACK was performed.
+Core delivered the frozen path correction and dependency preflight; the Client
+imported its three public files byte-for-byte. Six small COLD adapter changes
+avoid rewriting sources for each fixture number. Their sole plan check failed
+because these formal documents were uncommitted; the failure is retained.
+The closing checkpoint restores a clean checkout. F10 sources and evidence
+remain immutable; a new actual plan still requires independent validation.
+
+### Next coordination prompt
+
+```text
+Read CICADA_CLIENT/docs/client-hub-v1.6.4-0213538-f10-validation.md and its
+Git-external original evidence. Preserve BOOT PASS, Core prepare FAIL and
+cancelled outer exit 1; encrypted business remains NOT_RUN.
+
+Use the independently imported three-file clean-0213538 path correction, with
+explicit fixture-driver path/SHA and adjacent preflight. Review the final
+COLD successor delivery receipt and clean Client checkpoint; retain its
+original dirty-checkout check failure. Do not modify Client, use a Hub database
+or silently substitute another delivery. Independently bind existing Rootpins,
+exact Scope/GO, BOOT plan/receipt, ownership marker and all source hashes.
+Keep Owner signing and private credentials in Core custody.
+
+Only after separate Root BOOT authorization, consume stdout READY from one
+bounded launcher. Deliver one Root-approved business ticket on its retained
+stdin. Preserve original cutoffs, the exact 27-field Scope, nine references,
+owned resource checks and six-flow order. No automatic retry or early ACK.
+Report each real Android encrypted/UI gate and owned cleanup separately.
+Physical Android and public HTTPS stay NOT_RUN until actually executed.
+```
+
 ## Offline bounded launcher handoff
 
 The [launcher interface and command plan](client-bounded-acceptance-launcher.md)
@@ -52,9 +95,10 @@ Do not edit Client, read a Hub database, push or change production deployment.
 The [clean delivery review](client-hub-v1.6.4-0213538-provenance.md) independently
 passed all 24 archive payloads, 896 immutable Git inputs, source fingerprint
 reproduction and full Hub/interop image metadata checks. The launcher binds
-those actual values in its Root-approved target. Runtime encrypted capabilities
-and Android Link business remain **NOT_RUN**; no BOOT/business GO is inferred
-from delivery provenance. The frozen product/APK pair below remains separate.
+those actual values in its Root-approved target. The subsequent F10 Android
+bootstrap passed, but fixture preparation failed before a business ticket.
+Runtime encrypted capabilities and Android Link business remain **NOT_RUN**.
+The frozen product/APK pair below remains separate.
 
 ## Historical F6–F9 acceptance target — clean v1.6.4 Core `dd81575`
 
