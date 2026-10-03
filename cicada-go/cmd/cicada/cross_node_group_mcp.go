@@ -222,9 +222,9 @@ func (m *mcpServer) dispatchCrossNodeGroupMCPOutbox(outbox *mcpOutboxStore,
 		if resolveErr != nil {
 			return m.recordSealedRPCError(outbox, scope, operation, resolveErr)
 		}
-		if card.GroupID != trusted.GroupID || card.EndpointID == trusted.EndpointID || card.NodeID == trusted.NodeID {
+		if card.GroupID != trusted.GroupID || card.EndpointID == trusted.EndpointID {
 			return m.recordSealedRPCError(outbox, scope, operation,
-				errors.New("target is not a remote same-Group Endpoint"))
+				errors.New("target is not a distinct same-Group Endpoint"))
 		}
 		request.TargetEndpointID = card.EndpointID
 		if operation.Kind == "send" {

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,7 +26,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// TestMCPSealedSameNodeGroupAskReplyFullChain exercises real Store/Fabric
+// TestMCPSealedSameNodeGroupAskReplyFullChain recovers a synthetic legacy local ASK using real Store/Fabric
 // authorization, both MCP outboxes, the owner-only Node bridge, the sealed
 // Node ledger/inbox, and exact native queue arguments. Control is not
 // constructed; Codex is a recording queue fake, so this verifies the handoff
@@ -244,16 +245,11 @@ func TestMCPSealedSameNodeGroupAskReplyFullChain(t *testing.T) {
 	// trusted Node Unix bridge. Its body is never sent to an HTTP Hub route.
 	t.Setenv("CODEX_THREAD_ID", nativeA)
 	t.Setenv("CODEX_SESSION_ID", "session-"+nativeA)
-	asked, err := sourceMCP.callTool("cicada_ask", map[string]any{
-		"target": targetMCP.endpointID, "question": question,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	askResult, ok := asked.(map[string]any)
-	if !ok {
-		t.Fatalf("local ASK returned an unexpected result type: %T", asked)
-	}
+	// Seed a durable operation using the pre-fallback implementation primitive.
+	// This is historical fixture setup, not proof of native direct eligibility.
+	legacyRequest, legacyResult := seedLegacyLocalAsk(t, bridge, sourceMCP, targetMCP.endpointID, question)
+	_ = legacyRequest
+	askResult := map[string]any{"status": mcpOutboxStatusSent, "request_id": legacyResult.RequestID, "message_id": legacyResult.MessageID, "delivery": legacyResult.Delivery, "target_endpoint_id": legacyResult.TargetEndpointID}
 	requestID, _ := askResult["request_id"].(string)
 	askMessageID, _ := askResult["message_id"].(string)
 	if askResult["status"] != mcpOutboxStatusSent || requestID == "" || askMessageID == "" ||
@@ -587,7 +583,7 @@ func newLocalGroupFailureFixture(t *testing.T) *localGroupFailureFixture {
 			http.Error(response, "temporary Guard outage", http.StatusServiceUnavailable)
 			return
 		}
-		if !allowed[request.URL.Path] {
+		if !allowed[request.URL.Path] && !strings.HasPrefix(request.URL.Path, "/v2/relay/nodes/"+f.nodeID+"/group/sealed/") {
 			t.Errorf("failure harness attempted unsupported Hub path %s", request.URL.Path)
 			http.NotFound(response, request)
 			return
@@ -671,21 +667,8 @@ func (f *localGroupFailureFixture) ask(t *testing.T) (requestID, messageID strin
 	t.Helper()
 	t.Setenv("CODEX_THREAD_ID", f.nativeA)
 	t.Setenv("CODEX_SESSION_ID", "session-"+f.nativeA)
-	result, err := f.sourceMCP.callTool("cicada_ask", map[string]any{
-		"target": f.targetMCP.endpointID, "question": "private local failure-path question",
-	})
-	if err != nil {
-		t.Fatalf("local ASK failed before durable acceptance: %v", err)
-	}
-	public, ok := result.(map[string]any)
-	if !ok || public["status"] != mcpOutboxStatusSent || public["delivery"] != "LOCAL_PERSISTED" {
-		t.Fatal("local ASK did not report durable Node acceptance")
-	}
-	requestID, _ = public["request_id"].(string)
-	messageID, _ = public["message_id"].(string)
-	if requestID == "" || messageID == "" {
-		t.Fatal("durably accepted local ASK omitted its request or message identity")
-	}
+	_, result := seedLegacyLocalAsk(t, f.bridge, f.sourceMCP, f.targetMCP.endpointID, "private local failure-path question")
+	requestID, messageID = result.RequestID, result.MessageID
 	return requestID, messageID
 }
 
@@ -834,4 +817,28 @@ func TestMCPSealedSameNodeQueueFailureIsUncertainAndNeverRetried(t *testing.T) {
 		delivery.State != nodeinbox.INJECTION_UNCERTAIN || delivery.SessionID != f.nativeB {
 		t.Fatal("post-begin queue failure was not retained as exact-session INJECTION_UNCERTAIN")
 	}
+}
+
+// seedLegacyLocalAsk emulates an already committed 144e079 local operation.
+// Production dispatch no longer calls this creation primitive for SEND/ASK.
+func seedLegacyLocalAsk(t *testing.T, bridge *machineAgentJoinBridge, mcp *mcpServer, target, body string) (localGroupRequest, *localGroupResult) {
+	t.Helper()
+	mcp.sessionMu.RLock()
+	card, token := mcp.sessionPublic.NetworkCard, mcp.sessionToken
+	native := mcp.sessionContext
+	mcp.sessionMu.RUnlock()
+	request := localGroupRequest{Version: localGroupProtocolVersion, Operation: "local_ask", Harness: native.Harness, NativeSessionID: native.NativeSessionID, NodeID: native.NodeID, Workspace: native.Workspace, SessionToken: token, EndpointID: card.EndpointID, PrincipalID: card.PrincipalID, OwnerID: mcp.sessionPublic.Endpoint.Owner, GroupID: card.GroupID, BindingID: card.BindingID, BindingEpoch: card.BindingEpoch, OperationID: "op_0123456789abcdef0123456789abcdef", OperationCreatedAt: time.Now().UTC().Format(time.RFC3339Nano), IdempotencyKey: "historical-unused-key", Target: target, Body: body}
+	if _, err := bridge.verifyLocalGroupSource(request); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := nodelocal.Open(machineLocalGroupLedgerPath(bridge.stateDir, bridge.nodeID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	result, err := bridge.submitLocalGroupMessage(ledger, request, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return request, result
 }

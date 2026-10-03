@@ -70,58 +70,10 @@ func (m *mcpServer) dispatchLocalGroupMCPOutbox(outbox *mcpOutboxStore,
 		return m.recordSealedRPCError(outbox, scope, operation,
 			errors.New("target is missing the required sealed_v1 peer-delivery capability"))
 	}
-	if card.NodeID != trusted.NodeID {
-		return m.dispatchCrossNodeGroupMCPOutbox(outbox, scope, operation, input)
-	}
-	if operation.Kind == "ask" && input.ParentRequestID != "" {
-		return m.recordSealedRPCError(outbox, scope, operation,
-			errors.New("causal ASK is unavailable for same-Node local delivery; the local inbox has no ancestry ledger"))
-	}
-	request := localGroupRequest{
-		Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
-		NodeID: trusted.NodeID, Workspace: trusted.Workspace,
-		SessionToken: trusted.SessionToken, EndpointID: trusted.EndpointID,
-		PrincipalID: trusted.PrincipalID, OwnerID: trusted.OwnerID,
-		GroupID: trusted.GroupID, BindingID: trusted.BindingID,
-		BindingEpoch: trusted.BindingEpoch,
-		OperationID:  operation.OperationID, OperationCreatedAt: operation.CreatedAt,
-		IdempotencyKey: operation.IdempotencyKey, Target: input.Target,
-		RequestID: input.RequestID, Body: contextInput.Body,
-	}
-	switch operation.Kind {
-	case "send":
-		request.Operation = "local_send"
-		request.OperationCreatedAt = ""
-	case "ask":
-		request.Operation = "local_ask"
-	case "reply":
-		request.Operation = "local_reply"
-		request.OperationCreatedAt = ""
-	}
-	result, err := requestMachineAgentLocalGroup(m.joinSocketPath(harness.SessionContext{
-		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
-		MachineID: request.NodeID, Workspace: request.Workspace,
-	}), request)
-	if err != nil {
-		return m.recordSealedRPCError(outbox, scope, operation, err)
-	}
-	if result.PayloadMode != "SEALED_V1" || result.MessageID == "" || result.Delivery == "" ||
-		(operation.Kind == "ask" && result.RequestID == "") ||
-		(operation.Kind == "reply" && result.RequestID != input.RequestID) {
-		return m.recordSealedRPCError(outbox, scope, operation,
-			&localSealedSendError{message: "local Node returned an incomplete sealed Group receipt", retryable: true})
-	}
-	resultJSON, err := mcpOutboxResultJSON(result, request.SessionToken)
-	if err != nil {
-		return m.recordSealedRPCError(outbox, scope, operation, err)
-	}
-	sent, err := outbox.markResult(scope, operation.OperationID, mcpOutboxStatusSent, "", resultJSON)
-	if err != nil {
-		operation.Status = mcpOutboxStatusUnknown
-		operation.LastError = "local outbox result persistence failed"
-		return mcpOutboxPublicResult(operation), nil
-	}
-	return mcpOutboxPublicResult(sent), nil
+	// Generic native direct has no authenticated account/physical-host/API
+	// eligibility evidence. Equal Node labels are only route metadata.
+	// The Node retains exact legacy local-operation recovery independently.
+	return m.dispatchCrossNodeGroupMCPOutbox(outbox, scope, operation, input)
 }
 
 func (m *mcpServer) localGroupRequestControl(operation, requestID, reason string) (any, bool, error) {

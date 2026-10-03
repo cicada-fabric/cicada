@@ -220,8 +220,8 @@ func TestSameGroupSealedV1SendRequiresCurrentOwnerNodeAndCrossNodeGrant(t *testi
 		t.Fatalf("caller widened the fixed same-Group scope: %v", err)
 	}
 	if _, err := f.store.GetSameGroupSealedV1PeerKey(f.sourceNode.nodeCredential,
-		f.groupID, f.source.id, f.sameNode.id); !errors.Is(err, ErrSameGroupSealedV1Denied) {
-		t.Fatalf("same-Node route was not refused: %v", err)
+		f.groupID, f.source.id, f.sameNode.id); err != nil {
+		t.Fatalf("same-Node Relay peer was denied: %v", err)
 	}
 	otherGroup := "grp_sgs_other"
 	ownerPrincipal, err := f.store.GetPrincipal(f.ownerID)

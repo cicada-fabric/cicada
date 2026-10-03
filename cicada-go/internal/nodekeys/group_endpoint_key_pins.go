@@ -450,8 +450,8 @@ func verifyGroupEndpointKeyGrantEvidence(evidence GroupEndpointKeyPinEvidence,
 		manifest.OwnerKeyID != trust.KeyID {
 		return PeerKeyCandidate{}, ErrPeerPinIdentityMismatch
 	}
-	if evidence.Local.EndpointID == manifest.EndpointID || evidence.Local.NodeID == manifest.NodeID {
-		return invalid(errors.New("Group Endpoint grant must pin a different Endpoint on another Node"))
+	if evidence.Local.EndpointID == manifest.EndpointID {
+		return invalid(errors.New("Group Endpoint grant must pin a different Endpoint"))
 	}
 	if route.GroupRevision <= 0 || route.GroupRevision > maxSQLiteSequence ||
 		route.MembershipRevision <= 0 || route.MembershipRevision > maxSQLiteSequence ||

@@ -349,11 +349,9 @@ func fanoutGroupBroadcastBatch(request groupBroadcastRequest,
 		operationID := groupBroadcastChildOperationID(snapshot.BroadcastID, recipient.EndpointID)
 		var messageID string
 		var err error
-		if recipient.NodeID == sourceNode {
-			messageID, err = sendLocal(recipient, operationID)
-		} else {
-			messageID, err = sendRemote(recipient, operationID)
-		}
+		// Node equality is not native direct eligibility. The Relay bridge also
+		// recovers exact previously persisted local children before creating work.
+		messageID, err = sendRemote(recipient, operationID)
 		if err != nil {
 			child.State = "FAILED"
 			child.FailureCode = "DELIVERY_REJECTED"
@@ -414,7 +412,7 @@ func (b *machineAgentJoinBridge) sendRemoteGroupBroadcastChild(request groupBroa
 	}
 	expected, _, _ := localSealedRPCIDs(operationID)
 	if result == nil || result.MessageID != expected || result.TargetEndpointID != recipient.EndpointID ||
-		result.Delivery != "RELAY_PERSISTED" || result.PayloadMode != "SEALED_V1" {
+		(result.Delivery != "RELAY_PERSISTED" && result.Delivery != "LOCAL_PERSISTED") || result.PayloadMode != "SEALED_V1" {
 		return "", &localSealedSendError{message: "remote broadcast child result is uncorrelated", retryable: true}
 	}
 	return result.MessageID, nil

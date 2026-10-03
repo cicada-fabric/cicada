@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -63,7 +64,17 @@ func TestMCPSealedSameNodeAskIgnoresClearedCachedCapability(t *testing.T) {
 
 	recorder := recordLocalGroupHubHTTP(t, question)
 
-	f.ask(t)
+	authorizeSameNodeRelayFixture(t, f, f.sourceMCP, f.targetMCP)
+	t.Setenv("CODEX_THREAD_ID", f.nativeA)
+	t.Setenv("CODEX_SESSION_ID", "session-"+f.nativeA)
+	result, err := f.sourceMCP.callTool("cicada_ask", map[string]any{"target": f.targetMCP.endpointID, "question": question})
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := result.(map[string]any)
+	if public["delivery"] != "RELAY_PERSISTED" || public["status"] != mcpOutboxStatusSent {
+		t.Fatalf("cached capability affected sealed Relay: %#v", public)
+	}
 
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
@@ -78,11 +89,15 @@ func TestMCPSealedSameNodeAskIgnoresClearedCachedCapability(t *testing.T) {
 	f.sourceMCP.sessionMu.RLock()
 	principalID := f.sourceMCP.sessionPublic.NetworkCard.PrincipalID
 	f.sourceMCP.sessionMu.RUnlock()
+	recorded, err := f.store.GetSameGroupSealedV1RequestStatus(fabric.HashSessionCredential(f.nodeToken), public["request_id"].(string))
+	if err != nil || recorded == nil || recorded.VisibilityPolicyRef != store.SameGroupSealedV1DataScope {
+		t.Fatalf("sealed request missing: %#v %v", recorded, err)
+	}
 	requests, err := f.store.ListRelayRequests(store.RelayRequestFilter{
 		SenderPrincipalID: principalID, SenderGroupID: f.groupID, Limit: 10,
 	})
 	if err != nil || len(requests) != 0 {
-		t.Fatalf("cache-cleared local ASK created plaintext Relay state: count=%d err=%v", len(requests), err)
+		t.Fatalf("cache-cleared ASK created plaintext Relay state: count=%d err=%v", len(requests), err)
 	}
 }
 

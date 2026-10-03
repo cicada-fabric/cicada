@@ -60,8 +60,8 @@ func TestGroupBroadcastFanoutUsesLocalAndRemoteRoutesAndStableChildIDs(t *testin
 			}
 		}
 	}
-	if localCalls != 4 || remoteCalls != 2 || len(delivered) != 3 {
-		t.Fatalf("route/dedup counts local=%d remote=%d effective=%d, want 4/2/3", localCalls, remoteCalls, len(delivered))
+	if localCalls != 0 || remoteCalls != 6 || len(delivered) != 3 {
+		t.Fatalf("route/dedup counts local=%d remote=%d effective=%d, want 0/6/3", localCalls, remoteCalls, len(delivered))
 	}
 	if err := validateGroupBroadcastSnapshot(snapshot, request, card, "node-local"); err != nil {
 		t.Fatalf("valid same-Group snapshot rejected: %v", err)
@@ -408,11 +408,11 @@ func TestMCPBroadcastLocalAndRemoteSealedFullChain(t *testing.T) {
 	}
 
 	localArgs, localCount := installMachineSealedFakeCodex(t, false, f.nodeToken)
-	localInbox, err := nodeinbox.Open(machineLocalGroupInboxPath(f.stateDir, f.nodeID))
+	localInbox, err := nodeinbox.Open(machineNodeInboxPath(f.stateDir, f.nodeID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := processPinnedTestMachineLocalGroupDeliveries(context.Background(), f.bridge, localInbox); err != nil {
+	if err := processPinnedTestMachineFabricDeliveries(context.Background(), hub.URL, f.nodeID, localInbox, f.stateDir); err != nil {
 		t.Fatalf("local sealed broadcast delivery failed: %v", err)
 	}
 	_ = localInbox.Close()
