@@ -588,9 +588,10 @@ internal object LinkKeyManifestVerifier {
             (currentStatus != "ACCEPTED" || accepted)) {
             "Invalid retained Link current status"
         }
-        if (status.has("accepted_at")) {
-            val acceptedAt = canonicalUtc(string(status, "accepted_at"))
-            require(acceptedAt <= now) { "Retained Link acceptance time is in the future" }
+        val acceptedAt = if (status.has("accepted_at")) {
+            canonicalUtc(string(status, "accepted_at"))
+        } else {
+            null
         }
         if (!accepted || currentStatus != "ACCEPTED") return null
 
@@ -607,6 +608,11 @@ internal object LinkKeyManifestVerifier {
         val evidenceKeyVersion = positiveInteger(evidence, "owner_key_version")
         val verifiedAt = canonicalUtc(string(evidence, "verified_at"))
         // Hub snapshot time is metadata; signed Owner proof validity uses local now below.
+        acceptedAt?.let {
+            require(it <= verifiedAt) {
+                "Retained Link acceptance time is after Hub verification snapshot"
+            }
+        }
         require(evidenceKeyState == "ACTIVE" &&
             evidenceLinkVersion == manifest.linkVersion &&
             evidenceContractDigest == manifest.contractDigest &&
@@ -658,6 +664,11 @@ internal object LinkKeyManifestVerifier {
             ),
             now,
         )
+        acceptedAt?.let {
+            require(it >= ownerGrant.issuedAt && it < ownerGrant.expiresAt) {
+                "Retained Link acceptance time is outside Owner grant validity window"
+            }
+        }
         return VerifiedRetainedOwnerGrantStatus(
             linkId = manifest.linkId,
             linkVersion = manifest.linkVersion,

@@ -198,6 +198,20 @@ internal object LinkReviewPolicyEvidenceV164 {
     }
 
     /**
+     * Parses a historical authenticated grant result using its Hub snapshot time for temporal
+     * proof and Link checks. This is for retained evidence only; it does not establish freshness.
+     */
+    fun validateHistoricalGrantResult(
+        rawResult: ByteArray,
+        currentLink: LinkReviewPolicyV164CurrentLink,
+    ): LinkReviewPolicyV164Status = parseStatus(
+        rawStatus = rawResult,
+        currentLink = currentLink,
+        now = null,
+        grantCandidate = true,
+    )
+
+    /**
      * Checks an explicit user-reviewed policy against a fresh preview and active-head response.
      * A noncurrent status is accepted as a diagnostic CAS head only while the current Link tuple
      * itself matches; current=false never means a partial candidate is the active status API.
@@ -340,10 +354,10 @@ internal object LinkReviewPolicyEvidenceV164 {
     private fun parseStatus(
         rawStatus: ByteArray,
         currentLink: LinkReviewPolicyV164CurrentLink,
-        now: Instant,
+        now: Instant?,
         grantCandidate: Boolean,
     ): LinkReviewPolicyV164Status {
-        validateCurrentLink(currentLink, now)
+        if (now != null) validateCurrentLink(currentLink, now)
         val root = parseUniqueObject(rawStatus, "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         val optional = setOf("expires_at")
         if (!root.keySet().containsAll(statusRequiredFields) ||
@@ -362,6 +376,8 @@ internal object LinkReviewPolicyEvidenceV164 {
         )
         val current = boolean(root, "current", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         val verifiedAt = canonicalUtc(root, "verified_at", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
+        val effectiveNow = now ?: verifiedAt
+        if (now == null) validateCurrentLink(currentLink, effectiveNow)
         // Fresh authenticated provenance establishes freshness; this is not a local clock bound.
         val acceptedSides = stringArray(root, "accepted_sides", 2, "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         if (acceptedSides.any { it !in SIDES } || acceptedSides.distinct().size != acceptedSides.size) {
@@ -392,11 +408,11 @@ internal object LinkReviewPolicyEvidenceV164 {
         }
 
         val approvals = parseApprovals(root.get("owner_approvals"), policyVersion, currentLink, policy,
-            policyDigest, policyVersion, verifiedAt, now)
+            policyDigest, policyVersion, verifiedAt, effectiveNow)
         val verifiedSides = approvals.filter { it.currentStatus == "VERIFIED" }.map { it.side }
         if (acceptedSides != verifiedSides) invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         if (current && policyVersion > 0L && (verifiedSides != SIDES ||
-                expiresAt?.isAfter(now) == false)) {
+                expiresAt?.isAfter(effectiveNow) == false)) {
             invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
         }
         return LinkReviewPolicyV164Status(
@@ -475,7 +491,7 @@ internal object LinkReviewPolicyEvidenceV164 {
             }
             val lifecycle = LinkReviewPolicyV164OwnerLifecycle(ownerId, keyId, keyState, keyVersion)
             val acceptedAt = canonicalUtc(evidence, "accepted_at", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
-            if (acceptedAt > verifiedAt || acceptedAt > now) invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
+            if (acceptedAt > verifiedAt) invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
             val proofText = string(evidence, "signed_proof", "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
             val proof = decodeProof(proofText, "LINK_REVIEW_POLICY_V164_STATUS_INVALID")
             val verifiedProof = verifyOwnerProof(
@@ -491,7 +507,8 @@ internal object LinkReviewPolicyEvidenceV164 {
                 maximumProofExpiresAt = currentLink.expiresAt,
                 now = now,
             )
-            if (acceptedAt < verifiedProof.issuedAt || verifiedProof.expiresAt > currentLink.expiresAt) {
+            if (acceptedAt < verifiedProof.issuedAt || acceptedAt >= verifiedProof.expiresAt ||
+                verifiedProof.expiresAt > currentLink.expiresAt) {
                 invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
             }
             result += LinkReviewPolicyV164VerifiedOwnerApproval(

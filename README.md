@@ -49,23 +49,29 @@ The dedicated Link flow independently verifies Endpoint attestations, external
 Owner signatures and current encrypted evidence. It does not enable ordinary
 cross-user messages while `external_thread_links=false`.
 
-F19 used clean Client `d16875b` and its separately identified diagnostic APKs.
-Android bootstrap, SOURCE enrollment, encrypted capabilities, manifest and
-pre-submit signature verification passed. A fresh retained-status read failed
-with `VERIFIED_AT_IN_FUTURE`; pending was preserved and owned cleanup completed.
-The correction separates Hub snapshot metadata from local signed-proof
-validity, as confirmed by the fixed contract. Its 23 focused Kotlin tests passed;
-replacement APK and live results require separate attribution. Bilateral
-KEY/NONE, TARGET React Native confirmation, physical Android and public HTTPS
-remain unaccepted for this candidate.
+The [F20–F23 record](docs/client-hub-v1.6.4-0213538-f23-validation.md)
+binds clean Client `406d8d7` and its exact APK pair. The correction APK passed
+SOURCE enrollment, encrypted capabilities, full manifest/pin verification and
+KEY submission with fresh side-status verification. SOURCE NONE failed;
+its actual typed cause remains unknown. TARGET React Native confirmation and
+bilateral KEY/NONE remain unaccepted. Owned Android and F23 Core cleanup passed.
 
-The [core handoff](docs/cicada-core-handoff.md) contains the current coordination
-prompt. Earlier attempts remain in the [F17–F18 record](docs/client-hub-v1.6.4-0213538-f18-validation.md),
-[F10 record](docs/client-hub-v1.6.4-0213538-f10-validation.md) and
-[earlier v1.6.4 record](docs/client-hub-v1.6.4-dd81575-validation.md).
-The [bounded launcher](docs/client-bounded-acceptance-launcher.md) provides one
-owned emulator, one authorized business frame, fixed deadlines and cleanup.
-Historical results certify only their recorded artifacts.
+Core's accepted-at clarification confirms `accepted_at <= verified_at` on the
+Hub clock and signed proof validity `issued_at <= accepted_at < expires_at`;
+`accepted_at` is not checked against Android time. The final focused Docker
+regression passed 29 Kotlin tests, exit `0`; its receipt is
+`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/kotlin-host.receipt.redacted.json` (SHA-256
+`3a9c7de5acf50ffd3da7ea17d0d66143396a49d91463b1aec0093feab912283a`). Local
+proof expiry, lease, signature, Owner-pin and operation-fence checks remain in
+place. The earlier `8af21cc`/K24 build snapshot is immutable historical evidence,
+not live validation. At this source checkpoint, final assembly is pending; its
+post-commit receipt at
+`/gpu1-share/data/cicada-client/v164-link-metadata-final-20261003/apk-build.receipt.redacted.json`
+will bind the clean commit, command/exit and both APK SHA-256 values when
+completed. Live acceptance, physical Android, public HTTPS and current native
+Codex acceptance are NOT_RUN. The
+[core handoff](docs/cicada-core-handoff.md) contains the next bounded-run prompt.
+Historical results certify only their recorded sources, artifacts and scope.
 
 ## Imported clean v1.6.3 delivery
 

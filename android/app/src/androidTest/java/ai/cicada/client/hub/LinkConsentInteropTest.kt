@@ -849,7 +849,7 @@ class LinkConsentInteropTest {
                 parsed.reviewId, parsed.consentDigest, proof.encoded, true, selectedScope.selectionGeneration,
             )
             require(sent.get("ok")?.asBoolean == true) {
-                "Hub did not return a terminal OwnerLinkReviewPolicy grant response"
+                safePolicySubmitFailure(sent)
             }
             val grantStatus = sent.get("policyStatus")?.takeIf { it.isJsonObject }?.asJsonObject
                 ?: error("Native submit did not return its sanitized verified policy-grant status")
@@ -1165,6 +1165,21 @@ class LinkConsentInteropTest {
                 "TARGET completion did not activate the exact bilateral signed policy tuple"
             }
         }
+    }
+
+    /** Report fixed transport outcomes without exposing response content or identifiers. */
+    private fun safePolicySubmitFailure(result: JsonObject): String {
+        val code = result.get("errorCode")?.takeIf {
+            it.isJsonPrimitive && it.asJsonPrimitive.isString
+        }?.asString?.takeIf {
+            it == "LINK_POLICY_RESULT_RECONCILIATION_REQUIRED" || it == "OUTCOME_UNCERTAIN"
+        } ?: "UNKNOWN"
+        fun flag(name: String): String = result.get(name)?.takeIf {
+            it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+        }?.asBoolean?.toString() ?: "unknown"
+        return "LOCAL_LINK_POLICY_SUBMIT:$code;" +
+            "originalOperationCompleted=${flag("originalOperationCompleted")};" +
+            "reconciliationRequired=${flag("reconciliationRequired")}"
     }
 
     private fun expectCode(expected: String, block: () -> Unit) {

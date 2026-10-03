@@ -117,11 +117,26 @@ class LinkReviewPolicyEvidenceV164Test {
         val futureSnapshot = now.plusNanos(1)
         val status = vector.getAsJsonObject("status").deepCopy().apply {
             addProperty("verified_at", futureSnapshot.toString())
+            getAsJsonArray("owner_approvals").forEach { row ->
+                row.asJsonObject.getAsJsonObject("evidence")
+                    .addProperty("accepted_at", futureSnapshot.toString())
+            }
         }
         val verified = LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(status), authority, now)
         assertEquals(futureSnapshot, verified.verifiedAt)
         assertEquals(listOf("SOURCE", "TARGET"), verified.acceptedSides)
         assertTrue(verified.ownerApprovals.all { it.verifiedProof != null })
+        val historical = LinkReviewPolicyEvidenceV164.validateHistoricalGrantResult(bytes(status), authority)
+        assertEquals(futureSnapshot, historical.verifiedAt)
+        assertTrue(historical.ownerApprovals.all { it.verifiedProof != null })
+
+        val acceptedAfterSnapshot = status.deepCopy().apply {
+            getAsJsonArray("owner_approvals")[0].asJsonObject.getAsJsonObject("evidence")
+                .addProperty("accepted_at", futureSnapshot.plusNanos(1).toString())
+        }
+        expect("LINK_REVIEW_POLICY_V164_STATUS_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(acceptedAfterSnapshot), authority, now)
+        }
 
         val preview = vector.getAsJsonObject("preview").deepCopy().apply {
             addProperty("verified_at", futureSnapshot.toString())
@@ -142,6 +157,21 @@ class LinkReviewPolicyEvidenceV164Test {
             )
         }
         val expiry = Instant.parse(claims.get("expires_at").asString)
+        val acceptedBeforeIssue = status.deepCopy().apply {
+            getAsJsonArray("owner_approvals")[0].asJsonObject.getAsJsonObject("evidence")
+                .addProperty("accepted_at", beforeIssue.toString())
+        }
+        expect("LINK_REVIEW_POLICY_V164_STATUS_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(acceptedBeforeIssue), authority, now)
+        }
+        val acceptedAtExpiry = status.deepCopy().apply {
+            addProperty("verified_at", expiry.toString())
+            getAsJsonArray("owner_approvals")[0].asJsonObject.getAsJsonObject("evidence")
+                .addProperty("accepted_at", expiry.toString())
+        }
+        expect("LINK_REVIEW_POLICY_V164_STATUS_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(acceptedAtExpiry), authority, now)
+        }
         // Keep the Link valid to isolate rejection of the original signed proof at its expiry.
         expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
             LinkReviewPolicyEvidenceV164.validateActiveStatus(

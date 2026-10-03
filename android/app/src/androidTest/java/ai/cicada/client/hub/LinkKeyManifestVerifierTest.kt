@@ -331,10 +331,22 @@ class LinkKeyManifestVerifierTest {
 
         val futureAcceptance = sourceStatus.deepCopy().apply {
             addProperty("accepted_at", now.plusNanos(1).toString())
+            getAsJsonObject("evidence").addProperty("verified_at", now.plusNanos(1).toString())
         }
-        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.ACCEPTED_AT_IN_FUTURE) {
-            verify(futureAcceptance)
+        val acceptedFutureHubTimes = verify(futureAcceptance)
+        assertEquals("SOURCE", acceptedFutureHubTimes?.ownerGrant?.side)
+        assertEquals(now.plusNanos(1), acceptedFutureHubTimes?.verifiedAt)
+
+        val acceptedAfterSnapshot = sourceStatus.deepCopy().apply {
+            addProperty("accepted_at", now.plusNanos(2).toString())
+            getAsJsonObject("evidence").addProperty("verified_at", now.plusNanos(1).toString())
         }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.OWNER_GRANT_TIME_INVALID) {
+            verify(acceptedAfterSnapshot)
+        }
+
+        val acceptedWithoutTimestamp = sourceStatus.deepCopy().apply { remove("accepted_at") }
+        assertEquals("SOURCE", verify(acceptedWithoutTimestamp)?.ownerGrant?.side)
 
         val futureEvidence = sourceStatus.deepCopy().apply {
             getAsJsonObject("evidence").addProperty("verified_at", now.plusNanos(1).toString())
@@ -379,6 +391,26 @@ class LinkKeyManifestVerifierTest {
                 StandardCharsets.UTF_8,
             ),
         ).asJsonObject
+        val validGrant = requireNotNull(accepted?.ownerGrant)
+        val beforeIssueAcceptance = sourceStatus.deepCopy().apply {
+            addProperty("accepted_at", validGrant.issuedAt.minusNanos(1).toString())
+            getAsJsonObject("evidence").addProperty("verified_at", now.toString())
+        }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.OWNER_GRANT_TIME_INVALID) {
+            verify(beforeIssueAcceptance)
+        }
+
+        val afterSignedExpiryAcceptance = sourceStatus.deepCopy().apply {
+            addProperty("accepted_at", validGrant.expiresAt.toString())
+            getAsJsonObject("evidence").addProperty(
+                "verified_at",
+                validGrant.expiresAt.plusNanos(1).toString(),
+            )
+        }
+        assertOwnerGrantFailure(LinkOwnerGrantVerificationReason.OWNER_GRANT_TIME_INVALID) {
+            verify(afterSignedExpiryAcceptance)
+        }
+
         val afterExpiry = Instant.parse(proofJson.get("expires_at").asString).plusNanos(1)
         assertSafeOwnerGrantFailure { verify(at = afterExpiry) }
 

@@ -27,6 +27,10 @@ internal class LinkOwnerGrantVerificationFailure(
                 LinkOwnerGrantVerificationReason.ACCEPTED_AT_IN_FUTURE,
             "Retained Link verification time is in the future" to
                 LinkOwnerGrantVerificationReason.VERIFIED_AT_IN_FUTURE,
+            "Retained Link acceptance time is after Hub verification snapshot" to
+                LinkOwnerGrantVerificationReason.OWNER_GRANT_TIME_INVALID,
+            "Retained Link acceptance time is outside Owner grant validity window" to
+                LinkOwnerGrantVerificationReason.OWNER_GRANT_TIME_INVALID,
 
             "Invalid independent Owner full-key pin" to
                 LinkOwnerGrantVerificationReason.OWNER_PIN_MISMATCH,

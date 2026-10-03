@@ -3276,10 +3276,6 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 fence.tupleDigest != LinkConsentLedger.digestTuple(tuple) ||
                 expectedPolicyVersion == Long.MAX_VALUE || policyVersion != expectedPolicyVersion + 1L) return null
 
-            val verifiedAtText = optionalString(result, "verified_at") ?: return null
-            val verifiedAt = Instant.parse(verifiedAtText)
-            if (verifiedAt.toString() != verifiedAtText || verifiedAt > Instant.now()) return null
-
             fun pinnedPolicyOwner(scope: LinkConsentLedger.SideScope): LinkReviewPolicyV164OwnerPin {
                 val record = state.linkConsentLedger.ownerPin(scope.ownerId, scope.ownerKeyId)
                     ?: throw IllegalArgumentException("Missing independent Owner pin")
@@ -3308,8 +3304,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 sourceOwnerPin = pinnedPolicyOwner(tuple.source),
                 targetOwnerPin = pinnedPolicyOwner(tuple.target),
             )
-            val status = LinkReviewPolicyEvidenceV164.validateActiveStatus(
-                result.toString().toByteArray(StandardCharsets.UTF_8), currentLink, verifiedAt,
+            val status = LinkReviewPolicyEvidenceV164.validateHistoricalGrantResult(
+                result.toString().toByteArray(StandardCharsets.UTF_8), currentLink,
             )
             if (status.linkId != tuple.linkId || status.linkVersion != tuple.linkVersion ||
                 status.contractDigest != tuple.contractDigest || status.policyVersion != policyVersion ||
