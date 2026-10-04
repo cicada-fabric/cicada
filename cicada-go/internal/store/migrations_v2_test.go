@@ -70,6 +70,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -144,6 +145,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := reopened.readV2Migration(migration.Version)
@@ -527,6 +529,7 @@ func TestV2MigrationFailureRollsBackSchemaAndResumes(t *testing.T) {
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(3)
 	if err != nil {
@@ -834,6 +837,7 @@ func TestEndpointKeyCandidateMigrationRollsBackAndReopensWithLegacyState(t *test
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(14)
 	if err != nil {
@@ -929,6 +933,7 @@ func TestV2MigrationsConcurrentOpenSerializesLedger(t *testing.T) {
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -1384,5 +1389,6 @@ func TestDedicatedThreadPolicyMigrationV52RollsBackAndResumes(t *testing.T) {
 		55: v2MigrationApplied,
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
+		58: v2MigrationApplied,
 	})
 }

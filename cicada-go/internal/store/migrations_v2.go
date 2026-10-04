@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 57
+	CurrentV2SchemaVersion = 58
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -537,6 +537,13 @@ var v2Migrations = []v2Migration{
 		Description: "bind metadata-only Task assignments and peer bodies to existing exact Endpoint sealed SEND records",
 		Objects:     []string{"shared_task_peer_assignments_v57", "shared_task_peer_refs_v57", "shared_task_peer_refs_task_v57", "shared_task_peer_definition_one_v57", "shared_task_peer_refs_immutable_v57", "shared_task_peer_refs_no_delete_v57"},
 		Apply:       func(s *Store) error { return s.initializeSharedTaskPeerPrivacySchema() },
+	},
+	{
+		Version:     58,
+		ID:          "v2.resource.task_owner_epoch",
+		Description: "preserve immutable acquisition Task ownership epoch and reject stale Task execution or renewal",
+		Objects:     []string{"resource_v2_leases", "resource_v2_lease_task_provenance_immutable_v58"},
+		Apply:       func(s *Store) error { return s.initializeResourceTaskEpochV2Schema() },
 	},
 }
 

@@ -40,6 +40,7 @@ type ResourceLease struct {
 	ResourceID        string `json:"resource_id"`
 	HolderGroupID     string `json:"scope_group_id"`
 	HolderTaskID      string `json:"holder_task_id"`
+	HolderTaskEpoch   int64  `json:"-"` // Immutable acquisition provenance; zero means legacy/unknown.
 	HolderPrincipalID string `json:"holder_principal_id"`
 	FencingEpoch      int64  `json:"fencing_epoch"`
 	Mode              string `json:"mode"`
@@ -162,12 +163,12 @@ WHERE resource_id>=? AND resource_id<? AND state IN (?,?) ORDER BY resource_id`,
 	return nil
 }
 
-const resourceLeaseColumns = `id,resource_id,holder_group_id,holder_task_id,holder_principal_id,fencing_epoch,mode,enforcement,state,expires_at,created_at,updated_at`
+const resourceLeaseColumns = `id,resource_id,holder_group_id,holder_task_id,holder_principal_id,fencing_epoch,mode,enforcement,state,expires_at,created_at,updated_at,holder_task_epoch`
 
 func scanResourceLease(row interface{ Scan(...any) error }) (*ResourceLease, error) {
 	var lease ResourceLease
 	err := row.Scan(&lease.ID, &lease.ResourceID, &lease.HolderGroupID, &lease.HolderTaskID, &lease.HolderPrincipalID, &lease.FencingEpoch,
-		&lease.Mode, &lease.Enforcement, &lease.State, &lease.ExpiresAt, &lease.CreatedAt, &lease.UpdatedAt)
+		&lease.Mode, &lease.Enforcement, &lease.State, &lease.ExpiresAt, &lease.CreatedAt, &lease.UpdatedAt, &lease.HolderTaskEpoch)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrResourceLeaseNotFound
 	}
@@ -248,11 +249,11 @@ func (s *Store) AcquireResourceLease(input ResourceLeaseRequest) (*ResourceLease
 		return nil, ErrSharedTaskStaleOwner
 	}
 	lease := &ResourceLease{ID: NewID("lease"), ResourceID: input.ResourceID, HolderGroupID: input.GroupID, HolderTaskID: input.TaskID,
-		HolderPrincipalID: input.PrincipalID, FencingEpoch: epoch + 1, Mode: "exclusive", Enforcement: enforcement, State: LeaseActive,
+		HolderPrincipalID: input.PrincipalID, HolderTaskEpoch: task.OwnerEpoch, FencingEpoch: epoch + 1, Mode: "exclusive", Enforcement: enforcement, State: LeaseActive,
 		ExpiresAt: time.Now().UTC().Add(time.Duration(input.TTLSeconds) * time.Second).Format(time.RFC3339Nano), CreatedAt: now(), UpdatedAt: now()}
-	if _, err = tx.Exec(`INSERT INTO resource_v2_leases (`+resourceLeaseColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.Exec(`INSERT INTO resource_v2_leases (`+resourceLeaseColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		lease.ID, lease.ResourceID, lease.HolderGroupID, lease.HolderTaskID, lease.HolderPrincipalID, lease.FencingEpoch, lease.Mode,
-		lease.Enforcement, lease.State, lease.ExpiresAt, lease.CreatedAt, lease.UpdatedAt); err != nil {
+		lease.Enforcement, lease.State, lease.ExpiresAt, lease.CreatedAt, lease.UpdatedAt, lease.HolderTaskEpoch); err != nil {
 		return nil, err
 	}
 	result, err := tx.Exec(`UPDATE resource_v2_authority SET fencing_epoch=?,state=?,current_lease_id=?,reconciliation_evidence='',updated_at=?
@@ -268,6 +269,45 @@ func (s *Store) AcquireResourceLease(input ResourceLeaseRequest) (*ResourceLease
 		return nil, err
 	}
 	return lease, nil
+}
+
+// initializeResourceTaskEpochV2Schema preserves legacy leases with unknown
+// provenance (zero). Never infer their acquisition epoch from a current claim.
+func (s *Store) initializeResourceTaskEpochV2Schema() error {
+	if err := s.ensureColumn("resource_v2_leases", "holder_task_epoch",
+		`ALTER TABLE resource_v2_leases ADD COLUMN holder_task_epoch INTEGER NOT NULL DEFAULT 0 CHECK(holder_task_epoch>=0)`); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`CREATE TRIGGER IF NOT EXISTS resource_v2_lease_task_provenance_immutable_v58
+BEFORE UPDATE OF holder_task_epoch,holder_task_id,holder_group_id,holder_principal_id ON resource_v2_leases
+WHEN NEW.holder_task_epoch<>OLD.holder_task_epoch OR NEW.holder_task_id<>OLD.holder_task_id
+ OR NEW.holder_group_id<>OLD.holder_group_id OR NEW.holder_principal_id<>OLD.holder_principal_id
+BEGIN
+ SELECT RAISE(ABORT,'resource lease Task acquisition provenance is immutable');
+END;`)
+	return err
+}
+
+// resourceLeaseTaskCurrentTx fences new execution and renewal to the exact
+// Task ownership generation that acquired this lease. Cleanup remains separate.
+func resourceLeaseTaskCurrentTx(tx *sql.Tx, lease *ResourceLease, scope *NativeActorScope) error {
+	if lease.HolderTaskEpoch <= 0 {
+		return ErrResourceStaleEpoch
+	}
+	task, err := loadSharedTaskTx(tx, lease.HolderTaskID)
+	if errors.Is(err, ErrSharedTaskNotFound) {
+		return ErrResourceStaleEpoch
+	}
+	if err != nil {
+		return err
+	}
+	if task.GroupID != lease.HolderGroupID || task.OwnerPrincipalID != lease.HolderPrincipalID ||
+		task.OwnerEpoch != lease.HolderTaskEpoch ||
+		(task.Status != SharedTaskClaimed && task.Status != SharedTaskRunning) ||
+		!sharedTaskLeaseActive(task.LeaseExpiresAt) || scope != nil && task.OwnerEndpointID != scope.EndpointID {
+		return ErrResourceStaleEpoch
+	}
+	return nil
 }
 
 func resourceLeaseCurrent(lease *ResourceLease) bool {
@@ -417,6 +457,9 @@ func (s *Store) renewResourceLease(id string, epoch int64, principalID string,
 	if current != id || state != ResourceActive {
 		return nil, ErrResourceStaleEpoch
 	}
+	if err := resourceLeaseTaskCurrentTx(tx, lease, scope); err != nil {
+		return nil, err
+	}
 	lease.ExpiresAt = time.Now().UTC().Add(time.Duration(ttlSeconds) * time.Second).Format(time.RFC3339Nano)
 	lease.UpdatedAt = now()
 	if _, err = tx.Exec(`UPDATE resource_v2_leases SET expires_at=?,updated_at=? WHERE id=? AND fencing_epoch=? AND state=?`, lease.ExpiresAt, lease.UpdatedAt, id, epoch, LeaseActive); err != nil {
@@ -554,6 +597,9 @@ func (s *Store) writeManagedBlob(id string, epoch int64, principalID string,
 	}
 	if authorityEpoch != epoch || state != ResourceActive || current != id {
 		return "", ErrResourceStaleEpoch
+	}
+	if err := resourceLeaseTaskCurrentTx(tx, lease, scope); err != nil {
+		return "", err
 	}
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
