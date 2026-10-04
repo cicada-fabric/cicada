@@ -1,6 +1,57 @@
 # CICADA Client integration handoff
 
-## Current F34 outcome and diagnostic successor — clean Core `0213538`
+## Current F35 outcome and viewport successor — clean Core `0213538`
+
+The [F35 validation report](client-hub-v1.6.4-0213538-f35-validation.md) binds
+Client `a80d1a9efbfb2cb413b8356bb5ca764f751702f0`, its exact APK pair and clean
+Core `0213538`. Actual JUnit failed at line 638 while finding the response text,
+with one test and one failure. Its strict progress receipt records callback
+entry, scope guard success, review consumption, native dispatch, a resolved
+bridge response with `native_ok=true`, and `UI_RESPONSE_RETURNED`. The Promise
+was no longer in flight; the response label was not visible. This observation
+does not establish an authoritative Target grant or bilateral acceptance.
+
+F35 remains **FAIL / `OUTCOME_UNKNOWN_PRESERVE_PENDING`**. Native ciphertext
+pending and the authoritative Target KEY outcome are **UNKNOWN**. Preserve the
+original operation and all earlier outcomes. SOURCE reads were partial; Target
+`NONE` and fresh bilateral reads were **NOT_RUN**. The exact scroll offset and
+cause of invisibility were not recorded. Core's independent closure and actual
+two-resource cleanup passed; signatures remain separate from accepted grants.
+
+The successor changes one Text attribute and the response-only test search.
+The same 20-second deadline now covers bounded backward and forward page
+searches, at most 12 actions per direction, excluding input-field scrolling.
+The actual app-owned message ID and expected visible text must both match.
+Visible text is checked first; an active debug observer delays scroll attempts
+until the response stage, preserving the action budget during an asynchronous
+request. A missing observer uses the bounded scan normally. The metadata does
+not satisfy the UI assertion or any authorization check. Full Alert, proof,
+Guard, expiry, pending recovery and fresh bilateral checks remain required.
+
+The pure Kotlin viewport regressions, existing focused tests and static checks
+are recorded under `/gpu1-share/data/cicada-client/v164-f35-response-viewport-20261004`.
+Subsequent build, source and delivery receipts bind this clean source
+checkpoint to one new APK pair and 26 frozen driver references. Fresh Android
+acceptance, native Worker, physical Android and public HTTPS are **NOT_RUN** at
+this checkpoint. Root owns the next fresh BOOT/GO, single frame and cleanup.
+No live retry, signing, Core modification, push or merge is part of this fix.
+
+### Next coordination prompt
+
+```text
+Read the F35 validation report and successor build/source/delivery receipts.
+Preserve F35 and prior UNKNOWN operations; do not retry or replace them. Bind
+the exact clean Client commit, APK pair, 26 sources and unchanged clean021
+target. Root alone owns a fresh BOOT/GO/frame and original deadlines; Core
+retains signing custody. Verify the actual app message becomes visible, then
+complete the existing fresh bilateral KEY/NONE reads. OBSERVED stages and
+native_ok=true are not the full acceptance gate. Capture strict JUnit and
+progress receipts on both success and failure; stop/wait the actor, perform
+one terminal ACK, and verify owned cleanup. Keep physical Android, native
+Worker and public HTTPS NOT_RUN until separately tested. No push or merge.
+```
+
+## Historical F34 outcome and diagnostic successor — clean Core `0213538`
 
 The [F34 validation report](client-hub-v1.6.4-0213538-f34-validation.md) binds
 Client `8f2900c63f515033827d41d962acf7453513f370` and app/test SHA-256

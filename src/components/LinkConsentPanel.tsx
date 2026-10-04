@@ -309,7 +309,8 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
     </View>}
     <Action label="重读双方证明状态" disabled={busy} onPress={() => readGrants()} />
     <Action label="恢复原授权请求" disabled={busy} onPress={() => recover()} />
-    {!!message && <Text accessibilityLiveRegion="polite" style={styles.note}>{message}</Text>}
+    {!!message && <Text testID="link-consent-message"
+      accessibilityLiveRegion="polite" style={styles.note}>{message}</Text>}
   </View>;
 }
 

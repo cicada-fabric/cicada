@@ -421,6 +421,52 @@ class LinkConsentPhoneUiTest {
         error("Could not scroll to the requested visible Link review content")
     }
 
+    /** Bounded response-only search; it never clicks or accepts a message without its stable app view ID. */
+    private fun scrollToSubmitResponse(timeoutMs: Long = 20_000) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val planner = LinkConsentViewportSearchPlanner()
+        val responsePrefix = "授权响应已返回。请重读双方证明状态"
+        val literalViewId = "link-consent-message"
+        val qualifiedViewId = "${target.packageName}:id/link-consent-message"
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = uiRoot()
+            if (root == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val matches = descendants(root).filter { node ->
+                node.packageName?.toString() == target.packageName && node.isVisibleToUser &&
+                    node.viewIdResourceName in setOf(literalViewId, qualifiedViewId) &&
+                    listOf(node.text, node.contentDescription).any {
+                        it?.toString()?.startsWith(responsePrefix) == true
+                    }
+            }
+            if (matches.size == 1) return
+            if (matches.size > 1) error("Submit response view is ambiguous")
+
+            val progress = LinkConsentDebugObservation.snapshot()
+            val scrollReady = progress == null || progress.get("last_ui_stage")?.let {
+                !it.isJsonNull && it.asString == "UI_RESPONSE_RETURNED"
+            } == true
+            val direction = planner.nextDirection(contentReady = scrollReady)
+            if (direction == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val scroll = pageScrollableNode(root)
+            if (scroll == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val action = if (direction == LinkConsentViewportSearchPlanner.Direction.BACKWARD)
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            val moved = try { scroll.performAction(action) } catch (_: Exception) { false }
+            planner.recordActionResult(moved)
+            SystemClock.sleep(200)
+        }
+        error("Submit response view was not made visible before the bounded wait elapsed")
+    }
+
     /** Only fixed UI stages are exported; neither the accessibility tree nor errors are saved. */
     private fun recordPreparation(stage: String) {
         require(stage in setOf("REVIEW_READY", "PREPARE_API_REJECTED", "DTO_REJECTED",
@@ -635,7 +681,7 @@ class LinkConsentPhoneUiTest {
         LinkConsentDebugObservation.recordTestStage("ALERT_VERIFIED")
         clickLabel("明确授权", timeoutMs = 10_000)
         LinkConsentDebugObservation.recordTestStage("ALERT_POSITIVE_CLICKED")
-        scrollToText("授权响应已返回。请重读双方证明状态")
+        scrollToSubmitResponse(timeoutMs = 20_000)
         awaitRoot { root -> visibleText(root).any { it.contains("授权响应已返回。请重读双方证明状态") } }
         LinkConsentDebugObservation.recordViewport("VISIBLE")
 

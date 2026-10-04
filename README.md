@@ -78,12 +78,20 @@ text. Callback entry, encrypted request outcome and Target KEY acceptance
 remain **UNKNOWN**; the original operation must be preserved. SOURCE results
 were partial, and Target `NONE` and bilateral consent were **NOT_RUN**.
 
-The next candidate adds passive debug observations of fixed UI/native stages
-and allowlisted error codes, with no messages, proof bytes or keys. Observation
-metadata cannot establish grant acceptance. Its 30 focused Python/JavaScript
-tests, TypeScript and ESLint passed. Subsequent build and delivery receipts at
-`/gpu1-share/data/cicada-client/v164-f34-submit-observation-20261004` bind the
-exact clean commit and APK pair. Fresh live acceptance remains **NOT_RUN**.
+The [F35 report](docs/client-hub-v1.6.4-0213538-f35-validation.md) records the
+next run from Client `a80d1a9`. Its passive debug observer confirmed callback
+entry, scope guard success, a resolved native response with `ok=true`, and
+return to the UI. The response text was not visible and JUnit failed. This
+does not establish a current Target grant or bilateral acceptance; the
+original operation remains preserved with an unknown outcome.
+
+The successor gives the response note a stable view ID and searches both page
+directions within the original 20-second deadline. It requires actual visible
+text and retains the complete Alert and bilateral checks. Pure Kotlin page
+search regressions and affected static checks are recorded with the subsequent
+build and delivery receipts at
+`/gpu1-share/data/cicada-client/v164-f35-response-viewport-20261004`, binding
+the exact clean commit and APK pair. Fresh live acceptance remains **NOT_RUN**.
 Physical Android, public HTTPS, native Worker acceptance, Link recovery faults
 and bilateral consent remain **NOT_RUN**. Ordinary cross-user messages remain
 closed while `external_thread_links=false`.
