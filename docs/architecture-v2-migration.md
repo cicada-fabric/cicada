@@ -1,5 +1,7 @@
 # Architecture v2.3 数据与协议迁移
 
+SQLite 连接的 `busy_timeout` 由 Store opener 与迁移 runner 统一设置为 30000 ms；Relay schema hook 保留已有连接策略，不再把 fresh 迁移中的同一连接降至 5000 ms。已迁移 reopen 和 fresh 的权威配置因此一致。该连接策略修复不修改历史 DDL、migration ID/checksum 或 schema58，也不改变 Task/资源 epoch、身份或恢复权限。[本次有界验证](../.cicada-data/v01-finish-20261002/sqlite-timeout-owner-20261004/result.json)的新增确定性配置测试与原两 consumer 并发打开测试各 normal/race 一次，分别 3 top-level + 2 subtests PASS、0 fail/skip；旧 broad race 的 v29 SQLITE_BUSY/超时失败、clean857 的精确专项 PASS 仍保留各自来源，不由单次通过推定所有并发情形已闭合。
+
 ## 2026-10-02 current migration boundary — schema57 preserves D1 schema56
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；

@@ -674,9 +674,6 @@ func (s *Store) initializeRelaySenderEndpointAskIndex() error {
 }
 
 func (s *Store) initializeRelayV2Schema() error {
-	if _, err := s.db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		return fmt.Errorf("configure relay v2 sqlite busy timeout: %w", err)
-	}
 	if _, err := s.db.Exec(relayV2Schema); err != nil {
 		return fmt.Errorf("initialize relay v2 schema: %w", err)
 	}
@@ -725,7 +722,8 @@ CREATE INDEX IF NOT EXISTS relay_v2_message_payload_mode_idx
 // InitializeRelayV2Schema is an exported migration hook for programs that
 // construct Store around an already-open database.  Store.initialize calls
 // the unexported hook in the normal application path once the migration is
-// wired by the control-plane owner.
+// wired by the control-plane owner. SQLite connection policy belongs to the
+// opener; this schema hook preserves its configured busy timeout.
 func (s *Store) InitializeRelayV2Schema() error { return s.initializeRelayV2Schema() }
 
 func normalizeRelayAdmissionLimits(limits RelayAdmissionLimits) (RelayAdmissionLimits, error) {
