@@ -28,9 +28,11 @@ func serveFabricOnly(host string, port int, config control.Config) error {
 }
 
 func serveFabricOnlyWithTransport(host string, port int, config control.Config, pqConfig *nodetransport.Config) error {
-	if err := store.RequireStateRestoreStartupAllowed(config.StateDir); err != nil {
+	startup, err := store.AcquireStateStartup(config.StateDir)
+	if err != nil {
 		return err
 	}
+	defer startup.Close()
 	identityPath := config.IdentityFile
 	if identityPath == "" {
 		identityPath = filepath.Join(config.StateDir, "e2ee", "identity.json")

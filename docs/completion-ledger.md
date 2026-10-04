@@ -1,6 +1,12 @@
 # Architecture v2.3 completion ledger
 
-## 2026-10-04 current ledger — integrated dirty source; product PARTIAL
+## 2026-10-04 当前账本入口
+
+整体 **PARTIAL**。当前收尾只维护[唯一状态表](architecture-v2-status.md#current-closeout)，精确结果见[验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。Resource6 / schema 58、Main Hub dirty delta 的 normal / vet PASS、F38 fixed-021 / Client caa9、Native clean-857 prepare 各自归源；本 Main58 race 未重跑。F38 的五 Link 授权 scoped PASS 不增加旧 V01–V88 计数，也不关闭完整 G1、安全恢复、SQLite v29 未闭失败或外部环境 gate。
+
+下方旧计数和记录保留为历史，不能相加为当前完成率。
+
+## 2026-10-04 historical ledger — integrated dirty source; product PARTIAL
 
 The frozen combined full-Go run passed on the integrated dirty source: exit 0, 30 packages, 2,599 PASS events, 18 SKIP, 0 FAIL. Same-source final vet exited 0. These results are not a clean-326ecb9-only claim; exact source pins and receipts are in the validation report. The earlier restore-only failure and its exact-source PASS/PASS/FAIL reproduction remain preserved.
 
@@ -27,7 +33,7 @@ Overall v0.1 is **PARTIAL**. Clean-021 Hub/contract and clean-480 Node package k
 ## Historical ledgers before this checkpoint
 
 
-## 2026-10-02 current ledger — integration complete; QA PASS（有限范围）; product PARTIAL
+## Historical 2026-10-02 ledger — integration complete; QA PASS（有限范围）; product PARTIAL
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入

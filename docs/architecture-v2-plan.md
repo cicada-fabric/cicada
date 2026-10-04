@@ -1,6 +1,12 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-04 current plan — integrated dirty source based on 326ecb9; v0.1 PARTIAL
+## 2026-10-04 当前行动
+
+当前状态统一以[唯一收尾表](architecture-v2-status.md#current-closeout)为准，证据与源归属见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。F38 已关闭固定 clean-021 + Client caa9 的五项 Link 授权 gate；后续动作不再以五操作“未开放”作为该组合的阻塞。
+
+Main schema 58 Hub delta 的本次 normal / vet 已通过；下一步完成已在准备的正式 G1 dispatch。本 Main58 race 未重跑，外部 clean-857 race 保持独立归属；安全恢复激活、权威 floor / 不确定结果对账与历史 SQLite v29 broad-race 失败仍单列未闭。physical Android、public HTTPS、双物理 Node 按各自环境验收。已有 PASS 不推导为路由、模型消费或生产恢复通过；不新增 ETA 或完成率。
+
+## 2026-10-04 historical plan — integrated dirty source based on 326ecb9; v0.1 PARTIAL
 
 The combined full-Go and same-source vet results now pass on the frozen integrated dirty source; they are attributed to the captured source tree, not to clean 326ecb9 alone. The source capture and receipt identities are in the validation report. Earlier restore-only aggregate failure and exact-source PASS/PASS/FAIL reproduction remain preserved as historical evidence.
 
@@ -19,7 +25,7 @@ Physical-device, public HTTPS and production gates remain separately NOT_RUN; no
 
 以下旧 current 计划保留当时来源与退出条件；不作为本轮新的阻塞清单。
 
-## 2026-10-02 current plan — bounded evidence accepted; product remains PARTIAL
+## Historical 2026-10-02 plan — bounded evidence accepted; product remains PARTIAL
 
 本检查点基线为 `52cc2f6e0f97829332be372cb302cdb9f0ab0558`，来源域分别列出；当前 `dev` 以 `git rev-parse HEAD` 为准。本候选只更新文档，不把候选测试树或旧镜像归到该提交。软件 `0.1.0-dev`、Architecture v2.3、Hub schema 57、Client contract `client-hub-v1.6.4`、wire 1 与 catalog 55 是不同版本域；catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
 

@@ -11,7 +11,38 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/store"
+	"github.com/gofrs/flock"
 )
+
+func TestHubRestoreHoldFabricMaintenanceBusyAndErrorCleanup(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lease := flock.New(state, flock.SetFlag(os.O_RDONLY))
+	ok, err := lease.TryLock()
+	if err != nil || !ok {
+		t.Fatalf("fixture lock: %v", err)
+	}
+	defer lease.Close()
+	if err := serveFabricOnly("127.0.0.1", 65536, control.Config{StateDir: state}); !errors.Is(err, store.ErrStateMaintenanceBusy) {
+		t.Fatalf("busy Fabric reached identity/listener: %v", err)
+	}
+	entries, err := os.ReadDir(state)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("busy Fabric wrote StateDir")
+	}
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := serveFabricOnly("127.0.0.1", 65536, control.Config{StateDir: state}); err == nil || !strings.Contains(err.Error(), "existing trusted identity") {
+		t.Fatalf("ordinary missing identity: %v", err)
+	}
+	ok, err = lease.TryLock()
+	if err != nil || !ok {
+		t.Fatalf("Fabric identity failure stranded lock: %v", err)
+	}
+}
 
 func TestHubRestoreHoldFabricStartupBeforeStoreIdentityAndListener(t *testing.T) {
 	root := t.TempDir()

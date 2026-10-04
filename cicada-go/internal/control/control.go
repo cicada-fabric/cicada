@@ -179,9 +179,11 @@ var (
 )
 
 func New(config Config) (*Control, error) {
-	if err := store.RequireStateRestoreStartupAllowed(config.StateDir); err != nil {
+	startup, err := store.AcquireStateStartup(config.StateDir)
+	if err != nil {
 		return nil, err
 	}
+	defer startup.Close()
 	if err := os.MkdirAll(config.WorkspaceRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("create workspace root: %w", err)
 	}
@@ -519,14 +521,12 @@ func ideaRevisitTime(value string) (time.Time, bool) {
 
 func (c *Control) Shutdown(ctx context.Context) error {
 	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return nil
-	}
-	c.closed = true
-	close(c.shutdown)
-	for _, worker := range c.running {
-		worker.cancel()
+	if !c.closed {
+		c.closed = true
+		close(c.shutdown)
+		for _, worker := range c.running {
+			worker.cancel()
+		}
 	}
 	c.mu.Unlock()
 

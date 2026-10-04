@@ -9,7 +9,76 @@ import (
 	"testing"
 
 	"github.com/cicada-ai/cicada/internal/store"
+	"github.com/gofrs/flock"
 )
+
+func TestHubRestoreHoldMaintenanceBusyAndConstructorCleanup(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "state")
+	if err := os.Mkdir(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lease := flock.New(state, flock.SetFlag(os.O_RDONLY))
+	ok, err := lease.TryLock()
+	if err != nil || !ok {
+		t.Fatalf("fixture lock: %v", err)
+	}
+	defer lease.Close()
+	workspace := filepath.Join(root, "workspace")
+	c, err := New(Config{StateDir: state, WorkspaceRoot: workspace})
+	if c != nil || !errors.Is(err, store.ErrStateMaintenanceBusy) {
+		t.Fatalf("busy Control: %v", err)
+	}
+	for _, path := range []string{workspace, filepath.Join(state, "cicada.sqlite3"), filepath.Join(state, "e2ee")} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("busy Control wrote before ownership")
+		}
+	}
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspace, []byte("synthetic workspace obstacle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := New(Config{StateDir: state, WorkspaceRoot: workspace}); c != nil || err == nil {
+		t.Fatal("invalid workspace accepted")
+	}
+	ok, err = lease.TryLock()
+	if err != nil || !ok {
+		t.Fatalf("constructor error stranded lock: %v", err)
+	}
+}
+
+func TestHubRestoreHoldMaintenanceShutdownTimeoutAndRetry(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "state")
+	c, err := New(Config{StateDir: state, WorkspaceRoot: filepath.Join(root, "workspace")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := c.Shutdown(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("shutdown did not wait for writer: %v", err)
+	}
+	lease := flock.New(state, flock.SetFlag(os.O_RDONLY))
+	ok, err := lease.TryLock()
+	if err != nil || ok {
+		t.Fatalf("timeout released writer ownership: %v", err)
+	}
+	c.wg.Done()
+	if err := c.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ok, err = lease.TryLock()
+	if err != nil || !ok {
+		t.Fatalf("safe shutdown retry stranded writer ownership: %v", err)
+	}
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestHubRestoreHoldControlStartupBeforeAnyWrites(t *testing.T) {
 	root := t.TempDir()

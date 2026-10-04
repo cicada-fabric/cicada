@@ -36,12 +36,48 @@ the original archive remains read-only and means integrity only.
 
 `store.New` is the low-level writable maintenance primitive, not a network
 startup or activation gate. Explicit offline evidence can still inspect the
-restored database using immutable/read-only SQLite. Callers must stop all target
-writers/startup orchestration during restore, as required by the existing offline
-backup/restore contract. This change does not claim concurrent startup/restore
-mutual exclusion, protection against an operator deleting both records, or
-protection against a hostile filesystem owner. Custom server construction that
-bypasses the two product startup paths must supply its own hold guard.
+restored database using immutable/read-only SQLite. Custom server construction
+that bypasses the two product startup paths must supply its own hold guard.
+
+Every writable `store.New` now acquires a nonblocking shared lock on the StateDir
+directory inode before tightening permissions, creating SQLite files or migrating
+schema. It retains the lock until successful database close. Control and
+Fabric-only startup check both holds, acquire shared directory ownership, then
+check both holds again before workspace/identity/Store/listener work. Startup
+ownership overlaps the Store lease. A Control shutdown timeout retains its
+Store lease; a later shutdown may finish waiting and close it. A database close
+error retains uncertain ownership and remains an error on repeated close.
+
+Offline backup and restore acquire exclusive directory ownership. Conflicting
+participating writers, including an idle open Store, return an
+`errors.Is(err, store.ErrStateMaintenanceBusy)` error immediately, without a
+wait or automatic retry. Backup acquires before destination writes and keeps its
+existing SQLite snapshot transaction. Restore verifies the archive read-only,
+then establishes an empty 0700 target directory if absent. Concurrent startup
+and restore creators converge on the same inode. Acquisition failure may leave
+that empty directory; it never removes an existing target to make progress.
+Emptiness and both holds are checked under exclusive ownership.
+
+Restore locks both the empty target and staging directory inodes. It publishes
+with a single atomic rename over the empty target, retaining both locks through
+the published-inode check and target-parent fsync. There is no remove-then-rename
+window. A delayed opener of the old inode, including an obsolete bind mount,
+fails the held-descriptor/live-directory identity or positive-link-count check.
+Constructor and pre-publication failures close their descriptors and discard only
+unpublished staging; publication failure preserves all already registered holds.
+No ownership lock creates an archive payload file or changes backup format 1.
+
+This fence supports participating Hub writers on Linux filesystems that support
+directory flock and atomic empty-directory replacement. Directory-only locks
+allow the default non-root Hub to use `/state` without permission to write `/`;
+different bind-mount paths of the same backing directory contend on the same
+inode. A mounted restore target that the kernel refuses to replace fails closed,
+with no unlink fallback. Existing ownership, real-directory/sticky checks and
+0700 protection remain enforced; an unsafe hold registry is never repaired.
+The offline operational contract still requires stopping external writers and
+startup orchestration. Raw SQLite/filesystem writers, arbitrary moved/copied
+state, an operator deleting both holds, hostile-owner replacement and unsupported
+filesystems remain outside this fence. Lock acquisition never grants activation.
 
 Future release requires independently authoritative current crypto/replay
 watermarks, current identity/device/credential/SessionBinding epochs, retained
@@ -50,8 +86,9 @@ provider and resource outcomes under trusted authorization. A verified archive,
 read-only recovery status, signed old bundle or `ACTIVE` label cannot authorize
 release.
 
-The [validation receipt](../.cicada-data/hub-restore-quarantine-20261004/receipt.json)
-records final scoped normal/race PASS: 11 top-level tests and 12 subtests in each,
+The earlier paired-marker checkpoint's
+[validation receipt](../.cicada-data/hub-restore-quarantine-20261004/receipt.json)
+records its scoped normal/race PASS: 11 top-level tests and 12 subtests in each,
 zero skips/failures, plus affected Store/Control/CLI vet PASS. Tests ran with
 Go 1.27.1 in pinned image
 `sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`,
@@ -71,3 +108,39 @@ archived/original files, durable pre-publication hold, failed publication,
 paired-marker damage, parent aliases, unsafe namespace inspection, both actual
 startup constructors and ordinary startup regression. They do not demonstrate a
 nonce exploit, production recovery, Native Runtime recovery or safe activation.
+That receipt predates directory maintenance locking and does not validate it.
+
+The maintenance-lock checkpoint uses a read-only clean
+`857407e6f5d7d9a1ac8aa10c2db8abe726168ea0` source snapshot plus a nine-file
+dirty Go overlay. Its source identity includes the full snapshot inventory,
+overlay hashes and exact patch; it cannot be attributed to that HEAD alone.
+Evidence is retained in the task-local
+[maintenance validation receipt](/home/zyf/CICADA_restore_validation/.cicada-data/restore-validation/hub-maintenance-lock-20261004/validation-receipt.json).
+Go 1.27.1 ran offline in the same pinned compiler image above, as UID 1000 with
+read-only source/root filesystem and two actual bind aliases of one private
+StateDir. Scoped normal PASS covers 23 top-level tests (including the subprocess
+helper entry) and 18 subtests, with zero skips/failures. Scoped race PASS combines
+the first attempt's three Control/four CLI tests with a successful Store-only
+retry (16 top-level tests and 18 subtests). Three-package vet and Go 1.27.1
+format checks also pass. All nine compiled source hashes match across those
+successful checks.
+
+The retained first normal failure establishes that `os.Rename` rejects an
+existing directory before invoking the kernel; the final implementation uses
+one `syscall.Rename`, with no unlink fallback. Its exact failing patch is
+preserved against the same 857 baseline. The first race attempt exceeded its
+120-second package timeout during modernc/schema initialization; the unchanged
+Store selector passed with a 600-second timeout. Already-passed Control/CLI
+race checks were retained without repetition. The final selector is:
+
+```text
+^(TestState(Maintenance|Backup|RestoreHold)|TestHub(Backup|RestoreHold)|TestMigrationBackup)
+```
+
+The bounded tests cover both process interleavings, absent/existing-empty
+targets, old/new inode handoff, stale openers, actual non-root bind-mount
+contention, constructor/close/shutdown failure cleanup, process death retaining
+both holds, and unchanged archive key/replay bytes. This compiler-container
+acceptance is separate from a disposable Hub TCP interop gate, which remains
+NOT_RUN in this checkpoint. Native Runtime, model/provider, Android, physical
+device, public HTTPS, production restore and safe activation remain NOT_RUN.

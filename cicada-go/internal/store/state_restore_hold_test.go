@@ -195,7 +195,17 @@ func TestStateRestoreHoldBeforePublicationAndInspectionFailures(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(target, "keep"), []byte("ordinary target"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := installRestoreTarget(staging, target); !errors.Is(err, ErrStateRestoreTargetNotEmpty) {
+	targetLease, err := acquireStateMaintenance(target, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetLease.Close()
+	stagingLease, err := acquireStateMaintenance(staging, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stagingLease.Close()
+	if err := installRestoreTarget(staging, target, targetLease, stagingLease); !errors.Is(err, ErrStateRestoreTargetNotEmpty) {
 		t.Fatal("publication replaced nonempty target")
 	}
 	if err := RequireStateRestoreStartupAllowed(target); !errors.Is(err, ErrStateRestoreQuarantined) {

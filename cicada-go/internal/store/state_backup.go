@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -70,6 +71,10 @@ type StateBackupOptions struct {
 type StateRestoreOptions struct {
 	BackupDir      string
 	TargetStateDir string
+
+	// Nil in production. Tests pause at ownership/publication boundaries
+	// without sleeps or changes to the command's public options.
+	maintenanceHook func(phase string) error
 }
 
 // StateBackupFile records one private payload file without exposing its bytes.
@@ -160,6 +165,14 @@ func BackupStateDirWithContext(ctx context.Context, options StateBackupOptions) 
 	if err != nil {
 		return nil, err
 	}
+	if err := RequireStateRestoreStartupAllowed(sourceDir); err != nil {
+		return nil, err
+	}
+	maintenance, err := acquireStateMaintenance(sourceDir, true, false)
+	if err != nil {
+		return nil, err
+	}
+	defer maintenance.Close()
 	if err := RequireStateRestoreStartupAllowed(sourceDir); err != nil {
 		return nil, err
 	}
@@ -347,15 +360,32 @@ func RestoreStateDirWithContext(ctx context.Context, options StateRestoreOptions
 	if err := RequireStateRestoreStartupAllowed(targetDir); err != nil {
 		return nil, err
 	}
-	if err := ensureRestoreTargetIsNewOrEmpty(targetDir); err != nil {
-		return nil, err
-	}
 	manifest, err := VerifyStateBackup(backupDir)
 	if err != nil {
 		return nil, err
 	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
+	}
+
+	maintenance, err := acquireStateMaintenance(targetDir, true, true)
+	if err != nil {
+		return nil, err
+	}
+	defer maintenance.Close()
+	if err := RequireStateRestoreStartupAllowed(targetDir); err != nil {
+		return nil, err
+	}
+	if err := ensureRestoreTargetIsNewOrEmpty(targetDir); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(targetDir, stateBackupDirMode); err != nil {
+		return nil, fmt.Errorf("protect empty restore target: %w", err)
+	}
+	if options.maintenanceHook != nil {
+		if err := options.maintenanceHook("target_locked"); err != nil {
+			return nil, err
+		}
 	}
 
 	parent := filepath.Dir(targetDir)
@@ -375,6 +405,11 @@ func RestoreStateDirWithContext(ctx context.Context, options StateRestoreOptions
 	if err := os.Chmod(temporary, stateBackupDirMode); err != nil {
 		return nil, fmt.Errorf("protect temporary restore directory: %w", err)
 	}
+	stagingMaintenance, err := acquireStateMaintenance(temporary, true, false)
+	if err != nil {
+		return nil, err
+	}
+	defer stagingMaintenance.Close()
 	payloadRoot := filepath.Join(backupDir, stateBackupPayloadName)
 	for _, file := range manifest.Files {
 		if err := contextErr(ctx); err != nil {
@@ -409,10 +444,18 @@ func RestoreStateDirWithContext(ctx context.Context, options StateRestoreOptions
 	if err := registerStateRestoreHold(temporary, targetDir, manifest); err != nil {
 		return nil, err
 	}
-	if err := installRestoreTarget(temporary, targetDir); err != nil {
+	if err := installRestoreTarget(temporary, targetDir, maintenance, stagingMaintenance); err != nil {
 		return nil, err
 	}
 	temporaryPublished = true
+	if err := validateStateMaintenanceHandoff(maintenance, stagingMaintenance, targetDir); err != nil {
+		return nil, fmt.Errorf("validate published restore ownership: %w", err)
+	}
+	if options.maintenanceHook != nil {
+		if err := options.maintenanceHook("published_locked"); err != nil {
+			return nil, err
+		}
+	}
 	if err := syncDirectory(parent); err != nil {
 		return nil, fmt.Errorf("sync published Hub restore: %w", err)
 	}
@@ -1538,31 +1581,23 @@ func filesToBackupFiles(files []sourceStateFile) []StateBackupFile {
 	return result
 }
 
-func installRestoreTarget(temporary, target string) error {
-	info, err := os.Lstat(target)
-	if errors.Is(err, fs.ErrNotExist) {
-		if err := os.Rename(temporary, target); err != nil {
-			return fmt.Errorf("publish restored StateDir: %w", err)
-		}
-		return nil
+func installRestoreTarget(temporary, target string, targetLease, stagingLease *StateMaintenanceLease) error {
+	if err := targetLease.validate(target); err != nil {
+		return err
 	}
-	if err != nil {
-		return fmt.Errorf("recheck restore target: %w", err)
+	if err := stagingLease.validate(temporary); err != nil {
+		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return ErrStateRestoreTargetNotEmpty
+	if err := ensureRestoreTargetIsNewOrEmpty(target); err != nil {
+		return err
 	}
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return fmt.Errorf("recheck restore target: %w", err)
-	}
-	if len(entries) != 0 {
-		return ErrStateRestoreTargetNotEmpty
-	}
-	if err := os.Remove(target); err != nil {
-		return fmt.Errorf("remove empty restore target placeholder: %w", err)
-	}
-	if err := os.Rename(temporary, target); err != nil {
+	// Both directory inodes remain locked through replacement and parent
+	// fsync. Never remove the empty target first: that would let a starter
+	// create and lock a third inode in the absent-path window.
+	// os.Rename rejects an existing directory before invoking the Unix
+	// syscall, even when it is empty. Use the kernel's atomic replacement;
+	// unsupported/mounted targets fail closed without an unlink fallback.
+	if err := syscall.Rename(temporary, target); err != nil {
 		return fmt.Errorf("publish restored StateDir: %w", err)
 	}
 	return nil

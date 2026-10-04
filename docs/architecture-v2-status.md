@@ -1,6 +1,23 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-04 current status — integrated dirty source based on committed 326ecb9; v0.1 PARTIAL
+<a id="current-closeout"></a>
+
+## 2026-10-04 当前收尾 — v0.1 PARTIAL
+
+本表是当前收尾的唯一状态入口；下方历史结果保留其实际 source、image、APK 与失败归属。Main 当前基线包含 Resource6 commit `670322473d04bbc26c2fa9176cc4c429b43f0c7b` / schema 58 及 Hub 维护 delta；它与 F38 固定的 clean-021 / schema 57 / `client-hub-v1.6.4` 是不同来源，不能互相继承验收。精确证据见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。
+
+| 收尾项 | 当前证据与边界 | 下一明确动作 |
+|---|---|---|
+| Resource6 / schema 58 | Task epoch 与 ResourceLease 生命周期修正在 `6703224`；focused normal、race 各 4 top-level + 12 subtests PASS，normal 约 10 秒，race 约 94 秒。旧 normal 111 PASS 保持原范围；broad race 的历史 v29 `SQLITE_BUSY` 失败与 600 秒 timeout 未关闭。 | 保留宽 race 未闭项，单独定位 SQLite v29 并按实际新来源复验。 |
+| Hub 维护集成 | 10 文件 patch `53f4b4f3ac24636ad2170f120765b05bf59ed27e37d40e65c7f8bc788c1ef88c` 已 exact apply 到 Main schema 58 dirty source；UID1000 + 双 bind normal 为 23 top-level + 18 subtests / 41 PASS / 0 fail/skip，vet exit 0。10 candidate + 877 Go inputs 未变、owned resources 不存在。首次 root / 缺双 bind 的 39 PASS / 2 SKIP 保留。外部 clean-857 race 单列，本 Main58 race 未重跑。 | 保持本次 normal / vet 的同源归属；若需 Main58 race 结果，另验该精确来源，不能继承外部 race。 |
+| Client 五项 Link 授权 | F38 在 fixed clean-021 + clean Client `caa9e4c725a841a1ce8488fbf339ca554d2939ed` 上 scoped PASS：13 JUnit、0 fail/skip，六签名、六阶段 DONE / pending null，KEY 双侧 ACCEPTED 与 NONE 当前双侧 VERIFIED。实际 RN review / Alert / 自动模拟器确认通过；37 项绑定证据已由 Root 核对。 | 已关闭该固定组合的五操作授权 gate；路由、消息/模型消费及其它环境分别验收。F35–F37 的 FAIL / UNKNOWN 不改写、不自动重试旧包。 |
+| Native / G1 | clean-857 preparation PASS（`b3711815…`），正式完整 G1 **NOT_RUN**，dispatch 准备中。原严格上下文 Golden FAIL 与 original-A continuation UNKNOWN 保持原归属。 | 完成当前正式 dispatch 的上下文与固定输入核对，再记录完整 G1 的实际结果。prepare 不计运行 PASS。 |
+| 恢复安全 | quarantine / hold 与既有确定性检查已存在；安全激活、独立权威 freshness floor 对账及不确定结果对账**未实现**。N4 的设备登记精确重试与 RPC recover 已实现，不能与恢复后解除隔离混为一项。 | 补齐安全激活与 authority floor / uncertainty 对账，保持原 pending、计数与重放水位。 |
+| 外部环境 | physical Android、public HTTPS、双物理 Node **NOT_RUN**；当前证据不证明生产恢复、部署或外部进程安全停止。 | 按独立环境准备并执行各自 gate，单列 source、工件及结果。 |
+
+整体仍为 **PARTIAL**；不新增完成率或 ETA。旧 full-Go/vet、disposable TCP、clean Hub/Node 工件均只保持原源的有效结果。
+
+## 2026-10-04 historical status — integrated dirty source based on committed 326ecb9; v0.1 PARTIAL
 
 | Scope | Current result |
 |---|---|
@@ -21,7 +38,7 @@ Exact source, artifact and evidence identities are in the [validation report](v0
 
 以下旧 current 段落、计数及 FAIL/SKIP/NOT_RUN 均保留原来源，不能迁移为本轮最终结果。
 
-## 2026-10-02 current status — clean `6e5a897` base; v0.1 PARTIAL
+## Historical 2026-10-02 status — clean `6e5a897` base; v0.1 PARTIAL
 
 本页以 clean Core `dev` HEAD `6e5a8976337894e84729d95857d8424c5c4cf469` 为主仓基线。此前该基线范围的有界 Go selectors normal 与 race 各为 32 top-level / 97 subtest events PASS；Chrome 29/29 PASS 仍只归属先前 dd81575 freeze3 dirty Hub image/receipt，不能转作 clean-source Chrome 结果。较早远程 run `37044133045` 的 Core **FAIL** / Docker **SKIPPED** 原样保留，不以之后的修复候选改写该次结果。
 
@@ -775,8 +792,8 @@ catalog SHA-256 为
 FAIL 记录；上表 PASS 对应修复并静止脚本后的第三次运行。临时容器、密钥和
 数据库均已清理，原有开发 Hub/模拟器未被替换。没有付费模型调用。
 
-本轮没有 DB、密钥或 replay 迁移；登记丢响应与 `UNCERTAIN` pending 恢复
-仍待 N4。内层 RPC 仍部分使用文字形状引用，并非完整 JSON Schema。以下
+该历史规范化切片当时没有 DB、密钥或 replay 迁移；登记丢响应与 `UNCERTAIN` pending 恢复
+在该来源仍待 N4。后续 N4 已实现，见顶部当前收尾表及下方后续检查点。内层 RPC 仍部分使用文字形状引用，并非完整 JSON Schema。以下
 Architecture v2 各阶段的 PARTIAL 结论不因工程门禁完善而改变。
 
 ## 2026-09-24 广播与真实跨 Node 原生验收增量

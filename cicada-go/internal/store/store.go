@@ -396,8 +396,11 @@ type Permission struct {
 }
 
 type Store struct {
-	db *sql.DB
-	mu sync.Mutex
+	db          *sql.DB
+	mu          sync.Mutex
+	closeMu     sync.Mutex
+	closeErr    error
+	maintenance *StateMaintenanceLease
 
 	// migrationHook is intentionally private and nil in production.  Store
 	// tests use it to inject a failure at a version boundary and prove that a
@@ -406,23 +409,29 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
-	if err := protectSQLiteState(path); err != nil {
+	dir, err := stateMaintenanceSQLiteDir(path)
+	if err != nil {
 		return nil, err
+	}
+	lease, err := acquireStateMaintenance(dir, false, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := protectSQLiteState(path); err != nil {
+		return nil, errors.Join(err, lease.Close())
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, errors.Join(fmt.Errorf("open sqlite: %w", err), lease.Close())
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	store := &Store{db: db}
+	store := &Store{db: db, maintenance: lease}
 	if err := store.initialize(); err != nil {
-		db.Close()
-		return nil, err
+		return nil, errors.Join(err, store.Close())
 	}
 	if err := protectSQLiteFiles(path); err != nil {
-		_ = db.Close()
-		return nil, err
+		return nil, errors.Join(err, store.Close())
 	}
 	return store, nil
 }
@@ -1012,7 +1021,19 @@ func (s *Store) ensureColumn(table, column, ddl string) error {
 	return nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	// sql.DB.Close waits for running queries. A close error retains directory
+	// ownership; offline maintenance must not assume uncertain writers stopped.
+	if s.closeErr != nil {
+		return s.closeErr
+	}
+	if s.closeErr = s.db.Close(); s.closeErr != nil {
+		return s.closeErr
+	}
+	return s.maintenance.Close()
+}
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
