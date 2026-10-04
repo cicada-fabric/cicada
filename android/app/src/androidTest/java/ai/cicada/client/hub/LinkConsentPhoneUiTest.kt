@@ -482,6 +482,125 @@ class LinkConsentPhoneUiTest {
         error("Could not scroll to the requested visible Link review content")
     }
 
+    /** Finds the one real app status-read control, then activates it once. */
+    private fun clickLinkKeyStatusRead(timeoutMs: Long = 20_000) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val planner = LinkConsentViewportSearchPlanner()
+        val ids = setOf("link-consent-key-status-read",
+            "${target.packageName}:id/link-consent-key-status-read")
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = uiRoot()
+            if (root == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val controls = descendants(root).filter { node ->
+                node.packageName?.toString() == target.packageName && node.viewIdResourceName in ids
+            }
+            if (controls.size > 1) error("Link key status control is ambiguous")
+            val control = controls.singleOrNull()
+            if (control != null && !control.isEnabled) {
+                // Busy/disabled is not evidence of completion and does not consume scroll budget.
+                SystemClock.sleep(200)
+                continue
+            }
+            if (control != null && control.isVisibleToUser) {
+                val clickTarget = nearestClickable(control)
+                if (clickTarget == null || clickTarget.packageName?.toString() != target.packageName ||
+                    !clickTarget.isVisibleToUser || !clickTarget.isEnabled || !clickTarget.isClickable) {
+                    SystemClock.sleep(200)
+                    continue
+                }
+                check(clickTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    "Could not activate the Link key status control"
+                }
+                return
+            }
+
+            val direction = planner.nextDirection()
+            if (direction == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val scroll = pageScrollableNode(root)
+            if (scroll == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val action = if (direction == LinkConsentViewportSearchPlanner.Direction.BACKWARD)
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            val moved = try { scroll.performAction(action) } catch (_: Exception) { false }
+            planner.recordActionResult(moved)
+            SystemClock.sleep(200)
+        }
+        error("Link key status control was not ready before the bounded wait elapsed")
+    }
+
+    /** Waits only on the app-owned status message; a submit response is still WAITING. */
+    private fun scrollToLinkKeyStatus(timeoutMs: Long = 30_000) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val planner = LinkConsentViewportSearchPlanner()
+        val messageIds = setOf("link-consent-message", "${target.packageName}:id/link-consent-message")
+        val controlIds = setOf("link-consent-key-status-read",
+            "${target.packageName}:id/link-consent-key-status-read")
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = uiRoot()
+            if (root == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val nodes = descendants(root)
+            val messages = nodes.filter { node -> node.packageName?.toString() == target.packageName &&
+                node.viewIdResourceName in messageIds &&
+                node.className?.toString()?.contains("EditText") != true }
+            if (messages.size > 1) error("Link key status message is ambiguous")
+            val message = messages.singleOrNull()
+            val statusText = message?.text?.toString().orEmpty()
+            if (message != null && message.isVisibleToUser) {
+                when (classifyLinkKeyStatusUiText(statusText)) {
+                    LinkKeyStatusUiResult.VERIFIED -> return
+                    LinkKeyStatusUiResult.READ_FAILED -> error("Link key status read failed")
+                    LinkKeyStatusUiResult.NOT_ACCEPTED -> error("Link key sides are not both accepted")
+                    LinkKeyStatusUiResult.NOT_BILATERAL -> error("Link key status is not bilaterally verified")
+                    LinkKeyStatusUiResult.UNEXPECTED_STATUS -> error("Link key status was unexpected")
+                    LinkKeyStatusUiResult.WAITING -> {
+                        SystemClock.sleep(200)
+                        continue
+                    }
+                }
+            }
+
+            val hiddenTerminalMessage = message != null && !message.isVisibleToUser &&
+                classifyLinkKeyStatusUiText(statusText) != LinkKeyStatusUiResult.WAITING
+            val controls = nodes.filter { node -> node.packageName?.toString() == target.packageName &&
+                node.viewIdResourceName in controlIds }
+            if (controls.size > 1) error("Link key status control is ambiguous")
+            val statusControl = controls.singleOrNull()
+            if (statusControl != null && !statusControl.isEnabled && !hiddenTerminalMessage) {
+                // The real action stays disabled while its read is in flight. Let it settle before scrolling.
+                SystemClock.sleep(200)
+                continue
+            }
+
+            val direction = planner.nextDirection()
+            if (direction == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val scroll = pageScrollableNode(root)
+            if (scroll == null) {
+                SystemClock.sleep(200)
+                continue
+            }
+            val action = if (direction == LinkConsentViewportSearchPlanner.Direction.BACKWARD)
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            val moved = try { scroll.performAction(action) } catch (_: Exception) { false }
+            planner.recordActionResult(moved)
+            SystemClock.sleep(200)
+        }
+        error("Link key status was not visibly verified before the bounded wait elapsed")
+    }
+
     /** Bounded response-only search; it never clicks or accepts a message without its stable app view ID. */
     private fun scrollToSubmitResponse(timeoutMs: Long = 20_000) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
@@ -748,9 +867,8 @@ class LinkConsentPhoneUiTest {
         awaitRoot { root -> visibleText(root).any { it.contains("授权响应已返回。请重读双方证明状态") } }
         LinkConsentDebugObservation.recordViewport("VISIBLE")
 
-        scrollToText("重读双方证明状态")
-        clickLabel("重读双方证明状态")
-        scrollToText("SOURCE ACCEPTED", timeoutMs = 30_000)
+        clickLinkKeyStatusRead(timeoutMs = 20_000)
+        scrollToLinkKeyStatus(timeoutMs = 30_000)
         val statusRoot = awaitRoot(30_000) { root -> visibleText(root).any {
             it.contains("SOURCE ACCEPTED") && it.contains("TARGET ACCEPTED") && it.contains("双方当前证明已独立核验")
         } }

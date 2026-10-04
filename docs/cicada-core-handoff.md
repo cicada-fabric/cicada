@@ -1,6 +1,46 @@
 # CICADA Client integration handoff
 
-## Current F36 outcome and list-observation successor — clean Core `0213538`
+## Current F37 outcome and status-label successor — clean Core `0213538`
+
+The [F37 validation report](client-hub-v1.6.4-0213538-f37-validation.md)
+binds Client `8e24b14a1f1eb80188e6e11b9f16d53d6afaf91d`, app
+`06698b9a6cf47f10592f45e1f0b3fcbf24cead9333e2c9cfeba96c16e68ab487`, test
+`624e48439792ffff2e8779409d02ec33c28ab19c11e53bea73e2366ac03507d7`, and the
+fixed clean v1.6.4 Core target. The real list refresh observed one `OK_NONEMPTY`
+row with the target node present and visible. Review waited for the external
+Owner signature; preparation and consent controls reached `REVIEW_READY` and
+`CONFIRM_READY`.
+
+The passive submit receipt records callback, UI scope guard, dispatch, native resolution
+with `native_ok=true`, `UI_RESPONSE_RETURNED`, and `viewport=VISIBLE`. Native
+packet pending remains **UNKNOWN**; these observations do not prove a current
+Target grant. At `kt751`, the test searched for the reread label;
+`clickLabel` at `kt752` returned. The 30-second
+`scrollToText("SOURCE ACCEPTED")` lookup then failed at `kt753` (helper stack
+location `scrollToText` line 482). The full bilateral check at `kt754` was not
+reached. JUnit failed once in 43.344 seconds. No refresh callback/result or
+SOURCE status value was retained, so the unique failure cause is unknown.
+
+The launcher terminal is **FAIL / `OUTCOME_UNKNOWN_PRESERVE_PENDING`**. No
+separate Root ACK attestation or independent Core closure was included in the
+F37 evidence reviewed here. Preserve the unknown Target outcome; do not retry.
+Android teardown and emulator absence checks passed. Native Worker, physical
+Android, and public HTTPS remain **NOT_RUN**.
+
+The W successor adds a fixed read-action test ID, a unique visible/enabled/
+clickable selector and exactly one click. It requires actual visible status
+text, searches backward and forward with at most 12 actions per direction
+within 30 seconds, and excludes `EditText` scrolling. Fixed failed or
+non-accepted statuses fail the test; the full bilateral assertion remains.
+This changes test selectors only, not Hub, native, cryptographic, Guard, or
+catalog behavior. Offline checks passed: 17 JavaScript tests, 23 Python tests,
+19 pure Kotlin cases (10 viewport, 9 list), TypeScript and ESLint; every exit
+code was 0 and all five receipts report unchanged source. At this source
+checkpoint, post-commit build and fresh live acceptance are **NOT_RUN**. Immutable receipts under
+`/gpu1-share/data/cicada-client/v164-f37-key-status-viewport-20261004` must
+bind the exact APK pair and 26 frozen references.
+
+## Historical F36 outcome and list-observation successor — clean Core `0213538`
 
 The [F36 validation report](client-hub-v1.6.4-0213538-f36-validation.md)
 binds Client `3254ba12cac22d0f77510999f53e6b6bc2c80aa8`, app SHA-256

@@ -109,5 +109,37 @@ fun main() {
     actionCapsStopRepeatedScrolling()
     noMatchTerminatesAtBothBoundaries()
     delayedContentReadinessPreservesFreshActionBudget()
-    println("LinkConsentViewportSearchRegression: PASS (6 cases)")
+    verifiedStatusRequiresBothAcceptedSidesAndTheCompleteNote()
+    nonAcceptedAndNonBilateralStatesAreFailures()
+    failedReadAndPriorSubmitTextStaySeparate()
+    nearMatchesCannotSatisfyTheStatusGate()
+    println("LinkConsentViewportSearchRegression: PASS (10 cases)")
+}
+
+private fun verifiedStatusRequiresBothAcceptedSidesAndTheCompleteNote() {
+    check(classifyLinkKeyStatusUiText("SOURCE ACCEPTED · TARGET ACCEPTED。" +
+        "双方当前证明已独立核验；这不代表消息已投递或模型已消费。") == LinkKeyStatusUiResult.VERIFIED)
+}
+
+private fun nonAcceptedAndNonBilateralStatesAreFailures() {
+    val incomplete = "双方当前授权尚未核验完整。"
+    for (state in listOf("MISSING", "KEY_BINDING_STALE", "OWNER_KEY_REVOKED", "PROOF_EXPIRED", "INVALID", "LEGACY_KEY_UNBOUND")) {
+        check(classifyLinkKeyStatusUiText("SOURCE $state · TARGET ACCEPTED。$incomplete") == LinkKeyStatusUiResult.NOT_ACCEPTED)
+        check(classifyLinkKeyStatusUiText("SOURCE ACCEPTED · TARGET $state。$incomplete") == LinkKeyStatusUiResult.NOT_ACCEPTED)
+    }
+    check(classifyLinkKeyStatusUiText("SOURCE ACCEPTED · TARGET ACCEPTED。$incomplete") == LinkKeyStatusUiResult.NOT_BILATERAL)
+}
+
+private fun failedReadAndPriorSubmitTextStaySeparate() {
+    check(classifyLinkKeyStatusUiText("当前双方证明读取或核验失败，请核对公钥固定与绑定后重读。") == LinkKeyStatusUiResult.READ_FAILED)
+    check(classifyLinkKeyStatusUiText("授权响应已返回。请重读双方证明状态；单方接受不代表 Link 已可用。") == LinkKeyStatusUiResult.WAITING)
+}
+
+private fun nearMatchesCannotSatisfyTheStatusGate() {
+    val valid = "SOURCE ACCEPTED · TARGET ACCEPTED。双方当前证明已独立核验；这不代表消息已投递或模型已消费。"
+    for (text in listOf(valid + "private detail", "prefix " + valid,
+        "SOURCE ACCEPTED · TARGET ACCEPTED。双方当前证明已独立核验",
+        valid.replace("TARGET ACCEPTED", "TARGET VERIFIED"), valid.replace(" · ", " → "))) {
+        check(classifyLinkKeyStatusUiText(text) != LinkKeyStatusUiResult.VERIFIED)
+    }
 }

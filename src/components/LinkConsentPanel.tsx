@@ -307,7 +307,8 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
           ? '签名证明格式有效；请核对授权范围后继续。' : '签名证明输入无效，请检查后继续。'}
         disabled={busy || !linkOwnerProofInputValid(proof)} onPress={confirm} />
     </View>}
-    <Action label="重读双方证明状态" disabled={busy} onPress={() => readGrants()} />
+    <Action label="重读双方证明状态" testID="link-consent-key-status-read"
+      disabled={busy} onPress={() => readGrants()} />
     <Action label="恢复原授权请求" disabled={busy} onPress={() => recover()} />
     {!!message && <Text testID="link-consent-message"
       accessibilityLiveRegion="polite" style={styles.note}>{message}</Text>}

@@ -110,6 +110,19 @@ the original forward-only 20-second behavior. Docker regression and static
 checks passed; post-commit APK build and live acceptance are **NOT_RUN** at
 this source checkpoint.
 
+The [F37 report](docs/client-hub-v1.6.4-0213538-f37-validation.md) records
+Client `8e24b14a1f1eb80188e6e11b9f16d53d6afaf91d` and app/test SHA-256
+`06698b9a6cf47f10592f45e1f0b3fcbf24cead9333e2c9cfeba96c16e68ab487` /
+`624e48439792ffff2e8779409d02ec33c28ab19c11e53bea73e2366ac03507d7`.
+The list refresh observed one visible row; the submit observer reported
+`native_ok=true` and `viewport=VISIBLE`, but JUnit failed during the later
+`SOURCE ACCEPTED` status-label lookup before bilateral verification. F37 remains
+**OUTCOME_UNKNOWN_PRESERVE_PENDING**. The W successor
+adds a fixed read selector while retaining the full bilateral check; offline
+checks passed (17 JavaScript, 23 Python, 19 pure Kotlin cases, TypeScript and
+ESLint; all exit 0). At this source checkpoint, the post-commit APK build and
+fresh live acceptance are **NOT_RUN**; external receipts bind the final artifacts.
+
 ## Imported clean v1.6.3 delivery
 
 The clean Core `e8a029d79bbdddb75ea376afa76e62a5c8444f59` contract and immutable image identities have been independently verified and imported. The catalog remains at 55 operations. This is a separate [provenance and offline validation record](docs/client-hub-v1.6.3-e8a029d-validation.md). That earlier provenance-only milestone retained its then-current v1.6.1 runtime pins. The active candidate now targets v1.6.4; no v1.6.3 APK or runtime result transfers to it. Fresh encrypted `link.key_manifest` is the Hub's authoritative current scope; Owner keys still require independent trust. Core has confirmed a reviewer permission/binding guard defect in this fixed release, so policy authorization awaits a separately verified correction.
