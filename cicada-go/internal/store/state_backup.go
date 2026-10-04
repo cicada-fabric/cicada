@@ -161,7 +161,7 @@ func BackupStateDirWithContext(ctx context.Context, options StateBackupOptions) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	sourceDir, destinationDir, sourceDB, err := validateBackupPaths(options)
+	sourceDir, _, _, err := validateBackupPaths(options)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +174,22 @@ func BackupStateDirWithContext(ctx context.Context, options StateBackupOptions) 
 	}
 	defer maintenance.Close()
 	if err := RequireStateRestoreStartupAllowed(sourceDir); err != nil {
+		return nil, err
+	}
+	allowed, err := hubRestoreBackupAllowlist(sourceDir)
+	if err != nil {
+		return nil, err
+	}
+	return backupStateDirUnderMaintenance(ctx, options, maintenance, allowed)
+}
+
+// Only callers holding the verified source incarnation may capture a capsule.
+func backupStateDirUnderMaintenance(ctx context.Context, options StateBackupOptions, maintenance *StateMaintenanceLease, allowed map[string]string) (*StateBackupManifest, error) {
+	sourceDir, destinationDir, sourceDB, err := validateBackupPaths(options)
+	if err != nil {
+		return nil, err
+	}
+	if err := maintenance.validate(sourceDir); err != nil {
 		return nil, err
 	}
 	if err := ensureBackupDestinationIsNew(destinationDir); err != nil {
@@ -202,7 +218,7 @@ func BackupStateDirWithContext(ctx context.Context, options StateBackupOptions) 
 	if err != nil {
 		return nil, fmt.Errorf("validate source SQLite snapshot: %w", err)
 	}
-	sourceFiles, err := collectStateFiles(sourceDir)
+	sourceFiles, err := collectStateBackupFiles(sourceDir, allowed)
 	if err != nil {
 		return nil, fmt.Errorf("inventory source StateDir: %w", err)
 	}
@@ -479,6 +495,9 @@ func validateBackupPaths(options StateBackupOptions) (string, string, string, er
 	if err != nil {
 		return "", "", "", fmt.Errorf("resolve backup destination: %w", err)
 	}
+	if err := validateStatePathSeparation(source, destination); err != nil {
+		return "", "", "", err
+	}
 	info, err := os.Lstat(source)
 	if err != nil {
 		return "", "", "", fmt.Errorf("stat source StateDir: %w", err)
@@ -516,6 +535,9 @@ func validateRestorePaths(options StateRestoreOptions) (string, string, error) {
 	target, err = filepath.Abs(target)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve restore target: %w", err)
+	}
+	if err := validateStatePathSeparation(backup, target); err != nil {
+		return "", "", err
 	}
 	info, err := os.Lstat(backup)
 	if err != nil {
@@ -559,6 +581,79 @@ func ensureRestoreTargetIsNewOrEmpty(path string) error {
 	}
 	if len(entries) != 0 {
 		return fmt.Errorf("restore target %s is not empty: %w", path, ErrStateRestoreTargetNotEmpty)
+	}
+	return nil
+}
+
+// validateStatePathSeparation rejects aliases before any lock, fence or copy.
+// Every existing component must be a real directory with known file identity.
+// Compare the tails below all shared ancestor inodes: lexical names alone miss
+// bind mounts, including two not-yet-created paths below aliased parents.
+// This is a preflight check, not protection against a privileged concurrent
+// mount or directory replacement. Offline callers must retain ownership of
+// the filesystem namespace while performing maintenance.
+func validateStatePathSeparation(paths ...string) error {
+	type ancestor struct {
+		path string
+		info os.FileInfo
+	}
+	type coordinate struct {
+		path      string
+		ancestors []ancestor
+	}
+	coordinates := make([]coordinate, 0, len(paths))
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			return ErrStateBackupPathUnsafe
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return errors.Join(ErrStateBackupPathUnsafe, err)
+		}
+		c := coordinate{path: abs}
+		for current := abs; ; current = filepath.Dir(current) {
+			info, err := os.Lstat(current)
+			if err == nil {
+				if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !os.SameFile(info, info) {
+					return ErrStateBackupPathUnsafe
+				}
+				c.ancestors = append(c.ancestors, ancestor{current, info})
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return errors.Join(ErrStateBackupPathUnsafe, err)
+			}
+			if current == filepath.Dir(current) {
+				if err != nil {
+					return ErrStateBackupPathUnsafe
+				}
+				break
+			}
+		}
+		coordinates = append(coordinates, c)
+	}
+	for i, first := range coordinates {
+		for _, second := range coordinates[i+1:] {
+			if statePathsOverlap(first.path, second.path) {
+				return ErrStateBackupPathUnsafe
+			}
+			for _, a := range first.ancestors {
+				for _, b := range second.ancestors {
+					if !os.SameFile(a.info, b.info) {
+						continue
+					}
+					x, err := filepath.Rel(a.path, first.path)
+					if err != nil {
+						return errors.Join(ErrStateBackupPathUnsafe, err)
+					}
+					y, err := filepath.Rel(b.path, second.path)
+					if err != nil {
+						return errors.Join(ErrStateBackupPathUnsafe, err)
+					}
+					if statePathsOverlap(x, y) {
+						return ErrStateBackupPathUnsafe
+					}
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -1121,7 +1216,14 @@ type sourceStateFile struct {
 	Path string
 }
 
+func collectStateBackupFiles(root string, allowed map[string]string) ([]sourceStateFile, error) {
+	return collectStateFilesAllowlist(root, allowed)
+}
+
 func collectStateFiles(sourceDir string) ([]sourceStateFile, error) {
+	return collectStateFilesAllowlist(sourceDir, nil)
+}
+func collectStateFilesAllowlist(sourceDir string, allowed map[string]string) ([]sourceStateFile, error) {
 	var files []sourceStateFile
 	err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -1138,6 +1240,13 @@ func collectStateFiles(sourceDir string) ([]sourceStateFile, error) {
 			return err
 		}
 		if reservedStateRestorePath(relative) {
+			if expected, ok := allowed[filepath.ToSlash(relative)]; ok {
+				data, err := hubRestoreReadPrivateFile(path)
+				if err != nil || hubRestoreHash(data) != expected {
+					return ErrStateBackupPathUnsafe
+				}
+				return nil
+			}
 			return fmt.Errorf("Hub recovery marker paths cannot be archived: %w", ErrStateBackupPathUnsafe)
 		}
 		// A colocated Node has independent SQLite databases, private keys and

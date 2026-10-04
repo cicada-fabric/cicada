@@ -2,7 +2,15 @@
 
 SQLite 连接的 `busy_timeout` 由 Store opener 与迁移 runner 统一设置为 30000 ms；Relay schema hook 保留已有连接策略，不再把 fresh 迁移中的同一连接降至 5000 ms。已迁移 reopen 和 fresh 的权威配置因此一致。该连接策略修复不修改历史 DDL、migration ID/checksum 或 schema58，也不改变 Task/资源 epoch、身份或恢复权限。[本次有界验证](../.cicada-data/v01-finish-20261002/sqlite-timeout-owner-20261004/result.json)的新增确定性配置测试与原两 consumer 并发打开测试各 normal/race 一次，分别 3 top-level + 2 subtests PASS、0 fail/skip；旧 broad race 的 v29 SQLITE_BUSY/超时失败、clean857 的精确专项 PASS 仍保留各自来源，不由单次通过推定所有并发情形已闭合。
 
-## 2026-10-02 current migration boundary — schema57 preserves D1 schema56
+## 2026-10-04 当前边界 — schema58 与 Hub 安全恢复集成
+
+本次 18 路径 Hub 恢复 patch 精确应用于 Main `333759e613c1f935185e06cc4b419fdeb045d812`，不修改历史 migration ID/checksum、schema58、Task epoch 或 Client/wire 契约。CLI 的独立 SOURCE pin / storage incarnation 登记与 prepare、reconcile、activate 职责分开；完整验证过的 C capsule 前滚，保留旧 B，Linux 单次目录 exchange 后以独立 authority epoch 和 receipt 校验启动许可，不合并 ratchet/counter、不重放 UNKNOWN。
+
+[Core manifest](../../CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-implementation-20261004/manifest.json) SHA-256 `3abc5faed25dcdbddb75f51a8c15183f1b726c0704ea285e8966a71d9f01018d` 绑定 d7 产品/API、两项 Main 夹具修正与 15 Go overlays 的精确来源：normal/race 各 40 top-level + 40 subtests PASS、1 SKIP，vet、Linux 编译、Darwin/Windows 编译 smoke、Python 7 项和 TCP 3 案例 PASS。该来源不同于 clean worker HEAD；Main 两项 P1 修补后的最终 dirty `333759e` 已完成一次 [full Go / vet](../.cicada-data/v01-finish-20261002/final-p1-integrated-QA-20261004T174729Z/receipt.json)（Go/module fingerprint `2490e9f8…`，2748 PASS / 20 SKIP / 0 FAIL，vet exit 0）与一次 [disposable Client interop](../.cicada-data/v01-finish-20261002/final-p1-integrated-client-interop-20261004T175142Z/closure.json)（selected build fingerprint `bbfa72cf…`，exit 0，owned cleanup 独立确认）。两组实际来源分列，不能将外部 scoped race 转归最终 Main；精确哈希与边界见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。
+
+非 Linux exchange 明确 fail closed；所有 ResourceLease 历史包括 RELEASED 均拒绝激活。failure latch 与 rollback 两项 fencing I/O 都失败后进程 crash 为 UNKNOWN；所有 sentinel 与独立 anchor 都被毁时不声称连续性检测。Native 严格 context FAIL、前台 queue NOT_RUN、生产恢复及源彻底丢失灾难激活 NOT_RUN，整体仍 PARTIAL。详见[操作与限制](hub-restore-safe-activation.md)。
+
+## Historical 2026-10-02 migration boundary — schema57 preserves D1 schema56
 
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入

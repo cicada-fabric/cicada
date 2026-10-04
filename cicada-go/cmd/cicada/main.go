@@ -41,7 +41,9 @@ func main() {
 		}
 	case "migration":
 		var err error
-		if len(os.Args) > 2 && (os.Args[2] == "backup" || os.Args[2] == "verify" || os.Args[2] == "validate" || os.Args[2] == "restore") {
+		if len(os.Args) > 2 && os.Args[2] == "recovery" {
+			err = migrationRestoreActivationCommand(os.Args[3:])
+		} else if len(os.Args) > 2 && (os.Args[2] == "backup" || os.Args[2] == "verify" || os.Args[2] == "validate" || os.Args[2] == "restore") {
 			err = migrationBackupCommand(os.Args[2:])
 		} else {
 			err = migrationInventoryCommand(os.Args[2:])

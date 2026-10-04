@@ -1,11 +1,13 @@
 package store
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -329,4 +331,200 @@ func bytesForBackupTest(size int, value byte) []byte {
 		result[index] = value
 	}
 	return result
+}
+
+// Hashes and modes prove that rejection precedes copying or SQLite writes;
+// synthetic private payload bytes are never included in failure output.
+func statePathSafetySnapshot(t *testing.T, root string) map[string]struct {
+	Digest [32]byte
+	Mode   os.FileMode
+} {
+	t.Helper()
+	result := make(map[string]struct {
+		Digest [32]byte
+		Mode   os.FileMode
+	})
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		var data []byte
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			data = []byte(target)
+		} else {
+			data, err = os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		result[rel] = struct {
+			Digest [32]byte
+			Mode   os.FileMode
+		}{sha256.Sum256(data), info.Mode()}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func TestStateBackupRejectsSymlinkDestinationBeforeCopy(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	db, err := New(filepath.Join(source, stateDatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "synthetic-private-payload"), []byte("synthetic path-safety payload; never production"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "source-alias")
+	if err := os.Symlink(source, alias); err != nil {
+		t.Fatal(err)
+	}
+	before := statePathSafetySnapshot(t, source)
+	_, err = BackupStateDir(source, filepath.Join(alias, "nested-backup"))
+	if !errors.Is(err, ErrStateBackupPathUnsafe) {
+		t.Errorf("symlink destination was not rejected before copy: %v", err)
+	}
+	if !reflect.DeepEqual(before, statePathSafetySnapshot(t, source)) {
+		t.Error("unsafe destination changed source database or payload inventory/bytes/mode")
+	}
+}
+
+func TestStateBackupRestoreRejectsParentAliases(t *testing.T) {
+	for _, kind := range []string{"source-parent", "backup-parent", "target-parent", "destination-parent", "dangling-parent", "file-parent"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			source, backup, target := filepath.Join(root, "source"), filepath.Join(root, "B"), filepath.Join(root, "target")
+			db, err := New(filepath.Join(source, stateDatabaseName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := BackupStateDir(source, backup); err != nil {
+				t.Fatal(err)
+			}
+			alias := filepath.Join(root, "alias")
+			if kind == "file-parent" {
+				if err := os.WriteFile(alias, []byte("synthetic non-directory parent"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				parent := root
+				if kind == "dangling-parent" {
+					parent = filepath.Join(root, "does-not-exist")
+				}
+				if err := os.Symlink(parent, alias); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := statePathSafetySnapshot(t, root)
+			switch kind {
+			case "source-parent":
+				_, err = BackupStateDir(filepath.Join(alias, "source"), filepath.Join(root, "second-B"))
+			case "backup-parent":
+				_, err = RestoreStateDir(filepath.Join(alias, "B"), target)
+			case "target-parent":
+				_, err = RestoreStateDir(backup, filepath.Join(alias, "target"))
+			default:
+				_, err = BackupStateDir(source, filepath.Join(alias, "second-B"))
+			}
+			if !errors.Is(err, ErrStateBackupPathUnsafe) {
+				t.Fatalf("%s not rejected: %v", kind, err)
+			}
+			if !reflect.DeepEqual(before, statePathSafetySnapshot(t, root)) {
+				t.Fatal("rejected alias changed database, payload or control files")
+			}
+		})
+	}
+}
+
+func statePathSafetyBindRoots(t *testing.T) (string, string) {
+	t.Helper()
+	a, b := os.Getenv("CICADA_STATE_PATH_MOUNT_A"), os.Getenv("CICADA_STATE_PATH_MOUNT_B")
+	if a == "" || b == "" {
+		t.Skip("two disposable bind mounts not supplied")
+	}
+	ai, err := os.Stat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bi, err := os.Stat(b)
+	if err != nil || !os.SameFile(ai, bi) {
+		t.Fatal("bind fixtures do not share backing directory inode")
+	}
+	name := filepath.Base(t.Name())
+	x, y := filepath.Join(a, name), filepath.Join(b, name)
+	if err := os.Mkdir(x, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(x); err != nil {
+			t.Error(err)
+		}
+	})
+	return x, y
+}
+
+func TestStateBackupRestorePhysicalBindAliases(t *testing.T) {
+	a, b := statePathSafetyBindRoots(t)
+	source, backup := filepath.Join(a, "source"), filepath.Join(a, "B")
+	db, err := New(filepath.Join(source, stateDatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BackupStateDir(source, backup); err != nil {
+		t.Fatal(err)
+	}
+	before := statePathSafetySnapshot(t, a)
+	t.Run("backup-inside-source", func(t *testing.T) {
+		_, err := BackupStateDir(source, filepath.Join(b, "source", "nested-B"))
+		if !errors.Is(err, ErrStateBackupPathUnsafe) {
+			t.Fatalf("physical nested backup accepted: %v", err)
+		}
+	})
+	t.Run("restore-inside-backup", func(t *testing.T) {
+		_, err := RestoreStateDir(backup, filepath.Join(b, "B", "nested-target"))
+		if !errors.Is(err, ErrStateBackupPathUnsafe) {
+			t.Fatalf("physical nested restore accepted: %v", err)
+		}
+	})
+	t.Run("same-uncreated-tail", func(t *testing.T) {
+		if err := validateStatePathSeparation(filepath.Join(a, "missing", "child"), filepath.Join(b, "missing")); !errors.Is(err, ErrStateBackupPathUnsafe) {
+			t.Fatalf("shared physical missing tail accepted: %v", err)
+		}
+	})
+	if !reflect.DeepEqual(before, statePathSafetySnapshot(t, a)) {
+		t.Fatal("denied bind alias changed source/backup inventory or bytes")
+	}
+	t.Run("disjoint-siblings", func(t *testing.T) {
+		if _, err := BackupStateDir(source, filepath.Join(b, "second-B")); err != nil {
+			t.Fatalf("disjoint physical sibling rejected: %v", err)
+		}
+	})
 }

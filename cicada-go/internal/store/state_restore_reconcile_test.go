@@ -1,0 +1,93 @@
+package store
+
+import (
+	"errors"
+	"testing"
+)
+
+func syntheticHubCheckpoint() *HubRestoreCheckpoint {
+	return &HubRestoreCheckpoint{HubID: "synthetic-independent-Hub", SchemaVersion: 58, SchemaFingerprint: "synthetic-exact-schema", IdentityFingerprints: map[string]string{"identity": "synthetic"}, Tables: []string{"contacts", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_control_rpc_sequences_v1", "client_device_request_recovery_v2", "shared_tasks_v2", "resource_v2_authority", "node_control_rpc_inbox_v1"}, rows: map[string]map[string]map[string]any{
+		"contacts":                          {"peer": {"send_sequence": int64(12), "received_sequences_json": "[7,9]"}},
+		"node_tls_epoch_floors_v1":          {"hub/node": {"floor": int64(8)}},
+		"node_tls_issuer_serial_floors_v1":  {"issuer": {"floor": "0000000000000000000000000000002a"}},
+		"node_control_rpc_sequences_v1":     {"binding/key": {"last_sequence": int64(41)}},
+		"client_device_request_recovery_v2": {"request": {"reserved_response_sequence": int64(17)}},
+		"shared_tasks_v2":                   {"task": {"owner_epoch": int64(11)}},
+		"resource_v2_authority":             {"resource": {"fencing_epoch": int64(19)}},
+		"node_control_rpc_inbox_v1":         {"unknown": {"state": "UNCERTAIN", "operation_id": "synthetic-exact-op", "request_digest": "synthetic-exact-digest", "sequence": int64(41)}},
+	}}
+}
+func TestHubForwardCoverageRejectsEveryBurnedFloorAndUnknownLoss(t *testing.T) {
+	for _, fault := range []struct {
+		name, table, key, column string
+		value                    any
+		remove                   bool
+	}{
+		{"contact send", "contacts", "peer", "send_sequence", int64(11), false},
+		{"contact replay", "contacts", "peer", "received_sequences_json", "[9]", false},
+		{"TLS epoch", "node_tls_epoch_floors_v1", "hub/node", "floor", int64(7), false},
+		{"TLS issuer serial", "node_tls_issuer_serial_floors_v1", "issuer", "floor", "00000000000000000000000000000029", false},
+		{"NodeControl burned sequence", "node_control_rpc_sequences_v1", "binding/key", "last_sequence", int64(40), false},
+		{"response reservation", "client_device_request_recovery_v2", "request", "reserved_response_sequence", int64(16), false},
+		{"Task ownership epoch", "shared_tasks_v2", "task", "owner_epoch", int64(10), false},
+		{"resource fencing", "resource_v2_authority", "resource", "fencing_epoch", int64(18), false},
+		{"UNKNOWN removal", "node_control_rpc_inbox_v1", "unknown", "", nil, true},
+		{"UNKNOWN execution claim", "node_control_rpc_inbox_v1", "unknown", "state", "COMPLETE", false},
+	} {
+		t.Run(fault.name, func(t *testing.T) {
+			base, current := syntheticHubCheckpoint(), syntheticHubCheckpoint()
+			if fault.remove {
+				delete(current.rows[fault.table], fault.key)
+			} else {
+				current.rows[fault.table][fault.key][fault.column] = fault.value
+			}
+			if e := CompareHubRestoreCoverage(base, current); !errors.Is(e, ErrHubRestoreCoverage) {
+				t.Fatalf("rollback passed: %v", e)
+			}
+		})
+	}
+	if e := CompareHubRestoreCoverage(syntheticHubCheckpoint(), syntheticHubCheckpoint()); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestHubForwardQuiescenceRefusesWorkersLeasesAndRedispatch(t *testing.T) {
+	f := newHubForwardFixture(t)
+	cp, e := InspectHubRestoreCheckpointReadOnly(f.source)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = RequireHubRestoreExecutionQuiescent(cp); e != nil {
+		t.Fatal(e)
+	}
+	for _, fault := range []struct{ table, field, value string }{{"workers", "status", "recovering"}, {"client_control_intents_v2", "state", "QUEUED"}, {"relay_v2_inbox", "state", "INJECTED"}, {"resource_v2_leases", "state", "UNCERTAIN"}, {"resource_v2_leases", "state", "RELEASED"}, {"shared_tasks_v2", "status", "RUNNING"}, {"external_actions", "status", "queued"}} {
+		t.Run(fault.table, func(t *testing.T) {
+			cp, e := InspectHubRestoreCheckpointReadOnly(f.source)
+			if e != nil {
+				t.Fatal(e)
+			}
+			cp.rows[fault.table]["synthetic-unsafe"] = map[string]any{fault.field: fault.value}
+			if fault.table == "resource_v2_leases" && fault.value == "RELEASED" {
+				cp.rows["resource_v2_authority"]["synthetic-resource"] = map[string]any{"state": "AVAILABLE", "current_lease_id": "", "fencing_epoch": int64(19)}
+			}
+			if e = RequireHubRestoreExecutionQuiescent(cp); !errors.Is(e, ErrHubRestoreExecutionPending) {
+				t.Fatalf("unsafe dispatcher passed: %v", e)
+			}
+		})
+	}
+}
+
+func TestHubForwardCoveragePreservesSQLiteStorageClass(t *testing.T) {
+	for _, change := range []struct {
+		name          string
+		before, after any
+	}{{"BLOB versus text", hubRestoreSQLiteBlob{Hex: "61"}, "blob:61"}, {"INTEGER versus REAL", int64(1), hubRestoreSQLiteReal{Bits: 0x3ff0000000000000}}} {
+		t.Run(change.name, func(t *testing.T) {
+			base, current := syntheticHubCheckpoint(), syntheticHubCheckpoint()
+			base.rows["node_control_rpc_inbox_v1"]["unknown"]["synthetic_tombstone_column"] = change.before
+			current.rows["node_control_rpc_inbox_v1"]["unknown"]["synthetic_tombstone_column"] = change.after
+			if e := CompareHubRestoreCoverage(base, current); !errors.Is(e, ErrHubRestoreCoverage) {
+				t.Fatalf("changed SQLite storage class passed: %v", e)
+			}
+		})
+	}
+}

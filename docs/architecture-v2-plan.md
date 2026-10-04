@@ -4,7 +4,7 @@
 
 当前状态统一以[唯一收尾表](architecture-v2-status.md#current-closeout)为准，证据与源归属见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。F38 已关闭固定 clean-021 + Client caa9 的五项 Link 授权 gate；后续动作不再以五操作“未开放”作为该组合的阻塞。
 
-Main schema 58 Hub delta 的本次 normal / vet 已通过；下一步完成已在准备的正式 G1 dispatch。本 Main58 race 未重跑，外部 clean-857 race 保持独立归属；安全恢复激活、权威 floor / 不确定结果对账与历史 SQLite v29 broad-race 失败仍单列未闭。physical Android、public HTTPS、双物理 Node 按各自环境验收。已有 PASS 不推导为路由、模型消费或生产恢复通过；不新增 ETA 或完成率。
+Hub 安全恢复 Core 18 路径与两项已复现 P1 入口修补已经合并，最终 dirty `333759e` / Go-module FP `2490e9f8…` 的一次完整 normal-Go / vet / disposable Client interop 均通过；范围、20 SKIP、各阶段定向 race 及保留的 timeout FAIL 统一见当前验证入口。下一步由 Root 审查并提交一个 restore + P1 checkpoint；随后按授权分别验证真实 Runtime 上下文/foreground 与 native direct 适配，不能将 `local_group_bridge.go` 当前 `UNSUPPORTED` 或 normal PASS 解释为真实 direct 成功。Linux 完整 C 交换与 SOURCE 连续权威不扩展为非 Linux 激活；ResourceLease 历史仍 hold，双 fencing I/O 失败后 crash UNKNOWN。Native 严格 context FAIL、SQLite 历史 broad-race FAIL 保留原归属；physical Android、public HTTPS、双物理 Node 与生产恢复另验。硬截止为 `2026-10-04 19:49:15 UTC`，19:44 起安全收尾，到点停止新增开发/测试，不自动续时；不新增 ETA 或完成率。
 
 ## 2026-10-04 historical plan — integrated dirty source based on 326ecb9; v0.1 PARTIAL
 

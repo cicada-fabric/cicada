@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -60,7 +61,16 @@ func networkOperatorCommand(operation string, args []string, output io.Writer) e
 		}
 		return json.NewEncoder(output).Encode(report)
 	}
-	persistence, err := store.New(*dbPath)
+	canonicalDB, err := canonicalExistingLocalHubDB(*dbPath)
+	if err != nil {
+		return err
+	}
+	startup, err := store.AcquireStateStartup(filepath.Dir(canonicalDB))
+	if err != nil {
+		return err
+	}
+	defer startup.Close()
+	persistence, err := store.New(canonicalDB)
 	if err != nil {
 		return err
 	}

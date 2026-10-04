@@ -93,7 +93,16 @@ func ownerKeyLocalCommand(args []string, output io.Writer) error {
 	} else if *keyID == "" || *expectedVersion <= 0 || *publicPath != "" || *expectKeyID != "" {
 		return errors.New(ownerKeyLocalUsage)
 	}
-	persistence, err := store.New(*dbPath)
+	canonicalDB, err := canonicalExistingLocalHubDB(*dbPath)
+	if err != nil {
+		return err
+	}
+	startup, err := store.AcquireStateStartup(filepath.Dir(canonicalDB))
+	if err != nil {
+		return err
+	}
+	defer startup.Close()
+	persistence, err := store.New(canonicalDB)
 	if err != nil {
 		return err
 	}
@@ -200,4 +209,26 @@ func generateOwnerKeyFiles(privatePath, publicPath string, output io.Writer) err
 		PublicPath  string `json:"public_path"`
 		PrivatePath string `json:"private_path"`
 	}{identity.Public().ID, publicAbs, privateAbs})
+}
+
+// Resolve the original spelling before lexical cleaning: symlink/.. can name a
+// different physical database than filepath.Dir or Abs would authorize. Both
+// the startup guard and Store must use the same verified absolute coordinate.
+func canonicalExistingLocalHubDB(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	physical, err := filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	lexical, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if physical != lexical {
+		return "", store.ErrStateBackupPathUnsafe
+	}
+	return physical, nil
 }

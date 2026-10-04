@@ -101,7 +101,21 @@ func StateRestoreQuarantineActive(stateDir string) (bool, error) {
 // before any writable Store, identity creation or listener. Store.New remains
 // the low-level maintenance primitive; opening it is not activation authority.
 func RequireStateRestoreStartupAllowed(stateDir string) error {
-	held, err := StateRestoreQuarantineActive(stateDir)
+	target, err := canonicalRestoreTarget(stateDir)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStateRestoreQuarantined, err)
+	}
+	registered, err := hubRestoreStartupPermission(target)
+	if registered {
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrStateRestoreQuarantined, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStateRestoreQuarantined, err)
+	}
+	held, err := StateRestoreQuarantineActive(target)
 	if err != nil {
 		return fmt.Errorf("cannot verify Hub restore quarantine: %w: %v", ErrStateRestoreQuarantined, err)
 	}
@@ -112,7 +126,7 @@ func RequireStateRestoreStartupAllowed(stateDir string) error {
 }
 
 func stateRestorePrivateDirectory(info os.FileInfo) bool {
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != stateBackupDirMode.Perm() {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode() != os.ModeDir|0700 {
 		return false
 	}
 	// Match the existing portable TLS ownership check: unknown ownership fails
@@ -127,7 +141,7 @@ func stateRestorePrivateDirectory(info os.FileInfo) bool {
 
 func reservedStateRestorePath(path string) bool {
 	path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
-	return path == stateRestoreMarker || strings.HasPrefix(path, stateRestoreMarker+"/") ||
+	return path == hubRestoreSourceMarker || strings.HasPrefix(path, hubRestoreSourceMarker+"/") || path == hubRestoreAuthorityDirectory || strings.HasPrefix(path, hubRestoreAuthorityDirectory+"/") || path == stateRestoreMarker || strings.HasPrefix(path, stateRestoreMarker+"/") ||
 		path == stateRestoreRegistry || strings.HasPrefix(path, stateRestoreRegistry+"/")
 }
 

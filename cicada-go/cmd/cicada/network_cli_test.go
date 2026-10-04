@@ -216,3 +216,72 @@ func TestMCPInitializeReportsBuildVersion(t *testing.T) {
 		t.Fatalf("MCP version differs from build version: %v", result["serverInfo"])
 	}
 }
+
+func TestNetworkOperatorRestoreStartupGuard(t *testing.T) {
+	for _, retired := range []bool{false, true} {
+		name := "held_target"
+		if retired {
+			name = "retired_source"
+		}
+		t.Run(name, func(t *testing.T) {
+			root, db, _, _, hubID := localOperatorRestoreFixture(t, retired)
+			localOperatorMustRejectWithoutWrites(t, root, func(output *bytes.Buffer) error {
+				return networkOperatorCommand("create", []string{"--db", db, "--network", "net_restore_guard", "--hub", hubID, "--name", "synthetic restore guard", "--owner", "owner_seed"}, output)
+			})
+			// list also opens Store.New and may initialize/migrate despite its name.
+			localOperatorMustRejectWithoutWrites(t, root, func(output *bytes.Buffer) error {
+				return networkOperatorCommand("list", []string{"--db", db}, output)
+			})
+			// Existing read-only inspection may maintain SQLite shared-memory
+			// sidecars, but must neither initialize nor mutate the database.
+			before, err := os.ReadFile(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := networkOperatorCommand("migration-dry-run", []string{"--db", db}, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(db)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("read-only inspection changed database: %v", err)
+			}
+		})
+	}
+}
+
+func TestNetworkOperatorStartupGuardFresh(t *testing.T) {
+	root := t.TempDir()
+	db := filepath.Join(root, "cicada.sqlite3")
+	persistence, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.EnsureLocalOwnerPrincipal("owner_seed"); err != nil {
+		t.Fatal(err)
+	}
+	hubID, err := persistence.GetClientHubID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := networkOperatorCommand("create", []string{"--db", db, "--network", "net_fresh_guard", "--hub", hubID, "--name", "synthetic fresh", "--owner", "owner_seed"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := networkOperatorCommand("list", []string{"--db", db}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output.Bytes(), []byte("net_fresh_guard")) {
+		t.Fatal("fresh local operator did not persist its Network")
+	}
+}
+
+func TestNetworkOperatorRawDatabaseCoordinate(t *testing.T) {
+	root, db, _, _, hubID := localOperatorRestoreFixture(t, false)
+	raw, ordinary := localOperatorRawDBAlias(t, db)
+	localOperatorMustRejectRawDBAlias(t, root, ordinary, func(output *bytes.Buffer) error {
+		return networkOperatorCommand("create", []string{"--db", raw, "--network", "net_alias", "--hub", hubID, "--name", "synthetic raw alias", "--owner", "owner_seed"}, output)
+	})
+}
