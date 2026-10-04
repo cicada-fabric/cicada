@@ -2,6 +2,8 @@ package fabric
 
 import (
 	"errors"
+	"fmt"
+
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -14,6 +16,17 @@ func (s *Service) resourceLeaseForActor(actor Actor, id string, action string) (
 		return nil, ErrNotFoundOrNotAuthorized
 	}
 	return lease, nil
+}
+
+func (s *Service) ReleaseResourceLease(actor Actor, id string, epoch int64) (*store.ResourceLease, error) {
+	if _, err := s.resourceLeaseForActor(actor, id, "task.claim"); err != nil {
+		return nil, err
+	}
+	lease, err := s.store.ReleaseResourceLeaseForActor(nativeActorScope(actor), id, epoch)
+	if errors.Is(err, store.ErrResourceStaleEpoch) || errors.Is(err, store.ErrResourceReconciliation) {
+		return nil, fmt.Errorf("%w: %w", ErrConflict, err)
+	}
+	return lease, mapRelayError(err)
 }
 
 func (s *Service) RenewResourceLease(actor Actor, id string, epoch int64, ttlSeconds int) (*store.ResourceLease, error) {

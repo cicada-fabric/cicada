@@ -160,6 +160,9 @@ func BackupStateDirWithContext(ctx context.Context, options StateBackupOptions) 
 	if err != nil {
 		return nil, err
 	}
+	if err := RequireStateRestoreStartupAllowed(sourceDir); err != nil {
+		return nil, err
+	}
 	if err := ensureBackupDestinationIsNew(destinationDir); err != nil {
 		return nil, err
 	}
@@ -330,6 +333,20 @@ func RestoreStateDirWithContext(ctx context.Context, options StateRestoreOptions
 	if err != nil {
 		return nil, err
 	}
+	backupDir, err = filepath.EvalSymlinks(backupDir)
+	if err != nil {
+		return nil, err
+	}
+	targetDir, err = canonicalRestoreTarget(targetDir)
+	if err != nil {
+		return nil, err
+	}
+	if statePathsOverlap(backupDir, targetDir) {
+		return nil, ErrStateBackupPathUnsafe
+	}
+	if err := RequireStateRestoreStartupAllowed(targetDir); err != nil {
+		return nil, err
+	}
 	if err := ensureRestoreTargetIsNewOrEmpty(targetDir); err != nil {
 		return nil, err
 	}
@@ -389,10 +406,16 @@ func RestoreStateDirWithContext(ctx context.Context, options StateRestoreOptions
 	if err := verifyRestoredStateInventory(temporary, manifest); err != nil {
 		return nil, err
 	}
+	if err := registerStateRestoreHold(temporary, targetDir, manifest); err != nil {
+		return nil, err
+	}
 	if err := installRestoreTarget(temporary, targetDir); err != nil {
 		return nil, err
 	}
 	temporaryPublished = true
+	if err := syncDirectory(parent); err != nil {
+		return nil, fmt.Errorf("sync published Hub restore: %w", err)
+	}
 	return &StateRestoreReport{TargetStateDir: targetDir, Verified: true, Manifest: *manifest}, nil
 }
 
@@ -1067,6 +1090,13 @@ func collectStateFiles(sourceDir string) ([]sourceStateFile, error) {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink is not allowed in StateDir: %s", path)
 		}
+		relative, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+		if reservedStateRestorePath(relative) {
+			return fmt.Errorf("Hub recovery marker paths cannot be archived: %w", ErrStateBackupPathUnsafe)
+		}
 		// A colocated Node has independent SQLite databases, private keys and
 		// replay counters. The Hub snapshot only locks cicada.sqlite3, so copying
 		// nodes/ here would produce an unsafe, apparently complete Node backup.
@@ -1382,6 +1412,9 @@ func validateManifestFiles(files []StateBackupFile) error {
 		// path: it has no Node lock or recovery quarantine.
 		if clean == "nodes" || strings.HasPrefix(clean, "nodes/") {
 			return fmt.Errorf("Node state requires a separate quarantined restore: %w", ErrStateBackupPathUnsafe)
+		}
+		if reservedStateRestorePath(clean) {
+			return fmt.Errorf("Hub recovery marker paths cannot be archived: %w", ErrStateBackupPathUnsafe)
 		}
 		if _, exists := seen[clean]; exists {
 			return fmt.Errorf("manifest contains duplicate file %q", clean)

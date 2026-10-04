@@ -1,12 +1,18 @@
 # Architecture v2.3 completion ledger
 
-## 2026-10-04 current ledger — source-attributed progress; product PARTIAL
+## 2026-10-04 current ledger — integrated dirty source; product PARTIAL
 
-The validated Core source checkpoint is base `4804411` plus the five-path §26.1 delta. Applied-source normal/race each passed 22 top-level plus 19 subtests (41 total), 0 fail/skip; affected vet/build, formatting, Client contract check and `machine discover` passed. Clean-480 full Go/vet `30/30`, `2518 PASS / 17 SKIP` remains the pre-delta baseline. The clean-021 Hub/contract, clean-480 Node package and clean Client `8f2900c` offline delivery remain separately attributed.
+The frozen combined full-Go run passed on the integrated dirty source: exit 0, 30 packages, 2,599 PASS events, 18 SKIP, 0 FAIL. Same-source final vet exited 0. These results are not a clean-326ecb9-only claim; exact source pins and receipts are in the validation report. The earlier restore-only failure and its exact-source PASS/PASS/FAIL reproduction remain preserved.
 
-Native original-A one-memory proof is scoped PASS. A later exact-resume/read continuation started one turn but remained incomplete (`OUTCOME_UNKNOWN_PRESERVE_PENDING`, cleanup true); the full v6 strict-context Golden remains FAIL. The faithful original-layout B history read passed; the actual queue-crash Native gate remains NOT_RUN. Client `a80d1a9` is an offline debug-observation successor with no online run; F34 remains attributed to the earlier `8f2900c` pair and timed out after the positive native Alert, leaving the bilateral outcome unknown. Current clean Client full bilateral acceptance remains open.
+The clean-326 actual injected-before-ledger queue gate later passed once on an independent historical synthetic B copy: one submission, adapter recovery INJECTION_UNCERTAIN, original/new attempt reinjection refused, zero model turns and baseline history unchanged. It does not establish G1, model consumption, exactly-once execution or busy/foreground safety. G1's latest v3 original-A continuation remains OUTCOME_UNKNOWN after one upstream POST and HTTP-reader IncompleteRead; no completed/final response or provider attribution is established. The separate v6 strict-context Golden remains FAIL.
 
-Overall v0.1 is **PARTIAL**. Busy/foreground operation, safe resource stop/reconcile/restore, injected-before-ledger acceptance and truthful unsupported-capability reporting remain open. Physical-device, public HTTPS and production gates are **NOT_RUN**; full RBAC remains deferred to v0.2. See the [validation report](v01-final-release-exit-checkpoint-validation.md) for exact source, artifact, and evidence identities.
+Resource Release is frozen for review after normal/race selectors each passed 16 top-level + 26 subtests with zero skips/failures; an independent review found no blocker within the seven-path scope. It does not provide process-stop proof or close advisory GPU/workspace reconciliation. Acquire rechecks current Task claim; later operations on a still-current ResourceLease do not recheck Task ownership, so Task handoff/expiry alone does not cancel it.
+
+The latest online-tested Client pair (3254ba12cac22d0f77510999f53e6b6bc2c80aa8) passed 36 offline checks; F36 is FAIL / OUTCOME_UNKNOWN: the exact-Link list wait failed before Target prepare, KEY signing, consent or native Alert; four signatures were observed (Source 3 / Target Device 1), with Target KEY/NONE unsigned. Root cause and viewport remain UNKNOWN. Terminal exit 0 records closure only; terminal CORE_ACK_NOT_SENT and the later one Root ACK exit 0 are separate. F35 on a80d1a9 remains FAIL / OUTCOME_UNKNOWN, with no bilateral acceptance. The separate offline Forwarder seven-check selector passed but does not prove actual G1.
+
+The new disposable dirty-326 Docker Go TCP gate passed (script/test exit 0; 2 top-level + 3 subtests, zero skips/failures), with contract check and 17 artifact tests passing. Root independently verified owned-container, image-tag and scratch cleanup. Exact tested source and image identities are in the validation report; this scoped result does not establish Android, Native Runtime or full product acceptance.
+
+Overall v0.1 is **PARTIAL**. Clean-021 Hub/contract and clean-480 Node package keep their original artifact identities. Physical-device, public HTTPS and production gates are NOT_RUN. Full RBAC remains deferred to v0.2.
 
 ## Historical ledgers before the clean-1ca baseline
 

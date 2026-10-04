@@ -286,6 +286,89 @@ func resourceLeaseActorTx(tx *sql.Tx, scope *NativeActorScope,
 	return guardNativeActorTx(tx, *scope, action, time.Now().UTC())
 }
 
+// ReleaseResourceLeaseForActor ends only a current managed-blob lease. Its
+// executor commits in this same serialized authority domain; this does not
+// assert that an advisory GPU/workspace process has stopped.
+func (s *Store) ReleaseResourceLeaseForActor(scope NativeActorScope,
+	id string, epoch int64) (*ResourceLease, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`UPDATE resource_v2_authority SET updated_at=updated_at WHERE resource_id=(SELECT resource_id FROM resource_v2_leases WHERE id=?)`, id); err != nil {
+		return nil, err
+	}
+	lease, err := scanResourceLease(tx.QueryRow(`SELECT `+resourceLeaseColumns+` FROM resource_v2_leases WHERE id=?`, id))
+	if err != nil {
+		return nil, err
+	}
+	if err := resourceLeaseActorTx(tx, &scope, lease, "task.claim"); err != nil {
+		return nil, err
+	}
+	if lease.FencingEpoch != epoch {
+		return nil, ErrResourceStaleEpoch
+	}
+	var authorityEpoch int64
+	var state, current string
+	if err = tx.QueryRow(`SELECT fencing_epoch,state,current_lease_id FROM resource_v2_authority WHERE resource_id=?`, lease.ResourceID).Scan(&authorityEpoch, &state, &current); err != nil {
+		return nil, err
+	}
+	if authorityEpoch != epoch || current != "" && current != id {
+		return nil, ErrResourceStaleEpoch
+	}
+	enforcement, err := resourceEnforcement(lease.ResourceID)
+	if err != nil || enforcement != LeaseExecutorEnforced || lease.Enforcement != enforcement || lease.Mode != "exclusive" {
+		return nil, ErrResourceReconciliation
+	}
+	// Exact retries remain harmless only until the authority is reacquired.
+	// A historical RELEASED expiry is not an active lease expiry or a renewal.
+	if lease.State == LeaseReleased && state == ResourceAvailable && current == "" {
+		if err = tx.Commit(); err != nil {
+			return nil, err
+		}
+		return lease, nil
+	}
+	deadline, parseErr := time.Parse(time.RFC3339Nano, lease.ExpiresAt)
+	at := time.Now().UTC()
+	if state != ResourceActive || current != id || lease.State != LeaseActive || parseErr != nil || !at.Before(deadline) {
+		return nil, ErrResourceReconciliation
+	}
+	stamp := at.Format(time.RFC3339Nano)
+	result, err := tx.Exec(`UPDATE resource_v2_authority SET state=?,current_lease_id='',updated_at=?
+ WHERE resource_id=? AND fencing_epoch=? AND state=? AND current_lease_id=?`,
+		ResourceAvailable, stamp, lease.ResourceID, epoch, ResourceActive, id)
+	if err != nil {
+		return nil, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, ErrResourceStaleEpoch
+	}
+	result, err = tx.Exec(`UPDATE resource_v2_leases SET state=?,updated_at=? WHERE id=? AND fencing_epoch=? AND state=?`,
+		LeaseReleased, stamp, id, epoch, LeaseActive)
+	if err != nil {
+		return nil, err
+	}
+	n, err = result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, ErrResourceStaleEpoch
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	lease.State, lease.UpdatedAt = LeaseReleased, stamp
+	return lease, nil
+}
+
 func (s *Store) RenewResourceLease(id string, epoch int64, principalID string, ttlSeconds int) (*ResourceLease, error) {
 	return s.renewResourceLease(id, epoch, principalID, ttlSeconds, nil)
 }

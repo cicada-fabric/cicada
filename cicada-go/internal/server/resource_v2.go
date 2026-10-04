@@ -71,6 +71,20 @@ func (h *Handler) fabricV2ResourceLease(response http.ResponseWriter, request *h
 		return
 	}
 	switch parts[1] {
+	case "release":
+		var input struct {
+			FencingEpoch int64 `json:"fencing_epoch"`
+		}
+		if err := readJSON(request, &input); err != nil {
+			writeError(response, http.StatusBadRequest, err)
+			return
+		}
+		lease, err := h.fabricService.ReleaseResourceLease(actor, parts[0], input.FencingEpoch)
+		if err != nil {
+			fabricV2Error(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, lease)
 	case "renew":
 		var input struct {
 			FencingEpoch int64 `json:"fencing_epoch"`

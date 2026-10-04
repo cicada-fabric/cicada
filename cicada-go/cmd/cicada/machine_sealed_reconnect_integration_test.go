@@ -208,6 +208,9 @@ func TestMachineSealedAskReconnectClaimsDurableOfflineMessage(t *testing.T) {
 	// Close the live TCP/TLS stream, then submit from A while B is offline.
 	// There is no Node listener or Hub callback route in this fixture.
 	hub.CloseClientConnections()
+	// The server closes every connection, including B's idle claim pool. A's
+	// shared fixture client must not reuse those deliberately closed connections.
+	transport.CloseIdleConnections()
 	waitForDeparture("forced SSE/TCP disconnect")
 
 	askInput := fabric.NodeSealedLinkAskInput{

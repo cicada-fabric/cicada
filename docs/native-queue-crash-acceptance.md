@@ -219,3 +219,14 @@ full-suite run occurred. New evidence is kept separately in
 `.cicada-data/native-queue-crash-checkpoint/frozen-b-baseline/receipt.json`.
 The actual independent B-copy full-history count/hash remains an owner-supplied
 readiness requirement, not a reconstructed or fabricated receipt.
+
+
+## 2026-10-04 actual clean-326 injected-before-ledger gate — scoped PASS
+
+The opt-in gate later ran once against the clean committed 326ecb9d2f963a16f6a7248db9d71a1eeb4718d9 executable, built from an exact 900-input committed-tree inventory. The test binary SHA-256 is b8f571316247ff0a2607b705ca37679e060e01bce60a12ac42f3a501ccae6474. The exact selector exited 0 with TestMachineNativeRealQueueCrashAcceptance passing in 4.91 seconds; total elapsed was 14.54 seconds.
+
+The actual redacted [gate result](../.cicada-data/native-queue-crash-fixture/real-gate-nonauth-20261004/result.json) is 19,602 bytes, SHA-256 729d4f1a9bae53edf3cf6dce29b00f87e197255dad349142830db193d973b60e. The independent post-gate Core review is 19,368 bytes, SHA-256 cbe4d478214e3fd89f00131e2cfbac7b83b3e6cecd2e8e4b355ab58e52119bc7; it verified the exact clean-326 input inventory and independently confirmed that both exact owned CIDs/PIDs and all three temporary paths are absent.
+
+The bounded witness was one queue submission, adapter recovery INJECTION_UNCERTAIN, reinjection of both the original and new attempt refused, zero actual turns, and the two-turn synthetic-B baseline history unchanged. The fixture used an independent copy of historical synthetic B, with credentials absent and provider egress disabled. Provider POSTs are owner-attested zero-egress with network disabled; the independent reviewer did not measure packet-level HTTP POSTs.
+
+This proves the tested injected-before-ledger recovery/refusal behavior for that pinned clean-326 binary and fixture. It does not prove exactly-once execution, model consumption, safe retry, original-A context continuity, G1, busy delivery, foreground-input protection, the current dirty full-Go source, Android, physical-device or public-HTTPS behavior. The older NOT_RUN statements above accurately describe their earlier runs; this later evidence supersedes only the actual-gate pending state, not those other limits.

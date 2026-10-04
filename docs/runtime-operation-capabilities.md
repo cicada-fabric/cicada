@@ -37,6 +37,10 @@ authentication and version remain unknown. These checks do not verify a
 currently installed Runtime or add fields to Client DTOs. Previously delivered
 Client/Native artifacts keep their original source identity.
 
+The separate Hub restore-quarantine checkpoint and combined regression status are recorded in the [v0.1 validation report](v01-final-release-exit-checkpoint-validation.md).
+
+2026-10-04 evidence addendum: the actual injected-before-ledger queue gate passed once on the clean-326 compiled artifact from an exact 900-input committed inventory. It observed one submission, preserved INJECTION_UNCERTAIN, refused reinjection, started zero turns and retained the historical baseline. This narrow result does not change foreground-busy safety or consumption from not_tested, and does not establish G1, model consumption or exactly-once execution. A separate offline-only Forwarder seven-check selector passed; it does not establish actual G1 or native execution.
+
 The Client contract review follows `docs/client-hub-development.md`. Encrypted
 `session.capabilities` (the Owner/role/RPC allowlist) is a different DTO from
 harness `SessionContext.Capabilities`; no encrypted Client capability is added.

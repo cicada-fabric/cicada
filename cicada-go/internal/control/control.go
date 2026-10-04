@@ -179,6 +179,9 @@ var (
 )
 
 func New(config Config) (*Control, error) {
+	if err := store.RequireStateRestoreStartupAllowed(config.StateDir); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(config.WorkspaceRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("create workspace root: %w", err)
 	}
