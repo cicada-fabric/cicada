@@ -25,7 +25,7 @@ func TestMachineRecoveryInspectCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	stateDir := filepath.Join(root, "restored")
-	if _, err := nodebackup.Restore(backup, stateDir); err != nil {
+	if _, err := nodebackup.RestoreWithWriterRoot(backup, stateDir, stateDir); err != nil {
 		t.Fatal(err)
 	}
 
