@@ -9,7 +9,7 @@ The shared application is written in TypeScript and React Native. **Android is t
 - **Status and work:** Read authenticated snapshots and partial changes for authorized Nodes, Endpoints, Workers, Goals, Groups, and Tasks. Submit user-confirmed text or reviewed speech transcripts to Control, inspect Intent dispatch, and read bounded Goal results when the session permits it. Intent, Goal, Worker, and Artifact states remain distinct.
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
 - **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
-- **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The v1.6.4 Link consent candidate is a separate Native flow; its live acceptance is still pending below. See the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md) for their separate scope.
+- **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The separate v1.6.4 Link consent flow passed its bounded fixed-emulator acceptance in F38; this does not establish physical-device or production acceptance. See the [F38 report](docs/client-hub-v1.6.4-0213538-f38-validation.md), the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md).
 - **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The v1.6.4 local candidate implements 44 of 55 operations, including bounded Directory/admission reads, explicit one-use Monitor regroup delegation, Link review-policy status metadata, and five dedicated Link consent operations. Eleven operations remain closed. The five Link consent operations are always rejected by generic `rpc` and use the dedicated Native flow only. The Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata alone does not establish bilateral consent or enable messages.
 - **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
 - **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. The current snapshot recovery test retains the retired packet after authenticated `OUTCOME_UNCERTAIN`, blocks writes until a fresh authoritative snapshot, and verifies session reconciliation. An uncertain regroup delegation has a separate durable fence: a generic snapshot cannot establish its outcome or clear that fence under the current Core contract. See the [current recovery validation](docs/client-hub-v1.6.1-144e079-validation.md) and [historical regroup validation](docs/client-hub-v1.6-4fb241b-management-validation.md).
@@ -49,6 +49,33 @@ Its archive, catalog and fixed image IDs are recorded in the
 five bounded-run outcomes. The [F30 report](docs/client-hub-v1.6.4-0213538-f30-validation.md)
 records the next clean Client checkpoint and actual Root-authorized run; F29's
 plan failure is retained in the [Core handoff](docs/cicada-core-handoff.md).
+
+The current bounded acceptance is the [F38
+report](docs/client-hub-v1.6.4-0213538-f38-validation.md), for Client
+`caa9e4c725a841a1ce8488fbf339ca554d2939ed` and the tested app/test APK pair
+`f742532d7782e5a46f5364dc57f1dc6be6faf7903e09194d9db6028356b0a796` /
+`e538fbaa0eef457cb15aa885534317efc8b3df7b3b6dd7703c3112ceaa21e258`. On one fixed Android 15
+emulator fixture, all six phases completed; both KEY statuses were `ACCEPTED`, both final `NONE`
+statuses were `VERIFIED` and current, and bilateral verification passed. The independently
+reviewed outcome index records 13 JUnit tests with zero failures or skips, six signatures
+(SOURCE 3, TARGET 3), cleanup/absence checks, and a separately attested one-frame/one-ACK exit
+0. The launcher terminal's `CORE_ACK_NOT_SENT` is a separate earlier observation. F35, F36 and
+F37 remain historical failures with their original `OUTCOME_UNKNOWN_PRESERVE_PENDING` outcomes;
+no earlier operation was retried.
+
+This acceptance covers only the five existing dedicated Link review operations on that fixed
+fixture. Existing readiness constants are `LINK_CONSENT_READY=true` and `CANDIDATE_READY=true`;
+generic RPC still rejects those five operations. Each use still requires encrypted Owner
+capability, current proof and server Guard checks. Ordinary cross-user messages remain closed
+while `external_thread_links=false`. Real native Worker acceptance remains **NOT_RUN**; model
+calls were zero. Physical Android and public HTTPS remain **NOT_RUN**. The 21 existing
+capability/operation-policy offline tests passed with exit 0; receipt SHA-256
+`a0a842fe82a0add1ab0eb96e949d3af6cfd130075dfc3eaf6d8b8a7f0db62b6d` is at
+`/gpu1-share/data/cicada-client/v164-f38-acceptance-record-20261004/link-capability-check.receipt.redacted.json`.
+This documentation checkpoint creates no APK; acceptance remains bound to the `caa9e4c` source
+and exact pair above.
+
+The following F30–F37 paragraphs preserve earlier run results and do not override F38.
 
 F30 passed SOURCE KEY submit with partial fresh status and SOURCE `NONE` with
 partial policy status. TARGET enrollment, capabilities, and independent pins

@@ -1,12 +1,40 @@
 # Client ↔ Hub contract: `client-hub-v1.6.4`
 
-## Active integration target — clean v1.6.4
+## Current bounded Link consent acceptance — F38
+
+The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)
+records the fixed clean Core `0213538` emulator acceptance on Client
+`caa9e4c725a841a1ce8488fbf339ca554d2939ed`, app APK
+`f742532d7782e5a46f5364dc57f1dc6be6faf7903e09194d9db6028356b0a796`, and test
+APK `e538fbaa0eef457cb15aa885534317efc8b3df7b3b6dd7703c3112ceaa21e258`.
+All six phases completed, both KEY sides were accepted, and both final NONE
+statuses were verified/current with bilateral verification. Root independently
+reviewed 13 JUnit tests (0 failures, 0 skips), six signatures (SOURCE 3,
+TARGET 3), cleanup/absence, and a separately attested one-frame/one-ACK exit 0.
+The launcher terminal's `CORE_ACK_NOT_SENT` is preserved as its own earlier
+observation.
+
+The acceptance is limited to the five dedicated Link review operations on this
+emulator fixture. The tested Client has `LINK_CONSENT_READY=true` and
+`CANDIDATE_READY=true`; generic RPC still refuses those operations. Fresh
+encrypted Owner capability, current proof and server Guard remain required on
+each operation. It does not enable ordinary cross-user messaging while
+`external_thread_links=false`, or establish native Worker/model execution,
+physical Android or public HTTPS acceptance. F35–F37 remain historical failed
+runs with preserved unknown outcomes. The 21 existing capability/operation-
+policy offline tests passed, exit 0; redacted receipt SHA-256
+`a0a842fe82a0add1ab0eb96e949d3af6cfd130075dfc3eaf6d8b8a7f0db62b6d` is at
+`/gpu1-share/data/cicada-client/v164-f38-acceptance-record-20261004/link-capability-check.receipt.redacted.json`.
+This documentation-only update creates no APK; the accepted pair remains the
+exact F38 pair above.
+
+## Historical implementation — clean Core `25bc586`, v1.6.4
 
 The [fixed 25bc586 delivery](client-hub-v1.6.4-25bc586-validation.md) has passed
 archive/catalog, immutable image metadata and independent 882-entry Git
-inventory verification. The working branch now pins these v1.6.4 values;
-the historical accepted baseline remains the v1.6.1 binary. The current
-v1.6.4 candidate implements five dedicated Link consent operations behind
+inventory verification. At that checkpoint, the working branch pinned these
+v1.6.4 values and the accepted baseline remained the v1.6.1 binary. The
+v1.6.4 candidate implemented five dedicated Link consent operations behind
 fresh Native proof and encrypted capability checks; generic RPC refuses all
 five. It accounts for 44 implemented and 11 closed catalog operations.
 The v1.6.4 preview adds current reviewer

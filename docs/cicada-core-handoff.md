@@ -1,6 +1,45 @@
 # CICADA Client integration handoff
 
-## Current F37 outcome and status-label successor — clean Core `0213538`
+## Current F38 bounded Link consent acceptance — clean Core `0213538`
+
+The [F38 report](client-hub-v1.6.4-0213538-f38-validation.md) binds tested
+Client `caa9e4c725a841a1ce8488fbf339ca554d2939ed` and app/test APKs
+`f742532d7782e5a46f5364dc57f1dc6be6faf7903e09194d9db6028356b0a796` /
+`e538fbaa0eef457cb15aa885534317efc8b3df7b3b6dd7703c3112ceaa21e258` to clean
+Core `0213538b62ccf2533eccf546c80fc848804ea8e0`. The bounded Android 15
+emulator run completed all six phases: SOURCE and TARGET enrollment, KEY and
+NONE. Both KEY grants were accepted; both final NONE statuses were verified,
+current and bilateral. Root's independent outcome index records 13 JUnit tests,
+zero failures/skips, six signatures (SOURCE 3, TARGET 3), owned cleanup and
+absence checks. Root separately attested one frame and one ACK, exit 0; the
+launcher terminal's `CORE_ACK_NOT_SENT` remains a separate earlier observation.
+
+This accepts only the five existing dedicated Link review operations on this
+fixed fixture. `LINK_CONSENT_READY=true` and `CANDIDATE_READY=true` do not bypass encrypted
+Owner capability, current proof or server Guard checks; generic RPC continues
+to reject the five. Ordinary cross-user messages remain closed while
+`external_thread_links=false`. Real native Worker acceptance remains
+**NOT_RUN**; model calls were zero. Physical Android and public HTTPS remain **NOT_RUN**. The 21 existing capability and
+operation-policy offline tests passed, exit 0; receipt SHA-256
+`a0a842fe82a0add1ab0eb96e949d3af6cfd130075dfc3eaf6d8b8a7f0db62b6d` is at
+`/gpu1-share/data/cicada-client/v164-f38-acceptance-record-20261004/link-capability-check.receipt.redacted.json`.
+This documentation checkpoint creates no APK; these results remain bound to
+the tested `caa9e4c` source and app/test pair above.
+
+F35, F36 and F37 remain historical failed runs with their original
+`OUTCOME_UNKNOWN_PRESERVE_PENDING` outcomes. No prior operation was retried.
+
+### Core review prompt
+
+> Review the F38 validation report and its independent Root outcome index.
+> Acceptance applies only to the five dedicated Link consent/review operations
+> on clean Core `0213538` and the exact `caa9e4c` APK pair. Preserve encrypted
+> Owner capabilities, current proof checks and the server Guard. Keep ordinary
+> messaging disabled; real native Worker, physical Android and public HTTPS
+> remain NOT_RUN. Do not transfer F38 to later Core or restore changes, or
+> reclassify the preserved F35–F37 failed operations.
+
+## Historical F37 outcome and status-label successor — clean Core `0213538`
 
 The [F37 validation report](client-hub-v1.6.4-0213538-f37-validation.md)
 binds Client `8e24b14a1f1eb80188e6e11b9f16d53d6afaf91d`, app

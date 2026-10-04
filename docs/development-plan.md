@@ -1,13 +1,40 @@
 # CICADA Client development and validation plan
 
-## Current acceptance coordination
+## Current fixed-target acceptance — F38
+
+The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)
+records the bounded Android 15 emulator acceptance on clean Core `0213538`,
+Client `caa9e4c725a841a1ce8488fbf339ca554d2939ed`, app APK
+`f742532d7782e5a46f5364dc57f1dc6be6faf7903e09194d9db6028356b0a796`, and test
+APK `e538fbaa0eef457cb15aa885534317efc8b3df7b3b6dd7703c3112ceaa21e258`.
+All six phases completed with both KEY sides accepted and both final NONE
+statuses verified/current bilaterally. Root independently reviewed 13 JUnit
+tests (zero failures/skips), six signatures (SOURCE 3, TARGET 3), cleanup and
+absence; one frame and one ACK exit 0 were attested separately from the
+launcher terminal's `CORE_ACK_NOT_SENT`.
+
+This validates only the five dedicated Link review operations on the fixed
+emulator fixture. Encrypted Owner capabilities, current proof and server Guard
+remain required; generic RPC continues to refuse the five. Ordinary
+cross-user messages remain closed with `external_thread_links=false`. Real
+native Worker acceptance remains **NOT_RUN**; model calls were zero. Physical
+Android and public HTTPS remain **NOT_RUN**. F35–F37 failures and their unknown outcomes are preserved as
+history; no retry occurred. The 21 existing capability/operation-policy
+offline tests passed, exit 0; receipt SHA-256
+`a0a842fe82a0add1ab0eb96e949d3af6cfd130075dfc3eaf6d8b8a7f0db62b6d` is at
+`/gpu1-share/data/cicada-client/v164-f38-acceptance-record-20261004/link-capability-check.receipt.redacted.json`.
+This docs checkpoint creates no APK; tested results remain bound to the exact
+F38 source and app/test pair above.
+
+## Historical launcher coordination — F6–F10
 
 The current acceptance-harness work is the
 [bounded single-process launcher](client-bounded-acceptance-launcher.md).
 It preserves the retry-6 APKs and the original F6–F9 evidence. F9's first
 staging command failed before any encrypted Android business request; the
 runtime consumer correction is independently recorded and does not make F9
-a PASS. Fresh Link consent, Target Alert and bilateral status remain NOT_RUN.
+a PASS. The F6–F9 launcher work is historical and does not change the F38
+bounded Link consent result above.
 
 1. Completed launcher checkpoint `7f428d7`: freeze BOOT/hot helpers, narrow
    offline tests and their source hashes.
