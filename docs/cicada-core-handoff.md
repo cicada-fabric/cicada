@@ -1,6 +1,42 @@
 # CICADA Client integration handoff
 
-## Current F30 outcome — clean Core `0213538`
+## Current F33 outcome and successor correction — clean Core `0213538`
+
+The [F33 validation report](client-hub-v1.6.4-0213538-f33-validation.md) binds
+Client `906c7b0d0434b569336060a33697ff96e9ec7948`, its exact APK pair and the
+fixed clean v1.6.4 target. SOURCE and TARGET encrypted enrollment, capabilities
+and independent Owner pins passed. SOURCE KEY and `NONE` produced partial
+statuses only. Target preparation reached `REVIEW_READY`, but actual JUnit
+reported one failure at the confirmation-control wait: `CONTROL_MISSING`, zero
+candidates. Instrumentation exit `0` did not make this test pass.
+
+The terminal remains **FAIL / `OUTCOME_UNKNOWN_PRESERVE_PENDING`**. No retry was
+made. Actual native RPC pending is **UNKNOWN**; retain the historical host
+marker. The RN confirmation click, native Alert, Target KEY grant, Target
+`NONE` and bilateral consent are **NOT_RUN**. The underlying selector/layout
+cause is **UNKNOWN**. F31/F32 business **NOT_RUN** results remain separate.
+
+The minimal successor bounds the proof editor's displayed height and uses
+package-filtered app windows, exact consent selectors and at most 12 page
+scrolls in the original 20-second wait. A unique visible enabled clickable
+control and the full native Alert remain mandatory. No protocol, pin, proof,
+expiry, lifecycle or typed validation was relaxed. The 22 affected tests,
+TypeScript and ESLint passed. At this source checkpoint, its post-commit APK
+build is **NOT_RUN**; subsequent build/source/delivery receipts under
+`/gpu1-share/data/cicada-client/v164-f33-consent-control-viewport-20261004`
+bind the exact clean Client commit, new APK pair and frozen 26-source successor.
+Fresh live acceptance remains **NOT_RUN**.
+
+Emulator removal was independently verified. Core's actual two-resource
+cleanup and independent closure passed; its marker confirms ACK before hard
+and private-path deletion. Actor true-wait `-15` and one ACK exit `0` are
+Main-thread attestations in the closure. Five signatures do not prove accepted
+Hub sides. Physical Android, public HTTPS and native Worker remain **NOT_RUN**.
+No push or merge was performed. The report contains the next Core prompt;
+Root owns the fresh run and its authorization/deadlines.
+
+
+## Historical F30 outcome — clean Core `0213538`
 
 The [F30 validation report](client-hub-v1.6.4-0213538-f30-validation.md)
 binds clean Client `b19e84b66cae3887c64cb9e576f11b3cf55f6eee`, its exact APK

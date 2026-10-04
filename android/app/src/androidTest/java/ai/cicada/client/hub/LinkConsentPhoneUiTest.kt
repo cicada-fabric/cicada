@@ -9,6 +9,7 @@ import android.system.Os
 import android.system.OsConstants
 import android.util.AtomicFile
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cicadaclient.MainActivity
@@ -53,7 +54,8 @@ class LinkConsentPhoneUiTest {
         val automation = instrumentation.uiAutomation
         val serviceInfo = automation.serviceInfo
         priorAccessibilityFlags = serviceInfo.flags
-        serviceInfo.flags = serviceInfo.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        serviceInfo.flags = serviceInfo.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         automation.setServiceInfo(serviceInfo)
     }
 
@@ -153,8 +155,26 @@ class LinkConsentPhoneUiTest {
         return result
     }
 
-    private fun uiRoot(): AccessibilityNodeInfo? = try { instrumentation.uiAutomation.rootInActiveWindow }
-        catch (_: Exception) { null }
+    private fun uiRoot(): AccessibilityNodeInfo? = try {
+        val automation = instrumentation.uiAutomation
+        val active = automation.rootInActiveWindow
+        if (active?.packageName?.toString() == target.packageName) {
+            active
+        } else {
+            active?.recycle()
+            val appRoots = ArrayList<AccessibilityNodeInfo>()
+            for (window in automation.windows) {
+                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                val root = window.root ?: continue
+                if (root.packageName?.toString() == target.packageName) appRoots += root
+                else root.recycle()
+            }
+            if (appRoots.size == 1) appRoots.single() else {
+                appRoots.forEach(AccessibilityNodeInfo::recycle)
+                null
+            }
+        }
+    } catch (_: Exception) { null }
 
     private fun visibleText(root: AccessibilityNodeInfo): List<String> = descendants(root)
         .filter { it.isVisibleToUser }
@@ -179,12 +199,57 @@ class LinkConsentPhoneUiTest {
         return null
     }
 
+    private fun nearestConsentSelectorAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = node.parent
+        repeat(8) {
+            val candidate = current ?: return null
+            if (candidate.packageName?.toString() == target.packageName && isConsentSelector(candidate)) {
+                return candidate
+            }
+            current = candidate.parent
+        }
+        return null
+    }
+
+    private fun consentTarget(node: AccessibilityNodeInfo): AccessibilityNodeInfo {
+        if (isConsentViewId(node)) return node
+        var current: AccessibilityNodeInfo? = node
+        repeat(8) {
+            val candidate = current ?: return nearestConsentSelectorAncestor(node) ?: node
+            if (candidate.isClickable && isConsentSelector(candidate)) return candidate
+            current = candidate.parent
+        }
+        return nearestConsentSelectorAncestor(node) ?: node
+    }
+
+    private fun appScrollableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(16) {
+            current = current?.parent
+            val candidate = current ?: return null
+            if (candidate.packageName?.toString() == target.packageName && candidate.isVisibleToUser &&
+                candidate.isScrollable && candidate.className?.toString()?.contains("EditText") != true) {
+                return candidate
+            }
+        }
+        return null
+    }
+
+    private fun pageScrollableNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? =
+        descendants(root).filter { node -> node.packageName?.toString() == target.packageName &&
+            node.isVisibleToUser && node.isScrollable &&
+            node.className?.toString()?.contains("EditText") != true }
+            .maxByOrNull { node ->
+                android.graphics.Rect().also { node.getBoundsInScreen(it) }.let { it.width() * it.height() }
+            }
+
     private fun clickLabel(label: String, timeoutMs: Long = 20_000) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) {
             val root = uiRoot()
             if (root != null) {
                 val targets = descendants(root).filter { node -> node.isVisibleToUser &&
+                    node.packageName?.toString() == target.packageName &&
                     (node.text?.toString() == label || node.contentDescription?.toString() == label) }
                     .mapNotNull(::nearestClickable)
                     .distinctBy { node -> android.graphics.Rect().also { node.getBoundsInScreen(it) }.toShortString() }
@@ -207,43 +272,53 @@ class LinkConsentPhoneUiTest {
         val enabledCount: Int,
         val busy: Boolean?,
         val proofReady: Boolean?,
+        val visible: Boolean,
     )
 
+    private fun isConsentViewId(node: AccessibilityNodeInfo): Boolean =
+        node.packageName?.toString() == target.packageName &&
+            node.viewIdResourceName in setOf(
+                "link-consent-confirm",
+                "${target.packageName}:id/link-consent-confirm",
+            )
+
+    private fun consentHint(node: AccessibilityNodeInfo): String? =
+        listOf(node.tooltipText?.toString(), node.hintText?.toString())
+            .firstOrNull { it in setOf(consentReadyHint, consentInvalidHint, consentBusyHint) }
+
     private fun isConsentSelector(node: AccessibilityNodeInfo): Boolean {
-        return node.viewIdResourceName == "link-consent-confirm" ||
+        return node.packageName?.toString() == target.packageName && (isConsentViewId(node) ||
             node.text?.toString() == "核对并明确授权" ||
             node.contentDescription?.toString() == "核对并明确授权" ||
-            node.tooltipText?.toString() in setOf(consentReadyHint, consentInvalidHint, consentBusyHint)
+            consentHint(node) != null)
     }
 
     private fun consentControl(root: AccessibilityNodeInfo): ConsentControl {
-        val visible = descendants(root).filter { it.isVisibleToUser }
-        val idMatches = visible.filter { it.viewIdResourceName == "link-consent-confirm" }
-        val selectors = if (idMatches.isNotEmpty()) idMatches else visible.filter(::isConsentSelector)
-        val controls = selectors.mapNotNull { node ->
-            if (node.viewIdResourceName == "link-consent-confirm") node else nearestClickable(node)
-        }
-            .distinct()
-        if (controls.isEmpty()) return ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null)
+        val appNodes = descendants(root).filter { it.packageName?.toString() == target.packageName }
+        val idMatches = appNodes.filter(::isConsentViewId)
+        val selectors = if (idMatches.isNotEmpty()) idMatches else appNodes.filter(::isConsentSelector)
+        val controls = selectors.map(::consentTarget).distinct()
+        if (controls.isEmpty()) return ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null, false)
         if (controls.size > 1) return ConsentControl(null, "CONTROL_MULTIPLE", 2,
-            controls.count { it.isEnabled }.coerceAtMost(2), null, null)
+            controls.count { it.isEnabled }.coerceAtMost(2), null, null,
+            controls.any { it.isVisibleToUser })
 
         val target = controls.single()
-        val stateHint = target.tooltipText?.toString()
-            ?: descendants(target).firstNotNullOfOrNull { it.tooltipText?.toString() }
+        val visible = target.isVisibleToUser
+        val stateHint = descendants(target).firstNotNullOfOrNull(::consentHint)
         return when (stateHint) {
             consentBusyHint -> ConsentControl(target, "CONTROL_BUSY", 1,
-                if (target.isEnabled) 1 else 0, true, null)
+                if (target.isEnabled) 1 else 0, true, null, visible)
             consentInvalidHint -> ConsentControl(target, "PROOF_INVALID", 1,
-                if (target.isEnabled) 1 else 0, false, false)
+                if (target.isEnabled) 1 else 0, false, false, visible)
             consentReadyHint -> if (target.isEnabled) {
-                if (target.isClickable) ConsentControl(target, "CONFIRM_READY", 1, 1, false, true)
-                else ConsentControl(target, "CONTROL_UNCONFIRMED", 1, 1, null, null)
+                if (visible && target.isClickable) ConsentControl(target, "CONFIRM_READY", 1, 1, false, true, true)
+                else ConsentControl(target, "CONTROL_UNCONFIRMED", 1, 1, null, null, visible)
             } else {
-                ConsentControl(target, "CONTROL_DISABLED", 1, 0, false, true)
+                ConsentControl(target, "CONTROL_DISABLED", 1, 0, false, true, visible)
             }
             else -> ConsentControl(target, "CONTROL_UNCONFIRMED", 1,
-                if (target.isEnabled) 1 else 0, null, null)
+                if (target.isEnabled) 1 else 0, null, null, visible)
         }
     }
 
@@ -268,12 +343,20 @@ class LinkConsentPhoneUiTest {
 
     private fun awaitEnabledConsentControl(timeoutMs: Long = 20_000): AccessibilityNodeInfo {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        var latest = ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null)
+        var latest = ConsentControl(null, "CONTROL_MISSING", 0, 0, null, null, false)
+        var scrollActions = 0
         while (SystemClock.elapsedRealtime() < deadline) {
             val root = uiRoot()
             if (root != null) {
                 latest = consentControl(root)
-                if (latest.stage == "CONFIRM_READY") return latest.target!!
+                if (latest.stage == "CONFIRM_READY" && latest.visible) return latest.target!!
+                if (!latest.visible && scrollActions < 12) {
+                    val scroll = latest.target?.let(::appScrollableAncestor) ?: pageScrollableNode(root)
+                    if (scroll != null) {
+                        scrollActions += 1
+                        scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    }
+                }
             }
             SystemClock.sleep(200)
         }
@@ -290,8 +373,10 @@ class LinkConsentPhoneUiTest {
                 continue
             }
             if (descendants(root).any { node -> node.isVisibleToUser &&
+                    node.packageName?.toString() == target.packageName &&
                     listOf(node.text, node.contentDescription, node.hintText).any { it?.toString()?.contains(needle) == true } }) return
-            val scroll = descendants(root).filter { it.isVisibleToUser && it.isScrollable }
+            val scroll = descendants(root).filter { node -> node.isVisibleToUser && node.isScrollable &&
+                node.packageName?.toString() == target.packageName }
                 .maxByOrNull { node -> android.graphics.Rect().also { node.getBoundsInScreen(it) }.let { it.width() * it.height() } }
             // A fresh encrypted read may append content after the current page
             // reaches its bottom. Keep polling until the bounded deadline.
@@ -491,13 +576,12 @@ class LinkConsentPhoneUiTest {
         scrollToText("Owner 签名证明 Base64")
         setTextByHint("Owner 签名证明 Base64", signedProof)
         signedProof.toCharArray().fill('\u0000')
-        scrollToText("核对并明确授权")
         val consentControl = awaitEnabledConsentControl()
         if (!consentControl.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            recordConsentControl(ConsentControl(consentControl, "ACCESSIBILITY_CLICK_FAILED", 1, 1, false, true))
+            recordConsentControl(ConsentControl(consentControl, "ACCESSIBILITY_CLICK_FAILED", 1, 1, false, true, true))
             error("Consent confirmation control could not be activated")
         }
-        recordConsentControl(ConsentControl(consentControl, "CONFIRM_READY", 1, 1, false, true))
+        recordConsentControl(ConsentControl(consentControl, "CONFIRM_READY", 1, 1, false, true, true))
 
         val alertRoot = awaitRoot { root ->
             val texts = visibleText(root)

@@ -59,19 +59,27 @@ acceptance, Target `NONE`, and bilateral KEY/`NONE` were NOT_RUN. Its terminal
 is `OUTCOME_UNKNOWN_PRESERVE_PENDING`; do not retry the original operation.
 F28 and F29 remain their recorded failures and are not reclassified by F30.
 
-F30 used the app/test APK pair built from Client `b19e84b66cae3887c64cb9e576f11b3cf55f6eee`
-(SHA-256 `5f242041c85bb1a2b83c2a0af4f90d3be3abbc26e90a8483bc8703b9d9bc6749` /
-`f236c816218026deea3941bb9a75899ae83d450ca875d4b21dc14bd4dc126d48`). The
-18 focused tests, TypeScript, ESLint, and the single APK build are attributed
-only to that checkpoint. The follow-up consent-control correction now uses a
-stable test ID and bounded wait for a unique enabled confirmation control. Its
-22 focused Python/JavaScript tests and TypeScript/ESLint checks passed. At this
-source checkpoint, post-commit APK assembly is NOT_RUN; its subsequent receipt
-at `/gpu1-share/data/cicada-client/v164-f30-consent-button-wait-20261003/apk-build.receipt.redacted.json`
-will bind the exact source and APKs. A fresh live run remains NOT_RUN. Physical Android,
-public HTTPS, native Worker acceptance, Link recovery faults, and bilateral
-consent remain NOT_RUN. Ordinary cross-user messages remain closed while
-`external_thread_links=false`.
+The [F33 validation report](docs/client-hub-v1.6.4-0213538-f33-validation.md)
+records the later Android run from Client `906c7b0d0434b569336060a33697ff96e9ec7948`,
+using app/test SHA-256 `397029c61950133ba986e7cb0f108d73f7c727c27dcf619df323c9f1e1545cc3` /
+`7a8a54806874791ff4a313995fd4a0a29a4682a5f5777b1dddc72d916ed689eb`.
+Encrypted SOURCE and TARGET enrollment, capabilities and independent pins
+passed. SOURCE KEY and `NONE` returned only partial statuses. TARGET preparation
+reached `REVIEW_READY`, but JUnit failed with `CONTROL_MISSING` before the
+confirmation button or native Alert was activated. Its terminal remains
+`OUTCOME_UNKNOWN_PRESERVE_PENDING`; no retry was made. F31 and F32 did not run
+the business flow and do not change this result.
+
+The successor limits the proof editor's displayed height and locates the actual
+confirmation control inside the app window with bounded scrolling. Signature,
+scope, expiry, disabled-state and native Alert checks remain required. Its 22
+focused Python/JavaScript tests, TypeScript and ESLint passed. At this source
+checkpoint the subsequent APK build and delivery receipts under
+`/gpu1-share/data/cicada-client/v164-f33-consent-control-viewport-20261004`
+will bind the exact clean commit and new APK pair. Fresh live acceptance is
+**NOT_RUN**. Physical Android, public HTTPS, native Worker acceptance, Link
+recovery faults and bilateral consent also remain **NOT_RUN**. Ordinary
+cross-user messages remain closed while `external_thread_links=false`.
 
 ## Imported clean v1.6.3 delivery
 

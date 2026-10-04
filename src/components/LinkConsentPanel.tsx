@@ -279,7 +279,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       </Text>)}
       <Text style={styles.note}>请在外部 Owner 签名器中签署以下请求；手机只接收签名证明。</Text>
       <Text selectable style={styles.note}>{review.signingRequestJson}</Text>
-      <Input value={proof} onChange={setProof} placeholder="Owner 签名证明 Base64" multiline />
+      <Input value={proof} onChange={setProof} placeholder="Owner 签名证明 Base64" multiline bounded />
       <Action label="核对并明确授权" testID="link-consent-confirm" busy={busy}
         accessibilityHint={busy ? '正在核验，请稍候。' : linkOwnerProofInputValid(proof)
           ? '签名证明格式有效；请核对授权范围后继续。' : '签名证明输入无效，请检查后继续。'}
@@ -291,10 +291,11 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   </View>;
 }
 
-function Input({value, onChange, placeholder, multiline = false}: {
-  value: string; onChange: (value: string) => void; placeholder: string; multiline?: boolean;
+function Input({value, onChange, placeholder, multiline = false, bounded = false}: {
+  value: string; onChange: (value: string) => void; placeholder: string; multiline?: boolean; bounded?: boolean;
 }): React.JSX.Element {
-  return <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder={placeholder}
+  return <TextInput style={[styles.input, bounded && styles.proofInput]}
+    value={value} onChangeText={onChange} placeholder={placeholder}
     autoCapitalize="none" autoCorrect={false} multiline={multiline} maxLength={21_848} />;
 }
 
@@ -314,6 +315,7 @@ const styles = {
   title: {color: '#1A2D2B', fontSize: 14, fontWeight: '700'},
   note: {color: '#697974', fontSize: 12, lineHeight: 18},
   input: {borderWidth: 1, borderColor: '#D9E2DC', borderRadius: 10, padding: 10, color: '#1A2D2B'},
+  proofInput: {height: 120, textAlignVertical: 'top'},
   button: {alignSelf: 'flex-start', padding: 10, borderRadius: 10, backgroundColor: '#E8F3EF'},
   buttonText: {color: '#186A63', fontSize: 13, fontWeight: '700'},
   disabled: {opacity: 0.5},
