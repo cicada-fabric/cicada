@@ -47,9 +47,11 @@ REVIEW_SCHEMA = 'cicada.client-v164-link-consent-review-handoff.v1'
 PROOF_SCHEMA = 'cicada.client-v164-owner-signed-proof.v1'
 POLICY_SCHEMA = 'cicada.client-v164-review-policy-fixture.v1'
 RECOVERY_SCHEMA = 'cicada.client-v164-link-consent-recovery-scenario.v1'
+RECOVERY_RECEIPT_SCHEMA = 'cicada.client-v164-link-consent-redacted-receipt.v1'
 CATALOG_SHA256 = runner.CATALOG_SHA256
 MAX_INPUT = 256 * 1024
 MAX_OUTPUT = 512 * 1024
+MAX_SIGNED_LONG = 9_223_372_036_854_775_807
 HEX64 = re.compile(r'[0-9a-f]{64}')
 RUN_ID = re.compile(r'v164-[A-Za-z0-9_-]{1,72}')
 SIDES = {'source', 'target'}
@@ -125,6 +127,53 @@ def parse_json(raw):
     if not isinstance(value, dict):
         raise ValueError('input JSON must be an object')
     return value
+
+
+def validate_exact_recovery_receipt(receipt):
+    """Validate only transport recovery; this receipt never establishes consent acceptance."""
+    message = 'exact Link recovery receipt is invalid'
+    fields = {
+        'schema', 'result', 'run_id_sha256', 'phase',
+        'original_operation', 'original_operation_id_sha256', 'original_packet_sha256',
+        'original_request_sequence', 'original_expected_response_sequence', 'observed_response_sequence',
+        'original_packet_context_verified', 'original_request_sequence_unchanged',
+        'reconciliation_required', 'pending_after_recovery', 'recovery_state',
+        'business_acceptance', 'recovery_packet_resend_by_test',
+    }
+    if not isinstance(receipt, dict) or set(receipt) != fields:
+        raise ValueError(message)
+    if receipt.get('schema') != RECOVERY_RECEIPT_SCHEMA or \
+            receipt.get('phase') not in {'source-exact-recovery', 'target-exact-recovery'} or \
+            receipt.get('result') != 'PASS' or \
+            not isinstance(receipt.get('run_id_sha256'), str) or \
+            not HEX64.fullmatch(receipt['run_id_sha256']) or \
+            receipt.get('original_operation') not in {'link.key_grant', 'link.review_policy_grant'}:
+        raise ValueError(message)
+    if any(not isinstance(receipt.get(field), str) or not HEX64.fullmatch(receipt[field])
+            for field in ('original_operation_id_sha256', 'original_packet_sha256')):
+        raise ValueError(message)
+
+    sequence_fields = (
+        'original_request_sequence', 'original_expected_response_sequence', 'observed_response_sequence',
+    )
+    for field in sequence_fields:
+        value = receipt.get(field)
+        if not isinstance(value, str) or len(value) > 19 or not re.fullmatch(r'[1-9][0-9]*', value):
+            raise ValueError(message)
+        if int(value) > MAX_SIGNED_LONG:
+            raise ValueError(message)
+    if receipt['observed_response_sequence'] != receipt['original_expected_response_sequence']:
+        raise ValueError(message)
+
+    if receipt.get('original_packet_context_verified') is not True or \
+            receipt.get('original_request_sequence_unchanged') is not True or \
+            receipt.get('reconciliation_required') is not False or \
+            receipt.get('pending_after_recovery') is not False or \
+            receipt.get('recovery_packet_resend_by_test') is not False or \
+            receipt.get('recovery_state') != 'COMPLETED' or \
+            receipt.get('business_acceptance') != 'NOT_ESTABLISHED':
+        raise ValueError(message)
+    return receipt
 
 
 def classify_phone_ui_instrumentation(raw, exit_code):
@@ -990,6 +1039,8 @@ def run_selector(evidence, state, args):
                 value.get('phase') != expected_phase or value.get('run_id_sha256') != digest(run_id.encode()) or \
                 value.get('result') not in {'PASS', 'NOT_RUN'}:
             raise ValueError('selector receipt is malformed or belongs to another stage')
+        if method == 'recoversOnlyAnExplicitlySelectedOriginalConsentOperation' and value['result'] == 'PASS':
+            validate_exact_recovery_receipt(value)
         found.append((name, value, raw))
     if len(found) != 1:
         raise RuntimeError('selector must create exactly one fresh redacted receipt')

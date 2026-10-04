@@ -1,5 +1,17 @@
 # Client ↔ Hub contract: `client-hub-v1.6.4`
 
+## Original Link recovery test contract
+
+The [offline recovery checkpoint](client-link-recovery-offline-validation.md)
+changes only instrumentation and its redacted receipt consumer. Native recovery
+still uses the saved signed ciphertext at `/v2/client/rpc/recover`; no Hub field,
+permission or production DTO was added. A resolved local fence summary may omit
+`operationId`. The selector verifies original durable packet/route/hash and
+request/response counters before accepting transport completion, and requires
+separate fresh KEY/policy evidence for grant acceptance. Unresolved packets and
+uncertain business fences remain preserved. Current-image online fault tests
+are **NOT_RUN** until Core delivers a compatible safe isolated entrypoint.
+
 ## Current bounded Link consent acceptance — F38
 
 The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)

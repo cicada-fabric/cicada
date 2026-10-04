@@ -1,5 +1,25 @@
 # CICADA Client integration handoff
 
+## Link recovery offline successor
+
+The [offline recovery report](client-link-recovery-offline-validation.md)
+records the repaired original-packet selector and strict SOURCE/TARGET receipt
+consumer. Docker verification passed 3 synthetic Kotlin groups, compilation of
+the changed Android selector and 6 Python receipt tests; all exits were `0`.
+Only test/driver code changed. A cleared native fence may omit `operationId`;
+the selector now requires original packet/route/hash, exact persisted counters,
+and safe durable state instead. Transport completion does not establish grant
+acceptance. Proof/packet bytes and raw IDs remain app-private.
+
+No APK, live Hub, signing or model call was created. Current-image response-loss,
+processing, uncertain and unavailable gates remain **NOT_RUN**; the Core-owned
+safe Link fault entrypoint is **BLOCKED** pending delivery. Root deferred a fresh
+window until the final clean Hub artifacts are ready. The report contains the
+exact fixed target, commands/exits, final source-bound receipts and coordination
+prompt. The commit is bound by
+`/gpu1-share/data/cicada-client/v164-link-recovery-offline-20261004/commit-delivery.receipt.redacted.json`;
+F38 remains attributed to its original `caa9e4c` APKs below.
+
 ## Current F38 bounded Link consent acceptance — clean Core `0213538`
 
 The [F38 report](client-hub-v1.6.4-0213538-f38-validation.md) binds tested

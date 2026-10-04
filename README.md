@@ -42,6 +42,12 @@ Node confirmation now validates the complete `NodeControlKeyBinding` public keys
 
 ## Current integration candidate: v1.6.4
 
+The latest [offline recovery checkpoint](docs/client-link-recovery-offline-validation.md)
+repairs original Link recovery test correlation and validates saved packet,
+sequence and receipt handling. Docker checks passed; no new APK or live Hub
+acceptance was produced. Current-image recovery faults await a Core-owned safe
+fixture. F38 remains the bounded runtime result for its exact APKs below.
+
 The candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
 Its archive, catalog and fixed image IDs are recorded in the
 [F19 target record](docs/client-hub-v1.6.4-0213538-f19-validation.md). The

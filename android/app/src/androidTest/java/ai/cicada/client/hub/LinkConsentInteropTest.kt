@@ -1020,20 +1020,30 @@ class LinkConsentInteropTest {
         }
         val originalOperationId = text(before, "pendingOperationId")
         profiles.withActiveScope(selectedScope) { session ->
+            // Inspect only this app's bounded private state under the session lock.
+            // Neither packet/proof bytes nor the raw operation ID leave this process.
+            val storedBefore = readRecoveryState(selectedScope)
+            val originalTuple = storedBefore.getAsJsonObject("linkConsentLedger")
+                .getAsJsonObject("review").getAsJsonObject("tuple")
+            require(text(originalTuple, "profile_id") == selected.profileId &&
+                text(originalTuple, "hub_id") == selected.hubId && text(originalTuple, "owner_id") == selected.ownerId &&
+                text(originalTuple, "device_id") == selected.deviceId && text(originalTuple, "link_id") == selected.linkId &&
+                safeLongNumber(originalTuple, "link_version", 1) == selected.linkVersion &&
+                text(storedBefore, "validatedCatalogSha256") == selected.catalogSha256) {
+                "Original consent tuple differs from the explicitly selected Link"
+            }
+            val original = LinkConsentRecoveryEvidence.capture(storedBefore, expectedOperation)
+            require(original.operationId == originalOperationId) { "Original pending operation changed before recovery" }
+            var recoveryError: String? = null
             val recovery = try {
                 session.recoverLinkConsent(selectedScope.selectionGeneration)
             } catch (failure: HubSessionException) {
-                writeReceipt(sideFile(selected, "exact-recovery.redacted.json"),
-                    "${selected.ownerRole}-exact-recovery", "NOT_RUN") {
-                    addProperty("original_operation", expectedOperation)
-                    addProperty("original_operation_id_sha256", hash(originalOperationId))
-                    addProperty("recovery_error_code", failure.errorCode)
-                    addProperty("recovery_packet_resend_by_test", false)
-                }
-                assumeTrue("Exact recovery is NOT_RUN: recovery did not return an authenticated result", false)
-                return@withActiveScope
+                recoveryError = failure.errorCode.takeIf { it.matches(Regex("[A-Z][A-Z0-9_]{0,95}")) } ?: "UNKNOWN"
+                null
             }
             val after = session.getStatus()
+            val storedAfter = readRecoveryState(selectedScope)
+            val outcome = LinkConsentRecoveryEvidence.verify(original, storedAfter, recovery, recoveryError)
             val remainsPending = after.has("pendingOperationId")
             if (remainsPending) {
                 require(text(after, "pendingOperationId") == originalOperationId &&
@@ -1041,36 +1051,43 @@ class LinkConsentInteropTest {
                     "Recovery changed the original pending operation"
                 }
             }
-            recovery?.get("operationId")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString?.let {
-                require(it == originalOperationId) { "Recovery receipt does not correlate to the original operation" }
+            val reconciliationRequired = after.get("linkConsentReconciliationRequired").asBoolean
+            val completed = outcome == LinkConsentRecoveryEvidence.Outcome.COMPLETED
+            require(!completed || (!remainsPending && !reconciliationRequired &&
+                !after.get("uncertainNeedsReconciliation").asBoolean)) {
+                "Completed recovery differs from the public session status"
             }
-            val reconciliationRequired = recovery?.get("reconciliationRequired")?.asBoolean
-                ?: after.get("uncertainNeedsReconciliation")?.asBoolean == true
-            val correlatedOperationId = recovery?.get("operationId")
-                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
-            if (remainsPending || reconciliationRequired || correlatedOperationId != originalOperationId) {
-                writeReceipt(sideFile(selected, "exact-recovery.redacted.json"),
-                    "${selected.ownerRole}-exact-recovery", "NOT_RUN") {
-                    addProperty("original_operation", expectedOperation)
-                    addProperty("original_operation_id_sha256", hash(originalOperationId))
-                    addProperty("recovery_state", recovery?.get("state")?.asString ?: "UNKNOWN")
-                    addProperty("reconciliation_required", reconciliationRequired)
-                    addProperty("pending_after_recovery", remainsPending)
-                    addProperty("recovery_packet_resend_by_test", false)
-                }
-                assumeTrue("Exact recovery is NOT_RUN: the original operation remains unresolved", false)
-                return@withActiveScope
-            }
-            writeReceipt(sideFile(selected, "exact-recovery.redacted.json"), "${selected.ownerRole}-exact-recovery", "PASS") {
+            writeReceipt(sideFile(selected, "exact-recovery.redacted.json"),
+                "${selected.ownerRole}-exact-recovery", if (completed) "PASS" else "NOT_RUN") {
                 addProperty("original_operation", expectedOperation)
                 addProperty("original_operation_id_sha256", hash(originalOperationId))
+                addProperty("original_packet_sha256", original.packetSha256)
+                addProperty("original_request_sequence", original.requestSequence.toString())
+                addProperty("original_expected_response_sequence", original.expectedResponseSequence.toString())
+                addProperty("observed_response_sequence", safeLongNumber(storedAfter, "lastResponseSequence").toString())
+                addProperty("original_packet_context_verified", true)
+                addProperty("original_request_sequence_unchanged", true)
                 addProperty("reconciliation_required", reconciliationRequired)
                 addProperty("pending_after_recovery", remainsPending)
-                addProperty("pending_operation_unchanged", !remainsPending || text(after, "pendingOperation") == expectedOperation)
-                addProperty("recovery_state", recovery?.get("state")?.asString ?: "RECONCILED")
+                addProperty("recovery_state", outcome.name)
+                recoveryError?.let { addProperty("recovery_error_code", it) }
                 addProperty("recovery_packet_resend_by_test", false)
+                // A terminal transport response can reject a grant. Current bilateral
+                // consent requires its separate fresh KEY/policy status selector.
+                addProperty("business_acceptance", "NOT_ESTABLISHED")
             }
+            assumeTrue("Exact recovery is NOT_RUN: the original operation remains unresolved", completed)
         }
+    }
+
+    private fun readRecoveryState(selectedScope: HubProfileStore.Scope): JsonObject = try {
+        val file = AtomicFile(File(ClientHubSession.profileDirectory(target, selectedScope.profileId), "session-state.json"))
+        file.openRead().use { input ->
+            require(input.channel.size() in 1L..1_048_576L) { "Private recovery state size is invalid" }
+            JsonParser.parseReader(input.reader(StandardCharsets.UTF_8)).asJsonObject
+        }
+    } catch (_: Exception) {
+        error("Could not read bounded app-private recovery state")
     }
 
     private fun nonePolicy() = JsonObject().apply {

@@ -1,5 +1,20 @@
 # CICADA Client development and validation plan
 
+## Current offline work: original Link recovery
+
+The [recovery checkpoint](client-link-recovery-offline-validation.md) completes
+the test-selector correction, independent saved packet/counter checks and
+strict receipt validation. Three synthetic Kotlin groups, the changed Android
+selector compile and six Python tests passed in offline Docker. No APK or live
+run was created; this does not extend F38 runtime acceptance.
+
+Next, obtain a Core-owned current-image fault entrypoint and a Root-coordinated
+clean Hub window. Run separate lost-response, processing, uncertain and
+unavailable sessions, then verify exact original proof/tuple reconciliation
+with fresh KEY/NONE status. Preserve pending packets and failed/unknown history.
+The safe fault fixture is **BLOCKED**; online gates, process-death, new emulator,
+real native Worker, physical Android and public HTTPS remain **NOT_RUN**.
+
 ## Current fixed-target acceptance — F38
 
 The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)
