@@ -70,16 +70,23 @@ confirmation button or native Alert was activated. Its terminal remains
 `OUTCOME_UNKNOWN_PRESERVE_PENDING`; no retry was made. F31 and F32 did not run
 the business flow and do not change this result.
 
-The successor limits the proof editor's displayed height and locates the actual
-confirmation control inside the app window with bounded scrolling. Signature,
-scope, expiry, disabled-state and native Alert checks remain required. Its 22
-focused Python/JavaScript tests, TypeScript and ESLint passed. At this source
-checkpoint the subsequent APK build and delivery receipts under
-`/gpu1-share/data/cicada-client/v164-f33-consent-control-viewport-20261004`
-will bind the exact clean commit and new APK pair. Fresh live acceptance is
-**NOT_RUN**. Physical Android, public HTTPS, native Worker acceptance, Link
-recovery faults and bilateral consent also remain **NOT_RUN**. Ordinary
-cross-user messages remain closed while `external_thread_links=false`.
+The [F34 report](docs/client-hub-v1.6.4-0213538-f34-validation.md) records the
+subsequent run from Client `8f2900c`. Its bounded proof editor and app-window
+control lookup reached `CONFIRM_READY`; the full native Alert checks and
+positive-button action returned. JUnit then failed waiting for the response
+text. Callback entry, encrypted request outcome and Target KEY acceptance
+remain **UNKNOWN**; the original operation must be preserved. SOURCE results
+were partial, and Target `NONE` and bilateral consent were **NOT_RUN**.
+
+The next candidate adds passive debug observations of fixed UI/native stages
+and allowlisted error codes, with no messages, proof bytes or keys. Observation
+metadata cannot establish grant acceptance. Its 30 focused Python/JavaScript
+tests, TypeScript and ESLint passed. Subsequent build and delivery receipts at
+`/gpu1-share/data/cicada-client/v164-f34-submit-observation-20261004` bind the
+exact clean commit and APK pair. Fresh live acceptance remains **NOT_RUN**.
+Physical Android, public HTTPS, native Worker acceptance, Link recovery faults
+and bilateral consent remain **NOT_RUN**. Ordinary cross-user messages remain
+closed while `external_thread_links=false`.
 
 ## Imported clean v1.6.3 delivery
 

@@ -205,6 +205,80 @@ def validate_phone_ui_consent_receipt(raw, expected_run_id_sha256):
     return value
 
 
+def validate_phone_ui_submit_progress_receipt(raw, expected_run_id_sha256):
+    """Validate passive debug observations; they never establish grant acceptance."""
+    message = 'phone UI submit progress receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 8192 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    ui_stages = {'CONFIRM_OPENED', 'CALLBACK_ENTERED', 'SCOPE_GUARD_PASSED',
+        'SCOPE_GUARD_REJECTED', 'REVIEW_CONSUMED', 'REVIEW_INVALIDATED',
+        'UI_SUBMIT_DISPATCHED', 'UI_RESPONSE_RETURNED', 'UI_SUBMIT_REJECTED',
+        'RESPONSE_SCOPE_CHANGED'}
+    native_stages = {'NATIVE_BRIDGE_ENTERED', 'NATIVE_CALL_STARTED',
+        'NATIVE_RESOLVED', 'NATIVE_REJECTED'}
+    stages = ui_stages | native_stages | {'RN_CONFIRM_CLICKED', 'ALERT_VERIFIED',
+        'ALERT_POSITIVE_CLICKED'}
+    codes = {'CLIENT_HUB_ERROR', 'CLIENT_HUB_UNAVAILABLE', 'INVALID_PROFILE_SCOPE',
+        'INVALID_ARGUMENT', 'LINK_CONSENT_CONFIRMATION_REQUIRED',
+        'BUSINESS_RECONCILIATION_REQUIRED', 'LINK_CONSENT_REVIEW_EXPIRED',
+        'LINK_CONSENT_REVIEW_STALE', 'INVALID_LINK_OWNER_PROOF',
+        'LINK_CONSENT_REVIEW_INVALID', 'LINK_OWNER_PROOF_INVALID',
+        'LINK_CONSENT_PACKET_CONTEXT_INVALID', 'LINK_REVIEW_POLICY_RESULT_INVALID',
+        'UNCLASSIFIED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'events', 'error_code', 'native_ok',
+        'reconciliation_required', 'promise_in_flight', 'native_packet_pending',
+        'viewport', 'last_ui_stage', 'native_session_methods_called_by_test', 'truncated'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-submit-progress.v1' or \
+            value.get('result') != 'OBSERVED' or value.get('run_id_sha256') != expected_run_id_sha256 or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('native_packet_pending') != 'UNKNOWN' or \
+            not isinstance(value.get('viewport'), str) or \
+            value['viewport'] not in {'VISIBLE', 'NOT_VISIBLE', 'UNKNOWN'} or \
+            type(value.get('truncated')) is not bool or \
+            not isinstance(value.get('events'), list) or len(value['events']) > 32:
+        raise ValueError(message)
+    event_fields = {'elapsed_ms', 'stage', 'native_ok', 'reconciliation_required', 'error_code'}
+    previous_time = -1
+    native_ok = reconciliation = inflight = error_code = last_ui = None
+    for event in value['events']:
+        if not isinstance(event, dict) or set(event) != event_fields or \
+                type(event.get('elapsed_ms')) is not int or \
+                not 0 <= event['elapsed_ms'] <= 1_200_000 or event['elapsed_ms'] < previous_time or \
+                not isinstance(event.get('stage'), str) or event['stage'] not in stages or \
+                any(event[k] is not None and type(event[k]) is not bool
+                    for k in ('native_ok', 'reconciliation_required')) or \
+                (event['error_code'] is not None and
+                    (not isinstance(event['error_code'], str) or event['error_code'] not in codes)):
+            raise ValueError(message)
+        stage = event['stage']
+        previous_time = event['elapsed_ms']
+        if stage not in {'NATIVE_RESOLVED', 'NATIVE_REJECTED'} and \
+                any(event[k] is not None for k in ('native_ok', 'reconciliation_required', 'error_code')):
+            raise ValueError(message)
+        if stage == 'NATIVE_REJECTED' and (event['error_code'] is None or
+                event['native_ok'] is not None or event['reconciliation_required'] is not None):
+            raise ValueError(message)
+        if stage in ui_stages:
+            last_ui = stage
+        if stage == 'NATIVE_CALL_STARTED':
+            inflight = True
+            native_ok = reconciliation = error_code = None
+        elif stage in {'NATIVE_RESOLVED', 'NATIVE_REJECTED'}:
+            inflight = False
+            native_ok = event['native_ok']
+            reconciliation = event['reconciliation_required']
+            error_code = event['error_code']
+    if any(value[k] is not None and type(value[k]) is not bool
+            for k in ('native_ok', 'reconciliation_required', 'promise_in_flight')) or \
+            value['native_ok'] != native_ok or value['reconciliation_required'] != reconciliation or \
+            value['promise_in_flight'] != inflight or value['error_code'] != error_code or \
+            value['last_ui_stage'] != last_ui:
+        raise ValueError(message)
+    return value
+
+
 def secret_fields(value):
     if isinstance(value, dict):
         for key, nested in value.items():

@@ -121,6 +121,86 @@ Tests run: 1, Failures: 1
             with self.assertRaises(ValueError):
                 interop.validate_phone_ui_consent_receipt(raw, 'a' * 64)
 
+    def progress(self, events=None, **fields):
+        return {'schema': 'cicada.client-v164-phone-ui-submit-progress.v1',
+            'result': 'OBSERVED', 'run_id_sha256': 'a' * 64, 'events': events or [],
+            'error_code': None, 'native_ok': None, 'reconciliation_required': None,
+            'promise_in_flight': None, 'native_packet_pending': 'UNKNOWN',
+            'viewport': 'UNKNOWN', 'last_ui_stage': None,
+            'native_session_methods_called_by_test': False, 'truncated': False, **fields}
+
+    def event(self, stage, elapsed=1, **fields):
+        return {'stage': stage, 'elapsed_ms': elapsed, 'native_ok': None,
+            'reconciliation_required': None, 'error_code': None, **fields}
+
+    def validate_progress(self, value):
+        return interop.validate_phone_ui_submit_progress_receipt(json.dumps(value).encode(), 'a' * 64)
+
+    def test_progress_distinguishes_promise_from_unobserved_ciphertext_pending(self):
+        events = [self.event('ALERT_POSITIVE_CLICKED'), self.event('CALLBACK_ENTERED', 2),
+            self.event('UI_SUBMIT_DISPATCHED', 3), self.event('NATIVE_BRIDGE_ENTERED', 4),
+            self.event('NATIVE_CALL_STARTED', 5)]
+        value = self.progress(events, promise_in_flight=True, last_ui_stage='UI_SUBMIT_DISPATCHED')
+        self.assertEqual(self.validate_progress(value), value)
+        self.assertEqual(self.validate_progress(value)['native_packet_pending'], 'UNKNOWN')
+        for mutation in ({'result': 'PASS'}, {'native_packet_pending': True},
+            {'promise_in_flight': False}, {'native_ok': True}):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.validate_progress({**value, **mutation})
+
+    def test_progress_keeps_actual_native_resolution_or_allowlisted_rejection(self):
+        start = self.event('NATIVE_CALL_STARTED')
+        for terminal, fields in (
+            (self.event('NATIVE_RESOLVED', 2, native_ok=False, reconciliation_required=True),
+                dict(native_ok=False, reconciliation_required=True)),
+            (self.event('NATIVE_REJECTED', 2, error_code='LINK_CONSENT_REVIEW_STALE'),
+                dict(error_code='LINK_CONSENT_REVIEW_STALE')),
+            (self.event('NATIVE_REJECTED', 2, error_code='UNCLASSIFIED'),
+                dict(error_code='UNCLASSIFIED')),
+        ):
+            value = self.progress([start, terminal], promise_in_flight=False, **fields)
+            self.assertEqual(self.validate_progress(value), value)
+            if terminal['stage'] == 'NATIVE_REJECTED':
+                # Profile/worker rejection can happen before the session method starts.
+                self.assertEqual(self.validate_progress(self.progress([terminal],
+                    promise_in_flight=False, **fields))['promise_in_flight'], False)
+            restarted = self.progress([start, terminal, self.event('NATIVE_CALL_STARTED', 3)],
+                promise_in_flight=True)
+            self.assertEqual(self.validate_progress(restarted)['native_ok'], None)
+
+    def test_progress_rejects_sensitive_fields_wrong_run_and_untyped_error_text(self):
+        for mutation in ({'proof': 'private'}, {'tree': 'private'}, {'result': 'PASS'},
+            {'run_id_sha256': 'b' * 64}, {'viewport': []}, {'truncated': 1},
+            {'last_ui_stage': 'exception text'}, {'error_code': 'private detail'},
+            {'native_session_methods_called_by_test': True}):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.validate_progress(self.progress(**mutation))
+        for event in (self.event('NATIVE_REJECTED', error_code='secret body'),
+            self.event('CALLBACK_ENTERED', error_code='UNCLASSIFIED'),
+            self.event('NATIVE_REJECTED', native_ok=False, error_code='UNCLASSIFIED'),
+            self.event('NATIVE_REJECTED'), self.event('NATIVE_RESOLVED', native_ok='true'),
+            self.event('CALLBACK_ENTERED', proof='private')):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                self.validate_progress(self.progress([event]))
+
+    def test_progress_rejects_invalid_bounds_order_and_aggregate(self):
+        invalid_events = [[self.event('ALERT_VERIFIED', 2), self.event('RN_CONFIRM_CLICKED', 1)],
+            [self.event('ALERT_VERIFIED', True)], [self.event('ALERT_VERIFIED', -1)],
+            [self.event('ALERT_VERIFIED', 1_200_001)], [self.event('ALERT_VERIFIED')] * 33,
+            [self.event('UNKNOWN')]]
+        for events in invalid_events:
+            with self.subTest(events=events), self.assertRaises(ValueError):
+                self.validate_progress(self.progress(events))
+        value = self.progress([self.event('CALLBACK_ENTERED')], last_ui_stage='CALLBACK_ENTERED')
+        self.assertEqual(self.validate_progress(value), value)
+        with self.assertRaises(ValueError):
+            self.validate_progress({**value, 'last_ui_stage': 'UI_RESPONSE_RETURNED'})
+
+    def test_progress_rejects_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'', b'{}', b'[]', b'null', b'{"result":"OBSERVED","result":"PASS"}', b'x' * 8193):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_submit_progress_receipt(raw, 'a' * 64)
+
 
 if __name__ == '__main__':
     unittest.main()

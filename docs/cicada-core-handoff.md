@@ -1,6 +1,56 @@
 # CICADA Client integration handoff
 
-## Current F33 outcome and successor correction — clean Core `0213538`
+## Current F34 outcome and diagnostic successor — clean Core `0213538`
+
+The [F34 validation report](client-hub-v1.6.4-0213538-f34-validation.md) binds
+Client `8f2900c63f515033827d41d962acf7453513f370` and app/test SHA-256
+`3c7a4e5903edc8549773cc89e29fe058959fa68e8f56ffba45214eba6a4cf32d` /
+`1110cbed39069a6c5f316426db821237f696856188fa9ddee3475426f32d0fbf`
+to the unchanged clean v1.6.4 Core target. Encrypted enrollment, capabilities
+and independent pins passed. SOURCE KEY and `NONE` returned partial status.
+TARGET reached `REVIEW_READY` and `CONFIRM_READY`; the complete native Alert
+scope checks and positive-button accessibility action returned successfully.
+JUnit then failed at line 597 waiting for the response text, with one test and
+one failure. Flow exit was `1`; instrumentation exit `0` did not override JUnit.
+
+The terminal remains **FAIL / `OUTCOME_UNKNOWN_PRESERVE_PENDING`**. Alert click
+does not prove callback entry, encrypted RPC dispatch or Hub acceptance. Actual
+native packet pending and Target KEY outcome remain **UNKNOWN**. Preserve the
+original operation; do not retry or replace it. Target `NONE` and bilateral
+acceptance were **NOT_RUN**. Five external signatures are not accepted grants.
+Core's independent closure and actual two-resource cleanup passed; their exact
+hashes and attribution limits are in the F34 report. No new live action ran here.
+
+The successor adds bounded, payload-free diagnostic observations only. Native
+observation requires a debug build and an active instrumentation observer. It
+records fixed UI/native stages and allowlisted error codes in memory; the test
+exports a private `OBSERVED` receipt without proof bytes, messages or keys. A
+Promise in flight is reported separately from unobserved ciphertext pending.
+The existing protocol, pins, proof, expiry, guards, deadline and bilateral
+acceptance checks remain required. Docker JavaScript (14) and Python (16)
+tests, TypeScript and ESLint passed. The post-commit build and 26-source delivery
+under `/gpu1-share/data/cicada-client/v164-f34-submit-observation-20261004`
+will bind the exact new Client commit and APK pair. At this source checkpoint
+fresh Android acceptance is **NOT_RUN**. Physical Android, public HTTPS,
+native Worker and Link recovery fault acceptance remain **NOT_RUN**.
+
+### Next coordination prompt
+
+```text
+Read the F34 validation report and the successor's build, frozen-source and
+delivery receipts. Preserve F34 FAIL / OUTCOME_UNKNOWN_PRESERVE_PENDING and
+every earlier outcome. Do not retry an original packet or infer Hub acceptance
+from the native Alert action. Bind the exact clean commit, app/test hashes and
+26-source closure before a fresh Root-authorized run. Root alone owns BOOT/GO,
+scope/deadlines and the single business frame; Core retains external signing
+custody. Capture the new strict submit-progress receipt on success or failure.
+OBSERVED metadata never establishes acceptance: require actual JUnit success,
+the full native Alert and fresh bilateral KEY/NONE status. Preserve actor
+stop/wait, one terminal ACK and owned cleanup. Report physical Android, public
+HTTPS and native Worker as NOT_RUN until separately tested. No push or merge.
+```
+
+## Historical F33 outcome and successor correction — clean Core `0213538`
 
 The [F33 validation report](client-hub-v1.6.4-0213538-f33-validation.md) binds
 Client `906c7b0d0434b569336060a33697ff96e9ec7948`, its exact APK pair and the

@@ -43,6 +43,7 @@ class LinkConsentPhoneUiTest {
     private val proofFile get() = File(directory, "phone-ui-signed-proof.private.json")
     private val reviewReceipt get() = File(directory, "phone-ui-review.redacted.json")
     private val resultReceipt get() = File(directory, "phone-ui-submit.redacted.json")
+    private val submitProgressReceipt get() = File(directory, "phone-ui-submit-progress.redacted.json")
     private val prepareReceipt get() = File(directory, "phone-ui-prepare.redacted.json")
     private val consentReceipt get() = File(directory, "phone-ui-consent.redacted.json")
 
@@ -61,12 +62,46 @@ class LinkConsentPhoneUiTest {
 
     @After
     fun restoreAccessibilityFlags() {
-        val flags = priorAccessibilityFlags ?: return
-        val automation = instrumentation.uiAutomation
-        val serviceInfo = automation.serviceInfo
-        serviceInfo.flags = flags
-        automation.setServiceInfo(serviceInfo)
-        priorAccessibilityFlags = null
+        try {
+            observeSubmitProgressViewportIfUnknown()
+            LinkConsentDebugObservation.snapshot()?.let { progress ->
+                writePrivate(submitProgressReceipt, progress.toString().toByteArray(StandardCharsets.UTF_8))
+            }
+        } finally {
+            LinkConsentDebugObservation.end()
+            val flags = priorAccessibilityFlags
+            if (flags != null) {
+                val automation = instrumentation.uiAutomation
+                val serviceInfo = automation.serviceInfo
+                serviceInfo.flags = flags
+                automation.setServiceInfo(serviceInfo)
+                priorAccessibilityFlags = null
+            }
+        }
+    }
+
+    /** Samples only fixed response labels from the package-filtered app root; it performs no UI action. */
+    private fun observeSubmitProgressViewportIfUnknown() {
+        try {
+            val progress = LinkConsentDebugObservation.snapshot() ?: return
+            if (progress.get("viewport")?.asString != "UNKNOWN") return
+            val root = uiRoot() ?: return
+            val responseLabels = setOf(
+                "授权响应已返回。请重读双方证明状态；单方接受不代表 Link 已可用。",
+                "授权结果未确认。原请求由设备保留；请恢复原包，不要重复提交。",
+                "确认已失效，请重新读取证明。",
+            )
+            val matches = descendants(root).filter { node ->
+                node.packageName?.toString() == target.packageName &&
+                    listOf(node.text, node.contentDescription).any { it?.toString() in responseLabels }
+            }
+            when {
+                matches.any { it.isVisibleToUser } -> LinkConsentDebugObservation.recordViewport("VISIBLE")
+                matches.isNotEmpty() -> LinkConsentDebugObservation.recordViewport("NOT_VISIBLE")
+            }
+        } catch (_: Exception) {
+            // The test receipt can safely keep UNKNOWN if the app window is unavailable.
+        }
     }
 
     private data class Scope(
@@ -502,11 +537,14 @@ class LinkConsentPhoneUiTest {
 
     @Test
     fun actualReactNativeLinkConsentAlertUsesCurrentExternallySignedReview() {
-        val scope = readScope()
+        val runHash = hash(runId.toByteArray(StandardCharsets.UTF_8))
         require(!requestFile.exists() && !proofFile.exists() && !reviewReceipt.exists() &&
-            !resultReceipt.exists() && !prepareReceipt.exists() && !consentReceipt.exists()) {
+            !resultReceipt.exists() && !submitProgressReceipt.exists() && !prepareReceipt.exists() &&
+            !consentReceipt.exists()) {
             "This UI run already contains a signer handoff; use a fresh run ID instead of replaying it"
         }
+        LinkConsentDebugObservation.begin(runHash)
+        val scope = readScope()
         enableViewIdReporting()
         val activity = instrumentation.startActivitySync(
             Intent(target, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -581,6 +619,7 @@ class LinkConsentPhoneUiTest {
             recordConsentControl(ConsentControl(consentControl, "ACCESSIBILITY_CLICK_FAILED", 1, 1, false, true, true))
             error("Consent confirmation control could not be activated")
         }
+        LinkConsentDebugObservation.recordTestStage("RN_CONFIRM_CLICKED")
         recordConsentControl(ConsentControl(consentControl, "CONFIRM_READY", 1, 1, false, true, true))
 
         val alertRoot = awaitRoot { root ->
@@ -593,9 +632,12 @@ class LinkConsentPhoneUiTest {
             alertText.contains("合约 ${validateRequest(requestText, scope).get("contract_digest").asString}")) {
             "Native Alert does not display the exact Link side and contract reviewed by the signer"
         }
+        LinkConsentDebugObservation.recordTestStage("ALERT_VERIFIED")
         clickLabel("明确授权", timeoutMs = 10_000)
+        LinkConsentDebugObservation.recordTestStage("ALERT_POSITIVE_CLICKED")
         scrollToText("授权响应已返回。请重读双方证明状态")
         awaitRoot { root -> visibleText(root).any { it.contains("授权响应已返回。请重读双方证明状态") } }
+        LinkConsentDebugObservation.recordViewport("VISIBLE")
 
         scrollToText("重读双方证明状态")
         clickLabel("重读双方证明状态")

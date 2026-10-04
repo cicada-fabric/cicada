@@ -13,6 +13,7 @@ import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.ViewManager
+import com.cicadaclient.BuildConfig
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
@@ -44,6 +45,14 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     override fun getName(): String = "CicadaClientHub"
+
+    override fun getConstants(): MutableMap<String, Any> =
+        mutableMapOf("linkConsentDiagnosticsEnabled" to BuildConfig.DEBUG)
+
+    @com.facebook.react.bridge.ReactMethod
+    fun recordLinkConsentDiagnosticStage(stage: String) {
+        LinkConsentDebugObservation.recordUiStage(stage)
+    }
 
     @com.facebook.react.bridge.ReactMethod
     fun listHubProfiles(promise: Promise) = run(promise) { profiles.listHubProfiles() }
@@ -146,14 +155,23 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
     }
 
     @com.facebook.react.bridge.ReactMethod
-    fun submitLinkConsent(options: ReadableMap, promise: Promise) = runScoped(options, promise) { session ->
-        session.submitLinkConsent(
-            reviewId = requiredString(options, "reviewId"),
-            consentDigest = requiredString(options, "consentDigest"),
-            signedProofBase64 = requiredString(options, "signedProofBase64"),
-            confirmed = options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed"),
-            profileGeneration = requiredScope(options).selectionGeneration,
-        )
+    fun submitLinkConsent(options: ReadableMap, promise: Promise) {
+        LinkConsentDebugObservation.recordNativeBridgeEntered()
+        runScoped(options, promise, observeLinkConsentSubmit = true) { session ->
+            val reviewId = requiredString(options, "reviewId")
+            val consentDigest = requiredString(options, "consentDigest")
+            val signedProofBase64 = requiredString(options, "signedProofBase64")
+            val confirmed = options.hasKey("confirmed") && !options.isNull("confirmed") && options.getBoolean("confirmed")
+            val profileGeneration = requiredScope(options).selectionGeneration
+            LinkConsentDebugObservation.recordNativeCallStarted()
+            session.submitLinkConsent(
+                reviewId = reviewId,
+                consentDigest = consentDigest,
+                signedProofBase64 = signedProofBase64,
+                confirmed = confirmed,
+                profileGeneration = profileGeneration,
+            )
+        }
     }
 
     @com.facebook.react.bridge.ReactMethod
@@ -294,24 +312,34 @@ class ClientHubNativeModule(context: ReactApplicationContext) : ReactContextBase
         session.monitorBroadcastStatus(requiredString(options, "previewId"))
     }
 
-    private fun run(promise: Promise, action: () -> JsonObject) {
+    private fun run(promise: Promise, observeLinkConsentSubmit: Boolean = false, action: () -> JsonObject) {
         try {
             worker.execute {
                 try {
-                    promise.resolve(jsonToWritable(action()))
+                    val result = action()
+                    val writable = jsonToWritable(result)
+                    promise.resolve(writable)
+                    if (observeLinkConsentSubmit) LinkConsentDebugObservation.recordNativeResolved(result)
                 } catch (error: HubSessionException) {
+                    if (observeLinkConsentSubmit) LinkConsentDebugObservation.recordNativeRejected(error.errorCode)
                     promise.reject(error.errorCode, error.message, error)
                 } catch (_: Exception) {
+                    if (observeLinkConsentSubmit) LinkConsentDebugObservation.recordNativeRejected("CLIENT_HUB_ERROR")
                     promise.reject("CLIENT_HUB_ERROR", "Client Hub operation failed")
                 }
             }
         } catch (_: Exception) {
+            if (observeLinkConsentSubmit) LinkConsentDebugObservation.recordNativeRejected("CLIENT_HUB_UNAVAILABLE")
             promise.reject("CLIENT_HUB_UNAVAILABLE", "Client Hub worker is unavailable")
         }
     }
 
-    private fun runScoped(options: ReadableMap, promise: Promise, action: (ClientHubSession) -> JsonObject) =
-        run(promise) { profiles.withActiveScope(requiredScope(options), action) }
+    private fun runScoped(
+        options: ReadableMap,
+        promise: Promise,
+        observeLinkConsentSubmit: Boolean = false,
+        action: (ClientHubSession) -> JsonObject,
+    ) = run(promise, observeLinkConsentSubmit) { profiles.withActiveScope(requiredScope(options), action) }
 
     private fun requiredScope(options: ReadableMap): HubProfileStore.Scope {
         val scope = try { options.getMap("scope") } catch (_: Exception) { null }

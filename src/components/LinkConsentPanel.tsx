@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {Alert, AppState, Pressable, Text, TextInput, View} from 'react-native';
 import type {HubProfileScope} from '../platform/clientHub';
 import type {LinkReviewPolicy} from '../platform/linkReviewPolicyStatus';
+import {observeLinkConsentDiagnostic} from '../platform/linkConsentDiagnostics';
 import {
   LinkConsentReviewLifecycle, linkConsentReviewFromNative, linkConsentUiScope,
   linkOwnerProofInputValid, linkKeyGrantReceiptFromNative, linkConsentPrepareStatus,
@@ -41,6 +42,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
 
   useEffect(() => {
     const hadPreparationOrReview = preparationActive.current;
+    if (hadPreparationOrReview) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
     preparationActive.current = false;
     lifecycle.current.invalidate();
     setReview(null);
@@ -58,6 +60,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       latest.current.foreground = state === 'active';
       if (state !== 'active') {
         const hadPreparationOrReview = preparationActive.current;
+        if (hadPreparationOrReview) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
         preparationActive.current = false;
         current.invalidate();
         setReview(null);
@@ -69,7 +72,11 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
         setBusy(false);
       }
     });
-    return () => { subscription.remove(); current.invalidate(); };
+    return () => {
+      subscription.remove();
+      if (preparationActive.current) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
+      current.invalidate();
+    };
   }, []);
 
   if (!props.api.linkConsentReady) return null;
@@ -80,6 +87,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       setPrepareStage('REVIEW_INVALIDATED');
       return;
     }
+    if (preparationActive.current) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
     lifecycle.current.invalidate();
     const generation = lifecycle.current.capture();
     const captured = latest.current;
@@ -142,6 +150,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
         {text: '已独立核对', onPress: () => { (async () => {
           if (!latest.current.foreground || latest.current.scope !== captured.scope) return;
           setBusy(true);
+          if (preparationActive.current) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
           preparationActive.current = false;
           lifecycle.current.invalidate();
           setReview(null);
@@ -166,6 +175,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
     const captured = latest.current;
     const reviewed = review;
     const signedProofBase64 = proof;
+    observeLinkConsentDiagnostic('CONFIRM_OPENED');
     Alert.alert('提交此授权？',
       `${reviewed.linkId} · v${reviewed.linkVersion} · ${reviewed.side}\n` +
       `${reviewed.sourceEndpointId} / ${reviewed.sourceGroupId} → ${reviewed.targetEndpointId} / ${reviewed.targetGroupId}\n` +
@@ -173,27 +183,37 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
       `到期 ${reviewed.expiresAt}\n合约 ${reviewed.contractDigest}\n双方公钥及当前绑定将再次核验。`, [
         {text: '取消', style: 'cancel'},
         {text: '明确授权', onPress: () => { (async () => {
-          if (!latest.current.foreground || latest.current.scope !== captured.scope) return;
+          observeLinkConsentDiagnostic('CALLBACK_ENTERED');
+          if (!latest.current.foreground || latest.current.scope !== captured.scope) {
+            observeLinkConsentDiagnostic('SCOPE_GUARD_REJECTED');
+            return;
+          }
+          observeLinkConsentDiagnostic('SCOPE_GUARD_PASSED');
           const accepted = lifecycle.current.consume(captured.scope, reviewed.reviewId,
             reviewed.consentDigest, Date.now());
           if (!accepted) {
             preparationActive.current = false;
+            observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
             setReview(null); setProof(''); setPrepareStage('REVIEW_INVALIDATED');
             setMessage('确认已失效，请重新读取证明。'); return;
           }
           preparationActive.current = false;
+          observeLinkConsentDiagnostic('REVIEW_CONSUMED');
           setReview(null); setProof(''); setBusy(true);
           setPrepareStage(null);
           try {
+            observeLinkConsentDiagnostic('UI_SUBMIT_DISPATCHED');
             await captured.api.submitLinkConsent({reviewId: accepted.reviewId,
               consentDigest: accepted.consentDigest, signedProofBase64, confirmed: true});
+            observeLinkConsentDiagnostic('UI_RESPONSE_RETURNED');
             if (latest.current.scope === captured.scope) {
               setMessage('授权响应已返回。请重读双方证明状态；单方接受不代表 Link 已可用。');
-            }
+            } else observeLinkConsentDiagnostic('RESPONSE_SCOPE_CHANGED');
           } catch {
+            observeLinkConsentDiagnostic('UI_SUBMIT_REJECTED');
             if (latest.current.scope === captured.scope) {
               setMessage('授权结果未确认。原请求由设备保留；请恢复原包，不要重复提交。');
-            }
+            } else observeLinkConsentDiagnostic('RESPONSE_SCOPE_CHANGED');
           } finally { if (latest.current.scope === captured.scope) setBusy(false); }
         })(); }},
       ]);
@@ -202,6 +222,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   const readGrants = async () => {
     const captured = latest.current;
     if (busy || !captured.foreground) return;
+    if (preparationActive.current) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
     preparationActive.current = false;
     lifecycle.current.invalidate(); setReview(null); setProof(''); setBusy(true);
     setPrepareStage(null);
@@ -221,6 +242,7 @@ export function LinkConsentPanel(props: Props): React.JSX.Element | null {
   const recover = async () => {
     const captured = latest.current;
     if (busy || !captured.foreground) return;
+    if (preparationActive.current) observeLinkConsentDiagnostic('REVIEW_INVALIDATED');
     preparationActive.current = false;
     lifecycle.current.invalidate(); setReview(null); setProof(''); setBusy(true);
     setPrepareStage(null);
