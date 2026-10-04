@@ -66,6 +66,8 @@ func DetectCurrentSession() (SessionContext, error) {
 			context.Workspace = filepath.Clean(workingDirectory)
 		}
 	}
+	report := DescribeLocalAdapter(context.Harness)
+	context.Capabilities["adapter_capabilities"] = map[string]AdapterCapabilities{report.Runtime: report}
 	return context, nil
 }
 

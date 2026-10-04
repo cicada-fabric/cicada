@@ -1,15 +1,17 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-03 current status — bounded checkpoint PASS; product PARTIAL
+## 2026-10-04 current status — validated base `4804411` + §26.1 delta; v0.1 PARTIAL
 
-| 范围 | 当前结果 |
+| Scope | Current result |
 |---|---|
-| 九文件 dirty Core 候选 | full Go、packaging/PQ/Compose、disposable Client Docker **PASS**；Go 17 SKIP 分列 |
-| Android 在线业务 | F9 首阶段失败，业务 **NOT_RUN**；Client repair `991` 单独归属 |
-| Native | zero-turn r2 **PASS: LIVE_METADATA_ONLY / EOF**；real two-turn 与 full real A→B→A **NOT_RUN** |
-| 整体 v0.1／Architecture v2.3 | **PARTIAL**；physical device、public HTTPS/生产恢复 **NOT_RUN** |
+| Core source | Validated source is base `4804411` plus the reviewed §26.1 five-path delta. Normal/race each passed 41 tests (22 top-level + 19 subtests), 0 fail/skip; affected vet/build, format, contract check and metadata discovery passed. Clean-480 full Go remains the separate pre-delta baseline. |
+| Clean deliveries | The v1.6.4 bundle, catalog, STD Hub and disposable interop pair remain clean-021 artifacts. The Node package is a separate clean-480 PQ artifact; neither establishes live Native Runtime acceptance. |
+| Client | `a80d1a9` is the offline debug-observation successor; no online run has exercised it. F34 remains the `8f2900c` APK-pair result: Target consent and the positive native Alert completed, then the authorization-response wait timed out; final bilateral result is unknown. |
+| Native | Original-A one-memory / three-memory-item result is scoped PASS. A subsequent exact-resume/read continuation started one turn but remained incomplete (`OUTCOME_UNKNOWN_PRESERVE_PENDING`, cleanup true); it is not business PASS. The full v6 Golden remains FAIL for missing `alpha`. Faithful original-layout B history read passed; the actual queue-crash gate remains NOT_RUN. |
+| Queue / recovery | Four deterministic queue-crash checks passed normal/race; actual opt-in gate is 1 default SKIP / **NOT_RUN**. Native injected-before-ledger acceptance is **NOT_RUN**; restore remains quarantined. |
+| Overall | **PARTIAL**. Client F34 is FAIL / OUTCOME_UNKNOWN after Target consent and positive native Alert; five Owner signatures do not prove Hub acceptance. Busy/foreground, safe resource stop/reconcile/restore and unsupported-capability behavior remain open; physical-device, public HTTPS and production gates are **NOT_RUN**. |
 
-精确来源、历史失败及结果边界见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。完整管理员/RBAC/委派 UX 延至 v0.2；当前 Owner/session/逐对象 Guard 保持有效。
+Artifact identities and receipts are in the [validation report](v01-final-release-exit-checkpoint-validation.md). Historical status sections below retain their original source attribution; they are not current delivery claims.
 
 ## Historical status before the clean-1ca baseline
 

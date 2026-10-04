@@ -1,14 +1,16 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-03 current plan — bounded checkpoint passed; three parallel exits
+## 2026-10-04 current plan — validated base `4804411` + §26.1 delta; v0.1 PARTIAL
 
-九文件 dirty Core 候选的 full Go、packaging/PQ/Compose 与 disposable Client Docker 已通过，来源和失败保全见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。下一步只推进以下三条有限 lane，不扩展 v0.1 为完整 V01–V88 或 v0.2 管理员产品：
+The clean-021 v1.6.4 Hub/contract delivery and clean-480 Node package keep their own source and artifact identities. The validated source checkpoint is base `4804411` plus the reviewed five-path §26.1 capability delta. Focused normal/race and affected vet/build/contract/metadata checks passed on that source; the pre-delta 480 full-Go result remains a separate baseline. Current receipts and fingerprints are listed once in the [validation report](v01-final-release-exit-checkpoint-validation.md).
 
-1. Client：固定 Hub/source/image/contract/APK，完成实际 online Link 业务及 consent、current Guard、撤权与原 packet recovery；repair `991` 与 F9 旧 fixture 分开验收。
-2. Native：在另行授权的真实原 Thread 两回合中取得请求/回执、TLS 与 consumption/continuity 证据；zero-turn metadata/EOF 不替代 real A→B→A。
-3. Consolidation：归档本轮精确源码与工件、完成检查点记录；复用活跃 worktree，只有确认 state/ref、已集成且干净的 inactive tree 才普通移除，脏树先保全，不 force。
+| Exit lane | Current evidence | Remaining proof |
+|---|---|---|
+| Client / Hub | Client `a80d1a9` is the offline debug-observation successor (delivery receipt in the validation report); no online run has exercised it. F34 remains the earlier `8f2900c` APK-pair result: Target consent and positive native Alert completed, then the authorization-response wait failed; Hub/grant outcome is unknown. | Complete bilateral result, current Guard and original-packet recovery on a fresh bounded run; do not infer grant acceptance or rejection from the UI timeout. |
+| Native | One-memory original-A run is scoped PASS. A later exact-resume/read continuation started one turn but remained incomplete: `OUTCOME_UNKNOWN_PRESERVE_PENDING`, cleanup true. The separate v6 strict-context Golden remains FAIL on missing `alpha`. Faithful original-layout B history read passed; the actual injected-before-ledger gate remains NOT_RUN. | Preserve both outcomes and run the bounded actual queue-crash window gate. |
+| Core / recovery | Applied-source normal/race, affected vet/build, contract check and metadata discovery passed; the queue-crash opt-in skips by default and the actual Native gate is not run. | Close the injected-before-ledger failure window, foreground/busy behavior, safe resource stop/reconcile/restore, and truthful unsupported-capability reporting. |
 
-本轮已普通移除 2 个 clean inactive trees 并普通移动 2 个保全的 source trees：registered 27→25，HOME registered 21→17；保全证据和源码归属见中心记录。physical device、public HTTPS/生产升级恢复 **NOT_RUN**；整体 **PARTIAL**，完整管理员/RBAC/委派 UX 留待 v0.2。
+Physical-device, public HTTPS and production gates remain separately **NOT_RUN**; no deployment is authorized. Full administrator/RBAC/delegation UX stays deferred to v0.2. Software version, contract revision, Git revision, source fingerprints and image IDs remain distinct. The clean-021 Hub and clean-480 Node package do not represent the validated `4804411` plus §26.1 source checkpoint.
 
 ## Historical plans before the clean-1ca baseline
 

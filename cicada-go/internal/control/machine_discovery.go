@@ -9,20 +9,23 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cicada-ai/cicada/internal/harness"
 )
 
 func discoverLocalCapabilities() map[string]any {
 	capabilities := map[string]any{
-		"os":         runtime.GOOS,
-		"arch":       runtime.GOARCH,
-		"cpu_count":  runtime.NumCPU(),
-		"memory_gb":  localMemoryGB(),
-		"load_1m":    localLoad1m(),
-		"toolchains": localToolchains(),
-		"containers": localCommands("docker", "podman", "containerd"),
-		"compilers":  localCommands("gcc", "clang", "nvcc"),
-		"disk":       localDisk("/"),
-		"network":    localNetwork(),
+		"os":                   runtime.GOOS,
+		"arch":                 runtime.GOARCH,
+		"cpu_count":            runtime.NumCPU(),
+		"memory_gb":            localMemoryGB(),
+		"load_1m":              localLoad1m(),
+		"toolchains":           localToolchains(),
+		"containers":           localCommands("docker", "podman", "containerd"),
+		"compilers":            localCommands("gcc", "clang", "nvcc"),
+		"disk":                 localDisk("/"),
+		"network":              localNetwork(),
+		"adapter_capabilities": harness.LocalAdapterCapabilities(),
 	}
 	if name, models, memoryGB, ok := discoverNVIDIA(); ok {
 		capabilities["accelerator"] = "cuda"

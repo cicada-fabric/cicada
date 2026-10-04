@@ -1,8 +1,12 @@
 # Architecture v2.3 completion ledger
 
-## 2026-10-03 current ledger — bounded checkpoint accepted; product PARTIAL
+## 2026-10-04 current ledger — source-attributed progress; product PARTIAL
 
-九文件 dirty Core 候选的全 Go、packaging/PQ/Compose 和 disposable Client Docker 门禁通过。此检查点不增加历史 V01–V88/36-of-88 完成数，也不将 17 SKIP、旧源码收据或 native zero-turn 转成业务 PASS。当前 Android business、real two-turn 与 full real A→B→A **NOT_RUN**，整体 **PARTIAL**。准确来源与剩余出口见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)；完整管理员/RBAC/委派 UX 保持 v0.2 deferred。
+The validated Core source checkpoint is base `4804411` plus the five-path §26.1 delta. Applied-source normal/race each passed 22 top-level plus 19 subtests (41 total), 0 fail/skip; affected vet/build, formatting, Client contract check and `machine discover` passed. Clean-480 full Go/vet `30/30`, `2518 PASS / 17 SKIP` remains the pre-delta baseline. The clean-021 Hub/contract, clean-480 Node package and clean Client `8f2900c` offline delivery remain separately attributed.
+
+Native original-A one-memory proof is scoped PASS. A later exact-resume/read continuation started one turn but remained incomplete (`OUTCOME_UNKNOWN_PRESERVE_PENDING`, cleanup true); the full v6 strict-context Golden remains FAIL. The faithful original-layout B history read passed; the actual queue-crash Native gate remains NOT_RUN. Client `a80d1a9` is an offline debug-observation successor with no online run; F34 remains attributed to the earlier `8f2900c` pair and timed out after the positive native Alert, leaving the bilateral outcome unknown. Current clean Client full bilateral acceptance remains open.
+
+Overall v0.1 is **PARTIAL**. Busy/foreground operation, safe resource stop/reconcile/restore, injected-before-ledger acceptance and truthful unsupported-capability reporting remain open. Physical-device, public HTTPS and production gates are **NOT_RUN**; full RBAC remains deferred to v0.2. See the [validation report](v01-final-release-exit-checkpoint-validation.md) for exact source, artifact, and evidence identities.
 
 ## Historical ledgers before the clean-1ca baseline
 

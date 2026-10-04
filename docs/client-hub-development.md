@@ -1,8 +1,10 @@
 # Client / Hub 联合开发与验收
 
-## 2026-10-03 current Core checkpoint
+## 2026-10-04 current delivery — clean-021 Hub / v1.6.4; Client `a80d1a9`
 
-九文件 dirty Core 候选的全 Go 与 disposable Client Docker 通过；Android F9 business **NOT_RUN**，Client repair `991` 保持独立来源。门禁、镜像和剩余业务验收见[本轮验证记录](v01-final-release-exit-checkpoint-validation.md)。`approvals.decide` 的现有 Guard 补充 commit-time 原子校验说明，不改变 wire、catalog、operation 或合同 revision。下节 c146/ec160 只表示历史来源，未对 Client runtime repin。
+The delivered Hub and contract remain the clean-021 v1.6.4 bundle, catalog and standard Hub. Client commit `a80d1a9` is the offline debug-observation successor; its redacted delivery receipt is [here](/gpu1-share/data/cicada-client/v164-f34-submit-observation-20261004/delivery.receipt.redacted.json) (SHA-256 `bed7d889ee92ecbf93b98aab814fc8b3a1e5c4648506919b9ff629f9dbdb4bc4`). It has not had an online run. F34 remains attributed to the preceding `8f2900c63f515033827d41d962acf7453513f370` APK pair: its bounded online attempt found and clicked the Target consent control, verified/clicked the positive native Alert, then timed out waiting for the authorization-response label. The result is **FAIL / OUTCOME_UNKNOWN**: neither grant acceptance nor Hub rejection is established. Core recorded five signatures (Source 3 / Target 2), but Target KEY response remains unknown and Target NONE is unsigned; signatures do not establish acceptance. The five online Link operations remain unaccepted.
+
+Older “39 implemented / 16 closed”, “new clean delivery pending” and repair `991` statements below describe historical snapshots, not current availability. Public catalog entries do not replace encrypted session capabilities, Owner proof or server Guard. F33's earlier UI failure remains attributed to its attempt; F34 remains attributed to `8f2900c`, while successor `a80d1a9` has not been online-tested. This documentation update does not change the contract or wire revision.
 
 ## Historical 2026-10-02 Core candidate — v1.6.4, no Client runtime repin
 
