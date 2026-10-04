@@ -1,6 +1,57 @@
 # CICADA Client integration handoff
 
-## Current F35 outcome and viewport successor — clean Core `0213538`
+## Current F36 outcome and list-observation successor — clean Core `0213538`
+
+The [F36 validation report](client-hub-v1.6.4-0213538-f36-validation.md)
+binds Client `3254ba12cac22d0f77510999f53e6b6bc2c80aa8`, app SHA-256
+`5c346099b9a0f52af2f7ad1e6d453c50ff686b695d6d1706a14bee3b209f1b07`, test
+SHA-256 `74b80fd867640407eff177ff7590e5a2df8e0499e5fa535c44c0848f55cbfff1`,
+and the fixed clean v1.6.4 Core target. SOURCE and TARGET enrollment,
+capabilities, and independent pins passed. SOURCE KEY and policy status remain
+partial. Target review, prepare, consent, and request receipt stages are null;
+the passive progress receipt has zero events and reports `viewport=UNKNOWN`.
+
+JUnit failed once in 25.151 seconds in `scrollToText` at line 421 at `kt606`. This is
+not F35's response-text `NOT_VISIBLE` observation: F36 retained no progress
+events or viewport state to identify that condition. The result does not
+establish Target callback, native RPC, acceptance, or rejection. Target `NONE`
+and bilateral verification are not established.
+
+The launcher terminal is **FAIL / `OUTCOME_UNKNOWN_PRESERVE_PENDING`** and
+records `CORE_ACK_NOT_SENT`. Root separately attests one ACK exit 0. These are
+separate observations; the F36 packet reviewed here has no independent Core
+closure receipt. Preserve the unknown operation and do not retry it. Android
+emulator teardown and the separate emulator absence check passed.
+
+The diagnostic successor under
+`/gpu1-share/data/cicada-client/v164-f36-list-observation-20261004` records
+fixed list status and error-class enums, bounded observed-node counts,
+target-node presence/visibility, current and last-action scroll-container
+categories and bounded action attempts. It exports no payload, view tree, IDs
+or credentials and invokes no native/Session methods. Missing roots keep the
+current list state unknown; historical observations remain separate. The
+existing forward-only 20-second wait and all consent checks are unchanged.
+Docker verification passed 17 JavaScript tests, 23 Python tests, 15 independent
+Kotlin cases, TypeScript and ESLint; all command exit codes were 0. The post-commit
+build and fresh live acceptance are **NOT_RUN** at this checkpoint. External
+receipts bind the clean commit, one new APK pair and 26 frozen sources.
+
+### Next coordination prompt
+
+```text
+Read the F36 validation report and its successor build/source/delivery receipts.
+Preserve F36/F35 UNKNOWN operations without retry or replacement. Bind the new
+clean Client commit, exact APK pair, 26 drivers and unchanged clean021 target.
+Root alone owns fresh BOOT/GO/frame, original deadlines, actor stop/wait and
+one terminal ACK; Core retains signing custody. Inspect the real app's bounded
+list-refresh receipt on both outcomes. OBSERVED and MATCH_FOUND are diagnostics,
+not RPC or consent acceptance. Distinguish current from last-seen state and
+accessibility-node absence from Hub-list absence. Require actual JUnit, full
+Alert and fresh bilateral KEY/NONE reads. Keep native Worker, physical Android
+and public HTTPS NOT_RUN until separately tested. No push or merge.
+```
+
+## Historical F35 outcome and viewport successor — clean Core `0213538`
 
 The [F35 validation report](client-hub-v1.6.4-0213538-f35-validation.md) binds
 Client `a80d1a9efbfb2cb413b8356bb5ca764f751702f0`, its exact APK pair and clean

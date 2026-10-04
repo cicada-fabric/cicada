@@ -121,6 +121,93 @@ Tests run: 1, Failures: 1
             with self.assertRaises(ValueError):
                 interop.validate_phone_ui_consent_receipt(raw, 'a' * 64)
 
+    def list_refresh(self, **changes):
+        return {'schema': 'cicada.client-v164-phone-ui-list-refresh.v1', 'result': 'OBSERVED',
+            'run_id_sha256': 'a' * 64, 'refresh_accessibility_click_returned': True,
+            'app_root_available': True, 'read_state': 'OK_NONEMPTY', 'read_state_ambiguous': False,
+            'last_observed_read_state': 'OK_NONEMPTY', 'last_observed_error_class': None,
+            'read_states_observed': ['LOADING', 'OK_NONEMPTY'], 'observed_row_count': 1,
+            'row_count_truncated': False, 'target_node_present': True, 'target_node_visible': False,
+            'selected_scroll_container': 'PAGE', 'last_action_scroll_container': 'PAGE', 'scroll_action_count': 1,
+            'scroll_count_truncated': False, 'last_scroll_action_returned': True,
+            'wait_outcome': 'DEADLINE_EXPIRED', 'native_session_methods_called_by_test': False, **changes}
+
+    def validate_list_refresh(self, value):
+        return interop.validate_phone_ui_list_refresh_receipt(json.dumps(value).encode(), 'a' * 64)
+
+    def test_list_refresh_is_only_observed_even_when_the_ui_wait_matches(self):
+        value = self.list_refresh(target_node_visible=True, wait_outcome='MATCH_FOUND')
+        self.assertEqual(self.validate_list_refresh(value), value)
+        for change in ({'result': 'PASS'}, {'native_session_methods_called_by_test': True},
+            {'proof': 'private'}, {'link_id': 'private'}, {'ui_tree': 'private'},
+            {'run_id_sha256': 'b' * 64}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh({**value, **change})
+
+    def test_list_refresh_keeps_fixed_error_classes_without_exception_text(self):
+        for error in ('RPC_REJECTED', 'INVALID_RESPONSE', 'REQUEST_FAILED'):
+            state = 'ERROR_' + error
+            value = self.list_refresh(read_state=state, last_observed_read_state=state,
+                last_observed_error_class=error, read_states_observed=['LOADING', state],
+                observed_row_count=0, target_node_present=False)
+            self.assertEqual(self.validate_list_refresh(value)['last_observed_error_class'], error)
+        for change in ({'last_observed_error_class': 'private body'},
+            {'read_state': 'ERROR_private'}, {'read_states_observed': ['LOADING', 'private']},
+            {'selected_scroll_container': 'arbitrary class with payload'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+
+    def test_list_refresh_unavailable_root_does_not_mean_empty_list(self):
+        value = self.list_refresh(app_root_available=False, read_state='UNKNOWN', observed_row_count=None,
+            target_node_present=None, target_node_visible=None)
+        self.assertEqual(self.validate_list_refresh(value)['last_observed_read_state'], 'OK_NONEMPTY')
+        for change in ({'observed_row_count': 0}, {'target_node_present': False},
+            {'target_node_visible': False}, {'read_state': 'OK_EMPTY'}, {'row_count_truncated': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh({**value, **change})
+
+    def test_list_refresh_rejects_inconsistent_history_and_ambiguous_state(self):
+        value = self.list_refresh(read_state='UNKNOWN', read_state_ambiguous=True)
+        self.assertEqual(self.validate_list_refresh(value), value)
+        for change in ({'read_state_ambiguous': True}, {'last_observed_read_state': 'LOADING'},
+            {'read_states_observed': ['LOADING', 'OK_NONEMPTY', 'LOADING']},
+            {'read_states_observed': ['UNKNOWN']}, {'read_states_observed': [['LOADING']]},
+            {'last_observed_error_class': 'REQUEST_FAILED'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+
+    def test_list_refresh_rejects_unbounded_counts_and_false_visibility(self):
+        bounded = self.list_refresh(observed_row_count=100, row_count_truncated=True,
+            scroll_action_count=80, scroll_count_truncated=True)
+        self.assertEqual(self.validate_list_refresh(bounded), bounded)
+        for change in ({'observed_row_count': True}, {'observed_row_count': 101},
+            {'observed_row_count': -1}, {'scroll_action_count': True}, {'scroll_action_count': 81},
+            {'row_count_truncated': True}, {'scroll_count_truncated': True},
+            {'target_node_present': False, 'target_node_visible': True},
+            {'observed_row_count': 0, 'target_node_present': True},
+            {'last_action_scroll_container': 'NONE'},
+            {'scroll_action_count': 0, 'last_scroll_action_returned': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+        self.assertEqual(self.validate_list_refresh(self.list_refresh(selected_scroll_container='NONE'))[
+            'last_action_scroll_container'], 'PAGE')
+        self.assertIsNone(self.validate_list_refresh(self.list_refresh(last_scroll_action_returned=None))[
+            'last_scroll_action_returned'])
+
+    def test_list_refresh_accepts_an_initial_unknown_observation(self):
+        value = self.list_refresh(refresh_accessibility_click_returned=False, app_root_available=None,
+            read_state='UNKNOWN', last_observed_read_state='UNKNOWN', read_states_observed=[],
+            observed_row_count=None, target_node_present=None, target_node_visible=None,
+            selected_scroll_container='UNKNOWN', last_action_scroll_container='UNKNOWN',
+            scroll_action_count=0, last_scroll_action_returned=None,
+            wait_outcome='UNKNOWN')
+        self.assertEqual(self.validate_list_refresh(value), value)
+
+    def test_list_refresh_rejects_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'', b'{}', b'[]', b'null', b'{"result":"OBSERVED","result":"PASS"}', b'x' * 4097):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_list_refresh_receipt(raw, 'a' * 64)
+
     def progress(self, events=None, **fields):
         return {'schema': 'cicada.client-v164-phone-ui-submit-progress.v1',
             'result': 'OBSERVED', 'run_id_sha256': 'a' * 64, 'events': events or [],

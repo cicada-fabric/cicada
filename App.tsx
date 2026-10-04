@@ -22,6 +22,8 @@ import {LinkReviewPolicyStatusPanel} from './src/components/LinkReviewPolicyStat
 import {LinkConsentPanel} from './src/components/LinkConsentPanel';
 import {linkConsentCapabilitiesAllow} from './src/platform/linkConsentFlow';
 import type {LinkConsentApi} from './src/platform/linkConsentFlow';
+import {linkListDiagnosticStateForFailure, linkListDiagnosticTestId} from './src/platform/linkListDiagnostics';
+import type {LinkListDiagnosticFailureKind, LinkListDiagnosticState} from './src/platform/linkListDiagnostics';
 import {createGroupRequest, explicitActiveNetwork, groupsInNetwork} from './src/platform/networkTopology';
 import type {NetworkTopologySnapshot} from './src/platform/networkTopology';
 import {speechEventBelongsToSession} from './src/platform/hubProfileScope';
@@ -2959,6 +2961,7 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [listError, setListError] = useState(false);
+  const [linkListDiagnosticState, setLinkListDiagnosticState] = useState<LinkListDiagnosticState>('IDLE');
   const [linkListGeneration, setLinkListGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -2991,15 +2994,18 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
   const readLinks = async (nextCursor = '') => {
     if (!allowed('link.list')) return false;
     setLinkListGeneration(generation => generation + 1);
+    setLinkListDiagnosticState('LOADING');
     setListError(true);
     if (!nextCursor) { setLinks([]); setLoaded(false); }
     setBusy(true);
     setMessage('正在通过加密会话读取本人 Link 提案…');
+    let invalidResponse = false;
     try {
       const page = asObject(await request('link.list', nextCursor ?
         {cursor: nextCursor, limit: 50} : {limit: 50}));
       if (!Array.isArray(page.links) || typeof page.has_more !== 'boolean' ||
         (page.has_more && (typeof page.cursor !== 'string' || !page.cursor))) {
+        invalidResponse = true;
         throw new Error('Hub link.list 返回格式无效');
       }
       const entries = page.links.map(value => {
@@ -3011,12 +3017,18 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
       setHasMore(page.has_more);
       setLoaded(true);
       setListError(false);
+      // Keep terminal success as a fixed state; render derives empty/nonempty
+      // from the committed links state so pagination does not use this closure.
+      setLinkListDiagnosticState('OK_NONEMPTY');
       setMessage(page.has_more ? '只显示已读取的分页；可继续加载。' :
         '已读取本人可见的 Link 元数据；PROPOSED 仍不能发消息。');
       return true;
     } catch (error) {
       if (!nextCursor) { setLinks([]); setLoaded(false); }
       setListError(true);
+      const failureKind: LinkListDiagnosticFailureKind = error instanceof ClientHubRpcError ?
+        'RPC_REJECTED' : invalidResponse ? 'INVALID_RESPONSE' : 'REQUEST_FAILED';
+      setLinkListDiagnosticState(linkListDiagnosticStateForFailure(failureKind));
       setMessage('Link 列表未对账：' + safeHubError(error));
       return false;
     } finally { setBusy(false); }
@@ -3126,13 +3138,16 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
     <Notice>{capabilities.external_thread_links ?
       '此页只管理双方同意的提案；Client 尚未提供普通 peer 消息入口。密钥授权须经独立公钥核验、外部 Owner 签名及手机明确确认。' :
       'external_thread_links=false：Hub 只开放邀请与 PROPOSED 提案；不显示聊天、消息发送或已连通状态。密钥授权只记录精确范围的双方同意，不开放普通消息。'}</Notice>
-    {!!message && <Text style={s.small}>{message}</Text>}
+    {!!message && <Text testID={linkListDiagnosticTestId(
+      linkListDiagnosticState === 'OK_EMPTY' || linkListDiagnosticState === 'OK_NONEMPTY' ?
+        (links.length > 0 ? 'OK_NONEMPTY' : 'OK_EMPTY') : linkListDiagnosticState)}
+      style={s.small}>{message}</Text>}
     {loaded && links.length === 0 && <Text style={s.small}>当前没有本人可见的 Link 提案。</Text>}
     {links.map(item => {
       const link = item.link;
       const version = Number(link.version);
       return <Card key={field(link, 'link_id')}>
-        <View style={s.row}><Text style={s.cardTitle}>Link {field(link, 'link_id')}</Text>
+        <View style={s.row}><Text style={s.cardTitle} testID="link-list-row">Link {field(link, 'link_id')}</Text>
           <Pill text={field(link, 'state') || '状态未知'} tone="muted" /></View>
         <Text style={s.description}>{field(link, 'source_endpoint_id')} / {field(link, 'source_group_id')} → {field(link, 'target_endpoint_id')} / {field(link, 'target_group_id')}</Text>
         <Text style={s.small}>我的方向：{item.my_side || '未知'} · 动作：{(Array.isArray(link.actions) ? link.actions : []).join(', ')} · 范围：{(Array.isArray(link.data_scopes) ? link.data_scopes : []).join(', ')}</Text>

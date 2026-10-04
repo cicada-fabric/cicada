@@ -85,16 +85,30 @@ return to the UI. The response text was not visible and JUnit failed. This
 does not establish a current Target grant or bilateral acceptance; the
 original operation remains preserved with an unknown outcome.
 
-The successor gives the response note a stable view ID and searches both page
-directions within the original 20-second deadline. It requires actual visible
-text and retains the complete Alert and bilateral checks. Pure Kotlin page
-search regressions and affected static checks are recorded with the subsequent
-build and delivery receipts at
-`/gpu1-share/data/cicada-client/v164-f35-response-viewport-20261004`, binding
-the exact clean commit and APK pair. Fresh live acceptance remains **NOT_RUN**.
+The F35 viewport successor gives the response note a stable view ID and searches
+both page directions within the original 20-second deadline. It requires actual
+visible text and retains the complete Alert and bilateral checks. Pure Kotlin
+page-search regressions and affected static checks are recorded with its
+successor receipts at
+`/gpu1-share/data/cicada-client/v164-f35-response-viewport-20261004`. At that
+F35 source checkpoint, a fresh APK build and live acceptance were **NOT_RUN**.
 Physical Android, public HTTPS, native Worker acceptance, Link recovery faults
 and bilateral consent remain **NOT_RUN**. Ordinary cross-user messages remain
 closed while `external_thread_links=false`.
+
+The [F36 report](docs/client-hub-v1.6.4-0213538-f36-validation.md) records
+Client `3254ba12cac22d0f77510999f53e6b6bc2c80aa8` and app/test SHA-256
+`5c346099b9a0f52af2f7ad1e6d453c50ff686b695d6d1706a14bee3b209f1b07` /
+`74b80fd867640407eff177ff7590e5a2df8e0499e5fa535c44c0848f55cbfff1`.
+SOURCE KEY and policy reads remain partial. The F36 Target progress receipt has
+zero events and unknown viewport; JUnit failed in `scrollToText` at line 421. This is
+not the F35 `NOT_VISIBLE` result. The terminal remains
+`OUTCOME_UNKNOWN_PRESERVE_PENDING`; no Target grant outcome is inferred. Its
+diagnostic-only successor at
+`/gpu1-share/data/cicada-client/v164-f36-list-observation-20261004` preserves
+the original forward-only 20-second behavior. Docker regression and static
+checks passed; post-commit APK build and live acceptance are **NOT_RUN** at
+this source checkpoint.
 
 ## Imported clean v1.6.3 delivery
 

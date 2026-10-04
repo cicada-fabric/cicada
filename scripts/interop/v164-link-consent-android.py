@@ -279,6 +279,65 @@ def validate_phone_ui_submit_progress_receipt(raw, expected_run_id_sha256):
     return value
 
 
+def validate_phone_ui_list_refresh_receipt(raw, expected_run_id_sha256):
+    """Validate UI-node observations only; neither OBSERVED nor MATCH_FOUND proves an RPC result."""
+    message = 'phone UI list refresh receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    states = {'IDLE', 'LOADING', 'OK_EMPTY', 'OK_NONEMPTY', 'ERROR_RPC_REJECTED',
+        'ERROR_INVALID_RESPONSE', 'ERROR_REQUEST_FAILED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'refresh_accessibility_click_returned',
+        'app_root_available', 'read_state', 'read_state_ambiguous', 'last_observed_read_state',
+        'last_observed_error_class', 'read_states_observed', 'observed_row_count',
+        'row_count_truncated', 'target_node_present', 'target_node_visible',
+        'selected_scroll_container', 'last_action_scroll_container', 'scroll_action_count', 'scroll_count_truncated',
+        'last_scroll_action_returned', 'wait_outcome', 'native_session_methods_called_by_test'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-list-refresh.v1' or \
+            value.get('result') != 'OBSERVED' or value.get('run_id_sha256') != expected_run_id_sha256 or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            any(type(value[k]) is not bool for k in ('refresh_accessibility_click_returned',
+                'read_state_ambiguous', 'row_count_truncated', 'scroll_count_truncated')) or \
+            any(value[k] is not None and type(value[k]) is not bool for k in ('app_root_available',
+                'target_node_present', 'target_node_visible', 'last_scroll_action_returned')) or \
+            any(not isinstance(value[k], str) or value[k] not in states | {'UNKNOWN'}
+                for k in ('read_state', 'last_observed_read_state')) or \
+            not isinstance(value['read_states_observed'], list) or len(value['read_states_observed']) > 7 or \
+            any(not isinstance(s, str) or s not in states for s in value['read_states_observed']) or \
+            len(set(value['read_states_observed'])) != len(value['read_states_observed']) or \
+            any(not isinstance(value[k], str) or value[k] not in {'UNKNOWN', 'NONE', 'PAGE', 'EDIT_TEXT', 'OTHER'}
+                for k in ('selected_scroll_container', 'last_action_scroll_container')) or \
+            not isinstance(value['wait_outcome'], str) or \
+            value['wait_outcome'] not in {'UNKNOWN', 'MATCH_FOUND', 'DEADLINE_EXPIRED'} or \
+            type(value['scroll_action_count']) is not int or not 0 <= value['scroll_action_count'] <= 80 or \
+            (value['observed_row_count'] is not None and
+                (type(value['observed_row_count']) is not int or not 0 <= value['observed_row_count'] <= 100)):
+        raise ValueError(message)
+    last = value['read_states_observed'][-1] if value['read_states_observed'] else 'UNKNOWN'
+    error_class = last.removeprefix('ERROR_') if last.startswith('ERROR_') else None
+    if value['last_observed_read_state'] != last or value['last_observed_error_class'] != error_class or \
+            (value['read_state'] != 'UNKNOWN' and value['read_state'] != last) or \
+            (value['read_state_ambiguous'] and value['read_state'] != 'UNKNOWN') or \
+            (value['scroll_count_truncated'] and value['scroll_action_count'] != 80) or \
+            (value['scroll_action_count'] == 0 and value['last_scroll_action_returned'] is not None) or \
+            (value['scroll_action_count'] == 0 and value['last_action_scroll_container'] != 'UNKNOWN') or \
+            (value['scroll_action_count'] > 0 and value['last_action_scroll_container'] not in {'PAGE', 'EDIT_TEXT', 'OTHER'}) or \
+            (value['row_count_truncated'] and value['observed_row_count'] != 100):
+        raise ValueError(message)
+    if value['app_root_available'] is True:
+        if value['observed_row_count'] is None or value['target_node_present'] is None or \
+                value['target_node_visible'] is None or \
+                (value['target_node_visible'] and not value['target_node_present']) or \
+                (value['target_node_present'] and value['observed_row_count'] == 0):
+            raise ValueError(message)
+    elif value['read_state'] != 'UNKNOWN' or value['read_state_ambiguous'] or \
+            value['observed_row_count'] is not None or value['row_count_truncated'] or \
+            value['target_node_present'] is not None or value['target_node_visible'] is not None:
+        raise ValueError(message)
+    return value
+
+
 def secret_fields(value):
     if isinstance(value, dict):
         for key, nested in value.items():

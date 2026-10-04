@@ -46,6 +46,8 @@ class LinkConsentPhoneUiTest {
     private val submitProgressReceipt get() = File(directory, "phone-ui-submit-progress.redacted.json")
     private val prepareReceipt get() = File(directory, "phone-ui-prepare.redacted.json")
     private val consentReceipt get() = File(directory, "phone-ui-consent.redacted.json")
+    private val listRefreshReceipt get() = File(directory, "phone-ui-list-refresh.redacted.json")
+    private var listRefreshObservation: LinkListUiObservation? = null
 
     private val consentReadyHint = "签名证明格式有效；请核对授权范围后继续。"
     private val consentInvalidHint = "签名证明输入无效，请检查后继续。"
@@ -63,9 +65,13 @@ class LinkConsentPhoneUiTest {
     @After
     fun restoreAccessibilityFlags() {
         try {
-            observeSubmitProgressViewportIfUnknown()
-            LinkConsentDebugObservation.snapshot()?.let { progress ->
-                writePrivate(submitProgressReceipt, progress.toString().toByteArray(StandardCharsets.UTF_8))
+            try {
+                recordListRefreshObservation()
+            } finally {
+                observeSubmitProgressViewportIfUnknown()
+                LinkConsentDebugObservation.snapshot()?.let { progress ->
+                    writePrivate(submitProgressReceipt, progress.toString().toByteArray(StandardCharsets.UTF_8))
+                }
             }
         } finally {
             LinkConsentDebugObservation.end()
@@ -78,6 +84,48 @@ class LinkConsentPhoneUiTest {
                 priorAccessibilityFlags = null
             }
         }
+    }
+
+    /** Only fixed UI state, bounded counts and booleans leave the app-private test directory. */
+    private fun recordListRefreshObservation() {
+        val value = listRefreshObservation?.snapshot() ?: return
+        val record = JsonObject().apply {
+            addProperty("schema", "cicada.client-v164-phone-ui-list-refresh.v1")
+            addProperty("result", "OBSERVED")
+            addProperty("run_id_sha256", hash(runId.toByteArray(StandardCharsets.UTF_8)))
+            addProperty("refresh_accessibility_click_returned", value.refreshClickReturned)
+            add("app_root_available", value.appRootAvailable?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            addProperty("read_state", value.readState.name)
+            addProperty("read_state_ambiguous", value.readStateAmbiguous)
+            addProperty("last_observed_read_state", value.lastObservedReadState.name)
+            add("last_observed_error_class", value.lastObservedReadState.errorClass?.let {
+                com.google.gson.JsonPrimitive(it)
+            } ?: JsonNull.INSTANCE)
+            add("read_states_observed", com.google.gson.JsonArray().apply {
+                value.readStatesObserved.forEach { add(it.name) }
+            })
+            add("observed_row_count", value.observedRowCount?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            addProperty("row_count_truncated", value.rowCountTruncated)
+            add("target_node_present", value.targetNodePresent?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            add("target_node_visible", value.targetNodeVisible?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            addProperty("selected_scroll_container", value.selectedScrollContainer.name)
+            addProperty("last_action_scroll_container", value.lastActionScrollContainer.name)
+            addProperty("scroll_action_count", value.scrollActionCount)
+            addProperty("scroll_count_truncated", value.scrollCountTruncated)
+            add("last_scroll_action_returned", value.lastScrollActionReturned?.let { com.google.gson.JsonPrimitive(it) } ?: JsonNull.INSTANCE)
+            addProperty("wait_outcome", value.waitOutcome.name)
+            addProperty("native_session_methods_called_by_test", false)
+        }
+        writePrivate(listRefreshReceipt, record.toString().toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun observeListRoot(value: LinkListUiObservation, nodes: List<AccessibilityNodeInfo>, linkId: String) {
+        val appNodes = nodes.filter { it.packageName?.toString() == target.packageName }
+        val rows = appNodes.filter { it.viewIdResourceName in setOf(
+            "link-list-row", "${target.packageName}:id/link-list-row") }
+        val matches = rows.filter { it.text?.toString() == "Link $linkId" }
+        value.recordRoot(target.packageName, appNodes.mapNotNull { it.viewIdResourceName },
+            rows.size, matches.isNotEmpty(), matches.any { it.isVisibleToUser })
     }
 
     /** Samples only fixed response labels from the package-filtered app root; it performs no UI action. */
@@ -399,25 +447,38 @@ class LinkConsentPhoneUiTest {
         error("Consent confirmation control did not become ready: ${latest.stage}")
     }
 
-    private fun scrollToText(needle: String, timeoutMs: Long = 20_000) {
+    private fun scrollToText(needle: String, timeoutMs: Long = 20_000,
+        listObservation: LinkListUiObservation? = null) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) {
             val root = uiRoot()
             if (root == null) {
+                listObservation?.recordMissingRoot()
                 SystemClock.sleep(200)
                 continue
             }
-            if (descendants(root).any { node -> node.isVisibleToUser &&
+            val nodes = descendants(root)
+            listObservation?.let { observeListRoot(it, nodes, needle) }
+            if (nodes.any { node -> node.isVisibleToUser &&
                     node.packageName?.toString() == target.packageName &&
-                    listOf(node.text, node.contentDescription, node.hintText).any { it?.toString()?.contains(needle) == true } }) return
-            val scroll = descendants(root).filter { node -> node.isVisibleToUser && node.isScrollable &&
+                    listOf(node.text, node.contentDescription, node.hintText).any { it?.toString()?.contains(needle) == true } }) {
+                listObservation?.recordWaitOutcome(LinkListUiObservation.WaitOutcome.MATCH_FOUND)
+                return
+            }
+            val scroll = nodes.filter { node -> node.isVisibleToUser && node.isScrollable &&
                 node.packageName?.toString() == target.packageName }
                 .maxByOrNull { node -> android.graphics.Rect().also { node.getBoundsInScreen(it) }.let { it.width() * it.height() } }
+            listObservation?.recordScrollContainer(scroll?.className?.toString(), selected = scroll != null)
             // A fresh encrypted read may append content after the current page
             // reaches its bottom. Keep polling until the bounded deadline.
-            scroll?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            if (scroll != null) {
+                listObservation?.recordScrollActionStarted()
+                val returned = scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                listObservation?.recordScrollActionReturned(returned)
+            }
             SystemClock.sleep(250)
         }
+        listObservation?.recordWaitOutcome(LinkListUiObservation.WaitOutcome.DEADLINE_EXPIRED)
         error("Could not scroll to the requested visible Link review content")
     }
 
@@ -586,7 +647,7 @@ class LinkConsentPhoneUiTest {
         val runHash = hash(runId.toByteArray(StandardCharsets.UTF_8))
         require(!requestFile.exists() && !proofFile.exists() && !reviewReceipt.exists() &&
             !resultReceipt.exists() && !submitProgressReceipt.exists() && !prepareReceipt.exists() &&
-            !consentReceipt.exists()) {
+            !consentReceipt.exists() && !listRefreshReceipt.exists()) {
             "This UI run already contains a signer handoff; use a fresh run ID instead of replaying it"
         }
         LinkConsentDebugObservation.begin(runHash)
@@ -602,8 +663,10 @@ class LinkConsentPhoneUiTest {
         clickLabel("管理")
         scrollToText("跨用户 Link 提案")
         awaitRoot { root -> visibleText(root).any { it == "跨用户 Link 提案" } }
+        val listObservation = LinkListUiObservation().also { listRefreshObservation = it }
         clickLabel("重读本人提案  →")
-        scrollToText(scope.linkId)
+        listObservation.recordRefreshClickReturned()
+        scrollToText(scope.linkId, listObservation = listObservation)
         awaitRoot { root ->
             val texts = visibleText(root)
             texts.any { it.contains(scope.linkId) } && texts.any { it.contains("PROPOSED") }
