@@ -7,7 +7,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
@@ -244,4 +246,282 @@ func snapshotNodeTree(t *testing.T, root string) map[string]fileSnapshot {
 		t.Fatal(err)
 	}
 	return result
+}
+
+type recoveryInspectionSnapshot struct {
+	info os.FileInfo
+	data string
+}
+
+func snapshotRecoveryInspection(t *testing.T, root string) map[string]recoveryInspectionSnapshot {
+	t.Helper()
+	result := map[string]recoveryInspectionSnapshot{}
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		var data []byte
+		if info.Mode().IsRegular() {
+			data, err = os.ReadFile(path)
+		} else if info.Mode()&os.ModeSymlink != 0 {
+			var target string
+			target, err = os.Readlink(path)
+			data = []byte(target)
+		}
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		result[rel] = recoveryInspectionSnapshot{info: info, data: string(data)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func assertRecoveryInspectionUnchanged(t *testing.T, root string, before map[string]recoveryInspectionSnapshot) {
+	t.Helper()
+	after := snapshotRecoveryInspection(t, root)
+	if len(before) != len(after) {
+		t.Fatalf("inspection changed entries: %d -> %d", len(before), len(after))
+	}
+	for path, b := range before {
+		a, ok := after[path]
+		if !ok || b.data != a.data || b.info.Mode() != a.info.Mode() || !os.SameFile(b.info, a.info) || !b.info.ModTime().Equal(a.info.ModTime()) {
+			t.Fatalf("inspection changed file/directory %s", path)
+		}
+	}
+}
+
+func TestRecoveryInspectPreservesEntireStateIncludingLockMetadata(t *testing.T) {
+	backup, state, _ := createRecoveryInspectFixture(t)
+	before := snapshotRecoveryInspection(t, filepath.Dir(state))
+	report, err := Inspect(backup, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.AgentMayStart || report.QuarantineStatus != "pending" || report.CryptoCounterWatermark != "local_only_not_reconciled" {
+		t.Fatalf("unsafe report: %+v", report)
+	}
+	assertRecoveryInspectionUnchanged(t, filepath.Dir(state), before)
+}
+
+func TestRecoveryInspectMissingAndUnsafeNodeLocksDoNotMutate(t *testing.T) {
+	for _, kind := range []string{"missing directory", "missing file", "public directory", "public file", "symlink file"} {
+		t.Run(kind, func(t *testing.T) {
+			backup, state, _ := createRecoveryInspectFixture(t)
+			dir := filepath.Join(state, "nodes", ".locks")
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var path string
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), ".maintenance.lock") {
+					path = filepath.Join(dir, entry.Name())
+				}
+			}
+			if path == "" {
+				t.Fatal("restore did not establish lock")
+			}
+			switch kind {
+			case "missing directory":
+				err = os.RemoveAll(dir)
+			case "missing file":
+				err = os.Remove(path)
+			case "public directory":
+				err = os.Chmod(dir, 0o755)
+			case "public file":
+				err = os.Chmod(path, 0o644)
+			case "symlink file":
+				err = os.Rename(path, path+".old")
+				if err == nil {
+					err = os.Symlink(path+".old", path)
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := snapshotRecoveryInspection(t, filepath.Dir(state))
+			if report, err := Inspect(backup, state); err == nil || report != nil {
+				t.Fatal("inspection accepted missing/unsafe Node lock")
+			}
+			assertRecoveryInspectionUnchanged(t, filepath.Dir(state), before)
+		})
+	}
+}
+
+func createSharedRecoveryInspectionFixture(t *testing.T) (base, backup, state, writer string) {
+	t.Helper()
+	base = t.TempDir()
+	source := filepath.Join(base, "source")
+	sourceWriter := filepath.Join(base, "source-writer")
+	makePrivateDir(t, source)
+	makePrivateDir(t, sourceWriter)
+	makeNodeSubtree(t, source, backupTestNodeID)
+	populateSharedWriterRoot(t, sourceWriter)
+	backup = filepath.Join(base, "backup")
+	if _, err := BackupWithWriterRoot(source, backupTestNodeID, sourceWriter, backup); err != nil {
+		t.Fatal(err)
+	}
+	state = filepath.Join(base, "target")
+	writer = filepath.Join(base, "target-writer")
+	makePrivateDir(t, writer)
+	if _, err := RestoreWithWriterRoot(backup, state, writer); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestRecoveryInspectWriterRootPreservesFencesDatabasesAndBothHolds(t *testing.T) {
+	base, backup, state, writer := createSharedRecoveryInspectionFixture(t)
+	before := snapshotRecoveryInspection(t, base)
+	report, err := InspectWithWriterRoot(backup, state, writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.AgentMayStart || report.QuarantineStatus != "pending" || report.CryptoCounterWatermark != "local_only_not_reconciled" ||
+		!report.SharedWriterRootHeld || report.SharedWriterRootCheck != "matches_archive_bundle_but_reconciliation_required" {
+		t.Fatalf("unsafe report: %+v", report)
+	}
+	assertRecoveryInspectionUnchanged(t, base, before)
+}
+
+func TestRecoveryInspectWriterRootMissingUnsafeAndBusyDoNotMutate(t *testing.T) {
+	for _, kind := range []string{"missing root", "missing file", "public file", "public root", "peer writer", "Node writer"} {
+		t.Run(kind, func(t *testing.T) {
+			base, backup, state, writer := createSharedRecoveryInspectionFixture(t)
+			var err error
+			var held *nodelock.Lock
+			switch kind {
+			case "missing root":
+				writer = filepath.Join(base, "absent")
+			case "missing file":
+				err = os.Remove(filepath.Join(writer, ".writer-root.maintenance.lock"))
+			case "public file":
+				err = os.Chmod(filepath.Join(writer, ".writer-root.maintenance.lock"), 0o644)
+			case "public root":
+				err = os.Chmod(writer, 0o755)
+			case "peer writer":
+				held, err = nodelock.AcquireWriterRoot(writer)
+			case "Node writer":
+				held, err = nodelock.AcquireMaintenance(state, backupTestNodeID)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if held != nil {
+				defer held.Close()
+			}
+			before := snapshotRecoveryInspection(t, base)
+			result := make(chan error, 1)
+			go func() {
+				report, err := InspectWithWriterRoot(backup, state, writer)
+				if report != nil && err == nil {
+					err = errors.New("accepted unsafe/busy state")
+				}
+				result <- err
+			}()
+			select {
+			case err := <-result:
+				if err == nil {
+					t.Fatal("inspection accepted unsafe state")
+				}
+				if held != nil && !errors.Is(err, nodelock.ErrBusy) {
+					t.Fatalf("want busy, got %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("inspection blocked on a held lock")
+			}
+			assertRecoveryInspectionUnchanged(t, base, before)
+			if held != nil {
+				_ = held.Close()
+				// Failed acquisition of the second lock releases the first.
+				if _, err := InspectWithWriterRoot(backup, state, writer); err != nil {
+					t.Fatalf("failed inspection leaked a lock: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRecoveryInspectionAndRestoreOppositeLockOrderReturnsBusy(t *testing.T) {
+	base, _, state, writer := createSharedRecoveryInspectionFixture(t)
+	before := snapshotRecoveryInspection(t, base)
+	ready := make(chan error, 2)
+	start := make(chan struct{})
+	release := make(chan struct{})
+	results := make(chan error, 2)
+	done := make(chan struct{}, 2)
+	defer func() {
+		select {
+		case <-start:
+		default:
+			close(start)
+		}
+		close(release)
+		<-done
+		<-done
+	}()
+	// Force the actual first-lock collision deterministically: inspection is
+	// WriterRoot-first and restore is Node-first. Keep both first locks held
+	// until both second acquisitions return, rather than relying on scheduling.
+	go func() {
+		defer func() { done <- struct{}{} }()
+		first, err := nodelock.AcquireWriterRootExclusiveExisting(writer)
+		ready <- err
+		if err != nil {
+			return
+		}
+		defer first.Close()
+		<-start
+		second, err := nodelock.AcquireMaintenanceExclusiveExisting(state, backupTestNodeID)
+		if second != nil {
+			_ = second.Close()
+		}
+		results <- err
+		<-release
+	}()
+	go func() {
+		defer func() { done <- struct{}{} }()
+		first, err := nodelock.AcquireMaintenanceExclusive(state, backupTestNodeID)
+		ready <- err
+		if err != nil {
+			return
+		}
+		defer first.Close()
+		<-start
+		second, err := nodelock.AcquireWriterRootExclusive(writer)
+		if second != nil {
+			_ = second.Close()
+		}
+		results <- err
+		<-release
+	}()
+	for i := 0; i < 2; i++ {
+		if err := <-ready; err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(start)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-results:
+			if !errors.Is(err, nodelock.ErrBusy) {
+				t.Fatalf("opposite-order acquisition error=%v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("opposite-order locks deadlocked")
+		}
+	}
+	assertRecoveryInspectionUnchanged(t, base, before)
+
 }

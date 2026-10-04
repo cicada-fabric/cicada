@@ -232,3 +232,95 @@ func prepareLockFile(path string) error {
 	}
 	return protectLockFile(path)
 }
+
+// AcquireMaintenanceExclusiveExisting excludes Node writers without creating or
+// repairing lock state. Inspection requires the private lock namespace already
+// established by a writer or restore, including through StateDir aliases.
+func AcquireMaintenanceExclusiveExisting(stateDir, nodeID string) (*Lock, error) {
+	stateDir = strings.TrimSpace(stateDir)
+	if stateDir == "" || strings.TrimSpace(nodeID) == "" || strings.TrimSpace(nodeID) != nodeID {
+		return nil, errors.New("canonical Node state directory and Node ID are required for locking")
+	}
+	root, err := filepath.Abs(filepath.Clean(stateDir))
+	if err != nil {
+		return nil, fmt.Errorf("resolve Node state directory: %w", err)
+	}
+	nodesDir := filepath.Join(root, "nodes")
+	if err := requireExistingPrivateDirectory(nodesDir); err != nil {
+		return nil, err
+	}
+	lockDir := filepath.Join(nodesDir, lockDirectoryName)
+	if err := requireExistingPrivateDirectory(lockDir); err != nil {
+		return nil, err
+	}
+	canonicalLockDir, err := filepath.EvalSymlinks(lockDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve existing Node lock directory: %w", err)
+	}
+	if err := requireExistingPrivateDirectory(canonicalLockDir); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(canonicalLockDir, "node-"+url.PathEscape(nodeID)+maintenanceSuffix)
+	before, err := existingPrivateLockInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	return acquireExistingExclusiveLock(path, before)
+}
+
+func requireExistingPrivateDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect existing lock directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("existing lock directory must be real and private")
+	}
+	return nil
+}
+
+func existingPrivateLockInfo(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect existing lock file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("existing lock file must be regular and private")
+	}
+	return info, nil
+}
+
+func acquireExistingExclusiveLock(path string, before os.FileInfo) (*Lock, error) {
+	// SetFlag overrides flock's default O_CREATE. No inspection path repairs
+	// permissions, truncates a file or creates a missing lock.
+	file := flock.New(path, flock.SetFlag(os.O_RDWR))
+	locked, err := file.TryLock()
+	if err != nil {
+		return nil, fmt.Errorf("lock existing maintenance state: %w", err)
+	}
+	if !locked {
+		return nil, ErrBusy
+	}
+	if err := verifyExistingLockedFile(path, before, file); err != nil {
+		return nil, errors.Join(err, file.Unlock())
+	}
+	return &Lock{file: file}, nil
+}
+
+func verifyExistingLockedFile(path string, before os.FileInfo, file *flock.Flock) error {
+	// Stat uses the held descriptor, not a second open of the pathname. Both
+	// the original observation and the current pathname must name that inode.
+	held, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect held maintenance lock: %w", err)
+	}
+	current, err := existingPrivateLockInfo(path)
+	if err != nil {
+		return err
+	}
+	if !held.Mode().IsRegular() || held.Mode().Perm()&0o077 != 0 ||
+		!os.SameFile(before, held) || !os.SameFile(held, current) {
+		return errors.New("existing maintenance lock inode changed")
+	}
+	return nil
+}

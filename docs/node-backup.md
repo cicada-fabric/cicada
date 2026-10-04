@@ -51,6 +51,27 @@ context. `runMachineNodeControlOperator` separately takes the WriterRoot
 shared lock; state-changing operator actions also acquire the Node ownership
 lock. `BackupWithWriterRoot`, `RestoreWithWriterRoot`, and
 `InspectWithWriterRoot` are the corresponding offline/read-only entrypoints.
+Inspection requires preexisting private Node and WriterRoot lock directories
+and regular private maintenance lock files. It takes nonblocking exclusive
+locks for both scopes; missing, unsafe or busy lock state fails without creating
+files or repairing permissions. Node StateDir lock aliases share the writer
+namespace; WriterRoot symlink components remain rejected. The held file inode
+must match the observed pathname. Inspection leaves all recovery holds in
+place and never authorizes Agent startup.
+
+2026-10-04 validation: the seven-path inspection-lock delta after
+`4dc84d76b799a287a55fed2e32d31c68849dd958` was checked on its frozen Go source
+in the pinned Go 1.27.1 image with network disabled. Commands were
+`go test -p 2 -mod=readonly -count=1 -timeout=3m -json ./internal/nodelock ./internal/nodebackup`,
+`go test -race -p 2 -mod=readonly -count=1 -timeout=3m -json ./internal/nodelock ./internal/nodebackup`,
+and `go vet -mod=readonly ./internal/nodelock ./internal/nodebackup`; all exited 0.
+Normal and race each passed 56 top-level tests plus 70 subtests, with zero failures/skips.
+The initial fixture-setup failure remains preserved against its tested source; correcting
+its nonprivate WriterRoot fixture preceded the passing checks. All owned containers were
+removed. Inspection holds the locks and preserves quarantine; it provides no activation.
+See the [validation receipt](../.cicada-data/v01-finish-20261002/recovery-inspect-lock-safety-20261004/review.receipt.json),
+SHA-256 `58eb387057b4f0c64f555f5aae06f6dad6ef3afdefae9b86674cae9a1a31f717`.
+
 Direct package-level ledger calls in tests use isolated temporary roots and do
 not represent an exposed production CLI or remote API.
 

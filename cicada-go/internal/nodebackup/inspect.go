@@ -71,7 +71,8 @@ type LocalMessagesInspection struct {
 }
 
 // Inspect verifies an offline backup and its restored, quarantined Node tree.
-// The exclusive maintenance lock makes the byte and SQLite checks stable. All
+// The preexisting exclusive maintenance lock makes byte and SQLite checks stable.
+// Missing or unsafe lock state fails without creation or permission repair. All
 // database handles use immutable read-only SQLite connections; this function
 // never opens the Agent, creates state, runs migrations, or modifies the
 // recovery marker.
@@ -88,7 +89,7 @@ func Inspect(backupDir, targetStateDir string) (_ *RecoveryInspectReport, retErr
 	if err := verifyNodeStateDirectory(stateRoot, nodeDir); err != nil {
 		return nil, err
 	}
-	lock, err := nodelock.AcquireMaintenanceExclusive(stateRoot, manifest.NodeID)
+	lock, err := nodelock.AcquireMaintenanceExclusiveExisting(stateRoot, manifest.NodeID)
 	if err != nil {
 		if errors.Is(err, nodelock.ErrBusy) {
 			return nil, fmt.Errorf("Node %q is busy: %w", manifest.NodeID, err)
@@ -174,13 +175,15 @@ func Inspect(backupDir, targetStateDir string) (_ *RecoveryInspectReport, retErr
 	return report, nil
 }
 
-// InspectWithWriterRoot also takes the shared-root coordination lock and
+// InspectWithWriterRoot also takes a preexisting exclusive shared-root lock and
 // reports whether the archived fences match the restored common WriterRoot.
 // It never clears either Node or WriterRoot quarantine markers.
-func InspectWithWriterRoot(backupDir, targetStateDir, writerRoot string) (*RecoveryInspectReport, error) {
-	lock, err := nodelock.AcquireWriterRoot(writerRoot)
+func InspectWithWriterRoot(backupDir, targetStateDir, writerRoot string) (_ *RecoveryInspectReport, retErr error) {
+	// WriterRoot-first inspection and Node-first restore use only TryLock: an
+	// opposite-order collision returns busy instead of waiting for either lock.
+	lock, err := nodelock.AcquireWriterRootExclusiveExisting(writerRoot)
 	if err != nil {
-		return nil, fmt.Errorf("acquire shared WriterRoot inspection lock: %w", err)
+		return nil, fmt.Errorf("acquire exclusive WriterRoot inspection lock: %w", err)
 	}
 	defer lock.Close()
 	report, err := Inspect(backupDir, targetStateDir)

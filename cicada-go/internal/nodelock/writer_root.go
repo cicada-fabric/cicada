@@ -111,3 +111,28 @@ func rejectWriterRootSymlinkComponents(absolute string) error {
 	}
 	return nil
 }
+
+// AcquireWriterRootExclusiveExisting excludes all shared-root writers for
+// read-only inspection. Missing or unsafe lock state is never created/repaired.
+func AcquireWriterRootExclusiveExisting(writerRoot string) (*Lock, error) {
+	writerRoot = strings.TrimSpace(writerRoot)
+	if writerRoot == "" {
+		return nil, errors.New("shared Node WriterRoot is required")
+	}
+	absolute, err := filepath.Abs(filepath.Clean(writerRoot))
+	if err != nil {
+		return nil, fmt.Errorf("resolve shared Node WriterRoot: %w", err)
+	}
+	if err := rejectWriterRootSymlinkComponents(absolute); err != nil {
+		return nil, err
+	}
+	if err := requireExistingPrivateDirectory(absolute); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(absolute, writerRootMaintenanceName)
+	before, err := existingPrivateLockInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	return acquireExistingExclusiveLock(path, before)
+}
