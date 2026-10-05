@@ -1,10 +1,18 @@
-# v0.1 release-exit validation — scoped checks and attributed deliveries — 2026-10-04
+# v0.1 release-exit validation — scoped checks and attributed deliveries — 2026-10-05
 
 Overall v0.1 / Architecture v2.3 remains **PARTIAL**. This report keeps clean deliveries, the validated Core source checkpoint, offline checks and live Runtime/Android outcomes separate. It does not authorize release or deployment.
 
 <a id="current-closeout-evidence"></a>
 
-## 2026-10-04 当前收尾证据
+## 2026-10-05 当前收尾证据
+
+v0.1.x 于 Oct 5 恢复；整体仍 **PARTIAL**。本次更新包含 foreground driver 与文档，不改 Go、DB 或 Client 合同。
+
+- **Foreground:** [result](../.cicada-data/native-foreground-queue-20261005-final-wait/result.json), SHA-256 `0ccc22f29a6052fde4c01d52533e2a08ad97b389bfc13b4e3dca6595be647fa4`; driver SHA-256 `d1d4335a6e6b3bf4a4a7d87de30ee76b320412af926d5ab039b77de0b8103812`; exit 0 / 3.996s / `PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY`. Codex 0.160.0 ran isolated with a synthetic provider; busy queue and draft preservation passed. [Root review](../.cicada-data/native-foreground-queue-20261005-final-wait/root-terminal-review.NONAUTH.json), SHA-256 `c6b4ea75208e3ff5ce1e6e166f50b90a8a0daebf26e99536f16643a4a3bd49e7`, confirms owned CID absence. This does not prove real-model consumption or G1.
+- **Actual Native:** [G1C result](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-native-result-cicada-two-turn-obsoct5final20261005a/result.json), SHA-256 `349bd71feb8d66fe5d908db17bd5006e88b87283b208baaf7682cec257535c7a`: exit 1, A1 RuntimeError FAIL, A3 NOT_REACHED, actual POST total incomplete (16 was the runtime cap, not its count). Closed capture is retained; offline four-case race passed, while the first I/O phase/class remains UNKNOWN. [Root closeout receipt](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-oct5-terminal-compact-with-proposal.NONAUTH.json), SHA-256 `23748a7699f6c0f09bb0e2f704239a1857d6b52640982a008e45f3e093252ea0`, reports closeout SHA-256 `94e3c0797bde62bb0f8cd5762922d2bec60c72832c915ff3f086f2a2b2925909` and nine owned objects absent; original `cleanup=false` remains.
+- **Existing regressions:** 2748 PASS / 20 SKIP, same-source vet exit 0 and two real-TCP Go Client interop selectors PASS remain attributed to their earlier frozen dirty source; none was rerun here. [Input-equivalence receipt](../.cicada-data/native-foreground-queue-20261005-final-wait/core-input-equivalence.NONAUTH.json), SHA-256 `0804c6b3952af403d2b6d296fb07cdbd9311f5934d879ace9ade75911739b4eb`, confirms the 926 Go inputs and 929 selected interop inputs are unchanged. Android, public HTTPS, dual physical Node and production recovery remain separate gates.
+
+## 2026-10-04 historical closeout evidence
 
 当前状态与下一动作统一见[唯一收尾表](architecture-v2-status.md#current-closeout)。以下只补本轮新来源，历史 full-Go / vet / Docker 和失败记录保留在后文。当前已提交 checkpoint 为 `d7241f607243c1648f96f0af43e03db5afa5658c`；Root 核对 926 编译输入与下述最终 dirty QA 源等价（Go/module FP `2490e9f8…`）。未按该 commit 重建或重测，interop 的 selected build FP `bbfa72cf…` 及实测 dirty images 保持原归属。
 

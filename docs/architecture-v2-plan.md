@@ -1,6 +1,20 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-04 当前行动
+## 2026-10-05 恢复后的当前行动
+
+v0.1.x 于 2026-10-05 恢复；Oct 4 截止时的判断见[历史行动快照](#historical-action-snapshot)。foreground busy-queue/draft 的一次官方 Codex 0.160.0 隔离合成门禁通过，见[foreground 记录](native-foreground-queue-validation.md)和[当前证据](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)；这不是实际 Native/G1 PASS。
+
+当前按以下顺序推进，第一项优先：
+
+1. 优先给 Native 测试驱动补最小首个 I/O phase/class 诊断，并用离线故障夹具验证字段闭合；当前首因仍 UNKNOWN。随后单独验收实际原 Thread/G1 上下文，不由合成 foreground 结果推导。
+2. 独立确认同账号 Native direct 的官方支持边界，再按结果验证适配；若不支持，保留明确 `UNSUPPORTED`，不作成功推断。
+3. 分别准备 physical Android、双物理 Node、public HTTPS 和生产恢复 gate；各自记录来源与结果。
+
+Oct 5 实际 G1C 仍为 A1 RuntimeError **FAIL**、A3 **NOT_REACHED**，actual POST 总数不完整；offline race 四案例 PASS，首个 I/O phase/class UNKNOWN。此前 2748 PASS / 20 SKIP 的 full-Go、vet 与 Client interop 仍归属于冻结 dirty source，未重跑；本次无 Go、DB 或 Client 合同变更。整体保持 **PARTIAL**。
+
+<a id="historical-action-snapshot"></a>
+
+## 2026-10-04 历史行动快照
 
 当前状态统一以[唯一收尾表](architecture-v2-status.md#current-closeout)为准，证据与源归属见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。F38 已关闭固定 clean-021 + Client caa9 的五项 Link 授权 gate；后续动作不再以五操作“未开放”作为该组合的阻塞。
 

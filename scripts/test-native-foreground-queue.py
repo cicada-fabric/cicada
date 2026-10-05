@@ -37,6 +37,14 @@ MAX_TERMINAL_TAIL_BYTES = 16 * 1024
 MAX_FILE_TRACE_LINE_BYTES = 4 * 1024
 MAX_FILE_TRACE_LINES = 16
 MAX_FILE_TRACE_BYTES = MAX_FILE_TRACE_LINE_BYTES * MAX_FILE_TRACE_LINES
+MAX_NOTIFICATION_METHODS = 64
+MAX_LIFECYCLE_EVENTS = 32
+MAX_NOTIFICATION_COUNT = 2**31 - 1
+SAFE_NOTIFICATION_METHOD = re.compile(r"[A-Za-z0-9_./-]{1,80}\Z")
+SAFE_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
+SAFE_TURN_STATUS = re.compile(r"[A-Za-z0-9_-]{1,32}\Z")
+LIFECYCLE_METHODS = frozenset(("turn/started", "turn/completed", "thread/started", "error"))
+SAFE_THREAD_SOURCES = frozenset(("user", "thread_title", "subagent", "guardian_review", "memory_consolidation", "UNKNOWN"))
 
 STRACE_FILES = {
     "strace": ("/usr/bin/strace", "28f957c227012de0b18d1bd7fff2d396cb693ea60ed8013be68de071e84b5001", 0o555),
@@ -61,7 +69,9 @@ QUEUED = os.environ["CICADA_QUEUE_SENTINEL"]
 DRAFT = os.environ["CICADA_DRAFT_SENTINEL"]
 SUFFIX = os.environ["CICADA_DRAFT_SUFFIX"]
 LOCK = threading.RLock()
-STATE = {"schema": "cicada.native-foreground-queue-run.v1", "provider_requests": [], "server_ready": False}
+STATE = {"schema": "cicada.native-foreground-queue-run.v1", "provider_requests": [], "server_ready": False,
+         "notification_method_histogram": {}, "notification_method_other_count": 0,
+         "held_original_turn_id": ""}
 EVENTS = []
 FIRST_RELEASE = threading.Event()
 STOP = threading.Event()
@@ -70,30 +80,83 @@ APP = None
 TRACE_LINES = []
 TRACE_COUNTS = {"bytes_read": 0, "ero_fs_lines_seen": 0, "ero_fs_lines_truncated": False,
                 "stderr_seen": False, "ptrace_permission_denied": False}
+TUI_TRACE_LINES = []
+TUI_TRACE_COUNTS = {"bytes_read": 0, "ero_fs_lines_seen": 0, "ero_fs_lines_truncated": False,
+                    "stderr_seen": False, "ptrace_permission_denied": False}
 TRACE_LOCK = threading.Lock()
 TRACE_THREADS = []
 MAX_TRACE_LINE = 4096
 MAX_TRACE_LINES = 16
+MAX_NOTIFICATION_METHODS = 64
+MAX_NOTIFICATION_COUNT = 2**31 - 1
+MAX_RESUME_TURNS = 8
+SAFE_NOTIFICATION_METHOD = re.compile(r"[A-Za-z0-9_./-]{1,80}\Z")
+SAFE_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
+SAFE_TURN_STATUS = re.compile(r"[A-Za-z0-9_-]{1,32}\Z")
+SAFE_THREAD_SOURCES = frozenset(("user", "thread_title", "subagent", "guardian_review", "memory_consolidation"))
 
-def collect_app_file_trace(stream):
+def count_notification_method(method):
+    with LOCK:
+        histogram = STATE["notification_method_histogram"]
+        if isinstance(method, str) and SAFE_NOTIFICATION_METHOD.fullmatch(method):
+            if method in histogram or len(histogram) < MAX_NOTIFICATION_METHODS:
+                histogram[method] = min(histogram.get(method, 0) + 1, MAX_NOTIFICATION_COUNT)
+            else:
+                STATE["notification_method_other_count"] = min(
+                    STATE["notification_method_other_count"] + 1, MAX_NOTIFICATION_COUNT)
+        else:
+            STATE["notification_method_other_count"] = min(
+                STATE["notification_method_other_count"] + 1, MAX_NOTIFICATION_COUNT)
+
+def safe_uuid(value):
+    if isinstance(value, str) and SAFE_UUID.fullmatch(value):
+        return value.lower()
+    return ""
+
+def safe_turn_status(params):
+    turn = params.get("turn") if isinstance(params, dict) else None
+    status = turn.get("status") if isinstance(turn, dict) else None
+    if isinstance(status, str) and SAFE_TURN_STATUS.fullmatch(status):
+        return status
+    return ""
+
+def safe_thread_source(params):
+    thread = params.get("thread") if isinstance(params, dict) else None
+    source = thread.get("threadSource") if isinstance(thread, dict) else None
+    return source if isinstance(source, str) and source in SAFE_THREAD_SOURCES else "UNKNOWN"
+
+def safe_thread_ephemeral(params):
+    thread = params.get("thread") if isinstance(params, dict) else None
+    value = thread.get("ephemeral") if isinstance(thread, dict) else None
+    return value if type(value) is bool else None
+
+def trace_bucket(scope):
+    if scope == "app":
+        return TRACE_LINES, TRACE_COUNTS
+    if scope == "tui":
+        return TUI_TRACE_LINES, TUI_TRACE_COUNTS
+    raise ValueError("unknown_trace_scope")
+
+def collect_file_trace(stream, scope):
+    lines, counts = trace_bucket(scope)
     pending = bytearray()
     dropping = False
     while True:
         chunk = stream.read(4096)
         if not chunk:
             break
-        TRACE_COUNTS["bytes_read"] += len(chunk)
+        counts["bytes_read"] += len(chunk)
         for byte in chunk:
             if byte == 10:
                 if not dropping:
                     line = bytes(pending).decode("utf-8", "replace").strip()
                     if "EROFS" in line and " = -1 " in line and "EROFS (" in line:
                         with TRACE_LOCK:
-                            TRACE_COUNTS["ero_fs_lines_seen"] += 1
-                            if len(TRACE_LINES) < MAX_TRACE_LINES:
-                                TRACE_LINES.append(line[:MAX_TRACE_LINE])
+                            counts["ero_fs_lines_seen"] += 1
+                            if len(lines) < MAX_TRACE_LINES:
+                                lines.append(line[:MAX_TRACE_LINE])
                             else:
-                                TRACE_COUNTS["ero_fs_lines_truncated"] = True
+                                counts["ero_fs_lines_truncated"] = True
                 pending.clear()
                 dropping = False
             elif not dropping:
@@ -101,11 +164,11 @@ def collect_app_file_trace(stream):
                     pending.append(byte)
                 else:
                     dropping = True
-    lines = list(TRACE_LINES)
+    lines = list(lines)
     trace_save_error = ""
     if lines:
         try:
-            path = pathlib.Path(RUN) / "app-file-syscalls.private.txt"
+            path = pathlib.Path(RUN) / (scope + "-file-syscalls.private.txt")
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as out:
                 for line in lines:
@@ -115,19 +178,20 @@ def collect_app_file_trace(stream):
         except OSError as exc:
             trace_save_error = type(exc).__name__
     with LOCK:
-        STATE["app_file_syscall_trace"] = {
+        STATE[scope + "_file_syscall_trace"] = {
             "collector_completed": True,
-            "bytes_read": TRACE_COUNTS["bytes_read"],
-            "ero_fs_lines_seen": TRACE_COUNTS["ero_fs_lines_seen"],
+            "bytes_read": counts["bytes_read"],
+            "ero_fs_lines_seen": counts["ero_fs_lines_seen"],
             "ero_fs_lines_retained": len(lines),
-            "ero_fs_lines_truncated": TRACE_COUNTS["ero_fs_lines_truncated"],
-            "strace_stderr_seen": TRACE_COUNTS["stderr_seen"],
-            "ptrace_permission_denied_observed": TRACE_COUNTS["ptrace_permission_denied"],
+            "ero_fs_lines_truncated": counts["ero_fs_lines_truncated"],
+            "strace_stderr_seen": counts["stderr_seen"],
+            "ptrace_permission_denied_observed": counts["ptrace_permission_denied"],
             "private_summary_save_error": trace_save_error,
         }
         publish()
 
-def collect_strace_stderr(stream):
+def collect_strace_stderr(stream, scope):
+    _, counts = trace_bucket(scope)
     pending = bytearray()
     while True:
         chunk = stream.read(1024)
@@ -137,12 +201,21 @@ def collect_strace_stderr(stream):
             if byte == 10:
                 line = bytes(pending).lower()
                 if line:
-                    TRACE_COUNTS["stderr_seen"] = True
+                    counts["stderr_seen"] = True
                     if b"ptrace" in line and (b"operation not permitted" in line or b"permission denied" in line):
-                        TRACE_COUNTS["ptrace_permission_denied"] = True
+                        counts["ptrace_permission_denied"] = True
                 pending.clear()
             elif len(pending) < 1024:
                 pending.append(byte)
+
+def start_trace_readers(proc, scope, trace_stdout=None):
+    output_stream = trace_stdout or proc.stdout
+    reader = threading.Thread(target=collect_file_trace, args=(output_stream, scope), daemon=True)
+    reader.start()
+    TRACE_THREADS.append(reader)
+    reader = threading.Thread(target=collect_strace_stderr, args=(proc.stderr, scope), daemon=True)
+    reader.start()
+    TRACE_THREADS.append(reader)
 
 def traced_app_server(command):
     tracer = "/opt/cicada-strace"
@@ -151,10 +224,30 @@ def traced_app_server(command):
             "-s", "4096", "-o", "/dev/stdout", "--", "/bin/sh", "-c",
             'exec "$@" >/dev/null 2>&1', "sh", *command]
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    for stream, target in ((proc.stdout, collect_app_file_trace), (proc.stderr, collect_strace_stderr)):
-        reader = threading.Thread(target=target, args=(stream,), daemon=True)
-        reader.start()
-        TRACE_THREADS.append(reader)
+    start_trace_readers(proc, "app")
+    return proc
+
+def traced_tui(command):
+    tracer = "/opt/cicada-strace"
+    tty_fds = []
+    try:
+        tty_out = os.dup(sys.stdout.fileno())
+        tty_fds.append(tty_out)
+        tty_err = os.dup(sys.stderr.fileno())
+        tty_fds.append(tty_err)
+        redirect = 'exec "$@" >/proc/self/fd/' + str(tty_out) + ' 2>/proc/self/fd/' + str(tty_err)
+        argv = [tracer + "/ld-linux-x86-64.so.2", "--library-path", tracer + "/lib",
+                tracer + "/strace", "-f", "-qq", "-e", "trace=%file", "-e", "status=failed",
+                "-s", "4096", "-o", "/dev/stdout", "--", "/bin/sh", "-c", redirect, "sh", *command]
+        proc = subprocess.Popen(argv, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                pass_fds=(tty_out, tty_err))
+    finally:
+        for fd in reversed(tty_fds):
+            os.close(fd)
+    with LOCK:
+        STATE["tui_tracer_invocation"] = argv
+        publish()
+    start_trace_readers(proc, "tui")
     return proc
 
 def publish():
@@ -194,13 +287,19 @@ def event_thread(params):
     if not isinstance(params, dict):
         return ""
     if isinstance(params.get("threadId"), str):
-        return params["threadId"]
+        candidate = safe_uuid(params["threadId"])
+        if candidate:
+            return candidate
     thread = params.get("thread")
     if isinstance(thread, dict) and isinstance(thread.get("id"), str):
-        return thread["id"]
+        candidate = safe_uuid(thread["id"])
+        if candidate:
+            return candidate
     turn = params.get("turn")
     if isinstance(turn, dict) and isinstance(turn.get("threadId"), str):
-        return turn["threadId"]
+        candidate = safe_uuid(turn["threadId"])
+        if candidate:
+            return candidate
     return ""
 
 def event_turn(params):
@@ -208,8 +307,10 @@ def event_turn(params):
         return ""
     turn = params.get("turn")
     if isinstance(turn, dict) and isinstance(turn.get("id"), str):
-        return turn["id"]
-    return params.get("turnId", "") if isinstance(params.get("turnId", ""), str) else ""
+        candidate = safe_uuid(turn["id"])
+        if candidate:
+            return candidate
+    return safe_uuid(params.get("turnId", ""))
 
 class SocketRPC:
     def __init__(self, path):
@@ -334,10 +435,13 @@ class SocketRPC:
         method = message.get("method", "")
         if method:
             params = message.get("params", {})
-            if method in ("turn/started", "turn/completed", "thread/started", "error"):
+            if "id" not in message:
+                count_notification_method(method)
+            if isinstance(method, str) and method in ("turn/started", "turn/completed", "thread/started", "error"):
                 event_line({"method": method, "thread_id": event_thread(params), "turn_id": event_turn(params),
-                            "turn_status": (params.get("turn", {}).get("status", "") if isinstance(params, dict) and isinstance(params.get("turn"), dict) else ""),
-                            "monotonic": time.monotonic()})
+                            "turn_status": safe_turn_status(params),
+                            **({"thread_source": safe_thread_source(params), "ephemeral": safe_thread_ephemeral(params)}
+                               if method == "thread/started" else {})})
             return
         ident = message.get("id")
         if isinstance(ident, int):
@@ -433,15 +537,31 @@ class Provider(http.server.BaseHTTPRequestHandler):
             self.send_error(400)
             return
         rendered = "\n".join(text_values(body))
+        metadata = body.get("client_metadata") if isinstance(body, dict) else None
+        request_thread_id = safe_uuid(metadata.get("thread_id")) if isinstance(metadata, dict) else ""
+        request_turn_id = safe_uuid(metadata.get("turn_id")) if isinstance(metadata, dict) else ""
         with LOCK:
             index = len(STATE["provider_requests"]) + 1
+            user_thread_ids = {event.get("thread_id") for event in EVENTS if isinstance(event, dict) and
+                               event.get("method") == "thread/started" and
+                               event.get("thread_source") == "user" and event.get("ephemeral") is False and
+                               isinstance(event.get("thread_id"), str)}
+            hold_for_busy_gate = (len(user_thread_ids) == 1 and request_thread_id in user_thread_ids and
+                                  bool(request_turn_id) and BUSY in rendered and
+                                  not STATE.get("held_original_turn_id"))
+            if hold_for_busy_gate:
+                STATE["held_original_turn_id"] = request_turn_id
             record = {"index": index, "body_sha256": hashlib.sha256(raw).hexdigest(),
+                      "thread_id": request_thread_id, "turn_id": request_turn_id,
+                      "expected_model_present": isinstance(body, dict) and body.get("model") == "gpt-5.6-luna",
                       "initial_prompt_present": BUSY in rendered, "queue_prompt_present": QUEUED in rendered,
-                      "draft_with_suffix_present": (DRAFT + SUFFIX) in rendered, "received_monotonic": time.monotonic(),
+                      "draft_prompt_present": DRAFT in rendered,
+                      "draft_with_suffix_present": (DRAFT + SUFFIX) in rendered,
+                      "held_for_busy_gate": hold_for_busy_gate, "received_monotonic": time.monotonic(),
                       "response_sent": False}
             STATE["provider_requests"].append(record)
             publish()
-        if index == 1:
+        if hold_for_busy_gate:
             deadline = time.monotonic() + 155
             while not FIRST_RELEASE.is_set() and not STOP.is_set() and time.monotonic() < deadline:
                 time.sleep(0.025)
@@ -477,7 +597,8 @@ def snapshot(rpc, thread_id, request_id):
     queue_text = ["\n".join(text_values(row)) for row in data if isinstance(row, (dict, list))] if isinstance(data, list) else []
     with LOCK:
         events = [item.copy() for item in EVENTS if item.get("thread_id") == thread_id]
-    selected = [{"method": event["method"], "turn_id": event.get("turn_id", ""), "turn_status": event.get("turn_status", "")}
+    selected = [{"method": event["method"], "thread_id": event["thread_id"],
+                 "turn_id": event.get("turn_id", ""), "turn_status": event.get("turn_status", "")}
                 for event in events if event["method"] in ("turn/started", "turn/completed")]
     result = {"request_id": request_id, "thread_id": thread_id, "queue_count": len(data) if isinstance(data, list) else -1,
               "queue_terminal": cursor is None, "queue_prompt_present": any(QUEUED in text for text in queue_text),
@@ -490,8 +611,34 @@ def snapshot(rpc, thread_id, request_id):
     os.replace(temp, path)
     return result
 
+def resume_snapshot(rpc, thread_id, request_id):
+    response = rpc.request("thread/resume", {"threadId": thread_id, "excludeTurns": False})
+    thread = response.get("thread") if isinstance(response, dict) else None
+    raw_turns = thread.get("turns") if isinstance(thread, dict) else None
+    turns = []
+    if isinstance(raw_turns, list):
+        for turn in raw_turns[:MAX_RESUME_TURNS]:
+            if not isinstance(turn, dict):
+                continue
+            turn_id = safe_uuid(turn.get("id"))
+            status = turn.get("status")
+            if turn_id and isinstance(status, str) and SAFE_TURN_STATUS.fullmatch(status):
+                turns.append({"turn_id": turn_id, "status": status})
+    result = {"request_id": request_id,
+              "thread_id": safe_uuid(thread.get("id")) if isinstance(thread, dict) else "",
+              "turn_count": len(raw_turns) if isinstance(raw_turns, list) else -1,
+              "turns_truncated": isinstance(raw_turns, list) and len(raw_turns) > MAX_RESUME_TURNS,
+              "turns": turns}
+    path = pathlib.Path(RUN) / "resume-snapshot.json"
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(result, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    os.chmod(temp, 0o600)
+    os.replace(temp, path)
+    return result
+
 def controls(rpc):
     last_snapshot = 0
+    last_resume = 0
     path = pathlib.Path(RUN) / "control.json"
     while not STOP.is_set():
         try:
@@ -507,6 +654,22 @@ def controls(rpc):
                 snapshot(rpc, request.get("thread_id", ""), last_snapshot)
             except Exception:
                 pass
+        resume = current.get("resume")
+        if isinstance(resume, dict) and isinstance(resume.get("request_id"), int) and resume["request_id"] > last_resume:
+            last_resume = resume["request_id"]
+            thread_id = safe_uuid(resume.get("thread_id"))
+            try:
+                if not thread_id:
+                    raise ValueError("invalid_thread_id")
+                resume_snapshot(rpc, thread_id, last_resume)
+            except Exception as exc:
+                result = {"request_id": last_resume, "thread_id": thread_id,
+                          "error_class": type(exc).__name__}
+                resume_path = pathlib.Path(RUN) / "resume-snapshot.json"
+                temp = resume_path.with_suffix(".tmp")
+                temp.write_text(json.dumps(result, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+                os.chmod(temp, 0o600)
+                os.replace(temp, resume_path)
         time.sleep(0.025)
 
 def main():
@@ -521,6 +684,9 @@ def main():
               'model_provider = "cicada-local"\n'
               'approval_policy = "never"\n'
               'sandbox_mode = "read-only"\n'
+              'log_dir = "/tmp/cicada-home/.codex/log"\n'
+              '[notice.model_migrations]\n'
+              '"gpt-5.6-luna" = "gpt-6-luna"\n'
               '[model_providers.cicada-local]\n'
               'name = "CICADA synthetic loopback"\n'
               'base_url = "http://127.0.0.1:' + str(server.server_port) + '/v1"\n'
@@ -616,9 +782,12 @@ def main():
     with LOCK:
         STATE["server_ready"] = True
         publish()
-    TUI = subprocess.Popen([CODEX, "--disable", "plugins", "--remote", "unix://" + SOCKET_PATH,
-                            "--no-alt-screen", "--cd", str(work), "--ask-for-approval", "never", "--sandbox", "read-only"],
-                           stdin=None, stdout=None, stderr=None)
+    tui_command = [CODEX, "--disable", "plugins", "--remote", "unix://" + SOCKET_PATH,
+                   "--no-alt-screen", "--cd", str(work), "--ask-for-approval", "never", "--sandbox", "read-only"]
+    if os.environ.get("CICADA_TRACE_TUI_FILE_FAILURES") == "1":
+        TUI = traced_tui(tui_command)
+    else:
+        TUI = subprocess.Popen(tui_command, stdin=None, stdout=None, stderr=None)
     with LOCK:
         STATE["tui_started"] = True
         STATE["tui_process_alive"] = TUI.poll() is None
@@ -660,6 +829,24 @@ def main():
                 else:
                     TRACE_STATE["instrumentation_status"] = "TRACE_COLLECTOR_COMPLETE_NO_STRACE_DIAGNOSTIC"
                 STATE["app_file_syscall_trace"] = TRACE_STATE
+                publish()
+        if os.environ.get("CICADA_TRACE_TUI_FILE_FAILURES") == "1":
+            with LOCK:
+                TRACE_STATE = STATE.get("tui_file_syscall_trace", {})
+                TRACE_STATE["strace_exit_code"] = TUI.returncode if TUI else None
+                TRACE_STATE["strace_stderr_seen"] = TUI_TRACE_COUNTS["stderr_seen"]
+                TRACE_STATE["ptrace_permission_denied_observed"] = TUI_TRACE_COUNTS["ptrace_permission_denied"]
+                if TUI_TRACE_COUNTS["ptrace_permission_denied"]:
+                    TRACE_STATE["instrumentation_status"] = "BLOCKED_PTRACE_PERMISSION_DENIED"
+                elif not TRACE_STATE.get("collector_completed"):
+                    TRACE_STATE["instrumentation_status"] = "BLOCKED_TRACE_COLLECTOR_INCOMPLETE"
+                elif TUI_TRACE_COUNTS["stderr_seen"]:
+                    TRACE_STATE["instrumentation_status"] = "BLOCKED_STRACE_DIAGNOSTIC_UNCLASSIFIED"
+                elif TUI and TUI.returncode in (-signal.SIGTERM, -signal.SIGKILL):
+                    TRACE_STATE["instrumentation_status"] = "BLOCKED_TRACER_SIGNALLED_DURING_CLEANUP"
+                else:
+                    TRACE_STATE["instrumentation_status"] = "TRACE_COLLECTOR_COMPLETE"
+                STATE["tui_file_syscall_trace"] = TRACE_STATE
                 publish()
         rpc.close()
         server.shutdown()
@@ -813,6 +1000,7 @@ def wait_for_composer_ready(session, deadline, status_path):
 def startup_diagnostics(status_path, events_path, session):
     status = read_json(status_path)
     counts = {"thread_started": 0, "turn_started": 0, "turn_completed": 0}
+    lifecycle_events = []
     try:
         for line in events_path.read_text(encoding="utf-8").splitlines():
             if not line:
@@ -828,6 +1016,8 @@ def startup_diagnostics(status_path, events_path, session):
                 counts["turn_started"] += 1
             elif method == "turn/completed":
                 counts["turn_completed"] += 1
+            if isinstance(event, dict) and isinstance(method, str) and method in LIFECYCLE_METHODS and len(lifecycle_events) < MAX_LIFECYCLE_EVENTS:
+                lifecycle_events.append(event)
     except OSError:
         pass
     requests = status.get("provider_requests")
@@ -842,7 +1032,91 @@ def startup_diagnostics(status_path, events_path, session):
         "thread_started_event_count": counts["thread_started"],
         "turn_started_event_count": counts["turn_started"],
         "turn_completed_event_count": counts["turn_completed"],
+        "notification_diagnostics": sanitized_notification_diagnostics(status, lifecycle_events),
     }
+
+
+def sanitized_notification_diagnostics(status, lifecycle_events):
+    histogram = {}
+    other_count = status.get("notification_method_other_count")
+    other_count = min(other_count, MAX_NOTIFICATION_COUNT) if type(other_count) is int and other_count >= 0 else 0
+    raw_histogram = status.get("notification_method_histogram")
+    if isinstance(raw_histogram, dict):
+        for method, count in sorted(raw_histogram.items(), key=lambda item: item[0] if isinstance(item[0], str) else ""):
+            if type(count) is not int or count < 0:
+                other_count = min(other_count + 1, MAX_NOTIFICATION_COUNT)
+                continue
+            count = min(count, MAX_NOTIFICATION_COUNT)
+            if not isinstance(method, str) or not SAFE_NOTIFICATION_METHOD.fullmatch(method):
+                other_count = min(other_count + count, MAX_NOTIFICATION_COUNT)
+            elif method in histogram:
+                histogram[method] = min(histogram[method] + count, MAX_NOTIFICATION_COUNT)
+            elif len(histogram) < MAX_NOTIFICATION_METHODS:
+                histogram[method] = count
+            else:
+                other_count = min(other_count + count, MAX_NOTIFICATION_COUNT)
+
+    closed_events = []
+    for event in lifecycle_events:
+        if not isinstance(event, dict):
+            continue
+        method = event.get("method")
+        if not isinstance(method, str) or method not in LIFECYCLE_METHODS:
+            continue
+        closed = {"method": method}
+        for source, target in (("thread_id", "thread_id"), ("turn_id", "turn_id")):
+            value = event.get(source)
+            if isinstance(value, str) and SAFE_UUID.fullmatch(value):
+                closed[target] = value.lower()
+        status = event.get("turn_status")
+        if isinstance(status, str) and SAFE_TURN_STATUS.fullmatch(status):
+            closed["turn_status"] = status
+        if method == "thread/started":
+            source = event.get("thread_source")
+            closed["thread_source"] = source if isinstance(source, str) and source in SAFE_THREAD_SOURCES else "UNKNOWN"
+            ephemeral = event.get("ephemeral")
+            if type(ephemeral) is bool:
+                closed["ephemeral"] = ephemeral
+        closed_events.append(closed)
+        if len(closed_events) == MAX_LIFECYCLE_EVENTS:
+            break
+    return {"method_histogram": histogram, "other_method_count": other_count,
+            "lifecycle_events": closed_events}
+
+
+def sanitized_provider_requests(status):
+    requests = status.get("provider_requests")
+    if not isinstance(requests, list):
+        return []
+    summaries = []
+    for request in requests:
+        if not isinstance(request, dict):
+            continue
+        digest = request.get("body_sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            digest = None
+        index = request.get("index")
+        thread_id = request.get("thread_id")
+        if not isinstance(thread_id, str) or not SAFE_UUID.fullmatch(thread_id):
+            thread_id = None
+        turn_id = request.get("turn_id")
+        if not isinstance(turn_id, str) or not SAFE_UUID.fullmatch(turn_id):
+            turn_id = None
+        summaries.append({
+            "index": index if type(index) is int else None,
+            "body_sha256": digest,
+            "thread_id": thread_id.lower() if thread_id else None,
+            "turn_id": turn_id.lower() if turn_id else None,
+            "expected_model_present": request.get("expected_model_present") is True,
+            "initial_prompt_present": request.get("initial_prompt_present") is True,
+            "queue_prompt_present": request.get("queue_prompt_present") is True,
+            "draft_prompt_present": request.get("draft_prompt_present") is True,
+            "draft_with_suffix_present": request.get("draft_with_suffix_present") is True,
+            "held_for_busy_gate": request.get("held_for_busy_gate") is True,
+            "response_sent": request.get("response_sent") is True,
+            "client_closed_before_response": request.get("client_closed_before_response") is True,
+        })
+    return summaries
 
 
 def save_private_terminal_tail(result_path, session):
@@ -883,9 +1157,119 @@ def request_snapshot(private_dir, sequence, thread_id, deadline):
     raise GateError("BLOCKED", "timeout_waiting_for_queue_snapshot")
 
 
+def request_resume_snapshot(private_dir, sequence, thread_id, deadline):
+    control(private_dir, resume={"request_id": sequence, "thread_id": thread_id})
+    path = private_dir / "resume-snapshot.json"
+    while time.monotonic() < deadline:
+        snapshot = read_json(path)
+        if snapshot.get("request_id") == sequence:
+            if snapshot.get("error_class"):
+                raise GateError("BLOCKED", "running_thread_resume_failed")
+            return snapshot
+        time.sleep(0.05)
+    raise GateError("BLOCKED", "timeout_waiting_for_running_thread_resume")
+
+
+def held_initial_prompt_request(status, thread_id=None):
+    requests = status.get("provider_requests")
+    if not isinstance(requests, list):
+        return None
+    matches = [item for item in requests if isinstance(item, dict) and
+               item.get("thread_id") and item.get("turn_id") and
+               (thread_id is None or item.get("thread_id") == thread_id) and
+               item.get("initial_prompt_present") is True and item.get("held_for_busy_gate") is True and
+               item.get("response_sent") is False]
+    return matches[0] if len(matches) == 1 else None
+
+
+def user_thread_ids(events):
+    return [event.get("thread_id") for event in events if isinstance(event, dict) and
+            event.get("method") == "thread/started" and event.get("thread_source") == "user" and
+            event.get("ephemeral") is False and isinstance(event.get("thread_id"), str) and
+            SAFE_UUID.fullmatch(event["thread_id"])]
+
+
+def sole_user_thread_id(events):
+    matches = user_thread_ids(events)
+    if len(matches) != 1:
+        raise GateError("BLOCKED", "exact_non_ephemeral_user_thread_unavailable_or_ambiguous")
+    return matches[0].lower()
+
+
+def active_turn_from_resume(snapshot, expected_thread_id):
+    if snapshot.get("thread_id") != expected_thread_id or snapshot.get("turns_truncated") is not False:
+        raise GateError("BLOCKED", "running_thread_resume_snapshot_invalid")
+    turns = snapshot.get("turns")
+    if not isinstance(turns, list) or snapshot.get("turn_count") != 1 or len(turns) != 1:
+        raise GateError("BLOCKED", "running_thread_resume_turn_snapshot_incomplete")
+    active = [turn for turn in turns if isinstance(turn, dict) and turn.get("status") == "inProgress"]
+    if len(active) != 1:
+        raise GateError("BLOCKED", "original_active_turn_snapshot_not_unique")
+    turn_id = active[0].get("turn_id")
+    if not isinstance(turn_id, str) or not SAFE_UUID.fullmatch(turn_id):
+        raise GateError("BLOCKED", "original_active_turn_id_invalid")
+    return turn_id.lower(), active[0]["status"]
+
+
 def thread_turn_events(events, thread_id):
     return [event for event in events if event.get("thread_id") == thread_id and
             event.get("method") in ("turn/started", "turn/completed")]
+
+
+def held_turn_events_valid(events, thread_id, original_turn_id):
+    selected = thread_turn_events(events, thread_id)
+    return (all(event.get("turn_id") == original_turn_id for event in selected) and
+            sum(event.get("method") == "turn/started" for event in selected) <= 1 and
+            not any(event.get("method") == "turn/completed" for event in selected))
+
+
+def completed_queued_turn_id(events, thread_id, original_turn_id):
+    selected = thread_turn_events(events, thread_id)
+    original_completed = [index for index, event in enumerate(selected)
+                          if event.get("method") == "turn/completed" and
+                          event.get("turn_id") == original_turn_id and
+                          event.get("turn_status") == "completed"]
+    if len(original_completed) != 1:
+        return ""
+    before = selected[:original_completed[0]]
+    if len(before) > 1:
+        return ""
+    if before and (len(before) != 1 or before[0].get("method") != "turn/started" or
+                   before[0].get("turn_id") != original_turn_id):
+        return ""
+    after = selected[original_completed[0] + 1:]
+    if len(after) < 2:
+        return ""
+    queued_id = after[0].get("turn_id", "")
+    if (after[0].get("method") != "turn/started" or not isinstance(queued_id, str) or
+            not SAFE_UUID.fullmatch(queued_id) or
+            queued_id == original_turn_id or after[1].get("method") != "turn/completed" or
+            after[1].get("turn_id") != queued_id or after[1].get("turn_status") != "completed"):
+        return ""
+    return queued_id
+
+
+def final_queued_and_draft_turn_ids(events, thread_id, original_turn_id):
+    queued_id = completed_queued_turn_id(events, thread_id, original_turn_id)
+    if not queued_id:
+        return "", ""
+    selected = thread_turn_events(events, thread_id)
+    original_completed = next(index for index, event in enumerate(selected)
+                              if event.get("method") == "turn/completed" and
+                              event.get("turn_id") == original_turn_id)
+    following = selected[original_completed + 1:]
+    if len(following) != 4:
+        return "", ""
+    draft_id = following[2].get("turn_id", "")
+    if (following[0].get("method") != "turn/started" or following[0].get("turn_id") != queued_id or
+            following[1].get("method") != "turn/completed" or following[1].get("turn_id") != queued_id or
+            following[1].get("turn_status") != "completed" or
+            following[2].get("method") != "turn/started" or not isinstance(draft_id, str) or
+            not SAFE_UUID.fullmatch(draft_id) or
+            draft_id in (original_turn_id, queued_id) or following[3].get("method") != "turn/completed" or
+            following[3].get("turn_id") != draft_id or following[3].get("turn_status") != "completed"):
+        return "", ""
+    return queued_id, draft_id
 
 
 def verify_container(container_id, run_id):
@@ -932,6 +1316,8 @@ def main():
                         help="stop at the first synthetic provider POST or TUI exit; skip queue and draft checks")
     parser.add_argument("--trace-app-file-failures", action="store_true",
                         help="with startup diagnostics, trace app-server failed file syscalls using staged host strace")
+    parser.add_argument("--trace-tui-file-failures", action="store_true",
+                        help="with startup diagnostics, trace TUI failed file syscalls while preserving its PTY")
     parser.add_argument("--timeout", type=int, default=140, help="evidence deadline; cleanup remains within 180 seconds")
     parser.add_argument("--result", type=Path, help="write a sanitized private JSON result with O_EXCL")
     args = parser.parse_args()
@@ -939,8 +1325,14 @@ def main():
         parser.error("--startup-diagnostic-only requires --run-native")
     if args.trace_app_file_failures and not args.startup_diagnostic_only:
         parser.error("--trace-app-file-failures requires --startup-diagnostic-only")
+    if args.trace_tui_file_failures and not args.startup_diagnostic_only:
+        parser.error("--trace-tui-file-failures requires --startup-diagnostic-only")
+    if args.trace_app_file_failures and args.trace_tui_file_failures:
+        parser.error("select only one trace scope per startup diagnostic")
     if args.trace_app_file_failures and not args.result:
         parser.error("--trace-app-file-failures requires --result for bounded private evidence")
+    if args.trace_tui_file_failures and not args.result:
+        parser.error("--trace-tui-file-failures requires --result for bounded private evidence")
     if not args.run_native:
         print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.160.0 TUI"}, sort_keys=True))
         return 0
@@ -953,16 +1345,21 @@ def main():
         parser.error("private terminal-tail path already exists; refusing to overwrite evidence")
     if args.result and args.result.expanduser().resolve().with_name("app-file-syscalls.private.txt").exists():
         parser.error("private app-file-trace path already exists; refusing to overwrite evidence")
+    if args.result and args.trace_tui_file_failures and args.result.expanduser().resolve().with_name("tui-file-syscalls.private.txt").exists():
+        parser.error("private TUI-file-trace path already exists; refusing to overwrite evidence")
 
     result = {"schema": "cicada.native-foreground-queue-run.v1", "status": "BLOCKED",
               "runtime_image": IMAGE, "provider": "synthetic_loopback_only", "external_network": "none",
-              "paid_model_calls": 0, "human_ui_draft": "NOT_RUN", "foreground_busy_queue": "NOT_RUN"}
+              "paid_model_calls": 0, "human_ui_draft": "NOT_RUN", "foreground_busy_queue": "NOT_RUN",
+              "provider_requests": []}
     result["driver_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result["invocation"] = ["python3", str(Path(__file__).resolve()), "--run-native", "--timeout", str(args.timeout)]
     if args.startup_diagnostic_only:
         result["invocation"].append("--startup-diagnostic-only")
     if args.trace_app_file_failures:
         result["invocation"].append("--trace-app-file-failures")
+    if args.trace_tui_file_failures:
+        result["invocation"].append("--trace-tui-file-failures")
     if args.result:
         result["invocation"] += ["--result", str(args.result.resolve())]
     started_at = time.time()
@@ -984,7 +1381,7 @@ def main():
         os.chmod(private_dir, 0o700)
         (private_dir / "control.json").write_text("{}", encoding="utf-8")
         os.chmod(private_dir / "control.json", 0o600)
-        if args.trace_app_file_failures:
+        if args.trace_app_file_failures or args.trace_tui_file_failures:
             tracer_base = Path(tempfile.mkdtemp(prefix="cicada-native-foreground-tracer-"))
             os.chmod(tracer_base, 0o700)
             tracer_dir = tracer_base / "cicada-strace"
@@ -1008,7 +1405,9 @@ def main():
                                          "read_only_mount": "/opt/cicada-strace",
                                          "retained_ero_fs_line_limit": MAX_FILE_TRACE_LINES,
                                          "retained_ero_fs_line_bytes": MAX_FILE_TRACE_LINE_BYTES,
-                                         "trace_scope": "app-server descendants, failed %file syscalls only"}
+                                         "trace_scope": ("app-server descendants, failed %file syscalls only"
+                                                         if args.trace_app_file_failures else
+                                                         "TUI descendants with original PTY fds, failed %file syscalls only")}
         cidfile = private_dir / "cid"
         t = secrets.token_hex(12)
         busy = "CICADA_BUSY_" + t
@@ -1021,9 +1420,10 @@ def main():
             diagnostic_env = ["--env", "RUST_BACKTRACE=1", "--env", "RUST_LIB_BACKTRACE=1"]
         trace_mount = []
         trace_env = []
-        if args.trace_app_file_failures:
+        if args.trace_app_file_failures or args.trace_tui_file_failures:
             trace_mount = ["--mount", f"type=bind,src={tracer_dir},dst=/opt/cicada-strace,readonly"]
-            trace_env = ["--env", "CICADA_TRACE_APP_FILE_FAILURES=1"]
+            scope_env = "CICADA_TRACE_APP_FILE_FAILURES=1" if args.trace_app_file_failures else "CICADA_TRACE_TUI_FILE_FAILURES=1"
+            trace_env = ["--env", scope_env]
         run_command = ["docker", "create", "--pull=never", "--cidfile", str(cidfile), "--name", name,
                        "--label", "io.cicada.test.run=" + run_id, "--interactive", "--tty", "--init",
                        "--network", "none", "--read-only", "--user", f"{uid}:{gid}", "--cap-drop", "ALL",
@@ -1060,10 +1460,16 @@ def main():
                                            "-e trace=%file", "-e status=failed", "-s 4096", "-o /dev/stdout",
                                            "-- /bin/sh -c 'exec \"$@\" >/dev/null 2>&1' sh",
                                            CODEX, "app-server --disable plugins --listen unix:///tmp/cfq.sock"]
+        elif args.trace_tui_file_failures:
+            result["tracer_invocation_template"] = ["/opt/cicada-strace/ld-linux-x86-64.so.2", "--library-path",
+                                                    "/opt/cicada-strace/lib", "/opt/cicada-strace/strace", "-f", "-qq",
+                                                    "-e trace=%file", "-e status=failed", "-s 4096", "-o /dev/stdout",
+                                                    "-- /bin/sh -c 'exec \"$@\" >/proc/self/fd/<passed-pty-out> 2>/proc/self/fd/<passed-pty-err>' sh",
+                                                    CODEX, "<TUI command argv>"]
         result["queue_command_shape"] = ["docker", "exec", container_id, CODEX, "queue", "--remote", unix_uri,
                                          "--thread", "<exact-TUI-thread-id>", "--message", "<synthetic-redacted>"]
         binds = ["one private controller directory"]
-        if args.trace_app_file_failures:
+        if args.trace_app_file_failures or args.trace_tui_file_failures:
             binds.append("one read-only strace-only tool directory")
         binds.append("no repository mount")
         result["docker_create_isolation"] = {"network": "none", "read_only_root": True, "cap_drop_all": True,
@@ -1077,44 +1483,62 @@ def main():
                  status_path, events_path)
         wait_for_composer_ready(session, min(deadline, time.monotonic() + 25), status_path)
         result["composer_ready_marker_seen"] = True
-        session.send((busy + "\r").encode())
+        session.send(busy.encode())
+        time.sleep(0.35)
+        session.send(b"\r")
         if args.startup_diagnostic_only:
             status, events = wait_for("first_synthetic_provider_request", min(deadline, time.monotonic() + 35),
                                       lambda s, _: bool(s.get("provider_requests")),
                                       status_path, events_path)
         else:
-            status, events = wait_for("first_synthetic_provider_request", min(deadline, time.monotonic() + 35),
-                                      lambda s, e: bool(s.get("provider_requests")) and
-                                      any(x.get("method") == "turn/started" for x in e),
+            status, events = wait_for("held_synthetic_post_and_user_thread", min(deadline, time.monotonic() + 35),
+                                      lambda s, e: any(held_initial_prompt_request(s, thread_id) is not None
+                                                       for thread_id in user_thread_ids(e)),
                                       status_path, events_path)
-        initial = status["provider_requests"][0]
+        thread_id = None if args.startup_diagnostic_only else sole_user_thread_id(events)
+        initial = status["provider_requests"][0] if args.startup_diagnostic_only else held_initial_prompt_request(status, thread_id)
+        if not isinstance(initial, dict):
+            raise GateError("BLOCKED", "held_initial_synthetic_provider_request_unavailable")
         if not initial.get("initial_prompt_present"):
             raise GateError("BLOCKED", "synthetic_provider_request_missing_initial_prompt")
+        if not initial.get("expected_model_present"):
+            raise GateError("FAIL", "synthetic_provider_request_model_mismatch")
         if args.startup_diagnostic_only:
             result["status"] = "PASS_STARTUP_DIAGNOSTIC_ONLY"
             result["startup_diagnostic"] = "first_synthetic_provider_post_observed"
             result["provider_requests"] = [{"initial_prompt_present": initial.get("initial_prompt_present"),
+                                             "expected_model_present": initial.get("expected_model_present"),
                                              "response_sent": initial.get("response_sent"),
                                              "body_sha256": initial.get("body_sha256")}]
             raise StartupDiagnosticComplete()
-        thread_ids = {x.get("thread_id") for x in events if x.get("method") in ("thread/started", "turn/started") and x.get("thread_id")}
-        thread_ids.update({status.get("thread_id")} if status.get("thread_id") else set())
-        if len(thread_ids) != 1:
-            raise GateError("BLOCKED", "exact_native_thread_id_unavailable_or_ambiguous")
-        thread_id = next(iter(thread_ids))
+        if initial.get("response_sent") is not False:
+            raise GateError("BLOCKED", "initial_synthetic_provider_request_not_held")
         result["native_thread_id"] = thread_id
         result["appserver_user_agent"] = status.get("appserver_user_agent")
         result["queue_command"] = ["docker", "exec", container_id, CODEX, "queue", "--remote", unix_uri,
                                    "--thread", thread_id, "--message", "<synthetic-redacted>"]
-        if not initial.get("initial_prompt_present") or initial.get("response_sent"):
+        resume = request_resume_snapshot(private_dir, 1, thread_id, min(deadline, time.monotonic() + 10))
+        original_turn_id, original_turn_status = active_turn_from_resume(resume, thread_id)
+        if initial.get("turn_id") != original_turn_id:
+            raise GateError("BLOCKED", "held_provider_turn_does_not_match_active_turn_snapshot")
+        result["original_active_turn_snapshot"] = {"thread_id": thread_id, "turn_id": original_turn_id,
+                                                    "turn_status": original_turn_status,
+                                                    "source": "thread/resume_response"}
+        if not initial.get("initial_prompt_present") or initial.get("response_sent") is not False:
             raise GateError("BLOCKED", "synthetic_provider_did_not_hold_initial_turn")
         baseline = request_snapshot(private_dir, 1, thread_id, min(deadline, time.monotonic() + 10))
-        if baseline.get("queue_count") != 0 or not baseline.get("queue_terminal") or baseline.get("turn_started_count") != 1 or baseline.get("turn_completed_count") != 0:
+        if (baseline.get("queue_count") != 0 or not baseline.get("queue_terminal") or
+                baseline.get("turn_completed_count") != 0 or baseline.get("turn_started_count", 0) > 1 or
+                not held_turn_events_valid(baseline.get("turn_events", []), thread_id, original_turn_id)):
             raise GateError("BLOCKED", "initial_busy_turn_or_empty_queue_not_observed")
+        result["busy_turn_baseline"] = {key: baseline.get(key) for key in
+                                        ("turn_started_count", "turn_completed_count", "turn_events")}
         session.send(draft.encode())
         time.sleep(0.35)
         before_queue = read_json(status_path)
-        if len(before_queue.get("provider_requests", [])) != 1:
+        before_requests = before_queue.get("provider_requests", [])
+        if any(isinstance(request, dict) and request.get("thread_id") == thread_id and
+               request.get("draft_prompt_present") for request in before_requests):
             raise GateError("FAIL", "unsent_draft_started_a_second_provider_request")
         queue_argv = ["docker", "exec", container_id, CODEX, "queue", "--remote", unix_uri,
                       "--thread", thread_id, "--message", queued]
@@ -1125,60 +1549,104 @@ def main():
         time.sleep(0.35)
         busy_snapshot = request_snapshot(private_dir, 2, thread_id, min(deadline, time.monotonic() + 10))
         busy_status = read_json(status_path)
-        result["busy_snapshot"] = {key: busy_snapshot.get(key) for key in ("queue_count", "queue_terminal", "queue_prompt_present", "turn_started_count", "turn_completed_count")}
+        result["busy_snapshot"] = {key: busy_snapshot.get(key) for key in
+                                    ("queue_count", "queue_terminal", "queue_prompt_present",
+                                     "turn_started_count", "turn_completed_count", "turn_events")}
         if busy_snapshot.get("queue_count") != 1 or not busy_snapshot.get("queue_terminal") or not busy_snapshot.get("queue_prompt_present"):
             raise GateError("FAIL", "official_queue_submission_not_visible_exactly_once")
-        if busy_snapshot.get("turn_started_count") != 1 or busy_snapshot.get("turn_completed_count") != 0:
+        if (busy_snapshot.get("turn_completed_count") != 0 or busy_snapshot.get("turn_started_count", 0) > 1 or
+                not held_turn_events_valid(busy_snapshot.get("turn_events", []), thread_id, original_turn_id)):
             raise GateError("FAIL", "busy_original_turn_was_completed_or_superseded_before_release")
-        if len(busy_status.get("provider_requests", [])) != 1 or busy_status["provider_requests"][0].get("response_sent"):
+        if (held_initial_prompt_request(busy_status, thread_id) is None or
+                any(isinstance(request, dict) and request.get("thread_id") == thread_id and
+                    request.get("turn_id") != original_turn_id for
+                    request in busy_status.get("provider_requests", []))):
             raise GateError("FAIL", "held_original_provider_turn_was_interrupted_before_release")
         control(private_dir, release_first=True)
         status, events = wait_for("queued_turn_completed", min(deadline, time.monotonic() + 35),
-                                  lambda s, e: len(s.get("provider_requests", [])) >= 2 and
-                                  sum(x.get("method") == "turn/completed" and x.get("thread_id") == thread_id for x in e) >= 2,
+                                  lambda _s, e: bool(completed_queued_turn_id(e, thread_id, original_turn_id)),
                                   status_path, events_path)
         requests = status["provider_requests"]
-        if not requests[1].get("queue_prompt_present"):
-            raise GateError("FAIL", "queued_turn_did_not_reach_synthetic_provider")
+        queued_turn_id = completed_queued_turn_id(events, thread_id, original_turn_id)
+        if not queued_turn_id:
+            raise GateError("BLOCKED", "queued_turn_lifecycle_not_proven_by_notifications")
+        queued_requests = [request for request in requests if isinstance(request, dict) and
+                           request.get("thread_id") == thread_id and request.get("turn_id") == queued_turn_id]
+        if len(queued_requests) != 1:
+            raise GateError("FAIL", "queued_synthetic_provider_request_not_unique")
+        queued_request = queued_requests[0]
+        if queued_request.get("draft_prompt_present") is not False:
+            raise GateError("FAIL", "unsent_draft_leaked_into_queued_turn")
+        if (not queued_request.get("expected_model_present") or queued_request.get("response_sent") is not True or
+                not queued_request.get("queue_prompt_present")):
+            raise GateError("FAIL", "queued_synthetic_provider_request_model_mismatch")
+        result["queued_turn_id"] = queued_turn_id
         completed_snapshot = request_snapshot(private_dir, 3, thread_id, min(deadline, time.monotonic() + 10))
         if completed_snapshot.get("queue_count") != 0 or not completed_snapshot.get("queue_terminal"):
             raise GateError("BLOCKED", "queue_completion_not_observable")
         result["after_queue_turns"] = {key: completed_snapshot.get(key) for key in ("queue_count", "turn_started_count", "turn_completed_count")}
-        session.send((suffix + "\r").encode())
-        status, events = wait_for("preserved_draft_provider_request", min(deadline, time.monotonic() + 30),
-                                  lambda s, e: len(s.get("provider_requests", [])) >= 3,
+        session.send(suffix.encode())
+        time.sleep(0.35)
+        session.send(b"\r")
+        status, events = wait_for("final_synthetic_turn_completed", min(deadline, time.monotonic() + 30),
+                                  lambda _s, e: all(final_queued_and_draft_turn_ids(e, thread_id, original_turn_id)),
                                   status_path, events_path)
-        final_request = status["provider_requests"][2]
+        queued_turn_id, draft_turn_id = final_queued_and_draft_turn_ids(events, thread_id, original_turn_id)
+        if queued_turn_id != result.get("queued_turn_id") or not draft_turn_id:
+            raise GateError("BLOCKED", "future_queued_or_draft_turn_notifications_unproven")
+        draft_requests = [request for request in status["provider_requests"] if isinstance(request, dict) and
+                          request.get("thread_id") == thread_id and request.get("turn_id") == draft_turn_id]
+        if len(draft_requests) != 1:
+            raise GateError("FAIL", "preserved_draft_provider_request_not_unique")
+        final_request = draft_requests[0]
         result["draft_request_evidence"] = {"request_sha256": final_request.get("body_sha256"),
+                                             "expected_model_present": final_request.get("expected_model_present") is True,
                                              "original_draft_plus_suffix_present": final_request.get("draft_with_suffix_present") is True}
-        if not final_request.get("draft_with_suffix_present"):
+        if not final_request.get("expected_model_present"):
+            raise GateError("FAIL", "draft_synthetic_provider_request_model_mismatch")
+        if not final_request.get("draft_prompt_present") or not final_request.get("draft_with_suffix_present"):
             raise GateError("FAIL", "original_unsent_draft_was_not_preserved_exactly")
-        status, events = wait_for("final_synthetic_turn_completed", min(deadline, time.monotonic() + 20),
-                                  lambda s, e: sum(x.get("method") == "turn/completed" and x.get("thread_id") == thread_id for x in e) >= 3,
-                                  status_path, events_path)
         turn_events = thread_turn_events(events, thread_id)
         result["turn_event_order"] = [{"method": e["method"], "turn_id": e.get("turn_id", "")} for e in turn_events]
-        result["provider_requests"] = [{"index": item.get("index"), "body_sha256": item.get("body_sha256"),
+        if final_request.get("turn_id") != draft_turn_id:
+            raise GateError("BLOCKED", "draft_provider_request_turn_id_mismatch")
+        result["draft_turn_id"] = draft_turn_id
+        result["provider_requests"] = [{"index": item.get("index"), "thread_id": item.get("thread_id"),
+                                         "turn_id": item.get("turn_id"),
+                                         "body_sha256": item.get("body_sha256"),
+                                         "held_for_busy_gate": item.get("held_for_busy_gate"),
+                                         "expected_model_present": item.get("expected_model_present"),
                                          "initial_prompt_present": item.get("initial_prompt_present"),
                                          "queue_prompt_present": item.get("queue_prompt_present"),
+                                         "draft_prompt_present": item.get("draft_prompt_present"),
                                          "draft_with_suffix_present": item.get("draft_with_suffix_present"),
                                          "response_sent": item.get("response_sent")}
                                         for item in status.get("provider_requests", [])]
         methods = [item["method"] for item in turn_events]
-        if methods != ["turn/started", "turn/completed", "turn/started", "turn/completed", "turn/started", "turn/completed"]:
+        optional_original_start = (methods[:2] == ["turn/started", "turn/completed"] and
+                                   turn_events[0].get("turn_id") == original_turn_id)
+        if optional_original_start:
+            future_methods = methods[2:]
+        elif methods and methods[0] == "turn/completed" and turn_events[0].get("turn_id") == original_turn_id:
+            future_methods = methods[1:]
+        else:
+            future_methods = []
+        if future_methods != ["turn/started", "turn/completed", "turn/started", "turn/completed"]:
             raise GateError("BLOCKED", "turn_event_sequence_unexpected")
         completed_statuses = [event.get("turn_status", "") for event in turn_events if event["method"] == "turn/completed"]
         if completed_statuses != ["completed", "completed", "completed"]:
             raise GateError("BLOCKED", "synthetic_turn_completion_status_unproven")
-        for index in (0, 2, 4):
-            started_id = turn_events[index].get("turn_id", "")
-            completed_id = turn_events[index + 1].get("turn_id", "")
-            if started_id and completed_id and started_id != completed_id:
-                raise GateError("BLOCKED", "turn_id_event_pair_mismatch")
+        if optional_original_start and turn_events[0].get("turn_id") != turn_events[1].get("turn_id"):
+            raise GateError("BLOCKED", "original_turn_id_event_mismatch")
+        if turn_events[-4].get("turn_id") != turn_events[-3].get("turn_id") or \
+                turn_events[-2].get("turn_id") != turn_events[-1].get("turn_id"):
+            raise GateError("BLOCKED", "future_turn_id_event_pair_mismatch")
+        if turn_events[-4].get("turn_id") != queued_turn_id or turn_events[-2].get("turn_id") != draft_turn_id:
+            raise GateError("BLOCKED", "future_turn_id_order_mismatch")
         result["foreground_busy_queue"] = "PASS"
         result["human_ui_draft"] = "PASS"
         result["status"] = "PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY"
-        result["native_turn_events"] = 3
+        result["native_turn_events_observed"] = len(turn_events)
         result["native_thread_id"] = thread_id
         result["container_attached_output_bytes"] = session.output_bytes
     except GateError as exc:
@@ -1222,18 +1690,24 @@ def main():
             except Exception:
                 result["docker_start_attach_exit_code"] = None
         if private_dir:
+            run_status = read_json(private_dir / "status.json")
+            if isinstance(run_status.get("provider_requests"), list):
+                result["provider_requests"] = sanitized_provider_requests(run_status)
             result["startup_diagnostics"] = startup_diagnostics(
                 private_dir / "status.json", private_dir / "events.jsonl", session
             )
-            if args.trace_app_file_failures:
-                run_status = read_json(private_dir / "status.json")
-                trace_summary = run_status.get("app_file_syscall_trace")
-                result["app_file_syscall_trace"] = trace_summary or {
+            trace_scope = "app" if args.trace_app_file_failures else "tui" if args.trace_tui_file_failures else ""
+            if trace_scope:
+                trace_key = trace_scope + "_file_syscall_trace"
+                trace_summary = run_status.get(trace_key)
+                if trace_scope == "tui" and isinstance(run_status.get("tui_tracer_invocation"), list):
+                    result["tracer_invocation"] = run_status["tui_tracer_invocation"]
+                result[trace_key] = trace_summary or {
                     "enabled": True, "collector_completed": False, "instrumentation_status": "BLOCKED_NO_TRACE_SUMMARY"
                 }
-                trace_path = private_dir / "app-file-syscalls.private.txt"
+                trace_path = private_dir / (trace_scope + "-file-syscalls.private.txt")
                 if trace_path.is_file() and args.result:
-                    destination = args.result.expanduser().resolve().with_name("app-file-syscalls.private.txt")
+                    destination = args.result.expanduser().resolve().with_name(trace_scope + "-file-syscalls.private.txt")
                     try:
                         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                         trace_bytes = trace_path.read_bytes()[:MAX_FILE_TRACE_BYTES + MAX_FILE_TRACE_LINES]
@@ -1242,11 +1716,11 @@ def main():
                             output.write(trace_bytes)
                             output.flush()
                             os.fsync(output.fileno())
-                        result["app_file_syscall_trace"]["private_artifact"] = destination.name
-                        result["app_file_syscall_trace"]["private_artifact_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
-                        result["app_file_syscall_trace"]["private_artifact_bytes"] = len(trace_bytes)
+                        result[trace_key]["private_artifact"] = destination.name
+                        result[trace_key]["private_artifact_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
+                        result[trace_key]["private_artifact_bytes"] = len(trace_bytes)
                     except OSError as exc:
-                        result["app_file_syscall_trace"]["private_artifact_error"] = type(exc).__name__
+                        result[trace_key]["private_artifact_error"] = type(exc).__name__
         try:
             result["private_terminal_tail"] = save_private_terminal_tail(args.result, session)
         except Exception as exc:

@@ -18,8 +18,11 @@ execution switch is explicit:
 
 ```sh
 python3 scripts/test-native-foreground-queue.py --run-native --timeout 140 \
-  --result .cicada-data/native-foreground-queue-20261004/result.json
+  --result .cicada-data/native-foreground-queue-20261005-new-run/result.json
 ```
+
+Choose a fresh, absent result path for each run. The driver refuses to
+overwrite existing result artifacts.
 
 The driver uses only Runtime image
 `sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f` and
@@ -41,17 +44,22 @@ readiness. The driver starts one synthetic foreground prompt and holds its
 provider request open. It types a unique draft sentinel into the TUI without Enter,
 then runs the official `codex queue --remote ... --thread <observed-id>` CLI
 against the same server. Before releasing the held request, it requires the
-read-only queue list to contain exactly that queued submission, one
-`turn/started` event, no `turn/completed` event, and only the first provider
-request. The local provider then completes the foreground turn and the queued
-turn with synthetic responses. The driver appends a suffix to the still-unsent
-TUI draft and simulates the user's explicit Enter. The next local provider
-request must contain the exact original sentinel followed by the suffix.
+read-only queue list to contain exactly one queued submission, no
+original-turn completion, and the exact main-Thread/original-turn
+provider POST still held. Its initial busy proof is an explicit same-server
+`thread/resume` snapshot with the single original turn `inProgress`; an original
+`turn/started` notification may be absent. The driver neither fabricates nor
+replays lifecycle events. Auxiliary title requests are excluded from the main
+Thread request count. The local provider then completes the foreground and
+queued turns with synthetic responses. The driver appends a suffix to the
+still-unsent TUI draft and simulates the user's explicit Enter. The
+main-Thread draft-turn provider request must contain the exact original
+sentinel followed by the suffix.
 
-Only the ordered three-turn event sequence (foreground, queued message, user
-draft), successful synthetic completion statuses, exact queue/list evidence,
-the held foreground request remaining pending until release, and the final
-draft-plus-suffix request can produce
+Only the original `inProgress` resume snapshot, the queue and held-request
+snapshots, future real lifecycle events for original/queued/draft turns,
+successful synthetic completion statuses, and the final draft-plus-suffix
+request can produce
 `PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY`. An observed interruption or lost draft
 is `FAIL`. Unsupported or incomplete TUI/event evidence is `BLOCKED`; it is
 never upgraded from a CLI exit code or HTTP success alone. The default run is
@@ -328,4 +336,218 @@ independent cleanup receipt is
 (SHA-256 `c898907fa68fb316897e1be0c1479df987d0ef1e6c64acf4df1d50c8dfc8eb82`).
 This remains evidence only for a test-controlled PTY and the official CLI on
 the pinned synthetic local-provider setup; it is not evidence of real model or
-provider behavior. No further Runtime attempt has been made.
+provider behavior. At the time of this Oct 4 record, no later Runtime attempt
+had yet been made.
+
+On Oct 5, one authorized corrected app-server-only trace run used driver
+SHA-256 `bc46bba2220eb475b58aaa1300b8b4b526a705750ca7978e1d0abd6da4c62e7b`
+and the pinned image. It ended after 10.215 seconds with exit code 2 and
+`BLOCKED`, reason `tui_exited_before_first_synthetic_provider_request`. The
+composer marker appeared, the TUI exited with code 1, and the local provider
+received zero requests. The bounded app-server-descendant trace drained
+38,145 bytes and retained zero EROFS file-syscall lines without truncation;
+no ptrace-denial diagnostic appeared. The trace process was killed during
+cleanup after the TUI exit. The terminal tail contains only
+`Error: Read-only file system (os error 30)` and no path. This run therefore
+does not identify the failing syscall or path: the trace scope did not include
+TUI-local filesystem calls. Its result is
+`.cicada-data/native-foreground-queue-20261005-startup-filetrace/result.json`
+(SHA-256 `e1de7165739fc5982ddc2178f73ab9208f8f2d1ecc96c8089930d4d918c40755`);
+the separate terminal tail is mode 0600 with SHA-256
+`2d74bff1761ebf2a6a74a920d9ccd1127eedbba697fd4f0eebe9c8b8e8f479d3`. Exact
+container `babb14ba922ebc44a4952e2c50b51fea83cf4e7333c221a17c3e45ff7abce283`
+was independently confirmed absent; the driver reports its controller and
+tracer directories removed.
+
+The next diagnostic is prepared as a separate opt-in TUI-only trace scope. It
+reuses the same hash-pinned tool staging and bounded EROFS-line collector. The
+TUI keeps inherited PTY stdin; its stdout and stderr are redirected to duplicated
+inherited PTY descriptors, while strace writes to its own pipe for collection.
+Only failed `%file` syscalls are examined, at most 16 EROFS lines of 4 KiB each
+are retained privately, and the existing isolation settings remain unchanged.
+The TUI trace option requires startup-diagnostic mode and cannot be combined
+with the app-server trace option. This TUI-specific mode has passed only static
+and CLI-rejection checks; it has not been run in the Runtime.
+
+The proposed one-shot command is:
+
+```sh
+python3 scripts/test-native-foreground-queue.py --run-native \
+  --startup-diagnostic-only --trace-tui-file-failures --timeout 55 \
+  --result .cicada-data/native-foreground-queue-20261005-startup-tui-filetrace/result.json
+```
+
+That one authorized Oct 5 TUI-only trace run used driver SHA-256
+`f5d276e3d88739584a9a3ec6a74588e92fd0297cbca1037d86084ac1b507ce40` and the
+pinned Codex 0.160.0 image. It exited 2 after 7.068 seconds with
+`BLOCKED`, reason `tui_exited_before_first_synthetic_provider_request`; the
+TUI exited 1 after the composer marker appeared, and the synthetic provider
+received zero requests. The complete, untruncated bounded TUI trace captured
+one failed file syscall:
+`open("/var/log/cicada/codex/codex-tui.log", O_WRONLY|O_CREAT|O_APPEND|..., 0600) = -1 EROFS`.
+This identifies the startup failure in the disposable fixture, not a queue or
+draft result. The result is
+`.cicada-data/native-foreground-queue-20261005-startup-tui-filetrace/result.json`
+(SHA-256 `00338fc4a2cac172797a92bb41c162d647eb305b43970d2d0ad68519dfd46d48`);
+the private terminal tail and trace remain mode 0600. Exact container
+`2474c040688ad0b9486d60bdebc8e07fab3e6beb24993a3a8c7d43cfb921d679` and its
+private scratch directories were independently confirmed absent.
+
+The pinned upstream source explains the path selection: Codex 0.160.0 checks
+the effective `log_dir` setting and opens `codex-tui.log` there during TUI
+startup (`tui/src/startup_orchestration.rs:718-727, 774-789`, commit
+`a956835d020762cb2b570053af06f643a11c0ecc`). The project image copies
+`docker/codex-config.toml` to `/etc/codex/config.toml`, whose line 8 sets that
+same `/var/log/cicada/codex` directory. The fixture supplied its own user
+config but did not set `log_dir`; upstream configuration precedence puts User
+config above System config (`config/src/loader/README.md:26-35`). The driver
+now explicitly points its generated disposable config to
+`/tmp/cicada-home/.codex/log`, inside the existing writable `/tmp` tmpfs. At
+the time of this trace record, that one-line fixture correction had passed
+host and embedded syntax checks only and had not yet been exercised in the
+pinned Runtime. The observed run did not
+submit a provider request and is not a foreground queue, busy-turn, or draft
+preservation pass. A fresh full foreground queue/draft gate is proposed only
+after separate authorization; no result is claimed here.
+
+The subsequent authorized full foreground gate used driver SHA-256
+`1113daeeae763ae29843d7b6beb0a488dcdbf083aca0733d83f1b4e60689ef4a`, including
+the disposable `log_dir` override above. It ran 37.07 seconds and ended with
+exit code 2, `BLOCKED`, reason
+`timeout_waiting_for_first_synthetic_provider_request`. The result records
+server ready, TUI spawned, and the empty-composer marker seen. The bounded
+terminal tail has no EROFS message or old log path; it contains the initial
+synthetic prompt marker once. No synthetic provider POST arrived, and the TUI
+was stopped during timeout cleanup (`tui_exit_code=-15`). No native thread ID
+was observed: `thread/started`, `turn/started`, and `turn/completed` counts were
+all zero. Consequently the native-thread queue call, busy-queue observation,
+and user-draft-plus-suffix submission were all `NOT_RUN`; this is not a queue
+or draft-preservation result. Exact container
+`2b012def13119d83301ad2e66f6642ceccbddb92e779277e3da7920881205db7` was
+independently confirmed absent; the driver and a run-window check found its
+private scratch removed. The result is
+`.cicada-data/native-foreground-queue-20261005-logfix/result.json` (SHA-256
+`32f5ce8d80501e098f8475022b965f37b0f58ded70e6bfee8f7effa12758182d`); its
+terminal tail is a separate mode-0600 file.
+
+The tail shows the empty-composer placeholder before the initial test text,
+but this does not establish that Codex accepted the text or Enter. The driver
+sent the initial synthetic text and carriage return together in one PTY write;
+the later draft-plus-suffix submission was written the same way, but this run
+did not reach it. In pinned Codex 0.160.0 source, the composer can ignore key
+events while input is disabled (`tui/src/bottom_pane/chat_composer.rs:1957-1963`),
+and Enter received during an active paste burst is accumulated as a newline
+instead of submitted (`chat_composer.rs:3625-3642`). The paste-burst state
+machine uses an 8 ms character/Unix active-idle threshold and a 120 ms Enter
+suppression window (`tui/src/bottom_pane/paste_burst.rs:157-170, 329-342`).
+This makes text-plus-Enter in one bulk PTY write a source-confirmed fixture
+hazard consistent with the visible text and zero requests. The saved run does
+not establish that this exact branch fired, and the zero lifecycle events do
+not test or refute same-server thread auto-attachment.
+
+The driver now writes each synthetic text input first, waits 0.35 seconds,
+then writes carriage return separately at both the initial-prompt and
+draft-suffix submission sites. This crosses the pinned paste-burst windows
+while leaving Codex's normal paste protection enabled. The change has passed
+host and embedded syntax checks only and has not been run in the pinned
+Runtime. The proposed single full foreground queue/draft gate, pending Root
+authorization, is:
+
+```sh
+python3 scripts/test-native-foreground-queue.py --run-native --timeout 140 \
+  --result .cicada-data/native-foreground-queue-20261005-keysettle/result.json
+```
+
+That authorized Oct 5 key-settle attempt used driver SHA-256
+`b604fb73df8f8d11960fe438aa7e008cfdd25fc3511bdb66c6403737b2a5088f` and the
+pinned image. It ended after 37.066 seconds with exit code 2 and `BLOCKED`,
+reason `timeout_waiting_for_first_synthetic_provider_request`. The composer
+placeholder appeared; the provider received zero requests. One
+`thread/started` event was observed, with zero `turn/started` and
+`turn/completed` events. The TUI was stopped during timeout cleanup
+(`tui_exit_code=-15`), so its exit code does not establish a product failure.
+The queue, busy-turn, and draft stages were `NOT_RUN`; paid model calls were
+zero. The result is
+`.cicada-data/native-foreground-queue-20261005-keysettle/result.json` (SHA-256
+`d889f1bd66b837cfc79bb3a9a02ec51b2f6482b4297b24bcd813732b307122b9`). Its
+separate mode-0600 terminal tail is 6,422 bytes with SHA-256
+`2976fe05d29fc65ff12f8067340b9407587cc4b8883d2e4f733a1198734ea16a`. The
+exact container
+`89af7c9fab380c4e604632401d9e73e4b2944e944ee93e641a7bfe1d27a50974` was
+confirmed absent, and its private directory was removed.
+
+Root's independent sanitized review of that tail found a model migration from
+the configured `gpt-5.6-luna` to `gpt-6-luna` with medium effort; the initial
+synthetic text remained in the composer. The pinned Codex 0.160.0 model
+catalog marks `gpt-6-luna` as the upgrade for `gpt-5.6-luna`. Its startup
+migration screen defaults to “Try New Model,” and Enter accepts that choice
+and persists the target model and its default effort. The startup composer
+can display text before its submission intent reaches the live turn loop;
+startup drains typeahead before opening an interactive migration prompt, then
+restores the draft later. This is consistent with the observed model change
+and unsubmitted text, but the run did not record which screen received the
+first Enter. No provider POST arrived, so this run does not establish model
+request semantics or any queue/draft behavior.
+
+The driver now seeds only the fresh disposable Codex config with
+`[notice.model_migrations]` mapping `gpt-5.6-luna` to `gpt-6-luna`. This
+records the one migration acknowledgement needed to avoid the startup modal;
+the configured model and effort remain unchanged, with no `--model` override.
+Each synthetic provider request also records the boolean
+`expected_model_present`, which is true only when its request model is exactly
+`gpt-5.6-luna`. The driver requires that boolean for the initial, queued, and
+draft requests before a pass can be reported. Passing `--model gpt-6-luna`
+would skip the migration by changing the model under test; passing
+`--model gpt-5.6-luna` would leave migration eligible, so this fixture uses
+only the disposable acknowledgement mapping. The prepared driver SHA-256 is
+`929a2b015be83f8e509c0076ebf8a0cb7ad545fa027dae4fc3d9abdb4ab1ed37`. This
+correction has passed only host and embedded syntax checks; it has not run in
+the pinned Runtime. One fresh full gate is proposed, pending Root authorization:
+
+```sh
+python3 scripts/test-native-foreground-queue.py --run-native --timeout 140 \
+  --result .cicada-data/native-foreground-queue-20261005-modelack/result.json
+```
+
+The model-ack run above observed two synthetic provider requests and two
+`thread/started` events, but no `turn/started` or `turn/completed` events. Its
+saved result did not retain the request summaries, so they cannot be
+reconstructed from that historical artifact. The current driver preserves
+only request indexes, body hashes, and model/prompt/response booleans when a
+run ends.
+
+A bounded notification-only diagnostic is now prepared. It counts notification
+method names matching `[A-Za-z0-9_./-]` up to 80 characters and 64 distinct
+names, with further or invalid names aggregated into an `other` count. Failure
+results retain at most 32 lifecycle records containing only the method, valid
+UUID thread/turn IDs, and a short validated turn status. `thread/started`
+records also retain a closed thread-source enum and a typed ephemeral flag.
+Wait predicates and queue behavior are unchanged. Host and embedded syntax
+checks plus in-memory sanitizer-bound checks passed; this diagnostic has not
+run in the Runtime. Current driver SHA-256:
+`d24805dc122021744b81ba036d6a7e9d2145f87e827afb36b4491ac1d37c3f53`.
+
+## Oct 5 final synthetic foreground gate
+
+The one-shot run used driver SHA-256
+`d1d4335a6e6b3bf4a4a7d87de30ee76b320412af926d5ab039b77de0b8103812` with the
+pinned Codex 0.160.0 image, network none and a synthetic local provider.
+[Result](../.cicada-data/native-foreground-queue-20261005-final-wait/result.json),
+SHA-256 `0ccc22f29a6052fde4c01d52533e2a08ad97b389bfc13b4e3dca6595be647fa4`:
+exit 0 / 3.996 seconds / `PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY`; busy queue
+and draft preservation passed. The active user Thread
+`01a10a48-7aec-7851-81f8-276a10e5c8e5` had an `inProgress` turn snapshot through
+same-server `thread/resume`; its queue was visible once while busy and empty
+after consumption. Main-thread provider calls were joined by native thread and
+turn IDs; the unsent draft was absent from the queued request and later arrived
+with its suffix. Root's [terminal review](../.cicada-data/native-foreground-queue-20261005-final-wait/root-terminal-review.NONAUTH.json),
+SHA-256 `c6b4ea75208e3ff5ce1e6e166f50b90a8a0daebf26e99536f16643a4a3bd49e7`,
+confirms the owned CID is absent.
+
+The previous `explicit-subscription` result remains BLOCKED (exit 2 / 4.034s;
+SHA-256 `713df74df51dd0dd5cdcf72c3402c98e90646e57705b21e985260615511fc6c7`):
+its wait predicate treated the empty ID pair as truthy. The corrected predicate
+requires both turn IDs; deterministic prefix and wrong-ID checks passed. This
+synthetic pass does not establish real-model consumption, G1, production or
+physical-device acceptance; Oct 5 G1C remains FAIL / A3 NOT_REACHED (see
+[current checkpoint](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)).

@@ -2,7 +2,11 @@
 
 SQLite 连接的 `busy_timeout` 由 Store opener 与迁移 runner 统一设置为 30000 ms；Relay schema hook 保留已有连接策略，不再把 fresh 迁移中的同一连接降至 5000 ms。已迁移 reopen 和 fresh 的权威配置因此一致。该连接策略修复不修改历史 DDL、migration ID/checksum 或 schema58，也不改变 Task/资源 epoch、身份或恢复权限。[本次有界验证](../.cicada-data/v01-finish-20261002/sqlite-timeout-owner-20261004/result.json)的新增确定性配置测试与原两 consumer 并发打开测试各 normal/race 一次，分别 3 top-level + 2 subtests PASS、0 fail/skip；旧 broad race 的 v29 SQLITE_BUSY/超时失败、clean857 的精确专项 PASS 仍保留各自来源，不由单次通过推定所有并发情形已闭合。
 
-## 2026-10-04 当前边界 — schema58 与 Hub 安全恢复集成
+## 2026-10-05 文档检查点说明
+
+Oct 5 foreground/Native 状态与范围见[当前状态](architecture-v2-status.md#current-closeout)。本次只更新测试 driver 和状态文档；未修改 SQLite、migration、schema 或 Client 合同。
+
+## 2026-10-04 历史边界 — schema58 与 Hub 安全恢复集成
 
 本次 18 路径 Hub 恢复 patch 精确应用于 Main `333759e613c1f935185e06cc4b419fdeb045d812`，不修改历史 migration ID/checksum、schema58、Task epoch 或 Client/wire 契约。CLI 的独立 SOURCE pin / storage incarnation 登记与 prepare、reconcile、activate 职责分开；完整验证过的 C capsule 前滚，保留旧 B，Linux 单次目录 exchange 后以独立 authority epoch 和 receipt 校验启动许可，不合并 ratchet/counter、不重放 UNKNOWN。
 

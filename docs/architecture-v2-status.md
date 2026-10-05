@@ -2,7 +2,18 @@
 
 <a id="current-closeout"></a>
 
-## 2026-10-04 当前收尾 — v0.1 PARTIAL
+## 2026-10-05 恢复后的当前收尾 — v0.1 PARTIAL
+
+v0.1.x 工作于 2026-10-05 明确恢复；2026-10-04 19:49:15 UTC 截止记录保留在下方历史快照，不再代表当前工作状态。当前真实前台队列/草稿门禁仅通过其隔离合成范围，实际 Native G1C 仍失败；整体验收继续为 **PARTIAL**。
+
+| 范围 | 当前证据 | 边界 |
+|---|---|---|
+| Native foreground queue/draft | 固定 Codex 0.160.0、network-none、合成 loopback provider 的[唯一终态](../.cicada-data/native-foreground-queue-20261005-final-wait/result.json)，exit 0 / 3.996 秒 / `PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY`；busy queue 与草稿保留均 PASS。Root 独立复核确认精确 owned CID 不存在，见同目录[终端复核](../.cicada-data/native-foreground-queue-20261005-final-wait/root-terminal-review.NONAUTH.json)。 | 证明该 CLI/TUI 合成夹具中的原 Thread、busy queue 与本地未提交 draft 行为；不证明真实模型消费、G1、Native direct/生产路径或物理设备。完整步骤见[foreground 记录](native-foreground-queue-validation.md)。 |
+| Actual Native / G1C | Oct 5 最新实际 G1C [result](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-native-result-cicada-two-turn-obsoct5final20261005a/result.json)，SHA-256 `349bd71feb8d66fe5d908db17bd5006e88b87283b208baaf7682cec257535c7a`：exit 1，A1 RuntimeError **FAIL**，A3 **NOT_REACHED**；actual POST 总数不完整，16 是 Runtime 上限而非计数。Closed capture 保留，offline race 四案例 PASS，首个 I/O phase/class 仍 UNKNOWN。Root [closeout](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-oct5-terminal-compact-with-proposal.NONAUTH.json) 收据 SHA-256 `23748a7699f6c0f09bb0e2f704239a1857d6b52640982a008e45f3e093252ea0`（内含 closeout SHA-256 `94e3c0797bde62bb0f8cd5762922d2bec60c72832c915ff3f086f2a2b2925909`），确认 9 个 owned 对象 ABSENT，原始 `cleanup=false` 保留。 | 合成 foreground PASS 不改写此 FAIL、旧严格上下文失败或 UNKNOWN。 |
+| Go / Hub / Client evidence | 既有 dirty `333759e` 全 Go、vet 与 disposable real-TCP Client interop 仍只归属于原冻结输入：2748 PASS、20 SKIP、vet exit 0，interop 两 selector PASS。 | Oct 5 foreground 与本次文档更新未重跑这些门禁；没有 Go、DB 或 Client 合同修改，也不把旧结果转归新输入。 |
+| 外部验收 | Android、public HTTPS、双物理 Node、真实模型及生产恢复仍未由本次 foreground 门禁覆盖。 | 各自保持独立验收；不以合成 PASS 推导产品整体完成。 |
+
+## 2026-10-04 历史收尾快照 — v0.1 PARTIAL
 
 本表是当前收尾的唯一状态入口；下方历史结果保留其实际 source、image、APK 与失败归属。当前已提交 checkpoint 为 `d7241f607243c1648f96f0af43e03db5afa5658c`；Root 核对其 926 编译输入与最终 dirty QA 源等价（Go/module FP `2490e9f8…`）。全量验收仍归 `333759e613c1f935185e06cc4b419fdeb045d812` 上集成 Core 18 路径、两项夹具与两项 P1 修补的 dirty source，包含 Resource6 / schema 58、Hub 维护与 SQLite timeout 修复；不能将 dirty 结果归为 clean HEAD，亦不能转归 F38 固定的 clean-021 / schema 57 / `client-hub-v1.6.4`。精确证据见[当前验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。
 
