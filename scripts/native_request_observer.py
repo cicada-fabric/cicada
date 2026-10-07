@@ -502,7 +502,10 @@ class Observer:
     """
     def __init__(self, endpoint, marker, sink, *, enabled=False,
                  injected_connector=None, lifetime=30, gateway=None,
-                 max_connections=5, bound_thread=None, core_metadata=False, io_sink=None, io_diagnostics_v2=False):
+                 max_connections=5, bound_thread=None, core_metadata=False, io_sink=None, io_diagnostics_v2=False, response_byte_passthrough=False):
+        if type(response_byte_passthrough) is not bool:
+            raise ClosedFailure("UNKNOWN_UNSUPPORTED")
+        self.response_byte_passthrough = response_byte_passthrough
         self.enabled = enabled is True
         self.io_sink = io_sink if callable(io_sink) else None
         self.io_diagnostics_v2 = io_diagnostics_v2 is True
@@ -649,6 +652,31 @@ class Observer:
             raise ClosedFailure("UNKNOWN_UNSUPPORTED")
         return self.handle(client, association)
 
+    def _relay_response_bytes(self, upstream, client, diagnostic):
+        """Transport only: Native HTTP validates; EOF is not application completion."""
+        total = 0
+        phase = "READ_BODY"
+        reader = Reader(upstream, self.deadline)
+        try:
+            while True:
+                phase = "READ_BODY"
+                data = reader.recv(65536)
+                if not data:
+                    # Local shutdown may make recv return EOF; it is not proof
+                    # of an independently observed upstream EOF.
+                    if diagnostic is not None and not self.shutdown_requested:
+                        diagnostic["upstream_eof"] = True
+                    return
+                if len(data) > 65536 or total + len(data) > MAX_WIRE:
+                    raise ClosedFailure("UNKNOWN_BOUNDS")
+                total += len(data)
+                phase = "WRITE_BODY"
+                client.settimeout(max(.001, self.deadline-time.monotonic()))
+                client.sendall(data)
+        except Exception as error:
+            _note_io(diagnostic, phase, error, shutdown_requested=self.shutdown_requested)
+            raise
+
     def handle(self, client, association=None):
         """Owns/always closes client; tests inject an AF_UNIX socketpair."""
         event = dict(schema=SCHEMA, status="UNKNOWN_IO", alpha_present=None,
@@ -744,41 +772,48 @@ class Observer:
             upstream.settimeout(max(.001, self.deadline-time.monotonic()))
             upstream.sendall(prepared)
             upstream.sendall(wire)
-            response = Reader(upstream, self.deadline)
-            phase = 'READ_HEAD'
-            head = response.until(b"\r\n\r\n", MAX_HEADER)
-            start, _, response_table = headers(head, strict=False)
-            if not re.fullmatch(rb"HTTP/1\.[01] [245][0-9]{2}(?: [\x20-\x7e]*)?", start):
-                raise ClosedFailure("UNKNOWN_UNSUPPORTED")
-            unsupported(response_table)
-            response_mode, response_count = framing(response_table)
-            if start.split(b" ", 2)[1] == b"204":
-                if b"transfer-encoding" in response_table or response_count not in (None, 0):
-                    raise ClosedFailure("UNKNOWN_FRAMING")
-                response_mode, response_count = "length", 0
-            validator = ResponseFraming(response_mode, response_count)
-            phase = 'WRITE_HEAD'
-            client.settimeout(max(.001, self.deadline-time.monotonic()))
-            client.sendall(head)
-            if response.buf:
-                validator.feed(response.buf)
-                phase = "WRITE_BODY"
-                client.sendall(response.buf)
-                response.buf.clear()
-            while not validator.complete():
-                phase = 'READ_BODY'
-                data = response.recv()
-                if not data:
-                    if diagnostic is not None:
-                        diagnostic["upstream_eof"] = True
-                    break
-                validator.feed(data)
-                phase = 'WRITE_BODY'
+            if self.response_byte_passthrough:
+                phase = "READ_BODY"
+                self._relay_response_bytes(upstream, client, diagnostic)
+                # v1 has no unvalidated-relay success status. The outer lane
+                # projection distinguishes this UNKNOWN from strict framing.
+                event["status"] = "UNKNOWN_FRAMING"
+            else:
+                response = Reader(upstream, self.deadline)
+                phase = 'READ_HEAD'
+                head = response.until(b"\r\n\r\n", MAX_HEADER)
+                start, _, response_table = headers(head, strict=False)
+                if not re.fullmatch(rb"HTTP/1\.[01] [245][0-9]{2}(?: [\x20-\x7e]*)?", start):
+                    raise ClosedFailure("UNKNOWN_UNSUPPORTED")
+                unsupported(response_table)
+                response_mode, response_count = framing(response_table)
+                if start.split(b" ", 2)[1] == b"204":
+                    if b"transfer-encoding" in response_table or response_count not in (None, 0):
+                        raise ClosedFailure("UNKNOWN_FRAMING")
+                    response_mode, response_count = "length", 0
+                validator = ResponseFraming(response_mode, response_count)
+                phase = 'WRITE_HEAD'
                 client.settimeout(max(.001, self.deadline-time.monotonic()))
-                client.sendall(data)
-            phase = 'FRAMING_FINISH'
-            validator.finish()
-            event["status"] = "FORWARDED"
+                client.sendall(head)
+                if response.buf:
+                    validator.feed(response.buf)
+                    phase = "WRITE_BODY"
+                    client.sendall(response.buf)
+                    response.buf.clear()
+                while not validator.complete():
+                    phase = 'READ_BODY'
+                    data = response.recv()
+                    if not data:
+                        if diagnostic is not None:
+                            diagnostic["upstream_eof"] = True
+                        break
+                    validator.feed(data)
+                    phase = 'WRITE_BODY'
+                    client.settimeout(max(.001, self.deadline-time.monotonic()))
+                    client.sendall(data)
+                phase = 'FRAMING_FINISH'
+                validator.finish()
+                event["status"] = "FORWARDED"
         except ClosedFailure as failure:
             _note_io(diagnostic, phase, failure, shutdown_requested=self.shutdown_requested)
             event["status"] = failure.code

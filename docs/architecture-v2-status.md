@@ -2,7 +2,20 @@
 
 <a id="current-closeout"></a>
 
-## Current runner scope — PARTIAL
+## Current response-byte candidate — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Offline QA | Separate PASS domains: Wiring31/118, FakeSocket10/20, V2Memory10/21 methods/subtests; two older diagnostics NOT_RUN. |
+| Fresh zero | PASS: models/credentials0, genuine A/B connection1→2→3, both EOFs and independently verified 14 Docker + two UDS absent. |
+| Raw-mode Native G2/G3 | FAIL, six actual/four manual; five original-thread witnesses completed; A auto6 started, final/context NOT_PROVEN. Exact cause NOT_RECORDED/provider cause NOT_PROVEN. |
+| Native cleanup | Original false/A EOF UNKNOWN/B EOF confirmed; later independent 16 Docker absent/two UDS removed. |
+| Response semantics | Default-OFF; 64KiB chunks, new MAX_WIRE total ceiling; framing NOT_PERFORMED/application UNKNOWN. |
+| Completion | G2–G5/V67 and current external gates pending; historical Android retains its scope; Control counts NOT_INSTRUMENTED. |
+
+See [current source-bound evidence](native-request-observer-io-validation.md). Contract/wire/catalog/schema remain 1.6.4/1/55/58.
+
+## Historical runner scope — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

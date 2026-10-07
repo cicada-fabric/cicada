@@ -633,14 +633,43 @@ def compile_methods(source, namespace):
     return {name:namespace[name] for name in METHODS}
 
 
-def runtime_bootstrap_argv(arguments, binding, started):
+def validate_response_mode(args, scenario, zero_model):
+    """Pure pre-constructor check; never silently switch a GO-selected mode."""
+    mode = getattr(args, "response_byte_passthrough", False)
+    if type(mode) is not bool:
+        raise PermissionError("RESPONSE_MODE_TYPE")
+    go = getattr(args, "go", {})
+    if type(go) is not dict:
+        raise PermissionError("RESPONSE_MODE_GO")
+    if "response_byte_passthrough" in go and (type(go["response_byte_passthrough"]) is not bool or
+                                               go["response_byte_passthrough"] is not mode):
+        raise PermissionError("RESPONSE_MODE_GO")
+    if mode:
+        if zero_model or scenario != "g2-g3" or getattr(args,"run_native",False) is not True or getattr(args,"test_request_observer",False) is not True:
+            raise PermissionError("RESPONSE_MODE_LANE")
+        if (go.get("response_byte_passthrough") is not True or
+                go.get("response_transport_semantics") != "NATIVE_HTTP_VALIDATES_RESPONSE_EOF_NOT_BUSINESS_COMPLETION" or
+                type(go.get("response_byte_ceiling")) is not int or go["response_byte_ceiling"] != 4259840 or
+                type(go.get("response_chunk_ceiling")) is not int or go["response_chunk_ceiling"] != 65536):
+            raise PermissionError("RESPONSE_MODE_GO")
+    elif (any(key in go and go[key] is not None for key in ("response_byte_ceiling","response_chunk_ceiling")) or
+          ("response_transport_semantics" in go and go["response_transport_semantics"] != "OBSERVER_STRICT_HTTP_FRAMING")):
+        raise PermissionError("RESPONSE_MODE_GO")
+    return mode
+
+
+def runtime_bootstrap_argv(arguments, binding, started, *, response_byte_passthrough=False):
     """Pure selection shared by inspection and actual authorized Docker branch."""
+    if type(response_byte_passthrough) is not bool:
+        raise ValueError("RESPONSE_MODE_TYPE")
     argv = list(map(str, arguments))
     if len(argv) < 7 or argv[:2] != ["exec","-d"] or argv[3:6] != ["python3","/state/server_bootstrap.py","paid"]:
         raise ValueError("CANDIDATE_BOOTSTRAP_DISPATCH_SHAPE")
     argv[4] = "/tmp/request_observer_bootstrap.py"
     argv += [binding["candidate_files"]["request_observer_bootstrap.py"]["sha256"],
              binding["effective_sources"]["bootstrap"], repr(started), binding["public_files"][str(SCRIPTS/"native_request_observer_io.py")]["sha256"], "--io-diagnostics"]
+    if response_byte_passthrough:
+        argv.append("--response-byte-passthrough")
     return argv
 
 
@@ -1250,7 +1279,13 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         def __init__(self, args):
             if inspect_only:
                 raise RuntimeError("INSPECTION_FORBIDS_FIXTURE_CONSTRUCTOR")
+            response_mode = validate_response_mode(args,scenario,zero_model)
             super().__init__(args)
+            self.result["response_transport"] = {"response_byte_passthrough":response_mode,
+                "response_framing_validation":"NOT_PERFORMED" if response_mode else "OBSERVER_STRICT",
+                "application_completion":"UNKNOWN" if response_mode else "NATIVE_ORACLE_AUTHORITATIVE",
+                "byte_ceiling":4259840 if response_mode else None, "chunk_ceiling":65536 if response_mode else None,
+                "native_acceptance":"UNCHANGED"}
             if scenario == 'g2-g3':
                 self.budget = g2_turn_budget(self.budget)
                 self.result['owned_g2_manual_turn_sha256'] = self.owned_g2_manual_turn_sha256
@@ -1412,7 +1447,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                         raise RuntimeError("CANDIDATE_RUNTIME_PAYLOAD_CHANGED")
                     upload = "import os,sys; p=sys.argv[1]; f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600); s=os.fdopen(f,'wb'); s.write(sys.stdin.buffer.read()); s.close()"
                     self.command(["docker","exec","-i",container,"python3","-c",upload,"/tmp/"+filename], input_data=payload, timeout=3)
-                argv = self.runtime_bootstrap_argv(argv,binding,self.policy.started)
+                argv = self.runtime_bootstrap_argv(argv,binding,self.policy.started, response_byte_passthrough=getattr(self.args,"response_byte_passthrough",False))
                 self.result.setdefault("effective_Runtime_bootstrap", {})[container] = {
                     "copied_payload_sha256":binding["candidate_files"]["request_observer_bootstrap.py"]["sha256"],
                     "effective_source_sha256":binding["effective_sources"]["bootstrap"],

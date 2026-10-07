@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current owned-runner / Native checkpoint — PARTIAL
+## Current response-byte candidate — PARTIAL
+
+The G2-only, explicit default-OFF response-byte mode passed source-scoped guarded offline QA; old strict response AST is unchanged. Fresh zero preparation passed independent review; Main’s sole raw-mode Native run failed after six turns/four manual submissions. Five original-thread witnesses completed, including B Receive/Reply; A auto6 started but final/context completion is NOT_PROVEN. Later independent review verified 16 Docker targets absent/two UDS removed; original cleanup=false/A EOF UNKNOWN remain. Closed review found exact Native cause NOT_RECORDED/provider cause NOT_PROVEN; next is source-only error-projection audit. The observer/runner is dirty on `ae864239`; product `009a…`/Hub `45058…` retain dirty `2b92` provenance. [Detailed evidence](native-request-observer-io-validation.md) separates each QA domain, excluded tests and historical strict-mode failures. No Go/Client/contract/wire change or acceptance transfer is claimed; Control counts remain NOT_INSTRUMENTED.
+
+## Historical owned-runner / Native checkpoint — PARTIAL
 
 Current observer/runner sources are dirty on `d63e1e68`, with binding `420462…`; the product remains dirty `2b92` binary `009a…`/Hub `45058…`. Source-scoped full30 wiring checks passed; freshness anchoring, drained connection cancellation, two-pass retarget and G2-only fourth manual dispatch preserve strict TLS, deadlines and original acceptance criteria. Fresh zero preparation passed; the sole new Native run failed after six actual turns/four manual submissions. Five same-original-thread witnesses completed, including B Receive/Reply; A auto6 started but final/context completion is NOT_PROVEN. Original cleanup=false/A EOF UNKNOWN remain separate from later safety cleanup. G2/G3 and overall v0.1 remain PARTIAL. [Detailed evidence and preserved failures](native-request-observer-io-validation.md) distinguish preparation, runner QA and Native acceptance; Control invocation counts remain NOT_INSTRUMENTED.
 

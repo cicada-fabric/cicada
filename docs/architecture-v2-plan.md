@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — source-only observer-path audit
+## Current next step — source-only Native error-projection audit
+
+Scoped zero preparation passed; the sole raw-response Native run failed and its exact Native error cause remains NOT_RECORDED/provider cause NOT_PROVEN. Audit source only to identify controlled capture of an explicit closed classification, then decide any evidence-backed fix. No further models, automatic rerun, broad parser change or refactor is authorized. Preserve request association/ALPHA, strict original reply/context oracle, six-turn G2 cap, POST16, PQ/TLS and absolute deadlines; raw EOF is not application completion. G2/G3 and remaining external gates stay pending. See [terminal evidence and limits](native-request-observer-io-validation.md).
+
+## Historical next step — source-only observer-path audit
 
 The latest six-turn Native run failed with an unclassified response-head framing failure; A final/context completion is not proved. Next, audit source only to assess decoupling the default-OFF provider HTTP observer from the acceptance critical path, or an evidence-backed standards-based bounded parsing correction. Neither change nor another execution is authorized here. Preserve strict ALPHA/BETA/reply criteria, six-turn G2 budget, PQ/TLS, counters, privacy and absolute deadlines; do not infer provider fault or context loss. G2/G3, G4/G5/V67 and current external gates remain unclosed. See [terminal evidence and limits](native-request-observer-io-validation.md).
 

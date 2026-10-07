@@ -8,7 +8,7 @@ import re
 
 OLD_BOOTSTRAP_SHA = "0eeaf6cee3c2485e3718ad9bdedf4394e46d5c689c9b683f7bedae49b536db79"
 PATCH_SHA = "e621d869098d54a8685f187eecc2bbd1030120349612225fefdc04f30e99da24"
-OBSERVER_SHA = "4278b13766d9c46ade96e193a15763c4d78a9bba0d9b7284d288398d04b83c1c"
+OBSERVER_SHA = "72002d09b01c2e6f87e91b398acd1f94e4f8c0a0cad276f727973bd20f3e4baa"
 
 
 def apply_section(original, patch, target):
@@ -64,7 +64,7 @@ def effective_source(original, patch):
     replace_once('from request_observer import Observer, Association, ClosedFailure',
         'from native_request_observer import Observer, Association, ClosedFailure\n    from native_request_observer_io import IOSink')
     replace_once('    observer = Observer(', "    io_sink = IOSink('/tmp/cicada-request-observer-io.jsonl', v2=True)\n    observer = Observer(")
-    replace_once('lifetime=lifetime, max_connections=post_limit)', 'lifetime=lifetime, max_connections=post_limit, io_sink=io_sink, io_diagnostics_v2=True)')
+    replace_once('lifetime=lifetime, max_connections=post_limit)', 'lifetime=lifetime, max_connections=post_limit, io_sink=io_sink, io_diagnostics_v2=True, response_byte_passthrough=(sys.argv[7:] == ["--response-byte-passthrough"]))')
     replace_once("    drain_path = Path('/tmp/cicada-request-observer-drain.json')", "    try:\n        io_mark = io_sink.seal(observer, drain)\n        with os.fdopen(os.open('/tmp/cicada-request-observer-io-watermark.json', os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600), 'w') as io_output:\n            json.dump(io_mark, io_output, sort_keys=True)\n    except BaseException: pass\n    drain_path = Path('/tmp/cicada-request-observer-drain.json')")
     compile(value, "<effective-request-observer-bootstrap>", "exec")
     return value
@@ -85,7 +85,8 @@ def main(argv=None):
                           "status":"NONAUTH", "enabled":False, "effects":False}))
         return 0
     try:
-        if len(argv) != 12 or argv[11] != "--io-diagnostics" or argv[1] != "paid" or argv[6] != "16":
+        if (len(argv) not in (12,13) or argv[11] != "--io-diagnostics" or
+                (len(argv)==13 and argv[12] != "--response-byte-passthrough") or argv[1] != "paid" or argv[6] != "16"):
             raise ValueError("RUNTIME_ARGS")
         started, normal_end = float(argv[9]), float(argv[5])
         now = time.monotonic()
@@ -105,7 +106,7 @@ def main(argv=None):
                           "status":"UNKNOWN_PUBLIC_BINDING", "enabled":False, "effects":False}))
         return 33
     sys.dont_write_bytecode = True
-    sys.argv = argv[:7]
+    sys.argv = argv[:7] + argv[12:]
     namespace = {"__name__":"__main__", "__file__":"/tmp/request_observer_bootstrap.py"}
     # Prepared source runs only inside the explicitly authorized disposable Runtime.
     exec(compile(source, "<effective-request-observer-bootstrap>", "exec"), namespace)

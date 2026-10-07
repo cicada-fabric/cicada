@@ -1,6 +1,10 @@
 # Architecture v2.3 completion ledger
 
-## Current scoped checkpoint — runner QA, Native FAIL
+## Current scoped checkpoint — response-byte QA, Native FAIL
+
+The explicit response-byte candidate passed scoped offline QA, fresh zero preparation passed, and Main’s sole raw-mode Native run failed with A final/context completion not proved; G2–G5/V67 and overall v0.1 remain PARTIAL, with historical acceptance and all ledger counts unchanged ([evidence](native-request-observer-io-validation.md)).
+
+## Historical scoped checkpoint — runner QA, Native FAIL
 
 Source-bound runner QA and fresh zero preparation passed, but the sole latest six-turn Native G2/G3 run failed with A final/context completion not proved, so G2–G5/V67 and overall v0.1 remain PARTIAL; historical G1 acceptance and ledger counts retain their original scopes ([evidence](native-request-observer-io-validation.md)).
 

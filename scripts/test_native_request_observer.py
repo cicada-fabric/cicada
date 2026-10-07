@@ -324,6 +324,160 @@ class DiagnosticsChecks(unittest.TestCase):
         self.assertTrue(failed.idle.is_set())
 
 
+class ResponsePassthroughMemoryChecks(unittest.TestCase):
+    def fixture(self, parts, *, mode=True, client=None):
+        records, diagnostics = [], []
+        upstream = FakeSocket(parts)
+        instance = observer.Observer('https://synthetic.invalid/responses', 'PUBLIC_ALPHA', records.append,
+            enabled=True, bound_thread=THREAD, core_metadata=True, max_connections=16,
+            injected_connector=lambda deadline: upstream, io_sink=diagnostics.append,
+            response_byte_passthrough=mode)
+        return instance, client or FakeSocket([REQUEST]), upstream, records, diagnostics
+
+    def test_response_bytes_fragmentation_and_strict_default(self):
+        # Deliberately malformed HTTP is relayed, never promoted to framing PASS.
+        wire=b'HTTP/1.1 103 Early Hints\r\nX-Test:\tPUBLIC\r\n\r\nnot a final response'
+        for parts in ([wire], [wire[:1],wire[1:19],wire[19:]], [bytes([value]) for value in wire]):
+            with self.subTest(fragments=len(parts)):
+                instance,client,upstream,records,diagnostics=self.fixture(parts)
+                result=instance.handle(client,None)
+                self.assertEqual(bytes(client.sent),wire)
+                self.assertEqual(result['status'],'UNKNOWN_FRAMING')
+                self.assertEqual(set(result),observer.RECORD_KEYS)
+                self.assertEqual((result['thread'],result['turn'],result['attempt']),(THREAD,TURN,1))
+                self.assertTrue(result['alpha_present']);self.assertEqual(instance.posts,1)
+                self.assertTrue(bytes(upstream.sent).endswith(BODY))
+                self.assertTrue(diagnostics[0]['upstream_eof'])
+                self.assertIsNone(diagnostics[0]['first_failure'])
+                self.assertTrue(client.closed and upstream.closed)
+                self.assertFalse(instance.busy);self.assertTrue(instance.idle.is_set())
+        strict,client,_,_,_=self.fixture([RESPONSE],mode=False)
+        self.assertEqual(strict.handle(client,None)['status'],'FORWARDED')
+        self.assertEqual(bytes(client.sent),RESPONSE)
+        rejected,client,_,_,_=self.fixture([wire],mode=False)
+        self.assertEqual(rejected.handle(client,None)['status'],'UNKNOWN_FRAMING')
+        self.assertEqual(bytes(client.sent),b'')
+        for invalid in (1,None,'true'):
+            with self.subTest(invalid_type=type(invalid)):
+                with self.assertRaises(observer.ClosedFailure):self.fixture([],mode=invalid)
+        default=observer.Observer('https://synthetic.invalid/responses','PUBLIC_ALPHA',lambda row:None)
+        self.assertFalse(default.response_byte_passthrough)
+        self.assertEqual(default.handle(FakeSocket([REQUEST]),ASSOCIATION)['status'],'UNKNOWN_DISABLED')
+
+    def test_response_cap_chunk_errors_and_partial_delivery(self):
+        self.assertEqual(observer.MAX_WIRE,4259840)
+        for total in (observer.MAX_WIRE-1,observer.MAX_WIRE,observer.MAX_WIRE+1):
+            with self.subTest(total=total):
+                parts=[b'x'*65536]*(total//65536)
+                if total%65536:parts.append(b'x'*(total%65536))
+                instance,client,_,_,diagnostics=self.fixture(parts)
+                result=instance.handle(client,None)
+                self.assertEqual(result['status'],'UNKNOWN_BOUNDS' if total>observer.MAX_WIRE else 'UNKNOWN_FRAMING')
+                self.assertLessEqual(len(client.sent),observer.MAX_WIRE)
+                self.assertEqual(instance.posts,1)
+                self.assertEqual(diagnostics[0]['first_failure'] is None,total<=observer.MAX_WIRE)
+        instance,client,_,_,_=self.fixture([b'x'*65537])
+        self.assertEqual(instance.handle(client,None)['status'],'UNKNOWN_BOUNDS');self.assertEqual(bytes(client.sent),b'')
+        for error in (TimeoutError(),ConnectionResetError()):
+            with self.subTest(error_type=type(error)):
+                instance,client,upstream,_,diagnostics=self.fixture([b'PUBLIC',error])
+                self.assertEqual(instance.handle(client,None)['status'],'UNKNOWN_IO')
+                self.assertEqual(bytes(client.sent),b'PUBLIC');self.assertEqual(instance.posts,1)
+                self.assertEqual(diagnostics[0]['first_failure']['phase'],'READ_BODY')
+                self.assertTrue(client.closed and upstream.closed)
+        class PartialClient(FakeSocket):
+            def sendall(self,data):
+                self.sent.extend(data[:2]);raise BrokenPipeError()
+        client=PartialClient([REQUEST]);instance,_,upstream,_,diagnostics=self.fixture([b'PUBLIC'],client=client)
+        self.assertEqual(instance.handle(client,None)['status'],'UNKNOWN_IO')
+        self.assertEqual(bytes(client.sent),b'PU');self.assertEqual(instance.posts,1)
+        self.assertEqual(diagnostics[0]['first_failure']['phase'],'WRITE_BODY')
+        self.assertTrue(client.closed and upstream.closed)
+
+    def test_response_stall_forced_quiesce_retains_unknown_until_publication(self):
+        reading,closed_wake,publishing,release,drain_wait,quiesce_done=(threading.Event() for _ in range(6))
+        results,diagnostics,errors=[],[],[]
+        class StalledUpstream(FakeSocket):
+            def recv(self,size):
+                reading.set()
+                if not closed_wake.wait(3):raise AssertionError('SYNTHETIC_CLOSE_TIMEOUT')
+                return b''
+            def shutdown(self,how):closed_wake.set()
+            def close(self):self.closed=True;closed_wake.set()
+        upstream=StalledUpstream()
+        instance,client,_,records,_=self.fixture([])
+        instance.connector=lambda deadline:upstream
+        def publish(record):
+            publishing.set()
+            if not release.wait(3):raise AssertionError('SYNTHETIC_PUBLISH_TIMEOUT')
+            diagnostics.append(record)
+        instance.io_sink=publish
+        original_wait=instance.idle.wait
+        waits=[]
+        def forced_wait(timeout):
+            waits.append(timeout)
+            if len(waits)==1:return False
+            drain_wait.set()
+            return original_wait(timeout)
+        def handle():
+            try:results.append(instance.handle(client,None))
+            except BaseException as error:errors.append(type(error))
+        def quiesce():
+            try:results.append(instance.quiesce(timeout=2))
+            except BaseException as error:errors.append(type(error))
+            finally:quiesce_done.set()
+        worker=threading.Thread(target=handle);shutdown=threading.Thread(target=quiesce)
+        try:
+            worker.start();self.assertTrue(reading.wait(2))
+            self.assertTrue(instance.busy);self.assertFalse(instance.idle.is_set())
+            self.assertEqual(instance.posts,1)
+            refused=instance.handle(FakeSocket([REQUEST]),None)
+            self.assertEqual(refused['status'],'UNKNOWN_BUDGET');self.assertEqual(instance.posts,1)
+            with patch.object(instance.idle,'wait',forced_wait):
+                shutdown.start();self.assertTrue(publishing.wait(2));self.assertTrue(drain_wait.wait(2))
+                self.assertTrue(instance.busy);self.assertFalse(instance.idle.is_set())
+                self.assertFalse(quiesce_done.is_set());self.assertEqual(diagnostics,[])
+                release.set();worker.join(2);shutdown.join(2)
+            self.assertFalse(worker.is_alive());self.assertFalse(shutdown.is_alive());self.assertEqual(errors,[])
+            self.assertEqual(len(diagnostics),1);self.assertFalse(diagnostics[0]['upstream_eof'])
+            self.assertTrue(diagnostics[0]['shutdown_requested'])
+            drain=next(row for row in results if 'drained' in row)
+            self.assertTrue(drain['forced']);self.assertTrue(drain['drained'])
+            self.assertTrue(client.closed and upstream.closed)
+            report=observer.summarize_records(records,THREAD,[(THREAD,TURN)],TURN,drain)
+            self.assertEqual(report['capture_status'],'UNKNOWN')
+            self.assertEqual(next(row for row in results if 'status' in row)['status'],'UNKNOWN_FRAMING')
+        finally:
+            closed_wake.set();release.set()
+            if worker.ident is not None:worker.join(3)
+            if shutdown.ident is not None:shutdown.join(3)
+
+    def test_response_multiple_posts_association_and_deadline(self):
+        instance,_,_,records,_=self.fixture([])
+        upstreams=[]
+        def connector(deadline):
+            current=FakeSocket([RESPONSE]);upstreams.append(current);return current
+        instance.connector=connector
+        for index in range(1,17):
+            result=instance.handle(FakeSocket([REQUEST]),None)
+            self.assertEqual((result['outbound_POST_count'],result['attempt']),(index,index))
+            self.assertEqual((result['thread'],result['turn']),(THREAD,TURN))
+        result=instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(result['status'],'UNKNOWN_BUDGET');self.assertEqual(instance.posts,16)
+        self.assertEqual(len(upstreams),16)
+        expired,client,_,_,_=self.fixture([RESPONSE]);expired.deadline=0
+        self.assertEqual(expired.handle(client,None)['status'],'UNKNOWN_BUDGET');self.assertEqual(expired.posts,0)
+        # Response-side absolute deadline rejection retains the already counted POST.
+        instance,client,upstream,_,diagnostics=self.fixture([RESPONSE])
+        def expire_send(data):
+            upstream.sent.extend(data)
+            instance.deadline=0
+        upstream.sendall=expire_send
+        self.assertEqual(instance.handle(client,None)['status'],'UNKNOWN_BUDGET')
+        self.assertEqual(instance.posts,1);self.assertEqual(bytes(client.sent),b'')
+        self.assertEqual(diagnostics[0]['first_failure']['phase'],'READ_BODY')
+
+
 def tearDownModule():
     _guards.close()
 

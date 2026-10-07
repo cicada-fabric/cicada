@@ -288,8 +288,21 @@ def validate_go(go, expected, now=None):
         raise PermissionError("CLEANUP_HARD_CUTOFF")
 
 
+def response_passthrough_mode(args):
+    mode = getattr(args, "response_byte_passthrough", False)
+    if type(mode) is not bool:
+        raise PermissionError("RESPONSE_MODE_TYPE")
+    if mode and (getattr(args, "execute_diagnostic", False) is not True or
+                 getattr(args, "enable_io_diagnostics", False) is not True or
+                 getattr(args, "prepare_native_zero", False) is True or
+                 getattr(args, "scenario", "g1") != "g2-g3"):
+        raise PermissionError("RESPONSE_MODE_LANE")
+    return mode
+
+
 def execute(args):
     global EXECUTION_EFFECTS_STARTED
+    response_mode = response_passthrough_mode(args)
     if not getattr(args,"preparation_result",None) or not getattr(args,"preparation_result_sha",None):
         raise PermissionError("LATEST_RUNTIME_NOT_READY")
     with deny_preflight_effects():
@@ -344,6 +357,7 @@ def execute(args):
         preparation_result=args.preparation_result,preparation_result_sha256=args.preparation_result_sha,
         latest_runtime=True,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False),
+        response_byte_passthrough=response_mode,
         test_request_observer=True,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
     try:
@@ -402,6 +416,10 @@ def latest_dispatch_inputs(args):
 
 def expected_latest_go(binding,sha,args,delivery):
     expected=expected_go(binding,sha,args.unique_run,args.wiring_receipt_sha,args.cleanup_hard_stop_unix)
+    mode = response_passthrough_mode(args)
+    expected.update(response_byte_passthrough=mode, response_transport_semantics=(
+        "NATIVE_HTTP_VALIDATES_RESPONSE_EOF_NOT_BUSINESS_COMPLETION" if mode else "OBSERVER_STRICT_HTTP_FRAMING"),
+        response_byte_ceiling=4259840 if mode else None, response_chunk_ceiling=65536 if mode else None)
     expected.update(runtime_image=LATEST_RUNTIME,official_cli_sha256=LATEST_CLI_SHA,
         hub_image=delivery["hub_image"],product_revision=delivery["commit"],product_sha256=delivery["binary_sha256"],
         helper_sha256=delivery["helper_sha256"],node_source_fingerprint=delivery["fingerprint"],
@@ -599,6 +617,8 @@ def _zero_inputs_public(args):
     """Public-only fail-closed validation; no constructor or Docker before return."""
     if any(type(getattr(args,key,False)) is not bool for key in ("reproduce_zero_hub_restart","enable_closed_failure_diagnostics")):
         raise PermissionError("ZERO_DIAGNOSTIC_OPT_IN")
+    if getattr(args,"response_byte_passthrough",False) is not False:
+        raise PermissionError("ZERO_RESPONSE_MODE_FORBIDDEN")
     if args.execute_diagnostic or getattr(args,"enable_io_diagnostics",False) or any(getattr(args,key,None) is not None for key in ("go_receipt","go_receipt_sha","preparation_result","preparation_result_sha","preparation_review","preparation_review_sha")):
         raise PermissionError("ZERO_PAID_FLAGS")
     if not re.fullmatch(r"cicada-two-turn-zerocli161-[a-z0-9]{8,24}",args.unique_run or ""):
@@ -698,6 +718,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--scenario",default="g1")
     parser.add_argument("--enable-io-diagnostics",action="store_true")
+    parser.add_argument("--response-byte-passthrough",action="store_true")
     parser.add_argument("--cleanup-hard-stop-unix",type=int)
     parser.add_argument("--prepare-native-zero",action="store_true")
     parser.add_argument("--reproduce-zero-hub-restart",action="store_true")
@@ -710,6 +731,7 @@ def main(argv=None):
         parser.add_argument("--"+name)
     args=parser.parse_args(argv)
     try:
+        response_passthrough_mode(args)
         if args.reproduce_zero_hub_restart and (not args.prepare_native_zero or args.execute_diagnostic):
             raise PermissionError("ZERO_RESTART_MODE")
         if args.prepare_native_zero:

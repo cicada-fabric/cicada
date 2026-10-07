@@ -32,6 +32,68 @@ import request_observer_bootstrap as bootstrap
 
 class WiringChecks(unittest.TestCase):
 
+    def test_response_passthrough_explicit_go_and_bootstrap(self):
+        args=types.SimpleNamespace(response_byte_passthrough=True,execute_diagnostic=True,
+            enable_io_diagnostics=True,prepare_native_zero=False,scenario='g2-g3')
+        self.assertTrue(run.response_passthrough_mode(args))
+        self.assertFalse(run.response_passthrough_mode(types.SimpleNamespace()))
+        for field,value in (('response_byte_passthrough',1),('response_byte_passthrough','true'),
+                ('scenario','g1'),('execute_diagnostic',False),('enable_io_diagnostics',False),('prepare_native_zero',True)):
+            with self.subTest(field=field,value_type=type(value)):
+                wrong=copy.copy(args);setattr(wrong,field,value)
+                with self.assertRaises(PermissionError):run.response_passthrough_mode(wrong)
+        gate_args=types.SimpleNamespace(response_byte_passthrough=True,run_native=True,test_request_observer=True,
+            go={'response_byte_passthrough':True,'response_transport_semantics':'NATIVE_HTTP_VALIDATES_RESPONSE_EOF_NOT_BUSINESS_COMPLETION',
+                'response_byte_ceiling':4259840,'response_chunk_ceiling':65536})
+        self.assertTrue(gate.validate_response_mode(gate_args,'g2-g3',False))
+        for scenario,zero in (('g1',False),('g2-g3',True)):
+            with self.assertRaises(PermissionError):gate.validate_response_mode(gate_args,scenario,zero)
+        for field,value in (('response_byte_passthrough',1),('response_byte_ceiling',4259840.0),
+                ('response_chunk_ceiling',65536.0),('response_chunk_ceiling',True)):
+            with self.subTest(go_field=field,value_type=type(value)):
+                wrong=copy.copy(gate_args);wrong.go=dict(gate_args.go);wrong.go[field]=value
+                with self.assertRaises(PermissionError):gate.validate_response_mode(wrong,'g2-g3',False)
+        mismatch=copy.copy(gate_args);mismatch.response_byte_passthrough=False
+        with self.assertRaises(PermissionError):gate.validate_response_mode(mismatch,'g2-g3',False)
+        missing=copy.copy(gate_args);missing.go={}
+        with self.assertRaises(PermissionError):gate.validate_response_mode(missing,'g2-g3',False)
+        strict_args=types.SimpleNamespace(response_byte_passthrough=False,go={'response_byte_passthrough':False,
+            'response_transport_semantics':'OBSERVER_STRICT_HTTP_FRAMING','response_byte_ceiling':None,'response_chunk_ceiling':None})
+        self.assertFalse(gate.validate_response_mode(strict_args,'g1',False))
+        strict_args.go['response_byte_ceiling']=4259840.0
+        with self.assertRaises(PermissionError):gate.validate_response_mode(strict_args,'g1',False)
+        self.assertFalse(gate.validate_response_mode(types.SimpleNamespace(),'g1',True))
+        with run.deny_preflight_effects():
+            binding,sha=run.verify_binding()
+            args.unique_run='cicada-two-turn-syntheticmanual';args.wiring_receipt_sha='1'*64
+            args.cleanup_hard_stop_unix=10000;args.delivery_sha='2'*64;args.preparation_result_sha='3'*64
+            args.preparation_review_sha='4'*64;args.equality_sha='5'*64
+            delivery=dict(runtime_image='synthetic',hub_image='synthetic',commit='synthetic',
+                binary_sha256='6'*64,helper_sha256='7'*64,fingerprint='8'*64,
+                component_proof_sha256='9'*64)
+            expected=run.expected_latest_go(binding,sha,args,delivery)
+            self.assertIs(expected['response_byte_passthrough'],True)
+            self.assertEqual(expected['response_byte_ceiling'],4259840)
+            self.assertEqual(expected['response_chunk_ceiling'],65536)
+            self.assertEqual((expected['max_native_turns'],expected['max_manual_turns'],expected['max_automatic_turns']),(6,4,2))
+            go=dict(expected,expires_at_unix=9000)
+            run.validate_go(go,expected,now=1000)
+            for field,value in (('response_byte_passthrough',1),('response_byte_passthrough',False),
+                    ('response_transport_semantics','OBSERVER_STRICT_HTTP_FRAMING'),('response_byte_ceiling',4259841)):
+                wrong=dict(go);wrong[field]=value
+                with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
+            wrong=dict(go);del wrong['response_byte_passthrough']
+            with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
+            argv=['exec','-d','synthetic','python3','/state/server_bootstrap.py','paid','http://192.0.2.1:7890','--test-request-observer','a'*64,'1180.0','16']
+            strict=gate.runtime_bootstrap_argv(argv,binding,1000.0)
+            selected=gate.runtime_bootstrap_argv(argv,binding,1000.0,response_byte_passthrough=True)
+            self.assertEqual(selected,strict+['--response-byte-passthrough'])
+            with self.assertRaises(ValueError):gate.runtime_bootstrap_argv(argv,binding,1000.0,response_byte_passthrough=1)
+            source=bootstrap.effective_source(bootstrap.read_pinned(gate.OLD/'server_bootstrap.py',bootstrap.OLD_BOOTSTRAP_SHA).decode(),bootstrap.read_pinned(gate.LEGACY/'request-observer-integration.patch',bootstrap.PATCH_SHA).decode())
+            self.assertIn('response_byte_passthrough=(sys.argv[7:] == ["--response-byte-passthrough"])',source)
+            flow=gate.compile_g2_flow_methods(gate.effective_sources()['gate'],{})
+            self.assertNotIn('response_byte_passthrough',flow['managed_golden_flow']._g2_selected_source)
+
     def test_g2_manual_dispatch_cap_and_original_order(self):
         sentinel=object()
         def original(): return sentinel
