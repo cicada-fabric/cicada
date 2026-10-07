@@ -1,10 +1,16 @@
 # Architecture v2.3 数据与协议迁移
 
+Final latest-CLI checkpoint (Oct 7): one retained image build, three separately authorized network-none CLI-only checks. The first two strict failures remain immutable; the third passed with exact PATH-selected CLI 0.160.1 and matching companion hashes, empty stderr, and exact owned-container absence. Only the two verified original context binary copies were removed. Companion was hashed, never launched. No Native Runtime session, protocol/observer readiness or model execution was tested; the paid entry remains blocked by LATEST_RUNTIME_NOT_READY. Historical 0.160 fixture proofs are not latest-CLI readiness.
+
+
+
 SQLite 连接的 `busy_timeout` 由 Store opener 与迁移 runner 统一设置为 30000 ms；Relay schema hook 保留已有连接策略，不再把 fresh 迁移中的同一连接降至 5000 ms。已迁移 reopen 和 fresh 的权威配置因此一致。该连接策略修复不修改历史 DDL、migration ID/checksum 或 schema58，也不改变 Task/资源 epoch、身份或恢复权限。[本次有界验证](../.cicada-data/v01-finish-20261002/sqlite-timeout-owner-20261004/result.json)的新增确定性配置测试与原两 consumer 并发打开测试各 normal/race 一次，分别 3 top-level + 2 subtests PASS、0 fail/skip；旧 broad race 的 v29 SQLITE_BUSY/超时失败、clean857 的精确专项 PASS 仍保留各自来源，不由单次通过推定所有并发情形已闭合。
 
-## 2026-10-05 文档检查点说明
+## 2026-10-07 文档检查点说明
 
-Oct 5 foreground/Native 状态与范围见[当前状态](architecture-v2-status.md#current-closeout)。本次只更新测试 driver 和状态文档；未修改 SQLite、migration、schema 或 Client 合同。
+Oct 5 foreground/Native 状态与范围见[当前状态](architecture-v2-status.md#current-closeout)。Oct 7 只新增默认关闭的 observer 诊断脚本与文档；foreground driver 保持此前来源。未修改 SQLite、migration、schema 或 Client 合同。
+
+Oct 7 的[闭合 I/O 诊断与 wiring 离线验证](native-request-observer-io-validation.md)：primitive 8+29 methods（37）、wiring 7+8 methods 及 installed 四个 ordering cases 分 scope PASS，0 failure/error/skip；default-off CLI 与新 binding preflight PASS。保留修正前 fixture/assertion FAIL。没有新的 Runtime、模型、Go 或 Docker interop。下一步先审查最新版 CLI 0.160.1 的 fresh Runtime/pin 准备提案，再用 fresh Root pins、预算与 GO 单独授权恰好一次有界实际运行；当前未授权、未执行。
 
 ## 2026-10-04 历史边界 — schema58 与 Hub 安全恢复集成
 

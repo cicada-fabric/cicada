@@ -1,16 +1,22 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-05 恢复后的当前行动
+Final latest-CLI checkpoint (Oct 7): one retained image build, three separately authorized network-none CLI-only checks. The first two strict failures remain immutable; the third passed with exact PATH-selected CLI 0.160.1 and matching companion hashes, empty stderr, and exact owned-container absence. Only the two verified original context binary copies were removed. Companion was hashed, never launched. No Native Runtime session, protocol/observer readiness or model execution was tested; the paid entry remains blocked by LATEST_RUNTIME_NOT_READY. Historical 0.160 fixture proofs are not latest-CLI readiness.
+
+
+
+## 2026-10-07 恢复后的当前行动
 
 v0.1.x 于 2026-10-05 恢复；Oct 4 截止时的判断见[历史行动快照](#historical-action-snapshot)。foreground busy-queue/draft 的一次官方 Codex 0.160.0 隔离合成门禁通过，见[foreground 记录](native-foreground-queue-validation.md)和[当前证据](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)；这不是实际 Native/G1 PASS。
 
 当前按以下顺序推进，第一项优先：
 
-1. 优先给 Native 测试驱动补最小首个 I/O phase/class 诊断，并用离线故障夹具验证字段闭合；当前首因仍 UNKNOWN。随后单独验收实际原 Thread/G1 上下文，不由合成 foreground 结果推导。
+1. 最小闭合 I/O phase/class 诊断已完成离线验证；先审查 wiring，再单独授权一次实际原 Thread/G1 验收。历史实际首因仍 UNKNOWN，不由离线通过推导实际成功。
 2. 独立确认同账号 Native direct 的官方支持边界，再按结果验证适配；若不支持，保留明确 `UNSUPPORTED`，不作成功推断。
 3. 分别准备 physical Android、双物理 Node、public HTTPS 和生产恢复 gate；各自记录来源与结果。
 
 Oct 5 实际 G1C 仍为 A1 RuntimeError **FAIL**、A3 **NOT_REACHED**，actual POST 总数不完整；offline race 四案例 PASS，首个 I/O phase/class UNKNOWN。此前 2748 PASS / 20 SKIP 的 full-Go、vet 与 Client interop 仍归属于冻结 dirty source，未重跑；本次无 Go、DB 或 Client 合同变更。整体保持 **PARTIAL**。
+
+Oct 7 的[闭合 I/O 诊断与 wiring 离线验证](native-request-observer-io-validation.md)：primitive 8+29 methods（37）、wiring 7+8 methods 及 installed 四个 ordering cases 分 scope PASS，0 failure/error/skip；default-off CLI 与新 binding preflight PASS。保留修正前 fixture/assertion FAIL。没有新的 Runtime、模型、Go 或 Docker interop。下一步先审查最新版 CLI 0.160.1 的 fresh Runtime/pin 准备提案，再用 fresh Root pins、预算与 GO 单独授权恰好一次有界实际运行；当前未授权、未执行。
 
 <a id="historical-action-snapshot"></a>
 

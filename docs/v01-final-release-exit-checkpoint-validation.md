@@ -1,16 +1,24 @@
-# v0.1 release-exit validation — scoped checks and attributed deliveries — 2026-10-05
+# v0.1 release-exit validation — scoped checks and attributed deliveries — 2026-10-07
+
+Final latest-CLI checkpoint (Oct 7): one retained image build, three separately authorized network-none CLI-only checks. The first two strict failures remain immutable; the third passed with exact PATH-selected CLI 0.160.1 and matching companion hashes, empty stderr, and exact owned-container absence. Only the two verified original context binary copies were removed. Companion was hashed, never launched. No Native Runtime session, protocol/observer readiness or model execution was tested; the paid entry remains blocked by LATEST_RUNTIME_NOT_READY. Historical 0.160 fixture proofs are not latest-CLI readiness.
+
+
 
 Overall v0.1 / Architecture v2.3 remains **PARTIAL**. This report keeps clean deliveries, the validated Core source checkpoint, offline checks and live Runtime/Android outcomes separate. It does not authorize release or deployment.
 
 <a id="current-closeout-evidence"></a>
 
-## 2026-10-05 当前收尾证据
+## 2026-10-07 当前收尾证据
 
-v0.1.x 于 Oct 5 恢复；整体仍 **PARTIAL**。本次更新包含 foreground driver 与文档，不改 Go、DB 或 Client 合同。
+v0.1.x 于 Oct 5 恢复；整体仍 **PARTIAL**。Oct 7 检查点只新增 observer 离线诊断及其文档；foreground driver 是此前的独立来源，本次未修改。不改 Go、DB 或 Client 合同。
 
 - **Foreground:** [result](../.cicada-data/native-foreground-queue-20261005-final-wait/result.json), SHA-256 `0ccc22f29a6052fde4c01d52533e2a08ad97b389bfc13b4e3dca6595be647fa4`; driver SHA-256 `d1d4335a6e6b3bf4a4a7d87de30ee76b320412af926d5ab039b77de0b8103812`; exit 0 / 3.996s / `PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY`. Codex 0.160.0 ran isolated with a synthetic provider; busy queue and draft preservation passed. [Root review](../.cicada-data/native-foreground-queue-20261005-final-wait/root-terminal-review.NONAUTH.json), SHA-256 `c6b4ea75208e3ff5ce1e6e166f50b90a8a0daebf26e99536f16643a4a3bd49e7`, confirms owned CID absence. This does not prove real-model consumption or G1.
 - **Actual Native:** [G1C result](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-native-result-cicada-two-turn-obsoct5final20261005a/result.json), SHA-256 `349bd71feb8d66fe5d908db17bd5006e88b87283b208baaf7682cec257535c7a`: exit 1, A1 RuntimeError FAIL, A3 NOT_REACHED, actual POST total incomplete (16 was the runtime cap, not its count). Closed capture is retained; offline four-case race passed, while the first I/O phase/class remains UNKNOWN. [Root closeout receipt](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-oct5-terminal-compact-with-proposal.NONAUTH.json), SHA-256 `23748a7699f6c0f09bb0e2f704239a1857d6b52640982a008e45f3e093252ea0`, reports closeout SHA-256 `94e3c0797bde62bb0f8cd5762922d2bec60c72832c915ff3f086f2a2b2925909` and nine owned objects absent; original `cleanup=false` remains.
 - **Existing regressions:** 2748 PASS / 20 SKIP, same-source vet exit 0 and two real-TCP Go Client interop selectors PASS remain attributed to their earlier frozen dirty source; none was rerun here. [Input-equivalence receipt](../.cicada-data/native-foreground-queue-20261005-final-wait/core-input-equivalence.NONAUTH.json), SHA-256 `0804c6b3952af403d2b6d296fb07cdbd9311f5934d879ace9ade75911739b4eb`, confirms the 926 Go inputs and 929 selected interop inputs are unchanged. Android, public HTTPS, dual physical Node and production recovery remain separate gates.
+
+Oct 7 的[闭合 I/O 诊断与 wiring 离线验证](native-request-observer-io-validation.md)：primitive 8+29 methods（37）、wiring 7+8 methods 及 installed 四个 ordering cases 分 scope PASS，0 failure/error/skip；default-off CLI 与新 binding preflight PASS。保留修正前 fixture/assertion FAIL。没有新的 Runtime、模型、Go 或 Docker interop。下一步先审查最新版 CLI 0.160.1 的 fresh Runtime/pin 准备提案，再用 fresh Root pins、预算与 GO 单独授权恰好一次有界实际运行；当前未授权、未执行。
+
+历史 `349bd71f…` 仍为 A1 FAIL / A3 NOT_REACHED、provider cause UNKNOWN、POST 总数不完整；原 cleanup=false / A EOF UNKNOWN 与 9 个 owned 对象 ABSENT 分列。旧 GO 与截止时间已过期，v0.1 保持 PARTIAL、目标未完成。
 
 ## 2026-10-04 historical closeout evidence
 

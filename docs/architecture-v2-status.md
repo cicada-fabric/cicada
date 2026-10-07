@@ -1,8 +1,12 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+Final latest-CLI checkpoint (Oct 7): one retained image build, three separately authorized network-none CLI-only checks. The first two strict failures remain immutable; the third passed with exact PATH-selected CLI 0.160.1 and matching companion hashes, empty stderr, and exact owned-container absence. Only the two verified original context binary copies were removed. Companion was hashed, never launched. No Native Runtime session, protocol/observer readiness or model execution was tested; the paid entry remains blocked by LATEST_RUNTIME_NOT_READY. Historical 0.160 fixture proofs are not latest-CLI readiness.
+
+
+
 <a id="current-closeout"></a>
 
-## 2026-10-05 恢复后的当前收尾 — v0.1 PARTIAL
+## 2026-10-07 恢复后的当前收尾 — v0.1 PARTIAL
 
 v0.1.x 工作于 2026-10-05 明确恢复；2026-10-04 19:49:15 UTC 截止记录保留在下方历史快照，不再代表当前工作状态。当前真实前台队列/草稿门禁仅通过其隔离合成范围，实际 Native G1C 仍失败；整体验收继续为 **PARTIAL**。
 
@@ -12,6 +16,10 @@ v0.1.x 工作于 2026-10-05 明确恢复；2026-10-04 19:49:15 UTC 截止记录�
 | Actual Native / G1C | Oct 5 最新实际 G1C [result](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-native-result-cicada-two-turn-obsoct5final20261005a/result.json)，SHA-256 `349bd71feb8d66fe5d908db17bd5006e88b87283b208baaf7682cec257535c7a`：exit 1，A1 RuntimeError **FAIL**，A3 **NOT_REACHED**；actual POST 总数不完整，16 是 Runtime 上限而非计数。Closed capture 保留，offline race 四案例 PASS，首个 I/O phase/class 仍 UNKNOWN。Root [closeout](../../CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004/request-observer-oct5-terminal-compact-with-proposal.NONAUTH.json) 收据 SHA-256 `23748a7699f6c0f09bb0e2f704239a1857d6b52640982a008e45f3e093252ea0`（内含 closeout SHA-256 `94e3c0797bde62bb0f8cd5762922d2bec60c72832c915ff3f086f2a2b2925909`），确认 9 个 owned 对象 ABSENT，原始 `cleanup=false` 保留。 | 合成 foreground PASS 不改写此 FAIL、旧严格上下文失败或 UNKNOWN。 |
 | Go / Hub / Client evidence | 既有 dirty `333759e` 全 Go、vet 与 disposable real-TCP Client interop 仍只归属于原冻结输入：2748 PASS、20 SKIP、vet exit 0，interop 两 selector PASS。 | Oct 5 foreground 与本次文档更新未重跑这些门禁；没有 Go、DB 或 Client 合同修改，也不把旧结果转归新输入。 |
 | 外部验收 | Android、public HTTPS、双物理 Node、真实模型及生产恢复仍未由本次 foreground 门禁覆盖。 | 各自保持独立验收；不以合成 PASS 推导产品整体完成。 |
+
+Oct 7 的[闭合 I/O 诊断与 wiring 离线验证](native-request-observer-io-validation.md)：primitive 8+29 methods（37）、wiring 7+8 methods 及 installed 四个 ordering cases 分 scope PASS，0 failure/error/skip；default-off CLI 与新 binding preflight PASS。保留修正前 fixture/assertion FAIL。没有新的 Runtime、模型、Go 或 Docker interop。下一步先审查最新版 CLI 0.160.1 的 fresh Runtime/pin 准备提案，再用 fresh Root pins、预算与 GO 单独授权恰好一次有界实际运行；当前未授权、未执行。
+
+历史 `349bd71f…` 仍为 A1 FAIL / A3 NOT_REACHED、provider cause UNKNOWN、POST 总数不完整；原 cleanup=false / A EOF UNKNOWN 与 9 个 owned 对象 ABSENT 分列。旧 GO 与截止时间已过期，v0.1 保持 PARTIAL、目标未完成。
 
 ## 2026-10-04 历史收尾快照 — v0.1 PARTIAL
 
