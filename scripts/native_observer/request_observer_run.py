@@ -279,8 +279,10 @@ def validate_go(go, expected, now=None):
 
 def execute(args):
     global EXECUTION_EFFECTS_STARTED
-    # Latest CLI image has no successful Native preparation or fresh authorization.
-    raise PermissionError("LATEST_RUNTIME_NOT_READY")
+    if not getattr(args,"preparation_result",None) or not getattr(args,"preparation_result_sha",None):
+        raise PermissionError("LATEST_RUNTIME_NOT_READY")
+    with deny_preflight_effects():
+        binding,binding_sha,delivery,prior=latest_dispatch_inputs(args)
     # No legacy imports, credential stat or effects before all public/fresh GO guards.
     if not getattr(args,"enable_io_diagnostics",False):
         raise PermissionError("IO_DIAGNOSTICS_OPT_IN_REQUIRED")
@@ -290,7 +292,6 @@ def execute(args):
     go_path=Path(args.go_receipt)
     if go_path.parent.absolute()!=BINDING.parent or not go_path.name.startswith("request-observer-") or not go_path.name.endswith(".json"):
         raise PermissionError("FRESH_GO_PUBLIC_PATH")
-    binding, binding_sha = verify_binding(args.binding_sha)
     receipt_path = Path(args.wiring_receipt)
     if receipt_path.parent.resolve()!=BINDING.parent or not receipt_path.name.startswith("request-observer-wiring-"):
         raise PermissionError("PUBLIC_WIRING_RECEIPT_PATH")
@@ -299,7 +300,7 @@ def execute(args):
         receipt.get("candidate_binding_sha256")!=binding_sha or receipt.get("Runtime_calls")!=0 or
         receipt.get("provider_POSTs")!=0 or receipt.get("model_calls")!=0):
         raise PermissionError("WIRING_OFFLINE_RECEIPT")
-    expected = expected_go(binding,binding_sha,args.unique_run,args.wiring_receipt_sha,args.cleanup_hard_stop_unix)
+    expected = expected_latest_go(binding,binding_sha,args,delivery)
     go, raw = bounded_json(args.go_receipt)
     if hashlib.sha256(raw).hexdigest()!=args.go_receipt_sha:
         raise PermissionError("GO_BYTE_PIN")
@@ -321,18 +322,16 @@ def execute(args):
         out.flush();os.fsync(out.fileno())
     EXECUTION_EFFECTS_STARTED = True
     gate_overlay=safe_overlay("request_observer_gate")
-    delivery,_=bounded_json(ACTUAL/"actual-delivery.json")
     cls,legacy=gate_overlay.load_gate(delivery,binding)
-    if legacy.RUNTIME!=RUNTIME or legacy.CLI_SHA!=CLI_SHA:
-        raise PermissionError("LEGACY_IMMUTABLE_RUNTIME_PIN")
-    ns=types.SimpleNamespace(execute=True,run_native=True,result_dir=str(result),product_repo=PRODUCT_REPO,
+    ns=types.SimpleNamespace(execute=True,run_native=True,result_dir=str(result),product_repo=delivery["source_repo"],
         expected_product_revision=delivery["commit"],expected_source_fingerprint=delivery["fingerprint"],
-        runtime_image=RUNTIME,expected_codex_version="codex-cli 0.160.0",expected_cli_sha256=CLI_SHA,
+        runtime_image=LATEST_RUNTIME,expected_codex_version="codex-cli 0.160.1",expected_cli_sha256=LATEST_CLI_SHA,
         producer_receipt_sha256=delivery["package_metadata_sha256"],producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
-        exact_clean_image_metadata=str(ACTUAL/"hub-image-receipt.json"),exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
+        exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
         config_template=str(CONFIG),config_template_sha=CONFIG_SHA,source_binding_sha=binding_sha,
         offline_checks_sha=args.wiring_receipt_sha,artifact_started=started,go=go,credential_file=CREDENTIAL,
-        preparation_result=str(ACTUAL/"native-preparation/result.json"),preparation_result_sha256=PREP_RESULT_SHA,
+        preparation_result=args.preparation_result,preparation_result_sha256=args.preparation_result_sha,
+        latest_runtime=True,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,
         test_request_observer=True,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
     try:
@@ -347,16 +346,166 @@ def execute(args):
     return gate.result["terminal_exit_code"]
 
 
+LATEST_RUNTIME = "sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83"
+LATEST_CLI_SHA = "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35"
+ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "basil"',
+    'sandbox_mode = "workspace-write"','approval_policy = "on-request"','approvals_reviewer = "user"',
+    '[model_providers.basil]','name="Synthetic zero-model provider"',
+    'base_url="http://127.0.0.1:9/v1"','wire_api="responses"',
+    'request_max_retries = 4',''])
+
+
+def latest_dispatch_inputs(args):
+    """Fresh preparation is evidence, never model authorization by itself."""
+    binding,sha=verify_binding(args.binding_sha)
+    delivery,raw=bounded_json(args.delivery)
+    if hashlib.sha256(raw).hexdigest()!=args.delivery_sha:raise PermissionError("LATEST_DELIVERY_PIN")
+    equality,raw=bounded_json(args.compiled_input_equality)
+    if (hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT" or
+        equality.get("current_commit")!=args.current_commit or
+        equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
+        equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256")):
+        raise PermissionError("LATEST_COMPILED_INPUT_EQUALITY")
+    prior,raw=bounded_json(args.preparation_result,1<<20)
+    prep=prior.get("preparation_binding",{})
+    if (hashlib.sha256(raw).hexdigest()!=args.preparation_result_sha or
+        prior.get("status")!="PREPARATION_PASS_NATIVE_NOT_RUN" or prior.get("terminal_exit_code")!=0 or
+        prior.get("cleanup_owned_resources") is not True or prior.get("candidate_sources_unchanged") is not True or
+        prior.get("observer_shutdown")!={"a":"EXPECTED_EOF_CONFIRMED","b":"EXPECTED_EOF_CONFIRMED"} or
+        prior.get("models_invoked")!=0 or prior.get("actual_turn_started_count")!=0 or
+        prior.get("actual_turn_started_event_count")!=0 or prior.get("paid_turn_start_submissions")!=0 or
+        prep.get("source_binding_sha256")!=sha or prep.get("runtime_image_id")!=LATEST_RUNTIME or
+        prep.get("official_cli_sha256")!=LATEST_CLI_SHA or prep.get("current_delivery_sha256")!=args.delivery_sha or
+        prep.get("compiled_input_equality_sha256")!=args.equality_sha):
+        raise PermissionError("LATEST_RUNTIME_NOT_READY")
+    review,raw=bounded_json(args.preparation_review)
+    if hashlib.sha256(raw).hexdigest()!=args.preparation_review_sha or review.get("status")!="PASS" or review.get("result_sha256")!=args.preparation_result_sha:
+        raise PermissionError("LATEST_PREPARATION_REVIEW")
+    return binding,sha,delivery,prior
+
+
+def expected_latest_go(binding,sha,args,delivery):
+    expected=expected_go(binding,sha,args.unique_run,args.wiring_receipt_sha,args.cleanup_hard_stop_unix)
+    expected.update(runtime_image=LATEST_RUNTIME,official_cli_sha256=LATEST_CLI_SHA,
+        hub_image=delivery["hub_image"],product_revision=delivery["commit"],product_sha256=delivery["binary_sha256"],
+        helper_sha256=delivery["helper_sha256"],node_source_fingerprint=delivery["fingerprint"],
+        actual_delivery_sha256=args.delivery_sha,preparation_result_sha256=args.preparation_result_sha,
+        preparation_source_binding_sha256=sha,independent_review_sha256=args.preparation_review_sha,
+        compiled_input_equality_sha256=args.equality_sha,official_cli_version="0.160.1",
+        preparation_provider_scope="SYNTHETIC_LOOPBACK_ZERO_MODEL_NOT_PROVIDER_PARITY")
+    return expected
+
+
+def zero_inputs(args):
+    with deny_preflight_effects():
+        return _zero_inputs_public(args)
+
+
+def _zero_inputs_public(args):
+    """Public-only fail-closed validation; no constructor or Docker before return."""
+    if args.execute_diagnostic or getattr(args,"enable_io_diagnostics",False):
+        raise PermissionError("ZERO_PAID_FLAGS")
+    if not re.fullmatch(r"cicada-two-turn-zerocli161-[a-z0-9]{8,24}",args.unique_run or ""):
+        raise PermissionError("ZERO_UNIQUE_RUN")
+    if args.runtime_image!=LATEST_RUNTIME:
+        raise PermissionError("ZERO_LATEST_RUNTIME_REQUIRED")
+    if type(args.cleanup_hard_stop_unix) is not int or time.time()+240>=args.cleanup_hard_stop_unix:
+        raise PermissionError("ZERO_ABSOLUTE_BUDGET")
+    binding,sha=verify_binding(args.binding_sha)
+    receipt,raw=bounded_json(args.wiring_receipt)
+    if (hashlib.sha256(raw).hexdigest()!=args.wiring_receipt_sha or receipt.get("status")!="PASS" or
+            receipt.get("candidate_binding_sha256")!=sha or receipt.get("Runtime_calls")!=0 or
+            receipt.get("model_calls")!=0):
+        raise PermissionError("ZERO_CURRENT_OFFLINE_RECEIPT")
+    delivery,raw=bounded_json(args.delivery)
+    if hashlib.sha256(raw).hexdigest()!=args.delivery_sha:
+        raise PermissionError("ZERO_DELIVERY_PIN")
+    equality,raw=bounded_json(args.compiled_input_equality)
+    if hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT":
+        raise PermissionError("ZERO_COMPILED_INPUT_EQUALITY")
+    if (equality.get("current_commit")!=args.current_commit or
+            equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
+            not re.fullmatch(r"[0-9a-f]{64}",equality.get("current_compiled_inputs_sha256", "")) or
+            equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256")):
+        raise PermissionError("ZERO_CURRENT_PRODUCT_MISMATCH")
+    for key in ("commit","fingerprint","binary_sha256","helper_sha256","hub_image",
+                "package","helper","package_metadata_sha256","hub_receipt_path","hub_receipt_sha256","source_repo"):
+        if type(delivery.get(key)) is not str or not delivery[key]:
+            raise PermissionError("ZERO_DELIVERY_SHAPE")
+    for path,pin in ((Path(delivery["package"])/"BUILD-METADATA.json",delivery["package_metadata_sha256"]),
+                     (Path(delivery["hub_receipt_path"]),delivery["hub_receipt_sha256"])):
+        if digest(path)!=pin:
+            raise PermissionError("ZERO_PRODUCER_RECEIPT_CHANGED")
+    result=Path(args.result_dir)
+    if result.parent.absolute()!=BINDING.parent or result.name!="native-preparation-"+args.unique_run or result.exists():
+        raise PermissionError("ZERO_FRESH_RESULT_PATH")
+    return binding,sha,delivery
+
+
+def prepare_native_zero(args):
+    global EXECUTION_EFFECTS_STARTED
+    binding,sha,delivery=zero_inputs(args)
+    # Config is synthetic, private and created only after every public guard.
+    config=BINDING.parent/(args.unique_run+"-config.toml")
+    fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,"w") as output: output.write(ZERO_CONFIG)
+    started=time.monotonic()
+    if time.time()+240>=args.cleanup_hard_stop_unix:
+        raise PermissionError("ZERO_ABSOLUTE_BUDGET")
+    ns=types.SimpleNamespace(execute=True,run_native=False,result_dir=args.result_dir,
+        product_repo=delivery["source_repo"],expected_product_revision=delivery["commit"],
+        expected_source_fingerprint=delivery["fingerprint"],runtime_image=LATEST_RUNTIME,
+        expected_codex_version="codex-cli 0.160.1",expected_cli_sha256=LATEST_CLI_SHA,
+        producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
+        producer_receipt_sha256=delivery["package_metadata_sha256"],
+        exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
+        config_template=str(config),config_template_sha=hashlib.sha256(ZERO_CONFIG.encode()).hexdigest(),
+        source_binding_sha=sha,offline_checks_sha=args.wiring_receipt_sha,
+        artifact_started=started,go={"unique_run":args.unique_run,"max_native_turns":0,"max_manual_turns":0,
+            "max_automatic_turns":0},credential_file="ZERO_LANE_NO_CREDENTIAL_REFERENCE",
+        preparation_result=None,preparation_result_sha256=None,test_request_observer=False,
+        candidate_binding_sha256=sha,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,latest_runtime=True)
+    gate=None
+    try:
+        overlay=safe_overlay("request_observer_gate")
+        cls,_=overlay.load_gate(delivery,binding,zero_model=True)
+        EXECUTION_EFFECTS_STARTED=True
+        gate=cls(ns);gate.build();gate.start_nodes();gate.prepare_managed()
+        for letter in "ab":
+            actual=gate.result.get("actual_managed_config",{}).get(letter,{})
+            if (actual.get("approval_policy")!="never" or
+                any(type(actual.get(key)) is not int or actual[key]!=0 for key in ("request_max_retries","stream_max_retries"))):
+                raise RuntimeError("ZERO_ACTUAL_EFFECTIVE_CONFIGURATION")
+        gate.result["zero_actual_configuration_verified"]={"a":True,"b":True}
+        if gate.budget.started or gate.result.get("paid_turn_start_submissions")!=0:
+            raise RuntimeError("ZERO_ACTUAL_TURN_FORBIDDEN")
+        gate.result.update(status="PREPARATION_PASS_NATIVE_NOT_RUN",latest_CLI="0.160.1",
+            current_product_build_dirty=delivery.get("source_dirty"),actual_product_build_version=delivery.get("actual_product_build_version"),
+            credential_access=False,model_dispatch_authorized=False,provider_endpoint="SYNTHETIC_LOOPBACK_DENY",
+            current_product_compiled_input_equality_sha256=args.equality_sha)
+    except Exception as error:
+        if gate is None: raise
+        gate.result.update(status="FAIL",failure_phase=gate.phase,failure_class=type(error).__name__)
+    finally:
+        if gate is not None: gate.cleanup()
+    return gate.result["terminal_exit_code"]
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--enable-io-diagnostics",action="store_true")
     parser.add_argument("--cleanup-hard-stop-unix",type=int)
+    parser.add_argument("--prepare-native-zero",action="store_true")
+    for name in ("delivery","delivery-sha","compiled-input-equality","equality-sha","runtime-image","result-dir","current-commit","preparation-result","preparation-result-sha","preparation-review","preparation-review-sha"):
+        parser.add_argument("--"+name)
     parser.add_argument("--preflight",action="store_true")
     parser.add_argument("--execute-diagnostic",action="store_true")
     for name in ("binding-sha","go-receipt","go-receipt-sha","wiring-receipt","wiring-receipt-sha","unique-run"):
         parser.add_argument("--"+name)
     args=parser.parse_args(argv)
     try:
+        if args.prepare_native_zero:
+            return prepare_native_zero(args)
         if args.execute_diagnostic:
             return execute(args)
         if args.preflight:

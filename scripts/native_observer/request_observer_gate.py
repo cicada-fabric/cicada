@@ -300,7 +300,7 @@ def runtime_bootstrap_argv(arguments, binding, started):
     return argv
 
 
-def load_gate(delivery, binding, *, inspect_only=False):
+def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
     """Inspection imports public helpers only; execution requires future GO."""
     loaded = {}
     for name in ("migration", "managed_gate"):
@@ -348,12 +348,97 @@ def load_gate(delivery, binding, *, inspect_only=False):
             self.result["candidate_binding_sha256"] = args.candidate_binding_sha256
             self.result["shared_absolute_phase_seconds"] = {"normal":180,"terminal":210,"cleanup":240}
             self.result["observer_same_kernel_CLOCK_MONOTONIC"] = "REQUIRED_NOT_RUNTIME_VERIFIED"
-            self.result["matching_preparation_scope"].update(dispatch_only_wrapper_delta=False,
+            self.result.setdefault("matching_preparation_scope", {}).update(dispatch_only_wrapper_delta=False,
                 reuse_scope="UNCHANGED_PRODUCT_BASELINE_ONLY",
                 changed_observer_bootstrap_overlay_Runtime_preparation="NOT_RUN")
+        def build(self):
+            if not zero_model and not getattr(self.args,"latest_runtime",False):
+                return super().build()
+            self.step("verify_current_product_latest_runtime")
+            self.result["acceptance_mode"]="current-input-equal-product-latest-CLI161"
+            self.result["actual_product_source_dirty"]=delivery.get("source_dirty")
+            self.native_package = Path(delivery["package"])
+            self.hub_image = delivery["hub_image"]
+            self.test_image = self.args.runtime_image
+            for path, expected in ((self.native_package/"bin/cicada", delivery["binary_sha256"]),
+                                   (Path(delivery["helper"]), delivery["helper_sha256"])):
+                if hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
+                    raise RuntimeError("ZERO_DELIVERY_BINARY_CHANGED")
+            for image in (self.hub_image,self.test_image):
+                if self.inspect("image",image)["Id"]!=image:
+                    raise RuntimeError("ZERO_IMMUTABLE_IMAGE_CHANGED")
+            import shutil
+            helper=self.root/"cicada-v68fixture"
+            shutil.copyfile(delivery["helper"],helper); helper.chmod(0o700)
+            self.result.update(cicada_binary_sha256=delivery["binary_sha256"],
+                fixture_binary_sha256=delivery["helper_sha256"],hub_image_id=self.hub_image,
+                runtime_image_id=self.test_image,source_unchanged_during_gate=True,
+                product_sha256=delivery["binary_sha256"],helper_sha256=delivery["helper_sha256"],
+                product_revision=delivery["commit"],node_code_fingerprint=delivery["fingerprint"],
+                product_source_fingerprint=delivery["fingerprint"],current_delivery_sha256=self.args.delivery_sha,
+                producer_metadata_sha256=delivery["package_metadata_sha256"],
+                maximum_actual_turn_started=0 if zero_model else 5,
+                source_domain_comparison={"Node":"current compiled-input equality bound package",
+                    "Hub":"current compiled-input equality bound image","Runtime":"CLI0.160.1 owned image"})
+            self.result["preparation_binding"].update(runtime_image_id=self.test_image,
+                official_cli_sha256=self.args.expected_cli_sha256,expected_codex_version="codex-cli 0.160.1",
+                product_revision=delivery["commit"],node_code_checkpoint=delivery["commit"],
+                product_sha256=delivery["binary_sha256"],helper_sha256=delivery["helper_sha256"],
+                hub_image=self.hub_image,producer_fingerprint=delivery["fingerprint"],
+                source_fingerprint=delivery["fingerprint"],node_source_fingerprint=delivery["fingerprint"],
+                delivery_receipt_sha256=delivery["package_metadata_sha256"],
+                producer_metadata_sha256=delivery["package_metadata_sha256"],
+                maximum_actual_turn_started=0 if zero_model else 5,current_delivery_sha256=self.args.delivery_sha,
+                compiled_input_equality_sha256=self.args.equality_sha)
+        def register_submission(self, argv):
+            if (zero_model or getattr(self.args,"latest_runtime",False)) and argv[:2] in (["docker","run"],["docker","create"]) and self.args.runtime_image in argv:
+                if argv.count(self.args.runtime_image)!=1 or "--name" not in argv or "org.cicada.test.run="+self.run_id not in argv:
+                    raise RuntimeError("ZERO_RUNTIME_OWNERSHIP")
+                name=argv[argv.index("--name")+1]
+                if name not in (self.run_id+"-a",self.run_id+"-b"):
+                    actions=("bootstrap","tls-bootstrap") if zero_model else ("bootstrap","tls-bootstrap","approve")
+                    action=next((x for x in actions if name==self.run_id+"-helper-"+x),None)
+                    isolation=next((x for x in "ab" if name==self.run_id+"-helper-isolation-"+x),None)
+                    if isolation is not None:
+                        action="probe"
+                    image_index=argv.index(self.args.runtime_image)
+                    def exact_option(flag,value):
+                        return argv.count(flag)==1 and argv.index(flag)+1<len(argv) and argv[argv.index(flag)+1]==value
+                    if (action is None or argv[:2]!=["docker","run"] or "--rm" not in argv
+                        or "--pull=never" not in argv or not exact_option("--label","org.cicada.test.run="+self.run_id)
+                        or not exact_option("--network","container:"+self.hub if isolation is not None else "none")
+                        or not exact_option("--entrypoint","/fixture/cicada-v68fixture")
+                        or image_index+1>=len(argv) or argv[image_index+1]!=action):
+                        raise RuntimeError("ZERO_RUNTIME_NAME")
+                if zero_model:
+                    validate_zero_command(argv)
+                key=("container",name)
+                self.submitted_objects[key]={"name":name,"id":None,"image":self.args.runtime_image,
+                    "run_id":self.run_id,"auto_remove":"--rm" in argv,"command_exit":None}
+                self.containers[name]=self.args.runtime_image
+                return key
+            return super().register_submission(argv)
         runtime_bootstrap_argv = staticmethod(runtime_bootstrap_argv)
         def docker(self, *arguments, **kwargs):
             argv = list(map(str, arguments))
+            if zero_model:
+                if argv[:2]==["exec","-d"] and "python3" in argv and "-c" in argv:
+                    original_agent=self.start_services.__globals__["AGENT_BOOTSTRAP"]
+                    for letter,node in self.nodes.items():
+                        prefix=["exec","-d","-e","CICADA_CODEX_BIN="+self.start_services.__globals__["CODEX"],
+                            "-e","CODEX_HOME=/codex","-e","CICADA_HUB_ID="+self.meta["hub_id"],
+                            "-e","CICADA_NODE_PQTLS_CONFIG="+node["tls_config"],
+                            "-e","CICADA_NODE_STATE_DIR=/fixture/node-"+letter+"-state",
+                            "-e","CICADA_PQTLS_DIAGNOSTIC_FILE=/state/tls-diag/agent.jsonl",
+                            node["container"],"python3","-c"]
+                        if (argv[:len(prefix)]==prefix and len(argv)==len(prefix)+5
+                            and argv[len(prefix)]==original_agent and argv[-2:]==["sh",node["node_id"]]
+                            and argv[len(prefix)+1]=="-c"):
+                            argv[len(prefix)]=ZERO_AGENT_BOOTSTRAP
+                            self.result.setdefault("zero_agent_bootstrap",{})[letter]={
+                                "credential_access":False,"effective_program_sha256":hashlib.sha256(ZERO_AGENT_BOOTSTRAP.encode()).hexdigest()}
+                            break
+                validate_zero_command(["docker"]+argv)
             if len(argv) >= 7 and argv[:2] == ["exec", "-d"] and argv[3:6] == ["python3", "/state/server_bootstrap.py", "paid"]:
                 container = argv[2]
                 for filename in ("request_observer_bootstrap.py", "request-observer-integration.patch", "native_request_observer_io.py"):
@@ -392,5 +477,33 @@ def load_gate(delivery, binding, *, inspect_only=False):
         setattr(CandidateGate, name, function)
     CandidateGate.provider_forwarder = provider_namespace["provider"]
     CandidateGate.audit_rpc = audit_namespace["audit"]
-    CandidateGate.command = command_namespace["command"]
+    original_command=command_namespace["command"]
+    def guarded_command(self, argv, **kwargs):
+        if zero_model:
+            validate_zero_command(argv)
+        return original_command(self,argv,**kwargs)
+    CandidateGate.command = guarded_command
+    original_audit=CandidateGate.audit_rpc
+    def zero_audit(self, letter, direction, message, raw=None):
+        if zero_model and direction=="received" and type(message) is dict and message.get("method")=="turn/started":
+            self.result["actual_turn_started_event_count"]+=1
+            self.result["unexpected_zero_turn_started_observed"]=True
+        if zero_model and type(message) is dict and message.get("method") in {
+                "turn/start","turn/started","turn/completed","turn/steer","queue/submit"}:
+            raise RuntimeError("ZERO_TURN_OR_QUEUE_FORBIDDEN")
+        return original_audit(self,letter,direction,message,raw)
+    if zero_model:
+        CandidateGate.audit_rpc=zero_audit
     return CandidateGate, migration.LEGACY
+
+
+def validate_zero_command(argv):
+    """Closed zero lane: no credential metadata, paid bootstrap or provider dispatch."""
+    words=list(map(str,argv))
+    if any("/run/secrets/" in word or "/gpu1-share/" in word or
+           "API_KEY=" in word or "HTTPS_PROXY=" in word for word in words):
+        raise PermissionError("ZERO_CREDENTIAL_OR_PROVIDER_ARGV")
+    if any(word in {"paid","turn/start","turn/steer","queue-submit","queue/push"} for word in words):
+        raise PermissionError("ZERO_MODEL_ARGV")
+
+ZERO_AGENT_BOOTSTRAP = "import os,sys\nos.execvp('/bin/sh',['/bin/sh',*sys.argv[1:]])\n"

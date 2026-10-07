@@ -1,6 +1,7 @@
 """Synthetic standalone codec + installed public wiring checks, no native calls."""
 # Reuse the already reviewed pre-constructor external-effect tripwires and fixture.
-from test_native_request_observer import (observer, DiagnosticsChecks, FakeSocket,
+import test_native_request_observer as base_fixture
+from test_native_request_observer import (observer, FakeSocket,
     REQUEST, RESPONSE, THREAD, TURN, ASSOCIATION, denied)
 import contextlib
 import copy
@@ -19,20 +20,22 @@ import hashlib
 import time
 import pathlib
 from unittest.mock import patch
-_guards = contextlib.ExitStack()
+_import_guards = contextlib.ExitStack()
+_FORBIDDEN = '/synthetic/forbidden-io-credential'
 _CREDENTIAL = '/gpu1-share/data/cicada/secrets/cicada-acceptance-zzswitch-20261003.env'
 def guarded_path(original):
     def guarded(path,*args,**kwargs):
-        if isinstance(path,(str,bytes,os.PathLike)) and os.fsdecode(path)==_CREDENTIAL: denied()
+        if isinstance(path,(str,bytes,os.PathLike)) and os.fsdecode(path) in (_CREDENTIAL,_FORBIDDEN): denied()
         return original(path,*args,**kwargs)
     return guarded
 for owner,name in ((builtins,'open'),(io,'open'),(os,'open'),(os,'stat'),(os,'lstat')):
-    _guards.enter_context(patch.object(owner,name,guarded_path(getattr(owner,name))))
+    _import_guards.enter_context(patch.object(owner,name,guarded_path(getattr(owner,name))))
 import native_request_observer_io as codec
 sys.path.insert(0,str(Path(__file__).parent/'native_observer'))
 import request_observer_gate as gate
 import request_observer_run as run
 import request_observer_bootstrap as bootstrap
+_import_guards.close()
 
 
 def row(sequence=0,before=0,after=1):
@@ -46,6 +49,19 @@ def watermark(count):
 
 
 class IOChecks(unittest.TestCase):
+    def setUp(self):
+        # Per-test lifetime survives another module's teardown; before any fixture.
+        guards=contextlib.ExitStack()
+        self.addCleanup(guards.close)
+        for owner,name in ((builtins,'open'),(io,'open'),(os,'open'),(os,'stat'),(os,'lstat')):
+            guards.enter_context(patch.object(owner,name,guarded_path(getattr(owner,name))))
+        for owner,name,value in ((socket,'socket',base_fixture.unix_only),
+            (socket,'create_connection',denied),(socket,'getaddrinfo',denied),
+            (socket,'gethostbyname',denied),(subprocess,'Popen',denied),
+            (subprocess,'run',denied),(os,'system',denied),
+            (observer.ssl,'create_default_context',denied)):
+            guards.enter_context(patch.object(owner,name,value))
+
     def test_sink_export_and_canonical_privacy(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'synthetic.jsonl'; sink=codec.IOSink(path)
@@ -66,7 +82,7 @@ class IOChecks(unittest.TestCase):
             with self.assertRaises(ValueError):codec.validate_export(data,watermark(1))
 
     def test_ordinal_join_presend_failure_and_missing_join(self):
-        fixture=DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture()
+        fixture=base_fixture.DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture()
         instance.core_metadata=True
         instance.handle(client,None)
         joined=codec.join_records(diagnostics,originals,THREAD,{(THREAD,TURN)},watermark(1))
@@ -87,13 +103,13 @@ class IOChecks(unittest.TestCase):
         self.assertEqual(codec.join_records([],[],THREAD,set(),watermark(0))['status'],'UNKNOWN')
 
     def test_sink_failure_preserves_original_and_counter(self):
-        fixture=DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture(sink=denied)
+        fixture=base_fixture.DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture(sink=denied)
         instance.handle(client,ASSOCIATION)
         self.assertEqual(originals[0]['status'],'FORWARDED');self.assertEqual(instance.posts,1)
         self.assertFalse(instance.busy);self.assertTrue(instance.idle.is_set())
 
     def test_actual_publication_and_unix_quiesce(self):
-        DiagnosticsChecks().test_publication_precedes_idle_and_next_handler()
+        base_fixture.DiagnosticsChecks().test_publication_precedes_idle_and_next_handler()
 
     def test_default_off_and_fresh_cutoff_guard(self):
         with patch.object(Path,'open',denied),patch.object(Path,'lstat',denied),contextlib.redirect_stdout(io.StringIO()):
@@ -130,7 +146,7 @@ class IOChecks(unittest.TestCase):
             guarded_open=os.open
             def mapped_open(path,flags,*args,**kwargs):
                 if isinstance(path,(str,bytes,os.PathLike)):
-                    if os.fsdecode(path)==_CREDENTIAL: denied()
+                    if os.fsdecode(path) in (_CREDENTIAL,_FORBIDDEN): denied()
                     path=mapped(os.fsdecode(path))
                 return guarded_open(path,flags,*args,**kwargs)
             original_quiesce=observer.Observer.quiesce
@@ -151,7 +167,7 @@ class IOChecks(unittest.TestCase):
             self.assertEqual(created_watermark.stat().st_mode & 0o777,0o600)
             self.assertIsInstance(namespace['observer'].io_sink,codec.IOSink)
             self.assertEqual([item[0] for item in observed],['quiesce','seal'])
-            fixture=DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture()
+            fixture=base_fixture.DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture()
             instance.handle(client,ASSOCIATION)
             (base/'tmp/cicada-request-observer-records.jsonl').write_text(json.dumps(originals[0])+'\n')
             (base/'tmp/cicada-request-observer-io.jsonl').write_bytes(codec.canonical(diagnostics[0]))
@@ -165,7 +181,7 @@ class IOChecks(unittest.TestCase):
                 self.assertEqual(result['io_sibling']['status'],expected)
                 self.assertNotIn('PUBLIC_ALPHA',output.getvalue())
         for owner,name in ((builtins,'open'),(io,'open'),(os,'open'),(os,'stat'),(os,'lstat')):
-            with self.assertRaises(AssertionError):getattr(owner,name)(_CREDENTIAL)
+            with self.assertRaises(AssertionError):getattr(owner,name)(_FORBIDDEN)
 
 
 if __name__=='__main__':

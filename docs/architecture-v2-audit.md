@@ -1,3 +1,11 @@
+# Current audit entry — 2026-10-07
+
+v0.1 remains **PARTIAL**. Pinned CLI 0.160.1 and current-product zero-model preparation passed; the single paid G1 attempt failed at A1, with A3 not reached. Local second-request TLS failure occurred before a second POST; exact subtype/provider cause remains UNKNOWN. Later resource absence does not overwrite original cleanup/EOF failures.
+
+See [Native I/O validation](native-request-observer-io-validation.md) and [current release evidence](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence) for source-bound offline checks and retained failures. Go, schema and Client contracts are unchanged by this documentation closeout. Next work is only a separately reviewed zero-credential, zero-POST TLS-only probe; no probe or model execution is authorized here.
+
+## Historical audit — entire prior record preserved
+
 # Architecture v2.3 当前事实审计
 
 ## 2026-10-03 current audit — bounded checkpoint PASS; product PARTIAL

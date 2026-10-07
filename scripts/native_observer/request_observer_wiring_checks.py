@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import queue
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -30,6 +31,221 @@ import request_observer_bootstrap as bootstrap
 
 
 class WiringChecks(unittest.TestCase):
+    def test_latest_zero_helper_registration(self):
+        """Actual inherited helper argv: prior rejection and finite owned admission."""
+        old_source='def register_submission(self, argv):\n            if (zero_model or getattr(self.args,"latest_runtime",False)) and argv[:2] in (["docker","run"],["docker","create"]) and self.args.runtime_image in argv:\n                if argv.count(self.args.runtime_image)!=1 or "--name" not in argv or "org.cicada.test.run="+self.run_id not in argv:\n                    raise RuntimeError("ZERO_RUNTIME_OWNERSHIP")\n                name=argv[argv.index("--name")+1]\n                if name not in (self.run_id+"-a",self.run_id+"-b"):\n                    raise RuntimeError("ZERO_RUNTIME_NAME")\n                key=("container",name)\n                self.submitted_objects[key]={"name":name,"id":None,"image":self.args.runtime_image,\n                    "run_id":self.run_id,"auto_remove":"--rm" in argv,"command_exit":None}\n                self.containers[name]=self.args.runtime_image\n                return key\n            return super().register_submission(argv)'
+        namespace={"zero_model":True}
+        exec(compile("class Prior:\n"+"\n".join("    "+line for line in old_source.splitlines()),"<public-prior-register>","exec"),namespace)
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.BINDING.parent.parent/"native-observer-runtime-161-20261007"/"cicada-product826-pq-20261007a"/"actual-delivery.NONAUTH.json")
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
+            fixture=object.__new__(cls)
+            fixture.args=types.SimpleNamespace(runtime_image=run.LATEST_RUNTIME,latest_runtime=True)
+            fixture.run_id="cicada-two-turn-zerocli161-synthetic"
+            fixture.root=Path("/synthetic-zero-fixture")
+            fixture.native_package=Path("/synthetic-public-package")
+            fixture.test_image=run.LATEST_RUNTIME
+            fixture.submitted_objects={};fixture.containers={}
+            captured=[]
+            fixture.command=lambda argv,**kwargs:captured.append(argv) or (0,b"",b"")
+            for action in ("bootstrap","tls-bootstrap"):
+                fixture.helper(action)
+                argv=captured[-1]
+                with self.subTest(prior=action),self.assertRaisesRegex(RuntimeError,"ZERO_RUNTIME_NAME"):
+                    namespace["Prior"].register_submission(fixture,argv)
+                key=fixture.register_submission(argv)
+                self.assertEqual(key,("container",fixture.run_id+"-helper-"+action))
+                self.assertEqual(fixture.submitted_objects[key]["image"],run.LATEST_RUNTIME)
+                self.assertTrue(fixture.submitted_objects[key]["auto_remove"])
+                for flag,value in (("--name",fixture.run_id+"-helper-unknown"),
+                    ("--label","org.cicada.test.run=other"),("--network","host"),
+                    ("--entrypoint","/fixture/other")):
+                    bad=list(argv);bad[bad.index(flag)+1]=value
+                    with self.subTest(denial=flag),self.assertRaises(RuntimeError):fixture.register_submission(bad)
+                bad=list(argv);bad[bad.index("--name")+1]=fixture.run_id+"-c"
+                with self.assertRaises(RuntimeError):fixture.register_submission(bad)
+                bad=list(argv)+["/run/secrets/provider.env"]
+                with self.assertRaises(PermissionError):fixture.register_submission(bad)
+                bad=list(argv);bad[bad.index(run.LATEST_RUNTIME)]="sha256:"+"0"*64
+                with self.assertRaises(RuntimeError):fixture.register_submission(bad)
+
+            fixture.hub=fixture.run_id+"-hub"
+            for letter in "ab":
+                argv=["docker","run","--rm","--pull=never","--name",fixture.run_id+"-helper-isolation-"+letter,
+                    "--label","org.cicada.test.run="+fixture.run_id,"--network","container:"+fixture.hub,
+                    "--user","1000:1000","-v",str(fixture.root)+":/fixture:ro",
+                    "-v",str(fixture.native_package)+":/opt/cicada-pqtls:ro",
+                    "-e","LD_LIBRARY_PATH=/opt/cicada-pqtls/lib","-e","OPENSSL_CONF=/dev/null",
+                    "--entrypoint","/fixture/cicada-v68fixture",run.LATEST_RUNTIME,"probe","--address","192.0.2.1:19437"]
+                with self.assertRaisesRegex(RuntimeError,"ZERO_RUNTIME_NAME"):
+                    namespace["Prior"].register_submission(fixture,argv)
+                self.assertEqual(fixture.register_submission(argv),("container",fixture.run_id+"-helper-isolation-"+letter))
+                bad=list(argv);bad[bad.index("--network")+1]="container:other"
+                with self.assertRaises(RuntimeError):fixture.register_submission(bad)
+                bad=list(argv);bad[bad.index(run.LATEST_RUNTIME)+1]="bootstrap"
+                with self.assertRaises(RuntimeError):fixture.register_submission(bad)
+
+            paid_cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=False)
+            paid=object.__new__(paid_cls)
+            paid.args=fixture.args;paid.run_id=fixture.run_id;paid.root=fixture.root
+            paid.native_package=fixture.native_package;paid.test_image=fixture.test_image
+            paid.submitted_objects={};paid.containers={}
+            approve=[]
+            paid.command=lambda argv,**kwargs:approve.append(argv) or b""
+            paid.helper("approve")
+            argv=approve[0]
+            self.assertEqual(paid.register_submission(argv),("container",paid.run_id+"-helper-approve"))
+            with self.assertRaisesRegex(RuntimeError,"ZERO_RUNTIME_NAME"):fixture.register_submission(argv)
+
+    def test_zero_agent_bootstrap_credential_free_exact_launch(self):
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
+            fixture=object.__new__(cls)
+            fixture.nodes={"a":{"container":"synthetic-a","gateway":"192.0.2.1","hub_port":"8443",
+                "tls_config":"/fixture/synthetic-tls.json","node_id":"synthetic-node"}}
+            fixture.meta={"hub_id":"synthetic-hub"};fixture.result={}
+            calls=[]
+            class BoundaryReached(Exception):pass
+            def boundary(argv,**kwargs):
+                calls.append(argv)
+                if len(calls)==2:raise BoundaryReached()
+                return b""
+            fixture.command=boundary
+            candidate_docker=cls.docker.__get__(fixture,cls)
+            forwarder=fixture.start_services.__globals__["FORWARDER"]
+            def synthetic_external_boundary(*arguments,**kwargs):
+                if forwarder in arguments:
+                    # Exact first launch's file-copy/target setup is external fixture I/O.
+                    calls.append(["docker",*arguments])
+                    return b""
+                return candidate_docker(*arguments,**kwargs)
+            fixture.docker=synthetic_external_boundary
+            with self.assertRaises(BoundaryReached):fixture.start_services("a")
+            agent=calls[1];program=agent[agent.index("python3")+2]
+            self.assertEqual(program,gate.ZERO_AGENT_BOOTSTRAP)
+            self.assertNotIn("/run/secrets/",program);self.assertNotIn("API_KEY",program)
+            original=fixture.start_services.__globals__["AGENT_BOOTSTRAP"]
+            self.assertIn("/run/secrets/provider.env",original)
+            count=len(calls)
+            bad=agent[1:];bad[bad.index("python3")+2]=original+"\n# near miss"
+            with self.assertRaises(PermissionError):fixture.docker(*bad)
+            self.assertEqual(len(calls),count)
+            self.assertFalse(fixture.result["zero_agent_bootstrap"]["a"]["credential_access"])
+
+    def test_zero_installed_managed_rpc_initialize_and_send_guard(self):
+        """Real ManagedRPC/TypedRPC audit closure; only socket transport is synthetic."""
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
+            source_namespace=cls.start_managed_servers.__globals__
+            actual_config=source_namespace["base"].isolated_runtime_config(run.ZERO_CONFIG)
+            self.assertIn('approval_policy = "never"',actual_config)
+            self.assertIn('request_max_retries = 0',actual_config)
+            self.assertIn('stream_max_retries = 0',actual_config)
+            self.assertIn('model = "gpt-5.6-luna"',actual_config)
+            rpc_class=source_namespace["ManagedRPC"]
+            fixture=object.__new__(cls)
+            fixture.audit_lock=threading.Lock();fixture.audit_bytes={}
+            fixture.audit_files={"a":io.StringIO()};fixture.projection_files={"a":io.StringIO()}
+            fixture.result={"actual_turn_started_event_count":0};fixture.nodes={};fixture.audit_counts={};fixture.managed_diagnostics={}
+            fixture.root=Path("/synthetic-zero-fixture");fixture.phase="synthetic_initialize";fixture.args=types.SimpleNamespace(run_native=False)
+            fixture.budget=types.SimpleNamespace(threads={},started=[],completed=[])
+            aborts=[];sent=[]
+            class LocalClient:
+                def __init__(self):self.responses=queue.Queue();self.last_received_bytes=None;self.closed=False
+                def send_obj(self,message):
+                    sent.append(message)
+                    if "id" in message:self.responses.put({"id":message["id"],"result":{"synthetic":True}})
+                def recv_obj(self,timeout=.2):
+                    if self.closed:raise EOFError()
+                    try:value=self.responses.get(timeout=timeout)
+                    except queue.Empty:raise TimeoutError()
+                    self.last_received_bytes=json.dumps(value).encode();return value
+                def close(self):self.closed=True
+            client=LocalClient();wire_bytes=[]
+            class MemoryWire(io.BytesIO):
+                def close(self):
+                    if not self.closed:wire_bytes.append(self.getvalue())
+                    super().close()
+            expected_wire=fixture.root/"managed-a-wire-0001.raw"
+            def synthetic_open(path,flags,mode=0o777,*unused,**keywords):
+                if Path(path)!=expected_wire or flags!=(os.O_WRONLY|os.O_CREAT|os.O_EXCL) or mode!=0o600:
+                    raise PermissionError("NON_SYNTHETIC_WIRE_IO")
+                return 900001
+            def synthetic_fdopen(fd,mode,*unused,**keywords):
+                if fd!=900001 or mode!="wb":raise PermissionError("NON_SYNTHETIC_WIRE_FD")
+                return MemoryWire()
+            module=sys.modules[rpc_class.__module__]
+            with patch.object(module,"WSUnixClient",return_value=client),patch.object(os,"open",synthetic_open),patch.object(os,"fdopen",synthetic_fdopen):
+                rpc=rpc_class("SYNTHETIC_NO_SOCKET","a",lambda *unused:None,fixture.audit_rpc,
+                    aborts.append,lambda seconds:min(seconds,2))
+                try:
+                    self.assertEqual(rpc.request("initialize",{"clientInfo":{"name":"synthetic","version":"0"}}),{"synthetic":True})
+                    self.assertIsNone(rpc.error)
+                    before=len(sent)
+                    with self.assertRaises(RuntimeError):rpc.request("turn/start",{})
+                    self.assertEqual(len(sent),before)
+                    self.assertEqual(len(aborts),1)
+                    journal=[json.loads(line) for line in fixture.audit_files["a"].getvalue().splitlines()]
+                    self.assertEqual([row["direction"] for row in journal],["sent","received"])
+                    self.assertEqual(journal[0]["message"]["method"],"initialize")
+                    self.assertEqual(journal[0]["message"]["id"],1)
+                    self.assertEqual(journal[1]["message"],{"id":1,"result":{"synthetic":True}})
+                    projection=[json.loads(line) for line in fixture.projection_files["a"].getvalue().splitlines()]
+                    self.assertEqual(projection[1]["message_sha256"],hashlib.sha256(client.last_received_bytes).hexdigest())
+                    self.assertEqual(projection[1]["message_size"],len(client.last_received_bytes))
+                finally:rpc.close()
+                self.assertFalse(rpc.reader.is_alive())
+                self.assertTrue(rpc.closed)
+                self.assertEqual(fixture.audit_counts,{"a":1})
+                self.assertEqual(len(wire_bytes),1)
+                self.assertEqual(json.loads(wire_bytes[0]),{"id":1,"result":{"synthetic":True}})
+
+    def test_latest_zero_lane_public_guards(self):
+        """Pure public inputs only; no fixture constructor or external operations."""
+        sha="a"*64
+        delivery={key:sha for key in ("commit","fingerprint","binary_sha256","helper_sha256",
+            "package_metadata_sha256","hub_receipt_sha256")}
+        delivery.update(hub_image="sha256:"+sha,package="/synthetic/package",helper="/synthetic/helper",
+            hub_receipt_path="/synthetic/hub-receipt",source_repo="/synthetic/source")
+        equality={"status":"COMPILED_INPUTS_EXACT","current_commit":"b"*40,
+            "artifact_compiled_inputs_sha256":sha,"current_compiled_inputs_sha256":sha,
+            "artifact_binary_sha256":sha}
+        receipt={"status":"PASS","candidate_binding_sha256":sha,"Runtime_calls":0,"model_calls":0}
+        raw=b"public synthetic"
+        args=types.SimpleNamespace(execute_diagnostic=False,enable_io_diagnostics=False,
+            unique_run="cicada-two-turn-zerocli161-20261007a",runtime_image=run.LATEST_RUNTIME,
+            cleanup_hard_stop_unix=10000,binding_sha=sha,wiring_receipt="receipt",
+            wiring_receipt_sha=hashlib.sha256(raw).hexdigest(),delivery="delivery",
+            delivery_sha=hashlib.sha256(raw).hexdigest(),compiled_input_equality="equality",
+            equality_sha=hashlib.sha256(raw).hexdigest(),current_commit="b"*40,
+            result_dir=str(run.BINDING.parent/"native-preparation-cicada-two-turn-zerocli161-20261007a"))
+        original_bounded_json=run.bounded_json
+        def read(path,*unused):
+            if str(path)==run.CREDENTIAL:return original_bounded_json(path)
+            return {"receipt":receipt,"delivery":delivery,"equality":equality}[str(path)],raw
+        with run.deny_preflight_effects(),patch.object(run,"verify_binding",return_value=({},sha)),             patch.object(run,"bounded_json",side_effect=read),patch.object(run,"digest",return_value=sha),             patch.object(run.time,"time",return_value=1000),patch.object(Path,"exists",return_value=False):
+            self.assertEqual(run.zero_inputs(args)[2],delivery)
+            for key,value in (("execute_diagnostic",True),("runtime_image",run.RUNTIME),
+                              ("cleanup_hard_stop_unix",1100),("unique_run","old-run"),("delivery",run.CREDENTIAL)):
+                changed=copy.copy(args);setattr(changed,key,value)
+                with self.subTest(guard=key),self.assertRaises(PermissionError):run.zero_inputs(changed)
+            equality["artifact_compiled_inputs_sha256"]="c"*64
+            with self.assertRaises(PermissionError):run.zero_inputs(args)
+        # Preparation alone never permits paid dispatch; missing proof stops before public reads.
+        with run.deny_preflight_effects(),patch.object(run,"bounded_json",side_effect=AssertionError("NO_PREP_READ")):
+            with self.assertRaisesRegex(PermissionError,"LATEST_RUNTIME_NOT_READY"):
+                run.execute(types.SimpleNamespace(preparation_result=None,preparation_result_sha=None))
+        for argv in (["docker","exec","owned","paid"],
+                     ["docker","run","--mount","src=/gpu1-share/synthetic,dst=/run/secrets/provider.env"],
+                     ["docker","exec","owned","turn/start"]):
+            with self.subTest(argv_guard=True),self.assertRaises(PermissionError):gate.validate_zero_command(argv)
+        gate.validate_zero_command(["docker","exec","owned","python3","/state/server_bootstrap.py","offline"])
+
     def test_default_off_no_file_or_legacy_access(self):
         def deny(*args,**kwargs):
             raise AssertionError("DEFAULT_OFF_EFFECT")
