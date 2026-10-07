@@ -2,7 +2,20 @@
 
 <a id="current-closeout"></a>
 
-## Current checked-PQ MCP / Native G2-G3 scope — PARTIAL
+## Current runner scope — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Current wiring | Full30 methods/108 subtests PASS; targeted and V2 counts remain separate. |
+| Fresh zero preparation | PASS, independently reviewed; zero turns/credentials, genuine connection1→2→3, both EOFs and owned absence. |
+| Latest Native G2/G3 | FAIL: six actual turns/four manual; five same-original witnesses completed, B Receive/Reply proved; A auto6 started, final/context NOT_PROVEN. |
+| Native cleanup | Original false/A EOF UNKNOWN/B EOF confirmed; later 16 Docker targets absent and two UDS removed. |
+| Runner corrections | Genuine pre-stop freshness, drained-EOF connection cancellation, both-target retarget, G2 manual cap4; strict TLS/5s/total6/POST16 unchanged. |
+| Completion | G2/G3 PARTIAL; old G1 PASS is old-product scoped; Control calls NOT_INSTRUMENTED and external gates not upgraded. |
+
+See [detailed current evidence](native-request-observer-io-validation.md). Contract/wire/catalog/schema remain 1.6.4/1/55/58.
+
+## Historical checked-PQ MCP / Native G2-G3 scope — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

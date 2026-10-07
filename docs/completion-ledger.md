@@ -1,6 +1,10 @@
 # Architecture v2.3 completion ledger
 
-## Current scoped checkpoint — 2026-10-07
+## Current scoped checkpoint — runner QA, Native FAIL
+
+Source-bound runner QA and fresh zero preparation passed, but the sole latest six-turn Native G2/G3 run failed with A final/context completion not proved, so G2–G5/V67 and overall v0.1 remain PARTIAL; historical G1 acceptance and ledger counts retain their original scopes ([evidence](native-request-observer-io-validation.md)).
+
+## Historical scoped checkpoint — 2026-10-07
 
 Historical G1 retains its old-product scoped PASS; current checked-PQ/wiring/zero gates passed but the sole current Native G2/G3 run failed before its third turn, leaving G2–G5/V67 and overall v0.1 PARTIAL ([Native evidence](native-request-observer-io-validation.md)).
 

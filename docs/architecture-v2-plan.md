@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — proposed closed restart diagnosis
+## Current next step — source-only observer-path audit
+
+The latest six-turn Native run failed with an unclassified response-head framing failure; A final/context completion is not proved. Next, audit source only to assess decoupling the default-OFF provider HTTP observer from the acceptance critical path, or an evidence-backed standards-based bounded parsing correction. Neither change nor another execution is authorized here. Preserve strict ALPHA/BETA/reply criteria, six-turn G2 budget, PQ/TLS, counters, privacy and absolute deadlines; do not infer provider fault or context loss. G2/G3, G4/G5/V67 and current external gates remain unclosed. See [terminal evidence and limits](native-request-observer-io-validation.md).
+
+## Historical next step — proposed closed restart diagnosis
 
 First propose bounded closed-enum error recording and a zero-model Hub-restart reproduction to distinguish the B fresh-PQ-witness predicate from its shared limit check. Only after evidence review decide whether to authorize one bounded Native run; no rerun is authorized here. Keep strict context/original-thread criteria and scenario budgets unchanged. G3 management acceptance, G4/G5/V67, physical Nodes and public/environment gates remain unclosed. [Evidence and source scopes](native-request-observer-io-validation.md) distinguish current gate/zero PASS from current Native FAIL and historical G1 PASS.
 

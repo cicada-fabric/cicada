@@ -343,6 +343,7 @@ def execute(args):
         offline_checks_sha=args.wiring_receipt_sha,artifact_started=started,go=go,credential_file=CREDENTIAL,
         preparation_result=args.preparation_result,preparation_result_sha256=args.preparation_result_sha,
         latest_runtime=True,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,
+        closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False),
         test_request_observer=True,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
     try:
@@ -596,7 +597,9 @@ def zero_inputs(args):
 
 def _zero_inputs_public(args):
     """Public-only fail-closed validation; no constructor or Docker before return."""
-    if args.execute_diagnostic or getattr(args,"enable_io_diagnostics",False):
+    if any(type(getattr(args,key,False)) is not bool for key in ("reproduce_zero_hub_restart","enable_closed_failure_diagnostics")):
+        raise PermissionError("ZERO_DIAGNOSTIC_OPT_IN")
+    if args.execute_diagnostic or getattr(args,"enable_io_diagnostics",False) or any(getattr(args,key,None) is not None for key in ("go_receipt","go_receipt_sha","preparation_result","preparation_result_sha","preparation_review","preparation_review_sha")):
         raise PermissionError("ZERO_PAID_FLAGS")
     if not re.fullmatch(r"cicada-two-turn-zerocli161-[a-z0-9]{8,24}",args.unique_run or ""):
         raise PermissionError("ZERO_UNIQUE_RUN")
@@ -658,6 +661,7 @@ def prepare_native_zero(args):
         source_binding_sha=sha,offline_checks_sha=args.wiring_receipt_sha,
         artifact_started=started,go={"unique_run":args.unique_run,"max_native_turns":0,"max_manual_turns":0,
             "max_automatic_turns":0},credential_file="ZERO_LANE_NO_CREDENTIAL_REFERENCE",
+        closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False) or getattr(args,"reproduce_zero_hub_restart",False),
         preparation_result=None,preparation_result_sha256=None,test_request_observer=False,
         candidate_binding_sha256=sha,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,latest_runtime=True)
     gate=None
@@ -672,6 +676,10 @@ def prepare_native_zero(args):
                 any(type(actual.get(key)) is not int or actual[key]!=0 for key in ("request_max_retries","stream_max_retries"))):
                 raise RuntimeError("ZERO_ACTUAL_EFFECTIVE_CONFIGURATION")
         gate.result["zero_actual_configuration_verified"]={"a":True,"b":True}
+        if gate.budget.started or gate.result.get("paid_turn_start_submissions")!=0:
+            raise RuntimeError("ZERO_ACTUAL_TURN_FORBIDDEN")
+        if getattr(args,"reproduce_zero_hub_restart",False) is True:
+            overlay.reproduce_owned_zero_restart(gate)
         if gate.budget.started or gate.result.get("paid_turn_start_submissions")!=0:
             raise RuntimeError("ZERO_ACTUAL_TURN_FORBIDDEN")
         gate.result.update(status="PREPARATION_PASS_NATIVE_NOT_RUN",latest_CLI="0.160.1",
@@ -692,6 +700,8 @@ def main(argv=None):
     parser.add_argument("--enable-io-diagnostics",action="store_true")
     parser.add_argument("--cleanup-hard-stop-unix",type=int)
     parser.add_argument("--prepare-native-zero",action="store_true")
+    parser.add_argument("--reproduce-zero-hub-restart",action="store_true")
+    parser.add_argument("--enable-closed-failure-diagnostics",action="store_true")
     for name in ("delivery","delivery-sha","compiled-input-equality","equality-sha","runtime-image","result-dir","current-commit","preparation-result","preparation-result-sha","preparation-review","preparation-review-sha"):
         parser.add_argument("--"+name)
     parser.add_argument("--preflight",action="store_true")
@@ -700,6 +710,8 @@ def main(argv=None):
         parser.add_argument("--"+name)
     args=parser.parse_args(argv)
     try:
+        if args.reproduce_zero_hub_restart and (not args.prepare_native_zero or args.execute_diagnostic):
+            raise PermissionError("ZERO_RESTART_MODE")
         if args.prepare_native_zero:
             return prepare_native_zero(args)
         if args.execute_diagnostic:

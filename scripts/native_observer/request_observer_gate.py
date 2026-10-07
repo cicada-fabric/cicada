@@ -7,6 +7,8 @@ import sys
 import time
 import types
 import threading
+import stat
+import os
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -270,6 +272,335 @@ def method_namespace(function):
     return namespace
 
 
+
+# Closed host-only diagnostic metadata; never serialized exception text.
+CLOSED_FAILURE_REASONS = {
+    "PQTLS diagnostic NOT_PROVEN": "PQ_DIAGNOSTIC_UNPROVEN",
+    "actual protected PQTLS state mismatch": "PQ_PROFILE_MISMATCH",
+    "actual PQTLS ready/wake NOT_PROVEN": "PQ_READY_UNPROVEN",
+    "owned provider transport failure": "PROVIDER_TRANSPORT_FAILURE",
+    "CANDIDATE_ABSOLUTE_DEADLINE": "ABSOLUTE_DEADLINE",
+    "PQ_RESTART_ANCHOR_MISSING": "RESTART_ANCHOR_MISSING",
+    "PQ_RESTART_ANCHOR_FILE_SCOPE": "RESTART_ANCHOR_FILE_SCOPE",
+    "PQ_RESTART_ANCHOR_MALFORMED": "RESTART_ANCHOR_MALFORMED",
+    "PQ_RESTART_ANCHOR_BOUNDS": "RESTART_ANCHOR_BOUNDS",
+    "PQ_RESTART_ANCHOR_HUB_OWNERSHIP": "RESTART_ANCHOR_OWNERSHIP",
+}
+
+
+def closed_failure(error):
+    kind = None
+    for builtin, label in ((RuntimeError, "RUNTIME_ERROR"), (TimeoutError, "TIMEOUT_ERROR"),
+                           (ValueError, "VALUE_ERROR"), (OSError, "OS_ERROR")):
+        if type(error) is builtin:
+            kind = label
+            break
+    if kind is None:
+        return {"type": "UNKNOWN", "reason": "UNKNOWN"}
+    # Exact builtins only: subclasses can supply hostile args accessors.
+    args = error.args
+    reason = (CLOSED_FAILURE_REASONS.get(args[0], "UNKNOWN")
+              if type(args) is tuple and len(args) == 1 and type(args[0]) is str else "UNKNOWN")
+    if not ((type(error) is RuntimeError and reason != "ABSOLUTE_DEADLINE") or
+            (type(error) is TimeoutError and reason == "ABSOLUTE_DEADLINE")):
+        reason = "UNKNOWN"
+    return {"type": kind, "reason": reason}
+
+
+
+CLOSED_OPERATIONS = (
+    "explicit_zero_model_second_hub_restart",
+    "explicit_owner_second_membership_authorization",
+    "zero_model_owned_hub_restart_transport",
+    "original_managed_join_and_context",
+    "original_a_authorized_second_group_join_leave",
+    "g2_actual_hidden_members_and_revoked_link_denial",
+    "g3_restored_control_authenticated_encrypted_snapshot",
+)
+
+
+def closed_restart_state(owner):
+    operation = getattr(owner, "phase", None)
+    operation = operation if type(operation) is str and operation in CLOSED_OPERATIONS else "UNKNOWN"
+    def count(key):
+        value = owner.result.get(key)
+        return value if type(value) is int and 0 <= value <= 6 else None
+    aborted = getattr(owner, "aborted", None)
+    errors = getattr(owner, "provider_errors", None)
+    adapters = getattr(owner, "provider_adapters", None)
+    provider_failed = None
+    if type(errors) is dict:
+        if len(errors):
+            provider_failed = True
+        elif type(adapters) is dict and len(adapters) <= 2:
+            values = [getattr(adapter, "failures", None) for adapter in adapters.values()]
+            if all(type(value) is int and 0 <= value <= 65536 for value in values):
+                provider_failed = any(value > 0 for value in values)
+    return {"operation": operation, "actual_turn_started_count": count("actual_turn_started_count"),
+            "manual_submission_count": count("paid_turn_start_submissions"),
+            "aborted": aborted if type(aborted) is bool else None,
+            "provider_failed": provider_failed}
+
+
+def note_closed_failure(owner, error, boundary, side, fresh=None):
+    try:
+        try:
+            stamp = time.monotonic_ns()
+            if type(stamp) is not int or stamp < 0:
+                stamp = None
+        except BaseException:
+            stamp = None
+        rows = owner.result.setdefault("closed_restart_failures", [])
+        if type(rows) is not list or len(rows) >= 16:
+            return
+        row = closed_failure(error)
+        try:
+            row.update(closed_restart_state(owner))
+        except BaseException:
+            row.update(operation="UNKNOWN", actual_turn_started_count=None, manual_submission_count=None, aborted=None, provider_failed=None)
+        phase = owner.policy.phase
+        row.update(sequence=len(rows),
+                   boundary=boundary if type(boundary) is str and boundary in ("LIMIT", "FRESH_WITNESS", "WITNESS", "RESTART_ANCHOR") else "UNKNOWN",
+                   require_fresh=fresh if type(fresh) is bool else None,
+                   side=side if type(side) is str and side in ("a", "b") else "UNKNOWN",
+                   phase=phase if type(phase) is str and phase in ("normal", "terminal", "cleanup") else "UNKNOWN",
+                   host_monotonic_ns=stamp, clock_domain="HOST_ONLY",
+                   cross_clock_order="NOT_VERIFIED")
+        rows.append(row)
+    except BaseException:
+        pass
+
+
+def install_closed_failure_diagnostics(owner):
+    """Instance-only wrappers; original exceptions and limits propagate unchanged."""
+    original_limit = owner.limit
+    original_witness = owner.pq_transport_witness
+    context = threading.local()
+    owner._closed_failure_context = context
+    def limit(maximum):
+        try:
+            return original_limit(maximum)
+        except BaseException as error:
+            note_closed_failure(owner, error, "LIMIT", getattr(context, "side", "UNKNOWN"), getattr(context, "fresh", None))
+            context.limit_failed = True
+            context.last_limit_error = error
+            raise
+    def witness(letter, require_wake=False, require_fresh=False):
+        previous = (getattr(context, "side", "UNKNOWN"), getattr(context, "limit_failed", False), getattr(context, "fresh", None))
+        context.side, context.limit_failed, context.fresh = letter, False, require_fresh
+        try:
+            return original_witness(letter, require_wake=require_wake, require_fresh=require_fresh)
+        except BaseException as error:
+            if not context.limit_failed:
+                note_closed_failure(owner, error, "FRESH_WITNESS" if require_fresh else "WITNESS", letter, require_fresh)
+            raise
+        finally:
+            context.side, context.limit_failed, context.fresh = previous
+    owner.limit, owner.pq_transport_witness = limit, witness
+
+
+
+PQ_DIAGNOSTIC_MAX = 2 << 20
+PQ_DIAGNOSTIC_ROWS_MAX = 65536
+
+
+def pq_file_scope(value):
+    if (not stat.S_ISREG(value.st_mode) or stat.S_IMODE(value.st_mode) != 0o600 or
+            not 0 <= value.st_size <= PQ_DIAGNOSTIC_MAX):
+        raise RuntimeError("PQ_RESTART_ANCHOR_FILE_SCOPE")
+    return (value.st_dev, value.st_ino, value.st_uid, value.st_mode)
+
+
+def pq_diagnostic_ids(raw):
+    if type(raw) is not bytes or not raw or len(raw) > PQ_DIAGNOSTIC_MAX or not raw.endswith(b"\n"):
+        raise RuntimeError("PQ_RESTART_ANCHOR_MALFORMED")
+    lines = raw.splitlines()
+    if len(lines) > PQ_DIAGNOSTIC_ROWS_MAX:
+        raise RuntimeError("PQ_RESTART_ANCHOR_BOUNDS")
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise RuntimeError("PQ_RESTART_ANCHOR_MALFORMED")
+            value[key] = item
+        return value
+    ids = set()
+    try:
+        for line in lines:
+            row = json.loads(line, object_pairs_hook=unique_object)
+            if (type(row) is not dict or type(row.get("schema_version")) is not int or row["schema_version"] != 1 or
+                    type(row.get("event")) is not str or row["event"] not in ("got-conn", "ready", "wake") or
+                    type(row.get("observation_id")) is not str or not 1 <= len(row["observation_id"]) <= 256):
+                raise RuntimeError("PQ_RESTART_ANCHOR_MALFORMED")
+            ids.add(row["observation_id"])
+    except (ValueError, UnicodeError):
+        raise RuntimeError("PQ_RESTART_ANCHOR_MALFORMED") from None
+    return frozenset(ids)
+
+
+def pq_diagnostic_snapshot(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        scope = pq_file_scope(before)
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(PQ_DIAGNOSTIC_MAX + 1)
+        after = os.fstat(fd)
+        current = path.lstat()
+        if (scope != pq_file_scope(after) or scope != pq_file_scope(current) or
+                after.st_size < len(raw) or current.st_size < len(raw)):
+            raise RuntimeError("PQ_RESTART_ANCHOR_FILE_SCOPE")
+        return {"scope": scope, "prefix": raw, "ids": pq_diagnostic_ids(raw)}
+    finally:
+        os.close(fd)
+
+
+def anchor_owned_restart(owner, target):
+    """Prove the current Hub, then snapshot BOTH files before submitting stop."""
+    side = "UNKNOWN"
+    try:
+        actual = owner.inspect("container", owner.hub)
+        if (target not in (owner.hub, actual.get("Id")) or
+                actual.get("Id") != owner.result["hub_forwarder_refresh"][0]["owned_hub_container_id"] or
+                actual.get("Image") != owner.hub_image or
+                (actual.get("Config", {}).get("Labels") or {}).get("org.cicada.test.run") != owner.run_id):
+            raise RuntimeError("PQ_RESTART_ANCHOR_HUB_OWNERSHIP")
+        anchors = {}
+        for letter in "ab":
+            side = letter
+            node = owner.nodes[letter]
+            path = node["paths"]["state"] / "tls-diag/agent.jsonl"
+            anchors[letter] = dict(pq_diagnostic_snapshot(path), path=path, node_id=node["node_id"], hub_id=actual["Id"])
+        owner._pq_restart_anchors = anchors
+    except BaseException as error:
+        try:
+            context = getattr(owner, "_closed_failure_context", None)
+            if (getattr(context, "last_limit_error", None) is not error and
+                    getattr(getattr(owner, "args", None), "closed_failure_diagnostics", False) is True):
+                note_closed_failure(owner, error, "RESTART_ANCHOR", side)
+        except BaseException:
+            pass
+        raise
+
+
+def require_restart_anchor(owner, letter, path):
+    anchor = getattr(owner, "_pq_restart_anchors", {}).get(letter)
+    if (type(anchor) is not dict or anchor["path"] != path or
+            anchor["node_id"] != owner.nodes[letter]["node_id"] or
+            anchor["hub_id"] != owner.result["hub_forwarder_refresh"][0]["owned_hub_container_id"]):
+        raise RuntimeError("PQ_RESTART_ANCHOR_MISSING")
+    return anchor
+
+
+
+def read_restart_diagnostic(owner, letter, path):
+    anchor = require_restart_anchor(owner, letter, path)
+    captured = pq_diagnostic_snapshot(path)
+    if captured["scope"] != anchor["scope"]:
+        raise RuntimeError("PQ_RESTART_ANCHOR_FILE_SCOPE")
+    return captured["prefix"]
+
+
+def validate_restart_diagnostic(owner, letter, path, raw):
+    anchor = require_restart_anchor(owner, letter, path)
+    current = path.lstat()
+    pq_diagnostic_ids(raw)
+    if pq_file_scope(current) != anchor["scope"] or current.st_size < len(raw) or not raw.startswith(anchor["prefix"]):
+        raise RuntimeError("PQ_RESTART_ANCHOR_FILE_SCOPE")
+
+
+def fresh_restart_id(owner, letter, identifier):
+    # Called only by the selected witness after validating its file/prefix.
+    return identifier not in owner._pq_restart_anchors[letter]["ids"]
+
+
+def selected_fresh_witness(original):
+    raw = (OLD / "managed_gate.py").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != OLD_GATE_SHA:
+        raise ValueError("PQ_RESTART_WITNESS_SOURCE_PIN")
+    tree = ast.parse(raw.decode())
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ManagedGate")
+    method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "pq_transport_witness")
+    source = ast.get_source_segment(raw.decode(), method)
+    # Exact, bounded textual selection; preserve every original limit/TLS/loop statement.
+    substitutions = (
+        ("end=time.monotonic()+self.limit(5)", "if require_fresh: _require_restart_anchor(self, letter, path)\n        end=time.monotonic()+self.limit(5)"),
+        ("raw=path.read_bytes()", "raw=_read_restart_diagnostic(self, letter, path) if require_fresh else path.read_bytes()\n                if require_fresh: _validate_restart_diagnostic(self, letter, path, raw)"),
+        ("r.get('observation_id')!=node.get('last_pq_observation')", "_fresh_restart_id(self, letter, r.get('observation_id'))"),
+    )
+    for old, new in substitutions:
+        if source.count(old) != 1:
+            raise ValueError("PQ_RESTART_WITNESS_CONTEXT")
+        source = source.replace(old, new, 1)
+    namespace = method_namespace(original)
+    namespace.update(_require_restart_anchor=require_restart_anchor,
+        _validate_restart_diagnostic=validate_restart_diagnostic, _fresh_restart_id=fresh_restart_id,
+        _read_restart_diagnostic=read_restart_diagnostic)
+    exec(compile(source, "<owned-pre-stop-fresh-witness>", "exec"), namespace)
+    return namespace["pq_transport_witness"], hashlib.sha256(source.encode()).hexdigest()
+
+
+
+def selected_g2_manual_turn(original):
+    """Only the owned G2/G3 lane admits its fourth manual submission."""
+    raw = (OLD / "managed_gate.py").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != OLD_GATE_SHA:
+        raise ValueError("G2_MANUAL_SOURCE_PIN")
+    tree = ast.parse(raw.decode())
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ManagedGate")
+    method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "manual_turn")
+    source = ast.get_source_segment(raw.decode(), method)
+    old = "if self.result_paid_dispatches >= 3:\n            raise RuntimeError('fourth manual turn forbidden')"
+    new = "if self.result_paid_dispatches >= 4:\n            raise RuntimeError('fifth manual turn forbidden')"
+    if source.count(old) != 1:
+        raise ValueError("G2_MANUAL_CONTEXT")
+    source = source.replace(old, new, 1)
+    namespace = method_namespace(original)
+    exec(compile(source, "<owned-g2-four-manual-turns>", "exec"), namespace)
+    return namespace["manual_turn"], hashlib.sha256(source.encode()).hexdigest()
+
+
+def selected_two_pass_refresh(original):
+    raw = (OLD / "managed_gate.py").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != OLD_GATE_SHA:
+        raise ValueError("TWO_PASS_REFRESH_SOURCE_PIN")
+    tree = ast.parse(raw.decode())
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ManagedGate")
+    method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "refresh_hub_forwarders")
+    source = ast.get_source_segment(raw.decode(), method)
+    old = """            observed = self.pq_transport_witness(letter, require_wake=False, require_fresh=phase!='initial')
+            record['nodes'][letter] = {'before_target': old, 'after_target': target,
+                'process_before': before, 'process_after': after, 'transport': observed,
+                'hub_id_scope': 'same owned Hub container and persistent fixture; public health has no HubID field'}"""
+    new = """            record['nodes'][letter] = {'before_target': old, 'after_target': target,
+                'process_before': before, 'process_after': after,
+                'hub_id_scope': 'same owned Hub container and persistent fixture; public health has no HubID field'}
+        for letter in 'ab':
+            observed = self.pq_transport_witness(letter, require_wake=False, require_fresh=phase!='initial')
+            record['nodes'][letter]['transport'] = observed"""
+    if source.count(old) != 1:
+        raise ValueError("TWO_PASS_REFRESH_CONTEXT")
+    source = source.replace(old, new, 1)
+    namespace = method_namespace(original)
+    exec(compile(source, "<owned-two-pass-hub-retarget>", "exec"), namespace)
+    return namespace["refresh_hub_forwarders"], hashlib.sha256(source.encode()).hexdigest()
+
+
+def reproduce_owned_zero_restart(owner):
+    """Exactly one extra restart; no Join, membership, turn or message synthesis."""
+    owner.step("explicit_zero_model_second_hub_restart")
+    actual = owner.inspect("container", owner.hub)
+    if (actual.get("Id") != owner.result["hub_forwarder_refresh"][0]["owned_hub_container_id"] or
+            actual.get("Image") != owner.hub_image or
+            (actual.get("Config", {}).get("Labels") or {}).get("org.cicada.test.run") != owner.run_id):
+        raise RuntimeError("ZERO_RESTART_HUB_OWNERSHIP")
+    owner.docker("stop", "--time", "1", actual["Id"])
+    owner.start_hub()
+    owner.refresh_hub_forwarders("explicit-zero-model-second-hub-restart")
+    owner.result["explicit_zero_restart"] = {"extra_restarts": 1, "native_turns": 0,
+        "membership_or_message_synthesized": False, "status": "RESTART_REFRESH_COMPLETED"}
+
+
 def bind_policy(policy, started):
     """Reuse existing instance with fixed absolute phase ends; no reset."""
     policy.started, policy.total, policy.phase = started, 240, "normal"
@@ -327,7 +658,9 @@ def client_read_cancellation_relay_source(*, io_diagnostics_v2=False):
     if not isinstance(branch,ast.If) or ast.unparse(branch.test)!="self.closed":
         raise ValueError("FORWARDER_FAILURE_CONTEXT")
     cancellation=ast.parse("if type(error) is ConnectionResetError and stage == 'recv_client' and code == 104:\n self.client_read_cancellations += 1\n self.peer_error_disconnects += 1\n self.last_client_read_cancellation = {'classification':'CLIENT_READ_CANCELLED_CONNECTION_ONLY','stage':'recv_client','errno':104,'application_completion':'UNKNOWN'}\n").body[0]
-    cancellation.orelse=branch.orelse
+    drained=ast.parse("if type(error) is OSError and stage == 'halfclose_client' and code == 107 and type(pending) is dict and len(pending) == 2 and type(eof_sources) is set and upstream in eof_sources and client not in eof_sources and type(pending.get(client)) is bytearray and type(pending.get(upstream)) is bytearray and not pending[client] and not pending[upstream]:\n self.drained_upstream_eof_cancellations += 1\n self.peer_error_disconnects += 1\n self.last_drained_upstream_eof_cancellation = {'classification':'CLIENT_HALFCLOSE_CANCELLED_CONNECTION_ONLY','stage':'halfclose_client','errno':107,'application_completion':'UNKNOWN','upstream_eof':True,'client_eof':False,'pending_client_bytes':0,'pending_upstream_bytes':0}\n").body[0]
+    drained.orelse=branch.orelse
+    cancellation.orelse=[drained]
     branch.orelse=[cancellation]
     if io_diagnostics_v2:
         fatal = next(n for n in ast.walk(cancellation) if isinstance(n, ast.AugAssign)
@@ -406,13 +739,17 @@ def install_client_read_cancellation(adapter, expected_sha=None, *, io_diagnosti
     exec(compile(source,"<owned-client-read-cancellation-relay>","exec"),namespace)
     adapter.client_read_cancellations=0
     adapter.last_client_read_cancellation=None
+    adapter.drained_upstream_eof_cancellations=0
+    adapter.last_drained_upstream_eof_cancellation=None
     adapter.relay=types.MethodType(namespace["relay"],adapter)
     original_summary=adapter.summary
     def summary(self):
         value=original_summary()
         value.update(client_read_cancellations=self.client_read_cancellations,
             last_client_read_cancellation=self.last_client_read_cancellation,
-            owned_client_read_relay_sha256=self.owned_client_read_relay_sha256)
+            owned_client_read_relay_sha256=self.owned_client_read_relay_sha256,
+            drained_upstream_eof_cancellations=self.drained_upstream_eof_cancellations,
+            last_drained_upstream_eof_cancellation=self.last_drained_upstream_eof_cancellation)
         if io_diagnostics_v2:
             value["first_fatal_io"] = self.first_fatal_io
         return value
@@ -875,6 +1212,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     if Path(original_namespace["HERE"]).resolve() != OLD.resolve():
         raise RuntimeError("LEGACY_GLOBAL_ORIGIN")
     sources = effective_sources()
+    fresh_witness, fresh_witness_sha = selected_fresh_witness(legacy_cls.pq_transport_witness)
+    two_pass_refresh, two_pass_refresh_sha = selected_two_pass_refresh(legacy_cls.refresh_hub_forwarders)
     namespace = dict(original_namespace)
     namespace.update(_observer_capture_native_failure=capture_native_failure,
         _observer_register_capture_command=register_capture_command,
@@ -914,12 +1253,19 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             super().__init__(args)
             if scenario == 'g2-g3':
                 self.budget = g2_turn_budget(self.budget)
+                self.result['owned_g2_manual_turn_sha256'] = self.owned_g2_manual_turn_sha256
                 self.result['native_turn_budget'] = 6
                 self.result['maximum_actual_turn_started'] = 0 if zero_model else 6
             self._observer_capture_lifecycle_lock = threading.Lock()
             self._observer_native_capture_state = None
             self._observer_capture_cutoff = False
+            self.pq_transport_witness = types.MethodType(fresh_witness, self)
+            self.result["owned_pre_stop_fresh_witness_sha256"] = fresh_witness_sha
+            self.refresh_hub_forwarders = types.MethodType(two_pass_refresh, self)
+            self.result["owned_two_pass_refresh_sha256"] = two_pass_refresh_sha
             bind_policy(self.policy, args.artifact_started)
+            if getattr(args,"closed_failure_diagnostics",False) is True:
+                install_closed_failure_diagnostics(self)
             self.result["historical_effective_owned_wrapper_sha256_dependency_only"] = self.result.pop("effective_owned_wrapper_sha256", {})
             self.result["effective_owned_wrapper_sha256"] = {name:row["sha256"] for name,row in binding["candidate_files"].items()}
             self.result["effective_candidate_source_sha256"] = binding["effective_sources"]
@@ -1072,6 +1418,12 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                     "effective_source_sha256":binding["effective_sources"]["bootstrap"],
                     "observer_sha256":binding["public_files"][str(SCRIPTS/"native_request_observer.py")]["sha256"],
                     "normal_end_MONOTONIC":self.policy.started+180}
+            if (argv and argv[0] == "stop" and not self.cleaning and
+                    self.phase != "g3_restored_control_authenticated_encrypted_snapshot"):
+                target = argv[-1]
+                known_id = self.result.get("hub_forwarder_refresh", [{}])[0].get("owned_hub_container_id")
+                if target in (getattr(self,"hub",None), known_id):
+                    anchor_owned_restart(self, target)
             return super().docker(*argv, **kwargs)
         def cleanup(self):
             # No abort lock spans inherited cleanup, reader waits or persistence.
@@ -1095,6 +1447,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     for name, function in scenario_methods.items():
         setattr(CandidateGate, name, function)
     if scenario == "g2-g3":
+        CandidateGate.manual_turn, CandidateGate.owned_g2_manual_turn_sha256 = selected_g2_manual_turn(legacy_cls.manual_turn)
         CandidateGate.g2_initial_binding = g2_initial_binding
         CandidateGate.g2_second_binding = g2_second_binding
         CandidateGate.g2_b_continuity = g2_b_continuity

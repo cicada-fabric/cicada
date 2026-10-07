@@ -265,7 +265,7 @@ class V2MemoryChecks(unittest.TestCase):
     def test_owned_relay_default_and_opt_in_ast_and_first_fatal(self):
         import ast,types
         default=gate.client_read_cancellation_relay_source()
-        self.assertEqual(hashlib.sha256(default.encode()).hexdigest(),'d6e1ad7fb52e83ba18d0f4f9ce697b451013d3dfd334b2d384db164247de2906')
+        self.assertEqual(hashlib.sha256(default.encode()).hexdigest(),'0e0d25764e77e86855b0e01b47684cffc51b88f2706e4c827701b82f6aceacb0')
         enabled=ast.parse(gate.client_read_cancellation_relay_source(io_diagnostics_v2=True))
         calls=[n for n in ast.walk(enabled) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='_note_forwarder_fatal']
         self.assertEqual(len(calls),1)

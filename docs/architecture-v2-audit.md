@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current checked-PQ MCP checkpoint — PARTIAL
+## Current owned-runner / Native checkpoint — PARTIAL
+
+Current observer/runner sources are dirty on `d63e1e68`, with binding `420462…`; the product remains dirty `2b92` binary `009a…`/Hub `45058…`. Source-scoped full30 wiring checks passed; freshness anchoring, drained connection cancellation, two-pass retarget and G2-only fourth manual dispatch preserve strict TLS, deadlines and original acceptance criteria. Fresh zero preparation passed; the sole new Native run failed after six actual turns/four manual submissions. Five same-original-thread witnesses completed, including B Receive/Reply; A auto6 started but final/context completion is NOT_PROVEN. Original cleanup=false/A EOF UNKNOWN remain separate from later safety cleanup. G2/G3 and overall v0.1 remain PARTIAL. [Detailed evidence and preserved failures](native-request-observer-io-validation.md) distinguish preparation, runner QA and Native acceptance; Control invocation counts remain NOT_INSTRUMENTED.
+
+## Historical checked-PQ MCP checkpoint — PARTIAL
 
 Checked leave-group/members routing, fail-closed current-Group revalidation and resident-Agent SSE harness passed their scoped normal/race/shipped gates. Fresh zero preparation passed; the sole current Native G2/G3 run failed after two original Join turns, before the new membership turn/Ask/Reply/G3. The exact B restart-witness/limit failure remains UNKNOWN; cleanup and both EOFs were confirmed, with independent owned-resource absence. Old G1 PASS is limited to its old product/source. See [current evidence and limits](native-request-observer-io-validation.md). Contract v1.6.4, wire 1, catalog 55 and schema 58 are unchanged; overall v0.1 remains PARTIAL.
 

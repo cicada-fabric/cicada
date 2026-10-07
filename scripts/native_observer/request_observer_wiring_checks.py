@@ -31,6 +31,420 @@ import request_observer_bootstrap as bootstrap
 
 
 class WiringChecks(unittest.TestCase):
+
+    def test_g2_manual_dispatch_cap_and_original_order(self):
+        sentinel=object()
+        def original(): return sentinel
+        selected, source_sha=gate.selected_g2_manual_turn(original)
+        self.assertIs(selected.__globals__["sentinel"],sentinel)
+        self.assertEqual(len(source_sha),64)
+        raw=(gate.OLD/"managed_gate.py").read_text()
+        tree=ast.parse(raw)
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=="ManagedGate")
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="manual_turn")
+        source=ast.get_source_segment(raw,method)
+        ns=gate.method_namespace(original)
+        exec(compile(source,"<memory-original-manual>","exec"),ns)
+        legacy=ns["manual_turn"]
+        def fixture(enabled=True,fail=None):
+            calls=[]
+            owner=types.SimpleNamespace(args=types.SimpleNamespace(run_native=enabled),
+                result_paid_dispatches=0,result={},manual_turn_ids=[],nodes={"a":{"thread":"original-a"}})
+            def limit(value):
+                calls.append(("limit",value))
+                if fail and fail[0]=="limit": raise fail[1]
+            def request(method,params):
+                calls.append(("request",method,params))
+                if fail and fail[0]=="request": raise fail[1]
+                return {"turn":{"id":"turn-"+str(owner.result_paid_dispatches)}}
+            def wait(letter,turn):
+                calls.append(("wait",letter,turn))
+                if fail and fail[0]=="wait": raise fail[1]
+            owner.limit=limit;owner.rpcs={"a":types.SimpleNamespace(request=request)};owner.wait_turn=wait
+            return owner,calls
+        owner,calls=fixture()
+        for index in range(1,5):
+            self.assertEqual(selected(owner,"a","synthetic prompt"),"turn-"+str(index))
+        self.assertEqual(owner.result_paid_dispatches,4)
+        self.assertEqual(owner.result["paid_turn_start_submissions"],4)
+        self.assertEqual(len(owner.manual_turn_ids),4)
+        for index in range(4):
+            block=calls[index*3:(index+1)*3]
+            self.assertEqual([row[0] for row in block],["limit","request","wait"])
+            self.assertEqual(block[0],("limit",.001))
+            self.assertEqual(block[1][1],"turn/start")
+            self.assertEqual(block[1][2]["threadId"],"original-a")
+            self.assertEqual((block[1][2]["model"],block[1][2]["approvalPolicy"]),("gpt-5.6-luna","never"))
+        before=list(owner.manual_turn_ids);requests=sum(row[0]=="request" for row in calls)
+        with self.assertRaisesRegex(RuntimeError,"fifth manual turn forbidden"): selected(owner,"a","synthetic")
+        self.assertEqual(owner.result_paid_dispatches,4);self.assertEqual(owner.manual_turn_ids,before)
+        self.assertEqual(sum(row[0]=="request" for row in calls),requests)
+        g1,g1calls=fixture();g1.result_paid_dispatches=3
+        with self.assertRaisesRegex(RuntimeError,"fourth manual turn forbidden"): legacy(g1,"a","synthetic")
+        self.assertEqual(g1calls,[("limit",.001)]);self.assertEqual(g1.result_paid_dispatches,3)
+        zero,zerocalls=fixture(False)
+        with self.assertRaisesRegex(RuntimeError,"turn forbidden in zero-model preparation"): selected(zero,"a","synthetic")
+        self.assertEqual(zerocalls,[]);self.assertEqual((zero.result_paid_dispatches,zero.result,zero.manual_turn_ids),(0,{},[]))
+        for boundary in ("limit","request","wait"):
+            with self.subTest(boundary=boundary):
+                error=RuntimeError("synthetic boundary")
+                failed,failedcalls=fixture(fail=(boundary,error))
+                with self.assertRaises(RuntimeError) as caught: selected(failed,"a","synthetic")
+                self.assertIs(caught.exception,error)
+                self.assertEqual(failed.result_paid_dispatches,0 if boundary=="limit" else 1)
+                self.assertEqual(len(failed.manual_turn_ids),1 if boundary=="wait" else 0)
+        old="if self.result_paid_dispatches >= 3:\n            raise RuntimeError('fourth manual turn forbidden')"
+        new="if self.result_paid_dispatches >= 4:\n            raise RuntimeError('fifth manual turn forbidden')"
+        self.assertEqual(source.count(old),1)
+        expected=source.replace(old,new,1)
+        self.assertEqual(source_sha,hashlib.sha256(expected.encode()).hexdigest())
+        gate_tree=ast.parse(Path(gate.__file__).read_text())
+        loader=next(n for n in gate_tree.body if isinstance(n,ast.FunctionDef) and n.name=="load_gate")
+        branches=[n for n in ast.walk(loader) if isinstance(n,ast.If) and any(
+            isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id=="selected_g2_manual_turn"
+            for statement in n.body for x in ast.walk(statement))]
+        self.assertEqual(len(branches),1)
+        self.assertEqual(ast.unparse(branches[0].test),"scenario == 'g2-g3'")
+        with patch.object(gate,"OLD_GATE_SHA","0"*64):
+            with self.assertRaisesRegex(ValueError,"G2_MANUAL_SOURCE_PIN"): gate.selected_g2_manual_turn(original)
+
+    def test_two_pass_retarget_order_initial_and_partial_failure(self):
+        sentinel=object()
+        def original():return sentinel
+        selected,source_sha=gate.selected_two_pass_refresh(original)
+        self.assertIs(selected.__globals__["sentinel"],sentinel)
+        self.assertEqual(len(source_sha),64)
+        def fixture(phase,fail=None):
+            calls=[];targets={letter:{"port":100+index} for index,letter in enumerate("ab")}
+            class TargetFile:
+                def __init__(self,letter):self.letter=letter
+                def read_text(self):return json.dumps(targets[self.letter])
+            class State:
+                def __init__(self,letter):self.letter=letter
+                def __truediv__(self,name):return TargetFile(self.letter)
+            owner=types.SimpleNamespace(hub="owned-hub",nodes={letter:{"gateway":"synthetic-gateway-"+letter,"hub_port":200+index,
+                "paths":{"state":State(letter)}} for index,letter in enumerate("ab")},
+                result={"hub_forwarder_refresh":[] if phase=="initial" else [{"owned_hub_container_id":"owned-id"}]})
+            witnessed={letter:0 for letter in "ab"}
+            def forwarder(letter):
+                calls.append("identity-"+letter);witnessed[letter]+=1
+                return {"pid":10+ord(letter),"start_ticks":"synthetic","argv_sha256":"a"*64}
+            def write(letter):
+                calls.append("write-"+letter);targets[letter]={"gateway":owner.nodes[letter]["gateway"],"port":owner.nodes[letter]["hub_port"]}
+                return dict(targets[letter])
+            failure=RuntimeError("actual PQTLS ready/wake NOT_PROVEN")
+            def witness(letter,**flags):
+                calls.append("witness-"+letter)
+                self.assertEqual([item for item in calls if item.startswith("write-")],["write-a","write-b"])
+                self.assertEqual(flags,{"require_wake":False,"require_fresh":phase!="initial"})
+                if letter==fail:raise failure
+                return {"ready":True,"observation_id":"conn-3-"+letter}
+            def inspect(kind,name):calls.append("hub-identity");return {"Id":"owned-id"}
+            owner.forwarder_witness=forwarder;owner.write_forwarder_target=write
+            owner.pq_transport_witness=witness;owner.inspect=inspect
+            return owner,calls,targets,failure
+        for phase in ("initial","synthetic-restart"):
+            with self.subTest(phase=phase):
+                owner,calls,targets,_=fixture(phase);selected(owner,phase)
+                self.assertEqual(calls,["identity-a","write-a","identity-a","identity-b","write-b","identity-b","witness-a","witness-b","hub-identity"])
+                row=owner.result["hub_forwarder_refresh"][-1]
+                for letter in "ab":
+                    self.assertEqual(set(row["nodes"][letter]),{"before_target","after_target","process_before","process_after","transport","hub_id_scope"})
+                    self.assertEqual(row["nodes"][letter]["process_before"],row["nodes"][letter]["process_after"])
+                    self.assertEqual(row["nodes"][letter]["after_target"],targets[letter])
+                self.assertEqual(row["actual_inspected_mapping"],targets)
+                self.assertEqual(row["nodes"]["a"]["before_target"],{"port":100})
+        owner,calls,targets,failure=fixture("synthetic-restart",fail="b")
+        with self.assertRaises(RuntimeError) as caught:selected(owner,"synthetic-restart")
+        self.assertIs(caught.exception,failure)
+        row=owner.result["hub_forwarder_refresh"][-1]
+        self.assertEqual(set(row["nodes"]),{"a","b"})
+        self.assertIn("transport",row["nodes"]["a"]);self.assertNotIn("transport",row["nodes"]["b"])
+        self.assertNotIn("owned_hub_container_id",row)
+        self.assertNotIn("hub-identity",calls)
+        self.assertEqual(row["nodes"]["b"]["after_target"],targets["b"])
+
+    def test_two_pass_retarget_identity_ownership_and_source_guards(self):
+        def original():pass
+        selected,_=gate.selected_two_pass_refresh(original)
+        calls=[]
+        class State:
+            def __truediv__(self,name):return types.SimpleNamespace(read_text=lambda:'{"port":1}')
+        owner=types.SimpleNamespace(hub="owned-hub",nodes={letter:{"gateway":"synthetic","hub_port":2,"paths":{"state":State()}} for letter in "ab"},
+            result={"hub_forwarder_refresh":[{"owned_hub_container_id":"owned-id"}]},
+            forwarder_witness=lambda letter:(calls.append("identity-"+letter) or {"pid":len(calls)}),
+            write_forwarder_target=lambda letter:(calls.append("write-"+letter) or {"port":2}),
+            pq_transport_witness=lambda *args,**kwargs:(_ for _ in ()).throw(AssertionError("NO_WITNESS_ON_IDENTITY_FAILURE")))
+        with self.assertRaisesRegex(RuntimeError,"identity changed during retarget"):selected(owner,"synthetic-restart")
+        self.assertEqual(calls,["identity-a","write-a","identity-a"])
+        self.assertEqual(owner.result["hub_forwarder_refresh"][-1]["nodes"],{})
+        for baseline,current in (("owned-id","foreign-id"),(None,"owned-id")):
+            with self.subTest(ownership=True):
+                owner.result={"hub_forwarder_refresh":[{} if baseline is None else {"owned_hub_container_id":baseline}]}
+                owner.forwarder_witness=lambda letter:{"pid":10}
+                owner.pq_transport_witness=lambda *args,**kwargs:{"ready":True}
+                owner.inspect=lambda *args:{"Id":current}
+                with self.assertRaises((RuntimeError,KeyError)):selected(owner,"synthetic-restart")
+        # Drift is refused before selecting/compiling an unpinned legacy method.
+        with patch.object(Path,"read_bytes",return_value=b"synthetic changed legacy source"),self.assertRaisesRegex(ValueError,"SOURCE_PIN"):
+            gate.selected_two_pass_refresh(original)
+
+
+    def test_pre_stop_freshness_rejects_replay_and_accepts_appended_link(self):
+        def record(identifier, event="got-conn", route="relay-events"):
+            return dict(schema_version=1,event=event,observation_id=identifier,route=route,
+                tls_version="TLSv1.3",group="MLKEM768",cipher_suite="TLS_AES_256_GCM_SHA384",
+                peer_signature="ML-DSA-65",alpn="http/1.1",verification_result=0,
+                hostname_verified=True,peer_kind="hub",hub_id="hub",local_node_id="a-node",
+                certificate_sha256="a"*64,spki_sha256="b"*64)
+        def encode(rows):return b"".join(json.dumps(row).encode()+b"\n" for row in rows)
+        initial=encode([record("conn-1"),record("conn-1","ready"),record("conn-2"),record("conn-2","ready"),record("conn-9",route="fabric-whoami")])
+        class Diagnostic:
+            raw=initial
+            inode=10
+            growth=0
+            def lstat(self):return types.SimpleNamespace(st_mode=0o100600,st_dev=1,st_ino=self.inode,st_uid=1000,st_size=len(self.raw)+self.growth)
+            stat=lstat
+            def exists(self):return True
+            def is_file(self):return True
+            def is_symlink(self):return False
+            def read_bytes(self):return self.raw
+        diagnostic=Diagnostic()
+        class State:
+            def __truediv__(self,name):return diagnostic
+        owner=types.SimpleNamespace(nodes={"a":{"paths":{"state":State()},"node_id":"a-node","last_pq_observation":"conn-2"}},
+            meta={"hub_id":"hub"},result={"hub_forwarder_refresh":[{"owned_hub_container_id":"hub-cid"}]},limit=lambda value:value)
+        scope=gate.pq_file_scope(diagnostic.lstat())
+        owner._pq_restart_anchors={"a":{"path":diagnostic,"node_id":"a-node","hub_id":"hub-cid","scope":scope,"prefix":initial,"ids":gate.pq_diagnostic_ids(initial)}}
+        self.assertFalse(gate.fresh_restart_id(owner,"a","conn-1"))
+        self.assertFalse(gate.fresh_restart_id(owner,"a","conn-9"))
+        namespace={"time":gate.time,"json":json,"stat":gate.stat,"hashlib":hashlib,"re":__import__("re")}
+        original=types.FunctionType((lambda:None).__code__,namespace)
+        selected,_=gate.selected_fresh_witness(original)
+        def snapshot(path):return {"scope":scope,"prefix":path.raw,"ids":gate.pq_diagnostic_ids(path.raw)}
+        for replay in ("conn-1","conn-9"):
+            ticks=iter((0,2,4,6))
+            with self.subTest(replay=replay),patch.object(gate,"pq_diagnostic_snapshot",side_effect=snapshot),patch.object(gate.time,"monotonic",side_effect=lambda:next(ticks)),patch.object(gate.time,"sleep"):
+                # Both consumed 1->2->1 and previously unconsumed other-route IDs stay old.
+                diagnostic.raw=initial+encode([record(replay),record(replay,"ready")])
+                with self.assertRaisesRegex(RuntimeError,"actual PQTLS ready/wake NOT_PROVEN"):
+                    selected(owner,"a",require_fresh=True)
+        diagnostic.raw=initial+encode([record("conn-3"),record("conn-3","ready")])
+        diagnostic.growth=25  # Append after the captured complete read must not invalidate it.
+        ticks=iter((0,1))
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=snapshot),patch.object(gate.time,"monotonic",side_effect=lambda:next(ticks)):
+            self.assertEqual(selected(owner,"a",require_fresh=True)["observation_id"],"conn-3")
+        diagnostic.growth=0;diagnostic.raw=initial
+        owner._pq_restart_anchors={}
+        with self.assertRaisesRegex(RuntimeError,"PQ_RESTART_ANCHOR_MISSING"):
+            selected(owner,"a",require_fresh=True)
+        ticks=iter((0,1))
+        with patch.object(gate.time,"monotonic",side_effect=lambda:next(ticks)):
+            self.assertEqual(selected(owner,"a",require_fresh=False)["observation_id"],"conn-2")
+
+    def test_pre_stop_anchor_file_scope_and_malformed_bounds(self):
+        raw=json.dumps({"schema_version":1,"event":"ready","observation_id":"conn-1"}).encode()+b"\n"
+        for bad in (b"{}\n",b"[]\n",b"{",raw[:-1],raw.replace(b'"schema_version": 1',b'"schema_version": true'),raw.replace(b'"ready"',b'"unknown"'),raw.replace(b'"conn-1"',b'""'),b'{"schema_version":1,"schema_version":1}\n'):
+            with self.subTest(malformed=True),self.assertRaises(RuntimeError):gate.pq_diagnostic_ids(bad)
+        with patch.object(gate,"PQ_DIAGNOSTIC_MAX",10),self.assertRaises(RuntimeError):gate.pq_diagnostic_ids(raw)
+        with patch.object(gate,"PQ_DIAGNOSTIC_ROWS_MAX",1),self.assertRaisesRegex(RuntimeError,"BOUNDS"):gate.pq_diagnostic_ids(raw+raw)
+        scope=(1,10,1000,0o100600)
+        path=types.SimpleNamespace(lstat=lambda:types.SimpleNamespace(st_dev=1,st_ino=10,st_uid=1000,st_mode=0o100600,st_size=len(raw)))
+        owner=types.SimpleNamespace(nodes={"a":{"node_id":"node"}},result={"hub_forwarder_refresh":[{"owned_hub_container_id":"cid"}]},
+            _pq_restart_anchors={"a":{"path":path,"node_id":"node","hub_id":"cid","scope":scope,"prefix":raw,"ids":frozenset({"conn-1"})}})
+        gate.validate_restart_diagnostic(owner,"a",path,raw)
+        # Captured FD differs even though the later path still matches the anchor.
+        with patch.object(gate,"pq_diagnostic_snapshot",return_value={"scope":(1,11,1000,0o100600),"prefix":raw,"ids":frozenset({"conn-1"})}),self.assertRaisesRegex(RuntimeError,"FILE_SCOPE"):
+            gate.read_restart_diagnostic(owner,"a",path)
+
+        with self.assertRaisesRegex(RuntimeError,"FILE_SCOPE"):
+            gate.validate_restart_diagnostic(owner,"a",path,raw.replace(b"conn-1",b"conn-2"))
+        fake_stat=path.lstat()
+        with patch.object(gate.os,"open",return_value=42) as opened,patch.object(gate.os,"fstat",return_value=fake_stat),patch.object(gate.os,"fdopen",return_value=io.BytesIO(raw)),patch.object(gate.os,"close") as closed:
+            self.assertEqual(gate.pq_diagnostic_snapshot(path)["ids"],frozenset({"conn-1"}))
+            self.assertEqual(opened.call_args.args[1],gate.os.O_RDONLY | gate.os.O_NOFOLLOW | gate.os.O_NONBLOCK)
+            closed.assert_called_once_with(42)
+
+        for inode,mode,uid,size in ((11,0o100600,1000,len(raw)),(10,0o120600,1000,len(raw)),(10,0o100644,1000,len(raw)),(10,0o100600,1001,len(raw)),(10,0o100600,1000,1)):
+            path.lstat=lambda:types.SimpleNamespace(st_dev=1,st_ino=inode,st_uid=uid,st_mode=mode,st_size=size)
+            with self.subTest(scope=True),self.assertRaises(RuntimeError):gate.validate_restart_diagnostic(owner,"a",path,raw)
+
+    def test_pre_stop_anchor_both_sides_owned_order_and_cleanup_excluded(self):
+        calls=[]
+        class State:
+            def __init__(self,letter):self.letter=letter
+            def __truediv__(self,name):return self.letter
+        owner=types.SimpleNamespace(hub="hub-name",hub_image="hub-image",run_id="run",args=types.SimpleNamespace(closed_failure_diagnostics=False),
+            nodes={letter:{"paths":{"state":State(letter)},"node_id":letter} for letter in "ab"},
+            result={"hub_forwarder_refresh":[{"owned_hub_container_id":"cid"}]})
+        def inspect(*args):calls.append("inspect");return {"Id":"cid","Image":"hub-image","Config":{"Labels":{"org.cicada.test.run":"run"}}}
+        owner.inspect=inspect
+        def snapshot(path):calls.append("anchor-"+path);return {"scope":(1,1,1000,0o100600),"prefix":b"synthetic","ids":frozenset({"conn-1"})}
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=snapshot):gate.anchor_owned_restart(owner,"cid")
+        self.assertEqual(calls,["inspect","anchor-a","anchor-b"])
+        self.assertEqual(set(owner._pq_restart_anchors),{"a","b"})
+        calls.clear();owner.inspect=lambda *args:{"Id":"foreign","Image":"hub-image","Config":{"Labels":{"org.cicada.test.run":"run"}}}
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=AssertionError("NO_FILE_READ")),self.assertRaisesRegex(RuntimeError,"OWNERSHIP"):
+            gate.anchor_owned_restart(owner,"cid")
+        self.assertEqual(calls,[])
+        error=RuntimeError("owned provider transport failure")
+        owner.policy=types.SimpleNamespace(phase="normal")
+        owner.args.closed_failure_diagnostics=True
+        def failed_limit(value):raise error
+        owner.limit=failed_limit;owner.pq_transport_witness=lambda *args,**kwargs:None
+        gate.install_closed_failure_diagnostics(owner)
+        owner.inspect=lambda *args:owner.limit(1)
+        with self.assertRaises(RuntimeError) as caught:gate.anchor_owned_restart(owner,"cid")
+        self.assertIs(caught.exception,error)
+        self.assertEqual([row["boundary"] for row in owner.result["closed_restart_failures"]],["LIMIT"])
+        tree=ast.parse(Path(gate.__file__).read_text())
+        candidate=next(node for node in ast.walk(tree) if isinstance(node,ast.ClassDef) and node.name=="CandidateGate")
+        docker=next(node for node in candidate.body if isinstance(node,ast.FunctionDef) and node.name=="docker")
+        branch=next(node for node in ast.walk(docker) if isinstance(node,ast.If) and 'not self.cleaning' in ast.unparse(node.test))
+        self.assertIn("argv[0] == 'stop'",ast.unparse(branch.test))
+        self.assertEqual(sum(isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=="anchor_owned_restart" for node in ast.walk(branch)),1)
+        # Execute the actual owned docker method over a synthetic dispatch boundary.
+        class Base:
+            def docker(self,*args,**kwargs):calls.append("stop");return b""
+        namespace={"Base":Base,"zero_model":False,"anchor_owned_restart":gate.anchor_owned_restart}
+        method=ast.get_source_segment(Path(gate.__file__).read_text(),docker)
+        exec(compile("class Installed(Base):\n"+"\n".join("    "+line for line in method.splitlines()),"<memory-owned-docker>","exec"),namespace)
+        installed=namespace["Installed"]()
+        installed.__dict__.update(hub="hub-name",hub_image="hub-image",run_id="run",cleaning=False,phase="zero_model_owned_hub_restart_transport",
+            args=types.SimpleNamespace(closed_failure_diagnostics=False),nodes=owner.nodes,
+            result={"hub_forwarder_refresh":[{"owned_hub_container_id":"cid"}]},inspect=inspect)
+        calls.clear()
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=snapshot):installed.docker("stop","hub-name")
+        self.assertEqual(calls,["inspect","anchor-a","anchor-b","stop"])
+        calls.clear()
+        def failed_b(path):
+            calls.append("anchor-"+path)
+            if path=="b":raise RuntimeError("PQ_RESTART_ANCHOR_MALFORMED")
+            return snapshot_value
+        snapshot_value={"scope":(1,1,1000,0o100600),"prefix":b"synthetic","ids":frozenset({"conn-1"})}
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=failed_b),self.assertRaises(RuntimeError):installed.docker("stop","hub-name")
+        self.assertEqual(calls,["inspect","anchor-a","anchor-b"])
+        calls.clear();installed.inspect=lambda *args:{"Id":"foreign","Image":"hub-image","Config":{"Labels":{"org.cicada.test.run":"run"}}}
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=AssertionError("NO_READ")),self.assertRaises(RuntimeError):installed.docker("stop","hub-name")
+        self.assertEqual(calls,[])
+        installed.cleaning=True;calls.clear()
+        with patch.object(gate,"pq_diagnostic_snapshot",side_effect=AssertionError("NO_CLEANUP_READ")):installed.docker("stop","hub-name")
+        self.assertEqual(calls,["stop"])
+
+
+
+    def test_closed_restart_failure_enums_and_exception_identity(self):
+        for literal, reason in gate.CLOSED_FAILURE_REASONS.items():
+            with self.subTest(reason=reason):
+                error = TimeoutError(literal) if reason == "ABSOLUTE_DEADLINE" else RuntimeError(literal)
+                self.assertEqual(gate.closed_failure(error)["reason"], reason)
+        class Hostile(RuntimeError):
+            @property
+            def args(self):
+                raise AssertionError("diagnostics must not inspect subclass")
+        for error in (Hostile(), RuntimeError("SYNTHETIC_PRIVATE_TOKEN"), RuntimeError(object()), KeyError("x"), ValueError("actual protected PQTLS state mismatch"), RuntimeError("CANDIDATE_ABSOLUTE_DEADLINE")):
+            with self.subTest(kind=type(error) is RuntimeError):
+                self.assertEqual(gate.closed_failure(error)["reason"], "UNKNOWN")
+                self.assertNotIn("SYNTHETIC_PRIVATE_TOKEN", json.dumps(gate.closed_failure(error)))
+        class HostileMeta(type):
+            def __hash__(cls): raise AssertionError("NO_HASH")
+            def __eq__(cls, other): raise AssertionError("NO_EQUALITY")
+        class HostileMetaError(RuntimeError, metaclass=HostileMeta):
+            @property
+            def args(self): raise AssertionError("NO_ARGS")
+            def __str__(self): raise AssertionError("NO_STR")
+            def __repr__(self): raise AssertionError("NO_REPR")
+        self.assertEqual(gate.closed_failure(HostileMetaError()),{"type":"UNKNOWN","reason":"UNKNOWN"})
+        class HostileString(str):
+            def __eq__(self,other): raise AssertionError("NO_STRING_EQUALITY")
+        hostile_owner=types.SimpleNamespace(result={},policy=types.SimpleNamespace(phase=HostileString("normal")))
+        gate.note_closed_failure(hostile_owner,RuntimeError("unknown"),HostileString("LIMIT"),HostileString("a"))
+        self.assertEqual({key:hostile_owner.result["closed_restart_failures"][0][key] for key in ("boundary","side","phase")},
+                         {"boundary":"UNKNOWN","side":"UNKNOWN","phase":"UNKNOWN"})
+
+        error=RuntimeError("owned provider transport failure")
+        owner=types.SimpleNamespace(result={},policy=types.SimpleNamespace(phase="normal"))
+        def failing_limit(maximum): raise error
+        def witness(letter, **flags): return owner.limit(5)
+        owner.limit=failing_limit; owner.pq_transport_witness=witness
+        gate.install_closed_failure_diagnostics(owner)
+        with self.assertRaises(RuntimeError) as caught:
+            owner.pq_transport_witness("b", require_fresh=True)
+        self.assertIs(caught.exception,error)
+        self.assertEqual(len(owner.result["closed_restart_failures"]),1)
+        self.assertEqual(owner.result["closed_restart_failures"][0]["boundary"],"LIMIT")
+        self.assertEqual(owner.result["closed_restart_failures"][0]["side"],"b")
+        self.assertIs(owner.result["closed_restart_failures"][0]["require_fresh"],True)
+        owner=types.SimpleNamespace(result={},policy=types.SimpleNamespace(phase="normal"),limit=lambda n:n)
+        def failed_witness(letter, **flags): raise error
+        owner.pq_transport_witness=failed_witness
+        gate.install_closed_failure_diagnostics(owner)
+        with patch.object(gate.time,"monotonic_ns",side_effect=RuntimeError("synthetic clock")):
+            with self.assertRaises(RuntimeError) as caught: owner.pq_transport_witness("a", require_fresh=True)
+        self.assertIs(caught.exception,error)
+        self.assertIsNone(owner.result["closed_restart_failures"][0]["host_monotonic_ns"])
+        self.assertEqual(owner.result["closed_restart_failures"][0]["boundary"],"FRESH_WITNESS")
+        saved = owner.result["closed_restart_failures"][0].copy()
+        for _ in range(20): gate.note_closed_failure(owner,error,"LIMIT","UNKNOWN")
+        self.assertEqual(len(owner.result["closed_restart_failures"]),16)
+        self.assertEqual(owner.result["closed_restart_failures"][0],saved)
+        sentinel=object(); calls=[]
+        success=types.SimpleNamespace(result={},policy=owner.policy,limit=lambda n:n)
+        def success_witness(letter, **flags): calls.append((letter,flags)); return sentinel
+        success.pq_transport_witness=success_witness
+        gate.install_closed_failure_diagnostics(success)
+        self.assertIs(success.pq_transport_witness("a",require_fresh=True),sentinel)
+        self.assertEqual(calls,[("a",{"require_wake":False,"require_fresh":True})])
+        self.assertEqual(success.result,{})
+        state=types.SimpleNamespace(phase="explicit_zero_model_second_hub_restart",aborted=False,
+            provider_errors={},provider_adapters={"a":types.SimpleNamespace(failures=0)},
+            result={"actual_turn_started_count":2,"paid_turn_start_submissions":2})
+        self.assertEqual(gate.closed_restart_state(state),{"operation":state.phase,
+            "actual_turn_started_count":2,"manual_submission_count":2,"aborted":False,"provider_failed":False})
+        state.phase="SYNTHETIC_PRIVATE_OPERATION";state.result["actual_turn_started_count"]=True
+        state.result["paid_turn_start_submissions"]=7;state.aborted=1
+        state.provider_adapters["a"].failures=-1
+        self.assertEqual(gate.closed_restart_state(state),{"operation":"UNKNOWN",
+            "actual_turn_started_count":None,"manual_submission_count":None,"aborted":None,"provider_failed":None})
+
+
+    def test_explicit_zero_restart_ownership_order_and_default(self):
+        calls=[]
+        owner=types.SimpleNamespace(hub="owned-name",hub_image="owned-image",run_id="synthetic-run",
+            result={"hub_forwarder_refresh":[{"owned_hub_container_id":"owned-id"}]})
+        owner.step=lambda phase:calls.append(("phase",phase))
+        def inspect(kind,name):
+            calls.append(("inspect",kind,name))
+            return {"Id":"owned-id","Image":"owned-image","Config":{"Labels":{"org.cicada.test.run":"synthetic-run"}}}
+        owner.inspect=inspect
+        owner.docker=lambda *args:calls.append(("docker",args))
+        owner.start_hub=lambda:calls.append(("start",))
+        owner.refresh_hub_forwarders=lambda phase:calls.append(("refresh",phase))
+        gate.reproduce_owned_zero_restart(owner)
+        self.assertEqual([row[0] for row in calls],["phase","inspect","docker","start","refresh"])
+        self.assertEqual(calls[2][1],("stop","--time","1","owned-id"))
+        self.assertEqual(owner.result["explicit_zero_restart"]["extra_restarts"],1)
+        for key,value in (("Id","foreign-id"),("Image","foreign-image"),("Config",{"Labels":{}})):
+            with self.subTest(key=key):
+                calls.clear()
+                actual={"Id":"owned-id","Image":"owned-image","Config":{"Labels":{"org.cicada.test.run":"synthetic-run"}}};actual[key]=value
+                def denied_inspect(*args):
+                    calls.append(("inspect",))
+                    return actual
+                owner.inspect=denied_inspect
+                with self.assertRaises(RuntimeError):gate.reproduce_owned_zero_restart(owner)
+                self.assertEqual([row[0] for row in calls],["phase","inspect"])
+        tree=ast.parse(Path(run.__file__).read_text())
+        prepare=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="prepare_native_zero")
+        branch=next(n for n in ast.walk(prepare) if isinstance(n,ast.If) and any(isinstance(x,ast.Call) and isinstance(x.func,ast.Attribute) and x.func.attr=="reproduce_owned_zero_restart" for stmt in n.body for x in ast.walk(stmt)))
+        self.assertIn('reproduce_zero_hub_restart',ast.unparse(branch.test))
+        main=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="main")
+        option=next(n for n in ast.walk(main) if isinstance(n,ast.Call) and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=="--reproduce-zero-hub-restart")
+        self.assertEqual(next(k.value.value for k in option.keywords if k.arg=="action"),"store_true")
+        self.assertEqual(sum(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=="reproduce_owned_zero_restart" for n in ast.walk(prepare)),1)
+        with patch.object(run,"prepare_native_zero",side_effect=AssertionError("NO_DISPATCH")), redirect_stdout(io.StringIO()):
+            self.assertEqual(run.main(["--reproduce-zero-hub-restart"]),2)
+
     def test_g2_g3_selected_flow_keeps_original_oracle_and_six_turns(self):
         with run.deny_preflight_effects():
             sources = gate.effective_sources()
@@ -552,7 +966,8 @@ class WiringChecks(unittest.TestCase):
             return {"receipt":receipt,"delivery":delivery,"equality":equality}[str(path)],raw
         with run.deny_preflight_effects(),patch.object(run,"verify_binding",return_value=({},sha)),             patch.object(run,"bounded_json",side_effect=read),patch.object(run,"digest",return_value=sha),             patch.object(run.time,"time",return_value=1000),patch.object(Path,"exists",return_value=False):
             self.assertEqual(run.zero_inputs(args)[2],delivery)
-            for key,value in (("execute_diagnostic",True),("runtime_image",run.RUNTIME),
+            for key,value in (("execute_diagnostic",True),("go_receipt","SYNTHETIC_PAID"),("preparation_result","SYNTHETIC_PAID"),
+                              ("reproduce_zero_hub_restart",1),("runtime_image",run.RUNTIME),
                               ("cleanup_hard_stop_unix",1100),("unique_run","old-run"),("delivery",run.CREDENTIAL)):
                 changed=copy.copy(args);setattr(changed,key,value)
                 with self.subTest(guard=key),self.assertRaises(PermissionError):run.zero_inputs(changed)
@@ -567,6 +982,74 @@ class WiringChecks(unittest.TestCase):
                      ["docker","exec","owned","turn/start"]):
             with self.subTest(argv_guard=True),self.assertRaises(PermissionError):gate.validate_zero_command(argv)
         gate.validate_zero_command(["docker","exec","owned","python3","/state/server_bootstrap.py","offline"])
+
+    def test_drained_upstream_eof_halfclose_is_connection_only(self):
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
+            candidate,_=gate.load_gate(delivery,binding,inspect_only=True)
+            original=candidate.provider_forwarder.__globals__["Forwarder"]
+            run_id="cicada-two-turn-synthetichalfclose1"
+            record={"run_id":run_id,"network_id":"a"*64,"network_name":run_id+"-a-net","network_label":run_id,
+                "driver":"bridge","subnet":"172.29.0.0/24","gateway":"172.29.0.1","clients":["172.29.0.2"],
+                "lifetime":10,"max_connections":4,"max_active":1,"upstream_host":"127.0.0.1","upstream_port":7890}
+            actual={"Id":"a"*64,"Name":record["network_name"],"Driver":"bridge","Labels":{"org.cicada.test.run":run_id},
+                "IPAM":{"Config":[{"Subnet":record["subnet"],"Gateway":record["gateway"]}]},"Containers":{"b"*64:{"IPv4Address":"172.29.0.2/24"}}}
+            class Sock:
+                def __init__(self,events=(),shutdown_error=None):self.events=list(events);self.shutdown_error=shutdown_error;self.close_count=0
+                def setblocking(self,value):pass
+                def recv(self,n):
+                    value=self.events.pop(0) if self.events else b""
+                    if isinstance(value,BaseException):raise value
+                    return value
+                def send(self,data):return len(data)
+                def shutdown(self,how):
+                    if self.shutdown_error is not None:raise self.shutdown_error
+                def close(self):self.close_count+=1
+            def create(client,upstream,mode="upstream-first",diagnostics=True):
+                def ready(readers,writers,errors,timeout):
+                    if writers:return [],writers,[]
+                    if mode=="both":return list(readers),[],[]
+                    if mode=="pending":return [client,upstream],[],[]
+                    first,second=(upstream,client) if mode=="upstream-first" else (client,upstream)
+                    return ([first] if first in readers else [second] if second in readers else []),[],[]
+                value=original(record,actual,clock=lambda:0,connect=lambda *args,**kwargs:upstream,select_ready=ready)
+                gate.install_client_read_cancellation(value,io_diagnostics_v2=diagnostics)
+                self.assertTrue(value.admit(client,("172.29.0.2",50000)))
+                return value
+            client=Sock(shutdown_error=OSError(107,"SYNTHETIC_PRIVATE_ERROR"));up=Sock()
+            value=create(client,up);value.relay(client)
+            self.assertEqual((value.failures,value.drained_upstream_eof_cancellations,value.peer_error_disconnects,value.active),(0,1,1,0))
+            self.assertFalse(value.closed);self.assertIsNone(value.first_fatal_io)
+            self.assertEqual((client.close_count,up.close_count),(1,1))
+            self.assertEqual(value.summary()["last_drained_upstream_eof_cancellation"],{
+                "classification":"CLIENT_HALFCLOSE_CANCELLED_CONNECTION_ONLY","stage":"halfclose_client","errno":107,
+                "application_completion":"UNKNOWN","upstream_eof":True,"client_eof":False,"pending_client_bytes":0,"pending_upstream_bytes":0})
+            self.assertNotIn("SYNTHETIC_PRIVATE_ERROR",json.dumps(value.summary()))
+            second=Sock();second_up=Sock();value.connect=lambda *args,**kwargs:second_up
+            value.select_ready=lambda readers,writers,errors,timeout: (([second] if second in readers else [second_up] if second_up in readers else []),writers,[])
+            self.assertTrue(value.admit(second,("172.29.0.2",50001)));value.relay(second)
+            self.assertEqual((value.accepted,value.failures,value.drained_upstream_eof_cancellations,value.clean_eof_disconnects,value.active),(2,0,1,1,0))
+            self.assertEqual((second.close_count,second_up.close_count),(1,1))
+            class Subclass(OSError):pass
+            for label,client,up,mode in (
+                ("pending_upstream",Sock([b"buffered"],OSError(107,"synthetic")),Sock(),"pending"),
+                ("wrong_errno",Sock(shutdown_error=OSError(108,"synthetic")),Sock(),"upstream-first"),
+                ("subclass",Sock(shutdown_error=Subclass(107,"synthetic")),Sock(),"upstream-first"),
+                ("wrong_stage",Sock(),Sock(shutdown_error=OSError(107,"synthetic")),"client-first"),
+                ("upstream_eof_absent",Sock(shutdown_error=OSError(107,"synthetic")),Sock([b"data",ConnectionResetError(104,"synthetic")]),"client-first")):
+                with self.subTest(fatal=label):
+                    fatal=create(client,up,mode);fatal.relay(client)
+                    self.assertEqual((fatal.failures,fatal.drained_upstream_eof_cancellations,fatal.active),(1,0,0))
+                    self.assertIsNotNone(fatal.first_fatal_io)
+                    self.assertEqual((client.close_count,up.close_count),(1,1))
+            # Preserve the original both-EOF branch; no second cancellation increment.
+            client=Sock(shutdown_error=OSError(107,"synthetic"));up=Sock();both=create(client,up,"both");both.relay(client)
+            self.assertEqual((both.failures,both.drained_enotconn_disconnects,both.drained_upstream_eof_cancellations),(0,1,0))
+            plain=create(Sock(shutdown_error=OSError(107,"synthetic")),Sock(),diagnostics=False)
+            plain.relay(next(sock for sock in plain.sockets if sock.shutdown_error is not None))
+            self.assertFalse(hasattr(plain,"first_fatal_io"));self.assertNotIn("first_fatal_io",plain.summary())
+            self.assertEqual(plain.drained_upstream_eof_cancellations,1)
 
     def test_client_read_reset_connection_scope_and_rails(self):
         """Actual pinned relay/installed policy, deterministic socket doubles only."""
@@ -654,7 +1137,7 @@ class WiringChecks(unittest.TestCase):
             gate.install_client_read_cancellation(value);value.open()
             with self.assertRaises(OSError):value.serve()
             self.assertTrue(value.closed and listener.closed)
-            # Remove ONLY the inserted branch: all remaining relay AST is identical.
+            # Remove ONLY the two owned additions: all remaining relay AST is identical.
             raw=ast.parse((gate.OLD/"provider_transport.py").read_bytes())
             cls=next(n for n in raw.body if isinstance(n,ast.ClassDef) and n.name=="Forwarder")
             old=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="relay")
@@ -662,7 +1145,10 @@ class WiringChecks(unittest.TestCase):
             outer=next(n for n in new.body if isinstance(n,ast.Try));branch=outer.handlers[0].body[-1]
             cancellation=branch.orelse[0]
             self.assertIn("type(error) is ConnectionResetError",ast.unparse(cancellation.test))
-            branch.orelse=cancellation.orelse
+            drained=cancellation.orelse[0]
+            self.assertIn("type(error) is OSError",ast.unparse(drained.test))
+            self.assertIn("stage == 'halfclose_client'",ast.unparse(drained.test))
+            branch.orelse=drained.orelse
             self.assertEqual(ast.dump(new),ast.dump(old))
 
     def test_default_off_no_file_or_legacy_access(self):
