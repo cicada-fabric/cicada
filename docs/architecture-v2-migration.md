@@ -1,6 +1,10 @@
 # Architecture v2.3 数据与协议迁移
 
-## Current native-HTTPS fixture boundary
+## Current Runtime-resource fixture boundary
+
+The disposable Runtime now packages official0.161.0 bwrap with pinned COPYING and release-source URL; no optional voice resources, legacy sandbox or isolation relaxation was introduced. Packaging PASS is distinct from namespace-blocked sandbox execution and new-image Native NOT_RUN. Product009a/Hub45058 retain dirty2b92/unchanged675 Go inputs, helperc01 is reused; no Go/DB/key/wire/Client migration or product rebuild occurs. Contract1.6.4/wire1/catalog55/DB58 and the SQLite history remain unchanged. See [current evidence](native-request-observer-io-validation.md).
+
+## Historical native-HTTPS fixture boundary
 
 This checkpoint adds an explicitly selected fixture lane using original HTTPS bootstrap/URL; it makes no Go/product/DB/key/wire/Client migration or rebuild. Product009a/Hub45058 remain dirty2b92, helperc01 source-validated reuse. Offline and zero passes do not upgrade strict Native FAIL; opaque transport leaves POST count/enforcement and observer evidence unavailable. Contract1.6.4/wire1/catalog55/DB58 and the SQLite paragraph below remain unchanged. See [current evidence](native-request-observer-io-validation.md).
 

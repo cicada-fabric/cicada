@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current native-HTTPS lane — PARTIAL
+## Current Runtime-resource checkpoint — sandbox BLOCKED, v0.1 PARTIAL
+
+Memory-only Native diagnostics passed scoped QA and zero preparation; the sole subsequent Native run still failed on original A auto6, with B Receive/Reply proved but final/context NOT_PROVEN. Exact cause remains NOT_PROVEN. Official bwrap/license/source provenance and imagee754 packaging/version hashes passed; actual zero-model sandbox execution is BLOCKED by namespace EPERM, not validated by help or PATH warnings. Isolation remains unchanged. New e754 pin-source offline QA passed54/226/effects0; its fixture zero and Native remain NOT_RUN. See [resource checkpoint](../.cicada-data/native-observer-wiring-20261007/root-runtime-resource-checkpoint-20261007b.NONAUTH.json) and [detailed limits](native-request-observer-io-validation.md). Product009a/Hub45058 dirty2b92 and helperc01 reuse are unchanged; no product rebuild or acceptance transfer. Control counts NOT_INSTRUMENTED and overall v0.1 PARTIAL remain.
+
+## Historical native-HTTPS lane — PARTIAL
 
 The explicit default-OFF native-HTTPS lane passed scoped offline QA and zero preparation, but its sole Native run failed after six turns/four manual submissions. B original Receive/Reply succeeded; A auto6 errored and final/context remains NOT_PROVEN. The HTTP observer was OFF, so A resume failure reproduced without it; root cause remains NOT_PROVEN. Later independent cleanup does not upgrade original cleanup=false/A EOF UNKNOWN. See [detailed evidence](native-request-observer-io-validation.md). Product009a/Hub45058 retain dirty2b92 provenance, helperc01 is reused source-validated, and no product rebuild or full acceptance is claimed. v0.1 remains PARTIAL; Control counts NOT_INSTRUMENTED.
 

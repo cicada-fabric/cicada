@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — bounded A-resume diagnosis
+## Current next step — supported sandbox-policy audit
+
+Audit exact supported sandbox policy and container constraints without weakening isolation. Only a separately authorized zero-model check may follow; require genuine sandbox workspace-allow/outside-deny PASS before considering ONE separately authorized bounded Native run. No paid execution is authorized here. Preserve original-session/context/reply criteria, PQ/TLS, six turns/four manual/two automatic, retries0, admitted-TCP cap16 and absolute budgets. G4's CLI0.160.0 hardcode is a deferred migration item, not a Go change or current gate PASS; G4/G5/V67/current Client/physical/public gates remain separately pending. See [packaging PASS versus sandbox BLOCKED evidence](native-request-observer-io-validation.md).
+
+## Historical next step — bounded A-resume diagnosis
 
 Review safely bounded A-resume error evidence and exact original Native delivery consistency before deciding any correction. The native-HTTPS run failed with the HTTP observer OFF; that observation does not identify SSE/provider/context cause or authorize a blind rerun. No new model GO is granted here. Preserve original-session/context/reply criteria, six turns/four manual/two automatic, retries0, TCP admission cap16 and absolute180/210/240 deadlines. Then close G4/G5/V67 and current Client/physical/public gates separately; no overall acceptance transfer. See [current evidence and unavailable POST measurements](native-request-observer-io-validation.md).
 

@@ -2,7 +2,19 @@
 
 <a id="current-closeout"></a>
 
-## Current native-HTTPS lane — PARTIAL
+## Current Runtime-resource checkpoint — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Historical Runtime997e memory QA / zero | PASS54/226 (34/185 +10/20 +10/21), effects0; zero33.812s, models/credentials0, independent14 Docker+two UDS absence. |
+| Historical Runtime997e Native | FAIL84.661s; original A auto6 started/errored, B Receive/Reply PASS, final/context NOT_PROVEN; G2 FAIL/G3 NOT_REACHED. |
+| Resource imagee754 | Packaging/version/hash PASS with pinned bwrap/COPYING/source URL; new pin-source QA PASS54/226/effects0; e754 fixture ZERO_NOT_RUN_NEW_IMAGE/Native NOT_RUN. |
+| Genuine sandbox | Both baseline RW checks PASS; namespace EPERM BLOCKED child execution, workspace-allow/outside-deny NOT_REACHED; isolation unchanged. |
+| Cause / completion | Safe stream/network-send patterns do not prove provider cause; seccomp versus AppArmor undistinguished. v0.1 PARTIAL; external gates separate, Control NOT_INSTRUMENTED. |
+
+See [current evidence](native-request-observer-io-validation.md). Contract/wire/catalog/DB remain1.6.4/1/55/58.
+
+## Historical native-HTTPS lane — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

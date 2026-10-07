@@ -36,6 +36,7 @@ def closed_native_error_classification(params, native_fields):
                 detail = message[len(prefix):]
                 literals = (
                     ("stream closed before response.completed", "STREAM_CLOSED_BEFORE_COMPLETED"),
+                    ("response.failed event received", "RESPONSES_FAILED_EVENT"),
                     ("idle timeout waiting for SSE", "SSE_IDLE_TIMEOUT"),
                     ("Incomplete response returned, reason: content_filter", "CONTENT_FILTER"),
                     ("Incomplete response returned, reason: unknown", "INCOMPLETE_REASON_UNKNOWN"),
@@ -80,17 +81,22 @@ def mark_native_failure(self, error, node, direction, message, native_fields):
                 publication = {"error":error,"origin":origin,"done":threading.Event(),
                     "end":min(time.monotonic()+5,self.policy.cleanup_end,self.policy.started+240)}
                 self._observer_native_capture_state = publication
-                if getattr(self.args,"test_request_observer",False) is True:
-                    try:
-                        recorded_at = time.monotonic()
-                        diagnostic = closed_native_error_classification(params, native_fields)
-                        diagnostic.update(node=node, thread_id=params["threadId"], turn_id=params["turnId"],
-                            host_monotonic_seconds=recorded_at,
-                            classification_scope="RUNTIME_REPORTED_CONDITION_NOT_PROVEN_CAUSE")
-                        self.result.setdefault("native_error_closed_diagnostic", diagnostic)
-                    except BaseException:
-                        # Diagnostic failure cannot mask the primary or delay abort.
-                        pass
+            try:
+                diagnostic_go = getattr(self.args,"go",None)
+                if ((getattr(self.args,"native_https",False) is True or
+                        getattr(self.args,"test_request_observer",False) is True) and
+                        type(diagnostic_go) is dict and
+                        type(diagnostic_go.get("max_fatal_diagnostic_capture_seconds")) is int and
+                        diagnostic_go["max_fatal_diagnostic_capture_seconds"] == 5):
+                    recorded_at = time.monotonic()
+                    diagnostic = closed_native_error_classification(params, native_fields)
+                    diagnostic.update(node=node, thread_id=params["threadId"], turn_id=params["turnId"],
+                        host_monotonic_seconds=recorded_at,
+                        classification_scope="RUNTIME_REPORTED_CONDITION_NOT_PROVEN_CAUSE")
+                    self.result.setdefault("native_error_closed_diagnostic", diagnostic)
+            except BaseException:
+                # Memory diagnostics never mask the primary or change capture.
+                pass
     # Publish before cleanup can stop the Runtime. No external calls hold this
     # short publication lock; inherited cleanup never holds it while persisting.
     try:

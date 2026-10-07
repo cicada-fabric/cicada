@@ -1526,6 +1526,7 @@ class WiringChecks(unittest.TestCase):
         fields={"category":"other","http_status_code":None,"will_retry":False}
         prefix="stream disconnected before completion: "
         cases=(("stream closed before response.completed","STREAM_CLOSED_BEFORE_COMPLETED"),
+            ("response.failed event received","RESPONSES_FAILED_EVENT"),
             ("idle timeout waiting for SSE","SSE_IDLE_TIMEOUT"),
             ("Incomplete response returned, reason: content_filter","CONTENT_FILTER"),
             ("Incomplete response returned, reason: unknown","INCOMPLETE_REASON_UNKNOWN"),
@@ -1630,6 +1631,51 @@ class WiringChecks(unittest.TestCase):
             with checks.assertRaises(RuntimeError):
                 namespace["terminal"](fixture,"b","received",later)
             checks.assertIs(fixture.result["native_error_closed_diagnostic"],first)
+            native_valid=json.loads(json.dumps(literal_valid))
+            native_valid['params']['error']['message']='stream disconnected before completion: response.failed event received'
+            fixture=Fixture();fixture.args.test_request_observer=False;fixture.args.native_https=True
+            def native_abort(error):
+                checks.assertEqual(fixture.result['native_error_closed_diagnostic']['classification'],'RESPONSES_FAILED_EVENT')
+                checks.assertIsNone(fixture._observer_native_capture_state)
+                checks.assertFalse(hasattr(fixture,'_observer_capture_active'))
+            fixture.abort_owned=native_abort
+            with patch.object(gate.threading,'Event',side_effect=AssertionError('NO_CAPTURE_EVENT')):
+                with checks.assertRaises(RuntimeError):namespace['terminal'](fixture,'a','received',native_valid)
+                first_native=fixture.result['native_error_closed_diagnostic']
+                fixture.budget.started.append(('b','synthetic-turn-b'))
+                fixture.abort_owned=lambda error:checks.assertIs(fixture.result['native_error_closed_diagnostic'],first_native)
+                with checks.assertRaises(RuntimeError):namespace['terminal'](fixture,'b','received',later)
+            checks.assertEqual((first_native['node'],first_native['thread_id'],first_native['turn_id']),
+                ('a','synthetic-thread-a','synthetic-turn-a'))
+            checks.assertIsNone(fixture._observer_native_capture_state)
+            for change in ('default','integer','string','cap_bool','cap_float','cap_missing','go_type',
+                    'node','thread','turn','budget_thread','busy','cutoff','aborted','classifier','publication'):
+                candidate=Fixture();candidate.args.test_request_observer=False;candidate.args.native_https=True
+                message=json.loads(json.dumps(literal_valid));side='a'
+                if change=='default':del candidate.args.native_https
+                elif change=='integer':candidate.args.native_https=1
+                elif change=='string':candidate.args.native_https='true'
+                elif change=='cap_bool':candidate.args.go['max_fatal_diagnostic_capture_seconds']=True
+                elif change=='cap_float':candidate.args.go['max_fatal_diagnostic_capture_seconds']=5.0
+                elif change=='cap_missing':candidate.args.go={}
+                elif change=='go_type':candidate.args.go=None
+                elif change=='node':side='foreign'
+                elif change=='thread':message['params']['threadId']='foreign'
+                elif change=='turn':message['params']['turnId']='foreign'
+                elif change=='budget_thread':candidate.budget.threads['a']='synthetic-stale'
+                elif change=='busy':candidate.budget.started.append(('a','synthetic-busy'))
+                elif change=='cutoff':candidate._observer_capture_cutoff=True
+                elif change=='aborted':candidate.aborted=True
+                class FailedResult(dict):
+                    def setdefault(self,*args):raise KeyboardInterrupt()
+                if change=='publication':candidate.result=FailedResult()
+                primary=RuntimeError('SYNTHETIC_PRIMARY');aborts=[]
+                candidate.abort_owned=lambda error:aborts.append(error)
+                classifier=patch.object(gate,'closed_native_error_classification',side_effect=KeyboardInterrupt) if change=='classifier' else patch.object(gate,'closed_native_error_classification',wraps=gate.closed_native_error_classification)
+                with checks.subTest(native_negative=change),classifier,patch.object(gate.threading,'Event',side_effect=AssertionError('NO_CAPTURE_EVENT')):
+                    gate.mark_native_failure(candidate,primary,side,'received',message,namespace['safe_error_diagnostic'](message['params']))
+                checks.assertEqual(aborts,[primary]);checks.assertNotIn('native_error_closed_diagnostic',candidate.result)
+                checks.assertIsNone(candidate._observer_native_capture_state)
             for flag,seconds,thread,started in ((False,5,"synthetic-thread-a",[("a","synthetic-turn-a")]),
                     (1,5,"synthetic-thread-a",[("a","synthetic-turn-a")]),
                     (True,True,"synthetic-thread-a",[("a","synthetic-turn-a")]),

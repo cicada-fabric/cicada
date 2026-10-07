@@ -387,7 +387,7 @@ def execute(args):
 
 
 LATEST_VERSION = "0.161.0"
-LATEST_RUNTIME = "sha256:997eab1a341f73b510ab184b62a0ce1c4e98ca696051163afff4481750fb74df"
+LATEST_RUNTIME = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
 LATEST_CLI_SHA = "9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c"
 ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "basil"',
     'sandbox_mode = "workspace-write"','approval_policy = "on-request"','approvals_reviewer = "user"',
