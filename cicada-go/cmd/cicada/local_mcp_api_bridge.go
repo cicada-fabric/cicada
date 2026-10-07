@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 
 const localMCPMetadataMaxBody = 32 * 1024
 
-// localMCPMetadataRequest carries only fixed, read-only MCP metadata operations
+// localMCPMetadataRequest carries only fixed MCP metadata and scoped leave operations
 // through the owner-local Node socket. The Node rechecks the native record,
 // current session Guard, Hub origin, and binding before using its checked HTTP
 // transport. There is deliberately no caller-supplied path or header map.
@@ -39,6 +41,10 @@ type localMCPMetadataRequest struct {
 	Query           string `json:"query,omitempty"`
 	NodeFilter      string `json:"node_filter,omitempty"`
 	WorkspaceFilter string `json:"workspace_filter,omitempty"`
+	StatusFilter    string `json:"status_filter,omitempty"`
+	HarnessFilter   string `json:"harness_filter,omitempty"`
+	Limit           int    `json:"limit,omitempty"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 type localMCPMetadataResult struct {
@@ -117,6 +123,22 @@ func (m *mcpServer) requestPQMetadata(method, path string, encodedBody []byte, a
 			request.Operation = "mcp_metadata_resolve"
 		case "/v2/fabric/inspect":
 			request.Operation = "mcp_metadata_inspect"
+		}
+	case method == http.MethodGet && (path == "/v2/fabric/members" || strings.HasPrefix(path, "/v2/fabric/members?")) && len(encodedBody) == 0:
+		if err := request.membersQuery(path); err != nil {
+			return nil, err
+		}
+		request.Operation = "mcp_metadata_members"
+	case method == http.MethodPost && path == "/v2/fabric/leave-group":
+		var input struct {
+			Reason string `json:"reason"`
+		}
+		if err := decodeStrictJSON(encodedBody, &input); err != nil {
+			return nil, errors.New("protected MCP leave-group input is invalid")
+		}
+		request.Operation, request.Reason = "mcp_metadata_leave_group", input.Reason
+		if _, _, _, err := request.route(); err != nil {
+			return nil, err
 		}
 	case method == http.MethodPost && path == "/v2/fabric/heartbeat" && len(encodedBody) == 0:
 		request.Operation = "mcp_metadata_heartbeat"
@@ -253,6 +275,16 @@ func (b *machineAgentJoinBridge) mcpMetadata(request localMCPMetadataRequest) (*
 			return nil, errors.New("Hub returned an invalid Directory card")
 		}
 		result.Body = marshalMCPMetadata(resolved)
+	case "mcp_metadata_members":
+		result.Body, err = checkedMCPMembersResult(request, result.Body)
+		if err != nil {
+			return nil, err
+		}
+	case "mcp_metadata_leave_group":
+		result.Body, err = checkedMCPLeaveGroupResult(request, result.Body)
+		if err != nil {
+			return nil, err
+		}
 	case "mcp_metadata_heartbeat":
 		var actor fabric.Actor
 		if err := decodeStrictJSON(result.Body, &actor); err != nil {
@@ -316,6 +348,10 @@ func (request localMCPMetadataRequest) OperationName() string {
 		return "resolve"
 	case "mcp_metadata_inspect":
 		return "inspect"
+	case "mcp_metadata_members":
+		return "members"
+	case "mcp_metadata_leave_group":
+		return "leave-group"
 	case "mcp_metadata_heartbeat":
 		return "heartbeat"
 	default:
@@ -324,6 +360,12 @@ func (request localMCPMetadataRequest) OperationName() string {
 }
 
 func (request localMCPMetadataRequest) route() (string, string, []byte, error) {
+	if request.Operation != "mcp_metadata_leave_group" && request.Reason != "" {
+		return "", "", nil, errors.New("unexpected leave-group reason")
+	}
+	if request.Operation != "mcp_metadata_members" && (request.StatusFilter != "" || request.HarnessFilter != "" || request.Limit != 0) {
+		return "", "", nil, errors.New("unexpected members filters")
+	}
 	switch request.Operation {
 	case "mcp_metadata_whoami":
 		if request.Query != "" || request.NodeFilter != "" || request.WorkspaceFilter != "" {
@@ -336,6 +378,30 @@ func (request localMCPMetadataRequest) route() (string, string, []byte, error) {
 		return request.withDirectoryRoute("/v2/fabric/resolve")
 	case "mcp_metadata_inspect":
 		return request.withDirectoryRoute("/v2/fabric/inspect")
+	case "mcp_metadata_leave_group":
+		if request.Query != "" || request.NodeFilter != "" || request.WorkspaceFilter != "" || len([]byte(request.Reason)) > 1024 {
+			return "", "", nil, errors.New("leave-group input is invalid or oversized")
+		}
+		body, err := json.Marshal(struct {
+			Reason string `json:"reason"`
+		}{request.Reason})
+		return http.MethodPost, "/v2/fabric/leave-group", body, err
+	case "mcp_metadata_members":
+		if request.Query != "" || request.WorkspaceFilter != "" || len([]byte(request.StatusFilter)) > 256 || len([]byte(request.NodeFilter)) > 256 || len([]byte(request.HarnessFilter)) > 256 || request.Limit < 1 || request.Limit > 200 {
+			return "", "", nil, errors.New("members filters are invalid or oversized")
+		}
+		query := url.Values{}
+		if request.StatusFilter != "" {
+			query.Set("status", request.StatusFilter)
+		}
+		if request.NodeFilter != "" {
+			query.Set("node_id", request.NodeFilter)
+		}
+		if request.HarnessFilter != "" {
+			query.Set("harness", request.HarnessFilter)
+		}
+		query.Set("limit", strconv.Itoa(request.Limit))
+		return http.MethodGet, "/v2/fabric/members?" + query.Encode(), nil, nil
 	case "mcp_metadata_heartbeat":
 		if request.Query != "" || request.NodeFilter != "" || request.WorkspaceFilter != "" {
 			return "", "", nil, errors.New("heartbeat metadata request contains unexpected filters")
@@ -356,4 +422,60 @@ func (request localMCPMetadataRequest) withDirectoryRoute(path string) (string, 
 		return "", "", nil, errors.New("could not encode bounded Directory query")
 	}
 	return http.MethodPost, path, body, nil
+}
+
+// membersQuery accepts only the existing public members filters, never a caller path/header.
+func (request *localMCPMetadataRequest) membersQuery(path string) error {
+	parsed, err := url.ParseRequestURI(path)
+	if err != nil || parsed.Path != "/v2/fabric/members" || parsed.IsAbs() || parsed.Host != "" || parsed.Fragment != "" {
+		return errors.New("invalid members route")
+	}
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return errors.New("invalid members filters")
+	}
+	for key, values := range query {
+		if len(values) != 1 || (key != "status" && key != "node_id" && key != "harness" && key != "limit") {
+			return errors.New("unsupported members filter")
+		}
+	}
+	request.StatusFilter, request.NodeFilter, request.HarnessFilter = query.Get("status"), query.Get("node_id"), query.Get("harness")
+	request.Limit = 200
+	if values, ok := query["limit"]; ok {
+		request.Limit, err = strconv.Atoi(values[0])
+		if err != nil {
+			return errors.New("invalid members limit")
+		}
+	}
+	request.Operation = "mcp_metadata_members"
+	_, _, _, err = request.route()
+	return err
+}
+
+func checkedMCPMembersResult(request localMCPMetadataRequest, body json.RawMessage) (json.RawMessage, error) {
+	var members struct {
+		Endpoints []fabric.NetworkCard `json:"endpoints"`
+	}
+	if len(body) > localMCPMetadataMaxBody || request.Limit < 1 || request.Limit > 200 || decodeStrictJSON(body, &members) != nil || members.Endpoints == nil || len(members.Endpoints) > request.Limit {
+		return nil, errors.New("Hub returned an invalid members result")
+	}
+	seen := make(map[string]bool)
+	for _, member := range members.Endpoints {
+		if member.EndpointID == "" || len(member.EndpointID) > 256 || member.GroupID != request.GroupID || member.NativeSessionID != "" || seen[member.EndpointID] {
+			return nil, errors.New("Hub returned an invalid scoped member")
+		}
+		seen[member.EndpointID] = true
+	}
+	return marshalMCPMetadata(members), nil
+}
+func checkedMCPLeaveGroupResult(request localMCPMetadataRequest, body json.RawMessage) (json.RawMessage, error) {
+	var left struct {
+		Status           string `json:"status"`
+		LeftGroupID      string `json:"left_group_id"`
+		RemainingGroupID string `json:"remaining_group_id"`
+	}
+	if len(body) > localMCPMetadataMaxBody || decodeStrictJSON(body, &left) != nil || left.Status != "left_group" || left.LeftGroupID != request.GroupID || len(left.RemainingGroupID) > 256 || left.RemainingGroupID == request.GroupID {
+		return nil, errors.New("Hub returned an invalid leave-group result")
+	}
+	return marshalMCPMetadata(left), nil
 }

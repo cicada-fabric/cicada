@@ -69,3 +69,29 @@ func TestUnknownPayloadProfileDeniedBeforeFixtureAccess(t *testing.T) {
 		t.Fatal("unknown profile was not rejected before fixture access")
 	}
 }
+
+func TestG2NodeAuthoritySelectionDoesNotChangeG1(t *testing.T) {
+	meta := fixture{NodeA: "a", NodeB: "b", OwnerID: "alice", OwnerKeyID: "key-a", DeviceID: "device-a", GroupID: "primary"}
+	for _, node := range []string{"a", "b"} {
+		owner, key, device, group, err := fixtureNodeScope(meta, node)
+		if err != nil || owner != "alice" || key != "key-a" || device != "device-a" || group != "primary" {
+			t.Fatal("default G1 authority changed")
+		}
+	}
+	meta.Scenario = "g2-g3"
+	meta.BobOwnerID = "bob"
+	meta.BobOwnerKeyID = "key-b"
+	meta.BobDeviceID = "device-b"
+	meta.BobGroupID = "group-b"
+	owner, key, device, group, err := fixtureNodeScope(meta, "b")
+	if err != nil || owner != "bob" || key != "key-b" || device != "device-b" || group != "group-b" {
+		t.Fatal("Bob authority collapsed into Alice")
+	}
+	if _, _, _, _, err := fixtureNodeScope(meta, "foreign"); err == nil {
+		t.Fatal("unknown Node inherited authority")
+	}
+	meta.BobOwnerID = "alice"
+	if _, _, _, _, err := fixtureNodeScope(meta, "b"); err == nil {
+		t.Fatal("G2 identical Owners accepted")
+	}
+}

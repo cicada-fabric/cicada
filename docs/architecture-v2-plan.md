@@ -1,6 +1,14 @@
 # Architecture v2.3 实施计划
 
-## Current next step — separately authorized strict G1 diagnostics
+## Current next step — proposed closed restart diagnosis
+
+First propose bounded closed-enum error recording and a zero-model Hub-restart reproduction to distinguish the B fresh-PQ-witness predicate from its shared limit check. Only after evidence review decide whether to authorize one bounded Native run; no rerun is authorized here. Keep strict context/original-thread criteria and scenario budgets unchanged. G3 management acceptance, G4/G5/V67, physical Nodes and public/environment gates remain unclosed. [Evidence and source scopes](native-request-observer-io-validation.md) distinguish current gate/zero PASS from current Native FAIL and historical G1 PASS.
+
+## Historical next checkpoint — G2/G3 pending
+
+Preserve the tested G1 PASS, then validate the new independent-Owner membership/Link helper and per-node TLS overlay offline before a separately authorized zero preparation. G2 must retain original-thread strict context and actual post-revoke caller denial; G3 must prove authenticated encrypted status on restored management state. Neither development nor helper compilation closes those Runtime gates. See [Native evidence](native-request-observer-io-validation.md).
+
+## Historical next step — separately authorized strict G1 diagnostics
 
 The source-ready, default-OFF v2 lane and sole four-handshake TLS-only probe passed their scoped checks. Next requires separately reviewed current preparation/wiring, fresh Root pins/budget/GO, and at most five logical turns (three manual plus two automatic) under the unchanged original oracle. Stop on the first terminal Native failure; diagnostics do not authorize retries, rebuilds or context-criterion waivers. No fresh paid execution is authorized here. Different time namespaces prohibit causal clock comparison without separately verified domain evidence; future observations cannot backfill G1d's unknown subtype/cause. See [current closed-I/O/TLS evidence](native-request-observer-io-validation.md); Android, physical Nodes and public HTTPS remain separate gates.
 

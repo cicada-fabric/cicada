@@ -2,7 +2,29 @@
 
 <a id="current-closeout"></a>
 
-## Current v2 diagnostics checkpoint — PARTIAL
+## Current checked-PQ MCP / Native G2-G3 scope — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Current normal / race / shipped PQ | PASS: 3/21, 1/21 and 1/4 top/subtests; separate domains. |
+| Current wiring / zero preparation | 21 methods PASS; zero preparation PASS, models 0. |
+| Sole current Native G2/G3 | FAIL, two manual original Join turns; third turn/Ask/Reply/G3 NOT_REACHED. B witness/limit error UNKNOWN. |
+| Current cleanup | Original true/both EOF confirmed; independent 15 resource targets and two UDS absent. |
+| Product completion | PARTIAL; old G1 PASS stays old-product scoped; Control invocation counts and remaining external gates are not upgraded. |
+
+See [detailed current evidence](native-request-observer-io-validation.md). Contract/wire/catalog/schema remain 1.6.4/1/55/58.
+
+## Historical G1 / G2-G3 scope — PARTIAL
+
+| Scope | Current result |
+|---|---|
+| Strict G1, tested 2b92/dd4367 | Bounded PASS; original threads, strict markers and owned cleanup independently reviewed. |
+| G2 / G3 | Development only; new helper/TLS pins and actual acceptance pending. |
+| Control / environments | Construction proof only, no measured invocation count; external gates keep their historical scopes. |
+
+See [source-attributed Native evidence](native-request-observer-io-validation.md).
+
+## Historical v2 diagnostics checkpoint — PARTIAL
 
 | Scope | Outcome and limit |
 |---|---|

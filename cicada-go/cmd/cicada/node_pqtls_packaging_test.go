@@ -162,37 +162,49 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 	makeNode := func(nodeID string) {
 		f := current.nodes[nodeID]
 		path := distributionActiveConfigPath(f)
-		childCtx := ctx
 		args := []string{"machine", "agent", "--id", nodeID, "--control-url", base, "--state-dir", f.StateRoot, "--pqtls-config", path, "--relay-only"}
-		if !observeIdle {
-			timed, stop := context.WithTimeout(ctx, 45*time.Second)
-			defer stop()
-			childCtx = timed
-			args = append(args, "--once")
-		}
-		child := exec.CommandContext(childCtx, binary, args...)
+		child := exec.CommandContext(ctx, binary, args...)
 		diagnosticPath := filepath.Join(diagnosticsDir, "node-"+nodeID+".jsonl")
-		child.Env = distributionProcessEnvironment("CICADA_HUB_ID="+hubID,
-			"CICADA_PQTLS_DIAGNOSTIC_FILE="+diagnosticPath)
-		if observeIdle {
-			log := new(distributionOutput)
-			child.Stdout, child.Stderr = log, log
-			if err := child.Start(); err != nil {
-				t.Fatal("start actual shipped Node Agent")
-			}
-			idleChildren = append(idleChildren, child)
-			idleLogs = append(idleLogs, log)
-		} else {
-			out, err := child.CombinedOutput()
-			if err != nil {
-				t.Fatalf("shipped Node Agent failed: %v transcript_sha256=%x bytes=%d", err, sha256.Sum256(out), len(out))
-			}
-			t.Logf("shipped Node Agent exit=0 transcript_sha256=%x bytes=%d", sha256.Sum256(out), len(out))
+		child.Env = distributionProcessEnvironment("CICADA_HUB_ID="+hubID, "CICADA_PQTLS_DIAGNOSTIC_FILE="+diagnosticPath)
+		log := new(distributionOutput)
+		child.Stdout, child.Stderr = log, log
+		if err := child.Start(); err != nil {
+			t.Fatal("start actual shipped Node Agent")
 		}
+		idleChildren = append(idleChildren, child)
+		idleLogs = append(idleLogs, log)
+
 	}
 	// Both actual Agent processes run before enqueue; no native/model consumption.
 	makeNode(fixture.sourceNodeID)
 	makeNode(fixture.targetNodeID)
+	// --once returns before the resident Relay SSE worker starts. Both actual
+	// Agents must observe ready before safe stop/join releases their locks.
+	readyDeadline := time.Now().Add(15 * time.Second)
+	for {
+		allReady := true
+		for _, nodeID := range []string{fixture.sourceNodeID, fixture.targetNodeID} {
+			ready, err := distributionNodeRelayReady(filepath.Join(diagnosticsDir, "node-"+nodeID+".jsonl"))
+			if err != nil {
+				t.Fatal("invalid bounded synthetic Node readiness diagnostic")
+			}
+			allReady = allReady && ready
+		}
+		if !time.Now().Before(readyDeadline) {
+			t.Fatal("actual Node Relay ready deadline exceeded")
+		}
+		if ctx.Err() != nil {
+			t.Fatal("actual Node Relay ready parent deadline exceeded")
+		}
+		if allReady {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("actual Node Relay ready parent deadline exceeded")
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 	if observeIdle {
 		time.Sleep(3 * time.Second)
 		if imageRequest != "" {
@@ -226,8 +238,8 @@ func TestPQDistributionActualHubNode(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(os.Getenv("PQTLS_TEST_ARTIFACT_DIR"), "memory-observation.json"), data, 0600); err != nil {
 			t.Fatal(err)
 		}
-		stopIdle() // Stop before enqueueing: native consumption stays outside this gate.
 	}
+	stopIdle() // Always stop and join before enqueueing or parent lock acquisition.
 	// Parent checked clients acquire their genuine runtime locks only after
 	// the actual Agent processes have exited and released the same singleton.
 	t.Log("phase=actual-two-shipped-agents-joined")
@@ -380,3 +392,48 @@ func (o *distributionOutput) Bytes() []byte {
 	return append([]byte(nil), o.buffer.Bytes()...)
 }
 func (o *distributionOutput) Len() int { o.mu.Lock(); defer o.mu.Unlock(); return o.buffer.Len() }
+
+// Only complete bounded synthetic records are read while the Agent is live.
+// The existing final oracle still verifies the complete TLS/ready association.
+func distributionNodeRelayReady(path string) (bool, error) {
+	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, 1024*1024+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return false, readErr
+	}
+	if closeErr != nil {
+		return false, closeErr
+	}
+	if len(data) > 1024*1024 {
+		return false, fmt.Errorf("bounded readiness diagnostic exceeded")
+	}
+	observations := make(map[string]bool)
+	lines := bytes.Split(data, []byte{'\n'})
+	// The last segment is not newline-terminated and may still be being written.
+	for _, line := range lines[:len(lines)-1] {
+		if len(line) > 16*1024 {
+			return false, fmt.Errorf("bounded readiness record exceeded")
+		}
+		var record machinePQDiagnosticRecord
+		if json.Unmarshal(line, &record) != nil || record.SchemaVersion != 1 {
+			return false, fmt.Errorf("invalid readiness record")
+		}
+		if record.Route != "relay-events" || record.ObservationID == "" {
+			continue
+		}
+		if record.Event == "got-conn" {
+			observations[record.ObservationID] = true
+		}
+		if record.Event == "ready" && observations[record.ObservationID] {
+			return true, nil
+		}
+	}
+	return false, nil
+}

@@ -419,8 +419,447 @@ def install_client_read_cancellation(adapter, expected_sha=None, *, io_diagnosti
     adapter.summary=types.MethodType(summary,adapter)
 
 
-def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
+G2_TOOLS = ("cicada_join", "cicada_use_group", "cicada_leave_group", "cicada_whoami", "cicada_members", "cicada_find", "cicada_ask", "cicada_receive", "cicada_reply")
+
+def g2_node_scope(meta, letter):
+    if letter not in ("a", "b") or meta.get("scenario") != "g2-g3":
+        raise ValueError("G2_NODE_SCOPE")
+    keys = ("owner_id", "group_id") if letter == "a" else ("bob_owner_id", "bob_group_id")
+    values = tuple(meta.get(key) for key in keys)
+    if any(type(value) is not str or not value for value in values) or meta.get("bob_owner_id") == meta.get("owner_id"):
+        raise ValueError("G2_DISTINCT_AUTHORITY")
+    return values
+
+def compile_g2_preparation_methods(source, namespace):
+    """Select existing preparation methods with narrow per-Node scope changes."""
+    tree = ast.parse(source)
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ManagedGate")
+    selected = {}
+    for name in ("prepare_managed", "bind_mcp"):
+        method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == name)
+        text = ast.get_source_segment(source, method)
+        if name == "prepare_managed":
+            old = "'--native-thread-b', self.nodes['b']['thread'])"
+            if text.count(old) != 1: raise ValueError("G2_BOOTSTRAP_CONTEXT")
+            text = text.replace(old, "'--native-thread-b', self.nodes['b']['thread'], '--scenario', 'g2-g3')", 1)
+            old = "proof['group_id'] != self.meta['group_id'] or (proof['owner_id'] != self.meta['owner_id'])"
+            if text.count(old) != 1: raise ValueError("G2_TLS_PROOF_CONTEXT")
+            text = text.replace(old, "proof['group_id'] != _g2_node_scope(self.meta,letter)[1] or proof['owner_id'] != _g2_node_scope(self.meta,letter)[0]", 1)
+            old = "required = {'cicada_join', 'cicada_find', 'cicada_ask', 'cicada_receive', 'cicada_reply'}"
+            if text.count(old) != 1: raise ValueError("G2_DISCOVERY_CONTEXT")
+            text = text.replace(old, "required = set(_g2_tools)", 1)
+        else:
+            old = "('cicada_join', 'cicada_find', 'cicada_ask', 'cicada_receive', 'cicada_reply')"
+            if text.count(old) != 2: raise ValueError("G2_APPROVAL_CONTEXT")
+            text = text.replace(old, "_g2_tools")
+        # Source-segment retains method indentation after its first line.
+        lines = text.splitlines()
+        text = lines[0] + "\n" + "\n".join(line[4:] if line.startswith("    ") else line for line in lines[1:]) + "\n"
+        exec(compile(text, "<owned-g2-preparation>", "exec"), namespace)
+        selected[name] = namespace[name]
+    return selected
+
+
+def g2_turn_witness(base, events, thread, tools, markers=()):
+    """Only initial multi-Join changes cardinality; strict shared marker parser stays."""
+    calls = [event['item'] for event in events if event.get('type') == 'item.completed'
+             and event.get('item', {}).get('type') == 'mcp_tool_call']
+    if tuple(item.get('tool') or item.get('name') for item in calls) != tuple(tools):
+        raise RuntimeError('G2_EXACT_ORDERED_TOOLS')
+    hashes = []
+    for item in calls:
+        if item.get('status') != 'completed':
+            raise RuntimeError('G2_TOOL_NOT_COMPLETED')
+        payload = base.native_tool_payload(item)
+        hashes.append({'tool': item.get('tool') or item.get('name'),
+            'actual_result_sha256': hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()})
+    without = [event for event in events if not (event.get('type') == 'item.completed'
+               and event.get('item', {}).get('type') == 'mcp_tool_call')]
+    witness = base.turn_witness(without, thread, (), markers)
+    witness.update(completed_tools=list(tools), actual_tool_result_audit=hashes)
+    return witness
+
+
+def g2_initial_binding(self, letter, turn_id):
+    ns = self.managed_golden_flow.__globals__
+    base, dto = ns['base'], ns['dto_progression']
+    items = [params['item'] for node, params in self.budget.items
+             if node == letter and params['turnId'] == turn_id]
+    calls = [item for item in items if item.get('type') == 'mcpToolCall']
+    group = self.meta['group_id'] if letter == 'a' else self.meta['bob_group_id']
+    if len(calls) != 1 or calls[0].get('tool') != 'cicada_join' or calls[0].get('arguments') != {'group_id':group} or calls[0].get('status') != 'completed':
+        raise RuntimeError('G2_INITIAL_JOIN_SCOPE')
+    payload=base.native_tool_payload(calls[0])
+    binding=dto.join_binding(payload,self.nodes[letter]['thread'],self.nodes[letter]['node_id'],group)
+    self.nodes[letter].update(binding_before=binding,endpoint=binding['endpoint_id'],trusted_join_card=dict(payload['network_card']),current_group_id=group)
+
+
+def g2_second_binding(self, turn_id):
+    ns=self.managed_golden_flow.__globals__;base,dto=ns['base'],ns['dto_progression']
+    calls=[p['item'] for node,p in self.budget.items if node=='a' and p['turnId']==turn_id and p['item'].get('type')=='mcpToolCall']
+    expected=('cicada_join','cicada_use_group','cicada_leave_group','cicada_whoami')
+    if tuple(x.get('tool') for x in calls)!=expected or any(x.get('status')!='completed' for x in calls):raise RuntimeError('G2_SECOND_MEMBERSHIP_SEQUENCE')
+    if [x.get('arguments') for x in calls]!=[{'group_id':self.meta['alice_second_group_id']},{'group_id':self.meta['group_id']},{},{}]:raise RuntimeError('G2_GROUP_ONLY_LEAVE_SCOPE')
+    binding=dto.join_binding(base.native_tool_payload(calls[0]),self.nodes['a']['thread'],self.nodes['a']['node_id'],self.meta['alice_second_group_id'])
+    if binding['endpoint_id']!=self.nodes['a']['endpoint']:raise RuntimeError('G2_ORIGINAL_ENDPOINT_CHANGED')
+    left=base.native_tool_payload(calls[2]);card=base.native_tool_payload(calls[3])
+    if left.get('status')!='left_group' or left.get('remaining_group_id')!=self.meta['alice_second_group_id'] or left.get('scope_activation_error'):raise RuntimeError('G2_OTHER_MEMBERSHIP_NOT_RETAINED')
+    if card.get('endpoint_id')!=self.nodes['a']['endpoint'] or card.get('native_session_id')!=self.nodes['a']['thread'] or card.get('node_id')!=self.nodes['a']['node_id'] or card.get('group_id')!=self.meta['alice_second_group_id'] or type(card.get('binding_epoch')) is not int or card['binding_epoch']<1 or not card.get('binding_id'):raise RuntimeError('G2_FINAL_CURRENT_CARD_SCOPE')
+    binding=dict(binding,id=card['binding_id'],epoch=card['binding_epoch'],status=card.get('binding_status'))
+    self.nodes['a'].update(binding_before=binding,trusted_join_card=dict(card),current_group_id=card['group_id'])
+    self.result['g2_membership']={'same_original_thread':True,'same_original_endpoint':True,'separately_authorized_principal_membership':True,'left_primary_only':True,'selected_group_id':card['group_id']}
+
+
+def g2_accepted_ask(dto, item, payload, sender, receiver, question, card, link):
+    # Link derives its exact target from the previously verified bilateral receipt.
+    if item.get('arguments') != {'question': question, 'link_id': link, 'data_scope': 'thread.message'}:
+        raise RuntimeError('G2_EXACT_NARROW_ASK')
+    result = payload.get('result')
+    if (type(result) is not dict or payload.get('operation') != 'ask' or payload.get('status') != 'SENT'
+        or payload.get('retryable') is not False or payload.get('link_id') != link
+        or result.get('link_id') != link or result.get('status') != 'OPEN'
+        or result.get('reply_mode') != 'asynchronous' or result.get('payload_mode') != 'SEALED_V1'
+        or result.get('delivery') != 'RELAY_PERSISTED'):
+        raise RuntimeError('G2_ACCEPTED_LINK_SCOPE')
+    for key in ('request_id','message_id'):
+        if type(payload.get(key)) is not str or not payload[key] or result.get(key) != payload[key]:
+            raise RuntimeError('G2_ASK_CORRELATION')
+    return {'request_id':payload['request_id'],'message_id':payload['message_id'],
+        'sender_endpoint_id':sender,'receiver_endpoint_id':receiver,'link_id':link,'state':'OPEN'}
+
+
+def g2_accepted_reply(dto, items, parse, request, answer):
+    item = dto.one(items, 'cicada_reply')
+    payload = parse(item)
+    result = payload.get('result')
+    if (item.get('arguments') != {'request_id':request['request_id'],'body':answer,'link_id':request['link_id']}
+        or type(result) is not dict or payload.get('operation') != 'reply' or payload.get('status') != 'SENT'
+        or payload.get('retryable') is not False or payload.get('link_id') != request['link_id']
+        or result.get('link_id') != request['link_id'] or result.get('status') != 'REPLIED'
+        or result.get('payload_mode') != 'SEALED_V1' or result.get('delivery') != 'RELAY_PERSISTED'
+        or payload.get('request_id') != request['request_id'] or result.get('request_id') != request['request_id']):
+        raise RuntimeError('G2_EXACT_NARROW_REPLY')
+    message = payload.get('message_id')
+    if type(message) is not str or not message or message == request['message_id'] or result.get('message_id') != message:
+        raise RuntimeError('G2_REPLY_CORRELATION')
+    return {'request_id':request['request_id'],'reply_message_id':message,'state':'REPLIED'}
+
+
+def g2_b_continuity(self, events, request, question, answer, beta):
+    ns = self.managed_golden_flow.__globals__
+    base = ns['base']
+    if beta in question or answer in question:
+        raise RuntimeError('G2_REPLY_SEED_REFEED')
+    base.turn_witness(events, self.nodes['b']['thread'], ('cicada_receive', 'cicada_reply'))
+    receive = base.exact_receive_witness(events, request['message_id'], request['request_id'], self.nodes['a']['endpoint'], question)
+    items = [event['item'] for event in events if event.get('type') == 'item.completed']
+    reply = g2_accepted_reply(ns['dto_progression'], items, base.native_tool_payload, request, answer)
+    received = ns['dto_progression'].one(items, 'cicada_receive')
+    messages = base.native_tool_payload(received).get('messages')
+    if type(messages) is not list or len(messages) != 1 or messages[0].get('link_id') != request['link_id']:
+        raise RuntimeError('G2_RECEIVE_CURRENT_LINK')
+    return {'continuity_proof': 'ACTUAL_EXACT_SEEDED_REPLY_BODY', 'original_thread_exact': True,
+        'request_id_exact': True, 'actual_reply_body_sha256': hashlib.sha256(answer.encode()).hexdigest(),
+        'seed_beta_in_actual_reply_body': beta in answer, 'receive': receive, 'reply': reply}
+
+
+def compile_g2_flow_methods(source, namespace):
+    tree = ast.parse(source)
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ManagedGate')
+    result = {}
+    def replace(text, old, new, count=1):
+        if text.count(old) == count:
+            return text.replace(old, new)
+        # Effective source is normalized by the already-owned AST selector.
+        # Match the exact statement AST spelling rather than legacy whitespace.
+        import textwrap
+        def normalize(value):
+            value = textwrap.dedent(value)
+            if value.rstrip().endswith(':'):
+                return ast.unparse(ast.parse(value+'\n pass')).splitlines()[0]
+            return ast.unparse(ast.parse(value))
+        old, new = normalize(old), normalize(new)
+        if text.count(old) != count:
+            raise ValueError('G2_FLOW_EXACT_CONTEXT')
+        position = text.index(old)
+        indent = text[text.rfind('\n',0,position)+1:position]
+        if indent.strip(): indent = ''
+        return text.replace(old, new.replace('\n','\n'+indent))
+    for name in ('audit_turn', 'audit_inline_reply', 'managed_golden_flow'):
+        node = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == name)
+        text = ast.get_source_segment(source, node)
+        if name == 'audit_turn':
+            old = "audited_events, extra = audit_initial_empty_receive(events, self.nodes[letter]['thread'], binding,\n                self.meta['group_id'], bool(self.result.get('initial_optional_empty_receive')))"
+            text = replace(text, old, "audited_events = events")
+            text = replace(text, "witness = base.turn_witness(audited_events, self.nodes[letter]['thread'], tools, () if initial_join else markers)",
+                "witness = _g2_turn_witness(base, audited_events, self.nodes[letter]['thread'], tools, () if initial_join else markers) if initial_join else base.turn_witness(audited_events, self.nodes[letter]['thread'], tools, markers)")
+        elif name == 'audit_inline_reply':
+            text = replace(text, "from inline_reply import inline_reply_witness", "inline_reply_witness = _g2_inline_reply_witness")
+            text = replace(text, "'group_id': self.meta['group_id']", "'group_id': self.meta['alice_second_group_id'], 'link_id': request['link_id']")
+        else:
+            start = text.index('        prompts = {')
+            end = text.index("        self.result['bindings_before']", start)
+            text = text[:start] + '''        prompts = {
+            'a': f'Remember {alpha} as your original context. Call cicada_join exactly once with group_id {json.dumps(self.meta["group_id"])}. This turn calls only Join. Do not Receive now. Only in a later actual peer queued reply turn report the exact correlated response and original context witness remembered from this first turn, and send no further message. Finish now with your original witness and READY.',
+            'b': f'Remember {beta}. Your exact future response phrase is {answer}. Call cicada_join exactly once with group_id {json.dumps(self.meta["bob_group_id"])} now. This turn calls only Join; do not Receive or Reply now. Later, on the actual peer queued question, call cicada_receive exactly once and cicada_reply exactly once using its exact request_id and link_id and your remembered response phrase. Do not retry. Finish now with your witness and READY.'}
+        for letter in 'ab':
+            turn_id = self.manual_turn(letter, prompts[letter])
+            self.g2_initial_binding(letter, turn_id)
+            tools = ('cicada_join',)
+            self.audit_turn(letter, turn_id, tools, (alpha if letter == 'a' else beta,), initial_join=True)
+        self.step('explicit_owner_second_membership_authorization')
+        owned_hub=self.inspect('container',self.hub)
+        if owned_hub['Image'] != self.hub_image or (owned_hub['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id: raise RuntimeError('G2_SECOND_AUTHORIZATION_HUB_OWNERSHIP')
+        self.docker('stop','--time','1',owned_hub['Id'])
+        authorization=json.loads(self.helper('g2-authorize-second'))
+        self.start_hub()
+        self.refresh_hub_forwarders('paid-after-explicit-second-membership-authorization')
+        if authorization != {'status':'G2_SECOND_MEMBERSHIP_AUTHORIZED'}: raise RuntimeError('G2_SECOND_MEMBERSHIP_AUTHORIZATION_NOT_CONFIRMED')
+        self.step('original_a_authorized_second_group_join_leave')
+        membership_turn=self.manual_turn('a',f'Call cicada_join with group_id {json.dumps(self.meta["alice_second_group_id"])} exactly once, then cicada_use_group with group_id {json.dumps(self.meta["group_id"])}, then cicada_leave_group with {{}} and cicada_whoami with {{}}. The explicitly authorized second membership must survive on this same Endpoint and original native session. Do not call cicada_leave or any message tool. This supplements the original task, which remains pending; preserve its original output requirements. Finish only this submission turn READY.')
+        self.g2_second_binding(membership_turn)
+        self.audit_turn('a',membership_turn,('cicada_join','cicada_use_group','cicada_leave_group','cicada_whoami'))
+''' + text[end:]
+            text = replace(text, "self.refresh_hub_forwarders('paid-after-owner-approval-restart')", "self.refresh_hub_forwarders('paid-after-owner-approval-restart')\n        link_record = json.loads((self.root/'g2-link.json').read_text())\n        if set(link_record) != {'link_id','source_endpoint_id','target_endpoint_id'} or link_record['source_endpoint_id'] != self.nodes['a']['endpoint'] or link_record['target_endpoint_id'] != self.nodes['b']['endpoint']:\n            raise RuntimeError('G2_CURRENT_LINK_ENDPOINT_RECEIPT')\n        self.g2_link_id = link_record['link_id']")
+            # Cross-Owner hidden-member search is separately tested below; Ask uses the exact authorized endpoint.
+            transformed = ast.parse(text)
+            calls = [value for value in ast.walk(transformed) if isinstance(value,ast.Call) and
+                isinstance(value.func,ast.Attribute) and value.func.attr == 'manual_turn' and
+                value.args and isinstance(value.args[0],ast.Constant) and value.args[0].value == 'a' and 'cicada_find' in (ast.get_source_segment(text,value) or '')]
+            if len(calls) != 1: raise ValueError('G2_A2_EXACT_CALL')
+            old_call = ast.get_source_segment(text,calls[0])
+            new_call = "self.manual_turn('a', f'Call cicada_ask exactly once with link_id {json.dumps(self.g2_link_id)}, data_scope \"thread.message\", and question {json.dumps(question)}. ' + _g2_a2_instruction)"
+            text = replace(text,old_call,new_call)
+            text = replace(text, "('cicada_find', 'cicada_ask')", "('cicada_ask',)")
+            text = replace(text, "request=dto_progression.accepted_ask(ask,base.native_tool_payload(ask),self.nodes['a']['endpoint'],self.nodes['b']['endpoint'],question,self.nodes['b']['trusted_join_card'])", "request=_g2_accepted_ask(dto_progression,ask,base.native_tool_payload(ask),self.nodes['a']['endpoint'],self.nodes['b']['endpoint'],question,self.nodes['b']['trusted_join_card'],self.g2_link_id)")
+            old = "b_continuity = b_reply_continuity_witness(bevents, self.nodes['b']['thread'],\n            request['message_id'], request['request_id'], self.nodes['a']['endpoint'], question, answer, beta)"
+            text = replace(text, old, "b_continuity = self.g2_b_continuity(bevents, request, question, answer, beta)")
+            text = replace(text, "final=dto_progression.accepted_reply([e['item'] for e in bevents if e.get('type')=='item.completed'],base.native_tool_payload,request,answer)", "final=_g2_accepted_reply(dto_progression,[e['item'] for e in bevents if e.get('type')=='item.completed'],base.native_tool_payload,request,answer)")
+            text = replace(text,"len(self.budget.started) != 5","len(self.budget.started) != 6",count=3)
+            text = replace(text,"len(self.budget.completed) != 5","len(self.budget.completed) != 6")
+            text = replace(text,"len(self.manual_turn_ids) != 3","len(self.manual_turn_ids) != 4")
+            text = text.replace('exact three manual and two automatic actual turns required','exact four manual and two automatic actual turns required')
+            text = replace(text, "self.step('managed_hub_blind_terminal_oracle')", "self.g2_revoke_and_visibility()\n        self.step('managed_hub_blind_terminal_oracle')")
+            text = replace(text, "self.result['status'] = 'PASS'", "self.g3_restore_snapshot()\n        self.result['scenario_acceptance'] = {'G2':'PASS','G3':'AUTHENTICATED_ENCRYPTED_STATUS_SNAPSHOT_PASS','G4':'NOT_RUN','V67':'NOT_RUN'}\n        self.result['status'] = 'PASS'")
+        lines = text.splitlines()
+        text = lines[0]+'\n'+'\n'.join(line[4:] if line.startswith('    ') else line for line in lines[1:])+'\n'
+        exec(compile(text, '<owned-g2-g3-flow>', 'exec'), namespace)
+        result[name] = namespace[name]
+        result[name]._g2_selected_source = text
+    return result
+
+
+def g2_inline_reply_witness(*args):
+    """Same strict final oracle, exact Link prefix and additional correlation field."""
+    import inline_reply
+    namespace = dict(inline_reply.inline_reply_witness.__globals__)
+    namespace['PREFIX'] = 'Cicada SEALED_V1 REPLY. '
+    function = types.FunctionType(inline_reply.inline_reply_witness.__code__, namespace)
+    return function(*args)
+
+
+def g2_mcp_call(self, letter, tool, arguments):
+    """Actual existing caller/Node/stdin MCP, never a Native turn or queue call."""
+    if tool not in ('cicada_whoami', 'cicada_members', 'cicada_find', 'cicada_ask'):
+        raise RuntimeError('G2_DIAGNOSTIC_TOOL_NOT_ALLOWED')
+    node = self.nodes[letter]
+    import tomllib
+    values = self.native_config(letter,node['thread'],G2_TOOLS)
+    settings = tomllib.loads('\n'.join(values[index+1] for index in range(0,len(values),2)
+        if values[index+1].startswith('mcp_servers.cicada.')))['mcp_servers']['cicada']
+    env = settings['env']
+    if (settings['command'] != '/opt/cicada-pqtls/bin/cicada' or
+        settings['args'] != ['mcp','--api-url','http://127.0.0.1:8787'] or
+        env.get('CODEX_THREAD_ID') != node['thread'] or env.get('CICADA_NODE_PQTLS_CONFIG') != node['tls_config']):
+        raise RuntimeError('G2_ORIGINAL_CONFIG_CALLER')
+    argv = ['exec','-i','--workdir','/workspace']
+    for key, value in env.items(): argv += ['-e',key+'='+value]
+    argv += [node['container'],settings['command'],*settings['args']]
+    messages = [{'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18'}},
+        {'jsonrpc':'2.0','method':'notifications/initialized','params':{}},
+        {'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':tool,'arguments':arguments}}]
+    raw = self.docker(*argv, input_data=('\n'.join(json.dumps(message) for message in messages)+'\n').encode())
+    if len(raw) > 1 << 20: raise RuntimeError('G2_MCP_BOUNDED_RESPONSE')
+    replies = [json.loads(line) for line in raw.splitlines() if line.strip()]
+    initialized = [reply for reply in replies if reply.get('id') == 1]
+    selected = [reply for reply in replies if reply.get('id') == 2]
+    if len(initialized) != 1 or 'error' in initialized[0] or len(selected) != 1 or 'error' in selected[0]:
+        raise RuntimeError('G2_MCP_PROTOCOL_FAILURE_NOT_DENIAL')
+    result = selected[0].get('result')
+    if type(result) is not dict: raise RuntimeError('G2_MCP_TOOL_RESULT')
+    payload = result.get('structuredContent')
+    if type(payload) is not dict:
+        texts = [block.get('text') for block in result.get('content',[]) if block.get('type') == 'text']
+        if len(texts) != 1 or type(texts[0]) is not str: raise RuntimeError('G2_MCP_STRUCTURED_RESPONSE')
+        try: payload = json.loads(texts[0])
+        except ValueError: payload = {'error':texts[0]}
+    if type(payload) is not dict: raise RuntimeError('G2_MCP_OBJECT_RESPONSE')
+    return result.get('isError') is True, payload
+
+
+def g2_guard_denial(is_error, payload):
+    """Only closed known authorization denial, never timeout/protocol/empty data."""
+    text = payload.get('error')
+    known = ('communication link not found or not authorized', 'communication link is revoked',
+             'communication link authorization is not current')
+    if type(text) is str and any(reason in text.lower() for reason in known):
+        if is_error or (payload.get('status') == 'FAILED' and payload.get('retryable') is False):
+            return True
+    return False
+
+
+def g2_current_actor(self, letter):
+    bad, card = self.g2_mcp_call(letter, 'cicada_whoami', {})
+    group = self.meta['alice_second_group_id'] if letter == 'a' else self.meta['bob_group_id']
+    node = self.nodes[letter]
+    expected = node['binding_before']
+    if (bad or card.get('group_id') != group or card.get('endpoint_id') != node['endpoint'] or card.get('native_session_id') != node['thread'] or
+        card.get('node_id') != node['node_id'] or card.get('binding_id') != expected['id'] or card.get('binding_epoch') != expected['epoch']):
+        raise RuntimeError('G2_CURRENT_ACTOR_SCOPE')
+    return {key:card.get(key) for key in ('endpoint_id','principal_id','network_id','group_id','membership_id','membership_revision','binding_id','binding_epoch')}
+
+
+def g2_revoke_and_visibility(self):
+    self.step('g2_actual_hidden_members_and_revoked_link_denial')
+    before = set(self.budget.started)
+    before_actor = self.current_actor('a')
+    bad, members = self.g2_mcp_call('a', 'cicada_members', {})
+    rows = members.get('endpoints')
+    if bad or type(rows) is not list or not any(row.get('endpoint_id') == self.nodes['a']['endpoint'] for row in rows):
+        raise RuntimeError('G2_MEMBERS_QUERY_FAILED')
+    if any(row.get('endpoint_id') == self.nodes['b']['endpoint'] or row.get('group_id') == self.meta['bob_group_id'] for row in rows):
+        raise RuntimeError('G2_HIDDEN_FOREIGN_MEMBER_VISIBLE')
+    bad, hidden = self.g2_mcp_call('a','cicada_find',{'query':self.nodes['b']['endpoint']})
+    if not bad or type(hidden.get('error')) is not str or 'not found or not authorized' not in hidden['error'].lower():
+        raise RuntimeError('G2_HIDDEN_ENDPOINT_CALLER_DENIAL_NOT_PROVEN')
+    # Stop only this owned Hub while the original Nodes and MCP callers remain alive.
+    owned_hub = self.inspect('container', self.hub)
+    if owned_hub['Image'] != self.hub_image or (owned_hub['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id:
+        raise RuntimeError('G2_REVOKE_HUB_OWNERSHIP')
+    self.docker('stop', '--time', '1', owned_hub['Id'])
+    raw = self.helper('g2-revoke')
+    proof = json.loads(raw)
+    if proof != {'status':'G2_LINK_REVOKED_CALLER_DENIAL_NOT_YET_TESTED'}:
+        raise RuntimeError('G2_REVOKE_AUTHORITY_NOT_CONFIRMED')
+    self.start_hub()
+    self.refresh_hub_forwarders('g2-after-link-revocation')
+    bad, denied = self.g2_mcp_call('a','cicada_ask',{'link_id':self.g2_link_id,'data_scope':'thread.message','question':'SYNTHETIC-REVOKED-LINK-DENIAL-NO-DELIVERY'})
+    if not g2_guard_denial(bad, denied):
+        raise RuntimeError('G2_REVOKED_CALLER_AUTHORIZATION_DENIAL_NOT_PROVEN')
+    after_actor = self.current_actor('a')
+    if after_actor != before_actor: raise RuntimeError('G2_POST_REVOKE_ORIGINAL_CALLER_CHANGED')
+    if set(self.budget.started) != before:
+        raise RuntimeError('G2_POST_REVOKE_CREATED_NATIVE_TURN')
+    self.result['g2_post_revoke'] = {'actual_original_caller_mcp':True,'authorization_denied':True,
+        'hidden_foreign_members':True,'hidden_endpoint_find_denied':True,
+        'same_original_caller_binding_before_after':True,'native_turns_added':0,'delivery_scope':'NO_SUCCESSFUL_ACCEPTANCE_OBSERVED'}
+
+
+def g3_readiness_argv(self, hub_id):
+    if hub_id != self.result['g3_hub_replacement']['new_id']:
+        raise RuntimeError('G3_READINESS_EXACT_HUB')
+    return ['docker','run','--rm','--pull=never','--name',self.run_id+'-helper-g3-ready',
+        '--label','org.cicada.test.run='+self.run_id,'--network','container:'+hub_id,
+        '--user','1000:1000','-v',str(self.root)+':/fixture:ro',
+        '-v',str(self.native_package)+':/opt/cicada-pqtls:ro',
+        '-e','LD_LIBRARY_PATH=/opt/cicada-pqtls/lib','-e','OPENSSL_CONF=/dev/null',
+        '--entrypoint','/fixture/cicada-v68fixture',self.test_image,'probe','--address','127.0.0.1:8787']
+
+
+def g3_restore_snapshot(self):
+    """Only stopped exact-owned peers; full Control uses the same SQLite/state mount."""
+    self.step('g3_restored_control_authenticated_encrypted_snapshot')
+    for node in self.nodes.values():
+        record = self.inspect('container', node['container'])
+        if record['State']['Running'] or record['Image'] != self.args.runtime_image or (record['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id:
+            raise RuntimeError('G3_PEERS_NOT_OWNED_STOPPED')
+    old = self.inspect('container', self.hub)
+    if old['State']['Running'] or old['Image'] != self.hub_image or (old['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id:
+        raise RuntimeError('G3_OLD_HUB_NOT_OWNED_STOPPED')
+    old_id = old['Id']
+    self.docker('rm',old_id)
+    absent = self.command(['docker','container','inspect',old_id],timeout=3,allow_failure=True)
+    valid_errors = ('Error: No such object: '+old_id, 'error: no such object: '+old_id,
+        'Error response from daemon: No such container: '+old_id)
+    if absent.returncode != 1 or absent.stdout.strip() != b'[]' or absent.stderr.decode().strip() not in valid_errors:
+        raise RuntimeError('G3_OLD_HUB_ABSENCE_NOT_PROVEN')
+    name = self.run_id+'-hub-control'
+    self.docker('run','-d','--pull=never','--name',name,'--label','org.cicada.test.run='+self.run_id,
+        '--user','1000:1000','--network','bridge','--env-file',str(self.root/'hub.env'),
+        '-e','CICADA_STATE_DIR=/state','-v',str(self.root/'hub-state')+':/state',
+        self.hub_image,'serve','--host','0.0.0.0','--port','8787')
+    self.hub = name
+    current = self.inspect('container',name)
+    if current['Image'] != self.hub_image or (current['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id:
+        raise RuntimeError('G3_NEW_HUB_OWNERSHIP')
+    new_id = current['Id']
+    self.result['g3_hub_replacement'] = {'old_id':old_id,'old_absence_confirmed':True,'new_id':new_id,
+        'same_state_dir':True,'database_relative_path':'cicada.sqlite3','peer_nodes_stopped':True}
+    # Readiness is not acceptance: one bounded own-container loopback health probe.
+    self._g3_helper_hub_id = new_id
+    try:
+        end = time.monotonic()+self.limit(5)
+        while time.monotonic() < end:
+            ready = json.loads(self.command(g3_readiness_argv(self,new_id),timeout=min(2,end-time.monotonic())))
+            if ready == {'tcp_reachable':True}: break
+            if ready != {'tcp_reachable':False}: raise RuntimeError('G3_READINESS_PROBE_SHAPE')
+            time.sleep(min(.05,max(0,end-time.monotonic())))
+        else: raise RuntimeError('G3_CONTROL_TCP_NOT_READY')
+    finally:
+        self._g3_helper_hub_id = None
+    raw = self.helper('control-snapshot')
+    if json.loads(raw) != {'status':'G3_AUTHENTICATED_ENCRYPTED_STATUS_SNAPSHOT_MATCHED'}:
+        raise RuntimeError('G3_ENCRYPTED_STATUS_NOT_MATCHED')
+    self.result['g3_management'] = {'status':'AUTHENTICATED_ENCRYPTED_STATUS_SNAPSHOT_MATCHED',
+        'typed_owner_group_membership_endpoint_node':True,'not_capabilities_only':True,
+        'peer_business_calls':'NOT_INSTRUMENTED','same_owned_store':True}
+
+
+def g2_cap_methods(legacy_cls):
+    """Local exact six-turn selectors; frozen/default five-turn methods stay intact."""
+    def selected(method, old, new):
+        # These methods originate in the pinned public files; use their exact AST.
+        import inspect, textwrap
+        text = inspect.getsource(method)
+        text = textwrap.dedent(text)
+        if text.count(old) != 1:
+            # Preserve the installed public ownership wrapper byte-for-byte;
+            # replace only its closed-over original cleanup with the local cap.
+            cells=dict(zip(method.__code__.co_freevars,method.__closure__ or ()))
+            if method.__name__ != 'cleanup' or text.count(old) != 0 or 'original_cleanup' not in cells:
+                raise ValueError('G2_CAP_EXACT_CONTEXT')
+            inner=selected(cells['original_cleanup'].cell_contents,old,new)
+            def cell(value): return (lambda:value).__closure__[0]
+            closure=tuple(cell(inner) if name=='original_cleanup' else cells[name] for name in method.__code__.co_freevars)
+            wrapped=types.FunctionType(method.__code__,dict(method.__globals__),method.__name__,method.__defaults__,closure)
+            wrapped._g2_cap_source=inner._g2_cap_source
+            return wrapped
+        ns = method_namespace(method)
+        exec(compile(text.replace(old,new,1),'<owned-g2-six-cap>','exec'),ns)
+        selected_method=ns[method.__name__]
+        selected_method._g2_cap_source=text.replace(old,new,1)
+        return selected_method
+    observed=selected(legacy_cls.observe,'len(self.budget.started) > 5','len(self.budget.started) > 6')
+    cleanup=selected(legacy_cls.cleanup,'len(self.budget.started)>5','len(self.budget.started)>6')
+    reconciled=selected(legacy_cls.reconcile_actual_history,"(3 if letter == 'a' else 2)","(4 if letter == 'a' else 2)")
+    return {'observe':observed,'cleanup':cleanup,'reconcile_actual_history':reconciled}
+
+
+def g2_turn_budget(default):
+    import inspect
+    text=inspect.getsource(type(default))
+    for old,new in (('maximum=5','maximum=6'),('maximum != 5','maximum != 6'),('len(self.started) > 5','len(self.started) > 6')):
+        if text.count(old)!=1: raise ValueError('G2_BUDGET_EXACT_CONTEXT')
+        text=text.replace(old,new,1)
+    ns=dict(type(default).observe.__globals__)
+    exec(compile(text,'<owned-g2-six-budget>','exec'),ns)
+    return ns['TurnBudget']()
+
+
+def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenario="g1"):
     """Inspection imports public helpers only; execution requires future GO."""
+    if scenario not in ("g1", "g2-g3"):
+        raise ValueError("SCENARIO_UNSUPPORTED")
     loaded = {}
     for name in ("migration", "managed_gate"):
         if name in sys.modules:
@@ -442,6 +881,15 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
         _observer_capture_deadline=capture_deadline,
         _observer_capture_program_pins=capture_program_pins(sources["gate"]))
     methods = compile_methods(sources["gate"], namespace)
+    if scenario == "g2-g3":
+        namespace.update(_g2_node_scope=g2_node_scope,_g2_tools=G2_TOOLS,
+            _g2_turn_witness=g2_turn_witness,_g2_inline_reply_witness=g2_inline_reply_witness,
+            _g2_accepted_ask=g2_accepted_ask,_g2_accepted_reply=g2_accepted_reply,
+            _g2_a2_instruction=A2_SUBMISSION_INSTRUCTION)
+        scenario_methods=compile_g2_preparation_methods(sources["gate"],namespace)
+        scenario_methods.update(compile_g2_flow_methods(sources["gate"],namespace))
+    else:
+        scenario_methods={}
     provider_namespace = dict(legacy_cls.provider_forwarder.__globals__)
     provider_namespace["_install_client_read_cancellation"]=lambda owner, adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["diagnostic_relay_sha256" if getattr(owner.args,"test_request_observer",False) is True else "relay_sha256"], io_diagnostics_v2=getattr(owner.args,"test_request_observer",False) is True)
     exec(compile(sources["provider"], "<effective-request-observer-provider>", "exec"), provider_namespace)
@@ -453,11 +901,21 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
                              _observer_thread_identity=threading.get_ident,
                              _observer_wait_native_cleanup=wait_native_capture_before_owned_cleanup)
     exec(compile(sources["command"],"<effective-request-observer-command>","exec"),command_namespace)
+    if scenario == 'g2-g3':
+        legacy_cls = type('OwnedG2SixGate',(legacy_cls,),g2_cap_methods(legacy_cls))
+        old = "self.result['actual_turn_started_event_count'] > 5"
+        audit_source = sources['audit']
+        if audit_source.count(old) != 1: raise ValueError('G2_AUDIT_CAP_CONTEXT')
+        exec(compile(audit_source.replace(old,"self.result['actual_turn_started_event_count'] > 6",1),'<owned-g2-six-audit>','exec'),audit_namespace)
     class CandidateGate(legacy_cls):
         def __init__(self, args):
             if inspect_only:
                 raise RuntimeError("INSPECTION_FORBIDS_FIXTURE_CONSTRUCTOR")
             super().__init__(args)
+            if scenario == 'g2-g3':
+                self.budget = g2_turn_budget(self.budget)
+                self.result['native_turn_budget'] = 6
+                self.result['maximum_actual_turn_started'] = 0 if zero_model else 6
             self._observer_capture_lifecycle_lock = threading.Lock()
             self._observer_native_capture_state = None
             self._observer_capture_cutoff = False
@@ -471,6 +929,17 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
             self.result.setdefault("matching_preparation_scope", {}).update(dispatch_only_wrapper_delta=False,
                 reuse_scope="UNCHANGED_PRODUCT_BASELINE_ONLY",
                 changed_observer_bootstrap_overlay_Runtime_preparation="NOT_RUN")
+        def native_config(self, letter, thread=None, tools=()):
+            values = super().native_config(letter, thread, tools)
+            if scenario == "g1":
+                return values
+            old = "CICADA_GROUP_ID=" + json.dumps(self.meta["group_id"])
+            new = "CICADA_GROUP_ID=" + json.dumps(self.nodes[letter].get("current_group_id",g2_node_scope(self.meta, letter)[1]))
+            hits = sum(value.count(old) for value in values if type(value) is str)
+            if hits != 1:
+                raise RuntimeError("G2_NATIVE_CONFIG_CONTEXT")
+            return [value.replace(old, new, 1) if type(value) is str else value for value in values]
+
         def build(self):
             if not zero_model and not getattr(self.args,"latest_runtime",False):
                 return super().build()
@@ -497,9 +966,12 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
                 product_revision=delivery["commit"],node_code_fingerprint=delivery["fingerprint"],
                 product_source_fingerprint=delivery["fingerprint"],current_delivery_sha256=self.args.delivery_sha,
                 producer_metadata_sha256=delivery["package_metadata_sha256"],
-                maximum_actual_turn_started=0 if zero_model else 5,
+                maximum_actual_turn_started=0 if zero_model else (6 if scenario == "g2-g3" else 5),
                 source_domain_comparison={"Node":"current compiled-input equality bound package",
                     "Hub":"current compiled-input equality bound image","Runtime":"CLI0.160.1 owned image"})
+            if scenario == "g2-g3":
+                self.result["fixture_scenario"] = scenario
+                self.result["preparation_binding"].update(fixture_scenario=scenario,component_proof_sha256=delivery["component_proof_sha256"])
             self.result["preparation_binding"].update(runtime_image_id=self.test_image,
                 official_cli_sha256=self.args.expected_cli_sha256,expected_codex_version="codex-cli 0.160.1",
                 product_revision=delivery["commit"],node_code_checkpoint=delivery["commit"],
@@ -508,15 +980,23 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
                 source_fingerprint=delivery["fingerprint"],node_source_fingerprint=delivery["fingerprint"],
                 delivery_receipt_sha256=delivery["package_metadata_sha256"],
                 producer_metadata_sha256=delivery["package_metadata_sha256"],
-                maximum_actual_turn_started=0 if zero_model else 5,current_delivery_sha256=self.args.delivery_sha,
+                maximum_actual_turn_started=0 if zero_model else (6 if scenario == "g2-g3" else 5),current_delivery_sha256=self.args.delivery_sha,
                 compiled_input_equality_sha256=self.args.equality_sha)
         def register_submission(self, argv):
+            if scenario == "g2-g3" and argv[:2] in (["docker","run"],["docker","create"]) and "--name" in argv and argv[argv.index("--name")+1] == self.run_id+"-helper-g3-ready":
+                if zero_model or not getattr(self,"_g3_helper_hub_id",None) or argv != g3_readiness_argv(self,self._g3_helper_hub_id):
+                    raise RuntimeError("G3_READINESS_SUBMISSION_SCOPE")
+                name=self.run_id+"-helper-g3-ready"
+                key=("container",name)
+                self.submitted_objects[key]={"name":name,"id":None,"image":self.test_image,"run_id":self.run_id,"auto_remove":True,"command_exit":None}
+                self.containers[name]=self.test_image
+                return key
             if (zero_model or getattr(self.args,"latest_runtime",False)) and argv[:2] in (["docker","run"],["docker","create"]) and self.args.runtime_image in argv:
                 if argv.count(self.args.runtime_image)!=1 or "--name" not in argv or "org.cicada.test.run="+self.run_id not in argv:
                     raise RuntimeError("ZERO_RUNTIME_OWNERSHIP")
                 name=argv[argv.index("--name")+1]
                 if name not in (self.run_id+"-a",self.run_id+"-b"):
-                    actions=("bootstrap","tls-bootstrap") if zero_model else ("bootstrap","tls-bootstrap","approve")
+                    actions=(("bootstrap","tls-bootstrap","g2-authorize-second") if scenario == "g2-g3" else ("bootstrap","tls-bootstrap")) if zero_model else (("bootstrap","tls-bootstrap","g2-authorize-second","approve","g2-revoke","control-snapshot") if scenario == "g2-g3" else ("bootstrap","tls-bootstrap","approve"))
                     action=next((x for x in actions if name==self.run_id+"-helper-"+x),None)
                     isolation=next((x for x in "ab" if name==self.run_id+"-helper-isolation-"+x),None)
                     if isolation is not None:
@@ -526,7 +1006,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
                         return argv.count(flag)==1 and argv.index(flag)+1<len(argv) and argv[argv.index(flag)+1]==value
                     if (action is None or argv[:2]!=["docker","run"] or "--rm" not in argv
                         or "--pull=never" not in argv or not exact_option("--label","org.cicada.test.run="+self.run_id)
-                        or not exact_option("--network","container:"+self.hub if isolation is not None else "none")
+                        or not exact_option("--network","container:"+self.hub if isolation is not None else "container:"+self._g3_helper_hub_id if action == "control-snapshot" and getattr(self,"_g3_helper_hub_id",None) else "none")
                         or not exact_option("--entrypoint","/fixture/cicada-v68fixture")
                         or image_index+1>=len(argv) or argv[image_index+1]!=action):
                         raise RuntimeError("ZERO_RUNTIME_NAME")
@@ -538,6 +1018,23 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
                 self.containers[name]=self.args.runtime_image
                 return key
             return super().register_submission(argv)
+        def helper(self, action, *arguments):
+            if scenario != "g2-g3" or action != "control-snapshot":
+                return super().helper(action, *arguments)
+            if zero_model or arguments or not self.result.get("g3_hub_replacement"):
+                raise RuntimeError("G3_HELPER_SCOPE")
+            record = self.inspect("container",self.hub)
+            if record["Id"] != self.result["g3_hub_replacement"]["new_id"] or record["Image"] != self.hub_image or (record["Config"].get("Labels") or {}).get("org.cicada.test.run") != self.run_id:
+                raise RuntimeError("G3_HELPER_HUB_IDENTITY")
+            self._g3_helper_hub_id = record["Id"]
+            argv = ["docker","run","--rm","--pull=never","--name",self.run_id+"-helper-control-snapshot",
+                "--label","org.cicada.test.run="+self.run_id,"--network","container:"+record["Id"],
+                "--user","1000:1000","-v",str(self.root)+":/fixture","-v",str(self.native_package)+":/opt/cicada-pqtls:ro",
+                "-e","LD_LIBRARY_PATH=/opt/cicada-pqtls/lib","-e","OPENSSL_CONF=/dev/null",
+                "--entrypoint","/fixture/cicada-v68fixture",self.test_image,"control-snapshot",
+                "--db","/fixture/hub-state/cicada.sqlite3","--fixture","/fixture"]
+            try: return self.command(argv,timeout=5)
+            finally: self._g3_helper_hub_id = None
         runtime_bootstrap_argv = staticmethod(runtime_bootstrap_argv)
         def docker(self, *arguments, **kwargs):
             argv = list(map(str, arguments))
@@ -595,6 +1092,16 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
             return super().cleanup()
     for name, function in methods.items():
         setattr(CandidateGate, name, function)
+    for name, function in scenario_methods.items():
+        setattr(CandidateGate, name, function)
+    if scenario == "g2-g3":
+        CandidateGate.g2_initial_binding = g2_initial_binding
+        CandidateGate.g2_second_binding = g2_second_binding
+        CandidateGate.g2_b_continuity = g2_b_continuity
+        CandidateGate.g2_mcp_call = g2_mcp_call
+        CandidateGate.current_actor = g2_current_actor
+        CandidateGate.g2_revoke_and_visibility = g2_revoke_and_visibility
+        CandidateGate.g3_restore_snapshot = g3_restore_snapshot
     CandidateGate.provider_forwarder = provider_namespace["provider"]
     CandidateGate.audit_rpc = audit_namespace["audit"]
     original_command=command_namespace["command"]

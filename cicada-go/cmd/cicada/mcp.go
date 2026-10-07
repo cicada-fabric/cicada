@@ -1144,8 +1144,72 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 	}
 	m.joinMu.Lock()
 	defer m.joinMu.Unlock()
-	result, err := m.apiForGroup(http.MethodGet, "/v2/fabric/whoami", nil, groupID)
+	// A denied different Group can be rejected at the PQ transport boundary
+	// with 401 even while the original selected Group remains authorized.
+	// Never infer current authority from that denial or restore a snapshot.
+	m.sessionMu.RLock()
+	originalToken, originalEndpoint, originalGroup, originalScope := m.sessionToken, m.endpointID, m.sessionGroupID, m.sessionScope
+	originalContext, originalContextSet, originalPublic := m.sessionContext, m.sessionContextSet, m.sessionPublic
+	m.sessionMu.RUnlock()
+	if originalToken == "" {
+		return nil, errors.New("Cicada session is not joined; call cicada_join first")
+	}
+	originalOrigin, originErr := normalizeMCPAPIOrigin(m.baseURL)
+	unchanged := func() bool { // Caller holds sessionMu.
+		return m.sessionToken == originalToken && m.endpointID == originalEndpoint && m.sessionGroupID == originalGroup && m.sessionScope == originalScope &&
+			m.sessionContext == originalContext && m.sessionContextSet == originalContextSet &&
+			m.sessionPublic.BindingID == originalPublic.BindingID && m.sessionPublic.BindingEpoch == originalPublic.BindingEpoch &&
+			m.sessionPublic.Endpoint.ID == originalPublic.Endpoint.ID && m.sessionPublic.Endpoint.PrincipalID == originalPublic.Endpoint.PrincipalID &&
+			m.sessionPublic.NetworkCard.PrincipalID == originalPublic.NetworkCard.PrincipalID &&
+			m.sessionPublic.Endpoint.GroupID == originalPublic.Endpoint.GroupID &&
+			m.sessionPublic.NetworkCard.EndpointID == originalPublic.NetworkCard.EndpointID && m.sessionPublic.NetworkCard.GroupID == originalPublic.NetworkCard.GroupID &&
+			m.sessionPublic.NetworkCard.BindingID == originalPublic.NetworkCard.BindingID && m.sessionPublic.NetworkCard.BindingEpoch == originalPublic.NetworkCard.BindingEpoch &&
+			m.sessionPublic.NetworkCard.NodeID == originalPublic.NetworkCard.NodeID && m.sessionPublic.NetworkCard.Harness == originalPublic.NetworkCard.Harness &&
+			m.sessionPublic.NetworkCard.NativeSessionID == originalPublic.NetworkCard.NativeSessionID && m.sessionPublic.NetworkCard.Workspace == originalPublic.NetworkCard.Workspace
+	}
+	clearOriginal := func() {
+		m.sessionMu.Lock()
+		same := unchanged()
+		if same {
+			m.sessionToken = ""
+			m.endpointID = ""
+			m.sessionGroupID = ""
+			m.sessionContext = mcpTrustedContext{}
+			m.sessionContextSet = false
+			m.sessionScope = ""
+			m.sessionPublic = mcpPublicJoinResult{}
+		}
+		m.sessionMu.Unlock()
+		if same && originalScope != "" {
+			_ = m.sessionStateStore().remove(originalScope)
+		}
+	}
+	result, err := m.requestWithGroup(http.MethodGet, "/v2/fabric/whoami", nil, "CicadaSession "+originalToken, groupID)
 	if err != nil {
+		var responseErr *mcpHTTPError
+		if errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized {
+			validCurrent := false
+			beforeCheckOrigin, beforeCheckOriginErr := normalizeMCPAPIOrigin(m.baseURL)
+			if groupID != originalGroup && originalGroup != "" && originErr == nil && beforeCheckOriginErr == nil && beforeCheckOrigin == originalOrigin && originalContextSet {
+				// One current-scope authorization check; never retry the denied target.
+				currentResult, currentErr := m.requestWithGroup(http.MethodGet, "/v2/fabric/whoami", nil, "CicadaSession "+originalToken, originalGroup)
+				current, currentDecodeErr := networkCardFromResult(currentResult)
+				currentOrigin, currentOriginErr := normalizeMCPAPIOrigin(m.baseURL)
+				validCurrent = currentErr == nil && currentDecodeErr == nil && currentOriginErr == nil && currentOrigin == originalOrigin &&
+					originalEndpoint != "" && originalPublic.Endpoint.ID == originalEndpoint && originalPublic.NetworkCard.EndpointID == originalEndpoint && originalPublic.NetworkCard.GroupID == originalGroup && originalPublic.Endpoint.PrincipalID != "" && originalPublic.NetworkCard.PrincipalID == originalPublic.Endpoint.PrincipalID &&
+					originalPublic.BindingID != "" && originalPublic.BindingEpoch > 0 && originalContext.NodeID != "" && originalContext.NativeSessionID != "" && originalContext.Workspace != "" &&
+					current.EndpointID == originalEndpoint && current.PrincipalID == originalPublic.Endpoint.PrincipalID &&
+					current.NodeID == originalContext.NodeID && current.Harness == originalContext.Harness && current.Harness == "codex" &&
+					current.NativeSessionID == originalContext.NativeSessionID && current.Workspace == originalContext.Workspace && current.GroupID == originalGroup &&
+					current.BindingID == originalPublic.BindingID && current.BindingEpoch == originalPublic.BindingEpoch
+				m.sessionMu.RLock()
+				validCurrent = validCurrent && unchanged()
+				m.sessionMu.RUnlock()
+			}
+			if !validCurrent {
+				clearOriginal()
+			}
+		}
 		return nil, err
 	}
 	card, err := networkCardFromResult(result)

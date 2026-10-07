@@ -212,7 +212,7 @@ for line in (root/'gate.jsonl').read_text().splitlines():
   counts[event['Action']+'_'+kind]+=1
   if event['Action']=='skip':skips.append(event)
 result={'process_exit':int((root/'gate.exit').read_text()),'counts':dict(counts),'skip_is_not_pass':True,'skips':skips,'runtime_image':sys.argv[2] or None,'topology':'one Hub/two independent real Node Agent processes; image gate shares an isolated test namespace; not independent PQ Hubs/native/public proof','no_model_provider_native_calls':True}
-if counts['pass_top']!=1 or counts['pass_sub']!=3 or any(v for k,v in counts.items() if k.startswith(('fail_','skip_'))):result['process_exit']=1
+if counts['pass_top']!=1 or counts['pass_sub']!=4 or any(v for k,v in counts.items() if k.startswith(('fail_','skip_'))):result['process_exit']=1
 identity=json.loads((root/'identity-before.json').read_text());test_input=json.loads((root/'test-input-before.json').read_text());roots=json.loads((root/'roots-before.json').read_text())
 result['producer_source']=roots['producer'];result['test_fixture_source']=roots['test_fixture']
 result['product_input_source_fingerprint']=identity['source_fingerprint'];result['test_input_source_fingerprint']=test_input['fingerprint']['sha256']

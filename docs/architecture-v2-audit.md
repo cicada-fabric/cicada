@@ -1,6 +1,14 @@
 # Architecture v2.3 implementation audit
 
-## Current v2 diagnostic audit — PARTIAL
+## Current checked-PQ MCP checkpoint — PARTIAL
+
+Checked leave-group/members routing, fail-closed current-Group revalidation and resident-Agent SSE harness passed their scoped normal/race/shipped gates. Fresh zero preparation passed; the sole current Native G2/G3 run failed after two original Join turns, before the new membership turn/Ask/Reply/G3. The exact B restart-witness/limit failure remains UNKNOWN; cleanup and both EOFs were confirmed, with independent owned-resource absence. Old G1 PASS is limited to its old product/source. See [current evidence and limits](native-request-observer-io-validation.md). Contract v1.6.4, wire 1, catalog 55 and schema 58 are unchanged; overall v0.1 remains PARTIAL.
+
+## Historical G1 acceptance / G2-G3 development
+
+The bounded G1 PASS belongs to source 2b92/dd4367 and independent review 3976f839; it is not transferred to the current helper/runner edits. G2/G3 remain pending, with separate helper/TLS provenance and no production Guard or Client permission expansion. See [Native evidence](native-request-observer-io-validation.md).
+
+## Historical v2 diagnostic audit — PARTIAL
 
 Default v1 records/strict decoding remain unchanged; explicit test-observer/I/O opt-in adds closed failure metadata only. Three independently scoped offline suites passed, followed by one four-handshake TLS-only PASS with zero origin application HTTP/POST, Native sessions and models. Current probe cleanup was independently checked; worker reaping is not proved. Different time namespaces leave ordering UNKNOWN, and G1d's fault was not reproduced. No Go/DB/wire/Client change, rebuild, full-G1 acceptance or Control call-count upgrade is claimed. See [current closed-I/O/TLS evidence](native-request-observer-io-validation.md).
 

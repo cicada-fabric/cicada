@@ -1,5 +1,9 @@
 # Architecture v2.3 completion ledger
 
+## Current scoped checkpoint — 2026-10-07
+
+Historical G1 retains its old-product scoped PASS; current checked-PQ/wiring/zero gates passed but the sole current Native G2/G3 run failed before its third turn, leaving G2–G5/V67 and overall v0.1 PARTIAL ([Native evidence](native-request-observer-io-validation.md)).
+
 ## 2026-10-04 当前账本入口
 
 整体 **PARTIAL**。当前收尾只维护[唯一状态表](architecture-v2-status.md#current-closeout)，精确结果见[验证入口](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence)。Resource6 / schema 58、Main Hub dirty delta 的 normal / vet PASS、F38 fixed-021 / Client caa9、Native clean-857 prepare 各自归源；本 Main58 race 未重跑。F38 的五 Link 授权 scoped PASS 不增加旧 V01–V88 计数，也不关闭完整 G1、安全恢复、SQLite v29 未闭失败或外部环境 gate。

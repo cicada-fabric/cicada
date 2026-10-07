@@ -660,3 +660,139 @@ func TestCicadaMCPRestoreClearsStaleCredential(t *testing.T) {
 		t.Fatal("stale credential remained in local state")
 	}
 }
+
+// The checked PQ frontdoor may return 401 for a different unjoined Group.
+// Revalidation uses only the original current scope and original credential.
+func TestCicadaMCPGroupSelection401RevalidatesCurrentNativeScope(t *testing.T) {
+	t.Setenv("CICADA_NODE_PQTLS_CONFIG", "")
+	tests := []struct {
+		name                            string
+		targetStatus, currentStatus     int
+		mutate                          func(*fabricpkg.NetworkCard)
+		malformed, truncated, sameGroup bool
+		concurrent                      string
+		retain                          bool
+	}{
+		{name: "current_authorized", targetStatus: 401, currentStatus: 200, retain: true},
+		{name: "stale_token", targetStatus: 401, currentStatus: 401},
+		{name: "expired_lease", targetStatus: 401, currentStatus: 401},
+		{name: "current_group_refused", targetStatus: 401, currentStatus: 403},
+		{name: "current_unknown", targetStatus: 401, currentStatus: 502},
+		{name: "current_transport_unknown", targetStatus: 401, currentStatus: 200, truncated: true},
+		{name: "malformed_current", targetStatus: 401, currentStatus: 200, malformed: true},
+		{name: "wrong_endpoint", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.EndpointID = "ep_foreign" }},
+		{name: "wrong_principal", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.PrincipalID = "principal_foreign" }},
+		{name: "wrong_node", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.NodeID = "node_foreign" }},
+		{name: "wrong_harness", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.Harness = "other" }},
+		{name: "wrong_native", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.NativeSessionID = "native_foreign" }},
+		{name: "wrong_workspace", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.Workspace = "/synthetic/foreign" }},
+		{name: "wrong_group", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.GroupID = "group_foreign" }},
+		{name: "wrong_binding", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.BindingID = "binding_foreign" }},
+		{name: "wrong_epoch", targetStatus: 401, currentStatus: 200, mutate: func(c *fabricpkg.NetworkCard) { c.BindingEpoch++ }},
+		{name: "same_group_401", targetStatus: 401, sameGroup: true},
+		{name: "different_group_403", targetStatus: 403, retain: true},
+		{name: "concurrent_new_token", targetStatus: 401, currentStatus: 200, concurrent: "new_token", retain: true},
+		{name: "concurrent_new_group", targetStatus: 401, currentStatus: 200, concurrent: "new_group", retain: true},
+		{name: "concurrent_clear", targetStatus: 401, currentStatus: 200, concurrent: "clear"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const token = "cicada_session_synthetic_selection"
+			const currentGroup = "group_second"
+			targetGroup := "group_left"
+			if test.sameGroup {
+				targetGroup = currentGroup
+			}
+			trusted := mcpTrustedContext{Harness: "codex", NativeSessionID: "native_selection", NodeID: "node_selection", Workspace: "/synthetic/selection"}
+			card := fabricpkg.NetworkCard{EndpointID: "ep_selection", PrincipalID: "principal_selection", NodeID: trusted.NodeID,
+				Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, Workspace: trusted.Workspace,
+				GroupID: currentGroup, BindingID: "binding_selection", BindingEpoch: 7}
+			public := mcpPublicJoinResult{Endpoint: store.Endpoint{ID: card.EndpointID, PrincipalID: card.PrincipalID, GroupID: currentGroup},
+				NetworkCard: card, BindingID: card.BindingID, BindingEpoch: card.BindingEpoch}
+			var mcp *mcpServer
+			var targetCalls, currentCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/v2/fabric/whoami" || r.Header.Get("Authorization") != "CicadaSession "+token {
+					t.Error("selection used another action, origin path or credential")
+					w.WriteHeader(400)
+					return
+				}
+				group := r.Header.Get("Cicada-Group-Scope")
+				if group == targetGroup {
+					targetCalls.Add(1)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(test.targetStatus)
+					_, _ = w.Write([]byte(`{"error":"synthetic original target denial"}`))
+					return
+				}
+				if group != currentGroup {
+					t.Error("selection queried an unrelated Group")
+					w.WriteHeader(400)
+					return
+				}
+				currentCalls.Add(1)
+				switch test.concurrent {
+				case "new_token":
+					mcp.setSession("cicada_session_synthetic_new", card.EndpointID, currentGroup, trusted, "", public)
+				case "new_group":
+					mcp.setSession(token, card.EndpointID, "group_concurrent", trusted, "", public)
+				case "clear":
+					mcp.clearSessionMemory()
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if test.truncated {
+					w.Header().Set("Content-Length", "100")
+				}
+				w.WriteHeader(test.currentStatus)
+				if test.truncated {
+					_, _ = w.Write([]byte("{"))
+					return
+				}
+				if test.currentStatus != 200 {
+					_, _ = w.Write([]byte(`{"error":"synthetic current refusal"}`))
+					return
+				}
+				if test.malformed {
+					_, _ = w.Write([]byte(`{"endpoint_id":`))
+					return
+				}
+				current := card
+				if test.mutate != nil {
+					test.mutate(&current)
+				}
+				_ = json.NewEncoder(w).Encode(current)
+			}))
+			defer server.Close()
+			mcp = newMCPServer(server.URL, card.EndpointID, "")
+			defer close(mcp.stop)
+			mcp.setSession(token, card.EndpointID, currentGroup, trusted, "", public)
+			result, err := mcp.callTool("cicada_use_group", map[string]any{"group_id": targetGroup})
+			var original *mcpHTTPError
+			if result != nil || !errors.As(err, &original) || original.statusCode != test.targetStatus || original.message != "synthetic original target denial" {
+				t.Fatal("selection did not return the original target denial")
+			}
+			wantCurrent := int32(1)
+			if test.sameGroup || test.targetStatus != 401 {
+				wantCurrent = 0
+			}
+			if targetCalls.Load() != 1 || currentCalls.Load() != wantCurrent {
+				t.Fatalf("target/current checks=%d/%d", targetCalls.Load(), currentCalls.Load())
+			}
+			if mcp.isJoined() != test.retain {
+				t.Fatal("current scope retention did not match independent authority")
+			}
+			if test.retain {
+				expectedToken, expectedGroup := token, currentGroup
+				if test.concurrent == "new_token" {
+					expectedToken = "cicada_session_synthetic_new"
+				}
+				if test.concurrent == "new_group" {
+					expectedGroup = "group_concurrent"
+				}
+				if mcp.currentSessionToken() != expectedToken || mcp.sessionGroupID != expectedGroup || mcp.endpointID != card.EndpointID {
+					t.Fatal("selection replaced or cleared concurrent/current native state")
+				}
+			}
+		})
+	}
+}

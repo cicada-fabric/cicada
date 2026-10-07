@@ -31,6 +31,256 @@ import request_observer_bootstrap as bootstrap
 
 
 class WiringChecks(unittest.TestCase):
+    def test_g2_g3_selected_flow_keeps_original_oracle_and_six_turns(self):
+        with run.deny_preflight_effects():
+            sources = gate.effective_sources()
+            namespace = {}
+            prepared = gate.compile_g2_preparation_methods(sources['gate'],namespace)
+            selected = gate.compile_g2_flow_methods(sources['gate'],namespace)
+            self.assertEqual(set(prepared),{'prepare_managed','bind_mcp'})
+            self.assertEqual(set(selected),{'audit_turn','audit_inline_reply','managed_golden_flow'})
+            # The default source remains identical; scenario methods are local functions.
+            self.assertEqual(sources,gate.effective_sources())
+            code = selected['managed_golden_flow'].__code__
+            text = '\n'.join(value for value in code.co_consts if type(value) is str)
+            self.assertIn('cicada_leave_group',text)
+            self.assertNotIn('Remember CICADA-ORIGINAL',text)
+            self.assertIn('exact four manual and two automatic actual turns required',text)
+            self.assertIn('actual_queue_original_a_receive_context',text)
+            self.assertIn('managed_hub_blind_terminal_oracle',text)
+            self.assertIn('g2-authorize-second',text)
+            phase_ast=ast.parse(selected['managed_golden_flow']._g2_selected_source)
+            calls=sorted((n for n in ast.walk(phase_ast) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and isinstance(n.func.value,ast.Name) and n.func.value.id=='self'),key=lambda n:(n.lineno,n.col_offset))
+            authorize=next(i for i,n in enumerate(calls) if n.func.attr=='helper' and n.args[0].value=='g2-authorize-second')
+            self.assertEqual(calls[authorize-1].func.attr,'docker')
+            self.assertEqual(calls[authorize-1].args[0].value,'stop')
+            self.assertEqual([n.func.attr for n in calls[authorize+1:authorize+3]],['start_hub','refresh_hub_forwarders'])
+            membership=next(i for i,n in enumerate(calls) if n.func.attr=='g2_second_binding')
+            approve=next(i for i,n in enumerate(calls) if n.func.attr=='helper' and n.args[0].value=='approve')
+            self.assertLess(authorize,membership);self.assertLess(membership,approve)
+
+            protocol=gate.safe_module('g2_budget_test_public',gate.OLD/'managed_protocol.py')
+            TurnBudget,ProtocolError=protocol.TurnBudget,protocol.ProtocolError
+            for maximum,budget in ((5,TurnBudget()),(6,gate.g2_turn_budget(TurnBudget()))):
+                budget.bind('a','original-a')
+                for i in range(maximum):budget.observe('a',{'method':'turn/started','params':{'threadId':'original-a','turn':{'id':str(i)}}})
+                with self.assertRaises(ProtocolError):budget.observe('a',{'method':'turn/started','params':{'threadId':'original-a','turn':{'id':'extra'}}})
+
+
+            binding,_=run.bounded_json(run.BINDING)
+            delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario='g2-g3')
+            caps=gate.g2_cap_methods(cls.__mro__[2])
+            cleanup_tree=ast.parse(caps['cleanup']._g2_cap_source)
+            predicate=next(n.test for n in ast.walk(cleanup_tree) if isinstance(n,ast.If) and ast.unparse(n.test)=='len(self.budget.started) > 6')
+            check=compile(ast.Expression(predicate),'<late-cleanup-cap>','eval')
+            for count,expected in ((5,False),(6,False),(7,True)):
+                with self.subTest(late_cleanup=count):self.assertEqual(eval(check,{'self':types.SimpleNamespace(budget=types.SimpleNamespace(started=list(range(count))))}),expected)
+            args=types.SimpleNamespace(scenario='g2-g3',unique_run='cicada-two-turn-syntheticg2cap',wiring_receipt_sha='a'*64,cleanup_hard_stop_unix=10000,delivery_sha='b'*64,preparation_result_sha='c'*64,preparation_review_sha='d'*64,equality_sha='e'*64)
+            extended=dict(delivery,component_proof_sha256='f'*64)
+            expected=run.expected_latest_go(binding,'a'*64,args,extended)
+            self.assertEqual((expected['max_native_turns'],expected['max_manual_turns'],expected['max_automatic_turns']),(6,4,2))
+            bad=dict(expected,max_native_turns=7)
+            with self.assertRaises(PermissionError):run.validate_go(bad,expected,now=1000)
+            args.scenario='g1'
+            ordinary=run.expected_latest_go(binding,'a'*64,args,delivery)
+            self.assertEqual((ordinary['max_native_turns'],ordinary['max_manual_turns'],ordinary['max_automatic_turns']),(5,3,2))
+            names = code.co_names
+            self.assertLess(names.index('g2_revoke_and_visibility'),names.index('stop_and_capture'))
+            self.assertLess(names.index('stop_and_capture'),names.index('g3_restore_snapshot'))
+            inline = selected['audit_inline_reply'].__code__
+            self.assertIn('audit_turn',inline.co_names)
+            self.assertIn('_g2_inline_reply_witness',inline.co_names)
+            self.assertIn('alice_second_group_id',inline.co_consts)
+            self.assertIn('link_id',inline.co_consts)
+            with self.assertRaisesRegex(ValueError,'SCENARIO_UNSUPPORTED'):
+                gate.load_gate({}, {}, inspect_only=True, scenario='unknown')
+
+    def test_g2_selected_cleanup_preserves_closure_and_persists_terminal_result(self):
+        with run.deny_preflight_effects():
+            binding,_=run.bounded_json(run.BINDING)
+            delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario='g2-g3')
+            original=cls.__mro__[2].cleanup
+            selected=cls.__mro__[1].cleanup
+            def cells(method):
+                return dict(zip(method.__code__.co_freevars,method.__closure__ or ()))
+            original_inner=cells(original)['original_cleanup'].cell_contents
+            selected_inner=cells(selected)['original_cleanup'].cell_contents
+            pinned_base=cells(original_inner)['base'].cell_contents
+            self.assertIs(selected_inner.__globals__['base'],pinned_base)
+            self.assertEqual(original_inner.__code__.co_freevars,('base',))
+            original_globals=dict(original_inner.__globals__)
+            source_path=Path(gate.__file__)
+            source_alias=selected_inner.__globals__['ROOT']/'source-binding.json'
+            synthetic_manifest=json.dumps({'files':[{'path':str(source_path),
+                'sha256':hashlib.sha256(source_path.read_bytes()).hexdigest()}]})
+            read_text=Path.read_text
+            def public_alias(path,*args,**kwargs):
+                if path==source_alias:return synthetic_manifest
+                return read_text(path,*args,**kwargs)
+            for count in (0,6,7):
+                with self.subTest(native_starts=count):
+                    writes=[];operations=[]
+                    namespace=dict(selected_inner.__globals__)
+                    namespace['base']=types.SimpleNamespace(private_json=lambda path,result:
+                        writes.append((path,copy.deepcopy(result))))
+                    adapted_inner=types.FunctionType(selected_inner.__code__,namespace,
+                        selected_inner.__name__,selected_inner.__defaults__,selected_inner.__closure__)
+                    def cell(value):return (lambda:value).__closure__[0]
+                    closure=tuple(cell(adapted_inner) if name=='original_cleanup' else value
+                        for name,value in cells(selected).items())
+                    adapted=types.FunctionType(selected.__code__,dict(selected.__globals__),
+                        selected.__name__,selected.__defaults__,closure)
+                    record={'Id':'synthetic-owned-id','Image':'synthetic-image',
+                        'Config':{'Labels':{'org.cicada.test.run':'synthetic-cleanup'}},
+                        'State':{'Running':False}}
+                    def docker(*args):
+                        self.assertEqual(args,('rm','synthetic-owned-id'));operations.append(args)
+                    rpc=types.SimpleNamespace(shutdown_expected=False,
+                        shutdown_eof=types.SimpleNamespace(wait=lambda timeout:True),
+                        check=lambda:None,close=lambda:operations.append('rpc-close'))
+                    fixture=types.SimpleNamespace(result={'status':'PREPARATION_PASS_NATIVE_NOT_RUN'},
+                        policy=types.SimpleNamespace(cleanup=lambda:None,limit=lambda duration:duration),
+                        rpcs={'a':rpc},containers={'synthetic-a':'synthetic-image'},
+                        nodes={'a':{'container':'synthetic-a'}},run_id='synthetic-cleanup',
+                        cleanup_inspect=lambda *args:copy.deepcopy(record),
+                        inspect=lambda *args:copy.deepcopy(record),docker=docker,
+                        close_provider_adapters=lambda:None,hub=None,networks=[],created_networks={},
+                        provider_adapters={},audit_files={},projection_files={},uds_dirs={},
+                        root=Path('/synthetic-private-state'),evidence=Path('/synthetic-evidence'),
+                        result_paid_dispatches=0,manual_turn_ids=[],submitted_objects={},
+                        budget=types.SimpleNamespace(started=list(range(count))))
+                    with patch.object(Path,'read_text',public_alias):adapted(fixture)
+                    self.assertEqual(len(writes),1)
+                    self.assertEqual(writes[0][0],fixture.evidence/'result.json')
+                    terminal=writes[0][1]
+                    self.assertTrue(terminal['source_unchanged_during_gate'])
+                    self.assertEqual(terminal['cleanup_owned_resources'],count<=6)
+                    self.assertEqual(terminal['terminal_exit_code'],0 if count<=6 else 1)
+                    self.assertEqual(terminal['observer_shutdown']['a'],
+                        'EXPECTED_EOF_CONFIRMED' if count<=6 else 'UNKNOWN_RETAINED_SUBSCRIBER')
+                    self.assertEqual(terminal['owned_cleanup_error_classes'],[] if count<=6 else ['RuntimeError'])
+                    self.assertEqual('rpc-close' in operations,count<=6)
+            self.assertEqual(original_inner.__globals__,original_globals)
+            self.assertIs(cells(original_inner)['base'].cell_contents,pinned_base)
+
+    def test_g2_link_dto_and_inline_strict_negative(self):
+        with run.deny_preflight_effects():
+            dto = types.SimpleNamespace(one=lambda items,tool: next(item for item in items if item['tool']==tool))
+            result={'request_id':'rq-synthetic','message_id':'msg-synthetic','link_id':'link-synthetic',
+                'status':'OPEN','reply_mode':'asynchronous','payload_mode':'SEALED_V1','delivery':'RELAY_PERSISTED'}
+            payload={'operation':'ask','status':'SENT','retryable':False,'link_id':'link-synthetic',
+                'request_id':'rq-synthetic','message_id':'msg-synthetic','result':result}
+            item={'tool':'cicada_ask','arguments':{'link_id':'link-synthetic','data_scope':'thread.message','question':'synthetic question'}}
+            request=gate.g2_accepted_ask(dto,item,payload,'ep-a','ep-b','synthetic question',{},'link-synthetic')
+            for field,value in (('target','ep-b'),('data_scope','message.body'),('link_id','wrong')):
+                with self.subTest(ask_field=field):
+                    bad=copy.deepcopy(item);bad['arguments'][field]=value
+                    with self.assertRaises(RuntimeError):gate.g2_accepted_ask(dto,bad,payload,'ep-a','ep-b','synthetic question',{},'link-synthetic')
+            reply={'tool':'cicada_reply','arguments':{'request_id':'rq-synthetic','body':'synthetic BETA answer','link_id':'link-synthetic'}}
+            r={'operation':'reply','status':'SENT','retryable':False,'link_id':'link-synthetic','request_id':'rq-synthetic','message_id':'reply-synthetic',
+                'result':{'link_id':'link-synthetic','request_id':'rq-synthetic','message_id':'reply-synthetic','status':'REPLIED','payload_mode':'SEALED_V1','delivery':'RELAY_PERSISTED'}}
+            accepted=gate.g2_accepted_reply(dto,[reply],lambda _:r,request,'synthetic BETA answer')
+            self.assertEqual(accepted['reply_message_id'],'reply-synthetic')
+            bad=copy.deepcopy(reply);del bad['arguments']['link_id']
+            with self.assertRaises(RuntimeError):gate.g2_accepted_reply(dto,[bad],lambda _:r,request,'synthetic BETA answer')
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('g2_inline_synthetic',gate.OLD/'inline_reply.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+            original='01a115be-0c73-7fd0-86f6-4cc9c99a098e';turn='01a115bf-0c73-7fd0-86f6-4cc9c99a098e'
+            expected={'message_id':'reply-synthetic','request_id':'rq-synthetic','reply_to':'msg-synthetic',
+                'sender_endpoint_id':'ep-b','receiver_endpoint_id':'ep-a','group_id':'group-second','link_id':'link-synthetic'}
+            user={'type':'userMessage','content':[{'type':'text','text':'Cicada SEALED_V1 REPLY. verified synthetic\n'+json.dumps(dict(expected,body='synthetic BETA answer'))}]}
+            final={'type':'agentMessage','phase':'final_answer','text':'synthetic ALPHA synthetic BETA answer'}
+            items=[{'threadId':original,'turnId':turn,'item':user},{'threadId':original,'turnId':turn,'item':final}]
+            completion={'threadId':original,'turnId':turn,'status':'completed'}
+            with patch.dict(sys.modules,{'inline_reply':module}):
+                proof=gate.g2_inline_reply_witness(items,completion,original,turn,expected,('ALPHA','BETA'),'synthetic BETA answer',lambda _: {})
+                self.assertTrue(proof['correct_answer'])
+                items[-1]['item']['text']='synthetic BETA answer'
+                with self.assertRaisesRegex(RuntimeError,'context/answer witness'):
+                    gate.g2_inline_reply_witness(items,completion,original,turn,expected,('ALPHA','BETA'),'synthetic BETA answer',lambda _: {})
+                items[-1]['item']['text']='synthetic ALPHA synthetic BETA answer'
+                wrong=dict(expected,link_id='wrong')
+                with self.assertRaisesRegex(RuntimeError,'exact correlation'):
+                    gate.g2_inline_reply_witness(items,completion,original,turn,wrong,('ALPHA','BETA'),'synthetic BETA answer',lambda _: {})
+            self.assertFalse(gate.g2_guard_denial(True,{'error':'timeout'}))
+            self.assertFalse(gate.g2_guard_denial(False,{'status':'FAILED','retryable':True,'error':'communication link not found or not authorized'}))
+            self.assertTrue(gate.g2_guard_denial(False,{'status':'FAILED','retryable':False,'error':'communication link not found or not authorized'}))
+
+    def test_g2_current_mcp_and_g3_exact_readiness_admission(self):
+        with run.deny_preflight_effects():
+            binding,_=run.bounded_json(run.BINDING)
+            delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario='g2-g3')
+            fixture=object.__new__(cls)
+            fixture.run_id='cicada-two-turn-syntheticg2g3';fixture.test_image=run.LATEST_RUNTIME
+            fixture.args=types.SimpleNamespace(runtime_image=run.LATEST_RUNTIME,latest_runtime=True)
+            fixture.submitted_objects={};fixture.containers={};fixture.hub='own-hub';fixture.root=Path('/synthetic/owned');fixture.native_package=Path('/synthetic/package')
+            fixture.result={'g3_hub_replacement':{'new_id':'a'*64}}
+            fixture._g3_helper_hub_id='a'*64
+            exact=gate.g3_readiness_argv(fixture,'a'*64)
+            self.assertEqual(cls.register_submission(fixture,exact),('container',fixture.run_id+'-helper-g3-ready'))
+            for label,change in (('network',('--network','bridge')),('entrypoint',('--entrypoint','sh')),('image',(run.LATEST_RUNTIME,run.RUNTIME))):
+                with self.subTest(readiness=label):
+                    bad=list(exact);index=bad.index(change[0]);bad[index+(0 if label=='image' else 1)]=change[1]
+                    with self.assertRaises(RuntimeError):cls.register_submission(fixture,bad)
+            fixture.nodes={'a':{'thread':'original-a','container':'own-a','node_id':'node-a','tls_config':'/synthetic/pq.json','current_group_id':'group-second'}}
+            fixture.meta={'scenario':'g2-g3','group_id':'group-primary','alice_second_group_id':'group-second','owner_id':'owner-a','bob_owner_id':'owner-b','bob_group_id':'group-b'}
+            captured=[]
+            def boundary(*argv,**kwargs):
+                captured.append((argv,kwargs))
+                return (json.dumps({'id':1,'result':{}})+'\n'+json.dumps({'id':2,'result':{'structuredContent':{'endpoint_id':'ep-a'}}})+'\n').encode()
+            fixture.docker=boundary
+            bad,payload=gate.g2_mcp_call(fixture,'a','cicada_whoami',{})
+            self.assertFalse(bad);self.assertEqual(payload['endpoint_id'],'ep-a')
+            argv=captured[0][0]
+            self.assertIn('CICADA_GROUP_ID=group-second',argv)
+            self.assertIn('CICADA_NODE_PQTLS_CONFIG=/synthetic/pq.json',argv)
+            self.assertIn('CODEX_THREAD_ID=original-a',argv)
+            self.assertNotIn('turn/start',captured[0][1]['input_data'].decode())
+            fixture.nodes['a'].update(endpoint='ep-a',binding_before={'id':'binding-a','epoch':7})
+            card={'endpoint_id':'ep-a','native_session_id':'original-a','node_id':'node-a','group_id':'group-second','binding_id':'binding-a','binding_epoch':7}
+            fixture.g2_mcp_call=lambda *args:(False,dict(card))
+            self.assertEqual(gate.g2_current_actor(fixture,'a')['binding_id'],'binding-a')
+            for key,value in (('endpoint_id','foreign'),('native_session_id','foreign'),('node_id','foreign'),('group_id','group-primary'),('binding_id','foreign'),('binding_epoch',8)):
+                with self.subTest(actor_field=key):
+                    altered=dict(card);altered[key]=value
+                    fixture.g2_mcp_call=lambda *args:(False,altered)
+                    with self.assertRaises(RuntimeError):gate.g2_current_actor(fixture,'a')
+            self.assertTrue(gate.g2_guard_denial(True,{'error':'communication link is revoked'}))
+            for payload in ({},{'error':'timeout'},{'status':'FAILED','retryable':False,'error':'protocol error'}):
+                with self.subTest(denial=tuple(payload)):
+                    self.assertFalse(gate.g2_guard_denial(False,payload))
+
+    def test_g2_component_and_scenario_reject_old_authority(self):
+        with run.deny_preflight_effects():
+            actual_root = run.G2_BUILD_ROOT
+            delivery,_ = run.bounded_json(actual_root/'mcp-fixed-actual-delivery.NONAUTH.json')
+            equality,_ = run.bounded_json(actual_root/'mcp-fixed-compiled-input-equality.NONAUTH.json')
+            self.assertEqual(run.g2_component_inputs(delivery,equality),delivery['component_proof_sha256'])
+            old_delivery,_ = run.bounded_json(actual_root/'actual-delivery.NONAUTH.json')
+            old_equality,_ = run.bounded_json(actual_root/'compiled-input-equality.NONAUTH.json')
+            self.assertNotEqual(old_delivery['binary_sha256'],delivery['binary_sha256'])
+            with self.assertRaises(PermissionError):run.g2_component_inputs(old_delivery,old_equality)
+            for path in ('/gpu1-share/synthetic','/run/secrets/synthetic','/unknown/unowned.json'):
+                with self.subTest(reference=path.split('/')[1]):
+                    with patch.object(Path,'resolve',side_effect=AssertionError('UNAUTHORIZED_METADATA')):
+                        with self.assertRaises(PermissionError):run.g2_public_path(path)
+            with self.assertRaisesRegex(PermissionError,'SCENARIO_UNSUPPORTED'):
+                run.scenario_inputs(types.SimpleNamespace(scenario='bad'),{})
+            self.assertEqual(run.scenario_inputs(types.SimpleNamespace(scenario='g1'),{}),'g1')
+            with self.assertRaisesRegex(PermissionError,'G2_FRESH_HELPER_REQUIRED'):
+                run.scenario_inputs(types.SimpleNamespace(scenario='g2-g3'),{})
+            with self.assertRaisesRegex(PermissionError,'G2_COMPONENT_EQUALITY_SCHEMA'):
+                run.g2_component_inputs({}, {'schema':'cicada.compiled-input-equality.v1'})
+            # Malformed/foreign source rows fail before any source read.
+            for row in ({}, {'path':'/gpu1-share/synthetic','sha256':'0'*64,'bytes':1,'rawmode':0o100644},
+                        {'path':'/synthetic','sha256':'0'*64,'bytes':True,'rawmode':0o100644}):
+                with self.subTest(row_shape=sorted(row)):
+                    with self.assertRaises(PermissionError):run.g2_public_row(row,paths=run.G2_SOURCE_PATHS)
+
     def test_binding_rows_and_active_alias_refuse_stale_metadata(self):
         """Metadata inconsistencies are refused before source imports or external effects."""
         with run.deny_preflight_effects():
@@ -55,6 +305,22 @@ class WiringChecks(unittest.TestCase):
             accepted,sha=run.verify_binding()
             self.assertEqual(accepted,current)
             self.assertEqual(sha,hashlib.sha256(raw).hexdigest())
+
+    def test_g2_tls_overlay_is_exact_and_per_node(self):
+        path = Path("/home/zyf/CICADA_real_codex_prep_20261002/driver/proposals/managed-five-clean021-20261003/checkpoint-native-tls-v6/authority-bootstrap/tls_bootstrap.go")
+        raw = path.read_bytes()
+        changed = run.g2_tls_fixture_source(raw)
+        self.assertNotEqual(changed, raw)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), run.G2_TLS_INPUT_SHA)
+        self.assertIn(b'fixtureNodeScope(meta, n.id)', changed)
+        self.assertIn(b'loadFixtureIdentity(fixtureRoot, "bob-owner-private", "owner.key")', changed)
+        self.assertIn(b'db.GetClientDevice(old.OwnerID, deviceID)', changed)
+        self.assertNotIn(b'n.binding.OwnerID!=meta.OwnerID', changed)
+        self.assertTrue(changed.endswith(b"func init() { nativeTLSBootstrap = tlsBootstrap }\n"))
+        with self.assertRaisesRegex(ValueError, "G2_TLS_INPUT_PIN"):
+            run.g2_tls_fixture_source(raw + b"\n")
+        with self.assertRaisesRegex(ValueError, "G2_TLS_INPUT_PIN"):
+            run.g2_tls_fixture_source(raw.replace(b"same Owner identity", b"other Owner identity"))
 
     def test_a2_submission_supplements_original_task_without_oracle_change(self):
         """Only one trusted instruction changes; the actual strict witness still rejects omission."""

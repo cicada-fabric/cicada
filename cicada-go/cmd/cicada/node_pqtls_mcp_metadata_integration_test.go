@@ -112,6 +112,36 @@ func assertPQProtectedMCPMetadata(t *testing.T, sealed *machineSealedReceiveFixt
 			t.Fatal("protected metadata bridge accepted a mismatched origin, native session, or Group")
 		}
 	}
+	// Mutating/read-list operations retain the same checked binding preflight.
+	for _, operation := range []string{"mcp_metadata_leave_group", "mcp_metadata_members"} {
+		protected := baseRequest
+		protected.Operation = operation
+		if operation == "mcp_metadata_members" {
+			protected.Limit = 2
+		}
+		for _, mutate := range []func(*localMCPMetadataRequest){
+			func(r *localMCPMetadataRequest) { r.NativeSessionID = "foreign-native-thread" },
+			func(r *localMCPMetadataRequest) { r.BindingID = "binding_foreign" },
+			func(r *localMCPMetadataRequest) { r.BindingEpoch++ },
+		} {
+			request := protected
+			mutate(&request)
+			if _, err := requestMachineAgentMCPMetadata(bridge.path, request); err == nil {
+				t.Fatal("new checked route accepted mismatched native binding")
+			}
+		}
+		for _, mutate := range []func(*localMCPMetadataRequest){
+			func(r *localMCPMetadataRequest) { r.GroupID = "group_foreign" },
+			func(r *localMCPMetadataRequest) { r.SessionToken = "cicada_session_synthetic_wrong" },
+		} {
+			request := protected
+			mutate(&request)
+			response, err := requestMachineAgentMCPMetadata(bridge.path, request)
+			if err != nil || response == nil || response.StatusCode < 400 {
+				t.Fatal("new checked route accepted foreign Group or wrong token")
+			}
+		}
+	}
 	wrongGroup := baseRequest
 	wrongGroup.GroupID = "group_foreign"
 	groupResponse, err := requestMachineAgentMCPMetadata(bridge.path, wrongGroup)
@@ -148,6 +178,98 @@ func assertPQProtectedMCPMetadata(t *testing.T, sealed *machineSealedReceiveFixt
 		t.Fatal("revoked current binding remained usable through the protected MCP bridge")
 	}
 	t.Log("wrong origin/native/binding/epoch/Group/token and revoked-session checks rejected")
+
+	// A separate synthetic native session exercises the actual MCP callTool ->
+	// owner-local UDS -> checked PQ Node -> real Hub route, not a direct Hub leave.
+	const multiSID = "native-mcp-pqtls-multigroup"
+	writeCodexSessionRecord(t, codexHome, multiSID, workspace)
+	primary, err := db.GetGroup(sealed.link.SourceGroupID)
+	if err != nil {
+		t.Fatal("read authorized primary Group")
+	}
+	secondary, err := db.CreateGroup(store.Group{ID: "grp_mcp_pqtls_secondary", Name: "synthetic MCP secondary",
+		OwnerPrincipalID: primary.OwnerPrincipalID, TrustDomainID: primary.TrustDomainID,
+		State: store.GroupStateActive, ContextPolicy: "group_scoped"})
+	if err != nil {
+		t.Fatal("create individually authorized synthetic secondary Group")
+	}
+	first, err := service.JoinForNodeCredential(sealed.sourceToken, fabric.JoinInput{
+		GroupID: primary.ID, Harness: "codex", NativeSessionID: multiSID, Workspace: workspace,
+		Capabilities: map[string]any{"local_peer_delivery": "sealed_v1"}})
+	if err != nil {
+		t.Fatal("first real native Group Join")
+	}
+	if _, err := db.CreateMembership(store.Membership{PrincipalID: first.Endpoint.PrincipalID,
+		GroupID: secondary.ID, Role: "member", Grants: []string{"directory.read", "message.send", "message.ask", "message.reply", "message.receive"}}); err != nil {
+		t.Fatal("authorize exact existing native Principal for second Group")
+	}
+	second, err := service.JoinForNodeCredential(sealed.sourceToken, fabric.JoinInput{
+		GroupID: secondary.ID, EndpointID: first.Endpoint.ID, Harness: "codex", NativeSessionID: multiSID,
+		Workspace: workspace, Capabilities: map[string]any{"local_peer_delivery": "sealed_v1"}})
+	if err != nil || second.Endpoint.ID != first.Endpoint.ID || second.Endpoint.NativeSessionID != multiSID {
+		t.Fatal("second Join replaced original native identity")
+	}
+	multiTrusted := trusted
+	multiTrusted.NativeSessionID = multiSID
+	multiPublic := mcpPublicJoinResult{Endpoint: second.Endpoint, NetworkCard: second.NetworkCard,
+		BindingID: second.BindingID, BindingEpoch: second.BindingEpoch, LeaseExpiresAt: second.LeaseExpiresAt}
+	multiScope, _, err := mcpSessionScope(logicalOrigin, harness.SessionContext{Harness: "codex", NativeSessionID: multiSID, MachineID: nodeID, Workspace: workspace})
+	if err != nil {
+		t.Fatal("derive second synthetic native scope")
+	}
+	multi := newMCPServer(logicalOrigin, second.Endpoint.ID, "")
+	multi.pqtlsSelected = true
+	multi.hubStateDir = node.StateRoot
+	multi.setSession(second.SessionToken, second.Endpoint.ID, secondary.ID, multiTrusted, multiScope, multiPublic)
+	t.Cleanup(func() { close(multi.stop) })
+	if _, err := multi.callTool("cicada_use_group", map[string]any{"group_id": primary.ID}); err != nil {
+		t.Fatal("select primary through checked MCP")
+	}
+	members, err := multi.callTool("cicada_members", map[string]any{"limit": 10})
+	if err != nil {
+		t.Fatal("current Group members through checked MCP")
+	}
+	encoded, _ := json.Marshal(members)
+	var roster struct {
+		Endpoints []fabric.NetworkCard `json:"endpoints"`
+	}
+	if err := decodeStrictJSON(encoded, &roster); err != nil || len(roster.Endpoints) == 0 {
+		t.Fatal("missing scoped members")
+	}
+	for _, card := range roster.Endpoints {
+		if card.GroupID != primary.ID || card.NativeSessionID != "" {
+			t.Fatal("members leaked foreign scope or native ID")
+		}
+	}
+	left, err := multi.callTool("cicada_leave_group", map[string]any{"reason": "synthetic leave primary"})
+	if err != nil {
+		t.Fatal("actual checked PQ MCP leave primary")
+	}
+	leftMap, ok := left.(map[string]any)
+	if !ok || leftMap["remaining_group_id"] != secondary.ID || multi.sessionGroupID != secondary.ID || !multi.isJoined() {
+		t.Fatal("leave primary failed to retain second Group")
+	}
+	remaining, err := multi.callTool("cicada_whoami", nil)
+	if err != nil {
+		t.Fatal("remaining Group checked whoami")
+	}
+	retained, err := networkCardFromResult(remaining)
+	if err != nil || retained.EndpointID != first.Endpoint.ID || retained.NativeSessionID != multiSID || retained.GroupID != secondary.ID || retained.BindingID != second.BindingID {
+		t.Fatal("leave replaced original Endpoint/native session/binding")
+	}
+	if _, err := multi.callTool("cicada_use_group", map[string]any{"group_id": primary.ID}); err == nil {
+		t.Fatal("left Group remained usable")
+	}
+	if !multi.isJoined() || multi.sessionGroupID != secondary.ID || multi.currentSessionToken() != second.SessionToken {
+		t.Fatal("left Group denial cleared the live remaining Group session")
+	}
+	if _, err := multi.callTool("cicada_leave_group", nil); err != nil || multi.isJoined() {
+		t.Fatal("last Group leave did not clear MCP session")
+	}
+	if _, err := service.AuthenticateForGroup(second.SessionToken, secondary.ID); err == nil {
+		t.Fatal("last Group leave did not fence original native binding")
+	}
+	t.Log("checked PQ MCP members and leave-group preserve remaining native scope; last leave fences")
 }
 
 func assertMeasuredPQDiagnosticRoutes(t *testing.T, path string, requiredRoutes, requiredEvents []string) {
