@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.160.0.
+"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.160.1.
 
 The disposable Runtime uses a loopback-only synthetic Responses provider inside
 a network-none container. The TUI is driven through a real PTY; queue delivery
@@ -29,7 +29,7 @@ import termios
 import shutil
 
 
-IMAGE = "sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f"
+IMAGE = "sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83"
 CODEX = "/home/cicada/.local/bin/codex"
 MAX_RUNTIME_SECONDS = 140
 COMPOSER_READY = b"Ask Codex to do anything"
@@ -61,7 +61,7 @@ WRAPPER = r'''import base64, hashlib, http.server, json, os, pathlib, queue, re,
 
 CODEX = "/home/cicada/.local/bin/codex"
 RUN = "/run/cicada"
-HOME = "/tmp/cicada-home"
+HOME = "/codex"
 CODEX_HOME = HOME + "/.codex"
 SOCKET_PATH = "/tmp/cfq.sock"
 BUSY = os.environ["CICADA_BUSY_SENTINEL"]
@@ -684,7 +684,7 @@ def main():
               'model_provider = "cicada-local"\n'
               'approval_policy = "never"\n'
               'sandbox_mode = "read-only"\n'
-              'log_dir = "/tmp/cicada-home/.codex/log"\n'
+              'log_dir = "/codex/.codex/log"\n'
               '[notice.model_migrations]\n'
               '"gpt-5.6-luna" = "gpt-6-luna"\n'
               '[model_providers.cicada-local]\n'
@@ -699,8 +699,12 @@ def main():
               'trust_level = "trusted"\n')
     (pathlib.Path(CODEX_HOME) / "config.toml").write_text(config, encoding="utf-8")
     os.chmod(pathlib.Path(CODEX_HOME) / "config.toml", 0o600)
+    with open(CODEX, "rb") as binary:
+        actual_cli_sha = hashlib.file_digest(binary, "sha256").hexdigest()
+    if actual_cli_sha != "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35":
+        return 20
     version = subprocess.run([CODEX, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=8)
-    if version.returncode != 0 or version.stdout.strip() != "codex-cli 0.160.0":
+    if version.returncode != 0 or version.stdout.strip() != "codex-cli 0.160.1":
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["runtime_version_ok"] = False
@@ -759,7 +763,7 @@ def main():
             publish()
         return 24
     user_agent = initialized["userAgent"]
-    if not re.search(r"(?:^|[^0-9])0\.160\.0(?:[^0-9]|$)", user_agent):
+    if not re.search(r"(?:^|[^0-9])0\.160\.1(?:[^0-9]|$)", user_agent):
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["appserver_user_agent_version_ok"] = False
@@ -1311,7 +1315,7 @@ def write_result(path, result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-native", action="store_true", help="run one isolated real 0.160.0 TUI/queue check")
+    parser.add_argument("--run-native", action="store_true", help="run one isolated real 0.160.1 TUI/queue check")
     parser.add_argument("--startup-diagnostic-only", action="store_true",
                         help="stop at the first synthetic provider POST or TUI exit; skip queue and draft checks")
     parser.add_argument("--trace-app-file-failures", action="store_true",
@@ -1334,7 +1338,7 @@ def main():
     if args.trace_tui_file_failures and not args.result:
         parser.error("--trace-tui-file-failures requires --result for bounded private evidence")
     if not args.run_native:
-        print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.160.0 TUI"}, sort_keys=True))
+        print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.160.1 TUI"}, sort_keys=True))
         return 0
     max_timeout = 60 if args.startup_diagnostic_only else MAX_RUNTIME_SECONDS
     if not 30 <= args.timeout <= max_timeout:
@@ -1429,9 +1433,10 @@ def main():
                        "--network", "none", "--read-only", "--user", f"{uid}:{gid}", "--cap-drop", "ALL",
                        "--security-opt", "no-new-privileges:true", "--pids-limit", "96", "--cpus", "1",
                         "--memory", "768m", "--tmpfs", f"/tmp:rw,nosuid,nodev,size=256m,uid={uid},gid={gid}",
+                        "--tmpfs", f"/codex:rw,nosuid,nodev,mode=0700,size=128m,uid={uid},gid={gid}",
                         "--mount", f"type=bind,src={private_dir},dst=/run/cicada", "--workdir", "/tmp",
                         *trace_mount,
-                       "--env", "HOME=/tmp/cicada-home", "--env", "CODEX_HOME=/tmp/cicada-home/.codex",
+                       "--env", "HOME=/codex", "--env", "CODEX_HOME=/codex/.codex",
                        "--env", "TMPDIR=/tmp", "--env", "PATH=/home/cicada/.local/bin:/usr/local/bin:/usr/bin:/bin",
                        "--env", "TERM=xterm-256color", "--env", "CICADA_SYNTHETIC_API_KEY=local-only-not-a-secret",
                        "--env", "CICADA_BUSY_SENTINEL=" + busy, "--env", "CICADA_QUEUE_SENTINEL=" + queued,

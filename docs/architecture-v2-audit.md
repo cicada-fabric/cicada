@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## 2026-10-07 current audit — v0.1 PARTIAL
+## Current checkpoint — PARTIAL
+
+Current-source full15 offline checks and zero b preparation passed; CLI 0.160.1 foreground queue/draft acceptance passed with synthetic local responses and paid 0. Real G1d failed at B Receive/Reply after four logical turns; A3 was NOT_REACHED, so A2's ALPHA effectiveness is NOT_EVALUATED. Original cleanup=false and B EOF UNKNOWN remain unchanged despite independent absence of 15 owned IDs/names; two owned UDS directories remain present/UNKNOWN. See [detailed Native I/O record](native-request-observer-io-validation.md). No TLS subtype, provider cause or errno107 causal claim is proved; Go/DB/wire/Client and historical environment scopes remain unchanged.
+
+## Earlier 2026-10-07 audit — historical scope
 
 CLI 0.160.1 is verified. The narrow client-read reset correction passed 13 offline wiring checks and fresh zero-model preparation. Real G1c remains **strict FAIL**: A3's final output omitted ALPHA although upstream input contained it; BETA and the exact answer were present. This proves a final-output omission, not model context loss. Cleanup/EOF and independent absence passed for this run. Control construction proves no business object; its invocation counter remains NOT_INSTRUMENTED. Android, physical Nodes and public HTTPS remain NOT_RUN. No Go/DB/wire/Client change or rebuild is attributed here. See [detailed Native I/O record](native-request-observer-io-validation.md) and [release evidence](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence). No further execution is authorized.
 

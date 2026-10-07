@@ -1,6 +1,10 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-07 current migration boundary
+## Current fixture boundary
+
+No Go/DB/key/wire/Client migration or rebuild is made. The startup metadata guard is bound to d096; full15 offline and zero b preparation passed. Real G1d failed at B Receive/Reply before A3, so the A2 task-framing change is not evaluated for final ALPHA behavior. Stale-row zero FAIL6a652 and old strict G1c remain historical, unchanged. See [detailed Native I/O record](native-request-observer-io-validation.md) for exact current failure and cleanup boundaries. The SQLite statement and all migration evidence below remain intact.
+
+## Earlier 2026-10-07 migration boundary
 
 This checkpoint changes only the owned Native fixture's exact client-read reset handling and its checks. Go, DB/schema, keys, wire protocol and Client are unchanged; no product rebuild or artifact retag occurred. Current zero-model preparation passed, but G1c failed the unchanged final-output ALPHA assertion. [detailed Native I/O record](native-request-observer-io-validation.md) separates current binding 878c80 from historical source 1a3 and dirty artifact 826. No additional migration or execution is authorized.
 

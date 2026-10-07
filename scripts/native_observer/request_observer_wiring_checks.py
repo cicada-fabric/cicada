@@ -31,6 +31,62 @@ import request_observer_bootstrap as bootstrap
 
 
 class WiringChecks(unittest.TestCase):
+    def test_binding_rows_and_active_alias_refuse_stale_metadata(self):
+        """Metadata inconsistencies are refused before source imports or external effects."""
+        with run.deny_preflight_effects():
+            current,raw=run.bounded_json(run.BINDING)
+            original=run.bounded_json
+            cases=[]
+            stale=copy.deepcopy(current);stale["files"][0]["sha256"]="0"*64;cases.append(("stale",stale,False))
+            duplicate=copy.deepcopy(current);duplicate["files"].append(copy.deepcopy(duplicate["files"][0]));cases.append(("duplicate",duplicate,False))
+            missing=copy.deepcopy(current);missing["files"].pop();cases.append(("missing",missing,False))
+            extra=copy.deepcopy(current);extra["files"].append(dict(extra["files"][0],path="/synthetic/extra"));cases.append(("extra",extra,False))
+            cases.append(("alias",copy.deepcopy(current),True))
+            for label,binding,bad_alias in cases:
+                with self.subTest(case=label):
+                    changed=(json.dumps(binding,sort_keys=True)+"\n").encode()
+                    def read(path):
+                        if Path(path)==run.BINDING:return binding,changed
+                        if Path(path)==run.BINDING.parent/"source-binding.json":return binding,(raw if bad_alias else changed)
+                        return original(path)
+                    with patch.object(run,"bounded_json",side_effect=read),patch.object(run,"required_paths",side_effect=AssertionError("LATE_VALIDATION_REACHED")):
+                        with self.assertRaisesRegex(ValueError,"^(SOURCE_ROWS_INCONSISTENT|ACTIVE_SOURCE_BINDING_ALIAS)$"):
+                            run.verify_binding()
+            accepted,sha=run.verify_binding()
+            self.assertEqual(accepted,current)
+            self.assertEqual(sha,hashlib.sha256(raw).hexdigest())
+
+    def test_a2_submission_supplements_original_task_without_oracle_change(self):
+        """Only one trusted instruction changes; the actual strict witness still rejects omission."""
+        with run.deny_preflight_effects():
+            current = gate.effective_sources()
+            with patch.object(gate, "A2_SUBMISSION_INSTRUCTION", gate.A2_LEGACY_INSTRUCTION):
+                prior = gate.effective_sources()
+            self.assertEqual(current["gate"].replace(gate.A2_SUBMISSION_INSTRUCTION,
+                gate.A2_LEGACY_INSTRUCTION), prior["gate"])
+            self.assertEqual({k:v for k,v in current.items() if k!="gate"},
+                {k:v for k,v in prior.items() if k!="gate"})
+            self.assertNotIn("ALPHA", gate.A2_SUBMISSION_INSTRUCTION)
+            self.assertNotIn("BETA", gate.A2_SUBMISSION_INSTRUCTION)
+            self.assertIn(ast.dump(ast.parse('json.dumps(self.nodes["b"]["endpoint"])', mode="eval").body),
+                ast.dump(ast.parse(current["gate"])))
+            self.assertIn(ast.dump(ast.parse("json.dumps(question)", mode="eval").body),
+                ast.dump(ast.parse(current["gate"])))
+            binding,_=run.verify_binding()
+            delivery=run.bounded_json(run.BINDING.parent.parent/"native-observer-runtime-161-20261007"/"cicada-product826-pq-20261007a"/"actual-delivery.NONAUTH.json")[0]
+            candidate,legacy=gate.load_gate(delivery,binding,inspect_only=True)
+            audit=candidate.audit_turn
+            closure=dict(zip(audit.__code__.co_freevars, (cell.cell_contents for cell in audit.__closure__)))
+            witness=closure["original_audit_turn"].__globals__["base"].turn_witness
+            thread="00000000-0000-4000-8000-000000000001"
+            events=[{"type":"thread.started","thread_id":thread},
+                    {"type":"item.completed","item":{"type":"agent_message","text":"SYNTHETIC_BETA exact-answer"}}]
+            with self.assertRaisesRegex(RuntimeError,"^original_context_witness_missing$"):
+                witness(events,expected_thread=thread,markers=("SYNTHETIC_ALPHA","SYNTHETIC_BETA","exact-answer"))
+            events[-1]["item"]["text"]="SYNTHETIC_ALPHA SYNTHETIC_BETA exact-answer"
+            self.assertTrue(witness(events,expected_thread=thread,
+                markers=("SYNTHETIC_ALPHA","SYNTHETIC_BETA","exact-answer"))["same_original_thread"])
+
     def test_latest_zero_helper_registration(self):
         """Actual inherited helper argv: prior rejection and finite owned admission."""
         old_source='def register_submission(self, argv):\n            if (zero_model or getattr(self.args,"latest_runtime",False)) and argv[:2] in (["docker","run"],["docker","create"]) and self.args.runtime_image in argv:\n                if argv.count(self.args.runtime_image)!=1 or "--name" not in argv or "org.cicada.test.run="+self.run_id not in argv:\n                    raise RuntimeError("ZERO_RUNTIME_OWNERSHIP")\n                name=argv[argv.index("--name")+1]\n                if name not in (self.run_id+"-a",self.run_id+"-b"):\n                    raise RuntimeError("ZERO_RUNTIME_NAME")\n                key=("container",name)\n                self.submitted_objects[key]={"name":name,"id":None,"image":self.args.runtime_image,\n                    "run_id":self.run_id,"auto_remove":"--rm" in argv,"command_exit":None}\n                self.containers[name]=self.args.runtime_image\n                return key\n            return super().register_submission(argv)'

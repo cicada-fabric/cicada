@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## 2026-10-07 current plan — strict output criterion retained
+## Current next step — closed diagnosis before further execution
+
+First review the existing bounded evidence read-only. It records only `OTHER` and errno107, without exact subtype or failure timestamp; read-only review cannot recover fields never recorded. If those fields are absent, the future sequence is default-OFF closed type/reason/time diagnostics, zero-credential TLS validation, then consideration of a fresh model GO. Do not blindly rerun models or treat errno107 as a proved cause. G1d failed after four turns with A3 NOT_REACHED; A2 framing effectiveness remains NOT_EVALUATED. Preserve strict ALPHA/BETA/answer criteria, original cleanup flags and present UDS state. Any future bounded correction or execution requires separately reviewed evidence and authority; no retry, architecture/product rewrite or new Runtime/paid run is authorized here. See [detailed Native I/O record](native-request-observer-io-validation.md). Android, physical-Node and public-HTTPS evidence remains separately scoped.
+
+## Earlier 2026-10-07 plan — historical scope
 
 The owned test-forwarder correction and zero-model preparation passed; G1c failed the unchanged final-output ALPHA requirement. Next, review the preserved input/output and instruction evidence, propose only an evidence-backed bounded correction, then require separately reviewed fresh Root authorization for any future G1 run. Do not refeed markers, waive ALPHA/BETA/answer, or infer context loss. Android, physical-Node and public-HTTPS gates remain separate outstanding work. [detailed Native I/O record](native-request-observer-io-validation.md) contains the exact assertion and source scopes; no new run is authorized by this plan.
 

@@ -16,6 +16,10 @@ OLD = Path("/home/zyf/CICADA_real_codex_prep_20261002/driver/proposals/managed-f
 OLD_GATE_SHA = "83952e697f7af7257c2397d56ac2972e4047f4db909b9414539f8222772a7512"
 PATCH_SHA = "e621d869098d54a8685f187eecc2bbd1030120349612225fefdc04f30e99da24"
 METHODS = ("start_managed_servers", "managed_golden_flow", "capture_test_request_observer", "abort_owned")
+A2_SUBMISSION_INSTRUCTION = ('This submission supplements the original task; the original task remains pending. '
+    'Finish ACCEPTED ends only this submission turn. When the correlated reply arrives, report its exact response '
+    'and the original context witness remembered from the first turn. Do not retry any attempted tool call.')
+A2_LEGACY_INSTRUCTION = 'Finish ACCEPTED. Do not retry any attempted tool call.'
 
 
 def mark_native_failure(self, error, node, direction, message, native_fields):
@@ -151,6 +155,9 @@ def effective_sources():
     original = shim.read_pinned(OLD / "managed_gate.py", OLD_GATE_SHA, 131072).decode()
     patch = shim.read_pinned(LEGACY / "request-observer-integration.patch", PATCH_SHA).decode()
     source = shim.apply_section(original, patch, "managed/managed_gate.py")
+    if source.count(A2_LEGACY_INSTRUCTION) != 1:
+        raise ValueError("A2_TASK_INSTRUCTION_CONTEXT")
+    source = source.replace(A2_LEGACY_INSTRUCTION, A2_SUBMISSION_INSTRUCTION)
     source = source.replace("/run/cicada-request-observer", "/tmp/cicada-request-observer")
     source = source.replace("/run/request_observer.py", "/tmp/native_request_observer.py")
     export_import = "sys.path.insert(0,'/run')\nfrom request_observer import validate_record"

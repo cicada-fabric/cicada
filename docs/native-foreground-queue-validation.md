@@ -1,5 +1,32 @@
 # Native foreground queue validation
 
+## Current 0.160.1 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
+
+The single actual [result](../.cicada-data/native-foreground-queue-161-20261007a/result.json)
+`f6ead433418e84fe44e87f2842dd96f4a4b2930a3f4d4c03541d646883e5ee0e`
+passed in 4.927s with exit 0 on pinned source `52cd877a…`, CLI 0.160.1
+`f34a4d23…` and Runtime `ebea4c99…`. Thread
+`01a115a2-5aa0-7d43-80be-ccdb8a51137c` retained the busy queue and unsent draft,
+then submitted the exact draft-plus-suffix. Responses were synthetic local,
+paid calls 0 and network none. Independent review `e29a2aef43a9dc48584c15950aff79481ca9360fd70fe02408f84eafa595bb83`
+confirmed exact owned CID absence and unchanged script. Private-directory cleanup is original driver-reported, not independently proved by that review.
+
+The actual bounded command was:
+
+```sh
+/usr/bin/timeout --signal=TERM --kill-after=1s 179s /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B /home/zyf/CICADA/scripts/test-native-foreground-queue.py --run-native --timeout 140 --result /home/zyf/CICADA/.cicada-data/native-foreground-queue-161-20261007a/result.json
+```
+
+Private writable `/codex` tmpfs held `/codex/.codex`, outside `/tmp`; config was
+0600. No host credentials or repository bind, model override, retries or PTY
+delivery fallback were introduced. This PASS proves only the tested synthetic
+Linux CLI/TUI path, not paid model/context or provider behavior. Earlier 0.160.0
+results below retain their historical counts and attribution. No further run
+is authorized by this record.
+
+## Historical 0.160.0 fixture and results — preserved
+
+
 This opt-in probe checks whether the pinned Codex 0.160.0 TUI keeps a locally
 typed, unsent composer draft while the official `codex queue` command adds a
 message to that exact busy native thread. It is a Runtime/UI acceptance test;

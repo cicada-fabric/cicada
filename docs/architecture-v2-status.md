@@ -2,7 +2,21 @@
 
 <a id="current-closeout"></a>
 
-## 2026-10-07 current scoped status — v0.1 PARTIAL
+## Current source-scoped status — PARTIAL
+
+| Scope | Outcome and limit |
+|---|---|
+| Current offline | Full15 PASS, 6.781573s; d096 binding, credential/external attempts 0. |
+| Fresh zero b | PREPARATION_PASS_NATIVE_NOT_RUN; models/turns/paid 0, cleanup/EOF confirmed. |
+| Foreground CLI 0.160.1 | Synthetic busy-queue/draft PASS; private cleanup driver-reported only. |
+| Real G1d | FAIL at B Receive/Reply; four turns (3 manual + 1 automatic), A3 NOT_REACHED. |
+| A2 framing | ALPHA effectiveness NOT_EVALUATED; no criterion waiver. |
+| G1d cleanup | Original false/B EOF UNKNOWN; 15 IDs/names absent, two UDS present/UNKNOWN. |
+| Cause | TLS subtype/reason and timing UNKNOWN; errno107 causal relation NOT_PROVEN. |
+
+See [detailed Native I/O record](native-request-observer-io-validation.md). Historical failures and Android/environment results retain their own tested scope.
+
+## Earlier 2026-10-07 scoped status — historical scope
 
 | Scope | Outcome | Boundary |
 |---|---|---|

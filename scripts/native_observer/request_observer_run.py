@@ -107,6 +107,16 @@ def verify_binding(expected_sha=None):
         raise ValueError("CANDIDATE_BINDING_SHA")
     if binding.get("schema") != "cicada.request-observer-candidate-binding.v1" or binding.get("authority") != "NONAUTH":
         raise ValueError("CANDIDATE_BINDING_SCHEMA")
+    rows = binding.get("files")
+    if type(rows) is not list or any(type(row) is not dict or
+            set(row) != {"path", "sha256", "bytes", "rawmode"} for row in rows):
+        raise ValueError("SOURCE_ROWS_SCHEMA")
+    listed = {row["path"]: {key:row[key] for key in ("sha256", "bytes", "rawmode")} for row in rows}
+    if len(listed) != len(rows) or listed != binding["public_files"]:
+        raise ValueError("SOURCE_ROWS_INCONSISTENT")
+    _, alias_raw = bounded_json(BINDING.parent / "source-binding.json")
+    if alias_raw != raw:
+        raise ValueError("ACTIVE_SOURCE_BINDING_ALIAS")
     paths = required_paths()
     if set(binding["public_files"]) != paths or set(binding["candidate_files"]) != set(NEW_NAMES):
         raise ValueError("PUBLIC_PATH_ALLOWLIST")
