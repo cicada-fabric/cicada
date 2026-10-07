@@ -1,6 +1,10 @@
 # Architecture v2.3 数据与协议迁移
 
-## Current CLI0.161.0 fixture boundary
+## Current native-HTTPS fixture boundary
+
+This checkpoint adds an explicitly selected fixture lane using original HTTPS bootstrap/URL; it makes no Go/product/DB/key/wire/Client migration or rebuild. Product009a/Hub45058 remain dirty2b92, helperc01 source-validated reuse. Offline and zero passes do not upgrade strict Native FAIL; opaque transport leaves POST count/enforcement and observer evidence unavailable. Contract1.6.4/wire1/catalog55/DB58 and the SQLite paragraph below remain unchanged. See [current evidence](native-request-observer-io-validation.md).
+
+## Historical CLI0.161.0 fixture boundary
 
 Only the disposable CLI/companion image and candidate pins were refreshed; product009a/Hub45058 remain dirty2b92 artifacts; helperc01 is reused unchanged. Contract1.6.4, wire1, catalog55, DB58, keys and Client are unchanged. CLI/schema, offline QA and zero preparation passes do not upgrade the sole strict Native FAIL or prove provider cause/final context. See [current evidence](native-request-observer-io-validation.md); the SQLite paragraph and historical migration records remain intact.
 

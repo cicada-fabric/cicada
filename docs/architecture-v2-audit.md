@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current CLI0.161.0 checkpoint — strict Native FAIL
+## Current native-HTTPS lane — PARTIAL
+
+The explicit default-OFF native-HTTPS lane passed scoped offline QA and zero preparation, but its sole Native run failed after six turns/four manual submissions. B original Receive/Reply succeeded; A auto6 errored and final/context remains NOT_PROVEN. The HTTP observer was OFF, so A resume failure reproduced without it; root cause remains NOT_PROVEN. Later independent cleanup does not upgrade original cleanup=false/A EOF UNKNOWN. See [detailed evidence](native-request-observer-io-validation.md). Product009a/Hub45058 retain dirty2b92 provenance, helperc01 is reused source-validated, and no product rebuild or full acceptance is claimed. v0.1 remains PARTIAL; Control counts NOT_INSTRUMENTED.
+
+## Historical CLI0.161.0 checkpoint — strict Native FAIL
 
 Official CLI/companion verification, isolated image997e/schema generation, offline QA and fresh zero preparation passed their separate scopes. The sole Native run failed after six turns/four manual submissions: A auto6 reported Other/STREAM_DETAIL_WITHHELD; A final/context remains NOT_PROVEN, G2 FAIL and G3 NOT_REACHED. Later resource absence does not upgrade original cleanup=false/A EOF UNKNOWN. Product009a/Hub45058 retain dirty2b92 provenance; helperc01 is reused unchanged, with no product rebuild. See [detailed current evidence](native-request-observer-io-validation.md). Overall v0.1 remains PARTIAL; Control invocation counts NOT_INSTRUMENTED and external gates remain separate.
 

@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — bounded existing-evidence diagnosis only
+## Current next step — bounded A-resume diagnosis
+
+Review safely bounded A-resume error evidence and exact original Native delivery consistency before deciding any correction. The native-HTTPS run failed with the HTTP observer OFF; that observation does not identify SSE/provider/context cause or authorize a blind rerun. No new model GO is granted here. Preserve original-session/context/reply criteria, six turns/four manual/two automatic, retries0, TCP admission cap16 and absolute180/210/240 deadlines. Then close G4/G5/V67 and current Client/physical/public gates separately; no overall acceptance transfer. See [current evidence and unavailable POST measurements](native-request-observer-io-validation.md).
+
+## Historical next step — bounded existing-evidence diagnosis only
 
 Review existing public safe evidence and release-exact producer formats to determine whether a closed technical discriminator was recorded. STREAM_DETAIL_WITHHELD identifies a reported format, not a provider cause; absent details remain UNKNOWN. Only a separately scoped future bounded classification proposal may follow. No fresh Native/model rerun or source change is authorized here; preserve original context/reply oracle, six-turn/four-manual/two-automatic cap, POST16, PQ/TLS and absolute deadlines. G4/G5/V67/current Client, physical and public gates remain separately pending; release acceptance requires their own evidence. See [current strict failure and limits](native-request-observer-io-validation.md).
 

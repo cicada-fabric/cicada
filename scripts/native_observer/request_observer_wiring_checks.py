@@ -32,6 +32,131 @@ import request_observer_bootstrap as bootstrap
 
 class WiringChecks(unittest.TestCase):
 
+    def test_native_https_cli_typed_go_conflicts_and_tcp_cap(self):
+        args=types.SimpleNamespace(native_https=True,execute_diagnostic=True,scenario='g2-g3',
+            prepare_native_zero=False,enable_io_diagnostics=False,response_byte_passthrough=False)
+        self.assertTrue(run.native_https_mode(args))
+        self.assertFalse(run.native_https_mode(types.SimpleNamespace()))
+        for key,value in (('native_https',1),('scenario','g1'),('execute_diagnostic',False),
+                ('prepare_native_zero',True),('enable_io_diagnostics',True),('response_byte_passthrough',True)):
+            wrong=copy.copy(args);setattr(wrong,key,value)
+            with self.subTest(field=key),self.assertRaises(PermissionError):run.native_https_mode(wrong)
+        with run.deny_preflight_effects():
+            captured=[]
+            with patch.object(run,'execute',side_effect=lambda value:captured.append(value) or 0):
+                self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https']),0)
+                self.assertEqual(len(captured),1);self.assertIs(captured[0].native_https,True)
+                self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https','--enable-io-diagnostics']),2)
+                self.assertEqual(len(captured),1)
+            output=io.StringIO()
+            with patch.object(sys,'stdout',output):
+                self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https']),2)
+            blocked=json.loads(output.getvalue())
+            self.assertEqual(blocked['status'],'BLOCKED_GUARD')
+            self.assertEqual((blocked['Runtime_calls'],blocked['provider_POSTs'],blocked['model_calls']),(0,0,0))
+            binding,sha=run.verify_binding()
+            args.unique_run='cicada-two-turn-syntheticnativehttps';args.wiring_receipt_sha='1'*64
+            args.cleanup_hard_stop_unix=10000;args.delivery_sha='2'*64;args.preparation_result_sha='3'*64
+            args.preparation_review_sha='4'*64;args.equality_sha='5'*64
+            delivery=dict(hub_image='synthetic',commit='synthetic',binary_sha256='6'*64,
+                helper_sha256='7'*64,fingerprint='8'*64,component_proof_sha256='9'*64)
+            expected=run.expected_latest_go(binding,sha,args,delivery);go=dict(expected,expires_at_unix=9000)
+            run.validate_go(go,expected,now=1000)
+            gate_args=types.SimpleNamespace(native_https=True,run_native=True,test_request_observer=False,
+                response_byte_passthrough=False,go=go)
+            self.assertTrue(gate.validate_native_https(gate_args,'g2-g3',False))
+            for key,value in (('native_https',False),('max_manual_turns',3),('max_native_turns',7),
+                    ('request_max_retries',1),('stream_max_retries',1),('max_accepted_TCP_connections_per_Runtime',17),
+                    ('HTTP_POST_COUNT',0),('POST16_ENFORCEMENT','ENFORCED')):
+                wrong=dict(go);wrong[key]=value
+                with self.subTest(go_field=key),self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
+                invalid=copy.copy(gate_args);invalid.go=wrong
+                with self.assertRaises(PermissionError):gate.validate_native_https(invalid,'g2-g3',False)
+            for field,value in (('response_byte_passthrough',True),('response_byte_passthrough',0),
+                    ('response_byte_ceiling',4259840),('response_byte_ceiling',False),
+                    ('response_chunk_ceiling',65536),('response_chunk_ceiling',0.0),
+                    ('max_native_turns',True),('request_max_retries',False)):
+                wrong=dict(go);wrong[field]=value
+                invalid=copy.copy(gate_args);invalid.go=wrong
+                with self.subTest(field=field,value_type=type(value)),self.assertRaises(PermissionError):gate.validate_native_https(invalid,'g2-g3',False)
+                with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
+            for field in ('response_byte_passthrough','response_byte_ceiling','response_chunk_ceiling'):
+                wrong=dict(go);del wrong[field]
+                invalid=copy.copy(gate_args);invalid.go=wrong
+                with self.subTest(missing=field),self.assertRaises(PermissionError):gate.validate_native_https(invalid,'g2-g3',False)
+                with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
+            for scenario,zero,field,value in (('g1',False,'run_native',True),('g2-g3',True,'run_native',True),
+                    ('g2-g3',False,'run_native',False),('g2-g3',False,'test_request_observer',True),
+                    ('g2-g3',False,'response_byte_passthrough',True)):
+                invalid=copy.copy(gate_args);setattr(invalid,field,value)
+                with self.subTest(scenario=scenario,zero=zero,field=field),self.assertRaises(PermissionError):gate.validate_native_https(invalid,scenario,zero)
+            self.assertNotIn('test_request_observer',go);self.assertNotIn('max_POST_attempts_per_Runtime',go)
+            historical_delivery_pair=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            execution=copy.copy(args)
+            receipt_raw=b'SYNTHETIC_PUBLIC_WIRING_BYTES'
+            execution.wiring_receipt_sha=hashlib.sha256(receipt_raw).hexdigest()
+            execution.binding_sha=sha;execution.preparation_result='synthetic-ready'
+            execution.go_receipt=str(run.BINDING.parent/'request-observer-synthetic-native-https-go.json')
+            execution.wiring_receipt=str(run.BINDING.parent/'request-observer-wiring-synthetic-native-https.json')
+            pinned=run.expected_latest_go(binding,sha,execution,delivery)
+            receipt={'status':'PASS','candidate_binding_sha256':sha,'Runtime_calls':0,'provider_POSTs':0,'model_calls':0}
+            for kind in ('expired','forged_budget'):
+                candidate=dict(pinned,expires_at_unix=9000)
+                if kind=='expired':candidate['expires_at_unix']=999
+                else:candidate['max_manual_turns']=3
+                raw=json.dumps(candidate,sort_keys=True).encode()
+                execution.go_receipt_sha=hashlib.sha256(raw).hexdigest()
+                def public_json(path):
+                    if Path(path)==run.ACTUAL/'actual-delivery.json':return historical_delivery_pair
+                    if str(path)==execution.wiring_receipt:return receipt,receipt_raw
+                    if str(path)==execution.go_receipt:return candidate,raw
+                    raise AssertionError('UNEXPECTED_PUBLIC_READ')
+                with self.subTest(execute_refusal=kind),patch.object(run,'latest_dispatch_inputs',return_value=(binding,sha,delivery,{})),patch.object(run,'bounded_json',side_effect=public_json),patch.object(run.time,'time',return_value=1000),patch.object(Path,'lstat',side_effect=AssertionError('NO_METADATA')),patch.object(run.os,'open',side_effect=AssertionError('NO_CLAIM')),patch.object(run,'safe_overlay',side_effect=AssertionError('NO_FIXTURE')):
+                    with self.assertRaises(PermissionError):run.execute(execution)
+                self.assertFalse(run.EXECUTION_EFFECTS_STARTED)
+            # Execute the installed config/read validation block with a memory RPC.
+            actual_delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            cls,_=gate.load_gate(actual_delivery,binding,inspect_only=True,scenario='g2-g3')
+            method=ast.parse(gate.effective_sources()['gate']).body
+            managed=next(n for n in method if isinstance(n,ast.ClassDef))
+            start=next(n for n in managed.body if isinstance(n,ast.FunctionDef) and n.name=='start_managed_servers')
+            first=next(i for i,n in enumerate(start.body) if isinstance(n,ast.For))
+            statements=start.body[first].body
+            begin=next(i for i,n in enumerate(statements) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='resolved' for t in n.targets))
+            end=next(i for i,n in enumerate(statements) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Subscript) and "actual_managed_config" in ast.unparse(t) for t in n.targets))
+            function=ast.FunctionDef(name='check_config',args=ast.arguments(posonlyargs=[],args=[ast.arg(arg='self'),ast.arg(arg='rpc'),ast.arg(arg='letter')],kwonlyargs=[],kw_defaults=[],defaults=[]),body=statements[begin:end+1],decorator_list=[])
+            namespace=gate.method_namespace(cls.start_managed_servers)
+            exec(compile(ast.fix_missing_locations(ast.Module(body=[function],type_ignores=[])),'<installed-native-config-check>','exec'),namespace)
+            import tomllib
+            provider=tomllib.loads(run.CONFIG.read_text())['model_providers']['basil']
+            resolved={'model':'gpt-5.6-luna','model_provider':'basil','approval_policy':'never','approvals_reviewer':'user',
+                'sandbox_mode':'workspace-write','features':{'multi_agent':False,'goals':False},
+                'model_providers':{'basil':dict(provider,request_max_retries=0,stream_max_retries=0)}}
+            owner=types.SimpleNamespace(args=types.SimpleNamespace(test_request_observer=False,config_template=str(run.CONFIG)),result={})
+            rpc=types.SimpleNamespace(request=lambda *args: {'config':resolved})
+            namespace['check_config'](owner,rpc,'a')
+            self.assertTrue(owner.result['actual_managed_config']['a']['base_url_matches_authorized_template'])
+            for field in ('request_max_retries','stream_max_retries','base_url'):
+                old=resolved['model_providers']['basil'][field]
+                resolved['model_providers']['basil'][field]='https://synthetic.invalid' if field=='base_url' else 1
+                with self.subTest(config_field=field),self.assertRaises(RuntimeError):namespace['check_config'](owner,rpc,'a')
+                resolved['model_providers']['basil'][field]=old
+            module=gate.safe_module('native_https_cap_public',gate.OLD/'provider_transport.py')
+            adapter=object.__new__(module.Forwarder);adapter.lock=threading.Lock();adapter.closed=False
+            adapter.remaining=lambda:1;adapter.client_allowed=lambda address:True
+            adapter.binding={'max_connections':16,'max_active':4};adapter.accepted=0;adapter.active=0
+            adapter.rejected=0;adapter.sockets=set()
+            clients=[]
+            for number in range(17):
+                client=types.SimpleNamespace()
+                class Client:
+                    closed=False
+                    def close(self):self.closed=True
+                client=Client();clients.append(client)
+                self.assertIs(adapter.admit(client,('192.0.2.1',1234)),number<16)
+                adapter.active=0
+            self.assertEqual((adapter.accepted,adapter.rejected),(16,1));self.assertTrue(clients[-1].closed)
+
     def test_response_passthrough_explicit_go_and_bootstrap(self):
         args=types.SimpleNamespace(response_byte_passthrough=True,execute_diagnostic=True,
             enable_io_diagnostics=True,prepare_native_zero=False,scenario='g2-g3')
@@ -904,6 +1029,58 @@ class WiringChecks(unittest.TestCase):
             argv=approve[0]
             self.assertEqual(paid.register_submission(argv),("container",paid.run_id+"-helper-approve"))
             with self.assertRaisesRegex(RuntimeError,"ZERO_RUNTIME_NAME"):fixture.register_submission(argv)
+
+    def test_installed_paid_bootstrap_observer_dispatch_exact_opt_in(self):
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
+            cls,_=gate.load_gate(delivery,binding,inspect_only=True)
+            original=['exec','-d','synthetic-runtime','python3','/state/server_bootstrap.py','paid','http://192.0.2.1:7890']
+            for flag in (None,False,1,'true',True):
+                with self.subTest(flag_type=type(flag),enabled=flag is True):
+                    fixture=object.__new__(cls)
+                    fixture.args=types.SimpleNamespace(response_byte_passthrough=False)
+                    if flag is not None:fixture.args.test_request_observer=flag
+                    fixture.result={};fixture.policy=types.SimpleNamespace(started=1000.0)
+                    uploads=[];delegated=[]
+                    fixture.command=lambda argv,**kwargs:uploads.append((argv,kwargs)) or b''
+                    def base_boundary(owner,*argv,**kwargs):
+                        delegated.append(list(argv));return b'SYNTHETIC_DELEGATED'
+                    selected=original+['--test-request-observer',binding['upstream_base_url_sha256'],'1180.0','16'] if flag is True else original
+                    payload_paths={gate.HERE/'request_observer_bootstrap.py',gate.LEGACY/'request-observer-integration.patch',gate.SCRIPTS/'native_request_observer_io.py'}
+                    reads=[];original_read=Path.read_bytes
+                    def read_boundary(path):
+                        if path in payload_paths:
+                            reads.append(path)
+                            if flag is not True:raise AssertionError('OFF_PAYLOAD_READ')
+                        return original_read(path)
+                    with patch.object(cls.__mro__[1],'docker',base_boundary),patch.object(Path,'read_bytes',read_boundary):
+                        self.assertEqual(fixture.docker(*selected),b'SYNTHETIC_DELEGATED')
+                    self.assertEqual(len(delegated),1)
+                    if flag is True:
+                        self.assertEqual([row[0][-1] for row in uploads],
+                            ['/tmp/request_observer_bootstrap.py','/tmp/request-observer-integration.patch','/tmp/native_request_observer_io.py'])
+                        self.assertEqual(reads,[gate.HERE/'request_observer_bootstrap.py',gate.LEGACY/'request-observer-integration.patch',gate.SCRIPTS/'native_request_observer_io.py'])
+                        self.assertEqual(delegated[0],gate.runtime_bootstrap_argv(selected,binding,1000.0))
+                        self.assertIn('synthetic-runtime',fixture.result['effective_Runtime_bootstrap'])
+                    else:
+                        self.assertEqual(reads,[])
+                        self.assertEqual(uploads,[])
+                        self.assertEqual(delegated[0],original)
+                        self.assertNotIn('effective_Runtime_bootstrap',fixture.result)
+            zero_cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
+            fixture=object.__new__(zero_cls);fixture.args=types.SimpleNamespace(test_request_observer=False)
+            fixture.nodes={};fixture.result={};calls=[]
+            fixture.command=lambda *args,**kwargs:calls.append(args)
+            with self.assertRaises(PermissionError):fixture.docker(*original)
+            self.assertEqual(calls,[])
+            offline=original[:5]+['offline','']
+            delegated=[]
+            def zero_boundary(owner,*argv,**kwargs):
+                delegated.append(list(argv));return b'SYNTHETIC_OFFLINE'
+            with patch.object(zero_cls.__mro__[1],'docker',zero_boundary),patch.object(Path,'read_bytes',side_effect=AssertionError('ZERO_PAYLOAD_READ')):
+                self.assertEqual(fixture.docker(*offline),b'SYNTHETIC_OFFLINE')
+            self.assertEqual(delegated,[offline]);self.assertEqual(calls,[])
 
     def test_zero_agent_bootstrap_credential_free_exact_launch(self):
         with run.deny_preflight_effects():

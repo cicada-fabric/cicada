@@ -676,6 +676,31 @@ def compile_methods(source, namespace):
     return {name:namespace[name] for name in METHODS}
 
 
+def validate_native_https(args, scenario, zero_model):
+    mode=getattr(args,"native_https",False)
+    if type(mode) is not bool:
+        raise PermissionError("NATIVE_HTTPS_TYPE")
+    go=getattr(args,"go",{})
+    if type(go) is not dict or ("native_https" in go and go["native_https"] is not mode):
+        raise PermissionError("NATIVE_HTTPS_GO")
+    if mode:
+        if (zero_model or scenario != "g2-g3" or getattr(args,"run_native",False) is not True or
+                getattr(args,"test_request_observer",False) is not False or
+                getattr(args,"response_byte_passthrough",False) is not False):
+            raise PermissionError("NATIVE_HTTPS_LANE")
+        fields={"native_https":True,"response_byte_passthrough":False,
+            "response_byte_ceiling":None,"response_chunk_ceiling":None,"max_native_turns":6,"max_manual_turns":4,"max_automatic_turns":2,
+            "request_max_retries":0,"stream_max_retries":0,"max_accepted_TCP_connections_per_Runtime":16,
+            "normal_seconds":180,"terminal_seconds":30,"cleanup_seconds":30,"total_seconds":240,
+            "HTTP_POST_COUNT":"UNAVAILABLE","POST16_ENFORCEMENT":"UNAVAILABLE",
+            "response_transport_semantics":"NATIVE_HTTPS_OPAQUE_PROXY",
+            "TCP_connection_scope":"ADMITTED_SOCKETS_NOT_HTTP_POSTS_OR_COMPLETED_CONNECTS"}
+        if any(key not in go or type(go[key]) is not type(value) or go[key]!=value for key,value in fields.items()) or any(
+                key in go for key in ("max_POST_attempts_per_Runtime","observer_retries","io_diagnostics","test_request_observer")):
+            raise PermissionError("NATIVE_HTTPS_GO")
+    return mode
+
+
 def validate_response_mode(args, scenario, zero_model):
     """Pure pre-constructor check; never silently switch a GO-selected mode."""
     mode = getattr(args, "response_byte_passthrough", False)
@@ -695,7 +720,7 @@ def validate_response_mode(args, scenario, zero_model):
                 type(go.get("response_byte_ceiling")) is not int or go["response_byte_ceiling"] != 4259840 or
                 type(go.get("response_chunk_ceiling")) is not int or go["response_chunk_ceiling"] != 65536):
             raise PermissionError("RESPONSE_MODE_GO")
-    elif (any(key in go and go[key] is not None for key in ("response_byte_ceiling","response_chunk_ceiling")) or
+    elif getattr(args,"native_https",False) is not True and (any(key in go and go[key] is not None for key in ("response_byte_ceiling","response_chunk_ceiling")) or
           ("response_transport_semantics" in go and go["response_transport_semantics"] != "OBSERVER_STRICT_HTTP_FRAMING")):
         raise PermissionError("RESPONSE_MODE_GO")
     return mode
@@ -1322,6 +1347,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         def __init__(self, args):
             if inspect_only:
                 raise RuntimeError("INSPECTION_FORBIDS_FIXTURE_CONSTRUCTOR")
+            native_mode = validate_native_https(args,scenario,zero_model)
             response_mode = validate_response_mode(args,scenario,zero_model)
             super().__init__(args)
             self.result["response_transport"] = {"response_byte_passthrough":response_mode,
@@ -1329,6 +1355,14 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 "application_completion":"UNKNOWN" if response_mode else "NATIVE_ORACLE_AUTHORITATIVE",
                 "byte_ceiling":4259840 if response_mode else None, "chunk_ceiling":65536 if response_mode else None,
                 "native_acceptance":"UNCHANGED"}
+            if native_mode:
+                self.result["response_transport"].update(response_framing_validation="NATIVE_HTTP_STACK",
+                    application_completion="NATIVE_ORACLE_AUTHORITATIVE")
+                self.result["native_https"]={"enabled":True,"HTTP_POST_COUNT":"UNAVAILABLE",
+                    "POST16_ENFORCEMENT":"UNAVAILABLE","accepted_TCP_connection_cap":16,
+                    "connection_scope":"ADMITTED_SOCKETS_NOT_HTTP_POSTS_OR_COMPLETED_CONNECTS",
+                    "observer_request_ALPHA":"UNAVAILABLE","observer_body_digests":"UNAVAILABLE",
+                    "observer_IO":"UNAVAILABLE","native_acceptance":"UNCHANGED"}
             if scenario == 'g2-g3':
                 self.budget = g2_turn_budget(self.budget)
                 self.result['owned_g2_manual_turn_sha256'] = self.owned_g2_manual_turn_sha256
@@ -1480,7 +1514,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                                 "credential_access":False,"effective_program_sha256":hashlib.sha256(ZERO_AGENT_BOOTSTRAP.encode()).hexdigest()}
                             break
                 validate_zero_command(["docker"]+argv)
-            if len(argv) >= 7 and argv[:2] == ["exec", "-d"] and argv[3:6] == ["python3", "/state/server_bootstrap.py", "paid"]:
+            if (len(argv) >= 7 and argv[:2] == ["exec", "-d"] and argv[3:6] == ["python3", "/state/server_bootstrap.py", "paid"] and
+                    getattr(self.args,"test_request_observer",False) is True):
                 container = argv[2]
                 for filename in ("request_observer_bootstrap.py", "request-observer-integration.patch", "native_request_observer_io.py"):
                     payload_path = (LEGACY/filename if filename.endswith(".patch") else SCRIPTS/filename if filename.startswith("native_") else HERE/filename)

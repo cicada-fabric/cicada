@@ -288,6 +288,19 @@ def validate_go(go, expected, now=None):
         raise PermissionError("CLEANUP_HARD_CUTOFF")
 
 
+def native_https_mode(args):
+    mode=getattr(args,"native_https",False)
+    if type(mode) is not bool:
+        raise PermissionError("NATIVE_HTTPS_TYPE")
+    if mode and (getattr(args,"execute_diagnostic",False) is not True or
+            getattr(args,"scenario","g1") != "g2-g3" or
+            getattr(args,"prepare_native_zero",False) is True or
+            getattr(args,"enable_io_diagnostics",False) is not False or
+            getattr(args,"response_byte_passthrough",False) is not False):
+        raise PermissionError("NATIVE_HTTPS_LANE")
+    return mode
+
+
 def response_passthrough_mode(args):
     mode = getattr(args, "response_byte_passthrough", False)
     if type(mode) is not bool:
@@ -302,13 +315,14 @@ def response_passthrough_mode(args):
 
 def execute(args):
     global EXECUTION_EFFECTS_STARTED
+    native_mode = native_https_mode(args)
     response_mode = response_passthrough_mode(args)
     if not getattr(args,"preparation_result",None) or not getattr(args,"preparation_result_sha",None):
         raise PermissionError("LATEST_RUNTIME_NOT_READY")
     with deny_preflight_effects():
         binding,binding_sha,delivery,prior=latest_dispatch_inputs(args)
     # No legacy imports, credential stat or effects before all public/fresh GO guards.
-    if not getattr(args,"enable_io_diagnostics",False):
+    if not native_mode and not getattr(args,"enable_io_diagnostics",False):
         raise PermissionError("IO_DIAGNOSTICS_OPT_IN_REQUIRED")
     required = (args.go_receipt,args.go_receipt_sha,args.binding_sha,args.wiring_receipt,args.wiring_receipt_sha,args.unique_run,getattr(args,"cleanup_hard_stop_unix",None))
     if not all(required):
@@ -358,7 +372,7 @@ def execute(args):
         latest_runtime=True,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False),
         response_byte_passthrough=response_mode,
-        test_request_observer=True,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
+        native_https=native_mode,test_request_observer=not native_mode,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
     try:
         gate=cls(ns);gate.build();gate.start_nodes();gate.prepare_managed();gate.managed_golden_flow()
@@ -430,6 +444,13 @@ def expected_latest_go(binding,sha,args,delivery):
         preparation_provider_scope="SYNTHETIC_LOOPBACK_ZERO_MODEL_NOT_PROVIDER_PARITY")
     if getattr(args,"scenario","g1") != "g1":
         expected.update(fixture_scenario="g2-g3",component_proof_sha256=delivery["component_proof_sha256"],max_native_turns=6,max_manual_turns=4,max_automatic_turns=2)
+    if native_https_mode(args):
+        for key in ("max_POST_attempts_per_Runtime","observer_retries","io_diagnostics","test_request_observer"):
+            expected.pop(key)
+        expected.update(native_https=True,response_transport_semantics="NATIVE_HTTPS_OPAQUE_PROXY",
+            HTTP_POST_COUNT="UNAVAILABLE",POST16_ENFORCEMENT="UNAVAILABLE",
+            max_accepted_TCP_connections_per_Runtime=16,
+            TCP_connection_scope="ADMITTED_SOCKETS_NOT_HTTP_POSTS_OR_COMPLETED_CONNECTS")
     return expected
 
 
@@ -720,6 +741,7 @@ def main(argv=None):
     parser.add_argument("--scenario",default="g1")
     parser.add_argument("--enable-io-diagnostics",action="store_true")
     parser.add_argument("--response-byte-passthrough",action="store_true")
+    parser.add_argument("--native-https",action="store_true")
     parser.add_argument("--cleanup-hard-stop-unix",type=int)
     parser.add_argument("--prepare-native-zero",action="store_true")
     parser.add_argument("--reproduce-zero-hub-restart",action="store_true")
@@ -732,6 +754,7 @@ def main(argv=None):
         parser.add_argument("--"+name)
     args=parser.parse_args(argv)
     try:
+        native_https_mode(args)
         response_passthrough_mode(args)
         if args.reproduce_zero_hub_restart and (not args.prepare_native_zero or args.execute_diagnostic):
             raise PermissionError("ZERO_RESTART_MODE")

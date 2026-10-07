@@ -2,7 +2,20 @@
 
 <a id="current-closeout"></a>
 
-## Current CLI0.161.0 checkpoint — PARTIAL
+## Current native-HTTPS lane — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Offline QA | b PASS54 methods/209 subtests:34/168 +10/20 +10/21; a fixture FAIL retained; two older Diagnostics NOT_RUN. |
+| Zero preparation | PASS33.811s, models/credentials0, fresh PQ/EOF and independent14 Docker+two UDS absence. |
+| Sole Native HTTPS | FAIL81.166s, six actual/four manual; B original Receive/Reply succeeded, A auto6 errored; A final/context NOT_PROVEN, G2 FAIL/G3 NOT_REACHED. |
+| Evidence limits | Observer OFF; POST count/enforcement and observer ALPHA/body/IO UNAVAILABLE. TCP16 counts admitted sockets only. Root cause NOT_PROVEN. |
+| Cleanup | Original false/A UNKNOWN/B EOF retained; later16 Docker+two UDS absent, residents unchanged. |
+| Completion | v0.1 PARTIAL; current external gates separate; Control NOT_INSTRUMENTED. |
+
+See [source-scoped details](native-request-observer-io-validation.md). Contract/wire/catalog/DB remain1.6.4/1/55/58.
+
+## Historical CLI0.161.0 checkpoint — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|
