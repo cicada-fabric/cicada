@@ -1,4 +1,12 @@
-# Current audit entry — 2026-10-07
+# Architecture v2.3 implementation audit
+
+## 2026-10-07 current audit — v0.1 PARTIAL
+
+CLI 0.160.1 is verified. The narrow client-read reset correction passed 13 offline wiring checks and fresh zero-model preparation. Real G1c remains **strict FAIL**: A3's final output omitted ALPHA although upstream input contained it; BETA and the exact answer were present. This proves a final-output omission, not model context loss. Cleanup/EOF and independent absence passed for this run. Control construction proves no business object; its invocation counter remains NOT_INSTRUMENTED. Android, physical Nodes and public HTTPS remain NOT_RUN. No Go/DB/wire/Client change or rebuild is attributed here. See [detailed Native I/O record](native-request-observer-io-validation.md) and [release evidence](v01-final-release-exit-checkpoint-validation.md#current-closeout-evidence). No further execution is authorized.
+
+## Earlier audit checkpoints — preserved verbatim
+
+### Historical current audit entry — 2026-10-07
 
 v0.1 remains **PARTIAL**. Pinned CLI 0.160.1 and current-product zero-model preparation passed; the single paid G1 attempt failed at A1, with A3 not reached. Local second-request TLS failure occurred before a second POST; exact subtype/provider cause remains UNKNOWN. Later resource absence does not overwrite original cleanup/EOF failures.
 
@@ -6,7 +14,7 @@ See [Native I/O validation](native-request-observer-io-validation.md) and [curre
 
 ## Historical audit — entire prior record preserved
 
-# Architecture v2.3 当前事实审计
+### Architecture v2.3 当前事实审计
 
 ## 2026-10-03 current audit — bounded checkpoint PASS; product PARTIAL
 

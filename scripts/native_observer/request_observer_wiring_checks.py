@@ -246,6 +246,103 @@ class WiringChecks(unittest.TestCase):
             with self.subTest(argv_guard=True),self.assertRaises(PermissionError):gate.validate_zero_command(argv)
         gate.validate_zero_command(["docker","exec","owned","python3","/state/server_bootstrap.py","offline"])
 
+    def test_client_read_reset_connection_scope_and_rails(self):
+        """Actual pinned relay/installed policy, deterministic socket doubles only."""
+        with run.deny_preflight_effects():
+            binding,_=run.verify_binding()
+            delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
+            candidate,_=gate.load_gate(delivery,binding,inspect_only=True)
+            original=candidate.provider_forwarder.__globals__["Forwarder"]
+            run_id="cicada-two-turn-syntheticforwarder01"
+            record={"run_id":run_id,"network_id":"a"*64,"network_name":run_id+"-a-net",
+                "network_label":run_id,"driver":"bridge","subnet":"172.29.0.0/24","gateway":"172.29.0.1",
+                "clients":["172.29.0.2"],"lifetime":10,"max_connections":4,"max_active":1,
+                "upstream_host":"127.0.0.1","upstream_port":7890}
+            actual={"Id":"a"*64,"Name":record["network_name"],"Driver":"bridge",
+                "Labels":{"org.cicada.test.run":run_id},"IPAM":{"Config":[{"Subnet":record["subnet"],"Gateway":record["gateway"]}]},
+                "Containers":{"b"*64:{"IPv4Address":"172.29.0.2/24"}}}
+            class Sock:
+                def __init__(self,events=(),send_error=None):self.events=list(events);self.closed=False;self.send_error=send_error
+                def setblocking(self,value):pass
+                def recv(self,n):
+                    value=self.events.pop(0) if self.events else b""
+                    if isinstance(value,BaseException):raise value
+                    return value
+                def send(self,data):
+                    if self.send_error is not None:raise self.send_error
+                    return len(data)
+                def shutdown(self,how):pass
+                def close(self):self.closed=True
+            def create(client,upstream,owned=True):
+                def select_ready(readers,writers,errors,timeout):
+                    if writers:return [],writers,[]
+                    return ([client] if client in readers else [upstream] if upstream in readers else []),[],[]
+                value=original(record,actual,clock=lambda:0,connect=lambda *a,**k:upstream,select_ready=select_ready)
+                if owned:gate.install_client_read_cancellation(value)
+                self.assertTrue(value.admit(client,("172.29.0.2",50000)))
+                return value
+            def policy(value):
+                owner=object.__new__(candidate)
+                owner.cleaning=False;owner.aborted=False;owner.provider_errors={};owner.provider_adapters={"synthetic":value}
+                owner.policy=types.SimpleNamespace(limit=lambda maximum:maximum)
+                return owner
+            legacy=create(Sock([ConnectionResetError(104,"PUBLIC_SYNTHETIC")]),Sock(),False)
+            legacy.relay(next(iter(legacy.sockets)))
+            self.assertEqual(legacy.failures,1)
+            with self.assertRaises(RuntimeError):policy(legacy).limit(1)
+            client=Sock([ConnectionResetError(104,"PUBLIC_SYNTHETIC")]);up=Sock()
+            fixed=create(client,up);fixed.relay(client)
+            self.assertEqual((fixed.failures,fixed.client_read_cancellations,fixed.active),(0,1,0))
+            self.assertFalse(fixed.closed);self.assertTrue(client.closed and up.closed)
+            self.assertEqual(policy(fixed).limit(1),1)
+            self.assertEqual(fixed.owned_client_read_relay_sha256,binding["client_read_cancellation"]["relay_sha256"])
+            self.assertEqual(fixed.summary()["last_client_read_cancellation"]["application_completion"],"UNKNOWN")
+            second=Sock();second_up=Sock();fixed.connect=lambda *a,**k:second_up
+            fixed.select_ready=lambda readers,writers,errors,timeout: (([second] if second in readers else [second_up] if second_up in readers else []),writers,[])
+            self.assertTrue(fixed.admit(second,("172.29.0.2",50001)));fixed.relay(second)
+            self.assertEqual((fixed.accepted,fixed.failures,fixed.clean_eof_disconnects,fixed.active),(2,0,1,0))
+            class ResetSubclass(ConnectionResetError):pass
+            for label,client_events,up_events,send_error in (
+                ("upstream_reset",[b""],[ConnectionResetError(104,"PUBLIC_SYNTHETIC")],None),
+                ("other_errno",[ConnectionResetError(111,"PUBLIC_SYNTHETIC")],[],None),
+                ("subclass",[ResetSubclass(104,"PUBLIC_SYNTHETIC")],[],None),
+                ("send_client_reset",[b""],[b"PUBLIC_SYNTHETIC"],ConnectionResetError(104,"PUBLIC_SYNTHETIC"))):
+                with self.subTest(fatal=label):
+                    client=Sock(client_events,send_error);value=create(client,Sock(up_events));value.relay(client)
+                    self.assertEqual((value.failures,value.client_read_cancellations),(1,0))
+                    with self.assertRaises(RuntimeError):policy(value).limit(1)
+            client=Sock([b""] ,BrokenPipeError(32,"PUBLIC_SYNTHETIC"));value=create(client,Sock([b"PUBLIC_SYNTHETIC"]));value.relay(client)
+            self.assertEqual((value.failures,value.client_write_cancellations,value.client_read_cancellations),(0,1,0))
+            for rail in ("acl","active","quota","deadline","closed"):
+                with self.subTest(rail=rail):
+                    value=original(record,actual,clock=lambda:0);gate.install_client_read_cancellation(value)
+                    if rail=="active":value.active=1
+                    if rail=="quota":value.accepted=4
+                    if rail=="deadline":value.deadline=0
+                    if rail=="closed":value.closed=True
+                    rejected=Sock();address="172.29.0.3" if rail=="acl" else "172.29.0.2"
+                    self.assertFalse(value.admit(rejected,(address,50002)));self.assertTrue(rejected.closed)
+            class Listener(Sock):
+                def bind(self,address):pass
+                def listen(self,count):pass
+                def settimeout(self,seconds):pass
+                def getsockname(self):return ("172.29.0.1",12345)
+                def accept(self):raise OSError(5,"PUBLIC_SYNTHETIC")
+            listener=Listener();value=original(record,actual,clock=lambda:0,socket_factory=lambda *a:listener)
+            gate.install_client_read_cancellation(value);value.open()
+            with self.assertRaises(OSError):value.serve()
+            self.assertTrue(value.closed and listener.closed)
+            # Remove ONLY the inserted branch: all remaining relay AST is identical.
+            raw=ast.parse((gate.OLD/"provider_transport.py").read_bytes())
+            cls=next(n for n in raw.body if isinstance(n,ast.ClassDef) and n.name=="Forwarder")
+            old=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="relay")
+            new=ast.parse(gate.client_read_cancellation_relay_source()).body[0]
+            outer=next(n for n in new.body if isinstance(n,ast.Try));branch=outer.handlers[0].body[-1]
+            cancellation=branch.orelse[0]
+            self.assertIn("type(error) is ConnectionResetError",ast.unparse(cancellation.test))
+            branch.orelse=cancellation.orelse
+            self.assertEqual(ast.dump(new),ast.dump(old))
+
     def test_default_off_no_file_or_legacy_access(self):
         def deny(*args,**kwargs):
             raise AssertionError("DEFAULT_OFF_EFFECT")
@@ -321,7 +418,7 @@ class WiringChecks(unittest.TestCase):
                 policy.limit(1)
         self.assertEqual((policy.started,policy.total,policy.terminal_end,policy.cleanup_end),(1000.0,240,1210.0,1240.0))
 
-    def test_overlay_changes_only_provider_fixed_paid_deadlines(self):
+    def test_overlay_changes_only_provider_deadlines_and_owned_relay_install(self):
         source=gate.effective_sources()["provider"]
         tree=ast.parse((gate.OLD/"migration.py").read_text())
         install=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=="install")
@@ -331,6 +428,9 @@ class WiringChecks(unittest.TestCase):
             if isinstance(node,ast.Constant) and type(node.value) is int and node.value==240:
                 node.value=180;changed+=1
         self.assertEqual(changed,2)
+        setup=next(n for n in original.body if isinstance(n,ast.Assign) and
+            any(isinstance(t,ast.Name) and t.id=="adapter" for t in n.targets))
+        original.body.insert(original.body.index(setup)+1,ast.parse("_install_client_read_cancellation(adapter)").body[0])
         self.assertEqual(ast.dump(ast.parse(source).body[0]),ast.dump(original))
         self.assertIn("self.created_networks",source)
         self.assertIn("'max_connections': 16",source)

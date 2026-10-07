@@ -212,6 +212,12 @@ def effective_sources():
             changed += 1
     if changed != 2:
         raise ValueError("PROVIDER_DEADLINE_CONTEXT")
+    setup=next(n for n in provider.body if isinstance(n,ast.Assign) and
+        any(isinstance(t,ast.Name) and t.id=="adapter" for t in n.targets))
+    if not isinstance(setup.value,ast.Call) or ast.unparse(setup.value.func)!="Forwarder":
+        raise ValueError("FORWARDER_INSTANCE_CONTEXT")
+    provider.body.insert(provider.body.index(setup)+1,ast.parse("_install_client_read_cancellation(adapter)").body[0])
+    ast.fix_missing_locations(provider)
     provider_source = ast.unparse(provider) + "\n"
     audit = next(node for node in install.body if isinstance(node,ast.FunctionDef) and node.name=="audit")
     terminal = audit.body[-1]
@@ -300,6 +306,47 @@ def runtime_bootstrap_argv(arguments, binding, started):
     return argv
 
 
+def client_read_cancellation_relay_source():
+    """Single owned exception-branch overlay on the immutable public relay."""
+    raw=(OLD/"provider_transport.py").read_bytes()
+    if hashlib.sha256(raw).hexdigest()!="91da1e83820caed12809ba8bd6a3156a015e84bf70c310eeb87d91d359118e72":
+        raise ValueError("FORWARDER_BASE_PIN")
+    tree=ast.parse(raw)
+    cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=="Forwarder")
+    relay=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="relay")
+    outer=next(n for n in relay.body if isinstance(n,ast.Try))
+    branch=outer.handlers[0].body[-1]
+    if not isinstance(branch,ast.If) or ast.unparse(branch.test)!="self.closed":
+        raise ValueError("FORWARDER_FAILURE_CONTEXT")
+    cancellation=ast.parse("if type(error) is ConnectionResetError and stage == 'recv_client' and code == 104:\n self.client_read_cancellations += 1\n self.peer_error_disconnects += 1\n self.last_client_read_cancellation = {'classification':'CLIENT_READ_CANCELLED_CONNECTION_ONLY','stage':'recv_client','errno':104,'application_completion':'UNKNOWN'}\n").body[0]
+    cancellation.orelse=branch.orelse
+    branch.orelse=[cancellation]
+    ast.fix_missing_locations(relay)
+    return ast.unparse(relay)+"\n"
+
+
+def install_client_read_cancellation(adapter, expected_sha=None):
+    # Only this owned instance changes; the frozen class/module remain untouched.
+    namespace=dict(adapter.relay.__func__.__globals__)
+    source=client_read_cancellation_relay_source()
+    source_sha=hashlib.sha256(source.encode()).hexdigest()
+    if expected_sha is not None and source_sha!=expected_sha:
+        raise ValueError("OWNED_RELAY_PIN")
+    adapter.owned_client_read_relay_sha256=source_sha
+    exec(compile(source,"<owned-client-read-cancellation-relay>","exec"),namespace)
+    adapter.client_read_cancellations=0
+    adapter.last_client_read_cancellation=None
+    adapter.relay=types.MethodType(namespace["relay"],adapter)
+    original_summary=adapter.summary
+    def summary(self):
+        value=original_summary()
+        value.update(client_read_cancellations=self.client_read_cancellations,
+            last_client_read_cancellation=self.last_client_read_cancellation,
+            owned_client_read_relay_sha256=self.owned_client_read_relay_sha256)
+        return value
+    adapter.summary=types.MethodType(summary,adapter)
+
+
 def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
     """Inspection imports public helpers only; execution requires future GO."""
     loaded = {}
@@ -324,6 +371,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
         _observer_capture_program_pins=capture_program_pins(sources["gate"]))
     methods = compile_methods(sources["gate"], namespace)
     provider_namespace = dict(legacy_cls.provider_forwarder.__globals__)
+    provider_namespace["_install_client_read_cancellation"]=lambda adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["relay_sha256"])
     exec(compile(sources["provider"], "<effective-request-observer-provider>", "exec"), provider_namespace)
     audit_namespace=method_namespace(legacy_cls.audit_rpc)
     audit_namespace["_observer_mark_native_failure"]=mark_native_failure

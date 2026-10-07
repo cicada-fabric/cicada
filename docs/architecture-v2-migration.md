@@ -1,5 +1,12 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-10-07 current migration boundary
+
+This checkpoint changes only the owned Native fixture's exact client-read reset handling and its checks. Go, DB/schema, keys, wire protocol and Client are unchanged; no product rebuild or artifact retag occurred. Current zero-model preparation passed, but G1c failed the unchanged final-output ALPHA assertion. [detailed Native I/O record](native-request-observer-io-validation.md) separates current binding 878c80 from historical source 1a3 and dirty artifact 826. No additional migration or execution is authorized.
+
+## Earlier Oct 7 checkpoint — historical attribution retained
+
+
 ## 2026-10-07 compatibility note
 
 The current observer/CLI fixture and documentation checkpoint changes no database migration, key format, wire protocol or Client contract. Offline and zero-model preparation passes do not upgrade real G1 acceptance: A1 failed and A3 was not reached. See [current I/O evidence and proof limits](native-request-observer-io-validation.md). No probe or model execution is authorized here.

@@ -1,5 +1,12 @@
 # Architecture v2.3 实施计划
 
+## 2026-10-07 current plan — strict output criterion retained
+
+The owned test-forwarder correction and zero-model preparation passed; G1c failed the unchanged final-output ALPHA requirement. Next, review the preserved input/output and instruction evidence, propose only an evidence-backed bounded correction, then require separately reviewed fresh Root authorization for any future G1 run. Do not refeed markers, waive ALPHA/BETA/answer, or infer context loss. Android, physical-Node and public-HTTPS gates remain separate outstanding work. [detailed Native I/O record](native-request-observer-io-validation.md) contains the exact assertion and source scopes; no new run is authorized by this plan.
+
+## Earlier Oct 7 checkpoint — historical attribution retained
+
+
 ## 2026-10-07 current actions — v0.1 PARTIAL
 
 Offline validation and fourth zero-model preparation passed; the single real G1 attempt failed at A1, with A3 not reached. See [source-bound I/O evidence](native-request-observer-io-validation.md).

@@ -2,6 +2,14 @@
 
 <a id="current-closeout-evidence"></a>
 
+## 2026-10-07 current release evidence — PARTIAL
+
+Official CLI 0.160.1 and Runtime ebea are retained. Product 194 / version `0.1.0-native-zero826` belongs to dirty build 826 (delivery 417 / equality 33d), distinct from current f4 plus two Python edits. No rebuild or retag occurred. Binding 878c80 covers the current narrow correction: 13 wiring checks PASS and fresh zero-model preparation PASS; real G1c remains strict FAIL at A3's final ALPHA omission. Five logical turns and successful cleanup do not imply full queue/history/inline/Hub-blind acceptance. [detailed Native I/O record](native-request-observer-io-validation.md) links exact source, result and independent-review receipts. Historical failures and old test-source attribution below remain unchanged; Android/physical/public-HTTPS acceptance is outstanding.
+
+## Earlier Oct 7 checkpoint — historical attribution retained
+
+
+
 ## 2026-10-07 attributed evidence — v0.1 PARTIAL
 
 Current fixture: CLI **0.160.1** (`f34a4d23…`), retained image `ebea4c99…`, current **dirty** product revision `826b6c9…`, binary `194d18de…`, build version `0.1.0-native-zero826`. [Delivery](../.cicada-data/native-observer-runtime-161-20261007/cicada-product826-pq-20261007a/actual-delivery.NONAUTH.json) SHA `41772725…` and [compiled-input equality](../.cicada-data/native-observer-runtime-161-20261007/cicada-product826-pq-20261007a/compiled-input-equality-summary.NONAUTH.json) SHA `33d3b248…` retain build identity separately from input equivalence.

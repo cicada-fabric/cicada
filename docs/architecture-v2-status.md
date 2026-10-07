@@ -2,6 +2,23 @@
 
 <a id="current-closeout"></a>
 
+## 2026-10-07 current scoped status — v0.1 PARTIAL
+
+| Scope | Outcome | Boundary |
+|---|---|---|
+| Current offline wiring | 13 PASS, 0 failure/error/skip | Binding 878c80; historical 56 remains source 1a3. |
+| Fresh zero-model preparation | PASS, 32.879815s | Models/credentials 0; cleanup and both EOF confirmed. |
+| Real G1c | Strict FAIL at A3 | Five logical turns; final ALPHA absent, BETA/answer present; upstream ALPHA present. |
+| G1c cleanup | Confirmed; independent absence | Does not rewrite older G1b cleanup=false or retained UDS UNKNOWN. |
+| Provider/context interpretation | Not established | No context-loss or accepted-POST/parity claim. |
+| External environments | No current-source validation; historical Android results retain their own scope | Physical Nodes and public HTTPS remain separate gates. |
+
+See [detailed Native I/O record](native-request-observer-io-validation.md). Strict acceptance remains incomplete; no further execution is authorized.
+
+## Earlier Oct 7 checkpoint — historical attribution retained
+
+
+
 ## 2026-10-07 scoped status — v0.1 PARTIAL
 
 | Scope | Outcome | Limit |
