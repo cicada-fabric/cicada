@@ -1,6 +1,26 @@
 # Native request observer I/O validation — 2026-10-07
 
-## Current d096 checkpoint — zero preparation PASS, real G1d FAIL
+## Current v2 closed diagnostics and TLS-only checkpoint — PARTIAL
+
+Current dirty sources on `c336ded1` use byte-identical binding/alias `dd4367b2290418957fe2ddab57bf5c1342d9fee42e8389a6bb778d336aec9a5e`: observer `4278b137…`, bootstrap `3bcd41c0…`, probe `7233d652…`, selected v2 relay `a9c667f…`; default relay `d6e1…` is unchanged. Default v1 bytes/schema/strict decoding remain unchanged. Only the existing explicit test-observer/I/O lane selects v2: closed SSL subtype/reason/errno, timestamp before attribute getters, local TCP port, and owned first-fatal/pending/EOF/peer-port metadata. Transport, status, retry, deadlines and strict oracle are unchanged; no Go/DB/wire/Client change, rebuild or resident replacement occurred. Existing dirty product826 provenance is not a c336-only build.
+
+Offline QA domains remain separate, with zero failures/errors/skips and guards 0:
+
+- [Coder memory suite](../.cicada-data/native-observer-wiring-20261007/closed-io-v2-memory-final.NONAUTH.json), `65c93890…`: 13 methods/26 subtests PASS.
+- [Supervising independent suite](../.cicada-data/native-observer-wiring-20261007/root-io-v2-current-offline-a.NONAUTH.json), `7cfc9608…`: 32 methods/53 subtests PASS.
+- [Main Root suite](../.cicada-data/native-observer-wiring-20261007/root-tls-v2-offline-20261007a.NONAUTH.json), `3a586b87…`: 31 methods PASS, excluding actual Unix publication tests.
+
+These counts are not summed. Initial seven-method EOF-fixture FAIL remains attributed to its earlier source; only its expectation was corrected. Historical 56/15-method results retain their original bindings.
+
+The sole Main Root [TLS-only result](../.cicada-data/native-observer-wiring-20261007/tls-only-cicada-two-turn-tlsonlyv220261007a/result.NONAUTH.json), `b339cc329302693592ab89d38aa0ce5a1301845979909f830aa25b09f2a6c6d9`, exited 0 in 5386 ms: four of four handshakes PASS and four accepted forwarder connections. Default CA/hostname validation and HTTP/1.1 ALPN policy were configured. Origin application HTTP bytes/POSTs, Native sessions and models were 0; no Observer.handle or credentials were used. All four primary failures were null, cleanup failure lists empty, and no forwarder fatal was recorded. Main Root reported official shell update through 7890 (session70466, tool events `d1ff78` → `c12f6e`, exit0) and independent host/fixed-image network-none version checks (`98241f`, exit0, both `codex-cli0.160.1`); these are tool-event references, not artifact receipts. The [official changelog](https://learn.chatgpt.com/docs/changelog) lists 0.160.1 released 2026-10-05; the same-version image was not rebuilt.
+
+[Independent terminal review](../.cicada-data/native-observer-wiring-20261007/root-tls-v2-terminal-review-20261007a.NONAUTH.json), `4fa98fb0566e102ba2f09cd2d90228802a2fb25d0fe23ad367b3f0a568448ead`, confirms two exact owned IDs plus two names ABSENT, runner PID2479904 absent, and source/binding stability. Driver cleanup completed, active count was 0, serve exited and listener closed; worker reaping remains NOT_PROVEN. This does not rewrite G1d's original cleanup=false/B EOF UNKNOWN/two present UDS or earlier G1b UDS states.
+
+Host/Runtime boot-id hashes matched but time-namespace inodes differed (`4026531834` versus `4026534462`): clock comparability is NOT_VERIFIED, port correlation/recording order UNKNOWN, causality NOT_PROVEN. No failure was available to classify/order. G1d's fault was NOT_REPRODUCED; its actual SSL subtype/reason/cause remain UNKNOWN. TLS success is not origin HTTP/provider-accepted POST, Native business, full G1, A2 ALPHA effectiveness or full public-HTTPS acceptance. Control peer calls remain NOT_INSTRUMENTED; T9 is not upgraded. Current Android/physical-Node/environment validation remains separate.
+
+Fresh v2 Native G1 is NOT_RUN. Any next run needs separately reviewed current preparation/wiring and fresh Root GO/budget, unchanged strict oracle, at most five logical turns (three manual/two automatic), and stop on first terminal Native failure. No new paid execution is authorized by this checkpoint; diagnostics do not license blind retries or backfill historical unknowns.
+
+## Historical d096 checkpoint — zero preparation PASS, real G1d FAIL
 
 Current binding/alias `d0962c8a65d7f9b8b3b90a14180746bebe9ed9b987e08237f48d613b820ea85c` is byte-identical; run `cac62447…`, checks `0eaca78d…`, Gate `9e8ea469…` and effective Gate `a4a68769…` are frozen. The guard rejects stale/duplicate/missing/extra files rows and a mismatching alias before effects. [Full15 offline receipt](../.cicada-data/native-observer-wiring-20261007/request-observer-wiring-binding-guard-root.NONAUTH.json) `916533b8…` passed in 6.781573s with zero failure/error/skip and credential/external attempts 0. Targeted two methods/five subtests `5698…` remain separately attributed; prior full14 belongs to b8cf.
 

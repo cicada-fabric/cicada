@@ -3,15 +3,16 @@ import argparse
 import json
 import os
 from pathlib import Path
-from native_request_observer import validate_io_diagnostic, validate_record
+from native_request_observer import validate_io_diagnostic, validate_io_diagnostic_v2, validate_record
 
 MAX_ROWS = 16
 MAX_BYTES = 32768
 WATERMARK_KEYS = {'schema', 'admitted', 'successful', 'failed', 'sealed', 'drained'}
 
 
-def canonical(record):
-    validate_io_diagnostic(record)
+def canonical(record, *, v2=False):
+    v2 = v2 is True
+    (validate_io_diagnostic_v2 if v2 else validate_io_diagnostic)(record)
     raw = (json.dumps(record, sort_keys=True, separators=(',', ':'))+'\n').encode()
     if len(raw) > 2048:
         raise ValueError('BOUNDS')
@@ -20,7 +21,8 @@ def canonical(record):
 
 class IOSink:
     """Optional evidence failure is isolated from the original observer sink."""
-    def __init__(self, path):
+    def __init__(self, path, *, v2=False):
+        self.v2 = v2 is True
         self.path = Path(path)
         self.successful = 0
         self.failed = False
@@ -32,7 +34,7 @@ class IOSink:
 
     def __call__(self, record):
         try:
-            raw = canonical(record)
+            raw = canonical(record, v2=self.v2)
             if self.failed or self.output is None or self.successful >= MAX_ROWS or record['sequence'] != self.successful:
                 raise ValueError('SEQUENCE')
             if self.output.write(raw) != len(raw):
@@ -57,7 +59,8 @@ class IOSink:
                     successful=self.successful, failed=self.failed, sealed=sealed, drained=drain.get('drained') is True)
 
 
-def validate_export(raw, watermark):
+def validate_export(raw, watermark, *, v2=False):
+    v2 = v2 is True
     if (type(raw) is not bytes or len(raw)>MAX_BYTES or type(watermark) is not dict or
             set(watermark)!=WATERMARK_KEYS or watermark['schema']!='cicada.native-observer-io-watermark.v1'):
         raise ValueError('SCHEMA')
@@ -71,7 +74,7 @@ def validate_export(raw, watermark):
         if len(rows)>=MAX_ROWS or len(line)>2048:
             raise ValueError('BOUNDS')
         record=json.loads(line)
-        if canonical(record)!=line or record['sequence']!=len(rows):
+        if canonical(record, v2=v2)!=line or record['sequence']!=len(rows):
             raise ValueError('CANONICAL_SEQUENCE')
         rows.append(record)
     if len(rows)!=watermark['admitted'] or len(rows)!=watermark['successful']:
@@ -79,17 +82,18 @@ def validate_export(raw, watermark):
     return rows
 
 
-def join_records(rows, originals, expected_thread, actual_turns, watermark=None):
+def join_records(rows, originals, expected_thread, actual_turns, watermark=None, *, v2=False):
     """Ordinal association, not guessed POST ordinal (pre-send failure retains count)."""
+    v2 = v2 is True
     try:
         if type(rows) is not list or type(originals) is not list or len(rows)>MAX_ROWS or len(originals)>MAX_ROWS:
             raise ValueError('BOUNDS')
-        validate_export(b''.join(canonical(row) for row in rows),watermark)
+        validate_export(b''.join(canonical(row, v2=v2) for row in rows),watermark,v2=v2)
         if len(rows)!=len(originals):
             raise ValueError('JOIN')
         previous=0
         for index,(row,original) in enumerate(zip(rows,originals)):
-            validate_io_diagnostic(row); validate_record(original)
+            (validate_io_diagnostic_v2 if v2 else validate_io_diagnostic)(row); validate_record(original)
             if (row['sequence']!=index or row['POST_before']!=previous or
                     row['POST_after']!=original['outbound_POST_count'] or
                     original['thread']!=expected_thread or not original['runtime_thread_bound'] or

@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — closed diagnosis before further execution
+## Current next step — separately authorized strict G1 diagnostics
+
+The source-ready, default-OFF v2 lane and sole four-handshake TLS-only probe passed their scoped checks. Next requires separately reviewed current preparation/wiring, fresh Root pins/budget/GO, and at most five logical turns (three manual plus two automatic) under the unchanged original oracle. Stop on the first terminal Native failure; diagnostics do not authorize retries, rebuilds or context-criterion waivers. No fresh paid execution is authorized here. Different time namespaces prohibit causal clock comparison without separately verified domain evidence; future observations cannot backfill G1d's unknown subtype/cause. See [current closed-I/O/TLS evidence](native-request-observer-io-validation.md); Android, physical Nodes and public HTTPS remain separate gates.
+
+## Historical d096 next step — closed diagnosis before further execution
 
 First review the existing bounded evidence read-only. It records only `OTHER` and errno107, without exact subtype or failure timestamp; read-only review cannot recover fields never recorded. If those fields are absent, the future sequence is default-OFF closed type/reason/time diagnostics, zero-credential TLS validation, then consideration of a fresh model GO. Do not blindly rerun models or treat errno107 as a proved cause. G1d failed after four turns with A3 NOT_REACHED; A2 framing effectiveness remains NOT_EVALUATED. Preserve strict ALPHA/BETA/answer criteria, original cleanup flags and present UDS state. Any future bounded correction or execution requires separately reviewed evidence and authority; no retry, architecture/product rewrite or new Runtime/paid run is authorized here. See [detailed Native I/O record](native-request-observer-io-validation.md). Android, physical-Node and public-HTTPS evidence remains separately scoped.
 

@@ -2,7 +2,19 @@
 
 <a id="current-closeout"></a>
 
-## Current source-scoped status — PARTIAL
+## Current v2 diagnostics checkpoint — PARTIAL
+
+| Scope | Outcome and limit |
+|---|---|
+| Offline v2 | Separate suites: 13 methods/26 subtests, 32/53, and 31 methods PASS; counts are not summed. |
+| Sole TLS-only probe | 4/4 handshakes PASS; origin HTTP/POST, Native sessions and models 0. |
+| Cleanup | Current probe resources/process absent; worker reaping NOT_PROVEN. |
+| Interpretation | Different time namespaces: clock/order UNKNOWN; G1d fault NOT_REPRODUCED, cause UNKNOWN. |
+| Native/environment acceptance | Fresh v2 G1 NOT_RUN; full G1 and current external environments remain PARTIAL. |
+
+See [current closed-I/O/TLS evidence](native-request-observer-io-validation.md). This does not rewrite historical cleanup/UDS states or upgrade Control invocation-count proof.
+
+## Historical d096 source-scoped status — PARTIAL
 
 | Scope | Outcome and limit |
 |---|---|

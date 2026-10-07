@@ -8,7 +8,7 @@ import re
 
 OLD_BOOTSTRAP_SHA = "0eeaf6cee3c2485e3718ad9bdedf4394e46d5c689c9b683f7bedae49b536db79"
 PATCH_SHA = "e621d869098d54a8685f187eecc2bbd1030120349612225fefdc04f30e99da24"
-OBSERVER_SHA = "160873a002d53c50a6fe1b203d9c9aeb69744254965cd6f7f3e73cb19452848a"
+OBSERVER_SHA = "4278b13766d9c46ade96e193a15763c4d78a9bba0d9b7284d288398d04b83c1c"
 
 
 def apply_section(original, patch, target):
@@ -63,8 +63,8 @@ def effective_source(original, patch):
         value=value.replace(old,new)
     replace_once('from request_observer import Observer, Association, ClosedFailure',
         'from native_request_observer import Observer, Association, ClosedFailure\n    from native_request_observer_io import IOSink')
-    replace_once('    observer = Observer(', "    io_sink = IOSink('/tmp/cicada-request-observer-io.jsonl')\n    observer = Observer(")
-    replace_once('lifetime=lifetime, max_connections=post_limit)', 'lifetime=lifetime, max_connections=post_limit, io_sink=io_sink)')
+    replace_once('    observer = Observer(', "    io_sink = IOSink('/tmp/cicada-request-observer-io.jsonl', v2=True)\n    observer = Observer(")
+    replace_once('lifetime=lifetime, max_connections=post_limit)', 'lifetime=lifetime, max_connections=post_limit, io_sink=io_sink, io_diagnostics_v2=True)')
     replace_once("    drain_path = Path('/tmp/cicada-request-observer-drain.json')", "    try:\n        io_mark = io_sink.seal(observer, drain)\n        with os.fdopen(os.open('/tmp/cicada-request-observer-io-watermark.json', os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600), 'w') as io_output:\n            json.dump(io_mark, io_output, sort_keys=True)\n    except BaseException: pass\n    drain_path = Path('/tmp/cicada-request-observer-drain.json')")
     compile(value, "<effective-request-observer-bootstrap>", "exec")
     return value

@@ -192,8 +192,8 @@ def effective_sources():
         "                    report.update(capture_status='UNKNOWN',a3_stage='NOT_REACHED',a3_ALPHA_present=None)\n"
         "                diagnostics[letter]=report  # alpha=false/UNKNOWN rows are retained")
     source = replace_once(source, "from native_request_observer import validate_record\nrows=[]", "from native_request_observer import validate_record\nfrom native_request_observer_io import validate_export\nrows=[]")
-    source = replace_once(source, "print(json.dumps(result))\n\"\"\"\n            try:", "io_result={'status':'UNKNOWN','records':[]}\ntry:\n with Path('/tmp/cicada-request-observer-io.jsonl').open('rb') as io_stream: io_raw=io_stream.read(32769)\n with Path('/tmp/cicada-request-observer-io-watermark.json').open('rb') as io_stream: io_mark_raw=io_stream.read(1025)\n if len(io_mark_raw)>1024: raise ValueError()\n io_mark=json.loads(io_mark_raw)\n io_result={'status':'COMPLETE','records':validate_export(io_raw,io_mark),'watermark':io_mark}\nexcept Exception: pass\nresult['io_sibling']=io_result\nprint(json.dumps(result))\n\"\"\"\n            try:")
-    source = replace_once(source, "                diagnostics[letter]=report  # alpha=false/UNKNOWN rows are retained", "                from native_request_observer_io import join_records\n                sibling=exported.get('io_sibling',{})\n                self.result.setdefault('observer_io_diagnostics',{})[letter]=(join_records(sibling.get('records',[]),exported['records'],node['thread'],actual,sibling.get('watermark')) if sibling.get('status')=='COMPLETE' else {'status':'UNKNOWN','records':[]})\n                diagnostics[letter]=report  # alpha=false/UNKNOWN rows are retained")
+    source = replace_once(source, "print(json.dumps(result))\n\"\"\"\n            try:", "io_result={'status':'UNKNOWN','records':[]}\ntry:\n with Path('/tmp/cicada-request-observer-io.jsonl').open('rb') as io_stream: io_raw=io_stream.read(32769)\n with Path('/tmp/cicada-request-observer-io-watermark.json').open('rb') as io_stream: io_mark_raw=io_stream.read(1025)\n if len(io_mark_raw)>1024: raise ValueError()\n io_mark=json.loads(io_mark_raw)\n io_result={'status':'COMPLETE','records':validate_export(io_raw,io_mark,v2=True),'watermark':io_mark}\nexcept Exception: pass\nresult['io_sibling']=io_result\nprint(json.dumps(result))\n\"\"\"\n            try:")
+    source = replace_once(source, "                diagnostics[letter]=report  # alpha=false/UNKNOWN rows are retained", "                from native_request_observer_io import join_records\n                sibling=exported.get('io_sibling',{})\n                self.result.setdefault('observer_io_diagnostics',{})[letter]=(join_records(sibling.get('records',[]),exported['records'],node['thread'],actual,sibling.get('watermark'),v2=True) if sibling.get('status')=='COMPLETE' else {'status':'UNKNOWN','records':[]})\n                diagnostics[letter]=report  # alpha=false/UNKNOWN rows are retained")
     gate_tree = ast.parse(source)
     gate_cls = next(node for node in gate_tree.body if isinstance(node,ast.ClassDef) and node.name=="ManagedGate")
     abort = next(node for node in gate_cls.body if isinstance(node,ast.FunctionDef) and node.name=="abort_owned")
@@ -223,7 +223,7 @@ def effective_sources():
         any(isinstance(t,ast.Name) and t.id=="adapter" for t in n.targets))
     if not isinstance(setup.value,ast.Call) or ast.unparse(setup.value.func)!="Forwarder":
         raise ValueError("FORWARDER_INSTANCE_CONTEXT")
-    provider.body.insert(provider.body.index(setup)+1,ast.parse("_install_client_read_cancellation(adapter)").body[0])
+    provider.body.insert(provider.body.index(setup)+1,ast.parse("_install_client_read_cancellation(self, adapter)").body[0])
     ast.fix_missing_locations(provider)
     provider_source = ast.unparse(provider) + "\n"
     audit = next(node for node in install.body if isinstance(node,ast.FunctionDef) and node.name=="audit")
@@ -313,8 +313,9 @@ def runtime_bootstrap_argv(arguments, binding, started):
     return argv
 
 
-def client_read_cancellation_relay_source():
+def client_read_cancellation_relay_source(*, io_diagnostics_v2=False):
     """Single owned exception-branch overlay on the immutable public relay."""
+    io_diagnostics_v2 = io_diagnostics_v2 is True
     raw=(OLD/"provider_transport.py").read_bytes()
     if hashlib.sha256(raw).hexdigest()!="91da1e83820caed12809ba8bd6a3156a015e84bf70c310eeb87d91d359118e72":
         raise ValueError("FORWARDER_BASE_PIN")
@@ -328,18 +329,80 @@ def client_read_cancellation_relay_source():
     cancellation=ast.parse("if type(error) is ConnectionResetError and stage == 'recv_client' and code == 104:\n self.client_read_cancellations += 1\n self.peer_error_disconnects += 1\n self.last_client_read_cancellation = {'classification':'CLIENT_READ_CANCELLED_CONNECTION_ONLY','stage':'recv_client','errno':104,'application_completion':'UNKNOWN'}\n").body[0]
     cancellation.orelse=branch.orelse
     branch.orelse=[cancellation]
+    if io_diagnostics_v2:
+        fatal = next(n for n in ast.walk(cancellation) if isinstance(n, ast.AugAssign)
+            and isinstance(n.target, ast.Attribute) and n.target.attr == "failures")
+        parent = next(n for n in ast.walk(cancellation) if isinstance(n, ast.If) and fatal in n.orelse)
+        parent.orelse.insert(0, ast.parse("_note_forwarder_fatal(self, stage, error, client, upstream, locals().get('pending'), locals().get('eof_sources'))").body[0])
     ast.fix_missing_locations(relay)
     return ast.unparse(relay)+"\n"
 
 
-def install_client_read_cancellation(adapter, expected_sha=None):
+FORWARDER_FATAL_STAGES = frozenset(("connect", "select", "recv_client", "recv_upstream",
+    "send_client", "send_upstream", "halfclose_client", "halfclose_upstream"))
+
+
+def note_forwarder_fatal(adapter, stage, error, client, upstream, pending, eof_sources):
+    """Closed optional metadata; no transport handling or propagation changes."""
+    try:
+        try:
+            stamp = time.monotonic_ns()
+            stamp = stamp if type(stamp) is int and 0 <= stamp <= 2**63-1 else None
+        except BaseException:
+            stamp = None
+        from native_request_observer import IO_ERRNOS
+        with adapter.lock:
+            if adapter.first_fatal_io is not None:
+                return
+            classes = {ConnectionResetError:"CONNECTION_RESET", BrokenPipeError:"BROKEN_PIPE",
+                TimeoutError:"TIMEOUT", OSError:"OS_ERROR"}
+            try:
+                code = getattr(error,"errno",None)
+            except BaseException:
+                code = None
+            code = code if type(code) is int and code in IO_ERRNOS else None
+            def count(obj):
+                try:
+                    if type(pending) is not dict or obj not in pending:
+                        return None
+                    size = len(pending[obj])
+                    return size if type(size) is int and 0 <= size <= 65536 else None
+                except BaseException:
+                    return None
+            def eof(obj):
+                try:
+                    return obj in eof_sources if type(eof_sources) is set else None
+                except BaseException:
+                    return None
+            port = None
+            try:
+                value = client.getpeername()[1]
+                if type(value) is int and 1 <= value <= 65535: port = value
+            except BaseException:
+                pass
+            adapter.first_fatal_io = {"schema":"cicada.owned-forwarder-fatal.v1",
+                "stage":stage if stage in FORWARDER_FATAL_STAGES else "UNKNOWN",
+                "class":classes.get(type(error),"OTHER"), "errno":code, "monotonic_ns":stamp,
+                "pending_client_bytes":count(client), "pending_upstream_bytes":count(upstream),
+                "client_eof":eof(client),
+                "upstream_eof":eof(upstream),
+                "client_peer_port":port, "causality":"NOT_PROVEN", "selection":"FIRST_PUBLISHED"}
+    except BaseException:
+        pass
+
+
+def install_client_read_cancellation(adapter, expected_sha=None, *, io_diagnostics_v2=False):
     # Only this owned instance changes; the frozen class/module remain untouched.
+    io_diagnostics_v2 = io_diagnostics_v2 is True
     namespace=dict(adapter.relay.__func__.__globals__)
-    source=client_read_cancellation_relay_source()
+    source=client_read_cancellation_relay_source(io_diagnostics_v2=io_diagnostics_v2)
     source_sha=hashlib.sha256(source.encode()).hexdigest()
     if expected_sha is not None and source_sha!=expected_sha:
         raise ValueError("OWNED_RELAY_PIN")
     adapter.owned_client_read_relay_sha256=source_sha
+    if io_diagnostics_v2:
+        namespace["_note_forwarder_fatal"] = note_forwarder_fatal
+        adapter.first_fatal_io = None
     exec(compile(source,"<owned-client-read-cancellation-relay>","exec"),namespace)
     adapter.client_read_cancellations=0
     adapter.last_client_read_cancellation=None
@@ -350,6 +413,8 @@ def install_client_read_cancellation(adapter, expected_sha=None):
         value.update(client_read_cancellations=self.client_read_cancellations,
             last_client_read_cancellation=self.last_client_read_cancellation,
             owned_client_read_relay_sha256=self.owned_client_read_relay_sha256)
+        if io_diagnostics_v2:
+            value["first_fatal_io"] = self.first_fatal_io
         return value
     adapter.summary=types.MethodType(summary,adapter)
 
@@ -378,7 +443,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False):
         _observer_capture_program_pins=capture_program_pins(sources["gate"]))
     methods = compile_methods(sources["gate"], namespace)
     provider_namespace = dict(legacy_cls.provider_forwarder.__globals__)
-    provider_namespace["_install_client_read_cancellation"]=lambda adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["relay_sha256"])
+    provider_namespace["_install_client_read_cancellation"]=lambda owner, adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["diagnostic_relay_sha256" if getattr(owner.args,"test_request_observer",False) is True else "relay_sha256"], io_diagnostics_v2=getattr(owner.args,"test_request_observer",False) is True)
     exec(compile(sources["provider"], "<effective-request-observer-provider>", "exec"), provider_namespace)
     audit_namespace=method_namespace(legacy_cls.audit_rpc)
     audit_namespace["_observer_mark_native_failure"]=mark_native_failure

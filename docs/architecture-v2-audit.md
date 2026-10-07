@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current checkpoint — PARTIAL
+## Current v2 diagnostic audit — PARTIAL
+
+Default v1 records/strict decoding remain unchanged; explicit test-observer/I/O opt-in adds closed failure metadata only. Three independently scoped offline suites passed, followed by one four-handshake TLS-only PASS with zero origin application HTTP/POST, Native sessions and models. Current probe cleanup was independently checked; worker reaping is not proved. Different time namespaces leave ordering UNKNOWN, and G1d's fault was not reproduced. No Go/DB/wire/Client change, rebuild, full-G1 acceptance or Control call-count upgrade is claimed. See [current closed-I/O/TLS evidence](native-request-observer-io-validation.md).
+
+## Historical d096 checkpoint — PARTIAL
 
 Current-source full15 offline checks and zero b preparation passed; CLI 0.160.1 foreground queue/draft acceptance passed with synthetic local responses and paid 0. Real G1d failed at B Receive/Reply after four logical turns; A3 was NOT_REACHED, so A2's ALPHA effectiveness is NOT_EVALUATED. Original cleanup=false and B EOF UNKNOWN remain unchanged despite independent absence of 15 owned IDs/names; two owned UDS directories remain present/UNKNOWN. See [detailed Native I/O record](native-request-observer-io-validation.md). No TLS subtype, provider cause or errno107 causal claim is proved; Go/DB/wire/Client and historical environment scopes remain unchanged.
 

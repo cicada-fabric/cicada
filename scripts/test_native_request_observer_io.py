@@ -168,9 +168,10 @@ class IOChecks(unittest.TestCase):
             self.assertIsInstance(namespace['observer'].io_sink,codec.IOSink)
             self.assertEqual([item[0] for item in observed],['quiesce','seal'])
             fixture=base_fixture.DiagnosticsChecks(); instance,client,up,originals,diagnostics=fixture.fixture()
+            instance.io_diagnostics_v2=True
             instance.handle(client,ASSOCIATION)
             (base/'tmp/cicada-request-observer-records.jsonl').write_text(json.dumps(originals[0])+'\n')
-            (base/'tmp/cicada-request-observer-io.jsonl').write_bytes(codec.canonical(diagnostics[0]))
+            (base/'tmp/cicada-request-observer-io.jsonl').write_bytes(codec.canonical(diagnostics[0],v2=True))
             mark_path=base/'tmp/cicada-request-observer-io-watermark.json'
             for mark,expected in ((watermark(1),'COMPLETE'),(dict(watermark(1),successful=0),'UNKNOWN')):
                 mark_path.write_text(json.dumps(mark))
@@ -183,6 +184,205 @@ class IOChecks(unittest.TestCase):
         for owner,name in ((builtins,'open'),(io,'open'),(os,'open'),(os,'stat'),(os,'lstat')):
             with self.assertRaises(AssertionError):getattr(owner,name)(_FORBIDDEN)
 
+
+
+class V2MemoryChecks(unittest.TestCase):
+    """Memory-only diagnostics; no socket creation, threads or external processes."""
+    def fixture(self, *, v2=True, connector=None, upstream=None):
+        originals, rows = [], []
+        upstream = upstream or FakeSocket([RESPONSE])
+        instance = observer.Observer('https://synthetic.invalid/responses', 'PUBLIC_ALPHA', originals.append,
+            enabled=True, bound_thread=THREAD, core_metadata=True,
+            injected_connector=connector or (lambda deadline: upstream), io_sink=rows.append,
+            io_diagnostics_v2=v2)
+        return instance, originals, rows
+
+    def test_v1_bytes_and_v2_strict_codec_join(self):
+        old=row(); old['upstream_eof']=False; self.assertEqual(codec.canonical(old), (json.dumps(old,sort_keys=True,separators=(',',':'))+'\n').encode())
+        instance,originals,rows=self.fixture(); instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(originals[0]['status'],'FORWARDED'); self.assertEqual(instance.posts,1)
+        with self.assertRaises(ValueError): codec.canonical(rows[0])
+        raw=codec.canonical(rows[0],v2=True)
+        self.assertEqual(codec.validate_export(raw,watermark(1),v2=True),rows)
+        self.assertEqual(codec.join_records(rows,originals,THREAD,{(THREAD,TURN)},watermark(1),v2=True)['status'],'COMPLETE')
+        for key,value in [('local_tcp_port',True),('local_tcp_port',65536),('sequence',16),('schema',observer.IO_SCHEMA)]:
+            bad=copy.deepcopy(rows[0]);bad[key]=value
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):codec.canonical(bad,v2=True)
+        with self.assertRaises(ValueError):codec.validate_export(raw,watermark(0),v2=True)
+        old_instance,old_originals,old_rows=self.fixture(v2=False);old_instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(originals,old_originals);self.assertEqual(codec.canonical(old_rows[0]),codec.canonical(old))
+
+    def test_ssl_primary_before_masking_close_and_failure_instant(self):
+        error=observer.ssl.SSLEOFError(8,'SECRET_EXCEPTION_NEVER_EXPORT');error.reason='UNEXPECTED_EOF_WHILE_READING'
+        plain=FakeSocket(close_error=BrokenPipeError(32,'SECRET_CLOSE_NEVER_EXPORT'))
+        plain.getsockname=lambda:('SECRET_ADDRESS_NEVER_EXPORT',43210)
+        class TLS:
+            def set_alpn_protocols(self,value):pass
+            def wrap_socket(self,*a,**k):raise error
+        instance,originals,rows=self.fixture();instance.connector=None
+        diagnostic=dict(row(after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+        with patch.object(observer.ssl,'create_default_context',return_value=TLS()),patch.object(observer.socket,'create_connection',return_value=plain),patch.object(observer.time,'monotonic_ns',side_effect=[100,200]):
+            with self.assertRaises(BrokenPipeError):instance._connect(time.monotonic()+1,diagnostic)
+        self.assertEqual(diagnostic['first_failure']['ssl_subtype'],'SSL_EOF')
+        self.assertEqual(diagnostic['first_failure']['errno'],8)
+        self.assertEqual(diagnostic['first_failure']['class'],'OTHER')
+        self.assertEqual(diagnostic['first_failure']['monotonic_ns'],100)
+        self.assertEqual(diagnostic['cleanup_failures'][0]['monotonic_ns'],200)
+        self.assertEqual(diagnostic['local_tcp_port'],43210); self.assertEqual(instance.posts,0)
+        observer.validate_io_diagnostic_v2(diagnostic)
+        self.assertNotIn('SECRET',codec.canonical(diagnostic,v2=True).decode())
+        def fail(deadline):raise error
+        instance,originals,rows=self.fixture(connector=fail)
+        instance.sink=lambda record:(originals.append(record),instance.close())
+        instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(rows[0]['first_failure']['phase'],'INJECTED_CONNECTOR')
+        self.assertFalse(rows[0]['first_failure']['shutdown_requested']);self.assertTrue(rows[0]['shutdown_requested'])
+        self.assertEqual(instance.posts,0)
+
+    def test_closed_unknowns_clock_metadata_sink_failures(self):
+        diagnostic=dict(row(after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+        error=observer.ssl.SSLError(99,'RAW_SECRET');error.reason='RAW_SECRET'
+        with patch.object(observer.time,'monotonic_ns',side_effect=BaseException()):
+            observer._note_io(diagnostic,'TLS_HANDSHAKE',error)
+        failure=diagnostic['first_failure'];self.assertIsNone(failure['monotonic_ns']);self.assertIsNone(failure['errno'])
+        self.assertEqual(failure['ssl_reason'],'OTHER_REASON')
+        for n in range(5):observer._note_io(diagnostic,'CLOSE_PLAIN',error,cleanup=True)
+        self.assertEqual(len(diagnostic['cleanup_failures']),3);self.assertTrue(diagnostic['cleanup_truncated'])
+        observer.validate_io_diagnostic_v2(diagnostic)
+        for key,value in [('ssl_subtype','RAW_SECRET'),('ssl_reason','RAW_SECRET'),('errno',True),('monotonic_ns',-1)]:
+            bad=copy.deepcopy(diagnostic);bad['first_failure'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):codec.canonical(bad,v2=True)
+        instance,originals,rows=self.fixture();instance.io_sink=lambda record:(_ for _ in ()).throw(BaseException())
+        instance.handle(FakeSocket([REQUEST]),None);self.assertEqual(instance.posts,1)
+        self.assertEqual(originals[0]['status'],'FORWARDED');self.assertFalse(instance.busy);self.assertTrue(instance.idle.is_set())
+
+    def test_upstream_eof_and_v2_disabled_without_sink(self):
+        instance,originals,rows=self.fixture(upstream=FakeSocket([b'HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nPUBLIC']));instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(instance.posts,1);self.assertTrue(rows[0]['upstream_eof'])
+        instance,originals,rows=self.fixture();instance.io_sink=None;instance.handle(FakeSocket([REQUEST]),None)
+        self.assertEqual(instance.io_sequence,0);self.assertEqual(rows,[])
+
+    def test_owned_relay_default_and_opt_in_ast_and_first_fatal(self):
+        import ast,types
+        default=gate.client_read_cancellation_relay_source()
+        self.assertEqual(hashlib.sha256(default.encode()).hexdigest(),'d6e1ad7fb52e83ba18d0f4f9ce697b451013d3dfd334b2d384db164247de2906')
+        enabled=ast.parse(gate.client_read_cancellation_relay_source(io_diagnostics_v2=True))
+        calls=[n for n in ast.walk(enabled) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='_note_forwarder_fatal']
+        self.assertEqual(len(calls),1)
+        parent=next(n for n in ast.walk(enabled) if isinstance(n,ast.If) and calls[0] in n.orelse);parent.orelse.remove(calls[0])
+        self.assertEqual(ast.dump(enabled),ast.dump(ast.parse(default)))
+        client=FakeSocket();client.getpeername=lambda:('SECRET_ADDRESS',54321)
+        upstream=FakeSocket();adapter=types.SimpleNamespace(lock=threading.RLock(),first_fatal_io=None)
+        with patch.object(observer.time,'monotonic_ns',return_value=123):
+            gate.note_forwarder_fatal(adapter,'connect',OSError(107,'SECRET'),client,None,None,None)
+        first=copy.deepcopy(adapter.first_fatal_io)
+        self.assertIsNone(first['pending_client_bytes']);self.assertIsNone(first['client_eof'])
+        self.assertEqual(first['client_peer_port'],54321);self.assertEqual(first['monotonic_ns'],123)
+        gate.note_forwarder_fatal(adapter,'recv_upstream',ConnectionResetError(104,'SECRET'),client,upstream,{client:bytearray(),upstream:bytearray()},{client})
+        self.assertEqual(first,adapter.first_fatal_io);self.assertNotIn('SECRET',json.dumps(first))
+
+    def test_effective_lane_selects_v2_without_default_codec_relaxation(self):
+        source=gate.effective_sources()["bootstrap"]
+        self.assertIn('io_diagnostics_v2=True',source);self.assertIn('v2=True',source)
+        sources=gate.effective_sources();self.assertIn('validate_export(io_raw,io_mark,v2=True)',sources['gate'])
+        self.assertIn("v2=True)",sources['gate']);self.assertIn('_install_client_read_cancellation(self, adapter)',sources['provider'])
+
+    def test_enabled_actual_relay_fatal_vs_ignored_cancellation(self):
+        module=gate.safe_module('memory_v2_provider',gate.OLD/'provider_transport.py')
+        run_id='cicada-two-turn-v2memory0001'
+        binding={'run_id':run_id,'network_id':'a'*64,'network_name':run_id+'-a-net','network_label':run_id,
+            'driver':'bridge','subnet':'172.29.0.0/24','gateway':'172.29.0.1','clients':['172.29.0.2'],
+            'lifetime':10,'max_connections':4,'max_active':1,'upstream_host':'127.0.0.1','upstream_port':7890}
+        actual={'Id':'a'*64,'Name':binding['network_name'],'Driver':'bridge','Labels':{'org.cicada.test.run':run_id},
+            'IPAM':{'Config':[{'Subnet':binding['subnet'],'Gateway':binding['gateway']}]},
+            'Containers':{'b'*64:{'IPv4Address':'172.29.0.2/24'}}}
+        class Sock(FakeSocket):
+            def setblocking(self,value):pass
+            def getpeername(self):return ('SECRET_IP',50001)
+            def send(self,data):return len(data)
+        for client_error,upstream_error,expected in [(ConnectionResetError(104,'SECRET'),None,0),
+                (ConnectionResetError(107,'SECRET'),None,1),(None,ConnectionResetError(104,'SECRET'),1)]:
+            with self.subTest(fatal=expected):
+                client=Sock([client_error] if client_error else []);upstream=Sock([upstream_error] if upstream_error else [])
+                adapter=module.Forwarder(binding,actual,clock=lambda:0,connect=lambda *a,**k:upstream,
+                    select_ready=lambda readers,writers,errors,timeout:([client if client_error else upstream],[],[]))
+                gate.install_client_read_cancellation(adapter,io_diagnostics_v2=True)
+                adapter.active=1;adapter.sockets.add(client);adapter.relay(client)
+                self.assertEqual(adapter.failures,expected)
+                self.assertEqual(adapter.first_fatal_io is not None,bool(expected))
+                self.assertEqual(adapter.active,0)
+                if expected:self.assertEqual(adapter.first_fatal_io['errno'],107 if client_error else 104)
+                else:self.assertEqual(adapter.client_read_cancellations,1)
+
+    def test_concrete_ssl_subtypes_and_strict_memory_sink(self):
+        for error_type,label in observer.SSL_SUBTYPES.items():
+            with self.subTest(subtype=label):
+                error=error_type(8,'SECRET');error.reason='UNEXPECTED_EOF_WHILE_READING'
+                diagnostic=dict(row(after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+                observer._note_io(diagnostic,'TLS_HANDSHAKE',error)
+                self.assertEqual(diagnostic['first_failure']['ssl_subtype'],label)
+                codec.canonical(diagnostic,v2=True)
+        class MemoryFile(io.BytesIO):
+            def fileno(self):return 99
+            def close(self):self.was_closed=True
+        output=MemoryFile();diagnostic=dict(row(after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+        with patch.object(codec.os,'open',return_value=99),patch.object(codec.os,'fdopen',return_value=output),patch.object(codec.os,'fsync',return_value=None):
+            sink=codec.IOSink('/synthetic/io',v2=True);sink(diagnostic)
+            self.assertEqual(output.getvalue(),codec.canonical(diagnostic,v2=True))
+            mark=sink.seal(type('Counter',(),{'io_sequence':1})(),{'drained':True})
+            self.assertTrue(mark['sealed']);self.assertFalse(mark['failed'])
+            invalid=copy.deepcopy(diagnostic);invalid['local_tcp_port']=True
+            sink(invalid);self.assertTrue(sink.failed)
+
+    def test_hostile_attributes_and_exact_opt_in_selected_pin(self):
+        import types
+        class Hostile(Exception):
+            @property
+            def reason(self):raise BaseException()
+            @property
+            def errno(self):raise BaseException()
+        diagnostic=dict(row(after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+        observer._note_io(diagnostic,'TLS_HANDSHAKE',Hostile())
+        self.assertEqual(diagnostic['first_failure']['class'],'OTHER')
+        self.assertEqual(diagnostic['first_failure']['ssl_reason'],'OTHER_REASON')
+        self.assertIsNone(diagnostic['first_failure']['errno']);codec.canonical(diagnostic,v2=True)
+        adapter=types.SimpleNamespace(lock=threading.RLock(),first_fatal_io=None)
+        gate.note_forwarder_fatal(adapter,'connect',Hostile(),FakeSocket(),None,None,None)
+        self.assertIsNotNone(adapter.first_fatal_io);self.assertIsNone(adapter.first_fatal_io['errno'])
+        default=gate.client_read_cancellation_relay_source()
+        self.assertEqual(default,gate.client_read_cancellation_relay_source(io_diagnostics_v2=1))
+        module=gate.safe_module('v2_selected_pin_provider',gate.OLD/'provider_transport.py')
+        adapter=object.__new__(module.Forwarder)
+        with self.assertRaisesRegex(ValueError,'OWNED_RELAY_PIN'):
+            gate.install_client_read_cancellation(adapter,hashlib.sha256(default.encode()).hexdigest(),io_diagnostics_v2=True)
+        with self.assertRaises(ValueError):codec.canonical(diagnostic,v2=1)
+
+    def test_current_tls_entry_default_refusal_and_projection(self):
+        import request_observer_tls_probe as probe
+        with patch.object(sys,'argv',['probe']),contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(probe.main(),0)
+        self.assertEqual(json.loads(output.getvalue()),{'status':'NONAUTH','effects':False})
+        with patch.object(sys,'argv',['probe','--execute-tls-only','--unique-run','bad']):
+            with self.assertRaises(ValueError):probe.main()
+        compile(probe.PROGRAM,'<tls-only-v2-memory>','exec')
+        self.assertNotIn('.handle(',probe.PROGRAM)
+        self.assertNotIn('.sendall(',probe.PROGRAM)
+        namespace={'dev':1,'ino':2,'link':'time:[2]','boot_id_sha256':'a'*64}
+        records=[]
+        for index in range(4):
+            diagnostic=dict(row(index,before=0,after=0),schema=observer.IO_SCHEMA_V2,local_tcp_port=None)
+            records.append({'attempt':index+1,'status':'TLS_HANDSHAKE_PASS','start_ns':index,'end_ns':index+1,'diagnostic':diagnostic})
+        projection={'schema':'cicada.tls-only.closed.v2','rows':records,'application_POSTs':0,
+            'observer_handle_called':False,'default_CA_configured':True,'hostname_validation_configured':True,
+            'ALPN_policy':'http/1.1','time_namespace':namespace}
+        self.assertEqual(probe.validate_projection(projection),projection)
+        failed=copy.deepcopy(projection);failed['rows'][0]['status']='TLS_HANDSHAKE_FAILED'
+        with self.assertRaises(ValueError):probe.validate_projection(failed)
+        bad_time=copy.deepcopy(projection);bad_time['rows'][1]['start_ns']=0
+        with self.assertRaises(ValueError):probe.validate_projection(bad_time)
+        for key,value in [('application_POSTs',True),('rows',records[:3]),('time_namespace',dict(namespace,link='SECRET'))]:
+            bad=copy.deepcopy(projection);bad[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):probe.validate_projection(bad)
 
 if __name__=='__main__':
     unittest.main(verbosity=2)

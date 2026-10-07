@@ -392,6 +392,78 @@ def validate_io_diagnostic(record):
     return record
 
 
+IO_SCHEMA_V2 = "cicada.native-request-observer-io.v2"
+SSL_SUBTYPES = {ssl.SSLEOFError: "SSL_EOF", ssl.SSLWantReadError: "SSL_WANT_READ",
+    ssl.SSLWantWriteError: "SSL_WANT_WRITE", ssl.SSLZeroReturnError: "SSL_ZERO_RETURN",
+    ssl.SSLSyscallError: "SSL_SYSCALL", ssl.SSLCertVerificationError: "SSL_CERT_VERIFY",
+    ssl.SSLError: "SSL_ERROR"}
+SSL_REASONS = frozenset(("UNEXPECTED_EOF_WHILE_READING", "CERTIFICATE_VERIFY_FAILED",
+    "TLSV1_ALERT_INTERNAL_ERROR", "TLSV1_ALERT_DECODE_ERROR", "SSLV3_ALERT_HANDSHAKE_FAILURE",
+    "WRONG_VERSION_NUMBER", "DECRYPTION_FAILED_OR_BAD_RECORD_MAC", "OTHER_REASON", "NONE"))
+IO_ERRNOS = frozenset((*range(10), 11, 32, 54, 60, 61, 104, 107, 110, 111))
+
+
+def closed_io_details(error):
+    """Never stringify an exception or export arbitrary attribute values."""
+    subtype = SSL_SUBTYPES.get(type(error), "OTHER_SSL" if isinstance(error, ssl.SSLError) else "NON_SSL")
+    try:
+        reason = getattr(error, "reason", None)
+    except BaseException:
+        reason = "OTHER_REASON"
+    reason = reason if type(reason) is str and reason in SSL_REASONS else ("NONE" if reason is None else "OTHER_REASON")
+    try:
+        code = getattr(error, "errno", None)
+    except BaseException:
+        code = None
+    code = code if type(code) is int and code in IO_ERRNOS else None
+    return subtype, reason, code
+
+
+def io_timestamp():
+    try:
+        value = time.monotonic_ns()
+        return value if type(value) is int and 0 <= value <= 2**63-1 else None
+    except BaseException:
+        return None
+
+
+def validate_io_diagnostic_v2(record):
+    if type(record) is not dict or set(record) != IO_KEYS | {"local_tcp_port"} or record.get("schema") != IO_SCHEMA_V2:
+        raise ValueError("IO_DIAGNOSTIC_SCHEMA")
+    port = record["local_tcp_port"]
+    if port is not None and (type(port) is not int or not 1 <= port <= 65535):
+        raise ValueError("IO_DIAGNOSTIC_PORT")
+    plain = dict(record); plain.pop("local_tcp_port"); plain["schema"] = IO_SCHEMA
+    if type(record["cleanup_failures"]) is not list or len(record["cleanup_failures"]) > 3:
+        raise ValueError("IO_DIAGNOSTIC_BOUNDS")
+    failures = ([] if record["first_failure"] is None else [record["first_failure"]]) + record["cleanup_failures"]
+    stripped = []
+    previous_stamp = None
+    for failure in failures:
+        if type(failure) is not dict or set(failure) != {"phase", "class", "order", "shutdown_requested", "ssl_subtype", "ssl_reason", "errno", "monotonic_ns"}:
+            raise ValueError("IO_DIAGNOSTIC_SCHEMA")
+        if type(failure["ssl_subtype"]) is not str or failure["ssl_subtype"] not in set(SSL_SUBTYPES.values()) | {"NON_SSL", "OTHER_SSL"}:
+            raise ValueError("IO_DIAGNOSTIC_ENUM")
+        if type(failure["ssl_reason"]) is not str or failure["ssl_reason"] not in SSL_REASONS:
+            raise ValueError("IO_DIAGNOSTIC_ENUM")
+        for key,limit in (("errno", None), ("monotonic_ns", 2**63-1)):
+            value = failure[key]
+            if value is not None and (type(value) is not int or (value not in IO_ERRNOS if limit is None else not 0 <= value <= limit)):
+                raise ValueError("IO_DIAGNOSTIC_TYPE")
+        stamp = failure["monotonic_ns"]
+        if stamp is not None:
+            if previous_stamp is not None and stamp < previous_stamp:
+                raise ValueError("IO_DIAGNOSTIC_ORDER")
+            previous_stamp = stamp
+        stripped.append({key:failure[key] for key in ("phase", "class", "order", "shutdown_requested")})
+    plain["first_failure"] = stripped[0] if record["first_failure"] is not None else None
+    plain["cleanup_failures"] = stripped[1:] if record["first_failure"] is not None else stripped
+    validate_io_diagnostic(plain)
+    if len(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()) > 2048:
+        raise ValueError("IO_DIAGNOSTIC_BOUNDS")
+    return record
+
+
 def _note_io(record, phase, error, cleanup=False, shutdown_requested=False):
     # Optional evidence must never replace the original exception or status.
     try:
@@ -408,6 +480,10 @@ def _note_io(record, phase, error, cleanup=False, shutdown_requested=False):
             return
         failure = {"phase": phase, "class": name, "shutdown_requested": shutdown_requested,
             "order": (record["first_failure"] is not None) + len(record["cleanup_failures"])}
+        if record.get("schema") == IO_SCHEMA_V2:
+            stamp = io_timestamp()
+            subtype, reason, code = closed_io_details(error)
+            failure.update(ssl_subtype=subtype, ssl_reason=reason, errno=code, monotonic_ns=stamp)
         if cleanup:
             record["cleanup_failures"].append(failure)
         else:
@@ -426,9 +502,10 @@ class Observer:
     """
     def __init__(self, endpoint, marker, sink, *, enabled=False,
                  injected_connector=None, lifetime=30, gateway=None,
-                 max_connections=5, bound_thread=None, core_metadata=False, io_sink=None):
+                 max_connections=5, bound_thread=None, core_metadata=False, io_sink=None, io_diagnostics_v2=False):
         self.enabled = enabled is True
         self.io_sink = io_sink if callable(io_sink) else None
+        self.io_diagnostics_v2 = io_diagnostics_v2 is True
         self.io_sequence = 0
         self.shutdown_requested = False
         origin = fixed_url(endpoint)
@@ -499,6 +576,13 @@ class Observer:
             _note_io(diagnostic, phase, error, shutdown_requested=self.shutdown_requested)
             raise
         try:
+            if diagnostic is not None and diagnostic.get("schema") == IO_SCHEMA_V2:
+                try:
+                    port = plain.getsockname()[1]
+                    if type(port) is int and 1 <= port <= 65535:
+                        diagnostic["local_tcp_port"] = port
+                except BaseException:
+                    pass
             if self.gateway is not None:
                 host = self.host if ":" not in self.host else "[" + self.host + "]"
                 tunnel = (host + ":" + str(self.port)).encode("ascii")
@@ -588,6 +672,8 @@ class Observer:
                 try:
                     if self.enabled and self.io_sink is not None and self.io_sequence < MAX_CONNECTIONS:
                         diagnostic = dict(schema=IO_SCHEMA, sequence=self.io_sequence, POST_before=self.posts, POST_after=self.posts, shutdown_requested=self.shutdown_requested, first_failure=None, cleanup_failures=[], cleanup_truncated=False, upstream_eof=False)
+                        if self.io_diagnostics_v2:
+                            diagnostic.update(schema=IO_SCHEMA_V2, local_tcp_port=None)
                         self.io_sequence += 1
                 except BaseException:
                     diagnostic = None
@@ -729,7 +815,7 @@ class Observer:
                 if diagnostic is not None:
                     try:
                         diagnostic.update(POST_after=self.posts, shutdown_requested=self.shutdown_requested)
-                        self.io_sink(validate_io_diagnostic(diagnostic))
+                        self.io_sink((validate_io_diagnostic_v2 if self.io_diagnostics_v2 else validate_io_diagnostic)(diagnostic))
                     except BaseException:
                         pass
             finally:

@@ -486,7 +486,7 @@ class WiringChecks(unittest.TestCase):
         self.assertEqual(changed,2)
         setup=next(n for n in original.body if isinstance(n,ast.Assign) and
             any(isinstance(t,ast.Name) and t.id=="adapter" for t in n.targets))
-        original.body.insert(original.body.index(setup)+1,ast.parse("_install_client_read_cancellation(adapter)").body[0])
+        original.body.insert(original.body.index(setup)+1,ast.parse("_install_client_read_cancellation(self, adapter)").body[0])
         self.assertEqual(ast.dump(ast.parse(source).body[0]),ast.dump(original))
         self.assertIn("self.created_networks",source)
         self.assertIn("'max_connections': 16",source)
