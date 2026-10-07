@@ -1336,6 +1336,27 @@ class WiringChecks(unittest.TestCase):
         self.assertNotIn("'/run'",observer_exports[0])
         compile(observer_exports[0],"<candidate-Runtime-export-syntax>","exec")
 
+    def test_closed_native_error_classification_literals_and_privacy(self):
+        fields={"category":"other","http_status_code":None,"will_retry":False}
+        prefix="stream disconnected before completion: "
+        cases=(("stream closed before response.completed","STREAM_CLOSED_BEFORE_COMPLETED"),
+            ("idle timeout waiting for SSE","SSE_IDLE_TIMEOUT"),
+            ("Incomplete response returned, reason: content_filter","CONTENT_FILTER"),
+            ("Incomplete response returned, reason: unknown","INCOMPLETE_REASON_UNKNOWN"),
+            ("failed to parse ResponseCompleted: SYNTHETIC_SECRET","RESPONSE_COMPLETED_PARSE_ERROR"),
+            ("failed to parse ResponseCompleted: ","STREAM_DETAIL_WITHHELD"),
+            ("SYNTHETIC_SECRET","STREAM_DETAIL_WITHHELD"))
+        for detail,label in cases:
+            with self.subTest(label=label,detail_empty=not detail):
+                result=gate.closed_native_error_classification({"error":{"message":prefix+detail}},fields)
+                self.assertEqual(result["classification"],label)
+                self.assertNotIn("SYNTHETIC_SECRET",json.dumps(result))
+                self.assertFalse(result["message_exported"])
+                self.assertFalse(result["cause_proven"])
+        for message in ("SYNTHETIC_SECRET",prefix+"x"*16384,None,42):
+            self.assertEqual(gate.closed_native_error_classification({"error":{"message":message}},fields)["classification"],"UNKNOWN")
+        self.assertEqual(gate.closed_native_error_classification({"error":{"message":prefix+cases[0][0]}},dict(fields,category="httpConnectionFailed"))["classification"],"UNKNOWN")
+
     def test_native_failure_capture_before_kill_preserves_first_error(self):
         binding,_=run.verify_binding()
         delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
@@ -1401,12 +1422,54 @@ class WiringChecks(unittest.TestCase):
         with patch.object(gate.time,"monotonic",side_effect=lambda:clock[0]):
             valid={"method":"error","params":{"threadId":"synthetic-thread-a","turnId":"synthetic-turn-a",
                 "willRetry":False,"error":{"message":"SYNTHETIC_WITHHELD","codexErrorInfo":"other"}}}
+            literal_valid=json.loads(json.dumps(valid))
+            literal_valid["params"]["error"]["message"]="stream disconnected before completion: idle timeout waiting for SSE"
+            fixture=Fixture()
+            def observe_before_abort(error):
+                record=fixture.result["native_error_closed_diagnostic"]
+                checks.assertEqual(record["classification"],"SSE_IDLE_TIMEOUT")
+                checks.assertEqual((record["node"],record["thread_id"],record["turn_id"]),
+                    ("a","synthetic-thread-a","synthetic-turn-a"))
+                checks.assertEqual(record["host_monotonic_seconds"],clock[0])
+                checks.assertIs(error,fixture._observer_native_failures[threading.get_ident()][0])
+            fixture.abort_owned=observe_before_abort
+            with checks.assertRaises(RuntimeError):
+                namespace["terminal"](fixture,"a","received",literal_valid)
+            first=fixture.result["native_error_closed_diagnostic"]
+            fixture.budget.started.append(("b","synthetic-turn-b"))
+            later=json.loads(json.dumps(literal_valid))
+            later["params"].update(threadId="synthetic-thread-b",turnId="synthetic-turn-b")
+            later["params"]["error"]["message"]="stream disconnected before completion: stream closed before response.completed"
+            fixture.abort_owned=lambda error:checks.assertIs(fixture.result["native_error_closed_diagnostic"],first)
+            with checks.assertRaises(RuntimeError):
+                namespace["terminal"](fixture,"b","received",later)
+            checks.assertIs(fixture.result["native_error_closed_diagnostic"],first)
+            for flag,seconds,thread,started in ((False,5,"synthetic-thread-a",[("a","synthetic-turn-a")]),
+                    (1,5,"synthetic-thread-a",[("a","synthetic-turn-a")]),
+                    (True,True,"synthetic-thread-a",[("a","synthetic-turn-a")]),
+                    (True,4,"synthetic-thread-a",[("a","synthetic-turn-a")]),
+                    (True,5,"synthetic-foreign",[("a","synthetic-turn-a")]),
+                    (True,5,"synthetic-thread-a",[("a","synthetic-turn-a"),("a","synthetic-busy")])):
+                fixture=Fixture();fixture.args.test_request_observer=flag
+                fixture.args.go["max_fatal_diagnostic_capture_seconds"]=seconds
+                fixture.nodes["a"]["thread"]=thread;fixture.budget.started=started
+                primary=RuntimeError("SYNTHETIC_PRIMARY")
+                fixture.abort_owned=lambda error:checks.assertIs(error,primary)
+                gate.mark_native_failure(fixture,primary,"a","received",valid,namespace["safe_error_diagnostic"](valid["params"]))
+                checks.assertNotIn("native_error_closed_diagnostic",fixture.result)
+            fixture=Fixture();primary=RuntimeError("SYNTHETIC_PRIMARY")
+            fixture.abort_owned=lambda error:checks.assertIs(error,primary)
+            with patch.object(gate,"closed_native_error_classification",side_effect=KeyboardInterrupt):
+                gate.mark_native_failure(fixture,primary,"a","received",valid,namespace["safe_error_diagnostic"](valid["params"]))
+            checks.assertIs(fixture._observer_native_failures[threading.get_ident()][0],primary)
+            checks.assertNotIn("native_error_closed_diagnostic",fixture.result)
             for timeout,start in ((False,1000.0),(True,1230.0),(False,1238.0)):
                 observed.clear();clock[0]=start;fixture=Fixture(timeout)
                 with self.assertRaises(RuntimeError) as raised:
                     namespace["terminal"](fixture,"a","received",valid)
                 primary=raised.exception
                 checks.assertIs(primary,fixture._observer_native_failures[threading.get_ident()][0])
+                checks.assertEqual(fixture.result["native_error_closed_diagnostic"]["classification"],"UNKNOWN")
                 checks.assertEqual(observed,["capture","kill","kill"])
                 checks.assertEqual(fixture._observer_capture_end,min(start+5,1240.0))
                 checks.assertEqual(fixture.policy.started,1000.0)

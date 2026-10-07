@@ -24,6 +24,38 @@ A2_SUBMISSION_INSTRUCTION = ('This submission supplements the original task; the
 A2_LEGACY_INSTRUCTION = 'Finish ACCEPTED. Do not retry any attempted tool call.'
 
 
+def closed_native_error_classification(params, native_fields):
+    """Release-source-backed static labels; never retain message or details."""
+    label = "UNKNOWN"
+    if native_fields.get("category") == "other" and type(params) is dict:
+        error = params.get("error")
+        message = error.get("message") if type(error) is dict else None
+        if type(message) is str and len(message) <= 16384 and len(message.encode("utf-8")) <= 16384:
+            prefix = "stream disconnected before completion: "
+            if message.startswith(prefix):
+                detail = message[len(prefix):]
+                literals = (
+                    ("stream closed before response.completed", "STREAM_CLOSED_BEFORE_COMPLETED"),
+                    ("idle timeout waiting for SSE", "SSE_IDLE_TIMEOUT"),
+                    ("Incomplete response returned, reason: content_filter", "CONTENT_FILTER"),
+                    ("Incomplete response returned, reason: unknown", "INCOMPLETE_REASON_UNKNOWN"),
+                )
+                label = "STREAM_DETAIL_WITHHELD"
+                for literal, candidate in literals:
+                    if detail == literal:
+                        label = candidate
+                        break
+                else:
+                    parse_prefix = "failed to parse ResponseCompleted: "
+                    if detail.startswith(parse_prefix) and len(detail) > len(parse_prefix):
+                        label = "RESPONSE_COMPLETED_PARSE_ERROR"
+    return {"schema": "cicada.native-error-closed-diagnostic.v1",
+            "classification": label, "category": native_fields.get("category"),
+            "http_status_code": native_fields.get("http_status_code"),
+            "will_retry": native_fields.get("will_retry"),
+            "message_exported": False, "cause_proven": False}
+
+
 def mark_native_failure(self, error, node, direction, message, native_fields):
     """Called only by the generated terminal-native-audit raise site."""
     params=message.get("params") if type(message) is dict else None
@@ -48,6 +80,17 @@ def mark_native_failure(self, error, node, direction, message, native_fields):
                 publication = {"error":error,"origin":origin,"done":threading.Event(),
                     "end":min(time.monotonic()+5,self.policy.cleanup_end,self.policy.started+240)}
                 self._observer_native_capture_state = publication
+                if getattr(self.args,"test_request_observer",False) is True:
+                    try:
+                        recorded_at = time.monotonic()
+                        diagnostic = closed_native_error_classification(params, native_fields)
+                        diagnostic.update(node=node, thread_id=params["threadId"], turn_id=params["turnId"],
+                            host_monotonic_seconds=recorded_at,
+                            classification_scope="RUNTIME_REPORTED_CONDITION_NOT_PROVEN_CAUSE")
+                        self.result.setdefault("native_error_closed_diagnostic", diagnostic)
+                    except BaseException:
+                        # Diagnostic failure cannot mask the primary or delay abort.
+                        pass
     # Publish before cleanup can stop the Runtime. No external calls hold this
     # short publication lock; inherited cleanup never holds it while persisting.
     try:

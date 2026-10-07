@@ -2,7 +2,18 @@
 
 <a id="current-closeout"></a>
 
-## Current response-byte candidate — PARTIAL
+## Current closed Native-error projection — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Current offline QA | PASS: Wiring32/125, FakeSocket10/20, V2Memory10/21 methods/subtests; total52/166, zero failures/errors/skips/effects. Two older Diagnostics remain explicitly NOT_RUN. |
+| New projection Native validation | NOT_RUN; prior raw-mode Native FAIL/cause NOT_RECORDED remain historical, not retagged. |
+| CLI provenance | Host0.161.0; tested Runtime0.160.1/ebea. Disposable refresh and fresh zero readiness remain future work. |
+| Product completion | v0.1 PARTIAL; G2–G5/V67/current external gates unclosed; Control counters NOT_INSTRUMENTED. |
+
+See [current evidence](native-request-observer-io-validation.md). Contract/wire/catalog/schema remain1.6.4/1/55/58.
+
+## Historical response-byte candidate — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

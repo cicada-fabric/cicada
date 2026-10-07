@@ -1,6 +1,15 @@
 # Architecture v2.3 实施计划
 
-## Current next step — source-only Native error-projection audit
+## Current next steps — readiness before any fresh Native GO
+
+1. Verify the current stable CLI: host0.161.0 and tested Runtime0.160.1/ebea are distinct. Use the official shell install/update through proxy7890 (no npm) to refresh only disposable Runtime and exact asset/hash/CLI/schema/image pins; preserve prior test attribution, global configuration and residents.
+2. Validate fresh zero preparation with models0/credentials0.
+3. Only after readiness and separate review, consider a NEW bounded Native G2/G3 GO with original sessions, strict ALPHA/BETA/reply/context oracle, PQ/TLS, six total/four manual/two automatic, POST16 and existing deadlines. No model execution or retry is authorized by this plan.
+4. Close G4/G5/V67 and current Client, physical and public-environment gates separately; a release candidate requires their own evidence.
+
+The closed projection reports literal conditions, not causes. Prior Native FAIL is unchanged; current projection Native validation is NOT_RUN. See [evidence and limits](native-request-observer-io-validation.md).
+
+## Historical next step — source-only Native error-projection audit
 
 Scoped zero preparation passed; the sole raw-response Native run failed and its exact Native error cause remains NOT_RECORDED/provider cause NOT_PROVEN. Audit source only to identify controlled capture of an explicit closed classification, then decide any evidence-backed fix. No further models, automatic rerun, broad parser change or refactor is authorized. Preserve request association/ALPHA, strict original reply/context oracle, six-turn G2 cap, POST16, PQ/TLS and absolute deadlines; raw EOF is not application completion. G2/G3 and remaining external gates stay pending. See [terminal evidence and limits](native-request-observer-io-validation.md).
 

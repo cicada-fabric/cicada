@@ -1,6 +1,10 @@
 # Architecture v2.3 completion ledger
 
-## Current scoped checkpoint — response-byte QA, Native FAIL
+## Current scoped checkpoint — closed projection QA only
+
+Closed Native-error projection passed scoped offline QA; fresh projection Native validation is NOT_RUN, prior Native FAIL remains unchanged, and G2–G5/V67/current external gates remain unclosed without altering historical counts or overall PARTIAL status ([evidence](native-request-observer-io-validation.md)).
+
+## Historical scoped checkpoint — response-byte QA, Native FAIL
 
 The explicit response-byte candidate passed scoped offline QA, fresh zero preparation passed, and Main’s sole raw-mode Native run failed with A final/context completion not proved; G2–G5/V67 and overall v0.1 remain PARTIAL, with historical acceptance and all ledger counts unchanged ([evidence](native-request-observer-io-validation.md)).
 

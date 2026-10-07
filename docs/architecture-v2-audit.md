@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current response-byte candidate — PARTIAL
+## Current closed Native-error projection — PARTIAL
+
+The verified original-thread/active-turn hook now records the first bounded, memory-only closed condition before abort, only in the existing explicit observer/GO5 lane. Main QA passed; independent review confirms the remaining source AST is unchanged. No fresh Native run has exercised this projection, and the prior raw-mode Native FAIL still has exact cause NOT_RECORDED/provider cause NOT_PROVEN. Product009a/Hub45058 retain dirty2b92 provenance; no product, wire, schema or Client change is claimed. See [source-scoped evidence and limits](native-request-observer-io-validation.md). Overall v0.1 remains PARTIAL; Control counters remain NOT_INSTRUMENTED.
+
+## Historical response-byte candidate — PARTIAL
 
 The G2-only, explicit default-OFF response-byte mode passed source-scoped guarded offline QA; old strict response AST is unchanged. Fresh zero preparation passed independent review; Main’s sole raw-mode Native run failed after six turns/four manual submissions. Five original-thread witnesses completed, including B Receive/Reply; A auto6 started but final/context completion is NOT_PROVEN. Later independent review verified 16 Docker targets absent/two UDS removed; original cleanup=false/A EOF UNKNOWN remain. Closed review found exact Native cause NOT_RECORDED/provider cause NOT_PROVEN; next is source-only error-projection audit. The observer/runner is dirty on `ae864239`; product `009a…`/Hub `45058…` retain dirty `2b92` provenance. [Detailed evidence](native-request-observer-io-validation.md) separates each QA domain, excluded tests and historical strict-mode failures. No Go/Client/contract/wire change or acceptance transfer is claimed; Control counts remain NOT_INSTRUMENTED.
 
