@@ -2,7 +2,20 @@
 
 <a id="current-closeout"></a>
 
-## Current closed Native-error projection — PARTIAL
+## Current CLI0.161.0 checkpoint — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| CLI/image/schema | Separate PASS: two official assets, isolated image997e, 315 generated schemas; immutable parser still rejects unknown categories. |
+| Offline QA | PASS52 methods/169 subtests:32/128 +10/20 +10/21; zero failures/errors/skips/effects. Two old Diagnostics NOT_RUN. |
+| Fresh zero | PASS33.075s, models/credentials0, genuine connection1→2→3, PQ and independently checked absence. |
+| Sole Native | FAIL95.09s, six actual/four manual; A4 starts/3 completed/1 error, B2/2. A final/context NOT_PROVEN; G2 FAIL/G3 NOT_REACHED. |
+| Cleanup/cause | Later16 Docker+two UDS absent; original cleanup=false/A UNKNOWN/B EOF unchanged. Exact detail NOT_RECORDED/provider cause NOT_PROVEN. |
+| Remaining acceptance | v0.1 PARTIAL; G4/G5/V67/current external gates separate; Control NOT_INSTRUMENTED. |
+
+See [source-scoped evidence](native-request-observer-io-validation.md). Contract/wire/catalog/DB remain1.6.4/1/55/58.
+
+## Historical closed Native-error projection — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next steps — readiness before any fresh Native GO
+## Current next step — bounded existing-evidence diagnosis only
+
+Review existing public safe evidence and release-exact producer formats to determine whether a closed technical discriminator was recorded. STREAM_DETAIL_WITHHELD identifies a reported format, not a provider cause; absent details remain UNKNOWN. Only a separately scoped future bounded classification proposal may follow. No fresh Native/model rerun or source change is authorized here; preserve original context/reply oracle, six-turn/four-manual/two-automatic cap, POST16, PQ/TLS and absolute deadlines. G4/G5/V67/current Client, physical and public gates remain separately pending; release acceptance requires their own evidence. See [current strict failure and limits](native-request-observer-io-validation.md).
+
+## Historical next steps — readiness before any fresh Native GO
 
 1. Verify the current stable CLI: host0.161.0 and tested Runtime0.160.1/ebea are distinct. Use the official shell install/update through proxy7890 (no npm) to refresh only disposable Runtime and exact asset/hash/CLI/schema/image pins; preserve prior test attribution, global configuration and residents.
 2. Validate fresh zero preparation with models0/credentials0.

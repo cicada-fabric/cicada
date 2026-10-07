@@ -1392,12 +1392,12 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 producer_metadata_sha256=delivery["package_metadata_sha256"],
                 maximum_actual_turn_started=0 if zero_model else (6 if scenario == "g2-g3" else 5),
                 source_domain_comparison={"Node":"current compiled-input equality bound package",
-                    "Hub":"current compiled-input equality bound image","Runtime":"CLI0.160.1 owned image"})
+                    "Hub":"current compiled-input equality bound image","Runtime":self.args.expected_codex_version+" owned image"})
             if scenario == "g2-g3":
                 self.result["fixture_scenario"] = scenario
                 self.result["preparation_binding"].update(fixture_scenario=scenario,component_proof_sha256=delivery["component_proof_sha256"])
             self.result["preparation_binding"].update(runtime_image_id=self.test_image,
-                official_cli_sha256=self.args.expected_cli_sha256,expected_codex_version="codex-cli 0.160.1",
+                official_cli_sha256=self.args.expected_cli_sha256,expected_codex_version=self.args.expected_codex_version,
                 product_revision=delivery["commit"],node_code_checkpoint=delivery["commit"],
                 product_sha256=delivery["binary_sha256"],helper_sha256=delivery["helper_sha256"],
                 hub_image=self.hub_image,producer_fingerprint=delivery["fingerprint"],

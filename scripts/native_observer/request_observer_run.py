@@ -349,7 +349,7 @@ def execute(args):
     cls,legacy=gate_overlay.load_gate(delivery,binding,scenario=getattr(args,"scenario","g1"))
     ns=types.SimpleNamespace(execute=True,run_native=True,result_dir=str(result),product_repo=delivery["source_repo"],
         expected_product_revision=delivery["commit"],expected_source_fingerprint=delivery["fingerprint"],
-        runtime_image=LATEST_RUNTIME,expected_codex_version="codex-cli 0.160.1",expected_cli_sha256=LATEST_CLI_SHA,
+        runtime_image=LATEST_RUNTIME,expected_codex_version="codex-cli "+LATEST_VERSION,expected_cli_sha256=LATEST_CLI_SHA,
         producer_receipt_sha256=delivery["package_metadata_sha256"],producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
         exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
         config_template=str(CONFIG),config_template_sha=CONFIG_SHA,source_binding_sha=binding_sha,
@@ -372,8 +372,9 @@ def execute(args):
     return gate.result["terminal_exit_code"]
 
 
-LATEST_RUNTIME = "sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83"
-LATEST_CLI_SHA = "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35"
+LATEST_VERSION = "0.161.0"
+LATEST_RUNTIME = "sha256:997eab1a341f73b510ab184b62a0ce1c4e98ca696051163afff4481750fb74df"
+LATEST_CLI_SHA = "9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c"
 ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "basil"',
     'sandbox_mode = "workspace-write"','approval_policy = "on-request"','approvals_reviewer = "user"',
     '[model_providers.basil]','name="Synthetic zero-model provider"',
@@ -425,7 +426,7 @@ def expected_latest_go(binding,sha,args,delivery):
         helper_sha256=delivery["helper_sha256"],node_source_fingerprint=delivery["fingerprint"],
         actual_delivery_sha256=args.delivery_sha,preparation_result_sha256=args.preparation_result_sha,
         preparation_source_binding_sha256=sha,independent_review_sha256=args.preparation_review_sha,
-        compiled_input_equality_sha256=args.equality_sha,official_cli_version="0.160.1",
+        compiled_input_equality_sha256=args.equality_sha,official_cli_version=LATEST_VERSION,
         preparation_provider_scope="SYNTHETIC_LOOPBACK_ZERO_MODEL_NOT_PROVIDER_PARITY")
     if getattr(args,"scenario","g1") != "g1":
         expected.update(fixture_scenario="g2-g3",component_proof_sha256=delivery["component_proof_sha256"],max_native_turns=6,max_manual_turns=4,max_automatic_turns=2)
@@ -673,7 +674,7 @@ def prepare_native_zero(args):
     ns=types.SimpleNamespace(execute=True,run_native=False,result_dir=args.result_dir,
         product_repo=delivery["source_repo"],expected_product_revision=delivery["commit"],
         expected_source_fingerprint=delivery["fingerprint"],runtime_image=LATEST_RUNTIME,
-        expected_codex_version="codex-cli 0.160.1",expected_cli_sha256=LATEST_CLI_SHA,
+        expected_codex_version="codex-cli "+LATEST_VERSION,expected_cli_sha256=LATEST_CLI_SHA,
         producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
         producer_receipt_sha256=delivery["package_metadata_sha256"],
         exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
@@ -702,7 +703,7 @@ def prepare_native_zero(args):
             overlay.reproduce_owned_zero_restart(gate)
         if gate.budget.started or gate.result.get("paid_turn_start_submissions")!=0:
             raise RuntimeError("ZERO_ACTUAL_TURN_FORBIDDEN")
-        gate.result.update(status="PREPARATION_PASS_NATIVE_NOT_RUN",latest_CLI="0.160.1",
+        gate.result.update(status="PREPARATION_PASS_NATIVE_NOT_RUN",latest_CLI=LATEST_VERSION,
             current_product_build_dirty=delivery.get("source_dirty"),actual_product_build_version=delivery.get("actual_product_build_version"),
             credential_access=False,model_dispatch_authorized=False,provider_endpoint="SYNTHETIC_LOOPBACK_DENY",
             current_product_compiled_input_equality_sha256=args.equality_sha)

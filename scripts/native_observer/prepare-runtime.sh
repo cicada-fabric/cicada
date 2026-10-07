@@ -7,13 +7,12 @@ if [[ $# == 0 ]]; then
   exit 0
 fi
 mode=${1-}
-[[ $mode == --prepare || $mode == --check-existing-image ]] || { printf '%s\n' 'BLOCKED_ARGUMENTS'; exit 2; }
+[[ $mode == --prepare ]] || { printf '%s\n' 'BLOCKED_ARGUMENTS'; exit 2; }
 shift
-result_dir= unique_run= existing_image=
+result_dir= unique_run=
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --result-dir) [[ $# -ge 2 ]] || exit 2; result_dir=$2; shift 2;;
-    --image-id) [[ $# -ge 2 ]] || exit 2; existing_image=$2; shift 2;;
     --unique-run) [[ $# -ge 2 ]] || exit 2; unique_run=$2; shift 2;;
     *) printf '%s\n' 'BLOCKED_ARGUMENTS'; exit 2;;
   esac
@@ -21,25 +20,15 @@ done
 [[ $unique_run =~ ^cicada-runtime-161-[a-z0-9]{8,32}$ ]] || exit 2
 artifact_parent=/home/zyf/CICADA/.cicada-data/native-observer-runtime-161-20261007
 [[ $result_dir == "$artifact_parent/$unique_run" && ! -e $result_dir ]] || exit 2
-binary=/home/zyf/.codex/packages/standalone/releases/0.160.1-x86_64-unknown-linux-musl/bin/codex
-binary_sha=f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35
+binary=/home/zyf/.codex/packages/standalone/releases/0.161.0-x86_64-unknown-linux-musl/bin/codex
+binary_sha=9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c
 companion=${binary%/*}/codex-code-mode-host
-companion_sha=b33e8a5283f3c65c2a0aca6d43a59cfe850f624d8fa16992e3cad4fcc27c14e1
+companion_sha=e87096087c02aa6ab90a5a85031659665aa0bf3ee20c07ca0b8ab701c83fcd5b
 base=sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f
-[[ $(stat -c '%s:%a' "$binary") == 289166920:755 ]] || exit 2
+[[ $(stat -c '%s:%a' "$binary") == 292309256:755 ]] || exit 2
 [[ $(sha256sum "$binary" | cut -d' ' -f1) == "$binary_sha" ]] || exit 2
-[[ $(stat -c '%s:%a' "$companion") == 74077072:755 ]] || exit 2
+[[ $(stat -c '%s:%a' "$companion") == 74068880:755 ]] || exit 2
 [[ $(sha256sum "$companion" | cut -d' ' -f1) == "$companion_sha" ]] || exit 2
-if [[ $mode == --check-existing-image ]]; then
-  [[ $existing_image == sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83 ]]
-  [[ $unique_run == cicada-runtime-161-20261007acheckonly || $unique_run == cicada-runtime-161-20261007bcheckonly || $unique_run == cicada-runtime-161-20261007ccheckonly ]] || exit 2
-  python3 - "$artifact_parent/cicada-runtime-161-20261007a/result.NONAUTH.json" <<'PYVERIFY'
-import json,sys
-r=json.load(open(sys.argv[1]));assert r['container_id'] is None and r['CLI_checks']==0 and not r['check_pass']
-PYVERIFY
-else
-  [[ -z $existing_image ]] || exit 2
-fi
 mkdir -p -m 700 "$artifact_parent"
 mkdir -m 700 "$result_dir"
 mkdir -m 700 "$result_dir/context" "$result_dir/docker-config"
@@ -49,7 +38,7 @@ script_path=$(readlink -f "${BASH_SOURCE[0]}")
 script_before=$(sha256sum "$script_path" | cut -d' ' -f1)
 check_name="$unique_run-check"
 image_tag="cicada/native-observer-runtime-161:$unique_run"
-image_id=$existing_image container_id= submitted=false check_pass=false cleanup_proven=false check_name_absent=false
+image_id= container_id= submitted=false check_pass=false cleanup_proven=false check_name_absent=false
 
 inspect_owned() {
   timeout --kill-after=2s 5s docker inspect --format '{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Image}},"run":{{json (index .Config.Labels "org.cicada.test.run")}},"fixture":{{json (index .Config.Labels "org.cicada.test.fixture")}},"status":{{json .State.Status}},"pid":{{json .State.Pid}},"exit_code":{{json .State.ExitCode}},"network":{{json .HostConfig.NetworkMode}}}' "$1"
@@ -97,7 +86,6 @@ PY
   [[ $original_exit == 0 && $cleanup_proven == true ]] || exit 1
 }
 trap cleanup EXIT
-if [[ $mode == --prepare ]]; then
 timeout --kill-after=2s 5s docker image inspect --format '{{.Id}}' "$base" >"$result_dir/base-image.stdout" 2>"$result_dir/base-image.stderr"
 [[ $(cat "$result_dir/base-image.stdout") == "$base" ]]
 cp "$binary" "$result_dir/context/codex"
@@ -117,10 +105,8 @@ EOF
 timeout --kill-after=10s 120s docker build --pull=false --network=none --rm --force-rm --iidfile "$result_dir/image-id" -t "$image_tag" "$result_dir/context" >"$result_dir/build.stdout" 2>"$result_dir/build.stderr"
 image_id=$(cat "$result_dir/image-id")
 [[ $image_id =~ ^sha256:[0-9a-f]{64}$ ]]
-fi
 timeout --kill-after=2s 5s docker image inspect --format '{"id":{{json .Id}},"run":{{json (index .Config.Labels "org.cicada.test.run")}},"fixture":{{json (index .Config.Labels "org.cicada.test.fixture")}},"CLI_sha256":{{json (index .Config.Labels "org.cicada.test.cli.sha256")}}}' "$image_id" >"$result_dir/image-public.json"
 image_run=$unique_run
-[[ $mode != --check-existing-image ]] || image_run=cicada-runtime-161-20261007a
 python3 - "$result_dir/image-public.json" "$image_id" "$binary_sha" "$image_run" <<'PYIMAGE'
 import json,sys
 r=json.load(open(sys.argv[1]));assert r['id']==sys.argv[2] and r['CLI_sha256']==sys.argv[3] and r['fixture']=='native-observer-cli161' and r['run']==sys.argv[4]
@@ -145,7 +131,7 @@ r=json.load(open(sys.argv[1]));assert r['id']==sys.argv[2] and r['name']=='/'+sy
 assert r['run']==sys.argv[5] and r['fixture']=='native-observer-cli161' and r['network']=='none' and r['status']=='created' and r['pid']==0
 PY
 timeout --kill-after=2s 20s docker start -a "$container_id" >"$result_dir/check.stdout" 2>"$result_dir/check.stderr"
-printf '%s\n' '/home/cicada/.local/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' '/home/cicada/.local/bin/codex' "$binary_sha  /home/cicada/.local/bin/codex" 'codex-cli 0.160.1' '/home/cicada/.local/bin/codex-code-mode-host' "$companion_sha  /home/cicada/.local/bin/codex-code-mode-host" >"$result_dir/expected.stdout"
+printf '%s\n' '/home/cicada/.local/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' '/home/cicada/.local/bin/codex' "$binary_sha  /home/cicada/.local/bin/codex" 'codex-cli 0.161.0' '/home/cicada/.local/bin/codex-code-mode-host' "$companion_sha  /home/cicada/.local/bin/codex-code-mode-host" >"$result_dir/expected.stdout"
 cmp -s "$result_dir/check.stdout" "$result_dir/expected.stdout"
 [[ ! -s $result_dir/check.stderr ]]
 inspect_owned "$container_id" >"$result_dir/terminal-identity.json"

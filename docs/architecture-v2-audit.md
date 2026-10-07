@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current closed Native-error projection — PARTIAL
+## Current CLI0.161.0 checkpoint — strict Native FAIL
+
+Official CLI/companion verification, isolated image997e/schema generation, offline QA and fresh zero preparation passed their separate scopes. The sole Native run failed after six turns/four manual submissions: A auto6 reported Other/STREAM_DETAIL_WITHHELD; A final/context remains NOT_PROVEN, G2 FAIL and G3 NOT_REACHED. Later resource absence does not upgrade original cleanup=false/A EOF UNKNOWN. Product009a/Hub45058 retain dirty2b92 provenance; helperc01 is reused unchanged, with no product rebuild. See [detailed current evidence](native-request-observer-io-validation.md). Overall v0.1 remains PARTIAL; Control invocation counts NOT_INSTRUMENTED and external gates remain separate.
+
+## Historical closed Native-error projection — PARTIAL
 
 The verified original-thread/active-turn hook now records the first bounded, memory-only closed condition before abort, only in the existing explicit observer/GO5 lane. Main QA passed; independent review confirms the remaining source AST is unchanged. No fresh Native run has exercised this projection, and the prior raw-mode Native FAIL still has exact cause NOT_RECORDED/provider cause NOT_PROVEN. Product009a/Hub45058 retain dirty2b92 provenance; no product, wire, schema or Client change is claimed. See [source-scoped evidence and limits](native-request-observer-io-validation.md). Overall v0.1 remains PARTIAL; Control counters remain NOT_INSTRUMENTED.
 

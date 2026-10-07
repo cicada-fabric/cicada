@@ -1,6 +1,10 @@
 # Architecture v2.3 数据与协议迁移
 
-## Current fixture boundary
+## Current CLI0.161.0 fixture boundary
+
+Only the disposable CLI/companion image and candidate pins were refreshed; product009a/Hub45058 remain dirty2b92 artifacts; helperc01 is reused unchanged. Contract1.6.4, wire1, catalog55, DB58, keys and Client are unchanged. CLI/schema, offline QA and zero preparation passes do not upgrade the sole strict Native FAIL or prove provider cause/final context. See [current evidence](native-request-observer-io-validation.md); the SQLite paragraph and historical migration records remain intact.
+
+## Historical fixture boundary
 
 No Go/DB/key/wire/Client migration or rebuild is made. The startup metadata guard is bound to d096; full15 offline and zero b preparation passed. Real G1d failed at B Receive/Reply before A3, so the A2 task-framing change is not evaluated for final ALPHA behavior. Stale-row zero FAIL6a652 and old strict G1c remain historical, unchanged. See [detailed Native I/O record](native-request-observer-io-validation.md) for exact current failure and cleanup boundaries. The SQLite statement and all migration evidence below remain intact.
 

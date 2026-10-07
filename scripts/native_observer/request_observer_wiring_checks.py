@@ -78,6 +78,15 @@ class WiringChecks(unittest.TestCase):
             self.assertEqual((expected['max_native_turns'],expected['max_manual_turns'],expected['max_automatic_turns']),(6,4,2))
             go=dict(expected,expires_at_unix=9000)
             run.validate_go(go,expected,now=1000)
+            self.assertEqual(expected['official_cli_version'],run.LATEST_VERSION)
+            self.assertEqual(expected['runtime_image'],run.LATEST_RUNTIME)
+            self.assertEqual(expected['official_cli_sha256'],run.LATEST_CLI_SHA)
+            for field,value in (('official_cli_version','0.160.1'),
+                    ('runtime_image','sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83'),
+                    ('official_cli_sha256','f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35')):
+                with self.subTest(historical_candidate_field=field):
+                    wrong=dict(go);wrong[field]=value
+                    with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
             for field,value in (('response_byte_passthrough',1),('response_byte_passthrough',False),
                     ('response_transport_semantics','OBSERVER_STRICT_HTTP_FRAMING'),('response_byte_ceiling',4259841)):
                 wrong=dict(go);wrong[field]=value
