@@ -2,7 +2,11 @@
 
 <a id="current-closeout"></a>
 
-## Current G5 HTTP privacy checkpoint — v0.1 PARTIAL
+## Current G5 live-U / Monitor boundary checkpoint — v0.1 PARTIAL
+
+Production Monitor approval-boundary normal/race checks passed (1 top-level / 2 subtests each, zero failures/skips); live zero-turn U variant C passed its bounded production Directory fixture. [Exact source, failed A/B boundaries and scoped evidence](g5-native-monitor-boundary-validation.md) keep these results separate from full G5 and Native context acceptance.
+
+## Historical G5 HTTP privacy checkpoint — v0.1 PARTIAL
 
 Production HTTP directory/Artifact privacy tests and four retained regressions passed (6 top-level / 28 subtests, zero failures/skips); race validation passed the two new tests / 23 subtests with zero failures/skips. [Source, exact fixture scope and remaining G5 assertions](g5-http-privacy-validation.md) distinguish protocol authorization/redaction from Native, model memory and full G5 acceptance. Earlier counts and evidence retain their tested source.
 
