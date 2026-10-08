@@ -1270,22 +1270,34 @@ revision=revision+1,version=version+1,updated_at=? WHERE id=? AND version=?`,
 	return updated, nil
 }
 
+const endpointV2Columns = endpointColumns + `, principal_id, group_id, binding_id, migration_state`
+
+func scanEndpointV2(scanner interface{ Scan(...any) error }) (*Endpoint, error) {
+	var endpoint Endpoint
+	var capabilitiesJSON, tagsJSON string
+	err := scanner.Scan(&endpoint.ID, &endpoint.Name, &endpoint.Role, &endpoint.Harness,
+		&endpoint.NativeSessionID, &endpoint.MachineID, &endpoint.Workspace, &endpoint.GoalID,
+		&endpoint.Status, &capabilitiesJSON, &tagsJSON, &endpoint.Owner, &endpoint.Visibility,
+		&endpoint.JoinedAt, &endpoint.LastSeen, &endpoint.CreatedAt, &endpoint.UpdatedAt,
+		&endpoint.PrincipalID, &endpoint.GroupID, &endpoint.BindingID, &endpoint.MigrationState)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	endpoint.MigrationStatus = endpoint.MigrationState
+	return decodeEndpointJSON(&endpoint, capabilitiesJSON, tagsJSON)
+}
+
 func (s *Store) getEndpointV2Locked(id string) (*Endpoint, error) {
-	endpoint, err := s.getEndpointLocked(strings.TrimSpace(id))
+	endpoint, err := scanEndpointV2(s.db.QueryRow(`SELECT `+endpointV2Columns+` FROM fabric_endpoints WHERE id = ?`, id))
 	if err != nil {
 		return nil, err
 	}
 	if endpoint == nil {
 		return nil, ErrEndpointNotFound
 	}
-	err = s.db.QueryRow(`SELECT principal_id, group_id, binding_id, migration_state FROM fabric_endpoints WHERE id = ?`, id).Scan(&endpoint.PrincipalID, &endpoint.GroupID, &endpoint.BindingID, &endpoint.MigrationState)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrEndpointNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	endpoint.MigrationStatus = endpoint.MigrationState
 	return endpoint, nil
 }
 
@@ -1325,7 +1337,7 @@ func (s *Store) CreateEndpointV2(endpoint Endpoint) (*Endpoint, error) {
 // audit callers can request EndpointMigrationPendingGroup.
 func (s *Store) ListEndpointsV2(filter EndpointV2Filter) ([]Endpoint, error) {
 	limit := normalizeV2Limit(filter.Limit)
-	query := `SELECT id FROM fabric_endpoints WHERE 1=1`
+	query := `SELECT ` + endpointV2Columns + ` FROM fabric_endpoints WHERE 1=1`
 	args := make([]any, 0, 8)
 	if groupID := strings.TrimSpace(filter.GroupID); groupID != "" {
 		query += ` AND EXISTS (
@@ -1362,24 +1374,16 @@ WHERE p.id = fabric_endpoints.principal_id AND p.owner_id = ? AND p.status = 'ac
 		return nil, err
 	}
 	defer rows.Close()
-	ids := make([]string, 0)
+	result := make([]Endpoint, 0)
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]Endpoint, 0, len(ids))
-	for _, id := range ids {
-		endpoint, err := s.getEndpointV2Locked(id)
+		endpoint, err := scanEndpointV2(rows)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, *endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

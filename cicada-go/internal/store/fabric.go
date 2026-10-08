@@ -101,13 +101,17 @@ func scanEndpoint(scanner interface{ Scan(...any) error }) (*Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeEndpointJSON(&endpoint, capabilitiesJSON, tagsJSON)
+}
+
+func decodeEndpointJSON(endpoint *Endpoint, capabilitiesJSON, tagsJSON string) (*Endpoint, error) {
 	if err := json.Unmarshal([]byte(capabilitiesJSON), &endpoint.Capabilities); err != nil {
 		return nil, fmt.Errorf("decode endpoint capabilities: %w", err)
 	}
 	if err := json.Unmarshal([]byte(tagsJSON), &endpoint.Tags); err != nil {
 		return nil, fmt.Errorf("decode endpoint tags: %w", err)
 	}
-	return &endpoint, nil
+	return endpoint, nil
 }
 
 const endpointColumns = `id, name, role, harness, native_session_id, machine_id,
