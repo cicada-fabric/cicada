@@ -2,7 +2,13 @@
 
 <a id="current-closeout"></a>
 
-## Current permission / Control-boundary checkpoint — v0.1 PARTIAL
+## Current selected native tool-registration checkpoint — v0.1 PARTIAL
+
+ONE disposable CLI 0.161.0 synthetic START / actual-unload / same-SID RESUME probe passed selected tool-registration checks: six explicit excluded-tool rejections and two benign MCP pings, with ten local synthetic requests and zero paid/external calls. See [frozen inputs, failed variants and narrow evidence scope](native-selected-tool-registration-validation.md). This does not establish full MCP-only policy, general Worker sandbox or original-thread G2/G3 acceptance.
+
+Sandbox BLOCKED, A6 UNKNOWN, G2 FAIL / G3 NOT_REACHED, inspected V67 local submission UNSUPPORTED and remaining external gates are unchanged. Historical counts and prior acceptance retain their tested source.
+
+## Historical permission / Control-boundary checkpoint — v0.1 PARTIAL
 
 The clean c56 protocol fixtures passed the eight-selector permission subset (8 tests / 43 subtests / 3 packages) and the two-selector Control-boundary subset (2 tests / 0 subtests / 2 packages), each with zero failures or skips. These are scoped protocol results, not full G5/T9 or Native/context acceptance; see [source, evidence and limitations](v01-permission-control-boundary-validation.md).
 
