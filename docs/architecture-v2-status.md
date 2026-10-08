@@ -2,7 +2,12 @@
 
 <a id="current-closeout"></a>
 
-## Current selected native tool-registration checkpoint — v0.1 PARTIAL
+## Current delegated external-sandbox checkpoint — v0.1 PARTIAL
+
+Main's single zero-model native `command/exec` fixture passed five Docker/DAC/network-none predicates; this is not product workspace-write or original-thread acceptance. [Scoped evidence and integration blockers](native-external-sandbox-validation.md) retain the prior namespace failure, G2 FAIL / G3 NOT_REACHED, A6 UNKNOWN and general Worker BLOCKED. The current six-turn Native lane has no complete optional external-sandbox fixture: its automatic turns retain workspace-write and its Runtime envelope does not establish the required hardening or secret-read isolation. No new Native readiness command or binding was prepared.
+
+
+## Historical selected native tool-registration checkpoint — v0.1 PARTIAL
 
 ONE disposable CLI 0.161.0 synthetic START / actual-unload / same-SID RESUME probe passed selected tool-registration checks: six explicit excluded-tool rejections and two benign MCP pings, with ten local synthetic requests and zero paid/external calls. See [frozen inputs, failed variants and narrow evidence scope](native-selected-tool-registration-validation.md). This does not establish full MCP-only policy, general Worker sandbox or original-thread G2/G3 acceptance.
 
