@@ -1,15 +1,82 @@
 # Opt-in real native queue crash acceptance
 
-This test targets the real-queue evidence gap for CICADA.md §16.5. It uses the
-production same-Group Guard, inbox, relay journal, physical writer, injection
-intent, outcome and recovery path. The Hub, enrollment and grants are disposable
-synthetic Go fixtures. The native queue process and its queue witness must come
-from the owner's disposable official Codex CLI/app-server 0.160.0 fixture.
+## Current CLI 0.161.0 real-queue checkpoint — narrow PASS
 
-The test does not start Docker, a Runtime, a Thread, resume, a model turn or a
-provider request. It does not accept a synthetic queue helper as native evidence.
-Without explicit opt-in, native acceptance is **SKIP / NOT_RUN**. Enabling the
-gate with an incomplete or invalid fixture is a failure before native dispatch.
+Root's [actual gate receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli161-runtime-20261007e/result.NONAUTH.json) SHA256
+`f8e3aa19f08afd660eb392e5fb4623a489f72288203e1f8482eee7bc91a86474`
+records PASS / exit 0: gate 5.32 s, Root elapsed 8.440 s, one gate invocation and zero turn starts/models.
+Original B remained unchanged with two completed frozen turns, canonical history
+SHA256 `b326600e907b5216eb07d44de1c0ca6514eb897a441426b9940d3306bcb0d51d`.
+The gate witnessed EXACT_ONE_SUBMISSION, retained INJECTION_UNCERTAIN and refused
+original/new reinjection. Two owned containers and the fixture root were absent;
+original rollout/history DB/WAL and six residents were unchanged. Only safe
+metadata is retained here, not history payloads.
+
+The [build/deterministic receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli161-build-20261007c/receipt.NONAUTH.json)
+SHA256 `e90a9607041fadde05ff02b640ea1cef8a5b03b6f210189654f44fd74d16a7df`
+records normal 5 / race 5 methods PASS, zero failures/skips; its native gate NOT_RUN
+is distinct from the later actual gate. Test source SHA256
+`9036edb93849df0f3dde8a1d7c9e9bcedbab9d85aed905462177362ca5321f82`
+and binary SHA256 `0a6a5a650caddb848957a8a1810d0f28550548cb34be95f698d22a7dee3ea93a`
+are separate from official CLI SHA256
+`9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c`
+(292,309,256 bytes) and Runtime image
+`sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29`.
+
+The binary was built on dev 5c9c7c3 with only the two exact test-version predicates
+dirty, not solely clean HEAD or historical clean 326. Binary size is 39,410,888
+bytes; paginated snapshot metadata records 106,496 bytes / two turns / 12 items.
+Release-exact official source at commit
+`979011409de0a60b52f179721948e65531d26144`,
+[physical socket path](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/app-server-transport/src/transport/unix_socket.rs#L76) and [advertised symlink](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/app-server-transport/src/transport/unix_socket.rs#L106), distinguishes the advertised
+socket symlink from actual `/tmp/codex-daemon-UID/sha256(canonical-advertised-path)`.
+Root shared an owned `ROOT/s` mode 0700 at that protected directory and supplied
+the actual canonical 99-byte socket path without symlink traversal. The
+[daemon-directory policy](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/uds/src/daemon_directory.rs) fixes the protected directory and owner checks. The schema
+command remains `codex app-server generate-json-schema --experimental --out /schema`.
+The [paginated-history reader](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/thread-store/src/local/thread_history/read.rs#L116) uses the history database. For genuine paginated B, Root made a consistent private SQLite backup from
+independent copies of the original synthetic history DB/WAL; no state5, auth,
+configuration, grant or key files were copied and no SID/history was changed.
+
+Earlier [c startup failure](../.cicada-data/native-observer-wiring-20261007/g4-cli161-runtime-20261007c/result.NONAUTH.json)
+and [d profile-readiness failure](../.cicada-data/native-observer-wiring-20261007/g4-cli161-runtime-20261007d/result.NONAUTH.json)
+remain FAIL with zero gate invocations, not failed executions of the G4 gate.
+The [later fixture retirement](../.cicada-data/native-observer-wiring-20261007/root-g4-preparation-fixture-retirement-20261008a.NONAUTH.json)
+(SHA256 `1de518254ac14bcda5a701a9b01c45c45022b4e15f263826ccf3a32487a75885`)
+removed only the owned c/d copies and retained their reports and original B.
+Their original root-retained flags remain historical facts.
+The successful fixture used the canonical owned daemon socket and a consistent
+independent paginated-history snapshot; no guard or frozen-history requirement
+was relaxed. This result covers injected-before-ledger only; remaining G4/G5/V67, paid
+Native acceptance and final context are not closed. G2 FAIL / G3 NOT_REACHED,
+sandbox BLOCKED and paid image e754 Native NOT_RUN remain. Overall v0.1 is
+PARTIAL; Control counts are NOT_INSTRUMENTED.
+
+## Historical CLI 0.161.0 preparation — acceptance NOT_RUN
+
+The current fixture pins official CLI SHA256
+`9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c`
+(292,309,256 bytes) and Runtime image
+`sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29`.
+Root generated 445 schemas once with `codex app-server generate-json-schema
+--experimental --out /schema`; the [public schema-only receipt](../.cicada-data/native-observer-wiring-20261007/runtime0161-experimental-schema-20261007c/result.NONAUTH.json)
+records exit 0, zero models/Native sessions/credential access and owned-container
+absence. This is compatibility evidence, not a G4 acceptance pass.
+
+The experimental schema covers `thread/queue/list` with `threadId` and `limit`,
+returning `data`/`nextCursor` and queued submissions with `id`/`input`.
+QueueListParams SHA256 is
+`b4c889089eee8a0f785ff85e0128a4d3f347353870fa848221096a472223773b`;
+QueueListResponse SHA256 is
+`be4e0bfa6fc776101f96582543605d2eff6186309a08903203512b99c5005926`.
+Existing metadata-only `thread/read`, explicit ascending/full `thread/turns/list`,
+experimental initialization and turn-start rejection match these schemas;
+response Turn.itemsView still defaults to full when omitted. The earlier
+315-schema nonexperimental inventory did not cover queue requests and cannot
+establish their absence. Historical 0.160.0 schema and fixture results below
+retain their original scope. Deterministic and real zero-queue validation of this
+new pin remain NOT_RUN; cold original B, history, uncertainty and no-reinjection
+guards are unchanged.
 
 ## Native fixture supplied by its owner
 
@@ -53,7 +120,7 @@ The independently measured official 0.160.0 CLI in Runtime image
 `sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f`
 is 289,101,384 bytes, which exceeds the original 256 MiB cap. Exact CLI digest and
 version checks still apply. CLI
-version and initialized app-server userAgent must report 0.160.0.
+version and initialized app-server userAgent must now report exactly 0.161.0.
 
 The socket must expose the already-running official app-server's WebSocket
 protocol directly. The fixture's actual synthetic B Thread must be cold

@@ -1,6 +1,10 @@
 # Architecture v2.3 实施计划
 
-## Current next step — supported sandbox-policy audit
+## Current next step — remaining acceptance boundaries
+
+The injected-before-ledger real-queue boundary has scoped PASS; retain uncertainty and no-reinjection criteria. Continue with an explicit bounded fixture preflight and supported sandbox-policy checks without weakening isolation. Confirm actual sandbox workspace-allow/outside-deny execution before bounded Native validation; preserve original-session/context/reply criteria and existing budgets. G2 final context, G3, remaining G4/G5/V67 and Client/physical/public gates require their own evidence. See [narrow queue result](native-queue-crash-acceptance.md).
+
+## Historical next step — supported sandbox-policy audit
 
 Audit exact supported sandbox policy and container constraints without weakening isolation. Only a separately authorized zero-model check may follow; require genuine sandbox workspace-allow/outside-deny PASS before considering ONE separately authorized bounded Native run. No paid execution is authorized here. Preserve original-session/context/reply criteria, PQ/TLS, six turns/four manual/two automatic, retries0, admitted-TCP cap16 and absolute budgets. G4's CLI0.160.0 hardcode is a deferred migration item, not a Go change or current gate PASS; G4/G5/V67/current Client/physical/public gates remain separately pending. See [packaging PASS versus sandbox BLOCKED evidence](native-request-observer-io-validation.md).
 

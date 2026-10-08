@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current Runtime-resource checkpoint — sandbox BLOCKED, v0.1 PARTIAL
+## Current G4 real-queue checkpoint — narrow PASS, v0.1 PARTIAL
+
+The CLI 0.161.0 real-queue gate passed the narrow injected-before-ledger boundary with zero turn starts: exactly one submission, INJECTION_UNCERTAIN, and refusal of both original and new reinjection attempts. This does not close all G4, G5/V67, paid Native business acceptance or final context. G2 FAIL/G3 NOT_REACHED, sandbox BLOCKED and paid Native on image e754 NOT_RUN remain; v0.1 PARTIAL and Control counts NOT_INSTRUMENTED. Root normal / race deterministic suites passed five methods each. See [queue evidence and prior failures](native-queue-crash-acceptance.md). Product 009a / Hub 45058 dirty 2b92 and helper c01 reuse remain unchanged.
+
+## Historical Runtime-resource checkpoint — sandbox BLOCKED, v0.1 PARTIAL
 
 Memory-only Native diagnostics passed scoped QA and zero preparation; the sole subsequent Native run still failed on original A auto6, with B Receive/Reply proved but final/context NOT_PROVEN. Exact cause remains NOT_PROVEN. Official bwrap/license/source provenance and imagee754 packaging/version hashes passed; actual zero-model sandbox execution is BLOCKED by namespace EPERM, not validated by help or PATH warnings. Isolation remains unchanged. New e754 pin-source offline QA passed54/226/effects0; its fixture zero and Native remain NOT_RUN. See [resource checkpoint](../.cicada-data/native-observer-wiring-20261007/root-runtime-resource-checkpoint-20261007b.NONAUTH.json) and [detailed limits](native-request-observer-io-validation.md). Product009a/Hub45058 dirty2b92 and helperc01 reuse are unchanged; no product rebuild or acceptance transfer. Control counts NOT_INSTRUMENTED and overall v0.1 PARTIAL remain.
 

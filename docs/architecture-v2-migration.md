@@ -1,6 +1,10 @@
 # Architecture v2.3 数据与协议迁移
 
-## Current Runtime-resource fixture boundary
+## Current G4 fixture boundary
+
+Only the existing real-queue fixture was repinned to exact CLI / app-server 0.161.0 and exercised with an independent genuine synthetic B paginated-history snapshot. The narrow injected-before-ledger boundary passed; no new session/history reinjection or product/DB/key/wire/Client migration occurred. Product 009a / Hub 45058 retain dirty 2b92 provenance; helper c01 reuse and contract 1.6.4 / wire 1 / catalog 55 / DB 58 remain unchanged. See [queue evidence and scope](native-queue-crash-acceptance.md). Sandbox BLOCKED and broader acceptance remain separate.
+
+## Historical Runtime-resource fixture boundary
 
 The disposable Runtime now packages official0.161.0 bwrap with pinned COPYING and release-source URL; no optional voice resources, legacy sandbox or isolation relaxation was introduced. Packaging PASS is distinct from namespace-blocked sandbox execution and new-image Native NOT_RUN. Product009a/Hub45058 retain dirty2b92/unchanged675 Go inputs, helperc01 is reused; no Go/DB/key/wire/Client migration or product rebuild occurs. Contract1.6.4/wire1/catalog55/DB58 and the SQLite history remain unchanged. See [current evidence](native-request-observer-io-validation.md).
 

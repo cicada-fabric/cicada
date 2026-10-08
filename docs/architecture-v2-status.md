@@ -2,7 +2,18 @@
 
 <a id="current-closeout"></a>
 
-## Current Runtime-resource checkpoint — PARTIAL
+## Current G4 real-queue checkpoint — PARTIAL
+
+| Scope | Result and boundary |
+|---|---|
+| Deterministic normal / race | PASS 5 methods each, zero failure/skip; separate build evidence. |
+| Real queue, CLI 0.161.0 / image e754 | PASS 8.440 s, one gate invocation, exactly one submission; uncertainty retained and both reinjections refused; zero turn starts. |
+| History / cleanup | Original B and two completed frozen turns preserved; two owned containers/root absent; source and six residents unchanged. |
+| Remaining acceptance | G2 FAIL/G3 NOT_REACHED; all-G4/G5/V67 and external gates unclosed; sandbox BLOCKED, paid e754 Native NOT_RUN; v0.1 PARTIAL, Control NOT_INSTRUMENTED. |
+
+See [source-scoped queue evidence](native-queue-crash-acceptance.md); c/d readiness failures had zero gate invocations.
+
+## Historical Runtime-resource checkpoint — PARTIAL
 
 | Scope | Result and boundary |
 |---|---|

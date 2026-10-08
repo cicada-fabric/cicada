@@ -583,7 +583,7 @@ func TestMachineNativeRealQueueCrashAcceptance(t *testing.T) {
 	version.Env = realQueueEnvironment(runtime)
 	version.Stderr = io.Discard
 	output, err := version.Output()
-	if err != nil || string(bytes.TrimSpace(output)) != "codex-cli 0.160.0" {
+	if err != nil || string(bytes.TrimSpace(output)) != "codex-cli 0.161.0" {
 		t.Fatal("official CLI version mismatch")
 	}
 	rpc, err := realQueueConnect(ctx, runtime.Socket)
@@ -597,7 +597,7 @@ func TestMachineNativeRealQueueCrashAcceptance(t *testing.T) {
 	if err := rpc.request(ctx, "initialize", map[string]any{"clientInfo": map[string]any{"name": "cicada_real_queue_crash", "version": "0.1"}, "capabilities": map[string]any{"experimentalApi": true}}, &initialized); err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`(?:^|[/ ])0\.160\.0(?:[ /)]|$)`).MatchString(initialized.UserAgent) {
+	if !regexp.MustCompile(`(?:^|[/ ])0\.161\.0(?:[ /)]|$)`).MatchString(initialized.UserAgent) {
 		t.Fatal("app-server version mismatch")
 	}
 	notification, _ := json.Marshal(map[string]any{"method": "initialized", "params": map[string]any{}})
