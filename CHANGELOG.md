@@ -5,6 +5,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
+Managed PQTLS test fixtures now use genuine Owner-approved issuance, installation and current-authority validation. [Scoped normal, race, package and vet evidence](docs/pqtls-managed-fixture-validation.md) retains the failed attempts and optional skips; shipping-image and Native acceptance remain separate.
+
 ### 2026-10-02 clean52 bounded regression and remaining product gates
 
 The current checkpoint records bounded 17-path, M5, shipped-PQ and SSE evidence with independent source/artifact scopes. The 17-path candidate has four explicit Docker-fixture skips; a derived 19-path source candidate adds public payload-profile tests but has no combined Go run and does not inherit that receipt. SSE reports 19 top/33 sub across eight successful executions (not eight unique packages) and retains two harness failures. Native06 keeps its original fixture-sentinel FAIL separate from scoped 5/5 AskReply continuity and separately sourced helper/public-negative-test passes; the original Hub-blind helpercheck exit 1 leaves fullHubBlind NOT_CONFIRMED. Client F4 remains blocked before Target writes. F5 failed at the Source signer on a UTC RFC3339Nano timestamp-format mismatch before any Source signature/Grant or Target operation. The v0.1 candidate remains **PARTIAL** and unreleased. Exact evidence and limits are in [the current checkpoint validation](docs/v01-clean52-current-checkpoint-validation.md).

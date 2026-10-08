@@ -546,8 +546,12 @@ func runtimeStartupProductChild(t *testing.T, root string) {
 	phase("SSE", "begin")
 	ctx := withMachineHubContext(context.Background(), hub)
 	client, err := machineNodeHTTPClient(ctx, 5*time.Second)
-	if err != nil || client.Transport != hub.NodeTransport {
+	if err != nil || client == nil {
 		t.Fatal("published per-Hub client", err)
+	}
+	transport, ok := client.Transport.(machinePQDiagnosticTransport)
+	if !ok || transport.base != hub.NodeTransport {
+		t.Fatal("published per-Hub client did not retain exact diagnostic base")
 	}
 	request, err := http.NewRequest(http.MethodGet, origin+"/v2/relay/nodes/"+hub.NodeID+"/events", nil)
 	if err != nil {

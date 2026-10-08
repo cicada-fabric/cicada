@@ -38,13 +38,14 @@ func productNodePairingProof(nodeKey *e2ee.Identity, hub control.NodeControlHubI
 }
 
 func TestProductNodePQManagedOriginPreservesKeysAndEncryptedRPC(t *testing.T) {
+	runtimeStartupDNS(t)
 	if os.Getenv("PQTLS_PRODUCT_MANAGED_AGENT_CHILD") == "1" {
 		if err := runMachineAgent([]string{"--id", os.Getenv("PQTLS_CHILD_NODE_ID"), "--control-url", os.Getenv("PQTLS_CHILD_ORIGIN"), "--state-dir", os.Getenv("PQTLS_CHILD_NODE_STATE"), "--pqtls-config", os.Getenv("PQTLS_CHILD_CONFIG"), "--once"}); err != nil {
 			t.Fatal("separate managed Node PQ Agent failed")
 		}
 		return
 	}
-	root, pins := productPQFixtures(t)
+	root, _ := productPQFixtures(t)
 	hubState := filepath.Join(root, "hub-state")
 	c, err := control.New(control.Config{StateDir: hubState, WorkspaceRoot: filepath.Join(root, "workspace"), APIToken: "synthetic-management-only"})
 	if err != nil {
@@ -116,15 +117,21 @@ func TestProductNodePQManagedOriginPreservesKeysAndEncryptedRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := db.CurrentNodeTransportBinding(nodeID)
+	binding, err := db.NodeControlKeyForCredential(digest, nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	address, frontAddress := productFreeAddress(t), productFreeAddress(t)
-	logicalOrigin, pqOrigin := "http://"+frontAddress, "https://"+address
-	hubTLS := nodetransport.Identity{Kind: "hub", HubID: hubIdentity.HubID, DNSName: "hub.synthetic.invalid"}
-	nodeTLS := nodetransport.Identity{Kind: "node", HubID: hubIdentity.HubID, NodeID: nodeID, TLSEpoch: 17, DNSName: "node-a.synthetic.invalid"}
-	hubCfg := &nodetransport.Config{Version: 1, Role: "hub", Listen: address, CertificateFile: filepath.Join(root, "hub.pem"), PrivateKeyFile: filepath.Join(root, "hub.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: hubTLS, Peers: []nodetransport.Approval{{Identity: nodeTLS, PinKind: "certificate-sha256", PinSHA256: pins["node-a"], OwnerID: binding.OwnerID, OwnerKeyID: binding.OwnerKeyID, BindingID: binding.BindingID, BindingVersion: binding.BindingVersion, CredentialVersion: binding.CredentialVersion}}}
+	logicalOrigin, pqOrigin := "http://"+frontAddress, productManagedPQOrigin(t, address)
+	nodeState, err := os.MkdirTemp(root, "managed-node-state-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	material := productManagedPQCA(t, filepath.Join(root, "managed-ca"), hubIdentity.HubID, pqOrigin, logicalOrigin, time.Hour)
+	active := productManagedPQActivate(t, material, productManagedPQNodeInput{DB: db, Owner: ownerKey, Node: nodeKey, Binding: binding, Token: token, StateRoot: nodeState, WriterRoot: nodeState, PQOrigin: pqOrigin, LogicalOrigin: logicalOrigin, DNSName: "node-a.synthetic.invalid", Activate: c.ActivateNodeTLSAuthorityLocal, PreserveApplication: true}, time.Now().UTC().Truncate(time.Second).Add(time.Hour))
+	hubCfg := &active.HubConfig
+	hubCfg.Listen = address
+	hubCfg.Peers = []nodetransport.Approval{productManagedPQApproval(t, db, active)}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	var pqRPC atomic.Int64
@@ -162,10 +169,6 @@ func TestProductNodePQManagedOriginPreservesKeysAndEncryptedRPC(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	nodeState, err := os.MkdirTemp(root, "managed-node-state-")
-	if err != nil {
-		t.Fatal(err)
-	}
 	identityPath, statePath := machineNodeControlPaths(nodeState, nodeID)
 	if err := persistMachineNodeIdentity(filepath.Join(machineNodeStateDir(nodeState, nodeID), "identity.json"), machineNodeCredentialPath(nodeState, nodeID), &machineNodeIdentity{Version: 1, NodeID: nodeID, RelayToken: token}); err != nil {
 		t.Fatal(err)
@@ -201,13 +204,12 @@ func TestProductNodePQManagedOriginPreservesKeysAndEncryptedRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeCfg := &nodetransport.Config{Version: 1, Role: "node", Origin: pqOrigin, ApplicationOrigin: logicalOrigin, CertificateFile: filepath.Join(root, "node-a.pem"), PrivateKeyFile: filepath.Join(root, "node-a.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: nodeTLS, Peers: []nodetransport.Approval{{Identity: hubTLS, PinKind: "certificate-sha256", PinSHA256: pins["hub"]}}}
-	configPath := writeProductPQConfig(t, root, "managed-node-config", nodeCfg)
+	configPath := productManagedPQPath(active)
 	hub := machineHubContext{HubID: hubIdentity.HubID, Origin: logicalOrigin, NodeID: nodeID, StateDir: nodeState, Token: token, WriterRoot: nodeState, WriterScope: machineNativeWriterScope()}
 	if err := configureMachinePQTransport(&hub, configPath); err != nil {
 		t.Fatal(err)
 	}
-	defer hub.NodeTransport.(interface{ CloseIdleConnections() }).CloseIdleConnections()
+	defer hub.TLSRuntime.Close()
 	afterState, _ := os.ReadFile(statePath)
 	afterKey, _ := os.ReadFile(identityPath)
 	if !bytes.Equal(beforeState, afterState) || !bytes.Equal(beforeKey, afterKey) {
@@ -220,6 +222,11 @@ func TestProductNodePQManagedOriginPreservesKeysAndEncryptedRPC(t *testing.T) {
 	}
 	if client.state.HubOrigin != logicalOrigin || client.state.Sequence != 1 {
 		t.Fatal("RPC did not preserve logical origin and advance existing replay state")
+	}
+	// Release this process's checked Node lifetime before the separate Agent
+	// acquires the same installation; no duplicate writer is permitted.
+	if err := hub.TLSRuntime.Close(); err != nil {
+		t.Fatal(err)
 	}
 	executable, err := os.Executable()
 	if err != nil {

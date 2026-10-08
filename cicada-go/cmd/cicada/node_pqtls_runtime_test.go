@@ -23,6 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/clientcontract"
+	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/pqtls"
@@ -116,6 +119,7 @@ func writeProductPQConfig(t *testing.T, root, name string, cfg *nodetransport.Co
 }
 
 func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testing.T) {
+	runtimeStartupDNS(t)
 	if os.Getenv("PQTLS_PRODUCT_AGENT_CHILD") == "1" {
 		if err := runMachineAgent([]string{"--id", os.Getenv("PQTLS_CHILD_NODE_ID"), "--control-url", os.Getenv("PQTLS_CHILD_ORIGIN"), "--state-dir", os.Getenv("PQTLS_CHILD_NODE_STATE"), "--pqtls-config", os.Getenv("PQTLS_CHILD_CONFIG"), "--relay-only", "--once"}); err != nil {
 			t.Fatal("separate production Node Agent process failed")
@@ -123,7 +127,7 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 		return
 	}
 	fixture := newMachineSealedReceiveFixtureWithActions(t, false, "ask", []string{"ask", "reply"})
-	root, pins := productPQFixtures(t)
+	root, _ := productPQFixtures(t)
 	hubID, err := fixture.store.GetClientHubID()
 	if err != nil {
 		t.Fatal(err)
@@ -136,29 +140,46 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 		}
 		return nodetransport.Identity{Kind: kind, HubID: hubID, NodeID: nodeID, TLSEpoch: epoch, DNSName: name + ".synthetic.invalid"}
 	}
-	hubCfg := &nodetransport.Config{Version: 1, Role: "hub", Listen: address, CertificateFile: filepath.Join(root, "hub.pem"), PrivateKeyFile: filepath.Join(root, "hub.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: identity("hub", "", 0)}
-	for _, entry := range []struct {
-		name, id string
-		epoch    uint64
-	}{{"node-a", fixture.sourceNodeID, 17}, {"node-b", fixture.targetNodeID, 29}} {
-		b, err := fixture.store.CurrentNodeTransportBinding(entry.id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		hubCfg.Peers = append(hubCfg.Peers, nodetransport.Approval{Identity: identity(entry.name, entry.id, entry.epoch), PinKind: "certificate-sha256", PinSHA256: pins[entry.name], OwnerID: b.OwnerID, OwnerKeyID: b.OwnerKeyID, BindingID: b.BindingID, BindingVersion: b.BindingVersion, CredentialVersion: b.CredentialVersion})
-	}
-	hubPath := writeProductPQConfig(t, root, "hub-config", hubCfg)
-	hubCfg, err = loadHubPQTransport(hubPath)
+	hubKey, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal(err)
 	}
+	material := productManagedPQCA(t, filepath.Join(root, "managed-ca"), hubID, productManagedPQOrigin(t, address), "http://"+frontAddress, time.Hour)
+	activeNodes := map[string]runtimeStartupFixture{}
+	hubCfg := &material.hubConfig
+	hubCfg.Listen = address
+	for _, entry := range []struct {
+		name, id, token string
+		owner           *e2ee.Identity
+	}{{"node-a", fixture.sourceNodeID, fixture.sourceToken, fixture.sourceOwnerIdentity}, {"node-b", fixture.targetNodeID, fixture.targetToken, fixture.targetOwnerIdentity}} {
+		current, e := fixture.store.CurrentNodeTransportBinding(entry.id)
+		if e != nil {
+			t.Fatal(e)
+		}
+		nodeKey, e := e2ee.NewIdentity()
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, ownerBinding, e := fixture.store.GetOwnerBoundNodeCredentialByHash(fabric.HashSessionCredential(entry.token))
+		if e != nil || ownerBinding.NodeID != entry.id || ownerBinding.OwnerID != current.OwnerID {
+			t.Fatal("existing enrolled Node/device authority unavailable")
+		}
+		binding := productManagedPQEnroll(t, fixture.store, entry.id, entry.token, current.OwnerID, ownerBinding.ClientDeviceID, nodeKey, hubKey)
+		stateRoot := filepath.Join(root, "managed-"+entry.name)
+		active := productManagedPQActivate(t, material, productManagedPQNodeInput{DB: fixture.store, Owner: entry.owner, Node: nodeKey, Hub: hubKey, Binding: binding, Token: entry.token, StateRoot: stateRoot, WriterRoot: stateRoot, PQOrigin: productManagedPQOrigin(t, address), LogicalOrigin: "http://" + frontAddress, DNSName: entry.name + ".synthetic.invalid"}, time.Now().UTC().Truncate(time.Second).Add(time.Hour))
+		activeNodes[entry.id] = active
+		hubCfg.Peers = append(hubCfg.Peers, productManagedPQApproval(t, fixture.store, active))
+	}
+	staleLeaf, staleKey := productManagedPQUnactivatedLeaf(t, material, root)
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
 	var callsMu sync.Mutex
 	var remoteA []string
 	var authenticatedHTTP atomic.Int64
 	var profileObserved atomic.Bool
-	inner := server.NewFabricHandler(fixture.service, "synthetic-manager-token") // Control is absent by construction.
+	inner := server.NewFabricHandlerWithNodeTLSCurrent(fixture.service, "synthetic-manager-token", func(credential, nodeID string, packet []byte) ([]byte, error) {
+		return control.ReadNodeTLSCurrentPacket(fixture.store, hubKey, credential, nodeID, packet)
+	}) // Current authority uses production State/Auth; no Control business runtime is constructed.
 	observed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v2/relay/nodes/") {
 			authenticatedHTTP.Add(1)
@@ -208,27 +229,28 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 	if !ready {
 		t.Fatal("product Hub did not start")
 	}
-	makeContext := func(name, nodeID, token string, epoch uint64) (context.Context, *nodetransport.Config) {
-		c := &nodetransport.Config{Version: 1, Role: "node", Origin: "https://" + address, ApplicationOrigin: "http://" + frontAddress, CertificateFile: filepath.Join(root, name+".pem"), PrivateKeyFile: filepath.Join(root, name+".key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: identity(name, nodeID, epoch), Peers: []nodetransport.Approval{{Identity: identity("hub", "", 0), PinKind: "certificate-sha256", PinSHA256: pins["hub"]}}}
-		path := writeProductPQConfig(t, root, name+"-config", c)
-		hub := machineHubContext{HubID: hubID, Origin: c.LogicalOrigin(), NodeID: nodeID, Token: token}
-		if err := configureMachinePQTransport(&hub, path); err != nil {
+	makeContext := func(nodeID, token string) (context.Context, *nodetransport.Config) {
+		active := activeNodes[nodeID]
+		hub := machineHubContext{HubID: hubID, Origin: active.NodeConfig.LogicalOrigin(), NodeID: nodeID, Token: token, StateDir: active.StateRoot, WriterRoot: active.WriterRoot, WriterScope: machineNativeWriterScope()}
+		if err := configureMachinePQTransport(&hub, productManagedPQPath(active)); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { hub.NodeTransport.(interface{ CloseIdleConnections() }).CloseIdleConnections() })
-		return withMachineHubContext(ctx, hub), c
+		t.Cleanup(func() {
+			if err := hub.TLSRuntime.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		return withMachineHubContext(ctx, hub), &active.NodeConfig
 	}
-	ctxA, cfgA := makeContext("node-a", fixture.sourceNodeID, fixture.sourceToken, 17)
-	ctxB, _ := makeContext("node-b", fixture.targetNodeID, fixture.targetToken, 29)
-	base := "http://" + frontAddress // isolated logical origin; ALL peer traffic maps to PQ HTTPS.
-	// A separate test executable process runs the actual Agent flag/state/lock,
-	// authorization probe, heartbeat and durable reconciliation paths. No native
-	// runtime is constructed and the source inbox is deliberately empty.
-	nodeState, err := os.MkdirTemp(root, "agent-state-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := persistMachineNodeIdentity(filepath.Join(machineNodeStateDir(nodeState, fixture.sourceNodeID), "identity.json"), machineNodeCredentialPath(nodeState, fixture.sourceNodeID), &machineNodeIdentity{Version: 1, NodeID: fixture.sourceNodeID, RelayToken: fixture.sourceToken}); err != nil {
+	ctxA, cfgA := makeContext(fixture.sourceNodeID, fixture.sourceToken)
+	ctxB, _ := makeContext(fixture.targetNodeID, fixture.targetToken)
+	base := "http://" + frontAddress
+	// The separate Agent reuses this genuinely accepted installation and its
+	// original application identity; no Runtime/model is constructed.
+	nodeState := activeNodes[fixture.sourceNodeID].StateRoot
+	// The separate Agent must acquire the existing Node lifetime itself.
+	parentA, _ := machineHubFrom(ctxA)
+	if err := parentA.TLSRuntime.Close(); err != nil {
 		t.Fatal(err)
 	}
 	executable, err := os.Executable()
@@ -238,12 +260,13 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 	childCtx, childCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer childCancel()
 	child := exec.CommandContext(childCtx, executable, "-test.run=^TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority$", "-test.v")
-	child.Env = append(os.Environ(), "PQTLS_PRODUCT_AGENT_CHILD=1", "PQTLS_CHILD_NODE_ID="+fixture.sourceNodeID, "PQTLS_CHILD_ORIGIN="+base, "PQTLS_CHILD_NODE_STATE="+nodeState, "PQTLS_CHILD_CONFIG="+filepath.Join(root, "node-a-config.json"), "CICADA_HUB_ID="+hubID)
+	child.Env = append(os.Environ(), "PQTLS_PRODUCT_AGENT_CHILD=1", "PQTLS_CHILD_NODE_ID="+fixture.sourceNodeID, "PQTLS_CHILD_ORIGIN="+base, "PQTLS_CHILD_NODE_STATE="+nodeState, "PQTLS_CHILD_CONFIG="+productManagedPQPath(activeNodes[fixture.sourceNodeID]), "CICADA_HUB_ID="+hubID)
 	childOutput, err := child.CombinedOutput()
 	if err != nil {
 		t.Fatal("separate actual Node Agent PQ process exited unsuccessfully")
 	}
 	t.Logf("separate relay-only Node Agent process exit=0 transcript_sha256=%x bytes=%d", sha256.Sum256(childOutput), len(childOutput))
+	ctxA, cfgA = makeContext(fixture.sourceNodeID, fixture.sourceToken)
 	callsMu.Lock()
 	remoteA = nil
 	callsMu.Unlock()
@@ -301,7 +324,7 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 		var capabilities struct {
 			Revision string `json:"contract_revision"`
 		}
-		if json.NewDecoder(response.Body).Decode(&capabilities) != nil || response.StatusCode != 200 || capabilities.Revision != "client-hub-v1.6.1" {
+		if json.NewDecoder(response.Body).Decode(&capabilities) != nil || response.StatusCode != 200 || capabilities.Revision != clientcontract.ContractRevision {
 			t.Fatal("Client negotiation boundary changed")
 		}
 	})
@@ -312,7 +335,7 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 			t.Fatal("unapproved logical origin reached Node transport")
 		}
 	})
-	t.Run("pin-SAN-trust-origin-old-cert-no-auth-data", func(t *testing.T) {
+	t.Run("pin-SAN-trust-origin-unapproved-leaf-no-auth-data", func(t *testing.T) {
 		for _, tc := range []struct {
 			name   string
 			mutate func(*nodetransport.Config)
@@ -321,10 +344,12 @@ func TestProductNodePQRuntimeRouterRelayAndCurrentCertificateAuthority(t *testin
 			{"SAN", func(c *nodetransport.Config) { c.Peers[0].Identity.DNSName = "wrong.synthetic.invalid" }},
 			{"trust", func(c *nodetransport.Config) { c.TrustFile = filepath.Join(root, "wrong-ca.pem") }},
 			{"origin", func(c *nodetransport.Config) { c.Origin = "https://" + frontAddress }},
-			{"old-certificate", func(c *nodetransport.Config) {
-				c.CertificateFile = filepath.Join(root, "old-node-a.pem")
-				c.PrivateKeyFile = filepath.Join(root, "old-node-a.key")
-				c.Identity = identity("old-node-a", fixture.sourceNodeID, 16)
+			{"unapproved-same-issuer-leaf", func(c *nodetransport.Config) {
+				c.CertificateFile = staleLeaf
+				c.PrivateKeyFile = staleKey
+				// Valid same issuer, but this distinct key has no approved peer pin.
+				// This tests TLS rejection before HTTP auth, not a stale epoch or Store read.
+				c.Identity = identity("old-node-a", fixture.sourceNodeID, cfgA.Identity.TLSEpoch)
 			}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

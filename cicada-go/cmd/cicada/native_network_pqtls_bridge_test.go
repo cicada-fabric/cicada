@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/pqtls"
 	"github.com/cicada-ai/cicada/internal/server"
@@ -77,12 +79,12 @@ func TestNativeNetworkBridgeTransportConfigurationFailsBeforeRequest(t *testing.
 	for _, origin := range []string{plain.URL, ":invalid-url"} {
 		bridge := &machineAgentJoinBridge{ctx: context.Background(), baseURL: origin, nodeToken: "synthetic-token"}
 		_, err := bridge.joinNetwork(localNetworkJoinRequest{Version: localJoinProtocolVersion, Operation: "network_join", NetworkID: "synthetic-network", InvitationToken: "synthetic-invitation", OwnerJoinProof: "synthetic-proof", Harness: "codex", NativeSessionID: nativeID, Workspace: workspace})
-		if !errors.Is(err, nodetransport.ErrConfiguration) {
-			t.Fatalf("Join lost configuration error before request construction: %v", err)
+		if !errors.Is(err, nodetransport.ErrTLSCurrentAuthorityUnavailable) {
+			t.Fatalf("Join lost current-authority denial before request construction: %v", err)
 		}
 		_, err = bridge.renewNetwork(localNetworkRenewRequest{Version: localJoinProtocolVersion, Operation: "network_renew", NetworkID: "synthetic-network", EndpointID: "synthetic-endpoint", Harness: "codex", NativeSessionID: nativeID, Workspace: workspace})
-		if !errors.Is(err, nodetransport.ErrConfiguration) {
-			t.Fatalf("renewal lost configuration error before request construction: %v", err)
+		if !errors.Is(err, nodetransport.ErrTLSCurrentAuthorityUnavailable) {
+			t.Fatalf("renewal lost current-authority denial before request construction: %v", err)
 		}
 	}
 	if calls.Load() != 0 {
@@ -112,34 +114,38 @@ func TestNativeNetworkBridgeTransportRejectsRedirect(t *testing.T) {
 // Reuses real Store/Fabric/native registration and the tagged product TLS
 // fixture. Session metadata is synthetic; this is not a native Runtime run.
 func TestNativeNetworkBridgePQJoinRenew(t *testing.T) {
+	runtimeStartupDNS(t)
 	f := newNativeNetworkBindingFixture(t)
-	root, pins := productPQFixtures(t)
+	root, _ := productPQFixtures(t)
 	hub, _ := machineHubFrom(f.bridge.ctx)
 	address, frontAddress := productFreeAddress(t), productFreeAddress(t)
-	identity := func(kind, name, nodeID string, epoch uint64) nodetransport.Identity {
-		return nodetransport.Identity{Kind: kind, HubID: hub.HubID, NodeID: nodeID, TLSEpoch: epoch, DNSName: name + ".synthetic.invalid"}
-	}
-	binding, err := f.persistence.CurrentNodeTransportBinding(f.nodeID)
+	base := "http://" + frontAddress
+	hubKey, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal(err)
 	}
-	hubIdentity, nodeIdentity := identity("hub", "hub", "", 0), identity("node", "node-a", f.nodeID, 17)
-	hubCfg := &nodetransport.Config{Version: 1, Role: "hub", Listen: address, CertificateFile: filepath.Join(root, "hub.pem"), PrivateKeyFile: filepath.Join(root, "hub.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: hubIdentity,
-		Peers: []nodetransport.Approval{{Identity: nodeIdentity, PinKind: "certificate-sha256", PinSHA256: pins["node-a"], OwnerID: binding.OwnerID, OwnerKeyID: binding.OwnerKeyID, BindingID: binding.BindingID, BindingVersion: binding.BindingVersion, CredentialVersion: binding.CredentialVersion}}}
-	hubCfg, err = loadHubPQTransport(writeProductPQConfig(t, root, "network-hub", hubCfg))
+	nodeKey, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal(err)
 	}
+	binding := productManagedPQEnroll(t, f.persistence, f.nodeID, hub.Token, f.ownerID, f.deviceID, nodeKey, hubKey)
+	material := productManagedPQCA(t, filepath.Join(root, "managed-ca"), hub.HubID, productManagedPQOrigin(t, address), base, time.Hour)
+	active := productManagedPQActivate(t, material, productManagedPQNodeInput{DB: f.persistence, Owner: f.ownerIdentity, Node: nodeKey, Hub: hubKey, Binding: binding, Token: hub.Token, StateRoot: hub.StateDir, WriterRoot: hub.WriterRoot, PQOrigin: productManagedPQOrigin(t, address), LogicalOrigin: base, DNSName: "node-a.synthetic.invalid"}, time.Now().UTC().Truncate(time.Second).Add(time.Hour))
+	hubCfg := &active.HubConfig
+	hubCfg.Listen = address
+	hubCfg.Peers = []nodetransport.Approval{productManagedPQApproval(t, f.persistence, active)}
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
 	var joins, renewals atomic.Int32
-	inner := server.NewFabricHandler(f.service, "")
+	inner := server.NewFabricHandlerWithNodeTLSCurrent(f.service, "", func(credential, nodeID string, packet []byte) ([]byte, error) {
+		return control.ReadNodeTLSCurrentPacket(f.persistence, hubKey, credential, nodeID, packet)
+	})
 	observed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v2/fabric/node/networks/join" || r.URL.Path == "/v2/fabric/node/networks/renew" {
 			state, err := pqtls.StateFromContext(r.Context())
 			if err != nil || r.TLS != nil || state.TLSVersion != "TLSv1.3" || state.Group != "MLKEM768" ||
 				state.CipherSuite != "TLS_AES_256_GCM_SHA384" || state.PeerSignature != "ML-DSA-65" || state.ALPN != "http/1.1" ||
-				state.VerificationResult != 0 || state.Peer.NodeID != f.nodeID || state.Peer.BindingEpoch != 17 {
+				state.VerificationResult != 0 || state.Peer.NodeID != f.nodeID || state.Peer.BindingEpoch != active.NodeConfig.Identity.TLSEpoch {
 				t.Error("Network Join/renew did not arrive with real verified strict Node PQ state")
 			}
 			if r.URL.Path == "/v2/fabric/node/networks/join" {
@@ -176,7 +182,6 @@ func TestNativeNetworkBridgePQJoinRenew(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	base := "http://" + frontAddress
 	// A valid application credential alone cannot enter the Node route through
 	// the ordinary listener. This request must not reach the observed handler.
 	plain, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v2/fabric/node/networks/join", strings.NewReader("{}"))
@@ -192,13 +197,15 @@ func TestNativeNetworkBridgePQJoinRenew(t *testing.T) {
 	if response.StatusCode != http.StatusForbidden || joins.Load() != 0 {
 		t.Fatal("ordinary listener allowed Node Join without PQ authentication")
 	}
-	nodeCfg := &nodetransport.Config{Version: 1, Role: "node", Origin: "https://" + address, ApplicationOrigin: base, CertificateFile: filepath.Join(root, "node-a.pem"), PrivateKeyFile: filepath.Join(root, "node-a.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: nodeIdentity,
-		Peers: []nodetransport.Approval{{Identity: hubIdentity, PinKind: "certificate-sha256", PinSHA256: pins["hub"]}}}
 	hub.Origin = base
-	if err := configureMachinePQTransport(&hub, writeProductPQConfig(t, root, "network-node", nodeCfg)); err != nil {
+	if err := configureMachinePQTransport(&hub, productManagedPQPath(active)); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { hub.NodeTransport.(interface{ CloseIdleConnections() }).CloseIdleConnections() })
+	t.Cleanup(func() {
+		if err := hub.TLSRuntime.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	bridge := &machineAgentJoinBridge{ctx: withMachineHubContext(ctx, hub), baseURL: base, stateDir: f.bridge.stateDir, nodeID: f.nodeID, nodeToken: hub.Token}
 	join := f.join
 	join.Version, join.Operation = localJoinProtocolVersion, "network_join"

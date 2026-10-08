@@ -2,7 +2,11 @@
 
 <a id="current-closeout"></a>
 
-## Current Native permission wire checkpoint — v0.1 PARTIAL
+## Current managed PQTLS fixture checkpoint — v0.1 PARTIAL
+
+[Managed fixture validation](pqtls-managed-fixture-validation.md) records focused normal and race 8 top-level / 12 subtests each PASS, full `cmd/cicada` 402 top-level / 287 subtest pass events with 13 opt-in skips, and tagged vet exit 0. These seven-test-path results remain separate from the shipping-build timeout and blocked Native acceptance.
+
+## Historical Native permission wire checkpoint — v0.1 PARTIAL
 
 Both managed adapters now omit sandbox overrides when resuming or starting turns on existing Native threads; fresh Worker defaults remain. [Scoped wire QA and installed synthetic semantics](native-permission-preservation-validation.md) records normal and race 8 top-level / 8 subtests each PASS plus one installed synthetic cold-resume policy/history case PASS; filesystem/network enforcement remains NOT_TESTED, without broader acceptance transfer.
 

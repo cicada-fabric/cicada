@@ -29,6 +29,7 @@ import (
 // Real Store + Fabric HTTP + owner-only Node socket + MCP, without Control.
 // The Codex session record is synthetic: this is not native Runtime evidence.
 type nativeNetworkBindingFixture struct {
+	ownerIdentity, deviceIdentity                                        *e2ee.Identity
 	persistence                                                          *store.Store
 	db                                                                   *sql.DB
 	service                                                              *fabric.Service
@@ -70,6 +71,7 @@ func newNativeNetworkBindingFixture(t *testing.T) *nativeNetworkBindingFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.ownerIdentity = ownerKey
 	if _, err = f.persistence.RegisterOwnerApprovalKeyLocal(f.ownerID, ownerKey.Public()); err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +83,7 @@ func newNativeNetworkBindingFixture(t *testing.T) *nativeNetworkBindingFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.deviceIdentity = deviceKey
 	proof, err := ownerKey.SignOwnerDeviceGrant(f.ownerID, f.deviceID, deviceKey.Public(), hubID, e2ee.OwnerDevicePurposeControl, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)

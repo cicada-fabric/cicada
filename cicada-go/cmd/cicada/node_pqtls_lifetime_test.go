@@ -17,15 +17,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/control"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodetransport"
 	"github.com/cicada-ai/cicada/internal/pqtls"
 	"github.com/cicada-ai/cicada/internal/server"
+	"github.com/cicada-ai/cicada/internal/store"
 )
 
 func productLifetimeLeaf(t *testing.T, root, name string, start, end time.Time) string {
@@ -68,48 +72,67 @@ func (w *lifetimeObservedWriter) Write(data []byte) (int, error) {
 // Synthetic session metadata; real product Store, PQ listeners and connections.
 // A single finite certificate window covers retained HTTP and idle/active SSE.
 func TestProductNodePQCertificateLifetime(t *testing.T) {
+	runtimeStartupDNS(t)
 	f := newNativeNetworkBindingFixture(t)
 	root, _ := productPQFixtures(t)
 	hub, _ := machineHubFrom(f.bridge.ctx)
-	start, end := time.Now().Add(-time.Minute).UTC().Truncate(time.Second), time.Now().Add(12*time.Second).UTC().Truncate(time.Second)
-	hubPin := productLifetimeLeaf(t, root, "hub", start, end)
-	nodePin := productLifetimeLeaf(t, root, "node-a", start, end)
-	idlePin := productLifetimeLeaf(t, root, "node-b", start, end)
 	idleNodeID := "node_synthetic_lifetime_idle"
 	idleToken, idleDigest, err := fabric.NewNodeCredential()
 	if err != nil {
 		t.Fatal(err)
 	}
 	codeDigest := sha256.Sum256([]byte("synthetic lifetime idle Node pairing code"))
-	if _, err := f.persistence.CreatePendingNodeDeviceBinding(idleNodeID, "Synthetic lifetime idle Node", idleDigest, hex.EncodeToString(codeDigest[:]), time.Now().Add(5*time.Minute)); err != nil {
+	if _, err = f.persistence.CreatePendingNodeDeviceBinding(idleNodeID, "Synthetic lifetime idle Node", idleDigest, hex.EncodeToString(codeDigest[:]), time.Now().Add(5*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.persistence.ConfirmPendingNodeDeviceBinding(f.ownerID, f.deviceID, hex.EncodeToString(codeDigest[:])); err != nil {
+	if _, err = f.persistence.ConfirmPendingNodeDeviceBinding(f.ownerID, f.deviceID, hex.EncodeToString(codeDigest[:])); err != nil {
 		t.Fatal(err)
 	}
-	idleBinding, err := f.persistence.CurrentNodeTransportBinding(idleNodeID)
+	hubKey, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal(err)
 	}
+	nodeKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idleKey, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeBinding := productManagedPQEnroll(t, f.persistence, f.nodeID, hub.Token, f.ownerID, f.deviceID, nodeKey, hubKey)
+	idleActiveBinding := productManagedPQEnroll(t, f.persistence, idleNodeID, idleToken, f.ownerID, f.deviceID, idleKey, hubKey)
 	address, frontAddress := productFreeAddress(t), productFreeAddress(t)
-	hubIdentity := nodetransport.Identity{Kind: "hub", HubID: hub.HubID, DNSName: "hub.synthetic.invalid"}
-	nodeIdentity := nodetransport.Identity{Kind: "node", HubID: hub.HubID, NodeID: f.nodeID, TLSEpoch: 17, DNSName: "node-a.synthetic.invalid"}
+	material := productManagedPQCA(t, filepath.Join(root, "managed-ca"), hub.HubID, productManagedPQOrigin(t, address), "http://"+frontAddress, 12*time.Second)
+	end := material.notAfter
+	active := productManagedPQActivate(t, material, productManagedPQNodeInput{DB: f.persistence, Owner: f.ownerIdentity, Node: nodeKey, Hub: hubKey, Binding: activeBinding, Token: hub.Token, StateRoot: hub.StateDir, WriterRoot: hub.WriterRoot, PQOrigin: productManagedPQOrigin(t, address), LogicalOrigin: "http://" + frontAddress, DNSName: "node-a.synthetic.invalid"}, end)
+	idleRoot := filepath.Join(root, "idle-node-state")
+	idleActive := productManagedPQActivate(t, material, productManagedPQNodeInput{DB: f.persistence, Owner: f.ownerIdentity, Node: idleKey, Hub: hubKey, Binding: idleActiveBinding, Token: idleToken, StateRoot: idleRoot, WriterRoot: idleRoot, PQOrigin: productManagedPQOrigin(t, address), LogicalOrigin: "http://" + frontAddress, DNSName: "node-b.synthetic.invalid"}, end)
 	binding, err := f.persistence.CurrentNodeTransportBinding(f.nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hubCfg := &nodetransport.Config{Version: 1, Role: "hub", Listen: address, CertificateFile: filepath.Join(root, "hub-lifetime.pem"), PrivateKeyFile: filepath.Join(root, "hub.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: hubIdentity,
-		Peers: []nodetransport.Approval{{Identity: nodeIdentity, PinKind: "certificate-sha256", PinSHA256: nodePin, OwnerID: binding.OwnerID, OwnerKeyID: binding.OwnerKeyID, BindingID: binding.BindingID, BindingVersion: binding.BindingVersion, CredentialVersion: binding.CredentialVersion}}}
-	idleIdentity := nodetransport.Identity{Kind: "node", HubID: hub.HubID, NodeID: idleNodeID, TLSEpoch: 29, DNSName: "node-b.synthetic.invalid"}
-	hubCfg.Peers = append(hubCfg.Peers, nodetransport.Approval{Identity: idleIdentity, PinKind: "certificate-sha256", PinSHA256: idlePin, OwnerID: idleBinding.OwnerID, OwnerKeyID: idleBinding.OwnerKeyID, BindingID: idleBinding.BindingID, BindingVersion: idleBinding.BindingVersion, CredentialVersion: idleBinding.CredentialVersion})
-	hubCfg, err = loadHubPQTransport(writeProductPQConfig(t, root, "lifetime-hub", hubCfg))
+	idleBinding, err := f.persistence.CurrentNodeTransportBinding(idleNodeID)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("read initial idle Node authority")
 	}
+	beforeActive, err := f.persistence.GetNodeTLSAuthorityReservationLocal(active.RequestID)
+	if err != nil {
+		t.Fatal("read initial active Node TLS reservation")
+	}
+	beforeIdle, err := f.persistence.GetNodeTLSAuthorityReservationLocal(idleActive.RequestID)
+	if err != nil {
+		t.Fatal("read initial idle Node TLS reservation")
+	}
+	hubCfg := &active.HubConfig
+	hubCfg.Listen = address
+	hubCfg.Peers = []nodetransport.Approval{productManagedPQApproval(t, f.persistence, active), productManagedPQApproval(t, f.persistence, idleActive)}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var joinCalls, streamCalls atomic.Int32
-	inner := server.NewFabricHandler(f.service, "")
+	inner := server.NewFabricHandlerWithNodeTLSCurrent(f.service, "", func(credential, nodeID string, packet []byte) ([]byte, error) {
+		return control.ReadNodeTLSCurrentPacket(f.persistence, hubKey, credential, nodeID, packet)
+	})
 	front := newControlHTTPServer("", 0, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, err := pqtls.StateFromContext(r.Context())
 		if r.URL.Path != "/healthz" && (err != nil || !state.ValidAt(time.Now()) || !state.VerifiedNotAfter.Equal(end) || r.TLS != nil) {
@@ -148,8 +171,7 @@ func TestProductNodePQCertificateLifetime(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	nodeCfg := &nodetransport.Config{Version: 1, Role: "node", Origin: "https://" + address, CertificateFile: filepath.Join(root, "node-a-lifetime.pem"), PrivateKeyFile: filepath.Join(root, "node-a.key"), TrustFile: filepath.Join(root, "ca.pem"), Identity: nodeIdentity,
-		Peers: []nodetransport.Approval{{Identity: hubIdentity, PinKind: "certificate-sha256", PinSHA256: hubPin}}}
+	nodeCfg := &active.NodeConfig
 	client, err := pqtls.NewClient(nodeCfg.TLSConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -192,10 +214,7 @@ func TestProductNodePQCertificateLifetime(t *testing.T) {
 	if err != nil || response.StatusCode != 201 {
 		t.Fatalf("positive enrolled Join status %d err %v", response.StatusCode, err)
 	}
-	idleCfg := *nodeCfg
-	idleCfg.Identity = idleIdentity
-	idleCfg.CertificateFile = filepath.Join(root, "node-b-lifetime.pem")
-	idleCfg.PrivateKeyFile = filepath.Join(root, "node-b.key")
+	idleCfg := idleActive.NodeConfig
 	idleClient, err := pqtls.NewClient(idleCfg.TLSConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -273,9 +292,29 @@ func TestProductNodePQCertificateLifetime(t *testing.T) {
 	if err == nil {
 		t.Fatal("fresh expired connection accepted")
 	}
-	after, err := f.persistence.CurrentNodeTransportBinding(f.nodeID)
-	if err != nil || *after != *binding {
-		t.Fatal("expiry changed persistent Node authority")
+	for _, expected := range []struct {
+		nodeID, requestID string
+		binding           *store.NodeTransportBinding
+		reservation       *store.NodeTLSAuthoritySnapshot
+	}{{f.nodeID, active.RequestID, binding, beforeActive}, {idleNodeID, idleActive.RequestID, idleBinding, beforeIdle}} {
+		after, err := f.persistence.CurrentNodeTransportBinding(expected.nodeID)
+		if err != nil || after == nil {
+			t.Fatal("read post-expiry Node binding")
+		}
+		// Current TLS authority is a time-filtered view and must disappear.
+		// The durable Owner/credential binding itself must remain unchanged.
+		if after.TLSAuthority != nil {
+			t.Fatal("expired TLS authority remained current")
+		}
+		beforeBinding, afterBinding := *expected.binding, *after
+		beforeBinding.TLSAuthority, afterBinding.TLSAuthority = nil, nil
+		if !reflect.DeepEqual(beforeBinding, afterBinding) {
+			t.Fatal("expiry changed persistent Node binding")
+		}
+		persisted, err := f.persistence.GetNodeTLSAuthorityReservationLocal(expected.requestID)
+		if err != nil || !reflect.DeepEqual(persisted, expected.reservation) {
+			t.Fatal("expiry changed persistent TLS claims/grant/ACK/activation/version")
+		}
 	}
 	t.Log("real short-lived Hub/Node ML-DSA certificates: enrolled Join succeeded before expiry; retained client refused new authentication bytes; two SSEs terminated; no authority reset or post-expiry dispatch")
 }
