@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.160.1.
+"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.161.0.
 
 The disposable Runtime uses a loopback-only synthetic Responses provider inside
 a network-none container. The TUI is driven through a real PTY; queue delivery
@@ -29,7 +29,7 @@ import termios
 import shutil
 
 
-IMAGE = "sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83"
+IMAGE = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
 CODEX = "/home/cicada/.local/bin/codex"
 MAX_RUNTIME_SECONDS = 140
 COMPOSER_READY = b"Ask Codex to do anything"
@@ -701,10 +701,10 @@ def main():
     os.chmod(pathlib.Path(CODEX_HOME) / "config.toml", 0o600)
     with open(CODEX, "rb") as binary:
         actual_cli_sha = hashlib.file_digest(binary, "sha256").hexdigest()
-    if actual_cli_sha != "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35":
+    if actual_cli_sha != "9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c":
         return 20
     version = subprocess.run([CODEX, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=8)
-    if version.returncode != 0 or version.stdout.strip() != "codex-cli 0.160.1":
+    if version.returncode != 0 or version.stdout.strip() != "codex-cli 0.161.0":
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["runtime_version_ok"] = False
@@ -763,7 +763,7 @@ def main():
             publish()
         return 24
     user_agent = initialized["userAgent"]
-    if not re.search(r"(?:^|[^0-9])0\.160\.1(?:[^0-9]|$)", user_agent):
+    if not re.search(r"(?:^|[^0-9])0\.161\.0(?:[^0-9]|$)", user_agent):
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["appserver_user_agent_version_ok"] = False
@@ -1315,7 +1315,7 @@ def write_result(path, result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-native", action="store_true", help="run one isolated real 0.160.1 TUI/queue check")
+    parser.add_argument("--run-native", action="store_true", help="run one isolated real 0.161.0 TUI/queue check")
     parser.add_argument("--startup-diagnostic-only", action="store_true",
                         help="stop at the first synthetic provider POST or TUI exit; skip queue and draft checks")
     parser.add_argument("--trace-app-file-failures", action="store_true",
@@ -1338,7 +1338,7 @@ def main():
     if args.trace_tui_file_failures and not args.result:
         parser.error("--trace-tui-file-failures requires --result for bounded private evidence")
     if not args.run_native:
-        print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.160.1 TUI"}, sort_keys=True))
+        print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.161.0 TUI"}, sort_keys=True))
         return 0
     max_timeout = 60 if args.startup_diagnostic_only else MAX_RUNTIME_SECONDS
     if not 30 <= args.timeout <= max_timeout:

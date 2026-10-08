@@ -1,6 +1,54 @@
 # Native foreground queue validation
 
-## Current 0.160.1 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
+## Current CLI 0.161.0 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
+
+The existing opt-in real-PTY/official-queue fixture now pins CLI 0.161.0 SHA256
+`9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c`
+(292,309,256 bytes) and Runtime
+`sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29`.
+The single [actual result](../.cicada-data/native-foreground-queue-0161-20261008a/result.json)
+SHA256 `703342d494993bc6a5550d42a583626d734cfd2032491c6cea73465ecebe4259`
+(8,364 bytes) records PASS in 5.144 s; Main observed driver exit 0. Human UI draft PASS,
+foreground busy queue PASS and official queue exit 0. Tested script SHA256
+`d52baea798e08a8d794828dec0926fd132d547699c3a84d4a3c3740efb7018fc`
+(91,983 bytes) is distinct from CLI/image pins. Main reports original thread
+`01a118ed-8499-7410-bd89-c82c8138f71f`, zero paid calls, network none and
+driver-reported private-directory cleanup. The [independent review](../.cicada-data/native-foreground-queue-0161-20261008a/root-independent-review.NONAUTH.json)
+SHA256 `f7f8e03c3ac9e8514938ef848e862f9329d4a34a5889b3d8baa87d3e40f25a49`
+(2,571 bytes) confirms original turn completion, then queued start/completion,
+then draft start/completion; busy queue count 1, zero new starts while busy,
+and exact draft-plus-suffix matching. It confirms the exact owned container
+absent, six resident metadata unchanged and tested script unchanged.
+Private-directory cleanup remains DRIVER_REPORTED_ONLY_NOT_INDEPENDENTLY_VERIFIED.
+Earlier passes retain their tested source; this UI pass does not validate native
+sandbox execution.
+
+The [445 experimental-schema receipt](../.cicada-data/native-observer-wiring-20261007/runtime0161-experimental-schema-20261007c/result.NONAUTH.json)
+records the exact CLI generation. Existing `initialize` with experimentalApi true,
+`initialized`, queue/list and lifecycle notification shapes remain compatible.
+Pinned release [Unix transport](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/app-server-transport/src/transport/unix_socket.rs#L76)
+and [daemon-directory policy](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/uds/src/daemon_directory.rs)
+place the actual socket in `/tmp/codex-daemon-1000/sha256(canonical-advertised-path)`
+and expose the advertised `/tmp/cfq.sock` as a symlink. App-server, observer,
+TUI and literal official queue command share one container namespace, so the
+existing advertised endpoint resolves to that same protected socket; no host
+socket sharing or guessed alternative API is introduced.
+
+Main executed this bounded command once:
+
+```sh
+/usr/bin/timeout --signal=TERM --kill-after=1s 179s /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B /home/zyf/CICADA/scripts/test-native-foreground-queue.py --run-native --timeout 140 --result /home/zyf/CICADA/.cicada-data/native-foreground-queue-0161-20261008a/result.json
+```
+
+The 140-second evidence deadline retains the existing cleanup bound and outer
+179+1-second cap. Default OFF, network none, read-only root, dropped capabilities,
+no-new-privileges, UID 1000, private writable home, resource caps and no credential
+mounts remain unchanged. The synthetic loopback provider tests UI protocol, busy queue and exact
+draft-plus-suffix behavior; this proves neither paid model context nor full
+business end-to-end acceptance. The prior
+original A auto6 cause remains UNKNOWN; no second run is instructed.
+
+## Historical 0.160.1 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
 
 The single actual [result](../.cicada-data/native-foreground-queue-161-20261007a/result.json)
 `f6ead433418e84fe44e87f2842dd96f4a4b2930a3f4d4c03541d646883e5ee0e`
