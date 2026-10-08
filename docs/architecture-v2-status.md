@@ -2,6 +2,42 @@
 
 <a id="current-closeout"></a>
 
+## Current Relay Ask admission quota-count candidate — scoped PASS; v0.1 PARTIAL
+
+Ask admission counts pending `OPEN` and `CANCEL_REQUESTED` records within
+sender Endpoint, sender Principal, sender Group, receiver Endpoint, and global
+quotas. The prior count could scan expired history. Additive schema v59 uses a
+single expression index on state and a fixed 12-byte expiry-order key to skip
+expired records in the count range. This does not change expiration sweep or
+batch logic; the default global Ask limit remains 1024 and configurable.
+Migration definitions and checksums 1–58 remain unchanged. Normal open upgrades
+v58 to v59. The private restore review is pinned to v59 and does not
+auto-advance future schema versions.
+
+Against a schema-58 baseline with the old Relay/migration sources overlaid, the
+schema-59 benchmark reduced median count time by 87.7437% for 1,000 expired
+rows plus 16 live rows and 98.5015% for 10,000 plus 16; logical database pages
+grew 1.35468% and 2.92748% respectively. The focused changed-logic race passed
+8 top-level / 10 subtests, 0 fail/skip. These are scoped results, not a full
+normal-suite or full-repository race PASS. Earlier A retained a partial
+failure/outer timeout (157 pass / 2 fail, completion unknown); B completed
+with 71 pass / 1 fail / 1 skip due to its old v58 ledger expectation; C's
+test-only v59 expectation correction passed its focused caller test, but its
+broader race timed out after 8 top-level PASS events with remaining results
+unknown. Separate contract 1.6.4/catalog 55 and 17 Python checks passed.
+
+The dirty shipping build from the pinned eight-file candidate passed one
+bounded synthetic real-TCP capacity gate under 1 CPU / 128 MiB: 64 endpoints,
+16 observed in-flight, 64 samples, p50/p95 280.239/761.625 ms, no OOM, and
+34,616 KiB Hub peak RSS. One over-limit Ask received `429` with one-second
+retry; six protected residents were unchanged. It used the standard image
+(`pqtls_available=false`), so this is not a PQTLS or fleet-capacity guarantee.
+Root verified the 936-entry input inventory; exact provenance and cleanup
+limits are in [the validation record](relay-admission-performance-validation.md).
+Native Runtime/provider, Android, physical Nodes, and public HTTPS remain
+**NOT_RUN**; the historical physical bind capsule skip remains unresolved.
+Overall v0.1 remains **PARTIAL**.
+
 ## Current Native sandbox/KVM preflight checkpoint — v0.1 PARTIAL
 
 One pinned CLI 0.161.0 KVM guest run derived a filesystem-only workspace-write / outside-deny PASS; the original J aggregate remains `NOT_ESTABLISHED` because its parsed CLI exit field stayed null. Zero-credential IPC attempts A/B/C failed before `turn/start`; D passed only the bounded initialize/config IPC check, observing two correlated replies and one `remoteControl/status/changed` notification, with `turn_start_calls=0`. D's exact container was removed and frozen inputs and six-resident state were unchanged. Model/provider calls remain `NOT_INSTRUMENTED`; native Session/context continuity, authenticated model/network behavior, general Worker isolation, G2/G3 and full T9 remain unclosed. The shared control FD limits child-wait evidence to process lifecycle. Next is key-free restricted-guest HTTP/SSE route and outside-guest authentication-path preparation, not a model run or provider-key retry. See [the scoped preflight and IPC evidence](native-kvm-preflight-validation.md); overall v0.1 remains PARTIAL.

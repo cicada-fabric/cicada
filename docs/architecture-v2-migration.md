@@ -1,5 +1,37 @@
 # Architecture v2.3 数据与协议迁移
 
+## Current Relay Ask admission quota-count index — schema v59; scoped PASS
+
+Ask admission counts pending `OPEN` and `CANCEL_REQUESTED` requests within
+sender Endpoint, sender Principal, sender Group, receiver Endpoint, and global
+quotas. Previously this count could scan expired request history. One
+additive v2 migration installs one deterministic expression index on state
+and `cicada_relay_expiry_order_key_v1(expires_at)`. Its fixed 12-byte key
+preserves RFC3339Nano instant order across offsets and fractional precision;
+empty expiry maps to the all-`0xff` unlimited sentinel, while malformed text
+produces `NULL`. The count uses the indexed expiry range. This is not an
+expiration sweep change and does not alter expiry or batch behavior.
+
+There is no API, authorization, role, key, protocol, or table-row change.
+Migration versions 1–58, IDs, and checksums remain immutable. A normal open
+advances v58 through the additive v59 migration. The private restore review is
+pinned to v59 and enforces exact schema version/fingerprint; it neither
+forward-restores a v58 checkpoint into v59 nor auto-advances for later schema
+versions. Each future migration requires a new restore review. Index creation
+is a one-time build and adds storage; benchmark logical-page growth was 1.35%
+for 1,000 historical expired requests and 2.93% for 10,000, while index-build
+duration and exact index-file bytes remain unmeasured.
+
+With the same eight dirty source pins based on
+`0eab255900e5beca305bce97b7e62c6a61b7e430`, the scoped count benchmark reduced
+median time by 87.7437% / 98.5015% at those two history sizes; the changed-logic
+race passed 8 top-level / 10 subtests. The bounded standard-image shipping
+capacity gate also passed one synthetic 64-endpoint / 16-in-flight sample
+under 1 CPU / 128 MiB. These do not establish a full normal suite, full race,
+PQTLS handshake, Native, Android, physical-node, public-HTTPS, or general
+capacity pass. A/B/C failures and limits remain recorded; the physical bind
+capsule skip remains open. See [the pinned results and limits](relay-admission-performance-validation.md).
+
 ## Current G4 fixture boundary
 
 Only the existing real-queue fixture was repinned to exact CLI / app-server 0.161.0 and exercised with an independent genuine synthetic B paginated-history snapshot. The narrow injected-before-ledger boundary passed; no new session/history reinjection or product/DB/key/wire/Client migration occurred. Product 009a / Hub 45058 retain dirty 2b92 provenance; helper c01 reuse and contract 1.6.4 / wire 1 / catalog 55 / DB 58 remain unchanged. See [queue evidence and scope](native-queue-crash-acceptance.md). Sandbox BLOCKED and broader acceptance remain separate.

@@ -1198,27 +1198,25 @@ func relayAcquireAdmissionGuardTx(tx *sql.Tx) error {
 
 func relayPendingAskCountTx(tx *sql.Tx, scope, senderEndpointID, principalID, groupID,
 	receiverEndpointID, currentTime string) (int, error) {
-	const pendingPredicate = `state IN (?, ?) AND cicada_network_expiry_allows(expires_at, ?) = 1`
-	var query string
-	var args []any
+	query, ok := relayPendingAskCountSQL(scope)
+	if !ok {
+		return 0, fmt.Errorf("unknown relay admission scope %q", scope)
+	}
+	cutoff, valid := relayAskExpiryCutoff(currentTime)
+	if !valid {
+		// The previous row-wise UDF failed closed for an invalid cutoff.
+		return 0, nil
+	}
+	args := []any{FabricRequestOpen, FabricRequestCancelRequested, cutoff}
 	switch scope {
 	case RelayAdmissionScopeSenderPrincipal:
-		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_principal_id = ?`
-		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, principalID}
+		args = append(args, principalID)
 	case RelayAdmissionScopeSenderEndpoint:
-		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_endpoint_id = ?`
-		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, senderEndpointID}
+		args = append(args, senderEndpointID)
 	case RelayAdmissionScopeSenderGroup:
-		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND sender_group_id = ?`
-		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, groupID}
+		args = append(args, groupID)
 	case RelayAdmissionScopeReceiver:
-		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate + ` AND receiver_endpoint_id = ?`
-		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime, receiverEndpointID}
-	case RelayAdmissionScopeGlobal:
-		query = `SELECT count(*) FROM relay_v2_requests WHERE ` + pendingPredicate
-		args = []any{FabricRequestOpen, FabricRequestCancelRequested, currentTime}
-	default:
-		return 0, fmt.Errorf("unknown relay admission scope %q", scope)
+		args = append(args, receiverEndpointID)
 	}
 	var count int
 	if err := tx.QueryRow(query, args...).Scan(&count); err != nil {

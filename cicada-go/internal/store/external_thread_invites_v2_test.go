@@ -509,6 +509,7 @@ func TestExternalThreadInviteMigrationRollsBackAndPreservesLegacyRows(t *testing
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	var legacyRows int
 	if err := reopened.db.QueryRow(`SELECT count(*) FROM fabric_messages WHERE id = 'fabric_message_legacy'`).Scan(&legacyRows); err != nil {

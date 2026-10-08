@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 58
+	CurrentV2SchemaVersion = 59
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -545,6 +545,13 @@ var v2Migrations = []v2Migration{
 		Objects:     []string{"resource_v2_leases", "resource_v2_lease_task_provenance_immutable_v58"},
 		Apply:       func(s *Store) error { return s.initializeResourceTaskEpochV2Schema() },
 	},
+	{
+		Version:     59,
+		ID:          relayAskExpiryOrderMigrationID,
+		Description: "index pending Relay Ask expiry comparisons without rescanning expired pending history",
+		Objects:     []string{relayAskExpiryOrderIndex},
+		Apply:       func(s *Store) error { return s.initializeRelayAskExpiryOrderIndex() },
+	},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority
@@ -967,6 +974,11 @@ func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]le
 		}
 		if count != 1 {
 			return errors.New("Relay Ask sender Endpoint migration did not install its index")
+		}
+	}
+	if migration.ID == relayAskExpiryOrderMigrationID {
+		if err := verifyRelayAskExpiryOrderIndex(s.db); err != nil {
+			return err
 		}
 	}
 	if migration.ID == "v2.relay.link_network_enrollment" {

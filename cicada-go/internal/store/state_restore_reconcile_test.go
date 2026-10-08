@@ -6,7 +6,7 @@ import (
 )
 
 func syntheticHubCheckpoint() *HubRestoreCheckpoint {
-	return &HubRestoreCheckpoint{HubID: "synthetic-independent-Hub", SchemaVersion: 58, SchemaFingerprint: "synthetic-exact-schema", IdentityFingerprints: map[string]string{"identity": "synthetic"}, Tables: []string{"contacts", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_control_rpc_sequences_v1", "client_device_request_recovery_v2", "shared_tasks_v2", "resource_v2_authority", "node_control_rpc_inbox_v1"}, rows: map[string]map[string]map[string]any{
+	return &HubRestoreCheckpoint{HubID: "synthetic-independent-Hub", SchemaVersion: hubRestoreReviewedSchemaVersion, SchemaFingerprint: "synthetic-exact-schema", IdentityFingerprints: map[string]string{"identity": "synthetic"}, Tables: []string{"contacts", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_control_rpc_sequences_v1", "client_device_request_recovery_v2", "shared_tasks_v2", "resource_v2_authority", "node_control_rpc_inbox_v1"}, rows: map[string]map[string]map[string]any{
 		"contacts":                          {"peer": {"send_sequence": int64(12), "received_sequences_json": "[7,9]"}},
 		"node_tls_epoch_floors_v1":          {"hub/node": {"floor": int64(8)}},
 		"node_tls_issuer_serial_floors_v1":  {"issuer": {"floor": "0000000000000000000000000000002a"}},
@@ -17,6 +17,31 @@ func syntheticHubCheckpoint() *HubRestoreCheckpoint {
 		"node_control_rpc_inbox_v1":         {"unknown": {"state": "UNCERTAIN", "operation_id": "synthetic-exact-op", "request_digest": "synthetic-exact-digest", "sequence": int64(41)}},
 	}}
 }
+
+func TestHubRestoreReviewedSchemaVersionRequiresExplicitBump(t *testing.T) {
+	if CurrentV2SchemaVersion != hubRestoreReviewedSchemaVersion {
+		t.Fatalf("current schema %d has not been reviewed for Hub restore; reviewed schema is %d", CurrentV2SchemaVersion, hubRestoreReviewedSchemaVersion)
+	}
+}
+
+func TestHubRestoreCoverageRejectsCrossSchemaVersions(t *testing.T) {
+	for _, versions := range [][2]int{
+		{hubRestoreReviewedSchemaVersion - 1, hubRestoreReviewedSchemaVersion},
+		{hubRestoreReviewedSchemaVersion, hubRestoreReviewedSchemaVersion - 1},
+	} {
+		base, current := syntheticHubCheckpoint(), syntheticHubCheckpoint()
+		base.SchemaVersion, current.SchemaVersion = versions[0], versions[1]
+		if err := CompareHubRestoreCoverage(base, current); !errors.Is(err, ErrHubRestoreCoverage) {
+			t.Fatalf("cross-schema restore coverage passed for versions %v: %v", versions, err)
+		}
+	}
+	base, current := syntheticHubCheckpoint(), syntheticHubCheckpoint()
+	current.SchemaFingerprint = "synthetic-different-schema"
+	if err := CompareHubRestoreCoverage(base, current); !errors.Is(err, ErrHubRestoreCoverage) {
+		t.Fatalf("restore coverage accepted different schema fingerprints: %v", err)
+	}
+}
+
 func TestHubForwardCoverageRejectsEveryBurnedFloorAndUnknownLoss(t *testing.T) {
 	for _, fault := range []struct {
 		name, table, key, column string

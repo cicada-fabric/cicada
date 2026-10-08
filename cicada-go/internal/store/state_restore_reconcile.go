@@ -13,6 +13,11 @@ import (
 	"strings"
 )
 
+// Restore only permits schema versions whose table inventory, forward-floor,
+// and UNKNOWN-row semantics have been reviewed explicitly. A new migration
+// must update this pin only after those restore rules are reviewed.
+const hubRestoreReviewedSchemaVersion = 59
+
 type hubRestoreSQLiteBlob struct {
 	Hex string `json:"sqlite_blob"`
 }
@@ -40,7 +45,8 @@ type HubRestoreReconciliationReport struct {
 }
 
 // Full rows never leave this process or appear in a report. Every table is
-// included; unsupported tables fail closed against this schema58 whitelist.
+// included; unsupported tables fail closed against the current schema table
+// whitelist. Schema v59 adds only a Relay Ask expiry index, not a table.
 func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint, error) {
 	root, e := canonicalRestoreTarget(stateDir)
 	if e != nil {
@@ -60,9 +66,9 @@ func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint
 		return nil, e
 	}
 	defer tx.Rollback()
-	cp := &HubRestoreCheckpoint{IdentityFingerprints: fps, SchemaVersion: 58, rows: map[string]map[string]map[string]any{}}
+	cp := &HubRestoreCheckpoint{IdentityFingerprints: fps, SchemaVersion: hubRestoreReviewedSchemaVersion, rows: map[string]map[string]map[string]any{}}
 	var n, max, bad int
-	if e = tx.QueryRow(`SELECT count(*),coalesce(max(version),0),sum(CASE WHEN state!='applied' THEN 1 ELSE 0 END) FROM schema_migrations_v2`).Scan(&n, &max, &bad); e != nil || n != 58 || max != 58 || bad != 0 {
+	if e = tx.QueryRow(`SELECT count(*),coalesce(max(version),0),sum(CASE WHEN state!='applied' THEN 1 ELSE 0 END) FROM schema_migrations_v2`).Scan(&n, &max, &bad); e != nil || n != hubRestoreReviewedSchemaVersion || max != hubRestoreReviewedSchemaVersion || bad != 0 {
 		return nil, ErrHubRestoreCoverage
 	}
 	if e = tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&cp.HubID); e != nil || cp.HubID == "" {
@@ -216,7 +222,7 @@ func hubRestoreFloor(name string) bool {
 	return false
 }
 func CompareHubRestoreCoverage(base, current *HubRestoreCheckpoint) error {
-	if base == nil || current == nil || base.SchemaVersion != 58 || current.SchemaVersion != 58 || base.HubID != current.HubID || base.SchemaFingerprint != current.SchemaFingerprint || hubRestoreDigest(base.IdentityFingerprints) != hubRestoreDigest(current.IdentityFingerprints) || hubRestoreDigest(base.Tables) != hubRestoreDigest(current.Tables) {
+	if base == nil || current == nil || base.SchemaVersion != hubRestoreReviewedSchemaVersion || current.SchemaVersion != hubRestoreReviewedSchemaVersion || base.SchemaVersion != current.SchemaVersion || base.HubID != current.HubID || base.SchemaFingerprint != current.SchemaFingerprint || hubRestoreDigest(base.IdentityFingerprints) != hubRestoreDigest(current.IdentityFingerprints) || hubRestoreDigest(base.Tables) != hubRestoreDigest(current.Tables) {
 		return ErrHubRestoreCoverage
 	}
 	for table, rows := range base.rows {
@@ -453,7 +459,8 @@ func hubRestoreReconcileReadOnly(o HubRestoreOperationOptions, a *HubRestoreAuth
 	return report, nil
 }
 
-// Explicit schema58 table names, reviewed against the selected product schema.
+// Explicit schema table names, reviewed against the selected product schema.
+// Schema v59 changes only an index, so the existing table list is unchanged.
 func hubRestoreSupportedTable(name string) bool {
 	switch name {
 	case "approvals", "artifact_v2_grants", "artifact_v2_refs", "artifacts", "attachments", "client_control_intents_v2", "client_device_enrollment_proofs_v2", "client_device_grant_nonces_v2", "client_device_hub_config_v2", "client_device_request_recovery_v2", "client_device_requests_v2", "client_devices_v2", "client_status_change_events_v2", "client_status_state_v2", "client_status_streams_v2", "client_topology_group_create_guard_v2", "client_topology_group_creates_v2", "commands", "communication_link_grants_v2", "communication_link_key_grants_v2", "communication_link_message_review_candidates_v2", "communication_link_message_reviews_v2", "communication_link_review_events_v2", "communication_link_review_policy_grants_v2", "communication_link_review_policy_heads_v2", "communication_links_v2", "contact_discovery_requests", "contacts", "cross_owner_group_admissions_v2", "cross_owner_group_joins_v2", "cross_owner_group_key_proofs_v2", "directory_records", "endpoint_group_memberships", "endpoint_key_candidates_v2", "endpoint_network_memberships_v2", "events", "external_actions", "external_events", "external_thread_invites_v2", "external_thread_invites_v2_v51", "fabric_endpoints", "fabric_events", "fabric_messages", "fabric_node_credentials", "gateway_v2_contracts", "gateway_v2_group_cards", "gateway_v2_mailbox", "gateway_v2_representatives", "gateway_v2_request_events", "gateway_v2_requests", "gateway_v2_results", "goals", "group_broadcast_v2_snapshot_recipients", "group_broadcast_v2_snapshots", "group_endpoint_key_grants_v2", "group_space_audience_v2", "group_space_change_sequences_v2", "group_space_history_grants_v2", "group_space_history_manifests_v2", "group_space_read_state_v2", "group_space_readers_v2", "group_space_records_v2", "group_space_sequences_v2", "group_space_tombstones_v2", "group_space_topics_v2", "groups", "ideas", "intents", "machines", "memberships", "memories", "monitors", "network_access_sessions_v2", "network_broadcast_recipients_v2", "network_broadcasts_v2", "network_collaboration_key_grant_nonces_v2", "network_collaboration_key_grants_v2", "network_direct_key_candidates_v2", "network_direct_key_grant_nonces_v2", "network_direct_key_grants_v2", "network_direct_message_routes_v2", "network_direct_native_bindings_v2", "network_group_mappings_v2", "network_invitations_v2", "network_join_consents_v2", "network_memberships_v2", "network_message_enrollment_v2", "network_mode_v2", "network_task_offers_v2", "network_task_readers_v2", "network_task_results_v2", "networks_v2", "node_control_key_bindings_v1", "node_control_key_requests_v1", "node_control_rpc_inbox_v1", "node_control_rpc_sequences_v1", "node_control_snapshot_rpc_responses_v1", "node_device_binding_requests_v2", "node_owner_bindings_v2", "node_tls_application_keys_v1", "node_tls_authority_v1", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_tls_proof_nonces_v1", "notifications", "owner_approval_keys_v2", "peer_messages", "peer_sessions", "permissions", "principals", "push_subscriptions", "regroup_audit_v2", "regroup_delegations_v2", "regroup_proposals_v2", "relay_v2_admission_config", "relay_v2_admission_guard", "relay_v2_consumer_cursors", "relay_v2_delivery_attempts", "relay_v2_inbox", "relay_v2_message_payloads", "relay_v2_message_security", "relay_v2_outbox", "relay_v2_rebind_events", "relay_v2_receipts", "relay_v2_recipient_sequences", "relay_v2_request_events", "relay_v2_requests", "resource_v2_authority", "resource_v2_leases", "resource_v2_managed_blobs", "schema_migrations_v2", "session_bindings", "shared_task_local_handoff_routes_v54", "shared_task_peer_assignments_v57", "shared_task_peer_refs_v57", "shared_task_sealed_handoffs_v2", "shared_task_v2_dependencies", "shared_task_v2_events", "shared_task_v2_guard", "shared_task_v2_handoffs", "shared_task_v2_results", "shared_task_v2_side_effect_events", "shared_task_v2_side_effects", "shared_tasks_v2", "thread_deliveries", "thread_sessions", "user_monitor_broadcast_v2", "user_monitor_broadcast_v2_notice_cursors", "user_monitor_broadcast_v2_notice_receipts", "user_monitor_broadcast_v2_recipient_outcomes", "workers", "workspaces":

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -71,6 +72,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -146,6 +148,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := reopened.readV2Migration(migration.Version)
@@ -164,6 +167,178 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 	if latest != CurrentV2SchemaVersion {
 		t.Fatalf("unexpected current v2 schema version: got %d want %d", latest, CurrentV2SchemaVersion)
 	}
+}
+
+func TestRelayAskExpiryIndexMigrationPreservesRowsAndRetries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "cicada.sqlite3")
+	seedLegacyV1State(t, path)
+	injected := errors.New("synthetic Relay Ask expiry index interruption")
+	failed, err := openStoreWithMigrationHook(path, func(id, phase string) error {
+		if id == relayAskExpiryOrderMigrationID && phase == "after_apply" {
+			return injected
+		}
+		return nil
+	})
+	if failed != nil {
+		_ = failed.Close()
+	}
+	if !errors.Is(err, injected) {
+		t.Fatalf("v59 interruption was not reported: %v", err)
+	}
+
+	check, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check.SetMaxOpenConns(1)
+	var appliedMax, failedCount, indexCount int
+	var hubIDBefore string
+	if err := check.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&hubIDBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := check.QueryRow(`SELECT coalesce(max(version),0) FROM schema_migrations_v2 WHERE state='applied'`).Scan(&appliedMax); err != nil || appliedMax != 58 {
+		t.Fatalf("interrupted v59 advanced applied schema: max=%d err=%v", appliedMax, err)
+	}
+	if err := check.QueryRow(`SELECT count(*) FROM schema_migrations_v2 WHERE version=59 AND state='failed' AND attempts=1`).Scan(&failedCount); err != nil || failedCount != 1 {
+		t.Fatalf("interrupted v59 ledger row count=%d err=%v", failedCount, err)
+	}
+	if err := check.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name=?`, relayAskExpiryOrderIndex).Scan(&indexCount); err != nil || indexCount != 0 {
+		t.Fatalf("interrupted v59 left index count=%d err=%v", indexCount, err)
+	}
+	seedRelayAskExpiryMigrationRows(t, check)
+	beforeRequests := sqliteRowsForTest(t, check, `SELECT * FROM relay_v2_requests WHERE request_id LIKE 'synthetic_v59_%' ORDER BY request_id`)
+	beforeMessages := sqliteRowsForTest(t, check, `SELECT * FROM fabric_messages WHERE id LIKE 'synthetic_v59_%' ORDER BY id`)
+	if len(beforeRequests) != 3 || len(beforeMessages) != 3 {
+		t.Fatalf("synthetic v58 fixture rows=%d requests/%d messages", len(beforeRequests), len(beforeMessages))
+	}
+	if err := check.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	hubIDAfter, err := reopened.GetClientHubID()
+	if err != nil || hubIDAfter != hubIDBefore {
+		t.Fatalf("v59 changed stable Hub identity: before=%q after=%q err=%v", hubIDBefore, hubIDAfter, err)
+	}
+	entry, err := reopened.readV2Migration(59)
+	if err != nil || entry == nil || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v59 retry ledger=%+v err=%v", entry, err)
+	}
+	if err := verifyRelayAskExpiryOrderIndex(reopened.db); err != nil {
+		t.Fatalf("v59 index definition was not installed: %v", err)
+	}
+	if after := sqliteRowsForTest(t, reopened.db, `SELECT * FROM relay_v2_requests WHERE request_id LIKE 'synthetic_v59_%' ORDER BY request_id`); !reflect.DeepEqual(beforeRequests, after) {
+		t.Fatalf("v59 changed existing Relay request rows: before=%v after=%v", beforeRequests, after)
+	}
+	if after := sqliteRowsForTest(t, reopened.db, `SELECT * FROM fabric_messages WHERE id LIKE 'synthetic_v59_%' ORDER BY id`); !reflect.DeepEqual(beforeMessages, after) {
+		t.Fatalf("v59 changed existing Relay message rows: before=%v after=%v", beforeMessages, after)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	repeated, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repeated.Close()
+	entry, err = repeated.readV2Migration(59)
+	if err != nil || entry == nil || entry.State != v2MigrationApplied || entry.Attempts != 2 {
+		t.Fatalf("v59 repeated startup changed ledger attempts: entry=%+v err=%v", entry, err)
+	}
+	if err := verifyRelayAskExpiryOrderIndex(repeated.db); err != nil {
+		t.Fatalf("v59 index definition failed on reopen: %v", err)
+	}
+
+	// An index with the right name but wrong target expression must not pass
+	// migration verification on a later startup.
+	if _, err := repeated.db.Exec(`DROP INDEX ` + relayAskExpiryOrderIndex); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repeated.db.Exec(`CREATE INDEX ` + relayAskExpiryOrderIndex + ` ON relay_v2_requests (state, expires_at)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repeated.initializeRelayAskExpiryOrderIndex(); err != nil {
+		t.Fatalf("idempotent v59 initializer rejected same-name index: %v", err)
+	}
+	for _, migration := range v2Migrations {
+		if migration.ID == relayAskExpiryOrderMigrationID {
+			if err := repeated.verifyV2Migration(migration, nil); err == nil {
+				t.Fatal("v59 accepted a same-name index with the wrong table expression")
+			}
+			return
+		}
+	}
+	t.Fatal("v59 migration definition is missing")
+}
+
+func seedRelayAskExpiryMigrationRows(t *testing.T, db *sql.DB) {
+	t.Helper()
+	rows := []struct{ id, state, expires string }{
+		{"synthetic_v59_open", FabricRequestOpen, "2026-10-09T00:00:00Z"},
+		{"synthetic_v59_unbounded", FabricRequestCancelRequested, ""},
+		{"synthetic_v59_invalid", FabricRequestOpen, "synthetic-invalid-time"},
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	for _, row := range rows {
+		messageID := "synthetic_v59_message_" + row.id
+		if _, err := tx.Exec(`INSERT INTO fabric_messages(id,from_endpoint_id,to_endpoint_id,kind,body,created_at)
+VALUES(?,?,?,?,?,?)`, messageID, "synthetic_sender", "synthetic_receiver", "ask", "synthetic body", "2026-10-08T00:00:00Z"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(`INSERT INTO relay_v2_requests
+(request_id,message_id,sender_endpoint_id,sender_principal_id,sender_group_id,receiver_endpoint_id,receiver_group_id,digest,state,expires_at,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, row.id, messageID, "synthetic_sender", "synthetic_principal", "synthetic_group", "synthetic_receiver", "synthetic_receiver_group", "synthetic_digest", row.state, row.expires, "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func sqliteRowsForTest(t *testing.T, db *sql.DB, query string) [][]any {
+	t.Helper()
+	rows, err := db.Query(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result [][]any
+	for rows.Next() {
+		dest := make([]any, len(columns))
+		for i := range dest {
+			dest[i] = new(any)
+		}
+		if err := rows.Scan(dest...); err != nil {
+			t.Fatal(err)
+		}
+		row := make([]any, len(dest))
+		for i := range dest {
+			value := *(dest[i].(*any))
+			if blob, ok := value.([]byte); ok {
+				value = append([]byte(nil), blob...)
+			}
+			row[i] = value
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return result
 }
 
 func TestClientTopologyV41MigrationInterruptionRollsBackAndReopens(t *testing.T) {
@@ -530,6 +705,7 @@ func TestV2MigrationFailureRollsBackSchemaAndResumes(t *testing.T) {
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(3)
 	if err != nil {
@@ -838,6 +1014,7 @@ func TestEndpointKeyCandidateMigrationRollsBackAndReopensWithLegacyState(t *test
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(14)
 	if err != nil {
@@ -934,6 +1111,7 @@ func TestV2MigrationsConcurrentOpenSerializesLedger(t *testing.T) {
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -1390,5 +1568,6 @@ func TestDedicatedThreadPolicyMigrationV52RollsBackAndResumes(t *testing.T) {
 		56: v2MigrationApplied,
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
+		59: v2MigrationApplied,
 	})
 }
