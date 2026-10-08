@@ -348,7 +348,7 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 	} else {
 		result, err := app.Request(runCtx, "thread/resume", map[string]any{
 			"threadId": threadID, "model": model, "cwd": workspace,
-			"approvalPolicy": "on-request", "sandbox": "workspace-write",
+			"approvalPolicy": "on-request",
 		})
 		if err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
@@ -362,8 +362,7 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 		"threadId": threadID,
 		"input":    []any{map[string]any{"type": "text", "text": job.Prompt}},
 		"cwd":      workspace, "approvalPolicy": "on-request",
-		"sandboxPolicy": map[string]any{"type": "workspaceWrite"},
-		"model":         model,
+		"model": model,
 	}); err != nil {
 		return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
 	}

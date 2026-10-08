@@ -1,6 +1,10 @@
 # Architecture v2.3 completion ledger
 
-## Current G5 live-U / Monitor boundary checkpoint — v0.1 PARTIAL
+## Current Native permission wire checkpoint — v0.1 PARTIAL
+
+Both managed adapters now omit sandbox overrides when resuming or starting turns on existing Native threads; fresh Worker defaults remain. [Scoped wire QA and installed synthetic semantics](native-permission-preservation-validation.md) records normal and race 8 top-level / 8 subtests each PASS plus one installed synthetic cold-resume policy/history case PASS; filesystem/network enforcement remains NOT_TESTED, without broader acceptance transfer.
+
+## Historical G5 live-U / Monitor boundary checkpoint — v0.1 PARTIAL
 
 Production Monitor approval-boundary normal/race checks passed (1 top-level / 2 subtests each, zero failures/skips); live zero-turn U variant C passed its bounded production Directory fixture. [Exact source, failed A/B boundaries and scoped evidence](g5-native-monitor-boundary-validation.md) keep these results separate from full G5 and Native context acceptance.
 

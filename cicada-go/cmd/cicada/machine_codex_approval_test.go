@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -291,5 +292,112 @@ func TestMachineApprovalStateDecodesNodeControlCreateAndStatusDTOs(t *testing.T)
 	var unknown machineApprovalState
 	if err := decodeMachineNodeControlJSON([]byte(`{"approval_id":"approval-a","goal_id":"goal-a","worker_id":"worker-a","attempt":4,"status":"pending","new_field":"unreviewed"}`), &unknown); err == nil {
 		t.Fatal("strict Node-Control approval decoder accepted an unknown field")
+	}
+}
+
+// Captured wire only: fake stored policy is not native filesystem enforcement.
+func TestManagedCodexSandboxPolicyWire(t *testing.T) {
+	for _, mode := range []string{"fresh", "resumed-read-only", "resumed-named-profile"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			binary, capture := fakeApprovalCodex(t, root)
+			original, err := os.ReadFile(binary)
+			if err != nil {
+				t.Fatal("read owned protocol fixture")
+			}
+			script := string(original)
+			script = strings.Replace(script, "while IFS= read -r line; do", "while IFS= read -r line; do\n  printf '%s\\n' \"$line\" >> \"$CICADA_TEST_POLICY_WIRE\"", 1)
+			// No approval or business HTTP: this fake completes the one wire-observed turn.
+			a := strings.Index(script, "      printf '%s\\n' '{\"id\":77")
+			if a < 0 {
+				t.Fatal("protocol fixture shape changed")
+			}
+			if mode == "resumed-read-only" {
+				script = strings.ReplaceAll(script, `"result":{"thread":{"id":"native-thread-a"}}`, `"result":{"thread":{"id":"native-thread-a"},"sandbox":{"type":"readOnly"}}`)
+			}
+			if mode == "resumed-named-profile" {
+				script = strings.ReplaceAll(script, `"result":{"thread":{"id":"native-thread-a"}}`, `"result":{"thread":{"id":"native-thread-a"},"activePermissionProfile":{"id":"synthetic-restricted-profile"}}`)
+			}
+			a = strings.Index(script, "      printf '%s\\n' '{\"id\":77")
+			end := strings.Index(script[a:], "      ;;\n") + a
+			if end < a {
+				t.Fatal("protocol fixture shape changed")
+			}
+			script = script[:a] + "      printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"status\":\"completed\"}}}'\n" + script[end:]
+			if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+				t.Fatal("write owned protocol fixture")
+			}
+			wire := filepath.Join(root, "wire.jsonl")
+			t.Setenv("CICADA_TEST_POLICY_WIRE", wire)
+			t.Setenv("CICADA_TEST_APPROVAL_CAPTURE", capture)
+			t.Setenv("CICADA_CODEX_BIN", binary)
+			t.Setenv("CICADA_WORKSPACE_ROOT", root)
+			t.Setenv("CICADA_CODEX_MODEL", "synthetic-wire-model")
+			_, ctx, _, _ := newMachineNodeControlRecoveryFixture(t, "http://127.0.0.1:1")
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			job := machineJob{GoalID: "goal-wire", WorkerID: "worker-wire", MachineID: "node-recovery-test", Harness: "codex", Workspace: filepath.Join(root, "goal-wire"), Prompt: "PUBLIC_SYNTHETIC_PROTOCOL", Attempt: 1, executionID: "execution-wire", providerID: "codex", leaseID: "lease-wire"}
+			if mode != "fresh" {
+				job.ThreadID = "native-thread-a"
+			}
+			result := executeMachineJobWithApproval(ctx, job, &machineApprovalBridge{})
+			if result.Status != "completed" || result.ThreadID != "native-thread-a" {
+				t.Fatal("wire fixture failed")
+			}
+			data, err := os.ReadFile(wire)
+			if err != nil || len(data) > 65536 {
+				t.Fatal("wire capture unavailable")
+			}
+			seenThread, seenTurn := false, false
+			for _, line := range bytes.Split(data, []byte("\n")) {
+				if len(line) == 0 {
+					continue
+				}
+				var request struct {
+					Method string         `json:"method"`
+					Params map[string]any `json:"params"`
+				}
+				if json.Unmarshal(line, &request) != nil {
+					t.Fatal("wire malformed")
+				}
+				p := request.Params
+				switch request.Method {
+				case "thread/start", "thread/resume":
+					seenThread = true
+					if p["approvalPolicy"] != "on-request" || p["cwd"] != job.Workspace || p["model"] != "synthetic-wire-model" {
+						t.Fatal("thread management fields changed")
+					}
+					if mode == "fresh" {
+						if request.Method != "thread/start" || p["sandbox"] != "workspace-write" {
+							t.Fatal("new Worker default changed")
+						}
+					} else {
+						if request.Method != "thread/resume" || p["threadId"] != job.ThreadID {
+							t.Fatal("original Thread changed")
+						}
+						if _, present := p["permissions"]; present {
+							t.Fatal("resume overwrote named permissions")
+						}
+						if _, present := p["sandbox"]; present {
+							t.Fatal("resume overwrote stored sandbox")
+						}
+					}
+				case "turn/start":
+					seenTurn = true
+					if p["threadId"] != "native-thread-a" || p["approvalPolicy"] != "on-request" || p["cwd"] != job.Workspace || p["model"] != "synthetic-wire-model" {
+						t.Fatal("turn fields changed")
+					}
+					if _, present := p["permissions"]; present {
+						t.Fatal("turn overwrote named permissions")
+					}
+					if _, present := p["sandboxPolicy"]; present {
+						t.Fatal("turn overwrote sandbox")
+					}
+				}
+			}
+			if !seenThread || !seenTurn {
+				t.Fatal("required requests not observed")
+			}
+		})
 	}
 }

@@ -88,7 +88,7 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 	} else {
 		result, err := app.Request(ctx, "thread/resume", map[string]any{
 			"threadId": threadID, "model": model, "cwd": workspace,
-			"approvalPolicy": "on-request", "sandbox": "workspace-write",
+			"approvalPolicy": "on-request",
 		})
 		if err != nil {
 			return appServerResult{ExitCode: 1, Output: err.Error()}
@@ -105,7 +105,6 @@ func (c *Control) runAppServer(parent context.Context, goal store.Goal, workerID
 		"input":          []any{map[string]any{"type": "text", "text": prompt}},
 		"cwd":            workspace,
 		"approvalPolicy": "on-request",
-		"sandboxPolicy":  map[string]any{"type": "workspaceWrite"},
 		"model":          model,
 	}); err != nil {
 		return appServerResult{ExitCode: 1, ThreadID: threadID, Output: err.Error()}
