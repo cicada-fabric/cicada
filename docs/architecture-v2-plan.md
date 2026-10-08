@@ -1,6 +1,12 @@
 # Architecture v2.3 实施计划
 
-## Current next step — remaining acceptance boundaries
+## Current permission / Control-boundary checkpoint — v0.1 PARTIAL
+
+The clean c56 protocol fixtures passed the eight-selector permission subset (8 tests / 43 subtests / 3 packages) and the two-selector Control-boundary subset (2 tests / 0 subtests / 2 packages), each with zero failures or skips. These are scoped protocol results, not full G5/T9 or Native/context acceptance; see [source, evidence and limitations](v01-permission-control-boundary-validation.md).
+
+Next, use ONE separately scoped compatible-sandbox zero-model preflight proving actual workspace allow / outside deny; then separately authorized bounded original-thread G2/G3 with unchanged context/reply oracles, isolation, six actual / four manual / two automatic turns, 180+30+30-second deadlines, retries 0 and admitted TCP cap 16 (not a POST count). Remaining domains stay separate.
+
+## Historical next step — remaining acceptance boundaries
 
 The clean e286 optional PQ candidate passed one shipped fixture gate: 1 top-level test / 4 subtests, zero failures/skips. See [artifact provenance and fixture-only scope](v01-clean-e286-artifact-validation.md).
 

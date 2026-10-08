@@ -1,6 +1,12 @@
 # Architecture v2.3 completion ledger
 
-## Current scoped checkpoint — closed projection QA only
+## Current permission / Control-boundary checkpoint — v0.1 PARTIAL
+
+The clean c56 protocol fixtures passed the eight-selector permission subset (8 tests / 43 subtests / 3 packages) and the two-selector Control-boundary subset (2 tests / 0 subtests / 2 packages), each with zero failures or skips. These are scoped protocol results, not full G5/T9 or Native/context acceptance; see [source, evidence and limitations](v01-permission-control-boundary-validation.md).
+
+Sandbox BLOCKED, A6 UNKNOWN, G2 FAIL / G3 NOT_REACHED, fresh Node local SEND/ASK UNSUPPORTED, and remaining full G4/G5/external gates remain unchanged. Historical counts and evidence retain their tested source.
+
+## Historical scoped checkpoint — closed projection QA only
 
 Closed Native-error projection passed scoped offline QA; fresh projection Native validation is NOT_RUN, prior Native FAIL remains unchanged, and G2–G5/V67/current external gates remain unclosed without altering historical counts or overall PARTIAL status ([evidence](native-request-observer-io-validation.md)).
 

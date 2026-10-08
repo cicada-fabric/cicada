@@ -2,7 +2,13 @@
 
 <a id="current-closeout"></a>
 
-## Current G4 real-queue checkpoint — PARTIAL
+## Current permission / Control-boundary checkpoint — v0.1 PARTIAL
+
+The clean c56 protocol fixtures passed the eight-selector permission subset (8 tests / 43 subtests / 3 packages) and the two-selector Control-boundary subset (2 tests / 0 subtests / 2 packages), each with zero failures or skips. These are scoped protocol results, not full G5/T9 or Native/context acceptance; see [source, evidence and limitations](v01-permission-control-boundary-validation.md).
+
+Sandbox BLOCKED, A6 UNKNOWN, G2 FAIL / G3 NOT_REACHED, fresh Node local SEND/ASK UNSUPPORTED, and remaining full G4/G5/external gates remain unchanged. Historical counts and evidence retain their tested source.
+
+## Historical G4 real-queue checkpoint — PARTIAL
 
 The clean e286 optional PQ candidate passed one shipped fixture gate: 1 top-level test / 4 subtests, zero failures/skips. See [artifact provenance and fixture-only scope](v01-clean-e286-artifact-validation.md).
 
