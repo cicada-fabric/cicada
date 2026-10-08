@@ -1,5 +1,9 @@
 # Architecture v2.3 实施计划
 
+## Current Native sandbox/KVM preflight checkpoint — v0.1 PARTIAL
+
+One pinned CLI 0.161.0 KVM guest run derived a filesystem-only workspace-write / outside-deny PASS; the original J aggregate remains `NOT_ESTABLISHED` because its parsed CLI exit field stayed null. Zero-credential app-server IPC attempts A/B/C failed before `turn/start`; D passed only the bounded initialize/config IPC check, observing correlated `initialize` and `config/read` replies plus `remoteControl/status/changed`, with no turn start. D's exact container was removed and frozen inputs and six protected residents were unchanged. Its model/provider calls remain `NOT_INSTRUMENTED`, and a shared control FD means child-wait evidence is not a model-enabled trust proof. The separate 28-test synthetic fixture QA is not Native acceptance. This does not establish native Session/context continuity, authenticated model/network behavior, general Worker isolation, G2/G3, or full T9. Next is key-free restricted-guest HTTP/SSE route and outside-guest authentication-path preparation; no blind Runtime retry or provider-key execution. See [the scoped preflight and IPC evidence](native-kvm-preflight-validation.md).
+
 ## Current managed PQTLS fixture checkpoint — v0.1 PARTIAL
 
 [Managed fixture validation](pqtls-managed-fixture-validation.md) records focused normal and race 8 top-level / 12 subtests each PASS, full `cmd/cicada` 402 top-level / 287 subtest pass events with 13 opt-in skips, and tagged vet exit 0. These seven-test-path results remain separate from the shipping-build timeout and blocked Native acceptance.

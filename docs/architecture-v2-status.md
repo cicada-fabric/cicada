@@ -2,6 +2,10 @@
 
 <a id="current-closeout"></a>
 
+## Current Native sandbox/KVM preflight checkpoint — v0.1 PARTIAL
+
+One pinned CLI 0.161.0 KVM guest run derived a filesystem-only workspace-write / outside-deny PASS; the original J aggregate remains `NOT_ESTABLISHED` because its parsed CLI exit field stayed null. Zero-credential IPC attempts A/B/C failed before `turn/start`; D passed only the bounded initialize/config IPC check, observing two correlated replies and one `remoteControl/status/changed` notification, with `turn_start_calls=0`. D's exact container was removed and frozen inputs and six-resident state were unchanged. Model/provider calls remain `NOT_INSTRUMENTED`; native Session/context continuity, authenticated model/network behavior, general Worker isolation, G2/G3 and full T9 remain unclosed. The shared control FD limits child-wait evidence to process lifecycle. Next is key-free restricted-guest HTTP/SSE route and outside-guest authentication-path preparation, not a model run or provider-key retry. See [the scoped preflight and IPC evidence](native-kvm-preflight-validation.md); overall v0.1 remains PARTIAL.
+
 ## Current Directory Store list-query checkpoint — v0.1 PARTIAL
 
 Directory listing now reads complete rows in one query. Focused normal and race checks passed; its bounded 100/1,000-row Store benchmark showed lower time and allocations against the captured prior query path. A separate standard-image, real-TCP Hub fixture passed one bounded synthetic sample at 64 requests and 16 observed in-flight under 1 CPU / 128 MiB (34,136 KiB peak RSS, no OOM). Root's exact current-name/tag/digest review confirms both fixture containers and images absent; historical CIDs were not recorded. This finite sample is not a capacity guarantee. Listing remains unbounded O(n); Native Runtime, Android, physical-device and public-HTTPS checks remain NOT_RUN, so overall v0.1 stays PARTIAL. See [source, measurements and limits](directory-list-performance-validation.md).
