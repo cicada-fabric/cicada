@@ -32,6 +32,221 @@ import request_observer_bootstrap as bootstrap
 
 class WiringChecks(unittest.TestCase):
 
+    def test_closed_lifecycle_installed_abort_rpc_and_provider(self):
+        import textwrap
+        with run.deny_preflight_effects():
+            tree=ast.parse((gate.OLD/'managed_gate.py').read_text())
+            node=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='abort_owned')
+            source=textwrap.dedent(ast.get_source_segment((gate.OLD/'managed_gate.py').read_text(),node))
+            ns={'json':json,'_observer_capture_native_failure':lambda *a:None}
+            exec(compile(source,'<synthetic-original-abort>','exec'),ns)
+            selected=gate.lifecycle_method(ns['abort_owned'],source)
+            calls=[]
+            owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=True,runtime_image='image'),
+                aborted=False,abort_lock=threading.Lock(),result={},run_id='synthetic',
+                policy=types.SimpleNamespace(cleanup=lambda:calls.append('policy')),
+                nodes={'a':{'container':'node'}},submitted_objects={('container','node'):{'id':'cid'}})
+            owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
+            def command(argv,timeout):
+                if argv[1]=='inspect':return json.dumps([{'Id':'cid','Image':'image','Config':{'Labels':{'org.cicada.test.run':'synthetic'}}}])
+                calls.append('kill');return ''
+            owner.command=command;owner.abort_owned=types.MethodType(selected,owner)
+            # Actual pinned TypedRPC request/fail, with in-memory transport only.
+            protocol=ast.parse((gate.OLD/'native_protocol.py').read_text())
+            methods={n.name:ast.get_source_segment((gate.OLD/'native_protocol.py').read_text(),n)
+                for n in ast.walk(protocol) if isinstance(n,ast.FunctionDef) and n.name in ('request','fail')}
+            rpcns={'queue':queue};exec(compile('\n'.join(textwrap.dedent(methods[k]) for k in ('request','fail')),'<memory-pinned-rpc>','exec'),rpcns)
+            ticks=iter((0,2));rpc=types.SimpleNamespace(check=lambda:None,lock=threading.Lock(),next_id=0,pending={},
+                audit=lambda *a:None,client=types.SimpleNamespace(send_obj=lambda m:None),clock=lambda:next(ticks),abort=owner.abort_owned)
+            rpc.fail=types.MethodType(rpcns['fail'],rpc)
+            with self.assertRaises(TimeoutError):rpcns['request'](rpc,'synthetic',{},timeout=1)
+            self.assertEqual([r['event'] for r in owner.result['closed_lifecycle_chronology']],
+                ['ABORT_ENTRY','FIRST_ABORT_COMMITTED','OWNED_RUNTIME_STOP_ENTRY'])
+            self.assertEqual(calls,['policy','kill'])
+            threads=[threading.Thread(target=owner.abort_owned,args=(RuntimeError(),)) for _ in range(2)]
+            for thread in threads:thread.start()
+            for thread in threads:thread.join(1);self.assertFalse(thread.is_alive())
+            events=[r['event'] for r in owner.result['closed_lifecycle_chronology']]
+            self.assertEqual(events.count('FIRST_ABORT_COMMITTED'),1);self.assertEqual(events.count('OWNED_RUNTIME_STOP_ENTRY'),1)
+            adapter=types.SimpleNamespace(close=lambda:calls.append('close'))
+            gate.install_provider_lifecycle(owner,adapter);gate.install_provider_lifecycle(owner,adapter);adapter.close()
+            self.assertEqual(owner.result['closed_lifecycle_chronology'][-1]['event'],'PROVIDER_CLOSE_ENTRY')
+            for _ in range(40):owner.abort_owned(RuntimeError())
+            self.assertEqual(len(owner.result['closed_lifecycle_chronology']),32)
+            self.assertEqual(owner.result['closed_lifecycle_recording'],'TRUNCATED')
+            self.assertEqual([r['sequence'] for r in owner.result['closed_lifecycle_chronology']],list(range(32)))
+            stamps=[r['host_monotonic_ns'] for r in owner.result['closed_lifecycle_chronology']]
+            self.assertEqual(stamps,sorted(stamps))
+            owner.result.clear();owner._closed_lifecycle_state['first'].clear();owner.aborted=False
+            primary=RuntimeError('SYNTHETIC_NATIVE')
+            owner.args.native_https=True;owner.args.test_request_observer=False;owner.args.go={'max_fatal_diagnostic_capture_seconds':5}
+            owner.nodes['a']['thread']='thread';owner.budget=types.SimpleNamespace(threads={'a':'thread'},started=[('a','turn')],completed=set())
+            owner._observer_capture_lifecycle_lock=threading.Lock()
+            message={'method':'error','params':{'threadId':'thread','turnId':'turn','error':{'message':'SYNTHETIC'}}}
+            gate.mark_native_failure(owner,primary,'a','received',message,{'schema_status':'SAFE_ENUM_FIELDS_VALIDATED','category':'other'})
+            self.assertIs(owner._observer_native_failures[threading.get_ident()][0],primary)
+            self.assertEqual([r['event'] for r in owner.result['closed_lifecycle_chronology']],
+                ['NATIVE_TERMINAL_AUDIT','ABORT_ENTRY','FIRST_ABORT_COMMITTED','OWNED_RUNTIME_STOP_ENTRY'])
+            self.assertEqual(calls[-2:],['policy','kill'])
+            for count in (2,34):
+                owner.result.clear();owner._closed_lifecycle_state['first'].clear();owner.aborted=False
+                owner.abort_lock.acquire()
+                workers=[threading.Thread(target=owner.abort_owned,args=(primary,)) for _ in range(count)]
+                try:
+                    for worker in workers:worker.start()
+                    end=time.monotonic()+2
+                    while len(owner.result.get('closed_lifecycle_chronology',[]))<min(count,32) and time.monotonic()<end:time.sleep(.001)
+                    self.assertEqual(len(owner.result['closed_lifecycle_chronology']),min(count,32))
+                finally:
+                    owner.abort_lock.release()
+                    for worker in workers:worker.join(2)
+                self.assertFalse(any(worker.is_alive() for worker in workers))
+                events=[row['event'] for row in owner.result['closed_lifecycle_chronology']]
+                if count==2:
+                    self.assertEqual(events.count('FIRST_ABORT_COMMITTED'),1);self.assertEqual(events.count('OWNED_RUNTIME_STOP_ENTRY'),1)
+                else:self.assertEqual(owner.result['closed_lifecycle_recording'],'TRUNCATED')
+                self.assertEqual(calls[-2:],['policy','kill'])
+            owner.aborted=False
+            sentinel=object();closed=[]
+            adapter=types.SimpleNamespace(close=lambda:(closed.append('close'),sentinel)[1])
+            gate.install_provider_lifecycle(owner,adapter)
+            with patch.object(gate,'note_lifecycle',side_effect=BaseException()):
+                owner.abort_owned(primary);self.assertIs(adapter.close(),sentinel)
+            self.assertEqual(calls[-2:],['policy','kill']);self.assertEqual(closed,['close'])
+            failure=RuntimeError('SYNTHETIC_CLOSE')
+            def fail_close():raise failure
+            adapter=types.SimpleNamespace(close=fail_close);gate.install_provider_lifecycle(owner,adapter)
+            with patch.object(gate,'note_lifecycle',side_effect=BaseException()):
+                with self.assertRaises(RuntimeError) as caught:adapter.close()
+            self.assertIs(caught.exception,failure)
+
+
+    def test_closed_lifecycle_selected_cleanup_and_source_drift(self):
+        import textwrap
+        with run.deny_preflight_effects():
+            # The actual closure-backed migration cleanup, with original base
+            # cell retained in its selected local namespace; only IO adapters fake.
+            path=gate.OLD/'migration.py';tree=ast.parse(path.read_text())
+            candidates=[n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='cleanup']
+            node=candidates[-1];source=textwrap.dedent(ast.get_source_segment(path.read_text(),node))
+            writes=[];base=types.SimpleNamespace(private_json=lambda p,result:writes.append(result))
+            factory='def factory(base):\n'+''.join(' '+line+'\n' for line in source.splitlines())+' return cleanup\n'
+            class PublicBinding:
+                def __truediv__(self,name):return self
+                def read_text(self):return '{"files":[]}'
+            ns={'subprocess':subprocess,'json':json,'Path':Path,'hashlib':hashlib,'ROOT':PublicBinding()}
+            exec(compile(factory,'<memory-real-cleanup-closure>','exec'),ns)
+            original=ns['factory'](base)
+            outer_raw=(gate.LEGACY/'migration.py').read_text()
+            outer_node=next(n for n in ast.walk(ast.parse(outer_raw)) if isinstance(n,ast.FunctionDef) and n.name=='cleanup')
+            outer_text=textwrap.dedent(ast.get_source_segment(outer_raw,outer_node))
+            outer_factory='def outer(original_cleanup):\n'+''.join(' '+line+'\n' for line in outer_text.splitlines())+' return cleanup\n'
+            outer_ns={};exec(compile(outer_factory,'<memory-compat-closure>','exec'),outer_ns)
+            inner_original=original;original=outer_ns['outer'](inner_original)
+            # Same G2 cap selection as installed lane, without changing default.
+            sources={original:outer_text,inner_original:source}
+            methods={}
+            for method,needle in [('observe','len(self.budget.started) > 5'),('reconcile_actual_history',"(3 if letter == 'a' else 2)")]:
+                raw=(gate.OLD/'managed_gate.py').read_text();nodes=[n for n in ast.walk(ast.parse(raw)) if isinstance(n,ast.FunctionDef) and n.name==method]
+                text=textwrap.dedent(ast.get_source_segment(raw,nodes[0]))
+                self.assertIn(needle,text)
+                local={};exec(compile(text,'<pinned-cap-memory>','exec'),local)
+                methods[method]=local[method];sources[local[method]]=text
+            methods['cleanup']=original
+            import inspect
+            previous=inspect.getsource
+            with patch.object(inspect,'getsource',side_effect=lambda method:sources[method] if method in sources else previous(method)):
+                caps=gate.g2_cap_methods(types.SimpleNamespace(**methods))
+            selected_cap=caps['cleanup'];six=selected_cap._g2_cap_source
+            self.assertIs(gate.method_namespace(dict(zip(selected_cap.__code__.co_freevars,selected_cap.__closure__))['original_cleanup'].cell_contents)['base'],base)
+            calls=[];owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=True),result={'status':'FAIL'},
+                policy=types.SimpleNamespace(cleanup=lambda:None,limit=lambda n:n),rpcs={},containers={'node':'image','hub':'hubimage'},
+                nodes={'a':{'container':'node'}},run_id='synthetic',networks=[],forwarders=[],provider_adapters={},
+                evidence=Path('/synthetic'),budget=types.SimpleNamespace(started=[]),root=Path('/synthetic'),hub='hub')
+            owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
+            records={n:{'Id':n,'Image':image,'Config':{'Labels':{'org.cicada.test.run':'synthetic'}},'State':{'Running':True}} for n,image in owner.containers.items()}
+            owner.cleanup_inspect=lambda kind,name:records.get(name)
+            owner.inspect=lambda kind,name:dict(records[name],State={'Running':False})
+            owner.docker=lambda *argv:calls.append(argv)
+            provider_calls=[]
+            provider=types.SimpleNamespace(close=lambda:provider_calls.append('originalclose'))
+            gate.install_provider_lifecycle(owner,provider)
+            owner.close_provider_adapters=provider.close;owner.capture_owned_hub_logs=lambda *a:None
+            owner.submitted_objects={};owner.created_networks={}
+            owner.audit_files={};owner.uds_dirs={};owner.result_paid_dispatches=0;owner.manual_turn_ids=[]
+            # Required remainder adapters remain synthetic; no filesystem writes.
+            # Execute the actual constructor installation try-block against
+            # memory adapters; the real fixture constructor is never invoked.
+            gate_tree=ast.parse((gate.HERE/'request_observer_gate.py').read_text())
+            init=next(n for n in ast.walk(gate_tree) if isinstance(n,ast.FunctionDef) and n.name=='__init__' and any(isinstance(c,ast.Name) and c.id=='install_lifecycle' for c in ast.walk(n)))
+            block=next(n for n in ast.walk(init) if isinstance(n,ast.Try) and any(isinstance(c,ast.Name) and c.id=='install_lifecycle' for c in ast.walk(n)))
+            abort_node=next(n for n in ast.walk(ast.parse((gate.OLD/'managed_gate.py').read_text())) if isinstance(n,ast.FunctionDef) and n.name=='abort_owned')
+            abort_source=ast.get_source_segment((gate.OLD/'managed_gate.py').read_text(),abort_node)
+            abort_ns={'json':json};exec(compile(abort_source,'<synthetic-abort>','exec'),abort_ns)
+            original=selected_cap
+            owner.abort_owned=types.MethodType(abort_ns['abort_owned'],owner)
+            candidate=next(n for n in ast.walk(gate_tree) if isinstance(n,ast.ClassDef) and n.name=='CandidateGate')
+            cleanup_node=next(n for n in candidate.body if isinstance(n,ast.FunctionDef) and n.name=='cleanup')
+            legacy=type('MemoryLegacy',(),{'cleanup':original})
+            wrapper_tree=ast.Module(body=[ast.ClassDef(name='MemoryCandidate',bases=[ast.Name(id='Legacy',ctx=ast.Load())],keywords=[],body=[cleanup_node],decorator_list=[])],type_ignores=[])
+            ast.fix_missing_locations(wrapper_tree);wrapper_ns={'Legacy':legacy}
+            exec(compile(wrapper_tree,'<actual-candidate-cleanup-wrapper>','exec'),wrapper_ns)
+            candidate_cleanup=wrapper_ns['MemoryCandidate'].cleanup
+            # Transplant the synthetic fields onto an actual wrapper instance.
+            instance=object.__new__(wrapper_ns['MemoryCandidate']);instance.__dict__.update(owner.__dict__);owner=instance
+            owner.args.candidate_binding_sha256='SYNTHETIC_ONLY'
+
+            del owner._closed_lifecycle_state
+            install_ns={'self':owner,'ast':ast,'sources':{'gate':abort_source},'legacy_cls':types.SimpleNamespace(cleanup=original),'install_lifecycle':gate.install_lifecycle}
+            with patch.object(inspect,'getsource',side_effect=lambda method:outer_text if method.__code__==original.__code__ else previous(method)):
+                exec(compile(ast.Module(body=[block],type_ignores=[]),'<actual-constructor-install-block>','exec'),install_ns)
+            self.assertEqual(owner.result['closed_lifecycle_installation'],'INSTALLED')
+            with patch.object(gate.time,'monotonic_ns',return_value=1):
+                with patch.object(run,'verify_binding',return_value=({'synthetic':True},'SYNTHETIC_ONLY')):owner.cleanup()
+            self.assertEqual(writes,[owner.result])
+            installed_abort=owner.abort_owned;installed_cleanup=owner._closed_lifecycle_cleanup
+            gate.install_lifecycle(owner,abort_source,six,original_cleanup=original)
+            self.assertIs(owner.abort_owned,installed_abort);self.assertIs(owner._closed_lifecycle_cleanup,installed_cleanup)
+            for flag in (False,None,1,'true'):
+                owner.args.closed_failure_diagnostics=flag
+                gate.install_lifecycle(owner,'INVALID','INVALID')
+                self.assertIs(owner.abort_owned,installed_abort)
+            owner.args.closed_failure_diagnostics=True
+            owner._closed_lifecycle_state=None;owner.abort_owned=types.MethodType(abort_ns['abort_owned'],owner)
+            del owner._closed_lifecycle_cleanup
+            before=owner.abort_owned;install_ns['sources']={'gate':'INVALID'}
+            exec(compile(ast.Module(body=[block],type_ignores=[]),'<actual-constructor-failed-install>','exec'),install_ns)
+            self.assertEqual(owner.result['closed_lifecycle_installation'],'NOT_INSTALLED')
+            self.assertIs(owner.abort_owned,before);self.assertFalse(hasattr(owner,'_closed_lifecycle_cleanup'))
+            self.assertTrue(callable(owner.cleanup))
+
+            self.assertEqual(calls[0],('stop','--time','1','node'))
+            self.assertEqual([r['event'] for r in owner.result['closed_lifecycle_chronology']],['PROVIDER_CLOSE_ENTRY','OWNED_RUNTIME_STOP_ENTRY'])
+            self.assertEqual(provider_calls,['originalclose'])
+            original_digest=run.digest
+            with patch.object(run,'digest',side_effect=lambda path:'0'*64 if Path(path)==gate.HERE/'request_observer_gate.py' else original_digest(path)):
+                with self.assertRaisesRegex(ValueError,'PUBLIC_SOURCE_CHANGED'):run.verify_binding()
+
+    def test_closed_lifecycle_marker_defaults_and_failure_transparency(self):
+        with run.deny_preflight_effects():
+            for flag in (False,None,1,'true',True):
+                owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=flag,native_https=True,go={'max_fatal_diagnostic_capture_seconds':5}),
+                    nodes={'a':{'thread':'thread'}},budget=types.SimpleNamespace(threads={'a':'thread'},started=[('a','turn')],completed=set()),
+                    abort_lock=threading.Lock(),_observer_capture_lifecycle_lock=threading.Lock(),aborted=False,result={})
+                owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
+                primary=RuntimeError('SYNTHETIC');seen=[];owner.abort_owned=lambda error:seen.append(error)
+                message={'method':'error','params':{'threadId':'thread','turnId':'turn','error':{'message':'SYNTHETIC'}}}
+                fields={'schema_status':'SAFE_ENUM_FIELDS_VALIDATED','category':'other'}
+                gate.mark_native_failure(owner,primary,'a','received',message,fields)
+                self.assertEqual(seen,[primary])
+                self.assertEqual('closed_lifecycle_chronology' in owner.result,flag is True)
+                if flag is True:
+                    self.assertEqual(owner.result['closed_lifecycle_chronology'][0]['event'],'NATIVE_TERMINAL_AUDIT')
+                    owner.result.clear()
+                    with patch.object(gate.time,'monotonic_ns',side_effect=BaseException()):
+                        gate.note_lifecycle(owner,'ABORT_ENTRY')
+                    self.assertIsNone(owner.result['closed_lifecycle_chronology'][0]['host_monotonic_ns'])
+
     def test_native_https_cli_typed_go_conflicts_and_tcp_cap(self):
         args=types.SimpleNamespace(native_https=True,execute_diagnostic=True,scenario='g2-g3',
             prepare_native_zero=False,enable_io_diagnostics=False,response_byte_passthrough=False)

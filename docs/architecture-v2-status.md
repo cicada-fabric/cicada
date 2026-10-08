@@ -4,6 +4,8 @@
 
 ## Current G4 real-queue checkpoint — PARTIAL
 
+Lifecycle chronology is source-ready, default OFF: child guarded memory-only checks passed 3 methods in 0.210 s; [Root scoped QA](../.cicada-data/native-observer-wiring-20261007/lifecycle-root-qa-20261008a/result.NONAUTH.json) separately passed 8 methods / 19 subtests, zero failures/errors/skips/effect attempts in 1.099 s. Live validation remains NOT_RUN. Records identify audit/abort/first owned-stop attempt/provider-close entry, not application completion; HOST_ONLY sequence is recording serialization. Missing/truncated/uninstalled recording remains unknown. G4 narrow PASS, sandbox BLOCKED and historical A6 UNKNOWN are unchanged.
+
 | Scope | Result and boundary |
 |---|---|
 | Deterministic normal / race | PASS 5 methods each, zero failure/skip; separate build evidence. |

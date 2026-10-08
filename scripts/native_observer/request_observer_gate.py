@@ -57,6 +57,138 @@ def closed_native_error_classification(params, native_fields):
             "message_exported": False, "cause_proven": False}
 
 
+LIFECYCLE_EVENTS = ("NATIVE_TERMINAL_AUDIT", "ABORT_ENTRY", "FIRST_ABORT_COMMITTED", "OWNED_RUNTIME_STOP_ENTRY", "PROVIDER_CLOSE_ENTRY")
+
+
+def note_lifecycle(owner, event, side="UNKNOWN"):
+    try:
+        state = getattr(owner, "_closed_lifecycle_state", None)
+        if state is None or state.get("complete") is not True or getattr(owner.args, "closed_failure_diagnostics", False) is not True:
+            return
+        if type(event) is not str or event not in LIFECYCLE_EVENTS: return
+        side = side if type(side) is str and side in ("a", "b") else "UNKNOWN"
+        with state["lock"]:
+            try:
+                stamp = time.monotonic_ns()
+                if type(stamp) is not int or stamp < 0: stamp = None
+            except BaseException:
+                stamp = None
+            if event in ("FIRST_ABORT_COMMITTED", "OWNED_RUNTIME_STOP_ENTRY"):
+                if event in state["first"]: return
+                state["first"].add(event)
+            rows = owner.result.setdefault("closed_lifecycle_chronology", [])
+            if type(rows) is not list: return
+            if len(rows) >= 32:
+                owner.result['closed_lifecycle_recording'] = 'TRUNCATED'
+                return
+            rows.append({"sequence":len(rows), "event":event, "side":side,
+                         "host_monotonic_ns":stamp, "clock_domain":"HOST_ONLY"})
+    except BaseException:
+        pass
+
+
+def safe_note_lifecycle(owner, event, side="UNKNOWN"):
+    try: note_lifecycle(owner, event, side)
+    except BaseException: pass
+
+
+def note_owned_runtime_stop(owner, name):
+    try:
+        if name in {node['container'] for node in owner.nodes.values()}:
+            note_lifecycle(owner, 'OWNED_RUNTIME_STOP_ENTRY')
+    except BaseException:
+        pass
+
+
+def lifecycle_method(original, source, *, cleanup=False):
+    import textwrap
+    text = textwrap.dedent(source)
+    if cleanup:
+        cells=dict(zip(original.__code__.co_freevars,original.__closure__ or ()))
+        if 'original_cleanup' in cells:
+            import inspect
+            wrapper=textwrap.dedent(inspect.getsource(original))
+            if original.__name__!='cleanup' or wrapper.count('return original_cleanup(self)')!=1:
+                raise ValueError('LIFECYCLE_CLOSURE_CONTEXT')
+            inner=cells['original_cleanup'].cell_contents
+            inner_source=getattr(inner,'_g2_cap_source',None) or inspect.getsource(inner)
+            replacement=lifecycle_method(inner,inner_source,cleanup=True)
+            def cell(value):return (lambda:value).__closure__[0]
+            closure=tuple(cell(replacement) if name=='original_cleanup' else cells[name]
+                for name in original.__code__.co_freevars)
+            return types.FunctionType(original.__code__,dict(original.__globals__),original.__name__,original.__defaults__,closure)
+    if cleanup:
+        stop="if record['State']['Running']:self.docker('stop','--time','1',name)"
+        if (text.count(stop)!=1 or text.count("record=self.cleanup_inspect('container',name)")!=1 or
+            text.count("record['Image']!=image")!=1 or text.count("raise RuntimeError('cleanup ownership')")!=1):
+            raise ValueError("LIFECYCLE_RUNTIME_CONTEXT")
+        lines=text.splitlines()
+        index=next(index for index,line in enumerate(lines) if stop in line)
+        indent=lines[index][:len(lines[index])-len(lines[index].lstrip())]
+        lines[index:index+1]=[indent+"if record['State']['Running']:",
+            indent+" _note_owned_runtime_stop(self, name)",
+            indent+" self.docker('stop','--time','1',name)"]
+        text='\n'.join(lines)+'\n'
+    else:
+        lines = text.splitlines()
+        if lines[0].strip() != "def abort_owned(self, error):": raise ValueError("LIFECYCLE_EXACT_CONTEXT")
+        body_indent = lines[1][:len(lines[1])-len(lines[1].lstrip())]
+        lines.insert(1, body_indent+"_note_lifecycle(self, 'ABORT_ENTRY')")
+        commits = [index for index,line in enumerate(lines) if line.strip() == 'self.aborted = True']
+        if len(commits) != 1: raise ValueError("LIFECYCLE_EXACT_CONTEXT")
+        index=commits[0];line=lines[index]
+        lines.insert(index+1,line[:len(line)-len(line.lstrip())]+"_note_lifecycle(self, 'FIRST_ABORT_COMMITTED')")
+        text='\n'.join(lines)+'\n'
+        lines = text.splitlines()
+        fragment = "self.command(['docker', 'kill', record['Id']], timeout=5)"
+        matches = [index for index, line in enumerate(lines) if fragment in line]
+        if len(matches) != 1: raise ValueError("LIFECYCLE_EXACT_CONTEXT")
+        index = matches[0]; line = lines[index]
+        lines.insert(index, line[:len(line)-len(line.lstrip())]+"_note_lifecycle(self, 'OWNED_RUNTIME_STOP_ENTRY')")
+        text = '\n'.join(lines)+'\n'
+    namespace = method_namespace(original)
+    namespace['_note_lifecycle'] = safe_note_lifecycle
+    namespace['_note_owned_runtime_stop'] = note_owned_runtime_stop
+    exec(compile(text, '<owned-lifecycle>', 'exec'), namespace)
+    return namespace[original.__name__]
+
+
+def install_lifecycle(owner, abort_source, cleanup_source, original_cleanup=None):
+    if getattr(owner.args, 'closed_failure_diagnostics', False) is not True: return
+    if getattr(owner, '_closed_lifecycle_state', None) is not None: return
+    abort = lifecycle_method(owner.abort_owned.__func__, abort_source)
+    cleanup = lifecycle_method(original_cleanup if original_cleanup is not None else owner.cleanup.__func__, cleanup_source, cleanup=True)
+    previous_abort = owner.abort_owned
+    previous_cleanup = getattr(owner, '_closed_lifecycle_cleanup', None)
+    try:
+        owner.result['closed_lifecycle_installation'] = 'INSTALLED'
+        owner.result['closed_lifecycle_recording'] = 'ACTIVE'
+        owner.abort_owned = types.MethodType(abort, owner)
+        owner._closed_lifecycle_cleanup = types.MethodType(cleanup, owner)
+        owner._closed_lifecycle_state = {'lock':threading.Lock(), 'first':set(), 'complete':True}
+    except BaseException:
+        owner.abort_owned = previous_abort
+        if previous_cleanup is None:
+            if hasattr(owner, '_closed_lifecycle_cleanup'): del owner._closed_lifecycle_cleanup
+        else: owner._closed_lifecycle_cleanup = previous_cleanup
+        owner._closed_lifecycle_state = None
+        raise
+
+
+def install_provider_lifecycle(owner, adapter):
+    try:
+        if getattr(owner.args, 'closed_failure_diagnostics', False) is not True: return
+        if getattr(adapter, '_closed_lifecycle_installed', False): return
+        original = adapter.close
+        def close():
+            safe_note_lifecycle(owner, 'PROVIDER_CLOSE_ENTRY')
+            return original()
+        adapter.close = close
+        adapter._closed_lifecycle_installed = True
+    except BaseException:
+        pass
+
+
 def mark_native_failure(self, error, node, direction, message, native_fields):
     """Called only by the generated terminal-native-audit raise site."""
     params=message.get("params") if type(message) is dict else None
@@ -68,6 +200,7 @@ def mark_native_failure(self, error, node, direction, message, native_fields):
             params["threadId"]==self.nodes[node].get("thread")==self.budget.threads.get(node) and
             type(params.get("turnId")) is str and
             [key for key in self.budget.started if key[0]==node and key not in self.budget.completed]==[(node,params["turnId"])])
+    if native: safe_note_lifecycle(self, "NATIVE_TERMINAL_AUDIT", node)
     publication = None
     with self.abort_lock, self._observer_capture_lifecycle_lock:
         if native and not self.aborted and not getattr(self,"_observer_capture_cutoff",False):
@@ -1334,6 +1467,12 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         scenario_methods={}
     provider_namespace = dict(legacy_cls.provider_forwarder.__globals__)
     provider_namespace["_install_client_read_cancellation"]=lambda owner, adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["diagnostic_relay_sha256" if getattr(owner.args,"test_request_observer",False) is True else "relay_sha256"], io_diagnostics_v2=getattr(owner.args,"test_request_observer",False) is True)
+    original_relay_installer = provider_namespace['_install_client_read_cancellation']
+    def owned_relay_installer(owner, adapter):
+        returned = original_relay_installer(owner, adapter)
+        install_provider_lifecycle(owner, adapter)
+        return returned
+    provider_namespace['_install_client_read_cancellation'] = owned_relay_installer
     exec(compile(sources["provider"], "<effective-request-observer-provider>", "exec"), provider_namespace)
     audit_namespace=method_namespace(legacy_cls.audit_rpc)
     audit_namespace["_observer_mark_native_failure"]=mark_native_failure
@@ -1384,6 +1523,16 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             bind_policy(self.policy, args.artifact_started)
             if getattr(args,"closed_failure_diagnostics",False) is True:
                 install_closed_failure_diagnostics(self)
+                try:
+                    import inspect
+                    abort_tree = ast.parse(sources['gate'])
+                    abort_node = next(node for node in ast.walk(abort_tree) if isinstance(node, ast.FunctionDef) and node.name == 'abort_owned')
+                    cleanup_method = legacy_cls.cleanup
+                    cleanup_text = getattr(cleanup_method, '_g2_cap_source', None) or inspect.getsource(cleanup_method)
+                    install_lifecycle(self, ast.get_source_segment(sources['gate'], abort_node), cleanup_text, original_cleanup=cleanup_method)
+                except BaseException:
+                    try: self.result['closed_lifecycle_installation'] = 'NOT_INSTALLED'
+                    except BaseException: pass
             self.result["historical_effective_owned_wrapper_sha256_dependency_only"] = self.result.pop("effective_owned_wrapper_sha256", {})
             self.result["effective_owned_wrapper_sha256"] = {name:row["sha256"] for name,row in binding["candidate_files"].items()}
             self.result["effective_candidate_source_sha256"] = binding["effective_sources"]
@@ -1560,7 +1709,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 self.result["status"] = "FAIL"
             else:
                 self.result["candidate_sources_unchanged"] = True
-            return super().cleanup()
+            selected_cleanup = getattr(self, "_closed_lifecycle_cleanup", None)
+            return selected_cleanup() if selected_cleanup is not None else super().cleanup()
     for name, function in methods.items():
         setattr(CandidateGate, name, function)
     for name, function in scenario_methods.items():

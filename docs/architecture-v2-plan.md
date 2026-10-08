@@ -2,6 +2,8 @@
 
 ## Current next step — remaining acceptance boundaries
 
+Scoped Root offline lifecycle QA passed 8 methods / 19 subtests with zero effects; see [receipt](../.cicada-data/native-observer-wiring-20261007/lifecycle-root-qa-20261008a/result.NONAUTH.json). Preserve rejection by the old frozen binding. Continue in order: supported sandbox preflight, then bounded original-thread G2/G3 validation, then remaining G4/G5/V67/Client/physical/public gates separately. Preserve strict context/reply oracles, six actual / four manual / two automatic turns, 180+30+30-second budgets and isolation. Sandbox BLOCKED is not upgraded; no blind retry. Source-level replay cannot establish historical A6 cause. Existing narrow G4 PASS and sandbox execution prerequisites remain.
+
 The injected-before-ledger real-queue boundary has scoped PASS; retain uncertainty and no-reinjection criteria. Continue with an explicit bounded fixture preflight and supported sandbox-policy checks without weakening isolation. Confirm actual sandbox workspace-allow/outside-deny execution before bounded Native validation; preserve original-session/context/reply criteria and existing budgets. G2 final context, G3, remaining G4/G5/V67 and Client/physical/public gates require their own evidence. See [narrow queue result](native-queue-crash-acceptance.md).
 
 ## Historical next step — supported sandbox-policy audit
