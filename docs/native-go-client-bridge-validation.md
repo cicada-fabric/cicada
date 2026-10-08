@@ -1,0 +1,27 @@
+# Production GoClient zero-key Native bridge validation
+
+## Scope and tested inputs
+
+ONE frozen candidate B run passed production `codexapp.Client.Start` → `initialize` → `initialized` → `config/read` → `CloseAndWait` against the actual Codex CLI in a disposable KVM guest. The production package was unchanged at clean source `69a9434c9c94098bfc4cfbbfdbd1acd93a9e0eff`; one private overlay added only `TestNativeZeroKeyGoClientBridgeInitializeConfigReadClose`. The [candidate](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/CANDIDATE-B.NONAUTH.json) SHA-256 is `ebaf32faf448348415faba03abe360c870efb0a9c8323c2d71ec6a6c9562eda9`; its production-source pin manifest is `514de02456980f2feddb9c9400c49e88b50672fb56224f41290e49dff7e0976c`. The pinned CLI was 0.161.0, SHA-256 `9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c`.
+
+The [compile-only build](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/root-build-b/RESULT.NONAUTH.json) exited 0 in 42.105 seconds, producing test binary SHA-256 `f6b017035d271ce35576bda49abdbedae060464a2e401661925000479bef54da` and guest supervisor SHA-256 `f7a7a228fae58b886944ba2211c410c3d0173fe1350db276f7de2d097dd31758`. The [Root gate](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/root-gate-b/RESULT.NONAUTH.json) exited 0 in 27.692 seconds; the [inner gate](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/output-go-bridge-b/gate-result.NONAUTH.json) took 26.241 seconds. These are fixture durations, not Runtime latency benchmarks.
+
+## Observations and independent review
+
+The [Go probe](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/output-go-bridge-b/go-probe-result.NONAUTH.json) exited 0, decoded `config/read` as an object, and verified production `CloseAndWait` returned with the wrapper process group absent. Independently, the outer QEMU owner observed wait exit 0 and exact QEMU process-group absence, without forced kill. A guest EXIT marker or wrapper exit alone was not accepted as VM-stop proof. The guest selected checks verified UID 1000, FD 4 absent before CLI exec, inability to open the root-only control UART, and inability to signal the root supervisor; they do not establish general sandbox or network enforcement.
+
+Root's [review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/root-gate-b/REVIEW.NONAUTH.json), SHA-256 `2245e7da9fa0609d2a5a0facf9dfdce41e7fe20c8f3a3278c8f6d0ad7d973bb3`, verified frozen source/input pins, six unchanged residents, no OOM, and removal of exact owned container `c403b40dd4503286be6faf3aa8cb062f9e4f234724aa3d368bdf4ebf8538e8df` and its name. It pins the Root gate receipt SHA-256 `1ad94d9ff5659ecea5b3503c3cbedaa3ae158a1bc0eecccf714b5d035885e22e`.
+
+The consumed IPC archive actually had 47 entries; the [derivative](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/output-go-bridge-b/DERIVATIVE.NONAUTH.json) had 49: 43 unchanged, four script replacements and two additions. Derived archive SHA-256 is `d0d26c2207808b0ae551d670b6dc4ccc6881263328b3757da18525411ca90310`. The retained [first count review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/root-gate-b/REVIEW-FIRST-COUNT-FAIL.NONAUTH.json) failed only because it assumed historical counts 44/46. Root corrected that read-only review against the actual consumed archive; no Native retry occurred. Earlier Python IPC D, network D and auth B2 retain [their own source and scope](native-kvm-preflight-validation.md).
+
+## Recorded commands and limits
+
+Inside the pinned builder, the compile command was `/bin/sh /opt/bridge/build_bridge.sh`, using Go 1.27.1 image digest `69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`, read-only source/module mounts and network `none`. The one consumed gate command, in its separately reviewed outer fixture, was:
+
+```sh
+/usr/bin/python3 -B /opt/bridge/bridge_gate.py --execute-zero-go --candidate-sha256=ebaf32faf448348415faba03abe360c870efb0a9c8323c2d71ec6a6c9562eda9
+```
+
+The [prestart record](../.cicada-data/native-observer-wiring-20261007/worker-kvm-go-bridge-20261008a/root-gate-b/PRESTART.NONAUTH.json) retains the complete Docker command and mounts. The gate used cached helper image `sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29`, read-only root, UID 1000 / KVM group 994, all capabilities dropped, no-new-privileges, network `none`, 1 CPU / 2 GiB / 128 pids and only `/dev/kvm:rw`; the guest used one vCPU / 1 GiB and `-net none`. No credential/provider mounts or credential access occurred. KVM is a test fixture, not a shipping Runtime, dependency or resident service. The recorded command is historical evidence, not authorization to rerun the consumed candidate/output.
+
+There were zero `thread/start` and `turn/start` calls and no Worker or approval flow. Provider/model activity was **NOT_INSTRUMENTED**, not a globally measured zero. Authenticated Worker execution, original-SID/context continuity, resource-stop integration, G2/G3, full T9, Android, physical Nodes and public HTTPS remain unclosed; historical acceptance retains its tested source. Next is preparation and separate review of minimal outside-guest authentication for single-Worker feasibility only, **NOT_RUN / DEFAULT_HOLD**. Overall v0.1 remains **PARTIAL**.
