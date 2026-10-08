@@ -2,6 +2,8 @@
 
 ## Current G4 real-queue checkpoint — narrow PASS, v0.1 PARTIAL
 
+The clean e286 optional PQ candidate passed one shipped fixture gate: 1 top-level test / 4 subtests, zero failures/skips. See [artifact provenance and fixture-only scope](v01-clean-e286-artifact-validation.md).
+
 The CLI 0.161.0 real-queue gate passed the narrow injected-before-ledger boundary with zero turn starts: exactly one submission, INJECTION_UNCERTAIN, and refusal of both original and new reinjection attempts. This does not close all G4, G5/V67, paid Native business acceptance or final context. G2 FAIL/G3 NOT_REACHED, sandbox BLOCKED and paid Native on image e754 NOT_RUN remain; v0.1 PARTIAL and Control counts NOT_INSTRUMENTED. Root normal / race deterministic suites passed five methods each. See [queue evidence and prior failures](native-queue-crash-acceptance.md). Product 009a / Hub 45058 dirty 2b92 and helper c01 reuse remain unchanged.
 
 Fresh Node `local_send/local_ask` remain UNSUPPORTED; normal MCP messaging continues through sealed Hub Relay, with scoped legacy replay/completion/control unchanged. The inspected CLI 0.161.0 APIs lack account-bound submission fencing, and legacy Landlock offers no workspace-write fallback; see [exact source evidence and limits](native-local-direct-design.md).

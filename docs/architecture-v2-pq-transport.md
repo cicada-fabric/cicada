@@ -1,5 +1,11 @@
 # Architecture v2.1：后量子传输与解密边界
 
+## Current optional PQ artifact checkpoint
+
+Clean `e286c8153b0ad840334de12fe947d4c3d9a186a6` produced matching-source optional Linux/amd64 PQ image/package and a 24-file protocol export; the single shipped fixture gate passed one top-level test / four subtests, zero failures/skips. This proves actual Node joins and checked fixture-client traffic, not Native/model consumption or broader acceptance; see [artifact provenance, exact recipes and limits](v01-clean-e286-artifact-validation.md). G2 FAIL/G3 NOT_REACHED, V67 UNSUPPORTED, sandbox BLOCKED and remaining gates retain their separate scopes.
+
+The optional Linux/amd64 CGO `cicada_pqtls` path uses [Hub startup](../cicada-go/cmd/cicada/serve_pqtls.go), the [strict listener](../cicada-go/internal/server/node_pqtls.go), and [enrolled Node transport selection](../cicada-go/cmd/cicada/machine_pqtls.go); the [shipped fixture](../cicada-go/cmd/cicada/node_pqtls_packaging_test.go) validates its bounded scope. The optional `pqtls` build integrates the strict PQ listener/Node transport; the default CGO0 build is a distinct variant. Browser/Android TLS interoperability and FIPS certification are not proved. Fresh Node local SEND/ASK remain UNSUPPORTED; normal same-Node MCP messaging uses sealed Hub Relay. The following October 1 opening and proposed design sections are historical, including their then-NOT_IMPLEMENTED and local-path claims; they are not current capability assertions.
+
 ## 2026-10-01 Network binding guard checkpoint (separate from transport)
 
 A directory-only Network member can now register the current native identity binding needed for Group admission without gaining a direct traffic/key grant. The correction passed its focused Store and production HTTP selectors plus focused Store/HTTP race selectors on the five-file fingerprint `65ab2a5b67a6556efb1228b3ca7516e1be68d63b8348d08c2b21ca8bbbd2a43a`; see [the evidence record](../.cicada-data/next-checkpoint/network-member-binding-20261001/result.json). An earlier broad Store race timed out during repeated fixture setup and is retained as a timeout, not a pass. This authorization change did not alter E2EE, TLS, Hub schema, wire format, or key material, and it provides no evidence that the exact PQ TLS profile below is implemented.

@@ -2,6 +2,8 @@
 
 ## Current next step — remaining acceptance boundaries
 
+The clean e286 optional PQ candidate passed one shipped fixture gate: 1 top-level test / 4 subtests, zero failures/skips. See [artifact provenance and fixture-only scope](v01-clean-e286-artifact-validation.md).
+
 Scoped Root offline lifecycle QA passed 8 methods / 19 subtests with zero effects; see [receipt](../.cicada-data/native-observer-wiring-20261007/lifecycle-root-qa-20261008a/result.NONAUTH.json). Preserve rejection by the old frozen binding. Continue in order: supported sandbox preflight, then bounded original-thread G2/G3 validation, then remaining G4/G5/V67/Client/physical/public gates separately. Preserve strict context/reply oracles, six actual / four manual / two automatic turns, 180+30+30-second budgets and isolation. Sandbox BLOCKED is not upgraded; no blind retry. Source-level replay cannot establish historical A6 cause. Existing narrow G4 PASS and sandbox execution prerequisites remain.
 
 The injected-before-ledger real-queue boundary retains its scoped PASS and no-reinjection criteria. Use a compatible supported sandbox environment and confirm actual workspace-allow/outside-deny execution before bounded original-thread G2/G3 validation. V67 requires a supported account-bound adapter and switch-safe submission proof; fresh Node `local_send/local_ask` remain UNSUPPORTED; normal MCP messaging continues through Hub Relay. Remaining G4/G5/Client/physical/public gates stay separate.
