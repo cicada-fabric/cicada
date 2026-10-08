@@ -15,6 +15,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -23,7 +24,8 @@ import (
 // through one Hub API. Codex itself is a recording fake: this proves the
 // protocol and Control isolation, not real model consumption or two hosts.
 func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing.T) {
-	fixture := newMachineSealedReceiveFixtureWithActions(t, false, "ask", []string{"ask", "reply"})
+	fixture := newMachineSealedReceiveFixtureWithOwnerGrantTimingDirectionAndJoin(t, false,
+		"ask", []string{"ask", "reply"}, []string{"message.ask"}, "", "", false, "forward", true)
 	workspace, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -38,181 +40,97 @@ func TestMCPSealedAskReplyAcrossTwoLogicalNodesWithoutControlBusiness(t *testing
 	t.Setenv("CICADA_HARNESS", "codex")
 	t.Setenv("CICADA_NATIVE_SESSION_ID", "")
 
-	const sourceSession = "cicada_session_sealed_source"
-	const targetSession = "cicada_session_sealed_target"
+	sourceSession := fixture.sourceJoin.SessionToken
+	targetSession := fixture.targetJoin.SessionToken
 	const question = "private cross-owner question"
 	const answer = "private correlated answer"
-	cards := map[string]fabric.NetworkCard{
-		sourceSession: {
-			EndpointID: fixture.sourceEndpoint, PrincipalID: fixture.link.SourcePrincipalID,
-			GroupID: fixture.link.SourceGroupID, NodeID: fixture.sourceNodeID,
-			Harness: "codex", Workspace: workspace, BindingID: fixture.manifest.Source.BindingID,
-			BindingEpoch: fixture.manifest.Source.BindingEpoch, NativeSessionID: "native_" + fixture.sourceEndpoint,
-		},
-		targetSession: {
-			EndpointID: fixture.targetEndpoint, PrincipalID: fixture.link.TargetPrincipalID,
-			GroupID: fixture.link.TargetGroupID, NodeID: fixture.targetNodeID,
-			Harness: "codex", Workspace: workspace, BindingID: fixture.manifest.Target.BindingID,
-			BindingEpoch: fixture.manifest.Target.BindingEpoch, NativeSessionID: "native_" + fixture.targetEndpoint,
-		},
-	}
-	tokens := map[string]string{fixture.sourceNodeID: fixture.sourceToken, fixture.targetNodeID: fixture.targetToken}
+	cards := make(map[string]fabric.NetworkCard)
+	const managerToken = "PUBLIC_SYNTHETIC_MANAGER_TOKEN"
+	production := server.NewFabricHandler(fixture.service, managerToken)
 	var sealedWireBodies [][]byte
 	var receiptLayers []string
 	var observedMu sync.Mutex
 	hub := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		path := request.URL.Path
-		if path == "/v2/fabric/whoami" {
-			token := strings.TrimPrefix(request.Header.Get("Authorization"), "CicadaSession ")
-			card, ok := cards[token]
-			if !ok || request.Header.Get("Cicada-Group-Scope") != card.GroupID {
-				response.WriteHeader(http.StatusUnauthorized)
+		if request.Method == http.MethodPost &&
+			(strings.HasSuffix(path, "/sealed/ask") || strings.HasSuffix(path, "/sealed/reply") ||
+				strings.HasSuffix(path, "/receipts")) {
+			wire, err := io.ReadAll(io.LimitReader(request.Body, 512*1024+1))
+			if err != nil || len(wire) > 512*1024 {
+				t.Error("fixture observation body exceeded its bound")
+				http.Error(response, "fixture observation failed", http.StatusBadRequest)
 				return
 			}
-			_ = json.NewEncoder(response).Encode(card)
-			return
-		}
-		if path == "/v2/fabric/node/networks/direct/claim" {
-			credential := request.Header.Get("Authorization")
-			if credential != "CicadaNode "+tokens[fixture.sourceNodeID] &&
-				credential != "CicadaNode "+tokens[fixture.targetNodeID] {
-				response.WriteHeader(http.StatusUnauthorized)
-				return
-			}
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-			return
-		}
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 4 || parts[0] != "v2" || parts[1] != "relay" || parts[2] != "nodes" {
-			t.Errorf("Control/business route invoked: %s %s", request.Method, path)
-			response.WriteHeader(http.StatusNotFound)
-			return
-		}
-		nodeID := parts[3]
-		nodeToken := tokens[nodeID]
-		if nodeToken == "" || request.Header.Get("Authorization") != "CicadaNode "+nodeToken {
-			response.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		switch {
-		case len(parts) == 6 && parts[4] == "links" && parts[5] == fixture.link.ID:
-			t.Errorf("unexpected Link API route %s", path)
-			response.WriteHeader(http.StatusNotFound)
-		case len(parts) == 7 && parts[4] == "links" && parts[6] == "authorization":
-			bundle, err := fixture.service.NodeCommunicationLinkAuthorizationBundle(nodeToken, parts[5])
-			if err != nil {
-				response.WriteHeader(http.StatusNotFound)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(bundle)
-		case len(parts) == 6 && parts[4] == "sealed" && parts[5] == "ask":
-			wire, _ := io.ReadAll(io.LimitReader(request.Body, 512*1024))
-			if bytes.Contains(wire, []byte(question)) || bytes.Contains(wire, []byte(answer)) {
-				t.Error("Hub observed peer plaintext in sealed ASK")
-			}
+			_ = request.Body.Close()
+			request.Body = io.NopCloser(bytes.NewReader(wire))
 			observedMu.Lock()
-			sealedWireBodies = append(sealedWireBodies, wire)
+			if strings.HasSuffix(path, "/receipts") {
+				var receipt fabric.NodeReceiptInput
+				if err := json.Unmarshal(wire, &receipt); err != nil {
+					t.Error(err)
+				}
+				receiptLayers = append(receiptLayers, receipt.Layer)
+			} else {
+				if bytes.Contains(wire, []byte(question)) || bytes.Contains(wire, []byte(answer)) {
+					t.Error("Hub observed peer plaintext in sealed traffic")
+				}
+				sealedWireBodies = append(sealedWireBodies, wire)
+			}
 			observedMu.Unlock()
-			var input fabric.NodeSealedLinkAskInput
-			if json.Unmarshal(wire, &input) != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			accepted, err := fixture.service.AskNodeSealedLinkMessage(nodeToken, input)
-			if err != nil {
-				response.WriteHeader(http.StatusForbidden)
-				return
-			}
-			response.WriteHeader(http.StatusAccepted)
-			_ = json.NewEncoder(response).Encode(map[string]any{
-				"request_id": accepted.RequestID, "message_id": accepted.MessageID,
-				"state": accepted.State, "expires_at": accepted.ExpiresAt,
-				"reply_mode": "asynchronous", "payload_mode": store.RelayPayloadModeSealedV1,
-			})
-		case len(parts) == 6 && parts[4] == "sealed" && parts[5] == "reply":
-			wire, _ := io.ReadAll(io.LimitReader(request.Body, 512*1024))
-			if bytes.Contains(wire, []byte(question)) || bytes.Contains(wire, []byte(answer)) {
-				t.Error("Hub observed peer plaintext in sealed REPLY")
-			}
-			observedMu.Lock()
-			sealedWireBodies = append(sealedWireBodies, wire)
-			observedMu.Unlock()
-			var input fabric.NodeSealedLinkReplyInput
-			if json.Unmarshal(wire, &input) != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			accepted, err := fixture.service.ReplyNodeSealedLinkMessage(nodeToken, input)
-			if err != nil {
-				response.WriteHeader(http.StatusForbidden)
-				return
-			}
-			response.WriteHeader(http.StatusAccepted)
-			_ = json.NewEncoder(response).Encode(map[string]any{
-				"request_id": accepted.RequestID, "message_id": input.MessageID,
-				"state": accepted.State, "payload_mode": store.RelayPayloadModeSealedV1,
-			})
-		case len(parts) == 7 && parts[4] == "sealed" && parts[5] == "requests":
-			status, err := fixture.service.NodeSealedLinkRequestStatus(nodeToken, parts[6])
-			if err != nil {
-				response.WriteHeader(http.StatusNotFound)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(status)
-		case len(parts) == 6 && parts[4] == "sealed" && parts[5] == "claim":
-			var input fabric.NodeClaimInput
-			if json.NewDecoder(request.Body).Decode(&input) != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			deliveries, err := fixture.service.ClaimNodeSealedDeliveries(nodeToken, nodeID, input)
-			if err != nil {
-				response.WriteHeader(http.StatusForbidden)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": deliveries})
-		case len(parts) == 7 && parts[4] == "sealed" && parts[6] == "authorization":
-			authorization, err := fixture.service.AuthorizeNodeSealedDelivery(nodeToken,
-				parts[5], request.URL.Query().Get("attempt_id"))
-			if err != nil {
-				response.WriteHeader(http.StatusNotFound)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(authorization)
-		case len(parts) == 7 && parts[4] == "group" && parts[5] == "sealed" && parts[6] == "claim":
-			var input fabric.NodeClaimInput
-			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			deliveries, err := fixture.service.ClaimNodeSameGroupSealedV1Deliveries(nodeToken, nodeID, input)
-			if err != nil {
-				response.WriteHeader(http.StatusForbidden)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(map[string]any{"deliveries": deliveries})
-		case len(parts) == 5 && parts[4] == "claim":
-			_, _ = response.Write([]byte(`{"deliveries":[]}`))
-		case len(parts) == 5 && parts[4] == "receipts":
-			var input fabric.NodeReceiptInput
-			if json.NewDecoder(request.Body).Decode(&input) != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if _, err := fixture.service.RecordNodeReceipt(nodeID, input); err != nil {
-				response.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			observedMu.Lock()
-			receiptLayers = append(receiptLayers, input.Layer)
-			observedMu.Unlock()
-			_ = json.NewEncoder(response).Encode(map[string]any{"status": input.Layer})
-		default:
-			t.Errorf("Control/business route invoked: %s %s", request.Method, path)
-			response.WriteHeader(http.StatusNotFound)
 		}
+		production.ServeHTTP(response, request)
 	}))
 	defer hub.Close()
+	for _, bearer := range []string{"", "Bearer PUBLIC_SYNTHETIC_WRONG_TOKEN"} {
+		request, err := http.NewRequest(http.MethodGet, hub.URL+"/v1/status", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", bearer)
+		response, err := hub.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("missing/wrong Manager bearer must be rejected: %d", response.StatusCode)
+		}
+	}
+	managerRequest, err := http.NewRequest(http.MethodGet, hub.URL+"/v1/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerRequest.Header.Set("Authorization", "Bearer "+managerToken)
+	managerResponse, err := hub.Client().Do(managerRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = managerResponse.Body.Close()
+	if managerResponse.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("authenticated Manager status must be unavailable without Control: %d", managerResponse.StatusCode)
+	}
+
+	for _, joined := range []*fabric.JoinResult{fixture.sourceJoin, fixture.targetJoin} {
+		request, err := http.NewRequest(http.MethodGet, hub.URL+"/v2/fabric/whoami", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "CicadaSession "+joined.SessionToken)
+		request.Header.Set("Cicada-Group-Scope", joined.NetworkCard.GroupID)
+		response, err := hub.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var card fabric.NetworkCard
+		decodeErr := json.NewDecoder(response.Body).Decode(&card)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK || decodeErr != nil ||
+			card.EndpointID != joined.Endpoint.ID || card.BindingID != joined.BindingID ||
+			card.BindingEpoch != joined.BindingEpoch || card.NativeSessionID != joined.Endpoint.NativeSessionID {
+			t.Fatalf("production whoami did not authenticate the joined binding: status=%d card=%#v err=%v", response.StatusCode, card, decodeErr)
+		}
+		cards[joined.SessionToken] = card
+	}
 
 	hubID, err := fixture.store.GetClientHubID()
 	if err != nil {

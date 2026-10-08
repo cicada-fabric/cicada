@@ -1,6 +1,11 @@
 # Architecture v2.3 实施计划
 
-## Current delegated external-sandbox checkpoint — v0.1 PARTIAL
+## Current production-handler protocol checkpoint — v0.1 PARTIAL
+
+Main's scoped production Fabric HTTP handler test and three shared-fixture regressions passed (4 tests, 0 failures/skips), using issued Join sessions and recording Codex only. [Validation and retained preparation failures](native-production-handler-control-isolation-validation.md) distinguish authenticated Manager unavailability from the successful opaque ASK/REPLY roundtrip. This does not close full T9, Native/context or general Worker acceptance; existing counts and remaining gates are unchanged.
+
+
+## Historical delegated external-sandbox checkpoint — v0.1 PARTIAL
 
 Main's single zero-model native `command/exec` fixture passed five Docker/DAC/network-none predicates; this is not product workspace-write or original-thread acceptance. [Scoped evidence and integration blockers](native-external-sandbox-validation.md) retain the prior namespace failure, G2 FAIL / G3 NOT_REACHED, A6 UNKNOWN and general Worker BLOCKED. The current six-turn Native lane has no complete optional external-sandbox fixture: its automatic turns retain workspace-write and its Runtime envelope does not establish the required hardening or secret-read isolation. No new Native readiness command or binding was prepared.
 

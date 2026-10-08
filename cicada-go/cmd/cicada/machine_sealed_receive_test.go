@@ -23,6 +23,8 @@ import (
 )
 
 type machineSealedReceiveFixture struct {
+	sourceJoin          *fabric.JoinResult
+	targetJoin          *fabric.JoinResult
 	store               *store.Store
 	service             *fabric.Service
 	databasePath        string
@@ -109,6 +111,16 @@ func newMachineSealedReceiveFixtureWithOwnerGrantTimingForNativeSessions(t *test
 func newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t *testing.T, seedMessage bool,
 	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string,
 	deferOwnerGrants bool, direction string) *machineSealedReceiveFixture {
+	return newMachineSealedReceiveFixtureWithOwnerGrantTimingDirectionAndJoin(t, seedMessage,
+		routeKind, actions, endpointGrants, sourceNativeSessionID, targetNativeSessionID,
+		deferOwnerGrants, direction, false)
+}
+
+// Explicit Join precedes endpoint key attestations and owner Link grants so
+// their binding epochs describe the credentials actually used by the HTTP test.
+func newMachineSealedReceiveFixtureWithOwnerGrantTimingDirectionAndJoin(t *testing.T, seedMessage bool,
+	routeKind string, actions, endpointGrants []string, sourceNativeSessionID, targetNativeSessionID string,
+	deferOwnerGrants bool, direction string, explicitJoin bool) *machineSealedReceiveFixture {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "hub.sqlite3")
 	state, err := store.New(databasePath)
@@ -226,6 +238,35 @@ func newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t *testing.T
 	targetOwner := newBoundNode("owner_target", "node_target")
 	source := makeEndpoint("owner_source", "group_source", "ep_source", "node_source", sourceNativeSessionID)
 	target := makeEndpoint("owner_target", "group_target", "ep_target", "node_target", targetNativeSessionID)
+	var sourceJoin, targetJoin *fabric.JoinResult
+	if explicitJoin {
+		joinService, err := fabric.NewService(state, source.ownerID, source.ownerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workspace, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		join := func(endpoint endpointSetup, token string) *fabric.JoinResult {
+			t.Helper()
+			joined, err := joinService.JoinForNodeCredential(token, fabric.JoinInput{
+				GroupID: endpoint.groupID, PrincipalID: endpoint.principal,
+				EndpointID: endpoint.endpointID, Harness: "codex",
+				NativeSessionID: "native_" + endpoint.endpointID, NodeID: endpoint.nodeID, Workspace: workspace,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if joined.Endpoint.ID != endpoint.endpointID || joined.Endpoint.PrincipalID != endpoint.principal ||
+				joined.BindingID != endpoint.bindingID || joined.SessionToken == "" {
+				t.Fatalf("explicit Join changed the fixture identity or omitted its credential: %#v", joined)
+			}
+			return joined
+		}
+		sourceJoin = join(source, sourceOwner.nodeToken)
+		targetJoin = join(target, targetOwner.nodeToken)
+	}
 	hubID, err := state.GetClientHubID()
 	if err != nil {
 		t.Fatal(err)
@@ -378,7 +419,7 @@ func newMachineSealedReceiveFixtureWithOwnerGrantTimingAndDirection(t *testing.T
 			}
 		}
 	}
-	return &machineSealedReceiveFixture{store: state, service: service, databasePath: databasePath, stateDir: stateDir,
+	return &machineSealedReceiveFixture{sourceJoin: sourceJoin, targetJoin: targetJoin, store: state, service: service, databasePath: databasePath, stateDir: stateDir,
 		sourceNodeID: source.nodeID, sourceToken: sourceOwner.nodeToken,
 		sourceOwnerKeyID: sourceOwner.keyID, sourceOwnerIdentity: sourceOwner.identity,
 		sourceEndpoint: source.endpointID, sourceKey: sourceKey,
