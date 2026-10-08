@@ -15,6 +15,8 @@ Lifecycle chronology is source-ready, default OFF: child guarded memory-only che
 
 See [source-scoped queue evidence](native-queue-crash-acceptance.md); c/d readiness failures had zero gate invocations.
 
+Fresh Node `local_send/local_ask` remain UNSUPPORTED; normal MCP messaging continues through sealed Hub Relay, with scoped legacy replay/completion/control unchanged. The inspected CLI 0.161.0 APIs lack account-bound submission fencing, and legacy Landlock offers no workspace-write fallback; see [exact source evidence and limits](native-local-direct-design.md).
+
 ## Historical Runtime-resource checkpoint — PARTIAL
 
 | Scope | Result and boundary |
