@@ -517,6 +517,26 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	networkOnlyGroupHeaders := map[string]string{"Authorization": "CicadaSession " + secondA.SessionToken,
 		"Cicada-Group-Scope": groupA.ID}
 	expectDenied(http.MethodGet, "/v2/fabric/whoami", nil, networkOnlyGroupHeaders)
+	// Only primaryLegacy joined Group A. Network-only and pending/foreign
+	// memberships must not add cards or reveal the native session on either alias.
+	for _, path := range []string{"/v2/fabric/list", "/v2/fabric/members"} {
+		var directory struct {
+			Endpoints []fabric.NetworkCard `json:"endpoints"`
+		}
+		if err := json.Unmarshal(expect(http.MethodGet, path, nil, groupHeaders, http.StatusOK), &directory); err != nil ||
+			len(directory.Endpoints) != 1 {
+			t.Fatal("Group Directory did not return only its explicitly joined Endpoint")
+		}
+		card := directory.Endpoints[0]
+		if card.EndpointID != primaryLegacy.Endpoint.ID || card.PrincipalID != primaryLegacy.Endpoint.PrincipalID ||
+			card.GroupID != groupA.ID || card.BindingID != groupBindingAfter.ID || card.BindingEpoch != groupBindingAfter.Epoch ||
+			card.NativeSessionID != "" {
+			t.Fatal("Group Directory selected the wrong authoritative binding or exposed a native session")
+		}
+		for _, headers := range []map[string]string{networkOnlyGroupHeaders, primaryAHeaders, nil} {
+			expectDenied(http.MethodGet, path, nil, headers)
+		}
+	}
 
 	// A Network access credential is only a discovery/Network-management
 	// credential. It cannot impersonate a Group session, Node, Client device,

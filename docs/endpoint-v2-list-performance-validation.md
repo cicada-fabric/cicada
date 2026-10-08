@@ -4,7 +4,7 @@
 
 `Store.ListEndpointsV2` selects all legacy Endpoint fields plus Principal, primary Group, Binding and migration associations in one SQLite query, replacing the prior ID query and two lookups per row (`1+2N`). `getEndpointV2Locked` also uses one query instead of two. The SQL scope/expiry predicates, ordering, normalized limit, non-nil empty slice, JSON errors, `ErrEndpointNotFound` and `MigrationStatus = MigrationState` mapping are retained. No schema, API, authorization policy or dependency changes were made.
 
-`Fabric.Service.List` still performs N active-binding lookups. This is distinct from the earlier [`Store.ListDirectoryRecords` change](directory-list-performance-validation.md); neither record establishes that all Directory queries are free of N+1 behavior. Endpoint results remain O(n), limited to at most 1,000 rows per call (default 200), and decoded while holding the Store mutex.
+At this record's tested source, `Fabric.Service.List` still performed N active-binding lookups; the later [binding-batch checkpoint](fabric-directory-binding-performance-validation.md) has its own source and Service-level measurements. This is distinct from the earlier [`Store.ListDirectoryRecords` change](directory-list-performance-validation.md); these records do not establish that all Directory queries are free of N+1 behavior. Endpoint results remain O(n), limited to at most 1,000 rows per call (default 200), and decoded while holding the Store mutex.
 
 ## Tested source and focused checks
 

@@ -515,12 +515,24 @@ func (s *Service) List(actor Actor, status, nodeID, harnessName string, limit in
 		return nil, err
 	}
 	cards := make([]NetworkCard, 0, len(endpoints))
+	endpointIDs := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		if endpoint.Status != "left" {
+			endpointIDs = append(endpointIDs, endpoint.ID)
+		}
+	}
+	bindings, err := s.store.ListDirectoryActiveSessionBindings(endpointIDs)
+	if err != nil {
+		// Directory historically skipped failed binding lookups rather than
+		// returning them as a list error. Preserve that behavior for the batch.
+		return cards, nil
+	}
 	for _, endpoint := range endpoints {
 		if endpoint.Status == "left" {
 			continue
 		}
-		binding, bindingErr := s.store.GetActiveSessionBinding(endpoint.ID)
-		if bindingErr != nil {
+		binding := bindings[endpoint.ID]
+		if binding == nil {
 			continue
 		}
 		cards = append(cards, s.networkCard(endpoint, binding, actor.GroupID))
