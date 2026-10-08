@@ -438,6 +438,19 @@ func drainMachineNetworkDirectClaim(ctx context.Context, base, machineID, stateD
 			if err := verifyMachineNetworkDirectAuthorizationWithContext(queueCtx, machineID, delivery, *current); err != nil || !reflect.DeepEqual(*auth, *current) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Network direct authority changed before native admission")}
 			}
+			sender, receiver := current.Bundle.Sender, current.Bundle.Receiver
+			senderOwner, receiverOwner := sender.Grant.OwnerID, receiver.Grant.OwnerID
+			if sender.CollaborationGrant != nil {
+				senderOwner = sender.CollaborationGrant.OwnerID
+			}
+			if receiver.CollaborationGrant != nil {
+				receiverOwner = receiver.CollaborationGrant.OwnerID
+			}
+			if err := checkMachineNativeLocalTrust(queueCtx, stateDir, machineID, nil,
+				machineNativeOwnerTrust{senderOwner, sender.OwnerPublic.ID, sender.OwnerPublic},
+				machineNativeOwnerTrust{receiverOwner, receiver.OwnerPublic.ID, receiver.OwnerPublic}); err != nil {
+				return "", nil, err
+			}
 			scope, err := machineNativeContextScopeFromMetadata(queueCtx, entry.Harness, claim.SessionID,
 				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)
 			if err != nil {

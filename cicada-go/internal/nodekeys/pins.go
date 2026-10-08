@@ -262,6 +262,73 @@ func (s *CryptoState) GetPeerPin(ctx context.Context, scope PeerPinScope, expect
 	return pin, nil
 }
 
+// CheckPeerPinAdmission rechecks a previously verified in-memory snapshot.
+// It exposes no key-discovery path and never changes the persisted pin.
+// It does not replace fresh Hub Guard or cryptographic envelope verification.
+func (s *CryptoState) CheckPeerPinAdmission(ctx context.Context, expected PeerKeyPin) (result error) {
+	if ctx == nil {
+		return errors.New("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validatePeerPinRequest(expected.Scope, expected.Peer); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("connect to Node crypto state: %w", err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			result = fmt.Errorf("close peer pin admission connection: %w", err)
+		}
+	}()
+	if err := configureCryptoConnection(ctx, conn); err != nil {
+		return err
+	}
+	current, err := loadPeerPin(ctx, conn, expected.Scope)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrPeerPinNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if current.RevokedAt != "" {
+		return ErrPeerPinRevoked
+	}
+	if !samePeerIdentity(current.Peer, expected.Peer) {
+		return ErrPeerPinIdentityMismatch
+	}
+	if expected.Version <= 0 || expected.RevokedAt != "" || current.Version != expected.Version ||
+		current.Scope != expected.Scope || current.KeyID != expected.KeyID ||
+		current.Fingerprint != expected.Fingerprint || !samePublicIdentity(current.Public, expected.Public) ||
+		current.NodeID != expected.NodeID || current.BindingID != expected.BindingID ||
+		current.BindingEpoch != expected.BindingEpoch || current.AttestationDigest != expected.AttestationDigest ||
+		current.LinkVersion != expected.LinkVersion || current.ManifestDigest != expected.ManifestDigest ||
+		current.LinkExpiresAt != expected.LinkExpiresAt || current.SourceGrantExpiry != expected.SourceGrantExpiry ||
+		current.TargetGrantExpiry != expected.TargetGrantExpiry {
+		return ErrPeerPinApprovalMismatch
+	}
+	if expected.Scope.LocalGroupID != expected.Scope.PeerGroupID {
+		for _, expiry := range []string{current.LinkExpiresAt, current.SourceGrantExpiry, current.TargetGrantExpiry} {
+			deadline, err := time.Parse(time.RFC3339Nano, expiry)
+			if err != nil || !time.Now().UTC().Before(deadline) {
+				return ErrPeerPinGrantExpired
+			}
+		}
+	}
+	return ctx.Err()
+}
+
 // VerifyPeerPin additionally checks the exact key ID and fingerprint expected
 // by the caller. The expected identity still must match the exact scope.
 func (s *CryptoState) VerifyPeerPin(ctx context.Context, scope PeerPinScope, expectedPeer PeerPinIdentity,

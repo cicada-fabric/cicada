@@ -830,7 +830,8 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if err != nil {
 		return machineSealedOpenResult{}, err
 	}
-	if _, err := state.PinOwnerGrantedGroupEndpointPeerKey(ctx, pinEvidence); err != nil {
+	pin, err := state.PinOwnerGrantedGroupEndpointPeerKey(ctx, pinEvidence)
+	if err != nil {
 		return machineSealedOpenResult{}, fmt.Errorf("verify current Owner-signed sender key grant: %w", err)
 	}
 	localGrantEvidence, err := crossNodeGroupPinEvidence(crossNodeGroupPeerKey{
@@ -871,7 +872,7 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if _, _, err := decodeGroupSpaceMessagePayload(opened.Plaintext); err != nil {
 		return machineSealedOpenResult{}, fmt.Errorf("same-Group sealed GroupSpace reference payload is invalid: %w", err)
 	}
-	return machineSealedOpenResult{Plaintext: opened.Plaintext, Duplicate: opened.Duplicate}, nil
+	return machineSealedOpenResult{Plaintext: opened.Plaintext, Duplicate: opened.Duplicate, PeerPin: pin}, nil
 }
 
 func crossNodeGroupDeliveryRouteContextMatches(context e2ee.EndpointMessageContext,
@@ -1069,6 +1070,17 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, *current); err != nil ||
 				!reflect.DeepEqual(*authorization, *current) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("same-Group authority changed before native admission")}
+			}
+			if current.Sender.Grant == nil || current.Receiver.Grant == nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing same-Group Owner grant")}
+			}
+			if opened.PeerPin == nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing verified peer pin snapshot")}
+			}
+			if err := checkMachineNativeLocalTrust(queueCtx, stateDir, machineID, opened.PeerPin,
+				machineNativeOwnerTrust{ownerID: current.Sender.Grant.OwnerID, keyID: current.Sender.Grant.OwnerKeyID},
+				machineNativeOwnerTrust{ownerID: current.Receiver.Grant.OwnerID, keyID: current.Receiver.Grant.OwnerKeyID}); err != nil {
+				return "", nil, err
 			}
 			scope, err := machineNativeContextScopeFromMetadata(queueCtx, delivery.Harness, claim.SessionID,
 				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)

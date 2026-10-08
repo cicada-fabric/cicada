@@ -93,6 +93,17 @@ VALUES (?, ?, ?, ?, 'ACTIVE', 1, ?, ?, '')`, ownerID, keyID, string(publicJSON),
 // GetNodeOwnerKeyTrustLocal returns one locally installed Owner public-key
 // trust record. It never falls back to a public key supplied by a Hub.
 func (s *CryptoState) GetNodeOwnerKeyTrustLocal(ownerID, keyID string) (*OwnerKeyTrust, error) {
+	return s.GetNodeOwnerKeyTrustLocalContext(context.Background(), ownerID, keyID)
+}
+
+// GetNodeOwnerKeyTrustLocalContext bounds admission reads by the caller deadline.
+func (s *CryptoState) GetNodeOwnerKeyTrustLocalContext(ctx context.Context, ownerID, keyID string) (trust *OwnerKeyTrust, result error) {
+	if ctx == nil {
+		return nil, errors.New("Owner trust read requires a context")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := validateCryptoToken("Owner ID", ownerID); err != nil {
 		return nil, err
 	}
@@ -101,18 +112,25 @@ func (s *CryptoState) GetNodeOwnerKeyTrustLocal(ownerID, keyID string) (*OwnerKe
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := s.checkOpen(); err != nil {
 		return nil, err
 	}
-	conn, err := s.db.Conn(context.Background())
+	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("connect to Node crypto state: %w", err)
 	}
-	defer conn.Close()
-	if err := configureCryptoConnection(context.Background(), conn); err != nil {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			trust, result = nil, fmt.Errorf("close Node Owner trust read: %w", err)
+		}
+	}()
+	if err := configureCryptoConnection(ctx, conn); err != nil {
 		return nil, err
 	}
-	trust, err := loadNodeOwnerKeyTrust(context.Background(), conn, ownerID, keyID)
+	trust, err = loadNodeOwnerKeyTrust(ctx, conn, ownerID, keyID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNodeOwnerKeyTrustNotFound
 	}

@@ -1,6 +1,10 @@
 # Architecture v2.3 implementation audit
 
-## Current production-handler protocol checkpoint — v0.1 PARTIAL
+## Current local-trust admission checkpoint — v0.1 PARTIAL
+
+Queued Link, Network-direct and same-Group admission now rechecks Node-local Owner trust after physical writer acquisition; Link/same-Group also recheck the previously verified pin snapshot. [Source-scoped RED/GREEN evidence and limits](native-local-trust-admission-validation.md) records 11 top-level / 15 subtests GREEN and 15 nodekeys tests PASS; 6 top-level / 8 subtests race validation also passed. This closes the tested writer-wait revocation gap, without upgrading Native/context, Worker or the remaining acceptance gates.
+
+## Historical production-handler protocol checkpoint — v0.1 PARTIAL
 
 Main's scoped production Fabric HTTP handler test and three shared-fixture regressions passed (4 tests, 0 failures/skips), using issued Join sessions and recording Codex only. [Validation and retained preparation failures](native-production-handler-control-isolation-validation.md) distinguish authenticated Manager unavailability from the successful opaque ASK/REPLY roundtrip. This does not close full T9, Native/context or general Worker acceptance; existing counts and remaining gates are unchanged.
 

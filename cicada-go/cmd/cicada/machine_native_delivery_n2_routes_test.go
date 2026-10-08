@@ -394,6 +394,128 @@ func TestNativeDeliveryN2LinkNetworkCurrentGuardAfterWriterWait(t *testing.T) {
 		}
 	})
 }
+
+// Local Owner trust can change independently of the Hub while admission waits
+// for the physical writer. A completed local revocation must fence injection.
+func TestNativeDeliveryN2LinkNetworkLocalTrustRevokedAfterWriterWait(t *testing.T) {
+	for _, side := range []string{"source", "target"} {
+		t.Run(side, func(t *testing.T) {
+			n2EachRoute(t, func(t *testing.T, f *n2RouteFixture) {
+				claim, entry := f.claim(t)
+				authorization := func() (any, error) {
+					if f.network {
+						return fetchMachineNetworkDirectAuthorization(f.ctx, f.hub.URL, entry.MessageID, entry.AttemptID)
+					}
+					return fetchMachineSealedAuthorization(f.ctx, f.hub.URL, f.link.targetNodeID, entry.MessageID, entry.AttemptID)
+				}
+				before, err := authorization()
+				if err != nil {
+					t.Fatal(err)
+				}
+				holder := nativeDeliveryStartProcess(t, "n1-hold", f.process)
+				holder.ready(t, "writer_held")
+				ctx, cancel := context.WithCancel(f.ctx)
+				defer cancel()
+				reached := make(chan struct{})
+				var reachedOnce sync.Once
+				ctx = context.WithValue(ctx, machineNativeDeliveryLifecycleKey{}, machineNativeDeliveryLifecycle{
+					command: nativeDeliveryQueueCommand(f.process.ConfigPath),
+					observe: func(phase string) {
+						if phase == "writer_wait" {
+							reachedOnce.Do(func() { close(reached) })
+						}
+					},
+				})
+				done := make(chan error, 1)
+				released, finished := false, false
+				release := func() error {
+					if released {
+						return nil
+					}
+					released = true
+					if _, err := fmt.Fprintln(holder.stdin, "release"); err != nil {
+						_ = holder.command.Process.Kill()
+						return err
+					}
+					select {
+					case err := <-holder.done:
+						return err
+					case <-time.After(5 * time.Second):
+						_ = holder.command.Process.Kill()
+						return errors.New("held writer did not release within its bound")
+					}
+				}
+				defer func() {
+					cancel()
+					if err := release(); err != nil {
+						t.Error(err)
+					}
+					if !finished {
+						select {
+						case <-done:
+						case <-time.After(8 * time.Second):
+							t.Error("cancelled local-trust drain did not terminate")
+						}
+					}
+				}()
+				go func() { done <- f.drain(ctx, claim, entry) }()
+				select {
+				case <-reached:
+				case <-time.After(5 * time.Second):
+					t.Fatal("initial open did not reach the writer-wait barrier")
+				}
+				// This is the target Node's local trust database, not Hub state.
+				ownerID, keyID := f.link.link.SourceOwnerID, f.link.sourceOwnerKeyID
+				if side == "target" {
+					ownerID, keyID = f.link.link.TargetOwnerID, f.link.targetOwnerKeyID
+				}
+				if f.network {
+					keyID = f.link.sourceOwnerIdentity.Public().ID
+					if side == "target" {
+						keyID = f.link.targetOwnerIdentity.Public().ID
+					}
+				}
+				cryptoState, err := nodekeys.OpenCryptoState(machineNodeStateDir(f.link.stateDir, f.link.targetNodeID))
+				if err != nil {
+					t.Fatal(err)
+				}
+				trust, readErr := cryptoState.GetNodeOwnerKeyTrustLocal(ownerID, keyID)
+				var revokeErr error
+				if readErr == nil {
+					_, revokeErr = cryptoState.RevokeNodeOwnerKeyTrustLocal(ownerID, keyID, trust.Version)
+				}
+				closeErr := cryptoState.Close()
+				if err := errors.Join(readErr, revokeErr, closeErr); err != nil {
+					t.Fatal(err)
+				}
+				after, err := authorization()
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatalf("local revocation changed Hub authorization: err=%v", err)
+				}
+				if err := release(); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-done:
+					finished = true
+				case <-time.After(8 * time.Second):
+					t.Fatal("local-trust admission did not terminate after writer release")
+				}
+				if nativeDeliveryCount(t, f.process.CounterPath) != 0 {
+					t.Error("revoked local Owner trust reached native queue")
+				}
+				if len(nativeDeliveryRawOutcomes(t, f.process.Root)) != 0 {
+					t.Error("revoked local Owner trust wrote native intent")
+				}
+				stored, err := f.inbox.Get(f.ctx, f.messageID)
+				if err != nil || stored.State != nodeinbox.FAILED || f.journal.entry(f.messageID) != nil {
+					t.Fatalf("local trust denial was not durable/retired: state=%#v err=%v", stored, err)
+				}
+			})
+		})
+	}
+}
+
 func TestNativeDeliveryN2LinkNetworkReleasedWriterAllowsReceipt(t *testing.T) {
 	n2EachRoute(t, func(t *testing.T, f *n2RouteFixture) {
 		claim, entry := f.claim(t)

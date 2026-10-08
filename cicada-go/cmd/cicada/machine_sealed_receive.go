@@ -22,6 +22,59 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
+// The cryptographic proof and Hub snapshot were checked before writer wait.
+// Re-read independent local Owner trust and the optional verified pin snapshot
+// at the admission boundary; Network-direct has no peer pin.
+type machineNativeOwnerTrust struct {
+	ownerID string
+	keyID   string
+	public  e2ee.PublicIdentity
+}
+
+func checkMachineNativeLocalTrust(ctx context.Context, stateDir, machineID string,
+	pin *nodekeys.PeerKeyPin, owners ...machineNativeOwnerTrust) (result error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, machineID))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := state.Close(); closeErr != nil {
+			// A storage failure must remain retryable, even alongside a denial.
+			result = fmt.Errorf("close local Owner trust admission state: %w", closeErr)
+		}
+	}()
+	for _, owner := range owners {
+		trust, err := state.GetNodeOwnerKeyTrustLocalContext(ctx, owner.ownerID, owner.keyID)
+		if errors.Is(err, nodekeys.ErrNodeOwnerKeyTrustNotFound) {
+			return &machineNativeDeliveryDeniedError{cause: err}
+		}
+		if err != nil {
+			return err
+		}
+		fingerprint, err := nodekeys.PeerKeyFingerprint(trust.PublicIdentity)
+		if trust.State != nodekeys.NodeOwnerKeyTrustActive || trust.OwnerID != owner.ownerID ||
+			trust.KeyID != owner.keyID || trust.PublicIdentity.ID != owner.keyID || err != nil ||
+			fingerprint != trust.ExpectedFingerprint ||
+			(owner.public.ID != "" && !machineSamePublicIdentity(trust.PublicIdentity, owner.public)) {
+			return &machineNativeDeliveryDeniedError{cause: nodekeys.ErrNodeOwnerKeyTrustConflict}
+		}
+	}
+	if pin != nil {
+		if err := state.CheckPeerPinAdmission(ctx, *pin); err != nil {
+			if errors.Is(err, nodekeys.ErrPeerPinNotFound) || errors.Is(err, nodekeys.ErrPeerPinRevoked) ||
+				errors.Is(err, nodekeys.ErrPeerPinIdentityMismatch) || errors.Is(err, nodekeys.ErrPeerPinApprovalMismatch) ||
+				errors.Is(err, nodekeys.ErrPeerPinGrantExpired) {
+				return &machineNativeDeliveryDeniedError{cause: err}
+			}
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
 const machineCommunicationLinkAuthorizationRefPrefix = "communication-link.v2:"
 
 // fetchMachineSealedAuthorization asks the Node-only API for a current guard
@@ -91,6 +144,7 @@ func acceptMachineSealedRelayDelivery(ctx context.Context, base, machineID, stat
 type machineSealedOpenResult struct {
 	Plaintext []byte
 	Duplicate bool
+	PeerPin   *nodekeys.PeerKeyPin
 }
 
 func openMachineSealedDelivery(ctx context.Context, stateDir, machineID string,
@@ -186,7 +240,8 @@ func openMachineSealedDelivery(ctx context.Context, stateDir, machineID string,
 		EndpointID: sender.EndpointID, GroupID: sender.GroupID,
 		PrincipalID: sender.PrincipalID, OwnerID: sender.OwnerID,
 	}
-	if _, err := state.PinOwnerGrantedCrossGroupPeerKey(ctx, scope, local, peer, bundle); err != nil {
+	pin, err := state.PinOwnerGrantedCrossGroupPeerKey(ctx, scope, local, peer, bundle)
+	if err != nil {
 		return machineSealedOpenResult{}, fmt.Errorf("verify current bilateral Owner grants and local pins: %w", err)
 	}
 	opened, err := state.OpenOwnerGrantedCrossGroupInboundEndpointMessage(ctx,
@@ -201,7 +256,7 @@ func openMachineSealedDelivery(ctx context.Context, stateDir, machineID string,
 	if _, _, err := decodeGroupSpaceMessagePayload(opened.Plaintext); err != nil {
 		return machineSealedOpenResult{}, fmt.Errorf("sealed GroupSpace reference payload is invalid: %w", err)
 	}
-	return machineSealedOpenResult{Plaintext: opened.Plaintext, Duplicate: opened.Duplicate}, nil
+	return machineSealedOpenResult{Plaintext: opened.Plaintext, Duplicate: opened.Duplicate, PeerPin: pin}, nil
 }
 
 func validateMachineSealedClaimAuthorization(machineID string, delivery fabric.NodeSealedDelivery,
@@ -637,6 +692,18 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 			}
 			if err := validateMachineSealedClaimAuthorization(machineID, delivery, *current); err != nil || !reflect.DeepEqual(*authorization, *current) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("Link authority changed before native admission")}
+			}
+			bundle, err := machineNodeKeyBundle(current.Bundle)
+			if err != nil {
+				return "", nil, err
+			}
+			if opened.PeerPin == nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing verified peer pin snapshot")}
+			}
+			if err := checkMachineNativeLocalTrust(queueCtx, stateDir, machineID, opened.PeerPin,
+				machineNativeOwnerTrust{bundle.SourceGrant.OwnerID, bundle.SourceGrant.OwnerKeyID, bundle.SourceGrant.OwnerPublicIdentity},
+				machineNativeOwnerTrust{bundle.TargetGrant.OwnerID, bundle.TargetGrant.OwnerKeyID, bundle.TargetGrant.OwnerPublicIdentity}); err != nil {
+				return "", nil, err
 			}
 			scope, err := machineNativeContextScopeFromMetadata(queueCtx, entry.Harness, claim.SessionID,
 				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)

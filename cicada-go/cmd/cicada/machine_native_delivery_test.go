@@ -23,6 +23,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodekeys"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 	serverpkg "github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -463,6 +464,179 @@ func TestMachineNativeDeliveryBusyPreservesClaimAndJournal(t *testing.T) {
 		t.Fatalf("literal peer argv changed: %q", args)
 	}
 	t.Log("synthetic queue accepted once; exact literal message argv; consumption remains unconfirmed")
+}
+
+func TestMachineNativeDeliveryLocalTrustRevokedAfterWriterWait(t *testing.T) {
+	testMachineNativeDeliveryLocalRevocationAfterWriterWait(t, false, false)
+}
+
+func TestMachineNativeDeliveryPeerPinRevokedAfterWriterWait(t *testing.T) {
+	testMachineNativeDeliveryLocalRevocationAfterWriterWait(t, false, true)
+}
+
+func TestNativeDeliveryLinkPeerPinRevokedAfterWriterWait(t *testing.T) {
+	testMachineNativeDeliveryLocalRevocationAfterWriterWait(t, true, true)
+}
+
+func testMachineNativeDeliveryLocalRevocationAfterWriterWait(t *testing.T, link, pinRevoke bool) {
+	t.Helper()
+	var ctx context.Context
+	var process nativeDeliveryProcessFixture
+	var inbox *nodeinbox.Inbox
+	var journal *machineRelayJournal
+	var messageID, stateDir, machineID string
+	var claim nodeinbox.Claim
+	var entry machineRelayJournalEntry
+	var authorization func() (any, error)
+	var drain func(context.Context, nodeinbox.Claim, machineRelayJournalEntry) error
+	if link {
+		f := newN2RouteFixture(t, false)
+		claim, entry = f.claim(t)
+		ctx, process, inbox, journal, messageID = f.ctx, f.process, f.inbox, f.journal, f.messageID
+		stateDir, machineID = f.link.stateDir, f.link.targetNodeID
+		authorization = func() (any, error) {
+			return fetchMachineSealedAuthorization(f.ctx, f.hub.URL, machineID, entry.MessageID, entry.AttemptID)
+		}
+		drain = f.drain
+	} else {
+		f := newNativeDeliveryRelayFixture(t)
+		claim, entry = f.claim(t)
+		ctx, process, inbox, journal, messageID = f.ctx, f.process, f.inbox, f.journal, f.messageID
+		stateDir, machineID = f.local.stateDir, f.local.nodeID
+		authorization = func() (any, error) {
+			return fetchCrossNodeGroupDeliveryAuthorization(f.ctx, f.local.hub.URL, machineID, entry.MessageID, entry.AttemptID)
+		}
+		drain = f.drain
+	}
+	before, err := authorization()
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := nativeDeliveryStartProcess(t, "n1-hold", process)
+	holder.ready(t, "writer_held")
+	waitCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	reached := make(chan struct{})
+	var reachedOnce sync.Once
+	waitCtx = context.WithValue(waitCtx, machineNativeDeliveryLifecycleKey{}, machineNativeDeliveryLifecycle{
+		command: nativeDeliveryQueueCommand(process.ConfigPath),
+		observe: func(phase string) {
+			if phase == "writer_wait" {
+				reachedOnce.Do(func() { close(reached) })
+			}
+		},
+	})
+	done := make(chan error, 1)
+	released, finished := false, false
+	release := func() error {
+		if released {
+			return nil
+		}
+		released = true
+		if _, err := fmt.Fprintln(holder.stdin, "release"); err != nil {
+			_ = holder.command.Process.Kill()
+			return err
+		}
+		select {
+		case err := <-holder.done:
+			return err
+		case <-time.After(5 * time.Second):
+			_ = holder.command.Process.Kill()
+			return errors.New("held writer did not release within its bound")
+		}
+	}
+	defer func() {
+		cancel()
+		if err := release(); err != nil {
+			t.Error(err)
+		}
+		if !finished {
+			select {
+			case <-done:
+			case <-time.After(8 * time.Second):
+				t.Error("cancelled local-trust drain did not terminate")
+			}
+		}
+	}()
+	go func() { done <- drain(waitCtx, claim, entry) }()
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("initial open did not reach the writer-wait barrier")
+	}
+	// Revoke only target Node local state after initial open, while writer is held.
+	cryptoState, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, machineID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revokeErr error
+	if !pinRevoke {
+		auth := before.(*crossNodeGroupDeliveryAuthorization)
+		ownerID, keyID := auth.Sender.Grant.OwnerID, auth.Sender.Grant.OwnerKeyID
+		trust, err := cryptoState.GetNodeOwnerKeyTrustLocal(ownerID, keyID)
+		revokeErr = err
+		if err == nil {
+			_, revokeErr = cryptoState.RevokeNodeOwnerKeyTrustLocal(ownerID, keyID, trust.Version)
+		}
+	} else {
+		var pin *nodekeys.PeerKeyPin
+		if link {
+			auth := before.(*store.CommunicationLinkSealedDeliveryAuthorization)
+			bundle, err := machineNodeKeyBundle(auth.Bundle)
+			revokeErr = err
+			if err == nil {
+				// This fixture submits ASK from Source to Target; REPLY production
+				// direction remains captured by the verified open's returned pin.
+				sender, receiver := bundle.Manifest.Source, bundle.Manifest.Target
+				scope := nodekeys.PeerPinScope{LocalEndpointID: receiver.EndpointID, LocalGroupID: receiver.GroupID,
+					PeerEndpointID: sender.EndpointID, PeerGroupID: sender.GroupID, CommunicationLinkID: bundle.Manifest.LinkID}
+				local := nodekeys.PeerPinLocalEndpoint{EndpointID: receiver.EndpointID, GroupID: receiver.GroupID,
+					PrincipalID: receiver.PrincipalID, OwnerID: receiver.OwnerID, NodeID: receiver.NodeID,
+					BindingID: receiver.BindingID, BindingEpoch: receiver.BindingEpoch, KeyID: receiver.KeyID, Public: receiver.PublicIdentity}
+				peer := nodekeys.PeerPinIdentity{EndpointID: sender.EndpointID, GroupID: sender.GroupID,
+					PrincipalID: sender.PrincipalID, OwnerID: sender.OwnerID}
+				pin, revokeErr = cryptoState.GetOwnerGrantedCrossGroupPeerPin(ctx, scope, local, peer, bundle)
+			}
+		} else {
+			auth := before.(*crossNodeGroupDeliveryAuthorization)
+			sender, receiver := auth.Sender, auth.Receiver
+			scope := nodekeys.PeerPinScope{LocalEndpointID: receiver.EndpointID, LocalGroupID: receiver.GroupID,
+				PeerEndpointID: sender.EndpointID, PeerGroupID: sender.GroupID}
+			peer := nodekeys.PeerPinIdentity{EndpointID: sender.EndpointID, GroupID: sender.GroupID,
+				PrincipalID: sender.PrincipalID, OwnerID: sender.OwnerID}
+			pin, revokeErr = cryptoState.GetPeerPin(ctx, scope, peer)
+		}
+		if revokeErr == nil {
+			_, revokeErr = cryptoState.RevokePeerPin(ctx, pin.Scope, pin.Peer, pin.Version)
+		}
+	}
+	closeErr := cryptoState.Close()
+	if err := errors.Join(revokeErr, closeErr); err != nil {
+		t.Fatal(err)
+	}
+	after, err := authorization()
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("local revocation changed Hub authorization: err=%v", err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		finished = true
+	case <-time.After(8 * time.Second):
+		t.Fatal("local-trust admission did not terminate after writer release")
+	}
+	if nativeDeliveryCount(t, process.CounterPath) != 0 {
+		t.Error("revoked local authority reached native queue")
+	}
+	if len(nativeDeliveryRawOutcomes(t, process.Root)) != 0 {
+		t.Error("revoked local authority wrote native intent")
+	}
+	stored, err := inbox.Get(ctx, messageID)
+	if err != nil || stored.State != nodeinbox.FAILED || journal.entry(messageID) != nil {
+		t.Fatalf("local authority denial was not durable/retired: state=%#v err=%v", stored, err)
+	}
 }
 
 func TestMachineNativeDeliveryAuthorityChangesDuringWriterWait(t *testing.T) {
