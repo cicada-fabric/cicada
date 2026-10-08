@@ -1,6 +1,10 @@
 # Architecture v2.3 completion ledger
 
-## Current local-trust admission checkpoint — v0.1 PARTIAL
+## Current G5 HTTP privacy checkpoint — v0.1 PARTIAL
+
+Production HTTP directory/Artifact privacy tests and four retained regressions passed (6 top-level / 28 subtests, zero failures/skips); race validation passed the two new tests / 23 subtests with zero failures/skips. [Source, exact fixture scope and remaining G5 assertions](g5-http-privacy-validation.md) distinguish protocol authorization/redaction from Native, model memory and full G5 acceptance. Earlier counts and evidence retain their tested source.
+
+## Historical local-trust admission checkpoint — v0.1 PARTIAL
 
 Queued Link, Network-direct and same-Group admission now rechecks Node-local Owner trust after physical writer acquisition; Link/same-Group also recheck the previously verified pin snapshot. [Source-scoped RED/GREEN evidence and limits](native-local-trust-admission-validation.md) records 11 top-level / 15 subtests GREEN and 15 nodekeys tests PASS; 6 top-level / 8 subtests race validation also passed. This closes the tested writer-wait revocation gap, without upgrading Native/context, Worker or the remaining acceptance gates.
 
