@@ -2,6 +2,10 @@
 
 <a id="current-closeout"></a>
 
+## Current Directory Store list-query checkpoint — v0.1 PARTIAL
+
+Directory listing now reads complete rows in one query. Focused normal and race checks passed; its bounded 100/1,000-row Store benchmark showed lower time and allocations against the captured prior query path. A separate standard-image, real-TCP Hub fixture passed one bounded synthetic sample at 64 requests and 16 observed in-flight under 1 CPU / 128 MiB (34,136 KiB peak RSS, no OOM). Root's exact current-name/tag/digest review confirms both fixture containers and images absent; historical CIDs were not recorded. This finite sample is not a capacity guarantee. Listing remains unbounded O(n); Native Runtime, Android, physical-device and public-HTTPS checks remain NOT_RUN, so overall v0.1 stays PARTIAL. See [source, measurements and limits](directory-list-performance-validation.md).
+
 ## Current managed PQTLS fixture checkpoint — v0.1 PARTIAL
 
 [Managed fixture validation](pqtls-managed-fixture-validation.md) records focused normal and race 8 top-level / 12 subtests each PASS, full `cmd/cicada` 402 top-level / 287 subtest pass events with 13 opt-in skips, and tagged vet exit 0. These seven-test-path results remain separate from the shipping-build timeout and blocked Native acceptance.

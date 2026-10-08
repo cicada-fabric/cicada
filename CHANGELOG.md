@@ -5,6 +5,8 @@ This file records user-visible changes by release line. `VERSION` and the Go
 
 ## 0.1.0-dev — unreleased
 
+Directory listing now decodes complete rows in one SQLite query. Focused normal/race checks passed; the bounded 1,000-row all-record benchmark improved from 70.14 ms to 9.80 ms and from 3,393,549 to 2,245,040 bytes/op. A separate standard-image Hub fixture passed one bounded synthetic real-TCP sample (64 requests, 16 in flight, 1 CPU / 128 MiB, 34,136 KiB peak RSS, no OOM); Root's exact current-resource review found both fixture containers and images absent, though historical CIDs were not recorded. This is not a general capacity guarantee. See [validation](docs/directory-list-performance-validation.md).
+
 Managed PQTLS test fixtures now use genuine Owner-approved issuance, installation and current-authority validation. [Scoped normal, race, package and vet evidence](docs/pqtls-managed-fixture-validation.md) retains the failed attempts and optional skips; shipping-image and Native acceptance remain separate.
 
 ### 2026-10-02 clean52 bounded regression and remaining product gates

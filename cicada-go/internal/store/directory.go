@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+const directoryRecordSelect = `SELECT id, remote_id, label, identity_json, endpoints_json, announcement_json,
+expires_at, status, created_at, updated_at FROM directory_records`
+
 func (s *Store) UpsertDirectoryRecord(record DirectoryRecord) (*DirectoryRecord, error) {
 	if record.ID == "" {
 		record.ID = NewID("directory")
@@ -63,22 +66,24 @@ func (s *Store) GetDirectoryRecordByRemoteID(remoteID string) (*DirectoryRecord,
 func (s *Store) ListDirectoryRecords(activeOnly bool) ([]DirectoryRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	query := `SELECT id FROM directory_records ORDER BY updated_at DESC`
+	query := directoryRecordSelect + ` ORDER BY updated_at DESC`
 	if activeOnly {
-		query = `SELECT id FROM directory_records WHERE status = 'active' ORDER BY updated_at DESC`
+		query = directoryRecordSelect + ` WHERE status = 'active' ORDER BY updated_at DESC`
 	}
 	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, err
 	}
-	var ids []string
+	var result []DirectoryRecord
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		record, err := scanDirectoryRecord(rows)
+		if err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		ids = append(ids, id)
+		if record != nil {
+			result = append(result, *record)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -86,16 +91,6 @@ func (s *Store) ListDirectoryRecords(activeOnly bool) ([]DirectoryRecord, error)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
-	}
-	var result []DirectoryRecord
-	for _, id := range ids {
-		record, err := s.getDirectoryRecordLocked(id)
-		if err != nil {
-			return nil, err
-		}
-		if record != nil {
-			result = append(result, *record)
-		}
 	}
 	return result, nil
 }
@@ -111,10 +106,17 @@ func (s *Store) ReapExpiredDirectoryRecords(nowValue string) (int64, error) {
 }
 
 func (s *Store) getDirectoryRecordLocked(id string) (*DirectoryRecord, error) {
+	return scanDirectoryRecord(s.db.QueryRow(directoryRecordSelect+` WHERE id = ? OR remote_id = ? LIMIT 1`, id, id))
+}
+
+type directoryRecordScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanDirectoryRecord(scanner directoryRecordScanner) (*DirectoryRecord, error) {
 	var record DirectoryRecord
 	var identityJSON, endpointsJSON, announcement string
-	err := s.db.QueryRow(`SELECT id, remote_id, label, identity_json, endpoints_json, announcement_json,
-expires_at, status, created_at, updated_at FROM directory_records WHERE id = ? OR remote_id = ? LIMIT 1`, id, id).Scan(
+	err := scanner.Scan(
 		&record.ID, &record.RemoteID, &record.Label, &identityJSON, &endpointsJSON, &announcement,
 		&record.ExpiresAt, &record.Status, &record.CreatedAt, &record.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
