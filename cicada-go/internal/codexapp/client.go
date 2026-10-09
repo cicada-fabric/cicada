@@ -210,8 +210,7 @@ func (c *Client) CloseAndWait() error {
 		} else {
 			waitErr = c.process.Wait()
 		}
-		var exitErr *exec.ExitError
-		if errors.As(waitErr, &exitErr) {
+		if _, exitOnly := waitErr.(*exec.ExitError); exitOnly {
 			waitErr = nil // A signalled/nonzero exit still proves Cmd.Wait completed.
 		}
 		closeErr = errors.Join(closeErr, waitErr, waitAppServerProcessTree(c.process))

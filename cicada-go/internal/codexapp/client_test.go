@@ -2,11 +2,65 @@ package codexapp
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
+
+func TestCloseAndWaitPreservesProcessWaiterStopError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires /bin/sh and process groups")
+	}
+
+	root := t.TempDir()
+	script := filepath.Join(root, "app-server")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 30\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("joined stop error survives exit", func(t *testing.T) {
+		stopUnverified := errors.New("STOP_UNVERIFIED")
+		waiter := func(command *exec.Cmd) error {
+			waitErr := command.Wait()
+			var exitErr *exec.ExitError
+			if !errors.As(waitErr, &exitErr) {
+				return errors.Join(waitErr, errors.New("expected shell process to be terminated"))
+			}
+			return errors.Join(waitErr, stopUnverified)
+		}
+		client, err := StartWithLifecycle(context.Background(), "/bin/sh", root, nil,
+			nil, nil, nil, waiter)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		firstErr := client.CloseAndWait()
+		if !errors.Is(firstErr, stopUnverified) {
+			t.Fatalf("CloseAndWait() error = %v, want STOP_UNVERIFIED", firstErr)
+		}
+		if secondErr := client.CloseAndWait(); !errors.Is(secondErr, stopUnverified) {
+			t.Fatalf("repeated CloseAndWait() error = %v, want STOP_UNVERIFIED", secondErr)
+		}
+	})
+
+	t.Run("pure nonzero exit is still a completed wait", func(t *testing.T) {
+		client, err := StartWithLifecycle(context.Background(), "/bin/sh", root, nil,
+			nil, nil, nil, func(command *exec.Cmd) error { return command.Wait() })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.CloseAndWait(); err != nil {
+			t.Fatalf("CloseAndWait() treated a pure signalled exit as an unverified wait: %v", err)
+		}
+		if err := client.CloseAndWait(); err != nil {
+			t.Fatalf("repeated CloseAndWait() = %v, want nil", err)
+		}
+	})
+}
 
 func TestVersionAtLeast(t *testing.T) {
 	tests := []struct {
