@@ -113,7 +113,7 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 	var hubRouteStatuses []string
 	var nodeCredentialsSeen = map[string]bool{}
 	var hubSawPlaintext bool
-	var controlBusinessCalls int
+	var managementPathAttempts int
 	var askWire fabric.NodeSealedLinkAskInput
 	var replyWire fabric.NodeSealedLinkReplyInput
 	t.Cleanup(func() {
@@ -138,8 +138,8 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 		path := r.URL.Path
 		allowed := nativeCrossOwnerHubPathAllowed(path)
 		captureMu.Lock()
-		if strings.HasPrefix(path, "/v2/control/") {
-			controlBusinessCalls++
+		if nativeManagementPathAttempt(path) {
+			managementPathAttempts++
 		}
 		hubPaths = append(hubPaths, r.Method+" "+path)
 		if !allowed {
@@ -431,7 +431,7 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 	paths := append([]string(nil), hubPaths...)
 	unexpected := append([]string(nil), unexpectedPaths...)
 	plaintextSeen := hubSawPlaintext
-	controlCalls := controlBusinessCalls
+	controlCalls := managementPathAttempts
 	nodesSeen := map[string]bool{
 		fixture.sourceNodeID: nodeCredentialsSeen[fixture.sourceNodeID],
 		fixture.targetNodeID: nodeCredentialsSeen[fixture.targetNodeID],
@@ -444,7 +444,7 @@ func TestMCPSealedCrossOwnerCommunicationLinkAskReplyNative(t *testing.T) {
 		t.Fatalf("cross-owner Link path used an unexpected Hub route: %v", unexpected)
 	}
 	if controlCalls != 0 {
-		t.Fatalf("cross-owner peer ASK/REPLY invoked Control business HTTP %d times", controlCalls)
+		t.Fatalf("cross-owner peer ASK/REPLY attempted Control/Manager HTTP %d times", controlCalls)
 	}
 	if !nodesSeen[fixture.sourceNodeID] || !nodesSeen[fixture.targetNodeID] {
 		t.Fatal("both owner-bound Nodes did not independently authenticate to the shared Hub")

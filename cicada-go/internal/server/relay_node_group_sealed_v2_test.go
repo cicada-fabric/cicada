@@ -246,6 +246,74 @@ func (f *sameGroupSealedHTTPFixture) seal(t *testing.T,
 	return wire
 }
 
+func TestFabricOnlyRejectsAuthenticatedGoalCreationWithoutMutation(t *testing.T) {
+	f := newSameGroupSealedHTTPFixture(t)
+	handler, ok := f.handler.(*Handler)
+	if !ok || handler.control != nil {
+		t.Fatal("test requires the production Fabric-only handler with no Control")
+	}
+	machine, err := f.persistence.UpsertMachine("PUBLIC_SYNTHETIC_machine", "PUBLIC_SYNTHETIC machine", nil, "available")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.persistence.CreateGoal("PUBLIC_SYNTHETIC_existing_goal", "PUBLIC_SYNTHETIC existing objective",
+		"PUBLIC_SYNTHETIC done", "", 1, machine.ID, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := func() []byte {
+		t.Helper()
+		goals, err := f.persistence.ListGoals()
+		if err != nil {
+			t.Fatal(err)
+		}
+		workers, err := f.persistence.ListWorkers()
+		if err != nil {
+			t.Fatal(err)
+		}
+		workspaces, err := f.persistence.ListWorkspaces("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		approvals, err := f.persistence.ListApprovals(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		machines, err := f.persistence.ListMachines()
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal([]any{goals, workers, workspaces, approvals, machines})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	before := snapshot()
+	request := httptest.NewRequest(http.MethodPost, "/v1/goals",
+		bytes.NewBufferString(`{"objective":"PUBLIC_SYNTHETIC must not be created"}`))
+	request.Header.Set("Authorization", "Bearer management-bearer")
+	request.Header.Set("Content-Type", "application/json")
+	if handler.apiToken == "" || !handler.authorized(request) {
+		t.Fatal("the probe must pass Manager bearer authentication before the Control-disabled guard")
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	// Production writeError deliberately redacts every 5xx message. The nil
+	// Control and authenticated request establish which guard produced this 503.
+	if response.Code != http.StatusServiceUnavailable || body.Error != "internal server error" {
+		t.Fatalf("authenticated Control creation response: status=%d error=%q", response.Code, body.Error)
+	}
+	if !bytes.Equal(before, snapshot()) {
+		t.Fatal("rejected authenticated goal creation mutated goals, workers, workspaces, approvals or machines")
+	}
+}
+
 func TestNodeSameGroupSealedHTTPRoutesAuthorizeOpaqueTrafficWithoutControl(t *testing.T) {
 	f := newSameGroupSealedHTTPFixture(t)
 	handler, ok := f.handler.(*Handler)

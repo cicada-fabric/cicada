@@ -168,7 +168,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	var hubPaths []string
 	var unexpectedPaths []string
 	var hubSawPlaintext bool
-	var controlBusinessCalls int
+	var managementPathAttempts int
 	var askRequest fabric.NodeSameGroupSealedV1AskInput
 	var replyRequest fabric.NodeSameGroupSealedV1ReplyInput
 	var nodeCredentialsSeen = map[string]bool{}
@@ -182,8 +182,8 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 		path := r.URL.Path
 		allowed := nativeCrossNodeHubPathAllowed(r.Method, path)
 		captureMu.Lock()
-		if strings.HasPrefix(path, "/v2/control/") {
-			controlBusinessCalls++
+		if nativeManagementPathAttempt(path) {
+			managementPathAttempts++
 		}
 		hubPaths = append(hubPaths, r.Method+" "+path)
 		if !allowed {
@@ -563,7 +563,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 	paths := append([]string(nil), hubPaths...)
 	unexpected := append([]string(nil), unexpectedPaths...)
 	plaintextSeen := hubSawPlaintext
-	controlCalls := controlBusinessCalls
+	controlCalls := managementPathAttempts
 	nodesSeen := map[string]bool{nodeA: nodeCredentialsSeen[nodeA], nodeB: nodeCredentialsSeen[nodeB]}
 	captureMu.Unlock()
 	if plaintextSeen {
@@ -573,7 +573,7 @@ func TestMCPSealedCrossNodeGroupAskReplyNative(t *testing.T) {
 		t.Fatalf("cross-Node path used an unexpected Hub route: %v", unexpected)
 	}
 	if controlCalls != 0 {
-		t.Fatalf("peer ASK/REPLY invoked Control business HTTP %d times", controlCalls)
+		t.Fatalf("peer ASK/REPLY attempted Control/Manager HTTP %d times", controlCalls)
 	}
 	if !nodesSeen[nodeA] || !nodesSeen[nodeB] {
 		t.Fatal("both logical Nodes did not independently authenticate outbound requests to the same Hub")

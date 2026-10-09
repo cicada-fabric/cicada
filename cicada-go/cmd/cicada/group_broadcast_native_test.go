@@ -102,7 +102,7 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 	var captureMu sync.Mutex
 	var hubPaths, unexpectedPaths []string
 	var hubSawPlaintext bool
-	var controlBusinessCalls int
+	var managementPathAttempts int
 	var capturedSnapshot *store.SameGroupBroadcastV2Snapshot
 	var hubResponseClasses = make(map[string]int)
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,8 +118,8 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 		if !allowedPaths[path] {
 			unexpectedPaths = append(unexpectedPaths, r.Method+" "+path)
 		}
-		if strings.HasPrefix(path, "/v2/control/") {
-			controlBusinessCalls++
+		if nativeManagementPathAttempt(path) {
+			managementPathAttempts++
 		}
 		for _, value := range privateText {
 			if value != "" && bytes.Contains(body, []byte(value)) {
@@ -449,13 +449,13 @@ func TestMCPSealedSameGroupBroadcastNative(t *testing.T) {
 	finalPaths := append([]string(nil), hubPaths...)
 	finalUnexpected := append([]string(nil), unexpectedPaths...)
 	finalPlaintext := hubSawPlaintext
-	finalControlCalls := controlBusinessCalls
+	finalControlCalls := managementPathAttempts
 	captureMu.Unlock()
 	if finalPlaintext {
 		t.Fatal("Hub HTTP request or response contained synthetic peer plaintext")
 	}
 	if finalControlCalls != 0 {
-		t.Fatalf("ordinary Group broadcast invoked %d Control business routes", finalControlCalls)
+		t.Fatalf("ordinary Group broadcast attempted %d Control/Manager HTTP routes", finalControlCalls)
 	}
 	if len(finalUnexpected) != 0 {
 		t.Fatalf("same-Node broadcast used an unapproved Hub path: %s", strings.Join(finalUnexpected, ", "))
