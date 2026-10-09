@@ -39,6 +39,125 @@ type machineApprovalState struct {
 	Created    bool   `json:"created,omitempty"`
 }
 
+const machineCodexApprovalTurnIdentityWait = 15 * time.Second
+
+// machineCodexApprovalIdentity records only identities confirmed by the
+// app-server responses. Approval callbacks may run before turn/start returns,
+// so they wait on turnReady while the main Request call continues reading.
+type machineCodexApprovalIdentity struct {
+	mu           sync.RWMutex
+	threadID     string
+	turnID       string
+	turnReady    chan struct{}
+	turnResolved bool
+	turnErr      error
+}
+
+func newMachineCodexApprovalIdentity() *machineCodexApprovalIdentity {
+	return &machineCodexApprovalIdentity{turnReady: make(chan struct{})}
+}
+
+func validMachineCodexIdentity(value string) bool {
+	return value != "" && strings.TrimSpace(value) == value
+}
+
+func (identity *machineCodexApprovalIdentity) confirmThread(threadID string) error {
+	if identity == nil || !validMachineCodexIdentity(threadID) {
+		return errors.New("Codex did not return a valid native Thread ID")
+	}
+	identity.mu.Lock()
+	defer identity.mu.Unlock()
+	if identity.threadID != "" && identity.threadID != threadID {
+		return errors.New("Codex changed the confirmed native Thread ID")
+	}
+	identity.threadID = threadID
+	return nil
+}
+
+func (identity *machineCodexApprovalIdentity) confirmTurn(turnID string) error {
+	if identity == nil {
+		return errors.New("Codex native Thread or Turn identity is unavailable")
+	}
+	identity.mu.Lock()
+	defer identity.mu.Unlock()
+	if identity.turnResolved {
+		return errors.New("Codex native Turn identity was already resolved")
+	}
+	identity.turnResolved = true
+	if identity.threadID == "" || !validMachineCodexIdentity(turnID) {
+		identity.turnErr = errors.New("Codex did not confirm a valid native Turn ID")
+	} else {
+		identity.turnID = turnID
+	}
+	close(identity.turnReady)
+	return identity.turnErr
+}
+
+func (identity *machineCodexApprovalIdentity) abortTurn() {
+	if identity == nil {
+		return
+	}
+	identity.mu.Lock()
+	defer identity.mu.Unlock()
+	if identity.turnResolved {
+		return
+	}
+	identity.turnResolved = true
+	identity.turnErr = errors.New("Codex did not confirm the native Turn ID")
+	close(identity.turnReady)
+}
+
+func (identity *machineCodexApprovalIdentity) confirmed(ctx context.Context) (string, string, error) {
+	if identity == nil {
+		return "", "", errors.New("Codex native Thread or Turn identity is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
+	timer := time.NewTimer(machineCodexApprovalTurnIdentityWait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return "", "", ctx.Err()
+	case <-timer.C:
+		return "", "", errors.New("timed out waiting for native Turn confirmation")
+	case <-identity.turnReady:
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
+	identity.mu.RLock()
+	defer identity.mu.RUnlock()
+	if identity.turnErr != nil {
+		return "", "", identity.turnErr
+	}
+	if !validMachineCodexIdentity(identity.threadID) || !validMachineCodexIdentity(identity.turnID) {
+		return "", "", errors.New("Codex native Thread or Turn identity is unavailable")
+	}
+	return identity.threadID, identity.turnID, nil
+}
+
+func machineCodexApprovalDecision(ctx context.Context, identity *machineCodexApprovalIdentity,
+	bridge machineApprovalBridge, job machineJob, rpcID any, method string, params map[string]any) (string, error) {
+	requestThread, threadOK := params["threadId"].(string)
+	requestTurn, turnOK := params["turnId"].(string)
+	if !threadOK || !turnOK || !validMachineCodexIdentity(requestThread) ||
+		!validMachineCodexIdentity(requestTurn) {
+		return "", errors.New("Codex approval request has incomplete native Thread or Turn identity")
+	}
+	threadID, turnID, err := identity.confirmed(ctx)
+	if err != nil {
+		return "", err
+	}
+	if requestThread != threadID || requestTurn != turnID {
+		return "", errors.New("Codex approval targets a different native Thread or Turn")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return bridge.requestDecision(ctx, job, rpcID, method, params)
+}
+
 func (b machineApprovalBridge) endpoint(job machineJob) string {
 	return nodeWorkerJobEndpoint(b.BaseURL, b.NodeID, job.WorkerID, "approvals")
 }
@@ -202,6 +321,7 @@ func acquireManagedMachineCodexWriter(ctx context.Context, job machineJob,
 func executeMachineCodexWithApproval(ctx context.Context, job machineJob, workspace, responseFile string,
 	bridge machineApprovalBridge) (result machineJobResult) {
 	runCtx, cancel := context.WithCancel(ctx)
+	approvalIdentity := newMachineCodexApprovalIdentity()
 	var approvalErr error
 	var approvalMu sync.Mutex
 	threadID := job.ThreadID
@@ -211,6 +331,7 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 	var resourceRequest nodelock.ResourceExecutionRequest
 	releaseWriter := true
 	defer func() {
+		approvalIdentity.abortTurn()
 		cancel()
 		var stopErr error
 		if app != nil {
@@ -272,10 +393,9 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			method != "item/fileChange/requestApproval" {
 			err = errors.New("unsupported Codex server request: " + method)
 			cancel()
-		} else if params["threadId"] != threadID {
-			err = errors.New("Codex approval targets a different native Thread")
 		} else {
-			decision, err = bridge.requestDecision(runCtx, job, id, method, params)
+			decision, err = machineCodexApprovalDecision(runCtx, approvalIdentity,
+				bridge, job, id, method, params)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Node approval request failed cause=%s\n", machineApprovalFailureCause(err))
@@ -339,8 +459,8 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			return machineJobResult{Status: "failed", Error: err.Error()}
 		}
 		threadID = nestedMachineString(result, "thread", "id")
-		if threadID == "" {
-			return machineJobResult{Status: "failed", Error: "Codex did not return a native Thread ID"}
+		if err := approvalIdentity.confirmThread(threadID); err != nil {
+			return machineJobResult{Status: "failed", Error: err.Error()}
 		}
 		if err := acquireWriter(threadID); err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
@@ -353,17 +473,25 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 		if err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
 		}
-		if actual := nestedMachineString(result, "thread", "id"); actual != threadID {
+		actual := nestedMachineString(result, "thread", "id")
+		if actual != threadID {
 			return machineJobResult{Status: "failed", ThreadID: threadID,
 				Error: "Codex did not confirm the exact native Thread on resume"}
 		}
+		if err := approvalIdentity.confirmThread(actual); err != nil {
+			return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
+		}
 	}
-	if _, err := app.Request(runCtx, "turn/start", map[string]any{
+	turnResult, err := app.Request(runCtx, "turn/start", map[string]any{
 		"threadId": threadID,
 		"input":    []any{map[string]any{"type": "text", "text": job.Prompt}},
 		"cwd":      workspace, "approvalPolicy": "on-request",
 		"model": model,
-	}); err != nil {
+	})
+	if err != nil {
+		return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
+	}
+	if err := approvalIdentity.confirmTurn(nestedMachineString(turnResult, "turn", "id")); err != nil {
 		return machineJobResult{Status: "failed", ThreadID: threadID, Error: err.Error()}
 	}
 	summary, status, err := app.WaitTurn(runCtx)
@@ -403,7 +531,11 @@ func machineApprovalFailureCause(err error) string {
 	switch {
 	case strings.Contains(message, "different worker attempt"):
 		return "worker_attempt_mismatch"
-	case strings.Contains(message, "different native thread") || strings.Contains(message, "incomplete native identity"):
+	case strings.Contains(message, "different native thread") ||
+		strings.Contains(message, "native thread or turn") ||
+		strings.Contains(message, "incomplete native identity") ||
+		strings.Contains(message, "native turn id") ||
+		strings.Contains(message, "native thread id"):
 		return "native_identity_mismatch"
 	case strings.Contains(message, "not offered"):
 		return "decision_not_offered"
@@ -415,7 +547,8 @@ func machineApprovalFailureCause(err error) string {
 		return "stale_or_conflict"
 	case strings.Contains(message, "http "):
 		return "hub_http_error"
-	case strings.Contains(message, "retry") || strings.Contains(message, "context deadline"):
+	case strings.Contains(message, "retry") || strings.Contains(message, "context deadline") ||
+		strings.Contains(message, "timed out waiting") || strings.Contains(message, "context canceled"):
 		return "retry_or_timeout"
 	default:
 		return "approval_protocol"

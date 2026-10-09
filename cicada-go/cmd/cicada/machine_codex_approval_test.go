@@ -37,8 +37,13 @@ while IFS= read -r line; do
     *'"method":"thread/start"'*) printf '%s\n' '{"id":2,"result":{"thread":{"id":"native-thread-a"}}}' ;;
     *'"method":"thread/resume"'*) printf '%s\n' '{"id":2,"result":{"thread":{"id":"native-thread-a"}}}' ;;
     *'"method":"turn/start"'*)
+      if [ "${CICADA_TEST_APPROVAL_BEFORE_TURN_RESPONSE:-}" = 1 ]; then
+        printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-thread-a","turnId":"native-turn-a","itemId":"native-item-a","startedAtMs":1,"availableDecisions":["accept","decline"],"command":"echo approved"}}'
+      fi
       printf '%s\n' '{"id":3,"result":{"turn":{"id":"native-turn-a","status":"inProgress"}}}'
-      printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-thread-a","turnId":"native-turn-a","itemId":"native-item-a","startedAtMs":1,"availableDecisions":["accept","decline"],"command":"echo approved"}}'
+      if [ "${CICADA_TEST_APPROVAL_BEFORE_TURN_RESPONSE:-}" != 1 ]; then
+        printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-thread-a","turnId":"native-turn-a","itemId":"native-item-a","startedAtMs":1,"availableDecisions":["accept","decline"],"command":"echo approved"}}'
+      fi
       ;;
     *'"id":77'* )
       printf '%s\n' "$line" > "$CICADA_TEST_APPROVAL_CAPTURE"
@@ -58,6 +63,231 @@ done
 		t.Fatal(err)
 	}
 	return path, capture
+}
+
+func machineApprovalDecisionFixture(t *testing.T) (machineApprovalBridge, context.Context, func() int) {
+	t.Helper()
+	var hubKey *e2ee.Identity
+	var binding nodewire.Binding
+	var callsMu sync.Mutex
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		callsMu.Lock()
+		calls++
+		callsMu.Unlock()
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/node/control/rpc" ||
+			request.Header.Get("Authorization") != "CicadaNode synthetic-node-token" {
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		packet, err := ioReadAllBounded(request)
+		if err != nil {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		opened, err := nodewire.OpenRequest(hubKey, binding.NodeKey, binding, packet)
+		if err != nil || opened.Route.Operation != "node.approvals.create" {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			WorkerID  string         `json:"worker_id"`
+			Attempt   int            `json:"attempt"`
+			RequestID string         `json:"request_id"`
+			Method    string         `json:"method"`
+			Request   map[string]any `json:"request"`
+		}
+		if err := decodeMachineNodeControlJSON(opened.Plaintext, &input); err != nil ||
+			input.WorkerID != "worker-approval-test" || input.Attempt != 2 || input.RequestID == "" ||
+			input.Method != "item/commandExecution/requestApproval" ||
+			input.Request["threadId"] != "native-thread-a" || input.Request["turnId"] != "native-turn-a" {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		result := machineApprovalState{ApprovalID: "approval-test", GoalID: "goal-approval-test",
+			WorkerID: input.WorkerID, Attempt: input.Attempt, Status: "resolved", Decision: "accept"}
+		envelope, err := json.Marshal(map[string]any{"ok": true, "operation_id": opened.Route.OperationID,
+			"sequence": opened.Route.Sequence, "result": result})
+		if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		sealed, err := nodewire.SealResponse(hubKey, binding.NodeKey, binding,
+			nodeControlTestResponseRoute(opened.Route), envelope)
+		if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write(sealed)
+	}))
+	t.Cleanup(server.Close)
+	_, ctx, hubKey, binding := newMachineNodeControlRecoveryFixture(t, server.URL)
+	bridge := machineApprovalBridge{BaseURL: server.URL, NodeID: "node-recovery-test", NodeToken: "synthetic-node-token"}
+	return bridge, ctx, func() int {
+		callsMu.Lock()
+		defer callsMu.Unlock()
+		return calls
+	}
+}
+
+func machineApprovalTestParams(threadID, turnID string) map[string]any {
+	return map[string]any{"threadId": threadID, "turnId": turnID, "itemId": "native-item-test",
+		"availableDecisions": []any{"accept", "decline"}}
+}
+
+type observedApprovalWaitContext struct {
+	context.Context
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (ctx *observedApprovalWaitContext) Done() <-chan struct{} {
+	ctx.once.Do(func() { close(ctx.entered) })
+	return ctx.Context.Done()
+}
+
+type machineApprovalTestResult struct {
+	decision string
+	err      error
+}
+
+func TestMachineCodexApprovalRequiresConfirmedThreadAndTurn(t *testing.T) {
+	bridge, ctx, calls := machineApprovalDecisionFixture(t)
+	job := machineJob{GoalID: "goal-approval-test", WorkerID: "worker-approval-test", Attempt: 2}
+	method := "item/commandExecution/requestApproval"
+	cases := []struct {
+		name     string
+		identity *machineCodexApprovalIdentity
+		params   map[string]any
+	}{
+		{
+			name: "different thread",
+			identity: func() *machineCodexApprovalIdentity {
+				identity := newMachineCodexApprovalIdentity()
+				_ = identity.confirmThread("native-thread-a")
+				_ = identity.confirmTurn("native-turn-a")
+				return identity
+			}(),
+			params: machineApprovalTestParams("native-thread-b", "native-turn-a"),
+		},
+		{
+			name: "different turn",
+			identity: func() *machineCodexApprovalIdentity {
+				identity := newMachineCodexApprovalIdentity()
+				_ = identity.confirmThread("native-thread-a")
+				_ = identity.confirmTurn("native-turn-a")
+				return identity
+			}(),
+			params: machineApprovalTestParams("native-thread-a", "native-turn-b"),
+		},
+		{
+			name: "missing request turn",
+			identity: func() *machineCodexApprovalIdentity {
+				identity := newMachineCodexApprovalIdentity()
+				_ = identity.confirmThread("native-thread-a")
+				_ = identity.confirmTurn("native-turn-a")
+				return identity
+			}(),
+			params: map[string]any{"threadId": "native-thread-a", "itemId": "native-item-test"},
+		},
+		{
+			name: "unconfirmed turn",
+			identity: func() *machineCodexApprovalIdentity {
+				identity := newMachineCodexApprovalIdentity()
+				_ = identity.confirmThread("native-thread-a")
+				_ = identity.confirmTurn("")
+				return identity
+			}(),
+			params: machineApprovalTestParams("native-thread-a", "native-turn-a"),
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			decision, err := machineCodexApprovalDecision(ctx, test.identity, bridge, job, 77, method, test.params)
+			if err == nil || decision != "" {
+				t.Fatalf("approval decision=%q err=%v, want rejection", decision, err)
+			}
+		})
+	}
+	if got := calls(); got != 0 {
+		t.Fatalf("Hub was called %d times for unconfirmed or mismatched identity", got)
+	}
+}
+
+func TestMachineCodexApprovalWaitsForTurnStartResponse(t *testing.T) {
+	bridge, baseCtx, calls := machineApprovalDecisionFixture(t)
+	identity := newMachineCodexApprovalIdentity()
+	if err := identity.confirmThread("native-thread-a"); err != nil {
+		t.Fatal("confirm synthetic Thread:", err)
+	}
+	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Second)
+	defer cancel()
+	observed := &observedApprovalWaitContext{Context: ctx, entered: make(chan struct{})}
+	job := machineJob{GoalID: "goal-approval-test", WorkerID: "worker-approval-test", Attempt: 2}
+	result := make(chan machineApprovalTestResult, 1)
+	go func() {
+		decision, err := machineCodexApprovalDecision(observed, identity, bridge, job, 77,
+			"item/commandExecution/requestApproval", machineApprovalTestParams("native-thread-a", "native-turn-a"))
+		result <- machineApprovalTestResult{decision: decision, err: err}
+	}()
+	select {
+	case <-observed.entered:
+	case <-time.After(time.Second):
+		t.Fatal("approval callback did not wait for the turn response")
+	}
+	if got := calls(); got != 0 {
+		t.Fatalf("Hub was called before turn/start response: %d", got)
+	}
+	if err := identity.confirmTurn("native-turn-a"); err != nil {
+		t.Fatal("confirm synthetic Turn:", err)
+	}
+	select {
+	case got := <-result:
+		if got.err != nil || got.decision != "accept" {
+			t.Fatalf("approval after Turn confirmation: decision=%q err=%v", got.decision, got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("approval callback did not finish after turn/start response")
+	}
+	if got := calls(); got != 1 {
+		t.Fatalf("Hub calls=%d, want one after exact identity confirmation", got)
+	}
+}
+
+func TestMachineCodexApprovalWaitHonorsCancellation(t *testing.T) {
+	bridge, baseCtx, calls := machineApprovalDecisionFixture(t)
+	identity := newMachineCodexApprovalIdentity()
+	if err := identity.confirmThread("native-thread-a"); err != nil {
+		t.Fatal("confirm synthetic Thread:", err)
+	}
+	ctx, cancel := context.WithCancel(baseCtx)
+	observed := &observedApprovalWaitContext{Context: ctx, entered: make(chan struct{})}
+	job := machineJob{GoalID: "goal-approval-test", WorkerID: "worker-approval-test", Attempt: 2}
+	result := make(chan machineApprovalTestResult, 1)
+	go func() {
+		decision, err := machineCodexApprovalDecision(observed, identity, bridge, job, 77,
+			"item/commandExecution/requestApproval", machineApprovalTestParams("native-thread-a", "native-turn-a"))
+		result <- machineApprovalTestResult{decision: decision, err: err}
+	}()
+	select {
+	case <-observed.entered:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("approval callback did not reach the bounded Turn wait")
+	}
+	cancel()
+	select {
+	case got := <-result:
+		if got.err == nil || got.decision != "" {
+			t.Fatalf("canceled approval decision=%q err=%v, want bounded cancellation", got.decision, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approval callback remained blocked after context cancellation")
+	}
+	if got := calls(); got != 0 {
+		t.Fatalf("Hub was called %d times for canceled unconfirmed identity", got)
+	}
 }
 
 func TestRemoteCodexApprovalReturnsToOriginalAppServerTurn(t *testing.T) {
@@ -163,6 +393,7 @@ func TestRemoteCodexApprovalReturnsToOriginalAppServerTurn(t *testing.T) {
 	bin, capture := fakeApprovalCodex(t, root)
 	t.Setenv("CICADA_CODEX_BIN", bin)
 	t.Setenv("CICADA_TEST_APPROVAL_CAPTURE", capture)
+	t.Setenv("CICADA_TEST_APPROVAL_BEFORE_TURN_RESPONSE", "1")
 	t.Setenv("CICADA_WORKSPACE_ROOT", root)
 	t.Setenv("CICADA_API_TOKEN", "should-never-reach-child")
 	t.Setenv("CICADA_NODE_TOKEN", "should-never-reach-child")
@@ -308,22 +539,25 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 			script := string(original)
 			script = strings.Replace(script, "while IFS= read -r line; do", "while IFS= read -r line; do\n  printf '%s\\n' \"$line\" >> \"$CICADA_TEST_POLICY_WIRE\"", 1)
 			// No approval or business HTTP: this fake completes the one wire-observed turn.
-			a := strings.Index(script, "      printf '%s\\n' '{\"id\":77")
-			if a < 0 {
-				t.Fatal("protocol fixture shape changed")
-			}
 			if mode == "resumed-read-only" {
 				script = strings.ReplaceAll(script, `"result":{"thread":{"id":"native-thread-a"}}`, `"result":{"thread":{"id":"native-thread-a"},"sandbox":{"type":"readOnly"}}`)
 			}
 			if mode == "resumed-named-profile" {
 				script = strings.ReplaceAll(script, `"result":{"thread":{"id":"native-thread-a"}}`, `"result":{"thread":{"id":"native-thread-a"},"activePermissionProfile":{"id":"synthetic-restricted-profile"}}`)
 			}
-			a = strings.Index(script, "      printf '%s\\n' '{\"id\":77")
-			end := strings.Index(script[a:], "      ;;\n") + a
-			if end < a {
+			caseStart := strings.Index(script, `    *'"method":"turn/start"'*)`)
+			if caseStart < 0 {
 				t.Fatal("protocol fixture shape changed")
 			}
-			script = script[:a] + "      printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"status\":\"completed\"}}}'\n" + script[end:]
+			bodyStart := strings.Index(script[caseStart:], "\n") + caseStart + 1
+			bodyEnd := strings.Index(script[bodyStart:], "      ;;\n")
+			if bodyStart <= caseStart || bodyEnd < 0 {
+				t.Fatal("protocol fixture shape changed")
+			}
+			bodyEnd += bodyStart
+			turnBody := "      printf '%s\\n' '{\"id\":3,\"result\":{\"turn\":{\"id\":\"native-turn-a\",\"status\":\"inProgress\"}}}'\n" +
+				"      printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"status\":\"completed\"}}}'\n"
+			script = script[:bodyStart] + turnBody + script[bodyEnd:]
 			if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 				t.Fatal("write owned protocol fixture")
 			}
