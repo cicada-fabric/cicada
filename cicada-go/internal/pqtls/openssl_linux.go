@@ -456,8 +456,15 @@ func (c *Conn) setDeadline(t time.Time, read, write bool) error {
 	}
 	return nil
 }
+
+// Bound TCP connection establishment independently of the streaming body.
+// Parent cancellation and earlier deadlines remain authoritative.
+func newPQTCPDialer() *net.Dialer {
+	return &net.Dialer{Timeout: 30 * time.Second}
+}
+
 func dial(ctx context.Context, address string, cfg Config) (net.Conn, error) {
-	dialer := net.Dialer{}
+	dialer := newPQTCPDialer()
 	raw, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, err

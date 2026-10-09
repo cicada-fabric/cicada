@@ -229,10 +229,23 @@ async function directJSON(url, timeoutMs = 2500) {
   } finally { clearTimeout(timer); }
 }
 
+function hubReadinessURL(container, route, mapping) {
+  if (container !== hubContainer || !['/healthz', '/v2/client/identity'].includes(route)) {
+    fail('Readiness target is outside the disposable Hub');
+  }
+  const match = /^127\.0\.0\.1:(\d+)$/.exec(mapping.trim());
+  const port = match ? Number(match[1]) : 0;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) fail('Readiness requires one loopback Hub port');
+  return `http://127.0.0.1:${port}${route}`;
+}
+
 async function containerJSON(container, route) {
-  const response = await run('docker', ['exec', container, 'wget', '-qO-', `http://127.0.0.1:8787${route}`]);
-  if (response.code !== 0) fail('Disposable Hub did not return a local readiness response');
-  try { return JSON.parse(response.stdout); } catch { fail('Disposable Hub returned invalid JSON during readiness'); }
+  if (container !== hubContainer || !['/healthz', '/v2/client/identity'].includes(route)) {
+    fail('Readiness target is outside the disposable Hub');
+  }
+  if (!await inspectOwnedContainer(container, hubImageId)) fail('Disposable Hub ownership is unavailable');
+  const mapping = await docker(['port', container, '8787/tcp']);
+  return directJSON(hubReadinessURL(container, route, mapping));
 }
 
 async function waitHub(container, timeoutMs = 45000) {
@@ -607,12 +620,22 @@ async function loadChromium() {
   };
 }
 
+const browserPidsLimit = 256;
+
+async function verifyBrowserPidsLimit() {
+  const container = await inspectOwnedContainer(browserContainer, chromiumImageId);
+  if (!container || container.HostConfig?.PidsLimit !== browserPidsLimit) {
+    fail('Chromium PID limit does not match the browser QA envelope');
+  }
+  result.chromium.pids_limit = container.HostConfig.PidsLimit;
+}
+
 async function startBrowser() {
   phase = 'browser_start';
   await docker([
     'run', '-d', '--name', browserContainer,
     ...fixtureLabels(), '--label', `org.cicada.fixture.image-id=${chromiumImageId}`,
-    '--network', dockerNetwork, '-p', '127.0.0.1::9222', '--shm-size', '1g',
+    '--network', dockerNetwork, '-p', '127.0.0.1::9222', '--shm-size', '1g', '--pids-limit', String(browserPidsLimit),
     '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
     '-v', `${browserDir}:/data`, chromiumRef,
     '--user-data-dir=/data/profile', '--disk-cache-dir=/data/cache',
@@ -620,6 +643,7 @@ async function startBrowser() {
     '--disable-background-networking', '--disable-component-update',
   ]);
   browserWasCreated = true;
+  await verifyBrowserPidsLimit();
   const publishedPort = await run('docker', ['port', browserContainer, '9222/tcp']);
   if (publishedPort.code !== 0 && process.env.CICADA_BROWSER_DEBUG === '1') {
     const inspect = await run('docker', ['inspect', '--format', '{{.State.Status}} {{.State.ExitCode}} {{json .HostConfig.PortBindings}}', browserContainer]);

@@ -2,104 +2,19 @@
 
 <a id="current-closeout"></a>
 
-## Current Relay Ask admission quota-count candidate — scoped PASS; v0.1 PARTIAL
+## Current acceptance status — v0.1 PARTIAL
 
-Ask admission counts pending `OPEN` and `CANCEL_REQUESTED` records within
-sender Endpoint, sender Principal, sender Group, receiver Endpoint, and global
-quotas. The prior count could scan expired history. Additive schema v59 uses a
-single expression index on state and a fixed 12-byte expiry-order key to skip
-expired records in the count range. This does not change expiration sweep or
-batch logic; the default global Ask limit remains 1024 and configurable.
-Migration definitions and checksums 1–58 remain unchanged. Normal open upgrades
-v58 to v59. The private restore review is pinned to v59 and does not
-auto-advance future schema versions.
+The [2026-10-09 closeout](v01-current-closeout-20261009-validation.md) is the single current evidence index. It keeps clean-source results, test overlays, artifacts, disposable fixtures, and Native outcomes attributed to their sources. M3/M4 checks remain scoped; G1/G2 and overall v0.1 remain **PARTIAL**. See the closeout for a004, Browser, and cleanup evidence.
 
-Against a schema-58 baseline with the old Relay/migration sources overlaid, the
-schema-59 benchmark reduced median count time by 87.7437% for 1,000 expired
-rows plus 16 live rows and 98.5015% for 10,000 plus 16; logical database pages
-grew 1.35468% and 2.92748% respectively. The focused changed-logic race passed
-8 top-level / 10 subtests, 0 fail/skip. These are scoped results, not a full
-normal-suite or full-repository race PASS. Earlier A retained a partial
-failure/outer timeout (157 pass / 2 fail, completion unknown); B completed
-with 71 pass / 1 fail / 1 skip due to its old v58 ledger expectation; C's
-test-only v59 expectation correction passed its focused caller test, but its
-broader race timed out after 8 top-level PASS events with remaining results
-unknown. Separate contract 1.6.4/catalog 55 and 17 Python checks passed.
+The scoped records below preserve their exact source and artifact attribution; they are not separate aggregate completion claims.
 
-The dirty shipping build from the pinned eight-file candidate passed one
-bounded synthetic real-TCP capacity gate under 1 CPU / 128 MiB: 64 endpoints,
-16 observed in-flight, 64 samples, p50/p95 280.239/761.625 ms, no OOM, and
-34,616 KiB Hub peak RSS. One over-limit Ask received `429` with one-second
-retry; six protected residents were unchanged. It used the standard image
-(`pqtls_available=false`), so this is not a PQTLS or fleet-capacity guarantee.
-Root verified the 936-entry input inventory; exact provenance and cleanup
-limits are in [the validation record](relay-admission-performance-validation.md).
-Native Runtime/provider, Android, physical Nodes, and public HTTPS remain
-**NOT_RUN**; the historical physical bind capsule skip remains unresolved.
-Overall v0.1 remains **PARTIAL**.
-
-## Current Native / Peer checkpoints — v0.1 PARTIAL
-
-Scoped CLI 0.162 G4 queue recovery and Task peer list/renew privacy passed their respective fixtures. Worker P9 passed its scoped fresh-Worker approval and encrypted `goal.result` oracle, including the matching attempt and guest marker; it did not test original-session continuity, and its broker transport reported pair-I/O unknown after the result. The marker/request-decoding failures are the retained P7/P8 results, not a failure of P9. Peer G/H reported `httpConnectionFailed` / HTTP 503 with retries disabled; the emitter and cause remain unknown. N's `/v1/responses` 403 and the independent GETs are separate observations and do not establish billing, quota, or G/H's cause. `STOP_UNVERIFIED` remains for the failed Peer business oracle.
-
-G/H used the approved effective `base_url` `https://api.zzswitch.com/v1` (hash `a69960ef…b51fe4`); the 503 origin remains unknown. The earlier `thread/start -32603` was traced to a missing synthetic MCP child environment value; adding only `CICADA_TOOLGATE_OUTPUT=/out` made the bounded handshake succeed. The initial Code Mode exclusion was in an unconsumed top-level table; the later run moved it to `[features.code_mode]`, and strict projection matched. An intermediate `PROVIDER_TOOL_SHAPE` was a fixture decoder assumption: official Responses Lite carries definitions in developer `AdditionalTools` and omits top-level `tools`; the corrected synthetic decoder passed eight pure tests and observed two MCP calls. The nested check matched the expected nine MCP tools, reported local names not callable through that nested surface, and left the synthetic canary unchanged. This does not remove top-level registry entries. The full run ended `NATIVE_ERROR` after correlated synthetic tool outputs: four top-level attacks yielded an aggregate count of six from overlapping counters, not six distinct outputs or calls; distinct counts were not persisted, and two outcomes remain unknown. Correlation alone does not establish handler entry: official registry lookup can return `RespondToModel` for an unsupported tool, then produce a correlated failure output ([registry.rs](https://github.com/openai/codex/blob/rust-v0.162.0/codex-rs/core/src/tools/registry.rs#L517-L536), [parallel.rs](https://github.com/openai/codex/blob/rust-v0.162.0/codex-rs/core/src/tools/parallel.rs#L70-L104)). No approval event, canary change, real key, model, or provider call was observed. Handler execution versus denial was not captured, so top-level local-tool behavior and credential containment remain **NOT_ESTABLISHED**. See [the source-bound tool-boundary record](native-cli162-tool-boundary-validation.md). Current-source Go validation remains separately attributed: the first full default run exited 1 on three packages missing repository-root public inputs; the corrected run passed those packages, all 30 package paths were checked across runs (not one full-suite pass), tagged vet passed, and existing skips remain. See [the Go validation record](v01-current-source-go-validation.md).
-
-The earlier candidate broker PID1 proof retains its narrow scope. The scoped two-Node no-key startup `a003` passed in 17.321862 seconds; it covered actual CLI thread startup/read and one authenticated local `BIND_MISSING` diagnostic per Node, with cleanup confirmed. A later candidate `a001` failed before Hub/Node-Agent/MCP discovery or queue admission because the read-only `/pqtls-stage` helper source was empty; its initial cleanup status remains UNKNOWN, while separate cleanup receipts preserve the confirmed owned-resource result. The corrected, separate `a002` attempt passed **startup and queue-control registration/denial only**: actual CLI 0.162 sessions reached Hub/Node-Agent/MCP setup, the exact Go Node-Agent executable and PID-namespace identities were registered, control UDS identity matched, and one same-UID non-Agent child per Node was rejected with `PEER_NOT_AGENT_CHILD`. The `a002` result records zero turns, queue intents, provider POSTs, credential callbacks, origin connections, and model authorization; provider TLS and real Agent queue execution were **NOT_RUN**. Its separate Root postcheck confirmed all owned IDs absent, six residents and inputs unchanged, with no timeout or fallback. It reused the dirty `37ae` artifact, not a build of the later HEAD. See [the exact a001/a002 receipts, scope, and source attribution](native-cli162-tool-boundary-validation.md). The private wrapper/generation seam and durable Go queue-ledger oracle have offline evidence only; live official queue acceptance, durable `QUEUE_ACCEPTED`, Native consumption, and model completion remain **NOT_RUN**. This is not a shipping dependency or full acceptance result. The `CloseAndWait` correction and focused normal/race/vet QA remain scoped PASS; original session/context, full T9, Android, physical Nodes, public HTTPS, and the broader v0.1 gates remain open. Overall status is **PARTIAL**.
-
-The focused Control-disabled handler/path checks passed in normal and race mode (the same three deterministic tests, zero skips/failures); no Native Runtime or provider was run. The route predicate is not a business-function call counter, and this does not close T9/V31. Exact dirty-source attribution and limits are in [the validation record](native-control-isolation-counter-validation.md).
-
-The clean commit `febb3577e7da14aa9a470ce6c242eb1113b35b68` has a separate full default Go PASS: the complete tracked-source archive was tested in the pinned Go 1.27.1 offline container; all 30 packages passed, with 1,505 top-level PASS, 1,405 subtest PASS, 22 explicit SKIPs, and zero failures. This does not turn any skipped Native or disposable-fixture test into PASS; see [the exact source, command and receipts](v01-clean-febb-full-go-validation.md).
-
-The earlier separate Native attempt, `peerqueue20261009a001`, exited 2 before Docker creation after consuming its execution claim and produced no `result.json`. The closed wrapper leaves Native/model call counts **UNKNOWN**. Its Root postcheck confirms the exact owned-ID registry empty, owned label absent, and six residents and inputs unchanged ([receipt](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-peerzero20261009a/peerqueue-rootops-20261009a001/ROOT-POSTCHECK.NONAUTH.json), SHA-256 `9df1f8cb6fb669ca34b1577e6e26ec5ca8f7986edf0e71fb50639feb2e51cba9`). This is cleanup evidence only; Native workflow acceptance remains **PARTIAL**.
-
-The subsequent actual attempt `peerqueue20261009a002` exited 1 after four turn starts / three completions. A/B Join and A's authorized second-Group MCP actions completed; the A `cicada_ask` journal transition and read-only Hub state confirm durable Relay acceptance (`RELAY_ACCEPTED`), but `CLAIMED` is not Native queue acceptance or Runtime/model consumption. B's automatic reply and A's correlated reply/context remain unproved; `provider_request_count` is uninstrumented and the terminal error was withheld, so no provider/quota cause is established. Keep `cleanup_owned_resources=false` and Observer `UNKNOWN` separate from the later broker-stop/UDS-directory/resource closeouts, which confirm owner/resource cleanup and six residents unchanged without deleting session, Hub, or Node private state. Source attribution remains dirty `37ae` / binary SHA `e11592bb…effac7`, not a later HEAD. See [the exact A002 outcome, limits and receipts](native-cli162-tool-boundary-validation.md#current-native-a002). Root cause remains under source review; v0.1 and full Native acceptance remain **PARTIAL**.
-
-## Current Endpoint Resolve capacity checkpoint — scoped PASS; v0.1 PARTIAL
-
-The active Service resolver and legacy Control resolver now scan eligible,
-name-scoped candidates using a stable read transaction and bounded 128-row
-keyset pages. This removes the false-unique/missed-target behavior at the old
-1,000-row list boundary while preserving exact/qualified precedence, context
-narrowing, Endpoint-ID fast path and existing authorization/binding checks.
-Ambiguity keeps at most two proof candidates, not a complete directory or
-count; the 100,000-row ceiling fails closed. Focused normal and race runs passed
-four selectors spanning Service, v2 HTTP, Unicode/machine-address matching and
-the legacy Control boundary test. No schema/index/API contract changed. See
-[source pins, test commands and limits](directory-resolve-capacity-validation.md).
-
-The separate Node sealed pre-writer phase diagnostic passed its focused normal
-and race checks (6 tests / 3 subtests each); it only observes bounded phases and
-does not change admission or prove Native queue acceptance. See [its independent
-source and validation record](node-sealed-phase-diagnostics-validation.md).
-The bounded Group/Fabric cross-feature stress then passed 9 selected tests in
-four workload stages, with a separate successful builder, zero failures/skips,
-verified owned-resource cleanup and six unchanged residents. It ran against
-dirty source at `1ad5a96414c2d888f70c5b61467b3b1e4a382a91` (946 Go files;
-source-tree SHA-256 `a33879ff…fd0ae`), not HEAD alone. The stage limits and
-measurements are in [the stress validation record](v01-group-fabric-stress-validation.md);
-this is not a full-suite or Native result. After this checkpoint is committed
-cleanly, the next step is the prepared current-source full Go build/test/vet
-run, then one diagnosed original-thread ASK/REPLY attempt. Native full T9,
-original-thread ASK/REPLY and remaining M3/M4/M5, panel and delivery gates are
-not closed; overall v0.1 remains **PARTIAL**.
-
-## Current Fabric Directory binding-query checkpoint — scoped PASS; v0.1 PARTIAL
-
-On dirty `3849f22` plus four pinned Go files, `Service.List` replaces per-Endpoint binding calls with one batch, retaining Authorize, SQL group/migration/expiry filters, highest active epoch, skipped left/missing/malformed bindings and card privacy. Listing data uses two SQL queries excluding Authorize. Baseline normal/current normal/current race each passed seven selected top-level tests, zero failures/skips; actual Service.List 100/1,000-row median time fell 62.94%/68.37% (12.367004 → 4.583483 ms / 124.168138 → 39.274318 ms). These are synthetic Service measurements, not fleet or end-to-end results. The separate real-TCP `network-m1` gate passed in 199.978 seconds, including list/members Group cards and six credential-denial assertions. Root matched all 938 build inputs and confirmed fixture images/tags/names absent; historical container IDs were not recorded. See [source, commands, retained pretest failure and compatibility limits](fabric-directory-binding-performance-validation.md). At that checkpoint CLI 0.162 installation was preparation only; subsequent scoped bridge results are recorded separately above and do not close Native acceptance. v0.1 remains **PARTIAL**.
-
-## Current Endpoint V2 Store list-query checkpoint — scoped PASS; v0.1 PARTIAL
-
-`Store.ListEndpointsV2` reads complete rows in one query (`1+2N` → 1), retaining SQL scope/expiry filters; its tested source still performed N active-binding lookups in `Fabric.Service.List`, addressed by the later binding checkpoint above. Focused normal/race checks passed 8 Store and 5 Fabric top-level tests each, with 21 Store subtests and zero failures/skips. The synthetic Store benchmark measured 100/1,000-row medians of 11.741015 → 2.109113 ms and 113.475699 → 18.943143 ms; it is not end-to-end latency. A separate standard-image (`pqtls_available=false`) disposable real-TCP `group-spaces-m2` gate passed on dirty `76a7031` plus the three pinned Go files; Root verified all 937 build inputs and current fixture-name/tag/digest cleanup, with historical CIDs unrecorded. Results remain O(n), at most 1,000 rows per call under the Store mutex. Earlier preparation failures and race timeout retain their original status. Native Runtime, Android, physical Nodes and public HTTPS were **NOT_RUN** in this checkpoint; historical acceptance retains its tested source. Overall v0.1 is **PARTIAL**. See [source pins, measurements and limits](endpoint-v2-list-performance-validation.md); the older `ListDirectoryRecords` evidence below is a separate change.
-
-## Current Directory Store list-query checkpoint — v0.1 PARTIAL
-
-Directory listing now reads complete rows in one query. Focused normal and race checks passed; its bounded 100/1,000-row Store benchmark showed lower time and allocations against the captured prior query path. A separate standard-image, real-TCP Hub fixture passed one bounded synthetic sample at 64 requests and 16 observed in-flight under 1 CPU / 128 MiB (34,136 KiB peak RSS, no OOM). Root's exact current-name/tag/digest review confirms both fixture containers and images absent; historical CIDs were not recorded. This finite sample is not a capacity guarantee. Listing remains unbounded O(n); Native Runtime, Android, physical-device and public-HTTPS checks remain NOT_RUN, so overall v0.1 stays PARTIAL. See [source, measurements and limits](directory-list-performance-validation.md).
-
-## Current managed PQTLS fixture checkpoint — v0.1 PARTIAL
-
-[Managed fixture validation](pqtls-managed-fixture-validation.md) records focused normal and race 8 top-level / 12 subtests each PASS, full `cmd/cicada` 402 top-level / 287 subtest pass events with 13 opt-in skips, and tagged vet exit 0. These seven-test-path results remain separate from the shipping-build timeout and blocked Native acceptance.
+- Relay Ask admission capacity / schema v59: [validation](relay-admission-performance-validation.md).
+- Resolve capacity and list-query work: [resolver](directory-resolve-capacity-validation.md), [Fabric binding query](fabric-directory-binding-performance-validation.md), [Endpoint V2 list query](endpoint-v2-list-performance-validation.md), and [Directory list query](directory-list-performance-validation.md).
+- Native/Peer, source validation, and bounded stress: [Native bridge](native-go-client-bridge-validation.md), [CLI tool boundary](native-cli162-tool-boundary-validation.md), [current Go validation](v01-current-source-go-validation.md), and [Group/Fabric stress](v01-group-fabric-stress-validation.md).
+- M3 SSE parser routing and Node phase diagnostics: [M3 scope](m3-space-event-routing-validation.md) and [phase diagnostics](node-sealed-phase-diagnostics-validation.md).
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
+
 
 Both managed adapters now omit sandbox overrides when resuming or starting turns on existing Native threads; fresh Worker defaults remain. [Scoped wire QA and installed synthetic semantics](native-permission-preservation-validation.md) records normal and race 8 top-level / 8 subtests each PASS plus one installed synthetic cold-resume policy/history case PASS; filesystem/network enforcement remains NOT_TESTED, without broader acceptance transfer.
 

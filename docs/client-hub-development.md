@@ -1,6 +1,10 @@
 # Client / Hub 联合开发与验收
 
-## 2026-10-04 current delivery — clean-021 Hub / v1.6.4; latest Client pair 3254ba1
+## Current Core/Hub validation index — v0.1 PARTIAL
+
+The [2026-10-09 Core closeout](v01-current-closeout-20261009-validation.md) is the current Core evidence index. This checkpoint changes no `CICADA_CLIENT` source, APK, contract, or Client runtime pin; Client results below retain their recorded artifact attribution.
+
+## Existing Client delivery record — clean-021 Hub / v1.6.4; latest Client pair 3254ba1
 
 The delivered Hub and contract remain the clean-021 v1.6.4 bundle, catalog and standard Hub. The latest online-tested Client pair is clean commit 3254ba12cac22d0f77510999f53e6b6bc2c80aa8; its APK pair passed 36 offline checks. F36 is FAIL / OUTCOME_UNKNOWN: the exact-Link list wait failed before Target prepare, KEY signing, consent or native Alert; four signatures were observed (Source 3 / Target Device 1), with Target KEY/NONE unsigned. Root cause and viewport remain UNKNOWN. Terminal exit 0 records closure only; terminal CORE_ACK_NOT_SENT and the later one Root ACK exit 0 are separate. This offline result is not online Android acceptance and does not change the earlier F35 outcome.
 

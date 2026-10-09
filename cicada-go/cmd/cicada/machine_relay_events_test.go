@@ -90,3 +90,44 @@ func TestMachineRelayEventStreamBacksOffRepeatedShortConnections(t *testing.T) {
 		t.Fatal("Relay event stream did not stop after cancellation")
 	}
 }
+
+func TestMachineRelayEventStreamRoutesSpaceSeparatelyFromClaimWake(t *testing.T) {
+	t.Setenv("CICADA_NODE_TOKEN", "node-test-token")
+	cases := []struct {
+		name      string
+		frame     string
+		wantWake  int
+		wantSpace int
+	}{
+		{name: "space", frame: "event: space\ndata: sync\n\n", wantWake: 0, wantSpace: 1},
+		{name: "ready", frame: "event: ready\ndata: claim\n\n", wantWake: 1, wantSpace: 1},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/v2/relay/nodes/node-b/events" ||
+					request.Header.Get("Authorization") != "CicadaNode node-test-token" {
+					t.Errorf("unexpected event stream request: %s %s", request.Method, request.URL.Path)
+					http.Error(response, "invalid request", http.StatusBadRequest)
+					return
+				}
+				response.Header().Set("Content-Type", "text/event-stream")
+				_, _ = response.Write([]byte(test.frame))
+			}))
+			defer server.Close()
+
+			wake := make(chan struct{}, 2)
+			space := make(chan struct{}, 2)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			connected, err := streamMachineRelayEventsWithSpaces(ctx, server.URL, "node-b", wake, space)
+			if err != nil || !connected {
+				t.Fatalf("stream connected=%v err=%v", connected, err)
+			}
+			if len(wake) != test.wantWake || len(space) != test.wantSpace {
+				t.Fatalf("event route wake=%d space=%d, want wake=%d space=%d",
+					len(wake), len(space), test.wantWake, test.wantSpace)
+			}
+		})
+	}
+}

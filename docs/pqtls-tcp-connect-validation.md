@@ -1,0 +1,23 @@
+# PQTLS TCP connection deadline validation
+
+The PQTLS connector bounds TCP connection establishment to 30 seconds with `net.Dialer.Timeout`. An earlier parent deadline and cancellation remain authoritative. The timeout applies to connecting only: the existing TLS handshake deadline, authorization checks and established SSE body lifetime remain unchanged. This does not identify the cause of any historical Native failure.
+
+`TestPQTCPConnectDeadlineAndCancellation` exercises the actual connector factory with four cases: finite default deadline, earlier parent deadline, cancellation before connect, and an established socket remaining usable after its connect context is canceled. Injected failures stop before connection; the established-socket case uses only container-local synthetic TCP. Existing selectors cover SSE disconnect/reconnect and persistent body, TLS handshake deadlines/cancellation, blocked reads/writes and descriptor ownership.
+
+The [actual overlay result](../.cicada-data/pqtls-connect-timeout-proposal-20261009a/actual-overlay-normal-race-20261009c/RESULT.NONAUTH.json), SHA `a315b9167c0df5592d8af73f0e9fc54110e2b61d1073a6af5dc44fda6d287d04`, passed normal and race: each has six top-level tests plus six subtests, 12 PASS, zero failures/skips. Exit 0; elapsed 45.1274 seconds; OOM false. These are focused deterministic tests, not a Native or provider run.
+
+The read-only source snapshot is clean `dabce1740f91a40c5451fca90522d17f27b09a54`, tree `9a253f4410bad64f8928ceaae032395356acf681`, full public-source inventory fingerprint `bd7426472285d937e69beed9bd4150a13c88c44bc46f195abc517f83904489c6` (1,177 files). Candidate changes were supplied through Go's two-file overlay; they were not attributed solely to that clean commit. Baseline `openssl_linux.go` SHA `ec8c67b0eafa3f0c48a464b9d2a2fb8db22d9f62641147b051ef6c892c08104e`; candidate SHA `83891a97855ce44a0152f20b0c8dc4c6d0d8709d7f2345dc9b17b4e4be70fb7d`; new 120-line test SHA `b060c9222cadf8b5653c64f3aa92b2655c1d3d49ee4ca03ec381bf68c3d42e60`. Go list and compilation confirm both overlay files participated.
+
+[Actual command](../.cicada-data/pqtls-connect-timeout-proposal-20261009a/actual-overlay-normal-race-20261009c/ACTUAL-COMMAND.NONAUTH.json), SHA `e5a76f912fc47588b14598be768c0a11c7a51a6f016872d88641fe880b654c2b`, records Go 1.27.1, the pinned `69a7b978…f99195` builder and accepted OpenSSL 3.5.9 executable/libraries. The disposable envelope was network-none, UID/GID 1000, read-only root/source/modules/PQ inputs, all capabilities dropped, no-new-privileges, 2 CPUs, 3 GiB and 256 PIDs. The exclusive proposal cache was separate from parallel QA. These are compile/test limits, not product memory guarantees. Existing TestMain generated visibly synthetic TLS fixtures inside private tmpfs; no real credential was read or mounted.
+
+The exact selectors were:
+
+```sh
+selector='^(TestPQTCPConnectDeadlineAndCancellation|TestHTTP11SSEDisconnectReconnectAndState|TestHandshakeDeadlineAndDescriptorOwnership|TestHandshakeCancellationAndListenerClose|TestReadDeadlineChangeAndCloseBlocked|TestWriteDeadlineAndCloseBlocked)$'
+go test -overlay=/overlay/overlay.json -buildvcs=false -mod=readonly -tags=cicada_pqtls -p 2 -count=1 -timeout=90s -json -run "$selector" ./internal/pqtls
+go test -overlay=/overlay/overlay.json -buildvcs=false -mod=readonly -tags=cicada_pqtls -p 2 -race -count=1 -timeout=90s -json -run "$selector" ./internal/pqtls
+```
+
+Both commands require the existing `PQTLS_TEST_OPENSSL` and `PQTLS_TEST_ARTIFACT_DIR` synthetic-fixture setup, recorded in the actual command. The shared outer limit was 300 seconds including cleanup. [Independent postcheck](../.cicada-data/pqtls-connect-timeout-proposal-20261009a/actual-overlay-normal-race-20261009c/POSTCHECK.NONAUTH.json), SHA `91ba50c74a4712ed7e154429a16d50a6f06340ffde70dcf4405b0cc73c37aa7d`, confirms exact-owned container ID/name absent, six protected resident identities unchanged and source/overlay pins unchanged.
+
+Earlier operational failures remain separate: [a result](../.cicada-data/pqtls-connect-timeout-proposal-20261009a/actual-overlay-normal-race-20261009a/RESULT.NONAUTH.json), SHA `a62f73f1dcb0be4ee17b57b9fdf4f325cb64b38a9b6ce5106997823381bed19d`, failed the shell-quoted Go-list template before normal/race started. [b result](../.cicada-data/pqtls-connect-timeout-proposal-20261009a/actual-overlay-normal-race-20261009b/RESULT.NONAUTH.json), SHA `5389c7265dccbfdbf0b1cf1d3029375be8ef556016217484f801369f08c65f2c`, compiled the overlay but TestMain rejected missing synthetic-fixture environment before any test case. Neither is a candidate assertion failure or a pass. Both exact-owned containers were cleaned; protected residents were unchanged.

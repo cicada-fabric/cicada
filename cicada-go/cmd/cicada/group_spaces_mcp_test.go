@@ -648,6 +648,53 @@ func TestGroupSpacesMCPAcrossNodesWithLostCommitResponse(t *testing.T) {
 	if !found {
 		t.Fatalf("Owner snapshot omitted delegated child: %#v", topology.Groups)
 	}
+
+	// A separate, still-proposed change verifies that the Owner's encrypted
+	// revocation reaches the same Hub state used by the Monitor MCP apply path.
+	// The earlier accepted apply remains untouched and idempotent.
+	revocationTarget, err := persistence.GetGroup(groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setThread(nodeA, "thread_spaces_a")
+	revokedProposalValue := spaceMCPCall(t, a, "cicada_regroup_propose", map[string]any{
+		"network_id": netID, "target_group_id": groupID, "action": "CREATE_CHILD",
+		"new_group_name": "synthetic revoked child", "expected_source_version": float64(revocationTarget.Version),
+		"expected_target_version": float64(revocationTarget.Version), "idempotency_key": "synthetic-m4-revoked-regroup"})
+	revokedProposalJSON, _ := json.Marshal(revokedProposalValue)
+	var revokedProposal groupSpaceLocalResult
+	if err := json.Unmarshal(revokedProposalJSON, &revokedProposal); err != nil ||
+		revokedProposal.RegroupProposal == nil || revokedProposal.RegroupProposal.ProposalID == "" {
+		t.Fatalf("Monitor MCP revocation proposal: %s %v", revokedProposalJSON, err)
+	}
+	var revokedDelegation store.RegroupDelegation
+	ownerRPC("topology.delegation_issue", map[string]any{
+		"proposal_id": revokedProposal.RegroupProposal.ProposalID,
+		"expires_at":  time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), "max_uses": 1}, &revokedDelegation)
+	if revokedDelegation.ProposalID != revokedProposal.RegroupProposal.ProposalID ||
+		revokedDelegation.DelegationID == "" || revokedDelegation.State != "ACTIVE" || revokedDelegation.Version <= 0 {
+		t.Fatalf("Owner issued an unexpected revocation delegation: %+v", revokedDelegation)
+	}
+	var revokeResult store.RegroupDelegation
+	ownerRPC("topology.delegation_revoke", map[string]any{
+		"delegation_id":    revokedDelegation.DelegationID,
+		"expected_version": revokedDelegation.Version,
+	}, &revokeResult)
+	if revokeResult.DelegationID != revokedDelegation.DelegationID ||
+		revokeResult.State != "REVOKED" || revokeResult.Version != revokedDelegation.Version+1 {
+		t.Fatalf("Owner encrypted revoke did not advance the exact delegation: %+v", revokeResult)
+	}
+	if !spaceMCPCallError(t, a, "cicada_regroup_apply", map[string]any{
+		"proposal_id":   revokedProposal.RegroupProposal.ProposalID,
+		"delegation_id": revokedDelegation.DelegationID,
+	}) {
+		t.Fatal("Monitor MCP apply accepted the separately revoked delegation")
+	}
+	groupAfterDeniedApply, err := persistence.GetGroup(groupID)
+	if err != nil || groupAfterDeniedApply.Version != revocationTarget.Version {
+		t.Fatalf("revoked apply changed the target Group: before=%d after=%v err=%v",
+			revocationTarget.Version, groupAfterDeniedApply, err)
+	}
 }
 
 func TestGroupSpaceCachePersistsLegalThirtyTwoReaderWireSize(t *testing.T) {
