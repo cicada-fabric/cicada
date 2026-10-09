@@ -462,13 +462,25 @@ func (c *Control) decorateEndpoint(endpoint *store.Endpoint) {
 		if machine, err := c.store.GetMachine(endpoint.MachineID); err == nil && machine != nil {
 			machineName = machine.Name
 		}
-		if isLocalMachine(endpoint.MachineID) {
-			if hostname, err := os.Hostname(); err == nil && strings.TrimSpace(hostname) != "" {
-				machineName = hostname
-			}
-		}
-		endpoint.Address = endpointAddress(*endpoint, machineAddressName(machineName, endpoint.MachineID))
+		localHostname, _ := os.Hostname()
+		c.decorateEndpointWithNames(endpoint, machineName, localHostname)
 	}
+}
+
+// decorateEndpointWithNames is the pure formatting half used by the paged
+// resolver while its Store read transaction is open. Its metadata comes from
+// the same snapshot, so it must not call back into Store and re-enter mu.
+func (c *Control) decorateEndpointWithNames(endpoint *store.Endpoint, machineName, localHostname string) {
+	if endpoint == nil {
+		return
+	}
+	if strings.TrimSpace(machineName) == "" {
+		machineName = endpoint.MachineID
+	}
+	if isLocalMachine(endpoint.MachineID) && strings.TrimSpace(localHostname) != "" {
+		machineName = localHostname
+	}
+	endpoint.Address = endpointAddress(*endpoint, machineAddressName(machineName, endpoint.MachineID))
 }
 
 // legacyEndpointIdentity is the v1 compatibility gate. Endpoint rows stay in
@@ -634,61 +646,134 @@ func (c *Control) ResolveEndpoint(input EndpointResolveInput) (*store.Endpoint, 
 		c.decorateEndpoint(endpoint)
 		return endpoint, nil
 	}
-	endpoints, err := c.ListEndpoints(EndpointListInput{RequesterEndpointID: input.RequesterEndpointID, Limit: 1000})
+	requesterOwner := ""
+	if input.RequesterEndpointID != "" {
+		requester, err := c.store.GetEndpoint(input.RequesterEndpointID)
+		if err != nil {
+			return nil, err
+		}
+		if requester == nil {
+			return nil, os.ErrNotExist
+		}
+		requesterOwner = requester.Owner
+	}
+	lowerQuery := strings.ToLower(query)
+	var exact, qualified, global endpointResolveMatches
+	simpleAlias := !strings.ContainsAny(query, ":/@")
+	localHostname, _ := os.Hostname()
+	err := c.store.ForEachLegacyEndpointResolveCandidatePage(requesterOwner,
+		legacyEndpointResolveNameCandidates(query), func(endpoints []store.Endpoint, _ map[string]*store.SessionBinding,
+			machineNames map[string]string) (bool, error) {
+			for _, endpoint := range endpoints {
+				c.decorateEndpointWithNames(&endpoint, machineNames[endpoint.MachineID], localHostname)
+				address := strings.ToLower(endpoint.Address)
+				serverAlias := strings.ToLower(strings.SplitN(endpoint.Address, ":", 2)[0])
+				machineIDAlias := strings.ToLower(endpoint.Name + "@" + endpoint.MachineID)
+				var matches *endpointResolveMatches
+				switch {
+				case address == lowerQuery:
+					matches = &exact
+				case serverAlias == lowerQuery || machineIDAlias == lowerQuery:
+					matches = &qualified
+				case strings.EqualFold(endpoint.Name, query):
+					matches = &global
+				}
+				if matches == nil {
+					continue
+				}
+				matches.add(endpoint)
+				if legacyEndpointContextMatches(endpoint, input) {
+					matches.addContext(endpoint)
+				}
+			}
+			// A simple name cannot match an address or qualified alias. With no
+			// context to narrow it, two global matches prove the legacy result.
+			return simpleAlias && input.MachineID == "" && input.Workspace == "" && global.count >= 2, nil
+		})
 	if err != nil {
 		return nil, err
 	}
-	lowerQuery := strings.ToLower(query)
-	exact := make([]store.Endpoint, 0)
-	qualified := make([]store.Endpoint, 0)
-	global := make([]store.Endpoint, 0)
-	for _, endpoint := range endpoints {
-		if endpoint.Status == "left" {
-			continue
-		}
-		address := strings.ToLower(endpoint.Address)
-		serverAlias := strings.ToLower(strings.SplitN(endpoint.Address, ":", 2)[0])
-		machineIDAlias := strings.ToLower(endpoint.Name + "@" + endpoint.MachineID)
-		switch {
-		case address == lowerQuery:
-			exact = append(exact, endpoint)
-		case serverAlias == lowerQuery || machineIDAlias == lowerQuery:
-			qualified = append(qualified, endpoint)
-		case strings.EqualFold(endpoint.Name, query):
-			global = append(global, endpoint)
-		}
+	matches := &exact
+	if matches.count == 0 {
+		matches = &qualified
 	}
-	candidates := exact
-	if len(candidates) == 0 {
-		candidates = qualified
+	if matches.count == 0 {
+		matches = &global
 	}
-	if len(candidates) == 0 {
-		candidates = global
-	}
-	// Context only narrows an already ambiguous alias. It never silently picks
-	// an unrelated endpoint merely because it shares a workspace.
-	if len(candidates) > 1 {
-		contextMatches := make([]store.Endpoint, 0)
-		for _, endpoint := range candidates {
-			if input.MachineID != "" && endpoint.MachineID != input.MachineID {
-				continue
-			}
-			if input.Workspace != "" && cleanDisplayWorkspace(endpoint.Workspace) != cleanDisplayWorkspace(input.Workspace) {
-				continue
-			}
-			contextMatches = append(contextMatches, endpoint)
-		}
-		if len(contextMatches) > 0 {
-			candidates = contextMatches
-		}
-	}
-	if len(candidates) == 0 {
+	if matches.count == 0 {
 		return nil, os.ErrNotExist
 	}
-	if len(candidates) > 1 {
-		return nil, &EndpointAmbiguityError{Query: query, Candidates: candidates}
+	selected := matches.samples
+	if matches.count > 1 && matches.contextCount > 0 {
+		selected = matches.contextSamples
+		if matches.contextCount == 1 {
+			return &selected[0], nil
+		}
 	}
-	return &candidates[0], nil
+	if matches.count == 1 {
+		return &selected[0], nil
+	}
+	return nil, &EndpointAmbiguityError{Query: query, Candidates: selected}
+}
+
+type endpointResolveMatches struct {
+	count          int
+	samples        []store.Endpoint
+	contextCount   int
+	contextSamples []store.Endpoint
+}
+
+func (m *endpointResolveMatches) add(endpoint store.Endpoint) {
+	m.count++
+	if len(m.samples) < 2 {
+		m.samples = append(m.samples, endpoint)
+	}
+}
+
+func (m *endpointResolveMatches) addContext(endpoint store.Endpoint) {
+	m.contextCount++
+	if len(m.contextSamples) < 2 {
+		m.contextSamples = append(m.contextSamples, endpoint)
+	}
+}
+
+func legacyEndpointContextMatches(endpoint store.Endpoint, input EndpointResolveInput) bool {
+	if input.MachineID != "" && endpoint.MachineID != input.MachineID {
+		return false
+	}
+	return input.Workspace == "" || cleanDisplayWorkspace(endpoint.Workspace) == cleanDisplayWorkspace(input.Workspace)
+}
+
+// legacyEndpointResolveNameCandidates derives a bounded superset for the
+// legacy address spellings. Candidate filtering is not a match decision;
+// ResolveEndpoint applies its original address/qualified/global precedence.
+func legacyEndpointResolveNameCandidates(query string) []string {
+	result := make([]string, 0, 5)
+	seen := make(map[string]struct{}, 5)
+	add := func(value string) {
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	add(query)
+	if colon := strings.IndexByte(query, ':'); colon > 0 {
+		add(query[:colon])
+		if at := strings.LastIndexByte(query[:colon], '@'); at > 0 {
+			add(query[:at])
+		}
+	}
+	if at := strings.LastIndexByte(query, '@'); at > 0 {
+		add(query[:at])
+	}
+	if slash := strings.LastIndexByte(query, '/'); slash >= 0 && slash+1 < len(query) {
+		add(query[slash+1:])
+	}
+	return result
 }
 
 func (c *Control) InspectEndpoint(input EndpointResolveInput) (*NetworkCard, error) {

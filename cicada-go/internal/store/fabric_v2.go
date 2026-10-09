@@ -1823,40 +1823,9 @@ func (s *Store) GetActiveSessionBinding(endpointID string) (*SessionBinding, err
 // missing or undecodable bindings are omitted, as Service.List historically
 // skipped each failed lookup. Query/iteration errors still reach the caller.
 func (s *Store) ListDirectoryActiveSessionBindings(endpointIDs []string) (map[string]*SessionBinding, error) {
-	bindings := make(map[string]*SessionBinding)
-	if len(endpointIDs) == 0 {
-		return bindings, nil
-	}
-	args := make([]any, len(endpointIDs))
-	for i, id := range endpointIDs {
-		args[i] = strings.TrimSpace(id)
-	}
-	query := `WITH requested(endpoint_id) AS (VALUES ` + strings.TrimSuffix(strings.Repeat(`(?),`, len(args)), `,`) + `)
-SELECT ` + sessionBindingColumns + ` FROM session_bindings WHERE id IN (
-  SELECT (SELECT id FROM session_bindings
-    WHERE endpoint_id = requested.endpoint_id
-      AND status IN ('active', 'leased', 'online', 'ready', 'acquired')
-    ORDER BY epoch DESC LIMIT 1)
-  FROM requested
-)`
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		binding, err := scanSessionBinding(rows)
-		if err != nil {
-			continue
-		}
-		bindings[binding.EndpointID] = binding
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return bindings, nil
+	return listDirectoryActiveSessionBindings(s.db, endpointIDs)
 }
 
 func (s *Store) GetSessionBindingByNativeSession(nativeSessionID string) (*SessionBinding, error) {

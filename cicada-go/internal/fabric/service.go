@@ -561,21 +561,37 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 		card := s.networkCard(*endpoint, binding, actor.GroupID)
 		return &card, nil
 	}
-	cards, err := s.List(actor, "", input.NodeID, "", 1000)
+	nameCandidates, machineCandidate := endpointResolveCandidates(query)
+	var exact, aliases []NetworkCard
+	lower := strings.ToLower(query)
+	simpleAlias := !strings.ContainsAny(query, "/@")
+	err := s.store.ForEachEndpointV2ResolveCandidatePage(actor.GroupID, input.NodeID,
+		nameCandidates, machineCandidate, query, func(endpoints []store.Endpoint, bindings map[string]*store.SessionBinding,
+			_ map[string]string) (bool, error) {
+			for _, endpoint := range endpoints {
+				binding := bindings[endpoint.ID]
+				if binding == nil {
+					// Directory.List historically skips rows whose active binding cannot
+					// be decoded. Continue across the stable read snapshot.
+					continue
+				}
+				card := s.networkCard(endpoint, binding, actor.GroupID)
+				switch {
+				case strings.EqualFold(card.Address, query):
+					appendResolveSample(&exact, card)
+				case strings.EqualFold(card.Name+"@"+card.NodeID, query), strings.EqualFold(card.GroupID+"/"+card.Name, query):
+					appendResolveSample(&exact, card)
+				case strings.ToLower(card.Name) == lower:
+					appendResolveSample(&aliases, card)
+				}
+			}
+			// Exact address and qualified spellings outrank a bare alias, so only
+			// stop early once two exact matches prove ambiguity. A bare name cannot
+			// match any exact spelling and two aliases prove its result immediately.
+			return len(exact) >= 2 || (simpleAlias && len(aliases) >= 2), nil
+		})
 	if err != nil {
 		return nil, err
-	}
-	lower := strings.ToLower(query)
-	var exact, aliases []NetworkCard
-	for _, card := range cards {
-		switch {
-		case strings.EqualFold(card.Address, query):
-			exact = append(exact, card)
-		case strings.EqualFold(card.Name+"@"+card.NodeID, query), strings.EqualFold(card.GroupID+"/"+card.Name, query):
-			exact = append(exact, card)
-		case strings.ToLower(card.Name) == lower:
-			aliases = append(aliases, card)
-		}
 	}
 	candidates := exact
 	if len(candidates) == 0 {
@@ -588,6 +604,44 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 		return nil, &AmbiguityError{Query: query, Candidates: candidates}
 	}
 	return &candidates[0], nil
+}
+
+func appendResolveSample(candidates *[]NetworkCard, card NetworkCard) {
+	if len(*candidates) < 2 {
+		*candidates = append(*candidates, card)
+	}
+}
+
+// endpointResolveNameCandidates derives a bounded superset of persisted names
+// from the documented address/qualified-alias spellings. SQL only uses this
+// set to narrow candidates; Resolve keeps the original Go predicates and
+// exact-before-alias precedence authoritative.
+func endpointResolveCandidates(query string) ([]string, string) {
+	result := make([]string, 0, 6)
+	seen := make(map[string]struct{}, 6)
+	add := func(value string) {
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	add(query)
+	namePart := query
+	if slash := strings.LastIndexByte(namePart, '/'); slash >= 0 {
+		namePart = namePart[slash+1:]
+		add(namePart)
+	}
+	if at := strings.IndexByte(namePart, '@'); at > 0 {
+		add(namePart[:at])
+		// A raw qualified alias may contain '@' in its machine ID. The first
+		// delimiter is the name/machine boundary for the supported spelling.
+		return result, namePart[at+1:]
+	}
+	return result, ""
 }
 
 func (s *Service) networkCard(endpoint store.Endpoint, binding *store.SessionBinding, groupID string) NetworkCard {

@@ -153,10 +153,14 @@ func openMachineSealedDelivery(ctx context.Context, stateDir, machineID string,
 	if err := validateMachineSealedClaimAuthorization(machineID, delivery, authorization); err != nil {
 		return machineSealedOpenResult{}, err
 	}
-	if _, err := recordMachineNativeContextMetadata(ctx, delivery.Harness, delivery.NativeSessionID,
+	phaseObserver := machineSealedPhaseFrom(ctx)
+	phaseObserver.emit("LOCAL_CONTEXT", "BEGIN", "NONE")
+	_, contextErr := recordMachineNativeContextMetadata(ctx, delivery.Harness, delivery.NativeSessionID,
 		authorization.EndpointID, authorization.BindingID, authorization.BindingEpoch,
-		authorization.NativeContextScope); err != nil {
-		return machineSealedOpenResult{}, fmt.Errorf("check current native context before opening sealed delivery: %w", err)
+		authorization.NativeContextScope)
+	phaseObserver.end("LOCAL_CONTEXT", contextErr)
+	if contextErr != nil {
+		return machineSealedOpenResult{}, fmt.Errorf("check current native context before opening sealed delivery: %w", contextErr)
 	}
 	if len(delivery.Ciphertext) == 0 || machineSealedCiphertextDigest(delivery.Ciphertext) != delivery.Digest {
 		return machineSealedOpenResult{}, errors.New("sealed ciphertext digest does not match the claimed digest")
@@ -608,13 +612,17 @@ func recoverMachineSealedInboxSave(ctx context.Context, base, stateDir, machineI
 func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir string,
 	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim,
 	entry machineRelayJournalEntry) (result error) {
+	ctx, phaseObserver := newMachineSealedPhaseContext(ctx, claim, entry)
 	injectionBegan, disposed := false, false
 	defer func() {
 		if !injectionBegan && !disposed {
 			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
 		}
 	}()
+	// Record the original phase failure before claim-cleanup errors are joined.
+	defer func() { phaseObserver.finish(result) }()
 	reject := func() error {
+		phaseObserver.reject()
 		err := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry,
 			"current Link authorization or local trust verification failed")
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
@@ -624,6 +632,7 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 		return err
 	}
 
+	phaseObserver.enter("CLAIM_ROUTE")
 	delivery, err := machineSealedDeliveryFromJournal(machineID, entry)
 	if err != nil {
 		return err
@@ -633,15 +642,20 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 		claim.SessionID != entry.SessionID || claim.BindingEpoch != entry.BindingEpoch {
 		return errors.New("local sealed inbox claim does not match its durable route")
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("AUTHORITY_HTTP")
 	authorization, err := fetchMachineSealedAuthorization(ctx, base, machineID, entry.MessageID, entry.AttemptID)
+	phaseObserver.finish(err)
 	if err != nil {
 		if machineAPIHasStatus(err, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity) {
 			return reject()
 		}
 		return fmt.Errorf("recheck current sealed authorization for %s: %w", entry.MessageID, err)
 	}
+	phaseObserver.enter("CRYPTO_READ")
 	bundle, err := machineNodeKeyBundle(authorization.Bundle)
 	if err != nil {
+		phaseObserver.finish(err)
 		return reject()
 	}
 	cryptoState, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, machineID))
@@ -660,9 +674,14 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 	}
 	if inboundErr != nil || inbound.Digest != entry.Digest ||
 		machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
+		if inboundErr != nil {
+			phaseObserver.finish(inboundErr)
+		}
 		return reject()
 	}
 	delivery.Ciphertext = inbound.Envelope
+	phaseObserver.finish(nil)
+	phaseObserver.enter("SEALED_VALIDATE")
 	opened, err := openMachineSealedDelivery(ctx, stateDir, machineID, delivery, *authorization)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -676,12 +695,18 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 	if entry.Harness != "codex" {
 		return reject()
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("OPERATION_SCOPE")
 	operation, err := machineRelayNativeOperation(ctx, claim, entry)
 	if err != nil {
 		return err
 	}
+	phaseObserver.finish(nil)
 	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
 		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			// The writer-wait callback began this span; reaching preparation
+			// proves acquisition returned, not that queue admission succeeded.
+			phaseObserver.finish(nil)
 			// Refresh exact current authority only after acquiring the physical writer.
 			current, err := fetchMachineSealedAuthorization(queueCtx, base, machineID, entry.MessageID, entry.AttemptID)
 			if err != nil {
@@ -729,6 +754,7 @@ func drainMachineSealedRelayClaim(ctx context.Context, base, machineID, stateDir
 			}
 			return err
 		})
+	phaseObserver.finish(queueErr)
 	// Completion reacquires the writer, after the runner has closed its lease.
 	if queueErr != nil {
 		var denied *machineNativeDeliveryDeniedError

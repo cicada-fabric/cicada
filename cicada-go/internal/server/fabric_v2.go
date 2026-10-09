@@ -390,6 +390,8 @@ func fabricV2Error(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, fabricpkg.ErrRequestTerminal):
 		status = http.StatusConflict
+	case errors.Is(err, store.ErrEndpointResolveCandidateLimit):
+		status = http.StatusServiceUnavailable
 	case errors.Is(err, fabricpkg.ErrFederationBodyWritesRetired):
 		status = http.StatusGone
 	case errors.Is(err, store.ErrSharedTaskHandoffMissingArtifact):

@@ -54,6 +54,35 @@ The earlier separate Native attempt, `peerqueue20261009a001`, exited 2 before Do
 
 The subsequent actual attempt `peerqueue20261009a002` exited 1 after four turn starts / three completions. A/B Join and A's authorized second-Group MCP actions completed; the A `cicada_ask` journal transition and read-only Hub state confirm durable Relay acceptance (`RELAY_ACCEPTED`), but `CLAIMED` is not Native queue acceptance or Runtime/model consumption. B's automatic reply and A's correlated reply/context remain unproved; `provider_request_count` is uninstrumented and the terminal error was withheld, so no provider/quota cause is established. Keep `cleanup_owned_resources=false` and Observer `UNKNOWN` separate from the later broker-stop/UDS-directory/resource closeouts, which confirm owner/resource cleanup and six residents unchanged without deleting session, Hub, or Node private state. Source attribution remains dirty `37ae` / binary SHA `e11592bb…effac7`, not a later HEAD. See [the exact A002 outcome, limits and receipts](native-cli162-tool-boundary-validation.md#current-native-a002). Root cause remains under source review; v0.1 and full Native acceptance remain **PARTIAL**.
 
+## Current Endpoint Resolve capacity checkpoint — scoped PASS; v0.1 PARTIAL
+
+The active Service resolver and legacy Control resolver now scan eligible,
+name-scoped candidates using a stable read transaction and bounded 128-row
+keyset pages. This removes the false-unique/missed-target behavior at the old
+1,000-row list boundary while preserving exact/qualified precedence, context
+narrowing, Endpoint-ID fast path and existing authorization/binding checks.
+Ambiguity keeps at most two proof candidates, not a complete directory or
+count; the 100,000-row ceiling fails closed. Focused normal and race runs passed
+four selectors spanning Service, v2 HTTP, Unicode/machine-address matching and
+the legacy Control boundary test. No schema/index/API contract changed. See
+[source pins, test commands and limits](directory-resolve-capacity-validation.md).
+
+The separate Node sealed pre-writer phase diagnostic passed its focused normal
+and race checks (6 tests / 3 subtests each); it only observes bounded phases and
+does not change admission or prove Native queue acceptance. See [its independent
+source and validation record](node-sealed-phase-diagnostics-validation.md).
+The bounded Group/Fabric cross-feature stress then passed 9 selected tests in
+four workload stages, with a separate successful builder, zero failures/skips,
+verified owned-resource cleanup and six unchanged residents. It ran against
+dirty source at `1ad5a96414c2d888f70c5b61467b3b1e4a382a91` (946 Go files;
+source-tree SHA-256 `a33879ff…fd0ae`), not HEAD alone. The stage limits and
+measurements are in [the stress validation record](v01-group-fabric-stress-validation.md);
+this is not a full-suite or Native result. After this checkpoint is committed
+cleanly, the next step is the prepared current-source full Go build/test/vet
+run, then one diagnosed original-thread ASK/REPLY attempt. Native full T9,
+original-thread ASK/REPLY and remaining M3/M4/M5, panel and delivery gates are
+not closed; overall v0.1 remains **PARTIAL**.
+
 ## Current Fabric Directory binding-query checkpoint — scoped PASS; v0.1 PARTIAL
 
 On dirty `3849f22` plus four pinned Go files, `Service.List` replaces per-Endpoint binding calls with one batch, retaining Authorize, SQL group/migration/expiry filters, highest active epoch, skipped left/missing/malformed bindings and card privacy. Listing data uses two SQL queries excluding Authorize. Baseline normal/current normal/current race each passed seven selected top-level tests, zero failures/skips; actual Service.List 100/1,000-row median time fell 62.94%/68.37% (12.367004 → 4.583483 ms / 124.168138 → 39.274318 ms). These are synthetic Service measurements, not fleet or end-to-end results. The separate real-TCP `network-m1` gate passed in 199.978 seconds, including list/members Group cards and six credential-denial assertions. Root matched all 938 build inputs and confirmed fixture images/tags/names absent; historical container IDs were not recorded. See [source, commands, retained pretest failure and compatibility limits](fabric-directory-binding-performance-validation.md). At that checkpoint CLI 0.162 installation was preparation only; subsequent scoped bridge results are recorded separately above and do not close Native acceptance. v0.1 remains **PARTIAL**.

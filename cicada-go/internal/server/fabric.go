@@ -94,6 +94,8 @@ func fabricError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, control.ErrPermissionDenied), errors.Is(err, control.ErrPermissionApproval):
 		status = http.StatusForbidden
+	case errors.Is(err, store.ErrEndpointResolveCandidateLimit):
+		status = http.StatusServiceUnavailable
 	}
 	writeError(response, status, err)
 }
