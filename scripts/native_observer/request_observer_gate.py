@@ -58,6 +58,11 @@ def closed_native_error_classification(params, native_fields):
 
 
 LIFECYCLE_EVENTS = ("NATIVE_TERMINAL_AUDIT", "ABORT_ENTRY", "FIRST_ABORT_COMMITTED", "OWNED_RUNTIME_STOP_ENTRY", "PROVIDER_CLOSE_ENTRY")
+DEFAULT_NATIVE_NORMAL_SECONDS = 180
+MAX_NATIVE_NORMAL_SECONDS = 600
+NATIVE_TERMINAL_SECONDS = 30
+NATIVE_CLEANUP_SECONDS = 30
+PROVIDER_TRANSPORT_SHA = "91da1e83820caed12809ba8bd6a3156a015e84bf70c310eeb87d91d359118e72"
 
 
 def note_lifecycle(owner, event, side="UNKNOWN"):
@@ -212,7 +217,7 @@ def mark_native_failure(self, error, node, direction, message, native_fields):
                     type(self.args.go.get("max_fatal_diagnostic_capture_seconds")) is int and
                     self.args.go["max_fatal_diagnostic_capture_seconds"] == 5):
                 publication = {"error":error,"origin":origin,"done":threading.Event(),
-                    "end":min(time.monotonic()+5,self.policy.cleanup_end,self.policy.started+240)}
+                    "end":min(time.monotonic()+5,self.policy.cleanup_end)}
                 self._observer_native_capture_state = publication
             try:
                 diagnostic_go = getattr(self.args,"go",None)
@@ -290,7 +295,7 @@ def wait_native_capture_before_owned_cleanup(self, argv):
             return
     if publication["origin"] == threading.get_ident():
         return
-    end = min(publication["end"],self.policy.cleanup_end,self.policy.started+240)
+    end = min(publication["end"],self.policy.cleanup_end)
     if not publication["done"].wait(max(0,end-time.monotonic())):
         self.result.setdefault("test_request_observer",{})["capture_status"] = "UNKNOWN"
         self.result["test_request_observer"]["cleanup_capture_reason"] = "NATIVE_CAPTURE_DEADLINE_EXHAUSTED"
@@ -323,7 +328,8 @@ def register_capture_command(self, argv, program_pins):
 def capture_deadline(self):
     if getattr(self,"_observer_capture_active",False):
         return self._observer_capture_end
-    return self.policy.started+{"normal":180,"terminal":210,"cleanup":240}[self.policy.phase]
+    return {"normal":self.policy.normal_end,"terminal":self.policy.terminal_end,
+            "cleanup":self.policy.cleanup_end}[self.policy.phase]
 
 
 def safe_module(name, path):
@@ -334,7 +340,43 @@ def safe_module(name, path):
     return module
 
 
-def effective_sources():
+def provider_transport_source(normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
+    """Raise only the pinned adapter lifetime ceiling for an explicitly longer native budget."""
+    if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
+            normal_seconds > MAX_NATIVE_NORMAL_SECONDS):
+        raise ValueError("NATIVE_NORMAL_SECONDS")
+    raw = (OLD / "provider_transport.py").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != PROVIDER_TRANSPORT_SHA:
+        raise ValueError("PROVIDER_TRANSPORT_BASE_PIN")
+    tree = ast.parse(raw)
+    validators = [node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "validate_binding"]
+    if len(validators) != 1:
+        raise ValueError("PROVIDER_TRANSPORT_VALIDATOR_CONTEXT")
+    loops = [node for node in ast.walk(validators[0])
+             if isinstance(node, ast.For) and isinstance(node.target, ast.Tuple) and
+             [item.id for item in node.target.elts if isinstance(item, ast.Name)] == ["key", "upper"]]
+    if len(loops) != 1 or not isinstance(loops[0].iter, ast.Tuple):
+        raise ValueError("PROVIDER_TRANSPORT_LIMIT_CONTEXT")
+    expected = (("lifetime", 240), ("max_connections", 16), ("max_active", 4))
+    try:
+        if ast.literal_eval(loops[0].iter) != expected:
+            raise ValueError("PROVIDER_TRANSPORT_LIMIT_CONTEXT")
+    except (ValueError, TypeError):
+        raise ValueError("PROVIDER_TRANSPORT_LIMIT_CONTEXT") from None
+    lifetime_ceiling = max(240, normal_seconds)
+    loops[0].iter.elts[0].elts[1] = ast.Constant(value=lifetime_ceiling)
+    ast.fix_missing_locations(tree)
+    source = ast.unparse(tree) + "\n"
+    compile(source, "<effective-request-observer-provider-transport>", "exec")
+    return source
+
+
+def effective_sources(normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
+    if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
+            normal_seconds > MAX_NATIVE_NORMAL_SECONDS):
+        raise ValueError("NATIVE_NORMAL_SECONDS")
+    transport_source = provider_transport_source(normal_seconds)
     shim = safe_module("cicada_observer_bootstrap_public", HERE / "request_observer_bootstrap.py")
     original = shim.read_pinned(OLD / "managed_gate.py", OLD_GATE_SHA, 131072).decode()
     patch = shim.read_pinned(LEGACY / "request-observer-integration.patch", PATCH_SHA).decode()
@@ -351,9 +393,9 @@ def effective_sources():
     old = "'lifetime_seconds':240, 'max_POST_attempts_per_Runtime':16,"
     if source.count(old) != 1:
         raise ValueError("GATE_OVERLAY_CONTEXT")
-    source = source.replace(old, "'lifetime_seconds':180, 'max_POST_attempts_per_Runtime':16,")
+    source = source.replace(old, f"'lifetime_seconds':{normal_seconds}, 'max_POST_attempts_per_Runtime':16,")
     source = source.replace("observer_args = ['--test-request-observer', base_sha, '240', '16']",
-        "observer_args = ['--test-request-observer', base_sha, repr(self.policy.started+180), '16']")
+        f"observer_args = ['--test-request-observer', base_sha, repr(self.policy.started+{normal_seconds}), '16']")
     def replace_once(value, old, new):
         if value.count(old)!=1:
             raise ValueError("FATAL_CAPTURE_CONTEXT")
@@ -393,13 +435,19 @@ def effective_sources():
     source = ast.unparse(gate_tree)+"\n"
     compile(source, "<effective-request-observer-gate>", "exec")
     bootstrap = shim.effective_source(shim.read_pinned(OLD / "server_bootstrap.py", shim.OLD_BOOTSTRAP_SHA).decode(), patch)
+    legacy_provider_lookup = "public['model_providers']['basil']['base_url']"
+    if bootstrap.count(legacy_provider_lookup) != 1:
+        raise ValueError("BOOTSTRAP_PROVIDER_LOOKUP_CONTEXT")
+    bootstrap = bootstrap.replace(legacy_provider_lookup,
+        "public['model_providers'][public['model_provider']]['base_url']")
+    compile(bootstrap, "<effective-request-observer-bootstrap>", "exec")
     tree = ast.parse((OLD / "migration.py").read_text())
     install = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "install")
     provider = next(node for node in install.body if isinstance(node, ast.FunctionDef) and node.name == "provider")
     changed = 0
     for node in ast.walk(provider):
         if isinstance(node, ast.Constant) and type(node.value) is int and node.value == 240:
-            node.value = 180
+            node.value = normal_seconds
             changed += 1
     if changed != 2:
         raise ValueError("PROVIDER_DEADLINE_CONTEXT")
@@ -409,7 +457,9 @@ def effective_sources():
         raise ValueError("FORWARDER_INSTANCE_CONTEXT")
     provider.body.insert(provider.body.index(setup)+1,ast.parse("_install_client_read_cancellation(self, adapter)").body[0])
     ast.fix_missing_locations(provider)
-    provider_source = ast.unparse(provider) + "\n"
+    provider_source = (ast.unparse(provider) + "\n" +
+        "# provider_transport_sha256=" + hashlib.sha256(transport_source.encode()).hexdigest() +
+        " lifetime_ceiling=" + str(max(240, normal_seconds)) + "\n")
     audit = next(node for node in install.body if isinstance(node,ast.FunctionDef) and node.name=="audit")
     terminal = audit.body[-1]
     if (not isinstance(terminal,ast.If) or not isinstance(terminal.body[-1],ast.Raise) or
@@ -783,12 +833,19 @@ def reproduce_owned_zero_restart(owner):
         "membership_or_message_synthesized": False, "status": "RESTART_REFRESH_COMPLETED"}
 
 
-def bind_policy(policy, started):
+def bind_policy(policy, started, normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
     """Reuse existing instance with fixed absolute phase ends; no reset."""
-    policy.started, policy.total, policy.phase = started, 240, "normal"
-    policy.terminal_end, policy.cleanup_end = started + 210, started + 240
+    if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
+            normal_seconds > MAX_NATIVE_NORMAL_SECONDS):
+        raise PermissionError("NATIVE_NORMAL_SECONDS")
+    policy.started, policy.normal_seconds, policy.phase = started, normal_seconds, "normal"
+    policy.normal_end = started + normal_seconds
+    policy.terminal_end = policy.normal_end + NATIVE_TERMINAL_SECONDS
+    policy.cleanup_end = policy.terminal_end + NATIVE_CLEANUP_SECONDS
+    policy.total = normal_seconds + NATIVE_TERMINAL_SECONDS + NATIVE_CLEANUP_SECONDS
     def limit(self, maximum):
-        end = self.started + {"normal":180, "terminal":210, "cleanup":240}[self.phase]
+        end = {"normal":self.normal_end,"terminal":self.terminal_end,
+               "cleanup":self.cleanup_end}[self.phase]
         left = end - time.monotonic()
         if left <= 0:
             raise TimeoutError("CANDIDATE_ABSOLUTE_DEADLINE")
@@ -822,6 +879,11 @@ def validate_native_https(args, scenario, zero_model):
     go=getattr(args,"go",{})
     if type(go) is not dict or ("native_https" in go and go["native_https"] is not mode):
         raise PermissionError("NATIVE_HTTPS_GO")
+    normal_seconds=getattr(args,"native_normal_seconds",DEFAULT_NATIVE_NORMAL_SECONDS)
+    if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
+            normal_seconds > MAX_NATIVE_NORMAL_SECONDS or
+            (not mode and normal_seconds != DEFAULT_NATIVE_NORMAL_SECONDS)):
+        raise PermissionError("NATIVE_NORMAL_SECONDS")
     if mode:
         if (zero_model or scenario != "g2-g3" or getattr(args,"run_native",False) is not True or
                 getattr(args,"test_request_observer",False) is not False or
@@ -830,7 +892,9 @@ def validate_native_https(args, scenario, zero_model):
         fields={"native_https":True,"response_byte_passthrough":False,
             "response_byte_ceiling":None,"response_chunk_ceiling":None,"max_native_turns":6,"max_manual_turns":4,"max_automatic_turns":2,
             "request_max_retries":0,"stream_max_retries":0,"max_accepted_TCP_connections_per_Runtime":16,
-            "normal_seconds":180,"terminal_seconds":30,"cleanup_seconds":30,"total_seconds":240,
+            "normal_seconds":normal_seconds,"terminal_seconds":NATIVE_TERMINAL_SECONDS,
+            "cleanup_seconds":NATIVE_CLEANUP_SECONDS,
+            "total_seconds":normal_seconds+NATIVE_TERMINAL_SECONDS+NATIVE_CLEANUP_SECONDS,
             "HTTP_POST_COUNT":"UNAVAILABLE","POST16_ENFORCEMENT":"UNAVAILABLE",
             "response_transport_semantics":"NATIVE_HTTPS_OPAQUE_PROXY",
             "TCP_connection_scope":"ADMITTED_SOCKETS_NOT_HTTP_POSTS_OR_COMPLETED_CONNECTS"}
@@ -1429,10 +1493,14 @@ def g2_turn_budget(default):
     return ns['TurnBudget']()
 
 
-def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenario="g1"):
+def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenario="g1",
+              normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
     """Inspection imports public helpers only; execution requires future GO."""
     if scenario not in ("g1", "g2-g3"):
         raise ValueError("SCENARIO_UNSUPPORTED")
+    if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
+            normal_seconds > MAX_NATIVE_NORMAL_SECONDS):
+        raise ValueError("NATIVE_NORMAL_SECONDS")
     loaded = {}
     for name in ("migration", "managed_gate"):
         if name in sys.modules:
@@ -1447,7 +1515,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     legacy_cls, original_namespace = wrapper.ManagedGate, wrapper.module.__dict__
     if Path(original_namespace["HERE"]).resolve() != OLD.resolve():
         raise RuntimeError("LEGACY_GLOBAL_ORIGIN")
-    sources = effective_sources()
+    sources = effective_sources(normal_seconds)
     fresh_witness, fresh_witness_sha = selected_fresh_witness(legacy_cls.pq_transport_witness)
     two_pass_refresh, two_pass_refresh_sha = selected_two_pass_refresh(legacy_cls.refresh_hub_forwarders)
     namespace = dict(original_namespace)
@@ -1465,7 +1533,17 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         scenario_methods.update(compile_g2_flow_methods(sources["gate"],namespace))
     else:
         scenario_methods={}
-    provider_namespace = dict(legacy_cls.provider_forwarder.__globals__)
+    provider_globals = legacy_cls.provider_forwarder.__globals__
+    original_forwarder = provider_globals.get("Forwarder")
+    provider_module_name = getattr(original_forwarder, "__module__", None)
+    provider_module = sys.modules.get(provider_module_name)
+    if (provider_module is None or
+            Path(getattr(provider_module, "__file__", "")).resolve() != OLD / "provider_transport.py"):
+        raise ValueError("IMPORTED_PROVIDER_GLOBAL_ORIGIN")
+    provider_namespace = provider_module.__dict__
+    transport_source = provider_transport_source(normal_seconds)
+    exec(compile(transport_source, "<effective-request-observer-provider-transport>", "exec"),
+         provider_namespace)
     provider_namespace["_install_client_read_cancellation"]=lambda owner, adapter: install_client_read_cancellation(adapter, binding["client_read_cancellation"]["diagnostic_relay_sha256" if getattr(owner.args,"test_request_observer",False) is True else "relay_sha256"], io_diagnostics_v2=getattr(owner.args,"test_request_observer",False) is True)
     original_relay_installer = provider_namespace['_install_client_read_cancellation']
     def owned_relay_installer(owner, adapter):
@@ -1484,6 +1562,16 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     exec(compile(sources["command"],"<effective-request-observer-command>","exec"),command_namespace)
     if scenario == 'g2-g3':
         legacy_cls = type('OwnedG2SixGate',(legacy_cls,),g2_cap_methods(legacy_cls))
+        inherited_wait_turn = legacy_cls.wait_turn
+        inherited_automatic_turn = legacy_cls.automatic_turn
+        def wait_turn(self, letter, turn_id, timeout=None):
+            return inherited_wait_turn(self, letter, turn_id,
+                normal_seconds if timeout is None else timeout)
+        def automatic_turn(self, letter, prior_ids, timeout=None):
+            return inherited_automatic_turn(self, letter, prior_ids,
+                normal_seconds if timeout is None else timeout)
+        legacy_cls = type('OwnedG2BudgetGate',(legacy_cls,),
+            {'wait_turn':wait_turn,'automatic_turn':automatic_turn})
         old = "self.result['actual_turn_started_event_count'] > 5"
         audit_source = sources['audit']
         if audit_source.count(old) != 1: raise ValueError('G2_AUDIT_CAP_CONTEXT')
@@ -1493,6 +1581,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             if inspect_only:
                 raise RuntimeError("INSPECTION_FORBIDS_FIXTURE_CONSTRUCTOR")
             native_mode = validate_native_https(args,scenario,zero_model)
+            if getattr(args,"native_normal_seconds",DEFAULT_NATIVE_NORMAL_SECONDS) != normal_seconds:
+                raise PermissionError("NATIVE_NORMAL_SECONDS_BINDING")
             response_mode = validate_response_mode(args,scenario,zero_model)
             super().__init__(args)
             self.result["response_transport"] = {"response_byte_passthrough":response_mode,
@@ -1520,7 +1610,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             self.result["owned_pre_stop_fresh_witness_sha256"] = fresh_witness_sha
             self.refresh_hub_forwarders = types.MethodType(two_pass_refresh, self)
             self.result["owned_two_pass_refresh_sha256"] = two_pass_refresh_sha
-            bind_policy(self.policy, args.artifact_started)
+            bind_policy(self.policy, args.artifact_started, normal_seconds)
             if getattr(args,"closed_failure_diagnostics",False) is True:
                 install_closed_failure_diagnostics(self)
                 try:
@@ -1535,9 +1625,15 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                     except BaseException: pass
             self.result["historical_effective_owned_wrapper_sha256_dependency_only"] = self.result.pop("effective_owned_wrapper_sha256", {})
             self.result["effective_owned_wrapper_sha256"] = {name:row["sha256"] for name,row in binding["candidate_files"].items()}
-            self.result["effective_candidate_source_sha256"] = binding["effective_sources"]
+            self.result["effective_candidate_source_sha256"] = {
+                name:hashlib.sha256(value.encode()).hexdigest() for name,value in sources.items()}
             self.result["candidate_binding_sha256"] = args.candidate_binding_sha256
-            self.result["shared_absolute_phase_seconds"] = {"normal":180,"terminal":210,"cleanup":240}
+            self.result["native_budget_seconds"] = {"normal_seconds":normal_seconds,
+                "terminal_seconds":NATIVE_TERMINAL_SECONDS,"cleanup_seconds":NATIVE_CLEANUP_SECONDS,
+                "total_seconds":normal_seconds+NATIVE_TERMINAL_SECONDS+NATIVE_CLEANUP_SECONDS}
+            self.result["shared_absolute_phase_seconds"] = {"normal":normal_seconds,
+                "terminal":normal_seconds+NATIVE_TERMINAL_SECONDS,
+                "cleanup":normal_seconds+NATIVE_TERMINAL_SECONDS+NATIVE_CLEANUP_SECONDS}
             self.result["observer_same_kernel_CLOCK_MONOTONIC"] = "REQUIRED_NOT_RUNTIME_VERIFIED"
             self.result.setdefault("matching_preparation_scope", {}).update(dispatch_only_wrapper_delta=False,
                 reuse_scope="UNCHANGED_PRODUCT_BASELINE_ONLY",
@@ -1557,7 +1653,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             if not zero_model and not getattr(self.args,"latest_runtime",False):
                 return super().build()
             self.step("verify_current_product_latest_runtime")
-            self.result["acceptance_mode"]="current-input-equal-product-latest-CLI161"
+            self.result["acceptance_mode"]="current-input-equal-product-"+self.args.expected_codex_version
             self.result["actual_product_source_dirty"]=delivery.get("source_dirty")
             self.native_package = Path(delivery["package"])
             self.hub_image = delivery["hub_image"]
@@ -1685,7 +1781,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                     "copied_payload_sha256":binding["candidate_files"]["request_observer_bootstrap.py"]["sha256"],
                     "effective_source_sha256":binding["effective_sources"]["bootstrap"],
                     "observer_sha256":binding["public_files"][str(SCRIPTS/"native_request_observer.py")]["sha256"],
-                    "normal_end_MONOTONIC":self.policy.started+180}
+                    "normal_end_MONOTONIC":self.policy.normal_end}
             if (argv and argv[0] == "stop" and not self.cleaning and
                     self.phase != "g3_restored_control_authenticated_encrypted_snapshot"):
                 target = argv[-1]
@@ -1703,7 +1799,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                     "cleanup_capture_reason":"NO_NATIVE_CAPTURE_AT_CLEANUP_ENTRY"})
             try:
                 from request_observer_run import verify_binding
-                verify_binding(self.args.candidate_binding_sha256)
+                verify_binding(self.args.candidate_binding_sha256,
+                    getattr(self.args,"binding_file",None))
             except Exception:
                 self.result["candidate_sources_unchanged"] = False
                 self.result["status"] = "FAIL"

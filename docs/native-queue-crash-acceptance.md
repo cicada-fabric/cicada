@@ -1,6 +1,58 @@
 # Opt-in real native queue crash acceptance
 
-## Current CLI 0.161.0 real-queue checkpoint — narrow PASS
+## Current source gate for CLI 0.162.0 — scoped PASS
+
+The opt-in acceptance source now requires the exact official CLI output
+`codex-cli 0.162.0` and an initialized app-server `userAgent` containing the
+exact 0.162.0 version. A focused local selector checks that 0.161.0 and a
+version suffix are rejected. The historical 0.161.0 PASS below remains
+attributed to its original binary, Runtime image, test source and receipt.
+
+The 0.162.0 gate still requires an independent disposable copy of a saved
+synthetic B profile, an exact CLI hash and Runtime image receipt, a canonical
+owned app-server socket, a full-history count/hash and the original saved cwd.
+The profile must have provider credentials/config absent and provider egress
+disabled; these Runtime properties are owner-attested by the fixture receipt.
+The gate makes no `thread/start` or `turn/start` call and records zero new turns.
+
+The current source's deterministic CLI-version gate and crash-fixture tests
+were built from test source SHA-256
+`b87b59d151b56d4bb8437c37463f81f7db5618cba57188b61eb99814e402bd57` with
+Go `go1.27.1 linux/amd64`. The focused normal and race selectors each passed
+6 top-level tests and 3 subtests, with zero failures or skips. The reviewed test
+binary SHA-256 is
+`150455791a1dbf3e06daa59e012e5f3f85c8369b1d24ab1c07c331f9cf8f4ed0`
+(39,632,616 bytes). The build and tests ran in a network-disabled, read-only,
+UID 1000 container; no CLI, app-server, Runtime, provider, credentials, thread
+or turn were started. The metadata-only receipt is
+[`result.NONAUTH.json`](../.cicada-data/native-observer-wiring-20261007/g4-cli162-build-20261009a/result.NONAUTH.json)
+(SHA-256 `de59e8a5a2919693c7a5c8e23da350ea541e3fbe17254cdf2fb3ed841e1364ab`).
+This is deterministic source validation. The bounded actual 0.162.0 run used
+the official CLI SHA-256
+`50ed828f357c655a3c82054d346cab8434f24901f14ec19b8267571bdd008b38` and
+Runtime image `sha256:c04cf162ee1e1dd88eaef40e823b88e56c9aac6a8341911dda8064095322a4cf`.
+Its [metadata-only result](../.cicada-data/native-observer-wiring-20261007/g4-cli162-runtime-20261009a/result.NONAUTH.json)
+SHA-256 is `4e3c6e11a7e70f595b8f2d8693e1b907861306a79d297d9a07a764829a4bb6d3`.
+On the exact saved synthetic B SID `01a11879-9f9b-7c62-89d0-504635ca7b7b`,
+the gate witnessed exactly one real queue submission, killed only the adapter
+after `Cmd.Wait` and before ledger finish, retained `INJECTION_UNCERTAIN`, and
+refused reinjection. It observed zero new turns and an unchanged two-turn,
+12-item history; the isolated Runtime had network egress disabled and the test
+used no credentials or provider/model calls.
+
+The first invocation stopped at the initial cold snapshot before the queue
+command because it supplied the CLI 0.161 canonical-history receipt hash.
+Original DB, WAL and saved-rollout bytes were unchanged. A separate read-only
+0.162 app-server baseline queried `thread/read`, `thread/turns/list` and
+`thread/queue/list`; it found the same cold SID, two completed turns, 12 items,
+an empty queue and a new canonical full-history SHA-256
+`d43e63b43b0e2338b60a558ae877dff6b4d283382428f9cec378fee0aa2814fa`. The
+single authorized rerun pinned that 0.162 baseline and passed. The initial
+preflight failure is retained in the result receipt; no history guard was
+relaxed. The final receipt records owned-container and fixture cleanup and the
+unchanged six-resident inventory.
+
+## Historical CLI 0.161.0 real-queue checkpoint — narrow PASS
 
 Root's [actual gate receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli161-runtime-20261007e/result.NONAUTH.json) SHA256
 `f8e3aa19f08afd660eb392e5fb4623a489f72288203e1f8482eee7bc91a86474`
@@ -119,8 +171,9 @@ named test-only `realQueueMaxCLIBytes` cap rejects oversized files before hashin
 The independently measured official 0.160.0 CLI in Runtime image
 `sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f`
 is 289,101,384 bytes, which exceeds the original 256 MiB cap. Exact CLI digest and
-version checks still apply. CLI
-version and initialized app-server userAgent must now report exactly 0.161.0.
+version checks still apply. The current source gate requires exact CLI and
+app-server version 0.162.0; receipts in this section retain their original
+0.161.0 attribution.
 
 The socket must expose the already-running official app-server's WebSocket
 protocol directly. The fixture's actual synthetic B Thread must be cold
@@ -232,9 +285,10 @@ Focused selectors are:
 
 ```sh
 go test -p 2 -mod=readonly ./cmd/cicada \
-  -run '^TestMachineNativeRealQueueCrash' -count=1 -timeout=120s -v
+  -run '^(TestMachineNativeRealQueueRequiresExactCLI0162|TestMachineNativeRealQueueCrash(FixtureValidation|FrozenHistory|OptInRefusesIncompleteFixture|OversizedCLI|RelayFixtureScope))$' \
+  -count=1 -timeout=120s -v
 go test -race -p 2 -mod=readonly ./cmd/cicada \
-  -run '^TestMachineNativeRealQueueCrash(FixtureValidation|FrozenHistory|OptInRefusesIncompleteFixture|OversizedCLI|RelayFixtureScope)$' \
+  -run '^(TestMachineNativeRealQueueRequiresExactCLI0162|TestMachineNativeRealQueueCrash(FixtureValidation|FrozenHistory|OptInRefusesIncompleteFixture|OversizedCLI|RelayFixtureScope))$' \
   -count=1 -timeout=120s -v
 ```
 
@@ -275,8 +329,9 @@ rollout count was zero. The preserved owner record is
 Zero historical turns were an artificial test constraint, not a CICADA product
 requirement. This adaptation accepts a pinned saved historical synthetic B
 baseline; it does not turn the earlier limitation into a product/native PASS.
-Actual native acceptance remains **NOT_RUN** pending Root authorization and a
-ready independent B-copy fixture.
+That 0.160.0 attempt remained **NOT_RUN** pending authorization and a ready
+independent B-copy fixture; the later 0.162.0 result at the top covers only its
+scoped injected-before-ledger queue-crash case.
 
 The frozen-baseline adaptation's local focused and race checks both passed all
 five deterministic checks for test source SHA-256

@@ -134,6 +134,7 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 	const objective = "SYNTHETIC_PRIVATE_TASK_OBJECTIVE_SENTINEL"
 	const criteria = "SYNTHETIC_PRIVATE_TASK_CRITERIA_SENTINEL"
 	const summary = "SYNTHETIC_PRIVATE_TASK_RESULT_SENTINEL"
+	const evidenceMarker = "SYNTHETIC_PRIVATE_TASK_EVIDENCE_SENTINEL"
 	task, err := f.store.CreateSharedTaskPeerShell(f.groupID, "synthetic-manager-bearer", store.SharedTaskPeerShellInput{PublisherEndpointID: f.targetMCP.endpointID, ResultRecipientEndpointID: f.targetMCP.endpointID})
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +147,7 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 	var mu sync.Mutex
 	lostReply, privateSeen := true, false
 	registrations := 0
+	taskLists, renewals := 0, 0
 	f.hub.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -156,6 +158,12 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 		mu.Lock()
 		for _, secret := range []string{objective, criteria, summary} {
 			privateSeen = privateSeen || bytes.Contains(body, []byte(secret))
+		}
+		switch r.URL.Path {
+		case "/v2/fabric/tasks":
+			taskLists++
+		case "/v2/fabric/tasks/renew":
+			renewals++
 		}
 		isRegistration := r.Method == http.MethodPost && r.URL.Path == "/v2/fabric/tasks/sealed-reference"
 		lose := isRegistration && lostReply
@@ -247,11 +255,116 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.sourceMCP.callTool("cicada_task_claim", map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "idempotency_key": "synthetic-worker-claim", "lease_seconds": 600}); err != nil {
+	claimResult, err := f.sourceMCP.callTool("cicada_task_claim", map[string]any{"task_id": task.ID, "expected_revision": task.Revision, "idempotency_key": "synthetic-worker-claim", "lease_seconds": 600})
+	if err != nil {
 		t.Fatal(err)
 	}
 	task = readPrivacyTask(t, f, task.ID)
-	artifact, err := f.store.CreateArtifact(store.Artifact{ID: "artifact_synthetic_privacy", Name: "synthetic evidence", Path: "synthetic/evidence", Digest: strings.Repeat("a", 64)})
+	if task.ClaimKey == "" {
+		t.Fatal("Task claim did not create the private claim key used by the privacy assertions")
+	}
+	assertPeerMetadata := func(value any, expected *store.SharedTask) map[string]any {
+		t.Helper()
+		encoded, marshalErr := json.Marshal(value)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		for _, secret := range []string{objective, criteria, summary, evidenceMarker, task.ClaimKey, "synthetic-worker-claim"} {
+			if secret != "" && bytes.Contains(encoded, []byte(secret)) {
+				t.Fatal("Task peer metadata exposed a private marker")
+			}
+		}
+		var view map[string]any
+		if err := json.Unmarshal(encoded, &view); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := view["claim_key"]; ok {
+			t.Fatal("Task peer metadata exposed claim_key")
+		}
+		if view["task_id"] != expected.ID || view["group_id"] != expected.GroupID ||
+			view["status"] != expected.Status || view["owner_principal_id"] != expected.OwnerPrincipalID ||
+			view["owner_endpoint_id"] != expected.OwnerEndpointID || view["lease_expires_at"] != expected.LeaseExpiresAt ||
+			view["revision"] != float64(expected.Revision) || view["owner_epoch"] != float64(expected.OwnerEpoch) {
+			t.Fatal("Task peer metadata does not match current Task state")
+		}
+		return view
+	}
+	assertPeerList := func(m *mcpServer, expected *store.SharedTask) map[string]any {
+		t.Helper()
+		selectPrivacySession(t, m)
+		listed, listErr := m.callTool("cicada_task_list", map[string]any{"limit": 100})
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		encoded, marshalErr := json.Marshal(listed)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		for _, secret := range []string{objective, criteria, summary, evidenceMarker, expected.ClaimKey, "synthetic-worker-claim"} {
+			if secret != "" && bytes.Contains(encoded, []byte(secret)) {
+				t.Fatal("Task list exposed a private marker")
+			}
+		}
+		if bytes.Contains(encoded, []byte(`"claim_key"`)) {
+			t.Fatal("Task list exposed claim_key")
+		}
+		envelope, ok := listed.(map[string]any)
+		if !ok {
+			t.Fatalf("Task list returned %T, want an object", listed)
+		}
+		rows, ok := envelope["tasks"].([]any)
+		if !ok {
+			t.Fatalf("Task list tasks field returned %T, want an array", envelope["tasks"])
+		}
+		for _, raw := range rows {
+			row, ok := raw.(map[string]any)
+			if !ok || row["task_id"] != expected.ID {
+				continue
+			}
+			return assertPeerMetadata(row, expected)
+		}
+		t.Fatalf("authorized Task list omitted Task %q", expected.ID)
+		return nil
+	}
+	assertPeerMetadata(claimResult, task)
+	assertPeerList(f.sourceMCP, task)
+
+	leaseBeforeRenew, parseErr := time.Parse(time.RFC3339Nano, task.LeaseExpiresAt)
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	renewResult, err := f.sourceMCP.callTool("cicada_task_renew", map[string]any{
+		"task_id": task.ID, "expected_revision": task.Revision, "owner_epoch": task.OwnerEpoch, "lease_seconds": 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed := readPrivacyTask(t, f, task.ID)
+	if renewed.Revision != task.Revision+1 || renewed.OwnerEpoch != task.OwnerEpoch ||
+		renewed.OwnerPrincipalID != task.OwnerPrincipalID || renewed.OwnerEndpointID != task.OwnerEndpointID {
+		t.Fatal("authorized Task lease renewal changed ownership or failed to advance exactly one revision")
+	}
+	leaseAfterRenew, parseErr := time.Parse(time.RFC3339Nano, renewed.LeaseExpiresAt)
+	if parseErr != nil || !leaseAfterRenew.After(leaseBeforeRenew) {
+		t.Fatal("authorized Task lease renewal did not advance the lease expiry")
+	}
+	assertPeerMetadata(renewResult, renewed)
+	viewBeforeStaleRenew := assertPeerList(f.sourceMCP, renewed)
+	_, err = f.sourceMCP.callTool("cicada_task_renew", map[string]any{
+		"task_id": renewed.ID, "expected_revision": renewed.Revision,
+		"owner_epoch": renewed.OwnerEpoch - 1, "lease_seconds": 600,
+	})
+	if err == nil {
+		t.Fatal("Task lease renewal accepted a stale owner epoch")
+	}
+	if afterStaleRenew := readPrivacyTask(t, f, renewed.ID); !reflect.DeepEqual(renewed, afterStaleRenew) {
+		t.Fatal("stale-epoch Task renewal changed persisted Task state")
+	}
+	if viewAfterStaleRenew := assertPeerList(f.sourceMCP, renewed); !reflect.DeepEqual(viewBeforeStaleRenew, viewAfterStaleRenew) {
+		t.Fatal("stale-epoch Task renewal changed peer-visible Task metadata")
+	}
+	task = renewed
+	artifact, err := f.store.CreateArtifact(store.Artifact{ID: "artifact_synthetic_privacy", Name: evidenceMarker, Path: "synthetic/" + evidenceMarker, Digest: strings.Repeat("a", 64)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +382,7 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 	if state.Status != store.SharedTaskResultSubmitted || state.Revision != task.Revision+1 {
 		t.Fatal("formal result did not apply exact business CAS")
 	}
+	assertPeerList(f.targetMCP, state)
 	if err = f.restartBridge(); err != nil {
 		t.Fatal(err)
 	}
@@ -295,10 +409,10 @@ func TestTaskPeerPrivacyHTTPMCPSealedReferenceLostReplyRestartAndAccept(t *testi
 		t.Fatal("formal result acceptance did not complete Task")
 	}
 	mu.Lock()
-	seen, count := privateSeen, registrations
+	seen, count, lists, renewCount := privateSeen, registrations, taskLists, renewals
 	mu.Unlock()
-	if seen || count < 4 {
-		t.Fatal("Hub saw new Task prose or missing actual registration retries")
+	if seen || count < 4 || lists != 4 || renewCount != 2 {
+		t.Fatal("Hub saw new Task prose or MCP privacy calls missed their HTTP routes")
 	}
 }
 

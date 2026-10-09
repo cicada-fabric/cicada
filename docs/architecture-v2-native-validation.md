@@ -1,5 +1,10 @@
 # v2 原生 MCP 验收记录
 
+当前开发模板见 [`docker/codex-config.toml`](../docker/codex-config.toml)：使用中性 provider 键
+`cicada-provider`、`https://api.zzswitch.com/v1`、`gpt-5.6-luna`、Responses 和 `API_KEY`。
+模板仅在新 `CODEX_HOME` 中初始化；已有配置需单独核对其实际 URL。本文下方的旧 CLI、模型、
+URL 和运行结果均保留各自历史来源，不能当作当前配置或新版验收。
+
 ## 2026-09-27 Client v1.3 Monitor 原生验收：PASS（限定范围，第三轮）
 
 `TestMCPMonitorBroadcastClientV13Native` 验证三个真实 Codex Thread、同一
@@ -367,7 +372,7 @@ Trace 转发不改请求/响应正文，不保存 header、prompt、参数、工
 ## 环境与命令
 
 - Codex：官方 shell 安装的 `codex-cli 0.155.1`，Docker 镜像 `cicada-codex:dev`。
-- 模型：用户指定的 `gpt-5.5`；provider upstream 为 `https://basil.xin/v1`。
+- 模型：当时用户指定的 `gpt-5.5`；该早期运行的实际 provider upstream 为 `https://basil.xin/v1`（历史值；当前模板见页首）。
 - 同一物理主机，两个独立 Codex HOME、Workspace 和 Node 状态目录；非双物理机。
 - 已有受限 runtime env 文件只交给模型容器，未写入仓库或打印。
 - MCP 配置与 Tool 预授权仅位于演示容器；没有修改用户全局 CLI 配置。

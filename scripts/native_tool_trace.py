@@ -32,7 +32,7 @@ def tool_names(tools):
 
 
 class ToolTrace:
-    def __init__(self, destination, upstream="https://basil.xin/v1"):
+    def __init__(self, destination, upstream="https://api.zzswitch.com/v1"):
         parsed = urlsplit(upstream)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.query or parsed.fragment:
             raise ValueError("tool trace requires a fixed HTTPS upstream")

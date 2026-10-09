@@ -315,6 +315,22 @@ class WiringChecks(unittest.TestCase):
             execution.wiring_receipt=str(run.BINDING.parent/'request-observer-wiring-synthetic-native-https.json')
             pinned=run.expected_latest_go(binding,sha,execution,delivery)
             receipt={'status':'PASS','candidate_binding_sha256':sha,'Runtime_calls':0,'provider_POSTs':0,'model_calls':0}
+            current_bundle=binding['current_bundle']
+            current_public_pins={current_bundle[key]['path']:current_bundle[key]['sha256']
+                for key in ('delivery','equality','runtime_receipt')}
+            if len(current_public_pins)!=3:
+                raise AssertionError('CURRENT_PUBLIC_RECEIPT_PATHS')
+            current_public_json={}
+            for path,pin in current_public_pins.items():
+                pair=run.bounded_json(path)
+                if hashlib.sha256(pair[1]).hexdigest()!=pin:
+                    raise AssertionError('CURRENT_PUBLIC_RECEIPT_PIN')
+                current_public_json[path]=pair
+            pinned_source_projection=run.safe_overlay
+            def reject_runtime_overlays(name):
+                if name=='request_observer_gate':
+                    return pinned_source_projection(name)
+                raise AssertionError('NO_FIXTURE')
             for kind in ('expired','forged_budget'):
                 candidate=dict(pinned,expires_at_unix=9000)
                 if kind=='expired':candidate['expires_at_unix']=999
@@ -322,11 +338,13 @@ class WiringChecks(unittest.TestCase):
                 raw=json.dumps(candidate,sort_keys=True).encode()
                 execution.go_receipt_sha=hashlib.sha256(raw).hexdigest()
                 def public_json(path):
+                    key=str(Path(path))
+                    if key in current_public_json:return current_public_json[key]
                     if Path(path)==run.ACTUAL/'actual-delivery.json':return historical_delivery_pair
                     if str(path)==execution.wiring_receipt:return receipt,receipt_raw
                     if str(path)==execution.go_receipt:return candidate,raw
                     raise AssertionError('UNEXPECTED_PUBLIC_READ')
-                with self.subTest(execute_refusal=kind),patch.object(run,'latest_dispatch_inputs',return_value=(binding,sha,delivery,{})),patch.object(run,'bounded_json',side_effect=public_json),patch.object(run.time,'time',return_value=1000),patch.object(Path,'lstat',side_effect=AssertionError('NO_METADATA')),patch.object(run.os,'open',side_effect=AssertionError('NO_CLAIM')),patch.object(run,'safe_overlay',side_effect=AssertionError('NO_FIXTURE')):
+                with self.subTest(execute_refusal=kind),patch.object(run,'latest_dispatch_inputs',return_value=(binding,sha,delivery,{})),patch.object(run,'bounded_json',side_effect=public_json),patch.object(run.time,'time',return_value=1000),patch.object(Path,'lstat',side_effect=AssertionError('NO_METADATA')),patch.object(run.os,'open',side_effect=AssertionError('NO_CLAIM')),patch.object(run,'safe_overlay',side_effect=reject_runtime_overlays):
                     with self.assertRaises(PermissionError):run.execute(execution)
                 self.assertFalse(run.EXECUTION_EFFECTS_STARTED)
             # Execute the installed config/read validation block with a memory RPC.
@@ -343,19 +361,21 @@ class WiringChecks(unittest.TestCase):
             namespace=gate.method_namespace(cls.start_managed_servers)
             exec(compile(ast.fix_missing_locations(ast.Module(body=[function],type_ignores=[])),'<installed-native-config-check>','exec'),namespace)
             import tomllib
-            provider=tomllib.loads(run.CONFIG.read_text())['model_providers']['basil']
-            resolved={'model':'gpt-5.6-luna','model_provider':'basil','approval_policy':'never','approvals_reviewer':'user',
+            historical_config=tomllib.loads(run.CONFIG.read_text())
+            provider_key=historical_config['model_provider']
+            provider=historical_config['model_providers'][provider_key]
+            resolved={'model':'gpt-5.6-luna','model_provider':provider_key,'approval_policy':'never','approvals_reviewer':'user',
                 'sandbox_mode':'workspace-write','features':{'multi_agent':False,'goals':False},
-                'model_providers':{'basil':dict(provider,request_max_retries=0,stream_max_retries=0)}}
+                'model_providers':{provider_key:dict(provider,request_max_retries=0,stream_max_retries=0)}}
             owner=types.SimpleNamespace(args=types.SimpleNamespace(test_request_observer=False,config_template=str(run.CONFIG)),result={})
             rpc=types.SimpleNamespace(request=lambda *args: {'config':resolved})
             namespace['check_config'](owner,rpc,'a')
             self.assertTrue(owner.result['actual_managed_config']['a']['base_url_matches_authorized_template'])
             for field in ('request_max_retries','stream_max_retries','base_url'):
-                old=resolved['model_providers']['basil'][field]
-                resolved['model_providers']['basil'][field]='https://synthetic.invalid' if field=='base_url' else 1
+                old=resolved['model_providers'][provider_key][field]
+                resolved['model_providers'][provider_key][field]='https://synthetic.invalid' if field=='base_url' else 1
                 with self.subTest(config_field=field),self.assertRaises(RuntimeError):namespace['check_config'](owner,rpc,'a')
-                resolved['model_providers']['basil'][field]=old
+                resolved['model_providers'][provider_key][field]=old
             module=gate.safe_module('native_https_cap_public',gate.OLD/'provider_transport.py')
             adapter=object.__new__(module.Forwarder);adapter.lock=threading.Lock();adapter.closed=False
             adapter.remaining=lambda:1;adapter.client_allowed=lambda address:True

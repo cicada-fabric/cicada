@@ -1,5 +1,9 @@
 # Architecture v2.3 completion ledger
 
+## Current 2026-10-09 scoped evidence — v0.1 PARTIAL
+
+CLI 0.162 G4 queue recovery and Task peer list/renew privacy are scoped PASS. Worker P9 passed its scoped fresh-Worker approval/goal-result and guest-marker oracle, not original-session continuity; the separate marker/request-decoding failure is historical P7/P8. Peer G/H reported `httpConnectionFailed` / HTTP 503 without retry; their effective URL matched `https://api.zzswitch.com/v1`, and the origin remains unknown. The app-server inherits `API_KEY`; effective MCP-only registration and local-I/O closure are unproven, and the zero-key CLI 0.162 registry gate is **NOT_RUN**. Full G2/G3/T9, Android, physical-device, and public-HTTPS acceptance remain open. See [the detailed Native record](native-go-client-bridge-validation.md); do not combine these results into historical totals.
+
 ## Current managed PQTLS fixture checkpoint — v0.1 PARTIAL
 
 [Managed fixture validation](pqtls-managed-fixture-validation.md) records focused normal and race 8 top-level / 12 subtests each PASS, full `cmd/cicada` 402 top-level / 287 subtest pass events with 13 opt-in skips, and tagged vet exit 0. These seven-test-path results remain separate from the shipping-build timeout and blocked Native acceptance.

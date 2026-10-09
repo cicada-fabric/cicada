@@ -51,11 +51,21 @@ type realQueueFixture struct {
 
 var realQueueSHA = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var realQueueSID = regexp.MustCompile(`^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
+var realQueueUserAgentVersion = regexp.MustCompile(`(?:^|[/ ])` + regexp.QuoteMeta(realQueueCLIVersion) + `(?:[ /)]|$)`)
 
 const realQueueMaxCLIBytes int64 = 512 << 20
 const realQueueProfileScope = "independent-copy-historical-synthetic-b"
+const realQueueCLIVersion = "0.162.0"
 
 func realQueueHash(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
+
+func realQueueVersionMatches(output string) bool {
+	return strings.TrimSpace(output) == "codex-cli "+realQueueCLIVersion
+}
+
+func realQueueUserAgentMatches(value string) bool {
+	return realQueueUserAgentVersion.MatchString(value)
+}
 
 func realQueueDecodeFixture(data []byte, expectedSHA string) (realQueueFixture, error) {
 	var f realQueueFixture
@@ -583,7 +593,7 @@ func TestMachineNativeRealQueueCrashAcceptance(t *testing.T) {
 	version.Env = realQueueEnvironment(runtime)
 	version.Stderr = io.Discard
 	output, err := version.Output()
-	if err != nil || string(bytes.TrimSpace(output)) != "codex-cli 0.161.0" {
+	if err != nil || !realQueueVersionMatches(string(output)) {
 		t.Fatal("official CLI version mismatch")
 	}
 	rpc, err := realQueueConnect(ctx, runtime.Socket)
@@ -597,7 +607,7 @@ func TestMachineNativeRealQueueCrashAcceptance(t *testing.T) {
 	if err := rpc.request(ctx, "initialize", map[string]any{"clientInfo": map[string]any{"name": "cicada_real_queue_crash", "version": "0.1"}, "capabilities": map[string]any{"experimentalApi": true}}, &initialized); err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`(?:^|[/ ])0\.161\.0(?:[ /)]|$)`).MatchString(initialized.UserAgent) {
+	if !realQueueUserAgentMatches(initialized.UserAgent) {
 		t.Fatal("app-server version mismatch")
 	}
 	notification, _ := json.Marshal(map[string]any{"method": "initialized", "params": map[string]any{}})
@@ -693,6 +703,29 @@ func TestMachineNativeRealQueueCrashAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("real_queue_crash_gate=PASS queue_witness=EXACT_ONE_SUBMISSION adapter_recovery=INJECTION_UNCERTAIN reinjection=REFUSED_ORIGINAL_AND_NEW_ATTEMPT actual_turn_started=0 historical_turn_baseline=%d baseline_history=UNCHANGED provider_POSTs=OWNER_ATTESTED_ZERO_EGRESS busy_delivery=NOT_RUN foreground_input_protection=NOT_RUN original_A_context_continuity=NOT_RUN runtime_image_identity=OWNER_ATTESTED profile_scope=OWNER_ATTESTED_INDEPENDENT_SYNTHETIC_B", *runtime.BaselineTurnCount)
+}
+
+func TestMachineNativeRealQueueRequiresExactCLI0162(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		version     string
+		userAgent   string
+		wantVersion bool
+		wantAgent   bool
+	}{
+		{name: "current", version: "codex-cli 0.162.0\n", userAgent: "codex/0.162.0", wantVersion: true, wantAgent: true},
+		{name: "previous release", version: "codex-cli 0.161.0\n", userAgent: "codex/0.161.0"},
+		{name: "version suffix", version: "codex-cli 0.162.0-beta", userAgent: "codex/0.162.0-beta"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := realQueueVersionMatches(tc.version); got != tc.wantVersion {
+				t.Fatalf("CLI version accepted = %t, want %t", got, tc.wantVersion)
+			}
+			if got := realQueueUserAgentMatches(tc.userAgent); got != tc.wantAgent {
+				t.Fatalf("app-server UserAgent accepted = %t, want %t", got, tc.wantAgent)
+			}
+		})
+	}
 }
 
 func TestMachineNativeRealQueueCrashFixtureValidation(t *testing.T) {

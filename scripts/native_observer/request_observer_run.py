@@ -22,6 +22,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 LEGACY = Path("/home/zyf/CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-compat-dispatch-20261004")
 SCRIPTS = HERE.parent
+sys.path.insert(0, str(HERE))
+import request_observer_binding as current_binding
 sys.path.insert(0,str(SCRIPTS))
 ACTUAL = Path("/home/zyf/CICADA_task_handoff/.cicada-data/worktree-evidence/g1-complete-prepare-20261004/actual-preparation-857-v2")
 CONFIG = Path("/home/zyf/CICADA_real_codex_prep_20261002/cli/zzswitch-config-proof-20261003/home/config.toml")
@@ -41,9 +43,14 @@ PREP_RESULT_SHA = "b3711815c51fbe5fef11d9886aaf4ac19ff70f64a2079e92b7cdffa5b04f6
 PREP_BINDING_SHA = "60838ae22ead11b86eed7c449bce8ba55e6528758c25e0e123b620e8a16b907e"
 PREP_REVIEW_SHA = "d9c3fe5ce1823bfff8bc10f921e365f51544b96b9dcd6b1a24b866816a9bcfc2"
 HARD_STOP_UNIX = 0  # Historical deadline is never execution authority.
-NEW_NAMES = ("request_observer_gate.py", "request_observer_bootstrap.py", "request_observer_run.py", "request_observer_wiring_checks.py")
+LEGACY_NAMES = ("request_observer_gate.py", "request_observer_bootstrap.py", "request_observer_run.py", "request_observer_wiring_checks.py")
+CURRENT_NAMES = LEGACY_NAMES + ("request_observer_binding.py", "test_request_observer_binding.py")
 FROZEN_NAMES = ("request_observer.py", "request_observer_checks.py", "request-observer-integration.patch", "request-observer-design.NONAUTH.md")
 EXECUTION_EFFECTS_STARTED = False
+DEFAULT_NATIVE_NORMAL_SECONDS = 180
+MAX_NATIVE_NORMAL_SECONDS = 600
+NATIVE_TERMINAL_SECONDS = 30
+NATIVE_CLEANUP_SECONDS = 30
 
 
 def bounded_json(path, limit=262144):
@@ -70,12 +77,13 @@ def safe_overlay(name):
     return module
 
 
-def required_paths():
+def required_paths(current_bundle=None):
     if digest(LEGACY/"readonly-dependencies.json") != DEPS_SHA:
         raise ValueError("READONLY_MANIFEST_CHANGED")
     deps, _ = bounded_json(LEGACY/"readonly-dependencies.json")
-    paths = {str(HERE/name) for name in NEW_NAMES}
-    paths.update(str(ARCHIVE/name) for name in NEW_NAMES+(
+    active_names = CURRENT_NAMES if current_bundle is not None else LEGACY_NAMES
+    paths = {str(HERE/name) for name in active_names}
+    paths.update(str(ARCHIVE/name) for name in LEGACY_NAMES+(
         "request-observer-candidate-binding.NONAUTH.json","request-observer-GO-proposal.NONAUTH.json",
         "request-observer-invocation.NONAUTH.txt","source-preservation.NONAUTH.json"))
     paths.update(row["path"] for row in deps)
@@ -95,17 +103,28 @@ def required_paths():
     paths.add(str(CONFIG))
     paths.update(str(LEGACY/name) for name in FROZEN_NAMES)
     paths.update(str(SCRIPTS/name) for name in ("native_request_observer.py","native_request_observer_io.py","test_native_request_observer.py","test_native_request_observer_io.py"))
+    if current_bundle is not None:
+        paths.update((current_bundle["delivery"]["path"], current_bundle["equality"]["path"],
+                      current_bundle["runtime_receipt"]["path"], current_bundle["official_cli"]["path"]))
     if CREDENTIAL in paths:
         raise ValueError("CREDENTIAL_EXCLUDED_FROM_PUBLIC_PREFLIGHT")
     return paths
 
 
-def verify_binding(expected_sha=None):
-    binding, raw = bounded_json(BINDING)
+def verify_binding(expected_sha=None, binding_path=None, *, allow_candidate_source_refresh=False,
+                   require_current=False):
+    binding_path = Path(binding_path) if binding_path is not None else BINDING
+    binding, raw = bounded_json(binding_path)
     sha = hashlib.sha256(raw).hexdigest()
     if expected_sha is not None and sha != expected_sha:
         raise ValueError("CANDIDATE_BINDING_SHA")
-    if binding.get("schema") != "cicada.request-observer-candidate-binding.v1" or binding.get("authority") != "NONAUTH":
+    is_current = binding.get("schema") == current_binding.SCHEMA
+    if require_current and not is_current:
+        raise ValueError("CURRENT_BINDING_REQUIRED")
+    if require_current and (type(expected_sha) is not str or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None):
+        raise ValueError("CURRENT_BINDING_SHA_REQUIRED")
+    if (binding.get("schema") not in ("cicada.request-observer-candidate-binding.v1", current_binding.SCHEMA)
+            or binding.get("authority") != "NONAUTH"):
         raise ValueError("CANDIDATE_BINDING_SCHEMA")
     rows = binding.get("files")
     if type(rows) is not list or any(type(row) is not dict or
@@ -114,21 +133,34 @@ def verify_binding(expected_sha=None):
     listed = {row["path"]: {key:row[key] for key in ("sha256", "bytes", "rawmode")} for row in rows}
     if len(listed) != len(rows) or listed != binding["public_files"]:
         raise ValueError("SOURCE_ROWS_INCONSISTENT")
-    _, alias_raw = bounded_json(BINDING.parent / "source-binding.json")
+    _, alias_raw = bounded_json(binding_path.parent / "source-binding.json")
     if alias_raw != raw:
         raise ValueError("ACTIVE_SOURCE_BINDING_ALIAS")
-    paths = required_paths()
-    if set(binding["public_files"]) != paths or set(binding["candidate_files"]) != set(NEW_NAMES):
+    current_bundle = binding.get("current_bundle") if is_current else None
+    paths = required_paths(current_bundle)
+    candidate_names = CURRENT_NAMES if is_current else LEGACY_NAMES
+    if is_current:
+        current_binding.validate_bundle_binding(binding, binding_raw=raw, binding_path=binding_path,
+            expected_sha256=expected_sha, required_paths=paths, candidate_names=candidate_names)
+    if set(binding["public_files"]) != paths or set(binding["candidate_files"]) != set(candidate_names):
         raise ValueError("PUBLIC_PATH_ALLOWLIST")
+    refreshable_legacy_candidates = {str(HERE/name) for name in LEGACY_NAMES}
+    refreshable_legacy_candidates.add(str(SCRIPTS/"test_native_request_observer_io.py"))
     for path, row in binding["public_files"].items():
         if Path(path).is_absolute() is not True or str(Path(path).resolve()) != path:
             raise ValueError("PUBLIC_CANONICAL_PATH")
         metadata = Path(path).lstat()
+        if allow_candidate_source_refresh and not is_current and path in refreshable_legacy_candidates:
+            if path == str(SCRIPTS/"test_native_request_observer_io.py"):
+                if not stat.S_ISREG(metadata.st_mode) or oct(metadata.st_mode) != row["rawmode"]:
+                    raise ValueError("REFRESHABLE_TEST_SOURCE_TYPE_OR_MODE")
+            continue
         if (not stat.S_ISREG(metadata.st_mode) or metadata.st_size != row["bytes"] or
                 oct(metadata.st_mode) != row["rawmode"] or digest(path) != row["sha256"]):
             raise ValueError("PUBLIC_SOURCE_CHANGED")
     for name, row in binding["candidate_files"].items():
-        if row != binding["public_files"][str(HERE/name)]:
+        candidate_root = Path(binding.get("candidate_root", HERE))
+        if (not allow_candidate_source_refresh or is_current) and row != binding["public_files"][str(candidate_root/name)]:
             raise ValueError("CANDIDATE_SOURCE_ROW")
     fixed = {ACTUAL/"actual-delivery.json":DELIVERY_SHA, CONFIG:CONFIG_SHA,
         ARCHIVE/"source-preservation.NONAUTH.json":ARCHIVE_SHA,
@@ -144,12 +176,92 @@ def verify_binding(expected_sha=None):
         held = binding["public_files"][row["path"]]
         if held != {key:row[key] for key in ("sha256","bytes","rawmode")}:
             raise ValueError("FROZEN47_SOURCE_PIN")
+    if not allow_candidate_source_refresh:
+        gate = safe_overlay("request_observer_gate")
+        sources = gate.effective_sources()
+        effective = {key:hashlib.sha256(value.encode()).hexdigest() for key,value in sources.items()}
+        if effective != binding["effective_sources"]:
+            raise ValueError("EFFECTIVE_OVERLAY_SOURCE_PIN")
+    return binding, sha
+
+
+def refresh_current_binding(delivery_path, equality_path, runtime_receipt_path, output_parent,
+                           expected_commit):
+    """Create a new current bundle binding without mutating the historical binding."""
+    template, template_sha = verify_binding(allow_candidate_source_refresh=True)
+    bundle = current_binding.current_bundle(Path(delivery_path), Path(equality_path),
+        Path(runtime_receipt_path), Path(output_parent), expected_commit)
+    paths = required_paths(bundle) | {bundle["delivery"]["path"], bundle["equality"]["path"],
+        bundle["runtime_receipt"]["path"], bundle["official_cli"]["path"]}
+    previous = template["public_files"]
+    candidate_paths = {str(HERE/name) for name in CURRENT_NAMES}
+    refreshable_candidate_paths = candidate_paths | {str(SCRIPTS/"test_native_request_observer_io.py")}
+    known_hashes = {
+        bundle["delivery"]["path"]: bundle["delivery"]["sha256"],
+        bundle["equality"]["path"]: bundle["equality"]["sha256"],
+        bundle["runtime_receipt"]["path"]: bundle["runtime_receipt"]["sha256"],
+        bundle["official_cli"]["path"]: bundle["official_cli"]["sha256"],
+    }
+    rows = []
+    for path in sorted(paths):
+        if path in refreshable_candidate_paths or path not in previous:
+            rows.append(current_binding.file_row(path, known_hashes.get(path)))
+        else:
+            rows.append({"path":path, **previous[path]})
     gate = safe_overlay("request_observer_gate")
     sources = gate.effective_sources()
     effective = {key:hashlib.sha256(value.encode()).hexdigest() for key,value in sources.items()}
-    if effective != binding["effective_sources"]:
-        raise ValueError("EFFECTIVE_OVERLAY_SOURCE_PIN")
-    return binding, sha
+    refreshed = current_binding.current_binding_payload(template, bundle=bundle, rows=rows,
+        candidate_root=HERE, candidate_names=CURRENT_NAMES, effective_sources=effective)
+    refreshed["template_binding_sha256"] = template_sha
+    path, sha = current_binding.write_binding_pair(refreshed, Path(output_parent))
+    verified, verified_sha = verify_binding(sha, path, require_current=True)
+    if verified_sha != sha or verified["current_bundle"] != bundle:
+        raise ValueError("CURRENT_BINDING_SELF_CHECK")
+    return {"schema":"cicada.request-observer-current-binding-refresh.v1",
+        "status":"CURRENT_BINDING_READY_NONAUTH", "authority":"NONAUTH",
+        "binding_path":str(path), "binding_sha256":sha,
+        "alias_path":str(path.parent/"source-binding.json"),
+        "template_binding_sha256":template_sha,
+        "current_commit":bundle["current_commit"], "source_dirty":bundle["source_dirty"],
+        "source_fingerprint":bundle["source_fingerprint"],
+        "delivery_sha256":bundle["delivery"]["sha256"],
+        "compiled_input_equality_sha256":bundle["equality"]["sha256"],
+        "runtime_image_id":bundle["runtime_receipt"]["image_id"],
+        "official_cli_version":bundle["official_cli"]["version"],
+        "official_cli_sha256":bundle["official_cli"]["sha256"],
+        "candidate_source_sha256":refreshed["candidate_files"],
+        "effective_sources":refreshed["effective_sources"],
+        "GO":"NOT_CREATED", "native_acceptance":"NOT_RUN"}
+
+
+def require_current_bundle(binding):
+    if type(binding) is not dict or binding.get("schema") != current_binding.SCHEMA:
+        raise PermissionError("CURRENT_BINDING_REQUIRED")
+    bundle = binding.get("current_bundle")
+    if type(bundle) is not dict or bundle.get("schema") != current_binding.BUNDLE_SCHEMA:
+        raise PermissionError("CURRENT_BUNDLE_REQUIRED")
+    return bundle
+
+
+def current_runtime(binding):
+    return require_current_bundle(binding)["runtime_receipt"]["image_id"]
+
+
+def current_cli(binding):
+    cli = require_current_bundle(binding)["official_cli"]
+    if cli != {"path":str(current_binding.CLI_BINARY), "sha256":current_binding.CLI_SHA256,
+               "version":current_binding.CLI_VERSION}:
+        raise PermissionError("CURRENT_CLI_PIN")
+    return cli
+
+
+def current_delivery(binding):
+    bundle = require_current_bundle(binding)
+    delivery, raw = bounded_json(bundle["delivery"]["path"])
+    if hashlib.sha256(raw).hexdigest() != bundle["delivery"]["sha256"]:
+        raise PermissionError("CURRENT_DELIVERY_CHANGED")
+    return delivery
 
 
 @contextlib.contextmanager
@@ -196,18 +308,21 @@ def deny_preflight_effects():
         sys.dont_write_bytecode=bytecode
 
 
-def _preflight(expected_sha=None):
-    binding, sha = verify_binding(expected_sha)
+def _preflight(expected_sha=None, binding_path=None):
+    binding, sha = verify_binding(expected_sha, binding_path, require_current=True)
     gate = safe_overlay("request_observer_gate")
     source = gate.effective_sources()["gate"]
-    delivery,_=bounded_json(ACTUAL/"actual-delivery.json")
+    delivery=current_delivery(binding)
+    runtime_image=current_runtime(binding)
+    cli=current_cli(binding)
     cls,legacy=gate.load_gate(delivery,binding,inspect_only=True)
     methods={name:getattr(cls,name) for name in gate.METHODS}
     namespace=methods["start_managed_servers"].__globals__
     if any(method.__globals__ is not namespace for method in methods.values()) or Path(namespace["HERE"]) != gate.OLD:
         raise ValueError("ABSOLUTE_LEGACY_GLOBAL_RESOLUTION")
-    if legacy.RUNTIME!=RUNTIME or legacy.CLI_SHA!=CLI_SHA:
-        raise ValueError("IMPORTED_RUNTIME_SOURCE_PINS")
+    if (cli["version"] != "0.162.0" or cli["sha256"] != current_binding.CLI_SHA256 or
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_image)):
+        raise ValueError("CURRENT_RUNTIME_SOURCE_PINS")
     provider_globals=cls.provider_forwarder.__globals__
     forwarder_module=sys.modules[provider_globals["Forwarder"].__module__]
     if Path(forwarder_module.__file__).resolve()!=gate.OLD/"provider_transport.py":
@@ -219,6 +334,11 @@ def _preflight(expected_sha=None):
         raise ValueError("ACTUAL_BOOTSTRAP_PAYLOAD_SELECTION")
     return {"schema":"cicada.request-observer-wiring-preflight.v1", "status":"PASS",
         "authority":"NONAUTH_ZERO_PAID", "candidate_binding_sha256":sha,
+        "current_product_revision":binding["current_bundle"]["current_commit"],
+        "current_product_source_dirty":binding["current_bundle"]["source_dirty"],
+        "current_product_source_fingerprint":binding["current_bundle"]["source_fingerprint"],
+        "runtime_image_id":runtime_image,"official_cli_version":cli["version"],
+        "official_cli_sha256":cli["sha256"],
         "methods":sorted(methods), "effective_sources":binding["effective_sources"],
         "import_resolution":"ACTUAL_HOST_PUBLIC_CLASS_GLOBALS_AND_BOOTSTRAP_SELECTION", "legacy_public_modules_imported":True,
         "fixture_constructor_called":False,
@@ -227,34 +347,60 @@ def _preflight(expected_sha=None):
         "native_ACCEPTANCE":"NOT_RUN", "real_Runtime":"NOT_RUN", "HTTP_TLS_semantic_parity":"NOT_PROVEN"}
 
 
-def preflight(expected_sha=None):
+def preflight(expected_sha=None, binding_path=None):
     with deny_preflight_effects():
-        return _preflight(expected_sha)
+        return _preflight(expected_sha, binding_path)
 
 
-def expected_go(binding, binding_sha, run_id, wiring_sha, hard_stop_unix=0):
+def native_phase_budget(normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
+    if type(normal_seconds) is not int or not DEFAULT_NATIVE_NORMAL_SECONDS <= normal_seconds <= MAX_NATIVE_NORMAL_SECONDS:
+        raise PermissionError("NATIVE_NORMAL_SECONDS")
+    terminal_end = normal_seconds + NATIVE_TERMINAL_SECONDS
+    cleanup_end = terminal_end + NATIVE_CLEANUP_SECONDS
+    return {"normal_seconds":normal_seconds,"terminal_seconds":NATIVE_TERMINAL_SECONDS,
+            "cleanup_seconds":NATIVE_CLEANUP_SECONDS,"total_seconds":cleanup_end}
+
+
+def expected_go(binding, binding_sha, run_id, wiring_sha, hard_stop_unix=0,
+                normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
     if not re.fullmatch(r"cicada-two-turn-[a-z0-9]{12,32}", run_id or ""):
         raise ValueError("FRESH_RUN_ID")
-    delivery, _ = bounded_json(ACTUAL/"actual-delivery.json")
-    result = BINDING.parent/("request-observer-native-result-"+run_id)
-    claim = BINDING.parent/("request-observer-execution-claim-"+run_id+".json")
+    if binding.get("schema") == current_binding.SCHEMA:
+        delivery = current_delivery(binding)
+        output_parent = Path(binding["output_parent"])
+        runtime_image = current_runtime(binding)
+        cli_sha = current_cli(binding)["sha256"]
+        delivery_sha = binding["current_bundle"]["delivery"]["sha256"]
+        gate = safe_overlay("request_observer_gate")
+        effective_source_hashes = {key:hashlib.sha256(value.encode()).hexdigest()
+                                   for key,value in gate.effective_sources(normal_seconds).items()}
+    else:
+        delivery, _ = bounded_json(ACTUAL/"actual-delivery.json")
+        output_parent = BINDING.parent
+        runtime_image = RUNTIME
+        cli_sha = CLI_SHA
+        delivery_sha = DELIVERY_SHA
+        effective_source_hashes = binding["effective_sources"]
+    result = output_parent/("request-observer-native-result-"+run_id)
+    claim = output_parent/("request-observer-execution-claim-"+run_id+".json")
+    phase_budget = native_phase_budget(normal_seconds)
     return {"schema":"cicada.managed-five-observer-go.v1","scope":"managed-five-observer-diagnostic",
         "authority":"ROOT_NATIVE_DIAGNOSTIC_GO", "runtime_execution_authorized":True,
         "provider_credential_access_authorized":True,"model_dispatch_authorized":True,
         "unique_run":run_id,"result_dir":str(result),"claim_file":str(claim),
         "candidate_binding_sha256":binding_sha,"wiring_receipt_sha256":wiring_sha,
-        "candidate_files":binding["candidate_files"],"effective_sources":binding["effective_sources"],
+        "candidate_files":binding["candidate_files"],"effective_sources":effective_source_hashes,
         "observer_root_offline_receipt_sha256":ROOT_OFFLINE_SHA,"observer_root_review_sha256":ROOT_REVIEW_SHA,
         "max_native_turns":5,"max_manual_turns":3,"max_automatic_turns":2,
-        "normal_seconds":180,"terminal_seconds":30,"cleanup_seconds":30,"total_seconds":240,
+        **phase_budget,
         "max_fatal_diagnostic_capture_seconds":5,
         "phase_deadlines_absolute":True,"max_POST_attempts_per_Runtime":16,
         "request_max_retries":0,"stream_max_retries":0,"observer_retries":0,
-        "model":"gpt-5.6-luna","runtime_image":RUNTIME,"official_cli_sha256":CLI_SHA,
+        "model":"gpt-5.6-luna","runtime_image":runtime_image,"official_cli_sha256":cli_sha,
         "hub_image":delivery["hub_image"],"product_revision":delivery["commit"],
         "product_sha256":delivery["binary_sha256"],"helper_sha256":delivery["helper_sha256"],
         "node_source_fingerprint":delivery["fingerprint"],"config_template_sha256":CONFIG_SHA,
-        "actual_delivery_sha256":DELIVERY_SHA,"require_native_pqtls":True,
+        "actual_delivery_sha256":delivery_sha,"require_native_pqtls":True,
         "a3_criterion":"INLINE_CORRELATED_REPLY_ORIGINAL_A_CONTEXT",
         "preparation_result_sha256":PREP_RESULT_SHA,"preparation_source_binding_sha256":PREP_BINDING_SHA,
         "independent_review_sha256":PREP_REVIEW_SHA,
@@ -264,7 +410,7 @@ def expected_go(binding, binding_sha, run_id, wiring_sha, hard_stop_unix=0):
         "test_request_observer":{"schema":"cicada.test-request-observer-go.v1",
             "code_sha256":binding["public_files"][str(SCRIPTS/"native_request_observer.py")]["sha256"],
             "upstream_base_url_sha256":binding["upstream_base_url_sha256"],
-            "lifetime_seconds":180,"max_POST_attempts_per_Runtime":16,"default_off":True}}
+            "lifetime_seconds":normal_seconds,"max_POST_attempts_per_Runtime":16,"default_off":True}}
 
 
 def validate_go(go, expected, now=None):
@@ -284,7 +430,7 @@ def validate_go(go, expected, now=None):
             raise PermissionError("GO_TYPED_BINDING")
     if type(go["expires_at_unix"]) is not int or go["expires_at_unix"] <= now:
         raise PermissionError("GO_EXPIRED")
-    if type(expected["cleanup_hard_stop_unix"]) is not int or now+240 > expected["cleanup_hard_stop_unix"]:
+    if type(expected["cleanup_hard_stop_unix"]) is not int or now+expected["total_seconds"] > expected["cleanup_hard_stop_unix"]:
         raise PermissionError("CLEANUP_HARD_CUTOFF")
 
 
@@ -299,6 +445,15 @@ def native_https_mode(args):
             getattr(args,"response_byte_passthrough",False) is not False):
         raise PermissionError("NATIVE_HTTPS_LANE")
     return mode
+
+
+def native_normal_seconds(args):
+    raw = getattr(args, "native_normal_seconds", None)
+    if raw is None:
+        return DEFAULT_NATIVE_NORMAL_SECONDS
+    if not native_https_mode(args):
+        raise PermissionError("NATIVE_NORMAL_SECONDS_LANE")
+    return native_phase_budget(raw)["normal_seconds"]
 
 
 def response_passthrough_mode(args):
@@ -316,6 +471,7 @@ def response_passthrough_mode(args):
 def execute(args):
     global EXECUTION_EFFECTS_STARTED
     native_mode = native_https_mode(args)
+    normal_seconds = native_normal_seconds(args)
     response_mode = response_passthrough_mode(args)
     if not getattr(args,"preparation_result",None) or not getattr(args,"preparation_result_sha",None):
         raise PermissionError("LATEST_RUNTIME_NOT_READY")
@@ -328,10 +484,11 @@ def execute(args):
     if not all(required):
         raise PermissionError("FRESH_GO_AND_WIRING_RECEIPT_REQUIRED")
     go_path=Path(args.go_receipt)
-    if go_path.parent.absolute()!=BINDING.parent or not go_path.name.startswith("request-observer-") or not go_path.name.endswith(".json"):
+    output_parent = Path(binding["output_parent"])
+    if go_path.parent.absolute()!=output_parent or not go_path.name.startswith("request-observer-") or not go_path.name.endswith(".json"):
         raise PermissionError("FRESH_GO_PUBLIC_PATH")
     receipt_path = Path(args.wiring_receipt)
-    if receipt_path.parent.resolve()!=BINDING.parent or not receipt_path.name.startswith("request-observer-wiring-"):
+    if receipt_path.parent.resolve()!=output_parent or not receipt_path.name.startswith("request-observer-wiring-"):
         raise PermissionError("PUBLIC_WIRING_RECEIPT_PATH")
     receipt, raw = bounded_json(receipt_path)
     if (hashlib.sha256(raw).hexdigest()!=args.wiring_receipt_sha or receipt.get("status")!="PASS" or
@@ -355,22 +512,25 @@ def execute(args):
     with os.fdopen(os.open(claim,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),"w") as out:
         json.dump({"schema":"cicada.request-observer-execution-claim.v1","unique_run":args.unique_run,
                    "go_sha256":args.go_receipt_sha,"candidate_binding_sha256":binding_sha,
-                   "artifact_started_MONOTONIC":started,"normal_end_MONOTONIC":started+180,
-                   "hard_end_MONOTONIC":started+240},out)
+                   "artifact_started_MONOTONIC":started,"normal_end_MONOTONIC":started+normal_seconds,
+                   "hard_end_MONOTONIC":started+expected["total_seconds"]},out)
         out.flush();os.fsync(out.fileno())
     EXECUTION_EFFECTS_STARTED = True
     gate_overlay=safe_overlay("request_observer_gate")
-    cls,legacy=gate_overlay.load_gate(delivery,binding,scenario=getattr(args,"scenario","g1"))
+    cls,legacy=gate_overlay.load_gate(delivery,binding,scenario=getattr(args,"scenario","g1"),
+                                      normal_seconds=normal_seconds)
     ns=types.SimpleNamespace(execute=True,run_native=True,result_dir=str(result),product_repo=delivery["source_repo"],
         expected_product_revision=delivery["commit"],expected_source_fingerprint=delivery["fingerprint"],
-        runtime_image=LATEST_RUNTIME,expected_codex_version="codex-cli "+LATEST_VERSION,expected_cli_sha256=LATEST_CLI_SHA,
+        runtime_image=current_runtime(binding),expected_codex_version="codex-cli "+current_cli(binding)["version"],expected_cli_sha256=current_cli(binding)["sha256"],
         producer_receipt_sha256=delivery["package_metadata_sha256"],producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
         exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
         config_template=str(CONFIG),config_template_sha=CONFIG_SHA,source_binding_sha=binding_sha,
         offline_checks_sha=args.wiring_receipt_sha,artifact_started=started,go=go,credential_file=CREDENTIAL,
+        binding_file=str(args.binding_file),
         preparation_result=args.preparation_result,preparation_result_sha256=args.preparation_result_sha,
         latest_runtime=True,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False),
+        native_normal_seconds=normal_seconds,
         response_byte_passthrough=response_mode,
         native_https=native_mode,test_request_observer=not native_mode,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
@@ -386,19 +546,35 @@ def execute(args):
     return gate.result["terminal_exit_code"]
 
 
-LATEST_VERSION = "0.161.0"
+LATEST_VERSION = current_binding.CLI_VERSION
+# Kept only as a read-only fixture value for historical unit fixtures. Current
+# CLI entrypoints require a fresh 0.162 binding and never dispatch this image.
 LATEST_RUNTIME = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
-LATEST_CLI_SHA = "9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c"
-ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "basil"',
+LATEST_CLI_SHA = current_binding.CLI_SHA256
+ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "synthetic-provider"',
     'sandbox_mode = "workspace-write"','approval_policy = "on-request"','approvals_reviewer = "user"',
-    '[model_providers.basil]','name="Synthetic zero-model provider"',
+    '[model_providers.synthetic-provider]','name="Synthetic zero-model provider"',
     'base_url="http://127.0.0.1:9/v1"','wire_api="responses"',
     'request_max_retries = 4',''])
 
 
 def latest_dispatch_inputs(args):
     """Fresh preparation is evidence, never model authorization by itself."""
-    binding,sha=verify_binding(args.binding_sha)
+    binding,sha=verify_binding(args.binding_sha, getattr(args,"binding_file",None), require_current=True)
+    bundle=require_current_bundle(binding)
+    if (str(Path(args.delivery)) != bundle["delivery"]["path"] or
+            str(Path(args.compiled_input_equality)) != bundle["equality"]["path"] or
+            args.current_commit != bundle["current_commit"] or
+            args.runtime_image != bundle["runtime_receipt"]["image_id"]):
+        raise PermissionError("CURRENT_BUNDLE_ARGUMENTS")
+    output_parent = Path(binding["output_parent"])
+    preparation_path = Path(args.preparation_result)
+    review_path = Path(args.preparation_review)
+    if (preparation_path.parent.resolve() != output_parent.resolve() or
+            not preparation_path.name.startswith("native-preparation-") or
+            review_path.parent.resolve() != output_parent.resolve() or
+            not review_path.name.startswith("native-preparation-review-")):
+        raise PermissionError("CURRENT_PREPARATION_PATH")
     delivery,raw=bounded_json(args.delivery)
     if hashlib.sha256(raw).hexdigest()!=args.delivery_sha:raise PermissionError("LATEST_DELIVERY_PIN")
     scenario_inputs(args, delivery)
@@ -406,9 +582,12 @@ def latest_dispatch_inputs(args):
     if (hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT" or
         equality.get("current_commit")!=args.current_commit or
         equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
-        equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256")):
+        equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256") or
+        equality.get("product_artifact_origin_dirty",equality.get("source_dirty"))!=bundle["source_dirty"] or
+        delivery.get("commit")!=bundle["current_commit"] or delivery.get("source_dirty")!=bundle["source_dirty"] or
+        delivery.get("fingerprint")!=bundle["source_fingerprint"]):
         raise PermissionError("LATEST_COMPILED_INPUT_EQUALITY")
-    if getattr(args,"scenario","g1") == "g2-g3": g2_component_inputs(delivery,equality)
+    if getattr(args,"scenario","g1") == "g2-g3": g2_component_inputs(delivery,equality,current=True)
     prior,raw=bounded_json(args.preparation_result,1<<20)
     prep=prior.get("preparation_binding",{})
     if (hashlib.sha256(raw).hexdigest()!=args.preparation_result_sha or
@@ -417,8 +596,8 @@ def latest_dispatch_inputs(args):
         prior.get("observer_shutdown")!={"a":"EXPECTED_EOF_CONFIRMED","b":"EXPECTED_EOF_CONFIRMED"} or
         prior.get("models_invoked")!=0 or prior.get("actual_turn_started_count")!=0 or
         prior.get("actual_turn_started_event_count")!=0 or prior.get("paid_turn_start_submissions")!=0 or
-        prep.get("source_binding_sha256")!=sha or prep.get("runtime_image_id")!=LATEST_RUNTIME or
-        prep.get("official_cli_sha256")!=LATEST_CLI_SHA or prep.get("current_delivery_sha256")!=args.delivery_sha or
+        prep.get("source_binding_sha256")!=sha or prep.get("runtime_image_id")!=bundle["runtime_receipt"]["image_id"] or
+        prep.get("official_cli_sha256")!=bundle["official_cli"]["sha256"] or prep.get("expected_codex_version")!="codex-cli "+bundle["official_cli"]["version"] or prep.get("current_delivery_sha256")!=args.delivery_sha or
         prep.get("compiled_input_equality_sha256")!=args.equality_sha or
         prep.get("fixture_scenario", "g1")!=getattr(args,"scenario","g1") or
         (getattr(args,"scenario","g1")=="g2-g3" and prep.get("component_proof_sha256") != delivery["component_proof_sha256"])):
@@ -430,18 +609,24 @@ def latest_dispatch_inputs(args):
 
 
 def expected_latest_go(binding,sha,args,delivery):
-    expected=expected_go(binding,sha,args.unique_run,args.wiring_receipt_sha,args.cleanup_hard_stop_unix)
+    expected=expected_go(binding,sha,args.unique_run,args.wiring_receipt_sha,args.cleanup_hard_stop_unix,
+                         native_normal_seconds(args))
+    bundle=require_current_bundle(binding)
+    runtime=require_current_bundle(binding)["runtime_receipt"]["image_id"]
+    cli=current_cli(binding)
     mode = response_passthrough_mode(args)
     expected.update(response_byte_passthrough=mode, response_transport_semantics=(
         "NATIVE_HTTP_VALIDATES_RESPONSE_EOF_NOT_BUSINESS_COMPLETION" if mode else "OBSERVER_STRICT_HTTP_FRAMING"),
         response_byte_ceiling=4259840 if mode else None, response_chunk_ceiling=65536 if mode else None)
-    expected.update(runtime_image=LATEST_RUNTIME,official_cli_sha256=LATEST_CLI_SHA,
+    expected.update(runtime_image=runtime,official_cli_sha256=cli["sha256"],
         hub_image=delivery["hub_image"],product_revision=delivery["commit"],product_sha256=delivery["binary_sha256"],
         helper_sha256=delivery["helper_sha256"],node_source_fingerprint=delivery["fingerprint"],
         actual_delivery_sha256=args.delivery_sha,preparation_result_sha256=args.preparation_result_sha,
         preparation_source_binding_sha256=sha,independent_review_sha256=args.preparation_review_sha,
-        compiled_input_equality_sha256=args.equality_sha,official_cli_version=LATEST_VERSION,
-        preparation_provider_scope="SYNTHETIC_LOOPBACK_ZERO_MODEL_NOT_PROVIDER_PARITY")
+        compiled_input_equality_sha256=args.equality_sha,
+        preparation_provider_scope="SYNTHETIC_LOOPBACK_ZERO_MODEL_NOT_PROVIDER_PARITY",
+        current_bundle_sha256=hashlib.sha256(json.dumps(bundle,sort_keys=True,separators=(",",":")).encode()).hexdigest(),
+        official_cli_version=cli["version"])
     if getattr(args,"scenario","g1") != "g1":
         expected.update(fixture_scenario="g2-g3",component_proof_sha256=delivery["component_proof_sha256"],max_native_turns=6,max_manual_turns=4,max_automatic_turns=2)
     if native_https_mode(args):
@@ -518,7 +703,7 @@ def g2_public_row(row, *, paths=None):
         raise PermissionError('G2_SOURCE_BYTES_MODE_CHANGED')
 
 
-def g2_component_inputs(delivery, equality):
+def g2_legacy_component_inputs(delivery, equality):
     """Measured current product + source-validated reused D helper; old full-tree proof is not authority."""
     if equality.get('schema') != 'cicada.native-g2g3-component-inputs.v1' or equality.get('fixture_scenario') != 'g2-g3':
         raise PermissionError('G2_COMPONENT_EQUALITY_SCHEMA')
@@ -620,6 +805,405 @@ def g2_component_inputs(delivery, equality):
     return pin
 
 
+G2_CURRENT_EVIDENCE_ROOT = Path('/home/zyf/CICADA/.cicada-data/native-observer-wiring-20261007')
+G2_CURRENT_SOURCE_ROOT = Path('/home/zyf/CICADA/cicada-go')
+G2_CURRENT_REPOSITORY_ROOT = Path('/home/zyf/CICADA')
+G2_CURRENT_MODULE_PATH = 'github.com/cicada-ai/cicada'
+G2_GO_FILE_FIELDS = ('GoFiles','CgoFiles','CFiles','CXXFiles','MFiles','HFiles','SFiles','SysoFiles','EmbedFiles')
+
+
+def g2_current_path(path, *, roots, exact=None):
+    if type(path) is not str or not Path(path).is_absolute() or os.path.normpath(path) != path:
+        raise PermissionError('G2_CURRENT_PATH_LEXICAL')
+    value=Path(path)
+    if (exact is not None and value != exact) or (exact is None and not any(value.is_relative_to(root) for root in roots)):
+        raise PermissionError('G2_CURRENT_PATH_SCOPE')
+    if str(value.resolve(strict=True)) != path:
+        raise PermissionError('G2_CURRENT_PATH_SYMLINK')
+    metadata=value.lstat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise PermissionError('G2_CURRENT_FILE_TYPE')
+    return value
+
+
+def g2_current_json_stream(path, *, limit=32<<20, max_objects=10000):
+    with Path(path).open('rb') as stream:
+        raw=stream.read(limit+1)
+    if len(raw)>limit:
+        raise PermissionError('G2_CURRENT_GO_LIST_LIMIT')
+    try: text=raw.decode('utf-8')
+    except UnicodeDecodeError as error: raise PermissionError('G2_CURRENT_GO_LIST_UTF8') from error
+    decoder=json.JSONDecoder(); offset=0; values=[]
+    while offset<len(text):
+        while offset<len(text) and text[offset].isspace(): offset+=1
+        if offset==len(text): break
+        try: value,offset=decoder.raw_decode(text,offset)
+        except json.JSONDecodeError as error: raise PermissionError('G2_CURRENT_GO_LIST_JSON') from error
+        if type(value) is not dict or len(values)>=max_objects:
+            raise PermissionError('G2_CURRENT_GO_LIST_OBJECTS')
+        values.append(value)
+    if not values:
+        raise PermissionError('G2_CURRENT_GO_LIST_EMPTY')
+    return values
+
+
+def g2_current_prestart_script(prestart, *, schema, revision, dirty, builder_image, repository_mount):
+    command=prestart.get('command')
+    if (prestart.get('schema')!=schema or prestart.get('source_revision')!=revision or
+            prestart.get('source_dirty') is not dirty or prestart.get('builder_image')!=builder_image or
+            prestart.get('credential_mounts')!=0 or prestart.get('model_calls')!=0 or
+            type(command) is not list):
+        raise PermissionError('G2_CURRENT_PRESTART_RECEIPT')
+    def pair(option,value):
+        return option in command and command.index(option)+1<len(command) and command[command.index(option)+1]==value
+    required=(('--network','none'),('--cap-drop','ALL'),('--security-opt','no-new-privileges'),('--user','1000:1000'))
+    if (any(not pair(option,value) for option,value in required) or '--read-only' not in command or
+            repository_mount not in command or 'GOPROXY=off' not in command or 'GOSUMDB=off' not in command or
+            'GOTOOLCHAIN=local' not in command or 'CGO_ENABLED=1' not in command or 'GOMODCACHE=/go/pkg/mod' not in command):
+        raise PermissionError('G2_CURRENT_PRESTART_SANDBOX')
+    if not command or type(command[-1]) is not str:
+        raise PermissionError('G2_CURRENT_PRESTART_COMMAND')
+    return command[-1]
+
+
+def g2_current_go_sources(path, *, source_root, go_list_root):
+    """Derive selected module source/embed paths from the captured `go list -deps -json`."""
+    selected=set()
+    for package in g2_current_json_stream(path):
+        module=package.get('Module')
+        if type(module) is not dict or module.get('Path') != G2_CURRENT_MODULE_PATH or module.get('Main') is not True:
+            continue
+        directory=package.get('Dir')
+        if type(directory) is not str or not Path(directory).is_absolute() or os.path.normpath(directory)!=directory:
+            raise PermissionError('G2_CURRENT_GO_LIST_DIRECTORY')
+        directory_path=Path(directory)
+        try: relative=directory_path.relative_to(go_list_root)
+        except ValueError as error: raise PermissionError('G2_CURRENT_GO_LIST_DOMAIN') from error
+        host_directory=source_root/relative
+        for field in G2_GO_FILE_FIELDS:
+            names=package.get(field,[])
+            if type(names) is not list or any(type(name) is not str for name in names):
+                raise PermissionError('G2_CURRENT_GO_LIST_FILES')
+            for name in names:
+                file_path=Path(name)
+                if file_path.is_absolute() or '..' in file_path.parts or not file_path.parts:
+                    raise PermissionError('G2_CURRENT_GO_LIST_FILE_PATH')
+                selected.add(str(host_directory/file_path))
+    if not selected:
+        raise PermissionError('G2_CURRENT_GO_LIST_NO_MAIN_MODULE')
+    return selected
+
+
+def g2_current_source_row(row, *, inventory, allowed_extra=()):
+    g2_public_row(row, paths=None)
+    path=Path(row['path'])
+    if path.is_relative_to(G2_CURRENT_SOURCE_ROOT):
+        relative=str(path.relative_to(G2_CURRENT_REPOSITORY_ROOT))
+        inventory_row=inventory.get(relative)
+        if type(inventory_row) is not dict or (
+                inventory_row.get('content_sha256') != row['sha256'] or
+                inventory_row.get('size_bytes') != row['bytes'] or
+                inventory_row.get('raw_mode') != oct(row['rawmode'])):
+            raise PermissionError('G2_CURRENT_SOURCE_INVENTORY_ROW')
+    elif str(path) not in allowed_extra:
+        raise PermissionError('G2_CURRENT_SOURCE_DOMAIN')
+
+
+def g2_current_component_inputs(delivery, equality):
+    """Verify a current dirty-aware product/helper proof from its actual v2 receipts."""
+    if equality.get('schema') != 'cicada.native-g2g3-component-inputs.v2' or equality.get('fixture_scenario') != 'g2-g3':
+        raise PermissionError('G2_CURRENT_EQUALITY_SCHEMA')
+    if (type(delivery.get('component_proof_path')) is not str or
+            not re.fullmatch('[0-9a-f]{64}',delivery.get('component_proof_sha256',''))):
+        raise PermissionError('G2_CURRENT_DELIVERY_PROOF_REFERENCE')
+    proof_path=g2_current_path(delivery['component_proof_path'],roots=(G2_CURRENT_EVIDENCE_ROOT,))
+    if proof_path.name!='component-proof.NONAUTH.json':
+        raise PermissionError('G2_CURRENT_PROOF_PATH')
+    product_root=proof_path.parent
+    if not product_root.name.startswith('current-peer-product-0162-'):
+        raise PermissionError('G2_CURRENT_PRODUCT_BUILD_DOMAIN')
+    if (delivery['component_proof_sha256'] != equality.get('component_proof_sha256') or
+            delivery['component_proof_path'] != equality.get('component_proof_path')):
+        raise PermissionError('G2_CURRENT_PROOF_EQUALITY_PIN')
+    proof,proof_raw=bounded_json(proof_path)
+    proof_sha=hashlib.sha256(proof_raw).hexdigest()
+    expected_proof_keys={'schema','fixture_scenario','product_binary_sha256','product_component_review',
+        'fixture_source_rows','tls_recipe','compiled_inputs_manifest','helper_binary','helper_build_receipt'}
+    if (set(proof)!=expected_proof_keys or proof.get('schema')!='cicada.native-g2g3-components.v2' or
+            proof.get('fixture_scenario')!='g2-g3' or proof_sha!=delivery['component_proof_sha256'] or
+            proof_sha!=equality.get('component_proof_sha256') or
+            proof.get('product_binary_sha256')!=delivery.get('binary_sha256')):
+        raise PermissionError('G2_CURRENT_PROOF_PIN')
+    if (equality.get('status')!='COMPILED_INPUTS_EXACT' or
+            equality.get('current_commit')!=delivery.get('commit') or
+            equality.get('product_artifact_origin_revision')!=delivery.get('commit') or
+            type(delivery.get('source_dirty')) is not bool or
+            equality.get('product_artifact_origin_dirty') is not delivery.get('source_dirty') or
+            equality.get('source_dirty') is not delivery.get('source_dirty') or
+            equality.get('source_fingerprint')!=delivery.get('fingerprint') or
+            equality.get('product_source_fingerprint')!=delivery.get('fingerprint') or
+            equality.get('artifact_binary_sha256')!=delivery.get('binary_sha256') or
+            equality.get('artifact_compiled_inputs_sha256')!=equality.get('current_compiled_inputs_sha256') or
+            not re.fullmatch('[0-9a-f]{64}',equality.get('current_compiled_inputs_sha256',''))):
+        raise PermissionError('G2_CURRENT_PRODUCT_EQUALITY')
+    commit=delivery.get('commit'); dirty=delivery.get('source_dirty'); fingerprint=delivery.get('fingerprint')
+    if (type(commit) is not str or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})',commit) or
+            type(fingerprint) is not str or not re.fullmatch('[0-9a-f]{64}',fingerprint)):
+        raise PermissionError('G2_CURRENT_SOURCE_IDENTITY')
+
+    helper_binary=proof['helper_binary']
+    if (type(helper_binary) is not dict or set(helper_binary)!={'path','sha256'} or
+            helper_binary['path']!=delivery.get('helper') or
+            helper_binary['sha256']!=delivery.get('helper_sha256') or
+            not re.fullmatch('[0-9a-f]{64}',helper_binary.get('sha256',''))):
+        raise PermissionError('G2_CURRENT_HELPER_BINARY_REFERENCE')
+    helper_path=g2_current_path(helper_binary['path'],roots=(G2_CURRENT_EVIDENCE_ROOT,))
+    if helper_path.parts[-2:] != ('bin','cicada-v68fixture'):
+        raise PermissionError('G2_CURRENT_HELPER_BINARY_PATH')
+    helper_root=helper_path.parent.parent
+    if helper_root==product_root or not helper_root.name.startswith('current-peer-helper-0162-'):
+        raise PermissionError('G2_CURRENT_HELPER_BUILD_DOMAIN')
+    if digest(helper_path)!=helper_binary['sha256']:
+        raise PermissionError('G2_CURRENT_HELPER_BINARY_PIN')
+
+    manifest_ref=proof['compiled_inputs_manifest']
+    if (type(manifest_ref) is not dict or set(manifest_ref)!={'path','sha256','product_count','helper_count','projection_sha256'} or
+            manifest_ref.get('path')!=str(product_root/'compiled-inputs.NONAUTH.json') or
+            type(manifest_ref.get('product_count')) is not int or type(manifest_ref.get('helper_count')) is not int or
+            any(n<1 or n>10000 for n in (manifest_ref['product_count'],manifest_ref['helper_count'])) or
+            not re.fullmatch('[0-9a-f]{64}',manifest_ref.get('sha256','')) or
+            not re.fullmatch('[0-9a-f]{64}',manifest_ref.get('projection_sha256',''))):
+        raise PermissionError('G2_CURRENT_MANIFEST_REFERENCE')
+    manifest_path=g2_current_path(manifest_ref['path'],roots=(product_root,),exact=product_root/'compiled-inputs.NONAUTH.json')
+    manifest,manifest_raw=bounded_json(manifest_path,16<<20)
+    manifest_sha=hashlib.sha256(manifest_raw).hexdigest()
+    manifest_keys={'schema','fixture_scenario','source_revision','source_dirty','source_fingerprint','toolchain',
+        'components','module_inputs','selection','pqtls_closure'}
+    if (set(manifest)!=manifest_keys or manifest_sha!=manifest_ref['sha256'] or
+            manifest.get('schema')!='cicada.native-selected-component-inputs.v2' or
+            manifest.get('fixture_scenario')!='g2-g3' or manifest.get('source_revision')!=commit or
+            manifest.get('source_dirty') is not dirty or manifest.get('source_fingerprint')!=fingerprint):
+        raise PermissionError('G2_CURRENT_MANIFEST_IDENTITY')
+    toolchain=manifest.get('toolchain')
+    if (type(toolchain) is not dict or set(toolchain)!={'CGO_ENABLED','GOARCH','GOOS','builder_image','go_version','tags'} or
+            toolchain!={'CGO_ENABLED':1,'GOARCH':'amd64','GOOS':'linux','builder_image':'sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195',
+                        'go_version':'go version go1.27.1 linux/amd64','tags':'cicada_pqtls'}):
+        raise PermissionError('G2_CURRENT_TOOLCHAIN')
+    selection=manifest.get('selection')
+    if type(selection) is not dict or set(selection)!={'product','helper'}:
+        raise PermissionError('G2_CURRENT_SELECTION')
+    product_selection=selection['product']; helper_selection=selection['helper']
+    if (type(product_selection) is not dict or set(product_selection)!={'build_receipt','excluded_generated_paths','go_list','scope'} or
+            type(helper_selection) is not dict or set(helper_selection)!={'build_receipt','go_list','prestart','scope'} or
+            any(type(selection[name].get('scope')) is not str or not selection[name]['scope'] for name in ('product','helper'))):
+        raise PermissionError('G2_CURRENT_SELECTION_SHAPE')
+
+    product_result_path=product_root/'RESULT.NONAUTH.json'
+    product_prestart_path=product_root/'PRESTART.NONAUTH.json'
+    helper_result_path=helper_root/'RESULT.NONAUTH.json'
+    helper_prestart_path=helper_root/'PRESTART.NONAUTH.json'
+    product_go_list_path=product_root/'product-go-list.json'
+    helper_go_list_path=helper_root/'helper-go-list.json'
+    for path,root in ((product_result_path,product_root),(product_prestart_path,product_root),
+            (helper_result_path,helper_root),(helper_prestart_path,helper_root),
+            (product_go_list_path,product_root),(helper_go_list_path,helper_root)):
+        g2_current_path(str(path),roots=(root,),exact=path)
+    if (product_selection['build_receipt']!={'path':str(product_result_path),'sha256':digest(product_result_path)} or
+            product_selection['go_list']!={'path':str(product_go_list_path),'sha256':digest(product_go_list_path)} or
+            helper_selection['build_receipt']!={'path':str(helper_result_path),'sha256':digest(helper_result_path)} or
+            helper_selection['go_list']!={'path':str(helper_go_list_path),'sha256':digest(helper_go_list_path)} or
+            helper_selection['prestart']!={'path':str(helper_prestart_path),'sha256':digest(helper_prestart_path)}):
+        raise PermissionError('G2_CURRENT_SELECTION_PINS')
+    if proof['helper_build_receipt']!=helper_selection['build_receipt']:
+        raise PermissionError('G2_CURRENT_HELPER_RECEIPT_REFERENCE')
+    product_result,_=bounded_json(g2_current_path(str(product_result_path),roots=(product_root,),exact=product_result_path))
+    product_prestart,_=bounded_json(g2_current_path(str(product_prestart_path),roots=(product_root,),exact=product_prestart_path))
+    helper_result,_=bounded_json(g2_current_path(str(helper_result_path),roots=(helper_root,),exact=helper_result_path))
+    helper_prestart,_=bounded_json(g2_current_path(str(helper_prestart_path),roots=(helper_root,),exact=helper_prestart_path))
+    if (product_result.get('schema')!='cicada.root.current-peer-product-build.v1' or product_result.get('status')!='PASS_BUILD' or
+            product_result.get('exit_code')!=0 or product_result.get('container_exit_code')!=0 or
+            product_result.get('OOMKilled') is not False or product_result.get('credential_mounts')!=0 or product_result.get('models')!=0 or
+            product_result.get('owned_removed') is not True or product_result.get('protected_residents_unchanged') is not True):
+        raise PermissionError('G2_CURRENT_PRODUCT_BUILD_RECEIPT')
+    product_script=g2_current_prestart_script(product_prestart,
+        schema='cicada.root.current-peer-product-build.v1',revision=commit,dirty=dirty,
+        builder_image=toolchain['builder_image'],repository_mount='type=bind,src=/home/zyf/CICADA,dst=/home/zyf/CICADA,readonly')
+    if ('go list ' not in product_script or '-tags cicada_pqtls' not in product_script or
+            '-deps -json ./cmd/cicada' not in product_script or '> /out/product-go-list.json' not in product_script or
+            'build-release.sh' not in product_script or '--transport pqtls' not in product_script or
+            '--pqtls-stage /opt/cicada-openssl/3.5.9' not in product_script):
+        raise PermissionError('G2_CURRENT_PRODUCT_PRESTART_COMMAND')
+    product_artifacts=product_result.get('artifacts',{})
+    product_tar=product_root/'dist/cicada-linux-amd64-pqtls.tar.gz'
+    if (type(product_artifacts) is not dict or
+            product_artifacts.get('dist/cicada-linux-amd64-pqtls.tar.gz',{}).get('sha256')!=digest(
+                g2_current_path(str(product_tar),roots=(product_root,),exact=product_tar))):
+        raise PermissionError('G2_CURRENT_PRODUCT_ARTIFACT')
+    helper_outputs=helper_result.get('outputs',{})
+    if (helper_result.get('schema')!='cicada.root.current-peer-helper-build.v1' or
+            helper_result.get('status')!='PASS_BUILD_AND_TAGGED_FIXTURE_TESTS' or helper_result.get('exit_code')!=0 or
+            helper_result.get('container_exit_code')!=0 or helper_result.get('OOMKilled') is not False or
+            helper_result.get('credential_mounts')!=0 or helper_result.get('models')!=0 or
+            helper_result.get('owned_removed') is not True or helper_result.get('protected_residents_unchanged') is not True or
+            helper_result.get('builder_image')!=toolchain['builder_image'] or
+            helper_outputs.get('bin/cicada-v68fixture',{}).get('sha256')!=helper_binary['sha256'] or
+            helper_outputs.get('helper-go-list.json',{}).get('sha256')!=helper_selection['go_list']['sha256']):
+        raise PermissionError('G2_CURRENT_HELPER_BUILD_RECEIPT')
+    helper_script=g2_current_prestart_script(helper_prestart,
+        schema='cicada.root.current-peer-helper-build.v1',revision=commit,dirty=dirty,
+        builder_image=toolchain['builder_image'],repository_mount='type=bind,src=/home/zyf/CICADA/cicada-go,dst=/repo/cicada-go,readonly')
+    if any(fragment not in helper_script for fragment in (
+            'go list ', 'go build ', 'go test ', ' -overlay=/fixture-build/overlay.json',
+            '-tags=cicada_pqtls', './cmd/cicada-v68fixture')):
+        raise PermissionError('G2_CURRENT_HELPER_PRESTART_COMMAND')
+
+    review_ref=proof['product_component_review']
+    if (type(review_ref) is not dict or set(review_ref)!={'path','sha256'} or
+            review_ref.get('path')!=str(product_root/'product-component-review.NONAUTH.json') or
+            not re.fullmatch('[0-9a-f]{64}',review_ref.get('sha256',''))):
+        raise PermissionError('G2_CURRENT_REVIEW_REFERENCE')
+    review_path=g2_current_path(review_ref['path'],roots=(product_root,),exact=product_root/'product-component-review.NONAUTH.json')
+    review,review_raw=bounded_json(review_path)
+    if hashlib.sha256(review_raw).hexdigest()!=review_ref['sha256']:
+        raise PermissionError('G2_CURRENT_REVIEW_PIN')
+    review_keys={'credential_mounts','current_source_dirty','current_source_fingerprint','current_source_revision','go_list',
+        'helper_sources_verified_against_actual_product_inventory','models','package_binary_sha256','package_metadata',
+        'package_webcrypto_manifest_sha256','product_build_receipt','projection_sha256','schema',
+        'selected_sources_verified_against_actual_build_inventory','source_inventory'}
+    if (set(review)!=review_keys or review.get('schema')!='cicada.root.native-g2g3-current-product-review.v1' or
+            review.get('current_source_revision')!=commit or review.get('current_source_dirty') is not dirty or
+            review.get('current_source_fingerprint')!=fingerprint or review.get('credential_mounts')!=0 or review.get('models')!=0 or
+            review.get('package_binary_sha256')!=delivery.get('binary_sha256') or
+            review.get('product_build_receipt')!=product_selection['build_receipt'] or
+            review.get('projection_sha256')!=manifest_ref['projection_sha256']):
+        raise PermissionError('G2_CURRENT_PRODUCT_REVIEW')
+    review_go=review.get('go_list')
+    if (type(review_go) is not dict or set(review_go)!={'count','excluded_generated_paths','path','same_selected_path_set','sha256'} or
+            review_go.get('path')!=product_selection['go_list']['path'] or review_go.get('sha256')!=product_selection['go_list']['sha256'] or
+            review_go.get('same_selected_path_set') is not True or type(review_go.get('count')) is not int):
+        raise PermissionError('G2_CURRENT_PRODUCT_GO_LIST_REVIEW')
+    package_dir=Path(delivery.get('package',''))
+    if not package_dir.is_absolute() or not package_dir.is_relative_to(product_root) or str(package_dir.resolve())!=str(package_dir):
+        raise PermissionError('G2_CURRENT_PACKAGE_PATH')
+    package_metadata_path=package_dir/'BUILD-METADATA.json'
+    package_metadata_ref=review.get('package_metadata')
+    if (type(package_metadata_ref) is not dict or set(package_metadata_ref)!={'path','sha256'} or
+            package_metadata_ref.get('path')!=str(package_metadata_path) or
+            not re.fullmatch('[0-9a-f]{64}',package_metadata_ref.get('sha256','')) or
+            digest(package_metadata_path)!=package_metadata_ref['sha256']):
+        raise PermissionError('G2_CURRENT_PACKAGE_METADATA_PIN')
+    package_metadata,_=bounded_json(g2_current_path(str(package_metadata_path),roots=(product_root,),exact=package_metadata_path),1<<20)
+    if (package_metadata.get('transport_variant')!='pqtls' or package_metadata.get('pqtls_available') is not True or
+            package_metadata.get('toolchain')!='go1.27.1' or package_metadata.get('cgo_enabled') is not True or
+            package_metadata.get('source',{}).get('revision')!=commit or package_metadata.get('source',{}).get('dirty') is not dirty or
+            package_metadata.get('source',{}).get('source_fingerprint')!=fingerprint or
+            package_metadata.get('runtime',{}).get('closure_sha256')!=manifest.get('pqtls_closure') or
+            package_metadata.get('hub_webcrypto_manifest_sha256')!=review.get('package_webcrypto_manifest_sha256')):
+        raise PermissionError('G2_CURRENT_PACKAGE_METADATA')
+    product_binary=g2_current_path(str(package_dir/'bin/cicada'),roots=(product_root,),exact=package_dir/'bin/cicada')
+    if digest(product_binary)!=delivery.get('binary_sha256'):
+        raise PermissionError('G2_CURRENT_PRODUCT_BINARY')
+
+    inventory_ref=review.get('source_inventory')
+    if (type(inventory_ref) is not dict or set(inventory_ref)!={'path','sha256'} or
+            inventory_ref.get('path')!=str(product_root/'current-input-inventory.NONAUTH.json') or
+            not re.fullmatch('[0-9a-f]{64}',inventory_ref.get('sha256',''))):
+        raise PermissionError('G2_CURRENT_SOURCE_INVENTORY_REFERENCE')
+    inventory_path=g2_current_path(inventory_ref['path'],roots=(product_root,),exact=product_root/'current-input-inventory.NONAUTH.json')
+    inventory,inventory_raw=bounded_json(inventory_path,16<<20)
+    if (hashlib.sha256(inventory_raw).hexdigest()!=inventory_ref['sha256'] or
+            inventory.get('schema_version')!='cicada.pqtls-distribution-inputs.v1' or
+            inventory.get('transport_variant')!='pqtls' or
+            inventory.get('fingerprint',{}).get('sha256')!=fingerprint):
+        raise PermissionError('G2_CURRENT_SOURCE_INVENTORY')
+    source=inventory.get('source'); entries=source.get('entries') if type(source) is dict else None
+    if type(entries) is not list or not 0<len(entries)<=100000:
+        raise PermissionError('G2_CURRENT_SOURCE_INVENTORY_ROWS')
+    inventory_rows={}
+    for entry in entries:
+        if (type(entry) is not dict or type(entry.get('path')) is not str or
+                not entry['path'] or Path(entry['path']).is_absolute() or '..' in Path(entry['path']).parts or
+                entry['path'] in inventory_rows or type(entry.get('size_bytes')) is not int or
+                type(entry.get('content_sha256')) is not str or not re.fullmatch('[0-9a-f]{64}',entry['content_sha256']) or
+                type(entry.get('raw_mode')) is not str or not re.fullmatch(r'0o[0-7]{6}',entry['raw_mode'])):
+            raise PermissionError('G2_CURRENT_SOURCE_INVENTORY_ROW_SHAPE')
+        inventory_rows[entry['path']]=entry
+
+    fixture_rows=proof.get('fixture_source_rows')
+    if type(fixture_rows) is not list or len(fixture_rows)!=3 or {row.get('path') for row in fixture_rows if type(row) is dict}!=G2_SOURCE_PATHS:
+        raise PermissionError('G2_CURRENT_FIXTURE_SOURCE_ROWS')
+    for row in fixture_rows: g2_public_row(row,paths=G2_SOURCE_PATHS)
+    recipe=proof.get('tls_recipe')
+    recipe_keys={'input_path','input_sha256','output_path','output_sha256','output_bytes','generator_function_sha256','generator_hash_representation'}
+    if (type(recipe) is not dict or set(recipe)!=recipe_keys or recipe.get('input_path')!=str(G2_TLS_INPUT_PATH) or
+            recipe.get('input_sha256')!=G2_TLS_INPUT_SHA or recipe.get('generator_hash_representation')!='source'):
+        raise PermissionError('G2_CURRENT_TLS_RECIPE')
+    import ast
+    generator_source=Path(__file__).read_text(); tree=ast.parse(generator_source)
+    function=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='g2_tls_fixture_source')
+    function_sha=hashlib.sha256(ast.get_source_segment(generator_source,function).encode()).hexdigest()
+    produced=g2_tls_fixture_source(G2_TLS_INPUT_PATH.read_bytes())
+    tls_output=g2_current_path(recipe['output_path'],roots=(G2_BUILD_ROOT,),exact=G2_BUILD_ROOT/'tls_bootstrap.go')
+    if (recipe.get('generator_function_sha256')!=function_sha or recipe.get('output_bytes')!=len(produced) or
+            recipe.get('output_sha256')!=hashlib.sha256(produced).hexdigest() or tls_output.read_bytes()!=produced):
+        raise PermissionError('G2_CURRENT_TLS_OUTPUT')
+
+    components=manifest.get('components')
+    if type(components) is not dict or set(components)!={'product','helper'}:
+        raise PermissionError('G2_CURRENT_COMPONENTS')
+    for component in ('product','helper'):
+        selected=components[component]
+        if (type(selected) is not list or len(selected)!=manifest_ref[component+'_count'] or not 0<len(selected)<=10000):
+            raise PermissionError('G2_CURRENT_COMPONENT_COUNT')
+        paths=[row.get('path') for row in selected if type(row) is dict]
+        if len(paths)!=len(selected) or any(type(path) is not str for path in paths) or len(paths)!=len(set(paths)):
+            raise PermissionError('G2_CURRENT_COMPONENT_ORDER')
+        for row in selected:
+            g2_current_source_row(row,inventory=inventory_rows,allowed_extra=(str(tls_output),))
+    modules=manifest.get('module_inputs')
+    if (type(modules) is not list or len(modules)!=2 or
+            {row.get('path') for row in modules if type(row) is dict}!={str(G2_CURRENT_SOURCE_ROOT/'go.mod'),str(G2_CURRENT_SOURCE_ROOT/'go.sum')}):
+        raise PermissionError('G2_CURRENT_MODULE_INPUTS')
+    for row in modules: g2_current_source_row(row,inventory=inventory_rows)
+
+    product_excluded=product_selection.get('excluded_generated_paths')
+    if (type(product_excluded) is not list or any(type(path) is not str for path in product_excluded) or
+            product_excluded!=sorted(set(product_excluded)) or product_excluded!=review_go.get('excluded_generated_paths') or
+            any(not Path(path).is_relative_to(G2_CURRENT_SOURCE_ROOT/'internal/server/ui/generated') for path in product_excluded)):
+        raise PermissionError('G2_CURRENT_GENERATED_PATHS')
+    product_sources=g2_current_go_sources(product_go_list_path,source_root=G2_CURRENT_SOURCE_ROOT,go_list_root=G2_CURRENT_SOURCE_ROOT)
+    if not set(product_excluded).issubset(product_sources) or product_sources-set(product_excluded)!={row['path'] for row in components['product']}:
+        raise PermissionError('G2_CURRENT_PRODUCT_SELECTION')
+    helper_sources=g2_current_go_sources(helper_go_list_path,source_root=G2_CURRENT_SOURCE_ROOT,go_list_root=Path('/repo/cicada-go'))
+    overlay_target='/repo/cicada-go/cmd/cicada-v68fixture/tls_bootstrap.go'
+    overlay_target_source=str(G2_CURRENT_SOURCE_ROOT/Path(overlay_target).relative_to('/repo/cicada-go'))
+    overlay_path=helper_root/'overlay.json'
+    overlay=g2_current_path(str(overlay_path),roots=(helper_root,),exact=overlay_path)
+    overlay_value,_=bounded_json(overlay)
+    if overlay_value!={'Replace':{overlay_target:'/tls-bootstrap.go'}} or overlay_target_source not in helper_sources:
+        raise PermissionError('G2_CURRENT_HELPER_OVERLAY')
+    helper_sources.remove(overlay_target_source); helper_sources.add(str(tls_output))
+    if helper_sources!={row['path'] for row in components['helper']}:
+        raise PermissionError('G2_CURRENT_HELPER_SELECTION')
+    helper_inventory_sources={path for path in helper_sources if Path(path).is_relative_to(G2_CURRENT_SOURCE_ROOT)}
+    if (len(helper_sources)!=len(helper_inventory_sources)+1 or
+            helper_sources-helper_inventory_sources!={str(tls_output)}):
+        raise PermissionError('G2_CURRENT_HELPER_TLS_OVERLAY_SCOPE')
+    if review_go.get('count') != len(components['product']):
+        raise PermissionError('G2_CURRENT_PRODUCT_SELECTED_COUNT')
+    projection=hashlib.sha256(json.dumps(components,sort_keys=True,ensure_ascii=True,separators=(',',':')).encode('ascii')).hexdigest()
+    if (projection!=manifest_ref['projection_sha256'] or projection!=review.get('projection_sha256') or
+            projection!=equality.get('artifact_compiled_inputs_sha256') or projection!=equality.get('current_compiled_inputs_sha256')):
+        raise PermissionError('G2_CURRENT_COMPILED_PROJECTION')
+    return proof_sha
+
+
+def g2_component_inputs(delivery, equality, *, current=False):
+    if current:
+        return g2_current_component_inputs(delivery,equality)
+    return g2_legacy_component_inputs(delivery,equality)
+
+
 def scenario_inputs(args, delivery):
     scenario = getattr(args, "scenario", "g1")
     if scenario not in ("g1", "g2-g3"):
@@ -643,13 +1227,16 @@ def _zero_inputs_public(args):
         raise PermissionError("ZERO_RESPONSE_MODE_FORBIDDEN")
     if args.execute_diagnostic or getattr(args,"enable_io_diagnostics",False) or any(getattr(args,key,None) is not None for key in ("go_receipt","go_receipt_sha","preparation_result","preparation_result_sha","preparation_review","preparation_review_sha")):
         raise PermissionError("ZERO_PAID_FLAGS")
-    if not re.fullmatch(r"cicada-two-turn-zerocli161-[a-z0-9]{8,24}",args.unique_run or ""):
+    if not re.fullmatch(r"cicada-two-turn-zerocli0162-[a-z0-9]{8,24}",args.unique_run or ""):
         raise PermissionError("ZERO_UNIQUE_RUN")
-    if args.runtime_image!=LATEST_RUNTIME:
-        raise PermissionError("ZERO_LATEST_RUNTIME_REQUIRED")
     if type(args.cleanup_hard_stop_unix) is not int or time.time()+240>=args.cleanup_hard_stop_unix:
         raise PermissionError("ZERO_ABSOLUTE_BUDGET")
-    binding,sha=verify_binding(args.binding_sha)
+    binding,sha=verify_binding(args.binding_sha,getattr(args,"binding_file",None),require_current=True)
+    bundle=require_current_bundle(binding)
+    if (args.runtime_image != bundle["runtime_receipt"]["image_id"] or
+            str(Path(args.delivery)) != bundle["delivery"]["path"] or
+            str(Path(args.compiled_input_equality)) != bundle["equality"]["path"]):
+        raise PermissionError("ZERO_CURRENT_BUNDLE_ARGUMENTS")
     receipt,raw=bounded_json(args.wiring_receipt)
     if (hashlib.sha256(raw).hexdigest()!=args.wiring_receipt_sha or receipt.get("status")!="PASS" or
             receipt.get("candidate_binding_sha256")!=sha or receipt.get("Runtime_calls")!=0 or
@@ -663,11 +1250,15 @@ def _zero_inputs_public(args):
     if hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT":
         raise PermissionError("ZERO_COMPILED_INPUT_EQUALITY")
     if (equality.get("current_commit")!=args.current_commit or
+            args.current_commit!=bundle["current_commit"] or
             equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
             not re.fullmatch(r"[0-9a-f]{64}",equality.get("current_compiled_inputs_sha256", "")) or
-            equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256")):
+            equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256") or
+            equality.get("product_artifact_origin_dirty",equality.get("source_dirty"))!=bundle["source_dirty"] or
+            delivery.get("commit")!=bundle["current_commit"] or delivery.get("source_dirty")!=bundle["source_dirty"] or
+            delivery.get("fingerprint")!=bundle["source_fingerprint"]):
         raise PermissionError("ZERO_CURRENT_PRODUCT_MISMATCH")
-    if getattr(args,"scenario","g1") == "g2-g3": g2_component_inputs(delivery,equality)
+    if getattr(args,"scenario","g1") == "g2-g3": g2_component_inputs(delivery,equality,current=True)
     for key in ("commit","fingerprint","binary_sha256","helper_sha256","hub_image",
                 "package","helper","package_metadata_sha256","hub_receipt_path","hub_receipt_sha256","source_repo"):
         if type(delivery.get(key)) is not str or not delivery[key]:
@@ -677,7 +1268,7 @@ def _zero_inputs_public(args):
         if digest(path)!=pin:
             raise PermissionError("ZERO_PRODUCER_RECEIPT_CHANGED")
     result=Path(args.result_dir)
-    if result.parent.absolute()!=BINDING.parent or result.name!="native-preparation-"+args.unique_run or result.exists():
+    if result.parent.absolute()!=Path(binding["output_parent"]).absolute() or result.name!="native-preparation-"+args.unique_run or result.exists():
         raise PermissionError("ZERO_FRESH_RESULT_PATH")
     return binding,sha,delivery
 
@@ -686,7 +1277,8 @@ def prepare_native_zero(args):
     global EXECUTION_EFFECTS_STARTED
     binding,sha,delivery=zero_inputs(args)
     # Config is synthetic, private and created only after every public guard.
-    config=BINDING.parent/(args.unique_run+"-config.toml")
+    output_parent=Path(binding["output_parent"])
+    config=output_parent/(args.unique_run+"-config.toml")
     fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,"w") as output: output.write(ZERO_CONFIG)
     started=time.monotonic()
@@ -694,13 +1286,13 @@ def prepare_native_zero(args):
         raise PermissionError("ZERO_ABSOLUTE_BUDGET")
     ns=types.SimpleNamespace(execute=True,run_native=False,result_dir=args.result_dir,
         product_repo=delivery["source_repo"],expected_product_revision=delivery["commit"],
-        expected_source_fingerprint=delivery["fingerprint"],runtime_image=LATEST_RUNTIME,
-        expected_codex_version="codex-cli "+LATEST_VERSION,expected_cli_sha256=LATEST_CLI_SHA,
+        expected_source_fingerprint=delivery["fingerprint"],runtime_image=current_runtime(binding),
+        expected_codex_version="codex-cli "+current_cli(binding)["version"],expected_cli_sha256=current_cli(binding)["sha256"],
         producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
         producer_receipt_sha256=delivery["package_metadata_sha256"],
         exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
         config_template=str(config),config_template_sha=hashlib.sha256(ZERO_CONFIG.encode()).hexdigest(),
-        source_binding_sha=sha,offline_checks_sha=args.wiring_receipt_sha,
+        source_binding_sha=sha,binding_file=str(args.binding_file),offline_checks_sha=args.wiring_receipt_sha,
         artifact_started=started,go={"unique_run":args.unique_run,"max_native_turns":0,"max_manual_turns":0,
             "max_automatic_turns":0},credential_file="ZERO_LANE_NO_CREDENTIAL_REFERENCE",
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False) or getattr(args,"reproduce_zero_hub_restart",False),
@@ -742,11 +1334,14 @@ def main(argv=None):
     parser.add_argument("--enable-io-diagnostics",action="store_true")
     parser.add_argument("--response-byte-passthrough",action="store_true")
     parser.add_argument("--native-https",action="store_true")
+    parser.add_argument("--native-normal-seconds",type=int)
     parser.add_argument("--cleanup-hard-stop-unix",type=int)
     parser.add_argument("--prepare-native-zero",action="store_true")
     parser.add_argument("--reproduce-zero-hub-restart",action="store_true")
     parser.add_argument("--enable-closed-failure-diagnostics",action="store_true")
-    for name in ("delivery","delivery-sha","compiled-input-equality","equality-sha","runtime-image","result-dir","current-commit","preparation-result","preparation-result-sha","preparation-review","preparation-review-sha"):
+    parser.add_argument("--binding-file",default=str(BINDING))
+    parser.add_argument("--refresh-current-binding",action="store_true")
+    for name in ("delivery","delivery-sha","compiled-input-equality","equality-sha","runtime-image","runtime-image-receipt","result-dir","current-commit","expected-commit","output-parent","preparation-result","preparation-result-sha","preparation-review","preparation-review-sha"):
         parser.add_argument("--"+name)
     parser.add_argument("--preflight",action="store_true")
     parser.add_argument("--execute-diagnostic",action="store_true")
@@ -755,7 +1350,16 @@ def main(argv=None):
     args=parser.parse_args(argv)
     try:
         native_https_mode(args)
+        native_normal_seconds(args)
         response_passthrough_mode(args)
+        if args.refresh_current_binding:
+            required = (args.delivery, args.compiled_input_equality, args.runtime_image_receipt,
+                        args.output_parent, args.expected_commit)
+            if not all(required) or args.execute_diagnostic or args.prepare_native_zero or args.preflight:
+                raise PermissionError("CURRENT_BINDING_REFRESH_ARGUMENTS")
+            print(json.dumps(refresh_current_binding(args.delivery, args.compiled_input_equality,
+                args.runtime_image_receipt, args.output_parent, args.expected_commit),sort_keys=True))
+            return 0
         if args.reproduce_zero_hub_restart and (not args.prepare_native_zero or args.execute_diagnostic):
             raise PermissionError("ZERO_RESTART_MODE")
         if args.prepare_native_zero:
@@ -763,7 +1367,7 @@ def main(argv=None):
         if args.execute_diagnostic:
             return execute(args)
         if args.preflight:
-            print(json.dumps(preflight(args.binding_sha),sort_keys=True))
+            print(json.dumps(preflight(args.binding_sha,args.binding_file),sort_keys=True))
         else:
             print(json.dumps({"status":"NONAUTH","effects":False,"Runtime_calls":0,"provider_POSTs":0,"model_calls":0}))
         return 0

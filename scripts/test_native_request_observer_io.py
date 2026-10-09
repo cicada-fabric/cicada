@@ -139,7 +139,7 @@ class IOChecks(unittest.TestCase):
                 return base/str(p).lstrip('/') if p.is_absolute() and not str(p).startswith(directory) else p
             for name in ('run/secrets','codex','state','tmp'):(base/name).mkdir(parents=True,exist_ok=True)
             (base/'run/secrets/provider.env').write_text('API_KEY=PUBLIC_SYNTHETIC\n')
-            public="[model_providers.basil]\nbase_url='https://synthetic.invalid'\n"
+            public="model_provider='synthetic-provider'\n[model_providers.synthetic-provider]\nbase_url='https://synthetic.invalid'\n"
             (base/'codex/config.toml').write_text(public)
             now=time.monotonic();args=['shim','paid','http://192.0.2.1:7890','--test-request-observer',hashlib.sha256(b'https://synthetic.invalid').hexdigest(),repr(now+20),'16']
             namespace={'__name__':'__synthetic_installed__'}

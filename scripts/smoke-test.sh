@@ -53,7 +53,7 @@ jq -e --arg test_model "$test_model" '
   .checks["auth.credentials"].details["provider auth env var"] == "API_KEY (present)" and
   .checks["config.load"].status == "ok" and
   .checks["config.load"].details.model == $test_model and
-  .checks["config.load"].details["model provider"] == "basil" and
+  .checks["config.load"].details["model provider"] == "cicada-provider" and
   .checks.installation.details["managed by npm"] == "false" and
   .checks["network.provider_reachability"].status == "ok"
 ' >/dev/null <<<"$doctor_json"
@@ -61,7 +61,7 @@ jq -e --arg test_model "$test_model" '
 printf 'Docker root: %s\n' "$docker_root"
 printf 'Codex: %s\n' "$codex_version"
 printf 'Containers: control=healthy worker=healthy\n'
-printf 'Configuration: test_model=%s provider=basil auth=present endpoint=reachable planners=present\n' "$test_model"
+printf 'Configuration: test_model=%s provider=cicada-provider auth=present endpoint=reachable planners=present\n' "$test_model"
 
 if [[ "${CICADA_SMOKE_INFERENCE:-0}" == "1" ]]; then
   api_url="http://127.0.0.1:${CICADA_API_PORT:-8787}"
