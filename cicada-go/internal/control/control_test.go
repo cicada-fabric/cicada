@@ -74,7 +74,7 @@ while IFS= read -r line; do
       printf '{"jsonrpc":"2.0","id":%%s,"result":{"thread":{"id":"fake-thread"}}}\n' "$id"
       ;;
     *'"method":"turn/start"'*)
-      printf '{"jsonrpc":"2.0","id":%%s,"result":{"turn":{"id":"fake-turn"}}}\n' "$id"
+      printf '{"jsonrpc":"2.0","id":%%s,"result":{"turn":{"id":"fake-turn","items":[],"status":"inProgress"}}}\n' "$id"
       turns=0
       if [ -f "$turn_file" ]; then turns="$(cat "$turn_file")"; fi
       turns=$((turns + 1))
@@ -96,8 +96,8 @@ while IFS= read -r line; do
       if [ "$mode" = fail_once ]; then text="FAKE_RECOVERED_READY"; fi
       if [ "$mode" = correction ] && [ "$turns" -gt 1 ]; then text="FAKE_CORRECTED_READY"; fi
       if [ "$mode" = approval ]; then text="FAKE_APPROVED_READY"; fi
-      printf '{"jsonrpc":"2.0","method":"item/completed","params":{"item":{"type":"agentMessage","text":"%%s"}}}\n' "$text"
-      printf '%%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"turn":{"status":"completed"}}}'
+      printf '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"fake-thread","turnId":"fake-turn","item":{"type":"agentMessage","text":"%%s"}}}\n' "$text"
+      printf '%%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"fake-thread","turn":{"id":"fake-turn","items":[],"status":"completed"}}}'
       ;;
   esac
 done

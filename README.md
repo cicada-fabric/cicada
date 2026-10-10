@@ -24,7 +24,7 @@ external model is visible to that provider; this is not provider-blind E2EE.
 
 ## Development and local deployment
 
-The development line is **0.0.1-dev**, unreleased on `dev`. A main merge or
+The development line is **0.0.2**, unreleased on `dev`. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1 passed; current CLI sandbox and Worker private-fixture checks passed
 their scoped predicates. G2 failed before model activity, G3 and current Android,

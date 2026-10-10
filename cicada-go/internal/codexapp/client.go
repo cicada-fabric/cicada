@@ -23,6 +23,17 @@ type RequestHandler func(id any, method string, params map[string]any) any
 type ProcessStarter func(*exec.Cmd) error
 type ProcessWaiter func(*exec.Cmd) error
 
+// StartError preserves a partial process start separately from its stop proof.
+// No process means admission failed before the runtime could begin.
+type StartError struct {
+	Err     error
+	StopErr error
+	Started bool
+}
+
+func (e *StartError) Error() string { return errors.Join(e.Err, e.StopErr).Error() }
+func (e *StartError) Unwrap() error { return errors.Join(e.Err, e.StopErr) }
+
 type Client struct {
 	process       *exec.Cmd
 	processWaiter ProcessWaiter
@@ -37,6 +48,9 @@ type Client struct {
 	onEvent       EventHandler
 	onRequest     RequestHandler
 	asyncRequests bool
+	// Only successful native responses confirm these IDs; readMu protects them.
+	threadID string
+	turnID   string
 }
 
 const minimumQueueWakeVersion = "0.156.1"
@@ -157,9 +171,21 @@ func StartWithLifecycle(ctx context.Context, binary, cwd string, env []string,
 					cleanupErr = errors.Join(cleanupErr, cancelErr)
 				}
 			}
-			cleanupErr = errors.Join(cleanupErr, process.Wait(), waitAppServerProcessTree(process))
+			var waitErr error
+			if waiter != nil {
+				waitErr = waiter(process)
+			} else {
+				waitErr = process.Wait()
+				if process.ProcessState != nil && (waitErr == context.Canceled || waitErr == context.DeadlineExceeded) {
+					waitErr = nil
+				}
+				if _, exitOnly := waitErr.(*exec.ExitError); exitOnly {
+					waitErr = nil
+				}
+			}
+			cleanupErr = errors.Join(cleanupErr, waitErr, waitAppServerProcessTree(process))
 		}
-		return nil, errors.Join(err, cleanupErr)
+		return nil, &StartError{Err: err, StopErr: cleanupErr, Started: process.Process != nil}
 	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
@@ -209,9 +235,15 @@ func (c *Client) CloseAndWait() error {
 			waitErr = c.processWaiter(c.process)
 		} else {
 			waitErr = c.process.Wait()
-		}
-		if _, exitOnly := waitErr.(*exec.ExitError); exitOnly {
-			waitErr = nil // A signalled/nonzero exit still proves Cmd.Wait completed.
+			// CommandContext can return its cancellation after a successful
+			// child exit. A recorded ProcessState still proves Cmd.Wait observed
+			// that exit; the process-group check below remains mandatory.
+			if c.process.ProcessState != nil && (waitErr == context.Canceled || waitErr == context.DeadlineExceeded) {
+				waitErr = nil
+			}
+			if _, exitOnly := waitErr.(*exec.ExitError); exitOnly {
+				waitErr = nil // Default Cmd.Wait observed the signalled/nonzero exit.
+			}
 		}
 		closeErr = errors.Join(closeErr, waitErr, waitAppServerProcessTree(c.process))
 	}
@@ -240,6 +272,11 @@ func (c *Client) Request(ctx context.Context, method string, params any) (map[st
 	// the app-server process and unblocks a pending Scan.
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
+	if method == "thread/start" || method == "thread/resume" {
+		c.threadID, c.turnID = "", ""
+	} else if method == "turn/start" {
+		c.turnID = ""
+	}
 	id := c.nextID
 	c.nextID++
 	if err := c.write(map[string]any{"id": id, "method": method, "params": params}); err != nil {
@@ -255,6 +292,9 @@ func (c *Client) Request(ctx context.Context, method string, params any) (map[st
 				return nil, fmt.Errorf("codex %s returned an error", method)
 			}
 			if result, ok := message["result"].(map[string]any); ok {
+				if err := c.confirmNativeResponse(method, params, result); err != nil {
+					return nil, err
+				}
 				return result, nil
 			}
 			return map[string]any{}, nil
@@ -268,6 +308,39 @@ func (c *Client) Request(ctx context.Context, method string, params any) (map[st
 		return nil, err
 	}
 	return nil, errors.New("codex app-server closed stdout")
+}
+
+// Called with readMu held after the matching successful JSON-RPC response.
+// Request parameters identify the requested Thread, never confirm a native ID.
+func (c *Client) confirmNativeResponse(method string, params any, result map[string]any) error {
+	switch method {
+	case "thread/start", "thread/resume":
+		thread, _ := result["thread"].(map[string]any)
+		id, _ := thread["id"].(string)
+		if !validNativeID(id) {
+			return errors.New("Codex did not confirm a native Thread ID")
+		}
+		if method == "thread/resume" {
+			requested, _ := params.(map[string]any)
+			if requested["threadId"] != id {
+				return errors.New("Codex did not confirm the requested native Thread")
+			}
+		}
+		c.threadID = id
+	case "turn/start":
+		requested, _ := params.(map[string]any)
+		turn, _ := result["turn"].(map[string]any)
+		id, _ := turn["id"].(string)
+		if c.threadID == "" || requested["threadId"] != c.threadID || !validNativeID(id) {
+			return errors.New("Codex did not confirm a Turn on the original native Thread")
+		}
+		c.turnID = id
+	}
+	return nil
+}
+
+func validNativeID(id string) bool {
+	return id != "" && id == strings.TrimSpace(id) && !strings.ContainsAny(id, "\x00\r\n")
 }
 
 func (c *Client) handleMessage(message map[string]any) {
@@ -299,31 +372,37 @@ func (c *Client) handleMessage(message map[string]any) {
 func (c *Client) WaitTurn(ctx context.Context) (string, string, error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
+	if c.threadID == "" || c.turnID == "" {
+		return "", "failed", errors.New("Codex turn completion lacks a confirmed original Thread and Turn")
+	}
 	var summary string
 	for c.scanner.Scan() {
 		message := decodeMessage(c.scanner.Text())
 		if message == nil {
 			continue
 		}
-		if method, _ := message["method"].(string); method != "" {
-			params, _ := message["params"].(map[string]any)
-			if item, ok := params["item"].(map[string]any); ok && item["type"] == "agentMessage" {
-				if body, ok := item["text"].(string); ok && strings.TrimSpace(body) != "" {
-					summary = strings.TrimSpace(body)
-				}
+		method, _ := message["method"].(string)
+		params, _ := message["params"].(map[string]any)
+		if message["id"] == nil && params["threadId"] == c.threadID {
+			if params["turnId"] == c.turnID {
+				summary = agentMessageSummary(params["item"], summary)
 			}
 			if method == "turn/completed" {
-				status := turnStatus(params)
-				c.handleMessage(message)
-				return summary, status, nil
-			}
-			if method == "thread/status/changed" && !c.asyncRequests {
-				if status, ok := params["status"].(map[string]any); ok && status["type"] == "idle" {
+				turn, _ := params["turn"].(map[string]any)
+				status, _ := turn["status"].(string)
+				items, itemsPresent := turn["items"].([]any)
+				if turn["id"] == c.turnID && itemsPresent &&
+					(status == "completed" || status == "failed" || status == "interrupted") {
+					for _, item := range items {
+						summary = agentMessageSummary(item, summary)
+					}
 					c.handleMessage(message)
-					return summary, "completed", nil
+					return summary, status, nil
 				}
 			}
 		}
+		// Foreign or malformed notifications cannot finish the confirmed turn.
+		// Keep processing requests/events so its actual completion can still arrive.
 		c.handleMessage(message)
 		if err := ctx.Err(); err != nil {
 			return summary, "interrupted", err
@@ -332,7 +411,17 @@ func (c *Client) WaitTurn(ctx context.Context) (string, string, error) {
 	if err := c.scanner.Err(); err != nil {
 		return summary, "failed", err
 	}
-	return summary, "failed", errors.New("codex app-server closed before turn completion")
+	return summary, "failed", errors.New("codex app-server closed before exact turn completion")
+}
+
+func agentMessageSummary(value any, previous string) string {
+	item, _ := value.(map[string]any)
+	if item["type"] == "agentMessage" {
+		if text, ok := item["text"].(string); ok && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return previous
 }
 
 func decodeMessage(line string) map[string]any {
@@ -350,18 +439,6 @@ func decodeMessage(line string) map[string]any {
 		return nil
 	}
 	return message
-}
-
-func turnStatus(params map[string]any) string {
-	if turn, ok := params["turn"].(map[string]any); ok {
-		if value, ok := turn["status"].(string); ok {
-			return value
-		}
-	}
-	if value, ok := params["status"].(string); ok {
-		return value
-	}
-	return "completed"
 }
 
 func numberAsInt64(value any) (int64, bool) {

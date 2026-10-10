@@ -1,12 +1,16 @@
 package codexapp
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -47,9 +51,9 @@ func TestCloseAndWaitPreservesProcessWaiterStopError(t *testing.T) {
 		}
 	})
 
-	t.Run("pure nonzero exit is still a completed wait", func(t *testing.T) {
+	t.Run("default nonzero exit is still a completed wait", func(t *testing.T) {
 		client, err := StartWithLifecycle(context.Background(), "/bin/sh", root, nil,
-			nil, nil, nil, func(command *exec.Cmd) error { return command.Wait() })
+			nil, nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,5 +155,240 @@ done
 	defer client.Close()
 	if err := client.InitializeExperimental(ctx, "cicada-test", "CICADA test", "test"); err == nil {
 		t.Fatal("InitializeExperimental accepted an unsupported server version")
+	}
+}
+
+// These synthetic stdio transcripts exercise the official response/notification
+// tuple without a model, network, or native-runtime acceptance claim.
+func TestWaitTurnRequiresConfirmedOriginalTuple(t *testing.T) {
+	terminal := `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[{"type":"agentMessage","text":"ORIGINAL_DONE"}],"status":"completed"}}}`
+	for _, tc := range []struct {
+		name, event string
+		status      string
+		wantErr     bool
+	}{
+		{"foreign-thread", `{"method":"turn/completed","params":{"threadId":"thread-b","turn":{"id":"turn-a","items":[],"status":"completed"}}}`, "completed", false},
+		{"foreign-turn", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-b","items":[],"status":"failed"}}}`, "completed", false},
+		{"missing-thread", `{"method":"turn/completed","params":{"turn":{"id":"turn-a","items":[],"status":"completed"}}}`, "completed", false},
+		{"missing-turn", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"items":[],"status":"completed"}}}`, "completed", false},
+		{"missing-status", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[]}}}`, "completed", false},
+		{"missing-items", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","status":"completed"}}}`, "completed", false},
+		{"nonterminal-status", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[],"status":"inProgress"}}}`, "completed", false},
+		{"idle-is-not-completion", `{"method":"thread/status/changed","params":{"threadId":"thread-a","status":{"type":"idle"}}}`, "completed", false},
+		{"failed-original", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[],"status":"failed","error":{"message":"synthetic failure"}}}}`, "failed", false},
+		{"malformed-only-eof", `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[]}}}`, "failed", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wire := `{"id":1,"result":{"thread":{"id":"thread-a"}}}` + "\n" + `{"id":2,"result":{"turn":{"id":"turn-a","items":[],"status":"inProgress"}}}` + "\n" + tc.event + "\n"
+			if tc.name != "malformed-only-eof" {
+				wire += terminal + "\n"
+			}
+			c := &Client{stdin: discardWriteCloser{}, scanner: bufio.NewScanner(strings.NewReader(wire)), nextID: 1}
+			ctx := context.Background()
+			if _, err := c.Request(ctx, "thread/start", map[string]any{}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Request(ctx, "turn/start", map[string]any{"threadId": "thread-a"}); err != nil {
+				t.Fatal(err)
+			}
+			summary, status, err := c.WaitTurn(ctx)
+			if (err != nil) != tc.wantErr || status != tc.status {
+				t.Fatalf("status=%q err=%v", status, err)
+			}
+			if status == "completed" && summary != "ORIGINAL_DONE" {
+				t.Fatalf("wrong-turn/malformed event completed original turn: summary=%q", summary)
+			}
+		})
+	}
+}
+
+type discardWriteCloser struct{}
+
+func (discardWriteCloser) Write(p []byte) (int, error) { return io.Discard.Write(p) }
+func (discardWriteCloser) Close() error                { return nil }
+
+func TestWaitTurnRejectsUnconfirmedIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, response string
+		thread         string
+	}{
+		{"missing-turn-id", `{"id":2,"result":{"turn":{"items":[],"status":"inProgress"}}}`, "thread-a"},
+		{"different-thread-parameter", `{"id":2,"result":{"turn":{"id":"turn-a","items":[],"status":"inProgress"}}}`, "thread-b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{stdin: discardWriteCloser{}, scanner: bufio.NewScanner(strings.NewReader(`{"id":1,"result":{"thread":{"id":"thread-a"}}}` + "\n" + tc.response + "\n" + `{"method":"turn/completed","params":{"threadId":"thread-a","turn":{"id":"turn-a","items":[],"status":"completed"}}}` + "\n")), nextID: 1}
+			_, err := c.Request(context.Background(), "thread/start", map[string]any{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = c.Request(context.Background(), "turn/start", map[string]any{"threadId": tc.thread})
+			if err == nil {
+				_, _, err = c.WaitTurn(context.Background())
+			}
+			if err == nil {
+				t.Fatal("unconfirmed tuple allowed completion")
+			}
+		})
+	}
+}
+
+func TestStartFailurePreservesPartialProcessStopEvidence(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires /bin/sh and process groups")
+	}
+	for _, tc := range []struct {
+		name                 string
+		started, stopFailure bool
+	}{
+		{"before-process", false, false}, {"partial-start-confirmed-stop", true, false}, {"partial-start-unconfirmed-stop", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			script := filepath.Join(root, "app-server")
+			if err := os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 30\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			startFailure := errors.New("synthetic START_FAILED")
+			stopFailure := errors.New("synthetic STOP_UNVERIFIED")
+			var pid, waits int
+			var startedCommand *exec.Cmd
+			starter := func(cmd *exec.Cmd) error {
+				if tc.started {
+					if err := cmd.Start(); err != nil {
+						return err
+					}
+					pid = cmd.Process.Pid
+					startedCommand = cmd
+				}
+				return startFailure
+			}
+			var waiter ProcessWaiter = func(cmd *exec.Cmd) error {
+				waits++
+				err := cmd.Wait()
+				if tc.stopFailure {
+					return errors.Join(err, stopFailure)
+				}
+				return err
+			}
+			if !tc.stopFailure {
+				waiter = nil
+			}
+			client, err := StartWithLifecycle(context.Background(), "/bin/sh", root, nil, nil, nil, starter, waiter)
+			var evidence *StartError
+			if client != nil || !errors.As(err, &evidence) || !errors.Is(err, startFailure) || evidence.Started != tc.started {
+				t.Fatalf("partial-start evidence missing: client=%v err=%v", client, err)
+			}
+			if errors.Is(evidence.StopErr, stopFailure) != tc.stopFailure {
+				t.Fatalf("stop proof=%v", evidence.StopErr)
+			}
+			if tc.started && (pid <= 0 || startedCommand.ProcessState == nil) {
+				t.Fatal("actual process start/wait evidence missing")
+			}
+			if tc.stopFailure && waits != 1 {
+				t.Fatal("custom stop waiter was not called exactly once")
+			}
+			if !tc.stopFailure && waits != 0 {
+				t.Fatal("confirmed stop must use default Cmd.Wait")
+			}
+			if !tc.started && waits != 0 {
+				t.Fatal("waiter called before process start")
+			}
+			if !tc.stopFailure && evidence.StopErr != nil {
+				t.Fatalf("confirmed stop misclassified: %v", evidence.StopErr)
+			}
+		})
+	}
+}
+
+func TestCloseAndWaitAcceptsObservedCanceledProcessExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires /bin/sh and process groups")
+	}
+	root := t.TempDir()
+	script := filepath.Join(root, "app-server")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nwhile IFS= read -r line; do :; done\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	canceled := make(chan struct{})
+	var once sync.Once
+	starter := func(cmd *exec.Cmd) error {
+		cmd.Cancel = func() error { once.Do(func() { close(canceled) }); return nil }
+		return cmd.Start()
+	}
+	client, err := StartWithLifecycle(ctx, "/bin/sh", root, nil, nil, nil, starter, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("CommandContext cancellation was not observed")
+	}
+	if err := client.CloseAndWait(); err != nil {
+		t.Fatalf("actual zero-exit Wait/group stop misclassified: %v", err)
+	}
+	if client.process.ProcessState == nil || !client.process.ProcessState.Success() {
+		t.Fatal("actual successful process exit was not observed")
+	}
+}
+
+func TestCustomWaiterExitErrorPreservesStopFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires /bin/sh and process groups")
+	}
+	for _, partial := range []bool{false, true} {
+		name := "CloseAndWait"
+		if partial {
+			name = "partial-start"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			script := filepath.Join(root, "app-server")
+			if err := os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 30\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var observed *exec.ExitError
+			waiter := func(cmd *exec.Cmd) error {
+				err := cmd.Wait()
+				if !errors.As(err, &observed) {
+					return errors.Join(err, errors.New("expected actual custom ExitError"))
+				}
+				return err
+			}
+			var starter ProcessStarter
+			startFailure := errors.New("synthetic partial START_FAILED")
+			if partial {
+				starter = func(cmd *exec.Cmd) error {
+					if err := cmd.Start(); err != nil {
+						return err
+					}
+					return startFailure
+				}
+			}
+			client, err := StartWithLifecycle(context.Background(), "/bin/sh", root, nil, nil, nil, starter, waiter)
+			if partial {
+				var evidence *StartError
+				if client != nil || !errors.As(err, &evidence) || !evidence.Started || !errors.Is(err, startFailure) {
+					t.Fatalf("start evidence=%v", err)
+				}
+				if observed == nil || !errors.Is(evidence.StopErr, observed) {
+					t.Fatalf("custom ExitError was erased from StartError.StopErr: %v", evidence.StopErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = client.CloseAndWait()
+				if observed == nil || !errors.Is(err, observed) {
+					t.Fatalf("custom ExitError was erased from CloseAndWait: %v", err)
+				}
+				if !errors.Is(client.CloseAndWait(), observed) {
+					t.Fatal("idempotent stop lost custom error")
+				}
+			}
+		})
 	}
 }

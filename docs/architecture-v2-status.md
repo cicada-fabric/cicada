@@ -15,9 +15,16 @@ and later safety closeout recorded separately; G3 and eight Android online cases
 remain NOT_RUN. Current CLI sandbox zero and real Worker approval/result passed
 their isolated scopes; W2 used a private IPC fixture, whose stale diagnostic
 remains UNKNOWN, rather than the shipping Node binary. The clean36eb focused
-Link gate passed separately from the e2a aggregate. Development is **0.0.1-dev**;
+Link gate passed separately from the e2a aggregate. Development candidate is **0.0.2**;
 main/0.1.0 publication requires the user's actual acceptance and separate
 authorization. First-release acceptance remains **PARTIAL**.
+
+The [managed Node outcome checkpoint](node-native-outcome-validation.md)
+records source-scoped child-process and protocol RED/GREEN checks for actual
+starts, owner stop errors and exact Thread/Turn completion. Shared Control and
+sealed result checks passed separately before the final custom-waiter refinement.
+No new Native/Android run is implied; physical-resource STOP verification remains
+fail closed, and first-release acceptance remains PARTIAL.
 
 The [one-click test guide](test-automation.md) uses `scripts/test-architecture-v2-completion.sh`; default execution uses no paid models and preserves independent NOT_RUN/BLOCKED results, without claiming full v0.1 acceptance.
 

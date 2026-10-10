@@ -319,7 +319,14 @@ func acquireManagedMachineCodexWriter(ctx context.Context, job machineJob,
 }
 
 func executeMachineCodexWithApproval(ctx context.Context, job machineJob, workspace, responseFile string,
-	bridge machineApprovalBridge) (result machineJobResult) {
+	bridge machineApprovalBridge) machineJobResult {
+	return executeMachineCodexWithApprovalWaiter(ctx, job, workspace, responseFile, bridge, nil, nil)
+}
+
+// The per-call waiter keeps deterministic stop failures in tests out of Node
+// configuration. Production retains the app-server/resource owner's real wait.
+func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, workspace, responseFile string,
+	bridge machineApprovalBridge, testStarter codexapp.ProcessStarter, testWaiter codexapp.ProcessWaiter) (result machineJobResult) {
 	runCtx, cancel := context.WithCancel(ctx)
 	approvalIdentity := newMachineCodexApprovalIdentity()
 	var approvalErr error
@@ -330,16 +337,17 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 	var resourceExecution *nodelock.ResourceExecution
 	var resourceRequest nodelock.ResourceExecutionRequest
 	releaseWriter := true
+	started := false
+	var startStopErr error
 	defer func() {
 		approvalIdentity.abortTurn()
 		cancel()
-		var stopErr error
+		stopErr := startStopErr
 		if app != nil {
 			stopErr = app.CloseAndWait()
 			app = nil
 		}
 		if resourceExecution != nil {
-			result.providerStarted = true
 			if stopErr == nil {
 				stopErr = confirmMachineNodeResourceStop(resourceExecution, resourceRequest)
 			}
@@ -351,9 +359,12 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 		if stopErr != nil {
 			quarantineMachineNativeWriter(nativeWriter)
 			releaseWriter = false
-			if result.Status != "completed" && result.Error == "" {
-				result.Error = "Codex app-server stopped producing a business result; resource stop remains unverified"
-			}
+			// A business terminal event cannot substitute for the owner's actual
+			// process stop. Withhold success and retain the exact writer fence.
+			result.Status = "failed"
+			result.ThreadID = threadID
+			result.Summary = ""
+			result.Error = "Codex app-server stop is unconfirmed; native writer ownership is quarantined"
 		}
 		if result.ResourceStopState == machineResourceStopUnverified {
 			quarantineMachineNativeWriter(nativeWriter)
@@ -366,6 +377,9 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			}
 			_ = nativeWriter.Close()
 		}
+		// Record partial starts too, including a starter error after Process was
+		// established. Ordinary Workers use the same provider outcome fence.
+		result.providerStarted = started
 	}()
 	acquireWriter := func(nativeID string) error {
 		writer, err := acquireManagedMachineCodexWriter(runCtx, job, nativeID)
@@ -406,8 +420,8 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 		}
 		return map[string]any{"decision": decision}
 	}
-	var starter codexapp.ProcessStarter
-	var waiter codexapp.ProcessWaiter
+	var starter codexapp.ProcessStarter = testStarter
+	var waiter codexapp.ProcessWaiter = testWaiter
 	if hub, managed := machineHubFrom(runCtx); managed {
 		if job.executionID == "" || job.providerID == "" || job.leaseID == "" ||
 			(job.resourceID == "" && job.fencingEpoch != 0) {
@@ -434,10 +448,23 @@ func executeMachineCodexWithApproval(ctx context.Context, job machineJob, worksp
 			}
 		}
 	}
+	startProcess := starter
+	if startProcess == nil {
+		startProcess = func(command *exec.Cmd) error { return command.Start() }
+	}
+	starter = func(command *exec.Cmd) error {
+		err := startProcess(command)
+		started = command.Process != nil
+		return err
+	}
 	var err error
 	app, err = codexapp.StartAsyncWithLifecycle(runCtx, envOr("CICADA_CODEX_BIN", "codex"), workspace,
 		childEnv, nil, onRequest, starter, waiter)
 	if err != nil {
+		var startFailure *codexapp.StartError
+		if errors.As(err, &startFailure) {
+			startStopErr = startFailure.StopErr
+		}
 		return machineJobResult{Status: "failed", Error: err.Error()}
 	}
 	if _, err := app.Request(runCtx, "initialize", map[string]any{

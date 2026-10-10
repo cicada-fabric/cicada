@@ -4,16 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/codexapp"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
@@ -40,7 +45,7 @@ while IFS= read -r line; do
       if [ "${CICADA_TEST_APPROVAL_BEFORE_TURN_RESPONSE:-}" = 1 ]; then
         printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-thread-a","turnId":"native-turn-a","itemId":"native-item-a","startedAtMs":1,"availableDecisions":["accept","decline"],"command":"echo approved"}}'
       fi
-      printf '%s\n' '{"id":3,"result":{"turn":{"id":"native-turn-a","status":"inProgress"}}}'
+      printf '%s\n' '{"id":3,"result":{"turn":{"id":"native-turn-a","items":[],"status":"inProgress"}}}'
       if [ "${CICADA_TEST_APPROVAL_BEFORE_TURN_RESPONSE:-}" != 1 ]; then
         printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-thread-a","turnId":"native-turn-a","itemId":"native-item-a","startedAtMs":1,"availableDecisions":["accept","decline"],"command":"echo approved"}}'
       fi
@@ -49,10 +54,10 @@ while IFS= read -r line; do
       printf '%s\n' "$line" > "$CICADA_TEST_APPROVAL_CAPTURE"
       case "$line" in
         *'"decision":"accept"'*)
-          printf '%s\n' '{"method":"turn/completed","params":{"turn":{"status":"completed"},"item":{"type":"agentMessage","text":"APPROVED_DONE"}}}'
+          printf '%s\n' '{"method":"turn/completed","params":{"threadId":"native-thread-a","turn":{"id":"native-turn-a","items":[{"type":"agentMessage","text":"APPROVED_DONE"}],"status":"completed"}}}'
           ;;
         *)
-          printf '%s\n' '{"method":"turn/completed","params":{"turn":{"status":"failed"}}}'
+          printf '%s\n' '{"method":"turn/completed","params":{"threadId":"native-thread-a","turn":{"id":"native-turn-a","items":[],"status":"failed"}}}'
           ;;
       esac
       ;;
@@ -555,8 +560,8 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 				t.Fatal("protocol fixture shape changed")
 			}
 			bodyEnd += bodyStart
-			turnBody := "      printf '%s\\n' '{\"id\":3,\"result\":{\"turn\":{\"id\":\"native-turn-a\",\"status\":\"inProgress\"}}}'\n" +
-				"      printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"status\":\"completed\"}}}'\n"
+			turnBody := "      printf '%s\\n' '{\"id\":3,\"result\":{\"turn\":{\"id\":\"native-turn-a\",\"items\":[],\"status\":\"inProgress\"}}}'\n" +
+				"      printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"native-thread-a\",\"turn\":{\"id\":\"native-turn-a\",\"items\":[],\"status\":\"completed\"}}}'\n"
 			script = script[:bodyStart] + turnBody + script[bodyEnd:]
 			if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 				t.Fatal("write owned protocol fixture")
@@ -576,7 +581,7 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 			}
 			result := executeMachineJobWithApproval(ctx, job, &machineApprovalBridge{})
 			if result.Status != "completed" || result.ThreadID != "native-thread-a" {
-				t.Fatal("wire fixture failed")
+				t.Fatalf("synthetic wire fixture failed: %#v", result)
 			}
 			data, err := os.ReadFile(wire)
 			if err != nil || len(data) > 65536 {
@@ -637,6 +642,152 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 			}
 			if !seenThread || !seenTurn {
 				t.Fatal("required requests not observed")
+			}
+		})
+	}
+}
+
+func TestManagedCodexOrdinaryRuntimeOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name                                string
+		started, completed, stopUnconfirmed bool
+		state                               string
+	}{
+		{"prestart-failure", false, false, false, nodeinbox.ProviderAdmissionFailed},
+		{"initialize-failure", true, false, false, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"turn-start-failure", true, false, false, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"partial-start-failure", true, false, false, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"completed-stop-unconfirmed", true, false, true, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"completed-custom-exit-error", true, false, true, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"partial-start-stop-unconfirmed", true, false, true, nodeinbox.ProviderAdmissionInjectionUncertain},
+		{"normal-stop", true, true, false, nodeinbox.ProviderAdmissionCompleted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			binary := filepath.Join(root, "app-server")
+			script := `#!/bin/sh
+set -eu
+while IFS= read -r line; do
+ case "$line" in
+  *'"method":"initialize"'*) printf '%s\n' '{"id":1,"result":{}}' ;;
+  *'"method":"thread/start"'*) printf '%s\n' '{"id":2,"result":{"thread":{"id":"runtime-thread"}}}' ;;
+  *'"method":"turn/start"'*)
+   printf '%s\n' '{"id":3,"result":{"turn":{"id":"runtime-turn","items":[],"status":"inProgress"}}}'
+   printf '%s\n' '{"method":"turn/completed","params":{"threadId":"runtime-thread","turn":{"id":"runtime-turn","items":[{"type":"agentMessage","text":"SYNTHETIC_DONE"}],"status":"completed"}}}' ;;
+ esac
+done
+`
+			if tc.name == "completed-custom-exit-error" {
+				script += "exec sleep 30\n"
+			}
+			if tc.name == "initialize-failure" {
+				script = strings.Replace(script, `{"id":1,"result":{}}`, `{"id":1,"error":{"code":-1,"message":"synthetic init failure"}}`, 1)
+			}
+			if tc.name == "turn-start-failure" {
+				script = strings.Replace(script, `{"id":3,"result":{"turn":{"id":"runtime-turn","items":[],"status":"inProgress"}}}`, `{"id":3,"error":{"code":-1,"message":"synthetic turn failure"}}`, 1)
+			}
+			if tc.started {
+				if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("CICADA_CODEX_BIN", binary)
+			t.Setenv("CICADA_CODEX_MODEL", "synthetic-no-model")
+			hub := machineHubContext{HubID: "synthetic-hub", NodeID: "synthetic-node", WriterRoot: filepath.Join(root, "writers"), WriterScope: "synthetic-account"}
+			ledger, err := nodeinbox.OpenProviderAdmissionLedger(filepath.Join(root, "provider.sqlite3"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ledger.Close()
+			hub.ProviderAdmissions = ledger
+			ctx, cancel := context.WithTimeout(withMachineHubContext(context.Background(), hub), 5*time.Second)
+			defer cancel()
+			request := nodeinbox.ProviderAdmissionRequest{ExecutionID: "synthetic-execution", ProviderID: "codex", AdmissionIntent: strings.Repeat("a", 64)}
+			admission, err := ledger.AdmitProviderAttempt(ctx, request)
+			if err != nil || !admission.Admitted {
+				t.Fatalf("admission=%#v err=%v", admission, err)
+			}
+			job := machineJob{MachineID: hub.NodeID, Harness: "codex", Attempt: 1, executionID: request.ExecutionID, providerID: request.ProviderID, providerAttempt: admission.Attempt, leaseID: "synthetic-lease"}
+			if tc.name == "partial-start-stop-unconfirmed" {
+				job.ThreadID = "runtime-thread"
+			}
+			var startCalls, startedPID int
+			starter := func(cmd *exec.Cmd) error {
+				startCalls++
+				err := cmd.Start()
+				if cmd.Process != nil {
+					startedPID = cmd.Process.Pid
+				}
+				if err == nil && strings.HasPrefix(tc.name, "partial-start-") {
+					return errors.New("synthetic partial start failure")
+				}
+				return err
+			}
+			var waiter codexapp.ProcessWaiter
+			var waitedPID int
+			if tc.stopUnconfirmed {
+				waiter = func(cmd *exec.Cmd) error {
+					waitedPID = cmd.Process.Pid
+					waitErr := cmd.Wait()
+					if tc.name == "completed-custom-exit-error" || tc.name == "partial-start-stop-unconfirmed" {
+						return waitErr
+					}
+					return errors.Join(waitErr, errors.New("synthetic STOP_UNVERIFIED"))
+				}
+			}
+			quarantinedMachineNativeWriters.Lock()
+			previousLocks := make(map[*nodelock.NativeWriterLock]bool)
+			for _, w := range quarantinedMachineNativeWriters.locks {
+				previousLocks[w] = true
+			}
+			quarantinedMachineNativeWriters.Unlock()
+			response := filepath.Join(root, "response")
+			result := executeMachineCodexWithApprovalWaiter(ctx, job, root, response, machineApprovalBridge{}, starter, waiter)
+			if startCalls != 1 || (startedPID > 0) != tc.started {
+				t.Fatalf("actual START callback=%d pid=%d", startCalls, startedPID)
+			}
+			if result.providerStarted != tc.started || (result.Status == "completed") != tc.completed {
+				t.Fatalf("false lifecycle result: %#v", result)
+			}
+			if !tc.completed && result.Summary != "" {
+				t.Fatal("failed lifecycle retained successful business summary")
+			}
+			if tc.stopUnconfirmed {
+				if waitedPID <= 0 || result.Error == "" {
+					t.Fatal("actual process wait/stop failure evidence missing")
+				}
+				lockCtx, stop := context.WithTimeout(withMachineHubContext(context.Background(), hub), 50*time.Millisecond)
+				defer stop()
+				if writer, err := acquireManagedMachineCodexWriter(lockCtx, job, "runtime-thread"); err == nil {
+					writer.Close()
+					t.Fatal("unconfirmed stop released native writer")
+				}
+				// Only this test's exact quarantine is released after the assertion.
+				quarantinedMachineNativeWriters.Lock()
+				for i, w := range quarantinedMachineNativeWriters.locks {
+					if !previousLocks[w] && w.CheckCurrent() == nil {
+						w.Close()
+						quarantinedMachineNativeWriters.locks = append(quarantinedMachineNativeWriters.locks[:i], quarantinedMachineNativeWriters.locks[i+1:]...)
+						break
+					}
+				}
+				quarantinedMachineNativeWriters.Unlock()
+			} else if tc.started && tc.name != "initialize-failure" && tc.name != "partial-start-failure" {
+				writer, err := acquireManagedMachineCodexWriter(ctx, job, "runtime-thread")
+				if err != nil {
+					t.Fatalf("writer not released after actual stop: result=%#v err=%v", result, err)
+				}
+				writer.Close()
+			}
+			if err := recordMachineNodeProviderOutcome(ctx, job, result); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := ledger.InspectProviderAttempt(ctx, request)
+			if err != nil || saved.State != tc.state || saved.Retryable {
+				t.Fatalf("provider state=%#v err=%v", saved, err)
 			}
 		})
 	}

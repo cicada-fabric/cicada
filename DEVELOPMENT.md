@@ -5,7 +5,7 @@
 Use `dev` for active development; `main` is currently a public placeholder and
 is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
 [current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
-The current development source is **0.0.1-dev**, Hub schema **59**, Client contract
+The current development source is **0.0.2**, Hub schema **59**, Client contract
 **client-hub-v1.6.4**, encrypted wire **1**, catalog **55**. Architecture v2.3 is
 the adopted specification, independent of these versions. Confirm actual
 source/dirty state and build provenance before attributing a test or artifact.

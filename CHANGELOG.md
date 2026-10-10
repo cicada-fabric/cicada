@@ -5,7 +5,25 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
-## 0.0.1-dev — unreleased development
+## 0.0.2 — unreleased development candidate
+
+### 2026-10-10 managed Node runtime outcomes
+
+Ordinary Codex app-server execution now records actual process starts, including
+partial starts. Unconfirmed owner stop withholds successful Worker results and
+retains the native writer fence. Turn completion must match the original native
+Thread/Turn and contain the required terminal fields; foreign or malformed
+notifications cannot complete it. Custom owner waiter errors remain intact.
+
+[Scoped RED/GREEN validation](docs/node-native-outcome-validation.md) records
+real child-process and encrypted protocol tests, retained fixture failures, and
+separate shared Control/sealed result checks. No new real Native, Android or
+model acceptance is claimed. Physical resources still require an independent
+trusted STOP verifier. Wire 1, contract 1.6.4, schema 59 and 55-operation catalog
+are unchanged. Version marks a deliverable checkpoint, not every Git commit;
+main/0.1.0 publication still requires user deployment acceptance and authorization.
+
+## Historical 0.0.1-dev — unreleased development
 
 ### 2026-10-10 managed reviewer and current evidence
 
@@ -13,7 +31,7 @@ Managed Worker thread start/resume and every turn start explicitly select the
 `user` approval reviewer, keeping human Control approval independent of inherited
 auto-review configuration. Actual serialized RPC capture covers new and resumed
 Threads; native identity, cancellation and stale-attempt rules are unchanged.
-Current development/build/plugin defaults are 0.0.1-dev. Continue 0.0.x on `dev`
+At c25, development/build/plugin defaults were 0.0.1-dev. Continue 0.0.x on `dev`
 until user acceptance and separate authorization for main/initial 0.1.0 release;
 historical versions, frozen artifacts and client-hub-v1.6.4 remain unchanged.
 
