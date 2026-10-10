@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finite eight-case Client test loop for the frozen e2a1908 APK pair.
+"""Finite eight-case Client test loop for the frozen v1.6.5 APK pair.
 
 The Core parent supplies public files and owns signing, opaque transport,
 restarts and separate-session reconciliation. This module does not start a
@@ -45,10 +45,10 @@ PLAN_SCHEMA = 'cicada.client-v164-recovery-loop-plan.v2'
 GO_SCHEMA = 'cicada.client-v164-recovery-loop-go.v1'
 REQUEST_SCHEMA = 'cicada.client-v164-recovery-loop-request.v1'
 REPLY_SCHEMA = 'cicada.client-v164-recovery-loop-reply.v1'
-APP_SHA = '3af7b674c8daaaff4fc4442d13a2b30ad069d5195eed0c90b9b5ebcd754601f9'
-TEST_SHA = '243922e556170dff6dfcbbe6840a80f32f37727a56421ed9016652dc962297ae'
-BUILD_COMMIT = '9b56832c9701b0ba469d8703fdf61611e0208f98'
-BUILD_INPUT_SHA = '8d26a0029dacc957607293e015bf4e6732af4a73b046556457df2446adfac629'
+APP_SHA = 'e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745'
+TEST_SHA = '7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29'
+BUILD_COMMIT = '1151b06e04b172de9c7b5989ffec1318e58bf862'
+BUILD_INPUT_SHA = '4e80a1f0a4e7741fe4a2f3da82dddc85bb1f978f73a6534977a321ec32af2558'
 DRIVERS = (
     'v164-link-recovery-loop.py', 'v164-recovery-loop-budget.py', 'v164-frozen-joint-inputs.py',
     'v164-link-consent-android.py', 'v164-android-deterministic.py',
@@ -299,7 +299,7 @@ def validate_plan(plan):
     inputs.validate_apk_pins(pins)
     require(pins['app_sha256'] == APP_SHA and pins['test_sha256'] == TEST_SHA,
             'loop requires the immutable application/test APK pair')
-    require(pins['client_build_commit'] == BUILD_COMMIT and pins['client_build_dirty'] is True and
+    require(pins['client_build_commit'] == BUILD_COMMIT and pins['client_build_dirty'] is False and
             pins['client_input_sha256'] == BUILD_INPUT_SHA, 'immutable APK build attribution differs')
     require(isinstance(plan['cases'], list) and len(plan['cases']) == 8, 'exactly eight cases required')
     pairs, case_ids, run_ids, roots = set(), set(), set(), set()

@@ -20,18 +20,44 @@ and the actual immutable APK hashes are sealed in
 No online or model run is implied. Joint7's four KEY passes, NONE failure and
 three unrun cases remain attributed solely to its old image and APKs.
 
-Root coordination requirements: provide the current-source compiled Link helper,
-fault driver and reconciliation binary with build-image/source/compiler receipts;
-then freeze the corresponding Parent/adapter/interface/freeze and QA files.
-The old e2a/73ec/54d helper pins are historical and cannot authorize this run.
-The supplied Client argv template is explicitly **NOT_GO**, with Root-owned
-plan, hashes, control FD and Master placeholders. The retained test namespace
-uses `v164-` run IDs and existing selector names; this does not identify the
-production contract. Preserve the original 82 requests, eight fresh cases,
-TARGET-first/SOURCE-last enrollment, no SOURCE reselection during recovery,
-25 callback fields, 11 NONE policy fields and all absolute budgets.
+### Joint8 host coordination delivery
 
-## Registered Owner policy-signing lifecycle: offline v1.6.5 candidate
+The V5 consumer now pins Root's actual c688/v1.6.5 Parent, adapter, interface,
+freeze and offline QA, the five newly compiled helpers, and the new Root APK
+endorsement. The final hash-only delivery is
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint8-consumer-20261010/DELIVERY.NONAUTH.json`.
+It seals the successor clean Client source, all 12 actual driver hashes, full
+source inventory, Root Parent template and argv. The APK producer remains clean
+`1151b06e04b172de9c7b5989ffec1318e58bf862`; this host-only checkpoint does not
+rebuild or relabel those APKs. App SHA-256:
+`e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745`;
+test SHA-256:
+`7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29`.
+
+Scoped Docker validation: 38 relevant Python tests and 14 actual source/hash
+checks **PASS**, exit 0. The old consumer rejects the new runner at
+`READY_RUNNER`; its expected rejection is recorded separately. The first
+scoped unit run failed one stale reconcile-pin assertion and is retained.
+The new guard pass includes all five binary hashes, current compile receipts,
+Root endorsement, final V5 source-map/QA, and 957 Core Git inputs/modes.
+No Core helper or Parent was executed by Client. The preparation metadata
+is **NONAUTH** and the supplied template contains no approval or expiry.
+
+Reserved batch: `v164-e2a1908-joint8-20261010`. Root must create the exact fresh
+source-bound config and a new Master before running the sole Parent. Preserve
+the original 82 requests, eight fresh cases, actual TARGET Android enrollment
+first and SOURCE last, then no SOURCE reselection through FINISH_CASE. Keep
+25 callback fields, 11 NONE fields and the existing absolute budgets.
+Independent Go TARGET readonly evidence remains separately attributed.
+All v1.6.5 Android runtime cases, physical Android and public HTTPS are
+**NOT_RUN**. Old e2a/73ec/54d evidence and joint7 KEY passes cannot authorize or
+certify this batch. The retained `v164-` IPC namespace is not a product version.
+
+## Historical registered Owner policy-signing candidate: e3d26f8
+
+The following records the earlier source-only candidate stage. The current
+v1.6.5 repin and APK/host delivery above supersede its preparation limits;
+its original tests, failures and runtime attribution remain unchanged.
 
 Root authorized a source-only candidate for the proposed extension of
 `link.review_policy_preview`: the Client must send the independently selected

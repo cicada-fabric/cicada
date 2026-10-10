@@ -120,7 +120,7 @@ source attribution.
 | New fresh NONE preparation/signing on Android | **NOT_RUN** |
 | Independent opposite-Owner reconciliation | **NOT_RUN** |
 | Physical Android / public HTTPS / iOS | **NOT_RUN** |
-| Current-source helper/Parent freeze | **BLOCKED**, awaiting Root delivery |
+| Current-source helper/Parent freeze | **PASS**, offline source/hash verification only |
 
 Core's five-event source-scoped gate used its separately built ae9d4a0 Hub,
 not shipping b7bc. Its PASS cannot be reported as Android PASS or as a runtime
@@ -129,12 +129,60 @@ NONE signer predicate. Joint7's four KEY passes retain old d8855e3/e2a/APK
 attribution; NONE-response-loss remains failed/unknown and the other three
 NONE cases remain unrun in that historical batch.
 
-Root must provide fresh source/image/binary/compiler pins for the helper,
-fault proxy and reconciliation tool, plus the compatible Parent source set.
-Historical host drivers are inventoried as historical bytes and remain
-fail closed on their old pins. No old 73ec build image, 54d reconcile binary
-or compiler receipt is accepted as v1.6.5 evidence. The new argv template
-contains only placeholders and **NOT_GO**; it cannot authorize a run.
+## Joint8 current-source host consumer
+
+The actual V5 delivery is pinned under Core's
+`client-delivery-v165-c6887f4-20261010/joint-preparation`. Its legacy fixture
+namespace stays independent from product v1.6.5. The final Parent freeze
+binds the current compiled-source references and Root APK endorsement; the
+compiled-readiness record retains the pre-endorsement adapter's source
+attribution. Materialization changed only its APK endorsement constant.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `joint-parent-v5.py` | `1c6370701ab793b390e364d56ac18a8cb60cf4ca4e1b568e56fafab1e3880b01` |
+| `joint-adapter-parent-ready-v5.py` | `211ec899ff9ba62ed56d66b13d0de8cd56c8aafd232e20be8ed14c76a10482d5` |
+| `JOINT-PARENT-V5-INTERFACE.NONAUTH.md` | `eafb6ca987a5368ae9d04a9bf17d43fe15caaa36896cec4be3a9445ab2aa9e0d` |
+| `JOINT-PARENT-V5-FREEZE.NONAUTH.json` | `33cc0d315f876d5da3187ee17548b1457b0a0af0ac3e816f6cbc6577dba50eb4` |
+| `JOINT-PARENT-V5-FINAL-QA.NONAUTH.json` | `fd96eb975fbf969ec88cf3f9604769fa7fa52dfb408315a897144d3abd38f3b3` |
+| Root-endorsed APK pins | `fae3c7e442335369af39f0a35bc2dac95ae3cab591a2b2597b9d45f053cb03be` |
+| Root compiled-helper review | `3c4f5795335c18e56adab3d96d39aec24b6e93e1c88e5ee820b2079403d163c8` |
+| Base compiler receipt | `d7ef12062ee1523faf19d7132f8d50fa28209198fc64c013c48adbb97566a256` |
+| Flat-signer compiler receipt | `f11ece4f9d49c33bd426b03624f57ba2e4b13a9d3193313d0130af5b1ddf4f32` |
+| Reconcile binary | `e0fddfb7580542e93b4a8ff93eabf9a39903f787b6034bce6cc7efb3e748c3d7` |
+| Reconcile compiler receipt | `728bcdc39eb25189c4ac465bec5434d2847e0d1ac308195eb1a692ff1d4f0197` |
+
+Consumer evidence root:
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint8-consumer-20261010`.
+The final `DELIVERY.NONAUTH.json` seals clean host source, all 12 actual drivers,
+full input inventory, Root Parent template and argv; it is not a Master or Grant.
+APK production remains clean `1151b06e04b172de9c7b5989ffec1318e58bf862`, with app
+SHA-256 `e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745` and
+test SHA-256 `7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29`.
+Current host source is separately attributed; no second APK build is implied.
+
+Commands use the same immutable builder, `--network none`, a read-only source
+mount and finite 180-second stage timeout. Exact argv, tested input hashes,
+logs, elapsed time and owned-container absence are recorded per stage.
+
+| Command from consumer evidence root | Exit | Actual scope |
+| --- | --- | --- |
+| `python3 run-scoped.py historical-red` | `0` | Expected old-source `READY_RUNNER` rejection |
+| `python3 run-scoped.py unit` | `1` | 38 tests attempted; one stale reconcile-pin assertion, preserved |
+| `python3 run-scoped.py unit-green` | `0` | 38 relevant Python tests **PASS** |
+| `python3 run-scoped.py guards` | `0` | 14 actual source/hash checks **PASS** |
+
+Green scope includes the exact V5 seven-file map, QA joins, Root preparation
+references, current runner, stale V4/APK-HOLD refusal, strict loopback URL,
+current clean APK provenance, ordered eight-case plan and bounded supervisor.
+The actual guard pass hashes all five binaries, joins current compiler receipts
+and endorsement, and verifies all 957 fixed Core Git inputs/modes. It executes
+no Core code, reads no database and records no proof body or credential.
+No old 73ec image, 54d binary or compiler receipt is accepted as current evidence.
+New encrypted `session.capabilities` and every Android case remain **NOT_RUN**.
+
+Root alone supplies the final source-bound config and fresh Master for reserved
+batch `v164-e2a1908-joint8-20261010`. Templates have no GO, approval or expiry.
 
 Retain the original 82 requests and 25/11 callback fields. Each of eight cases
 creates real TARGET Android enrollment first, SOURCE last, then keeps SOURCE

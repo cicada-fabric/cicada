@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only validator for the frozen e2a1908 Core/Client joint interface."""
+"""Read-only validator for the frozen c6887f4/v1.6.5 Core/Client joint interface."""
 
 import base64
 import datetime as dt
@@ -17,41 +17,58 @@ import time
 sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
-CORE_PREP = Path('/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation')
-PARENT_PATH = CORE_PREP / 'joint-parent-v4.py'
-ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v4.py'
-INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V4-INTERFACE.NONAUTH.md'
-FREEZE_PATH = CORE_PREP / 'JOINT-PARENT-V4-FREEZE.NONAUTH.json'
-QA_RECEIPT_PATH = CORE_PREP / 'JOINT-PARENT-V4-FINAL-QA.NONAUTH.json'
-QA_RECEIPT_SHA256 = '6e11241b1f429ed2ccd8d0d5195bcf10b6bb5cce7b02d976743b57b7fa724d77'
+CORE_PREP = Path('/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation')
+PARENT_PATH = CORE_PREP / 'joint-parent-v5.py'
+ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v5.py'
+INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V5-INTERFACE.NONAUTH.md'
+FREEZE_PATH = CORE_PREP / 'JOINT-PARENT-V5-FREEZE.NONAUTH.json'
+QA_RECEIPT_PATH = CORE_PREP / 'JOINT-PARENT-V5-FINAL-QA.NONAUTH.json'
+QA_RECEIPT_SHA256 = 'fd96eb975fbf969ec88cf3f9604769fa7fa52dfb408315a897144d3abd38f3b3'
 RECONCILE_PATH = CORE_PREP / 'reconcile-final-compile-format-2/bin/cicada-link-joint-reconcile'
 RECONCILE_RECEIPT_PATH = CORE_PREP / 'reconcile-final-compile-format-2/PREPARATION-RESULT.NONAUTH.json'
-RECONCILE_SHA256 = '54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3'
-RECONCILE_RECEIPT_SHA256 = '96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e'
+RECONCILE_SHA256 = 'e0fddfb7580542e93b4a8ff93eabf9a39903f787b6034bce6cc7efb3e748c3d7'
+RECONCILE_RECEIPT_SHA256 = '728bcdc39eb25189c4ac465bec5434d2847e0d1ac308195eb1a692ff1d4f0197'
 
 FROZEN_ARTIFACT_HASHES = {
-    'parent_sha256': 'd5320c7698c26696eb8e20d543ad7f9dab377a9500ffcf03ed3fbf7c8ff70600',
-    'adapter_sha256': '907d12a63663543542bb58df83d74cec95e054593a6f8d214498cbc41f2860e4',
-    'interface_sha256': 'bfbdee608e7d94da42cee16ec38a6f9ce2b14ce1f637886bbf12b7d2a979be06',
-    'freeze_sha256': '861624c34369564950a486e07a846e457d31056ce4b5cf7124384aebfa7071f2',
+    'parent_sha256': '1c6370701ab793b390e364d56ac18a8cb60cf4ca4e1b568e56fafab1e3880b01',
+    'adapter_sha256': '211ec899ff9ba62ed56d66b13d0de8cd56c8aafd232e20be8ed14c76a10482d5',
+    'interface_sha256': 'eafb6ca987a5368ae9d04a9bf17d43fe15caaa36896cec4be3a9445ab2aa9e0d',
+    'freeze_sha256': '33cc0d315f876d5da3187ee17548b1457b0a0af0ac3e816f6cbc6577dba50eb4',
 }
 FROZEN_PREPARATION_TEST_HASHES = {
-    'test_joint_parent_v4_snapshot.py': '9a1f0dfe6603f5a39bea1571f09d067d8e6c872079edaa17c5dccfd3e5e0f559',
+    'test_joint_parent_v5_snapshot.py': 'dcad02d8919a9e875c81b4fa31c900bf14420cf0165b2d221164c5df016c95b1',
 }
 
-CORE_REVISION = 'e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59'
-HUB_IMAGE_ID = 'sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01'
-TEST_IMAGE_ID = 'sha256:73ec018a026a27fb04ec0c651bafa976ebbed71efca87d302d0c7c4c2e59ba6a'
-SOURCE_FINGERPRINT = '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5'
-CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
-CONTRACT_REVISION = 'client-hub-v1.6.4'
+CORE_REVISION = 'c6887f46c8412e648b8e8e68da371acd80e0b87e'
+HUB_IMAGE_ID = 'sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2'
+TEST_IMAGE_ID = 'sha256:fa314f2b3f54d269bca963edae675fa0142d0d2bbf833c24170aafaba25c4477'
+SOURCE_FINGERPRINT = 'cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6aefaf1ef'
+CATALOG_SHA256 = 'a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9'
+CONTRACT_REVISION = 'client-hub-v1.6.5'
 WIRE_VERSION = 1
-RUN_ID = 'v164-e2a1908-joint7-20261010'
+RUN_ID = 'v164-e2a1908-joint8-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
-JOINT_HELPER_SHA256 = 'f9a9ce392d67ab3a2c8451546884dbbc8c78d27a3c409e60e32ac5a3df3254c8'
-RECOVERY_HELPER_SHA256 = 'cf995108fa72b9bde1c65261da0bb766961ea7afd6b8d03124e3bc3e921be61b'
-HELPER_SOURCE_SHA256 = 'ff72bf85df580f2b6d35274c721d0bdf1c1fe832eb6c195e211045bc52f37cb8'
-PREPARATION_RECEIPT_SHA256 = '77877867ee986b1bef429125eefdb98958d671c2b7e0cc25afcab02393619353'
+JOINT_HELPER_SHA256 = 'b8aae1f6ceed30f1e65e5a3d9650a0057562b37a4d67edf64bb1844aaeecfaad'
+RECOVERY_HELPER_SHA256 = 'e2289a6443d928c92be358a5ca3e3eac9d4c083986abf9ac5e920e2e6a97ae80'
+HELPER_SOURCE_SHA256 = '23bef464c874867f931b9080f4fab428496825e30f631d022155fdefc7334bc4'
+PREPARATION_RECEIPT_SHA256 = 'd7ef12062ee1523faf19d7132f8d50fa28209198fc64c013c48adbb97566a256'
+
+# Hash-only references to the actual current offline build and Root endorsement.
+# These records provide provenance, never a Master or Owner signing authority.
+PREPARATION_REFERENCES = {
+    'actual_compiler_review': {
+        'path': str(CORE_PREP / 'ROOT-COMPILED-HELPERS.NONAUTH.json'),
+        'sha256': '3c4f5795335c18e56adab3d96d39aec24b6e93e1c88e5ee820b2079403d163c8',
+    },
+    'current_compiled_tuple_reference': {
+        'path': str(CORE_PREP / 'CORE-COMPILED-READINESS.V5.NONAUTH.json'),
+        'sha256': 'd400dc35b1952c62c75337f03b5027ce847c0a93c8748219ed0d89c9b63574e7',
+    },
+    'apk_endorsement': {
+        'path': str(CORE_PREP / 'ROOT-APK-PINS.ENDORSED.private.json'),
+        'sha256': 'fae3c7e442335369af39f0a35bc2dac95ae3cab591a2b2597b9d45f053cb03be',
+    },
+}
 
 CASES = tuple((operation, mode)
     for operation in ('link.key_grant', 'link.review_policy_grant')
@@ -253,11 +270,11 @@ def verify_auxiliary():
 
 def verify_artifacts():
     """Pin the Parent delivery and reconciliation auxiliary; execute no Core code."""
-    _need(PARENT_PATH.name == 'joint-parent-v4.py', 'PARENT_PATH')
-    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v4.py', 'ADAPTER_PATH')
-    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V4-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
-    _need(FREEZE_PATH.name == 'JOINT-PARENT-V4-FREEZE.NONAUTH.json', 'FREEZE_PATH')
-    _need(QA_RECEIPT_PATH.name == 'JOINT-PARENT-V4-FINAL-QA.NONAUTH.json' and
+    _need(PARENT_PATH.name == 'joint-parent-v5.py', 'PARENT_PATH')
+    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v5.py', 'ADAPTER_PATH')
+    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V5-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
+    _need(FREEZE_PATH.name == 'JOINT-PARENT-V5-FREEZE.NONAUTH.json', 'FREEZE_PATH')
+    _need(QA_RECEIPT_PATH.name == 'JOINT-PARENT-V5-FINAL-QA.NONAUTH.json' and
           QA_RECEIPT_PATH.parent == FREEZE_PATH.parent, 'QA_RECEIPT_PATH')
     parent_size, parent_sha = _hash_regular(
         PARENT_PATH, accepted_modes=(0o600,), maximum=2 * 1024 * 1024)
@@ -276,19 +293,19 @@ def verify_artifacts():
     _need(0 < len(freeze_raw) <= MAX_JSON_BYTES and
           freeze_sha == FROZEN_ARTIFACT_HASHES['freeze_sha256'], 'FREEZE_PIN')
     expected_sources = {
-        'JOINT-PARENT-V4-INTERFACE.NONAUTH.md': interface_sha,
-        'joint-adapter-parent-ready-v4.py': adapter_sha,
-        'joint-parent-v4.py': parent_sha,
+        'JOINT-PARENT-V5-INTERFACE.NONAUTH.md': interface_sha,
+        'joint-adapter-parent-ready-v5.py': adapter_sha,
+        'joint-parent-v5.py': parent_sha,
         **FROZEN_PREPARATION_TEST_HASHES,
     }
     expected_files = {str(FREEZE_PATH.parent / name): sha
                       for name, sha in expected_sources.items()}
     expected_files.update({
         str(QA_RECEIPT_PATH): QA_RECEIPT_SHA256,
-        str(FREEZE_PATH.parent / 'JOINT-PARENT-V4-SNAPSHOT-QA.private.log'):
-            '4f51e267721b3c0a7cb3354c57d679be0ac4233e1f93a1692d285490843a9382',
-        str(FREEZE_PATH.parent / 'JOINT-PARENT-V4-SNAPSHOT.patch'):
-            'c146f3c6af8eec2f17764e691fb4f7acc56e0b426f3c95471ecbacc924b9f631',
+        str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT-QA.private.log'):
+            '36e6c0b1f129292ea03afa6bb19bd15e98cfeee2edd4d025f174ab8be2f49ae7',
+        str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT.patch'):
+            '0cb0acb900e9fe1a1a1ecbaefa62c66282e66d6de82182c140f2d22f3b9f3299',
     })
     _, _, qa = _load_json(QA_RECEIPT_PATH, expected_sha256=QA_RECEIPT_SHA256)
     _exact(qa, {'AST', 'Runtime_Docker_model_calls', 'argv', 'elapsed_seconds',
@@ -302,11 +319,13 @@ def verify_artifacts():
           all(type(qa[key]) is int and qa[key] == value for key, value in counts.items()) and
           type(qa['elapsed_seconds']) in (int, float) and
           0 <= qa['elapsed_seconds'] < 10 and
-          qa['raw_output_path'] == str(FREEZE_PATH.parent / 'JOINT-PARENT-V4-SNAPSHOT-QA.private.log') and
+          qa['raw_output_path'] == str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT-QA.private.log') and
           qa['raw_output_sha256'] == expected_files[qa['raw_output_path']],
           'QA_RECEIPT_SCOPE')
     _need(freeze.get('status') == 'SOURCE_FROZEN_OFFLINE_PASS' and
           freeze.get('online') == 'NOT_GO' and freeze.get('files') == expected_files and
+          freeze.get('reserved_batch') == RUN_ID and
+          all(freeze.get(key) == value for key, value in PREPARATION_REFERENCES.items()) and
           freeze.get('operator_sources') == {
               PARENT_PATH.name: parent_sha, ADAPTER_PATH.name: adapter_sha} and
           freeze.get('event_count') == 82 and freeze.get('callback_fields') == 25 and

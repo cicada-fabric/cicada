@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independently inspect the frozen e2a1908 export; never run a Hub or Core helper.
+"""Independently inspect the frozen v1.6.5 export; never run a Hub or Core helper.
 
 The export is provenance, not Android acceptance. Image inspection reads only
 IDs and labels. Source verification reads the fixed Git tree and regular input
@@ -16,20 +16,20 @@ import tarfile
 
 
 PINS = {
-    'source_revision': 'e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59',
-    'contract_revision': 'client-hub-v1.6.4',
+    'source_revision': 'c6887f46c8412e648b8e8e68da371acd80e0b87e',
+    'contract_revision': 'client-hub-v1.6.5',
     'wire_version': 1,
-    'catalog_sha256': '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d',
+    'catalog_sha256': 'a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9',
     'source_dirty': False,
-    'source_fingerprint': '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5',
-    'bundle_sha256': 'bb54bdf34fb6fd4e9528a61e29a0b8cf7089b6f081da6f6d7b74d1c0d3d80568',
-    'build_metadata_sha256': 'e97274b78c56aba6c2adc827f10c4eb757a40576bad3768b404dfc85345a0d5a',
-    'hub_image_id': 'sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01',
-    'test_image_id': 'sha256:73ec018a026a27fb04ec0c651bafa976ebbed71efca87d302d0c7c4c2e59ba6a',
-    'hub_archive_sha256': 'a9eadeb1826a11711d512c3ec956db608b484a1bfe3b1cdea8cd7102aa1dd62a',
+    'source_fingerprint': 'cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6aefaf1ef',
+    'bundle_sha256': '37759169d0f776ab318a2cced01ac0ce557fba446980a5b3d112598dc72f50a4',
+    'build_metadata_sha256': '3a18caeebb5cba467e44b2bb319a92f49054ccd5771cc95603784ec5d2500b43',
+    'hub_image_id': 'sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2',
+    'test_image_id': 'sha256:fa314f2b3f54d269bca963edae675fa0142d0d2bbf833c24170aafaba25c4477',
+    'hub_archive_sha256': '2b9d35939b4ff059bfb75ade96e7d73cec4e586057fd9ee77ac5a7c45a0c9a15',
 }
-DELIVERY_SHA256 = '517eaa56464adf44eb27600a8197ff291d49e961718096ce7c17399e47fb5ef4'
-INVENTORY_SHA256 = '1367722edb705032e4584ba09f40566cdcd77f5205e3b8e8b9b10195f1648c16'
+DELIVERY_SHA256 = 'f159869f38d8a7a82525a6da4fdcd96de1e43213d4c3d5023b77a15b8758e911'
+INVENTORY_SHA256 = '8b8390984f1b09e14774fc135d376302cf09e96b33862110cadab442b821a387'
 INPUT_SCOPE = ['LICENSE', 'cicada-go', 'docker/Dockerfile.hub', '.dockerignore',
     'scripts/build-web-panel.sh', 'scripts/write-web-panel-manifest.py',
     'scripts/build-hub-image.sh', '.github/workflows/release.yml']
@@ -106,7 +106,7 @@ def verify_bundle(path):
 def verify_inventory(core, inventory):
     """Reproduce both digests and compare every input to the clean fixed Git tree."""
     rows = inventory['entries']
-    require(len(rows) == 954 and inventory['scope'] == INPUT_SCOPE, 'source scope changed')
+    require(len(rows) == 957 and inventory['scope'] == INPUT_SCOPE, 'source scope changed')
     paths = [bytes.fromhex(row['path_bytes_hex']) for row in rows]
     require(paths == sorted(set(paths)), 'source paths are unordered or duplicated')
     tree_raw = subprocess.check_output(['git', '-C', str(core), 'ls-tree', '-rz',
@@ -208,7 +208,7 @@ def verify(delivery, core):
     for name, expected in manifest['licenses'].items():
         require(file_digest(inside(delivery, name)) == expected, 'export license digest mismatch')
     images = {key: verify_image(PINS[key]) for key in ('hub_image_id', 'test_image_id')}
-    local_contract = Path(__file__).resolve().parents[2] / 'contracts/client-hub-v1.6.4-25bc586'
+    local_contract = Path(__file__).resolve().parents[2] / 'contracts/client-hub-v1.6.5-c6887f4'
     unchanged_vectors = {name: digest(raw) for name, raw in raw_files.items()
         if '/testdata/' in name and name.endswith('.json') and (local_contract / name).is_file() and
         file_digest(local_contract / name) == digest(raw)}

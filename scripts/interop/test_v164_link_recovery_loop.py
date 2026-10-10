@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline guards for the bounded v1.6.4 recovery loop and process runner.
+"""Offline guards for the bounded v1.6.5 recovery loop and process runner.
 
 Socket tests use only socketpair callbacks. The process-runner tests use a
 bounded Python argv and never invoke Docker, ADB, Hub/Core, or the network.
@@ -76,7 +76,7 @@ def recovery_plan_fixture(root: Path) -> tuple[dict[str, object], Path, tempfile
         **{key: inputs.delivery.PINS[key] for key in inputs.CORE_KEYS},
         "delivery_manifest_sha256": inputs.delivery.DELIVERY_SHA256,
         "client_build_commit": loop.BUILD_COMMIT,
-        "client_build_dirty": True,
+        "client_build_dirty": False,
         "client_input_sha256": loop.BUILD_INPUT_SHA,
         "app_sha256": loop.APP_SHA,
         "test_sha256": loop.TEST_SHA,
@@ -245,7 +245,7 @@ class PlanAndGoTests(unittest.TestCase):
                     **{key: loop.inputs.delivery.PINS[key] for key in loop.inputs.CORE_KEYS},
                     "delivery_manifest_sha256": loop.inputs.delivery.DELIVERY_SHA256,
                     "client_build_commit": loop.BUILD_COMMIT,
-                    "client_build_dirty": True,
+                    "client_build_dirty": False,
                     "client_input_sha256": loop.BUILD_INPUT_SHA,
                     "app_sha256": loop.consent.runner.F6_APP_SHA256,
                     "test_sha256": loop.consent.runner.F6_TEST_SHA256,
@@ -262,17 +262,17 @@ class PlanAndGoTests(unittest.TestCase):
                     **{key: loop.inputs.delivery.PINS[key] for key in loop.inputs.CORE_KEYS},
                     "delivery_manifest_sha256": loop.inputs.delivery.DELIVERY_SHA256,
                     "client_build_commit": loop.BUILD_COMMIT,
-                    "client_build_dirty": True,
+                    "client_build_dirty": False,
                     "client_input_sha256": loop.BUILD_INPUT_SHA,
                     "app_sha256": loop.APP_SHA,
                     "test_sha256": loop.TEST_SHA,
                 }
-                clean_relabel = copy.deepcopy(plan)
-                clean_relabel["apk_pins"] = write_private_json(
-                    root / "clean-relabel-pins.json",
-                    dict(correct_attribution, client_build_dirty=False))
+                dirty_relabel = copy.deepcopy(plan)
+                dirty_relabel["apk_pins"] = write_private_json(
+                    root / "dirty-relabel-pins.json",
+                    dict(correct_attribution, client_build_dirty=True))
                 with self.assertRaises(loop.LoopError):
-                    loop.validate_plan(clean_relabel)
+                    loop.validate_plan(dirty_relabel)
 
                 wrong_commit = dict(correct_attribution, client_build_commit="a" * 40)
                 wrong_commit_plan = copy.deepcopy(plan)

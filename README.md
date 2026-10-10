@@ -35,8 +35,9 @@ remain unchanged.
 The [v1.6.5 validation record](docs/client-hub-v1.6.5-c6887f4-validation.md)
 records artifact verification, scoped Docker offline tests and the fresh APK
 producer receipt. Android runtime, physical-device and public HTTPS acceptance
-are **NOT_RUN** for this version. Online recovery remains on hold until Root
-delivers newly compiled, source-matched helpers and a separate fresh Master.
+are **NOT_RUN** for this version. The V5 host consumer now pins the current
+compiled helpers, Root-endorsed APKs and the original 82-request joint8 plan.
+Online recovery remains on hold until a separate fresh Root Master.
 Historical v1.6.4 results retain their original source and APK attribution.
 
 ## Historical accepted Android baseline: v1.6.1
