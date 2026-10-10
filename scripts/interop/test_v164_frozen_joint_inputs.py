@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 from decimal import Decimal
 import hashlib
 import importlib.util
@@ -60,7 +61,7 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_parent_v3_boot_stage.py": "9d5e3f2de0fcdf6db4b46100cfd1476313237896288ce7e55a8e5ac4b7b16013",
         })
-        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint4-20261010")
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint5-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -100,7 +101,7 @@ class FinalConsumerPinTests(unittest.TestCase):
                 mock.patch.object(joint, "validate_ready", return_value={"fixture_public": fixture}):
             joint._validate_carrier_manifest(manifest, Path("/tmp/synthetic-case"), 0)
             for stale_run in ("v164-e2a1908-joint-20261010-0", "v164-e2a1908-joint2-20261010-0",
-                    "v164-e2a1908-joint3-20261010-0"):
+                    "v164-e2a1908-joint3-20261010-0", "v164-e2a1908-joint4-20261010-0"):
                 with self.subTest(run_id=stale_run), self.assertRaises(ValueError):
                     joint._validate_carrier_manifest(
                         dict(manifest, run_id=stale_run), Path("/tmp/synthetic-case"), 0)
@@ -277,6 +278,68 @@ class PublicMetadataTests(unittest.TestCase):
                 ("unexpected credential field", with_unexpected_private_field)):
             with self.subTest(label=label), self.assertRaises(ValueError):
                 joint._validate_client_setup(candidate, fixture, hub_ready)
+
+
+class FixtureBindingTests(unittest.TestCase):
+    @staticmethod
+    def fixture() -> dict[str, object]:
+        # Reuse structural, explicitly non-cryptographic public test documents.
+        # Nothing is written and no valid proof, private key or live Hub is used.
+        from test_v164_f6_ready import MainF6ReadyTest
+        builder = MainF6ReadyTest()
+        builder.root = Path('/tmp/synthetic-fixture-not-created')
+        builder.now = dt.datetime(2026, 10, 10, 12, tzinfo=dt.timezone.utc)
+        _config, _setup, value, _reference, _owned = builder._documents()
+        value['build'] = copy.deepcopy(joint._BUILD)
+        value['link']['direction'] = 'bidirectional'
+        for i, side in enumerate(('source', 'target')):
+            owner_id = f'{joint.RUN_ID}-{side}-0'
+            value['owners'][i]['owner_id'] = owner_id
+            value['networks'][i]['owner_id'] = owner_id
+            value['link'][side + '_owner_id'] = owner_id
+            value['reference_manifest'][side]['owner_id'] = owner_id
+            binding = value['bindings'][i]
+            layer = value['protocol_layers'][i]
+            layer['native_binding_id'] = binding['binding_id']
+            layer['native_binding_epoch'] = binding['epoch']
+        return value
+
+    def test_separate_network_access_and_native_bindings_pass(self) -> None:
+        value = self.fixture()
+        for layer, binding in zip(value['protocol_layers'], value['bindings']):
+            self.assertNotEqual(layer['network_access_binding_id'], binding['binding_id'])
+            self.assertNotEqual(layer['network_access_epoch'], binding['epoch'])
+        self.assertIs(joint._validate_fixture_public(value, 0), value)
+
+    def test_wrong_native_binding_id_and_epoch_are_rejected_on_either_side(self) -> None:
+        for i in range(2):
+            for field, replacement in (('native_binding_id', 'wrong-native-binding'),
+                    ('native_binding_epoch', 999), ('native_binding_epoch', True)):
+                value = self.fixture()
+                value['protocol_layers'][i][field] = replacement
+                with self.subTest(side=i, field=field, replacement=replacement), self.assertRaisesRegex(
+                        ValueError, '^FIXTURE_PROTOCOL_SCOPE$'):
+                    joint._validate_fixture_public(value, 0)
+
+    def test_endpoint_node_runtime_roles_and_grants_guards_remain(self) -> None:
+        for i in range(2):
+            for field, replacement in (('endpoint_id', 'wrong-endpoint'), ('node_id', 'wrong-node'),
+                    ('native_runtime', 'RUNNING'), ('group_membership_roles', ['monitor']),
+                    ('group_membership_grants', ['link.review'])):
+                value = self.fixture()
+                value['protocol_layers'][i][field] = replacement
+                with self.subTest(side=i, field=field), self.assertRaisesRegex(
+                        ValueError, '^FIXTURE_PROTOCOL_SCOPE$'):
+                    joint._validate_fixture_public(value, 0)
+
+    def test_network_access_id_epoch_and_expiry_are_checked_independently(self) -> None:
+        for field, replacement in (('network_access_binding_id', '../unsafe'),
+                ('network_access_epoch', 0), ('network_access_epoch', True),
+                ('network_access_epoch', '1'), ('network_access_expires_at', '2026-10-10T12:00:00+00:00')):
+            value = self.fixture()
+            value['protocol_layers'][0][field] = replacement
+            with self.subTest(field=field, replacement=replacement), self.assertRaises(ValueError):
+                joint._validate_fixture_public(value, 0)
 
 
 class CanonicalTimeTests(unittest.TestCase):

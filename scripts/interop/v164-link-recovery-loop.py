@@ -156,8 +156,14 @@ def failure_diagnostic(error, phase='BOOT'):
             sites.append({'file': path.name, 'function': code.co_name, 'line': trace.tb_lineno})
         trace = trace.tb_next
     guard = error.args[0] if len(error.args) == 1 and type(error.args[0]) is str else None
-    return {'source_sites': sites[-8:], 'guard_code': guard if guard in DIAGNOSTIC_GUARDS else METADATA_GUARDS.get(guard),
-            'phase': phase if phase in DIAGNOSTIC_PHASES else None}
+    diagnostic = {'source_sites': sites[-8:],
+                  'guard_code': guard if guard in DIAGNOSTIC_GUARDS else METADATA_GUARDS.get(guard),
+                  'phase': phase if phase in DIAGNOSTIC_PHASES else None}
+    checks = getattr(error, 'protocol_scope_checks', None)
+    if guard == 'FIXTURE_PROTOCOL_SCOPE' and type(checks) is dict and \
+            set(checks) == joint.FIXTURE_PROTOCOL_CHECKS and all(type(v) is bool for v in checks.values()):
+        diagnostic['guard_checks'] = dict(checks)
+    return diagnostic
 
 
 def field_shape(value, allowed):

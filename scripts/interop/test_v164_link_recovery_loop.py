@@ -1235,6 +1235,33 @@ class CleanupEvidenceTests(unittest.TestCase):
 
 
 class LoopFailureTests(unittest.TestCase):
+    def test_protocol_failure_exports_only_defined_boolean_predicates(self) -> None:
+        from test_v164_frozen_joint_inputs import FixtureBindingTests
+        expected = {'ENDPOINT_MATCH', 'NODE_MATCH', 'NATIVE_BINDING_ID_MATCH',
+                    'NATIVE_BINDING_EPOCH_MATCH', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
+                    'NO_MEMBERSHIP_GRANTS'}
+        value = FixtureBindingTests.fixture()
+        value['protocol_layers'][0]['native_binding_epoch'] += 1
+        try:
+            loop.joint._validate_fixture_public(value, 0)
+        except ValueError as error:
+            diagnostic = loop.failure_diagnostic(error, 'PREPARING')
+        else:
+            self.fail('wrong native epoch must be rejected')
+        self.assertEqual(diagnostic['guard_code'], 'FIXTURE_PROTOCOL_SCOPE')
+        self.assertEqual(set(diagnostic['guard_checks']), expected)
+        self.assertTrue(all(type(v) is bool for v in diagnostic['guard_checks'].values()))
+        self.assertFalse(diagnostic['guard_checks']['NATIVE_BINDING_EPOCH_MATCH'])
+        self.assertTrue(all(v for k, v in diagnostic['guard_checks'].items()
+                            if k != 'NATIVE_BINDING_EPOCH_MATCH'))
+        for invalid in (dict(diagnostic['guard_checks'], UNDEFINED_FIELD=True),
+                        dict(diagnostic['guard_checks'], NODE_MATCH='synthetic-private-value')):
+            error = ValueError('FIXTURE_PROTOCOL_SCOPE')
+            error.protocol_scope_checks = invalid
+            public = loop.failure_diagnostic(error)
+            self.assertIsNone(public.get('guard_checks'))
+            self.assertNotIn('synthetic-private-value', json.dumps(public))
+
     def test_diagnostic_codes_are_predefined_and_match_the_closed_guard_format(self) -> None:
         codes = loop.DIAGNOSTIC_GUARDS | set(loop.METADATA_GUARDS.values())
         for code in codes:

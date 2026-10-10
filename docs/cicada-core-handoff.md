@@ -1,5 +1,35 @@
 # CICADA Client integration handoff
 
+## Joint5: precise native SessionBinding join correction
+
+Joint4 returned `FIXTURE_PROTOCOL_SCOPE / PREPARING`, with case 0
+`UNKNOWN` and seven cases `NOT_RUN`. Its original result and Root-reported
+cleanup remain historical evidence. The fixed helper exports independent
+Network access and native binding IDs: `Joined.BindingID` and
+`NativeBinding.ID`. The manifest's `bindings` refer to the latter.
+The Client had incorrectly compared Network access with SessionBinding.
+
+The validator now joins `native_binding_id` and integer `native_binding_epoch`
+to both the binding row and manifest. Network access keeps independent
+safe-ID, positive integer epoch and canonical expiry checks. Endpoint,
+Node, `NOT_RUN`, member-only roles and empty grants checks remain intact.
+On protocol-scope rejection, seven predefined predicate names may accompany
+boolean results only; unknown fields and non-booleans are excluded. These
+are host diagnostics, not Parent callback or production API fields.
+
+Fresh batch: `v164-e2a1908-joint5-20261010`. Three focused regressions
+were RED against the previous bytes (exit 1); 38 scoped network-none Docker
+tests passed after correction (exit 0). Structural synthetic fixtures do
+not constitute cryptographic or Android acceptance. Actual argv, input
+hashes, clean checkpoint, twelve drivers, 604-input inventory and fresh
+templates are sealed in
+`/gpu1-share/data/cicada-client/v164-e2a1908-joint5-preparation-20261010/CLIENT-JOINT5-DELIVERY.NONAUTH.json`.
+
+Parent v3, APKs, original82 TARGET-first/SOURCE-last, 25/11 callback fields,
+scope and budgets remain unchanged. Root alone supplies a fresh MasterGO
+and runs the Parent. Joint5 Android cases are **NOT_RUN**; no Client online
+resources are started. Joint3's exact historical predicate stays **UNKNOWN**.
+
 ## Joint4: fresh host diagnostic preparation
 
 The fresh batch is `v164-e2a1908-joint4-20261010`. Its consumer rejects

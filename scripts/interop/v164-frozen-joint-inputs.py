@@ -46,7 +46,7 @@ SOURCE_FINGERPRINT = '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed
 CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
 CONTRACT_REVISION = 'client-hub-v1.6.4'
 WIRE_VERSION = 1
-RUN_ID = 'v164-e2a1908-joint4-20261010'
+RUN_ID = 'v164-e2a1908-joint5-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
 JOINT_HELPER_SHA256 = 'f9a9ce392d67ab3a2c8451546884dbbc8c78d27a3c409e60e32ac5a3df3254c8'
 RECOVERY_HELPER_SHA256 = 'cf995108fa72b9bde1c65261da0bb766961ea7afd6b8d03124e3bc3e921be61b'
@@ -488,6 +488,13 @@ def _validate_manifest(manifest, link):
         _need(base64.b64encode(decoded).decode('ascii') == row['attestation'], 'REFERENCE_MANIFEST_ATTESTATION')
 
 
+FIXTURE_PROTOCOL_CHECKS = frozenset({
+    'ENDPOINT_MATCH', 'NODE_MATCH', 'NATIVE_BINDING_ID_MATCH',
+    'NATIVE_BINDING_EPOCH_MATCH', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
+    'NO_MEMBERSHIP_GRANTS',
+})
+
+
 def _validate_fixture_public(value, case_index):
     fields = {'networks', 'protocol_layers', 'review_policy_qualification', 'bindings', 'endpoint_candidates', 'schema', 'status', 'protocol_scope', 'native_runtime', 'model_calls', 'build', 'hub_id', 'owners', 'link', 'reference_manifest', 'reference_manifest_use', 'endpoint_private_key_policy', 'owner_private_key_policy', 'scope'}
     _exact(value, fields, 'FIXTURE_PUBLIC_FIELDS')
@@ -548,10 +555,22 @@ def _validate_fixture_public(value, case_index):
         manifest_side = value['reference_manifest'][side]
         _need(network['owner_id'] == owner_ids[i] and network['group_id'] == link[side + '_group_id'] and
               network['hub_id'] == value['hub_id'] and network['state'] == 'ACTIVE', 'FIXTURE_NETWORK_SCOPE')
-        _need(layer['endpoint_id'] == manifest_side['endpoint_id'] and layer['node_id'] == manifest_side['node_id'] and
-              layer['network_access_binding_id'] == binding['binding_id'] and
-              layer['native_runtime'] == 'NOT_RUN' and layer['group_membership_roles'] == ['member'] and
-              layer['group_membership_grants'] == [], 'FIXTURE_PROTOCOL_SCOPE')
+        # Network access and native SessionBinding are independent identities.
+        # Only the native binding joins the Endpoint key manifest below.
+        protocol_checks = {
+            'ENDPOINT_MATCH': layer['endpoint_id'] == manifest_side['endpoint_id'],
+            'NODE_MATCH': layer['node_id'] == manifest_side['node_id'],
+            'NATIVE_BINDING_ID_MATCH': layer['native_binding_id'] == binding['binding_id'] == manifest_side['binding_id'],
+            'NATIVE_BINDING_EPOCH_MATCH': type(layer['native_binding_epoch']) is int and
+                layer['native_binding_epoch'] == binding['epoch'] == manifest_side['binding_epoch'],
+            'RUNTIME_NOT_RUN': layer['native_runtime'] == 'NOT_RUN',
+            'MEMBER_ROLE_ONLY': layer['group_membership_roles'] == ['member'],
+            'NO_MEMBERSHIP_GRANTS': layer['group_membership_grants'] == [],
+        }
+        if not all(protocol_checks.values()):
+            error = ValueError('FIXTURE_PROTOCOL_SCOPE')
+            error.protocol_scope_checks = protocol_checks
+            raise error
         _need(binding['endpoint_id'] == manifest_side['endpoint_id'] and binding['binding_id'] == manifest_side['binding_id'] and
               type(binding['epoch']) is int and binding['epoch'] == manifest_side['binding_epoch'] and
               binding['status'] == 'leased', 'FIXTURE_BINDING_SCOPE')
