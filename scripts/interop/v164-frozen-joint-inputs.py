@@ -18,25 +18,25 @@ sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
 CORE_PREP = Path('/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation')
-PARENT_PATH = CORE_PREP / 'joint-parent-v5.py'
-ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v5.py'
-INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V5-INTERFACE.NONAUTH.md'
-FREEZE_PATH = CORE_PREP / 'JOINT-PARENT-V5-FREEZE.NONAUTH.json'
-QA_RECEIPT_PATH = CORE_PREP / 'JOINT-PARENT-V5-FINAL-QA.NONAUTH.json'
-QA_RECEIPT_SHA256 = 'fd96eb975fbf969ec88cf3f9604769fa7fa52dfb408315a897144d3abd38f3b3'
-RECONCILE_PATH = CORE_PREP / 'reconcile-final-compile-format-2/bin/cicada-link-joint-reconcile'
-RECONCILE_RECEIPT_PATH = CORE_PREP / 'reconcile-final-compile-format-2/PREPARATION-RESULT.NONAUTH.json'
-RECONCILE_SHA256 = 'e0fddfb7580542e93b4a8ff93eabf9a39903f787b6034bce6cc7efb3e748c3d7'
-RECONCILE_RECEIPT_SHA256 = '728bcdc39eb25189c4ac465bec5434d2847e0d1ac308195eb1a692ff1d4f0197'
+PARENT_PATH = CORE_PREP / 'joint-parent-v6.py'
+ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v6.py'
+INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V6-INTERFACE.NONAUTH.md'
+FREEZE_PATH = CORE_PREP / 'JOINT-PARENT-V6-FREEZE.NONAUTH.json'
+QA_RECEIPT_PATH = CORE_PREP / 'JOINT-PARENT-V6-FINAL-QA.NONAUTH.json'
+QA_RECEIPT_SHA256 = 'dc9a148c065acb7705d584b31689031578821b43f478b3b4310378fb47873b77'
+RECONCILE_PATH = CORE_PREP / 'reconcile-final-compile-format-3/bin/cicada-link-joint-reconcile'
+RECONCILE_RECEIPT_PATH = CORE_PREP / 'reconcile-final-compile-format-3/PREPARATION-RESULT.NONAUTH.json'
+RECONCILE_SHA256 = '4789022307de6b4cff1ba6ec9deaf931f624af6ed050889b1f1f3a0b20ae5b13'
+RECONCILE_RECEIPT_SHA256 = 'b7cafb09da374193f41a5dfc3be58940041eb743d7161a4e911f18acfef636db'
 
 FROZEN_ARTIFACT_HASHES = {
-    'parent_sha256': '1c6370701ab793b390e364d56ac18a8cb60cf4ca4e1b568e56fafab1e3880b01',
-    'adapter_sha256': '211ec899ff9ba62ed56d66b13d0de8cd56c8aafd232e20be8ed14c76a10482d5',
-    'interface_sha256': 'eafb6ca987a5368ae9d04a9bf17d43fe15caaa36896cec4be3a9445ab2aa9e0d',
-    'freeze_sha256': '33cc0d315f876d5da3187ee17548b1457b0a0af0ac3e816f6cbc6577dba50eb4',
+    'parent_sha256': '6a5685fbe2760d722b4d26c4289b36e6e5621fd5cb83f2e1adba67bd85e0b4fc',
+    'adapter_sha256': '6fcbefed490041a94c75a4c3a6ee77d3fccae3225be47edb3c7b0ccfad5dbdef',
+    'interface_sha256': 'ddfcf87345404079c8bbb60b61673b1582645b73debdf8a91e06cf3aa18bbd0e',
+    'freeze_sha256': '5e47b792fb05153f4c080c987dd5d04816e2762200659c0cca7786c121a3e0c4',
 }
 FROZEN_PREPARATION_TEST_HASHES = {
-    'test_joint_parent_v5_snapshot.py': 'dcad02d8919a9e875c81b4fa31c900bf14420cf0165b2d221164c5df016c95b1',
+    'test_joint_parent_v6_snapshot.py': 'cc79bda1007faa85378fca6e42ae67a03555615a8315f052b32330cc1d8a7f64',
 }
 
 CORE_REVISION = 'c6887f46c8412e648b8e8e68da371acd80e0b87e'
@@ -46,10 +46,10 @@ SOURCE_FINGERPRINT = 'cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6ae
 CATALOG_SHA256 = 'a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9'
 CONTRACT_REVISION = 'client-hub-v1.6.5'
 WIRE_VERSION = 1
-# The immutable V5 export retains its preparation provenance; each execution
-# requires a distinct Root Master, evidence directory and runtime batch ID.
-FROZEN_PREPARATION_RUN_ID = 'v164-e2a1908-joint8-20261010'
-RUN_ID = 'v164-e2a1908-joint9-20261010'
+# The V6 export reserves no live batch. Execution still requires the exact
+# fresh runtime ID, unused evidence and a separately issued Root Master.
+FROZEN_PREPARATION_RUN_ID = 'ROOT_FRESH_UNUSED_BATCH_REQUIRED'
+RUN_ID = 'v164-e2a1908-joint10-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
 JOINT_HELPER_SHA256 = 'b8aae1f6ceed30f1e65e5a3d9650a0057562b37a4d67edf64bb1844aaeecfaad'
 RECOVERY_HELPER_SHA256 = 'e2289a6443d928c92be358a5ca3e3eac9d4c083986abf9ac5e920e2e6a97ae80'
@@ -64,12 +64,28 @@ PREPARATION_REFERENCES = {
         'sha256': '3c4f5795335c18e56adab3d96d39aec24b6e93e1c88e5ee820b2079403d163c8',
     },
     'current_compiled_tuple_reference': {
-        'path': str(CORE_PREP / 'CORE-COMPILED-READINESS.V5.NONAUTH.json'),
-        'sha256': 'd400dc35b1952c62c75337f03b5027ce847c0a93c8748219ed0d89c9b63574e7',
+        'path': str(CORE_PREP / 'CORE-COMPILED-READINESS.V6.NONAUTH.json'),
+        'sha256': '4b81ebb798886ebba4c31fc52d1080a6f08d0839981f635949e692ec1cc2b70f',
     },
     'apk_endorsement': {
         'path': str(CORE_PREP / 'ROOT-APK-PINS.ENDORSED.private.json'),
         'sha256': 'fae3c7e442335369af39f0a35bc2dac95ae3cab591a2b2597b9d45f053cb03be',
+    },
+    'actual_reconcile_compile': {
+        'path': str(RECONCILE_RECEIPT_PATH),
+        'sha256': RECONCILE_RECEIPT_SHA256,
+    },
+    'reconcile_review': {
+        'path': str(CORE_PREP / 'reconcile-final-compile-format-3/COMPILE-REVIEW.NONAUTH.json'),
+        'sha256': 'eb7ff96034bf787a8975c2109c3dbfab6d370bc766afd9602045db787ff27f43',
+    },
+    'source_derivation': {
+        'path': str(CORE_PREP / 'SOURCE-DERIVATION.A2.NONAUTH.json'),
+        'sha256': '05ff821e7c8d7da286a41a75fe4ae3dadb6cf84d17a9a6306b573ba7f4e46fc3',
+    },
+    'base_metadata_a3': {
+        'path': str(CORE_PREP / 'BASE-COMPILER-METADATA-A3.NONAUTH.json'),
+        'sha256': '89551e1ea9d755ce324562041f268354f0b616b12de920a93e8aa8de28e8d8b9',
     },
 }
 
@@ -230,9 +246,9 @@ def _hash_regular(path, *, accepted_modes, maximum):
 def verify_auxiliary():
     """Hash the compiled reconciliation helper and its offline receipt; never execute it."""
     _need(RECONCILE_PATH.parts[-3:] == (
-        'reconcile-final-compile-format-2', 'bin', 'cicada-link-joint-reconcile') and
+        'reconcile-final-compile-format-3', 'bin', 'cicada-link-joint-reconcile') and
         RECONCILE_RECEIPT_PATH.parts[-2:] == (
-            'reconcile-final-compile-format-2', 'PREPARATION-RESULT.NONAUTH.json') and
+            'reconcile-final-compile-format-3', 'PREPARATION-RESULT.NONAUTH.json') and
         RECONCILE_PATH.parent.parent == RECONCILE_RECEIPT_PATH.parent, 'RECONCILE_PATH')
     binary_size, binary_sha = _hash_regular(
         RECONCILE_PATH, accepted_modes=(0o755,), maximum=32 * 1024 * 1024)
@@ -273,11 +289,11 @@ def verify_auxiliary():
 
 def verify_artifacts():
     """Pin the Parent delivery and reconciliation auxiliary; execute no Core code."""
-    _need(PARENT_PATH.name == 'joint-parent-v5.py', 'PARENT_PATH')
-    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v5.py', 'ADAPTER_PATH')
-    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V5-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
-    _need(FREEZE_PATH.name == 'JOINT-PARENT-V5-FREEZE.NONAUTH.json', 'FREEZE_PATH')
-    _need(QA_RECEIPT_PATH.name == 'JOINT-PARENT-V5-FINAL-QA.NONAUTH.json' and
+    _need(PARENT_PATH.name == 'joint-parent-v6.py', 'PARENT_PATH')
+    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v6.py', 'ADAPTER_PATH')
+    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V6-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
+    _need(FREEZE_PATH.name == 'JOINT-PARENT-V6-FREEZE.NONAUTH.json', 'FREEZE_PATH')
+    _need(QA_RECEIPT_PATH.name == 'JOINT-PARENT-V6-FINAL-QA.NONAUTH.json' and
           QA_RECEIPT_PATH.parent == FREEZE_PATH.parent, 'QA_RECEIPT_PATH')
     parent_size, parent_sha = _hash_regular(
         PARENT_PATH, accepted_modes=(0o600,), maximum=2 * 1024 * 1024)
@@ -296,19 +312,19 @@ def verify_artifacts():
     _need(0 < len(freeze_raw) <= MAX_JSON_BYTES and
           freeze_sha == FROZEN_ARTIFACT_HASHES['freeze_sha256'], 'FREEZE_PIN')
     expected_sources = {
-        'JOINT-PARENT-V5-INTERFACE.NONAUTH.md': interface_sha,
-        'joint-adapter-parent-ready-v5.py': adapter_sha,
-        'joint-parent-v5.py': parent_sha,
+        'JOINT-PARENT-V6-INTERFACE.NONAUTH.md': interface_sha,
+        'joint-adapter-parent-ready-v6.py': adapter_sha,
+        'joint-parent-v6.py': parent_sha,
         **FROZEN_PREPARATION_TEST_HASHES,
     }
     expected_files = {str(FREEZE_PATH.parent / name): sha
                       for name, sha in expected_sources.items()}
     expected_files.update({
         str(QA_RECEIPT_PATH): QA_RECEIPT_SHA256,
-        str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT-QA.private.log'):
+        str(FREEZE_PATH.parent / 'JOINT-PARENT-V6-SNAPSHOT-QA.private.log'):
             '36e6c0b1f129292ea03afa6bb19bd15e98cfeee2edd4d025f174ab8be2f49ae7',
-        str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT.patch'):
-            '0cb0acb900e9fe1a1a1ecbaefa62c66282e66d6de82182c140f2d22f3b9f3299',
+        str(FREEZE_PATH.parent / 'JOINT-PARENT-V6-SNAPSHOT.patch'):
+            '020c732650523d58a8278d338bb5854c8537a16cce3035a050aaa37956332fc0',
     })
     _, _, qa = _load_json(QA_RECEIPT_PATH, expected_sha256=QA_RECEIPT_SHA256)
     _exact(qa, {'AST', 'Runtime_Docker_model_calls', 'argv', 'elapsed_seconds',
@@ -322,7 +338,7 @@ def verify_artifacts():
           all(type(qa[key]) is int and qa[key] == value for key, value in counts.items()) and
           type(qa['elapsed_seconds']) in (int, float) and
           0 <= qa['elapsed_seconds'] < 10 and
-          qa['raw_output_path'] == str(FREEZE_PATH.parent / 'JOINT-PARENT-V5-SNAPSHOT-QA.private.log') and
+          qa['raw_output_path'] == str(FREEZE_PATH.parent / 'JOINT-PARENT-V6-SNAPSHOT-QA.private.log') and
           qa['raw_output_sha256'] == expected_files[qa['raw_output_path']],
           'QA_RECEIPT_SCOPE')
     _need(freeze.get('status') == 'SOURCE_FROZEN_OFFLINE_PASS' and

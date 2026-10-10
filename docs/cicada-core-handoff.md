@@ -20,7 +20,35 @@ and the actual immutable APK hashes are sealed in
 No online or model run is implied. Joint7's four KEY passes, NONE failure and
 three unrun cases remain attributed solely to its old image and APKs.
 
-### Joint9: current onboarding and carrier pin correction
+### Joint10: V6 host consumer and format-3 reconciliation
+
+Root closed joint9 with overall **FAIL** (Parent exit 1, 106.652 seconds).
+Case0 reached capture, original-packet recovery and FINISH, then Core's
+independent reconcile command056 exited 1 with `RECONCILE_DELIVERY`.
+The two helper delivery guards still used the old tuple. This is a Core
+test-helper failure; case0 remains **NOT_ESTABLISHED**, with seven cases
+**NOT_RUN**. Root confirmed owned cleanup. The original results and Master
+remain historical and are not reused.
+
+The host consumer now pins Root's actual V6 Parent, adapter, interface,
+seven-file freeze and QA, plus format-3 reconcile binary, compile receipt,
+review and source derivation. Current c688/v1.6.5 Hub, catalog, the other
+helpers, Root APK endorsement and clean `1151b06` APK producer are unchanged.
+Thirteen associated host pin/source-map tests and eighteen actual artifact
+checks passed in network-none Docker (exit 0). Core's 35 Go tests are verified
+receipt provenance; Client did not rerun them. No new Android result follows.
+
+Fresh batch: `v164-e2a1908-joint10-20261010`. The V6 source export's exact
+`ROOT_FRESH_UNUSED_BATCH_REQUIRED` marker is preparation metadata, not a
+runtime grant. Root must independently create the fresh config and Master.
+The clean checkpoint, 12-driver map, 631-input inventory and templates are
+sealed at
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint10-consumer-20261010/DELIVERY.NONAUTH.json`.
+Preserve the original 82 requests, 25/11 callback shapes, deadlines and
+TARGET-first/SOURCE-last initialization, then no SOURCE switch through finish.
+Joint10's eight cases, physical Android and public HTTPS remain **NOT_RUN**.
+
+### Historical joint9: current onboarding and carrier pin correction
 
 Root's joint8 Parent exited 1 after 54.0834886 seconds, before enrollment,
 with `source public onboarding fixture schema or contract pin is invalid`.
