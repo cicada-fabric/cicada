@@ -313,10 +313,10 @@ while IFS= read -r line; do
       printf '%s\n' "$line" > "$CICADA_TEST_APPROVAL_CAPTURE"
       case "$line" in
         *'"decision":"accept"'*)
-          printf '%s\n' '{"method":"turn/completed","params":{"turn":{"status":"completed"},"item":{"type":"agentMessage","text":"FAKE_APP_SERVER_APPROVAL_COMPLETE"}}}'
+          printf '%s\n' '{"method":"turn/completed","params":{"threadId":"fake-native-thread","turn":{"id":"fake-native-turn","items":[{"type":"agentMessage","text":"FAKE_APP_SERVER_APPROVAL_COMPLETE"}],"status":"completed"}}}'
           ;;
         *)
-          printf '%s\n' '{"method":"turn/completed","params":{"turn":{"status":"failed"}}}'
+          printf '%s\n' '{"method":"turn/completed","params":{"threadId":"fake-native-thread","turn":{"id":"fake-native-turn","items":[],"status":"failed"}}}'
           ;;
       esac
       ;;
@@ -448,6 +448,15 @@ done
 			approvalReply, err, currentGoal.Worker, goalErr, agentStdout.String(), agentStderr.String())
 	}
 
+	// WaitTurn must consume the exact original Thread/Turn terminal tuple before
+	// the resource owner's unverified stop fence suppresses Worker success.
+	terminalSummaryPath := filepath.Join(nodeWorkspaceRoot, "workspaces", workspaces[0].ID, ".cicada-last-message")
+	terminalSummary, terminalErr := os.ReadFile(terminalSummaryPath)
+	if terminalErr != nil || string(terminalSummary) != "FAKE_APP_SERVER_APPROVAL_COMPLETE\n" {
+		t.Fatalf("fake app-server exact terminal tuple was not consumed before stop was withheld: summary=%q err=%v",
+			terminalSummary, terminalErr)
+	}
+
 	goalResultRequest, err := json.Marshal(map[string]string{"intent_id": accepted.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -455,16 +464,15 @@ done
 	var goalResult control.ClientGoalResult
 	if err := json.Unmarshal(callClientRPC("goal.result", goalResultRequest), &goalResult); err != nil ||
 		goalResult.IntentID != accepted.ID || goalResult.GoalID != goal.ID || len(goalResult.Workers) != 1 ||
-		goalResult.Workers[0].Status != "completed" ||
-		goalResult.Workers[0].Summary != "FAKE_APP_SERVER_APPROVAL_COMPLETE" {
-		t.Fatalf("encrypted Client goal.result omitted the actual Node binary result: result=%#v err=%v", goalResult, err)
+		goalResult.Workers[0].Status != "failed" || goalResult.Workers[0].Summary != "" {
+		t.Fatalf("encrypted Client goal.result published success despite an unverified native stop: result=%#v err=%v", goalResult, err)
 	}
 	finishedGoal, err := controlPlane.Goal(goal.ID)
 	if err != nil || finishedGoal == nil || finishedGoal.Worker == nil ||
-		finishedGoal.Worker.Status != "completed" ||
-		!strings.Contains(finishedGoal.Worker.LastError, "physical resource stop is unverified") ||
-		!strings.Contains(finishedGoal.Worker.LastError, "remains quarantined") {
-		t.Fatalf("successful business result did not retain its separate resource-stop warning: goal=%#v err=%v",
+		finishedGoal.Worker.Status != "failed" || finishedGoal.Worker.Summary != "" ||
+		!strings.Contains(finishedGoal.Worker.LastError, "Codex app-server stop is unconfirmed") ||
+		!strings.Contains(finishedGoal.Worker.LastError, "native writer ownership is quarantined") {
+		t.Fatalf("unverified native stop did not suppress Worker completion and summary: goal=%#v err=%v",
 			finishedGoal, err)
 	}
 	localControlState := filepath.Join(nodeStateDir, "nodes", "node-"+nodeID, "node-control-state.json")
@@ -486,7 +494,7 @@ done
 	}
 	resourceRecord, err := resourceManager.Inspect("gpu/0")
 	if err != nil || resourceRecord == nil || resourceRecord.State != nodelock.ResourceExecutionQuarantined ||
-		resourceRecord.Outcome != "resource_stop_unverified" || resourceRecord.FencingEpoch <= 0 {
+		resourceRecord.Outcome != "executor_outcome_uncertain" || resourceRecord.FencingEpoch <= 0 {
 		t.Fatalf("unverified stop did not quarantine only its explicit physical resource: record=%#v err=%v",
 			resourceRecord, err)
 	}
@@ -625,7 +633,7 @@ done
 	}
 	resourceRecord, err = resourceManager.Inspect("gpu/0")
 	if err != nil || resourceRecord == nil || resourceRecord.State != nodelock.ResourceExecutionQuarantined ||
-		resourceRecord.Outcome != "resource_stop_unverified" {
+		resourceRecord.Outcome != "executor_outcome_uncertain" {
 		t.Fatalf("refused claim changed the held physical-resource quarantine: record=%#v err=%v",
 			resourceRecord, err)
 	}

@@ -12,4 +12,29 @@ Valid RED evidence preserves nine malformed/foreign parser failures, a real star
 
 Evidence is retained under `.cicada-data/node-runtime-validation-20261010/`: `FROZEN-VALIDATION.NONAUTH.json` SHA-256 `667584a7b5cb119e5a280f1483c8c1d9808671639a5a2634f4cb28ae73c64702`, source inventory `cf79bb967f05d4600d274163945039ecc676da8e49b8637da23a07e98a4f507d`, and exact commands/logs in `diagnostic4`, `final5`, `custom-wait6` and `final7`. This receipt precedes version/document edits and binds the five tested Go/test files. The fixed compiler was Go 1.27.1 bookworm digest `69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`, network-none, nonroot, read-only sources, two CPUs, 3 GiB and 256 PIDs, with a private cache. Seven exact owned compiler CIDs were confirmed absent. The six resident whole-object hash comparison was FALSE; three resident Hubs have dynamic healthchecks, but the retained hashes do not prove those are the only differences. No unchanged-resident claim is inferred.
 
-`ResourceExecution.Wait` observes/reaps the root only; raw exit errors and group emptiness cannot prove an escaped descendant or external provider stopped. Existing Node `confirmMachineNodeResourceStop` deliberately quarantines and returns `ErrResourceStopUnverified`. Only the existing independent trusted `ConfirmStopped` verifier can release that resource fence, matching resource/lease/execution/epoch and receipt time after root Wait. This checkpoint preserves that restriction; the setsid-escape regression passed. No new trusted physical-resource verifier, adopted foreground acceptance, real Native, Android, physical-device or public HTTPS gate ran. Product acceptance remains PARTIAL.
+`ResourceExecution.Wait` observes/reaps the root only; raw exit errors and group emptiness cannot prove an escaped descendant or external provider stopped. Existing Node `confirmMachineNodeResourceStop` deliberately quarantines and returns `ErrResourceStopUnverified`. Only the existing independent trusted `ConfirmStopped` verifier can release that resource fence, matching resource/lease/execution/epoch and receipt time after root Wait. That earlier checkpoint preserved this restriction; its setsid-escape regression passed. It had no new trusted physical-resource verifier, adopted foreground acceptance, real Native, Android, physical-device or public HTTPS gate. Product acceptance remains PARTIAL.
+
+
+## Later full Go test-only overlay — 2026-10-10
+
+The exact regression update to
+`cicada-go/internal/server/machine_agent_approval_integration_test.go` was
+validated as an overlay on clean production source
+`308d7607cadc6cb83fe5aaa923adaf643a0aa32d`. The test file SHA-256 is
+`edba25235b934adcaac660ab208ce66860d9493b0209e8a110edb05190115ce6`; it
+exactly matches reviewed patch SHA-256 `c08da9aadad46b235401458015c8822f8a64ea5499f97b9363b7f10b0093adf5`. It updates the fake app-server completion event to the exact Thread/Turn/items
+shape and expects failed completion with `executor_outcome_uncertain` when the
+Codex app-server stop is unconfirmed and native writer ownership remains
+quarantined. GPU quarantine, claim release and later same-resource rejection
+assertions remain. The production Go source was not
+changed by this overlay.
+
+The full Go batch passed as `PASS_TEST_OVERLAY_SCOPE_ONLY`: 30 packages,
+2,981 test PASS events, 23 SKIP events, zero failures, and build/gofmt/test/vet
+exit 0. It made zero model calls; the owned container was absent. The result is
+[recorded here](../.cicada-data/node-runtime-validation-20261010/full-go-overlay-r2-308d/ROOT-RESULT.NONAUTH.json)
+(SHA-256 `6f5d06c3057d9b2f3e0ee326e3f99cd8b0de5c6384d2492b79bdb199ae05657f`);
+the test event log SHA-256 is
+`924c2e09271024ab0d1090c04bc69233991c237e2e8cf5ffa90d1be274a62534`.
+These results are not a clean-source aggregate and do not upgrade Native,
+physical-device, or public-HTTPS acceptance.

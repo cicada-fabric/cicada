@@ -5,19 +5,23 @@
 ## Current acceptance status — v0.1 PARTIAL
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. The clean e2a default aggregate is
-INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
-passed five actual turns with the original A/B context and exact replies.
-Historical failed attempts remain attributed to their tested inputs.
+as the single current evidence index. Development software is **0.0.2**. The
+clean308d full Go batch with the exact regression-test overlay passed 2,981
+tests / 23 skips across 30 packages; it is not a clean-source aggregate.
+Native `shipping0002e` records scoped G2 and encrypted G3 assertions PASS, but
+its original result remains FAIL because the cleanup inspector rejected an
+exact absent-container response; later exact-owned cleanup confirmed absence
+without rewriting that result. The shipping `a4` ordinary Worker fixture passed
+its own scope, while physical-resource stop verification remains unavailable.
+The latest joint3 attempt failed before Android selectors (`ValueError`, case 0
+UNKNOWN_PREPARING; model calls 0); the current Client has only its seven-check
+offline diagnostic PASS and a fresh joint run is pending.
 
-G2 H4 is FAIL before model activity, with its original cleanup INCOMPLETE
-and later safety closeout recorded separately; G3 and eight Android online cases
-remain NOT_RUN. Current CLI sandbox zero and real Worker approval/result passed
-their isolated scopes; W2 used a private IPC fixture, whose stale diagnostic
-remains UNKNOWN, rather than the shipping Node binary. The clean36eb focused
-Link gate passed separately from the e2a aggregate. Development candidate is **0.0.2**;
-main/0.1.0 publication requires the user's actual acceptance and separate
-authorization. First-release acceptance remains **PARTIAL**.
+The earlier clean e2a default aggregate remains INCOMPLETE (14 PASS, 2
+PASS_WITH_SKIPS, 4 Native NOT_RUN) under its original source attribution. G4,
+G5, V67, physical StopVerifier, real-device execution and public HTTPS remain
+NOT_RUN. Main/0.1.0 publication requires the user's actual acceptance and
+separate authorization; first-release acceptance remains **PARTIAL**.
 
 The [managed Node outcome checkpoint](node-native-outcome-validation.md)
 records source-scoped child-process and protocol RED/GREEN checks for actual

@@ -1,4 +1,4 @@
-# Current validation closeout — 2026-10-09 — v0.1 PARTIAL
+# Current validation closeout — 2026-10-10 — v0.1 PARTIAL
 
 This record is the single current-status index, not a cumulative PASS count. Keep
 the individual historical records and failed attempts at their original source
@@ -9,8 +9,104 @@ or any product policy.
 
 ## Current evidence — 2026-10-10 — v0.1 PARTIAL
 
-The current development software is **0.0.1-dev** on `dev`. Development remains
-0.0.x until the user's actual acceptance; a main merge or initial 0.1.0 release
+Development software is **0.0.2**. The latest full Go batch used clean Core
+source `308d7607cadc6cb83fe5aaa923adaf643a0aa32d` with the exact test-only
+overlay now applied at
+`cicada-go/internal/server/machine_agent_approval_integration_test.go`
+(SHA-256 `edba25235b934adcaac660ab208ce66860d9493b0209e8a110edb05190115ce6`),
+exactly matching reviewed patch SHA-256 `c08da9aadad46b235401458015c8822f8a64ea5499f97b9363b7f10b0093adf5`. It passed as `PASS_TEST_OVERLAY_SCOPE_ONLY`: build, gofmt, test and vet all
+exited 0; 30 packages passed, with 2,981 test PASS and 23 SKIP events in
+763.267 seconds. The run made zero model calls and its owned container is
+absent. This is full Go evidence for the modified test overlay, not a clean
+aggregate or product acceptance claim. See the
+[result](../.cicada-data/node-runtime-validation-20261010/full-go-overlay-r2-308d/ROOT-RESULT.NONAUTH.json)
+(SHA-256 `6f5d06c3057d9b2f3e0ee326e3f99cd8b0de5c6384d2492b79bdb199ae05657f`)
+and test-event log SHA-256
+`924c2e09271024ab0d1090c04bc69233991c237e2e8cf5ffa90d1be274a62534`.
+
+The bounded Native run `cicada-two-turn-g2https0162shipping0002e` records G2
+PASS and authenticated encrypted G3 status-snapshot PASS. Its recorded source
+commit is `308d7607cadc6cb83fe5aaa923adaf643a0aa32d`; product binary
+`6432b056467f13958623ec8b84608b315dd5f54132a03ac9654756532a779fa2`, helper
+`6fb8777d7a68d2e38fd454e405123af08931ed2ee256ebdcb7629290e0c65b58`, CLI
+0.162.1 Runtime image
+`sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e`,
+and Hub image
+`sha256:839d80b242116396ef166880d9e3ccd24b3c878c9168601c4b8e0ce96bb766d2`
+are bound in the [actual result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002b/request-observer-native-result-cicada-two-turn-g2https0162shipping0002e/result.json)
+(SHA-256 `25015a82647ad700c707e747494bd909896c9b0c458762b07d6ac9f8173206d0`).
+That result remains **FAIL / exit 1**: its original cleanup guard returned
+`OWNED_OBJECT_INSPECTION_UNKNOWN` after `cleanup_inspect` rejected an exact
+`NO_SUCH_CONTAINER` response with an empty JSON array following successful
+removal; two daemon directories were consequently left marked not clean. The
+[bounded diagnosis](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002e/native-g2-support-cicada-two-turn-g2https0162shipping0002e/FOCUSED-E-CLEANUP-DIAGNOSIS.NONAUTH.json)
+(SHA-256 `84f0cd7ff7d6fafd99d1ccc7574c49e8e4c473e3c73bd926be1f281f604d5eb1`)
+pins the failed check to `migration.install.cleanup_inspect`. A later
+independent [exact-owned closeout](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002e/native-g2-support-cicada-two-turn-g2https0162shipping0002e/INDEPENDENT-E-EXACT-OWNED-CLOSEOUT.NONAUTH.json)
+(SHA-256 `756018923463f7555a2e9424b7d281ac97d18d25b215f9a06d795a9a3965a948`)
+confirmed all 21 exact selectors, runtime host PIDs, listeners and daemon
+directories absent; its [postcheck](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002e/native-g2-support-cicada-two-turn-g2https0162shipping0002e/INDEPENDENT-E-POSTCHECK.NONAUTH.json)
+records all six full resident snapshots unchanged. The separate
+[source-pin postcheck](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002e/native-g2-support-cicada-two-turn-g2https0162shipping0002e/INDEPENDENT-E-SOURCE-PINS.NONAUTH.json)
+(SHA-256 `6cd0d56d050c801926df645c8f7965a0ec72bfd9663b2051a8782f8f6aad9068`)
+confirms the source pins. This later cleanup does not rewrite the original FAIL.
+The narrow Native G3 cleanup gate/checker correction has three offline selectors
+passing (0 skips, 0.766s),
+recorded at the [G3 cleanup checkpoint](../.cicada-data/node-runtime-validation-20261010/fresh-native-preparation/G3-CLEANUP-CHECKPOINT.NONAUTH.json)
+(SHA-256 `9caa25323dc91adc96723b665269f0b097d9d5170b9ad22a5a431e52a17c35b3`);
+the tested gate SHA-256 is `fa03120b1ba42116b093912642928c704cb94e18c797da184c4e0603679352e3`
+and checker SHA-256 is
+`89a3179c157782606874562bcbc15fdd51bc747cca80c6abe96762783dcd48a9`. It has
+not been rerun against the Native runtime.
+
+The shipping `a4` fixture completed an ordinary Worker run with
+`PASS_SHIPPING_ORDINARY_WORKER_SCOPE_ONLY`, phase `STOP_VERIFIED`, and exit 0.
+Its source field is `shipping308d760 + explicitly pinned fixture delta`;
+the selected driver SHA-256 is
+`92876558a0cdc10bc8b73380906f5512c9dcb00a5dd902ff9af8dc9cbef1239c` and
+Node binary SHA-256 is
+`6432b056467f13958623ec8b84608b315dd5f54132a03ac9654756532a779fa2`. The
+[result](../.cicada-data/node-runtime-validation-20261010/worker-shipping-preparation/shipping-runtime-output-a4/result.NONAUTH.json)
+(SHA-256 `d2f62a5fc315775de58e4756767d89802e39104fc53950506d8d119f4e3d3f50`)
+and [Root postcheck](../.cicada-data/node-runtime-validation-20261010/worker-shipping-preparation/shipping-runtime-output-a4/ROOT-POSTCHECK.NONAUTH.json)
+(SHA-256 `db0ba928e8427c7f7d9e63e69ab80b5678bdaa68b84359e50d14a9baa3782185`)
+record exact owned container/name/label, host PID, proxy group/socket and
+scratch absence, stream EOF and unchanged source. The postcheck did not report
+an exact full resident projection, and the physical-resource verifier was
+`NOT_AVAILABLE_NOT_TESTED`; this is not physical stop acceptance.
+
+The latest joint3 attempt remains **FAIL before selector execution**. The
+[Client redacted result](</gpu1-share/data/cicada-client/v164-joint3-root-693e939-308d-20261010/result.redacted.json>)
+(SHA-256 `1ae5b9a211437d5b43d6b9745f52b30c4ee67a3b69fe02ec2ab90c4fd8a1fc4a`)
+records `ValueError`, case 0 `PREPARING/UNKNOWN`, and the other seven cases
+`NOT_RUN`; model calls were zero. The Core child result is
+`FAIL/CONTROL_EOF` after the Client exit, not the first failure. Root's
+[joint3 closeout](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/ROOT-JOINT3-CLOSEOUT.NONAUTH.json)
+(SHA-256 `4ad9c20dcfab18e3d7ca1e34275e00ad45a741c49fadce56a1149dbc0592ee17`)
+classifies the first failure as `ValueError` with case 0 still
+`UNKNOWN_PREPARING`; Android selectors did not run, cleanup was confirmed,
+and source plus six resident projections matched. At the clean Client
+diagnostic checkpoint, source was `950e4f5ef52c981479cefa94c44adddc6726d040`;
+its seven-check offline diagnostic
+(`/gpu1-share/data/cicada-client/joint3-valueerror-diagnostic-20261010/CLIENT-DIAGNOSTIC-CHECKPOINT.NONAUTH.json`,
+SHA-256 `aa489acd12e64b47df400228d1001d14e2f003e2ff31ad66ca49e25d603db8da`)
+passed. Follow-up Client work and a fresh joint run remain pending; this offline
+correction is not Android evidence.
+
+The earlier clean-e2a default aggregate remains **INCOMPLETE** and keeps its
+original scope. Physical StopVerifier, G4/G5/V67, real-device execution and
+public HTTPS remain **NOT_RUN**. Overall first-release acceptance remains
+**PARTIAL**.
+
+## Historical snapshot — 2026-10-10 before final Native/Worker runs
+
+The following earlier snapshot is preserved with its original evidence and
+source attribution; its planned next steps do not describe the current run
+state.
+
+At this earlier snapshot, development software was **0.0.1-dev** on `dev`.
+Development remained 0.0.x until the user's actual acceptance; a main merge or
+initial 0.1.0 release
 requires separate authorization. Historical binaries, images and tested source
 labels below retain their actual `0.1.0-dev` identity. Protocol
 `client-hub-v1.6.4`, wire 1 and schema 59 are independent and unchanged.

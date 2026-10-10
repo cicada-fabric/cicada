@@ -2096,6 +2096,58 @@ def g3_readiness_argv(self, hub_id):
         '--entrypoint','/fixture/cicada-v68fixture',self.test_image,'probe','--address','127.0.0.1:8787']
 
 
+def g3_exact_container_absent(process, identity):
+    """The existing G3 full exact-ID absence proof; never a substring match."""
+    valid_errors = tuple(text.encode() for text in (
+        'Error: No such object: '+identity, 'error: no such object: '+identity,
+        'Error response from daemon: No such container: '+identity))
+    return (type(process.returncode) is int and process.returncode == 1 and
+        process.stdout.strip() == b'[]' and process.stderr.strip() in valid_errors)
+
+
+def record_g3_owned_removal(self, name, old, absent):
+    """Called only after successful explicit rm and exact absence, before replacement."""
+    identity = old['Id']
+    proof = self.submitted_objects.get(('container',name))
+    if (name != self.run_id+'-hub' or type(identity) is not str or
+            re.fullmatch('[0-9a-f]{64}',identity) is None or type(proof) is not dict or
+            proof.get('name') != name or proof.get('id') != identity or
+            proof.get('run_id') != self.run_id or proof.get('image') != self.hub_image or
+            old['Image'] != self.hub_image or
+            self.containers.get(name) != self.hub_image or old['State']['Running'] is not False or
+            (old['Config'].get('Labels') or {}).get('org.cicada.test.run') != self.run_id or
+            ('container',name) in self.removed_owned):
+        raise RuntimeError('G3_EXPLICIT_REMOVAL_SCOPE')
+    if not g3_exact_container_absent(absent,identity):
+        raise RuntimeError('G3_OLD_HUB_ABSENCE_NOT_PROVEN')
+    self.removed_owned[('container',name)] = types.MappingProxyType({
+        'kind':'container','name':name,'id':identity,'image':self.hub_image,
+        'run_id':self.run_id,'removal_exit':0,'absence_confirmed':True})
+
+
+def g3_cleanup_inspect(self, kind, name, inherited):
+    """Only the explicitly removed old Hub may leave the original strict guard."""
+    receipt = self.removed_owned.get((kind,name))
+    if receipt is None:
+        return inherited(kind,name)
+    proof = self.submitted_objects.get((kind,name))
+    if (kind != 'container' or name != self.run_id+'-hub' or type(proof) is not dict or
+            type(proof.get('id')) is not str or re.fullmatch('[0-9a-f]{64}',proof['id']) is None or
+            proof.get('name') != name or proof.get('run_id') != self.run_id or
+            proof.get('image') != self.hub_image or
+            self.containers.get(name) != self.hub_image or
+            type(receipt) is not types.MappingProxyType or dict(receipt) != {
+                'kind':kind,'name':name,'id':proof['id'],'image':self.hub_image,
+                'run_id':self.run_id,'removal_exit':0,'absence_confirmed':True} or
+            type(receipt.get('removal_exit')) is not int or receipt.get('absence_confirmed') is not True):
+        raise RuntimeError('G3_EXPLICIT_REMOVAL_SCOPE')
+    process = self.command(['docker','container','inspect',proof['id']],timeout=3,allow_failure=True)
+    if not g3_exact_container_absent(process,proof['id']):
+        raise RuntimeError('G3_REMOVED_HUB_FRESH_ABSENCE_NOT_PROVEN')
+    self.result.setdefault('submitted_object_absence',{})[name] = 'EXPLICIT_OWNED_REMOVAL_CONFIRMED'
+    return None
+
+
 def g3_restore_snapshot(self):
     """Only stopped exact-owned peers; full Control uses the same SQLite/state mount."""
     self.step('g3_restored_control_authenticated_encrypted_snapshot')
@@ -2109,10 +2161,7 @@ def g3_restore_snapshot(self):
     old_id = old['Id']
     self.docker('rm',old_id)
     absent = self.command(['docker','container','inspect',old_id],timeout=3,allow_failure=True)
-    valid_errors = ('Error: No such object: '+old_id, 'error: no such object: '+old_id,
-        'Error response from daemon: No such container: '+old_id)
-    if absent.returncode != 1 or absent.stdout.strip() != b'[]' or absent.stderr.decode().strip() not in valid_errors:
-        raise RuntimeError('G3_OLD_HUB_ABSENCE_NOT_PROVEN')
+    record_g3_owned_removal(self,self.hub,old,absent)
     name = self.run_id+'-hub-control'
     self.docker('run','-d','--pull=never','--name',name,'--label','org.cicada.test.run='+self.run_id,
         '--user','1000:1000','--network','bridge','--env-file',str(self.root/'hub.env'),
@@ -2550,6 +2599,11 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         CandidateGate.current_actor = g2_current_actor
         CandidateGate.g2_revoke_and_visibility = g2_revoke_and_visibility
         CandidateGate.g3_restore_snapshot = g3_restore_snapshot
+        inherited_cleanup_inspect = legacy_cls.cleanup_inspect
+        def cleanup_inspect(self, kind, name):
+            return g3_cleanup_inspect(self,kind,name,
+                types.MethodType(inherited_cleanup_inspect,self))
+        CandidateGate.cleanup_inspect = cleanup_inspect
     CandidateGate.provider_forwarder = provider_namespace["provider"]
     CandidateGate.audit_rpc = audit_namespace["audit"]
     original_command=command_namespace["command"]

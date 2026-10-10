@@ -3,19 +3,17 @@
 ## Current closeout index — v0.1 PARTIAL
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. The clean e2a default aggregate is
-INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
-passed five actual turns with the original A/B context and exact replies.
-Historical failed attempts remain attributed to their tested inputs.
-
-G2 H4 is FAIL before model activity, with its original cleanup INCOMPLETE
-and later safety closeout recorded separately; G3 and eight Android online cases
-remain NOT_RUN. Current CLI sandbox zero and real Worker approval/result passed
-their isolated scopes; W2 used a private IPC fixture, whose stale diagnostic
-remains UNKNOWN, rather than the shipping Node binary. The clean36eb focused
-Link gate passed separately from the e2a aggregate. Development is **0.0.1-dev**;
-main/0.1.0 publication requires the user's actual acceptance and separate
-authorization. First-release acceptance remains **PARTIAL**.
+as the single current evidence index. Current software is **0.0.2**. The clean
+308d full Go run with the exact test-only overlay passed 2,981 tests with 23
+skips across 30 packages; the earlier clean-e2a aggregate remains INCOMPLETE
+and is not reclassified. Native `shipping0002e` passed scoped G2 and encrypted
+G3 assertions, but its original result remains FAIL after cleanup inspection;
+later exact-owned cleanup is recorded separately. The shipping `a4` ordinary
+Worker scope passed, without physical-resource stop verification. Joint3 failed
+before Android selectors with `ValueError`; model calls were zero, and the
+current Client offline diagnostic does not establish Android acceptance.
+Physical StopVerifier, G4/G5/V67, real-device and public-HTTPS gates remain
+NOT_RUN. Overall first-release acceptance remains **PARTIAL**.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

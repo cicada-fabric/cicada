@@ -53,6 +53,132 @@ def current_test_binding(path, sha):
 
 class WiringChecks(unittest.TestCase):
 
+    def test_g3_explicit_removal_cleanup_exact_scope(self):
+        with run.deny_preflight_effects():
+            raw=(gate.OLD/'migration.py').read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),gate.TLS_HELPER_MIGRATION_SHA)
+            tree=ast.parse(raw)
+            node=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef)
+                and n.name=='cleanup_inspect' and n.lineno==254)
+            namespace={'json':json,'re':__import__('re')}
+            exec(compile(ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[])),
+                '<actual-migration-cleanup-inspect>','exec'),namespace)
+            original=namespace['cleanup_inspect']
+            name='cicada-two-turn-syntheticg3-hub';identity='a'*64;image='sha256:'+'b'*64
+            owner=types.SimpleNamespace(run_id='cicada-two-turn-syntheticg3',hub_image=image,
+                containers={name:image},removed_owned={},result={},
+                submitted_objects={('container',name):{'name':name,'id':identity,
+                    'image':image,'run_id':'cicada-two-turn-syntheticg3'}})
+            absent=types.SimpleNamespace(returncode=1,stdout=b'[]\n',
+                stderr=('Error response from daemon: No such container: '+identity+'\n').encode())
+            commands=[]
+            def command(argv,**kwargs):
+                commands.append((argv,kwargs));return absent
+            owner.command=command
+            inherited=lambda kind,target:original(owner,kind,target)
+            old={'Id':identity,'Image':image,'State':{'Running':False},
+                'Config':{'Labels':{'org.cicada.test.run':owner.run_id}}}
+            with self.assertRaisesRegex(RuntimeError,'owned object inspection UNKNOWN'):
+                inherited('container',name)
+            owner.submitted_objects[('container',name)]['image']='sha256:'+'c'*64
+            with self.assertRaises(RuntimeError):gate.record_g3_owned_removal(owner,name,old,absent)
+            self.assertEqual(owner.removed_owned,{})
+            owner.submitted_objects[('container',name)]['image']=image
+            gate.record_g3_owned_removal(owner,name,old,absent)
+            self.assertIsNone(gate.g3_cleanup_inspect(owner,'container',name,inherited))
+            self.assertEqual(commands[-1],(['docker','container','inspect',identity],
+                {'timeout':3,'allow_failure':True}))
+            self.assertEqual(owner.result['submitted_object_absence'][name],
+                'EXPLICIT_OWNED_REMOVAL_CONFIRMED')
+            receipt=owner.removed_owned[('container',name)]
+            with self.assertRaises(TypeError):receipt['id']='c'*64
+            for key,value in (('id','c'*64),('name','foreign'),('run_id','foreign'),
+                    ('image','sha256:'+'c'*64)):
+                with self.subTest(proof=key):
+                    saved=owner.submitted_objects[('container',name)][key]
+                    owner.submitted_objects[('container',name)][key]=value
+                    try:
+                        with self.assertRaises(RuntimeError):
+                            gate.g3_cleanup_inspect(owner,'container',name,inherited)
+                    finally:owner.submitted_objects[('container',name)][key]=saved
+            for key,value in (('image','sha256:'+'c'*64),('removal_exit',1),
+                    ('absence_confirmed',False),('kind','network')):
+                with self.subTest(receipt=key):
+                    owner.removed_owned[('container',name)]=types.MappingProxyType({**receipt,key:value})
+                    with self.assertRaises(RuntimeError):
+                        gate.g3_cleanup_inspect(owner,'container',name,inherited)
+            owner.removed_owned[('container',name)]=receipt
+            for label,process in (
+                ('live',types.SimpleNamespace(returncode=0,stdout=b'[{}]',stderr=b'')),
+                ('inspect-failure',types.SimpleNamespace(returncode=2,stdout=b'',stderr=b'error')),
+                ('wrong-stderr',types.SimpleNamespace(returncode=1,stdout=b'[]',stderr=b'No such container: foreign')),
+                ('wrong-stdout',types.SimpleNamespace(returncode=1,stdout=b'[{}]',stderr=absent.stderr)),
+                ('typed-return',types.SimpleNamespace(returncode=True,stdout=b'[]',stderr=absent.stderr))):
+                with self.subTest(inspect=label):
+                    owner.command=lambda *a,**k:process
+                    with self.assertRaises(RuntimeError):
+                        gate.g3_cleanup_inspect(owner,'container',name,inherited)
+            owner.command=command
+            owner.removed_owned={}
+            with self.assertRaisesRegex(RuntimeError,'owned object inspection UNKNOWN'):
+                gate.g3_cleanup_inspect(owner,'container',name,inherited)
+            primary=OSError('synthetic withheld')
+            owner.removed_owned[('container',name)]=receipt
+            def failed_inspect(*a,**k):raise primary
+            owner.command=failed_inspect
+            with self.assertRaises(OSError) as caught:
+                gate.g3_cleanup_inspect(owner,'container',name,inherited)
+            self.assertIs(caught.exception,primary)
+            self.assertIsNone(gate.g3_cleanup_inspect(owner,'network','unrelated',lambda *a:None))
+
+    def test_g3_restore_records_only_after_explicit_rm_and_absence(self):
+        with run.deny_preflight_effects():
+            run_id='cicada-two-turn-syntheticg3';name=run_id+'-hub';identity='a'*64
+            image='sha256:'+'b'*64
+            old={'Id':identity,'Image':image,'State':{'Running':False},
+                'Config':{'Labels':{'org.cicada.test.run':run_id}}}
+            absent=types.SimpleNamespace(returncode=1,stdout=b'[]',
+                stderr=('Error response from daemon: No such container: '+identity).encode())
+            for failure in ('none','rm','absence'):
+                with self.subTest(stage=failure):
+                    calls=[];stop=RuntimeError('synthetic after recording')
+                    owner=types.SimpleNamespace(run_id=run_id,hub=name,hub_image=image,
+                        nodes={},root=Path('/synthetic'),result={},removed_owned={},
+                        containers={name:image},submitted_objects={('container',name):
+                            {'name':name,'id':identity,'image':image,'run_id':run_id}},step=lambda *a:None)
+                    owner.inspect=lambda *a:old
+                    def docker(*args):
+                        calls.append(args)
+                        if args[0]=='rm' and failure=='rm':raise stop
+                        if args[0]=='run':raise stop
+                    owner.docker=docker
+                    owner.command=lambda *a,**k:absent if failure!='absence' else types.SimpleNamespace(
+                        returncode=1,stdout=b'[]',stderr=b'No such container: foreign')
+                    with self.assertRaises(RuntimeError):gate.g3_restore_snapshot(owner)
+                    self.assertEqual(bool(owner.removed_owned),failure=='none')
+                    self.assertEqual(calls[0],('rm',identity))
+
+    def test_g3_cleanup_actual_loader_scope(self):
+        with run.deny_preflight_effects():
+            binding,_=run.bounded_json(run.BINDING)
+            delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            for scenario in ('g1','g2-g3'):
+                with self.subTest(scenario=scenario):
+                    cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario=scenario)
+                    self.assertEqual('cleanup_inspect' in cls.__dict__,scenario=='g2-g3')
+                    owner=object.__new__(cls);owner.removed_owned={};owner.submitted_objects={}
+                    owner.result={};name='cicada-two-turn-syntheticg3-hub';identity='a'*64
+                    owner.submitted_objects[('container',name)]={'name':name,'id':identity}
+                    commands=[]
+                    def command(argv,**kwargs):
+                        commands.append(argv)
+                        return types.SimpleNamespace(returncode=1,stdout=b'[]',
+                            stderr=('Error response from daemon: No such container: '+identity).encode())
+                    owner.command=command
+                    with self.assertRaisesRegex(RuntimeError,'owned object inspection UNKNOWN'):
+                        owner.cleanup_inspect('container',name)
+                    self.assertEqual(commands,[['docker','container','inspect',identity]])
+
     def test_closed_lifecycle_installed_abort_rpc_and_provider(self):
         import textwrap
         with run.deny_preflight_effects():
