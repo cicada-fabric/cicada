@@ -18,13 +18,13 @@ from typing import Any
 SCHEMA = "cicada.request-observer-current-binding.v1"
 BUNDLE_SCHEMA = "cicada.request-observer-current-build.v1"
 RUNTIME_SCHEMA = "cicada.request-observer-runtime-cli-overlay.v1"
-CLI_VERSION = "0.162.0"
-CLI_SHA256 = "50ed828f357c655a3c82054d346cab8434f24901f14ec19b8267571bdd008b38"
+CLI_VERSION = "0.162.1"
+CLI_SHA256 = "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1"
 BASE_RUNTIME_IMAGE_ID = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
 EVIDENCE_ROOT = Path("/home/zyf/CICADA/.cicada-data/native-observer-wiring-20261007")
 BINDING_ROOT = EVIDENCE_ROOT / "request-observer-current-0162"
 REPOSITORY_ROOT = Path("/home/zyf/CICADA")
-CLI_BINARY = EVIDENCE_ROOT / "worker-kvm-authenticated-go-20261008a/output-cli-shell-install-0162b/home/.codex/packages/standalone/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex"
+CLI_BINARY = EVIDENCE_ROOT / "current-peer-cli01621-20261010a/shell-output/home/.codex/packages/standalone/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex"
 
 CURRENT_BUNDLE_FIELDS = {
     "schema", "output_parent", "current_commit", "source_dirty", "source_fingerprint",

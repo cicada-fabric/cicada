@@ -1,4 +1,5 @@
 """Narrow ZERO-PAID wiring guards. No Runtime, credential metadata or provider traffic."""
+import argparse
 import ast
 import copy
 import hashlib
@@ -12,6 +13,7 @@ import contextlib
 import os
 import shutil
 import socket
+import stat
 import struct
 import subprocess
 import tempfile
@@ -30,6 +32,25 @@ import request_observer_gate as gate
 import request_observer_bootstrap as bootstrap
 
 
+@contextlib.contextmanager
+def current_test_binding(path, sha):
+    """Select an explicitly pinned test binding; shipping defaults stay unchanged."""
+    if path is None and sha is None:
+        yield
+        return
+    if path is None or sha is None:
+        raise ValueError("TEST_CURRENT_BINDING_PAIR_REQUIRED")
+    selected=Path(path)
+    with run.deny_preflight_effects():
+        run.verify_binding(sha,selected,require_current=True)
+    original=run.BINDING
+    try:
+        run.BINDING=selected
+        yield
+    finally:
+        run.BINDING=original
+
+
 class WiringChecks(unittest.TestCase):
 
     def test_closed_lifecycle_installed_abort_rpc_and_provider(self):
@@ -45,7 +66,8 @@ class WiringChecks(unittest.TestCase):
             owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=True,runtime_image='image'),
                 aborted=False,abort_lock=threading.Lock(),result={},run_id='synthetic',
                 policy=types.SimpleNamespace(cleanup=lambda:calls.append('policy')),
-                nodes={'a':{'container':'node'}},submitted_objects={('container','node'):{'id':'cid'}})
+                nodes={'a':{'container':'node'}},rpcs={'a':types.SimpleNamespace(shutdown_expected=False)},
+                submitted_objects={('container','node'):{'id':'cid'}})
             owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
             def command(argv,timeout):
                 if argv[1]=='inspect':return json.dumps([{'Id':'cid','Image':'image','Config':{'Labels':{'org.cicada.test.run':'synthetic'}}}])
@@ -63,6 +85,7 @@ class WiringChecks(unittest.TestCase):
             self.assertEqual([r['event'] for r in owner.result['closed_lifecycle_chronology']],
                 ['ABORT_ENTRY','FIRST_ABORT_COMMITTED','OWNED_RUNTIME_STOP_ENTRY'])
             self.assertEqual(calls,['policy','kill'])
+            self.assertTrue(owner.rpcs['a'].shutdown_expected)
             threads=[threading.Thread(target=owner.abort_owned,args=(RuntimeError(),)) for _ in range(2)]
             for thread in threads:thread.start()
             for thread in threads:thread.join(1);self.assertFalse(thread.is_alive())
@@ -120,6 +143,146 @@ class WiringChecks(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as caught:adapter.close()
             self.assertIs(caught.exception,failure)
 
+    def test_native_rpc_shutdown_drain_preserves_error_and_requires_actual_eof(self):
+        with run.deny_preflight_effects():
+            path=gate.OLD/'native_protocol.py';raw=path.read_bytes();sha=hashlib.sha256(raw).hexdigest()
+            mode=oct(path.lstat().st_mode)
+            row={'sha256':sha,'bytes':len(raw),'rawmode':mode}
+            module=gate.safe_module('synthetic_native_protocol_shutdown_drain',path)
+            # Current bindings have six candidate names; native_protocol.py
+            # is pinned through the readonly public dependency table only.
+            candidates={name:{} for name in run.CURRENT_NAMES}
+            binding={'candidate_files':candidates,'public_files':{str(path.resolve()):row}}
+            derivative=gate.install_native_rpc_shutdown_drain(module,binding)
+            self.assertRegex(derivative,r'^[0-9a-f]{64}$')
+            for bad_row, bad_path in (
+                    (None, str(path.resolve())),
+                    ({**row,'sha256':'0'*64}, str(path.resolve())),
+                    ({**row,'bytes':row['bytes']+1}, str(path.resolve())),
+                    ({**row,'rawmode':'0o100000'}, str(path.resolve())),
+                    (row, str(path.resolve())+'.other')):
+                public_files={} if bad_row is None else {bad_path:bad_row}
+                with self.assertRaisesRegex(ValueError,'NATIVE_RPC_SOURCE_PIN'):
+                    gate.install_native_rpc_shutdown_drain(module,{'candidate_files':candidates,
+                        'public_files':public_files})
+
+            class ScriptedClient:
+                def __init__(self,outcomes,clock=None):
+                    self.outcomes=list(outcomes);self.clock=clock;self.last_received_bytes=None;self.frames=0
+                def recv_obj(self,timeout=.2):
+                    if self.clock is not None:self.clock[0]+=timeout
+                    if not self.outcomes:raise TimeoutError()
+                    outcome=self.outcomes.pop(0)
+                    if isinstance(outcome,BaseException):raise outcome
+                    self.last_received_bytes=b'{}\n';self.frames+=1
+                    return outcome
+
+            def make_rpc(client,state,abort):
+                rpc=object.__new__(module.TypedRPC)
+                rpc.client=client;rpc.state=state;rpc.audit=lambda *args:None;rpc.abort=abort;rpc.clock=time.monotonic
+                rpc.pending={};rpc.next_id=0;rpc.lock=threading.RLock();rpc.error=None;rpc.closed=False
+                rpc.shutdown_expected=False;rpc.shutdown_eof=threading.Event();rpc.shutdown_drain_seconds=1.0
+                return rpc
+
+            # A terminal observer failure preserves the first error, stops
+            # normal observation and counts the buffered frame discarded
+            # during drain. The scripted EOF is the only EOF proof here.
+            observed=[];aborts=[]
+            primary=RuntimeError('SYNTHETIC_TERMINAL')
+            class State:
+                def observe(self,message):
+                    observed.append(message['method'])
+                    if message['method']=='fatal':raise primary
+                def accept_hold(self,message):raise AssertionError('unexpected hold')
+            rpc=None
+            def abort(error):
+                aborts.append(error);rpc.shutdown_expected=True
+            client=ScriptedClient([{'method':'prior'},{'method':'fatal'},{'method':'must-not-dispatch'},EOFError()])
+            rpc=make_rpc(client,State(),abort);rpc._read()
+            self.assertTrue(rpc.shutdown_eof.is_set())
+            self.assertIs(rpc.error,primary)
+            self.assertEqual(aborts,[primary])
+            self.assertEqual(observed,['prior','fatal'])
+            self.assertEqual(client.frames,3)
+            self.assertFalse(rpc.observer_rpc_observation_complete)
+            self.assertEqual(rpc.observer_rpc_dispatched_before_fatal,1)
+            self.assertEqual(rpc.observer_rpc_discarded_after_fatal,1)
+            projected=gate.rpc_observation_projection(rpc)
+            self.assertEqual(projected['status'],'INCOMPLETE_AFTER_FATAL')
+            self.assertTrue(projected['actual_shutdown_eof_observed'])
+            self.assertEqual(projected['dispatched_messages_before_fatal'],1)
+            self.assertEqual(projected['discarded_frames_after_fatal'],1)
+            self.assertEqual(projected['runtime_health_status'],'FAILED')
+            self.assertEqual(projected['runtime_error_class'],'RuntimeError')
+            rpc.fail(RuntimeError('SYNTHETIC_LATER'))
+            self.assertIs(rpc.error,primary)
+            self.assertEqual(aborts,[primary])
+
+            # EOF before intentional shutdown remains unexpected, even though
+            # abort marks the node after the reader already observed EOF.
+            aborts=[]
+            rpc=None
+            def unexpected_eof_abort(error):
+                aborts.append(error);rpc.shutdown_expected=True
+            rpc=make_rpc(ScriptedClient([EOFError()]),types.SimpleNamespace(observe=lambda message:None),unexpected_eof_abort)
+            rpc._read()
+            self.assertIsInstance(rpc.error,EOFError)
+            self.assertFalse(rpc.shutdown_eof.is_set())
+            self.assertEqual(len(aborts),1)
+
+            drain_error=ConnectionResetError('SYNTHETIC_DRAIN_ERROR');drain_aborts=[];drain_rpc=None
+            def drain_abort(error):drain_aborts.append(error);drain_rpc.shutdown_expected=True
+            drain_rpc=make_rpc(ScriptedClient([{'method':'fatal'},drain_error]),State(),drain_abort)
+            drain_rpc._read()
+            self.assertIs(drain_rpc.error,primary)
+            self.assertEqual(drain_aborts,[primary])
+            self.assertFalse(drain_rpc.shutdown_eof.is_set())
+            self.assertEqual(drain_rpc.shutdown_drain_error_class,'ConnectionResetError')
+            drain_projection=gate.rpc_observation_projection(drain_rpc)
+            self.assertFalse(drain_projection['actual_shutdown_eof_observed'])
+            self.assertEqual(drain_projection['status'],'INCOMPLETE_AFTER_FATAL')
+            self.assertEqual(drain_projection['shutdown_drain_error_class'],'ConnectionResetError')
+
+            # A marker alone is not EOF proof; a bounded drain timeout leaves
+            # the event unset and records only the closed timeout boolean.
+            aborts=[];clock=[0.0];client=ScriptedClient([],clock)
+            rpc=make_rpc(client,types.SimpleNamespace(observe=lambda message:None),lambda error:aborts.append(error))
+            rpc.clock=lambda:clock[0]
+            rpc.shutdown_drain_seconds=.03;rpc.shutdown_expected=True
+            rpc._read()
+            self.assertFalse(rpc.shutdown_eof.is_set())
+            self.assertTrue(rpc.shutdown_drain_timed_out)
+            self.assertEqual(aborts,[])
+            timeout_projection=gate.rpc_observation_projection(rpc)
+            self.assertEqual(timeout_projection['status'],'UNKNOWN_DRAIN')
+            self.assertFalse(timeout_projection['normal_observation_complete'])
+            healthy=make_rpc(ScriptedClient([]),types.SimpleNamespace(),lambda error:None)
+            healthy.shutdown_eof.set()
+            healthy_projection=gate.rpc_observation_projection(healthy)
+            self.assertEqual(healthy_projection['runtime_health_status'],'NO_READER_ERROR')
+            self.assertTrue(healthy_projection['actual_shutdown_eof_observed'])
+
+            # If shutdown becomes expected while recv_obj is in flight, the
+            # drain still uses the owner’s earlier absolute cleanup deadline.
+            clock=[0.0];deadline_owner=types.SimpleNamespace(policy=types.SimpleNamespace(cleanup_end=.01))
+            class FlipDuringReadClient:
+                def __init__(self):self.calls=0;self.last_received_bytes=None
+                def recv_obj(self,timeout=.2):
+                    self.calls+=1
+                    if self.calls==1:
+                        rpc.shutdown_expected=True
+                        return {'method':'buffered-at-stop'}
+                    clock[0]+=timeout
+                    raise TimeoutError()
+            rpc=make_rpc(FlipDuringReadClient(),types.SimpleNamespace(),lambda error:None)
+            rpc.abort=types.MethodType(lambda owner,error:None,deadline_owner)
+            rpc.clock=lambda:clock[0];rpc.shutdown_drain_seconds=5.0
+            rpc._read()
+            self.assertTrue(rpc.shutdown_drain_timed_out)
+            self.assertFalse(rpc.shutdown_eof.is_set())
+            self.assertLessEqual(clock[0],deadline_owner.policy.cleanup_end)
+            self.assertEqual(rpc.client.calls,2)
+
 
     def test_closed_lifecycle_selected_cleanup_and_source_drift(self):
         import textwrap
@@ -159,8 +322,15 @@ class WiringChecks(unittest.TestCase):
                 caps=gate.g2_cap_methods(types.SimpleNamespace(**methods))
             selected_cap=caps['cleanup'];six=selected_cap._g2_cap_source
             self.assertIs(gate.method_namespace(dict(zip(selected_cap.__code__.co_freevars,selected_cap.__closure__))['original_cleanup'].cell_contents)['base'],base)
-            calls=[];owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=True),result={'status':'FAIL'},
-                policy=types.SimpleNamespace(cleanup=lambda:None,limit=lambda n:n),rpcs={},containers={'node':'image','hub':'hubimage'},
+            calls=[];cleanup_error=RuntimeError('SYNTHETIC_FATAL_RETAINED')
+            def cleanup_check():raise cleanup_error
+            cleanup_rpc=types.SimpleNamespace(shutdown_expected=False,error=cleanup_error,
+                observer_rpc_observation_complete=False,observer_rpc_fatal_error_class='RuntimeError',
+                observer_rpc_dispatched_before_fatal=2,observer_rpc_discarded_after_fatal=1,
+                shutdown_eof=threading.Event(),shutdown_drain_timed_out=False,
+                check=cleanup_check,close=lambda:None);cleanup_rpc.shutdown_eof.set()
+            owner=types.SimpleNamespace(args=types.SimpleNamespace(closed_failure_diagnostics=True),result={'status':'FAIL'},
+                policy=types.SimpleNamespace(cleanup=lambda:None,limit=lambda n:n),rpcs={'a':cleanup_rpc},containers={'node':'image','hub':'hubimage'},
                 nodes={'a':{'container':'node'}},run_id='synthetic',networks=[],forwarders=[],provider_adapters={},
                 evidence=Path('/synthetic'),budget=types.SimpleNamespace(started=[]),root=Path('/synthetic'),hub='hub')
             owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
@@ -221,8 +391,32 @@ class WiringChecks(unittest.TestCase):
             self.assertTrue(callable(owner.cleanup))
 
             self.assertEqual(calls[0],('stop','--time','1','node'))
+            self.assertTrue(cleanup_rpc.shutdown_expected)
+            self.assertEqual(owner.result['observer_shutdown']['a'],'EXPECTED_EOF_CONFIRMED')
+            self.assertEqual(owner.result['observer_rpc_observation']['a']['status'],'INCOMPLETE_AFTER_FATAL')
+            self.assertTrue(owner.result['observer_rpc_observation']['a']['actual_shutdown_eof_observed'])
+            self.assertEqual(owner.result['observer_rpc_observation']['a']['dispatched_messages_before_fatal'],2)
+            self.assertEqual(owner.result['observer_rpc_observation']['a']['discarded_frames_after_fatal'],1)
+            self.assertEqual(owner.result['observer_rpc_observation']['a']['runtime_health_status'],'FAILED')
+            self.assertEqual(owner.result['observer_runtime_health_after_eof']['a'],
+                {'status':'FAILED','exception_class':'RuntimeError'})
+            self.assertIs(cleanup_rpc.error,cleanup_error)
+            self.assertEqual(owner.result['status'],'FAIL')
             self.assertEqual([r['event'] for r in owner.result['closed_lifecycle_chronology']],['PROVIDER_CLOSE_ENTRY','OWNED_RUNTIME_STOP_ENTRY'])
             self.assertEqual(provider_calls,['originalclose'])
+            unknown_owner=copy.copy(owner)
+            unknown_owner.result={'status':'FAIL'}
+            unknown_rpc=types.SimpleNamespace(shutdown_expected=True,error=cleanup_error,
+                shutdown_eof=threading.Event(),check=cleanup_check,close=lambda:None)
+            unknown_owner.rpcs={'a':unknown_rpc}
+            unknown_owner.policy=types.SimpleNamespace(cleanup=lambda:None,limit=lambda n:0)
+            unknown_owner.close_provider_adapters=lambda:None
+            unknown_owner.capture_owned_hub_logs=lambda *a:None
+            unknown_owner._closed_lifecycle_state={'lock':threading.Lock(),'first':set(),'complete':True}
+            unknown_owner._closed_lifecycle_cleanup=types.MethodType(installed_cleanup.__func__,unknown_owner)
+            unknown_owner._closed_lifecycle_cleanup()
+            self.assertEqual(unknown_owner.result['observer_shutdown']['a'],'UNKNOWN_RETAINED_SUBSCRIBER')
+            self.assertEqual(unknown_owner.result['status'],'FAIL')
             original_digest=run.digest
             with patch.object(run,'digest',side_effect=lambda path:'0'*64 if Path(path)==gate.HERE/'request_observer_gate.py' else original_digest(path)):
                 with self.assertRaisesRegex(ValueError,'PUBLIC_SOURCE_CHANGED'):run.verify_binding()
@@ -251,8 +445,10 @@ class WiringChecks(unittest.TestCase):
         args=types.SimpleNamespace(native_https=True,execute_diagnostic=True,scenario='g2-g3',
             prepare_native_zero=False,enable_io_diagnostics=False,response_byte_passthrough=False)
         self.assertTrue(run.native_https_mode(args))
+        g1_args=copy.copy(args);g1_args.scenario='g1'
+        self.assertTrue(run.native_https_mode(g1_args))
         self.assertFalse(run.native_https_mode(types.SimpleNamespace()))
-        for key,value in (('native_https',1),('scenario','g1'),('execute_diagnostic',False),
+        for key,value in (('native_https',1),('scenario','unsupported'),('execute_diagnostic',False),
                 ('prepare_native_zero',True),('enable_io_diagnostics',True),('response_byte_passthrough',True)):
             wrong=copy.copy(args);setattr(wrong,key,value)
             with self.subTest(field=key),self.assertRaises(PermissionError):run.native_https_mode(wrong)
@@ -261,8 +457,10 @@ class WiringChecks(unittest.TestCase):
             with patch.object(run,'execute',side_effect=lambda value:captured.append(value) or 0):
                 self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https']),0)
                 self.assertEqual(len(captured),1);self.assertIs(captured[0].native_https,True)
+                self.assertEqual(run.main(['--execute-diagnostic','--scenario','g1','--native-https']),0)
+                self.assertEqual(len(captured),2);self.assertEqual(captured[-1].scenario,'g1')
                 self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https','--enable-io-diagnostics']),2)
-                self.assertEqual(len(captured),1)
+                self.assertEqual(len(captured),2)
             output=io.StringIO()
             with patch.object(sys,'stdout',output):
                 self.assertEqual(run.main(['--execute-diagnostic','--scenario','g2-g3','--native-https']),2)
@@ -300,11 +498,26 @@ class WiringChecks(unittest.TestCase):
                 invalid=copy.copy(gate_args);invalid.go=wrong
                 with self.subTest(missing=field),self.assertRaises(PermissionError):gate.validate_native_https(invalid,'g2-g3',False)
                 with self.assertRaises(PermissionError):run.validate_go(wrong,expected,now=1000)
-            for scenario,zero,field,value in (('g1',False,'run_native',True),('g2-g3',True,'run_native',True),
+            for scenario,zero,field,value in (('g1',True,'run_native',True),('g2-g3',True,'run_native',True),
                     ('g2-g3',False,'run_native',False),('g2-g3',False,'test_request_observer',True),
                     ('g2-g3',False,'response_byte_passthrough',True)):
                 invalid=copy.copy(gate_args);setattr(invalid,field,value)
                 with self.subTest(scenario=scenario,zero=zero,field=field),self.assertRaises(PermissionError):gate.validate_native_https(invalid,scenario,zero)
+            args.scenario='g1'
+            g1_expected=run.expected_latest_go(binding,sha,args,delivery)
+            self.assertEqual((g1_expected['max_native_turns'],g1_expected['max_manual_turns'],g1_expected['max_automatic_turns']),
+                (5,3,2))
+            g1_go=dict(g1_expected,expires_at_unix=9000)
+            run.validate_go(g1_go,g1_expected,now=1000)
+            g1_gate_args=copy.copy(gate_args);g1_gate_args.go=g1_go
+            self.assertTrue(gate.validate_native_https(g1_gate_args,'g1',False))
+            for key,value in (('max_native_turns',6),('max_manual_turns',4),('max_automatic_turns',3),
+                    ('max_accepted_TCP_connections_per_Runtime',17)):
+                wrong=dict(g1_go);wrong[key]=value
+                with self.subTest(g1_go_field=key),self.assertRaises(PermissionError):run.validate_go(wrong,g1_expected,now=1000)
+                invalid=copy.copy(g1_gate_args);invalid.go=wrong
+                with self.assertRaises(PermissionError):gate.validate_native_https(invalid,'g1',False)
+            with self.assertRaises(PermissionError):gate.validate_native_https(g1_gate_args,'g1',True)
             self.assertNotIn('test_request_observer',go);self.assertNotIn('max_POST_attempts_per_Runtime',go)
             historical_delivery_pair=run.bounded_json(run.ACTUAL/'actual-delivery.json')
             execution=copy.copy(args)
@@ -334,7 +547,7 @@ class WiringChecks(unittest.TestCase):
             for kind in ('expired','forged_budget'):
                 candidate=dict(pinned,expires_at_unix=9000)
                 if kind=='expired':candidate['expires_at_unix']=999
-                else:candidate['max_manual_turns']=3
+                else:candidate['max_manual_turns']=pinned['max_manual_turns']+1
                 raw=json.dumps(candidate,sort_keys=True).encode()
                 execution.go_receipt_sha=hashlib.sha256(raw).hexdigest()
                 def public_json(path):
@@ -438,9 +651,9 @@ class WiringChecks(unittest.TestCase):
             self.assertEqual((expected['max_native_turns'],expected['max_manual_turns'],expected['max_automatic_turns']),(6,4,2))
             go=dict(expected,expires_at_unix=9000)
             run.validate_go(go,expected,now=1000)
-            self.assertEqual(expected['official_cli_version'],run.LATEST_VERSION)
-            self.assertEqual(expected['runtime_image'],run.LATEST_RUNTIME)
-            self.assertEqual(expected['official_cli_sha256'],run.LATEST_CLI_SHA)
+            self.assertEqual(expected['official_cli_version'],run.current_cli(binding)['version'])
+            self.assertEqual(expected['runtime_image'],run.current_runtime(binding))
+            self.assertEqual(expected['official_cli_sha256'],run.current_cli(binding)['sha256'])
             for field,value in (('official_cli_version','0.160.1'),
                     ('runtime_image','sha256:ebea4c9988e539d2da914e9cf451c35d5c5039cf99706cd1effc0a6d7b449b83'),
                     ('official_cli_sha256','f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35')):
@@ -915,7 +1128,9 @@ class WiringChecks(unittest.TestCase):
             binding,_=run.bounded_json(run.BINDING)
             delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
             cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario='g2-g3')
-            caps=gate.g2_cap_methods(cls.__mro__[2])
+            capped=next(base for base in cls.__mro__ if base.__name__=='OwnedG2SixGate'
+                and hasattr(base.__dict__.get('cleanup'),'_g2_cap_source'))
+            caps={name:capped.__dict__[name] for name in ('observe','cleanup','reconcile_actual_history')}
             cleanup_tree=ast.parse(caps['cleanup']._g2_cap_source)
             predicate=next(n.test for n in ast.walk(cleanup_tree) if isinstance(n,ast.If) and ast.unparse(n.test)=='len(self.budget.started) > 6')
             check=compile(ast.Expression(predicate),'<late-cleanup-cap>','eval')
@@ -946,8 +1161,10 @@ class WiringChecks(unittest.TestCase):
             binding,_=run.bounded_json(run.BINDING)
             delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
             cls,_=gate.load_gate(delivery,binding,inspect_only=True,scenario='g2-g3')
-            original=cls.__mro__[2].cleanup
-            selected=cls.__mro__[1].cleanup
+            original=sys.modules['managed_gate'].ManagedGate.cleanup
+            capped=next(base for base in cls.__mro__ if base.__name__=='OwnedG2SixGate'
+                and hasattr(base.__dict__.get('cleanup'),'_g2_cap_source'))
+            selected=capped.__dict__['cleanup']
             def cells(method):
                 return dict(zip(method.__code__.co_freevars,method.__closure__ or ()))
             original_inner=cells(original)['original_cleanup'].cell_contents
@@ -1054,6 +1271,531 @@ class WiringChecks(unittest.TestCase):
             self.assertFalse(gate.g2_guard_denial(False,{'status':'FAILED','retryable':True,'error':'communication link not found or not authorized'}))
             self.assertTrue(gate.g2_guard_denial(False,{'status':'FAILED','retryable':False,'error':'communication link not found or not authorized'}))
 
+    def test_g2_visible_receive_correlates_through_validated_request_not_fake_link_fields(self):
+        with run.deny_preflight_effects():
+            base=gate.safe_module('g2_visible_receive_base',gate.OLD.parent/'test-two-node-codex-native.py')
+            dto=gate.safe_module('g2_visible_receive_dto',gate.OLD/'dto_progression.py')
+            def managed_golden_flow(): pass
+            managed_golden_flow=types.FunctionType(managed_golden_flow.__code__,
+                {'base':base,'dto_progression':dto})
+            request={'request_id':'rq-synthetic-17','message_id':'msg-synthetic-29','link_id':'link-synthetic-current',
+                'sender_endpoint_id':'ep-synthetic-a','receiver_endpoint_id':'ep-synthetic-b','state':'OPEN'}
+            question='synthetic question with no seed material'
+            answer='synthetic exact reply using remembered marker'
+            beta='synthetic remembered marker'
+            thread='01a11601-0c73-7fd0-86f6-4cc9c99a098e'
+            def make_events(*,receive_overrides=None,reply_args=None,reply_payload_overrides=None):
+                visible={'sequence':7,'message_id':request['message_id'],'body':question,'state':'QUEUED',
+                    'created_at':'2026-10-09T00:00:00Z','kind':'ask','request_id':request['request_id'],
+                    'reply_to':'','sender_endpoint_id':request['sender_endpoint_id']}
+                if receive_overrides: visible.update(receive_overrides)
+                receive={'type':'mcp_tool_call','tool':'cicada_receive','status':'completed','arguments':{},
+                    'result':{'structuredContent':{'messages':[visible],'next_cursor':'synthetic-cursor'}}}
+                args={'request_id':request['request_id'],'body':answer,'link_id':request['link_id']}
+                if reply_args is not None: args=copy.deepcopy(reply_args)
+                payload={'operation':'reply','status':'SENT','retryable':False,'link_id':request['link_id'],
+                    'request_id':request['request_id'],'message_id':'msg-synthetic-reply',
+                    'result':{'link_id':request['link_id'],'request_id':request['request_id'],
+                        'message_id':'msg-synthetic-reply','status':'REPLIED','payload_mode':'SEALED_V1',
+                        'delivery':'RELAY_PERSISTED'}}
+                if reply_payload_overrides: payload.update(reply_payload_overrides)
+                reply={'type':'mcp_tool_call','tool':'cicada_reply','status':'completed','arguments':args,
+                    'result':{'structuredContent':payload}}
+                return [{'type':'thread.started','thread_id':thread},
+                    {'type':'item.completed','item':receive},{'type':'item.completed','item':reply}]
+            fixture=types.SimpleNamespace(nodes={
+                'a':{'endpoint':request['sender_endpoint_id']},
+                'b':{'thread':thread,'endpoint':request['receiver_endpoint_id']}},
+                managed_golden_flow=managed_golden_flow)
+            proof=gate.g2_b_continuity(fixture,make_events(),request,question,answer,beta)
+            self.assertTrue(proof['link_bound_by_validated_ask_and_reply'])
+            self.assertTrue(proof['receive_correlated_by_request_message_sender_body'])
+            for field,value in (('message_id','foreign-message'),('request_id','foreign-request'),
+                    ('reply_to','foreign-parent'),('sender_endpoint_id','foreign-sender'),
+                    ('body','foreign-body')):
+                with self.subTest(receive_field=field):
+                    with self.assertRaises(RuntimeError):
+                        gate.g2_b_continuity(fixture,make_events(receive_overrides={field:value}),
+                            request,question,answer,beta)
+            for change in (
+                    {'link_id':'foreign-link'},
+                    {'request_id':'foreign-request'},
+                    {'body':'foreign-body'},
+                    {'unknown':'unexpected'},
+                    {'link_id':'foreign-link','request_id':'foreign-request','body':'foreign-body','unknown':'unexpected'}):
+                with self.subTest(reply_change=tuple(change)):
+                    args={'request_id':request['request_id'],'body':answer,'link_id':request['link_id']}
+                    args.update(change)
+                    with self.assertRaises(RuntimeError):
+                        gate.g2_b_continuity(fixture,make_events(reply_args=args),request,question,answer,beta)
+            with self.assertRaises(RuntimeError):
+                gate.g2_b_continuity(fixture,make_events(),dict(request,link_id='foreign-link'),question,answer,beta)
+
+    def test_g2_inline_reply_optional_visible_receive_uses_contract_fields(self):
+        with run.deny_preflight_effects():
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('g2_inline_visible_receive',gate.OLD/'inline_reply.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+            original='01a11602-0c73-7fd0-86f6-4cc9c99a098e';turn='01a11603-0c73-7fd0-86f6-4cc9c99a098e'
+            expected={'message_id':'reply-synthetic','request_id':'rq-synthetic','reply_to':'ask-synthetic',
+                'sender_endpoint_id':'ep-b','receiver_endpoint_id':'ep-a','group_id':'group-current','link_id':'link-current'}
+            answer='synthetic exact reply using remembered marker'
+            markers=('synthetic-original-alpha','synthetic-original-beta')
+            inline=dict(expected,body=answer)
+            user={'type':'userMessage','content':[{'type':'text','text':'Cicada SEALED_V1 REPLY. verified synthetic\n'+json.dumps(inline)}]}
+            final={'type':'agentMessage','phase':'final_answer','text':'synthetic-original-alpha synthetic-original-beta '+answer}
+            visible={'sequence':9,'message_id':expected['message_id'],'body':answer,'state':'INJECTED',
+                'created_at':'2026-10-09T00:00:00Z','kind':'reply','request_id':expected['request_id'],
+                'reply_to':expected['reply_to'],'sender_endpoint_id':expected['sender_endpoint_id']}
+            receive={'type':'mcpToolCall','tool':'cicada_receive','status':'completed','arguments':{}}
+            params=[{'threadId':original,'turnId':turn,'item':user},
+                {'threadId':original,'turnId':turn,'item':receive},
+                {'threadId':original,'turnId':turn,'item':final}]
+            completion={'threadId':original,'turnId':turn,'status':'completed'}
+            tool_payload=lambda _: {'messages':[dict(visible)],'next_cursor':'synthetic-cursor'}
+            with patch.dict(sys.modules,{'inline_reply':module}):
+                proof=gate.g2_inline_reply_witness(params,completion,original,turn,expected,markers,answer,tool_payload)
+                self.assertTrue(proof['inline_correlation'])
+                self.assertEqual(proof['receive_count'],1)
+                wrong_inline=dict(inline,link_id='foreign-link')
+                bad_params=copy.deepcopy(params)
+                bad_params[0]['item']['content'][0]['text']='Cicada SEALED_V1 REPLY. verified synthetic\n'+json.dumps(wrong_inline)
+                with self.assertRaisesRegex(RuntimeError,'inline REPLY exact correlation'):
+                    gate.g2_inline_reply_witness(bad_params,completion,original,turn,expected,markers,answer,tool_payload)
+                for field,value in (('message_id','foreign-message'),('request_id','foreign-request'),
+                        ('reply_to','foreign-parent'),('sender_endpoint_id','foreign-sender'),('body','foreign-body')):
+                    with self.subTest(receive_field=field):
+                        bad_visible=dict(visible);bad_visible[field]=value
+                        with self.assertRaisesRegex(RuntimeError,'optional Receive exact correlation'):
+                            gate.g2_inline_reply_witness(params,completion,original,turn,expected,markers,answer,
+                                lambda _:{'messages':[bad_visible],'next_cursor':'synthetic-cursor'})
+
+    def test_g1_inline_reply_optional_visible_receive_uses_contract_fields(self):
+        """G1 retains its exact six-field same-group envelope and real Receive DTO."""
+        with run.deny_preflight_effects():
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('g1_inline_visible_receive',gate.OLD/'inline_reply.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+            original='01a11620-0c73-7fd0-86f6-4cc9c99a098e';turn='01a11621-0c73-7fd0-86f6-4cc9c99a098e'
+            expected={'message_id':'reply-synthetic','request_id':'rq-synthetic','reply_to':'ask-synthetic',
+                'sender_endpoint_id':'ep-b','receiver_endpoint_id':'ep-a','group_id':'group-same'}
+            answer='synthetic same-group reply using remembered marker'
+            markers=('synthetic-original-alpha','synthetic-original-beta')
+            inline=dict(expected,body=answer)
+            user={'type':'userMessage','content':[{'type':'text','text':'Cicada SEALED_V1 same-Group REPLY. verified synthetic\n'+json.dumps(inline)}]}
+            receive={'type':'mcpToolCall','tool':'cicada_receive','status':'completed','arguments':{}}
+            final={'type':'agentMessage','phase':'final_answer','text':'synthetic-original-alpha synthetic-original-beta '+answer}
+            items=[('a',{'threadId':original,'turnId':turn,'item':user}),
+                ('a',{'threadId':original,'turnId':turn,'item':receive}),
+                ('a',{'threadId':original,'turnId':turn,'item':final})]
+            visible={'sequence':9,'message_id':expected['message_id'],'body':answer,'state':'INJECTED',
+                'created_at':'2026-10-09T00:00:00Z','kind':'reply','request_id':expected['request_id'],
+                'reply_to':expected['reply_to'],'sender_endpoint_id':expected['sender_endpoint_id']}
+            events=[{'type':'item.completed','item':dict(row['item'])} for _,row in items]
+            namespace={'_g1_inline_reply_witness':gate.g1_inline_reply_witness,
+                'base':types.SimpleNamespace(native_tool_payload=lambda _:{'messages':[dict(visible)]},
+                    exact_receive_witness=lambda *args:{'status':'EXACT_SYNTHETIC_RECEIVE'})}
+            method=gate.compile_g1_inline_reply_method((gate.OLD/'managed_gate.py').read_text(),namespace)['audit_inline_reply']
+            fixture=types.SimpleNamespace(
+                budget=types.SimpleNamespace(items=items,completed={('a',turn):{'status':'completed'}}),
+                nodes={'a':{'thread':original,'endpoint':'ep-a'},'b':{'endpoint':'ep-b'}},
+                meta={'group_id':'group-same'},result={'actual_receive_audit':[]},
+                audit_turn=lambda letter,turn_id,tools,selected_markers:events)
+            def invoke(selected_items=items):
+                fixture.budget.items=selected_items
+                method(fixture,turn,{'request_id':expected['request_id'],'message_id':expected['reply_to']},
+                    {'reply_message_id':expected['message_id']},answer,markers)
+            with patch.dict(sys.modules,{'inline_reply':module}):
+                invoke()
+                proof=fixture.result['actual_inline_reply_context']
+                self.assertTrue(proof['inline_correlation']);self.assertEqual(proof['receive_count'],1)
+                self.assertTrue(proof['correct_answer'])
+                for field,value in (('receiver_endpoint_id','ep-foreign'),('group_id','group-foreign'),
+                        ('link_id','unexpected-link')):
+                    bad_items=copy.deepcopy(items)
+                    bad=dict(inline);bad[field]=value
+                    bad_items[0][1]['item']['content'][0]['text']='Cicada SEALED_V1 same-Group REPLY. verified synthetic\n'+json.dumps(bad)
+                    with self.subTest(inline_field=field),self.assertRaisesRegex(RuntimeError,'inline REPLY exact correlation'):
+                        invoke(bad_items)
+                for field,value in (('message_id','foreign-message'),('request_id','foreign-request'),
+                        ('reply_to','foreign-parent'),('sender_endpoint_id','foreign-sender'),('body','foreign-body')):
+                    bad=dict(visible);bad[field]=value
+                    namespace['base'].native_tool_payload=lambda _,bad=bad:{'messages':[bad]}
+                    with self.subTest(receive_field=field),self.assertRaisesRegex(RuntimeError,'optional Receive exact correlation'):
+                        invoke()
+
+    def test_zero_config_matches_pinned_synthetic_provider_shape(self):
+        """The zero fixture satisfies the inherited alias guard without credentials or network use."""
+        with run.deny_preflight_effects():
+            import tomllib
+            config=tomllib.loads(run.ZERO_CONFIG)
+            self.assertEqual(config['model_provider'],'basil')
+            self.assertEqual(set(config['model_providers']),{'basil'})
+            provider=config['model_providers']['basil']
+            self.assertEqual(provider['name'],'Synthetic zero-model provider')
+            self.assertEqual(provider['base_url'],'http://127.0.0.1:9/v1')
+            self.assertEqual(provider['wire_api'],'responses')
+            self.assertEqual(provider['request_max_retries'],4)
+            self.assertNotIn('env_key',provider)
+            self.assertNotRegex(run.ZERO_CONFIG,r'(?i)api[_-]?key|basil\.xin')
+            pinned_script=gate.OLD.parent/'test-two-node-codex-native.py'
+            source=pinned_script.read_text()
+            node=next(item for item in ast.walk(ast.parse(source))
+                if isinstance(item,ast.FunctionDef) and item.name=='isolated_runtime_config')
+            namespace={}
+            exec(compile(ast.Module(body=[node],type_ignores=[]),'<pinned-isolated-runtime-config>','exec'),namespace)
+            isolated=namespace['isolated_runtime_config'](run.ZERO_CONFIG)
+            self.assertIn('approval_policy = "never"',isolated)
+            self.assertIn('request_max_retries = 0',isolated)
+            self.assertIn('stream_max_retries = 0',isolated)
+            malformed=run.ZERO_CONFIG.replace('[model_providers.basil]','[model_providers.synthetic-provider]')
+            with self.assertRaisesRegex(RuntimeError,'reviewed_public_runtime_config_shape_changed'):
+                namespace['isolated_runtime_config'](malformed)
+
+    def test_zero_tls_helper_uses_exact_binding_pinned_stage(self):
+        """Only the pinned TLS helper mount may move to the approved public stage."""
+        with run.deny_preflight_effects():
+            binding,_=run.bounded_json(run.BINDING)
+            binding=copy.deepcopy(binding)
+            stage=next(Path(path).parent.parent for path in binding['public_files'] if path.endswith('/bin/openssl'))
+            binding['output_parent']='/PUBLIC_SYNTHETIC/output-parent'
+            old_stage=Path(binding['output_parent'])/'authority-bootstrap/openssl'
+            fixture=Path('/PUBLIC_SYNTHETIC/fixture');package=Path('/PUBLIC_SYNTHETIC/native-package')
+            run_id='PUBLIC_SYNTHETIC-TLS-HELPER'
+            image='sha256:PUBLIC_SYNTHETIC_RUNTIME'
+            argv=['docker','run','--rm','--pull=never','--name',run_id+'-helper-tls-bootstrap',
+                '--label','org.cicada.test.run='+run_id,'--network','none','--user','1000:1000',
+                '-v',str(fixture)+':/fixture','-v',str(package)+':/opt/cicada-pqtls:ro',
+                '-v',str(old_stage)+':/pqtls-stage:ro','-e','LD_LIBRARY_PATH=/opt/cicada-pqtls/lib',
+                '-e','OPENSSL_CONF=/dev/null','--entrypoint','/fixture/cicada-v68fixture',image,
+                'tls-bootstrap','--db','/fixture/hub-state/cicada.sqlite3','--fixture','/fixture',
+                '--listen','0.0.0.0:8999','--application-origin','http://127.0.0.1:8787',
+                '--openssl','/pqtls-stage/bin/openssl']
+            selected,selected_stage=gate.approved_tls_helper_argv(argv,binding,run_id=run_id,
+                fixture_root=fixture,native_package=package,image=image)
+            self.assertEqual(selected[17],str(stage)+':/pqtls-stage:ro')
+            self.assertEqual([value for i,value in enumerate(selected) if i!=17],
+                [value for i,value in enumerate(argv) if i!=17])
+            self.assertEqual(selected_stage,stage)
+            for index,wrong in ((9,'wrong-network'),(17,str(old_stage)+':/pqtls-stage:rw'),
+                    (len(argv)-1,'/wrong/openssl')):
+                mutated=list(argv);mutated[index]=wrong
+                with self.subTest(argv_index=index),self.assertRaisesRegex(ValueError,'TLS_HELPER_EXACT_SCOPE'):
+                    gate.approved_tls_helper_argv(mutated,binding,run_id=run_id,
+                        fixture_root=fixture,native_package=package,image=image)
+            changed=copy.deepcopy(binding)
+            ssl_path=str(stage/'lib/libssl.so.3')
+            changed['public_files'][ssl_path]['sha256']='0'*64
+            with self.assertRaisesRegex(ValueError,'TLS_STAGE_PUBLIC_FILE|TLS_STAGE_PUBLIC_PIN'):
+                gate.approved_tls_helper_argv(argv,changed,run_id=run_id,
+                    fixture_root=fixture,native_package=package,image=image)
+
+    def test_zero_tls_helper_flag_uses_surviving_candidate_method(self):
+        with run.deny_preflight_effects():
+            binding,_=run.bounded_json(run.BINDING)
+            delivery,_=run.bounded_json(run.ACTUAL/'actual-delivery.json')
+            candidate,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True,scenario='g1')
+            base=candidate.__mro__[1]
+            fixture=object.__new__(candidate)
+            fixture._observer_tls_helper_active=False
+            observed=[]
+            def synthetic_base_helper(owner,action,*arguments):
+                observed.append((action,owner._observer_tls_helper_active))
+                return 'SYNTHETIC_HELPER_RETURN'
+            with patch.object(base,'helper',synthetic_base_helper,create=True):
+                self.assertEqual(candidate.helper(fixture,'tls-bootstrap'),'SYNTHETIC_HELPER_RETURN')
+            self.assertEqual(observed,[('tls-bootstrap',True)])
+            self.assertFalse(fixture._observer_tls_helper_active)
+            fixture._observer_tls_helper_active=True
+            with patch.object(base,'helper',synthetic_base_helper,create=True):
+                with self.assertRaisesRegex(RuntimeError,'^TLS_HELPER_OVERLAP$'):
+                    candidate.helper(fixture,'tls-bootstrap')
+            self.assertEqual(len(observed),1)
+            self.assertTrue(fixture._observer_tls_helper_active)
+
+    def test_g2_inline_reply_accepts_only_exact_shared_memory_warning(self):
+        with run.deny_preflight_effects():
+            import re
+            product_source=(gate.HERE.parents[1]/'cicada-go/cmd/cicada/machine_sealed_receive.go').read_text()
+            match=re.search(r'prompt = ("CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK:.*?") \+ prompt',product_source)
+            self.assertIsNotNone(match)
+            source_warning=json.loads(match.group(1))
+            self.assertTrue(source_warning==gate.G2_SHARED_MEMORY_WARNING)
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('g2_inline_shared_risk',gate.OLD/'inline_reply.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+            original='01a11610-0c73-7fd0-86f6-4cc9c99a098e';turn='01a11611-0c73-7fd0-86f6-4cc9c99a098e'
+            expected={'message_id':'reply-synthetic','request_id':'rq-synthetic','reply_to':'ask-synthetic',
+                'sender_endpoint_id':'ep-b','receiver_endpoint_id':'ep-a','group_id':'group-current','link_id':'link-current'}
+            answer='synthetic exact reply using remembered marker'
+            markers=('synthetic-original-alpha','synthetic-original-beta')
+            inline=dict(expected,body=answer)
+            canonical='Cicada SEALED_V1 REPLY. verified synthetic\n'+json.dumps(inline)
+            raw=gate.G2_SHARED_MEMORY_WARNING+canonical
+            user={'type':'userMessage','content':[{'type':'text','text':raw}]}
+            final={'type':'agentMessage','phase':'final_answer','text':'synthetic-original-alpha synthetic-original-beta '+answer}
+            items=[{'threadId':original,'turnId':turn,'item':user},{'threadId':original,'turnId':turn,'item':final}]
+            completion={'threadId':original,'turnId':turn,'status':'completed'}
+            with patch.dict(sys.modules,{'inline_reply':module}):
+                proof=gate.g2_inline_reply_witness(items,completion,original,turn,expected,markers,answer,
+                    lambda _:{},shared_memory_risk=True)
+                self.assertTrue(proof['shared_memory_risk_warning_present'])
+                self.assertTrue(proof['inline_correlation'])
+                self.assertTrue(proof['correct_answer'])
+                self.assertTrue(proof['inline_sha256']==hashlib.sha256(raw.encode('utf-8')).hexdigest())
+                self.assertEqual(items[0]['item']['content'][0]['text'],raw)
+                for label,bad_text,bad_risk in (
+                        ('missing',canonical,True),
+                        ('unexpected',raw,False),
+                        ('duplicate',gate.G2_SHARED_MEMORY_WARNING+raw,True),
+                        ('nonleading','prefix\n'+gate.G2_SHARED_MEMORY_WARNING+canonical,True),
+                        ('malformed',gate.G2_SHARED_MEMORY_WARNING.replace('multiple authorized','several authorized',1)+canonical,True),
+                        ('extra-frame',gate.G2_SHARED_MEMORY_WARNING+'extra frame\n'+canonical,True)):
+                    with self.subTest(warning=label):
+                        bad_items=copy.deepcopy(items)
+                        bad_items[0]['item']['content'][0]['text']=bad_text
+                        with self.assertRaises(RuntimeError):
+                            gate.g2_inline_reply_witness(bad_items,completion,original,turn,expected,markers,answer,
+                                lambda _:{},shared_memory_risk=bad_risk)
+                bad_payload=dict(inline,link_id='foreign-link')
+                for label,payload in (('foreign_link',bad_payload),('extra_key',dict(inline,extra='synthetic'))):
+                    with self.subTest(payload=label):
+                        strict_items=copy.deepcopy(items)
+                        strict_items[0]['item']['content'][0]['text']=gate.G2_SHARED_MEMORY_WARNING+(
+                            'Cicada SEALED_V1 REPLY. verified synthetic\n'+json.dumps(payload))
+                        with self.assertRaisesRegex(RuntimeError,'inline REPLY exact correlation'):
+                            gate.g2_inline_reply_witness(strict_items,completion,original,turn,expected,markers,answer,
+                                lambda _:{},shared_memory_risk=True)
+                with self.assertRaisesRegex(RuntimeError,'G2_INLINE_REPLY_EXPECTED_SCHEMA'):
+                    gate.g2_inline_reply_witness(items,completion,original,turn,
+                        {key:value for key,value in expected.items() if key!='link_id'},markers,answer,
+                        lambda _:{},shared_memory_risk=True)
+
+    def test_g2_retained_actual_a_inline_reply_replay(self):
+        private_dir=os.environ.get('CICADA_G2_RETAINED_A_REPLAY_DIR')
+        private_result=os.environ.get('CICADA_G2_RETAINED_A_RESULT')
+        if not private_dir or not private_result:
+            self.skipTest('explicit retained synthetic A replay inputs not selected')
+        with run.deny_preflight_effects():
+            import re
+            def protected_jsonl(path):
+                path=Path(path)
+                before=path.lstat()
+                if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_mode & 0o077:
+                    raise AssertionError('retained A replay input is not private regular file')
+                path=path.resolve(strict=True)
+                if path.stat().st_size>2<<20: raise AssertionError('retained A replay input exceeds bound')
+                rows=[]
+                with path.open('rb') as stream:
+                    for raw in stream:
+                        if len(raw)>1<<20: raise AssertionError('retained A replay row exceeds bound')
+                        row=json.loads(raw);message=row.get('message')
+                        if isinstance(message,dict): rows.append((row.get('direction'),message))
+                return rows
+            replay_root=Path(private_dir)
+            root_stat=replay_root.lstat()
+            if not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid!=os.getuid() or root_stat.st_mode & 0o077:
+                raise AssertionError('retained A replay directory identity')
+            replay_root=replay_root.resolve(strict=True)
+            a_rows=protected_jsonl(replay_root/'managed-a-private-rpc.jsonl')
+            b_rows=protected_jsonl(replay_root/'managed-b-private-rpc.jsonl')
+            result_path=Path(private_result);result_stat=result_path.lstat()
+            if not stat.S_ISREG(result_stat.st_mode) or result_stat.st_uid!=os.getuid() or result_stat.st_mode & 0o077:
+                raise AssertionError('retained A replay result is not private regular file')
+            result_path=result_path.resolve(strict=True);result=json.loads(result_path.read_text())
+            if (result.get('run_id')!='cicada-two-turn-peerreceiptc20261009c002' or
+                    result.get('fixture_scenario')!='g2-g3' or
+                    result.get('product_revision')!='631666c8f86349e1b1e81c318f324c7897588683' or
+                    result.get('status')!='FAIL'):
+                raise AssertionError('retained A replay result identity')
+            membership=result.get('g2_membership')
+            if (type(membership) is not dict or membership.get('same_original_thread') is not True or
+                    membership.get('same_original_endpoint') is not True or
+                    membership.get('separately_authorized_principal_membership') is not True or
+                    membership.get('left_primary_only') is not True):
+                raise AssertionError('retained A replay shared-scope witness')
+            base=gate.safe_module('g2_retained_a_inline_base',gate.OLD.parent/'test-two-node-codex-native.py')
+            dto=gate.safe_module('g2_retained_a_inline_dto',gate.OLD/'dto_progression.py')
+            ask_items=[]
+            for direction,message in a_rows:
+                if direction=='received' and message.get('method')=='item/completed':
+                    item=(message.get('params') or {}).get('item') or {}
+                    if item.get('type')=='mcpToolCall' and item.get('tool')=='cicada_ask': ask_items.append(item)
+            if len(ask_items)!=1: raise AssertionError('retained A Ask witness count')
+            ask=ask_items[0];ask_args=ask.get('arguments')
+            if type(ask_args) is not dict or set(ask_args)!={'question','link_id','data_scope'}:
+                raise AssertionError('retained A Ask argument schema')
+            bindings=result.get('bindings_before')
+            if type(bindings) is not dict or set(bindings)!={'a','b'}:
+                raise AssertionError('retained A replay binding schema')
+            request=gate.g2_accepted_ask(dto,ask,base.native_tool_payload(ask),
+                bindings['a']['endpoint_id'],bindings['b']['endpoint_id'],ask_args['question'],None,ask_args['link_id'])
+            beta_rx=re.compile(r'(CICADA-ORIGINAL-B-[0-9a-f]{32})')
+            alpha_rx=re.compile(r'(CICADA-ORIGINAL-A-[0-9a-f]{32})')
+            answer_rx=re.compile(r'(CICADA-MANAGED-REPLY-ONLY-OPAQUE:CICADA-ORIGINAL-B-[0-9a-f]{32})')
+            alpha_values=set();beta_values=set();answers=set()
+            for direction,message in a_rows+b_rows:
+                if direction!='sent' or message.get('method')!='turn/start': continue
+                params=message.get('params') or {};inputs=params.get('input')
+                if not isinstance(inputs,list): continue
+                for row in inputs:
+                    if not isinstance(row,dict) or not isinstance(row.get('text'),str): continue
+                    alpha_values.update(alpha_rx.findall(row['text']))
+                    beta_values.update(beta_rx.findall(row['text']))
+                    answers.update(answer_rx.findall(row['text']))
+            if len(alpha_values)!=1 or len(beta_values)!=1 or len(answers)!=1:
+                raise AssertionError('retained original context prompt witness')
+            alpha=next(iter(alpha_values));beta=next(iter(beta_values));answer=next(iter(answers))
+            if answer!='CICADA-MANAGED-REPLY-ONLY-OPAQUE:'+beta:
+                raise AssertionError('retained B response remains bound to original seed')
+            replies=[]
+            for direction,message in b_rows:
+                if direction=='received' and message.get('method')=='item/completed':
+                    item=(message.get('params') or {}).get('item') or {}
+                    if item.get('type')=='mcpToolCall' and item.get('tool')=='cicada_reply': replies.append(item)
+            if len(replies)!=1 or type(replies[0].get('arguments')) is not dict or replies[0]['arguments'].get('body')!=answer:
+                raise AssertionError('retained B reply tool correlation')
+            final=gate.g2_accepted_reply(dto,replies,base.native_tool_payload,request,answer)
+            turns=[row for row in result.get('native_turns',[]) if row.get('node')=='a']
+            if len(turns)!=4 or len({row.get('thread_id') for row in turns})!=1:
+                raise AssertionError('retained original A turn identity')
+            original=turns[0]['thread_id'];turn=turns[-1]['turn_id']
+            selected=[]
+            for direction,message in a_rows:
+                if direction!='received' or message.get('method')!='item/completed': continue
+                params=message.get('params') or {}
+                if params.get('turnId')!=turn: continue
+                item=params.get('item') or {}
+                if item.get('type') in ('userMessage','agentMessage','reasoning','mcpToolCall'):
+                    selected.append({'threadId':original,'turnId':turn,'item':item})
+            if not selected: raise AssertionError('retained original A final turn events')
+            expected={'message_id':final['reply_message_id'],'request_id':request['request_id'],
+                'reply_to':request['message_id'],'sender_endpoint_id':bindings['b']['endpoint_id'],
+                'receiver_endpoint_id':bindings['a']['endpoint_id'],'group_id':membership['selected_group_id'],
+                'link_id':request['link_id']}
+            completed={'threadId':original,'turnId':turn,'status':'completed'}
+            answer_items=[row['item'] for row in selected if row['item'].get('type')=='userMessage']
+            if len(answer_items)!=1: raise AssertionError('retained A reply user item count')
+            blocks=answer_items[0].get('content')
+            if type(blocks) is not list or len(blocks)!=1 or type(blocks[0]) is not dict or type(blocks[0].get('text')) is not str:
+                raise AssertionError('retained A reply input shape')
+            original_input=blocks[0]['text']
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('g2_retained_a_inline_reply',gate.OLD/'inline_reply.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+            with patch.dict(sys.modules,{'inline_reply':module}):
+                proof=gate.g2_inline_reply_witness(selected,completed,original,turn,expected,(alpha,beta),answer,
+                    base.native_tool_payload,shared_memory_risk=True)
+            self.assertTrue(proof['inline_correlation'])
+            self.assertTrue(proof['correct_answer'])
+            self.assertTrue(all(proof['context_markers']))
+            self.assertTrue(proof['shared_memory_risk_warning_present'])
+            self.assertTrue(proof['inline_sha256']==hashlib.sha256(original_input.encode('utf-8')).hexdigest())
+
+    def test_g2_retained_actual_b_reply_replay(self):
+        private_dir=os.environ.get('CICADA_G2_RETAINED_B_REPLAY_DIR')
+        private_result=os.environ.get('CICADA_G2_RETAINED_B_RESULT')
+        if not private_dir or not private_result:
+            self.skipTest('explicit retained synthetic B replay inputs not selected')
+        with run.deny_preflight_effects():
+            import re
+            def protected_jsonl(path):
+                path=Path(path)
+                before=path.lstat()
+                if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_mode & 0o077:
+                    raise AssertionError('retained replay input is not private regular file')
+                path=path.resolve(strict=True)
+                if path.stat().st_size>2<<20: raise AssertionError('retained replay input exceeds bound')
+                rows=[]
+                with path.open('rb') as stream:
+                    for raw in stream:
+                        if len(raw)>1<<20: raise AssertionError('retained replay row exceeds bound')
+                        row=json.loads(raw)
+                        message=row.get('message')
+                        if isinstance(message,dict): rows.append((row.get('direction'),message))
+                return rows
+            replay_root=Path(private_dir)
+            root_stat=replay_root.lstat()
+            if not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid!=os.getuid() or root_stat.st_mode & 0o077:
+                raise AssertionError('retained replay directory identity')
+            replay_root=replay_root.resolve(strict=True)
+            a_rows=protected_jsonl(replay_root/'managed-a-private-rpc.jsonl')
+            b_rows=protected_jsonl(replay_root/'managed-b-private-rpc.jsonl')
+            result_path=Path(private_result)
+            result_stat=result_path.lstat()
+            if not stat.S_ISREG(result_stat.st_mode) or result_stat.st_uid!=os.getuid() or result_stat.st_mode & 0o077:
+                raise AssertionError('retained replay result is not private regular file')
+            result_path=result_path.resolve(strict=True)
+            result=json.loads(result_path.read_text())
+            if (result.get('run_id')!='cicada-two-turn-peerphasecap20261009b002' or
+                    result.get('fixture_scenario')!='g2-g3' or
+                    result.get('product_revision')!='631666c8f86349e1b1e81c318f324c7897588683' or
+                    result.get('status')!='FAIL'):
+                raise AssertionError('retained replay result identity')
+            base=gate.safe_module('g2_retained_replay_base',gate.OLD.parent/'test-two-node-codex-native.py')
+            dto=gate.safe_module('g2_retained_replay_dto',gate.OLD/'dto_progression.py')
+            ask_items=[]
+            for direction,message in a_rows:
+                if direction=='received' and message.get('method')=='item/completed':
+                    item=(message.get('params') or {}).get('item') or {}
+                    if item.get('type')=='mcpToolCall' and item.get('tool')=='cicada_ask':
+                        item=dict(item);item['type']='mcp_tool_call';ask_items.append(item)
+            if len(ask_items)!=1: raise AssertionError('retained ask witness count')
+            ask=ask_items[0];args=ask.get('arguments')
+            if not isinstance(args,dict) or set(args)!={'question','link_id','data_scope'}:
+                raise AssertionError('retained ask argument schema')
+            endpoints=result['bindings_before']
+            request=gate.g2_accepted_ask(dto,ask,base.native_tool_payload(ask),
+                endpoints['a']['endpoint_id'],endpoints['b']['endpoint_id'],args['question'],
+                None,args['link_id'])
+            prompts=[]
+            for direction,message in b_rows:
+                if direction=='sent' and message.get('method')=='turn/start':
+                    input_items=(message.get('params') or {}).get('input')
+                    if isinstance(input_items,list):
+                        prompts.extend(v.get('text') for v in input_items if isinstance(v,dict) and isinstance(v.get('text'),str))
+            seed_rx=re.compile(r'(CICADA-ORIGINAL-B-[0-9a-f]{32})')
+            answer_rx=re.compile(r'(CICADA-MANAGED-REPLY-ONLY-OPAQUE:CICADA-ORIGINAL-B-[0-9a-f]{32})')
+            seed_matches=[];answer_matches=[]
+            for prompt in prompts:
+                seed_matches.extend(seed_rx.findall(prompt));answer_matches.extend(answer_rx.findall(prompt))
+            beta_values=set(seed_matches)
+            if len(beta_values)!=1 or len(seed_matches)<2 or len(answer_matches)!=1:
+                raise AssertionError('retained B seed/answer prompt witness')
+            beta=next(iter(beta_values));answer=answer_matches[0]
+            if answer!='CICADA-MANAGED-REPLY-ONLY-OPAQUE:'+beta:
+                raise AssertionError('retained B answer not bound to initial seed')
+            by_turn={}
+            for direction,message in b_rows:
+                if direction=='received' and message.get('method')=='item/completed':
+                    params=message.get('params') or {};item=params.get('item') or {};turn=params.get('turnId')
+                    if not isinstance(turn,str): continue
+                    kind=item.get('type')
+                    if kind not in ('mcpToolCall','agentMessage','reasoning'): continue
+                    item=dict(item)
+                    if kind=='mcpToolCall': item['type']='mcp_tool_call'
+                    elif kind=='agentMessage': item['type']='agent_message'
+                    by_turn.setdefault(turn,[]).append(item)
+            candidates=[]
+            for turn,items in by_turn.items():
+                tools=[item.get('tool') or item.get('name') for item in items if item.get('type')=='mcp_tool_call']
+                if tools==['cicada_receive','cicada_reply']: candidates.append((turn,items))
+            if len(candidates)!=1: raise AssertionError('retained B receive/reply turn count')
+            b_turns=[row.get('thread_id') for row in result.get('native_turns',[]) if row.get('node')=='b']
+            if len(b_turns)!=2 or len(set(b_turns))!=1: raise AssertionError('retained original B thread identity')
+            thread=b_turns[0]
+            events=[{'type':'thread.started','thread_id':thread}]
+            events.extend({'type':'item.completed','item':item} for item in candidates[0][1])
+            def managed_golden_flow(): pass
+            managed_golden_flow=types.FunctionType(managed_golden_flow.__code__,{'base':base,'dto_progression':dto})
+            fixture=types.SimpleNamespace(managed_golden_flow=managed_golden_flow,nodes={
+                'a':{'endpoint':request['sender_endpoint_id']},
+                'b':{'thread':thread,'endpoint':request['receiver_endpoint_id']}})
+            proof=gate.g2_b_continuity(fixture,events,request,args['question'],answer,beta)
+            self.assertTrue(proof['link_bound_by_validated_ask_and_reply'])
+            self.assertTrue(proof['receive_correlated_by_request_message_sender_body'])
+            self.assertTrue(proof['seed_beta_in_actual_reply_body'])
+
     def test_g2_current_mcp_and_g3_exact_readiness_admission(self):
         with run.deny_preflight_effects():
             binding,_=run.bounded_json(run.BINDING)
@@ -1095,16 +1837,42 @@ class WiringChecks(unittest.TestCase):
                     fixture.g2_mcp_call=lambda *args:(False,altered)
                     with self.assertRaises(RuntimeError):gate.g2_current_actor(fixture,'a')
             self.assertTrue(gate.g2_guard_denial(True,{'error':'communication link is revoked'}))
+            self.assertTrue(gate.g2_guard_denial(False,{'status':'FAILED','retryable':False,
+                'error':'Node Relay request failed with HTTP 404'}))
+            for payload in (
+                {'status':'FAILED','retryable':False,'error':'Node Relay request failed with HTTP 401'},
+                {'status':'FAILED','retryable':False,'error':'Node Relay request failed with HTTP 403'},
+                {'status':'FAILED','retryable':False,'error':'Node Relay request failed with HTTP 500'},
+                {'status':'FAILED','retryable':True,'error':'Node Relay request failed with HTTP 404'},
+                {'status':'ACCEPTED','retryable':False,'error':'Node Relay request failed with HTTP 404'},
+                {'status':'FAILED','retryable':False,'error':'Node Relay request failed with HTTP 404: timeout'},
+                {'status':'FAILED','retryable':False,'error':'HTTP 404'},
+                {'status':'FAILED','retryable':False,'error':'timeout'},
+            ):
+                with self.subTest(revoked_link_denial=payload['error'],status=payload['status'],
+                                  retryable=payload['retryable']):
+                    self.assertFalse(gate.g2_guard_denial(False,payload))
+            self.assertFalse(gate.g2_guard_denial(True,{'status':'FAILED','retryable':False,
+                'error':'Node Relay request failed with HTTP 404'}))
             for payload in ({},{'error':'timeout'},{'status':'FAILED','retryable':False,'error':'protocol error'}):
                 with self.subTest(denial=tuple(payload)):
                     self.assertFalse(gate.g2_guard_denial(False,payload))
 
     def test_g2_component_and_scenario_reject_old_authority(self):
         with run.deny_preflight_effects():
-            actual_root = run.G2_BUILD_ROOT
-            delivery,_ = run.bounded_json(actual_root/'mcp-fixed-actual-delivery.NONAUTH.json')
-            equality,_ = run.bounded_json(actual_root/'mcp-fixed-compiled-input-equality.NONAUTH.json')
-            self.assertEqual(run.g2_component_inputs(delivery,equality),delivery['component_proof_sha256'])
+            binding,_=run.verify_binding()
+            bundle=run.require_current_bundle(binding)
+            delivery=run.current_delivery(binding)
+            equality,equality_raw=run.bounded_json(bundle['equality']['path'])
+            self.assertEqual(hashlib.sha256(equality_raw).hexdigest(),bundle['equality']['sha256'])
+            self.assertEqual(run.g2_component_inputs(delivery,equality,current=True),delivery['component_proof_sha256'])
+            proof,_=run.bounded_json(delivery['component_proof_path'])
+            for field,value in (('bytes',proof['fixture_source_rows'][0]['bytes']+1),
+                                ('rawmode',0o100600)):
+                altered=dict(proof['fixture_source_rows'][0]);altered[field]=value
+                with self.subTest(changed_source=field),self.assertRaisesRegex(PermissionError,'G2_SOURCE_BYTES_MODE_CHANGED'):
+                    run.g2_public_row(altered,paths=run.G2_SOURCE_PATHS)
+            actual_root=run.G2_BUILD_ROOT
             old_delivery,_ = run.bounded_json(actual_root/'actual-delivery.NONAUTH.json')
             old_equality,_ = run.bounded_json(actual_root/'compiled-input-equality.NONAUTH.json')
             self.assertNotEqual(old_delivery['binary_sha256'],delivery['binary_sha256'])
@@ -1184,7 +1952,7 @@ class WiringChecks(unittest.TestCase):
             self.assertIn(ast.dump(ast.parse("json.dumps(question)", mode="eval").body),
                 ast.dump(ast.parse(current["gate"])))
             binding,_=run.verify_binding()
-            delivery=run.bounded_json(run.BINDING.parent.parent/"native-observer-runtime-161-20261007"/"cicada-product826-pq-20261007a"/"actual-delivery.NONAUTH.json")[0]
+            delivery=run.current_delivery(binding)
             candidate,legacy=gate.load_gate(delivery,binding,inspect_only=True)
             audit=candidate.audit_turn
             closure=dict(zip(audit.__code__.co_freevars, (cell.cell_contents for cell in audit.__closure__)))
@@ -1205,9 +1973,10 @@ class WiringChecks(unittest.TestCase):
         exec(compile("class Prior:\n"+"\n".join("    "+line for line in old_source.splitlines()),"<public-prior-register>","exec"),namespace)
         with run.deny_preflight_effects():
             binding,_=run.verify_binding()
-            delivery,_=run.bounded_json(run.BINDING.parent.parent/"native-observer-runtime-161-20261007"/"cicada-product826-pq-20261007a"/"actual-delivery.NONAUTH.json")
+            delivery=run.current_delivery(binding)
             cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
             fixture=object.__new__(cls)
+            fixture._observer_tls_helper_active=False
             fixture.args=types.SimpleNamespace(runtime_image=run.LATEST_RUNTIME,latest_runtime=True)
             fixture.run_id="cicada-two-turn-zerocli161-synthetic"
             fixture.root=Path("/synthetic-zero-fixture")
@@ -1276,7 +2045,7 @@ class WiringChecks(unittest.TestCase):
                     fixture=object.__new__(cls)
                     fixture.args=types.SimpleNamespace(response_byte_passthrough=False)
                     if flag is not None:fixture.args.test_request_observer=flag
-                    fixture.result={};fixture.policy=types.SimpleNamespace(started=1000.0)
+                    fixture.result={};fixture.policy=types.SimpleNamespace(started=1000.0,normal_end=1180.0)
                     uploads=[];delegated=[]
                     fixture.command=lambda argv,**kwargs:uploads.append((argv,kwargs)) or b''
                     def base_boundary(owner,*argv,**kwargs):
@@ -1361,11 +2130,26 @@ class WiringChecks(unittest.TestCase):
             delivery,_=run.bounded_json(run.ACTUAL/"actual-delivery.json")
             cls,_=gate.load_gate(delivery,binding,inspect_only=True,zero_model=True)
             source_namespace=cls.start_managed_servers.__globals__
+            import tomllib
+            zero_template=tomllib.loads(run.ZERO_CONFIG)
+            self.assertEqual(zero_template['model_provider'],'basil')
+            self.assertEqual(set(zero_template['model_providers']),{'basil'})
+            provider=zero_template['model_providers']['basil']
+            self.assertEqual(provider['name'],'Synthetic zero-model provider')
+            self.assertEqual(provider['base_url'],'http://127.0.0.1:9/v1')
+            self.assertNotIn('env_key',provider)
+            self.assertNotRegex(run.ZERO_CONFIG,r'(?i)api[_-]?key|basil\.xin')
             actual_config=source_namespace["base"].isolated_runtime_config(run.ZERO_CONFIG)
-            self.assertIn('approval_policy = "never"',actual_config)
-            self.assertIn('request_max_retries = 0',actual_config)
-            self.assertIn('stream_max_retries = 0',actual_config)
-            self.assertIn('model = "gpt-5.6-luna"',actual_config)
+            parsed=tomllib.loads(actual_config)
+            self.assertEqual(parsed['model_provider'],'basil')
+            self.assertEqual(set(parsed['model_providers']),{'basil'})
+            actual_provider=parsed['model_providers']['basil']
+            self.assertEqual(actual_provider['base_url'],'http://127.0.0.1:9/v1')
+            self.assertNotIn('env_key',actual_provider)
+            self.assertEqual(actual_provider['request_max_retries'],0)
+            self.assertEqual(actual_provider['stream_max_retries'],0)
+            self.assertEqual(parsed['approval_policy'],'never')
+            self.assertEqual(parsed['model'],'gpt-5.6-luna')
             rpc_class=source_namespace["ManagedRPC"]
             fixture=object.__new__(cls)
             fixture.audit_lock=threading.Lock();fixture.audit_bytes={}
@@ -1431,29 +2215,41 @@ class WiringChecks(unittest.TestCase):
             "package_metadata_sha256","hub_receipt_sha256")}
         delivery.update(hub_image="sha256:"+sha,package="/synthetic/package",helper="/synthetic/helper",
             hub_receipt_path="/synthetic/hub-receipt",source_repo="/synthetic/source")
+        delivery.update(commit="b"*40,source_dirty=False)
         equality={"status":"COMPILED_INPUTS_EXACT","current_commit":"b"*40,
             "artifact_compiled_inputs_sha256":sha,"current_compiled_inputs_sha256":sha,
-            "artifact_binary_sha256":sha}
+            "artifact_binary_sha256":sha,"source_dirty":False}
+        binding={"schema":run.current_binding.SCHEMA,"output_parent":str(run.BINDING.parent),
+            "current_bundle":{"schema":run.current_binding.BUNDLE_SCHEMA,"current_commit":"b"*40,
+                "source_fingerprint":sha,"source_dirty":False,"delivery":{"path":"delivery"},
+                "equality":{"path":"equality"},"runtime_receipt":{"image_id":run.LATEST_RUNTIME}}}
         receipt={"status":"PASS","candidate_binding_sha256":sha,"Runtime_calls":0,"model_calls":0}
         raw=b"public synthetic"
         args=types.SimpleNamespace(execute_diagnostic=False,enable_io_diagnostics=False,
-            unique_run="cicada-two-turn-zerocli161-20261007a",runtime_image=run.LATEST_RUNTIME,
+            unique_run="cicada-two-turn-zerocli0162-20261010suite",runtime_image=run.LATEST_RUNTIME,
             cleanup_hard_stop_unix=10000,binding_sha=sha,wiring_receipt="receipt",
             wiring_receipt_sha=hashlib.sha256(raw).hexdigest(),delivery="delivery",
             delivery_sha=hashlib.sha256(raw).hexdigest(),compiled_input_equality="equality",
             equality_sha=hashlib.sha256(raw).hexdigest(),current_commit="b"*40,
-            result_dir=str(run.BINDING.parent/"native-preparation-cicada-two-turn-zerocli161-20261007a"))
+            result_dir=str(run.BINDING.parent/"native-preparation-cicada-two-turn-zerocli0162-20261010suite"))
         original_bounded_json=run.bounded_json
         def read(path,*unused):
             if str(path)==run.CREDENTIAL:return original_bounded_json(path)
             return {"receipt":receipt,"delivery":delivery,"equality":equality}[str(path)],raw
-        with run.deny_preflight_effects(),patch.object(run,"verify_binding",return_value=({},sha)),             patch.object(run,"bounded_json",side_effect=read),patch.object(run,"digest",return_value=sha),             patch.object(run.time,"time",return_value=1000),patch.object(Path,"exists",return_value=False):
+        with run.deny_preflight_effects(),patch.object(run,"verify_binding",return_value=(binding,sha)),             patch.object(run,"bounded_json",side_effect=read),patch.object(run,"digest",return_value=sha),             patch.object(run.time,"time",return_value=1000),patch.object(Path,"exists",return_value=False):
             self.assertEqual(run.zero_inputs(args)[2],delivery)
             for key,value in (("execute_diagnostic",True),("go_receipt","SYNTHETIC_PAID"),("preparation_result","SYNTHETIC_PAID"),
                               ("reproduce_zero_hub_restart",1),("runtime_image",run.RUNTIME),
                               ("cleanup_hard_stop_unix",1100),("unique_run","old-run"),("delivery",run.CREDENTIAL)):
                 changed=copy.copy(args);setattr(changed,key,value)
                 with self.subTest(guard=key),self.assertRaises(PermissionError):run.zero_inputs(changed)
+            for target,key,value in ((delivery,"source_dirty",True),
+                    (binding["current_bundle"],"source_fingerprint","c"*64),
+                    (binding["current_bundle"],"schema","SYNTHETIC_WRONG_SCHEMA")):
+                original=target[key];target[key]=value
+                try:
+                    with self.subTest(current_bundle_guard=key),self.assertRaises(PermissionError):run.zero_inputs(args)
+                finally:target[key]=original
             equality["artifact_compiled_inputs_sha256"]="c"*64
             with self.assertRaises(PermissionError):run.zero_inputs(args)
         # Preparation alone never permits paid dispatch; missing proof stops before public reads.
@@ -1651,6 +2447,195 @@ class WiringChecks(unittest.TestCase):
             self.assertEqual(run.main(["--execute-diagnostic"]),2)
         self.assertFalse(run.EXECUTION_EFFECTS_STARTED)
 
+    def test_actual_peer_g1_none_timeout_preserves_inherited_default(self):
+        import importlib.util
+        import inspect
+        root = HERE.parents[1] / '.cicada-data/native-observer-wiring-20261007'
+        bundle = root / 'request-observer-current-0162/bundle-origin20261010a'
+        result_path = bundle / 'request-observer-native-result-cicada-two-turn-g1cli0162origin20261010a001/result.json'
+        result_raw = result_path.read_bytes()
+        self.assertEqual(hashlib.sha256(result_raw).hexdigest(),
+                         '6cbac8acecfb9ef460fa7023eec20eef30b57017627b6c396f5980f2dc53e3ed')
+        result = json.loads(result_raw)
+        actual_turn = result['managed_actual_turns'][0]
+        replay_path = next(bundle.glob('native-g1-root-*/ACTUAL-PEER-NONE-TIMEOUT-REPLAY.NONAUTH.json'))
+        replay = json.loads(replay_path.read_bytes())
+        self.assertEqual(hashlib.sha256(replay_path.read_bytes()).hexdigest(),
+                         '1009761ab91a9fb5826a28a7d15157906524040c90ad3f1845476b7bb6ecd945')
+        response_ref = replay['actual_turn_start_response_projection']
+        response_raw = Path(response_ref['path']).read_bytes()
+        self.assertEqual(hashlib.sha256(response_raw).hexdigest(), response_ref['sha256'])
+        response = {'turn': {'id': json.loads(response_raw)['result']['turn']['id']}}
+        self.assertEqual(response['turn']['id'], actual_turn['turn_id'])
+        peer_root = root / 'peer-outer-broker-20261009a'
+        sys.path.insert(0, str(peer_root))
+        spec = importlib.util.spec_from_file_location('abi_paid_source',
+            peer_root / 'peer-phase-budget-paid-drainfix20261010c/peer_paid_timeout_abi_20261010d.py')
+        paid = importlib.util.module_from_spec(spec)
+        with run.deny_preflight_effects():
+            spec.loader.exec_module(paid)
+            self.assertEqual(paid.PINS[paid.PUBLIC_GATE], hashlib.sha256(Path(gate.__file__).read_bytes()).hexdigest())
+            paid_gate = paid._paid_fresh_gate(gate)
+            # Keep the actual saved DTO's provenance while loading the selected
+            # current binding; legacy module globals are shared by later checks.
+            binding = json.loads(Path(run.BINDING).read_bytes())
+            delivery = run.current_delivery(binding)
+            import peer_run_scenario_20261010 as peer_run
+            import peer_gate_derivative_phase_current_drainfix20261010b as peer
+            for scenario in ('g1', 'g2-g3'):
+                base, _ = paid_gate.load_gate(delivery, binding, inspect_only=True,
+                    scenario=scenario, normal_seconds=600)
+                selected = peer_run.selected_g1_golden_flow_source(paid_gate, base, scenario, 600)
+                cls = peer.install(base, binding, 600,
+                    private_root='/tmp/SYNTHETIC_NO_FIXTURE_CONSTRUCTOR', origin={},
+                    credential_path='SYNTHETIC_NOT_READ',
+                    socket_roots={'a': '/tmp/SYNTHETIC_NO_A', 'b': '/tmp/SYNTHETIC_NO_B'},
+                    scenario=scenario, g1_flow_source=selected)
+                if scenario == 'g1':
+                    abi = next(c for c in cls.__mro__ if c.__name__ == 'OwnedG1TimeoutABIGate')
+                    inherited = abi.wait_turn.__closure__
+                    original = next(c.cell_contents for c in inherited if callable(c.cell_contents))
+                    self.assertEqual(inspect.signature(original).parameters['timeout'].default, 180)
+                else:
+                    self.assertNotIn('OwnedG1TimeoutABIGate', [c.__name__ for c in cls.__mro__])
+                for operation in ('manual', 'wait', 'automatic'):
+                    for timeout, now in ((None, 1000), (19, 1000), (None, 1599), (19, 1599)):
+                        if operation == 'manual' and timeout is not None:
+                            continue
+                        with self.subTest(scenario=scenario, operation=operation, timeout=timeout, now=now):
+                            owner = object.__new__(cls)  # Never call a fixture constructor.
+                            owner.args = types.SimpleNamespace(run_native=True)
+                            owner.nodes = {'a': {'thread': actual_turn['thread_id']}}
+                            owner.result = {}; owner.result_paid_dispatches = 0; owner.manual_turn_ids = []
+                            owner.cleaning = owner.aborted = False
+                            owner.provider_errors = {}; owner.provider_adapters = {}
+                            owner.budget = types.SimpleNamespace(completed=set(), started=set())
+                            owner.phase = 'original_managed_join_and_context'
+                            owner.policy = paid_gate.bind_policy(types.SimpleNamespace(), 1000, 600)
+                            calls = []; requests = []; checks = []; drained = []
+                            actual_limit = owner.policy.limit
+                            def limit(maximum):
+                                value = actual_limit(maximum); calls.append((maximum, value)); return value
+                            owner.policy.limit = limit
+                            import managed_rpc
+                            rpc = object.__new__(managed_rpc.ManagedRPC)
+                            primary = RuntimeError('terminal native protocol error'); rpc.error = primary
+                            def request(method, params):
+                                requests.append(method)
+                                self.assertEqual(method, 'turn/start')
+                                self.assertEqual(params['threadId'], actual_turn['thread_id'])
+                                return response
+                            def check():
+                                checks.append('check'); return managed_rpc.ManagedRPC.check(rpc)
+                            rpc.request, rpc.check = request, check
+                            owner.rpcs = {'a': rpc}
+                            owner.peer_turns = types.SimpleNamespace(drained=lambda *args: drained.append(args))
+                            with patch.object(paid_gate.time, 'monotonic', return_value=now):
+                                with self.assertRaises(RuntimeError) as caught:
+                                    if operation == 'manual':
+                                        owner.manual_turn('a', 'SYNTHETIC_PROMPT_NOT_TRANSMITTED')
+                                    elif operation == 'wait':
+                                        owner.wait_turn('a', actual_turn['turn_id'], timeout)
+                                    else:
+                                        owner.automatic_turn('a', set(), timeout)
+                            self.assertIs(caught.exception, primary)
+                            maximum = timeout if timeout is not None else (180 if scenario == 'g1' else 600)
+                            self.assertIn((maximum, min(maximum, 1600-now)), calls)
+                            self.assertEqual(checks, ['check'])
+                            self.assertEqual(requests, ['turn/start'] if operation == 'manual' else [])
+                            self.assertEqual(drained, [])
+                            self.assertEqual(owner.policy.normal_end, 1600)
+                            self.assertEqual(owner.policy.terminal_end, 1630)
+                            self.assertEqual(owner.policy.cleanup_end, 1660)
+                            self.assertEqual(owner.policy.phase, 'normal')
+                            # Successful real inherited waits release the Peer
+                            # association once; automatic_turn must not double it.
+                            rpc.error = None
+                            owner.budget.started = {('a', actual_turn['turn_id'])}
+                            owner.budget.completed = {('a', actual_turn['turn_id'])}
+                            with patch.object(paid_gate.time, 'monotonic', return_value=now):
+                                if operation == 'manual':
+                                    owner.manual_turn('a', 'SYNTHETIC_PROMPT_NOT_TRANSMITTED')
+                                elif operation == 'wait':
+                                    owner.wait_turn('a', actual_turn['turn_id'], timeout)
+                                else:
+                                    self.assertEqual(owner.automatic_turn('a', set(), timeout), actual_turn['turn_id'])
+                            self.assertEqual(drained, [('a', actual_turn['turn_id'])])
+                            # The shared absolute end still closes admission;
+                            # a default timeout cannot reset or extend it.
+                            before_checks = len(checks)
+                            with patch.object(paid_gate.time, 'monotonic', return_value=1601):
+                                with self.assertRaises(TimeoutError):
+                                    if operation == 'automatic':
+                                        owner.automatic_turn('a', set(), timeout)
+                                    else:
+                                        owner.wait_turn('a', actual_turn['turn_id'], timeout)
+                            self.assertEqual(len(checks), before_checks)
+                            self.assertEqual(drained, [('a', actual_turn['turn_id'])])
+
+    def test_actual_execute_catch_public_origin_preserves_failure_and_cleanup(self):
+        # Compile the actual execution try/except/finally, not a mirror catch.
+        tree = ast.parse(Path(run.__file__).read_text())
+        execute = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                       and node.name == 'execute')
+        selected = next(node for node in execute.body if isinstance(node, ast.Try)
+                        and node.finalbody and any(isinstance(child, ast.Attribute)
+                        and child.attr == 'managed_golden_flow' for child in ast.walk(node)))
+        program = compile(ast.Module(body=[selected], type_ignores=[]),
+                          '<actual-execute-catch-test>', 'exec')
+        for error_type in (TypeError, RuntimeError):
+            for filename, function, known in (
+                    (str(gate.OLD / 'managed_gate.py'), 'manual_turn', True),
+                    ('<effective-request-observer-gate>', 'managed_golden_flow', True),
+                    ('/SYNTHETIC_PRIVATE_PATH/secret.py', 'manual_turn', False),
+                    ('<effective-request-observer-gate>', 'SYNTHETIC_PRIVATE_FUNCTION', False)):
+                with self.subTest(error_type=error_type.__name__, known=known):
+                    primary = error_type('SYNTHETIC_SECRET_ERROR_MESSAGE')
+                    source = ('def ' + function + '(self):\n'
+                              ' private_local = "SYNTHETIC_SECRET_LOCAL"\n'
+                              ' raise primary\n')
+                    synthetic = {'primary': primary}
+                    exec(compile(source, filename, 'exec'), synthetic)
+                    cleanups = []
+                    owner = types.SimpleNamespace(result={}, phase='original_managed_join_and_context',
+                        build=lambda: None, start_nodes=lambda: None, prepare_managed=lambda: None,
+                        cleanup=lambda: cleanups.append('cleanup'))
+                    owner.managed_golden_flow = types.MethodType(synthetic[function], owner)
+                    seen = []
+                    def origin(error):
+                        seen.append(error)
+                        return run.public_failure_origin(error)
+                    namespace = {'gate': None, 'cls': lambda ns: owner, 'ns': None,
+                                 'public_failure_origin': origin}
+                    with run.deny_preflight_effects():
+                        exec(program, namespace)
+                    self.assertEqual(cleanups, ['cleanup'])
+                    self.assertIs(seen[0], primary)
+                    self.assertEqual(owner.result['status'], 'FAIL')
+                    self.assertEqual(owner.result['failure_class'], error_type.__name__)
+                    self.assertEqual(owner.result['failure_phase'], owner.phase)
+                    result = owner.result['failure_origin']
+                    if known:
+                        self.assertEqual(result, {'source_label': run.FAILURE_SOURCE_LABELS[filename],
+                                                  'function': function, 'line': 3})
+                    else:
+                        self.assertIsNone(result)
+                    exported = json.dumps(owner.result)
+                    self.assertNotIn('SYNTHETIC_SECRET', exported)
+                    self.assertNotIn('SYNTHETIC_PRIVATE', exported)
+                    self.assertNotIn(str(gate.OLD), exported)
+        # A failing constructor still escapes with its original identity, and
+        # no cleanup is attempted before a gate exists.
+        primary = TypeError('SYNTHETIC_CONSTRUCTOR')
+        def constructor(ns):
+            raise primary
+        namespace = {'gate': None, 'cls': constructor, 'ns': None,
+                     'public_failure_origin': run.public_failure_origin}
+        with run.deny_preflight_effects(), self.assertRaises(TypeError) as caught:
+            exec(program, namespace)
+        self.assertIs(caught.exception, primary)
+        self.assertIsNone(run.public_failure_origin(TypeError('SYNTHETIC_NO_TRACEBACK')))
+
     def test_expired_wrong_typed_go_and_cutoff(self):
         binding,binding_sha=run.verify_binding()
         expected=run.expected_go(binding,binding_sha,"cicada-two-turn-observer20261004nonauth","0"*64,10000)
@@ -1732,7 +2717,8 @@ class WiringChecks(unittest.TestCase):
         compile(effective,"<candidate-bootstrap-syntax>","exec")
 
     def test_actual_host_overlay_resolution_and_public_payload_pins(self):
-        result=run.preflight()
+        binding,binding_sha=run.verify_binding()
+        result=run.preflight(binding_sha,run.BINDING)
         self.assertEqual(result["status"],"PASS")
         self.assertTrue(result["legacy_public_modules_imported"])
         self.assertFalse(result["fixture_constructor_called"])
@@ -1813,6 +2799,7 @@ class WiringChecks(unittest.TestCase):
                 self.run_id="synthetic";self.result={};self.timeout=timeout;self.last_argv=None
                 self.policy=gate.bind_policy(types.SimpleNamespace(),1000.0)
                 self.nodes={letter:{"container":"synthetic-"+letter,"thread":"synthetic-thread-"+letter} for letter in "ab"}
+                self.rpcs={letter:types.SimpleNamespace(shutdown_expected=False) for letter in "ab"}
                 self.budget=types.SimpleNamespace(threads={letter:"synthetic-thread-"+letter for letter in "ab"},
                     started=[("a","synthetic-turn-a")],completed={})
                 self.submitted_objects={("container","synthetic-"+letter):{"id":letter*64,"image":run.RUNTIME} for letter in "ab"}
@@ -2276,5 +3263,9 @@ if __name__=="__main__":
         except BaseException as error:
             print(json.dumps({"status":"FAIL","failure_class":type(error).__name__,"details":"CLOSED_WITHHELD"}));raise SystemExit(1)
     else:
-        with run.deny_preflight_effects():
-            unittest.main(verbosity=2)
+        parser=argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--current-binding-file")
+        parser.add_argument("--current-binding-sha")
+        selected,unittest_args=parser.parse_known_args()
+        with run.deny_preflight_effects(),current_test_binding(selected.current_binding_file,selected.current_binding_sha):
+            unittest.main(argv=[sys.argv[0],*unittest_args],verbosity=2)

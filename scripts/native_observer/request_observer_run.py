@@ -320,7 +320,7 @@ def _preflight(expected_sha=None, binding_path=None):
     namespace=methods["start_managed_servers"].__globals__
     if any(method.__globals__ is not namespace for method in methods.values()) or Path(namespace["HERE"]) != gate.OLD:
         raise ValueError("ABSOLUTE_LEGACY_GLOBAL_RESOLUTION")
-    if (cli["version"] != "0.162.0" or cli["sha256"] != current_binding.CLI_SHA256 or
+    if (cli["version"] != current_binding.CLI_VERSION or cli["sha256"] != current_binding.CLI_SHA256 or
             not re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_image)):
         raise ValueError("CURRENT_RUNTIME_SOURCE_PINS")
     provider_globals=cls.provider_forwarder.__globals__
@@ -439,7 +439,7 @@ def native_https_mode(args):
     if type(mode) is not bool:
         raise PermissionError("NATIVE_HTTPS_TYPE")
     if mode and (getattr(args,"execute_diagnostic",False) is not True or
-            getattr(args,"scenario","g1") != "g2-g3" or
+            getattr(args,"scenario","g1") not in ("g1","g2-g3") or
             getattr(args,"prepare_native_zero",False) is True or
             getattr(args,"enable_io_diagnostics",False) is not False or
             getattr(args,"response_byte_passthrough",False) is not False):
@@ -466,6 +466,52 @@ def response_passthrough_mode(args):
                  getattr(args, "scenario", "g1") != "g2-g3"):
         raise PermissionError("RESPONSE_MODE_LANE")
     return mode
+
+
+FAILURE_SOURCE_LABELS = {
+    str(HERE / "request_observer_run.py"): "request_observer_run.py",
+    str(HERE / "request_observer_gate.py"): "request_observer_gate.py",
+    str(SCRIPTS / "native_request_observer.py"): "native_request_observer.py",
+    **{str(Path("/home/zyf/CICADA_real_codex_prep_20261002/driver/proposals/managed-five-clean021-20261003/checkpoint-native-tls-v6/managed") / name): name
+       for name in ("managed_gate.py", "migration.py", "native_protocol.py", "managed_rpc.py")},
+    **{label: label for label in (
+        "<effective-request-observer-gate>", "<effective-request-observer-audit>",
+        "<effective-request-observer-command>", "<effective-request-observer-provider>",
+        "<effective-request-observer-provider-transport>", "<owned-lifecycle>",
+        "<owned-g2-four-manual-turns>", "<owned-g2-six-audit>",
+        "<owned-pre-stop-fresh-witness>", "<owned-two-pass-hub-retarget>",
+        "<owned-g2-preparation>", "<owned-g2-g3-flow>", "<owned-g2-inline-reply>",
+        "<owned-g1-inline-reply-method>", "<owned-g2-six-cap>", "<owned-g2-six-budget>")},
+}
+FAILURE_FUNCTIONS = frozenset((
+    "execute", "manual_turn", "wait_turn", "wait", "automatic_turn", "auto",
+    "limit", "request", "check", "audit", "audit_rpc", "audit_turn",
+    "managed_golden_flow", "g2_initial_binding", "g2_second_binding",
+    "g2_b_continuity", "g2_mcp_call", "g2_current_actor", "g2_revoke_and_visibility",
+    "g3_restore_snapshot", "audit_inline_reply", "command", "guarded_command",
+    "docker", "helper", "provider", "abort_owned", "pq_transport_witness",
+    "build", "start_nodes", "prepare_managed", "start_managed_servers",
+))
+
+
+def public_failure_origin(error):
+    """Only the terminal frame's fixed public label/function/line; no error text."""
+    try:
+        terminal = error.__traceback__
+        while terminal is not None and terminal.tb_next is not None:
+            terminal = terminal.tb_next
+        if terminal is None:
+            return None
+        code = terminal.tb_frame.f_code
+        label = FAILURE_SOURCE_LABELS.get(code.co_filename)
+        line = terminal.tb_lineno
+        if (label is None or code.co_name not in FAILURE_FUNCTIONS or
+                type(line) is not int or not 1 <= line <= 1000000):
+            return None
+        return {"source_label": label, "function": code.co_name, "line": line}
+    except Exception:
+        # Evidence projection cannot replace the execution failure or cleanup.
+        return None
 
 
 def execute(args):
@@ -539,7 +585,9 @@ def execute(args):
     except Exception as error:
         if gate is None:
             raise
-        gate.result.update(status="FAIL",failure_phase=gate.phase,failure_class=type(error).__name__)
+        gate.result.update(status="FAIL",failure_phase=gate.phase,failure_class=type(error).__name__,
+            failure_origin=public_failure_origin(error),
+            failure_origin_scope="FIXED_PUBLIC_TERMINAL_FRAME_ONLY_NO_MESSAGE_OR_LOCALS")
     finally:
         if gate is not None:
             gate.cleanup()
@@ -551,9 +599,10 @@ LATEST_VERSION = current_binding.CLI_VERSION
 # CLI entrypoints require a fresh 0.162 binding and never dispatch this image.
 LATEST_RUNTIME = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
 LATEST_CLI_SHA = current_binding.CLI_SHA256
-ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "synthetic-provider"',
+ZERO_CONFIG = '\n'.join(['model = "gpt-5.6-luna"','model_provider = "basil"',
     'sandbox_mode = "workspace-write"','approval_policy = "on-request"','approvals_reviewer = "user"',
-    '[model_providers.synthetic-provider]','name="Synthetic zero-model provider"',
+    '# "basil" is a fixture alias only; its endpoint remains synthetic loopback.',
+    '[model_providers.basil]','name="Synthetic zero-model provider"',
     'base_url="http://127.0.0.1:9/v1"','wire_api="responses"',
     'request_max_retries = 4',''])
 

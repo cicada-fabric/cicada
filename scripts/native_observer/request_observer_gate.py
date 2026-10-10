@@ -9,6 +9,7 @@ import types
 import threading
 import stat
 import os
+import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -17,6 +18,7 @@ SCRIPTS = HERE.parent
 OLD = Path("/home/zyf/CICADA_real_codex_prep_20261002/driver/proposals/managed-five-clean021-20261003/checkpoint-native-tls-v6/managed")
 OLD_GATE_SHA = "83952e697f7af7257c2397d56ac2972e4047f4db909b9414539f8222772a7512"
 PATCH_SHA = "e621d869098d54a8685f187eecc2bbd1030120349612225fefdc04f30e99da24"
+TLS_HELPER_MIGRATION_SHA = "7f34ea1ae1227d5fc81068eff6f5f03255f8e7c959bfa7f5ec431afc355911ea"
 METHODS = ("start_managed_servers", "managed_golden_flow", "capture_test_request_observer", "abort_owned")
 A2_SUBMISSION_INSTRUCTION = ('This submission supplements the original task; the original task remains pending. '
     'Finish ACCEPTED ends only this submission turn. When the correlated reply arrives, report its exact response '
@@ -123,6 +125,33 @@ def lifecycle_method(original, source, *, cleanup=False):
                 for name in original.__code__.co_freevars)
             return types.FunctionType(original.__code__,dict(original.__globals__),original.__name__,original.__defaults__,closure)
     if cleanup:
+        shutdown_marker = "for rpc in self.rpcs.values():rpc.shutdown_expected=True"
+        if text.count(shutdown_marker) != 1:
+            raise ValueError("LIFECYCLE_SHUTDOWN_MARKER_CONTEXT")
+        text = text.replace(shutdown_marker, "", 1)
+        check_marker = "rpc.check()"
+        if text.count(check_marker) != 1:
+            raise ValueError("LIFECYCLE_RPC_HEALTH_CONTEXT")
+        health_lines = [
+            "capture=_observer_rpc_observation_projection(rpc)",
+            "self.result.setdefault('observer_rpc_observation',{})[letter]=capture",
+            "if capture['runtime_health_status']=='FAILED':",
+            " self.result.setdefault('observer_runtime_health_after_eof',{})[letter]={'status':'FAILED','exception_class':capture['runtime_error_class']}",
+            " self.result['status']='FAIL'",
+            "else:",
+            " self.result.setdefault('observer_runtime_health_after_eof',{})[letter]={'status':'NO_READER_ERROR'}",
+        ]
+        lines = text.splitlines()
+        checks = [index for index, line in enumerate(lines) if line.strip() == check_marker]
+        if len(checks) != 1:
+            raise ValueError("LIFECYCLE_RPC_HEALTH_CONTEXT")
+        index = checks[0]
+        indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
+        lines[index:index + 1] = [indent + health_lines[0], indent + health_lines[1],
+            indent + health_lines[2], indent + " " + health_lines[3],
+            indent + " " + health_lines[4], indent + health_lines[5],
+            indent + " " + health_lines[6]]
+        text = "\n".join(lines) + "\n"
         stop="if record['State']['Running']:self.docker('stop','--time','1',name)"
         if (text.count(stop)!=1 or text.count("record=self.cleanup_inspect('container',name)")!=1 or
             text.count("record['Image']!=image")!=1 or text.count("raise RuntimeError('cleanup ownership')")!=1):
@@ -131,9 +160,24 @@ def lifecycle_method(original, source, *, cleanup=False):
         index=next(index for index,line in enumerate(lines) if stop in line)
         indent=lines[index][:len(lines[index])-len(lines[index].lstrip())]
         lines[index:index+1]=[indent+"if record['State']['Running']:",
+            indent+" _observer_expect_owned_container_shutdown(self, name)",
             indent+" _note_owned_runtime_stop(self, name)",
             indent+" self.docker('stop','--time','1',name)"]
         text='\n'.join(lines)+'\n'
+        cleanup_unknown = "except Exception as e:clean=False;errors.append(type(e).__name__);self.result.setdefault('observer_shutdown',{})[letter]='UNKNOWN_RETAINED_SUBSCRIBER'"
+        if text.count(cleanup_unknown) != 1:
+            raise ValueError("LIFECYCLE_EOF_STATUS_CONTEXT")
+        lines = text.splitlines()
+        matches = [index for index, line in enumerate(lines) if line.strip() == cleanup_unknown]
+        if len(matches) != 1:
+            raise ValueError("LIFECYCLE_EOF_STATUS_CONTEXT")
+        index = matches[0]
+        indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
+        lines[index:index + 1] = [indent + "except Exception as e:",
+            indent + " clean=False;errors.append(type(e).__name__)",
+            indent + " if not rpc.shutdown_eof.is_set():",
+            indent + "  self.result.setdefault('observer_shutdown',{})[letter]='UNKNOWN_RETAINED_SUBSCRIBER'"]
+        text = "\n".join(lines) + "\n"
     else:
         lines = text.splitlines()
         if lines[0].strip() != "def abort_owned(self, error):": raise ValueError("LIFECYCLE_EXACT_CONTEXT")
@@ -150,12 +194,230 @@ def lifecycle_method(original, source, *, cleanup=False):
         if len(matches) != 1: raise ValueError("LIFECYCLE_EXACT_CONTEXT")
         index = matches[0]; line = lines[index]
         lines.insert(index, line[:len(line)-len(line.lstrip())]+"_note_lifecycle(self, 'OWNED_RUNTIME_STOP_ENTRY')")
+        index = next(index for index, current in enumerate(lines) if fragment in current)
+        line = lines[index]
+        lines.insert(index, line[:len(line)-len(line.lstrip())]+"_observer_expect_owned_node_shutdown(self, node)")
         text = '\n'.join(lines)+'\n'
     namespace = method_namespace(original)
     namespace['_note_lifecycle'] = safe_note_lifecycle
     namespace['_note_owned_runtime_stop'] = note_owned_runtime_stop
+    namespace['_observer_expect_owned_node_shutdown'] = expect_owned_node_shutdown
+    namespace['_observer_expect_owned_container_shutdown'] = expect_owned_container_shutdown
+    namespace['_observer_rpc_observation_projection'] = rpc_observation_projection
     exec(compile(text, '<owned-lifecycle>', 'exec'), namespace)
     return namespace[original.__name__]
+
+
+def expect_owned_node_shutdown(owner, node):
+    matches = [letter for letter, candidate in getattr(owner, 'nodes', {}).items() if candidate is node]
+    if len(matches) != 1:
+        raise RuntimeError('owned RPC shutdown node identity')
+    expect_owned_container_shutdown(owner, node.get('container'))
+
+
+def expect_owned_container_shutdown(owner, container):
+    matches = [letter for letter, node in getattr(owner, 'nodes', {}).items()
+               if node.get('container') == container]
+    if not matches:
+        return
+    if len(matches) != 1:
+        raise RuntimeError('owned RPC shutdown container identity')
+    rpc = getattr(owner, 'rpcs', {}).get(matches[0])
+    if rpc is None:
+        raise RuntimeError('owned RPC shutdown subscriber missing')
+    rpc.shutdown_expected = True
+
+
+def owned_rpc_fail(self, error):
+    with self.lock:
+        if self.error is not None:
+            return
+        self.error = error
+        self.observer_rpc_observation_complete = False
+        self.observer_rpc_fatal_error_class = type(error).__name__
+        self.observer_rpc_dispatched_before_fatal = getattr(self, 'observer_rpc_dispatched_before_fatal', 0)
+        self.observer_rpc_discarded_after_fatal = getattr(self, 'observer_rpc_discarded_after_fatal', 0)
+    self.abort(error)
+
+
+def _bounded_observer_count(value):
+    return min(65535, max(0, int(value)))
+
+
+def rpc_observation_projection(rpc):
+    error_class = getattr(rpc, 'observer_rpc_fatal_error_class', None)
+    eof_observed = bool(rpc.shutdown_eof.is_set())
+    try:
+        rpc.check()
+    except Exception as error:
+        runtime_health = 'FAILED'
+        runtime_error_class = type(error).__name__
+    else:
+        runtime_health = 'NO_READER_ERROR'
+        runtime_error_class = None
+    if error_class:
+        capture_status = 'INCOMPLETE_AFTER_FATAL'
+    elif eof_observed:
+        capture_status = 'OBSERVED_TO_OWNED_STOP'
+    else:
+        capture_status = 'UNKNOWN_DRAIN'
+    result = {
+        'status': capture_status,
+        'normal_observation_complete': error_class is None and eof_observed,
+        'runtime_health_status': runtime_health,
+        'dispatched_messages_before_fatal': _bounded_observer_count(
+            getattr(rpc, 'observer_rpc_dispatched_before_fatal', 0)),
+        'discarded_frames_after_fatal': _bounded_observer_count(
+            getattr(rpc, 'observer_rpc_discarded_after_fatal', 0)),
+        'actual_shutdown_eof_observed': eof_observed,
+        'shutdown_drain_timed_out': bool(getattr(rpc, 'shutdown_drain_timed_out', False)),
+    }
+    if error_class:
+        result['fatal_error_class'] = error_class
+    if runtime_error_class:
+        result['runtime_error_class'] = runtime_error_class
+    drain_error = getattr(rpc, 'shutdown_drain_error_class', None)
+    if drain_error:
+        result['shutdown_drain_error_class'] = drain_error
+    return result
+
+
+def owned_rpc_read(self):
+    if not hasattr(self, 'observer_rpc_observation_complete'):
+        self.observer_rpc_observation_complete = True
+    if not hasattr(self, 'observer_rpc_dispatched_before_fatal'):
+        self.observer_rpc_dispatched_before_fatal = 0
+    if not hasattr(self, 'observer_rpc_discarded_after_fatal'):
+        self.observer_rpc_discarded_after_fatal = 0
+    draining = False
+    deadline = None
+
+    def drain_deadline():
+        value = self.clock() + getattr(self, 'shutdown_drain_seconds', 5.0)
+        owner = getattr(self.abort, '__self__', None)
+        cleanup_end = getattr(getattr(owner, 'policy', None), 'cleanup_end', None)
+        if type(cleanup_end) in (int, float):
+            value = min(value, cleanup_end)
+        return value
+
+    while not self.closed:
+        if self.shutdown_expected and not draining:
+            draining = True
+            deadline = drain_deadline()
+        if draining and self.clock() >= deadline:
+            self.shutdown_drain_timed_out = True
+            return
+        previous = getattr(self.client, 'last_received_bytes', None)
+        timeout = .2
+        if draining:
+            timeout = min(timeout, max(.001, deadline - self.clock()))
+        try:
+            try:
+                message = self.client.recv_obj(timeout=timeout)
+            except TimeoutError:
+                if draining and self.clock() >= deadline:
+                    self.shutdown_drain_timed_out = True
+                    return
+                continue
+            except Exception as error:
+                if isinstance(error, EOFError):
+                    if self.shutdown_expected:
+                        self.shutdown_eof.set()
+                    else:
+                        current = getattr(self.client, 'last_received_bytes', None)
+                        self.audit('wire_failure', {}, current if isinstance(current, bytes) and current is not previous else None)
+                        if not self.closed:
+                            self.fail(error)
+                    return
+                current = getattr(self.client, 'last_received_bytes', None)
+                self.audit('wire_failure', {}, current if isinstance(current, bytes) and current is not previous else None)
+                if draining:
+                    self.shutdown_drain_error_class = type(error).__name__
+                    return
+                if not self.closed:
+                    self.fail(error)
+                if self.shutdown_expected:
+                    draining = True
+                    deadline = drain_deadline()
+                    continue
+                return
+            if self.shutdown_expected and not draining:
+                draining = True
+                deadline = drain_deadline()
+            if draining:
+                if self.error is not None:
+                    self.observer_rpc_discarded_after_fatal = _bounded_observer_count(
+                        self.observer_rpc_discarded_after_fatal + 1)
+                continue
+            raw = getattr(self.client, 'last_received_bytes', None)
+            self.audit('received', message, raw)
+            self.dispatch(message, raw)
+            if self.error is None:
+                self.observer_rpc_dispatched_before_fatal = _bounded_observer_count(
+                    self.observer_rpc_dispatched_before_fatal + 1)
+        except Exception as error:
+            if draining:
+                self.shutdown_drain_error_class = type(error).__name__
+                return
+            if not self.closed:
+                self.fail(error)
+            if self.shutdown_expected:
+                draining = True
+                deadline = drain_deadline()
+                continue
+            return
+
+
+def install_native_rpc_shutdown_drain(module, binding):
+    import ast
+    import inspect
+    path = (OLD / 'native_protocol.py').resolve()
+    if (module is None or Path(getattr(module, '__file__', '')).resolve() != path or
+            not path.is_file()):
+        raise ValueError('NATIVE_RPC_MODULE_ORIGIN')
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    # native_protocol.py is an immutable readonly dependency, not one of the
+    # six current candidate files. Its exact canonical public row is the
+    # authority here; do not require or synthesize a candidate_files alias.
+    public_files = binding.get('public_files', {})
+    public = public_files.get(str(path)) if isinstance(public_files, dict) else None
+    try:
+        metadata = path.lstat()
+    except OSError:
+        raise ValueError('NATIVE_RPC_SOURCE_PIN') from None
+    if (path.resolve(strict=True) != path or type(public) is not dict or
+            set(public) != {'sha256', 'bytes', 'rawmode'} or
+            not stat.S_ISREG(metadata.st_mode) or public.get('sha256') != digest or
+            public.get('bytes') != len(raw) or public.get('rawmode') != oct(metadata.st_mode)):
+        raise ValueError('NATIVE_RPC_SOURCE_PIN')
+    installed = getattr(module.TypedRPC, '_observer_shutdown_drain_sha256', None)
+    if installed is not None:
+        if installed != hashlib.sha256((digest + '\0' + inspect.getsource(owned_rpc_fail) + inspect.getsource(owned_rpc_read)).encode()).hexdigest():
+            raise ValueError('NATIVE_RPC_DERIVATIVE_CONFLICT')
+        return installed
+    tree = ast.parse(raw)
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'TypedRPC']
+    if len(classes) != 1:
+        raise ValueError('NATIVE_RPC_CLASS_CONTEXT')
+    methods = {node.name: node for node in classes[0].body if isinstance(node, ast.FunctionDef) and node.name in ('fail', '_read')}
+    if set(methods) != {'fail', '_read'}:
+        raise ValueError('NATIVE_RPC_METHOD_CONTEXT')
+    source = raw.decode('utf-8')
+    fail_source = ast.get_source_segment(source, methods['fail'])
+    read_source = ast.get_source_segment(source, methods['_read'])
+    if (not fail_source or 'self.error=error;self.abort(error)' not in fail_source.replace(' ', '') or
+            not read_source or 'self.fail(error)' not in read_source or 'self.shutdown_eof.set()' not in read_source):
+        raise ValueError('NATIVE_RPC_METHOD_SOURCE_CONTEXT')
+    namespace = dict(module.__dict__)
+    namespace['_bounded_observer_count'] = _bounded_observer_count
+    exec(compile(inspect.getsource(owned_rpc_fail) + '\n' + inspect.getsource(owned_rpc_read),
+                 '<owned-native-rpc-shutdown-drain>', 'exec'), namespace)
+    module.TypedRPC.fail = namespace['owned_rpc_fail']
+    module.TypedRPC._read = namespace['owned_rpc_read']
+    derivative = hashlib.sha256((digest + '\0' + inspect.getsource(owned_rpc_fail) + inspect.getsource(owned_rpc_read)).encode()).hexdigest()
+    module.TypedRPC._observer_shutdown_drain_sha256 = derivative
+    return derivative
 
 
 def install_lifecycle(owner, abort_source, cleanup_source, original_cleanup=None):
@@ -479,6 +741,73 @@ def effective_sources(normal_seconds=DEFAULT_NATIVE_NORMAL_SECONDS):
     ast.fix_missing_locations(audit);ast.fix_missing_locations(command)
     return {"gate":source, "bootstrap":bootstrap, "provider":provider_source,
             "audit":ast.unparse(audit)+"\n", "command":ast.unparse(command)+"\n"}
+
+
+def approved_tls_helper_argv(argv, binding, *, run_id, fixture_root, native_package, image):
+    """Retarget only the exact legacy TLS helper mount to binding-pinned public OpenSSL."""
+    migration_path = OLD / "migration.py"
+    migration_row = binding.get("public_files", {}).get(str(migration_path))
+    if (type(migration_row) is not dict or
+            migration_row.get("sha256") != TLS_HELPER_MIGRATION_SHA):
+        raise ValueError("TLS_HELPER_MIGRATION_PIN")
+    migration_raw = migration_path.read_bytes()
+    if hashlib.sha256(migration_raw).hexdigest() != TLS_HELPER_MIGRATION_SHA:
+        raise ValueError("TLS_HELPER_MIGRATION_PIN")
+    tree = ast.parse(migration_raw)
+    helpers = [node for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef) and node.name == "helper"]
+    if len(helpers) != 1:
+        raise ValueError("TLS_HELPER_SOURCE_CONTEXT")
+    selected = ast.unparse(helpers[0])
+    if (selected.count("str(ROOT / 'authority-bootstrap/openssl') + ':/pqtls-stage:ro'") != 1 or
+            selected.count("self.command(argv, timeout=30)") != 1):
+        raise ValueError("TLS_HELPER_SOURCE_CONTEXT")
+    old_stage = Path(binding["output_parent"]) / "authority-bootstrap/openssl"
+    expected = ["docker", "run", "--rm", "--pull=never", "--name", run_id + "-helper-tls-bootstrap",
+        "--label", "org.cicada.test.run=" + run_id, "--network", "none", "--user", "1000:1000",
+        "-v", str(fixture_root) + ":/fixture", "-v", str(native_package) + ":/opt/cicada-pqtls:ro",
+        "-v", str(old_stage) + ":/pqtls-stage:ro", "-e", "LD_LIBRARY_PATH=/opt/cicada-pqtls/lib",
+        "-e", "OPENSSL_CONF=/dev/null", "--entrypoint", "/fixture/cicada-v68fixture", image,
+        "tls-bootstrap", "--db", "/fixture/hub-state/cicada.sqlite3", "--fixture", "/fixture",
+        "--listen", "0.0.0.0:8999", "--application-origin", "http://127.0.0.1:8787",
+        "--openssl", "/pqtls-stage/bin/openssl"]
+    if list(argv) != expected:
+        raise ValueError("TLS_HELPER_EXACT_SCOPE")
+    files = binding["public_files"]
+    executables = [Path(path) for path in files if path.endswith("/bin/openssl")]
+    if len(executables) != 1:
+        raise ValueError("TLS_STAGE_BINDING_LAYOUT")
+    stage = executables[0].parent.parent
+    if not stage.is_absolute() or stage.resolve(strict=True) != stage:
+        raise ValueError("TLS_STAGE_CANONICAL")
+    for relative in ("bin/openssl", "lib/libcrypto.so.3", "lib/libssl.so.3"):
+        path = stage / relative
+        row = files.get(str(path))
+        if (type(row) is not dict or set(row) != {"bytes", "rawmode", "sha256"} or
+                type(row["bytes"]) is not int or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"])):
+            raise ValueError("TLS_STAGE_BINDING_LAYOUT")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or
+                    not before.st_mode & stat.S_IXUSR or before.st_size != row["bytes"]):
+                raise ValueError("TLS_STAGE_PUBLIC_FILE")
+            raw = bytearray()
+            while len(raw) <= row["bytes"]:
+                block = os.read(fd, min(65536, row["bytes"] + 1 - len(raw)))
+                if not block:
+                    break
+                raw.extend(block)
+            after = os.fstat(fd)
+            if ((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) !=
+                    (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) or
+                    hashlib.sha256(raw).hexdigest() != row["sha256"]):
+                raise ValueError("TLS_STAGE_PUBLIC_PIN")
+        finally:
+            os.close(fd)
+    rewritten = list(argv)
+    rewritten[17] = str(stage) + ":/pqtls-stage:ro"
+    return rewritten, stage
 
 
 def capture_program_pins(source):
@@ -885,12 +1214,14 @@ def validate_native_https(args, scenario, zero_model):
             (not mode and normal_seconds != DEFAULT_NATIVE_NORMAL_SECONDS)):
         raise PermissionError("NATIVE_NORMAL_SECONDS")
     if mode:
-        if (zero_model or scenario != "g2-g3" or getattr(args,"run_native",False) is not True or
+        if (zero_model or scenario not in ("g1", "g2-g3") or getattr(args,"run_native",False) is not True or
                 getattr(args,"test_request_observer",False) is not False or
                 getattr(args,"response_byte_passthrough",False) is not False):
             raise PermissionError("NATIVE_HTTPS_LANE")
+        turn_caps = (6, 4, 2) if scenario == "g2-g3" else (5, 3, 2)
         fields={"native_https":True,"response_byte_passthrough":False,
-            "response_byte_ceiling":None,"response_chunk_ceiling":None,"max_native_turns":6,"max_manual_turns":4,"max_automatic_turns":2,
+            "response_byte_ceiling":None,"response_chunk_ceiling":None,
+            "max_native_turns":turn_caps[0],"max_manual_turns":turn_caps[1],"max_automatic_turns":turn_caps[2],
             "request_max_retries":0,"stream_max_retries":0,"max_accepted_TCP_connections_per_Runtime":16,
             "normal_seconds":normal_seconds,"terminal_seconds":NATIVE_TERMINAL_SECONDS,
             "cleanup_seconds":NATIVE_CLEANUP_SECONDS,
@@ -1187,17 +1518,18 @@ def g2_b_continuity(self, events, request, question, answer, beta):
     base = ns['base']
     if beta in question or answer in question:
         raise RuntimeError('G2_REPLY_SEED_REFEED')
+    if (type(request.get('link_id')) is not str or not request['link_id'] or
+            request.get('sender_endpoint_id') != self.nodes['a']['endpoint'] or
+            request.get('receiver_endpoint_id') != self.nodes['b']['endpoint']):
+        raise RuntimeError('G2_REPLY_REQUEST_BINDING')
     base.turn_witness(events, self.nodes['b']['thread'], ('cicada_receive', 'cicada_reply'))
     receive = base.exact_receive_witness(events, request['message_id'], request['request_id'], self.nodes['a']['endpoint'], question)
     items = [event['item'] for event in events if event.get('type') == 'item.completed']
     reply = g2_accepted_reply(ns['dto_progression'], items, base.native_tool_payload, request, answer)
-    received = ns['dto_progression'].one(items, 'cicada_receive')
-    messages = base.native_tool_payload(received).get('messages')
-    if type(messages) is not list or len(messages) != 1 or messages[0].get('link_id') != request['link_id']:
-        raise RuntimeError('G2_RECEIVE_CURRENT_LINK')
     return {'continuity_proof': 'ACTUAL_EXACT_SEEDED_REPLY_BODY', 'original_thread_exact': True,
         'request_id_exact': True, 'actual_reply_body_sha256': hashlib.sha256(answer.encode()).hexdigest(),
-        'seed_beta_in_actual_reply_body': beta in answer, 'receive': receive, 'reply': reply}
+        'seed_beta_in_actual_reply_body': beta in answer, 'link_bound_by_validated_ask_and_reply': True,
+        'receive_correlated_by_request_message_sender_body': True, 'receive': receive, 'reply': reply}
 
 
 def compile_g2_flow_methods(source, namespace):
@@ -1233,6 +1565,18 @@ def compile_g2_flow_methods(source, namespace):
         elif name == 'audit_inline_reply':
             text = replace(text, "from inline_reply import inline_reply_witness", "inline_reply_witness = _g2_inline_reply_witness")
             text = replace(text, "'group_id': self.meta['group_id']", "'group_id': self.meta['alice_second_group_id'], 'link_id': request['link_id']")
+            text = replace(text,
+                "        proof = inline_reply_witness(selected, {'threadId': self.nodes['a']['thread'],",
+                "        membership = self.result.get('g2_membership')\n"
+                "        if (type(membership) is not dict or set(membership) != {'same_original_thread', 'same_original_endpoint', 'separately_authorized_principal_membership', 'left_primary_only', 'selected_group_id'} or\n"
+                "            membership.get('same_original_thread') is not True or membership.get('same_original_endpoint') is not True or\n"
+                "            membership.get('separately_authorized_principal_membership') is not True or membership.get('left_primary_only') is not True or\n"
+                "            membership.get('selected_group_id') != self.meta['alice_second_group_id']):\n"
+                "            raise RuntimeError('G2_SHARED_MEMORY_SCOPE_EXPECTATION')\n"
+                "        proof = inline_reply_witness(selected, {'threadId': self.nodes['a']['thread'],")
+            text = replace(text,
+                "turn_id, expected, markers, answer, base.native_tool_payload)",
+                "turn_id, expected, markers, answer, base.native_tool_payload, shared_memory_risk=True)")
         else:
             start = text.index('        prompts = {')
             end = text.index("        self.result['bindings_before']", start)
@@ -1286,13 +1630,118 @@ def compile_g2_flow_methods(source, namespace):
     return result
 
 
-def g2_inline_reply_witness(*args):
-    """Same strict final oracle, exact Link prefix and additional correlation field."""
+G2_INLINE_REPLY_SOURCE_SHA = "d4c1cf530e647c90da0bf5d5adb75021e9ed6c7c6d0d63f206c54dd136dccf41"
+G2_SHARED_MEMORY_WARNING = ("CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been "
+    "used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n")
+
+
+def _inline_reply_witness_for_scenario(*args, expected_fields, prefix, code_prefix,
+                                       shared_memory_risk=False):
+    """Keep the complete inline envelope; check optional Receive by its real DTO."""
+    if type(shared_memory_risk) is not bool or len(args) != 8 or type(args[0]) is not list:
+        raise RuntimeError(code_prefix+'_INLINE_REPLY_ARGUMENTS')
     import inline_reply
+    source_path = Path(inline_reply.__file__).resolve(strict=True)
+    if source_path != (OLD / 'inline_reply.py').resolve(strict=True):
+        raise ValueError('G2_INLINE_REPLY_SOURCE_ORIGIN')
+    raw = source_path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != G2_INLINE_REPLY_SOURCE_SHA:
+        raise ValueError('G2_INLINE_REPLY_SOURCE_PIN')
+    source = raw.decode('utf-8')
+    old = "if any(message.get(k)!=v for k,v in expected.items()) or message.get('body')!=answer:"
+    new = ("if any(message.get(k)!=expected[k] for k in "
+           "('message_id','request_id','reply_to','sender_endpoint_id')) "
+           "or message.get('body')!=answer:")
+    if source.count(old) != 1:
+        raise ValueError(code_prefix+'_INLINE_RECEIVE_CONTEXT')
+    source = source.replace(old, new)
+    old = "if not isinstance(payload, dict) or any(payload.get(k) != v for k,v in expected.items()):"
+    new = ("if not isinstance(payload, dict) or set(payload) != set(expected) | {'body'} "
+           "or any(payload.get(k) != v for k,v in expected.items()):")
+    if source.count(old) != 1:
+        raise ValueError(code_prefix+'_INLINE_PAYLOAD_SCHEMA')
+    source = source.replace(old, new)
     namespace = dict(inline_reply.inline_reply_witness.__globals__)
-    namespace['PREFIX'] = 'Cicada SEALED_V1 REPLY. '
-    function = types.FunctionType(inline_reply.inline_reply_witness.__code__, namespace)
-    return function(*args)
+    exec(compile(source, '<owned-g2-inline-reply>', 'exec'), namespace)
+    # The pinned source declares its default prefix at module scope; set the
+    # scenario's exact Link prefix only after executing that source.
+    namespace['PREFIX'] = prefix
+    function = namespace['inline_reply_witness']
+    original_items, completed, original, turn, expected, markers, answer, tool_payload = args
+    if (type(expected) is not dict or set(expected) != expected_fields or
+            any(type(expected.get(key)) is not str or not expected[key] for key in expected_fields)):
+        raise RuntimeError(code_prefix+'_INLINE_REPLY_EXPECTED_SCHEMA')
+    selected_users = [row for row in original_items
+        if type(row) is dict and row.get('turnId') == turn and
+        type(row.get('item')) is dict and row['item'].get('type') == 'userMessage']
+    if len(selected_users) != 1:
+        raise RuntimeError(code_prefix+'_INLINE_REPLY_USER_COUNT')
+    user = selected_users[0]['item']
+    content = user.get('content')
+    if (type(content) is not list or len(content) != 1 or type(content[0]) is not dict or
+            content[0].get('type') != 'text' or type(content[0].get('text')) is not str):
+        raise RuntimeError(code_prefix+'_INLINE_REPLY_USER_TEXT_SHAPE')
+    original_text = content[0]['text']
+    warning_present = G2_SHARED_MEMORY_WARNING in original_text
+    if shared_memory_risk:
+        if (not original_text.startswith(G2_SHARED_MEMORY_WARNING) or
+                original_text.count(G2_SHARED_MEMORY_WARNING) != 1):
+            raise RuntimeError(code_prefix+'_SHARED_MEMORY_WARNING_EXPECTED')
+        normalized_text = original_text[len(G2_SHARED_MEMORY_WARNING):]
+        if not normalized_text.startswith(prefix):
+            raise RuntimeError(code_prefix+'_SHARED_MEMORY_WARNING_FRAME')
+    else:
+        if warning_present:
+            raise RuntimeError(code_prefix+'_SHARED_MEMORY_WARNING_UNEXPECTED')
+        normalized_text = original_text
+    # Keep the captured event untouched. Only a local event copy omits the
+    # independently proven, exact product warning so the pinned strict parser
+    # can validate the canonical REPLY envelope. Restore its original-input
+    # hash in the returned proof below.
+    normalized_items = list(original_items)
+    user_index = next(index for index, row in enumerate(original_items) if row is selected_users[0])
+    normalized_row = dict(selected_users[0])
+    normalized_user = dict(user)
+    normalized_content = [dict(block) for block in content]
+    normalized_content[0]['text'] = normalized_text
+    normalized_user['content'] = normalized_content
+    normalized_row['item'] = normalized_user
+    normalized_items[user_index] = normalized_row
+    proof = function(normalized_items, completed, original, turn, expected, markers, answer, tool_payload)
+    proof['inline_sha256'] = hashlib.sha256(original_text.encode('utf-8')).hexdigest()
+    proof['shared_memory_risk_warning_present'] = warning_present
+    return proof
+
+
+G1_INLINE_REPLY_FIELDS = frozenset(('message_id','request_id','reply_to','sender_endpoint_id',
+                                   'receiver_endpoint_id','group_id'))
+G2_INLINE_REPLY_FIELDS = frozenset(('message_id','request_id','reply_to','sender_endpoint_id',
+                                   'receiver_endpoint_id','group_id','link_id'))
+
+
+def g1_inline_reply_witness(*args):
+    return _inline_reply_witness_for_scenario(*args, expected_fields=G1_INLINE_REPLY_FIELDS,
+        prefix='Cicada SEALED_V1 same-Group REPLY. ', code_prefix='G1')
+
+
+def g2_inline_reply_witness(*args, shared_memory_risk=False):
+    """Keep the full inline Link check; validate optional Receive by its actual DTO."""
+    return _inline_reply_witness_for_scenario(*args, expected_fields=G2_INLINE_REPLY_FIELDS,
+        prefix='Cicada SEALED_V1 REPLY. ', code_prefix='G2',
+        shared_memory_risk=shared_memory_risk)
+
+
+def compile_g1_inline_reply_method(source, namespace):
+    tree = ast.parse(source)
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ManagedGate')
+    node = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == 'audit_inline_reply')
+    text = ast.get_source_segment(source, node)
+    old = 'from inline_reply import inline_reply_witness'
+    if text.count(old) != 1:
+        raise ValueError('G1_INLINE_METHOD_IMPORT_CONTEXT')
+    text = text.replace(old, 'inline_reply_witness = _g1_inline_reply_witness')
+    exec(compile(text, '<owned-g1-inline-reply-method>', 'exec'), namespace)
+    return {'audit_inline_reply': namespace['audit_inline_reply']}
 
 
 def g2_mcp_call(self, letter, tool, arguments):
@@ -1337,6 +1786,12 @@ def g2_mcp_call(self, letter, tool, arguments):
 def g2_guard_denial(is_error, payload):
     """Only closed known authorization denial, never timeout/protocol/empty data."""
     text = payload.get('error')
+    # A revoked Link is rejected by the Node's authorization lookup before the
+    # Relay ASK is submitted. Preserve that privacy-preserving 404 only when
+    # the typed MCP result also says the operation failed without retrying.
+    if (text == 'Node Relay request failed with HTTP 404' and not is_error and
+        payload.get('status') == 'FAILED' and payload.get('retryable') is False):
+        return True
     known = ('communication link not found or not authorized', 'communication link is revoked',
              'communication link authorization is not current')
     if type(text) is str and any(reason in text.lower() for reason in known):
@@ -1515,6 +1970,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     legacy_cls, original_namespace = wrapper.ManagedGate, wrapper.module.__dict__
     if Path(original_namespace["HERE"]).resolve() != OLD.resolve():
         raise RuntimeError("LEGACY_GLOBAL_ORIGIN")
+    rpc_module = sys.modules.get("native_protocol")
+    rpc_drain_sha = install_native_rpc_shutdown_drain(rpc_module, binding)
     sources = effective_sources(normal_seconds)
     fresh_witness, fresh_witness_sha = selected_fresh_witness(legacy_cls.pq_transport_witness)
     two_pass_refresh, two_pass_refresh_sha = selected_two_pass_refresh(legacy_cls.refresh_hub_forwarders)
@@ -1523,6 +1980,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         _observer_register_capture_command=register_capture_command,
         _observer_capture_deadline=capture_deadline,
         _observer_capture_program_pins=capture_program_pins(sources["gate"]))
+    namespace["_g1_inline_reply_witness"] = g1_inline_reply_witness
     methods = compile_methods(sources["gate"], namespace)
     if scenario == "g2-g3":
         namespace.update(_g2_node_scope=g2_node_scope,_g2_tools=G2_TOOLS,
@@ -1532,7 +1990,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         scenario_methods=compile_g2_preparation_methods(sources["gate"],namespace)
         scenario_methods.update(compile_g2_flow_methods(sources["gate"],namespace))
     else:
-        scenario_methods={}
+        scenario_methods=compile_g1_inline_reply_method(sources["gate"],namespace)
     provider_globals = legacy_cls.provider_forwarder.__globals__
     original_forwarder = provider_globals.get("Forwarder")
     provider_module_name = getattr(original_forwarder, "__module__", None)
@@ -1576,6 +2034,22 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         audit_source = sources['audit']
         if audit_source.count(old) != 1: raise ValueError('G2_AUDIT_CAP_CONTEXT')
         exec(compile(audit_source.replace(old,"self.result['actual_turn_started_event_count'] > 6",1),'<owned-g2-six-audit>','exec'),audit_namespace)
+    else:
+        # Peer adapters pass None explicitly when their caller omits timeout.
+        # Preserve the inherited method's own default (currently 180), rather
+        # than passing None into migration's numeric absolute-deadline limit.
+        inherited_wait_turn = legacy_cls.wait_turn
+        inherited_automatic_turn = legacy_cls.automatic_turn
+        def wait_turn(self, letter, turn_id, timeout=None):
+            if timeout is None:
+                return inherited_wait_turn(self, letter, turn_id)
+            return inherited_wait_turn(self, letter, turn_id, timeout)
+        def automatic_turn(self, letter, prior_ids, timeout=None):
+            if timeout is None:
+                return inherited_automatic_turn(self, letter, prior_ids)
+            return inherited_automatic_turn(self, letter, prior_ids, timeout)
+        legacy_cls = type('OwnedG1TimeoutABIGate',(legacy_cls,),
+            {'wait_turn':wait_turn,'automatic_turn':automatic_turn})
     class CandidateGate(legacy_cls):
         def __init__(self, args):
             if inspect_only:
@@ -1606,6 +2080,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             self._observer_capture_lifecycle_lock = threading.Lock()
             self._observer_native_capture_state = None
             self._observer_capture_cutoff = False
+            self._observer_tls_helper_active = False
             self.pq_transport_witness = types.MethodType(fresh_witness, self)
             self.result["owned_pre_stop_fresh_witness_sha256"] = fresh_witness_sha
             self.refresh_hub_forwarders = types.MethodType(two_pass_refresh, self)
@@ -1628,6 +2103,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             self.result["effective_candidate_source_sha256"] = {
                 name:hashlib.sha256(value.encode()).hexdigest() for name,value in sources.items()}
             self.result["candidate_binding_sha256"] = args.candidate_binding_sha256
+            self.result["owned_native_rpc_shutdown_drain_sha256"] = rpc_drain_sha
             self.result["native_budget_seconds"] = {"normal_seconds":normal_seconds,
                 "terminal_seconds":NATIVE_TERMINAL_SECONDS,"cleanup_seconds":NATIVE_CLEANUP_SECONDS,
                 "total_seconds":normal_seconds+NATIVE_TERMINAL_SECONDS+NATIVE_CLEANUP_SECONDS}
@@ -1728,6 +2204,14 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 return key
             return super().register_submission(argv)
         def helper(self, action, *arguments):
+            if zero_model and action == "tls-bootstrap":
+                if self._observer_tls_helper_active:
+                    raise RuntimeError("TLS_HELPER_OVERLAP")
+                self._observer_tls_helper_active = True
+                try:
+                    return super().helper(action, *arguments)
+                finally:
+                    self._observer_tls_helper_active = False
             if scenario != "g2-g3" or action != "control-snapshot":
                 return super().helper(action, *arguments)
             if zero_model or arguments or not self.result.get("g3_hub_replacement"):
@@ -1827,7 +2311,19 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     def guarded_command(self, argv, **kwargs):
         if zero_model:
             validate_zero_command(argv)
-        return original_command(self,argv,**kwargs)
+        selected_argv = argv
+        selected_stage = None
+        if zero_model and getattr(self, "_observer_tls_helper_active", False):
+            selected_argv, selected_stage = approved_tls_helper_argv(argv, binding,
+                run_id=self.run_id, fixture_root=self.root, native_package=self.native_package,
+                image=self.test_image)
+        result = original_command(self, selected_argv, **kwargs)
+        if selected_stage is not None:
+            self.result["approved_tls_helper_stage"] = {
+                "three_public_binding_pins_verified": True,
+                "mount_readonly": True,
+                "helper_family": "EXACT_OWNED_TLS_BOOTSTRAP_ONLY"}
+        return result
     CandidateGate.command = guarded_command
     original_audit=CandidateGate.audit_rpc
     def zero_audit(self, letter, direction, message, raw=None):
