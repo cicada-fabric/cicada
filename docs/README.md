@@ -2,8 +2,9 @@
 
 Read the published [community technical site](https://cicada-fabric.github.io/)
 or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
-current unreleased source candidate, deployment boundaries and remaining
-acceptance work. The `x` is an incrementing patch number, not a fixed release.
+current 0.0.1-dev source, deployment boundaries and remaining acceptance work.
+Development stays in 0.0.x until user acceptance; the guide's v0.1.x names the
+planned first release line and its incrementing patch number.
 
 | Area | Authoritative entry points |
 |---|---|

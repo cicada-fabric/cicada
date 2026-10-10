@@ -9,6 +9,12 @@ or any product policy.
 
 ## Current evidence — 2026-10-10 — v0.1 PARTIAL
 
+The current development software is **0.0.1-dev** on `dev`. Development remains
+0.0.x until the user's actual acceptance; a main merge or initial 0.1.0 release
+requires separate authorization. Historical binaries, images and tested source
+labels below retain their actual `0.1.0-dev` identity. Protocol
+`client-hub-v1.6.4`, wire 1 and schema 59 are independent and unchanged.
+
 The clean `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59` default
 [aggregate](../.cicada-data/architecture-v2-completion/20261010T114600Z-a46501c07c/result.json)
 (SHA-256 `69c8d08c876b453b7701208f1273b2c7e2057131d955c7135fdd129cfef5bcb4`)
@@ -60,12 +66,97 @@ rg and license provenance. Runtime
 is bound by [G2 binding](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/binding.NONAUTH.json)
 SHA-256 `267baadedb59f9aadb9bea4e8aa865987b719a09032ef7a2dcb7e5f7ab05503c`.
 Its [offline preflight](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/request-observer-wiring-g2g3mcp-preflight.NONAUTH.json)
-is PASS with zero Runtime/model calls; **G2/G3 remain NOT_RUN**. Neither packaging
+is PASS with zero Runtime/model calls; it precedes the G2 H4 failure below. Neither packaging
 nor this preflight proves a command sandbox or Worker acceptance.
 The current checkpoint's scoped offline command reports record 56 runner/Link
 helper checks, seven G2 checks and 18 binding checks PASS. These counts come
 from the agents' observed command outputs and Root review, not a reconstructed
-raw log or a new full aggregate. Actual G2 Docker/Runtime evidence is still NOT_RUN.
+raw log or a new full aggregate.
+
+Current G2 H4 `cicada-two-turn-g2https0162h10sigbind20261010` is **FAIL**:
+[actual result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/request-observer-native-result-cicada-two-turn-g2https0162h10sigbind20261010/result.json),
+SHA-256 `fd2017defa814a15df69ebd2c69ae943fd265bbd1afc6d679df252ecd164bf10`.
+It failed during queue-admission installation with QueueAdmissionFailure at
+`isolated_nodes`, before Native/model activity; the exact underlying code remains UNKNOWN:
+models, attempts, turn starts/events and paid submissions are all zero. Runtime
+was invoked; provider request count is uninstrumented/UNKNOWN. Both Observer
+EOFs were confirmed. The original result retains cleanup INCOMPLETE
+(`cleanup_owned_resources=false`), distinct from Root's later
+[owned closeout](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/native-g2-support-cicada-two-turn-g2https0162h10sigbind20261010/ROOT-G2-H4-CLOSEOUT.NONAUTH.json)
+and [dead-UDS safety closeout](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/native-g2-support-cicada-two-turn-g2https0162h10sigbind20261010/ROOT-H4-DEAD-UDS-SAFETY-CLOSEOUT.NONAUTH.json)
+(SHA-256 `70c7b9ce66afb5c0afc52e24bb3f191f41a5aaa1c854c99770306a003f22a112`).
+Exact owned containers/networks/processes were absent; only independently
+verified dead UDS/locks/aliases and empty daemon directories were removed.
+The original FAIL bytes and cleanup outcome are unchanged; G3 remains NOT_RUN.
+
+The isolated i1 CLI 0.162.1 **Native sandbox zero passed** workspace write/read
+and denial of an outside path first proven writable by the same UID:
+[independent review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-authenticated-go-20261008a/native-sandbox-cli01621-candidate-20261010i1/ROOT-INDEPENDENT-ZERO-POSTCHECK.NONAUTH.json),
+SHA-256 `22c34d04130128616fa38d29f888d19461d05abf29f3ef4a0526480508f8fa6e`.
+No credentials, Thread, Turn or model were used. The j2
+[keyless transport review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-authenticated-go-20261008a/native-worker-cli01621-candidate-20261010j2/ROOT-TRANSPORT-ZERO-EVIDENCE-REVIEW.NONAUTH.json)
+passed **transport only**, without Native provider or Worker business acceptance.
+Guest 2 GiB and outer memory/swap 3 GiB are fixture bounds, not product defaults
+or Hub capacity measurements. Neither result reclassifies h4's Docker failure.
+
+W2 real CLI 0.162.1 **Worker approval → encrypted goal.result passed its scope**:
+[independent actual review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-authenticated-go-20261008a/native-worker-cli01621-candidate-20261010j2/ROOT-W2-INDEPENDENT-PAID-REVIEW.NONAUTH.json),
+SHA-256 `0996ddaae89e2d3c6f6eacd5d8b6d1ea2234f087de93c52a3f63487d786e946d`;
+[Root final review](../.cicada-data/native-observer-wiring-20261007/worker-kvm-authenticated-go-20261008a/native-worker-cli01621-candidate-20261010j2/ROOT-W2-FINAL-EVIDENCE-REVIEW.NONAUTH.json),
+SHA-256 `9314186eadb8576d2994d8a0f6312a3950005d839595c1f293602b7d51ffd589`.
+Actual exit 0/98.538s preserved the authenticated original Thread/Turn through
+START/BIND/STOP, exact command/cwd/Goal/Worker attempt 1, literal accept,
+command completion, encrypted result and durable completed Worker. Natural
+QEMU/shim/CLI STOP, owned cleanup, six residents and source pins passed.
+The actual paid archive had 104 entries, no zero flag or secret files, and all
+45 official package resources/modes/symlinks. The trusted outer fixture alone
+held the read-only credential mount; the guest, Hub and Client did not.
+Two validated POST send admissions and two TCP admissions stayed within cap 4;
+these are not billing or exact provider request counts. W1's pre-START FAIL and
+the separate workspace A/B plus START-only correction remain historical.
+
+W2 used a **private IPC fixture overlay**, with explicit `approvalsReviewer:user`,
+rather than the unchanged shipping Node binary. Its diagnostic-only stale c199
+Node pin remains **UNKNOWN**; the production identity check and authenticated
+gate independently verified the current native tuple. The shipping fix now
+explicitly selects `user` on thread start/resume and each turn start to pin the
+Manager's human approval route against inherited reviewer configuration.
+Official CLI 0.162.1 defaults to `user`; omission does not prove auto-review.
+No VM/IPC overlay is incorporated into production, and W2 is not retroactively
+attributed to the new shipping source.
+
+Shipping [selected offline QA](../.cicada-data/shipping-reviewer-version-20261010/SELECTED-QA.NONAUTH.json)
+(SHA-256 `dc62b6ad84260709cff76c238bef3107c11bd838617dd0d819a486e7ee3eea15`)
+records the actual wire-capture RED in all three new/resumed modes, then GREEN
+and related identity/cancel/remote-approval/stale-attempt/version regressions:
+nine top-level and seven subtest PASS events, zero failures/skips. The source is
+the selected dirty patch over clean36eb, not a full clean aggregate. No model or
+Runtime was launched. VERSION, plugin metadata and automatic build defaults now
+agree on 0.0.1-dev; historical artifact labels are retained.
+
+Root's actual 0.0.1-dev disposable **standard TCP Client interop gate passed**:
+[result](../.cicada-data/shipping-reviewer-version-20261010/client-interop-a1/result.json)
+SHA-256 `ed443532abdf38a79885edd42a86d708d89316775d878d47e60e7a2f3362a259`.
+Client Smoke and RecoveryFixture covered ten protocol scopes: exact registration/packet retries,
+encrypted snapshots, COMPLETED/STILL_PROCESSING/UNCERTAIN and legacy recovery,
+Node-code heartbeat, and Owner topology isolation. This was dirty36eb source
+fingerprint `01801c0d996a8f92514b7e9790e34829d8ce87d95f7c2809fa1ca35b1ff6e67a`,
+with its own Hub `61233710…4015` and test `86af34f7…f0a6` images, rather than
+clean36eb acceptance. The [Root postcheck](../.cicada-data/shipping-reviewer-version-20261010/client-interop-a1/ROOT-POSTCHECK.NONAUTH.json)
+(SHA-256 `c3f073fdf1428727dddf09e39912bf097d10fd2c8e3ce8d03add6c293588b528`)
+verified complete build-source equality and six unchanged resident canonical
+digests; the [live owned-resource check](../.cicada-data/shipping-reviewer-version-20261010/client-interop-a1/ROOT-OWNED-ABSENCE.NONAUTH.json)
+(SHA-256 `a2330f61195ea6961a5ddc1a03bf20dc39249d8421d8b398b99e05889b2703a1`)
+confirmed all eight exact container/image selectors and scratch absent.
+Android, Native Runtime and public HTTPS were NOT_RUN by this gate; standard
+TCP does not establish PQ transport acceptance.
+
+The clean36eb focused
+[Link Docker result](../.cicada-data/architecture-v2-completion/client-link-recovery-clean36eb-20261010T130826/result.json)
+(SHA-256 `7fdb167eb7b91929fc532f309d2c80cd27491ad1b35bb58a14bb4d37d45c8313`)
+passed nine named events (one top-level/eight subtests), two operation-specific
+restarts and exact source/resident/cleanup checks. It is separate from the older
+e2a aggregate and does not qualify the newly edited shipping source.
 
 The clean e2a [Client delivery](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/DELIVERY-MANIFEST.NONAUTH.json)
 (SHA-256 `517eaa56464adf44eb27600a8197ff291d49e961718096ce7c17399e47fb5ef4`)
@@ -78,10 +169,11 @@ all eight Android online cases are **NOT_RUN**. The APK pair was built from dirt
 attributed separately from the later clean Client commit. See
 [Client preparation](../../CICADA_CLIENT/docs/client-link-recovery-e2a1908-preparation.md).
 
-Next: separately validate original-thread G2 denial and G3 authenticated encrypted
-restoration, prepare a supported isolated command sandbox/Worker candidate, and
-complete current Android, physical-device and public-HTTPS gates. No new model
-GO is implied. Overall v0.1 remains **PARTIAL**, unreleased.
+Next: resolve the pre-model G2 admission failure, then separately validate original
+Thread denial and G3 authenticated encrypted restoration; retain the shipping
+Node/fixture distinction and complete current Android, physical-device and
+public-HTTPS gates. No new model GO is implied. First-release acceptance remains
+**PARTIAL**; development software 0.0.1-dev is unreleased.
 
 <a id="latest-native-e3"></a>
 

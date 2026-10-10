@@ -8,13 +8,15 @@ a completed historical M1–M5 task or run paid models.
 ## Current baseline and sources
 
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
-before editing. The source line is `0.1.0-dev`, Architecture v2.3, Hub schema 59,
+before editing. The development source line is `0.0.1-dev`, Architecture v2.3, Hub schema 59,
 Client contract `client-hub-v1.6.4`, encrypted wire 1 and catalog 55. Confirm those
 identities in [VERSION](VERSION), the
 [catalog](cicada-go/internal/clientcontract/catalog.json) and
 [migrations](cicada-go/internal/store/migrations_v2.go); they are independent of
 Git revision, build-input fingerprint, image digest and native Runtime version.
 The candidate is unreleased and overall product acceptance remains partial.
+Continue 0.0.x development on `dev`; a main merge or 0.1.0 release requires the
+user's actual acceptance and separate authorization.
 
 Use [implementation status](docs/architecture-v2-status.md),
 [plan](docs/architecture-v2-plan.md), [audit](docs/architecture-v2-audit.md),

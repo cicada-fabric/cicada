@@ -1,11 +1,13 @@
 # CICADA v0.1.x technical guide
 
-This guide covers the current **0.1.0-dev** source line. It is public technical
+This guide covers the current **0.0.1-dev** development source line. It is public technical
 documentation for an unreleased candidate, not a release announcement or proof
 of complete product acceptance. Read the [current closeout](v01-current-closeout-20261009-validation.md)
 for retained failures and the [implementation ledger](completion-ledger.md) for
 individual boundaries. The adopted [Architecture v2.3](../CICADA.md) is a product
-specification; its architecture number is independent of software v0.1.x.
+specification; its architecture number is independent of software versions.
+Development stays in 0.0.x on `dev` until the user's actual acceptance. A main
+merge and initial 0.1.0 release require separate authorization.
 
 ## Deployment and collaboration
 
@@ -138,7 +140,7 @@ schema with an older binary. Follow [Node backup](node-backup.md),
 
 | Identity | Current source meaning |
 |---|---|
-| Software | [`0.1.0-dev`](../VERSION), unreleased |
+| Software | [`0.0.1-dev`](../VERSION), unreleased development |
 | Architecture | v2.3 adopted specification |
 | Hub SQLite schema | [59](../cicada-go/internal/store/migrations_v2.go) |
 | Client contract | [`client-hub-v1.6.4`](../cicada-go/internal/clientcontract/catalog.json), 55 operations |
@@ -147,7 +149,7 @@ schema with an older binary. Follow [Node backup](node-backup.md),
 | Binary / OCI / APK | Each artifact has its own digest and acceptance record |
 | Native Runtime | Its installed version and tested capabilities, independent of CICADA |
 
-In **v0.1.x**, `x` is an incrementing patch position: compatible bug fixes and
+After initial acceptance and an authorized release, in **v0.1.x**, `x` is an incrementing patch position: compatible bug fixes and
 performance corrections can move `0.1.0` to `0.1.1` and onward. Large product,
 authorization or integration changes belong to **v0.2.x**, with an explicit
 migration and compatibility review. Publishing documentation does not increment

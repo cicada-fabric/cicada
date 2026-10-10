@@ -34,7 +34,7 @@ RUN if [ "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256" != unknown ]; then \
         internal/server/ui/generated/panel.manifest.json "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256"; \
     fi
 ENV CGO_ENABLED=1 CGO_CFLAGS=-I/opt/pqtls-stage/include CGO_LDFLAGS="-L/opt/pqtls-stage/lib -Wl,-rpath,\$ORIGIN/../lib"
-ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_VERSION=0.0.1-dev
 ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
@@ -62,7 +62,7 @@ RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} sour
 FROM scratch AS hub-runtime
 ARG CICADA_UID=1000
 ARG CICADA_GID=1000
-ARG CICADA_BUILD_VERSION=0.1.0-dev
+ARG CICADA_BUILD_VERSION=0.0.1-dev
 ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown

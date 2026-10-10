@@ -10,11 +10,14 @@ INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
 passed five actual turns with the original A/B context and exact replies.
 Historical failed attempts remain attributed to their tested inputs.
 
-Current G2/G3 and eight Android online cases remain NOT_RUN. The h5 Runtime
-proves full official CLI packaging only; h4's standard Docker command sandbox
-refused namespace creation. Supported command/Worker, remaining Native,
-physical-device and public-HTTPS acceptance remain separate. Overall v0.1 is
-**PARTIAL**, unreleased; no new execution GO is created by this documentation.
+G2 H4 is FAIL before model activity, with its original cleanup INCOMPLETE
+and later safety closeout recorded separately; G3 and eight Android online cases
+remain NOT_RUN. Current CLI sandbox zero and real Worker approval/result passed
+their isolated scopes; W2 used a private IPC fixture, whose stale diagnostic
+remains UNKNOWN, rather than the shipping Node binary. The clean36eb focused
+Link gate passed separately from the e2a aggregate. Development is **0.0.1-dev**;
+main/0.1.0 publication requires the user's actual acceptance and separate
+authorization. First-release acceptance remains **PARTIAL**.
 
 The [one-click test guide](test-automation.md) uses `scripts/test-architecture-v2-completion.sh`; default execution uses no paid models and preserves independent NOT_RUN/BLOCKED results, without claiming full v0.1 acceptance.
 

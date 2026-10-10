@@ -215,7 +215,7 @@ PY
      "$current_catalog_sha256" == "$catalog_sha256" ]]
 }
 
-build_version="${CICADA_BUILD_VERSION:-0.1.0-dev}"
+build_version="${CICADA_BUILD_VERSION:-$(cat "$repo_root/VERSION")}"
 webcrypto_manifest_sha256="${CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256:-unknown}"
 [[ "$build_version" =~ ^[0-9A-Za-z.+-]+$ ]] || {
   printf 'build-hub-image: invalid CICADA_BUILD_VERSION\n' >&2

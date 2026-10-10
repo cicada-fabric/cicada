@@ -13,10 +13,11 @@ payloads in public issues or pull requests. Check the repository's
 **Report a vulnerability** private reporting action. Use that action only if it
 is offered to your account, and confirm that GitHub accepted the private report.
 
-The latest repository API inspection reported private vulnerability reporting
-**disabled**. A future setting change must be verified before relying on that
-action or maintainer notification. No
-verified security email is currently listed. If a private reporting action is
+On 2026-10-10 at 14:29:17 UTC, the repository API returned `enabled: true` for
+private vulnerability reporting. Confirm that GitHub accepted the report. This
+setting does not establish branch protection, broader repository permissions,
+a response SLA or a security email. No verified security email is currently
+listed. If a private reporting action is
 unavailable, retain the sensitive details privately. You may open a public issue
 asking maintainers to establish a private reporting channel, containing only
 that request and no vulnerability details. Such an issue is not a private report

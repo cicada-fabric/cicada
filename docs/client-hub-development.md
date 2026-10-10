@@ -14,6 +14,10 @@ Exact image, delivery, preparation and build evidence is in the
 [current closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 and [Client preparation](../../CICADA_CLIENT/docs/client-link-recovery-e2a1908-preparation.md).
 This record changes no Client source, contract, capability or runtime acceptance.
+Separate W2 Worker approval/result acceptance used a private IPC fixture; it
+does not establish current Android or shipping Node acceptance. Current G2 H4
+failed before model activity. Follow the canonical closeout for retained failure,
+diagnostic UNKNOWN and later cleanup attribution.
 
 ## Historical Client delivery record — clean-021 Hub / v1.6.4; Client pair 3254ba1
 

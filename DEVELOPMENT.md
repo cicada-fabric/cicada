@@ -5,7 +5,7 @@
 Use `dev` for active development; `main` is currently a public placeholder and
 is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
 [current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
-The current source is **0.1.0-dev**, Hub schema **59**, Client contract
+The current development source is **0.0.1-dev**, Hub schema **59**, Client contract
 **client-hub-v1.6.4**, encrypted wire **1**, catalog **55**. Architecture v2.3 is
 the adopted specification, independent of these versions. Confirm actual
 source/dirty state and build provenance before attributing a test or artifact.
@@ -13,10 +13,12 @@ source/dirty state and build provenance before attributing a test or artifact.
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.
 The latest clean e2a default aggregate is INCOMPLETE: 14 PASS,
-2 PASS_WITH_SKIPS and four Native NOT_RUN. Separate real G1 passed; G2/G3,
-current Android, command/Worker, physical-device and public HTTPS acceptance
-remain incomplete. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
-Documentation publication is not a release.
+2 PASS_WITH_SKIPS and four Native NOT_RUN at its tested source. Separate real G1,
+current CLI sandbox and the Worker private IPC fixture passed scoped checks;
+G2 failed before model activity. G3, shipping Node acceptance, current Android,
+physical-device and public HTTPS remain incomplete. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+Continue 0.0.x development until the user's actual acceptance; main/0.1.0
+publication needs separate authorization. Documentation publication is not a release.
 
 The dated checkpoints below preserve their original evidence. Their old schema,
 Runtime images, provider/model choices and local “Main” integration labels are

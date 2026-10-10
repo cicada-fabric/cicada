@@ -1,6 +1,17 @@
 # Native next checkpoint — 2026-10-10
 
-The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+Current real G1 is PASS; isolated CLI sandbox zero and W2 Worker approval/result
+passed their scoped predicates. W2 used a private IPC fixture, with a stale
+diagnostic UNKNOWN, and does not qualify the unchanged shipping Node. G2 H4
+failed during queue-admission installation before Native/model activity; its
+original cleanup INCOMPLETE and later safety closeout are separate. G3 remains
+NOT_RUN. See the single [current evidence index](v01-current-closeout-20261009-validation.md#current-20261010)
+for exact source/artifact attribution. Current development is 0.0.1-dev;
+main/0.1.0 publication awaits user acceptance and separate authorization.
+
+## Historical E3 and pre-G1 preparation
+
+The bounded Native diagnostic E3 remained **FAIL/QueueOracleError** at
 `managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
 completed the original A/B context and exact correlated reply predicates;
 all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped

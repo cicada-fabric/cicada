@@ -24,13 +24,13 @@ external model is visible to that provider; this is not provider-blind E2EE.
 
 ## Development and local deployment
 
-The current line is **0.1.0-dev**, not a formal public release. Real Native,
-Android, physical-device and public HTTPS acceptance have separate evidence;
-the project does not claim every acceptance gate passed. Latest real G1/G2
-attempts failed; their owned cleanup and actual Observer EOF checks passed.
-Current deterministic wiring checks passed 45 tests with 2 explicit replay
-SKIPs. Native G1 completion, the G2 denial tail and G3 restore remain open. See the
-[current closeout](docs/v01-current-closeout-20261009-validation.md).
+The development line is **0.0.1-dev**, unreleased on `dev`. A main merge or
+0.1.0 release follows the user's actual acceptance and separate authorization.
+Real G1 passed; current CLI sandbox and Worker private-fixture checks passed
+their scoped predicates. G2 failed before model activity, G3 and current Android,
+physical-device and public HTTPS acceptance remain open. Historical failures and
+the shipping/fixture distinction remain in the
+[current closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010).
 
 The [test automation guide](docs/test-automation.md) covers `scripts/test-architecture-v2-completion.sh`; the default run uses no paid models and reports NOT_RUN/BLOCKED separately from passed checks.
 

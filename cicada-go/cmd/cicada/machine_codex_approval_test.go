@@ -598,6 +598,9 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 				switch request.Method {
 				case "thread/start", "thread/resume":
 					seenThread = true
+					if p["approvalsReviewer"] != "user" {
+						t.Fatal("thread must use the managed user approval reviewer")
+					}
 					if p["approvalPolicy"] != "on-request" || p["cwd"] != job.Workspace || p["model"] != "synthetic-wire-model" {
 						t.Fatal("thread management fields changed")
 					}
@@ -618,6 +621,9 @@ func TestManagedCodexSandboxPolicyWire(t *testing.T) {
 					}
 				case "turn/start":
 					seenTurn = true
+					if p["approvalsReviewer"] != "user" {
+						t.Fatal("turn must use the managed user approval reviewer")
+					}
 					if p["threadId"] != "native-thread-a" || p["approvalPolicy"] != "on-request" || p["cwd"] != job.Workspace || p["model"] != "synthetic-wire-model" {
 						t.Fatal("turn fields changed")
 					}

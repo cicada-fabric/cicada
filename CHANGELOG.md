@@ -5,7 +5,32 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
-## 0.1.0-dev — unreleased
+## 0.0.1-dev — unreleased development
+
+### 2026-10-10 managed reviewer and current evidence
+
+Managed Worker thread start/resume and every turn start explicitly select the
+`user` approval reviewer, keeping human Control approval independent of inherited
+auto-review configuration. Actual serialized RPC capture covers new and resumed
+Threads; native identity, cancellation and stale-attempt rules are unchanged.
+Current development/build/plugin defaults are 0.0.1-dev. Continue 0.0.x on `dev`
+until user acceptance and separate authorization for main/initial 0.1.0 release;
+historical versions, frozen artifacts and client-hub-v1.6.4 remain unchanged.
+
+The new 0.0.1-dev disposable standard TCP Client gate passed Client Smoke and
+RecoveryFixture covering ten protocol scopes on its exact dirty36eb build fingerprint. Complete source/resident
+postchecks and live owned cleanup passed; this does not establish Android,
+Native Runtime, PQ transport or public HTTPS acceptance.
+
+Isolated CLI sandbox zero and W2 real Worker approval/encrypted result passed
+their scopes. W2 used a private IPC fixture; its stale diagnostic remains UNKNOWN
+and it is not an unchanged shipping Node acceptance result. Clean36eb Link passed
+separately. G2 H4 failed before model activity, retaining original incomplete
+cleanup plus later safety closeout; G3/Android/device/HTTPS remain open. GitHub
+private vulnerability reporting was verified enabled; branch protection remains
+unverified. See the [current closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+
+## Historical 0.1.0-dev checkpoints — unreleased
 
 ### 2026-10-10 bounded Link recovery and current Native evidence
 

@@ -103,7 +103,11 @@ the default runner's independent INCOMPLETE result or accept Android/Native/phys
 Historical E3 retains its terminal QueueOracleError/WRITER_EPOCH_STALE FAIL
 and scoped five-turn context/reply witnesses. Its pre-registration checks and
 NOT_RUN statements belong to that earlier source. Current real G1 is PASS;
-new G2/G3 and Android/native/device/public-HTTPS gates remain pending. See the
+G2 H4 failed before model activity; G3 and Android/device/public-HTTPS remain
+pending. Isolated i1 sandbox zero and W2 Worker approval/result passed their
+scopes; W2's private IPC fixture and diagnostic UNKNOWN are separate from
+shipping Node acceptance. The later clean36eb focused Link gate passed nine
+events and two exact restarts, without replacing the older aggregate. See the
 [current closeout](v01-current-closeout-20261009-validation.md#current-20261010).
 
 ## Historical runner validation

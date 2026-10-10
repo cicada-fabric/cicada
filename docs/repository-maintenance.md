@@ -17,8 +17,10 @@ not inferred from old changelog text. No branch deletion or merge is performed
 by this guide.
 
 Public documentation publication, software tags, GitHub Releases and OCI
-publication are separate actions. The software remains 0.1.0-dev and unreleased.
-In v0.1.x the patch position increments for compatible fixes; large product
+publication are separate actions. The current development software is
+0.0.1-dev, unreleased on `dev`. Continue 0.0.x development until the user's actual
+acceptance; only then may a separately authorized main merge/release use 0.1.0.
+In a future v0.1.x release line the patch position increments for compatible fixes; large product
 changes belong to v0.2.x. See [version maintenance](v01-technical-guide.md#backup-upgrades-and-version-maintenance).
 First-party material is [Apache-2.0](../LICENSE); third-party notices remain
 independent. Historical prototype version labels do not establish a current
@@ -47,11 +49,14 @@ redirect readers to the current [Client development boundary](client-hub-develop
 ## GitHub permissions and settings
 
 Repository access has been checked for the maintenance session: the authenticated
-account reports admin and push permission. The latest public API inspection reports main, dev and the historical archive
-branch unprotected, and private vulnerability reporting disabled. Organization
-membership policy has not been established by these checks. The public repository and organization pages were reviewed; the
-public main page was a placeholder. Private reporting is disabled according to
-the latest API inspection; the absence of a button alone was not used as proof.
+account reports admin and push permission. An earlier API inspection reported
+main, dev and the historical archive branch unprotected and private vulnerability
+reporting disabled. On 2026-10-10 at 14:29:17 UTC, Root's actual repository API
+GET returned `enabled: true` for private vulnerability reporting. Current branch
+protection has not been reverified; organization membership policy and broader
+permission settings are not established by that reporting setting. The public
+repository and organization pages were reviewed; the public main page was a
+placeholder. The absence of a button alone was not used as proof.
 
 Recommended settings require separate inspection and an actual configuration
 record before they can be claimed as applied: narrowly scoped collaborator/team
@@ -91,8 +96,8 @@ its CICADA technical marker. This confirms published documentation readability,
 not Hub public HTTPS, native Runtime, Android or overall product acceptance.
 Protocol contracts and catalog remain authoritative in core dev.
 
-Core main remains `0a33932`, with no product merge or release. The three reviewed
-core branches remain unprotected, and a repeated private-reporting API check
-returned `enabled: false`; neither protection nor private reporting is claimed
-configured. The archive's five unique commits remain preserved; the merged
+Core main remains `0a33932`, with no product merge or release. The earlier
+private-reporting API result was `enabled: false`; the 2026-10-10 check above
+supersedes that setting observation with `enabled: true`. Current branch
+protection remains unverified. The archive's five unique commits remain preserved; the merged
 local metadata-bridge branch remains removed.

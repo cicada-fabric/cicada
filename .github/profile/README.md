@@ -11,8 +11,9 @@ scoped grants and current server Guard preserve user authority.
 - [Contribution guidance](https://github.com/cicada-fabric/cicada/blob/dev/CONTRIBUTING.md)
 - [Security reporting](https://github.com/cicada-fabric/cicada/blob/dev/SECURITY.md)
 
-The current software is **0.1.0-dev**, unreleased, with product acceptance **PARTIAL**. Compatible fixes can increment
-the v0.1.x patch number; larger v0.2.x designs remain planned. Native, Android,
+The current software is **0.0.1-dev**, unreleased, with product acceptance **PARTIAL**.
+Development stays in 0.0.x until user acceptance and a separately authorized
+initial 0.1.0 release; larger v0.2.x designs remain planned. Native, Android,
 physical-device and public HTTPS acceptance retain independent evidence.
 First-party core material is Apache-2.0; third-party notices remain independent.
 

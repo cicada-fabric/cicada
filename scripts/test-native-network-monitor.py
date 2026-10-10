@@ -148,7 +148,7 @@ class Gate(native.Gate):
         self.result["build"] = json.loads(metadata_path.read_text())
         source = self.result["build"]["source"]
         flags = "-s -w " + " ".join("-X github.com/cicada-ai/cicada/internal/buildinfo." + key + "=" + str(value) for key, value in
-                                      (("Version", "0.1.0-dev"), ("Revision", source["revision"]), ("Dirty", "true"), ("SourceFingerprint", source["source_fingerprint"])))
+                                      (("Version", (self.repo / "VERSION").read_text().strip()), ("Revision", source["revision"]), ("Dirty", "true"), ("SourceFingerprint", source["source_fingerprint"])))
         self.go("build", "-trimpath", "-ldflags=" + flags, "-o", "/fixture/cicada", "./cmd/cicada", log="binary-build.log")
         self.go("build", "-trimpath", "-o", "/fixture/operator", "./cmd/cicada-native-network-fixture", log="operator-build.log")
         for name in ("cicada", "operator"):
