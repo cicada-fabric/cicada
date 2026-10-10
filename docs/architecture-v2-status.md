@@ -6,11 +6,16 @@
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 as the single current evidence index. Development software is **0.0.2**, with the **client-hub-v1.6.5** signer-preview
-source contract. QA ran on recorded dirty259 with 14 frozen preview paths; clean
-image/package and online delivery were not yet built at this checkpoint. Policy QA
+source contract. Earlier signer QA ran on recorded dirty259 with 14 frozen
+preview paths; its source attribution remains unchanged. Policy QA
 passed normal 71 tests, catalog 4, compatibility 2 and vet; narrow race passed
 34 tests, while broad race's two 180s package timeouts remain FAIL. See
 [signer validation](link-policy-signer-preview-validation.md) for exact scope.
+Clean Core c688 delivered the v1.6.5 Hub/test images and contract bundle; the
+separate disposable interop passed five source-scoped checks on its own images.
+Clean c688 full Go passed 3,016 tests (1,543 top / 1,473 sub), 23 skipped,
+30 packages and exit 0 in 895.740764s, with no source overlay. Exact artifact
+identities and independent postchecks are in the current closeout.
 G4/G5 qa-a5 passed 40 tests / two packages per normal and race phase, with zero
 skips/failures. Real G4 A3 passed the official 0.162.1 queue/crash gate in
 20.146s with zero model calls/new turns, without proving model consumption.
@@ -19,14 +24,24 @@ Joint7 passed four KEY cases; fresh NONE response-loss remained UNKNOWN at
 PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), and three NONE cases were NOT_RUN.
 The Client's KEY-lifecycle dependency caused fresh NONE rejection; the new
 preview reads only the authenticated own-side registered ACTIVE signer and
-requires an independent complete-identity pin. Client clean e3d26f8 has 30 policy
-JVM checks PASS but remains v1.6.4 pinned/policy CLOSED, with no new APK/online
-acceptance. The clean308d full-Go test overlay and shipping0002e scoped G2/G3
+requires an independent complete-identity pin. Client e3d26f8/JVM30/v1.6.4-CLOSED describes the historical candidate only.
+Client APK producer 1151 and host source 3cfb identify the tested runtime sources; no new APK build is implied.
+Joint8 failed on stale catalog/contract pins; joint9 failed on the stale helper
+six-field tuple. Joint10 separately reconciled all eight cases and performed two
+owned Hub restarts, but its final 65th close control exceeded the old 64 bound:
+overall FAIL remains. All three runs have independently confirmed cleanup.
+Joint11 passed all eight Android recovery cases and the unique final close ACK,
+with two exact owned Hub restarts and recorded cleanup CONFIRMED; model calls: 0.
+Independent postcheck confirmed exact owned-resource absence, closed child
+journals and unchanged source/resident snapshots; see the current closeout. KEY uses
+independent encrypted Go reads; NONE combines encrypted head reads and signed
+candidate DB_READONLY verification, without Android status-read or Native proof.
+The clean308d full-Go test overlay and shipping0002e scoped G2/G3
 assertions keep their original source; the latter's overall cleanup FAIL is not
 rewritten. Shipping a4 remains ordinary Worker scope PASS only.
 
-Next: clean checkpoint → build/package/disposable interop → newly frozen Android
-joint run. Generic V67 same-node is UNSUPPORTED; physical StopVerifier,
+Next: implement and accept V67 account-bound native direct; separately accept
+the remaining physical Runtime/device/public HTTPS gates. Generic V67 same-node is UNSUPPORTED; physical StopVerifier,
 real-device and public HTTPS are NOT_RUN. The earlier clean-e2a aggregate remains
 INCOMPLETE. Overall first-release acceptance remains **PARTIAL**; main/0.1.0
 requires the user's actual acceptance and separate authorization.

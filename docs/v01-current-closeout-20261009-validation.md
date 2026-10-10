@@ -15,9 +15,27 @@ recorded dirty259 candidate with 14 frozen preview paths. [Signer validation](li
 policy-qa-a1 normal 71 test PASS, catalog 4 PASS, compatibility 2 PASS and vet 0;
 its two 180s broad-race timeouts remain FAIL. The separate policy-qa-a2 narrow
 race passed 34 tests / two packages, zero failures/skips, exit 0 in 225.289919s.
-Clean image/package, disposable-interoperability validation and online delivery
-were not yet built or run for this contract at this checkpoint. These finite fixture timings are not a new
-performance acceptance scope.
+That dirty-source QA preceded the separately built clean c688 delivery. The
+[delivery manifest](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/DELIVERY-MANIFEST.NONAUTH.json)
+records clean revision `c6887f46c8412e648b8e8e68da371acd80e0b87e`, source fingerprint
+`cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6aefaf1ef`, retained Hub
+`sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`,
+test image `sha256:fa314f2b3f54d269bca963edae675fa0142d0d2bbf833c24170aafaba25c4477`
+and bundle SHA256 `37759169d0f776ab318a2cced01ac0ce557fba446980a5b3d112598dc72f50a4`.
+The [disposable interop](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/client-interop/result.json)
+passed five source-scoped checks / exit 0 / cleanup CONFIRMED, building its own
+Hub `sha256:ae9d4a0a7a34146202744ca851a465a2f3ab546cc762b56c0ac64d5df050d4b1`
+and runner `sha256:04d3d423e3ff1660e9bc188d30ab27362ddc7ab67eaaa6e6a10ae206c8d34ce6`.
+These differ from the retained delivery images despite matching clean source.
+
+[Current full Go](../.cicada-data/v01-next-gates-20261010/full-go-c688-clean-20261010/ROOT-FULL-GO-RESULT.NONAUTH.json)
+(SHA256 `13a598c7b02184073616cca9dd4799620e8b390deaf80aca91aae6b49470da3a`)
+passed 3,016 tests (1,543 top / 1,473 sub), 23 SKIP and 30 packages / exit 0 in
+895.740764s on clean c688 without overlay. The
+[independent postcheck](../.cicada-data/v01-next-gates-20261010/full-go-c688-clean-20261010/INDEPENDENT-POSTCHECK.NONAUTH.json)
+(SHA256 `d83522862bcb3ea31b6d48763efb4132577ea5a5558fbb81d6fe08a7ab799f27`)
+confirmed source/six residents unchanged and owned cleanup. Skips are not passes;
+fixture timings do not establish a new performance acceptance scope.
 
 Joint7's [exact-owned closeout](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/ROOT-JOINT7-CLOSEOUT.NONAUTH.json)
 (SHA-256 `80dd17c7af90b0b5fd35ded5f6f40331c39f6a1bbc53a4a5eb5d562e6787c6e2`)
@@ -27,10 +45,44 @@ zero model calls. Client incorrectly reused KEY-grant lifecycle for NONE;
 Core's signer belongs in its independent ACTIVE Owner key registry. v1.6.5
 returns the authenticated own-side exact complete public identity/state/version
 within preview, requiring independent pins; grant rechecks remain authoritative.
-Client clean candidate `e3d26f8103ae2d6dcd1210c792f02b4311617a57` has policy
-JVM 30 PASS, still v1.6.4 pinned/policy CLOSED, without new APK/online validation.
-Next is a clean checkpoint, build/package/disposable interop and a newly frozen
-Android joint run; historical e2a image and packet attribution do not change.
+Client e3d26f8/JVM30/v1.6.4-CLOSED remains that historical candidate.
+Client APK producer 1151 and host source 3cfb identify the tested runtime sources; no new APK build is implied.
+Joint8 failed on stale catalog/contract pins; joint9 failed on the stale helper
+six-field tuple. Joint10 separately reconciled all eight cases and performed two
+owned Hub restarts, but its final 65th close control exceeded the old 64 bound:
+overall FAIL remains. All three runs have independently confirmed cleanup.
+Joint11 passed all eight Android recovery cases and the unique final close ACK,
+with two exact owned Hub restarts and recorded cleanup CONFIRMED; model calls: 0.
+Independent postcheck confirmed exact owned-resource absence, closed child
+journals and unchanged source/resident snapshots; see the current closeout. KEY uses
+independent encrypted Go reads; NONE combines encrypted head reads and signed
+candidate DB_READONLY verification, without Android status-read or Native proof.
+Joint8/9 exact failure and independent cleanup receipts remain in the current
+delivery's `joint-preparation` directory. Joint10's Core result SHA256 is
+`9437c055a195fb03093352e799282f9d6818d0fa88a39af2a6885451acc47598`;
+Parent result SHA256 `a63c471158f0d0015f2d6d0f5c66ca65206603c1e1ff9a5a91b682c3724af716`.
+Its final ACK did not occur; V7's offline correction does not rewrite this FAIL.
+Joint11's [Parent result](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/parent-run-evidence-2d0049a266db2c99073cf500ddb3c6cf314402e36b7b2f2f3a25641c9fdae752/result.NONAUTH.json)
+(SHA256 `672a23d7050068a97cd7601f6b9726e4e802014c6be5708a8ea4c0961ee7d2f8`)
+records PASS_JOINT_ANDROID_EIGHT_CASE_ONLY / eight cases / 512.191614s. Its
+[Core result](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/joint-run-joint11-20261010/result.json)
+(SHA256 `b291e817a72388dbf26e6f92860a15d6e8b3982d189fa4c3385018ef36cef943`)
+records eight separately reconciled cases, two restarts at case indices 2 and 6
+PASS, source/six residents exact and cleanup CONFIRMED. The unique 65th close(case7) ACK was received before
+Parent success; current frozen source still enforces the exact 65-control matrix.
+The [outer receipt](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/ROOT-JOINT11-OUTER.NONAUTH.json)
+(SHA256 `b7b867a2570189d3970cfd47ca72ea0649821d8659313ebc56a074df63926f7b`)
+records exit 0 in 513.119804s. The
+[independent cleanup receipt](../.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/ROOT-JOINT11-CLEANUP-INDEPENDENT.NONAUTH.json)
+(SHA256 `0a7dfc5b4546842a808720f6e02c97052c5570bc025f6f8e2591d6ea420a0740`)
+passed PASS_SCOPED_POSTCHECK: exact Hub ID/name, recorded Android ID and scratch
+were absent; 59 Parent journals were closed (58 exit 0, one exit 1 with purpose
+unknown), and 188 Client journals were closed successfully. Core c688 and Client
+3cfb were clean at the postcheck; source/resident snapshots matched. This checks
+cleanup and preservation, without independently revalidating encrypted reads or
+DB-only candidate business logic. This is Android Link recovery scope only,
+with no Native Runtime/model/physical-device/public HTTPS acceptance transfer.
+Historical e2a image and packet attribution remain unchanged.
 
 The separate G4/G5 [qa-a5 receipt](../.cicada-data/v01-next-gates-20261010/qa-a5/ROOT-RUN.NONAUTH.json)
 (SHA-256 `e390f3fb2baa45daa851eba15b058150eadd5bfc907c47d6696c5b47f8fec3af`)
@@ -45,7 +97,7 @@ prove model consumption, busy delivery or foreground protection. Earlier failed
 attempts remain preserved. Generic V67 same-node delivery is UNSUPPORTED;
 physical stop verification, real-device execution and public HTTPS remain NOT_RUN.
 
-Development software is **0.0.2**. The latest full Go batch used clean Core
+Historical full Go overlay: the earlier batch used clean Core
 source `308d7607cadc6cb83fe5aaa923adaf643a0aa32d` with the exact test-only
 overlay now applied at
 `cicada-go/internal/server/machine_agent_approval_integration_test.go`
