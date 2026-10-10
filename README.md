@@ -58,8 +58,16 @@ reuses that immutable APK pair and adds only host test coordination. The final
 consumer pins the actual Core Parent, adapter, interface and freeze files;
 the successor also verifies the reconciliation binary and its compile receipt
 without executing Core. Its 158 Docker offline tests pass, including
-result-record rejection without partial success. Root selected the original 82-request flow:
-TARGET enrollment first, then SOURCE activation with no switch through recovery.
+result-record rejection without partial success. Root's final ruling retains
+the original 82-request flow: each case actually creates and enrolls TARGET
+Android first, then creates, enrolls and activates SOURCE last. SOURCE stays
+active without reselection through original recovery and `FINISH_CASE`.
+Sixteen fresh profiles plus the default entry give 17 planned entries within
+the unchanged limit of 32. TARGET Android initialization is separate from the
+independent Go TARGET operator's encrypted readonly reconciliation and the
+external Owner signing flow; neither is attributed to Android readonly reads.
+The SOURCE-only proposal and its missing-projection diagnosis are superseded.
+No Go TARGET projection or Parent rewrite is needed for this retained flow.
 Earlier attempts retain their original results. Runtime
 execution stays HOLD, with separate encrypted Owner reads, explicitly attributed
 Core readonly evidence for pending NONE candidates, and owned Android closure
@@ -72,6 +80,8 @@ cases remain **NOT_RUN** pending the separate finite Master GO. The earlier
 declared-pin mismatch retains its original **BLOCKED** evidence. See the
 [successor freeze](docs/client-link-recovery-eight-case-loop.md#successor-freeze-corrected-25-field-parent-delivery)
 and [Core handoff](docs/cicada-core-handoff.md#successor-client-host-consumer-freeze).
+The [final initialization ruling](docs/client-link-recovery-eight-case-loop.md#final-ruling-original-82-request-flow)
+records the restored flow and its separate Android/Go attribution.
 
 The [previous offline checkpoint](docs/client-link-recovery-offline-validation.md)
 and F38 retain their original source, images and APK attribution. Their results

@@ -1,6 +1,198 @@
 # CICADA Client integration handoff
 
+## Current coordination: original82 TARGET-first Android initialization
+
+Root's final ruling supersedes the SOURCE-only alternative. Each case
+actually exports and enrolls a fresh TARGET Android device/profile, then
+exports and enrolls a fresh SOURCE device/profile last. Two
+`SIGN_ENROLLMENT` requests per case retain the original82 Parent map.
+After SOURCE creation/export, no switch, reactivation or reselection occurs
+through original recovery and `FINISH_CASE`. Planned occupancy is sixteen
+new profiles plus the default entry, seventeen within the existing limit
+of 32; actual profile/generation and cross-case non-reuse checks remain.
+
+Client's host loop and tests are restored byte-exact from `062c764`, retaining
+the completed `780a8d` consumer migration (`1526a2c1…`), actual four-artifact
+and closed freeze joins, adapter READY runner and strict `127.0.0.1:8787`.
+There is no new Go TARGET projection, 74-event ordering or Parent rewrite.
+The SOURCE-only guard/tests are removed from the active path; `981853d`, its
+164-test receipt and the uncommitted witness audit are preserved as
+superseded evidence. No APK/Kotlin, legal TARGET driver, callback or
+production API change is made.
+
+The unpublished SOURCE-only checkpoint is retained at local recovery ref
+`refs/archive/client-link-recovery-source-only-20261010` (`981853d`). Its
+uncommitted witness audit is retained under the restoration evidence root's
+`history/` directory. The final ruling is consolidated into that unpublished
+stage; no published history or archive ref is pushed.
+
+Actual TARGET Android initialization is distinct from the independent Go
+TARGET encrypted readonly operator. External signing remains bound to the
+exact Owner and reviewed proof side. A TARGET Android enrollment receipt
+does not stand for Go readonly execution or TARGET Link consent. The
+25-field callback, KEY2/NONE4 reads, eleven-field NONE policy, separately
+attributed pending-candidate evidence and `Android readonly=NOT_RUN` stay
+unchanged. Original Source-only mapping gaps do not block this retained
+flow. All eight online cases remain `NOT_RUN`; online is **HOLD**.
+
+Root reports a fixed-test-APK DEX audit; Client has read the existing four
+Kotlin test methods and legal TARGET stage/selector entries. The forthcoming
+Core DEX/source audit receipt will retain its producer attribution. Offline
+restoration commands, exits, final Client commit/source pins and unchanged
+APK attribution are recorded at
+`/gpu1-share/data/cicada-client/v164-e2a1908-final82-restoration-20261010`.
+Only Root may issue the separate Master GO or operate owned online resources.
+No Core/DB/lifecycle/real-key/model/push/merge action is performed by Client.
+
+| Final restoration gate | Status | Evidence |
+|---|---|---|
+| Fresh restored Client Docker offline suite | PASS | 158 tests, exit 0, no failures/skips; 6.280 seconds wrapper; tested parent `981853d`, dirty=true |
+| Actual consumer four artifacts/auxiliary/APK bytes | PASS for read-only checks | Input export exit 0; no Core or APK execution |
+| Original82/twelve-driver/25-field callback compatibility | PASS for exact bytes | Driver map `039c4ee0…` and callback export `510e8f7f…` equal the corrected-consumer preparation |
+| Eight online Android cases / actual independent Go reads | NOT_RUN | Online HOLD; Root Master GO absent |
+| Android readonly / Native / physical Android / public HTTPS | NOT_RUN | Separate runtime gates |
+
+Actual commands, each exit 0:
+`python3 <evidence-root>/run-offline.private.py` and
+`python3 <evidence-root>/freeze-inputs.private.py`.
+`git diff --check` passed and the exact offline-container label absence
+query returned no match. The new test receipt SHA-256 is
+`fb5bb603e9b76715c6f29850a38f90a04b2847956d2195cf86eac3ae41017b90`;
+the input receipt is
+`94f32aa37bd73d6db496cadd0d2452e363486cf580c271c2d95932137d533bda`.
+`final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json` binds the final Client
+commit, clean state, source inventory, commands/exits and unchanged APKs.
+Root must pin the new pre-BOOT Parent template (`b45a03fd…`) and config
+before the separate finite Master GO. See the
+[full restoration record](client-link-recovery-eight-case-loop.md#final82-restoration-verification).
+
+## Superseded coordination: one Android SOURCE per case
+
+This section and the Go witness audit below preserve the revoked alternative.
+They are not requirements or active blockers for the original82 flow above.
+
+Date: 2026-10-10. Root's latest instruction replaces TARGET-first Android
+initialization with eight isolated SOURCE profiles, one per case. The first
+case activates a new profile from the fresh default; the following seven
+cases activate their own new profiles. No switch, reactivation or reselection
+is allowed from a case's device export/enrollment through recovery and
+`FINISH_CASE`. TARGET is the real separate enrolled/current Go operator,
+never a second Android profile or a synthetic Android receipt.
+
+The host preparation now refuses TARGET Android enrollment before any
+staging, selector, export or signer request, and correlates the existing
+SOURCE device/enrollment exports, unique profiles/public keys and exact
+generation progression. Planned registry occupancy is 8 SOURCE + 1 default
+= 9, within the unchanged capacity of 32. The APK has no host registry-count
+export; this arithmetic is not a measured registry snapshot. No APK, Kotlin,
+selector, reset, callback or production API changes are made.
+
+| Gate | Status | Boundary |
+|---|---|---|
+| `780a8d` actual-source consumer migration | PASS | `062c764`; consumer `1526a2c1…`, exact new four-artifact/runner pins and strict `127.0.0.1:8787`; separate 18-test Docker recheck exit 0 |
+| Safe SOURCE-only host guards | PASS for offline checks | 164 Docker unit tests, exit 0; six new test methods, no failures/skips; no Android runtime |
+| Actual safe Go TARGET `CASE_READY` mapping | BLOCKED | Frozen Parent `479adcd3…` still requires TARGET Android; public Core proposal is `NOT_IMPLEMENTED, NOT_GO` |
+| Eight Android cases / actual independent Go reads | NOT_RUN | No online GO or new runtime plan |
+| Android readonly / native Worker / physical Android / public HTTPS | NOT_RUN | Separate runtime gates |
+
+**Required Core delivery:** the safe current Go TARGET public projection and
+its exact file/schema/hash/provenance joins, plus the corresponding Parent
+and `CASE_READY`/event-order source freeze. Do not expose private operator
+metadata or device keys. The accepted original Grant digest is not a later
+independent signature verification. Client will consume the delivered
+evidence boundary and will not implement proposed fields before delivery.
+No additional approval is needed for the eight-profile isolation strategy;
+this blocker is a missing producer input, not a request for permission.
+
+The immutable APK pair and Root endorsement remain unchanged. The delivered
+Hub is still clean `e2a1908`, image `sha256:532dc1cc…`, Client-Control
+v1.6.4 / wire1 / catalog55. Current Core development checkpoints do not
+replace it. The 25-field callback, eleven-field NONE policy and exact
+KEY2/NONE4 encrypted-read attribution remain unchanged. Online is **HOLD**;
+no resources, models, Hub lifecycle, database reads, push or merge are used.
+The [SOURCE-only preparation record](client-link-recovery-eight-case-loop.md#source-only-per-case-preparation)
+describes the exact limits. All preceding freezes remain historical.
+
+Evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-source-only-guards-20261010`.
+The exact command
+`python3 <evidence-root>/run-offline.private.py` returned 0 in 6.431 seconds;
+source hashes remained unchanged. `python.receipt.redacted.json` SHA-256 is
+`4ad830be0810a21226eedb10b749452611cd39f0bb00dd04427865143b5c1ed2`.
+Tests ran at parent `062c76426cadabc9e8afe67019241f171588a89c`, dirty=true;
+`HOST-SOURCE-ONLY-PREPARATION.NONAUTH.json` binds the final Client commit,
+source hashes, unchanged APK attribution and mapping blocker. It is not a
+final twelve-driver freeze or runtime-plan endorsement. Exact owned offline
+container absence was checked with exit 0 and no match.
+
+### Go TARGET witness requirements audit
+
+The exact Core proposal was read and its SHA-256 verified as
+`a01b140c4027b620a63b6a2f2735b1502054483a15716a58d09110d5395adde3`.
+It remains `NOT_IMPLEMENTED, NOT_GO`. The existing Android TARGET wrapper
+cannot be relabeled as Go evidence. This audit specifies required facts and
+joins, not an accepted DTO, new callback or permission to execute.
+
+No additional Target witness field is currently requested beyond the
+proposal's 27 fields, provided the new pinned producer implements the
+checks below. Endpoint, Group, Network, Principal, Node and SessionBinding
+claims already exist in the fixed public fixture and manifest; duplicate
+copies would introduce another source to reconcile.
+
+| Required public fact | Existing proposed fields / evidence | Required Client or producer join |
+|---|---|---|
+| Attribution and fresh case | `schema`, `attribution`, `case_id`, `run_id`, `fixture_public_sha256`, `observed_at` | Exact owned case root, fixed public file hash, current coordination deadline; `EXTERNAL_GO_OPERATOR_ONLY`, never an Android receipt |
+| Current TARGET Owner | `owner_id`, `owner_key_id`, `owner_public_identity` | Exact TARGET Owner/key/full public identity from independently pinned READY; producer verifies the current active Owner key |
+| Real enrolled device | `device_id`, `device_key_id`, `device_public_identity`, `device_state`, `device_key_version`, `session_epoch` | Current ACTIVE enrollment and exact public key; distinct from SOURCE and other cases; final callback's Owner/device hashes and epoch must match this baseline |
+| Actual counter baseline | `last_request_sequence`, `next_response_sequence` | Actual bounded integer counters with explicit representation; producer checks its private operator sequence agrees with authoritative current state; final KEY2/NONE4 reads continue from that baseline without unrelated TARGET operations or guessed counters |
+| Current Link and manifest | `hub_id`, `link_id`, `link_version`, `contract_digest`, `manifest_digest`, `source_owner_id`, `target_owner_id` | Exact fixed READY and fresh Android native review scope; current Group/Endpoint/binding associations, proof and lease checks remain required |
+| Verified admission provenance | `admission_origin`, `owner_device_grant_sha256`, `owner_device_grant_reverification` | Digest from the actual durable acceptance record; production Store verification is labeled separately from independent verification of original Grant bytes |
+
+`GROUP_JOINED` must be established by the producer before it emits a
+witness. The existing helper saves that stage only after actual Group Join
+and candidate publication and writes a secret-free
+`target-actual-group-join.json` evidence record. The existing reconciliation
+source requires `m.Stage == "GROUP_JOINED"` and independently checks the
+current Owner/device/public key/counters. The new witness producer must bind
+those observations to the exact current TARGET Group/Endpoint/binding in
+the existing public fixture. A self-asserted stage or matching IDs alone is
+insufficient. The producer must check its private metadata GroupID against
+the fixture's TARGET Group and require the actual join receipt's lease to
+remain unexpired at witness observation. This does not establish a real
+Native Thread: the fixture's native runtime remains `NOT_RUN`. No extra
+stage flag is requested if the
+producer's pinned verification provides that fact; if it cannot, report the
+missing evidence rather than inventing a successful witness.
+
+The current 25-field final callback already carries TARGET Owner/device
+hashes, session epoch and each encrypted read's request/response sequences.
+Future host checks can correlate these existing values with the baseline;
+no callback extension is needed. Today the validator checks the opposite
+Owner and a device different from SOURCE, not a pre-delivered exact Go
+device baseline. That stronger join is pending the actual DTO and matching
+Parent delivery; it is not claimed as implemented.
+
+If Root accepts durable verified-admission provenance, the lack of retained
+original Grant bytes must remain explicit. If Root requires independent
+original-Grant verification, Core must deliver a real verifier/evidence
+boundary first. Client does not recover a signature from a digest, demand
+private keys, copy operator metadata, or set a verification flag itself.
+SOURCE Android Grant verification remains unchanged in either case.
+
+The current consumer was also checked against the actual four delivered
+artifacts with `verify_artifacts()`, exit 0, strictly
+`http://127.0.0.1:8787`; its SHA-256 remains `1526a2c1…`. This is a read-only
+metadata audit, with no Core execution or additional runtime tests. The
+25-field callback, KEY2/NONE4 reads and eleven-field NONE policy remain
+byte-identical. Proposed 74-event ordering is not accepted until Root
+delivers the corresponding actual Parent freeze. No final runtime plan or
+twelve-driver freeze is issued by this audit.
+
 ## Successor Client host consumer freeze
+
+This is the preceding `062c764` TARGET-first preparation, retained with its
+original evidence. Use the current coordination section above for the latest
+initialization boundary.
 
 Date: 2026-10-10. Root's final correction authorizes the actual interface
 `8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570`

@@ -1,6 +1,213 @@
 # Bounded Android Link recovery loop
 
+## Final ruling: original 82-request flow
+
+Date: 2026-10-10. Root's final instruction supersedes the SOURCE-only
+preparation and proposal below. Retain the frozen Parent's original 82
+requests: two `SIGN_ENROLLMENT` requests per case, TARGET Android first and
+SOURCE Android last, with BOOT/CLOSE accounting unchanged. Both enrollments
+are real existing Android selectors. SOURCE remains active from its export
+and enrollment through original recovery and `FINISH_CASE`; no profile may
+be switched, reactivated or reselected within that window.
+
+Each case creates two distinct fresh profiles. The fresh registry therefore
+has sixteen planned new profiles plus its default entry, or seventeen total,
+within the unchanged capacity of 32. On that fresh registry, expected TARGET
+generations are 2, 4, ..., 16 and SOURCE generations are 3, 5, ..., 17.
+Actual exported profile IDs/generations remain checked, including
+TARGET-to-SOURCE progression and non-reuse across cases. Planned occupancy
+is not a host-exported registry observation. No reset or new selector is
+required.
+
+`LinkConsentInteropTest.kt` has all four existing SOURCE/TARGET export and
+enrollment `@Test` methods, and the original host driver already permits
+both TARGET stage files and selectors. Root reports an actual `classes5.dex`
+audit for the fixed test APK; its producer receipt will be recorded with
+its original attribution when delivered. Client has independently read the
+existing source/driver mapping. That source audit is not an Android run.
+
+The host loop and its tests are restored byte-for-byte from `062c764`.
+The SOURCE-only guard and its six tests are removed from the active path;
+their `981853d` commit and 164-test evidence remain historical. The complete
+current consumer migration is retained: four actual source pins, closed
+freeze joins, adapter `7dc6eb20…` as READY runner, and strict
+`http://127.0.0.1:8787`. The current twelve-driver map therefore matches
+the original corrected-consumer preparation. No extra Go TARGET DTO,
+74-request ordering, Parent rewrite, APK or production protocol is needed.
+
+Android TARGET enrollment is not the Go TARGET session used by the external
+readonly helper. The latter remains a separately enrolled/current device,
+with actual KEY2/NONE4 encrypted reads and explicitly attributed Core
+readonly pending-candidate evidence. External Owner signing keeps the exact
+reviewed side and proof scope; enrollment does not create a TARGET Link
+consent proof or establish bilateral acceptance. The unchanged 25-field
+callback and eleven-field NONE policy preserve those distinctions. Android
+readonly remains `NOT_RUN`.
+
+Online remains **HOLD**, with all eight Android cases **NOT_RUN**. The final
+offline restoration evidence and source pins are recorded under
+`/gpu1-share/data/cicada-client/v164-e2a1908-final82-restoration-20261010`.
+No prior failure, source-only proposal, old APK or synthetic protocol result
+is relabeled as an online PASS. Root still owns the separate finite Master
+GO and all lifecycle actions.
+
+### Final82 restoration verification
+
+The new Docker offline run passed **158** tests, exit **0**, with no failures
+or skips: 5.191 seconds unittest / 6.280 seconds wrapper. It ran at parent
+`981853d2d89643c187d3239838dfcbfe1bcb1c27`, **dirty=true**, after restoring
+the actual loop/test bytes from `062c764`. Source hashes were unchanged
+during execution. This is fresh offline evidence for the restored flow;
+the earlier 164-test SOURCE-only evidence is not reused.
+
+Actual commands under the evidence root above, each exit 0:
+
+```sh
+python3 <evidence-root>/run-offline.private.py
+python3 <evidence-root>/freeze-inputs.private.py
+git diff --check
+docker ps -a --filter label=ai.cicada.client.offline-final82-restoration=20261010 --format '{{.ID}} {{.Status}}'
+```
+
+The last command returned no owned container. Docker data root remains
+`/gpu1-share/data/docker-root`. The unit run used the same pinned offline
+image, a read-only Client mount and `--network=none`, with no Core, secret,
+model, Hub or emulator access. The input export reads and hashes public
+Core preparation and fixed APK bytes; it executes no Core code.
+
+| Artifact under the evidence root | SHA-256 |
+|---|---|
+| `python.receipt.redacted.json` | `fb5bb603e9b76715c6f29850a38f90a04b2847956d2195cf86eac3ae41017b90` |
+| `final82-coordination.receipt.redacted.json` | `94f32aa37bd73d6db496cadd0d2452e363486cf580c271c2d95932137d533bda` |
+| `final82-delivery/driver-pins.private.json` | `039c4ee00f0c8047ae5f878a2149cb6fabdeaed94cad50a819dd315cc158373f` |
+| `final82-delivery/socket-interface.freeze.NONAUTH.json` | `510e8f7f686e8006db56d25d48a41857fba292e2feb60bcabb4fbae9f663dc83` |
+| `final82-delivery/root-parent-template.private.json` | `b45a03fd3fcbcbaecf02c2ae9e087f36f3a7cfaf03d2b8f25dc656a1e579416c` |
+
+The twelve-driver and callback maps are byte-identical to the corrected
+consumer preparation. The new pre-BOOT Parent template differs only in
+owned evidence placeholder paths and must be pinned by Root before any
+Master GO. It is not the full Client runtime plan; that plan is derived only
+after actual owned BOOT_READY. The complete final commit/tree, tracked
+source inventory, tested-file joins, actual fixed Core/auxiliary and APK
+pins are recorded in `final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`.
+All eight online cases, Android readonly, actual Go readonly execution,
+physical Android and public HTTPS remain `NOT_RUN`; native runtime is a
+separate gate. Budgets stay 3600/360/240, with two exact owned 45-second
+uncertain restarts. No online GO, push or merge is produced.
+
+## Superseded SOURCE-only per-case preparation
+
+The following section and its audit describe the revoked SOURCE-only
+alternative. They remain evidence of that preparation, not a blocker or
+required producer change for the retained original82 flow above.
+
+Date: 2026-10-10. This operational boundary supersedes the TARGET-first
+initialization in the historical frozen preparation below. Each of eight
+cases creates and activates its own fresh Android SOURCE profile. There is
+one initial activation from the default profile and seven inter-case
+activations. From a case's device export and enrollment through original
+packet recovery and `FINISH_CASE`, no profile may be switched, reselected
+or reactivated. TARGET enrollment and readonly reconciliation belong to the
+actual independent Go operator; no TARGET Android receipt is permitted.
+
+The unchanged APK registry starts with one default profile and has an
+existing limit of 32. The planned occupancy is eight new SOURCE profiles
+plus that default entry, or nine total. Existing device exports report the
+actual profile ID and generation; on the fresh owned emulator, the expected
+SOURCE generations are 2 through 9. The host rejects reordered cases,
+generation jumps or reuse, reused profiles and reused device public keys.
+It correlates the existing fifteen-field Android enrollment receipt with
+the exported run, profile, generation, Hub, Owner, device, device key,
+original Grant hash, encrypted capability contract and session epoch.
+Existing capture/recovery validators retain exact operation, packet, proof,
+sequence and session scope. No new selector, reset or registry capacity is
+introduced.
+
+Nine entries is planned occupancy, not an exported registry observation:
+the existing APK exposes no host registry-count snapshot. `FINISH_CASE` is
+a host/Core join, not an Android active-profile observation. The eventual
+command schedule must preserve the no-switch window; existing Native scope
+checks protect capture and recovery. Unit fixtures do not establish actual
+Android enrollment, counters, cryptography or profile activation.
+
+The `780a8d` consumer migration is complete at `062c764`: the actual
+consumer SHA-256 is
+`1526a2c188a4225edbcb88a93cf84064c2c89819de19e6226a77f379e4e23ee9`.
+It pins the four actual Parent artifacts below, the exact adapter runner,
+and only `http://127.0.0.1:8787`. The old `55382c63…` consumer belongs to
+archived `9d94b33`, not the current branch. The separate clean-source Docker
+recheck passed 18 consumer tests, exit 0, with evidence at
+`/gpu1-share/data/cicada-client/v164-e2a1908-current-consumer-recheck-20261010`.
+Its actual-input receipt SHA-256 is
+`82d4eccac3f73459413d30643e3437be1467082d516bceaf88dc73cdfedf04d2`.
+
+SOURCE-only orchestration is **BLOCKED** on the actual Core mapping.
+Parent `479adcd3…` still signs TARGET Android first and requires both Android
+enrollments before selection. The public Core
+`SOURCE-ONLY-GO-TARGET-GAP.NONAUTH.md` explicitly says `NOT_IMPLEMENTED,
+NOT_GO`; its proposed path and schema are not accepted Client inputs.
+The host now raises `ParentBlocked` before any TARGET Android staging,
+selector, export or signing request. The historical case path therefore
+cannot continue under the latest instruction. This is a deliberate safe
+stop, not a completed SOURCE-only integration.
+
+Required Core delivery: an exact safe public projection of the real current
+Go TARGET participant, with identity/session/counter and verified-admission
+provenance, its fixed path/schema/hash joins, and matching Parent,
+`CASE_READY` and event-order source pins. Private operator metadata and
+device keys are not acceptable inputs. The production admission verifier
+having checked an original Grant is distinct from later independent
+verification of that Grant; a retained digest alone cannot prove the latter.
+Client will validate the actual delivered boundary without inventing fields
+or attributing Go evidence to Android.
+
+No final SOURCE-only runtime plan or twelve-driver freeze is issued while
+that producer mapping is absent. The immutable APK pair, callback's 25
+fields, NONE's eleven fields and separate readonly candidate provenance,
+production protocol, fixed clean e2a Hub and budgets remain unchanged.
+Eight Android recovery cases and actual Go reconciliation are **NOT_RUN**;
+online remains **HOLD**. Earlier freezes and failures retain their own
+source and APK attribution.
+
+### Current offline verification
+
+The host-only preparation passed **164** Docker unit tests, exit **0**, with
+no failures or skips: 5.346 seconds unittest / 6.431 seconds wrapper. The
+six new methods cover all eight synthetic SOURCE enrollment scopes,
+generation progression, early TARGET rejection, reused identities and
+tampered enrollment receipts. No Android or Core runtime is executed.
+
+Evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-source-only-guards-20261010`.
+Actual commands and exits:
+
+```sh
+python3 /gpu1-share/data/cicada-client/v164-e2a1908-source-only-guards-20261010/run-offline.private.py
+# exit 0
+git diff --check
+# exit 0
+docker ps -a --filter label=ai.cicada.client.offline-source-only-guards=20261010 --format '{{.ID}} {{.Status}}'
+# exit 0, no matching owned offline container
+```
+
+`python.receipt.redacted.json`, SHA-256
+`4ad830be0810a21226eedb10b749452611cd39f0bb00dd04427865143b5c1ed2`,
+binds the exact Docker argv, source hashes, exit, log hash and tested parent
+`062c76426cadabc9e8afe67019241f171588a89c`, **dirty=true**. Sources stayed
+unchanged during the run. The Docker data root was checked as
+`/gpu1-share/data/docker-root`; the pinned offline image is
+`sha256:55cbde534463c21c8f7540c6293b0bd2b72ce8aa794ee395bf27a05630754358`.
+It runs network-none with a read-only Client mount, no Core or secret mount,
+no paid model and no Hub/emulator startup. The final commit and matching
+tested Python hashes are recorded in
+`HOST-SOURCE-ONLY-PREPARATION.NONAUTH.json`; that receipt is not a final
+runtime-plan or twelve-driver freeze.
+
 ## Successor freeze: corrected 25-field Parent delivery
+
+This is the preceding `062c764` TARGET-first preparation. Its consumer pin
+verification remains valid; its initialization does not satisfy the current
+SOURCE-only boundary above.
 
 Date: 2026-10-10. Root explicitly authorized the corrected interface and freeze
 below. The correction changes the explanatory callback count from 26 to 25;
