@@ -65,9 +65,25 @@ def read_source_info(repo: Path, output: Path) -> tuple[int, dict | None, str]:
     if result.returncode != 0 or not output.is_file():
         return result.returncode or 1, None, "Hub source metadata could not be captured"
     try:
-        return 0, json.loads(output.read_text(encoding="utf-8")), ""
+        metadata = json.loads(output.read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict) or not metadata:
+            raise ValueError("source metadata must be an object")
+        output.chmod(0o600)
+        return 0, metadata, ""
     except (OSError, ValueError):
         return 1, None, "Hub source metadata was not valid JSON"
+
+
+def source_reference(path: Path, run_id: str, phase: str) -> dict:
+    """Keep full source-info private and bind its exact bytes to this invocation."""
+    binding = {"schema": "cicada.node-control-source-reference.v1",
+               "run_id": run_id, "lane": "node-control-v1", "phase": phase,
+               "metadata_file": path.name, "sha256": sha256_file(path),
+               "size_bytes": path.stat().st_size}
+    binding_path = path.with_name(path.stem + ".binding.json")
+    write_json(binding_path, binding)
+    return {**binding, "binding_file": binding_path.name,
+            "binding_sha256": sha256_file(binding_path)}
 
 
 def parse_go_test_log(source: Path, destination: Path) -> tuple[str, bool]:
@@ -133,10 +149,14 @@ def main() -> int:
     shutil.copyfile(script, scripts / script.name)
     (scripts / script.name).chmod(0o600)
     script_hash_start = sha256_file(script)
+    command_name = "cicada-node-control-v1-" + uuid.uuid4().hex[:12]
+    child_run_id = os.environ.get("CICADA_COMPLETION_CHILD_RUN_ID", command_name)
 
     result: dict = {
         "schema_version": SCHEMA,
         "status": "NOT_RUN",
+        "run_id": child_run_id,
+        "lane": "node-control-v1",
         "recorded_at": utc_now(),
         "scope": "HTTP_PROTOCOL",
         "test": TEST_NAME,
@@ -195,12 +215,12 @@ def main() -> int:
 
     source_before_path = evidence / "source-before.json"
     source_rc, source_before, source_error = read_source_info(repo, source_before_path)
-    result["source_before"] = source_before
     if source_rc != 0:
         result.update(status="BLOCKED", reason=source_error)
         write_json(evidence / "result.json", result)
         print(f"BLOCKED: {evidence / 'result.json'}")
         return 2
+    result["source_before"] = source_reference(source_before_path, child_run_id, "before")
 
     if os.environ.get("CICADA_COMPLETION_CHILD_LANE", "node-control-v1") != "node-control-v1":
         raise ValueError("CHILD_LANE_MISMATCH")
@@ -208,8 +228,6 @@ def main() -> int:
     os.chmod(scratch, 0o700)
     go_cache = Path(os.environ.get("CICADA_NODE_CONTROL_GOCACHE", str(scratch / "go-cache"))).expanduser().resolve()
     go_cache.mkdir(parents=True, exist_ok=True, mode=0o700)
-    command_name = "cicada-node-control-v1-" + uuid.uuid4().hex[:12]
-    child_run_id = os.environ.get("CICADA_COMPLETION_CHILD_RUN_ID", command_name)
     try:
         cleanup_plan = owned_cleanup.prepare(scratch, child_run_id, "node-control-v1",
                                              [("test", command_name, image_check.stdout.strip())], [])
@@ -260,15 +278,16 @@ def main() -> int:
         test_status, _ = parse_go_test_log(raw_log, logs / "test-events.jsonl")
         source_after_path = evidence / "source-after.json"
         source_after_rc, source_after, source_after_error = read_source_info(repo, source_after_path)
-        result["source_after"] = source_after
         if source_after_rc != 0:
             result.update(status="FAIL", reason=source_after_error)
-        elif source_before != source_after or sha256_file(script) != script_hash_start:
-            result.update(status="FAIL", reason="source inputs or driver changed during the run")
-        elif completed.returncode == 0 and test_status == "PASS":
-            result.update(status="PASS", reason="real-TCP production HTTP protocol fixture passed")
         else:
-            result.update(status="FAIL", reason="the selected Go HTTP protocol test did not pass")
+            result["source_after"] = source_reference(source_after_path, child_run_id, "after")
+            if source_before != source_after or sha256_file(script) != script_hash_start:
+                result.update(status="FAIL", reason="source inputs or driver changed during the run")
+            elif completed.returncode == 0 and test_status == "PASS":
+                result.update(status="PASS", reason="real-TCP production HTTP protocol fixture passed")
+            else:
+                result.update(status="FAIL", reason="the selected Go HTTP protocol test did not pass")
     except subprocess.TimeoutExpired:
         result.update(status="BLOCKED", reason="pinned Go fixture exceeded the 15-minute bound")
         result["command_exit_code"] = 124

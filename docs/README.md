@@ -1,6 +1,7 @@
 # CICADA technical documentation
 
-Start with the [v0.1.x technical guide](v01-technical-guide.md). It describes the
+Read the published [community technical site](https://cicada-fabric.github.io/)
+or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
 current unreleased source candidate, deployment boundaries and remaining
 acceptance work. The `x` is an incrementing patch number, not a fixed release.
 
@@ -22,3 +23,8 @@ Dated validation documents retain the source, artifact and environment tested
 at that checkpoint. Old “current” headings and historical inventories do not
 supersede later evidence. A contract check or local browser result does not
 establish Android, real native Runtime, physical-device or public HTTPS acceptance.
+
+The organization profile and static site have been published. Public HTTPS
+retrieval of the technical site succeeded; that proves documentation readability,
+not Hub public HTTPS readiness or product acceptance. Core dev remains the sole
+source for protocol contracts, catalog, runtime instructions and validation.

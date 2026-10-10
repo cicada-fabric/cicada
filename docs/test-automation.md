@@ -21,7 +21,19 @@ Logs and receipts are written under `.cicada-data/architecture-v2-completion/`
 with private permissions. The runner records the source identity before and
 after the run, stops only its own process groups, and leaves disposable-resource
 cleanup to the existing child drivers. A process exit alone does not prove that
-a child fixture was cleaned up.
+a child fixture was cleaned up. Normal child cleanup receipts must match the
+nonempty parent run ID, child lane and exact resource roles; the stress driver
+uses its separately bound evidence-root run ID.
+
+Node-Control result JSON stays bounded by referencing the original private
+`source-before.json` and `source-after.json` archives. Each reference records
+the exact file size and SHA-256 plus a private binding manifest for its run,
+lane and phase. The consumer checks both manifests and file hashes and compares
+the complete parsed source metadata, including the full input inventory and
+all other fields. It does not infer source equality from a short fingerprint
+or selected fields. Missing, mismatched, cross-run or unbound archives remain
+`UNKNOWN`; a verified full-metadata difference is a failure. The 1 MiB child
+result limit remains enforced; source archives have a separate 16 MiB bound.
 
 The default inventory includes the pinned offline Go build/test/vet lane,
 Python unit tests, Client contract and packaging checks, deterministic web
@@ -57,6 +69,53 @@ lane is not a claim that all product acceptance gates passed. Android, physical
 device, public HTTPS, and unrun Native scopes remain separate evidence.
 
 ## Current runner validation
+
+The retained run `20261010T063155Z-5b6d7a3e12` had no failing test lane and
+unchanged source, but remained `UNKNOWN`. Five otherwise passing child receipts
+were not given their expected parent run ID by the runner. Node-Control's
+passing producer result was also oversized because it embedded the entire
+source metadata twice. Those aggregation defects are now covered by regression
+tests for the actual `make_lanes` → worker → consumer path, exact run/lane/role
+rejection, bounded producer results, complete source comparison, missing and
+cross-run archives, hash mismatches, and continued oversized-result rejection.
+The historical result and receipts are preserved; this repair does not convert
+them into a new suite pass. A fresh disposable run is required for that claim.
+
+The targeted runner/helper/status regression set passes 52 deterministic tests
+(29 runner, 18 helper/driver, 5 status), with no skips. Evidence is under
+`.cicada-data/architecture-v2-completion/runner-fix-unit-20261010/RESULT.NONAUTH.json`.
+Run it with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts:scripts/native_observer \
+  python3 -B -m unittest -v scripts.test_completion_runner \
+  scripts.test_owned_fixture_cleanup scripts.test_completion_driver_status
+```
+
+This is deterministic runner validation. A subsequent targeted Docker run,
+`20261010T081259Z-runner-targeted-docker`, exercised two production runner lanes.
+Node-Control passed its one selected Go HTTP protocol test in 92.068 seconds
+(exit 0, no skips), with confirmed owned cleanup. Its fresh result was 3,168
+bytes; both complete source archives and both binding manifests were checked by
+SHA-256 and the full metadata compared equal. A wrong expected run ID remained
+`UNKNOWN`, and the good receipt was unchanged.
+
+The client lane was actively stopped during image build when it entered
+`go mod download` instead of reusing the expected cache. Its actual result stays
+`FAIL` (exit 143, 272.263 seconds, phase `build`); protocol tests were `NOT_RUN`.
+The client cleanup reducer confirmed exact owned cleanup, and independently
+rejected a wrong expected run ID. The two-lane aggregate remains `FAIL`, even
+though Node-Control passed. All six protected resident snapshots matched before
+and after, and the four frozen runner/producer/test files retained their exact
+byte hashes. This source claim covers those files and the Node-Control full
+build metadata, not every concurrently edited repository file.
+
+Actual commands, timings, logs, counts, source and receipt hashes, cleanup and
+resident checks are recorded in
+`.cicada-data/architecture-v2-completion/20261010T081259Z-runner-targeted-docker/RESULT.NONAUTH.json`.
+The historical default result remains `UNKNOWN`. A complete fresh default
+selected-suite result, real Native execution, Android, physical-device and
+public-HTTPS acceptance remain unestablished by this targeted run.
 
 An earlier runner/stress/status unit set passed 27 tests. After the cleanup
 receipt reducers were added, the current runner and owned-fixture helper checks

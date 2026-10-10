@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -150,6 +151,132 @@ class CompletionRunnerTests(unittest.TestCase):
         return {"exit_code": 0, "timed_out": False, "interrupted": False,
                 "process_exit_confirmed": True, "process_group_cleanup_confirmed": True,
                 "log_bound_exceeded": False, "pipe_eof_observed": True}
+
+    def _node_source_references(self, directory: Path, run_id: str, *, changed=False) -> dict:
+        spec = importlib.util.spec_from_file_location(
+            "node_control_source_driver", Path(runner.__file__).with_name("test-node-control-v1-flow.py"))
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        references = {}
+        for phase in ("before", "after"):
+            metadata = {"source": {"source_fingerprint": "a" * 64,
+                                   "input_inventory": {"entries": ["synthetic-input"]}},
+                        "other_source_field": "changed" if changed and phase == "after" else "same"}
+            path = directory / f"source-{phase}.json"
+            driver.write_json(path, metadata)
+            references["source_" + phase] = driver.source_reference(path, run_id, phase)
+        return references
+
+    def test_make_lanes_worker_passes_parent_scope_to_real_receipt_consumer(self) -> None:
+        run_id = "synthetic-run-01"
+        generated = runner.make_lanes(self.root, run_id, {}, True)
+        selected = [lane for lane in generated if lane.get("expected_roles")]
+        self.assertEqual(len(selected), 6)
+        self.assertEqual(next(lane for lane in generated if lane["name"] == "group-fabric-stress")
+                         ["cleanup_run_id"], "completion-stress-" + self.root.name)
+        for lane in selected:
+            self.assertEqual(lane["cleanup_run_id"], run_id)
+            receipt, _ = self._actual_child_cleanup_receipt()
+            receipt["lane"] = receipt["fixture_cleanup"]["lane"] = lane["child_lane"]
+            receipt["fixture_cleanup"]["resources"] = [row for row in receipt["fixture_cleanup"]["resources"]
+                                                       if row["role"] in lane["expected_roles"]]
+            path = lane["receipt_paths"][0]
+            if lane["name"] == "node-control-v1":
+                path = path / "invocation" / "result.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if lane["name"] == "node-control-v1":
+                receipt.update(self._node_source_references(path.parent, run_id))
+            path.write_text(json.dumps(receipt))
+
+        def child(_argv, *, log_path, **_kwargs):
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text("PASS: synthetic child\n")
+            return self._complete_run_record()
+
+        with mock.patch.object(runner, "make_lanes", return_value=selected), \
+             mock.patch.object(runner, "source_identity", return_value={"complete": True}), \
+             mock.patch.object(runner, "docker_available", return_value=True), \
+             mock.patch.object(runner, "run_process", side_effect=child):
+            self.assertEqual(runner.worker(self.root, run_id, {}), 0)
+        result = json.loads((self.root / "result.json").read_text())
+        self.assertEqual(result["overall_status"], "PASS")
+        self.assertTrue(all(lane["fixture_cleanup_status"] == "CONFIRMED" for lane in result["lanes"]))
+
+    def test_child_scope_mismatch_empty_scope_and_missing_receipt_remain_unknown(self) -> None:
+        receipt, _ = self._actual_child_cleanup_receipt()
+        path = self.root / "result.json"
+        self.log.parent.mkdir(parents=True)
+        self.log.write_text("PASS: synthetic child\n")
+        for run_id, lane, roles in (("other-run", "client", runner.CHILD_CLEANUP_ROLES["client"]),
+                                    ("synthetic-run-01", "capacity", runner.CHILD_CLEANUP_ROLES["capacity"]),
+                                    ("synthetic-run-01", "client", {"test"}),
+                                    ("", "client", runner.CHILD_CLEANUP_ROLES["client"]),
+                                    (None, "client", runner.CHILD_CLEANUP_ROLES["client"])):
+            with self.subTest(run_id=run_id, lane=lane, roles=roles):
+                path.write_text(json.dumps(receipt))
+                state, _ = runner.classification(self._complete_run_record(), self.log, "client-interop",
+                                                [path], True, run_id, lane, roles)
+                self.assertEqual(state, "UNKNOWN")
+        path.unlink()
+        state, codes = runner.classification(self._complete_run_record(), self.log, "client-interop",
+                                            [path], True, "synthetic-run-01", "client",
+                                            runner.CHILD_CLEANUP_ROLES["client"])
+        self.assertEqual(state, "UNKNOWN")
+        self.assertIn("CHILD_RESULT_RECEIPT_MISSING", codes)
+
+    def test_oversized_child_result_is_still_rejected(self) -> None:
+        path = self.root / "result.json"
+        path.write_text(json.dumps({"status": "PASS", "padding": "x" * (1024 * 1024)}))
+        _, state, codes, _ = runner.child_receipt_status([path], "synthetic-run-01", "node-control-v1", {"test"})
+        self.assertEqual(state, "UNKNOWN")
+        self.assertEqual(codes, ["CHILD_RESULT_RECEIPT_OVERSIZE"])
+
+    def test_node_source_requires_complete_equal_scoped_hash_bound_archives(self) -> None:
+        path = self.root / "result.json"
+        receipt = self._node_source_references(self.root, "synthetic-run-01")
+        self.assertEqual(runner.reduce_node_control_source(receipt, path, "synthetic-run-01")["status"], "CONFIRMED")
+        cleanup_receipt, _ = self._actual_child_cleanup_receipt()
+        cleanup_receipt["lane"] = cleanup_receipt["fixture_cleanup"]["lane"] = "node-control-v1"
+        cleanup_receipt["fixture_cleanup"]["resources"] = [row for row in cleanup_receipt["fixture_cleanup"]["resources"]
+                                                          if row["role"] == "test"]
+        self.log.parent.mkdir(parents=True)
+        self.log.write_text("PASS: synthetic child\n")
+        for changed in ("run", "lane", "phase", "path", "missing-reference", "missing-file",
+                        "hash", "size", "binding-run", "binding-hash", "symlink", "metadata-change"):
+            with self.subTest(changed=changed):
+                after = self.root / "source-after.json"
+                if after.is_symlink():
+                    after.unlink()
+                candidate = self._node_source_references(self.root, "synthetic-run-01", changed=changed == "metadata-change")
+                reference = candidate["source_after"]
+                if changed in {"run", "lane", "phase", "path"}:
+                    reference[{"run": "run_id", "lane": "lane", "phase": "phase", "path": "metadata_file"}[changed]] = "other"
+                elif changed == "missing-reference":
+                    del candidate["source_after"]
+                elif changed == "missing-file":
+                    after.unlink()
+                elif changed == "hash":
+                    after.write_text(json.dumps({"source": "tampered"}))
+                elif changed == "size":
+                    reference["size_bytes"] = 16 * 1024 * 1024 + 1
+                elif changed == "binding-run":
+                    binding_path = self.root / reference["binding_file"]
+                    binding = json.loads(binding_path.read_text())
+                    binding["run_id"] = "other-run"
+                    binding_path.write_text(json.dumps(binding))
+                    reference["binding_sha256"] = runner.file_sha(binding_path)
+                elif changed == "binding-hash":
+                    reference["binding_sha256"] = "0" * 64
+                elif changed == "symlink":
+                    after.unlink()
+                    after.symlink_to(self.root / "source-before.json")
+                reduced = runner.reduce_node_control_source(candidate, path, "synthetic-run-01")
+                self.assertEqual(reduced["status"], "FAILED" if changed == "metadata-change" else "UNKNOWN")
+                path.write_text(json.dumps(cleanup_receipt | candidate))
+                state, _ = runner.classification(self._complete_run_record(), self.log, "node-control-v1",
+                                                [path], True, "synthetic-run-01", "node-control-v1", {"test"})
+                self.assertEqual(state, "FAIL" if changed == "metadata-change" else "UNKNOWN")
+
 
     def test_structured_child_failure_overrides_zero_exit(self) -> None:
         receipt = self.root / "joined-v68" / "result.json"

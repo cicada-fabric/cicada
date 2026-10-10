@@ -69,11 +69,30 @@ The separate [organization-profile repository](https://github.com/cicada-fabric/
 holds `profile/README.md` on its default branch for GitHub organization rendering.
 The [documentation-site repository](https://github.com/cicada-fabric/cicada-fabric.github.io)
 holds static HTML/CSS source, with core dev contracts and this guide as authority.
-GitHub Pages settings and public HTTP availability require independent verification;
-source preparation alone is not live hosting. The core `.github/profile/README.md`
+Publication source and public HTTP readability have now been checked separately;
+source preparation alone was not used as live-hosting evidence. The core `.github/profile/README.md`
 is a maintained copy, not GitHub's organization-profile activation path.
 
 The merged local metadata-bridge branch was removed after review of commit
 `4804411`; the historical archive has five unique commits and must be retained.
 These maintenance observations do not authorize rewriting historical validation
 or treating current dev as a release.
+
+### Verified publication — 2026-10-10
+
+Core dev documentation was published at `fb5a03d923f28956be6a77b7e93c3c71d9fbd588`;
+the organization-profile main source is
+`0e198cb72f93ce0263f91210817306c14a064d87`, and static-site main source is
+`88ce9e770d55dbe4108ba39f7586fa4666975378`. Both Author and Committer identities
+were checked against the server's global Git identity. Organization profile and
+site source retrieval returned HTTP 200; the public
+[technical site](https://cicada-fabric.github.io/) also returned HTTP 200 with
+its CICADA technical marker. This confirms published documentation readability,
+not Hub public HTTPS, native Runtime, Android or overall product acceptance.
+Protocol contracts and catalog remain authoritative in core dev.
+
+Core main remains `0a33932`, with no product merge or release. The three reviewed
+core branches remain unprotected, and a repeated private-reporting API check
+returned `enabled: false`; neither protection nor private reporting is claimed
+configured. The archive's five unique commits remain preserved; the merged
+local metadata-bridge branch remains removed.

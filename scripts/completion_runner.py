@@ -391,10 +391,63 @@ def child_receipt_status(paths: list[Path], expected_run_id: str | None = None,
     if expected_lane in {"joined-v68", "hub-web-panel-browser", "group-fabric-stress"}:
         reduced = reduce_known_cleanup(data, expected_lane, latest, expected_run_id)
         return str(latest), reduced["status"], reduced["reason_codes"], status
-    if expected_run_id is None or expected_lane is None or expected_roles is None:
+    if not expected_run_id or not expected_lane or expected_roles is None:
         return str(latest), "UNKNOWN", ["CHILD_FIXTURE_CLEANUP_SCOPE_UNBOUND"], status
     reduced = reduce_child_cleanup(data, expected_run_id, expected_lane, expected_roles)
+    if expected_lane == "node-control-v1" and reduced["status"] == "CONFIRMED":
+        source_check = reduce_node_control_source(data, latest, expected_run_id)
+        reduced = {"status": source_check["status"],
+                   "reason_codes": reduced["reason_codes"] + source_check["reason_codes"]}
     return str(latest), reduced["status"], reduced["reason_codes"], status
+
+
+def reduce_node_control_source(receipt: dict, receipt_path: Path, expected_run_id: str) -> dict:
+    """Check scoped references, then compare the complete original metadata."""
+    metadata = []
+    for phase in ("before", "after"):
+        reference = receipt.get("source_" + phase)
+        if not isinstance(reference, dict):
+            return {"status": "UNKNOWN", "reason_codes": ["CHILD_SOURCE_REFERENCE_MISSING"]}
+        expected_scope = {"schema": "cicada.node-control-source-reference.v1",
+                          "run_id": expected_run_id, "lane": "node-control-v1", "phase": phase,
+                          "metadata_file": f"source-{phase}.json",
+                          "binding_file": f"source-{phase}.binding.json"}
+        if any(reference.get(key) != value for key, value in expected_scope.items()):
+            return {"status": "UNKNOWN", "reason_codes": ["CHILD_SOURCE_SCOPE_MISMATCH"]}
+        size = reference.get("size_bytes")
+        if (not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= 16 * 1024 * 1024
+                or any(not isinstance(reference.get(key), str)
+                       or not re.fullmatch(r"[0-9a-f]{64}", reference[key])
+                       for key in ("sha256", "binding_sha256"))):
+            return {"status": "UNKNOWN", "reason_codes": ["CHILD_SOURCE_REFERENCE_INVALID"]}
+        source_path = receipt_path.parent / reference["metadata_file"]
+        binding_path = receipt_path.parent / reference["binding_file"]
+        try:
+            if (source_path.is_symlink() or binding_path.is_symlink()
+                    or not source_path.is_file() or not binding_path.is_file()
+                    or source_path.stat().st_size != size or binding_path.stat().st_size > 4096):
+                raise ValueError("invalid source archive")
+            with source_path.open("rb") as stream:
+                raw = stream.read(size + 1)
+            with binding_path.open("rb") as stream:
+                binding_raw = stream.read(4097)
+            if (len(raw) != size or hashlib.sha256(raw).hexdigest() != reference["sha256"]
+                    or len(binding_raw) > 4096
+                    or hashlib.sha256(binding_raw).hexdigest() != reference["binding_sha256"]):
+                raise ValueError("source archive hash mismatch")
+            binding = json.loads(binding_raw)
+            if binding != {key: value for key, value in reference.items()
+                           if key not in {"binding_file", "binding_sha256"}}:
+                raise ValueError("source archive scope mismatch")
+            value = json.loads(raw)
+            if not isinstance(value, dict) or not value:
+                raise ValueError("invalid source metadata")
+        except (OSError, ValueError):
+            return {"status": "UNKNOWN", "reason_codes": ["CHILD_SOURCE_ARCHIVE_UNCONFIRMED"]}
+        metadata.append(value)
+    if metadata[0] != metadata[1]:
+        return {"status": "FAILED", "reason_codes": ["CHILD_SOURCE_INPUTS_CHANGED"]}
+    return {"status": "CONFIRMED", "reason_codes": ["CHILD_SOURCE_FULL_METADATA_UNCHANGED"]}
 
 
 CHILD_CLEANUP_SCHEMA = "cicada.child-cleanup.v1"
@@ -1443,7 +1496,7 @@ def make_lanes(run_dir: Path, run_id: str, flags: dict, docker_ok: bool) -> list
                       "cleanup_required": cleanup_required,
                       "child_lane": child_lane,
                       "expected_roles": expected_roles,
-                      "cleanup_run_id": cleanup_run_id,
+                      "cleanup_run_id": run_id if cleanup_run_id is None else cleanup_run_id,
                       "timeout_seconds": LANE_TIMEOUTS.get(name, 600)})
 
     add("go-build-test-vet", "go")

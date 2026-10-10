@@ -205,8 +205,8 @@ class NodeControlCleanupTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('node_control_driver', path)
         driver = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(driver)
-        for interrupted in (False, True):
-            with self.subTest(interrupted=interrupted), tempfile.TemporaryDirectory() as temporary:
+        for interrupted, source_changed in ((False, False), (True, False), (False, True)):
+            with self.subTest(interrupted=interrupted, source_changed=source_changed), tempfile.TemporaryDirectory() as temporary:
                 output = Path(temporary) / 'output'
                 module_cache = Path(temporary) / 'gomod'
                 module_cache.mkdir()
@@ -232,13 +232,22 @@ class NodeControlCleanupTests(unittest.TestCase):
                 environment = {'CICADA_NODE_CONTROL_GOMODCACHE': str(module_cache),
                                'CICADA_COMPLETION_CHILD_RUN_ID': 'test-run',
                                'CICADA_COMPLETION_CHILD_LANE': 'node-control-v1'}
+                def source_info(_repo, destination):
+                    # The fingerprint stays identical; only the complete source
+                    # inventory reveals the after-run change.
+                    metadata = {'source': {'source_fingerprint': 'a' * 64,
+                                           'input_inventory': {'entries': ['synthetic-' + 'x' * 600000]}},
+                                'extra_source_domain': 'changed' if source_changed and destination.stem == 'source-after' else 'same'}
+                    driver.write_json(destination, metadata)
+                    return 0, metadata, ''
+
                 with patch.dict(os.environ, environment), \
                      patch('sys.argv', [str(path), '--run', '--output-dir', str(output)]), \
                      patch.object(driver.shutil, 'which', return_value='/synthetic/tool'), \
-                     patch.object(driver, 'read_source_info', return_value=(0, {'source': 'synthetic'}, '')), \
+                     patch.object(driver, 'read_source_info', side_effect=source_info), \
                      patch.object(cleanup.subprocess, 'run', side_effect=invoke), \
                      patch('builtins.print'):
-                    self.assertEqual(driver.main(), 2 if interrupted else 0)
+                    self.assertEqual(driver.main(), 2 if interrupted or source_changed else 0)
                 argv = actual[0]
                 for flag, value in (('--cpus', '2'), ('--memory', '3g'), ('--pids-limit', '256'),
                                     ('--cap-drop', 'ALL'), ('--security-opt', 'no-new-privileges')):
@@ -248,11 +257,20 @@ class NodeControlCleanupTests(unittest.TestCase):
                 self.assertIn(cleanup.ROLE_LABEL + '=test', argv)
                 result = json.loads(next(output.glob('*/result.json')).read_text())
                 self.assertEqual(result['fixture_cleanup_status'], 'CONFIRMED')
-                self.assertEqual(result['status'], 'BLOCKED' if interrupted else 'PASS')
+                self.assertEqual(result['status'], 'BLOCKED' if interrupted else 'FAIL' if source_changed else 'PASS')
                 self.assertEqual(result['cleanup']['temporary_container'], 'ABSENT')
                 self.assertEqual(result['cleanup']['scratch'], 'REMOVED')
                 self.assertNotIn('synthetic secret', json.dumps(result))
                 self.assertFalse(docker.containers)
+                result_path = next(output.glob('*/result.json'))
+                self.assertLess(result_path.stat().st_size, 16 * 1024)
+                self.assertGreater((result_path.parent / 'source-before.json').stat().st_size, 600000)
+                self.assertNotIn('input_inventory', result['source_before'])
+                self.assertEqual((result_path.parent / 'source-before.json').stat().st_mode & 0o777, 0o600)
+                from scripts import completion_runner
+                if not interrupted:
+                    reduced = completion_runner.reduce_node_control_source(result, result_path, 'test-run')
+                    self.assertEqual(reduced['status'], 'FAILED' if source_changed else 'CONFIRMED')
 
     def test_preflight_failure_cleans_only_unmounted_scratch(self):
         with tempfile.TemporaryDirectory() as temporary:
