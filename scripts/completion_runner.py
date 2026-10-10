@@ -52,6 +52,7 @@ PYTHON_TESTS = [
     "scripts.test_client_network_fixture", "scripts.test_client_recovery_fault_proxy",
     "scripts.test_completion_driver_status", "scripts.test_completion_runner",
     "scripts.test_group_fabric_stress_driver", "scripts.test_hub_restore_activation",
+    "scripts.test_client_link_recovery_gate",
     "scripts.test_owned_fixture_cleanup",
     "scripts.test_native_network_monitor_driver", "scripts.test_native_request_observer",
     "scripts.test_native_request_observer_io", "scripts.test_native_tool_trace",
@@ -63,7 +64,8 @@ PYTHON_TESTS = [
 LANE_TIMEOUTS = {
     "go-build-test-vet": 1200, "python-unittests": 900, "client-contract": 120,
     "release-packaging": 600, "wiring-checks": 600,
-    "client-interop": 900, "network-m1": 900, "group-spaces-m2": 900,
+    "client-interop": 900, "client-link-recovery": 900,
+    "network-m1": 900, "group-spaces-m2": 900,
     "capacity": 900, "joined-v68": 1200, "multi-hub-services": 900,
     "node-control-v1": 900, "group-fabric-stress": 900,
     "hub-web-browser": 1200, "native-worker-approval": 1200,
@@ -367,7 +369,9 @@ def parse_go_counts(run_dir: Path) -> dict:
 
 def child_receipt_status(paths: list[Path], expected_run_id: str | None = None,
                          expected_lane: str | None = None,
-                         expected_roles: set[str] | None = None) -> tuple[str | None, str, list[str], str | None]:
+                         expected_roles: set[str] | None = None,
+                         expected_suite: str | None = None,
+                         expected_source_head: str | None = None) -> tuple[str | None, str, list[str], str | None]:
     """Read only this lane's known result path(s); never scan sibling lanes."""
     candidates: list[Path] = []
     for path in paths:
@@ -398,7 +402,143 @@ def child_receipt_status(paths: list[Path], expected_run_id: str | None = None,
         source_check = reduce_node_control_source(data, latest, expected_run_id)
         reduced = {"status": source_check["status"],
                    "reason_codes": reduced["reason_codes"] + source_check["reason_codes"]}
+    if expected_suite == "client-link-recovery" and reduced["status"] == "CONFIRMED":
+        link_check = reduce_client_link_recovery(data, latest, expected_source_head)
+        reduced = {"status": link_check["status"],
+                   "reason_codes": reduced["reason_codes"] + link_check["reason_codes"]}
     return str(latest), reduced["status"], reduced["reason_codes"], status
+
+
+LINK_RECOVERY_TOP_TEST = "TestClientDockerHubLinkFaultFixture"
+LINK_RECOVERY_OPERATIONS = ("link.key_grant", "link.review_policy_grant")
+LINK_RECOVERY_TESTS = {LINK_RECOVERY_TOP_TEST} | {
+    f"{LINK_RECOVERY_TOP_TEST}/{operation}/{mode}"
+    for operation in LINK_RECOVERY_OPERATIONS
+    for mode in ("response-loss", "processing", "uncertain", "legacy")
+}
+
+
+def reduce_client_link_recovery(receipt: dict, receipt_path: Path,
+                                expected_source_head: str | None) -> dict:
+    """Require the complete Link case/restart matrix and stable child build source."""
+    def unknown(code: str) -> dict:
+        return {"status": "UNKNOWN", "reason_codes": [code]}
+
+    test_receipt = receipt.get("test")
+    if (receipt.get("schema_version") != "cicada.client-link-recovery-interop.v1"
+            or receipt.get("suite") != "client-link-recovery"
+            or receipt.get("suite_name") != "client-link-recovery"
+            or receipt.get("lane") != "client"
+            or receipt.get("status") != "PASS"
+            or type(receipt.get("exit_code")) is not int or receipt["exit_code"] != 0
+            or not isinstance(test_receipt, dict)
+            or test_receipt.get("name") != LINK_RECOVERY_TOP_TEST
+            or type(test_receipt.get("exit_code")) is not int
+            or test_receipt["exit_code"] != 0):
+        return unknown("LINK_RECOVERY_INTEROP_RECEIPT_MISMATCH")
+
+    if (not isinstance(expected_source_head, str)
+            or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_source_head)):
+        return unknown("LINK_RECOVERY_PARENT_SOURCE_UNBOUND")
+    build = receipt.get("build")
+    source = build.get("source") if isinstance(build, dict) else None
+    image = build.get("image") if isinstance(build, dict) else None
+    test_image = build.get("test_image") if isinstance(build, dict) else None
+    if (not isinstance(build, dict) or build.get("schema_version") != "cicada.hub-build.v1"
+            or build.get("transport_variant") != "standard"
+            or not isinstance(image, dict)
+            or not isinstance(image.get("id"), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", image["id"])
+            or not isinstance(test_image, dict)
+            or not isinstance(test_image.get("id"), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", test_image["id"])
+            or not isinstance(source, dict) or source.get("revision") != expected_source_head
+            or not isinstance(source.get("dirty"), bool)
+            or not isinstance(source.get("source_fingerprint"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", source["source_fingerprint"])
+            or not isinstance(source.get("catalog_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", source["catalog_sha256"])
+            or not isinstance(source.get("input_inventory"), dict)):
+        return unknown("LINK_RECOVERY_BUILD_SOURCE_UNBOUND")
+    cleanup = receipt.get("fixture_cleanup")
+    resources = cleanup.get("resources") if isinstance(cleanup, dict) else None
+    if not isinstance(resources, list):
+        return unknown("LINK_RECOVERY_BUILD_IMAGES_UNBOUND")
+    by_role = {item.get("role"): item for item in resources if isinstance(item, dict)}
+    for role, image_key in (("hub", "image"), ("test", "test_image"),
+                            ("hub-image", "image"), ("test-image", "test_image")):
+        image_id = build[image_key]["id"]
+        item = by_role.get(role)
+        if (not isinstance(item, dict) or item.get("expected_image_id") != image_id
+                or (role.endswith("-image") and item.get("id") != image_id)):
+            return unknown("LINK_RECOVERY_BUILD_IMAGES_UNBOUND")
+    build_after_path = receipt_path.parent / "build-after.json"
+    try:
+        if (build_after_path.is_symlink() or not build_after_path.is_file()
+                or build_after_path.stat().st_size > 16 * 1024 * 1024):
+            raise ValueError("invalid build-after source metadata")
+        build_after = json.loads(build_after_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return unknown("LINK_RECOVERY_BUILD_AFTER_MISSING_OR_INVALID")
+    if (not isinstance(build_after, dict)
+            or build_after.get("schema_version") != "cicada.hub-build-source.v1"
+            or build_after.get("source") != source):
+        return unknown("LINK_RECOVERY_BUILD_SOURCE_CHANGED")
+
+    link = receipt.get("link_recovery")
+    if (not isinstance(link, dict)
+            or link.get("schema") != "cicada.client-link-recovery-gate.v1"
+            or link.get("suite_name") != "client-link-recovery"
+            or link.get("status") != "PASS"
+            or type(link.get("runner_exit_code")) is not int
+            or link.get("runner_exit_code") != 0):
+        return unknown("LINK_RECOVERY_GATE_RECEIPT_MISMATCH")
+
+    events = link.get("tests")
+    if not isinstance(events, list) or len(events) > 64:
+        return unknown("LINK_RECOVERY_TEST_EVENTS_INVALID")
+    runs: list[str] = []
+    passes: list[str] = []
+    package_pass = False
+    for event in events:
+        if not isinstance(event, dict):
+            return unknown("LINK_RECOVERY_TEST_EVENTS_INVALID")
+        action, test = event.get("Action"), event.get("Test")
+        if not isinstance(action, str) or action not in {"run", "pass", "fail", "skip"}:
+            return unknown("LINK_RECOVERY_TEST_EVENTS_INVALID")
+        if test is None:
+            if action == "pass":
+                package_pass = True
+            elif action in {"fail", "skip"}:
+                return unknown("LINK_RECOVERY_TEST_MATRIX_INCOMPLETE")
+            continue
+        if not isinstance(test, str) or test not in LINK_RECOVERY_TESTS:
+            return unknown("LINK_RECOVERY_TEST_SCOPE_MISMATCH")
+        if action == "run":
+            runs.append(test)
+        elif action == "pass":
+            passes.append(test)
+        else:
+            return unknown("LINK_RECOVERY_TEST_MATRIX_INCOMPLETE")
+    if (len(runs) != len(LINK_RECOVERY_TESTS) or set(runs) != LINK_RECOVERY_TESTS
+            or len(passes) != len(LINK_RECOVERY_TESTS) or set(passes) != LINK_RECOVERY_TESTS
+            or not package_pass):
+        return unknown("LINK_RECOVERY_TEST_MATRIX_INCOMPLETE")
+
+    restarts = link.get("restarts")
+    if not isinstance(restarts, list) or len(restarts) != len(LINK_RECOVERY_OPERATIONS):
+        return unknown("LINK_RECOVERY_RESTART_MATRIX_INCOMPLETE")
+    hashes: list[str] = []
+    for operation, restart in zip(LINK_RECOVERY_OPERATIONS, restarts):
+        if (not isinstance(restart, dict) or restart.get("operation") != operation
+                or restart.get("status") != "PASS"
+                or not isinstance(restart.get("request_sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", restart["request_sha256"])):
+            return unknown("LINK_RECOVERY_RESTART_MATRIX_INCOMPLETE")
+        hashes.append(restart["request_sha256"])
+    if len(set(hashes)) != len(hashes):
+        return unknown("LINK_RECOVERY_RESTART_MATRIX_INCOMPLETE")
+    return {"status": "CONFIRMED", "reason_codes": ["LINK_RECOVERY_MATRIX_AND_SOURCE_CONFIRMED"]}
 
 
 def reduce_node_control_source(receipt: dict, receipt_path: Path, expected_run_id: str) -> dict:
@@ -909,7 +1049,8 @@ def run_python_modules(modules: list[str], run_dir: Path, timeout: int, env: dic
 def classification(run: dict, log: Path, lane: str, receipt_paths: list[Path] | None = None,
                    cleanup_required: bool = False, expected_run_id: str | None = None,
                    expected_lane: str | None = None,
-                   expected_roles: set[str] | None = None) -> tuple[str, list[str]]:
+                   expected_roles: set[str] | None = None,
+                   expected_source_head: str | None = None) -> tuple[str, list[str]]:
     if run.get("interrupted") or not run.get("process_exit_confirmed") or not run.get("process_group_cleanup_confirmed"):
         return "UNKNOWN", ["INTERRUPTED_OR_PROCESS_CLEANUP_UNCONFIRMED"]
     if run.get("timed_out"):
@@ -925,7 +1066,9 @@ def classification(run: dict, log: Path, lane: str, receipt_paths: list[Path] | 
         return "BLOCKED", codes
     if receipt_paths:
         receipt_path, cleanup, receipt_codes, receipt_status = child_receipt_status(
-            receipt_paths, expected_run_id, expected_lane, expected_roles)
+            receipt_paths, expected_run_id, expected_lane, expected_roles,
+            expected_suite=lane if lane == "client-link-recovery" else None,
+            expected_source_head=expected_source_head)
         run["child_result_path"] = receipt_path
         run["fixture_cleanup_status"] = cleanup
         run["child_receipt_status"] = receipt_status
@@ -1521,15 +1664,18 @@ def make_lanes(run_dir: Path, run_id: str, flags: dict, docker_ok: bool) -> list
         add("wiring-checks", "skip", note="no explicit current binding file and SHA supplied")
     if docker_ok:
         interop = ROOT / "scripts/test-client-hub-interop.sh"
-        for lane, suite in (("client-interop", "client"), ("network-m1", "network-m1"),
+        for lane, suite in (("client-interop", "client"),
+                            ("client-link-recovery", "client-link-recovery"),
+                            ("network-m1", "network-m1"),
                             ("group-spaces-m2", "group-spaces-m2"), ("capacity", "capacity")):
             output = run_dir / "interop" / lane
+            child_lane = "client" if suite == "client-link-recovery" else suite
             add(lane, "command", ["bash", str(interop), "--suite", suite],
                 env={"CICADA_INTEROP_OUTPUT": str(output),
                      "CICADA_COMPLETION_CHILD_RUN_ID": run_id,
-                     "CICADA_COMPLETION_CHILD_LANE": suite},
+                     "CICADA_COMPLETION_CHILD_LANE": child_lane},
                 receipt_paths=[output / "result.json"], cleanup_required=True,
-                child_lane=suite, expected_roles=CHILD_CLEANUP_ROLES[suite])
+                child_lane=child_lane, expected_roles=CHILD_CLEANUP_ROLES[child_lane])
         add("joined-v68", "command", ["bash", "scripts/test-joined-v68-docker.sh"],
             env={"CICADA_V68_EVIDENCE_ROOT": str(run_dir / "v68")}, receipt_paths=[run_dir / "v68"],
             cleanup_required=True, child_lane="joined-v68")
@@ -1548,7 +1694,8 @@ def make_lanes(run_dir: Path, run_id: str, flags: dict, docker_ok: bool) -> list
                  "CICADA_COMPLETION_CHILD_RUN_ID": run_id,
                  "CICADA_COMPLETION_CHILD_LANE": "node-control-v1"})
     else:
-        for lane in ("client-interop", "network-m1", "group-spaces-m2", "capacity", "joined-v68", "multi-hub-services", "node-control-v1"):
+        for lane in ("client-interop", "client-link-recovery", "network-m1", "group-spaces-m2",
+                     "capacity", "joined-v68", "multi-hub-services", "node-control-v1"):
             add(lane, "blocked", note="Docker daemon unavailable; disposable child not started")
     protected = os.environ.get("CICADA_COMPLETION_PROTECTED_RESIDENTS_FILE")
     if docker_ok:
@@ -1698,7 +1845,10 @@ def worker(run_dir: Path, run_id: str, flags: dict) -> int:
                     timeout=min(lane["timeout_seconds"], int(available)), env=cmd_env)
                 status, codes = classification(info, log, lane["name"], lane.get("receipt_paths"),
                                                 lane.get("cleanup_required", False), lane.get("cleanup_run_id", run_id),
-                                                lane.get("child_lane"), lane.get("expected_roles"))
+                                                lane.get("child_lane"), lane.get("expected_roles"),
+                                                expected_source_head=(before.get("head")
+                                                                      if lane["name"] == "client-link-recovery"
+                                                                      else None))
                 if status == "PASS":
                     skips = sum(1 for line in log.read_text(encoding="utf-8", errors="replace").splitlines()
                                 if re.match(r"^SKIP\b|^\s*--- SKIP:", line))

@@ -152,6 +152,38 @@ class CompletionRunnerTests(unittest.TestCase):
                 "process_exit_confirmed": True, "process_group_cleanup_confirmed": True,
                 "log_bound_exceeded": False, "pipe_eof_observed": True}
 
+    @staticmethod
+    def _link_recovery_receipt() -> dict:
+        top = runner.LINK_RECOVERY_TOP_TEST
+        tests = sorted(runner.LINK_RECOVERY_TESTS)
+        lifecycle = ([{"Action": "run", "Test": name} for name in tests]
+                     + [{"Action": "pass", "Test": name} for name in tests]
+                     + [{"Action": "pass"}])
+        return {
+            "schema_version": "cicada.client-link-recovery-interop.v1",
+            "suite": "client-link-recovery", "suite_name": "client-link-recovery",
+            "lane": "client", "status": "PASS", "exit_code": 0,
+            "test": {"name": top, "exit_code": 0},
+            "build": {"schema_version": "cicada.hub-build.v1",
+                      "transport_variant": "standard",
+                      "source": {"revision": "1" * 40, "dirty": False,
+                                 "source_fingerprint": "2" * 64,
+                                 "catalog_sha256": "3" * 64,
+                                 "input_inventory": {"entries": []}},
+                      "image": {"id": "sha256:" + "c" * 64},
+                      "test_image": {"id": "sha256:" + "d" * 64}},
+            "link_recovery": {
+                "schema": "cicada.client-link-recovery-gate.v1",
+                "suite_name": "client-link-recovery", "status": "PASS",
+                "runner_exit_code": 0, "tests": lifecycle,
+                "restarts": [
+                    {"operation": operation, "request_sha256": str(index) * 64,
+                     "status": "PASS"}
+                    for index, operation in enumerate(runner.LINK_RECOVERY_OPERATIONS, 6)
+                ],
+            },
+        }
+
     def _node_source_references(self, directory: Path, run_id: str, *, changed=False) -> dict:
         spec = importlib.util.spec_from_file_location(
             "node_control_source_driver", Path(runner.__file__).with_name("test-node-control-v1-flow.py"))
@@ -171,9 +203,17 @@ class CompletionRunnerTests(unittest.TestCase):
         run_id = "synthetic-run-01"
         generated = runner.make_lanes(self.root, run_id, {}, True)
         selected = [lane for lane in generated if lane.get("expected_roles")]
-        self.assertEqual(len(selected), 6)
+        self.assertEqual(len(selected), 7)
         self.assertEqual(next(lane for lane in generated if lane["name"] == "group-fabric-stress")
                          ["cleanup_run_id"], "completion-stress-" + self.root.name)
+        link_lane = next(lane for lane in selected if lane["name"] == "client-link-recovery")
+        self.assertEqual(link_lane["timeout_seconds"], 900)
+        self.assertEqual(link_lane["argv"][-2:], ["--suite", "client-link-recovery"])
+        self.assertEqual(link_lane["child_lane"], "client")
+        self.assertEqual(link_lane["expected_roles"], runner.CHILD_CLEANUP_ROLES["client"])
+        self.assertEqual(link_lane["env"]["CICADA_COMPLETION_CHILD_LANE"], "client")
+        self.assertEqual(link_lane["env"]["CICADA_COMPLETION_CHILD_RUN_ID"], run_id)
+        self.assertIn("scripts.test_client_link_recovery_gate", runner.PYTHON_TESTS)
         for lane in selected:
             self.assertEqual(lane["cleanup_run_id"], run_id)
             receipt, _ = self._actual_child_cleanup_receipt()
@@ -186,6 +226,11 @@ class CompletionRunnerTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             if lane["name"] == "node-control-v1":
                 receipt.update(self._node_source_references(path.parent, run_id))
+            if lane["name"] == "client-link-recovery":
+                receipt.update(self._link_recovery_receipt())
+                (path.parent / "build-after.json").write_text(json.dumps(
+                    {"schema_version": "cicada.hub-build-source.v1",
+                     "source": receipt["build"]["source"]}))
             path.write_text(json.dumps(receipt))
 
         def child(_argv, *, log_path, **_kwargs):
@@ -194,13 +239,90 @@ class CompletionRunnerTests(unittest.TestCase):
             return self._complete_run_record()
 
         with mock.patch.object(runner, "make_lanes", return_value=selected), \
-             mock.patch.object(runner, "source_identity", return_value={"complete": True}), \
+             mock.patch.object(runner, "source_identity", return_value={"complete": True, "head": "1" * 40}), \
              mock.patch.object(runner, "docker_available", return_value=True), \
              mock.patch.object(runner, "run_process", side_effect=child):
             self.assertEqual(runner.worker(self.root, run_id, {}), 0)
         result = json.loads((self.root / "result.json").read_text())
         self.assertEqual(result["overall_status"], "PASS")
         self.assertTrue(all(lane["fixture_cleanup_status"] == "CONFIRMED" for lane in result["lanes"]))
+
+    def test_link_recovery_parent_consumer_requires_exact_matrix_and_source(self) -> None:
+        run_id = "synthetic-run-01"
+        lane = next(item for item in runner.make_lanes(self.root, run_id, {}, True)
+                    if item["name"] == "client-link-recovery")
+        path = lane["receipt_paths"][0]
+        path.parent.mkdir(parents=True)
+        cleanup, _ = self._actual_child_cleanup_receipt()
+        cleanup["lane"] = cleanup["fixture_cleanup"]["lane"] = "client"
+        receipt = cleanup | self._link_recovery_receipt()
+        build_after = path.parent / "build-after.json"
+        build_after.write_text(json.dumps({"schema_version": "cicada.hub-build-source.v1",
+                                           "source": receipt["build"]["source"]}))
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        self.log.write_text("PASS: synthetic Link gate\n")
+
+        def classify(candidate: dict, *, head: str = "1" * 40) -> tuple[str, list[str]]:
+            path.write_text(json.dumps(candidate))
+            return runner.classification(
+                self._complete_run_record(), self.log, "client-link-recovery", [path], True,
+                run_id, "client", runner.CHILD_CLEANUP_ROLES["client"], head)
+
+        state, _ = classify(receipt)
+        self.assertEqual(state, "PASS")
+
+        cases = []
+        wrong_suite = copy.deepcopy(receipt)
+        wrong_suite["suite_name"] = "client"
+        cases.append(("suite", wrong_suite, None))
+        wrong_head = copy.deepcopy(receipt)
+        wrong_head["build"]["source"]["revision"] = "9" * 40
+        cases.append(("build-head", wrong_head, None))
+        missing_case = copy.deepcopy(receipt)
+        missing_case["link_recovery"]["tests"] = [
+            event for event in missing_case["link_recovery"]["tests"]
+            if not (event.get("Action") == "pass" and event.get("Test", "").endswith("/legacy"))
+        ]
+        cases.append(("missing-case", missing_case, None))
+        wrong_image_binding = copy.deepcopy(receipt)
+        image_row = next(row for row in wrong_image_binding["fixture_cleanup"]["resources"]
+                         if row["role"] == "hub-image")
+        image_row["id"] = "sha256:" + "e" * 64
+        image_row["expected_image_id"] = "sha256:" + "e" * 64
+        cases.append(("image-binding", wrong_image_binding, None))
+        failed_case = copy.deepcopy(receipt)
+        next(event for event in failed_case["link_recovery"]["tests"]
+             if event.get("Action") == "pass" and event.get("Test") == runner.LINK_RECOVERY_TOP_TEST)["Action"] = "skip"
+        cases.append(("skip", failed_case, None))
+        reordered = copy.deepcopy(receipt)
+        reordered["link_recovery"]["restarts"].reverse()
+        cases.append(("restart-order", reordered, None))
+        duplicate_restart = copy.deepcopy(receipt)
+        duplicate_restart["link_recovery"]["restarts"][1]["request_sha256"] = \
+            duplicate_restart["link_recovery"]["restarts"][0]["request_sha256"]
+        cases.append(("restart-hash", duplicate_restart, None))
+        cases.append(("parent-source", copy.deepcopy(receipt), "8" * 40))
+        for name, candidate, head in cases:
+            with self.subTest(case=name):
+                if name == "build-head":
+                    build_after.write_text(json.dumps({"schema_version": "cicada.hub-build-source.v1",
+                                                       "source": candidate["build"]["source"]}))
+                else:
+                    build_after.write_text(json.dumps({"schema_version": "cicada.hub-build-source.v1",
+                                                       "source": receipt["build"]["source"]}))
+                state, codes = classify(candidate, head=head or "1" * 40)
+                self.assertEqual(state, "UNKNOWN")
+                self.assertTrue(any(code.startswith("LINK_RECOVERY_") for code in codes))
+
+        build_after.write_text(json.dumps({"schema_version": "cicada.hub-build-source.v1",
+                                           "source": receipt["build"]["source"] | {"dirty": True}}))
+        state, codes = classify(receipt)
+        self.assertEqual(state, "UNKNOWN")
+        self.assertIn("LINK_RECOVERY_BUILD_SOURCE_CHANGED", codes)
+
+        blocked_lanes = runner.make_lanes(self.root, run_id, {}, False)
+        blocked = next(item for item in blocked_lanes if item["name"] == "client-link-recovery")
+        self.assertEqual(blocked["kind"], "blocked")
 
     def test_child_scope_mismatch_empty_scope_and_missing_receipt_remain_unknown(self) -> None:
         receipt, _ = self._actual_child_cleanup_receipt()

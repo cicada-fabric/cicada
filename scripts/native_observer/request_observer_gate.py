@@ -107,9 +107,15 @@ def selected_historical_queue_verifier():
     return function
 
 
-def install_owned_terminal_queue_witness(owner):
-    """Bind only this paid G1 instance; retain exact Hub receipt/scope checks."""
+def install_owned_terminal_queue_witness(owner, *, scenario='g1'):
+    """Bind one paid scenario instance; retain exact Hub receipt/scope checks."""
+    if scenario not in ('g1', 'g2-g3'):
+        raise ValueError('TERMINAL_QUEUE_SCENARIO')
+    scope = ('G1_PAID_INSTANCE_STOPPED_TERMINAL_HISTORY_ONLY' if scenario == 'g1'
+             else 'G2_G3_PAID_INSTANCE_STOPPED_TERMINAL_HISTORY_ONLY')
     if getattr(owner, '_owned_terminal_queue_witness', None) is not None:
+        if owner._owned_terminal_queue_witness.get('scope') != scope:
+            raise ValueError('TERMINAL_QUEUE_INSTANCE_SCENARIO')
         return owner._owned_terminal_queue_witness
     if not hasattr(owner, 'peer_brokers'):
         return None
@@ -146,7 +152,7 @@ def install_owned_terminal_queue_witness(owner):
     namespace['_owned_historical_queue_verifier'] = verifier
     exec(compile(source, '<owned-terminal-historical-queue-witness>', 'exec'), namespace)
     owner.queue_acceptance_witness = types.MethodType(namespace['queue_acceptance_witness'], owner)
-    proof = {'scope': 'G1_PAID_INSTANCE_STOPPED_TERMINAL_HISTORY_ONLY',
+    proof = {'scope': scope,
              'current_authorization': 'CURRENT_AUTHORIZATION_NOT_PROVEN',
              'original_oracle_sha256': PEER_QUEUE_ORACLE_SHA,
              'historical_verifier_sha256': verifier._owned_source_sha256,
@@ -2348,10 +2354,10 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 changed_observer_bootstrap_overlay_Runtime_preparation="NOT_RUN")
         def native_config(self, letter, thread=None, tools=()):
             values = super().native_config(letter, thread, tools)
+            if (not zero_model and getattr(self.args, 'run_native', False) is True and
+                    getattr(self.args, 'native_https', False) is True):
+                install_owned_terminal_queue_witness(self, scenario=scenario)
             if scenario == "g1":
-                if (not zero_model and getattr(self.args, 'run_native', False) is True and
-                        getattr(self.args, 'native_https', False) is True):
-                    install_owned_terminal_queue_witness(self)
                 if (not zero_model and getattr(self.args, 'run_native', False) is True and
                         getattr(self.args, 'native_https', False) is True and
                         getattr(self.args, 'closed_failure_diagnostics', False) is True):

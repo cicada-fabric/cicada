@@ -5,11 +5,89 @@ the individual historical records and failed attempts at their original source
 and artifact attribution. It does not change `CICADA.md`, the Client contract,
 or any product policy.
 
+<a id="current-20261010"></a>
+
+## Current evidence — 2026-10-10 — v0.1 PARTIAL
+
+The clean `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59` default
+[aggregate](../.cicada-data/architecture-v2-completion/20261010T114600Z-a46501c07c/result.json)
+(SHA-256 `69c8d08c876b453b7701208f1273b2c7e2057131d955c7135fdd129cfef5bcb4`)
+is **INCOMPLETE**: fourteen lanes PASS, two PASS_WITH_SKIPS and four Native
+lanes NOT_RUN. Go build/test/vet passed 30 packages and 2,950 test pass events,
+with 23 explicit skips; Python passed 212 tests with zero skips. Release
+packaging retains five skips. These are the tested clean source's results;
+the subsequent Link lane registration and Native harness changes do not inherit
+this full aggregate. The earlier UNKNOWN aggregate remains historical.
+
+Real G1 `cicada-two-turn-g1cli0162queuehist20261010g1` is **PASS**:
+[actual result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/request-observer-native-result-cicada-two-turn-g1cli0162queuehist20261010g1/result.json),
+SHA-256 `17a4a276ef28b26c70df1988f20143808c3e7fa36b33a117882ea258d43e4d7e`.
+Five actual turns completed (three manual, two automatic; A3/B2), preserving
+both original Native Threads, Endpoints, context and exact correlated replies.
+The terminal witness proves historical QUEUE_ACCEPTED against exact immutable
+operations and Hub attempts/receipts; it explicitly does **not** prove current
+writer authorization. Production fencing and the original strict verifier are
+unchanged. Eleven safe response observations were HEADER_ACCEPTED / HTTP 200.
+Production Control business objects were absent with dependency proof and
+authenticated management HTTP 503; G3 restoration remains untested.
+The [independent G1 postcheck](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/native-g1-root-fdy0raew/INDEPENDENT-G1-ACCEPTANCE-POSTCHECK.NONAUTH.json)
+(SHA-256 `92f385ea1b9b5c52486e407771225a591c303cb073fda465bd579e6b49fc77d8`)
+verifies two EOFs, owned-resource absence, unchanged six residents and all
+source/artifact pins. Root then removed only the three verified empty owned
+roots ([cleanup](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/native-g1-root-fdy0raew/ROOT-EMPTY-OWNED-TEMP-CLEANUP.NONAUTH.json),
+SHA-256 `f253eab7814df722d384c78aa4d369c19288550fdf1b73b7049ade43f4c541c1`).
+This G1 used CLI 0.162.1 / Runtime e969 and clean631 product/helper artifacts,
+independent of the tested clean e2a repository. It does not transfer acceptance
+to the later Runtime or G2/G3.
+
+The preceding f1 run remains **FAIL**, three model attempts and two completed
+initial joins. Its [safe diagnosis](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/native-g1-root-4ww70rdr/FATAL-STREAM-SAFE-DIAGNOSIS.NONAUTH.json)
+(SHA-256 `abc90c9e3a2c3dc57a7387276a9821fda2cf9d38146ce52591017a24aab0e6ac`)
+links the fatal event to Runtime's reported stream server overload; HTTP status,
+quota and SDK fault are not established. E3's terminal epoch-oracle FAIL and the
+older READ_HEAD/timeout attempts below retain their original source attribution.
+
+The h4 zero-model `command/exec` [result](../.cicada-data/native-observer-wiring-20261007/runtime-workspacewrite-zero-01621-20261010h4/RESULT.NONAUTH.json)
+(SHA-256 `de22397a4656763fc780d356ff5a74025913202d51cd6652012b6ef0509e9249`)
+is **FAIL**: the matching official package resolved the earlier bwrap digest
+mismatch, then bwrap reported namespace creation refusal under standard Docker
+security. Workspace allow/outside deny were not reached; this is not a quota
+failure. The h5 [build](../.cicada-data/native-observer-wiring-20261007/runtime-cli01621-fullpackage-directbase-20261010h5/BUILD-RESULT.NONAUTH.json)
+(SHA-256 `bf52eca924c67bcaf2f6e84bee5a0571bc222211e5e53e96bbd8a47dfc3ad304`)
+passed **packaging only**, with full official 0.162.1 resources, code-mode host,
+rg and license provenance. Runtime
+`sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e`
+is bound by [G2 binding](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/binding.NONAUTH.json)
+SHA-256 `267baadedb59f9aadb9bea4e8aa865987b719a09032ef7a2dcb7e5f7ab05503c`.
+Its [offline preflight](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-g2g3v2h520261010a/request-observer-wiring-g2g3mcp-preflight.NONAUTH.json)
+is PASS with zero Runtime/model calls; **G2/G3 remain NOT_RUN**. Neither packaging
+nor this preflight proves a command sandbox or Worker acceptance.
+The current checkpoint's scoped offline command reports record 56 runner/Link
+helper checks, seven G2 checks and 18 binding checks PASS. These counts come
+from the agents' observed command outputs and Root review, not a reconstructed
+raw log or a new full aggregate. Actual G2 Docker/Runtime evidence is still NOT_RUN.
+
+The clean e2a [Client delivery](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/DELIVERY-MANIFEST.NONAUTH.json)
+(SHA-256 `517eaa56464adf44eb27600a8197ff291d49e961718096ce7c17399e47fb5ef4`)
+exports Hub image `sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01`.
+Independent Client commit `43738f4dc4b209074f989fbd375a8ce05587bf4c`
+passed [preparation review](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/ROOT-CLIENT-PREPARATION-REVIEW.NONAUTH.json)
+(SHA-256 `a58abf25c3246bbacfed208dcacb65b75312f77787ecb1bfa7d9ad6d0c85c6ab`);
+all eight Android online cases are **NOT_RUN**. The APK pair was built from dirty
+`9b56832c9701b0ba469d8703fdf61611e0208f98`, with 598 input records, and is
+attributed separately from the later clean Client commit. See
+[Client preparation](../../CICADA_CLIENT/docs/client-link-recovery-e2a1908-preparation.md).
+
+Next: separately validate original-thread G2 denial and G3 authenticated encrypted
+restoration, prepare a supported isolated command sandbox/Worker candidate, and
+complete current Android, physical-device and public-HTTPS gates. No new model
+GO is implied. Overall v0.1 remains **PARTIAL**, unreleased.
+
 <a id="latest-native-e3"></a>
 
-## Current E3 Native diagnostic — 2026-10-10
+## Historical E3 Native diagnostic — 2026-10-10
 
-The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+At this checkpoint, bounded Native diagnostic E3 remained **FAIL/QueueOracleError** at
 `managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
 completed the original A/B context and exact correlated reply predicates;
 all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
@@ -507,17 +585,17 @@ ignored private runner above, not from one public combined-suite script.
 
 ## Native G1–G5 and M3–M5 status
 
-The acceptance definitions remain in `CICADA.md` §39. Latest E3 scoped
-turn/context/reply and HTTP observations are recorded above; its terminal queue
-oracle remains FAIL. Earlier attempts, full offline QA and artifacts retain
+The acceptance definitions remain in `CICADA.md` §39. Current G1 acceptance
+and independent remaining gates are indexed above; historical E3 retains its
+terminal queue-oracle FAIL. Earlier attempts, full offline QA and artifacts retain
 their own sources. Neither cleanup nor recording/synthetic queues prove full
 Native or model-consumption recovery.
 
 | Gate | Current state |
 |---|---|
-| G1 — original-context in-group Ask/Reply | **Open.** E3 completed five actual turns and original context/reply predicates, but overall terminal QueueOracleError/WRITER_EPOCH_STALE remains FAIL. Complete the test-only oracle correction and fresh source-bound G1. |
+| G1 — original-context in-group Ask/Reply | **PASS within the current g1 run scope.** Five actual turns preserved original A/B context, correlation and terminal historical queue acceptance. Later artifacts and other gates require their own results. |
 | G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial.** Preserve prior six-turn original A/B context witnesses and failed denial-tail results; current hidden-member/revoked-Link denial acceptance remains open. |
-| G3 — Control-independent communication | **Scoped positive evidence:** current actual result records `NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true` from production `serve --fabric-only`, and authenticated management HTTP 503. Invocation counter is `NOT_INSTRUMENTED`; restore/status-query acceptance is `NOT_RUN`. This does not close all G3 or imply an accepted in-group G1 path. |
+| G3 — Control-independent communication | **Scoped positive evidence:** current actual result records `NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true` from production `serve --fabric-only`, and authenticated management HTTP 503. Invocation counter is `NOT_INSTRUMENTED`; restore/status-query acceptance is `NOT_RUN`. This does not close all G3 or transfer acceptance to other artifacts. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
 | G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility. Current U has zero turns and no materialized durable metadata/context proof. Source-equal deterministic tests cover authorization at pending delivery, writer-wait revocation and scoped reads, with recording/synthetic Native queue rather than model consumption. Shared-SID memory isolation is not proven or promised; the warning describes that limit. Generic export is unsupported, not an added gate. The actual G2 revoked-Link tail remains open. |
 | M1 / M2 | Current Network M1 and Group Spaces M2 interop selectors passed. Remaining framework-wide semantics are not closed by those selectors. |
@@ -527,23 +605,22 @@ Native or model-consumption recovery.
 
 ## Independent Client attribution
 
-The independent `../CICADA_CLIENT` checkout was read-only and clean at
-`dev/react-native` HEAD `9b56832c9701b0ba469d8703fdf61611e0208f98` (tree
-`907ce40fafcc003194407362ff2f80450604d6c2`, 31 commits ahead of its remote
-tracking branch). Its latest validation located here, F38, applies to Client
-commit `caa9e4c725a841a1ce8488fbf339ca554d2939ed`, not that current HEAD. F38
-is a bounded Android-emulator consent fixture; it is separate from this Go
-protocol interop and is not current Android acceptance for this Core build.
-No Client source was changed.
+Current delivery, Client preparation and separately attributed APK build are in
+[the current evidence index](#current-20261010). All eight Android online cases
+remain NOT_RUN. Historical F38 and earlier Client runs retain their tested APK,
+Core and runtime attribution; no Client source was changed by this Core checkpoint.
 
 ## Remaining acceptance gates
 
-1. Validate G1 original-context in-group Ask/Reply under the actual fresh zero and source binding after the selected historical-queue checks; preparation passed, no new paid PASS is recorded.
-2. Before validating the G2 hidden-member/revoked-Link denial tail, bind and check its historical witness predicate to the G2 source; that selector is not yet activated. Separately restore authenticated encrypted G3 management/status queries. Control-object exclusion and HTTP 503 are scoped positive evidence, not restoration.
-3. Complete independently sourced current Android, remaining native Runtime, physical-device and public-HTTPS gates. Prior Client results remain tied to their tested source.
+1. Validate current G2 hidden-member/revoked-Link denial and G3 authenticated
+   encrypted management/status restoration on the two original Native Threads.
+2. Establish standard workspace allow/outside deny in a supported isolated
+   environment before claiming current native command/Worker acceptance.
+3. Complete the eight current Android online cases, remaining Native scopes,
+   physical-device and public-HTTPS gates independently.
 
-Retain scoped G4/G5/M3/M4/M5, Apache and Link results without adding a completion
-percentage or a v0.2 permission-UX requirement. Overall v0.1 remains **PARTIAL**.
+Scoped G1, G4/G5/M3/M4/M5, Apache and Link results do not create a completion
+percentage. Overall v0.1 remains **PARTIAL**.
 
 ## Scope boundaries
 

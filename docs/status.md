@@ -8,53 +8,21 @@ Architecture v2.3, Git revision, dirty source/build fingerprints and artifact
 digests are separate identities. See the [technical guide](v01-technical-guide.md)
 and [distribution details](distribution.md).
 
-The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
-`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
-completed the original A/B context and exact correlated reply predicates;
-all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
-witnesses do not turn the terminal FAIL into Native acceptance. Production
-Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
-with authenticated management HTTP 503; restore/status-query acceptance is open.
-Five selected test-only historical-queue checks now pass with strict refusals
-retained; production fencing is unchanged and G2 reuse is not activated.
+Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+as the single current evidence index. The clean e2a default aggregate is
+INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
+passed five actual turns with the original A/B context and exact replies.
+Historical failed attempts remain attributed to their tested inputs.
 
-The reusable `--suite client-link-recovery` gate now actually passed one
-top-level test and eight subtests, with two real owned Hub restarts, zero
-failures/skips and confirmed cleanup. The tested build is **dirty b06**, with
-its full source fingerprint and actual image IDs recorded in
-[Link validation](v01-link-recovery-fixture.md#reusable-link-gate-pass).
-Its 26 offline helper tests and independent G4 review passed. The earlier
-clean-b06 Root operator PASS and both reusable preflight FAILs (OWNED_MOUNT,
-RUNNER_CHANGED; zero Go tests) retain their separate source/evidence attribution.
+Current G2/G3 and eight Android online cases remain NOT_RUN. The h5 Runtime
+proves full official CLI packaging only; h4's standard Docker command sandbox
+refused namespace creation. Supported command/Worker, remaining Native,
+physical-device and public-HTTPS acceptance remain separate. Overall v0.1 is
+**PARTIAL**, unreleased; no new execution GO is created by this documentation.
 
-Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
-authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
-and public-HTTPS acceptance require independent evidence. No new paid PASS is
-claimed. Overall v0.1 remains **PARTIAL**.
-
-The Codex source default is 0.162.1; existing older Runtime images are not
-relabelled. Organization profile and documentation Pages are published; GitHub
-branch protection and private vulnerability reporting remain unconfigured.
-`gh` is installed but is not authenticated in the current operator environment.
-See [repository maintenance](repository-maintenance.md) for publication evidence.
-
-The completed default automation run `20261010T063155Z-5b6d7a3e12` reports
-**UNKNOWN** overall and `source_unchanged: true`. Go build/test/vet and packaging
-report PASS_WITH_SKIPS; Python, contract, Web panel model/config, wiring, joined
-V68, Group/Fabric stress and browser lanes report PASS. Six disposable child
-lanes exited 0 and reported their own PASS with confirmed cleanup. The aggregate
-retained UNKNOWN for five interop/M5 lanes with
-`CHILD_FIXTURE_CLEANUP_SCOPE_UNBOUND`; the Node-Control lane instead reported
-`CHILD_RESULT_RECEIPT_OVERSIZE` and `CHILD_RECEIPT_STATUS_UNKNOWN`. Aggregate
-receipt attribution needs reconciliation; this is neither a cleanup-failure
-claim nor a complete interop PASS.
-
-Native model lanes were NOT_RUN in that default automation run. Separate real
-G1/G2 attempts have not completed acceptance. Android, physical-device and public
-HTTPS results retain their own evidence and are not promoted by these checks.
-This documentation checkpoint does not qualify a release. See
-[test automation](test-automation.md) and the
-[current closeout and retained failures](v01-current-closeout-20261009-validation.md).
+Source, Runtime packaging, Client delivery and historical failures retain their
+separate identities in that index. Documentation publication does not qualify a
+release.
 
 ## Historical 2026-10-02 checkpoint — finite QA accepted; unreleased
 

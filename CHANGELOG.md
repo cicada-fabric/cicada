@@ -17,11 +17,14 @@ passed. Its two zero-Go preflight FAILs and the earlier clean-b06 operator PASS
 remain separately attributed. Production Guard,
 Client contract and capabilities are unchanged. The Codex source default is
 0.162.1; published organization profile/Pages are documentation, not product
-release or Hub HTTPS acceptance. Current Native E3 remains terminal queue-oracle
-FAIL; five selected test-only historical-queue checks pass with original strict
-refusals retained and G2 reuse not activated. Exact latest
-scope and remaining G1/G2/G3/external gates are in the
-[current closeout](docs/v01-current-closeout-20261009-validation.md#latest-native-e3).
+release or Hub HTTPS acceptance. Separate real G1 now passes original A/B
+context and exact reply/terminal
+historical queue predicates. The clean e2a default aggregate remains INCOMPLETE
+with four Native lanes NOT_RUN; current G2/G3, eight Android online cases and
+command/Worker acceptance are still open. h5 proves full official 0.162.1
+package inclusion only; h4's command sandbox namespace refusal is retained.
+See the [current closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010)
+for exact attribution, retained failures and independent remaining gates.
 Overall v0.1 stays PARTIAL and unreleased.
 
 ### 2026-10-10 public documentation and repository maintenance
@@ -31,9 +34,9 @@ support and security reporting guidance, and issue/PR templates. Superseded root
 architecture task instructions now point to current implementation evidence;
 dated validation reports and their failures remain attributed to their original
 sources. Current source identities are schema59, client-hub-v1.6.4, wire1 and
-catalog55; no software version or product code changed. The completed default
-automation run remains overall UNKNOWN, with independent child evidence and
-aggregate receipt limits recorded in [status](docs/status.md). Product acceptance
+catalog55; no software version or product code changed. The earlier default
+automation run retained overall UNKNOWN, with independent child evidence and
+aggregate receipt limits recorded in its historical receipts. Product acceptance
 remains PARTIAL and this documentation checkpoint is not a release.
 
 ### Historical earlier source checkpoints (original evidence follows)

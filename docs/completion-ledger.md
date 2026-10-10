@@ -2,22 +2,17 @@
 
 ## Current closeout index — v0.1 PARTIAL
 
-The [current E3 closeout](v01-current-closeout-20261009-validation.md#latest-native-e3)
-is the single evidence index. E3 remains terminal QueueOracleError /
-WRITER_EPOCH_STALE FAIL despite five actual turns, accepted original context and
-correlated replies, eleven HTTP 200 / HEADER_ACCEPTED observations and confirmed
-cleanup/pins. The test-only historical queue predicate passed five selected offline checks
-with strict refusals retained; production fencing is unchanged and no new paid
-PASS exists. G2 reuse is not activated or validated.
+Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+as the single current evidence index. The clean e2a default aggregate is
+INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
+passed five actual turns with the original A/B context and exact replies.
+Historical failed attempts remain attributed to their tested inputs.
 
-The reusable Link gate actually passed eight scenarios and two owned Hub
-restarts on dirty-b06 source, with confirmed cleanup and exact unchanged
-source/six-resident checks. Its 26 helper tests and independent review passed.
-The earlier clean-b06 operator PASS and both zero-Go reusable FAILs remain
-separate; [exact source/images/receipts](v01-link-recovery-fixture.md#reusable-link-gate-pass).
-Fresh zero preparation passed (no new paid PASS). Next: G1, G2 denial plus G3 restore, and independent remaining current
-Android/native/device/HTTPS gates. Overall **PARTIAL**; historical ledger counts
-below are not added into a current completion percentage.
+Current G2/G3 and eight Android online cases remain NOT_RUN. The h5 Runtime
+proves full official CLI packaging only; h4's standard Docker command sandbox
+refused namespace creation. Supported command/Worker, remaining Native,
+physical-device and public-HTTPS acceptance remain separate. Overall v0.1 is
+**PARTIAL**, unreleased; no new execution GO is created by this documentation.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

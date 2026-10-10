@@ -4,9 +4,20 @@
 
 The [2026-10-09 Core closeout](v01-current-closeout-20261009-validation.md) is the current Core evidence index. This checkpoint changes no `CICADA_CLIENT` source, APK, contract, or Client runtime pin; Client results below retain their recorded artifact attribution.
 
-## Existing Client delivery record — clean-021 Hub / v1.6.4; latest Client pair 3254ba1
+## Current Client delivery / preparation — 2026-10-10
 
-The delivered Hub and contract remain the clean-021 v1.6.4 bundle, catalog and standard Hub. The latest online-tested Client pair is clean commit 3254ba12cac22d0f77510999f53e6b6bc2c80aa8; its APK pair passed 36 offline checks. F36 is FAIL / OUTCOME_UNKNOWN: the exact-Link list wait failed before Target prepare, KEY signing, consent or native Alert; four signatures were observed (Source 3 / Target Device 1), with Target KEY/NONE unsigned. Root cause and viewport remain UNKNOWN. Terminal exit 0 records closure only; terminal CORE_ACK_NOT_SENT and the later one Root ACK exit 0 are separate. This offline result is not online Android acceptance and does not change the earlier F35 outcome.
+Clean Core e2a1908 delivered Hub image 532dc1cc with contract v1.6.4, wire 1 and
+catalog 55. Client commit 43738f4 passed offline preparation; all eight Android
+online Link recovery cases remain NOT_RUN. Its APK pair is separately attributed
+to dirty 9b56832 and 598 build inputs, rather than the later clean Client commit.
+Exact image, delivery, preparation and build evidence is in the
+[current closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+and [Client preparation](../../CICADA_CLIENT/docs/client-link-recovery-e2a1908-preparation.md).
+This record changes no Client source, contract, capability or runtime acceptance.
+
+## Historical Client delivery record — clean-021 Hub / v1.6.4; Client pair 3254ba1
+
+At this earlier checkpoint, the delivered Hub and contract were the clean-021 v1.6.4 bundle, catalog and standard Hub. The recorded Client pair was clean commit 3254ba12cac22d0f77510999f53e6b6bc2c80aa8; its APK pair passed 36 offline checks. F36 is FAIL / OUTCOME_UNKNOWN: the exact-Link list wait failed before Target prepare, KEY signing, consent or native Alert; four signatures were observed (Source 3 / Target Device 1), with Target KEY/NONE unsigned. Root cause and viewport remain UNKNOWN. Terminal exit 0 records closure only; terminal CORE_ACK_NOT_SENT and the later one Root ACK exit 0 are separate. This offline result is not online Android acceptance and does not change the earlier F35 outcome.
 
 F35 on the a80d1a9 APK pair remains FAIL / OUTCOME_UNKNOWN (terminal SHA-256 06278f1cda23961762adf239a80d952afb84f27be03d12dee5a25018b8b11ec5). Passive progress reported native_ok=true and UI_RESPONSE_RETURNED, while viewport=NOT_VISIBLE; this does not establish that a grant was accepted. The terminal records ACK_NOT_SENT, while a separate later Root ACK exited 0. F34 on the preceding 8f2900c63f515033827d41d962acf7453513f370 APK pair also remains FAIL / OUTCOME_UNKNOWN; F33's earlier UI failure remains attributed to its attempt. The five online Link operations are not accepted by these results.
 

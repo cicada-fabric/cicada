@@ -37,7 +37,8 @@ result limit remains enforced; source archives have a separate 16 MiB bound.
 
 The default inventory includes the pinned offline Go build/test/vet lane,
 Python unit tests, Client contract and packaging checks, deterministic web
-panel checks, and disposable Docker interop, stress, and browser lanes when
+panel checks, and disposable Docker interop (including `client-link-recovery`),
+stress, and browser lanes when
 their prerequisites are available. The Go container uses the locally present
 pinned Go image, offline module cache, read-only source, and a separate run
 cache. It reports optional Go skips explicitly. The panel lane uses
@@ -74,6 +75,12 @@ device, public HTTPS, and unrun Native scopes remain separate evidence.
 scripts/test-client-hub-interop.sh --suite client-link-recovery
 ```
 
+This suite is also registered as a default runner lane. Its consumer requires
+exactly nine passed Go events (one top-level plus eight subtests), stable child
+build source and two exact owned Hub restart receipts. The clean e2a aggregate
+`20261010T114600Z-a46501c07c` preceded this registration; it does not count the
+new lane as executed. See the [current evidence](v01-current-closeout-20261009-validation.md#current-20261010).
+
 This separate suite reuses the existing image builder, build provenance and
 owned cleanup lane `client`. It runs exactly eight KEY/NONE Link scenarios and
 coordinates the two ordered original-request uncertainty markers with real
@@ -91,16 +98,15 @@ images; [source fingerprint, images and receipts](v01-link-recovery-fixture.md#r
 remain distinct from the earlier clean-b06 Root operator PASS. Both preceding
 reusable preflight FAILs, OWNED_MOUNT and RUNNER_CHANGED, retain zero-Go coverage
 and their confirmed cleanup receipts. This selected suite PASS does not replace
-the default runner's aggregate UNKNOWN or accept Android/Native/physical/HTTPS.
+the default runner's independent INCOMPLETE result or accept Android/Native/physical/HTTPS.
 
-Latest paid Native E3 remains terminal QueueOracleError/WRITER_EPOCH_STALE FAIL;
-five-turn context/reply and eleven HTTP 200 witnesses are scoped evidence,
-not a paid PASS. Five selected terminal-history checks passed without activating G2; fresh
-G1 after actual fresh zero, G2 denial/G3 restore plus current
-Android/native/device/public-HTTPS acceptance remain separate; use the
-[current closeout](v01-current-closeout-20261009-validation.md#latest-native-e3).
+Historical E3 retains its terminal QueueOracleError/WRITER_EPOCH_STALE FAIL
+and scoped five-turn context/reply witnesses. Its pre-registration checks and
+NOT_RUN statements belong to that earlier source. Current real G1 is PASS;
+new G2/G3 and Android/native/device/public-HTTPS gates remain pending. See the
+[current closeout](v01-current-closeout-20261009-validation.md#current-20261010).
 
-## Current runner validation
+## Historical runner validation
 
 The retained run `20261010T063155Z-5b6d7a3e12` had no failing test lane and
 unchanged source, but remained `UNKNOWN`. Five otherwise passing child receipts

@@ -2855,7 +2855,7 @@ class WiringChecks(unittest.TestCase):
                 verifier(root,sid,expected,account_scope='uid:0')
             self.assertEqual(caught.exception.code,'WRITER_SCOPE_INVALID')
 
-    def test_terminal_queue_witness_paid_g1_activation_and_source_pins(self):
+    def test_terminal_queue_witness_paid_scenario_activation_and_source_pins(self):
         with run.deny_preflight_effects():
             tree = ast.parse(Path(gate.__file__).read_text())
             load = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='load_gate')
@@ -2863,20 +2863,82 @@ class WiringChecks(unittest.TestCase):
             method = next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='native_config')
             class Base:
                 def native_config(self,*args):return ['CICADA_GROUP_ID="synthetic"']
-            for scenario,zero,paid,https in (('g1',False,True,True),('g1',True,True,True),
-                    ('g1',False,False,True),('g1',False,True,False),('g2-g3',False,True,True)):
-                calls=[]; ns={'Base':Base,'scenario':scenario,'zero_model':zero,'json':json,
+            for scenario,zero,paid,https,diagnostics in (
+                    ('g1',False,True,True,True),('g1',False,True,True,False),
+                    ('g1',True,True,True,True),('g1',False,False,True,True),
+                    ('g1',False,True,False,True),('g2-g3',False,True,True,True),
+                    ('g2-g3',False,True,True,False),('g2-g3',True,True,True,True),
+                    ('g2-g3',False,False,True,True),('g2-g3',False,True,False,True)):
+                witness_calls=[]; metadata_calls=[]; ns={'Base':Base,'scenario':scenario,'zero_model':zero,'json':json,
                     'g2_node_scope':lambda *a:('unused','synthetic'),
-                    'install_owned_terminal_queue_witness':lambda o:calls.append(o),
-                    'install_owned_peer_response_metadata':lambda o:None}
+                    'install_owned_terminal_queue_witness':lambda o,**kw:witness_calls.append((o,kw)),
+                    'install_owned_peer_response_metadata':lambda o:metadata_calls.append(o)}
                 selected=ast.ClassDef(name='CandidateGate',bases=[ast.Name(id='Base',ctx=ast.Load())],
                     keywords=[],body=[method],decorator_list=[])
                 exec(compile(ast.fix_missing_locations(ast.Module(body=[selected],type_ignores=[])),
                     '<actual-native-config-terminal-queue-seam>','exec'),ns)
                 owner=ns['CandidateGate']();owner.args=types.SimpleNamespace(run_native=paid,native_https=https)
+                owner.args.closed_failure_diagnostics=diagnostics
                 owner.meta={'group_id':'synthetic'};owner.nodes={'a':{'current_group_id':'synthetic'}}
                 owner.native_config('a')
-                self.assertEqual(len(calls),int(scenario=='g1' and not zero and paid and https))
+                self.assertEqual(len(witness_calls),int(not zero and paid and https))
+                if witness_calls:
+                    self.assertIs(witness_calls[0][0],owner)
+                    self.assertEqual(witness_calls[0][1],{'scenario':scenario})
+                self.assertEqual(len(metadata_calls),int(scenario=='g1' and not zero and paid and https and diagnostics))
+
+    def test_terminal_queue_witness_g2_selected_flow_and_instance_scope(self):
+        import textwrap
+        with run.deny_preflight_effects():
+            oracle, owner, rows, request, reply, _ = self._retained_terminal_queue_fixture()
+            phase=gate.PEER_TERMINAL_ROOT/'peer_gate_derivative_phase_current_drainfix20261010b.py'
+            raw=phase.read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),gate.PEER_TERMINAL_GATE_SHA)
+            original=owner.queue_acceptance_witness.__func__
+            self.assertEqual(Path(original.__code__.co_filename).resolve(),phase.resolve())
+            self.assertEqual(Path(original.__globals__['__file__']).resolve(),phase.resolve())
+
+            sources=gate.effective_sources()
+            selected=gate.compile_g2_flow_methods(sources['gate'],{})['managed_golden_flow']
+            namespace={'__file__':str(phase)}
+            text=raw.decode('utf-8')
+            node=next(n for n in ast.walk(ast.parse(text))
+                if isinstance(n,ast.FunctionDef) and n.name=='golden_with_durable_queue')
+            exec(compile(textwrap.dedent(ast.get_source_segment(text,node)),str(phase),'exec'),namespace)
+            golden=namespace['golden_with_durable_queue'](selected,scenario='g2-g3')
+            self.assertEqual(golden._peer_selected_scenario,'g2-g3')
+            self.assertIs(golden._g2_selected_source,golden._peer_selected_source)
+            selected_source=golden._peer_selected_source
+            stop=selected_source.index('stop_and_capture')
+            witness=selected_source.index('self.queue_acceptance_witness(request, final)')
+            restore=selected_source.index('g3_restore_snapshot')
+            self.assertLess(stop,witness)
+            self.assertLess(witness,restore)
+            self.assertEqual(selected_source.count('self.queue_acceptance_witness(request, final)'),1)
+
+            strict=oracle.verify_queue_accepted
+            with patch.dict(sys.modules,{'readonly_snapshot':types.SimpleNamespace(rows=rows)}):
+                with self.assertRaises(oracle.QueueOracleError) as caught:
+                    owner.queue_acceptance_witness(request,reply)
+            self.assertEqual(caught.exception.code,'WRITER_EPOCH_STALE')
+            proof=gate.install_owned_terminal_queue_witness(owner,scenario='g2-g3')
+            self.assertEqual(proof['scope'],'G2_G3_PAID_INSTANCE_STOPPED_TERMINAL_HISTORY_ONLY')
+            self.assertEqual(proof['current_authorization'],'CURRENT_AUTHORIZATION_NOT_PROVEN')
+            self.assertIs(gate.install_owned_terminal_queue_witness(owner,scenario='g2-g3'),proof)
+            self.assertIs(oracle.verify_queue_accepted,strict)
+            self.assertNotIn('durable_queue_acceptance',owner.result)
+            self.assertNotIn('G2_actual_acceptance',owner.result)
+            with self.assertRaisesRegex(ValueError,'^TERMINAL_QUEUE_INSTANCE_SCENARIO$'):
+                gate.install_owned_terminal_queue_witness(owner,scenario='g1')
+            with self.assertRaisesRegex(ValueError,'^TERMINAL_QUEUE_SCENARIO$'):
+                gate.install_owned_terminal_queue_witness(types.SimpleNamespace(),scenario='g2')
+
+            other=copy.copy(owner);other.result={'terminal_sources_stopped':True}
+            other.queue_acceptance_witness=types.MethodType(original,other)
+            with patch.dict(sys.modules,{'readonly_snapshot':types.SimpleNamespace(rows=rows)}):
+                with self.assertRaises(oracle.QueueOracleError) as caught:
+                    other.queue_acceptance_witness(request,reply)
+            self.assertEqual(caught.exception.code,'WRITER_EPOCH_STALE')
             with patch.object(Path,'read_bytes',return_value=b'untrusted'), self.assertRaisesRegex(ValueError,
                     '^TERMINAL_QUEUE_ORACLE_SOURCE_PIN$'):
                 gate.selected_historical_queue_verifier()

@@ -2,35 +2,17 @@
 
 ## Current acceptance sequence — v0.1 PARTIAL
 
-Use the [current validation closeout](v01-current-closeout-20261009-validation.md#latest-native-e3) as the single current evidence index.
+Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+as the single current evidence index. The clean e2a default aggregate is
+INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
+passed five actual turns with the original A/B context and exact replies.
+Historical failed attempts remain attributed to their tested inputs.
 
-The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
-`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
-completed the original A/B context and exact correlated reply predicates;
-all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
-witnesses do not turn the terminal FAIL into Native acceptance. Production
-Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
-with authenticated management HTTP 503; restore/status-query acceptance is open.
-Five selected test-only historical-queue checks now pass with strict refusals
-retained; production fencing is unchanged and G2 reuse is not activated.
-
-The reusable `--suite client-link-recovery` gate now actually passed one
-top-level test and eight subtests, with two real owned Hub restarts, zero
-failures/skips and confirmed cleanup. The tested build is **dirty b06**, with
-its full source fingerprint and actual image IDs recorded in
-[Link validation](v01-link-recovery-fixture.md#reusable-link-gate-pass).
-Its 26 offline helper tests and independent G4 review passed. The earlier
-clean-b06 Root operator PASS and both reusable preflight FAILs (OWNED_MOUNT,
-RUNNER_CHANGED; zero Go tests) retain their separate source/evidence attribution.
-
-Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
-authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
-and public-HTTPS acceptance require independent evidence. No new paid PASS is
-claimed. Overall v0.1 remains **PARTIAL**.
-
-Earlier timeout ABI/response-rejection attempts and pre-E3 metadata NOT_RUN
-statements are historical. Their failures, source bindings and artifact origins
-remain unchanged. Other dated sections below retain their scoped evidence.
+Current G2/G3 and eight Android online cases remain NOT_RUN. The h5 Runtime
+proves full official CLI packaging only; h4's standard Docker command sandbox
+refused namespace creation. Supported command/Worker, remaining Native,
+physical-device and public-HTTPS acceptance remain separate. Overall v0.1 is
+**PARTIAL**, unreleased; no new execution GO is created by this documentation.
 
 The [one-click test guide](test-automation.md) uses `scripts/test-architecture-v2-completion.sh`; default execution uses no paid models and preserves independent NOT_RUN/BLOCKED results, without claiming full v0.1 acceptance.
 

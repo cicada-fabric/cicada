@@ -12,12 +12,11 @@ source/dirty state and build provenance before attributing a test or artifact.
 
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.
-The completed 2026-10-10 default run remains overall UNKNOWN: five aggregate
-child lanes have unbound cleanup scope, and the Node-Control receipt is oversized
-with unknown aggregate status, despite independently passing child records.
-See [release status](docs/status.md) and [current closeout](docs/v01-current-closeout-20261009-validation.md).
-Real G1/G2 product acceptance is incomplete; Android, physical-device and public
-HTTPS evidence is independent. Documentation publication is not a release.
+The latest clean e2a default aggregate is INCOMPLETE: 14 PASS,
+2 PASS_WITH_SKIPS and four Native NOT_RUN. Separate real G1 passed; G2/G3,
+current Android, command/Worker, physical-device and public HTTPS acceptance
+remain incomplete. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+Documentation publication is not a release.
 
 The dated checkpoints below preserve their original evidence. Their old schema,
 Runtime images, provider/model choices and local “Main” integration labels are
