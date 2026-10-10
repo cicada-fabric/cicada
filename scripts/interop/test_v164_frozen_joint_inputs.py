@@ -37,22 +37,22 @@ def write_file(path: Path, raw: bytes, mode: int = 0o600) -> None:
 
 class FinalConsumerPinTests(unittest.TestCase):
     def test_paths_hashes_freeze_test_map_and_android_url_match_final_parent_contract(self) -> None:
-        self.assertEqual(joint.PARENT_PATH.name, "joint-parent-v6.py")
-        self.assertEqual(joint.ADAPTER_PATH.name, "joint-adapter-parent-ready-v6.py")
-        self.assertEqual(joint.INTERFACE_PATH.name, "JOINT-PARENT-V6-INTERFACE.NONAUTH.md")
-        self.assertEqual(joint.FREEZE_PATH.name, "JOINT-PARENT-V6-FREEZE.NONAUTH.json")
-        self.assertEqual(joint.QA_RECEIPT_PATH.name, "JOINT-PARENT-V6-FINAL-QA.NONAUTH.json")
+        self.assertEqual(joint.PARENT_PATH.name, "joint-parent-v7.py")
+        self.assertEqual(joint.ADAPTER_PATH.name, "joint-adapter-parent-ready-v7.py")
+        self.assertEqual(joint.INTERFACE_PATH.name, "JOINT-PARENT-V7-INTERFACE.NONAUTH.md")
+        self.assertEqual(joint.FREEZE_PATH.name, "JOINT-PARENT-V7-FREEZE.NONAUTH.json")
+        self.assertEqual(joint.QA_RECEIPT_PATH.name, "JOINT-PARENT-V7-FINAL-QA.NONAUTH.json")
         self.assertEqual(joint.QA_RECEIPT_SHA256,
-            "dc9a148c065acb7705d584b31689031578821b43f478b3b4310378fb47873b77")
+            "a7e3202aea16e9b2cb35b17435be3d71b51aca9d3e09dcd91b5c0a8f8315f67d")
         self.assertEqual(joint.RECONCILE_PATH.parts[-3:], (
             "reconcile-final-compile-format-3", "bin", "cicada-link-joint-reconcile"))
         self.assertEqual(joint.RECONCILE_RECEIPT_PATH.parts[-2:], (
             "reconcile-final-compile-format-3", "PREPARATION-RESULT.NONAUTH.json"))
         self.assertEqual(joint.FROZEN_ARTIFACT_HASHES, {
-            "parent_sha256": "6a5685fbe2760d722b4d26c4289b36e6e5621fd5cb83f2e1adba67bd85e0b4fc",
-            "adapter_sha256": "6fcbefed490041a94c75a4c3a6ee77d3fccae3225be47edb3c7b0ccfad5dbdef",
-            "interface_sha256": "ddfcf87345404079c8bbb60b61673b1582645b73debdf8a91e06cf3aa18bbd0e",
-            "freeze_sha256": "5e47b792fb05153f4c080c987dd5d04816e2762200659c0cca7786c121a3e0c4",
+            "parent_sha256": "0af25ec9ceacf4eacb5589dbc92344f484eb6e695aa80440421ccc2bf2af1ecb",
+            "adapter_sha256": "d2b8794244edff6037b279148508c5de69ced5235fa8d9e68b22826e859a923e",
+            "interface_sha256": "a532f16b62140bfe904cf98244b341a8cfda68083f431073b10543e48aa1a198",
+            "freeze_sha256": "d15c5317a652d3f2c99d9c7afd8a38378a39c7ebd41152711fcd5c22815cb675",
         })
         self.assertEqual(joint.PREPARATION_REFERENCES, {
             "actual_compiler_review": {
@@ -60,8 +60,8 @@ class FinalConsumerPinTests(unittest.TestCase):
                 "sha256": "3c4f5795335c18e56adab3d96d39aec24b6e93e1c88e5ee820b2079403d163c8",
             },
             "current_compiled_tuple_reference": {
-                "path": "/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/CORE-COMPILED-READINESS.V6.NONAUTH.json",
-                "sha256": "4b81ebb798886ebba4c31fc52d1080a6f08d0839981f635949e692ec1cc2b70f",
+                "path": "/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/CORE-COMPILED-READINESS.V7.NONAUTH.json",
+                "sha256": "24ab011dffaaf252bff4c550069be03e55c563c8ef5ff0dc8398a98246a2fe22",
             },
             "apk_endorsement": {
                 "path": "/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation/ROOT-APK-PINS.ENDORSED.private.json",
@@ -89,10 +89,11 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.RECONCILE_RECEIPT_SHA256,
             "b7cafb09da374193f41a5dfc3be58940041eb743d7161a4e911f18acfef636db")
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
-            "test_joint_parent_v6_snapshot.py": "cc79bda1007faa85378fca6e42ae67a03555615a8315f052b32330cc1d8a7f64",
+            "test_joint_parent_v7_snapshot.py": "4f0bea800d3c631e8beda555f1824df5887480dfce55964608abda4a66feb820",
+            "test_joint_parent_v7_control.py": "cda24cb9053c1150c5ce08d76d14199277041f7dbe9c667be2fc2ac40124f863",
         })
         self.assertEqual(joint.FROZEN_PREPARATION_RUN_ID, "ROOT_FRESH_UNUSED_BATCH_REQUIRED")
-        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint10-20261010")
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint11-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -100,6 +101,7 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint._validate_runner_sha256(adapter_sha), adapter_sha)
         for label, candidate in (
                 ("Parent source is not the fixture runner", joint.FROZEN_ARTIFACT_HASHES["parent_sha256"]),
+                ("v6 adapter is stale", "6fcbefed490041a94c75a4c3a6ee77d3fccae3225be47edb3c7b0ccfad5dbdef"),
                 ("compiled v5 adapter is APK-HOLD and stale", "80b1549513a1aa881b728cee7119aa0f7272606948b704c36b428b0a9771cc53"),
                 ("v5 final adapter is stale", "211ec899ff9ba62ed56d66b13d0de8cd56c8aafd232e20be8ed14c76a10482d5"),
                 ("v4 adapter is stale", "907d12a63663543542bb58df83d74cec95e054593a6f8d214498cbc41f2860e4"),
@@ -139,7 +141,7 @@ class FinalConsumerPinTests(unittest.TestCase):
                     "v164-e2a1908-joint3-20261010-0", "v164-e2a1908-joint4-20261010-0",
                     "v164-e2a1908-joint5-20261010-0", "v164-e2a1908-joint6-20261010-0",
                     "v164-e2a1908-joint7-20261010-0", "v164-e2a1908-joint8-20261010-0",
-                    "v164-e2a1908-joint9-20261010-0"):
+                    "v164-e2a1908-joint9-20261010-0", "v164-e2a1908-joint10-20261010-0"):
                 with self.subTest(run_id=stale_run), self.assertRaises(ValueError):
                     joint._validate_carrier_manifest(
                         dict(manifest, run_id=stale_run), Path("/tmp/synthetic-case"), 0)
@@ -421,10 +423,10 @@ class CanonicalTimeTests(unittest.TestCase):
 
 class ArtifactPinTests(unittest.TestCase):
     def artifact_fixture(self, root: Path):
-        parent = root / "joint-parent-v6.py"
-        adapter = root / "joint-adapter-parent-ready-v6.py"
-        interface = root / "JOINT-PARENT-V6-INTERFACE.NONAUTH.md"
-        freeze = root / "JOINT-PARENT-V6-FREEZE.NONAUTH.json"
+        parent = root / "joint-parent-v7.py"
+        adapter = root / "joint-adapter-parent-ready-v7.py"
+        interface = root / "JOINT-PARENT-V7-INTERFACE.NONAUTH.md"
+        freeze = root / "JOINT-PARENT-V7-FREEZE.NONAUTH.json"
         reconcile, receipt_path = self.auxiliary_paths(root)
         parent_raw = b"# synthetic frozen Root Parent source\n"
         adapter_raw = b"# synthetic frozen Parent-ready adapter\n"
@@ -456,22 +458,25 @@ class ArtifactPinTests(unittest.TestCase):
         }
         receipt_raw = json.dumps(receipt_value, sort_keys=True, separators=(",", ":")).encode()
         source_hashes = {
-            "JOINT-PARENT-V6-INTERFACE.NONAUTH.md": digest(interface_raw),
-            "joint-adapter-parent-ready-v6.py": digest(adapter_raw),
-            "joint-parent-v6.py": digest(parent_raw),
+            "JOINT-PARENT-V7-INTERFACE.NONAUTH.md": digest(interface_raw),
+            "joint-adapter-parent-ready-v7.py": digest(adapter_raw),
+            "joint-parent-v7.py": digest(parent_raw),
             **joint.FROZEN_PREPARATION_TEST_HASHES,
         }
-        qa_path = root / "JOINT-PARENT-V6-FINAL-QA.NONAUTH.json"
-        counts = {"exit_code": 0, "fail": 0, "skip": 0, "subtests": 2, "tests": 3}
-        log_path = root / "JOINT-PARENT-V6-SNAPSHOT-QA.private.log"
-        log_sha = "36e6c0b1f129292ea03afa6bb19bd15e98cfeee2edd4d025f174ab8be2f49ae7"
+        qa_path = root / "JOINT-PARENT-V7-FINAL-QA.NONAUTH.json"
+        counts = {"exit_code": 0, "fail": 0, "skip": 0, "subtests": 2, "tests": 6}
+        log_path = root / "JOINT-PARENT-V7-QA.private.log"
+        log_sha = "dfc74252a7a2113d84ddadf9e3e341b6401acd111b6c873bf06fcbdc37191aed"
         qa_raw = json.dumps({
-            "status": "PASS_OFFLINE_SNAPSHOT_ONLY", "AST": "PASS",
-            "Runtime_Docker_model_calls": 0, "files": source_hashes,
+            "schema": "cicada.joint-parent-v7-offline-qa.NONAUTH.v1",
+            "status": "PASS_OFFLINE_COORDINATION_ONLY", "runtime_effects": 0,
+            "side_effects": "SYNTHETIC_PROTOCOL_ONLY_NO_HUB_ANDROID_MODEL",
+            "ast_files": [parent.name, adapter.name, *joint.FROZEN_PREPARATION_TEST_HASHES],
             "elapsed_seconds": 0.16, **counts,
-            "argv": ["python3", "-B", str(root / "test_joint_parent_v6_snapshot.py")],
-            "previous_QA_receipt_sha256": "a" * 64,
-            "raw_output_path": str(log_path), "raw_output_sha256": log_sha,
+            "elapsed_under_authorized_10s": True, "v6_preserved": True,
+            "actual_argv": ["python3", "-"],
+            "command": "python3 - (embedded combined unittest suite: SnapshotTests + ControlLoopTests)",
+            "log": {"path": str(log_path), "sha256": log_sha},
         }, sort_keys=True, separators=(",", ":")).encode()
         freeze_value = {
             "status": "SOURCE_FROZEN_OFFLINE_PASS",
@@ -479,16 +484,25 @@ class ArtifactPinTests(unittest.TestCase):
             "operator_sources": {parent.name: digest(parent_raw), adapter.name: digest(adapter_raw)},
             "event_count": 82, "callback_fields": 25, "policy_fields": 11,
             "outer_seconds": 3600, "runtime_effects": 0,
-            "Client_APK_Hub_helpers_production_changed": False,
-            "reserved_batch": joint.FROZEN_PREPARATION_RUN_ID,
-            **copy.deepcopy(joint.PREPARATION_REFERENCES),
-            "qa_receipt": {"path": str(qa_path), "sha256": digest(qa_raw),
-                           "elapsed_seconds": 0.16, **counts},
+            "production_Client_APK_helpers_changed": False,
+            "current_compiled_tuple_reference": copy.deepcopy(
+                joint.PREPARATION_REFERENCES["current_compiled_tuple_reference"]),
+            "schema": "cicada.joint-parent-v7-freeze.NONAUTH.v1",
+            "core_case_control_count": 8, "core_control_count": 65,
+            "unique_close": {"case": 7, "ordinal": 65},
+            "restart_case_indices": [2, 6], "restart_seconds_absolute": 45,
+            "main_head": joint.CORE_REVISION, "main_status": "",
+            "created_at_utc": "2026-10-10T23:01:19.026905+00:00",
+            "interface": {"path": str(interface), "sha256": digest(interface_raw)},
+            "predecessor_files_unchanged": {}, "joint10": {"status": "FAIL_PRESERVED"},
+            "qa_receipt": {"path": str(qa_path), "sha256": digest(qa_raw)},
             "files": {
                 **{str(root / name): sha for name, sha in source_hashes.items()},
                 str(qa_path): digest(qa_raw), str(log_path): log_sha,
-                str(root / "JOINT-PARENT-V6-SNAPSHOT.patch"):
-                    "020c732650523d58a8278d338bb5854c8537a16cce3035a050aaa37956332fc0",
+                joint.PREPARATION_REFERENCES["current_compiled_tuple_reference"]["path"]:
+                    joint.PREPARATION_REFERENCES["current_compiled_tuple_reference"]["sha256"],
+                str(root / "JOINT-PARENT-V7-MINIMAL.patch"):
+                    "96c85078461670d0b831467687e5aa0d282c960252b65fcb8c87887e74d3401f",
             },
         }
         freeze_raw = json.dumps(freeze_value, sort_keys=True, separators=(",", ":")).encode()
@@ -520,7 +534,7 @@ class ArtifactPinTests(unittest.TestCase):
             reconcile_sha256 = digest(reconcile.read_bytes())
         if receipt_sha256 is None:
             receipt_sha256 = digest(receipt_path.read_bytes())
-        qa_path = parent.parent / "JOINT-PARENT-V6-FINAL-QA.NONAUTH.json"
+        qa_path = parent.parent / "JOINT-PARENT-V7-FINAL-QA.NONAUTH.json"
         if qa_sha256 is None:
             qa_sha256 = digest(qa_path.read_bytes())
         return mock.patch.multiple(
@@ -550,7 +564,7 @@ class ArtifactPinTests(unittest.TestCase):
             with self.subTest(change=change), tempfile.TemporaryDirectory(
                     prefix="v164-joint-qa-") as temp:
                 parent, adapter, interface, freeze, value, expected = self.artifact_fixture(Path(temp))
-                qa_path = parent.parent / "JOINT-PARENT-V6-FINAL-QA.NONAUTH.json"
+                qa_path = parent.parent / "JOINT-PARENT-V7-FINAL-QA.NONAUTH.json"
                 original = qa_path.read_bytes()
                 qa_sha = digest(original)
                 if change == "bytes":
@@ -560,9 +574,9 @@ class ArtifactPinTests(unittest.TestCase):
                 else:
                     qa = json.loads(original)
                     if change == "runtime":
-                        qa["Runtime_Docker_model_calls"] = 1
+                        qa["runtime_effects"] = 1
                     elif change == "source":
-                        qa["files"]["joint-parent-v6.py"] = "0" * 64
+                        qa["ast_files"][0] = "joint-parent-v6.py"
                     elif change == "bool-count":
                         qa["exit_code"] = False
                     else:
@@ -782,6 +796,11 @@ class ArtifactPinTests(unittest.TestCase):
 
     def test_verify_artifacts_rejects_legacy_source_filenames(self) -> None:
         for attribute, legacy_name in (
+                ("PARENT_PATH", "joint-parent-v6.py"),
+                ("ADAPTER_PATH", "joint-adapter-parent-ready-v6.py"),
+                ("INTERFACE_PATH", "JOINT-PARENT-V6-INTERFACE.NONAUTH.md"),
+                ("FREEZE_PATH", "JOINT-PARENT-V6-FREEZE.NONAUTH.json"),
+                ("QA_RECEIPT_PATH", "JOINT-PARENT-V6-FINAL-QA.NONAUTH.json"),
                 ("PARENT_PATH", "joint-parent-v5.py"),
                 ("ADAPTER_PATH", "joint-adapter-parent-ready-v5.py"),
                 ("INTERFACE_PATH", "JOINT-PARENT-V5-INTERFACE.NONAUTH.md"),
@@ -819,30 +838,49 @@ class ArtifactPinTests(unittest.TestCase):
                         mock.patch.object(joint, attribute, root / legacy_name), self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
-    def test_verify_artifacts_requires_exact_seven_entry_v6_freeze_map(self) -> None:
+    def test_verify_artifacts_requires_exact_nine_entry_v7_freeze_map(self) -> None:
         def wrong_pin(value):
-            path = next(key for key in value["files"] if key.endswith("/test_joint_parent_v6_snapshot.py"))
+            path = next(key for key in value["files"] if key.endswith("/test_joint_parent_v7_snapshot.py"))
             value["files"][path] = "0" * 64
 
         def extra_entry(value):
             value["files"]["unexpected.py"] = "1" * 64
 
         def missing_entry(value):
-            path = next(key for key in value["files"] if key.endswith("/joint-parent-v6.py"))
+            path = next(key for key in value["files"] if key.endswith("/joint-parent-v7.py"))
             del value["files"][path]
 
         def legacy_entry(value):
-            path = next(key for key in value["files"] if key.endswith("/joint-parent-v6.py"))
+            path = next(key for key in value["files"] if key.endswith("/joint-parent-v7.py"))
             value["files"][str(Path(path).with_name("joint-parent-v4.py"))] = value["files"].pop(path)
 
         def old_operator_source(value):
-            value["operator_sources"]["joint-parent-v4.py"] = value["operator_sources"].pop("joint-parent-v6.py")
+            value["operator_sources"]["joint-parent-v4.py"] = value["operator_sources"].pop("joint-parent-v7.py")
 
         def wrong_reserved_batch(value):
             value["reserved_batch"] = "v164-e2a1908-joint7-20261010"
 
         def wrong_preparation_reference(value):
-            value["actual_compiler_review"]["sha256"] = "0" * 64
+            value["current_compiled_tuple_reference"]["sha256"] = "0" * 64
+
+        def wrong_core_control_count(value):
+            value["core_control_count"] = 64
+
+        def wrong_unique_close(value):
+            value["unique_close"] = {"case": 6, "ordinal": 65}
+
+        def wrong_close_ordinal(value):
+            value["unique_close"]["ordinal"] = 64
+
+        def wrong_core_case_count(value):
+            value["core_case_control_count"] = 10
+
+        def wrong_restart_matrix(value):
+            value["restart_case_indices"] = [2, 7]
+
+        def missing_control_test(value):
+            path = next(key for key in value["files"] if key.endswith("/test_joint_parent_v7_control.py"))
+            del value["files"][path]
 
         def previous_reconcile_receipt(value):
             value["actual_reconcile_compile"] = {
@@ -880,6 +918,12 @@ class ArtifactPinTests(unittest.TestCase):
                 ("v4 operator source name", old_operator_source),
                 ("reserved batch changed", wrong_reserved_batch),
                 ("preparation reference changed", wrong_preparation_reference),
+                ("64 cannot include unique final close", wrong_core_control_count),
+                ("close must be case7", wrong_unique_close),
+                ("close must be ordinal65", wrong_close_ordinal),
+                ("Core controls are not Parent requests", wrong_core_case_count),
+                ("restart matrix changed", wrong_restart_matrix),
+                ("control test missing from closed9", missing_control_test),
                 ("format-2 reconcile receipt", previous_reconcile_receipt),
                 ("v5 compiled readiness", previous_readiness),
                 ("callback count changed", wrong_callback_count),

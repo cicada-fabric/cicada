@@ -20,7 +20,34 @@ and the actual immutable APK hashes are sealed in
 No online or model run is implied. Joint7's four KEY passes, NONE failure and
 three unrun cases remain attributed solely to its old image and APKs.
 
-### Joint10: V6 host consumer and format-3 reconciliation
+### Joint11: V7 host consumer and final Core close
+
+Root closed joint10 with overall **FAIL** (Parent exit 1, 517.3929 seconds).
+All eight cases reached separately attributed external Go reconciliation,
+with eight reconciler exits of 0 and two Hub restarts. The final close ACK
+did not occur: the 65th Core control exceeded the old limit of 64. Root
+confirmed owned cleanup and unchanged Core source and six residents. These
+partial results do not establish overall acceptance; original joint8,
+joint9 and joint10 failures and expired Masters remain immutable.
+
+The host consumer pins the actual V7 Parent, adapter, interface, closed
+nine-file map, readiness and synthetic offline QA. It verifies eight Core
+controls per case and a unique final close at ordinal 65 for case7. The
+separate Client/Parent layer remains 82 ordered requests. Thirteen scoped
+host tests and eighteen actual file/source checks **PASS**, exit 0, in
+network-none Docker. Neither Core QA nor Go/model tests were rerun.
+
+Fresh batch: `v164-e2a1908-joint11-20261010`. The clean checkpoint,
+12-driver map, 631-input inventory, Parent template and config template
+are sealed at
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint11-consumer-20261010/DELIVERY.NONAUTH.json`.
+Root alone supplies a fresh Master and executes the batch. Format-3 helper,
+c688/v1.6.5 Hub, immutable clean `1151b06` APK pair, signing, 25/11 receipts,
+scope, deadlines and TARGET-first/SOURCE-last enrollment are unchanged.
+No SOURCE profile switch occurs from review through recovery and finish.
+Joint11 runtime, physical Android and public HTTPS remain **NOT_RUN**.
+
+### Historical joint10: V6 host consumer and format-3 reconciliation
 
 Root closed joint9 with overall **FAIL** (Parent exit 1, 106.652 seconds).
 Case0 reached capture, original-packet recovery and FINISH, then Core's
@@ -46,7 +73,8 @@ sealed at
 `/gpu1-share/data/cicada-client/v165-c6887f4-joint10-consumer-20261010/DELIVERY.NONAUTH.json`.
 Preserve the original 82 requests, 25/11 callback shapes, deadlines and
 TARGET-first/SOURCE-last initialization, then no SOURCE switch through finish.
-Joint10's eight cases, physical Android and public HTTPS remain **NOT_RUN**.
+At that preparation checkpoint, joint10's eight cases, physical Android and
+public HTTPS were **NOT_RUN**. The subsequent overall FAIL is recorded above.
 
 ### Historical joint9: current onboarding and carrier pin correction
 
