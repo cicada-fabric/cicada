@@ -53,6 +53,17 @@ separate Root joint-test GO. Physical Android and public HTTPS are **NOT_RUN**.
 The existing UI, local speech, cryptography, authorization and feature gates
 are preserved.
 
+The [finite eight-case supervisor](docs/client-link-recovery-eight-case-loop.md)
+reuses that immutable APK pair and adds only host test coordination. The final
+consumer pins the actual Core Parent, adapter, interface and freeze files;
+151 Docker offline tests pass. Root selected the original 82-request flow:
+TARGET enrollment first, then SOURCE activation with no switch through recovery.
+Earlier attempts retain their original results. Runtime
+execution stays HOLD, with separate encrypted Owner reads, explicitly attributed
+Core readonly evidence for pending NONE candidates, and owned Android closure
+required from Root. No application capability or production
+protocol is expanded by this preparation.
+
 The [previous offline checkpoint](docs/client-link-recovery-offline-validation.md)
 and F38 retain their original source, images and APK attribution. Their results
 do not establish acceptance on e2a1908.

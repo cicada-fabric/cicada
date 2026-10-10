@@ -1,5 +1,226 @@
 # CICADA Client integration handoff
 
+## Final Client host preparation: original 82-request flow
+
+Root's latest delivered instruction explicitly revokes the SOURCE-only
+restriction and selects the original frozen flow. The reviewed ruling is
+`ROOT-REVIEWED-FINAL-JOINT-RULING.NONAUTH.md`, SHA-256
+`dee42017fa44371b24ecb53a6d640861de43a2957c97e264d5b7b962f53bf706`.
+Each case enrolls the actual TARGET Android Owner/device first, then creates,
+enrolls and activates SOURCE. No profile switch, reactivation or reselection
+occurs from SOURCE review/signing through original capture, recovery and
+finish. Both actual enrollment receipts and increasing native generations
+are checked; these runtime checks remain **NOT_RUN**.
+
+The current loop and pinned Parent agree on 82 requests: boot, ten per case
+and close. Sixteen fresh Android profiles plus the initial default fit the
+immutable APK's 32-profile limit. The separate real TARGET Go operator is
+only the encrypted readonly reconciliation producer; it is not represented
+as Android enrollment. Only SOURCE Link consent is tested, so TARGET Android
+registration does not imply TARGET proof or bilateral approval. The existing
+25-field receipt, eleven NONE policy fields and DB-candidate provenance remain
+intact. No Go preparation DTO or new helper/compiler is added.
+
+The consumer independently pins the actual `joint-parent.py`,
+`joint-adapter-parent-ready.py`, `JOINT-PARENT-INTERFACE.NONAUTH.md` and
+`ADAPTER-PARENT-FREEZE.NONAUTH.json`. Their SHA-256 values, unchanged socket
+event fields, commands and complete statuses are in the
+[final consumer record](client-link-recovery-eight-case-loop.md#final-consumer-freeze-original-82-request-flow).
+Independent read-only review found no order, payload, path, URL, Runner or
+reconciliation schema mismatch for the selected flow. This is preparation
+evidence, not Android acceptance. Online remains **HOLD**; the Core freeze
+retains `online=NOT_GO` and final Client pin matching requires Root review.
+
+The existing plan v2 binds the Root fixture and case index; the existing twelfth
+driver verifies source/READY/Runner bytes and fixed control paths. Neither adds
+a production operation. No additional helper or callback field is introduced.
+Runner must match the current adapter bytes, not Parent. The consumer accepts
+only `http://127.0.0.1:8787`, with Root's exact owned bridge/reverse mapping;
+stale source pins, `10.0.2.2`, hostname aliases and port drift fail.
+
+Directory protection is implemented and covered by offline negative tests:
+the exact plan-bound `/tmp/cicada-joint-e2a-<opaque>/cases/0..7` root, `cases`
+parent and selected case must be actual current-user-owned mode-0700 directories
+with canonical lexical/real paths and no symlinks. Arbitrary roots, other cases,
+non-directories, aliases and public modes are refused. The historical 146-test
+directory-only result remains at
+`/gpu1-share/data/cicada-client/v164-e2a1908-owned-case-roots-offline-20261010/python.receipt.redacted.json`.
+The final Docker offline suite is **PASS**, 151 tests, exit **0**, 6.182 seconds
+including container startup; tested parent is `6509a1c`, **dirty=true**. Exact
+commands, source/log hashes, public artifact audits and container absence are
+under `/gpu1-share/data/cicada-client/v164-e2a1908-final82-consumer-offline-20261010`.
+`final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json` binds the final Client
+commit/tree/dirty/inventory, twelve driver hashes, event export, immutable APK
+pair and all actual receipts. This verifies host coordination only.
+
+| Gate | Status | Current evidence or prerequisite |
+|---|---|---|
+| Final host consumer and directory regressions | PASS | 151 Docker offline tests, exit 0 |
+| Four Core artifact pins / Runner and exact URL guards | PASS | Read-only audit and negative tests; no Core code executed |
+| Immutable APK pair and Root-endorsed pins | PASS | Exact-byte audit, exit 0; no rebuild |
+| Offline plan template | PASS | Schema/source-pin check only, exit 0; no runtime GO |
+| Original 82-request source compatibility | PASS for read-only inspection | Exact ten events per case and TARGET-first/SOURCE-last; runtime not executed |
+| Actual TARGET Android enrollment and SOURCE continuity | NOT_RUN | No online GO |
+| Actual independent TARGET Go reconciliation | NOT_RUN | No online GO; separately attributed from Android |
+| Eight Android cases and runtime reconciliation | NOT_RUN | Online HOLD |
+
+Application APK SHA-256:
+`3af7b674c8daaaff4fc4442d13a2b30ad069d5195eed0c90b9b5ebcd754601f9`;
+test APK:
+`243922e556170dff6dfcbbe6840a80f32f37727a56421ed9016652dc962297ae`.
+Their actual build parent remains `9b56832`, dirty=true, input inventory
+`8d26a0029dacc957607293e015bf4e6732af4a73b046556457df2446adfac629`.
+Root-endorsed pins remain
+`3dd3f0ec9787fe4dae6e4fde83f05d961ad263884db2a70a394a50b6ccbdf6ef`.
+The fixed Hub remains clean `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`,
+image `sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01`,
+contract v1.6.4 / wire1 / catalog55. Current Core checkout changes are not this
+Hub image. No online GO, new proof, APK build, Hub/DB/key lifecycle action,
+push or merge is performed.
+
+The initial SOURCE-only BLOCKED diagnosis and receipts remain historical under
+the earlier `v164-e2a1908-final-consumer-freeze-offline-20261010` evidence root,
+including its initial `frozen-delivery/` export. The selected frozen delivery
+is the new root's **`final82-delivery/`**. This flow requires no Go DTO
+and no Parent rewrite. The final delivery includes the existing Core Parent
+template schema, which Root materializes into Client plan v2 after actual
+`BOOT_READY`. Root must bind the final config/template and unchanged expiry
+to one separately issued Master GO. See the exact launch argv and event fields
+in the linked specification and final delivery; neither file is a GO.
+
+## Historical Client-only preparation: earlier frozen joint adapter
+
+The [finite-loop specification](client-link-recovery-eight-case-loop.md) now
+maps Core's frozen joint interface to the existing private Client Unix socket.
+Plan v2 fixes eight SOURCE cases at Core's dynamically delivered
+`/tmp/cicada-joint-e2a-<opaque>/cases/0..7`. The inherited Core control FD remains
+separate. Root maps the six closed controls `prepare`, `device`, `proof`,
+`proxy`, `capture`, `finish` and correlates their stdout acknowledgements.
+
+The Client validates the full 17-field F6 READY and nine public references
+against exact e2a provenance. Root normalizes its nested public setup into two
+existing Android onboarding wrappers and explicitly assigns fresh device IDs.
+Android registers TARGET first, creates SOURCE last, and must show distinct
+profile IDs and an increasing native generation. SOURCE stays active through
+original-packet recovery; a return switch is not assumed. Root copies exact
+public exports into the fixed Core input paths before sending each typed
+control. `CAPTURE_VERIFIED` precedes carrier control installation; Core's
+`CASE_FINISHED` precedes separately attributed direct reconciliation.
+
+Frozen interface SHA-256:
+`618ecef915ad00c6f9fc61d842285989a8e61c59eded900c26aa64cc0e216805`;
+freeze manifest:
+`eb34be4e43c4ae8e64e5b7fc397e76be0a2ef47b10cd5313918361b4d6eaa107`;
+adapter:
+`29d906da160859f0a8a6711449fee69e89c6729ddb2947de9e963e92013622c4`.
+The fixed Hub remains clean
+`e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59` / v1.6.4 / wire1 / catalog55,
+image `sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01`.
+Core checkout `36ebfab` is adapter provenance, not a new Hub source.
+
+The latest Root-authorized test coordination boundary accounts for NONE's
+HEAD-only encrypted status on this image. Its nested `policy` receipt requires
+`candidate_evidence_origin` and `candidate_evidence_receipt_sha256`. The
+response-loss origin is `DB_READONLY_VERIFIED_SIGNED_PROOF`; the three outer
+fault cases use `DB_READONLY_CONFIRMED_ABSENT`. Core alone obtains that evidence
+from its disposable fixture with `mode=ro`/`query_only` and production
+signature/scope/expiry verification of the exact original proof. RootParent
+verifies and hashes the actual receipt. Four real encrypted reads remain
+required, in that exact order, for manifest/grants/HEAD/preview. NONE records use
+`CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE`; KEY keeps `policy=null` and
+its direct-session label. Client does not read a database or gain a candidate
+query API. Missing provenance must return `BLOCKED`, and Android readonly
+remains `NOT_RUN`. Full evidence semantics are in the linked specification.
+
+The final frozen callback proposal was read and independently checked at
+`/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/CALLBACK-FROZEN-PROPOSAL.NONAUTH.md`,
+SHA-256 `486b0c2be499a08a50acf272c8f01801a4105ecc7a67ddf2d4cfb2748afbf717`.
+It adds no top-level field: its explicit list and the current validator contain
+25 fields. The plan retains twelve `DRIVERS` pins: the loop plus eleven
+unchanged companion files. The final test-only validator requires fresh NONE
+candidate version `1`, noncurrent candidate, encrypted current HEAD `0` and
+no bilateral acceptance in any case. KEY's two reads and NONE's four reads
+must match the exact frozen order; extra, repeated or reordered reads fail.
+
+Final clarification evidence is frozen separately under
+`/gpu1-share/data/cicada-client/v164-e2a1908-final-callback-freeze-offline-20261010`.
+Docker offline tests are **PASS**, 141 tests, exit **0**, 6.181 seconds;
+tested parent is `608fae2`, **dirty=true**. The plan template is **PASS**,
+exit **0**, 0.79 seconds. Proposal/interface hashes, eleven unchanged companion
+drivers, APK hashes and offline-container absence are **PASS**, audit exit
+**0**. The final frozen delivery binds the callback, eleven companion pins,
+twelve full plan pins and actual source/receipt hashes. Exact commands and
+evidence paths are in the linked specification; no synthetic receipt establishes
+actual Core verification or Android acceptance. All eight Android cases,
+real mixed reconciliation and runtime/closure gates remain **NOT_RUN**,
+online **HOLD**. No push or merge is performed.
+
+The immutable APK pair is unchanged. No Android application, production
+protocol, policy, Grant, sequence or fence is broadened. Evidence for this
+alignment is separate from earlier checkpoints under
+`/gpu1-share/data/cicada-client/v164-e2a1908-frozen-joint-loop-offline-20261010`.
+The historical `608fae2` mixed NONE metadata extension is recorded separately under
+`/gpu1-share/data/cicada-client/v164-e2a1908-mixed-none-reconciliation-offline-20261010`.
+Its Docker offline verification is **PASS**, 140 tests, exit **0**, 6.184 seconds
+including container startup; tested parent is `888b587`, **dirty=true**.
+The earlier 6.283-second suite remains attributed to its earlier receipt schema.
+Frozen interface verification, eleven unchanged companion drivers, immutable
+APK hashes and offline-container absence are **PASS**, audit exit **0**.
+The successor offline plan template is **PASS**, exit **0**, 0.84 seconds;
+its frozen delivery binds callback metadata and all twelve drivers. Placeholder
+paths must be replaced and the actual plan hash bound into the separate Root GO.
+Exact commands, source hashes, result statuses and evidence paths are
+in the loop specification and private source-bound receipts. The tests use
+synthetic public files, socket pairs and harmless child processes; the
+eight-case supervisor-order test mocks each case body and does not establish
+Android/Core choreography.
+Online execution remains **HOLD**: all eight Android cases, encrypted runtime
+capabilities, actual TARGET→SOURCE transitions, direct opposite-Owner
+reconciliation and emulator closure are **NOT_RUN**. The fixed APK has no
+standalone v1.6.4 readonly KEY/NONE selector. If Android readonly reconciliation
+is required, it is **BLOCKED**; Core-parent encrypted reads cannot be recorded
+as Android execution. Physical Android and public HTTPS remain **NOT_RUN**.
+
+## Historical first finite-loop checkpoint
+
+The [loop specification and offline verification](client-link-recovery-eight-case-loop.md)
+adds a host test supervisor for the existing clean e2a1908 preparation below.
+It reuses the fixed application/test APK pair and native selectors; no APK or
+application feature is changed. Root and the Core parent own the fresh Hub,
+keys, external signatures, opaque FrameAdapter/control FD, two uncertain
+restarts and Android lifecycle. The loop owns its bounded Client CLI subprocesses.
+
+Final Docker offline verification passed **129 tests**, exit **0**, with source
+hashes unchanged. The initial 129-test attempt exited **1** because two journal
+assertions ran after test temporary-directory deletion; that failure is retained.
+All nine existing driver/module files and both APK digests were independently
+checked unchanged. Source pins, commands/exits, logs and the final local Client
+commit are bound under
+`/gpu1-share/data/cicada-client/v164-e2a1908-recovery-loop-offline-20261010`.
+Only one complete host-loop milestone is committed; no push or merge occurs.
+
+The minimal interface is one separately inherited private Unix stream socket
+and hash-bound plan/GO files. The specification defines ten parent events and
+their closed public-file payloads. Budgets remain **480 + 8×360 + 240 = 3600
+seconds**, clipped to remaining absolute deadlines and binding/proof expiry.
+Every case captures once and invokes exactly one original recovery. Any failure
+stops later cases without automatic retries, new packets or proof renewal.
+
+The fixed APK lacks a standalone v1.6.4 readonly KEY/NONE reconciliation
+selector. Root must supply actual encrypted reads from the opposite
+participating Owner's independent device/session. The loop checks reviewed
+manifest scope, the original proof hash, both side statuses, and the exact NONE
+candidate/current-head tuple; execution is explicitly attributed to the Core
+parent. This is not Android readonly execution. Root must also return strict
+actual full-container-ID command/exit receipts and independently confirmed
+absence for its auto-removing network-none emulator.
+
+Online execution is **HOLD**. All eight current-image Android cases, encrypted
+runtime capabilities, actual opposite-Owner reconciliation and emulator closure
+are **NOT_RUN**. Physical Android, public HTTPS and native Worker remain
+**NOT_RUN**. Historical APKs, F38, old failures and Root's separate Core/Native
+results retain their original attribution.
+
 ## Current coordination: clean e2a1908 recovery preparation
 
 The current Client-only preparation targets frozen clean Core
