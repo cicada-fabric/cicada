@@ -18,23 +18,25 @@ sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
 CORE_PREP = Path('/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation')
-PARENT_PATH = CORE_PREP / 'joint-parent-v2.py'
-ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v2.py'
-INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V2-INTERFACE.NONAUTH.md'
-FREEZE_PATH = CORE_PREP / 'ADAPTER-PARENT-V2-FREEZE.NONAUTH.json'
+PARENT_PATH = CORE_PREP / 'joint-parent-v3.py'
+ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready-v3.py'
+INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-V3-INTERFACE.NONAUTH.md'
+FREEZE_PATH = CORE_PREP / 'JOINT-PARENT-V3-FREEZE.NONAUTH.json'
+QA_RECEIPT_PATH = CORE_PREP / 'JOINT-PARENT-V3-QA.NONAUTH.json'
+QA_RECEIPT_SHA256 = '8802bc4b0146efc9d78f5a3e7e5b9c3c007a4f2ea4cc0c7fd695e64a4116ec22'
 RECONCILE_PATH = CORE_PREP / 'reconcile-final-compile-format-2/bin/cicada-link-joint-reconcile'
 RECONCILE_RECEIPT_PATH = CORE_PREP / 'reconcile-final-compile-format-2/PREPARATION-RESULT.NONAUTH.json'
 RECONCILE_SHA256 = '54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3'
 RECONCILE_RECEIPT_SHA256 = '96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e'
 
 FROZEN_ARTIFACT_HASHES = {
-    'parent_sha256': 'cdf8d8caa9f95823b0fd8c50d450c7add46134e0a6f90ce8e325277afc5ab496',
-    'adapter_sha256': '30fa655ab1ae4e8df120441a4aafb5ebe6cd3d5771f6ab83fff0f2e2a497ec96',
-    'interface_sha256': '4a294d87a4584c547163350be9a1d9b65c4875daf350a190982a2af2d6689f8e',
-    'freeze_sha256': '8624d782f3380fef43b9bf1d30a7d1e5541b5db56752b2ab82954002ee613733',
+    'parent_sha256': '5d3172d862f92a2b651d59dc261a6ea141bd25cc9c559058e98063d0cf6a94d2',
+    'adapter_sha256': '86f093b82bcd548fd94bf3120db3e1f7413f8e3fea88ee2981a8204923765ae7',
+    'interface_sha256': '53b2bc24bcdcac148f9dfc85171e4c41f7d07ee0bf0be901e0f672bdf807f5aa',
+    'freeze_sha256': 'ba5d5fc5104b69fe0012c523d1ccf45440621d557fc08b86809a9959cecce539',
 }
 FROZEN_PREPARATION_TEST_HASHES = {
-    'test_joint_parent_v2_apk_install.py': '193f361cf9fb5a814d07764c06602416fe5d114bd8b8ea2b2dfdbfad598e98cf',
+    'test_joint_parent_v3_boot_stage.py': '9d5e3f2de0fcdf6db4b46100cfd1476313237896288ce7e55a8e5ac4b7b16013',
 }
 
 CORE_REVISION = 'e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59'
@@ -44,7 +46,7 @@ SOURCE_FINGERPRINT = '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed
 CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
 CONTRACT_REVISION = 'client-hub-v1.6.4'
 WIRE_VERSION = 1
-RUN_ID = 'v164-e2a1908-joint2-20261010'
+RUN_ID = 'v164-e2a1908-joint3-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
 JOINT_HELPER_SHA256 = 'f9a9ce392d67ab3a2c8451546884dbbc8c78d27a3c409e60e32ac5a3df3254c8'
 RECOVERY_HELPER_SHA256 = 'cf995108fa72b9bde1c65261da0bb766961ea7afd6b8d03124e3bc3e921be61b'
@@ -251,10 +253,12 @@ def verify_auxiliary():
 
 def verify_artifacts():
     """Pin the Parent delivery and reconciliation auxiliary; execute no Core code."""
-    _need(PARENT_PATH.name == 'joint-parent-v2.py', 'PARENT_PATH')
-    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v2.py', 'ADAPTER_PATH')
-    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V2-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
-    _need(FREEZE_PATH.name == 'ADAPTER-PARENT-V2-FREEZE.NONAUTH.json', 'FREEZE_PATH')
+    _need(PARENT_PATH.name == 'joint-parent-v3.py', 'PARENT_PATH')
+    _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready-v3.py', 'ADAPTER_PATH')
+    _need(INTERFACE_PATH.name == 'JOINT-PARENT-V3-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
+    _need(FREEZE_PATH.name == 'JOINT-PARENT-V3-FREEZE.NONAUTH.json', 'FREEZE_PATH')
+    _need(QA_RECEIPT_PATH.name == 'JOINT-PARENT-V3-QA.NONAUTH.json' and
+          QA_RECEIPT_PATH.parent == FREEZE_PATH.parent, 'QA_RECEIPT_PATH')
     parent_size, parent_sha = _hash_regular(
         PARENT_PATH, accepted_modes=(0o600,), maximum=2 * 1024 * 1024)
     interface_size, interface_sha = _hash_regular(
@@ -272,15 +276,22 @@ def verify_artifacts():
     _need(0 < len(freeze_raw) <= MAX_JSON_BYTES and
           freeze_sha == FROZEN_ARTIFACT_HASHES['freeze_sha256'], 'FREEZE_PIN')
     expected_files = {
-        'JOINT-PARENT-V2-INTERFACE.NONAUTH.md': interface_sha,
-        'joint-adapter-parent-ready-v2.py': adapter_sha,
-        'joint-parent-v2.py': parent_sha,
+        'JOINT-PARENT-V3-INTERFACE.NONAUTH.md': interface_sha,
+        'joint-adapter-parent-ready-v3.py': adapter_sha,
+        'joint-parent-v3.py': parent_sha,
         **FROZEN_PREPARATION_TEST_HASHES,
     }
     _need(freeze.get('status') == 'PASS_PREPARATION_SCOPE_ONLY' and
           freeze.get('online') == 'NOT_GO' and freeze.get('files') == expected_files and
-          freeze.get('offline_compiler_sha256') == RECONCILE_RECEIPT_SHA256,
+          freeze.get('qa_receipt') == {
+              'path': str(QA_RECEIPT_PATH), 'sha256': QA_RECEIPT_SHA256},
           'FREEZE_CONTENT')
+    _, _, qa = _load_json(QA_RECEIPT_PATH, expected_sha256=QA_RECEIPT_SHA256)
+    _need(qa.get('status') == 'PASS_PREPARATION_SCOPE_ONLY' and
+          qa.get('online') == 'NOT_GO' and qa.get('source_hashes') == expected_files and
+          qa.get('android') == 'NOT_RUN' and qa.get('docker') == 'NOT_RUN' and
+          qa.get('client_source_modified') is False and
+          qa.get('tracked_source_modified') is False, 'QA_RECEIPT_SCOPE')
     verify_auxiliary()
     return dict(FROZEN_ARTIFACT_HASHES)
 
