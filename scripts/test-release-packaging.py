@@ -58,6 +58,37 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertIn(value, dockerfile)
         self.assertIn("--source-info-only", helper)
 
+    def test_provenance_arguments_do_not_invalidate_stable_dependency_layers(self):
+        identities = ("CICADA_BUILD_VERSION", "CICADA_BUILD_REVISION",
+                      "CICADA_BUILD_DIRTY", "CICADA_BUILD_SOURCE_FINGERPRINT")
+        manifest = "CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256"
+        for name in ("docker/Dockerfile.hub", "docker/Dockerfile.hub-pqtls"):
+            with self.subTest(dockerfile=name):
+                text = (ROOT / name).read_text()
+                builder = text[text.index(" AS cicada-builder"):].split("\nFROM ", 1)[0]
+                dependencies = builder.index("RUN go mod download")
+                wasm = builder.index("./cmd/cicada-webcrypto")
+                linked_identity = builder.index("-ldflags=")
+                # Docker exposes an ARG to subsequent RUN instructions even
+                # when their shell text never explicitly references it.
+                for argument in identities:
+                    declaration = builder.index("ARG " + argument + "=")
+                    self.assertGreater(declaration, dependencies)
+                    self.assertGreater(declaration, wasm)
+                    self.assertLess(declaration, linked_identity)
+                    self.assertIn("${" + argument + "}", builder[linked_identity:])
+                self.assertNotIn("ARG CICADA_BUILD_CATALOG_SHA256", builder)
+                self.assertGreater(builder.index("ARG " + manifest + "="), wasm)
+                self.assertLess(builder.index("ARG " + manifest + "="),
+                                builder.index('RUN if [ "$' + manifest + '"'))
+                runtime = text[text.index(" AS hub-runtime"):]
+                for argument in (*identities, manifest, "CICADA_BUILD_CATALOG_SHA256"):
+                    self.assertIn("ARG " + argument + "=", runtime)
+                    self.assertIn("${" + argument + "}", runtime[runtime.index("LABEL "):])
+                if "RUN apk add" in runtime:
+                    for argument in (*identities, manifest, "CICADA_BUILD_CATALOG_SHA256"):
+                        self.assertGreater(runtime.index("ARG " + argument + "="), runtime.index("RUN apk add"))
+
     def test_hub_build_fails_closed_on_git_status_errors_before_and_after_build(self):
         with tempfile.TemporaryDirectory(prefix="cicada-hub-git-status-") as directory:
             temp = pathlib.Path(directory)

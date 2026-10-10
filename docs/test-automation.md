@@ -117,6 +117,55 @@ The historical default result remains `UNKNOWN`. A complete fresh default
 selected-suite result, real Native execution, Android, physical-device and
 public-HTTPS acceptance remain unestablished by this targeted run.
 
+The client build interruption exposed a separate Docker cache defect: changing
+revision/fingerprint ARGs were declared before `RUN go mod download`, so a new
+source identity invalidated the otherwise stable dependency layer. Standard and
+PQTLS Dockerfiles now declare those ARGs at the binary build that consumes them;
+the webcrypto manifest ARG begins at its check after WASM generation. Standard
+runtime initialization also precedes changing label ARGs. Source labels,
+compiled provenance, manifest verification, Go versions, module checksums and
+Apache/third-party license packaging remain covered by the packaging checks.
+
+The cache/provenance change passes 17 selected release-packaging/PQ-selection
+checks plus 6 build-input inventory checks, with no skips. These deterministic
+checks establish the layer boundary and preserved guards; they do not establish
+an actual cache-hit rate or a fresh PQTLS runtime result. Receipt and reviewable
+diff:
+`.cicada-data/architecture-v2-completion/docker-cache-fix-unit-20261010/RESULT.NONAUTH.json`.
+One fresh client lane may require the declared, unchanged `go.sum` dependencies
+to populate the newly stable layer. Its isolated build can use an explicitly
+authorized `CICADA_BUILD_PROXY=http://127.0.0.1:7890`; the runner's normal child
+environment filter omits that variable, so a supervised one-shot invocation
+must set it explicitly for the build child. This is build-only routing, not a
+Runtime or model request, and a proxy variable is not an egress allowlist.
+
+With that explicit build-only authorization, the single fresh client lane
+`20261010T083246Z-client-cache-fix-once` passed through production
+`make_lanes`, `run_process` and classification: exit 0, 319.255 seconds, two
+top-level tests and three subtests passed, zero failures or skips. The fixture
+confirmed exact cleanup of its containers, images and scratch. A wrong expected
+run ID remained `UNKNOWN`, with the good receipt unchanged. The original six
+protected resident IDs and their complete snapshots matched; separately owned
+concurrent fixtures were permitted and were outside this cleanup scope.
+
+The tested source was dirty HEAD `0897d9e5d3cbb8472f01bb17c00d039bc95a81d0`,
+with fingerprint
+`fc56f7fd6ef18cbe31107b777339e404309a92f0be55c8d4a0fe81af3ea37482`.
+Complete source metadata matched before and after, and the actual build's full
+source object matched both archives. Real Hub/test image IDs and their revision,
+dirty, source-fingerprint and catalog labels were independently inspected and
+matched. The three code/test files and this report remained frozen throughout
+the lane; this paragraph was added afterward.
+
+Actual commands, proxy scope, logs, hashes, image provenance, test counts and
+cleanup are retained at
+`.cicada-data/architecture-v2-completion/20261010T083246Z-client-cache-fix-once/RESULT.NONAUTH.json`.
+This fresh client result supplements the earlier targeted Node-Control result
+under its own recorded source. It leaves the interrupted client result at exit
+143, the two-lane aggregate at `FAIL`, and the old default result at `UNKNOWN`.
+It does not establish cross-revision cache-hit rates, a complete default-suite
+rerun, PQTLS runtime coverage, or Native/Android/device/public-HTTPS acceptance.
+
 An earlier runner/stress/status unit set passed 27 tests. After the cleanup
 receipt reducers were added, the current runner and owned-fixture helper checks
 passed 43 tests; the runner module alone passed 25:
