@@ -1,6 +1,47 @@
 # CICADA Client integration handoff
 
+## Joint6: three independent binding domains
+
+Root and Client independently audited the fixed e2a implementation. Network
+access sessions (`network_access_sessions_v2`), direct-native registrations
+(`network_direct_native_bindings_v2`) and Fabric SessionBindings used by
+Group Join (`session_bindings`) have independent IDs and epoch domains.
+The pinned helper exports the first two in `protocol_layers` and uses the
+third for the Group manifest, binding rows and key candidates. Six relevant
+Go source files matched the immutable e2a commit byte-for-byte; no Core
+production bug was established.
+
+The fixture validator now checks direct-native safe ID and positive integer
+epoch independently, while keeping exposed Endpoint/Node, `NOT_RUN`, member
+roles and empty grants checks. Group manifest, bindings and candidates still
+join exact SessionBinding ID/epoch; candidate bool epochs are rejected.
+The direct object's Principal/native-session coordinates are not projected,
+so Client does not claim to reverify them. Live Android manifest/attestation
+and Owner-signing checks remain separate and unchanged.
+
+Fresh batch: `v164-e2a1908-joint6-20261010`. Three focused regressions were
+RED against joint5 bytes (exit 1); 39 scoped network-none Docker tests passed
+after correction (exit 0). The synthetic public fixtures intentionally use
+three different IDs and three different epochs. Negative tests retain Group
+binding/manifest/candidate and Endpoint/Node rejection, as well as empty or
+illegal direct-native ID and zero/bool epoch rejection. Host predicate names
+are now `DIRECT_NATIVE_ID_VALID` and `DIRECT_NATIVE_EPOCH_VALID`; values remain
+closed booleans only, with no payload, private keys or complete error strings.
+
+Clean source, twelve driver pins, 604-input inventory, actual test commands
+and fresh Root-only templates are sealed in
+`/gpu1-share/data/cicada-client/v164-e2a1908-joint6-preparation-20261010/CLIENT-JOINT6-DELIVERY.NONAUTH.json`.
+Parent v3, APKs, original82/25+11, scope and budgets are unchanged. Root alone
+supplies the next finite MasterGO and runs the Parent. No Client online
+resources are started; joint6 Android cases are **NOT_RUN**. Joint3's cause
+remains **UNKNOWN**; joint4/joint5 failed results retain their original bytes.
+
 ## Joint5: precise native SessionBinding join correction
+
+**Historical and superseded:** joint5 wrongly equated direct-native
+registration with Group SessionBinding. Its synthetic positive fixture made
+that same assumption. Joint6 replaces both comparisons and the fixture after
+the three-domain audit; the original joint5 test/run receipts remain unchanged.
 
 Joint4 returned `FIXTURE_PROTOCOL_SCOPE / PREPARING`, with case 0
 `UNKNOWN` and seven cases `NOT_RUN`. Its original result and Root-reported

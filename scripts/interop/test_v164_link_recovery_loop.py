@@ -1237,23 +1237,23 @@ class CleanupEvidenceTests(unittest.TestCase):
 class LoopFailureTests(unittest.TestCase):
     def test_protocol_failure_exports_only_defined_boolean_predicates(self) -> None:
         from test_v164_frozen_joint_inputs import FixtureBindingTests
-        expected = {'ENDPOINT_MATCH', 'NODE_MATCH', 'NATIVE_BINDING_ID_MATCH',
-                    'NATIVE_BINDING_EPOCH_MATCH', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
+        expected = {'ENDPOINT_MATCH', 'NODE_MATCH', 'DIRECT_NATIVE_ID_VALID',
+                    'DIRECT_NATIVE_EPOCH_VALID', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
                     'NO_MEMBERSHIP_GRANTS'}
         value = FixtureBindingTests.fixture()
-        value['protocol_layers'][0]['native_binding_epoch'] += 1
+        value['protocol_layers'][0]['native_binding_epoch'] = 0
         try:
             loop.joint._validate_fixture_public(value, 0)
         except ValueError as error:
             diagnostic = loop.failure_diagnostic(error, 'PREPARING')
         else:
-            self.fail('wrong native epoch must be rejected')
+            self.fail('zero direct-native epoch must be rejected')
         self.assertEqual(diagnostic['guard_code'], 'FIXTURE_PROTOCOL_SCOPE')
         self.assertEqual(set(diagnostic['guard_checks']), expected)
         self.assertTrue(all(type(v) is bool for v in diagnostic['guard_checks'].values()))
-        self.assertFalse(diagnostic['guard_checks']['NATIVE_BINDING_EPOCH_MATCH'])
+        self.assertFalse(diagnostic['guard_checks']['DIRECT_NATIVE_EPOCH_VALID'])
         self.assertTrue(all(v for k, v in diagnostic['guard_checks'].items()
-                            if k != 'NATIVE_BINDING_EPOCH_MATCH'))
+                            if k != 'DIRECT_NATIVE_EPOCH_VALID'))
         for invalid in (dict(diagnostic['guard_checks'], UNDEFINED_FIELD=True),
                         dict(diagnostic['guard_checks'], NODE_MATCH='synthetic-private-value')):
             error = ValueError('FIXTURE_PROTOCOL_SCOPE')

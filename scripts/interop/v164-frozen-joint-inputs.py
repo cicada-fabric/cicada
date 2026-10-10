@@ -46,7 +46,7 @@ SOURCE_FINGERPRINT = '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed
 CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
 CONTRACT_REVISION = 'client-hub-v1.6.4'
 WIRE_VERSION = 1
-RUN_ID = 'v164-e2a1908-joint5-20261010'
+RUN_ID = 'v164-e2a1908-joint6-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
 JOINT_HELPER_SHA256 = 'f9a9ce392d67ab3a2c8451546884dbbc8c78d27a3c409e60e32ac5a3df3254c8'
 RECOVERY_HELPER_SHA256 = 'cf995108fa72b9bde1c65261da0bb766961ea7afd6b8d03124e3bc3e921be61b'
@@ -489,8 +489,8 @@ def _validate_manifest(manifest, link):
 
 
 FIXTURE_PROTOCOL_CHECKS = frozenset({
-    'ENDPOINT_MATCH', 'NODE_MATCH', 'NATIVE_BINDING_ID_MATCH',
-    'NATIVE_BINDING_EPOCH_MATCH', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
+    'ENDPOINT_MATCH', 'NODE_MATCH', 'DIRECT_NATIVE_ID_VALID',
+    'DIRECT_NATIVE_EPOCH_VALID', 'RUNTIME_NOT_RUN', 'MEMBER_ROLE_ONLY',
     'NO_MEMBERSHIP_GRANTS',
 })
 
@@ -555,14 +555,17 @@ def _validate_fixture_public(value, case_index):
         manifest_side = value['reference_manifest'][side]
         _need(network['owner_id'] == owner_ids[i] and network['group_id'] == link[side + '_group_id'] and
               network['hub_id'] == value['hub_id'] and network['state'] == 'ACTIVE', 'FIXTURE_NETWORK_SCOPE')
-        # Network access and native SessionBinding are independent identities.
-        # Only the native binding joins the Endpoint key manifest below.
+        # Access session, direct-native registration and Group SessionBinding
+        # have separate ID/epoch domains. Only the Group binding joins the
+        # manifest/candidate below. This projection omits direct Principal/session
+        # coordinates, which the pinned helper validates before exporting it.
         protocol_checks = {
             'ENDPOINT_MATCH': layer['endpoint_id'] == manifest_side['endpoint_id'],
             'NODE_MATCH': layer['node_id'] == manifest_side['node_id'],
-            'NATIVE_BINDING_ID_MATCH': layer['native_binding_id'] == binding['binding_id'] == manifest_side['binding_id'],
-            'NATIVE_BINDING_EPOCH_MATCH': type(layer['native_binding_epoch']) is int and
-                layer['native_binding_epoch'] == binding['epoch'] == manifest_side['binding_epoch'],
+            'DIRECT_NATIVE_ID_VALID': isinstance(layer['native_binding_id'], str) and
+                ID.fullmatch(layer['native_binding_id']) is not None,
+            'DIRECT_NATIVE_EPOCH_VALID': type(layer['native_binding_epoch']) is int and
+                layer['native_binding_epoch'] > 0,
             'RUNTIME_NOT_RUN': layer['native_runtime'] == 'NOT_RUN',
             'MEMBER_ROLE_ONLY': layer['group_membership_roles'] == ['member'],
             'NO_MEMBERSHIP_GRANTS': layer['group_membership_grants'] == [],
@@ -576,7 +579,8 @@ def _validate_fixture_public(value, case_index):
               binding['status'] == 'leased', 'FIXTURE_BINDING_SCOPE')
         _canonical_time(binding['lease_expires_at'])
         _need(candidate['endpoint_id'] == manifest_side['endpoint_id'] and candidate['binding_id'] == manifest_side['binding_id'] and
-              candidate['epoch'] == manifest_side['binding_epoch'] and candidate['key_id'] == manifest_side['key_id'] and
+              type(candidate['epoch']) is int and candidate['epoch'] == manifest_side['binding_epoch'] and
+              candidate['key_id'] == manifest_side['key_id'] and
               candidate['state'] == 'CANDIDATE' and candidate['version'] == manifest_side['candidate_version'], 'FIXTURE_CANDIDATE_SCOPE')
         for row, fields_to_check in ((network, ('network_id',)), (layer, ('network_access_binding_id', 'native_binding_id'))):
             for field in fields_to_check:

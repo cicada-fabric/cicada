@@ -61,7 +61,7 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_parent_v3_boot_stage.py": "9d5e3f2de0fcdf6db4b46100cfd1476313237896288ce7e55a8e5ac4b7b16013",
         })
-        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint5-20261010")
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint6-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -101,7 +101,8 @@ class FinalConsumerPinTests(unittest.TestCase):
                 mock.patch.object(joint, "validate_ready", return_value={"fixture_public": fixture}):
             joint._validate_carrier_manifest(manifest, Path("/tmp/synthetic-case"), 0)
             for stale_run in ("v164-e2a1908-joint-20261010-0", "v164-e2a1908-joint2-20261010-0",
-                    "v164-e2a1908-joint3-20261010-0", "v164-e2a1908-joint4-20261010-0"):
+                    "v164-e2a1908-joint3-20261010-0", "v164-e2a1908-joint4-20261010-0",
+                    "v164-e2a1908-joint5-20261010-0"):
                 with self.subTest(run_id=stale_run), self.assertRaises(ValueError):
                     joint._validate_carrier_manifest(
                         dict(manifest, run_id=stale_run), Path("/tmp/synthetic-case"), 0)
@@ -298,28 +299,55 @@ class FixtureBindingTests(unittest.TestCase):
             value['networks'][i]['owner_id'] = owner_id
             value['link'][side + '_owner_id'] = owner_id
             value['reference_manifest'][side]['owner_id'] = owner_id
-            binding = value['bindings'][i]
-            layer = value['protocol_layers'][i]
-            layer['native_binding_id'] = binding['binding_id']
-            layer['native_binding_epoch'] = binding['epoch']
+        # Producer semantics: access, direct-native registration and Group
+        # SessionBinding have independent IDs and counters, on the same Endpoint.
         return value
 
     def test_separate_network_access_and_native_bindings_pass(self) -> None:
         value = self.fixture()
         for layer, binding in zip(value['protocol_layers'], value['bindings']):
-            self.assertNotEqual(layer['network_access_binding_id'], binding['binding_id'])
-            self.assertNotEqual(layer['network_access_epoch'], binding['epoch'])
+            self.assertEqual(len({layer['network_access_binding_id'], layer['native_binding_id'],
+                                  binding['binding_id']}), 3)
+            self.assertEqual(len({layer['network_access_epoch'], layer['native_binding_epoch'],
+                                  binding['epoch']}), 3)
         self.assertIs(joint._validate_fixture_public(value, 0), value)
 
-    def test_wrong_native_binding_id_and_epoch_are_rejected_on_either_side(self) -> None:
+    def test_invalid_direct_native_id_and_epoch_are_rejected_on_either_side(self) -> None:
         for i in range(2):
-            for field, replacement in (('native_binding_id', 'wrong-native-binding'),
-                    ('native_binding_epoch', 999), ('native_binding_epoch', True)):
+            for field, replacement in (('native_binding_id', ''), ('native_binding_id', '../unsafe'),
+                    ('native_binding_epoch', 0), ('native_binding_epoch', True),
+                    ('native_binding_epoch', '1')):
                 value = self.fixture()
                 value['protocol_layers'][i][field] = replacement
                 with self.subTest(side=i, field=field, replacement=replacement), self.assertRaisesRegex(
                         ValueError, '^FIXTURE_PROTOCOL_SCOPE$'):
                     joint._validate_fixture_public(value, 0)
+
+    def test_group_binding_manifest_and_candidate_must_match_exactly(self) -> None:
+        for i, side in enumerate(('source', 'target')):
+            for collection, field, replacement, code in (
+                    ('bindings', 'binding_id', 'wrong-group-binding', 'FIXTURE_BINDING_SCOPE'),
+                    ('bindings', 'epoch', 999, 'FIXTURE_BINDING_SCOPE'),
+                    ('bindings', 'endpoint_id', 'wrong-endpoint', 'FIXTURE_BINDING_SCOPE'),
+                    ('reference_manifest', 'binding_id', 'wrong-manifest-binding', 'FIXTURE_BINDING_SCOPE'),
+                    ('reference_manifest', 'binding_epoch', 999, 'FIXTURE_BINDING_SCOPE'),
+                    ('reference_manifest', 'endpoint_id', 'wrong-endpoint', 'FIXTURE_MANIFEST_LINK'),
+                    ('reference_manifest', 'node_id', 'wrong-node', 'FIXTURE_MANIFEST_LINK'),
+                    ('endpoint_candidates', 'binding_id', 'wrong-candidate-binding', 'FIXTURE_CANDIDATE_SCOPE'),
+                    ('endpoint_candidates', 'epoch', 999, 'FIXTURE_CANDIDATE_SCOPE'),
+                    ('endpoint_candidates', 'endpoint_id', 'wrong-endpoint', 'FIXTURE_CANDIDATE_SCOPE')):
+                value = self.fixture()
+                value[collection][side if collection == 'reference_manifest' else i][field] = replacement
+                with self.subTest(side=side, collection=collection, field=field), self.assertRaisesRegex(
+                        ValueError, '^' + code + '$'):
+                    joint._validate_fixture_public(value, 0)
+
+        # bool equals integer 1 in Python, but is not an epoch from the producer.
+        value = self.fixture()
+        value['bindings'][0]['epoch'] = value['reference_manifest']['source']['binding_epoch'] = 1
+        value['endpoint_candidates'][0]['epoch'] = True
+        with self.assertRaisesRegex(ValueError, '^FIXTURE_CANDIDATE_SCOPE$'):
+            joint._validate_fixture_public(value, 0)
 
     def test_endpoint_node_runtime_roles_and_grants_guards_remain(self) -> None:
         for i in range(2):
