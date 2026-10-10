@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -86,6 +85,7 @@ func TestG4CrashWindowProcessHelper(t *testing.T) {
 	switch mode {
 	case "outbox-before-http":
 		outbox := newMCPOutbox(cfg.OutboxPath)
+		defer outbox.close()
 		op, created, err := outbox.prepare(cfg.OutboxScope, cfg.OutboxKind, cfg.OutboxKey, cfg.OutboxInput)
 		if err != nil || !created {
 			t.Fatalf("prepare synthetic outbox: created=%t err=%v", created, err)
@@ -98,6 +98,18 @@ func TestG4CrashWindowProcessHelper(t *testing.T) {
 			t.Fatalf("unexpected pre-HTTP durable state: status=%s attempts=%d", op.Status, op.AttemptCount)
 		}
 		fmt.Printf("READY outbox %s %s\n", op.OperationID, op.InputDigest)
+		if err := g4WaitForLine(); err != nil {
+			t.Fatal(err)
+		}
+	case "outbox-retry-before-http":
+		outbox := newMCPOutbox(cfg.OutboxPath)
+		defer outbox.close()
+		op, created, err := outbox.prepare(cfg.OutboxScope, cfg.OutboxKind, cfg.OutboxKey, cfg.OutboxInput)
+		if err != nil || created || cfg.OperationID == "" || op.OperationID != cfg.OperationID ||
+			op.Status != mcpOutboxStatusUnknown || op.AttemptCount != 1 {
+			t.Fatalf("reopened outbox did not deduplicate the pre-send operation: created=%t status=%s attempts=%d", created, op.Status, op.AttemptCount)
+		}
+		fmt.Printf("READY outbox-retry %s %s %s %d\n", op.OperationID, op.InputDigest, op.Status, op.AttemptCount)
 		if err := g4WaitForLine(); err != nil {
 			t.Fatal(err)
 		}
@@ -333,13 +345,7 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 	t.Setenv("G4_CRASH_WINDOW_FIXTURE", "PUBLIC_SYNTHETIC_ONLY")
 	t.Run("sender_outbox_durable_before_http", func(t *testing.T) {
 		outboxPath := filepath.Join(t.TempDir(), "mcp-outbox.sqlite3")
-		var requests atomic.Int32
-		counter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			requests.Add(1)
-			w.WriteHeader(http.StatusNoContent)
-		}))
-		defer counter.Close()
-		scope := mcpOutboxScope{APIOrigin: counter.URL, Scope: "g4-synthetic-scope",
+		scope := mcpOutboxScope{APIOrigin: "https://g4.invalid", Scope: "g4-synthetic-scope",
 			Harness: "codex", NativeSessionID: "thread-g4-synthetic", NodeID: "node-g4-synthetic",
 			Workspace: "/PUBLIC_SYNTHETIC/g4", EndpointID: "ep-g4-synthetic", GroupID: "group-g4-synthetic"}
 		input := mcpOutboxInput{LinkID: "link-g4-synthetic", DataScope: "thread.message", Body: "PUBLIC_SYNTHETIC_G4_ASK"}
@@ -353,25 +359,43 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 		}
 		child.killAndWait(t)
 		outbox := newMCPOutbox(outboxPath)
+		t.Cleanup(func() { _ = outbox.close() })
 		op, err := outbox.load(scope, parts[2])
 		if err != nil {
 			t.Fatalf("reload durable outbox operation: %v", err)
 		}
-		if op.Status != mcpOutboxStatusUnknown || op.AttemptCount != 1 || op.InputDigest != parts[3] {
+		inputJSON, inputDigest, err := canonicalMCPOutboxInput(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if op.Status != mcpOutboxStatusUnknown || op.AttemptCount != 1 || op.InputDigest != parts[3] ||
+			op.InputDigest != inputDigest || op.InputJSON != inputJSON || op.IdempotencyKey != cfg.OutboxKey ||
+			op.APIOrigin != scope.APIOrigin || op.Scope != scope.Scope || op.Harness != scope.Harness ||
+			op.NativeSessionID != scope.NativeSessionID || op.NodeID != scope.NodeID ||
+			op.Workspace != scope.Workspace || op.EndpointID != scope.EndpointID || op.GroupID != scope.GroupID {
 			t.Fatalf("outbox recovery changed immutable attempt: status=%s attempts=%d digest_match=%t err=%v",
 				op.Status, op.AttemptCount, op.InputDigest == parts[3], err)
 		}
-		retry, created, err := outbox.prepare(scope, cfg.OutboxKind, cfg.OutboxKey, input)
-		if err != nil || created || retry.OperationID != op.OperationID || retry.InputDigest != op.InputDigest {
-			t.Fatalf("outbox retry changed operation identity: created=%t err=%v", created, err)
+		cfg.OperationID = op.OperationID
+		restarted := g4StartCrashChild(t, "outbox-retry-before-http", g4SaveConfig(t, cfg), nil)
+		retryLine := strings.Fields(restarted.ready(t, "READY outbox-retry "))
+		if len(retryLine) != 6 || retryLine[2] != op.OperationID || retryLine[3] != op.InputDigest ||
+			retryLine[4] != mcpOutboxStatusUnknown || retryLine[5] != "1" {
+			t.Fatalf("post-restart outbox retry changed identity or attempt: %v", retryLine)
 		}
-		if got := requests.Load(); got != 0 {
-			t.Fatalf("pre-HTTP crash unexpectedly contacted the synthetic Hub: requests=%d", got)
+		restarted.stop(t)
+		retry, created, err := outbox.prepare(scope, cfg.OutboxKind, cfg.OutboxKey, input)
+		if err != nil || created || retry.OperationID != op.OperationID || retry.InputDigest != op.InputDigest ||
+			retry.InputJSON != op.InputJSON || retry.IdempotencyKey != op.IdempotencyKey ||
+			retry.AttemptCount != op.AttemptCount || retry.Status != op.Status {
+			t.Fatalf("outbox retry changed operation identity: created=%t err=%v", created, err)
 		}
 	})
 
 	t.Run("hub_commit_before_http_ack_and_node_persist_before_receipt", func(t *testing.T) {
 		fixture := newMachineSealedReceiveFixtureWithActions(t, false, "ask", []string{"ask", "reply"})
+		sourceBindingBefore := g4ReadBindingSnapshot(t, fixture.store, fixture.manifest.Source.BindingID)
+		targetBindingBefore := g4ReadBindingSnapshot(t, fixture.store, fixture.manifest.Target.BindingID)
 		ask := fabric.NodeSealedLinkAskInput{LinkID: fixture.link.ID, MessageID: fixture.messageID,
 			RequestID: fixture.requestID, IdempotencyKey: "PUBLIC_SYNTHETIC_G4_ASK_KEY",
 			DataScope: fixture.dataScope, ExpiresAt: fixture.link.ExpiresAt, Ciphertext: fixture.ciphertext}
@@ -400,14 +424,17 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 		}
 		persisted, err := fixture.store.GetRelaySealedV1(fixture.messageID)
 		if err != nil || persisted.Route.RequestID != fixture.requestID || persisted.Route.ReplyTo != "" ||
-			persisted.Route.Kind != "ask" || persisted.PayloadMode != store.RelayPayloadModeSealedV1 {
+			persisted.Route.Kind != "ask" || persisted.PayloadMode != store.RelayPayloadModeSealedV1 ||
+			persisted.Security.MessageID != fixture.messageID || persisted.Security.ReceiverBindingID != targetBindingBefore.ID ||
+			persisted.Security.ReceiverBindingEpoch != targetBindingBefore.Epoch {
 			t.Fatalf("committed ASK route changed across Hub process death: %#v err=%v", persisted, err)
 		}
 		status, err := fixture.service.NodeSealedLinkRequestStatus(fixture.sourceToken, fixture.requestID)
 		if err != nil || status.MessageID != fixture.messageID || status.RequestID != fixture.requestID ||
-			status.State != store.FabricRequestOpen {
+			status.State != store.FabricRequestOpen || status.ReplyMessageID != "" {
 			t.Fatalf("committed ASK state/request changed: %#v err=%v", status, err)
 		}
+		g4AssertReceiptChain(t, fixture, "", persisted.Security.Digest)
 
 		hubConfig.GatePath = ""
 		hub = g4StartCrashChild(t, "hub-serve", g4SaveConfig(t, hubConfig), nil)
@@ -426,6 +453,14 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 			accepted.RequestID != fixture.requestID || accepted.State != string(store.FabricRequestOpen) {
 			t.Fatalf("retry did not preserve durable ASK identifiers/state: %#v", accepted)
 		}
+		afterRetry, err := fixture.store.GetRelaySealedV1(fixture.messageID)
+		if err != nil || afterRetry.Route != persisted.Route || afterRetry.Security != persisted.Security ||
+			!bytes.Equal(afterRetry.Ciphertext, persisted.Ciphertext) {
+			t.Fatalf("post-restart retry changed immutable message/security envelope: err=%v", err)
+		}
+		g4AssertReceiptChain(t, fixture, "", persisted.Security.Digest)
+		g4AssertBindingUnchanged(t, fixture.store, sourceBindingBefore)
+		g4AssertBindingUnchanged(t, fixture.store, targetBindingBefore)
 		hub.stop(t)
 
 		deliveryPath := filepath.Join(t.TempDir(), "claimed-delivery.json")
@@ -448,9 +483,13 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 		}
 		var delivery fabric.NodeSealedDelivery
 		if err := json.Unmarshal(deliveryJSON, &delivery); err != nil || delivery.MessageID != fixture.messageID ||
-			delivery.RequestID != fixture.requestID || delivery.BindingEpoch != fixture.manifest.Target.BindingEpoch {
+			delivery.RequestID != fixture.requestID || delivery.AttemptID == "" || delivery.Digest != persisted.Security.Digest ||
+			delivery.RecipientEndpointID != fixture.targetEndpoint || delivery.BindingID != targetBindingBefore.ID ||
+			delivery.BindingEpoch != targetBindingBefore.Epoch || delivery.Route.Kind != "ask" ||
+			delivery.Route.RequestID != fixture.requestID || delivery.Route.MessageID != fixture.messageID {
 			t.Fatalf("claim did not retain current ASK route/epoch: %#v err=%v", delivery, err)
 		}
+		g4AssertReceiptChain(t, fixture, "", persisted.Security.Digest)
 		wrongAck := fabric.NodeReceiptInput{AttemptID: delivery.AttemptID, MessageID: delivery.MessageID,
 			Digest: delivery.Digest, EndpointID: delivery.RecipientEndpointID, BindingID: delivery.BindingID,
 			BindingEpoch: delivery.BindingEpoch + 1, Layer: fabric.ReceiptNodeReceived}
@@ -482,6 +521,7 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 		if entry == nil || entry.NodeReceived || entry.RequestID != fixture.requestID || entry.BindingEpoch != delivery.BindingEpoch {
 			t.Fatalf("pre-receipt journal did not preserve exact route/epoch: %#v", entry)
 		}
+		g4AssertReceiptChain(t, fixture, "", delivery.Digest)
 
 		hubConfig.GatePath = ""
 		hub = g4StartCrashChild(t, "hub-serve", g4SaveConfig(t, hubConfig), nil)
@@ -506,13 +546,17 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 		entry = journal.entry(fixture.messageID)
 		if stored == nil || stored.MessageID != fixture.messageID || stored.State != nodeinbox.NODE_RECEIVED ||
 			entry == nil || !entry.NodeReceived || entry.RequestID != fixture.requestID ||
-			entry.AttemptID != delivery.AttemptID {
+			entry.AttemptID != delivery.AttemptID || entry.BindingEpoch != targetBindingBefore.Epoch {
 			t.Fatalf("Node restart did not deduplicate and finish receipt: inbox=%#v entry=%#v err=%v", stored, entry, err)
 		}
+		g4AssertReceiptChain(t, fixture, delivery.AttemptID, delivery.Digest)
 		requestState, err := fixture.service.NodeSealedLinkRequestStatus(fixture.targetToken, fixture.requestID)
-		if err != nil || requestState.MessageID != fixture.messageID || requestState.State != store.FabricRequestOpen {
+		if err != nil || requestState.MessageID != fixture.messageID || requestState.RequestID != fixture.requestID ||
+			requestState.State != store.FabricRequestOpen || requestState.ReplyMessageID != "" {
 			t.Fatalf("Node receipt changed ASK correlation/lifecycle: %#v err=%v", requestState, err)
 		}
+		g4AssertBindingUnchanged(t, fixture.store, sourceBindingBefore)
+		g4AssertBindingUnchanged(t, fixture.store, targetBindingBefore)
 		const replyMessageID = "msg_g4_synthetic_reply"
 		_ = enqueueMachineSealedReply(t, fixture, replyMessageID, "PUBLIC_SYNTHETIC_G4_REPLY")
 		reply, err := fixture.store.GetRelaySealedV1(replyMessageID)
@@ -521,6 +565,106 @@ func TestG4CrashWindowsAtDurableBoundaries(t *testing.T) {
 			t.Fatalf("synthetic reply lost immutable ASK correlation: %#v err=%v", reply, err)
 		}
 	})
+}
+
+type g4BindingSnapshot struct {
+	ID            string
+	EndpointID    string
+	NativeSession string
+	NodeID        string
+	Epoch         uint64
+	LeaseOwner    string
+	LeaseExpires  string
+	Status        string
+	Version       int64
+}
+
+func g4BindingSnapshotFor(binding *store.SessionBinding) g4BindingSnapshot {
+	return g4BindingSnapshot{ID: binding.ID, EndpointID: binding.EndpointID,
+		NativeSession: binding.NativeSessionID, NodeID: binding.NodeID, Epoch: binding.Epoch,
+		LeaseOwner: binding.LeaseOwner, LeaseExpires: binding.LeaseExpiresAt,
+		Status: binding.Status, Version: binding.Version}
+}
+
+func g4ReadBindingSnapshot(t *testing.T, state *store.Store, bindingID string) g4BindingSnapshot {
+	t.Helper()
+	binding, err := state.GetSessionBinding(bindingID)
+	if err != nil || binding == nil {
+		t.Fatalf("read G4 session binding %q: %v", bindingID, err)
+	}
+	return g4BindingSnapshotFor(binding)
+}
+
+func g4AssertBindingUnchanged(t *testing.T, state *store.Store, before g4BindingSnapshot) {
+	t.Helper()
+	after := g4ReadBindingSnapshot(t, state, before.ID)
+	if after != before {
+		t.Fatalf("G4 restart changed binding/lease fence: before=%#v after=%#v", before, after)
+	}
+}
+
+func g4AssertReceiptChain(t *testing.T, fixture *machineSealedReceiveFixture, nodeAttemptID, digest string) {
+	t.Helper()
+	messageID, requestID := fixture.messageID, fixture.requestID
+	state := fixture.store
+	receipts, err := state.ListRelayReceipts(messageID, 10)
+	if err != nil {
+		t.Fatalf("list G4 durable receipts: %v", err)
+	}
+	wantCount := 1
+	if nodeAttemptID != "" {
+		wantCount = 2
+	}
+	if len(receipts) != wantCount {
+		t.Fatalf("G4 receipt count=%d want=%d", len(receipts), wantCount)
+	}
+	acceptedCount, receivedCount := 0, 0
+	for _, receipt := range receipts {
+		switch receipt.Layer {
+		case store.RelayReceiptAccepted:
+			acceptedCount++
+			if receipt.MessageID != messageID || receipt.Digest != digest || receipt.TargetEndpointID != fixture.link.TargetEndpointID ||
+				receipt.BindingID != fixture.manifest.Target.BindingID || receipt.BindingEpoch != fixture.manifest.Target.BindingEpoch ||
+				receipt.AttemptID != "" || receipt.CreatedAt == "" {
+				t.Fatalf("G4 durable acceptance receipt lost exact message/binding identity: %#v", receipt)
+			}
+		case store.RelayReceiptNodeReceived:
+			receivedCount++
+			if nodeAttemptID == "" || receipt.MessageID != messageID || receipt.Digest != digest ||
+				receipt.TargetEndpointID != fixture.link.TargetEndpointID || receipt.BindingID != fixture.manifest.Target.BindingID ||
+				receipt.BindingEpoch != fixture.manifest.Target.BindingEpoch || receipt.AttemptID != nodeAttemptID || receipt.CreatedAt == "" {
+				t.Fatalf("G4 Node receipt lost exact attempt/message/binding identity: %#v", receipt)
+			}
+		default:
+			t.Fatalf("unexpected G4 receipt layer %q", receipt.Layer)
+		}
+	}
+	if acceptedCount != 1 || receivedCount != wantCount-1 {
+		t.Fatalf("G4 receipt layers accepted=%d node_received=%d want=%d/%d", acceptedCount,
+			receivedCount, 1, wantCount-1)
+	}
+	request, err := fixture.service.NodeSealedLinkRequestStatus(fixture.sourceToken, requestID)
+	if err != nil || request == nil || request.RequestID != requestID || request.MessageID != messageID ||
+		request.Digest != digest ||
+		request.SenderEndpointID != fixture.link.SourceEndpointID ||
+		request.SenderPrincipalID != fixture.link.SourcePrincipalID ||
+		request.SenderGroupID != fixture.link.SourceGroupID ||
+		request.SenderBindingID != fixture.manifest.Source.BindingID ||
+		request.SenderBindingEpoch != fixture.manifest.Source.BindingEpoch ||
+		request.ReceiverEndpointID != fixture.link.TargetEndpointID ||
+		request.ReceiverPrincipalID != fixture.link.TargetPrincipalID ||
+		request.ReceiverGroupID != fixture.link.TargetGroupID ||
+		request.ReceiverBindingID != fixture.manifest.Target.BindingID ||
+		request.ReceiverBindingEpoch != fixture.manifest.Target.BindingEpoch ||
+		request.VisibilityPolicyRef != fixture.dataScope ||
+		request.AuthorizationRef != "communication-link.v2:"+fixture.link.ID ||
+		request.ExpiresAt != fixture.link.ExpiresAt || request.State != store.FabricRequestOpen ||
+		request.ReplyMessageID != "" || request.LateResultMessageID != "" || request.CreatedAt == "" {
+		t.Fatalf("G4 request correlation/lease epoch changed: request=%#v err=%v", request, err)
+	}
+	if nodeAttemptID == "" {
+		return
+	}
 }
 
 type g4HTTPResult struct {

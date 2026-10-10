@@ -5,11 +5,14 @@ import (
 )
 
 func (c *Control) ClientPreviewCommunicationLinkReviewPolicy(ownerID, linkID string,
-	policy store.CommunicationLinkReviewPolicy) (*store.CommunicationLinkReviewPolicyPreview, error) {
+	policy store.CommunicationLinkReviewPolicy, ownerKeyID string) (*store.CommunicationLinkReviewPolicyPreview, error) {
 	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
 	}
-	return c.store.PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID, policy)
+	if ownerKeyID == "" {
+		return c.store.PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID, policy)
+	}
+	return c.store.PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID, policy, ownerKeyID)
 }
 
 func (c *Control) ClientRecordCommunicationLinkReviewPolicy(ownerID, linkID, side,

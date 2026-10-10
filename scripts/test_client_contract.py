@@ -102,6 +102,22 @@ class ContractBundleTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "review policy evidence"):
                     contract.read_contract(root)
 
+    def test_review_policy_signer_preview_rejects_authority_shape_drift(self):
+        for old, new in (
+                ("owner_key_id: {type: string, minLength: 1, maxLength: 256}", "owner_key_id: {type: string}"),
+                ("state: {const: ACTIVE}", "state: {type: string}"),
+                ("version: {type: integer, minimum: 1}", "version: {type: integer, minimum: 0}"),
+                ("required: [owner_id, key_id, public_identity, state, version]", "required: [owner_id, key_id, state, version]"),
+                ("signing_owner_key: {$ref: '#/components/schemas/LinkReviewPolicySigningOwnerKey'}", "signing_owner_key: {type: object}")):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self.copied_contract(directory)
+                path = root / "docs/client-hub-v1.openapi.yaml"
+                text = path.read_text()
+                self.assertIn(old, text)
+                path.write_text(text.replace(old, new))
+                with self.assertRaisesRegex(ValueError, "review policy (signer|evidence)"):
+                    contract.read_contract(root)
+
     def test_review_policy_client_vector_rejects_mutations(self):
         name = "cicada-go/internal/e2ee/testdata/link-review-policy-client-evidence-v1.json"
         self.assertIn(name, self.files)

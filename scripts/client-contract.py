@@ -113,7 +113,9 @@ def check_link_review_policy_contract(openapi, wire):
         raise ValueError("review policy current/next version semantics drift")
 
     shapes = {
-        "LinkReviewPolicyPreviewResult": ("link_id side owner_id contract_digest link_version expected_policy_version policy_version policy_digest policy maximum_proof_expires_at verified_at reviewer_qualifications", ""),
+        "LinkReviewPolicyPreviewRequest": ("link_id policy owner_key_id", "owner_key_id"),
+        "LinkReviewPolicyPreviewResult": ("link_id side owner_id contract_digest link_version expected_policy_version policy_version policy_digest policy maximum_proof_expires_at verified_at reviewer_qualifications signing_owner_key", "signing_owner_key"),
+        "LinkReviewPolicySigningOwnerKey": ("owner_id key_id public_identity state version", ""),
         "LinkReviewerQualification": ("endpoint_id group_id membership_revision join_revision group_version binding_id binding_epoch lease_expires_at action", ""),
         "LinkReviewPolicyStatusResult": ("link_id link_version contract_digest policy_version policy_digest policy current accepted_sides verified_at owner_approvals expires_at", "expires_at"),
         "LinkReviewPolicyOwnerApproval": ("side owner_id current_status evidence", "evidence"),
@@ -128,6 +130,15 @@ def check_link_review_policy_contract(openapi, wire):
     approval, _, _ = node_schema(openapi, "LinkReviewPolicyOwnerApproval")
     evidence, _, _ = node_schema(openapi, "LinkReviewPolicyOwnerEvidence")
     qualification, _, _ = node_schema(openapi, "LinkReviewerQualification")
+    request, _, _ = node_schema(openapi, "LinkReviewPolicyPreviewRequest")
+    signer, _, _ = node_schema(openapi, "LinkReviewPolicySigningOwnerKey")
+    if ("owner_key_id: {type: string, minLength: 1, maxLength: 256}" not in request
+            or "#/components/schemas/LinkReviewPolicySigningOwnerKey" not in preview
+            or "state: {const: ACTIVE}" not in signer
+            or "version: {type: integer, minimum: 1}" not in signer
+            or "#/components/schemas/PublicIdentity" not in signer
+            or "explicit own-side policy signer" not in wire.lower()):
+        raise ValueError("review policy signer bounds/state/reference drift")
     if ("maxItems: 8" not in preview or "maxItems: 2" not in status
             or "#/components/schemas/LinkReviewerQualification" not in preview
             or "#/components/schemas/LinkReviewPolicyOwnerApproval" not in status

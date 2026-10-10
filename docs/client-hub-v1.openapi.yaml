@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Cicada Android Client ↔ Hub/Control ingress
   version: 0.1.0-partial
-  x-contract-revision: client-hub-v1.6.4
+  x-contract-revision: client-hub-v1.6.5
   x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
   description: >-
     Implemented Hub HTTP routes only. This is a partial server contract, not an
@@ -379,7 +379,7 @@ components:
         - external_rpc_operations
       properties:
         contract: {const: android-hub-v1-draft}
-        contract_revision: {const: client-hub-v1.6.4}
+        contract_revision: {const: client-hub-v1.6.5}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -859,7 +859,7 @@ components:
       properties:
         owner_id: {type: string, minLength: 1}
         role: {type: string, enum: [manager, external]}
-        contract_revision: {const: client-hub-v1.6.4}
+        contract_revision: {const: client-hub-v1.6.5}
         catalog_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -1001,6 +1001,12 @@ components:
       properties:
         link_id: {type: string, minLength: 1}
         policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        owner_key_id: {type: string, minLength: 1, maxLength: 256}
+      description: >-
+        New clients must provide their independently pinned Owner key ID. Omission
+        is legacy preview only and returns no signing_owner_key. Explicit null,
+        empty, unregistered, revoked or other-Owner keys are rejected. This is
+        a current public evidence snapshot, never signing authorization.
     LinkReviewPolicyGrantRequest:
       type: object
       additionalProperties: false
@@ -1037,6 +1043,7 @@ components:
         policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
         maximum_proof_expires_at: {type: string, format: date-time}
         verified_at: {type: string, format: date-time}
+        signing_owner_key: {$ref: '#/components/schemas/LinkReviewPolicySigningOwnerKey'}
         reviewer_qualifications:
           type: array
           maxItems: 8
@@ -1045,7 +1052,25 @@ components:
         One canonical UTC RFC3339Nano snapshot. Qualifications exactly match the
         normalized ordered requested reviewers; NONE returns an empty array.
         Each row is emitted after the current binding and real link.review Guard
-        succeed. Submission rechecks authority; a lease is not a durable grant.
+        succeed. signing_owner_key is present only for an explicit owner_key_id
+        and is the current registered ACTIVE key for this authenticated Owner's
+        Link side, independent of any Link KEY grant. Independently compare the
+        complete public identity with trusted local pins before signing.
+        Submission rechecks ACTIVE/CAS/no-inflight; preview is not authorization.
+    LinkReviewPolicySigningOwnerKey:
+      type: object
+      additionalProperties: false
+      required: [owner_id, key_id, public_identity, state, version]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        state: {const: ACTIVE}
+        version: {type: integer, minimum: 1}
+      description: >-
+        Exact selected registered Owner signing key read in the same current
+        Link/version/expiry preview transaction. Discovery evidence requires
+        an independent full public-identity pin; it conveys no approval.
     LinkReviewerQualification:
       type: object
       additionalProperties: false

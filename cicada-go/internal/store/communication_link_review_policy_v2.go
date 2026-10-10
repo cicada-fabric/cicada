@@ -94,7 +94,19 @@ type CommunicationLinkReviewPolicyStatus struct {
 	ExpiresAt      string                                 `json:"expires_at,omitempty"`
 }
 
+// CommunicationLinkReviewSigningOwnerKey is a current public signer snapshot,
+// not signing authority. Clients must independently pin the complete identity;
+// grant submission rechecks the registered key and the policy scope.
+type CommunicationLinkReviewSigningOwnerKey struct {
+	OwnerID string              `json:"owner_id"`
+	KeyID   string              `json:"key_id"`
+	Public  e2ee.PublicIdentity `json:"public_identity"`
+	State   string              `json:"state"`
+	Version int64               `json:"version"`
+}
+
 type CommunicationLinkReviewPolicyPreview struct {
+	SigningOwnerKey        *CommunicationLinkReviewSigningOwnerKey  `json:"signing_owner_key,omitempty"`
 	VerifiedAt             string                                   `json:"verified_at"`
 	ReviewerQualifications []CommunicationLinkReviewerQualification `json:"reviewer_qualifications"`
 	LinkID                 string                                   `json:"link_id"`
@@ -299,10 +311,10 @@ func validateCommunicationLinkReviewersTx(tx *sql.Tx, link *CommunicationLink,
 // queue entries exist, successful preview records their required terminal
 // expiry cleanup before permitting a new version.
 func (s *Store) PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID string,
-	candidate CommunicationLinkReviewPolicy) (*CommunicationLinkReviewPolicyPreview, error) {
+	candidate CommunicationLinkReviewPolicy, signingKeyID ...string) (*CommunicationLinkReviewPolicyPreview, error) {
 	linkID, ownerID = strings.TrimSpace(linkID), strings.TrimSpace(ownerID)
 	policy, _, digest, err := normalizeCommunicationLinkReviewPolicy(candidate)
-	if err != nil || linkID == "" || validateOwnerApprovalID(ownerID) != nil {
+	if err != nil || linkID == "" || validateOwnerApprovalID(ownerID) != nil || len(signingKeyID) > 1 {
 		return nil, ErrCommunicationLinkReviewPolicy
 	}
 	s.mu.Lock()
@@ -339,7 +351,15 @@ func (s *Store) PreviewCommunicationLinkReviewPolicyForOwner(linkID, ownerID str
 	if err != nil || version == int64(^uint64(0)>>1) {
 		return nil, ErrCommunicationLinkReviewConflict
 	}
-	preview := &CommunicationLinkReviewPolicyPreview{VerifiedAt: now.Format(time.RFC3339Nano), ReviewerQualifications: qualifications, LinkID: link.ID, Side: side, OwnerID: ownerID,
+	var signer *CommunicationLinkReviewSigningOwnerKey
+	if len(signingKeyID) == 1 {
+		key, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id,key_id,public_identity_json,state,version,created_at,updated_at,revoked_at FROM owner_approval_keys_v2 WHERE owner_id=? AND key_id=?`, ownerID, signingKeyID[0]))
+		if err != nil || key == nil || key.State != OwnerApprovalKeyActive || key.Version <= 0 {
+			return nil, ErrOwnerApprovalKeyConflict
+		}
+		signer = &CommunicationLinkReviewSigningOwnerKey{OwnerID: key.OwnerID, KeyID: key.KeyID, Public: key.Public, State: key.State, Version: key.Version}
+	}
+	preview := &CommunicationLinkReviewPolicyPreview{SigningOwnerKey: signer, VerifiedAt: now.Format(time.RFC3339Nano), ReviewerQualifications: qualifications, LinkID: link.ID, Side: side, OwnerID: ownerID,
 		ContractDigest: link.ContractDigest, LinkVersion: link.Version,
 		ExpectedPolicyVersion: version, PolicyVersion: version + 1,
 		PolicyDigest: digest, Policy: policy, MaximumProofExpiresAt: link.ExpiresAt}

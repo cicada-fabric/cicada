@@ -206,7 +206,7 @@ func assertOpenAPIOperationsMatchCatalog(t *testing.T, definition Definition) {
 
 func TestClientLinkProofCatalogPreservesOperationsAndOwnerBoundaries(t *testing.T) {
 	definition := CatalogDefinition()
-	if definition.ContractRevision != "client-hub-v1.6.4" || definition.WireVersion != 1 || len(definition.Operations) != 55 {
+	if definition.ContractRevision != "client-hub-v1.6.5" || definition.WireVersion != 1 || len(definition.Operations) != 55 {
 		t.Fatal("Link evidence changed framing or operation inventory")
 	}
 	schemas := map[string][2]string{

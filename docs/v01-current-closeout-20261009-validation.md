@@ -9,6 +9,42 @@ or any product policy.
 
 ## Current evidence — 2026-10-10 — v0.1 PARTIAL
 
+The **client-hub-v1.6.5** source contract adds own-side policy signer preview,
+preserving wire 1 / catalog 55 / schema 59 / software 0.0.2. QA ran on the
+recorded dirty259 candidate with 14 frozen preview paths. [Signer validation](link-policy-signer-preview-validation.md) records
+policy-qa-a1 normal 71 test PASS, catalog 4 PASS, compatibility 2 PASS and vet 0;
+its two 180s broad-race timeouts remain FAIL. The separate policy-qa-a2 narrow
+race passed 34 tests / two packages, zero failures/skips, exit 0 in 225.289919s.
+Clean image/package, disposable-interoperability validation and online delivery
+were not yet built or run for this contract at this checkpoint. These finite fixture timings are not a new
+performance acceptance scope.
+
+Joint7's [exact-owned closeout](../.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/ROOT-JOINT7-CLOSEOUT.NONAUTH.json)
+(SHA-256 `80dd17c7af90b0b5fd35ded5f6f40331c39f6a1bbc53a4a5eb5d562e6787c6e2`)
+retains the failed overall run: four KEY cases PASS; fresh NONE response-loss
+UNKNOWN/PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), three other NONE cases NOT_RUN,
+zero model calls. Client incorrectly reused KEY-grant lifecycle for NONE;
+Core's signer belongs in its independent ACTIVE Owner key registry. v1.6.5
+returns the authenticated own-side exact complete public identity/state/version
+within preview, requiring independent pins; grant rechecks remain authoritative.
+Client clean candidate `e3d26f8103ae2d6dcd1210c792f02b4311617a57` has policy
+JVM 30 PASS, still v1.6.4 pinned/policy CLOSED, without new APK/online validation.
+Next is a clean checkpoint, build/package/disposable interop and a newly frozen
+Android joint run; historical e2a image and packet attribution do not change.
+
+The separate G4/G5 [qa-a5 receipt](../.cicada-data/v01-next-gates-20261010/qa-a5/ROOT-RUN.NONAUTH.json)
+(SHA-256 `e390f3fb2baa45daa851eba15b058150eadd5bfc907c47d6696c5b47f8fec3af`)
+passed 40 tests / two packages in each normal and race phase, zero failures/skips,
+243.629188s total, on the explicit test overlay. Real Native G4 A3's
+[receipt](../.cicada-data/v01-next-gates-20261010/native-g4-preparation/ROOT-RUNTIME-A3.NONAUTH.json)
+(SHA-256 `f03796a1c53ca2ae74690ecaf189a4049bf7a35d2401e01e08bc1d0d09d37dd6`)
+passed queue/crash uncertainty and reinjection refusal in 20.146111s using
+official CLI 0.162.1, an independent historical B copy and network-none. Model
+calls/new turns were zero; provider count is not instrumented. This does not
+prove model consumption, busy delivery or foreground protection. Earlier failed
+attempts remain preserved. Generic V67 same-node delivery is UNSUPPORTED;
+physical stop verification, real-device execution and public HTTPS remain NOT_RUN.
+
 Development software is **0.0.2**. The latest full Go batch used clean Core
 source `308d7607cadc6cb83fe5aaa923adaf643a0aa32d` with the exact test-only
 overlay now applied at
@@ -75,7 +111,7 @@ scratch absence, stream EOF and unchanged source. The postcheck did not report
 an exact full resident projection, and the physical-resource verifier was
 `NOT_AVAILABLE_NOT_TESTED`; this is not physical stop acceptance.
 
-The latest joint3 attempt remains **FAIL before selector execution**. The
+The historical joint3 attempt remains **FAIL before selector execution**. The
 [Client redacted result](</gpu1-share/data/cicada-client/v164-joint3-root-693e939-308d-20261010/result.redacted.json>)
 (SHA-256 `1ae5b9a211437d5b43d6b9745f52b30c4ee67a3b69fe02ec2ab90c4fd8a1fc4a`)
 records `ValueError`, case 0 `PREPARING/UNKNOWN`, and the other seven cases
@@ -90,12 +126,13 @@ diagnostic checkpoint, source was `950e4f5ef52c981479cefa94c44adddc6726d040`;
 its seven-check offline diagnostic
 (`/gpu1-share/data/cicada-client/joint3-valueerror-diagnostic-20261010/CLIENT-DIAGNOSTIC-CHECKPOINT.NONAUTH.json`,
 SHA-256 `aa489acd12e64b47df400228d1001d14e2f003e2ff31ad66ca49e25d603db8da`)
-passed. Follow-up Client work and a fresh joint run remain pending; this offline
-correction is not Android evidence.
+passed. That offline correction is not Android evidence; subsequent joint7
+results are recorded above.
 
 The earlier clean-e2a default aggregate remains **INCOMPLETE** and keeps its
-original scope. Physical StopVerifier, G4/G5/V67, real-device execution and
-public HTTPS remain **NOT_RUN**. Overall first-release acceptance remains
+original scope. Current G4/G5 scopes are recorded above, not full-domain
+acceptance. Generic V67 same-node remains **UNSUPPORTED**; physical StopVerifier,
+real-device execution and public HTTPS remain **NOT_RUN**. Overall acceptance remains
 **PARTIAL**.
 
 ## Historical snapshot — 2026-10-10 before final Native/Worker runs
@@ -472,10 +509,10 @@ They are not solely clean631 or the Native-built artifact above.
 | Actual Hub image LICENSE inspection | Standard and PQ image builds exited 0; create-only inspection confirmed exact root LICENSE, nonroot images and 11 Go third-party module notices each, with PQ OpenSSL notices retained. Images were not started. | [Image inspection](../.cicada-data/apache-license-packaging-20261010a/actual-artifact-build/IMAGE-LICENSE-RESULT.NONAUTH.json), SHA-256 `10372a9516c8262acb32a62ac7a5419f58fcf2e5dac63a17a047d4182064ad8d`; [Hub operation](../.cicada-data/apache-license-packaging-20261010a/actual-artifact-build/HUB-RESULT.NONAUTH.json), SHA-256 `f9216e5a6accbbb98b1115f3f944b01bc84fb3558ca45ef2cafc41474de623db`, 160.707s. Standard image `sha256:0787fe846aaf48bde340ebc9fdf1e9373fa294cee36c8356db66576a3d79bd7c` / 14,345,904 bytes; PQ `sha256:b4dafdcad80ab9f5b86f17b7e4b9a9d0914df4c6bd0848a444d570aa91a96866` / 14,644,505 bytes. Exact inspection containers absent; six residents unchanged. Not a Hub runtime or capacity test. |
 | Current clean631 build / equality | `PASS_BUILD_PROOFS`: 457 product and 220 helper compiled-input rows; fresh product binary SHA-256 `3baf7bfbd217ac3d24be0fb3f41dfe5797ffc17a38f1f6c2b79dbe3b1209efae`, helper `6fb8777d7a68d2e38fd454e405123af08931ed2ee256ebdcb7629290e0c65b58`; PQ Hub image `sha256:c87cf47a3ed1b48832a3ec638d98f2f3359d1e6cd2dd06b51cf80de3989e066b` (about 14.6 MB). | [Build/equality report](../.cicada-data/native-observer-wiring-20261007/current-peer-refresh-phasecap20261009b/BUILD-PROOFS-RETRY.NONAUTH.json), SHA-256 `60b0f0631cacc7eaaa5dd0c0cb9ff1e6af5420d161cbc6314b29aa53bf51d02b`; the original failed Hub build remains separate. Current Agent wiring manifest has 37 pinned inputs, SHA-256 `a87ab5379ee06c8ede85c1a62aec60049671346b8bc543db17c525c131918e91`. Image size is not capacity evidence. |
 | Current clean631 keyless startup | `PASS_STARTUP_ONLY`, Root wall 31.269 seconds / inner startup 26.013 seconds: actual Hub, two Agents, CLI/MCP, mapper and queue-control denial checks; no native turns, credential callbacks or origin/provider dispatch. | [Main result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-phasecap20261009b/peer-startup-zero-phasecap20261009b001/result.json), SHA-256 `34c11c67bdef311b5328ddca1aae88505d2442174d8a3f6d303a2d8eb38bf6d1`; startup receipt `7c7376135916682c523af34e689cc65272f6ccd8366ba5eb771f41164e4fac07`; [Root postcheck](../.cicada-data/native-observer-wiring-20261007/current-peer-refresh-phasecap20261009b/native-rootops-phasecap20261009b001/CURRENT-KEYLESS-STARTUP-POSTCHECK.NONAUTH.json), SHA-256 `2c3b3b53f14afd544a949e86570c15dae808be71f8f0aa06d35ede17d19e9b8b`. This is preparation, not queue consumption or Ask/Reply. |
-| Current G4 official CLI 0.162.1 queue-crash gate | `PASS_INJECTED_BEFORE_LEDGER_REAL_QUEUE_ONLY`: one official queue submission over an independent saved B fixture, test exit 0, zero new turns/provider egress. Saved B `01a12336-b99e-7350-821a-3e99742f58e6` had two turns / ten items; uncertainty and reinjection refusal remain the tested boundary. | [Actual receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/result.NONAUTH.json), SHA-256 `51cadc91c894e4feff454a3552035943677d2a5671632e8c6401029cc473b291`; [Root postcheck](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/ROOT-POSTCHECK.NONAUTH.json), SHA-256 `2e7fac77e020c32ebfc65cac18b0ae7aece6ec4d9243a80c1bc41c2d6090a275`, confirms four exact CID/name selectors absent, fixture deleted and six residents unchanged. Test source `b28cae8d017d9ec148223c603a85d5934e4800e50f4543414368d533d7cbbb17`. Prior [CLI 0.162 evidence](../.cicada-data/native-observer-wiring-20261007/g4-cli162-runtime-20261009a/result.NONAUTH.json), SHA-256 `4e3c6e11a7e70f595b8f2d8693e1b907861306a79d297d9a07a764829a4bb6d3`, remains separate. Not full G4 or model consumption. |
+| Historical G4 official CLI 0.162.1 queue-crash gate | `PASS_INJECTED_BEFORE_LEDGER_REAL_QUEUE_ONLY`: one official queue submission over an independent saved B fixture, test exit 0, zero new turns/provider egress. Saved B `01a12336-b99e-7350-821a-3e99742f58e6` had two turns / ten items; uncertainty and reinjection refusal remain the tested boundary. | [Actual receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/result.NONAUTH.json), SHA-256 `51cadc91c894e4feff454a3552035943677d2a5671632e8c6401029cc473b291`; [Root postcheck](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/ROOT-POSTCHECK.NONAUTH.json), SHA-256 `2e7fac77e020c32ebfc65cac18b0ae7aece6ec4d9243a80c1bc41c2d6090a275`, confirms four exact CID/name selectors absent, fixture deleted and six residents unchanged. Test source `b28cae8d017d9ec148223c603a85d5934e4800e50f4543414368d533d7cbbb17`. Prior [CLI 0.162 evidence](../.cicada-data/native-observer-wiring-20261007/g4-cli162-runtime-20261009a/result.NONAUTH.json), SHA-256 `4e3c6e11a7e70f595b8f2d8693e1b907861306a79d297d9a07a764829a4bb6d3`, remains separate. Not full G4 or model consumption. |
 | G4 production component process windows | Actual helper/process tests cover outbox pre-send, Fabric HTTP post-commit/pre-ACK kill/restart, and Node claim/inbox+journal pre-receipt kill/reaccept dedup. Wrong epoch/digest ACKs are rejected; Ask/Reply IDs persist. Normal and race each passed 1 top-level / 2 subtests, 0 failures/skips; total 115.230s. | [Actual receipt](../.cicada-data/native-observer-wiring-20261007/g4-process-boundaries-20261009f/result.NONAUTH.json), SHA-256 `6cd8d85113fa3d896ff5e89da4544899127bcf75a15c4569bee78eb07ce721c3`; test SHA-256 `ca1a572f4410cfed0a8281025e7a82836706a636df8ff1183304d1ae29c06b23`, dirty631 plus that test. Not a full MCP daemon or Runtime/model test; credential reads 0, owned container absent. Earlier a–e format/cache/compile/noexec/fixture-auth failures remain retained. |
 | G5 retained HTTP / live-U boundaries | HTTP privacy and Monitor approval-denial normal/race gates passed; real unjoined zero-turn U was hidden by production Directory in the separate CLI **0.161** fixture. | [HTTP source/receipts](g5-http-privacy-validation.md) and [Monitor/live-U source/receipts](g5-native-monitor-boundary-validation.md). Current test hashes remain `de31d376…612` and `ce932ff7…33a`. U is not a 0.162/context/recovery result; its provider count is `NOT_INSTRUMENTED`. These scoped results are not full G5. |
-| Current CLI 0.162.1 live-U Directory gate | `PASS_LIVE_ZERO_TURN_U_DIRECTORY_ONLY`: real non-ephemeral U `01a12333-bdb4-7fa0-b821-6dda6b264c04` was loaded before/after, hidden from Directory, then unsubscribe was confirmed; zero turn starts. | [Actual receipt](../.cicada-data/native-observer-wiring-20261007/g5-native-current-20261010a/output-01621-001/result.NONAUTH.json), SHA-256 `af4c8293c3d5a07e644af9b6fce2cd4ae830717e3c4c6ab49511fd135922afdf`; [host result](../.cicada-data/native-observer-wiring-20261007/g5-native-current-20261010a/output-01621-001/host-result.NONAUTH.json), SHA-256 `c4adb828f3af2e4f5694aa33fad802e2e3916e776b35698cb9b123eb91a9b012`, confirms cleanup and six residents unchanged. Empty U durable metadata was not materialized; context is `NOT_PROVEN`. This does not close all G5 or replace historical 0.161 evidence. |
+| Retained CLI 0.162.1 live-U Directory gate | `PASS_LIVE_ZERO_TURN_U_DIRECTORY_ONLY`: real non-ephemeral U `01a12333-bdb4-7fa0-b821-6dda6b264c04` was loaded before/after, hidden from Directory, then unsubscribe was confirmed; zero turn starts. | [Actual receipt](../.cicada-data/native-observer-wiring-20261007/g5-native-current-20261010a/output-01621-001/result.NONAUTH.json), SHA-256 `af4c8293c3d5a07e644af9b6fce2cd4ae830717e3c4c6ab49511fd135922afdf`; [host result](../.cicada-data/native-observer-wiring-20261007/g5-native-current-20261010a/output-01621-001/host-result.NONAUTH.json), SHA-256 `c4adb828f3af2e4f5694aa33fad802e2e3916e776b35698cb9b123eb91a9b012`, confirms cleanup and six residents unchanged. Empty U durable metadata was not materialized; context is `NOT_PROVEN`. This does not close all G5 or replace historical 0.161 evidence. |
 | Default Go suite | `PASS_WITH_OPTIONAL_SKIPS`: 30 packages; 1,522 top-level pass events and 1,408 subtest pass events; 22 explicit skips; zero failures. Build, default tests, `go vet ./...`, and read-only `gofmt -l` passed. | Final receipt `.cicada-data/coherent-full-go-capacity-20261009a/runs/dabce1740f91-20261009T182113Z-1132233/result.NONAUTH.json`, SHA-256 `42cf1912a7a2e7f083288efbedf66315ca0093eaf7f08c6bc320f930716b01b5`. The runner used `umask 0022` only for the Go test subprocess so public-mode fixture tests retain their intended modes; the earlier same-source harness failure is preserved. The 22 skips remain skips, including Native and Docker acceptance tests. |
 | Shipping package fixture | `PASS_SCOPED_DISTRIBUTION_AND_POSTCHECK`: `TestPQDistributionActualHubNode` plus four subtests. | Root postcheck `.cicada-data/pqtls-package-gate-phasec-20261009a/ROOT-POSTCHECK.NONAUTH.json`, file SHA-256 `07a483ed14e0a6d6580ed2311f92c9a0cdee43af259c8e329cd09c3fb7ccaa1a`, references run-result SHA-256 `80137103d3fbca556b491f2ec35a61e0726dd1f9b5b1046afe12ac4a6f6d74ea`. This is a bounded package/distribution test, not full Native, physical-device, or public HTTPS acceptance. |
 | Relay Ask admission / schema v59 | Scoped admission-count index and schema-59 benchmark evidence; focused changed-logic race passed 8 top-level / 10 subtests. The prior failure/timeout and correction attempts keep their original attribution. | [Detailed record](relay-admission-performance-validation.md). This is a capacity/query result, not a full Go or Native gate. |

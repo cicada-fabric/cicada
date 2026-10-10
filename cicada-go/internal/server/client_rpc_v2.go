@@ -278,13 +278,18 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 			input.LinkID, input.Side, input.OwnerKeyID, input.SignedProof)
 	case "link.review_policy_preview":
 		var input struct {
-			LinkID string                              `json:"link_id"`
-			Policy store.CommunicationLinkReviewPolicy `json:"policy"`
+			LinkID     string                              `json:"link_id"`
+			Policy     store.CommunicationLinkReviewPolicy `json:"policy"`
+			OwnerKeyID json.RawMessage                     `json:"owner_key_id"`
 		}
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil || input.LinkID == "" {
 			return nil, errors.New("invalid Communication Link review-policy preview")
 		}
-		return h.control.ClientPreviewCommunicationLinkReviewPolicy(ownerID, input.LinkID, input.Policy)
+		var ownerKeyID string
+		if len(input.OwnerKeyID) != 0 && (json.Unmarshal(input.OwnerKeyID, &ownerKeyID) != nil || ownerKeyID == "" || len(ownerKeyID) > 256) {
+			return nil, errors.New("invalid Communication Link review-policy signing key")
+		}
+		return h.control.ClientPreviewCommunicationLinkReviewPolicy(ownerID, input.LinkID, input.Policy, ownerKeyID)
 	case "link.review_policy_grant":
 		var input struct {
 			LinkID                string                              `json:"link_id"`

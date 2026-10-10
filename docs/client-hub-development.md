@@ -1,10 +1,32 @@
 # Client / Hub 联合开发与验收
 
+Current source contract candidate is `client-hub-v1.6.5`: the existing encrypted
+policy preview accepts explicit `owner_key_id` and returns an own-side current
+signer snapshot. Wire 1, catalog 55, Hub schema 59 and software 0.0.2 remain
+unchanged. See [signer preview validation](link-policy-signer-preview-validation.md).
+The v1.6.4 images, bundles and results below retain their original attribution.
+
 ## Current Core/Hub validation index — v0.1 PARTIAL
 
-The [2026-10-09 Core closeout](v01-current-closeout-20261009-validation.md) is the current Core evidence index. This checkpoint changes no `CICADA_CLIENT` source, APK, contract, or Client runtime pin; Client results below retain their recorded artifact attribution.
+The [Core closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+is the current evidence index. v1.6.5 selected normal checks passed 71 tests,
+catalog 4, compatibility 2 and vet; narrow race passed 34 tests with zero
+failures/skips. The earlier broad race timeout remains FAIL. QA ran on recorded dirty259 with 14 frozen preview paths. This v1.6.5 source
+contract has no clean image/package or online delivery built at this checkpoint;
+these test results imply no new image.
 
-## Current Client delivery / preparation — 2026-10-10
+Joint7 on the historical v1.6.4 delivery passed four KEY cases. Fresh NONE
+response-loss stopped at PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), with that
+case UNKNOWN and the other three NONE cases NOT_RUN. Client wrongly required
+KEY-grant lifecycle evidence for NONE; Core requires its separately registered
+ACTIVE Owner signer. v1.6.5 supplies only the authenticated own-side public
+signer snapshot and does not authorize signing. Client candidate clean
+`e3d26f8103ae2d6dcd1210c792f02b4311617a57` has 30 policy JVM checks PASS,
+while its v1.6.4 pin/policy CLOSED remain; no new APK or online joint run exists.
+Next: clean Core checkpoint → build/package/disposable interop → newly frozen
+Android joint validation. The original APK/image results keep their attribution.
+
+## Historical Client delivery / preparation — 2026-10-10
 
 Clean Core e2a1908 delivered Hub image 532dc1cc with contract v1.6.4, wire 1 and
 catalog 55. Client commit 43738f4 passed offline preparation; all eight Android

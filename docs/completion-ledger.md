@@ -3,17 +3,31 @@
 ## Current closeout index — v0.1 PARTIAL
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. Current software is **0.0.2**. The clean
-308d full Go run with the exact test-only overlay passed 2,981 tests with 23
-skips across 30 packages; the earlier clean-e2a aggregate remains INCOMPLETE
-and is not reclassified. Native `shipping0002e` passed scoped G2 and encrypted
-G3 assertions, but its original result remains FAIL after cleanup inspection;
-later exact-owned cleanup is recorded separately. The shipping `a4` ordinary
-Worker scope passed, without physical-resource stop verification. Joint3 failed
-before Android selectors with `ValueError`; model calls were zero, and the
-current Client offline diagnostic does not establish Android acceptance.
-Physical StopVerifier, G4/G5/V67, real-device and public-HTTPS gates remain
-NOT_RUN. Overall first-release acceptance remains **PARTIAL**.
+as the single current evidence index. Development software is **0.0.2**, with the **client-hub-v1.6.5** signer-preview
+source contract. QA ran on recorded dirty259 with 14 frozen preview paths; clean
+image/package and online delivery were not yet built at this checkpoint. Policy QA
+passed normal 71 tests, catalog 4, compatibility 2 and vet; narrow race passed
+34 tests, while broad race's two 180s package timeouts remain FAIL. See
+[signer validation](link-policy-signer-preview-validation.md) for exact scope.
+G4/G5 qa-a5 passed 40 tests / two packages per normal and race phase, with zero
+skips/failures. Real G4 A3 passed the official 0.162.1 queue/crash gate in
+20.146s with zero model calls/new turns, without proving model consumption.
+
+Joint7 passed four KEY cases; fresh NONE response-loss remained UNKNOWN at
+PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), and three NONE cases were NOT_RUN.
+The Client's KEY-lifecycle dependency caused fresh NONE rejection; the new
+preview reads only the authenticated own-side registered ACTIVE signer and
+requires an independent complete-identity pin. Client clean e3d26f8 has 30 policy
+JVM checks PASS but remains v1.6.4 pinned/policy CLOSED, with no new APK/online
+acceptance. The clean308d full-Go test overlay and shipping0002e scoped G2/G3
+assertions keep their original source; the latter's overall cleanup FAIL is not
+rewritten. Shipping a4 remains ordinary Worker scope PASS only.
+
+Next: clean checkpoint → build/package/disposable interop → newly frozen Android
+joint run. Generic V67 same-node is UNSUPPORTED; physical StopVerifier,
+real-device and public HTTPS are NOT_RUN. The earlier clean-e2a aggregate remains
+INCOMPLETE. Overall first-release acceptance remains **PARTIAL**; main/0.1.0
+requires the user's actual acceptance and separate authorization.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 
