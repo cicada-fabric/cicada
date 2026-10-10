@@ -37,7 +37,7 @@ class LinkReviewPolicyEvidenceV164Test {
         ).ownerApprovals.first { it.side == "SOURCE" }.ownerLifecycle!!
     }
     private val authority by lazy {
-        val preview = vector.getAsJsonObject("preview")
+        val preview = signingPreviewJson()
         val reviewers = preview.getAsJsonObject("policy").getAsJsonArray("reviewers")
         LinkReviewPolicyV164CurrentLink(
             linkId = preview.get("link_id").asString,
@@ -63,7 +63,7 @@ class LinkReviewPolicyEvidenceV164Test {
             sha256(vectorBytes),
         )
         assertTrue(vector.get("synthetic_only").asBoolean)
-        val previewJson = vector.getAsJsonObject("preview")
+        val previewJson = signingPreviewJson()
         val statusJson = vector.getAsJsonObject("status")
         val policy = reviewedPolicy(previewJson.getAsJsonObject("policy"))
         assertEquals(vector.get("canonical_policy_json").asString,
@@ -138,7 +138,7 @@ class LinkReviewPolicyEvidenceV164Test {
             LinkReviewPolicyEvidenceV164.validateActiveStatus(bytes(acceptedAfterSnapshot), authority, now)
         }
 
-        val preview = vector.getAsJsonObject("preview").deepCopy().apply {
+        val preview = signingPreviewJson().deepCopy().apply {
             addProperty("verified_at", futureSnapshot.toString())
         }
         val head = previousHeadStatus().apply { addProperty("verified_at", futureSnapshot.toString()) }
@@ -226,7 +226,7 @@ class LinkReviewPolicyEvidenceV164Test {
         assertFalse(diagnostic.current)
         assertEquals(2L, diagnostic.policyVersion)
 
-        val preview = vector.getAsJsonObject("preview").deepCopy()
+        val preview = signingPreviewJson().deepCopy()
         preview.addProperty("expected_policy_version", diagnostic.policyVersion)
         preview.addProperty("policy_version", diagnostic.policyVersion + 1)
         val validated = LinkReviewPolicyEvidenceV164.validatePreview(
@@ -245,7 +245,7 @@ class LinkReviewPolicyEvidenceV164Test {
     fun proofAndOwnerEvidenceMustMatchFullIndependentPinsAndExactCandidateTuple() {
         val candidate = candidate()
         val request = LinkReviewPolicyEvidenceV164.buildGrantRequest(
-            candidate, bytes(vector.getAsJsonObject("preview")), bytes(previousHeadStatus()),
+            candidate, bytes(signingPreviewJson()), bytes(previousHeadStatus()),
             authority, sourcePin, sourceLifecycle, proofJson(sourceProof), now,
         )
         assertEquals(sourcePin.keyId, request.ownerKeyId)
@@ -271,20 +271,20 @@ class LinkReviewPolicyEvidenceV164Test {
         }
         expect("LINK_REVIEW_POLICY_V164_OWNER_PIN_INVALID") {
             LinkReviewPolicyEvidenceV164.buildGrantRequest(
-                candidate, bytes(vector.getAsJsonObject("preview")), bytes(previousHeadStatus()),
+                candidate, bytes(signingPreviewJson()), bytes(previousHeadStatus()),
                 authority, sourcePin.copy(keyId = "different-key-id"), sourceLifecycle, proofJson(sourceProof), now,
             )
         }
         expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
             LinkReviewPolicyEvidenceV164.buildGrantRequest(
-                candidate, bytes(vector.getAsJsonObject("preview")), bytes(previousHeadStatus()),
+                candidate, bytes(signingPreviewJson()), bytes(previousHeadStatus()),
                 authority, sourcePin, sourceLifecycle,
                 proofJson(sourceProof).also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() }, now,
             )
         }
         expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
             LinkReviewPolicyEvidenceV164.buildGrantRequest(
-                candidate, bytes(vector.getAsJsonObject("preview")), bytes(previousHeadStatus()),
+                candidate, bytes(signingPreviewJson()), bytes(previousHeadStatus()),
                 authority, sourcePin, sourceLifecycle, ByteArray(16 * 1024 + 1), now,
             )
         }
@@ -293,7 +293,7 @@ class LinkReviewPolicyEvidenceV164Test {
     @Test
     fun changedReviewerSnapshotRequiresExplicitReconfirmation() {
         val cached = candidate()
-        val changedPreview = vector.getAsJsonObject("preview").deepCopy().apply {
+        val changedPreview = signingPreviewJson().deepCopy().apply {
             getAsJsonArray("reviewer_qualifications")[0].asJsonObject.addProperty("binding_epoch", 99)
         }
 
@@ -307,7 +307,7 @@ class LinkReviewPolicyEvidenceV164Test {
 
     @Test
     fun grantRequiresCurrentActiveLocalLifecycleAndExactReviewedCandidate() {
-        val previewJson = vector.getAsJsonObject("preview")
+        val previewJson = signingPreviewJson()
         val candidate = candidate()
         expect("LINK_REVIEW_POLICY_V164_OWNER_KEY_REVOKED") {
             LinkReviewPolicyEvidenceV164.buildGrantRequest(
@@ -322,7 +322,7 @@ class LinkReviewPolicyEvidenceV164Test {
             )
         }
 
-        val targetPreview = previewJson.deepCopy().apply {
+        val targetPreview = signingPreviewJson("TARGET").apply {
             addProperty("side", "TARGET")
             addProperty("owner_id", targetPin.ownerId)
         }
@@ -342,7 +342,7 @@ class LinkReviewPolicyEvidenceV164Test {
 
     @Test
     fun previewRejectsChangedLinkOwnerPolicyDigestSideAndHead() {
-        val base = vector.getAsJsonObject("preview")
+        val base = signingPreviewJson()
         val mutations = listOf<Pair<JsonObject, String>>(
             base.deepCopy().apply { addProperty("contract_digest", "0".repeat(64)) }
                 to "LINK_REVIEW_POLICY_V164_SCOPE_MISMATCH",
@@ -418,7 +418,7 @@ class LinkReviewPolicyEvidenceV164Test {
 
     @Test
     fun exactQualificationRowsRequireCurrentLinkReviewAndCanonicalFutureLeases() {
-        val base = vector.getAsJsonObject("preview")
+        val base = signingPreviewJson()
         val mutations = listOf<Pair<JsonObject, String>>(
             base.deepCopy().apply {
                 getAsJsonArray("reviewer_qualifications")[0].asJsonObject.addProperty("action", "Monitor")
@@ -447,7 +447,7 @@ class LinkReviewPolicyEvidenceV164Test {
     @Test
     fun normalizedNonePolicyHasNoQualificationsAndConfiguredNoneKeepsBilateralStatusShape() {
         val none = LinkReviewPolicyConsentPolicy("NONE", emptyList(), 0, 0, 0)
-        val preview = vector.getAsJsonObject("preview").deepCopy().apply {
+        val preview = signingPreviewJson().deepCopy().apply {
             add("policy", policyJson(none))
             addProperty("policy_digest", LinkReviewPolicyConsentValidation.policyDigest(none))
             add("reviewer_qualifications", JsonArray())
@@ -477,7 +477,7 @@ class LinkReviewPolicyEvidenceV164Test {
 
     @Test
     fun rejectsDuplicateUnknownNoncanonicalJsonAndNoncanonicalTimestamps() {
-        val preview = vector.getAsJsonObject("preview")
+        val preview = signingPreviewJson()
         val previewString = preview.toString()
         expect("LINK_REVIEW_POLICY_V164_PREVIEW_INVALID") {
             LinkReviewPolicyEvidenceV164.validatePreview(
@@ -525,7 +525,7 @@ class LinkReviewPolicyEvidenceV164Test {
 
     @Test
     fun nativeLongBoundsAreExactAndOverflowOrLossyNumbersReject() {
-        val preview = vector.getAsJsonObject("preview").deepCopy().apply {
+        val preview = signingPreviewJson().deepCopy().apply {
             val qualification = getAsJsonArray("reviewer_qualifications")[0].asJsonObject
             qualification.add("membership_revision", JsonPrimitive(BigInteger.valueOf(Long.MAX_VALUE)))
             qualification.add("join_revision", JsonPrimitive(BigInteger.valueOf(Long.MAX_VALUE)))
@@ -554,7 +554,7 @@ class LinkReviewPolicyEvidenceV164Test {
         val maximumHead = previousHeadStatus().apply {
             addProperty("policy_version", Long.MAX_VALUE - 1)
         }
-        val maximumPreview = vector.getAsJsonObject("preview").deepCopy().apply {
+        val maximumPreview = signingPreviewJson().deepCopy().apply {
             addProperty("expected_policy_version", Long.MAX_VALUE - 1)
             addProperty("policy_version", Long.MAX_VALUE)
         }
@@ -575,14 +575,14 @@ class LinkReviewPolicyEvidenceV164Test {
         }
         expect("LINK_REVIEW_POLICY_V164_PROOF_INVALID") {
             LinkReviewPolicyEvidenceV164.buildGrantRequest(
-                candidate, bytes(vector.getAsJsonObject("preview")), bytes(previousHeadStatus()),
+                candidate, bytes(signingPreviewJson()), bytes(previousHeadStatus()),
                 authority, sourcePin, sourceLifecycle, ByteArray(16 * 1024 + 1), now,
             )
         }
     }
 
     private fun candidate(): LinkReviewPolicyV164Preview {
-        val preview = vector.getAsJsonObject("preview")
+        val preview = signingPreviewJson()
         return LinkReviewPolicyEvidenceV164.validatePreview(
             bytes(preview), reviewedPolicy(preview.getAsJsonObject("policy")),
             bytes(previousHeadStatus()), authority, now,
@@ -605,9 +605,24 @@ class LinkReviewPolicyEvidenceV164Test {
         maximumProofExpiresAt = candidate.maximumProofExpiresAt,
         verifiedAt = candidate.verifiedAt,
         reviewerQualifications = candidate.reviewerQualifications,
+        signingOwnerKey = candidate.signingOwnerKey,
         canonicalPolicyJson = candidate.canonicalPolicyJson,
         rawPreview = candidate.rawPreviewCopy(),
     )
+
+    // Extend the unchanged public v1.6.4 vector only in test memory with the proposed tuple.
+    private fun signingPreviewJson(side: String = "SOURCE"): JsonObject {
+        val pin = if (side == "SOURCE") sourcePin else targetPin
+        return vector.getAsJsonObject("preview").deepCopy().apply {
+            add("signing_owner_key", JsonObject().apply {
+                addProperty("owner_id", pin.ownerId)
+                addProperty("key_id", pin.keyId)
+                add("public_identity", JsonParser.parseString(pin.publicIdentity.toJson()))
+                addProperty("state", "ACTIVE")
+                addProperty("version", 1)
+            })
+        }
+    }
 
     private fun previousHeadStatus(): JsonObject {
         val policy = LinkReviewPolicyConsentPolicy("NONE", emptyList(), 0, 0, 0)

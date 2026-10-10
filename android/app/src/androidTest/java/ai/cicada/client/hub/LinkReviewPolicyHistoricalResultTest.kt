@@ -134,6 +134,36 @@ class LinkReviewPolicyHistoricalResultTest {
     }
 
     @Test
+    fun secondSideCompletionVerifiesPeerProofWithoutInventingPeerPreviewLifecycle() {
+        val status = LinkReviewPolicyEvidenceV164.validateHistoricalGrantResult(
+            bytes(vector.getAsJsonObject("status")), authority,
+        )
+        assertTrue(status.ownerApprovals.all { it.verifiedProof != null })
+        val source = status.ownerApprovals.first { it.side == "SOURCE" }.ownerLifecycle!!
+        val target = status.ownerApprovals.first { it.side == "TARGET" }.ownerLifecycle!!
+        LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(status, "SOURCE", source, null)
+        LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(status, "TARGET", null, target)
+    }
+
+    @Test
+    fun terminalLifecycleCheckRequiresLocalReviewAndRejectsChangedReviewedLifecycle() {
+        val status = LinkReviewPolicyEvidenceV164.validateHistoricalGrantResult(
+            bytes(vector.getAsJsonObject("status")), authority,
+        )
+        val source = status.ownerApprovals.first { it.side == "SOURCE" }.ownerLifecycle!!
+        val target = status.ownerApprovals.first { it.side == "TARGET" }.ownerLifecycle!!
+        expect("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(status, "SOURCE", null, null)
+        }
+        expect("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(status, "SOURCE", source.copy(version = 2), null)
+        }
+        expect("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID") {
+            LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(status, "SOURCE", source, target.copy(version = 2))
+        }
+    }
+
+    @Test
     fun firstSidePartialResultRemainsNoncurrent() {
         val partial = vector.getAsJsonObject("status").deepCopy().apply {
             addProperty("current", false)

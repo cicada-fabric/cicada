@@ -1,5 +1,19 @@
 # Client ↔ Hub contract: `client-hub-v1.6.4`
 
+## Unpinned v1.6.5 policy-signing candidate
+
+Root authorized an offline-only extension of the existing
+`link.review_policy_preview`: mandatory Client request `owner_key_id`, with an
+exact five-field `signing_owner_key` response required before policy signing.
+The full identity is compared to the independent local Owner pin; ACTIVE state
+and a positive canonical int64 version come from the authenticated preview.
+The Client does not substitute accepted Link KEY entitlement for registered
+policy-signing authority, and does not fall back when the tuple is absent.
+Submit and recovery recheck lifecycle without weakening original proof,
+scope/version or packet fences. The official revision/catalog remain unchanged;
+policy signing is closed pending the frozen Core v1.6.5 delivery. This is not
+current-Hub or Android acceptance. See the [candidate handoff](cicada-core-handoff.md#registered-owner-policy-signing-lifecycle-offline-v165-candidate).
+
 ## Current recovery preparation — clean e2a1908
 
 The [frozen preparation record](client-link-recovery-e2a1908-preparation.md)

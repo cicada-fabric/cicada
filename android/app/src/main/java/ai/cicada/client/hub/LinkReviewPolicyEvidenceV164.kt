@@ -101,7 +101,7 @@ internal data class LinkReviewPolicyV164Status internal constructor(
     val unconfigured: Boolean get() = policyVersion == 0L
 }
 
-/** A strictly parsed, explicitly reviewed v1.6.4 preview candidate. */
+/** A signing preview requires the proposed v1.6.5 registered Owner tuple, without fallback. */
 internal class LinkReviewPolicyV164Preview internal constructor(
     val linkId: String,
     val side: String,
@@ -115,6 +115,7 @@ internal class LinkReviewPolicyV164Preview internal constructor(
     val maximumProofExpiresAt: Instant,
     val verifiedAt: Instant,
     val reviewerQualifications: List<LinkReviewPolicyV164ReviewerQualification>,
+    val signingOwnerKey: LinkKeyManifestVerifier.CurrentOwnerKeyAuthority,
     internal val canonicalPolicyJson: String,
     rawPreview: ByteArray,
 ) {
@@ -122,7 +123,7 @@ internal class LinkReviewPolicyV164Preview internal constructor(
     internal fun rawPreviewCopy(): ByteArray = original.clone()
 }
 
-/** Candidate-only v1.6.4 Link review-policy DTO/evidence validation. No RPC, signing, or state. */
+/** Retained v1.6.4 evidence and candidate v1.6.5 signing-preview validation. No RPC or signing. */
 internal object LinkReviewPolicyEvidenceV164 {
     private const val MAX_RAW_JSON_BYTES = 64 * 1024
     private const val MAX_JSON_DEPTH = 16
@@ -137,7 +138,9 @@ internal object LinkReviewPolicyEvidenceV164 {
         "link_id", "side", "owner_id", "contract_digest", "link_version",
         "expected_policy_version", "policy_version", "policy_digest", "policy",
         "maximum_proof_expires_at", "verified_at", "reviewer_qualifications",
+        "signing_owner_key",
     )
+    private val signingOwnerKeyFields = setOf("owner_id", "key_id", "public_identity", "state", "version")
     private val policyFields = setOf(
         "mode", "reviewers", "max_failovers", "reviewer_lease_seconds", "max_review_age_seconds",
     )
@@ -211,6 +214,28 @@ internal object LinkReviewPolicyEvidenceV164 {
         grantCandidate = true,
     )
 
+    /** Compare reviewed lifecycle only after the status parser verified each retained proof. */
+    fun validateReviewedSigningLifecycles(
+        status: LinkReviewPolicyV164Status,
+        localSide: String,
+        sourceLifecycle: LinkReviewPolicyV164OwnerLifecycle?,
+        targetLifecycle: LinkReviewPolicyV164OwnerLifecycle?,
+    ) {
+        if (localSide !in SIDES) invalid("LINK_REVIEW_POLICY_V164_SCOPE_MISMATCH")
+        for ((side, expected) in listOf("SOURCE" to sourceLifecycle, "TARGET" to targetLifecycle)) {
+            val approval = status.ownerApprovals.firstOrNull { it.side == side }
+                ?: invalid("LINK_REVIEW_POLICY_V164_STATUS_INVALID")
+            if (side == localSide && (expected == null || approval.currentStatus != "VERIFIED")) {
+                invalid("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID")
+            }
+            // An unreviewed peer lifecycle is not inferred from a pin or from the local preview.
+            // Any VERIFIED peer evidence already passed full identity, ACTIVE and proof checks.
+            if (approval.currentStatus == "VERIFIED" && expected != null && approval.ownerLifecycle != expected) {
+                invalid("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID")
+            }
+        }
+    }
+
     /**
      * Checks an explicit user-reviewed policy against a fresh preview and active-head response.
      * A noncurrent status is accepted as a diagnostic CAS head only while the current Link tuple
@@ -265,6 +290,7 @@ internal object LinkReviewPolicyEvidenceV164 {
             contractDigest != currentLink.contractDigest || linkVersion != currentLink.linkVersion) {
             invalid("LINK_REVIEW_POLICY_V164_SCOPE_MISMATCH")
         }
+        val signingOwnerKey = parseSigningOwnerKey(root.get("signing_owner_key"), ownerForSide(currentLink, side))
         if (expectedPolicyVersion != currentStatus.policyVersion ||
             expectedPolicyVersion == Long.MAX_VALUE || policyVersion != expectedPolicyVersion + 1L) {
             invalid("LINK_REVIEW_POLICY_V164_HEAD_MISMATCH")
@@ -289,6 +315,7 @@ internal object LinkReviewPolicyEvidenceV164 {
             maximumProofExpiresAt = maximumProofExpiresAt,
             verifiedAt = verifiedAt,
             reviewerQualifications = Collections.unmodifiableList(qualifications),
+            signingOwnerKey = signingOwnerKey,
             canonicalPolicyJson = canonicalPolicyJson,
             rawPreview = rawPreview,
         )
@@ -325,6 +352,13 @@ internal object LinkReviewPolicyEvidenceV164 {
             invalid("LINK_REVIEW_POLICY_V164_OWNER_PIN_MISMATCH")
         }
         validateLifecycle(trustedLocalOwnerLifecycle, expectedOwner.ownerId, trustedLocalOwnerPin.keyId)
+        val signingOwnerKey = freshPreview.signingOwnerKey
+        if (trustedLocalOwnerLifecycle.ownerId != signingOwnerKey.ownerId ||
+            trustedLocalOwnerLifecycle.keyId != signingOwnerKey.keyId ||
+            trustedLocalOwnerLifecycle.state != signingOwnerKey.state ||
+            trustedLocalOwnerLifecycle.version != signingOwnerKey.version) {
+            invalid("LINK_REVIEW_POLICY_V164_OWNER_LIFECYCLE_INVALID")
+        }
         val verified = verifyOwnerProof(
             proofJson = proofJson,
             pin = trustedLocalOwnerPin,
@@ -640,6 +674,30 @@ internal object LinkReviewPolicyEvidenceV164 {
         }
     }
 
+    /** Registry authority is authenticated by the preview channel; trust still comes from the pin. */
+    private fun parseSigningOwnerKey(
+        element: JsonElement?,
+        pin: LinkReviewPolicyV164OwnerPin,
+    ): LinkKeyManifestVerifier.CurrentOwnerKeyAuthority {
+        val code = "LINK_REVIEW_POLICY_V165_SIGNING_OWNER_INVALID"
+        val value = element?.takeIf { it.isJsonObject }?.asJsonObject ?: invalid(code)
+        exactFields(value, signingOwnerKeyFields, code)
+        val ownerId = token(value, "owner_id", code)
+        val keyId = token(value, "key_id", code)
+        val publicIdentity = parsePublicIdentity(value.get("public_identity"), code)
+        if (ownerId != pin.ownerId || keyId != pin.keyId || publicIdentity.id != keyId ||
+            !publicIdentity.sameAs(pin.publicIdentity)) {
+            invalid("LINK_REVIEW_POLICY_V164_OWNER_PIN_MISMATCH")
+        }
+        val lifecycle = LinkReviewPolicyV164OwnerLifecycle(
+            ownerId, keyId, string(value, "state", code), integer(value, "version", 1L, Long.MAX_VALUE, code),
+        )
+        validateLifecycle(lifecycle, pin.ownerId, pin.keyId)
+        return LinkKeyManifestVerifier.CurrentOwnerKeyAuthority(
+            ownerId, keyId, publicIdentity, lifecycle.state, lifecycle.version,
+        )
+    }
+
     private fun ownerForSide(currentLink: LinkReviewPolicyV164CurrentLink, side: String): LinkReviewPolicyV164OwnerPin =
         when (side) {
             "SOURCE" -> currentLink.sourceOwnerPin
@@ -869,6 +927,11 @@ internal object LinkReviewPolicyEvidenceV164 {
             left.policyDigest == right.policyDigest && left.policy == right.policy &&
             left.maximumProofExpiresAt == right.maximumProofExpiresAt &&
             left.reviewerQualifications == right.reviewerQualifications &&
+            left.signingOwnerKey.ownerId == right.signingOwnerKey.ownerId &&
+            left.signingOwnerKey.keyId == right.signingOwnerKey.keyId &&
+            left.signingOwnerKey.publicIdentity.sameAs(right.signingOwnerKey.publicIdentity) &&
+            left.signingOwnerKey.state == right.signingOwnerKey.state &&
+            left.signingOwnerKey.version == right.signingOwnerKey.version &&
             left.canonicalPolicyJson == right.canonicalPolicyJson
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")

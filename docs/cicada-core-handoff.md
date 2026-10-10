@@ -1,5 +1,59 @@
 # CICADA Client integration handoff
 
+## Registered Owner policy-signing lifecycle: offline v1.6.5 candidate
+
+Root authorized a source-only candidate for the proposed extension of
+`link.review_policy_preview`: the Client must send the independently selected
+`owner_key_id` and require `signing_owner_key` with exactly `owner_id`, `key_id`,
+`public_identity`, `state` and `version`. The returned full ML-KEM/ML-DSA identity
+must match the independent local Owner pin, with ACTIVE state and a canonical
+positive int64 version. Missing/null tuples, unknown fields and mismatched
+identities fail closed. Device versions, cached proofs and fixed pins alone
+cannot supply lifecycle authority.
+
+Policy preparation now obtains the local lifecycle from the authenticated,
+correlated preview. It has no accepted Link KEY grant prerequisite. Submission
+reads a fresh preview and compares the reviewed authority tuple before sealing.
+Recovery rechecks current local registry authority and reviewer qualifications;
+it still needs the original proof hash, fresh active policy status and response
+sequence to resolve the original fence. A preview never proves grant acceptance.
+The peer receives no fabricated preview lifecycle: actual retained peer proofs
+must still pass independent identity, lifecycle and signature verification.
+Local lifecycle equality remains mandatory for terminal grant verification;
+an explicitly reviewed peer lifecycle must also match.
+
+The official Client contract/catalog pins remain **v1.6.4**. Policy signing is
+explicitly closed until the independently verified v1.6.5 delivery is pinned.
+Exact pending-packet replay remains unchanged. A legacy policy fence with no
+pending packet cannot complete registry-based reconciliation under the old pin;
+it remains preserved rather than falling back or being cleared. Legacy fence
+migration and live recovery are **NOT_RUN**, not offline acceptance claims.
+No APK, protocol bundle, Root batch, Parent or fixture has been rebuilt or
+repinned. The KEY verifier is byte-unchanged. Only offline policy JVM tests run;
+their commands, input hashes, private logs and redacted receipts are under
+`/gpu1-share/data/cicada-client/v165-signing-lifecycle-candidate-20261010`.
+Earlier incorrect synthetic HEAD0 and missing offline AAR attempts are retained
+there and are not passing evidence. The corrected old-source RED isolates
+`validatePreview`'s closed-field rejection; the final GREEN uses the candidate
+sources: 30 policy JVM tests, zero failures/skips, exit 0. The command is
+`python3 /gpu1-share/data/cicada-client/v165-signing-lifecycle-candidate-20261010/run-offline.py green-final`;
+the corrected baseline command uses `red-corrected-2` and exits 1 as expected.
+Both commands launch only bounded network-none Docker unit tests, with no APK
+packaging task. APK/runtime, physical Android and public HTTPS remain **NOT_RUN** for
+this candidate. Core's frozen fields, bundle, image and a separate Root GO are
+required before integration acceptance.
+
+Root's joint7/v4 runtime result remains attributed to clean `d8855e3` and the
+original APK/e2a pair: four KEY cases **PASS/RECONCILED**; NONE response-loss
+failed during preparation, with its business result **UNKNOWN**; the other
+three NONE cases are **NOT_RUN**. The actual selector threw
+`HubSessionException` at `ClientHubSession.kt:1952` because it required an
+accepted local Link KEY proof before policy consent. This does not establish
+missing Owner registration. Result evidence is
+`/gpu1-share/data/cicada-client/v164-joint7-root-final-20261010/result.redacted.json`
+(SHA-256 `4716b30e486559e536749c1a749f3f6875e1aad23ec4ab369107e8bd25014d88`).
+Root confirmed owned cleanup; joint3's original cause remains **UNKNOWN**.
+
 ## Joint7: Parent v4 snapshot compatibility
 
 Root closed joint6 with Parent exit 1 at `FINISH_SNAPSHOT_BYTES`. The binding

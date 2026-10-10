@@ -1590,15 +1590,16 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link consent authority tuple is missing")
             readLinkKeyGrants(tuple.linkId, tuple.linkVersion, profileGeneration)
         } else {
+            requireRegisteredPolicySigningContract()
             val review = state.linkConsentLedger.review
                 ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original Link policy authority tuple is missing")
             val current = readState()
             requireLinkConsentSession(current, profileGeneration,
-                setOf("link.key_manifest", "link.key_grants", "link.review_policy_status"),
+                setOf("link.key_manifest", "link.key_grants", "link.review_policy_status", "link.review_policy_preview"),
                 allowFenceRead = true)
             // A partial policy candidate is intentionally not discoverable from the
-            // active-head endpoint. Reconcile only from a fresh manifest/key read and
-            // the active policy head; never re-preview or infer from cached recovery.
+            // active-head endpoint. A preview rechecks only current local signing authority;
+            // it never proves acceptance or replaces the original proof/status reconciliation.
             val fresh = prepareLinkConsentInternal(current, review.tuple.linkId, review.tuple.linkVersion,
                 "KEY", null, profileGeneration)
             val selection = LinkReviewPolicySelection(
@@ -1618,8 +1619,31 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             } catch (_: Exception) {
                 throw HubSessionException("LINK_REVIEW_POLICY_STATUS_INVALID", "Fresh Link policy status failed native verification")
             }
-            val sourceLifecycle = fresh.sourceCurrentKey
-            val targetLifecycle = fresh.targetCurrentKey
+            val savedPolicy = review.policyJson?.let {
+                try { parseLinkConsentPolicy(JsonParser.parseString(it).asJsonObject) } catch (_: Exception) { null }
+            } ?: throw HubSessionException("LINK_CONSENT_PACKET_CONTEXT_INVALID", "Original reviewed policy is missing")
+            val localPin = if (selection.mySide == "SOURCE") fresh.authority.asPolicyCurrentLink().sourceOwnerPin
+                else fresh.authority.asPolicyCurrentLink().targetOwnerPin
+            val previewRead = directLinkRead(
+                current, "link.review_policy_preview", review.tuple.linkId, profileGeneration,
+                body = JsonObject().apply {
+                    addProperty("link_id", review.tuple.linkId)
+                    addProperty("owner_key_id", localPin.keyId)
+                    add("policy", JsonParser.parseString(LinkReviewPolicyConsentValidation.canonicalPolicyJson(savedPolicy)))
+                },
+                selection = selection,
+            )
+            val registryPreview = try {
+                LinkReviewPolicyEvidenceV164.validatePreview(
+                    previewRead.result.toString().toByteArray(StandardCharsets.UTF_8), savedPolicy,
+                    status.toString().toByteArray(StandardCharsets.UTF_8),
+                    fresh.authority.asPolicyCurrentLink(), Instant.now(),
+                )
+            } catch (_: Exception) {
+                throw HubSessionException("LINK_REVIEW_POLICY_PREVIEW_INVALID", "Fresh registered Owner signing authority did not verify")
+            }
+            val sourceLifecycle = registryPreview.signingOwnerKey.takeIf { selection.mySide == "SOURCE" }
+            val targetLifecycle = registryPreview.signingOwnerKey.takeIf { selection.mySide == "TARGET" }
             val currentTuple = fresh.review.tuple.copy(
                 kind = review.tuple.kind,
                 source = fresh.review.tuple.source.copy(
@@ -1634,12 +1658,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 policyVersion = review.tuple.policyVersion,
                 policyDigest = review.tuple.policyDigest,
                 maximumProofExpiresAt = review.tuple.maximumProofExpiresAt,
-                reviewers = review.tuple.reviewers,
+                reviewers = linkConsentReviewers(registryPreview),
             )
-            val savedPolicy = review.policyJson?.let {
-                try { parseLinkConsentPolicy(JsonParser.parseString(it).asJsonObject) } catch (_: Exception) { null }
-            }
-            val sameReviewedPolicy = if (savedPolicy == null) false else try {
+            val sameReviewedPolicy = try {
                 LinkReviewPolicyConsentValidation.canonicalPolicyJson(savedPolicy) ==
                     LinkReviewPolicyConsentValidation.canonicalPolicyJson(parsed.policy)
             } catch (_: Exception) { false }
@@ -1650,6 +1671,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 fresh.authority.manifest.digest == review.tuple.manifestDigest &&
                 review.tuple.profileGeneration == profileGeneration && currentTuple == review.tuple &&
                 sameReviewedPolicy &&
+                previewRead.correlation.requestSequence > statusRead.correlation.requestSequence &&
+                previewRead.correlation.responseSequence > statusRead.correlation.responseSequence &&
                 statusRead.correlation.responseSequence > fence.expectedResponseSequence) {
                 val hashes = parsed.ownerApprovals.mapNotNull { it.proofBytesCopy()?.let(LinkConsentLedger::digest) }.toSet()
                 if (fence.signedProofSha256 in hashes) {
@@ -1672,6 +1695,13 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     private fun requireLinkConsentGate() {
         if (!LINK_CONSENT_READY || !LinkConsentAuthorityFactory.CANDIDATE_READY) {
             throw HubSessionException("VERIFIED_LINK_CONSENT_FLOW_NOT_READY", "The verified Link consent candidate is not enabled in this Client build")
+        }
+    }
+
+    /** Candidate policy signing stays closed until the independently fixed v1.6.5 delivery. */
+    private fun requireRegisteredPolicySigningContract() {
+        if (CONTRACT_REVISION != "client-hub-v1.6.5") {
+            throw HubSessionException("LINK_REVIEW_POLICY_CONTRACT_NOT_READY", "Registered Owner signing previews require the fixed v1.6.5 contract")
         }
     }
 
@@ -1743,7 +1773,13 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         if (state.pending != null) throw HubSessionException("PENDING_RECOVERY_REQUIRED", "Recover the exact encrypted request before reading Link consent authority")
         if (operation == "link.review_policy_preview") {
-            requireExactBodyFields(body, setOf("link_id", "policy"), setOf("link_id", "policy"))
+            val fields = setOf("link_id", "policy", "owner_key_id")
+            requireExactBodyFields(body, fields, fields)
+            val ownerId = state.enrollment?.ownerId
+                ?: throw HubSessionException("DEVICE_NOT_ENROLLED", "Device enrollment is missing")
+            if (requestToken(body, "owner_key_id") != uniqueOwnerPin(state.linkConsentLedger, ownerId).keyId) {
+                throw HubSessionException("OWNER_PIN_MISMATCH", "Policy preview signing key differs from the selected independent Owner pin")
+            }
         } else {
             requireExactBodyFields(body, setOf("link_id"), setOf("link_id"))
         }
@@ -1820,6 +1856,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         if (kind !in setOf("KEY", "REVIEW_POLICY") || (kind == "KEY") != (policy == null)) {
             throw HubSessionException("INVALID_LINK_CONSENT_KIND", "Link consent kind or policy is invalid")
         }
+        if (kind == "REVIEW_POLICY") requireRegisteredPolicySigningContract()
         val operations = if (kind == "KEY") setOf("link.key_manifest", "link.key_grants") else
             setOf("link.key_manifest", "link.key_grants", "link.review_policy_status", "link.review_policy_preview")
         if (!state.allowedOperations.containsAll(operations + "link.list")) {
@@ -1905,6 +1942,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         var previewBytes: ByteArray? = null
         var localPolicyLifecycle: LinkReviewPolicyV164OwnerLifecycle? = null
         var localPolicyPin: LinkReviewPolicyV164OwnerPin? = null
+        var localPolicyKey: LinkKeyManifestVerifier.CurrentOwnerKeyAuthority? = null
         var policyStatusDisplay: JsonObject? = null
         val reviewers: List<LinkConsentLedger.ReviewerQualification>
         val expectedPolicyVersion: Long?
@@ -1913,6 +1951,8 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         val maximumProofExpiresAt: String?
         if (kind == "REVIEW_POLICY") {
             val requested = policy ?: throw HubSessionException("INVALID_LINK_CONSENT_POLICY", "Review policy is missing")
+            localPolicyPin = if (selection.mySide == "SOURCE") authority.asPolicyCurrentLink().sourceOwnerPin
+                else authority.asPolicyCurrentLink().targetOwnerPin
             val statusReadResult = directLinkRead(state, "link.review_policy_status", linkId, profileGeneration, selection = selection)
             policyStatusRead = statusReadResult.correlation
             policyStatus = statusReadResult.result.takeIf { it.isJsonObject }?.asJsonObject
@@ -1929,6 +1969,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 state, "link.review_policy_preview", linkId, profileGeneration,
                 body = JsonObject().apply {
                     addProperty("link_id", linkId)
+                    addProperty("owner_key_id", localPolicyPin.keyId)
                     add("policy", JsonParser.parseString(LinkReviewPolicyConsentValidation.canonicalPolicyJson(requested)))
                 },
                 selection = selection,
@@ -1947,30 +1988,15 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
                 throw HubSessionException("LINK_REVIEW_POLICY_PREVIEW_INVALID", "The current Link policy head, preview or reviewer qualifications did not verify")
             }
             preview = parsedPreview
-            val localKey = if (selection.mySide == "SOURCE") sourceCurrentKey else targetCurrentKey
-                ?: throw HubSessionException("LINK_OWNER_KEY_NOT_CURRENT", "A fresh accepted local Owner key proof is required before policy consent")
-            if (localKey == null) throw HubSessionException("LINK_OWNER_KEY_NOT_CURRENT", "A fresh accepted local Owner key proof is required before policy consent")
-            localPolicyPin = if (selection.mySide == "SOURCE") authority.asPolicyCurrentLink().sourceOwnerPin
-                else authority.asPolicyCurrentLink().targetOwnerPin
+            val localKey = parsedPreview.signingOwnerKey
+            localPolicyKey = localKey
             localPolicyLifecycle = LinkReviewPolicyV164OwnerLifecycle(
                 ownerId = localKey.ownerId,
                 keyId = localKey.keyId,
                 state = localKey.state,
                 version = localKey.version,
             )
-            reviewers = parsedPreview.reviewerQualifications.map { qualification ->
-                LinkConsentLedger.ReviewerQualification(
-                    endpointId = qualification.endpointId,
-                    groupId = qualification.groupId,
-                    membershipRevision = qualification.membershipRevision,
-                    joinRevision = qualification.joinRevision,
-                    groupVersion = qualification.groupVersion,
-                    bindingId = qualification.bindingId,
-                    bindingEpoch = qualification.bindingEpoch,
-                    action = qualification.action,
-                    leaseExpiresAt = GroupKeyManifestVerifier.formatCanonicalUtc(qualification.leaseExpiresAt),
-                )
-            }
+            reviewers = linkConsentReviewers(parsedPreview)
             expectedPolicyVersion = parsedPreview.expectedPolicyVersion
             policyVersion = parsedPreview.policyVersion
             policyDigest = parsedPreview.policyDigest
@@ -1982,11 +2008,11 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             policyDigest = null
             maximumProofExpiresAt = null
         }
-        val includeOwnerLifecycle = kind == "REVIEW_POLICY"
+        // Policy signing authority is local registry evidence, independently of Link KEY entitlement.
         val source = buildLinkSideScope(authority, manifestJson, "SOURCE", sourcePinRecord,
-            if (includeOwnerLifecycle) sourceCurrentKey else null)
+            if (selection.mySide == "SOURCE") localPolicyKey else null)
         val target = buildLinkSideScope(authority, manifestJson, "TARGET", targetPinRecord,
-            if (includeOwnerLifecycle) targetCurrentKey else null)
+            if (selection.mySide == "TARGET") localPolicyKey else null)
         val now = Instant.now()
         val linkExpiry = authority.manifest.linkExpiresAt
         val signerMaxExpiry = if (kind == "KEY") minOf(linkExpiry, now.plus(5, ChronoUnit.MINUTES))
@@ -2126,6 +2152,21 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
         return LinkKeyManifestVerifier.OwnerPublicKeyPin(record.ownerId, record.keyId, identity)
     }
+
+    private fun linkConsentReviewers(preview: LinkReviewPolicyV164Preview): List<LinkConsentLedger.ReviewerQualification> =
+        preview.reviewerQualifications.map { qualification ->
+            LinkConsentLedger.ReviewerQualification(
+                endpointId = qualification.endpointId,
+                groupId = qualification.groupId,
+                membershipRevision = qualification.membershipRevision,
+                joinRevision = qualification.joinRevision,
+                groupVersion = qualification.groupVersion,
+                bindingId = qualification.bindingId,
+                bindingEpoch = qualification.bindingEpoch,
+                action = qualification.action,
+                leaseExpiresAt = GroupKeyManifestVerifier.formatCanonicalUtc(qualification.leaseExpiresAt),
+            )
+        }
 
     private fun buildLinkSideScope(
         authority: VerifiedCurrentLinkAuthority,
@@ -3315,19 +3356,18 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
             if (LinkReviewPolicyConsentValidation.canonicalPolicyJson(savedPolicy) !=
                 LinkReviewPolicyConsentValidation.canonicalPolicyJson(status.policy)) return null
 
-            val approvals = status.ownerApprovals.associateBy { it.side }
-            for ((side, scope) in listOf("SOURCE" to tuple.source, "TARGET" to tuple.target)) {
-                val approval = approvals[side] ?: return null
-                if (approval.currentStatus == "VERIFIED") {
-                    val expectedLifecycle = LinkReviewPolicyV164OwnerLifecycle(
-                        scope.ownerId,
-                        scope.ownerKeyId,
-                        scope.ownerKeyState ?: return null,
-                        scope.ownerKeyVersion ?: return null,
-                    )
-                    if (approval.ownerLifecycle != expectedLifecycle) return null
-                }
+            fun reviewedLifecycle(scope: LinkConsentLedger.SideScope): LinkReviewPolicyV164OwnerLifecycle? {
+                if (scope.ownerKeyState == null && scope.ownerKeyVersion == null) return null
+                return LinkReviewPolicyV164OwnerLifecycle(
+                    scope.ownerId, scope.ownerKeyId,
+                    scope.ownerKeyState ?: throw IllegalArgumentException("Incomplete reviewed lifecycle"),
+                    scope.ownerKeyVersion ?: throw IllegalArgumentException("Incomplete reviewed lifecycle"),
+                )
             }
+            LinkReviewPolicyEvidenceV164.validateReviewedSigningLifecycles(
+                status, tuple.localSide, reviewedLifecycle(tuple.source), reviewedLifecycle(tuple.target),
+            )
+            val approvals = status.ownerApprovals.associateBy { it.side }
             val localApproval = approvals[tuple.localSide] ?: return null
             if (localApproval.currentStatus != "VERIFIED") return null
             val localProof = localApproval.proofBytesCopy() ?: return null
