@@ -1,5 +1,26 @@
 # CICADA Client integration handoff
 
+## Joint4: fresh host diagnostic preparation
+
+The fresh batch is `v164-e2a1908-joint4-20261010`. Its consumer rejects
+joint3 case IDs. The closed diagnostic codes are explicitly predefined and
+tested against `^[A-Z][A-Z0-9_]{0,63}$`; unknown strings, payloads, locals
+and complete exception messages remain excluded. The network-none Docker
+regression run passed 33 scoped tests, exit 0. A separate fresh-batch RED
+run failed against the old joint3 pin as expected; earlier diagnostic RED
+receipts keep their original source attribution.
+
+The clean checkpoint, twelve actual driver hashes, complete source inventory,
+test argv/exit codes and Root-only config/template are sealed under
+`/gpu1-share/data/cicada-client/v164-e2a1908-joint4-preparation-20261010/CLIENT-JOINT4-DELIVERY.NONAUTH.json`.
+The config contains explicit Root placeholders and is **not a runtime config**.
+Root must supply the current Core source baseline and fresh owned evidence
+path, then issue a separate finite MasterGO. No approval, expiry or GO is
+created here. Parent v3 and APK bytes are unchanged; original82,
+TARGET-first/SOURCE-last, 25 callback fields, 11 NONE fields and budgets
+remain fixed. Joint3 remains **FAIL / UNKNOWN**; all joint4 Android cases
+are **NOT_RUN**. No online resources are started by this delivery.
+
 ## Latest: joint3 failure diagnosis and host diagnostic correction
 
 Root's joint3 run used Client `693e939c01a0ddd9cef97d20046862a6cc02b92f`

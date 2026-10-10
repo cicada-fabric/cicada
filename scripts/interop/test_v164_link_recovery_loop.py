@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import struct
 import sys
@@ -1234,6 +1235,17 @@ class CleanupEvidenceTests(unittest.TestCase):
 
 
 class LoopFailureTests(unittest.TestCase):
+    def test_diagnostic_codes_are_predefined_and_match_the_closed_guard_format(self) -> None:
+        codes = loop.DIAGNOSTIC_GUARDS | set(loop.METADATA_GUARDS.values())
+        for code in codes:
+            with self.subTest(code=code):
+                self.assertIsNotNone(re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', code))
+        for code in loop.DIAGNOSTIC_GUARDS:
+            self.assertEqual(loop.failure_diagnostic(ValueError(code), 'PREPARING')['guard_code'], code)
+        for message, code in loop.METADATA_GUARDS.items():
+            self.assertEqual(loop.failure_diagnostic(ValueError(message))['guard_code'], code)
+        self.assertIsNone(loop.failure_diagnostic(ValueError('UNREGISTERED_GUARD'))['guard_code'])
+
     def test_maps_known_file_guard_without_retaining_its_message(self) -> None:
         def wrong_file_scope(_self, _case, record, _deadline):
             record['phase'] = 'PREPARING'

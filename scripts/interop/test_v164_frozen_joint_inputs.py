@@ -60,7 +60,7 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_parent_v3_boot_stage.py": "9d5e3f2de0fcdf6db4b46100cfd1476313237896288ce7e55a8e5ac4b7b16013",
         })
-        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint3-20261010")
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint4-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -99,7 +99,8 @@ class FinalConsumerPinTests(unittest.TestCase):
         with mock.patch.object(joint, "_read_ready", return_value=(ready, "synthetic-ready-hash")), \
                 mock.patch.object(joint, "validate_ready", return_value={"fixture_public": fixture}):
             joint._validate_carrier_manifest(manifest, Path("/tmp/synthetic-case"), 0)
-            for stale_run in ("v164-e2a1908-joint-20261010-0", "v164-e2a1908-joint2-20261010-0"):
+            for stale_run in ("v164-e2a1908-joint-20261010-0", "v164-e2a1908-joint2-20261010-0",
+                    "v164-e2a1908-joint3-20261010-0"):
                 with self.subTest(run_id=stale_run), self.assertRaises(ValueError):
                     joint._validate_carrier_manifest(
                         dict(manifest, run_id=stale_run), Path("/tmp/synthetic-case"), 0)
