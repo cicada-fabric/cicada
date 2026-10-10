@@ -26,6 +26,7 @@ import binascii
 from dataclasses import dataclass
 import hashlib
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -38,12 +39,21 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 
-CORE_REVISION = 'e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59'
-HUB_IMAGE_ID = 'sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01'
-SOURCE_FINGERPRINT = '7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5'
-CATALOG_SHA256 = '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'
-CONTRACT_REVISION = 'client-hub-v1.6.4'
-WIRE_VERSION = 1
+# Import only Client definitions. The opaque carrier and Android staging must
+# reject historical tuples against the same independently verified delivery.
+sys.dont_write_bytecode = True
+_delivery_spec = importlib.util.spec_from_file_location(
+    'v164_recovery_carrier_delivery', Path(__file__).with_name('v164-clean-delivery.py'))
+if _delivery_spec is None or _delivery_spec.loader is None:
+    raise ValueError('Client delivery definitions are unavailable')
+_delivery = importlib.util.module_from_spec(_delivery_spec)
+_delivery_spec.loader.exec_module(_delivery)
+CORE_REVISION = _delivery.PINS['source_revision']
+HUB_IMAGE_ID = _delivery.PINS['hub_image_id']
+SOURCE_FINGERPRINT = _delivery.PINS['source_fingerprint']
+CATALOG_SHA256 = _delivery.PINS['catalog_sha256']
+CONTRACT_REVISION = _delivery.PINS['contract_revision']
+WIRE_VERSION = _delivery.PINS['wire_version']
 
 MANIFEST_SCHEMA = 'cicada.client-v164-link-recovery-carrier.v1'
 ROOT_READY_SCHEMA = 'cicada.client-v164-link-recovery-ready.v1'

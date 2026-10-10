@@ -20,7 +20,42 @@ and the actual immutable APK hashes are sealed in
 No online or model run is implied. Joint7's four KEY passes, NONE failure and
 three unrun cases remain attributed solely to its old image and APKs.
 
-### Joint8 host coordination delivery
+### Joint9: current onboarding and carrier pin correction
+
+Root's joint8 Parent exited 1 after 54.0834886 seconds, before enrollment,
+with `source public onboarding fixture schema or contract pin is invalid`.
+The original FAIL is retained; all eight business cases remain **NOT_RUN**.
+Root reported owned-resource cleanup; Client did not operate those resources.
+
+The exact import chain is Parent `case_ready` → Client recovery loop →
+`v164-link-consent-android.py` → historical Android runner. Consent staging
+incorrectly took the runner's old v1.6.4 catalog instead of the current
+delivery catalog. Parent constructs SOURCE onboarding first; this validation
+occurs before the unchanged TARGET-first enrollment flow. The carrier also
+retained the old Core/image/catalog tuple, a separate latent rejection found
+by static audit, not an observed joint8 carrier failure.
+
+Host staging and carrier now use the existing canonical delivery pins.
+Exact fields, full public identities, device/profile correlation, routes,
+original-packet recovery, scopes and deadlines remain enforced. Historical
+emulator defaults and the legacy receipt branch keep their original pins.
+Network-none Docker RED reproduced the stale-pin predicates (exit 1);
+52 scoped regression tests and 14 actual artifact/source checks passed
+(exit 0). These are host checks, not Android cryptographic or runtime passes.
+
+Fresh runtime batch: `v164-e2a1908-joint9-20261010`. The unchanged V5 export's
+reserved joint8 preparation provenance is verified separately; it does not
+authorize either runtime batch. The host checkpoint, exact 12-driver map,
+full source inventory and Root templates are sealed at
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint9-consumer-20261010/DELIVERY.NONAUTH.json`.
+Root must issue a new Master and use unused evidence paths. No Master, grant,
+expiry or online execution is supplied by Client. The clean `1151b06` APK
+producer, Root endorsement and immutable APK pair remain unchanged. Keep the
+original 82 requests, 25-field callback, 11-field NONE policy and actual
+TARGET-first/SOURCE-last enrollment, then no profile switch through finish.
+Physical Android and public HTTPS remain **NOT_RUN**.
+
+### Historical joint8 host coordination delivery
 
 The V5 consumer now pins Root's actual c688/v1.6.5 Parent, adapter, interface,
 freeze and offline QA, the five newly compiled helpers, and the new Root APK

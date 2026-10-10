@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage public v1.6.4 Link inputs and run one bounded Android selector.
+"""Stage current pinned Link inputs and run one bounded Android selector.
 
 The emulator must already be owned by v164-android-deterministic.py. Inputs
 are read from private host files and sent only on stdin through run-as; selector
@@ -50,7 +50,8 @@ PROOF_SCHEMA = 'cicada.client-v164-owner-signed-proof.v1'
 POLICY_SCHEMA = 'cicada.client-v164-review-policy-fixture.v1'
 RECOVERY_SCHEMA = 'cicada.client-v164-link-consent-recovery-scenario.v1'
 RECOVERY_RECEIPT_SCHEMA = 'cicada.client-v164-link-consent-redacted-receipt.v1'
-CATALOG_SHA256 = runner.CATALOG_SHA256
+# Recovery staging follows the delivery, not historical emulator/F6 defaults.
+CATALOG_SHA256 = recovery.delivery.PINS['catalog_sha256']
 MAX_INPUT = 256 * 1024
 MAX_OUTPUT = 512 * 1024
 MAX_SIGNED_LONG = 9_223_372_036_854_775_807
@@ -832,7 +833,7 @@ def check_evidence(evidence, args):
             'contract_revision': runner.CONTRACT_REVISION,
             'core_source_revision': runner.CORE_REVISION,
             'core_source_fingerprint': runner.CORE_SOURCE_FINGERPRINT,
-            'catalog_sha256': CATALOG_SHA256,
+            'catalog_sha256': runner.CATALOG_SHA256,
             'pinned_hub_image_id': runner.HUB_IMAGE,
             'pinned_interop_image_id': runner.INTEROP_IMAGE,
         }

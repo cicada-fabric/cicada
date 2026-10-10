@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import importlib.util
 import json
@@ -421,6 +422,151 @@ class RecoveryInputTests(unittest.TestCase):
                 self.assertEqual(android.receipt_candidates(side, method, case), [(name, 'CAPTURED')])
         with self.assertRaises(ValueError):
             android.receipt_candidates('source', 'recoverKeyResponseLoss')
+
+
+class CurrentOnboardingPinsTests(unittest.TestCase):
+    """Parent-shaped public DTOs; no signatures, real keys or network calls."""
+
+    @staticmethod
+    def identity(seed):
+        kem, signing = bytes([seed]) * 1184, bytes([seed + 1]) * 1952
+        return {
+            'id': 'pq1-' + hashlib.sha256(kem + signing).digest()[:16].hex(),
+            'kem_public': base64.b64encode(kem).decode(),
+            'signing_public': base64.b64encode(signing).decode(),
+        }
+
+    @classmethod
+    def setup(cls, side):
+        owner = cls.identity(3 if side == 'source' else 7)
+        return {
+            'schema': android.ONBOARDING_SCHEMA, 'run_id': RUN_ID,
+            'base_url': 'http://127.0.0.1:8787', 'hub_id': 'synthetic-hub',
+            'owner_id': 'synthetic-' + side + '-owner', 'owner_key_id': owner['id'],
+            'device_id': 'synthetic-' + side + '-android-device',
+            'catalog_sha256': inputs.delivery.PINS['catalog_sha256'],
+            'control_public_identity': cls.identity(11), 'owner_public_identity': owner,
+        }
+
+    def test_both_current_parent_onboarding_shapes_pass_exact_import_chain(self):
+        current_loop = load('onboarding_actual_loop', 'v164-link-recovery-loop.py')
+        for side in ('source', 'target'):
+            with self.subTest(side=side):
+                value = self.setup(side)
+                current_loop.consent.validate_setup(value, side, RUN_ID)
+                current_loop.consent.validate_stage(
+                    value, side + '-setup-public.json', 'setup', side, RUN_ID, None)
+
+    def test_current_catalog_is_independent_of_historical_emulator_defaults(self):
+        self.assertEqual(android.CATALOG_SHA256, inputs.delivery.PINS['catalog_sha256'])
+        self.assertEqual(android.runner.CATALOG_SHA256,
+            '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d')
+
+    def test_old_catalog_extra_fields_and_invalid_identity_or_scope_are_refused(self):
+        for side in ('source', 'target'):
+            value = self.setup(side)
+            changed_identity = copy.deepcopy(value)
+            changed_identity['owner_public_identity']['id'] = 'pq1-' + '0' * 32
+            mutations = [
+                dict(value, catalog_sha256=android.runner.CATALOG_SHA256),
+                dict(value, catalog_sha256='0' * 64),
+                dict(value, run_id='v164-other-case'),
+                dict(value, owner_key_id='pq1-' + '0' * 32),
+                dict(value, device_id=''),
+                dict(value, base_url='http://user:password@127.0.0.1:8787'),
+                dict(value, unexpected_field=True), changed_identity,
+            ]
+            for i, mutation in enumerate(mutations):
+                with self.subTest(side=side, mutation=i), self.assertRaises(ValueError):
+                    android.validate_setup(mutation, side, RUN_ID)
+
+    def test_current_catalog_also_gates_device_and_owner_grant_handoff(self):
+        for side in ('source', 'target'):
+            owner = self.setup(side)
+            identity = self.identity(15 if side == 'source' else 19)
+            device = {
+                'schema': android.DEVICE_SCHEMA, 'run_id': RUN_ID, 'owner_role': side,
+                'profile_id': 'synthetic-' + side + '-profile', 'profile_generation': 2,
+                **{k: owner[k] for k in ('hub_id', 'owner_id', 'owner_key_id', 'device_id', 'catalog_sha256')},
+                'device_public_identity': identity,
+                'device_public_identity_sha256': digest(json.dumps(identity, separators=(',', ':'), ensure_ascii=False).encode()),
+            }
+            public_wrapper = b'synthetic-host-wrapper-shape-only-not-a-signed-grant'
+            grant = {
+                'schema': android.GRANT_SCHEMA, 'run_id': RUN_ID,
+                **{k: device[k] for k in ('profile_id', 'profile_generation', 'hub_id', 'owner_id',
+                    'owner_key_id', 'device_id', 'catalog_sha256', 'device_public_identity_sha256')},
+                'owner_device_grant_base64': base64.b64encode(public_wrapper).decode(),
+                'grant_sha256': digest(public_wrapper),
+            }
+            android.validate_grant(grant, side, RUN_ID, device)
+            owner_pins = []
+            for role in ('source', 'target'):
+                setup = self.setup(role)
+                raw = json.dumps(setup['owner_public_identity'], separators=(',', ':'), ensure_ascii=False)
+                owner_pins.append({
+                    'owner_id': setup['owner_id'], 'key_id': setup['owner_key_id'],
+                    'public_identity_json': raw,
+                    'fingerprint': digest(b'cicada/client/device-public-key/v1\0' + raw.encode()),
+                })
+            selection = {
+                'schema': android.SELECTION_SCHEMA, 'run_id': RUN_ID,
+                **{k: device[k] for k in ('profile_id', 'profile_generation', 'hub_id',
+                    'owner_id', 'device_id', 'catalog_sha256')},
+                'link_id': 'synthetic-link', 'expected_link_version': 1,
+                'source_owner_pin': owner_pins[0], 'target_owner_pin': owner_pins[1],
+            }
+            self.assertEqual(android.validate_selection(selection, RUN_ID, device), side)
+            with self.assertRaises(ValueError):
+                android.validate_selection(
+                    dict(selection, catalog_sha256=android.runner.CATALOG_SHA256), RUN_ID, device)
+            for bad_grant, bad_device in ((dict(grant, catalog_sha256=android.runner.CATALOG_SHA256), device),
+                    (grant, dict(device, catalog_sha256=android.runner.CATALOG_SHA256)),
+                    (grant, dict(device, profile_generation=True))):
+                with self.subTest(side=side), self.assertRaises(ValueError):
+                    android.validate_grant(bad_grant, side, RUN_ID, bad_device)
+
+    def test_carrier_joins_current_delivery_instead_of_its_own_legacy_constants(self):
+        carrier = load('current_carrier_pin_regression', 'v164-link-recovery-carrier.py')
+        pins = inputs.delivery.PINS
+        self.assertEqual((carrier.CORE_REVISION, carrier.HUB_IMAGE_ID, carrier.SOURCE_FINGERPRINT,
+            carrier.CATALOG_SHA256, carrier.CONTRACT_REVISION, carrier.WIRE_VERSION),
+            tuple(pins[k] for k in ('source_revision', 'hub_image_id', 'source_fingerprint',
+                'catalog_sha256', 'contract_revision', 'wire_version')))
+
+    def test_carrier_accepts_current_manifest_and_ready_but_refuses_historical_tuple(self):
+        carrier = load('current_carrier_manifest_regression', 'v164-link-recovery-carrier.py')
+        ready = {
+            'event': 'READY', 'mode': 'response-loss', 'operation': 'link.key_grant',
+            'listen': '127.0.0.1:18787',
+            **{k: inputs.delivery.PINS[k] for k in ('contract_revision', 'catalog_sha256', 'wire_version')},
+        }
+        raw = compact(ready) + b'\n'
+        manifest = {
+            'schema': carrier.MANIFEST_SCHEMA, 'run_id': RUN_ID,
+            'run_scope': 'v164-e2a1908-link-recovery', **hub_source(),
+            'fixture_pid': 123, 'fixture_process_start': '456', 'helper_sha256': 'a' * 64,
+            'ready_raw_sha256': digest(raw), 'hub_id': 'synthetic-hub',
+            'upstream_origin': 'http://127.0.0.1:18787', 'android_base_url': 'http://127.0.0.1:8787',
+            'owner_id': 'synthetic-source-owner', 'device_id': 'synthetic-source-device',
+            'session_epoch': 1, 'expected_operation': 'link.key_grant', 'fault_mode': 'response-loss',
+        }
+        parsed = carrier.RootManifest.from_mapping(manifest)
+        self.assertEqual(carrier.parse_ready(raw, parsed).catalog_sha256,
+            inputs.delivery.PINS['catalog_sha256'])
+        for key, stale in (
+                ('core_revision', 'e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59'),
+                ('hub_image_id', 'sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01'),
+                ('catalog_sha256', android.runner.CATALOG_SHA256),
+                ('contract_revision', 'client-hub-v1.6.4')):
+            with self.subTest(manifest_field=key), self.assertRaises(ValueError):
+                carrier.RootManifest.from_mapping(dict(manifest, **{key: stale}))
+        for key, stale in (('catalog_sha256', android.runner.CATALOG_SHA256),
+                ('contract_revision', 'client-hub-v1.6.4')):
+            stale_raw = compact(dict(ready, **{key: stale})) + b'\n'
+            rehashed = carrier.RootManifest.from_mapping(dict(manifest, ready_raw_sha256=digest(stale_raw)))
+            with self.subTest(ready_field=key), self.assertRaises(ValueError):
+                carrier.parse_ready(stale_raw, rehashed)
 
 
 if __name__ == '__main__':

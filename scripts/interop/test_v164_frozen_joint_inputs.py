@@ -75,7 +75,8 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_parent_v5_snapshot.py": "dcad02d8919a9e875c81b4fa31c900bf14420cf0165b2d221164c5df016c95b1",
         })
-        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint8-20261010")
+        self.assertEqual(joint.FROZEN_PREPARATION_RUN_ID, "v164-e2a1908-joint8-20261010")
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint9-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -120,7 +121,7 @@ class FinalConsumerPinTests(unittest.TestCase):
             for stale_run in ("v164-e2a1908-joint-20261010-0", "v164-e2a1908-joint2-20261010-0",
                     "v164-e2a1908-joint3-20261010-0", "v164-e2a1908-joint4-20261010-0",
                     "v164-e2a1908-joint5-20261010-0", "v164-e2a1908-joint6-20261010-0",
-                    "v164-e2a1908-joint7-20261010-0"):
+                    "v164-e2a1908-joint7-20261010-0", "v164-e2a1908-joint8-20261010-0"):
                 with self.subTest(run_id=stale_run), self.assertRaises(ValueError):
                     joint._validate_carrier_manifest(
                         dict(manifest, run_id=stale_run), Path("/tmp/synthetic-case"), 0)
@@ -461,7 +462,7 @@ class ArtifactPinTests(unittest.TestCase):
             "event_count": 82, "callback_fields": 25, "policy_fields": 11,
             "outer_seconds": 3600, "runtime_effects": 0,
             "Client_APK_Hub_helpers_production_changed": False,
-            "reserved_batch": joint.RUN_ID,
+            "reserved_batch": joint.FROZEN_PREPARATION_RUN_ID,
             **copy.deepcopy(joint.PREPARATION_REFERENCES),
             "qa_receipt": {"path": str(qa_path), "sha256": digest(qa_raw),
                            "elapsed_seconds": 0.16, **counts},

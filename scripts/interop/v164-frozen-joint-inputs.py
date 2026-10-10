@@ -46,7 +46,10 @@ SOURCE_FINGERPRINT = 'cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6ae
 CATALOG_SHA256 = 'a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9'
 CONTRACT_REVISION = 'client-hub-v1.6.5'
 WIRE_VERSION = 1
-RUN_ID = 'v164-e2a1908-joint8-20261010'
+# The immutable V5 export retains its preparation provenance; each execution
+# requires a distinct Root Master, evidence directory and runtime batch ID.
+FROZEN_PREPARATION_RUN_ID = 'v164-e2a1908-joint8-20261010'
+RUN_ID = 'v164-e2a1908-joint9-20261010'
 ANDROID_BASE_URL = 'http://127.0.0.1:8787'
 JOINT_HELPER_SHA256 = 'b8aae1f6ceed30f1e65e5a3d9650a0057562b37a4d67edf64bb1844aaeecfaad'
 RECOVERY_HELPER_SHA256 = 'e2289a6443d928c92be358a5ca3e3eac9d4c083986abf9ac5e920e2e6a97ae80'
@@ -324,7 +327,7 @@ def verify_artifacts():
           'QA_RECEIPT_SCOPE')
     _need(freeze.get('status') == 'SOURCE_FROZEN_OFFLINE_PASS' and
           freeze.get('online') == 'NOT_GO' and freeze.get('files') == expected_files and
-          freeze.get('reserved_batch') == RUN_ID and
+          freeze.get('reserved_batch') == FROZEN_PREPARATION_RUN_ID and
           all(freeze.get(key) == value for key, value in PREPARATION_REFERENCES.items()) and
           freeze.get('operator_sources') == {
               PARENT_PATH.name: parent_sha, ADAPTER_PATH.name: adapter_sha} and
