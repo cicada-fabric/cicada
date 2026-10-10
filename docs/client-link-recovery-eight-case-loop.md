@@ -1,6 +1,124 @@
 # Bounded Android Link recovery loop
 
+## Successor freeze: corrected 25-field Parent delivery
+
+Date: 2026-10-10. Root explicitly authorized the corrected interface and freeze
+below. The correction changes the explanatory callback count from 26 to 25;
+Parent, adapter, compiler, callback fields and production contract bytes do
+not change. This successor replaces the declared-metadata blocker as the
+current preparation. The earlier blocked audits, failures and manifests
+remain historical with their original source and APK attribution.
+
+The existing twelfth driver, `v164-frozen-joint-inputs.py`, pins the four
+delivered artifacts and now requires the actual reconciliation binary and
+its compile receipt. It hashes regular, canonical, single-link, current-user
+files and checks bounded sizes and modes: 0600 for the four artifacts and
+receipt, 0755 for the binary. The binary is never executed by Client
+preparation. Receipt checks bind compile-only scope, zero model calls,
+unexecuted runtime, exact clean e2a source/image/fingerprint, binary bytes,
+mode and digest. The five-entry source map and compiler receipt digest in
+the freeze must also agree. No thirteenth driver or new runtime interface
+is introduced.
+
+All paths below are relative to the frozen Core delivery's
+`joint-preparation/` directory.
+
+| Artifact | SHA-256 |
+|---|---|
+| `joint-parent.py` | `479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794` |
+| `joint-adapter-parent-ready.py` | `7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4` |
+| `JOINT-PARENT-INTERFACE.NONAUTH.md` | `8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570` |
+| `ADAPTER-PARENT-FREEZE.NONAUTH.json` | `6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39` |
+| `reconcile-final-compile-format-2/bin/cicada-link-joint-reconcile` | `54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3` |
+| `reconcile-final-compile-format-2/PREPARATION-RESULT.NONAUTH.json` | `96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e` |
+
+The closed callback has **25** top-level fields. NONE has exactly **11**
+policy fields. Candidate version 1 remains noncurrent and bound to the native
+reviewed digest; encrypted HEAD is current version 0, empty digest, both sides
+`MISSING`, with bilateral verification false. The loss candidate SOURCE is
+`VERIFIED` only through the separately attributed Core readonly receipt,
+with origin `DB_READONLY_VERIFIED_SIGNED_PROOF`; TARGET remains `MISSING`.
+The other three modes require `DB_READONLY_CONFIRMED_ABSENT`. The candidate
+receipt digest binds Core's test-only `mode=ro/query_only` evidence and the
+original proof hash. Client does not read that database or invent an
+encrypted pending-candidate query.
+
+KEY retains two encrypted direct reads, `policy=null` and result label
+`CORE_PARENT_SEPARATE_ENCRYPTED_OWNER_SESSION`. NONE retains four encrypted
+direct reads and exact label
+`CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE`. The opposite
+Go operator must be independently enrolled and current; its reads are never
+attributed to Android. Present-proof verification and missing-side checks do
+not establish bilateral consent. Android readonly remains `NOT_RUN`.
+
+The original 82-request flow is unchanged: TARGET Android enrollment first,
+SOURCE enrollment and activation last, then no switch, reactivation or
+reselection through original recovery and finish. Original signing, capture,
+operation, packet and proof hashes remain exact. The immutable APK pair and
+Root-endorsed pins are unchanged. Android uses exactly
+`http://127.0.0.1:8787`; the existing network-none STDIO listener is
+`127.0.0.1:18944`. Only Root may install, verify and remove the exact owned
+`adb reverse tcp:8787 tcp:18944` mapping. There is no `10.0.2.2` route claim.
+
+### Successor verification and delivery
+
+Evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-successor25-consumer-freeze-20261010`.
+The final clean Client commit, tree, tracked raw-input inventory, twelve
+actual driver hashes, callback export and unchanged APK attribution are
+bound in `final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`. Only the
+existing consumer changes among those twelve drivers; the loop itself remains
+`415f2eadee00860898e05f73451ec7e611b30d67544df16c7c7ad6340ddff9fd`.
+The twelve-driver map SHA-256 is
+`039c4ee00f0c8047ae5f878a2149cb6fabdeaed94cad50a819dd315cc158373f`.
+No Core test or compiler is rerun by Client; the Core 64-test and 8-top/27-sub
+compile receipts retain their producer-only attribution.
+
+| Gate | Status | Actual command / exit and evidence |
+|---|---|---|
+| Current Client offline regressions | PASS | `python3 <evidence-root>/run-offline.private.py`, exit 0; 158 tests, no skips/failures, 5.250 seconds unittest / 6.333 seconds wrapper; `python.receipt.redacted.json` |
+| Actual Parent/adapter/interface/freeze and auxiliary | PASS for hash and metadata checks | `python3 <evidence-root>/freeze-inputs.private.py`, exit 0; `final82-coordination.receipt.redacted.json` |
+| Unchanged APK pair and endorsed pins | PASS for exact bytes | Same input audit, exit 0; no rebuild or APK execution |
+| Client v2 offline plan template | PASS | `python3 <evidence-root>/verify-plan.offline.private.py`, exit 0, 0.840 seconds; `final82-delivery/offline-plan.receipt.NONAUTH.json` |
+| Owned offline container closure | PASS | Exact-ID absence query, exit 0, no match; offline plan receipt and final quality receipt |
+| Eight Android recovery cases / TARGET Go reads | NOT_RUN | Online HOLD, no Master GO |
+| Android readonly / native Worker / physical Android / public HTTPS | NOT_RUN | Separate runtime gates |
+
+Tests ran at parent `390bb7db58e7215a6958869fb67f2b7fc244f75d`,
+**dirty=true**, with per-file hashes unchanged during execution and matched
+to the successor commit. The Docker suite uses a pinned image,
+`--network=none`, and only the read-only Client mount. It has no Core or key
+mount. The separate offline plan mounts only the exact read-only public
+source metadata, nonexecuted auxiliary and endorsed APK metadata. No Hub,
+emulator, model or actual reconciliation is started. Unit tests use public
+synthetic receipts and cannot establish signature verification or database
+observations at runtime. They reject superseded metadata, stale/tampered
+auxiliaries, wrong file permissions/links, inconsistent compiler scope/source
+and incorrect binary metadata; the existing all-eight callback rejection
+and result-record tests remain active.
+
+The command receipts contain exact Docker argv and exit codes. Root's
+pre-BOOT input is `final82-delivery/root-parent-template.private.json`,
+schema `cicada.e2a1908-joint-loop-template.v1`; its SHA-256 is
+`d1afd7a8d51a0afe09addf5560b0dd41ca1e8b6c43806d65050d956a9244a12e`.
+The separate full Client v2 template is an offline format check with placeholder
+paths, not a runtime plan or GO. The callback export SHA-256 is
+`510e8f7f686e8006db56d25d48a41857fba292e2feb60bcabb4fbae9f663dc83`.
+
+Root must independently review the final source inventory and twelve driver
+pins, pin the original82 Parent template and final config, and issue a
+separate finite Master GO. Only after actual BOOT_READY may Parent derive
+the Client v2 plan from the owned 0700
+`/tmp/cicada-joint-e2a-<opaque>/cases/0..7` tree. Approval, issued/expiry times
+and budgets remain unchanged: 3600 seconds outer, 360 per case, 240 cleanup;
+the two exact owned Hub restarts at indices 2 and 6 each have a 45-second
+absolute limit. Failure stops execution without retries, fresh packets or
+proof extensions. This delivery is preparation only, not online authority.
+
 ## Declared Parent source repin: producer delivery blocked
+
+This section preserves the historical `390bb7d` declared-pin checkpoint.
+Root's explicitly corrected successor delivery above is current.
 
 Date: 2026-10-10. This pin-only checkpoint accepts Root's newly declared
 interface and freeze digests. Parent and adapter bytes are unchanged. The
@@ -55,8 +173,8 @@ Earlier source-pin receipts and all failures remain historical and intact.
 
 ## Callback result-record verification
 
-This section preserves the previous `ab40f40` checkpoint. The declared repin
-above supplies the current driver pins and producer-delivery status.
+This section preserves the previous `ab40f40` checkpoint. The successor
+freeze above supplies the current driver pins and producer-delivery status.
 
 Date: 2026-10-10. The current callback follows the complete frozen proposal,
 SHA-256 `486b0c2be499a08a50acf272c8f01801a4105ecc7a67ddf2d4cfb2748afbf717`.

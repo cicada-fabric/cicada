@@ -40,12 +40,20 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.ADAPTER_PATH.name, "joint-adapter-parent-ready.py")
         self.assertEqual(joint.INTERFACE_PATH.name, "JOINT-PARENT-INTERFACE.NONAUTH.md")
         self.assertEqual(joint.FREEZE_PATH.name, "ADAPTER-PARENT-FREEZE.NONAUTH.json")
+        self.assertEqual(joint.RECONCILE_PATH.parts[-3:], (
+            "reconcile-final-compile-format-2", "bin", "cicada-link-joint-reconcile"))
+        self.assertEqual(joint.RECONCILE_RECEIPT_PATH.parts[-2:], (
+            "reconcile-final-compile-format-2", "PREPARATION-RESULT.NONAUTH.json"))
         self.assertEqual(joint.FROZEN_ARTIFACT_HASHES, {
             "parent_sha256": "479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794",
             "adapter_sha256": "7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4",
-            "interface_sha256": "ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966",
-            "freeze_sha256": "5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4",
+            "interface_sha256": "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570",
+            "freeze_sha256": "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39",
         })
+        self.assertEqual(joint.RECONCILE_SHA256,
+            "54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3")
+        self.assertEqual(joint.RECONCILE_RECEIPT_SHA256,
+            "96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e")
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_adapter_parent_ready.py": "21a9bf235542a99c34d736406e37f9f3551349d9bacf4b0fe00eae3f72cb0add",
             "test_joint_parent.py": "660f201b30f4e27089ae6a7f4a8151c80bd492cfa7e52934fc945b3564a9ea1b",
@@ -279,12 +287,40 @@ class ArtifactPinTests(unittest.TestCase):
         adapter = root / "joint-adapter-parent-ready.py"
         interface = root / "JOINT-PARENT-INTERFACE.NONAUTH.md"
         freeze = root / "ADAPTER-PARENT-FREEZE.NONAUTH.json"
+        reconcile, receipt_path = self.auxiliary_paths(root)
         parent_raw = b"# synthetic frozen Root Parent source\n"
         adapter_raw = b"# synthetic frozen Parent-ready adapter\n"
         interface_raw = b"# synthetic frozen Parent interface\n"
+        reconcile_raw = b"synthetic offline compiler bytes; never executable in this test\n"
+        reconcile_sha = digest(reconcile_raw)
+        receipt_value = {
+            "status": "PASS_OFFLINE_COMPILE_ONLY",
+            "scope": "OFFLINE_COMPILE_ONLY",
+            "runtime": "NOT_RUN",
+            "android": "NOT_RUN",
+            "cleanup": "CONFIRMED",
+            "source_before_after_exact": True,
+            "six_residents_exact": True,
+            "compile_exit_code": 0,
+            "model_calls": 0,
+            "compiled_source": {
+                "dirty": False,
+                "image": joint.TEST_IMAGE_ID,
+                "revision": joint.CORE_REVISION,
+                "source_fingerprint": joint.SOURCE_FINGERPRINT,
+            },
+            "binaries": {
+                "cicada-link-joint-reconcile": {
+                    "bytes": len(reconcile_raw), "mode": "0o755", "sha256": reconcile_sha,
+                },
+            },
+            "artifact_sha256": {"bin/cicada-link-joint-reconcile": reconcile_sha},
+        }
+        receipt_raw = json.dumps(receipt_value, sort_keys=True, separators=(",", ":")).encode()
         freeze_value = {
             "status": "PASS_PREPARATION_SCOPE_ONLY",
             "online": "NOT_GO",
+            "offline_compiler_sha256": digest(receipt_raw),
             "files": {
                 "JOINT-PARENT-INTERFACE.NONAUTH.md": digest(interface_raw),
                 "joint-adapter-parent-ready.py": digest(adapter_raw),
@@ -296,6 +332,8 @@ class ArtifactPinTests(unittest.TestCase):
         write_file(parent, parent_raw)
         write_file(interface, interface_raw)
         write_file(adapter, adapter_raw)
+        write_file(reconcile, reconcile_raw, mode=0o755)
+        write_file(receipt_path, receipt_raw)
         write_file(freeze, freeze_raw)
         expected = {
             "parent_sha256": digest(parent_raw),
@@ -305,22 +343,147 @@ class ArtifactPinTests(unittest.TestCase):
         }
         return parent, adapter, interface, freeze, freeze_value, expected
 
+    @staticmethod
+    def auxiliary_paths(root: Path) -> tuple[Path, Path]:
+        directory = root / "reconcile-final-compile-format-2"
+        return directory / "bin/cicada-link-joint-reconcile", directory / "PREPARATION-RESULT.NONAUTH.json"
+
     def patch_artifacts(self, parent: Path, adapter: Path, interface: Path, freeze: Path,
-            expected: dict[str, str]):
-        return (
-            mock.patch.object(joint, "PARENT_PATH", parent),
-            mock.patch.object(joint, "INTERFACE_PATH", interface),
-            mock.patch.object(joint, "ADAPTER_PATH", adapter),
-            mock.patch.object(joint, "FREEZE_PATH", freeze),
-            mock.patch.object(joint, "FROZEN_ARTIFACT_HASHES", expected),
+            expected: dict[str, str], *, reconcile_sha256: str | None = None,
+            receipt_sha256: str | None = None):
+        reconcile, receipt_path = self.auxiliary_paths(parent.parent)
+        if reconcile_sha256 is None:
+            reconcile_sha256 = digest(reconcile.read_bytes())
+        if receipt_sha256 is None:
+            receipt_sha256 = digest(receipt_path.read_bytes())
+        return mock.patch.multiple(
+            joint,
+            PARENT_PATH=parent,
+            INTERFACE_PATH=interface,
+            ADAPTER_PATH=adapter,
+            FREEZE_PATH=freeze,
+            FROZEN_ARTIFACT_HASHES=expected,
+            RECONCILE_PATH=reconcile,
+            RECONCILE_RECEIPT_PATH=receipt_path,
+            RECONCILE_SHA256=reconcile_sha256,
+            RECONCILE_RECEIPT_SHA256=receipt_sha256,
         )
 
     def test_verify_artifacts_accepts_only_the_exact_private_frozen_bytes(self) -> None:
         with tempfile.TemporaryDirectory(prefix="v164-joint-artifacts-") as temp:
             parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(Path(temp))
             patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            with patches:
                 self.assertEqual(joint.verify_artifacts(), expected)
+
+    def test_verify_auxiliary_rejects_tampering_wrong_modes_and_symlinks(self) -> None:
+        for target_name in ("compiler", "receipt"):
+            with self.subTest(target=target_name), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-aux-tamper-") as temp:
+                root = Path(temp)
+                parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
+                compiler, receipt = self.auxiliary_paths(root)
+                compiler_pin, receipt_pin = digest(compiler.read_bytes()), digest(receipt.read_bytes())
+                path = compiler if target_name == "compiler" else receipt
+                mode = 0o755 if target_name == "compiler" else 0o600
+                write_file(path, b"tampered synthetic bytes\n", mode=mode)
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, expected,
+                    reconcile_sha256=compiler_pin, receipt_sha256=receipt_pin)
+                with patches, self.assertRaises(ValueError):
+                    joint.verify_artifacts()
+
+        for target_name, bad_mode in (("compiler", 0o700), ("receipt", 0o644)):
+            with self.subTest(target=target_name, bad_mode=oct(bad_mode)), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-aux-mode-") as temp:
+                root = Path(temp)
+                parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
+                compiler, receipt = self.auxiliary_paths(root)
+                (compiler if target_name == "compiler" else receipt).chmod(bad_mode)
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
+                with patches, self.assertRaises(ValueError):
+                    joint.verify_artifacts()
+
+        for target_name in ("compiler", "receipt"):
+            with self.subTest(symlink=target_name), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-aux-link-") as temp:
+                root = Path(temp)
+                parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
+                compiler, receipt = self.auxiliary_paths(root)
+                path = compiler if target_name == "compiler" else receipt
+                target = path.with_name(path.name + ".target")
+                path.rename(target)
+                path.symlink_to(target)
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
+                with patches, self.assertRaises(ValueError):
+                    joint.verify_artifacts()
+
+        with tempfile.TemporaryDirectory(prefix="v164-joint-aux-hardlink-") as temp:
+            root = Path(temp)
+            parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
+            compiler, _receipt = self.auxiliary_paths(root)
+            (root / "compiler-extra-link").hardlink_to(compiler)
+            patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
+            with patches, self.assertRaises(ValueError):
+                joint.verify_artifacts()
+
+    def test_verify_auxiliary_rejects_stale_auxiliary_pins(self) -> None:
+        for stale in ("reconcile", "receipt"):
+            with self.subTest(pin=stale), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-aux-stale-pin-") as temp:
+                root = Path(temp)
+                parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
+                pins = {"reconcile_sha256": None, "receipt_sha256": None}
+                pins["reconcile_sha256" if stale == "reconcile" else "receipt_sha256"] = "0" * 64
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, expected, **pins)
+                with patches, self.assertRaises(ValueError):
+                    joint.verify_artifacts()
+
+    def test_verify_auxiliary_rejects_wrong_receipt_scope_compile_source_and_hash_metadata(self) -> None:
+        def change_scope(value):
+            value["scope"] = "ONLINE"
+
+        def change_compile(value):
+            value["compile_exit_code"] = 1
+
+        def change_model_calls(value):
+            value["model_calls"] = 1
+
+        def change_source(value):
+            value["compiled_source"]["revision"] = "0" * 40
+
+        def dirty_source(value):
+            value["compiled_source"]["dirty"] = True
+
+        def change_binary_digest(value):
+            value["binaries"]["cicada-link-joint-reconcile"]["sha256"] = "0" * 64
+
+        def change_artifact_digest(value):
+            value["artifact_sha256"]["bin/cicada-link-joint-reconcile"] = "0" * 64
+
+        for label, mutate, expected_error in (
+                ("scope", change_scope, "RECONCILE_RECEIPT_SCOPE"),
+                ("compile status", change_compile, "RECONCILE_RECEIPT_SCOPE"),
+                ("model calls", change_model_calls, "RECONCILE_RECEIPT_SCOPE"),
+                ("source revision", change_source, "RECONCILE_SOURCE"),
+                ("dirty source", dirty_source, "RECONCILE_SOURCE"),
+                ("binary digest", change_binary_digest, "RECONCILE_BINARY_RECEIPT"),
+                ("artifact digest", change_artifact_digest, "RECONCILE_BINARY_RECEIPT")):
+            with self.subTest(receipt_field=label), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-aux-metadata-") as temp:
+                root = Path(temp)
+                parent, adapter, interface, freeze, freeze_value, expected = self.artifact_fixture(root)
+                compiler, receipt_path = self.auxiliary_paths(root)
+                receipt_value = json.loads(receipt_path.read_text())
+                mutate(receipt_value)
+                receipt_raw = json.dumps(receipt_value, sort_keys=True, separators=(",", ":")).encode()
+                write_file(receipt_path, receipt_raw)
+                freeze_value["offline_compiler_sha256"] = digest(receipt_raw)
+                freeze_raw = json.dumps(freeze_value, sort_keys=True, separators=(",", ":")).encode()
+                write_file(freeze, freeze_raw)
+                expected = dict(expected, freeze_sha256=digest(freeze_raw))
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
+                with patches, self.assertRaisesRegex(ValueError, expected_error):
+                    joint.verify_artifacts()
 
     def test_verify_artifacts_rejects_changed_bytes_wrong_modes_and_symlinks(self) -> None:
         with tempfile.TemporaryDirectory(prefix="v164-joint-artifacts-bytes-") as temp:
@@ -328,7 +491,7 @@ class ArtifactPinTests(unittest.TestCase):
             parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
             write_file(interface, b"# changed bytes\n")
             patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-            with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+            with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
         for label, artifact_name, legacy_bytes in (
@@ -340,7 +503,7 @@ class ArtifactPinTests(unittest.TestCase):
                 parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
                 write_file(parent if artifact_name == "parent" else adapter, legacy_bytes)
                 patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-                with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+                with patches, self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
         with tempfile.TemporaryDirectory(prefix="v164-joint-artifacts-mode-") as temp:
@@ -348,7 +511,7 @@ class ArtifactPinTests(unittest.TestCase):
             parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
             interface.chmod(0o644)
             patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-            with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+            with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
         with tempfile.TemporaryDirectory(prefix="v164-joint-artifacts-link-") as temp:
@@ -358,7 +521,7 @@ class ArtifactPinTests(unittest.TestCase):
             interface.rename(target)
             interface.symlink_to(target)
             patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-            with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+            with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
     def test_verify_artifacts_rejects_parent_mismatch_and_previous_source_pins(self) -> None:
@@ -367,7 +530,7 @@ class ArtifactPinTests(unittest.TestCase):
             parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
             write_file(parent, b"# changed Parent bytes\n")
             patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-            with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+            with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
         with tempfile.TemporaryDirectory(prefix="v164-joint-artifacts-old-pins-") as temp:
@@ -378,13 +541,13 @@ class ArtifactPinTests(unittest.TestCase):
                 freeze_sha256="eb34be4e43c4ae8e64e5b7fc397e76be0a2ef47b10cd5313918361b4d6eaa107",
                 adapter_sha256="29d906da160859f0a8a6711449fee69e89c6729ddb2947de9e963e92013622c4")
             patches = self.patch_artifacts(parent, adapter, interface, freeze, old_source_pins)
-            with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+            with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
     def test_verify_artifacts_rejects_previous_declared_interface_and_freeze_pins(self) -> None:
         previous = {
-            "interface_sha256": "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570",
-            "freeze_sha256": "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39",
+            "interface_sha256": "ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966",
+            "freeze_sha256": "5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4",
         }
         for name, old_hash in previous.items():
             with self.subTest(pin=name), tempfile.TemporaryDirectory(
@@ -392,7 +555,7 @@ class ArtifactPinTests(unittest.TestCase):
                 parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(Path(temp))
                 stale_pins = dict(expected, **{name: old_hash})
                 patches = self.patch_artifacts(parent, adapter, interface, freeze, stale_pins)
-                with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+                with patches, self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
     def test_verify_artifacts_rejects_legacy_source_filenames(self) -> None:
@@ -406,7 +569,7 @@ class ArtifactPinTests(unittest.TestCase):
                 root = Path(temp)
                 parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(root)
                 patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-                with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                with patches, \
                         mock.patch.object(joint, attribute, root / legacy_name), self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
@@ -426,12 +589,16 @@ class ArtifactPinTests(unittest.TestCase):
         def wrong_online_status(value):
             value["online"] = "GO"
 
+        def wrong_compiler_receipt_pin(value):
+            value["offline_compiler_sha256"] = "0" * 64
+
         for label, mutate in (
                 ("wrong pinned digest", wrong_pin),
                 ("extra freeze entry", extra_entry),
                 ("missing freeze entry", missing_entry),
                 ("status changed", wrong_status),
-                ("online status changed", wrong_online_status)):
+                ("online status changed", wrong_online_status),
+                ("offline compiler receipt pin changed", wrong_compiler_receipt_pin)):
             with self.subTest(mutation=label), tempfile.TemporaryDirectory(
                     prefix="v164-joint-artifacts-freeze-") as temp:
                 root = Path(temp)
@@ -442,7 +609,7 @@ class ArtifactPinTests(unittest.TestCase):
                 write_file(freeze, changed_freeze)
                 expected = dict(expected, freeze_sha256=digest(changed_freeze))
                 patches = self.patch_artifacts(parent, adapter, interface, freeze, expected)
-                with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+                with patches, self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
 

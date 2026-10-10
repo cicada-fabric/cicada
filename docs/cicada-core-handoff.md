@@ -1,6 +1,88 @@
 # CICADA Client integration handoff
 
+## Successor Client host consumer freeze
+
+Date: 2026-10-10. Root's final correction authorizes the actual interface
+`8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570`
+and freeze
+`6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39`.
+Parent `479adcd3…`, adapter `7dc6eb20…` and auxiliary `54d8c31b…` remain
+byte-identical. The count correction is explanatory: the closed callback
+already has 25 top-level fields on both sides. No field, APK, Kotlin,
+production protocol, frame, budget or online capability changes.
+
+The existing twelfth driver now verifies all four delivered artifacts and
+the fixed auxiliary binary/compile receipt, including the freeze's compiler
+receipt hash, regular-file scope and exact clean source/image metadata. No
+Core source, binary or test is executed. The producer's 64 preparation tests
+and 8-top/27-sub compile tests are not rerun or claimed as Client tests.
+Historical `390bb7d` blocked audits and all earlier failures remain intact;
+they are superseded by the explicitly authorized correction, not relabeled.
+
+| Gate | Status | Actual evidence |
+|---|---|---|
+| Fresh Client Docker offline suite | PASS | 158 tests, exit 0, no skips/failures; 5.250 seconds unittest / 6.333 seconds wrapper |
+| Actual Core source and auxiliary pins | PASS for read-only metadata | Input export exit 0; no Core execution |
+| Endorsed APK pair | PASS for exact bytes | Input export exit 0; no rebuild |
+| Offline Client v2 plan | PASS | Exit 0, 0.840 seconds; actual owned offline container absence checked |
+| Eight Android cases / actual TARGET Go reconciliation | NOT_RUN | Online HOLD; no Master GO |
+| Android readonly / native Worker / physical Android / public HTTPS | NOT_RUN | Separate acceptance gates |
+
+Evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-successor25-consumer-freeze-20261010`.
+Actual commands, each exit `0`:
+
+```sh
+python3 /gpu1-share/data/cicada-client/v164-e2a1908-successor25-consumer-freeze-20261010/run-offline.private.py
+python3 /gpu1-share/data/cicada-client/v164-e2a1908-successor25-consumer-freeze-20261010/freeze-inputs.private.py
+python3 /gpu1-share/data/cicada-client/v164-e2a1908-successor25-consumer-freeze-20261010/verify-plan.offline.private.py
+```
+
+`final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json` binds the final Client
+commit/clean state, tracked input inventory, exact twelve drivers, commands,
+callback and template hashes. Tests ran at parent `390bb7d`, dirty=true;
+the receipt verifies the final Python bytes. The driver-map SHA-256 is
+`039c4ee00f0c8047ae5f878a2149cb6fabdeaed94cad50a819dd315cc158373f`.
+Use the original82 pre-BOOT Parent template
+`final82-delivery/root-parent-template.private.json`, SHA-256
+`d1afd7a8d51a0afe09addf5560b0dd41ca1e8b6c43806d65050d956a9244a12e`.
+Do not substitute the offline full Client v2 template for that Parent input.
+
+The Hub remains fixed at clean `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`,
+Client-Control v1.6.4 / wire1 / catalog55. The existing 82-request flow
+initializes TARGET first and SOURCE last; SOURCE stays active through
+original recovery and finish. Independent TARGET Go reads require its real
+separate enrolled/current session. KEY keeps two direct encrypted reads;
+NONE keeps four plus explicitly separate Core readonly candidate evidence.
+Its candidate1/noncurrent and HEAD0/current/empty/two-MISSING are distinct.
+The exact result labels and 11-field NONE policy are unchanged; neither
+present-proof verification nor registration implies bilateral consent.
+Android readonly is `NOT_RUN`.
+
+The immutable app/test APK SHA-256 values remain
+`3af7b674c8daaaff4fc4442d13a2b30ad069d5195eed0c90b9b5ebcd754601f9` /
+`243922e556170dff6dfcbbe6840a80f32f37727a56421ed9016652dc962297ae`.
+Root-endorsed pins SHA-256 remains
+`3dd3f0ec9787fe4dae6e4fde83f05d961ad263884db2a70a394a50b6ccbdf6ef`.
+Android origin is `http://127.0.0.1:8787`; the owned STDIO listener is
+`127.0.0.1:18944` via exact bounded `adb reverse tcp:8787 tcp:18944`.
+There is no emulator route claim for `10.0.2.2`.
+
+**Root action:** review this successor's actual pins, then bind final config
+and Parent template into one separate finite Master GO. Parent alone derives
+the runtime v2 plan after real owned 0700 BOOT_READY roots; issued/expiry/
+approval and 3600/360/240 budgets are copied unchanged. Root owns all keys,
+Hub lifecycle, the two 45-second uncertain restarts at indices 2/6,
+FrameAdapter/control FD, adb reverse and cleanup. No automatic retry,
+profile reselection, fresh packet or proof renewal is authorized. No online
+resources were requested; no push or merge was performed. Complete source
+pins and launch argv are in the delivery manifest and the
+[successor specification](client-link-recovery-eight-case-loop.md#successor-freeze-corrected-25-field-parent-delivery).
+
 ## Declared Parent source repin: pending exact producer artifacts
+
+This section retains the historical `390bb7d` blocked delivery. Root's
+explicitly corrected successor above is current.
 
 Only test-coordination metadata pins and their regressions changed. Root's
 declared interface SHA-256 is
@@ -46,7 +128,7 @@ database or deployment is changed; no online action, push or merge.
 
 ## Callback result-record checkpoint
 
-This is the preceding `ab40f40` checkpoint; the declared repin above is current.
+This is the preceding `ab40f40` checkpoint; the successor freeze above is current.
 
 Root's blocking report cited historical `888b587`. Full read-only comparison
 against the frozen callback proposal, SHA-256

@@ -56,8 +56,9 @@ are preserved.
 The [finite eight-case supervisor](docs/client-link-recovery-eight-case-loop.md)
 reuses that immutable APK pair and adds only host test coordination. The final
 consumer pins the actual Core Parent, adapter, interface and freeze files;
-155 Docker offline tests pass, including result-record rejection without
-partial success. Root selected the original 82-request flow:
+the successor also verifies the reconciliation binary and its compile receipt
+without executing Core. Its 158 Docker offline tests pass, including
+result-record rejection without partial success. Root selected the original 82-request flow:
 TARGET enrollment first, then SOURCE activation with no switch through recovery.
 Earlier attempts retain their original results. Runtime
 execution stays HOLD, with separate encrypted Owner reads, explicitly attributed
@@ -65,10 +66,12 @@ Core readonly evidence for pending NONE candidates, and owned Android closure
 required from Root. No application capability or production
 protocol is expanded by this preparation.
 
-The latest test-coordination metadata repin is fail-closed: the declared new
-Core interface and freeze bytes are not yet present at their delivered paths.
-Their actual-source audit is **BLOCKED**, and all online cases remain **NOT_RUN**.
-See the [repin record](docs/client-link-recovery-eight-case-loop.md#declared-parent-source-repin-producer-delivery-blocked).
+Root has authorized the corrected 25-field interface metadata. The successor's
+actual-source audit and offline plan validation **PASS**; all eight online
+cases remain **NOT_RUN** pending the separate finite Master GO. The earlier
+declared-pin mismatch retains its original **BLOCKED** evidence. See the
+[successor freeze](docs/client-link-recovery-eight-case-loop.md#successor-freeze-corrected-25-field-parent-delivery)
+and [Core handoff](docs/cicada-core-handoff.md#successor-client-host-consumer-freeze).
 
 The [previous offline checkpoint](docs/client-link-recovery-offline-validation.md)
 and F38 retain their original source, images and APK attribution. Their results

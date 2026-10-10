@@ -22,12 +22,16 @@ PARENT_PATH = CORE_PREP / 'joint-parent.py'
 ADAPTER_PATH = CORE_PREP / 'joint-adapter-parent-ready.py'
 INTERFACE_PATH = CORE_PREP / 'JOINT-PARENT-INTERFACE.NONAUTH.md'
 FREEZE_PATH = CORE_PREP / 'ADAPTER-PARENT-FREEZE.NONAUTH.json'
+RECONCILE_PATH = CORE_PREP / 'reconcile-final-compile-format-2/bin/cicada-link-joint-reconcile'
+RECONCILE_RECEIPT_PATH = CORE_PREP / 'reconcile-final-compile-format-2/PREPARATION-RESULT.NONAUTH.json'
+RECONCILE_SHA256 = '54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3'
+RECONCILE_RECEIPT_SHA256 = '96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e'
 
 FROZEN_ARTIFACT_HASHES = {
     'parent_sha256': '479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794',
     'adapter_sha256': '7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4',
-    'interface_sha256': 'ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966',
-    'freeze_sha256': '5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4',
+    'interface_sha256': '8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570',
+    'freeze_sha256': '6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39',
 }
 FROZEN_PREPARATION_TEST_HASHES = {
     'test_joint_adapter_parent_ready.py': '21a9bf235542a99c34d736406e37f9f3551349d9bacf4b0fe00eae3f72cb0add',
@@ -202,8 +206,52 @@ def _hash_regular(path, *, accepted_modes, maximum):
     return total, digest.hexdigest()
 
 
+def verify_auxiliary():
+    """Hash the compiled reconciliation helper and its offline receipt; never execute it."""
+    _need(RECONCILE_PATH.parts[-3:] == (
+        'reconcile-final-compile-format-2', 'bin', 'cicada-link-joint-reconcile') and
+        RECONCILE_RECEIPT_PATH.parts[-2:] == (
+            'reconcile-final-compile-format-2', 'PREPARATION-RESULT.NONAUTH.json') and
+        RECONCILE_PATH.parent.parent == RECONCILE_RECEIPT_PATH.parent, 'RECONCILE_PATH')
+    binary_size, binary_sha = _hash_regular(
+        RECONCILE_PATH, accepted_modes=(0o755,), maximum=32 * 1024 * 1024)
+    _need(binary_sha == RECONCILE_SHA256, 'RECONCILE_PIN')
+    receipt_size, receipt_sha = _hash_regular(
+        RECONCILE_RECEIPT_PATH, accepted_modes=(0o600,), maximum=MAX_JSON_BYTES)
+    _, parsed_sha, receipt = _load_json(
+        RECONCILE_RECEIPT_PATH, expected_sha256=RECONCILE_RECEIPT_SHA256)
+    _need(receipt_size > 0 and receipt_sha == parsed_sha == RECONCILE_RECEIPT_SHA256,
+          'RECONCILE_RECEIPT_PIN')
+    _need(receipt.get('status') == 'PASS_OFFLINE_COMPILE_ONLY' and
+          receipt.get('scope') == 'OFFLINE_COMPILE_ONLY' and
+          receipt.get('runtime') == 'NOT_RUN' and receipt.get('android') == 'NOT_RUN' and
+          receipt.get('cleanup') == 'CONFIRMED' and
+          receipt.get('source_before_after_exact') is True and
+          receipt.get('six_residents_exact') is True and
+          type(receipt.get('compile_exit_code')) is int and receipt['compile_exit_code'] == 0 and
+          type(receipt.get('model_calls')) is int and receipt['model_calls'] == 0,
+          'RECONCILE_RECEIPT_SCOPE')
+    source = receipt.get('compiled_source')
+    _exact(source, {'dirty', 'image', 'revision', 'source_fingerprint'}, 'RECONCILE_SOURCE')
+    _need(source['dirty'] is False and source['image'] == TEST_IMAGE_ID and
+          source['revision'] == CORE_REVISION and
+          source['source_fingerprint'] == SOURCE_FINGERPRINT, 'RECONCILE_SOURCE')
+    binaries = receipt.get('binaries')
+    _need(isinstance(binaries, dict), 'RECONCILE_BINARY_RECEIPT')
+    binary = binaries.get('cicada-link-joint-reconcile')
+    _exact(binary, {'bytes', 'mode', 'sha256'}, 'RECONCILE_BINARY_RECEIPT')
+    _need(type(binary['bytes']) is int and binary['bytes'] == binary_size and
+          binary['mode'] == '0o755' and binary['sha256'] == binary_sha,
+          'RECONCILE_BINARY_RECEIPT')
+    artifacts = receipt.get('artifact_sha256')
+    _need(isinstance(artifacts, dict) and
+          artifacts.get('bin/cicada-link-joint-reconcile') == binary_sha,
+          'RECONCILE_BINARY_RECEIPT')
+    return {'reconcile_sha256': binary_sha, 'reconcile_receipt_sha256': receipt_sha}
+
+
 def verify_artifacts():
-    """Pin the frozen Parent, adapter, interface and freeze files; execute no Core code."""
+    """Pin the Parent delivery and reconciliation auxiliary; execute no Core code."""
     _need(PARENT_PATH.name == 'joint-parent.py', 'PARENT_PATH')
     _need(ADAPTER_PATH.name == 'joint-adapter-parent-ready.py', 'ADAPTER_PATH')
     _need(INTERFACE_PATH.name == 'JOINT-PARENT-INTERFACE.NONAUTH.md', 'INTERFACE_PATH')
@@ -231,8 +279,10 @@ def verify_artifacts():
         **FROZEN_PREPARATION_TEST_HASHES,
     }
     _need(freeze.get('status') == 'PASS_PREPARATION_SCOPE_ONLY' and
-          freeze.get('online') == 'NOT_GO' and freeze.get('files') == expected_files,
+          freeze.get('online') == 'NOT_GO' and freeze.get('files') == expected_files and
+          freeze.get('offline_compiler_sha256') == RECONCILE_RECEIPT_SHA256,
           'FREEZE_CONTENT')
+    verify_auxiliary()
     return dict(FROZEN_ARTIFACT_HASHES)
 
 
