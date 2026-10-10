@@ -1,5 +1,39 @@
 # CICADA Client integration handoff
 
+## Joint7: Parent v4 snapshot compatibility
+
+Root closed joint6 with Parent exit 1 at `FINISH_SNAPSHOT_BYTES`. The binding
+guard passed and Android capture/recovery ran, but no complete FINISH
+acknowledgement or final Client result was produced. The full case remains
+**UNKNOWN**, the batch remains **FAIL**, and the other seven cases remain
+**NOT_RUN**. Root's hash-only closeout is
+`joint-preparation/ROOT-JOINT6-CLOSEOUT.NONAUTH.json`; owned Hub/Android and
+scratch cleanup were confirmed, with Core source and six residents unchanged.
+Joint3's original cause remains **UNKNOWN**; no later result is attributed to it.
+
+Root's immutable Parent v4 uses the same canonical serializer for the public
+snapshot and private carrier input. Exact raw-byte and typed-hash checks remain
+enabled. Client pins the actual v4 Parent, adapter, interface, freeze, focused
+test and QA receipt. The closed seven-entry absolute-path freeze map and
+two-entry `operator_sources` map are validated against the v4 delivery; the
+reconcile binary and compiler receipt retain independent verification.
+
+Fresh batch: `v164-e2a1908-joint7-20261010`. One scoped network-none Docker run
+passed 25 Client host tests (exit 0), including v4 source/runner acceptance,
+old source and URL rejection, closed freeze/QA negatives and the eight-case
+plan guard. Root's separate snapshot QA records three tests and two subtests;
+Client only verifies its immutable receipt, without executing Core code.
+
+The clean checkpoint, twelve driver hashes, 604 tracked inputs, actual test
+command/exit code and Root-only templates are sealed in
+`/gpu1-share/data/cicada-client/v164-e2a1908-joint7-preparation-20261010/CLIENT-JOINT7-DELIVERY.NONAUTH.json`.
+The config selects exactly `joint-parent-v4.py` and
+`joint-adapter-parent-ready-v4.py`. APKs, helper/Hub pins, loop business logic,
+original82 TARGET-first/SOURCE-last, 25/11 callback fields and budgets are
+unchanged. SOURCE remains active through FINISH. Joint7 Android cases,
+physical Android and public HTTPS are **NOT_RUN**. No GO, approval or expiry
+is created here; Root owns the sole fresh online execution and cleanup.
+
 ## Joint6: three independent binding domains
 
 Root and Client independently audited the fixed e2a implementation. Network
