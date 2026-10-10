@@ -43,8 +43,8 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint.FROZEN_ARTIFACT_HASHES, {
             "parent_sha256": "479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794",
             "adapter_sha256": "7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4",
-            "interface_sha256": "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570",
-            "freeze_sha256": "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39",
+            "interface_sha256": "ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966",
+            "freeze_sha256": "5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4",
         })
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
             "test_joint_adapter_parent_ready.py": "21a9bf235542a99c34d736406e37f9f3551349d9bacf4b0fe00eae3f72cb0add",
@@ -380,6 +380,20 @@ class ArtifactPinTests(unittest.TestCase):
             patches = self.patch_artifacts(parent, adapter, interface, freeze, old_source_pins)
             with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
                 joint.verify_artifacts()
+
+    def test_verify_artifacts_rejects_previous_declared_interface_and_freeze_pins(self) -> None:
+        previous = {
+            "interface_sha256": "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570",
+            "freeze_sha256": "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39",
+        }
+        for name, old_hash in previous.items():
+            with self.subTest(pin=name), tempfile.TemporaryDirectory(
+                    prefix="v164-joint-artifacts-stale-pin-") as temp:
+                parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(Path(temp))
+                stale_pins = dict(expected, **{name: old_hash})
+                patches = self.patch_artifacts(parent, adapter, interface, freeze, stale_pins)
+                with patches[0], patches[1], patches[2], patches[3], patches[4], self.assertRaises(ValueError):
+                    joint.verify_artifacts()
 
     def test_verify_artifacts_rejects_legacy_source_filenames(self) -> None:
         for attribute, legacy_name in (

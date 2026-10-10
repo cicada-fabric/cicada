@@ -1,6 +1,62 @@
 # Bounded Android Link recovery loop
 
+## Declared Parent source repin: producer delivery blocked
+
+Date: 2026-10-10. This pin-only checkpoint accepts Root's newly declared
+interface and freeze digests. Parent and adapter bytes are unchanged. The
+consumer retains exact file names, private-file guards, the five-entry freeze
+map, `PASS_PREPARATION_SCOPE_ONLY` and `online=NOT_GO`. It neither accepts the
+old metadata nor executes Core code.
+
+| Artifact in Core `joint-preparation/` | Declared SHA-256 | Actual audit |
+|---|---|---|
+| `joint-parent.py` | `479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794` | PASS, exact bytes |
+| `joint-adapter-parent-ready.py` | `7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4` | PASS, exact bytes |
+| `JOINT-PARENT-INTERFACE.NONAUTH.md` | `ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966` | BLOCKED, path still contains `8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570` |
+| `ADAPTER-PARENT-FREEZE.NONAUTH.json` | `5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4` | BLOCKED, path still contains `6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39` |
+
+All four observed files are regular, current-user-owned mode-0600 files with
+one link. The actual freeze still references the earlier interface. Root must
+deliver the two exact declared byte artifacts at these paths or provide a
+corrected immutable delivery. Client does not rewrite Core files or infer
+replacement digests. `verify_artifacts` rejects this state with `INTERFACE_PIN`.
+No source-pin PASS or actual-plan PASS is claimed for the missing delivery.
+
+The pinned Parent's explicit emitted callback has **25** top-level fields,
+not the count of 26 in the coordination message. This checkpoint preserves
+those exact field names and eleven nested NONE fields; no unspecified field
+is added. KEY remains two actual encrypted reads. NONE remains four actual
+encrypted reads plus separately attributed Core readonly candidate evidence,
+candidate1/noncurrent, HEAD0/empty/current/both-MISSING, the two required
+provenance fields and the mixed result label. Android readonly stays `NOT_RUN`.
+The 82-request flow, SOURCE continuity, budgets, frame and APKs are unchanged.
+
+Evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-parent-source-repin-20261010`.
+
+| Gate | Status | Command / exit |
+|---|---|---|
+| Docker offline regressions | PASS | `python3 <evidence-root>/run-offline.private.py`, exit 0; 155 tests, no skips or failures, 5.204 seconds unittest / 6.481 seconds wrapper |
+| Actual declared Core source audit | BLOCKED | `python3 <evidence-root>/audit-core-source.private.py`, exit 1, `INTERFACE_PIN`; receipt in `producer-audit-attempt01/` |
+| Runtime plan with actual declared inputs | NOT_RUN | Actual source audit is blocked; no bypass or synthetic actual-source claim |
+| Eight Android cases / actual Go reconciliation / Android readonly | NOT_RUN | Online HOLD, no Master GO |
+| Native Worker / physical Android / public HTTPS | NOT_RUN | Separate acceptance gates |
+
+Tests ran at parent `ab40f40c51f663e428eca76a518880e9fd28ded4`, **dirty=true**,
+and bind unchanged final Python hashes. Their Docker container has network
+disabled and mounts only Client read-only; no Core, key, database or APK mount.
+The new negative regression rejects both previous declared metadata pins.
+The final clean Client commit, raw tracked-input inventory, twelve actual
+driver hashes, exact commands/exits, observed-versus-declared source metadata
+and unchanged APK attribution are recorded in
+`final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json` under this evidence root.
+That delivery is explicitly **BLOCKED_PRODUCER_ARTIFACT_MISMATCH**, not a GO.
+Earlier source-pin receipts and all failures remain historical and intact.
+
 ## Callback result-record verification
+
+This section preserves the previous `ab40f40` checkpoint. The declared repin
+above supplies the current driver pins and producer-delivery status.
 
 Date: 2026-10-10. The current callback follows the complete frozen proposal,
 SHA-256 `486b0c2be499a08a50acf272c8f01801a4105ecc7a67ddf2d4cfb2748afbf717`.

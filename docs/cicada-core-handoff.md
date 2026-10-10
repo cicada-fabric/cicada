@@ -1,6 +1,52 @@
 # CICADA Client integration handoff
 
+## Declared Parent source repin: pending exact producer artifacts
+
+Only test-coordination metadata pins and their regressions changed. Root's
+declared interface SHA-256 is
+`ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966`;
+freeze SHA-256 is
+`5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4`.
+The Parent and adapter retain their previously verified `479adcd3…` and
+`7dc6eb20…` bytes. At the exact delivered Core paths, the interface is still
+`8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570`
+and the freeze is still
+`6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39`.
+Actual consumer verification rejects this mismatch with `INTERFACE_PIN`;
+the observed file guard metadata is valid, but the declared hashes differ.
+
+| Gate | Status | Actual evidence |
+|---|---|---|
+| Client offline regression suite | PASS | 155 Docker tests, exit 0, 6.481 seconds wrapper; parent `ab40f40`, dirty=true |
+| Actual new interface/freeze delivery | BLOCKED | Read-only audit exit 1; both exact paths still contain previous bytes |
+| Actual-input runtime plan | NOT_RUN | No source-pin bypass or online authority |
+| Eight Android cases / actual TARGET Go reconciliation / Android readonly | NOT_RUN | Online HOLD |
+| Native Worker / physical Android / public HTTPS | NOT_RUN | Separate runtime gates |
+
+Required Core action: place the exact two declared artifacts at
+`joint-preparation/JOINT-PARENT-INTERFACE.NONAUTH.md` and
+`joint-preparation/ADAPTER-PARENT-FREEZE.NONAUTH.json`, with their mutually
+consistent five-entry source map and unchanged NOT_GO status, or supply a
+corrected immutable delivery. Client must independently rerun the actual
+source audit before Root derives a plan or issues the one finite Master GO.
+The pinned Parent explicitly emits 25 callback fields, while the delivered
+message says 26. The actual field list is preserved; no 26th field is invented.
+NONE's eleven fields, mixed DB-candidate provenance and four encrypted reads
+are unchanged. KEY retains two reads and `policy=null`; Android readonly is
+not attributed to the Go producer.
+
+Current delivery:
+`/gpu1-share/data/cicada-client/v164-e2a1908-parent-source-repin-20261010/final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`.
+It binds the final commit/clean state, twelve actual driver hashes, tracked
+input inventory, commands/exits and the blocking observed source evidence.
+See the [repin record](client-link-recovery-eight-case-loop.md#declared-parent-source-repin-producer-delivery-blocked).
+Prior manifests retain their original provenance and are not new-version PASS.
+No APK/Kotlin, callback, budget, frame, production protocol, Core, key,
+database or deployment is changed; no online action, push or merge.
+
 ## Callback result-record checkpoint
+
+This is the preceding `ab40f40` checkpoint; the declared repin above is current.
 
 Root's blocking report cited historical `888b587`. Full read-only comparison
 against the frozen callback proposal, SHA-256
