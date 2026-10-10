@@ -55,11 +55,12 @@ Independent postcheck SHA-256:
 `6fef835b1d226ce7fd843a5a91cbe92b5b157bc1efb99f4b7fb6917d1d656fe9`.
 Its status is PASS_CLEANUP_ONLY; actual Native FAIL is preserved.
 
-The next step is offline verification of the existing response metadata path
-with synthetic response headers, comparing metadata-off/on refusal codes and
-forwarded bytes. Any later proposed instrumentation should reuse those enums
-and retain the same parser, guard, budgets and oracles. No observation change
-or new Native run follows automatically from this diagnostic.
+Offline verification and the existing response metadata adapter are now
+implemented, as recorded below. Paired synthetic responses retain the same
+refusal codes or forwarded bytes. The next preparation is a fresh source-bound
+zero and independent review; diagnostic Native remains NOT_RUN, with no GO.
+The parser, guard, budgets and oracles are unchanged, and no new Native run
+follows automatically from this diagnostic.
 
 ## Earlier actual G1 and proven timeout ABI root cause
 
@@ -138,7 +139,7 @@ causing a later current-binding assertion. Its failed log is retained in
 while preserving the DTO's original provenance. Final bundle:
 `bundle-timeoutabi20261010d2` under the ignored Native evidence root.
 
-| Current frozen evidence | SHA-256 |
+| Frozen tested timeoutabi10d2 evidence | SHA-256 |
 |---|---|
 | Binding | `a9729fa7042557e302fac1c0af9337182a7bf8597e1b831b63bb664b9c84a6bd` |
 | Tracked gate | `979f0e5493e9ca99b56c8d8782476705f8fe76b4efc62181a17ec17b853dc4a7` |
@@ -161,6 +162,58 @@ origin `631666c8f86349e1b1e81c318f324c7897588683`, separately from HEAD and the
 changed Python harness. CLI remains 0.162.1, Runtime `e9690980…697e`, Hub
 `c87cf47a…066b`, product `3baf7bfb…efae`, helper `6fb8777d…b58`, fingerprint
 `d9ca7c7d…a5ad`. Local CLI/help was checked; no new Codex feature is required.
+
+## Implemented response metadata seam — diagnostics NOT_RUN
+
+After the latest actual FAIL, Root authorized only the tracked gate/checker
+repair. The selected G1 Peer instances now install a small diagnostic adapter
+when actual native_config receives run_native=true, native_https=true and
+closed_failure_diagnostics=true. Actual run.py maps the existing CLI diagnostic
+flag to that last field. All other modes, including G2 and zero execution,
+retain their previous behavior.
+
+Each handle_bound call owns a threading.local context with its frozen,
+parent-bound Association and its own returned RealGuard. connect enables only
+that Guard's existing response metadata parser before its first recv. Native
+response_metadata remains false, inherited handle_bound is unchanged and no
+shared response_guard is written. A broker has one synchronous owner handler;
+A/B owners are separate threads. Tests additionally interleave handlers on one
+instance to confirm TLS isolation. Original binding, validation, exceptions,
+16 connections, inherited wait default180 and 600/30/30/660 budgets are retained.
+
+Sidecars contain only fixed schema/ordinal labels, response-status integer or
+null and existing rejection enums. The ordinal means **observation**, never
+admitted connection. Only a validated io_sink callback sequence provides the
+handler's Observer association; missing, invalid or repeated sequence means
+UNKNOWN. A noncallable original sink prevents installation. Each Node has at
+most sixteen records, each at most1024 bytes, with mode0600 and exclusive create.
+Counters are bounded and locked; diagnostic failures become observable UNKNOWN
+without replacing a successful event or the original Native exception. No
+headers, body, tokens, exception text, private paths or new parser are captured.
+
+Four selected metadata checks and the retained actual Peer/migration timeout
+ABI regression **PASS: 5 tests, 0 skips/failures, 1.165 seconds**, under denied
+external effects. Coverage includes seven off/on Guard equivalence cases,
+original exception/event identity, diagnostic write failure, no Guard/sink,
+duplicate/invalid sequence, idempotency, the record bound, A/B and same-instance
+TLS isolation, actual CLI-to-namespace mapping and the ABI's twenty subcases.
+The ABI test derives its current in-memory entry by the same sole PUBLIC_GATE
+pin substitution; its historical saved wrapper and DTO remain unchanged.
+
+| New offline source/preparation | SHA-256 |
+|---|---|
+| Gate | `be01d48cd4b26f7aa4d8d09e4c621ac6cc6f294006c1be8131bd73dfa79ee9d9` |
+| Checker | `318c8e75d9065683299813a721920b11bee7514f65154a4cad980cc26501d8c5` |
+| Fresh binding | `6f4ebf82ddf730756f02102880a154d91688bdb6768ae30318f6e2ab0196e5ea` |
+| Selected QA | `a842c5cd85139a8cc52196f3bb4a998892eb1004c5cea9c5b774a09da637c519` |
+
+The fresh binding was generated and fully rechecked by the unchanged existing
+program in ignored `bundle-rspmeta20261010e2`. Product/helper/Runtime artifacts
+retain clean631 attribution and CLI remains0.162.1. The earlier full47+2 QA and
+actual FAIL remain attributed to timeoutabi10d2, not this new source. This
+adapter has **NOT_RUN** Native diagnostic status and no GO. A fresh zero,
+independent postcheck and separately reviewed bounded execution would be needed
+before any new paid diagnostic; no model or Docker was launched for this repair.
 
 ## Actual zero preparations and next execution
 

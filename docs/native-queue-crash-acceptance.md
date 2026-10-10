@@ -1,22 +1,78 @@
 # Opt-in real native queue crash acceptance
 
-## Current source gate for CLI 0.162.0 — scoped PASS
+## Current CLI 0.162.1 queue-crash gate — scoped PASS
 
-The opt-in acceptance source now requires the exact official CLI output
+The current acceptance source is pinned by test file SHA-256
+`b28cae8d017d9ec148223c603a85d5934e4800e50f4543414368d533d7cbbb17`;
+this is the exact source used by the current gate, not an attribution to clean
+HEAD alone. It requires official CLI output `codex-cli 0.162.1` and an
+initialized app-server `userAgent` containing the exact 0.162.1 version.
+It uses an independent disposable copy of a saved historical synthetic B
+profile, an exact CLI hash and Runtime image receipt, an owned app-server
+socket, and a pinned full-history count/hash. The fixture receipt attests that
+provider credentials/config are absent and provider egress is disabled.
+
+The [actual 0.162.1 gate receipt](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/result.NONAUTH.json)
+has SHA-256 `51cadc91c894e4feff454a3552035943677d2a5671632e8c6401029cc473b291`;
+it records `PASS_INJECTED_BEFORE_LEDGER_REAL_QUEUE_ONLY`, `test_exit=0`, CLI
+0.162.1, and Runtime image
+`sha256:e9690980b153132186780c66126a78b98ed87c3d5e99abf3303b6277e48f697e`.
+The gate observed one real official-CLI submission in the exact cold Thread's
+native queue, matching the literal input hash. It killed the adapter process
+after the queue operation returned and before the local injection ledger was
+finished. Restart retained `INJECTION_UNCERTAIN`; attempts to reinject using
+either the original or a new attempt were refused, and the exact queue witness
+remained one submission. The saved B copy had two turns and ten items before
+the run; the test observed no new turn and unchanged history. This is evidence
+of the queue-before-ledger crash window, not model consumption or full G4.
+
+The receipt records `NETWORK_NONE` with the fixture's provider-egress policy
+attested by its owner; `provider_request_count` is `NOT_INSTRUMENTED`, so no
+independent provider POST count is claimed. The [Root postcheck](../.cicada-data/native-observer-wiring-20261007/g4-cli01621-native-20261010a/output-01621-001/ROOT-POSTCHECK.NONAUTH.json)
+SHA-256 `2e7fac77e020c32ebfc65cac18b0ae7aece6ec4d9243a80c1bc41c2d6090a275`
+confirms the disposable fixture was deleted, exact owned selectors were
+absent, and six protected residents were unchanged.
+
+The deterministic version selector passed once in the pinned local Go image
+`sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`
+(`go1.27.1 linux/amd64`). It used the source SHA above, a read-only repository
+and module cache, network disabled, a private fresh build cache, UID 1000,
+read-only root, dropped capabilities, no-new-privileges, 2 CPUs, 3 GiB memory,
+and 256 pids. The exact in-container argv was:
+
+```sh
+go test -json -p=1 -mod=readonly -count=1 -timeout=90s ./cmd/cicada -run '^TestMachineNativeRealQueueRequiresExactCLI0162$'
+```
+
+It exited 0: one top-level test and all three subtests passed, with zero skips
+or failures; package elapsed time was 0.008s and host elapsed time was 97.988s.
+The owned container CID and exact name were independently absent after cleanup.
+This selector validates CLI version choice only; it does not exercise a CLI,
+Runtime, real queue, model, provider, or Native crash window. A preceding Docker
+launcher invocation exited 125 before container creation, with no CID or Go
+JSON events. Its stderr was not retained, so the cause remains **UNKNOWN**; it
+is neither a test PASS nor a test FAIL. The corrected run above is the only
+completed selector run. Its private structured receipt and retained-log hash
+are recorded separately at
+[`result.NONAUTH.json`](../.cicada-data/g4-cli0162-version-selector-20261010b/result.NONAUTH.json).
+
+## Historical CLI 0.162.0 source gate — separate scoped PASS
+
+The historical opt-in acceptance source required the exact official CLI output
 `codex-cli 0.162.0` and an initialized app-server `userAgent` containing the
-exact 0.162.0 version. A focused local selector checks that 0.161.0 and a
-version suffix are rejected. The historical 0.161.0 PASS below remains
+exact 0.162.0 version. Its focused local selector checked that 0.161.0 and a
+version suffix were rejected. The historical 0.161.0 PASS below remains
 attributed to its original binary, Runtime image, test source and receipt.
 
-The 0.162.0 gate still requires an independent disposable copy of a saved
+That historical 0.162.0 gate required an independent disposable copy of a saved
 synthetic B profile, an exact CLI hash and Runtime image receipt, a canonical
 owned app-server socket, a full-history count/hash and the original saved cwd.
 The profile must have provider credentials/config absent and provider egress
 disabled; these Runtime properties are owner-attested by the fixture receipt.
 The gate makes no `thread/start` or `turn/start` call and records zero new turns.
 
-The current source's deterministic CLI-version gate and crash-fixture tests
-were built from test source SHA-256
+The historical 0.162.0 source's deterministic CLI-version gate and
+crash-fixture tests were built from test source SHA-256
 `b87b59d151b56d4bb8437c37463f81f7db5618cba57188b61eb99814e402bd57` with
 Go `go1.27.1 linux/amd64`. The focused normal and race selectors each passed
 6 top-level tests and 3 subtests, with zero failures or skips. The reviewed test
@@ -172,7 +228,7 @@ The independently measured official 0.160.0 CLI in Runtime image
 `sha256:d6004eb3f669966f7a30796333b8a4b1635b30ded40cc7d186e19c42c196818f`
 is 289,101,384 bytes, which exceeds the original 256 MiB cap. Exact CLI digest and
 version checks still apply. The current source gate requires exact CLI and
-app-server version 0.162.0; receipts in this section retain their original
+app-server version 0.162.1; receipts in this section retain their original
 0.161.0 attribution.
 
 The socket must expose the already-running official app-server's WebSocket
@@ -330,8 +386,8 @@ Zero historical turns were an artificial test constraint, not a CICADA product
 requirement. This adaptation accepts a pinned saved historical synthetic B
 baseline; it does not turn the earlier limitation into a product/native PASS.
 That 0.160.0 attempt remained **NOT_RUN** pending authorization and a ready
-independent B-copy fixture; the later 0.162.0 result at the top covers only its
-scoped injected-before-ledger queue-crash case.
+independent B-copy fixture; the current 0.162.1 result at the top covers only its separately scoped
+injected-before-ledger queue-crash case.
 
 The frozen-baseline adaptation's local focused and race checks both passed all
 five deterministic checks for test source SHA-256

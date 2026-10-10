@@ -2440,6 +2440,223 @@ class WiringChecks(unittest.TestCase):
         records=[json.loads(line) for line in output.getvalue().splitlines()]
         self.assertTrue(all(row["status"]=="NONAUTH" and row["effects"] is False for row in records))
 
+    def _response_metadata_library(self):
+        import importlib
+        root = HERE.parents[1] / '.cicada-data/native-observer-wiring-20261007/peer-outer-broker-20261009a'
+        sys.path.insert(0, str(root))
+        return importlib.import_module('peer_outer_broker')
+
+    def _response_metadata_guard(self, library, response, enabled=False):
+        class MemoryStream:
+            def __init__(self): self.data = bytearray(response)
+            def settimeout(self, value): pass
+            def recv(self, count):
+                data = bytes(self.data[:count]); del self.data[:count]; return data
+            def close(self): pass
+        return library.NATIVE.RealGuard(MemoryStream(), authority=b'PUBLIC_SYNTHETIC',
+            credential=lambda: (_ for _ in ()).throw(AssertionError('NO_CREDENTIAL_READ')),
+            deadline=time.monotonic()+30, phase=lambda label: None,
+            response_metadata=enabled)
+
+    def _response_metadata_native(self, library):
+        native = object.__new__(library.PeerNativeBroker)
+        native.response_metadata = False; native.response_guard = None
+        native.association = library.CORE.Association(
+            '00000000-0000-4000-8000-000000000001',
+            '00000000-0000-4000-8000-000000000002', 1)
+        native.io_sink = lambda record: None
+        native.connect = lambda deadline: self._response_metadata_guard(library,
+            b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n')
+        native.handle = lambda client, association: {'status': 'FORWARDED'}
+        return native
+
+    def _response_metadata_io(self, library, sequence):
+        return {'schema': library.CORE.IO_SCHEMA_V2, 'sequence': sequence,
+            'POST_before': 0, 'POST_after': 0, 'shutdown_requested': False,
+            'first_failure': None, 'cleanup_failures': [], 'cleanup_truncated': False,
+            'upstream_eof': False, 'local_tcp_port': None}
+
+    def test_peer_response_metadata_actual_guard_equivalence(self):
+        library = self._response_metadata_library()
+        cases = ((b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK', 'HEADER_ACCEPTED'),
+            (b'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n', 'RESPONSE_NON_2XX'),
+            (b'INVALID\r\n\r\n', 'RESPONSE_STATUS_INVALID'),
+            (b'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n', 'RESPONSE_NONIDENTITY_ENCODING'),
+            (b'HTTP/1.1 200 OK\r\nX-Public-Token: synthetic\r\n\r\n', 'RESPONSE_SENSITIVE_HEADER'),
+            (b'HTTP/1.1 200 OK\r\nUpgrade: synthetic\r\n\r\n', 'RESPONSE_TRAILER_OR_UPGRADE'),
+            (b'HTTP/1.1 200 OK\r\nContent-Length: 21\r\n\r\nPUBLIC_SYNTHETIC_TOKEN', 'RESPONSE_TOKEN_ECHO'))
+        for response, rejection in cases:
+            outcomes = []
+            for enabled in (False, True):
+                guard = self._response_metadata_guard(library, response, enabled)
+                guard.response_token = b'PUBLIC_SYNTHETIC_TOKEN'
+                try:
+                    data = bytearray()
+                    while True:
+                        part = guard.recv()
+                        if not part: break
+                        data.extend(part)
+                    outcomes.append(('bytes', bytes(data)))
+                except library.CORE.ClosedFailure as error:
+                    outcomes.append(('failure', error.code))
+                if enabled:
+                    self.assertEqual(guard.response_rejection, rejection)
+                    if rejection == 'RESPONSE_TOKEN_ECHO': self.assertIsNone(guard.response_status_code)
+            self.assertEqual(outcomes[0], outcomes[1])
+
+    def test_peer_response_metadata_binding_cap_and_failure_identity(self):
+        library = self._response_metadata_library(); native = self._response_metadata_native(library)
+        rows = []; close = library.CORE.Observer.close; primary = RuntimeError('PUBLIC_SYNTHETIC_NATIVE_FAILURE')
+        def handle(client, association):
+            self.assertIs(association, native.association)
+            guard = native.connect(time.monotonic()+30); guard.recv()
+            if client != 'missing-io': native.io_sink(self._response_metadata_io(library, 0))
+            if client == 'primary': raise primary
+            return {'status': 'FORWARDED'}
+        native.handle = handle
+        state = gate.install_peer_response_metadata(native, library, rows.append)
+        methods = (native.connect, native.handle_bound, native.io_sink)
+        self.assertIs(gate.install_peer_response_metadata(native, library, rows.append), state)
+        self.assertEqual(methods, (native.connect, native.handle_bound, native.io_sink))
+        self.assertEqual(state['observations'], 0)
+        self.assertEqual(native.handle_bound('ok', 5), {'status': 'FORWARDED'})
+        self.assertEqual(rows[-1]['observer_sequence'], 0)
+        self.assertEqual(rows[-1]['ordinal_scope'], 'OBSERVATION_NOT_ADMISSION')
+        self.assertFalse(native.response_metadata); self.assertIsNone(native.response_guard)
+        with self.assertRaises(RuntimeError) as caught: native.handle_bound('primary')
+        self.assertIs(caught.exception, primary)
+        native.handle_bound('missing-io'); self.assertEqual(rows[-1]['binding_status'], 'UNKNOWN')
+        for unused in range(20): native.handle_bound('ok')
+        self.assertEqual(len(rows), 16); self.assertEqual(state['observations'], 16)
+        self.assertEqual(state['summary']['emitted'], 16); self.assertTrue(state['summary']['unknown'])
+        self.assertFalse(hasattr(state['local'], 'context'))
+        self.assertIs(library.CORE.Observer.close, close)
+        self.assertTrue(all(len(json.dumps(row).encode()) <= 1024 for row in rows))
+        self.assertTrue(all(set(row) == {'schema','observation_ordinal','ordinal_scope',
+            'observer_sequence','binding_status','response_status_code','response_rejection'} for row in rows))
+        for sequence_fault in ('duplicate', 'invalid', 'emit-success-path'):
+            with self.subTest(sequence_fault=sequence_fault):
+                fixture = self._response_metadata_native(library); captured = []
+                expected_event = {'status': 'FORWARDED'}
+                def success_handle(client, association):
+                    fixture.connect(time.monotonic()+30).recv()
+                    record = self._response_metadata_io(library, 0)
+                    if sequence_fault == 'invalid': record['sequence'] = True
+                    fixture.io_sink(record)
+                    if sequence_fault == 'duplicate': fixture.io_sink(record)
+                    return expected_event
+                def success_emit(row):
+                    if sequence_fault == 'emit-success-path': raise OSError('PUBLIC_SYNTHETIC_WRITE_FAILURE')
+                    captured.append(row)
+                fixture.handle = success_handle
+                selected = gate.install_peer_response_metadata(fixture, library, success_emit)
+                self.assertIs(fixture.handle_bound('synthetic'), expected_event)
+                self.assertTrue(selected['summary']['unknown'])
+                if captured: self.assertEqual(captured[0]['binding_status'], 'UNKNOWN')
+        for fault in ('emit', 'no-guard', 'no-sink', 'connect', 'sink', 'guard-property'):
+            with self.subTest(fault=fault):
+                fixture = self._response_metadata_native(library); saved = fixture.handle_bound
+                def fail_emit(row): raise OSError('PUBLIC_SYNTHETIC_WRITE_FAILURE')
+                if fault == 'no-sink':
+                    fixture.io_sink = None
+                    with self.assertRaises(ValueError): gate.install_peer_response_metadata(fixture, library, rows.append)
+                    self.assertEqual(fixture.handle_bound, saved); continue
+                if fault == 'connect': fixture.connect = lambda deadline: (_ for _ in ()).throw(primary)
+                if fault == 'sink': fixture.io_sink = lambda record: (_ for _ in ()).throw(primary)
+                if fault == 'guard-property':
+                    guard = self._response_metadata_guard(library, b'HTTP/1.1 200 OK\r\n\r\n')
+                    guard.response_status_code = 'PUBLIC_SYNTHETIC_INVALID_FIELD'
+                    fixture.connect = lambda deadline: guard
+                def failing_handle(client, association):
+                    if fault != 'no-guard': fixture.connect(time.monotonic()+30)
+                    if fault == 'sink': fixture.io_sink(self._response_metadata_io(library, 0))
+                    raise primary
+                fixture.handle = failing_handle
+                guard_state = gate.install_peer_response_metadata(fixture, library,
+                    fail_emit if fault == 'emit' else lambda row: None)
+                with self.assertRaises(RuntimeError) as caught: fixture.handle_bound('synthetic')
+                self.assertIs(caught.exception, primary)
+                self.assertFalse(hasattr(guard_state['local'], 'context'))
+
+    def test_peer_response_metadata_thread_local_isolation(self):
+        library = self._response_metadata_library()
+        for same_instance in (False, True):
+            with self.subTest(same_instance=same_instance):
+                barrier = threading.Barrier(2); current = threading.local(); rows = []; errors = []
+                first = self._response_metadata_native(library)
+                fixtures = [first, first if same_instance else self._response_metadata_native(library)]
+                for native in set(fixtures):
+                    def connect(deadline):
+                        status = 200 if current.client == 0 else 403
+                        return self._response_metadata_guard(library,
+                            ('HTTP/1.1 %d SYNTHETIC\r\nContent-Length: 0\r\n\r\n' % status).encode())
+                    native.connect = connect
+                    def handle(client, association, fixture=native):
+                        current.client = client
+                        guard = fixture.connect(time.monotonic()+30)
+                        barrier.wait(3)
+                        try: guard.recv()
+                        except library.CORE.ClosedFailure: pass
+                        fixture.io_sink(self._response_metadata_io(library, client))
+                        barrier.wait(3)
+                        return {'status': 'FORWARDED' if client == 0 else 'UNKNOWN_UNSUPPORTED'}
+                    native.handle = handle
+                    gate.install_peer_response_metadata(native, library, rows.append)
+                def worker(index):
+                    try: fixtures[index].handle_bound(index)
+                    except BaseException as error: errors.append(type(error).__name__)
+                workers = [threading.Thread(target=worker,args=(index,)) for index in (0,1)]
+                for thread in workers: thread.start()
+                for thread in workers: thread.join(5)
+                self.assertFalse(any(thread.is_alive() for thread in workers)); self.assertEqual(errors, [])
+                self.assertEqual(sorted((row['observer_sequence'],row['response_status_code'],
+                    row['response_rejection']) for row in rows),
+                    [(0,200,'HEADER_ACCEPTED'),(1,403,'RESPONSE_NON_2XX')])
+                for native in set(fixtures):
+                    self.assertFalse(native.response_metadata); self.assertIsNone(native.response_guard)
+                    self.assertEqual(native._owned_response_metadata_state['summary']['emitted'], 2 if same_instance else 1)
+
+    def test_peer_response_metadata_actual_flag_mapping_and_setup(self):
+        tree = ast.parse(Path(run.__file__).read_text())
+        execute = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'execute')
+        ns = next(node for node in execute.body if isinstance(node,ast.Assign) and
+            any(isinstance(target,ast.Name) and target.id == 'ns' for target in node.targets))
+        expr = next(k.value for k in ns.value.keywords if k.arg == 'closed_failure_diagnostics')
+        parser = argparse.ArgumentParser()
+        flag = next(node for node in ast.walk(tree) if isinstance(node,ast.Call) and
+            isinstance(node.func,ast.Attribute) and node.func.attr == 'add_argument' and node.args and
+            isinstance(node.args[0],ast.Constant) and node.args[0].value == '--enable-closed-failure-diagnostics')
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[ast.Expr(value=flag)],type_ignores=[])),
+            '<actual-native-diagnostic-flag>', 'exec'), {'parser':parser})
+        parsed = parser.parse_args(['--enable-closed-failure-diagnostics'])
+        mapped = eval(compile(ast.Expression(expr), '<actual-native-diagnostic-mapping>', 'eval'), {'args':parsed})
+        self.assertIs(mapped, True)
+        load = next(node for node in ast.parse(Path(gate.__file__).read_text()).body
+            if isinstance(node,ast.FunctionDef) and node.name == 'load_gate')
+        cls = next(node for node in load.body if isinstance(node,ast.ClassDef) and node.name == 'CandidateGate')
+        method = next(node for node in cls.body if isinstance(node,ast.FunctionDef) and node.name == 'native_config')
+        class Base:
+            def native_config(self,*args): return ['EXISTING_CONFIG']
+        for scenario, zero, run_native, https, diagnostic in (
+                ('g1',False,True,True,mapped),('g1',False,True,True,False),
+                ('g1',True,True,True,True),('g1',False,False,True,True),('g1',False,True,False,True)):
+            calls=[]; namespace={'Base':Base,'scenario':scenario,'zero_model':zero,
+                'install_owned_peer_response_metadata':lambda owner:calls.append(owner)}
+            selected=ast.ClassDef(name='CandidateGate',bases=[ast.Name(id='Base',ctx=ast.Load())],
+                keywords=[],body=[method],decorator_list=[])
+            exec(compile(ast.fix_missing_locations(ast.Module(body=[selected],type_ignores=[])),
+                '<actual-native-config-metadata-seam>','exec'),namespace)
+            fixture=namespace['CandidateGate']();fixture.args=types.SimpleNamespace(
+                run_native=run_native,native_https=https,closed_failure_diagnostics=diagnostic)
+            self.assertEqual(fixture.native_config('a'), ['EXISTING_CONFIG'])
+            self.assertEqual(len(calls), int(not zero and run_native and https and diagnostic))
+        library = self._response_metadata_library(); owner=types.SimpleNamespace(result={},
+            peer_brokers={letter:object.__new__(library.PeerOuterBroker) for letter in 'ab'})
+        for broker in owner.peer_brokers.values():
+            broker.native=self._response_metadata_native(library);broker.native.io_sink=None
+        with patch.dict(sys.modules,{'peer_outer_broker':library}): gate.install_owned_peer_response_metadata(owner)
+        self.assertEqual(owner.result['peer_response_metadata_setup'],'UNKNOWN')
+
     def test_execute_without_fresh_go_has_no_public_or_credential_access(self):
         def deny(*args,**kwargs):
             raise AssertionError("UNAUTHORIZED_EFFECT")
@@ -2473,8 +2690,16 @@ class WiringChecks(unittest.TestCase):
             peer_root / 'peer-phase-budget-paid-drainfix20261010c/peer_paid_timeout_abi_20261010d.py')
         paid = importlib.util.module_from_spec(spec)
         with run.deny_preflight_effects():
-            spec.loader.exec_module(paid)
-            self.assertEqual(paid.PINS[paid.PUBLIC_GATE], hashlib.sha256(Path(gate.__file__).read_bytes()).hexdigest())
+            # The saved DTO keeps its historical wrapper. Derive the selected
+            # test-only wrapper by the same sole PUBLIC_GATE pin substitution
+            # used for each fresh entry; no historical file is modified.
+            historical = Path(spec.origin).read_text()
+            old_pin = '979f0e5493e9ca99b56c8d8782476705f8fe76b4efc62181a17ec17b853dc4a7'
+            self.assertEqual(historical.count(old_pin), 1)
+            current_pin = hashlib.sha256(Path(gate.__file__).read_bytes()).hexdigest()
+            exec(compile(historical.replace(old_pin, current_pin, 1),
+                         '<current-abi-test-paid-entry>', 'exec'), paid.__dict__)
+            self.assertEqual(paid.PINS[paid.PUBLIC_GATE], current_pin)
             paid_gate = paid._paid_fresh_gate(gate)
             # Keep the actual saved DTO's provenance while loading the selected
             # current binding; legacy module globals are shared by later checks.

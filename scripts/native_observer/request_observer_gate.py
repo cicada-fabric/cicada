@@ -67,6 +67,149 @@ NATIVE_CLEANUP_SECONDS = 30
 PROVIDER_TRANSPORT_SHA = "91da1e83820caed12809ba8bd6a3156a015e84bf70c310eeb87d91d359118e72"
 
 
+def install_peer_response_metadata(native, library, emit):
+    """Instance-only closed metadata. Keep Peer binding/admission methods intact."""
+    if getattr(native, '_owned_response_metadata_state', None) is not None:
+        return native._owned_response_metadata_state
+    if (type(native) is not library.PeerNativeBroker or
+            native.response_metadata is not False or not callable(native.io_sink)):
+        raise ValueError('PEER_RESPONSE_METADATA_INSTANCE_SCOPE')
+    local = threading.local()
+    state = {'local': local, 'lock': threading.Lock(), 'observations': 0,
+             'emitted': 0, 'unknown': False,
+             'summary': {'status': 'NO_OBSERVATIONS', 'observations': 0,
+                         'emitted': 0, 'unknown': False}}
+    original_bound = native.handle_bound
+    original_connect = native.connect
+    original_sink = native.io_sink
+
+    def connect(deadline):
+        guard = original_connect(deadline)
+        context = getattr(local, 'context', None)
+        if context is not None:
+            try:
+                if (type(guard) is library.NATIVE.RealGuard and
+                        context['association'] is native.association and
+                        context['guard'] is None):
+                    # The actual guard's existing parser is opt-in; the Native
+                    # broker flag remains false, avoiding its unrelated 4 cap.
+                    guard.response_metadata = True
+                    context['guard'] = guard
+                else:
+                    context['binding_unknown'] = True
+            except BaseException:
+                context['binding_unknown'] = True
+        return guard
+
+    def io_sink(record):
+        context = getattr(local, 'context', None)
+        if context is not None:
+            try:
+                validated = library.CORE.validate_io_diagnostic_v2(record)
+                sequence = validated['sequence']
+                if (type(sequence) is int and 0 <= sequence < 16 and
+                        context['observer_sequence'] is None):
+                    context['observer_sequence'] = sequence
+                else:
+                    context['binding_unknown'] = True
+            except BaseException:
+                context['binding_unknown'] = True
+        # Original callback failures retain their original Core handling.
+        return original_sink(record)
+
+    def handle_bound(client, admission_index=None):
+        previous = getattr(local, 'context', None)
+        context = {'association': native.association, 'guard': None,
+                   'observer_sequence': None, 'binding_unknown': False}
+        with state['lock']:
+            ordinal = state['observations'] + 1
+            state['observations'] = min(16, ordinal)
+        local.context = context
+        event = None
+        try:
+            # Keep the actual inherited false branch and exception identity.
+            event = original_bound(client, admission_index)
+            return event
+        finally:
+            emitted = False
+            unknown = ordinal > 16
+            try:
+                if ordinal > 16:
+                    pass  # Diagnostic cap never changes Native admission.
+                else:
+                    guard = context['guard']
+                    status = guard.response_status_code if guard is not None else None
+                    rejection = guard.response_rejection if guard is not None else 'RESPONSE_NOT_OBSERVED'
+                    if guard is not None and guard.guard_failed:
+                        status, rejection = None, 'RESPONSE_TOKEN_ECHO'
+                    elif rejection == 'HEADER_ACCEPTED' and (
+                            type(event) is not dict or event.get('status') != 'FORWARDED'):
+                        rejection = 'CORE_REJECTION_UNCLASSIFIED'
+                    if (rejection not in library.NATIVE.RESPONSE_REJECTIONS or
+                            (status is not None and
+                             (type(status) is not int or not 100 <= status <= 999))):
+                        raise ValueError('PEER_RESPONSE_METADATA_ENUM_SCOPE')
+                    row = {'schema': 'cicada.peer-response-metadata.v1',
+                           'observation_ordinal': ordinal,
+                           'ordinal_scope': 'OBSERVATION_NOT_ADMISSION',
+                           'observer_sequence': context['observer_sequence'],
+                           'binding_status': 'UNKNOWN' if context['binding_unknown'] or
+                               context['observer_sequence'] is None else 'HANDLER_IO_SEQUENCE',
+                           'response_status_code': status, 'response_rejection': rejection}
+                    if len(json.dumps(row, separators=(',', ':')).encode()) > 1024:
+                        raise ValueError('PEER_RESPONSE_METADATA_BOUNDS')
+                    emit(row)
+                    emitted = True
+                    unknown = row['binding_status'] == 'UNKNOWN'
+            except BaseException:
+                unknown = True
+            finally:
+                if previous is None:
+                    del local.context
+                else:
+                    local.context = previous
+                # No Guard/association survives in instance-shared state.
+                context.clear()
+                with state['lock']:
+                    state['emitted'] += int(emitted)
+                    state['unknown'] = state['unknown'] or unknown
+                    state['summary'].update(observations=state['observations'],
+                        emitted=state['emitted'], unknown=state['unknown'],
+                        status='UNKNOWN' if state['unknown'] else 'OBSERVED')
+
+    native.handle_bound, native.connect, native.io_sink = handle_bound, connect, io_sink
+    native._owned_response_metadata_state = state
+    return state
+
+
+def install_owned_peer_response_metadata(owner):
+    """Called before paid turn setup; absent Peer instances are a no-op."""
+    brokers = getattr(owner, 'peer_brokers', None)
+    if type(brokers) is not dict or set(brokers) != {'a', 'b'}:
+        return
+    library = sys.modules.get('peer_outer_broker')
+    report = owner.result.setdefault('peer_response_metadata', {})
+    for letter in ('a', 'b'):
+        try:
+            broker = brokers[letter]
+            if library is None or type(broker) is not library.PeerOuterBroker:
+                raise ValueError('PEER_RESPONSE_METADATA_OWNER_SCOPE')
+            rows = report.setdefault(letter, [])
+            def emit(row, side=letter, records=rows):
+                raw = (json.dumps(row, sort_keys=True, separators=(',', ':')) + '\n').encode()
+                if len(raw) > 1024 or len(records) >= 16:
+                    raise ValueError('PEER_RESPONSE_METADATA_OUTPUT_BOUNDS')
+                path = owner.evidence / ('response-metadata-%s-%02d.NONAUTH.json' %
+                                         (side, row['observation_ordinal']))
+                with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
+                    stream.write(raw)
+                records.append(row)
+            state = install_peer_response_metadata(broker.native, library, emit)
+            owner.result.setdefault('peer_response_metadata_summary', {})[letter] = state['summary']
+        except BaseException:
+            owner.result['peer_response_metadata_setup'] = 'UNKNOWN'
+
+
 def note_lifecycle(owner, event, side="UNKNOWN"):
     try:
         state = getattr(owner, "_closed_lifecycle_state", None)
@@ -2117,6 +2260,10 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         def native_config(self, letter, thread=None, tools=()):
             values = super().native_config(letter, thread, tools)
             if scenario == "g1":
+                if (not zero_model and getattr(self.args, 'run_native', False) is True and
+                        getattr(self.args, 'native_https', False) is True and
+                        getattr(self.args, 'closed_failure_diagnostics', False) is True):
+                    install_owned_peer_response_metadata(self)
                 return values
             old = "CICADA_GROUP_ID=" + json.dumps(self.meta["group_id"])
             new = "CICADA_GROUP_ID=" + json.dumps(self.nodes[letter].get("current_group_id",g2_node_scope(self.meta, letter)[1]))

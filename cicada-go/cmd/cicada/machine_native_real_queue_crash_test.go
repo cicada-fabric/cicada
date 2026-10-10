@@ -55,7 +55,7 @@ var realQueueUserAgentVersion = regexp.MustCompile(`(?:^|[/ ])` + regexp.QuoteMe
 
 const realQueueMaxCLIBytes int64 = 512 << 20
 const realQueueProfileScope = "independent-copy-historical-synthetic-b"
-const realQueueCLIVersion = "0.162.0"
+const realQueueCLIVersion = "0.162.1"
 
 func realQueueHash(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 
@@ -713,9 +713,9 @@ func TestMachineNativeRealQueueRequiresExactCLI0162(t *testing.T) {
 		wantVersion bool
 		wantAgent   bool
 	}{
-		{name: "current", version: "codex-cli 0.162.0\n", userAgent: "codex/0.162.0", wantVersion: true, wantAgent: true},
+		{name: "current", version: "codex-cli 0.162.1\n", userAgent: "codex/0.162.1", wantVersion: true, wantAgent: true},
 		{name: "previous release", version: "codex-cli 0.161.0\n", userAgent: "codex/0.161.0"},
-		{name: "version suffix", version: "codex-cli 0.162.0-beta", userAgent: "codex/0.162.0-beta"},
+		{name: "version suffix", version: "codex-cli 0.162.1-beta", userAgent: "codex/0.162.1-beta"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := realQueueVersionMatches(tc.version); got != tc.wantVersion {
