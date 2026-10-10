@@ -1,0 +1,18 @@
+name: Feature or documentation request
+description: Propose a behavior or documentation improvement.
+title: "[Request] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What are you trying to accomplish? Avoid sensitive deployment details.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and boundaries
+      description: Describe the result, identity/permission scope, compatibility implications and relevant documentation.
+    validations:
+      required: true

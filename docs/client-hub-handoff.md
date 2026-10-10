@@ -1,5 +1,13 @@
 # Client 开发者交接：Hub 接口
 
+> Historical task/handoff record. The instructions and pins below describe their
+> original dated candidate; they are not a new authorization to modify Client,
+> deploy an old artifact or reopen retired interfaces. Use the current
+> [Client development boundary](client-hub-development.md) and
+> [technical guide](v01-technical-guide.md) for current contract/evidence.
+> This path is retained for historical links and, where applicable, contract export.
+
+
 ## 2026-10-01 v1.6 完整交接流程与边界
 
 本次只交接 CICADA 的 Hub/Node/Control 协议与有界验证证据。独立 `../CICADA_CLIENT` 负责 Android 实现、APK、设备密钥保管和 Android 验收；本仓库不修改 Client、不替 Client 声明通过，也不自动 push、发布或替换 resident Hub。最终 clean Git commit、Hub image、bundle 文件及 manifest/hash 由本机固定交付目录 `.cicada-data/v01-finish-20260930T145216Z/client-v1.6-clean-handoff/` 的 `HANDOFF.md` 和 `metadata.json` 给出；本文件说明流程与证据边界，动态产物以该目录为准。dirty 54f 的开发合同包是单独验证证据，不能冒充 clean 交付。

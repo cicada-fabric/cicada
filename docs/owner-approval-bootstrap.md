@@ -1,11 +1,12 @@
 # Offline owner key bootstrap for development
 
-This is a temporary local trust ceremony for Architecture v2.1 owner keys.
+This is the existing offline development trust ceremony for Owner keys under
+the adopted Architecture v2.3; it is not a production provisioning service.
 It registers the public trust root used by encrypted Client device enrollment
 and key-bound Link grants. It does not by itself enroll an Android device,
 create an authenticated Client session, activate a CommunicationLink, or make
 Fabric messages end-to-end encrypted.
-The Hub's normal management bearer and Node/Fabric credentials cannot replace
+A legacy management bearer or Node/Fabric credential cannot replace
 the owner's private signing key.
 
 Generate a distinct ML-KEM-768/ML-DSA-65 identity on a machine controlled by

@@ -98,6 +98,7 @@ ENV HOME=/home/cicada \
     CICADA_INTENT_PLANNER_BIN= \
     CICADA_COMPLETION_VERIFIER_BIN=
 
+COPY LICENSE /usr/share/licenses/cicada/LICENSE
 USER cicada
 WORKDIR /workspace
 EXPOSE 8787

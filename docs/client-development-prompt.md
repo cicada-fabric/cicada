@@ -1,5 +1,13 @@
 # 给 Android Client 开发者的下一阶段任务
 
+> Historical task/handoff record. The instructions and pins below describe their
+> original dated candidate; they are not a new authorization to modify Client,
+> deploy an old artifact or reopen retired interfaces. Use the current
+> [Client development boundary](client-hub-development.md) and
+> [technical guide](v01-technical-guide.md) for current contract/evidence.
+> This path is retained for historical links and, where applicable, contract export.
+
+
 只修改 `~/CICADA_CLIENT`，保留已有实现；不修改 CICADA 核心。当前 Client
 `836d422` 已有真实 Hub RPC、状态与管理 UI、本地 STT 和双 Owner Link
 提案，不要重复开发这些基线，也不要将提案视为已开通跨用户通信。

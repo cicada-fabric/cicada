@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security reporting policy
+    url: https://github.com/cicada-fabric/cicada/blob/dev/SECURITY.md
+    about: Review private reporting instructions before sharing any vulnerability details.

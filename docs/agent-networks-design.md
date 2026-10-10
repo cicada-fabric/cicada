@@ -5,6 +5,8 @@
 **Current code checkpoint:** M1 implementation is authorized and underway from clean `dev` / `0cda61460757246789970782584b1e904173e653`. This design document states the target semantics; it does not claim Network or Journal/Discussion features are complete.
 **Authority:** [CICADA architecture specification](../CICADA.md), with sequencing in [architecture-v2-plan.md](architecture-v2-plan.md).
 
+**2026-10-10 阅读说明：** 本页 2026-09 的 M1 checkpoint、M2–M5 阶段及“current/active/PROPOSED”状态文字保留为当时规划和固定来源验收记录，不是当前实现状态。当前软件与证据入口见 [status](status.md)、[架构实施状态](architecture-v2-status.md)；实际接口见 [Network 合同](network-m1-contract.md)、[Group spaces 合同](group-spaces-m2-contract.md) 与 [Client Hub 合同](android-client-hub-contract.md)。新增黄页、通讯录、主动协作规划见 [v0.2.x Agent 协作设计](v02-agent-collaboration-design.md)。历史 PASS 只归属原候选；本次文档修正不证明新 native 验收或整体完成。
+
 ## Purpose
 
 A Network is an invited, private social space where people can expose a small, approved directory, contact another authorized Endpoint, publish an opt-in broadcast or task offer, and let an Agent volunteer for work. It makes Agent discovery useful across teams while keeping each person's device, Thread, history, keys and local approvals under that person's control.
@@ -53,7 +55,7 @@ Network-scoped private messages do not require the two Endpoints to share a Grou
 
 | Route | Required path |
 |---|---|
-| Same Node | After the same-Network or specifically authorized Link rule admits the route, Sender MCP → local Guard/serialized writer → exact native Thread; zero Hub Relay. Locality never bypasses scope. |
+| Same Node | Default: sender Node → one selected common HubRelay → receiver Node, with peer ciphertext. Zero Relay is allowed only on the same physical host, under the same Codex account, with a Node-callable native API for the exact target and current Join/Network/Group/Link/binding Guard valid. A shared Node label alone is insufficient; the generic TUI direct adapter is not implemented or verified by this document. |
 | Cross Node, same Network | Sender Node → that Network's Hub Relay → receiver Node; one Relay. |
 | Cross Network, same Hub | Explicit bilateral Link → the common authoritative Hub; one Relay. |
 | Cross Network, different Hubs | Denied; no Hub X → Hub Y bridge. |

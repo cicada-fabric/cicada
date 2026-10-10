@@ -137,7 +137,7 @@ import sys
 
 root = os.fsencode(sys.argv[1])
 paths = subprocess.run(
-    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore", b"scripts/build-web-panel.sh", b"scripts/write-web-panel-manifest.py", b"scripts/build-hub-image.sh", b".github/workflows/release.yml"],
+    [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--", b"LICENSE", b"cicada-go", b"docker/Dockerfile.hub", b".dockerignore", b"scripts/build-web-panel.sh", b"scripts/write-web-panel-manifest.py", b"scripts/build-hub-image.sh", b".github/workflows/release.yml"],
     check=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.DEVNULL,

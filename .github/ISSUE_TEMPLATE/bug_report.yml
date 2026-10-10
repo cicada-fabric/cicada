@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible non-sensitive problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities, follow SECURITY.md. Remove credentials, private paths, personal data and message bodies. Use synthetic examples."
+  - type: textarea
+    id: identity
+    attributes:
+      label: Source and environment
+      description: Software version, Git revision and dirty state, Runtime version, relevant contract/schema and deployment type.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Steps using fictional identities and sanitized input.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Include sanitized evidence and identify local, Docker, native, Android or HTTPS observations; list skips and unknowns separately.
+    validations:
+      required: true

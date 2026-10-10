@@ -68,16 +68,36 @@ class BuildInputInventoryTests(unittest.TestCase):
             shutil.copyfile(ROOT / relative, destination)
         (self.root / "cicada-go/link.txt").symlink_to("tracked.txt")
 
+        global_name = subprocess.run(
+            ["git", "config", "--global", "--get", "user.name"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        global_email = subprocess.run(
+            ["git", "config", "--global", "--get", "user.email"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if (global_name.returncode != 0 or global_email.returncode != 0 or
+                not global_name.stdout.strip() or not global_email.stdout.strip()):
+            self.skipTest("global git user.name and user.email are required for fixture commits")
+        expected_name = global_name.stdout.strip()
+        expected_email = global_email.stdout.strip()
+
         self._run_git("init", "-q")
         self._run_git("add", "--all")
-        self._run_git(
-            "-c",
-            "user.name=Inventory Test",
-            "-c",
-            "user.email=inventory@example.invalid",
-            "commit",
-            "-qm",
-            "synthetic input fixture",
+        for variable in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+            identity = self._run_git("var", variable).stdout.rstrip("\n")
+            self.assertTrue(
+                identity.startswith(f"{expected_name} <{expected_email}> "),
+                f"{variable} did not inherit global git user.name and user.email",
+            )
+        self._run_git("commit", "-qm", "synthetic input fixture")
+        identities = self._run_git(
+            "show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", "HEAD",
+        ).stdout.rstrip("\n").split("\0")
+        self.assertEqual(
+            identities,
+            [expected_name, expected_email, expected_name, expected_email],
+            "synthetic fixture commit Author/Committer did not inherit global identity",
         )
 
     def _entries(self, manifest):

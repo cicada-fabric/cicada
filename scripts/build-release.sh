@@ -33,6 +33,7 @@ for command_name in go git python3 gzip sha256sum; do
     exit 1
   }
 done
+[[ -f "$repo_root/LICENSE" ]] || { printf 'build-release: project LICENSE is missing\n' >&2; exit 1; }
 [[ -f "$repo_root/cicada-go/go.mod" ]] || { printf 'build-release: CICADA Go source is missing\n' >&2; exit 1; }
 go_version="$(go version)"
 [[ "$(awk '{print $3}' <<<"$go_version")" == go1.27.1 ]] || {
@@ -66,7 +67,7 @@ import sys
 root = os.fsencode(sys.argv[1])
 paths = subprocess.run(
     [b"git", b"-C", root, b"ls-files", b"--cached", b"--others", b"--exclude-standard", b"-z", b"--",
-     b"cicada-go", b"scripts/build-release.sh", b"scripts/hub-build-input-inventory.py", b"scripts/write-web-panel-manifest.py", b".github/workflows/release.yml"],
+     b"LICENSE", b"cicada-go", b"scripts/build-release.sh", b"scripts/hub-build-input-inventory.py", b"scripts/write-web-panel-manifest.py", b".github/workflows/release.yml"],
     check=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.DEVNULL,
@@ -100,7 +101,7 @@ compute_dirty() {
   fi
   local status
   if ! status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- \
-      cicada-go scripts/build-release.sh scripts/hub-build-input-inventory.py scripts/write-web-panel-manifest.py .github/workflows/release.yml)"; then
+      LICENSE cicada-go scripts/build-release.sh scripts/hub-build-input-inventory.py scripts/write-web-panel-manifest.py .github/workflows/release.yml)"; then
     printf 'build-release: unable to inspect source tree status\n' >&2
     return 1
   fi
@@ -120,6 +121,8 @@ trap 'rm -rf -- "$work_dir"' EXIT
 source_dir="$work_dir/source"
 stage_dir="$work_dir/dist"
 mkdir -p "$source_dir" "$stage_dir"
+license_sha256="$(sha256sum "$repo_root/LICENSE" | cut -d ' ' -f 1)"
+cp "$repo_root/LICENSE" "$stage_dir/LICENSE"
 cp -a "$repo_root/cicada-go" "$source_dir/cicada-go"
 
 # Go's embed FS is populated from ui/generated at compile time. Build these
@@ -155,7 +158,8 @@ targets=(
 )
 if [[ "$transport" == pqtls ]]; then
   package="$stage_dir/cicada-linux-amd64-pqtls"
-  mkdir -p "$package/bin" "$package/lib" "$package/share/licenses/openssl"
+  mkdir -p "$package/bin" "$package/lib" "$package/share/licenses/openssl" "$package/share/licenses/cicada"
+  cp "$stage_dir/LICENSE" "$package/share/licenses/cicada/LICENSE"
   python3 "$repo_root/scripts/hub-build-input-inventory.py" capture --root "$repo_root" \
     --transport pqtls --pqtls-stage "$pq_stage" --output "$work_dir/pq-inputs.json"
   cgo_flags="$(python3 - "$pq_stage" <<'PY'
@@ -208,7 +212,7 @@ receipt={'schema_version':'cicada.pqtls-package-build-receipt.v1','source_finger
 (stage/'PQ-BUILD-RECEIPT.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
 PY
   rm -rf "$package"
-  (cd "$stage_dir" && sha256sum cicada-linux-amd64-pqtls.tar.gz PQ-BUILD-RECEIPT.json > SHA256SUMS)
+  (cd "$stage_dir" && sha256sum cicada-linux-amd64-pqtls.tar.gz PQ-BUILD-RECEIPT.json LICENSE > SHA256SUMS)
 else
 for target in "${targets[@]}"; do
   read -r os arch <<<"$target"
@@ -227,6 +231,8 @@ done
 CGO_ENABLED=0 python3 "$repo_root/scripts/hub-build-input-inventory.py" go-notices \
   --source "$source_dir/cicada-go" --destination "$work_dir/standard-notices" \
   --targets linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64
+mkdir -p "$work_dir/standard-notices/cicada"
+cp "$stage_dir/LICENSE" "$work_dir/standard-notices/cicada/LICENSE"
 (cd "$work_dir" && tar -czf "$stage_dir/LICENSE-NOTICES.tar.gz" standard-notices)
 
 python3 - "$stage_dir/BUILD-METADATA.json" "$version" "$revision" "$dirty" "$source_fingerprint" "$go_version" "$wasm_manifest_sha256" "$catalog_sha256" <<'PY'
@@ -246,7 +252,7 @@ result = {
         "dirty": dirty == "true",
         "source_fingerprint": fingerprint,
         "fingerprint_descriptor": {"algorithm": "sha256", "domain_hex": b"cicada-binary-release-inputs-v2\0".hex(),
-                                   "scope": ["cicada-go", "scripts/build-release.sh", "scripts/hub-build-input-inventory.py", "scripts/write-web-panel-manifest.py", ".github/workflows/release.yml"]},
+                                   "scope": ["LICENSE", "cicada-go", "scripts/build-release.sh", "scripts/hub-build-input-inventory.py", "scripts/write-web-panel-manifest.py", ".github/workflows/release.yml"]},
     },
     "toolchain": go_version.split()[2],
     "hub_webcrypto_manifest_sha256": wasm_manifest_sha256,
@@ -261,12 +267,13 @@ result = {
 }
 pathlib.Path(path).write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
-(cd "$stage_dir" && sha256sum cicada-* BUILD-METADATA.json LICENSE-NOTICES.tar.gz > SHA256SUMS)
+(cd "$stage_dir" && sha256sum cicada-* BUILD-METADATA.json LICENSE-NOTICES.tar.gz LICENSE > SHA256SUMS)
 fi
 
 if [[ "$(git -C "$repo_root" rev-parse HEAD)" != "$revision" ||
       "$(compute_dirty)" != "$dirty" ||
-      "$(compute_source_fingerprint)" != "$source_fingerprint" ]]; then
+      "$(compute_source_fingerprint)" != "$source_fingerprint" ||
+      "$(sha256sum "$repo_root/LICENSE" | cut -d ' ' -f 1)" != "$license_sha256" ]]; then
   printf 'build-release: build inputs changed during the build; rerun from a stable checkout\n' >&2
   exit 1
 fi

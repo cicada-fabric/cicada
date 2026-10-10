@@ -1,6 +1,32 @@
 # Release status
 
-## 2026-10-02 checkpoint — finite QA accepted; unreleased
+## 2026-10-10 current source candidate — unreleased; acceptance partial
+
+The source line remains **0.1.0-dev**: Hub schema **59**, Client contract
+**client-hub-v1.6.4**, encrypted wire **1** and **55** catalog operations.
+Architecture v2.3, Git revision, dirty source/build fingerprints and artifact
+digests are separate identities. See the [technical guide](v01-technical-guide.md)
+and [distribution details](distribution.md).
+
+The completed default automation run `20261010T063155Z-5b6d7a3e12` reports
+**UNKNOWN** overall and `source_unchanged: true`. Go build/test/vet and packaging
+report PASS_WITH_SKIPS; Python, contract, Web panel model/config, wiring, joined
+V68, Group/Fabric stress and browser lanes report PASS. Six disposable child
+lanes exited 0 and reported their own PASS with confirmed cleanup. The aggregate
+retained UNKNOWN for five interop/M5 lanes with
+`CHILD_FIXTURE_CLEANUP_SCOPE_UNBOUND`; the Node-Control lane instead reported
+`CHILD_RESULT_RECEIPT_OVERSIZE` and `CHILD_RECEIPT_STATUS_UNKNOWN`. Aggregate
+receipt attribution needs reconciliation; this is neither a cleanup-failure
+claim nor a complete interop PASS.
+
+Native model lanes were NOT_RUN in that default automation run. Separate real
+G1/G2 attempts have not completed acceptance. Android, physical-device and public
+HTTPS results retain their own evidence and are not promoted by these checks.
+This documentation checkpoint does not qualify a release. See
+[test automation](test-automation.md) and the
+[current closeout and retained failures](v01-current-closeout-20261009-validation.md).
+
+## Historical 2026-10-02 checkpoint — finite QA accepted; unreleased
 
 当前软件仍为`0.1.0-dev`、Architecture v2.3；schema57、Client合同v1.6.4、wire1和55-operation catalog保持各自版本身份。
 15路径被测组合已通过有限QA，尚无对应新clean发行工件或完整产品验收；历史25bc/41b7工件保持原source/image，Client与真实Runtime未由Go/OpenSSL结果通过。

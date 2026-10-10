@@ -1,9 +1,25 @@
 # Changelog
 
 This file records user-visible changes by release line. `VERSION` and the Go
-`buildinfo` package identify the running build; Git tags identify releases.
+`buildinfo` package identify the running build. Only a deliberately published
+release is a product release; historical prototype tags are not current release
+qualification. See [repository maintenance](docs/repository-maintenance.md).
 
 ## 0.1.0-dev — unreleased
+
+### 2026-10-10 public documentation and repository maintenance
+
+Added the current v0.1.x technical guide, native Markdown navigation, contribution,
+support and security reporting guidance, and issue/PR templates. Superseded root
+architecture task instructions now point to current implementation evidence;
+dated validation reports and their failures remain attributed to their original
+sources. Current source identities are schema59, client-hub-v1.6.4, wire1 and
+catalog55; no software version or product code changed. The completed default
+automation run remains overall UNKNOWN, with independent child evidence and
+aggregate receipt limits recorded in [status](docs/status.md). Product acceptance
+remains PARTIAL and this documentation checkpoint is not a release.
+
+### Historical earlier source checkpoints (original evidence follows)
 
 `codexapp.Client.CloseAndWait` preserves joined stop-proof errors; focused normal/race QA and vet passed. CLI 0.162 G4, Task peer privacy, and Worker P9 passed only within their scoped fixtures; P9 does not prove original-session continuity. Peer G/H reported `httpConnectionFailed` / HTTP 503 without retry, with origin unknown. The zero-key RPC diagnostic reached `thread/start`, which returned JSON-RPC `-32603`; no turn/provider request occurred, and the exact inner cause is unknown. Tool registry and credential-boundary probing remains **NOT_RUN**. See [the current validation record](docs/native-go-client-bridge-validation.md); v0.1 remains **PARTIAL**.
 
@@ -16,7 +32,7 @@ A Relay Ask admission quota-count optimization adds one schema-v59 expression in
 
 Managed PQTLS test fixtures now use genuine Owner-approved issuance, installation and current-authority validation. [Scoped normal, race, package and vet evidence](docs/pqtls-managed-fixture-validation.md) retains the failed attempts and optional skips; shipping-image and Native acceptance remain separate.
 
-### 2026-10-02 clean52 bounded regression and remaining product gates
+### Historical 2026-10-02 clean52 bounded regression and remaining product gates
 
 The current checkpoint records bounded 17-path, M5, shipped-PQ and SSE evidence with independent source/artifact scopes. The 17-path candidate has four explicit Docker-fixture skips; a derived 19-path source candidate adds public payload-profile tests but has no combined Go run and does not inherit that receipt. SSE reports 19 top/33 sub across eight successful executions (not eight unique packages) and retains two harness failures. Native06 keeps its original fixture-sentinel FAIL separate from scoped 5/5 AskReply continuity and separately sourced helper/public-negative-test passes; the original Hub-blind helpercheck exit 1 leaves fullHubBlind NOT_CONFIRMED. Client F4 remains blocked before Target writes. F5 failed at the Source signer on a UTC RFC3339Nano timestamp-format mismatch before any Source signature/Grant or Target operation. The v0.1 candidate remains **PARTIAL** and unreleased. Exact evidence and limits are in [the current checkpoint validation](docs/v01-clean52-current-checkpoint-validation.md).
 
@@ -237,7 +253,7 @@ Android v1.4, real native Runtime, physical dual-Node, and public HTTPS are
 - Fabric Directory APIs, operator CLI commands, and a live Endpoint Network
   panel in the embedded desktop/mobile PWA.
 
-## 0.3.0-dev
+## 0.3.0-dev — historical prototype, unreleased
 
 ### Added
 
@@ -348,7 +364,8 @@ Android v1.4, real native Runtime, physical dual-Node, and public HTTPS are
   SHA-256 content-addressed store. Requeued Workers carry the digest to a new
   Machine, which verifies and atomically restores modified files.
 
-## 0.2.0 — 2026-09-15
+## 0.2.0 — historical prototype checkpoint, 2026-09-15
 
-- Established the verified Codex supervisor baseline on `release/0.2.0` and
-  tag `v0.2.0`.
+- Established the then-verified Codex supervisor baseline on historical
+  `release/0.2.0` and `v0.2.0` references. This records their original names; it
+  does not imply those refs still exist or qualify a public v0.2.x release.

@@ -1,6 +1,29 @@
 # Cicada development environment
 
-## 2026-10-02 current checkpoint — scoped evidence; product acceptance remains PARTIAL
+## Current development entry
+
+Use `dev` for active development; `main` is currently a public placeholder and
+is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
+[current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
+The current source is **0.1.0-dev**, Hub schema **59**, Client contract
+**client-hub-v1.6.4**, encrypted wire **1**, catalog **55**. Architecture v2.3 is
+the adopted specification, independent of these versions. Confirm actual
+source/dirty state and build provenance before attributing a test or artifact.
+
+Start with [distribution](docs/distribution.md) for current local Hub/optional
+Node commands and [test automation](docs/test-automation.md) for relevant checks.
+The completed 2026-10-10 default run remains overall UNKNOWN: five aggregate
+child lanes have unbound cleanup scope, and the Node-Control receipt is oversized
+with unknown aggregate status, despite independently passing child records.
+See [release status](docs/status.md) and [current closeout](docs/v01-current-closeout-20261009-validation.md).
+Real G1/G2 product acceptance is incomplete; Android, physical-device and public
+HTTPS evidence is independent. Documentation publication is not a release.
+
+The dated checkpoints below preserve their original evidence. Their old schema,
+Runtime images, provider/model choices and local “Main” integration labels are
+historical, not current deployment pins or the public Git branch `main`.
+
+## Historical 2026-10-02 checkpoint — scoped evidence; product acceptance remains PARTIAL
 
 This checkpoint's baseline is `52cc2f6e0f97829332be372cb302cdb9f0ab0558`; source domains are listed separately; current `dev` is determined by `git rev-parse HEAD`. Product/version identities remain separate: `0.1.0-dev`, Architecture v2.3, Hub schema 57, Client `client-hub-v1.6.4`, encrypted wire 1, catalog 55 (`953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`). The finite 17-path QA receipt is for a frozen candidate delta over that baseline; it is not a clean whole-repository test result.
 
@@ -59,7 +82,7 @@ independent Android repository remains owned by `../CICADA_CLIENT`; this
 repository does not edit it. Historical Android v1.5 results stay pinned to
 their bd79 Hub/source/APK/package and do not validate the current candidate.
 
-## Local Hub and optional Node
+## Local Hub and optional Node — current entry points
 
 The root `docker-compose.yml` is now a local development profile for one
 loopback-only Hub built from `docker/Dockerfile.hub`. It has a persistent named
@@ -117,8 +140,9 @@ for Android contract ownership and evidence attribution. Android, disposable
 Docker, real native Runtime, physical-device, and public HTTPS checks are
 separate result layers; a skipped test is not a pass.
 
-`docker/Dockerfile` currently sets `CODEX_RELEASE=0.160.1` as its build
-argument default. Runtime preparation evidence is separate: from old image
+The source `docker/Dockerfile` currently sets `CODEX_RELEASE=0.161.0` as its
+build argument default; this is not an installed Runtime acceptance result.
+The following 2026-09-30 Runtime preparation evidence is historical: from old image
 `cicada-codex:monitor-native-0.157.1`
 (`sha256:742214d7f2b7f0cd6a4f5bd5ed1d55d0026c25de0f654dc868cfdf70882cf264`),
 a disposable no-credential/no-host-mount `codex update` exited 1; the official

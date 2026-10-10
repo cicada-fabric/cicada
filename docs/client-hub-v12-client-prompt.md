@@ -1,5 +1,13 @@
 # 给 CICADA_CLIENT 开发者：固定并验收 Client–Hub v1.2.1
 
+> Historical task/handoff record. The instructions and pins below describe their
+> original dated candidate; they are not a new authorization to modify Client,
+> deploy an old artifact or reopen retired interfaces. Use the current
+> [Client development boundary](client-hub-development.md) and
+> [technical guide](v01-technical-guide.md) for current contract/evidence.
+> This path is retained for historical links and, where applicable, contract export.
+
+
 请只修改 `CICADA_CLIENT` 仓库；不要在 Client 仓库复制 Hub 授权业务、读取 Hub
 SQLite，或把 Node bearer/管理 bearer 放进 Android。只读核查时 Client
 `dev/react-native` 已在 `befff5f` 实现 v1.2，`2fed942` 记录旧固定 Hub 的

@@ -39,4 +39,7 @@ real native same-Group ASK/REPLY and broadcast consumption now have bounded PASS
 evidence in the [checkpoint report](v01-completion-checkpoint-validation.md);
 those results do not prove physical dual-Node or every cross-Owner native
 authority/consent scenario. Application-layer NodeControl PQ authentication is
-separate from these Owner pins; pure PQ TLS remains NOT_IMPLEMENTED.
+separate from these Owner pins. Optional PQTLS configuration and its exact
+implementation/runtime limits are described in [PQTLS transport](pqtls-openssl-transport.md)
+and [Node TLS startup](node-tls-runtime-startup.md); these Owner-pin commands
+alone prove no transport profile or full-system PQ acceptance.

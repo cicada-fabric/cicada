@@ -4,6 +4,8 @@
 **Scope:** design rationale and milestone planning. Current Client Hub v1.4 management catalog, encrypted wire v1 and existing cryptographic suite do not change for M2.
 **Related:** [CICADA architecture](../CICADA.md), [Agent Networks](agent-networks-design.md), [implementation plan](architecture-v2-plan.md).
 
+**2026-10-10 阅读说明：** 本页保留 2026-09 的 M2–M4 设计过程；下文“M3/M4 remain proposals”、Client v1.4 和 future contract 等状态措辞属于当时范围，不表示当前代码仍缺失这些能力，也不表示已经完成 native 验收。当前实施及分层证据见 [status](status.md)、[架构实施状态](architecture-v2-status.md)；操作/权限以 [M2 合同](group-spaces-m2-contract.md)、[多 Owner spaces 合同](group-spaces-multi-owner-contract.md) 与 [Client Hub 合同](android-client-hub-contract.md) 为准。本文保留原候选的历史验收归属；本次只改文档。新增黄页、本地通讯录与主动组织路线见 [v0.2.x Agent 协作设计](v02-agent-collaboration-design.md)。
+
 ## Three different kinds of collaboration
 
 An Agent chooses when to communicate. The interface should make three outcomes clear without forcing every useful exchange into a durable record:

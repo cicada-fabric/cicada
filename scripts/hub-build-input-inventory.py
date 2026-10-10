@@ -23,6 +23,7 @@ IMPLEMENTATION_PATH = "scripts/hub-build-input-inventory.py"
 DOMAIN = b"cicada-hub-build-input-inventory-v1\0"
 V4_DOMAIN = b"cicada-hub-build-inputs-v4\0"
 SCOPE = (
+    "LICENSE",
     "cicada-go",
     "docker/Dockerfile.hub",
     ".dockerignore",

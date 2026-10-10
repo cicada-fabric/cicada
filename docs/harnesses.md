@@ -1,11 +1,16 @@
 # Harness boundary
 
+Adapter availability is not native-session acceptance. Consult
+[Runtime capability limits](runtime-operation-capabilities.md) and
+[current closeout](v01-current-closeout-20261009-validation.md) for exact evidence;
+optional adapter Join/injection/resume limitations remain explicit.
+
 `Worker.harness` is persisted independently from the worker process. The
 Control scheduler checks the requested harness against a Machine's
 `capabilities.harnesses` profile, and the executor boundary can therefore grow
 without changing Goal or Monitor data.
 
-The current 0.4.0 development line supports the official Codex CLI, an
+The current unreleased 0.1.0-dev source includes the official Codex CLI, an
 explicit `shell` harness, and bounded adapters for Claude Code, OpenCode, and
 Happy Agent. A Goal or additional Worker may state `"harness":"codex"`,
 `"harness":"shell"`, `"harness":"claude-code"`, `"harness":"opencode"`,

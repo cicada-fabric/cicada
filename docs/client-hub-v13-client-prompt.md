@@ -1,5 +1,13 @@
 # Client task: integrate Monitor broadcast consent (Hub v1.3 candidate)
 
+> Historical task/handoff record. The instructions and pins below describe their
+> original dated candidate; they are not a new authorization to modify Client,
+> deploy an old artifact or reopen retired interfaces. Use the current
+> [Client development boundary](client-hub-development.md) and
+> [technical guide](v01-technical-guide.md) for current contract/evidence.
+> This path is retained for historical links and, where applicable, contract export.
+
+
 这份任务书交给独立的 `CICADA_CLIENT` 仓库执行：Android 实现和测试只改
 Client 仓库。Hub 权威协议与服务端代码属于 `CICADA`，不要在 Client 端改写 Hub
 行为，也不要在当前候选 artifact 冻结前假设接口已部署。

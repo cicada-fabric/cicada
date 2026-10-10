@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tarfile
 import urllib.error
 import urllib.request
 import unittest
@@ -137,6 +138,102 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn("internal/buildinfo.Dirty", build)
         self.assertIn("internal/buildinfo.SourceFingerprint", build)
         self.assertNotIn("docker run", build)
+
+    def test_hub_images_copy_project_license_without_replacing_third_party_notices(self):
+        for name, destination, existing in (
+            ("docker/Dockerfile.hub", "/usr/share/licenses/cicada/LICENSE", "/out/licenses/"),
+            ("docker/Dockerfile.hub-pqtls", "/opt/cicada-pqtls/share/licenses/cicada/LICENSE", "/out/"),
+        ):
+            with self.subTest(dockerfile=name):
+                text = (ROOT / name).read_text()
+                self.assertEqual(text.count(f"COPY LICENSE {destination}\n"), 1)
+                self.assertLess(text.index(f"COPY LICENSE {destination}\n"), text.index("\nUSER "))
+                self.assertIn(f"COPY --from=cicada-builder {existing}", text)
+
+    def test_project_license_bytes_change_hub_and_pq_source_fingerprints(self):
+        global_name = subprocess.run(
+            ["git", "config", "--global", "--get", "user.name"],
+            capture_output=True, text=True, check=False,
+        )
+        global_email = subprocess.run(
+            ["git", "config", "--global", "--get", "user.email"],
+            capture_output=True, text=True, check=False,
+        )
+        if (global_name.returncode != 0 or global_email.returncode != 0 or
+                not global_name.stdout.strip() or not global_email.stdout.strip()):
+            self.skipTest("global git user.name and user.email are required for fixture commits")
+        expected_name = global_name.stdout.strip()
+        expected_email = global_email.stdout.strip()
+        spec = importlib.util.spec_from_file_location("license_inventory", ROOT / "scripts/hub-build-input-inventory.py")
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        with tempfile.TemporaryDirectory(prefix="cicada-license-inventory-") as directory:
+            source = pathlib.Path(directory)
+            subprocess.run(["git", "-C", str(source), "init", "-q"], check=True, capture_output=True)
+            license_path = source / "LICENSE"
+            license_path.write_bytes((ROOT / "LICENSE").read_bytes())
+            before = helper.capture(source)
+            pq_before = helper._capture_once(source, helper.PQ_SCOPE)
+            license_path.write_bytes(license_path.read_bytes() + b"\nSYNTHETIC INPUT MUTATION\n")
+            after = helper.capture(source)
+            pq_after = helper._capture_once(source, helper.PQ_SCOPE)
+            self.assertNotEqual(before["source_fingerprint_v4"], after["source_fingerprint_v4"])
+            self.assertNotEqual(pq_before["fingerprint"], pq_after["fingerprint"])
+            self.assertEqual([row["path"] for row in after["entries"]], ["LICENSE"])
+
+        # Exercise the real shell/inventory equality gate before any Docker call.
+        with tempfile.TemporaryDirectory(prefix="cicada-license-source-info-") as directory:
+            temp = pathlib.Path(directory)
+            source = temp / "source"
+            source.mkdir()
+            for name in ("LICENSE", "scripts/build-hub-image.sh",
+                         "scripts/hub-build-input-inventory.py", "docker/Dockerfile.hub",
+                         "cicada-go/internal/clientcontract/catalog.json"):
+                destination = source / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, destination)
+            subprocess.run(["git", "-C", str(source), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            for variable in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+                identity = subprocess.run(
+                    ["git", "-C", str(source), "var", variable],
+                    capture_output=True, text=True, check=True,
+                ).stdout.rstrip("\n")
+                self.assertTrue(
+                    identity.startswith(f"{expected_name} <{expected_email}> "),
+                    f"{variable} did not inherit global git user.name and user.email",
+                )
+            subprocess.run(["git", "-C", str(source), "commit", "-qm",
+                            "synthetic source-info fixture"], check=True)
+            identities = subprocess.run(
+                ["git", "-C", str(source), "show", "-s",
+                 "--format=%an%x00%ae%x00%cn%x00%ce", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.rstrip("\n").split("\0")
+            self.assertEqual(
+                identities,
+                [expected_name, expected_email, expected_name, expected_email],
+                "synthetic fixture commit Author/Committer did not inherit global identity",
+            )
+            fingerprints = []
+            for ordinal in range(2):
+                metadata_path = temp / f"source-info-{ordinal}.json"
+                result = subprocess.run(
+                    ["bash", str(source / "scripts/build-hub-image.sh"),
+                     "--source-info-only", "--metadata-file", str(metadata_path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                metadata = json.loads(metadata_path.read_text())["source"]
+                captured = helper.capture(source)
+                self.assertEqual(metadata["source_fingerprint"],
+                                 captured["source_fingerprint_v4"]["sha256"])
+                self.assertEqual(metadata["input_inventory"], captured)
+                self.assertEqual(metadata["dirty"], ordinal == 1)
+                fingerprints.append(metadata["source_fingerprint"])
+                license_path = source / "LICENSE"
+                license_path.write_bytes(license_path.read_bytes() + b"\nSYNTHETIC INPUT MUTATION\n")
+            self.assertNotEqual(*fingerprints)
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="cicada-installer-test-")
@@ -274,6 +371,10 @@ class ReleaseArtifactSmokeTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(checksums.returncode, 0, checksums.stdout + checksums.stderr)
+        self.assertEqual((self.artifact_dir / "LICENSE").read_bytes(), (ROOT / "LICENSE").read_bytes())
+        with tarfile.open(self.artifact_dir / "LICENSE-NOTICES.tar.gz") as archive:
+            self.assertEqual(archive.extractfile("standard-notices/cicada/LICENSE").read(),
+                             (ROOT / "LICENSE").read_bytes())
 
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -349,7 +450,7 @@ class PQSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="cicada-standard-provenance-") as directory:
             temp = pathlib.Path(directory)
             source = temp / "source"
-            for name in ("scripts/build-release.sh", "scripts/hub-build-input-inventory.py", "scripts/write-web-panel-manifest.py"):
+            for name in ("LICENSE", "scripts/build-release.sh", "scripts/hub-build-input-inventory.py", "scripts/write-web-panel-manifest.py"):
                 target = source / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(ROOT / name, target)
@@ -369,7 +470,7 @@ class PQSelectionTests(unittest.TestCase):
             fake.write_text("#!" + sys.executable + "\n" + '''import json,os,pathlib,sys
 args=sys.argv[1:]
 if args[0]=='version': print('go version go1.27.1 linux/amd64')
-elif args[0]=='env': print(os.environ['SYNTHETIC_GOROOT'] if args[1]=='GOROOT' else os.environ.get(args[1],{'GOOS':'linux','GOARCH':'amd64'}[args[1]]))
+elif args[0]=='env': print(os.environ['SYNTHETIC_GOROOT'] if args[1]=='GOROOT' else os.environ.get(args[1],{'GOOS':'linux','GOARCH':'amd64','GOHOSTOS':'linux','GOHOSTARCH':'amd64'}[args[1]]))
 elif args[0]=='list': print(json.dumps({'Module':{'Main':True}}))
 elif args[0]=='build':
  output=pathlib.Path(args[args.index('-o')+1]);output.write_bytes(b'SYNTHETIC GO OUTPUT, NEVER RUN AS PRODUCT')
@@ -386,11 +487,56 @@ else: sys.exit(91)
                 return result, output
             result, output = release("baseline")
             self.assertEqual(result.returncode, 0, result.stderr)
+            license_bytes = (source / "LICENSE").read_bytes()
+            self.assertEqual((output / "LICENSE").read_bytes(), license_bytes)
+            checksums = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=output,
+                                       text=True, capture_output=True)
+            self.assertEqual(checksums.returncode, 0, checksums.stdout + checksums.stderr)
+            self.assertIn("  LICENSE\n", (output / "SHA256SUMS").read_text())
+            with tarfile.open(output / "LICENSE-NOTICES.tar.gz") as archive:
+                self.assertEqual(archive.extractfile("standard-notices/cicada/LICENSE").read(), license_bytes)
+                self.assertEqual(archive.extractfile("standard-notices/go/LICENSE").read(),
+                                 (goroot / "LICENSE").read_bytes())
             baseline = json.loads((output / "BUILD-METADATA.json").read_text())["source"]
             self.assertFalse(baseline["dirty"])
             descriptor = baseline["fingerprint_descriptor"]
             self.assertEqual(bytes.fromhex(descriptor["domain_hex"]), b"cicada-binary-release-inputs-v2\0")
             self.assertIn("scripts/hub-build-input-inventory.py", descriptor["scope"])
+            self.assertIn("LICENSE", descriptor["scope"])
+            stage = os.environ.get("CICADA_PQTLS_STAGE")
+            if stage:
+                pq_output = temp / "pq-output"
+                pq = subprocess.run([str(script), "0.1.0-test", str(pq_output),
+                                     "--transport", "pqtls", "--pqtls-stage", stage],
+                                    env=environment, text=True, capture_output=True)
+                self.assertEqual(pq.returncode, 0, pq.stderr)
+                self.assertEqual((pq_output / "LICENSE").read_bytes(), license_bytes)
+                with tarfile.open(pq_output / "cicada-linux-amd64-pqtls.tar.gz") as archive:
+                    name = "cicada-linux-amd64-pqtls/share/licenses/cicada/LICENSE"
+                    self.assertEqual(archive.extractfile(name).read(), license_bytes)
+                    openssl = "cicada-linux-amd64-pqtls/share/licenses/openssl/LICENSE.txt"
+                    self.assertEqual(archive.extractfile(openssl).read(),
+                                     (pathlib.Path(stage) / "share/licenses/openssl/LICENSE.txt").read_bytes())
+                receipt = json.loads((pq_output / "PQ-BUILD-RECEIPT.json").read_text())
+                self.assertEqual(receipt["package_file_sha256"]["share/licenses/cicada/LICENSE"],
+                                 hashlib.sha256(license_bytes).hexdigest())
+                pq_checksums = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=pq_output,
+                                              text=True, capture_output=True)
+                self.assertEqual(pq_checksums.returncode, 0, pq_checksums.stdout + pq_checksums.stderr)
+            license_path = source / "LICENSE"
+            license_path.write_bytes(license_bytes + b"\nSYNTHETIC LICENSE INPUT CHANGE\n")
+            result, output = release("license-only")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            changed_license = json.loads((output / "BUILD-METADATA.json").read_text())["source"]
+            self.assertTrue(changed_license["dirty"])
+            self.assertNotEqual(changed_license["source_fingerprint"], baseline["source_fingerprint"])
+            subprocess.run(["git", "-C", str(source), "checkout", "--", "LICENSE"], check=True)
+            license_path.unlink()
+            result, output = release("missing-project-license")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("project LICENSE is missing", result.stderr)
+            self.assertFalse(output.exists())
+            license_path.write_bytes(license_bytes)
             git_wrapper = tools / "git"
             git_wrapper.write_text("#!/bin/sh\nif [ \"${3:-}\" = status ]; then exit 73; fi\nexec /usr/bin/git \"$@\"\n")
             git_wrapper.chmod(0o755)
@@ -408,6 +554,10 @@ else: sys.exit(91)
             self.assertNotEqual(changed["source_fingerprint"], baseline["source_fingerprint"])
             subprocess.run(["git", "-C", str(source), "checkout", "--", "scripts/hub-build-input-inventory.py"], check=True)
             result, output = release("in-build-mutation", {"SYNTHETIC_MUTATE_HELPER":str(helper)})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("build inputs changed during the build", result.stderr)
+            self.assertFalse(output.exists())
+            result, output = release("in-build-license-mutation", {"SYNTHETIC_MUTATE_HELPER": str(license_path)})
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("build inputs changed during the build", result.stderr)
             self.assertFalse(output.exists())
@@ -550,7 +700,8 @@ class PQArtifactTests(unittest.TestCase):
         result=subprocess.run(["sha256sum","-c","SHA256SUMS"],cwd=root,text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         expected={"bin/cicada","lib/libssl.so.3","lib/libcrypto.so.3","share/licenses/openssl/LICENSE.txt","BUILD-METADATA.json","SHA256SUMS","README.txt"}
-        expected.update({"share/licenses/go/LICENSE", "share/licenses/go/MODULES.json"})
+        expected.update({"share/licenses/cicada/LICENSE", "share/licenses/go/LICENSE", "share/licenses/go/MODULES.json"})
+        self.assertEqual((root / "share/licenses/cicada/LICENSE").read_bytes(), (ROOT / "LICENSE").read_bytes())
         notices = json.loads((root / "share/licenses/go/MODULES.json").read_text())
         self.assertTrue(notices["modules"])
         self.assertIn("go1.27.1", notices["toolchain"])

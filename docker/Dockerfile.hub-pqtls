@@ -96,6 +96,7 @@ COPY --from=cicada-builder --chown=${CICADA_UID}:${CICADA_GID} /out-empty/worksp
 COPY --from=cicada-builder --chown=${CICADA_UID}:${CICADA_GID} /out-empty/home/ /home/cicada/
 ENV HOME=/home/cicada CICADA_STATE_DIR=/state CICADA_WORKSPACE_ROOT=/workspace \
     CICADA_INTENT_PLANNER_BIN= CICADA_COMPLETION_VERIFIER_BIN= OPENSSL_CONF=/dev/null
+COPY LICENSE /opt/cicada-pqtls/share/licenses/cicada/LICENSE
 USER ${CICADA_UID}:${CICADA_GID}
 WORKDIR /workspace
 EXPOSE 8787

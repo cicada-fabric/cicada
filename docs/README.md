@@ -1,0 +1,24 @@
+# CICADA technical documentation
+
+Start with the [v0.1.x technical guide](v01-technical-guide.md). It describes the
+current unreleased source candidate, deployment boundaries and remaining
+acceptance work. The `x` is an incrementing patch number, not a fixed release.
+
+| Area | Authoritative entry points |
+|---|---|
+| Product architecture | [Adopted specification](../CICADA.md), [implementation status](architecture-v2-status.md), [completion ledger](completion-ledger.md) |
+| Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |
+| Identity and permissions | [Owner bootstrap](owner-approval-bootstrap.md), [Node trust](node-owner-trust.md), [permissions](permissions.md), [Network contract](network-m1-contract.md) |
+| Native sessions and MCP | [Harnesses](harnesses.md), [Fabric](fabric.md), [Join self identity](native-join-self-identity.md), [Runtime capability limits](runtime-operation-capabilities.md) |
+| Encrypted collaboration | [Peer privacy](task-peer-privacy-contract.md), [Group spaces](group-spaces-m2-contract.md), [multi-owner boundaries](group-spaces-multi-owner-contract.md) |
+| Client interoperability | [Development boundary](client-hub-development.md), [wire v1](client-hub-wire-v1.md), [OpenAPI](client-hub-v1.openapi.yaml), [Web panel](hub-web-panel.md) |
+| Backup and restore | [Node backup](node-backup.md), [Hub quarantine](hub-restore-quarantine.md), [safe activation](hub-restore-safe-activation.md), [migration](architecture-v2-migration.md) |
+| Acceptance evidence | [Current closeout](v01-current-closeout-20261009-validation.md), [verification](completion-verification.md), [test automation](test-automation.md) |
+| Future design | [v0.2 Agent collaboration design](v02-agent-collaboration-design.md), [integration roadmap](v02-openai-integration-roadmap.md) — planning, not shipped functionality |
+| Repository maintenance | [Branch roles, documentation history and permissions](repository-maintenance.md) |
+| Community | [Contributing](../CONTRIBUTING.md), [security reporting](../SECURITY.md), [support](../SUPPORT.md), [license](../LICENSE) |
+
+Dated validation documents retain the source, artifact and environment tested
+at that checkpoint. Old “current” headings and historical inventories do not
+supersede later evidence. A contract check or local browser result does not
+establish Android, real native Runtime, physical-device or public HTTPS acceptance.
