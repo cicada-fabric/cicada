@@ -1,5 +1,36 @@
 # CICADA Client integration handoff
 
+## Current delivery: clean v1.6.5 repin and offline APK preparation
+
+The fixed target is clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,
+shipping Hub `sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`,
+contract `client-hub-v1.6.5` and catalog
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+The public package, complete binary, image labels and 957 source inputs have
+been independently verified. Scoped Docker offline checks pass: 34 Python,
+72 frontend and 38 Kotlin tests, plus TypeScript type checking. The initial
+environment/harness failures remain in the evidence directory. The old
+Android-dependent Group Owner proof test cannot execute in a host JVM; it
+remains unverified on Android for this delivery.
+
+The [fixed record](client-hub-v1.6.5-c6887f4-validation.md) identifies all pins,
+commands, receipts and the APK producer. Final clean commit, input inventory
+and the actual immutable APK hashes are sealed in
+`/gpu1-share/data/cicada-client/v165-c6887f4-client-preparation-20261010/DELIVERY.NONAUTH.json`.
+No online or model run is implied. Joint7's four KEY passes, NONE failure and
+three unrun cases remain attributed solely to its old image and APKs.
+
+Root coordination requirements: provide the current-source compiled Link helper,
+fault driver and reconciliation binary with build-image/source/compiler receipts;
+then freeze the corresponding Parent/adapter/interface/freeze and QA files.
+The old e2a/73ec/54d helper pins are historical and cannot authorize this run.
+The supplied Client argv template is explicitly **NOT_GO**, with Root-owned
+plan, hashes, control FD and Master placeholders. The retained test namespace
+uses `v164-` run IDs and existing selector names; this does not identify the
+production contract. Preserve the original 82 requests, eight fresh cases,
+TARGET-first/SOURCE-last enrollment, no SOURCE reselection during recovery,
+25 callback fields, 11 NONE policy fields and all absolute budgets.
+
 ## Registered Owner policy-signing lifecycle: offline v1.6.5 candidate
 
 Root authorized a source-only candidate for the proposed extension of

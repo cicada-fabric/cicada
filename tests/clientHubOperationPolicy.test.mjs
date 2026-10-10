@@ -8,7 +8,7 @@ import {
 } from '../src/platform/clientHubOperationPolicy.ts';
 
 const catalog = JSON.parse(readFileSync(new URL(
-  '../contracts/client-hub-v1.6.4-25bc586/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
+  '../contracts/client-hub-v1.6.5-c6887f4/cicada-go/internal/clientcontract/catalog.json', import.meta.url,
 )));
 const session = () => ({
   nativeAvailable: true, remoteEnabled: true, sessionCapabilitiesReady: true,
@@ -16,7 +16,7 @@ const session = () => ({
     ...DEFERRED_V16_RPC_OPERATIONS],
 });
 
-test('local operation policy accounts for every operation in the independently imported v1.6.4 catalog', () => {
+test('local operation policy accounts for every operation in the independently imported v1.6.5 catalog', () => {
   const expected = catalog.operations.map(value => value.id).sort();
   const actual = session().allowedOperations.sort();
   assert.equal(expected.length, 55);

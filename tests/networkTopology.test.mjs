@@ -111,6 +111,8 @@ test('exact public catalog, current encrypted Owner grant and local verifier mus
   assert.equal(allows(), true);
   assert.equal(allows(publicCapabilities(), {...session(), role: 'external'}), true);
   assert.equal(allows({...publicCapabilities(), contract_revision: 'client-hub-v1.3'}), false);
+  assert.equal(allows({...publicCapabilities(), contract_revision: 'client-hub-v1.6.4'}), false);
+  assert.equal(allows(publicCapabilities(), {...session(), contract_revision: 'client-hub-v1.6.4'}), false);
   assert.equal(allows({...publicCapabilities(), catalog_sha256: 'wrong'}), false);
   assert.equal(allows(publicCapabilities(), {...session(), owner_id: 'owner-other'}), false);
   assert.equal(allows(publicCapabilities(), {...session(), role: 'network-admin'}), false);

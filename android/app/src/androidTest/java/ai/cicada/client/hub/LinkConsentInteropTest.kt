@@ -16,7 +16,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.Base64
 
-/** Bounded fresh-profile v1.6.4 onboarding and encrypted Link consent phases. */
+/** Bounded fresh-profile v1.6.5 onboarding and encrypted Link consent phases. */
 @RunWith(AndroidJUnit4::class)
 class LinkConsentInteropTest {
     private val target get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -24,9 +24,9 @@ class LinkConsentInteropTest {
     private val args get() = InstrumentationRegistry.getArguments()
     private val runId get() = args.getString("run_id")
         ?.takeIf { it.matches(Regex("v164-[A-Za-z0-9_-]{1,72}")) }
-        ?: error("A bounded v1.6.4 run ID is required")
+        ?: error("A bounded v1.6.5 run ID is required")
     private val directory get() = File(File(target.noBackupFilesDir, "link-v164"), runId)
-    private fun profileLabel(ownerRole: String) = "Link v1.6.4 $ownerRole $runId"
+    private fun profileLabel(ownerRole: String) = "Link v1.6.5 $ownerRole $runId"
 
     private data class Onboarding(
         val baseUrl: String,
@@ -181,7 +181,7 @@ class LinkConsentInteropTest {
     private fun onboarding(ownerRole: String): Onboarding {
         require(ownerRole in OWNER_ROLES)
         val value = readJson("$ownerRole-setup-public.json")
-            ?: notRun("$ownerRole-onboarding", "public v1.6.4 Hub/Owner setup is missing")
+            ?: notRun("$ownerRole-onboarding", "public v1.6.5 Hub/Owner setup is missing")
         require(value.keySet() == setOf(
             "schema", "run_id", "base_url", "hub_id", "owner_id", "owner_key_id", "device_id",
             "catalog_sha256", "control_public_identity", "owner_public_identity",
@@ -189,7 +189,7 @@ class LinkConsentInteropTest {
             "Public onboarding fixture does not match this bounded run"
         }
         require(text(value, "catalog_sha256") == CATALOG_SHA256) {
-            "Public onboarding fixture is not pinned to the imported v1.6.4 catalog"
+            "Public onboarding fixture is not pinned to the imported v1.6.5 catalog"
         }
         val baseUrl = text(value, "base_url")
         require(baseUrl.length in 8..2048 && baseUrl == baseUrl.trim()) { "Public Hub URL is invalid" }
@@ -224,7 +224,7 @@ class LinkConsentInteropTest {
             text(value, "hub_id") == fixture.hubId && text(value, "owner_id") == fixture.ownerId &&
             text(value, "owner_key_id") == fixture.ownerKeyId && text(value, "device_id") == fixture.deviceId &&
             text(value, "catalog_sha256") == CATALOG_SHA256) {
-            "Android device identity handoff is outside the supplied v1.6.4 enrollment scope"
+            "Android device identity handoff is outside the supplied v1.6.5 enrollment scope"
         }
         val publicJson = value.getAsJsonObject("device_public_identity").toString()
         val identity = ClientWireCrypto.PublicIdentity.parse(value.getAsJsonObject("device_public_identity"))
@@ -250,14 +250,14 @@ class LinkConsentInteropTest {
         val profileId = created.getAsJsonArray("profiles").mapNotNull { item ->
             item.takeIf { it.isJsonObject }?.asJsonObject?.takeIf { it.get("label")?.asString == label }
                 ?.get("profileId")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
-        }.singleOrNull() ?: error("Fresh v1.6.4 Hub profile was not created exactly once")
+        }.singleOrNull() ?: error("Fresh v1.6.5 Hub profile was not created exactly once")
         profiles.activateHubProfile(profileId, scope())
         val activeScope = scope()
-        require(activeScope.profileId == profileId) { "Fresh v1.6.4 profile did not become active" }
+        require(activeScope.profileId == profileId) { "Fresh v1.6.5 profile did not become active" }
         profiles.withActiveScope(activeScope) { session ->
             val initial = session.getStatus()
             require(initial.get("pinned")?.asBoolean == false && initial.get("enrolled")?.asBoolean == false) {
-                "Fresh v1.6.4 profile unexpectedly contains prior trust or enrollment"
+                "Fresh v1.6.5 profile unexpectedly contains prior trust or enrollment"
             }
             session.pinHub(fixture.baseUrl, fixture.hubId, fixture.controlIdentity.toJson())
             val identityJson = session.createDeviceIdentity().getAsJsonObject("devicePublicIdentity")
@@ -337,14 +337,14 @@ class LinkConsentInteropTest {
             }
             val capabilitiesPacket = session.rpc("session.capabilities", JsonObject())
             require(capabilitiesPacket.get("ok")?.asBoolean == true) {
-                "Fresh encrypted v1.6.4 session capabilities were refused after enrollment"
+                "Fresh encrypted v1.6.5 session capabilities were refused after enrollment"
             }
             val capabilities = capabilitiesPacket.getAsJsonObject("result")
-            require(text(capabilities, "contract_revision") == "client-hub-v1.6.4" &&
+            require(text(capabilities, "contract_revision") == "client-hub-v1.6.5" &&
                 text(capabilities, "catalog_sha256") == CATALOG_SHA256 &&
                 text(capabilities, "owner_id") == device.onboarding.ownerId &&
                 text(capabilities, "role") in setOf("manager", "external")) {
-                "Fresh encrypted enrollment capabilities are outside v1.6.4"
+                "Fresh encrypted enrollment capabilities are outside v1.6.5"
             }
             val operations = capabilities.getAsJsonArray("available_rpc_operations").map { it.asString }.toSet()
             require(operations.containsAll(REQUIRED_OPERATIONS)) {
@@ -355,7 +355,7 @@ class LinkConsentInteropTest {
                 text(after, "hubId") == device.onboarding.hubId && text(after, "ownerId") == device.onboarding.ownerId &&
                 text(after, "deviceId") == device.onboarding.deviceId &&
                 safeInteger(after, "sessionEpoch") == safeInteger(enrollment, "sessionEpoch")) {
-                "Local verified session state does not match the newly enrolled v1.6.4 device"
+                "Local verified session state does not match the newly enrolled v1.6.5 device"
             }
             writeReceipt("$ownerRole-onboarding-enroll.redacted.json", "$ownerRole-onboarding-enroll", "PASS") {
                 addProperty("profile_id_sha256", hash(device.profileId))
@@ -376,7 +376,7 @@ class LinkConsentInteropTest {
     private fun requireFreshProfileScope(profileId: String, generation: Long): HubProfileStore.Scope {
         val current = scope()
         require(current.profileId == profileId && current.selectionGeneration == generation) {
-            "Active Hub profile or selection generation differs from the v1.6.4 device handoff"
+            "Active Hub profile or selection generation differs from the v1.6.5 device handoff"
         }
         return current
     }
@@ -446,7 +446,7 @@ class LinkConsentInteropTest {
         val catalog = text(value, "catalog_sha256")
         require(version in 1L..9_007_199_254_740_991L && profileGeneration > 0L &&
             profileId.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,95}")) && catalog == CATALOG_SHA256) {
-            "Public Link consent selection is not pinned to the imported v1.6.4 catalog"
+            "Public Link consent selection is not pinned to the imported v1.6.5 catalog"
         }
         val sourcePin = parsePin(value.getAsJsonObject("source_owner_pin"))
         val targetPin = parsePin(value.getAsJsonObject("target_owner_pin"))
@@ -484,7 +484,7 @@ class LinkConsentInteropTest {
         val selected = selection()
         val scope = scope()
         require(scope.profileId == selected.profileId && scope.selectionGeneration == selected.profileGeneration) {
-            "Public selection does not match the active v1.6.4 Hub profile generation"
+            "Public selection does not match the active v1.6.5 Hub profile generation"
         }
         val device = deviceHandoff(selected.ownerRole)
         val localPin = if (selected.ownerRole == "source") selected.sourcePin else selected.targetPin
@@ -502,7 +502,7 @@ class LinkConsentInteropTest {
         }
         require(text(before, "hubId") == selected.hubId && text(before, "ownerId") == selected.ownerId &&
             text(before, "deviceId") == selected.deviceId && safeInteger(before, "sessionEpoch") > 0) {
-            "Selected profile is not the enrolled v1.6.4 Owner session"
+            "Selected profile is not the enrolled v1.6.5 Owner session"
         }
         if (!allowPending && before.has("pendingOperationId")) {
             notRun("${selected.ownerRole}-$stage", "the selected profile has an unresolved encrypted request")
@@ -512,11 +512,11 @@ class LinkConsentInteropTest {
             val packet = session.rpc("session.capabilities", JsonObject())
             require(packet.get("ok")?.asBoolean == true) { "Fresh encrypted Owner capabilities were refused" }
             val capabilities = packet.getAsJsonObject("result")
-            require(text(capabilities, "contract_revision") == "client-hub-v1.6.4" &&
+            require(text(capabilities, "contract_revision") == "client-hub-v1.6.5" &&
                 text(capabilities, "catalog_sha256") == CATALOG_SHA256 &&
                 text(capabilities, "owner_id") == selected.ownerId &&
                 text(capabilities, "role") in setOf("manager", "external")) {
-                "Fresh encrypted capabilities are outside the imported v1.6.4 contract"
+                "Fresh encrypted capabilities are outside the imported v1.6.5 contract"
             }
             val advertised = capabilities.getAsJsonArray("available_rpc_operations")
                 .map { it.asString }.toSet()
@@ -876,7 +876,7 @@ class LinkConsentInteropTest {
                 selected.linkId, selected.linkVersion, "REVIEW_POLICY", policy, selectedScope.selectionGeneration,
             )
             val head = fresh.get("currentPolicyStatus")?.takeIf { it.isJsonObject }?.asJsonObject
-                ?: error("Fresh v1.6.4 prepare did not return a verified current policy-head receipt")
+                ?: error("Fresh v1.6.5 prepare did not return a verified current policy-head receipt")
             validateCurrentPolicyHead(head, parsed.signingRequest, selected.ownerRole)
             val sourceStatus = text(head, "sourceStatus")
             val targetStatus = text(head, "targetStatus")
@@ -1086,7 +1086,7 @@ class LinkConsentInteropTest {
         val selectedScope = scope()
         require(selectedScope.profileId == selected.profileId &&
             selectedScope.selectionGeneration == selected.profileGeneration) {
-            "Recovery profile does not match the selected v1.6.4 profile generation"
+            "Recovery profile does not match the selected v1.6.5 profile generation"
         }
         val device = deviceHandoff(selected.ownerRole)
         require(device.profileId == selected.profileId && device.profileGeneration == selected.profileGeneration &&
@@ -1281,7 +1281,7 @@ class LinkConsentInteropTest {
         val selectedScope = scope()
         require(selectedScope.profileId == selected.profileId &&
             selectedScope.selectionGeneration == selected.profileGeneration) {
-            "Recovery profile does not match the public v1.6.4 selection generation"
+            "Recovery profile does not match the public v1.6.5 selection generation"
         }
         val before = profiles.getStatus(selectedScope)
         require(text(before, "hubId") == selected.hubId && text(before, "ownerId") == selected.ownerId &&
@@ -1445,7 +1445,7 @@ class LinkConsentInteropTest {
         val target = text(value, "targetStatus")
         val bilateral = value.get("bilateralVerified")?.asBoolean == true
         require(value.get("current")?.asBoolean == true && source in POLICY_STATUS_VALUES &&
-            target in POLICY_STATUS_VALUES) { "Fresh v1.6.4 policy-head receipt is malformed" }
+            target in POLICY_STATUS_VALUES) { "Fresh v1.6.5 policy-head receipt is malformed" }
         if (ownerRole == "source") {
             require(version == "0" && digest.isEmpty() && source == "MISSING" && target == "MISSING" && !bilateral) {
                 "A one-sided SOURCE proof must leave the unconfigured NONE policy head current"
@@ -1485,7 +1485,7 @@ class LinkConsentInteropTest {
     }
 
     companion object {
-        private const val CATALOG_SHA256 = "953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d"
+        private const val CATALOG_SHA256 = "a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9"
         private const val ONBOARDING_SCHEMA = "cicada.client-v164-onboarding-public.v1"
         private const val DEVICE_HANDOFF_SCHEMA = "cicada.client-v164-device-public-handoff.v1"
         private const val OWNER_DEVICE_GRANT_SCHEMA = "cicada.client-v164-owner-device-grant-handoff.v1"

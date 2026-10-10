@@ -92,6 +92,11 @@ test('dedicated flow visibility requires fixed public and encrypted Owner capabi
   const session = {owner_id: 'owner-a', role: 'external', contract_revision: CLIENT_HUB_REVISION,
     catalog_sha256: CLIENT_HUB_CATALOG_SHA256, available_rpc_operations: operations};
   assert.equal(linkConsentCapabilitiesAllow(status, capabilities, session, scope, true), true);
+  const retiredPins = {contract_revision: 'client-hub-v1.6.4',
+    catalog_sha256: '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d'};
+  assert.equal(linkConsentCapabilitiesAllow(status, {...capabilities, ...retiredPins}, session, scope, true), false);
+  assert.equal(linkConsentCapabilitiesAllow(status, capabilities, {...session, ...retiredPins}, scope, true), false);
+  assert.equal(linkConsentCapabilitiesAllow(status, {...capabilities, ...retiredPins}, {...session, ...retiredPins}, scope, true), false);
   assert.equal(linkConsentCapabilitiesAllow(status, capabilities, session, scope, false), false);
   assert.equal(linkConsentCapabilitiesAllow(status, capabilities, {...session, owner_id: 'other'}, scope, true), false);
   assert.equal(linkConsentCapabilitiesAllow(status, {...capabilities, catalog_sha256: '0'.repeat(64)}, session, scope, true), false);

@@ -8,6 +8,7 @@ raw filesystem modes are reported only when the optional worktree pass runs.
 from __future__ import annotations
 
 import hashlib
+import ast
 import os
 from pathlib import Path
 import re
@@ -25,6 +26,8 @@ SCOPE = (
     "scripts/build-hub-image.sh",
     ".github/workflows/release.yml",
 )
+LICENSE_SCOPE = ("LICENSE", *SCOPE)
+SUPPORTED_SCOPES = (SCOPE, LICENSE_SCOPE)
 HELPER_PATH = "scripts/hub-build-input-inventory.py"
 HELPER_VERSION = "1"
 CATALOG_PATH = "cicada-go/internal/clientcontract/catalog.json"
@@ -118,10 +121,10 @@ def _absolute_checkout_path(repository: Path | str) -> Path:
         raise RepositoryVerificationError("repository path is unavailable") from error
 
 
-def _scope_path(path: bytes) -> bool:
-    for scope in SCOPE:
-        encoded = os.fsencode(scope)
-        if scope == "cicada-go":
+def _scope_path(path: bytes, selected_scope: tuple[str, ...]) -> bool:
+    for scoped_path in selected_scope:
+        encoded = os.fsencode(scoped_path)
+        if scoped_path == "cicada-go":
             if path == encoded or path.startswith(encoded + b"/"):
                 return True
         elif path == encoded:
@@ -129,7 +132,7 @@ def _scope_path(path: bytes) -> bool:
     return False
 
 
-def _safe_relative_path(path_hex: Any, display_path: Any) -> bytes:
+def _safe_relative_path(path_hex: Any, display_path: Any, selected_scope: tuple[str, ...]) -> bytes:
     if not isinstance(path_hex, str) or not path_hex or len(path_hex) % 2:
         _fail("inventory contains an invalid encoded path")
     try:
@@ -143,7 +146,7 @@ def _safe_relative_path(path_hex: Any, display_path: Any) -> bytes:
     parts = raw.split(b"/")
     if any(part in (b"", b".", b"..") for part in parts):
         _fail("inventory contains an unsafe repository path")
-    if not _scope_path(raw):
+    if not _scope_path(raw, selected_scope):
         _fail("inventory contains a path outside the fixed Hub input scope")
     try:
         rendered = os.fsdecode(raw)
@@ -154,14 +157,18 @@ def _safe_relative_path(path_hex: Any, display_path: Any) -> bytes:
     return raw
 
 
-def _parse_inventory(verified: dict[str, Any], object_format: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _parse_inventory(
+    verified: dict[str, Any], object_format: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], tuple[str, ...]]:
     if not isinstance(verified, dict):
         _fail("verified inventory result is invalid")
     inventory = verified.get("inventory")
     if not isinstance(inventory, dict):
         _fail("verified inventory is missing")
-    if inventory.get("scope") != list(SCOPE):
+    scope_value = inventory.get("scope")
+    if type(scope_value) is not list or not any(scope_value == list(candidate) for candidate in SUPPORTED_SCOPES):
         _fail("inventory scope does not match the fixed Hub input scope")
+    selected_scope = tuple(scope_value)
     if inventory.get("schema_version") != "cicada.hub-build-input-inventory.v1":
         _fail("unsupported Hub input inventory schema")
 
@@ -204,7 +211,7 @@ def _parse_inventory(verified: dict[str, Any], object_format: str) -> tuple[dict
         if not isinstance(original, dict):
             _fail("inventory entry is invalid")
         entry = dict(original)
-        path = _safe_relative_path(entry.get("path_bytes_hex"), entry.get("path"))
+        path = _safe_relative_path(entry.get("path_bytes_hex"), entry.get("path"), selected_scope)
         if prior_path is not None and path <= prior_path:
             _fail("inventory paths are not uniquely sorted")
         prior_path = path
@@ -247,7 +254,7 @@ def _parse_inventory(verified: dict[str, Any], object_format: str) -> tuple[dict
                 _fail("inventory Git index mode disagrees with its file type or mode")
         parsed.append(entry)
 
-    return inventory, parsed
+    return inventory, parsed, selected_scope
 
 
 def _row_git_mode(entry: dict[str, Any]) -> str:
@@ -260,7 +267,9 @@ def _row_git_mode(entry: dict[str, Any]) -> str:
     return ""
 
 
-def _tree_entries(root: bytes, revision: str) -> dict[bytes, tuple[str, str, str]]:
+def _tree_entries(
+    root: bytes, revision: str, selected_scope: tuple[str, ...],
+) -> dict[bytes, tuple[str, str, str]]:
     arguments = [
         b"ls-tree",
         b"-r",
@@ -269,7 +278,7 @@ def _tree_entries(root: bytes, revision: str) -> dict[bytes, tuple[str, str, str
         b"--full-tree",
         os.fsencode(revision),
         b"--",
-        *(os.fsencode(path) for path in SCOPE),
+        *(os.fsencode(path) for path in selected_scope),
     ]
     output = _run_git(root, *arguments)
     tree: dict[bytes, tuple[str, str, str]] = {}
@@ -281,7 +290,7 @@ def _tree_entries(root: bytes, revision: str) -> dict[bytes, tuple[str, str, str
             raw_mode, kind, oid = header.decode("ascii").split(" ")
         except (ValueError, UnicodeDecodeError) as error:
             raise RepositoryVerificationError("Git returned an invalid tree entry") from error
-        if not _scope_path(raw_path):
+        if not _scope_path(raw_path, selected_scope):
             continue
         if raw_mode == "160000" or kind == "commit":
             _fail("scoped Git submodules or gitlinks are unsupported")
@@ -295,7 +304,7 @@ def _tree_entries(root: bytes, revision: str) -> dict[bytes, tuple[str, str, str
             _fail("pinned Git tree contains a duplicate scoped path")
         tree[raw_path] = (raw_mode, oid, kind)
 
-    for required in SCOPE[1:]:
+    for required in (path for path in selected_scope if path != "cicada-go"):
         raw_required = os.fsencode(required)
         if raw_required not in tree:
             _fail("pinned Git tree is missing a required Hub build input")
@@ -539,14 +548,14 @@ def _git_blob_oid(object_format: str, content: bytes) -> str:
     return digest.hexdigest()
 
 
-def _parse_index(root: bytes) -> dict[bytes, list[tuple[str, str, int]]]:
+def _parse_index(root: bytes, selected_scope: tuple[str, ...]) -> dict[bytes, list[tuple[str, str, int]]]:
     output = _run_git(
         root,
         b"ls-files",
         b"--stage",
         b"-z",
         b"--",
-        *(os.fsencode(path) for path in SCOPE),
+        *(os.fsencode(path) for path in selected_scope),
     )
     entries: dict[bytes, list[tuple[str, str, int]]] = {}
     for record in output.split(b"\0"):
@@ -558,13 +567,13 @@ def _parse_index(root: bytes) -> dict[bytes, list[tuple[str, str, int]]]:
             stage = int(stage_raw)
         except (ValueError, UnicodeDecodeError) as error:
             raise RepositoryVerificationError("Git returned an invalid index entry") from error
-        if not _scope_path(path):
+        if not _scope_path(path, selected_scope):
             continue
         entries.setdefault(path, []).append((mode, oid, stage))
     return entries
 
 
-def _current_scope_paths(root: bytes) -> list[bytes]:
+def _current_scope_paths(root: bytes, selected_scope: tuple[str, ...]) -> list[bytes]:
     output = _run_git(
         root,
         b"ls-files",
@@ -573,10 +582,10 @@ def _current_scope_paths(root: bytes) -> list[bytes]:
         b"--exclude-standard",
         b"-z",
         b"--",
-        *(os.fsencode(path) for path in SCOPE),
+        *(os.fsencode(path) for path in selected_scope),
     )
     paths = sorted({path for path in output.split(b"\0") if path})
-    if any(not _scope_path(path) for path in paths):
+    if any(not _scope_path(path, selected_scope) for path in paths):
         _fail("Git enumerated a path outside the fixed Hub input scope")
     return paths
 
@@ -610,6 +619,7 @@ def _verify_worktree(
     object_format: str,
     source_revision: str,
     claimed_dirty: bool,
+    selected_scope: tuple[str, ...],
 ) -> dict[str, Any]:
     root_fd = _read_root_no_follow(root_path)
     try:
@@ -622,12 +632,12 @@ def _verify_worktree(
         helper_before = _read_worktree_entry(root_fd, os.fsencode(HELPER_PATH), object_format)
 
         expected_paths = [entry["_path_bytes"] for entry in entries]
-        first_paths = _current_scope_paths(root)
+        first_paths = _current_scope_paths(root, selected_scope)
         if first_paths != expected_paths:
             _fail("current Hub input path enumeration differs from the verified inventory")
         first_rows = {path: _read_worktree_entry(root_fd, path, object_format) for path in first_paths}
 
-        current_index = _parse_index(root)
+        current_index = _parse_index(root, selected_scope)
         index_claims_verified = 0
         index_paths: set[bytes] = set()
         for entry in entries:
@@ -658,10 +668,10 @@ def _verify_worktree(
         if any(path not in index_paths for path in current_index):
             _fail("current Git index has an unrepresented scoped path")
 
-        second_paths = _current_scope_paths(root)
+        second_paths = _current_scope_paths(root, selected_scope)
         second_rows = {path: _read_worktree_entry(root_fd, path, object_format) for path in second_paths}
         helper_after = _read_worktree_entry(root_fd, os.fsencode(HELPER_PATH), object_format)
-        second_index = _parse_index(root)
+        second_index = _parse_index(root, selected_scope)
         end_dirty, end_status_sha256 = _status_snapshot(root)
         end_revision = _head_revision(root, object_format)
 
@@ -698,13 +708,34 @@ def _verify_worktree(
         os.close(root_fd)
 
 
-def _check_helper_source(content: bytes) -> None:
+def _check_helper_source(content: bytes, selected_scope: tuple[str, ...]) -> None:
     path_values = re.findall(rb"(?m)^IMPLEMENTATION_PATH\s*=\s*([\"'])(.*?)\1\s*$", content)
     version_values = re.findall(rb"(?m)^IMPLEMENTATION_VERSION\s*=\s*([\"'])(.*?)\1\s*$", content)
     if len(path_values) != 1 or path_values[0][1].decode("ascii", "strict") != HELPER_PATH:
         _fail("pinned helper implementation path constant is invalid")
     if len(version_values) != 1 or version_values[0][1].decode("ascii", "strict") != HELPER_VERSION:
         _fail("pinned helper implementation version constant is invalid")
+    try:
+        tree = ast.parse(content.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError) as error:
+        raise RepositoryVerificationError("pinned helper source is not valid UTF-8 Python") from error
+    assignments = [
+        node for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "SCOPE" for target in node.targets)
+    ]
+    if len(assignments) != 1 or len(assignments[0].targets) != 1:
+        _fail("pinned helper scope constant is invalid")
+    try:
+        helper_scope = ast.literal_eval(assignments[0].value)
+    except (ValueError, TypeError, SyntaxError) as error:
+        raise RepositoryVerificationError("pinned helper scope constant is not literal") from error
+    if (
+        type(helper_scope) is not tuple
+        or helper_scope not in SUPPORTED_SCOPES
+        or helper_scope != selected_scope
+    ):
+        _fail("pinned helper scope differs from the inventory scope")
 
 
 def verify_repository(
@@ -732,7 +763,7 @@ def verify_repository(
     root_path = _absolute_checkout_path(repository)
     root = os.fsencode(os.fspath(root_path))
     object_format = _object_format(root)
-    inventory, entries = _parse_inventory(verified, object_format)
+    inventory, entries, selected_scope = _parse_inventory(verified, object_format)
 
     source_revision = verified["source_revision"]
     resolved_revision = _git_text(root, b"rev-parse", b"--verify", os.fsencode(source_revision + "^{commit}"))
@@ -742,7 +773,7 @@ def verify_repository(
     if not _object_id_ok(tree_oid, object_format):
         _fail("source revision has an invalid tree object ID")
 
-    pinned_tree = _tree_entries(root, source_revision)
+    pinned_tree = _tree_entries(root, source_revision, selected_scope)
     pinned_helper = _helper_tree_entry(root, source_revision)
     object_ids: set[str] = {row[1] for row in pinned_tree.values()}
     if pinned_helper is not None:
@@ -842,7 +873,7 @@ def verify_repository(
             _fail("pinned helper blob changed between Git reads")
         if clean:
             try:
-                _check_helper_source(helper_content)
+                _check_helper_source(helper_content, selected_scope)
             except UnicodeDecodeError as error:
                 raise RepositoryVerificationError("pinned helper constants are not valid ASCII") from error
     if clean and helper_record["sha256"] != helper_bytes_hash:
@@ -879,7 +910,9 @@ def verify_repository(
                 _fail("dirty Git index claim mode differs from its captured file")
 
     if verify_worktree:
-        worktree = _verify_worktree(root_path, root, entries, object_format, source_revision, verified["dirty"])
+        worktree = _verify_worktree(
+            root_path, root, entries, object_format, source_revision, verified["dirty"], selected_scope,
+        )
         if worktree["helper_sha256"] != helper_record["sha256"]:
             _fail("current helper bytes differ from the inventory implementation digest")
         worktree["helper_bytes_verified"] = True

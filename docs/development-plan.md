@@ -1,6 +1,24 @@
 # CICADA Client development and validation plan
 
-## Current milestone: clean e2a1908 preparation
+## Current milestone: clean v1.6.5 offline delivery
+
+Import and independently verify the clean `c6887f4` protocol, source inventory,
+shipping image IDs and binary. Pin the shared UI, Native session and existing
+Android Link selectors to this exact delivery. Run scoped offline contract,
+authorization, cryptographic and policy regressions in Docker, then build a
+fresh immutable APK pair from the clean Client checkpoint. The
+[fixed validation record](client-hub-v1.6.5-c6887f4-validation.md) and its external
+producer receipts record actual commands, source inputs and artifact hashes.
+
+Root must next deliver the current-source helper, fault-driver and reconciliation
+compiler tuple, plus the compatible Parent package. Keep historical host pins
+closed until those exact bytes are verified. After repinning that test consumer,
+Root alone may issue a fresh bounded Master and run the original 82-request
+flow with TARGET-first/SOURCE-last enrollment. No model, Hub lifecycle, online
+Android run or approval is authorized by this offline milestone. All v1.6.5
+online, physical-device and public HTTPS results remain **NOT_RUN**.
+
+## Historical milestone: clean e2a1908 preparation
 
 The [current preparation record](client-link-recovery-e2a1908-preparation.md)
 is the active target. Complete independent delivery verification, deterministic

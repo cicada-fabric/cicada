@@ -19,11 +19,11 @@ import java.util.Base64
 internal object LinkConsentRecoveryEvidence {
     const val CAPTURE_SCHEMA = "cicada.client-v164-link-consent-recovery-capture.v2"
     const val READY_SCHEMA = "cicada.client-v164-link-recovery-ready.v1"
-    const val CATALOG_SHA256 = "953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d"
-    const val CONTRACT_REVISION = "client-hub-v1.6.4"
-    const val CORE_REVISION = "e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59"
-    const val HUB_IMAGE_ID = "sha256:532dc1ccfd8f66ab024bd298d16e5901356b602301085b5a75405c3a2de4ff01"
-    const val SOURCE_FINGERPRINT = "7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5"
+    const val CATALOG_SHA256 = "a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9"
+    const val CONTRACT_REVISION = "client-hub-v1.6.5"
+    const val CORE_REVISION = "c6887f46c8412e648b8e8e68da371acd80e0b87e"
+    const val HUB_IMAGE_ID = "sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2"
+    const val SOURCE_FINGERPRINT = "cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6aefaf1ef"
     private val HEX_64 = Regex("[0-9a-f]{64}")
     enum class Outcome { COMPLETED, PENDING, UNCERTAIN }
 

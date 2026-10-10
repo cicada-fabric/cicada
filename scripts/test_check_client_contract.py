@@ -12,7 +12,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check-client-contract.py"
-SNAPSHOT = REPO / "contracts/client-hub-v1.6.4-25bc586"
+SNAPSHOT = REPO / "contracts/client-hub-v1.6.5-c6887f4"
 CATALOG = "cicada-go/internal/clientcontract/catalog.json"
 
 
@@ -45,16 +45,16 @@ class ContractCheckerTest(unittest.TestCase):
         result = self.run_checker(use_default=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(self.manifest["catalog_sha256"], result.stdout)
-        self.assertIn("PASS client-hub-v1.6.4", result.stdout)
+        self.assertIn("PASS client-hub-v1.6.5", result.stdout)
 
-    def test_v164_keeps_the_55_operations_and_reports_actual_validation_scope(self):
+    def test_v165_keeps_the_55_operations_and_reports_actual_validation_scope(self):
         catalog = json.loads((self.root / CATALOG).read_text())
         previous = json.loads(
             (REPO / "contracts/client-hub-v1.6-4fb241b" / CATALOG).read_text()
         )
         self.assertEqual("/v2/client/rpc", catalog["rpc_route"])
         self.assertEqual(55, len(catalog["operations"]))
-        # v1.6.4 retains operation IDs while adding explicit consent schemas.
+        # v1.6.5 retains operation IDs while adding registered signer authority.
         # Their complete metadata is verified by the fixed catalog hash.
         self.assertEqual(
             [operation["id"] for operation in previous["operations"]],

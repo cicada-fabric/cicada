@@ -33,6 +33,8 @@ SCOPE = (
     "scripts/build-hub-image.sh",
     ".github/workflows/release.yml",
 )
+LICENSE_SCOPE = ("LICENSE", *SCOPE)
+SUPPORTED_SCOPES = (SCOPE, LICENSE_SCOPE)
 V4_REPRODUCTION = {
     "path_order": "filesystem path bytes, ascending",
     "path_length": "8-byte unsigned big-endian",
@@ -156,7 +158,7 @@ def _revision(value: Any, label: str) -> str:
     return value
 
 
-def _inventory_path(entry: dict[str, Any]) -> tuple[str, bytes]:
+def _inventory_path(entry: dict[str, Any], scope: tuple[str, ...]) -> tuple[str, bytes]:
     path = entry["path"]
     path_hex = entry["path_bytes_hex"]
     _require(type(path) is str and path != "", "invalid inventory path")
@@ -186,7 +188,9 @@ def _inventory_path(entry: dict[str, Any]) -> tuple[str, bytes]:
         raise InventoryVerificationError("invalid inventory path encoding") from error
     _require(encoded_display == raw_path and decoded_display == path, "inventory path bytes do not match path")
 
-    in_scope = path.startswith("cicada-go/") or path in SCOPE[1:]
+    in_scope = ("cicada-go" in scope and path.startswith("cicada-go/")) or (
+        path in scope and path != "cicada-go"
+    )
     _require(in_scope, "inventory path is outside the declared scope")
     return path, raw_path
 
@@ -226,7 +230,7 @@ def _validate_git_index(value: Any, file_type: str, raw_mode: int) -> None:
     _require(value["mode"] == expected_mode, "Git index mode does not match the file type and executable bits")
 
 
-def _validate_entries(entries: Any, source_dirty: bool) -> tuple[int, bool]:
+def _validate_entries(entries: Any, source_dirty: bool, scope: tuple[str, ...]) -> tuple[int, bool]:
     _require(type(entries) is list and len(entries) <= MAX_ENTRY_COUNT, "invalid inventory entries")
     previous_path: bytes | None = None
     seen_paths: set[bytes] = set()
@@ -251,7 +255,7 @@ def _validate_entries(entries: Any, source_dirty: bool) -> tuple[int, bool]:
                 allowed.add("git_index")
             _exact_keys(entry, allowed, "inventory row")
 
-        _, raw_path = _inventory_path(entry)
+        _, raw_path = _inventory_path(entry, scope)
         _require(raw_path not in seen_paths, "duplicate inventory path")
         seen_paths.add(raw_path)
         _require(previous_path is None or previous_path < raw_path, "inventory entries are not byte-sorted")
@@ -337,9 +341,9 @@ def verify_inventory(
 
     # Validate schema fields and row types first; permit missing rows only when
     # the enclosing metadata explicitly records a dirty checkout.
-    fingerprint_sha, inventory_v4_sha = _validate_inventory_header(inventory)
+    fingerprint_sha, inventory_v4_sha, scope = _validate_inventory_header(inventory)
     entries = inventory["entries"]
-    entry_count, has_missing = _validate_entries(entries, source_dirty=source_dirty)
+    entry_count, has_missing = _validate_entries(entries, source_dirty=source_dirty, scope=scope)
     _require(not has_missing or source_dirty, "missing inputs require dirty source metadata")
     _require(_compute_v4(entries) == inventory_v4_sha, "v4 source fingerprint mismatch")
     _require(source_fingerprint == inventory_v4_sha, "metadata source fingerprint mismatch")
@@ -357,7 +361,7 @@ def verify_inventory(
     }
 
 
-def _validate_inventory_header(inventory: Any) -> tuple[str, str]:
+def _validate_inventory_header(inventory: Any) -> tuple[str, str, tuple[str, ...]]:
     """Validate inventory fields not dependent on source dirty state."""
     _exact_keys(
         inventory,
@@ -365,7 +369,12 @@ def _validate_inventory_header(inventory: Any) -> tuple[str, str]:
         "inventory",
     )
     _require(inventory["schema_version"] == SCHEMA_VERSION, "unsupported inventory schema")
-    _require(type(inventory["scope"]) is list and inventory["scope"] == list(SCOPE), "inventory scope mismatch")
+    scope_value = inventory["scope"]
+    _require(
+        type(scope_value) is list and any(scope_value == list(candidate) for candidate in SUPPORTED_SCOPES),
+        "inventory scope mismatch",
+    )
+    scope = tuple(scope_value)
 
     implementation = inventory["implementation"]
     _exact_keys(implementation, {"path", "version", "sha256"}, "implementation identity")
@@ -387,4 +396,4 @@ def _validate_inventory_header(inventory: Any) -> tuple[str, str]:
     _exact_keys(source_v4["reproduction"], set(V4_REPRODUCTION), "v4 reproduction rules")
     _require(source_v4["reproduction"] == V4_REPRODUCTION, "v4 reproduction rules mismatch")
 
-    return fingerprint_sha, v4_sha
+    return fingerprint_sha, v4_sha, scope

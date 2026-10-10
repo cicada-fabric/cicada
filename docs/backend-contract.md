@@ -1,6 +1,6 @@
-# Client ↔ Hub contract: `client-hub-v1.6.4`
+# Client ↔ Hub contract: `client-hub-v1.6.5`
 
-## Unpinned v1.6.5 policy-signing candidate
+## Current registered Owner policy-signing authority
 
 Root authorized an offline-only extension of the existing
 `link.review_policy_preview`: mandatory Client request `owner_key_id`, with an
@@ -10,11 +10,18 @@ and a positive canonical int64 version come from the authenticated preview.
 The Client does not substitute accepted Link KEY entitlement for registered
 policy-signing authority, and does not fall back when the tuple is absent.
 Submit and recovery recheck lifecycle without weakening original proof,
-scope/version or packet fences. The official revision/catalog remain unchanged;
-policy signing is closed pending the frozen Core v1.6.5 delivery. This is not
-current-Hub or Android acceptance. See the [candidate handoff](cicada-core-handoff.md#registered-owner-policy-signing-lifecycle-offline-v165-candidate).
+scope/version or packet fences. The formal pins now select clean Core
+`c6887f46c8412e648b8e8e68da371acd80e0b87e`, contract `client-hub-v1.6.5` and
+catalog SHA-256 `a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+The server keeps the request field optional for legacy callers; this Client
+requires it and rejects a preview without signing authority. The five-field
+tuple comes from the same authenticated preview transaction. The policy proof
+format and the 55 operation IDs are unchanged. See the
+[fixed delivery record](client-hub-v1.6.5-c6887f4-validation.md).
+Runtime encrypted capabilities and Android interoperability on these artifacts
+remain **NOT_RUN** until the separately coordinated run.
 
-## Current recovery preparation — clean e2a1908
+## Historical recovery preparation — clean e2a1908
 
 The [frozen preparation record](client-link-recovery-e2a1908-preparation.md)
 independently checks clean Core `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`,

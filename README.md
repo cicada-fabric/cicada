@@ -10,7 +10,7 @@ The shared application is written in TypeScript and React Native. **Android is t
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
 - **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
 - **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The separate v1.6.4 Link consent flow passed its bounded fixed-emulator acceptance in F38; this does not establish physical-device or production acceptance. See the [F38 report](docs/client-hub-v1.6.4-0213538-f38-validation.md), the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md).
-- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The v1.6.4 local candidate implements 44 of 55 operations, including bounded Directory/admission reads, explicit one-use Monitor regroup delegation, Link review-policy status metadata, and five dedicated Link consent operations. Eleven operations remain closed. The five Link consent operations are always rejected by generic `rpc` and use the dedicated Native flow only. The Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata alone does not establish bilateral consent or enable messages.
+- **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The v1.6.5 implementation retains the 55-operation catalog and the existing operation classification. Five dedicated Link consent operations require the Native verification flow and remain rejected by generic `rpc`. The Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [historical validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata alone does not establish bilateral consent or enable messages.
 - **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
 - **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. The current snapshot recovery test retains the retired packet after authenticated `OUTCOME_UNCERTAIN`, blocks writes until a fresh authoritative snapshot, and verifies session reconciliation. An uncertain regroup delegation has a separate durable fence: a generic snapshot cannot establish its outcome or clear that fence under the current Core contract. See the [current recovery validation](docs/client-hub-v1.6.1-144e079-validation.md) and [historical regroup validation](docs/client-hub-v1.6-4fb241b-management-validation.md).
 
@@ -22,7 +22,24 @@ The Client does not use legacy `/v1` management bearer APIs, store Hub or Node b
 
 The Endpoint attestation v1 signature input includes the final `"signature":null` field. The Android verifier handles canonical Go RFC3339Nano timestamps. Historical v1.2.1 acceptance covers a real native Codex Endpoint, independent external Owner signing, explicit Android confirmation, and encrypted `group.key_manifest → group.key_grant → group.key_status` with `CURRENT`, then `STALE` after binding expiry and `PROOF_EXPIRED` after proof expiry. See the [Group key acceptance report](docs/client-group-key-v1.2.1-disposable-validation.md) for its exact APKs and rejection tests. Those results do not certify the current v1.6 target. Physical Android and public HTTPS remain untested.
 
-## Accepted Android baseline: v1.6.1
+## Current integration target: v1.6.5
+
+The Client pins clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,
+`client-hub-v1.6.5`, wire 1 and the independently imported 55-operation catalog.
+NONE policy signing requires an authenticated preview of the exact registered
+ACTIVE Owner key, matched against an independent full public identity pin.
+An accepted Link KEY grant is not required for that distinct policy authority.
+Missing authority fails closed; original packet recovery and consent fences
+remain unchanged.
+
+The [v1.6.5 validation record](docs/client-hub-v1.6.5-c6887f4-validation.md)
+records artifact verification, scoped Docker offline tests and the fresh APK
+producer receipt. Android runtime, physical-device and public HTTPS acceptance
+are **NOT_RUN** for this version. Online recovery remains on hold until Root
+delivers newly compiled, source-matched helpers and a separate fresh Master.
+Historical v1.6.4 results retain their original source and APK attribution.
+
+## Historical accepted Android baseline: v1.6.1
 
 The deterministic integration target is clean Core `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`, Client-Control v1.6.1, wire 1. The independently verified public snapshot, fixed images, APKs and acceptance results are recorded in the [current v1.6.1 validation report](docs/client-hub-v1.6.1-144e079-validation.md). Its 55-operation catalog is unchanged. The current local policy implements 39 operations and keeps 16 closed; the new status-only implementation is recorded separately from the prior 38-operation APKs.
 
@@ -40,7 +57,7 @@ The prior `d580975` offline checkpoint passed the Docker build, 59 JavaScript te
 
 Node confirmation now validates the complete `NodeControlKeyBinding` public keys and exact approval scope, then correlates the separate `NodeDeviceBinding` list projection. These checks preserve independent pin review and explicit user confirmation. Core image tests are a separate layer from Android acceptance. The current fixed-image Android gate has passed 81 Kotlin tests, UI smoke checks, encrypted enrollment, Directory authorization and exact recovery of lost enrollment and completed RPC responses. It also verified `STILL_PROCESSING` through an authorized synthetic ledger injection, encrypted `OUTCOME_UNCERTAIN` after restart, and `RECOVERY_UNAVAILABLE` at the Android protocol layer with separately corrected cleanup evidence. Original driver failures remain recorded. Native runtime, physical Android and public HTTPS remain unaccepted; older APK or Hub-version results do not transfer. The [4fb241b management report](docs/client-hub-v1.6-4fb241b-management-validation.md) remains historical evidence.
 
-## Current integration candidate: v1.6.4
+## Historical integration candidate: v1.6.4
 
 The current preparation target is clean Core
 `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`, contract `client-hub-v1.6.4`,

@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
 
-/** Offline v1.6.5 candidate tests, not a delivered contract or Android acceptance. */
+/** Offline registered-signer tests; they do not establish Android runtime acceptance. */
 class LinkReviewPolicySigningLifecycleCandidateTest {
     private val now = Instant.parse("2026-10-02T12:40:00Z")
     private val none = LinkReviewPolicyConsentPolicy("NONE", emptyList(), 0, 0, 0)

@@ -1,4 +1,4 @@
 /** Independent pins from the trusted clean Core delivery, never from a candidate response. */
-export const CLIENT_HUB_REVISION = 'client-hub-v1.6.4' as const;
+export const CLIENT_HUB_REVISION = 'client-hub-v1.6.5' as const;
 export const CLIENT_HUB_CATALOG_SHA256 =
-  '953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d' as const;
+  'a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9' as const;

@@ -21,6 +21,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from hub_input_inventory import (  # noqa: E402
     InventoryVerificationError,
+    LICENSE_SCOPE,
     SCOPE,
     verify_inventory,
 )
@@ -124,6 +125,7 @@ def _metadata(
     dirty: bool = False,
     implementation_sha256: str = IMPLEMENTATION_SHA256,
     schema_version: str = "cicada.hub-build-source.v1",
+    scope: tuple[str, ...] = SCOPE,
 ) -> dict[str, object]:
     sorted_entries = sorted(entries, key=lambda entry: bytes.fromhex(str(entry["path_bytes_hex"])))
     inventory: dict[str, object] = {
@@ -144,7 +146,7 @@ def _metadata(
             "sha256": "0" * 64,
             "reproduction": dict(V4_REPRODUCTION),
         },
-        "scope": list(SCOPE),
+        "scope": list(scope),
         "entries": sorted_entries,
     }
     return _resign({
@@ -177,10 +179,11 @@ def _resign(metadata: dict[str, object]) -> dict[str, object]:
 
 
 def _simple_metadata(*, entries: list[dict[str, object]] | None = None,
-                     dirty: bool = False) -> dict[str, object]:
+                     dirty: bool = False,
+                     scope: tuple[str, ...] = SCOPE) -> dict[str, object]:
     if entries is None:
         entries = [_entry("cicada-go/example.go")]
-    return _metadata(entries, dirty=dirty)
+    return _metadata(entries, dirty=dirty, scope=scope)
 
 
 def _cli_module():
@@ -214,6 +217,27 @@ class InventoryDataTests(unittest.TestCase):
         self.assertEqual(verified["entry_count"], 1)
         self.assertEqual(verified["catalog_sha256"], CATALOG_SHA256)
         self.assertEqual(verified["source_status"], "CLEAN")
+
+    def test_license_first_scope_is_supported_but_not_added_to_legacy_scope(self) -> None:
+        current = _simple_metadata(
+            entries=[_entry("LICENSE", b"synthetic license\n"), _entry("cicada-go/example.go")],
+            scope=LICENSE_SCOPE,
+        )
+        verified = verify_inventory(current)
+        self.assertEqual(verified["inventory"]["scope"], list(LICENSE_SCOPE))
+
+        legacy_with_license = _simple_metadata(
+            entries=[_entry("LICENSE", b"synthetic license\n")],
+        )
+        with self.assertRaises(InventoryVerificationError):
+            verify_inventory(legacy_with_license)
+
+        unsupported = _simple_metadata(
+            entries=[_entry("cicada-go/example.go")],
+            scope=("LICENSE", *SCOPE[1:], SCOPE[0]),
+        )
+        with self.assertRaises(InventoryVerificationError):
+            verify_inventory(unsupported)
 
     def test_raw_mode_changes_v4_while_nonexecutable_git_mode_stays_the_same(self) -> None:
         narrow = _simple_metadata(entries=[_entry("cicada-go/example.go", permissions=0o644,
@@ -383,6 +407,14 @@ class MetadataLoaderTests(unittest.TestCase):
                 self.cli.load_metadata(symlink)
 
 
+def _fixture_helper_content(scope: tuple[str, ...]) -> bytes:
+    return (
+        b'IMPLEMENTATION_PATH = "scripts/hub-build-input-inventory.py"\n'
+        b'IMPLEMENTATION_VERSION = "1"\n'
+        + b"SCOPE = " + repr(scope).encode("ascii") + b"\n"
+    )
+
+
 class GitFixture:
     FILE_CONTENTS = {
         "cicada-go/sample.go": b"package sample\n",
@@ -394,18 +426,22 @@ class GitFixture:
         "scripts/build-hub-image.sh": b"#!/bin/sh\nexit 0\n",
         ".github/workflows/release.yml": b"name: synthetic\n",
     }
-    HELPER_CONTENT = (
-        b'IMPLEMENTATION_PATH = "scripts/hub-build-input-inventory.py"\n'
-        b'IMPLEMENTATION_VERSION = "1"\n'
-    )
+    HELPER_CONTENT = _fixture_helper_content(SCOPE)
     HELPER_SHA256 = hashlib.sha256(HELPER_CONTENT).hexdigest()
 
     def __init__(self, repo: Path, *, permissions: dict[str, int] | None = None,
-                 symlinks: dict[str, str] | None = None, include_helper: bool = True) -> None:
+                 symlinks: dict[str, str] | None = None, include_helper: bool = True,
+                 scope: tuple[str, ...] = SCOPE) -> None:
         self.repo = repo
+        self.scope = scope
+        self.helper_content = _fixture_helper_content(scope)
+        self.helper_sha256 = hashlib.sha256(self.helper_content).hexdigest()
         permissions = permissions or {}
         symlinks = symlinks or {}
-        for relative, content in self.FILE_CONTENTS.items():
+        files = dict(self.FILE_CONTENTS)
+        if "LICENSE" in scope:
+            files["LICENSE"] = b"synthetic license\n"
+        for relative, content in files.items():
             path = repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             if relative in symlinks:
@@ -416,7 +452,7 @@ class GitFixture:
         if include_helper:
             helper = repo / "scripts/hub-build-input-inventory.py"
             helper.parent.mkdir(parents=True, exist_ok=True)
-            helper.write_bytes(self.HELPER_CONTENT)
+            helper.write_bytes(self.helper_content)
             os.chmod(helper, 0o755)
         _git(repo, "init", "--quiet")
         _git(repo, "add", "--all")
@@ -460,7 +496,7 @@ class GitFixture:
 
     def metadata(self, *, dirty: bool = False, entries: list[dict[str, object]] | None = None) -> dict[str, object]:
         return _metadata(entries or self.entries(), revision=self.revision, dirty=dirty,
-                         implementation_sha256=self.HELPER_SHA256)
+                         implementation_sha256=self.helper_sha256, scope=self.scope)
 
 
 class RepositoryVerifierTests(unittest.TestCase):
@@ -500,6 +536,57 @@ class RepositoryVerifierTests(unittest.TestCase):
         else:
             worktree_status = worktree
         self.assertEqual(worktree_status, "NOT_RUN")
+
+    def test_license_scope_and_worktree_are_verified_and_license_tampering_fails(self) -> None:
+        current_path = self.root / "license-repo"
+        current_path.mkdir()
+        current_repo = GitFixture(current_path, scope=LICENSE_SCOPE)
+        metadata = current_repo.metadata()
+        verified = verify_inventory(metadata, expected_revision=current_repo.revision)
+        self.assertEqual(verified["inventory"]["scope"], list(LICENSE_SCOPE))
+        self.assertIn("LICENSE", [row["path"] for row in verified["inventory"]["entries"]])
+
+        result = verify_repository(
+            verified, current_path, verify_worktree=True,
+            expected_helper_sha256=current_repo.helper_sha256,
+        )
+        self.assertEqual(result["verification"], "PASS_CLEAN")
+        self.assertEqual(result["worktree"]["result"], "PASS")
+
+        tampered = current_repo.metadata()
+        license_row = next(
+            row for row in tampered["source"]["input_inventory"]["entries"]
+            if row["path"] == "LICENSE"
+        )
+        license_row["content_sha256"] = "e" * 64
+        _resign(tampered)
+        tampered_verified = verify_inventory(tampered, expected_revision=current_repo.revision)
+        with self.assertRaisesRegex(ValueError, "clean inventory bytes or Git mode differ"):
+            verify_repository(tampered_verified, current_path)
+
+        omitted = current_repo.metadata()
+        omitted["source"]["input_inventory"]["entries"] = [
+            row for row in omitted["source"]["input_inventory"]["entries"]
+            if row["path"] != "LICENSE"
+        ]
+        _resign(omitted)
+        omitted_verified = verify_inventory(omitted, expected_revision=current_repo.revision)
+        with self.assertRaisesRegex(ValueError, "clean inventory omits a path"):
+            verify_repository(omitted_verified, current_path)
+
+    def test_inventory_cannot_downgrade_a_license_scoped_helper_to_legacy_scope(self) -> None:
+        current_path = self.root / "scope-downgrade-repo"
+        current_path.mkdir()
+        current_repo = GitFixture(current_path, scope=LICENSE_SCOPE)
+        metadata = current_repo.metadata()
+        inventory = metadata["source"]["input_inventory"]
+        inventory["scope"] = list(SCOPE)
+        inventory["entries"] = [row for row in inventory["entries"] if row["path"] != "LICENSE"]
+        _resign(metadata)
+
+        verified = verify_inventory(metadata, expected_revision=current_repo.revision)
+        with self.assertRaisesRegex(ValueError, "pinned helper scope differs"):
+            verify_repository(verified, current_path)
 
     def test_replace_refs_cannot_substitute_pinned_git_blob_bytes(self) -> None:
         verified = self._verified()

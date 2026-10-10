@@ -1,4 +1,4 @@
-/** Dedicated v1.6.4 candidate; native proof and capability gates still apply. */
+/** Dedicated Link consent flow; native proof and capability gates still apply. */
 export const LINK_CONSENT_READY = true as const;
 
 /** Generic RPC must refuse these operations even in an enabled native build. */

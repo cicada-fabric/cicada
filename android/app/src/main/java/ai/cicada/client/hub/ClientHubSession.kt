@@ -61,9 +61,9 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
     companion object {
         private const val KEY_ALIAS = "ai.cicada.client.hub.device-wrap.v1"
         private val KEY_AAD = "cicada/android/client-device-key/wrap/v1\u0000".toByteArray(StandardCharsets.UTF_8)
-        private const val CONTRACT_REVISION = "client-hub-v1.6.4"
-        private const val CATALOG_SHA256 = "953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d"
-        /** Release-gate state for the v1.6.4 Link consent candidate. */
+        private const val CONTRACT_REVISION = "client-hub-v1.6.5"
+        private const val CATALOG_SHA256 = "a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9"
+        /** Release-gate state for dedicated Link consent. */
         internal const val LINK_CONSENT_READY = true
         private const val MAX_BODY_BYTES = 64 * 1024
         private const val MAX_MONITOR_BODY_BYTES = 16 * 1024
@@ -1698,7 +1698,7 @@ class ClientHubSession(context: Context, internal val profileId: String = "legac
         }
     }
 
-    /** Candidate policy signing stays closed until the independently fixed v1.6.5 delivery. */
+    /** Policy signing requires the independently fixed registered-signer contract. */
     private fun requireRegisteredPolicySigningContract() {
         if (CONTRACT_REVISION != "client-hub-v1.6.5") {
             throw HubSessionException("LINK_REVIEW_POLICY_CONTRACT_NOT_READY", "Registered Owner signing previews require the fixed v1.6.5 contract")
