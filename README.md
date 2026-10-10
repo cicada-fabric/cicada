@@ -42,13 +42,22 @@ Node confirmation now validates the complete `NodeControlKeyBinding` public keys
 
 ## Current integration candidate: v1.6.4
 
-The latest [offline recovery checkpoint](docs/client-link-recovery-offline-validation.md)
-repairs original Link recovery test correlation and validates saved packet,
-sequence and receipt handling. Docker checks passed; no new APK or live Hub
-acceptance was produced. Current-image recovery faults await a Core-owned safe
-fixture. F38 remains the bounded runtime result for its exact APKs below.
+The current preparation target is clean Core
+`e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`, contract `client-hub-v1.6.4`,
+wire 1, catalog 55. Its frozen export, complete source inventory and immutable
+image IDs are independently checked. The [recovery preparation record](docs/client-link-recovery-e2a1908-preparation.md)
+documents the new two-stage Android selectors, narrow opaque loopback carrier,
+offline verification and exact APK attribution. All eight KEY/NONE online
+recovery cases and encrypted runtime capabilities remain **NOT_RUN** pending a
+separate Root joint-test GO. Physical Android and public HTTPS are **NOT_RUN**.
+The existing UI, local speech, cryptography, authorization and feature gates
+are preserved.
 
-The candidate targets clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
+The [previous offline checkpoint](docs/client-link-recovery-offline-validation.md)
+and F38 retain their original source, images and APK attribution. Their results
+do not establish acceptance on e2a1908.
+
+The historical candidate targeted clean Core `0213538b62ccf2533eccf546c80fc848804ea8e0`.
 Its archive, catalog and fixed image IDs are recorded in the
 [F19 target record](docs/client-hub-v1.6.4-0213538-f19-validation.md). The
 [F24–F28 report](docs/client-hub-v1.6.4-0213538-f28-validation.md) retains all

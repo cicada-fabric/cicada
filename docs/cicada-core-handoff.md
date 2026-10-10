@@ -1,6 +1,46 @@
 # CICADA Client integration handoff
 
-## Link recovery offline successor
+## Current coordination: clean e2a1908 recovery preparation
+
+The current Client-only preparation targets frozen clean Core
+`e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`, contract v1.6.4 / wire 1 / catalog 55.
+See the [preparation and READY specification](client-link-recovery-e2a1908-preparation.md)
+for fixed image/bundle/source values, exact commands and exit codes, independent
+artifact verification, source/APK attribution and all ten Android selectors.
+Two capture selectors preserve the original pending consent write; eight
+recovery selectors verify its mode-specific durable state. The opaque carrier
+permits one original write and one byte-identical recovery in the selected
+Owner/device/session scope. Root readiness is distinct from Hub authentication.
+
+Only Client preparation is authorized. Encrypted runtime capabilities, all
+eight current-image Android fault cases, fresh authoritative reconciliation,
+emulator execution, physical Android and public HTTPS remain **NOT_RUN** until
+their separate GO and actual execution. No Core file, Hub lifecycle, database,
+resident deployment, signer or real key is used. Existing UI, STT, pins, Grant,
+sequence allocation, consent fences and closed features are unchanged.
+
+Root must supply the owned bridge/process/helper provenance, direct enrollment
+and independent pins, per-case sessions and current external proofs, exact
+Core READY/FAULT_READY bytes, and an isolated restart receipt before uncertain
+recovery. Reconciliation must use a separate participating session over the
+direct Hub path; the faulted session remains fenced. Preserve all historical
+failures and APK provenance; no prior PASS transfers to e2a1908.
+
+Final offline results: **PASS**, 111 Python tests; Kotlin 3+4 synthetic groups
+and changed Android selector compilation; one x86_64 app/test APK build. All
+commands exited `0`. App SHA-256:
+`3af7b674c8daaaff4fc4442d13a2b30ad069d5195eed0c90b9b5ebcd754601f9`;
+test SHA-256:
+`243922e556170dff6dfcbbe6840a80f32f37727a56421ed9016652dc962297ae`.
+Actual build source is parent HEAD
+`9b56832c9701b0ba469d8703fdf61611e0208f98`, **dirty=true**, 598-file input SHA-256
+`8d26a0029dacc957607293e015bf4e6732af4a73b046556457df2446adfac629`.
+Only documentation changed after that snapshot. The final Client commit and
+complete source correlation are bound in
+`/gpu1-share/data/cicada-client/v164-e2a1908-recovery-preparation-20261010/commit-delivery.receipt.redacted.json`.
+No Android runtime or online acceptance is implied by successful compilation.
+
+## Historical Link recovery offline successor
 
 The [offline recovery report](client-link-recovery-offline-validation.md)
 records the repaired original-packet selector and strict SOURCE/TARGET receipt
@@ -20,7 +60,7 @@ prompt. The commit is bound by
 `/gpu1-share/data/cicada-client/v164-link-recovery-offline-20261004/commit-delivery.receipt.redacted.json`;
 F38 remains attributed to its original `caa9e4c` APKs below.
 
-## Current F38 bounded Link consent acceptance — clean Core `0213538`
+## Historical F38 bounded Link consent acceptance — clean Core `0213538`
 
 The [F38 report](client-hub-v1.6.4-0213538-f38-validation.md) binds tested
 Client `caa9e4c725a841a1ce8488fbf339ca554d2939ed` and app/test APKs

@@ -25,6 +25,10 @@ _spec = importlib.util.spec_from_file_location('v15_deterministic_for_v164', V15
 v15 = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(v15)
 driver = v15.driver
+_recovery_spec = importlib.util.spec_from_file_location('v164_recovery_inputs',
+    Path(__file__).with_name('v164-link-recovery-inputs.py'))
+recovery_inputs = importlib.util.module_from_spec(_recovery_spec)
+_recovery_spec.loader.exec_module(recovery_inputs)
 
 SCHEMA = 'cicada.client-v164-deterministic.v1'
 LABEL = 'org.cicada.client-v164-deterministic'
@@ -38,6 +42,7 @@ F6_APP_SHA256 = '56684d33a9b111a7719416970915a22986ffd50b1620d5f109fbaeb01fb2bc6
 F6_TEST_SHA256 = 'caa8a1705e56359c0a2742ec0f18ea9437c9c136857603cfd47fd2189107d0c6'
 FIXTURE_PINS_PATH = Path(__file__).with_name('v164-link-fixture-pins.py')
 F6_RUN_ID = re.compile(r'v16-deterministic-v164-f6-[A-Za-z0-9_-]{1,80}')
+RECOVERY_RUN_ID = re.compile(r'v16-deterministic-v164-recovery-[A-Za-z0-9_-]{1,80}')
 MATRIX = (
     ('client-wire-vectors', 'ClientWirePublicVectorTest', 5),
     ('endpoint-attestation-vectors', 'EndpointAttestationVectorTest', 4),
@@ -69,6 +74,8 @@ def add_delivery_arguments(parser):
     parser.add_argument('--delivery-metadata', help='actual local delivery metadata JSON')
     parser.add_argument('--delivery-metadata-sha256', help='independently supplied SHA-256 of the exact metadata bytes')
     parser.add_argument('--fixture-root', help='Root-pinned fresh F6 fixture directory')
+    parser.add_argument('--recovery-apk-pins', help='Root-owned clean e2a1908 recovery APK pins JSON')
+    parser.add_argument('--recovery-apk-pins-sha256', help='independent SHA-256 of exact recovery APK pins bytes')
 
 
 def read_f6_delivery(args):
@@ -151,6 +158,20 @@ def validate_existing_f6_artifacts(evidence, args, verified=None):
     if not isinstance(artifacts, dict):
         raise ValueError('Android artifact receipt must be a JSON object')
     run_id = evidence.parent.name
+    recovery = recovery_inputs.read_apk_pins(args)
+    if recovery is not None:
+        if not RECOVERY_RUN_ID.fullmatch(run_id):
+            raise ValueError('recovery APK pins require a fresh recovery evidence run')
+        expected = recovery_inputs.artifact_fields(recovery)
+        if any(artifacts.get(key) != value for key, value in expected.items()):
+            raise ValueError('recovery artifact attribution differs from independently pinned APK inputs')
+        for name in ('app', 'test'):
+            path = evidence / ('installed-' + name + '.private.apk')
+            if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != recovery[name + '_sha256']:
+                raise ValueError('recovery installed APK bytes differ from Root pins')
+        return artifacts
+    if artifacts.get('fixture_lane') == recovery_inputs.RUN_SCOPE or RECOVERY_RUN_ID.fullmatch(run_id):
+        raise ValueError('recovery evidence cannot fall back to historical delivery defaults')
     f6_markers = {
         'fixture_lane', 'root_delivery_pins_path', 'root_delivery_pins_sha256',
         'delivery_metadata_path', 'delivery_metadata_sha256', 'fixture_root',
@@ -209,6 +230,12 @@ def start(evidence, args):
     if not re.fullmatch(r'v16-deterministic-v164-[A-Za-z0-9_-]{1,80}', run_id):
         raise ValueError('unsafe v1.6.4 evidence run name')
     delivery = read_f6_delivery(args)
+    recovery = recovery_inputs.read_apk_pins(args)
+    if recovery is not None:
+        if not RECOVERY_RUN_ID.fullmatch(run_id) or any(evidence.iterdir()):
+            raise ValueError('recovery pins require a completely fresh recovery evidence directory')
+    elif RECOVERY_RUN_ID.fullmatch(run_id):
+        raise ValueError('recovery run IDs cannot fall back to historical defaults')
     if delivery is not None:
         if F6_RUN_ID.fullmatch(run_id) is None:
             raise ValueError('Root-pinned delivery inputs require a new F6 run ID')
@@ -235,6 +262,8 @@ def start(evidence, args):
     }
     if delivery is not None:
         artifacts.update(f6_pinned_artifact_values(args, delivery))
+    if recovery is not None:
+        artifacts.update(recovery_inputs.artifact_fields(recovery))
     for name in ('app', 'test'):
         path = Path(getattr(args, name + '_apk'))
         expected = getattr(args, name + '_sha256')
@@ -242,6 +271,8 @@ def start(evidence, args):
             raise ValueError('expected a regular APK and full lowercase SHA-256')
         if delivery is not None and expected != (F6_APP_SHA256 if name == 'app' else F6_TEST_SHA256):
             raise ValueError('F6 only accepts the independently authorized application and test APK hashes')
+        if recovery is not None and expected != recovery[name + '_sha256']:
+            raise ValueError('recovery APK differs from independently supplied Root pins')
         if delivery is None and expected in (F6_APP_SHA256, F6_TEST_SHA256):
             raise ValueError('F6 APKs require Root pins and a fresh F6 evidence run')
         data = path.read_bytes()
@@ -299,7 +330,7 @@ def test(evidence, state, args, verified=None):
     summary_path = evidence / 'deterministic-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
     summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION,
-        matrix_lane='F6' if artifacts is not None else 'legacy-25bc')
+        matrix_lane=artifacts.get('fixture_lane', 'F6') if artifacts is not None else 'legacy-25bc')
     driver.save(summary_path, summary)
     return result
 
@@ -310,7 +341,7 @@ def ui(evidence, state, args, verified=None):
     summary_path = evidence / 'ui-smoke-summary.redacted.json'
     summary = json.loads(summary_path.read_text())
     summary.update(schema=SCHEMA, run_id=state['run_id'], contract_revision=CONTRACT_REVISION,
-        matrix_lane='F6' if artifacts is not None else 'legacy-25bc')
+        matrix_lane=artifacts.get('fixture_lane', 'F6') if artifacts is not None else 'legacy-25bc')
     driver.save(summary_path, summary)
     return result
 

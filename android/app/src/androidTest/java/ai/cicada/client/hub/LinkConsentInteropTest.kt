@@ -146,6 +146,20 @@ class LinkConsentInteropTest {
         return root.asJsonObject
     }
 
+    /** Retain exact READY wrapper bytes so receipts bind the same bytes Root staged. */
+    private fun readJsonWithRaw(name: String, maxBytes: Long): Pair<JsonObject, ByteArray>? {
+        val file = File(directory, name)
+        if (!file.exists()) return null
+        require(!Files.isSymbolicLink(file.toPath()) && file.isFile && file.length() in 1..maxBytes) {
+            "Bounded Link recovery input file is invalid"
+        }
+        val raw = Files.readAllBytes(file.toPath())
+        require(raw.size.toLong() in 1..maxBytes && raw.size.toLong() == file.length()) {
+            "Bounded Link recovery input changed while reading"
+        }
+        return LinkConsentRecoveryJson.parseStrictObject(raw, maxBytes.toInt()) to raw
+    }
+
     private fun writePrivate(name: String, value: JsonObject) {
         requiredDirectory()
         val file = AtomicFile(File(directory, name))
@@ -987,6 +1001,268 @@ class LinkConsentInteropTest {
                 addProperty("pending_after_refusal", afterTamper.has("pendingOperationId"))
                 addProperty("link_write_sent", false)
             }
+        }
+    }
+
+    @Test fun capturesKeyOriginalConsentFault() = captureOriginalConsentFault("link.key_grant")
+
+    @Test fun capturesNoneOriginalConsentFault() = captureOriginalConsentFault("link.review_policy_grant")
+
+    @Test fun recoverKeyResponseLoss() = recoverOriginalConsentFault("link.key_grant", "response-loss")
+
+    @Test fun recoverKeyProcessing() = recoverOriginalConsentFault("link.key_grant", "processing")
+
+    @Test fun recoverKeyUncertain() = recoverOriginalConsentFault("link.key_grant", "uncertain")
+
+    @Test fun recoverKeyLegacy() = recoverOriginalConsentFault("link.key_grant", "legacy")
+
+    @Test fun recoverNoneResponseLoss() = recoverOriginalConsentFault("link.review_policy_grant", "response-loss")
+
+    @Test fun recoverNoneProcessing() = recoverOriginalConsentFault("link.review_policy_grant", "processing")
+
+    @Test fun recoverNoneUncertain() = recoverOriginalConsentFault("link.review_policy_grant", "uncertain")
+
+    @Test fun recoverNoneLegacy() = recoverOriginalConsentFault("link.review_policy_grant", "legacy")
+
+    /** One native confirmed submit; the only post-loss read is app-private durable state. */
+    private fun captureOriginalConsentFault(expectedOperation: String) {
+        val selected = selection()
+        val scenario = recoveryScenario(selected, expectedOperation)
+        val receiptName = recoveryCaptureReceiptName(selected, scenario)
+        require(!File(directory, receiptName).exists()) {
+            "This immutable Link recovery capture already exists; use a fresh bounded run ID"
+        }
+        val kind = if (expectedOperation == "link.key_grant") "KEY" else "REVIEW_POLICY"
+        activeOwnerSession("link-recovery-capture") { session, selectedScope, current, _ ->
+            val reviewName = if (kind == "KEY") "key-review.private.json" else "policy-review.private.json"
+            val proofName = if (kind == "KEY") "key-proof.private.json" else "policy-proof.private.json"
+            val review = readReviewHandoff(sideFile(current, reviewName), current, kind)
+                ?: notRun("${current.ownerRole}-link-recovery-capture", "fresh native $kind review handoff is missing")
+            val proof = readSignedProof(sideFile(current, proofName), review)
+                ?: notRun("${current.ownerRole}-link-recovery-capture", "current external Owner signature is missing")
+            if (kind == "REVIEW_POLICY") {
+                val policy = review.policyJson ?: error("NONE recovery review omitted its exact policy")
+                validatePolicy(policy)
+                require(text(policy, "mode") == "NONE" && policy == nonePolicy()) {
+                    "NONE recovery requires the exact empty NONE policy proof"
+                }
+            }
+            val beforeState = readRecoveryState(selectedScope)
+            validateRecoveryOriginalContext(beforeState, current, expectedOperation)
+            var submitError: String? = null
+            try {
+                session.submitLinkConsent(
+                    review.reviewId, review.consentDigest, proof.encoded, true, selectedScope.selectionGeneration,
+                )
+            } catch (failure: HubSessionException) {
+                submitError = failure.errorCode
+            }
+            require(submitError == "NETWORK_ERROR") {
+                "Expected the fixture to lose the original submit response; preserve any nonmatching outcome without retry"
+            }
+            val capturedState = readRecoveryState(selectedScope)
+            val original = LinkConsentRecoveryEvidence.captureOriginalConsentFault(capturedState, expectedOperation)
+            validateRecoveryOriginalContext(capturedState, current, expectedOperation)
+            val receipt = LinkConsentRecoveryEvidence.captureReceipt(original, scenario, current.ownerRole)
+            writeImmutablePrivate(receiptName, receipt)
+        }
+    }
+
+    /** Recovers one captured original request; Root stages READY and performs any Hub restart first. */
+    private fun recoverOriginalConsentFault(expectedOperation: String, expectedMode: String) {
+        val selected = selection()
+        val scenario = recoveryScenario(selected, expectedOperation, expectedMode)
+        val captureName = recoveryCaptureReceiptName(selected, scenario)
+        val captureReceipt = readJson(captureName, 16 * 1024)
+            ?: notRun("${selected.ownerRole}-link-recovery-${expectedMode}", "immutable original capture receipt is missing")
+        val readyInput = readJsonWithRaw(sideFile(selected, "fault-ready.json"), 32 * 1024)
+            ?: notRun("${selected.ownerRole}-link-recovery-${expectedMode}", "Root recovery READY envelope is missing")
+        val readyEnvelope = readyInput.first
+        val readyEnvelopeRaw = readyInput.second
+        val resultName = recoveryResultReceiptName(selected, scenario)
+        require(!File(directory, resultName).exists()) {
+            "This immutable Link recovery result already exists; use the original single recovery receipt"
+        }
+        val selectedScope = scope()
+        require(selectedScope.profileId == selected.profileId &&
+            selectedScope.selectionGeneration == selected.profileGeneration) {
+            "Recovery profile does not match the selected v1.6.4 profile generation"
+        }
+        val device = deviceHandoff(selected.ownerRole)
+        require(device.profileId == selected.profileId && device.profileGeneration == selected.profileGeneration &&
+            device.onboarding.hubId == selected.hubId && device.onboarding.ownerId == selected.ownerId &&
+            device.onboarding.deviceId == selected.deviceId) {
+            "Recovery selection differs from the enrolled Android device"
+        }
+        val publicStatus = profiles.getStatus(selectedScope)
+        require(text(publicStatus, "hubId") == selected.hubId && text(publicStatus, "ownerId") == selected.ownerId &&
+            text(publicStatus, "deviceId") == selected.deviceId &&
+            publicStatus.get("sessionCapabilitiesReady")?.asBoolean == true) {
+            "Original faulted Owner profile is no longer selected and enrolled"
+        }
+        profiles.withActiveScope(selectedScope) { session ->
+            val beforeRecovery = readRecoveryState(selectedScope)
+            val original = LinkConsentRecoveryEvidence.captureOriginalConsentFault(beforeRecovery, expectedOperation)
+            validateRecoveryOriginalContext(beforeRecovery, selected, expectedOperation)
+            LinkConsentRecoveryEvidence.verifyCaptureReceipt(original, captureReceipt, scenario, selected.ownerRole)
+
+            // Root/Core evidence must be accepted before the only network recovery
+            // attempt consumes the exact original response reservation.
+            LinkConsentRecoveryEvidence.validateReadyForRecovery(original, readyEnvelope, scenario, readyEnvelopeRaw)
+            var recoveryError: String? = null
+            val recoveryReceipt = try {
+                session.recoverLinkConsent(selectedScope.selectionGeneration)
+            } catch (failure: HubSessionException) {
+                recoveryError = failure.errorCode.takeIf { it.matches(Regex("[A-Z][A-Z0-9_]{0,95}")) }
+                    ?: "UNKNOWN"
+                null
+            }
+            val afterRecovery = readRecoveryState(selectedScope)
+            val verified = LinkConsentRecoveryEvidence.verifyOriginalConsentFault(
+                original, beforeRecovery, readyEnvelope, afterRecovery, recoveryReceipt, recoveryError,
+                scenario, selected.ownerRole, readyEnvelopeRaw,
+            )
+            val writeError = if (expectedMode in setOf("processing", "uncertain", "legacy")) {
+                val beforeWrite = afterRecovery.deepCopy()
+                var observedError: String? = null
+                try {
+                    session.rpc("intent.submit", JsonObject())
+                } catch (failure: HubSessionException) {
+                    observedError = failure.errorCode
+                }
+                val afterWrite = readRecoveryState(selectedScope)
+                LinkConsentRecoveryEvidence.verifyBlockedMutation(beforeWrite, afterWrite, observedError, expectedMode)
+            } else null
+            val result = recoveryResultReceipt(
+                original, scenario, selected.ownerRole, verified, afterRecovery, writeError,
+            )
+            writeImmutablePrivate(resultName, result)
+        }
+    }
+
+    private fun recoveryScenario(
+        selected: Selection,
+        expectedOperation: String,
+        expectedMode: String? = null,
+    ): LinkConsentRecoveryScenario {
+        val value = readJsonWithRaw(sideFile(selected, "recovery-scenario.v2.json"), 8 * 1024)
+            ?: notRun("${selected.ownerRole}-link-recovery-scenario", "strict v2 Link recovery scenario is missing")
+        val parsed = LinkConsentRecoveryScenario.parse(value.first, runId)
+        parsed.requireSelector(expectedOperation, expectedMode)
+        return parsed
+    }
+
+    private fun recoveryOperationSlug(scenario: LinkConsentRecoveryScenario): String =
+        scenario.expectedOperation.removePrefix("link.")
+
+    private fun recoveryCaptureReceiptName(selected: Selection, scenario: LinkConsentRecoveryScenario) =
+        sideFile(selected, "link-recovery-${recoveryOperationSlug(scenario)}-${scenario.faultMode}.capture.redacted.json")
+
+    private fun recoveryResultReceiptName(selected: Selection, scenario: LinkConsentRecoveryScenario) =
+        sideFile(selected, "link-recovery-${recoveryOperationSlug(scenario)}-${scenario.faultMode}.recovery.redacted.json")
+
+    private fun validateRecoveryOriginalContext(state: JsonObject, selected: Selection, expectedOperation: String) {
+        val pin = state.getAsJsonObject("pin")
+        val enrollment = state.getAsJsonObject("enrollment")
+        val review = state.getAsJsonObject("linkConsentLedger")?.getAsJsonObject("review")
+            ?: error("Saved original Link consent review is missing")
+        val tuple = review.getAsJsonObject("tuple")
+        val localSide = if (selected.ownerRole == "source") "SOURCE" else "TARGET"
+        val kind = if (expectedOperation == "link.key_grant") "KEY" else "REVIEW_POLICY"
+        require(text(pin, "hubId") == selected.hubId && text(enrollment, "ownerId") == selected.ownerId &&
+            text(enrollment, "deviceId") == selected.deviceId && text(state, "validatedCatalogSha256") == selected.catalogSha256 &&
+            text(tuple, "profile_id") == selected.profileId &&
+            safeLongNumber(tuple, "profile_generation", minimum = 1L) == selected.profileGeneration &&
+            text(tuple, "hub_id") == selected.hubId && text(tuple, "owner_id") == selected.ownerId &&
+            text(tuple, "device_id") == selected.deviceId && text(tuple, "link_id") == selected.linkId &&
+            safeLongNumber(tuple, "link_version", minimum = 1L) == selected.linkVersion &&
+            text(tuple, "local_side") == localSide && text(tuple, "kind") == kind) {
+            "Original consent packet is outside the selected SOURCE/TARGET, profile, Hub or Link scope"
+        }
+    }
+
+    private fun recoveryResultReceipt(
+        original: LinkConsentRecoveryEvidence.Original,
+        scenario: LinkConsentRecoveryScenario,
+        ownerRole: String,
+        verification: LinkConsentRecoveryEvidence.FaultVerification,
+        after: JsonObject,
+        writeError: String?,
+    ): JsonObject {
+        val ready = verification.faultReady
+        val fence = after.getAsJsonObject("linkConsentLedger")?.getAsJsonObject("write_fence")
+        val recoveryOutcome = when (verification.outcome) {
+            LinkConsentRecoveryEvidence.Outcome.COMPLETED -> "COMPLETED"
+            LinkConsentRecoveryEvidence.Outcome.PENDING -> verification.recoveryError ?: "PENDING"
+            LinkConsentRecoveryEvidence.Outcome.UNCERTAIN -> "OUTCOME_UNCERTAIN"
+        }
+        return JsonObject().apply {
+            addProperty("schema", "cicada.client-v164-link-consent-recovery-result.v2")
+            addProperty("phase", "RECOVERED")
+            addProperty("run_id_sha256", hash(scenario.runId))
+            addProperty("owner_role", ownerRole)
+            addProperty("expected_operation", original.operation)
+            addProperty("fault_mode", scenario.faultMode)
+            addProperty("operation_id_sha256", original.operationIdSha256)
+            addProperty("packet_sha256", original.packetSha256)
+            addProperty("proof_sha256", original.proofSha256)
+            addProperty("tuple_sha256", original.tupleSha256)
+            addProperty("request_sequence", original.requestSequence.toString())
+            addProperty("expected_response_sequence", original.expectedResponseSequence.toString())
+            addProperty("capture_next_sequence", original.nextSequence.toString())
+            addProperty("capture_last_response_sequence", original.lastResponseSequence.toString())
+            addProperty("observed_next_sequence", safeLongNumber(after, "nextSequence").toString())
+            addProperty("observed_last_response_sequence", safeLongNumber(after, "lastResponseSequence").toString())
+            addProperty("request_status", ready.requestStatus)
+            addProperty("reserved_response_sequence", ready.reservedResponseSequence.toString())
+            addProperty("business_outcome", ready.businessOutcome)
+            addProperty("handler_executed", ready.handlerExecuted)
+            addProperty("scope", ready.scope)
+            addProperty("hub_source_sha256", ready.hubSourceSha256)
+            addProperty("ready_envelope_sha256", ready.readyEnvelopeSha256)
+            addProperty("fault_ready_raw_sha256", ready.rawEventSha256)
+            addProperty("recovery_outcome", recoveryOutcome)
+            addProperty("fence_state", fence?.get("state")?.asString ?: "NONE")
+            addProperty("original_pending_preserved", after.get("pending")?.takeIf { it.isJsonObject }
+                ?.asJsonObject == original.pending)
+            addProperty("retired_pending_preserved", after.get("retiredPending")?.takeIf { it.isJsonObject }
+                ?.asJsonObject == original.pending)
+            addProperty("reconciliation_required", fence != null)
+            addProperty("native_confirmed_argument", true)
+            addProperty("phone_ui_confirmation_observed", false)
+            addProperty("business_acceptance", "NOT_ESTABLISHED")
+            ready.responseSha256?.let { addProperty("response_sha256", it) }
+            ready.restartRequired?.let { addProperty("restart_required", it) }
+            ready.restartReceiptSha256?.let { addProperty("restart_receipt_sha256", it) }
+            verification.recoveryError?.let { addProperty("recovery_error_code", it) }
+            if (scenario.faultMode == "uncertain") addProperty("native_session_error", "OUTCOME_UNCERTAIN")
+            writeError?.let {
+                addProperty("mutation_attempted", true)
+                addProperty("mutation_rejected", true)
+                addProperty("mutation_rejection_code", it)
+                addProperty("mutation_state_unchanged", true)
+            }
+        }
+    }
+
+    private fun writeImmutablePrivate(name: String, value: JsonObject) {
+        requiredDirectory()
+        val file = File(directory, name)
+        require(!Files.isSymbolicLink(file.toPath()) && file.createNewFile()) {
+            "Immutable Link recovery receipt already exists or is not a regular private file"
+        }
+        try {
+            java.io.FileOutputStream(file, false).use { output ->
+                output.write(value.toString().toByteArray(StandardCharsets.UTF_8))
+                output.fd.sync()
+            }
+            require(file.setReadable(false, false) && file.setReadable(true, true) &&
+                file.setWritable(false, false) && file.setWritable(true, true)) {
+                "Could not restrict immutable Link recovery receipt permissions"
+            }
+        } catch (failure: Exception) {
+            // Leave a partial receipt in place so a rerun cannot silently replace evidence.
+            throw failure
         }
     }
 

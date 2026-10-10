@@ -1,6 +1,24 @@
 # Client ↔ Hub contract: `client-hub-v1.6.4`
 
-## Original Link recovery test contract
+## Current recovery preparation — clean e2a1908
+
+The [frozen preparation record](client-link-recovery-e2a1908-preparation.md)
+independently checks clean Core `e2a1908c71b2bcc103f5edf1ba2231e0fc1ccb59`,
+wire 1 and unchanged catalog 55. All new scenario, Root readiness, carrier and
+APK pin schemas are **test coordination formats**, never Hub DTOs or additional
+permissions. Production encryption, trusted pins, Grant and sequence/fence
+semantics remain unchanged. Every online case still needs encrypted
+`session.capabilities` validation on its actual device session; public
+capability discovery cannot authorize an operation.
+
+The eight KEY/NONE modes use the exact saved `/v2/client/rpc` packet at
+`/v2/client/rpc/recover`. Only response-loss exercises a completed real Link
+handler. Processing, uncertain and legacy use Core's declared outer RPC ledger
+faults and do not prove a committed grant. Uncertain must recover only after
+Core `FAULT_READY` and Root's verified isolated restart. All online gates are
+**NOT_RUN**. Ordinary messages stay closed with `external_thread_links=false`.
+
+## Historical original Link recovery test contract
 
 The [offline recovery checkpoint](client-link-recovery-offline-validation.md)
 changes only instrumentation and its redacted receipt consumer. Native recovery
@@ -12,7 +30,7 @@ separate fresh KEY/policy evidence for grant acceptance. Unresolved packets and
 uncertain business fences remain preserved. Current-image online fault tests
 are **NOT_RUN** until Core delivers a compatible safe isolated entrypoint.
 
-## Current bounded Link consent acceptance — F38
+## Historical bounded Link consent acceptance — F38
 
 The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)
 records the fixed clean Core `0213538` emulator acceptance on Client

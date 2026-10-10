@@ -1,6 +1,35 @@
 # CICADA Client development and validation plan
 
-## Current offline work: original Link recovery
+## Current milestone: clean e2a1908 preparation
+
+The [current preparation record](client-link-recovery-e2a1908-preparation.md)
+is the active target. Complete independent delivery verification, deterministic
+two-stage KEY/NONE recovery selectors, an explicitly owned opaque carrier,
+focused offline checks, and one immutable APK pair. Retain source/dirty/input
+and APK hashes. Application UI, local STT and production security are preserved.
+
+After a separate Root joint-test GO:
+
+1. Root verifies its fresh disposable Hub, helper, process identity and owned
+   bridge, and starts a fresh Android session for each of eight cases.
+2. Enroll directly and validate independent Hub/Owner pins plus encrypted
+   capabilities. Prepare and externally sign a current exact KEY or NONE review.
+3. Capture one original consent write through the selected Core fault carrier.
+4. Match exact Core `FAULT_READY`; for uncertain, Root restarts only the owned
+   Hub and verifies unchanged identity/origin before staging recovery readiness.
+5. Recover the original packet once; join native state/sequence receipts with
+   the carrier's actual HTTP/ciphertext digests. Preserve unresolved fences and
+   deny later writes before allocating another sequence.
+6. Read authoritative KEY/NONE status from a separate participating session on
+   the direct Hub route. Record fault recovery separately from grant acceptance.
+7. Root cleans only its owned fixture; record exact absence and resident
+   preservation. Keep failed/unknown operations and previous APK evidence.
+
+All eight live cases, runtime capabilities, reconciliation, physical Android
+and public HTTPS remain **NOT_RUN** during preparation. No online call, Hub
+lifecycle or model work is authorized by the preparation GO.
+
+## Historical offline work: original Link recovery
 
 The [recovery checkpoint](client-link-recovery-offline-validation.md) completes
 the test-selector correction, independent saved packet/counter checks and
@@ -15,7 +44,7 @@ with fresh KEY/NONE status. Preserve pending packets and failed/unknown history.
 The safe fault fixture is **BLOCKED**; online gates, process-death, new emulator,
 real native Worker, physical Android and public HTTPS remain **NOT_RUN**.
 
-## Current fixed-target acceptance — F38
+## Historical fixed-target acceptance — F38
 
 The [F38 validation report](client-hub-v1.6.4-0213538-f38-validation.md)
 records the bounded Android 15 emulator acceptance on clean Core `0213538`,

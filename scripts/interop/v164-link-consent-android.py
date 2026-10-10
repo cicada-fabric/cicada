@@ -29,11 +29,13 @@ def load(name, filename):
     if spec is None or spec.loader is None:
         raise ValueError('required interop module is unavailable')
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
 runner = load('v164_android_driver', 'v164-android-deterministic.py')
+recovery = runner.recovery_inputs
 driver = runner.driver
 link = load('v16_link_status_helpers', 'v16-link-review-policy-status.py')
 
@@ -80,6 +82,19 @@ STAGE_FILES = {
     'target-negative-key-proof.private.json': ('proof-negative', 'target'),
     'source-recovery-scenario.json': ('recovery', 'source'),
     'target-recovery-scenario.json': ('recovery', 'target'),
+    **{f'{side}-recovery-scenario.v2.json': ('recovery-v2', side) for side in SIDES},
+    **{f'{side}-fault-ready.json': ('recovery-ready', side) for side in SIDES},
+}
+
+RECOVERY_SELECTORS = {
+    f'recover{kind}{suffix}': (operation, mode)
+    for kind, operation in (('Key', 'link.key_grant'), ('None', 'link.review_policy_grant'))
+    for suffix, mode in (('ResponseLoss', 'response-loss'), ('Processing', 'processing'),
+        ('Uncertain', 'uncertain'), ('Legacy', 'legacy'))
+}
+CAPTURE_SELECTORS = {
+    'capturesKeyOriginalConsentFault': 'link.key_grant',
+    'capturesNoneOriginalConsentFault': 'link.review_policy_grant',
 }
 
 SELECTORS = {
@@ -96,6 +111,8 @@ SELECTORS = {
     'exportsFreshKeyReviewForTamperedProofNegativeCase': (None, 'negative-proof-review-export.redacted.json', 'negative-proof-review-export'),
     'rejectsTamperedFreshOwnerProofBeforeLinkGrantWrite': (None, 'negative-proof-submit.redacted.json', 'negative-proof-submit'),
     'recoversOnlyAnExplicitlySelectedOriginalConsentOperation': (None, 'exact-recovery.redacted.json', 'exact-recovery'),
+    **{method: (None, None, 'CAPTURED') for method in CAPTURE_SELECTORS},
+    **{method: (None, None, 'RECOVERED') for method in RECOVERY_SELECTORS},
 }
 
 EXPORT_FILES = {
@@ -112,6 +129,11 @@ EXPORT_FILES = {
         'exact-recovery',
     )
 } | {'selection.redacted.json'}
+EXPORT_FILES |= {
+    f'{recovery.case_stem(side, operation, mode)}.{phase}.redacted.json'
+    for side in SIDES for operation in recovery.OPERATIONS for mode in recovery.MODES
+    for phase in ('capture', 'recovery')
+}
 
 
 def digest(raw):
@@ -772,6 +794,10 @@ def validate_stage(value, name, kind, side, run_id, reference):
         if set(value) != {'schema', 'run_id', 'expected_operation'} or value.get('schema') != RECOVERY_SCHEMA or \
                 value.get('run_id') != run_id or value.get('expected_operation') not in {'link.key_grant', 'link.review_policy_grant'}:
             raise ValueError('Link recovery scenario schema is invalid')
+    elif kind == 'recovery-v2':
+        recovery.validate_scenario(value, run_id)
+    elif kind == 'recovery-ready':
+        recovery.validate_ready_envelope(value, run_id, reference)
     else:
         raise ValueError('unsupported bounded staging kind')
 
@@ -787,7 +813,14 @@ def check_evidence(evidence, args):
     if state.get('network') != 'none':
         raise ValueError('the owned v1.6.4 emulator must remain offline')
     artifacts, _ = link.read_private_json(evidence / 'android-artifacts.json', maximum=64 * 1024)
-    if delivery is None:
+    recovery_pins = recovery.read_apk_pins(args)
+    if recovery_pins is not None:
+        if not runner.RECOVERY_RUN_ID.fullmatch(run_id):
+            raise ValueError('recovery pins require their fresh isolated emulator evidence run')
+        expected = recovery.artifact_fields(recovery_pins)
+    elif artifacts.get('fixture_lane') == recovery.RUN_SCOPE or runner.RECOVERY_RUN_ID.fullmatch(run_id):
+        raise ValueError('recovery evidence cannot fall back to historical delivery pins')
+    elif delivery is None:
         f6_markers = {
             'fixture_lane', 'root_delivery_pins_path', 'root_delivery_pins_sha256',
             'delivery_metadata_path', 'delivery_metadata_sha256', 'fixture_root',
@@ -886,7 +919,14 @@ def stage(evidence, state, args):
         if args.side is not None and args.side != stage_side:
             raise ValueError('selection owner and --side do not match its device handoff')
     validate_stage(parsed, name, kind, stage_side, run_id, reference)
-    raw = (json.dumps(parsed, separators=(',', ':'), ensure_ascii=False) + '\n').encode()
+    if kind in {'recovery-v2', 'recovery-ready'}:
+        exact, raw = recovery.read_private_json(args.input, getattr(args, 'input_sha256', None))
+        if exact != parsed or digest(raw) != raw_sha:
+            raise ValueError('recovery input changed during staging')
+        if kind == 'recovery-ready' and getattr(args, 'input_sha256', None) is None:
+            raise ValueError('Root READY envelope requires an independent raw-byte SHA-256')
+    else:
+        raw = (json.dumps(parsed, separators=(',', ':'), ensure_ascii=False) + '\n').encode()
     if len(raw) > MAX_INPUT:
         raise ValueError('normalized staged JSON exceeds its bound')
     state, _ = check_evidence(evidence, args)
@@ -925,7 +965,22 @@ def export_file(evidence, state, run_id, name, side):
     value = parse_json(raw)
     if secret_fields(value):
         raise ValueError('refusing to export an Android object containing private credentials')
-    if name.endswith('.redacted.json'):
+    if '.capture.redacted.json' in name or '.recovery.redacted.json' in name:
+        scenario, _ = read_remote_json(evidence, state, run_id, f'{side}-recovery-scenario.v2.json',
+            f'link-v164-{run_id}-{side}-export-recovery-scenario')
+        recovery.validate_scenario(scenario, run_id)
+        stem = recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode'])
+        if name == stem + '.capture.redacted.json':
+            recovery.validate_capture(value, scenario, side)
+        elif name == stem + '.recovery.redacted.json':
+            capture, _ = read_remote_json(evidence, state, run_id, stem + '.capture.redacted.json',
+                f'link-v164-{run_id}-{side}-export-original-capture')
+            ready, ready_raw = read_remote_json(evidence, state, run_id, f'{side}-fault-ready.json',
+                f'link-v164-{run_id}-{side}-export-root-ready')
+            recovery.validate_result(value, capture, scenario, side, ready, ready_raw)
+        else:
+            raise ValueError('recovery export does not match the current deterministic scenario')
+    elif name.endswith('.redacted.json'):
         if value.get('schema') != 'cicada.client-v164-link-consent-redacted-receipt.v1' or \
                 value.get('result') not in {'PASS', 'NOT_RUN'} or \
                 value.get('run_id_sha256') != digest(run_id.encode()) or \
@@ -945,7 +1000,7 @@ def export_file(evidence, state, run_id, name, side):
     response = {'result': 'PASS', 'action': 'export', 'side': side or 'shared', 'file': name,
         'sha256': sha, 'private_evidence': path.name, 'bytes': len(raw)}
     if name.endswith('.redacted.json'):
-        response['receipt_result'] = value['result']
+        response['receipt_result'] = value.get('result', value.get('phase'))
     return response
 
 
@@ -959,7 +1014,14 @@ def read_remote_json(evidence, state, run_id, name, step):
     return parse_json(raw), raw
 
 
-def receipt_candidates(side, method):
+def receipt_candidates(side, method, scenario=None):
+    if method in CAPTURE_SELECTORS or method in RECOVERY_SELECTORS:
+        if scenario is None:
+            raise ValueError('deterministic recovery selector requires its exact v2 scenario')
+        suffix = 'capture' if method in CAPTURE_SELECTORS else 'recovery'
+        phase = 'CAPTURED' if suffix == 'capture' else 'RECOVERED'
+        return [(recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode']) +
+            f'.{suffix}.redacted.json', phase)]
     _method_side, success_name, success_phase = SELECTORS[method]
     receipt = success_name if success_name.startswith(side + '-') else f'{side}-{success_name}'
     phase = success_phase if success_phase.startswith(side + '-') else f'{side}-{success_phase}'
@@ -1010,13 +1072,24 @@ def run_selector(evidence, state, args):
             if role != side:
                 raise ValueError('active public selection belongs to the other Owner side')
     state, _artifacts = check_evidence(evidence, args)
+    scenario = None
+    deterministic_recovery = method in CAPTURE_SELECTORS or method in RECOVERY_SELECTORS
+    if deterministic_recovery:
+        if recovery.read_apk_pins(args) is None:
+            raise ValueError('new recovery selectors require clean e2a1908 APK pins')
+        scenario, _ = read_remote_json(evidence, state, run_id, f'{side}-recovery-scenario.v2.json',
+            f'link-v164-{run_id}-{side}-{method}-scenario')
+        operation, mode = RECOVERY_SELECTORS.get(method, (CAPTURE_SELECTORS.get(method), None))
+        recovery.validate_scenario(scenario, run_id, operation, mode)
     output = output_dir(evidence)
-    candidates = receipt_candidates(side, method)
+    candidates = receipt_candidates(side, method, scenario)
     for index, (name, _phase) in enumerate(candidates, 1):
         old, raw = read_remote_json(evidence, state, run_id, name,
             f'link-v164-{run_id}-{side}-{method}-receipt-preflight-{index}')
         if old is not None:
             save_unique(output, f'prior-{side}-{Path(name).stem}', raw)
+            if deterministic_recovery:
+                raise ValueError('immutable recovery receipt exists; do not submit or recover this operation again')
             remote = remote_file(state, run_id, name)
             command = driver.adb(state) + ['shell', 'run-as', PACKAGE, 'rm', '-f', remote]
             driver.run(evidence, f'link-v164-{run_id}-{side}-{method}-clear-{index}', command)
@@ -1035,7 +1108,17 @@ def run_selector(evidence, state, args):
             f'link-v164-{run_id}-{side}-{method}-receipt-{index}')
         if value is None:
             continue
-        if value.get('schema') != 'cicada.client-v164-link-consent-redacted-receipt.v1' or \
+        if deterministic_recovery:
+            if method in CAPTURE_SELECTORS:
+                recovery.validate_capture(value, scenario, side)
+            else:
+                capture, _ = read_remote_json(evidence, state, run_id,
+                    recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode']) +
+                        '.capture.redacted.json', f'link-v164-{run_id}-{side}-{method}-original-capture')
+                ready, ready_raw = read_remote_json(evidence, state, run_id, f'{side}-fault-ready.json',
+                    f'link-v164-{run_id}-{side}-{method}-root-ready')
+                recovery.validate_result(value, capture, scenario, side, ready, ready_raw)
+        elif value.get('schema') != 'cicada.client-v164-link-consent-redacted-receipt.v1' or \
                 value.get('phase') != expected_phase or value.get('run_id_sha256') != digest(run_id.encode()) or \
                 value.get('result') not in {'PASS', 'NOT_RUN'}:
             raise ValueError('selector receipt is malformed or belongs to another stage')
@@ -1046,13 +1129,17 @@ def run_selector(evidence, state, args):
         raise RuntimeError('selector must create exactly one fresh redacted receipt')
     receipt_name, receipt, receipt_raw = found[0]
     receipt_path, receipt_sha = save_unique(output, f'receipt-{side}-{method}', receipt_raw)
-    result = receipt['result']
+    result = ('CAPTURED' if method in CAPTURE_SELECTORS else 'RECOVERED') if deterministic_recovery else receipt['result']
     summary = {
         'schema': SCHEMA, 'result': result, 'action': 'selector', 'side': side, 'selector': method,
         'run_id_sha256': digest(run_id.encode()), 'junit': junit.get('junit'), 'exit_code': junit.get('exit_code'),
         'command_sha256': digest(shlex.join(command).encode()), 'log_sha256': digest(output_log),
         'receipt_file': receipt_name, 'receipt_sha256': receipt_sha, 'private_evidence': receipt_path.name,
     }
+    if deterministic_recovery:
+        summary.update(business_acceptance='NOT_ESTABLISHED',
+            carrier_ciphertext_comparison='ROOT_EVIDENCE_REQUIRED',
+            authoritative_status_reconciliation='SEPARATE_PARTICIPATING_SESSION_REQUIRED')
     summary_path, _ = save_unique(output, f'selector-{side}-{method}',
         (json.dumps(summary, sort_keys=True, separators=(',', ':')) + '\n').encode())
     public = {'result': result, 'action': 'selector', 'side': side, 'selector': method,
@@ -1077,6 +1164,7 @@ def main():
     stage_parser = commands.add_parser('stage')
     stage_parser.add_argument('--run-id', required=True)
     stage_parser.add_argument('--name', choices=sorted(STAGE_FILES), required=True)
+    stage_parser.add_argument('--input-sha256', help='independent exact-byte pin; required for Root recovery READY')
     stage_parser.add_argument('--input', required=True)
     stage_parser.add_argument('--side', choices=sorted(SIDES))
     stage_parser.add_argument('--reference', help='private exported device or exact review handoff')
