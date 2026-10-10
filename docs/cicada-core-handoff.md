@@ -20,12 +20,30 @@ historical failing predicate remains **UNKNOWN**, not an inferred contract
 or APK failure. Recovering it requires a retained original public witness
 or a separately authorized diagnostic execution.
 
-The minimal host correction records at most eight trusted Client source
-locations and a guard code only when it matches an uppercase literal in
-those functions. It exports no arbitrary exception message, arguments,
-locals or external path. Existing failure class, stop-on-failure, cleanup,
-82-request order and signatures remain unchanged. Parent v3, consumer
-pins, APKs and the original result are untouched. No GO is created or reused.
+The initial `950e4f5` correction and its seven-test receipt below are retained
+as historical diagnostic evidence. Root's follow-up now requires a closed
+guard list and known phase: the host catch accepts 109 explicit preparation
+codes and twelve fixed file-validator message mappings. Other strings,
+including uppercase runtime enums, have no guard code. The existing eight
+trusted source locations remain bounded; no message, arguments, locals or
+external path are exported.
+
+Before the original semantic READY validation and any selector, the current
+loop retains READY's hash/known field types and nine fixed references'
+declared shape, scope-match flag, actual mode/size/hash and known JSON field
+types in the case record. Unknown field names and all values are omitted.
+Only the fixed `REFERENCE_PATHS` are read; supplied paths, symlinks, private
+keys, grants and message bodies are not exported. A `REFUSED` observation is
+metadata only and does not bypass the original validation. The unchanged
+Parent permits the host result up to 4 MiB; these observations are not added
+to its bounded socket frames or cryptographic receipts.
+
+Existing failure class, stop-on-failure, cleanup, 82-request order and
+signatures remain unchanged. Parent v3, consumer pins, APKs and the original
+result are untouched. No GO is created or reused. Static follow-up checked
+canonical UTC/RFC3339Nano, enums, integer/base64 encoding and value joins;
+no provable producer/consumer mismatch was found. Cleanup absence is not
+evidence that the original guard was `FILE_UNAVAILABLE`.
 
 | Offline gate | Result | Actual evidence |
 |---|---|---|
@@ -43,6 +61,35 @@ this is synthetic regression evidence, **not** the original joint3 guard.
 Final checkpoint and source hashes are bound in this root's hash-only
 `CLIENT-DIAGNOSTIC-CHECKPOINT.NONAUTH.json`. Earlier coordination records
 below retain their original preparation provenance.
+
+### Follow-up public-reference diagnostic verification
+
+Evidence root:
+`/gpu1-share/data/cicada-client/joint3-public-reference-diagnostic-20261010`.
+The final finite, network-none Docker run passed 13 relevant tests, exit 0,
+in 0.049 seconds unittest time; the exact argv, tested parent/dirty state and
+Python source hashes are in `green-final.NONAUTH.json`, SHA-256
+`94970d5a2c528d0ae32bb9421f6d2121a624940eee7adc0de3b706fc4420507d`.
+The earlier RED receipt and intermediate eleven-test GREEN keep their actual
+source attribution. The RED integration harness also exposed its synthetic
+`cases` directory mode; only that test directory fixture was corrected to
+0700. Runtime directory guards were not relaxed.
+
+Regressions verify rejection of `NOT_RUN` as a guard, retention of the
+`PREPARING` phase, fixed file-error classification, all nine shape/hash
+observations, omission of values/unknown field names, refusal of a foreign
+declared path and a symlink, persistence before READY validation raises,
+and continued cleanup. They do not run Android or establish the lost joint3
+predicate. The final clean checkpoint and twelve-driver map are bound in
+this root's `CLIENT-PUBLIC-DIAGNOSTIC-CHECKPOINT.NONAUTH.json`.
+
+If Root needs a future byte-level audit, copy only the public READY plus the
+six declared JSON references (`client_setup`, `custody_manifest`,
+`fixture_public`, `helper_provenance`, `hub_ready`, `reference_manifest`)
+at CASE_READY into owned private evidence, mode 0600, before cleanup. Exclude
+DB, operator metadata, owner/endpoint private files and signed proofs/grants.
+Client itself stores only shapes/hashes. Such preparation requires separate
+Root coordination; this diagnostic checkpoint is not execution approval.
 
 ## Current factual correction: withdrawn coordination promises
 

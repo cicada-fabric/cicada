@@ -1155,6 +1155,7 @@ def bounded_loop_harness(root: Path, failure: type[Exception], *, case_runner=No
             "side": "source", "fixture_root": str(fixture_root),
         })
     plan["cases"] = cases
+    (Path(plan['core_fixture_root']) / 'cases').chmod(0o700)
     outer = budget.Deadline.after(30)
 
     class Parent:
@@ -1233,6 +1234,31 @@ class CleanupEvidenceTests(unittest.TestCase):
 
 
 class LoopFailureTests(unittest.TestCase):
+    def test_maps_known_file_guard_without_retaining_its_message(self) -> None:
+        def wrong_file_scope(_self, _case, record, _deadline):
+            record['phase'] = 'PREPARING'
+            loop.joint._pins._fail('trusted metadata must be an owned bounded regular file with an allowed mode')
+
+        with tempfile.TemporaryDirectory(prefix="v164-metadata-guard-") as temp:
+            result, _parent, _outer, core_fixture = bounded_loop_harness(
+                Path(temp), ValueError, case_runner=wrong_file_scope)
+            self.addCleanup(core_fixture.cleanup)
+        self.assertEqual(result['failure_diagnostic']['guard_code'], 'METADATA_SCOPE')
+        self.assertEqual(result['failure_diagnostic']['phase'], 'PREPARING')
+        self.assertNotIn('trusted metadata must be', json.dumps(result))
+
+    def test_non_guard_enum_is_rejected_and_failure_phase_is_retained(self) -> None:
+        def fail_with_enum(_self, _case, record, _deadline):
+            record['phase'] = 'PREPARING'
+            raise ValueError('NOT_RUN')
+
+        with tempfile.TemporaryDirectory(prefix="v164-loop-closed-guard-") as temp:
+            result, _parent, _outer, core_fixture = bounded_loop_harness(
+                Path(temp), ValueError, case_runner=fail_with_enum)
+            self.addCleanup(core_fixture.cleanup)
+        self.assertIsNone(result['failure_diagnostic']['guard_code'])
+        self.assertEqual(result['failure_diagnostic']['phase'], 'PREPARING')
+
     def test_failure_retains_exact_validator_site_and_static_guard_code(self) -> None:
         def invalid_ready(_self, _case, record, _deadline):
             record['phase'] = 'PREPARING'
@@ -1329,6 +1355,99 @@ class LoopFailureTests(unittest.TestCase):
         self.assertEqual(result["failure_class"], "ParentBlocked")
         self.assertEqual(result["cleanup"]["result"], "PASS")
         self.assertEqual([item[0] for item in parent.events].count("CLOSE_ANDROID"), 1)
+
+
+def public_reference_fixture(root: Path, sensitive: str):
+    references = {}
+    for name in sorted(loop.joint.REFERENCE_NAMES):
+        path = root / loop.joint.REFERENCE_PATHS[name]
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if name in loop.joint.JSON_REFERENCES:
+            raw = compact({'schema': sensitive, 'body': sensitive, sensitive: sensitive})
+        else:
+            raw = sensitive.encode()
+        path.write_bytes(raw)
+        path.chmod(loop.joint.REFERENCE_MODES[name] & 0o777)
+        references[name] = {'path': str(path), 'relative_path': loop.joint.REFERENCE_PATHS[name],
+                            'mode': oct(path.stat().st_mode), 'bytes': len(raw), 'sha256': digest(raw)}
+    value = {'public_references': references}
+    return value, compact(value)
+
+
+class PreSelectorReferenceEvidenceTests(unittest.TestCase):
+    def test_refuses_symlink_without_reading_its_target(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="v164-public-symlink-") as temp:
+            root = Path(temp) / 'case'
+            value, raw = public_reference_fixture(root, 'synthetic-public-content')
+            foreign = Path(temp) / 'not-public.bin'
+            foreign.write_bytes(b'foreign private bytes never read')
+            selected = root / loop.joint.REFERENCE_PATHS['helper_source']
+            selected.unlink()
+            selected.symlink_to(foreign)
+            evidence = loop.pre_selector_evidence(value, raw, root)
+        row = evidence['references']['helper_source']
+        self.assertEqual(row['read_status'], 'REFUSED')
+        self.assertIsNone(row['actual_sha256'])
+        self.assertNotIn(digest(b'foreign private bytes never read'), json.dumps(evidence))
+
+    def test_records_nine_fixed_references_without_values_or_unknown_field_names(self) -> None:
+        sensitive = 'synthetic-sensitive-unknown-field-and-body'
+        with tempfile.TemporaryDirectory(prefix="v164-public-shape-") as temp:
+            root = Path(temp)
+            value, raw = public_reference_fixture(root, sensitive)
+            evidence = loop.pre_selector_evidence(value, raw, root)
+        self.assertEqual(evidence['ready_sha256'], digest(raw))
+        self.assertEqual(set(evidence['references']), loop.joint.REFERENCE_NAMES)
+        for name, row in evidence['references'].items():
+            self.assertEqual(row['actual_sha256'], value['public_references'][name]['sha256'])
+            self.assertEqual(row['actual_bytes'], value['public_references'][name]['bytes'])
+            self.assertTrue(row['declared_scope_matches'])
+            if name in loop.joint.JSON_REFERENCES:
+                self.assertEqual(row['read_status'], 'PARSED')
+                self.assertGreater(row['json_shape']['unknown_field_count'], 0)
+            else:
+                self.assertEqual(row['read_status'], 'HASHED')
+        self.assertNotIn(sensitive, json.dumps(evidence))
+        self.assertNotIn('body', json.dumps(evidence))
+        self.assertNotIn(str(root), json.dumps(evidence))
+
+    def test_never_reads_a_declared_foreign_path_and_exposes_no_foreign_hash(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="v164-fixed-ref-") as temp:
+            root = Path(temp) / 'case'
+            value, raw = public_reference_fixture(root, 'synthetic-public-content')
+            foreign = Path(temp) / 'not-a-public-reference.json'
+            foreign.write_bytes(b'foreign private bytes never read')
+            value['public_references']['helper_source']['path'] = str(foreign)
+            with mock.patch.object(loop.joint, '_hash_regular', wraps=loop.joint._hash_regular) as reader:
+                evidence = loop.pre_selector_evidence(value, compact(value), root)
+        self.assertFalse(evidence['references']['helper_source']['declared_scope_matches'])
+        self.assertEqual({call.args[0] for call in reader.call_args_list},
+                         {root / relative for relative in loop.joint.REFERENCE_PATHS.values()})
+        self.assertNotIn(str(foreign), json.dumps(evidence))
+        self.assertNotIn(digest(b'foreign private bytes never read'), json.dumps(evidence))
+
+    def test_retains_preselector_evidence_before_original_ready_guard_raises(self) -> None:
+        original_one_case = loop.RecoveryLoop.one_case
+
+        def invalid_case(runner, case, record, deadline):
+            root = Path(case['fixture_root'])
+            value, _raw = public_reference_fixture(root, 'synthetic-public-content')
+            ready_ref = write_private_json(root / 'public/READY.json', value)
+            reply = {'ready': ready_ref, 'setups': {}, 'binding': {}, 'valid_until': 'not-used'}
+            with mock.patch.object(runner.parent, 'request', return_value=reply), \
+                 mock.patch.object(loop.joint, 'validate_ready', side_effect=lambda *_: loop.joint._need(False, 'READY_FIELDS')):
+                original_one_case(runner, case, record, deadline)
+
+        with tempfile.TemporaryDirectory(prefix="v164-before-ready-guard-") as temp:
+            result, _parent, _outer, core_fixture = bounded_loop_harness(
+                Path(temp), ValueError, case_runner=invalid_case)
+            self.addCleanup(core_fixture.cleanup)
+        self.assertEqual(result['failure_class'], 'ValueError')
+        self.assertEqual(result['failure_diagnostic']['guard_code'], 'READY_FIELDS')
+        self.assertEqual(result['failure_diagnostic']['phase'], 'PREPARING')
+        self.assertEqual(set(result['cases'][0]['pre_selector_evidence']['references']), loop.joint.REFERENCE_NAMES)
+        self.assertEqual(result['child_processes'], [])
+        self.assertEqual(result['cleanup']['result'], 'PASS')
 
 
 @unittest.skipUnless(sys.platform.startswith("linux") and Path("/proc").is_dir(),

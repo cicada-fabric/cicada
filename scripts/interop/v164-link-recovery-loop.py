@@ -61,6 +61,63 @@ SUFFIXES = {'response-loss': 'ResponseLoss', 'processing': 'Processing',
             'uncertain': 'Uncertain', 'legacy': 'Legacy'}
 STAGES = {'prepare': 120, 'capture': 75, 'ready': 45, 'recover': 60, 'reconcile': 60}
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,95}')
+DIAGNOSTIC_PHASES = {'BOOT', 'PREPARING', 'CAPTURED', 'RECONCILED'}
+# Closed pre-selector validator codes. Runtime enums and arbitrary messages
+# are not guard codes, even when they happen to be uppercase source literals.
+DIAGNOSTIC_GUARDS = frozenset('''
+    CASE_ROOT_ALIAS CASE_ROOT_ANCESTOR CASE_ROOT_SCOPE CASE_ROOT_SYMLINK
+    CASE_ROOT_UNAVAILABLE CLIENT_SETUP_FIELDS CLIENT_SETUP_HUB_FIELDS CLIENT_SETUP_HUB_SCOPE
+    CLIENT_SETUP_INSTRUCTIONS CLIENT_SETUP_INSTRUCTION_SCOPE CLIENT_SETUP_LINK_FIELDS CLIENT_SETUP_LINK_SCOPE
+    CLIENT_SETUP_OWNERS CLIENT_SETUP_OWNER_FIELDS CLIENT_SETUP_OWNER_SCOPE CLIENT_SETUP_SCOPE
+    CUSTODY_FIELDS CUSTODY_PRIVATE_SCOPE CUSTODY_SCOPE FILE_ALIAS
+    FILE_CHANGED FILE_PATH FILE_SCOPE FILE_SIZE
+    FILE_UNAVAILABLE FINGERPRINT FIXTURE_BINDING_FIELDS FIXTURE_BINDING_SCOPE
+    FIXTURE_CANDIDATE_FIELDS FIXTURE_CANDIDATE_SCOPE FIXTURE_HUB_ID FIXTURE_LINK_OWNERS
+    FIXTURE_MANIFEST_LINK FIXTURE_NETWORK_FIELDS FIXTURE_NETWORK_SCOPE FIXTURE_OWNERS
+    FIXTURE_OWNER_FIELDS FIXTURE_OWNER_ID FIXTURE_OWNER_KEY FIXTURE_OWNER_SCOPE
+    FIXTURE_PROTOCOL_COUNTER FIXTURE_PROTOCOL_FIELDS FIXTURE_PROTOCOL_SCOPE FIXTURE_PUBLIC_FIELDS
+    FIXTURE_PUBLIC_ID FIXTURE_PUBLIC_POLICY FIXTURE_PUBLIC_SCOPE FIXTURE_SCOPE_ROWS
+    HUB_CAPABILITY_FIELDS HUB_CAPABILITY_OPERATIONS HUB_CAPABILITY_SCOPE HUB_CONTROL_IDENTITY
+    HUB_HEALTH_FIELDS HUB_HEALTH_SCOPE HUB_IDENTITY_FIELDS HUB_IDENTITY_SCOPE
+    HUB_READY_FIELDS ID JSON_DUPLICATE JSON_SIZE
+    LINK_CONTRACT LINK_DIGEST LINK_FIELDS LINK_ID
+    LINK_REVOKED_FIELDS LINK_SNAPSHOT LINK_SNAPSHOT_FIELDS LINK_STATE
+    LINK_TRANSPORT_HUB LOOPBACK_ORIGIN PROVENANCE_FIELDS PROVENANCE_SCOPE
+    PUBLIC_IDENTITY READY_COORDINATION_SCOPE READY_DEADLINE READY_DISK_MISMATCH
+    READY_FIELDS READY_HASH_JOIN READY_HELPER_BINARY READY_HELPER_SOURCE
+    READY_HUB_FIELDS READY_HUB_METADATA_JOIN READY_HUB_SCOPE READY_OWNED_MANIFEST_HASH
+    READY_REFERENCE_BYTES READY_REFERENCE_FIELDS READY_REFERENCE_HASH READY_REFERENCE_JSON
+    READY_REFERENCE_MANIFEST_JOIN READY_REFERENCE_NAMES READY_REFERENCE_SCOPE READY_REFERENCE_SIZE
+    READY_RUNNER READY_SCOPE READY_SOURCE REFERENCE_MANIFEST
+    REFERENCE_MANIFEST_ATTESTATION REFERENCE_MANIFEST_BYTES REFERENCE_MANIFEST_COUNTER REFERENCE_MANIFEST_DIGEST
+    REFERENCE_MANIFEST_FINGERPRINT REFERENCE_MANIFEST_PUBLIC_IDENTITY REFERENCE_MANIFEST_SCOPE REFERENCE_MANIFEST_SIDE
+    REFERENCE_MANIFEST_SIDE_HASH REFERENCE_MANIFEST_SIDE_ID SHA256 UTC_CANONICAL UTC_TYPE
+'''.split())
+# Existing file-validator messages map to fixed public codes; raw text is
+# never exported. This covers file/JSON failures before READY field checks.
+METADATA_GUARDS = {
+    'trusted delivery JSON contains duplicate fields': 'METADATA_DUPLICATE',
+    'trusted delivery JSON contains a non-finite number': 'METADATA_NONFINITE',
+    'trusted delivery JSON exceeds its nesting bound': 'METADATA_DEPTH',
+    'trusted delivery JSON has a non-string key': 'METADATA_KEY',
+    'trusted metadata paths must be absolute and nonsymlinked': 'METADATA_PATH',
+    'trusted metadata must be an owned bounded regular file with an allowed mode': 'METADATA_SCOPE',
+    'trusted metadata changed while opening': 'METADATA_CHANGED_OPEN',
+    'trusted metadata changed while reading': 'METADATA_CHANGED_READ',
+    'trusted metadata is unavailable': 'METADATA_UNAVAILABLE',
+    'trusted metadata bytes differ from the expected SHA-256': 'METADATA_HASH',
+    'trusted metadata JSON is malformed': 'METADATA_JSON',
+    'trusted metadata root must be an object': 'METADATA_ROOT',
+}
+PUBLIC_JSON_FIELDS = {
+    'client_setup': set('schema status protocol_scope native_runtime model_calls hub owners link client_instructions'.split()),
+    'custody_manifest': set('schema private_key_root owner_private_files endpoint_private_files not_mounted_into'.split()),
+    'fixture_public': set('networks protocol_layers review_policy_qualification bindings endpoint_candidates schema status protocol_scope native_runtime model_calls build hub_id owners link reference_manifest reference_manifest_use endpoint_private_key_policy owner_private_key_policy scope'.split()),
+    'helper_provenance': set('compile_receipt_sha256 helper_binary_sha256 helper_source_sha256 image_id source_revision source_dirty'.split()),
+    'hub_ready': {'base_url', 'health', 'identity', 'capabilities'},
+    'reference_manifest': set('version link_id link_version contract_digest contract_canonical source target digest'.split()),
+}
+REFERENCE_FIELDS = {'path', 'relative_path', 'mode', 'bytes', 'sha256'}
 
 
 class LoopError(ValueError):
@@ -84,24 +141,67 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def failure_diagnostic(error):
+def failure_diagnostic(error, phase='BOOT'):
     """Keep trusted source locations, never exception values or frame locals.
 
-    A guard code is exported only if it matches an uppercase string literal
-    in a traced Client driver function. Arbitrary error text stays private.
+    Only closed validator codes and known phases are exported. Arbitrary
+    error text stays private, including uppercase strings outside the list.
     """
-    sites, codes = [], set()
+    sites = []
     trace = error.__traceback__
     while trace is not None:
         code = trace.tb_frame.f_code
         path = Path(code.co_filename)
         if path.parent == HERE and path.name in DRIVERS:
             sites.append({'file': path.name, 'function': code.co_name, 'line': trace.tb_lineno})
-            codes.update(value for value in code.co_consts if type(value) is str and
-                         re.fullmatch(r'[A-Z][A-Z0-9_]{1,95}', value))
         trace = trace.tb_next
     guard = error.args[0] if len(error.args) == 1 and type(error.args[0]) is str else None
-    return {'source_sites': sites[-8:], 'guard_code': guard if guard in codes else None}
+    return {'source_sites': sites[-8:], 'guard_code': guard if guard in DIAGNOSTIC_GUARDS else METADATA_GUARDS.get(guard),
+            'phase': phase if phase in DIAGNOSTIC_PHASES else None}
+
+
+def field_shape(value, allowed):
+    """Record known field names and JSON types, never values or unknown names."""
+    fields = {name: type(value[name]).__name__ for name in sorted(allowed)
+              if isinstance(value, dict) and name in value}
+    return {'type': type(value).__name__, 'fields': fields,
+            'unknown_field_count': len(set(value) - allowed) if isinstance(value, dict) else 0}
+
+
+def pre_selector_evidence(value, raw, root):
+    """Observe only the nine fixed public paths before semantic validation.
+
+    This does not accept READY or weaken any validator. Observation failures
+    remain metadata; the original full validation still decides whether to run.
+    """
+    summary = {'ready_sha256': sha(raw), 'ready_shape': field_shape(value, joint.READY_FIELDS),
+               'references': {}}
+    refs = value.get('public_references', {}) if isinstance(value, dict) else {}
+    for name in sorted(joint.REFERENCE_NAMES):
+        ref = refs.get(name, {}) if isinstance(refs, dict) else {}
+        relative, mode = joint.REFERENCE_PATHS[name], joint.REFERENCE_MODES[name]
+        path = root / relative  # Never read a path supplied by a reference.
+        row = {'declared_shape': field_shape(ref, REFERENCE_FIELDS),
+               'declared_sha256': ref.get('sha256') if isinstance(ref, dict) and
+                   inputs.canonical_hash(ref.get('sha256')) else None,
+               'declared_scope_matches': isinstance(ref, dict) and set(ref) == REFERENCE_FIELDS and
+                   ref.get('path') == str(path) and ref.get('relative_path') == relative and
+                   ref.get('mode') == oct(mode) and type(ref.get('bytes')) is int and
+                   0 < ref['bytes'] <= joint.REFERENCE_LIMITS[name],
+               'read_status': 'REFUSED', 'actual_sha256': None, 'actual_bytes': None,
+               'json_shape': None}
+        summary['references'][name] = row
+        try:
+            size, digest = joint._hash_regular(path, accepted_modes=(stat.S_IMODE(mode),),
+                                              maximum=joint.REFERENCE_LIMITS[name])
+            row.update(actual_sha256=digest, actual_bytes=size, actual_mode=oct(path.lstat().st_mode),
+                       declared_hash_matches=digest == row['declared_sha256'], read_status='HASHED')
+            if name in joint.JSON_REFERENCES:
+                _raw, _digest, parsed = joint._load_json(path, expected_sha256=digest, mode=stat.S_IMODE(mode))
+                row.update(json_shape=field_shape(parsed, PUBLIC_JSON_FIELDS[name]), read_status='PARSED')
+        except (ValueError, OSError):
+            row['read_status'] = 'REFUSED'
+    return summary
 
 
 def canonical(value):
@@ -428,8 +528,9 @@ class RecoveryLoop:
                              {'core_control': joint.typed_control('prepare', case['core_case_index'])}, stage)
         exact(ready, {'ready', 'setups', 'binding', 'valid_until'}, 'case READY')
         validate_owned_case_root(self.plan, case)
-        ready_ref, legacy, _ = self.read_ref(ready, 'ready', case)
+        ready_ref, legacy, raw = self.read_ref(ready, 'ready', case)
         require(ready_ref.path == Path(case['fixture_root']) / 'public/READY.json', 'Core READY path differs')
+        record['pre_selector_evidence'] = pre_selector_evidence(legacy, raw, Path(case['fixture_root']))
         frozen = joint.validate_ready(legacy, Path(case['fixture_root']))
         require(ready['valid_until'] == legacy['coordination_deadline'], 'Root deadline differs from Core READY')
         exact(ready['setups'], {'source', 'target'}, 'onboarding setups')
@@ -589,6 +690,7 @@ class RecoveryLoop:
     def run(self):
         failure = None
         diagnostic = None
+        current_record = None
         cleanup = {'result': 'NOT_RUN'}
         try:
             boot = self.request('BOOT_READY', None, {}, budget.Deadline.after(480, parent=self.work_deadline))
@@ -600,6 +702,7 @@ class RecoveryLoop:
             ownership, _ = self.ownership.read([Path(self.plan['android_evidence']), Path(self.plan['evidence_root'])])
             validate_ownership(ownership, self.plan)
             for case, record in zip(self.plan['cases'], self.records):
+                current_record = record
                 record['result'] = 'UNKNOWN'
                 try:
                     self.one_case(case, record, budget.Deadline.after(360, parent=self.work_deadline))
@@ -608,7 +711,7 @@ class RecoveryLoop:
                     raise
         except (ValueError, OSError, TimeoutError, RuntimeError, KeyError, TypeError) as error:
             failure = type(error).__name__
-            diagnostic = failure_diagnostic(error)
+            diagnostic = failure_diagnostic(error, current_record.get('phase') if current_record else 'BOOT')
         finally:
             try:
                 reply = self.request('CLOSE_ANDROID', None,
