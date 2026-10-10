@@ -36,28 +36,28 @@ def write_file(path: Path, raw: bytes, mode: int = 0o600) -> None:
 
 class FinalConsumerPinTests(unittest.TestCase):
     def test_paths_hashes_freeze_test_map_and_android_url_match_final_parent_contract(self) -> None:
-        self.assertEqual(joint.PARENT_PATH.name, "joint-parent.py")
-        self.assertEqual(joint.ADAPTER_PATH.name, "joint-adapter-parent-ready.py")
-        self.assertEqual(joint.INTERFACE_PATH.name, "JOINT-PARENT-INTERFACE.NONAUTH.md")
-        self.assertEqual(joint.FREEZE_PATH.name, "ADAPTER-PARENT-FREEZE.NONAUTH.json")
+        self.assertEqual(joint.PARENT_PATH.name, "joint-parent-v2.py")
+        self.assertEqual(joint.ADAPTER_PATH.name, "joint-adapter-parent-ready-v2.py")
+        self.assertEqual(joint.INTERFACE_PATH.name, "JOINT-PARENT-V2-INTERFACE.NONAUTH.md")
+        self.assertEqual(joint.FREEZE_PATH.name, "ADAPTER-PARENT-V2-FREEZE.NONAUTH.json")
         self.assertEqual(joint.RECONCILE_PATH.parts[-3:], (
             "reconcile-final-compile-format-2", "bin", "cicada-link-joint-reconcile"))
         self.assertEqual(joint.RECONCILE_RECEIPT_PATH.parts[-2:], (
             "reconcile-final-compile-format-2", "PREPARATION-RESULT.NONAUTH.json"))
         self.assertEqual(joint.FROZEN_ARTIFACT_HASHES, {
-            "parent_sha256": "479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794",
-            "adapter_sha256": "7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4",
-            "interface_sha256": "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570",
-            "freeze_sha256": "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39",
+            "parent_sha256": "cdf8d8caa9f95823b0fd8c50d450c7add46134e0a6f90ce8e325277afc5ab496",
+            "adapter_sha256": "30fa655ab1ae4e8df120441a4aafb5ebe6cd3d5771f6ab83fff0f2e2a497ec96",
+            "interface_sha256": "4a294d87a4584c547163350be9a1d9b65c4875daf350a190982a2af2d6689f8e",
+            "freeze_sha256": "8624d782f3380fef43b9bf1d30a7d1e5541b5db56752b2ab82954002ee613733",
         })
         self.assertEqual(joint.RECONCILE_SHA256,
             "54d8c31b4a2aa5f762173876961b3b04ec680f23576ac1a42f3e9c65dd04d0b3")
         self.assertEqual(joint.RECONCILE_RECEIPT_SHA256,
             "96dbd99b2c2f6e9e6310d35432fd10d7214202f92ef0e0c1aa69e3a5e3296b1e")
         self.assertEqual(joint.FROZEN_PREPARATION_TEST_HASHES, {
-            "test_joint_adapter_parent_ready.py": "21a9bf235542a99c34d736406e37f9f3551349d9bacf4b0fe00eae3f72cb0add",
-            "test_joint_parent.py": "660f201b30f4e27089ae6a7f4a8151c80bd492cfa7e52934fc945b3564a9ea1b",
+            "test_joint_parent_v2_apk_install.py": "193f361cf9fb5a814d07764c06602416fe5d114bd8b8ea2b2dfdbfad598e98cf",
         })
+        self.assertEqual(joint.RUN_ID, "v164-e2a1908-joint2-20261010")
         self.assertEqual(joint.ANDROID_BASE_URL, "http://127.0.0.1:8787")
 
     def test_ready_runner_is_the_new_adapter_not_parent_or_previous_adapter(self) -> None:
@@ -65,6 +65,7 @@ class FinalConsumerPinTests(unittest.TestCase):
         self.assertEqual(joint._validate_runner_sha256(adapter_sha), adapter_sha)
         for label, candidate in (
                 ("Parent source is not the fixture runner", joint.FROZEN_ARTIFACT_HASHES["parent_sha256"]),
+                ("v1 adapter is stale", "7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4"),
                 ("previous adapter is stale", "29d906da160859f0a8a6711449fee69e89c6729ddb2947de9e963e92013622c4")):
             with self.subTest(label=label), self.assertRaises(ValueError):
                 joint._validate_runner_sha256(candidate)
@@ -94,6 +95,10 @@ class FinalConsumerPinTests(unittest.TestCase):
         with mock.patch.object(joint, "_read_ready", return_value=(ready, "synthetic-ready-hash")), \
                 mock.patch.object(joint, "validate_ready", return_value={"fixture_public": fixture}):
             joint._validate_carrier_manifest(manifest, Path("/tmp/synthetic-case"), 0)
+            with self.assertRaises(ValueError):
+                joint._validate_carrier_manifest(
+                    dict(manifest, run_id="v164-e2a1908-joint-20261010-0"),
+                    Path("/tmp/synthetic-case"), 0)
             for wrong_url in (
                     "http://10.0.2.2:8787", "http://127.0.0.1:8788", "http://localhost:8787"):
                 with self.subTest(android_base_url=wrong_url), self.assertRaises(ValueError):
@@ -283,10 +288,10 @@ class CanonicalTimeTests(unittest.TestCase):
 
 class ArtifactPinTests(unittest.TestCase):
     def artifact_fixture(self, root: Path):
-        parent = root / "joint-parent.py"
-        adapter = root / "joint-adapter-parent-ready.py"
-        interface = root / "JOINT-PARENT-INTERFACE.NONAUTH.md"
-        freeze = root / "ADAPTER-PARENT-FREEZE.NONAUTH.json"
+        parent = root / "joint-parent-v2.py"
+        adapter = root / "joint-adapter-parent-ready-v2.py"
+        interface = root / "JOINT-PARENT-V2-INTERFACE.NONAUTH.md"
+        freeze = root / "ADAPTER-PARENT-V2-FREEZE.NONAUTH.json"
         reconcile, receipt_path = self.auxiliary_paths(root)
         parent_raw = b"# synthetic frozen Root Parent source\n"
         adapter_raw = b"# synthetic frozen Parent-ready adapter\n"
@@ -322,9 +327,9 @@ class ArtifactPinTests(unittest.TestCase):
             "online": "NOT_GO",
             "offline_compiler_sha256": digest(receipt_raw),
             "files": {
-                "JOINT-PARENT-INTERFACE.NONAUTH.md": digest(interface_raw),
-                "joint-adapter-parent-ready.py": digest(adapter_raw),
-                "joint-parent.py": digest(parent_raw),
+                "JOINT-PARENT-V2-INTERFACE.NONAUTH.md": digest(interface_raw),
+                "joint-adapter-parent-ready-v2.py": digest(adapter_raw),
+                "joint-parent-v2.py": digest(parent_raw),
                 **joint.FROZEN_PREPARATION_TEST_HASHES,
             },
         }
@@ -544,12 +549,18 @@ class ArtifactPinTests(unittest.TestCase):
             with patches, self.assertRaises(ValueError):
                 joint.verify_artifacts()
 
-    def test_verify_artifacts_rejects_previous_declared_interface_and_freeze_pins(self) -> None:
-        previous = {
-            "interface_sha256": "ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966",
-            "freeze_sha256": "5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4",
-        }
-        for name, old_hash in previous.items():
+    def test_verify_artifacts_rejects_superseded_parent_delivery_pins(self) -> None:
+        previous = (
+            ("parent_sha256", "6ebaf8bdba59c1fe5568382d9044a6185652320b00573106aa6b3b68de1737db"),
+            ("freeze_sha256", "2a4bad174ebf7c11a60264c14b45e3c5e9f3ccf80920d870ab504d80beddbd0c"),
+            ("parent_sha256", "479adcd3edad8c4a540a65e5a2fc858bbf1ef5862c1754e5ecd3339b9c96e794"),
+            ("adapter_sha256", "7dc6eb20d16326fa96c62d412a91e972c3eea19af5b4b37fd18b1d29404d37a4"),
+            ("interface_sha256", "8f7bc4e7d1d1d5ffb0e02e7f9380211cbbd2d0100a6b4ea577b79be8bb82f570"),
+            ("freeze_sha256", "6fa1159becf4dcb47b91324c0d25f3bce9ad5cd1cba8fc201320f99cdbe65d39"),
+            ("interface_sha256", "ead77141679ef0b7a0379c3e2d77b1ac58e4dd1b19277b667c39c47d45c7c966"),
+            ("freeze_sha256", "5736703af551999b9e5acbbfc4e2b8d6e2073879219d06276e4a387efd1f1ce4"),
+        )
+        for name, old_hash in previous:
             with self.subTest(pin=name), tempfile.TemporaryDirectory(
                     prefix="v164-joint-artifacts-stale-pin-") as temp:
                 parent, adapter, interface, freeze, _value, expected = self.artifact_fixture(Path(temp))
@@ -560,6 +571,10 @@ class ArtifactPinTests(unittest.TestCase):
 
     def test_verify_artifacts_rejects_legacy_source_filenames(self) -> None:
         for attribute, legacy_name in (
+                ("PARENT_PATH", "joint-parent.py"),
+                ("ADAPTER_PATH", "joint-adapter-parent-ready.py"),
+                ("INTERFACE_PATH", "JOINT-PARENT-INTERFACE.NONAUTH.md"),
+                ("FREEZE_PATH", "ADAPTER-PARENT-FREEZE.NONAUTH.json"),
                 ("PARENT_PATH", "joint.py"),
                 ("ADAPTER_PATH", "joint-adapter.py"),
                 ("INTERFACE_PATH", "JOINT-8CASE-INTERFACE.NONAUTH.md"),
@@ -573,15 +588,18 @@ class ArtifactPinTests(unittest.TestCase):
                         mock.patch.object(joint, attribute, root / legacy_name), self.assertRaises(ValueError):
                     joint.verify_artifacts()
 
-    def test_verify_artifacts_requires_exact_five_entry_freeze_map(self) -> None:
+    def test_verify_artifacts_requires_exact_four_entry_v2_freeze_map(self) -> None:
         def wrong_pin(value):
-            value["files"]["test_joint_parent.py"] = "0" * 64
+            value["files"]["test_joint_parent_v2_apk_install.py"] = "0" * 64
 
         def extra_entry(value):
             value["files"]["unexpected.py"] = "1" * 64
 
         def missing_entry(value):
-            del value["files"]["joint-parent.py"]
+            del value["files"]["joint-parent-v2.py"]
+
+        def legacy_entry(value):
+            value["files"]["joint-parent.py"] = value["files"].pop("joint-parent-v2.py")
 
         def wrong_status(value):
             value["status"] = "PASS"
@@ -596,6 +614,7 @@ class ArtifactPinTests(unittest.TestCase):
                 ("wrong pinned digest", wrong_pin),
                 ("extra freeze entry", extra_entry),
                 ("missing freeze entry", missing_entry),
+                ("v1 freeze source name", legacy_entry),
                 ("status changed", wrong_status),
                 ("online status changed", wrong_online_status),
                 ("offline compiler receipt pin changed", wrong_compiler_receipt_pin)):
