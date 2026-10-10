@@ -1,5 +1,27 @@
 # Bounded Android Link recovery loop
 
+## Current factual correction
+
+Root's 2026-10-10 engineering correction withdraws the queued `ead771…`
+interface, `573670…` freeze and 26-field promise. The actual Core contract
+never changed: Parent `479adcd3…`, adapter `7dc6eb20…`, interface
+`8f7bc4e7…`, freeze `6fa1159b…`, 25 callback fields, 11 NONE policy fields
+and the original 82 requests remain fixed. The current consumer already
+pins these exact artifacts; the older `390bb7d` blocked delivery below
+preserves a failed historical coordination promise and creates no current
+requirement to deliver replacement artifacts.
+
+This closure changes only the documentation. The loop remains
+`415f2eadee00860898e05f73451ec7e611b30d67544df16c7c7ad6340ddff9fd`;
+the APKs, labels, signing contract, budgets and SOURCE continuity are
+unchanged. Existing test receipts keep their original tested source; no
+additional preparation test is run. The current clean commit and exact
+twelve-driver map are in
+`/gpu1-share/data/cicada-client/v164-e2a1908-current-facts-closure-20261010/final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`.
+See the [handoff correction](cicada-core-handoff.md#current-factual-correction-withdrawn-coordination-promises)
+for the read-only Root note and its digest. This is **HOLD / NOT_RUN**
+preparation, not a Master GO or Owner authorization.
+
 ## Final ruling: original 82-request flow
 
 Date: 2026-10-10. Root's final instruction supersedes the SOURCE-only

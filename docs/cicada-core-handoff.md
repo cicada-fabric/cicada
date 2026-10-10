@@ -1,5 +1,33 @@
 # CICADA Client integration handoff
 
+## Current factual correction: withdrawn coordination promises
+
+Root's 2026-10-10 correction withdraws the queued interface `ead771…`,
+freeze `573670…` and 26-field promise. They never changed the actual Core
+contract. The operative four pins remain Parent `479adcd3…`, adapter
+`7dc6eb20…`, interface `8f7bc4e7…` and freeze `6fa1159b…`; the callback
+has 25 top-level fields and NONE has 11 exact policy fields. The existing
+consumer already verifies these actual bytes and closed joins. No missing
+successor artifacts are awaited and no Parent or API change is required.
+
+The authorized engineering note is
+`/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-e2a1908-20261010/joint-preparation/ROOT-CURRENT-JOINT-COORDINATION-20261010.NONAUTH.md`,
+SHA-256 `004f8b93de3647335633d69cb2f488fc9b62e95442a6445d261ce5477996ccd3`.
+Its `390bb7d` Client checkout observation is historical; the actual current
+clean Client commit, source inventory and twelve drivers are bound in
+`/gpu1-share/data/cicada-client/v164-e2a1908-current-facts-closure-20261010/final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`.
+The C25 Core workspace is separate from the immutable clean e2a Hub image.
+This note supplies engineering provenance, not an Owner Grant or Master GO.
+
+The historical `390bb7d` section below retains its original failed audit
+and declared-versus-observed evidence. Its requests for `ead771…` and
+`573670…` are withdrawn historical requests, not current Core action items.
+No commit or failed receipt is reset, rewritten or reattributed. This
+closure changes only this explanation and the corresponding specification;
+the loop, APKs, 82-request profile order, callback and labels stay unchanged.
+Existing test receipts retain their actual tested commit and dirty state;
+no new preparation test is run. Online remains **HOLD / NOT_RUN**.
+
 ## Current coordination: original82 TARGET-first Android initialization
 
 Root's final ruling supersedes the SOURCE-only alternative. Each case
