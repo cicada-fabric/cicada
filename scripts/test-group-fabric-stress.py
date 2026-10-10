@@ -16,6 +16,7 @@ import os
 import pathlib
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import time
@@ -29,6 +30,8 @@ DEFAULT_GO_CACHE = ROOT / ".cicada-data" / "group-fabric-stress-20261009a" / "al
 PINNED_IMAGE = "sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195"
 RUN_LABEL = "cicada.v01.group-fabric-stress"
 MAX_WORKLOAD_SECONDS = 180
+MAX_PROTECTED_RESIDENTS = 256
+PROTECTED_RESIDENT_FIELDS = frozenset({"id", "status", "image", "pid", "started_at", "restart_count"})
 
 STAGES = (
     {
@@ -135,22 +138,48 @@ def resident_core(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_protected_residents(path: pathlib.Path) -> tuple[dict[str, dict[str, Any]], str, str]:
-    resolved = path.resolve(strict=True)
+    source = pathlib.Path(path)
+    resolved = source.resolve(strict=True)
     data_root = (ROOT / ".cicada-data").resolve()
     if data_root not in resolved.parents or not resolved.is_file():
         raise RuntimeError("protected-resident receipt must be a file under .cicada-data")
-    raw = resolved.read_bytes()
-    document = json.loads(raw)
-    if not isinstance(document, dict) or len(document) != 6:
-        raise RuntimeError("protected-resident receipt must contain exactly six container records")
+    try:
+        source_info = source.lstat()
+        receipt_info = resolved.stat()
+    except OSError as error:
+        raise RuntimeError("protected-resident receipt metadata is unavailable") from error
+    if (source.is_symlink() or not stat.S_ISREG(receipt_info.st_mode) or
+            receipt_info.st_uid != os.getuid() or receipt_info.st_mode & 0o077 or
+            source_info.st_uid != os.getuid()):
+        raise RuntimeError("protected-resident receipt ownership or mode is unsafe")
+    receipt_limit = 1 << 20
+    if receipt_info.st_size > receipt_limit:
+        raise RuntimeError("protected-resident receipt exceeds its byte bound")
+    with resolved.open("rb") as receipt_file:
+        raw = receipt_file.read(receipt_limit + 1)
+    if len(raw) > receipt_limit:
+        raise RuntimeError("protected-resident receipt exceeds its byte bound")
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate resident identity")
+            result[key] = value
+        return result
+
+    document = json.loads(raw, object_pairs_hook=unique_object)
+    if not isinstance(document, dict) or len(document) > MAX_PROTECTED_RESIDENTS:
+        raise RuntimeError("protected-resident receipt must be a bounded identity map")
     expected: dict[str, dict[str, Any]] = {}
     for container_id, row in document.items():
-        if (not isinstance(container_id, str) or not re.fullmatch(r"[0-9a-f]{64}", container_id)
-                or not isinstance(row, dict) or row.get("id") != container_id
-                or row.get("status") != "running" or not isinstance(row.get("image"), str)
-                or not isinstance(row.get("pid"), int) or row["pid"] <= 0
-                or not isinstance(row.get("started_at"), str)
-                or not isinstance(row.get("restart_count"), int) or row["restart_count"] < 0):
+        if (type(container_id) is not str or not re.fullmatch(r"[0-9a-f]{64}", container_id)
+                or type(row) is not dict or set(row) != PROTECTED_RESIDENT_FIELDS
+                or row.get("id") != container_id or row.get("status") != "running"
+                or type(row.get("image")) is not str or not row["image"] or len(row["image"]) > 256
+                or type(row.get("pid")) is not int or row["pid"] <= 0
+                or type(row.get("started_at")) is not str or not row["started_at"] or len(row["started_at"]) > 128
+                or type(row.get("restart_count")) is not int or row["restart_count"] < 0):
             raise RuntimeError("protected-resident receipt has an invalid public identity row")
         expected[container_id] = {
             "id": container_id, "image_id": row["image"], "host_pid": row["pid"],
@@ -602,7 +631,7 @@ def main() -> int:
     parser.add_argument("--evidence-dir", required=True, type=pathlib.Path,
                         help="new private directory below .cicada-data; existing paths are never overwritten")
     parser.add_argument("--protected-residents-file", required=True, type=pathlib.Path,
-                        help="public NONAUTH snapshot containing exactly the six protected resident IDs")
+                        help="current-user public NONAUTH map of up to 256 protected resident identities (empty is valid)")
     parser.add_argument("--go-cache-dir", type=pathlib.Path, default=DEFAULT_GO_CACHE,
                         help="existing writable Go build cache under .cicada-data")
     parser.add_argument("--known-concurrent-qa-id", action="append", default=[],

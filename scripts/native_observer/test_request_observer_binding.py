@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -325,18 +326,23 @@ class CurrentComponentSelectionTests(unittest.TestCase):
                 with self.assertRaisesRegex(PermissionError, "G2_CURRENT_SOURCE_INVENTORY_ROW"):
                     run.g2_current_source_row(row, inventory=inventory)
 
-    @unittest.skipUnless(
-        (run.G2_CURRENT_EVIDENCE_ROOT / "current-peer-product-0162-20261009a" / "actual-delivery.NONAUTH.json").is_file(),
-        "current product proof is not present in this workspace",
-    )
     def test_emitted_current_component_proof_and_tampered_equality(self) -> None:
-        root = run.G2_CURRENT_EVIDENCE_ROOT / "current-peer-product-0162-20261009a"
-        delivery = json.loads((root / "actual-delivery.NONAUTH.json").read_text(encoding="utf-8"))
-        equality = json.loads(Path(delivery["compiled_input_equality_receipt"]).read_text(encoding="utf-8"))
-        self.assertEqual(run.g2_current_component_inputs(delivery, equality), delivery["component_proof_sha256"])
-        altered = dict(equality, current_compiled_inputs_sha256="0" * 64)
-        with self.assertRaisesRegex(PermissionError, "G2_CURRENT_PRODUCT_EQUALITY"):
-            run.g2_current_component_inputs(delivery, altered)
+        binding_file = os.environ.get("CICADA_CURRENT_BINDING_FILE")
+        binding_sha = os.environ.get("CICADA_CURRENT_BINDING_SHA")
+        if binding_file is None and binding_sha is None:
+            self.skipTest("explicit current binding/proof not selected; retained 20261009a proof may be stale")
+        self.assertIsNotNone(binding_file, "current integration binding path/SHA must be supplied together")
+        self.assertIsNotNone(binding_sha, "current integration binding path/SHA must be supplied together")
+        with run.deny_preflight_effects():
+            selected, _ = run.verify_binding(binding_sha, binding_file, require_current=True)
+            bundle = run.require_current_bundle(selected)
+            delivery = run.current_delivery(selected)
+            equality, equality_raw = run.bounded_json(bundle["equality"]["path"])
+            self.assertEqual(hashlib.sha256(equality_raw).hexdigest(), bundle["equality"]["sha256"])
+            self.assertEqual(run.g2_current_component_inputs(delivery, equality), delivery["component_proof_sha256"])
+            altered = dict(equality, current_compiled_inputs_sha256="0" * 64)
+            with self.assertRaisesRegex(PermissionError, "G2_CURRENT_PRODUCT_EQUALITY"):
+                run.g2_current_component_inputs(delivery, altered)
 
     def test_refresh_dispatch_requires_explicit_current_inputs(self) -> None:
         output = io.StringIO()
