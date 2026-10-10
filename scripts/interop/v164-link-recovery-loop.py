@@ -84,6 +84,26 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def failure_diagnostic(error):
+    """Keep trusted source locations, never exception values or frame locals.
+
+    A guard code is exported only if it matches an uppercase string literal
+    in a traced Client driver function. Arbitrary error text stays private.
+    """
+    sites, codes = [], set()
+    trace = error.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        path = Path(code.co_filename)
+        if path.parent == HERE and path.name in DRIVERS:
+            sites.append({'file': path.name, 'function': code.co_name, 'line': trace.tb_lineno})
+            codes.update(value for value in code.co_consts if type(value) is str and
+                         re.fullmatch(r'[A-Z][A-Z0-9_]{1,95}', value))
+        trace = trace.tb_next
+    guard = error.args[0] if len(error.args) == 1 and type(error.args[0]) is str else None
+    return {'source_sites': sites[-8:], 'guard_code': guard if guard in codes else None}
+
+
 def canonical(value):
     return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
 
@@ -568,6 +588,7 @@ class RecoveryLoop:
 
     def run(self):
         failure = None
+        diagnostic = None
         cleanup = {'result': 'NOT_RUN'}
         try:
             boot = self.request('BOOT_READY', None, {}, budget.Deadline.after(480, parent=self.work_deadline))
@@ -587,6 +608,7 @@ class RecoveryLoop:
                     raise
         except (ValueError, OSError, TimeoutError, RuntimeError, KeyError, TypeError) as error:
             failure = type(error).__name__
+            diagnostic = failure_diagnostic(error)
         finally:
             try:
                 reply = self.request('CLOSE_ANDROID', None,
@@ -603,6 +625,7 @@ class RecoveryLoop:
         return {'schema': 'cicada.client-v164-recovery-loop-result.v1',
                 'result': 'PASS' if failure is None and cleanup['result'] == 'PASS' else 'FAIL',
                 'cases': self.records, 'cleanup': cleanup, 'failure_class': failure,
+                'failure_diagnostic': diagnostic,
                 'child_processes': self.driver.receipts, 'native_worker': 'NOT_RUN',
                 'physical_android': 'NOT_RUN', 'public_https': 'NOT_RUN'}
 

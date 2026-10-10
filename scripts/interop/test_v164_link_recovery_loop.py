@@ -1233,6 +1233,54 @@ class CleanupEvidenceTests(unittest.TestCase):
 
 
 class LoopFailureTests(unittest.TestCase):
+    def test_failure_retains_exact_validator_site_and_static_guard_code(self) -> None:
+        def invalid_ready(_self, _case, record, _deadline):
+            record['phase'] = 'PREPARING'
+            loop.joint._validate_hub_ready({}, {})
+
+        with tempfile.TemporaryDirectory(prefix="v164-loop-diagnostic-") as temp:
+            result, parent, _outer, core_fixture = bounded_loop_harness(
+                Path(temp), ValueError, case_runner=invalid_ready)
+            self.addCleanup(core_fixture.cleanup)
+
+        self.assertEqual(result['failure_class'], 'ValueError')
+        self.assertEqual(result['failure_diagnostic']['guard_code'], 'HUB_READY_FIELDS')
+        sites = result['failure_diagnostic']['source_sites']
+        self.assertIn({
+            'file': 'v164-frozen-joint-inputs.py',
+            'function': '_validate_hub_ready',
+            'line': loop.joint._validate_hub_ready.__code__.co_firstlineno + 1,
+        }, sites)
+        self.assertTrue(all(site['file'] in loop.DRIVERS for site in sites))
+        self.assertLessEqual(len(sites), 8)
+        self.assertEqual(result['child_processes'], [])
+        self.assertEqual([row['result'] for row in result['cases']], ['UNKNOWN', *(['NOT_RUN'] * 7)])
+        self.assertEqual([event for event, _case, _deadline in parent.events], ['BOOT_READY', 'CLOSE_ANDROID'])
+        self.assertEqual(result['cleanup']['result'], 'PASS')
+
+    def test_failure_never_exports_exception_message_locals_or_external_paths(self) -> None:
+        sensitive = 'synthetic-sensitive-message-not-for-evidence'
+
+        def fail_with_sensitive_message(_self, _case, _record, _deadline):
+            raise ValueError(sensitive)
+
+        with tempfile.TemporaryDirectory(prefix="v164-loop-private-") as temp:
+            result, _parent, _outer, core_fixture = bounded_loop_harness(
+                Path(temp), ValueError, case_runner=fail_with_sensitive_message)
+            self.addCleanup(core_fixture.cleanup)
+
+        diagnostic = result['failure_diagnostic']
+        self.assertIsNone(diagnostic['guard_code'])
+        self.assertEqual(len(diagnostic['source_sites']), 1)
+        site = diagnostic['source_sites'][0]
+        self.assertEqual(set(site), {'file', 'function', 'line'})
+        self.assertEqual(site['file'], 'v164-link-recovery-loop.py')
+        self.assertEqual(site['function'], 'run')
+        self.assertGreater(site['line'], loop.RecoveryLoop.run.__code__.co_firstlineno)
+        self.assertNotIn(sensitive, json.dumps(result))
+        self.assertNotIn(str(HERE), json.dumps(diagnostic))
+        self.assertNotIn('locals', json.dumps(diagnostic))
+
     def test_supervisor_runs_all_eight_cases_in_order_then_cleans_up(self) -> None:
         observed: list[tuple[int, str, budget.Deadline]] = []
 

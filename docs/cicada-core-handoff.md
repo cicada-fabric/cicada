@@ -1,5 +1,49 @@
 # CICADA Client integration handoff
 
+## Latest: joint3 failure diagnosis and host diagnostic correction
+
+Root's joint3 run used Client `693e939c01a0ddd9cef97d20046862a6cc02b92f`
+and terminated with `CLIENT_LOOP_EXIT` after 53.744 seconds. Its immutable
+Client result is
+`/gpu1-share/data/cicada-client/v164-joint3-root-693e939-308d-20261010/result.redacted.json`,
+SHA-256 `1ae5b9a211437d5b43d6b9745f52b30c4ee67a3b69fe02ec2ab90c4fd8a1fc4a`.
+Case 0 is `UNKNOWN / PREPARING`; the remaining seven cases are `NOT_RUN`.
+The empty child-process list establishes that no Client Android selector ran.
+Root reports Core cleanup `CONFIRMED` and Android cleanup `PASS`.
+
+The executed loop's `run()` exception handler, lines 588–589, discarded the
+exception message and traceback and retained only `ValueError`. Both host
+stderr files are empty. Core cleanup removed the case's READY and nine
+references; no retained public CASE_READY response has been located. Static
+comparison found no guaranteed producer/consumer mismatch. The exact
+historical failing predicate remains **UNKNOWN**, not an inferred contract
+or APK failure. Recovering it requires a retained original public witness
+or a separately authorized diagnostic execution.
+
+The minimal host correction records at most eight trusted Client source
+locations and a guard code only when it matches an uppercase literal in
+those functions. It exports no arbitrary exception message, arguments,
+locals or external path. Existing failure class, stop-on-failure, cleanup,
+82-request order and signatures remain unchanged. Parent v3, consumer
+pins, APKs and the original result are untouched. No GO is created or reused.
+
+| Offline gate | Result | Actual evidence |
+|---|---|---|
+| Two new regressions against the executed loop bytes | RED, exit 1 as expected | `red.NONAUTH.json`, SHA-256 `35f1460f660efeb5f741aafa55cee06622483ddf6e40b108a807cea8e8fc1481` |
+| Corrected failure and cleanup tests | PASS, 7 tests, exit 0 | `green.NONAUTH.json`, SHA-256 `60a19869b9fecce2859057da46c4715eaa2e338f5a9731e8a3f51f8d8145cdb1` |
+| Exact original joint3 guard | UNKNOWN | Original exception detail and READY references were not retained |
+| Android recovery, Native Worker, physical Android, public HTTPS | NOT_RUN | No online resources or model calls in this correction |
+
+Evidence root:
+`/gpu1-share/data/cicada-client/joint3-valueerror-diagnostic-20261010`.
+Both receipts record the complete bounded, network-none Docker argv, source
+hashes, tested parent/dirty state, output hashes and actual exit code. The
+test's deliberately malformed Hub-ready object yields `HUB_READY_FIELDS`;
+this is synthetic regression evidence, **not** the original joint3 guard.
+Final checkpoint and source hashes are bound in this root's hash-only
+`CLIENT-DIAGNOSTIC-CHECKPOINT.NONAUTH.json`. Earlier coordination records
+below retain their original preparation provenance.
+
 ## Current factual correction: withdrawn coordination promises
 
 Root's 2026-10-10 correction withdraws the queued interface `ead771…`,
