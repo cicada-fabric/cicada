@@ -1,5 +1,5 @@
-// client-recovery-fixture creates interrupted Client RPC states in a disposable
-// Hub database. It is a test tool, never part of the Hub runtime image.
+// client-recovery-fixture drives one Link response loss or creates interrupted
+// Client RPC states in a disposable Hub database. It is never a Hub endpoint.
 package main
 
 import (
@@ -23,6 +23,13 @@ import (
 const disposableMarker = ".cicada-disposable-recovery-fixture"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "serve-link" {
+		if err := serveLink(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "Link recovery fixture:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(os.Args[1:], os.Stdin); err != nil {
 		fmt.Fprintln(os.Stderr, "recovery fixture:", err)
 		os.Exit(1)
@@ -129,7 +136,12 @@ func requireDisposableDatabase(path string) error {
 	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
 		return errors.New("fixture database must be inside a dedicated temporary directory")
 	}
-	marker, err := os.ReadFile(filepath.Join(root, disposableMarker))
+	markerPath := filepath.Join(root, disposableMarker)
+	markerInfo, err := os.Lstat(markerPath)
+	if err != nil || !markerInfo.Mode().IsRegular() {
+		return errors.New("missing regular disposable recovery fixture marker")
+	}
+	marker, err := os.ReadFile(markerPath)
 	if err != nil || strings.TrimSpace(string(marker)) != "disposable" {
 		return errors.New("missing disposable recovery fixture marker")
 	}

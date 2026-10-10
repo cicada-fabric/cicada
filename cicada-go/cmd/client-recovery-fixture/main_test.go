@@ -39,6 +39,20 @@ func TestRecoveryFixtureRequiresDisposableMarker(t *testing.T) {
 	if err := requireDisposableDatabase(link); err == nil {
 		t.Fatal("symlink database was accepted")
 	}
+	markerPath := filepath.Join(filepath.Dir(path), disposableMarker)
+	if err := os.Remove(markerPath); err != nil {
+		t.Fatal(err)
+	}
+	markerSource := filepath.Join(filepath.Dir(path), "marker-source")
+	if err := os.WriteFile(markerSource, []byte("disposable\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(markerSource, markerPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireDisposableDatabase(path); err == nil {
+		t.Fatal("symlink marker was accepted")
+	}
 }
 
 func TestRecoveryFixtureAgainstRealHTTPHandler(t *testing.T) {
