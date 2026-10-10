@@ -2,7 +2,22 @@
 
 ## Current closeout index — v0.1 PARTIAL
 
-The [2026-10-09 closeout](v01-current-closeout-20261009-validation.md) is the current evidence index. Its scoped results are not a completion percentage; Native G1/G2 remain open and the Client repository remains separately attributed.
+The [current E3 closeout](v01-current-closeout-20261009-validation.md#latest-native-e3)
+is the single evidence index. E3 remains terminal QueueOracleError /
+WRITER_EPOCH_STALE FAIL despite five actual turns, accepted original context and
+correlated replies, eleven HTTP 200 / HEADER_ACCEPTED observations and confirmed
+cleanup/pins. The test-only historical queue predicate passed five selected offline checks
+with strict refusals retained; production fencing is unchanged and no new paid
+PASS exists. G2 reuse is not activated or validated.
+
+The reusable Link gate actually passed eight scenarios and two owned Hub
+restarts on dirty-b06 source, with confirmed cleanup and exact unchanged
+source/six-resident checks. Its 26 helper tests and independent review passed.
+The earlier clean-b06 operator PASS and both zero-Go reusable FAILs remain
+separate; [exact source/images/receipts](v01-link-recovery-fixture.md#reusable-link-gate-pass).
+Fresh zero preparation passed (no new paid PASS). Next: G1, G2 denial plus G3 restore, and independent remaining current
+Android/native/device/HTTPS gates. Overall **PARTIAL**; historical ledger counts
+below are not added into a current completion percentage.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

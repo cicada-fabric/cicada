@@ -7,6 +7,23 @@ qualification. See [repository maintenance](docs/repository-maintenance.md).
 
 ## 0.1.0-dev — unreleased
 
+### 2026-10-10 bounded Link recovery and current Native evidence
+
+Added the dedicated Link original-packet fault fixture and reusable
+`--suite client-link-recovery` orchestration. The reusable gate actually passed
+eight scenarios and two exact owned Hub restarts on dirty-b06 source; 26 offline
+helper tests, independent review, cleanup and unchanged source/resident checks
+passed. Its two zero-Go preflight FAILs and the earlier clean-b06 operator PASS
+remain separately attributed. Production Guard,
+Client contract and capabilities are unchanged. The Codex source default is
+0.162.1; published organization profile/Pages are documentation, not product
+release or Hub HTTPS acceptance. Current Native E3 remains terminal queue-oracle
+FAIL; five selected test-only historical-queue checks pass with original strict
+refusals retained and G2 reuse not activated. Exact latest
+scope and remaining G1/G2/G3/external gates are in the
+[current closeout](docs/v01-current-closeout-20261009-validation.md#latest-native-e3).
+Overall v0.1 stays PARTIAL and unreleased.
+
 ### 2026-10-10 public documentation and repository maintenance
 
 Added the current v0.1.x technical guide, native Markdown navigation, contribution,

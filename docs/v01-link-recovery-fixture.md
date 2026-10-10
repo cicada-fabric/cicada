@@ -127,10 +127,11 @@ no SQL change stands in for restart. Without coordination it fails. Missing
 Hub variables produce a SKIP, never PASS. This gate and Android, native Runtime,
 physical device and public HTTPS require their own current artifact evidence.
 
-Current coordination is manual or supplied by a separately authorized Root
-orchestrator. `scripts/test-client-hub-interop.sh` has four existing suites;
-neither its selectors nor the test image's default ENTRYPOINT runs this new
-gate. Building the existing images is still done with
+At the original fixture checkpoint, coordination was manual or supplied by a
+separately authorized Root orchestrator. The interop script then had four
+suites, none selecting this gate. The subsequent reusable workflow below adds
+`--suite client-link-recovery`; the test image's default ENTRYPOINT still does
+not select it. Building the existing images is still done with
 `scripts/build-hub-image.sh --image "$OWNED_HUB_TAG" --interop-test-image
 "$OWNED_TEST_TAG" --metadata-file "$PRIVATE_BUILD_METADATA"`. Record the
 metadata's exact image IDs and full dirty-source inventory before launch.
@@ -256,9 +257,154 @@ specified bookworm compiler image with `-buildvcs=false`. A current-image
 interop runner built with `CGO_ENABLED=0` is a separate artifact and requires
 its own source/image and outcome evidence.
 
-At this documentation checkpoint the current-image eight-scenario Go gate
-and its two Root-owned Hub restarts are **NOT_RUN**. Android, actual native
+At this earlier offline documentation checkpoint the current-image
+eight-scenario Go gate and its two Root-owned Hub restarts were **NOT_RUN**. Android, actual native
 Runtime, physical device and public HTTPS are separately **NOT_RUN**. There
 was no APK build, Owner consent frame, online Client signing or production
 state change. Historical Android acceptance stays attributed to its original
 source/APK/Hub pair.
+
+
+## Recorded current-image Go validation — clean b06, 2026-10-10
+
+Root ran the dedicated eight-case gate on clean
+`b06a558f04cf92113df37d089ce1de7e81ba3c99`. It passed **1 top-level + 8 subtests**,
+zero failures/skips, with package execution **15.383 seconds** and complete
+operator execution **115.433 seconds**. Both KEY and NONE covered response loss,
+processing, uncertain and unavailable. Both uncertain cases required actual
+Root-owned Hub restarts; marker-to-matching-ready times were **1.089** and
+**1.343 seconds**, within separate absolute 45 second deadlines.
+
+| Actual tested identity | Value |
+| --- | --- |
+| Complete source inventory, identical before/after | `e9d5c6be2754ec3a89b79973fa95087a6f6a214d9b2902213c5b07aefde2441b` |
+| Hub build-input fingerprint | `7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5` |
+| Hub image | `sha256:4a62048ac6389bea92c43aa73e225a9afa946f7deb3400b821e76d654db93b68` |
+| Test image | `sha256:1f835ee325f28e2b1eb69f0b4a45c516c353399446550ec01aaa414b800fa62c` |
+| Catalog | `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d` |
+| Root gate result | `e66b2866ad99e6eb5f6a8c0eff263f31c61bc68b3f814401a8f3e55813a83ff3` |
+| Independent Root postcheck | `45387856a6b4ff6b7c73a8427991642c4f9741475a7d6107f4ed033db86b39dc` |
+
+Owned cleanup was CONFIRMED, source and six residents unchanged. The independent
+postcheck was `PASS_LINK_SCOPE_ONLY`: complete source rows, resident IDs,
+Config/HostConfig/full Mounts sorted by destination/StartedAt and private evidence
+hashes matched; exact Hub/test CIDs, run label, image tags and owned scratch were
+absent. Cleanup of image tags does not assert continued image-ID availability.
+These identities are the actual PASS artifacts, not either failed predecessor.
+
+Two earlier Root operator failures remain preserved. The first took **63.539s**
+and failed `CIDFILE_CONTENT` when Docker's initially empty cidfile was read;
+zero Go cases ran. Its result SHA is
+`0ffb6f78ecfc2e76aed76099f233491dacf866a79e85850954023f19ebbb8a19`;
+original failed cleanup was followed by a separate verified Root cleanup.
+The second took **139.432s** and failed `GO_TEST_FAIL`: the compiled Go test binary
+could not execute on a default noexec tmpfs; package fail elapsed was **0.001s**
+and zero Go cases ran. Its result SHA is
+`a61e15914935d8ecaba49f9db7af97c49fdebead6da51cc837bfc22359920e57`.
+An actual network-none mountinfo probe established the noexec cause. The successful
+runner used explicit exec; Hub tmpfs retained noexec. Only Docker Mounts array
+order was normalized; no Config/HostConfig/mount values were ignored.
+
+This PASS accepts the actual Hub's synthetic Go original-packet recovery and
+fresh separate-session reconciliation. It does not establish current Android
+recovery, native Runtime, physical Android, public HTTPS, a committed grant in
+outer-only fault modes, or arbitrary actions exactly once. Those runtime
+acceptances remain separately NOT_RUN in this Link scope; F38 retains its own
+original source/APK/Hub attribution. Production Guard/Owner signatures, wire,
+catalog and `external_thread_links=false` are unchanged.
+
+The reusable command added by this subsequent change is
+`scripts/test-client-hub-interop.sh --suite client-link-recovery`. It builds fresh
+owned images through the existing builder, uses the existing cleanup helper with
+lane `client` and a distinct Link suite, explicitly selects this Go test, and
+coordinates only the two exact Go JSON uncertainty markers on that owned Hub.
+The command is implemented in source. Its initial 17 deterministic helper tests
+and independent review passed. The first actual reusable-suite execution failed
+before any Go test started: phase `protocol_test`, helper `OWNED_MOUNT`, no
+restart marker or runner exit. Its result SHA-256 is
+`a9f5e58561942b5f270e0f0a99a675e969218d07f8643dd3cd3b036d03e0b4bd`;
+helper receipt `64108f37a210ca2dfb06d7773578579654e8898eaf7c8b50ee3101629331ecc9`.
+Cleanup was CONFIRMED, receipt
+`7a7de2c3610cd6e9e723c9046991886feb2974eb828e75eb233e8184ed72f8a9`.
+The sanitizer also tried to read an absent raw file; this secondary failure
+does not replace the original preflight FAIL. This attempt has zero Go tests,
+with protocol coverage NOT_RUN. The second actual reusable attempt also failed
+before any Go lifecycle was observed: `RUNNER_CHANGED`, result
+`7db306d966fb11640985f087f3db6a41ca5a03ffd40a13c6958b061b8c77f907`,
+helper receipt `c9c3eb6d1dbb41d3d7f3f1878db2804d166d8f2bd93de52bcfd468dd8b4c5cd9`.
+Both real kernel tmpfs projections passed, but tests/restarts remained empty.
+Cleanup was CONFIRMED, receipt
+`15fc74bb19c9b87d4b005fd261b4e8967f077f35f529fda16e552f68e7593a6b`;
+build source and six resident digest rows matched before/after. The raw log was
+empty and the missing-raw sanitizer error did not recur. The corrected reusable
+workflow subsequently passed in T1120, recorded below; both FAILs remain intact.
+The clean-b06 result above belongs to the Root operator and is not transferred
+to this changed workflow/source.
+Resident configuration and environment values are compared through full
+canonical-state digests; evidence stores no environment values or arbitrary
+label text. Command output is limited during streaming reads, and initial
+workspace/state bind mounts are inspected explicitly. Docker's actual Created,
+Running and Stopped inspect API omits `--tmpfs` from `Mounts`; the exact tmpfs
+declaration remains checked in `HostConfig.Tmpfs`. Each Running owned PID is
+checked through bounded `/proc/PID/mountinfo` reads with matching UID and two
+inspect snapshots confirming unchanged PID/StartedAt. Only the fixed `/tmp`
+filesystem/flags/size projection is recorded. Created state cannot provide a
+kernel PASS. An explicit `/tmp` Mounts entry, if present, remains strictly
+validated. The missing-raw sanitizer now records NOT_RUN and preserves failure.
+Bind Mode/Propagation must match the retained real snapshots (`""`/`rprivate`).
+Missing preflight evidence preserves Docker-unavailable BLOCKED; a prior PASS
+is downgraded when those required inputs are absent.
+The real Created→Running Docker probe found only `HostConfig.OomKillDisable`
+changing from false to null. The owned runner comparison accepts only that
+default equivalence, rejects true/unexpected types, and records original full
+canonical hashes and original field values. Resident digests keep every field
+unchanged and still reject a false/null change.
+The corrected helper's targeted offline suite passed 26 tests (zero failures or
+skips), with independent G4 review PASS. These parser/identity tests execute
+no Docker; the actual corrected-source gate is recorded separately below.
+Android original-packet use remains the existing `serve-link` workflow above.
+
+<a id="reusable-link-gate-pass"></a>
+
+## Reusable Link gate actual PASS — dirty b06, 2026-10-10 T1120
+
+```sh
+scripts/test-client-hub-interop.sh --suite client-link-recovery
+```
+
+Root executed this corrected reusable command once: **PASS**, exit 0,
+**113.7468 seconds** outer and **15.409 seconds** Go package. One top-level test
+and eight KEY/NONE subtests passed, with zero failures/skips; both ordered
+markers caused real restarts of the exact owned Hub and passed. This result
+accepts the isolated synthetic Go original-packet recovery and fresh separate
+reconciliation scope. It contains no model, Native Runtime or Android run.
+
+| T1120 actual provenance / receipt | Value / SHA-256 |
+| --- | --- |
+| Git revision | `b06a558f04cf92113df37d089ce1de7e81ba3c99` |
+| Build source state | **dirty=true**, full input inventory retained; not clean b06 alone |
+| Source fingerprint | `7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5` |
+| Catalog | `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d` |
+| Hub image | `sha256:f4c1782e6441810f97f67810687fee73463070e287c88376417e51817ee25453` |
+| Test image | `sha256:a23efb39db7d0713aa23b9e10cb87dcde48559701864d3faa4744f947662b818` |
+| [Build provenance](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/build.json) | `56986def70b0b985514286c8dd6a6d76fab47a71c9732b2a252d7c50142016a7` |
+| [Gate result](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/result.json) | `24f37f0c20fe7f88488233175f852edd56aa633dcb102855252d44dbd84ff975` |
+| [Helper receipt](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/link-recovery.json) | `e7520ee9e03b488b63c0663e5f2966975447a69f108fff415d0df4b6769aade0` |
+| [Cleanup receipt](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/cleanup.json) | `9105bc80c6418cc0693d38efd787525d5b338d139e5c2b7989557a98da65ce62` |
+| [Independent Root postcheck](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/ROOT-POSTCHECK.NONAUTH.json) | `0d334df6ea77ddb0764a6413b1ea515ec6b9524409581f2cca8a1f92551cbd5f` |
+
+Cleanup was **CONFIRMED**. Complete source rows before/after and six resident
+Config/HostConfig/full canonical Mounts/StartedAt snapshots were unchanged;
+owned scratch and four recorded owned resources were absent. Root's postcheck
+explicitly records whole-repository source clean **false**. The new image IDs
+above belong to this dirty-source PASS; the earlier clean-b06 PASS and both
+zero-Go reusable FAILs retain their own original artifacts and receipts.
+
+Current Android original-packet recovery, remaining real native Runtime,
+physical-device and public-HTTPS acceptance remain separately **NOT_RUN** in
+this Link scope. For Android use, the existing `serve-link` workflow above
+requires the Client's own original encrypted request; this Go suite uses its
+own fresh synthetic originals and supplies no Client approval or packet.
+Outer-only faults still prove no committed grant or arbitrary exactly-once
+execution. Wire, catalog, capabilities, Guard/Owner signatures and
+`external_thread_links=false` remain unchanged.

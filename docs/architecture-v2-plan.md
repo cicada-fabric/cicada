@@ -2,9 +2,35 @@
 
 ## Current acceptance sequence — v0.1 PARTIAL
 
-Use the [current validation closeout](v01-current-closeout-20261009-validation.md) for current status and next actions. Clean631 build/equality and keyless startup passed. The prior CLI 0.162.1 attempt completed six turns with both original A/B cross-Group reply/context predicates accepted, but remains FAIL at the later zero-model G2 hidden-members/revoked-Link denial stage. Diagnose that exact failure before considering any separately authorized run; same-Group G1 and G3 restored status queries remain separate. Current zero-turn U Directory denial passed, without durable metadata/context proof. Source-equal production HTTP and deterministic queue/read-revocation evidence provide scoped G5 authorization PASS; recording Native queue is not model consumption, and shared-SID memory isolation is not claimed. Strict retained A replay is now PASS, while receiptc002 and prior paid002 remain original FAIL records. Preserve prior Dab full-suite/Browser attribution, three G4 production component-process windows, independent current 0.162.1 injection-window evidence, and scoped G5/M3/M4/M5 results. The latest CLI 0.162.1 post-injection/pre-ledger window passed separately, without new turns or model-consumption proof. External gates stay separate; v0.2 permission UX is not added. Overall v0.1 is **PARTIAL**; dated entries below remain historical.
+Use the [current validation closeout](v01-current-closeout-20261009-validation.md#latest-native-e3) as the single current evidence index.
 
-Latest repaired-source G1 `cicada-two-turn-g1cli0162timeout20261010d2` remains **FAIL**, exit 1 after 180 seconds, with one started turn and RuntimeError at terminal Native `audit:60` (result SHA `80233230d37336feba2b8756181e565ddcf7e1001a7862aafe4cb657afbe9647`). The proven G1 None timeout ABI fault was repaired while preserving inherited default 180; its TypeError is absent in this execution. Fresh zero preparation passed; Root's full offline wiring suite has **47 PASS / 2 explicit SKIP / 0 FAIL**. Independent cleanup-only postcheck SHA `6fef835b1d226ce7fd843a5a91cbe92b5b157bc1efb99f4b7fb6917d1d656fe9` confirms both EOFs, fourteen owned selectors/network/UDS absence, six residents unchanged and source pins. These are not Native PASS. A's second Host broker connection reports UNKNOWN_UNSUPPORTED at **upstream response READ_HEAD**, before shutdown; the existing safe response-status/rejection metadata is disabled in the actual Peer path, so the exact rule remains UNKNOWN. Current never/user approval configuration and no approval requests do not establish an automatic-review or provider403 cause. [Actual evidence and next diagnostic boundary](v01-current-closeout-20261009-validation.md#latest-native-timeoutabi) retain clean631 product/image attribution separately from changed Python harness and later repository HEAD. Earlier c G1/G2 failures, old full45+2 QA and other failed entries remain historical. Next prepare and review an offline adapter for existing response enums without changing parser, guards, budgets or oracles; no paid retry is authorized by this record. Same-Group G1, the G2 denial tail and G3 restore remain open; overall v0.1 is **PARTIAL**.
+The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
+completed the original A/B context and exact correlated reply predicates;
+all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
+witnesses do not turn the terminal FAIL into Native acceptance. Production
+Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
+with authenticated management HTTP 503; restore/status-query acceptance is open.
+Five selected test-only historical-queue checks now pass with strict refusals
+retained; production fencing is unchanged and G2 reuse is not activated.
+
+The reusable `--suite client-link-recovery` gate now actually passed one
+top-level test and eight subtests, with two real owned Hub restarts, zero
+failures/skips and confirmed cleanup. The tested build is **dirty b06**, with
+its full source fingerprint and actual image IDs recorded in
+[Link validation](v01-link-recovery-fixture.md#reusable-link-gate-pass).
+Its 26 offline helper tests and independent G4 review passed. The earlier
+clean-b06 Root operator PASS and both reusable preflight FAILs (OWNED_MOUNT,
+RUNNER_CHANGED; zero Go tests) retain their separate source/evidence attribution.
+
+Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
+authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
+and public-HTTPS acceptance require independent evidence. No new paid PASS is
+claimed. Overall v0.1 remains **PARTIAL**.
+
+Earlier timeout ABI/response-rejection attempts and pre-E3 metadata NOT_RUN
+statements are historical. Their failures, source bindings and artifact origins
+remain unchanged. Other dated sections below retain their scoped evidence.
 
 The [one-click test guide](test-automation.md) uses `scripts/test-architecture-v2-completion.sh`; default execution uses no paid models and preserves independent NOT_RUN/BLOCKED results, without claiming full v0.1 acceptance.
 

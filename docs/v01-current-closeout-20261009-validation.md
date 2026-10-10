@@ -5,11 +5,119 @@ the individual historical records and failed attempts at their original source
 and artifact attribution. It does not change `CICADA.md`, the Client contract,
 or any product policy.
 
+<a id="latest-native-e3"></a>
+
+## Current E3 Native diagnostic — 2026-10-10
+
+The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
+completed the original A/B context and exact correlated reply predicates;
+all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
+witnesses do not turn the terminal FAIL into Native acceptance. Production
+Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
+with authenticated management HTTP 503; restore/status-query acceptance is open.
+
+[Actual E3 result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-rspmeta20261010e2/request-observer-native-result-cicada-two-turn-g1cli0162rspmeta20261010e3/result.json) SHA-256:
+`b7e80cace4eccad0d58d0905e0399b557dfcb25c1d997d595aaaa3ba7ea5a262`.
+[Independent cleanup/pins postcheck](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/INDEPENDENT-POSTCHECK.NONAUTH.json) SHA-256:
+`5a6c03671dff8fcd4a8342875bac5f582ec16b1796b26d672b960db48b01adbf`
+passed both EOFs, fifteen owned selectors, full source pins and six unchanged
+residents. Its status is cleanup/pins PASS only, with actual Native FAIL retained.
+
+[Source and receipt chronology](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/WRITER-EPOCH-ROOTCAUSE-AND-MINIMAL-PROPOSAL.NONAUTH.json) proves the test-only mismatch:
+QUEUE_ACCEPTED was committed under writer epoch 1; publishing the exact remote
+receipt reacquired the real native writer at epoch 2. NativeOperationOutcome
+preserves the accepted historical operation. The terminal Python oracle wrongly
+required the historical commit epoch to equal the latest acquisition epoch.
+The test-only historical queue predicate is now implemented. Five selected
+[offline checks](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/HISTORICAL-QUEUE-SELECTED-QA.NONAUTH.json)
+passed (0 skips/failures, 0.716s), receipt SHA-256
+`f14813e9ba9b4a6300e6df2d3a455c23cd0315408ae9eb7fa993542501084f8a`.
+The retained E3 strict verifier still rejects WRITER_EPOCH_STALE; historical
+receipt acceptance does not grant current writer authority or prove consumption.
+Production fencing is unchanged. G2's selector is not activated; any reuse of
+this predicate for G2 needs source-backed scope and offline checks first.
+
+Fresh queuehist10f1 zero preparation now actually passed
+PREPARATION_PASS_NATIVE_NOT_RUN, with zero model calls, turn/event starts and
+paid submissions, using binding
+`173ee23fe6205be758d7730c6ddcf3264a2d6e4c8c47dea93c5c8086da884827`.
+[Actual zero](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/native-preparation-cicada-two-turn-zerocli0162-queuehist10f1/result.json)
+SHA `baac7a365a37c2c6f52d1fd4e08b750b7dbbd03c2f114a4b253f0c080d732462`;
+independent cleanup/residents SHA
+`27b1f8468eb63445e7bbbcfe458841eb7e67fc0ddc5e0d89bcb8f7e02ad167b5`,
+full pins/counters SHA
+`9432055265f89d5ada67fbe195dbb7da88da4611704ae733bf729bd9c105673a`.
+Two EOFs, fourteen owned selectors, full source/compiler/wiring pins and six
+resident snapshots passed independent postcheck. This is preparation only,
+not new paid Native acceptance. Root's separate five selected checks passed
+in 0.282s with the absolute binding path/SHA; the initial relative-path
+CURRENT_BINDING_PARENT failure before tests is retained separately.
+The dynamic clean G1 launch helper is prepared **NOT_GO**; the fresh
+current-source real G1 gate is **NOT_RUN**. Zero preparation creates no model GO.
+
+E3 artifacts retain clean product origin
+`631666c8f86349e1b1e81c318f324c7897588683`, product SHA
+`3baf7bfbd217ac3d24be0fb3f41dfe5797ffc17a38f1f6c2b79dbe3b1209efae`,
+Hub image `sha256:c87cf47a3ed1b48832a3ec638d98f2f3359d1e6cd2dd06b51cf80de3989e066b`
+and Runtime image
+`sha256:e9690980b153132186780c66126a78b98ed87c3d5e99abf3303b6277e48f697e`.
+These differ from later repository source and both the clean-b06 and dirty-b06 Link images.
+
+Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
+authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
+and public-HTTPS acceptance require independent evidence. No new paid PASS is
+claimed. Overall v0.1 remains **PARTIAL**.
+
+The reusable `--suite client-link-recovery` gate now actually passed one
+top-level test and eight subtests, with two real owned Hub restarts, zero
+failures/skips and confirmed cleanup. The tested build is **dirty b06**, with
+its full source fingerprint and actual image IDs recorded in
+[Link validation](v01-link-recovery-fixture.md#reusable-link-gate-pass).
+Its 26 offline helper tests and independent G4 review passed. The earlier
+clean-b06 Root operator PASS and both reusable preflight FAILs (OWNED_MOUNT,
+RUNNER_CHANGED; zero Go tests) retain their separate source/evidence attribution.
+The clean-b06 actual result SHA-256 is
+`e66b2866ad99e6eb5f6a8c0eff263f31c61bc68b3f814401a8f3e55813a83ff3`;
+its independent PASS_LINK_SCOPE_ONLY postcheck is
+`45387856a6b4ff6b7c73a8427991642c4f9741475a7d6107f4ed033db86b39dc`.
+Exact Hub/test image IDs in that runbook belong to the clean-b06 operator run.
+The first reusable-suite FAIL result SHA-256 is
+`a9f5e58561942b5f270e0f0a99a675e969218d07f8643dd3cd3b036d03e0b4bd`;
+zero Go tests ran. Its secondary absent-raw sanitizer error is a harness fault;
+confirmed cleanup does not upgrade that protocol preflight FAIL.
+The second reusable result SHA is
+`7db306d966fb11640985f087f3db6a41ca5a03ffd40a13c6958b061b8c77f907`:
+FAIL/RUNNER_CHANGED, zero parsed Go lifecycle/restart events. Both real kernel
+/tmp projections passed; complete build source and six resident digest rows
+matched before/after, cleanup CONFIRMED. A real Docker probe isolated its single
+Created→Running false/null OomKillDisable default. The subsequent owned-only
+comparison correction passes 26 helper tests; resident full-state comparison
+and production policy remain unchanged. The corrected T1120 reusable gate
+then passed; both original FAIL receipts remain unchanged.
+
+The [actual T1120 result](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/result.json)
+is PASS/exit 0, SHA-256
+`24f37f0c20fe7f88488233175f852edd56aa633dcb102855252d44dbd84ff975`: one
+top-level plus eight subtests, zero failures/skips, Go package **15.409s**,
+outer **113.7468s**, and two exact owned Hub restarts PASS.
+[Build provenance](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/build.json)
+SHA `56986def70b0b985514286c8dd6a6d76fab47a71c9732b2a252d7c50142016a7`
+records revision `b06a558f04cf92113df37d089ce1de7e81ba3c99`, **dirty=true**,
+fingerprint `7a8b99036b32e7d4727ab7011a53fa477854505cabfbdeccb8bc54baed7580d5`.
+The [independent Root postcheck](../.cicada-data/architecture-v2-completion/client-link-recovery-root-20261010T1120/ROOT-POSTCHECK.NONAUTH.json)
+SHA `0d334df6ea77ddb0764a6413b1ea515ec6b9524409581f2cca8a1f92551cbd5f`
+confirms exact source before/after, six unchanged residents, absent scratch and
+four absent owned resources. Whole-repository source clean is **false**.
+Exact new Hub/test image IDs and helper/cleanup hashes are in
+[the Link receipt table](v01-link-recovery-fixture.md#reusable-link-gate-pass).
+This Link PASS contains no model, Native Runtime or Android acceptance.
+
 <a id="latest-native-timeoutabi"></a>
 
-## Current Native timeout ABI checkpoint — 2026-10-10
+## Historical Native timeout ABI checkpoint — 2026-10-10
 
-The latest single real G1 is **FAIL**, exit 1 after 180 seconds, at
+At this earlier checkpoint, the single real G1 was **FAIL**, exit 1 after 180 seconds, at
 `original_managed_join_and_context` with RuntimeError and public origin
 `<effective-request-observer-audit>::audit:60`. It has one submission, one actual
 started turn and one started event. [Actual result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-timeoutabi20261010d2/request-observer-native-result-cicada-two-turn-g1cli0162timeout20261010d2/result.json)
@@ -58,7 +166,7 @@ source/compiler pins. Root removed only the three empty operator roots;
 SHA `9de0aa28298a05a645b9d3fc5aae60744c031beaa6a0d8bbeb4546ec727b8735`.
 Retained private Native state and all original FAIL receipt bytes remain intact.
 
-The next action is an offline design/review for connecting existing safe
+At that historical checkpoint, the next action was an offline design/review for connecting existing safe
 response enums at the actual Peer seam. Preserve original parser/refusals,
 Thread/context/PQ/ALPHA/BETA/reply oracles, 600/30/30/660 budgets, outer690/+15,
 5/3/2 turns, TCP16 and retries0. This record authorizes no source change or new
@@ -399,25 +507,16 @@ ignored private runner above, not from one public combined-suite script.
 
 ## Native G1–G5 and M3–M5 status
 
-The acceptance definitions remain in `CICADA.md` §39. Current clean631 has
-the finite TCP connector bound; its test evidence retains the earlier overlay
-attribution. Prior paid002's receive-DTO correction and receiptc002's warning
-prefix correction/replay retain their original FAIL records. Prior CLI 0.162.1
-six-turn evidence passed both original-thread reply/context predicates, then
-failed at the zero-model G2 denial tail. Earlier c G1/G2 attempts failed during
-initial managed join/context after one/two started turns; their owned cleanup
-and actual EOF checks passed. Latest timeoutabi10d2 G1 is FAIL/RuntimeError at
-audit:60 after one started turn; its None TypeError is repaired. Upstream
-response READ_HEAD is proven, but the exact rejection rule remains UNKNOWN
-because existing response metadata is disabled in the actual Peer path.
-Earlier b post-claim loader failures retain UNKNOWN effect counts. Current deterministic full49 passed 47 tests with 2 explicit replay SKIPs;
-earlier full47 (45+2) remains source-attributed; that does not close
-same-Group G1, the G2 denial tail or G3 restore.
+The acceptance definitions remain in `CICADA.md` §39. Latest E3 scoped
+turn/context/reply and HTTP observations are recorded above; its terminal queue
+oracle remains FAIL. Earlier attempts, full offline QA and artifacts retain
+their own sources. Neither cleanup nor recording/synthetic queues prove full
+Native or model-consumption recovery.
 
 | Gate | Current state |
 |---|---|
-| G1 — original-context in-group Ask/Reply | **Open separately.** Latest timeoutabi10d2 G1 remains FAIL/RuntimeError at audit:60 after one started turn; None ABI TypeError is absent, cleanup/EOF passed, full RPC/context acceptance did not. Earlier b failed entry counts remain UNKNOWN. Prior cross-Group witnesses do not establish the same-Group path. |
-| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial.** Prior six-turn setup/context predicates passed but denial tail failed. Latest c G2 remains FAIL during initial managed join/context after two started turns, with cleanup/EOF passed and exact READ_HEAD rejection rule UNKNOWN. Earlier b failed entry counts remain UNKNOWN. |
+| G1 — original-context in-group Ask/Reply | **Open.** E3 completed five actual turns and original context/reply predicates, but overall terminal QueueOracleError/WRITER_EPOCH_STALE remains FAIL. Complete the test-only oracle correction and fresh source-bound G1. |
+| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial.** Preserve prior six-turn original A/B context witnesses and failed denial-tail results; current hidden-member/revoked-Link denial acceptance remains open. |
 | G3 — Control-independent communication | **Scoped positive evidence:** current actual result records `NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true` from production `serve --fabric-only`, and authenticated management HTTP 503. Invocation counter is `NOT_INSTRUMENTED`; restore/status-query acceptance is `NOT_RUN`. This does not close all G3 or imply an accepted in-group G1 path. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
 | G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility. Current U has zero turns and no materialized durable metadata/context proof. Source-equal deterministic tests cover authorization at pending delivery, writer-wait revocation and scoped reads, with recording/synthetic Native queue rather than model consumption. Shared-SID memory isolation is not proven or promised; the warning describes that limit. Generic export is unsupported, not an added gate. The actual G2 revoked-Link tail remains open. |
@@ -439,23 +538,12 @@ No Client source was changed.
 
 ## Remaining acceptance gates
 
-- **Implementation:** keep the adopted interfaces, Guard/crypto and explicit Join boundaries; no new implementation completion is inferred from these runs.
-- **Passed scoped checks:** deterministic/integration, TCP/Browser, G4 windows, G5 authorization and Apache artifact inclusion retain the evidence above; they are not blanket Native acceptance.
-- **Current Native:** review the existing response-metadata adapter design for latest timeoutabi10d2 G1; preserve earlier G1/G2 failures and the unresolved upstream READ_HEAD predicate; retain strict original-context and denial-tail oracles. No blind retry or completion claim.
-- **External:** current Android interoperability, physical Nodes/devices and public HTTPS remain separately NOT_RUN; historical external evidence is not current acceptance.
+1. Validate G1 original-context in-group Ask/Reply under the actual fresh zero and source binding after the selected historical-queue checks; preparation passed, no new paid PASS is recorded.
+2. Before validating the G2 hidden-member/revoked-Link denial tail, bind and check its historical witness predicate to the G2 source; that selector is not yet activated. Separately restore authenticated encrypted G3 management/status queries. Control-object exclusion and HTTP 503 are scoped positive evidence, not restoration.
+3. Complete independently sourced current Android, remaining native Runtime, physical-device and public-HTTPS gates. Prior Client results remain tied to their tested source.
 
-| Priority / boundary | Required remaining evidence | Current limit |
-|---|---|---|
-| G2 denial tail | Resolve the current initial-turn failure with evidence, then review separately authorized unchanged hidden-members/revoked-Link predicates. | Prior six-turn original A/B context witnesses passed; latest c G2 is FAIL with true cleanup and unresolved READ_HEAD rule. |
-| G1 same-Group | Pass the original-context in-group Ask/Reply path under Root supervision of existing bounded authorization. | Latest timeoutabi10d2 G1 is FAIL/RuntimeError after one started turn; true cleanup does not close G1. Earlier failed entries/results remain retained. |
-| G3 restore | Restore management and pass authenticated encrypted status queries while retaining independent peer communication. | Control-object exclusion/management 503 passed; invocation count uninstrumented, restore not reached. |
-| G4 / G5 scope | Retain the three process-window and current CLI injection-window results, production HTTP authorization/Monitor denials, deterministic queue/read revocation and current live-U denial. | These predicates have scoped PASS evidence; they do not claim full daemon/model recovery or shared-SID memory isolation. No extra model turn is required for a deterministic HTTP Guard predicate; the failed actual G2 revocation tail stays separate. |
-| Apache distribution artifacts | **Scoped artifact inclusion checks passed:** standard/PQ assets and both Hub images contain exact LICENSE and preserved third-party notices. | The original release-operation test error remains FAIL; separate existing-artifact checks passed 21/21. No publication, formal release or replacement of resident images. |
-| External Client / deployment | Current Android interoperability, physical devices, public HTTPS, and Client pin/session/replay acceptance require their own evidence. | Earlier Client and local protocol/package/Browser results retain their separate sources; they are not these external gates. |
-
-Preserve prior paid FAILs, guard refusals and UNKNOWN records. M3/M4 backend and
-M5 HTTP/TCP evidence retain their tested scopes; v0.2 permission UX is not a new
-v0.1 requirement. Overall v0.1 remains **PARTIAL**, without a completion percentage.
+Retain scoped G4/G5/M3/M4/M5, Apache and Link results without adding a completion
+percentage or a v0.2 permission-UX requirement. Overall v0.1 remains **PARTIAL**.
 
 ## Scope boundaries
 

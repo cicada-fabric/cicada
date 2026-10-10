@@ -65,6 +65,95 @@ MAX_NATIVE_NORMAL_SECONDS = 600
 NATIVE_TERMINAL_SECONDS = 30
 NATIVE_CLEANUP_SECONDS = 30
 PROVIDER_TRANSPORT_SHA = "91da1e83820caed12809ba8bd6a3156a015e84bf70c310eeb87d91d359118e72"
+PEER_TERMINAL_ROOT = HERE.parents[1] / '.cicada-data/native-observer-wiring-20261007/peer-outer-broker-20261009a'
+PEER_QUEUE_ORACLE_SHA = '1911e57241729c663d4b4eb844b4e049f6f226c366fa5c045135c7ed509bafe7'
+PEER_TERMINAL_GATE_SHA = '149348f5d7a533aaf2df122d3584e30db743f6ea5edcff453b3712bb40202b4c'
+
+
+def selected_historical_queue_verifier():
+    """Derive a stopped-source historical read; never grant writer authority."""
+    path = PEER_TERMINAL_ROOT / 'peer_native_queue_oracle.py'
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != PEER_QUEUE_ORACLE_SHA:
+        raise ValueError('TERMINAL_QUEUE_ORACLE_SOURCE_PIN')
+    module = sys.modules.get('peer_native_queue_oracle')
+    if module is None:
+        module = safe_module('peer_native_queue_oracle', path)
+    if Path(getattr(module, '__file__', '')).resolve() != path:
+        raise ValueError('TERMINAL_QUEUE_ORACLE_MODULE_ORIGIN')
+    text = raw.decode('utf-8')
+    node = next(node for node in ast.parse(text).body
+                if isinstance(node, ast.FunctionDef) and node.name == 'verify_queue_accepted')
+    source = ast.get_source_segment(text, node)
+    changes = (
+        ('Verify the unique current-epoch Go QUEUE_ACCEPTED row for this delivery.',
+         'Verify historical Go QUEUE_ACCEPTED for a stopped, receipt-bound delivery.'),
+        ('if outcome["writer_epoch"] != current_epoch:',
+         'if outcome["writer_epoch"] > current_epoch:'),
+        ('"writer_epoch": current_epoch,',
+         '"writer_epoch": outcome["writer_epoch"],\n'
+         '            "current_writer_epoch": current_epoch,\n'
+         '            "acceptance_scope": "HISTORICAL_DURABLE_QUEUE_ACCEPTED",\n'
+         '            "current_authorization": "CURRENT_AUTHORIZATION_NOT_PROVEN",'),
+    )
+    for before, after in changes:
+        if source.count(before) != 1:
+            raise ValueError('TERMINAL_QUEUE_ORACLE_SOURCE_CONTEXT')
+        source = source.replace(before, after, 1)
+    namespace = dict(module.__dict__)
+    exec(compile(source, '<owned-terminal-historical-queue-oracle>', 'exec'), namespace)
+    function = namespace['verify_queue_accepted']
+    function._owned_source_sha256 = hashlib.sha256(source.encode()).hexdigest()
+    return function
+
+
+def install_owned_terminal_queue_witness(owner):
+    """Bind only this paid G1 instance; retain exact Hub receipt/scope checks."""
+    if getattr(owner, '_owned_terminal_queue_witness', None) is not None:
+        return owner._owned_terminal_queue_witness
+    if not hasattr(owner, 'peer_brokers'):
+        return None
+    import textwrap
+    path = PEER_TERMINAL_ROOT / 'peer_gate_derivative_phase_current_drainfix20261010b.py'
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != PEER_TERMINAL_GATE_SHA:
+        raise ValueError('TERMINAL_QUEUE_GATE_SOURCE_PIN')
+    nodes = [node for node in ast.walk(ast.parse(raw.decode('utf-8')))
+             if isinstance(node, ast.FunctionDef) and node.name == 'queue_acceptance_witness']
+    if len(nodes) != 1:
+        raise ValueError('TERMINAL_QUEUE_METHOD_SOURCE_CONTEXT')
+    source = textwrap.dedent(ast.get_source_segment(raw.decode('utf-8'), nodes[0]))
+    original = getattr(getattr(owner, 'queue_acceptance_witness', None), '__func__', None)
+    if (original is None or Path(original.__code__.co_filename).resolve() != path or
+            Path(original.__globals__.get('__file__', '')).resolve() != path):
+        raise ValueError('TERMINAL_QUEUE_METHOD_ORIGIN')
+    namespace = dict(original.__globals__)
+    exec(compile(source, '<owned-terminal-original-queue-witness>', 'exec'), namespace)
+    expected = namespace['queue_acceptance_witness'].__code__
+    if any(getattr(original.__code__, key) != getattr(expected, key) for key in
+           ('co_code', 'co_consts', 'co_names', 'co_varnames', 'co_freevars')):
+        raise ValueError('TERMINAL_QUEUE_METHOD_IDENTITY')
+    before = 'from peer_native_queue_oracle import verify_queue_accepted'
+    after = 'verify_queue_accepted = _owned_historical_queue_verifier'
+    if source.count(before) != 1:
+        raise ValueError('TERMINAL_QUEUE_METHOD_SOURCE_CONTEXT')
+    source = source.replace(before, after, 1)
+    old_scope = 'GO_WAIT_ZERO_DURABLE_OUTCOME_ONLY_NATIVE_HISTORY_SEPARATE'
+    if source.count(old_scope) != 1:
+        raise ValueError('TERMINAL_QUEUE_SCOPE_SOURCE_CONTEXT')
+    source = source.replace(old_scope, 'STOPPED_EXACT_OPERATION_AND_HUB_RECEIPT_HISTORICAL_ACCEPTANCE_ONLY', 1)
+    verifier = selected_historical_queue_verifier()
+    namespace['_owned_historical_queue_verifier'] = verifier
+    exec(compile(source, '<owned-terminal-historical-queue-witness>', 'exec'), namespace)
+    owner.queue_acceptance_witness = types.MethodType(namespace['queue_acceptance_witness'], owner)
+    proof = {'scope': 'G1_PAID_INSTANCE_STOPPED_TERMINAL_HISTORY_ONLY',
+             'current_authorization': 'CURRENT_AUTHORIZATION_NOT_PROVEN',
+             'original_oracle_sha256': PEER_QUEUE_ORACLE_SHA,
+             'historical_verifier_sha256': verifier._owned_source_sha256,
+             'terminal_witness_sha256': hashlib.sha256(source.encode()).hexdigest()}
+    owner._owned_terminal_queue_witness = proof
+    owner.result['terminal_historical_queue_verifier'] = proof
+    return proof
 
 
 def install_peer_response_metadata(native, library, emit):
@@ -2260,6 +2349,9 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         def native_config(self, letter, thread=None, tools=()):
             values = super().native_config(letter, thread, tools)
             if scenario == "g1":
+                if (not zero_model and getattr(self.args, 'run_native', False) is True and
+                        getattr(self.args, 'native_https', False) is True):
+                    install_owned_terminal_queue_witness(self)
                 if (not zero_model and getattr(self.args, 'run_native', False) is True and
                         getattr(self.args, 'native_https', False) is True and
                         getattr(self.args, 'closed_failure_diagnostics', False) is True):

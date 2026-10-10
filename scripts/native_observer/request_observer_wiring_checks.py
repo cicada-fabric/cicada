@@ -2641,6 +2641,7 @@ class WiringChecks(unittest.TestCase):
                 ('g1',False,True,True,mapped),('g1',False,True,True,False),
                 ('g1',True,True,True,True),('g1',False,False,True,True),('g1',False,True,False,True)):
             calls=[]; namespace={'Base':Base,'scenario':scenario,'zero_model':zero,
+                'install_owned_terminal_queue_witness':lambda owner:None,
                 'install_owned_peer_response_metadata':lambda owner:calls.append(owner)}
             selected=ast.ClassDef(name='CandidateGate',bases=[ast.Name(id='Base',ctx=ast.Load())],
                 keywords=[],body=[method],decorator_list=[])
@@ -2656,6 +2657,229 @@ class WiringChecks(unittest.TestCase):
             broker.native=self._response_metadata_native(library);broker.native.io_sink=None
         with patch.dict(sys.modules,{'peer_outer_broker':library}): gate.install_owned_peer_response_metadata(owner)
         self.assertEqual(owner.result['peer_response_metadata_setup'],'UNKNOWN')
+
+    def _retained_terminal_queue_fixture(self):
+        import sqlite3
+        import textwrap
+        peer = gate.PEER_TERMINAL_ROOT
+        sys.path.insert(0, str(peer))
+        import peer_native_queue_oracle as oracle
+        self.assertEqual(hashlib.sha256(Path(oracle.__file__).read_bytes()).hexdigest(), gate.PEER_QUEUE_ORACLE_SHA)
+        bundle = peer.parent / 'request-observer-current-0162/bundle-rspmeta20261010e2'
+        result_path = bundle / 'request-observer-native-result-cicada-two-turn-g1cli0162rspmeta20261010e3/result.json'
+        raw = result_path.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), 'b7e80cace4eccad0d58d0905e0399b557dfcb25c1d997d595aaaa3ba7ea5a262')
+        actual = json.loads(raw)
+        root = Path(actual['retained_private_state']['path'])
+        snapshot = root / 'hub-query-snapshot-003/cicada.sqlite3'
+        self.assertEqual(hashlib.sha256(snapshot.read_bytes()).hexdigest(), 'cc903d33a33fae63119c653c8f1fa96869cdb984ed0f01048e414badb49ee9a5')
+        # Read only fixed correlation columns from the retained immutable copy.
+        def rows(owner, sql, params):
+            with contextlib.closing(sqlite3.connect('file:'+str(snapshot)+'?mode=ro&immutable=1', uri=True)) as db:
+                db.row_factory = sqlite3.Row
+                return [dict(row) for row in db.execute(sql, params)]
+        path = peer / 'peer_gate_derivative_phase_current_drainfix20261010b.py'
+        text = path.read_text()
+        node = next(n for n in ast.walk(ast.parse(text)) if isinstance(n,ast.FunctionDef) and n.name == 'queue_acceptance_witness')
+        namespace = {'__file__':str(path)}
+        exec(compile(textwrap.dedent(ast.get_source_segment(text,node)), str(path), 'exec'), namespace)
+        owner = types.SimpleNamespace(result={'terminal_sources_stopped':True}, peer_brokers={},
+            run_id=actual['run_id'], args=types.SimpleNamespace(runtime_image=actual['runtime_image_id']),
+            meta={'hub_id':actual['native_pqtls_business']['a']['actual_profile']['hub_id']},
+            nodes={}, submitted_objects={})
+        for letter in 'ab':
+            binding = actual['bindings_before'][letter]
+            container = 'SYNTHETIC_STOPPED_INSPECTION_'+letter
+            owner.nodes[letter] = {'binding_before':binding, 'endpoint':binding['endpoint_id'],
+                'node_id':binding['node_id'], 'thread':binding['native_session_id'], 'container':container,
+                'paths':{'state':root/('node-'+letter+'-state')}}
+            owner.submitted_objects[('container',container)] = {'id':'SYNTHETIC_ID_'+letter}
+        def inspect(kind, name):
+            letter = next(side for side in 'ab' if owner.nodes[side]['container'] == name)
+            return {'Id':owner.submitted_objects[(kind,name)]['id'], 'Image':owner.args.runtime_image,
+                'State':{'Running':False}, 'Config':{'Labels':{'org.cicada.test.run':owner.run_id}},
+                'Mounts':[{'Destination':'/fixture/node-'+letter+'-state',
+                    'Source':str(owner.nodes[letter]['paths']['state']), 'RW':True}]}
+        owner.inspect = inspect
+        owner.queue_acceptance_witness = types.MethodType(namespace['queue_acceptance_witness'], owner)
+        request = {'message_id':actual['request_ids']['message_id']}
+        reply = {'reply_message_id':actual['terminal_readonly_ciphertext'][1]['message_id']}
+        return oracle, owner, rows, request, reply, snapshot
+
+    def test_terminal_queue_witness_retained_history_and_exact_receipt(self):
+        with run.deny_preflight_effects():
+            oracle, owner, rows, request, reply, snapshot = self._retained_terminal_queue_fixture()
+            strict = oracle.verify_queue_accepted
+            before = {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for side in 'ab'
+                for p in (owner.nodes[side]['paths']['state']/'.native-writers').rglob('*') if p.is_file()}
+            before[str(snapshot)] = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+            with patch.dict(sys.modules, {'readonly_snapshot':types.SimpleNamespace(rows=rows)}):
+                with self.assertRaises(oracle.QueueOracleError) as caught:
+                    owner.queue_acceptance_witness(request, reply)
+                self.assertEqual(caught.exception.code, 'WRITER_EPOCH_STALE')
+                original_method = owner.queue_acceptance_witness.__func__
+                proof = gate.install_owned_terminal_queue_witness(owner)
+                self.assertIs(gate.install_owned_terminal_queue_witness(owner), proof)
+                self.assertIs(oracle.verify_queue_accepted, strict)
+                owner.queue_acceptance_witness(request, reply)
+                for side in 'ab':
+                    report = owner.result['durable_queue_acceptance'][side]
+                    self.assertEqual((report['writer_epoch'], report['current_writer_epoch']), (1,2))
+                    self.assertEqual(report['status'], 'QUEUE_ACCEPTED')
+                    self.assertEqual(report['current_authorization'], 'CURRENT_AUTHORIZATION_NOT_PROVEN')
+                    self.assertFalse(report['plaintext_returned'])
+                self.assertEqual(owner.result['queue_acceptance_scope'],
+                    'STOPPED_EXACT_OPERATION_AND_HUB_RECEIPT_HISTORICAL_ACCEPTANCE_ONLY')
+                # An independent original instance still executes the strict oracle.
+                other = copy.copy(owner); other.result = {'terminal_sources_stopped':True}
+                other.queue_acceptance_witness = types.MethodType(original_method, other)
+                with self.assertRaises(oracle.QueueOracleError) as caught:
+                    other.queue_acceptance_witness(request, reply)
+                self.assertEqual(caught.exception.code, 'WRITER_EPOCH_STALE')
+                for target, field, code in (
+                        *[('receipt',key,'QUEUE_TERMINAL_RECEIPT_IDENTITY') for key in
+                          ('attempt_id','message_id','digest','target_endpoint_id','binding_id','binding_epoch')],
+                        *[('attempt',key,'QUEUE_TERMINAL_ATTEMPT_IDENTITY') for key in
+                          ('recipient_endpoint_id','binding_id','binding_epoch')]):
+                    def wrong_rows(subject, sql, params):
+                        result = rows(subject,sql,params)
+                        if ('relay_v2_receipts' if target=='receipt' else 'relay_v2_delivery_attempts') in sql:
+                            value = result[0][field]
+                            result[0][field] = value+1 if type(value) is int else value+'-wrong'
+                        return result
+                    with patch.dict(sys.modules, {'readonly_snapshot':types.SimpleNamespace(rows=wrong_rows)}):
+                        with self.assertRaisesRegex(ValueError, '^'+code+'$'):
+                            owner.queue_acceptance_witness(request,reply)
+                owner.result['terminal_sources_stopped'] = False
+                with self.assertRaisesRegex(ValueError, '^QUEUE_TERMINAL_SOURCE_NOT_STOPPED$'):
+                    owner.queue_acceptance_witness(request,reply)
+            self.assertEqual({p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in before}, before)
+
+    def test_historical_queue_verifier_epoch_state_identity_and_stability(self):
+        with run.deny_preflight_effects():
+            oracle, owner, rows, request, _, _ = self._retained_terminal_queue_fixture()
+            node = owner.nodes['b']; binding = node['binding_before']
+            attempt = rows(owner,'SELECT attempt_id,digest FROM relay_v2_delivery_attempts WHERE message_id=?',
+                           (request['message_id'],))[0]
+            operation = {'HubID':owner.meta['hub_id'],'NodeID':node['node_id'],'EndpointID':node['endpoint'],
+                'BindingID':binding['id'],'BindingEpoch':binding['epoch'],'MessageID':request['message_id'],
+                'Digest':attempt['digest'],'AttemptID':attempt['attempt_id']}
+            root = node['paths']['state']; sid = node['thread']
+            verifier = gate.selected_historical_queue_verifier()
+            read = verifier.__globals__['_stable_read_at']
+            row_name = oracle._digest_operation(operation)
+            row = json.loads((root/'.native-writers'/
+                (oracle._digest_writer_lock('uid:1000','codex',sid)+'.operations')/row_name).read_bytes())
+            self.assertEqual(verifier(root,sid,operation)['writer_epoch'], 1)
+            # All mutations below are in-memory read substitutions; retained files stay immutable.
+            def invoke(changed=row, expected=operation, *, epoch=2, unstable=False):
+                reads = 0
+                def memory_read(fd,name,uid,**kwargs):
+                    nonlocal reads
+                    if name == row_name: return json.dumps(changed).encode()
+                    if name.endswith('.epoch'):
+                        reads += 1
+                        return json.dumps({'epoch':epoch+1 if unstable and reads>1 else epoch}).encode()
+                    return read(fd,name,uid,**kwargs)
+                with patch.dict(verifier.__globals__, {'_stable_read_at':memory_read}):
+                    return verifier(root,sid,expected)
+            self.assertEqual(invoke(epoch=1)['current_writer_epoch'], 1)
+            for epoch, code in ((0,'LEDGER_EPOCH_INVALID'),(3,'WRITER_EPOCH_STALE')):
+                changed = dict(row,writer_epoch=epoch)
+                with self.subTest(commit_epoch=epoch), self.assertRaises(oracle.QueueOracleError) as caught:
+                    invoke(changed)
+                self.assertEqual(caught.exception.code,code)
+            for state in ('INJECTING','INJECTION_UNCERTAIN','FAILED_BEFORE_START','PENDING'):
+                with self.subTest(state=state), self.assertRaises(oracle.QueueOracleError) as caught:
+                    invoke(dict(row,state=state))
+                self.assertIn(caught.exception.code, ('QUEUE_NOT_ACCEPTED','LEDGER_STATE_INVALID'))
+            for field in operation:
+                wrong = dict(operation); wrong[field] = wrong[field]+1 if type(wrong[field]) is int else wrong[field]+'-wrong'
+                with self.subTest(field=field), self.assertRaises(oracle.QueueOracleError): invoke(expected=wrong)
+            with self.assertRaises(oracle.QueueOracleError) as caught: invoke(unstable=True)
+            self.assertEqual(caught.exception.code,'WRITER_EPOCH_CHANGED')
+            for current in (0,True):
+                with self.subTest(current=current), self.assertRaises(oracle.QueueOracleError) as caught: invoke(epoch=current)
+                self.assertEqual(caught.exception.code,'WRITER_EPOCH_INVALID')
+            # Exercise the unchanged actual stable-read fstat comparison, without changing a file.
+            original_os = read.__globals__['os']
+            safe_os = types.SimpleNamespace(**vars(original_os)); count = 0
+            def fstat(fd):
+                nonlocal count
+                info = original_os.fstat(fd)
+                if stat.S_ISREG(info.st_mode) and info.st_size>128:
+                    count += 1
+                    if count == 2:
+                        changed = types.SimpleNamespace(**{key:getattr(info,key) for key in
+                            ('st_dev','st_ino','st_mode','st_uid','st_gid','st_size','st_mtime_ns','st_ctime_ns')})
+                        changed.st_mtime_ns += 1
+                        return changed
+                return info
+            safe_os.fstat = fstat
+            stable_read = types.FunctionType(read.__code__, dict(read.__globals__,os=safe_os),
+                read.__name__, read.__defaults__, read.__closure__)
+            stable_read.__kwdefaults__ = read.__kwdefaults__
+            with patch.dict(verifier.__globals__, {'_stable_read_at':stable_read}), self.assertRaises(oracle.QueueOracleError) as caught:
+                verifier(root,sid,operation)
+            self.assertEqual(caught.exception.code,'LEDGER_FILE_CHANGED')
+
+    def test_historical_queue_verifier_ledger_safety_and_session_scope(self):
+        with run.deny_preflight_effects():
+            oracle, owner, _, _, _, _ = self._retained_terminal_queue_fixture()
+            node=owner.nodes['b'];root=node['paths']['state'];sid=node['thread']
+            directory=root/'.native-writers'/(oracle._digest_writer_lock('uid:1000','codex',sid)+'.operations')
+            path=next(directory.glob('*.json'));raw=path.read_bytes();row=json.loads(raw)
+            verifier=gate.selected_historical_queue_verifier();expected=row['operation']
+            read=verifier.__globals__['_stable_read_at'];original_os=verifier.__globals__['os']
+            for names, code in (([path.name,'f'*64+'.json'],'LEDGER_ROW_DUPLICATE'),
+                    (['unexpected'],'LEDGER_ENTRY_UNEXPECTED'),
+                    (['f'*64+'.json'],'LEDGER_ROW_PATH_MISMATCH'),([], 'LEDGER_ROW_MISSING')):
+                safe_os=types.SimpleNamespace(**vars(original_os))
+                @contextlib.contextmanager
+                def scandir(fd):yield iter(types.SimpleNamespace(name=name) for name in names)
+                safe_os.scandir=scandir
+                def memory_read(fd,name,uid,**kwargs):
+                    return raw if name.endswith('.json') else read(fd,name,uid,**kwargs)
+                with self.subTest(code=code), patch.dict(verifier.__globals__,
+                        {'os':safe_os,'_stable_read_at':memory_read}), self.assertRaises(oracle.QueueOracleError) as caught:
+                    verifier(root,sid,expected)
+                self.assertEqual(caught.exception.code,code)
+            for altered in (dict(row,extra=True),dict(row,operation={}),
+                            dict(row,writer_epoch=True),dict(row,writer_epoch=0)):
+                def bad_read(fd,name,uid,**kwargs):
+                    return json.dumps(altered).encode() if name==path.name else read(fd,name,uid,**kwargs)
+                with patch.dict(verifier.__globals__,{'_stable_read_at':bad_read}), self.assertRaises(oracle.QueueOracleError):
+                    verifier(root,sid,expected)
+            with self.assertRaises(oracle.QueueOracleError):verifier(root,sid+'-wrong',expected)
+            with self.assertRaises(oracle.QueueOracleError) as caught:
+                verifier(root,sid,expected,account_scope='uid:0')
+            self.assertEqual(caught.exception.code,'WRITER_SCOPE_INVALID')
+
+    def test_terminal_queue_witness_paid_g1_activation_and_source_pins(self):
+        with run.deny_preflight_effects():
+            tree = ast.parse(Path(gate.__file__).read_text())
+            load = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='load_gate')
+            cls = next(n for n in load.body if isinstance(n,ast.ClassDef) and n.name=='CandidateGate')
+            method = next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='native_config')
+            class Base:
+                def native_config(self,*args):return ['CICADA_GROUP_ID="synthetic"']
+            for scenario,zero,paid,https in (('g1',False,True,True),('g1',True,True,True),
+                    ('g1',False,False,True),('g1',False,True,False),('g2-g3',False,True,True)):
+                calls=[]; ns={'Base':Base,'scenario':scenario,'zero_model':zero,'json':json,
+                    'g2_node_scope':lambda *a:('unused','synthetic'),
+                    'install_owned_terminal_queue_witness':lambda o:calls.append(o),
+                    'install_owned_peer_response_metadata':lambda o:None}
+                selected=ast.ClassDef(name='CandidateGate',bases=[ast.Name(id='Base',ctx=ast.Load())],
+                    keywords=[],body=[method],decorator_list=[])
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[selected],type_ignores=[])),
+                    '<actual-native-config-terminal-queue-seam>','exec'),ns)
+                owner=ns['CandidateGate']();owner.args=types.SimpleNamespace(run_native=paid,native_https=https)
+                owner.meta={'group_id':'synthetic'};owner.nodes={'a':{'current_group_id':'synthetic'}}
+                owner.native_config('a')
+                self.assertEqual(len(calls),int(scenario=='g1' and not zero and paid and https))
+            with patch.object(Path,'read_bytes',return_value=b'untrusted'), self.assertRaisesRegex(ValueError,
+                    '^TERMINAL_QUEUE_ORACLE_SOURCE_PIN$'):
+                gate.selected_historical_queue_verifier()
 
     def test_execute_without_fresh_go_has_no_public_or_credential_access(self):
         def deny(*args,**kwargs):

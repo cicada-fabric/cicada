@@ -140,7 +140,7 @@ for Android contract ownership and evidence attribution. Android, disposable
 Docker, real native Runtime, physical-device, and public HTTPS checks are
 separate result layers; a skipped test is not a pass.
 
-The source `docker/Dockerfile` currently sets `CODEX_RELEASE=0.161.0` as its
+The source `docker/Dockerfile` currently sets `CODEX_RELEASE=0.162.1` as its
 build argument default; this is not an installed Runtime acceptance result.
 The following 2026-09-30 Runtime preparation evidence is historical: from old image
 `cicada-codex:monitor-native-0.157.1`

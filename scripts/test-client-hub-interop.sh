@@ -7,19 +7,22 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 suite=client
 if [[ "${1:-}" == "--suite" ]]; then
   [[ $# -eq 2 ]] || {
-    printf 'Usage: %s [--suite client|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
+    printf 'Usage: %s [--suite client|client-link-recovery|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
     exit 2
   }
   suite="$2"
   shift 2
 fi
 [[ $# -eq 0 ]] || {
-  printf 'Usage: %s [--suite client|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
+  printf 'Usage: %s [--suite client|client-link-recovery|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
   exit 2
 }
 case "$suite" in
   client)
     test_selector='^TestClientDockerHub(Smoke|RecoveryFixture)$'
+    ;;
+  client-link-recovery)
+    test_selector='^TestClientDockerHubLinkFaultFixture$'
     ;;
   network-m1)
     test_selector='^TestNetworkM1DockerHub$'
@@ -32,10 +35,27 @@ case "$suite" in
     ;;
   *)
     printf 'Unknown interop suite: %s\n' "$suite" >&2
-    printf 'Usage: %s [--suite client|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
+    printf 'Usage: %s [--suite client|client-link-recovery|network-m1|group-spaces-m2|capacity]\n' "$0" >&2
     exit 2
     ;;
 esac
+cleanup_lane="$suite"
+if [[ "$suite" == client-link-recovery ]]; then
+  cleanup_lane=client
+  if [[ "${CICADA_LINK_GATE_TIMEOUT_CHILD:-0}" != 1 ]]; then
+    exec timeout --signal=TERM --kill-after=15s 600s env CICADA_LINK_GATE_TIMEOUT_CHILD=1 "$0" --suite "$suite"
+  fi
+  link_work_end="$(python3 -c 'import time; print(time.monotonic() + 520)')"
+fi
+link_cap() {
+  python3 - "$link_work_end" "$1" <<'LIMIT'
+import sys, time
+remaining = float(sys.argv[1]) - time.monotonic()
+if remaining <= 0:
+    raise SystemExit("Link work deadline exceeded")
+print(min(remaining, float(sys.argv[2])))
+LIMIT
+}
 for command_name in python3 docker git; do
   command -v "$command_name" >/dev/null 2>&1 || {
     printf 'BLOCKED: required command unavailable: %s\n' "$command_name" >&2
@@ -43,6 +63,7 @@ for command_name in python3 docker git; do
   }
 done
 default_output_suite=client-interop
+if [[ "$suite" == client-link-recovery ]]; then default_output_suite=client-link-recovery; fi
 if [[ "$suite" == network-m1 ]]; then default_output_suite=network-m1-interop; fi
 if [[ "$suite" == group-spaces-m2 ]]; then default_output_suite=group-spaces-m2-interop; fi
 if [[ "$suite" == capacity ]]; then default_output_suite=bounded-capacity-interop; fi
@@ -59,7 +80,7 @@ if [[ -e "$output_root/result.json" || -e "$output_root/test.log" ]]; then
   exit 1
 fi
 chmod 0700 "$output_root"
-[[ "${CICADA_COMPLETION_CHILD_LANE:-$suite}" == "$suite" ]] || exit 2
+[[ "${CICADA_COMPLETION_CHILD_LANE:-$cleanup_lane}" == "$cleanup_lane" ]] || exit 2
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/cicada-interop.XXXXXXXX")"
 run_id="cicada-interop-$(basename "$scratch" | cut -d . -f 2)-$$"
 run_id="${run_id,,}"
@@ -87,6 +108,10 @@ finish() {
     [[ ! -f "$scratch/capacity-runtime.json" ]] || cp "$scratch/capacity-runtime.json" "$output_root/capacity-runtime.json"
     [[ ! -f "$scratch/capacity-database.json" ]] || cp "$scratch/capacity-database.json" "$output_root/capacity-database.json"
   fi
+  if [[ "$suite" == client-link-recovery && -f "$scratch/test.raw" && -d "$output_root/private" ]]; then
+    cp "$scratch/test.raw" "$output_root/private/test.raw"
+    chmod 0600 "$output_root/private/test.raw"
+  fi
   if [[ "$status" != PASS && -s "$scratch/test.raw" ]]; then
     local diagnostic
     diagnostic="$(mktemp "${TMPDIR:-/tmp}/cicada-interop-failure.XXXXXXXX.log")"
@@ -98,6 +123,25 @@ finish() {
     python3 -B "$cleanup_helper" cleanup --plan "$cleanup_plan" --output "$cleanup_receipt" \
       --build-metadata "$output_root/build.json" || { [[ "$status" != PASS ]] || status=FAIL; [[ "$exit_code" -ne 0 ]] || exit_code=1; }
   fi
+  if [[ "$suite" == client-link-recovery ]]; then
+    if [[ -f "$output_root/build.json" && -f "$output_root/private/residents-before.json" ]]; then
+      if timeout --signal=TERM --kill-after=2s 15s "$repo_root/scripts/build-hub-image.sh" --source-info-only --metadata-file "$output_root/build-after.json" \
+        >"$output_root/private/source-after.raw" 2>&1 && \
+      python3 -B "$repo_root/scripts/client_link_recovery_gate.py" --snapshot "$output_root/private/residents-after.json" \
+        --expected "$output_root/private/residents-before.json" && \
+      python3 - "$output_root/build.json" "$output_root/build-after.json" <<'SOURCE'
+import json, sys
+before, after = [json.load(open(p))['source'] for p in sys.argv[1:]]
+if before != after:
+    raise SystemExit('Link build source changed')
+SOURCE
+      then post_exit=0; else post_exit=$?; fi
+      if [[ "$post_exit" != 0 ]]; then status=FAIL; [[ "$exit_code" != 0 ]] || exit_code=1; fi
+    else
+      [[ "$status" != PASS ]] || status=FAIL
+      [[ "$exit_code" != 0 ]] || exit_code=1
+    fi
+  fi
   python3 - "$output_root" "$scratch" "$status" "$phase" "$exit_code" "$test_exit" "$test_image_id" "$suite" <<'PY'
 import datetime
 import json
@@ -106,7 +150,13 @@ import sys
 
 output, scratch, status, phase, exit_code, test_exit, test_image_id, suite = sys.argv[1:]
 build_file = Path(output) / "build.json"
-if suite == "network-m1":
+if suite == "client-link-recovery":
+    schema_version = "cicada.client-link-recovery-interop.v1"
+    test_name = "TestClientDockerHubLinkFaultFixture"
+    level = "real_tcp_dedicated_link_original_packet_recovery"
+    scope = ["KEY_NONE_eight_recovery_cases", "two_real_owned_hub_restarts", "original_packet_fence",
+             "fresh_separate_session_reconciliation", "synthetic_go_signatures_only"]
+elif suite == "network-m1":
     schema_version = "cicada.network-m1-interop.v1"
     test_name = "TestNetworkM1DockerHub"
     level = "real_tcp_hub_network_m1"
@@ -160,6 +210,12 @@ cleanup = json.loads(cleanup_file.read_text()) if cleanup_file.is_file() else No
 result["fixture_cleanup"] = cleanup
 result["fixture_cleanup_status"] = cleanup["status"] if cleanup else "UNKNOWN"
 result["cleanup_owned_resources"] = bool(cleanup and cleanup["status"] == "CONFIRMED")
+if suite == "client-link-recovery":
+    receipt = Path(output) / "link-recovery.json"
+    result["lane"] = "client"
+    result["suite_name"] = "client-link-recovery"
+    result["link_recovery"] = json.loads(receipt.read_text()) if receipt.exists() else {"status": "NOT_RUN"}
+    result["physical_device"] = "NOT_RUN"
 if suite == "client":
     result["recovery_fault_test"] = {"name": "TestClientDockerHubRecoveryFixture", "exit_code": int(test_exit)}
 if suite == "group-spaces-m2":
@@ -192,17 +248,28 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 python3 -B "$cleanup_helper" prepare --plan "$cleanup_plan" --scratch "$scratch" \
-  --run-id "$child_run_id" --lane "$suite" \
+  --run-id "$child_run_id" --lane "$cleanup_lane" \
   --container hub "$hub_container" pending --container test "$test_container" pending \
   --image hub-image "$hub_image" --image test-image "$test_image"
-if ! docker info >/dev/null 2>&1; then
+docker_ready() {
+  if [[ "$suite" == client-link-recovery ]]; then timeout 10s docker info >/dev/null 2>&1
+  else docker info >/dev/null 2>&1; fi
+}
+if ! docker_ready; then
   status=BLOCKED
   printf 'Docker daemon unavailable\n' >>"$output_root/test.log"
   exit 1
 fi
 phase=build
-"${repo_root}/scripts/build-hub-image.sh" --image "$hub_image" \
-  --interop-test-image "$test_image" --metadata-file "$scratch/build.json"
+if [[ "$suite" == client-link-recovery ]]; then
+  mkdir "$output_root/private"
+  python3 -B "$repo_root/scripts/client_link_recovery_gate.py" --snapshot "$output_root/private/residents-before.json"
+  timeout --signal=TERM --kill-after=2s "$(link_cap 300)s" "$repo_root/scripts/build-hub-image.sh" --image "$hub_image" \
+    --interop-test-image "$test_image" --metadata-file "$scratch/build.json" >"$output_root/private/build.raw" 2>&1
+else
+  "${repo_root}/scripts/build-hub-image.sh" --image "$hub_image" \
+    --interop-test-image "$test_image" --metadata-file "$scratch/build.json"
+fi
 test_image_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["test_image"]["id"])' "$scratch/build.json")"
 hub_image_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image"]["id"])' "$scratch/build.json")"
 
@@ -220,7 +287,21 @@ token = secrets.token_hex(32)
 (root / "hub.env").write_text("CICADA_API_TOKEN=" + token + "\n")
 (root / "test.env").write_text("CICADA_TEST_HUB_TOKEN=" + token + "\n")
 PY
-if [[ "$suite" == capacity ]]; then
+if [[ "$suite" == client-link-recovery ]]; then
+  hub_port="$(python3 - <<'PORT'
+import socket
+with socket.socket() as candidate:
+    candidate.bind(('127.0.0.1', 0))
+    print(candidate.getsockname()[1])
+PORT
+  )"
+  timeout --signal=TERM --kill-after=2s "$(link_cap 15)s" docker run -d --pull=never --cidfile "$scratch/hub.cid" \
+    --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --label "org.cicada.test.suite=$suite" \
+    --name "$hub_container" --cpus 1 --memory 256m --memory-swap 256m --pids-limit 128 \
+    --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+    --user "$(id -u):$(id -g)" -p "127.0.0.1:$hub_port:8787" --env-file "$scratch/hub.env" \
+    -v "$scratch/state:/state" -v "$scratch/workspaces:/workspace" "$hub_image_id" >"$output_root/private/hub-start.raw" 2>&1
+elif [[ "$suite" == capacity ]]; then
   docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 128m --memory-swap 128m --pids-limit 128 \
     -p 127.0.0.1::8787 --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
@@ -229,10 +310,13 @@ else
     --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
 fi
-hub_port="$(docker port "$hub_container" 8787/tcp | cut -d : -f 2)"
+if [[ "$suite" != client-link-recovery ]]; then
+  hub_port="$(docker port "$hub_container" 8787/tcp | cut -d : -f 2)"
+fi
 hub_url="http://127.0.0.1:${hub_port}"
 
 phase=provenance
+if [[ "$suite" != client-link-recovery ]]; then
 python3 - "$hub_url" "$scratch/build.json" "$repo_root" <<'PY'
 import json
 from pathlib import Path
@@ -266,9 +350,38 @@ if (health.get("status") != "ok" or capability.get("status") != "partial"
     raise SystemExit("Hub capability identity mismatch")
 PY
 
+fi
 phase=protocol_test
 set +e
-if [[ "$suite" == network-m1 || "$suite" == group-spaces-m2 ]]; then
+if [[ "$suite" == client-link-recovery ]]; then
+  timeout --signal=TERM --kill-after=2s "$(link_cap 15)s" docker create --pull=never --cidfile "$scratch/test.cid" \
+    --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --label "org.cicada.test.suite=$suite" \
+    --name "$test_container" --cpus 2 --memory 3g --memory-swap 3g --pids-limit 256 \
+    --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:rw,exec,nosuid,nodev,size=768m,mode=1777 \
+    --network host --user "$(id -u):$(id -g)" -e "CICADA_TEST_HUB_URL=$hub_url" \
+    -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 -e CICADA_TEST_LINK_UNCERTAIN_RESTART=external \
+    -e GOCACHE=/tmp/go-build -e GOPROXY=off -e GOSUMDB=off -e GOTOOLCHAIN=local -e GOENV=off -e CGO_ENABLED=0 -e GOMAXPROCS=2 \
+    -v "$scratch/state:/tmp/fixture-state" --entrypoint go "$test_image_id" \
+    test -json -p=1 -mod=readonly -buildvcs=false -count=1 -timeout=180s ./cmd/client-recovery-fixture \
+    -run "$test_selector" >"$output_root/private/test-create.raw" 2>&1
+  create_exit=$?
+  if [[ "$create_exit" == 0 ]]; then
+    python3 - "$scratch" "$output_root" "$hub_url" "$child_run_id" "$hub_container" "$test_container" "$link_work_end" "$repo_root" <<'CONFIG'
+import json
+from pathlib import Path
+import sys
+scratch, output, origin, run_id, hub_name, test_name, deadline, root = sys.argv[1:]
+config = dict(suite='client-link-recovery', origin=origin, run_id=run_id, hub_name=hub_name, test_name=test_name,
+    hub_cidfile=scratch+'/hub.cid', test_cidfile=scratch+'/test.cid', state=scratch+'/state', workspace=scratch+'/workspaces',
+    build=scratch+'/build.json', raw=scratch+'/test.raw', receipt=output+'/link-recovery.json', work_deadline=float(deadline),
+    contract_revision=json.loads((Path(root)/'cicada-go/internal/clientcontract/catalog.json').read_text())['contract_revision'])
+(Path(scratch)/'link-config.json').write_text(json.dumps(config))
+CONFIG
+    python3 -B "$repo_root/scripts/client_link_recovery_gate.py" --config "$scratch/link-config.json"
+  else
+    (exit "$create_exit")
+  fi
+elif [[ "$suite" == network-m1 || "$suite" == group-spaces-m2 ]]; then
   docker run --cidfile "$scratch/test.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --name "$test_container" --cpus 2 --memory 3g --pids-limit 256 \
     --cap-drop ALL --security-opt no-new-privileges --network host \
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
@@ -365,14 +478,17 @@ import sys
 
 raw, destination, exit_code, suite = sys.argv[1:]
 events = []
-required = ({"TestNetworkM1DockerHub"} if suite == "network-m1" else
+required = ({"TestClientDockerHubLinkFaultFixture"} if suite == "client-link-recovery" else
+            ({"TestNetworkM1DockerHub"} if suite == "network-m1" else
             ({"TestGroupSpacesM2DockerHub", "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS"}
              if suite == "group-spaces-m2" else
              ({"TestHubBoundedCapacityDocker"} if suite == "capacity" else
              {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture"}))
-            )
+            ))
 passed = set()
-for line in Path(raw).read_text(errors="replace").splitlines():
+raw_path = Path(raw)
+raw_present = raw_path.is_file()
+for line in (raw_path.read_text(errors="replace").splitlines() if raw_present else []):
     try:
         event = json.loads(line)
     except ValueError:
@@ -383,7 +499,8 @@ for line in Path(raw).read_text(errors="replace").splitlines():
     events.append({"test": name, "action": action})
     if action == "pass" and name in required:
         passed.add(name)
-events.append({"runner_exit_code": int(exit_code), "required_tests_passed": sorted(passed)})
+events.append({"runner_exit_code": int(exit_code), "required_tests_passed": sorted(passed),
+               "raw_present": raw_present, "test_status": "NOT_RUN" if not raw_present else "OBSERVED"})
 Path(destination).write_text("".join(json.dumps(event) + "\n" for event in events))
 if int(exit_code) != 0 or passed != required:
     raise SystemExit("Required Docker protocol test failed or did not run; inspect sanitized lifecycle evidence")

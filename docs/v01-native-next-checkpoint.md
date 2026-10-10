@@ -1,14 +1,66 @@
 # Native next checkpoint — 2026-10-10
 
-Native acceptance remains **PARTIAL**. The timeout ABI fault is reproduced and
-repaired. Fresh zero preparation passed independent review; Root then ran one
-real G1, which failed after 180 seconds with RuntimeError at terminal Native
-audit. The earlier TypeError is absent. No follow-up paid retry is authorized.
-Root supervises the user's existing bounded-testing authorization; no duplicate
-credential or user approval is required. Existing dirty work and historical
-receipts are preserved. No Client source was changed.
+The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
+completed the original A/B context and exact correlated reply predicates;
+all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
+witnesses do not turn the terminal FAIL into Native acceptance. Production
+Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
+with authenticated management HTTP 503; restore/status-query acceptance is open.
 
-## Latest repaired-source G1 and remaining response rejection
+[Actual E3 result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-rspmeta20261010e2/request-observer-native-result-cicada-two-turn-g1cli0162rspmeta20261010e3/result.json) SHA-256:
+`b7e80cace4eccad0d58d0905e0399b557dfcb25c1d997d595aaaa3ba7ea5a262`.
+[Independent cleanup/pins postcheck](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/INDEPENDENT-POSTCHECK.NONAUTH.json) SHA-256:
+`5a6c03671dff8fcd4a8342875bac5f582ec16b1796b26d672b960db48b01adbf`
+passed both EOFs, fifteen owned selectors, full source pins and six unchanged
+residents. Its status is cleanup/pins PASS only, with actual Native FAIL retained.
+
+[Source and receipt chronology](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/WRITER-EPOCH-ROOTCAUSE-AND-MINIMAL-PROPOSAL.NONAUTH.json) proves the test-only mismatch:
+QUEUE_ACCEPTED was committed under writer epoch 1; publishing the exact remote
+receipt reacquired the real native writer at epoch 2. NativeOperationOutcome
+preserves the accepted historical operation. The terminal Python oracle wrongly
+required the historical commit epoch to equal the latest acquisition epoch.
+The test-only historical queue predicate is now implemented. Five selected
+[offline checks](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/rspmeta-terminal-diagnosis20261010e3/HISTORICAL-QUEUE-SELECTED-QA.NONAUTH.json)
+passed (0 skips/failures, 0.716s), receipt SHA-256
+`f14813e9ba9b4a6300e6df2d3a455c23cd0315408ae9eb7fa993542501084f8a`.
+The retained E3 strict verifier still rejects WRITER_EPOCH_STALE; historical
+receipt acceptance does not grant current writer authority or prove consumption.
+Production fencing is unchanged. G2's selector is not activated; any reuse of
+this predicate for G2 needs source-backed scope and offline checks first.
+
+Fresh queuehist10f1 zero preparation now actually passed
+PREPARATION_PASS_NATIVE_NOT_RUN, with zero model calls, turn/event starts and
+paid submissions, using binding
+`173ee23fe6205be758d7730c6ddcf3264a2d6e4c8c47dea93c5c8086da884827`.
+[Actual zero](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-queuehist20261010f1/native-preparation-cicada-two-turn-zerocli0162-queuehist10f1/result.json)
+SHA `baac7a365a37c2c6f52d1fd4e08b750b7dbbd03c2f114a4b253f0c080d732462`;
+independent cleanup/residents SHA
+`27b1f8468eb63445e7bbbcfe458841eb7e67fc0ddc5e0d89bcb8f7e02ad167b5`,
+full pins/counters SHA
+`9432055265f89d5ada67fbe195dbb7da88da4611704ae733bf729bd9c105673a`.
+Two EOFs, fourteen owned selectors, full source/compiler/wiring pins and six
+resident snapshots passed independent postcheck. This is preparation only,
+not new paid Native acceptance. Root's separate five selected checks passed
+in 0.282s with the absolute binding path/SHA; the initial relative-path
+CURRENT_BINDING_PARENT failure before tests is retained separately.
+The dynamic clean G1 launch helper is prepared **NOT_GO**; the fresh
+current-source real G1 gate is **NOT_RUN**. Zero preparation creates no model GO.
+
+E3 artifacts retain clean product origin
+`631666c8f86349e1b1e81c318f324c7897588683`, product SHA
+`3baf7bfbd217ac3d24be0fb3f41dfe5797ffc17a38f1f6c2b79dbe3b1209efae`,
+Hub image `sha256:c87cf47a3ed1b48832a3ec638d98f2f3359d1e6cd2dd06b51cf80de3989e066b`
+and Runtime image
+`sha256:e9690980b153132186780c66126a78b98ed87c3d5e99abf3303b6277e48f697e`.
+These differ from later repository source and both the clean-b06 and dirty-b06 Link images.
+
+Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
+authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
+and public-HTTPS acceptance require independent evidence. No new paid PASS is
+claimed. Overall v0.1 remains **PARTIAL**.
+
+## Historical repaired-source G1 and response rejection
 
 Root's single `cicada-two-turn-g1cli0162timeout20261010d2` exited 1 after 180
 seconds. Actual status is **FAIL/RuntimeError** at
@@ -163,9 +215,9 @@ changed Python harness. CLI remains 0.162.1, Runtime `e9690980…697e`, Hub
 `c87cf47a…066b`, product `3baf7bfb…efae`, helper `6fb8777d…b58`, fingerprint
 `d9ca7c7d…a5ad`. Local CLI/help was checked; no new Codex feature is required.
 
-## Implemented response metadata seam — diagnostics NOT_RUN
+## Historical response-metadata preparation — then NOT_RUN
 
-After the latest actual FAIL, Root authorized only the tracked gate/checker
+At this earlier preparation checkpoint, before E3, Root authorized only the tracked gate/checker
 repair. The selected G1 Peer instances now install a small diagnostic adapter
 when actual native_config receives run_native=true, native_https=true and
 closed_failure_diagnostics=true. Actual run.py maps the existing CLI diagnostic
@@ -215,7 +267,7 @@ adapter has **NOT_RUN** Native diagnostic status and no GO. A fresh zero,
 independent postcheck and separately reviewed bounded execution would be needed
 before any new paid diagnostic; no model or Docker was launched for this repair.
 
-## Actual zero preparations and next execution
+## Historical zero preparations and execution bindings
 
 The **old zero actually PASSed**, exit 0, under binding `92c8a22a…33ccf`:
 `cicada-two-turn-zerocli0162-origin10a01` in `bundle-origin20261010a`, result SHA
@@ -258,21 +310,13 @@ owner. Contents and key/account validity were not inspected. The real paid
 Peer lane preserves Host broker-only credential access, with no credential or
 private broker-root Runtime mount. The user need not provide credentials again.
 
-## Other gates still open
+## Remaining gates after E3
 
-Prior `cli0162120261010a002` completed six turns with original A/B context and
-reply predicates passing, then failed its exact denial classifier. The retained
-actual production DTO has failed/nonretryable status, absent isError and the
-known Node Relay HTTP404. Existing exact classifier branch and offline replay
-accept it; historical paid FAIL is preserved. Live denial-tail completion and
-G3 authenticated encrypted Control restoration remain unproved.
+Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
+authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
+and public-HTTPS acceptance require independent evidence. No new paid PASS is
+claimed. Overall v0.1 remains **PARTIAL**.
 
-Prior G2 c001 failed initial join/context with CLOSED_FAILURE/READ_HEAD before
-shutdown. Retained evidence lacks response-head bytes and the exact rejected
-rule; its unique parsing/provider cause remains UNKNOWN. The G1 None ABI fix
-does not resolve or relax that guard. G1 still needs full same-Group Ask/Reply
-and both original-session context predicates; G2 needs its full six-turn flow
-and real hidden-member/revoked-Link tail. Mocks or new same-name Threads cannot
-close these gates. Completion-runner metadata fixes, Android, physical devices
-and public HTTPS remain independently attributed in the
-[current closeout](v01-current-closeout-20261009-validation.md).
+Earlier six-turn and denial-tail failures, old bindings, zero preparations and
+artifact identities above retain their original scope. No historical receipt
+is rewritten by the terminal-oracle correction.

@@ -8,6 +8,36 @@ Architecture v2.3, Git revision, dirty source/build fingerprints and artifact
 digests are separate identities. See the [technical guide](v01-technical-guide.md)
 and [distribution details](distribution.md).
 
+The latest bounded Native diagnostic E3 remains **FAIL/QueueOracleError** at
+`managed_hub_blind_terminal_oracle`, with `WRITER_EPOCH_STALE`. Five actual turns
+completed the original A/B context and exact correlated reply predicates;
+all eleven response observations were HTTP 200 / HEADER_ACCEPTED. Those scoped
+witnesses do not turn the terminal FAIL into Native acceptance. Production
+Control was absent (`NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true`),
+with authenticated management HTTP 503; restore/status-query acceptance is open.
+Five selected test-only historical-queue checks now pass with strict refusals
+retained; production fencing is unchanged and G2 reuse is not activated.
+
+The reusable `--suite client-link-recovery` gate now actually passed one
+top-level test and eight subtests, with two real owned Hub restarts, zero
+failures/skips and confirmed cleanup. The tested build is **dirty b06**, with
+its full source fingerprint and actual image IDs recorded in
+[Link validation](v01-link-recovery-fixture.md#reusable-link-gate-pass).
+Its 26 offline helper tests and independent G4 review passed. The earlier
+clean-b06 Root operator PASS and both reusable preflight FAILs (OWNED_MOUNT,
+RUNNER_CHANGED; zero Go tests) retain their separate source/evidence attribution.
+
+Fresh source-bound zero preparation passed; next validate G1; G2 denial and G3
+authenticated encrypted restore remain separate gates. Current Android, remaining native Runtime scopes, physical-device
+and public-HTTPS acceptance require independent evidence. No new paid PASS is
+claimed. Overall v0.1 remains **PARTIAL**.
+
+The Codex source default is 0.162.1; existing older Runtime images are not
+relabelled. Organization profile and documentation Pages are published; GitHub
+branch protection and private vulnerability reporting remain unconfigured.
+`gh` is installed but is not authenticated in the current operator environment.
+See [repository maintenance](repository-maintenance.md) for publication evidence.
+
 The completed default automation run `20261010T063155Z-5b6d7a3e12` reports
 **UNKNOWN** overall and `source_unchanged: true`. Go build/test/vet and packaging
 report PASS_WITH_SKIPS; Python, contract, Web panel model/config, wiring, joined

@@ -68,6 +68,38 @@ listed lane and the source-identity check pass. Thus a successful selected test
 lane is not a claim that all product acceptance gates passed. Android, physical
 device, public HTTPS, and unrun Native scopes remain separate evidence.
 
+## Dedicated Link recovery command — actual bounded Docker PASS
+
+```sh
+scripts/test-client-hub-interop.sh --suite client-link-recovery
+```
+
+This separate suite reuses the existing image builder, build provenance and
+owned cleanup lane `client`. It runs exactly eight KEY/NONE Link scenarios and
+coordinates the two ordered original-request uncertainty markers with real
+restarts of its exact owned Hub. The runner tmpfs permits execution; Hub tmpfs
+remains noexec. Outer runtime is bounded to 600 seconds, Go to 180 seconds and
+each restart to its absolute 45-second observation deadline. It uses no models
+or Android and does not change the four existing suite selectors.
+
+The corrected helper passed 26 deterministic tests and independent G4 review.
+Root's actual T1120 reusable gate passed one top-level test plus eight subtests,
+zero failures/skips, and both exact owned Hub restarts: Go package 15.409s,
+outer 113.7468s. Cleanup was CONFIRMED, source before/after and six resident
+snapshots were exact. The build records dirty-b06 source and new Hub/test
+images; [source fingerprint, images and receipts](v01-link-recovery-fixture.md#reusable-link-gate-pass)
+remain distinct from the earlier clean-b06 Root operator PASS. Both preceding
+reusable preflight FAILs, OWNED_MOUNT and RUNNER_CHANGED, retain zero-Go coverage
+and their confirmed cleanup receipts. This selected suite PASS does not replace
+the default runner's aggregate UNKNOWN or accept Android/Native/physical/HTTPS.
+
+Latest paid Native E3 remains terminal QueueOracleError/WRITER_EPOCH_STALE FAIL;
+five-turn context/reply and eleven HTTP 200 witnesses are scoped evidence,
+not a paid PASS. Five selected terminal-history checks passed without activating G2; fresh
+G1 after actual fresh zero, G2 denial/G3 restore plus current
+Android/native/device/public-HTTPS acceptance remain separate; use the
+[current closeout](v01-current-closeout-20261009-validation.md#latest-native-e3).
+
 ## Current runner validation
 
 The retained run `20261010T063155Z-5b6d7a3e12` had no failing test lane and
