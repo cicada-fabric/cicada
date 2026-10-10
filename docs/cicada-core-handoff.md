@@ -1,6 +1,6 @@
 # CICADA Client integration handoff
 
-## Current delivery: clean v1.6.5 repin and offline APK preparation
+## Current acceptance: v1.6.5 joint11 Android RPC recovery
 
 The fixed target is clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,
 shipping Hub `sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`,
@@ -17,8 +17,20 @@ The [fixed record](client-hub-v1.6.5-c6887f4-validation.md) identifies all pins,
 commands, receipts and the APK producer. Final clean commit, input inventory
 and the actual immutable APK hashes are sealed in
 `/gpu1-share/data/cicada-client/v165-c6887f4-client-preparation-20261010/DELIVERY.NONAUTH.json`.
-No online or model run is implied. Joint7's four KEY passes, NONE failure and
-three unrun cases remain attributed solely to its old image and APKs.
+That APK preparation record establishes offline provenance. Root subsequently
+ran joint11 once against the same fixed delivery and APK pair, using tested
+host `3cfb3cf08f1f9fa93b58bd31959b8f901ef9f4c0`. All eight Android emulator
+RPC recovery cases **PASS**, with two owned Hub restarts and final close ACK.
+Independent cleanup is **PASS_SCOPED_POSTCHECK**. No model was called.
+
+Business outcomes are separately reconciled by the external Go TARGET
+operator. NONE pending-candidate evidence additionally uses Core's explicit
+read-only database witness; it is not an Android encrypted status response.
+Eight Android status reads, Native Worker/runtime, physical Android and public
+HTTPS remain **NOT_RUN**. Joint7 retains its old attribution, and joint8,
+joint9 and joint10 overall **FAIL** records remain unchanged. See the
+[joint11 terminal record](client-hub-v1.6.5-c6887f4-validation.md#joint11-terminal-android-recovery-and-independent-cleanup)
+for actual commands, exits, result hashes and scope.
 
 ### Joint11: V7 host consumer and final Core close
 
@@ -45,7 +57,15 @@ Root alone supplies a fresh Master and executes the batch. Format-3 helper,
 c688/v1.6.5 Hub, immutable clean `1151b06` APK pair, signing, 25/11 receipts,
 scope, deadlines and TARGET-first/SOURCE-last enrollment are unchanged.
 No SOURCE profile switch occurs from review through recovery and finish.
-Joint11 runtime, physical Android and public HTTPS remain **NOT_RUN**.
+Root's single joint11 run exited 0 in 513.1198035785928 seconds. Parent reports
+`PASS_JOINT_ANDROID_EIGHT_CASE_ONLY`; Core reports
+`PASS_CORE_JOINT_AND_EXTERNAL_GO_FIXTURE_ONLY`. Client records eight cases
+**PASS** and cleanup **PASS**. The unique Core close at ordinal 65 and Parent
+82-event completion are confirmed by the independent postcheck. Its receipt
+is `ROOT-JOINT11-CLEANUP-INDEPENDENT.NONAUTH.json`, SHA-256
+`0a7dfc5b4546842a808720f6e02c97052c5570bc025f6f8e2591d6ea420a0740`,
+under the fixed Core joint-preparation directory. The tested source and APK
+artifacts remain immutable; this successor checkpoint changes docs only.
 
 ### Historical joint10: V6 host consumer and format-3 reconciliation
 

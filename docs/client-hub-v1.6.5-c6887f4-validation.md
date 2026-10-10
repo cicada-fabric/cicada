@@ -1,12 +1,12 @@
-# Client-Control v1.6.5: fixed delivery and offline Client validation
+# Client-Control v1.6.5: fixed Client validation
 
 ## Scope and authority
 
-This checkpoint updates the Client to Root's clean v1.6.5 export and prepares
-a fresh Android app/test APK pair. It authorizes no online run, Hub lifecycle,
-model call, push, merge or production deployment. The immutable APK producer
-and final source seal are external records to avoid a self-referential Git
-commit or artifact hash.
+This record separates the original offline APK preparation from Root's later
+joint11 Android emulator RPC recovery run and independent cleanup review.
+The docs-only closeout executes no tests, build, model or runtime operation
+and authorizes no push, merge or production release. Immutable APK production
+and tested host source retain their original external seals.
 
 Evidence root:
 `/gpu1-share/data/cicada-client/v165-c6887f4-client-preparation-20261010`.
@@ -113,7 +113,100 @@ source attribution.
 
 ## Runtime results and Root coordination
 
-| Item | Status |
+### Joint11 terminal Android recovery and independent cleanup
+
+Root executed `v164-e2a1908-joint11-20261010` once, with no model calls.
+The tested clean host commit is
+`3cfb3cf08f1f9fa93b58bd31959b8f901ef9f4c0`; its 631-input inventory SHA-256
+is `54cf1bea86b3adf164dd1672f6a944e500b56a336b199a1e97605f8f3bbf9e56`.
+The 12-driver map SHA-256 is
+`486f50a684cc4bc2dd0acd39b9c5b547732406e3741b7fee075de84cf4269612`.
+Its immutable preparation index is
+`/gpu1-share/data/cicada-client/v165-c6887f4-joint11-consumer-20261010/DELIVERY.NONAUTH.json`,
+SHA-256 `b8c576d682be2b8f4bfffb43419cfe8261a9ae7fa1a51fb9dc0d95554987990f`.
+
+APK producer remains clean `1151b06e04b172de9c7b5989ffec1318e58bf862`,
+with source-input SHA-256
+`4e80a1f0a4e7741fe4a2f3da82dddc85bb1f978f73a6534977a321ec32af2558`.
+App SHA-256 is `e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745`;
+test SHA-256 is `7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29`.
+This documentation checkpoint does not rebuild, reseal or relabel those inputs.
+
+| Case | Android operation | Fault mode | Android RPC recovery | External Go business reconciliation | Android status read |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `link.key_grant` | response-loss | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 1 | `link.key_grant` | processing | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 2 | `link.key_grant` | uncertain | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 3 | `link.key_grant` | legacy | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 4 | `link.review_policy_grant` | response-loss | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 5 | `link.review_policy_grant` | processing | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 6 | `link.review_policy_grant` | uncertain | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+| 7 | `link.review_policy_grant` | legacy | **PASS** | **PASS**, separately reconciled | **NOT_RUN** |
+
+All Client cases finish at `RECONCILED`, with business outcome
+`SEPARATELY_RECONCILED`. Core records
+`SEPARATELY_RECONCILED_EXTERNAL_GO` for all eight. Each case performed real
+TARGET-first/SOURCE-last Android enrollment; no SOURCE return switch was
+performed through recovery and finish. Core's owned restarts at cases 2 and
+6 both **PASS**, against the exact shipping image.
+
+KEY reconciliation uses the independent Go TARGET encrypted Owner session.
+NONE reconciliation has the exact attribution
+`CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE`: encrypted
+HEAD/preview reads and a separate Core read-only candidate witness. The
+one-sided candidate remains distinct from the public current HEAD. This
+does not prove bilateral acceptance or an Android pending-candidate API;
+Client neither reads the database nor claims Android status-read coverage.
+Native Worker/runtime, physical Android and public HTTPS are **NOT_RUN**.
+
+The actual Root command is recorded in the outer receipt. Let `P` denote
+`/home/zyf/CICADA/.cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/joint-preparation`.
+The following is its recorded invocation, not a reusable authorization:
+
+```sh
+timeout --signal=TERM --kill-after=15s 3630s /usr/bin/python3 -B "$P/joint-parent-v7.py" \
+  --template "$P/joint-template.V7.JOINT11.private.json" \
+  --template-sha256 b48350cb03f2c83cecffe52c4e7e22aa516a95aa0fc05fcb35375fbdc52a83eb \
+  --core-config "$P/core-config.V7.JOINT11.private.json" \
+  --core-config-sha256 c6acc231eebea338d8811ea41099636b47842e85be265e9e9aff8475161ad592 \
+  --master-go "$P/ROOT-JOINT11-MASTER-GO.private.json" \
+  --master-go-sha256 dda6381f189d297e7859530ea3a1d2ca37c420e2eb816750256fd114edbe9d7f \
+  --go
+```
+
+Outer exit is `0`, elapsed `513.1198035785928` seconds. Parent reports
+`PASS_JOINT_ANDROID_EIGHT_CASE_ONLY` in `512.1916142394766` seconds; Core
+reports `PASS_CORE_JOINT_AND_EXTERNAL_GO_FIXTURE_ONLY` in `511.22856881283224`
+seconds. The distinct 82 Parent events and 65 Core controls, including unique
+final case7 close ACK, pass the independent terminal review. Master state is
+`USED_CLOSED_NO_REUSE`; it must not authorize any subsequent run.
+
+| Evidence | Path relative to `P`, except Client result | Actual SHA-256 |
+| --- | --- | --- |
+| Parent | `parent-run-evidence-2d0049a266db2c99073cf500ddb3c6cf314402e36b7b2f2f3a25641c9fdae752/result.NONAUTH.json` | `672a23d7050068a97cd7601f6b9726e4e802014c6be5708a8ea4c0961ee7d2f8` |
+| Core | `joint-run-joint11-20261010/result.json` | `b291e817a72388dbf26e6f92860a15d6e8b3982d189fa4c3385018ef36cef943` |
+| Outer | `ROOT-JOINT11-OUTER.NONAUTH.json` | `b7b867a2570189d3970cfd47ca72ea0649821d8659313ebc56a074df63926f7b` |
+| Client | `/gpu1-share/data/cicada-client/v165-joint11-root-final-20261010/result.redacted.json` | `5954537dfd7e0631e03747a29fc61f421fed60c76e334a828a5771cef22cec65` |
+| Independent cleanup | `ROOT-JOINT11-CLEANUP-INDEPENDENT.NONAUTH.json` | `0a7dfc5b4546842a808720f6e02c97052c5570bc025f6f8e2591d6ea420a0740` |
+
+All five raw hashes were independently matched during this docs-only update.
+Client result contains eight **PASS** cases and cleanup **PASS**. Root's
+`PASS_SCOPED_POSTCHECK` confirms exact Hub ID/name and recorded Android ID
+absent, scratch absent, all 188 Client and 59 Parent recorded process groups
+closed, tested Client source clean, and unchanged Core source and six resident
+snapshots. These are scoped checks of the owned run, not a global process audit.
+
+Historical joint8 remains overall **FAIL** before enrollment; joint9 remains
+overall **FAIL** at stale reconcile delivery guards after partial case0.
+Joint10 retains its eight scoped case passes and overall **FAIL** at final
+`CONTROL_COUNT`, with no final ACK. Original receipts, source attribution and
+closed Masters remain unchanged. Joint11 establishes this eight-case Android
+RPC recovery slice; it does not establish general product, Native or release
+acceptance. No tests, model calls or build were rerun for this closeout.
+
+### Historical offline preparation status
+
+| Item at the original preparation checkpoint | Status |
 | --- | --- |
 | New shipping Hub encrypted `session.capabilities` | **NOT_RUN** |
 | Eight Android KEY/NONE recovery cases | **NOT_RUN** |
@@ -129,7 +222,7 @@ NONE signer predicate. Joint7's four KEY passes retain old d8855e3/e2a/APK
 attribution; NONE-response-loss remains failed/unknown and the other three
 NONE cases remain unrun in that historical batch.
 
-## Joint8 current-source host consumer
+## Historical joint8 current-source host consumer
 
 The actual V5 delivery is pinned under Core's
 `client-delivery-v165-c6887f4-20261010/joint-preparation`. Its legacy fixture
