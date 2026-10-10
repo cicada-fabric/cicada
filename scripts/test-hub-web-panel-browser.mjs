@@ -110,6 +110,14 @@ const result = {
     current_node_authority_admission_denied: 'NOT_RUN',
   },
   fixture_cleanup: { status: 'NOT_RUN' },
+  fixture_run_id: `cicada-webpanel-${suffix}`,
+  owned_fixture: {
+    run_id: `cicada-webpanel-${suffix}`,
+    containers: [hubContainer, browserContainer, nodeContainer, secondNodeContainer],
+    networks: [dockerNetwork],
+    images: [],
+    scratch_path: fixtureDir,
+  },
 };
 
 let phase = 'prerequisites';

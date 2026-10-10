@@ -76,13 +76,17 @@ write_result() {
   python3 - "$evidence_dir/result.json" "$final_outcome" "$final_exit" "$final_phase" \
     "$executed_script" "$executed_script_sha256" "$build_metadata" "$cleanup_ok" \
     "$node_a_id" "$node_b_id" "$group_id" "$endpoint_a" "$endpoint_b" \
-    "$node_diagnostic_file" <<'PY'
+    "$node_diagnostic_file" "$run_id" "$hub_container" "$node_a_container" "$node_b_container" \
+    "$node_a_network" "$node_b_network" "$hub_image" "$test_image" "$scratch" <<'PY'
 import hashlib
 import json
 from pathlib import Path
 import sys
 
-path, outcome, exit_code, phase, script, script_sha256, build_path, cleanup_ok, node_a, node_b, group, ep_a, ep_b, diagnostic_path = sys.argv[1:]
+(path, outcome, exit_code, phase, script, script_sha256, build_path, cleanup_ok,
+ node_a, node_b, group, ep_a, ep_b, diagnostic_path, fixture_run_id, hub_container,
+ node_a_container, node_b_container, node_a_network, node_b_network,
+ hub_image, test_image, scratch_path) = sys.argv[1:]
 result = {
     "schema": "cicada.v68-joined-result.v1",
     "status": outcome,
@@ -97,6 +101,14 @@ result = {
     "argv": [],
     "cleanup_owned_containers_and_networks": cleanup_ok == "true",
     "cleanup_owned_scratch": True,
+    "fixture_run_id": fixture_run_id,
+    "owned_fixture": {
+        "run_id": fixture_run_id,
+        "containers": [hub_container, node_a_container, node_b_container],
+        "networks": [node_a_network, node_b_network],
+        "images": [hub_image, test_image],
+        "scratch_path": scratch_path,
+    },
     "protocol_ids": {key: value for key, value in {
         "node_a": node_a, "node_b": node_b, "group_id": group,
         "endpoint_a": ep_a, "endpoint_b": ep_b,

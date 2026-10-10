@@ -59,6 +59,7 @@ if [[ -e "$output_root/result.json" || -e "$output_root/test.log" ]]; then
   exit 1
 fi
 chmod 0700 "$output_root"
+[[ "${CICADA_COMPLETION_CHILD_LANE:-$suite}" == "$suite" ]] || exit 2
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/cicada-interop.XXXXXXXX")"
 run_id="cicada-interop-$(basename "$scratch" | cut -d . -f 2)-$$"
 run_id="${run_id,,}"
@@ -70,13 +71,16 @@ status=FAIL
 phase=prerequisites
 test_exit=-1
 test_image_id=""
+hub_image_id=""
+child_run_id="${CICADA_COMPLETION_CHILD_RUN_ID:-$run_id}"
+cleanup_helper="$repo_root/scripts/owned_fixture_cleanup.py"
+cleanup_plan="$output_root/cleanup-plan.json"
+cleanup_receipt="$output_root/cleanup.json"
 touch "$output_root/test.log"
 
 finish() {
   local exit_code=$?
   trap - EXIT
-  docker rm -f "$test_container" "$hub_container" >/dev/null 2>&1 || true
-  docker image rm "$test_image" "$hub_image" >/dev/null 2>&1 || true
   if [[ "$suite" == capacity ]]; then
     [[ ! -f "$scratch/capacity-output/protocol.json" ]] || cp "$scratch/capacity-output/protocol.json" "$output_root/capacity-protocol.json"
     [[ ! -f "$scratch/capacity-output/protocol.json.recovery.json" ]] || cp "$scratch/capacity-output/protocol.json.recovery.json" "$output_root/capacity-recovery.json"
@@ -89,6 +93,11 @@ finish() {
     cp "$scratch/test.raw" "$diagnostic"
     printf 'Private failure diagnostics (not an upload artifact): %s\n' "$diagnostic" >&2
   fi
+  [[ ! -f "$scratch/build.json" ]] || cp "$scratch/build.json" "$output_root/build.json"
+  if [[ -f "$cleanup_plan" ]]; then
+    python3 -B "$cleanup_helper" cleanup --plan "$cleanup_plan" --output "$cleanup_receipt" \
+      --build-metadata "$output_root/build.json" || { [[ "$status" != PASS ]] || status=FAIL; [[ "$exit_code" -ne 0 ]] || exit_code=1; }
+  fi
   python3 - "$output_root" "$scratch" "$status" "$phase" "$exit_code" "$test_exit" "$test_image_id" "$suite" <<'PY'
 import datetime
 import json
@@ -96,7 +105,7 @@ from pathlib import Path
 import sys
 
 output, scratch, status, phase, exit_code, test_exit, test_image_id, suite = sys.argv[1:]
-build_file = Path(scratch) / "build.json"
+build_file = Path(output) / "build.json"
 if suite == "network-m1":
     schema_version = "cicada.network-m1-interop.v1"
     test_name = "TestNetworkM1DockerHub"
@@ -146,6 +155,11 @@ result = {
     "android": "NOT_RUN", "native_runtime": "NOT_RUN", "public_https": "NOT_RUN",
     "scope": scope,
 }
+cleanup_file = Path(output) / "cleanup.json"
+cleanup = json.loads(cleanup_file.read_text()) if cleanup_file.is_file() else None
+result["fixture_cleanup"] = cleanup
+result["fixture_cleanup_status"] = cleanup["status"] if cleanup else "UNKNOWN"
+result["cleanup_owned_resources"] = bool(cleanup and cleanup["status"] == "CONFIRMED")
 if suite == "client":
     result["recovery_fault_test"] = {"name": "TestClientDockerHubRecoveryFixture", "exit_code": int(test_exit)}
 if suite == "group-spaces-m2":
@@ -170,7 +184,6 @@ if suite == "capacity":
 (Path(output) / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 print(f"{status}: {output}/result.json")
 PY
-  rm -rf -- "$scratch"
   rmdir "$output_root/.running"
   exit "$exit_code"
 }
@@ -178,6 +191,10 @@ trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+python3 -B "$cleanup_helper" prepare --plan "$cleanup_plan" --scratch "$scratch" \
+  --run-id "$child_run_id" --lane "$suite" \
+  --container hub "$hub_container" pending --container test "$test_container" pending \
+  --image hub-image "$hub_image" --image test-image "$test_image"
 if ! docker info >/dev/null 2>&1; then
   status=BLOCKED
   printf 'Docker daemon unavailable\n' >>"$output_root/test.log"
@@ -204,11 +221,11 @@ token = secrets.token_hex(32)
 (root / "test.env").write_text("CICADA_TEST_HUB_TOKEN=" + token + "\n")
 PY
 if [[ "$suite" == capacity ]]; then
-  docker run -d --name "$hub_container" --cpus 1 --memory 128m --memory-swap 128m \
+  docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 128m --memory-swap 128m --pids-limit 128 \
     -p 127.0.0.1::8787 --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
 else
-  docker run --rm -d --name "$hub_container" -p 127.0.0.1::8787 \
+  docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 256m --pids-limit 128 -p 127.0.0.1::8787 \
     --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
 fi
@@ -252,14 +269,16 @@ PY
 phase=protocol_test
 set +e
 if [[ "$suite" == network-m1 || "$suite" == group-spaces-m2 ]]; then
-  docker run --rm --name "$test_container" --network host \
+  docker run --cidfile "$scratch/test.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --name "$test_container" --cpus 2 --memory 3g --pids-limit 256 \
+    --cap-drop ALL --security-opt no-new-privileges --network host \
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
     -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
     -e GOCACHE=/tmp/go-build -e GOPROXY=off -e CGO_ENABLED=0 \
     -v "$scratch/state:/tmp/fixture-state" --entrypoint go "$test_image_id" \
     test -json -p=1 ./internal/server -run "$test_selector" -count=1 >"$scratch/test.raw" 2>&1
 elif [[ "$suite" == capacity ]]; then
-  docker run --rm --name "$test_container" --network host \
+  docker run --cidfile "$scratch/test.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --name "$test_container" --cpus 2 --memory 3g --pids-limit 256 \
+    --cap-drop ALL --security-opt no-new-privileges --network host \
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
     -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
     -e CICADA_CAPACITY_RESULT_PATH=/tmp/capacity-output/protocol.json \
@@ -268,7 +287,8 @@ elif [[ "$suite" == capacity ]]; then
     --entrypoint go "$test_image_id" test -json -p=1 ./internal/server \
     -run "$test_selector" -count=1 >"$scratch/test.raw" 2>&1
 else
-  docker run --rm --name "$test_container" --network host \
+  docker run --cidfile "$scratch/test.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --name "$test_container" --cpus 2 --memory 3g --pids-limit 256 \
+    --cap-drop ALL --security-opt no-new-privileges --network host \
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
     -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
     -e GOCACHE=/tmp/go-build -e GOPROXY=off -e CGO_ENABLED=0 \

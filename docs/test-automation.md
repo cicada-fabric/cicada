@@ -58,23 +58,58 @@ device, public HTTPS, and unrun Native scopes remain separate evidence.
 
 ## Current runner validation
 
-The deterministic runner/stress/status unit command passed 27 tests with no
-failures or skips:
+An earlier runner/stress/status unit set passed 27 tests. After the cleanup
+receipt reducers were added, the current runner and owned-fixture helper checks
+passed 43 tests; the runner module alone passed 25:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts:scripts/native_observer \
   python3 -B -m unittest -v scripts.test_completion_runner \
-  scripts.test_group_fabric_stress_driver scripts.test_completion_driver_status
+  scripts.test_owned_fixture_cleanup
 ```
+
+The first full background run, `20261010T052816Z-6201f75017`, is retained as a
+failure: its Go lane exposed six harness fixture-configuration failures, the
+merged Python process let an import-time side-effect guard contaminate other
+modules, and child cleanup remained `UNKNOWN`. It was not converted into a
+pass. The Go harness layout was corrected and Root's targeted rerun passed six
+packages (7 top-level tests and 8 subtests, zero failures or skips) in
+33.776 seconds. Root also ran 17 Python modules in separate processes: 187
+tests passed with no failures, errors, or skips. That Python result predates
+registration of the new owned-fixture helper module; it is not a result for
+all 18 modules in the current default inventory.
+
+Root later ran the current 18-module inventory in isolated processes: 208 tests,
+zero failures/errors, and one explicit skip. The optional current-binding test
+was skipped because that run had no binding pair, so this is
+`PASS_WITH_SKIPS`, not wiring coverage or a full-suite pass. Receipt:
+`.cicada-data/architecture-v2-completion/python-isolated-final-20261010a/RESULT.NONAUTH.json`.
+Root then ran the binding module with the explicit current file/SHA pair; all
+18 tests passed with no skips or errors in 3.086 seconds. This supplements the
+skipped scope and does not change the earlier receipt's counts.
+
+The final owned-fixture helper was also exercised against Docker with network
+disabled, a read-only container, and dropped capabilities. Its helper receipt
+confirmed exact cleanup, and the runner validated the receipt contract; the
+six protected residents were unchanged. This scoped cleanup check is recorded
+at `.cicada-data/architecture-v2-completion/cleanup-actual-20261010c/RESULT.NONAUTH.json`.
+It does not establish the result of the complete default suite. A matched
+current-binding check is still pending.
 
 The initial Docker envelope smoke confirmed container policy and exact cleanup,
 but did **not** run Go tests: `bash -lc` reset the image PATH, so Go commands
 exited 127. The runner now uses non-login `bash -c` to preserve the pinned image
-PATH. The subsequent full background run is the Go-test result and must be read
-separately.
-
-The corrected one-second timeout smoke is recorded at
+PATH. The corrected one-second timeout smoke is recorded at
 `.cicada-data/architecture-v2-completion/20261010T052618Z-94fa4ac384/envelope-smoke.NONAUTH.json`:
 the envelope was verified, timeout was observed, exact cleanup was confirmed,
 and the six protected residents were unchanged. Its lane status is `UNKNOWN`
 because this smoke intentionally did not complete Go tests.
+
+The current one-click run has not yet established a complete default-suite
+result. Its deterministic Python modules include unit checks for privacy and
+restore logic, but they do not run the dedicated topology/privacy and Hub/Node
+restore acceptance fixtures. The inventory also omits race or PQTLS-tagged Go
+runs, standalone WASM interoperability, the full multi-Hub Docker topology,
+PQ shipping, and the real Native peer/G4/G5 gates. Those remain separate
+`NOT_RUN`/`BLOCKED` scopes; Android, physical-device, and public-HTTPS results
+are also separate.

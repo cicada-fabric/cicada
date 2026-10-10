@@ -28,8 +28,48 @@ if ! docker image inspect "$golang_image" >/dev/null 2>&1; then
 fi
 
 run_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-evidence_dir="${repo_root}/.cicada-data/m5-multihub-${run_stamp}"
+evidence_dir="${CICADA_M5_EVIDENCE_ROOT:-${repo_root}/.cicada-data/m5-multihub-${run_stamp}}"
 mkdir -m 0700 "$evidence_dir"
+evidence_dir="$(cd "$evidence_dir" && pwd -P)"
+container_name="cicada-m5-${run_stamp,,}"
+child_run_id="${CICADA_COMPLETION_CHILD_RUN_ID:-$container_name}"
+[[ "${CICADA_COMPLETION_CHILD_LANE:-multi-hub-services}" == multi-hub-services ]] || exit 2
+image_id="$(docker image inspect "$golang_image" --format '{{.Id}}')"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/cicada-m5.XXXXXXXX")"
+cleanup_helper="$repo_root/scripts/owned_fixture_cleanup.py"
+finish() {
+  local exit_code=$?
+  trap - EXIT
+  if [[ -f "$evidence_dir/cleanup-plan.json" ]]; then
+    python3 -B "$cleanup_helper" cleanup --plan "$evidence_dir/cleanup-plan.json" \
+      --output "$evidence_dir/cleanup.json" || { [[ "$exit_code" -ne 0 ]] || exit_code=1; }
+  fi
+  python3 - "$evidence_dir" <<'PYRESULT'
+import json
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+path = root / "result.json"
+result = json.loads(path.read_text()) if path.is_file() else {"schema": "cicada.m5-multihub-services.v1", "outcome": "FAIL"}
+cleanup_path = root / "cleanup.json"
+cleanup = json.loads(cleanup_path.read_text()) if cleanup_path.is_file() else None
+result["fixture_cleanup"] = cleanup
+result["fixture_cleanup_status"] = cleanup["status"] if cleanup else "UNKNOWN"
+result["cleanup_owned_resources"] = bool(cleanup and cleanup["status"] == "CONFIRMED")
+if not result["cleanup_owned_resources"]:
+    result["outcome"] = "FAIL"
+path.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
+path.chmod(0o600)
+print(f"M5 service gate {result['outcome']}: {path}")
+PYRESULT
+  exit "$exit_code"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+python3 -B "$cleanup_helper" prepare --plan "$evidence_dir/cleanup-plan.json" \
+  --scratch "$scratch" --run-id "$child_run_id" --lane multi-hub-services \
+  --container test "$container_name" "$image_id"
 script_sha256="$(sha256sum "$script_path" | cut -d ' ' -f 1)"
 source_before="${evidence_dir}/source-before.json"
 source_after="${evidence_dir}/source-after.json"
@@ -40,11 +80,13 @@ chmod 0600 "$source_before"
 
 phase=focused_go_tests
 set +e
-docker run --rm --network none --user "$(id -u):$(id -g)" \
+docker run --cidfile "$scratch/test.cid" --name "$container_name" \
+  --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=test --network none --cpus 2 --memory 3g --pids-limit 256 \
+  --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" \
   -v "${repo_root}/cicada-go:/repo:ro" \
   -v "${module_cache}:/gomod:ro" -w /repo \
   -e GOTOOLCHAIN=local -e GOPROXY=off -e GOMODCACHE=/gomod -e GOCACHE=/tmp/cicada-go-cache \
-  "$golang_image" go test -count=1 -v ./cmd/cicada ./internal/nodelock \
+  "$golang_image" go test -p=2 -mod=readonly -count=1 -v ./cmd/cicada ./internal/nodelock \
   -run '^(TestMachineMultiHubAgentUsesTwoIndependentProductionFabricServices|TestMachineHubContextPinsNodeTokenAndOrigin|TestMachineTwoHubHTTPNodeCredentialsStayIndependent|TestMachineNativeQueueOutcomeSurvivesAttemptAndBlocksUncertainRetry|TestNativeWriterSerializesAcrossHubScopesAndPersistsEpoch)$' \
   2>&1 | tee "$go_log"
 test_status=${PIPESTATUS[0]}
@@ -115,5 +157,4 @@ path.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="u
 path.chmod(0o600)
 PY
 
-printf 'M5 service gate %s: %s\n' "$outcome" "$evidence_dir/result.json"
 if [[ "$outcome" != PASS ]]; then exit 1; fi

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import json
 import os
@@ -15,6 +16,7 @@ import unittest
 from unittest import mock
 
 from scripts import completion_runner as runner
+from scripts import owned_fixture_cleanup
 
 
 class CompletionRunnerTests(unittest.TestCase):
@@ -200,12 +202,14 @@ class CompletionRunnerTests(unittest.TestCase):
         stale = lane_root / "stale-other-lane" / "result.json"
         current.parent.mkdir(parents=True)
         stale.parent.mkdir(parents=True)
-        current.write_text(json.dumps({"status": "PASS", "cleanup_owned_resources": True}))
+        current.write_text(json.dumps(self._actual_child_cleanup_receipt()[0]))
         stale.write_text(json.dumps({"status": "FAIL", "cleanup_owned_resources": False}))
         self.log.parent.mkdir(parents=True, exist_ok=True)
         self.log.write_text("PASS: current lane\n")
         state, _ = runner.classification(
-            self._complete_run_record(), self.log, "synthetic-lane", [current]
+            self._complete_run_record(), self.log, "client-interop", [current],
+            expected_run_id="synthetic-run-01", expected_lane="client",
+            expected_roles={"hub", "test", "hub-image", "test-image"},
         )
         self.assertEqual(state, "PASS")
 
@@ -315,6 +319,455 @@ class CompletionRunnerTests(unittest.TestCase):
             runner.status_mode(run_id)
         status, _ = json.JSONDecoder().raw_decode(output.getvalue())
         self.assertEqual(status["overall_status"], "UNKNOWN")
+
+    def test_go_metadata_stage_exposes_only_five_pinned_public_files(self) -> None:
+        public_files = (
+            "VERSION", "docs/client-hub-wire-v1.md", "docs/client-hub-v1.openapi.yaml",
+            ".agents/plugins/cicada/plugin.json",
+            ".agents/plugins/cicada/.codex-plugin/plugin.json",
+        )
+        source_root = self.root / "source"
+        for index, relpath in enumerate(public_files):
+            source = source_root / relpath
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(f"synthetic-public-{index}".encode())
+            source.chmod(0o644)
+        (source_root / "cicada-go").mkdir()
+        (source_root / ".env").write_text("PRIVATE_SENTINEL_MUST_NOT_BE_STAGED")
+        (source_root / "unrelated.md").write_text("not an allowlisted input")
+        go_root = self.root / "go"
+
+        with mock.patch.object(runner, "ROOT", source_root):
+            identity = runner.stage_go_metadata(go_root)
+
+        self.assertIs(identity["complete"], True)
+        metadata_root = Path(identity["metadata_root"])
+        staged = sorted(path.relative_to(metadata_root).as_posix()
+                        for path in metadata_root.rglob("*") if path.is_file())
+        self.assertEqual(staged, sorted(public_files))
+        rows = {row["path"]: row for row in identity["rows"]}
+        self.assertEqual(set(rows), set(public_files))
+        for relpath in public_files:
+            data = (source_root / relpath).read_bytes()
+            self.assertEqual((metadata_root / relpath).read_bytes(), data)
+            self.assertEqual(rows[relpath]["sha256"], runner.sha256(data))
+            self.assertEqual(rows[relpath]["bytes"], len(data))
+        self.assertTrue((metadata_root / "cicada-go").is_dir())
+        self.assertEqual(list((metadata_root / "cicada-go").iterdir()), [])
+        self.assertNotIn(b"PRIVATE_SENTINEL_MUST_NOT_BE_STAGED",
+                         b"".join((metadata_root / path).read_bytes() for path in public_files))
+
+    def _go_envelope(self) -> tuple[dict, dict]:
+        go_root = self.root / "go"
+        metadata_root = go_root / "public-root"
+        expected_mounts = [
+            {"source": str(metadata_root), "destination": "/repo", "type": "bind", "rw": False},
+            {"source": str(runner.ROOT / "cicada-go"), "destination": "/repo/cicada-go", "type": "bind", "rw": False},
+            {"source": str(runner.ROOT / ".cicada-data/m1-gomodcache"), "destination": "/gomod", "type": "bind", "rw": False},
+            {"source": str(go_root / "cache"), "destination": "/gocache", "type": "bind", "rw": True},
+            {"source": str(go_root / "tmp"), "destination": "/t", "type": "bind", "rw": True},
+            {"source": str(go_root / "out"), "destination": "/out", "type": "bind", "rw": True},
+        ]
+        tmpfs_options = "uid=0,gid=0,mode=1777,rw,nosuid,nodev,size=128m"
+        env = {"TMPDIR": "/t", "GOTMPDIR": "/t", "GOCACHE": "/gocache",
+               "GOMODCACHE": "/gomod", "GOTOOLCHAIN": "local", "GOPROXY": "off",
+               "GOSUMDB": "off"}
+        fields = {
+            "image_ref": runner.GO_IMAGE,
+            "user": f"{os.getuid()}:{os.getgid()}",
+            "network": "none", "readonly_root": True, "nano_cpus": 2_000_000_000,
+            "memory_bytes": 3 * 1024 * 1024 * 1024, "pids_limit": 256,
+            "cap_add": [], "cap_drop": ["ALL"], "security_opt": ["no-new-privileges"],
+            "mounts": expected_mounts,
+            "tmpfs": {"/tmp": ["uid=0", "gid=0", "mode=1777", "rw", "nosuid", "nodev", "size=128m"]},
+            "env": env, "workdir": "/repo/cicada-go", "tmp_identity": "0:0:1777",
+        }
+        projection = copy.deepcopy(fields)
+        projection["tmpfs"] = {"/tmp": tmpfs_options}
+        return projection, fields
+
+    def test_go_envelope_keeps_exact_mounts_short_temp_and_root_owned_tmp(self) -> None:
+        projection, expected = self._go_envelope()
+        valid, reason = runner.verify_go_envelope(projection, expected)
+        self.assertTrue(valid, reason)
+        self.assertEqual(projection["env"]["TMPDIR"], "/t")
+        self.assertEqual(projection["env"]["GOTMPDIR"], "/t")
+        self.assertEqual(projection["workdir"], "/repo/cicada-go")
+        self.assertEqual(projection["tmp_identity"], "0:0:1777")
+        self.assertNotRegex(projection["tmpfs"]["/tmp"], r"(?:^|,)(?:uid|gid)=(?!0(?:,|$))")
+        self.assertEqual(len(projection["mounts"]), 6)
+        self.assertEqual({row["destination"] for row in projection["mounts"]},
+                         {"/repo", "/repo/cicada-go", "/gomod", "/gocache", "/t", "/out"})
+
+    def test_go_envelope_rejects_extra_mount_wrong_source_or_tmp_policy(self) -> None:
+        _projection, expected = self._go_envelope()
+        variants = []
+        extra = copy.deepcopy(expected)
+        extra["mounts"].append({"source": "/host", "destination": "/leak", "type": "bind", "rw": False})
+        variants.append(extra)
+        wrong_source = copy.deepcopy(expected)
+        wrong_source["mounts"][0]["source"] = str(self.root / "whole-repository")
+        variants.append(wrong_source)
+        wrong_temp = copy.deepcopy(expected)
+        wrong_temp["env"]["TMPDIR"] = "/tmp"
+        variants.append(wrong_temp)
+        chowned_tmp = copy.deepcopy(expected)
+        chowned_tmp["tmpfs"]["/tmp"] = "uid=1000,gid=1000,mode=1777,rw,nosuid,nodev,size=128m"
+        chowned_tmp["tmp_identity"] = "1000:1000:1777"
+        variants.append(chowned_tmp)
+        for projection in variants:
+            with self.subTest(projection=projection):
+                valid, _reason = runner.verify_go_envelope(projection, expected)
+                self.assertFalse(valid)
+
+    def test_python_modules_run_in_separate_child_processes(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="python-module-isolation-") as temp:
+            module_root = Path(temp)
+            (module_root / "poison_module.py").write_text(
+                "import builtins, unittest\n"
+                "builtins._cicada_completion_poison = True\n"
+                "class T(unittest.TestCase):\n"
+                " def test_module_loaded(self): self.assertTrue(builtins._cicada_completion_poison)\n")
+            (module_root / "clean_module.py").write_text(
+                "import builtins, unittest\n"
+                "class T(unittest.TestCase):\n"
+                " def test_fresh_interpreter(self): self.assertFalse(hasattr(builtins, '_cicada_completion_poison'))\n")
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                   "PYTHONPATH": str(module_root), "PYTHONDONTWRITEBYTECODE": "1"}
+            records = runner.run_python_modules(["poison_module", "clean_module"],
+                                                self.root / "python-modules", 30, env)
+        self.assertEqual(records["status"], "PASS")
+        self.assertEqual(records["modules_requested"], 2)
+        self.assertEqual(records["modules_completed"], 2)
+        self.assertEqual(records["tests_run"], 2)
+        self.assertEqual(records["failures"], 0)
+        self.assertEqual(records["errors"], 0)
+        self.assertEqual(records["skips"], 0)
+        modules = records["modules"]
+        self.assertEqual([record["module"] for record in modules],
+                         ["poison_module", "clean_module"])
+        self.assertTrue(all(record["status"] == "PASS" and record["pipe_eof_observed"]
+                            for record in modules))
+
+    def _actual_child_cleanup_receipt(
+        self, *, wrong_container_id: bool = False, wrong_container_label: bool = False,
+        daemon_after_remove: bool = False, remove_fails: bool = False,
+    ) -> tuple[dict, dict]:
+        """Build real cleanup-helper evidence with an in-memory Docker double."""
+        run_id, lane = "synthetic-run-01", "client"
+        run_label, role_label = "org.cicada.test.run", "org.cicada.test.role"
+        hub_image, test_image = "sha256:" + "c" * 64, "sha256:" + "d" * 64
+        fixture_suffix = self.root.name
+        hub_name, test_name = "fixture-hub-" + fixture_suffix, "fixture-test-" + fixture_suffix
+        hub_tag, test_tag = "fixture-hub:" + fixture_suffix, "fixture-test:" + fixture_suffix
+        container_specs = [
+            ("hub", hub_name, hub_image, "a" * 64),
+            ("test", test_name, test_image, "b" * 64),
+        ]
+        image_specs = [
+            ("hub-image", hub_tag),
+            ("test-image", test_tag),
+        ]
+
+        class FakeDocker:
+            def __init__(self) -> None:
+                self.containers: dict[str, dict] = {}
+                self.images: dict[str, str] = {}
+                self.removed_any = False
+
+            def __call__(self, argv: list[str]) -> subprocess.CompletedProcess:
+                kind = argv[1]
+                if argv[1:3] in (["container", "inspect"], ["image", "inspect"]):
+                    resource_kind, selector = argv[1], argv[3]
+                    if daemon_after_remove and self.removed_any:
+                        return subprocess.CompletedProcess(argv, 125, "", "daemon unavailable")
+                    if resource_kind == "container":
+                        resource = self.containers.get(selector)
+                        if resource is None:
+                            resource = next((item for item in self.containers.values()
+                                             if selector == item["name"]), None)
+                        if resource is not None:
+                            fields = (resource["id"], "/" + resource["name"], resource["image"],
+                                      resource["run"], resource["role"])
+                            return subprocess.CompletedProcess(argv, 0, "|".join(fields) + "\n", "")
+                    else:
+                        image_id = self.images.get(selector)
+                        if image_id is not None:
+                            return subprocess.CompletedProcess(argv, 0, image_id + "\n", "")
+                    return subprocess.CompletedProcess(
+                        argv, 1, "", f"Error response from daemon: No such {resource_kind}: {selector}\n")
+                if argv[1:3] == ["rm", "-f"]:
+                    if remove_fails:
+                        return subprocess.CompletedProcess(argv, 1, "", "synthetic remove failure")
+                    self.containers.pop(argv[3], None)
+                    self.removed_any = True
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                if argv[1:3] == ["image", "rm"]:
+                    self.images.pop(argv[3], None)
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                raise AssertionError("unexpected fake Docker command")
+
+        docker = FakeDocker()
+        serial = getattr(self, "_cleanup_fixture_counter", 0) + 1
+        self._cleanup_fixture_counter = serial
+        scratch = self.root / f"independent-random-scratch-{serial}"
+        scratch.mkdir(mode=0o700)
+        plan = owned_fixture_cleanup.prepare(
+            scratch, run_id, lane,
+            [(role, name, image_id) for role, name, image_id, _cid in container_specs],
+            image_specs, call=docker)
+        self.assertTrue(plan["creation_authorized"])
+        self.assertTrue(all(row["pre_creation"] == "EXACT_ABSENT" for row in plan["resources"]))
+        for role, name, image_id, cid in container_specs:
+            cid_path = next(Path(row["cidfile"]) for row in plan["resources"] if row["role"] == role)
+            cid_path.write_text(cid, encoding="ascii")
+            cid_path.chmod(0o600)
+            docker.containers[cid] = {
+                "id": ("f" * 64 if wrong_container_id and role == "hub" else cid),
+                "name": name, "image": image_id, "run": run_id,
+                "role": ("wrong-role" if wrong_container_label and role == "hub" else role),
+            }
+        docker.images.update({hub_tag: hub_image, test_tag: test_image})
+        cleanup = owned_fixture_cleanup.cleanup(
+            plan, build={"image": {"id": hub_image}, "test_image": {"id": test_image}}, call=docker)
+        receipt = {
+            "run_id": run_id, "lane": lane,
+            "status": "PASS" if cleanup["status"] == "CONFIRMED" else cleanup["status"],
+            "cleanup_owned_resources": cleanup["status"] == "CONFIRMED",
+            "fixture_cleanup_status": cleanup["status"],
+            "fixture_cleanup": cleanup,
+        }
+        return receipt, cleanup
+
+    def test_child_cleanup_confirms_only_exact_owned_absence_receipts(self) -> None:
+        receipt, helper_result = self._actual_child_cleanup_receipt()
+        self.assertEqual(helper_result["status"], "CONFIRMED")
+        self.assertNotIn(receipt["run_id"], helper_result["scratch"]["path"])
+        self.assertTrue(all(receipt["run_id"] not in row["name_or_ref"]
+                            for row in helper_result["resources"]))
+        scratch = helper_result["scratch"]
+        self.assertEqual(scratch["creation_proof"], "MKDTEMP_INODE")
+        self.assertEqual(scratch["ownership"], "VERIFIED")
+        self.assertGreater(scratch["device"], 0)
+        self.assertGreater(scratch["inode"], 0)
+        self.assertEqual(scratch["uid"], os.getuid())
+        self.assertNotIn("pre_creation", scratch)
+        for row in helper_result["resources"]:
+            self.assertEqual(row["pre_creation"], "EXACT_ABSENT")
+            self.assertEqual(row["post_cleanup"], "EXACT_ABSENT")
+            self.assertNotIn(receipt["run_id"], row["name_or_ref"])
+            if row["kind"] == "container":
+                self.assertEqual(row["creation_proof"], "CIDFILE")
+                self.assertEqual(row["ownership"], "VERIFIED")
+                self.assertEqual(row["labels_observed"], row["labels_intended"])
+            else:
+                self.assertEqual(row["creation_proof"], "FRESH_TAG")
+                self.assertEqual(row["ownership"], "VERIFIED")
+                self.assertEqual(row["id"], row["expected_image_id"])
+        result = runner.reduce_child_cleanup(
+            receipt, expected_run_id="synthetic-run-01", expected_lane="client",
+            expected_roles={"hub", "test", "hub-image", "test-image"})
+        self.assertEqual(result["status"], "CONFIRMED")
+
+    def test_child_cleanup_generic_claims_missing_or_ambiguous_proof_do_not_confirm(self) -> None:
+        expected = {"hub", "test", "hub-image", "test-image"}
+        generic = {"status": "PASS", "cleanup_owned_resources": True}
+        self.assertEqual(runner.reduce_child_cleanup(
+            generic, "synthetic-run-01", "client", expected)["status"], "UNKNOWN")
+        cases = []
+        missing_role, _ = self._actual_child_cleanup_receipt()
+        missing_role["fixture_cleanup"]["resources"].pop()
+        cases.append((missing_role, "UNKNOWN"))
+        wrong_run, _ = self._actual_child_cleanup_receipt()
+        wrong_run["run_id"] = "other-run"
+        cases.append((wrong_run, "UNKNOWN"))
+        wrong_cid, wrong_cid_cleanup = self._actual_child_cleanup_receipt(wrong_container_id=True)
+        self.assertEqual(wrong_cid_cleanup["resources"][0]["ownership"], "MISMATCH")
+        cases.append((wrong_cid, "UNKNOWN"))
+        wrong_label, wrong_label_cleanup = self._actual_child_cleanup_receipt(wrong_container_label=True)
+        self.assertEqual(wrong_label_cleanup["resources"][0]["ownership"], "MISMATCH")
+        cases.append((wrong_label, "UNKNOWN"))
+        daemon_unknown, daemon_cleanup = self._actual_child_cleanup_receipt(daemon_after_remove=True)
+        self.assertNotEqual(daemon_cleanup["status"], "CONFIRMED")
+        cases.append((daemon_unknown, "UNKNOWN"))
+        still_present, still_present_cleanup = self._actual_child_cleanup_receipt(remove_fails=True)
+        self.assertEqual(still_present_cleanup["status"], "FAILED")
+        cases.append((still_present, "FAILED"))
+        for receipt, expected_status in cases:
+            with self.subTest(expected_status=expected_status):
+                result = runner.reduce_child_cleanup(
+                    receipt, "synthetic-run-01", "client", expected)
+                self.assertEqual(result["status"], expected_status)
+
+    @staticmethod
+    def _exact_missing_docker_probe(calls: list[list[str]], *, daemon_error: bool = False):
+        def probe(argv, **_kwargs):
+            calls.append(list(argv))
+            reference = argv[3] if argv[1] == "network" else argv[2]
+            if daemon_error:
+                return subprocess.CompletedProcess(argv, 125, "", "error during connect: daemon unavailable\n")
+            if argv[1] == "network":
+                error = f"error: no such network: {reference}\n"
+            else:
+                error = f"error: no such object: {reference}\n"
+            return subprocess.CompletedProcess(argv, 1, "[]\n", error)
+        return probe
+
+    def _v68_known_cleanup_receipt(self) -> tuple[dict, Path]:
+        run_id = "cicada-v68-abc12345"
+        scratch = self.root / "cicada-v68-1234abcd"
+        receipt_path = self.root / "v68" / "result.json"
+        return ({
+            "schema": "cicada.v68-joined-result.v1",
+            "fixture_run_id": run_id,
+            "owned_fixture": {
+                "run_id": run_id,
+                "containers": [run_id + suffix for suffix in ("-hub", "-node-a", "-node-b")],
+                "networks": [run_id + suffix for suffix in ("-node-a-net", "-node-b-net")],
+                "images": [run_id + suffix for suffix in (":hub", ":test")],
+                "scratch_path": str(scratch),
+            },
+            "cleanup_owned_containers_and_networks": True,
+            "cleanup_owned_scratch": True,
+        }, receipt_path)
+
+    def _browser_known_cleanup_receipt(self) -> tuple[dict, Path]:
+        run_id = "cicada-webpanel-abc123"
+        base = self.root / "browser"
+        receipt_path = base / "result.json"
+        return ({
+            "schema_version": "cicada.hub-web-panel-browser.v1",
+            "fixture_run_id": run_id,
+            "owned_fixture": {
+                "run_id": run_id,
+                "containers": [run_id + suffix for suffix in ("-hub", "-chromium", "-node", "-node-2")],
+                "networks": [run_id + "-net"],
+                "images": [],
+                "scratch_path": str(base / "fixture"),
+            },
+            "fixture_cleanup": {
+                "status": "PASS",
+                "hub_container_removed": True,
+                "chromium_container_removed": True,
+                "docker_network_removed": True,
+                "fixture_directory_removed": True,
+                "node_container_removed": True,
+                "second_node_container_removed": True,
+            },
+        }, receipt_path)
+
+    @staticmethod
+    def _stress_known_cleanup_receipt(run_id: str = "stress-run-01") -> dict:
+        cids = [f"{number:064x}" for number in range(1, 6)]
+        return {
+            "schema": "cicada.v01.group-fabric-stress-run.v1",
+            "security_envelope": {"owner_labels": {
+                "cicada.acceptance.task": "cicada.v01.group-fabric-stress",
+                "cicada.acceptance.run": run_id,
+            }},
+            "builder": {"cid": cids[0], "cleanup_confirmed": True},
+            "workloads": [{"cid": cid, "cleanup_confirmed": True} for cid in cids[1:]],
+            "emergency_cleanup": [],
+        }
+
+    def test_known_v68_cleanup_requires_exact_receipt_and_readonly_absence(self) -> None:
+        receipt, _path = self._v68_known_cleanup_receipt()
+        calls: list[list[str]] = []
+        with mock.patch.dict(os.environ, {"TMPDIR": str(self.root)}), \
+             mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls)):
+            result = runner.reduce_known_cleanup(receipt, "joined-v68", self.root / "v68/result.json", None)
+        self.assertEqual(result["status"], "CONFIRMED")
+        self.assertEqual(len(calls), 7)
+        self.assertTrue(all(argv[1] in {"inspect", "network"} and "rm" not in argv for argv in calls))
+
+        wrong_schema = copy.deepcopy(receipt)
+        wrong_schema["schema"] = "unknown"
+        renamed = copy.deepcopy(receipt)
+        renamed["owned_fixture"]["containers"][0] += "-other"
+        with mock.patch.object(runner.subprocess, "run") as docker:
+            for candidate in (wrong_schema, renamed):
+                rejected = runner.reduce_known_cleanup(candidate, "joined-v68", self.root / "v68/result.json", None)
+                self.assertEqual(rejected["status"], "UNKNOWN")
+            docker.assert_not_called()
+
+        scratch = Path(receipt["owned_fixture"]["scratch_path"])
+        scratch.mkdir()
+        calls.clear()
+        with mock.patch.dict(os.environ, {"TMPDIR": str(self.root)}), \
+             mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls)):
+            remains = runner.reduce_known_cleanup(receipt, "joined-v68", self.root / "v68/result.json", None)
+        self.assertEqual(remains["status"], "FAILED")
+
+        calls.clear()
+        with mock.patch.dict(os.environ, {"TMPDIR": str(self.root)}), \
+             mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls, daemon_error=True)):
+            uncertain = runner.reduce_known_cleanup(receipt, "joined-v68", self.root / "v68/result.json", None)
+        self.assertEqual(uncertain["status"], "UNKNOWN")
+
+    def test_known_browser_cleanup_requires_schema_and_exact_readonly_absence(self) -> None:
+        receipt, receipt_path = self._browser_known_cleanup_receipt()
+        calls: list[list[str]] = []
+        with mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls)):
+            result = runner.reduce_known_cleanup(receipt, "hub-web-panel-browser", receipt_path, None)
+        self.assertEqual(result["status"], "CONFIRMED")
+        self.assertEqual(len(calls), 5)
+        self.assertEqual(calls[-1][1], "network")
+        self.assertTrue(all("rm" not in argv for argv in calls))
+
+        wrong_schema = copy.deepcopy(receipt)
+        wrong_schema["schema_version"] = "wrong"
+        wrong_name = copy.deepcopy(receipt)
+        wrong_name["owned_fixture"]["networks"][0] += "-foreign"
+        with mock.patch.object(runner.subprocess, "run") as docker:
+            for candidate in (wrong_schema, wrong_name):
+                rejected = runner.reduce_known_cleanup(
+                    candidate, "hub-web-panel-browser", receipt_path, None)
+                self.assertEqual(rejected["status"], "UNKNOWN")
+            docker.assert_not_called()
+
+        scratch = Path(receipt["owned_fixture"]["scratch_path"])
+        scratch.mkdir(parents=True)
+        calls.clear()
+        with mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls)):
+            remains = runner.reduce_known_cleanup(receipt, "hub-web-panel-browser", receipt_path, None)
+        self.assertEqual(remains["status"], "FAILED")
+
+        calls.clear()
+        with mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls, daemon_error=True)):
+            uncertain = runner.reduce_known_cleanup(receipt, "hub-web-panel-browser", receipt_path, None)
+        self.assertEqual(uncertain["status"], "UNKNOWN")
+
+    def test_known_stress_cleanup_requires_owner_scope_and_readonly_absence(self) -> None:
+        run_id = "stress-run-01"
+        receipt = self._stress_known_cleanup_receipt(run_id)
+        receipt_path = self.root / run_id / "RUN.NONAUTH.json"
+        calls: list[list[str]] = []
+        with mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls)):
+            result = runner.reduce_known_cleanup(receipt, "group-fabric-stress", receipt_path, run_id)
+        self.assertEqual(result["status"], "CONFIRMED")
+        self.assertEqual(len(calls), 5)
+        self.assertTrue(all(argv[1] == "inspect" and "rm" not in argv for argv in calls))
+
+        wrong_run = copy.deepcopy(receipt)
+        wrong_run["security_envelope"]["owner_labels"]["cicada.acceptance.run"] = "other-run"
+        failed_claim = copy.deepcopy(receipt)
+        failed_claim["workloads"][0]["cleanup_confirmed"] = False
+        wrong_schema = copy.deepcopy(receipt)
+        wrong_schema["schema"] = "wrong"
+        with mock.patch.object(runner.subprocess, "run") as docker:
+            self.assertEqual(runner.reduce_known_cleanup(
+                wrong_run, "group-fabric-stress", receipt_path, run_id)["status"], "UNKNOWN")
+            self.assertEqual(runner.reduce_known_cleanup(
+                wrong_schema, "group-fabric-stress", receipt_path, run_id)["status"], "UNKNOWN")
+            self.assertEqual(runner.reduce_known_cleanup(
+                failed_claim, "group-fabric-stress", receipt_path, run_id)["status"], "FAILED")
+            docker.assert_not_called()
+
+        calls.clear()
+        with mock.patch.object(runner.subprocess, "run", side_effect=self._exact_missing_docker_probe(calls, daemon_error=True)):
+            uncertain = runner.reduce_known_cleanup(
+                receipt, "group-fabric-stress", receipt_path, run_id)
+        self.assertEqual(uncertain["status"], "UNKNOWN")
 
 
 if __name__ == "__main__":

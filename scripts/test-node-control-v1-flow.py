@@ -18,10 +18,13 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 import uuid
+
+import owned_fixture_cleanup as owned_cleanup
 
 
 GO_IMAGE = (
@@ -183,8 +186,8 @@ def main() -> int:
         write_json(evidence / "result.json", result)
         print(f"BLOCKED: {evidence / 'result.json'}")
         return 2
-    image_check = run(["docker", "image", "inspect", GO_IMAGE], timeout=30)
-    if image_check.returncode != 0:
+    image_check = run(["docker", "image", "inspect", GO_IMAGE, "--format", "{{.Id}}"], timeout=30)
+    if image_check.returncode != 0 or not owned_cleanup.ID.fullmatch(image_check.stdout.strip()):
         result.update(status="BLOCKED", reason="pinned Go 1.27.1 image is not present locally")
         write_json(evidence / "result.json", result)
         print(f"BLOCKED: {evidence / 'result.json'}")
@@ -199,15 +202,34 @@ def main() -> int:
         print(f"BLOCKED: {evidence / 'result.json'}")
         return 2
 
+    if os.environ.get("CICADA_COMPLETION_CHILD_LANE", "node-control-v1") != "node-control-v1":
+        raise ValueError("CHILD_LANE_MISMATCH")
     scratch = Path(tempfile.mkdtemp(prefix="cicada-node-control-v1-"))
     os.chmod(scratch, 0o700)
     go_cache = Path(os.environ.get("CICADA_NODE_CONTROL_GOCACHE", str(scratch / "go-cache"))).expanduser().resolve()
     go_cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     command_name = "cicada-node-control-v1-" + uuid.uuid4().hex[:12]
+    child_run_id = os.environ.get("CICADA_COMPLETION_CHILD_RUN_ID", command_name)
+    try:
+        cleanup_plan = owned_cleanup.prepare(scratch, child_run_id, "node-control-v1",
+                                             [("test", command_name, image_check.stdout.strip())], [])
+    except owned_cleanup.PreflightFailure as error:
+        cleanup = owned_cleanup.cleanup(error.plan)
+        result.update(status="BLOCKED", reason="fixture prestart ownership was not confirmed",
+                      fixture_cleanup=cleanup, fixture_cleanup_status=cleanup["status"],
+                      cleanup_owned_resources=False)
+        write_json(evidence / "result.json", result)
+        print(f"BLOCKED: {evidence / 'result.json'}")
+        return 2
+    owned_cleanup.write(evidence / "cleanup-plan.json", cleanup_plan)
     fixture_tmp = "/fixture-tmp"
     command = [
-        "docker", "run", "--rm", "--pull=never", "--name", command_name,
-        "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+        "docker", "run", "--pull=never", "--name", command_name,
+        "--cidfile", str(scratch / "test.cid"),
+        "--label", f"{owned_cleanup.LABEL}={child_run_id}",
+        "--label", f"{owned_cleanup.ROLE_LABEL}=test",
+        "--network", "none", "--cpus", "2", "--memory", "3g", "--pids-limit", "256",
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", f"{os.getuid()}:{os.getgid()}",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g",
         "--tmpfs", f"{fixture_tmp}:rw,exec,nosuid,nodev,size=2g",
         "-e", "GOTOOLCHAIN=local", "-e", "GOPROXY=off", "-e", "GOMAXPROCS=4",
@@ -222,6 +244,11 @@ def main() -> int:
     (logs / "command.json").chmod(0o600)
     start = time.monotonic()
     raw_log = scratch / "go-test-private.jsonl"
+    def interrupted(signum, frame):
+        raise InterruptedError("FIXTURE_INTERRUPTED")
+
+    previous_term = signal.signal(signal.SIGTERM, interrupted)
+    previous_int = signal.signal(signal.SIGINT, interrupted)
     try:
         completed = run(command, timeout=900)
         raw_log.write_text(completed.stdout + completed.stderr, encoding="utf-8")
@@ -245,20 +272,25 @@ def main() -> int:
     except subprocess.TimeoutExpired:
         result.update(status="BLOCKED", reason="pinned Go fixture exceeded the 15-minute bound")
         result["command_exit_code"] = 124
+    except InterruptedError:
+        result.update(status="BLOCKED", reason="fixture interrupted before terminal evidence")
+        result["command_exit_code"] = 143
     finally:
-        # `docker run --rm` removes the fixture container on completion; force
-        # removal here also covers timeout and interruption paths.
-        inspect = run(["docker", "rm", "-f", command_name], timeout=30)
-        result["cleanup"]["temporary_container"] = "REMOVED" if inspect.returncode == 0 else "ABSENT"
-        try:
-            shutil.rmtree(scratch)
-            result["cleanup"]["scratch"] = "REMOVED"
-        except OSError:
-            result["cleanup"]["scratch"] = "FAILED"
+        # Repeated termination may stop the outer process, but never fabricate
+        # cleanup confirmation. Restore the caller's signal disposition.
+        signal.signal(signal.SIGTERM, previous_term)
+        signal.signal(signal.SIGINT, previous_int)
+        cleanup = owned_cleanup.cleanup(cleanup_plan)
+        owned_cleanup.write(evidence / "cleanup.json", cleanup)
+        result["fixture_cleanup"] = cleanup
+        result["fixture_cleanup_status"] = cleanup["status"]
+        result["cleanup_owned_resources"] = cleanup["status"] == "CONFIRMED"
+        result["cleanup"]["temporary_container"] = "ABSENT" if cleanup["resources"][0]["post_cleanup"] == "EXACT_ABSENT" else "UNKNOWN"
+        result["cleanup"]["scratch"] = "REMOVED" if cleanup["scratch"]["post_cleanup"] == "EXACT_ABSENT" else "UNKNOWN"
         result["script_sha256_end"] = sha256_file(script)
         result["recorded_at"] = utc_now()
-        if result["cleanup"]["scratch"] == "FAILED" and result["status"] == "PASS":
-            result.update(status="FAIL", reason="private scratch cleanup failed")
+        if not result["cleanup_owned_resources"] and result["status"] == "PASS":
+            result.update(status="FAIL", reason="owned fixture cleanup was not confirmed")
         write_json(evidence / "result.json", result)
 
     marker = result["status"]
