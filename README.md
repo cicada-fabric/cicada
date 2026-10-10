@@ -56,7 +56,8 @@ are preserved.
 The [finite eight-case supervisor](docs/client-link-recovery-eight-case-loop.md)
 reuses that immutable APK pair and adds only host test coordination. The final
 consumer pins the actual Core Parent, adapter, interface and freeze files;
-151 Docker offline tests pass. Root selected the original 82-request flow:
+154 Docker offline tests pass, including result-record rejection without
+partial success. Root selected the original 82-request flow:
 TARGET enrollment first, then SOURCE activation with no switch through recovery.
 Earlier attempts retain their original results. Runtime
 execution stays HOLD, with separate encrypted Owner reads, explicitly attributed

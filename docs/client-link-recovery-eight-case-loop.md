@@ -1,6 +1,66 @@
 # Bounded Android Link recovery loop
 
+## Callback result-record verification
+
+Date: 2026-10-10. The current callback follows the complete frozen proposal,
+SHA-256 `486b0c2be499a08a50acf272c8f01801a4105ecc7a67ddf2d4cfb2748afbf717`.
+The nine-field policy and single reconciliation label from historical
+`888b587` are not accepted by this consumer. The previous `04349ac` consumer
+already implemented the eleven-field NONE policy, HEAD0 semantics and mixed
+result label. This checkpoint extracts its existing validation and final
+record update into one testable boundary; it changes no callback fields,
+events, CLI, profile order, budget, frame, APK or production protocol.
+
+NONE requires candidate version `1`, the native reviewed digest and
+`candidate_current=false`. Its encrypted HEAD is always version `0`, empty
+digest, `current=true`, both sides `MISSING`, and not bilateral. Response-loss
+requires separately verified candidate SOURCE `VERIFIED`, TARGET `MISSING`,
+origin `DB_READONLY_VERIFIED_SIGNED_PROOF`; processing, uncertain and legacy
+require both candidate sides `MISSING` and `DB_READONLY_CONFIRMED_ABSENT`.
+The separate readonly receipt hash is mandatory. The result label is
+`CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE`; KEY retains
+`policy=null`, its separate encrypted-session label and two ordered reads.
+NONE retains four ordered encrypted reads. Android readonly stays `NOT_RUN`.
+
+The new tests execute the actual validator and result-record function for
+all eight public synthetic operation/mode pairs. They reject the old nine
+fields, false encrypted-candidate provenance, wrong origin, invalid receipt
+hash, candidate promotion, HEAD1 and bilateral inference. A rejected receipt
+must leave the preceding `UNKNOWN`/`RECOVERED` record unchanged, without a
+partial `PASS` or success label. This is offline guard evidence, not execution
+of Android, Core reconciliation, signing or cryptography.
+
+| Gate | Status | Actual evidence |
+|---|---|---|
+| Current callback regression before extraction | PASS | At clean `04349ac`, 4 tests / 58 subtests, exit 0; separate `callback-recheck-04349ac-20261010` receipt retained under the previous evidence root |
+| Final Docker offline suite | PASS | 154 tests, no failures or skips, exit 0; 5.125 seconds unittest / 6.183 seconds wrapper |
+| Result-record success and rejection | PASS for offline synthetic receipts | Three new tests execute receipt validation; no runtime acceptance |
+| Eight Android cases / actual TARGET Go reconciliation | NOT_RUN | Online HOLD; no Root GO |
+| Android readonly / native Worker / physical Android / public HTTPS | NOT_RUN | Separate runtime gates |
+
+New evidence root:
+`/gpu1-share/data/cicada-client/v164-e2a1908-callback-record-freeze-20261010`.
+Executed command, exit `0`:
+
+```sh
+python3 /gpu1-share/data/cicada-client/v164-e2a1908-callback-record-freeze-20261010/run-offline.private.py
+```
+
+The receipt includes the exact pinned-image Docker command, with
+`--network=none`, a read-only Client mount and no Core or key mount. The final
+suite ran at parent `04349acccec94c977ee16b65059f92afe3a846a2`, **dirty=true**;
+its source hashes bind the final committed Python bytes. The earlier passing
+attempt is retained with its distinct source attribution. The final commit,
+source inventory, twelve drivers, unchanged callback schema, refreshed
+templates, actual commands/exits and unchanged APK pair are bound in this
+root's `final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`. Root must review
+these new driver bytes before deriving any runtime plan. This manifest is
+preparation evidence, not a GO. Earlier manifests and failures remain intact.
+
 ## Final consumer freeze: original 82-request flow
+
+This section preserves the previous `04349ac` preparation. The callback
+result-record checkpoint above supplies the latest source-bound delivery.
 
 Date: 2026-10-10. The final host consumer pins the actual four Core Parent
 artifacts below, rather than the earlier three-file preparation. This is a

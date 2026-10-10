@@ -1,6 +1,53 @@
 # CICADA Client integration handoff
 
+## Callback result-record checkpoint
+
+Root's blocking report cited historical `888b587`. Full read-only comparison
+against the frozen callback proposal, SHA-256
+`486b0c2be499a08a50acf272c8f01801a4105ecc7a67ddf2d4cfb2748afbf717`, confirmed
+that `04349ac` already enforces the current 25-field receipt and eleven-field
+NONE policy. Fresh current-source regression passed four tests / 58 subtests,
+exit 0; that receipt is retained separately from the historical 140-test run.
+
+The new host-only change makes validation and final success recording one
+testable boundary. Three new tests exercise all eight public synthetic
+operation/mode receipts and reject invalid NONE evidence without changing an
+`UNKNOWN`/`RECOVERED` record to partial success. The final Docker offline suite
+is **PASS**, 154 tests, exit **0**, 6.183 seconds including container startup;
+tested parent is `04349ac`, **dirty=true**. It is not Android or real Core
+reconciliation acceptance.
+
+NONE retains candidate1/noncurrent, independently attributed readonly
+candidate evidence and encrypted HEAD0/empty/current/both-MISSING. Only
+response-loss candidate SOURCE is `VERIFIED`; the other three are `MISSING`.
+TARGET stays `MISSING`, with no bilateral approval. Origin is
+`DB_READONLY_VERIFIED_SIGNED_PROOF` for response-loss and
+`DB_READONLY_CONFIRMED_ABSENT` otherwise, with a mandatory separate receipt
+SHA-256. NONE results use
+`CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE`. KEY retains
+`policy=null`, two reads and its separate-session label; NONE retains four
+reads. No Client pending-candidate API or database access is introduced.
+
+Latest evidence:
+`/gpu1-share/data/cicada-client/v164-e2a1908-callback-record-freeze-20261010/final82-delivery/CLIENT-LOOP-DELIVERY.NONAUTH.json`.
+This manifest binds the actual final Client commit/clean state, source
+inventory, twelve driver hashes, frozen schema, templates, commands/exits
+and unchanged APK pair. The [callback record](client-link-recovery-eight-case-loop.md#callback-result-record-verification)
+gives the commands and provenance. Earlier deliveries remain historical.
+Root must review the new driver pins before deriving a runtime plan and
+issuing a separate finite GO. Current Parent/adapter hashes remain explicitly
+pinned; a later changed Core freeze requires a new exact delivery.
+
+All eight Android cases, actual independent TARGET Go reads, Android readonly,
+native Worker, physical Android and public HTTPS are **NOT_RUN**. Online
+remains **HOLD**. The 82-request TARGET-first/SOURCE-last initialization and
+SOURCE continuity are unchanged. No APK/Kotlin, budget, frame, production
+protocol, Core, database, credential or key is changed; no push or merge.
+
 ## Final Client host preparation: original 82-request flow
+
+This section records the preceding `04349ac` preparation. Its manifest is
+retained; use the source-bound callback checkpoint above for the latest pins.
 
 Root's latest delivered instruction explicitly revokes the SOURCE-only
 restriction and selects the original frozen flow. The reviewed ruling is

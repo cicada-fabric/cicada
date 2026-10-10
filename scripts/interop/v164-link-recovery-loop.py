@@ -563,12 +563,8 @@ class RecoveryLoop:
                                                      'review': review.as_dict()}, stage)
         exact(reply, {'receipt'}, 'separate-session reconciliation')
         reconciliation_ref, reconciliation, _ = self.read_ref(reply, 'receipt', case)
-        validate_reconciliation(reconciliation, case, binding, capture_value, review_value)
-        record.update(result='PASS', phase='RECONCILED',
-                      reconciliation_source='CORE_PARENT_SEPARATE_ENCRYPTED_OWNER_SESSION' if kind == 'Key' else
-                          'CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE',
-                      reconciliation_receipt_sha256=reconciliation_ref.sha256,
-                      android_readonly_reconciliation='NOT_RUN', business_outcome='SEPARATELY_RECONCILED')
+        record_reconciliation(record, reconciliation, case, binding, capture_value,
+                              review_value, reconciliation_ref.sha256)
 
     def run(self):
         failure = None
@@ -736,6 +732,17 @@ def validate_reconciliation(value, case, binding, capture, review):
                 read['operation_id_sha256'] not in operation_ids, 'direct read sequence or operation was reused')
         previous_request, previous_response = request, response
         operation_ids.add(read['operation_id_sha256'])
+
+
+def record_reconciliation(record, value, case, binding, capture, review, receipt_sha256):
+    """Record success only after validating the separately attributed evidence."""
+    validate_reconciliation(value, case, binding, capture, review)
+    record.update(result='PASS', phase='RECONCILED',
+                  reconciliation_source='CORE_PARENT_SEPARATE_ENCRYPTED_OWNER_SESSION'
+                      if case['operation'] == 'link.key_grant' else
+                      'CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE',
+                  reconciliation_receipt_sha256=receipt_sha256,
+                  android_readonly_reconciliation='NOT_RUN', business_outcome='SEPARATELY_RECONCILED')
 
 
 def main():

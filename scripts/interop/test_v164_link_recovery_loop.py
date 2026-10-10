@@ -692,6 +692,130 @@ class ReconciliationTests(unittest.TestCase):
         }
         return case, binding, {**value, "_capture": capture, "_review": review}
 
+    def receipt_fixture(self, operation: str, mode: str):
+        case, binding, wrapped = self.fixture()
+        case = dict(case, operation=operation, mode=mode)
+        capture = wrapped.pop("_capture")
+        review = wrapped.pop("_review")
+        value = wrapped
+        is_key = operation == "link.key_grant"
+        observed = mode == "response-loss"
+        value.update(
+            proof_observed=observed,
+            source_status=("ACCEPTED" if is_key else "VERIFIED") if observed else "MISSING",
+            target_status="MISSING",
+            policy_mode=None if is_key else "NONE",
+            bilateral_verified=False,
+            policy=None,
+        )
+        if not is_key:
+            native = review["native_review_json"]
+            value["policy"] = {
+                "candidate_version": native["policyVersion"],
+                "candidate_digest": native["policyDigest"],
+                "candidate_current": False,
+                "candidate_evidence_origin": "DB_READONLY_VERIFIED_SIGNED_PROOF" if observed else
+                    "DB_READONLY_CONFIRMED_ABSENT",
+                "candidate_evidence_receipt_sha256": loop.sha(b"synthetic-verified-core-receipt"),
+                "head_version": "0",
+                "head_digest": "",
+                "head_current": True,
+                "head_source_status": "MISSING",
+                "head_target_status": "MISSING",
+                "head_bilateral_verified": False,
+            }
+            for number, operation_name in enumerate((
+                    "link.review_policy_status", "link.review_policy_preview"), start=5):
+                value["reads"].append({
+                    "operation": operation_name,
+                    "operation_id_sha256": f"{number:064x}",
+                    "request_sha256": f"{number + 10:064x}",
+                    "response_sha256": f"{number + 20:064x}",
+                    "request_sequence": str(number),
+                    "response_sequence": str(number + 1),
+                })
+        return case, binding, capture, review, value
+
+    def test_record_reconciliation_labels_all_eight_valid_receipts_without_inference(self) -> None:
+        for operation, expected_source in (
+                ("link.key_grant", "CORE_PARENT_SEPARATE_ENCRYPTED_OWNER_SESSION"),
+                ("link.review_policy_grant",
+                 "CORE_PARENT_MIXED_DIRECT_E2EE_HEAD_AND_DB_READONLY_CANDIDATE")):
+            for mode in ("response-loss", "processing", "uncertain", "legacy"):
+                with self.subTest(operation=operation, mode=mode):
+                    case, binding, capture, review, receipt = self.receipt_fixture(operation, mode)
+                    record = {
+                        "case_id": case["case_id"], "operation": operation, "mode": mode,
+                        "side": "source", "result": "UNKNOWN", "phase": "RECOVERED",
+                        "business_outcome": "UNKNOWN",
+                    }
+                    self.assertIsNone(loop.record_reconciliation(
+                        record, receipt, case, binding, capture, review, "d" * 64))
+                    self.assertEqual(record["result"], "PASS")
+                    self.assertEqual(record["phase"], "RECONCILED")
+                    self.assertEqual(record["reconciliation_source"], expected_source)
+                    self.assertEqual(record["reconciliation_receipt_sha256"], "d" * 64)
+                    self.assertEqual(record["android_readonly_reconciliation"], "NOT_RUN")
+                    self.assertEqual(record["business_outcome"], "SEPARATELY_RECONCILED")
+                    self.assertEqual(receipt["target_status"], "MISSING")
+                    self.assertIs(receipt["bilateral_verified"], False)
+                    if operation == "link.review_policy_grant":
+                        self.assertEqual(receipt["policy"]["head_source_status"], "MISSING")
+                        self.assertEqual(receipt["policy"]["head_target_status"], "MISSING")
+                        self.assertIs(receipt["policy"]["head_bilateral_verified"], False)
+
+    def test_invalid_none_receipts_leave_recovered_record_unmodified(self) -> None:
+        case, binding, capture, review, valid = self.receipt_fixture(
+            "link.review_policy_grant", "response-loss")
+        mutations = (
+            {"candidate_evidence_origin": "DB_READONLY_CONFIRMED_ABSENT"},
+            {"candidate_evidence_origin": "E2EE_VERIFIED_SIGNED_PROOF"},
+            {"candidate_evidence_receipt_sha256": "bad-receipt"},
+            {"candidate_current": True},
+            {"head_version": "1", "head_digest": "a" * 64,
+             "head_source_status": "VERIFIED", "head_target_status": "VERIFIED",
+             "head_bilateral_verified": True},
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                receipt = copy.deepcopy(valid)
+                receipt["policy"].update(mutation)
+                record = {
+                    "case_id": case["case_id"], "operation": case["operation"],
+                    "mode": case["mode"], "side": "source", "result": "UNKNOWN",
+                    "phase": "RECOVERED", "business_outcome": "UNKNOWN",
+                }
+                before = copy.deepcopy(record)
+                with self.assertRaises(loop.LoopError):
+                    loop.record_reconciliation(
+                        record, receipt, case, binding, capture, review, "e" * 64)
+                self.assertEqual(record, before)
+
+        legacy_nine_fields = copy.deepcopy(valid)
+        del legacy_nine_fields["policy"]["candidate_evidence_origin"]
+        del legacy_nine_fields["policy"]["candidate_evidence_receipt_sha256"]
+        record = {"result": "UNKNOWN", "phase": "RECOVERED", "business_outcome": "UNKNOWN"}
+        before = copy.deepcopy(record)
+        with self.assertRaises(loop.LoopError):
+            loop.record_reconciliation(
+                record, legacy_nine_fields, case, binding, capture, review, "e" * 64)
+        self.assertEqual(record, before)
+
+    def test_bilateral_none_status_is_rejected_without_partial_pass(self) -> None:
+        case, binding, capture, review, receipt = self.receipt_fixture(
+            "link.review_policy_grant", "response-loss")
+        receipt["target_status"] = "VERIFIED"
+        receipt["bilateral_verified"] = True
+        record = {
+            "case_id": case["case_id"], "operation": case["operation"],
+            "mode": case["mode"], "side": "source", "result": "UNKNOWN",
+            "phase": "RECOVERED", "business_outcome": "UNKNOWN",
+        }
+        before = copy.deepcopy(record)
+        with self.assertRaises(loop.LoopError):
+            loop.record_reconciliation(record, receipt, case, binding, capture, review, "f" * 64)
+        self.assertEqual(record, before)
+
     def test_accepts_separate_encrypted_read_only_proof_reconciliation(self) -> None:
         case, binding, wrapped = self.fixture()
         value = dict(wrapped)
