@@ -9,22 +9,27 @@ for product scope and the [2026-10-11 test closeout](v00-test-closeout-20261011-
 for current source and artifact checks. Software is 0.0.2, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
-their separate tested sources. A5 remains the last successful scoped Native
-acceptance, with Node inbox `CONSUMPTION_UNCONFIRMED`. C9–C12 are actual paid
-FAILs; C12 completed A's Join turn but not B's, whose second POST returned HTTP
-500. Its underlying cause was not retained, and later multigroup/ASK/automatic
-reply/G3 work was NOT_REACHED. C12's fixture, Python and zero-model checks do
-not upgrade that result. See the [Native record](native-default-daemon-validation.md)
-for each attempt. Full G2/G3 remains unclosed, and v0.1.0 remains PARTIAL.
+their separate tested sources. C14 passed a bounded default-daemon scope on
+the original A/B contexts: six turns (four manual, two automatic), multi-Group
+authorization/leave, ASK/Reply, post-revocation denial, and G3 authenticated
+encrypted status after same-store Hub replacement. Independent owned closeout
+passed 79/79 checks. The production `--fabric-only` dependency check created a
+`NewFabricHandler` without a Control business object and returned management
+HTTP 503; invocation count was NOT_INSTRUMENTED. This does not establish full
+G2/G3 or T9. Historical C9–C12 paid FAILs, including C12's cause-unknown HTTP
+500 and later NOT_REACHED work, retain their original attribution. See the
+[Native record](native-default-daemon-validation.md). Overall v0.1.0 remains
+PARTIAL.
 
-Next: keep G2/G3 PARTIAL. After the user-requested check of current
-gpt-5.6-luna Responses API 500 service recovery, review fresh HEAD, source
-bindings and GO before considering one bounded rerun; do not repeat blindly.
-Keep the six-turn/16-POST limits and original-context oracle. The default-daemon
-selector remains outside the one-click runner. Rerun whole-Go validation when
-Go build/test inputs change or new Go failure evidence warrants it. V67
-account-bound native submission is UNSUPPORTED; physical StopVerifier,
-real-device and public HTTPS remain NOT_RUN.
+Next: obtain the Client's independent v1.6.5 encrypted status-read result
+across an exact owned Hub restart and evidence for a real Group grant. A3's
+synthetic OwnerProof vector selector passed, but does not prove a grant; do not
+repeat it as a substitute. Keep physical-device, public HTTPS and user
+deployment evidence separate. V67 account-bound Native submission is
+UNSUPPORTED; retain the safe Relay fallback. Do not repeat the Native model run
+or whole-Go suite without a relevant input change or new failure evidence. The
+default-daemon selector remains outside the one-click runner. Physical
+StopVerifier, real-device and public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

@@ -9,24 +9,29 @@ later Python, artifact, Link, Browser, PQTLS, G4/G5 and SQLite checks with their
 separate source scopes. Development remains software 0.0.2, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, schema 59; v0.1.0 remains PARTIAL.
 
-The historical `shipping0002e` G2 denial tail and G3 encrypted own-Owner status
-snapshot passed only within their recorded scope; that run remains FAIL on
-cleanup. A5 remains the last successful scoped Native acceptance, with Node
-inbox consumption `UNCONFIRMED`. C9–C12 are actual paid FAILs. C12's fixture
-candidate passed targeted, Python and zero-model checks, but the paid run failed
-after A's Join turn completed and B's second POST returned HTTP 500; the cause
-was not retained and later multigroup/ASK/automatic-reply/G3 work was
-NOT_REACHED. The [Native detail record](native-default-daemon-validation.md)
-holds attempt-level evidence. V67 remains UNSUPPORTED; physical StopVerifier,
-real-device and public HTTPS remain NOT_RUN. Development remains 0.0.2 /
-contract 1.6.5 and v0.1.0 remains PARTIAL.
+The C14 run passed its bounded default-daemon scope on clean tracked execution
+HEAD `8ba8d135b50147ec5ee251f1547d1387c78b7c7f`: six turns
+(four manual, two automatic) on the original A/B contexts, multi-Group
+authorization and leave, ASK/Reply, denial after revocation, and a G3
+authenticated encrypted status snapshot after same-store Hub replacement.
+The production `--fabric-only` dependency check constructed `NewFabricHandler`
+without a Control business object and received management HTTP 503; the
+invocation counter was not instrumented. Independent owned closeout passed
+79/79 checks. These results do not establish complete G2/G3 or T9 acceptance;
+see the [Native record](native-default-daemon-validation.md). Historical C9–C12
+paid failures, including C12's cause-unknown HTTP 500 and NOT_REACHED later
+work, retain their original results. V67 remains UNSUPPORTED and uses the safe
+Relay fallback; physical StopVerifier, real-device and public HTTPS remain
+NOT_RUN. Development remains 0.0.2 / contract 1.6.5 and v0.1.0 remains PARTIAL.
 
-Next: keep G2/G3 PARTIAL. After the user-requested check of current
-gpt-5.6-luna Responses API 500 service recovery, review fresh HEAD, source
-bindings and GO before considering one bounded rerun. Keep the six-turn/16-POST
-limits. The aggregate and standard/PQ artifact scopes remain as recorded; rerun
-whole-Go validation when Go build/test inputs change or new Go failure evidence
-warrants it.
+Next: obtain the Client's independent v1.6.5 encrypted status-read result
+across an exact owned Hub restart and evidence for a real Group grant. A3's
+synthetic OwnerProof vector selector passed, but does not prove a grant; do not
+repeat it as a substitute. Keep physical-device, public HTTPS and user
+deployment evidence separate. Do not repeat the Native model run or whole-Go
+suite without a new source/input change or failure evidence. The clean-328f
+aggregate remains FAIL; later scoped passes retain their own sources. The
+standard/PQ artifact scopes remain as recorded.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

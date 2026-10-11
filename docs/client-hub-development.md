@@ -14,10 +14,14 @@ are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
 wire 1, catalog 55, schema 59 and software 0.0.2 remain unchanged. Joint11
 passed its eight Android recovery cases and final close ACK with exact cleanup.
 Core C14 separately passed its scoped default-daemon G2/G3 run; that result is
-not Android status-read evidence. Android encrypted status-read/restart and
-GroupOwnerProof, physical-device and public HTTPS acceptance remain NOT_RUN.
-Client artifacts retain their own producer/source attribution; this Core
-checkpoint changes no Client source or contract.
+not Android status-read evidence. A3 passed one synthetic Android OwnerProof
+vector instrumentation test using immutable APKs from producer `1151b06`; this
+is not a real Group grant and not a build from current Client `740882`. Details
+are in the [test closeout](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
+The independent v1.6.5 encrypted status-read/restart and real Group grant,
+physical-device and public HTTPS acceptance remain NOT_RUN. Client artifacts
+retain their own producer/source attribution; this Core checkpoint changes no
+Client source or contract.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-
@@ -28,7 +32,9 @@ cause-unknown result is not rewritten by C14. This Core work changes no Client
 source or contract.
 The next Client-side validation is a test-only v1.6.5 encrypted status read
 across an exact-owned Hub restart, using the already pinned delivery and its
-independently pinned Hub, Owner and Device identities. Add a new Android
+independently pinned Hub, Owner and Device identities, plus a separately scoped
+real Group-grant result. A3's synthetic OwnerProof vector is already tested;
+do not rerun it as a substitute for a real grant. Add a new Android
 instrumentation selector beside
 `CICADA_CLIENT/android/app/src/androidTest/java/ai/cicada/client/hub/LinkReviewPolicyStatusInteropTest.kt`;
 the existing class is explicitly v1.6.1 and does not prove restart persistence.
@@ -41,11 +47,13 @@ status, accepted sides and expiry with the pinned proposal. Exercise the
 existing response-loss uncertainty fields (`pendingOperationId`,
 `linkReviewStatusReadContext`, and `uncertainNeedsReconciliation`) and ensure a
 restart does not silently infer approval or clear unresolved uncertainty.
-Keep the existing KEY/NONE cases and report absent fixtures as NOT_RUN; do not
-reuse Joint11's 82-request recovery batch, treat a database read-only receipt
-as Android status, or claim physical/native/public-HTTPS coverage. No model,
-production credential, protocol or Client production-code change is part of
-this task. v0.1.0 remains PARTIAL; V67 is UNSUPPORTED.
+Cover the eight v1.6.5 encrypted status-read cases without confusing them with
+Joint11's eight Link-recovery cases. Keep the existing KEY/NONE cases and
+report absent fixtures as NOT_RUN; do not reuse Joint11's 82-request recovery
+batch, treat a database read-only receipt as Android status, or claim
+physical/native/public-HTTPS coverage. No model, production credential,
+protocol or Client production-code change is part of this task. v0.1.0 remains
+PARTIAL; V67 is UNSUPPORTED.
 
 ## Historical Client delivery / preparation — 2026-10-10
 

@@ -129,6 +129,39 @@ the execution, zero-preparation, source and result identities. Android status
 reads/GroupOwnerProof, V67/account-bound submission, two physical Nodes, public
 HTTPS and complete first-release acceptance remain outside this scope.
 
+<a id="synthetic-android-ownerproof-vector"></a>
+
+## Synthetic Android OwnerProof vector — limited instrumentation scope
+
+The separate A3 run passed exactly
+`ai.cicada.client.hub.EndpointAttestationVectorTest#separateOwnerProofMustBindExactReviewedManifest`
+(`OK (1 test)`, instrumentation exit 0; outer exit 0/EOF) in 68.05077549s on
+Android API 35 / Android 15 / x86_64. It used the immutable app/test APK pair
+from Client producer `1151b06e04b172de9c7b5989ffec1318e58bf862` (SHA-256
+`e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745` and
+`7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29`). At the
+time, Core was HEAD `f2926bd73fdf12aca9f25e7408770c2b6de3e82b` with only
+documentation changes dirty; Client was clean at `740882b86d798a3d514b24b2bc2fa2802718d79d`.
+This was not a new Client APK or Core product build. The scope is synthetic
+OwnerProof manifest-binding instrumentation only: model count was zero, Hub
+Runtime was NOT_RUN, and `real_group_grant` plus Android encrypted status-read
+were NOT_RUN. The [Root result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/owner-proof-android-a3/RESULT.NONAUTH.json)
+(SHA-256 `9cbb3e826bc8c4985a36e2717511a80b96bd0a82e52000fcb6916cb0efbaaf2a`)
+and [final receipt](../.cicada-data/v01-next-gates-20261011/native-direct-audit/owner-proof-android-a3/FINAL.NONAUTH.json)
+(SHA-256 `a881121fb577c3229ac5d913f688871946b9b57fa8086afabe74ddd9debd1fe2`)
+retain the run details. The independent [38/38 postcheck](../.cicada-data/v01-next-gates-20261011/native-direct-audit/owner-proof-android-a3/ROOT-INDEPENDENT-POSTCHECK.NONAUTH.json)
+(SHA-256 `34a5a6a04cd2bb64f5b13a63f195a4e5dc70ad3f69cb8245618f5e3959976e22`)
+confirmed the recorded APK/driver, source and resident identities unchanged
+and exact owned cleanup.
+
+The earlier A1 `MOUNTS` prestart failure and A2 `BOOT_CONTAINER_EXIT` failure
+remain retained; neither ran the selector. A1's strict mount check rejected
+the image's anonymous Gradle volume. A2's `avdmanager` created the AVD under
+`/home/gradle/.android` while the emulator searched the temporary HOME. A3 aligned the two
+Android directory environment values without relaxing mount, capability or
+UID checks. See the [A1 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/owner-proof-android-a1/RESULT.NONAUTH.json)
+and [A2 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/owner-proof-android-a2/RESULT.NONAUTH.json).
+
 The real-approval test overlay now matches the production fail-closed result
 when Native stop is unconfirmed; it does not mark the Goal completed or emit a
 summary. Its initial A1 compile attempt failed before container creation due
@@ -182,11 +215,15 @@ private-key paths.
 ## Remaining first-release acceptance
 
 C14 passed the bounded six-turn default-daemon G2/G3 scenario with independent
-exact cleanup; broader Native acceptance, V67/account-bound submission, two
-physical Nodes, Android encrypted status reads/GroupOwnerProof and public HTTPS
+exact cleanup. A3 separately passed only the synthetic OwnerProof vector
+instrumentation; it did not exercise a real Group grant. The independent
+v1.6.5 Android encrypted status read across an exact owned Hub restart, a real
+Group grant, V67/account-bound submission, two physical Nodes and public HTTPS
 remain unresolved or NOT_RUN. V67's account-bound Native submission API is
 **UNSUPPORTED**, so it is not a source-only implementation task until a
-supported API exists. G4's real queue-crash result preserves
+supported API exists. Broader Native acceptance beyond C14's bounded
+default-daemon scope remains unverified; C14 does not establish the separate
+foreground model-consumption path. G4's real queue-crash result preserves
 `INJECTION_UNCERTAIN` and refuses reinjection; it does not establish cold
 resume, which is not claimed as an unconditional first-release gate. A5's
 separate `QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` state remains attributed

@@ -87,6 +87,13 @@ DB-only candidate business logic. This is Android Link recovery scope only,
 with no Native Runtime/model/physical-device/public HTTPS acceptance transfer.
 Historical e2a image and packet attribution remain unchanged.
 
+A separate Android A3 run passed only the synthetic OwnerProof manifest-binding
+vector on the immutable APK pair from producer `1151b06e`; it was not built from
+the current Client checkout and did not verify a real Group grant. The
+independent postcheck passed 38/38 checks. The v1.6.5 encrypted status read
+across an exact-owned Hub restart and a real Group grant remain NOT_RUN. See the
+[scoped OwnerProof record](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
+
 The separate G4/G5 [qa-a5 receipt](../.cicada-data/v01-next-gates-20261010/qa-a5/ROOT-RUN.NONAUTH.json)
 (SHA-256 `e390f3fb2baa45daa851eba15b058150eadd5bfc907c47d6696c5b47f8fec3af`)
 passed 40 tests / two packages in each normal and race phase, zero failures/skips,

@@ -38,15 +38,21 @@ result limit remains enforced; source archives have a separate 16 MiB bound.
 The default inventory includes the pinned offline Go build/test/vet lane,
 Python unit tests, Client contract and packaging checks, deterministic web
 panel checks, and disposable Docker interop (including `client-link-recovery`),
-stress, and browser lanes when
-their prerequisites are available. The Go container uses the locally present
-pinned Go image, offline module cache, read-only source, and a separate run
-cache. It reports optional Go skips explicitly. The panel lane uses
-`--model-only`; it does not test WASM interoperability. Native Worker approval
-is not requested by default. Peer ASK/REPLY, G4 injection, and G5 acceptance
-remain `NOT_RUN` unless exposed by a reviewed command; this runner currently
-reports those lanes as unsupported when requested. A missing prerequisite is
-`BLOCKED`, and an omitted optional lane is `SKIP`/`NOT_RUN`; neither is a pass.
+stress, and browser lanes when their prerequisites are available. The Go
+container uses the locally present pinned Go image, offline module cache,
+read-only source, and a separate run cache. It reports optional Go skips
+explicitly. The panel lane uses
+`--model-only`; it does not test WASM interoperability. The four Native lanes
+(Worker approval, Peer ASK/REPLY, G4 injection and G5 acceptance) are not
+requested by default; their `kind=skip` lanes are recorded as `NOT_RUN` by the
+worker. If no higher-priority
+`FAIL`, `UNKNOWN` or `BLOCKED` applies, any `SKIP`, `NOT_RUN` or
+`PASS_WITH_SKIPS` lane makes `final_status` `INCOMPLETE`; this is why the
+default run does not claim complete acceptance.
+Explicit `--native-peer`, `--native-g4` and `--native-g5` requests are recorded
+as `BLOCKED` because no reviewed stable command is available, and start no
+Native command. A missing prerequisite is also `BLOCKED`; none of these states
+is a pass.
 
 Supply the current wiring evidence as a matched pair when it is available:
 
@@ -65,9 +71,13 @@ start the peer, G4, or G5 Native gates.
 
 The JSON summary distinguishes `PASS`, `PASS_WITH_SKIPS`, `FAIL`, `BLOCKED`,
 `SKIP`, `NOT_RUN`, and `UNKNOWN`. Overall completion is `PASS` only if every
-listed lane and the source-identity check pass. Thus a successful selected test
-lane is not a claim that all product acceptance gates passed. Android, physical
-device, public HTTPS, and unrun Native scopes remain separate evidence.
+listed lane and the source-identity check pass. The summary also initializes
+Android, physical-device, public-HTTPS and Native-Runtime platform gates as
+`NOT_RUN`; these platform fields are not inputs to `final_status`. Thus an
+Android or external-platform gate being unrun does not itself change the
+runner's status, and a successful selected lane is not a claim that all product
+acceptance gates passed. C14's scoped Native result is recorded separately and
+does not convert the default runner's omitted Native lanes into executed lanes.
 
 ## Dedicated Link recovery command — actual bounded Docker PASS
 

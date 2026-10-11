@@ -8,18 +8,26 @@ records the clean-328f aggregate and separately scoped follow-up evidence. Keep
 software 0.0.2, contract `client-hub-v1.6.5`, wire 1, catalog 55 and schema 59
 distinct. Overall first-release acceptance remains PARTIAL.
 
-Next: preserve G2/G3 as PARTIAL. C12's fixture-only phase-budget candidate
-passed targeted, Python and zero-model checks, but its paid run failed after
-A's Join turn completed and B's second POST returned HTTP 500; later work was
-NOT_REACHED. Its exact scope is in the [Native record](native-default-daemon-validation.md).
-After the user-requested check of current gpt-5.6-luna Responses API 500
-service recovery, review fresh HEAD, source bindings and GO before considering
-one bounded rerun. Preserve the six-turn/16-POST limits and original-context
-oracle. The clean-328f aggregate remains FAIL and standard/PQ artifact QA is a
-separate scoped pass. Rerun whole-Go validation when Go build/test inputs change
-or new Go failure evidence warrants it. The default-daemon selector remains
-outside the one-click runner. V67 account-bound native submission is
-UNSUPPORTED; physical StopVerifier, real-device and public HTTPS remain NOT_RUN.
+C14 passed its bounded six-turn default-daemon scope on the original A/B
+contexts: multi-Group authorization/leave, ASK/Reply, denial after revocation,
+and the G3 authenticated encrypted status snapshot after same-store Hub
+replacement. Independent owned closeout passed 79/79 checks. The `--fabric-only`
+production dependency check constructed `NewFabricHandler` without a Control
+business object and management returned HTTP 503; invocation counting was
+NOT_INSTRUMENTED. This is scoped G2/G3 evidence, not complete G2/G3 or T9
+acceptance. The clean-328f aggregate remains FAIL, and historical C9–C12 paid
+FAILs retain their original attribution; C12's cause-unknown HTTP 500 does not
+require another run absent new evidence. See the [Native record](native-default-daemon-validation.md).
+
+Next: request the Client's independent v1.6.5 encrypted status-read result
+across an exact owned Hub restart and evidence for a real Group grant. A3's
+synthetic OwnerProof vector selector passed, but does not prove a grant; do not
+repeat it as a substitute. Physical-device, public HTTPS and user deployment
+checks remain separate. V67 account-bound Native submission is UNSUPPORTED;
+keep the safe Relay fallback. Do not repeat the Native model run or whole-Go
+suite without a new relevant input change or failure evidence. The
+default-daemon selector remains outside the one-click runner. Physical
+StopVerifier, real-device and public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

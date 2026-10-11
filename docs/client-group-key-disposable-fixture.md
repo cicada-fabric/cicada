@@ -1,24 +1,36 @@
-# Disposable Client Group-key fixture
+# Historical disposable Client Group-key fixture
 
-Status: **preparation only**. Bare `start` remains pinned to the historical
-v1.2.1 Hub for reproducing the earlier run below. For the current v1.3 Hub,
-pass its fixed build metadata explicitly:
+Status: **historical preparation record only**. This page preserves the v1.2.1
+bare-start fixture and the separately recorded v1.3 explicit-metadata smoke;
+neither is a current v1.6.5 setup recipe. The current
+[`client-group-key-fixture.sh`](../scripts/client-group-key-fixture.sh)
+accepts two-component catalog revisions such as `client-hub-v1.3` and
+`client-hub-v1.6`, but its revision matcher rejects the current
+three-component `client-hub-v1.6.5`. Replacing only the metadata path does not
+make this fixture usable with the current contract. No v1.6.5 start command
+is verified here. See the
+[current Client validation handoff](client-hub-development.md) for the remaining
+current test task.
+
+The historical v1.3 invocation used this explicit build metadata:
 
 ```bash
 ./scripts/client-group-key-fixture.sh start \
   --build-metadata .cicada-data/client-v13-be0269e/interop/result.json
 ```
 
-The explicit path accepts either a `cicada.hub-build.v1` record or a completed
-`cicada.client-hub-interop.v1` result whose `build` uses that schema. It
-requires `source.dirty=false`, full SHA formats, the current authoritative
-v1.3 catalog digest, and a full `image.id`; Docker must have that exact image
-ID locally, and the image's revision, dirty flag, catalog, source fingerprint
-and `hub` role labels must match. Runtime `/healthz`, Client capabilities and
-public identity are checked against that same metadata. The image is run by
-its ID, never by a mutable tag; no image is built or pulled. The companion
+That historical explicit path accepts either a `cicada.hub-build.v1` record or
+a completed `cicada.client-hub-interop.v1` result whose `build` uses that
+schema. It requires `source.dirty=false`, full SHA formats, a catalog digest
+matching the checkout used for the run, an accepted catalog revision, and a
+full `image.id`; Docker must have that exact image ID locally, and the image's
+revision, dirty flag, catalog, source fingerprint and `hub` role labels must
+match. Runtime `/healthz`, Client capabilities and public identity are checked
+against that same metadata. The image is run by its ID, never by a mutable tag;
+no image is built or pulled. The companion
 `.cicada-data/client-v13-be0269e/build.json` names a different image ID, so use
-the interop result above when reproducing the retained `sha256:6cc7c2c6…` image.
+the interop result above only when reproducing the retained
+`sha256:6cc7c2c6…` image with its historical source/catalog inputs.
 
 Both paths register a synthetic owner key and create a synthetic Node with a
 pending pairing code. Neither creates a leased native Endpoint or claims a
@@ -26,16 +38,16 @@ positive Android `group.key_manifest/grant/status` result. The Endpoint must
 be joined from a live native Codex Thread through the owner-bound Node's local
 Join bridge; a made-up Thread ID or direct Hub request is not an acceptable
 replacement. Teardown reads the fixture marker's original image and build
-identity, so `stop` continues to match a v1.2.1 fixture even when the current
-explicit metadata points at a v1.3 image.
+identity, so `stop` continues to match a v1.2.1 fixture even if the separate
+explicit-metadata path was used to prepare the historical v1.3 fixture.
 
-The current explicit v1.3 build metadata records source revision
+The retained v1.3 build metadata records source revision
 `be0269e80c41e94881d131bd4f4b233e80b6ffe6`, `dirty=false`, source fingerprint
 `f21f206525c9deb6f959988d675606257ee796ae39f46b973f9bdd714cda7e4e`, catalog
 SHA-256 `808f9f635effc5fa845572b976c89696ea2bb86a6a9b6f326e49d1409b570377`,
 and exact image ID
 `sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783`.
-The contract revision is taken from the checked v1.3 catalog.
+The contract revision is taken from the historical checked v1.3 catalog.
 
 The historical v1.2.1 Android handoff and validation reports used by bare
 `start` identify their target as Hub source
@@ -257,7 +269,7 @@ creation, native Codex Join, leased native Endpoint, positive
 **NOT_RUN**. The prepared Hub was stopped and its `/tmp` state removed after
 verification; no Client repository files or Client database were accessed.
 
-## Current v1.3 bootstrap smoke
+## Recorded v1.3 bootstrap smoke (historical)
 
 On 2026-09-27, the explicit metadata command shown above exited **0** using
 image ID `sha256:6cc7c2c67a8c15ad0bd7879d652cdaf07d5104fac29912ec33f04ac647587783`.
