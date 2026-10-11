@@ -17,6 +17,11 @@ from typing import Any
 
 SCHEMA = "cicada.request-observer-current-binding.v1"
 BUNDLE_SCHEMA = "cicada.request-observer-current-build.v1"
+REUSE_BUNDLE_SCHEMA = "cicada.request-observer-packaging-reuse-build.v1"
+REUSE_EQUALITY_SCHEMA = "cicada.native-packaging-reuse-equality.v1"
+REUSE_INPUT_SCOPE = "PRODUCT_TRACKED_INVENTORY_AND_HELPER_SELECTED_BYTES_PACKAGE_GENERATED_OUTPUTS"
+REUSE_GENERATED_PATHS = ["cicada-go/internal/server/ui/generated/"+name for name in
+    ("cicada-webcrypto.wasm.gz", "panel.manifest.json", "wasm_exec.js")]
 RUNTIME_SCHEMA = "cicada.request-observer-runtime-cli-overlay.v1"
 CLI_VERSION = "0.162.1"
 CLI_SHA256 = "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1"
@@ -113,6 +118,31 @@ def _image_id(value: Any) -> bool:
     return type(value) is str and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
 
 
+def validate_reuse_equality(delivery, equality, expected_commit):
+    if (expected_commit!='328f5b5fa69571e67e7bb3e4582d5fb3bb920fd7' or
+            equality.get('status')!='TRACKED_INPUT_INVENTORY_CURRENT_BYTES_EQUAL' or
+            equality.get('input_scope')!=REUSE_INPUT_SCOPE or
+            equality.get('excluded_generated_paths')!=REUSE_GENERATED_PATHS or
+            equality.get('current_commit')!=expected_commit or
+            equality.get('product_artifact_origin_revision')!=expected_commit or
+            equality.get('fixture_revision')!='39bce535b93ab82c3b4f4fbf5cb09c6114dca942' or equality.get('fixture_dirty') is not True or
+            equality.get('artifact_binary_sha256')!=delivery['binary_sha256'] or
+            not _sha(equality.get('artifact_input_projection_sha256')) or
+            equality.get('artifact_input_projection_sha256')!=equality.get('current_input_projection_sha256') or
+            any(key in equality for key in ('artifact_compiled_inputs_sha256','current_compiled_inputs_sha256'))):
+        raise ValueError('REUSE_EQUALITY_DOMAIN')
+    package=Path(delivery['package'])
+    metadata_path=package/'BUILD-METADATA.json'
+    if sha256_file(metadata_path)!=delivery.get('package_metadata_sha256'):
+        raise ValueError('REUSE_PACKAGE_METADATA_PIN')
+    metadata,_=read_json(metadata_path)
+    if (metadata.get('source',{}).get('revision')!=expected_commit or
+            metadata['source'].get('dirty') is not False or metadata.get('pqtls_available') is not True or
+            not _sha(equality.get('package_generated_manifest_sha256')) or
+            equality['package_generated_manifest_sha256']!=metadata.get('hub_webcrypto_manifest_sha256')):
+        raise ValueError('REUSE_PACKAGE_GENERATED_MANIFEST')
+
+
 def current_bundle(delivery_path: Path, equality_path: Path, runtime_path: Path,
                    output_parent: Path, expected_commit: str) -> dict[str, Any]:
     """Validate actual Root-produced current artifacts and return their bound projection."""
@@ -150,13 +180,17 @@ def current_bundle(delivery_path: Path, equality_path: Path, runtime_path: Path,
             not _sha(delivery["fingerprint"]) or not _sha(delivery["binary_sha256"]) or
             delivery["compiled_input_equality_receipt"] != str(equality_path)):
         raise ValueError("CURRENT_DELIVERY_PROVENANCE")
-    if (equality.get("status") != "COMPILED_INPUTS_EXACT" or
-            equality.get("current_commit") != expected_commit or
-            equality.get("product_artifact_origin_revision") != expected_commit or
-            equality.get("artifact_binary_sha256") != delivery["binary_sha256"] or
-            not _sha(equality.get("artifact_compiled_inputs_sha256")) or
-            equality.get("artifact_compiled_inputs_sha256") != equality.get("current_compiled_inputs_sha256")):
-        raise ValueError("CURRENT_COMPILED_INPUT_EQUALITY")
+    reuse = equality.get('schema') == REUSE_EQUALITY_SCHEMA
+    if reuse:
+        validate_reuse_equality(delivery, equality, expected_commit)
+    else:
+        if (equality.get("status") != "COMPILED_INPUTS_EXACT" or
+                equality.get("current_commit") != expected_commit or
+                equality.get("product_artifact_origin_revision") != expected_commit or
+                equality.get("artifact_binary_sha256") != delivery["binary_sha256"] or
+                not _sha(equality.get("artifact_compiled_inputs_sha256")) or
+                equality.get("artifact_compiled_inputs_sha256") != equality.get("current_compiled_inputs_sha256")):
+            raise ValueError("CURRENT_COMPILED_INPUT_EQUALITY")
     dirty = equality.get("product_artifact_origin_dirty", equality.get("source_dirty"))
     if (type(dirty) is not bool or dirty != delivery["source_dirty"] or
             type(equality.get("source_dirty")) is not bool or equality["source_dirty"] != dirty):
@@ -182,15 +216,19 @@ def current_bundle(delivery_path: Path, equality_path: Path, runtime_path: Path,
         raise ValueError("CURRENT_RUNTIME_RECEIPT")
 
     return {
-        "schema": BUNDLE_SCHEMA,
+        "schema": REUSE_BUNDLE_SCHEMA if reuse else BUNDLE_SCHEMA,
         "output_parent": str(output_parent),
         "current_commit": expected_commit,
         "source_dirty": delivery["source_dirty"],
         "source_fingerprint": delivery["fingerprint"],
         "delivery": {"path": str(delivery_path), "sha256": sha256_file(delivery_path),
                      "binary_sha256": delivery["binary_sha256"]},
-        "equality": {"path": str(equality_path), "sha256": sha256_file(equality_path),
-                     "compiled_inputs_sha256": equality["current_compiled_inputs_sha256"]},
+        "equality": ({"path":str(equality_path),"sha256":sha256_file(equality_path),
+            "input_scope":REUSE_INPUT_SCOPE,"input_projection_sha256":equality["current_input_projection_sha256"],
+            "excluded_generated_paths":REUSE_GENERATED_PATHS,
+            "package_generated_manifest_sha256":equality["package_generated_manifest_sha256"]} if reuse else
+            {"path":str(equality_path),"sha256":sha256_file(equality_path),
+             "compiled_inputs_sha256":equality["current_compiled_inputs_sha256"]}),
         "runtime_receipt": {"path": str(runtime_path), "sha256": sha256_file(runtime_path),
                              "image_id": runtime["runtime_image_id"]},
         "official_cli": {"path": str(cli_path), "sha256": cli_sha,
@@ -226,6 +264,11 @@ def current_binding_payload(template: dict[str, Any], *, bundle: dict[str, Any],
                    runtime="CURRENT_0162_DERIVED_RUNTIME_IMAGE_AND_OFFICIAL_CLI_ASSET")
     payload["source_domains"] = domains
     payload["scope"] = "CURRENT_0162_CURRENT_SOURCE_DELIVERY_EQUALITY_NONAUTH"
+    if bundle["schema"] == REUSE_BUNDLE_SCHEMA:
+        domains.update(product="CLEAN_328F_PACKAGE_WITH_ITS_GENERATED_OUTPUTS_AND_CURRENT_TRACKED_INPUT_BYTES",
+                       helper="ACTUAL_39BCE_DIRTY_SELECTED_GO_INPUTS_AND_TLS_OVERLAY_BUILD",
+                       candidate="EXPLICITLY_PINNED_39BCE_DIRTY_FIXTURE_SOURCE_ROWS")
+        payload["scope"] = "PACKAGING_REUSE_328F_PRODUCT_39BCE_FIXTURE_NONAUTH"
     return payload
 
 

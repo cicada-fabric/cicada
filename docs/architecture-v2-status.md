@@ -8,19 +8,23 @@ Use the [current release closeout](v01-current-closeout-20261009-validation.md#c
 for product scope and the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 for current source and artifact checks. Software is 0.0.2, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
-aggregate remains FAIL despite its passing Go lane; the follow-up Python,
-artifact, Link, Browser, and PQTLS records retain their separate tested sources.
-The current overall v0.1.0 target remains PARTIAL.
+aggregate remains FAIL despite its passing Go lane; follow-up checks retain
+their separate tested sources. A5 remains the last successful scoped Native
+acceptance, with Node inbox `CONSUMPTION_UNCONFIRMED`. C9–C12 are actual paid
+FAILs; C12 completed A's Join turn but not B's, whose second POST returned HTTP
+500. Its underlying cause was not retained, and later multigroup/ASK/automatic
+reply/G3 work was NOT_REACHED. C12's fixture, Python and zero-model checks do
+not upgrade that result. See the [Native record](native-default-daemon-validation.md)
+for each attempt. Full G2/G3 remains unclosed, and v0.1.0 remains PARTIAL.
 
-Next: checkpoint the frozen test-source candidate and these records, then
-complete the bounded default-daemon G2/G3 fixture: six turns, a 16-POST-attempt
-cap, independent Runtime/MCP evidence of original-context Ask/Reply, and exact
-cleanup. A5's `QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` remains unchanged.
-The clean-328f aggregate remains FAIL; do not repeat it or standard/PQ artifact
-QA for this test-only checkpoint. Rerun whole-Go validation when Go build/test
-inputs change or new Go failure evidence warrants it. V67 account-bound native submission remains
-UNSUPPORTED; physical StopVerifier, real-device and public HTTPS are separate
-NOT_RUN gates.
+Next: keep G2/G3 PARTIAL. After the user-requested check of current
+gpt-5.6-luna Responses API 500 service recovery, review fresh HEAD, source
+bindings and GO before considering one bounded rerun; do not repeat blindly.
+Keep the six-turn/16-POST limits and original-context oracle. The default-daemon
+selector remains outside the one-click runner. Rerun whole-Go validation when
+Go build/test inputs change or new Go failure evidence warrants it. V67
+account-bound native submission is UNSUPPORTED; physical StopVerifier,
+real-device and public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

@@ -722,7 +722,8 @@ def mark_native_failure(self, error, node, direction, message, native_fields):
             try:
                 diagnostic_go = getattr(self.args,"go",None)
                 if ((getattr(self.args,"native_https",False) is True or
-                        getattr(self.args,"test_request_observer",False) is True) and
+                        getattr(self.args,"test_request_observer",False) is True or
+                        getattr(self,"_default_daemon_fixture",False) is True) and
                         type(diagnostic_go) is dict and
                         type(diagnostic_go.get("max_fatal_diagnostic_capture_seconds")) is int and
                         diagnostic_go["max_fatal_diagnostic_capture_seconds"] == 5):
@@ -1439,7 +1440,7 @@ def compile_methods(source, namespace):
     return {name:namespace[name] for name in METHODS}
 
 
-def validate_native_https(args, scenario, zero_model):
+def validate_native_https(args, scenario, zero_model, *, default_daemon_fixture=False):
     mode=getattr(args,"native_https",False)
     if type(mode) is not bool:
         raise PermissionError("NATIVE_HTTPS_TYPE")
@@ -1447,9 +1448,20 @@ def validate_native_https(args, scenario, zero_model):
     if type(go) is not dict or ("native_https" in go and go["native_https"] is not mode):
         raise PermissionError("NATIVE_HTTPS_GO")
     normal_seconds=getattr(args,"native_normal_seconds",DEFAULT_NATIVE_NORMAL_SECONDS)
+    if type(default_daemon_fixture) is not bool:
+        raise PermissionError('DEFAULT_DAEMON_FIXTURE_TYPE')
+    if default_daemon_fixture:
+        caps=(0,0,0) if zero_model else (6,4,2)
+        if (scenario!='g2-g3' or normal_seconds!=600 or mode is not False or
+                getattr(args,'run_native',False) is not (not zero_model) or
+                getattr(args,'test_request_observer',False) is not False or
+                getattr(args,'response_byte_passthrough',False) is not False or
+                any(type(go.get(k)) is not int or go[k]!=v for k,v in
+                    zip(('max_native_turns','max_manual_turns','max_automatic_turns'),caps))):
+            raise PermissionError('DEFAULT_DAEMON_FIXTURE_SCOPE')
     if (type(normal_seconds) is not int or normal_seconds < DEFAULT_NATIVE_NORMAL_SECONDS or
             normal_seconds > MAX_NATIVE_NORMAL_SECONDS or
-            (not mode and normal_seconds != DEFAULT_NATIVE_NORMAL_SECONDS)):
+            (not mode and not default_daemon_fixture and normal_seconds != DEFAULT_NATIVE_NORMAL_SECONDS)):
         raise PermissionError("NATIVE_NORMAL_SECONDS")
     if mode:
         if (zero_model or scenario not in ("g1", "g2-g3") or getattr(args,"run_native",False) is not True or
@@ -2341,7 +2353,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
         def __init__(self, args):
             if inspect_only:
                 raise RuntimeError("INSPECTION_FORBIDS_FIXTURE_CONSTRUCTOR")
-            native_mode = validate_native_https(args,scenario,zero_model)
+            native_mode = validate_native_https(args,scenario,zero_model,
+                default_daemon_fixture=getattr(self,'_default_daemon_fixture',False) is True)
             if getattr(args,"native_normal_seconds",DEFAULT_NATIVE_NORMAL_SECONDS) != normal_seconds:
                 raise PermissionError("NATIVE_NORMAL_SECONDS_BINDING")
             response_mode = validate_response_mode(args,scenario,zero_model)
@@ -2403,7 +2416,8 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                 changed_observer_bootstrap_overlay_Runtime_preparation="NOT_RUN")
         def native_config(self, letter, thread=None, tools=()):
             values = super().native_config(letter, thread, tools)
-            if (not zero_model and getattr(self.args, 'run_native', False) is True and
+            if (not getattr(self, '_default_daemon_fixture', False) and
+                    not zero_model and getattr(self.args, 'run_native', False) is True and
                     getattr(self.args, 'native_https', False) is True):
                 install_owned_terminal_queue_witness(self, scenario=scenario)
             if scenario == "g1":
@@ -2490,7 +2504,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                         or image_index+1>=len(argv) or argv[image_index+1]!=action):
                         raise RuntimeError("ZERO_RUNTIME_NAME")
                 if zero_model:
-                    validate_zero_command(argv)
+                    validate_zero_command(argv,default_daemon_fixture=getattr(self,'_default_daemon_fixture',False) is True)
                 key=("container",name)
                 self.submitted_objects[key]={"name":name,"id":None,"image":self.args.runtime_image,
                     "run_id":self.run_id,"auto_remove":"--rm" in argv,"command_exit":None}
@@ -2527,9 +2541,12 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
             argv = list(map(str, arguments))
             if zero_model:
                 if argv[:2]==["exec","-d"] and "python3" in argv and "-c" in argv:
-                    original_agent=self.start_services.__globals__["AGENT_BOOTSTRAP"]
+                    programs = (self._default_zero_agent_programs if
+                        getattr(self,'_default_daemon_fixture',False) is True else
+                        self.start_services.__globals__)
+                    original_agent=programs["AGENT_BOOTSTRAP"]
                     for letter,node in self.nodes.items():
-                        prefix=["exec","-d","-e","CICADA_CODEX_BIN="+self.start_services.__globals__["CODEX"],
+                        prefix=["exec","-d","-e","CICADA_CODEX_BIN="+programs["CODEX"],
                             "-e","CODEX_HOME=/codex","-e","CICADA_HUB_ID="+self.meta["hub_id"],
                             "-e","CICADA_NODE_PQTLS_CONFIG="+node["tls_config"],
                             "-e","CICADA_NODE_STATE_DIR=/fixture/node-"+letter+"-state",
@@ -2542,7 +2559,7 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
                             self.result.setdefault("zero_agent_bootstrap",{})[letter]={
                                 "credential_access":False,"effective_program_sha256":hashlib.sha256(ZERO_AGENT_BOOTSTRAP.encode()).hexdigest()}
                             break
-                validate_zero_command(["docker"]+argv)
+                validate_zero_command(["docker"]+argv,default_daemon_fixture=getattr(self,'_default_daemon_fixture',False) is True)
             if (len(argv) >= 7 and argv[:2] == ["exec", "-d"] and argv[3:6] == ["python3", "/state/server_bootstrap.py", "paid"] and
                     getattr(self.args,"test_request_observer",False) is True):
                 container = argv[2]
@@ -2609,13 +2626,22 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     original_command=command_namespace["command"]
     def guarded_command(self, argv, **kwargs):
         if zero_model:
-            validate_zero_command(argv)
+            validate_zero_command(argv,default_daemon_fixture=getattr(self,'_default_daemon_fixture',False) is True)
         selected_argv = argv
         selected_stage = None
         if zero_model and getattr(self, "_observer_tls_helper_active", False):
-            selected_argv, selected_stage = approved_tls_helper_argv(argv, binding,
-                run_id=self.run_id, fixture_root=self.root, native_package=self.native_package,
-                image=self.test_image)
+            if getattr(self, '_default_daemon_fixture', False) is True:
+                peer = getattr(self, 'peer_tls_helper_state', None)
+                if (scenario != 'g2-g3' or getattr(peer, 'active', False) is not True or
+                        getattr(peer, 'default_admitted_argv', None) != tuple(argv)):
+                    raise ValueError('DEFAULT_TLS_PEER_ADMISSION')
+                # The exact Peer validator owns retargeting and file pins.
+                # Its thread-local, call-scoped argv proof cannot authorize a
+                # different command or leak into a subsequent helper call.
+            else:
+                selected_argv, selected_stage = approved_tls_helper_argv(argv, binding,
+                    run_id=self.run_id, fixture_root=self.root, native_package=self.native_package,
+                    image=self.test_image)
         result = original_command(self, selected_argv, **kwargs)
         if selected_stage is not None:
             self.result["approved_tls_helper_stage"] = {
@@ -2638,13 +2664,28 @@ def load_gate(delivery, binding, *, inspect_only=False, zero_model=False, scenar
     return CandidateGate, migration.LEGACY
 
 
-def validate_zero_command(argv):
+def validate_zero_command(argv, *, default_daemon_fixture=False):
     """Closed zero lane: no credential metadata, paid bootstrap or provider dispatch."""
     words=list(map(str,argv))
+    if type(default_daemon_fixture) is not bool:
+        raise PermissionError('DEFAULT_DAEMON_FIXTURE_TYPE')
     if any("/run/secrets/" in word or "/gpu1-share/" in word or
-           "API_KEY=" in word or "HTTPS_PROXY=" in word for word in words):
+           "API_KEY=" in word or ("HTTPS_PROXY=" in word and not
+               (default_daemon_fixture and word=='HTTPS_PROXY=' and index>0 and words[index-1]=='-e'))
+           for index,word in enumerate(words)):
         raise PermissionError("ZERO_CREDENTIAL_OR_PROVIDER_ARGV")
     if any(word in {"paid","turn/start","turn/steer","queue-submit","queue/push"} for word in words):
         raise PermissionError("ZERO_MODEL_ARGV")
 
 ZERO_AGENT_BOOTSTRAP = "import os,sys\nos.execvp('/bin/sh',['/bin/sh',*sys.argv[1:]])\n"
+
+
+def load_default_gate(delivery, binding, *, fixture, zero_model=False, scenario='g2-g3',
+                      normal_seconds=600):
+    if scenario != 'g2-g3' or normal_seconds != 600:
+        raise ValueError('DEFAULT_G2_SCOPE')
+    cls, legacy = load_gate(delivery, binding, zero_model=zero_model,
+                            scenario=scenario, normal_seconds=normal_seconds)
+    import request_observer_default
+    return request_observer_default.install(cls, binding, normal_seconds,
+        fixture=fixture, gate_module=sys.modules[__name__]), legacy

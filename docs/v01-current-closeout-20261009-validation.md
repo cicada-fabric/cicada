@@ -125,17 +125,33 @@ delivery, model consumption, workspace command execution or V67 direct
 submission. See [foreground validation](native-foreground-queue-validation.md).
 
 The separate default-daemon selector is not registered in the one-click runner.
-Its A3 and A4 attempts remain FAIL; A4 verified the materialized official seed
-and local session history, but the provider-tuple failure cause remains
-UNKNOWN. The bounded A5 selector passed same-session seed plus default Node
-drain: two starts, two completions, two synthetic POSTs and zero external calls.
-Four current Guard checks and an absent command callback were verified; the
-Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
-`QUEUE_ACCEPTED`. This actual Runtime run loaded a synthetic-provider thread,
-and does not establish deployed-Node delivery, cold resume, V67, model reasoning
-or full G2/G3 acceptance. See the [portable A5 scope record](native-default-daemon-validation.md)
-and [A5 result](../.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json)
-(SHA-256 `80cca7a99303b3966f816d8ed5f17768e03e55f7ac4c9421b61e9b42c4faa115`).
+A5 remains the last successful scoped Native acceptance: writer outcome
+`QUEUE_ACCEPTED`, Node inbox `CONSUMPTION_UNCONFIRMED`. C9 is an actual FAIL:
+three turn starts and six HTTP-200 POST responses were observed, but its
+active-only fixture rejected production Join's `leased` binding before Ask
+acceptance. C10 allowed `active` or `leased`, but its first paid HTTP-500
+response caused a Runtime failure before the original Join; later exact-owned
+cleanup does not change the original cleanup=false result. C11's cleanup-order
+candidate passed 50 focused tests, zero-model setup (37/37 independent checks),
+and the full 20-module Python suite (296 PASS, one existing SKIP, zero
+failures/errors). Its bounded paid execution exited 1 in 108.322s: an original-
+context A Ask persisted as `SEALED_V1`/`RELAY_PERSISTED`/`OPEN` but did not
+complete. B automatic/reply and G3 were NOT_REACHED. The sixth A observation was
+`RESPONSE_NOT_OBSERVED`/`UNKNOWN_IO` with no status; observation sequence is not
+a POST count. The result reports cleanup true, no errors and EOF from both
+daemons. These attempts do not establish full G2/G3 acceptance. See the
+[Native detail record](native-default-daemon-validation.md).
+
+C12's fixture-only phase-budget candidate passed 53 targeted tests, the full
+20-module Python suite (299 PASS, one existing optional SKIP, zero failures or
+errors), and zero-model preparation with 37/37 independent checks. Its paid run
+exited 1: A's second POST returned HTTP 200 and its Join turn completed; B's
+Join MCP call completed but B's turn did not, and B's second POST returned HTTP
+500 (`RESPONSE_NON_2XX/CLOSED_FAILURE READ_HEAD`). The underlying cause was not
+retained. Multigroup, ASK, automatic reply and G3 were NOT_REACHED. The observed
+phase length was 12 at cap 128, so this does not prove behavior at the prior
+32-event boundary. Independent owned cleanup passed; it does not change the
+original FAIL. See the [Native detail record](native-default-daemon-validation.md).
 
 ### Historical full Go test overlay
 
@@ -913,8 +929,8 @@ Native or model-consumption recovery.
 | Gate | Current state |
 |---|---|
 | G1 — original-context in-group Ask/Reply | **PASS within the current g1 run scope.** Five actual turns preserved original A/B context, correlation and terminal historical queue acceptance. Later artifacts and other gates require their own results. |
-| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** The historical shipping0002e run passed the hidden-member/revoked-Link denial tail within its scoped G2 run, but the overall run remains FAIL because cleanup was incomplete. A5 reached `QUEUE_ACCEPTED`; Node inbox consumption remains `CONSUMPTION_UNCONFIRMED`. A fresh bounded six-turn current-source run must provide independent Runtime/MCP evidence of original-context Ask/Reply and exact cleanup. Preserve A5's unconfirmed state rather than promoting it to an ACK. |
-| G3 — Control-independent communication | **Scoped positive evidence.** The historical shipping0002e run passed its authenticated encrypted own-Owner status snapshot within scope, but its overall cleanup FAIL remains. A5 verified four current Guard checks and no command callback; it does not confirm Node inbox consumption. A fresh bounded current-source run must provide independent Runtime/MCP evidence of original-context communication and exact cleanup. |
+| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** The historical shipping0002e denial tail passed within its scoped run, but that run remains FAIL on cleanup. A5 reached `QUEUE_ACCEPTED`; Node inbox consumption remains `CONSUMPTION_UNCONFIRMED`. C9 failed at the active-only fixture binding check; C10 failed before the original Join after an HTTP-500 response. C11's A Ask persisted as `OPEN` but did not complete. C12's A Join turn completed, but B's Join turn did not; B's second POST returned HTTP 500 and later multigroup/ASK/automatic-reply work was NOT_REACHED. Full current-source original-context Ask/Reply acceptance is not established. |
+| G3 — Control-independent communication | **Scoped positive evidence.** The historical shipping0002e encrypted own-Owner snapshot passed within scope, but its overall cleanup FAIL remains. A5 verified four current Guard checks and no command callback; Node inbox remains `CONSUMPTION_UNCONFIRMED`. C8–C12 are actual paid FAILs; C12 did not reach later ASK, automatic reply or G3. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
 | G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility, plus the a006 bilateral-Link pending-request revocation case (normal/race). That case verifies cancellation, delivery closure, revoked reply/new-ASK denial and exact SQLite absence for denied IDs. The Native hidden-member/revoked-Link tail also passed within the historical shipping0002e scope; its overall cleanup FAIL remains. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. |
 | M1 / M2 | Current Network M1 and Group Spaces M2 interop selectors passed. Remaining framework-wide semantics are not closed by those selectors. |
@@ -934,12 +950,17 @@ source was changed by this Core checkpoint.
 
 ## Remaining acceptance gates
 
-1. Run the bounded six-turn current-source default-daemon G2/G3 fixture with a
-   16-POST-attempt cap, independent Runtime/MCP evidence of original-context
-   Ask/Reply, and exact cleanup. Historical shipping0002e scoped denial and
-   encrypted own-Owner status checks passed, but its overall cleanup FAIL is
-   retained. A5 reached `QUEUE_ACCEPTED`; its
-   `CONSUMPTION_UNCONFIRMED` state is not promoted to an ACK.
+1. Keep G2/G3 PARTIAL. C9–C12 are actual paid FAILs. C10's later
+   exact-owned cleanup does not change its original cleanup=false result; C11's
+   own result reports cleanup true. C11's fourth A turn persisted an original-
+   context Ask as `OPEN` but did not complete; B automatic/reply and G3 were
+   NOT_REACHED. C12 completed A's Join turn, but B's Join turn did not complete;
+   its B second POST returned HTTP 500 and later work was NOT_REACHED. The
+   underlying cause is unknown. A5 remains `QUEUE_ACCEPTED` with Node inbox
+   `CONSUMPTION_UNCONFIRMED`. After the user-requested check of current
+   gpt-5.6-luna Responses API 500 service recovery, review the fresh HEAD,
+   source bindings and GO before considering one bounded rerun; do not repeat
+   blindly. See the [Native record](native-default-daemon-validation.md).
 2. Obtain a supported account-bound Native submission API before implementing
    V67; current inspected API support is UNSUPPORTED. Keep physical StopVerifier,
    real-device/Android status-read and public-HTTPS gates separately NOT_RUN.

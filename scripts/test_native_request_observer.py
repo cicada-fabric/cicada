@@ -144,6 +144,76 @@ class DiagnosticsChecks(unittest.TestCase):
         self.assertEqual(instance.posts, 1)
         self.assertTrue(bytes(client.sent).endswith(b'PUBLIC'))
 
+    def test_co_buffered_second_post_is_refused_before_connect(self):
+        connects = []
+        upstream = FakeSocket([RESPONSE])
+        instance, client, _, records, diagnostics = self.fixture(
+            upstream=upstream, client=FakeSocket([REQUEST + REQUEST]),
+            connector=lambda deadline: connects.append(deadline) or upstream)
+
+        result = instance.handle(client, ASSOCIATION)
+
+        self.assertEqual(result['status'], 'UNKNOWN_FRAMING')
+        self.assertEqual(result['outbound_POST_count'], 0)
+        self.assertEqual(instance.posts, 0)
+        self.assertEqual(connects, [])
+        self.assertEqual(bytes(upstream.sent), b'')
+        self.assertEqual(bytes(client.sent), b'')
+        self.assertEqual(records, [result])
+        self.assertEqual(diagnostics[0]['POST_before'], 0)
+        self.assertEqual(diagnostics[0]['POST_after'], 0)
+        self.assertTrue(client.closed)
+        self.assertTrue(instance.idle.is_set())
+        self.assertFalse(instance.busy)
+
+    def test_partial_upstream_request_send_counts_once_without_retry(self):
+        for failed_part, fail_at in (('header', 1), ('body', 2)):
+            with self.subTest(part=failed_part):
+                class PartialRequestSocket(FakeSocket):
+                    def __init__(self):
+                        super().__init__([RESPONSE])
+                        self.send_calls, self.read_calls = [], 0
+                    def sendall(self, data):
+                        self.send_calls.append(bytes(data))
+                        if len(self.send_calls) == fail_at:
+                            self.sent.extend(data[:3])
+                            raise BrokenPipeError('PRIVATE_SEND_FAILURE')
+                        self.sent.extend(data)
+                    def recv(self, length):
+                        self.read_calls += 1
+                        return super().recv(length)
+
+                upstream = PartialRequestSocket()
+                connects = []
+                instance, client, _, records, diagnostics = self.fixture(
+                    upstream=upstream,
+                    connector=lambda deadline: connects.append(deadline) or upstream)
+
+                result = instance.handle(client, ASSOCIATION)
+
+                self.assertEqual(result['status'], 'UNKNOWN_IO')
+                self.assertEqual(result['outbound_POST_count'], 1)
+                self.assertEqual(instance.posts, 1)
+                self.assertEqual(len(connects), 1)
+                self.assertEqual(len(upstream.send_calls), fail_at)
+                self.assertEqual(upstream.read_calls, 0)
+                self.assertEqual(upstream.parts, [RESPONSE])
+                if failed_part == 'header':
+                    self.assertEqual(bytes(upstream.sent), b'POS')
+                else:
+                    self.assertEqual(upstream.send_calls[1], BODY)
+                    self.assertEqual(bytes(upstream.sent), upstream.send_calls[0] + BODY[:3])
+                self.assertEqual(bytes(client.sent), b'')
+                self.assertEqual(records, [result])
+                self.assertEqual(diagnostics[0]['POST_before'], 0)
+                self.assertEqual(diagnostics[0]['POST_after'], 1)
+                self.assertEqual(diagnostics[0]['first_failure']['phase'], 'SEND_REQUEST')
+                self.assertEqual(diagnostics[0]['first_failure']['class'], 'BROKEN_PIPE')
+                self.assertNotIn('PRIVATE_SEND_FAILURE', json.dumps((records, diagnostics)))
+                self.assertTrue(upstream.closed and client.closed)
+                self.assertTrue(instance.idle.is_set())
+                self.assertFalse(instance.busy)
+
     def test_connect_phases_and_close_masks_original(self):
         for phase in ('TCP_CONNECT', 'PROXY_CONNECT_SEND', 'PROXY_CONNECT_READ', 'TLS_HANDSHAKE', 'ALPN_VALIDATE', 'PROXY_SET_TIMEOUT', 'TLS_SET_TIMEOUT'):
             with self.subTest(phase=phase):

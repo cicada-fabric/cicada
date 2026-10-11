@@ -146,12 +146,13 @@ def verify_binding(expected_sha=None, binding_path=None, *, allow_candidate_sour
         raise ValueError("PUBLIC_PATH_ALLOWLIST")
     refreshable_legacy_candidates = {str(HERE/name) for name in LEGACY_NAMES}
     refreshable_legacy_candidates.add(str(SCRIPTS/"test_native_request_observer_io.py"))
+    refreshable_legacy_candidates.add(str(SCRIPTS/"test_native_request_observer.py"))
     for path, row in binding["public_files"].items():
         if Path(path).is_absolute() is not True or str(Path(path).resolve()) != path:
             raise ValueError("PUBLIC_CANONICAL_PATH")
         metadata = Path(path).lstat()
         if allow_candidate_source_refresh and not is_current and path in refreshable_legacy_candidates:
-            if path == str(SCRIPTS/"test_native_request_observer_io.py"):
+            if path in {str(SCRIPTS/"test_native_request_observer_io.py"),str(SCRIPTS/"test_native_request_observer.py")}:
                 if not stat.S_ISREG(metadata.st_mode) or oct(metadata.st_mode) != row["rawmode"]:
                     raise ValueError("REFRESHABLE_TEST_SOURCE_TYPE_OR_MODE")
             continue
@@ -195,7 +196,8 @@ def refresh_current_binding(delivery_path, equality_path, runtime_receipt_path, 
         bundle["runtime_receipt"]["path"], bundle["official_cli"]["path"]}
     previous = template["public_files"]
     candidate_paths = {str(HERE/name) for name in CURRENT_NAMES}
-    refreshable_candidate_paths = candidate_paths | {str(SCRIPTS/"test_native_request_observer_io.py")}
+    refreshable_candidate_paths = candidate_paths | {str(SCRIPTS/name) for name in
+        ("test_native_request_observer_io.py","test_native_request_observer.py")}
     known_hashes = {
         bundle["delivery"]["path"]: bundle["delivery"]["sha256"],
         bundle["equality"]["path"]: bundle["equality"]["sha256"],
@@ -239,7 +241,7 @@ def require_current_bundle(binding):
     if type(binding) is not dict or binding.get("schema") != current_binding.SCHEMA:
         raise PermissionError("CURRENT_BINDING_REQUIRED")
     bundle = binding.get("current_bundle")
-    if type(bundle) is not dict or bundle.get("schema") != current_binding.BUNDLE_SCHEMA:
+    if type(bundle) is not dict or bundle.get("schema") not in (current_binding.BUNDLE_SCHEMA,current_binding.REUSE_BUNDLE_SCHEMA):
         raise PermissionError("CURRENT_BUNDLE_REQUIRED")
     return bundle
 
@@ -447,8 +449,49 @@ def native_https_mode(args):
     return mode
 
 
+def input_projection_equal(equality, bundle):
+    if bundle['schema'] == current_binding.REUSE_BUNDLE_SCHEMA:
+        return (equality.get('schema')==current_binding.REUSE_EQUALITY_SCHEMA and
+            equality.get('status')=='TRACKED_INPUT_INVENTORY_CURRENT_BYTES_EQUAL' and
+            equality.get('artifact_input_projection_sha256')==equality.get('current_input_projection_sha256') and
+            re.fullmatch('[0-9a-f]{64}',equality.get('current_input_projection_sha256','')) is not None)
+    return (equality.get('status')=='COMPILED_INPUTS_EXACT' and
+        equality.get('artifact_compiled_inputs_sha256')==equality.get('current_compiled_inputs_sha256') and
+        re.fullmatch('[0-9a-f]{64}',equality.get('current_compiled_inputs_sha256','')) is not None)
+
+
+def default_daemon_mode(args):
+    path = getattr(args, 'default_daemon_fixture', None)
+    pin = getattr(args, 'default_daemon_fixture_sha', None)
+    if path is None and pin is None: return False
+    if (not path or not re.fullmatch(r'[0-9a-f]{64}', pin or '') or
+            getattr(args, 'scenario', 'g1') != 'g2-g3' or
+            getattr(args, 'native_https', False) or getattr(args, 'enable_io_diagnostics', False) or
+            getattr(args, 'response_byte_passthrough', False) or getattr(args, 'refresh_current_binding', False)):
+        raise PermissionError('DEFAULT_DAEMON_OPT_IN')
+    return True
+
+
+def default_fixture(args, binding, *, zero=False):
+    value, raw = bounded_json(args.default_daemon_fixture)
+    if hashlib.sha256(raw).hexdigest() != args.default_daemon_fixture_sha:
+        raise PermissionError('DEFAULT_FIXTURE_BYTE_PIN')
+    module = safe_overlay('request_observer_default')
+    if value.get('module_sha256') != digest(HERE/'request_observer_default.py'):
+        raise PermissionError('DEFAULT_FIXTURE_MODULE_PIN')
+    module.check_fixture(value, binding)
+    if not zero and value.get('credential_path') != CREDENTIAL:
+        raise PermissionError('DEFAULT_HOST_CREDENTIAL_PATH')
+    if zero:
+        value = dict(value, credential_path=str(Path(value['private_root'])/'NO_PROVIDER_CREDENTIAL'))
+    return value
+
+
 def native_normal_seconds(args):
     raw = getattr(args, "native_normal_seconds", None)
+    if default_daemon_mode(args):
+        if raw != 600: raise PermissionError("DEFAULT_PHASE_BUDGET")
+        return 600
     if raw is None:
         return DEFAULT_NATIVE_NORMAL_SECONDS
     if not native_https_mode(args):
@@ -469,6 +512,7 @@ def response_passthrough_mode(args):
 
 
 FAILURE_SOURCE_LABELS = {
+    '<default-daemon-start>': 'default-daemon-start',
     str(HERE / "request_observer_run.py"): "request_observer_run.py",
     str(HERE / "request_observer_gate.py"): "request_observer_gate.py",
     str(SCRIPTS / "native_request_observer.py"): "native_request_observer.py",
@@ -517,6 +561,7 @@ def public_failure_origin(error):
 def execute(args):
     global EXECUTION_EFFECTS_STARTED
     native_mode = native_https_mode(args)
+    default_mode = default_daemon_mode(args)
     normal_seconds = native_normal_seconds(args)
     response_mode = response_passthrough_mode(args)
     if not getattr(args,"preparation_result",None) or not getattr(args,"preparation_result_sha",None):
@@ -524,7 +569,7 @@ def execute(args):
     with deny_preflight_effects():
         binding,binding_sha,delivery,prior=latest_dispatch_inputs(args)
     # No legacy imports, credential stat or effects before all public/fresh GO guards.
-    if not native_mode and not getattr(args,"enable_io_diagnostics",False):
+    if not default_mode and not native_mode and not getattr(args,"enable_io_diagnostics",False):
         raise PermissionError("IO_DIAGNOSTICS_OPT_IN_REQUIRED")
     required = (args.go_receipt,args.go_receipt_sha,args.binding_sha,args.wiring_receipt,args.wiring_receipt_sha,args.unique_run,getattr(args,"cleanup_hard_stop_unix",None))
     if not all(required):
@@ -554,6 +599,7 @@ def execute(args):
     if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode)!=0o600 or metadata.st_uid!=1000:
         raise PermissionError("CREDENTIAL_METADATA")
     validate_go(go,expected)
+    selected_fixture = default_fixture(args, binding) if default_mode else None
     started=time.monotonic()
     with os.fdopen(os.open(claim,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),"w") as out:
         json.dump({"schema":"cicada.request-observer-execution-claim.v1","unique_run":args.unique_run,
@@ -563,8 +609,10 @@ def execute(args):
         out.flush();os.fsync(out.fileno())
     EXECUTION_EFFECTS_STARTED = True
     gate_overlay=safe_overlay("request_observer_gate")
-    cls,legacy=gate_overlay.load_gate(delivery,binding,scenario=getattr(args,"scenario","g1"),
-                                      normal_seconds=normal_seconds)
+    loader = gate_overlay.load_default_gate if default_mode else gate_overlay.load_gate
+    options = {'fixture':selected_fixture} if default_mode else {}
+    cls,legacy=loader(delivery,binding,scenario=getattr(args,'scenario','g1'),
+                      normal_seconds=normal_seconds, **options)
     ns=types.SimpleNamespace(execute=True,run_native=True,result_dir=str(result),product_repo=delivery["source_repo"],
         expected_product_revision=delivery["commit"],expected_source_fingerprint=delivery["fingerprint"],
         runtime_image=current_runtime(binding),expected_codex_version="codex-cli "+current_cli(binding)["version"],expected_cli_sha256=current_cli(binding)["sha256"],
@@ -578,7 +626,7 @@ def execute(args):
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False),
         native_normal_seconds=normal_seconds,
         response_byte_passthrough=response_mode,
-        native_https=native_mode,test_request_observer=not native_mode,request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
+        native_https=native_mode,test_request_observer=not (native_mode or default_mode),request_observer_source=str(SCRIPTS/"native_request_observer.py"),candidate_binding_sha256=binding_sha)
     gate=None
     try:
         gate=cls(ns);gate.build();gate.start_nodes();gate.prepare_managed();gate.managed_golden_flow()
@@ -611,6 +659,8 @@ def latest_dispatch_inputs(args):
     """Fresh preparation is evidence, never model authorization by itself."""
     binding,sha=verify_binding(args.binding_sha, getattr(args,"binding_file",None), require_current=True)
     bundle=require_current_bundle(binding)
+    if bundle["schema"]==current_binding.REUSE_BUNDLE_SCHEMA and not default_daemon_mode(args):
+        raise PermissionError("REUSE_DEFAULT_ROUTE_REQUIRED")
     if (str(Path(args.delivery)) != bundle["delivery"]["path"] or
             str(Path(args.compiled_input_equality)) != bundle["equality"]["path"] or
             args.current_commit != bundle["current_commit"] or
@@ -628,9 +678,8 @@ def latest_dispatch_inputs(args):
     if hashlib.sha256(raw).hexdigest()!=args.delivery_sha:raise PermissionError("LATEST_DELIVERY_PIN")
     scenario_inputs(args, delivery)
     equality,raw=bounded_json(args.compiled_input_equality)
-    if (hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT" or
+    if (hashlib.sha256(raw).hexdigest()!=args.equality_sha or not input_projection_equal(equality,bundle) or
         equality.get("current_commit")!=args.current_commit or
-        equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
         equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256") or
         equality.get("product_artifact_origin_dirty",equality.get("source_dirty"))!=bundle["source_dirty"] or
         delivery.get("commit")!=bundle["current_commit"] or delivery.get("source_dirty")!=bundle["source_dirty"] or
@@ -678,6 +727,13 @@ def expected_latest_go(binding,sha,args,delivery):
         official_cli_version=cli["version"])
     if getattr(args,"scenario","g1") != "g1":
         expected.update(fixture_scenario="g2-g3",component_proof_sha256=delivery["component_proof_sha256"],max_native_turns=6,max_manual_turns=4,max_automatic_turns=2)
+    if default_daemon_mode(args):
+        expected.update(default_daemon_fixture_sha256=args.default_daemon_fixture_sha,
+            native_default_daemon=True,queue_remote=False,queue_callback=False,
+            fixture_revision='39bce535b93ab82c3b4f4fbf5cb09c6114dca942',
+            provider_origin='https://api.zzswitch.com/v1',provider_identifier='zzswitch',
+            test_request_observer=False,HTTP_POST_COUNT='OUTBOUND_SEND_ATTEMPTS_INCLUDING_AUXILIARY',
+            preparation_provider_scope='ZERO_TURN_NO_PROVIDER_REQUESTS_SAME_DEFAULT_SETUP')
     if native_https_mode(args):
         for key in ("max_POST_attempts_per_Runtime","observer_retries","io_diagnostics","test_request_observer"):
             expected.pop(key)
@@ -1247,8 +1303,186 @@ def g2_current_component_inputs(delivery, equality):
     return proof_sha
 
 
+PACKAGING_REUSE_SCHEMA = 'cicada.native-packaging-reuse-components.v1'
+REUSE_ROOT = Path('/home/zyf/CICADA/.cicada-data/v01-next-gates-20261011/native-direct-audit')
+REUSE_PRODUCT_REV = '328f5b5fa69571e67e7bb3e4582d5fb3bb920fd7'
+REUSE_FIXTURE_REV = '39bce535b93ab82c3b4f4fbf5cb09c6114dca942'
+REUSE_PQ = REUSE_ROOT/'closeout-packaging-once/output/pq-unpacked/cicada-linux-amd64-pqtls'
+REUSE_FIXED_RECEIPTS = {
+    'packaging_result':('closeout-packaging-once/RESULT.NONAUTH.json','3c1016f7777366c8576e22727f353f13cb3ae5db3e70128dcb912547b7a39a51'),
+    'pq_receipt':('closeout-packaging-once/output/pqtls/PQ-BUILD-RECEIPT.json','ed748c24144c89f3d3296ccbe62b027b4e99b10d4c6bd860a75a9525c68bd1ea'),
+    'standard_metadata':('closeout-packaging-once/output/standard/BUILD-METADATA.json','09b4729bd006353e59fbeb116490ebe06ff68b8256a9f90072f479de5d2c9b51'),
+    'package_metadata':('closeout-packaging-once/output/pq-unpacked/cicada-linux-amd64-pqtls/BUILD-METADATA.json','2111a21522db6c9dd159ced3f56df72bc072385b8e46691b75d1b7e2b39648bc'),
+    'image_pins':('new-pq-image-assembly-a1/PINS.NONAUTH.json','b8be5219449a5dc1e9d3a12019a12063d5c268a3df129f7e97096c5cd3065b1e'),
+}
+
+
+def reuse_reference(reference, *, exact=None, limit=1<<20):
+    if type(reference) is not dict or set(reference) != {'path','sha256'}:
+        raise PermissionError('G2_REUSE_REFERENCE')
+    path=Path(reference['path'])
+    if (not path.is_absolute() or path.resolve(strict=True)!=path or
+            not path.is_relative_to(REUSE_ROOT) or (exact is not None and path != exact) or
+            not re.fullmatch('[0-9a-f]{64}',reference['sha256'])):
+        raise PermissionError('G2_REUSE_PUBLIC_PATH')
+    value,raw=bounded_json(path,limit)
+    if hashlib.sha256(raw).hexdigest()!=reference['sha256']:
+        raise PermissionError('G2_REUSE_RECEIPT_PIN')
+    return value
+
+
+def reuse_image_identity(image, result, pins, delivery, package_hashes):
+    if (image.get('schema')!='cicada.fixture-pqtls-image-assembly.v1' or
+            image.get('status')!='PASS_ASSEMBLY_ONLY_NOT_NATIVE_NOT_RELEASE' or
+            image.get('runtime_started') is not False or image.get('models')!=0 or
+            image.get('image',{}).get('id')!=delivery['hub_image'] or
+            not re.fullmatch('sha256:[0-9a-f]{64}',delivery['hub_image']) or
+            image['image'].get('donor_id')!='sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195' or
+            image['image'].get('recipe_sha256')!=pins['context_files']['hub.Dockerfile']['sha256'] or
+            result.get('status')!='PASS_ASSEMBLY_ONLY' or result.get('build_exit_code')!=0 or
+            result.get('image_id')!=delivery['hub_image'] or result.get('models')!=0 or result.get('runtime_starts')!=0 or
+            not result.get('checks') or any(v is not True for v in result['checks'].values())):
+        raise PermissionError('G2_REUSE_IMAGE_IDENTITY')
+    producer=image.get('producer',{})
+    if (producer != {'revision':REUSE_PRODUCT_REV,'dirty':False,'software_version':'0.0.2',
+            'source_fingerprint':pins['source_fingerprint'],'package_receipt_sha256':pins['package_receipt_sha256'],
+            'archive_sha256':pins['archive_sha256'],'package_metadata_sha256':pins['package_metadata_sha256']} or
+            set(image.get('package_files',{}))!=set(package_hashes)):
+        raise PermissionError('G2_REUSE_IMAGE_PRODUCER')
+    for name,digest_value in package_hashes.items():
+        row=image['package_files'][name]; expected=pins['package_files'][name]
+        if row!={'sha256':digest_value,'bytes':expected['bytes'],'mode':expected['context_mode']}:
+            raise PermissionError('G2_REUSE_IMAGE_PACKAGE_BYTES')
+    required={'/lib/x86_64-linux-gnu/libc.so.6','/lib64/ld-linux-x86-64.so.2','/etc/nsswitch.conf',
+        '/etc/ssl/certs/ca-certificates.crt','/usr/share/licenses/glibc/copyright',
+        '/usr/share/licenses/glibc/LGPL-2.1','/usr/share/licenses/glibc/GPL-2',
+        '/usr/share/licenses/ca-certificates/copyright','/usr/share/licenses/base-files/copyright',
+        '/usr/share/licenses/donor/dpkg-status','/usr/share/licenses/donor/SOURCE.json'}
+    closure=image.get('donor_runtime_and_notices',{})
+    if set(closure)!=required or any(not re.fullmatch('[0-9a-f]{64}',r.get('sha256','')) or
+            type(r.get('bytes'))is not int or r['bytes']<=0 for r in closure.values()):
+        raise PermissionError('G2_REUSE_IMAGE_RUNTIME_NOTICES')
+
+
+def g2_packaging_reuse_inputs(delivery, equality, proof):
+    keys={'schema','producer_revision','fixture_revision','fixture_dirty','packaging_result','pq_receipt',
+        'standard_metadata','package_metadata','image_pins','image_assembly','image_result','helper','input_scope'}
+    if (type(proof)is not dict or set(proof)!=keys or proof['schema']!=PACKAGING_REUSE_SCHEMA or
+            proof['producer_revision']!=REUSE_PRODUCT_REV or proof['fixture_revision']!=REUSE_FIXTURE_REV or
+            proof['fixture_dirty']is not True or delivery.get('commit')!=REUSE_PRODUCT_REV or
+            proof['input_scope']!='PRODUCT_TRACKED_INVENTORY_AND_HELPER_SELECTED_BYTES_PACKAGE_GENERATED_OUTPUTS' or
+            delivery.get('source_dirty')is not False or Path(delivery.get('package',''))!=REUSE_PQ):
+        raise PermissionError('G2_REUSE_DUAL_PROVENANCE')
+    if (equality.get('schema')!='cicada.native-packaging-reuse-equality.v1' or equality.get('status')!='TRACKED_INPUT_INVENTORY_CURRENT_BYTES_EQUAL' or
+            equality.get('current_commit')!=REUSE_PRODUCT_REV or equality.get('product_artifact_origin_revision')!=REUSE_PRODUCT_REV or
+            equality.get('product_artifact_origin_dirty')is not False or equality.get('source_dirty')is not False or
+            equality.get('fixture_revision')!=REUSE_FIXTURE_REV or equality.get('fixture_dirty')is not True or
+            equality.get('input_scope')!=proof['input_scope'] or
+            equality.get('artifact_binary_sha256')!=delivery.get('binary_sha256') or
+            equality.get('component_proof_path')!=delivery.get('component_proof_path') or equality.get('component_proof_sha256')!=delivery.get('component_proof_sha256')):
+        raise PermissionError('G2_REUSE_EQUALITY_IDENTITY')
+    receipts={}
+    for name,(relative,pin) in REUSE_FIXED_RECEIPTS.items():
+        if proof[name]!={'path':str(REUSE_ROOT/relative),'sha256':pin}:
+            raise PermissionError('G2_REUSE_ORIGINAL_RECEIPT')
+        receipts[name]=reuse_reference(proof[name],exact=REUSE_ROOT/relative)
+    original=receipts['packaging_result']
+    if (original['source_before']['revision']!=REUSE_PRODUCT_REV or original['source_before']['dirty']is not False or
+            original['phase_exit_codes']!={'artifact_tests':1,'pqtls':0,'standard':0,'unpack':0} or
+            original['source_unchanged']is not True or original['six_full_canonical_unchanged']is not True):
+        raise PermissionError('G2_REUSE_PRODUCER_BUILD')
+    metadata=receipts['package_metadata']; pq=receipts['pq_receipt']; pins=receipts['image_pins']
+    if (metadata['source']['revision']!=REUSE_PRODUCT_REV or metadata['source']['dirty']is not False or
+            metadata.get('software_version')!='0.0.2' or metadata.get('pqtls_available')is not True or
+            metadata.get('transport_variant')!='pqtls' or metadata.get('openssl_version')!='3.5.9' or
+            metadata['source']['source_fingerprint']!=delivery['fingerprint'] or
+            pq.get('source_fingerprint')!=delivery['fingerprint'] or pins['source_fingerprint']!=delivery['fingerprint'] or
+            receipts['standard_metadata']['source']['revision']!=REUSE_PRODUCT_REV or
+            receipts['standard_metadata']['source']['dirty']is not False):
+        raise PermissionError('G2_REUSE_PACKAGE_PROVENANCE')
+    hashes=pq['package_file_sha256']
+    actual={str(p.relative_to(REUSE_PQ)):digest(p) for p in REUSE_PQ.rglob('*') if p.is_file()}
+    if any(p.is_symlink() for p in REUSE_PQ.rglob('*')) or actual!=hashes or hashes['bin/cicada']!=delivery['binary_sha256']:
+        raise PermissionError('G2_REUSE_PACKAGE_CLOSURE')
+    archive=REUSE_ROOT/'closeout-packaging-once/output/pqtls/cicada-linux-amd64-pqtls.tar.gz'
+    if digest(archive)!=pq['archive_sha256'] or pq['archive_sha256']!=pins['archive_sha256']:
+        raise PermissionError('G2_REUSE_ARCHIVE_PIN')
+    source_entries=metadata['source']['input_inventory']['source']['entries']
+    go_rows=[]
+    for row in source_entries:
+        path=Path('/home/zyf/CICADA')/row['path']
+        if row['path'].startswith('cicada-go/'):
+            if (path.resolve(strict=True)!=path or digest(path)!=row['content_sha256'] or
+                    path.stat().st_size!=row['size_bytes'] or oct(path.stat().st_mode)!=row['raw_mode']):
+                raise PermissionError('G2_REUSE_CURRENT_GO_BYTES')
+            go_rows.append({'path':str(path),'sha256':row['content_sha256'],'bytes':row['size_bytes'],'rawmode':path.stat().st_mode})
+    if not go_rows: raise PermissionError('G2_REUSE_CURRENT_GO_CLOSURE_EMPTY')
+    expected_go_paths={r['path'] for r in go_rows}
+    generated={str(G2_CURRENT_SOURCE_ROOT/'internal/server/ui/generated'/name) for name in
+        ('panel.manifest.json','cicada-webcrypto.wasm.gz','wasm_exec.js')}
+    current_paths={str(p) for p in G2_CURRENT_SOURCE_ROOT.rglob('*') if p.is_file()}
+    if current_paths-expected_go_paths != generated:
+        raise PermissionError('G2_REUSE_UNDECLARED_CURRENT_GO_INPUT')
+    image=reuse_reference(proof['image_assembly'],exact=REUSE_ROOT/'new-pq-image-assembly-a1/run/IMAGE-ASSEMBLY.NONAUTH.json')
+    image_result=reuse_reference(proof['image_result'],exact=REUSE_ROOT/'new-pq-image-assembly-a1/run/RESULT.NONAUTH.json')
+    reuse_image_identity(image,image_result,pins,delivery,hashes)
+    helper=proof['helper']
+    if type(helper)is not dict or set(helper)!={'receipt','binary','tls_source','overlay','go_list','source_rows'}:
+        raise PermissionError('G2_REUSE_HELPER_FIELDS')
+    built=reuse_reference(helper['receipt'])
+    if (built.get('schema')!='cicada.native-default-tls-helper-build.v1' or built.get('status')!='PASS_BUILD' or
+            built.get('source_revision')!=REUSE_FIXTURE_REV or built.get('source_dirty')is not True or
+            any(built.get(k)!=v for k,v in {'exit_code':0,'container_exit_code':0,'OOMKilled':False,'models':0,
+                'network':'none','owned_removed':True,'source_unchanged':True,'six_residents_unchanged':True,
+                'builder_image':'sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195',
+                'Go_version':'go version go1.27.1 linux/amd64','tags':'cicada_pqtls'}.items())):
+        raise PermissionError('G2_REUSE_HELPER_ACTUAL_BUILD')
+    if built.get('runtime_closure_sha256')!=metadata['runtime']['closure_sha256'] or built.get('CGO_ENABLED')!=1:
+        raise PermissionError('G2_REUSE_HELPER_RUNTIME_CLOSURE')
+    for row in (helper['binary'],helper['tls_source']):
+        g2_public_row(row,paths={row['path']})
+        if not Path(row['path']).is_relative_to(REUSE_ROOT):raise PermissionError('G2_REUSE_HELPER_PATH')
+    if (helper['binary']['path']!=delivery['helper'] or helper['binary']['sha256']!=delivery['helper_sha256'] or
+            built.get('binary')!=helper['binary'] or built.get('tls_source')!=helper['tls_source'] or
+            Path(helper['tls_source']['path']).read_bytes()!=g2_tls_fixture_source(G2_TLS_INPUT_PATH.read_bytes())):
+        raise PermissionError('G2_REUSE_HELPER_TLS_BINARY')
+    for row in (helper['overlay'],helper['go_list']):
+        if not Path(row['path']).is_relative_to(REUSE_ROOT):raise PermissionError('G2_REUSE_HELPER_PATH')
+        g2_public_row(row,paths={row['path']})
+    overlay,_=bounded_json(helper['overlay']['path'])
+    target='/repo/cicada-go/cmd/cicada-v68fixture/tls_bootstrap.go'
+    if overlay!={'Replace':{target:'/tls-bootstrap.go'}} or built.get('overlay')!=helper['overlay'] or built.get('go_list')!=helper['go_list']:
+        raise PermissionError('G2_REUSE_HELPER_OVERLAY')
+    go_list=Path(helper['go_list']['path'])
+    if not go_list.is_relative_to(REUSE_ROOT) or digest(go_list)!=helper['go_list']['sha256']:
+        raise PermissionError('G2_REUSE_HELPER_GO_LIST_PIN')
+    selected=g2_current_go_sources(go_list,source_root=G2_CURRENT_SOURCE_ROOT,go_list_root=Path('/repo/cicada-go'))
+    mapped=str(G2_CURRENT_SOURCE_ROOT/Path(target).relative_to('/repo/cicada-go'))
+    if mapped not in selected:raise PermissionError('G2_REUSE_HELPER_TLS_NOT_SELECTED')
+    selected.remove(mapped);selected.add(helper['tls_source']['path'])
+    selected.update(str(G2_CURRENT_SOURCE_ROOT/name) for name in ('go.mod','go.sum'))
+    rows=helper['source_rows']
+    if (type(rows)is not list or len(rows)!=len(selected) or
+            {r.get('path') for r in rows if type(r)is dict}!=selected or built.get('source_rows')!=rows):
+        raise PermissionError('G2_REUSE_HELPER_SOURCE_SET')
+    for row in rows:g2_public_row(row,paths=selected)
+    projection=hashlib.sha256(json.dumps({'product_inventory':go_rows,'helper_selected':rows},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    if projection!=equality.get('artifact_input_projection_sha256') or projection!=equality.get('current_input_projection_sha256'):
+        raise PermissionError('G2_REUSE_INPUT_PROJECTION')
+    return delivery['component_proof_sha256']
+
+
 def g2_component_inputs(delivery, equality, *, current=False):
     if current:
+        path=delivery.get('component_proof_path')
+        if path:
+            proof,raw=bounded_json(path)
+            if proof.get('schema')==PACKAGING_REUSE_SCHEMA:
+                if Path(path).resolve(strict=True)!=Path(path) or not Path(path).is_relative_to(REUSE_ROOT):
+                    raise PermissionError('G2_REUSE_COMPONENT_PROOF_PATH')
+                if hashlib.sha256(raw).hexdigest()!=delivery.get('component_proof_sha256'):
+                    raise PermissionError('G2_REUSE_COMPONENT_PROOF_PIN')
+                return g2_packaging_reuse_inputs(delivery,equality,proof)
         return g2_current_component_inputs(delivery,equality)
     return g2_legacy_component_inputs(delivery,equality)
 
@@ -1282,6 +1516,8 @@ def _zero_inputs_public(args):
         raise PermissionError("ZERO_ABSOLUTE_BUDGET")
     binding,sha=verify_binding(args.binding_sha,getattr(args,"binding_file",None),require_current=True)
     bundle=require_current_bundle(binding)
+    if bundle["schema"]==current_binding.REUSE_BUNDLE_SCHEMA and not default_daemon_mode(args):
+        raise PermissionError("REUSE_DEFAULT_ROUTE_REQUIRED")
     if (args.runtime_image != bundle["runtime_receipt"]["image_id"] or
             str(Path(args.delivery)) != bundle["delivery"]["path"] or
             str(Path(args.compiled_input_equality)) != bundle["equality"]["path"]):
@@ -1296,12 +1532,10 @@ def _zero_inputs_public(args):
         raise PermissionError("ZERO_DELIVERY_PIN")
     scenario_inputs(args, delivery)
     equality,raw=bounded_json(args.compiled_input_equality)
-    if hashlib.sha256(raw).hexdigest()!=args.equality_sha or equality.get("status")!="COMPILED_INPUTS_EXACT":
+    if hashlib.sha256(raw).hexdigest()!=args.equality_sha or not input_projection_equal(equality,bundle):
         raise PermissionError("ZERO_COMPILED_INPUT_EQUALITY")
     if (equality.get("current_commit")!=args.current_commit or
             args.current_commit!=bundle["current_commit"] or
-            equality.get("artifact_compiled_inputs_sha256")!=equality.get("current_compiled_inputs_sha256") or
-            not re.fullmatch(r"[0-9a-f]{64}",equality.get("current_compiled_inputs_sha256", "")) or
             equality.get("artifact_binary_sha256")!=delivery.get("binary_sha256") or
             equality.get("product_artifact_origin_dirty",equality.get("source_dirty"))!=bundle["source_dirty"] or
             delivery.get("commit")!=bundle["current_commit"] or delivery.get("source_dirty")!=bundle["source_dirty"] or
@@ -1325,11 +1559,14 @@ def _zero_inputs_public(args):
 def prepare_native_zero(args):
     global EXECUTION_EFFECTS_STARTED
     binding,sha,delivery=zero_inputs(args)
-    # Config is synthetic, private and created only after every public guard.
+    default_mode=default_daemon_mode(args)
+    selected_fixture=default_fixture(args,binding,zero=True) if default_mode else None
+    # No credential contents: default Peer rewrites this public template to loopback/no auth.
+    public_config=CONFIG.read_text() if default_mode else ZERO_CONFIG
     output_parent=Path(binding["output_parent"])
     config=output_parent/(args.unique_run+"-config.toml")
     fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-    with os.fdopen(fd,"w") as output: output.write(ZERO_CONFIG)
+    with os.fdopen(fd,"w") as output: output.write(public_config)
     started=time.monotonic()
     if time.time()+240>=args.cleanup_hard_stop_unix:
         raise PermissionError("ZERO_ABSOLUTE_BUDGET")
@@ -1340,17 +1577,20 @@ def prepare_native_zero(args):
         producer_receipt=str(Path(delivery["package"])/"BUILD-METADATA.json"),
         producer_receipt_sha256=delivery["package_metadata_sha256"],
         exact_clean_image_metadata=delivery["hub_receipt_path"],exact_clean_image_metadata_sha256=delivery["hub_receipt_sha256"],
-        config_template=str(config),config_template_sha=hashlib.sha256(ZERO_CONFIG.encode()).hexdigest(),
+        config_template=str(config),config_template_sha=hashlib.sha256(public_config.encode()).hexdigest(),
         source_binding_sha=sha,binding_file=str(args.binding_file),offline_checks_sha=args.wiring_receipt_sha,
         artifact_started=started,go={"unique_run":args.unique_run,"max_native_turns":0,"max_manual_turns":0,
             "max_automatic_turns":0},credential_file="ZERO_LANE_NO_CREDENTIAL_REFERENCE",
         closed_failure_diagnostics=getattr(args,"enable_closed_failure_diagnostics",False) or getattr(args,"reproduce_zero_hub_restart",False),
         preparation_result=None,preparation_result_sha256=None,test_request_observer=False,
-        candidate_binding_sha256=sha,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,latest_runtime=True)
+        candidate_binding_sha256=sha,delivery_sha=args.delivery_sha,equality_sha=args.equality_sha,latest_runtime=True,
+        native_normal_seconds=600 if default_mode else DEFAULT_NATIVE_NORMAL_SECONDS,native_https=False)
     gate=None
     try:
         overlay=safe_overlay("request_observer_gate")
-        cls,_=overlay.load_gate(delivery,binding,zero_model=True,scenario=getattr(args,"scenario","g1"))
+        loader=overlay.load_default_gate if default_mode else overlay.load_gate
+        options={'fixture':selected_fixture,'normal_seconds':600} if default_mode else {}
+        cls,_=loader(delivery,binding,zero_model=True,scenario=getattr(args,'scenario','g1'),**options)
         EXECUTION_EFFECTS_STARTED=True
         gate=cls(ns);gate.build();gate.start_nodes();gate.prepare_managed()
         for letter in "ab":
@@ -1371,7 +1611,9 @@ def prepare_native_zero(args):
             current_product_compiled_input_equality_sha256=args.equality_sha)
     except Exception as error:
         if gate is None: raise
-        gate.result.update(status="FAIL",failure_phase=gate.phase,failure_class=type(error).__name__)
+        gate.result.update(status="FAIL",failure_phase=gate.phase,failure_class=type(error).__name__,
+            failure_origin=public_failure_origin(error),
+            failure_origin_scope="FIXED_PUBLIC_TERMINAL_FRAME_ONLY_NO_MESSAGE_OR_LOCALS")
     finally:
         if gate is not None: gate.cleanup()
     return gate.result["terminal_exit_code"]
@@ -1380,6 +1622,8 @@ def prepare_native_zero(args):
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--scenario",default="g1")
+    parser.add_argument("--default-daemon-fixture")
+    parser.add_argument("--default-daemon-fixture-sha")
     parser.add_argument("--enable-io-diagnostics",action="store_true")
     parser.add_argument("--response-byte-passthrough",action="store_true")
     parser.add_argument("--native-https",action="store_true")

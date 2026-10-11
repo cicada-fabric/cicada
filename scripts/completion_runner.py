@@ -59,6 +59,7 @@ PYTHON_TESTS = [
     "scripts.test_native_two_node_driver", "scripts.test_node_restore_recovery",
     "scripts.test_real_node_codex_approval_overlay", "scripts.test_task_peer_privacy",
     "scripts.native_observer.test_request_observer_binding",
+    "scripts.native_observer.test_request_observer_default",
 ]
 
 LANE_TIMEOUTS = {

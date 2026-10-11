@@ -8,20 +8,18 @@ records the clean-328f aggregate and separately scoped follow-up evidence. Keep
 software 0.0.2, contract `client-hub-v1.6.5`, wire 1, catalog 55 and schema 59
 distinct. Overall first-release acceptance remains PARTIAL.
 
-Next: checkpoint the frozen six-file test/orchestration candidate and these
-records, keeping its dirty test-source identity separate from the clean-328f
-artifact producer. Then complete the bounded default-daemon G2/G3 fixture: six
-turns, a 16-POST-attempt cap, independent Runtime/MCP evidence of
-original-context Ask/Reply, and exact cleanup. A5's
-`QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` state is not promoted to an ACK.
-The clean-328f aggregate remains FAIL, while the separate standard/PQ artifact
-QA passed; do not repeat either for this test-only checkpoint. Rerun whole-Go
-validation when Go build/test inputs change or new Go failure evidence warrants
-it. Keep the default-daemon selector outside the one-click runner.
-
-V67 account-bound native submission is UNSUPPORTED pending a supported API.
-Physical StopVerifier, real-device and public HTTPS remain separate NOT_RUN
-gates.
+Next: preserve G2/G3 as PARTIAL. C12's fixture-only phase-budget candidate
+passed targeted, Python and zero-model checks, but its paid run failed after
+A's Join turn completed and B's second POST returned HTTP 500; later work was
+NOT_REACHED. Its exact scope is in the [Native record](native-default-daemon-validation.md).
+After the user-requested check of current gpt-5.6-luna Responses API 500
+service recovery, review fresh HEAD, source bindings and GO before considering
+one bounded rerun. Preserve the six-turn/16-POST limits and original-context
+oracle. The clean-328f aggregate remains FAIL and standard/PQ artifact QA is a
+separate scoped pass. Rerun whole-Go validation when Go build/test inputs change
+or new Go failure evidence warrants it. The default-daemon selector remains
+outside the one-click runner. V67 account-bound native submission is
+UNSUPPORTED; physical StopVerifier, real-device and public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

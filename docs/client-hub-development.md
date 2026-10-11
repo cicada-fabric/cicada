@@ -17,15 +17,18 @@ while Android status-read, physical-device and full Native acceptance remain
 separate. Client artifacts retain their own producer/source attribution; this
 Core test checkpoint changes no Client source or contract.
 
-The clean-328f default aggregate remains FAIL, with its Go lane passed and
-follow-up local gates recorded separately. After the current Core checkpoint,
-the next execution is a bounded default-daemon G2/G3 fixture with six turns, a
-16-POST-attempt cap, independent Runtime/MCP evidence of original-context
-Ask/Reply, and exact cleanup. A5 remains
-`QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED`; this does not change Android
-evidence or Client attribution. Do not repeat aggregate or standard/PQ artifact
-QA for this test-only checkpoint. v0.1.0 remains PARTIAL; V67 is UNSUPPORTED
-and physical/public environment gates are NOT_RUN.
+The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
+gates retain separate source records. A5 remains the last successful scoped
+Native acceptance, with Node inbox `CONSUMPTION_UNCONFIRMED`. C9–C12 are actual
+paid FAILs. C12's fixture, Python and zero-model checks passed, but its paid run
+failed after A's Join turn completed and B's second POST returned HTTP 500; the
+cause was not retained, and later multigroup/ASK/automatic-reply/G3 work was
+NOT_REACHED. See the [Native record](native-default-daemon-validation.md) for
+exact scope and receipts. This Core work changes no Client source or contract.
+The next Client-side validation is a narrow v1.6.5 encrypted status-read plus
+owned Hub-restart selector using a synthetic grant and no production resources;
+the existing protocol remains unchanged. v0.1.0 remains PARTIAL; V67 is
+UNSUPPORTED, and physical/public gates remain NOT_RUN.
 
 ## Historical Client delivery / preparation — 2026-10-10
 

@@ -9,22 +9,24 @@ later Python, artifact, Link, Browser, PQTLS, G4/G5 and SQLite checks with their
 separate source scopes. Development remains software 0.0.2, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, schema 59; v0.1.0 remains PARTIAL.
 
-The historical `shipping0002e` G2 hidden/revoked denial tail and G3 encrypted
-own-Owner status snapshot passed within their recorded scope, but that overall
-run remains FAIL on cleanup and is not current-source full G2/G3 acceptance.
-The default-daemon A5 run is also bounded: queue acceptance passed while Node
-inbox consumption remains UNCONFIRMED. V67 account-bound native submission is
-UNSUPPORTED; physical StopVerifier, real-device and public HTTPS remain NOT_RUN.
+The historical `shipping0002e` G2 denial tail and G3 encrypted own-Owner status
+snapshot passed only within their recorded scope; that run remains FAIL on
+cleanup. A5 remains the last successful scoped Native acceptance, with Node
+inbox consumption `UNCONFIRMED`. C9–C12 are actual paid FAILs. C12's fixture
+candidate passed targeted, Python and zero-model checks, but the paid run failed
+after A's Join turn completed and B's second POST returned HTTP 500; the cause
+was not retained and later multigroup/ASK/automatic-reply/G3 work was
+NOT_REACHED. The [Native detail record](native-default-daemon-validation.md)
+holds attempt-level evidence. V67 remains UNSUPPORTED; physical StopVerifier,
+real-device and public HTTPS remain NOT_RUN. Development remains 0.0.2 /
+contract 1.6.5 and v0.1.0 remains PARTIAL.
 
-Next: checkpoint the frozen candidate, then complete the bounded default-daemon
-G2/G3 fixture: six turns, a 16-POST-attempt cap, independent Runtime/MCP
-evidence of original-context Ask/Reply, and exact cleanup. A5's
-`QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` state remains unconfirmed, not an
-ACK. Keep the clean-328f aggregate FAIL as recorded; do not repeat it or the
-passed standard/PQ artifact QA for this test-only checkpoint. Rerun whole-Go
-validation when Go build/test inputs change or new Go failure evidence warrants
-it. Detailed source scopes and
-retained failures are in the linked test closeout.
+Next: keep G2/G3 PARTIAL. After the user-requested check of current
+gpt-5.6-luna Responses API 500 service recovery, review fresh HEAD, source
+bindings and GO before considering one bounded rerun. Keep the six-turn/16-POST
+limits. The aggregate and standard/PQ artifact scopes remain as recorded; rerun
+whole-Go validation when Go build/test inputs change or new Go failure evidence
+warrants it.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

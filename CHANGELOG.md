@@ -24,6 +24,18 @@ attempt failed before container creation due to invalid bind-mount syntax and
 remains recorded as FAIL. This is test-fixture validation, not a Native
 approval result.
 
+The default-daemon C8 fixture aligned its first-header cap with the existing
+1 MiB product limit. Its 42 targeted tests, zero-model preparation/owned
+closeout and 20-module Python suite (288 PASS, one existing SKIP, zero failures
+or errors) passed. The paid C8 attempt is an actual FAIL: A's original-thread step passed, then
+B's second POST failed at the RealGuard response read-head before the Core
+parser (`UNKNOWN_UNSUPPORTED` / `STREAM_DETAIL_WITHHELD`, no HTTP status,
+`will_retry=false`); the branch/status was not retained. A later exact-owned
+cleanup removed two recorded stale directories, sockets and locks, but the
+original cleanup=false and daemon/observer shutdown UNKNOWN fields remain. No
+provider/quota cause is inferred. C9–C12 follow-up attempts and their exact
+scopes are recorded in the [default-daemon validation](docs/native-default-daemon-validation.md).
+
 ### 2026-10-11 G5 HTTP permission regression
 
 Added deterministic coverage for a bilaterally approved pending Link ASK that
@@ -47,17 +59,26 @@ and draft checks with zero paid calls. This does not establish production Node
 delivery, paid-model consumption, workspace command execution or V67 direct
 submission. See [foreground validation](docs/native-foreground-queue-validation.md).
 
-The separate default-daemon selector is outside the one-click runner. A3 and A4
-failures remain attributed to their original attempts; the provider-tuple cause
-in A4 is UNKNOWN. A5 passed the bounded same-session seed and default Node-drain
-scope (two starts, two completions, two synthetic POSTs, external calls 0).
-Four current Guard checks and an absent command callback were verified; the
-Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
-`QUEUE_ACCEPTED`. The run used an actual Runtime with a synthetic-provider
-thread; it does not establish deployed-Node delivery, cold resume, V67, model
-reasoning or full G2/G3 acceptance. The selector is not a registered one-click
-lane. See the [portable A5 scope record](docs/native-default-daemon-validation.md)
-and [scoped result](.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json).
+The separate default-daemon selector is outside the one-click runner. A5 is
+still the last successful scoped Native acceptance; Node inbox consumption
+remains `CONSUMPTION_UNCONFIRMED`. C9 failed at a test-only active/leased
+binding check after three turn starts and six HTTP-200 POST responses. C10
+allowed production `leased` but failed on its first HTTP-500 response before
+the original Join; later exact-owned cleanup is separate from the original
+cleanup=false result. C11's default-only cleanup-order candidate passed 50
+tests, zero-model setup (37/37 independent checks), and the full Python suite
+(296 PASS, one existing SKIP, zero failures/errors). Its bounded paid run exited
+1 after an original-context A Ask persisted as OPEN but did not complete; B
+automatic/reply and G3 were NOT_REACHED. Cleanup and both daemon EOF checks
+passed. C12's fixture-only diagnostic phase-cap change passed 53 targeted
+tests, the full Python suite (299 PASS, one existing optional SKIP, zero
+failures/errors), and zero-model preparation (37/37 independent checks). Its
+paid run remains an actual FAIL: A's Join turn completed, but B's Join turn did
+not; B's second POST returned HTTP 500 and later multigroup/ASK/automatic-reply/
+G3 work was NOT_REACHED. The underlying cause was not retained. Cleanup and both
+daemon EOF checks passed without upgrading the run. The observed phase length
+was 12 at cap 128, below the former cap-32 boundary. See the [Native scope
+record](docs/native-default-daemon-validation.md).
 
 ### 2026-10-10 managed Node runtime outcomes
 
