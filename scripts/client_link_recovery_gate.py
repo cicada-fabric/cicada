@@ -139,7 +139,15 @@ def kernel_tmpfs(data, role):
 
 def snapshot(path, expected=None):
     end = time.monotonic() + 15
-    ids = sorted(call(['docker', 'ps', '-q', '--no-trunc'], end).decode().split())
+    baseline = json.loads(Path(expected).read_text()) if expected else None
+    if baseline is not None:
+        need(isinstance(baseline, list) and 0 <= len(baseline) <= 16 and all(
+            isinstance(r, dict) and isinstance(r.get('Id'), str) and ID.fullmatch(r['Id'])
+            for r in baseline), 'RESIDENT_IDS')
+        ids = sorted(r['Id'] for r in baseline)
+        need(len(ids) == len(set(ids)) and [r['Id'] for r in baseline] == ids, 'RESIDENT_IDS')
+    else:
+        ids = sorted(call(['docker', 'ps', '-q', '--no-trunc'], end).decode().split())
     need(len(ids) <= 16 and all(ID.fullmatch(x) for x in ids), 'RESIDENT_IDS')
     rows = json.loads(call(['docker', 'inspect', *ids], end)) if ids else []
     rows = sorted([canonical(r) | {'Running': r['State']['Running'], 'StartedAt': r['State']['StartedAt'], 'RestartCount': r['RestartCount']} for r in rows], key=lambda r: r['Id'])
@@ -151,7 +159,7 @@ def snapshot(path, expected=None):
     save(path, evidence)
     need(all(r['Running'] for r in rows) and [r['Id'] for r in rows] == ids, 'RESIDENT_NOT_RUNNING')
     if expected:
-        need(evidence == json.loads(Path(expected).read_text()), 'RESIDENT_CHANGED')
+        need(evidence == baseline, 'RESIDENT_CHANGED')
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

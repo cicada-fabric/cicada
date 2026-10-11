@@ -6,40 +6,26 @@ signer snapshot. Wire 1, catalog 55, Hub schema 59 and software 0.0.2 remain
 unchanged. See [signer preview validation](link-policy-signer-preview-validation.md).
 The v1.6.4 images, bundles and results below retain their original attribution.
 
-## Current Core/Hub validation index — v0.1 PARTIAL
+## Current Core/Hub validation index — v0.0.x development; target v0.1.0 PARTIAL
 
-The [Core closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-is the current evidence index. v1.6.5 selected normal checks passed 71 tests,
-catalog 4, compatibility 2 and vet; narrow race passed 34 tests with zero
-failures/skips. The earlier broad race timeout remains FAIL. Signer QA ran on
-recorded dirty259 with 14 frozen preview paths; those results are not clean-HEAD
-only attribution.
-Clean Core c688 delivered the v1.6.5 Hub/test images and contract bundle; the
-separate disposable interop passed five source-scoped checks on its own images.
-Clean c688 full Go passed 3,016 tests (1,543 top / 1,473 sub), 23 skipped,
-30 packages and exit 0 in 895.740764s, with no source overlay. Exact artifact
-identities and independent postchecks are in the current closeout.
+The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+and [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
+wire 1, catalog 55, schema 59 and software 0.0.2 remain unchanged. Joint11
+passed its eight Android recovery cases and final close ACK with exact cleanup,
+while Android status-read, physical-device and full Native acceptance remain
+separate. Client artifacts retain their own producer/source attribution; this
+Core test checkpoint changes no Client source or contract.
 
-Joint7 on the historical v1.6.4 delivery passed four KEY cases. Fresh NONE
-response-loss stopped at PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), with that
-case UNKNOWN and the other three NONE cases NOT_RUN. Client wrongly required
-KEY-grant lifecycle evidence for NONE; Core requires its separately registered
-ACTIVE Owner signer. v1.6.5 supplies only the authenticated own-side public
-signer snapshot and does not authorize signing. Client e3d26f8/JVM30/v1.6.4-CLOSED
-remains a historical candidate.
-Client APK producer 1151 and host source 3cfb identify the tested runtime sources; no new APK build is implied.
-Joint8 failed on stale catalog/contract pins; joint9 failed on the stale helper
-six-field tuple. Joint10 separately reconciled all eight cases and performed two
-owned Hub restarts, but its final 65th close control exceeded the old 64 bound:
-overall FAIL remains. All three runs have independently confirmed cleanup.
-Joint11 passed all eight Android recovery cases and the unique final close ACK,
-with two exact owned Hub restarts and recorded cleanup CONFIRMED; model calls: 0.
-Independent postcheck confirmed exact owned-resource absence, closed child
-journals and unchanged source/resident snapshots; see the current closeout. KEY uses
-independent encrypted Go reads; NONE combines encrypted head reads and signed
-candidate DB_READONLY verification, without Android status-read or Native proof.
-Next: implement and accept V67 native direct; separately accept the remaining physical Runtime/device/public HTTPS gates. Original APK/image results retain their attribution;
-overall v0.1 acceptance remains PARTIAL.
+The clean-328f default aggregate remains FAIL, with its Go lane passed and
+follow-up local gates recorded separately. After the current Core checkpoint,
+the next execution is a bounded default-daemon G2/G3 fixture with six turns, a
+16-POST-attempt cap, independent Runtime/MCP evidence of original-context
+Ask/Reply, and exact cleanup. A5 remains
+`QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED`; this does not change Android
+evidence or Client attribution. Do not repeat aggregate or standard/PQ artifact
+QA for this test-only checkpoint. v0.1.0 remains PARTIAL; V67 is UNSUPPORTED
+and physical/public environment gates are NOT_RUN.
 
 ## Historical Client delivery / preparation — 2026-10-10
 

@@ -31,7 +31,7 @@ SAFE_GO_TEST_STAGES = frozenset({
     "workspace_cwd_not_absolute", "workspace_cwd_mount_mismatch", "approved_native_action_not_verified",
     "agent_exit_after_approval", "agent_exit_before_approval", "agent_timeout_after_approval",
     "additional_decision_failed", "approval_identity_changed", "decision_encode",
-    "too_many_native_approvals", "unsupported_native_approval",
+    "too_many_native_approvals", "unsupported_native_approval", "native_terminal_tuple_not_consumed",
 })
 BOOTSTRAP = r'''import os, re
 text = open('/run/secrets/provider.env', encoding='utf-8').read()
@@ -282,33 +282,19 @@ done
 		t.Fatal("stage=native_thread_identity_mismatch")
 	}''',
         ),
+
         (
-            '''if err := json.Unmarshal(callClientRPC("goal.result", goalResultRequest), &goalResult); err != nil ||
-		goalResult.IntentID != accepted.ID || goalResult.GoalID != goal.ID || len(goalResult.Workers) != 1 ||
-		goalResult.Workers[0].Status != "completed" ||
-		goalResult.Workers[0].Summary != "FAKE_APP_SERVER_APPROVAL_COMPLETE" {
-		t.Fatalf("encrypted Client goal.result omitted the actual Node binary result: result=%#v err=%v", goalResult, err)
+            '''terminalSummary, terminalErr := os.ReadFile(terminalSummaryPath)
+	if terminalErr != nil || string(terminalSummary) != "FAKE_APP_SERVER_APPROVAL_COMPLETE\\n" {
+		t.Fatalf("fake app-server exact terminal tuple was not consumed before stop was withheld: summary=%q err=%v",
+			terminalSummary, terminalErr)
 	}''',
-            '''if err := json.Unmarshal(callClientRPC("goal.result", goalResultRequest), &goalResult); err != nil ||
-		goalResult.IntentID != accepted.ID || goalResult.GoalID != goal.ID || len(goalResult.Workers) != 1 ||
-		goalResult.Workers[0].Status != "completed" || goalResult.Workers[0].Attempt != 1 ||
-		goalResult.Workers[0].Summary == "" || goalResult.IntentStatus != "resolved" {
-		t.Fatal("stage=encrypted_goal_result_failed")
-	}
-	result := map[string]any{
-		"status": "PASS", "hub": "isolated_http_handler", "node_agent": "real_binary",
-		"node_pairing": "production_pq_owner_confirmed", "management_channel": "sealed_node_control_rpc",
-		"codex_app_server": os.Getenv("CICADA_NATIVE_CODEX_VERSION"), "model": "gpt-5.6-luna",
-		"client": "encrypted_synthetic_protocol_client", "thread_id": redactNativeTestID(nativeApproval.ThreadID),
-		"native_session_exact": goal.Worker.ThreadID == nativeApproval.ThreadID,
-		"approval_method": pending.Method, "approval_id": redactNativeTestID(pending.ID),
-		"worker_attempt": goalResult.Workers[0].Attempt, "worker_status": goalResult.Workers[0].Status,
-		"goal_result_intent_status": goalResult.IntentStatus, "goal_result_worker_status": goalResult.Workers[0].Status,
-		"approved_action_verified": true,
-	}
-	encoded, _ := json.Marshal(result)
-	fmt.Printf("REAL_NATIVE_E2E_RESULT: %s\\n", encoded)''',
+            '''terminalSummary, terminalErr := os.ReadFile(terminalSummaryPath)
+	if terminalErr != nil || strings.TrimSpace(string(terminalSummary)) != marker {
+		t.Fatal("stage=native_terminal_tuple_not_consumed")
+	}''',
         ),
+
     ]
     native_start_marker = 'codexBin := filepath.Join(root, "fake-codex")'
     if native_start_marker not in source:
@@ -322,6 +308,39 @@ done
         if old not in source:
             raise ValueError("source_anchor_missing:" + old[:80].replace("\\n", " "))
         source = source.replace(old, new, 1)
+    goal_result_start = source.index(
+        '\tvar goalResult control.ClientGoalResult\n',
+        source.index('\tgoalResultRequest, err := json.Marshal'),
+    )
+    finished_goal_start = source.index(
+        '\n\tfinishedGoal, err := controlPlane.Goal(goal.ID)', goal_result_start
+    )
+    goal_result_block = source[goal_result_start:finished_goal_start]
+    required_fail_closed_clauses = (
+        'goalResult.IntentID != accepted.ID',
+        'goalResult.GoalID != goal.ID',
+        'len(goalResult.Workers) != 1',
+        'goalResult.Workers[0].Status != \"failed\"',
+        'goalResult.Workers[0].Summary != \"\"',
+    )
+    if any(clause not in goal_result_block for clause in required_fail_closed_clauses):
+        raise ValueError("source_anchor_missing:goal_result_fail_closed_oracle")
+    evidence = r'''    result := map[string]any{
+        "status": "PASS", "hub": "isolated_http_handler", "node_agent": "real_binary",
+        "node_pairing": "production_pq_owner_confirmed", "management_channel": "sealed_node_control_rpc",
+        "codex_app_server": os.Getenv("CICADA_NATIVE_CODEX_VERSION"), "model": "gpt-5.6-luna",
+        "client": "encrypted_synthetic_protocol_client", "thread_id": redactNativeTestID(nativeApproval.ThreadID),
+        "native_session_exact": goal.Worker.ThreadID == nativeApproval.ThreadID,
+        "approval_method": pending.Method, "approval_id": redactNativeTestID(pending.ID),
+        "worker_attempt": goalResult.Workers[0].Attempt, "worker_status": goalResult.Workers[0].Status,
+        "goal_result_intent_status": goalResult.IntentStatus, "goal_result_worker_status": goalResult.Workers[0].Status,
+        "scope": "approval_action_and_fail_closed_stop_uncertainty",
+        "approved_action_verified": true, "stop_unconfirmed_fail_closed": true, "goal_completed": false,
+    }
+    encoded, _ := json.Marshal(result)
+    fmt.Printf("REAL_NATIVE_E2E_RESULT: %s\n", encoded)
+'''
+    source = source[:finished_goal_start] + "\n" + evidence + source[finished_goal_start:]
     wait_start = source.index('\tselect {\n\tcase processErr := <-processDone:',
                               source.index('decisionRequest, err := json.Marshal'))
     wait_end = source.index('\tmarkerBytes, err := os.ReadFile(', wait_start)

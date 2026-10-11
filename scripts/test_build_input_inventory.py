@@ -62,7 +62,7 @@ class BuildInputInventoryTests(unittest.TestCase):
         self._write("scripts/build-web-panel.sh", b"#!/bin/sh\nexit 0\n", 0o755)
         self._write("scripts/write-web-panel-manifest.py", b"# synthetic\n")
         self._write(".github/workflows/release.yml", b"name: synthetic\n")
-        for relative in ("scripts/build-hub-image.sh", "scripts/hub-build-input-inventory.py"):
+        for relative in ("VERSION", "scripts/build-hub-image.sh", "scripts/hub-build-input-inventory.py"):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, destination)
@@ -210,7 +210,7 @@ class BuildInputInventoryTests(unittest.TestCase):
         output = self.root.parent / "source-info.json"
         minimal_bin = self.root.parent / "source-only-bin"
         minimal_bin.mkdir()
-        for command in ("bash", "git", "python3", "sha256sum", "mktemp", "chmod", "cut", "dirname", "rm"):
+        for command in ("bash", "git", "python3", "sha256sum", "mktemp", "chmod", "cut", "dirname", "rm", "cat"):
             executable = shutil.which(command)
             self.assertIsNotNone(executable, f"missing test command: {command}")
             (minimal_bin / command).symlink_to(executable)

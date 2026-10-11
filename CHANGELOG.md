@@ -7,6 +7,23 @@ qualification. See [repository maintenance](docs/repository-maintenance.md).
 
 ## 0.0.2 — unreleased development candidate
 
+### 2026-10-11 current-source validation
+
+The clean-328f default aggregate completed with a passing Go lane but remains
+FAIL overall. Separate follow-up checks passed for the frozen 19-module Python
+candidate, the existing 22-check standard/PQ artifacts, the later-marker Link
+recovery scope, the clean-328f Browser fixture and shipped local PQTLS. Their
+source scopes do not rewrite the aggregate result; see the [single test
+closeout](docs/v00-test-closeout-20261011-validation.md).
+
+The real-approval test overlay now checks that an unconfirmed Native stop keeps
+Worker success and summary withheld, with a negative source-transform test.
+Seven source-only Python tests and a pinned `go test -c ./internal/server`
+compile passed; the generated test binary was not run. The first launcher
+attempt failed before container creation due to invalid bind-mount syntax and
+remains recorded as FAIL. This is test-fixture validation, not a Native
+approval result.
+
 ### 2026-10-11 G5 HTTP permission regression
 
 Added deterministic coverage for a bilaterally approved pending Link ASK that

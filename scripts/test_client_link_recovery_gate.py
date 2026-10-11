@@ -146,14 +146,16 @@ class LinkGateTests(unittest.TestCase):
         root=Path(self.temp.name);row=self.hub();ids=row['Id'].encode()+b'\n'
         with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([row]).encode()]):gate.snapshot(root/'before')
         reordered=copy.deepcopy(row);reordered['Mounts'].reverse()
-        with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([reordered]).encode()]):gate.snapshot(root/'reordered',root/'before')
-        for index,field in enumerate(['StartedAt','Config','HostConfig','OomKillDisable']):
+        with mock.patch.object(gate,'call',side_effect=[json.dumps([reordered]).encode()]):gate.snapshot(root/'reordered',root/'before')
+        for index,field in enumerate(['StartedAt','Config','HostConfig','OomKillDisable','Mounts','RestartCount']):
             changed=copy.deepcopy(row)
             if field=='StartedAt':changed['State']['StartedAt']='changed'
             if field=='Config':changed['Config']['Env']=['SYNTHETIC=changed']
             if field=='HostConfig':changed['HostConfig']['Memory']=456
             if field=='OomKillDisable':changed['HostConfig']['OomKillDisable']=None
-            with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([changed]).encode()]),self.assertRaises(gate.GateFailure):gate.snapshot(root/('changed%d'%index),root/'before')
+            if field=='Mounts':changed['Mounts'][0]['Source']='/synthetic-changed-source'
+            if field=='RestartCount':changed['RestartCount']=row['RestartCount']+1
+            with mock.patch.object(gate,'call',side_effect=[json.dumps([changed]).encode()]),self.assertRaises(gate.GateFailure):gate.snapshot(root/('changed%d'%index),root/'before')
 
     def test_resident_evidence_never_contains_env_or_arbitrary_label_text(self):
         root=Path(self.temp.name);row=self.hub();secret='SYNTHETIC_SECRET_OnlyMemory_73a9'
@@ -162,12 +164,61 @@ class LinkGateTests(unittest.TestCase):
         ids=row['Id'].encode()+b'\n'
         with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([row]).encode()]):gate.snapshot(root/'secret-before')
         changed=copy.deepcopy(row);changed['Config']['Labels']['untrusted-label']='different'
-        with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([changed]).encode()]),self.assertRaisesRegex(gate.GateFailure,'RESIDENT_CHANGED'):
+        with mock.patch.object(gate,'call',side_effect=[json.dumps([changed]).encode()]),self.assertRaisesRegex(gate.GateFailure,'RESIDENT_CHANGED'):
             gate.snapshot(root/'secret-after',root/'secret-before')
         gate.save(root/'result',self.watcher.result)
         for path in root.iterdir():
             if path.is_file():
                 text=path.read_text();self.assertNotIn(secret,text);self.assertNotIn('untrusted-label',text);self.assertNotIn('"Env"',text)
+
+    def test_resident_expected_snapshot_ignores_later_unrelated_container(self):
+        root=Path(self.temp.name);row=self.hub();ids=row['Id'].encode()+b'\n'
+        with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([row]).encode()]):
+            gate.snapshot(root/'before')
+        foreign=copy.deepcopy(row);foreign['Id']='f'*64
+        def current(argv, end):
+            if argv == ['docker','ps','-q','--no-trunc']:
+                return ids+foreign['Id'].encode()+b'\n'
+            requested=argv[2:]
+            return json.dumps([r for r in (row,foreign) if r['Id'] in requested]).encode()
+        with mock.patch.object(gate,'call',side_effect=current) as read:
+            gate.snapshot(root/'after',root/'before')
+        self.assertEqual(read.call_args.args[0],['docker','inspect',row['Id']])
+        self.assertEqual(json.loads((root/'before').read_text()),json.loads((root/'after').read_text()))
+
+    def test_resident_empty_baseline_ignores_later_foreign_container(self):
+        root=Path(self.temp.name)
+        with mock.patch.object(gate,'call',return_value=b'') as before:
+            gate.snapshot(root/'empty-before')
+        self.assertEqual(before.call_args.args[0],['docker','ps','-q','--no-trunc'])
+        self.assertEqual(json.loads((root/'empty-before').read_text()),[])
+        foreign=self.hub()
+        # If the code queried the live set, this now-running unrelated ID would be visible.
+        def current(argv, end):
+            if argv == ['docker','ps','-q','--no-trunc']:
+                return foreign['Id'].encode()+b'\n'
+            return json.dumps([foreign]).encode()
+        with mock.patch.object(gate,'call',side_effect=current) as after:
+            gate.snapshot(root/'empty-after',root/'empty-before')
+        after.assert_not_called()
+        self.assertEqual(json.loads((root/'empty-after').read_text()),[])
+
+    def test_resident_expected_missing_or_stopped_still_refused(self):
+        root=Path(self.temp.name);row=self.hub();ids=row['Id'].encode()+b'\n'
+        with mock.patch.object(gate,'call',side_effect=[ids,json.dumps([row]).encode()]):
+            gate.snapshot(root/'before')
+        with mock.patch.object(gate,'call',side_effect=gate.GateFailure('DOCKER_COMMAND')),self.assertRaises(gate.GateFailure):
+            gate.snapshot(root/'missing',root/'before')
+        stopped=copy.deepcopy(row);stopped['State']['Running']=False
+        with mock.patch.object(gate,'call',return_value=json.dumps([stopped]).encode()),self.assertRaises(gate.GateFailure):
+            gate.snapshot(root/'stopped',root/'before')
+
+    def test_resident_expected_duplicate_identity_refused_before_inspect(self):
+        root=Path(self.temp.name);row=self.hub()
+        gate.save(root/'duplicate',[{'Id':row['Id']},{'Id':row['Id']}])
+        with mock.patch.object(gate,'call') as read,self.assertRaises(gate.GateFailure):
+            gate.snapshot(root/'after-duplicate',root/'duplicate')
+        read.assert_not_called()
 
     def test_workspace_and_actual_tmpfs_mounts_fail_closed(self):
         for role,row in [('hub',self.hub()),('test',self.runner())]:

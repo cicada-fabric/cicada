@@ -28,6 +28,34 @@ class NativeApprovalOverlayTests(unittest.TestCase):
         self.assertIn("quarantined-resource-worker-ran", transformed)
         self.assertIn("ResourceExecutionQuarantined", transformed)
         self.assertNotIn("fakeAppServer :=", transformed)
+        self.assertIn('strings.TrimSpace(string(terminalSummary)) != marker', transformed)
+        self.assertNotIn("FAKE_APP_SERVER_APPROVAL_COMPLETE", transformed)
+        self.assertIn('goalResult.Workers[0].Status != "failed"', transformed)
+        self.assertIn('goalResult.Workers[0].Summary != ""', transformed)
+        self.assertIn("native writer ownership is quarantined", transformed)
+
+    def test_overlay_rejects_weakened_current_stop_result_guard(self) -> None:
+        source = TARGET.read_text(encoding="utf-8")
+        mutations = (
+            ("completed_status", 'goalResult.Workers[0].Status != "failed"',
+             'goalResult.Workers[0].Status != "completed"'),
+            ("summary_polarity", 'goalResult.Workers[0].Summary != ""',
+             'goalResult.Workers[0].Summary == ""'),
+            ("summary_guard_removed", 'goalResult.Workers[0].Summary != ""',
+             'goalResult.Workers[0].Attempt != 1'),
+        )
+        for name, old, new in mutations:
+            with self.subTest(name=name):
+                self.assertIn(old, source)
+                altered = source.replace(old, new, 1)
+                with self.assertRaisesRegex(ValueError, "goal_result_fail_closed_oracle"):
+                    DRIVER.replaced_test_source(altered)
+
+        start = source.index("\tvar goalResult control.ClientGoalResult\n")
+        end = source.index("\n\tfinishedGoal, err := controlPlane.Goal(goal.ID)", start)
+        without_result_block = source[:start] + source[end:]
+        with self.assertRaises(ValueError):
+            DRIVER.replaced_test_source(without_result_block)
 
     def test_overlay_fails_closed_if_the_native_fixture_loses_gpu_scope(self) -> None:
         source = TARGET.read_text(encoding="utf-8")

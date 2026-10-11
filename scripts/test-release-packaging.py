@@ -217,7 +217,7 @@ class ReleasePackagingTests(unittest.TestCase):
             temp = pathlib.Path(directory)
             source = temp / "source"
             source.mkdir()
-            for name in ("LICENSE", "scripts/build-hub-image.sh",
+            for name in ("LICENSE", "VERSION", "scripts/build-hub-image.sh",
                          "scripts/hub-build-input-inventory.py", "docker/Dockerfile.hub",
                          "cicada-go/internal/clientcontract/catalog.json"):
                 destination = source / name

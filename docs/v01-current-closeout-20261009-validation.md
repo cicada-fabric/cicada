@@ -5,6 +5,9 @@ the individual historical records and failed attempts at their original source
 and artifact attribution. It does not change `CICADA.md`, the Client contract,
 or any product policy.
 
+The current clean-source aggregate and separately scoped follow-up validation
+are summarized in the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout).
+
 <a id="current-20261010"></a>
 
 ## Current evidence — updated 2026-10-11 — v0.0.x development; target v0.1.0 PARTIAL
@@ -910,10 +913,10 @@ Native or model-consumption recovery.
 | Gate | Current state |
 |---|---|
 | G1 — original-context in-group Ask/Reply | **PASS within the current g1 run scope.** Five actual turns preserved original A/B context, correlation and terminal historical queue acceptance. Later artifacts and other gates require their own results. |
-| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** Preserve prior six-turn original A/B context witnesses and failed denial-tail results; the Native hidden-member/revoked-Link denial tail remains open. |
-| G3 — Control-independent communication | **Scoped positive evidence:** current actual result records `NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true` from production `serve --fabric-only`, and authenticated management HTTP 503. Invocation counter is `NOT_INSTRUMENTED`; restore/status-query acceptance is `NOT_RUN`. This does not close all G3 or transfer acceptance to other artifacts. |
+| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** The historical shipping0002e run passed the hidden-member/revoked-Link denial tail within its scoped G2 run, but the overall run remains FAIL because cleanup was incomplete. A5 reached `QUEUE_ACCEPTED`; Node inbox consumption remains `CONSUMPTION_UNCONFIRMED`. A fresh bounded six-turn current-source run must provide independent Runtime/MCP evidence of original-context Ask/Reply and exact cleanup. Preserve A5's unconfirmed state rather than promoting it to an ACK. |
+| G3 — Control-independent communication | **Scoped positive evidence.** The historical shipping0002e run passed its authenticated encrypted own-Owner status snapshot within scope, but its overall cleanup FAIL remains. A5 verified four current Guard checks and no command callback; it does not confirm Node inbox consumption. A fresh bounded current-source run must provide independent Runtime/MCP evidence of original-context communication and exact cleanup. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
-| G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility, plus the a006 bilateral-Link pending-request revocation case (normal/race). That case verifies cancellation, delivery closure, revoked reply/new-ASK denial and exact SQLite absence for denied IDs. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. The separate Native G2 revoked-Link tail remains open. |
+| G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility, plus the a006 bilateral-Link pending-request revocation case (normal/race). That case verifies cancellation, delivery closure, revoked reply/new-ASK denial and exact SQLite absence for denied IDs. The Native hidden-member/revoked-Link tail also passed within the historical shipping0002e scope; its overall cleanup FAIL remains. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. |
 | M1 / M2 | Current Network M1 and Group Spaces M2 interop selectors passed. Remaining framework-wide semantics are not closed by those selectors. |
 | M3 | **Scoped backend/integration evidence:** selected reference schema/pointer projection, Network Task/broadcast scope/epoch/revocation, commit cursor/unread reconciliation and parser space/claim separation have existing tests. `TestGroupSpacesMCPAcrossNodesWithLostCommitResponse` exercises reconciliation without mark-read; the parser test does not measure the long-running Agent/job loop or Native wake behavior. Full reference-to-immediate-delivery and scheduling claims remain bounded by their actual tests. |
 | M4 | **Scoped v0.1 path passed:** Monitor MCP proposal, Owner encrypted delegation, guarded apply, topology projection, Owner revoke/version advance and subsequent apply denial; Store tests cover exact scope, CAS/audit, role revocation, reader separation and old key-consent fencing. The tested revoke-overlay bytes are now tracked at `631666c`. Full user/admin hierarchy and delegation UX remain explicitly v0.2, not a new v0.1 gate. |
@@ -931,12 +934,21 @@ source was changed by this Core checkpoint.
 
 ## Remaining acceptance gates
 
-1. Validate Native G2 hidden-member/revoked-Link denial and G3 authenticated
-   encrypted management/status restoration on the two original Native Threads.
-2. Establish standard workspace allow/outside deny in a supported isolated
-   environment before claiming current native command/Worker acceptance.
-3. Resolve any remaining Android status-read requirement, remaining Native
-   scopes, physical-device and public-HTTPS gates independently.
+1. Run the bounded six-turn current-source default-daemon G2/G3 fixture with a
+   16-POST-attempt cap, independent Runtime/MCP evidence of original-context
+   Ask/Reply, and exact cleanup. Historical shipping0002e scoped denial and
+   encrypted own-Owner status checks passed, but its overall cleanup FAIL is
+   retained. A5 reached `QUEUE_ACCEPTED`; its
+   `CONSUMPTION_UNCONFIRMED` state is not promoted to an ACK.
+2. Obtain a supported account-bound Native submission API before implementing
+   V67; current inspected API support is UNSUPPORTED. Keep physical StopVerifier,
+   real-device/Android status-read and public-HTTPS gates separately NOT_RUN.
+3. Keep the clean-328f aggregate FAIL as recorded. Do not repeat the aggregate
+   or standard/PQ artifact QA for this test-only checkpoint; rerun whole-Go
+   validation when Go build/test inputs change or new Go failure evidence
+   warrants it. The optional
+   browser lane requires its sanitized runner to include Node and its required
+   fixture inputs; retain BLOCKED status until they are available.
 
 Scoped G1, G4/G5/M3/M4/M5, Apache and Link results do not create a completion
 percentage. The v0.1.0 target remains **PARTIAL**.

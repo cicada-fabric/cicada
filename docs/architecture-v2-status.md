@@ -4,93 +4,23 @@
 
 ## Current acceptance status — v0.0.x development; target v0.1.0 PARTIAL
 
-Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. Development software is **0.0.2**, with the **client-hub-v1.6.5** signer-preview
-source contract. Earlier signer QA ran on recorded dirty259 with 14 frozen
-preview paths; its source attribution remains unchanged. Policy QA
-passed normal 71 tests, catalog 4, compatibility 2 and vet; narrow race passed
-34 tests, while broad race's two 180s package timeouts remain FAIL. See
-[signer validation](link-policy-signer-preview-validation.md) for exact scope.
-Clean Core c688 delivered the v1.6.5 Hub/test images and contract bundle; the
-separate disposable interop passed five source-scoped checks on its own images.
-Clean c688 full Go passed 3,016 tests (1,543 top / 1,473 sub), 23 skipped,
-30 packages and exit 0 in 895.740764s, with no source overlay. Exact artifact
-identities and independent postchecks are in the current closeout.
-G4/G5 qa-a5 passed 40 tests / two packages per normal and race phase, with zero
-skips/failures. Real G4 A3 passed the official 0.162.1 queue/crash gate in
-20.146s with zero model calls/new turns, without proving model consumption.
-The later a006 G5 test-only source closure added bilateral-Link pending-ASK
-revocation coverage; its eight-case HTTP/SQLite selector passed normal and race
-with 14 test RUN/PASS identities plus one package PASS per phase (test SHA
-`c679561d…b26d7ca4`, result SHA `e3abbdba…3105bb91`). Schema-59 reopen
-optimization preserves all schema checks and reduces full integrity/FK checks
-from 59 to one on already-applied reopen; its selected family race passed.
-Official CLI 0.162.1 foreground synthetic busy-queue and draft checks also
-passed with paid calls zero. These scoped results do not establish Native
-consumption or full release acceptance; see the [G5 record](g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case),
-[SQLite record](sqlite-startup-verification-validation.md), and
-[foreground record](native-foreground-queue-validation.md).
+Use the [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+for product scope and the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+for current source and artifact checks. Software is 0.0.2, contract
+`client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
+aggregate remains FAIL despite its passing Go lane; the follow-up Python,
+artifact, Link, Browser, and PQTLS records retain their separate tested sources.
+The current overall v0.1.0 target remains PARTIAL.
 
-The separate default-daemon selector is not registered in the one-click runner.
-Its A3 and A4 attempts remain FAIL; A4's materialized official seed and local
-session history were verified, but the provider-tuple failure cause remains
-UNKNOWN. The later A5 selector passed its bounded same-session seed and default
-Node-drain scope: two starts, two completions, two synthetic POSTs, and zero
-external calls. Four current Guard checks and an absent command callback were
-verified; the Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
-`QUEUE_ACCEPTED`. The actual Runtime loaded a synthetic-provider thread, so this
-does not establish deployed-Node delivery, cold resume, V67, model reasoning,
-or full G2/G3 acceptance. See the [portable A5 scope record](native-default-daemon-validation.md)
-and [`A5 result`](../.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json)
-(SHA-256 `80cca7a99303b3966f816d8ed5f17768e03e55f7ac4c9421b61e9b42c4faa115`).
-
-Joint7 passed four KEY cases; fresh NONE response-loss remained UNKNOWN at
-PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), and three NONE cases were NOT_RUN.
-The Client's KEY-lifecycle dependency caused fresh NONE rejection; the new
-preview reads only the authenticated own-side registered ACTIVE signer and
-requires an independent complete-identity pin. Client e3d26f8/JVM30/v1.6.4-CLOSED describes the historical candidate only.
-Client APK producer 1151 and host source 3cfb identify the tested runtime sources; no new APK build is implied.
-Joint8 failed on stale catalog/contract pins; joint9 failed on the stale helper
-six-field tuple. Joint10 separately reconciled all eight cases and performed two
-owned Hub restarts, but its final 65th close control exceeded the old 64 bound:
-overall FAIL remains. All three runs have independently confirmed cleanup.
-Joint11 passed all eight Android recovery cases and the unique final close ACK,
-with two exact owned Hub restarts and recorded cleanup CONFIRMED; model calls: 0.
-Independent postcheck confirmed exact owned-resource absence, closed child
-journals and unchanged source/resident snapshots; see the current closeout. KEY uses
-independent encrypted Go reads; NONE combines encrypted head reads and signed
-candidate DB_READONLY verification, without Android status-read or Native proof.
-The clean308d full-Go test overlay and shipping0002e scoped G2/G3
-assertions keep their original source; the latter's overall cleanup FAIL is not
-rewritten. Shipping a4 remains ordinary Worker scope PASS only.
-
-Next: make a clean checkpoint, then run the actual aggregate and standard/PQ
-22-check artifact QA in parallel. The default-daemon selector remains a
-separate explicit check, outside the one-click runner. V67 account-bound native
-direct remains UNSUPPORTED pending a supported account-bound submission API
-and exact fencing evidence; generic same-node fallback is not acceptance.
-Physical StopVerifier, real-device and public HTTPS are NOT_RUN. The earlier
-clean-e2a aggregate remains INCOMPLETE.
-Overall first-release acceptance remains **PARTIAL**; main/0.1.0 requires the
-user's actual acceptance and separate authorization.
-
-The [managed Node outcome checkpoint](node-native-outcome-validation.md)
-records source-scoped child-process and protocol RED/GREEN checks for actual
-starts, owner stop errors and exact Thread/Turn completion. Shared Control and
-sealed result checks passed separately before the final custom-waiter refinement.
-No new Native/Android run is implied; physical-resource STOP verification remains
-fail closed, and first-release acceptance remains PARTIAL.
-
-The [one-click test guide](test-automation.md) uses `scripts/test-architecture-v2-completion.sh`; default execution uses no paid models and preserves independent NOT_RUN/BLOCKED results, without claiming full v0.1 acceptance.
-
-Apache-2.0 distribution inclusion passed actual standard/PQ artifact checks (21/21, 0 skips) and create-only inspection of both built Hub images. Exact root LICENSE and third-party notices were verified. The first release operation remains FAIL due to its synthetic fixture’s missing global Git identity; the separate check-only rerun mounted the existing public global config RO and did not rebuild. Artifacts record dirty pinned inputs based on631, not solely clean HEAD. No formal release or resident replacement is implied; see the [current evidence and remaining gates](v01-current-closeout-20261009-validation.md#remaining-acceptance-gates).
-
-The scoped records below preserve their exact source and artifact attribution; they are not separate aggregate completion claims.
-
-- Relay Ask admission capacity / schema v59: [validation](relay-admission-performance-validation.md).
-- Resolve capacity and list-query work: [resolver](directory-resolve-capacity-validation.md), [Fabric binding query](fabric-directory-binding-performance-validation.md), [Endpoint V2 list query](endpoint-v2-list-performance-validation.md), and [Directory list query](directory-list-performance-validation.md).
-- Native/Peer, source validation, and bounded stress: [Native bridge](native-go-client-bridge-validation.md), [CLI tool boundary](native-cli162-tool-boundary-validation.md), [current Go validation](v01-current-source-go-validation.md), and [Group/Fabric stress](v01-group-fabric-stress-validation.md).
-- M3 SSE parser routing and Node phase diagnostics: [M3 scope](m3-space-event-routing-validation.md) and [phase diagnostics](node-sealed-phase-diagnostics-validation.md).
+Next: checkpoint the frozen test-source candidate and these records, then
+complete the bounded default-daemon G2/G3 fixture: six turns, a 16-POST-attempt
+cap, independent Runtime/MCP evidence of original-context Ask/Reply, and exact
+cleanup. A5's `QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` remains unchanged.
+The clean-328f aggregate remains FAIL; do not repeat it or standard/PQ artifact
+QA for this test-only checkpoint. Rerun whole-Go validation when Go build/test
+inputs change or new Go failure evidence warrants it. V67 account-bound native submission remains
+UNSUPPORTED; physical StopVerifier, real-device and public HTTPS are separate
+NOT_RUN gates.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

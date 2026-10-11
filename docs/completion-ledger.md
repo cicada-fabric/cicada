@@ -1,48 +1,30 @@
 # Architecture v2.3 completion ledger
 
-## Current closeout index — v0.1 PARTIAL
+## Current closeout index — v0.0.x development; target v0.1.0 PARTIAL
 
-Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. Development software is **0.0.2**, with the **client-hub-v1.6.5** signer-preview
-source contract. Earlier signer QA ran on recorded dirty259 with 14 frozen
-preview paths; its source attribution remains unchanged. Policy QA
-passed normal 71 tests, catalog 4, compatibility 2 and vet; narrow race passed
-34 tests, while broad race's two 180s package timeouts remain FAIL. See
-[signer validation](link-policy-signer-preview-validation.md) for exact scope.
-Clean Core c688 delivered the v1.6.5 Hub/test images and contract bundle; the
-separate disposable interop passed five source-scoped checks on its own images.
-Clean c688 full Go passed 3,016 tests (1,543 top / 1,473 sub), 23 skipped,
-30 packages and exit 0 in 895.740764s, with no source overlay. Exact artifact
-identities and independent postchecks are in the current closeout.
-G4/G5 qa-a5 passed 40 tests / two packages per normal and race phase, with zero
-skips/failures. Real G4 A3 passed the official 0.162.1 queue/crash gate in
-20.146s with zero model calls/new turns, without proving model consumption.
+The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
+is the product-status index. The [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+records the clean-328f aggregate (overall FAIL), its passing Go lane and the
+later Python, artifact, Link, Browser, PQTLS, G4/G5 and SQLite checks with their
+separate source scopes. Development remains software 0.0.2, contract
+`client-hub-v1.6.5`, wire 1, catalog 55, schema 59; v0.1.0 remains PARTIAL.
 
-Joint7 passed four KEY cases; fresh NONE response-loss remained UNKNOWN at
-PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), and three NONE cases were NOT_RUN.
-The Client's KEY-lifecycle dependency caused fresh NONE rejection; the new
-preview reads only the authenticated own-side registered ACTIVE signer and
-requires an independent complete-identity pin. Client e3d26f8/JVM30/v1.6.4-CLOSED describes the historical candidate only.
-Client APK producer 1151 and host source 3cfb identify the tested runtime sources; no new APK build is implied.
-Joint8 failed on stale catalog/contract pins; joint9 failed on the stale helper
-six-field tuple. Joint10 separately reconciled all eight cases and performed two
-owned Hub restarts, but its final 65th close control exceeded the old 64 bound:
-overall FAIL remains. All three runs have independently confirmed cleanup.
-Joint11 passed all eight Android recovery cases and the unique final close ACK,
-with two exact owned Hub restarts and recorded cleanup CONFIRMED; model calls: 0.
-Independent postcheck confirmed exact owned-resource absence, closed child
-journals and unchanged source/resident snapshots; see the current closeout. KEY uses
-independent encrypted Go reads; NONE combines encrypted head reads and signed
-candidate DB_READONLY verification, without Android status-read or Native proof.
-The clean308d full-Go test overlay and shipping0002e scoped G2/G3
-assertions keep their original source; the latter's overall cleanup FAIL is not
-rewritten. Shipping a4 remains ordinary Worker scope PASS only.
+The historical `shipping0002e` G2 hidden/revoked denial tail and G3 encrypted
+own-Owner status snapshot passed within their recorded scope, but that overall
+run remains FAIL on cleanup and is not current-source full G2/G3 acceptance.
+The default-daemon A5 run is also bounded: queue acceptance passed while Node
+inbox consumption remains UNCONFIRMED. V67 account-bound native submission is
+UNSUPPORTED; physical StopVerifier, real-device and public HTTPS remain NOT_RUN.
 
-Next: implement and accept V67 account-bound native direct; separately accept
-the remaining physical Runtime/device/public HTTPS gates. Generic V67 same-node is UNSUPPORTED; physical StopVerifier,
-real-device and public HTTPS are NOT_RUN. The earlier clean-e2a aggregate remains
-INCOMPLETE. Overall first-release acceptance remains **PARTIAL**; main/0.1.0
-requires the user's actual acceptance and separate authorization.
+Next: checkpoint the frozen candidate, then complete the bounded default-daemon
+G2/G3 fixture: six turns, a 16-POST-attempt cap, independent Runtime/MCP
+evidence of original-context Ask/Reply, and exact cleanup. A5's
+`QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` state remains unconfirmed, not an
+ACK. Keep the clean-328f aggregate FAIL as recorded; do not repeat it or the
+passed standard/PQ artifact QA for this test-only checkpoint. Rerun whole-Go
+validation when Go build/test inputs change or new Go failure evidence warrants
+it. Detailed source scopes and
+retained failures are in the linked test closeout.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 
