@@ -12,13 +12,16 @@ source/dirty state and build provenance before attributing a test or artifact.
 
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.
-The latest clean e2a default aggregate is INCOMPLETE: 14 PASS,
-2 PASS_WITH_SKIPS and four Native NOT_RUN at its tested source. Separate real G1,
-current CLI sandbox and the Worker private IPC fixture passed scoped checks;
-G2's pre-model failure and later G2/G3 scoped results remain separately attributed.
-Shipping `a4` ordinary Worker and Joint11's eight Android recovery cases passed
-their scoped checks; full Native recovery, Android status-read, physical-device
-and public HTTPS acceptance remain unverified. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+The clean-328f default aggregate remains FAIL; later scoped results retain their
+own tested-source attribution and do not change that result. The latest recorded
+default-daemon paid attempt, C12, also failed: A's Join turn completed, B's did
+not, and B's second POST returned HTTP 500; its underlying cause was not
+retained, and later multigroup/ASK/automatic-reply/G3 work was NOT_REACHED. A5
+remains a scoped loaded-queue PASS with Node inbox consumption
+CONSUMPTION_UNCONFIRMED. Shipping `a4` ordinary Worker and Joint11's eight
+Android recovery cases passed their stated scopes; the v1.6.5 Android encrypted
+status-read/restart, full Native recovery, physical-device and public HTTPS
+acceptance remain unverified. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
 Continue 0.0.x development until the user's actual acceptance; main/0.1.0
 publication needs separate authorization. Documentation publication is not a release.
 

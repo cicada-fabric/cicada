@@ -80,6 +80,17 @@ daemon EOF checks passed without upgrading the run. The observed phase length
 was 12 at cap 128, below the former cap-32 boundary. See the [Native scope
 record](docs/native-default-daemon-validation.md).
 
+C13 re-ran the zero-model preparation on fresh dirty fixture inputs at HEAD
+`1392c9c`, separate from the clean product producer and helper producer. The
+full Python suite recorded 304 PASS, one existing SKIP and zero failures/errors;
+the zero-model preparation and 37/37 independent owned-closeout checks passed.
+Its gate remains `PREPARATION_PASS_NATIVE_NOT_RUN`; this does not change C12's
+paid FAIL or establish Native business acceptance. See the
+[Native validation record](docs/native-default-daemon-validation.md).
+The later UnitTest portability-only source passed its focused path/Default/binding
+checks and a separate 20-module rerun (305 PASS, one existing SKIP, zero
+failures/errors); C13's older zero-model receipt was not reused for those bytes.
+
 ### 2026-10-10 managed Node runtime outcomes
 
 Ordinary Codex app-server execution now records actual process starts, including

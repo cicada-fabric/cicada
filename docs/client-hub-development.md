@@ -25,10 +25,26 @@ failed after A's Join turn completed and B's second POST returned HTTP 500; the
 cause was not retained, and later multigroup/ASK/automatic-reply/G3 work was
 NOT_REACHED. See the [Native record](native-default-daemon-validation.md) for
 exact scope and receipts. This Core work changes no Client source or contract.
-The next Client-side validation is a narrow v1.6.5 encrypted status-read plus
-owned Hub-restart selector using a synthetic grant and no production resources;
-the existing protocol remains unchanged. v0.1.0 remains PARTIAL; V67 is
-UNSUPPORTED, and physical/public gates remain NOT_RUN.
+The next Client-side validation is a test-only v1.6.5 encrypted status read
+across an exact-owned Hub restart, using the already pinned delivery and its
+independently pinned Hub, Owner and Device identities. Add a new Android
+instrumentation selector beside
+`CICADA_CLIENT/android/app/src/androidTest/java/ai/cicada/client/hub/LinkReviewPolicyStatusInteropTest.kt`;
+the existing class is explicitly v1.6.1 and does not prove restart persistence.
+For the selected Owner profile, capture encrypted `session.capabilities`, a
+fresh `link.list`, and `link.review_policy_status` for the fixture's exact Link
+ID/version before restart; restart only the fixture's owned Hub, reopen the
+same Owner profile, then repeat the encrypted reads. Compare Hub/Owner/Device
+and profile selection, Link ID/version, policy mode/version/digest, current
+status, accepted sides and expiry with the pinned proposal. Exercise the
+existing response-loss uncertainty fields (`pendingOperationId`,
+`linkReviewStatusReadContext`, and `uncertainNeedsReconciliation`) and ensure a
+restart does not silently infer approval or clear unresolved uncertainty.
+Keep the existing KEY/NONE cases and report absent fixtures as NOT_RUN; do not
+reuse Joint11's 82-request recovery batch, treat a database read-only receipt
+as Android status, or claim physical/native/public-HTTPS coverage. No model,
+production credential, protocol or Client production-code change is part of
+this task. v0.1.0 remains PARTIAL; V67 is UNSUPPORTED.
 
 ## Historical Client delivery / preparation — 2026-10-10
 

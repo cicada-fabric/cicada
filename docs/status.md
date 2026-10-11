@@ -1,27 +1,28 @@
 # Release status
 
-## 2026-10-10 current source candidate — unreleased; acceptance partial
+## 2026-10-11 current source candidate — unreleased; acceptance partial
 
-The development source line is **0.0.1-dev**: Hub schema **59**, Client contract
-**client-hub-v1.6.4**, encrypted wire **1** and **55** catalog operations.
-Architecture v2.3, Git revision, dirty source/build fingerprints and artifact
-digests are separate identities. See the [technical guide](v01-technical-guide.md)
-and [distribution details](distribution.md).
+The current development version is **0.0.2**: Hub schema **59**, Client
+contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
+operations. Architecture v2.3, Git revision, dirty source/build fingerprints
+and artifact digests are separate identities. See the
+[technical guide](v01-technical-guide.md) and
+[distribution details](distribution.md).
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the single current evidence index. The clean e2a default aggregate is
-INCOMPLETE (14 PASS, 2 PASS_WITH_SKIPS, 4 Native NOT_RUN). Separately, real G1
-passed five actual turns with the original A/B context and exact replies.
-Historical failed attempts remain attributed to their tested inputs.
+as the current evidence index. The clean-328f default aggregate remains **FAIL**;
+later scoped results retain their own tested-source attribution. The latest
+default-daemon paid attempt, C12, also **FAIL**: A's Join turn completed, B's
+did not, and B's second POST returned HTTP 500. The underlying cause was not
+retained, and later multigroup, ASK, automatic-reply and G3 work was
+NOT_REACHED. A5 remains a scoped loaded-queue PASS, but Node inbox consumption
+is still **CONSUMPTION_UNCONFIRMED**; neither result establishes full G2/G3.
 
-G2 H4 is FAIL before model activity, with its original cleanup INCOMPLETE
-and later safety closeout recorded separately; G3 and eight Android online cases
-remain NOT_RUN. Current CLI sandbox zero and real Worker approval/result passed
-their isolated scopes; W2 used a private IPC fixture, whose stale diagnostic
-remains UNKNOWN, rather than the shipping Node binary. The clean36eb focused
-Link gate passed separately from the e2a aggregate. Development is **0.0.1-dev**;
-main/0.1.0 publication requires the user's actual acceptance and separate
-authorization. First-release acceptance remains **PARTIAL**.
+Joint11's eight Android recovery cases passed within their RPC recovery scope.
+The separate v1.6.5 encrypted status-read/restart check, physical-device and
+public-HTTPS acceptance remain NOT_RUN. First-release acceptance remains
+**PARTIAL**; development stays at **0.0.2** until the user's actual acceptance,
+and any main/0.1.0 publication requires separate authorization.
 
 Source, Runtime packaging, Client delivery and historical failures retain their
 separate identities in that index. Documentation publication does not qualify a
@@ -222,9 +223,9 @@ Version and branch workflow:
    deleted; they are not part of the deployment contract.
 3. A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes
    checksummed binaries and the OCI image.
-4. `0.1.0-dev` identifies the current unreleased product line; planned public
-   product releases use `0.1.x`. Historical prototype tags do not change
-   architecture or protocol versions.
+4. [`VERSION`](../VERSION) identifies the current unreleased software version;
+   planned public product releases use `0.1.x`. Historical prototype tags do
+   not change architecture or protocol versions.
 
 The version is declared in [`VERSION`](../VERSION) and shared by the CLI,
 health endpoint, and Codex app-server metadata through the Go `buildinfo`

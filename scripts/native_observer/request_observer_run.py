@@ -487,6 +487,26 @@ def default_fixture(args, binding, *, zero=False):
     return value
 
 
+def default_fixture_source(args, binding):
+    """Read only SHA-pinned execution identity; HEAD is checked by the fixture."""
+    value, raw = bounded_json(args.default_daemon_fixture)
+    if hashlib.sha256(raw).hexdigest() != args.default_daemon_fixture_sha:
+        raise PermissionError('DEFAULT_FIXTURE_BYTE_PIN')
+    module = safe_overlay('request_observer_default')
+    return value['schema'], module.fixture_source_identity(value, binding)
+
+
+def validate_default_preparation_source(args, binding, preparation_binding):
+    schema, identity = default_fixture_source(args, binding)
+    if schema == 'cicada.native-default-peer-fixture.v2':
+        captured = preparation_binding.get('default_fixture_source')
+        if (type(captured) is not dict or
+                json.dumps(captured,sort_keys=True,separators=(',',':')) !=
+                json.dumps(identity,sort_keys=True,separators=(',',':'))):
+            raise PermissionError('LATEST_DEFAULT_PREPARATION_SOURCE')
+    return identity
+
+
 def native_normal_seconds(args):
     raw = getattr(args, "native_normal_seconds", None)
     if default_daemon_mode(args):
@@ -594,12 +614,13 @@ def execute(args):
     result, claim = Path(go["result_dir"]),Path(go["claim_file"])
     if result.exists() or claim.exists():
         raise PermissionError("FRESH_UNCONSUMED_PATHS_REQUIRED")
+    # Reject stale execution HEAD/dirty/bytes before any credential metadata.
+    selected_fixture = default_fixture(args, binding) if default_mode else None
     # Metadata only, only after fresh GO. Contents are never read on the host.
     metadata=Path(CREDENTIAL).lstat()
     if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode)!=0o600 or metadata.st_uid!=1000:
         raise PermissionError("CREDENTIAL_METADATA")
     validate_go(go,expected)
-    selected_fixture = default_fixture(args, binding) if default_mode else None
     started=time.monotonic()
     with os.fdopen(os.open(claim,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),"w") as out:
         json.dump({"schema":"cicada.request-observer-execution-claim.v1","unique_run":args.unique_run,
@@ -703,6 +724,8 @@ def latest_dispatch_inputs(args):
     review,raw=bounded_json(args.preparation_review)
     if hashlib.sha256(raw).hexdigest()!=args.preparation_review_sha or review.get("status")!="PASS" or review.get("result_sha256")!=args.preparation_result_sha:
         raise PermissionError("LATEST_PREPARATION_REVIEW")
+    if default_daemon_mode(args):
+        validate_default_preparation_source(args, binding, prep)
     return binding,sha,delivery,prior
 
 
@@ -728,9 +751,10 @@ def expected_latest_go(binding,sha,args,delivery):
     if getattr(args,"scenario","g1") != "g1":
         expected.update(fixture_scenario="g2-g3",component_proof_sha256=delivery["component_proof_sha256"],max_native_turns=6,max_manual_turns=4,max_automatic_turns=2)
     if default_daemon_mode(args):
+        _, source = default_fixture_source(args, binding)
         expected.update(default_daemon_fixture_sha256=args.default_daemon_fixture_sha,
             native_default_daemon=True,queue_remote=False,queue_callback=False,
-            fixture_revision='39bce535b93ab82c3b4f4fbf5cb09c6114dca942',
+            fixture_revision=source['fixture_revision'],
             provider_origin='https://api.zzswitch.com/v1',provider_identifier='zzswitch',
             test_request_observer=False,HTTP_POST_COUNT='OUTBOUND_SEND_ATTEMPTS_INCLUDING_AUXILIARY',
             preparation_provider_scope='ZERO_TURN_NO_PROVIDER_REQUESTS_SAME_DEFAULT_SETUP')
@@ -1306,7 +1330,9 @@ def g2_current_component_inputs(delivery, equality):
 PACKAGING_REUSE_SCHEMA = 'cicada.native-packaging-reuse-components.v1'
 REUSE_ROOT = Path('/home/zyf/CICADA/.cicada-data/v01-next-gates-20261011/native-direct-audit')
 REUSE_PRODUCT_REV = '328f5b5fa69571e67e7bb3e4582d5fb3bb920fd7'
-REUSE_FIXTURE_REV = '39bce535b93ab82c3b4f4fbf5cb09c6114dca942'
+# Immutable helper/equality capture source, never a fresh execution HEAD.
+REUSE_HELPER_CAPTURE_REV = '39bce535b93ab82c3b4f4fbf5cb09c6114dca942'
+REUSE_FIXTURE_REV = REUSE_HELPER_CAPTURE_REV  # Historical v1 proof field name.
 REUSE_PQ = REUSE_ROOT/'closeout-packaging-once/output/pq-unpacked/cicada-linux-amd64-pqtls'
 REUSE_FIXED_RECEIPTS = {
     'packaging_result':('closeout-packaging-once/RESULT.NONAUTH.json','3c1016f7777366c8576e22727f353f13cb3ae5db3e70128dcb912547b7a39a51'),

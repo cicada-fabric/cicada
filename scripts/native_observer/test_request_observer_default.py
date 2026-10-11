@@ -1,5 +1,7 @@
 """Deterministic default-daemon selectors; no Docker, models or credentials."""
 import ast
+import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -7,6 +9,7 @@ from pathlib import Path
 import signal
 import socket
 import sqlite3
+import subprocess
 import tempfile
 import time
 import threading
@@ -28,6 +31,180 @@ class MemorySocket:
     def sendall(self, data):self.sent.extend(data)
     def settimeout(self, timeout):pass
     def close(self):self.closed=True
+
+
+class ExecutionSourceChecks(unittest.TestCase):
+    def setUp(self):
+        self.repo=HERE.parents[1]
+        self.head=subprocess.run(['git','-C',str(self.repo),'rev-parse','HEAD'],
+            capture_output=True,check=True,timeout=5).stdout.decode().strip()
+        mapper=patch.object(subject,'Path',side_effect=self.source_path)
+        mapper.start();self.addCleanup(mapper.stop)
+        self.paths={str(HERE/name):hashlib.sha256((HERE/name).read_bytes()).hexdigest() for name in
+            ('request_observer_default.py','test_request_observer_default.py','request_observer_gate.py','request_observer_run.py')}
+        self.fixture=dict.fromkeys({'schema','fixture_revision','fixture_source_dirty','helper_producer_revision',
+            'fixture_files','module_sha256','product_revision','socket_roots','private_root','credential_path',
+            'official_package','origin_receipt','origin_receipt_sha256','origin_url','package_receipt',
+            'runtime_image','runtime_receipt_path'},'PUBLIC_SYNTHETIC_UNUSED')
+        self.fixture.update(schema=subject.FIXTURE_SCHEMA_V2,fixture_revision=self.head,fixture_source_dirty=True,
+            helper_producer_revision=subject.HELPER_PRODUCER_REVISION,fixture_files=self.paths,
+            module_sha256=self.paths[str(HERE/'request_observer_default.py')],
+            product_revision='328f5b5fa69571e67e7bb3e4582d5fb3bb920fd7',socket_roots={'a':'/tmp/public-a','b':'/tmp/public-b'})
+        self.binding={'current_bundle':{'current_commit':self.fixture['product_revision']},
+            'public_files':{p:{'sha256':sha} for p,sha in self.paths.items() if Path(p).name in
+                ('request_observer_gate.py','request_observer_run.py')}}
+
+    def source_path(self,value,*parts):
+        if value == '/home/zyf/CICADA' and not parts:
+            return self.repo
+        return Path(value,*parts)
+
+    def run_module(self,name):
+        spec=importlib.util.spec_from_file_location(name,HERE/'request_observer_run.py')
+        run=importlib.util.module_from_spec(spec);spec.loader.exec_module(run)
+        original=run.safe_overlay
+        def overlay(name):
+            return subject if name == 'request_observer_default' else original(name)
+        selected=patch.object(run,'safe_overlay',side_effect=overlay)
+        selected.start();self.addCleanup(selected.stop)
+        return run
+
+    def git(self,head=None,dirty=True):
+        def execute(argv,**kwargs):
+            if argv[-2:]==['rev-parse','HEAD']:data=(head or self.head).encode()+b'\n'
+            elif argv[-3:]==['status','--porcelain','--untracked-files=normal']:data=b' M public.py\n' if dirty else b''
+            elif argv[-4:]==['--','cicada-go','VERSION','LICENSE']:data=b''
+            else:raise AssertionError('unexpected effect')
+            return subprocess.CompletedProcess(argv,0,data,b'')
+        return patch.object(subject.subprocess,'run',side_effect=execute)
+
+    def test_v2_real_head_exact_bytes_and_later_commit_are_accepted_v1_stays_historical(self):
+        with self.git():identity=subject.check_fixture(self.fixture,self.binding)
+        self.assertEqual(identity['fixture_revision'],self.head)
+        future=dict(self.fixture,fixture_revision='a'*40,fixture_source_dirty=False)
+        with self.git(head='a'*40,dirty=False):self.assertEqual(subject.check_fixture(future,self.binding)['fixture_revision'],'a'*40)
+        old=dict(self.fixture,schema='cicada.native-default-peer-fixture.v1',fixture_revision=subject.HELPER_PRODUCER_REVISION)
+        old.pop('fixture_source_dirty');old.pop('helper_producer_revision')
+        with self.git(head='b'*40),self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_REVISION'):
+            subject.check_fixture(old,self.binding)
+
+    def test_revision_dirty_helper_product_and_public_binding_must_match(self):
+        for key,value in [('fixture_revision','not-a-revision'),('fixture_revision',None),
+                          ('fixture_source_dirty',1),('helper_producer_revision',self.head),
+                          ('product_revision',self.head),('module_sha256','0'*64)]:
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                subject.fixture_source_identity(dict(self.fixture,**{key:value}),self.binding)
+        for value in ('a'*40,'b'*40):
+            with self.git(),self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_REVISION'):
+                subject.check_fixture(dict(self.fixture,fixture_revision=value),self.binding)
+        with self.git(dirty=False),self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_DIRTY_STATE'):
+            subject.check_fixture(self.fixture,self.binding)
+        for key in self.paths:
+            rows=dict(self.paths);rows[key]='0'*64
+            with self.subTest(path=Path(key).name),self.assertRaisesRegex(ValueError,'SOURCE_CHANGED'):
+                subject.fixture_source_identity(dict(self.fixture,fixture_files=rows),self.binding)
+        wrong=copy.deepcopy(self.binding);wrong['public_files'][str(HERE/'request_observer_run.py')]['sha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_BINDING_SOURCE'):
+            subject.fixture_source_identity(self.fixture,wrong)
+        with self.assertRaises(ValueError):subject.fixture_source_identity(dict(self.fixture,extra='refused'),self.binding)
+
+    def test_pinned_manifest_go_and_zero_preparation_bind_current_execution_not_old_helper(self):
+        run=self.run_module('execution_source_run')
+        with tempfile.TemporaryDirectory(prefix='public-source-manifest-') as root:
+            path=Path(root)/'fixture.json';path.write_text(json.dumps(self.fixture))
+            args=types.SimpleNamespace(default_daemon_fixture=str(path),default_daemon_fixture_sha=run.digest(path),
+                unique_run='public',wiring_receipt_sha='a'*64,cleanup_hard_stop_unix=0,native_normal_seconds=600,
+                scenario='g2-g3',native_https=False,response_byte_passthrough=False,delivery_sha='b'*64,
+                preparation_result_sha='c'*64,preparation_review_sha='d'*64,equality_sha='e'*64)
+            identity=run.validate_default_preparation_source(args,self.binding,
+                {'default_fixture_source':subject.fixture_source_identity(self.fixture,self.binding)})
+            for captured in (None,dict(identity,fixture_revision=subject.HELPER_PRODUCER_REVISION),
+                             dict(identity,fixture_source_dirty=1),dict(identity,fixture_files={}),
+                             dict(identity,helper_producer_revision=self.head)):
+                with self.assertRaisesRegex(PermissionError,'LATEST_DEFAULT_PREPARATION_SOURCE'):
+                    run.validate_default_preparation_source(args,self.binding,{'default_fixture_source':captured})
+            with self.assertRaises(PermissionError):run.validate_default_preparation_source(args,self.binding,{})
+            delivery=dict.fromkeys(('hub_image','commit','binary_sha256','helper_sha256','fingerprint','component_proof_sha256'),'a'*64)
+            bundle={'runtime_receipt':{'image_id':'sha256:'+'f'*64}}
+            with patch.object(run,'expected_go',return_value={}),patch.object(run,'require_current_bundle',return_value=bundle),\
+                 patch.object(run,'current_cli',return_value={'sha256':'e'*64,'version':'0.162.1'}),\
+                 patch.object(run,'default_fixture_source',wraps=run.default_fixture_source):
+                expected=run.expected_latest_go(self.binding,'a'*64,args,delivery)
+            self.assertEqual(expected['fixture_revision'],self.head)
+            self.assertEqual(expected['default_daemon_fixture_sha256'],run.digest(path))
+            # No GO is written; exact-field comparator rejects changed source/revision pins.
+            for key in ('fixture_revision','default_daemon_fixture_sha256'):
+                malformed=dict(expected,**{key:'0'*len(expected[key])},expires_at_unix=int(time.time())+100)
+                with self.assertRaises(PermissionError):run.validate_go(malformed,expected)
+            path.write_text(json.dumps(dict(self.fixture,fixture_revision='a'*40)))
+            with self.assertRaisesRegex(PermissionError,'DEFAULT_FIXTURE_BYTE_PIN'):
+                run.default_fixture_source(args,self.binding)
+
+    def test_real_install_entry_accepts_v2_scope_then_stops_before_dependencies_or_effects(self):
+        self.binding['current_bundle']['runtime_receipt']={'path':self.fixture['runtime_receipt_path']}
+        with self.git(),patch.object(subject,'verify_dependencies',side_effect=PermissionError('PURE_EFFECT_BOUNDARY')) as denied:
+            with self.assertRaisesRegex(PermissionError,'PURE_EFFECT_BOUNDARY'):
+                subject.install(object,self.binding,600,fixture=self.fixture,gate_module=None)
+            denied.assert_called_once_with(self.binding)
+        for schema,budget in [('unknown',600),(subject.FIXTURE_SCHEMA_V2,180)]:
+            with patch.object(subject,'verify_dependencies') as denied,self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_SCOPE'):
+                subject.install(object,self.binding,budget,fixture=dict(self.fixture,schema=schema),gate_module=None)
+            denied.assert_not_called()
+
+    def test_actual_execute_rejects_stale_head_before_credential_metadata(self):
+        run=self.run_module('stale_execution_run')
+        with tempfile.TemporaryDirectory(prefix='public-stale-execution-') as root:
+            parent=Path(root);binding=dict(self.binding,output_parent=str(parent))
+            fixture=parent/'fixture.json';fixture.write_text(json.dumps(dict(self.fixture,fixture_revision='a'*40)))
+            receipt=parent/'request-observer-wiring-public.json'
+            receipt.write_text(json.dumps({'status':'PASS','candidate_binding_sha256':'b'*64,
+                'Runtime_calls':0,'provider_POSTs':0,'model_calls':0}))
+            expected={'result_dir':str(parent/'uncreated-result'),'claim_file':str(parent/'uncreated-claim'),
+                'cleanup_hard_stop_unix':int(time.time())+700,'total_seconds':660}
+            go=parent/'request-observer-public.json';go.write_text(json.dumps(dict(expected,expires_at_unix=int(time.time())+100)))
+            args=types.SimpleNamespace(default_daemon_fixture=str(fixture),default_daemon_fixture_sha=run.digest(fixture),
+                scenario='g2-g3',native_normal_seconds=600,preparation_result='public',preparation_result_sha='c'*64,
+                go_receipt=str(go),go_receipt_sha=run.digest(go),binding_sha='b'*64,wiring_receipt=str(receipt),
+                wiring_receipt_sha=run.digest(receipt),unique_run='public',cleanup_hard_stop_unix=int(time.time())+700)
+            original=Path.lstat;credential_calls=[]
+            def safe_stat(path,*a,**kw):
+                if str(path)==run.CREDENTIAL:credential_calls.append(True);raise AssertionError('credential touched')
+                return original(path,*a,**kw)
+            with self.git(),patch.object(run,'latest_dispatch_inputs',return_value=(binding,'b'*64,{},{})),\
+                 patch.object(run,'expected_latest_go',return_value=expected),patch.object(Path,'lstat',safe_stat):
+                with self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_REVISION'):run.execute(args)
+            self.assertEqual(credential_calls,[])
+            self.assertFalse((parent/'uncreated-claim').exists());self.assertFalse(run.EXECUTION_EFFECTS_STARTED)
+
+    def test_exact_path_and_loader_mapping_validate_a_different_public_source_directory(self):
+        self.assertEqual(subject.Path('/home/zyf/CICADA'),self.repo)
+        for value in ('/home/zyf/CICADA-other','/tmp/public','relative',Path('/home/zyf/CICADA')):
+            self.assertEqual(subject.Path(value),Path(value))
+        self.assertEqual(subject.Path('/home/zyf/CICADA','child'),Path('/home/zyf/CICADA','child'))
+        run=self.run_module('relocated_execution_source_run')
+        self.assertIs(run.safe_overlay('request_observer_default'),subject)
+        delegated=run.safe_overlay('request_observer_binding')
+        self.assertEqual(Path(delegated.__file__),HERE/'request_observer_binding.py')
+        self.assertIsNot(delegated,subject)
+        with tempfile.TemporaryDirectory(prefix='public-four-source-fixture-') as root:
+            self.repo=Path(root);directory=self.repo/'scripts/native_observer';directory.mkdir(parents=True)
+            rows={}
+            for name in ('request_observer_default.py','test_request_observer_default.py',
+                         'request_observer_gate.py','request_observer_run.py'):
+                path=directory/name;path.write_bytes((HERE/name).read_bytes())
+                rows[str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
+            fixture=dict(self.fixture,fixture_files=rows,module_sha256=rows[str(directory/'request_observer_default.py')])
+            binding={'current_bundle':self.binding['current_bundle'],
+                'public_files':{p:{'sha256':sha} for p,sha in rows.items() if Path(p).name in
+                    ('request_observer_gate.py','request_observer_run.py')}}
+            with self.git():identity=subject.check_fixture(fixture,binding)
+            self.assertEqual(identity['fixture_files'],rows)
+            stale=dict(fixture,fixture_files=self.paths)
+            with self.assertRaisesRegex(ValueError,'DEFAULT_FIXTURE_SOURCE_ROWS'):
+                subject.fixture_source_identity(stale,binding)
+            manifest=self.repo/'public-fixture.json';manifest.write_text(json.dumps(fixture))
+            args=types.SimpleNamespace(default_daemon_fixture=str(manifest),default_daemon_fixture_sha=run.digest(manifest))
+            self.assertEqual(run.default_fixture_source(args,binding)[1],identity)
 
 
 @unittest.skipUnless(all(Path(path).is_file() for path in subject.DEPENDENCY_PINS),

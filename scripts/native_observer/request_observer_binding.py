@@ -267,7 +267,7 @@ def current_binding_payload(template: dict[str, Any], *, bundle: dict[str, Any],
     if bundle["schema"] == REUSE_BUNDLE_SCHEMA:
         domains.update(product="CLEAN_328F_PACKAGE_WITH_ITS_GENERATED_OUTPUTS_AND_CURRENT_TRACKED_INPUT_BYTES",
                        helper="ACTUAL_39BCE_DIRTY_SELECTED_GO_INPUTS_AND_TLS_OVERLAY_BUILD",
-                       candidate="EXPLICITLY_PINNED_39BCE_DIRTY_FIXTURE_SOURCE_ROWS")
+                       candidate="CURRENT_BYTE_PINNED_CANDIDATE_ROWS_EXECUTION_SOURCE_BOUND_BY_DEFAULT_FIXTURE_MANIFEST")
         payload["scope"] = "PACKAGING_REUSE_328F_PRODUCT_39BCE_FIXTURE_NONAUTH"
     return payload
 

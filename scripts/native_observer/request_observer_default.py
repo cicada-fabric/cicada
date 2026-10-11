@@ -12,6 +12,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import re
 import select
 import signal
 import sqlite3
@@ -37,6 +38,8 @@ PEER = BASE / 'peer-outer-broker-20261009a'
 PACKAGE_RECEIPT_SHA = 'f3a199fead412ada976c2d4add958e03173cdf8ea8e6ad8abc3eba1c30683f12'
 PHASE_OVERLAY = PEER / 'peer_phase_budget_overlay.py'
 PHASE_OVERLAY_SHA = 'b48446282014d13b31a566269636452c3f1e0f16c54acf1fe185739ee079d9b1'
+HELPER_PRODUCER_REVISION = '39bce535b93ab82c3b4f4fbf5cb09c6114dca942'
+FIXTURE_SCHEMA_V2 = 'cicada.native-default-peer-fixture.v2'
 
 
 def install_phase_capacity(native, library):
@@ -475,29 +478,66 @@ def binding_lease(owner, letter, previous=None, minimum_until=None):
     return row, expiry
 
 
-def check_fixture(fixture, binding):
-    if type(fixture.get('socket_roots')) is not dict or set(fixture['socket_roots']) != {'a','b'}:
-        raise ValueError('DEFAULT_SOCKET_ROOT_SHAPE')
-    if (fixture.get('schema') != 'cicada.native-default-peer-fixture.v1' or
-            fixture.get('fixture_revision') != '39bce535b93ab82c3b4f4fbf5cb09c6114dca942' or
+def fixture_source_identity(fixture, binding):
+    """Separate execution bytes from immutable product/helper provenance."""
+    version = fixture.get('schema')
+    if (version not in ('cicada.native-default-peer-fixture.v1', FIXTURE_SCHEMA_V2) or
             fixture.get('product_revision') != binding['current_bundle']['current_commit'] or
             fixture.get('product_revision') != '328f5b5fa69571e67e7bb3e4582d5fb3bb920fd7'):
         raise ValueError('DEFAULT_DUAL_SOURCE_IDENTITY')
+    if version == FIXTURE_SCHEMA_V2:
+        fields = {'schema','fixture_revision','fixture_source_dirty','helper_producer_revision',
+            'fixture_files','module_sha256','product_revision','socket_roots','private_root',
+            'credential_path','official_package','origin_receipt','origin_receipt_sha256',
+            'origin_url','package_receipt','runtime_image','runtime_receipt_path'}
+        if (set(fixture) != fields or type(fixture.get('fixture_revision')) is not str or
+                not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', fixture['fixture_revision']) or
+                type(fixture.get('fixture_source_dirty')) is not bool or
+                fixture.get('helper_producer_revision') != HELPER_PRODUCER_REVISION):
+            raise ValueError('DEFAULT_EXECUTION_SOURCE_IDENTITY')
+    elif fixture.get('fixture_revision') != HELPER_PRODUCER_REVISION:
+        raise ValueError('DEFAULT_DUAL_SOURCE_IDENTITY')
     repo = Path('/home/zyf/CICADA')
-    head = subprocess.run(['git','-C',str(repo),'rev-parse','HEAD'],capture_output=True,check=True,timeout=5).stdout.decode().strip()
-    if head != fixture['fixture_revision']:
-        raise ValueError('DEFAULT_FIXTURE_REVISION')
-    # Read-only comparison: test edits do not produce a new shipping binary.
-    subprocess.run(['git','-C',str(repo),'diff','--exit-code',fixture['product_revision'],'--',
-        'cicada-go','VERSION','LICENSE'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=10)
     expected = {str(repo/'scripts/native_observer'/name) for name in
         ('request_observer_default.py','test_request_observer_default.py','request_observer_gate.py','request_observer_run.py')}
-    if set(fixture.get('fixture_files',{})) != expected:
+    rows = fixture.get('fixture_files')
+    if type(rows) is not dict or set(rows) != expected:
         raise ValueError('DEFAULT_FIXTURE_SOURCE_ROWS')
-    for raw_path, pin in fixture['fixture_files'].items():
+    for raw_path, pin in rows.items():
         path = Path(raw_path)
-        if path.resolve(strict=True) != path or digest(path) != pin:
+        if (type(pin) is not str or not re.fullmatch('[0-9a-f]{64}',pin) or
+                path.resolve(strict=True) != path or not stat.S_ISREG(path.lstat().st_mode) or digest(path) != pin):
             raise ValueError('DEFAULT_FIXTURE_SOURCE_CHANGED')
+    if version == FIXTURE_SCHEMA_V2:
+        public = binding.get('public_files', {})
+        for name in ('request_observer_gate.py','request_observer_run.py'):
+            path = str(repo/'scripts/native_observer'/name)
+            if public.get(path, {}).get('sha256') != rows[path]:
+                raise ValueError('DEFAULT_FIXTURE_BINDING_SOURCE')
+        if fixture.get('module_sha256') != rows[str(repo/'scripts/native_observer/request_observer_default.py')]:
+            raise ValueError('DEFAULT_FIXTURE_MODULE_PIN')
+    return {'fixture_revision':fixture['fixture_revision'],
+        'fixture_source_dirty':fixture['fixture_source_dirty'] if version == FIXTURE_SCHEMA_V2 else True,
+        'fixture_files':dict(rows), 'helper_producer_revision':HELPER_PRODUCER_REVISION}
+
+
+def check_fixture(fixture, binding):
+    if type(fixture.get('socket_roots')) is not dict or set(fixture['socket_roots']) != {'a','b'}:
+        raise ValueError('DEFAULT_SOCKET_ROOT_SHAPE')
+    identity = fixture_source_identity(fixture, binding)
+    repo = Path('/home/zyf/CICADA')
+    head = subprocess.run(['git','-C',str(repo),'rev-parse','HEAD'],capture_output=True,check=True,timeout=5).stdout.decode().strip()
+    if head != identity['fixture_revision']:
+        raise ValueError('DEFAULT_FIXTURE_REVISION')
+    if fixture['schema'] == FIXTURE_SCHEMA_V2:
+        changed = subprocess.run(['git','-C',str(repo),'status','--porcelain','--untracked-files=normal'],
+            capture_output=True,check=True,timeout=5).stdout
+        if bool(changed) is not identity['fixture_source_dirty']:
+            raise ValueError('DEFAULT_FIXTURE_DIRTY_STATE')
+    # Read-only comparison: fixture edits do not produce a new shipping binary.
+    subprocess.run(['git','-C',str(repo),'diff','--exit-code',fixture['product_revision'],'--',
+        'cicada-go','VERSION','LICENSE'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=10)
+    return identity
 
 
 class Generations:
@@ -691,7 +731,7 @@ def default_cleanup_method(original, gate_module):
 
 def install(base_cls, binding, normal_seconds, *, fixture, gate_module):
     """Explicitly selected by load_default_gate; execution GO stays upstream."""
-    if normal_seconds != 600 or fixture.get('schema') != 'cicada.native-default-peer-fixture.v1':
+    if normal_seconds != 600 or fixture.get('schema') not in ('cicada.native-default-peer-fixture.v1', FIXTURE_SCHEMA_V2):
         raise ValueError('DEFAULT_FIXTURE_SCOPE')
     if digest(__file__) != fixture.get('module_sha256'):
         raise ValueError('DEFAULT_MODULE_PIN')
@@ -798,6 +838,8 @@ def install(base_cls, binding, normal_seconds, *, fixture, gate_module):
             self.result['preparation_binding']['effective_policy']['model_provider'] = PROVIDER
             self.result['preparation_binding'].update(provider_origin=ORIGIN, native_default_daemon=True,
                 queue_remote=False, queue_callback=False, native_account_identity='NOT_PROVEN')
+            if fixture['schema'] == FIXTURE_SCHEMA_V2:
+                self.result['preparation_binding']['default_fixture_source'] = fixture_source_identity(fixture, binding)
             self.result['default_native_route'] = {'daemon':'official-default','cli':CLI,
                 'provider_identifier':PROVIDER, 'verified_origin':ORIGIN,
                 'queue_callback':False, 'remote':False, 'native_account_identity':'NOT_PROVEN',
@@ -812,13 +854,15 @@ def install(base_cls, binding, normal_seconds, *, fixture, gate_module):
         def build(self):
             super().build()
             self.result.update(acceptance_mode='packaging-reuse-default-daemon-codex-cli-0.162.1',
-                fixture_source_revision=fixture['fixture_revision'], fixture_source_dirty=True,
+                fixture_source_revision=fixture['fixture_revision'],
+                fixture_source_dirty=fixture['fixture_source_dirty'] if fixture['schema'] == FIXTURE_SCHEMA_V2 else True,
+                helper_producer_revision=HELPER_PRODUCER_REVISION,
                 product_generated_assets_domain='IMMUTABLE_328F_PACKAGE_AND_IMAGE',
                 source_domain_comparison={
                     'Node':'clean 328f package; current tracked input inventory bytes equal; generated outputs bound to package',
                     'Hub':'COPY image of the same clean 328f package and generated outputs',
                     'helper':'actual 39bce dirty selected Go inputs and TLS overlay build',
-                    'fixture':'39bce dirty fixture files explicitly SHA pinned',
+                    'fixture':'execution revision/dirty and exact fixture bytes separately manifest pinned',
                     'Runtime':'official codex-cli 0.162.1 full package SHA pinned'})
 
         def default_owned_container(self, letter):
