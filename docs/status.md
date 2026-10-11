@@ -20,6 +20,16 @@ retained, and later work was NOT_REACHED. A5 is a separate loaded-queue result
 whose Node inbox remains **CONSUMPTION_UNCONFIRMED**. C14 does not establish
 V67, cold resume, Android status reads, or complete first-release acceptance.
 
+The separate Group-key operator A6 passed Android enrollment, production-UI
+Node pairing and fresh Group creation. One Native CLI turn completed before
+the second CLI invocation failed; three `gpt-5.6-luna` POSTs returned HTTP 200,
+200 and 500. A code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`,
+so no Join/candidate receipt exists. The final upstream `internal_server_error`/
+HTTP 500 cause remains UNKNOWN; no causal link is established. The separate
+host-only HTTP 200 diagnostic does not explain A6. No full Native Join/publish proof, Owner-signed
+Group-key grant or Android encrypted status read was established. See the
+[A1–A6 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
+
 Joint11's eight Android recovery cases passed within their RPC recovery scope.
 The separate v1.6.5 Android encrypted status-read/restart and GroupOwnerProof,
 physical-device and public-HTTPS acceptance remain NOT_RUN. First-release

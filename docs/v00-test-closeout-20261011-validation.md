@@ -157,9 +157,81 @@ absent immediately after stop. A later [independent closeout](../.cicada-data/v0
 (SHA-256 `fb54e32f36cac2d8d3e03a59a8c0e660579d0d0c79130cdeec533711d053c3cf`)
 confirmed eventual absence without rewriting that failure. A pre-start
 self-pin refusal was separate from Hub execution. Model calls were zero;
-native Join, real Android Group grant/status, independent eight v1.6.5
-encrypted status/restart cases, physical Android and public HTTPS remain
-**NOT_RUN**. A3 below proves only its synthetic OwnerProof selector.
+that bootstrap did not test native Join or Android Group grant/status. The
+separate Android/Native operator attempts below reached further scoped stages.
+The independent eight v1.6.5 encrypted status/restart cases, physical Android
+and public HTTPS remain **NOT_RUN**. The A3 below is a different synthetic
+OwnerProof selector.
+
+<a id="group-key-android-native-a1-a5"></a>
+
+## Group-key Android/Native operator A1–A6 — scoped evidence and retained failures
+
+These six one-shot operator attempts are distinct from the fixture bootstrap
+A1/A2 above and the synthetic OwnerProof vector below.
+
+| Attempt | Result and boundary |
+| --- | --- |
+| A1 | **FAIL_OR_UNKNOWN**, 66.679s, `ANDROID_PROCESS_CENSUS_EXIT`; headerless `docker top` output failed the process-census check. No provider POST or Native business turn occurred. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T210023Z-523c7993/RESULT.NONAUTH.json), SHA-256 `7fa9984740d9f93543c4a0b4aa2502e3aa152fbc78c03b500c7a0fd8f6b205f4`. |
+| A2 | **FAIL_OR_UNKNOWN**, 85.343s, `DEVICE_PUBLIC_JSON`; Android readiness and owned listener checks passed, then the device-identity read failed. The `exec-out shell` invocation was a command-construction error. No provider POST or Native business turn occurred; cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T210440Z-c4f32c8a/RESULT.NONAUTH.json), SHA-256 `343ecd96dff9870cd783ca67c1b1674d5b72f4da1acd62ddbba044b81efd7bd8`. |
+| A3 | **FAIL_OR_UNKNOWN**, 121.814s, `ANDROID_DIALOG_BUTTON`; device enrollment and fresh Group bootstrap passed, but the first Node confirmation button was not selected. No provider POST or Native business turn occurred; cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T210956Z-0c31c8a7/RESULT.NONAUTH.json), SHA-256 `d23d790e63ec1ff5dafa8f41d27698931934c61238c1a2eb4e8b37d071a5708a`. |
+| A4 | **FAIL_OR_UNKNOWN**, 305.146s, `ANDROID_DIALOG_BUTTON_TIMEOUT`; the first Node confirmation was observed and tapped, but the later dialog/result was not retained. The pinned APK's older instrumentation selector sends only `user_code`, while the current Hub contract requires `candidate_digest` and positive `candidate_version`; this is a source-proven fixture mismatch, not proof of the discarded JUnit failure cause. No provider POST occurred; cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T212000Z-71ac26ea/RESULT.NONAUTH.json), SHA-256 `61c4d515b6b5aad283327e4a32cfe6cad1a7e9e70d75ac9c739967bb3afc5197`. |
+| A5 | **FAIL_OR_UNKNOWN**, 282.617s, `NATIVE_EXEC_NONZERO`; the first real TLS POST returned HTTP 403 before any Native business turn. The request model was not instrumented. Bounded inspection observed HTTP 403 and an HTML-document marker; the exported error-string SHA is recorded below. Its exact cause is UNKNOWN, with no provider/quota attribution. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T220540Z-e517fa16/RESULT.NONAUTH.json), SHA-256 `b4c3b8d5654e6d9dd3740f15ed1a4ee2bf31e9ccf2740f74f33239fa4f8fc15c`. |
+| A6 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 352.727s, `NATIVE_EXEC_NONZERO`; Android enrollment, production-UI Node pairing and fresh Group creation passed. The first Native CLI execution completed a turn on SID `01a12d19-e74c-7001-9aa2-ab034c8d0ba6` and yielded a fresh READY/session-metadata witness; the second CLI invocation exited 1. A code-mode call to `tools.cicada_join` returned `NOT_A_FUNCTION`, with no Join/candidate receipt. Three outbound POSTs returned HTTP 200, 200 and 500, each for the instrumented `gpt-5.6-luna` request model. The final upstream `internal_server_error`/HTTP 500 remains unexplained; no causal link to the code-mode error or quota attribution is established. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T222905Z-ca4b9b73/RESULT.NONAUTH.json), SHA-256 `b871f5df5ac670c1b033cf024533c34466215099aa1fe6c9b5f0ada11dad20db`. |
+
+A5 used clean Core host HEAD `40c0c5afc376b3325b92772d6f6619ba93b5d8e3`
+with source SHA-256 `c814a7138aefe0be009645c9834d3de7f4427bccf6b1477b1c11fd9589c612f8`,
+the c688 Hub image `sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`,
+and immutable app/test APKs from producer `1151b06e04b172de9c7b5989ffec1318e58bf862`
+(`e5707b6a5a91a45eca8285970e646408cf34d05cf246e1bcd4c9f1af9c4a3745` /
+`7638c1ed4f3a3d6f549b78e64a1802612de59f4b6359bd9cc1795ce61065ca29`). Client
+checkout `740882b86d798a3d514b24b2bc2fa2802718d79d` was not the APK producer.
+The frozen A5 operator SHA-256 was
+`9900eec44187ed587d032d21d086d645d01f48f472bf15984682412df80d2a7c`.
+The actual production UI Node-pairing flow confirmed the candidate and its
+success/list correlation; the raw `nodes.list` response was not captured. The
+Node-side approved binding matched the candidate, while owner/device fields
+were not present in that Node state. Android created fresh Group
+`grp_97a40b2c38454923`; this does not prove Native Join, an Owner-signed
+Group-key grant, or an encrypted Android status read. A5 records one actual
+outbound POST/HTTP 403 and zero Native business turns; the model field was not
+instrumented. Bounded inspection observed HTTP 403 and an HTML-document marker;
+the exported error-string SHA is
+`d5ef25596eb2a5d3b58555d02fe80e36168050ed72a24d4c6d27bef12941739f`; it does
+not identify the upstream cause. The owned Codex rollout's bounded error string
+is distinct from the sanitized proxy/driver receipt. The exact Hub, Android,
+Runtime and Node-agent identities and fixture path were independently found
+absent; current Core/Client source hashes and six resident canonical digests
+matched the recorded before/after snapshots. A6 used Core HEAD
+`40c0c5afc376b3325b92772d6f6619ba93b5d8e3` with five documentation files dirty
+(Core source snapshot SHA-256
+`3403f1c29b58dc8cf7d6ec1e829979b282df5ecab0b07f6718497d0e26c20359`), clean
+Client HEAD `740882b86d798a3d514b24b2bc2fa2802718d79d`, the same c688 Hub image,
+and the same immutable APK producer `1151b06e04b172de9c7b5989ffec1318e58bf862`.
+Its operator SHA-256 was
+`55ffe1fddb484863a25c5ece69c6f46cc945fc05bf8be0c3fd18e3cbff206c48` using
+official CLI 0.162.1; shell-sandbox execution is `NOT_RUN`. The first CLI result
+included a fresh READY/session-metadata witness for SID
+`01a12d19-e74c-7001-9aa2-ab034c8d0ba6` and one completed turn; a code-mode call
+to `tools.cicada_join` returned `NOT_A_FUNCTION`, so there is no Join/candidate
+receipt. The final upstream `internal_server_error`/HTTP 500 remains unexplained;
+no causal link to that tool result is established. The
+top-level `native_business_turns: 0` records that
+the helper's full result was not assigned after the second CLI failed, not that
+no turn completed. A6 does not establish the required Native Join/publish proof,
+Owner-signed Group-key grant, or Android encrypted status. Its cleanup check
+reconfirmed the exact Hub, Android and Runtime container IDs/names, fixture
+path, original Node-agent process incarnation and socket were absent; provider
+handlers were closed. Core/Client snapshots and all six resident canonical
+digests matched before/after. Android encrypted status, Native Group-key
+grant/ASK/Reply, V67, physical-device and public-HTTPS scopes remain NOT_RUN or
+not reached for this Group-key operator; C14's separate scoped ASK/Reply result
+is unchanged.
+
+A separate host-only provider diagnostic returned HTTP 200 for one
+`gpt-5.6-luna` POST through the existing CONNECT-verified TLS route; it made no
+Runtime call and retained no request payload. This is a separate diagnostic,
+not evidence of A6's cause or a successful A6 turn. [Diagnostic result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/provider-access-diagnostic-run-a1/RESULT.NONAUTH.json), SHA-256 `6432d503216f9e5cb40e754ea8b7e063d8023a4214487cc7ec78e52c508529c4`.
 
 <a id="synthetic-android-ownerproof-vector"></a>
 

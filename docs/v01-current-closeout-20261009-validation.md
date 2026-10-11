@@ -91,8 +91,20 @@ A separate Android A3 run passed only the synthetic OwnerProof manifest-binding
 vector on the immutable APK pair from producer `1151b06e`; it was not built from
 the current Client checkout and did not verify a real Group grant. The
 independent postcheck passed 38/38 checks. The v1.6.5 encrypted status read
-across an exact-owned Hub restart and a real Group grant remain NOT_RUN. See the
+across an exact-owned Hub restart and a Native Owner-signed Group-key grant remain NOT_RUN. See the
 [scoped OwnerProof record](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
+
+The separate Group-key operator A6 passed Android enrollment, the production
+Node-pairing UI and fresh Group creation. One Native CLI turn completed before
+the second CLI invocation failed; three `gpt-5.6-luna` POSTs returned HTTP 200,
+200 and 500. The cause remains UNKNOWN. This does not prove the full Native
+Join/publish path, an Owner-signed Group-key grant or encrypted Android status.
+The code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`, so no
+Join/candidate receipt exists. The final upstream `internal_server_error`/HTTP
+500 cause remains UNKNOWN, with no causal attribution.
+The [A1–A6 record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+retains each attempt and its source/image/APK attribution. A separate host-only
+HTTP 200 diagnostic does not explain A6's failure.
 
 The separate G4/G5 [qa-a5 receipt](../.cicada-data/v01-next-gates-20261010/qa-a5/ROOT-RUN.NONAUTH.json)
 (SHA-256 `e390f3fb2baa45daa851eba15b058150eadd5bfc907c47d6696c5b47f8fec3af`)
@@ -132,15 +144,16 @@ delivery, model consumption, workspace command execution or V67 direct
 submission. See [foreground validation](native-foreground-queue-validation.md).
 
 The separate default-daemon selector is not registered in the one-click runner.
-C14 is the latest scoped Native result: its bounded six-turn G2/G3 scenario
+C14 remains the latest passing scoped Native result: its bounded six-turn G2/G3 scenario
 passed on the original A/B contexts, with the multi-Group ASK/Reply path,
 revocation denial and encrypted status snapshot after same-store Hub
 replacement. Independent owned cleanup passed 79/79 checks. See the [C14
 record](native-default-daemon-validation.md#c14-scoped-g2g3-acceptance). C9–C12
 remain actual paid FAILs in the attempt history; C14 does not rewrite C12's
 cause-unknown B-side HTTP 500, its NOT_REACHED steps, or any prior run's cleanup
-fields. A5's separate loaded-queue result remains `QUEUE_ACCEPTED` with Node
-inbox `CONSUMPTION_UNCONFIRMED` for that test.
+fields. The loaded-queue A5 result remains `QUEUE_ACCEPTED` with Node inbox
+`CONSUMPTION_UNCONFIRMED` for that test; the separate Group-key operator A6 is
+the partial Android/Native attempt linked above.
 
 ### Historical full Go test overlay
 

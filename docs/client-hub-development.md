@@ -18,15 +18,29 @@ not Android status-read evidence. A3 passed one synthetic Android OwnerProof
 vector instrumentation test using immutable APKs from producer `1151b06`; this
 is not a real Group grant and not a build from current Client `740882`. Details
 are in the [test closeout](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
-The independent v1.6.5 encrypted status-read/restart and real Group grant,
-physical-device and public HTTPS acceptance remain NOT_RUN. Client artifacts
-retain their own producer/source attribution; this Core checkpoint changes no
-Client source or contract.
+The independent v1.6.5 encrypted status-read/restart, Native Owner-signed
+Group-key grant, physical-device and public HTTPS acceptance remain NOT_RUN.
+Client artifacts retain their own producer/source attribution; this Core
+checkpoint changes no Client source or contract.
+
+The separate Group-key operator A6 passed Android enrollment, production
+Node-pairing UI and fresh Group creation. One Native CLI turn completed before
+the second CLI invocation failed; three `gpt-5.6-luna` POSTs returned HTTP 200,
+200 and 500. A code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`, so
+no Join/candidate receipt exists. The final upstream `internal_server_error`/
+HTTP 500 cause remains UNKNOWN; no causal link to that tool result is
+established. A separate host-only HTTP 200 diagnostic is not evidence of A6's
+cause. A6 does not establish the full Native
+Join/publish proof, an Owner-signed Group-key grant, encrypted Android status
+or ASK/Reply. See the retained [A1–A6 results and source attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
 
 The current explicit-metadata [Group-key fixture bootstrap](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11)
 passed its owned Hub preparation and cleanup with zero model calls; this does
-not establish native Join, real Android Group grant/status or the independent
-eight v1.6.5 encrypted status/restart cases.
+not itself establish native Join or encrypted Android status. A6 separately
+paired the Android Node and created a Group; its first Native CLI turn completed,
+but the second invocation failed before the full Join/publish proof or an
+Owner-signed Group-key grant. The independent eight v1.6.5 encrypted
+status/restart cases also remain NOT_RUN.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-

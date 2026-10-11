@@ -1,8 +1,16 @@
 # Disposable Client Group-key fixture
 
-Status: **v1.6.5 scoped Hub bootstrap verified; native Join and real Android
-Group grant/status NOT_RUN**. Software 0.0.2, schema 59, wire 1 and catalog 55
-are unchanged. The current
+Status: **v1.6.5 scoped Hub bootstrap verified**. Group-key operator A6 passed
+Android enrollment, production-UI Node pairing and fresh Group creation. One
+Native CLI turn completed, then the second CLI invocation failed after three
+`gpt-5.6-luna` POSTs returned HTTP 200, 200 and 500. The failure cause remains
+UNKNOWN. Its code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`, so no
+Join/candidate receipt exists; the final upstream `internal_server_error`/HTTP
+500 cause is unknown, without a causal attribution. Native Join/publish proof,
+Owner-signed Group-key grant and Android
+encrypted status remain NOT_REACHED or NOT_RUN. See the
+[A1–A6 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
+Software 0.0.2, schema 59, wire 1 and catalog 55 are unchanged. The current
 [`client-group-key-fixture.sh`](../scripts/client-group-key-fixture.sh)
 accepts canonical authoritative v1.3 and later minor revisions, including
 patch revisions such as `client-hub-v1.6.5`. The hermetic
@@ -46,9 +54,9 @@ unchanged. The [A2 result](../.cicada-data/v01-next-gates-20261011/native-direct
 is **PASS_SCOPED_BOOTSTRAP**; its [independent closeout](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a2/INDEPENDENT-CLOSEOUT-A2.NONAUTH.json)
 (SHA-256 `ab6bb303d34256d167df1e72620ce0302f34ef5ed83183742eb9a189d1d34039`)
 rechecked the hashes, source, residents and cleanup. Model calls were zero.
-This does not prove native Join/leased Endpoint, real Android Group grant or
-status, the independent eight v1.6.5 encrypted status/restart cases, physical
-Android or public HTTPS; all remain **NOT_RUN** for this fixture.
+This bootstrap did not test native Join/leased Endpoint, an Owner-signed
+Android Group-key grant or encrypted status. The independent eight v1.6.5
+status/restart cases, physical Android and public HTTPS remain **NOT_RUN**.
 
 Cleanup accepts only a direct `/tmp/cgk.<8 alnum>` directory owned by the
 effective user with mode `0700`, and its owned, regular `0600` marker.
