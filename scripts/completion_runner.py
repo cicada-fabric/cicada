@@ -60,6 +60,7 @@ PYTHON_TESTS = [
     "scripts.test_real_node_codex_approval_overlay", "scripts.test_task_peer_privacy",
     "scripts.native_observer.test_request_observer_binding",
     "scripts.native_observer.test_request_observer_default",
+    "scripts.test_client_group_key_fixture",
 ]
 
 LANE_TIMEOUTS = {

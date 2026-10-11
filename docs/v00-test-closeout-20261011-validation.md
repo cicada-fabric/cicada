@@ -129,6 +129,38 @@ the execution, zero-preparation, source and result identities. Android status
 reads/GroupOwnerProof, V67/account-bound submission, two physical Nodes, public
 HTTPS and complete first-release acceptance remain outside this scope.
 
+## Current Group-key fixture bootstrap — scoped preparation
+
+The fixture now accepts canonical v1.3+ patch revisions, including v1.6.5,
+and confirms exact stopped-container absence before deleting mounted state.
+The [Root unit result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-fixture-metadata-a1/ROOT-INDEPENDENT-UNIT.NONAUTH.json)
+(SHA-256 `25a107eb7a26f6a8e4cd6020ed5be2dd670c097de75ac736fab278da329ba9d6`)
+passed 45/45 tests (15 fixture + 30 runner) in 12.885s, exit 0/EOF. These are
+hermetic fake-Docker tests; the new module is registered in the existing
+one-click Python test list.
+
+The separate [A2 Docker result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a2/run-20261011-a2/RESULT.NONAUTH.json)
+(SHA-256 `86e0771fb692e6c5fe93697cdae6f42db5f01e72c51af1424f21b05f3efcc408`)
+passed scoped bootstrap: start/stop exit 0/EOF, Hub provenance, synthetic
+Owner-key isolation and Node pending confirmation, with confirmed cleanup,
+source and six-resident equality. The clean c6887 Hub image producer and
+dirty-five-file host 150657 fixture source remain separate; exact pins and
+commands are in the [fixture record](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11).
+The [independent A2 closeout](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a2/INDEPENDENT-CLOSEOUT-A2.NONAUTH.json)
+(SHA-256 `ab6bb303d34256d167df1e72620ce0302f34ef5ed83183742eb9a189d1d34039`)
+confirmed the exact hashes, source, residents and resource absence.
+
+The earlier [A1 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a1/run-20261011-a1/RESULT.NONAUTH.json)
+(SHA-256 `8efdea6c7c6b0c006d0186ec2a83842326ff04fb798b6c20c06f6517572c5d5a`)
+remains **FAIL_OR_UNKNOWN**: bootstrap succeeded, but the Hub was not yet
+absent immediately after stop. A later [independent closeout](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a1/INDEPENDENT-CLOSEOUT-A1.NONAUTH.json)
+(SHA-256 `fb54e32f36cac2d8d3e03a59a8c0e660579d0d0c79130cdeec533711d053c3cf`)
+confirmed eventual absence without rewriting that failure. A pre-start
+self-pin refusal was separate from Hub execution. Model calls were zero;
+native Join, real Android Group grant/status, independent eight v1.6.5
+encrypted status/restart cases, physical Android and public HTTPS remain
+**NOT_RUN**. A3 below proves only its synthetic OwnerProof selector.
+
 <a id="synthetic-android-ownerproof-vector"></a>
 
 ## Synthetic Android OwnerProof vector — limited instrumentation scope

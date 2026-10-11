@@ -23,6 +23,11 @@ physical-device and public HTTPS acceptance remain NOT_RUN. Client artifacts
 retain their own producer/source attribution; this Core checkpoint changes no
 Client source or contract.
 
+The current explicit-metadata [Group-key fixture bootstrap](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11)
+passed its owned Hub preparation and cleanup with zero model calls; this does
+not establish native Join, real Android Group grant/status or the independent
+eight v1.6.5 encrypted status/restart cases.
+
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-
 daemon G2/G3 scope with independent exact-owned cleanup; see the [Native
@@ -85,7 +90,7 @@ Public catalog entries do not replace encrypted session capabilities, Owner proo
 Main `dev` 的集成候选基于 Git HEAD `c146d58f67f6f4b3e14a8e56a8c68ddc60400713`，工作树含未提交变更；
 完整源码 canonical SHA-256 为 `ec160b087221e3118022fcb22b04af1338fea5ea3257e5bf84580af346afa9d1`（1052 个路径），STD 构建输入
 `source_fingerprint` 为 `4380e9f5c65c7905170fad152131dcc99d4f1acfbe9768bbe80ed30246ef7032`（882 项）。两者范围不同，均不能只归于 HEAD。
-当前软件 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
+该 2026-10-02 历史候选当时的软件为 `0.1.0-dev`、Architecture v2.3、Hub schema **57**、
 `client-hub-v1.6.4`、encrypted wire **1**、catalog **55** 项操作分别记录；
 catalog SHA-256 为 `953486eab6ef91ed52e4dface5fcd06ecb4b75961ef753e79532c6109bd6f93d`。
 

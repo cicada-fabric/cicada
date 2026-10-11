@@ -68,7 +68,7 @@ if (not isinstance(catalog_object, dict)
         or type(catalog_object.get('wire_version')) is not int
         or catalog_object.get('wire_version') != 1
         or not isinstance(catalog_object.get('contract_revision'), str)
-        or not re.fullmatch(r'client-hub-v1\.(?:3|[4-9]|[1-9][0-9]+)', catalog_object['contract_revision'])):
+        or not re.fullmatch(r'client-hub-v1\.(?:3|[4-9]|[1-9][0-9]+)(?:\.(?:0|[1-9][0-9]*))?', catalog_object['contract_revision'])):
     raise SystemExit('BLOCKED: fixture requires an authoritative Client catalog revision at least v1.3')
 revision = source.get('revision')
 catalog = source.get('catalog_sha256')
@@ -128,16 +128,24 @@ from pathlib import Path
 import json
 import os
 import re
+import stat
 import sys
 
 requested, marker_name = sys.argv[1:]
-root = Path(requested).resolve(strict=True)
+if not re.fullmatch(r'/tmp/cgk\.[A-Za-z0-9]{8}', requested):
+    raise SystemExit('BLOCKED: fixture directory must be a direct /tmp/cgk.<8 alnum> path')
+root = Path(requested)
 tmp = Path('/tmp').resolve(strict=True)
-if os.path.commonpath((str(root), str(tmp))) != str(tmp) or root == tmp:
-    raise SystemExit('BLOCKED: fixture directory must resolve beneath real /tmp')
+root_stat = root.lstat()
+if (str(tmp) != '/tmp' or root.resolve(strict=True) != root
+        or not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid != os.geteuid()
+        or stat.S_IMODE(root_stat.st_mode) != 0o700):
+    raise SystemExit('BLOCKED: fixture directory must be a direct owned 0700 directory')
 marker = root / marker_name
-if marker.is_symlink() or not marker.is_file():
-    raise SystemExit('BLOCKED: fixture marker must be a regular file')
+marker_stat = marker.lstat()
+if (not stat.S_ISREG(marker_stat.st_mode) or marker_stat.st_uid != os.geteuid()
+        or stat.S_IMODE(marker_stat.st_mode) != 0o600):
+    raise SystemExit('BLOCKED: fixture marker must be an owned regular 0600 file')
 try:
     data = json.loads(marker.read_text())
 except (OSError, ValueError):
@@ -175,11 +183,26 @@ print(root)
 PY
 }
 
+container_absent() {
+  python3 - "$1" <<'PY'
+import subprocess
+import sys
+target = sys.argv[1]
+result = subprocess.run(['docker', 'container', 'inspect', target], capture_output=True)
+if (result.returncode != 1 or result.stdout.strip() not in (b'', b'[]')
+        or result.stderr.strip().decode().lower() not in {
+            'error response from daemon: no such container: ' + target.lower(),
+            'error: no such object: ' + target.lower()}):
+    raise SystemExit('BLOCKED: container absence is unconfirmed')
+PY
+}
+
 stop_named_container() {
   local container_name="$1" expected_dir="$2" expected_image="$3"
   local source_revision="$4" catalog_sha256="$5" source_fingerprint="$6" provenance_labels="$7"
+  local owned_id
   if docker container inspect "$container_name" >/dev/null 2>&1; then
-    python3 - "$container_name" "$expected_dir" "$expected_image" \
+    if ! owned_id="$(python3 - "$container_name" "$expected_dir" "$expected_image" \
       "$source_revision" "$catalog_sha256" "$source_fingerprint" \
       "$provenance_labels" <<'PY'
 import json
@@ -190,7 +213,8 @@ import sys
 name, fixture_dir, image_id, revision, catalog, fingerprint, require_provenance = sys.argv[1:]
 data = json.loads(subprocess.check_output(['docker', 'container', 'inspect', name], text=True))[0]
 labels = data.get('Config', {}).get('Labels') or {}
-if (data.get('Image') != image_id or
+if (not re.fullmatch(r'[0-9a-f]{64}', data.get('Id', '')) or
+        data.get('Name') != '/' + name or data.get('Image') != image_id or
         labels.get('org.cicada.fixture') != 'client-group-key' or
         labels.get('org.cicada.fixture.dir') != fixture_dir or
         labels.get('org.cicada.role') != 'hub' or
@@ -209,8 +233,51 @@ elif (labels.get('org.cicada.fixture.source.revision', revision) != revision or
       labels.get('org.cicada.fixture.catalog.sha256', catalog) != catalog or
       (fingerprint and labels.get('org.cicada.build.source-fingerprint') != fingerprint)):
     raise SystemExit('BLOCKED: refusing to stop a container with mismatched original build labels')
+print(data['Id'])
 PY
-    docker stop --time 10 "$container_name" >/dev/null
+    )"
+    then
+      return 2
+    fi
+    docker stop --time 10 "$owned_id" >/dev/null || return 2
+    # AutoRemove can outlive `docker stop`. Never delete its mounted state
+    # until this exact inspected incarnation is confirmed absent.
+    python3 - "$owned_id" "$container_name" "$expected_image" <<'PY' || return 2
+import json
+import subprocess
+import sys
+import time
+
+target, name, image = sys.argv[1:]
+deadline = time.monotonic() + 5
+while time.monotonic() < deadline:
+    try:
+        result = subprocess.run(['docker', 'container', 'inspect', target], capture_output=True,
+                                timeout=min(1, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        raise SystemExit('BLOCKED: stopped container absence is unconfirmed')
+    if result.returncode != 0:
+        if (result.returncode == 1 and result.stdout.strip() in (b'', b'[]')
+                and result.stderr.strip().decode().lower() in {
+                    'error response from daemon: no such container: ' + target.lower(),
+                    'error: no such object: ' + target.lower()}):
+            break
+        raise SystemExit('BLOCKED: stopped container absence is unconfirmed')
+    try:
+        rows = json.loads(result.stdout)
+        known = (isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], dict)
+                 and rows[0].get('Id') == target and rows[0].get('Name') == '/' + name
+                 and rows[0].get('Image') == image)
+    except (ValueError, UnicodeError):
+        known = False
+    if not known:
+        raise SystemExit('BLOCKED: stopped container identity is unconfirmed')
+    time.sleep(min(.1, max(0, deadline - time.monotonic())))
+else:
+    raise SystemExit('BLOCKED: stopped container removal timed out')
+PY
+  else
+    container_absent "$container_name" || return 2
   fi
 }
 
@@ -543,18 +610,32 @@ PY
 
 start_failure_cleanup() {
   local exit_code="${1:-1}"
-  if [[ -n "${hub_container:-}" ]] && docker container inspect "$hub_container" >/dev/null 2>&1; then
+  local cleanup_complete=true
+  if [[ -n "${fixture_dir:-}" ]]; then
+    if ! validate_fixture_dir "$fixture_dir" >/dev/null; then
+      printf 'UNKNOWN/INCOMPLETE: fixture state retained; private path ownership is unconfirmed\n' >&2
+      return "$exit_code"
+    fi
+  fi
+  if [[ -n "${hub_container:-}" ]]; then
     if ! stop_named_container "$hub_container" "$fixture_dir" "$image_id" \
       "$expected_revision" "$expected_catalog" "$expected_source_fingerprint" \
       "$require_provenance_labels" >/dev/null 2>&1; then
-      printf 'BLOCKED: refusing to stop an unrelated container named %s\n' "$hub_container" >&2
+      cleanup_complete=false
     fi
   fi
-  if [[ -n "$extract_id" ]] && docker container inspect "$extract_id" >/dev/null 2>&1; then
-    docker container rm "$extract_id" >/dev/null 2>&1 || true
+  if [[ -n "$extract_id" ]]; then
+    if docker container inspect "$extract_id" >/dev/null 2>&1; then
+      docker container rm "$extract_id" >/dev/null 2>&1 || cleanup_complete=false
+    fi
+    container_absent "$extract_id" >/dev/null 2>&1 || cleanup_complete=false
+  fi
+  if [[ "$cleanup_complete" != true ]]; then
+    printf 'UNKNOWN/INCOMPLETE: preparation stopped with exit %s; fixture state retained at %s\n' "$exit_code" "${fixture_dir:-unset}" >&2
+    return "$exit_code"
   fi
   if [[ -n "${fixture_dir:-}" && -d "$fixture_dir" ]]; then
-    python3 - "$fixture_dir" <<'PY'
+    if ! python3 - "$fixture_dir" <<'PY'
 from pathlib import Path
 import os
 import shutil
@@ -565,6 +646,10 @@ if os.path.commonpath((str(root), str(tmp))) != str(tmp) or root == tmp:
     raise SystemExit('BLOCKED: refusing to clean a path outside real /tmp')
 shutil.rmtree(root)
 PY
+    then
+      printf 'UNKNOWN/INCOMPLETE: fixture state removal unconfirmed at %s\n' "$fixture_dir" >&2
+      return "$exit_code"
+    fi
     printf 'FAIL: preparation stopped with exit %s; partial Hub/state/secrets were cleaned from %s\n' "$exit_code" "$fixture_dir" >&2
   fi
   return "$exit_code"
@@ -574,7 +659,7 @@ stop_fixture() {
   local requested root hub expected_hub
   local -a marker_fields=()
   requested="$1"
-  root="$(validate_fixture_dir "$requested")"
+  root="$(validate_fixture_dir "$requested")" || return 2
   hub="$(python3 - "$root" "$marker_name" <<'PY'
 import json
 from pathlib import Path
@@ -604,8 +689,11 @@ PY
     return 2
   }
   stop_named_container "$hub" "$root" "${marker_fields[0]}" \
-    "${marker_fields[1]}" "${marker_fields[2]}" "${marker_fields[3]}" "${marker_fields[4]}"
-  python3 - "$root" <<'PY'
+    "${marker_fields[1]}" "${marker_fields[2]}" "${marker_fields[3]}" "${marker_fields[4]}" || {
+      printf 'UNKNOWN/INCOMPLETE: fixture state retained at %s\n' "$root" >&2
+      return 2
+    }
+  if ! python3 - "$root" <<'PY'
 from pathlib import Path
 import os
 import shutil
@@ -616,6 +704,10 @@ if os.path.commonpath((str(root), str(tmp))) != str(tmp) or root == tmp:
     raise SystemExit('BLOCKED: refusing to remove a path outside real /tmp')
 shutil.rmtree(root)
 PY
+  then
+    printf 'UNKNOWN/INCOMPLETE: fixture state removal unconfirmed at %s\n' "$root" >&2
+    return 2
+  fi
   printf 'PASS: disposable Hub/Node state and synthetic keys removed from %s\n' "$root"
 }
 

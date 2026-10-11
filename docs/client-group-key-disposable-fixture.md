@@ -1,16 +1,63 @@
-# Historical disposable Client Group-key fixture
+# Disposable Client Group-key fixture
 
-Status: **historical preparation record only**. This page preserves the v1.2.1
-bare-start fixture and the separately recorded v1.3 explicit-metadata smoke;
-neither is a current v1.6.5 setup recipe. The current
+Status: **v1.6.5 scoped Hub bootstrap verified; native Join and real Android
+Group grant/status NOT_RUN**. Software 0.0.2, schema 59, wire 1 and catalog 55
+are unchanged. The current
 [`client-group-key-fixture.sh`](../scripts/client-group-key-fixture.sh)
-accepts two-component catalog revisions such as `client-hub-v1.3` and
-`client-hub-v1.6`, but its revision matcher rejects the current
-three-component `client-hub-v1.6.5`. Replacing only the metadata path does not
-make this fixture usable with the current contract. No v1.6.5 start command
-is verified here. See the
+accepts canonical authoritative v1.3 and later minor revisions, including
+patch revisions such as `client-hub-v1.6.5`. The hermetic
+[`test_client_group_key_fixture.py`](../scripts/test_client_group_key_fixture.py)
+executes the real script with a Docker substitute that records `info` and
+fails before creating resources; this proves metadata admission only. The
+separate A2 Docker preparation passed with the fixed delivery below. See the
 [current Client validation handoff](client-hub-development.md) for the remaining
 current test task.
+
+## Current v1.6.5 bootstrap — 2026-10-11
+
+Use explicit current build metadata; bare `start` remains historical v1.2.1:
+
+```bash
+./scripts/client-group-key-fixture.sh start \
+  --build-metadata .cicada-data/architecture-v2-completion/client-delivery-v165-c6887f4-20261010/build.json
+# Save the exact fixture directory printed by this invocation as FIXTURE_DIR.
+./scripts/client-group-key-fixture.sh stop "$FIXTURE_DIR"
+```
+
+The immutable Hub producer is clean `c6887f46c8412e648b8e8e68da371acd80e0b87e`,
+source fingerprint `cc4ae9207a790c30e9b702c378d9a699bfe95f56e80b5ccfe3b748a6aefaf1ef`,
+image `sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`.
+Metadata SHA-256 is `3a18caeebb5cba467e44b2bb319a92f49054ccd5771cc95603784ec5d2500b43`.
+The host execution source was `150657ebd5c520823f12fb37b74e941b6ba27b7c`
+with five reviewed test/tooling/documentation files dirty, distinct from the
+Hub producer. Its 1,223-input snapshot SHA-256 was
+`3688a324ff1a2ed4378293b8032e700706eb50de945ccf28bc307677665a1d11`;
+the actual fixture script SHA-256 was
+`6446f99fe50120200e1f4dfc7d84bd64dcd9fbffdacca730d744f9626f84f2a9`.
+
+A2 start and stop both exited 0 with EOF, reaped processes and absent process
+groups. It checked Hub health/catalog/provenance, a synthetic Owner private
+key owned at mode 0600 and never mounted into the Hub, and a Node awaiting
+Owner confirmation. Exact Hub/extraction containers, fixture state and
+private HOME were absent afterward; registration-container residuals were
+zero. Both repository source snapshots and six resident snapshots stayed
+unchanged. The [A2 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a2/run-20261011-a2/RESULT.NONAUTH.json)
+(SHA-256 `86e0771fb692e6c5fe93697cdae6f42db5f01e72c51af1424f21b05f3efcc408`)
+is **PASS_SCOPED_BOOTSTRAP**; its [independent closeout](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-current-bootstrap-a2/INDEPENDENT-CLOSEOUT-A2.NONAUTH.json)
+(SHA-256 `ab6bb303d34256d167df1e72620ce0302f34ef5ed83183742eb9a189d1d34039`)
+rechecked the hashes, source, residents and cleanup. Model calls were zero.
+This does not prove native Join/leased Endpoint, real Android Group grant or
+status, the independent eight v1.6.5 encrypted status/restart cases, physical
+Android or public HTTPS; all remain **NOT_RUN** for this fixture.
+
+Cleanup accepts only a direct `/tmp/cgk.<8 alnum>` directory owned by the
+effective user with mode `0700`, and its owned, regular `0600` marker.
+Symlinks and aliases are rejected. Ownership rejection, failed Hub stop,
+unconfirmed container absence or failed extraction-container removal retain
+the fixture state and report **UNKNOWN/INCOMPLETE** for recovery; they do not
+authorize stopping another container or deleting that state.
+
+## Historical v1.2.1 / v1.3 preparation records
 
 The historical v1.3 invocation used this explicit build metadata:
 

@@ -214,6 +214,7 @@ class CompletionRunnerTests(unittest.TestCase):
         self.assertEqual(link_lane["env"]["CICADA_COMPLETION_CHILD_LANE"], "client")
         self.assertEqual(link_lane["env"]["CICADA_COMPLETION_CHILD_RUN_ID"], run_id)
         self.assertIn("scripts.test_client_link_recovery_gate", runner.PYTHON_TESTS)
+        self.assertIn("scripts.test_client_group_key_fixture", runner.PYTHON_TESTS)
         for lane in selected:
             self.assertEqual(lane["cleanup_run_id"], run_id)
             receipt, _ = self._actual_child_cleanup_receipt()
