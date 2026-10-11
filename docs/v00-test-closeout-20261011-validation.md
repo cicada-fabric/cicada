@@ -165,9 +165,9 @@ OwnerProof selector.
 
 <a id="group-key-android-native-a1-a5"></a>
 
-## Group-key Android/Native operator A1–A6 — scoped evidence and retained failures
+## Group-key Android/Native operator A1–A8 — scoped evidence and retained failures
 
-These six one-shot operator attempts are distinct from the fixture bootstrap
+These eight one-shot operator attempts are distinct from the fixture bootstrap
 A1/A2 above and the synthetic OwnerProof vector below.
 
 | Attempt | Result and boundary |
@@ -178,6 +178,8 @@ A1/A2 above and the synthetic OwnerProof vector below.
 | A4 | **FAIL_OR_UNKNOWN**, 305.146s, `ANDROID_DIALOG_BUTTON_TIMEOUT`; the first Node confirmation was observed and tapped, but the later dialog/result was not retained. The pinned APK's older instrumentation selector sends only `user_code`, while the current Hub contract requires `candidate_digest` and positive `candidate_version`; this is a source-proven fixture mismatch, not proof of the discarded JUnit failure cause. No provider POST occurred; cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T212000Z-71ac26ea/RESULT.NONAUTH.json), SHA-256 `61c4d515b6b5aad283327e4a32cfe6cad1a7e9e70d75ac9c739967bb3afc5197`. |
 | A5 | **FAIL_OR_UNKNOWN**, 282.617s, `NATIVE_EXEC_NONZERO`; the first real TLS POST returned HTTP 403 before any Native business turn. The request model was not instrumented. Bounded inspection observed HTTP 403 and an HTML-document marker; the exported error-string SHA is recorded below. Its exact cause is UNKNOWN, with no provider/quota attribution. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T220540Z-e517fa16/RESULT.NONAUTH.json), SHA-256 `b4c3b8d5654e6d9dd3740f15ed1a4ee2bf31e9ccf2740f74f33239fa4f8fc15c`. |
 | A6 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 352.727s, `NATIVE_EXEC_NONZERO`; Android enrollment, production-UI Node pairing and fresh Group creation passed. The first Native CLI execution completed a turn on SID `01a12d19-e74c-7001-9aa2-ab034c8d0ba6` and yielded a fresh READY/session-metadata witness; the second CLI invocation exited 1. A code-mode call to `tools.cicada_join` returned `NOT_A_FUNCTION`, with no Join/candidate receipt. Three outbound POSTs returned HTTP 200, 200 and 500, each for the instrumented `gpt-5.6-luna` request model. The final upstream `internal_server_error`/HTTP 500 remains unexplained; no causal link to the code-mode error or quota attribution is established. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T222905Z-ca4b9b73/RESULT.NONAUTH.json), SHA-256 `b871f5df5ac670c1b033cf024533c34466215099aa1fe6c9b5f0ada11dad20db`. |
+| A7 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 334.216s, `NATIVE_MCP_NOT_COMPLETED`. Two CLI executions/turns completed and five POSTs returned HTTP 200 (three `gpt-5.6-luna`, two `codex-auto-review`). The Join attempt was `HUB_COMMITTED_LOCAL_SCOPE_BLOCKED`: its scope check saw an empty Hub ID because the fixture agent environment omitted `CICADA_HUB_ID`, returning `SCOPE_CHECK_UNAVAILABLE` before registry lookup. The observed SID was `01a12d2f-181e-7530-ab93-9518679731d5`, Endpoint `ep_1a0225c0ae2152a9`, binding `bind_caaf64512930d909`, epoch 1. `whoami` errored and publish was not reached; no Join/candidate receipt or Group grant was established. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T225234Z-92b07140/RESULT.NONAUTH.json), SHA-256 `48248de9a67a5fa5aee0640b46fa9729f2ad380bd84e0f75169362a446219569`. |
+| A8 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 289.388s, `NATIVE_EXEC_NONZERO`. The first fresh CLI invocation exited 1 with no completed-exec receipt; one `gpt-5.6-luna` POST returned HTTP 500 / `BODY_EOF` before resume or Join, and no MCP call occurred. This operator revision included `CICADA_HUB_ID`, but this run did not reach Join and cannot validate the Hub identity correction in a Native run. The upstream cause is UNKNOWN. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T230943Z-e766d841/RESULT.NONAUTH.json), SHA-256 `6f020b217d86a3ae868664d017a25a737d66c9cf42febb06c835c8f8ff686685`. |
 
 A5 used clean Core host HEAD `40c0c5afc376b3325b92772d6f6619ba93b5d8e3`
 with source SHA-256 `c814a7138aefe0be009645c9834d3de7f4427bccf6b1477b1c11fd9589c612f8`,
@@ -227,6 +229,74 @@ digests matched before/after. Android encrypted status, Native Group-key
 grant/ASK/Reply, V67, physical-device and public-HTTPS scopes remain NOT_RUN or
 not reached for this Group-key operator; C14's separate scoped ASK/Reply result
 is unchanged.
+
+A7/A8 used clean Core HEAD `ff3196bfb4bb21813a683e2b72835c72b714167a`, Core
+source snapshot SHA-256 `2ae25b78bbbaab58096071e8c137e92542e16be4a3dcb513604089b4ac1be734`,
+and clean Client HEAD `740882b86d798a3d514b24b2bc2fa2802718d79d`, source
+snapshot SHA-256 `5922414dfdaab4563e83152b6f9b375ffc346460de6171de837c989942192d22`.
+Both used the pinned c688 Hub image and immutable app/test APKs from producer
+`1151b06e04b172de9c7b5989ffec1318e58bf862`; the Core checkout did not produce
+those APKs. Operator hashes were A7 `3a538a211f166f6f69e35dd1e4c353faa3728af61af3d37ae2a223836bc85acf` and A8 `0bbfc5e5295fc470dc13660a53d581b8a1951270305a7d815400e18570988517`.
+Independent postchecks confirmed exact owned-resource absence and unchanged
+source/resident snapshots for both runs. A7/A8 remain their original Native
+results; neither proves that the later Go correction below completes Native
+Join.
+
+<a id="single-hub-approved-identity-pin-go-validation-scope"></a>
+
+## Single-Hub approved identity pin — Go validation scope
+
+A three-file Go correction now pins a Hub ID from existing Owner-approved
+Node-Control state when an Agent starts without an explicit single-Hub pin.
+An atomic in-memory reference makes the approved ID visible to existing Agent
+context copies; no new hot-path file I/O, dependency, schema, wire, contract or
+software-version change was introduced. The focused tests exercise synthetic
+UDS Join/approved-Hub-pin behavior and existing Hub context, registry, worker,
+credential and revocation cases; they do not exercise a real Node wake or Native
+Runtime Join.
+
+The source was dirty at Core HEAD `ff3196bfb4bb21813a683e2b72835c72b714167a`,
+with a 918-row source snapshot fingerprint
+`55f5b96cb3a01041656024194a35dd34c08780ad88d17107d011f148f2bf8890`.
+`machine_hub_context.go` SHA-256 was
+`5919900e6557c8574091225e6ffd3300ab1547bd6f00c236b4de218ce8249e4f`,
+`machine_agent.go` was
+`7386a65a95295543d870ac192d665cb2ca719fc338762a3ce485b37f9984f393`, and
+`machine_agent_hub_pin_test.go` was
+`5b6d25ff81c6427ecd2f956fbeda10f053601ab76ebd9c7deb5fa60f6bcf2eb0`.
+In the pinned Go 1.27.1 offline test container, focused normal and race runs
+both passed 11 top-level and 9 subtests, with zero skips/failures. The complete
+`go test ./cmd/cicada` run passed 422 top-level and 318 subtests, with 13
+optional top-level skips and zero failures; `go vet ./cmd/cicada` and
+`go build ./cmd/cicada` also passed. Total elapsed time was 304.433s; model
+calls were zero. Source and resident snapshots were unchanged during the run,
+and the owned test container was removed. The [A3 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/shipping-agent-hub-pin-a3/RESULT.NONAUTH.json)
+(SHA-256 `6c5df493e1beabe05d510ca5f601f20dfd2000d38d5200085a254a9085a611d4`),
+[freeze](../.cicada-data/v01-next-gates-20261011/native-direct-audit/shipping-agent-hub-pin-a3/FINAL-FREEZE.NONAUTH.json)
+(SHA-256 `1d72f9c96edee36a29a8f273bc15393358c3c11ff182b073f84202e10bf5ce67`),
+and [independent check](../.cicada-data/v01-next-gates-20261011/native-direct-audit/shipping-agent-hub-pin-a3/ROOT-INDEPENDENT-CHECK.NONAUTH.json)
+(SHA-256 `d8661106cbc8134203e508035607048a7c94689b0cdc07c754ee81f3a249de70`)
+record the scope and cleanup. The independent current-contract check also
+passed all 55 catalog operations for fingerprint
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+
+Two earlier invocations were setup failures, not product-test failures: A1
+could not read an entry in the shared Go build cache as UID 1000; A2 compiled
+but could not execute the test binary because its temporary filesystem was
+mounted `noexec`. Both ran zero tests and had confirmed cleanup and unchanged
+source/resident snapshots. [A1 receipt](../.cicada-data/v01-next-gates-20261011/native-direct-audit/shipping-agent-hub-pin-a1/RESULT.NONAUTH.json)
+(SHA-256 `842e907eadd8751e8cbaef40f35a315ec71396dcecc8d695b4f3c05cc81ec67e`);
+[A2 receipt](../.cicada-data/v01-next-gates-20261011/native-direct-audit/shipping-agent-hub-pin-a2/RESULT.NONAUTH.json)
+(SHA-256 `1abf57ed6df6276293ef7f43ac9f3224d671d4e87870d71dac1ede5d21b0f752`).
+
+The compiled command artifact SHA-256
+`e8bb14cc0cb2aa6f299355a52753c7735b53e31bac66c19cea2d3dc61cfbaf9e` is a
+compile-check artifact only, not a release binary or Runtime deployment. This
+Go test build is not a new Hub image and does not retroactively alter the c688
+image or APK producer used by A7/A8. A7 and A8 remain their recorded Native
+attempts; neither the Go regression suite nor the catalog check is an actual
+Native wake/Join, Owner-signed Group grant, or Android encrypted status result.
+The independent eight v1.6.5 Android status/restart cases remain **NOT_RUN**.
 
 A separate host-only provider diagnostic returned HTTP 200 for one
 `gpt-5.6-luna` POST through the existing CONNECT-verified TLS route; it made no

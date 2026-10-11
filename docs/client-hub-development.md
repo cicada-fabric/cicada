@@ -23,24 +23,25 @@ Group-key grant, physical-device and public HTTPS acceptance remain NOT_RUN.
 Client artifacts retain their own producer/source attribution; this Core
 checkpoint changes no Client source or contract.
 
-The separate Group-key operator A6 passed Android enrollment, production
-Node-pairing UI and fresh Group creation. One Native CLI turn completed before
-the second CLI invocation failed; three `gpt-5.6-luna` POSTs returned HTTP 200,
-200 and 500. A code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`, so
-no Join/candidate receipt exists. The final upstream `internal_server_error`/
-HTTP 500 cause remains UNKNOWN; no causal link to that tool result is
-established. A separate host-only HTTP 200 diagnostic is not evidence of A6's
-cause. A6 does not establish the full Native
-Join/publish proof, an Owner-signed Group-key grant, encrypted Android status
-or ASK/Reply. See the retained [A1–A6 results and source attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
+The separate Group-key operator has eight retained attempts. A7 reached the
+fresh Native Join scope check, but its fixture agent omitted `CICADA_HUB_ID`,
+so the empty Hub ID caused `SCOPE_CHECK_UNAVAILABLE` before registry lookup;
+`whoami` errored and publish was not reached. A8 included that environment
+line but failed on its first CLI invocation after one HTTP 500 POST, before
+resume or Join, so it does not validate the correction in a Native run. Both had confirmed cleanup
+and unchanged source/resident snapshots. Neither establishes a completed Native
+Join/publish proof, an Owner-signed Group-key grant or encrypted Android status.
+C14's separately scoped ASK/Reply result remains unchanged. See the retained
+[A1–A8 results and source attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5). The
+single-Hub approved-identity correction passed offline Go validation, but no
+new real Native run has exercised it; see the [validation scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
 
 The current explicit-metadata [Group-key fixture bootstrap](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11)
 passed its owned Hub preparation and cleanup with zero model calls; this does
-not itself establish native Join or encrypted Android status. A6 separately
-paired the Android Node and created a Group; its first Native CLI turn completed,
-but the second invocation failed before the full Join/publish proof or an
-Owner-signed Group-key grant. The independent eight v1.6.5 encrypted
-status/restart cases also remain NOT_RUN.
+not itself establish Native Join, an Owner-signed Group-key grant or encrypted
+Android status. The separate A7/A8 Native attempts remain failures/partial, as
+recorded above; the independent eight v1.6.5 encrypted status/restart cases
+remain NOT_RUN.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-

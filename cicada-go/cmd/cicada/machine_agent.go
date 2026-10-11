@@ -85,6 +85,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		pinned = &machineHubContext{HubID: strings.TrimSpace(os.Getenv("CICADA_HUB_ID")),
 			Origin: base, NodeID: *id, StateDir: *stateDir, WriterRoot: *stateDir,
 			WriterScope: machineNativeWriterScope()}
+		if pinned.HubID == "" {
+			pinned.approvedHubID = &atomic.Pointer[string]{}
+		}
 	}
 	if pinned.Origin != base || pinned.NodeID != *id || pinned.StateDir != *stateDir || pinned.WriterScope == "" {
 		return errors.New("Node Hub context does not match pinned local coordinates")
@@ -196,6 +199,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	defer stop()
 	var agentWorkers sync.WaitGroup
 	ctx = withMachineHubContext(ctx, *pinned)
+	if err := pinExistingMachineAgentHubID(ctx, *stateDir, base, *id, false); err != nil {
+		return fmt.Errorf("pin existing Owner-approved Node Hub identity: %w", err)
+	}
 	if *lanDiscovery {
 		if *lanPort < 1 || *lanPort > 65535 {
 			return errors.New("LAN discovery port must be between 1 and 65535")
@@ -411,6 +417,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 				nodeIdentity.RelayToken, credentialDigest, true, !*relayOnly, os.Stderr); err != nil {
 				return err
 			}
+			if err := pinExistingMachineAgentHubID(ctx, *stateDir, base, *id, true); err != nil {
+				return err
+			}
 		}
 		markRelayReady()
 	} else {
@@ -425,6 +434,10 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 					err := awaitMachineNodeControlBinding(ctx, *stateDir, base, *id, *name,
 						nodeIdentity.RelayToken, credentialDigest, false, !*relayOnly, os.Stderr)
 					if err == nil {
+						if pinErr := pinExistingMachineAgentHubID(ctx, *stateDir, base, *id, true); pinErr != nil {
+							fmt.Fprintln(os.Stderr, "Node-Control Hub identity:", pinErr)
+							return
+						}
 						break
 					}
 					if ctx.Err() != nil {

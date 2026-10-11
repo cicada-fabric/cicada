@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
@@ -29,6 +30,7 @@ type machineHubContext struct {
 	ResourceExecutions                                              *nodelock.ResourceExecutionManager
 	NodeTransport                                                   http.RoundTripper
 	TLSRuntime                                                      *nodetransport.Runtime
+	approvedHubID                                                   *atomic.Pointer[string]
 }
 
 type machineHubContextKey struct{}
@@ -39,7 +41,61 @@ func withMachineHubContext(ctx context.Context, hub machineHubContext) context.C
 
 func machineHubFrom(ctx context.Context) (machineHubContext, bool) {
 	hub, ok := ctx.Value(machineHubContextKey{}).(machineHubContext)
+	if ok && hub.HubID == "" && hub.approvedHubID != nil {
+		if id := hub.approvedHubID.Load(); id != nil {
+			hub.HubID = *id
+		}
+	}
 	return hub, ok
+}
+
+// Publish only an already Owner-approved Node-Control identity. Old context
+// copies can observe this one-time pin without changing their other authority.
+func pinMachineAgentApprovedHubID(ctx context.Context, client *machineNodeControlClient) error {
+	hub, ok := machineHubFrom(ctx)
+	if !ok || hub.approvedHubID == nil {
+		return nil // Explicit and multi-Hub pins retain their existing lifecycle.
+	}
+	approved, err := machineNodeExecutionContext(ctx, client)
+	if err != nil {
+		return err
+	}
+	trusted, _ := machineHubFrom(approved)
+	id := trusted.HubID
+	if hub.approvedHubID.CompareAndSwap(nil, &id) {
+		return nil
+	}
+	if existing := hub.approvedHubID.Load(); existing == nil || *existing != id {
+		return errors.New("approved Node-Control Hub identity cannot replace the Agent pin")
+	}
+	return nil
+}
+
+func pinExistingMachineAgentHubID(ctx context.Context, stateDir, base, nodeID string, approvalRequired bool) error {
+	hub, ok := machineHubFrom(ctx)
+	if !ok || hub.approvedHubID == nil {
+		return nil
+	}
+	identityPath, statePath := machineNodeControlPaths(stateDir, nodeID)
+	if _, err := os.Lstat(statePath); errors.Is(err, os.ErrNotExist) {
+		if approvalRequired {
+			return errors.New("Owner-approved Node-Control state is unavailable")
+		}
+		return nil // Do not create keys or promote a pending enrollment at startup.
+	} else if err != nil {
+		return err
+	}
+	if err := protectNodeControlLocalFile(identityPath); err != nil {
+		return fmt.Errorf("approved Node-Control key is unavailable: %w", err)
+	}
+	client, err := openMachineNodeControlClient(stateDir, base, nodeID)
+	if err != nil {
+		return err
+	}
+	if !approvalRequired && !client.bindingReady() {
+		return nil
+	}
+	return pinMachineAgentApprovedHubID(ctx, client)
 }
 
 func machinePinnedHubID(ctx context.Context) string {

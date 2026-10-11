@@ -1,15 +1,15 @@
 # Disposable Client Group-key fixture
 
-Status: **v1.6.5 scoped Hub bootstrap verified**. Group-key operator A6 passed
-Android enrollment, production-UI Node pairing and fresh Group creation. One
-Native CLI turn completed, then the second CLI invocation failed after three
-`gpt-5.6-luna` POSTs returned HTTP 200, 200 and 500. The failure cause remains
-UNKNOWN. Its code-mode `tools.cicada_join` call returned `NOT_A_FUNCTION`, so no
-Join/candidate receipt exists; the final upstream `internal_server_error`/HTTP
-500 cause is unknown, without a causal attribution. Native Join/publish proof,
-Owner-signed Group-key grant and Android
-encrypted status remain NOT_REACHED or NOT_RUN. See the
-[A1–A6 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
+Status: **v1.6.5 scoped Hub bootstrap verified**. The separate Group-key
+operator has eight retained attempts. A7 reached a fresh Native Join scope
+check, but its fixture agent omitted `CICADA_HUB_ID`, so the empty Hub ID caused
+`SCOPE_CHECK_UNAVAILABLE` before registry lookup; `whoami` errored and publish
+was not reached. A8 included the environment line but failed before resume or
+Join after one HTTP 500 POST, so it does not validate the correction in a Native run. Native
+Group-key grant and Android encrypted status remain NOT_REACHED or NOT_RUN. See
+the [A1–A8 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5). The
+Go single-Hub identity correction passed offline tests/build but has no new
+Native runtime result yet; see its [scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
 Software 0.0.2, schema 59, wire 1 and catalog 55 are unchanged. The current
 [`client-group-key-fixture.sh`](../scripts/client-group-key-fixture.sh)
 accepts canonical authoritative v1.3 and later minor revisions, including
