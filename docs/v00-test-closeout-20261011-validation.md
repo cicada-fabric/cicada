@@ -118,6 +118,17 @@ that result. These are historical scoped results, not current-source full G2/G3
 acceptance. See the [Native result](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002b/request-observer-native-result-cicada-two-turn-g2https0162shipping0002e/result.json)
 and [cleanup/source postchecks](../.cicada-data/native-observer-wiring-20261007/request-observer-current-0162/bundle-shipping0002e/native-g2-support-cicada-two-turn-g2https0162shipping0002e/).
 
+## C14 scoped default-daemon G2/G3 follow-up
+
+C14 passed its bounded six-turn original-context G2/G3 scenario with 79/79
+independent owned-closeout checks. The result verifies the defined ASK/Reply,
+revocation-denial and encrypted status-snapshot scope; it does not rewrite the
+clean-328f aggregate FAIL or the separate C9–C12 paid FAILs. The [Native
+record](native-default-daemon-validation.md#c14-scoped-g2g3-acceptance) carries
+the execution, zero-preparation, source and result identities. Android status
+reads/GroupOwnerProof, V67/account-bound submission, two physical Nodes, public
+HTTPS and complete first-release acceptance remain outside this scope.
+
 The real-approval test overlay now matches the production fail-closed result
 when Native stop is unconfirmed; it does not mark the Goal completed or emit a
 summary. Its initial A1 compile attempt failed before container creation due
@@ -170,12 +181,14 @@ private-key paths.
 
 ## Remaining first-release acceptance
 
-Full current-source G2/G3 still requires a fresh bounded six-turn default-daemon
-run (16-POST-attempt cap), independent Runtime/MCP evidence of original-context
-Ask/Reply, and exact cleanup. A5 remains `QUEUE_ACCEPTED` /
-`CONSUMPTION_UNCONFIRMED`; that state is retained and is not promoted to an
-ACK. V67's account-bound native submission API is **UNSUPPORTED**, so it is
-not a source-only implementation task until a supported API exists. Physical
-StopVerifier, physical Android/device execution, and public HTTPS remain
-separate **NOT_RUN** gates. The product remains **PARTIAL**; no aggregate or
-scoped fixture above changes that release status.
+C14 passed the bounded six-turn default-daemon G2/G3 scenario with independent
+exact cleanup; broader Native acceptance, V67/account-bound submission, two
+physical Nodes, Android encrypted status reads/GroupOwnerProof and public HTTPS
+remain unresolved or NOT_RUN. V67's account-bound Native submission API is
+**UNSUPPORTED**, so it is not a source-only implementation task until a
+supported API exists. G4's real queue-crash result preserves
+`INJECTION_UNCERTAIN` and refuses reinjection; it does not establish cold
+resume, which is not claimed as an unconditional first-release gate. A5's
+separate `QUEUE_ACCEPTED` / `CONSUMPTION_UNCONFIRMED` state remains attributed
+to A5. The clean-328f aggregate remains **FAIL** and the product remains
+**PARTIAL**.

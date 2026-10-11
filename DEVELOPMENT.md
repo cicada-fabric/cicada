@@ -13,15 +13,16 @@ source/dirty state and build provenance before attributing a test or artifact.
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.
 The clean-328f default aggregate remains FAIL; later scoped results retain their
-own tested-source attribution and do not change that result. The latest recorded
-default-daemon paid attempt, C12, also failed: A's Join turn completed, B's did
-not, and B's second POST returned HTTP 500; its underlying cause was not
-retained, and later multigroup/ASK/automatic-reply/G3 work was NOT_REACHED. A5
-remains a scoped loaded-queue PASS with Node inbox consumption
-CONSUMPTION_UNCONFIRMED. Shipping `a4` ordinary Worker and Joint11's eight
-Android recovery cases passed their stated scopes; the v1.6.5 Android encrypted
-status-read/restart, full Native recovery, physical-device and public HTTPS
-acceptance remain unverified. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+own tested-source attribution and do not change that result. C14 subsequently
+passed a bounded six-turn default-daemon G2/G3 run on the original A/B contexts,
+with independent exact-owned cleanup. C12 remains an earlier paid FAIL: B's
+second POST returned HTTP 500, its cause was not retained, and later work was
+NOT_REACHED; C14 does not rewrite it. A5 remains a separate loaded-queue result
+with Node inbox consumption `CONSUMPTION_UNCONFIRMED`. Shipping `a4` ordinary
+Worker and Joint11's eight Android recovery cases passed their stated scopes.
+Android encrypted status-read/restart and GroupOwnerProof, physical-device and
+public HTTPS acceptance remain NOT_RUN; full first-release acceptance remains
+PARTIAL. See the [current evidence](docs/v01-current-closeout-20261009-validation.md#current-20261010).
 Continue 0.0.x development until the user's actual acceptance; main/0.1.0
 publication needs separate authorization. Documentation publication is not a release.
 

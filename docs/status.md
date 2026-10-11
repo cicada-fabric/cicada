@@ -11,18 +11,21 @@ and artifact digests are separate identities. See the
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 as the current evidence index. The clean-328f default aggregate remains **FAIL**;
-later scoped results retain their own tested-source attribution. The latest
-default-daemon paid attempt, C12, also **FAIL**: A's Join turn completed, B's
-did not, and B's second POST returned HTTP 500. The underlying cause was not
-retained, and later multigroup, ASK, automatic-reply and G3 work was
-NOT_REACHED. A5 remains a scoped loaded-queue PASS, but Node inbox consumption
-is still **CONSUMPTION_UNCONFIRMED**; neither result establishes full G2/G3.
+later scoped results retain their own tested-source attribution. C14 passed a
+bounded six-turn default-daemon G2/G3 scope on original A/B contexts, including
+the authorized Ask/Reply path and an encrypted status snapshot after same-store
+Hub replacement; exact-owned cleanup was independently confirmed. C12 remains
+an earlier **FAIL**: B's second POST returned HTTP 500, its cause was not
+retained, and later work was NOT_REACHED. A5 is a separate loaded-queue result
+whose Node inbox remains **CONSUMPTION_UNCONFIRMED**. C14 does not establish
+V67, cold resume, Android status reads, or complete first-release acceptance.
 
 Joint11's eight Android recovery cases passed within their RPC recovery scope.
-The separate v1.6.5 encrypted status-read/restart check, physical-device and
-public-HTTPS acceptance remain NOT_RUN. First-release acceptance remains
-**PARTIAL**; development stays at **0.0.2** until the user's actual acceptance,
-and any main/0.1.0 publication requires separate authorization.
+The separate v1.6.5 Android encrypted status-read/restart and GroupOwnerProof,
+physical-device and public-HTTPS acceptance remain NOT_RUN. First-release
+acceptance remains **PARTIAL**; development stays at **0.0.2** until the user's
+actual acceptance, and any main/0.1.0 publication requires separate
+authorization.
 
 Source, Runtime packaging, Client delivery and historical failures retain their
 separate identities in that index. Documentation publication does not qualify a

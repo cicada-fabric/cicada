@@ -12,19 +12,20 @@ The [release closeout](v01-current-closeout-20261009-validation.md#current-20261
 and [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
 wire 1, catalog 55, schema 59 and software 0.0.2 remain unchanged. Joint11
-passed its eight Android recovery cases and final close ACK with exact cleanup,
-while Android status-read, physical-device and full Native acceptance remain
-separate. Client artifacts retain their own producer/source attribution; this
-Core test checkpoint changes no Client source or contract.
+passed its eight Android recovery cases and final close ACK with exact cleanup.
+Core C14 separately passed its scoped default-daemon G2/G3 run; that result is
+not Android status-read evidence. Android encrypted status-read/restart and
+GroupOwnerProof, physical-device and public HTTPS acceptance remain NOT_RUN.
+Client artifacts retain their own producer/source attribution; this Core
+checkpoint changes no Client source or contract.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
-gates retain separate source records. A5 remains the last successful scoped
-Native acceptance, with Node inbox `CONSUMPTION_UNCONFIRMED`. C9–C12 are actual
-paid FAILs. C12's fixture, Python and zero-model checks passed, but its paid run
-failed after A's Join turn completed and B's second POST returned HTTP 500; the
-cause was not retained, and later multigroup/ASK/automatic-reply/G3 work was
-NOT_REACHED. See the [Native record](native-default-daemon-validation.md) for
-exact scope and receipts. This Core work changes no Client source or contract.
+gates retain separate source records. C14 passed a bounded six-turn default-
+daemon G2/G3 scope with independent exact-owned cleanup; see the [Native
+record](native-default-daemon-validation.md) for its source scope and receipts.
+C9–C12 remain historical paid FAILs; in particular, C12's B-side HTTP 500 and
+cause-unknown result is not rewritten by C14. This Core work changes no Client
+source or contract.
 The next Client-side validation is a test-only v1.6.5 encrypted status read
 across an exact-owned Hub restart, using the already pinned delivery and its
 independently pinned Hub, Owner and Device identities. Add a new Android

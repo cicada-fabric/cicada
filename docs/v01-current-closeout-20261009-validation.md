@@ -125,33 +125,15 @@ delivery, model consumption, workspace command execution or V67 direct
 submission. See [foreground validation](native-foreground-queue-validation.md).
 
 The separate default-daemon selector is not registered in the one-click runner.
-A5 remains the last successful scoped Native acceptance: writer outcome
-`QUEUE_ACCEPTED`, Node inbox `CONSUMPTION_UNCONFIRMED`. C9 is an actual FAIL:
-three turn starts and six HTTP-200 POST responses were observed, but its
-active-only fixture rejected production Join's `leased` binding before Ask
-acceptance. C10 allowed `active` or `leased`, but its first paid HTTP-500
-response caused a Runtime failure before the original Join; later exact-owned
-cleanup does not change the original cleanup=false result. C11's cleanup-order
-candidate passed 50 focused tests, zero-model setup (37/37 independent checks),
-and the full 20-module Python suite (296 PASS, one existing SKIP, zero
-failures/errors). Its bounded paid execution exited 1 in 108.322s: an original-
-context A Ask persisted as `SEALED_V1`/`RELAY_PERSISTED`/`OPEN` but did not
-complete. B automatic/reply and G3 were NOT_REACHED. The sixth A observation was
-`RESPONSE_NOT_OBSERVED`/`UNKNOWN_IO` with no status; observation sequence is not
-a POST count. The result reports cleanup true, no errors and EOF from both
-daemons. These attempts do not establish full G2/G3 acceptance. See the
-[Native detail record](native-default-daemon-validation.md).
-
-C12's fixture-only phase-budget candidate passed 53 targeted tests, the full
-20-module Python suite (299 PASS, one existing optional SKIP, zero failures or
-errors), and zero-model preparation with 37/37 independent checks. Its paid run
-exited 1: A's second POST returned HTTP 200 and its Join turn completed; B's
-Join MCP call completed but B's turn did not, and B's second POST returned HTTP
-500 (`RESPONSE_NON_2XX/CLOSED_FAILURE READ_HEAD`). The underlying cause was not
-retained. Multigroup, ASK, automatic reply and G3 were NOT_REACHED. The observed
-phase length was 12 at cap 128, so this does not prove behavior at the prior
-32-event boundary. Independent owned cleanup passed; it does not change the
-original FAIL. See the [Native detail record](native-default-daemon-validation.md).
+C14 is the latest scoped Native result: its bounded six-turn G2/G3 scenario
+passed on the original A/B contexts, with the multi-Group ASK/Reply path,
+revocation denial and encrypted status snapshot after same-store Hub
+replacement. Independent owned cleanup passed 79/79 checks. See the [C14
+record](native-default-daemon-validation.md#c14-scoped-g2g3-acceptance). C9–C12
+remain actual paid FAILs in the attempt history; C14 does not rewrite C12's
+cause-unknown B-side HTTP 500, its NOT_REACHED steps, or any prior run's cleanup
+fields. A5's separate loaded-queue result remains `QUEUE_ACCEPTED` with Node
+inbox `CONSUMPTION_UNCONFIRMED` for that test.
 
 ### Historical full Go test overlay
 
@@ -929,8 +911,8 @@ Native or model-consumption recovery.
 | Gate | Current state |
 |---|---|
 | G1 — original-context in-group Ask/Reply | **PASS within the current g1 run scope.** Five actual turns preserved original A/B context, correlation and terminal historical queue acceptance. Later artifacts and other gates require their own results. |
-| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** The historical shipping0002e denial tail passed within its scoped run, but that run remains FAIL on cleanup. A5 reached `QUEUE_ACCEPTED`; Node inbox consumption remains `CONSUMPTION_UNCONFIRMED`. C9 failed at the active-only fixture binding check; C10 failed before the original Join after an HTTP-500 response. C11's A Ask persisted as `OPEN` but did not complete. C12's A Join turn completed, but B's Join turn did not; B's second POST returned HTTP 500 and later multigroup/ASK/automatic-reply work was NOT_REACHED. Full current-source original-context Ask/Reply acceptance is not established. |
-| G3 — Control-independent communication | **Scoped positive evidence.** The historical shipping0002e encrypted own-Owner snapshot passed within scope, but its overall cleanup FAIL remains. A5 verified four current Guard checks and no command callback; Node inbox remains `CONSUMPTION_UNCONFIRMED`. C8–C12 are actual paid FAILs; C12 did not reach later ASK, automatic reply or G3. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. |
+| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **PASS within C14's bounded original-context scope.** Six turns exercised the original A/B contexts, multi-Group authorization/leave, ASK/receive/reply/consume, and post-revocation denial; independent owned closeout passed 79/79 checks. The historical shipping0002e denial tail remains attributed to its own run, which failed cleanup. C9–C12 remain actual paid FAILs; C14 does not rewrite them or close every Native gate. See the [C14 record](native-default-daemon-validation.md#c14-scoped-g2g3-acceptance). |
+| G3 — encrypted status snapshot / Control boundary | **PASS for C14's authenticated encrypted status snapshot after same-store Hub replacement.** The fabric-only Control exclusion returned HTTP 503, but its invocation counter was `NOT_INSTRUMENTED`; this is not a measured zero-call assertion. The historical shipping0002e snapshot retains its own scope and overall cleanup FAIL. A5's Node inbox remains `CONSUMPTION_UNCONFIRMED` for that separate loaded-queue test. Neither result proves Android status reads or shared-SID memory isolation. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
 | G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility, plus the a006 bilateral-Link pending-request revocation case (normal/race). That case verifies cancellation, delivery closure, revoked reply/new-ASK denial and exact SQLite absence for denied IDs. The Native hidden-member/revoked-Link tail also passed within the historical shipping0002e scope; its overall cleanup FAIL remains. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. |
 | M1 / M2 | Current Network M1 and Group Spaces M2 interop selectors passed. Remaining framework-wide semantics are not closed by those selectors. |
@@ -942,25 +924,24 @@ Native or model-consumption recovery.
 
 Current delivery, Client preparation and separately attributed APK build are in
 [the current evidence index](#current-20261010). Joint11 passed its eight Android
-recovery cases and final close ACK with exact cleanup; Android status-read and
-physical-device acceptance remain NOT_RUN, and full Native acceptance remains
-open. Historical F38 and earlier
+recovery cases and final close ACK with exact cleanup. C14 is a separate scoped
+Core/Native result; Android encrypted status reads and GroupOwnerProof remain
+NOT_RUN, as do physical-device acceptance and broader Native boundaries.
+Historical F38 and earlier
 Client runs retain their tested APK, Core and runtime attribution; no Client
 source was changed by this Core checkpoint.
 
 ## Remaining acceptance gates
 
-1. Keep G2/G3 PARTIAL. C9–C12 are actual paid FAILs. C10's later
-   exact-owned cleanup does not change its original cleanup=false result; C11's
-   own result reports cleanup true. C11's fourth A turn persisted an original-
-   context Ask as `OPEN` but did not complete; B automatic/reply and G3 were
-   NOT_REACHED. C12 completed A's Join turn, but B's Join turn did not complete;
-   its B second POST returned HTTP 500 and later work was NOT_REACHED. The
-   underlying cause is unknown. A5 remains `QUEUE_ACCEPTED` with Node inbox
-   `CONSUMPTION_UNCONFIRMED`. After the user-requested check of current
-   gpt-5.6-luna Responses API 500 service recovery, review the fresh HEAD,
-   source bindings and GO before considering one bounded rerun; do not repeat
-   blindly. See the [Native record](native-default-daemon-validation.md).
+1. C14 passed its bounded six-turn default-daemon G2/G3 scope with exact cleanup;
+   C9–C12 remain separate historical paid FAILs and are not rewritten. C14 does
+   not establish V67/account-bound submission, cold resume, two physical Nodes,
+   Android encrypted status reads/GroupOwnerProof or public HTTPS. G4's real
+   queue-crash evidence remains an injection-before-ledger result with
+   `INJECTION_UNCERTAIN` and reinjection refused; it is not a cold-resume result.
+   Cold background resume is not asserted as an unconditional first-release
+   requirement.
+   See the [Native record](native-default-daemon-validation.md).
 2. Obtain a supported account-bound Native submission API before implementing
    V67; current inspected API support is UNSUPPORTED. Keep physical StopVerifier,
    real-device/Android status-read and public-HTTPS gates separately NOT_RUN.

@@ -59,26 +59,23 @@ and draft checks with zero paid calls. This does not establish production Node
 delivery, paid-model consumption, workspace command execution or V67 direct
 submission. See [foreground validation](docs/native-foreground-queue-validation.md).
 
-The separate default-daemon selector is outside the one-click runner. A5 is
-still the last successful scoped Native acceptance; Node inbox consumption
-remains `CONSUMPTION_UNCONFIRMED`. C9 failed at a test-only active/leased
-binding check after three turn starts and six HTTP-200 POST responses. C10
-allowed production `leased` but failed on its first HTTP-500 response before
-the original Join; later exact-owned cleanup is separate from the original
-cleanup=false result. C11's default-only cleanup-order candidate passed 50
-tests, zero-model setup (37/37 independent checks), and the full Python suite
-(296 PASS, one existing SKIP, zero failures/errors). Its bounded paid run exited
-1 after an original-context A Ask persisted as OPEN but did not complete; B
-automatic/reply and G3 were NOT_REACHED. Cleanup and both daemon EOF checks
-passed. C12's fixture-only diagnostic phase-cap change passed 53 targeted
-tests, the full Python suite (299 PASS, one existing optional SKIP, zero
-failures/errors), and zero-model preparation (37/37 independent checks). Its
-paid run remains an actual FAIL: A's Join turn completed, but B's Join turn did
-not; B's second POST returned HTTP 500 and later multigroup/ASK/automatic-reply/
-G3 work was NOT_REACHED. The underlying cause was not retained. Cleanup and both
-daemon EOF checks passed without upgrading the run. The observed phase length
-was 12 at cap 128, below the former cap-32 boundary. See the [Native scope
-record](docs/native-default-daemon-validation.md).
+The separate default-daemon selector is outside the one-click runner. C14 is
+the latest scoped Native G2/G3 result: its bounded six-turn original-context
+scenario and 79/79 independent owned-closeout checks passed, with source and
+resident identities unchanged. The full 20-module Python suite recorded 305
+passes, one existing optional skip, and zero failures/errors; zero-model setup
+and independent preparation review also passed. See the [C14 Native
+record](docs/native-default-daemon-validation.md#c14-scoped-g2g3-acceptance).
+C9–C12 remain historical paid FAILs; in particular, C12's cause-unknown B-side
+HTTP 500 and NOT_REACHED work are not rewritten by C14. The clean-328f default
+aggregate remains FAIL and overall first-release acceptance remains PARTIAL.
+
+C14 does not establish V67/account-bound Native submission, cold resume, two
+physical Nodes, Android encrypted status reads/GroupOwnerProof or public HTTPS.
+A5 remains separately attributed: its loaded-queue result was
+`QUEUE_ACCEPTED`, while Node inbox consumption was
+`CONSUMPTION_UNCONFIRMED`. The real G4 crash-window result retains
+`INJECTION_UNCERTAIN` and refuses reinjection; it is not a cold-resume result.
 
 C13 re-ran the zero-model preparation on fresh dirty fixture inputs at HEAD
 `1392c9c`, separate from the clean product producer and helper producer. The
