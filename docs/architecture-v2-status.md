@@ -2,7 +2,7 @@
 
 <a id="current-closeout"></a>
 
-## Current acceptance status — v0.1 PARTIAL
+## Current acceptance status — v0.0.x development; target v0.1.0 PARTIAL
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 as the single current evidence index. Development software is **0.0.2**, with the **client-hub-v1.6.5** signer-preview
@@ -19,6 +19,30 @@ identities and independent postchecks are in the current closeout.
 G4/G5 qa-a5 passed 40 tests / two packages per normal and race phase, with zero
 skips/failures. Real G4 A3 passed the official 0.162.1 queue/crash gate in
 20.146s with zero model calls/new turns, without proving model consumption.
+The later a006 G5 test-only source closure added bilateral-Link pending-ASK
+revocation coverage; its eight-case HTTP/SQLite selector passed normal and race
+with 14 test RUN/PASS identities plus one package PASS per phase (test SHA
+`c679561d…b26d7ca4`, result SHA `e3abbdba…3105bb91`). Schema-59 reopen
+optimization preserves all schema checks and reduces full integrity/FK checks
+from 59 to one on already-applied reopen; its selected family race passed.
+Official CLI 0.162.1 foreground synthetic busy-queue and draft checks also
+passed with paid calls zero. These scoped results do not establish Native
+consumption or full release acceptance; see the [G5 record](g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case),
+[SQLite record](sqlite-startup-verification-validation.md), and
+[foreground record](native-foreground-queue-validation.md).
+
+The separate default-daemon selector is not registered in the one-click runner.
+Its A3 and A4 attempts remain FAIL; A4's materialized official seed and local
+session history were verified, but the provider-tuple failure cause remains
+UNKNOWN. The later A5 selector passed its bounded same-session seed and default
+Node-drain scope: two starts, two completions, two synthetic POSTs, and zero
+external calls. Four current Guard checks and an absent command callback were
+verified; the Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
+`QUEUE_ACCEPTED`. The actual Runtime loaded a synthetic-provider thread, so this
+does not establish deployed-Node delivery, cold resume, V67, model reasoning,
+or full G2/G3 acceptance. See the [portable A5 scope record](native-default-daemon-validation.md)
+and [`A5 result`](../.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json)
+(SHA-256 `80cca7a99303b3966f816d8ed5f17768e03e55f7ac4c9421b61e9b42c4faa115`).
 
 Joint7 passed four KEY cases; fresh NONE response-loss remained UNKNOWN at
 PREPARING (`LINK_OWNER_KEY_NOT_CURRENT`), and three NONE cases were NOT_RUN.
@@ -40,11 +64,15 @@ The clean308d full-Go test overlay and shipping0002e scoped G2/G3
 assertions keep their original source; the latter's overall cleanup FAIL is not
 rewritten. Shipping a4 remains ordinary Worker scope PASS only.
 
-Next: implement and accept V67 account-bound native direct; separately accept
-the remaining physical Runtime/device/public HTTPS gates. Generic V67 same-node is UNSUPPORTED; physical StopVerifier,
-real-device and public HTTPS are NOT_RUN. The earlier clean-e2a aggregate remains
-INCOMPLETE. Overall first-release acceptance remains **PARTIAL**; main/0.1.0
-requires the user's actual acceptance and separate authorization.
+Next: make a clean checkpoint, then run the actual aggregate and standard/PQ
+22-check artifact QA in parallel. The default-daemon selector remains a
+separate explicit check, outside the one-click runner. V67 account-bound native
+direct remains UNSUPPORTED pending a supported account-bound submission API
+and exact fencing evidence; generic same-node fallback is not acceptance.
+Physical StopVerifier, real-device and public HTTPS are NOT_RUN. The earlier
+clean-e2a aggregate remains INCOMPLETE.
+Overall first-release acceptance remains **PARTIAL**; main/0.1.0 requires the
+user's actual acceptance and separate authorization.
 
 The [managed Node outcome checkpoint](node-native-outcome-validation.md)
 records source-scoped child-process and protocol RED/GREEN checks for actual

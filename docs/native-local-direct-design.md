@@ -2,6 +2,36 @@
 
 Sealed Hub Relay remains the default. Direct delivery is an exception requiring trusted proof of the exact same physical host and Codex account, a supported exact-Thread native API, and current Join/binding/lease/Guard authorization.
 
+## Current installed CLI 0.162.1 capability audit — V67 NOT_PASS
+
+The 2026-10-11 read-only [audit](../.cicada-data/v01-next-gates-20261011/native-direct-audit/result.NONAUTH.json)
+SHA256 `477617e3ff389348229d8913f1002b097aae2216748b7a3e5bf9a7a544735d84`
+records installed CLI and running daemon 0.162.1 and hashes nine selected
+experimental schemas generated from that installed binary. This is schema and
+code inspection, not a native direct delivery or same-account proof.
+
+`thread/read` supplies exact Thread/session IDs, cwd and status, but no
+authoritative per-Thread account association or auth generation. Optional
+`account/read.workspaceRouting` remains daemon-current routing; neither it nor
+the ChatGPT email/plan fields associates both exact original Threads with one
+native account. `thread/queue/add` accepts only `threadId`,
+`clientUserMessageId` and `input`; `thread/queue/start` accepts `threadId` and
+optional `queuedSubmissionId`. Neither has an expected-account/auth-generation
+fence. `account/updated` exposes mode/plan only. The separate opaque client
+attestation token has no inspected, documented Thread/account identity claim.
+
+A protected local UDS, shared connection or Cicada writer scope does not fill
+these identity gaps. Reading the account before and after a queue write cannot
+exclude another client's account switch, including A-to-B-to-A. A correlation
+ID is not evidence of native deduplication. Keep fresh Node `local_send/local_ask`
+UNSUPPORTED and normal sealed HubRelay selection until authoritative native
+account association and switch-safe submission can be established. The
+[current foreground fixture](native-foreground-queue-validation.md) separately
+passes exact-Thread busy queue and draft preservation using the 0.162.1 CLI
+with a synthetic provider; it does not supply the missing V67 proof.
+
+## Historical CLI 0.161.0 review — preserved
+
 Current CLI 0.161.0 does not establish V67 eligibility: `thread/read` lacks an authoritative per-Thread account binding, while optional `account/read.workspaceRouting` describes daemon-current routing. `thread/queue/add` has no expected-account/auth-epoch fence, so an account switch between revalidation and submission remains unguarded; reconnect or protected UDS incarnation changes cannot preserve an assumed identity. API-key/null routing stays UNKNOWN. Node inbox `AccountID=hub.WriterScope` is a serial-writer scope, not native account proof (`machine_hub_context.go:180–184`). Fresh Node `local_send/local_ask` remain UNSUPPORTED; normal MCP SEND/ASK, including same-Node Group targets, still use sealed Hub Relay (`mcp_local_group.go:68–76`, `cross_node_group_bridge.go:195–208`). Existing local operations are scoped legacy replay/completion/control under current binding and Guard checks; fresh local Task handoff is not restored. This is not a blanket limit on Codex capabilities; [source/schema review](../.cicada-data/native-observer-wiring-20261007/root-native-capability-review-20261008a.NONAUTH.json) is not Runtime execution or proof of installed-binary/source equivalence.
 
 Pinned official CLI 0.161.0 [sandbox source](https://github.com/openai/codex/blob/979011409de0a60b52f179721948e65531d26144/codex-rs/linux-sandbox/src/linux_run_main.rs#L412-L417) rejects legacy Landlock for a policy without full-disk write access: filesystem-restricted execution requires bubblewrap to isolate app-server sockets. It provides no workspace-write Landlock fallback. This source fact adds no sandbox or Native PASS; historical A6 cause remains UNKNOWN.

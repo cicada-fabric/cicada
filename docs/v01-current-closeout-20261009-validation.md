@@ -1,4 +1,4 @@
-# Current validation closeout — 2026-10-10 — v0.1 PARTIAL
+# Current validation closeout — v0.0.x development — target v0.1.0 PARTIAL
 
 This record is the single current-status index, not a cumulative PASS count. Keep
 the individual historical records and failed attempts at their original source
@@ -7,7 +7,7 @@ or any product policy.
 
 <a id="current-20261010"></a>
 
-## Current evidence — 2026-10-10 — v0.1 PARTIAL
+## Current evidence — updated 2026-10-11 — v0.0.x development; target v0.1.0 PARTIAL
 
 The **client-hub-v1.6.5** source contract adds own-side policy signer preview,
 preserving wire 1 / catalog 55 / schema 59 / software 0.0.2. QA ran on the
@@ -97,7 +97,46 @@ prove model consumption, busy delivery or foreground protection. Earlier failed
 attempts remain preserved. Generic V67 same-node delivery is UNSUPPORTED;
 physical stop verification, real-device execution and public HTTPS remain NOT_RUN.
 
-Historical full Go overlay: the earlier batch used clean Core
+The later G5 bilateral-Link HTTP case passed normal and race in the bounded
+a006 run, with eight permission cases per phase and zero skips/failures. Each
+phase recorded 14 test RUN/PASS identities plus one package PASS. It is
+test-only HTTP/SQLite evidence on the recorded `ad247` source closure, not a
+Native/model acceptance result. The test SHA, 723-row source closure, exact
+postcheck and limits are recorded in
+[the G5 validation note](g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case)
+and the [a006 postcheck](../.cicada-data/v01-next-gates-20261011/g5-http-ad247-a006/POSTCHECK.NONAUTH.json)
+(SHA-256 `e3abbdba79e4b492945753d4ae2dc1011e13e0ec6b2d74e4c47ce47f3105bb91`).
+
+The schema-59 already-applied reopen optimization retains per-migration schema
+checks and runs full `integrity_check` / `foreign_key_check` once before commit;
+fresh and partial migrations retain their original full verification. The
+selected server/Store race family passed 21 top-level tests / 71 test events
+across two packages, zero failures/skips. The original broad timeouts and the
+separate first compile abort remain failures/UNKNOWN for their own attempts.
+See [startup validation](sqlite-startup-verification-validation.md).
+
+Official CLI 0.162.1 passed the bounded synthetic foreground busy-queue and
+human-draft checks (4.883s, paid calls 0); the current run used a pinned CLI and
+Runtime and a synthetic provider. This does not establish production Node
+delivery, model consumption, workspace command execution or V67 direct
+submission. See [foreground validation](native-foreground-queue-validation.md).
+
+The separate default-daemon selector is not registered in the one-click runner.
+Its A3 and A4 attempts remain FAIL; A4 verified the materialized official seed
+and local session history, but the provider-tuple failure cause remains
+UNKNOWN. The bounded A5 selector passed same-session seed plus default Node
+drain: two starts, two completions, two synthetic POSTs and zero external calls.
+Four current Guard checks and an absent command callback were verified; the
+Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
+`QUEUE_ACCEPTED`. This actual Runtime run loaded a synthetic-provider thread,
+and does not establish deployed-Node delivery, cold resume, V67, model reasoning
+or full G2/G3 acceptance. See the [portable A5 scope record](native-default-daemon-validation.md)
+and [A5 result](../.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json)
+(SHA-256 `80cca7a99303b3966f816d8ed5f17768e03e55f7ac4c9421b61e9b42c4faa115`).
+
+### Historical full Go test overlay
+
+The earlier batch used clean Core
 source `308d7607cadc6cb83fe5aaa923adaf643a0aa32d` with the exact test-only
 overlay now applied at
 `cicada-go/internal/server/machine_agent_approval_integration_test.go`
@@ -871,10 +910,10 @@ Native or model-consumption recovery.
 | Gate | Current state |
 |---|---|
 | G1 — original-context in-group Ask/Reply | **PASS within the current g1 run scope.** Five actual turns preserved original A/B context, correlation and terminal historical queue acceptance. Later artifacts and other gates require their own results. |
-| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial.** Preserve prior six-turn original A/B context witnesses and failed denial-tail results; current hidden-member/revoked-Link denial acceptance remains open. |
+| G2 — same-thread multi-Group / cross-Group direct Ask/Reply | **Partial Native acceptance.** Preserve prior six-turn original A/B context witnesses and failed denial-tail results; the Native hidden-member/revoked-Link denial tail remains open. |
 | G3 — Control-independent communication | **Scoped positive evidence:** current actual result records `NO_CONTROL_BUSINESS_OBJECT`, `dependency_proven=true` from production `serve --fabric-only`, and authenticated management HTTP 503. Invocation counter is `NOT_INSTRUMENTED`; restore/status-query acceptance is `NOT_RUN`. This does not close all G3 or transfer acceptance to other artifacts. |
 | G4 — restart, loss and duplicate recovery | **Scoped window evidence passed:** three production component/helper-process boundaries (pre-send, Hub post-commit/pre-ACK, Node durable receive/pre-receipt) passed normal/race. The independent official 0.162.1 post-injection/pre-ledger gate passed with uncertainty retained and reinjection refused. These sources cover their respective windows; they do not prove full MCP-daemon or Native/model consumption recovery. The default-suite SKIP does not negate either actual scoped result. |
-| G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility. Current U has zero turns and no materialized durable metadata/context proof. Source-equal deterministic tests cover authorization at pending delivery, writer-wait revocation and scoped reads, with recording/synthetic Native queue rather than model consumption. Shared-SID memory isolation is not proven or promised; the warning describes that limit. Generic export is unsupported, not an added gate. The actual G2 revoked-Link tail remains open. |
+| G5 — permission and data boundaries | **Scoped predicates passed:** production HTTP forgery/Directory/Artifact denials, same-SID multi-Group grant refusal, independent Monitor approval authentication denial, historical 0.161 live-U and current 0.162.1 live-U Directory invisibility, plus the a006 bilateral-Link pending-request revocation case (normal/race). That case verifies cancellation, delivery closure, revoked reply/new-ASK denial and exact SQLite absence for denied IDs. Current live U has zero turns and no materialized durable metadata/context proof. Shared-SID memory isolation is not proven or promised. Generic export is unsupported, not an added gate. The separate Native G2 revoked-Link tail remains open. |
 | M1 / M2 | Current Network M1 and Group Spaces M2 interop selectors passed. Remaining framework-wide semantics are not closed by those selectors. |
 | M3 | **Scoped backend/integration evidence:** selected reference schema/pointer projection, Network Task/broadcast scope/epoch/revocation, commit cursor/unread reconciliation and parser space/claim separation have existing tests. `TestGroupSpacesMCPAcrossNodesWithLostCommitResponse` exercises reconciliation without mark-read; the parser test does not measure the long-running Agent/job loop or Native wake behavior. Full reference-to-immediate-delivery and scheduling claims remain bounded by their actual tests. |
 | M4 | **Scoped v0.1 path passed:** Monitor MCP proposal, Owner encrypted delegation, guarded apply, topology projection, Owner revoke/version advance and subsequent apply denial; Store tests cover exact scope, CAS/audit, role revocation, reader separation and old key-consent fencing. The tested revoke-overlay bytes are now tracked at `631666c`. Full user/admin hierarchy and delegation UX remain explicitly v0.2, not a new v0.1 gate. |
@@ -883,21 +922,24 @@ Native or model-consumption recovery.
 ## Independent Client attribution
 
 Current delivery, Client preparation and separately attributed APK build are in
-[the current evidence index](#current-20261010). All eight Android online cases
-remain NOT_RUN. Historical F38 and earlier Client runs retain their tested APK,
-Core and runtime attribution; no Client source was changed by this Core checkpoint.
+[the current evidence index](#current-20261010). Joint11 passed its eight Android
+recovery cases and final close ACK with exact cleanup; Android status-read and
+physical-device acceptance remain NOT_RUN, and full Native acceptance remains
+open. Historical F38 and earlier
+Client runs retain their tested APK, Core and runtime attribution; no Client
+source was changed by this Core checkpoint.
 
 ## Remaining acceptance gates
 
-1. Validate current G2 hidden-member/revoked-Link denial and G3 authenticated
+1. Validate Native G2 hidden-member/revoked-Link denial and G3 authenticated
    encrypted management/status restoration on the two original Native Threads.
 2. Establish standard workspace allow/outside deny in a supported isolated
    environment before claiming current native command/Worker acceptance.
-3. Complete the eight current Android online cases, remaining Native scopes,
-   physical-device and public-HTTPS gates independently.
+3. Resolve any remaining Android status-read requirement, remaining Native
+   scopes, physical-device and public-HTTPS gates independently.
 
 Scoped G1, G4/G5/M3/M4/M5, Apache and Link results do not create a completion
-percentage. Overall v0.1 remains **PARTIAL**.
+percentage. The v0.1.0 target remains **PARTIAL**.
 
 ## Scope boundaries
 

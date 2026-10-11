@@ -706,9 +706,15 @@ func (s *Store) initializeV2Migrations() error {
 		// integrity.  It does not scan legacy message bodies, keys, or other
 		// large tables after the one-time upgrade has completed.
 		for _, migration := range v2Migrations {
-			if err := s.verifyV2Migration(migration, nil); err != nil {
+			if err := s.verifyV2MigrationSchema(migration); err != nil {
 				return fmt.Errorf("verify applied v2 migration %s: %w", migration.ID, err)
 			}
+		}
+		// All object checks observe this same locked, single-connection snapshot.
+		// Full database integrity and foreign keys need one check before commit;
+		// fresh and partially applied upgrades retain each migration's checks.
+		if err := verifySQLiteIntegrity(s.db); err != nil {
+			return fmt.Errorf("verify applied v2 schema integrity: %w", err)
 		}
 		if _, err := s.db.Exec("COMMIT"); err != nil {
 			return fmt.Errorf("commit v2 ledger verification: %w", err)
@@ -957,6 +963,25 @@ ON CONFLICT(version) DO UPDATE SET
 }
 
 func (s *Store) verifyV2Migration(migration v2Migration, inventory map[string]legacyInventory) error {
+	if err := s.verifyV2MigrationSchema(migration); err != nil {
+		return err
+	}
+	if err := verifySQLiteIntegrity(s.db); err != nil {
+		return err
+	}
+	if inventory != nil {
+		current, err := snapshotLegacyInventory(s.db)
+		if err != nil {
+			return err
+		}
+		if err := compareLegacyInventory(inventory, current); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) verifyV2MigrationSchema(migration v2Migration) error {
 	for _, object := range migration.Objects {
 		var count int
 		if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = ?`, object).Scan(&count); err != nil {
@@ -1176,40 +1201,6 @@ WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil {
 		}
 		if !strings.Contains(strings.ToLower(schema), "'bidirectional'") {
 			return errors.New("external Thread invite direction constraint was not expanded")
-		}
-	}
-	if migration.ID == "v2.collaboration.external_thread_invite_direction" {
-		columns, err := existingColumns(s.db, "external_thread_invites_v2", []string{
-			"invite_id", "token_digest", "source_endpoint_id", "source_group_id", "source_owner_id",
-			"source_principal_id", "source_node_id", "source_membership_revision", "source_join_revision",
-			"source_group_version", "hub_id", "direction", "actions_json", "data_scopes_json", "expires_at",
-			"state", "target_owner_id", "target_endpoint_id", "target_group_id", "communication_link_id",
-			"created_at", "accepted_at",
-		})
-		if err != nil {
-			return err
-		}
-		if len(columns) != 22 {
-			return errors.New("expanded external Thread invite table is missing required columns")
-		}
-		var schema string
-		if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='external_thread_invites_v2'`).Scan(&schema); err != nil {
-			return err
-		}
-		if !strings.Contains(strings.ToLower(schema), "'bidirectional'") {
-			return errors.New("external Thread invite direction constraint was not expanded")
-		}
-	}
-	if err := verifySQLiteIntegrity(s.db); err != nil {
-		return err
-	}
-	if inventory != nil {
-		current, err := snapshotLegacyInventory(s.db)
-		if err != nil {
-			return err
-		}
-		if err := compareLegacyInventory(inventory, current); err != nil {
-			return err
 		}
 	}
 	return nil

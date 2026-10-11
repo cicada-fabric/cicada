@@ -3,21 +3,26 @@ package server
 import (
 	"bytes"
 	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// Seven deterministic permission categories through the production HTTP handler,
+// Eight deterministic permission categories through the production HTTP handler,
 // issued Fabric/Node credentials and real SQLite Guards. Synthetic session IDs
 // are protocol inputs, never claims of an installed Runtime or model consumption.
 // Generic search/export, model memory, account and physical isolation are NOT_RUN.
@@ -26,6 +31,7 @@ func TestG5PermissionMatrixHTTP(t *testing.T) {
 	t.Run("sender_group_link_forgery", g5MatrixForgery)
 	t.Run("cross_group_artifact", g5MatrixCrossGroupArtifact)
 	t.Run("revoked_pending_queue", g5MatrixRevokedPendingQueue)
+	t.Run("revoked_bilateral_link_pending_request", g5MatrixRevokedBilateralLinkPendingRequest)
 	t.Run("revoked_read_surfaces", g5MatrixRevokedReads)
 	// Reuse the existing complete enrollment/PQ packet/Monitor/Owner fixture:
 	// authenticated Monitor cannot decide; pending row stays exact; Owner can.
@@ -272,6 +278,323 @@ func g5MatrixRevokedPendingQueue(t *testing.T) {
 		if receipt.Layer == fabricpkg.ReceiptCodexQueueAccepted || receipt.Layer == fabricpkg.ReceiptNativeThreadResumed {
 			t.Fatal("revoked pending row acquired a native acceptance receipt")
 		}
+	}
+}
+
+func g5MatrixBindNode(t *testing.T, f *reviewPolicyHTTPFixture, ownerID, deviceID, nodeID string) string {
+	t.Helper()
+	token, digest, err := fabricpkg.NewNodeCredential()
+	if err != nil {
+		t.Fatal("create synthetic Node credential")
+	}
+	code := sha256.Sum256([]byte("PUBLIC_SYNTHETIC_G5_NODE_BINDING:" + nodeID))
+	codeDigest := hex.EncodeToString(code[:])
+	if _, err := f.store.CreatePendingNodeDeviceBinding(nodeID, nodeID, digest,
+		codeDigest, time.Now().UTC().Add(10*time.Minute)); err != nil {
+		t.Fatal("create synthetic Node binding request")
+	}
+	if _, err := f.store.ConfirmPendingNodeDeviceBinding(ownerID, deviceID, codeDigest); err != nil {
+		t.Fatal("confirm synthetic Node binding")
+	}
+	return token
+}
+
+func g5MatrixRegisterEndpointKey(t *testing.T, f *reviewPolicyHTTPFixture, endpointID string) *e2ee.Identity {
+	t.Helper()
+	binding, err := f.store.GetSessionBindingForEndpoint(endpointID)
+	if err != nil {
+		t.Fatal("read synthetic endpoint binding")
+	}
+	key, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal("create synthetic endpoint key")
+	}
+	attestation, err := key.SignEndpointKeyAttestation(endpointID, binding.PrincipalID,
+		binding.NodeID, binding.ID, binding.Epoch)
+	if err != nil {
+		t.Fatal("sign synthetic endpoint key")
+	}
+	if _, err := f.store.RegisterEndpointKeyCandidate(endpointID, binding.PrincipalID,
+		binding.ID, binding.Epoch, attestation); err != nil {
+		t.Fatal("register synthetic endpoint key")
+	}
+	return key
+}
+
+func g5MatrixLinkMessageContext(link *store.CommunicationLink,
+	manifest *store.CommunicationLinkKeyManifest, messageID, kind, requestID, replyTo string,
+	reverse bool) e2ee.EndpointMessageContext {
+	sender, receiver := manifest.Source, manifest.Target
+	senderRevision, receiverRevision := link.ScopeSnapshot.SourceMembershipRevision,
+		link.ScopeSnapshot.TargetMembershipRevision
+	if reverse {
+		sender, receiver = receiver, sender
+		senderRevision, receiverRevision = receiverRevision, senderRevision
+	}
+	return e2ee.EndpointMessageContext{
+		MessageID: messageID, Kind: kind, RequestID: requestID, ReplyTo: replyTo,
+		SenderEndpointID: sender.EndpointID, SenderPrincipalID: sender.PrincipalID,
+		SenderOwnerID: sender.OwnerID, SenderGroupID: sender.GroupID,
+		SenderMembershipRevision: senderRevision, SenderBindingEpoch: sender.BindingEpoch,
+		SenderKeyID: sender.KeyID, ReceiverEndpointID: receiver.EndpointID,
+		ReceiverPrincipalID: receiver.PrincipalID, ReceiverOwnerID: receiver.OwnerID,
+		ReceiverGroupID: receiver.GroupID, ReceiverMembershipRevision: receiverRevision,
+		ReceiverBindingEpoch: receiver.BindingEpoch, ReceiverKeyID: receiver.KeyID,
+		LinkID: link.ID, LinkRevision: link.Version, TransportHubID: link.TransportHubID,
+	}
+}
+
+func g5MatrixSealLinkMessage(t *testing.T, link *store.CommunicationLink,
+	manifest *store.CommunicationLinkKeyManifest, sender *e2ee.Identity,
+	recipient e2ee.PublicIdentity, messageID, kind, requestID, replyTo string,
+	reverse bool) []byte {
+	t.Helper()
+	ciphertext, err := e2ee.SealEndpointMessage(sender, recipient,
+		g5MatrixLinkMessageContext(link, manifest, messageID, kind, requestID, replyTo, reverse),
+		[]byte("PUBLIC_SYNTHETIC_G5_LINK_PAYLOAD"), 1)
+	if err != nil {
+		t.Fatal("seal synthetic Link message")
+	}
+	return ciphertext
+}
+
+func g5MatrixNodeHTTP(t *testing.T, f *reviewPolicyHTTPFixture,
+	method, path, token string, body any) (int, []byte) {
+	t.Helper()
+	var encoded []byte
+	if body != nil {
+		var err error
+		encoded, err = json.Marshal(body)
+		if err != nil {
+			t.Fatal("encode synthetic Node request")
+		}
+	}
+	request, err := http.NewRequest(method, f.server.URL+path, bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal("construct synthetic Node request")
+	}
+	request.Header.Set("Authorization", "CicadaNode "+token)
+	request.Header.Set("Content-Type", "application/json")
+	client := f.server.Client()
+	client.Timeout = 3 * time.Second
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal("synthetic Node HTTP request failed")
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
+	if err != nil || len(data) > 64*1024 {
+		t.Fatal("synthetic Node HTTP response exceeded its bound")
+	}
+	if bytes.Contains(data, []byte(token)) {
+		t.Fatal("Node HTTP response disclosed a credential")
+	}
+	return response.StatusCode, data
+}
+
+func g5MatrixAssertNoRelayRows(t *testing.T, databasePath, messageID, requestID string) {
+	t.Helper()
+	uri := (&url.URL{Scheme: "file", Path: filepath.ToSlash(databasePath), RawQuery: "mode=ro"}).String()
+	db, err := sql.Open("sqlite", uri)
+	if err != nil {
+		t.Fatal("open read-only synthetic Relay database")
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		t.Fatal("connect to read-only synthetic Relay database")
+	}
+	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
+		t.Fatal("mark synthetic Relay audit connection read-only")
+	}
+	for _, check := range []struct {
+		table string
+		query string
+		args  []any
+	}{
+		{"fabric_messages", `SELECT COUNT(*) FROM fabric_messages WHERE id=?`, []any{messageID}},
+		{"relay_v2_message_payloads", `SELECT COUNT(*) FROM relay_v2_message_payloads WHERE message_id=?`, []any{messageID}},
+		{"relay_v2_message_security", `SELECT COUNT(*) FROM relay_v2_message_security WHERE message_id=?`, []any{messageID}},
+		{"relay_v2_requests", `SELECT COUNT(*) FROM relay_v2_requests WHERE message_id=? OR request_id=?`, []any{messageID, requestID}},
+		{"relay_v2_inbox", `SELECT COUNT(*) FROM relay_v2_inbox WHERE message_id=?`, []any{messageID}},
+		{"relay_v2_outbox", `SELECT COUNT(*) FROM relay_v2_outbox WHERE message_id=?`, []any{messageID}},
+		{"relay_v2_delivery_attempts", `SELECT COUNT(*) FROM relay_v2_delivery_attempts WHERE message_id=? OR request_id=?`, []any{messageID, requestID}},
+		{"relay_v2_receipts", `SELECT COUNT(*) FROM relay_v2_receipts WHERE message_id=?`, []any{messageID}},
+		{"relay_v2_request_events", `SELECT COUNT(*) FROM relay_v2_request_events WHERE request_id=?`, []any{requestID}},
+	} {
+		var count int
+		if err := db.QueryRow(check.query, check.args...).Scan(&count); err != nil {
+			t.Fatalf("read-only count in %s failed: %v", check.table, err)
+		}
+		if count != 0 {
+			t.Fatalf("denied operation left %d durable rows in %s", count, check.table)
+		}
+	}
+}
+
+func g5MatrixRevokedBilateralLinkPendingRequest(t *testing.T) {
+	f := newReviewPolicyHTTPFixture(t)
+	link := f.link
+	sourceToken := g5MatrixBindNode(t, f, f.source.ownerID, f.source.deviceID, link.SourceNodeID)
+	targetToken := g5MatrixBindNode(t, f, f.target.ownerID, f.target.deviceID, link.TargetNodeID)
+	foreignToken := g5MatrixBindNode(t, f, f.foreign.ownerID, f.foreign.deviceID, "node_review_foreign")
+	sourceKey := g5MatrixRegisterEndpointKey(t, f, link.SourceEndpointID)
+	targetKey := g5MatrixRegisterEndpointKey(t, f, link.TargetEndpointID)
+	manifest, err := f.store.GetCommunicationLinkKeyManifest(link.ID, link.SourceOwnerID)
+	if err != nil || manifest == nil || manifest.Source.EndpointID != link.SourceEndpointID ||
+		manifest.Target.EndpointID != link.TargetEndpointID {
+		t.Fatal("read exact synthetic bilateral Link manifest")
+	}
+	expiresAt, err := time.Parse(time.RFC3339, link.ExpiresAt)
+	if err != nil {
+		t.Fatal("parse synthetic Link expiry")
+	}
+	for _, approval := range []struct {
+		actor *reviewPolicyHTTPActor
+		side  e2ee.OwnerLinkGrantSide
+		name  string
+	}{
+		{actor: f.source, side: e2ee.OwnerLinkGrantSideSource, name: store.CommunicationLinkGrantSource},
+		{actor: f.target, side: e2ee.OwnerLinkGrantSideTarget, name: store.CommunicationLinkGrantTarget},
+	} {
+		proof, err := approval.actor.ownerKey.SignOwnerLinkKeyGrant(approval.actor.ownerID,
+			link.ID, manifest.ContractDigest, manifest.Digest, uint64(link.Version), approval.side,
+			time.Now().UTC().Add(-time.Minute), expiresAt)
+		if err != nil {
+			t.Fatal("sign independent synthetic Link approval")
+		}
+		if _, err := f.store.RecordCommunicationLinkKeyGrant(approval.actor.ownerID,
+			link.ID, approval.name, approval.actor.ownerKey.Public().ID, proof); err != nil {
+			t.Fatal("record independent synthetic Link approval")
+		}
+	}
+	for _, node := range []struct{ id, token string }{{link.SourceNodeID, sourceToken}, {link.TargetNodeID, targetToken}} {
+		path := "/v2/relay/nodes/" + node.id + "/links/" + link.ID + "/authorization"
+		code, data := g5MatrixNodeHTTP(t, f, http.MethodGet, path, node.token, nil)
+		var bundle store.CommunicationLinkAuthorizationBundle
+		if code != http.StatusOK || json.Unmarshal(data, &bundle) != nil ||
+			bundle.Manifest.Digest != manifest.Digest || bundle.LinkState != store.CommunicationLinkProposed ||
+			bundle.SourceGrant.CurrentStatus != store.CommunicationLinkKeyGrantAccepted ||
+			bundle.TargetGrant.CurrentStatus != store.CommunicationLinkKeyGrantAccepted {
+			t.Fatal("both current endpoint Nodes did not receive exact bilateral Link evidence")
+		}
+	}
+
+	const messageID = "g5_matrix_link_pending_ask"
+	const requestID = "g5_matrix_link_pending_request"
+	askCiphertext := g5MatrixSealLinkMessage(t, link, manifest, sourceKey,
+		manifest.Target.PublicIdentity, messageID, "REQUEST", requestID, "", false)
+	ask := fabricpkg.NodeSealedLinkAskInput{
+		LinkID: link.ID, MessageID: messageID, RequestID: requestID,
+		IdempotencyKey: "idem_" + messageID, DataScope: "thread.message",
+		ExpiresAt:  time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339Nano),
+		Ciphertext: askCiphertext,
+	}
+	askPath := "/v2/relay/nodes/" + link.SourceNodeID + "/sealed/ask"
+	code, data := g5MatrixNodeHTTP(t, f, http.MethodPost, askPath, sourceToken, ask)
+	var accepted struct {
+		MessageID string `json:"message_id"`
+		RequestID string `json:"request_id"`
+		State     string `json:"state"`
+	}
+	if code != http.StatusAccepted || json.Unmarshal(data, &accepted) != nil ||
+		accepted.MessageID != messageID || accepted.RequestID != requestID || accepted.State != store.FabricRequestOpen {
+		t.Fatal("bilaterally approved Link did not accept exact pending ASK")
+	}
+	before, err := f.store.GetRelaySealedV1(messageID)
+	if err != nil || before == nil || before.Route.RequestID != requestID ||
+		before.Route.SenderEndpointID != link.SourceEndpointID || before.Route.ReceiverEndpointID != link.TargetEndpointID ||
+		!bytes.Equal(before.Ciphertext, askCiphertext) || before.Sequence <= 0 ||
+		before.OutboxState != store.RelayReceiptAccepted {
+		t.Fatal("accepted Link ASK did not persist its exact durable route and ciphertext")
+	}
+
+	checkParticipantStatus := func(nodeID, token, wantState string, wantCancelledAt bool) {
+		t.Helper()
+		path := "/v2/relay/nodes/" + nodeID + "/sealed/requests/" + requestID
+		code, data := g5MatrixNodeHTTP(t, f, http.MethodGet, path, token, nil)
+		var current store.FabricRequest
+		if code != http.StatusOK || json.Unmarshal(data, &current) != nil ||
+			current.RequestID != requestID || current.MessageID != messageID ||
+			current.SenderEndpointID != link.SourceEndpointID || current.ReceiverEndpointID != link.TargetEndpointID ||
+			current.SenderBindingID != manifest.Source.BindingID || current.SenderBindingEpoch != manifest.Source.BindingEpoch ||
+			current.ReceiverBindingID != manifest.Target.BindingID || current.ReceiverBindingEpoch != manifest.Target.BindingEpoch ||
+			current.State != wantState || (current.CancelledAt != "") != wantCancelledAt || current.ReplyMessageID != "" ||
+			current.LateResultMessageID != "" || current.Body != "" || current.Message != nil || current.Metadata != nil {
+			t.Fatal("participant request status was missing or exposed non-status fields")
+		}
+		g5MatrixNoLeak(t, data, "PUBLIC_SYNTHETIC_G5_LINK_PAYLOAD",
+			base64.StdEncoding.EncodeToString(askCiphertext))
+	}
+	checkParticipantStatus(link.SourceNodeID, sourceToken, store.FabricRequestOpen, false)
+	checkParticipantStatus(link.TargetNodeID, targetToken, store.FabricRequestOpen, false)
+
+	if _, err := f.store.RevokeCommunicationLink(link.ID, link.SourceOwnerID,
+		link.Version, "synthetic G5 bilateral Link revocation"); err != nil {
+		t.Fatal("revoke synthetic bilateral Link")
+	}
+	for _, node := range []struct{ id, token string }{{link.SourceNodeID, sourceToken}, {link.TargetNodeID, targetToken}} {
+		path := "/v2/relay/nodes/" + node.id + "/links/" + link.ID + "/authorization"
+		code, data := g5MatrixNodeHTTP(t, f, http.MethodGet, path, node.token, nil)
+		if code != http.StatusNotFound {
+			t.Fatal("revoked Link still exposed current bilateral authorization")
+		}
+		g5MatrixNoLeak(t, data, link.ID, manifest.Source.KeyFingerprint,
+			manifest.Target.KeyFingerprint, base64.StdEncoding.EncodeToString(askCiphertext))
+	}
+	claimPath := "/v2/relay/nodes/" + link.TargetNodeID + "/sealed/claim"
+	code, data = g5MatrixNodeHTTP(t, f, http.MethodPost, claimPath, targetToken,
+		fabricpkg.NodeClaimInput{ConsumerID: "g5_matrix_after_link_revoke", Limit: 10})
+	var claimed struct {
+		Deliveries []fabricpkg.NodeSealedDelivery `json:"deliveries"`
+	}
+	if code != http.StatusOK || json.Unmarshal(data, &claimed) != nil || len(claimed.Deliveries) != 0 {
+		t.Fatal("pending Link ASK remained claimable after bilateral Link revocation")
+	}
+	g5MatrixNoLeak(t, data, messageID, requestID, base64.StdEncoding.EncodeToString(askCiphertext))
+
+	checkParticipantStatus(link.SourceNodeID, sourceToken, store.FabricRequestCancelled, true)
+	checkParticipantStatus(link.TargetNodeID, targetToken, store.FabricRequestCancelled, true)
+	foreignStatusPath := "/v2/relay/nodes/node_review_foreign/sealed/requests/" + requestID
+	code, data = g5MatrixNodeHTTP(t, f, http.MethodGet, foreignStatusPath, foreignToken, nil)
+	if code != http.StatusNotFound {
+		t.Fatal("unrelated owner-bound Node read Link request status")
+	}
+	g5MatrixNoLeak(t, data, requestID, messageID, link.ID,
+		"PUBLIC_SYNTHETIC_G5_LINK_PAYLOAD", base64.StdEncoding.EncodeToString(askCiphertext))
+	replyID := "g5_matrix_link_revoked_reply"
+	replyCiphertext := g5MatrixSealLinkMessage(t, link, manifest, targetKey,
+		manifest.Source.PublicIdentity, replyID, "REPLY", requestID, messageID, true)
+	replyPath := "/v2/relay/nodes/" + link.TargetNodeID + "/sealed/reply"
+	code, data = g5MatrixNodeHTTP(t, f, http.MethodPost, replyPath, targetToken,
+		fabricpkg.NodeSealedLinkReplyInput{RequestID: requestID, MessageID: replyID,
+			IdempotencyKey: "idem_" + replyID, DataScope: "thread.message", Ciphertext: replyCiphertext})
+	if code != http.StatusForbidden && code != http.StatusNotFound {
+		t.Fatal("revoked Link accepted a correlated Reply")
+	}
+	g5MatrixAssertNoRelayRows(t, f.databasePath, replyID, replyID)
+
+	newMessageID, newRequestID := "g5_matrix_link_revoked_ask", "g5_matrix_link_revoked_request"
+	newCiphertext := g5MatrixSealLinkMessage(t, link, manifest, sourceKey,
+		manifest.Target.PublicIdentity, newMessageID, "REQUEST", newRequestID, "", false)
+	newAsk := ask
+	newAsk.MessageID, newAsk.RequestID, newAsk.IdempotencyKey = newMessageID, newRequestID, "idem_"+newMessageID
+	newAsk.Ciphertext = newCiphertext
+	code, data = g5MatrixNodeHTTP(t, f, http.MethodPost, askPath, sourceToken, newAsk)
+	if code != http.StatusForbidden && code != http.StatusNotFound {
+		t.Fatal("revoked Link accepted a new ASK")
+	}
+	g5MatrixAssertNoRelayRows(t, f.databasePath, newMessageID, newRequestID)
+	if _, err := f.store.GetCommunicationLinkSealedRequestForNodeCredential(
+		fabricpkg.HashSessionCredential(sourceToken), newRequestID); !errors.Is(err, store.ErrRelayRequestNotFound) {
+		t.Fatal("denied revoked-Link ASK left a durable request row")
+	}
+
+	after, err := f.store.GetRelaySealedV1(messageID)
+	if err != nil || after == nil || !reflect.DeepEqual(before.Route, after.Route) ||
+		!reflect.DeepEqual(before.Security, after.Security) || !bytes.Equal(before.Ciphertext, after.Ciphertext) ||
+		after.OutboxState != store.RelayInboxFailed || after.Sequence != before.Sequence {
+		t.Fatal("revocation changed immutable Link ASK evidence or failed to close delivery")
 	}
 }
 

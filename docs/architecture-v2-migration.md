@@ -1,5 +1,25 @@
 # Architecture v2.3 数据与协议迁移
 
+## Current G5 permission test boundary — v0.0.x development; target v0.1.0 PARTIAL, no migration
+
+The 2026-10-11 G5 bilateral-Link revocation addition is a test-only HTTP/SQLite
+change. It passed the bounded normal/race selector on its recorded source
+closure. It introduces no production API, authorization, key, wire, table or
+schema change; schema 59 and migration IDs/checksums remain unchanged. The
+[validation note](g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case)
+records the exact tested source and limits.
+
+## Current schema-59 reopen verification
+
+The already-applied reopen path now performs one full SQLite integrity and
+foreign-key check instead of repeating that full-database work for every
+historical migration. Fresh and partially applied upgrades retain their full
+per-migration checks, original transaction boundary and fail-closed ledger
+behavior. No schema version, DDL, migration ID/checksum or dependency changed.
+The bounded server/Store race family passed 21 tests across two packages; the
+original broad timeout and first compile-abort evidence remain attributed to
+their own attempts. See [startup measurements and retained failures](sqlite-startup-verification-validation.md).
+
 ## Current Relay Ask admission quota-count index — schema v59; scoped PASS
 
 Ask admission counts pending `OPEN` and `CANCEL_REQUESTED` requests within

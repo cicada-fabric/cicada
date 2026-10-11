@@ -1,5 +1,23 @@
 # Architecture v2.3 implementation audit
 
+## Current G5 bilateral-Link revocation case — v0.0.x development; target v0.1.0 PARTIAL
+
+The a006 normal/race selector added one deterministic bilateral-Link pending-ASK
+case to the existing production HTTP/SQLite permission matrix. Both phases
+passed eight cases with zero skips/failures; denied reply/new-ASK IDs were
+checked against durable tables through a read-only SQLite connection. This is
+not Native/model consumption or full G5 acceptance. Exact source/result pins
+and retained attempt limits are in the
+[G5 validation note](g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case).
+
+Current schema-59 startup verification also reduces full integrity/FK work on
+already-applied reopen from 59 passes to one while preserving all schema checks;
+the selected server/Store race family passed. Official CLI 0.162.1 passed a
+separate zero-paid synthetic foreground queue/draft check. Neither scope proves
+Native/model consumption or full first-release acceptance; see the linked
+[SQLite](sqlite-startup-verification-validation.md) and
+[foreground](native-foreground-queue-validation.md) records.
+
 ## Current G5 HTTP privacy checkpoint — v0.1 PARTIAL
 
 Production HTTP directory/Artifact privacy tests and four retained regressions passed (6 top-level / 28 subtests, zero failures/skips); race validation passed the two new tests / 23 subtests with zero failures/skips. [Source, exact fixture scope and remaining G5 assertions](g5-http-privacy-validation.md) distinguish protocol authorization/redaction from Native, model memory and full G5 acceptance. Earlier counts and evidence retain their tested source.

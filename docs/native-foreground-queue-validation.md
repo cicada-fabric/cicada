@@ -1,6 +1,68 @@
 # Native foreground queue validation
 
-## Current CLI 0.161.0 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
+## Current CLI 0.162.1 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
+
+The single authorized 2026-10-11 run pins official CLI 0.162.1 SHA256
+`628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1`
+(294,415,048 bytes) and Runtime
+`sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e`.
+The wrapper verified the actual executable hash, size, CLI version and
+app-server handshake; inherited image labels are not CLI identity evidence.
+The [actual result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/foreground01621/run-a1/result.json)
+SHA256 `e1d85b932ef5082531a5d68b8d9563983a1f34cb03c3cadb74f1765574373f75`
+records exit 0, 4.883 seconds, busy queue PASS and human draft PASS.
+The [outer receipt](../.cicada-data/v01-next-gates-20261011/native-direct-audit/foreground01621/run-a1/ROOT-RUN.NONAUTH.json)
+SHA256 `07887585acf0d134ed34d4d520e8b445fe48124804ec9a68344afd4f6856f87c`
+records 4.973243918 seconds for the bounded command.
+
+The tested tracked and frozen driver bytes both have SHA256
+`2f5dcd766e28eda46dce7ada96d5f251f5ee4c21dc98793564cc46c5d4edc8f8`
+(93,445 bytes). Source was dirty `ad247387c041c9aaf6a33b40f5ba7c141654e242`
+with concurrent Store migration/test edits and this driver change. The Runtime
+inputs were the frozen driver/controller and pinned image, with no repository
+mount, Go-source read or new product build. Acceptance is attributed to these
+exact driver/image/CLI inputs, not to clean HEAD or the image's inherited
+product revision. The [actual argv](../.cicada-data/v01-next-gates-20261011/native-direct-audit/foreground01621/run-a1/ACTUAL-ARGV.NONAUTH.json)
+uses `--run-native --timeout 140`, an outer TERM 179-second limit plus one-second
+kill bound, and an empty host environment populated only with PATH, LANG and
+PYTHONDONTWRITEBYTECODE. Its controller records ownership without changing the
+frozen fixture's commands or acceptance predicates.
+
+Original synthetic Thread `01a129f8-982f-7c13-9735-59a32b867cbf` had an
+`inProgress` original-turn resume snapshot. While its provider request was held,
+the official queue exited 0, queue count was one, and no new turn start or
+completion appeared. After release, the queue emptied and the observed sequence
+was original completion, queued start/completion, then draft start/completion:
+five real lifecycle events. Provider request indexes 1, 3 and 5 matched that
+original Thread and its three distinct turn IDs; all expected-model and
+synthetic-response checks passed. Six synthetic provider requests were recorded
+in total, including three auxiliary requests on other Threads. The draft request
+contained the exact original unsent draft plus suffix; the queued request did
+not contain the draft. No original-start notification was fabricated.
+
+Independent controller postchecks confirmed exact owned container
+`7ce829355b75e42b7fc542cc3f6680deb673f614aa204027d35ce3897e4813f3`
+and its journalled name absent, and the exact journalled private directory
+absent. Six residents' full canonical Config/HostConfig/sorted-Mounts and stable
+lifecycle projections, plus tracked/frozen driver and controller hashes, were
+unchanged. Root's separate [independent review](../.cicada-data/v01-next-gates-20261011/native-direct-audit/foreground01621/run-a1/ROOT-INDEPENDENT-REVIEW.NONAUTH.json)
+SHA256 `b869969e48a07b3f0cb6b04114b45ae52d7fd880a08377b692c4f602a0f6a3ea`
+rechecks exact CID/name and private-directory absence, all six residents,
+driver identity, busy queue and exact draft, and the three main-Thread versus
+six total provider requests. `ROOT-RUN` above is the agent controller's receipt;
+this separate record is Root's direct review. Cleanup is independently verified
+for this run; earlier cleanup qualifications below remain unchanged.
+
+The fixture retained network none, no credentials or host repository mount,
+read-only root, dropped capabilities, no-new-privileges, 1 CPU / 768 MiB /
+96 PIDs and its loopback-only synthetic provider. Paid calls were zero. PTY
+input simulated the human's initial prompt and draft submission; message
+delivery used official `codex queue --remote unix:///tmp/cfq.sock`. This is
+current CLI/TUI foreground synthetic acceptance only. It does not establish
+production Node delivery, paid-model context or consumption, sandbox command
+execution, physical-device acceptance, or V67 native-account direct eligibility.
+
+## Historical CLI 0.161.0 foreground acceptance — PASS_ZERO_PAID_SYNTHETIC_RUNTIME_ONLY
 
 The existing opt-in real-PTY/official-queue fixture now pins CLI 0.161.0 SHA256
 `9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c`

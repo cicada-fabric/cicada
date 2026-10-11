@@ -27,9 +27,11 @@ external model is visible to that provider; this is not provider-blind E2EE.
 The development line is **0.0.2**, unreleased on `dev`. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1 passed; current CLI sandbox and Worker private-fixture checks passed
-their scoped predicates. G2 failed before model activity, G3 and current Android,
-physical-device and public HTTPS acceptance remain open. Historical failures and
-the shipping/fixture distinction remain in the
+their scoped predicates. Shipping `a4` ordinary Worker and Joint11's eight Android
+recovery cases also passed their scoped checks; full Native recovery, Android
+status-read, physical-device and public HTTPS acceptance remain unverified.
+G2's pre-model failure and later G2/G3 scoped results remain separately attributed,
+with the shipping/fixture distinction, in the
 [current closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010).
 
 The [test automation guide](docs/test-automation.md) covers `scripts/test-architecture-v2-completion.sh`; the default run uses no paid models and reports NOT_RUN/BLOCKED separately from passed checks.

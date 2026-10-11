@@ -7,6 +7,41 @@ qualification. See [repository maintenance](docs/repository-maintenance.md).
 
 ## 0.0.2 — unreleased development candidate
 
+### 2026-10-11 G5 HTTP permission regression
+
+Added deterministic coverage for a bilaterally approved pending Link ASK that
+is revoked before delivery: the request is cancelled, delivery is closed, a
+reply and new ASK are denied, and denied IDs leave no durable rows. The bounded
+normal/race selector passed on the recorded test-source closure. This was a
+test-only change; production behavior, wire 1, contract 1.6.5, schema 59 and
+catalog 55 did not change. See the [scoped G5 validation](docs/g5-permission-matrix-current-source-validation.md#current-bilateral-link-revocation-case).
+The v0.1.0 target remains partial; physical StopVerifier, real-device,
+Native/model and public HTTPS boundaries remain separate.
+
+The schema-59 already-applied reopen path now runs the full integrity and
+foreign-key checks once instead of 59 times. Fresh and partial migrations keep
+their full verification. The selected server/Store race family passed; prior
+timeouts and the separate initial compile abort remain recorded.
+[SQLite validation](docs/sqlite-startup-verification-validation.md) records the
+measured scope and fail-closed cases.
+
+Official CLI 0.162.1 also passed the bounded synthetic foreground busy-queue
+and draft checks with zero paid calls. This does not establish production Node
+delivery, paid-model consumption, workspace command execution or V67 direct
+submission. See [foreground validation](docs/native-foreground-queue-validation.md).
+
+The separate default-daemon selector is outside the one-click runner. A3 and A4
+failures remain attributed to their original attempts; the provider-tuple cause
+in A4 is UNKNOWN. A5 passed the bounded same-session seed and default Node-drain
+scope (two starts, two completions, two synthetic POSTs, external calls 0).
+Four current Guard checks and an absent command callback were verified; the
+Node inbox remains `CONSUMPTION_UNCONFIRMED`, with writer outcome
+`QUEUE_ACCEPTED`. The run used an actual Runtime with a synthetic-provider
+thread; it does not establish deployed-Node delivery, cold resume, V67, model
+reasoning or full G2/G3 acceptance. The selector is not a registered one-click
+lane. See the [portable A5 scope record](docs/native-default-daemon-validation.md)
+and [scoped result](.cicada-data/v01-next-gates-20261011/native-default-daemon/runtime-a5/RESULT.NONAUTH.json).
+
 ### 2026-10-10 managed Node runtime outcomes
 
 Ordinary Codex app-server execution now records actual process starts, including

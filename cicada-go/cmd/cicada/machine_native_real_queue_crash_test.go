@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -909,5 +910,289 @@ func TestMachineNativeRealQueueCrashRelayFixtureScope(t *testing.T) {
 	}
 	if f.guardCalls.Load() == 0 || len(nativeDeliveryRawOutcomes(t, f.process.Root)) != 0 {
 		t.Fatal("fixture omitted production Guard or persisted an intent during failed preflight")
+	}
+}
+
+// Independent loaded, synthetic baseline. The cold crash gate above is unchanged.
+// This tests the production drain function, not a deployed Node process or a
+// real user's context. No command callback or remote wrapper is installed.
+func TestMachineNativeDefaultDaemonLoadedQueueAcceptance(t *testing.T) {
+	if os.Getenv("CICADA_NATIVE_DEFAULT_DAEMON_ACCEPTANCE") != "1" {
+		t.Skip("default daemon loaded queue NOT_RUN: explicit opt-in absent")
+	}
+	path, pin := os.Getenv("CICADA_NATIVE_DEFAULT_DAEMON_FIXTURE"), os.Getenv("CICADA_NATIVE_DEFAULT_DAEMON_FIXTURE_SHA256")
+	data, err := os.ReadFile(path)
+	if err != nil || !filepath.IsAbs(path) || len(data) == 0 || len(data) > 8192 || realQueueHash(data) != pin {
+		t.Fatal("default daemon fixture bytes or pin invalid")
+	}
+	fixture, err := nativeDefaultDaemonDecodeSeedFixture(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := fixture.realQueueFixture
+	if !filepath.IsAbs(runtime.Root) || filepath.Clean(runtime.Root) != runtime.Root ||
+		!strings.HasPrefix(filepath.Base(runtime.Root), "cdq-") || len(runtime.Socket) > 100 {
+		t.Fatal("default daemon owned root invalid")
+	}
+	for _, value := range []string{runtime.CLI, runtime.Socket, runtime.CodexHome} {
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value || strings.ContainsAny(value, "\x00\r\n") {
+			t.Fatal("default daemon path invalid")
+		}
+	}
+	for _, value := range []string{runtime.CodexHome} {
+		rel, err := filepath.Rel(runtime.Root, value)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			t.Fatal("default daemon state escapes owned root")
+		}
+	}
+	if err := nativeDefaultDaemonCheckSocket(runtime.CodexHome, runtime.Socket); err != nil {
+		t.Fatal(err)
+	}
+	if err := realQueueCheckFiles(runtime); err != nil {
+		t.Fatal(err)
+	}
+	// A tiny allowlist is supplied by the owned supervisor. Refuse inherited
+	// runtime selection, workload identity, real provider keys or proxy settings.
+	allowed := map[string]bool{"PATH": true, "HOME": true, "CODEX_HOME": true, "TMPDIR": true,
+		"CICADA_CODEX_BIN": true, "CICADA_NATIVE_DEFAULT_DAEMON_ACCEPTANCE": true,
+		"CICADA_NATIVE_DEFAULT_DAEMON_FIXTURE": true, "CICADA_NATIVE_DEFAULT_DAEMON_FIXTURE_SHA256": true}
+	for _, entry := range os.Environ() {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || !allowed[name] {
+			t.Fatal("default daemon environment is not allowlisted")
+		}
+	}
+	if os.Getenv("CODEX_HOME") != runtime.CodexHome || os.Getenv("HOME") != runtime.Root || os.Getenv("CICADA_CODEX_BIN") != runtime.CLI {
+		t.Fatal("default daemon process environment differs from fixture")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
+	defer cancel()
+	version := exec.CommandContext(ctx, runtime.CLI, "--version")
+	version.Env = realQueueEnvironment(runtime)
+	version.Stderr = io.Discard
+	output, err := version.Output()
+	if err != nil || !realQueueVersionMatches(string(output)) {
+		t.Fatal("official default CLI version mismatch")
+	}
+	// Only an actual completed official seed can materialize this same Thread.
+	// Recheck its durable full history and Join's real record/workspace boundary.
+	rpc, err := realQueueConnect(ctx, runtime.Socket)
+	if err != nil {
+		t.Fatal("default daemon baseline RPC unavailable")
+	}
+	defer func() { _ = rpc.conn.CloseNow(); <-rpc.done }()
+	var initialized struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err := rpc.request(ctx, "initialize", map[string]any{"clientInfo": map[string]any{"name": "cicada_default_seed_witness", "version": "1"}, "capabilities": map[string]any{"experimentalApi": true}}, &initialized); err != nil || !realQueueUserAgentMatches(initialized.UserAgent) {
+		t.Fatal("default daemon baseline initialization failed")
+	}
+	notification, _ := json.Marshal(map[string]any{"method": "initialized", "params": map[string]any{}})
+	if rpc.conn.Write(ctx, websocket.MessageText, notification) != nil {
+		t.Fatal("default daemon baseline initialized notification failed")
+	}
+	var history json.RawMessage
+	if rpc.request(ctx, "thread/turns/list", map[string]any{"threadId": runtime.SID, "limit": 8, "sortDirection": "asc", "itemsView": "full"}, &history) != nil || nativeDefaultDaemonSeedHistory(history, fixture) != nil {
+		t.Fatal("default daemon durable seed history mismatch")
+	}
+	workspace, err := os.Getwd()
+	if err != nil || verifyCodexSessionRecord(runtime.SID, workspace) != nil {
+		t.Fatal("default daemon official seed record/workspace mismatch")
+	}
+	f := realQueueRelayFixture(t, runtime)
+	claim, entry := f.claim(t)
+	decision, err := checkMachineNativeContext(f.ctx, f.nativeScope)
+	if err != nil {
+		t.Fatal("default daemon native context preflight failed")
+	}
+	prompt := machineCrossNodeGroupRelayPrompt(entry, claim.Payload)
+	if decision.SharedMemoryRisk {
+		prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
+	}
+	phases := make(map[string]int)
+	// command is deliberately nil: machineNativeDeliveryDependencies chooses
+	// exec.CommandContext and the exact shipping default `codex queue` argv.
+	drainBase, stopDrain := context.WithTimeout(f.ctx, 55*time.Second)
+	defer stopDrain()
+	drainCtx := context.WithValue(drainBase, machineNativeDeliveryLifecycleKey{}, machineNativeDeliveryLifecycle{observe: func(phase string) { phases[phase]++ }})
+	if os.Getenv("CODEX_HOME") != runtime.CodexHome || os.Getenv("HOME") != runtime.Root || os.Getenv("CICADA_CODEX_BIN") != runtime.CLI {
+		t.Fatal("fixture changed default daemon process selection")
+	}
+	if err := f.drain(drainCtx, claim, entry); err != nil {
+		t.Fatal("production default daemon drain failed")
+	}
+	stored, err := f.inbox.Get(f.ctx, f.messageID)
+	if err != nil || stored.SessionID != runtime.SID || stored.State != nodeinbox.CONSUMPTION_UNCONFIRMED ||
+		phases["queue_wait_succeeded"] != 1 || phases["accepted_durable"] != 1 || phases["accepted_writer_closed"] != 1 ||
+		f.guardCalls.Load() < 2 ||
+		!reflect.DeepEqual(nativeDeliveryRawOutcomes(t, f.process.Root), []nodelock.NativeOutcomeState{nodelock.NativeQueueAccepted}) ||
+		!reflect.DeepEqual(f.layers(), []string{fabric.ReceiptNodeReceived, fabric.ReceiptCodexQueueAccepted, fabric.ReceiptConsumptionUncertain}) {
+		t.Fatal("default daemon durable outcome/Guard/receipt/inbox mismatch")
+	}
+	// Native consumption is checked independently by the real daemon observer;
+	// the Node's uncertainty receipt is retained, not promoted to a queue ACK.
+	proof := map[string]any{"schema": "cicada.native-default-daemon-node-proof.v1", "status": "PASS_NODE_DEFAULT_QUEUE",
+		"native_thread_id": runtime.SID, "prompt_sha256": realQueueHash([]byte(prompt)),
+		"baseline_seed_turn_id": fixture.SeedTurnID, "baseline_history_sha256": runtime.BaselineHistorySHA256, "baseline_official_record_verified": true,
+		"original_body_sha256":            realQueueHash([]byte("SYNTHETIC_NATIVE_QUEUE_CRASH_LITERAL_ONLY")),
+		"default_command_callback_absent": true, "queue_wait_succeeded": 1, "accepted_durable": 1,
+		"current_guard_calls": f.guardCalls.Load(), "inbox_state": "CONSUMPTION_UNCONFIRMED", "writer_outcome": "QUEUE_ACCEPTED"}
+	proofPath := filepath.Join(runtime.Root, "node-proof.json")
+	file, err := os.OpenFile(proofPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal("default daemon proof creation failed")
+	}
+	err = json.NewEncoder(file).Encode(proof)
+	closeErr := file.Close()
+	if err != nil || closeErr != nil {
+		t.Fatal("default daemon proof write failed")
+	}
+	t.Log("default_daemon_node=PASS command_callback=ABSENT queue_wait=1 accepted_durable=1 native_consumption=INDEPENDENT_OBSERVER_REQUIRED cold_resume=NOT_RUN V67=NOT_RUN")
+}
+
+// Only this new loaded-daemon gate allows the exact official rendezvous alias.
+// The shared cold-fixture checker still rejects all symlinks.
+func nativeDefaultDaemonSocketAssociation(home, logical, physical string) error {
+	if !filepath.IsAbs(home) || filepath.Clean(home) != home || strings.ContainsAny(home, "\x00\r\n") {
+		return errors.New("default daemon HOME is not canonical")
+	}
+	expectedLogical := filepath.Join(home, "app-server-control", "app-server-control.sock")
+	expectedPhysical := filepath.Join("/tmp", fmt.Sprintf("codex-daemon-%d", os.Geteuid()), realQueueHash([]byte(expectedLogical)))
+	if logical != expectedLogical || physical != expectedPhysical {
+		return errors.New("default daemon exact alias association mismatch")
+	}
+	return nil
+}
+
+func nativeDefaultDaemonCheckSocket(home, physical string) error {
+	logical := filepath.Join(home, "app-server-control", "app-server-control.sock")
+	parent, err := filepath.EvalSymlinks(filepath.Dir(logical))
+	if err != nil || parent != filepath.Dir(logical) {
+		return errors.New("default daemon logical parent traverses a symlink")
+	}
+	alias, err := os.Lstat(logical)
+	if err != nil || alias.Mode()&os.ModeSymlink == 0 {
+		return errors.New("default daemon exact alias unavailable")
+	}
+	target, err := os.Readlink(logical)
+	if err != nil || target != physical || nativeDefaultDaemonSocketAssociation(home, logical, target) != nil {
+		return errors.New("default daemon exact alias target mismatch")
+	}
+	for _, entry := range []struct {
+		path   string
+		socket bool
+	}{{filepath.Dir(physical), false}, {physical, true}} {
+		info, err := os.Lstat(entry.path)
+		if err != nil {
+			return errors.New("default daemon protected socket unavailable")
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || owner.Uid != uint32(os.Geteuid()) || info.Mode()&os.ModeSymlink != 0 ||
+			(!entry.socket && (!info.IsDir() || info.Mode().Perm() != 0700)) ||
+			(entry.socket && (info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0600)) {
+			return errors.New("default daemon protected owner mode mismatch")
+		}
+	}
+	return nil
+}
+
+func TestMachineNativeDefaultDaemonSocketAssociation(t *testing.T) {
+	home := "/tmp/cdq-synthetic-static/home"
+	logical := filepath.Join(home, "app-server-control", "app-server-control.sock")
+	physical := filepath.Join("/tmp", fmt.Sprintf("codex-daemon-%d", os.Geteuid()), realQueueHash([]byte(logical)))
+	if err := nativeDefaultDaemonSocketAssociation(home, logical, physical); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, logical, physical string }{
+		{"wrong-hash", logical, filepath.Join(filepath.Dir(physical), strings.Repeat("0", 64))},
+		{"wrong-uid", logical, filepath.Join("/tmp", fmt.Sprintf("codex-daemon-%d", os.Geteuid()+1), filepath.Base(physical))},
+		{"escape", logical, filepath.Join("/tmp/foreign", filepath.Base(physical))},
+		{"wrong-alias", filepath.Join(home, "other.sock"), physical},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if nativeDefaultDaemonSocketAssociation(home, tc.logical, tc.physical) == nil {
+				t.Fatal("foreign daemon socket association accepted")
+			}
+		})
+	}
+}
+
+// This fixture type is independent of the unchanged cold/crash schema.
+type nativeDefaultDaemonSeedFixture struct {
+	realQueueFixture
+	SeedTurnID       string `json:"seed_turn_id"`
+	SeedPromptSHA256 string `json:"seed_prompt_sha256"`
+}
+
+func nativeDefaultDaemonDecodeSeedFixture(data []byte) (nativeDefaultDaemonSeedFixture, error) {
+	var f nativeDefaultDaemonSeedFixture
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if d.Decode(&f) != nil || d.Decode(new(any)) != io.EOF ||
+		f.Schema != "cicada.synthetic-native-default-daemon.v2" || !f.Synthetic || !f.CredentialsAbsent || !f.ProviderEgressDisabled || f.MaxProviderPOSTs != 6 ||
+		f.ProfileScope != "independent-loaded-synthetic-default" || !realQueueSID.MatchString(f.SID) || !realQueueSID.MatchString(f.SeedTurnID) || !realQueueSHA.MatchString(f.SeedPromptSHA256) ||
+		f.CLISHA256 != "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1" ||
+		f.RuntimeImage != "sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e" ||
+		f.BaselineTurnCount == nil || *f.BaselineTurnCount != 1 || !realQueueSHA.MatchString(f.BaselineHistorySHA256) || f.BaselineHistorySHA256 == realQueueHash([]byte("[]")) {
+		return f, errors.New("default daemon seeded fixture scope invalid")
+	}
+	return f, nil
+}
+
+func nativeDefaultDaemonSeedHistory(response json.RawMessage, fixture nativeDefaultDaemonSeedFixture) error {
+	if err := realQueueHistoryWitness(response, 1, fixture.BaselineHistorySHA256); err != nil {
+		return err
+	}
+	var history struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(response, &history) != nil || len(history.Data) != 1 || history.Data[0].ID != fixture.SeedTurnID {
+		return errors.New("default daemon seed Turn identity mismatch")
+	}
+	return nil
+}
+
+func TestMachineNativeDefaultDaemonSeedBaseline(t *testing.T) {
+	const sid = "01234567-89ab-cdef-0123-456789abcdef"
+	const turn = "11234567-89ab-cdef-0123-456789abcdef"
+	turns := []map[string]any{{"id": turn, "status": "completed", "items": []any{map[string]any{"type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "SYNTHETIC_SEED_CONTEXT_ONLY"}}}}, "error": nil}}
+	canonical, _ := json.Marshal(turns)
+	count := 1
+	base := nativeDefaultDaemonSeedFixture{realQueueFixture: realQueueFixture{Schema: "cicada.synthetic-native-default-daemon.v2", Synthetic: true, CredentialsAbsent: true, ProviderEgressDisabled: true, MaxProviderPOSTs: 6, ProfileScope: "independent-loaded-synthetic-default", SID: sid, CLISHA256: "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1", RuntimeImage: "sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e", BaselineTurnCount: &count, BaselineHistorySHA256: realQueueHash(canonical)}, SeedTurnID: turn, SeedPromptSHA256: realQueueHash([]byte("SYNTHETIC_SEED_CONTEXT_ONLY"))}
+	raw, _ := json.Marshal(base)
+	decoded, err := nativeDefaultDaemonDecodeSeedFixture(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, _ := json.Marshal(map[string]any{"data": turns, "nextCursor": nil})
+	if nativeDefaultDaemonSeedHistory(history, decoded) != nil {
+		t.Fatal("completed exact seed rejected")
+	}
+	for _, kind := range []string{"empty-baseline", "wrong-seed-id", "changed-history", "provider-cap", "boolean-count", "foreign-field"} {
+		t.Run(kind, func(t *testing.T) {
+			var altered map[string]any
+			_ = json.Unmarshal(raw, &altered)
+			switch kind {
+			case "empty-baseline":
+				altered["baseline_turn_count"] = 0
+			case "wrong-seed-id":
+				altered["seed_turn_id"] = sid
+			case "changed-history":
+				altered["baseline_history_sha256"] = realQueueHash([]byte("different"))
+			case "provider-cap":
+				altered["max_provider_posts"] = 7
+			case "boolean-count":
+				altered["baseline_turn_count"] = true
+			case "foreign-field":
+				altered["fabricated_rollout"] = true
+			}
+			candidate, _ := json.Marshal(altered)
+			f, err := nativeDefaultDaemonDecodeSeedFixture(candidate)
+			if err == nil && nativeDefaultDaemonSeedHistory(history, f) == nil {
+				t.Fatal("altered seed witness admitted")
+			}
+		})
 	}
 }

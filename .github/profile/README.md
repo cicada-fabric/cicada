@@ -1,5 +1,8 @@
 # CICADA
 
+**The Golden Cicada Sheds Its Shell**（**金蝉脱壳**） expresses CICADA's purpose:
+preserve native session continuity while enabling explicitly authorized collaboration.
+
 CICADA develops a Go system for authorized collaboration among native AI
 sessions. Physical responsibilities are Hub, Node and Client; logical
 participants are User, Control, Worker and optional Monitor. Explicit Join,
@@ -11,7 +14,7 @@ scoped grants and current server Guard preserve user authority.
 - [Contribution guidance](https://github.com/cicada-fabric/cicada/blob/dev/CONTRIBUTING.md)
 - [Security reporting](https://github.com/cicada-fabric/cicada/blob/dev/SECURITY.md)
 
-The current software is **0.0.1-dev**, unreleased, with product acceptance **PARTIAL**.
+The current software is **0.0.2**, unreleased, with product acceptance **PARTIAL**.
 Development stays in 0.0.x until user acceptance and a separately authorized
 initial 0.1.0 release; larger v0.2.x designs remain planned. Native, Android,
 physical-device and public HTTPS acceptance retain independent evidence.

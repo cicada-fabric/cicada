@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.161.0.
+"""Opt-in, zero-paid foreground/draft acceptance for official Codex 0.162.1.
 
 The disposable Runtime uses a loopback-only synthetic Responses provider inside
 a network-none container. The TUI is driven through a real PTY; queue delivery
@@ -29,8 +29,11 @@ import termios
 import shutil
 
 
-IMAGE = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
+IMAGE = "sha256:7d5c8ef4288772fae4f43eafef1cfdd5c0644d2fe29b9b94d1c025d6837ae45e"
 CODEX = "/home/cicada/.local/bin/codex"
+CLI_VERSION = "0.162.1"
+CLI_SHA256 = "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1"
+CLI_BYTES = 294415048
 MAX_RUNTIME_SECONDS = 140
 COMPOSER_READY = b"Ask Codex to do anything"
 MAX_TERMINAL_TAIL_BYTES = 16 * 1024
@@ -60,6 +63,9 @@ STRACE_FILES = {
 WRAPPER = r'''import base64, hashlib, http.server, json, os, pathlib, queue, re, select, secrets, signal, socket, struct, subprocess, sys, threading, time, urllib.parse
 
 CODEX = "/home/cicada/.local/bin/codex"
+EXPECTED_CLI_VERSION = __CICADA_CLI_VERSION__
+EXPECTED_CLI_SHA256 = __CICADA_CLI_SHA256__
+EXPECTED_CLI_BYTES = __CICADA_CLI_BYTES__
 RUN = "/run/cicada"
 HOME = "/codex"
 CODEX_HOME = HOME + "/.codex"
@@ -701,10 +707,20 @@ def main():
     os.chmod(pathlib.Path(CODEX_HOME) / "config.toml", 0o600)
     with open(CODEX, "rb") as binary:
         actual_cli_sha = hashlib.file_digest(binary, "sha256").hexdigest()
-    if actual_cli_sha != "9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c":
+        actual_cli_bytes = os.fstat(binary.fileno()).st_size
+    with LOCK:
+        STATE["runtime_cli_sha256"] = actual_cli_sha
+        STATE["runtime_cli_bytes"] = actual_cli_bytes
+        STATE["runtime_cli_binary_ok"] = (actual_cli_sha == EXPECTED_CLI_SHA256 and
+                                           actual_cli_bytes == EXPECTED_CLI_BYTES)
+        if not STATE["runtime_cli_binary_ok"]:
+            STATE["phase"] = "runtime_version_mismatch"
+            STATE["runtime_version_ok"] = False
+        publish()
+    if not STATE["runtime_cli_binary_ok"]:
         return 20
     version = subprocess.run([CODEX, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=8)
-    if version.returncode != 0 or version.stdout.strip() != "codex-cli 0.161.0":
+    if version.returncode != 0 or version.stdout.strip() != "codex-cli " + EXPECTED_CLI_VERSION:
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["runtime_version_ok"] = False
@@ -712,6 +728,7 @@ def main():
         return 20
     with LOCK:
         STATE["runtime_version_ok"] = True
+        STATE["runtime_cli_version"] = EXPECTED_CLI_VERSION
         STATE["local_provider_port"] = server.server_port
         publish()
     app_command = [CODEX, "app-server", "--disable", "plugins", "--listen", "unix://" + SOCKET_PATH]
@@ -763,7 +780,7 @@ def main():
             publish()
         return 24
     user_agent = initialized["userAgent"]
-    if not re.search(r"(?:^|[^0-9])0\.161\.0(?:[^0-9]|$)", user_agent):
+    if not re.search(r"(?:^|[^0-9])" + re.escape(EXPECTED_CLI_VERSION) + r"(?:[^0-9]|$)", user_agent):
         with LOCK:
             STATE["phase"] = "runtime_version_mismatch"
             STATE["appserver_user_agent_version_ok"] = False
@@ -882,6 +899,9 @@ except Exception:
         publish()
     sys.exit(24)
 '''
+WRAPPER = (WRAPPER.replace("__CICADA_CLI_VERSION__", repr(CLI_VERSION))
+           .replace("__CICADA_CLI_SHA256__", repr(CLI_SHA256))
+           .replace("__CICADA_CLI_BYTES__", str(CLI_BYTES)))
 
 
 class GateError(Exception):
@@ -1315,7 +1335,7 @@ def write_result(path, result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-native", action="store_true", help="run one isolated real 0.161.0 TUI/queue check")
+    parser.add_argument("--run-native", action="store_true", help=f"run one isolated real {CLI_VERSION} TUI/queue check")
     parser.add_argument("--startup-diagnostic-only", action="store_true",
                         help="stop at the first synthetic provider POST or TUI exit; skip queue and draft checks")
     parser.add_argument("--trace-app-file-failures", action="store_true",
@@ -1338,7 +1358,7 @@ def main():
     if args.trace_tui_file_failures and not args.result:
         parser.error("--trace-tui-file-failures requires --result for bounded private evidence")
     if not args.run_native:
-        print(json.dumps({"status": "NOT_RUN", "reason": "pass --run-native to create one disposable 0.161.0 TUI"}, sort_keys=True))
+        print(json.dumps({"status": "NOT_RUN", "reason": f"pass --run-native to create one disposable {CLI_VERSION} TUI"}, sort_keys=True))
         return 0
     max_timeout = 60 if args.startup_diagnostic_only else MAX_RUNTIME_SECONDS
     if not 30 <= args.timeout <= max_timeout:
@@ -1354,6 +1374,8 @@ def main():
 
     result = {"schema": "cicada.native-foreground-queue-run.v1", "status": "BLOCKED",
               "runtime_image": IMAGE, "provider": "synthetic_loopback_only", "external_network": "none",
+              "expected_cli_version": CLI_VERSION, "expected_cli_sha256": CLI_SHA256,
+              "expected_cli_bytes": CLI_BYTES,
               "paid_model_calls": 0, "human_ui_draft": "NOT_RUN", "foreground_busy_queue": "NOT_RUN",
               "provider_requests": []}
     result["driver_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -1696,6 +1718,10 @@ def main():
                 result["docker_start_attach_exit_code"] = None
         if private_dir:
             run_status = read_json(private_dir / "status.json")
+            for key in ("runtime_cli_sha256", "runtime_cli_bytes", "runtime_cli_binary_ok",
+                        "runtime_cli_version", "runtime_version_ok", "appserver_user_agent_version_ok"):
+                if key in run_status:
+                    result[key] = run_status[key]
             if isinstance(run_status.get("provider_requests"), list):
                 result["provider_requests"] = sanitized_provider_requests(run_status)
             result["startup_diagnostics"] = startup_diagnostics(

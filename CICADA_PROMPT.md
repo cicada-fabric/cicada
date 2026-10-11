@@ -9,7 +9,7 @@ a completed historical M1–M5 task or run paid models.
 
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
 before editing. The development source line is `0.0.2`, Architecture v2.3, Hub schema 59,
-Client contract `client-hub-v1.6.4`, encrypted wire 1 and catalog 55. Confirm those
+Client contract `client-hub-v1.6.5`, encrypted wire 1 and catalog 55. Confirm those
 identities in [VERSION](VERSION), the
 [catalog](cicada-go/internal/clientcontract/catalog.json) and
 [migrations](cicada-go/internal/store/migrations_v2.go); they are independent of

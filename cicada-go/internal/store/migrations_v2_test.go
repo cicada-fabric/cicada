@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -1570,4 +1571,150 @@ func TestDedicatedThreadPolicyMigrationV52RollsBackAndResumes(t *testing.T) {
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
 	})
+}
+
+// Reopen verifies a single immutable database snapshot, including corruption
+// outside migration-owned objects. Every case gets its own synthetic database;
+// only the closed, checkpointed empty schema image is shared as test input.
+func TestV2MigrationsAppliedReopenFailClosed(t *testing.T) {
+	seedPath := filepath.Join(t.TempDir(), "cicada.sqlite3")
+	seed, err := New(seedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	image, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{"missing-object", `DROP INDEX ` + relayAskExpiryOrderIndex, "migration object " + relayAskExpiryOrderIndex + " is missing"},
+		{"wrong-index-definition", `DROP INDEX ` + relayAskExpiryOrderIndex + `; CREATE INDEX ` + relayAskExpiryOrderIndex + ` ON relay_v2_requests(request_id)`, "verify applied v2 migration " + relayAskExpiryOrderMigrationID},
+		{"ledger-checksum", `UPDATE schema_migrations_v2 SET checksum='synthetic-invalid-checksum' WHERE version=59`, "ledger definition mismatch"},
+		{"ledger-id", `UPDATE schema_migrations_v2 SET migration_id='synthetic-invalid-id' WHERE version=59`, "ledger definition mismatch"},
+		{"ledger-description", `UPDATE schema_migrations_v2 SET description='synthetic-invalid-description' WHERE version=59`, "ledger definition mismatch"},
+		{"ledger-too-new", `UPDATE schema_migrations_v2 SET version=60 WHERE version=59`, "newer than this binary supports"},
+		{"foreign-key-violation", `PRAGMA foreign_keys=OFF; CREATE TABLE startup_fk_parent(id INTEGER PRIMARY KEY); CREATE TABLE startup_fk_child(parent_id INTEGER REFERENCES startup_fk_parent(id)); INSERT INTO startup_fk_child VALUES(7)`, "sqlite foreign_key_check found"},
+		{"integrity-violation", `CREATE TABLE startup_integrity_probe(n INTEGER CHECK(n>0)); PRAGMA ignore_check_constraints=ON; INSERT INTO startup_integrity_probe VALUES(0); PRAGMA ignore_check_constraints=OFF`, "sqlite integrity_check returned"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "cicada.sqlite3")
+			if err := os.WriteFile(path, image, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			db.SetMaxOpenConns(1)
+			if _, err := db.Exec(test.sql); err != nil {
+				db.Close()
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := appliedStartupLedger(t, path)
+			reopened, err := New(path)
+			if err == nil {
+				reopened.Close()
+				t.Fatal("unsafe applied-schema reopen was accepted")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("wrong failure boundary: got %v want %q", err, test.want)
+			}
+			if after := appliedStartupLedger(t, path); !reflect.DeepEqual(before, after) {
+				t.Fatal("failed applied-schema verification changed the migration ledger")
+			}
+			// A rejected startup must not retain its BEGIN IMMEDIATE lock.
+			db, err = sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			db.SetMaxOpenConns(1)
+			if _, err := db.Exec("BEGIN IMMEDIATE; ROLLBACK"); err != nil {
+				t.Fatalf("rejected startup retained its transaction: %v", err)
+			}
+		})
+	}
+	t.Run("damaged-file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "cicada.sqlite3")
+		damaged := append([]byte(nil), image...)
+		damaged[0] = 'X' // Actual invalid SQLite header, not an injected error.
+		if err := os.WriteFile(path, damaged, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := New(path)
+		if err == nil {
+			reopened.Close()
+			t.Fatal("damaged SQLite file was accepted")
+		}
+		var coded interface{ Code() int }
+		if !errors.As(err, &coded) || coded.Code() != 26 { // SQLITE_NOTADB
+			t.Fatalf("damaged file did not report SQLite corruption: %v", err)
+		}
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(damaged, after) {
+			t.Fatal("failed startup rewrote the damaged database")
+		}
+	})
+	t.Run("repeat-stable-ledger", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "cicada.sqlite3")
+		if err := os.WriteFile(path, image, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before := appliedStartupLedger(t, path)
+		if len(before) != CurrentV2SchemaVersion {
+			t.Fatalf("seed ledger contains %d entries", len(before))
+		}
+		for _, entry := range before {
+			if entry.State != v2MigrationApplied || entry.Attempts != 1 {
+				t.Fatal("seed ledger is not exactly once applied")
+			}
+		}
+		for i := 0; i < 2; i++ {
+			reopened, err := New(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := reopened.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before, appliedStartupLedger(t, path)) {
+				t.Fatal("successful repeated startup changed the applied ledger")
+			}
+		}
+	})
+}
+
+func appliedStartupLedger(t *testing.T, path string) []v2MigrationLedgerEntry {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db}
+	var ledger []v2MigrationLedgerEntry
+	for version := 1; version <= CurrentV2SchemaVersion+1; version++ {
+		entry, err := s.readV2Migration(version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry != nil {
+			ledger = append(ledger, *entry)
+		}
+	}
+	return ledger
 }

@@ -1,5 +1,37 @@
 # G5 permission matrix — scoped deterministic PASS
 
+<a id="current-bilateral-link-revocation-case"></a>
+
+## Current bilateral-Link revocation case — 2026-10-11
+
+The current test source is `cicada-go/internal/server/g5_permission_matrix_integration_test.go`
+(SHA-256 `c679561d3838261e47e8e904efe2f025f2851fcb586fa56233c72be8b26d7ca4`),
+tested on the recorded `ad247387c041c9aaf6a33b40f5ba7c141654e242` source with a
+723-row compile-input closure. The new
+`revoked_bilateral_link_pending_request` case drives issued synthetic Owner/Node
+credentials through the production HTTP handlers and SQLite store. It proves a
+bilaterally approved Link accepts one exact pending ASK, then revocation makes
+the request `CANCELLED`, closes delivery, and rejects a correlated reply and a
+new ASK. It checks the immutable route, security metadata, ciphertext and
+sequence, exact participant/status bindings and `CancelledAt` presence, and uses
+a read-only SQLite connection to verify denied IDs leave no durable rows. This is
+deterministic HTTP/Store evidence only; it does not establish Native or model
+consumption, physical stop, device behavior or public HTTPS.
+
+The bounded a006 normal/race run passed all eight permission cases in both
+phases: 14 test `run` events, 14 test `pass` events and one package `pass` per
+phase, with zero failures or skips. Normal and race exits were both 0. The result
+and exact cleanup/source/resident postcheck are recorded in
+`.cicada-data/v01-next-gates-20261011/g5-http-ad247-a006/POSTCHECK.NONAUTH.json`
+(SHA-256 `e3abbdba79e4b492945753d4ae2dc1011e13e0ec6b2d74e4c47ce47f3105bb91`).
+The owned container was removed and absent by ID, name and run label; the 723
+source rows and six resident snapshots matched their pre-run values. Model
+calls: 0. Earlier compile/test failures remain attributed to their own attempts.
+
+| New subtest | Production boundary and substantive assertion |
+| --- | --- |
+| `revoked_bilateral_link_pending_request` | Production HTTP accepts one pending ASK on a bilaterally approved Link; revocation cancels the request, closes delivery and rejects a correlated reply and new ASK. Immutable route/security/ciphertext/sequence remain, participant status is limited to exact bound fields with `CancelledAt` present, and read-only SQLite checks find no durable rows for denied IDs. |
+
 Source baseline: detached worktree `2594343b84ed0ec17a5cf349607631d831773cc3`
 with the recorded G4/G5 test-only overlay. The G5 test SHA256 is
 `f76b1137346eed1dbf885b1fbf72e51f91783b6578e30cb831b4c7f0bb9369af`; the G4
@@ -33,7 +65,7 @@ search/export APIs are absent/unsupported; actual directory lookup/filter and
 Artifact content retrieval are covered. Generic export, native retained memory,
 model accounts and physical/runtime boundaries remain NOT_RUN.
 
-## Recorded Root QA (2026-10-10)
+## Historical Root QA (2026-10-10)
 
 Root ran the normal and race phases with this selector; both included
 `TestG5PermissionMatrixHTTP` and `TestG4CrashWindowsAtDurableBoundaries`:
