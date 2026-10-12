@@ -1,6 +1,6 @@
 # Release status
 
-## 2026-10-11 current source candidate — unreleased; acceptance partial
+## 2026-10-12 current source candidate — unreleased; acceptance partial
 
 The current development version is **0.0.2**: Hub schema **59**, Client
 contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
@@ -18,25 +18,30 @@ Hub replacement; exact-owned cleanup was independently confirmed. C12 remains
 an earlier **FAIL**: B's second POST returned HTTP 500, its cause was not
 retained, and later work was NOT_REACHED. A5 is a separate loaded-queue result
 whose Node inbox remains **CONSUMPTION_UNCONFIRMED**. C14 does not establish
-V67, cold resume, Android status reads, or complete first-release acceptance.
+V67, cold resume, the independent Link-policy Android status reads, or complete
+first-release acceptance.
 
-The Group-key Android/Native operator has eight retained attempts. A7 reached a
-fresh Native Join scope check, but its fixture environment omitted
-`CICADA_HUB_ID`; the empty Hub ID caused `SCOPE_CHECK_UNAVAILABLE` before
-registry lookup, `whoami` errored and publish was not reached. A8 included that
-environment line but failed on its first CLI invocation after one HTTP 500 POST,
-before resume or Join, so it does not validate the correction in a Native run. Both runs had
-confirmed cleanup and unchanged source/resident snapshots. No Owner-signed
-Group-key grant or encrypted Android status was established. See the
-[A1–A8 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5). The
-single-Hub approved-identity correction passed its targeted normal/race tests,
-full command package tests, vet and build, but has no new real Native run yet;
-see the [Go validation scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
+The Group-key Android/Native operator now has eleven retained attempts. A9
+passed Native Join/whoami/publish and Android's initial Group grant/status, but
+its post-restart guard failed and the whole attempt remains FAIL/UNKNOWN; its
+six HTTP 200 responses do not imply a quota cause. A10's exact CLI resume failed
+HTTP 500 before MCP after two provider POSTs (200/500); this is not a zero-model
+run and its cause remains UNKNOWN. A11 passed a narrower zero-provider same-UID
+MCP protocol scope, Owner Group grant, and Android encrypted Group status before
+and after one exact owned Hub restart. It did not run a CLI Runtime/provider or
+establish AI autonomy, Native account authentication or context. See the
+[A1–A11 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+and its source attribution. The approved-identity Go correction passed its
+targeted normal/race tests, full command package tests, vet and build; A11's
+same-UID MCP result is not a Native Runtime run.
 
 Joint11's eight Android recovery cases passed within their RPC recovery scope.
-The separate v1.6.5 Android encrypted status-read/restart and GroupOwnerProof,
-physical-device and public-HTTPS acceptance remain NOT_RUN. First-release
-acceptance remains **PARTIAL**; development stays at **0.0.2** until the user's
+The separate v1.6.5 Link-policy encrypted status-read/restart cases remain
+NOT_RUN; A11's Group-key `group.key_manifest/grant/status` scope is distinct.
+Physical-device and public-HTTPS acceptance remain NOT_RUN.
+The retained c688 Hub image and clean-328f standard delivery predate Core 0326;
+any fresh packaged Hub interop result needs its own build/source attribution.
+First-release acceptance remains **PARTIAL**; development stays at **0.0.2** until the user's
 actual acceptance, and any main/0.1.0 publication requires separate
 authorization.
 

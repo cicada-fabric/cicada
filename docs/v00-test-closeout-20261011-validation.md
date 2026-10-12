@@ -159,16 +159,18 @@ confirmed eventual absence without rewriting that failure. A pre-start
 self-pin refusal was separate from Hub execution. Model calls were zero;
 that bootstrap did not test native Join or Android Group grant/status. The
 separate Android/Native operator attempts below reached further scoped stages.
-The independent eight v1.6.5 encrypted status/restart cases, physical Android
-and public HTTPS remain **NOT_RUN**. The A3 below is a different synthetic
-OwnerProof selector.
+The independent eight-case v1.6.5 Link-policy encrypted status/restart cases,
+physical Android and public HTTPS remain **NOT_RUN**. The A3 below is a
+different synthetic OwnerProof selector.
 
 <a id="group-key-android-native-a1-a5"></a>
 
-## Group-key Android/Native operator A1–A8 — scoped evidence and retained failures
+## Group-key Android/Native operator A1–A11 — scoped evidence and retained failures
 
-These eight one-shot operator attempts are distinct from the fixture bootstrap
-A1/A2 above and the synthetic OwnerProof vector below.
+These one-shot operator attempts are distinct from the fixture bootstrap A1/A2
+above and the synthetic OwnerProof vector below. A1–A10 retain their individual
+failures; A11 is a separate zero-provider protocol and Android grant/status
+pass, not a fresh CLI Runtime run.
 
 | Attempt | Result and boundary |
 | --- | --- |
@@ -180,6 +182,52 @@ A1/A2 above and the synthetic OwnerProof vector below.
 | A6 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 352.727s, `NATIVE_EXEC_NONZERO`; Android enrollment, production-UI Node pairing and fresh Group creation passed. The first Native CLI execution completed a turn on SID `01a12d19-e74c-7001-9aa2-ab034c8d0ba6` and yielded a fresh READY/session-metadata witness; the second CLI invocation exited 1. A code-mode call to `tools.cicada_join` returned `NOT_A_FUNCTION`, with no Join/candidate receipt. Three outbound POSTs returned HTTP 200, 200 and 500, each for the instrumented `gpt-5.6-luna` request model. The final upstream `internal_server_error`/HTTP 500 remains unexplained; no causal link to the code-mode error or quota attribution is established. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T222905Z-ca4b9b73/RESULT.NONAUTH.json), SHA-256 `b871f5df5ac670c1b033cf024533c34466215099aa1fe6c9b5f0ada11dad20db`. |
 | A7 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 334.216s, `NATIVE_MCP_NOT_COMPLETED`. Two CLI executions/turns completed and five POSTs returned HTTP 200 (three `gpt-5.6-luna`, two `codex-auto-review`). The Join attempt was `HUB_COMMITTED_LOCAL_SCOPE_BLOCKED`: its scope check saw an empty Hub ID because the fixture agent environment omitted `CICADA_HUB_ID`, returning `SCOPE_CHECK_UNAVAILABLE` before registry lookup. The observed SID was `01a12d2f-181e-7530-ab93-9518679731d5`, Endpoint `ep_1a0225c0ae2152a9`, binding `bind_caaf64512930d909`, epoch 1. `whoami` errored and publish was not reached; no Join/candidate receipt or Group grant was established. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T225234Z-92b07140/RESULT.NONAUTH.json), SHA-256 `48248de9a67a5fa5aee0640b46fa9729f2ad380bd84e0f75169362a446219569`. |
 | A8 | **FAIL_OR_UNKNOWN**, terminal exit 1/EOF after 289.388s, `NATIVE_EXEC_NONZERO`. The first fresh CLI invocation exited 1 with no completed-exec receipt; one `gpt-5.6-luna` POST returned HTTP 500 / `BODY_EOF` before resume or Join, and no MCP call occurred. This operator revision included `CICADA_HUB_ID`, but this run did not reach Join and cannot validate the Hub identity correction in a Native run. The upstream cause is UNKNOWN. Cleanup was confirmed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261011T230943Z-e766d841/RESULT.NONAUTH.json), SHA-256 `6f020b217d86a3ae868664d017a25a737d66c9cf42febb06c835c8f8ff686685`. |
+| A9 | **FAIL_OR_UNKNOWN**, 479.449s, `ANDROID_POST_RESTART_STATUS`. Two Native business turns completed real `cicada_join`, `cicada_whoami` and candidate publish; the Join also exercised the approved single-Hub identity correction on its recorded Node artifact. Android Owner enrollment, Group grant and initial encrypted status `CURRENT` passed. The post-restart field guard remained UNKNOWN, so the overall attempt failed. Six provider POSTs returned HTTP 200; no quota cause is inferred. Cleanup/source/resident checks passed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261012T000017Z-80b3d06a/RESULT.NONAUTH.json), SHA-256 `34465f881765731628b399666fe8e7fea07bf4580e470117b4313707f6af237a`. |
+| A10 | **FAIL_OR_UNKNOWN**, 323.829s, `NATIVE_EXEC_NONZERO`. The fresh CLI call completed and recorded a session; exact resume returned HTTP 500 before MCP. There were two actual `gpt-5.6-luna` POSTs (HTTP 200, then 500); the result's `native_business_turns: 0` is not a zero-model count. No Join, Group grant or encrypted status was reached. The HTTP 500 cause is UNKNOWN; cleanup/source/resident checks passed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261012T002029Z-e8775ab9/RESULT.NONAUTH.json), SHA-256 `73e3134cbcbbb3dd2e0e530f2a33db926e44fffafbea577ee6280480982bb209`. |
+| A11 | **PASS_GROUP_GRANT_AND_RESTARTED_STATUS_SCOPED**, 408.642s, terminal exit 0/EOF. The frozen operator used the previously recorded same-UID SID/context metadata for a protocol-only MCP process that completed `cicada_join`, `cicada_whoami` and `cicada_publish_endpoint_key_candidate`; Android completed the Owner Group grant and encrypted status reads returned `CURRENT` before and after an exact owned Hub restart with the same Hub identity, config and state mount. This was not a CLI/Runtime/provider execution or proof of AI autonomy, Native account authentication or context. Provider POSTs, Runtime, credential reader and CLI business execution were not created/run. Cleanup and source/resident checks passed. [Result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/run-20261012T004331Z-e7a6691b/RESULT.NONAUTH.json), SHA-256 `a97f3099b76b66969a78264be89786d85b0598b153b8a5ab067fcebc17df53af`. |
+
+A9 and A10 used Core `0326b1c6e6f4105347c2f0c31a0a7c9394dcd924` and clean
+Client `740882b86d798a3d514b24b2bc2fa2802718d79d`, with source fingerprints
+`340d9a28e5acc57dad30014c536a9817aa1e2b6dc30daf89e207032ec8345355` and
+`5922414dfdaab4563e83152b6f9b375ffc346460de6171de837c989942192d22`. A11 used
+the same Core/Client source identities and clean status snapshots. The Hub was
+the retained c688 image
+`sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`;
+the APK pair (`e5707b6a…a3745` / `7638c1ed…5ca29`) belongs to immutable Client
+producer `1151b06e04b172de9c7b5989ffec1318e58bf862`, not Client HEAD 740882.
+For A11, Node used the A3 compile-check artifact from dirty Core producer
+`ff3196bfb4bb21813a683e2b72835c72b714167a` (binary SHA-256
+`e8bb14cc0cb2aa6f299355a52753c7735b53e31bac66c19cea2d3dc61cfbaf9e`); the
+recorded post-commit mapping covers Go source plus `go.mod`/`go.sum` bytes and
+modes, not every embedded build input and not a new Hub image. The A11 frozen
+operator SHA-256 is
+`8371379784e404f04ae881ebb9405eb0907135229ec34ec7afb067d82dde6162` and its
+[freeze receipt](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/A11-OFFLINE-FREEZE.NONAUTH.json)
+SHA-256 is `04461b1ea73c7d0361e1332a7006bc49651f886534c2b0717db821b8b20b60da`.
+It was invoked as `python3 -B operator-a11.py --execute` in an authorized
+interactive terminal; the operator budget was 1,200 seconds. The A11 result
+records the previously observed SID and same-UID local metadata, but an exact
+pre-run file-stat equality was not recorded.
+
+The A11 [independent review](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/ROOT-A11-INDEPENDENT-CHECK.A2.NONAUTH.json)
+(SHA-256 `cdc32c9dde959bfe03c666401b64aa21f180443ba1820188f100e9cd17f74f1f`)
+passed 31/31 scoped protocol/owned-resource checks. It verified current Core
+and Client identities, six resident canonical digests and owned cleanup. The
+earlier independent-review attempt (SHA-256
+`c6ee62b05b1909300dfc0c510935b19391d031a2c357509086dd15c830223c17`) failed
+its own `models == 0` predicate because the field is `NOT_INSTRUMENTED`; that
+review failure is not an A11 product failure. The zero-provider boundary is
+supported instead by the frozen no-Runtime/no-provider protocol path and the
+actual zero POST/admission counts, completed MCP process receipt and zero CLI
+business executions.
+
+A11's scoped Android `group.key_manifest/grant/status` success does not close
+the independent eight-case v1.6.5 encrypted
+`session.capabilities`/`link.list`/`link.review_policy_status` suite or its
+restart/uncertainty cases. It also does not establish a fresh CLI Runtime turn,
+foreground autonomy, Native account authentication, V67, physical Android,
+two physical Nodes or public HTTPS. The clean-328f aggregate remains **FAIL**;
+overall first-release acceptance remains **PARTIAL**.
 
 A5 used clean Core host HEAD `40c0c5afc376b3325b92772d6f6619ba93b5d8e3`
 with source SHA-256 `c814a7138aefe0be009645c9834d3de7f4427bccf6b1477b1c11fd9589c612f8`,
@@ -296,7 +344,7 @@ Go test build is not a new Hub image and does not retroactively alter the c688
 image or APK producer used by A7/A8. A7 and A8 remain their recorded Native
 attempts; neither the Go regression suite nor the catalog check is an actual
 Native wake/Join, Owner-signed Group grant, or Android encrypted status result.
-The independent eight v1.6.5 Android status/restart cases remain **NOT_RUN**.
+The independent eight-case v1.6.5 Link-policy status/restart cases remain **NOT_RUN**.
 
 A separate host-only provider diagnostic returned HTTP 200 for one
 `gpt-5.6-luna` POST through the existing CONNECT-verified TLS route; it made no
@@ -389,11 +437,12 @@ private-key paths.
 ## Remaining first-release acceptance
 
 C14 passed the bounded six-turn default-daemon G2/G3 scenario with independent
-exact cleanup. A3 separately passed only the synthetic OwnerProof vector
-instrumentation; it did not exercise a real Group grant. The independent
-v1.6.5 Android encrypted status read across an exact owned Hub restart, a real
-Group grant, V67/account-bound submission, two physical Nodes and public HTTPS
-remain unresolved or NOT_RUN. V67's account-bound Native submission API is
+exact cleanup. A11 separately passed an Android Owner Group grant and encrypted
+Group-status read before/after an owned Hub restart through a same-UID MCP
+protocol scope; it did not run a CLI Runtime/provider. The independent eight-
+case v1.6.5 Link-policy encrypted status read across an exact owned Hub restart,
+V67/account-bound submission, two physical Nodes and public HTTPS remain
+unresolved or NOT_RUN. V67's account-bound Native submission API is
 **UNSUPPORTED**, so it is not a source-only implementation task until a
 supported API exists. Broader Native acceptance beyond C14's bounded
 default-daemon scope remains unverified; C14 does not establish the separate

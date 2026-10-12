@@ -9,7 +9,7 @@ The v1.6.4 images, bundles and results below retain their original attribution.
 ## Current Core/Hub validation index — v0.0.x development; target v0.1.0 PARTIAL
 
 The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-and [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+and [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
 wire 1, catalog 55, schema 59 and software 0.0.2 remain unchanged. Joint11
 passed its eight Android recovery cases and final close ACK with exact cleanup.
@@ -18,30 +18,34 @@ not Android status-read evidence. A3 passed one synthetic Android OwnerProof
 vector instrumentation test using immutable APKs from producer `1151b06`; this
 is not a real Group grant and not a build from current Client `740882`. Details
 are in the [test closeout](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
-The independent v1.6.5 encrypted status-read/restart, Native Owner-signed
-Group-key grant, physical-device and public HTTPS acceptance remain NOT_RUN.
-Client artifacts retain their own producer/source attribution; this Core
-checkpoint changes no Client source or contract.
+The A11 Group-key operator separately passed Owner grant and encrypted Group
+status before/after one owned Hub restart through a same-UID MCP protocol path;
+it did not run a CLI Runtime/provider or establish AI autonomy, Native account
+authentication or context. The independent eight-case v1.6.5 Link-policy
+encrypted status-read/restart suite, physical-device and public HTTPS
+acceptance remain NOT_RUN. Client artifacts retain their own producer/source
+attribution; this Core checkpoint changes no Client source or contract.
+The retained c688 Hub image and clean-328f standard delivery predate Core 0326;
+a fresh build/package and Hub interop check must carry its own source attribution.
 
-The separate Group-key operator has eight retained attempts. A7 reached the
-fresh Native Join scope check, but its fixture agent omitted `CICADA_HUB_ID`,
-so the empty Hub ID caused `SCOPE_CHECK_UNAVAILABLE` before registry lookup;
-`whoami` errored and publish was not reached. A8 included that environment
-line but failed on its first CLI invocation after one HTTP 500 POST, before
-resume or Join, so it does not validate the correction in a Native run. Both had confirmed cleanup
-and unchanged source/resident snapshots. Neither establishes a completed Native
-Join/publish proof, an Owner-signed Group-key grant or encrypted Android status.
-C14's separately scoped ASK/Reply result remains unchanged. See the retained
-[A1–A8 results and source attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5). The
-single-Hub approved-identity correction passed offline Go validation, but no
-new real Native run has exercised it; see the [validation scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
+The Group-key operator has eleven retained attempts. A9 completed Native
+Join/whoami/publish and Android's initial Owner grant/status but failed the
+post-restart guard; A10's exact resume returned HTTP 500 before MCP after two
+provider POSTs (200/500). A11 passed a narrower same-UID MCP protocol scope and
+Android Owner Group grant with encrypted Group status `CURRENT` before/after
+one exact owned Hub restart; this is not a fresh CLI Runtime run. The
+[A1–A11 record and attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+preserves each failure/pass boundary. C14's separately scoped ASK/Reply result
+remains unchanged. The single-Hub approved-identity correction passed offline
+Go validation; the A11 protocol lane does not establish Native Runtime
+autonomy. See the [Go validation scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
 
 The current explicit-metadata [Group-key fixture bootstrap](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11)
-passed its owned Hub preparation and cleanup with zero model calls; this does
-not itself establish Native Join, an Owner-signed Group-key grant or encrypted
-Android status. The separate A7/A8 Native attempts remain failures/partial, as
-recorded above; the independent eight v1.6.5 encrypted status/restart cases
-remain NOT_RUN.
+passed its owned Hub preparation and cleanup with zero model calls; this
+bootstrap alone does not establish Native Join, an Owner-signed Group-key grant
+or encrypted Android status. Those Group-key steps have separate A11 scoped
+evidence. The independent eight v1.6.5 Link-policy encrypted status/restart
+cases remain NOT_RUN.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-
@@ -50,11 +54,12 @@ record](native-default-daemon-validation.md) for its source scope and receipts.
 C9–C12 remain historical paid FAILs; in particular, C12's B-side HTTP 500 and
 cause-unknown result is not rewritten by C14. This Core work changes no Client
 source or contract.
-The next Client-side validation is a test-only v1.6.5 encrypted status read
-across an exact-owned Hub restart, using the already pinned delivery and its
-independently pinned Hub, Owner and Device identities, plus a separately scoped
-real Group-grant result. A3's synthetic OwnerProof vector is already tested;
-do not rerun it as a substitute for a real grant. Add a new Android
+The next Client-side validation is a test-only v1.6.5 Link-policy encrypted
+status read across an exact-owned Hub restart, using the already pinned
+delivery and its independently pinned Hub, Owner and Device identities. A11's
+Group-key grant/status result is separately scoped and does not replace these
+Link-policy reads. A3's synthetic OwnerProof vector is already tested; do not
+rerun it as a substitute for a real grant. Add a new Android
 instrumentation selector beside
 `CICADA_CLIENT/android/app/src/androidTest/java/ai/cicada/client/hub/LinkReviewPolicyStatusInteropTest.kt`;
 the existing class is explicitly v1.6.1 and does not prove restart persistence.

@@ -1,15 +1,16 @@
 # Disposable Client Group-key fixture
 
 Status: **v1.6.5 scoped Hub bootstrap verified**. The separate Group-key
-operator has eight retained attempts. A7 reached a fresh Native Join scope
-check, but its fixture agent omitted `CICADA_HUB_ID`, so the empty Hub ID caused
-`SCOPE_CHECK_UNAVAILABLE` before registry lookup; `whoami` errored and publish
-was not reached. A8 included the environment line but failed before resume or
-Join after one HTTP 500 POST, so it does not validate the correction in a Native run. Native
-Group-key grant and Android encrypted status remain NOT_REACHED or NOT_RUN. See
-the [A1–A8 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5). The
-Go single-Hub identity correction passed offline tests/build but has no new
-Native runtime result yet; see its [scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
+operator has eleven retained attempts: A9's post-restart guard and A10's exact
+resume failed; A11 passed a same-UID MCP protocol scope, Android Owner Group
+grant, and encrypted Group status `CURRENT` before and after an exact owned Hub
+restart. A11 did not run a CLI Runtime/provider or establish AI autonomy,
+Native account authentication or context. Its independent eight-case v1.6.5
+Link-policy status/restart suite remains NOT_RUN. See the
+[A1–A11 attempt record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+for the failures, scoped pass and source attribution. The Go single-Hub
+identity correction passed offline tests/build; A11 is not a Native Runtime
+run. See its [scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
 Software 0.0.2, schema 59, wire 1 and catalog 55 are unchanged. The current
 [`client-group-key-fixture.sh`](../scripts/client-group-key-fixture.sh)
 accepts canonical authoritative v1.3 and later minor revisions, including
@@ -17,9 +18,10 @@ patch revisions such as `client-hub-v1.6.5`. The hermetic
 [`test_client_group_key_fixture.py`](../scripts/test_client_group_key_fixture.py)
 executes the real script with a Docker substitute that records `info` and
 fails before creating resources; this proves metadata admission only. The
-separate A2 Docker preparation passed with the fixed delivery below. See the
-[current Client validation handoff](client-hub-development.md) for the remaining
-current test task.
+separate A2 Docker preparation passed with the fixed delivery below. The later
+A11 Group-key grant/status result is separate from this bootstrap command. See
+the [current Client validation handoff](client-hub-development.md) for the
+remaining Link-policy status test.
 
 ## Current v1.6.5 bootstrap — 2026-10-11
 
@@ -55,7 +57,8 @@ is **PASS_SCOPED_BOOTSTRAP**; its [independent closeout](../.cicada-data/v01-nex
 (SHA-256 `ab6bb303d34256d167df1e72620ce0302f34ef5ed83183742eb9a189d1d34039`)
 rechecked the hashes, source, residents and cleanup. Model calls were zero.
 This bootstrap did not test native Join/leased Endpoint, an Owner-signed
-Android Group-key grant or encrypted status. The independent eight v1.6.5
+Android Group-key grant or encrypted status. Those Group-key steps have
+separate scoped A11 evidence; the independent eight v1.6.5 Link-policy
 status/restart cases, physical Android and public HTTPS remain **NOT_RUN**.
 
 Cleanup accepts only a direct `/tmp/cgk.<8 alnum>` directory owned by the

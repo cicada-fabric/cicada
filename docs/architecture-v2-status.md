@@ -5,7 +5,7 @@
 ## Current acceptance status — v0.0.x development; target v0.1.0 PARTIAL
 
 Use the [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-for product scope and the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+for product scope and the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 for current source and artifact checks. Software is 0.0.2, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
@@ -21,15 +21,25 @@ G2/G3 or T9. Historical C9–C12 paid FAILs, including C12's cause-unknown HTTP
 [Native record](native-default-daemon-validation.md). Overall v0.1.0 remains
 PARTIAL.
 
-Next: obtain the Client's independent v1.6.5 encrypted status-read result
-across an exact owned Hub restart and evidence for a real Group grant. A3's
-synthetic OwnerProof vector selector passed, but does not prove a grant; do not
-repeat it as a substitute. Keep physical-device, public HTTPS and user
-deployment evidence separate. V67 account-bound Native submission is
-UNSUPPORTED; retain the safe Relay fallback. Do not repeat the Native model run
-or whole-Go suite without a relevant input change or new failure evidence. The
-default-daemon selector remains outside the one-click runner. Physical
-StopVerifier, real-device and public HTTPS remain NOT_RUN.
+A9's Group-key attempt passed Native Join/whoami/publish and Android's initial
+Group grant/status but failed its post-restart guard. A10's exact resume failed
+HTTP 500 before MCP after two provider POSTs. A11 passed a narrower same-UID
+MCP protocol scope plus Android Owner grant and encrypted Group status before
+and after one owned Hub restart; it was not a CLI Runtime/provider run. See the
+[A1–A11 evidence](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
+The independent eight-case v1.6.5 Link-policy status-read/restart suite remains
+NOT_RUN. The retained c688 interop image and clean-328f standard delivery
+predate Core 0326, so a fresh package/build and Hub interop result needs separate
+attribution.
+
+Next: complete the independent Client Link-policy encrypted status-read suite
+across an exact owned Hub restart, and package/interop-test a Hub from current
+clean Core. Keep physical-device, public HTTPS and user deployment evidence
+separate. V67 account-bound Native submission is UNSUPPORTED; retain the safe
+Relay fallback. Do not repeat the Native model run or whole-Go suite without a
+relevant input change or new failure evidence. The default-daemon selector
+remains outside the one-click runner. Physical StopVerifier, real-device and
+public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 

@@ -3,7 +3,7 @@
 ## Current closeout index — v0.0.x development; target v0.1.0 PARTIAL
 
 The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-is the product-status index. The [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
+is the product-status index. The [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 records the clean-328f aggregate (overall FAIL), its passing Go lane and the
 later Python, artifact, Link, Browser, PQTLS, G4/G5 and SQLite checks with their
 separate source scopes. Development remains software 0.0.2, contract
@@ -24,10 +24,19 @@ work, retain their original results. V67 remains UNSUPPORTED and uses the safe
 Relay fallback; physical StopVerifier, real-device and public HTTPS remain
 NOT_RUN. Development remains 0.0.2 / contract 1.6.5 and v0.1.0 remains PARTIAL.
 
-Next: obtain the Client's independent v1.6.5 encrypted status-read result
-across an exact owned Hub restart and evidence for a real Group grant. A3's
-synthetic OwnerProof vector selector passed, but does not prove a grant; do not
-repeat it as a substitute. Keep physical-device, public HTTPS and user
+A9 passed its bounded Native Join/publish and Android initial Group status but
+failed the post-restart guard; A10's exact resume returned HTTP 500 before MCP
+after two provider POSTs. A11 passed a separate same-UID MCP protocol scope,
+Android Owner Group grant, and encrypted Group status before/after one owned
+Hub restart; it was not a CLI Runtime/provider run. The independent eight-case
+v1.6.5 Link-policy status-read/restart suite remains NOT_RUN. See the
+[A1–A11 evidence](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+for boundaries and source attribution.
+
+Next: complete the independent Client Link-policy status-read suite and build,
+package and interop-test a Hub from clean Core 0326. The retained c688 interop
+image and clean-328f standard delivery predate that source; any new artifact
+needs separate attribution. Keep physical-device, public HTTPS and user
 deployment evidence separate. Do not repeat the Native model run or whole-Go
 suite without a new source/input change or failure evidence. The clean-328f
 aggregate remains FAIL; later scoped passes retain their own sources. The

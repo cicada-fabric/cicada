@@ -6,11 +6,11 @@ and artifact attribution. It does not change `CICADA.md`, the Client contract,
 or any product policy.
 
 The current clean-source aggregate and separately scoped follow-up validation
-are summarized in the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout).
+are summarized in the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout).
 
 <a id="current-20261010"></a>
 
-## Current evidence — updated 2026-10-11 — v0.0.x development; target v0.1.0 PARTIAL
+## Current evidence — updated 2026-10-12 — v0.0.x development; target v0.1.0 PARTIAL
 
 The **client-hub-v1.6.5** source contract adds own-side policy signer preview,
 preserving wire 1 / catalog 55 / schema 59 / software 0.0.2. QA ran on the
@@ -89,23 +89,32 @@ Historical e2a image and packet attribution remain unchanged.
 
 A separate Android A3 run passed only the synthetic OwnerProof manifest-binding
 vector on the immutable APK pair from producer `1151b06e`; it was not built from
-the current Client checkout and did not verify a real Group grant. The
-independent postcheck passed 38/38 checks. The v1.6.5 encrypted status read
-across an exact-owned Hub restart and a Native Owner-signed Group-key grant remain NOT_RUN. See the
-[scoped OwnerProof record](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector).
+the current Client checkout. Its independent postcheck passed 38/38 checks. The
+later A11 Group-key scope did verify an Owner grant and encrypted Group status
+across one owned Hub restart, but it is distinct from the v1.6.5 Link-policy
+status-read suite below. See the [scoped OwnerProof record](v00-test-closeout-20261011-validation.md#synthetic-android-ownerproof-vector)
+and [A1–A11 record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
 
-The separate Group-key operator has eight retained attempts. A7 reached a
-fresh Native Join scope check but could not validate Hub scope because the
-fixture agent omitted `CICADA_HUB_ID`; it returned `SCOPE_CHECK_UNAVAILABLE`
-before registry lookup, with `whoami` error and publish NOT_REACHED. A8 included
-the environment line but failed on its first CLI invocation after one HTTP 500
-POST, before resume or Join, so the correction has not been exercised in a Native run. Neither run
-establishes an Owner-signed Group-key grant or Android encrypted status. The
-[A1–A8 record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
-retains each attempt and its source/image/APK attribution; exact upstream cause
-for A8 is UNKNOWN. The single-Hub approved-identity Go correction passed
-normal/race, full command-package tests, vet and build, but has not yet had a
-new real Native run; see the [scoped validation](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
+The Group-key operator has eleven retained attempts. A9 completed Native
+Join/whoami/publish and Android Owner grant plus initial `CURRENT` status, but
+failed its post-restart guard; six HTTP 200 responses do not imply a quota
+cause. A10's exact CLI resume returned HTTP 500 before MCP after two provider
+POSTs (200/500), with cause UNKNOWN. A11 passed a narrower same-UID MCP
+protocol scope and an Android Owner Group grant with `CURRENT` status before
+and after one exact owned Hub restart. It did not execute a CLI Runtime/provider
+or prove AI autonomy, Native account authentication or context. The
+single-Hub approved-identity Go correction passed normal/race, full
+command-package tests, vet and build; A11 is not a new Native Runtime run.
+
+A11 ran on clean Core `0326b1c6e6f4105347c2f0c31a0a7c9394dcd924` and clean
+Client `740882b86d798a3d514b24b2bc2fa2802718d79d`, with unchanged source
+fingerprints and six resident digests. The Hub remained the c688 image; APKs
+remain from immutable Client producer `1151b06e04b172de9c7b5989ffec1318e58bf862`.
+The Node binary was the A3 compile-check artifact from dirty producer FF3196,
+with a post-commit Go-source/module-file mapping, not a new 0326 Hub image or
+complete embedded-input inventory. The [independent A11 check](../.cicada-data/v01-next-gates-20261011/native-direct-audit/group-key-native-android-driver-a1/ROOT-A11-INDEPENDENT-CHECK.A2.NONAUTH.json)
+passed 31/31 scoped checks. The earlier review's `models == 0` predicate failed
+against `NOT_INSTRUMENTED`; that reviewer failure is not an A11 product failure.
 
 The separate G4/G5 [qa-a5 receipt](../.cicada-data/v01-next-gates-20261010/qa-a5/ROOT-RUN.NONAUTH.json)
 (SHA-256 `e390f3fb2baa45daa851eba15b058150eadd5bfc907c47d6696c5b47f8fec3af`)
@@ -153,7 +162,7 @@ record](native-default-daemon-validation.md#c14-scoped-g2g3-acceptance). C9–C1
 remain actual paid FAILs in the attempt history; C14 does not rewrite C12's
 cause-unknown B-side HTTP 500, its NOT_REACHED steps, or any prior run's cleanup
 fields. The loaded-queue A5 result remains `QUEUE_ACCEPTED` with Node inbox
-`CONSUMPTION_UNCONFIRMED` for that test; the separate Group-key operator A1–A8
+`CONSUMPTION_UNCONFIRMED` for that test; the separate Group-key operator A1–A11
 attempts are linked above.
 
 ### Historical full Go test overlay
@@ -946,8 +955,10 @@ Native or model-consumption recovery.
 Current delivery, Client preparation and separately attributed APK build are in
 [the current evidence index](#current-20261010). Joint11 passed its eight Android
 recovery cases and final close ACK with exact cleanup. C14 is a separate scoped
-Core/Native result; Android encrypted status reads and GroupOwnerProof remain
-NOT_RUN, as do physical-device acceptance and broader Native boundaries.
+Core/Native result. A11 passed the Android Owner Group grant and encrypted
+Group-status read before/after one owned Hub restart in its protocol-only scope;
+the independent eight-case v1.6.5 Link-policy status suite, physical-device
+acceptance and broader Native boundaries remain NOT_RUN.
 Historical F38 and earlier
 Client runs retain their tested APK, Core and runtime attribution; no Client
 source was changed by this Core checkpoint.
@@ -957,7 +968,9 @@ source was changed by this Core checkpoint.
 1. C14 passed its bounded six-turn default-daemon G2/G3 scope with exact cleanup;
    C9–C12 remain separate historical paid FAILs and are not rewritten. C14 does
    not establish V67/account-bound submission, cold resume, two physical Nodes,
-   Android encrypted status reads/GroupOwnerProof or public HTTPS. G4's real
+   the independent eight-case Link-policy encrypted status reads or public HTTPS.
+   A11's Group-key grant/status pass is narrower and did not use a CLI Runtime.
+   G4's real
    queue-crash evidence remains an injection-before-ledger result with
    `INJECTION_UNCERTAIN` and reinjection refused; it is not a cold-resume result.
    Cold background resume is not asserted as an unconditional first-release
@@ -965,8 +978,13 @@ source was changed by this Core checkpoint.
    See the [Native record](native-default-daemon-validation.md).
 2. Obtain a supported account-bound Native submission API before implementing
    V67; current inspected API support is UNSUPPORTED. Keep physical StopVerifier,
-   real-device/Android status-read and public-HTTPS gates separately NOT_RUN.
-3. Keep the clean-328f aggregate FAIL as recorded. Do not repeat the aggregate
+   the independent Client Link-policy status-read and public-HTTPS gates
+   separately NOT_RUN.
+3. Build/package and interop-test a Hub from current clean Core 0326 before
+   treating that source as a new delivery; the retained c688 interop image and
+   clean-328f standard delivery predate it, and the A3 Go artifact is
+   compile-check-only. Keep the
+   clean-328f aggregate FAIL as recorded. Do not repeat the aggregate
    or standard/PQ artifact QA for this test-only checkpoint; rerun whole-Go
    validation when Go build/test inputs change or new Go failure evidence
    warrants it. The optional
