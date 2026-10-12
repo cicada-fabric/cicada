@@ -28,6 +28,27 @@ class LinkPolicyStatusFixtureV165Test {
     }
 
     @Test
+    fun acceptsRevokedVersionTwoZeroHeadInBothFixtureLanesWithoutCurrentAuthority() {
+        for (caseId in listOf(4, 5)) {
+            val status = noneStatus().apply {
+                addProperty("link_version", 2)
+                addProperty("current", false)
+            }
+            val parsed = parse(fixture(caseId).apply { add("expected_status", status) }, caseId)
+            assertEquals(2L, parsed.linkVersion)
+            assertEquals("SOURCE", parsed.mySide)
+            assertEquals(0L, parsed.expectedStatus.get("policy_version").asLong)
+            assertEquals(false, parsed.expectedStatus.get("current").asBoolean)
+            assertTrue(parsed.expectedStatus.getAsJsonArray("accepted_sides").isEmpty)
+            LinkPolicyStatusFixtureV165.assertStatus(status.deepCopy(), parsed)
+            expectInvalid {
+                LinkPolicyStatusFixtureV165.assertStatus(
+                    status.deepCopy().apply { addProperty("current", true) }, parsed)
+            }
+        }
+    }
+
+    @Test
     fun rejectsDuplicateExtraOversizedAndDeepJson() {
         val valid = fixture(0).toString()
         val duplicate = "{\"schema\":\"duplicate\",${valid.substring(1)}"

@@ -24,6 +24,50 @@ class LinkReviewPolicyStatusValidationTest {
     }
 
     @Test
+    fun acceptsNoncurrentZeroHeadForRevokedSelectedLink() {
+        val status = LinkReviewPolicyStatusValidation.validateStatus(
+            defaultStatus(version = 2L).apply { addProperty("current", false) }, "link-1", 2L)
+        assertEquals(2L, status.linkVersion)
+        assertEquals(0L, status.policyVersion)
+        assertEquals("", status.policyDigest)
+        assertEquals("NONE", status.mode)
+        assertEquals(0, status.reviewerCount)
+        assertEquals(0, status.maxFailovers)
+        assertEquals(0, status.reviewerLeaseSeconds)
+        assertEquals(0, status.maxReviewAgeSeconds)
+        assertFalse(status.current)
+        assertTrue(status.acceptedSides.isEmpty())
+        assertEquals(null, status.expiresAt)
+    }
+
+    @Test
+    fun noncurrentZeroHeadStillRejectsEveryMalformedDefaultAndNonbooleanCurrent() {
+        val mutations: List<(JsonObject) -> Unit> = listOf(
+            { it.addProperty("policy_digest", "a".repeat(64)) },
+            { it.getAsJsonObject("policy").addProperty("mode", "METADATA") },
+            { it.getAsJsonObject("policy").getAsJsonArray("reviewers").add(JsonObject().apply {
+                addProperty("endpoint_id", "endpoint-1"); addProperty("group_id", "group-1")
+            }) },
+            { it.getAsJsonObject("policy").addProperty("max_failovers", 1) },
+            { it.getAsJsonObject("policy").addProperty("reviewer_lease_seconds", 30) },
+            { it.getAsJsonObject("policy").addProperty("max_review_age_seconds", 60) },
+            { it.getAsJsonArray("accepted_sides").add("SOURCE") },
+            { it.addProperty("expires_at", "2030-01-01T00:00:00Z") },
+            { it.addProperty("current", "false") },
+            { it.remove("current") },
+            { it.addProperty("policy_version", 0.0) },
+            { it.addProperty("unexpected", true) },
+        )
+        for (mutate in mutations) {
+            val value = defaultStatus(version = 2L).apply { addProperty("current", false) }
+            mutate(value)
+            expectCode("LINK_REVIEW_STATUS_INVALID") {
+                LinkReviewPolicyStatusValidation.validateStatus(value, "link-1", 2L)
+            }
+        }
+    }
+
+    @Test
     fun rejectsStatusBoundToDifferentLinkOrStaleLinkVersion() {
         expectCode("LINK_REVIEW_STATUS_SCOPE_MISMATCH") {
             LinkReviewPolicyStatusValidation.validateStatus(defaultStatus(), "other-link", 4L)

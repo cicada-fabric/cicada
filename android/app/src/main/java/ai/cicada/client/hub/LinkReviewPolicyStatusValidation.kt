@@ -157,7 +157,7 @@ internal object LinkReviewPolicyStatusValidation {
 
         if (policyVersion == 0L) {
             if (digest.isNotEmpty() || mode != "NONE" || reviewers.size() != 0 || maxFailovers != 0 ||
-                leaseSeconds != 0 || maxAgeSeconds != 0 || !current || acceptedSides.isNotEmpty() || expiresAt != null) {
+                leaseSeconds != 0 || maxAgeSeconds != 0 || acceptedSides.isNotEmpty() || expiresAt != null) {
                 invalid("LINK_REVIEW_STATUS_INVALID")
             }
         } else if (!digest.matches(Regex("^[0-9a-f]{64}$"))) {

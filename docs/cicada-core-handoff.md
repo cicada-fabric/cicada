@@ -30,6 +30,22 @@ Docker. Evidence is under
 `/gpu1-share/data/cicada-client/v165-link-policy-status-control-preparation-20261012`.
 These are offline preparation results, not Android runtime acceptance.
 
+### Authorized correction: revoked Link with policy HEAD0
+
+The successor removes only `!current` from the zero-head DTO restriction,
+allowing the legal encrypted `HEAD0/current=false` metadata for a revoked
+Link. All remaining NONE/empty/zero/type/scope constraints remain strict;
+no consent, routing or role is granted. Eighteen scoped JVM tests **PASS**,
+exit 0 (28.3776 seconds), after a preserved RED run with two failures;
+Android-test Kotlin compilation **PASS**, exit 0 (30.0820 seconds).
+The [plan](client-link-policy-status-v1.6.5-plan.md#authorized-head0-metadata-correction)
+and `/gpu1-share/data/cicada-client/v165-link-policy-status-head0-preparation-20261012/DELIVERY.NONAUTH.json`
+identify the new clean source/APK producer and actual offline receipts.
+New-producer Android runtime is **NOT_RUN**. Root's cf069 cases 0/1 retain
+their old immutable pair and separate attribution; the subsequent corrected
+cases must name the successor pair. No new phase, Core change, Grant test,
+model or Client-owned online execution occurs.
+
 ## Current acceptance: v1.6.5 joint11 Android RPC recovery
 
 The fixed target is clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,

@@ -248,3 +248,37 @@ their separate evidence root. A new clean test APK and its full producer
 inventory are sealed in the successor `DELIVERY.NONAUTH.json`; it does not
 replace the historical APKs or confer online authorization. All eight online
 cases remain `NOT_RUN` until Root supplies the fresh scope and runs them.
+
+### Authorized HEAD0 metadata correction
+
+Root and an independent Core reviewer confirmed that a legally revoked Link
+at version 2 may have an unconfigured policy head (`policy_version=0`) with
+`current=false`. The fixed c292 Store derives that flag from current scope;
+the wire/OpenAPI contract does not require it to be true. The earlier Client
+validator wrongly rejected this metadata, including during public fixture
+parsing. That static incompatibility is preserved in the cf069 audit receipt.
+
+The successor removes only the unconditional `!current` rejection in the
+HEAD0 branch of `LinkReviewPolicyStatusValidation`. It retains the boolean
+type and exact Link scope checks, mode `NONE`, empty digest/reviewers/accepted
+sides, zero policy limits and no expiry. A noncurrent DTO supplies no consent
+or routing authority. There is no Grant, fabricated current flag, Core change
+or new test phase.
+
+Scoped tests add a legal revoked HEAD0 case, twelve malformed/type mutations,
+and actual fixture-parser checks for both KEY/NONE lanes at Link version 2.
+The before-fix RED run has 18 tests, two expected failures, exit 1 in 32.1306
+seconds; the corrected GREEN run has 18 tests, zero failures/errors/skips,
+exit 0 in 28.3776 seconds. Android-test Kotlin compilation exits 0 in 30.0820
+seconds. All commands use the existing immutable network-none builder and
+Client-only caches; full argv, source hashes and owned-container closure are
+under `/gpu1-share/data/cicada-client/v165-link-policy-status-head0-preparation-20261012`.
+
+One meaningful source checkpoint and a clean APK pair are sealed there in
+`DELIVERY.NONAUTH.json`. New-source Android runtime remains `NOT_RUN`; Root
+may separately use the immutable cf069 pair for cases 0/1, whose results keep
+their own producer attribution. Subsequent cases using the corrected pair
+must record that new producer, not inherit a prior APK result. Joint11,
+the original failures, all cf069 artifacts and extra uncertainty `NOT_RUN`
+scope are preserved. No model, online fixture or shared resource is started
+by this Client preparation.
