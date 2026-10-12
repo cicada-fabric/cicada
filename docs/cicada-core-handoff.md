@@ -1,5 +1,22 @@
 # CICADA Client integration handoff
 
+## Current task: independent v1.6.5 Link-policy status suite
+
+The separate [eight-case plan](client-link-policy-status-v1.6.5-plan.md) adds
+test-only Android selectors for KEY/NONE status, Owner/old-version/generic
+bypass refusals, original status-packet recovery and same-profile status
+across an exact owned Hub restart. New fixture JVM checks **PASS** (8 tests)
+and Android test Kotlin compilation **PASS**; initial test/compile failures
+are retained. The old v1.6.1 selectors and Joint11 acceptance are unchanged.
+
+All eight online cases remain **NOT_RUN**, pending Root's immutable current
+Core/image tuple and safe status-response-loss fixture. No Client production
+code or roles change. Root owns Hub/emulator/enrollment/restart/cleanup.
+Current journaling uses `linkConsentStatusReadContext`; the legacy context
+is reported separately. The old Group test's formal candidate CAS and
+`NodeControlKeyBinding.owner_binding_id` shape is restored without a grant
+rerun. See the plan for exact selectors, fixture fields and remaining gaps.
+
 ## Current acceptance: v1.6.5 joint11 Android RPC recovery
 
 The fixed target is clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,

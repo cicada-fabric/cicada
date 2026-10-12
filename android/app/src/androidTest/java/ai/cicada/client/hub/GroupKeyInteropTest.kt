@@ -43,8 +43,12 @@ class GroupKeyInteropTest {
         val node = preview.getAsJsonObject("result")
         val nodeId = node.get("node_id").asString
         val nodeName = node.get("node_name").asString
+        val candidateDigest = node.get("candidate_digest").asString
+        val candidateVersion = node.get("candidate_version").asLong
         assertTrue(nodeId.isNotBlank())
         assertTrue(nodeName.isNotBlank())
+        assertTrue(candidateDigest.matches(Regex("[0-9a-f]{64}")))
+        assertTrue(candidateVersion > 0)
 
         publish("group_key_node_confirmation_required", "true")
         publish("group_key_pending_node_id", nodeId)
@@ -63,11 +67,13 @@ class GroupKeyInteropTest {
 
         val confirmed = session.rpc("nodes.confirm", JsonObject().apply {
             addProperty("user_code", code)
+            addProperty("candidate_digest", candidateDigest)
+            addProperty("candidate_version", candidateVersion)
         })
         assertTrue("Encrypted Node confirmation was rejected", confirmed.get("ok").asBoolean)
         val binding = confirmed.getAsJsonObject("result")
         assertEquals(nodeId, binding.get("node_id").asString)
-        publish("group_key_node_binding_id", binding.get("id").asString)
+        publish("group_key_node_binding_id", binding.get("owner_binding_id").asString)
         publish("group_key_node_state", binding.get("state").asString)
 
         val groupName = arguments.getString("group_name")
