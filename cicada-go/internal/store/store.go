@@ -409,13 +409,22 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
+	return newWithMaintenanceMode(path, false)
+}
+
+func newWithMaintenanceMode(path string, exclusive bool) (*Store, error) {
 	dir, err := stateMaintenanceSQLiteDir(path)
 	if err != nil {
 		return nil, err
 	}
-	lease, err := acquireStateMaintenance(dir, false, true)
+	lease, err := acquireStateMaintenance(dir, exclusive, !exclusive)
 	if err != nil {
 		return nil, err
+	}
+	if exclusive {
+		if err := RequireStateRestoreStartupAllowed(dir); err != nil {
+			return nil, errors.Join(err, lease.Close())
+		}
 	}
 	if err := protectSQLiteState(path); err != nil {
 		return nil, errors.Join(err, lease.Close())

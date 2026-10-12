@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 usage() {
-  printf 'usage: %s VERSION [OUTPUT_DIR] [--transport standard|pqtls] [--pqtls-stage PREFIX]\n' "$0" >&2
+  printf 'usage: %s VERSION [OUTPUT_DIR] [--transport standard|pqtls] [--pqtls-stage PREFIX] [--targetarch amd64|arm64]\n' "$0" >&2
   printf 'builds checksummed CICADA binaries with embedded Hub WebCrypto assets and source provenance\n' >&2
   exit 2
 }
@@ -14,16 +14,20 @@ out_dir=dist
 if (($#)) && [[ "$1" != --* ]]; then out_dir="$1"; shift; fi
 transport=standard
 pq_stage=''
+target_arch=amd64
 while (($#)); do
   case "$1" in
     --transport) (($# >= 2)) || usage; transport="$2"; shift 2 ;;
     --pqtls-stage) (($# >= 2)) || usage; pq_stage="$2"; shift 2 ;;
+    --targetarch) (($# >= 2)) || usage; target_arch="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ "$transport" == standard || "$transport" == pqtls ]] || usage
 [[ "$transport" == pqtls || -z "$pq_stage" ]] || usage
+[[ "$target_arch" == amd64 || "$target_arch" == arm64 ]] || usage
+[[ "$transport" == pqtls || "$target_arch" == amd64 ]] || usage
 [[ "$version" =~ ^[0-9A-Za-z.-]+$ ]] || { printf 'build-release: invalid version: %s\n' "$version" >&2; exit 2; }
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -41,20 +45,28 @@ go_version="$(go version)"
   exit 1
 }
 if [[ "$transport" == pqtls ]]; then
-  [[ -n "$pq_stage" && "${CGO_ENABLED:-1}" == 1 && "${GOOS:-linux}" == linux && "${GOARCH:-amd64}" == amd64 ]] || {
-    printf 'build-release: PQ requires explicit accepted stage, CGO1 and linux/amd64\n' >&2; exit 1;
+  [[ -n "$pq_stage" && "${CGO_ENABLED:-1}" == 1 && "${GOOS:-linux}" == linux && "${GOARCH:-$target_arch}" == "$target_arch" ]] || {
+    printf 'build-release: PQ requires explicit architecture-matched stage, CGO1 and linux/%s\n' "$target_arch" >&2; exit 1;
   }
-  [[ "$(go env GOHOSTOS)/$(go env GOHOSTARCH)" == linux/amd64 ]] || {
-    printf 'build-release: PQ requires a native Linux amd64 glibc build host\n' >&2; exit 1;
+  [[ "$(go env GOHOSTOS)" == linux ]] || {
+    printf 'build-release: PQ builds require a Linux Go toolchain host\n' >&2; exit 1;
   }
   pq_stage="$(cd "$pq_stage" && pwd -P)"
-  python3 "$repo_root/scripts/hub-build-input-inventory.py" runtime --pqtls-stage "$pq_stage" >/dev/null
+  cc="${CC:-gcc}"
+  expected_cc_target=x86_64-linux-gnu
+  [[ "$target_arch" == amd64 ]] || { cc="${CC:-aarch64-linux-gnu-gcc}"; expected_cc_target=aarch64-linux-gnu; }
+  command -v "$cc" >/dev/null 2>&1 || { printf 'build-release: target C compiler missing: %s\n' "$cc" >&2; exit 1; }
+  [[ "$("$cc" -dumpmachine)" == "$expected_cc_target" ]] || {
+    printf 'build-release: C compiler target does not match linux/%s\n' "$target_arch" >&2; exit 1;
+  }
+  command -v readelf >/dev/null 2>&1 || { printf 'build-release: readelf is required for ELF validation\n' >&2; exit 1; }
+  python3 "$repo_root/scripts/hub-build-input-inventory.py" runtime --pqtls-stage "$pq_stage" --targetarch "$target_arch" >/dev/null
 fi
 
 compute_source_fingerprint() {
   if [[ "$transport" == pqtls ]]; then
     python3 "$repo_root/scripts/hub-build-input-inventory.py" capture --root "$repo_root" \
-      --transport pqtls --pqtls-stage "$pq_stage" --fingerprint-only
+      --transport pqtls --pqtls-stage "$pq_stage" --targetarch "$target_arch" --fingerprint-only
     return
   fi
   python3 - "$repo_root" <<'PY'
@@ -157,11 +169,11 @@ targets=(
   'windows amd64'
 )
 if [[ "$transport" == pqtls ]]; then
-  package="$stage_dir/cicada-linux-amd64-pqtls"
+  package="$stage_dir/cicada-linux-$target_arch-pqtls"
   mkdir -p "$package/bin" "$package/lib" "$package/share/licenses/openssl" "$package/share/licenses/cicada"
   cp "$stage_dir/LICENSE" "$package/share/licenses/cicada/LICENSE"
   python3 "$repo_root/scripts/hub-build-input-inventory.py" capture --root "$repo_root" \
-    --transport pqtls --pqtls-stage "$pq_stage" --output "$work_dir/pq-inputs.json"
+    --transport pqtls --targetarch "$target_arch" --pqtls-stage "$pq_stage" --output "$work_dir/pq-inputs.json"
   cgo_flags="$(python3 - "$pq_stage" <<'PY'
 import shlex, sys
 print(shlex.quote('-I' + sys.argv[1] + '/include'))
@@ -174,45 +186,51 @@ PY
 )"
   (
     cd "$source_dir/cicada-go"
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CGO_CFLAGS="$cgo_flags" CGO_LDFLAGS="$cgo_link" \
+    CC="$cc" CGO_ENABLED=1 GOOS=linux GOARCH="$target_arch" CGO_CFLAGS="$cgo_flags" CGO_LDFLAGS="$cgo_link" \
       go build -trimpath -buildvcs=false -tags cicada_pqtls \
       -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Version=${version} -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${revision} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${dirty} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${source_fingerprint}" \
       -o "$package/bin/cicada" ./cmd/cicada
   )
+  python3 "$repo_root/scripts/hub-build-input-inventory.py" verify-elf --binary "$package/bin/cicada" --targetarch "$target_arch" --product >/dev/null
+  observed_glibc="$(readelf --version-info "$package/bin/cicada" 2>/dev/null | grep -oE 'GLIBC_[0-9]+([.][0-9]+)+' | sort -Vu | tail -n 1)"
+  [[ -n "$observed_glibc" ]] || { printf 'build-release: product ELF has no verifiable glibc symbol floor\n' >&2; exit 1; }
   cp "$pq_stage/lib/libssl.so.3" "$pq_stage/lib/libcrypto.so.3" "$package/lib/"
   cp "$pq_stage/share/licenses/openssl/LICENSE.txt" "$package/share/licenses/openssl/"
-  CGO_ENABLED=1 CGO_CFLAGS="$cgo_flags" CGO_LDFLAGS="$cgo_link" \
+  CC="$cc" CGO_ENABLED=1 CGO_CFLAGS="$cgo_flags" CGO_LDFLAGS="$cgo_link" GOOS=linux GOARCH="$target_arch" \
     python3 "$repo_root/scripts/hub-build-input-inventory.py" go-notices \
-      --source "$source_dir/cicada-go" --destination "$package/share/licenses" --tags cicada_pqtls
-  python3 - "$package" "$work_dir/pq-inputs.json" "$version" "$revision" "$dirty" "$wasm_manifest_sha256" "$catalog_sha256" <<'PY'
+      --source "$source_dir/cicada-go" --destination "$package/share/licenses" --tags cicada_pqtls --targets "linux/$target_arch"
+  python3 - "$package" "$work_dir/pq-inputs.json" "$version" "$revision" "$dirty" "$wasm_manifest_sha256" "$catalog_sha256" "$target_arch" "$observed_glibc" <<'PY'
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1]); inputs = json.loads(pathlib.Path(sys.argv[2]).read_text())
-version, revision, dirty, wasm, catalog = sys.argv[3:]
+version, revision, dirty, wasm, catalog, arch, glibc = sys.argv[3:]
+target = "linux/" + arch
+runtime_target = inputs['runtime']['target']
 metadata = {'schema_version': 'cicada.pqtls-distribution.v1', 'software_version': version,
             'source': {'revision': revision, 'dirty': dirty == 'true', 'source_fingerprint': inputs['fingerprint']['sha256'], 'input_inventory': inputs},
             'toolchain': 'go1.27.1', 'hub_webcrypto_manifest_sha256': wasm, 'catalog_sha256': catalog,
-            'targets': ['linux/amd64'], 'transport_variant': 'pqtls', 'pqtls_available': True,
+            'targets': [target], 'transport_variant': 'pqtls', 'pqtls_available': True,
             'cgo_enabled': True, 'build_tag': 'cicada_pqtls', 'openssl_version': '3.5.9',
-            'loader': {'interpreter': '/lib64/ld-linux-x86-64.so.2', 'runpath': '$ORIGIN/../lib', 'minimum_observed_glibc_symbol': '2.34'},
+            'loader': {'interpreter': runtime_target['interpreter'], 'runpath': '$ORIGIN/../lib', 'minimum_observed_glibc_symbol': glibc},
             'runtime': inputs['runtime']}
 (root / 'BUILD-METADATA.json').write_text(json.dumps(metadata, sort_keys=True, indent=2) + '\n')
-(root / 'README.txt').write_text('CICADA optional Linux amd64 pure-PQ transport package. Initially validated on Debian12/bookworm glibc; not Alpine/musl.\nKeep bin/cicada and sibling lib together. Verify SHA256SUMS before startup and clear ambient LD_LIBRARY_PATH/LD_PRELOAD. No global loader installation is required.\nHub: bin/cicada serve --node-pqtls-config /private/hub.json\nNode: CICADA_BINARY_PATH=<package>/bin/cicada CICADA_NODE_PQTLS_CONFIG=/private/node.json scripts/install-cicada-worker.sh\nCertificate approval and rotation are manual, TLS keys are independent, and current Store authority plus certificate validity fences remain enforced. No CA/OCSP/CRL service is bundled. Client/bootstrap uses the application frontdoor. No private keys or deployment fixtures are included.\n')
+(root / 'README.txt').write_text(f'CICADA optional {target} pure-PQ transport package. OpenSSL 3.5.9 was built for the recorded ELF target; observed glibc symbol requirement: {glibc}. Test this ABI on each deployment distribution; openEuler and Ubuntu 26 physical/native execution are not claimed by a QEMU check. Alpine/musl is unsupported.\nKeep bin/cicada and sibling lib together. Verify SHA256SUMS before startup and clear ambient LD_LIBRARY_PATH/LD_PRELOAD. No global loader installation is required.\nHub: bin/cicada serve --node-pqtls-config /private/hub.json\nNode: CICADA_BINARY_PATH=<package>/bin/cicada CICADA_NODE_PQTLS_CONFIG=/private/node.json scripts/install-cicada-worker.sh\nCertificate approval and rotation are manual, TLS keys are independent, and current Store authority plus certificate validity fences remain enforced. No CA/OCSP/CRL service is bundled. Client/bootstrap uses the application frontdoor. No private keys or deployment fixtures are included.\n')
 files = sorted(p for p in root.rglob('*') if p.is_file())
 (root / 'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root).as_posix()}\n' for p in files))
 PY
   python3 "$repo_root/scripts/hub-build-input-inventory.py" verify --root "$repo_root" \
-    --pqtls-stage "$pq_stage" --expected "$work_dir/pq-inputs.json"
-  (cd "$stage_dir" && tar -czf cicada-linux-amd64-pqtls.tar.gz cicada-linux-amd64-pqtls)
-  python3 - "$stage_dir" "$package" "$source_fingerprint" <<'PY'
+    --pqtls-stage "$pq_stage" --targetarch "$target_arch" --expected "$work_dir/pq-inputs.json"
+  (cd "$stage_dir" && tar -czf "cicada-linux-$target_arch-pqtls.tar.gz" "cicada-linux-$target_arch-pqtls")
+  python3 - "$stage_dir" "$package" "$source_fingerprint" "$target_arch" <<'PY'
 import hashlib,json,pathlib,sys
 stage, package = map(pathlib.Path,sys.argv[1:3])
 receipt={'schema_version':'cicada.pqtls-package-build-receipt.v1','source_fingerprint':sys.argv[3],
-         'archive_sha256':hashlib.sha256((stage/'cicada-linux-amd64-pqtls.tar.gz').read_bytes()).hexdigest(),
+         'target_arch':sys.argv[4],
+         'archive_sha256':hashlib.sha256((stage/f'cicada-linux-{sys.argv[4]}-pqtls.tar.gz').read_bytes()).hexdigest(),
          'package_file_sha256':{p.relative_to(package).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in package.rglob('*') if p.is_file()}}
 (stage/'PQ-BUILD-RECEIPT.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
 PY
   rm -rf "$package"
-  (cd "$stage_dir" && sha256sum cicada-linux-amd64-pqtls.tar.gz PQ-BUILD-RECEIPT.json LICENSE > SHA256SUMS)
+  (cd "$stage_dir" && sha256sum "cicada-linux-$target_arch-pqtls.tar.gz" PQ-BUILD-RECEIPT.json LICENSE > SHA256SUMS)
 else
 for target in "${targets[@]}"; do
   read -r os arch <<<"$target"

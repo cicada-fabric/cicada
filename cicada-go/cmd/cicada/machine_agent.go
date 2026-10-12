@@ -97,6 +97,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		writerRoot = *stateDir
 	}
 	pinned.WriterRoot = writerRoot
+	if err := recoverMachinePQHubIdentityHint(pinned, *pqConfig); err != nil {
+		return err
+	}
 	if err := configureMachinePQTransport(pinned, *pqConfig); err != nil {
 		return err
 	}

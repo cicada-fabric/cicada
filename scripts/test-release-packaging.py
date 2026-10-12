@@ -18,6 +18,7 @@ import unittest
 import importlib.util
 import shutil
 import stat
+import struct
 from unittest import mock
 
 
@@ -27,7 +28,87 @@ if len(sys.argv) == 2 and sys.argv[1] not in {"-h", "--help"}:
     os.environ["CICADA_RELEASE_ARTIFACT_DIR"] = sys.argv.pop()
 
 
+def synthetic_elf64(machine: int, interpreter: str, needed: tuple[str, ...], runpath: str) -> bytes:
+    """Return a tiny marked synthetic ELF metadata fixture; it cannot execute."""
+    strings = bytearray(b"\0")
+    offsets = {}
+    for value in (*needed, runpath):
+        offsets[value] = len(strings)
+        strings.extend(value.encode() + b"\0")
+    dynamic = bytearray()
+    for value in needed:
+        dynamic.extend(struct.pack("<QQ", 1, offsets[value]))  # DT_NEEDED
+    dynamic.extend(struct.pack("<QQ", 5, 0))  # DT_STRTAB, patched below
+    dynamic.extend(struct.pack("<QQ", 10, len(strings)))  # DT_STRSZ
+    dynamic.extend(struct.pack("<QQ", 29, offsets[runpath]))  # DT_RUNPATH
+    dynamic.extend(struct.pack("<QQ", 0, 0))
+    phoff, phentsize, phnum = 64, 56, 3
+    interp_offset = phoff + phentsize * phnum
+    interp = interpreter.encode() + b"\0"
+    dyn_offset = (interp_offset + len(interp) + 15) & ~15
+    str_offset = dyn_offset + len(dynamic)
+    dynamic[16 * len(needed) + 8:16 * len(needed) + 16] = struct.pack("<Q", str_offset)
+    end = str_offset + len(strings)
+    header = bytearray(64)
+    header[:16] = b"\x7fELF\x02\x01\x01" + bytes(9)
+    struct.pack_into("<HHIQQQIHHHHHH", header, 16, 3, machine, 1, 0, phoff, 0, 0, 64, phentsize, phnum, 0, 0, 0)
+    phdrs = bytearray()
+    phdrs.extend(struct.pack("<IIQQQQQQ", 1, 6, 0, 0, 0, end, end, 0x1000))
+    phdrs.extend(struct.pack("<IIQQQQQQ", 3, 4, interp_offset, interp_offset, interp_offset, len(interp), len(interp), 1))
+    phdrs.extend(struct.pack("<IIQQQQQQ", 2, 6, dyn_offset, dyn_offset, dyn_offset, len(dynamic), len(dynamic), 8))
+    result = bytearray(end)
+    result[:64] = header
+    result[phoff:phoff + len(phdrs)] = phdrs
+    result[interp_offset:interp_offset + len(interp)] = interp
+    result[dyn_offset:dyn_offset + len(dynamic)] = dynamic
+    result[str_offset:str_offset + len(strings)] = strings
+    return bytes(result)
+
+
 class ReleasePackagingTests(unittest.TestCase):
+    def test_pq_gate_cleanup_requires_exact_id_and_owner_and_allows_package_only(self):
+        script = (ROOT / "scripts/test-pqtls-packaging.sh").read_text()
+        cleanup = script.split("<<'PY_CONTAINER'\n", 1)[1].split("\nPY_CONTAINER", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="cicada-synthetic-cleanup-") as directory:
+            root = pathlib.Path(directory)
+            cid = "a" * 64
+            (root / "driver.cid").write_text(cid)
+            for actual_owner in ("synthetic-owner", "other-owner"):
+                with self.subTest(owner=actual_owner):
+                    removed = []
+
+                    def fake_run(arguments, **kwargs):
+                        self.assertEqual(arguments[0], "docker")
+                        self.assertEqual(arguments[-1], cid)
+                        if arguments[1] == "inspect":
+                            if arguments[3] == "{{.Id}}":
+                                return subprocess.CompletedProcess(arguments, 1, "")
+                            return subprocess.CompletedProcess(arguments, 0, actual_owner + "\t/driver\tfalse\n")
+                        self.assertEqual(arguments[1:3], ["rm", "--force"])
+                        removed.append(cid)
+                        return subprocess.CompletedProcess(arguments, 0, cid + "\n")
+
+                    argv = ["cleanup", str(root), "driver", "never-created-hub", "",
+                            "cicada.owner=synthetic-owner", "cicada.owner=hub", "synthetic-builder"]
+                    with mock.patch.object(sys, "argv", argv), mock.patch.object(subprocess, "run", fake_run):
+                        if actual_owner == "synthetic-owner":
+                            exec(compile(cleanup, "pq-cleanup-fixture", "exec"), {})
+                            receipt = json.loads((root / "container-cleanup.json").read_text())
+                            self.assertTrue(receipt["verified_absent"])
+                            self.assertEqual(len(receipt["containers"]), 1)
+                            self.assertEqual(removed, [cid])
+                        else:
+                            with self.assertRaisesRegex(SystemExit, "exact owner receipt"):
+                                exec(compile(cleanup, "pq-cleanup-fixture", "exec"), {})
+                            self.assertEqual(removed, [])
+
+    def test_arm64_legacy_interop_gate_refuses_unwired_execution(self):
+        result = subprocess.run(["sh", str(ROOT / "scripts/run-pqtls-interop-test.sh")],
+                                env={**os.environ, "CICADA_PQTLS_INTEROP_TARGETARCH": "arm64"},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("not wired to a target runner", result.stderr)
+
     def test_release_workflow_uses_the_hub_image_and_runs_packaging_checks(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn("python3 scripts/test-release-packaging.py", workflow)
@@ -497,20 +578,31 @@ class PQSelectionTests(unittest.TestCase):
             (goroot / "lib/wasm").mkdir(parents=True)
             (goroot / "lib/wasm/wasm_exec.js").write_text("// SYNTHETIC TOOLCHAIN FIXTURE\n")
             (goroot / "LICENSE").write_text("SYNTHETIC LICENSE FIXTURE, NOT DISTRIBUTABLE\n")
+            (tools / "amd64.elf").write_bytes(synthetic_elf64(62, "/lib64/ld-linux-x86-64.so.2",
+                                                               ("libssl.so.3", "libcrypto.so.3"), "$ORIGIN/../lib"))
+            (tools / "arm64.elf").write_bytes(synthetic_elf64(183, "/lib/ld-linux-aarch64.so.1",
+                                                               ("libssl.so.3", "libcrypto.so.3"), "$ORIGIN/../lib"))
             fake = tools / "go"
             fake.write_text("#!" + sys.executable + "\n" + '''import json,os,pathlib,sys
+import shutil
 args=sys.argv[1:]
 if args[0]=='version': print('go version go1.27.1 linux/amd64')
 elif args[0]=='env': print(os.environ['SYNTHETIC_GOROOT'] if args[1]=='GOROOT' else os.environ.get(args[1],{'GOOS':'linux','GOARCH':'amd64','GOHOSTOS':'linux','GOHOSTARCH':'amd64'}[args[1]]))
 elif args[0]=='list': print(json.dumps({'Module':{'Main':True}}))
 elif args[0]=='build':
- output=pathlib.Path(args[args.index('-o')+1]);output.write_bytes(b'SYNTHETIC GO OUTPUT, NEVER RUN AS PRODUCT')
+ output=pathlib.Path(args[args.index('-o')+1])
+ if output.parent.name=='bin':
+  shutil.copyfile(pathlib.Path(os.environ['SYNTHETIC_ELF_DIR'])/(os.environ.get('GOARCH','amd64')+'.elf'),output);output.chmod(0o755)
+ else: output.write_bytes(b'SYNTHETIC GO OUTPUT, NEVER RUN AS PRODUCT')
  if os.environ.get('SYNTHETIC_MUTATE_HELPER') and output.name=='cicada-linux-amd64':
   helper=pathlib.Path(os.environ['SYNTHETIC_MUTATE_HELPER']);helper.write_bytes(helper.read_bytes()+b'\\n# SYNTHETIC IN-BUILD MUTATION\\n')
 else: sys.exit(91)
 ''')
             fake.chmod(0o755)
-            environment = {**os.environ, "PATH":str(tools)+os.pathsep+os.environ["PATH"], "SYNTHETIC_GOROOT":str(goroot), "GOOS":"linux", "GOARCH":"amd64"}
+            fake_readelf = tools / "readelf"
+            fake_readelf.write_text("#!/bin/sh\nif [ \"${1:-}\" = --version-info ]; then printf 'Version: GLIBC_2.34\\n'; else exec /usr/bin/readelf \"$@\"; fi\n")
+            fake_readelf.chmod(0o755)
+            environment = {**os.environ, "PATH":str(tools)+os.pathsep+os.environ["PATH"], "SYNTHETIC_GOROOT":str(goroot), "SYNTHETIC_ELF_DIR":str(tools), "GOOS":"linux", "GOARCH":"amd64", "CC":"gcc"}
             script = source / "scripts/build-release.sh"
             def release(name, extra=None):
                 output = temp / name
@@ -536,16 +628,19 @@ else: sys.exit(91)
             self.assertIn("LICENSE", descriptor["scope"])
             stage = os.environ.get("CICADA_PQTLS_STAGE")
             if stage:
+                stage_metadata_path = pathlib.Path(stage) / "PQTLS-STAGE-METADATA.json"
+                arch = json.loads(stage_metadata_path.read_text())["target"]["goarch"] if stage_metadata_path.exists() else "amd64"
                 pq_output = temp / "pq-output"
                 pq = subprocess.run([str(script), "0.1.0-test", str(pq_output),
-                                     "--transport", "pqtls", "--pqtls-stage", stage],
-                                    env=environment, text=True, capture_output=True)
+                                     "--transport", "pqtls", "--pqtls-stage", stage, "--targetarch", arch],
+                                    env={**environment,"GOARCH":arch,"CC":"aarch64-linux-gnu-gcc" if arch=="arm64" else "gcc"},
+                                    text=True, capture_output=True)
                 self.assertEqual(pq.returncode, 0, pq.stderr)
                 self.assertEqual((pq_output / "LICENSE").read_bytes(), license_bytes)
-                with tarfile.open(pq_output / "cicada-linux-amd64-pqtls.tar.gz") as archive:
-                    name = "cicada-linux-amd64-pqtls/share/licenses/cicada/LICENSE"
+                with tarfile.open(pq_output / f"cicada-linux-{arch}-pqtls.tar.gz") as archive:
+                    name = f"cicada-linux-{arch}-pqtls/share/licenses/cicada/LICENSE"
                     self.assertEqual(archive.extractfile(name).read(), license_bytes)
-                    openssl = "cicada-linux-amd64-pqtls/share/licenses/openssl/LICENSE.txt"
+                    openssl = f"cicada-linux-{arch}-pqtls/share/licenses/openssl/LICENSE.txt"
                     self.assertEqual(archive.extractfile(openssl).read(),
                                      (pathlib.Path(stage) / "share/licenses/openssl/LICENSE.txt").read_bytes())
                 receipt = json.loads((pq_output / "PQ-BUILD-RECEIPT.json").read_text())
@@ -634,8 +729,53 @@ else: sys.exit(91)
                     env = {**os.environ, "PATH": str(tools)+os.pathsep+os.environ["PATH"], "GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "1", **extra}
                     result = subprocess.run([str(ROOT/"scripts/build-release.sh"),"0.1.0-dev",str(tools/"out"),"--transport","pqtls","--pqtls-stage",str(tools)],env=env,text=True,capture_output=True)
                     self.assertNotEqual(result.returncode,0)
-                    self.assertIn("PQ requires explicit accepted stage, CGO1 and linux/amd64",result.stderr)
+                    self.assertIn("PQ requires explicit architecture-matched stage, CGO1 and linux/amd64",result.stderr)
                     self.assertFalse((tools/"out").exists())
+
+
+class PQELFMetadataTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("pqtls_elf_inventory", ROOT / "scripts/hub-build-input-inventory.py")
+        cls.helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.helper)
+
+    def test_target_specific_machine_loader_dependencies_and_package_runpath(self):
+        targets = {
+            "amd64": (62, "/lib64/ld-linux-x86-64.so.2"),
+            "arm64": (183, "/lib/ld-linux-aarch64.so.1"),
+        }
+        for arch, (machine, interpreter) in targets.items():
+            with self.subTest(target=arch), tempfile.TemporaryDirectory(prefix="cicada-synthetic-elf-") as directory:
+                binary = pathlib.Path(directory) / "synthetic-not-runnable-elf"
+                binary.write_bytes(synthetic_elf64(machine, interpreter, ("libssl.so.3", "libcrypto.so.3"), "$ORIGIN/../lib"))
+                metadata = self.helper.verify_elf_target(binary, arch, product=True)
+                self.assertEqual(metadata["interpreter"], interpreter)
+                self.assertEqual(set(metadata["needed"]), {"libssl.so.3", "libcrypto.so.3"})
+                self.assertEqual(metadata["runpath"], ["$ORIGIN/../lib"])
+                other = "arm64" if arch == "amd64" else "amd64"
+                with self.assertRaisesRegex(self.helper.InventoryError, "ELF Machine"):
+                    self.helper.verify_elf_target(binary, other, product=True)
+
+    def test_rejects_mismatched_loader_missing_openssl_and_nonrelative_runpath(self):
+        cases = (
+            (62, "/lib/ld-linux-aarch64.so.1", ("libssl.so.3", "libcrypto.so.3"), "$ORIGIN/../lib"),
+            (62, "/lib64/ld-linux-x86-64.so.2", ("libssl.so.3",), "$ORIGIN/../lib"),
+            (62, "/lib64/ld-linux-x86-64.so.2", ("libssl.so.3", "libcrypto.so.3"), "/usr/lib"),
+        )
+        for args in cases:
+            with self.subTest(case=args), tempfile.TemporaryDirectory(prefix="cicada-synthetic-elf-") as directory:
+                binary = pathlib.Path(directory) / "synthetic-not-runnable-elf"
+                binary.write_bytes(synthetic_elf64(*args))
+                with self.assertRaises(self.helper.InventoryError):
+                    self.helper.verify_elf_target(binary, "amd64", product=True)
+
+    def test_arm64_docker_interop_refuses_direct_execution_without_a_target_runner(self):
+        runner = ROOT / "scripts/run-pqtls-interop-test.sh"
+        environment = {**os.environ, "CICADA_PQTLS_INTEROP_TARGETARCH": "arm64"}
+        result = subprocess.run([str(runner)], env=environment, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("refusing direct execution of the ARM64 package", result.stderr)
 
 
 @unittest.skipUnless(os.environ.get("CICADA_PQTLS_STAGE"), "accepted PQ development stage was not supplied")
@@ -649,8 +789,9 @@ class PQRuntimeInputTests(unittest.TestCase):
     def test_exact_runtime_and_headers_and_default_scope(self):
         data=self.helper.capture_runtime(self.stage)
         self.assertEqual(data["openssl_version"],"3.5.9")
-        self.assertEqual(len(data["files"]),145)
-        self.assertEqual(data["closure_sha256"],"f4f0969bfff33d505e542dc234b97bb5358956474dd04ad455046e5390f8a4a3")
+        self.assertEqual(len(data["files"]),146)
+        self.assertEqual(data["closure_sha256"],"c1257b769df15a4d34e69e934aeb6465a45b13023da09dcbc0b43002967e6638")
+        self.assertIn("bin/openssl",data["files"])
         standard=self.helper.capture(ROOT)
         pq=self.helper.capture_pqtls(ROOT,self.stage)
         self.assertEqual(standard["source_fingerprint_v4"]["domain_hex"],b"cicada-hub-build-inputs-v4\0".hex())
@@ -662,7 +803,7 @@ class PQRuntimeInputTests(unittest.TestCase):
         for name in ("include/openssl/ssl.h","lib/libssl.so.3","share/licenses/openssl/LICENSE.txt","lib/libcrypto.so"):
             with self.subTest(path=name), tempfile.TemporaryDirectory(prefix="cicada-pq-input-") as directory:
                 copied=pathlib.Path(directory)/"stage"
-                shutil.copytree(self.stage,copied,symlinks=True,ignore=shutil.ignore_patterns("bin","*.a","cmake","pkgconfig","engines-3"))
+                shutil.copytree(self.stage,copied,symlinks=True,ignore=shutil.ignore_patterns("*.a","cmake","pkgconfig","engines-3"))
                 path=copied/name
                 if path.is_symlink():
                     path.unlink();path.symlink_to("/usr/lib/libcrypto.so")
@@ -677,20 +818,28 @@ class PQRuntimeInputTests(unittest.TestCase):
             current = self.helper.capture_pqtls(ROOT, self.stage)
             metadata = {"source": {"source_fingerprint": current["fingerprint"]["sha256"], "input_inventory": current},
                         "runtime": current["runtime"], "pqtls_available": True, "cgo_enabled": True,
-                        "transport_variant": "pqtls", "targets": ["linux/amd64"]}
+                        "transport_variant": "pqtls", "targets": ["linux/amd64"],
+                        "loader": {"interpreter": "/lib64/ld-linux-x86-64.so.2", "runpath": "$ORIGIN/../lib",
+                                   "minimum_observed_glibc_symbol": "GLIBC_2.34"}}
             (package / "BUILD-METADATA.json").write_text(json.dumps(metadata))
-            (package / "SYNTHETIC-FIXTURE").write_bytes(b"THIS IS A RECEIPT UNIT FIXTURE, NOT A PRODUCT BINARY")
+            (package / "bin").mkdir()
+            (package / "lib").mkdir()
+            (package / "bin/cicada").write_bytes(synthetic_elf64(62, "/lib64/ld-linux-x86-64.so.2",
+                                                                   ("libssl.so.3", "libcrypto.so.3"), "$ORIGIN/../lib"))
+            shutil.copyfile(self.stage / "lib/libssl.so.3", package / "lib/libssl.so.3")
+            shutil.copyfile(self.stage / "lib/libcrypto.so.3", package / "lib/libcrypto.so.3")
             archive = root / "cicada-linux-amd64-pqtls.tar.gz"
             archive.write_bytes(b"SYNTHETIC RECEIPT TEST ARCHIVE")
-            files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in package.iterdir()}
+            files = {p.relative_to(package).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                     for p in package.rglob("*") if p.is_file()}
             receipt = root / "PQ-BUILD-RECEIPT.json"
             receipt.write_text(json.dumps({"schema_version": "cicada.pqtls-package-build-receipt.v1",
-                "source_fingerprint": current["fingerprint"]["sha256"], "package_file_sha256": files,
+                "target_arch": "amd64", "source_fingerprint": current["fingerprint"]["sha256"], "package_file_sha256": files,
                 "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}))
             expected = hashlib.sha256(receipt.read_bytes()).hexdigest()
             args = (ROOT, self.stage, package, receipt, expected)
             self.assertEqual(self.helper.verify_distribution(*args)["source_fingerprint"], current["fingerprint"]["sha256"])
-            for path in (package / "SYNTHETIC-FIXTURE", package / "BUILD-METADATA.json", receipt, archive):
+            for path in (package / "bin/cicada", package / "BUILD-METADATA.json", receipt, archive):
                 with self.subTest(tamper=path.name):
                     previous = path.read_bytes()
                     path.write_bytes(previous + b" ")
@@ -702,7 +851,7 @@ class PQRuntimeInputTests(unittest.TestCase):
             with self.assertRaisesRegex(self.helper.InventoryError, "current source/runtime"):
                 self.helper.verify_distribution(clone, *args[1:])
             copied_stage = root / "other-stage"
-            shutil.copytree(self.stage, copied_stage, symlinks=True, ignore=shutil.ignore_patterns("bin", "*.a", "cmake", "pkgconfig", "engines-3"))
+            shutil.copytree(self.stage, copied_stage, symlinks=True, ignore=shutil.ignore_patterns("*.a", "cmake", "pkgconfig", "engines-3"))
             (copied_stage / "lib/libssl.so.3").write_bytes(b"SYNTHETIC WRONG STAGE")
             with self.assertRaises(self.helper.InventoryError):
                 self.helper.verify_distribution(ROOT, copied_stage, *args[2:])
@@ -722,6 +871,25 @@ class PQRuntimeInputTests(unittest.TestCase):
                 inspect.assert_called_once_with(["docker", "image", "inspect", image["image"]["id"]], text=True)
             with self.assertRaisesRegex(self.helper.InventoryError, "image build receipt SHA"):
                 self.helper.verify_distribution(*args, image_receipt, "b" * 64)
+
+
+@unittest.skipUnless(os.environ.get("CICADA_PQTLS_ARM64_STAGE"), "ARM64 OpenSSL stage was not supplied")
+class PQArm64RuntimeInputTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location("pqtls_arm64_inventory",ROOT/"scripts/hub-build-input-inventory.py")
+        cls.helper=importlib.util.module_from_spec(spec); spec.loader.exec_module(cls.helper)
+        cls.stage=pathlib.Path(os.environ["CICADA_PQTLS_ARM64_STAGE"])
+
+    def test_architecture_specific_stage_and_complete_runtime_closure(self):
+        data=self.helper.capture_runtime(self.stage,"arm64")
+        self.assertEqual(data["platform"],"linux/arm64")
+        self.assertEqual(data["headers_sha256"],"3d6e0a215c0cc477ea5a2ea351f316f3ccd7150768fa99f8272a5cbbdab211ef")
+        self.assertEqual(data["closure_sha256"],"230b49b91efd963d6f564a0fc26cc98746e2a6f8fa784f4355a26e1781e971c0")
+        self.assertEqual(data["files"]["bin/openssl"]["sha256"],"83d4148f46a48e5d6ccdb6da2bf918ad94717ef159da8c4fef4982555fda4a01")
+        self.assertEqual(data["target"]["interpreter"],"/lib/ld-linux-aarch64.so.1")
+        self.assertEqual(data["target"]["elf_machine"],"AArch64")
+        self.assertIsNotNone(data["stage_metadata_sha256"])
 
 
 @unittest.skipUnless(os.environ.get("CICADA_PQTLS_PACKAGE_DIR"), "optional relocated PQ package was not supplied")
@@ -745,15 +913,23 @@ class PQArtifactTests(unittest.TestCase):
                 expected.add(path.as_posix())
         self.assertEqual({p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()},expected)
         metadata=json.loads((root/"BUILD-METADATA.json").read_text())
-        self.assertEqual(metadata["targets"],["linux/amd64"])
+        self.assertIn(metadata["targets"],[['linux/amd64'],['linux/arm64']])
         self.assertTrue(metadata["pqtls_available"])
         self.assertEqual(metadata["transport_variant"],"pqtls")
+        arch=metadata["targets"][0].split("/",1)[1]
+        expected_interpreters={"amd64":"/lib64/ld-linux-x86-64.so.2","arm64":"/lib/ld-linux-aarch64.so.1"}
+        self.assertEqual(metadata["loader"]["interpreter"],expected_interpreters[arch])
         elf=subprocess.check_output(["readelf","-Wd",str(root/"bin/cicada")],text=True)
         self.assertIn("(RUNPATH)",elf)
         self.assertIn("[$ORIGIN/../lib]",elf)
         env={k:v for k,v in os.environ.items() if k not in {"LD_LIBRARY_PATH","LD_PRELOAD"}}
         env["LD_TRACE_LOADED_OBJECTS"]="1"
-        loaded=subprocess.check_output([str(root/"bin/cicada")],env=env,text=True,cwd="/")
+        command=[str(root/"bin/cicada")]
+        if arch=="arm64":
+            runner=os.environ.get("CICADA_PQTLS_TARGET_RUNNER")
+            self.assertTrue(runner,"arm64 package execution requires an explicit user-mode QEMU runner")
+            command=[runner,*command]
+        loaded=subprocess.check_output(command,env=env,text=True,cwd="/")
         for name in ("libssl.so.3","libcrypto.so.3"):
             rows=[line for line in loaded.splitlines() if line.strip().startswith(name+" =>")]
             self.assertEqual(len(rows),1,loaded)

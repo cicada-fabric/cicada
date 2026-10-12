@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -64,6 +65,7 @@ type OwnerTLSLeafGrantClaims struct {
 	HubSPKIHash               string `json:"hub_spki_hash"`
 	HubTrustAnchorDERHash     string `json:"hub_trust_anchor_der_hash"`
 	HubPQOrigin               string `json:"hub_pq_origin"`
+	HubDialAddress            string `json:"hub_dial_address,omitempty"`
 	ApplicationOrigin         string `json:"application_origin"`
 	ApplicationProtocol       string `json:"application_protocol"`
 	PQProfile                 string `json:"pq_profile"`
@@ -147,6 +149,12 @@ func tlsGrantDNS(s string) bool {
 	return true
 }
 
+// Keep the signed proof grammar independent of optional transport builds.
+func tlsGrantIPDialAddress(address string) bool {
+	a, err := netip.ParseAddrPort(address)
+	return err == nil && a.Port() != 0 && a.Addr().Zone() == "" && !a.Addr().Is4In6() && !a.Addr().IsUnspecified() && !a.Addr().IsMulticast() && a.String() == address
+}
+
 func tlsGrantSecondTime(s string) (time.Time, error) {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil || t.IsZero() || t.Year() < 1970 || t.Year() > 9999 || t.Nanosecond() != 0 || t.UTC().Format(time.RFC3339) != s {
@@ -170,7 +178,10 @@ func tlsGrantDigest(s string) bool { return canonicalSHA256Hex(s) && s != string
 // identity or authorizing issuance. Store and Node must separately check live
 // binding, independently registered trust, exact candidate and public crypto.
 func ValidateOwnerTLSLeafGrantClaims(c OwnerTLSLeafGrantClaims) error {
-	if c.Version != 1 || c.Role != "node" || c.ApplicationProtocol != NodeTLSApplicationProtocol || c.PQProfile != NodeTLSPQProfile || !tlsGrantDNS(c.DNSName) {
+	if (c.Version != 1 && c.Version != 2) || c.Role != "node" || c.ApplicationProtocol != NodeTLSApplicationProtocol || c.PQProfile != NodeTLSPQProfile || !tlsGrantDNS(c.DNSName) {
+		return ErrInvalidEnvelope
+	}
+	if c.Version == 1 && c.HubDialAddress != "" || c.Version == 2 && !tlsGrantIPDialAddress(c.HubDialAddress) {
 		return ErrInvalidEnvelope
 	}
 	for _, s := range []string{c.RequestID, c.HubID, c.NodeID, c.OwnerID, c.OwnerKeyID, c.ClientDeviceID, c.OwnerBindingID, c.NodeControlKeyID, c.HubControlKeyID, c.IssuerGeneration, c.CredentialDigest} {
@@ -221,7 +232,7 @@ func ValidateOwnerTLSLeafGrantClaims(c OwnerTLSLeafGrantClaims) error {
 }
 
 func validateTLSAck(c NodeTLSInstallAckClaims) error {
-	if c.Version != 1 || ValidateOwnerTLSLeafGrantClaims(c.GrantClaims) != nil || !tlsGrantDigest(c.GrantDigest) || !tlsGrantDigest(c.LeafDERHash) || !tlsGrantDigest(c.Nonce) || c.ReservationVersion == 0 || c.ReservationVersion > math.MaxInt64 || !tlsGrantWindow(c.IssuedAt, c.ExpiresAt, 24*time.Hour) {
+	if c.Version != c.GrantClaims.Version || ValidateOwnerTLSLeafGrantClaims(c.GrantClaims) != nil || !tlsGrantDigest(c.GrantDigest) || !tlsGrantDigest(c.LeafDERHash) || !tlsGrantDigest(c.Nonce) || c.ReservationVersion == 0 || c.ReservationVersion > math.MaxInt64 || !tlsGrantWindow(c.IssuedAt, c.ExpiresAt, 24*time.Hour) {
 		return ErrInvalidEnvelope
 	}
 	e, _ := tlsGrantSecondTime(c.ExpiresAt)
@@ -233,7 +244,7 @@ func validateTLSAck(c NodeTLSInstallAckClaims) error {
 }
 
 func validateTLSActivation(c NodeTLSActivationClaims) error {
-	if c.Version != 1 || validateTLSAck(c.InstallAckClaims) != nil || !tlsGrantDigest(c.InstallAckDigest) || !tlsGrantDigest(c.Nonce) || c.ActivationVersion == 0 || c.ActivationVersion > math.MaxInt64 || !tlsGrantWindow(c.IssuedAt, c.ExpiresAt, 24*time.Hour) {
+	if c.Version != c.InstallAckClaims.Version || validateTLSAck(c.InstallAckClaims) != nil || !tlsGrantDigest(c.InstallAckDigest) || !tlsGrantDigest(c.Nonce) || c.ActivationVersion == 0 || c.ActivationVersion > math.MaxInt64 || !tlsGrantWindow(c.IssuedAt, c.ExpiresAt, 24*time.Hour) {
 		return ErrInvalidEnvelope
 	}
 	e, _ := tlsGrantSecondTime(c.ExpiresAt)
@@ -242,6 +253,13 @@ func validateTLSActivation(c NodeTLSActivationClaims) error {
 		return ErrInvalidEnvelope
 	}
 	return nil
+}
+
+func tlsProofDomain(v1 string, version int) string {
+	if version == 2 {
+		return strings.TrimSuffix(v1, "v1\x00") + "v2\x00"
+	}
+	return v1
 }
 
 func tlsProofSignature(identity *Identity, signerID, domain string, claims any) ([]byte, error) {
@@ -306,7 +324,7 @@ func SignOwnerTLSLeafGrant(identity *Identity, claims OwnerTLSLeafGrantClaims) (
 	if err := ValidateOwnerTLSLeafGrantClaims(claims); err != nil {
 		return nil, err
 	}
-	sig, err := tlsProofSignature(identity, claims.OwnerKeyID, ownerTLSLeafDomain, claims)
+	sig, err := tlsProofSignature(identity, claims.OwnerKeyID, tlsProofDomain(ownerTLSLeafDomain, claims.Version), claims)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +335,7 @@ func VerifyOwnerTLSLeafGrant(trusted PublicIdentity, at time.Time, wire []byte) 
 	if tlsProofRead(wire, &p) != nil || ValidateOwnerTLSLeafGrantClaims(p.Claims) != nil {
 		return OwnerTLSLeafGrantClaims{}, ErrInvalidEnvelope
 	}
-	if err := tlsProofVerify(trusted, p.Claims.OwnerKeyID, ownerTLSLeafDomain, p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
+	if err := tlsProofVerify(trusted, p.Claims.OwnerKeyID, tlsProofDomain(ownerTLSLeafDomain, p.Claims.Version), p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
 		return OwnerTLSLeafGrantClaims{}, err
 	}
 	return p.Claims, nil
@@ -326,7 +344,7 @@ func SignNodeTLSInstallAck(identity *Identity, claims NodeTLSInstallAckClaims) (
 	if err := validateTLSAck(claims); err != nil {
 		return nil, err
 	}
-	sig, err := tlsProofSignature(identity, claims.GrantClaims.NodeControlKeyID, nodeTLSInstallDomain, claims)
+	sig, err := tlsProofSignature(identity, claims.GrantClaims.NodeControlKeyID, tlsProofDomain(nodeTLSInstallDomain, claims.Version), claims)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +355,7 @@ func VerifyNodeTLSInstallAck(trusted PublicIdentity, at time.Time, wire []byte) 
 	if tlsProofRead(wire, &p) != nil || validateTLSAck(p.Claims) != nil {
 		return NodeTLSInstallAckClaims{}, ErrInvalidEnvelope
 	}
-	if err := tlsProofVerify(trusted, p.Claims.GrantClaims.NodeControlKeyID, nodeTLSInstallDomain, p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
+	if err := tlsProofVerify(trusted, p.Claims.GrantClaims.NodeControlKeyID, tlsProofDomain(nodeTLSInstallDomain, p.Claims.Version), p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
 		return NodeTLSInstallAckClaims{}, err
 	}
 	return p.Claims, nil
@@ -346,7 +364,7 @@ func SignNodeTLSActivation(identity *Identity, claims NodeTLSActivationClaims) (
 	if err := validateTLSActivation(claims); err != nil {
 		return nil, err
 	}
-	sig, err := tlsProofSignature(identity, claims.InstallAckClaims.GrantClaims.HubControlKeyID, nodeTLSActivationDomain, claims)
+	sig, err := tlsProofSignature(identity, claims.InstallAckClaims.GrantClaims.HubControlKeyID, tlsProofDomain(nodeTLSActivationDomain, claims.Version), claims)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +375,7 @@ func VerifyNodeTLSActivation(trusted PublicIdentity, at time.Time, wire []byte) 
 	if tlsProofRead(wire, &p) != nil || validateTLSActivation(p.Claims) != nil {
 		return NodeTLSActivationClaims{}, ErrInvalidEnvelope
 	}
-	if err := tlsProofVerify(trusted, p.Claims.InstallAckClaims.GrantClaims.HubControlKeyID, nodeTLSActivationDomain, p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
+	if err := tlsProofVerify(trusted, p.Claims.InstallAckClaims.GrantClaims.HubControlKeyID, tlsProofDomain(nodeTLSActivationDomain, p.Claims.Version), p.Claims, p.Signature, p.Claims.IssuedAt, p.Claims.ExpiresAt, at); err != nil {
 		return NodeTLSActivationClaims{}, err
 	}
 	return p.Claims, nil

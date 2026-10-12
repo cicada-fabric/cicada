@@ -6,7 +6,7 @@ package buildinfo
 // health responses and app-server client metadata cannot silently drift apart.
 // It is a variable so scripts/build-release.sh can embed a selected tag with
 // the Go linker; source builds use VERSION's current development line.
-var Version = "0.0.2"
+var Version = "0.0.3"
 
 const Stage = "codex-supervisor"
 

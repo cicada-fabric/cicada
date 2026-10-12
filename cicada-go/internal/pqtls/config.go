@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -195,6 +196,30 @@ func Listen(network, address string, cfg Config) (net.Listener, error) {
 // HTTPTransport restricts HTTPS to one preapproved origin and HTTP/1.1.
 // A caller's http.Client should also reject redirects. Plain HTTP is rejected.
 func (c *Client) HTTPTransport(address string) (*http.Transport, error) {
+	return c.httpTransport(address, address)
+}
+
+// ValidateIPDialAddress accepts exactly one canonical IP:port socket locator.
+// DNS names, zones, mapped IPv4, alternate spellings and zero ports fail closed.
+// A locator is not a certificate identity or an authorization grant.
+func ValidateIPDialAddress(address string) error {
+	a, err := netip.ParseAddrPort(address)
+	if err != nil || a.Port() == 0 || a.Addr().Zone() != "" || a.Addr().Is4In6() || a.Addr().IsUnspecified() || a.Addr().IsMulticast() || a.String() != address {
+		return ErrConfig
+	}
+	return nil
+}
+
+// HTTPTransportWithDialAddress retains the approved HTTP origin while dialing
+// an independently approved IP socket. TLS still verifies the configured SAN
+// and pin. This method does not establish Owner approval or current authority.
+func (c *Client) HTTPTransportWithDialAddress(originAddress, dialAddress string) (*http.Transport, error) {
+	if err := ValidateIPDialAddress(dialAddress); err != nil {
+		return nil, err
+	}
+	return c.httpTransport(originAddress, dialAddress)
+}
+func (c *Client) httpTransport(address, dialAddress string) (*http.Transport, error) {
 	if c == nil || len(c.cfg.Peers) != 1 {
 		return nil, ErrConfig
 	}
@@ -209,7 +234,7 @@ func (c *Client) HTTPTransport(address string) (*http.Transport, error) {
 			if target != address {
 				return nil, ErrIdentity
 			}
-			return c.DialContext(ctx, network, target)
+			return c.DialContext(ctx, network, dialAddress)
 		},
 	}, nil
 }

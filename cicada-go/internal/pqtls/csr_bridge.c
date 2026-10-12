@@ -1,4 +1,4 @@
-//go:build linux && amd64 && cgo && cicada_pqtls
+//go:build linux && (amd64 || arm64) && cgo && cicada_pqtls
 
 #include "csr_bridge.h"
 #include "bridge.h"

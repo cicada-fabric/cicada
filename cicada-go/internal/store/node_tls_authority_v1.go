@@ -51,6 +51,7 @@ type NodeTLSCandidateInput struct {
 	ExpectedTLSEpochFloor                                              uint64
 	HubSPKIHash, HubTrustAnchorDERHash, HubPQOrigin, ApplicationOrigin string
 	GrantIssuedAt, GrantExpiresAt                                      time.Time
+	HubDialAddress                                                     string
 	GrantNonce                                                         string
 }
 
@@ -502,6 +503,10 @@ func (s *Store) ReserveNodeTLSCandidate(input NodeTLSCandidateInput) (*NodeTLSAu
 		OwnerBindingID: b.OwnerBindingID, OwnerBindingVersion: b.BindingVersion, CredentialDigest: b.CredentialDigest, CredentialVersion: b.NodeCredentialVersion, NodeControlKeyID: b.NodeKeyID, NodeControlKeyVersion: b.NodeKeyVersion, NodeControlKeyEpoch: b.NodeKeyEpoch, NodeControlBindingVersion: b.Version, HubControlKeyID: b.HubKeyID, HubControlKeyVersion: b.HubKeyVersion,
 		CSRDERHash: nodeTLSHash(csr.CSRDERHash), SPKIDERHash: nodeTLSHash(csr.SPKIDERHash), IssuerSPKIHash: nodeTLSHash(input.Issuer.SPKIDERHash), IssuerDERHash: nodeTLSHash(input.Issuer.CertificateDERHash), RootDERHash: nodeTLSHash(input.Issuer.TrustAnchorDERHash), IssuerGeneration: input.IssuerGeneration, Role: input.Parameters.Role, DNSName: input.Parameters.DNSName,
 		ExpectedTLSEpochFloor: input.ExpectedTLSEpochFloor, TLSEpoch: input.ExpectedTLSEpochFloor + 1, NotBefore: nodeTLSStamp(input.NotBefore), NotAfter: nodeTLSStamp(input.NotAfter), HubSPKIHash: input.HubSPKIHash, HubTrustAnchorDERHash: input.HubTrustAnchorDERHash, HubPQOrigin: input.HubPQOrigin, ApplicationOrigin: input.ApplicationOrigin, ApplicationProtocol: e2ee.NodeTLSApplicationProtocol, PQProfile: e2ee.NodeTLSPQProfile, IssuedAt: nodeTLSStamp(input.GrantIssuedAt), ExpiresAt: nodeTLSStamp(input.GrantExpiresAt), Nonce: input.GrantNonce}
+	if input.HubDialAddress != "" {
+		c.Version = 2
+		c.HubDialAddress = input.HubDialAddress
+	}
 	var floor uint64
 	err = tx.QueryRow(`SELECT floor FROM node_tls_epoch_floors_v1 WHERE hub_id=? AND node_id=?`, b.HubID, b.NodeID).Scan(&floor)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -902,7 +907,7 @@ func (s *Store) PrepareNodeTLSActivation(input NodeTLSAuthorityActionInput, nonc
 	if err != nil {
 		return e2ee.NodeTLSActivationClaims{}, ErrNodeTLSAuthorityDenied
 	}
-	return e2ee.NodeTLSActivationClaims{Version: 1, InstallAckClaims: ack, InstallAckDigest: e2ee.NodeTLSAuthorityDigest(r.InstallAck), ActivationVersion: r.RowVersion + 1, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: ack.ExpiresAt, Nonce: nonce}, nil
+	return e2ee.NodeTLSActivationClaims{Version: ack.Version, InstallAckClaims: ack, InstallAckDigest: e2ee.NodeTLSAuthorityDigest(r.InstallAck), ActivationVersion: r.RowVersion + 1, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: ack.ExpiresAt, Nonce: nonce}, nil
 }
 
 func (s *Store) ActivateNodeTLSGrant(input NodeTLSActivationInput) (*NodeTLSAuthoritySnapshot, error) {

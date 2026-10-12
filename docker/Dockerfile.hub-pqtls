@@ -1,5 +1,6 @@
-# Optional Linux amd64 pure-PQ transport. The normal Alpine image stays CGO0.
-# The named pqtls-stage context contains only the accepted OpenSSL stage.
+# Optional Linux amd64/arm64 pure-PQ transport. The normal Alpine image stays CGO0.
+# The named pqtls-stage context contains one architecture-verified OpenSSL stage.
+ARG TARGETARCH
 FROM --platform=linux/amd64 golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS cicada-builder
 ARG TARGETOS
 ARG TARGETARCH
@@ -8,14 +9,27 @@ ARG HTTPS_PROXY
 ARG ALL_PROXY
 ARG NO_PROXY
 ENV http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} all_proxy=${ALL_PROXY} no_proxy=${NO_PROXY}
-RUN test "$TARGETOS/$TARGETARCH" = linux/amd64
+RUN test "$TARGETOS" = linux && { test "$TARGETARCH" = amd64 || test "$TARGETARCH" = arm64; }
+RUN if [ "$TARGETARCH" = arm64 ]; then \
+      rm -f /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list; \
+      printf 'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20261011T000000Z/ bookworm main\n' > /etc/apt/sources.list; \
+      apt-get -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=false update; \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross; \
+      apt-get clean; rm -rf /var/lib/apt/lists/*; \
+    fi
+RUN printf 'Donor: official debian:bookworm-slim arm64 sha256:a1b86db52ce3daef089e45aabe36dfec4091f82464c25c1fdcf03de197cbe82a\nSource packages: https://deb.debian.org/debian/pool/main/g/glibc/\nSource browser: https://sources.debian.org/src/glibc/\n' > /tmp/cicada-glibc-arm64-source.txt
 COPY --from=pqtls-stage include/ /opt/pqtls-stage/include/
 COPY --from=pqtls-stage lib/libssl.so.3 lib/libcrypto.so.3 /opt/pqtls-stage/lib/
 COPY --from=pqtls-stage share/licenses/openssl/LICENSE.txt /opt/pqtls-stage/share/licenses/openssl/LICENSE.txt
+COPY --from=pqtls-stage bin/openssl /opt/pqtls-stage/bin/openssl
+RUN --mount=type=bind,from=pqtls-stage,target=/pqtls-stage-source,ro \
+    if [ -f /pqtls-stage-source/PQTLS-STAGE-METADATA.json ]; then \
+      cp /pqtls-stage-source/PQTLS-STAGE-METADATA.json /opt/pqtls-stage/PQTLS-STAGE-METADATA.json; \
+    fi
 RUN ln -s libssl.so.3 /opt/pqtls-stage/lib/libssl.so \
     && ln -s libcrypto.so.3 /opt/pqtls-stage/lib/libcrypto.so
 COPY scripts/hub-build-input-inventory.py /tmp/hub-build-input-inventory.py
-RUN python3 /tmp/hub-build-input-inventory.py runtime --pqtls-stage /opt/pqtls-stage > /tmp/runtime-inputs.json
+RUN python3 /tmp/hub-build-input-inventory.py runtime --pqtls-stage /opt/pqtls-stage --targetarch "$TARGETARCH" > /tmp/runtime-inputs.json
 WORKDIR /src
 COPY cicada-go/go.mod cicada-go/go.sum ./
 RUN go mod download
@@ -34,17 +48,37 @@ RUN if [ "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256" != unknown ]; then \
         internal/server/ui/generated/panel.manifest.json "$CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256"; \
     fi
 ENV CGO_ENABLED=1 CGO_CFLAGS=-I/opt/pqtls-stage/include CGO_LDFLAGS="-L/opt/pqtls-stage/lib -Wl,-rpath,\$ORIGIN/../lib"
-ARG CICADA_BUILD_VERSION=0.0.2
+ARG CICADA_BUILD_VERSION=0.0.3
 ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
 RUN mkdir -p /out/bin /out/lib /out/share/licenses/openssl \
-    && go build -tags cicada_pqtls -trimpath -buildvcs=false \
+    && if [ "$TARGETARCH" = arm64 ]; then cc=aarch64-linux-gnu-gcc; expected=aarch64-linux-gnu; else cc=gcc; expected=x86_64-linux-gnu; fi \
+    && test "$("$cc" -dumpmachine)" = "$expected" \
+    && CC="$cc" GOOS=linux GOARCH="$TARGETARCH" go build -tags cicada_pqtls -trimpath -buildvcs=false \
        -ldflags="-s -w -X github.com/cicada-ai/cicada/internal/buildinfo.Version=${CICADA_BUILD_VERSION} -X github.com/cicada-ai/cicada/internal/buildinfo.Revision=${CICADA_BUILD_REVISION} -X github.com/cicada-ai/cicada/internal/buildinfo.Dirty=${CICADA_BUILD_DIRTY} -X github.com/cicada-ai/cicada/internal/buildinfo.SourceFingerprint=${CICADA_BUILD_SOURCE_FINGERPRINT}" \
        -o /out/bin/cicada ./cmd/cicada \
+    && python3 /tmp/hub-build-input-inventory.py verify-elf --binary /out/bin/cicada --targetarch "$TARGETARCH" --product \
+    && readelf --version-info /out/bin/cicada 2>/dev/null | grep -oE 'GLIBC_[0-9]+([.][0-9]+)+' | sort -Vu | tail -n 1 > /tmp/minimum-glibc-symbol \
+    && test -s /tmp/minimum-glibc-symbol \
     && cp /opt/pqtls-stage/lib/*.so.3 /out/lib/ \
     && cp /opt/pqtls-stage/share/licenses/openssl/LICENSE.txt /out/share/licenses/openssl/
-RUN python3 /tmp/hub-build-input-inventory.py go-notices --source /src --destination /out/share/licenses --tags cicada_pqtls
+RUN if [ "$TARGETARCH" = arm64 ]; then cc=aarch64-linux-gnu-gcc; else cc=gcc; fi \
+    && CC="$cc" GOOS=linux GOARCH="$TARGETARCH" python3 /tmp/hub-build-input-inventory.py go-notices --source /src --destination /out/share/licenses --tags cicada_pqtls --targets "linux/$TARGETARCH"
+RUN python3 - /out/BUILD-METADATA.json /tmp/runtime-inputs.json /tmp/minimum-glibc-symbol "$TARGETARCH" "$CICADA_BUILD_VERSION" "$CICADA_BUILD_REVISION" "$CICADA_BUILD_DIRTY" "$CICADA_BUILD_SOURCE_FINGERPRINT" <<'PY'
+import json,pathlib,sys
+destination, runtime_file, glibc_file, arch, version, revision, dirty, fingerprint = sys.argv[1:]
+runtime=json.loads(pathlib.Path(runtime_file).read_text())
+loader=runtime['target']
+metadata={'schema_version':'cicada.pqtls-image-metadata.v1','software_version':version,
+          'source':{'revision':revision,'dirty':dirty=='true','source_fingerprint':fingerprint},
+          'targets':['linux/'+arch],'transport_variant':'pqtls','pqtls_available':True,
+          'cgo_enabled':True,'build_tag':'cicada_pqtls','openssl_version':'3.5.9',
+          'loader':{'interpreter':loader['interpreter'],'runpath':'$ORIGIN/../lib',
+                    'minimum_observed_glibc_symbol':pathlib.Path(glibc_file).read_text().strip()},
+          'runtime':runtime}
+pathlib.Path(destination).write_text(json.dumps(metadata,sort_keys=True,indent=2)+'\n')
+PY
 RUN mkdir -p /out-empty/state /out-empty/workspace /out-empty/home
 RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} source-version=${source:Version}\n' ca-certificates > /tmp/cicada-ca-source.txt \
     && printf 'Source packages: https://deb.debian.org/debian/pool/main/c/ca-certificates/\nSource browser: https://sources.debian.org/src/ca-certificates/\n' >> /tmp/cicada-ca-source.txt
@@ -52,17 +86,45 @@ RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} sour
 # This stage has development tools; it is never the product runtime.
 FROM cicada-builder AS interop-test
 ENV PQTLS_TEST_PACKAGE_BINARY=/out/bin/cicada
-ENTRYPOINT ["go", "test", "-tags", "cicada_pqtls", "-count=1", "-json", "-timeout=3m", "-run", "^TestPQDistribution", "./cmd/cicada"]
+ENV CICADA_PQTLS_INTEROP_TARGETARCH=${TARGETARCH}
+COPY scripts/run-pqtls-interop-test.sh /usr/local/bin/cicada-pqtls-interop-test
+RUN chmod 0755 /usr/local/bin/cicada-pqtls-interop-test
+ENTRYPOINT ["/usr/local/bin/cicada-pqtls-interop-test"]
 
-# Use the pinned official Debian12 amd64 image only as a glibc donor. The
-# shipping image contains no shell, package manager, compiler or TLS CLI.
-FROM --platform=linux/amd64 debian:bookworm-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b AS glibc-runtime
+# The pinned Debian12 donors supply only libc, loader, NSS and licenses. The
+# ARM64 donor is copied without executing target instructions (no binfmt/QEMU).
+FROM --platform=linux/amd64 debian:bookworm-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b AS glibc-runtime-amd64
 RUN dpkg-query -W -f='${binary:Package} ${Version} source=${source:Package} source-version=${source:Version}\n' libc6 > /tmp/cicada-glibc-source.txt \
     && printf 'Donor: official debian:bookworm-slim amd64 sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b\nSource packages: https://deb.debian.org/debian/pool/main/g/glibc/\nSource browser: https://sources.debian.org/src/glibc/\n' >> /tmp/cicada-glibc-source.txt
+RUN mkdir -p /runtime-root/lib/x86_64-linux-gnu /runtime-root/lib64 /runtime-root/etc \
+    /runtime-root/usr/share/licenses/glibc \
+    && cp /lib/x86_64-linux-gnu/libc.so.6 /runtime-root/lib/x86_64-linux-gnu/ \
+    && cp /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /runtime-root/lib64/ \
+    && cp /lib/x86_64-linux-gnu/libnss_dns.so.2 /lib/x86_64-linux-gnu/libnss_files.so.2 /runtime-root/lib/x86_64-linux-gnu/ \
+    && cp /etc/nsswitch.conf /runtime-root/etc/ \
+    && cp /usr/share/doc/libc6/copyright /runtime-root/usr/share/licenses/glibc/copyright \
+    && cp /usr/share/common-licenses/LGPL-2.1 /runtime-root/usr/share/licenses/glibc/LGPL-2.1 \
+    && cp /usr/share/common-licenses/GPL-2 /runtime-root/usr/share/licenses/glibc/GPL-2 \
+    && cp /tmp/cicada-glibc-source.txt /runtime-root/usr/share/licenses/glibc/SOURCE.txt
+
+FROM --platform=linux/arm64 debian:bookworm-slim@sha256:a1b86db52ce3daef089e45aabe36dfec4091f82464c25c1fdcf03de197cbe82a AS debian-glibc-arm64
+FROM scratch AS glibc-runtime-arm64
+COPY --from=debian-glibc-arm64 /lib/aarch64-linux-gnu/libc.so.6 /runtime-root/lib/aarch64-linux-gnu/libc.so.6
+COPY --from=debian-glibc-arm64 /lib/ld-linux-aarch64.so.1 /runtime-root/lib/ld-linux-aarch64.so.1
+COPY --from=debian-glibc-arm64 /lib/aarch64-linux-gnu/libnss_dns.so.2 /runtime-root/lib/aarch64-linux-gnu/libnss_dns.so.2
+COPY --from=debian-glibc-arm64 /lib/aarch64-linux-gnu/libnss_files.so.2 /runtime-root/lib/aarch64-linux-gnu/libnss_files.so.2
+COPY --from=debian-glibc-arm64 /etc/nsswitch.conf /runtime-root/etc/nsswitch.conf
+COPY --from=debian-glibc-arm64 /usr/share/doc/libc6/copyright /runtime-root/usr/share/licenses/glibc/copyright
+COPY --from=debian-glibc-arm64 /usr/share/common-licenses/LGPL-2.1 /runtime-root/usr/share/licenses/glibc/LGPL-2.1
+COPY --from=debian-glibc-arm64 /usr/share/common-licenses/GPL-2 /runtime-root/usr/share/licenses/glibc/GPL-2
+COPY --from=cicada-builder /tmp/cicada-glibc-arm64-source.txt /runtime-root/usr/share/licenses/glibc/SOURCE.txt
+FROM glibc-runtime-${TARGETARCH} AS selected-glibc-runtime
+
 FROM scratch AS hub-runtime
+ARG TARGETARCH
 ARG CICADA_UID=1000
 ARG CICADA_GID=1000
-ARG CICADA_BUILD_VERSION=0.0.2
+ARG CICADA_BUILD_VERSION=0.0.3
 ARG CICADA_BUILD_REVISION=unknown
 ARG CICADA_BUILD_DIRTY=unknown
 ARG CICADA_BUILD_SOURCE_FINGERPRINT=unknown
@@ -72,21 +134,14 @@ LABEL org.opencontainers.image.title="CICADA optional PQ Hub" \
       org.opencontainers.image.version="${CICADA_BUILD_VERSION}" \
       org.opencontainers.image.revision="${CICADA_BUILD_REVISION}" \
       org.cicada.role="hub" \
-      org.cicada.transport.variant="pqtls-linux-amd64" \
+      org.cicada.transport.variant="pqtls-linux-${TARGETARCH}" \
+      org.cicada.target-platform="linux/${TARGETARCH}" \
       org.cicada.build.dirty="${CICADA_BUILD_DIRTY}" \
       org.cicada.build.source-fingerprint="${CICADA_BUILD_SOURCE_FINGERPRINT}" \
       org.cicada.client-catalog.sha256="${CICADA_BUILD_CATALOG_SHA256}" \
       org.cicada.build.webcrypto-manifest-sha256="${CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256}" \
       org.cicada.openssl.version="3.5.9"
-COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
-COPY --from=glibc-runtime /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
-COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libnss_dns.so.2 /lib/x86_64-linux-gnu/libnss_dns.so.2
-COPY --from=glibc-runtime /lib/x86_64-linux-gnu/libnss_files.so.2 /lib/x86_64-linux-gnu/libnss_files.so.2
-COPY --from=glibc-runtime /etc/nsswitch.conf /etc/nsswitch.conf
-COPY --from=glibc-runtime /usr/share/doc/libc6/copyright /usr/share/licenses/glibc/copyright
-COPY --from=glibc-runtime /usr/share/common-licenses/LGPL-2.1 /usr/share/licenses/glibc/LGPL-2.1
-COPY --from=glibc-runtime /usr/share/common-licenses/GPL-2 /usr/share/licenses/glibc/GPL-2
-COPY --from=glibc-runtime /tmp/cicada-glibc-source.txt /usr/share/licenses/glibc/SOURCE.txt
+COPY --from=selected-glibc-runtime /runtime-root/ /
 COPY --from=cicada-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=cicada-builder /usr/share/doc/ca-certificates/copyright /usr/share/licenses/ca-certificates/copyright
 COPY --from=cicada-builder /tmp/cicada-ca-source.txt /usr/share/licenses/ca-certificates/SOURCE.txt

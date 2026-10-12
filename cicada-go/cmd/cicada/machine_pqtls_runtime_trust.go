@@ -121,6 +121,13 @@ func machineTLSQueryCurrentIn(ctx context.Context, hub *machineHubContext, cfg *
 		return nil, err
 	}
 	defer closeLocal()
+	return machineTLSQueryCurrentWithLocal(ctx, hub, cfg, client, token, b, local)
+}
+
+// First offline installation has an independently verified Prepare binding
+// and Stage configuration, but no ACTIVE local floor yet. Share the same fresh
+// authenticated query without pretending that a runtime has already opened.
+func machineTLSQueryCurrentWithLocal(ctx context.Context, hub *machineHubContext, cfg *nodetransport.Config, client *machineNodeControlClient, token string, b nodetransport.TLSLocalBinding, local *nodetransport.LocalTLSInstaller) (*store.NodeTLSAuthoritySnapshot, error) {
 	trust, err := local.OwnerTrust.GetNodeOwnerKeyTrustLocal(b.Control.OwnerID, b.Control.OwnerKeyID)
 	if err != nil || trust.State != nodekeys.NodeOwnerKeyTrustActive {
 		return nil, nodetransport.ErrTLSInstall

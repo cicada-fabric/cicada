@@ -8,7 +8,7 @@ a completed historical M1–M5 task or run paid models.
 ## Current baseline and sources
 
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
-before editing. The development source line is `0.0.2`, Architecture v2.3, Hub schema 59,
+before editing. The development source line is `0.0.3`, Architecture v2.3, Hub schema 59,
 Client contract `client-hub-v1.6.5`, encrypted wire 1 and catalog 55. Confirm those
 identities in [VERSION](VERSION), the
 [catalog](cicada-go/internal/clientcontract/catalog.json) and

@@ -47,6 +47,7 @@ type Config struct {
 	Role              string     `json:"role"`
 	Listen            string     `json:"listen,omitempty"`
 	Origin            string     `json:"origin,omitempty"`
+	DialAddress       string     `json:"dial_address,omitempty"`
 	ApplicationOrigin string     `json:"application_origin,omitempty"`
 	CertificateFile   string     `json:"certificate_file"`
 	PrivateKeyFile    string     `json:"private_key_file"`
@@ -100,7 +101,10 @@ func Load(path, role string) (*Config, error) {
 }
 
 func (c *Config) Validate(role string) error {
-	if c == nil || c.Version != 1 || c.Role != role || c.Identity.Kind != role || c.Identity.HubID == "" || c.Identity.DNSName == "" || len(c.Peers) < 1 || len(c.Peers) > 64 {
+	if c == nil || (c.Version != 1 && c.Version != 2) || c.Role != role || c.Identity.Kind != role || c.Identity.HubID == "" || c.Identity.DNSName == "" || len(c.Peers) < 1 || len(c.Peers) > 64 {
+		return ErrConfiguration
+	}
+	if c.Version == 1 && c.DialAddress != "" || c.Version == 2 && (role != "node" || pqtls.ValidateIPDialAddress(c.DialAddress) != nil) {
 		return ErrConfiguration
 	}
 	if role == "hub" {
@@ -114,8 +118,12 @@ func (c *Config) Validate(role string) error {
 		if c.Identity.NodeID == "" || c.Identity.TLSEpoch == 0 || c.Listen != "" || len(c.Peers) != 1 {
 			return ErrConfiguration
 		}
-		if _, err := ParseOrigin(c.Origin); err != nil {
+		u, err := ParseOrigin(c.Origin)
+		if err != nil {
 			return err
+		}
+		if c.Version == 2 && (u.Hostname() != c.Peers[0].Identity.DNSName || net.ParseIP(u.Hostname()) != nil) {
+			return ErrConfiguration
 		}
 		if err := validateApplicationOrigin(c.LogicalOrigin()); err != nil {
 			return err
@@ -246,7 +254,12 @@ func NewTransport(c *Config) (http.RoundTripper, error) {
 	if err != nil {
 		return nil, err
 	}
-	base, err := client.HTTPTransport(address)
+	var base *http.Transport
+	if c.Version == 2 {
+		base, err = client.HTTPTransportWithDialAddress(address, c.DialAddress)
+	} else {
+		base, err = client.HTTPTransport(address)
+	}
 	if err != nil {
 		return nil, err
 	}

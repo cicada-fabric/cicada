@@ -236,10 +236,14 @@ func installCAFixture(t *testing.T) installCA {
 	return installCA{chain, root, key, profile, issuer, at}
 }
 func installSignedFixture(t *testing.T) (*LocalTLSInstaller, store.NodeTLSAuthoritySnapshot, installCA, *e2ee.Identity, *e2ee.Identity) {
+	return installSignedIPFixture(t, "")
+}
+func installSignedIPFixture(t *testing.T, address string) (*LocalTLSInstaller, store.NodeTLSAuthoritySnapshot, installCA, *e2ee.Identity, *e2ee.Identity) {
 	t.Helper()
 	i, owner, hub, b := installSyntheticLocal(t)
 	ca := installCAFixture(t)
 	r := installDummyRequest()
+	r.HubDialAddress = address
 	r.IssuerSPKIHash = hex.EncodeToString(ca.profile.SPKIDERHash[:])
 	r.IssuerDERHash = hex.EncodeToString(ca.profile.CertificateDERHash[:])
 	r.RootDERHash = hex.EncodeToString(ca.profile.TrustAnchorDERHash[:])
@@ -248,7 +252,7 @@ func installSignedFixture(t *testing.T) (*LocalTLSInstaller, store.NodeTLSAuthor
 	if e != nil {
 		t.Fatal(e)
 	}
-	c := e2ee.OwnerTLSLeafGrantClaims{Version: 1, RequestID: r.RequestID, HubID: i.HubID, NodeID: i.NodeID, OwnerID: b.Control.OwnerID, OwnerKeyID: b.Control.OwnerKeyID, OwnerKeyVersion: b.OwnerKeyVersion, ClientDeviceID: b.Control.ClientDeviceID, ClientDeviceVersion: b.ClientDeviceVersion, OwnerBindingID: b.Control.OwnerBindingID, OwnerBindingVersion: b.Control.BindingVersion, CredentialDigest: b.Control.CredentialDigest, CredentialVersion: b.Control.NodeCredentialVersion, NodeControlKeyID: b.Control.NodeKeyID, NodeControlKeyVersion: b.Control.NodeKeyVersion, NodeControlKeyEpoch: b.Control.NodeKeyEpoch, NodeControlBindingVersion: b.Control.Version, HubControlKeyID: b.Control.HubKeyID, HubControlKeyVersion: b.Control.HubKeyVersion, CSRDERHash: prepared.CSRDERHash, SPKIDERHash: prepared.SPKIDERHash, IssuerSPKIHash: r.IssuerSPKIHash, IssuerDERHash: r.IssuerDERHash, RootDERHash: r.RootDERHash, IssuerGeneration: r.IssuerGeneration, Role: "node", DNSName: r.DNSName, Serial: "00000000000000000000000000000001", TLSEpoch: 1, NotBefore: ca.at.Format(time.RFC3339), NotAfter: ca.at.Add(time.Hour).Format(time.RFC3339), HubSPKIHash: r.HubSPKIHash, HubTrustAnchorDERHash: r.HubTrustAnchorDERHash, HubPQOrigin: r.HubPQOrigin, ApplicationOrigin: r.ApplicationOrigin, ApplicationProtocol: e2ee.NodeTLSApplicationProtocol, PQProfile: e2ee.NodeTLSPQProfile, IssuedAt: ca.at.Format(time.RFC3339), ExpiresAt: ca.at.Add(time.Hour).Format(time.RFC3339), Nonce: strings.Repeat("b", 64)}
+	c := e2ee.OwnerTLSLeafGrantClaims{Version: preparationVersion(r), HubDialAddress: r.HubDialAddress, RequestID: r.RequestID, HubID: i.HubID, NodeID: i.NodeID, OwnerID: b.Control.OwnerID, OwnerKeyID: b.Control.OwnerKeyID, OwnerKeyVersion: b.OwnerKeyVersion, ClientDeviceID: b.Control.ClientDeviceID, ClientDeviceVersion: b.ClientDeviceVersion, OwnerBindingID: b.Control.OwnerBindingID, OwnerBindingVersion: b.Control.BindingVersion, CredentialDigest: b.Control.CredentialDigest, CredentialVersion: b.Control.NodeCredentialVersion, NodeControlKeyID: b.Control.NodeKeyID, NodeControlKeyVersion: b.Control.NodeKeyVersion, NodeControlKeyEpoch: b.Control.NodeKeyEpoch, NodeControlBindingVersion: b.Control.Version, HubControlKeyID: b.Control.HubKeyID, HubControlKeyVersion: b.Control.HubKeyVersion, CSRDERHash: prepared.CSRDERHash, SPKIDERHash: prepared.SPKIDERHash, IssuerSPKIHash: r.IssuerSPKIHash, IssuerDERHash: r.IssuerDERHash, RootDERHash: r.RootDERHash, IssuerGeneration: r.IssuerGeneration, Role: "node", DNSName: r.DNSName, Serial: "00000000000000000000000000000001", TLSEpoch: 1, NotBefore: ca.at.Format(time.RFC3339), NotAfter: ca.at.Add(time.Hour).Format(time.RFC3339), HubSPKIHash: r.HubSPKIHash, HubTrustAnchorDERHash: r.HubTrustAnchorDERHash, HubPQOrigin: r.HubPQOrigin, ApplicationOrigin: r.ApplicationOrigin, ApplicationProtocol: e2ee.NodeTLSApplicationProtocol, PQProfile: e2ee.NodeTLSPQProfile, IssuedAt: ca.at.Format(time.RFC3339), ExpiresAt: ca.at.Add(time.Hour).Format(time.RFC3339), Nonce: strings.Repeat("b", 64)}
 	grant, e := e2ee.SignOwnerTLSLeafGrant(owner, c)
 	if e != nil {
 		t.Fatal(e)
@@ -274,7 +278,7 @@ func installActivate(t *testing.T, i *LocalTLSInstaller, s store.NodeTLSAuthorit
 	if e != nil {
 		t.Fatal(e)
 	}
-	activation, e := e2ee.SignNodeTLSActivation(hub, e2ee.NodeTLSActivationClaims{Version: 1, InstallAckClaims: claims, InstallAckDigest: e2ee.NodeTLSAuthorityDigest(ack), ActivationVersion: 5, IssuedAt: ca.at.Format(time.RFC3339), ExpiresAt: s.Claims.ExpiresAt, Nonce: strings.Repeat("c", 64)})
+	activation, e := e2ee.SignNodeTLSActivation(hub, e2ee.NodeTLSActivationClaims{Version: claims.Version, InstallAckClaims: claims, InstallAckDigest: e2ee.NodeTLSAuthorityDigest(ack), ActivationVersion: 5, IssuedAt: ca.at.Format(time.RFC3339), ExpiresAt: s.Claims.ExpiresAt, Nonce: strings.Repeat("c", 64)})
 	if e != nil {
 		t.Fatal(e)
 	}

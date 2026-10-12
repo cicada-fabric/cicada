@@ -1,4 +1,4 @@
-//go:build linux && amd64 && cgo && cicada_pqtls
+//go:build linux && (amd64 || arm64) && cgo && cicada_pqtls
 
 package pqtls
 
@@ -35,7 +35,7 @@ func certificateCLI(t *testing.T, dir string, args ...string) []byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opensslExecutable, args...)
+	cmd := pqtlsTestCommandContext(ctx, opensslExecutable, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 	out, err := cmd.CombinedOutput()
@@ -358,7 +358,7 @@ func TestTLSCertificateOnlyModeRejectsOtherSelectors(t *testing.T) {
 	}
 	for _, pattern := range []string{".", "^TestExactProfileAndSPKIPin$", "^TestTLSCertificate|TestTLSCSR"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, executable, "-test.run", pattern)
+		cmd := pqtlsTestCommandContext(ctx, executable, "-test.run", pattern)
 		out, err := cmd.CombinedOutput()
 		cancel()
 		var exit *exec.ExitError
@@ -385,7 +385,7 @@ func TestTLSCertificateRejectSignedMaliciousProfilesAndCAKeyReuse(t *testing.T) 
 	stage := filepath.Dir(filepath.Dir(opensslExecutable))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "cc", "-Wall", "-Wextra", "-Werror", "-I"+filepath.Join(stage, "include"), "testdata/certificate-invalid-fixture.c",
+	cmd := exec.CommandContext(ctx, pqtlsTestCompiler(), "-Wall", "-Wextra", "-Werror", "-I"+filepath.Join(stage, "include"), "testdata/certificate-invalid-fixture.c",
 		"-L"+filepath.Join(stage, "lib"), "-Wl,-rpath,"+filepath.Join(stage, "lib"), "-lcrypto", "-o", helper)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile official-API certificate fixture helper: %s", out)
@@ -395,7 +395,7 @@ func TestTLSCertificateRejectSignedMaliciousProfilesAndCAKeyReuse(t *testing.T) 
 			path := filepath.Join(f.dir, mutation+".pem")
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, helper, mutation, leafPath, filepath.Join(f.dir, "issuer.key"), path)
+			cmd := pqtlsTestCommandContext(ctx, helper, mutation, leafPath, filepath.Join(f.dir, "issuer.key"), path)
 			if _, err := cmd.CombinedOutput(); err != nil {
 				t.Fatal("official-API certificate mutation failed")
 			}

@@ -5,10 +5,15 @@
 Use `dev` for active development; `main` is currently a public placeholder and
 is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
 [current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
-The current development source is **0.0.2**, Hub schema **59**, Client contract
+The current development source is **0.0.3**, Hub schema **59**, Client contract
 **client-hub-v1.6.5**, encrypted wire **1**, catalog **55**. Architecture v2.3 is
 the adopted specification, independent of these versions. Confirm actual
 source/dirty state and build provenance before attributing a test or artifact.
+
+The current [IP/ARM64 deployment checkpoint](docs/docker-ip-arm64-validation.md)
+has [manual independent-Owner installation steps](docs/node-tls-first-install-cli.md).
+Final clean package acceptance is pending; standard HTTPS bootstrap and enrolled
+strict PQ TLS are separate stages.
 
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.

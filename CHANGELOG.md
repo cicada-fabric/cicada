@@ -5,6 +5,24 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
+## 0.0.3 — unreleased development candidate
+
+### IP locator, ARM64 PQ TLS and first installation
+
+Node PQ TLS can use a signed numeric IPv4/IPv6 socket while keeping Hub identity,
+service SAN and key pin independent. ARM64 packaging builds target OpenSSL and
+retains strict PQ requirements. A trusted local operator can complete first
+installation using a separately held Owner signing key, exact reviewed claims,
+Node-signed install ACK and remotely verified activation. The Node never needs
+Hub SQLite state. Checked startup recovers identity only from existing approved
+local state when HubID was omitted.
+
+Client contract v1.6.5, wire 1, catalog 55 and schema 59 are unchanged. Initial
+pairing still requires operator-trusted standard HTTPS plus NIST application
+proofs; enrolled traffic uses strict PQ TLS. Android TLS approval UI, physical
+phone, public HTTPS and Native consumption remain separately unverified. See
+[manual installation](docs/node-tls-first-install-cli.md) and [scoped evidence](docs/docker-ip-arm64-validation.md).
+
 ## 0.0.2 — unreleased development candidate
 
 ### 2026-10-11 current-source validation

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import shutil
 import re
+import struct
 from typing import Any
 
 
@@ -37,14 +38,33 @@ PQ_SCOPE = tuple(path for path in SCOPE if path != "docker/Dockerfile.hub") + (
     "docker/Dockerfile.hub-pqtls",
     "scripts/hub-build-input-inventory.py",
     "scripts/build-release.sh",
+    "scripts/build-pqtls-runtime.sh",
+    "scripts/run-pqtls-interop-test.sh",
     "scripts/test-pqtls-packaging.sh",
+    "scripts/test-release-packaging.py",
 )
 PQ_DOMAIN = b"cicada-pqtls-distribution-inputs-v1\0"
-PQ_HEADER_SHA256 = "970a70cabcb6058c0152f957925d62bca6274d5de25a8cece9540f746b4b443c"
-PQ_RUNTIME_PINS = {
-    "lib/libssl.so.3": "83a963dfc76672d91efad7ddbd151b8d9dfea69c1080b4980520d56566b35696",
-    "lib/libcrypto.so.3": "f188195dd6841a349002ca8dc081ecaa1acf50503a3224ce8d2ccc5ee8a70352",
-    "share/licenses/openssl/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+PQ_HEADER_SHA256_BY_ARCH = {
+    "amd64": "970a70cabcb6058c0152f957925d62bca6274d5de25a8cece9540f746b4b443c",
+    "arm64": "3d6e0a215c0cc477ea5a2ea351f316f3ccd7150768fa99f8272a5cbbdab211ef",
+}
+PQ_RUNTIME_PINS_BY_ARCH = {
+    "amd64": {
+        "bin/openssl": "06b318f0242a3ec9add593f5210b163ebaa7c76175009600d2704551cb8e6c05",
+        "lib/libssl.so.3": "83a963dfc76672d91efad7ddbd151b8d9dfea69c1080b4980520d56566b35696",
+        "lib/libcrypto.so.3": "f188195dd6841a349002ca8dc081ecaa1acf50503a3224ce8d2ccc5ee8a70352",
+        "share/licenses/openssl/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    },
+    "arm64": {
+        "bin/openssl": "83d4148f46a48e5d6ccdb6da2bf918ad94717ef159da8c4fef4982555fda4a01",
+        "lib/libssl.so.3": "04a5ce66bc887b0817e1db78efd0cfb2ce05ce46ebefee924eb03e8aa51ad6eb",
+        "lib/libcrypto.so.3": "e3d64212d99a4d13b24578444410cedf4b6a6e1d9b89e873ac8ce672eab0f5b2",
+        "share/licenses/openssl/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    },
+}
+PQ_TARGETS = {
+    "amd64": {"machine_id": 62, "machine": "Advanced Micro Devices X86-64", "triple": "x86_64-linux-gnu", "interpreter": "/lib64/ld-linux-x86-64.so.2"},
+    "arm64": {"machine_id": 183, "machine": "AArch64", "triple": "aarch64-linux-gnu", "interpreter": "/lib/ld-linux-aarch64.so.1"},
 }
 
 
@@ -287,11 +307,116 @@ def verify(root: str | os.PathLike[str], expected: dict[str, Any]) -> None:
         raise InventoryError("Hub build inputs changed after inventory capture")
 
 
-def capture_runtime(prefix: str | os.PathLike[str]) -> dict[str, Any]:
+def read_elf_metadata(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Read the ELF64 target identity and dynamic loader contract using stdlib only."""
+    data = pathlib.Path(path).read_bytes()
+    if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+        raise InventoryError("PQTLS artifacts must be little-endian ELF64")
+    machine_id = struct.unpack_from("<H", data, 18)[0]
+    phoff = struct.unpack_from("<Q", data, 32)[0]
+    phentsize, phnum = struct.unpack_from("<HH", data, 54)
+    if phentsize < 56 or phnum > 4096 or phoff + phentsize * phnum > len(data):
+        raise InventoryError("malformed ELF program-header table")
+    loads: list[tuple[int, int, int, int]] = []
+    dynamic: tuple[int, int] | None = None
+    interpreter = ""
+    for index in range(phnum):
+        offset = phoff + index * phentsize
+        kind = struct.unpack_from("<I", data, offset)[0]
+        if kind == 1:  # PT_LOAD
+            file_offset, vaddr, _paddr, filesz, memsz = struct.unpack_from("<QQQQQ", data, offset + 8)
+            loads.append((vaddr, memsz, file_offset, filesz))
+        elif kind == 2:  # PT_DYNAMIC
+            file_offset, filesz = struct.unpack_from("<QQ", data, offset + 8)[0], struct.unpack_from("<Q", data, offset + 32)[0]
+            dynamic = (file_offset, filesz)
+        elif kind == 3:  # PT_INTERP
+            file_offset, filesz = struct.unpack_from("<QQ", data, offset + 8)[0], struct.unpack_from("<Q", data, offset + 32)[0]
+            if filesz < 2 or file_offset + filesz > len(data):
+                raise InventoryError("malformed ELF interpreter segment")
+            interpreter = data[file_offset:file_offset + filesz].rstrip(b"\0").decode("ascii", "strict")
+
+    needed: list[str] = []
+    runpath: list[str] = []
+    if dynamic:
+        file_offset, filesz = dynamic
+        if filesz % 16 or file_offset + filesz > len(data):
+            raise InventoryError("malformed ELF dynamic segment")
+        tags: list[tuple[int, int]] = []
+        for offset in range(file_offset, file_offset + filesz, 16):
+            tag, value = struct.unpack_from("<QQ", data, offset)
+            if tag == 0:
+                break
+            tags.append((tag, value))
+        strtab_va = next((value for tag, value in tags if tag == 5), None)
+        strtab_size = next((value for tag, value in tags if tag == 10), None)
+        if any(tag in {1, 15, 29} for tag, _ in tags):
+            if strtab_va is None or strtab_size is None:
+                raise InventoryError("ELF dynamic strings are missing")
+            strtab_offset = None
+            for vaddr, memsz, segment_offset, filesz in loads:
+                if vaddr <= strtab_va < vaddr + memsz:
+                    relative = strtab_va - vaddr
+                    if relative + strtab_size <= filesz:
+                        strtab_offset = segment_offset + relative
+                    break
+            if strtab_offset is None or strtab_offset + strtab_size > len(data):
+                raise InventoryError("ELF dynamic string table is outside file-backed segments")
+            strings = data[strtab_offset:strtab_offset + strtab_size]
+            def string_at(index: int) -> str:
+                if index < 0 or index >= len(strings):
+                    raise InventoryError("ELF dynamic string offset is invalid")
+                end = strings.find(b"\0", index)
+                if end < 0:
+                    raise InventoryError("ELF dynamic string is unterminated")
+                return strings[index:end].decode("utf-8", "strict")
+            needed = [string_at(value) for tag, value in tags if tag == 1]
+            runpath = [string_at(value) for tag, value in tags if tag == 29]
+            if not runpath:
+                runpath = [string_at(value) for tag, value in tags if tag == 15]
+    return {"elf_class": 64, "endianness": "little", "machine_id": machine_id,
+            "interpreter": interpreter, "needed": needed, "runpath": runpath}
+
+
+def verify_elf_target(path: str | os.PathLike[str], target_arch: str, *, product: bool = False) -> dict[str, Any]:
+    target = PQ_TARGETS.get(target_arch)
+    if not target:
+        raise InventoryError("unsupported PQ target architecture")
+    metadata = read_elf_metadata(path)
+    if metadata["machine_id"] != target["machine_id"]:
+        raise InventoryError(f"ELF Machine does not match linux/{target_arch}")
+    if product:
+        if metadata["interpreter"] != target["interpreter"]:
+            raise InventoryError("product ELF interpreter does not match target metadata")
+        if not {"libssl.so.3", "libcrypto.so.3"}.issubset(metadata["needed"]):
+            raise InventoryError("product ELF is missing its architecture-matched OpenSSL dependencies")
+        if metadata["runpath"] != ["$ORIGIN/../lib"]:
+            raise InventoryError("product ELF must use only the package-relative OpenSSL runpath")
+    return metadata
+
+
+def capture_runtime(prefix: str | os.PathLike[str], target_arch: str | None = None) -> dict[str, Any]:
     """Read only the accepted public headers, two libraries and license."""
     directory = pathlib.Path(prefix)
     if directory.is_symlink() or not directory.is_dir():
         raise InventoryError("PQ stage must be an existing regular directory")
+    stage_metadata_path = directory / "PQTLS-STAGE-METADATA.json"
+    stage_metadata: dict[str, Any] | None = None
+    if stage_metadata_path.exists():
+        if stage_metadata_path.is_symlink() or not stage_metadata_path.is_file():
+            raise InventoryError("PQ stage metadata must be a regular file")
+        try:
+            stage_metadata = json.loads(stage_metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise InventoryError("invalid PQ stage metadata") from error
+    metadata_arch = None
+    if stage_metadata:
+        target = stage_metadata.get("target", {})
+        platform = target.get("platform")
+        metadata_arch = platform.removeprefix("linux/") if isinstance(platform, str) else None
+    selected_arch = target_arch or metadata_arch or "amd64"
+    if selected_arch not in PQ_TARGETS or (metadata_arch and metadata_arch != selected_arch):
+        raise InventoryError("PQ stage target architecture mismatch")
+    target = PQ_TARGETS[selected_arch]
     header_dir = directory / "include"
     if header_dir.is_symlink() or not header_dir.is_dir():
         raise InventoryError("accepted PQ development headers required")
@@ -311,38 +436,104 @@ def capture_runtime(prefix: str | os.PathLike[str]) -> dict[str, Any]:
         header_sha[name] = digest
         rows[name] = {"sha256": digest, "bytes": len(content), "mode": stat.S_IMODE(metadata.st_mode)}
     canonical = "".join(f"{header_sha[p]}  {p}\n" for p in sorted(header_sha)).encode()
-    if hashlib.sha256(canonical).hexdigest() != PQ_HEADER_SHA256:
-        raise InventoryError("accepted OpenSSL3.5.9 header closure mismatch")
-    for name, expected_sha in PQ_RUNTIME_PINS.items():
+    expected_header_sha = PQ_HEADER_SHA256_BY_ARCH[selected_arch]
+    if hashlib.sha256(canonical).hexdigest() != expected_header_sha:
+        raise InventoryError("accepted OpenSSL3.5.9 target header closure mismatch")
+    pins = PQ_RUNTIME_PINS_BY_ARCH.get(selected_arch)
+    runtime_names = ("bin/openssl", "lib/libssl.so.3", "lib/libcrypto.so.3", "share/licenses/openssl/LICENSE.txt")
+    for name in runtime_names:
         path = directory / name
         metadata = path.lstat()
         if not stat.S_ISREG(metadata.st_mode):
             raise InventoryError("PQ runtime files must be regular, non-symlink files")
         content = _read_regular(os.fsencode(path), metadata)
         digest = hashlib.sha256(content).hexdigest()
-        if digest != expected_sha:
+        expected_sha = (pins or {}).get(name)
+        if expected_sha and digest != expected_sha:
             raise InventoryError("accepted OpenSSL3.5.9 runtime/license mismatch")
         rows[name] = {"sha256": digest, "bytes": len(content), "mode": stat.S_IMODE(metadata.st_mode)}
+    for name in ("lib/libssl.so.3", "lib/libcrypto.so.3"):
+        metadata = (directory / name).lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise InventoryError("PQ runtime libraries must be regular, non-symlink files")
+        verify_elf_target(directory / name, selected_arch)
+    openssl_elf = verify_elf_target(directory / "bin/openssl", selected_arch)
+    if openssl_elf["interpreter"] != target["interpreter"]:
+        raise InventoryError("OpenSSL stage loader does not match architecture metadata")
+    if not {"libssl.so.3", "libcrypto.so.3"}.issubset(openssl_elf["needed"]):
+        raise InventoryError("OpenSSL stage CLI is missing its target libraries")
+    if selected_arch == "arm64" and not stage_metadata:
+        raise InventoryError("ARM64 PQ stage requires explicit source/toolchain metadata")
+    stage_metadata_sha = None
+    if stage_metadata:
+        expected_metadata = {
+            "schema_version": "cicada.pqtls-openssl-stage.v1",
+            "target": {"platform": "linux/" + selected_arch, "goarch": selected_arch,
+                       "triple": target["triple"], "elf_class": 64,
+                       "elf_endianness": "little", "elf_machine": target["machine"],
+                       "interpreter": target["interpreter"]},
+        }
+        if stage_metadata.get("schema_version") != expected_metadata["schema_version"] or stage_metadata.get("target") != expected_metadata["target"]:
+            raise InventoryError("PQ stage target metadata does not match verified ELF")
+        openssl_metadata = stage_metadata.get("openssl", {})
+        if openssl_metadata.get("version") != "3.5.9" or openssl_metadata.get("source_archive_sha256") != "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a" or openssl_metadata.get("headers_sha256") != expected_header_sha:
+            raise InventoryError("PQ stage source/header metadata mismatch")
+        runtime_metadata = openssl_metadata.get("runtime_files", {})
+        required_metadata_names = {*runtime_names, "bin/openssl"}
+        if set(runtime_metadata) != required_metadata_names:
+            raise InventoryError("PQ stage runtime metadata file set is incomplete")
+        for name, row in runtime_metadata.items():
+            path = directory / name
+            if not path.is_file() or path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != row:
+                raise InventoryError("PQ stage metadata does not match its runtime bytes")
+        if not all(runtime_metadata.get(name) == rows[name]["sha256"] for name in runtime_names):
+            raise InventoryError("PQ stage metadata is missing a runtime/license hash")
+        if selected_arch == "arm64":
+            toolchain = stage_metadata.get("build_toolchain", {})
+            if not re.fullmatch(r".+@sha256:[0-9a-f]{64}", toolchain.get("image", "")) or not toolchain.get("package_source", "").startswith("http://snapshot.debian.org/archive/debian/"):
+                raise InventoryError("ARM64 stage lacks pinned official build-toolchain provenance")
+            if not re.fullmatch(r"[0-9a-f]{64}", toolchain.get("apt_inrelease_sha256", "")):
+                raise InventoryError("ARM64 stage lacks signed Debian snapshot metadata hash")
+            compiler = toolchain.get("compiler", {})
+            if compiler.get("target") != target["triple"]:
+                raise InventoryError("ARM64 stage compiler target mismatch")
+            if not re.fullmatch(r"[0-9a-f]{64}", toolchain.get("package_inventory_sha256", "")) or not re.fullmatch(r"[0-9a-f]{64}", toolchain.get("license_inventory_sha256", "")):
+                raise InventoryError("ARM64 stage toolchain package/license inventory is missing")
+            packages = toolchain.get("packages")
+            licenses = toolchain.get("licenses")
+            if not isinstance(packages, list) or not packages or not isinstance(licenses, list) or not licenses:
+                raise InventoryError("ARM64 stage toolchain package/license rows are missing")
+            package_bytes = (json.dumps(packages, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            license_bytes = (json.dumps(licenses, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            if hashlib.sha256(package_bytes).hexdigest() != toolchain["package_inventory_sha256"] or hashlib.sha256(license_bytes).hexdigest() != toolchain["license_inventory_sha256"]:
+                raise InventoryError("ARM64 stage toolchain package/license inventory hash mismatch")
+            if any(not re.fullmatch(r"[0-9a-f]{64}", package.get("deb_sha256", "")) or not package.get("version") or not package.get("source_package") for package in packages):
+                raise InventoryError("ARM64 stage package source hash/version is incomplete")
+            if any(not re.fullmatch(r"[0-9a-f]{64}", license.get("sha256", "")) or not license.get("path") for license in licenses):
+                raise InventoryError("ARM64 stage license digest is incomplete")
+        stage_metadata_sha = hashlib.sha256(stage_metadata_path.read_bytes()).hexdigest()
     aliases = {}
     for library in ("libssl", "libcrypto"):
         path = directory / "lib" / (library + ".so")
-        target = library + ".so.3"
-        if not path.is_symlink() or os.readlink(path) != target:
+        linker_target = library + ".so.3"
+        if not path.is_symlink() or os.readlink(path) != linker_target:
             raise InventoryError("PQ linker alias must reference its exact accepted local library")
-        aliases["lib/" + library + ".so"] = target
+        aliases["lib/" + library + ".so"] = linker_target
     canonical = "".join(f"{rows[p]['sha256']}  {p}\n" for p in sorted(rows)).encode()
     return {"schema_version": "cicada.pqtls-runtime-inputs.v1", "openssl_version": "3.5.9",
-            "platform": "linux/amd64", "source_archive_sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
-            "headers_sha256": PQ_HEADER_SHA256, "closure_sha256": hashlib.sha256(canonical).hexdigest(), "files": rows, "linker_aliases": aliases}
+            "platform": "linux/" + selected_arch, "target": {"triple": target["triple"], "elf_machine": target["machine"], "interpreter": target["interpreter"]},
+            "source_archive_sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+            "headers_sha256": expected_header_sha, "closure_sha256": hashlib.sha256(canonical).hexdigest(), "files": rows,
+            "stage_metadata_sha256": stage_metadata_sha, "linker_aliases": aliases}
 
 
-def capture_pqtls(root: str | os.PathLike[str], prefix: str | os.PathLike[str]) -> dict[str, Any]:
+def capture_pqtls(root: str | os.PathLike[str], prefix: str | os.PathLike[str], target_arch: str | None = None) -> dict[str, Any]:
     root_path = pathlib.Path(root).resolve(strict=True)
     def once() -> dict[str, Any]:
         source = _capture_once(root_path, PQ_SCOPE)
         # A PQ scope must never be described as the historical standard v4.
         source.pop("source_fingerprint_v4")
-        runtime = capture_runtime(prefix)
+        runtime = capture_runtime(prefix, target_arch)
         payload = {"source": source, "runtime": runtime, "transport_variant": "pqtls"}
         data = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
         return {**payload, "schema_version": "cicada.pqtls-distribution-inputs.v1",
@@ -409,7 +600,8 @@ def collect_go_notices(source: str, destination: str, tags: str, targets: str = 
 
 def verify_distribution(root: str, prefix: str, package: str, receipt_path: str,
                         receipt_sha: str, image_receipt: str | None = None,
-                        image_receipt_sha: str | None = None) -> dict[str, Any]:
+                        image_receipt_sha: str | None = None,
+                        target_arch: str | None = None) -> dict[str, Any]:
     """Bind the test to independent build receipts and the current input closure."""
     if not re.fullmatch(r"[0-9a-f]{64}", receipt_sha):
         raise InventoryError("independently expected receipt SHA256 required")
@@ -419,7 +611,11 @@ def verify_distribution(root: str, prefix: str, package: str, receipt_path: str,
     receipt = json.loads(receipt_file.read_text())
     if receipt.get("schema_version") != "cicada.pqtls-package-build-receipt.v1":
         raise InventoryError("unsupported package build receipt")
-    current = capture_pqtls(root, prefix)
+    current = capture_pqtls(root, prefix, target_arch)
+    selected_arch = current["runtime"]["platform"].removeprefix("linux/")
+    target_platform = "linux/" + selected_arch
+    if receipt.get("target_arch") != selected_arch:
+        raise InventoryError("package receipt target architecture mismatch")
     if receipt["source_fingerprint"] != current["fingerprint"]["sha256"]:
         raise InventoryError("package receipt does not match current source/runtime")
     directory = pathlib.Path(package)
@@ -440,9 +636,15 @@ def verify_distribution(root: str, prefix: str, package: str, receipt_path: str,
             metadata.get("pqtls_available") is not True or
             metadata.get("cgo_enabled") is not True or
             metadata.get("transport_variant") != "pqtls" or
-            metadata.get("targets") != ["linux/amd64"]):
+            metadata.get("targets") != [target_platform]):
         raise InventoryError("package metadata/input closure mismatch")
-    archive = receipt_file.parent / "cicada-linux-amd64-pqtls.tar.gz"
+    loader = metadata.get("loader", {})
+    if loader.get("interpreter") != PQ_TARGETS[selected_arch]["interpreter"] or loader.get("runpath") != "$ORIGIN/../lib" or not re.fullmatch(r"GLIBC_[0-9]+([.][0-9]+)+", loader.get("minimum_observed_glibc_symbol", "")):
+        raise InventoryError("package loader metadata does not match the target contract")
+    verify_elf_target(directory / "bin/cicada", selected_arch, product=True)
+    for name in ("lib/libssl.so.3", "lib/libcrypto.so.3"):
+        verify_elf_target(directory / name, selected_arch)
+    archive = receipt_file.parent / f"cicada-linux-{selected_arch}-pqtls.tar.gz"
     if hashlib.sha256(archive.read_bytes()).hexdigest() != receipt["archive_sha256"]:
         raise InventoryError("archive does not match independent build receipt")
     image = None
@@ -462,7 +664,7 @@ def verify_distribution(root: str, prefix: str, package: str, receipt_path: str,
         inspected = json.loads(subprocess.check_output(["docker", "image", "inspect", image_id], text=True))[0]
         labels = inspected["Config"].get("Labels", {})
         if (inspected["Id"] != image_id or labels.get("org.cicada.build.source-fingerprint") != current["fingerprint"]["sha256"] or
-                labels.get("org.cicada.transport.variant") != "pqtls-linux-amd64"):
+                labels.get("org.cicada.transport.variant") != f"pqtls-linux-{selected_arch}"):
             raise InventoryError("actual immutable image metadata mismatch")
     return {"source_fingerprint": current["fingerprint"]["sha256"], "input_inventory": current,
             "package_build_receipt_sha256": receipt_sha, "package_file_sha256": actual,
@@ -501,13 +703,16 @@ def main(argv: list[str] | None = None) -> int:
     capture_parser.add_argument("--output")
     capture_parser.add_argument("--transport", choices=("standard", "pqtls"), default="standard")
     capture_parser.add_argument("--pqtls-stage")
+    capture_parser.add_argument("--targetarch", choices=tuple(PQ_TARGETS))
     capture_parser.add_argument("--fingerprint-only", action="store_true")
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--root", required=True)
     verify_parser.add_argument("--expected", required=True)
     verify_parser.add_argument("--pqtls-stage")
+    verify_parser.add_argument("--targetarch", choices=tuple(PQ_TARGETS))
     runtime_parser = subparsers.add_parser("runtime")
     runtime_parser.add_argument("--pqtls-stage", required=True)
+    runtime_parser.add_argument("--targetarch", choices=tuple(PQ_TARGETS))
     dirty_parser = subparsers.add_parser("dirty")
     dirty_parser.add_argument("--root", required=True)
     notices_parser = subparsers.add_parser("go-notices")
@@ -523,6 +728,11 @@ def main(argv: list[str] | None = None) -> int:
     distribution_parser.add_argument("--receipt-sha256", required=True)
     distribution_parser.add_argument("--image-receipt")
     distribution_parser.add_argument("--image-receipt-sha256")
+    distribution_parser.add_argument("--targetarch", choices=tuple(PQ_TARGETS))
+    elf_parser = subparsers.add_parser("verify-elf")
+    elf_parser.add_argument("--binary", required=True)
+    elf_parser.add_argument("--targetarch", choices=tuple(PQ_TARGETS), required=True)
+    elf_parser.add_argument("--product", action="store_true")
     arguments = parser.parse_args(argv)
 
     try:
@@ -532,7 +742,8 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "verify-distribution":
             result = verify_distribution(arguments.root, arguments.pqtls_stage, arguments.package,
                                          arguments.receipt, arguments.receipt_sha256,
-                                         arguments.image_receipt, arguments.image_receipt_sha256)
+                                         arguments.image_receipt, arguments.image_receipt_sha256,
+                                         arguments.targetarch)
             json.dump(result, sys.stdout, sort_keys=True, indent=2)
             sys.stdout.write("\n")
             return 0
@@ -540,13 +751,18 @@ def main(argv: list[str] | None = None) -> int:
             collect_go_notices(arguments.source, arguments.destination, arguments.tags, arguments.targets)
             return 0
         if arguments.command == "runtime":
-            json.dump(capture_runtime(arguments.pqtls_stage), sys.stdout, sort_keys=True, indent=2)
+            json.dump(capture_runtime(arguments.pqtls_stage, arguments.targetarch), sys.stdout, sort_keys=True, indent=2)
+            sys.stdout.write("\n")
+            return 0
+        if arguments.command == "verify-elf":
+            result = verify_elf_target(arguments.binary, arguments.targetarch, product=arguments.product)
+            json.dump(result, sys.stdout, sort_keys=True, indent=2)
             sys.stdout.write("\n")
             return 0
         if arguments.command == "capture":
             if arguments.transport == "pqtls" and not arguments.pqtls_stage:
                 raise InventoryError("--pqtls-stage is required for PQ")
-            result = capture_pqtls(arguments.root, arguments.pqtls_stage) if arguments.transport == "pqtls" else capture(arguments.root)
+            result = capture_pqtls(arguments.root, arguments.pqtls_stage, arguments.targetarch) if arguments.transport == "pqtls" else capture(arguments.root)
             if arguments.fingerprint_only:
                 print(result["fingerprint" if arguments.transport == "pqtls" else "source_fingerprint_v4"]["sha256"])
                 return 0
@@ -560,7 +776,7 @@ def main(argv: list[str] | None = None) -> int:
         with open(arguments.expected, encoding="utf-8") as source:
             expected = json.load(source)
         if expected.get("transport_variant") == "pqtls":
-            if not arguments.pqtls_stage or capture_pqtls(arguments.root, arguments.pqtls_stage) != expected:
+            if not arguments.pqtls_stage or capture_pqtls(arguments.root, arguments.pqtls_stage, arguments.targetarch) != expected:
                 raise InventoryError("PQ source/runtime changed after capture")
         else:
             verify(arguments.root, expected)

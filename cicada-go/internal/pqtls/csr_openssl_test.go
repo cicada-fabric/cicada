@@ -1,4 +1,4 @@
-//go:build linux && amd64 && cgo && cicada_pqtls
+//go:build linux && (amd64 || arm64) && cgo && cicada_pqtls
 
 package pqtls
 
@@ -21,7 +21,7 @@ func csrOfficial(t *testing.T, dir string, args ...string) []byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opensslExecutable, args...)
+	cmd := pqtlsTestCommandContext(ctx, opensslExecutable, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 	output, err := cmd.CombinedOutput()
@@ -204,7 +204,7 @@ func TestTLSCSRRejectLibraryConstructedAttributesAndSignatureOID(t *testing.T) {
 	stage := filepath.Dir(filepath.Dir(opensslExecutable))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "cc", "-Wall", "-Wextra", "-Werror", "-I"+filepath.Join(stage, "include"),
+	cmd := exec.CommandContext(ctx, pqtlsTestCompiler(), "-Wall", "-Wextra", "-Werror", "-I"+filepath.Join(stage, "include"),
 		"testdata/csr-invalid-fixture.c", "-L"+filepath.Join(stage, "lib"), "-Wl,-rpath,"+filepath.Join(stage, "lib"), "-lcrypto", "-o", helper)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		// Compiler diagnostics do not contain key/CSR bytes.
@@ -228,7 +228,7 @@ func TestTLSCSRRejectLibraryConstructedAttributesAndSignatureOID(t *testing.T) {
 			outputPath := filepath.Join(dir, mutation+".csr")
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, helper, mutation, csrPath, keyPath, outputPath)
+			cmd := pqtlsTestCommandContext(ctx, helper, mutation, csrPath, keyPath, outputPath)
 			if _, err := cmd.CombinedOutput(); err != nil {
 				t.Fatal("official-API synthetic CSR mutation failed")
 			}
@@ -298,7 +298,7 @@ func TestTLSCSROnlyModeRejectsOtherSelectors(t *testing.T) {
 	}
 	for _, pattern := range []string{".", "^TestExactProfileAndSPKIPin$", "^TestTLSCSR|TestExactProfileAndSPKIPin$"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, executable, "-test.run", pattern)
+		cmd := pqtlsTestCommandContext(ctx, executable, "-test.run", pattern)
 		output, err := cmd.CombinedOutput()
 		cancel()
 		var exit *exec.ExitError

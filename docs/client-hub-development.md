@@ -2,16 +2,19 @@
 
 Current source contract candidate is `client-hub-v1.6.5`: the existing encrypted
 policy preview accepts explicit `owner_key_id` and returns an own-side current
-signer snapshot. Wire 1, catalog 55, Hub schema 59 and software 0.0.2 remain
-unchanged. See [signer preview validation](link-policy-signer-preview-validation.md).
+signer snapshot. Wire 1, catalog 55 and Hub schema 59 remain unchanged; current
+software is 0.0.3. See [signer preview validation](link-policy-signer-preview-validation.md).
 The v1.6.4 images, bundles and results below retain their original attribution.
+[The IP/ARM64 checkpoint](docker-ip-arm64-validation.md) adds no Client source or
+operation. Android TLS-leaf Owner signing UI remains follow-up work; manual
+independent signing does not substitute device enrollment for TLS permission.
 
 ## Current Core/Hub validation index — v0.0.x development; target v0.1.0 PARTIAL
 
 The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 and [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
-wire 1, catalog 55, schema 59 and software 0.0.2 remain unchanged. Joint11
+wire 1, catalog 55, schema 59 remain unchanged; current software is 0.0.3. Joint11
 passed its eight Android recovery cases and final close ACK with exact cleanup.
 Core C14 separately passed its scoped default-daemon G2/G3 run; that result is
 not Android status-read evidence. A3 passed one synthetic Android OwnerProof

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s [--image IMAGE] [--interop-test-image IMAGE] [--metadata-file PATH]\n' "$0" >&2
+  printf 'usage: %s [--image IMAGE] [--interop-test-image IMAGE] [--metadata-file PATH] [--targetarch amd64|arm64]\n' "$0" >&2
   printf '       %s --source-info-only --metadata-file PATH\n' "$0" >&2
-  printf '       optional: --transport pqtls --pqtls-stage ACCEPTED_PREFIX (linux/amd64 only)\n' >&2
+  printf '       optional: --transport pqtls --targetarch amd64|arm64 --pqtls-stage ACCEPTED_PREFIX\n' "$0" >&2
   exit 2
 }
 
@@ -14,6 +14,7 @@ metadata_file=""
 source_info_only=false
 transport=standard
 pq_stage=''
+target_arch=amd64
 while (($#)); do
   case "$1" in
     --image)
@@ -39,6 +40,11 @@ while (($#)); do
       (($# >= 2)) || usage
       transport="$2"; shift 2
       ;;
+    --targetarch)
+      (($# >= 2)) || usage
+      target_arch="$2"
+      shift 2
+      ;;
     --pqtls-stage)
       (($# >= 2)) || usage
       pq_stage="$2"; shift 2
@@ -50,6 +56,8 @@ while (($#)); do
 done
 [[ "$transport" == standard || "$transport" == pqtls ]] || usage
 [[ "$transport" == pqtls || -z "$pq_stage" ]] || usage
+[[ "$target_arch" == amd64 || "$target_arch" == arm64 ]] || usage
+[[ "$transport" == pqtls || "$target_arch" == amd64 ]] || usage
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 dockerfile="${repo_root}/docker/Dockerfile.hub"
@@ -62,9 +70,9 @@ if [[ "$transport" == pqtls ]]; then
   pq_stage="$(cd "$pq_stage" && pwd -P)"
   dockerfile_relative="docker/Dockerfile.hub-pqtls"
   dockerfile="$repo_root/$dockerfile_relative"
-  inventory_args=(--transport pqtls --pqtls-stage "$pq_stage")
-  verify_args=(--pqtls-stage "$pq_stage")
-  variant_build_args=(--platform linux/amd64 --build-context "pqtls-stage=$pq_stage")
+  inventory_args=(--transport pqtls --pqtls-stage "$pq_stage" --targetarch "$target_arch")
+  verify_args=(--pqtls-stage "$pq_stage" --targetarch "$target_arch")
+  variant_build_args=(--platform "linux/$target_arch" --build-context "pqtls-stage=$pq_stage")
 fi
 catalog_file="${repo_root}/cicada-go/internal/clientcontract/catalog.json"
 inventory_helper="${repo_root}/scripts/hub-build-input-inventory.py"
@@ -231,18 +239,20 @@ if [[ "$source_info_only" == true ]]; then
     printf 'build-hub-image: source changed while source metadata was being collected\n' >&2
     exit 1
   fi
-  python3 - "$metadata_file" "$source_inventory_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$transport" "$dockerfile_relative" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$transport" "$dockerfile_relative" "$target_arch" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, inventory_path, revision, dirty, source_fingerprint, catalog_sha256, transport, dockerfile = sys.argv[1:]
+path, inventory_path, revision, dirty, source_fingerprint, catalog_sha256, transport, dockerfile, target_arch = sys.argv[1:]
 with open(inventory_path, encoding="utf-8") as source:
     input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build-source.v1",
     "transport_variant": transport,
+    "target_arch": target_arch,
+    "target_platform": "linux/" + target_arch if transport == "pqtls" else None,
     "pqtls_available": transport == "pqtls",
     "dockerfile": dockerfile,
     "source": {
@@ -359,18 +369,20 @@ if [[ -n "$test_image_name" ]]; then
   test_image_id="$(cat "$image_ids/interop-test")"
 fi
 if [[ -n "$metadata_file" ]]; then
-  python3 - "$metadata_file" "$source_inventory_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" "$transport" "$dockerfile_relative" <<'PY'
+  python3 - "$metadata_file" "$source_inventory_file" "$image_name" "$image_id" "$revision" "$dirty" "$source_fingerprint" "$catalog_sha256" "$test_image_name" "$test_image_id" "$transport" "$dockerfile_relative" "$target_arch" <<'PY'
 import json
 import os
 import sys
 import tempfile
 
-path, inventory_path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id, transport, dockerfile = sys.argv[1:]
+path, inventory_path, reference, image_id, revision, dirty, source_fingerprint, catalog_sha256, test_reference, test_id, transport, dockerfile, target_arch = sys.argv[1:]
 with open(inventory_path, encoding="utf-8") as source:
     input_inventory = json.load(source)
 result = {
     "schema_version": "cicada.hub-build.v1",
     "transport_variant": transport,
+    "target_arch": target_arch,
+    "target_platform": "linux/" + target_arch if transport == "pqtls" else None,
     "pqtls_available": transport == "pqtls",
     "source": {
         "revision": revision,

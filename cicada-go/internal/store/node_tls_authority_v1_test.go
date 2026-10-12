@@ -335,7 +335,7 @@ func nodeTLSActivateFixture(t *testing.T, f nodeTLSNativeFixture, r *NodeTLSAuth
 	if b, err := f.s.CurrentNodeTransportBinding(r.Claims.NodeID); err != nil || (b.TLSAuthority != nil && b.TLSAuthority.Claims.RequestID == r.Claims.RequestID) {
 		t.Fatal("uninstalled new leaf became current authority")
 	}
-	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: 1, GrantClaims: signed.Claims, GrantDigest: e2ee.NodeTLSAuthorityDigest(grant), ReservationVersion: signed.ReservationVersion, LeafDERHash: signed.LeafDERHash, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: signed.Claims.ExpiresAt, Nonce: nodeTLSTestHash("ack-" + r.Claims.RequestID)}
+	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: signed.Claims.Version, GrantClaims: signed.Claims, GrantDigest: e2ee.NodeTLSAuthorityDigest(grant), ReservationVersion: signed.ReservationVersion, LeafDERHash: signed.LeafDERHash, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: signed.Claims.ExpiresAt, Nonce: nodeTLSTestHash("ack-" + r.Claims.RequestID)}
 	ack, err := e2ee.SignNodeTLSInstallAck(f.node, ackClaims)
 	if err != nil {
 		t.Fatal(err)
@@ -486,7 +486,7 @@ func TestNodeTLSAuthorityNativeIssuerScopeAndProofForgery(t *testing.T) {
 	if _, err := f.s.RecordNodeTLSInstallAck(NodeTLSInstallAckInput{NodeTLSAuthorityActionInput: action, InstallAck: []byte(`{"installed":true}`)}); !errors.Is(err, ErrNodeTLSAuthorityDenied) {
 		t.Fatal("unsigned install assertion accepted")
 	}
-	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: 1, GrantClaims: signed.Claims, GrantDigest: e2ee.NodeTLSAuthorityDigest(grant), ReservationVersion: signed.ReservationVersion, LeafDERHash: signed.LeafDERHash, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: signed.Claims.ExpiresAt, Nonce: signed.Claims.Nonce}
+	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: signed.Claims.Version, GrantClaims: signed.Claims, GrantDigest: e2ee.NodeTLSAuthorityDigest(grant), ReservationVersion: signed.ReservationVersion, LeafDERHash: signed.LeafDERHash, IssuedAt: nodeTLSStamp(nodeTLSNow()), ExpiresAt: signed.Claims.ExpiresAt, Nonce: signed.Claims.Nonce}
 	ack, err := e2ee.SignNodeTLSInstallAck(f.node, ackClaims)
 	if err != nil {
 		t.Fatal(err)

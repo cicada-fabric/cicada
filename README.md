@@ -24,7 +24,12 @@ external model is visible to that provider; this is not provider-blind E2EE.
 
 ## Development and local deployment
 
-The development line is **0.0.2**, unreleased on `dev`. A main merge or
+The current [IP/ARM64 deployment checkpoint](docs/docker-ip-arm64-validation.md)
+has [manual independent-Owner installation steps](docs/node-tls-first-install-cli.md).
+Final clean package acceptance is pending; standard HTTPS bootstrap and enrolled
+strict PQ TLS are separate stages.
+
+The development line is **0.0.3**, unreleased on `dev`. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1, current CLI sandbox and Worker private-fixture checks passed their
 scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3

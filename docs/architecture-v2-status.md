@@ -1,5 +1,13 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
+independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)
+records focused green preflight and retained failed diagnostics; final clean
+packaged amd64/ARM gate is pending. Bootstrap standard HTTPS with NIST application
+proofs and enrolled strict PQ TLS remain separate. Contract v1.6.5, wire 1,
+catalog 55 and schema 59 are unchanged; overall release acceptance remains PARTIAL.
+
+
 <a id="current-closeout"></a>
 
 ## Current acceptance status — v0.0.x development; target v0.1.0 PARTIAL
@@ -27,7 +35,7 @@ overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-va
 
 Use the [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 for product scope and the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
-for current source and artifact checks. Software is 0.0.2, contract
+for current source and artifact checks. Software is 0.0.3, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
 their separate tested sources. C14 passed a bounded default-daemon scope on

@@ -57,6 +57,7 @@ type LocalTLSInstaller struct {
 
 // These coordinates are fixed locally before any Owner grant is received.
 type TLSPreparationRequest struct {
+	HubDialAddress                                                 string `json:"HubDialAddress,omitempty"`
 	RequestID, DNSName, HubDNSName, HubPQOrigin, ApplicationOrigin string
 	HubSPKIHash, HubTrustAnchorDERHash                             string
 	IssuerGeneration, IssuerSPKIHash, IssuerDERHash, RootDERHash   string
@@ -406,6 +407,13 @@ func (i *LocalTLSInstaller) separated(csr []byte, p pqtls.TLSCSRParameters, b TL
 	return pqtls.CheckTLSCSRApplicationKeySeparation(csr, p, list)
 }
 
+func preparationVersion(r TLSPreparationRequest) int {
+	if r.HubDialAddress != "" {
+		return 2
+	}
+	return 1
+}
+
 func validPreparation(r TLSPreparationRequest) bool {
 	if r.RequestID == "" || len(r.RequestID) > 256 || r.IssuerGeneration == "" || len(r.IssuerGeneration) > 256 || r.ApplicationOrigin == "" {
 		return false
@@ -419,7 +427,7 @@ func validPreparation(r TLSPreparationRequest) bool {
 	if e != nil || u.Hostname() != r.HubDNSName {
 		return false
 	}
-	c := Config{Version: 1, Role: "node", Origin: r.HubPQOrigin, ApplicationOrigin: r.ApplicationOrigin, Identity: Identity{Kind: "node", HubID: "placeholder", NodeID: "placeholder", TLSEpoch: 1, DNSName: r.DNSName}, Peers: []Approval{{Identity: Identity{Kind: "hub", HubID: "placeholder", DNSName: r.HubDNSName}, PinKind: "spki-sha256", PinSHA256: r.HubSPKIHash}}}
+	c := Config{Version: preparationVersion(r), Role: "node", DialAddress: r.HubDialAddress, Origin: r.HubPQOrigin, ApplicationOrigin: r.ApplicationOrigin, Identity: Identity{Kind: "node", HubID: "placeholder", NodeID: "placeholder", TLSEpoch: 1, DNSName: r.DNSName}, Peers: []Approval{{Identity: Identity{Kind: "hub", HubID: "placeholder", DNSName: r.HubDNSName}, PinKind: "spki-sha256", PinSHA256: r.HubSPKIHash}}}
 	return c.Validate("node") == nil
 }
 
@@ -460,7 +468,7 @@ func (i *LocalTLSInstaller) Prepare(r TLSPreparationRequest, at time.Time) (TLSP
 		return result, e
 	}
 	defer clear(secret)
-	record := tlsPreparation{Version: 1, Request: r, Binding: b, CredentialDigest: b.Control.CredentialDigest, CSRDERHash: hex.EncodeToString(csr.CSRDERHash[:]), SPKIDERHash: hex.EncodeToString(csr.SPKIDERHash[:]), Floor: f.Epoch}
+	record := tlsPreparation{Version: preparationVersion(r), Request: r, Binding: b, CredentialDigest: b.Control.CredentialDigest, CSRDERHash: hex.EncodeToString(csr.CSRDERHash[:]), SPKIDERHash: hex.EncodeToString(csr.SPKIDERHash[:]), Floor: f.Epoch}
 	recordJSON, e := json.Marshal(record)
 	if e != nil {
 		return result, e
@@ -504,7 +512,7 @@ func preparationMatches(p tlsPreparation, c e2ee.OwnerTLSLeafGrantClaims) bool {
 	r := p.Request
 	v := p.Binding.Control
 	exactBinding := c.HubID == v.HubID && c.NodeID == v.NodeID && c.OwnerID == v.OwnerID && c.OwnerKeyID == v.OwnerKeyID && c.OwnerKeyVersion == p.Binding.OwnerKeyVersion && c.ClientDeviceID == v.ClientDeviceID && c.ClientDeviceVersion == p.Binding.ClientDeviceVersion && c.OwnerBindingID == v.OwnerBindingID && c.OwnerBindingVersion == v.BindingVersion && c.CredentialDigest == p.CredentialDigest && c.CredentialVersion == v.NodeCredentialVersion && c.NodeControlKeyID == v.NodeKeyID && c.NodeControlKeyVersion == v.NodeKeyVersion && c.NodeControlKeyEpoch == v.NodeKeyEpoch && c.NodeControlBindingVersion == v.Version && c.HubControlKeyID == v.HubKeyID && c.HubControlKeyVersion == v.HubKeyVersion
-	return exactBinding && p.Version == 1 && r.RequestID == c.RequestID && r.DNSName == c.DNSName && r.HubPQOrigin == c.HubPQOrigin && r.ApplicationOrigin == c.ApplicationOrigin && r.HubSPKIHash == c.HubSPKIHash && r.HubTrustAnchorDERHash == c.HubTrustAnchorDERHash && r.IssuerGeneration == c.IssuerGeneration && r.IssuerSPKIHash == c.IssuerSPKIHash && r.IssuerDERHash == c.IssuerDERHash && r.RootDERHash == c.RootDERHash && p.CSRDERHash == c.CSRDERHash && p.SPKIDERHash == c.SPKIDERHash && c.ExpectedTLSEpochFloor >= p.Floor && c.TLSEpoch > p.Floor
+	return exactBinding && p.Version == preparationVersion(r) && p.Version == c.Version && r.HubDialAddress == c.HubDialAddress && r.RequestID == c.RequestID && r.DNSName == c.DNSName && r.HubPQOrigin == c.HubPQOrigin && r.ApplicationOrigin == c.ApplicationOrigin && r.HubSPKIHash == c.HubSPKIHash && r.HubTrustAnchorDERHash == c.HubTrustAnchorDERHash && r.IssuerGeneration == c.IssuerGeneration && r.IssuerSPKIHash == c.IssuerSPKIHash && r.IssuerDERHash == c.IssuerDERHash && r.RootDERHash == c.RootDERHash && p.CSRDERHash == c.CSRDERHash && p.SPKIDERHash == c.SPKIDERHash && c.ExpectedTLSEpochFloor >= p.Floor && c.TLSEpoch > p.Floor
 }
 func leafParameters(c e2ee.OwnerTLSLeafGrantClaims) pqtls.TLSLeafParameters {
 	p := pqtls.TLSLeafParameters{TLSCSRParameters: pqtls.TLSCSRParameters{Role: c.Role, DNSName: c.DNSName}}
@@ -621,7 +629,7 @@ func (i *LocalTLSInstaller) Stage(s store.NodeTLSAuthoritySnapshot, issuerChain,
 	if e = tlsSync(filepath.Dir(dir)); e != nil {
 		return nil, e
 	}
-	cfg := Config{Version: 1, Role: "node", Origin: c.HubPQOrigin, ApplicationOrigin: prep.Request.ApplicationOrigin, CertificateFile: filepath.Join(dir, "chain.pem"), PrivateKeyFile: filepath.Join(dir, "key.pem"), TrustFile: filepath.Join(dir, "hub-trust.pem"), Identity: Identity{Kind: "node", HubID: c.HubID, NodeID: c.NodeID, TLSEpoch: c.TLSEpoch, DNSName: c.DNSName}, Peers: []Approval{{Identity: Identity{Kind: "hub", HubID: c.HubID, DNSName: prep.Request.HubDNSName}, PinKind: "spki-sha256", PinSHA256: c.HubSPKIHash}}}
+	cfg := Config{Version: c.Version, Role: "node", DialAddress: c.HubDialAddress, Origin: c.HubPQOrigin, ApplicationOrigin: prep.Request.ApplicationOrigin, CertificateFile: filepath.Join(dir, "chain.pem"), PrivateKeyFile: filepath.Join(dir, "key.pem"), TrustFile: filepath.Join(dir, "hub-trust.pem"), Identity: Identity{Kind: "node", HubID: c.HubID, NodeID: c.NodeID, TLSEpoch: c.TLSEpoch, DNSName: c.DNSName}, Peers: []Approval{{Identity: Identity{Kind: "hub", HubID: c.HubID, DNSName: prep.Request.HubDNSName}, PinKind: "spki-sha256", PinSHA256: c.HubSPKIHash}}}
 	for _, file := range []struct {
 		name string
 		data []byte
@@ -640,7 +648,7 @@ func (i *LocalTLSInstaller) Stage(s store.NodeTLSAuthoritySnapshot, issuerChain,
 	if e != nil {
 		return nil, e
 	}
-	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: 1, GrantClaims: c, GrantDigest: e2ee.NodeTLSAuthorityDigest(s.Grant), ReservationVersion: s.ReservationVersion, LeafDERHash: s.LeafDERHash, IssuedAt: at.Format(time.RFC3339), ExpiresAt: c.ExpiresAt, Nonce: nonce}
+	ackClaims := e2ee.NodeTLSInstallAckClaims{Version: c.Version, GrantClaims: c, GrantDigest: e2ee.NodeTLSAuthorityDigest(s.Grant), ReservationVersion: s.ReservationVersion, LeafDERHash: s.LeafDERHash, IssuedAt: at.Format(time.RFC3339), ExpiresAt: c.ExpiresAt, Nonce: nonce}
 	// Recheck independently held application authority immediately before proof.
 	if _, _, e = i.local(&c); e != nil {
 		return nil, e
@@ -649,7 +657,7 @@ func (i *LocalTLSInstaller) Stage(s store.NodeTLSAuthoritySnapshot, issuerChain,
 	if e != nil {
 		return nil, e
 	}
-	staged := tlsStage{1, c, bytes.Clone(s.Grant), ack, s.LeafDERHash, cfg}
+	staged := tlsStage{c.Version, c, bytes.Clone(s.Grant), ack, s.LeafDERHash, cfg}
 	wire, e := json.Marshal(staged)
 	if e != nil {
 		return nil, e
@@ -675,7 +683,7 @@ func (i *LocalTLSInstaller) verifyStage(dir string, at time.Time) (tlsStage, err
 		return s, e
 	}
 	g, e := e2ee.VerifyOwnerTLSLeafGrant(t.PublicIdentity, at, s.Grant)
-	if e != nil || g != c || dir != i.epochPath(c, s.Grant) || s.Version != 1 {
+	if e != nil || g != c || dir != i.epochPath(c, s.Grant) || s.Version != c.Version {
 		return s, ErrTLSInstall
 	}
 	ack, e := e2ee.VerifyNodeTLSInstallAck(b.Control.NodePublicIdentity, at, s.Ack)
@@ -687,7 +695,7 @@ func (i *LocalTLSInstaller) verifyStage(dir string, at time.Time) (tlsStage, err
 		return s, ErrTLSInstall
 	}
 	cfg := s.Config
-	if cfg.Validate("node") != nil || cfg.CertificateFile != filepath.Join(dir, "chain.pem") || cfg.PrivateKeyFile != filepath.Join(dir, "key.pem") || cfg.TrustFile != filepath.Join(dir, "hub-trust.pem") || cfg.Identity != (Identity{Kind: "node", HubID: c.HubID, NodeID: c.NodeID, TLSEpoch: c.TLSEpoch, DNSName: c.DNSName}) || cfg.Origin != c.HubPQOrigin || cfg.ApplicationOrigin != prep.Request.ApplicationOrigin || cfg.Peers[0] != (Approval{Identity: Identity{Kind: "hub", HubID: c.HubID, DNSName: prep.Request.HubDNSName}, PinKind: "spki-sha256", PinSHA256: c.HubSPKIHash}) {
+	if cfg.Validate("node") != nil || cfg.Version != c.Version || cfg.DialAddress != c.HubDialAddress || cfg.CertificateFile != filepath.Join(dir, "chain.pem") || cfg.PrivateKeyFile != filepath.Join(dir, "key.pem") || cfg.TrustFile != filepath.Join(dir, "hub-trust.pem") || cfg.Identity != (Identity{Kind: "node", HubID: c.HubID, NodeID: c.NodeID, TLSEpoch: c.TLSEpoch, DNSName: c.DNSName}) || cfg.Origin != c.HubPQOrigin || cfg.ApplicationOrigin != prep.Request.ApplicationOrigin || cfg.Peers[0] != (Approval{Identity: Identity{Kind: "hub", HubID: c.HubID, DNSName: prep.Request.HubDNSName}, PinKind: "spki-sha256", PinSHA256: c.HubSPKIHash}) {
 		return s, ErrTLSInstall
 	}
 	if e = i.verifyDiskMaterial(dir, c, s.LeafDERHash, cfg, at, b, t); e != nil {

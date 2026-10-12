@@ -1,4 +1,4 @@
-//go:build linux && amd64 && cgo && cicada_pqtls
+//go:build linux && (amd64 || arm64) && cgo && cicada_pqtls
 
 package pqtls
 
@@ -87,7 +87,7 @@ func TestMain(m *testing.M) {
 func runOpenSSL(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opensslExecutable, args...)
+	cmd := pqtlsTestCommandContext(ctx, opensslExecutable, args...)
 	cmd.Dir = fixtureDirectory
 	cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 	out, err := cmd.CombinedOutput()
@@ -309,7 +309,7 @@ func TestConcurrentDuplex(t *testing.T) {
 // stopped on every thread before that context is freed.
 func TestLibctxThreadCleanupBeforeProcessExit(t *testing.T) {
 	if os.Getenv(libctxCleanupChildEnv) != "1" {
-		child := exec.Command(os.Args[0], "-test.run=^TestLibctxThreadCleanupBeforeProcessExit$")
+		child := pqtlsTestCommandContext(context.Background(), os.Args[0], "-test.run=^TestLibctxThreadCleanupBeforeProcessExit$")
 		child.Env = append(os.Environ(), libctxCleanupChildEnv+"=1")
 		_, err := child.CombinedOutput()
 		if err != nil {
@@ -593,7 +593,7 @@ func TestProfileFailuresNeverReachHTTP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, opensslExecutable, append(append([]string{}, base...), test.args...)...)
+			cmd := pqtlsTestCommandContext(ctx, opensslExecutable, append(append([]string{}, base...), test.args...)...)
 			cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 			cmd.Stdin = strings.NewReader("POST /synthetic HTTP/1.1\r\nAuthorization: synthetic\r\nContent-Length: 0\r\n\r\n")
 			out, e := cmd.CombinedOutput()
@@ -617,7 +617,7 @@ func TestProfileFailuresNeverReachHTTP(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		args := []string{"s_client", "-connect", addr, "-CAfile", filepath.Join(fixtureDirectory, "ca.pem"), "-tls1_3", "-groups", "MLKEM768", "-sigalgs", "mldsa65", "-ciphersuites", "TLS_AES_256_GCM_SHA384", "-alpn", "http/1.1", "-quiet"}
-		cmd := exec.CommandContext(ctx, opensslExecutable, args...)
+		cmd := pqtlsTestCommandContext(ctx, opensslExecutable, args...)
 		cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 		cmd.Stdin = strings.NewReader("GET / HTTP/1.1\r\nHost: synthetic\r\n\r\n")
 		out, e := cmd.CombinedOutput()

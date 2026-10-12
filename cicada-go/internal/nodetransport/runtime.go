@@ -92,7 +92,7 @@ func readAcceptedTLSBinding(i *LocalTLSInstaller) (TLSLocalBinding, error) {
 		return zero, ErrTLSInstall
 	}
 	var prep tlsPreparation
-	if tlsJSON(filepath.Join(i.prepPath(c.RequestID), "preparation.json"), &prep) != nil || prep.Version != 1 || !preparationMatches(prep, c) || prep.CredentialDigest == "" {
+	if tlsJSON(filepath.Join(i.prepPath(c.RequestID), "preparation.json"), &prep) != nil || prep.Version != preparationVersion(prep.Request) || !preparationMatches(prep, c) || prep.CredentialDigest == "" {
 		return zero, ErrTLSInstall
 	}
 	b := prep.Binding
@@ -130,7 +130,7 @@ func readRetainedTLSPreparationKeys(i *LocalTLSInstaller) ([][]byte, error) {
 			return nil, ErrTLSInstall
 		}
 		var prep tlsPreparation
-		if tlsJSON(filepath.Join(path, "preparation.json"), &prep) != nil || prep.Version != 1 || !validPreparation(prep.Request) || path != i.prepPath(prep.Request.RequestID) || prep.Binding.Control.HubID != hubID || prep.Binding.Control.NodeID != nodeID {
+		if tlsJSON(filepath.Join(path, "preparation.json"), &prep) != nil || prep.Version != preparationVersion(prep.Request) || !validPreparation(prep.Request) || path != i.prepPath(prep.Request.RequestID) || prep.Binding.Control.HubID != hubID || prep.Binding.Control.NodeID != nodeID {
 			return nil, ErrTLSInstall
 		}
 		for _, p := range []e2ee.PublicIdentity{prep.Binding.Control.NodePublicIdentity, prep.Binding.Control.HubPublicIdentity} {

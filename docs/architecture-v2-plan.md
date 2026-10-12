@@ -1,5 +1,14 @@
 # Architecture v2.3 实施计划
 
+The active implementation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
+Signed IP locators, ARM64 build support and the independent Owner operator
+ceremony have focused green preflight. Freeze implementation, commit the clean
+producer, build actual amd64/ARM packages once, then run the isolated unified
+Docker gate under bounded explicit QEMU. Record final source/package/fixture
+identity and cleanup before closing delivery. [Current evidence](docker-ip-arm64-validation.md)
+and [manual steps](node-tls-first-install-cli.md) keep this sequence reviewable;
+no PASS is added to historical d86 or Native results.
+
 ## Current acceptance sequence — v0.0.x development; target v0.1.0 PARTIAL
 
 [Clean d86 candidate validation](v00-candidate-d86-validation.md) closes scoped
@@ -26,7 +35,7 @@ overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-va
 The [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 remains the product-status index; the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 records the clean-328f aggregate and separately scoped follow-up evidence. Keep
-software 0.0.2, contract `client-hub-v1.6.5`, wire 1, catalog 55 and schema 59
+current software 0.0.3, contract `client-hub-v1.6.5`, wire 1, catalog 55 and schema 59
 distinct. Overall first-release acceptance remains PARTIAL.
 
 C14 passed its bounded six-turn default-daemon scope on the original A/B

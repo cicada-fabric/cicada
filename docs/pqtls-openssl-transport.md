@@ -1,6 +1,25 @@
 # Optional OpenSSL 3.5.9 transport checkpoint
 
-## Current source boundary (2026-10-02)
+## Current architecture and build status (2026-10-12)
+
+Linux/amd64 remains the accepted native CGo/OpenSSL path. Linux/arm64 CGo source
+and target-specific OpenSSL 3.5.9 build/package support are now implemented. The
+ARM64 stage was cross-built with `Configure linux-aarch64` and checked as ELF64
+AArch64 with interpreter `/lib/ld-linux-aarch64.so.1`; its OpenSSL CLI and
+libraries require no glibc symbol newer than `GLIBC_2.34`. The stage's
+`openssl version -a` now passes through explicit user-mode QEMU 7.2.22 with
+the ARM64 glibc 2.36 target sysroot and both staged OpenSSL libraries loaded.
+This tool check establishes no product Node or deployment acceptance.
+The QEMU preparation's first attempt failed in its package-metadata parser;
+its offline retry passed with exit 0 and `OOMKilled=false`, and the exact
+owned container was removed. Package SHA256 values were checked against the
+signed Debian snapshot dated 2026-10-11; QEMU and glibc notices are retained.
+Product ARM64 QEMU acceptance, native ARM hardware, openEuler, Ubuntu 26,
+Android, physical-device PQ and public HTTPS results remain NOT_RUN.
+Do not read the historical ARM64-unavailable statements below as current
+implementation status; their source-specific test results remain historical.
+
+## Historical source boundary (2026-10-02)
 
 Clean Main `144e079` includes optional Hub/Node production transport wiring, current Store/Guard checks, per-Hub Node transport selection and certificate-lifetime checks for connections, requests and SSE. Its exact clean STD/PQ artifact gates and limited native evidence remain attributed in the [clean artifact/native validation](v01-clean-artifact-native-checkpoint-validation.md); native STD results do not imply native-over-PQ acceptance.
 
@@ -8,7 +27,7 @@ The integrated dirty Main source-input fingerprint is `72ec78fb9e03c647f73bf611e
 
 The tagged CSR/certificate normal/race receipts remain attached to source `cb4d1229…`: CSR 9 + 32 and certificate 9 + 40 top/subtests per run, zero skips/failures, with standard/tagged vet/build 0. On that same source, the broad focused Store race attempt failed on its 20-minute timeout (93 top + 134 subtests passed, zero skips; five packages passed). These results do not transfer to `72ec78…`. The integrated candidate contains C's explicit issuer import, leaf issue and leaf inspection paths. They require a supplied pathLen=0 issuer, explicit trust and matching key; they do not create a CA, Owner authority, filesystem installation, or automatic enrollment/rotation. For an empty-subject issued leaf, SAN is critical; a noncritical CSR request alone is not an issued-certificate violation.
 
-TLS authorization, installation, enrollment, rotation/revocation and verified restore remain open. PQ execution is Linux amd64 only; stub compilation is not arm64 acceptance. Android/physical-device pure-PQ, native Runtime over PQ, Client native runtime and public deployment are NOT_RUN. PQ authority D1 work remains in its separate worktree and is not integrated or accepted in Main; product startup/reload, current-authoritative-floor and renewal remain PARTIAL. Adopted architecture remains `CICADA.md`; this document does not change the public contract.
+TLS authorization, installation, enrollment, rotation/revocation and verified restore remain open. At that historical boundary, PQ execution was Linux amd64 only and stub compilation did not constitute arm64 acceptance; that implementation status is superseded by the build-support update above, while runtime acceptance remains pending. Android/physical-device pure-PQ, native Runtime over PQ, Client native runtime and public deployment were NOT_RUN at that checkpoint. PQ authority D1 work remains in its separate worktree and is not integrated or accepted in Main; product startup/reload, current-authoritative-floor and renewal remain PARTIAL. Adopted architecture remains `CICADA.md`; this document does not change the public contract.
 
 ## Historical standalone adapter checkpoint
 
@@ -19,10 +38,20 @@ The following adapter design and lifecycle details describe the standalone packa
 Keep HTTP handlers, routing, Guard and application E2EE in Go. The optional
 `cicada-go/internal/pqtls` package uses official OpenSSL 3.5.9 through CGo; it
 adds no proxy, service, wire preface, Go module or fallback to `crypto/tls`.
-The package is enabled only with `cicada_pqtls`, CGo, Linux and amd64. Other
-builds return typed `ErrUnavailable`; Linux arm64 remains unavailable pending
-real arm64 validation. Both endpoints require TLS 1.3, pure `MLKEM768`,
+The package is enabled with `cicada_pqtls`, CGo and Linux amd64 or arm64. Other
+builds return typed `ErrUnavailable`. Linux arm64 runtime acceptance remains
+pending the execution and deployment gates listed above. Both endpoints
+require TLS 1.3, pure `MLKEM768`,
 `TLS_AES_256_GCM_SHA384`, ML-DSA-65 CertificateVerify and ALPN `http/1.1`.
+
+PQ release packages select `--targetarch amd64|arm64` and require the
+matching accepted stage and C compiler target. Their product ELF uses
+`$ORIGIN/../lib`, retains Go/dependency/OpenSSL notices, and records the target
+interpreter and observed glibc symbol requirement. The legacy
+`TestPQDistribution` command fixture remains amd64-only; its wrappers refuse
+ARM64 execution. ARM64 product acceptance uses a separate amd64 driver with
+an explicit QEMU Node runner and target sysroot. Tags or zero selected tests
+cannot establish that acceptance.
 
 ## Go HTTP and connection lifecycle
 

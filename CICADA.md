@@ -165,6 +165,8 @@ CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局�
 
 **逻辑协作视图只有四类顶层参与者：User、Control、Worker、Monitor。** User 持有最终授权；Control 是服务 User 的管理者；Worker 执行工作；Monitor 是可选的观察、评审或获授权代表角色。Worker/Monitor 是角色绑定，不是独立物理设备或固定进程；一个原生 Thread 在不同 Group 可具有不同角色，同组也可以没有 Monitor。Network 是上述参与者行动时的租户范围，不是第五类参与者；NetworkAdmin 是附着于特定 Network 的可撤销权限 grant，不是新角色层级或全局经理。
 
+Hub 域名是可选的部署定位方式；Node 可以通过数值 IPv4/IPv6 地址出站连接。网络定位地址与 Hub 稳定身份、证书服务名和受信公钥 pin 分开，改变地址不能改变用户批准的身份或权限。
+
 其余名词属于内部对象或服务职责，而不是第四种部署实体或第五种顶层参与者。Thread/Session 是运行时原生会话；Endpoint、Principal、Network、NetworkMembership、Membership、SessionBinding、Group、CommunicationLink、Goal、Task、Artifact 等是身份、组织或工作对象；Directory、Relay、Guard、Runtime Adapter、状态存储等是 Node/Hub 内的服务职责。GroupGateway 若存在，只承载可选策略或审阅，不是强制转发跳点。
 
 逻辑角色不等于进程；服务职责不等于服务器；组织图不等于物理部署图。

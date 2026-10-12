@@ -57,9 +57,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "tls-provision":
+		if err := tlsProvisionLocalCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "owner":
 		var err error
-		if len(os.Args) > 2 && os.Args[2] == "network-key-sign" {
+		if len(os.Args) > 2 && os.Args[2] == "tls-leaf-grant-sign" {
+			err = ownerTLSLeafGrantSignCommand(os.Args[3:], os.Stdout)
+		} else if len(os.Args) > 2 && os.Args[2] == "network-key-sign" {
 			err = ownerNetworkKeySignCommand(os.Args[3:], os.Stdout)
 		} else if len(os.Args) > 2 && os.Args[2] == "network-collaboration-key-sign" {
 			err = ownerNetworkCollaborationKeySignCommand(os.Args[3:], os.Stdout)

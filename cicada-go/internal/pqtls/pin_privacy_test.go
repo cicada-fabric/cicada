@@ -1,4 +1,4 @@
-//go:build linux && amd64 && cgo && cicada_pqtls
+//go:build linux && (amd64 || arm64) && cgo && cicada_pqtls
 
 package pqtls
 
@@ -40,7 +40,7 @@ func TestHubPinVerifiedBeforeNodeCertificate(t *testing.T) {
 				"-CAfile", hubConfig.TrustFile, "-Verify", "1", "-verify_return_error", "-tls1_3", "-groups", "MLKEM768",
 				"-sigalgs", "mldsa65", "-client_sigalgs", "mldsa65", "-ciphersuites", "TLS_AES_256_GCM_SHA384",
 				"-alpn", "http/1.1", "-num_tickets", "0", "-naccept", "1", "-www", "-state", "-msg"}
-			cmd := exec.CommandContext(ctx, opensslExecutable, args...)
+			cmd := pqtlsTestCommandContext(ctx, opensslExecutable, args...)
 			cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 			cmd.Stdout, cmd.Stderr = trace, trace
 			if err := cmd.Start(); err != nil {

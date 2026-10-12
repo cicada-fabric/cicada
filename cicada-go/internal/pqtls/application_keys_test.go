@@ -157,7 +157,7 @@ func tlsApplicationOfficial(t *testing.T, dir string, args ...string) []byte {
 	if executable == "" {
 		t.Fatal("accepted official OpenSSL test executable missing")
 	}
-	cmd := exec.CommandContext(ctx, executable, args...)
+	cmd := pqtlsTestCommandContext(ctx, executable, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "OPENSSL_CONF=/dev/null")
 	out, err := cmd.CombinedOutput()
