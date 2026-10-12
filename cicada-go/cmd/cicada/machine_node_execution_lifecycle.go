@@ -365,7 +365,8 @@ func prepareMachineNodeClaimExecution(ctx context.Context, client *machineNodeCo
 	return job, decision, nil
 }
 
-func recordMachineNodeProviderOutcome(ctx context.Context, job machineJob, result machineJobResult) error {
+func recordMachineNodeProviderOutcome(ctx context.Context, job machineJob, result machineJobResult,
+	client *machineNodeControlClient) error {
 	hub, ok := machineHubFrom(ctx)
 	if !ok {
 		return nil
@@ -380,19 +381,50 @@ func recordMachineNodeProviderOutcome(ctx context.Context, job machineJob, resul
 	if job.executionID == "" || job.providerID == "" {
 		return errors.New("managed provider outcome lacks its durable execution identity")
 	}
-	class := nodeinbox.ProviderOutcomeFailedNotInjected
+	class := nodeinbox.ProviderOutcomeInjectionUncertain
 	if result.Status == "completed" {
 		class = nodeinbox.ProviderOutcomeCompleted
-	} else if result.providerStarted {
-		class = nodeinbox.ProviderOutcomeInjectionUncertain
+	} else if result.executionState() == "NOT_STARTED" {
+		class = nodeinbox.ProviderOutcomeFailedNotInjected
 	}
 	if job.providerAttempt <= 0 {
 		return errors.New("managed provider outcome lacks its exact admitted attempt generation")
 	}
+	var scopeErr error
+	throttled := result.providerRateLimited
+	if throttled {
+		if class != nodeinbox.ProviderOutcomeInjectionUncertain || job.providerID != "codex" || result.ThreadID == "" ||
+			!validMachineCodexIdentity(result.providerTurnID) ||
+			(job.ThreadID != "" && job.ThreadID != result.ThreadID) || client == nil {
+			scopeErr = errors.New("provider cooldown lacks its confirmed native execution scope")
+			throttled = false
+		} else {
+			client.mu.Lock()
+			defer client.mu.Unlock()
+			ticket := client.state.ClaimTicket
+			public := client.identity.Public()
+			if ticket == nil || ticket.Version != machineNodeControlClaimTicketVersion ||
+				!validMachineNodeProviderAdmissionIntent(ticket.ProviderAdmissionIntent) ||
+				ticket.Phase != "EXECUTING" || ticket.WorkerID != job.WorkerID || ticket.Attempt != job.Attempt ||
+				ticket.ExecutionID != job.executionID || ticket.ProviderID != job.providerID ||
+				ticket.ProviderAttempt != job.providerAttempt || ticket.ResourceID != job.resourceID ||
+				ticket.LeaseID != job.leaseID || ticket.FencingEpoch != job.fencingEpoch ||
+				ticket.BindingID != client.state.BindingID || ticket.BindingVersion != client.state.BindingVersion ||
+				ticket.NodeKeyEpoch != client.state.NodeKeyEpoch || client.state.HubID != hub.HubID ||
+				client.state.HubOrigin != hub.Origin || client.state.NodeID != hub.NodeID || job.MachineID != hub.NodeID ||
+				client.state.BindingID == "" || client.state.BindingVersion == 0 || client.state.NodeKeyEpoch == 0 ||
+				client.state.HubKeyID == "" || client.state.HubKeyVersion == 0 ||
+				client.state.HubPublicIdentity.ID != client.state.HubKeyID ||
+				client.state.NodeKeyID != public.ID || client.state.NodeKeyFingerprint != nodewire.IdentityFingerprint(public) {
+				scopeErr = errors.New("provider cooldown differs from the current Node-Control execution authority")
+				throttled = false
+			}
+		}
+	}
 	_, err := providerLedger.RecordProviderAdmissionOutcome(ctx, nodeinbox.ProviderAdmissionOutcome{
 		ExecutionID: job.executionID, ProviderID: job.providerID,
-		Attempt: job.providerAttempt, Class: class})
-	return err
+		Attempt: job.providerAttempt, Class: class, PostSubmissionRateLimited: throttled})
+	return errors.Join(err, scopeErr)
 }
 
 // machineNodeExecutionContext pins a single-Hub Agent context only from the

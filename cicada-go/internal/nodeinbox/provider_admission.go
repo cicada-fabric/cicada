@@ -23,6 +23,18 @@ CREATE TABLE IF NOT EXISTS node_provider_admission_intents_v1 (
   REFERENCES node_provider_admission_v1(execution_id,provider_id) ON DELETE CASCADE
 );`
 
+// This is a scheduling fence for different executions, not permission to
+// replay the execution which observed a rate limit after submission.
+const providerCooldownSchemaV1 = `
+CREATE TABLE IF NOT EXISTS node_provider_cooldowns_v1 (
+ provider_id TEXT PRIMARY KEY,
+ failures INTEGER NOT NULL CHECK(failures BETWEEN 1 AND 8),
+ window_started_at_ms INTEGER NOT NULL,
+ next_admission_at_ms INTEGER NOT NULL CHECK(next_admission_at_ms>=0),
+ blocked INTEGER NOT NULL CHECK(blocked IN (0,1)),
+ updated_at_ms INTEGER NOT NULL
+);`
+
 // ProviderAdmissionLedger is a Node-wide sidecar, opened below the shared
 // WriterRoot so provider backoff is consistent across per-Hub inboxes.
 type ProviderAdmissionLedger struct {
@@ -59,6 +71,10 @@ CREATE INDEX IF NOT EXISTS node_provider_admission_retention_v1_idx
 	if _, err := db.Exec(providerAdmissionIntentSchemaV1); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize provider admission intent schema: %w", err)
+	}
+	if _, err := db.Exec(providerCooldownSchemaV1); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("initialize provider cooldown schema: %w", err)
 	}
 	return &ProviderAdmissionLedger{inbox: &Inbox{db: db}}, nil
 }
@@ -159,6 +175,7 @@ type ProviderAdmissionDecision struct {
 	Admitted        bool   `json:"admitted"`
 	Retryable       bool   `json:"retryable"`
 	NextRetryAt     string `json:"next_retry_at,omitempty"`
+	CoolingDown     bool   `json:"provider_cooling_down,omitempty"`
 	nextRetryMillis int64
 }
 
@@ -171,6 +188,9 @@ type ProviderAdmissionOutcome struct {
 	Attempt     int           `json:"attempt"`
 	Class       string        `json:"class"`
 	RetryAfter  time.Duration `json:"retry_after,omitempty"`
+	// PostSubmissionRateLimited comes only from a local trusted adapter's
+	// confirmed failed Thread/Turn. It never means NOT_INJECTED.
+	PostSubmissionRateLimited bool `json:"-"`
 }
 
 // ProviderAdmissionReconciliation is accepted only by a local trusted Node
@@ -219,6 +239,11 @@ WHERE state IN ('COMPLETED','FAILED','EXHAUSTED') AND updated_at_ms < ?`, now.Ad
 	decision, err := scanProviderAdmissionDecision(tx.QueryRowContext(ctx, `SELECT state,attempts,created_at_ms,next_retry_at_ms
 FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request.ExecutionID, request.ProviderID), request)
 	if errors.Is(err, sql.ErrNoRows) {
+		if hold, err := inspectProviderCooldownTx(ctx, tx, request, nowMS); err != nil {
+			return nil, err
+		} else if hold != nil {
+			return hold, nil // No attempt or intent is created while held.
+		}
 		var count int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM node_provider_admission_v1`).Scan(&count); err != nil {
 			return nil, err
@@ -279,6 +304,11 @@ WHERE execution_id=? AND provider_id=? AND state=?`, ProviderAdmissionExhausted,
 			} else if nowMS < decision.nextRetryMillis {
 				decision.Retryable = true
 			} else {
+				if hold, err := inspectProviderCooldownTx(ctx, tx, request, nowMS); err != nil {
+					return nil, err
+				} else if hold != nil {
+					return hold, nil
+				}
 				decision.Attempt++
 				decision.State = ProviderAdmissionInProgress
 				decision.Admitted = true
@@ -317,7 +347,8 @@ WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, ProviderAdmi
 // INJECTION_UNCERTAIN remains terminal until a separate trusted reconciliation.
 func (i *Inbox) RecordProviderAdmissionOutcome(ctx context.Context,
 	outcome ProviderAdmissionOutcome) (*ProviderAdmissionDecision, error) {
-	if outcome.Attempt <= 0 {
+	if outcome.Attempt <= 0 || outcome.RetryAfter < 0 ||
+		(outcome.PostSubmissionRateLimited && outcome.Class != ProviderOutcomeInjectionUncertain) {
 		return nil, ErrProviderAdmissionInvalid
 	}
 	request, err := normalizeProviderAdmissionRequest(ProviderAdmissionRequest{
@@ -374,7 +405,8 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 	}
 	switch outcome.Class {
 	case ProviderOutcomeRateLimitedNotInjected, ProviderOutcomeRetryableNotInjected:
-		if decision.Attempt >= providerAdmissionMaxAttempts || now.UnixMilli()-createdMS >= providerAdmissionMaxAge.Milliseconds() {
+		if decision.Attempt >= providerAdmissionMaxAttempts || now.UnixMilli()-createdMS >= providerAdmissionMaxAge.Milliseconds() ||
+			outcome.RetryAfter > providerAdmissionMaxBackoff {
 			state = ProviderAdmissionExhausted
 		} else {
 			state = ProviderAdmissionBackoff
@@ -388,7 +420,7 @@ FROM node_provider_admission_v1 WHERE execution_id=? AND provider_id=?`, request
 			if delay > providerAdmissionMaxBackoff {
 				delay = providerAdmissionMaxBackoff
 			}
-			nextRetryMS = now.Add(delay).UnixMilli()
+			nextRetryMS = providerDeadlineMillis(now, delay)
 		}
 	case ProviderOutcomeCompleted:
 		state = ProviderAdmissionCompleted
@@ -411,6 +443,11 @@ WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, state, nextR
 	if changed != 1 {
 		return nil, ErrProviderAdmissionStaleAttempt
 	}
+	if outcome.PostSubmissionRateLimited {
+		if err := recordProviderCooldownTx(ctx, tx, outcome, now); err != nil {
+			return nil, err
+		}
+	}
 	decision.State = state
 	decision.Admitted = false
 	decision.Retryable = state == ProviderAdmissionBackoff
@@ -422,6 +459,91 @@ WHERE execution_id=? AND provider_id=? AND state=? AND attempts=?`, state, nextR
 		return nil, fmt.Errorf("commit provider outcome: %w", err)
 	}
 	return decision, nil
+}
+
+func inspectProviderCooldownTx(ctx context.Context, tx *sql.Tx,
+	request ProviderAdmissionRequest, nowMS int64) (*ProviderAdmissionDecision, error) {
+	var until int64
+	var blocked int
+	err := tx.QueryRowContext(ctx, `SELECT next_admission_at_ms,blocked
+FROM node_provider_cooldowns_v1 WHERE provider_id=?`, request.ProviderID).Scan(&until, &blocked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if blocked == 0 && until <= nowMS {
+		return nil, nil
+	}
+	decision := &ProviderAdmissionDecision{ExecutionID: request.ExecutionID,
+		ProviderID: request.ProviderID, State: ProviderAdmissionBackoff,
+		CoolingDown: true, Retryable: blocked == 0}
+	if blocked != 0 {
+		decision.State = ProviderAdmissionExhausted
+	} else {
+		decision.NextRetryAt = time.UnixMilli(until).UTC().Format(time.RFC3339Nano)
+	}
+	return decision, nil
+}
+
+func recordProviderCooldownTx(ctx context.Context, tx *sql.Tx,
+	outcome ProviderAdmissionOutcome, now time.Time) error {
+	var failures, blocked int
+	var windowMS, previousUntil int64
+	err := tx.QueryRowContext(ctx, `SELECT failures,window_started_at_ms,next_admission_at_ms,blocked
+FROM node_provider_cooldowns_v1 WHERE provider_id=?`, outcome.ProviderID).
+		Scan(&failures, &windowMS, &previousUntil, &blocked)
+	if errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM node_provider_cooldowns_v1
+WHERE blocked=0 AND next_admission_at_ms<=? AND updated_at_ms<?`, now.UnixMilli(),
+			now.Add(-providerAdmissionRetention).UnixMilli()); err != nil {
+			return err
+		}
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM node_provider_cooldowns_v1`).Scan(&count); err != nil {
+			return err
+		}
+		if count >= providerAdmissionMaxRows {
+			return ErrProviderAdmissionCapacity
+		}
+		windowMS = now.UnixMilli()
+	} else if err != nil {
+		return err
+	} else if now.UnixMilli()-windowMS >= providerAdmissionMaxAge.Milliseconds() && blocked == 0 {
+		failures = 0
+		windowMS = now.UnixMilli()
+	}
+	failures = min(failures+1, providerAdmissionMaxAttempts)
+	delay := time.Second << (failures - 1)
+	if outcome.RetryAfter > delay {
+		delay = outcome.RetryAfter
+	}
+	if delay > providerAdmissionMaxBackoff {
+		// A trusted minimum must never be shortened to the configured maximum.
+		// Retain a fail-closed provider fence for explicit local reconciliation.
+		blocked = 1
+	}
+	until := previousUntil
+	if blocked == 0 {
+		until = max(until, providerDeadlineMillis(now, delay))
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO node_provider_cooldowns_v1
+(provider_id,failures,window_started_at_ms,next_admission_at_ms,blocked,updated_at_ms)
+VALUES(?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET failures=excluded.failures,
+window_started_at_ms=excluded.window_started_at_ms,next_admission_at_ms=excluded.next_admission_at_ms,
+blocked=excluded.blocked,updated_at_ms=excluded.updated_at_ms`,
+		outcome.ProviderID, failures, windowMS, until, blocked, now.UnixMilli())
+	return err
+}
+
+func providerDeadlineMillis(now time.Time, delay time.Duration) int64 {
+	deadline := now.Add(delay)
+	millis := deadline.UnixMilli()
+	if deadline.Nanosecond()%int(time.Millisecond) != 0 {
+		millis++ // Millisecond persistence must round up a trusted minimum.
+	}
+	return millis
 }
 
 // InspectProviderAttempt reads a current state without advancing or creating

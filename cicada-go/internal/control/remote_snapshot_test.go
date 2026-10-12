@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestRemoteRecoveryCarriesWorkspaceSnapshotDigest(t *testing.T) {
+func TestRemoteUnknownFailureRetainsSnapshotWithoutAutomaticReplay(t *testing.T) {
 	root := t.TempDir()
 	controlPlane, err := New(Config{
 		StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace"),
@@ -42,14 +42,14 @@ func TestRemoteRecoveryCarriesWorkspaceSnapshotDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	worker, err := controlPlane.CompleteRemoteWorker(goal.Worker.ID, "remote-snapshot", "failed", "partial", "", "worker stopped", "", snapshot.Digest)
-	if err != nil || worker.Status != "queued" {
-		t.Fatalf("failed remote worker was not requeued: %#v err=%v", worker, err)
+	if err != nil || worker.Status != "failed" {
+		t.Fatalf("unknown remote execution was not held: %#v err=%v", worker, err)
 	}
-	job, err := controlPlane.ClaimRemoteWorker(goal.Worker.ID, "remote-snapshot")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := controlPlane.ClaimRemoteWorker(goal.Worker.ID, "remote-snapshot"); err == nil {
+		t.Fatal("unknown remote execution was automatically reclaimed")
 	}
-	if job.WorkspaceSnapshotDigest != snapshot.Digest {
-		t.Fatalf("snapshot digest was not carried to recovery job: got=%q want=%q", job.WorkspaceSnapshotDigest, snapshot.Digest)
+	preserved, err := controlPlane.Workspaces(goal.ID)
+	if err != nil || len(preserved) != 1 || preserved[0].SnapshotDigest != snapshot.Digest {
+		t.Fatalf("snapshot metadata was lost at the no-replay boundary: err=%v", err)
 	}
 }

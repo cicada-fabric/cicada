@@ -72,11 +72,12 @@ func executeMachineOptionalHarness(ctx context.Context, job machineJob, workspac
 	output := &harness.BoundedOutput{Limit: harness.OutputLimit}
 	command.Stdout, command.Stderr = output, output
 	waitErr, stopErr, started := runMachineNodeResourceCommand(ctx, job, command)
+	startKnown := command.Process != nil || (waitErr != nil && stopErr == nil)
 	resourceStopState := ""
 	if errors.Is(stopErr, nodelock.ErrResourceStopUnverified) {
 		resourceStopState = machineResourceStopUnverified
 	} else if stopErr != nil {
-		return machineJobResult{Status: "failed", Error: "stop optional harness process tree: " + stopErr.Error(), providerStarted: started}
+		return machineJobResult{Status: "failed", Error: "stop optional harness process tree: " + stopErr.Error(), providerStarted: started, providerStartKnown: startKnown}
 	}
 	summary, sessionID := harness.Result([]byte(output.String()), "")
 	if summary == "" {
@@ -94,14 +95,14 @@ func executeMachineOptionalHarness(ctx context.Context, job machineJob, workspac
 	}
 	if waitErr != nil {
 		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: sessionID,
-			Error: waitErr.Error(), ResourceStopState: resourceStopState, providerStarted: started}
+			Error: waitErr.Error(), ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	if ctx.Err() != nil {
 		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: sessionID,
-			Error: ctx.Err().Error(), ResourceStopState: resourceStopState, providerStarted: started}
+			Error: ctx.Err().Error(), ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	return machineJobResult{Status: "completed", Summary: limitText(summary, 16000), ThreadID: sessionID,
-		ResourceStopState: resourceStopState, providerStarted: started}
+		ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 }
 
 func machineJobPaths(job machineJob) (string, string, error) {
@@ -143,11 +144,12 @@ func executeMachineShell(ctx context.Context, job machineJob, workspace, respons
 	command.Dir, command.Env = workspace, machineWorkerEnvironment(os.Environ(), false)
 	command.Stdout, command.Stderr = output, output
 	waitErr, stopErr, started := runMachineNodeResourceCommand(ctx, job, command)
+	startKnown := command.Process != nil || (waitErr != nil && stopErr == nil)
 	resourceStopState := ""
 	if errors.Is(stopErr, nodelock.ErrResourceStopUnverified) {
 		resourceStopState = machineResourceStopUnverified
 	} else if stopErr != nil {
-		return machineJobResult{Status: "failed", Error: "stop shell process tree: " + stopErr.Error(), providerStarted: started}
+		return machineJobResult{Status: "failed", Error: "stop shell process tree: " + stopErr.Error(), providerStarted: started, providerStartKnown: startKnown}
 	}
 	summary := strings.TrimSpace(output.String())
 	if summary == "" {
@@ -159,14 +161,14 @@ func executeMachineShell(ctx context.Context, job machineJob, workspace, respons
 	_ = os.WriteFile(responseFile, []byte(summary+"\n"), 0o600)
 	if waitErr != nil {
 		return machineJobResult{Status: "failed", Summary: summary, Error: waitErr.Error(),
-			ResourceStopState: resourceStopState, providerStarted: started}
+			ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	if ctx.Err() != nil {
 		return machineJobResult{Status: "failed", Summary: summary, Error: ctx.Err().Error(),
-			ResourceStopState: resourceStopState, providerStarted: started}
+			ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	return machineJobResult{Status: "completed", Summary: summary,
-		ResourceStopState: resourceStopState, providerStarted: started}
+		ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 }
 
 func executeMachineCodex(ctx context.Context, job machineJob, workspace, responseFile string) machineJobResult {
@@ -199,6 +201,7 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 	output := &machineBoundedOutput{limit: 512 * 1024}
 	command.Stdout, command.Stderr = output, output
 	waitErr, stopErr, started := runMachineNodeResourceCommand(ctx, job, command)
+	startKnown := command.Process != nil || (waitErr != nil && stopErr == nil)
 	resourceStopState := ""
 	if errors.Is(stopErr, nodelock.ErrResourceStopUnverified) {
 		resourceStopState = machineResourceStopUnverified
@@ -208,7 +211,7 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 		quarantineMachineNativeWriter(nativeWriter)
 		releaseWriter = false
 		return machineJobResult{Status: "failed", ThreadID: job.ThreadID,
-			Error: "Codex child process tree stop is unconfirmed; native writer ownership is quarantined", providerStarted: started}
+			Error: "Codex child process tree stop is unconfirmed; native writer ownership is quarantined", providerStarted: started, providerStartKnown: startKnown}
 	}
 	threadID := job.ThreadID
 	observedThread := false
@@ -221,7 +224,7 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 	}
 	if job.ThreadID != "" && (!observedThread || threadID != job.ThreadID) {
 		return machineJobResult{Status: "failed", ThreadID: job.ThreadID,
-			Error: "Codex resumed a different native thread", ResourceStopState: resourceStopState, providerStarted: started}
+			Error: "Codex resumed a different native thread", ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	if managed && nativeWriter == nil && threadID != "" {
 		var err error
@@ -229,14 +232,14 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 		if err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID,
 				Error:             "acquire managed native writer after thread creation: " + err.Error(),
-				ResourceStopState: resourceStopState, providerStarted: started}
+				ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 		}
 	}
 	if nativeWriter != nil {
 		if err := nativeWriter.CheckCurrent(); err != nil {
 			return machineJobResult{Status: "failed", ThreadID: threadID,
 				Error:             "native writer ownership changed before Worker result publication",
-				ResourceStopState: resourceStopState, providerStarted: started}
+				ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 		}
 	}
 	summary := readMachineSummary(responseFile)
@@ -245,14 +248,14 @@ func executeMachineCodex(ctx context.Context, job machineJob, workspace, respons
 	}
 	if waitErr != nil {
 		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: threadID,
-			Error: waitErr.Error(), ResourceStopState: resourceStopState, providerStarted: started}
+			Error: waitErr.Error(), ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	if ctx.Err() != nil {
 		return machineJobResult{Status: "failed", Summary: limitText(summary, 16000), ThreadID: threadID,
-			Error: ctx.Err().Error(), ResourceStopState: resourceStopState, providerStarted: started}
+			Error: ctx.Err().Error(), ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 	}
 	return machineJobResult{Status: "completed", Summary: limitText(summary, 16000), ThreadID: threadID,
-		ResourceStopState: resourceStopState, providerStarted: started}
+		ResourceStopState: resourceStopState, providerStarted: started, providerStartKnown: startKnown}
 }
 
 func readMachineSummary(path string) string {

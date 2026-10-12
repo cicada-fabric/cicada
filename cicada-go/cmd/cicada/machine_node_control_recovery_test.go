@@ -370,7 +370,7 @@ func TestMachineNodeOrdinaryWorkersRunSequentiallyWhileUnrelatedResourceIsQuaran
 		}
 		result := machineJobResult{Status: "completed", Summary: "synthetic ordinary Worker completed",
 			providerStarted: started}
-		if err := recordMachineNodeProviderOutcome(ctx, prepared, result); err != nil {
+		if err := recordMachineNodeProviderOutcome(ctx, prepared, result, client); err != nil {
 			t.Fatalf("record ordinary Worker %s outcome: %v", job.WorkerID, err)
 		}
 		if err := client.finishClaimExecution(prepared); err != nil {

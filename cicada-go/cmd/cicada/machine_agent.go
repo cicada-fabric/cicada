@@ -283,6 +283,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		runClaimed := func(claimed machineJob) error {
 			prepared, admission, err := prepareMachineNodeClaimExecution(executionCtx, client, claimed)
 			if err != nil {
+				if admission != nil && admission.CoolingDown && admission.Retryable {
+					return nil // Keep READY; the existing ticker rechecks the scheduling fence.
+				}
 				if admission != nil && admission.Admitted &&
 					(errors.Is(err, nodelock.ErrResourceExecutionBusy) ||
 						errors.Is(err, errMachineNodePhysicalResourceClaim)) {
@@ -295,8 +298,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 						return err
 					}
 					result := machineJobResult{Status: "failed",
-						Error: "physical resource is unavailable or not authorized on this Node; provider was not started"}
-					if outcomeErr := recordMachineNodeProviderOutcome(executionCtx, claimed, result); outcomeErr != nil {
+						Error:              "physical resource is unavailable or not authorized on this Node; provider was not started",
+						providerStartKnown: true}
+					if outcomeErr := recordMachineNodeProviderOutcome(executionCtx, claimed, result, client); outcomeErr != nil {
 						return fmt.Errorf("record non-started physical resource outcome: %w", outcomeErr)
 					}
 					if err := reportMachineJobReliably(ctx, base, *id, nodeIdentity.RelayToken,
@@ -324,7 +328,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 				fmt.Fprintf(os.Stderr, "Node Worker stage=workspace_snapshot_restore cause=%s\n",
 					machineNodeSnapshotFailureCause(strings.TrimPrefix(result.Error, "restore workspace snapshot: ")))
 			}
-			if err := recordMachineNodeProviderOutcome(executionCtx, claimed, result); err != nil {
+			if err := recordMachineNodeProviderOutcome(executionCtx, claimed, result, client); err != nil {
 				result = machineJobResult{Status: "failed", ThreadID: result.ThreadID,
 					WorkspaceRevision: result.WorkspaceRevision,
 					Error:             "provider outcome could not be durably recorded; execution will not be retried automatically"}

@@ -338,7 +338,10 @@ func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, 
 	var resourceRequest nodelock.ResourceExecutionRequest
 	releaseWriter := true
 	started := false
+	startKnown := false
 	var startStopErr error
+	var rateLimitMu sync.Mutex
+	var rateLimitedTurn string
 	defer func() {
 		approvalIdentity.abortTurn()
 		cancel()
@@ -371,6 +374,13 @@ func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, 
 			releaseWriter = false
 		}
 		if nativeWriter != nil && releaseWriter {
+			rateLimitMu.Lock()
+			if result.Status == "failed" && result.ThreadID == threadID && rateLimitedTurn != "" &&
+				nativeWriter.CheckCurrent() == nil {
+				result.providerRateLimited = true
+				result.providerTurnID = rateLimitedTurn
+			}
+			rateLimitMu.Unlock()
 			if err := nativeWriter.CheckCurrent(); err != nil {
 				result = machineJobResult{Status: "failed", ThreadID: threadID,
 					Error: "native writer ownership changed before Worker result publication"}
@@ -380,6 +390,7 @@ func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, 
 		// Record partial starts too, including a starter error after Process was
 		// established. Ordinary Workers use the same provider outcome fence.
 		result.providerStarted = started
+		result.providerStartKnown = startKnown
 	}()
 	acquireWriter := func(nativeID string) error {
 		writer, err := acquireManagedMachineCodexWriter(runCtx, job, nativeID)
@@ -455,11 +466,25 @@ func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, 
 	starter = func(command *exec.Cmd) error {
 		err := startProcess(command)
 		started = command.Process != nil
+		startKnown = started || err != nil
 		return err
 	}
 	var err error
 	app, err = codexapp.StartAsyncWithLifecycle(runCtx, envOr("CICADA_CODEX_BIN", "codex"), workspace,
-		childEnv, nil, onRequest, starter, waiter)
+		childEnv, func(method string, params map[string]any) {
+			// This callback receives native notifications, never server requests.
+			// Early/out-of-order events without a response-confirmed tuple are
+			// discarded rather than promoted from their claimed IDs.
+			approvalIdentity.mu.RLock()
+			confirmedThread, confirmedTurn := approvalIdentity.threadID, approvalIdentity.turnID
+			confirmed := approvalIdentity.turnResolved && approvalIdentity.turnErr == nil
+			approvalIdentity.mu.RUnlock()
+			if confirmed && machineCodexFailedTurnRateLimited(method, params, confirmedThread, confirmedTurn) {
+				rateLimitMu.Lock()
+				rateLimitedTurn = confirmedTurn
+				rateLimitMu.Unlock()
+			}
+		}, onRequest, starter, waiter)
 	if err != nil {
 		var startFailure *codexapp.StartError
 		if errors.As(err, &startFailure) {
@@ -549,6 +574,47 @@ func executeMachineCodexWithApprovalWaiter(ctx context.Context, job machineJob, 
 	}
 	return machineJobResult{Status: "completed", ThreadID: threadID,
 		Summary: limitText(strings.TrimSpace(summary), 16000)}
+}
+
+// Only the authoritative failed completion of the confirmed native tuple can
+// set a scheduling cooldown. No message/additionalDetails or model text is read.
+func machineCodexFailedTurnRateLimited(method string, params map[string]any, threadID, turnID string) bool {
+	if method != "turn/completed" || !validMachineCodexIdentity(threadID) ||
+		!validMachineCodexIdentity(turnID) || params["threadId"] != threadID {
+		return false
+	}
+	turn, ok := params["turn"].(map[string]any)
+	if !ok || turn["id"] != turnID || turn["status"] != "failed" {
+		return false
+	}
+	if _, ok := turn["items"].([]any); !ok {
+		return false
+	}
+	failure, ok := turn["error"].(map[string]any)
+	if !ok {
+		return false
+	}
+	info := failure["codexErrorInfo"]
+	if name, ok := info.(string); ok {
+		return name == "rateLimitExceeded"
+	}
+	variants, ok := info.(map[string]any)
+	if !ok || len(variants) != 1 {
+		return false
+	}
+	for _, name := range []string{"httpConnectionFailed", "responseStreamConnectionFailed", "responseStreamDisconnected", "responseTooManyFailedAttempts"} {
+		fields, ok := variants[name].(map[string]any)
+		if !ok || len(fields) != 1 {
+			continue
+		}
+		status, ok := fields["httpStatusCode"].(json.Number)
+		if !ok {
+			return false
+		}
+		value, err := status.Int64()
+		return err == nil && value == http.StatusTooManyRequests
+	}
+	return false
 }
 
 func machineApprovalFailureCause(err error) string {

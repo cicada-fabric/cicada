@@ -2,6 +2,15 @@
 
 ## Current closeout index — v0.0.x development; target v0.1.0 PARTIAL
 
+V34 managed Worker no-replay now admits bounded recovery only for an authenticated
+matching `NOT_STARTED` result; native session matching is atomic with result
+admission, and post-submission rate-limit cooldown delays different executions.
+The dirty-source A4 normal/race each passed 24 top/57 sub tests, and one focused
+normal regression passed 12 top/6 sub tests, all without FAIL/SKIP. A1–A3 failures
+remain separately attributed; this is synthetic stdio/HTTP evidence, not real
+native Runtime acceptance. Hub and Node require a coordinated contract update;
+overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-validation.md).
+
 The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 is the product-status index. The [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 records the clean-328f aggregate (overall FAIL), its passing Go lane and the

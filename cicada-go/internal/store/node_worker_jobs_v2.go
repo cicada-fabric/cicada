@@ -343,16 +343,18 @@ response_file, workspace, created_at, updated_at FROM workers WHERE id=?`, worke
 // stale attempts, other owners, revoked credentials, and wrong-machine results
 // produce no result-processing side effects.
 func (s *Store) BeginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID string, attempt int) (*Worker, error) {
-	return s.beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID, attempt, nil)
+	return s.beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID, attempt, nil, nil)
 }
 
 // BeginBoundNodeWorkerResultNodeControl also requires the exact Node-Control
 // request to remain PROCESSING under the currently active binding epoch.
-func (s *Store) BeginBoundNodeWorkerResultNodeControl(input NodeControlRPCInput, workerID string, attempt int) (*Worker, error) {
-	return s.beginBoundNodeWorkerResult(input.CredentialDigest, input.NodeID, workerID, attempt, &input)
+// expectedPrestartThread, when present, matches the claimed native session in
+// the same UPDATE that admits the result, before any approval cancellation.
+func (s *Store) BeginBoundNodeWorkerResultNodeControl(input NodeControlRPCInput, workerID string, attempt int, expectedPrestartThread *string) (*Worker, error) {
+	return s.beginBoundNodeWorkerResult(input.CredentialDigest, input.NodeID, workerID, attempt, &input, expectedPrestartThread)
 }
 
-func (s *Store) beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID string, attempt int, guard *NodeControlRPCInput) (*Worker, error) {
+func (s *Store) beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, workerID string, attempt int, guard *NodeControlRPCInput, expectedPrestartThread *string) (*Worker, error) {
 	if attempt <= 0 {
 		return nil, ErrNodeWorkerNotAuthorized
 	}
@@ -369,10 +371,15 @@ func (s *Store) beginBoundNodeWorkerResult(credentialDigest, requestedNodeID, wo
 		}
 	}
 	stamp := now()
-	result, err := tx.Exec(`UPDATE workers AS worker SET status='verifying', updated_at=?
+	query := `UPDATE workers AS worker SET status='verifying', updated_at=?
 WHERE worker.id=? AND worker.machine_id=? AND worker.attempt=?
-AND worker.status IN ('running','outcome_uncertain') AND `+nodeWorkerAuthorizationExists,
-		stamp, workerID, requestedNodeID, attempt, credentialDigest, requestedNodeID)
+AND worker.status IN ('running','outcome_uncertain') AND ` + nodeWorkerAuthorizationExists
+	args := []any{stamp, workerID, requestedNodeID, attempt, credentialDigest, requestedNodeID}
+	if expectedPrestartThread != nil {
+		query += ` AND COALESCE(worker.thread_id,'')=?`
+		args = append(args, *expectedPrestartThread)
+	}
+	result, err := tx.Exec(query, args...)
 	if err != nil {
 		return nil, err
 	}

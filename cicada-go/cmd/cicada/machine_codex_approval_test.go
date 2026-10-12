@@ -782,7 +782,7 @@ done
 				}
 				writer.Close()
 			}
-			if err := recordMachineNodeProviderOutcome(ctx, job, result); err != nil {
+			if err := recordMachineNodeProviderOutcome(ctx, job, result, nil); err != nil {
 				t.Fatal(err)
 			}
 			saved, err := ledger.InspectProviderAttempt(ctx, request)

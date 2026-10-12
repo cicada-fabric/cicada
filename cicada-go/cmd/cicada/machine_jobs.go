@@ -43,6 +43,22 @@ type machineJobResult struct {
 	Status, Summary, ThreadID, Error, WorkspaceRevision, WorkspaceSnapshotDigest string
 	ResourceStopState                                                            string
 	providerStarted                                                              bool
+	providerStartKnown                                                           bool
+	providerRateLimited                                                          bool
+	providerTurnID                                                               string
+}
+
+func (result machineJobResult) executionState() string {
+	if result.Status == "completed" {
+		return "COMPLETED"
+	}
+	if result.providerStarted || result.ResourceStopState != "" {
+		return "INJECTION_UNCERTAIN"
+	}
+	if result.providerStartKnown {
+		return "NOT_STARTED"
+	}
+	return "UNKNOWN"
 }
 
 const machineResourceStopUnverified = "UNVERIFIED"
@@ -73,15 +89,25 @@ func claimMachineJob(ctx context.Context, base, nodeID, nodeToken string, job ma
 }
 
 func reportMachineJob(ctx context.Context, base, nodeID, nodeToken string, job machineJob, result machineJobResult) error {
+	payload := machineJobResultPayload(job, result)
+	endpoint := nodeWorkerJobEndpoint(base, nodeID, job.WorkerID, "result")
+	return machineNodeAPIJSON(ctx, endpoint, http.MethodPost, nodeToken, payload, nil)
+}
+
+func machineJobResultPayload(job machineJob, result machineJobResult) map[string]any {
+	threadID := result.ThreadID
+	if threadID == "" && result.executionState() == "NOT_STARTED" {
+		threadID = job.ThreadID // Claim scope, not a claim of native confirmation.
+	}
 	payload := map[string]any{
 		"attempt": job.Attempt, "status": result.Status,
-		"summary": limitText(result.Summary, 16000), "thread_id": result.ThreadID,
+		"summary": limitText(result.Summary, 16000), "thread_id": threadID,
 		"error":               limitText(result.Error, 4000),
 		"workspace_revision":  result.WorkspaceRevision,
 		"resource_stop_state": result.ResourceStopState,
+		"execution_state":     result.executionState(),
 	}
-	endpoint := nodeWorkerJobEndpoint(base, nodeID, job.WorkerID, "result")
-	return machineNodeAPIJSON(ctx, endpoint, http.MethodPost, nodeToken, payload, nil)
+	return payload
 }
 
 // reportMachineJobReliably keeps ownership of a completed execution while the

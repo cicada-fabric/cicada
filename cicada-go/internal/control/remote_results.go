@@ -13,6 +13,7 @@ type boundNodeResultFence struct {
 	credentialDigest string
 	nodeID           string
 	nodeControlRPC   *store.NodeControlRPCInput
+	executionState   string
 }
 
 // CompleteRemoteWorker persists a result returned by the legacy machine API
@@ -62,7 +63,7 @@ func (c *Control) CompleteBoundNodeRemoteWorker(credentialDigest, nodeID, worker
 // only while the exact encrypted request and its key epoch remain active.
 func (c *Control) CompleteBoundNodeRemoteWorkerNodeControl(input store.NodeControlRPCInput,
 	workerID string, attempt int, status, summary, threadID, failure, workspaceRevision,
-	resourceStopState string) (*store.Worker, error) {
+	resourceStopState, executionState string) (*store.Worker, error) {
 	status = strings.ToLower(strings.TrimSpace(status))
 	if status != "completed" && status != "failed" {
 		return nil, errors.New("worker result status must be completed or failed")
@@ -71,12 +72,35 @@ func (c *Control) CompleteBoundNodeRemoteWorkerNodeControl(input store.NodeContr
 	if resourceStopState != "" && resourceStopState != "UNVERIFIED" {
 		return nil, errors.New("worker resource stop state is invalid")
 	}
-	worker, err := c.store.BeginBoundNodeWorkerResultNodeControl(input, workerID, attempt)
+	switch executionState {
+	case "", "UNKNOWN", "INJECTION_UNCERTAIN":
+	case "NOT_STARTED":
+		if status != "failed" || resourceStopState != "" {
+			return nil, errors.New("worker execution state contradicts its result")
+		}
+	case "COMPLETED":
+		if status != "completed" {
+			return nil, errors.New("worker execution state contradicts its result")
+		}
+	default:
+		return nil, errors.New("worker execution state is invalid")
+	}
+	if executionState == "" {
+		executionState = "UNKNOWN" // Older/unclassified failed results never authorize replay.
+	}
+	if status == "completed" && executionState == "INJECTION_UNCERTAIN" {
+		return nil, errors.New("worker execution state contradicts its result")
+	}
+	var expectedPrestartThread *string
+	if executionState == "NOT_STARTED" {
+		expectedPrestartThread = &threadID
+	}
+	worker, err := c.store.BeginBoundNodeWorkerResultNodeControl(input, workerID, attempt, expectedPrestartThread)
 	if err != nil {
 		return nil, err
 	}
 	fence := &boundNodeResultFence{credentialDigest: input.CredentialDigest,
-		nodeID: input.NodeID, nodeControlRPC: &input}
+		nodeID: input.NodeID, nodeControlRPC: &input, executionState: executionState}
 	return c.completeRemoteWorkerAdmitted(worker, status, summary, threadID, failure, fence,
 		resourceStopState, workspaceRevision)
 }
@@ -150,7 +174,12 @@ func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, sum
 	if failure == "" {
 		failure = "remote worker failed without an error message"
 	}
-	if worker.Attempt > c.config.MaxRecoveries {
+	// Only an authenticated Node with positive pre-start evidence may use the
+	// bounded recovery policy. An unknown/started execution must not be minted
+	// as a fresh attempt with a different Node ledger identity.
+	safeToRecover := fence != nil && fence.nodeControlRPC != nil &&
+		fence.executionState == "NOT_STARTED" && resourceStopState == ""
+	if worker.Attempt > c.config.MaxRecoveries || !safeToRecover {
 		failed, err := c.finishRemoteResult(worker, "failed", store.WorkerUpdate{
 			ClearPID: true, EndedAt: stringPtr(storeNow()), LastError: &failure,
 			Summary: &summary, ThreadID: stringPtr(threadID),
@@ -160,6 +189,10 @@ func (c *Control) completeRemoteWorkerAdmitted(worker *store.Worker, status, sum
 		}
 		c.recordAdmittedWorkspaceRevision(worker, fence, workspaceRevision...)
 		_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerFailed", map[string]any{"error": failure, "remote": true})
+		if !safeToRecover {
+			_, _ = c.store.AppendEvent(worker.GoalID, worker.ID, "WorkerRecoverySuppressed",
+				map[string]any{"reason": "execution_outcome_requires_reconciliation"})
+		}
 		goal, goalErr := c.store.GetGoal(worker.GoalID)
 		if goalErr == nil && goal != nil {
 			c.finishFailure(goal, worker.ID, worker.Attempt, failure)

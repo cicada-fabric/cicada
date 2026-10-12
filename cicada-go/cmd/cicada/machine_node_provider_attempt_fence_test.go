@@ -57,7 +57,7 @@ func TestMachineNodeProviderAttemptGenerationPersistsAndFencesLocalTicket(t *tes
 
 	stale := prepared
 	stale.providerAttempt++
-	if err := recordMachineNodeProviderOutcome(ctx, stale, machineJobResult{Status: "completed"}); !errors.Is(err, nodeinbox.ErrProviderAdmissionStaleAttempt) {
+	if err := recordMachineNodeProviderOutcome(ctx, stale, machineJobResult{Status: "completed"}, client); !errors.Is(err, nodeinbox.ErrProviderAdmissionStaleAttempt) {
 		t.Fatalf("delayed local result with a different provider generation was accepted: %v", err)
 	}
 	if err := client.finishClaimExecution(stale); err == nil {
@@ -71,7 +71,7 @@ func TestMachineNodeProviderAttemptGenerationPersistsAndFencesLocalTicket(t *tes
 		t.Fatal("stale completion changed the durable claim state")
 	}
 
-	if err := recordMachineNodeProviderOutcome(ctx, prepared, machineJobResult{Status: "completed"}); err != nil {
+	if err := recordMachineNodeProviderOutcome(ctx, prepared, machineJobResult{Status: "completed"}, client); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.finishClaimExecution(prepared); err != nil {

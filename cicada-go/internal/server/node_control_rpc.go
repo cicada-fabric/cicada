@@ -430,13 +430,14 @@ func (h *Handler) dispatchNodeControlRPC(token string, rpc store.NodeControlRPCI
 			Error             string `json:"error"`
 			WorkspaceRevision string `json:"workspace_revision"`
 			ResourceStopState string `json:"resource_stop_state,omitempty"`
+			ExecutionState    string `json:"execution_state,omitempty"`
 		}
 		if err := decode(&input); err != nil || strings.TrimSpace(input.WorkerID) == "" || input.Attempt <= 0 {
 			return nil, errors.New("invalid Node job result")
 		}
 		return h.control.CompleteBoundNodeRemoteWorkerNodeControl(rpc,
 			input.WorkerID, input.Attempt, input.Status, input.Summary, input.ThreadID,
-			input.Error, input.WorkspaceRevision, input.ResourceStopState)
+			input.Error, input.WorkspaceRevision, input.ResourceStopState, input.ExecutionState)
 	case "node.approvals.create":
 		var input struct {
 			WorkerID  string          `json:"worker_id"`
