@@ -1,4 +1,51 @@
-# CICADA v0.0.2 local user-trial package
+# CICADA local user-trial packages
+
+## Current 0.0.3 IP/ARM64 trial
+
+Clean product producer `ab2362f6b9f34d823cea0834c20ec615602c8130` now supplies
+actual Linux amd64 and ARM64 PQ packages plus an amd64 PQ Hub image. The fresh
+IP-only two-Node Docker gate passed using the exact ARM64 package under explicit
+QEMU, independent Owner signing and separate Node state. This closes the scoped
+local IP locator/ARM64/first-install protocol checkpoint, not physical-server,
+phone, public HTTPS or Native model acceptance. A1's first-readiness failure
+with UNKNOWN cause remains recorded separately from the passing A2.
+
+The unsigned local portable Core archive is
+`.cicada-data/v00-docker-deployment-20261012/cicada-core-0.0.3-ab2362f-local-trial.tar.gz`,
+41,218,762 bytes, SHA256
+`e3038ea8ae14dce22980136eded495b53da2fe0c8e591ddb5948dcc329978df8`.
+After extraction, read its README and verify `sha256sum -c SHA256SUMS` from the
+bundle root. MANIFEST.json SHA256 is
+`d44b28e4cb66837083468d90d9feee1d3a13a7a2d619485b9e979f5dac845d97`.
+It contains actual amd64/ARM64 PQ package archives, amd64 Hub image archive,
+licenses, reviewed contract/catalog references and manual operator instructions;
+24 payload files passed sealed integrity checks. It contains no private keys,
+grants, installer/Hub/Node state, test data or APK. Product producer remains
+`ab2362f`; included source documentation/catalog references are separately
+snapshotted from that producer, while the newly written delivery README/manifest
+have their own exact hashes and are not attributed to that Git revision.
+
+The independent Client APK remains separate at
+`/gpu1-share/data/cicada-client/v165-0351ee5-arm64-debug-trial-20261012/cicada-client-v165-0351ee5-arm64-debug.private.apk`.
+Its producer is `0351ee5`, with exact bytes/hash and ARM64 static results in the
+[validation record](docker-ip-arm64-validation.md). It was not executed on a
+physical phone and the Core archive does not claim to deliver an Android TLS
+Owner signing UI.
+
+Start with [artifact identities and actual commands](docker-ip-arm64-validation.md)
+and [manual first installation](node-tls-first-install-cli.md). Initial pairing
+requires an operator-trusted HTTPS IP-SAN chain and independently pinned
+application identity; enrolled Node traffic then uses signed IP locators and
+strict PQ TLS. The Operator/Owner file ceremony works across separate machines
+and no Node needs Hub SQLite or the Owner private key. Android TLS Owner signing
+UI remains follow-up work; the independent ARM64 APK has static validation only.
+Do not reuse synthetic test keys, grants or installer state for deployment.
+
+## Historical 0.0.2 d86 trial
+
+All remaining sections describe the older d86 trial and its exact artifacts.
+Its arm64/PQ/IP provisioning limitations below remain historical facts; they do
+not describe the new 0.0.3 packages.
 
 This is an unsigned local pre-release candidate from clean producer `d86e214829db16fc7fe1df34ab6dcfca6df23b93` (software 0.0.2, contract 1.6.5, wire 1, catalog 55, schema 59). It is a concrete local test package, not a release or a claim that the requested multi-machine pure-PQ deployment is ready.
 

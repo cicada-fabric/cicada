@@ -18,7 +18,8 @@ Implement and test the interface before producing the final packages. Freeze
 product build inputs, build the Hub and both Node packages, then run the new
 isolated gate against those exact artifacts. Record fixture-source identity
 separately and preserve every failed attempt. Root owns the implementation checkpoint commit, clean artifact build and later
-validation/delivery checkpoint. Software is now 0.0.3; package results remain pending.
+validation/delivery checkpoint. Software is now 0.0.3. Clean `ab2362f` packages and unified A2 first-install
+SCOPED_PASS are recorded, with A1 UNKNOWN-cause readiness FAIL retained.
 
 ## First-install authorization sequence
 
@@ -51,16 +52,16 @@ without changing its source or silently substituting device approval.
 
 ## Bounded local acceptance matrix
 
-| Scenario | Required evidence | Initial status |
+| Scenario | Required evidence | Recorded scoped status |
 | --- | --- | --- |
-| Fresh enrollment | Empty Hub DB; actual encrypted Owner-device enrollment and Node pairing; pending denial | NOT_RUN |
-| Independent first TLS install | Separate Owner signer and Node keys; exact reservations/grants; Stage/ACK/activation/Apply | NOT_RUN |
-| IPv4 and IPv6 sockets | IP-only locator, no DNS/hosts override; unchanged HubID/SAN/pin checks | NOT_RUN |
-| Identity refusals | Wrong HubID, SAN, SPKI pin, locator, changed signed locator and old epoch denied | NOT_RUN |
-| Two isolated Nodes | Separate network namespaces, both outbound to one Hub; no Node-to-Node access | NOT_RUN |
-| Fabric-only | Product Hub without Control business; real NIST transport and application ciphertext | NOT_RUN |
-| Restart/offline recovery | Hub/Node restart, offline queued delivery, original-ID retry and ACK dedup | NOT_RUN |
-| ARM64 product | Actual packaged binary under explicit QEMU plus amd64 Node | NOT_RUN |
+| Fresh enrollment | Empty Hub DB; actual encrypted Owner-device enrollment and Node pairing; pending denial | Clean A2 PASS |
+| Independent first TLS install | Separate Owner signer and Node keys; exact reservations/grants; Stage/ACK/activation/Apply | Clean A2 PASS |
+| IPv4 and IPv6 sockets | IP-only locator, no DNS/hosts override; unchanged HubID/SAN/pin checks | A focused native socket PASS; clean A2 deployment IPv4 only |
+| Identity refusals | Wrong HubID, SAN, SPKI pin, locator, changed signed locator and old epoch denied | A/C focused refusals PASS; source scopes separate |
+| Two isolated Nodes | Separate network namespaces, both outbound to one Hub; no Node-to-Node access | Clean A2 actual inspect/probes PASS |
+| Fabric-only | Product Hub without Control business; real NIST transport and application ciphertext | Clean A2 product receiver + fixture sender PASS |
+| Restart/offline recovery | Hub/Node restart, offline queued delivery, original-ID retry and ACK dedup | Clean A2 PASS; Native consumption NOT_RUN |
+| ARM64 product | Actual packaged binary under explicit QEMU plus amd64 Node | Clean A2 PASS, 13 ARM product command receipts |
 | Native Runtime, physical phone, public HTTPS | Separate external acceptance | NOT_RUN |
 
 All tests default OFF. Use synthetic keys in private throwaway roots, exact owned

@@ -1,6 +1,11 @@
 # CICADA v0.1.x technical guide
 
-This guide covers the current **0.0.2** development source line. It is public technical
+[The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
+amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
+uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
+Native consumption and physical-phone acceptance remain separate scopes.
+
+This guide covers the current **0.0.3** development source line. It is public technical
 documentation for an unreleased candidate, not a release announcement or proof
 of complete product acceptance. Read the [current closeout](v01-current-closeout-20261009-validation.md)
 for retained failures and the [implementation ledger](completion-ledger.md) for
@@ -140,7 +145,7 @@ schema with an older binary. Follow [Node backup](node-backup.md),
 
 | Identity | Current source meaning |
 |---|---|
-| Software | [`0.0.2`](../VERSION), unreleased development |
+| Software | [`0.0.3`](../VERSION), unreleased development |
 | Architecture | v2.3 adopted specification |
 | Hub SQLite schema | [59](../cicada-go/internal/store/migrations_v2.go) |
 | Client contract | [`client-hub-v1.6.5`](../cicada-go/internal/clientcontract/catalog.json), 55 operations |

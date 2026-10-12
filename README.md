@@ -26,8 +26,8 @@ external model is visible to that provider; this is not provider-blind E2EE.
 
 The current [IP/ARM64 deployment checkpoint](docs/docker-ip-arm64-validation.md)
 has [manual independent-Owner installation steps](docs/node-tls-first-install-cli.md).
-Final clean package acceptance is pending; standard HTTPS bootstrap and enrolled
-strict PQ TLS are separate stages.
+Clean amd64/ARM64 package first installation passed its scoped Docker gate;
+standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
 The development line is **0.0.3**, unreleased on `dev`. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.

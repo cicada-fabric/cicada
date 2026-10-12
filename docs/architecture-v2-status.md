@@ -2,8 +2,8 @@
 
 Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
 independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)
-records focused green preflight and retained failed diagnostics; final clean
-packaged amd64/ARM gate is pending. Bootstrap standard HTTPS with NIST application
+records clean `ab2362f` packaged amd64/ARM64 first-install A2 SCOPED_PASS,
+A1 UNKNOWN-cause readiness FAIL and retained earlier diagnostics. Bootstrap standard HTTPS with NIST application
 proofs and enrolled strict PQ TLS remain separate. Contract v1.6.5, wire 1,
 catalog 55 and schema 59 are unchanged; overall release acceptance remains PARTIAL.
 

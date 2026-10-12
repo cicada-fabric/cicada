@@ -1,11 +1,11 @@
 # Architecture v2.3 实施计划
 
 The active implementation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
-Signed IP locators, ARM64 build support and the independent Owner operator
-ceremony have focused green preflight. Freeze implementation, commit the clean
-producer, build actual amd64/ARM packages once, then run the isolated unified
-Docker gate under bounded explicit QEMU. Record final source/package/fixture
-identity and cleanup before closing delivery. [Current evidence](docker-ip-arm64-validation.md)
+Clean producer `ab2362f` now has actual amd64/ARM64 packages and A2 unified
+first-install SCOPED_PASS under bounded explicit QEMU. Source/package/fixture
+identities and exact cleanup are recorded; A1 first-readiness FAIL with UNKNOWN
+cause remains separate. Manual Owner signing is available; Android TLS approval
+UI and physical deployment remain follow-up acceptance. [Current evidence](docker-ip-arm64-validation.md)
 and [manual steps](node-tls-first-install-cli.md) keep this sequence reviewable;
 no PASS is added to historical d86 or Native results.
 

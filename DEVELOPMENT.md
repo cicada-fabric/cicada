@@ -12,8 +12,8 @@ source/dirty state and build provenance before attributing a test or artifact.
 
 The current [IP/ARM64 deployment checkpoint](docs/docker-ip-arm64-validation.md)
 has [manual independent-Owner installation steps](docs/node-tls-first-install-cli.md).
-Final clean package acceptance is pending; standard HTTPS bootstrap and enrolled
-strict PQ TLS are separate stages.
+Clean amd64/ARM64 package first installation passed its scoped Docker gate;
+standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.

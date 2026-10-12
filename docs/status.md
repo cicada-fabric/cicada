@@ -1,8 +1,13 @@
 # Release status
 
+[The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
+amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
+uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
+Native consumption and physical-phone acceptance remain separate scopes.
+
 ## 2026-10-12 current source candidate — unreleased; acceptance partial
 
-The current development version is **0.0.2**: Hub schema **59**, Client
+The current development version is **0.0.3**: Hub schema **59**, Client
 contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
 operations. Architecture v2.3, Git revision, dirty source/build fingerprints
 and artifact digests are separate identities. See the
@@ -41,7 +46,7 @@ NOT_RUN; A11's Group-key `group.key_manifest/grant/status` scope is distinct.
 Physical-device and public-HTTPS acceptance remain NOT_RUN.
 The retained c688 Hub image and clean-328f standard delivery predate Core 0326;
 any fresh packaged Hub interop result needs its own build/source attribution.
-First-release acceptance remains **PARTIAL**; development stays at **0.0.2** until the user's
+First-release acceptance remains **PARTIAL**; development stays on the **0.0.x** line until the user's
 actual acceptance, and any main/0.1.0 publication requires separate
 authorization.
 

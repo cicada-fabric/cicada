@@ -1,5 +1,10 @@
 # Distribution and deployment
 
+[The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
+amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
+uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
+Native consumption and physical-phone acceptance remain separate scopes.
+
 This repository provides an opt-in, checkout-based local Hub Compose entry and
 an optional host-user Node agent launcher. It does not provide a signed
 production release installer or a public HTTPS deployment.
@@ -181,7 +186,7 @@ Keep these identities separate in every build/deployment record:
 
 | Identity | Meaning |
 |---|---|
-| CICADA software version | Current unreleased version [`0.0.2`](../VERSION); Architecture v2.3 is a product/architecture target. No public `0.1.x` release is available. |
+| CICADA software version | Current unreleased version [`0.0.3`](../VERSION); Architecture v2.3 is a product/architecture target. No public `0.1.x` release is available. |
 | Git revision and dirty flag | Source revision and whether uncommitted changes were present. |
 | Source fingerprint | Hash of the source/build inputs used by a binary release; a dirty build is not identified by HEAD alone. |
 | Client contract revision and wire | Current Client contract revision [`client-hub-v1.6.5`](../cicada-go/internal/clientcontract/catalog.json), encrypted wire v1 and 55 operations; catalog SHA-256 `a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`. Contract/catalog identity is separate from an independently built or accepted Android Client binary and from internal Node MCP APIs. |
