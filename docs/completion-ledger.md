@@ -2,6 +2,16 @@
 
 ## Current closeout index — v0.0.x development; target v0.1.0 PARTIAL
 
+The V34 Worker checkpoint is committed at clean `9465299e4684cb9486ebdf4489911debb20efe53`;
+its documented frozen pre-commit normal/race and regression checks passed.
+[Hub backup/update](hub-update-backup-preflight-validation.md) has a separate
+disposable result. The new [Native Board scope](native-board-current-validation.md)
+remains **FAIL_OR_UNKNOWN**: clean zero-model preparation passed, but the one
+paid attempt stopped at manual turn 3 after a recorded upstream HTTP 500;
+Board author/read acceptance is NOT_RUN. This uses immutable c292 artifacts,
+not the Worker checkpoint or later installer source, and does not alter prior
+PASS attribution.
+
 V34 managed Worker no-replay now admits bounded recovery only for an authenticated
 matching `NOT_STARTED` result; native session matching is atomic with result
 admission, and post-submission rate-limit cooldown delays different executions.

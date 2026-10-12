@@ -38,9 +38,51 @@ The installer builds the current local checkout and starts
 `http://127.0.0.1:8788` by default. It does not fetch a GitHub branch, curl an
 unpublished artifact, request model credentials, or clear any data. It refuses
 to reuse an existing `cicada-v2-local` Compose project unless
-`CICADA_DEPLOY_UPDATE=1` is explicitly set. A rebuild/recreate preserves the
-named volume. `scripts/bootstrap-cicada.sh` is an alias for this explicit Hub
-installer; it no longer creates a shared env file.
+`CICADA_DEPLOY_UPDATE=1` is explicitly set. An existing-project update also
+requires a fresh private backup destination outside the checkout and the Hub
+volume:
+
+```sh
+CICADA_DEPLOY_UPDATE=1 \
+CICADA_HUB_UPDATE_BACKUP="$HOME/cicada-hub-backups/hub-state-before-update" \
+scripts/install-cicada-server.sh
+```
+
+Create the backup parent first with mode `0700`, owned by the same host UID/GID
+as the Hub state. The destination itself must not exist. Before rebuilding, the
+installer checks that exactly one project Hub uses the configured named volume,
+stops that exact container, and checks Docker's candidates filtered by that
+named volume for other running read-write consumers. This does not enumerate
+host processes or arbitrary bind-mounted writers: the operator must quiesce
+all writers before updating. The existing backup command's StateDir maintenance
+lease and SQLite snapshot lock remain authoritative for Hub-state consistency.
+It uses the currently deployed image in a networkless, read-only-root helper
+container to run `migration backup` and then `migration verify`. Only matching
+complete manifests allow Compose to rebuild and recreate the Hub. A failed or
+unsupported preflight leaves the container as found. If backup or verification
+fails after the Hub has stopped, it stays stopped and Compose does not rebuild;
+the installer does not delete the volume or restore automatically. A named
+volume without a matching project container, or any Compose-owned project
+volume without its Hub container, is treated as an orphan and blocks
+installation so its state cannot be silently attached as a fresh deployment.
+If a later Compose build, `up`, or health check fails, the installer does not
+automatically restart or restore the Hub; it may remain stopped or unhealthy.
+An administrator must choose the next step using the retained backup.
+
+The default project and volume remain `cicada-v2-local` and
+`cicada-v2-local-hub-state`. Set `CICADA_DEPLOY_PROJECT` to a validated
+lowercase name to run another local project; its default volume is
+`<project>-hub-state`. Set `CICADA_HUB_VOLUME` only when the intended volume is
+known and its Compose ownership labels match that project. The backup is a
+verified Hub snapshot, not a byte-for-byte copy of the physical volume, and it
+does not include Node-local state or keys. The [update-guard validation
+record](hub-update-backup-preflight-validation.md) records the fake-Docker
+checks, an A2 disposable update whose verified backup was retained after its
+build timed out, and a separate successful A3 disposable update using a
+per-run build-only proxy override. A3 built from a dirty checkout and is not a
+release artifact or a production deployment. `scripts/bootstrap-cicada.sh`
+is an alias for this explicit Hub installer; it no longer creates a shared env
+file.
 
 This loopback HTTP profile is for same-host development. A physical Android
 device or remote Node requires the operator to configure an HTTPS reverse
