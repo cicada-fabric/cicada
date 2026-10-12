@@ -40,10 +40,11 @@ class LinkReviewPolicyStatusV165InteropTest {
         assumeTrue("NOT_RUN_V165_FIXTURE_ARGUMENTS_REQUIRED", listOf("run_id", "fixture_sha256", "phase",
             "case_deadline_utc", "source_revision", "source_fingerprint", "hub_image_id").all { args.containsKey(it) })
         val phase = argument("phase")
-        guard(phase in setOf("before_restart", "capture_response_loss", "after_restart"), "PHASE_SCOPE")
-        guard(phase != "capture_response_loss" || scenario == "response-loss", "PHASE_SCOPE")
+        guard(LinkPolicyStatusFixtureV165.phaseAllowed(phase, scenario), "PHASE_SCOPE")
         if (phase == "capture_response_loss") assumeTrue("NOT_RUN_STATUS_FAULT_FIXTURE_REQUIRED", args.containsKey("fault_sha256"))
-        if (phase == "after_restart") assumeTrue("NOT_RUN_OWNED_RESTART_FIXTURE_REQUIRED", args.containsKey("restart_sha256"))
+        if (phase in setOf("recover_after_restart", "after_restart")) {
+            assumeTrue("NOT_RUN_OWNED_RESTART_FIXTURE_REQUIRED", args.containsKey("restart_sha256"))
+        }
         deadline()
         val raw = readRequired("fixture.public.json", fixtureSha, 64 * 1024)
         val fixture = try {
@@ -53,6 +54,11 @@ class LinkReviewPolicyStatusV165InteropTest {
             guard(text(fixture.root, key) == argument(key), "DELIVERY_PIN")
         }
         val scope = selectedScope(fixture)
+        if (phase != "before_restart") {
+            val baseline = readObject("before.redacted.json")
+            guard(text(baseline, "fixture_sha256") == fixtureSha &&
+                text(baseline, "case_deadline_utc") == argument("case_deadline_utc"), "BASELINE_SCOPE")
+        }
         if (scenario == "version-bypass") {
             assumeTrue("NOT_RUN_OLD_VERSION_FIXTURE_REQUIRED", fixture.linkVersion > 1)
         }
@@ -68,11 +74,15 @@ class LinkReviewPolicyStatusV165InteropTest {
                     })
                 }
                 "capture_response_loss" -> captureLoss(session, scope, fixture)
+                "recover_after_restart" -> {
+                    assertRestart(fixture)
+                    recoverLoss(session, scope, fixture)
+                }
                 "after_restart" -> {
                     val before = readObject("before.redacted.json")
                     guard(text(before, "fixture_sha256") == fixtureSha, "BASELINE_SCOPE")
                     assertRestart(fixture)
-                    if (scenario == "response-loss") recoverLoss(session, scope, fixture)
+                    if (scenario == "response-loss") reconcileRecoveredLoss(session, scope, fixture)
                     val status = freshStatus(session, scope, fixture)
                     refusalChecks(session, scope, fixture)
                     val after = snapshot(session, scope, fixture, status)
@@ -90,6 +100,8 @@ class LinkReviewPolicyStatusV165InteropTest {
                         addProperty("android_status_read", "PASS")
                         addProperty("external_go_status_substitute", false)
                         addProperty("database_read", false)
+                        if (scenario == "response-loss") addProperty("uncertain_nonnull_recovery",
+                            if (fixture.recoveryResult == "OUTCOME_UNCERTAIN") "PASS" else "NOT_RUN")
                         addProperty("native_runtime", "NOT_RUN")
                         addProperty("physical_android", "NOT_RUN")
                         addProperty("public_https", "NOT_RUN")
@@ -227,17 +239,17 @@ class LinkReviewPolicyStatusV165InteropTest {
             session.linkReviewPolicyStatus(fixture.linkId, fixture.linkVersion, scope.selectionGeneration)
         }
         val lost = journalSnapshot(session, scope, fixture)
+        // Complete the reopen check before publishing the restart ACK.
+        profiles.withActiveScope(scope) { reopened ->
+            guard(journalSnapshot(reopened, scope, fixture) == lost, "REOPEN_CLEARED_PENDING_CONTEXT")
+        }
         save("loss.redacted.json", lost.apply {
             addProperty("schema", "cicada.client-v165-link-policy-status-loss.v1")
             addProperty("result", "ORIGINAL_STATUS_PACKET_PENDING")
             addProperty("fixture_sha256", fixtureSha)
+            addProperty("case_deadline_utc", argument("case_deadline_utc"))
             addProperty("fault_receipt_sha256", argument("fault_sha256"))
         })
-        // Reconstruct through the profile store; do not reselect or advance its generation.
-        profiles.withActiveScope(scope) { reopened ->
-            guard(journalSnapshot(reopened, scope, fixture) == journalSnapshot(session, scope, fixture),
-                "REOPEN_CLEARED_PENDING_CONTEXT")
-        }
     }
 
     private fun journalSnapshot(session: ClientHubSession, scope: HubProfileStore.Scope,
@@ -271,6 +283,7 @@ class LinkReviewPolicyStatusV165InteropTest {
             addProperty("operation_id_sha256", hash(route.operationId))
             addProperty("original_packet_sha256", hash(text(pending, "packetJson")))
             addProperty("context_sha256", hash(context.toString()))
+            addProperty("profile_generation", number(context, "profile_generation"))
             addProperty("request_sequence", route.sequence)
             addProperty("expected_response_sequence", number(pending, "expectedResponseSequence"))
             addProperty("next_sequence", number(saved, "nextSequence"))
@@ -282,6 +295,7 @@ class LinkReviewPolicyStatusV165InteropTest {
 
     private fun recoverLoss(session: ClientHubSession, scope: HubProfileStore.Scope,
         fixture: LinkPolicyStatusFixtureV165.Fixture) {
+        guard(!File(directory, "recovery.redacted.json").exists(), "RECOVERY_ALREADY_RECORDED")
         val capture = readObject("loss.redacted.json")
         guard(text(capture, "fixture_sha256") == fixtureSha, "LOSS_SCOPE")
         val reopened = journalSnapshot(session, scope, fixture)
@@ -313,33 +327,10 @@ class LinkReviewPolicyStatusV165InteropTest {
                         reopenedSession.linkReviewPolicyStatus(fixture.linkId, fixture.linkVersion, scope.selectionGeneration)
                     }
                 }
-                val operations = capabilities(session, fixture)
-                guard(bool(session.getStatus(), "uncertainNeedsReconciliation"), "CAPABILITIES_CLEARED_UNCERTAINTY")
-                listSelection(session, fixture.linkId)
-                guard(bool(session.getStatus(), "uncertainNeedsReconciliation"), "LINK_LIST_CLEARED_UNCERTAINTY")
-                val retained = state(scope)
-                guard(retained.get("retiredPending") == original &&
-                    text(retained, "outcomeUncertainOperationId") == text(original, "operationId"),
-                    "READS_CLEARED_RETIRED_ORIGINAL")
-                val pin = retained.getAsJsonObject("pin")
-                val advertised = session.fetchHubMetadata(text(pin, "baseUrl")).getAsJsonObject("capabilities")
-                val role = text(session.getStatus(), "role")
-                val publicOperations = advertised.getAsJsonArray(
-                    if (role == "external") "external_rpc_operations" else "available_rpc_operations")
-                    .map { it.asString }.toSet()
-                assumeTrue("NOT_RUN_AUTHENTICATED_RECONCILIATION_FIXTURE_REQUIRED",
-                    "status.snapshot" in operations && "status.snapshot" in publicOperations)
-                val snapshot = session.rpc("status.snapshot", JsonObject())
-                guard(bool(snapshot, "ok") && !bool(session.getStatus(), "uncertainNeedsReconciliation"),
-                    "AUTHENTICATED_RECONCILIATION_REFUSED")
-                val reconciled = state(scope)
-                guard(reconciled.get("retiredPending") == original &&
-                    text(reconciled, "outcomeUncertainOperationId") == text(original, "operationId"),
-                    "SNAPSHOT_DISCARDED_RETIRED_ORIGINAL")
             }
             else -> throw AssertionError("RECOVERY_FIXTURE_INVALID")
         }
-        save("recovery.redacted.json", JsonObject().apply {
+        val receipt = JsonObject().apply {
             addProperty("schema", "cicada.client-v165-link-policy-status-recovery.v1")
             addProperty("fixture_sha256", fixtureSha)
             addProperty("result", "ORIGINAL_PACKET_RECOVERED")
@@ -348,9 +339,67 @@ class LinkReviewPolicyStatusV165InteropTest {
             addProperty("recovery_result", fixture.recoveryResult)
             addProperty("new_operation_created_for_recovery", false)
             addProperty("unresolved_fence_retention_checked", true)
+            addProperty("next_sequence", number(after, "nextSequence"))
+            addProperty("last_response_sequence", number(after, "lastResponseSequence"))
+            addProperty("uncertain_needs_reconciliation", bool(after, "uncertainNeedsReconciliation"))
             addProperty("legacy_nonnull_context_restart", "NOT_RUN")
             addProperty("process_death", "NOT_RUN")
-        })
+        }
+        LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(receipt, capture, fixture)
+        // No new RPC on the faulted proxy. Root routes the same pinned origin
+        // back to the Hub only after this stage's receipt and JUnit exit 0.
+        save("recovery.redacted.json", receipt)
+    }
+
+    private fun reconcileRecoveredLoss(session: ClientHubSession, scope: HubProfileStore.Scope,
+        fixture: LinkPolicyStatusFixtureV165.Fixture) {
+        val capture = readObject("loss.redacted.json")
+        guard(text(capture, "fixture_sha256") == fixtureSha, "LOSS_SCOPE")
+        val receipt = readObject("recovery.redacted.json")
+        LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(receipt, capture, fixture)
+        val retained = state(scope)
+        guard(!retained.has("pending") && !retained.has("linkReviewStatusReadContext") &&
+            !retained.has("linkConsentStatusReadContext"), "RECOVERY_CONTEXT_REAPPEARED")
+        guard(number(retained, "nextSequence") == number(receipt, "next_sequence") &&
+            number(retained, "lastResponseSequence") == number(receipt, "last_response_sequence") &&
+            bool(retained, "uncertainNeedsReconciliation") == bool(receipt, "uncertain_needs_reconciliation"),
+            "CONTINUE_CLEARED_RECOVERY_FENCE")
+        if (fixture.recoveryResult == "COMPLETED") return
+
+        val original = retained.getAsJsonObject("retiredPending")
+            ?: throw AssertionError("STATUS_RETIRED_ORIGINAL_MISSING")
+        guard(hash(text(original, "packetJson")) == text(capture, "original_packet_sha256") &&
+            hash(text(original, "operationId")) == text(capture, "operation_id_sha256") &&
+            number(original, "sequence") == number(capture, "request_sequence") &&
+            text(original, "operation") == "link.review_policy_status" &&
+            text(retained, "outcomeUncertainOperationId") == text(original, "operationId"),
+            "CONTINUE_CHANGED_RETIRED_ORIGINAL")
+        expect("BUSINESS_RECONCILIATION_REQUIRED") {
+            session.linkReviewPolicyStatus(fixture.linkId, fixture.linkVersion, scope.selectionGeneration)
+        }
+        val operations = capabilities(session, fixture)
+        guard(bool(session.getStatus(), "uncertainNeedsReconciliation"), "CAPABILITIES_CLEARED_UNCERTAINTY")
+        listSelection(session, fixture.linkId)
+        guard(bool(session.getStatus(), "uncertainNeedsReconciliation"), "LINK_LIST_CLEARED_UNCERTAINTY")
+        val afterReads = state(scope)
+        guard(afterReads.get("retiredPending") == original &&
+            text(afterReads, "outcomeUncertainOperationId") == text(original, "operationId"),
+            "READS_CLEARED_RETIRED_ORIGINAL")
+        val pin = afterReads.getAsJsonObject("pin")
+        val advertised = session.fetchHubMetadata(text(pin, "baseUrl")).getAsJsonObject("capabilities")
+        val role = text(session.getStatus(), "role")
+        val publicOperations = advertised.getAsJsonArray(
+            if (role == "external") "external_rpc_operations" else "available_rpc_operations")
+            .map { it.asString }.toSet()
+        assumeTrue("NOT_RUN_AUTHENTICATED_RECONCILIATION_FIXTURE_REQUIRED",
+            "status.snapshot" in operations && "status.snapshot" in publicOperations)
+        val snapshot = session.rpc("status.snapshot", JsonObject())
+        guard(bool(snapshot, "ok") && !bool(session.getStatus(), "uncertainNeedsReconciliation"),
+            "AUTHENTICATED_RECONCILIATION_REFUSED")
+        val reconciled = state(scope)
+        guard(reconciled.get("retiredPending") == original &&
+            text(reconciled, "outcomeUncertainOperationId") == text(original, "operationId"),
+            "SNAPSHOT_DISCARDED_RETIRED_ORIGINAL")
     }
 
     private fun metadata(raw: JsonObject): JsonObject = JsonObject().apply {
@@ -386,6 +435,7 @@ class LinkReviewPolicyStatusV165InteropTest {
             addProperty("schema", "cicada.client-v165-link-policy-status-result.v1")
             addProperty("run_id", runId); addProperty("case_id", fixture.caseId)
             addProperty("fixture_sha256", fixtureSha)
+            addProperty("case_deadline_utc", argument("case_deadline_utc"))
             addProperty("fixture_lane", fixture.lane); addProperty("scenario", fixture.scenario)
             addProperty("profile_id_sha256", hash(scope.profileId)); addProperty("profile_generation", scope.selectionGeneration)
             addProperty("hub_id_sha256", hash(fixture.hubId)); addProperty("owner_id_sha256", hash(fixture.ownerId))
@@ -402,8 +452,15 @@ class LinkReviewPolicyStatusV165InteropTest {
             addProperty("pending", session.getStatus().has("pendingOperationId"))
             addProperty("uncertain_needs_reconciliation", bool(saved, "uncertainNeedsReconciliation"))
             addProperty("profile_switch", "NOT_PERFORMED")
-            if (fixture.scenario == "owner-refusal") addProperty("foreign_owner_hub_guard", "NOT_RUN")
-            if (fixture.scenario == "version-bypass") addProperty("refusal_boundary", "CLIENT_FRESH_LIST_AND_GENERIC_RPC_GUARDS")
+            if (fixture.scenario == "owner-refusal") {
+                addProperty("local_owner_target_refusal", "PASS")
+                addProperty("foreign_owner_hub_guard", "NOT_RUN")
+            }
+            if (fixture.scenario == "version-bypass") {
+                addProperty("refusal_boundary", "CLIENT_FRESH_LIST_AND_GENERIC_RPC_GUARDS")
+                addProperty("server_version_guard", "NOT_RUN")
+                addProperty("server_generic_rpc_bypass", "NOT_RUN")
+            }
         }
     }
 

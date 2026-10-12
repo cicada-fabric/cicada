@@ -8,13 +8,24 @@ The existing `LinkReviewPolicyStatusInteropTest` keeps its v1.6.1 attribution.
 Production code, protocol, roles and models are unchanged. Root owns the
 fresh Hub, emulator, synthetic identities, fault transport and cleanup.
 
-Core target proposed by Root is clean
-`c2929fc3b66c5debf92230e1e052b8b0e35a9e80`; exact image, build metadata and
-source fingerprint are pending Root delivery. Contract and catalog remain
+The independently checked Core target is clean
+`c2929fc3b66c5debf92230e1e052b8b0e35a9e80`, runtime image
+`sha256:d69edf867632f1ac8adec83ecc689e5cdf9654505ccdd4eeb1ed489ec4e2e496`,
+source fingerprint
+`4c2f0d6ee0336b5237a6974180d791cd9277b9d72edbc2e79ca9ab7a17ec83ee`.
+Contract and catalog remain
 `client-hub-v1.6.5` and
 `a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
 An independently supplied fixture hash and full source/image pins are required;
 Hub discovery metadata alone cannot supply those pins.
+The archive, OCI descriptor/blob chain, image labels, embedded web manifest,
+contract payloads and 958 build inputs were checked read-only. Runtime receipt
+`runtime-verification-c2929fc/receipt.NONAUTH.json` under the preparation root
+has SHA-256 `e06e66c5f0363b85c0263e99d43c3e9fee1d2afd6409e487a1746c1c3ee606a2`.
+No image was loaded and no Core code was executed. Only the bundled development
+document differs from the previously imported contract; wire/vectors/API are
+identical. Fresh identities, a compiled status fault helper and a Root-owned
+online window still require Root delivery.
 
 ## Eight independent cases
 
@@ -97,16 +108,53 @@ bound by instrumentation `restart_sha256`. Its exact fields are `schema`
 and exact container ownership. Android checks the pinned receipt and observes
 the encrypted state; it does not operate or independently inspect Docker.
 
-Response-loss cases add `phase=capture_response_loss` between baseline and
-Root restart. A safe proxy must target only `link.review_policy_status`, with
+Response-loss cases add `phase=capture_response_loss` before Root restart and
+`phase=recover_after_restart` after it. A safe proxy must target only
+`link.review_policy_status`, with
 no fresh operation or re-dispatch on recovery. Root first stages
 `fault.public.json`, bound by `fault_sha256`, with exact fields `schema`
 (`cicada.client-v165-link-policy-status-fault.v1`), `run_id`, `case_id`,
 `fixture_sha256`, `operation=link.review_policy_status`, `ready=true`,
 `recovery_result`. The selector records only hashes/counters from the actual
-App-private original packet and context. Root restarts the Hub after its real
-fault-ready condition, then the post phase submits the same original packet
-to existing `/v2/client/rpc/recover`.
+App-private original packet and context. Root restarts the Hub after the real
+fault-ready condition and the Android capture ACK below. The recovery phase
+submits the same original packet to existing `/v2/client/rpc/recover`. It sends
+no new RPC and does not read fresh status through the faulted proxy. Its
+transport ACK is not a full-case PASS.
+
+### External control order and ACK conditions
+
+This is host test coordination through the existing phased selectors and
+public receipts, not a Client/Hub API or a new Parent control protocol.
+Root launches each selector in the same exact-owned emulator with
+`am instrument -w -r -e class <class>#<method>`, the independent fixture/source
+pins, phase and unchanged case deadline. The runner is
+`ai.cicada.client.test/androidx.test.runner.AndroidJUnitRunner`. A host exit of
+0 alone is insufficient: Root must inspect JUnit completion with no failures
+or assumptions/skips, and the stage's actual receipt bytes.
+
+| Order | Root action / Android stage | ACK before Root proceeds |
+| --- | --- | --- |
+| 1 | Fresh enrolled profile and exact current Link/policy; direct opaque carrier; `before_restart` | `before.redacted.json` is `BEFORE_RESTART_VERIFIED`, fixture/identity/policy match, JUnit succeeds. This is a baseline stage only. |
+| 2 | Loss cases only: bind the status-only proxy to the same pinned App URL, verify the helper's actual READY/source/hash, stage the pinned `fault.public.json`; run `capture_response_loss` | The arming file is not FAULT_READY. The proxy must observe the original status packet and drop its response; Android must finish with `NETWORK_ERROR`, persist pending/current context and reserved counters, reopen the same profile, and publish `loss.redacted.json`. |
+| 3 | Verify restart readiness, then restart only the exact owned Hub | For loss, **RESTART_ACK** means capture JUnit success plus `ORIGINAL_STATUS_PACKET_PENDING`; actual proxy FAULT_READY request SHA/sequence match the loss receipt, reserved response sequence matches where reported, operation is exactly status, and case/fixture/Owner/Device/carrier ownership are exact. No raw packet, context, grant or private state is exported. Normal cases use the baseline ACK. |
+| 4 | Pin/stage the actual owned restart receipt. Loss cases: keep the proxy/original capture, run `recover_after_restart` | **RECOVER_ACK** means JUnit success plus `recovery.redacted.json=ORIGINAL_PACKET_RECOVERED`, exact original operation/packet hashes, unchanged next request sequence, authenticated reserved response sequence consumed, and correct uncertainty latch. This phase performs one original `/recover`, with no fresh operation/re-dispatch. |
+| 5 | After RECOVER_ACK, route the same pinned App URL back to the direct Hub; invoke `after_restart` | This invocation is **CONTINUE**. No profile activation, reselection, generation change, new pin or URL mutation occurs. Android first checks the transport ACK and persisted counters/fences still match; only then does it perform fresh encrypted reads and any authorized uncertainty reconciliation. |
+| 6 | Collect `after.redacted.json`, actual commands/exits and Root-owned cleanup | Full case PASS requires the Android post-stage result, exact baseline comparison and independently confirmed cleanup. Prior stage ACKs cannot substitute. |
+
+The proxy currently closes the original HTTP connection immediately after
+FAULT_READY. Capture can therefore complete before restart; there is no second
+instrumentation instance, concurrent session reader or held-HTTP restart claim.
+If a future fixture actually holds that connection, this sequence is not a
+hold/release protocol and must not be assumed to work. On timeout, missing ACK,
+hash/counter mismatch or selector failure, stop the case and retain its pending
+state and evidence; no selector retries, replacement packets, extended deadline
+or reset is authorized.
+
+The existing proxy fences all new RPC after its first fault, even after original
+recovery. Leaving it selected for `after_restart` would reject capabilities and
+status. Root must therefore switch only the opaque transport route after the
+recovery ACK, preserving the App's independently pinned origin and identity.
 
 Current v1.6.5 dispatch persists `linkConsentStatusReadContext`, including
 profile generation. `linkReviewStatusReadContext` is a distinct legacy path.
@@ -120,13 +168,22 @@ followed by a fresh status read. If that reconciliation authority is absent,
 the fixture stays `NOT_RUN` with the unresolved fence retained. Non-null legacy
 context migration and physical Android process-death coverage are separate
 `NOT_RUN` items; session reconstruction is not called process-death testing.
+This modern lane requires the current context and its exact
+`profile_generation`; it does not create a legacy value. The generic-bypass
+journal comparison preserves each actual legacy value if present and otherwise
+compares absence. Actual non-null legacy restart coverage remains `NOT_RUN`,
+not PASS from an absent field.
 
 ## Fixture gaps and attribution
 
-The existing Core `client-recovery-fixture/link_proxy.go` faulted-operation
-allowlist excludes `link.review_policy_status`. Its normal read allowance is
-not a usable status-loss/uncertain fault fixture. Root needs a safe test-only
-driver for these cases; Client must not guess a protocol, read a database,
+The previously compiled Core fault helper excluded status from its faulted
+allowlist. Root is preparing a minimal test-only extension; its current source
+supports exact completed response loss for status, not processing/uncertain/
+legacy modes. That source alone is not a frozen compiled fixture. Root needs
+to deliver its exact binary/source/receipt and fresh public setup before the
+loss cases can run. `OUTCOME_UNCERTAIN` remains a separately guarded branch,
+**NOT_RUN** without a suitable isolated fixture; completed response loss must
+not be relabeled uncertain. Client must not guess a protocol, read a database,
 inject production fault controls or fake encrypted responses. Missing fixture
 or reconciliation authority results in a selector skip and case `NOT_RUN`.
 Invalid supplied pins or scope fail closed; they are not skips.
@@ -167,3 +224,27 @@ Both failures were in new test source, with no production guard relaxation.
 No old JVM vectors, full Go suite, Joint11 batch or models were rerun. The
 new clean APK producer and complete source hash are sealed after the combined
 checkpoint; the runtime image tuple and safe loss fixture still require Root.
+
+### Control-order successor
+
+The successor separates original recovery from direct post-restart reads.
+The two added JVM tests cover phase restriction and closed recovery-ACK
+validation, including changed original hashes/counters, discarded uncertainty,
+replacement operations, extra/missing fields and an invalid full-PASS label.
+The baseline's case deadline is persisted and must remain unchanged in every
+later invocation. Local refusals and unexecuted server Guards are recorded
+separately; a completed response-loss run does not claim non-null uncertainty
+coverage. No production code or old selector changes.
+
+| Command, in the same immutable network-none builder | Exit | Actual result |
+| --- | --- | --- |
+| Scoped `:app:testDebugUnitTest --tests ai.cicada.client.hub.LinkPolicyStatusFixtureV165Test`, with external host-source init script | `0` | **PASS**, 10 tests, no failures/errors/skips; 35.5837 seconds |
+| `:app:compileDebugAndroidTestKotlin` | `0` | **PASS**, compilation only; 29.7764 seconds |
+
+Actual argv, tested input hashes, logs and container closure receipts are in
+`/gpu1-share/data/cicada-client/v165-link-policy-status-control-preparation-20261012`.
+The original eight-test preparation and both original failures remain in
+their separate evidence root. A new clean test APK and its full producer
+inventory are sealed in the successor `DELIVERY.NONAUTH.json`; it does not
+replace the historical APKs or confer online authorization. All eight online
+cases remain `NOT_RUN` until Root supplies the fresh scope and runs them.

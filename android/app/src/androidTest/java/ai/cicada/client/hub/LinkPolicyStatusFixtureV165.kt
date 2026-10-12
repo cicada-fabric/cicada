@@ -178,6 +178,42 @@ internal object LinkPolicyStatusFixtureV165 {
         require(actual == expected) { "Status DTO differs from the pinned fixture" }
     }
 
+    fun phaseAllowed(phase: String, scenario: String): Boolean =
+        scenario in scenarios && (phase in setOf("before_restart", "after_restart") ||
+            (scenario == "response-loss" && phase in setOf("capture_response_loss", "recover_after_restart")))
+
+    /** A transport ACK permits routing to direct reads, never a full-case or business PASS. */
+    fun assertRecoveryCheckpoint(receipt: JsonObject, capture: JsonObject, fixture: Fixture) {
+        require(fixture.scenario == "response-loss") { "Recovery checkpoint is outside the loss case" }
+        val fields = setOf("schema", "fixture_sha256", "result", "operation_id_sha256",
+            "original_packet_sha256", "recovery_result", "new_operation_created_for_recovery",
+            "unresolved_fence_retention_checked", "next_sequence", "last_response_sequence",
+            "uncertain_needs_reconciliation", "legacy_nonnull_context_restart", "process_death")
+        requireExactFields(receipt, fields, fields, "Recovery checkpoint fields are invalid")
+        require(string(receipt, "schema") == "cicada.client-v165-link-policy-status-recovery.v1" &&
+            string(receipt, "result") == "ORIGINAL_PACKET_RECOVERED") { "Recovery checkpoint is not a transport ACK" }
+        for (key in listOf("fixture_sha256", "operation_id_sha256", "original_packet_sha256")) {
+            val digest = string(receipt, key)
+            require(sha256Pattern.matches(digest) && digest == string(capture, key)) {
+                "Recovery checkpoint does not match the original capture"
+            }
+        }
+        require(string(receipt, "recovery_result") == fixture.recoveryResult &&
+            !boolean(receipt, "new_operation_created_for_recovery") &&
+            boolean(receipt, "unresolved_fence_retention_checked")) { "Recovery checkpoint changed the recovery scope" }
+        require(integer(receipt, "next_sequence", 1, MAX_SAFE_INTEGER) ==
+            integer(capture, "next_sequence", 1, MAX_SAFE_INTEGER) &&
+            integer(receipt, "last_response_sequence", 1, MAX_SAFE_INTEGER) ==
+            integer(capture, "expected_response_sequence", 1, MAX_SAFE_INTEGER)) {
+            "Recovery checkpoint changed the reserved counters"
+        }
+        require(boolean(receipt, "uncertain_needs_reconciliation") == (fixture.recoveryResult == "OUTCOME_UNCERTAIN")) {
+            "Recovery checkpoint discarded or invented uncertainty"
+        }
+        require(string(receipt, "legacy_nonnull_context_restart") == "NOT_RUN" &&
+            string(receipt, "process_death") == "NOT_RUN") { "Recovery checkpoint overstates its coverage" }
+    }
+
     private fun validatePublicIdentity(value: JsonObject) {
         requireExactFields(value, setOf("id", "kem_public", "signing_public"),
             setOf("id", "kem_public", "signing_public"), "Control public identity fields are invalid")
@@ -267,6 +303,10 @@ internal object LinkPolicyStatusFixtureV165 {
     private fun string(value: JsonObject, key: String): String =
         value.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
             ?: throw IllegalArgumentException("Fixture string field $key is invalid")
+
+    private fun boolean(value: JsonObject, key: String): Boolean =
+        value.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+            ?: throw IllegalArgumentException("Fixture boolean field $key is invalid")
 
     private fun identifier(value: JsonObject, key: String): String = string(value, key).also {
         require(it.isNotBlank() && it.length <= MAX_ID_LENGTH && it == it.trim() && it.none { char -> char.isISOControl() }) {

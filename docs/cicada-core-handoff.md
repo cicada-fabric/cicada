@@ -5,17 +5,30 @@
 The separate [eight-case plan](client-link-policy-status-v1.6.5-plan.md) adds
 test-only Android selectors for KEY/NONE status, Owner/old-version/generic
 bypass refusals, original status-packet recovery and same-profile status
-across an exact owned Hub restart. New fixture JVM checks **PASS** (8 tests)
+across an exact owned Hub restart. Scoped fixture/ACK JVM checks **PASS** (10 tests)
 and Android test Kotlin compilation **PASS**; initial test/compile failures
 are retained. The old v1.6.1 selectors and Joint11 acceptance are unchanged.
 
-All eight online cases remain **NOT_RUN**, pending Root's immutable current
-Core/image tuple and safe status-response-loss fixture. No Client production
+All eight online cases remain **NOT_RUN**. Root's clean c2929fc runtime,
+archive/OCI labels, bundle and source inputs are independently checked;
+fresh setup and the safe compiled status-response-loss fixture remain pending.
+No Client production
 code or roles change. Root owns Hub/emulator/enrollment/restart/cleanup.
 Current journaling uses `linkConsentStatusReadContext`; the legacy context
 is reported separately. The old Group test's formal candidate CAS and
 `NodeControlKeyBinding.owner_binding_id` shape is restored without a grant
-rerun. See the plan for exact selectors, fixture fields and remaining gaps.
+rerun. The [external control order](client-link-policy-status-v1.6.5-plan.md#external-control-order-and-ack-conditions)
+separates capture/restart ACK, original-only `recover_after_restart`, and
+CONTINUE for fresh reads. Root routes the same pinned origin direct only after
+the recovery ACK; the existing proxy rejects all fresh RPC after a fault.
+Modern `profile_generation` is exact, non-null legacy coverage remains
+`NOT_RUN`, and local refusals do not substitute for server Guard results.
+See the plan for exact selectors, fixture fields and remaining gaps.
+The control-order successor passed JVM tests (exit 0, 35.5837 seconds) and
+Android-test Kotlin compilation (exit 0, 29.7764 seconds), in network-none
+Docker. Evidence is under
+`/gpu1-share/data/cicada-client/v165-link-policy-status-control-preparation-20261012`.
+These are offline preparation results, not Android runtime acceptance.
 
 ## Current acceptance: v1.6.5 joint11 Android RPC recovery
 

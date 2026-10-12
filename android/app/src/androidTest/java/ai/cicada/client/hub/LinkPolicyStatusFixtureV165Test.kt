@@ -167,6 +167,85 @@ class LinkPolicyStatusFixtureV165Test {
         expectInvalid { LinkPolicyStatusFixtureV165.assertStatus(changedReviewerScope, fixture) }
     }
 
+    @Test
+    fun recoveryPhasesAreRestrictedToLossCases() {
+        SCENARIOS.forEach { scenario ->
+            assertTrue(LinkPolicyStatusFixtureV165.phaseAllowed("before_restart", scenario))
+            assertTrue(LinkPolicyStatusFixtureV165.phaseAllowed("after_restart", scenario))
+            assertEquals(scenario == "response-loss",
+                LinkPolicyStatusFixtureV165.phaseAllowed("capture_response_loss", scenario))
+            assertEquals(scenario == "response-loss",
+                LinkPolicyStatusFixtureV165.phaseAllowed("recover_after_restart", scenario))
+        }
+        assertEquals(false, LinkPolicyStatusFixtureV165.phaseAllowed("retry", "response-loss"))
+        assertEquals(false, LinkPolicyStatusFixtureV165.phaseAllowed("before_restart", "unknown"))
+    }
+
+    @Test
+    fun recoveryCheckpointBindsOriginalHashesCountersAndUnresolvedOutcome() {
+        for (outcome in listOf("COMPLETED", "OUTCOME_UNCERTAIN")) {
+            val fixture = parse(fixture(6).apply { addProperty("recovery_result", outcome) }, 6)
+            val capture = JsonObject().apply {
+                addProperty("fixture_sha256", "a".repeat(64))
+                addProperty("operation_id_sha256", "b".repeat(64))
+                addProperty("original_packet_sha256", "c".repeat(64))
+                addProperty("next_sequence", 12)
+                addProperty("expected_response_sequence", 9)
+            }
+            val receipt = JsonObject().apply {
+                addProperty("schema", "cicada.client-v165-link-policy-status-recovery.v1")
+                addProperty("result", "ORIGINAL_PACKET_RECOVERED")
+                for (key in listOf("fixture_sha256", "operation_id_sha256", "original_packet_sha256")) {
+                    add(key, capture.get(key).deepCopy())
+                }
+                addProperty("recovery_result", outcome)
+                addProperty("new_operation_created_for_recovery", false)
+                addProperty("unresolved_fence_retention_checked", true)
+                addProperty("next_sequence", 12)
+                addProperty("last_response_sequence", 9)
+                addProperty("uncertain_needs_reconciliation", outcome == "OUTCOME_UNCERTAIN")
+                addProperty("legacy_nonnull_context_restart", "NOT_RUN")
+                addProperty("process_death", "NOT_RUN")
+            }
+            LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(receipt, capture, fixture)
+            for (key in listOf("fixture_sha256", "operation_id_sha256", "original_packet_sha256")) {
+                expectInvalid {
+                    LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                        receipt.deepCopy().apply { addProperty(key, "d".repeat(64)) }, capture, fixture)
+                }
+            }
+            for (key in listOf("next_sequence", "last_response_sequence")) {
+                expectInvalid {
+                    LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                        receipt.deepCopy().apply { addProperty(key, 13) }, capture, fixture)
+                }
+            }
+            for (key in listOf("new_operation_created_for_recovery", "unresolved_fence_retention_checked",
+                "uncertain_needs_reconciliation")) {
+                expectInvalid {
+                    LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                        receipt.deepCopy().apply { addProperty(key, !receipt.get(key).asBoolean) }, capture, fixture)
+                }
+            }
+            expectInvalid {
+                LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                    receipt.deepCopy().apply { addProperty("result", "PASS") }, capture, fixture)
+            }
+            expectInvalid {
+                LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                    receipt.deepCopy().apply { addProperty("last_response_sequence", true) }, capture, fixture)
+            }
+            expectInvalid {
+                LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                    receipt.deepCopy().apply { addProperty("extra", true) }, capture, fixture)
+            }
+            expectInvalid {
+                LinkPolicyStatusFixtureV165.assertRecoveryCheckpoint(
+                    receipt.deepCopy().apply { remove("original_packet_sha256") }, capture, fixture)
+            }
+        }
+    }
+
     private fun parse(value: JsonObject, caseId: Int): LinkPolicyStatusFixtureV165.Fixture =
         LinkPolicyStatusFixtureV165.parse(
             value.toString(), RUN_ID,
