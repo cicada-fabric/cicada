@@ -2,15 +2,16 @@
 
 ## Current acceptance sequence — v0.0.x development; target v0.1.0 PARTIAL
 
-The V34 Worker checkpoint is committed at clean `9465299e4684cb9486ebdf4489911debb20efe53`;
-its documented frozen pre-commit normal/race and regression checks passed.
-[Hub backup/update](hub-update-backup-preflight-validation.md) has a separate
-disposable result. The new [Native Board scope](native-board-current-validation.md)
-remains **FAIL_OR_UNKNOWN**: clean zero-model preparation passed, but the one
-paid attempt stopped at manual turn 3 after a recorded upstream HTTP 500;
-Board author/read acceptance is NOT_RUN. This uses immutable c292 artifacts,
-not the Worker checkpoint or later installer source, and does not alter prior
-PASS attribution.
+[Clean d86 candidate validation](v00-candidate-d86-validation.md) closes scoped
+standard/PQ packaging and protocol gates; artifact producer remains `d86e214`.
+Go coverage is segmented: 30 packages, 3,118 PASS events and 24 SKIP; original
+full/package timeouts and exit 137 remain, not one full-command PASS.
+STD A2 passed with an unarchived d6 image; retained c536 is a distinct candidate.
+PQ b796/archive d80 passed the actual two-Node protocol gate.
+[Native Board A6](native-board-current-validation.md) stopped after two new
+batches/nine POSTs/two upstream 500s; content acceptance remains NOT_RUN.
+V34 and [Hub update](hub-update-backup-preflight-validation.md) retain their own
+source evidence. Overall v0.1.0 remains PARTIAL; no deployment PASS is added.
 
 V34 managed Worker no-replay now admits bounded recovery only for an authenticated
 matching `NOT_STARTED` result; native session matching is atomic with result

@@ -4,6 +4,24 @@ This repository provides an opt-in, checkout-based local Hub Compose entry and
 an optional host-user Node agent launcher. It does not provide a signed
 production release installer or a public HTTPS deployment.
 
+The [clean d86 candidate record](v00-candidate-d86-validation.md) separately
+records five-target standard packages, the fresh PQ package and current STD/PQ
+protocol gates. STD A2 passed with `d6c8545d…`, but has **no retained archive**;
+the available STD archive `5099dfda…` is the distinct A1 candidate `c536225d…`
+validated through its OCI/label chain and the Native zero-only preparation.
+PQ archive `d80cdc37…` contains `b796182f…`, used by the actual two-Node protocol
+gate. These are local unsigned candidate artifacts, not published release
+URLs. Native Board remains unaccepted after upstream 500s, and cold Native,
+physical/public deployment scopes are not promoted to PASS.
+
+For an existing managed deployment, stop managed scheduling and quiesce writers
+before taking independent Hub and Node backups. Upgrade and verify the Hub
+first, then Nodes using their retained identities/state; review binding/lease
+and execution epochs before resuming scheduling. A failed or UNKNOWN terminal
+must stay retained for operator review. Do not downgrade state fields or replay
+old uncertain attempts to make an upgrade appear successful. The detailed
+backup/failure boundaries below remain authoritative.
+
 Hub, Node and Client are deployment responsibilities, not separate required
 machines. The Hub owns authoritative SQLite state and serves Control/Fabric;
 the Node owns its credential, Endpoint keys, inbox and native Runtime access;

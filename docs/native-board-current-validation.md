@@ -7,7 +7,35 @@ or any historical PASS. Hub backup/update has its own
 [disposable validation](hub-update-backup-preflight-validation.md).
 Software remains 0.0.2 / contract 1.6.5 / wire 1 / catalog 55 / schema 59.
 
-## Source and scope
+## Current d86 A6 bounded follow-up
+
+The latest product is clean `d86e214829db16fc7fe1df34ab6dcfca6df23b93`:
+actual A1 Hub candidate `c536225d…` / archive `5099dfda…`, distinct from STD A2's
+passed but unarchived `d6c8545d…` image. See the
+[candidate artifact boundaries](v00-candidate-d86-validation.md).
+The helper remains c292 AUX: [source comparison](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/AUX-SOURCE-EQUALITY.NONAUTH.json)
+records 216/217 identical inputs, with only three unrelated Worker-result
+functions changed. [A6 frozen pure QA](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/QA-A6-FINAL.NONAUTH.json)
+passed 10/10; [zero preparation](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/board-prepare20261012d/TERMINAL.NONAUTH.json)
+passed in 28.543s with two Node/two Runtime sparse mounts, six heartbeat 204s,
+28 other HTTP 200s and zero denied/error/overflow/Control routes. Root then
+approved two fresh batches, each six manual/zero automatic business turns,
+32 total POSTs including auto-review/partial/failure, request/stream retries zero,
+900s work + 60s cleanup / 975s outer. The [first result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/board-native20261012f/RESULT.NONAUTH.json)
+failed in 27.757s on its first inference HTTP 500; the [final result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/board-native20261012g/RESULT.NONAUTH.json)
+failed in 116.171s during the first exact resume, after two fresh turns and
+seven HTTP 200s followed by HTTP 500. Together: nine POSTs (six main/three
+auto-review), two fixed TLS upstream 500/BODY_EOF responses, no cap hit and no
+third batch. Upstream error type/service cause remain UNKNOWN; a failed resume
+does not prove a partial Join never committed. Both batches have confirmed
+cleanup and 19/19 scoped read-only closeout checks; frozen source and six
+resident full-canonical records stayed unchanged. [Exact holder closeout](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a6/OWN-HOLDER-CLOSEOUT.NONAUTH.json)
+removed only the owned native holder/import-created tag and kept the archive,
+earlier c292 anchor and other tags. **Overall Native Board remains
+FAIL_OR_UNKNOWN; Board Owner-consent/content acceptance are NOT_RUN.** The
+original c292 results below retain their original source/SHA attribution.
+
+## Earlier c292 A5 source and scope
 
 The Hub and host Node binary are immutable clean
 `c2929fc3b66c5debf92230e1e052b8b0e35a9e80` artifacts, separate from the
