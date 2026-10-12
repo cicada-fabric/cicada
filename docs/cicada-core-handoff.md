@@ -1,6 +1,24 @@
 # CICADA Client integration handoff
 
-## Current task: independent v1.6.5 Link-policy status suite
+## Current trial delivery: ARM64 Android debug APK
+
+The [phone artifact record](android-arm64-v1.6.5-trial-delivery.md) identifies
+the clean 0351ee5 producer, actual ARM64 libraries, SDK metadata and build/audit
+exits. APK SHA-256 is
+`158e9fe72e660324aed2325a70b45582130244398d5ead03b7906c9cce61b90c`.
+All 17 native libraries are ELF64/AArch64; the debug signature verifies.
+The build uses the existing architecture override and changes no application
+source, protocol or security control. Actual phone installation, HTTPS,
+identity pin, OwnerDeviceGrant, runtime RPC and speech remain **NOT_RUN**.
+The later documentation commit is not the APK producer. Full evidence is in
+`/gpu1-share/data/cicada-client/v165-0351ee5-arm64-debug-trial-20261012/DELIVERY.NONAUTH.json`.
+
+Root reported A7's eight v1.6.5 Link-policy cases **PASS**, with exact owned
+cleanup and model calls 0, using the prior x86_64 0351ee5 pair and clean Core
+c2929fc. That accepted emulator scope and the earlier failures are retained;
+it does not transfer to the new ARM64 artifact or phone trial.
+
+## Historical preparation: independent v1.6.5 Link-policy status suite
 
 The separate [eight-case plan](client-link-policy-status-v1.6.5-plan.md) adds
 test-only Android selectors for KEY/NONE status, Owner/old-version/generic
@@ -46,7 +64,7 @@ their old immutable pair and separate attribution; the subsequent corrected
 cases must name the successor pair. No new phase, Core change, Grant test,
 model or Client-owned online execution occurs.
 
-## Current acceptance: v1.6.5 joint11 Android RPC recovery
+## Historical acceptance: v1.6.5 joint11 Android RPC recovery
 
 The fixed target is clean Core `c6887f46c8412e648b8e8e68da371acd80e0b87e`,
 shipping Hub `sha256:b7bc42678adf9ab44df2a3c51732b2956d668dd7745a93ec3c2a0387d3fc07c2`,
