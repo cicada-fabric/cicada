@@ -10,8 +10,9 @@ Go coverage is segmented: 30 packages, 3,118 PASS events and 24 SKIP; original
 full/package timeouts and exit 137 remain, not one full-command PASS.
 STD A2 passed with an unarchived d6 image; retained c536 is a distinct candidate.
 PQ b796/archive d80 passed the actual two-Node protocol gate.
-[Native Board A6](native-board-current-validation.md) stopped after two new
-batches/nine POSTs/two upstream 500s; content acceptance remains NOT_RUN.
+[Native Board A8](native-board-current-validation.md) passed the scoped prescribed
+exact-resume write/read chain; [retry boundaries](native-provider-retry-validation.md)
+and earlier A6/A7 failures retain their separate evidence and limitations.
 V34 and [Hub update](hub-update-backup-preflight-validation.md) retain their own
 source evidence. Overall v0.1.0 remains PARTIAL; no deployment PASS is added.
 

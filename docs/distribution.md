@@ -8,11 +8,14 @@ The [clean d86 candidate record](v00-candidate-d86-validation.md) separately
 records five-target standard packages, the fresh PQ package and current STD/PQ
 protocol gates. STD A2 passed with `d6c8545d…`, but has **no retained archive**;
 the available STD archive `5099dfda…` is the distinct A1 candidate `c536225d…`
-validated through its OCI/label chain and the Native zero-only preparation.
+validated through its OCI/label chain, Native zero-only preparation and the
+scoped A8 prescribed exact-resume Board write/read chain.
 PQ archive `d80cdc37…` contains `b796182f…`, used by the actual two-Node protocol
 gate. These are local unsigned candidate artifacts, not published release
-URLs. Native Board remains unaccepted after upstream 500s, and cold Native,
-physical/public deployment scopes are not promoted to PASS.
+URLs. [Native Board A8](native-board-current-validation.md) passed its scoped
+prescribed exact-resume chain; cold/automatic wake, natural-language autonomy
+and physical/public user deployment scopes remain unverified. Historical
+upstream failures and partial writes retain their original records.
 
 For an existing managed deployment, stop managed scheduling and quiesce writers
 before taking independent Hub and Node backups. Upgrade and verify the Hub

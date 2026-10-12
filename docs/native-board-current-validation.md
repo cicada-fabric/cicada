@@ -1,13 +1,88 @@
 # Native Board current validation — 2026-10-12
 
-**FAIL_OR_UNKNOWN; Native Board content acceptance NOT_RUN.** The new six-manual-turn
-plan reached its third attempted turn and stopped after a nonzero CLI exit.
-This does not change C14, the A11 protocol/Android result, V34 Worker acceptance,
-or any historical PASS. Hub backup/update has its own
-[disposable validation](hub-update-backup-preflight-validation.md).
-Software remains 0.0.2 / contract 1.6.5 / wire 1 / catalog 55 / schema 59.
+**PASS_NATIVE_BOARD_SCOPED; exact-resume write/read chain accepted.** This
+validates a prescribed sequential code-mode script through actual CLI/MCP,
+original native sessions, Node guards and encrypted persistence. It does not
+prove natural-language autonomous communication, long-lived historical Thread
+recovery, cold/automatic wake, all G1–G5 demos, Android, physical/public or user
+deployment acceptance. Historical failures remain unchanged. Software stays
+0.0.2 / contract 1.6.5 / wire 1 / catalog 55 / schema 59.
 
-## Current d86 A6 bounded follow-up
+## Current d86 A8 actual scope
+
+The [actual result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a8/board-native20261012i/RESULT.NONAUTH.json)
+SHA-256 is `ced365497a7637a53e91c928e2213aaaf81036ae988c29ec6e5a774b346e4913`:
+six manual/zero automatic business turns (three per Node), six CLI exit-0/
+EOF/reaped receipts, 30 total POSTs (15 main/15 auto-review; 29 HTTP 200 and one
+main HTTP 500 followed by 200), cleanup CONFIRMED/errors [] and protected six
+unchanged. The [independent closeout errata](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a8/board-native20261012i/INDEPENDENT-CLOSEOUT-ERRATA.NONAUTH.json)
+SHA-256 `b7cce94ac202634bfc994a994b91eefa6bd0793516c02a977c3dfb9593479d83`
+confirms runtime/source/resource checks; its initial aggregate failure is
+retained and explained by authorized after-terminal documentation edits,
+not source edits during execution. Request retry 1, stream retry 0,
+unbounded false, WebSocket false,
+32 total POST cap and 900s work + 60s cleanup / 975s outer remain bounded;
+Guardian's independent retry/inheritance limitation is recorded in
+[retry validation](native-provider-retry-validation.md).
+
+[Retained actual tool sequence review](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a8/ACTUAL-SEQUENCE-REVIEW.NONAUTH.json)
+SHA-256 `92ffeed8cc1351c8447b41692f97c12120a75441ff730264fe027abe041b8ad3`
+confirms both original SID/cwd and all completed child MCP results. A retained
+SID is `01a130b5-e862-78c0-aaa5-d38dbf47edb9` / Endpoint
+`ep_062e0d8f8909145b`; B is `01a130b5-facb-7350-a005-5f248a6e4ee9` /
+`ep_dfc39a1287ebe4d7`. Both bindings are epoch 1 and whoami matches the native
+SID. Each performed join → whoami → publish candidate; real Owner-verified
+consent then matched those exact two Endpoints, Group and Owner.
+
+A completed journal append → correction append → discussion topic → reply.
+B completed two journal cursor pages → discussion list → reply → body-free
+space sync → read state → explicit mark read. Five records are COMMITTED,
+with ten per-reader ciphertext rows, unread 5 → 0 / read_seq 5 and five bounded
+body-free hints. Plaintext markers are absent from Hub snapshots/ciphertext;
+both Node automatic-provider admission ledgers have zero rows. This is a
+same-Owner synthetic preapproved Node fixture, not fresh Android enrollment.
+
+Trace `rejected_routes` classifier, unexpected-transport and Control-route
+admission counters are zero; this is not a claim that all Guard denials were
+zero. Plaintext observation is false. **Detailed route observation overflow is 2**,
+and space-sync has 119 HTTP 403 responses: retained aggregate evidence lacks
+response causes/per-request timing, so their cause is UNKNOWN. Do not call
+all routes fully observed, all HTTP 2xx or a complete T9/performance test. The
+fixture's one-second Node interval creates heartbeat/legacy fallback traffic.
+Management invocation count is NOT_INSTRUMENTED and management HTTP 503 is
+NOT_RUN in A8; C14's separate-source 503 evidence is not transferred here.
+The audit's literal `NOT_CONSTRUCTED_BY_C292_SERVE_FABRIC_ONLY` is an inherited
+test label; actual Hub is the d86 c536 artifact verified by preflight/image
+labels and source, running production `serve --fabric-only`. It does not
+change the product producer to c292.
+
+Product remains clean d86 Node `e5245e…65a3b` and A1 Hub candidate c536/archive
+5099, distinct from the unarchived A2 d6 image. Auxiliary helper remains c292;
+preparation document HEAD was 9898, and later documentation commits do not
+relabel these artifacts. [A8 freeze](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a8/FREEZE-A8.NONAUTH.json)
+SHA-256 `f5905a5a555826b559c4236c884248df1436fd92e570dc4c17f8559afca19092`
+and [16/16 pure QA](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a8/QA-A8.NONAUTH.json)
+SHA-256 `c5a75026ace622305fc94c1d33cf011c5a0afb6f70e9dfc7175baebc4d6e7770`
+retain strict parser/witness/Guard, approval, retry and isolation scope. Only
+actual CallToolResult prompt unpacking changed; no product/Client code changed.
+
+## Retained A7 prompt failure
+
+[A7 result](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a7/board-native20261012h/RESULT.NONAUTH.json)
+SHA-256 `f240b0f25da3e6fcadd7dd6c5cde67147cd7a2820d2bca9b4a3e5d2b2ade901c`
+remains FAIL_OR_UNKNOWN / MCP_ORDER_COUNT: five attempted turns/four retained
+completed exec receipts; fifth CLI exit is UNRECORDED after parse failure.
+Only the first journal returned SENT (attempts 1, retryable false), one of four
+expected author calls. The prescribed first.payload.result access used a
+nonexistent layer; actual CallToolResult has content+structuredContent. The
+[closed diagnosis](../.cicada-data/v01-next-gates-20261011/native-direct-audit/native-board-prep-a7/AUTHOR-FAILURE-DIAG.NONAUTH.json)
+SHA-256 `43d5f0b2e2a38dd39282656da3282ac615160b53c064fbc788898d2ffc5cdee4`
+confirms undefined/reading result, not a Guard denial or parser relaxation.
+The first SENT write was not replayed: A8 has fresh State/Endpoints/SIDs.
+A7's 18 POSTs (17 HTTP 200, one auto-review 500 followed by 200) and confirmed
+cleanup remain attributed to A7; no historical failure becomes PASS.
+
+## Earlier d86 A6 bounded follow-up
 
 The latest product is clean `d86e214829db16fc7fe1df34ab6dcfca6df23b93`:
 actual A1 Hub candidate `c536225d…` / archive `5099dfda…`, distinct from STD A2's

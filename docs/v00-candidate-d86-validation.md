@@ -13,7 +13,7 @@ push, resident replacement or real-key rotation was performed.
 | Standard packages | `scripts/build-release.sh` produced Linux amd64/arm64, Darwin amd64/arm64 and Windows amd64 from clean d86. The standard metadata SHA-256 is `b25324f23dd354cd5b8f568c77751fc9c98fabcdc8ac9e91c8ee6a062dcb2eea`; Linux amd64 binary is `e5245e1a011449decdb41284326b3e4e3978def96cd38e3cd7e86213a3165a3b`. |
 | PQ package | A fresh Linux amd64 Go binary was built with the accepted OpenSSL 3.5.9 headers/libraries; no older Go binary was reused. Package source fingerprint is `5399c7c9f13244da68b5d8875df599df10a8f80c3f705feb9b7651b6874c51ae`; binary SHA-256 is `3a0b1380fd835fc4515b959c52394f39f622ca0ef4d4ff6b72b58fd360651642`. The packaging run exited 0, two actual artifact tests PASS, zero skips/failures, 385.687s; this does not mean five operating systems were booted. |
 | STD A2 protocol | Existing `test-client-hub-interop.sh --suite client` passed using image `sha256:d6c8545d29e9bffdc91a5411bab71328e0a7cdaccc005fd561c207462768ecc4`. Its archive shim was bypassed by the actual PATH mistake and cleanup removed the image. **No retained/importable A2 image archive exists.** |
-| STD A1 retained candidate | The archive SHA-256 `5099dfda582dcdadb0a98fdc7c1df06eef47487e3c556b241ef33746d9471182` binds the distinct image `sha256:c536225d6efeb1e94a83fc44b3abc0d38f59cf266c82e53ce439f9f8b097d73c`. A1's original suite remains FAIL/tests NOT_RUN due the archive validator's OCI/config-digest assumption. Its clean labels/source fingerprint match A2 source, but it is not A2's tested IID. It directly passed the subsequent Native zero-only two-Node/two-Runtime preparation; the separate paid Board follow-ups failed before content acceptance. |
+| STD A1 retained candidate | The archive SHA-256 `5099dfda582dcdadb0a98fdc7c1df06eef47487e3c556b241ef33746d9471182` binds the distinct image `sha256:c536225d6efeb1e94a83fc44b3abc0d38f59cf266c82e53ce439f9f8b097d73c`. A1's original suite remains FAIL/tests NOT_RUN due the archive validator's OCI/config-digest assumption. Its clean labels/source fingerprint match A2 source, but it is not A2's tested IID. It directly passed the subsequent Native zero-only two-Node/two-Runtime preparation and A8 prescribed exact-resume Board write/read scoped gate. Earlier paid A6/A7 failures remain unchanged; this is not all autonomous/cold/deployment acceptance. |
 | PQ Hub/two-Node protocol | Existing relocated-package gate passed with one actual Hub and two independent shipped Node Agents: one top-level/four subtests, package exit 0/EOF, zero skips. Image `sha256:b796182fba11dd261b2fbc1ca31ac88a556282cf31090b4e0bd49712b04278b1`; retained archive SHA-256 `d80cdc3717e5764ae45c9e5b8b6f8ed5f3be7062efb26de8d8055555300e4666`. Metadata SHA-256 is `cf7253240c60871c086aff26fbafdbea22173d385c82aa1eecd9ed1aeeefc3a3`. The original outer result's cleanup assertion remains FAIL_OR_UNKNOWN; supplemental actual gate/closeout evidence resolved the lowercase Docker absence-oracle mismatch without rerunning the product gate. |
 
 The shared generated WebCrypto manifest SHA-256 is
@@ -79,11 +79,15 @@ binary against newer state, delete directories to simulate rollback, or replay
 an old uncertain attempt. No automatic retry/restore or new authorization is
 implied by these candidate files.
 
-[Native Board A6](native-board-current-validation.md) made two newly authorized
-fresh batches: nine actual POSTs, two fixed TLS upstream HTTP 500s, cleanup
-confirmed. Board content/Owner-consent acceptance remains NOT_RUN; upstream
-error type and service cause remain UNKNOWN. Original-SID cold Runtime
-recovery, complete native failure combinations, physical Android/StopVerifier
-and public HTTPS are not promoted to PASS. Earlier C14, A11, Android and Worker
-records retain their own tested-source scope; they are not reissued as d86
-Runtime/Android results.
+[Native Board A8](native-board-current-validation.md) passed six prescribed
+manual turns on two original native sessions: actual MCP join/Owner consent,
+Journal/correction/Discussion/reply, cursor and unread chain plus encrypted Hub
+persistence. Thirty total POSTs, one main HTTP 500 followed by 200, confirmed
+cleanup; [retry validation](native-provider-retry-validation.md) separates
+transport and Guardian boundaries. Earlier A6/A7 FAIL receipts remain; A7's
+first SENT Journal was not replayed. Trace detail overflow 2 / 119 space-sync
+403 cause UNKNOWN are not a complete T9 or performance claim. Original-SID
+cold/automatic wake, autonomous natural-language communication, complete native
+failure combinations, physical Android/StopVerifier and public HTTPS are not
+promoted to PASS. Earlier C14, A11, Android and Worker records retain their own
+tested-source scope, not reissued as d86 results.
