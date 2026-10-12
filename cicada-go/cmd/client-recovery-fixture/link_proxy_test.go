@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"syscall"
 	"testing"
 	"time"
@@ -303,6 +304,173 @@ func (f *linkFaultFixture) grantInput(t *testing.T, a *linkFaultActor, operation
 	return map[string]any{"link_id": f.link.ID, "owner_key_id": a.owner.Public().ID, "expected_policy_version": preview.ExpectedPolicyVersion, "policy": policy, "signed_proof": proof}
 }
 
+func linkReviewGrantRowCount(t *testing.T, dbPath, linkID string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	queryErr := db.QueryRow(`SELECT count(*) FROM communication_link_review_policy_grants_v2 WHERE link_id=?`, linkID).Scan(&count)
+	closeErr := db.Close()
+	if queryErr != nil || closeErr != nil {
+		t.Fatalf("read-only Link grant count failed: query=%v close=%v", queryErr, closeErr)
+	}
+	return count
+}
+
+func linkRequestRouteOperation(t *testing.T, dbPath, ownerID, deviceID, operationID string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var operation string
+	queryErr := db.QueryRow(`SELECT route_operation FROM client_device_requests_v2 WHERE owner_id=? AND device_id=? AND operation_id=?`,
+		ownerID, deviceID, operationID).Scan(&operation)
+	closeErr := db.Close()
+	if queryErr != nil || closeErr != nil {
+		t.Fatalf("read exact request route failed: query=%v close=%v", queryErr, closeErr)
+	}
+	return operation
+}
+
+func TestLinkFaultProxyReadOnlyStatusResponseLossAcrossRestart(t *testing.T) {
+	f := newLinkFaultFixture(t, "", "")
+	beforeStatus, err := f.db.GetCommunicationLinkReviewPolicyForOwner(f.link.ID, f.target.binding.OwnerID)
+	if err != nil || beforeStatus.LinkID != f.link.ID || !beforeStatus.Current || beforeStatus.PolicyVersion != 0 {
+		t.Fatal("initial Owner-scoped status unavailable")
+	}
+	beforeDevice, err := f.db.GetClientDevice(f.target.binding.OwnerID, f.target.binding.DeviceID)
+	if err != nil || beforeDevice.State != store.ClientDeviceActive || f.target.sequence != beforeDevice.LastRequestSeq {
+		t.Fatal("initial exact device sequence unavailable")
+	}
+	grantsBefore := linkReviewGrantRowCount(t, f.dbPath, f.link.ID)
+	if grantsBefore != 0 {
+		t.Fatal("status read fixture unexpectedly starts with review grants")
+	}
+
+	packet := f.seal(t, f.target, "link.review_policy_status", map[string]any{"link_id": f.link.ID})
+	var requestPacket clientwire.Packet
+	if json.Unmarshal(packet, &requestPacket) != nil || requestPacket.Route.Operation != "link.review_policy_status" {
+		t.Fatal("sealed status packet route was not retained")
+	}
+	var events bytes.Buffer
+	p, err := newLinkFaultProxy(f.dbPath, f.origin, f.target.binding.OwnerID, f.target.binding.DeviceID,
+		"link.review_policy_status", "response-loss", &events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.client.CloseIdleConnections)
+	proxy := httptest.NewServer(p)
+	t.Cleanup(proxy.Close)
+	request, err := http.NewRequest(http.MethodPost, proxy.URL+"/v2/client/rpc", bytes.NewReader(packet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := proxy.Client().Do(request)
+	if response != nil {
+		response.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("original status response was not lost")
+	}
+	var ready struct {
+		Event                    string `json:"event"`
+		Mode                     string `json:"mode"`
+		Operation                string `json:"operation"`
+		RequestSHA256            string `json:"request_sha256"`
+		ResponseSHA256           string `json:"response_sha256"`
+		Scope                    string `json:"scope"`
+		RequestStatus            string `json:"request_status"`
+		HandlerExecuted          bool   `json:"handler_executed"`
+		RequestSequence          uint64 `json:"request_sequence"`
+		ReservedResponseSequence uint64 `json:"reserved_response_sequence"`
+	}
+	eventBytes := snapshotFaultEvents(p, &events)
+	if json.Unmarshal(eventBytes, &ready) != nil || ready.Event != "FAULT_READY" || ready.Mode != "response-loss" ||
+		ready.Operation != "link.review_policy_status" || ready.RequestSHA256 != packetDigest(packet) ||
+		len(ready.ResponseSHA256) != 64 || ready.Scope != "REAL_HANDLER_COMPLETED_TRANSPORT" ||
+		ready.RequestStatus != store.ClientRequestCompleted || !ready.HandlerExecuted ||
+		ready.RequestSequence != requestPacket.Route.Sequence || ready.ReservedResponseSequence != beforeDevice.NextResponseSeq {
+		t.Fatal("status fault did not prove one completed real handler response")
+	}
+	if bytes.Contains(eventBytes, []byte(f.target.binding.OwnerID)) || bytes.Contains(eventBytes, []byte(f.target.binding.DeviceID)) || bytes.Contains(eventBytes, packet) {
+		t.Fatal("status fault evidence leaked private routing or packet bytes")
+	}
+	input := requestCoordinates(requestPacket, packet)
+	completed, err := f.db.LookupClientRequestRecovery(input)
+	if err != nil || completed.Request.Status != store.ClientRequestCompleted ||
+		completed.Request.CiphertextDigest != packetDigest(packet) ||
+		completed.ReservedResponseSequence != ready.ReservedResponseSequence ||
+		packetDigest(completed.Request.ResponsePacket) != ready.ResponseSHA256 {
+		t.Fatal("real Hub did not durably complete the exact status request before restart")
+	}
+	if bytes.Contains(eventBytes, completed.Request.ResponsePacket) {
+		t.Fatal("status fault evidence leaked the encrypted response packet")
+	}
+
+	oldHubKey := f.hubKey
+	f.restart() // Reopen the same disposable Control state; no SQL state is simulated.
+	p.mu.Lock()
+	p.origin = f.origin
+	p.mu.Unlock()
+	statusCode, identityBytes := faultHTTP(t, f.origin, "/v2/client/identity", nil)
+	var identity struct {
+		HubID  string              `json:"hub_id"`
+		Public e2ee.PublicIdentity `json:"control_public_identity"`
+	}
+	if statusCode != http.StatusOK || json.Unmarshal(identityBytes, &identity) != nil ||
+		identity.HubID != f.target.binding.HubID || !reflect.DeepEqual(identity.Public, oldHubKey) {
+		t.Fatal("restarted Hub identity or Control key changed")
+	}
+	statusCode, recovered := faultHTTP(t, proxy.URL, "/v2/client/rpc/recover", packet)
+	if statusCode != http.StatusOK || packetDigest(recovered) != ready.ResponseSHA256 {
+		t.Fatal("exact status recovery did not return the cached response")
+	}
+	ok, result, code := f.open(t, f.target, recovered)
+	var afterStatus store.CommunicationLinkReviewPolicyStatus
+	if !ok || code != "" || json.Unmarshal(result, &afterStatus) != nil ||
+		afterStatus.LinkID != f.link.ID || afterStatus.LinkVersion != f.link.Version ||
+		afterStatus.ContractDigest != f.link.ContractDigest || afterStatus.Policy.Mode != store.CommunicationLinkReviewNone || !afterStatus.Current {
+		t.Fatal("recovered encrypted status DTO did not match the exact Link")
+	}
+	beforeStatus.VerifiedAt, afterStatus.VerifiedAt = "", ""
+	if !reflect.DeepEqual(*beforeStatus, afterStatus) {
+		t.Fatal("status recovery changed Owner-visible Link policy state")
+	}
+
+	reopened, err := store.New(f.dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	durable, err := reopened.LookupClientRequestRecovery(input)
+	if err != nil || durable.Request.Status != store.ClientRequestCompleted ||
+		linkRequestRouteOperation(t, f.dbPath, input.OwnerID, input.DeviceID, input.OperationID) != "link.review_policy_status" ||
+		durable.Request.OperationID != input.OperationID || durable.Request.Sequence != input.Sequence ||
+		durable.Request.CiphertextDigest != input.CiphertextDigest ||
+		durable.ReservedResponseSequence != ready.ReservedResponseSequence ||
+		!bytes.Equal(durable.Request.ResponsePacket, recovered) {
+		t.Fatal("reopened durable request/response ledger differs from exact recovered packet")
+	}
+	afterDevice, err := reopened.GetClientDevice(f.target.binding.OwnerID, f.target.binding.DeviceID)
+	if err != nil || afterDevice.LastRequestSeq != input.Sequence ||
+		afterDevice.NextResponseSeq != beforeDevice.NextResponseSeq+1 {
+		t.Fatal("status read consumed more than one exact device request/response sequence")
+	}
+	if grantsAfter := linkReviewGrantRowCount(t, f.dbPath, f.link.ID); grantsAfter != grantsBefore {
+		t.Fatal("read-only status request changed durable Owner grant rows")
+	}
+	if statusCode, _ := faultHTTP(t, proxy.URL, "/v2/client/rpc", packet); statusCode != http.StatusConflict {
+		t.Fatal("fault proxy replayed the completed status handler")
+	}
+	changed := append(append([]byte(nil), packet...), '\n')
+	if statusCode, _ := faultHTTP(t, proxy.URL, "/v2/client/rpc/recover", changed); statusCode != http.StatusConflict {
+		t.Fatal("changed packet crossed the exact recovery fence")
+	}
+}
+
 func TestLinkFaultProxyRealHubRecovery(t *testing.T) {
 	for _, operation := range []string{"link.key_grant", "link.review_policy_grant"} {
 		for _, mode := range []string{"response-loss", "processing", "uncertain", "legacy"} {
@@ -579,6 +747,17 @@ func TestLinkFaultProxyRejectsUnsafeIngress(t *testing.T) {
 	}
 	if dedicatedLinkOperation("control.submit") || dedicatedLinkOperation("link.review_policy_status") {
 		t.Fatal("fault allowlist expanded")
+	}
+	if !dedicatedLinkStatusReadOperation("link.review_policy_status") ||
+		dedicatedLinkStatusReadOperation("link.review_policy_grant") ||
+		dedicatedLinkStatusReadOperation("control.submit") {
+		t.Fatal("read-only status selector is not exact")
+	}
+	for _, mode := range []string{"processing", "uncertain", "legacy"} {
+		if _, err := newLinkFaultProxy(f.dbPath, f.origin, f.target.binding.OwnerID, f.target.binding.DeviceID,
+			"link.review_policy_status", mode, io.Discard); err == nil {
+			t.Fatal("read-only status accepted a synthetic interruption mode")
+		}
 	}
 	var events bytes.Buffer
 	p, err := newLinkFaultProxy(f.dbPath, f.origin, f.target.binding.OwnerID, f.target.binding.DeviceID, "link.key_grant", "processing", &events)

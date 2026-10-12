@@ -8,6 +8,81 @@ blocked, failed, or independently scoped evidence into product acceptance.
 The software version remains 0.0.2, schema 59, wire 1, catalog 55, and
 `client-hub-v1.6.5`.
 
+<a id="clean-c292-delivery-and-status-recovery"></a>
+
+## Clean c292 delivery and status response-loss helper — 2026-10-12
+
+Clean producer `c2929fc3b66c5debf92230e1e052b8b0e35a9e80` built five standard
+targets and the Linux/amd64 PQ distribution. [Packaging result](../.cicada-data/v00-clean-delivery-c2929fc-20261012/RESULT.NONAUTH.json)
+SHA `dc78e28ad5b385836b4a226c5eb263489d70867941c07689d60040c87a043eec`
+records build/unpack/QA exit 0 and 22/22 QA, zero skips. The standard source
+fingerprint is `1ec709051c5ef2e4ebba0be8625db664ececbe05b146a984644c8fd75eeb36c5`;
+the separate PQ input fingerprint is `fdd09204b36321e833c1b97e6c4eecf3aace87bafcb420d12d12b941c63783f7`.
+The [v1.6.5 protocol bundle](../.cicada-data/v00-clean-delivery-c2929fc-20261012/contract/client-hub-175e10e5079cbc0c4d04038df6c221282caa7374e4c9c18a00057681b50abd4d.tar.gz)
+has SHA `175e10e5079cbc0c4d04038df6c221282caa7374e4c9c18a00057681b50abd4d`:
+25 members, 24 payload hashes, clean c292, wire 1 and unchanged catalog.
+
+The [standard Hub gate](../.cicada-data/v00-clean-delivery-c2929fc-20261012/STD-GATE-CLOSEOUT.NONAUTH.json)
+passed Smoke and RecoveryFixture (2 top-level tests / 3 subtests, zero skips).
+Hub `sha256:d69edf867632f1ac8adec83ecc689e5cdf9654505ccdd4eeb1ed489ec4e2e496`
+has source fingerprint `4c2f0d6ee0336b5237a6974180d791cd9277b9d72edbc2e79ca9ab7a17ec83ee`;
+the retained [runtime archive](../.cicada-data/v00-clean-delivery-c2929fc-20261012/std-hub-image.tar)
+SHA is `a308731a24cc4449ab2090f6282832d22c907de0924fbd051634f2117e65f307`.
+This is standard TCP HTTP interop, not PQTLS.
+
+The [PQ gate](../.cicada-data/v00-clean-delivery-c2929fc-20261012/PQ-GATE-CLOSEOUT.NONAUTH.json)
+passed 1 top-level test / 4 subtests / 1 package, zero skips, with one Hub and
+two real Node Agents. It used OpenSSL 3.5.9 and PQ fingerprint `fdd092…83f7`;
+both images retain WebCrypto manifest SHA
+`679868b5f4f6f559f61dc4a5aa4fbfedb365cf7d81ce1e9edb056ced14328862`.
+PQ Hub `sha256:e3d01181ed8d41155fa80cc8c5e462c6da6f9a43586e19416d918fbc3258b2ac`
+is retained as [archive](../.cicada-data/v00-clean-delivery-c2929fc-20261012/pq-hub-image.tar)
+SHA `704b16e9fb2af40956e6cca0a0f2652823978b2d04fe3a02320e5e97d76babbc`.
+Its binary SHA `38f9eceff14a9d29641473a4b40f2a7f92ccd2693199ec9e822e41d264acd473`
+differs from distribution binary `09f0d314907c424a40408e1bda902321a0f851441be2739ce9e2610df35562ec`;
+different builders are not byte-equivalent. The exact driver privacy mask,
+initial postprocessing label failure and later owned cleanup remain recorded.
+Runtime limits are effective-argv evidence, not an independently captured live
+envelope; the existing image build had no compiler CPU/memory hard caps.
+Independent [packaging](../.cicada-data/v00-clean-delivery-c2929fc-20261012/ROOT-PACKAGING-CHECK.NONAUTH.json),
+[STD](../.cicada-data/v00-clean-delivery-c2929fc-20261012/ROOT-STD-GATE-CHECK.NONAUTH.json)
+and [PQ A2](../.cicada-data/v00-clean-delivery-c2929fc-20261012/ROOT-PQ-GATE-CHECK.A2.NONAUTH.json)
+checks confirmed source/artifacts, exact owned cleanup and six resident
+canonical snapshots. None establishes current Native Runtime, Android,
+physical or public-HTTPS acceptance; historical failures are unchanged.
+
+The two-file status helper change is separately attributed to dirty c292,
+951 inputs / fingerprint
+`5471ecaad60494bd22579d7097ec895a1a2587239185f824d9de9adf826dff33`.
+Only `link.review_policy_status` gains response-loss mode; existing mutation,
+authentication and recovery guards remain. Its real encrypted handler must
+durably complete before response loss; restart/recovery compares the original
+packet, full status DTO, operation/sequence and cached response, with no grant
+row mutation. [A1 receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/status-fault-helper-qa/RESULT.NONAUTH.json)
+SHA `05224172e36231cb6a6d8a45b900417a5326c878702d82574f7ef39d258fdfb3`
+records `go test -json -p=1 -mod=readonly -count=1 -timeout=90s ./cmd/client-recovery-fixture`:
+19 PASS / 2 explicit Docker-fixture SKIP. The new status case passed normal
+0.90s and race 21.05s. Whole-package race timed out externally at 195s / exit
+124 after seven old subcases passed; the last old grant/legacy case remained
+unclosed. The trap's default race field 125 is not the actual timeout code.
+[A2 receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/status-fault-helper-qa/a2/RESULT.NONAUTH.json)
+SHA `a438307be413d11c0dc22465386c5ba29d4c6b9e515c3c07df816169590d7ca7`
+ran only `go test -race -json -p=1 -mod=readonly -run ^TestLinkFaultProxyRejectsUnsafeIngress$ -count=1 -timeout=60s ./cmd/client-recovery-fixture`:
+1 PASS / 0 SKIP, 18.06s; vet/build exited 0. Normal and status race were not
+repeated. Built helper SHA
+`63b27a6acb957ec75298c5b2915c41189cb030d5c8ccf724a81a43481f1dd076`
+is this dirty test-helper artifact, not the preceding clean product binaries.
+
+Client clean producer `fadb30ee738e7384aa1fab90b4dab544da477535` records eight
+JVM fixture tests, Android-test compilation and APK build PASS in its
+[offline delivery](/gpu1-share/data/cicada-client/v165-link-policy-status-preparation-20261012/DELIVERY.NONAUTH.json)
+SHA `8d17787935eee425ed47d83e0ca1e8b44d988a63247ec05c1930c760eef37f44`.
+Initial test/compile failures remain preserved; all eight online cases are
+NOT_RUN. Current consent-status recovery uses `linkConsentStatusReadContext`
+and persisted `profile_generation`; the distinct legacy
+`linkReviewStatusReadContext` cannot supply that profile fence. A11 already
+passed its narrower Group Owner grant/status scope and is not rerun here.
+
 ## Clean default aggregate: 328f
 
 [`scripts/test-architecture-v2-completion.sh`](../scripts/test-architecture-v2-completion.sh)

@@ -27,14 +27,18 @@ HTTP 500 before MCP after two provider POSTs. A11 passed a narrower same-UID
 MCP protocol scope plus Android Owner grant and encrypted Group status before
 and after one owned Hub restart; it was not a CLI Runtime/provider run. See the
 [A1–A11 evidence](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5).
-The independent eight-case v1.6.5 Link-policy status-read/restart suite remains
-NOT_RUN. The retained c688 interop image and clean-328f standard delivery
-predate Core 0326, so a fresh package/build and Hub interop result needs separate
-attribution.
+Clean `c2929fc` now has fresh standard/PQ packages and independently closed
+standard Hub TCP and PQ Hub/two-Node gates. The status response-loss helper
+passed its new normal/race case; its full package race timeout remains retained.
+See the [current delivery and helper record](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
+Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and a
+clean APK build; the independent eight-case v1.6.5 online status-read/restart
+suite remains NOT_RUN. This does not establish current delivered Native Runtime.
 
 Next: complete the independent Client Link-policy encrypted status-read suite
-across an exact owned Hub restart, and package/interop-test a Hub from current
-clean Core. Keep physical-device, public HTTPS and user deployment evidence
+across an exact owned Hub restart using the fresh attributed delivery and
+current consent/profile recovery context. A11 already supplies its separate
+Group Owner grant/status scope. Keep physical-device, public HTTPS and user deployment evidence
 separate. V67 account-bound Native submission is UNSUPPORTED; retain the safe
 Relay fallback. Do not repeat the Native model run or whole-Go suite without a
 relevant input change or new failure evidence. The default-daemon selector

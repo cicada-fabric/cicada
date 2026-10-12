@@ -19,10 +19,19 @@ acceptance. The clean-328f aggregate remains FAIL, and historical C9–C12 paid
 FAILs retain their original attribution; C12's cause-unknown HTTP 500 does not
 require another run absent new evidence. See the [Native record](native-default-daemon-validation.md).
 
-Next: request the Client's independent v1.6.5 encrypted status-read result
-across an exact owned Hub restart and evidence for a real Group grant. A3's
-synthetic OwnerProof vector selector passed, but does not prove a grant; do not
-repeat it as a substitute. Physical-device, public HTTPS and user deployment
+Clean `c2929fc` standard/PQ packaging and standard/PQ local Hub gates now have
+separate [source-attributed delivery evidence](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
+Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and a
+clean APK build; its eight independent online cases remain NOT_RUN. The Core
+status response-loss fixture has scoped normal/race evidence, with its earlier
+whole-package race timeout preserved.
+
+Next: complete the Client's independent v1.6.5 encrypted status-read suite
+across an exact owned Hub restart, retaining `linkConsentStatusReadContext`
+and `profile_generation`. A11 already passed the distinct same-UID MCP and
+Android Group Owner grant/status scope; it is not Native model autonomy or
+context-continuation proof. A3's synthetic vector need not be repeated.
+Physical-device, public HTTPS and user deployment
 checks remain separate. V67 account-bound Native submission is UNSUPPORTED;
 keep the safe Relay fallback. Do not repeat the Native model run or whole-Go
 suite without a new relevant input change or failure evidence. The

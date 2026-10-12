@@ -21,12 +21,15 @@ are in the [test closeout](v00-test-closeout-20261011-validation.md#synthetic-an
 The A11 Group-key operator separately passed Owner grant and encrypted Group
 status before/after one owned Hub restart through a same-UID MCP protocol path;
 it did not run a CLI Runtime/provider or establish AI autonomy, Native account
-authentication or context. The independent eight-case v1.6.5 Link-policy
-encrypted status-read/restart suite, physical-device and public HTTPS
-acceptance remain NOT_RUN. Client artifacts retain their own producer/source
-attribution; this Core checkpoint changes no Client source or contract.
-The retained c688 Hub image and clean-328f standard delivery predate Core 0326;
-a fresh build/package and Hub interop check must carry its own source attribution.
+authentication or context. Clean Core `c2929fc` now has fresh standard/PQ
+packages, a standard Hub TCP gate and a PQ Hub/two-Node gate with their own
+[delivery evidence](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
+Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and
+a clean APK build for the separate eight-case v1.6.5 Link-policy suite; all
+eight online cases remain NOT_RUN. Current delivered Native Runtime,
+physical-device and public HTTPS acceptance remain NOT_RUN. Client artifacts
+retain their own producer/source attribution; this Core checkpoint changes
+no Client source or contract.
 
 The Group-key operator has eleven retained attempts. A9 completed Native
 Join/whoami/publish and Android's initial Owner grant/status but failed the
@@ -45,7 +48,7 @@ passed its owned Hub preparation and cleanup with zero model calls; this
 bootstrap alone does not establish Native Join, an Owner-signed Group-key grant
 or encrypted Android status. Those Group-key steps have separate A11 scoped
 evidence. The independent eight v1.6.5 Link-policy encrypted status/restart
-cases remain NOT_RUN.
+cases are implemented and prepared offline; online execution remains NOT_RUN.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
 gates retain separate source records. C14 passed a bounded six-turn default-
@@ -59,10 +62,10 @@ status read across an exact-owned Hub restart, using the already pinned
 delivery and its independently pinned Hub, Owner and Device identities. A11's
 Group-key grant/status result is separately scoped and does not replace these
 Link-policy reads. A3's synthetic OwnerProof vector is already tested; do not
-rerun it as a substitute for a real grant. Add a new Android
-instrumentation selector beside
-`CICADA_CLIENT/android/app/src/androidTest/java/ai/cicada/client/hub/LinkReviewPolicyStatusInteropTest.kt`;
-the existing class is explicitly v1.6.1 and does not prove restart persistence.
+rerun it as a substitute for a real grant. Use the new
+`LinkReviewPolicyStatusV165InteropTest` eight-case selector and its independently
+pinned fixtures. The distinct `LinkReviewPolicyStatusInteropTest` keeps its
+v1.6.1 attribution and does not prove the new restart suite.
 For the selected Owner profile, capture encrypted `session.capabilities`, a
 fresh `link.list`, and `link.review_policy_status` for the fixture's exact Link
 ID/version before restart; restart only the fixture's owned Hub, reopen the
@@ -70,8 +73,11 @@ same Owner profile, then repeat the encrypted reads. Compare Hub/Owner/Device
 and profile selection, Link ID/version, policy mode/version/digest, current
 status, accepted sides and expiry with the pinned proposal. Exercise the
 existing response-loss uncertainty fields (`pendingOperationId`,
-`linkReviewStatusReadContext`, and `uncertainNeedsReconciliation`) and ensure a
-restart does not silently infer approval or clear unresolved uncertainty.
+`linkConsentStatusReadContext` with persisted `profile_generation`, and
+`uncertainNeedsReconciliation`) and ensure a restart does not silently infer
+approval or clear unresolved uncertainty. `linkReviewStatusReadContext` is a
+distinct legacy status path; it is not a substitute for the current consent
+flow's selected-profile recovery context.
 Cover the eight v1.6.5 encrypted status-read cases without confusing them with
 Joint11's eight Link-recovery cases. Keep the existing KEY/NONE cases and
 report absent fixtures as NOT_RUN; do not reuse Joint11's 82-request recovery

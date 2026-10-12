@@ -65,6 +65,15 @@ func dedicatedLinkOperation(operation string) bool {
 	return false
 }
 
+// dedicatedLinkStatusReadOperation permits only the encrypted current status
+// read to use the response-loss fixture. It does not make a status read a
+// grant mutation or expand the existing write-operation selector.
+func dedicatedLinkStatusReadOperation(operation string) bool {
+	return operation == "link.review_policy_status" &&
+		clientcontract.Allows(clientcontract.RoleExternal, operation) &&
+		clientcontract.CatalogDefinition().RPCRoute == "/v2/client/rpc"
+}
+
 func fixtureReadOperation(operation string) bool {
 	if !clientcontract.Allows(clientcontract.RoleExternal, operation) {
 		return false
@@ -77,8 +86,12 @@ func fixtureReadOperation(operation string) bool {
 }
 
 func newLinkFaultProxy(dbPath, origin, ownerID, deviceID, operation, mode string, output io.Writer) (*linkFaultProxy, error) {
-	if !dedicatedLinkOperation(operation) || ownerID == "" || deviceID == "" {
+	statusRead := dedicatedLinkStatusReadOperation(operation)
+	if (!dedicatedLinkOperation(operation) && !statusRead) || ownerID == "" || deviceID == "" {
 		return nil, errors.New("select one dedicated Link operation and an exact enrolled owner/device")
+	}
+	if statusRead && mode != "response-loss" {
+		return nil, errors.New("Link status reads support only exact response-loss recovery")
 	}
 	if mode != "response-loss" && mode != "processing" && mode != "uncertain" && mode != "legacy" {
 		return nil, errors.New("invalid Link fault mode")
@@ -315,7 +328,7 @@ func serveLink(args []string, output io.Writer) error {
 	listen := flags.String("listen", "127.0.0.1:0", "numeric loopback listen address")
 	owner := flags.String("owner-id", "", "exact enrolled synthetic owner")
 	device := flags.String("device-id", "", "exact enrolled test device")
-	operation := flags.String("operation", "", "one of five dedicated Link operations")
+	operation := flags.String("operation", "", "one of five dedicated Link operations or response-loss-only link.review_policy_status")
 	mode := flags.String("mode", "", "response-loss, processing, uncertain, legacy")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid serve-link arguments")
