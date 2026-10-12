@@ -165,14 +165,20 @@ HTTPS are separate evidence layers. A SKIP, NOT_RUN, UNKNOWN or BLOCKED result
 is not PASS; neither an old passing checkpoint nor a successful HTTP response
 qualifies a different source, binary or Runtime.
 
-The latest recorded native G1/G2 attempts have not completed acceptance. Native
-G1 completion, the G2 denial tail and G3 restore remain open; Android, physical
-and public HTTPS results must be read separately. Bounded deterministic and
-browser evidence exists, but overall v0.1 product acceptance remains partial.
-Full ordinary-user/admin governance and expanded delegated workflows remain
-future v0.2 work. Use the [current closeout](v01-current-closeout-20261009-validation.md)
-and [test automation guide](test-automation.md) for exact sources, outcomes,
-cleanup limitations and remaining gates.
+Current evidence includes C14's bounded Native G2/G3 scope, A11's separate
+same-UID MCP/Android Group-status scope, and the Client v1.6.5 A7 pass for all
+eight requested encrypted Link-policy status/restart selectors. These results
+do not combine into full Native acceptance: A7 did not exercise the Hub
+foreign-owner guard, which has separate Core Go coverage. The optional
+Client-specific non-null `linkConsentStatusReadContext` plus
+`OUTCOME_UNCERTAIN` combination across reopen/restart was not run; it is not an
+A7 failure or a deployment-trial prerequisite. Broader Native, physical-device
+and public HTTPS scopes remain separate. Overall v0.1 product acceptance
+remains partial. Full ordinary-user/admin governance and expanded delegated
+workflows remain future v0.2 work. Use the
+[current closeout](v01-current-closeout-20261009-validation.md), [test closeout](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7)
+and [test automation guide](test-automation.md) for source attribution, outcomes,
+cleanup limits and remaining gates.
 
 The separate [documentation-site repository](https://github.com/cicada-fabric/cicada-fabric.github.io)
 contains a static community overview. This core guide remains the maintained

@@ -12,6 +12,14 @@ are summarized in the [2026-10-11/12 test closeout](v00-test-closeout-20261011-v
 
 ## Current evidence — updated 2026-10-12 — v0.0.x development; target v0.1.0 PARTIAL
 
+The v1.6.5 Link-policy status/restart A7 run passed all eight requested
+selectors, with an independent 81/81 scoped review; see the [current A1–A7
+record](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
+The optional Client non-null consent-status uncertainty combination remains
+NOT_RUN, not a prerequisite for a deployment trial. The A7 documentation and
+evidence are the current validation checkpoint; a deployment trial may proceed
+within these stated scope limits while overall v0.1 acceptance remains PARTIAL.
+
 The **client-hub-v1.6.5** source contract adds own-side policy signer preview,
 preserving wire 1 / catalog 55 / schema 59 / software 0.0.2. QA ran on the
 recorded dirty259 candidate with 14 frozen preview paths. [Signer validation](link-policy-signer-preview-validation.md) records
@@ -957,8 +965,15 @@ Current delivery, Client preparation and separately attributed APK build are in
 recovery cases and final close ACK with exact cleanup. C14 is a separate scoped
 Core/Native result. A11 passed the Android Owner Group grant and encrypted
 Group-status read before/after one owned Hub restart in its protocol-only scope;
-the independent eight-case v1.6.5 Link-policy status suite, physical-device
-acceptance and broader Native boundaries remain NOT_RUN.
+the separate v1.6.5 Link-policy status/restart A7 run passed all eight requested
+selectors, with an independent 81/81 scoped review. Its APK producer and host
+fixture snapshot are separately attributed; see the [A1–A7 record](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
+The A7 Android cases did not exercise the Hub foreign-owner guard, which has
+separate Core Go coverage. The optional Client-specific non-null
+`linkConsentStatusReadContext` plus `OUTCOME_UNCERTAIN` combination across
+reopen/restart was not run; it is not an A7 failure or a deployment-trial
+prerequisite. Physical-device acceptance and broader Native boundaries remain
+separate.
 Historical F38 and earlier
 Client runs retain their tested APK, Core and runtime attribution; no Client
 source was changed by this Core checkpoint.
@@ -968,8 +983,13 @@ source was changed by this Core checkpoint.
 1. C14 passed its bounded six-turn default-daemon G2/G3 scope with exact cleanup;
    C9–C12 remain separate historical paid FAILs and are not rewritten. C14 does
    not establish V67/account-bound submission, cold resume, two physical Nodes,
-   the independent eight-case Link-policy encrypted status reads or public HTTPS.
-   A11's Group-key grant/status pass is narrower and did not use a CLI Runtime.
+   or public HTTPS. A7 separately passed the eight requested Client Link-policy
+   encrypted status/restart selectors. A7 did not exercise the Hub foreign-
+   owner guard, which has separate Core Go coverage. The optional Client-specific
+   non-null `linkConsentStatusReadContext` plus `OUTCOME_UNCERTAIN` combination
+   across reopen/restart was not run; it is not an A7 failure or a
+   deployment-trial prerequisite. A11's Group-key grant/status pass is narrower
+   and did not use a CLI Runtime.
    G4's real
    queue-crash evidence remains an injection-before-ledger result with
    `INJECTION_UNCERTAIN` and reinjection refused; it is not a cold-resume result.

@@ -28,19 +28,22 @@ A9 passed its bounded Native Join/publish and Android initial Group status but
 failed the post-restart guard; A10's exact resume returned HTTP 500 before MCP
 after two provider POSTs. A11 passed a separate same-UID MCP protocol scope,
 Android Owner Group grant, and encrypted Group status before/after one owned
-Hub restart; it was not a CLI Runtime/provider run. The independent eight-case
-v1.6.5 Link-policy status-read/restart suite remains NOT_RUN. See the
-[A1–A11 evidence](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
-for boundaries and source attribution.
+Hub restart; it was not a CLI Runtime/provider run. The separate v1.6.5
+Link-policy status/restart suite passed its eight requested selectors in A7;
+the A7 Android cases did not exercise the Hub foreign-owner guard, which has
+separate Core Go coverage. The optional Client-specific non-null
+`linkConsentStatusReadContext` plus `OUTCOME_UNCERTAIN` combination across
+reopen/restart was not run; it is not an A7 failure or a deployment-trial
+prerequisite. See the [A1–A7 evidence](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7)
+and [Group-key Native A1–A11 evidence](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+for distinct scope and source attribution.
 
-Next: complete the independent Client Link-policy status-read suite and build,
-package and interop-test a Hub from clean Core 0326. The retained c688 interop
-image and clean-328f standard delivery predate that source; any new artifact
-needs separate attribution. Keep physical-device, public HTTPS and user
-deployment evidence separate. Do not repeat the Native model run or whole-Go
-suite without a new source/input change or failure evidence. The clean-328f
-aggregate remains FAIL; later scoped passes retain their own sources. The
-standard/PQ artifact scopes remain as recorded.
+The A7 result does not close broader Native, physical-device, public HTTPS or
+user-deployment acceptance. V67 remains UNSUPPORTED with the safe Relay
+fallback. Do not repeat the Native model run or whole-Go suite without a new
+source/input change or failure evidence. The clean-328f aggregate remains FAIL;
+later scoped passes retain their own sources. The standard/PQ artifact scopes
+remain as recorded.
 
 ## Scoped managed PQTLS fixture evidence — retained source
 

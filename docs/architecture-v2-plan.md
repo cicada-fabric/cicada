@@ -22,20 +22,24 @@ require another run absent new evidence. See the [Native record](native-default-
 Clean `c2929fc` standard/PQ packaging and standard/PQ local Hub gates now have
 separate [source-attributed delivery evidence](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
 Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and a
-clean APK build; its eight independent online cases remain NOT_RUN. The Core
-status response-loss fixture has scoped normal/race evidence, with its earlier
-whole-package race timeout preserved.
+clean APK build for the earlier preparation checkpoint. The later v1.6.5
+Link-policy status/restart run passed all eight requested selectors in A7,
+with an independent 81/81 scoped review; the APK producer and host fixture
+source have distinct attribution. The Core status response-loss fixture has
+scoped normal/race evidence, with its earlier whole-package race timeout
+preserved. See the [A1–A7 record](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
 
-Next: complete the Client's independent v1.6.5 encrypted status-read suite
-across an exact owned Hub restart, retaining `linkConsentStatusReadContext`
-and `profile_generation`. A11 already passed the distinct same-UID MCP and
-Android Group Owner grant/status scope; it is not Native model autonomy or
-context-continuation proof. A3's synthetic vector need not be repeated.
-Physical-device, public HTTPS and user deployment
-checks remain separate. V67 account-bound Native submission is UNSUPPORTED;
-keep the safe Relay fallback. Do not repeat the Native model run or whole-Go
-suite without a new relevant input change or failure evidence. The
-default-daemon selector remains outside the one-click runner. Physical
+The A7 Android cases did not exercise the Hub foreign-owner guard; separate
+Core Go coverage is recorded in the [test closeout](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
+The optional Client-specific combination of non-null
+`linkConsentStatusReadContext` with `OUTCOME_UNCERTAIN` across reopen/restart
+was not run; it is not an A7 failure or a deployment-trial prerequisite. A11's
+Group Owner grant/status scope remains separate; neither result proves Native
+model autonomy or context continuation. Remaining Native, physical-device and
+public HTTPS acceptance stays separate. V67 account-bound Native submission
+is UNSUPPORTED; keep the safe Relay fallback. Do not repeat the Native model
+run or whole-Go suite without a new relevant input change or failure evidence.
+The default-daemon selector remains outside the one-click runner. Physical
 StopVerifier, real-device and public HTTPS remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL

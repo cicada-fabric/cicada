@@ -24,67 +24,39 @@ it did not run a CLI Runtime/provider or establish AI autonomy, Native account
 authentication or context. Clean Core `c2929fc` now has fresh standard/PQ
 packages, a standard Hub TCP gate and a PQ Hub/two-Node gate with their own
 [delivery evidence](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
-Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and
-a clean APK build for the separate eight-case v1.6.5 Link-policy suite; all
-eight online cases remain NOT_RUN. Current delivered Native Runtime,
-physical-device and public HTTPS acceptance remain NOT_RUN. Client artifacts
-retain their own producer/source attribution; this Core checkpoint changes
-no Client source or contract.
+Client `fadb30e` passed offline preparation only; its result remains attributed
+to that earlier producer. For status operator A7, the Hub was the clean c292
+standard image, the app/test APK pair came from Client producer `0351ee5`, and
+the host-side Client fixture source snapshot was `cf069a3`. These are distinct
+source/artifact identities; this Core checkpoint changed no Client source or
+contract.
 
-The Group-key operator has eleven retained attempts. A9 completed Native
-Join/whoami/publish and Android's initial Owner grant/status but failed the
-post-restart guard; A10's exact resume returned HTTP 500 before MCP after two
-provider POSTs (200/500). A11 passed a narrower same-UID MCP protocol scope and
-Android Owner Group grant with encrypted Group status `CURRENT` before/after
-one exact owned Hub restart; this is not a fresh CLI Runtime run. The
-[A1–A11 record and attribution](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
-preserves each failure/pass boundary. C14's separately scoped ASK/Reply result
-remains unchanged. The single-Hub approved-identity correction passed offline
-Go validation; the A11 protocol lane does not establish Native Runtime
-autonomy. See the [Go validation scope](v00-test-closeout-20261011-validation.md#single-hub-approved-identity-pin-go-validation-scope).
+A7 passed all eight requested v1.6.5 Link-policy status/restart selectors, and
+the independent review passed 81/81 scoped checks. The Owner proofs were
+host-signed synthetic fixtures, not phone UI or human approval. The owner-
+refusal cases cover Client-local refusal, not the Hub foreign-owner guard; the
+version-bypass cases cover Client fresh-list/generic-RPC checks. A7 did not
+exercise the Hub guard, which has separate Core Go coverage. The optional
+Client scenario combining non-null `linkConsentStatusReadContext` with
+`OUTCOME_UNCERTAIN` across reopen/restart remains NOT_RUN in the producer
+manifest; it is not an A7 failure or a prerequisite for a deployment trial.
+Before claiming that combination, a focused test can exercise the existing
+`ClientHubSession.kt` flow through `LinkReviewPolicyStatusV165InteropTest.kt`.
+Native Runtime, physical-device and public HTTPS acceptance remain separate. See the
+[A1–A7 record](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
 
-The current explicit-metadata [Group-key fixture bootstrap](client-group-key-disposable-fixture.md#current-v165-bootstrap--2026-10-11)
-passed its owned Hub preparation and cleanup with zero model calls; this
-bootstrap alone does not establish Native Join, an Owner-signed Group-key grant
-or encrypted Android status. Those Group-key steps have separate A11 scoped
-evidence. The independent eight v1.6.5 Link-policy encrypted status/restart
-cases are implemented and prepared offline; online execution remains NOT_RUN.
+The Group-key Native A9–A11 attempts remain separately scoped: A9 failed its
+post-restart guard, A10's exact resume returned HTTP 500 before MCP, and A11
+passed a same-UID protocol/Android grant-status scope without a CLI Runtime.
+The [A1–A11 record](v00-test-closeout-20261011-validation.md#group-key-android-native-a1-a5)
+preserves their individual results. A11 and status A7 are separate Client/Group
+evidence; neither establishes Native Runtime autonomy.
 
 The clean-328f default aggregate remains FAIL; its Go lane and follow-up local
-gates retain separate source records. C14 passed a bounded six-turn default-
-daemon G2/G3 scope with independent exact-owned cleanup; see the [Native
-record](native-default-daemon-validation.md) for its source scope and receipts.
-C9–C12 remain historical paid FAILs; in particular, C12's B-side HTTP 500 and
-cause-unknown result is not rewritten by C14. This Core work changes no Client
-source or contract.
-The next Client-side validation is a test-only v1.6.5 Link-policy encrypted
-status read across an exact-owned Hub restart, using the already pinned
-delivery and its independently pinned Hub, Owner and Device identities. A11's
-Group-key grant/status result is separately scoped and does not replace these
-Link-policy reads. A3's synthetic OwnerProof vector is already tested; do not
-rerun it as a substitute for a real grant. Use the new
-`LinkReviewPolicyStatusV165InteropTest` eight-case selector and its independently
-pinned fixtures. The distinct `LinkReviewPolicyStatusInteropTest` keeps its
-v1.6.1 attribution and does not prove the new restart suite.
-For the selected Owner profile, capture encrypted `session.capabilities`, a
-fresh `link.list`, and `link.review_policy_status` for the fixture's exact Link
-ID/version before restart; restart only the fixture's owned Hub, reopen the
-same Owner profile, then repeat the encrypted reads. Compare Hub/Owner/Device
-and profile selection, Link ID/version, policy mode/version/digest, current
-status, accepted sides and expiry with the pinned proposal. Exercise the
-existing response-loss uncertainty fields (`pendingOperationId`,
-`linkConsentStatusReadContext` with persisted `profile_generation`, and
-`uncertainNeedsReconciliation`) and ensure a restart does not silently infer
-approval or clear unresolved uncertainty. `linkReviewStatusReadContext` is a
-distinct legacy status path; it is not a substitute for the current consent
-flow's selected-profile recovery context.
-Cover the eight v1.6.5 encrypted status-read cases without confusing them with
-Joint11's eight Link-recovery cases. Keep the existing KEY/NONE cases and
-report absent fixtures as NOT_RUN; do not reuse Joint11's 82-request recovery
-batch, treat a database read-only receipt as Android status, or claim
-physical/native/public-HTTPS coverage. No model, production credential,
-protocol or Client production-code change is part of this task. v0.1.0 remains
-PARTIAL; V67 is UNSUPPORTED.
+gates retain separate source records. C14 remains a bounded six-turn
+default-daemon G2/G3 scope, and C9–C12 remain historical paid FAILs. V67 is
+UNSUPPORTED with the safe Relay fallback. See the [Native record](native-default-daemon-validation.md).
+Overall v0.1.0 remains PARTIAL.
 
 ## Historical Client delivery / preparation — 2026-10-10
 

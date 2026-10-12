@@ -77,11 +77,105 @@ Client clean producer `fadb30ee738e7384aa1fab90b4dab544da477535` records eight
 JVM fixture tests, Android-test compilation and APK build PASS in its
 [offline delivery](/gpu1-share/data/cicada-client/v165-link-policy-status-preparation-20261012/DELIVERY.NONAUTH.json)
 SHA `8d17787935eee425ed47d83e0ca1e8b44d988a63247ec05c1930c760eef37f44`.
-Initial test/compile failures remain preserved; all eight online cases are
-NOT_RUN. Current consent-status recovery uses `linkConsentStatusReadContext`
+Initial test/compile failures remain preserved; its eight online cases were
+NOT_RUN at that preparation checkpoint. The later A7 run below used a separately
+attributed APK producer and passed the eight requested online selectors.
+Current consent-status recovery uses `linkConsentStatusReadContext`
 and persisted `profile_generation`; the distinct legacy
 `linkReviewStatusReadContext` cannot supply that profile fence. A11 already
 passed its narrower Group Owner grant/status scope and is not rerun here.
+
+<a id="v165-link-policy-status-a1-a7"></a>
+
+## v1.6.5 Link-policy encrypted status/restart — A1–A7
+
+This operator suite is separate from Joint11's Link-recovery suite and the
+Group-key Native A1–A11 attempts. A1–A6 are retained failures; A7 is the first
+complete eight-selector pass. Every attempt reported zero model calls and
+confirmed source/protected-resident equality. A1–A6 remain their original
+results, not successful partial-suite replacements.
+
+| Attempt | Result and exact boundary |
+| --- | --- |
+| A1 | **FAIL_OR_UNKNOWN — `INPUT_FILE_SCOPE`**, no case executed; no Android JUnit run. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a1/RESULT.NONAUTH.json), SHA-256 `15632655c462753efb6b0bcf246362c8d18aa78dd7e2e3d125b471b874d054f6`. |
+| A2 | **FAIL_OR_UNKNOWN — `AttributeError`** during bridge construction after the owned Android fixture had been created; source review identified a call to `_parse_json`, absent from the pinned carrier module. The recorded bridge-constructor cleanup state was UNKNOWN; later postchecks do not rewrite it. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a2/RESULT.NONAUTH.json), SHA-256 `dba9b60dc382791f7fee67602d04f55e2398775c9168d2f7403aa8ae5a41cc67`. |
+| A3 | **FAIL_OR_UNKNOWN — `JUNIT_NOT_SINGLE_PASS`**, zero cases accepted. The bounded JUnit output was not retained, so the failing selector/cause is UNKNOWN. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a3/RESULT.NONAUTH.json), SHA-256 `c94ddd86fdd6165eb88b441672d8f0d64d520c448dc259508ca4f57dd7811923`. |
+| A4 | **FAIL_OR_UNKNOWN — `JUNIT_NOT_SINGLE_PASS`**, zero cases accepted. The retained instrumentation reported `IllegalArgumentException` in `LinkConsentInteropTest.readJson`; the A4 result did not retain a direct staged-file byte count. A later Docker exec probe showed staged stdin needs `-i` to reach the container; this diagnoses the transport path, not an A4 byte measurement. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a4/RESULT.NONAUTH.json), SHA-256 `c8f21a500f60439d62ff59cb3e30615768a34f66b694c452adc3f77ecae0a9d9`. |
+| A5 | **FAIL_OR_UNKNOWN — `PROXY_STREAM_BOUND`** after cases 0–5 passed; all 55 staged-file round trips were verified. The loss setup then hit the Go helper's disposable-temp-root guard: with `TMPDIR` unset, the owned database lay outside the child's default `/tmp` temporary root, and no fault-ready state was captured. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a5/RESULT.NONAUTH.json), SHA-256 `9aaf160238a49c6420686ad090aae8aab9f91e2715336e3f32f4456a7cd584d9`. |
+| A6 | **FAIL_OR_UNKNOWN — `JUNIT_NOT_SINGLE_PASS`** after cases 0–5 passed. The response-loss attempt failed during the `session.capabilities` prelude with `NETWORK_ERROR`; no fault-ready state was captured. The underlying network cause remains UNKNOWN. [Receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a6/RESULT.NONAUTH.json), SHA-256 `81859a75dd68e03435518c21a7cc065a8251403728054141c93a046932e4c5c4`. |
+| A7 | **PASS_SCOPED_REQUESTED_CLIENT_CASES**: all eight KEY/NONE selectors passed across restart, owner-refusal, version-bypass and response-loss scenarios. See the complete scope and receipts below. |
+
+A7 used the clean Core c292 product revision and standard Hub image
+`sha256:d69edf867632f1ac8adec83ecc689e5cdf9654505ccdd4eeb1ed489ec4e2e496`;
+the Hub archive/source remains attributed to clean c292. The Android app/test
+APK pair came from Client producer `0351ee5d01f13158533f56c4c4cf1959ab9c1ebc`
+(app SHA-256 `c97a383bbeebafe99ceeef02f1b2bf43d41839dc2ad87cf696c07e4ea63eb221`,
+test SHA-256 `2e5a203636f5a479c5627008fa6d4213cf53ce0ba70faa8c7525338d7b6be05c`,
+delivery receipt SHA-256 `e5cf522329363e0bbb72ad4675bf58fd0d38225af9414700a8c4ff7e29e86daa`).
+The host-side Client source snapshot was `cf069a32671fc6cd94fc8ebc19bd2906bf91b8e4`; it is not the APK producer.
+The test bootstrap binary SHA-256 was
+`ce6abfc13a45e34a3c58b1241e93dec11e3daab1ded25a8af3a9b41df3701e0b` and the
+status-fault helper binary SHA-256 was
+`63b27a6acb957ec75298c5b2915c41189cb030d5c8ccf724a81a43481f1dd076`; these
+ignored fixture artifacts do not change the clean product image.
+
+The frozen operator
+[`android_handoff_a7.py`](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/android_handoff_a7.py)
+SHA-256 `bad0cf7cbe4bf4580f415521491a65ad0700af575012335f6056b9beeebdcb06`
+used config `CONFIG-EIGHT-A7.NONAUTH.json` SHA-256
+`9df670bcc44d74c54325b1f44854d9c0e32cb4e06748bab0e895e000444db2a4`:
+
+```sh
+python3 -B /home/zyf/CICADA/.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/android_handoff_a7.py --execute \
+  --config /home/zyf/CICADA/.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/CONFIG-EIGHT-A7.NONAUTH.json \
+  --config-sha256 9df670bcc44d74c54325b1f44854d9c0e32cb4e06748bab0e895e000444db2a4 \
+  --cases 0,1,2,3,4,5,6,7 \
+  --evidence-root /home/zyf/CICADA/.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep
+```
+
+This is the recorded invocation for the completed run, not a rerun command:
+its evidence root already contains the immutable A7 receipts.
+
+The [Android result](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/v165-link-policy-status-core-a7/ANDROID-OPERATOR-RESULT.NONAUTH.json)
+(SHA-256 `f332063838a1c6d07cf51e3c60a91f15c7a207129f72388e540208c29317e385`)
+records 60 strict JUnit selector records, all eight scenarios PASS, zero model
+calls, and confirmed Android/bridge cleanup. The bridge recorded 316 request
+rows (300 routed to Hub, 16 to the fault proxy): 298 HTTP 200, 16 HTTP 201,
+and two intentionally dropped status responses. Both loss cases completed the
+same-packet recovery, SDK acknowledgement, and locked Hub switch checks; this
+is test-fixture response-loss evidence, not a generic exactly-once guarantee.
+The [operator terminal](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/ALL-EIGHT-A7-EXIT.NONAUTH.json)
+(SHA-256 `63c82d4e790844c82c7d42b167992e963863a23480720597e90c774224e1f6d7`)
+and [run log](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/ALL-EIGHT-A7-OPERATOR.NONAUTH.log)
+(SHA-256 `af37507ccb0ef7c6451ed290e0e993160b314bf4e82cdf62a2668d7c7813b7da`)
+record terminal exit 0 and the bounded run. The independent
+[81/81 postcheck](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/ROOT-A7-INDEPENDENT-CHECK.NONAUTH.json)
+(SHA-256 `1e7ffeb3f339918938ab5d3426dae9159716acea9ec00223088d1e59088ecb14`)
+and [transport cross-check](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/ROOT-A7-TRANSPORT-CHECK.A2.NONAUTH.json)
+(SHA-256 `b1470c4768553898f4fd66b3464ed54ea2fd58066337ca670e01125603d4bb45`)
+confirmed the recorded phases, source/protected-six equality and owned absence.
+The source-bound offline diagnostic suite passed 35 tests with zero skips or
+failures; its [receipt](../.cicada-data/v00-clean-delivery-c2929fc-20261012/link-status-fixture-prep/ANDROID-HANDOFF-REQUEST-DIAGNOSTIC-QA.A1.NONAUTH.json)
+SHA-256 is `d11e0223ee8ebde5132c5b4a8f1d332602fcef55e77f1946b31d4767ef8e0896`.
+
+Limits: the KEY proof was host-signed synthetic fixture data, not observed
+phone UI or human approval. Owner-refusal cases prove the Client's local
+refusal behavior, not the Hub foreign-owner guard; version-bypass cases cover
+the Client fresh-list/generic-RPC checks, not a Hub-version bypass. A7 did not
+exercise the Hub guard, which has separate Core Go coverage in
+[`TestClientLinkReviewPolicyEncryptedHTTPMetadataEvidenceAndRecovery`](../cicada-go/internal/server/client_link_review_policy_test.go#L429)
+(clean-328f and broad-race-a2 PASS). Generic Core recovery of a signed
+encrypted `OUTCOME_UNCERTAIN` notice is separately covered by
+[`TestClientRPCRecoveryDoesNotReplayBusinessOrSkipResponseSequence`](../cicada-go/internal/server/client_rpc_recovery_v2_test.go#L22)
+(clean-328f PASS) and `TestClientDockerHubRecoveryFixture/uncertain`
+(clean-c292 standard Docker PASS). The Client-specific non-null
+`linkConsentStatusReadContext` flow across restart, rendering and reconciliation
+was not exercised by A7. The producer manifest marks `extra_uncertainty=NOT_RUN`;
+this is optional verification before claiming that combination, not an A7
+failure or a prerequisite for a user deployment trial. Native Runtime, physical
+Android and public HTTPS remain **NOT_RUN**. A6's underlying network cause
+remains UNKNOWN; A7 does not diagnose it. Overall first-release acceptance
+remains **PARTIAL**.
 
 ## Clean default aggregate: 328f
 
@@ -234,8 +328,9 @@ confirmed eventual absence without rewriting that failure. A pre-start
 self-pin refusal was separate from Hub execution. Model calls were zero;
 that bootstrap did not test native Join or Android Group grant/status. The
 separate Android/Native operator attempts below reached further scoped stages.
-The independent eight-case v1.6.5 Link-policy encrypted status/restart cases,
-physical Android and public HTTPS remain **NOT_RUN**. The A3 below is a
+The independent eight-case v1.6.5 Link-policy status/restart suite has since
+passed its requested scope in [status operator A7](#v165-link-policy-status-a1-a7).
+Physical Android and public HTTPS remain **NOT_RUN**. The A3 below is a
 different synthetic OwnerProof selector.
 
 <a id="group-key-android-native-a1-a5"></a>
@@ -297,12 +392,13 @@ actual zero POST/admission counts, completed MCP process receipt and zero CLI
 business executions.
 
 A11's scoped Android `group.key_manifest/grant/status` success does not close
-the independent eight-case v1.6.5 encrypted
-`session.capabilities`/`link.list`/`link.review_policy_status` suite or its
-restart/uncertainty cases. It also does not establish a fresh CLI Runtime turn,
-foreground autonomy, Native account authentication, V67, physical Android,
-two physical Nodes or public HTTPS. The clean-328f aggregate remains **FAIL**;
-overall first-release acceptance remains **PARTIAL**.
+the separate Link-policy suite; status operator A7 passed its eight requested
+encrypted status/restart selectors. A7 did not exercise the Hub foreign-owner
+guard, which has separate Core Go coverage noted above. The remaining Client-
+specific non-null `linkConsentStatusReadContext` recovery behavior, a fresh CLI
+Runtime turn, foreground autonomy, Native account authentication, V67, physical
+Android, two physical Nodes and public HTTPS are separate scopes. The clean-328f
+aggregate remains **FAIL**; overall first-release acceptance remains **PARTIAL**.
 
 A5 used clean Core host HEAD `40c0c5afc376b3325b92772d6f6619ba93b5d8e3`
 with source SHA-256 `c814a7138aefe0be009645c9834d3de7f4427bccf6b1477b1c11fd9589c612f8`,
@@ -416,10 +512,11 @@ The compiled command artifact SHA-256
 `e8bb14cc0cb2aa6f299355a52753c7735b53e31bac66c19cea2d3dc61cfbaf9e` is a
 compile-check artifact only, not a release binary or Runtime deployment. This
 Go test build is not a new Hub image and does not retroactively alter the c688
-image or APK producer used by A7/A8. A7 and A8 remain their recorded Native
-attempts; neither the Go regression suite nor the catalog check is an actual
-Native wake/Join, Owner-signed Group grant, or Android encrypted status result.
-The independent eight-case v1.6.5 Link-policy status/restart cases remain **NOT_RUN**.
+image or APK producer used by the Group-key Native attempts A7/A8; neither the
+Go regression suite nor the catalog check is an actual Native wake/Join,
+Owner-signed Group grant, or Android encrypted status result. The separate
+Client Link-policy suite passed its requested Android status/restart scope in
+status operator A7; that result does not upgrade the Group-key Native attempts.
 
 A separate host-only provider diagnostic returned HTTP 200 for one
 `gpt-5.6-luna` POST through the existing CONNECT-verified TLS route; it made no
@@ -514,12 +611,15 @@ private-key paths.
 C14 passed the bounded six-turn default-daemon G2/G3 scenario with independent
 exact cleanup. A11 separately passed an Android Owner Group grant and encrypted
 Group-status read before/after an owned Hub restart through a same-UID MCP
-protocol scope; it did not run a CLI Runtime/provider. The independent eight-
-case v1.6.5 Link-policy encrypted status read across an exact owned Hub restart,
-V67/account-bound submission, two physical Nodes and public HTTPS remain
-unresolved or NOT_RUN. V67's account-bound Native submission API is
-**UNSUPPORTED**, so it is not a source-only implementation task until a
-supported API exists. Broader Native acceptance beyond C14's bounded
+protocol scope; it did not run a CLI Runtime/provider. The Client Link-policy
+suite separately passed its eight requested status/restart selectors in status
+operator A7. A7 did not exercise the Hub foreign-owner guard, which has
+separate Core Go coverage noted above. The optional Client-specific non-null
+`linkConsentStatusReadContext` plus `OUTCOME_UNCERTAIN` combination is not an
+A7 failure or a deployment-trial prerequisite. V67/account-bound submission,
+two physical Nodes and public HTTPS remain separate scopes. V67's account-
+bound Native submission API is **UNSUPPORTED**, so it is not a source-only
+implementation task until a supported API exists. Broader Native acceptance beyond C14's bounded
 default-daemon scope remains unverified; C14 does not establish the separate
 foreground model-consumption path. G4's real queue-crash result preserves
 `INJECTION_UNCERTAIN` and refuses reinjection; it does not establish cold

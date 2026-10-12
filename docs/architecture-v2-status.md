@@ -32,18 +32,24 @@ standard Hub TCP and PQ Hub/two-Node gates. The status response-loss helper
 passed its new normal/race case; its full package race timeout remains retained.
 See the [current delivery and helper record](v00-test-closeout-20261011-validation.md#clean-c292-delivery-and-status-recovery).
 Client `fadb30e` passed eight JVM fixture tests, Android-test compilation and a
-clean APK build; the independent eight-case v1.6.5 online status-read/restart
-suite remains NOT_RUN. This does not establish current delivered Native Runtime.
+clean APK build for the earlier preparation checkpoint. The later v1.6.5
+Link-policy status/restart A7 run passed all eight requested selectors, with
+an independent 81/81 scoped review; see the [A1–A7 record](v00-test-closeout-20261011-validation.md#v165-link-policy-status-a1-a7).
+This does not establish current delivered Native Runtime. A7 did not exercise
+the Hub foreign-owner guard, which has separate Core Go coverage in the test
+closeout. The optional Client-specific non-null
+`linkConsentStatusReadContext` plus `OUTCOME_UNCERTAIN` combination across
+reopen/restart was not run; it is not an A7 failure or a deployment-trial
+prerequisite.
 
-Next: complete the independent Client Link-policy encrypted status-read suite
-across an exact owned Hub restart using the fresh attributed delivery and
-current consent/profile recovery context. A11 already supplies its separate
-Group Owner grant/status scope. Keep physical-device, public HTTPS and user deployment evidence
-separate. V67 account-bound Native submission is UNSUPPORTED; retain the safe
-Relay fallback. Do not repeat the Native model run or whole-Go suite without a
-relevant input change or new failure evidence. The default-daemon selector
-remains outside the one-click runner. Physical StopVerifier, real-device and
-public HTTPS remain NOT_RUN.
+The A7 Link-policy scope, A11 Group-key status scope and C14 Native scope are
+separate results; none establishes full Native autonomy or product completion.
+Keep physical-device, public HTTPS and user deployment evidence separate. V67
+account-bound Native submission is UNSUPPORTED; retain the safe Relay fallback.
+Do not repeat the Native model run or whole-Go suite without a relevant input
+change or new failure evidence. The default-daemon selector remains outside
+the one-click runner. Physical StopVerifier, real-device and public HTTPS
+remain NOT_RUN.
 
 ## Historical Native permission wire checkpoint — v0.1 PARTIAL
 
