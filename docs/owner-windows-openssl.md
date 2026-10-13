@@ -1,5 +1,14 @@
 # Windows Owner approval with external OpenSSL
 
+This is optional advanced/development compatibility tooling, not the standard
+account or enrollment product. The [Owner onboarding design](owner-onboarding-design.md)
+records the ordinary built-in local key creation/import and safe device-pairing
+requirement, including phone-first setup and trusted Windows-local software.
+The new account/setup product is **NOT_IMPLEMENTED**. Normal enrollment should
+not require OpenSSL, Owner ID lookup, hand-copied public JSON or Base64 Grant.
+The manual procedure and its actual source-attributed validation below remain
+unchanged in scope.
+
 This opt-in helper supports public-key adaptation and device-grant signing for
 the existing software 0.0.3 Hub, wire 1, catalog 55 and `client-hub-v1.6.5`.
 It is compatible with the existing Hub enrollment/registration path and does not

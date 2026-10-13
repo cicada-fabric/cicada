@@ -1,5 +1,13 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+2026-10-13 ordinary Owner onboarding: the user requirement now includes one
+human account, built-in local key creation/import and safe device pairing.
+The [Owner onboarding design](owner-onboarding-design.md) is planning only;
+account setup/login, first-Owner initialization and ordinary pairing UI remain
+**NOT_IMPLEMENTED**. Existing Android local device keygen and Node device-code
+primitives are reusable foundations. Optional OpenSSL/manual signing results
+below do not establish this product flow; their prior source and scope remain intact.
+
 Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
 independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)
 records clean `ab2362f` packaged amd64/ARM64 first-install A2 SCOPED_PASS,

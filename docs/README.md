@@ -14,6 +14,7 @@ planned first release line and its incrementing patch number.
 | Area | Authoritative entry points |
 |---|---|
 | Product architecture | [Adopted specification](../CICADA.md), [implementation status](architecture-v2-status.md), [completion ledger](completion-ledger.md) |
+| Next Owner setup checkpoint | [Owner account and device onboarding](owner-onboarding-design.md) — adopted user requirement; implementation remains **NOT_IMPLEMENTED** |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |
 | Identity and permissions | [Owner bootstrap](owner-approval-bootstrap.md), [Node trust](node-owner-trust.md), [permissions](permissions.md), [Network contract](network-m1-contract.md) |
 | Native sessions and MCP | [Harnesses](harnesses.md), [Fabric](fabric.md), [Join self identity](native-join-self-identity.md), [Runtime capability limits](runtime-operation-capabilities.md) |

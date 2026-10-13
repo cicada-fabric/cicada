@@ -1,5 +1,14 @@
 # Offline owner key bootstrap for development
 
+This is an optional advanced/development compatibility path. The ordinary product
+requirement is account creation plus built-in local key creation/import and safe
+device pairing, recorded in the [Owner onboarding design](owner-onboarding-design.md).
+That product remains **NOT_IMPLEMENTED**; phone-first is allowed in its proposed
+flow. Users should not need Owner IDs, public JSON, Base64 grants or manual signing
+commands in normal enrollment. Prior external-tool-only ordinary UX guidance is
+superseded; the current commands and historical evidence below remain applicable
+to this explicit development path.
+
 This is the existing offline development trust ceremony for Owner keys under
 the adopted Architecture v2.3; it is not a production provisioning service.
 It registers the public trust root used by encrypted Client device enrollment
@@ -9,8 +18,8 @@ Fabric messages end-to-end encrypted.
 A legacy management bearer or Node/Fabric credential cannot replace
 the owner's private signing key.
 
-The user owns generation and custody of the Owner approval signing private key
-and may use external standard tools. CICADA supplies algorithm/parameter,
+The user retains local custody of the Owner approval signing private key.
+This optional path may use external standard tools. CICADA supplies algorithm/parameter,
 format, verification/authorization and local import/adaptation guidance;
 `owner-key generate` is an optional offline development bootstrap, not a required
 product dependency. This boundary does not remove automatic Node/Endpoint/Client

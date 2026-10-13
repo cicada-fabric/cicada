@@ -1,5 +1,12 @@
 # Distribution and deployment
 
+The ordinary-user requirement is now a deployed Hub with one human Owner account,
+built-in local key creation/import and safe phone/Node pairing. The
+[Owner onboarding design](owner-onboarding-design.md) separates that **NOT_IMPLEMENTED**
+product from current manual development procedures. Phone-first is part of the
+proposed flow; external OpenSSL remains an optional advanced compatibility path.
+Existing installation and evidence below retain their original state and scope.
+
 [The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
 amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
@@ -51,7 +58,7 @@ visibility and message grants remain separate server-checked permissions.
 | Server/host, IP address, routing/firewall and actual reachability; OS and Docker permissions | User/operator supplies and operates these resources. |
 | Optional domain and DNS; external WebPKI HTTPS entry, its certificate/CA infrastructure, lifecycle and backups | User/operator chooses and operates this entry; deployment tooling may automate its maintenance. A domain is optional. |
 | Independent trust checks, Owner signatures, exact Node approval and other real authorization decisions | User/Owner decides; installation cannot fabricate approval or transfer Owner authority to the Hub operator. |
-| Owner approval private-key generation and custody | User may use external standard tools. CICADA documents algorithms/parameters, formats, verification/authorization and local import/adaptation; `owner-key generate` remains an optional development bootstrap, not a required dependency. |
+| Owner approval private-key generation and custody | CICADA should provide built-in local generation/import and safe registration for ordinary account/device setup; the user retains local custody and approves authorization. External tools and `owner-key generate` remain optional advanced/development paths; the new product flow is **NOT_IMPLEMENTED**. |
 | Stable identities, current Guard, application E2EE, sessions, durable queues, outbound Node transport and exact original-Thread binding | CICADA supplies and enforces these product mechanisms within its documented Runtime and acceptance limits. |
 | Internal Node PQ identity/issuer/root/leaf initialization or existing-material import, Owner authorization and installation lifecycle | CICADA should provide controlled CLI guidance so users need not build the internal PKI manually; production CA initialization remains **NOT_IMPLEMENTED**. |
 | Lightweight deployment checks and guided setup | CICADA should provide them. Requiring users to build a PKI manually or write many JSON files does not complete the easy-deployment experience. |

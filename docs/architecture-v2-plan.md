@@ -1,6 +1,15 @@
 # Architecture v2.3 实施计划
 
-The active implementation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
+2026-10-13 ordinary onboarding requirement: a deployed Hub should support one
+human Owner account and built-in local key creation/import with safe device
+pairing. The [Owner onboarding design](owner-onboarding-design.md) records the
+next bounded checkpoint, existing gaps, migration and security/acceptance matrix;
+the account/setup product remains **NOT_IMPLEMENTED**. Phone-first is supported
+in the proposed flow; the Windows external-OpenSSL ceremony is optional tooling,
+not the standard enrollment product. The previous external-tool-only ordinary
+UX decision is superseded; historical manual-signing evidence below is retained.
+
+The most recent source/package validation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
 Clean producer `ab2362f` now has actual amd64/ARM64 packages and A2 unified
 first-install SCOPED_PASS under bounded explicit QEMU. Source/package/fixture
 identities and exact cleanup are recorded; A1 first-readiness FAIL with UNKNOWN
@@ -57,8 +66,9 @@ Implement the smallest ordered bootstrap CLI/shell flow, then a TUI over it:
    Keep signing independent of Hub and keep Thread Join explicit. Build no second
    authentication/authorization business path; initial standard HTTPS, ML-KEM/ML-DSA
    application protection and enrolled Node pure-PQ TLS remain distinct.
-   Owner approval private-key generation/custody may use external standard tools;
-   CICADA provides algorithm/format, verification/authorization and adaptation guidance.
+   Ordinary Owner/device setup should provide built-in local generation/import
+   and safe enrollment as planned above; private-key custody remains local.
+   External standard tools remain optional advanced/development compatibility.
    The opt-in [OpenSSL helper](owner-windows-openssl.md) converts public SPKI and delegates
    device-grant signing; private-key import/conversion and Windows secure-storage
    adaptation remain **NOT_IMPLEMENTED**. Actual Windows execution/physical Android
