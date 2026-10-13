@@ -5,6 +5,27 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
+## 0.0.4 — unreleased development candidate
+
+### Headless encrypted management Client
+
+A Unix operator can create a separate local Client profile, enroll it with an
+existing independently signed exact Owner Device Grant, inspect encrypted
+capabilities/status, and review/confirm/list Node candidates through the current
+Client API. Complete Hub public keys are independently pinned; private profile
+locks, original enrollment requests and encrypted pending packets survive retries.
+Node confirmation requires visible terminal review, and an uncertain confirmation
+fences new confirmations while allowing authoritative Node-list inspection.
+INITIAL first-install confirmation is supported; UPGRADE confirmation is refused
+because the existing preview omits exact target binding/version.
+
+This is the bounded no-phone operator path for an already initialized Hub and
+registered Owner signer. It does not implement Hub account setup, first-signer
+bootstrap, unified QR pairing, Android changes or Windows ACL custody. Software
+is 0.0.4; Client contract v1.6.5, wire 1, catalog 55 and schema 59 are unchanged.
+Old 0.0.3 images and installation evidence retain their original attribution.
+See [headless Client](docs/owner-headless-client.md).
+
 ## 0.0.3 — unreleased development candidate
 
 ### IP locator, ARM64 PQ TLS and first installation

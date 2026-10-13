@@ -29,7 +29,7 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.3**, unreleased on `dev`. A main merge or
+The development line is **0.0.4**, unreleased on `dev`. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1, current CLI sandbox and Worker private-fixture checks passed their
 scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3

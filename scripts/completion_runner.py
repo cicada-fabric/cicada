@@ -427,7 +427,7 @@ def reduce_client_link_recovery(receipt: dict, receipt_path: Path,
         return {"status": "UNKNOWN", "reason_codes": [code]}
 
     test_receipt = receipt.get("test")
-    if (receipt.get("schema_version") != "cicada.client-link-recovery-interop.v1"
+    if (receipt.get("schema_version") != "cicada.client-link-recovery-interop.v2"
             or receipt.get("suite") != "client-link-recovery"
             or receipt.get("suite_name") != "client-link-recovery"
             or receipt.get("lane") != "client"
@@ -435,8 +435,9 @@ def reduce_client_link_recovery(receipt: dict, receipt_path: Path,
             or type(receipt.get("exit_code")) is not int or receipt["exit_code"] != 0
             or not isinstance(test_receipt, dict)
             or test_receipt.get("name") != LINK_RECOVERY_TOP_TEST
-            or type(test_receipt.get("exit_code")) is not int
-            or test_receipt["exit_code"] != 0):
+            or test_receipt.get("status") != "PASS"
+            or type(test_receipt.get("runner_exit_code")) is not int
+            or test_receipt["runner_exit_code"] != 0):
         return unknown("LINK_RECOVERY_INTEROP_RECEIPT_MISMATCH")
 
     if (not isinstance(expected_source_head, str)

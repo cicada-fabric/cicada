@@ -48,13 +48,13 @@ if not isinstance(data, dict):
 
 if data.get('schema_version') == 'cicada.hub-build.v1':
     build = data
-elif data.get('schema_version') == 'cicada.client-hub-interop.v1':
+elif data.get('schema_version') in ('cicada.client-hub-interop.v1', 'cicada.client-hub-interop.v2'):
     if (data.get('status') != 'PASS' or data.get('phase') != 'complete'
             or type(data.get('exit_code')) is not int or data.get('exit_code') != 0):
         raise SystemExit('BLOCKED: interop result is not a completed PASS')
     build = data.get('build')
 else:
-    raise SystemExit('BLOCKED: expected cicada.hub-build.v1 or a matching interop result')
+    raise SystemExit('BLOCKED: expected cicada.hub-build.v1 or a matching client interop result')
 
 if not isinstance(build, dict) or build.get('schema_version') != 'cicada.hub-build.v1':
     raise SystemExit('BLOCKED: build metadata schema mismatch')

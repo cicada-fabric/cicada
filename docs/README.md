@@ -7,7 +7,7 @@ Native consumption and physical-phone acceptance remain separate scopes.
 
 Read the published [community technical site](https://cicada-fabric.github.io/)
 or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
-current 0.0.3 source, deployment boundaries and remaining acceptance work.
+current 0.0.4 source, deployment boundaries and remaining acceptance work.
 Development stays in 0.0.x until user acceptance; the guide's v0.1.x names the
 planned first release line and its incrementing patch number.
 
@@ -18,6 +18,7 @@ planned first release line and its incrementing patch number.
 | Deployment and platform interface design | [Web UI, CLI and local components](deployment-interface-design.md) — official-product research and Linux/macOS/Windows delivery plan; platform build/runtime evidence kept separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |
 | Identity and permissions | [Owner bootstrap](owner-approval-bootstrap.md), [Node trust](node-owner-trust.md), [permissions](permissions.md), [Network contract](network-m1-contract.md) |
+| Headless operator Client | [Encrypted no-phone management Client](owner-headless-client.md), [scoped validation](owner-headless-client-validation.md) — existing-Owner INITIAL SDK slice complete; full Hub account/QR product remains proposed |
 | Native sessions and MCP | [Harnesses](harnesses.md), [Fabric](fabric.md), [Join self identity](native-join-self-identity.md), [Runtime capability limits](runtime-operation-capabilities.md) |
 | Encrypted collaboration | [Peer privacy](task-peer-privacy-contract.md), [Group spaces](group-spaces-m2-contract.md), [multi-owner boundaries](group-spaces-multi-owner-contract.md) |
 | Client interoperability | [Development boundary](client-hub-development.md), [wire v1](client-hub-wire-v1.md), [OpenAPI](client-hub-v1.openapi.yaml), [Web panel](hub-web-panel.md) |

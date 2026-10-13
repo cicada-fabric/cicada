@@ -19,7 +19,7 @@ fi
 }
 case "$suite" in
   client)
-    test_selector='^TestClientDockerHub(Smoke|RecoveryFixture)$'
+    test_selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator)$'
     ;;
   client-link-recovery)
     test_selector='^TestClientDockerHubLinkFaultFixture$'
@@ -151,13 +151,13 @@ import sys
 output, scratch, status, phase, exit_code, test_exit, test_image_id, suite = sys.argv[1:]
 build_file = Path(output) / "build.json"
 if suite == "client-link-recovery":
-    schema_version = "cicada.client-link-recovery-interop.v1"
+    schema_version = "cicada.client-link-recovery-interop.v2"
     test_name = "TestClientDockerHubLinkFaultFixture"
     level = "real_tcp_dedicated_link_original_packet_recovery"
     scope = ["KEY_NONE_eight_recovery_cases", "two_real_owned_hub_restarts", "original_packet_fence",
              "fresh_separate_session_reconciliation", "synthetic_go_signatures_only"]
 elif suite == "network-m1":
-    schema_version = "cicada.network-m1-interop.v1"
+    schema_version = "cicada.network-m1-interop.v2"
     test_name = "TestNetworkM1DockerHub"
     level = "real_tcp_hub_network_m1"
     scope = ["same_hub_two_networks", "operator_mapping_activation",
@@ -170,7 +170,7 @@ elif suite == "network-m1":
              "network_only_direct_sealed_ask_reply_route_status",
              "control_free_http_network_direct_ask_reply_claim_authorize"]
 elif suite == "group-spaces-m2":
-    schema_version = "cicada.group-spaces-m2-interop.v1"
+    schema_version = "cicada.group-spaces-m2-interop.v2"
     test_name = "TestGroupSpacesM2DockerHub"
     level = "real_tcp_disposable_hub_group_spaces_m2"
     scope = ["synthetic_two_node_credentials", "trusted_group_sessions",
@@ -178,7 +178,7 @@ elif suite == "group-spaces-m2":
              "mismatched_node_session_denial", "topic_status_cas_and_stale_retry",
              "control_management_routes_not_exercised"]
 elif suite == "capacity":
-    schema_version = "cicada.hub-bounded-capacity.v1"
+    schema_version = "cicada.hub-bounded-capacity.v2"
     test_name = "TestHubBoundedCapacityDocker"
     level = "real_tcp_disposable_hub_bounded_contention_sample"
     scope = ["one_disposable_hub_process", "one_sqlite_state", "two_synthetic_logical_nodes",
@@ -186,14 +186,40 @@ elif suite == "capacity":
              "relay_admission_backpressure", "cancellation_and_reply_progress",
              "not_a_capacity_guarantee", "NATIVE_NOT_RUN"]
 else:
-    schema_version = "cicada.client-hub-interop.v1"
+    schema_version = "cicada.client-hub-interop.v2"
     test_name = "TestClientDockerHubSmoke"
     level = "real_tcp_hub_go_protocol_client"
     scope = ["enrollment", "exact_enrollment_retry", "encrypted_snapshot",
              "exact_packet_retry", "completed_request_recovery",
              "still_processing_recovery", "uncertain_recovery_packet",
              "legacy_recovery_unavailable",
-             "node_code_confirmation_and_heartbeat", "owner_status_topology_isolation"]
+             "node_code_confirmation_and_heartbeat", "owner_status_topology_isolation",
+             "headless_public_sdk_over_real_hub_tcp", "full_hub_key_pin_rejection",
+             "expired_exact_enrollment_retry_after_reopen", "encrypted_external_owner_scope",
+             "reviewed_node_candidate_confirmation_and_list", "bounded_no_generic_rpc_api"]
+
+test_events = []
+test_log = Path(output) / "test.log"
+if test_log.is_file():
+    for line in test_log.read_text(errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and isinstance(event.get("test"), str):
+            test_events.append(event)
+
+def named_test_status(name):
+    actions = [event.get("action") for event in test_events if event.get("test") == name]
+    last_run = max((index for index, action in enumerate(actions) if action == "run"), default=None)
+    if last_run is None:
+        return "NOT_RUN"
+    terminal = next((action for action in reversed(actions[last_run + 1:])
+                     if action in ("pass", "fail", "skip")), None)
+    if terminal is not None:
+        return {"pass": "PASS", "fail": "FAIL", "skip": "SKIP"}[terminal]
+    return "FAIL"
+
 result = {
     "schema_version": schema_version,
     "suite": suite, "status": status, "phase": phase, "exit_code": int(exit_code),
@@ -201,7 +227,8 @@ result = {
     "level": level,
     "build": json.loads(build_file.read_text()) if build_file.exists() else None,
     "test_image_id": test_image_id,
-    "test": {"name": test_name, "exit_code": int(test_exit)},
+    "test": {"name": test_name, "status": named_test_status(test_name),
+             "runner_exit_code": int(test_exit)},
     "android": "NOT_RUN", "native_runtime": "NOT_RUN", "public_https": "NOT_RUN",
     "scope": scope,
 }
@@ -217,10 +244,22 @@ if suite == "client-link-recovery":
     result["link_recovery"] = json.loads(receipt.read_text()) if receipt.exists() else {"status": "NOT_RUN"}
     result["physical_device"] = "NOT_RUN"
 if suite == "client":
-    result["recovery_fault_test"] = {"name": "TestClientDockerHubRecoveryFixture", "exit_code": int(test_exit)}
+    result["recovery_fault_test"] = {
+        "name": "TestClientDockerHubRecoveryFixture",
+        "status": named_test_status("TestClientDockerHubRecoveryFixture"),
+        "runner_exit_code": int(test_exit),
+    }
+    result["headless_operator_test"] = {
+        "name": "TestClientDockerHubHeadlessOperator",
+        "status": named_test_status("TestClientDockerHubHeadlessOperator"),
+        "runner_exit_code": int(test_exit),
+        "level": "real_tcp_disposable_hub_bounded_client_sdk",
+    }
 if suite == "group-spaces-m2":
     result["additional_tests"] = [
-        {"name": "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS", "exit_code": int(test_exit),
+        {"name": "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS",
+         "status": named_test_status("TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS"),
+         "runner_exit_code": int(test_exit),
          "level": "real_tcp_new_fabric_handler_control_free"},
     ]
     result["native_harness_session"] = "SYNTHETIC_FIXTURE_ONLY"
@@ -405,7 +444,9 @@ else
     --user "$(id -u):$(id -g)" --env-file "$scratch/test.env" \
     -e "CICADA_TEST_HUB_URL=$hub_url" -e CICADA_TEST_HUB_DB=/tmp/fixture-state/cicada.sqlite3 \
     -e GOCACHE=/tmp/go-build -e GOPROXY=off -e CGO_ENABLED=0 \
-    -v "$scratch/state:/tmp/fixture-state" "$test_image_id" >"$scratch/test.raw" 2>&1
+      -v "$scratch/state:/tmp/fixture-state" --entrypoint go "$test_image_id" \
+      test -json -p=1 ./internal/server ./cmd/client-recovery-fixture \
+      -run "$test_selector" -count=1 -timeout=180s >"$scratch/test.raw" 2>&1
 fi
 test_exit=$?
 set -e
@@ -483,9 +524,11 @@ required = ({"TestClientDockerHubLinkFaultFixture"} if suite == "client-link-rec
             ({"TestGroupSpacesM2DockerHub", "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS"}
              if suite == "group-spaces-m2" else
              ({"TestHubBoundedCapacityDocker"} if suite == "capacity" else
-             {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture"}))
+             {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture",
+              "TestClientDockerHubHeadlessOperator"}))
             ))
 passed = set()
+actions_by_test = {name: [] for name in required}
 raw_path = Path(raw)
 raw_present = raw_path.is_file()
 for line in (raw_path.read_text(errors="replace").splitlines() if raw_present else []):
@@ -497,10 +540,26 @@ for line in (raw_path.read_text(errors="replace").splitlines() if raw_present el
     if not re.fullmatch(r"[A-Za-z0-9_/.]+", name) or action not in ("run", "pass", "fail", "skip"):
         continue
     events.append({"test": name, "action": action})
-    if action == "pass" and name in required:
-        passed.add(name)
+    if name in required:
+        actions_by_test[name].append(action)
+
+def named_status(actions):
+    last_run = max((index for index, action in enumerate(actions) if action == "run"), default=None)
+    if last_run is None:
+        return "NOT_RUN"
+    terminal = next((action for action in reversed(actions[last_run + 1:])
+                     if action in ("pass", "fail", "skip")), None)
+    if terminal is not None:
+        return {"pass": "PASS", "fail": "FAIL", "skip": "SKIP"}[terminal]
+    return "FAIL"
+
+required_statuses = {name: named_status(actions_by_test[name]) for name in sorted(required)}
+passed = {name for name, status in required_statuses.items() if status == "PASS"}
+suite_status = ("NOT_RUN" if not raw_present else
+                ("PASS" if int(exit_code) == 0 and passed == required else "FAIL"))
 events.append({"runner_exit_code": int(exit_code), "required_tests_passed": sorted(passed),
-               "raw_present": raw_present, "test_status": "NOT_RUN" if not raw_present else "OBSERVED"})
+               "required_test_statuses": required_statuses, "raw_present": raw_present,
+               "test_status": suite_status})
 Path(destination).write_text("".join(json.dumps(event) + "\n" for event in events))
 if int(exit_code) != 0 or passed != required:
     raise SystemExit("Required Docker protocol test failed or did not run; inspect sanitized lifecycle evidence")

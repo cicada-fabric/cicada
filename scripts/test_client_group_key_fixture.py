@@ -142,9 +142,15 @@ class ClientGroupKeyFixtureTest(unittest.TestCase):
         self.assert_parser_refused(symlink=True)
 
     def test_completed_interop_metadata_only(self):
-        wrapped = {"schema_version": "cicada.client-hub-interop.v1", "status": "PASS",
+        wrapped = {"schema_version": "cicada.client-hub-interop.v2", "status": "PASS",
                    "phase": "complete", "exit_code": 0, "build": self.metadata}
         self.assert_parser_accepted(metadata=wrapped)
+        historical = copy.deepcopy(wrapped)
+        historical["schema_version"] = "cicada.client-hub-interop.v1"
+        self.assert_parser_accepted(metadata=historical)
+        unsupported = copy.deepcopy(wrapped)
+        unsupported["schema_version"] = "cicada.client-hub-interop.v3"
+        self.assert_parser_refused(metadata=unsupported)
         for field, value in (("status", "FAIL"), ("phase", "build"),
                              ("exit_code", 1), ("exit_code", False)):
             with self.subTest(field=field, value=value):

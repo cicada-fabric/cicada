@@ -5,17 +5,28 @@ amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-inst
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
-## 2026-10-12 current source candidate — unreleased; acceptance partial
+## 2026-10-13 current source candidate — unreleased; acceptance partial
 
-The current development version is **0.0.3**: Hub schema **59**, Client
+The current development version is **0.0.4**: Hub schema **59**, Client
 contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
 operations. Architecture v2.3, Git revision, dirty source/build fingerprints
 and artifact digests are separate identities. See the
 [technical guide](v01-technical-guide.md) and
 [distribution details](distribution.md).
 
+The [0.0.4 headless Client checkpoint](owner-headless-client-validation.md) completes
+the bounded existing-Owner INITIAL operator slice. Normal/race/vet checks and
+final A4 disposable SDK/Hub TCP passed with confirmed cleanup; its v2 is a local
+receipt schema, not a public protocol revision. A1/A2 failures and A3 intermediate
+results retain their own sources and artifacts. Full Hub account setup, finite
+first-signer authority, unified QR pairing and Windows custody remain
+NOT_IMPLEMENTED; macOS native, Android, Runtime, physical-device, public HTTPS and
+actual interactive CLI acceptance are NOT_RUN for this slice. Overall acceptance
+remains PARTIAL, with no release or deployment change.
+
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
-as the current evidence index. The clean-328f default aggregate remains **FAIL**;
+as the retained broader evidence index, supplemented by the scoped 0.0.4 record
+above. The clean-328f default aggregate remains **FAIL**;
 later scoped results retain their own tested-source attribution. C14 passed a
 bounded six-turn default-daemon G2/G3 scope on original A/B contexts, including
 the authorized Ask/Reply path and an encrypted status snapshot after same-store

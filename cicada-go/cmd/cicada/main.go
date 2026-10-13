@@ -34,6 +34,11 @@ func main() {
 		}
 	case "version", "--version", "-V":
 		fmt.Println("cicada " + buildinfo.Version)
+	case "client":
+		if err := clientOperatorCommand(os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "mcp":
 		if err := runMCP(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -340,7 +345,7 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|owner|version")
 }
 
 func fabricCommand(baseURL string, args []string) error {

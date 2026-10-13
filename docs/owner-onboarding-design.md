@@ -5,9 +5,14 @@
 扫码/配对串体验加入**；手机只承担 Client，不作为 Hub；Hub 初始化不依赖
 任何已注册 Client。此前“外部工具
 是普通接入前提”和“首手机参与创建 Owner”的流程均已被修正。
-实现状态：**PROPOSED / NOT_IMPLEMENTED**。本文记录 2026-10-13 的流程与
-下一实现边界，不修改 [已采纳规格](../CICADA.md)、软件版本、已发布 Client
-合同或现有部署。已连接设备以自身私钥挑战认证；Hub 初始管理授权另来自
+完整产品实现状态：**PROPOSED / NOT_IMPLEMENTED**。软件 0.0.4 已增加有限的
+[无手机管理 Client](owner-headless-client.md)：在 Hub 已初始化、独立 Owner
+批准 key 已登记的前提下，复用独立本地 Client identity、准确 Grant 登记和
+加密 Node 首次配对预览/确认/恢复。现有升级预览缺少准确目标绑定/version，
+该 CLI 因而拒绝升级确认；账户设置、首 signer bootstrap 与统一扫码仍未实现。
+本文继续记录 2026-10-13 的产品流程与下一实现边界；有限 CLI 检查点更新软件
+版本，不改变 [已采纳规格](../CICADA.md)、已发布 Client 合同或现有部署。
+已连接设备以自身私钥挑战认证；Hub 初始管理授权另来自
 独立部署者控制渠道，本次不宣称新密码/SSO 或远程 admin 登录已经实现。
 
 产品应先在 Hub 设置中建立属于用户的 Owner/admin 账户、管理入口与连接策略，
@@ -120,8 +125,10 @@ bearer、公钥首上传、Node 或模型取得，也不能用于覆盖既有 Ro
 不能把常驻 Hub/Node 变成 Owner signer。现有 `nodes.preview/confirm` 还要求
 已登记 ACTIVE 管理 Client actor，只有外部 Root signer 本身不足以调用确认。
 无手机最小复用方案是独立 Owner/operator CLI 作为 headless management
-Client，用自身独立 Client identity 登记并关联外部 signer；这套产品入口仍
-**NOT_IMPLEMENTED**。其他 operator proof 入口须另行设计，不能把 bootstrap
+Client，用自身独立 Client identity 登记并关联外部 signer。0.0.4 的有限
+[headless CLI](owner-headless-client.md)已复用现有 Grant/encrypted RPC 完成这段
+协议入口；它仍要求独立预置公钥/Signer，不完成账号设置或普通统一配对产品。
+其他 operator proof 入口须另行设计，不能把 bootstrap
 票或 Node identity 当成已有管理 Client actor。
 
 ## 4. Node 与 Client 共用“添加设备”流程

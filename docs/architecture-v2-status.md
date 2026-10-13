@@ -4,10 +4,11 @@
 Owner/admin account, management entry and connection policy independently first;
 then let Node/Client join through one QR/pairing-key experience. A phone is only
 a Client. Hub-ready, external signer-ready and device-connected are distinct.
-The [Owner onboarding design](owner-onboarding-design.md) is planning only;
+The full [Owner onboarding design](owner-onboarding-design.md) remains planning;
 Hub account/setup, first external signer bootstrap and unified pairing UI remain
 **NOT_IMPLEMENTED**. Existing Android local device keygen and Node device-code
-primitives are reusable foundations. Optional OpenSSL/manual signing results
+primitives are reusable foundations. The bounded headless slice below is
+implemented separately. Optional OpenSSL/manual signing results
 below do not establish this product flow; their prior source and scope remain intact.
 
 The [cross-platform interface design](deployment-interface-design.md) is also
@@ -15,8 +16,35 @@ planning: shared Web UI/Go CLI, native Node and optional desktop entry require
 separate platform acceptance. Existing multi-target builds do not prove new GUI,
 OS key storage, device pairing or native Runtime support; PQ package scope remains Linux.
 
-Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
-independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)
+<a id="headless-owner-client-20261013"></a>
+
+## 2026-10-13 bounded headless management Client — COMPLETE; full onboarding PARTIAL
+
+Current software is **0.0.4**. The [headless Client](owner-headless-client.md)
+creates an independent local Client identity, accepts an existing exact Owner
+Grant, and uses encrypted capabilities/status and INITIAL Node preview/confirm/list
+with durable original-packet recovery. Full Hub pins, private profile custody,
+exclusive independent-writer locking and visible terminal review are required.
+The CLI calls sequentially; callers MUST serialize methods on one Profile, and
+flock rejects only independent opens. Uncertain confirmations remain fenced,
+and UPGRADE confirmation fails closed on the existing missing target review tuple.
+
+[Scoped validation](owner-headless-client-validation.md) records normal 16 top-level
+and 9 subtests, race 15 top-level and 9 subtests, targeted vet, contract checks and
+final A4 Docker three top-level + three recovery subtests PASS with confirmed
+cleanup. A1/A2 failures, A3's intermediate-v1 PASS and their distinct source/image
+identities remain intact. Local receipt v2 and 78 Python consumer/formatter tests
+are metadata evidence, not a Client protocol change or fresh Link Docker result.
+Contract v1.6.5, wire 1, catalog 55 and Hub schema 59 are unchanged.
+
+This completes the existing-Owner no-phone INITIAL slice. Hub account/admin setup,
+finite first-signer bootstrap, unified typed QR pairing and Windows custody remain
+NOT_IMPLEMENTED; macOS native custody, Android, native Runtime, physical devices,
+public HTTPS and actual interactive CLI acceptance remain NOT_RUN for this slice.
+Overall v0.1.0 remains PARTIAL; no old acceptance count or resident deployment changes.
+
+Software 0.0.3 added signed IP locators, actual ARM64 PQ packaging and a manual
+independent-Owner first-install ceremony. [The earlier installation checkpoint](docker-ip-arm64-validation.md)
 records clean `ab2362f` packaged amd64/ARM64 first-install A2 SCOPED_PASS,
 A1 UNKNOWN-cause readiness FAIL and retained earlier diagnostics. Bootstrap standard HTTPS with NIST application
 proofs and enrolled strict PQ TLS remain separate. Contract v1.6.5, wire 1,
@@ -50,7 +78,9 @@ overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-va
 
 Use the [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 for product scope and the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
-for current source and artifact checks. Software is 0.0.3, contract
+for their source and artifact checks, supplemented by the
+[0.0.4 headless checkpoint](owner-headless-client-validation.md). Current software
+is 0.0.4, contract
 `client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
 their separate tested sources. C14 passed a bounded default-daemon scope on

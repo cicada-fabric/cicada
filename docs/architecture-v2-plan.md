@@ -17,7 +17,37 @@ native-host Node by default and optional thin desktop entry. Official product
 research, current BUILD_ONLY/native limits and Linux PQ ABI boundaries are
 separate from implementation acceptance; no new UI framework or service is chosen.
 
-The most recent source/package validation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
+<a id="headless-owner-client-20261013"></a>
+
+## 2026-10-13 bounded headless Client slice — COMPLETE
+
+Software **0.0.4** implements the [existing-Owner operator Client](owner-headless-client.md)
+with separate local identity, exact canonical Grant enrollment, encrypted
+capabilities/status, INITIAL Node preview/confirmation/list, and durable original
+packet retry/recovery. It reuses current Guard; no Owner private key, Node credential,
+bare management bearer or arbitrary RPC enters this Client. Private profile locking
+rejects only independent opens; the CLI calls sequentially and callers MUST
+serialize methods on one Profile. UPGRADE is
+refused when the current preview lacks the exact target binding/version.
+
+[The validation closeout](owner-headless-client-validation.md) records deterministic
+normal/race/vet checks and final A4 three top-level tests plus three recovery
+subtests in disposable Docker PASS
+with confirmed cleanup. Local receipt v2 consumers passed 78 Python tests; this
+is neither public wire revision nor a fresh Link Docker result. A1/A2 failures and
+A3 intermediate results keep their original attribution. Contract v1.6.5, wire 1,
+catalog 55 and Hub schema 59 remain unchanged; no Android source/APK changed.
+
+The next ordinary-onboarding implementation boundary remains independent Hub
+account/admin/connection-policy setup, then finite first-signer authority and
+typed Client/Node pairing. The completed advanced operator slice is reusable
+foundation, not completion of those planned flows. Windows custody is
+NOT_IMPLEMENTED; macOS native, Android, Runtime, physical-device, public HTTPS and
+actual interactive CLI acceptance remain NOT_RUN for this slice. Preserve existing
+state/keys and overall PARTIAL release status; deployment/release is not authorized
+by these synthetic results.
+
+The earlier source/package checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
 Clean producer `ab2362f` now has actual amd64/ARM64 packages and A2 unified
 first-install SCOPED_PASS under bounded explicit QEMU. Source/package/fixture
 identities and exact cleanup are recorded; A1 first-readiness FAIL with UNKNOWN

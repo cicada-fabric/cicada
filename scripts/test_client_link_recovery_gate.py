@@ -374,8 +374,13 @@ class LinkGateTests(unittest.TestCase):
         reply=subprocess.run(['bash','-c',fragment],env=env,capture_output=True,timeout=2)
         self.assertEqual(reply.returncode,1);self.assertNotIn(b'FileNotFoundError',reply.stderr)
         self.assertFalse((scratch/'test.raw').exists())
-        self.assertEqual(json.loads((output/'test.log').read_text()),
-                         {'runner_exit_code':1,'required_tests_passed':[],'raw_present':False,'test_status':'NOT_RUN'})
+        self.assertEqual(json.loads((output/'test.log').read_text()), {
+            'runner_exit_code':1,
+            'required_tests_passed':[],
+            'required_test_statuses':{'TestClientDockerHubLinkFaultFixture':'NOT_RUN'},
+            'raw_present':False,
+            'test_status':'NOT_RUN',
+        })
         env['test_exit']='0'
         self.assertEqual(subprocess.run(['bash','-c',fragment],env=env,capture_output=True,timeout=2).returncode,1)
 
@@ -390,23 +395,114 @@ class LinkGateTests(unittest.TestCase):
             with self.subTest(status=status):
                 self.assertEqual(reply.returncode,0);self.assertEqual(reply.stdout.decode(),expected)
 
-    def test_formatter_preserves_four_existing_suite_required_tests(self):
+    def test_formatter_preserves_existing_suite_required_tests(self):
         shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()
         begin=shell.index('python3 - "$scratch/test.raw" "$output_root/test.log"')
         fragment=shell[begin:shell.index('\nPY',begin)+len('\nPY')]
         root=Path(self.temp.name);scratch=root/'scratch';output=root/'output';scratch.mkdir();output.mkdir()
-        cases={'client':['TestClientDockerHubSmoke','TestClientDockerHubRecoveryFixture'],
+        cases={'client':['TestClientDockerHubSmoke','TestClientDockerHubRecoveryFixture',
+                         'TestClientDockerHubHeadlessOperator'],
                'network-m1':['TestNetworkM1DockerHub'],
                'group-spaces-m2':['TestGroupSpacesM2DockerHub','TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS'],
                'capacity':['TestHubBoundedCapacityDocker']}
         for suite,names in cases.items():
             env=dict(os.environ,suite=suite,scratch=str(scratch),output_root=str(output),test_exit='0')
             for complete in [True,False]:
-                events=[{'Test':name,'Action':'pass','Output':'SYNTHETIC_PRIVATE_ONLY'} for name in (names if complete else names[:-1])]
+                events=[]
+                for name in (names if complete else names[:-1]):
+                    events.extend([{'Test':name,'Action':'run'},
+                                   {'Test':name,'Action':'pass','Output':'SYNTHETIC_PRIVATE_ONLY'}])
                 (scratch/'test.raw').write_text(''.join(json.dumps(e)+'\n' for e in events))
                 reply=subprocess.run(['bash','-c',fragment],env=env,capture_output=True,timeout=2)
                 with self.subTest(suite=suite,complete=complete):self.assertEqual(reply.returncode,0 if complete else 1)
-                self.assertNotIn('SYNTHETIC_PRIVATE_ONLY',(output/'test.log').read_text())
+                sanitized=(output/'test.log').read_text()
+                self.assertNotIn('SYNTHETIC_PRIVATE_ONLY',sanitized)
+                footer=json.loads(sanitized.splitlines()[-1])
+                self.assertEqual(footer['test_status'],'PASS' if complete else 'FAIL')
+                if suite=='client' and not complete:
+                    self.assertEqual(footer['runner_exit_code'],0)
+                    self.assertEqual(footer['required_test_statuses']['TestClientDockerHubHeadlessOperator'],'NOT_RUN')
+
+    def test_client_docker_branch_dispatches_selected_tests_to_go(self):
+        shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()
+        anchor=shell.index('phase=protocol_test')
+        begin=shell.index('else\n  docker run --cidfile "$scratch/test.cid"',anchor)+len('else\n')
+        command=shell[begin:shell.index('\nfi\ntest_exit=$?',begin)]
+        root=Path(self.temp.name);scratch=root/'scratch';fakebin=root/'fakebin'
+        scratch.mkdir();fakebin.mkdir();(scratch/'test.env').write_text('')
+        captured=root/'docker-args.json'
+        docker=fakebin/'docker'
+        docker.write_text('#!/usr/bin/env python3\nimport json, os, sys\nfrom pathlib import Path\nPath(os.environ["CAPTURE"]).write_text(json.dumps(sys.argv[1:]))\n')
+        docker.chmod(0o700)
+        selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator)$'
+        env=dict(os.environ,PATH=str(fakebin)+os.pathsep+os.environ['PATH'],CAPTURE=str(captured),
+                 scratch=str(scratch),test_image_id='sha256:'+('a'*64),child_run_id='synthetic-run',
+                 test_container='synthetic-test',hub_url='http://127.0.0.1:8787',test_selector=selector)
+        reply=subprocess.run(['bash','-euo','pipefail','-c',command],env=env,capture_output=True,timeout=2)
+        self.assertEqual(reply.returncode,0,reply.stderr.decode(errors='replace'))
+        args=json.loads(captured.read_text())
+        self.assertEqual(args[0],'run')
+        self.assertEqual(args[args.index('--entrypoint')+1],'go')
+        image=args.index('sha256:'+('a'*64))
+        self.assertEqual(args[image+1:],[
+            'test','-json','-p=1','./internal/server','./cmd/client-recovery-fixture',
+            '-run',selector,'-count=1','-timeout=180s',
+        ])
+
+    def test_client_result_metadata_uses_named_test_terminal_and_separate_runner_exit(self):
+        shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()
+        marker='  python3 - "$output_root" "$scratch" "$status" "$phase" "$exit_code" "$test_exit" "$test_image_id" "$suite" <<\'PY\'\n'
+        begin=shell.index(marker)+len(marker)
+        code=shell[begin:shell.index('\nPY\n  rmdir "$output_root/.running"',begin)]
+        root=Path(self.temp.name);output=root/'result-output';scratch=root/'scratch'
+        output.mkdir();scratch.mkdir()
+        rows=[
+            {'test':'TestClientDockerHubSmoke','action':'run'},
+            {'test':'TestClientDockerHubSmoke','action':'pass'},
+            {'test':'TestClientDockerHubRecoveryFixture','action':'run'},
+            {'test':'TestClientDockerHubRecoveryFixture','action':'pass'},
+        ]
+        cases=[([], 'NOT_RUN'),([{'test':'TestClientDockerHubHeadlessOperator','action':'run'}], 'FAIL'),
+               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
+                 {'test':'TestClientDockerHubHeadlessOperator','action':'pass'}], 'PASS'),
+               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
+                 {'test':'TestClientDockerHubHeadlessOperator','action':'skip'}], 'SKIP'),
+               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
+                 {'test':'TestClientDockerHubHeadlessOperator','action':'pass'},
+                 {'test':'TestClientDockerHubHeadlessOperator','action':'run'}], 'FAIL')]
+        for headless_events,expected in cases:
+            (output/'test.log').write_text(''.join(json.dumps(row)+'\n' for row in rows+headless_events))
+            reply=subprocess.run([sys.executable,'-',str(output),str(scratch),'FAIL','protocol_test','1','0',
+                                  'sha256:'+('b'*64),'client'],input=code,text=True,capture_output=True,timeout=2)
+            self.assertEqual(reply.returncode,0,reply.stderr)
+            result=json.loads((output/'result.json').read_text())
+            self.assertEqual(result['headless_operator_test']['status'],expected)
+            self.assertEqual(result['headless_operator_test']['runner_exit_code'],0)
+            self.assertNotIn('exit_code',result['headless_operator_test'])
+
+    def test_changed_interop_receipt_families_use_v2_schema(self):
+        shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()
+        marker='  python3 - "$output_root" "$scratch" "$status" "$phase" "$exit_code" "$test_exit" "$test_image_id" "$suite" <<\'PY\'\n'
+        begin=shell.index(marker)+len(marker)
+        code=shell[begin:shell.index('\nPY\n  rmdir "$output_root/.running"',begin)]
+        root=Path(self.temp.name);output=root/'schema-output';scratch=root/'scratch'
+        output.mkdir();scratch.mkdir()
+        cases=(
+            ('client','cicada.client-hub-interop.v2','TestClientDockerHubSmoke'),
+            ('client-link-recovery','cicada.client-link-recovery-interop.v2','TestClientDockerHubLinkFaultFixture'),
+            ('network-m1','cicada.network-m1-interop.v2','TestNetworkM1DockerHub'),
+            ('group-spaces-m2','cicada.group-spaces-m2-interop.v2','TestGroupSpacesM2DockerHub'),
+            ('capacity','cicada.hub-bounded-capacity.v2','TestHubBoundedCapacityDocker'),
+        )
+        for suite,expected_version,test_name in cases:
+            rows=[{'test':test_name,'action':'run'},{'test':test_name,'action':'pass'}]
+            (output/'test.log').write_text(''.join(json.dumps(row)+'\n' for row in rows))
+            reply=subprocess.run([sys.executable,'-',str(output),str(scratch),'PASS','protocol_test','0','0',
+                                  'sha256:'+('c'*64),suite],input=code,text=True,capture_output=True,timeout=2)
+            with self.subTest(suite=suite):
+                self.assertEqual(reply.returncode,0,reply.stderr)
+                result=json.loads((output/'result.json').read_text())
+                self.assertEqual(result['schema_version'],expected_version)
 
 
 if __name__ == '__main__':unittest.main()

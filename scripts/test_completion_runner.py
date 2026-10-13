@@ -160,10 +160,10 @@ class CompletionRunnerTests(unittest.TestCase):
                      + [{"Action": "pass", "Test": name} for name in tests]
                      + [{"Action": "pass"}])
         return {
-            "schema_version": "cicada.client-link-recovery-interop.v1",
+            "schema_version": "cicada.client-link-recovery-interop.v2",
             "suite": "client-link-recovery", "suite_name": "client-link-recovery",
             "lane": "client", "status": "PASS", "exit_code": 0,
-            "test": {"name": top, "exit_code": 0},
+            "test": {"name": top, "status": "PASS", "runner_exit_code": 0},
             "build": {"schema_version": "cicada.hub-build.v1",
                       "transport_variant": "standard",
                       "source": {"revision": "1" * 40, "dirty": False,
@@ -276,6 +276,22 @@ class CompletionRunnerTests(unittest.TestCase):
         wrong_suite = copy.deepcopy(receipt)
         wrong_suite["suite_name"] = "client"
         cases.append(("suite", wrong_suite, None))
+        legacy_version = copy.deepcopy(receipt)
+        legacy_version["schema_version"] = "cicada.client-link-recovery-interop.v1"
+        cases.append(("legacy-version", legacy_version, None))
+        legacy_test_exit = copy.deepcopy(receipt)
+        legacy_test_exit["test"] = {"name": runner.LINK_RECOVERY_TOP_TEST, "exit_code": 0}
+        cases.append(("legacy-test-shape", legacy_test_exit, None))
+        for test_status in ("NOT_RUN", "FAIL", "SKIP"):
+            wrong_test_status = copy.deepcopy(receipt)
+            wrong_test_status["test"]["status"] = test_status
+            cases.append(("test-status-" + test_status.lower(), wrong_test_status, None))
+        nonzero_runner = copy.deepcopy(receipt)
+        nonzero_runner["test"]["runner_exit_code"] = 1
+        cases.append(("test-runner-exit", nonzero_runner, None))
+        bool_runner = copy.deepcopy(receipt)
+        bool_runner["test"]["runner_exit_code"] = False
+        cases.append(("test-runner-bool", bool_runner, None))
         wrong_head = copy.deepcopy(receipt)
         wrong_head["build"]["source"]["revision"] = "9" * 40
         cases.append(("build-head", wrong_head, None))

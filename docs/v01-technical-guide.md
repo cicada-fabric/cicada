@@ -5,7 +5,11 @@ amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-inst
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
-This guide covers the current **0.0.3** development source line. It is public technical
+This guide covers the current **0.0.4** development source line. The bounded
+[headless Client](owner-headless-client.md) reuses existing Owner Grant enrollment
+and encrypted INITIAL Node confirmation; full Hub account/QR setup remains
+proposed, and earlier 0.0.3 installation artifacts retain their attribution.
+It is public technical
 documentation for an unreleased candidate, not a release announcement or proof
 of complete product acceptance. Read the [current closeout](v01-current-closeout-20261009-validation.md)
 for retained failures and the [implementation ledger](completion-ledger.md) for
