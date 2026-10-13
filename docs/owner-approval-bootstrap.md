@@ -1,13 +1,19 @@
 # Offline owner key bootstrap for development
 
 This is an optional advanced/development compatibility path. The ordinary product
-requirement is account creation plus built-in local key creation/import and safe
-device pairing, recorded in the [Owner onboarding design](owner-onboarding-design.md).
-That product remains **NOT_IMPLEMENTED**; phone-first is allowed in its proposed
-flow. Users should not need Owner IDs, public JSON, Base64 grants or manual signing
+requirement is independent Linux Hub account/admin setup first, then one Node/Client
+QR/pairing-key flow with local keys, recorded in the
+[Owner onboarding design](owner-onboarding-design.md). Hub-ready and external
+signer-ready are separate; first Client enrollment does not create Owner.
+That product and finite first-signer authorization remain **NOT_IMPLEMENTED**.
+Users should not need Owner IDs, public JSON, Base64 grants or manual signing
 commands in normal enrollment. Prior external-tool-only ordinary UX guidance is
 superseded; the current commands and historical evidence below remain applicable
 to this explicit development path.
+
+The [deployment/interface design](deployment-interface-design.md) keeps Owner
+private material in the user's local component; shared platform CLI/UI does not
+move it into Hub state/volume or make a Node an Owner signer.
 
 This is the existing offline development trust ceremony for Owner keys under
 the adopted Architecture v2.3; it is not a production provisioning service.

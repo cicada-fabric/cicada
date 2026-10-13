@@ -1,13 +1,21 @@
 # Architecture v2.3 实施计划
 
-2026-10-13 ordinary onboarding requirement: a deployed Hub should support one
-human Owner account and built-in local key creation/import with safe device
-pairing. The [Owner onboarding design](owner-onboarding-design.md) records the
-next bounded checkpoint, existing gaps, migration and security/acceptance matrix;
-the account/setup product remains **NOT_IMPLEMENTED**. Phone-first is supported
-in the proposed flow; the Windows external-OpenSSL ceremony is optional tooling,
-not the standard enrollment product. The previous external-tool-only ordinary
-UX decision is superseded; historical manual-signing evidence below is retained.
+2026-10-13 corrected onboarding requirement: deploy and independently initialize
+the Linux-server Hub first, including its human Owner/admin account, management
+entry and connection policy; then add Node/Client through one QR/pairing-key
+experience. A phone is a Client and does not create the Hub's Owner. The
+[Owner onboarding design](owner-onboarding-design.md) separates Hub-ready,
+external signer authority and device connection, with headless Node CLI paste/file
+input and explicit proof/role checks. This account/setup and unified pairing
+product remains **NOT_IMPLEMENTED**; first external signer bootstrap requires
+separate finite deployment authorization. External OpenSSL is optional tooling.
+Historical manual-signing evidence below retains its original source and scope.
+
+[Deployment/interface design](deployment-interface-design.md) recommends a Hub
+embedded Web UI plus shared Go CLI/local components for Linux/macOS/Windows,
+native-host Node by default and optional thin desktop entry. Official product
+research, current BUILD_ONLY/native limits and Linux PQ ABI boundaries are
+separate from implementation acceptance; no new UI framework or service is chosen.
 
 The most recent source/package validation checkpoint is [IP-only + ARM64 PQ TLS + first installation](docker-ip-arm64-plan.md).
 Clean producer `ab2362f` now has actual amd64/ARM64 packages and A2 unified
@@ -66,8 +74,10 @@ Implement the smallest ordered bootstrap CLI/shell flow, then a TUI over it:
    Keep signing independent of Hub and keep Thread Join explicit. Build no second
    authentication/authorization business path; initial standard HTTPS, ML-KEM/ML-DSA
    application protection and enrolled Node pure-PQ TLS remain distinct.
-   Ordinary Owner/device setup should provide built-in local generation/import
-   and safe enrollment as planned above; private-key custody remains local.
+   Complete Hub account/admin/connection-policy setup independently first; then
+   provide one Add device [Client/Node] QR/pairing-key flow with built-in local
+   generation/import. Private keys remain on their respective devices; Hub-ready
+   does not itself establish external Owner signing authority.
    External standard tools remain optional advanced/development compatibility.
    The opt-in [OpenSSL helper](owner-windows-openssl.md) converts public SPKI and delegates
    device-grant signing; private-key import/conversion and Windows secure-storage

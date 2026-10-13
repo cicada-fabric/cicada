@@ -1,11 +1,19 @@
 # Distribution and deployment
 
-The ordinary-user requirement is now a deployed Hub with one human Owner account,
-built-in local key creation/import and safe phone/Node pairing. The
+The ordinary-user requirement is to deploy and initialize the Linux-server Hub
+first, with its human Owner/admin account, management entry and connection policy,
+then add Node/Client through one QR/pairing-key flow with device-local keys. The
 [Owner onboarding design](owner-onboarding-design.md) separates that **NOT_IMPLEMENTED**
-product from current manual development procedures. Phone-first is part of the
-proposed flow; external OpenSSL remains an optional advanced compatibility path.
+product from current manual development procedures. Hub-ready is independent of
+phones and external Owner signer readiness; Node CLI accepts paste/file input and
+Client accepts scan/manual input. External OpenSSL remains optional advanced tooling.
 Existing installation and evidence below retain their original state and scope.
+
+The [interface/deployment design](deployment-interface-design.md) recommends one
+Hub Web UI and shared Linux/macOS/Windows Go CLI/local components. Native Node is
+the default for real Runtime/workspaces; containers are explicit isolated Runtime
+choices. Optional desktop launchers reuse the UI/API. Standard cross-builds are
+separate from native platform acceptance; current strict PQ packages have Linux ABI limits.
 
 [The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
 amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
@@ -41,8 +49,11 @@ must stay retained for operator review. Do not downgrade state fields or replay
 old uncertain attempts to make an upgrade appear successful. The detailed
 backup/failure boundaries below remain authoritative.
 
-Hub, Node and Client are deployment responsibilities, not separate required
-machines. One physical host may run both Hub and Node instances; these roles
+Hub's current target is a Linux-server Docker/binary service; Node runs native
+workspaces/Runtimes, and Client is Android/desktop/browser; a phone never hosts Hub.
+Future macOS/Windows roles require platform-specific acceptance.
+They are deployment responsibilities, not separate required machines.
+One physical host may run independent Hub and Node instances; these roles
 are not mutually exclusive. The Hub owns authoritative SQLite state and serves
 Control/Fabric;
 the Node owns its credential, Endpoint keys, inbox and native Runtime access;
@@ -58,7 +69,7 @@ visibility and message grants remain separate server-checked permissions.
 | Server/host, IP address, routing/firewall and actual reachability; OS and Docker permissions | User/operator supplies and operates these resources. |
 | Optional domain and DNS; external WebPKI HTTPS entry, its certificate/CA infrastructure, lifecycle and backups | User/operator chooses and operates this entry; deployment tooling may automate its maintenance. A domain is optional. |
 | Independent trust checks, Owner signatures, exact Node approval and other real authorization decisions | User/Owner decides; installation cannot fabricate approval or transfer Owner authority to the Hub operator. |
-| Owner approval private-key generation and custody | CICADA should provide built-in local generation/import and safe registration for ordinary account/device setup; the user retains local custody and approves authorization. External tools and `owner-key generate` remain optional advanced/development paths; the new product flow is **NOT_IMPLEMENTED**. |
+| Owner approval private-key generation and custody | After independent Hub account setup, CICADA should provide user-local generation/import and precise external signer registration, then qualified signing of device enrollment. Hub initialization/ordinary pairing credentials cannot substitute signer authority; the user retains private-key custody. External tools remain optional advanced/development paths; the new flow is **NOT_IMPLEMENTED**. |
 | Stable identities, current Guard, application E2EE, sessions, durable queues, outbound Node transport and exact original-Thread binding | CICADA supplies and enforces these product mechanisms within its documented Runtime and acceptance limits. |
 | Internal Node PQ identity/issuer/root/leaf initialization or existing-material import, Owner authorization and installation lifecycle | CICADA should provide controlled CLI guidance so users need not build the internal PKI manually; production CA initialization remains **NOT_IMPLEMENTED**. |
 | Lightweight deployment checks and guided setup | CICADA should provide them. Requiring users to build a PKI manually or write many JSON files does not complete the easy-deployment experience. |

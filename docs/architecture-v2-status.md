@@ -1,12 +1,19 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-2026-10-13 ordinary Owner onboarding: the user requirement now includes one
-human account, built-in local key creation/import and safe device pairing.
+2026-10-13 corrected Owner onboarding: initialize the Linux-server Hub's human
+Owner/admin account, management entry and connection policy independently first;
+then let Node/Client join through one QR/pairing-key experience. A phone is only
+a Client. Hub-ready, external signer-ready and device-connected are distinct.
 The [Owner onboarding design](owner-onboarding-design.md) is planning only;
-account setup/login, first-Owner initialization and ordinary pairing UI remain
+Hub account/setup, first external signer bootstrap and unified pairing UI remain
 **NOT_IMPLEMENTED**. Existing Android local device keygen and Node device-code
 primitives are reusable foundations. Optional OpenSSL/manual signing results
 below do not establish this product flow; their prior source and scope remain intact.
+
+The [cross-platform interface design](deployment-interface-design.md) is also
+planning: shared Web UI/Go CLI, native Node and optional desktop entry require
+separate platform acceptance. Existing multi-target builds do not prove new GUI,
+OS key storage, device pairing or native Runtime support; PQ package scope remains Linux.
 
 Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
 independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)

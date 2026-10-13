@@ -2,12 +2,20 @@
 
 This is optional advanced/development compatibility tooling, not the standard
 account or enrollment product. The [Owner onboarding design](owner-onboarding-design.md)
-records the ordinary built-in local key creation/import and safe device-pairing
-requirement, including phone-first setup and trusted Windows-local software.
+records independent Linux Hub account/admin initialization first, then the same
+QR/pairing-key experience for Node/Client with trusted device-local generation/import.
+Proposed Windows/Android local components would hold external Owner signing keys
+after explicit registration;
+they do not create the Hub account instead of server-side setup. Hub never holds
+Owner private keys, and pairing credentials alone cannot generate a signed Grant.
 The new account/setup product is **NOT_IMPLEMENTED**. Normal enrollment should
 not require OpenSSL, Owner ID lookup, hand-copied public JSON or Base64 Grant.
 The manual procedure and its actual source-attributed validation below remain
 unchanged in scope.
+
+The [cross-platform interface plan](deployment-interface-design.md) uses a shared
+Web UI and Go local components, with Windows native key/ACL and Runtime acceptance
+separate from cross-builds. This helper does not establish that planned product.
 
 This opt-in helper supports public-key adaptation and device-grant signing for
 the existing software 0.0.3 Hub, wire 1, catalog 55 and `client-hub-v1.6.5`.
