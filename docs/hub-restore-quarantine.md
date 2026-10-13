@@ -115,7 +115,7 @@ The maintenance-lock checkpoint uses a read-only clean
 dirty Go overlay. Its source identity includes the full snapshot inventory,
 overlay hashes and exact patch; it cannot be attributed to that HEAD alone.
 Evidence is retained in the task-local
-[maintenance validation receipt](/home/zyf/CICADA_restore_validation/.cicada-data/restore-validation/hub-maintenance-lock-20261004/validation-receipt.json).
+[maintenance validation receipt](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_restore_validation/.cicada-data/restore-validation/hub-maintenance-lock-20261004/validation-receipt.json).
 Go 1.27.1 ran offline in the same pinned compiler image above, as UID 1000 with
 read-only source/root filesystem and two actual bind aliases of one private
 StateDir. Scoped normal PASS covers 23 top-level tests (including the subprocess

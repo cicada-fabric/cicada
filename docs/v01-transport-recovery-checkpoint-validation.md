@@ -130,7 +130,7 @@ the corrected frozen-source gates passed. Root owns the new package/image export
 
 ### Recovery boundary
 
-The accepted independent [backup report](/home/zyf/CICADA_node_backup/.cicada-data/writer-root-focused/report.json)
+The accepted independent [backup report](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_node_backup/.cicada-data/writer-root-focused/report.json)
 has SHA-256 `77bb2223a9c864025b29922f686dcd64e83a03de68e4ca65911a8b6461a3fb80`
 and identifies its 14 uncommitted files on base `4fb241b`. Root verified those
 hashes before integrating 13 files; the migration note is consolidated here.
@@ -180,7 +180,7 @@ invalid disabled-MCP config before model execution; real-3 ran three actual turn
 and seed witnesses but did not call Join, so it failed. Real-4 uses Codex CLI
 0.159.3 and direct, narrow, required MCP startup preflights with two original
 Threads on two Docker Nodes at one physical loopback host. Its terminal
-[result](/home/zyf/CICADA_native_e2e/.cicada-data/native-two-node-real-4/result.json)
+[result](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_native_e2e/.cicada-data/native-two-node-real-4/result.json)
 SHA is `74e83ccaa17a6c862e2047b492bccfc6e61f426fb843404d298c6dfb7e3624bc`.
 It belongs to dirty `4fb241b`, source fingerprint
 `bc6def6eef27ffeddde5351fe8a3b280fbfeae186c0e0d007ccd7fa724490841`,
@@ -192,7 +192,7 @@ and driver SHA
 Seven actual CLI turns retain the original local session records and context
 witnesses. Both exact sealed messages are independently present in completed
 receive tool results without error, as verified by
-[the exact-receive audit](/home/zyf/CICADA_native_e2e/.cicada-data/native-two-node-real-4/exact-receive-message-audit.json).
+[the exact-receive audit](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_native_e2e/.cicada-data/native-two-node-real-4/exact-receive-message-audit.json).
 Its SHA is `aee1c01612498b2fc0fc3eb868abac33ad709161f8cc32176c09d5356a688551`;
 the completed-tool/order audit SHA is
 `29948fdab46a36dd5d4c3324dee2e7944ef8db4d6d43104ccdb4ceb64b039daf`.
@@ -245,11 +245,11 @@ sequence is explicit Network Join,
 Owner-approved Group admission, then same-original-Thread Group Join; Node
 pairing or Network identity registration does not grant Group traffic authority.
 No guard weakening or paid model retry is accepted by this record. The
-[terminal native result](/home/zyf/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/result.json)
+[terminal native result](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/result.json)
 SHA is `bb44440bcd8f3a0a13f0d51a22f2a55fa208be99b3ec68885d360ae3dae229b3`,
-and the [sanitized classification](/home/zyf/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/join-failure-classification.json)
+and the [sanitized classification](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/join-failure-classification.json)
 SHA is `9beb504c287c81c9734ea445771760178f2530578fbbf6dcfaddbe7bbe9e5e03`.
-The [controller execution receipt](/home/zyf/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/controller-execution.redacted.json)
+The [controller execution receipt](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_native_e2e/.cicada-data/m4-native-attach-3-controller-2/controller-execution.redacted.json)
 SHA is `b26d1f918644f98b079546e656e43ab2ba4d9f40247b915ef5dec3bb79a70ffe`.
 It records terminal exit 1 witnessed in the original tool response; the exact
 controller argv was not retained in the artifact. No reconstructed command is

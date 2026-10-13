@@ -146,7 +146,7 @@ checkout revision `144e079ddf62a4e08f1d1cf9476ab41d25d28f5c`
 is a checkout coordinate, not an attribution of these binaries to a clean
 build of that revision. The pinned image was
 `sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`.
-The [build manifest](/home/zyf/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-implementation-20261004/build-manifest.json)
+The [build manifest](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-implementation-20261004/build-manifest.json)
 records the effective source, toolchain, build commands and binary hashes;
 its SHA-256 is
 `5c6fb03a1b0fe36a60650fe42345969d5d5e0790964c3fe6c72c27a065a1d21b`.
@@ -168,7 +168,7 @@ that skip is not a pass. The earlier normal01 fixture-0700 failure
 is retained in full. Normal02 and normal03 passed after the repair; the failed
 run has not been overwritten or reclassified.
 
-The actual [TCP gate summary](/home/zyf/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-tcp-gate-20261004-01/summary.json)
+The actual [TCP gate summary](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-tcp-gate-20261004-01/summary.json)
 records **PASS** for `happy`, `lost-unknown`, and `pending`, with 129 exact
 commands. The happy case verified current replay floor advancement and
 revocation, original UNKNOWN refusal to dispatch, cached sealed uncertainty
@@ -179,7 +179,7 @@ model/provider calls were zero; model/provider execution was `NOT_TOUCHED`.
 
 The supervisor independently verified cleanup of 20 exact owned Docker
 references, their owner labels, and the private fixture path. Its
-[cleanup record](/home/zyf/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-implementation-20261004/parent-tcp-cleanup-verification.json)
+[cleanup record](/home/zyf/CICADA/.cicada-data/worktree-evidence/CICADA_restore_validation/.cicada-data/restore-validation/hub-forward-implementation-20261004/parent-tcp-cleanup-verification.json)
 is **PASS**, SHA-256
 `9de6e0d497db84374afe6d299a8c5f3467ca8716897003464e71129e9385b6ab`.
 The command logs and source records belong to the external Core validation tree
