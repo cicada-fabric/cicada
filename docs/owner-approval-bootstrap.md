@@ -9,10 +9,34 @@ Fabric messages end-to-end encrypted.
 A legacy management bearer or Node/Fabric credential cannot replace
 the owner's private signing key.
 
-Generate a distinct ML-KEM-768/ML-DSA-65 identity on a machine controlled by
-the user. Keep the private file there; only copy the public JSON to the Hub.
-The private directory must already have mode `0700`, and the CLI creates the
-private file with mode `0600` without overwriting any existing file:
+The user owns generation and custody of the Owner approval signing private key
+and may use external standard tools. CICADA supplies algorithm/parameter,
+format, verification/authorization and local import/adaptation guidance;
+`owner-key generate` is an optional offline development bootstrap, not a required
+product dependency. This boundary does not remove automatic Node/Endpoint/Client
+device identity creation or the separate internal Node PQ certificate lifecycle.
+
+Current signing commands read CICADA's `identityDisk` JSON: `version` plus
+base64-encoded raw ML-KEM-768 `kem_private` and ML-DSA-65 `signing_private` bytes
+([serialization and reader](../cicada-go/internal/e2ee/pq.go)). This is **not a
+standard PEM/PKCS#8 import**. The OpenSSL 3.5 official
+[ML-DSA documentation](https://docs.openssl.org/3.5/man7/EVP_PKEY-ML-DSA/) and
+[ML-KEM documentation](https://docs.openssl.org/3.5/man7/EVP_PKEY-ML-KEM/)
+describe those algorithm variants and standard key encodings; their availability
+does not mean the current CICADA CLI can directly read externally generated PEM.
+
+External Owner key import/conversion and native Windows signing/secure-storage
+adaptation are **NOT_IMPLEMENTED** follow-up work. Reuse mature libraries and
+verify exact formats/public identity/signatures without protocol changes or
+rotating existing keys. Native Windows Owner use has not been accepted; current
+`0700`/`0600` checks follow Unix permissions and do not prove Windows ACL/secure
+storage support. WSL is not a product requirement. Keep private keys on the
+user-controlled signing machine; never upload them to Hub or an online converter.
+
+For the existing optional Unix development path, generate a distinct
+ML-KEM-768/ML-DSA-65 identity on a user-controlled machine. Only copy its public
+JSON to Hub. The private directory must already have mode `0700`; the CLI creates
+the private file with mode `0600` without overwriting any existing file:
 
 ```bash
 mkdir -m 700 "$HOME/cicada-owner"

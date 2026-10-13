@@ -51,6 +51,7 @@ visibility and message grants remain separate server-checked permissions.
 | Server/host, IP address, routing/firewall and actual reachability; OS and Docker permissions | User/operator supplies and operates these resources. |
 | Optional domain and DNS; external WebPKI HTTPS entry, its certificate/CA infrastructure, lifecycle and backups | User/operator chooses and operates this entry; deployment tooling may automate its maintenance. A domain is optional. |
 | Independent trust checks, Owner signatures, exact Node approval and other real authorization decisions | User/Owner decides; installation cannot fabricate approval or transfer Owner authority to the Hub operator. |
+| Owner approval private-key generation and custody | User may use external standard tools. CICADA documents algorithms/parameters, formats, verification/authorization and local import/adaptation; `owner-key generate` remains an optional development bootstrap, not a required dependency. |
 | Stable identities, current Guard, application E2EE, sessions, durable queues, outbound Node transport and exact original-Thread binding | CICADA supplies and enforces these product mechanisms within its documented Runtime and acceptance limits. |
 | Internal Node PQ identity/issuer/root/leaf initialization or existing-material import, Owner authorization and installation lifecycle | CICADA should provide controlled CLI guidance so users need not build the internal PKI manually; production CA initialization remains **NOT_IMPLEMENTED**. |
 | Lightweight deployment checks and guided setup | CICADA should provide them. Requiring users to build a PKI manually or write many JSON files does not complete the easy-deployment experience. |
@@ -59,6 +60,13 @@ The current manual procedures expose the trust and installation primitives;
 they do not complete that guided experience. The [future CLI/TUI sequence](architecture-v2-plan.md#guided-deployment-cli-tui)
 will automate existing service/CLI operations, with real Owner decisions kept
 explicit. This plan does not authorize changes to an existing deployment.
+
+Owner key custody is separate from automatic Node/Endpoint/Client device identity
+creation and the internal Node PQ certificate lifecycle. External Owner key
+import/conversion and native Windows signing/secure-storage adaptation are
+**NOT_IMPLEMENTED**; native Windows Owner use is unaccepted, and WSL is not a
+product requirement. Current format limits and the optional Unix CLI are in
+[Owner bootstrap guidance](owner-approval-bootstrap.md).
 
 ## HTTPS entry and trust
 

@@ -57,6 +57,12 @@ Implement the smallest ordered bootstrap CLI/shell flow, then a TUI over it:
    Keep signing independent of Hub and keep Thread Join explicit. Build no second
    authentication/authorization business path; initial standard HTTPS, ML-KEM/ML-DSA
    application protection and enrolled Node pure-PQ TLS remain distinct.
+   Owner approval private-key generation/custody may use external standard tools;
+   CICADA provides algorithm/format, verification/authorization and adaptation guidance.
+   External Owner import/conversion and Windows signing/secure-storage adaptation are
+   **NOT_IMPLEMENTED**; reuse mature libraries without protocol changes or key rotation.
+   Native Windows Owner use is unaccepted; WSL is not required. Keep private keys local,
+   never upload them to Hub or an online converter; runtime device identities remain separate.
 6. Report actual local health, entry/trust reachability and pending approval/recovery
    steps. Validate the future installer with disposable first-install/rerun/failure
    fixtures; record Android, real native Runtime, physical devices and public HTTPS
