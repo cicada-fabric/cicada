@@ -66,7 +66,13 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RegisterOwnerApprovalKeyLocal(owner.ID, ownerKey.Public()); err != nil {
+	setup, err := persistence.GetHubOwnerSetup()
+	if err != nil || setup == nil || setup.OwnerID == "" || setup.OwnerID == owner.ID {
+		_ = persistence.Close()
+		t.Fatal("disposable Hub did not preserve a stable Owner/account mapping separate from its Control identity")
+	}
+	managerOwnerID := setup.OwnerID
+	if _, err := persistence.RegisterOwnerApprovalKeyLocal(managerOwnerID, ownerKey.Public()); err != nil {
 		_ = persistence.Close()
 		t.Fatal(err)
 	}
@@ -82,13 +88,13 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, err := ownerKey.SignOwnerDeviceGrant(owner.ID, "docker-phone", device.Public(), hub.HubID,
+	grant, err := ownerKey.SignOwnerDeviceGrant(managerOwnerID, "docker-phone", device.Public(), hub.HubID,
 		e2ee.OwnerDevicePurposeControl, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	enrollment, err := json.Marshal(map[string]any{
-		"owner_id": owner.ID, "owner_key_id": ownerKey.Public().ID, "device_id": "docker-phone",
+		"owner_id": managerOwnerID, "owner_key_id": ownerKey.Public().ID, "device_id": "docker-phone",
 		"device_public_identity": device.Public(), "owner_device_grant": grant,
 	})
 	if err != nil {
@@ -98,7 +104,7 @@ func TestClientDockerHubSmoke(t *testing.T) {
 	if exactEnrollmentRetry := call(http.MethodPost, "/v2/client/devices/enroll", enrollment, "", http.StatusCreated); !bytes.Equal(firstEnrollment, exactEnrollmentRetry) {
 		t.Fatal("Docker Hub exact enrollment retry changed persisted binding")
 	}
-	binding := clientwire.Binding{HubID: hub.HubID, OwnerID: owner.ID, DeviceID: "docker-phone",
+	binding := clientwire.Binding{HubID: hub.HubID, OwnerID: managerOwnerID, DeviceID: "docker-phone",
 		SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
 	route := clientwire.Route{Version: clientwire.Version, Direction: clientwire.DirectionRequest,
 		HubID: binding.HubID, OwnerID: binding.OwnerID, DeviceID: binding.DeviceID,
@@ -122,7 +128,7 @@ func TestClientDockerHubSmoke(t *testing.T) {
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(opened.Plaintext, &result); err != nil || !result.OK ||
-		result.Result.OwnerID != owner.ID || len(result.Result.Groups) == 0 {
+		result.Result.OwnerID != managerOwnerID || len(result.Result.Groups) == 0 {
 		t.Fatalf("unexpected Docker Hub snapshot: err=%v result=%#v", err, result)
 	}
 	retry := call(http.MethodPost, "/v2/client/rpc", packet, "", http.StatusOK)

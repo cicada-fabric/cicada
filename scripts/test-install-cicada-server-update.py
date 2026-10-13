@@ -319,34 +319,46 @@ class InstallerUpdateTest(unittest.TestCase):
     def compose_up_calls(self) -> list[list[str]]:
         return [call for call in self.calls() if call[:1] == ["compose"] and "up" in call]
 
+    def mutating_calls(self) -> list[list[str]]:
+        calls = []
+        compose_mutations = {"up", "down", "run", "create", "start", "stop", "rm", "build"}
+        docker_mutations = {"run", "create", "start", "stop", "rm"}
+        for call in self.calls():
+            if call[:1] == ["compose"] and any(command in call for command in compose_mutations):
+                calls.append(call)
+            elif call and call[0] in docker_mutations:
+                calls.append(call)
+            elif call[:2] in (["volume", "create"], ["volume", "rm"]):
+                calls.append(call)
+        return calls
+
     def migration_calls(self, name: str) -> list[list[str]]:
         return [call for call in self.calls() if "migration" in call and name in call]
 
-    def test_default_fresh_install_keeps_original_project_and_volume(self) -> None:
+    def test_default_pristine_install_refuses_before_mutation(self) -> None:
         env = {
             "FAKE_EXISTING": "0",
             "FAKE_VOLUME_PRESENT": "0",
             "CICADA_DEPLOY_PROJECT": PROJECT,
         }
         result = self.run_installer(**env)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(self.compose_up_calls()), 1)
-        up = self.compose_up_calls()[0]
-        self.assertEqual(up[up.index("-p") + 1], PROJECT)
-        self.assertIn(f"Persistent Hub state volume: {HUB_VOLUME}", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pristine fresh Hub install is not supported", result.stderr)
+        self.assertIn("docs/hub-owner-bootstrap.md", result.stderr)
+        self.assertEqual(self.mutating_calls(), [])
         self.assertFalse(self.migration_calls("backup"))
 
-    def test_custom_fresh_install_uses_isolated_project_volume(self) -> None:
+    def test_custom_pristine_install_refuses_before_mutation(self) -> None:
         result = self.run_installer(
             FAKE_EXISTING="0",
             FAKE_VOLUME_PRESENT="0",
             CICADA_DEPLOY_PROJECT="hub-check-a",
             CICADA_HUB_VOLUME="",
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        up = self.compose_up_calls()[0]
-        self.assertEqual(up[up.index("-p") + 1], "hub-check-a")
-        self.assertIn("Persistent Hub state volume: hub-check-a-hub-state", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pristine fresh Hub install is not supported", result.stderr)
+        self.assertIn("docs/hub-owner-bootstrap.md", result.stderr)
+        self.assertEqual(self.mutating_calls(), [])
 
     def test_orphan_named_volume_is_not_treated_as_fresh_install(self) -> None:
         result = self.run_installer(FAKE_EXISTING="0", FAKE_VOLUME_PRESENT="1")

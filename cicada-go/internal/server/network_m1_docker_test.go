@@ -154,11 +154,17 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	if err != nil {
 		t.Fatal("open only the disposable Hub StateDir")
 	}
-	if err := persistence.EnsureLocalOwnerPrincipal(owner.ID); err != nil {
+	setup, err := persistence.GetHubOwnerSetup()
+	if err != nil || setup == nil || setup.OwnerID == "" || setup.OwnerID == owner.ID {
+		_ = persistence.Close()
+		t.Fatal("disposable Hub did not preserve a stable Owner/account mapping separate from its Control identity")
+	}
+	managerOwnerID := setup.OwnerID
+	if err := persistence.EnsureLocalOwnerPrincipal(managerOwnerID); err != nil {
 		_ = persistence.Close()
 		t.Fatal("ensure synthetic Owner principal")
 	}
-	registeredOwnerKey, err := persistence.RegisterOwnerApprovalKeyLocal(owner.ID, ownerKey.Public())
+	registeredOwnerKey, err := persistence.RegisterOwnerApprovalKeyLocal(managerOwnerID, ownerKey.Public())
 	if err != nil {
 		_ = persistence.Close()
 		t.Fatal("register synthetic Owner approval key")
@@ -169,14 +175,14 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		t.Fatal("Hub identity did not match its isolated SQLite state")
 	}
 	now := time.Now().UTC()
-	deviceGrant, err := ownerKey.SignOwnerDeviceGrant(owner.ID, deviceID, ownerDevice.Public(),
+	deviceGrant, err := ownerKey.SignOwnerDeviceGrant(managerOwnerID, deviceID, ownerDevice.Public(),
 		hub.HubID, e2ee.OwnerDevicePurposeControl, now.Add(-time.Minute), now.Add(time.Hour))
 	if err != nil {
 		_ = persistence.Close()
 		t.Fatal("sign synthetic Owner device grant")
 	}
 	if _, err := persistence.RegisterClientDeviceFromOwnerGrant(store.RegisterClientDeviceInput{
-		OwnerID: owner.ID, OwnerKeyID: registeredOwnerKey.KeyID, DeviceID: deviceID,
+		OwnerID: managerOwnerID, OwnerKeyID: registeredOwnerKey.KeyID, DeviceID: deviceID,
 		DevicePublic: ownerDevice.Public(), OwnerDeviceGrant: deviceGrant,
 	}); err != nil {
 		_ = persistence.Close()
@@ -194,7 +200,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		_ = persistence.Close()
 		t.Fatal("create synthetic Node owner-binding request")
 	}
-	if _, err := persistence.ConfirmPendingNodeDeviceBinding(owner.ID, deviceID, codeDigest); err != nil {
+	if _, err := persistence.ConfirmPendingNodeDeviceBinding(managerOwnerID, deviceID, codeDigest); err != nil {
 		_ = persistence.Close()
 		t.Fatal("confirm synthetic Node owner binding")
 	}
@@ -238,13 +244,13 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	dbArg := []string{"--db", dbPath}
 	var createdA store.Network
 	if err := json.Unmarshal(runOperator("create", append(append([]string{}, dbArg...),
-		"--hub", hub.HubID, "--network", networkA, "--name", "M1 Alpha", "--owner", owner.ID)...),
+		"--hub", hub.HubID, "--network", networkA, "--name", "M1 Alpha", "--owner", managerOwnerID)...),
 		&createdA); err != nil || createdA.ID != networkA || createdA.HubID != hub.HubID {
 		t.Fatal("operator CLI could not create Network A")
 	}
 	var createdB store.Network
 	if err := json.Unmarshal(runOperator("create", append(append([]string{}, dbArg...),
-		"--hub", hub.HubID, "--network", networkB, "--name", "M1 Beta", "--owner", owner.ID)...),
+		"--hub", hub.HubID, "--network", networkB, "--name", "M1 Beta", "--owner", managerOwnerID)...),
 		&createdB); err != nil || createdB.ID != networkB || createdB.HubID != hub.HubID {
 		t.Fatal("operator CLI could not create Network B")
 	}
@@ -310,11 +316,11 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		invitationPath := filepath.Join(privateDir, networkID+"-"+sessionID+"-invite")
 		proofPath := filepath.Join(privateDir, networkID+"-"+sessionID+"-proof")
 		runOperator("invite", append(append([]string{}, dbArg...), "--network", networkID,
-			"--target-owner", owner.ID, "--invitation-file", invitationPath, "--grants", grants,
+			"--target-owner", managerOwnerID, "--invitation-file", invitationPath, "--grants", grants,
 			"--ttl", "15m")...)
 		runOperator("consent-sign", "--owner-private", ownerPrivatePath,
 			"--proof-file", proofPath, "--invitation-file", invitationPath,
-			"--owner", owner.ID, "--hub", hub.HubID, "--network", networkID,
+			"--owner", managerOwnerID, "--hub", hub.HubID, "--network", networkID,
 			"--node", nodeID, "--session", sessionID, "--grants", grants, "--discoverable")
 		invitation, err := os.ReadFile(invitationPath)
 		if err != nil {
@@ -469,7 +475,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	}
 	unsignedInvitePath := filepath.Join(privateDir, "unsigned-owner-invite")
 	runOperator("invite", append(append([]string{}, dbArg...), "--network", networkA,
-		"--target-owner", owner.ID, "--invitation-file", unsignedInvitePath,
+		"--target-owner", managerOwnerID, "--invitation-file", unsignedInvitePath,
 		"--grants", discoverGrants, "--ttl", "15m")...)
 	unsignedInvite, err := os.ReadFile(unsignedInvitePath)
 	if err != nil {
@@ -486,7 +492,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	// Even a valid Owner proof cannot let an unjoined caller choose a different
 	// native Thread or assert a Node ID in the HTTP body.
 	const approvedUnjoinedSession = "network-m1-approved-unjoined"
-	proof, err := ownerKey.SignOwnerNetworkJoinGrant(owner.ID, hub.HubID, networkA,
+	proof, err := ownerKey.SignOwnerNetworkJoinGrant(managerOwnerID, hub.HubID, networkA,
 		nodeID, approvedUnjoinedSession,
 		store.NetworkInvitationDigest(string(bytes.TrimSpace(unsignedInvite))),
 		registeredOwnerKey.KeyID, []string{"directory.discover", "directory.publish"}, true,
@@ -598,7 +604,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	// A separate no-Group Thread now exchanges Endpoint-encrypted messages
 	// over the real Node HTTP route. Both key grants travel through the same
 	// accepted encrypted Client device protocol as production Owner consent.
-	clientBinding := clientwire.Binding{HubID: hub.HubID, OwnerID: owner.ID,
+	clientBinding := clientwire.Binding{HubID: hub.HubID, OwnerID: managerOwnerID,
 		DeviceID: deviceID, SessionEpoch: 1, HubKeyVersion: 1, DeviceKeyVersion: 1}
 	var clientSequence uint64
 	clientRPC := func(operation string, payload any, target any) {
@@ -610,7 +616,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 		}
 		route := clientwire.Route{Version: clientwire.Version,
 			Direction: clientwire.DirectionRequest, HubID: hub.HubID,
-			OwnerID: owner.ID, DeviceID: deviceID, SessionEpoch: 1,
+			OwnerID: managerOwnerID, DeviceID: deviceID, SessionEpoch: 1,
 			Sequence: clientSequence, OperationID: fmt.Sprintf("synthetic-network-direct-%d", clientSequence),
 			Operation: operation, SenderKeyID: ownerDevice.Public().ID, SenderKeyVersion: 1,
 			ReceiverKeyID: hub.ControlPublicIdentity.ID, ReceiverKeyVersion: 1}
@@ -687,7 +693,7 @@ func TestNetworkM1DockerHub(t *testing.T) {
 			t.Fatal("Owner manifest did not bind the native Thread")
 		}
 		proof, err := ownerKey.SignOwnerNetworkDirectKeyGrant(hub.HubID, networkA,
-			join.Endpoint.ID, owner.ID, manifest.Digest, time.Now().UTC().Add(-time.Minute),
+			join.Endpoint.ID, managerOwnerID, manifest.Digest, time.Now().UTC().Add(-time.Minute),
 			time.Now().UTC().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
@@ -824,12 +830,12 @@ func TestNetworkM1DockerHub(t *testing.T) {
 	if err != nil {
 		t.Fatal("open disposable ACTIVE Store for Control-free HTTP check")
 	}
-	ownerPrincipal, err := isolatedStore.GetPrincipal(owner.ID)
+	ownerPrincipal, err := isolatedStore.GetPrincipal(managerOwnerID)
 	if err != nil {
 		_ = isolatedStore.Close()
 		t.Fatal("load synthetic Owner for Control-free Fabric service")
 	}
-	isolatedFabric, err := fabric.NewService(isolatedStore, owner.ID, ownerPrincipal.TrustDomainID)
+	isolatedFabric, err := fabric.NewService(isolatedStore, managerOwnerID, ownerPrincipal.TrustDomainID)
 	if err != nil {
 		_ = isolatedStore.Close()
 		t.Fatal("construct Control-free Fabric service")

@@ -7,14 +7,14 @@ Native consumption and physical-phone acceptance remain separate scopes.
 
 Read the published [community technical site](https://cicada-fabric.github.io/)
 or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
-current 0.0.4 source, deployment boundaries and remaining acceptance work.
+current 0.0.5 source, deployment boundaries and remaining acceptance work.
 Development stays in 0.0.x until user acceptance; the guide's v0.1.x names the
 planned first release line and its incrementing patch number.
 
 | Area | Authoritative entry points |
 |---|---|
 | Product architecture | [Adopted specification](../CICADA.md), [implementation status](architecture-v2-status.md), [completion ledger](completion-ledger.md) |
-| Next Hub setup and device pairing checkpoint | [Owner account and device onboarding](owner-onboarding-design.md) — initialize server Hub/account first, then one Node/Client QR/pairing-key flow; adopted user requirement, **NOT_IMPLEMENTED** |
+| Hub Owner bootstrap checkpoint | [Operator guide](hub-owner-bootstrap.md), [first-signer contract](hub-owner-bootstrap-contract.md), [validation](hub-owner-bootstrap-validation.md), and [full onboarding design](owner-onboarding-design.md) — bounded checkpoint SCOPED PASS across Docker A2, segmented normal/race, vet/build, and Python checks; aggregate A7/R3 failures/timeouts remain recorded; unified QR/account UI, Windows custody and lost-Root recovery remain **NOT_IMPLEMENTED** |
 | Deployment and platform interface design | [Web UI, CLI and local components](deployment-interface-design.md) — official-product research and Linux/macOS/Windows delivery plan; platform build/runtime evidence kept separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |
 | Identity and permissions | [Owner bootstrap](owner-approval-bootstrap.md), [Node trust](node-owner-trust.md), [permissions](permissions.md), [Network contract](network-m1-contract.md) |

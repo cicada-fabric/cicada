@@ -283,7 +283,7 @@ func (c *Control) JoinEndpoint(input EndpointJoinInput) (*store.Endpoint, error)
 	// The bearer-authenticated Control is the Phase 3 ownership boundary.
 	// Never trust a caller-supplied owner string; cross-user ownership arrives
 	// later through Contact identities and the E2EE federation path.
-	input.Owner = c.Identity().ID
+	input.Owner = c.ManagerOwnerID()
 	capabilities, err := sanitizeEndpointCapabilities(input.Capabilities)
 	if err != nil {
 		return nil, err

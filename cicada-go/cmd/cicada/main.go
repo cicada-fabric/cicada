@@ -39,6 +39,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "hub":
+		if err := hubCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "owner-signer":
+		if err := ownerSignerCommand(os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "mcp":
 		if err := runMCP(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -162,6 +172,9 @@ func serve(args []string) error {
 	}
 	if *fabricOnly {
 		return serveFabricOnlyWithTransport(*host, *port, config, pqConfig)
+	}
+	if err := checkHubServeReadiness(config); err != nil {
+		return err
 	}
 	controlPlane, err := control.New(config)
 	if err != nil {
@@ -345,7 +358,7 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|hub|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|owner|version")
 }
 
 func fabricCommand(baseURL string, args []string) error {

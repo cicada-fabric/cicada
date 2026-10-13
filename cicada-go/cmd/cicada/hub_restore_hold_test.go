@@ -98,6 +98,18 @@ func TestHubRestoreHoldFabricStartupBeforeStoreIdentityAndListener(t *testing.T)
 	if err := os.WriteFile(filepath.Join(ordinary, "e2ee", "identity.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// An ordinary production Fabric server now requires independent Hub
+	// setup; a crypto identity alone cannot create its human Owner.
+	ordinaryStore, err := store.New(filepath.Join(ordinary, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ordinaryStore.InitializeHubOwnerLocal("Synthetic ordinary owner", "https://synthetic.invalid", false); err != nil {
+		t.Fatal(err)
+	}
+	if err = ordinaryStore.Close(); err != nil {
+		t.Fatal(err)
+	}
 	err = serveFabricOnly("127.0.0.1", 65536, control.Config{StateDir: ordinary})
 	if err == nil || errors.Is(err, store.ErrStateRestoreQuarantined) || !strings.Contains(err.Error(), "invalid port") {
 		t.Fatalf("ordinary constructor did not reach bounded listener validation: %v", err)

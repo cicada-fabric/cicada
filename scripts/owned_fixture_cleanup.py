@@ -47,7 +47,7 @@ class PreflightFailure(ValueError):
 
 
 def prepare(scratch, run_id, lane, containers, images, call=command):
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,191}', run_id or '') or lane not in {'client', 'network-m1', 'group-spaces-m2', 'capacity', 'multi-hub-services', 'node-control-v1'} or len(containers) + len(images) > 4:
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,191}', run_id or '') or lane not in {'client', 'network-m1', 'group-spaces-m2', 'capacity', 'multi-hub-services', 'node-control-v1'} or len(containers) + len(images) > 5:
         raise ValueError('CLEANUP_SCOPE')
     root = Path(scratch)
     info = root.lstat()
@@ -85,7 +85,7 @@ def cleanup(plan, build=None, call=command):
             continue
         expected = resource.get('expected_image_id')
         if build is not None:
-            metadata = build.get('image' if row['role'] in ('hub', 'hub-image') else 'test_image', {})
+            metadata = build.get('image' if row['role'] in ('hub', 'setup', 'hub-image') else 'test_image', {})
             expected = metadata.get('id')
         expected = expected if isinstance(expected, str) and ID.fullmatch(expected) else None
         row['expected_image_id'] = expected

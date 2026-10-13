@@ -1,14 +1,31 @@
 # Architecture v2.3 实施计划
 
+## 2026-10-13 bounded Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
+
+The bounded source candidate is separately specified by
+[`owner-bootstrap-v1`](hub-owner-bootstrap-contract.md): local stable Hub
+account/Owner mapping, a finite exact-candidate first-signer authority, durable
+Root history, and reuse of the existing Client and Node INITIAL paths. It adds
+no Client catalog operation and makes no Android support claim. The corrected-
+source independent-Hub Docker gate passed, including fresh-Root manager Client
+enrollment and the existing Node INITIAL protocol path. Segmented normal and
+selected race coverage passed after two Store test-fixture-only corrections;
+the original aggregate A7 and R3 failures/timeouts remain recorded. Vet/build
+and Python checks passed. The [validation record](hub-owner-bootstrap-validation.md)
+contains exact counts, skips, source/image/cleanup evidence and boundaries. The
+complete user onboarding product remains broader than this protocol slice.
+
 2026-10-13 corrected onboarding requirement: deploy and independently initialize
 the Linux-server Hub first, including its human Owner/admin account, management
 entry and connection policy; then add Node/Client through one QR/pairing-key
 experience. A phone is a Client and does not create the Hub's Owner. The
 [Owner onboarding design](owner-onboarding-design.md) separates Hub-ready,
 external signer authority and device connection, with headless Node CLI paste/file
-input and explicit proof/role checks. This account/setup and unified pairing
-product remains **NOT_IMPLEMENTED**; first external signer bootstrap requires
-separate finite deployment authorization. External OpenSSL is optional tooling.
+input and explicit proof/role checks. Full account/setup UI and unified pairing
+remain **NOT_IMPLEMENTED**. Bounded local setup and first-signer bootstrap
+passed its Docker, segmented normal/race, vet/build and Python checks; original
+aggregate A7 and R3 failures/timeouts remain recorded.
+External OpenSSL is optional tooling.
 Historical manual-signing evidence below retains its original source and scope.
 
 [Deployment/interface design](deployment-interface-design.md) recommends a Hub
@@ -21,8 +38,12 @@ separate from implementation acceptance; no new UI framework or service is chose
 
 ## 2026-10-13 bounded headless Client slice — COMPLETE
 
-Software **0.0.4** implements the [existing-Owner operator Client](owner-headless-client.md)
-with separate local identity, exact canonical Grant enrollment, encrypted
+Software **0.0.4** implemented the [existing-Owner operator Client](owner-headless-client.md);
+the current **0.0.5** adds bounded Hub setup and first-signer bootstrap. Its
+Docker gate and segmented normal/race, vet/build and Python checks passed after
+two Store test-fixture-only corrections; original aggregate A7/R3
+failures/timeouts remain recorded. The headless slice has separate
+local identity, exact canonical Grant enrollment, encrypted
 capabilities/status, INITIAL Node preview/confirmation/list, and durable original
 packet retry/recovery. It reuses current Guard; no Owner private key, Node credential,
 bare management bearer or arbitrary RPC enters this Client. Private profile locking
@@ -36,12 +57,13 @@ subtests in disposable Docker PASS
 with confirmed cleanup. Local receipt v2 consumers passed 78 Python tests; this
 is neither public wire revision nor a fresh Link Docker result. A1/A2 failures and
 A3 intermediate results keep their original attribution. Contract v1.6.5, wire 1,
-catalog 55 and Hub schema 59 remain unchanged; no Android source/APK changed.
+catalog 55 remain unchanged in the headless slice; the separate 0.0.5 bootstrap
+adds schema 60. No Android source/APK changed.
 
-The next ordinary-onboarding implementation boundary remains independent Hub
-account/admin/connection-policy setup, then finite first-signer authority and
-typed Client/Node pairing. The completed advanced operator slice is reusable
-foundation, not completion of those planned flows. Windows custody is
+The complete ordinary-onboarding boundary remains account/admin UI, unified
+typed Client/Node pairing and platform custody. The completed headless operator
+slice and bounded bootstrap source are reusable foundations, not completion of
+the full product. Windows custody is
 NOT_IMPLEMENTED; macOS native, Android, Runtime, physical-device, public HTTPS and
 actual interactive CLI acceptance remain NOT_RUN for this slice. Preserve existing
 state/keys and overall PARTIAL release status; deployment/release is not authorized
@@ -60,12 +82,16 @@ no PASS is added to historical d86 or Native results.
 
 ## Future guided deployment CLI/TUI — NOT_IMPLEMENTED
 
-Current delivery includes Hub images, amd64/ARM64 packages and manual independent
-Owner signing/PQ installation. `install-cicada-server.sh` builds a loopback Hub
-from a source checkout; `bootstrap-cicada.sh` is its alias. Neither is a formal
-public one-command installer. Production CA initialization, guided TUI and
-automatic renewal are not delivered by these paths. This section records future
-deployment experience only; it changes no protocol or resident deployment.
+Current delivery includes Hub images, amd64/ARM64 packages, and a bounded manual
+first-Owner flow that runs local `hub setup`, issues the finite pairing, and
+serves the Hub directly with Docker; see the [operator guide](hub-owner-bootstrap.md).
+`install-cicada-server.sh` and its `bootstrap-cicada.sh` alias are controlled
+update helpers for an existing configured Compose Hub. They reject pristine
+state and an orphaned manually initialized volume; do not mix that setup path
+with the helper. Neither helper is a formal public one-command installer.
+Production CA initialization, guided TUI and automatic renewal are not delivered
+by these paths. This section records future deployment experience only; it
+changes no protocol or resident deployment.
 
 The [distribution responsibility boundary](distribution.md#product-and-operator-responsibilities)
 keeps host/IP/reachability, OS/Docker permissions, optional DNS, TLS infrastructure
@@ -145,8 +171,9 @@ overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-va
 The [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 remains the product-status index; the [2026-10-11 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 records the clean-328f aggregate and separately scoped follow-up evidence. Keep
-current software 0.0.3, contract `client-hub-v1.6.5`, wire 1, catalog 55 and schema 59
-distinct. Overall first-release acceptance remains PARTIAL.
+current software 0.0.5, contract `client-hub-v1.6.5`, wire 1, catalog 55 and
+the schema-60 candidate distinct from the previously accepted schema-59 baseline.
+Overall first-release acceptance remains PARTIAL.
 
 C14 passed its bounded six-turn default-daemon scope on the original A/B
 contexts: multi-Group authorization/leave, ASK/Reply, denial after revocation,

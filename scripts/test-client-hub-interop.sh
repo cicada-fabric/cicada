@@ -19,7 +19,7 @@ fi
 }
 case "$suite" in
   client)
-    test_selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator)$'
+    test_selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator|OwnerBootstrap)$'
     ;;
   client-link-recovery)
     test_selector='^TestClientDockerHubLinkFaultFixture$'
@@ -85,6 +85,7 @@ scratch="$(mktemp -d "${TMPDIR:-/tmp}/cicada-interop.XXXXXXXX")"
 run_id="cicada-interop-$(basename "$scratch" | cut -d . -f 2)-$$"
 run_id="${run_id,,}"
 hub_container="${run_id}-hub"
+setup_container="${run_id}-setup"
 test_container="${run_id}-test"
 hub_image="${run_id}:hub"
 test_image="${run_id}:test"
@@ -255,6 +256,12 @@ if suite == "client":
         "runner_exit_code": int(test_exit),
         "level": "real_tcp_disposable_hub_bounded_client_sdk",
     }
+    result["owner_bootstrap_test"] = {
+        "name": "TestClientDockerHubOwnerBootstrap",
+        "status": named_test_status("TestClientDockerHubOwnerBootstrap"),
+        "runner_exit_code": int(test_exit),
+        "level": "real_tcp_disposable_hub_first_owner_signer_bootstrap",
+    }
 if suite == "group-spaces-m2":
     result["additional_tests"] = [
         {"name": "TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS",
@@ -288,7 +295,7 @@ trap 'exit 143' TERM
 
 python3 -B "$cleanup_helper" prepare --plan "$cleanup_plan" --scratch "$scratch" \
   --run-id "$child_run_id" --lane "$cleanup_lane" \
-  --container hub "$hub_container" pending --container test "$test_container" pending \
+  --container hub "$hub_container" pending --container setup "$setup_container" pending --container test "$test_container" pending \
   --image hub-image "$hub_image" --image test-image "$test_image"
 docker_ready() {
   if [[ "$suite" == client-link-recovery ]]; then timeout 10s docker info >/dev/null 2>&1
@@ -326,14 +333,26 @@ token = secrets.token_hex(32)
 (root / "hub.env").write_text("CICADA_API_TOKEN=" + token + "\n")
 (root / "test.env").write_text("CICADA_TEST_HUB_TOKEN=" + token + "\n")
 PY
-if [[ "$suite" == client-link-recovery ]]; then
-  hub_port="$(python3 - <<'PORT'
+hub_port="$(python3 - <<'PORT'
 import socket
 with socket.socket() as candidate:
     candidate.bind(('127.0.0.1', 0))
     print(candidate.getsockname()[1])
 PORT
   )"
+hub_url="http://127.0.0.1:${hub_port}"
+setup_timeout=60s
+if [[ "$suite" == client-link-recovery ]]; then setup_timeout="$(link_cap 60)s"; fi
+timeout --signal=TERM --kill-after=2s "$setup_timeout" docker run --pull=never --cidfile "$scratch/setup.cid" \
+  --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=setup --label "org.cicada.test.suite=$suite" \
+  --name "$setup_container" --cpus 1 --memory 256m --memory-swap 256m --pids-limit 128 \
+  --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+  --user "$(id -u):$(id -g)" --env-file "$scratch/hub.env" \
+  -v "$scratch/state:/state" -v "$scratch/workspaces:/workspace" "$hub_image_id" \
+  hub setup --owner-label "Disposable Docker fixture" --origin "$hub_url" \
+  --public-config /tmp/hub-owner-connection.json --allow-loopback-http \
+  --state-dir /state --workspace-root /workspace >"$scratch/setup.raw" 2>&1
+if [[ "$suite" == client-link-recovery ]]; then
   timeout --signal=TERM --kill-after=2s "$(link_cap 15)s" docker run -d --pull=never --cidfile "$scratch/hub.cid" \
     --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --label "org.cicada.test.suite=$suite" \
     --name "$hub_container" --cpus 1 --memory 256m --memory-swap 256m --pids-limit 128 \
@@ -342,17 +361,14 @@ PORT
     -v "$scratch/state:/state" -v "$scratch/workspaces:/workspace" "$hub_image_id" >"$output_root/private/hub-start.raw" 2>&1
 elif [[ "$suite" == capacity ]]; then
   docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 128m --memory-swap 128m --pids-limit 128 \
-    -p 127.0.0.1::8787 --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
+    -p "127.0.0.1:$hub_port:8787" --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
 else
-  docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 256m --pids-limit 128 -p 127.0.0.1::8787 \
+  docker run -d --cidfile "$scratch/hub.cid" --label "org.cicada.test.run=$child_run_id" --label org.cicada.test.role=hub --name "$hub_container" --cpus 1 --memory 256m --pids-limit 128 \
+    -p "127.0.0.1:$hub_port:8787" \
     --env-file "$scratch/hub.env" -v "$scratch/state:/state" \
     -v "$scratch/workspaces:/workspace" "$hub_image_id" >/dev/null
 fi
-if [[ "$suite" != client-link-recovery ]]; then
-  hub_port="$(docker port "$hub_container" 8787/tcp | cut -d : -f 2)"
-fi
-hub_url="http://127.0.0.1:${hub_port}"
 
 phase=provenance
 if [[ "$suite" != client-link-recovery ]]; then
@@ -525,7 +541,7 @@ required = ({"TestClientDockerHubLinkFaultFixture"} if suite == "client-link-rec
              if suite == "group-spaces-m2" else
              ({"TestHubBoundedCapacityDocker"} if suite == "capacity" else
              {"TestClientDockerHubSmoke", "TestClientDockerHubRecoveryFixture",
-              "TestClientDockerHubHeadlessOperator"}))
+              "TestClientDockerHubHeadlessOperator", "TestClientDockerHubOwnerBootstrap"}))
             ))
 passed = set()
 actions_by_test = {name: [] for name in required}

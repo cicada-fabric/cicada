@@ -1,5 +1,20 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-10-13 schema-60 first Owner bootstrap — SCOPED PASS; full product PARTIAL
+
+The bounded [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)
+adds setup-to-human-Owner mapping, permanent first-Root history, and consumed
+authority/receipt recovery in additive Hub schema 60. Existing schema-59
+records and Owner IDs are retained; the restore inventory includes all three
+new tables. Software 0.0.5 does not change the Client wire/catalog revision.
+The independent-Hub Docker A2 gate passed, including cleanup. Segmented normal
+and selected race coverage passed after two Store test-fixture-only corrections;
+the original aggregate A7 and R3 failures/timeouts remain recorded. Vet/build and
+Python checks passed. See the
+[validation record](hub-owner-bootstrap-validation.md).
+Older schema-59 evidence below remains historical and is not upgraded by this
+candidate.
+
 Software 0.0.3 adds signed IP locators, actual ARM64 PQ packaging and a manual
 independent-Owner first-install ceremony. [The current checkpoint](docker-ip-arm64-validation.md)
 records clean `ab2362f` packaged amd64/ARM64 first-install A2 SCOPED_PASS,

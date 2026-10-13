@@ -891,7 +891,12 @@ func TestGroupSpacesM2DockerHub(t *testing.T) {
 	if err != nil {
 		t.Fatal("open only the disposable Hub StateDir for fixture setup")
 	}
-	ownerID := ownerIdentity.ID
+	setup, err := db.GetHubOwnerSetup()
+	if err != nil || setup == nil || setup.OwnerID == "" || setup.OwnerID == ownerIdentity.ID {
+		_ = db.Close()
+		t.Fatal("disposable Hub did not preserve a stable Owner/account mapping separate from its Control identity")
+	}
+	ownerID := setup.OwnerID
 	if err := db.EnsureLocalOwnerPrincipal(ownerID); err != nil {
 		_ = db.Close()
 		t.Fatal("ensure synthetic Hub owner principal")

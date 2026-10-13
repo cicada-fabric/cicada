@@ -1,9 +1,20 @@
 # Client / Hub 联合开发与验收
 
-Current source contract candidate is `client-hub-v1.6.5`: the existing encrypted
+Current Client source contract candidate is `client-hub-v1.6.5`: the existing encrypted
 policy preview accepts explicit `owner_key_id` and returns an own-side current
-signer snapshot. Wire 1, catalog 55 and Hub schema 59 remain unchanged; current
-software is 0.0.3. See [signer preview validation](link-policy-signer-preview-validation.md).
+signer snapshot. Wire 1, catalog 55 remain unchanged; current software is 0.0.5
+and Hub schema 59 is the last pre-bootstrap accepted baseline. The separate
+[Hub first Owner signer bootstrap contract](hub-owner-bootstrap-contract.md) describes
+the bounded schema-60 work. Docker A2 passed, including the fresh-Root Client
+and Node INITIAL protocol path. Segmented normal and selected race coverage
+passed after two Store test-fixture-only corrections; the original aggregate
+A7/R3 failures/timeouts remain retained. Vet/build and Python checks passed.
+See [the checkpoint record](hub-owner-bootstrap-validation.md) for exact scope
+and evidence.
+The [operator guide](hub-owner-bootstrap.md) covers fresh setup and controlled
+existing-volume adoption. This operation is outside the Client catalog and does
+not imply Android support.
+See [signer preview validation](link-policy-signer-preview-validation.md).
 The v1.6.4 images, bundles and results below retain their original attribution.
 [The IP/ARM64 checkpoint](docker-ip-arm64-validation.md) adds no Client source or
 operation. Android TLS-leaf Owner signing UI remains follow-up work; manual
@@ -14,7 +25,9 @@ independent signing does not substitute device enrollment for TLS permission.
 The [release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 and [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 are the current evidence indexes. Current contract is `client-hub-v1.6.5`;
-wire 1, catalog 55, schema 59 remain unchanged; current software is 0.0.3. Joint11
+wire 1 and catalog 55 remain unchanged; current software is 0.0.5 with the
+schema-60 Owner-bootstrap source candidate. Schema 59 remains the previously
+accepted baseline pending the separate bootstrap validation. Joint11
 passed its eight Android recovery cases and final close ACK with exact cleanup.
 Core C14 separately passed its scoped default-daemon G2/G3 run; that result is
 not Android status-read evidence. A3 passed one synthetic Android OwnerProof

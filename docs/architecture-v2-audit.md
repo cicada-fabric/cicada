@@ -1,5 +1,23 @@
 # Architecture v2.3 implementation audit
 
+## 2026-10-13 bounded Hub Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
+
+The separate [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)
+defines stable local Hub account mapping and one finite first external Owner
+signer bootstrap, then reuses existing Client enrollment and Node INITIAL
+enrollment. The source adds Hub schema 60 and a separate HTTP route; software
+0.0.5 and this protocol work do not change the Client catalog or Android. The
+required independent-Hub Docker test, response-loss recovery, Root
+revocation/no-reset, fresh-Root manager Client enrollment, Node INITIAL
+preview/confirmation/listing and cleanup passed on the A2 fixture. Segmented
+normal and selected race coverage passed after two Store test-fixture-only
+corrections; the original A7 and R3 aggregate failures/timeouts remain recorded.
+Vet/build and Python checks passed. Source/build identity is recorded in the
+[validation record](hub-owner-bootstrap-validation.md). Full account UI,
+unified QR pairing, Android, native Runtime, physical device and public HTTPS
+acceptance remain NOT_RUN; Windows custody and lost-Root recovery remain
+NOT_IMPLEMENTED. Human interactive CLI review also remains NOT_RUN.
+
 ## Current G5 bilateral-Link revocation case — v0.0.x development; target v0.1.0 PARTIAL
 
 The a006 normal/race selector added one deterministic bilateral-Link pending-ASK

@@ -4,8 +4,14 @@ This is an optional advanced/development compatibility path. The ordinary produc
 requirement is independent Linux Hub account/admin setup first, then one Node/Client
 QR/pairing-key flow with local keys, recorded in the
 [Owner onboarding design](owner-onboarding-design.md). Hub-ready and external
-signer-ready are separate; first Client enrollment does not create Owner.
-That product and finite first-signer authorization remain **NOT_IMPLEMENTED**.
+signer-ready are separate; first Client enrollment does not create Owner. The
+bounded local setup and finite first-signer authorization are implemented
+separately in the [0.0.5 Hub bootstrap flow](hub-owner-bootstrap.md) and defined
+by its [protocol contract](hub-owner-bootstrap-contract.md). The full account
+UI, unified typed QR pairing, Android bootstrap and platform-wide custody
+product remain **NOT_IMPLEMENTED**; see the
+[scoped validation record](hub-owner-bootstrap-validation.md) for current test
+results and limits.
 Users should not need Owner IDs, public JSON, Base64 grants or manual signing
 commands in normal enrollment. Prior external-tool-only ordinary UX guidance is
 superseded; the current commands and historical evidence below remain applicable

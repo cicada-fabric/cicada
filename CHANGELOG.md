@@ -5,6 +5,30 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
+## 0.0.5 — unreleased development candidate
+
+### Local Hub Owner setup and first signer bootstrap
+
+Adds a local Hub setup command that records a stable account-to-human-Owner
+mapping before serve, plus a separate finite `owner-bootstrap-v1` route for the
+first external Owner signer. The Unix Owner-signer CLI binds one candidate,
+Hub/account/origin and short-lived authority, proves signing and KEM key
+possession, and persists exact proof/receipt state for response-loss recovery.
+Permanent Root history prevents revocation from reopening initial setup. Existing
+Owner-signed Client enrollment and Node INITIAL flows remain separate and
+unchanged. Hub schema 60 is additive; Client contract v1.6.5, wire 1, and catalog
+55 do not change. The [operator guide](docs/hub-owner-bootstrap.md) describes
+fresh setup and controlled existing-volume adoption. The independent-Hub Docker
+gate passed, including manager Client enrollment and the existing Node INITIAL
+path on the fresh-Root fixture. Segmented normal and selected race checks passed
+after two Store test-fixture-only corrections; the original A7 and R3 aggregate
+failures/timeouts remain recorded. Vet/build and Python checks passed. This is a
+scoped checkpoint, not overall product acceptance. Human interactive CLI review,
+Android, Native, physical-device and public-HTTPS acceptance remain NOT_RUN;
+Windows custody and lost-Root recovery remain NOT_IMPLEMENTED. See the
+[bootstrap contract](docs/hub-owner-bootstrap-contract.md) and
+[validation record](docs/hub-owner-bootstrap-validation.md).
+
 ## 0.0.4 — unreleased development candidate
 
 ### Headless encrypted management Client

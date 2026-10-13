@@ -135,7 +135,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		return nil, errors.New("Client session owner is unavailable")
 	}
 	role := clientcontract.RoleExternal
-	if ownerID == h.control.Identity().ID {
+	if h.control.ValidateClientOwnerScope(ownerID) == nil {
 		role = clientcontract.RoleManager
 	}
 	// The catalog is the common allowlist for both capability discovery and

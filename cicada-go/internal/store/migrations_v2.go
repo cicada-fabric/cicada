@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 59
+	CurrentV2SchemaVersion = 60
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -551,6 +551,13 @@ var v2Migrations = []v2Migration{
 		Description: "index pending Relay Ask expiry comparisons without rescanning expired pending history",
 		Objects:     []string{relayAskExpiryOrderIndex},
 		Apply:       func(s *Store) error { return s.initializeRelayAskExpiryOrderIndex() },
+	},
+	{
+		Version:     60,
+		ID:          "v1.hub.owner_setup_bootstrap",
+		Description: "separate local human manager accounts and finite exact-candidate first Owner signer authority with permanent root history",
+		Objects:     []string{"hub_owner_setup_v1", "owner_root_history_v1", "owner_bootstrap_authority_v1", "owner_root_history_v1_no_delete", "owner_root_history_v1_no_update", "owner_approval_keys_v2_root_history", "hub_owner_setup_v1_coordinates", "hub_owner_setup_v1_no_delete", "hub_owner_setup_v1_ready_immutable", "owner_bootstrap_authority_v1_pending", "owner_bootstrap_authority_v1_no_delete", "owner_bootstrap_authority_v1_immutable"},
+		Apply:       func(s *Store) error { return s.initializeHubOwnerSetupSchema() },
 	},
 }
 

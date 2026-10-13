@@ -184,11 +184,13 @@ func TestClientIntentV19MigrationPreservesLegacyIntentRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Recreate the v18 schema boundary while leaving all existing Intent rows
-	// intact, then run only the additive v19 migration as an upgrade would.
+	// Recreate only the pre-v19 Client intent table, preserving existing Intent
+	// rows and unrelated modern migration ledgers. Replay v23 as well because
+	// it adds owner_id to the reconstructed table; do not replay later schemas
+	// over their retained objects.
 	s.mu.Lock()
 	_, err = s.db.Exec(`DROP TABLE client_control_intents_v2;
-DELETE FROM schema_migrations_v2 WHERE version >= 19`)
+DELETE FROM schema_migrations_v2 WHERE version IN (19, 23)`)
 	s.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)

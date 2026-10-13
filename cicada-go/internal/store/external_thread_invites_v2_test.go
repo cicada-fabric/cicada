@@ -478,39 +478,11 @@ func TestExternalThreadInviteMigrationRollsBackAndPreservesLegacyRows(t *testing
 	}
 	defer reopened.Close()
 	assertLegacyStatePreserved(t, reopened)
-	assertV2Ledger(t, reopened, map[int]string{
-		1: v2MigrationApplied, 2: v2MigrationApplied, 3: v2MigrationApplied,
-		4: v2MigrationApplied, 5: v2MigrationApplied, 6: v2MigrationApplied,
-		7: v2MigrationApplied, 8: v2MigrationApplied, 9: v2MigrationApplied,
-		10: v2MigrationApplied, 11: v2MigrationApplied, 12: v2MigrationApplied,
-		13: v2MigrationApplied, 14: v2MigrationApplied, 15: v2MigrationApplied,
-		16: v2MigrationApplied, 17: v2MigrationApplied, 18: v2MigrationApplied,
-		19: v2MigrationApplied, 20: v2MigrationApplied, 21: v2MigrationApplied,
-		22: v2MigrationApplied, 23: v2MigrationApplied, 24: v2MigrationApplied,
-		25: v2MigrationApplied, 26: v2MigrationApplied, 27: v2MigrationApplied,
-		28: v2MigrationApplied, 29: v2MigrationApplied, 30: v2MigrationApplied,
-		31: v2MigrationApplied, 32: v2MigrationApplied, 33: v2MigrationApplied,
-		34: v2MigrationApplied, 35: v2MigrationApplied, 36: v2MigrationApplied, 37: v2MigrationApplied,
-		38: v2MigrationApplied, 39: v2MigrationApplied, 40: v2MigrationApplied, 41: v2MigrationApplied,
-		42: v2MigrationApplied,
-		43: v2MigrationApplied,
-		44: v2MigrationApplied,
-		45: v2MigrationApplied,
-		46: v2MigrationApplied,
-		47: v2MigrationApplied,
-		48: v2MigrationApplied,
-		49: v2MigrationApplied,
-		50: v2MigrationApplied,
-		51: v2MigrationApplied,
-		52: v2MigrationApplied,
-		53: v2MigrationApplied,
-		54: v2MigrationApplied,
-		55: v2MigrationApplied,
-		56: v2MigrationApplied,
-		57: v2MigrationApplied,
-		58: v2MigrationApplied,
-		59: v2MigrationApplied,
-	})
+	expected := make(map[int]string, CurrentV2SchemaVersion)
+	for version := 1; version <= CurrentV2SchemaVersion; version++ {
+		expected[version] = v2MigrationApplied
+	}
+	assertV2Ledger(t, reopened, expected)
 	var legacyRows int
 	if err := reopened.db.QueryRow(`SELECT count(*) FROM fabric_messages WHERE id = 'fabric_message_legacy'`).Scan(&legacyRows); err != nil {
 		t.Fatal(err)

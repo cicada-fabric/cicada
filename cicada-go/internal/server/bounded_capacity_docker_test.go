@@ -144,14 +144,19 @@ func TestHubBoundedCapacityDocker(t *testing.T) {
 			_ = persistence.Close()
 		}
 	}()
-	if err := persistence.EnsureLocalOwnerPrincipal(owner.ID); err != nil {
+	setup, err := persistence.GetHubOwnerSetup()
+	if err != nil || setup == nil || setup.OwnerID == "" || setup.OwnerID == owner.ID {
+		t.Fatal("disposable Hub did not preserve a stable Owner/account mapping separate from its Control identity")
+	}
+	managerOwnerID := setup.OwnerID
+	if err := persistence.EnsureLocalOwnerPrincipal(managerOwnerID); err != nil {
 		t.Fatal("could not bind synthetic Owner identity to fixture state")
 	}
 	ownerIdentity, err := e2ee.NewIdentity()
 	if err != nil {
 		t.Fatal("could not create synthetic Owner approval key")
 	}
-	ownerKey, err := persistence.RegisterOwnerApprovalKeyLocal(owner.ID, ownerIdentity.Public())
+	ownerKey, err := persistence.RegisterOwnerApprovalKeyLocal(managerOwnerID, ownerIdentity.Public())
 	if err != nil {
 		t.Fatal("could not register synthetic Owner approval key")
 	}
@@ -161,14 +166,14 @@ func TestHubBoundedCapacityDocker(t *testing.T) {
 	}
 	const deviceID = "synthetic-bounded-capacity-device"
 	issuedAt := time.Now().UTC().Add(-time.Minute)
-	deviceGrant, err := ownerIdentity.SignOwnerDeviceGrant(owner.ID, deviceID,
+	deviceGrant, err := ownerIdentity.SignOwnerDeviceGrant(managerOwnerID, deviceID,
 		deviceIdentity.Public(), hubIdentity.HubID, e2ee.OwnerDevicePurposeControl,
 		issuedAt, issuedAt.Add(2*time.Hour))
 	if err != nil {
 		t.Fatal("could not sign synthetic Owner device grant")
 	}
 	if _, err := persistence.RegisterClientDeviceFromOwnerGrant(store.RegisterClientDeviceInput{
-		OwnerID: owner.ID, OwnerKeyID: ownerKey.KeyID, DeviceID: deviceID,
+		OwnerID: managerOwnerID, OwnerKeyID: ownerKey.KeyID, DeviceID: deviceID,
 		DevicePublic: deviceIdentity.Public(), OwnerDeviceGrant: deviceGrant,
 	}); err != nil {
 		t.Fatal("could not register synthetic Owner device")
@@ -190,7 +195,7 @@ func TestHubBoundedCapacityDocker(t *testing.T) {
 			digest, codeDigest, time.Now().UTC().Add(10*time.Minute)); err != nil {
 			t.Fatal("could not create synthetic Node binding")
 		}
-		if _, err := persistence.ConfirmPendingNodeDeviceBinding(owner.ID, deviceID, codeDigest); err != nil {
+		if _, err := persistence.ConfirmPendingNodeDeviceBinding(managerOwnerID, deviceID, codeDigest); err != nil {
 			t.Fatal("could not confirm synthetic Node binding")
 		}
 		return nodeToken
@@ -234,9 +239,9 @@ func TestHubBoundedCapacityDocker(t *testing.T) {
 		t.Fatal("synthetic source/target Endpoint setup was incomplete")
 	}
 	sourceKey := addAndGrantSameGroupSealedTestEndpointKey(t, persistence,
-		owner.ID, group.ID, ownerKey.KeyID, ownerIdentity, source.Endpoint)
+		managerOwnerID, group.ID, ownerKey.KeyID, ownerIdentity, source.Endpoint)
 	targetKey := addAndGrantSameGroupSealedTestEndpointKey(t, persistence,
-		owner.ID, group.ID, ownerKey.KeyID, ownerIdentity, target.Endpoint)
+		managerOwnerID, group.ID, ownerKey.KeyID, ownerIdentity, target.Endpoint)
 	if err := persistence.Close(); err != nil {
 		t.Fatal("could not close synthetic fixture Store before load")
 	}

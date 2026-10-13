@@ -74,6 +74,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -150,6 +151,7 @@ func TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable(t *testing.T) {
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := reopened.readV2Migration(migration.Version)
@@ -707,6 +709,7 @@ func TestV2MigrationFailureRollsBackSchemaAndResumes(t *testing.T) {
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(3)
 	if err != nil {
@@ -1016,6 +1019,7 @@ func TestEndpointKeyCandidateMigrationRollsBackAndReopensWithLegacyState(t *test
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 	entry, err := reopened.readV2Migration(14)
 	if err != nil {
@@ -1113,6 +1117,7 @@ func TestV2MigrationsConcurrentOpenSerializesLedger(t *testing.T) {
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 	for _, migration := range v2Migrations {
 		entry, err := store.readV2Migration(migration.Version)
@@ -1570,6 +1575,7 @@ func TestDedicatedThreadPolicyMigrationV52RollsBackAndResumes(t *testing.T) {
 		57: v2MigrationApplied,
 		58: v2MigrationApplied,
 		59: v2MigrationApplied,
+		60: v2MigrationApplied,
 	})
 }
 
@@ -1599,7 +1605,7 @@ func TestV2MigrationsAppliedReopenFailClosed(t *testing.T) {
 		{"ledger-checksum", `UPDATE schema_migrations_v2 SET checksum='synthetic-invalid-checksum' WHERE version=59`, "ledger definition mismatch"},
 		{"ledger-id", `UPDATE schema_migrations_v2 SET migration_id='synthetic-invalid-id' WHERE version=59`, "ledger definition mismatch"},
 		{"ledger-description", `UPDATE schema_migrations_v2 SET description='synthetic-invalid-description' WHERE version=59`, "ledger definition mismatch"},
-		{"ledger-too-new", `UPDATE schema_migrations_v2 SET version=60 WHERE version=59`, "newer than this binary supports"},
+		{"ledger-too-new", `UPDATE schema_migrations_v2 SET version=61 WHERE version=59`, "newer than this binary supports"},
 		{"foreign-key-violation", `PRAGMA foreign_keys=OFF; CREATE TABLE startup_fk_parent(id INTEGER PRIMARY KEY); CREATE TABLE startup_fk_child(parent_id INTEGER REFERENCES startup_fk_parent(id)); INSERT INTO startup_fk_child VALUES(7)`, "sqlite foreign_key_check found"},
 		{"integrity-violation", `CREATE TABLE startup_integrity_probe(n INTEGER CHECK(n>0)); PRAGMA ignore_check_constraints=ON; INSERT INTO startup_integrity_probe VALUES(0); PRAGMA ignore_check_constraints=OFF`, "sqlite integrity_check returned"},
 	} {

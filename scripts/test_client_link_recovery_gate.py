@@ -401,7 +401,7 @@ class LinkGateTests(unittest.TestCase):
         fragment=shell[begin:shell.index('\nPY',begin)+len('\nPY')]
         root=Path(self.temp.name);scratch=root/'scratch';output=root/'output';scratch.mkdir();output.mkdir()
         cases={'client':['TestClientDockerHubSmoke','TestClientDockerHubRecoveryFixture',
-                         'TestClientDockerHubHeadlessOperator'],
+                         'TestClientDockerHubHeadlessOperator','TestClientDockerHubOwnerBootstrap'],
                'network-m1':['TestNetworkM1DockerHub'],
                'group-spaces-m2':['TestGroupSpacesM2DockerHub','TestGroupSpacesM2HTTPHistoryRetentionAndTopicCAS'],
                'capacity':['TestHubBoundedCapacityDocker']}
@@ -421,7 +421,8 @@ class LinkGateTests(unittest.TestCase):
                 self.assertEqual(footer['test_status'],'PASS' if complete else 'FAIL')
                 if suite=='client' and not complete:
                     self.assertEqual(footer['runner_exit_code'],0)
-                    self.assertEqual(footer['required_test_statuses']['TestClientDockerHubHeadlessOperator'],'NOT_RUN')
+                    self.assertEqual(footer['required_test_statuses']['TestClientDockerHubHeadlessOperator'],'PASS')
+                    self.assertEqual(footer['required_test_statuses']['TestClientDockerHubOwnerBootstrap'],'NOT_RUN')
 
     def test_client_docker_branch_dispatches_selected_tests_to_go(self):
         shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()
@@ -434,7 +435,7 @@ class LinkGateTests(unittest.TestCase):
         docker=fakebin/'docker'
         docker.write_text('#!/usr/bin/env python3\nimport json, os, sys\nfrom pathlib import Path\nPath(os.environ["CAPTURE"]).write_text(json.dumps(sys.argv[1:]))\n')
         docker.chmod(0o700)
-        selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator)$'
+        selector='^TestClientDockerHub(Smoke|RecoveryFixture|HeadlessOperator|OwnerBootstrap)$'
         env=dict(os.environ,PATH=str(fakebin)+os.pathsep+os.environ['PATH'],CAPTURE=str(captured),
                  scratch=str(scratch),test_image_id='sha256:'+('a'*64),child_run_id='synthetic-run',
                  test_container='synthetic-test',hub_url='http://127.0.0.1:8787',test_selector=selector)
@@ -462,23 +463,26 @@ class LinkGateTests(unittest.TestCase):
             {'test':'TestClientDockerHubRecoveryFixture','action':'run'},
             {'test':'TestClientDockerHubRecoveryFixture','action':'pass'},
         ]
-        cases=[([], 'NOT_RUN'),([{'test':'TestClientDockerHubHeadlessOperator','action':'run'}], 'FAIL'),
-               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
-                 {'test':'TestClientDockerHubHeadlessOperator','action':'pass'}], 'PASS'),
-               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
-                 {'test':'TestClientDockerHubHeadlessOperator','action':'skip'}], 'SKIP'),
-               ([{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
-                 {'test':'TestClientDockerHubHeadlessOperator','action':'pass'},
-                 {'test':'TestClientDockerHubHeadlessOperator','action':'run'}], 'FAIL')]
-        for headless_events,expected in cases:
-            (output/'test.log').write_text(''.join(json.dumps(row)+'\n' for row in rows+headless_events))
+        headless_events=[{'test':'TestClientDockerHubHeadlessOperator','action':'run'},
+                         {'test':'TestClientDockerHubHeadlessOperator','action':'pass'}]
+        cases=[([], 'NOT_RUN'),([{'test':'TestClientDockerHubOwnerBootstrap','action':'run'}], 'FAIL'),
+               ([{'test':'TestClientDockerHubOwnerBootstrap','action':'run'},
+                 {'test':'TestClientDockerHubOwnerBootstrap','action':'pass'}], 'PASS'),
+               ([{'test':'TestClientDockerHubOwnerBootstrap','action':'run'},
+                 {'test':'TestClientDockerHubOwnerBootstrap','action':'skip'}], 'SKIP'),
+               ([{'test':'TestClientDockerHubOwnerBootstrap','action':'run'},
+                 {'test':'TestClientDockerHubOwnerBootstrap','action':'pass'},
+                 {'test':'TestClientDockerHubOwnerBootstrap','action':'run'}], 'FAIL')]
+        for bootstrap_events,expected in cases:
+            (output/'test.log').write_text(''.join(json.dumps(row)+'\n' for row in rows+headless_events+bootstrap_events))
             reply=subprocess.run([sys.executable,'-',str(output),str(scratch),'FAIL','protocol_test','1','0',
                                   'sha256:'+('b'*64),'client'],input=code,text=True,capture_output=True,timeout=2)
             self.assertEqual(reply.returncode,0,reply.stderr)
             result=json.loads((output/'result.json').read_text())
-            self.assertEqual(result['headless_operator_test']['status'],expected)
-            self.assertEqual(result['headless_operator_test']['runner_exit_code'],0)
-            self.assertNotIn('exit_code',result['headless_operator_test'])
+            self.assertEqual(result['owner_bootstrap_test']['status'],expected)
+            self.assertEqual(result['owner_bootstrap_test']['runner_exit_code'],0)
+            self.assertEqual(result['headless_operator_test']['status'],'PASS')
+            self.assertNotIn('exit_code',result['owner_bootstrap_test'])
 
     def test_changed_interop_receipt_families_use_v2_schema(self):
         shell=Path(__file__).with_name('test-client-hub-interop.sh').read_text()

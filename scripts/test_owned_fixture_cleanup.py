@@ -198,6 +198,26 @@ class OwnedCleanupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'IMAGE_TAG_NOT_ABSENT'):
             cleanup.prepare(self.root, 'run-001', 'client', [], [('hub-image', 'existing:hub')], self.docker)
 
+    def test_owner_setup_container_is_tracked_and_uses_hub_image_identity(self):
+        plan = cleanup.prepare(self.root, 'run-001', 'client',
+                               [('hub', 'owned-hub', IMAGE), ('setup', 'owned-setup', IMAGE),
+                                ('test', 'owned-test', IMAGE)],
+                               [('hub-image', 'fresh:hub'), ('test-image', 'fresh:test')], self.docker)
+        self.assertEqual(len(plan['resources']), 5)
+        (self.root / 'setup.cid').write_text(CID)
+        self.docker.containers[CID] = [CID, '/owned-setup', IMAGE, 'run-001', 'setup']
+        receipt = cleanup.cleanup(plan, {'image': {'id': IMAGE}, 'test_image': {'id': 'sha256:' + 'c' * 64}}, self.docker)
+        setup = next(row for row in receipt['resources'] if row['role'] == 'setup')
+        self.assertEqual(setup['expected_image_id'], IMAGE)
+        self.assertEqual(setup['ownership'], 'VERIFIED')
+        self.assertEqual(setup['post_cleanup'], 'EXACT_ABSENT')
+
+    def test_more_than_five_owned_resources_is_rejected(self):
+        containers = [(f'container-{index}', f'owned-{index}', IMAGE) for index in range(4)]
+        images = [('hub-image', 'fresh:hub'), ('test-image', 'fresh:test')]
+        with self.assertRaisesRegex(ValueError, 'CLEANUP_SCOPE'):
+            cleanup.prepare(self.root, 'run-001', 'client', containers, images, self.docker)
+
 
 class NodeControlCleanupTests(unittest.TestCase):
     def test_actual_driver_command_and_interrupt_cleanup(self):

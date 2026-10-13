@@ -50,7 +50,7 @@ func serveFabricOnlyWithTransport(host string, port int, config control.Config, 
 		return err
 	}
 	defer persistence.Close()
-	service, err := fabric.NewService(persistence, identity.Public().ID, identity.Public().ID)
+	service, err := existingHubFabricService(persistence, identity.Public())
 	if err != nil {
 		return err
 	}
@@ -75,4 +75,29 @@ func serveFabricOnlyWithTransport(host string, port int, config control.Config, 
 		return nil
 	}
 	return err
+}
+
+// Compose the data plane from the exact persisted human association without
+// constructing Control or creating any human from a newly generated key.
+func existingHubFabricService(persistence *store.Store, identity e2ee.PublicIdentity) (*fabric.Service, error) {
+	if err := persistence.CheckHubServeSetupLocal(identity.ID); err != nil {
+		return nil, err
+	}
+	setup, err := persistence.GetHubOwnerSetup()
+	if err != nil {
+		return nil, err
+	}
+	ownerID := identity.ID
+	if setup != nil {
+		hubID, err := persistence.GetClientHubID()
+		if err != nil || setup.HubID != hubID {
+			return nil, store.ErrHubOwnerSetupConflict
+		}
+		ownerID = setup.OwnerID
+	}
+	owner, err := persistence.GetPrincipal(ownerID)
+	if err != nil || owner.Kind != store.PrincipalKindHuman || owner.Status != store.PrincipalStatusActive || owner.OwnerID != ownerID || (owner.TrustDomainID != "" && owner.TrustDomainID != ownerID) {
+		return nil, store.ErrHubOwnerSetupConflict
+	}
+	return fabric.NewService(persistence, ownerID, ownerID)
 }

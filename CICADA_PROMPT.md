@@ -8,8 +8,17 @@ a completed historical M1–M5 task or run paid models.
 ## Current baseline and sources
 
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
-before editing. The development source line is `0.0.4`, Architecture v2.3, Hub schema 59,
-Client contract `client-hub-v1.6.5`, encrypted wire 1 and catalog 55. Confirm those
+before editing. The development source line is `0.0.5`, Architecture v2.3, with
+schema-60 Owner bootstrap changes against the previously accepted schema 59.
+The bounded checkpoint is SCOPED PASS: independent-Hub Docker A2, segmented
+normal and selected race coverage, vet/build, and Python checks passed. The
+original A7 normal and R3 race aggregate failures/timeouts remain recorded;
+their Store test-fixture repairs were test-only. See the validation record for
+counts, skips, source fingerprints and scope limits. Human interactive CLI
+review, Android, Native, physical-device and public HTTPS remain NOT_RUN;
+Windows custody and lost-Root recovery remain NOT_IMPLEMENTED.
+Client contract `client-hub-v1.6.5`, encrypted wire 1 and
+catalog 55 remain unchanged. Confirm those
 identities in [VERSION](VERSION), the
 [catalog](cicada-go/internal/clientcontract/catalog.json) and
 [migrations](cicada-go/internal/store/migrations_v2.go); they are independent of

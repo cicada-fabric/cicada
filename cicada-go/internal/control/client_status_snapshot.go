@@ -200,7 +200,7 @@ func (c *Control) BuildClientStatusSnapshot(authenticatedOwnerPrincipalID string
 		return nil, err
 	}
 	ownerID := strings.TrimSpace(authenticatedOwnerPrincipalID)
-	residentOwner := ownerID == c.Identity().ID
+	residentOwner := c.ValidateClientOwnerScope(ownerID) == nil
 	scopeMode := ClientStatusSnapshotScopeAttributed
 	if residentOwner {
 		scopeMode = ClientStatusSnapshotScopeSingleOwner
@@ -485,10 +485,13 @@ func (c *Control) ValidateClientOwnerScope(ownerPrincipalID string) error {
 		return errors.New("client owner scope requires an initialized Control")
 	}
 	ownerID := strings.TrimSpace(ownerPrincipalID)
-	identityID := strings.TrimSpace(c.Identity().ID)
+	identityID := strings.TrimSpace(c.ManagerOwnerID())
 	if ownerID == "" || identityID == "" || ownerID != identityID {
 		return fmt.Errorf("%w: authenticated owner does not match this Control", ErrPermissionDenied)
 	}
+	// The association is immutable in Store. Revocation is checked against
+	// the current Principal on each action; signer-readiness counts are not
+	// needed on the routine management path.
 	owner, err := c.store.GetPrincipal(ownerID)
 	if err != nil {
 		if errors.Is(err, store.ErrPrincipalNotFound) {

@@ -24,6 +24,37 @@ func TestHubRestoreReviewedSchemaVersionRequiresExplicitBump(t *testing.T) {
 	}
 }
 
+func TestHubRestoreOwnerBootstrapHistoryAndAccountCannotRollBack(t *testing.T) {
+	for _, change := range []func(*HubRestoreCheckpoint){
+		func(cp *HubRestoreCheckpoint) { delete(cp.rows["owner_root_history_v1"], "synthetic-owner") },
+		func(cp *HubRestoreCheckpoint) { cp.rows["hub_owner_setup_v1"]["setup"]["owner_id"] = "synthetic-guest" },
+		func(cp *HubRestoreCheckpoint) { cp.rows["hub_owner_setup_v1"]["setup"]["state"] = "LEGACY_COMPAT" },
+		func(cp *HubRestoreCheckpoint) {
+			cp.rows["owner_bootstrap_authority_v1"]["authority"]["state"] = "PENDING"
+		},
+		func(cp *HubRestoreCheckpoint) {
+			cp.rows["owner_bootstrap_authority_v1"]["authority"]["proof_digest"] = "synthetic-replacement-proof"
+		},
+	} {
+		makeCheckpoint := func() *HubRestoreCheckpoint {
+			cp := syntheticHubCheckpoint()
+			cp.Tables = append(cp.Tables, "hub_owner_setup_v1", "owner_root_history_v1", "owner_bootstrap_authority_v1")
+			cp.rows["hub_owner_setup_v1"] = map[string]map[string]any{"setup": {"account_id": "synthetic-account", "owner_id": "synthetic-owner", "hub_id": cp.HubID, "state": "HUB_READY", "version": int64(1)}}
+			cp.rows["owner_root_history_v1"] = map[string]map[string]any{"synthetic-owner": {"owner_id": "synthetic-owner", "established_at": "2026-10-13T00:00:00Z"}}
+			cp.rows["owner_bootstrap_authority_v1"] = map[string]map[string]any{"authority": {"account_id": "synthetic-account", "owner_id": "synthetic-owner", "state": "CONSUMED", "pairing_json": "synthetic-exact-public-pair", "nonce_digest": "synthetic-nonce-digest", "proof_digest": "synthetic-original-proof", "receipt_packet": "synthetic-original-encrypted-receipt"}}
+			return cp
+		}
+		base, current := makeCheckpoint(), makeCheckpoint()
+		if e := CompareHubRestoreCoverage(base, current); e != nil {
+			t.Fatal(e)
+		}
+		change(current)
+		if e := CompareHubRestoreCoverage(base, current); !errors.Is(e, ErrHubRestoreCoverage) {
+			t.Fatal("Owner bootstrap restoration moved trust backwards")
+		}
+	}
+}
+
 func TestHubRestoreCoverageRejectsCrossSchemaVersions(t *testing.T) {
 	for _, versions := range [][2]int{
 		{hubRestoreReviewedSchemaVersion - 1, hubRestoreReviewedSchemaVersion},

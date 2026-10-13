@@ -8,8 +8,14 @@
 完整产品实现状态：**PROPOSED / NOT_IMPLEMENTED**。软件 0.0.4 已增加有限的
 [无手机管理 Client](owner-headless-client.md)：在 Hub 已初始化、独立 Owner
 批准 key 已登记的前提下，复用独立本地 Client identity、准确 Grant 登记和
-加密 Node 首次配对预览/确认/恢复。现有升级预览缺少准确目标绑定/version，
-该 CLI 因而拒绝升级确认；账户设置、首 signer bootstrap 与统一扫码仍未实现。
+加密 Node 首次配对预览/确认/恢复。当前 worktree 增加了独立的 Hub 本地
+Owner/account setup 与有限首 signer bootstrap。独立 Hub Docker A2 协议、恢复、
+no-reset、新 Root 后的 Client/Node INITIAL 路径和清理通过。Normal 与 selected
+race coverage 在两个 Store test-fixture-only 修正后分段通过；原 A7、R3 aggregate
+失败/超时仍保留。Vet/build 与 Python 检查通过。真实人工 TTY review、Android、
+Native、physical device 和 public HTTPS 仍 NOT_RUN；Windows custody 与 lost-Root
+recovery 仍 NOT_IMPLEMENTED。现有升级预览缺少准确目标绑定/version，
+该 CLI 因而拒绝升级确认；账户界面、Android 首次 bootstrap 与统一扫码仍未实现。
 本文继续记录 2026-10-13 的产品流程与下一实现边界；有限 CLI 检查点更新软件
 版本，不改变 [已采纳规格](../CICADA.md)、已发布 Client 合同或现有部署。
 已连接设备以自身私钥挑战认证；Hub 初始管理授权另来自
@@ -21,6 +27,21 @@
 用户通过“账户与设备”管理已连接电脑、手机
 和 Node，查看待确认请求、权限、最近活动、撤销和恢复。正常流程不要求安装
 OpenSSL、手写公钥 JSON、查询 Owner ID、复制 Base64 Grant 或执行签名命令。
+
+**2026-10-13 bounded checkpoint — SCOPED PASS:** a separate
+`owner-bootstrap-v1` contract specifies local Hub setup and the finite first
+external Owner-signer bootstrap, with reuse of the existing signed Client
+enrollment and Node INITIAL path.
+See the [bootstrap contract](hub-owner-bootstrap-contract.md),
+[operator guide](hub-owner-bootstrap.md), and
+[validation record](hub-owner-bootstrap-validation.md) for the implementation
+boundary and evidence. Docker A2, segmented normal and selected race runs,
+vet/build, and Python checks passed; full normal A7 and selected race R3 retain
+their aggregate failures/timeouts. This is a bounded protocol checkpoint, not accepted
+end-to-end onboarding.
+The full account product, login, web setup panel,
+unified QR pairing, Android bootstrap UI, Windows custody, lost-Root recovery,
+and deployment UX remain **PROPOSED / NOT_IMPLEMENTED**.
 
 [现有 OpenSSL 工具](owner-windows-openssl.md)是可选高级/开发兼容路径。它已经
 取得的 Linux、生产 handler、原镜像 TCP 与交叉构建证据保留原来源；这些结果
@@ -34,8 +55,8 @@ OpenSSL、手写公钥 JSON、查询 Owner ID、复制 Base64 Grant 或执行签
 
 | 范围 | 当前事实 | 本次拟议增量 |
 |---|---|---|
-| Owner | [本地登记公钥](../cicada-go/internal/store/owner_approval_keys_v2.go)与独立 Owner 签名已有实现 | Hub 独立账户初始化、管理入口/连接策略、Owner 映射与有限首 signer bootstrap，**NOT_IMPLEMENTED** |
-| Control 与人类 | [初始化](../cicada-go/internal/control/control.go)以 Control identity ID 建 human；[RPC](../cicada-go/internal/server/client_rpc_v2.go)用相等判断 manager | 明确的 Hub manager/account 关联，逐步解除密码学 ID 与人类账户耦合，**NOT_IMPLEMENTED** |
+| Owner | [本地登记公钥](../cicada-go/internal/store/owner_approval_keys_v2.go)与独立 Owner 签名已有实现 | 有界本地账户映射与有限首 signer bootstrap 已实现；独立 Hub Docker A2 与分段 normal/selected-race、vet/build、Python 检查通过，A7/R3 原始 aggregate failure/timeout 保留；管理入口 UI、连接策略 UI 和普通设备入口仍 **NOT_IMPLEMENTED** |
+| Control 与人类 | 旧路径以 Control identity ID 作为兼容 manager；有界新路径持久化 Hub setup→human Owner 映射 | 保持旧 Owner ID 的 `LEGACY_COMPAT` 与显式本地 adopt；不把 crypto ID 本身当成新 manager grant；完整账户管理 UI 仍 **NOT_IMPLEMENTED** |
 | Android 设备 | [createDeviceIdentity](../../CICADA_CLIENT/android/app/src/main/java/ai/cicada/client/hub/ClientHubSession.kt)本地生成 PQ identity，使用 Android Keystore AES 包裹私钥；当前 UI 要求外部 Grant | 登录、扫码/短码、自动传递公开登记材料与本地确认的普通入口，**NOT_IMPLEMENTED**；已有设备 keygen 不重复建设 |
 | Client enrollment | [OwnerDeviceGrant 验证和设备登记](../cicada-go/internal/server/client_v2.go)、精确重试与加密 session 已有实现 | 把协议材料隐藏于受审查的接入流程；账号登录不取代 Owner 授权 |
 | Node | [设备码](../cicada-go/internal/control/node_device_bindings.go)、本地凭据/密钥及加密 `nodes.preview/confirm` 已有实现 | 与 Client 同格式的 Hub 发起配对授权、CLI 粘贴/文件接入和恢复 UI，**NOT_IMPLEMENTED** |
@@ -101,8 +122,10 @@ Hub 状态，先于普通设备登记。Web wizard 的认证沿用下述独立�
    `NEEDS_OWNER_SIGNER`。初始化管理授权允许其明确范围内的 Hub 设置/账户
    metadata/配对准备，不代替 Owner 批准签名，也不是 Node 凭据。
 
-这些名称是拟议状态，并未成为当前 Store/API 枚举。Hub 的初始 admin 认证
-来自独立部署者控制渠道；其登录/会话与后续设备挑战认证的准确合同仍须固定，
+有界实现已把 `HUB_READY` 与 `LEGACY_COMPAT` 用作本地持久状态；
+`OWNER_SIGNER_READY` / `NEEDS_OWNER_SIGNER` 是签名者状态，
+`ROOT_NEVER_ESTABLISHED` 是历史条件，不是远程登录会话。Hub 的初始 setup
+仍来自独立部署者控制渠道；其登录/会话与后续设备挑战认证不是同一合同，
 不凭空宣称已有服务端密码、SSO 或第一台设备尚未存在的签名登录服务。
 
 如果尚无外部 Owner signer，当前 OwnerDeviceGrant 协议无法自动完成普通
@@ -117,8 +140,9 @@ bearer、公钥首上传、Node 或模型取得，也不能用于覆盖既有 Ro
 所有 Root 已撤销/丢失或恢复后仍是历史已建立状态，必须走明确恢复/新 epoch，
 不能重开首次 bootstrap。仅登记服务器自己的加密 identity 不建立人类 signer。
 
-这一首 signer 绑定的公开协议、授权发放/恢复、PoP、候选核对及 signer+设备
-登记的原子/分步恢复边界属于**尚须固定并实现的安全决策**，不是现有 API。
+首 signer 的有限授权、PoP、精确候选绑定、响应丢失恢复与根历史边界见
+[独立协议合同](hub-owner-bootstrap-contract.md)。这一协议不是普通设备
+enrollment 或统一 QR 产品；它不替代现有 signer 对准确设备 Grant 的签名。
 没有合法 signer 或独立预置授权时显示 `NEEDS_OWNER_SIGNER`，保留完成的 Hub
 设置，不能显示“自动批准”。没有手机的 Node-only 场景仍需独立合格 signer；
 部署者可使用用户控制的外部本地组件，Owner 私钥不进入 Hub state/volume，

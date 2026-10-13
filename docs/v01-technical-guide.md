@@ -5,10 +5,14 @@ amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-inst
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
-This guide covers the current **0.0.4** development source line. The bounded
+This guide covers the current **0.0.5** development source line. The bounded
 [headless Client](owner-headless-client.md) reuses existing Owner Grant enrollment
-and encrypted INITIAL Node confirmation; full Hub account/QR setup remains
-proposed, and earlier 0.0.3 installation artifacts retain their attribution.
+and encrypted INITIAL Node confirmation. Local Hub account setup and first Owner
+signer bootstrap use the manual local-setup/direct-Docker path in the
+[operator guide](hub-owner-bootstrap.md); the full account/QR product remains
+proposed. The checkout installer and its bootstrap alias are controlled update
+helpers for an existing configured Compose deployment, not a fresh-install
+path. Earlier 0.0.3 installation artifacts retain their attribution.
 It is public technical
 documentation for an unreleased candidate, not a release announcement or proof
 of complete product acceptance. Read the [current closeout](v01-current-closeout-20261009-validation.md)
@@ -45,11 +49,16 @@ history access. See the [Network contract](network-m1-contract.md).
 ## Install from a checkout
 
 Review [distribution and deployment](distribution.md) before running these
-existing entry points. Local Linux Hub deployment requires Docker Engine and
-Compose v2; binary compilation requires the documented Go 1.27.1 toolchain.
+entry points. A new Hub must follow the manual `hub setup` and direct Docker
+`serve` sequence in the [bootstrap guide](hub-owner-bootstrap.md). Local Linux
+Docker serving requires Docker Engine; the controlled update helper for an
+existing configured Compose deployment additionally uses Compose v2. Binary
+compilation requires the documented Go 1.27.1 toolchain.
 
 ```sh
-# Builds this checkout and starts a local loopback Hub with persistent state.
+# Existing configured Compose-managed Hub only; choose a new private backup path.
+CICADA_DEPLOY_UPDATE=1 \
+CICADA_HUB_UPDATE_BACKUP=/secure/new/hub-state-backup \
 scripts/install-cicada-server.sh
 
 # Optional host Node; the example address and Node name are fictional.
@@ -58,14 +67,16 @@ CICADA_MACHINE_ID=node-example \
 scripts/install-cicada-worker.sh --mode relay
 ```
 
-The Hub profile defaults to loopback HTTP for same-host development. Remote Nodes
-and physical Clients require operator-managed HTTPS, certificates and firewall
-policy. The Node retains its own credential and initiates outbound HTTPS/SSE
-connections; Hub does not dial into the Node. The installer submits a credential
-digest for a 10-minute device code. An authenticated Owner must independently
-Preview and Confirm that exact Node. The code alone grants no access. Explicit
-`--mode managed` additionally processes authorized single-Node Worker/Monitor
-work; it does not grant broader authority.
+The existing Compose profile uses loopback HTTP for same-host development. The
+manual first-Owner guide also binds direct Docker serving to host loopback;
+remote Nodes and physical Clients need an operator-managed trusted HTTPS entry,
+certificates and firewall policy. The Node retains its own credential and
+initiates outbound HTTPS/SSE connections; Hub does not dial into the Node. The
+optional Node installer submits a credential digest for a 10-minute device
+code. An authenticated Owner must independently Preview and Confirm that exact
+Node. The code alone grants no access. Explicit `--mode managed` additionally
+processes authorized single-Node Worker/Monitor work; it does not grant broader
+authority.
 
 For local packaging, existing entry points are `scripts/build-release.sh VERSION
 [OUTPUT_DIR]` and `scripts/build-hub-image.sh --image IMAGE --metadata-file PATH`.

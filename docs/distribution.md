@@ -3,11 +3,14 @@
 The ordinary-user requirement is to deploy and initialize the Linux-server Hub
 first, with its human Owner/admin account, management entry and connection policy,
 then add Node/Client through one QR/pairing-key flow with device-local keys. The
-[Owner onboarding design](owner-onboarding-design.md) separates that **NOT_IMPLEMENTED**
-product from current manual development procedures. Hub-ready is independent of
-phones and external Owner signer readiness; Node CLI accepts paste/file input and
-Client accepts scan/manual input. External OpenSSL remains optional advanced tooling.
-Existing installation and evidence below retain their original state and scope.
+[Owner onboarding design](owner-onboarding-design.md) separates that full
+**NOT_IMPLEMENTED** product from the bounded 0.0.5 local Hub setup and finite
+Owner-signer CLI. For a new Hub, use the [manual setup guide](hub-owner-bootstrap.md)
+and serve it directly with Docker after `hub setup` and local pairing issuance.
+Hub-ready is independent of phones and external Owner signer readiness; Node CLI
+accepts paste/file input and Client accepts scan/manual input. External OpenSSL
+remains optional advanced tooling. Existing installation and evidence below
+retain their original state and scope.
 
 The [interface/deployment design](deployment-interface-design.md) recommends one
 Hub Web UI and shared Linux/macOS/Windows Go CLI/local components. Native Node is
@@ -20,8 +23,12 @@ amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-inst
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
-This repository provides an opt-in, checkout-based local Hub Compose entry and
-an optional host-user Node agent launcher. Hub images, amd64/ARM64 program
+This repository provides a manual first-Owner Hub setup/direct-Docker serving
+path and a controlled update helper for an existing configured Compose Hub,
+plus an optional host-user Node agent launcher. The helper and its
+`bootstrap-cicada.sh` alias refuse pristine state and volumes without a matching
+Compose Hub; a manually initialized named volume must stay on the direct-Docker
+path and must not be handed to the helper. Hub images, amd64/ARM64 program
 packages and the [manual Owner/PQ first-install ceremony](node-tls-first-install-cli.md)
 are available as scoped development artifacts. The scripts build from source
 for local use; they are not a formal public one-command installer. Production
@@ -69,7 +76,7 @@ visibility and message grants remain separate server-checked permissions.
 | Server/host, IP address, routing/firewall and actual reachability; OS and Docker permissions | User/operator supplies and operates these resources. |
 | Optional domain and DNS; external WebPKI HTTPS entry, its certificate/CA infrastructure, lifecycle and backups | User/operator chooses and operates this entry; deployment tooling may automate its maintenance. A domain is optional. |
 | Independent trust checks, Owner signatures, exact Node approval and other real authorization decisions | User/Owner decides; installation cannot fabricate approval or transfer Owner authority to the Hub operator. |
-| Owner approval private-key generation and custody | After independent Hub account setup, CICADA should provide user-local generation/import and precise external signer registration, then qualified signing of device enrollment. Hub initialization/ordinary pairing credentials cannot substitute signer authority; the user retains private-key custody. External tools remain optional advanced/development paths; the new flow is **NOT_IMPLEMENTED**. |
+| Owner approval private-key generation and custody | The bounded 0.0.5 CLI provides local Owner profile generation/import, finite first-signer registration and qualified signing of device enrollment. Hub initialization/ordinary pairing credentials cannot substitute signer authority; the user retains private-key custody. Full account UI, unified QR pairing and platform-wide custody remain **NOT_IMPLEMENTED**; external tools remain optional advanced/development paths. |
 | Stable identities, current Guard, application E2EE, sessions, durable queues, outbound Node transport and exact original-Thread binding | CICADA supplies and enforces these product mechanisms within its documented Runtime and acceptance limits. |
 | Internal Node PQ identity/issuer/root/leaf initialization or existing-material import, Owner authorization and installation lifecycle | CICADA should provide controlled CLI guidance so users need not build the internal PKI manually; production CA initialization remains **NOT_IMPLEMENTED**. |
 | Lightweight deployment checks and guided setup | CICADA should provide them. Requiring users to build a PKI manually or write many JSON files does not complete the easy-deployment experience. |
@@ -114,30 +121,36 @@ nor may HTTPS replace application E2EE or Owner approval.
 
 ## Local Hub
 
+For a new Hub, use the [manual first-Owner setup guide](hub-owner-bootstrap.md):
+initialize the named StateDir with `cicada hub setup`, issue the finite pairing
+locally, then serve the Hub directly with Docker. Do not use the checkout
+installer for that manually initialized volume. It deliberately treats an
+unmatched named volume as an orphan and refuses it, so the direct-Docker setup
+and the existing Compose update helper are separate deployment paths.
+
 `docker/Dockerfile.hub` builds a non-root static Go runtime without Codex,
 provider/model credentials or a legacy management bearer. The root
-`docker-compose.yml` contains one Hub service, Linux host networking, a
-loopback-only listener and a persistent named volume
-`cicada-v2-local-hub-state`. It does not mount the legacy `cicada.env`, read a
-resident state directory, publish a port to non-loopback interfaces or start
-placeholder services. The Hub identity and SQLite state persist in the named
-volume. Stop it without deleting data:
+`docker-compose.yml` and `scripts/install-cicada-server.sh` remain available for
+an existing configured Compose-managed Hub. That profile contains one Hub
+service, Linux host networking, a loopback-only listener and a persistent named
+volume `cicada-v2-local-hub-state`. It does not mount the legacy `cicada.env`,
+read a resident state directory, publish a port to non-loopback interfaces or
+start placeholder services. The Hub identity and SQLite state persist in the
+named volume. Stop an existing Compose-managed Hub without deleting data:
 
 ```sh
 docker compose -p cicada-v2-local -f docker-compose.yml stop hub
 ```
 
-From a Linux CICADA checkout with Docker Engine and Compose v2, explicitly
-start the local Hub with:
+For an already configured Compose-managed Hub, the installer is a controlled
+update helper. It requires Docker Engine and Compose v2, and does not provide a
+fresh one-command install:
 
-```sh
-scripts/install-cicada-server.sh
-```
-
-The installer builds the current local checkout and starts
-`http://127.0.0.1:8788` by default. It does not fetch a GitHub branch, curl an
-unpublished artifact, request model credentials, or clear any data. It refuses
-to reuse an existing `cicada-v2-local` Compose project unless
+For the existing Compose profile, the helper builds the current local checkout
+and serves `http://127.0.0.1:8788` by default. It does not fetch a GitHub branch,
+curl an unpublished artifact, request model credentials, or clear any data. It
+refuses pristine state and refuses to reuse an existing `cicada-v2-local`
+Compose project unless
 `CICADA_DEPLOY_UPDATE=1` is explicitly set. An existing-project update also
 requires a fresh private backup destination outside the checkout and the Hub
 volume:
@@ -163,13 +176,16 @@ unsupported preflight leaves the container as found. If backup or verification
 fails after the Hub has stopped, it stays stopped and Compose does not rebuild;
 the installer does not delete the volume or restore automatically. A named
 volume without a matching project container, or any Compose-owned project
-volume without its Hub container, is treated as an orphan and blocks
-installation so its state cannot be silently attached as a fresh deployment.
+volume without its Hub container, is treated as an orphan and blocks the helper
+so its state cannot be silently attached as a fresh deployment. In particular,
+do not point this helper at a volume initialized by the manual first-Owner
+setup guide.
 If a later Compose build, `up`, or health check fails, the installer does not
 automatically restart or restore the Hub; it may remain stopped or unhealthy.
 An administrator must choose the next step using the retained backup.
 
-The default project and volume remain `cicada-v2-local` and
+The default project and volume for an existing Compose-managed deployment are
+`cicada-v2-local` and
 `cicada-v2-local-hub-state`. Set `CICADA_DEPLOY_PROJECT` to a validated
 lowercase name to run another local project; its default volume is
 `<project>-hub-state`. Set `CICADA_HUB_VOLUME` only when the intended volume is
@@ -184,13 +200,14 @@ release artifact or a production deployment. `scripts/bootstrap-cicada.sh`
 is an alias for this explicit Hub installer; it no longer creates a shared env
 file.
 
-This loopback HTTP profile is for same-host development. An SSH local forward
-can expose it at the browser's localhost for inspection; it does not establish
-a public HTTPS entry. The panel's WebCrypto requires a trustworthy browser
-context, such as localhost or valid trusted HTTPS. Remote browser/Android
-access and remote Node pairing require the selected trusted HTTPS entry and
-firewall policy above. Neither this Compose file nor its health check proves
-public HTTPS readiness.
+The existing Compose profile's loopback HTTP listener is for same-host
+development. An SSH local forward can expose it at the browser's localhost for
+inspection; it does not establish a public HTTPS entry. The manual first-Owner
+guide also binds its direct Docker container to host loopback; remote browser,
+Android and Node access requires an operator-managed trusted HTTPS reverse
+proxy and firewall policy. The panel's WebCrypto requires a trustworthy browser
+context, such as localhost or valid trusted HTTPS. Neither the Compose file nor
+its health check proves public HTTPS readiness.
 
 ## Optional Node agent and owner confirmation
 

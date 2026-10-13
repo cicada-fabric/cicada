@@ -22,7 +22,7 @@ type CommunicationLinkProposalInput struct {
 }
 
 func (c *Control) communicationLinkOwnerID() (string, error) {
-	ownerID := strings.TrimSpace(c.Identity().ID)
+	ownerID := strings.TrimSpace(c.ManagerOwnerID())
 	if ownerID == "" {
 		return "", errors.New("Control owner identity is unavailable")
 	}

@@ -72,11 +72,11 @@ func (c *Control) CreateGroup(input GroupCreateInput) (*store.Group, error) {
 	if strings.TrimSpace(input.NetworkID) != "" {
 		return nil, ErrPermissionDenied
 	}
-	identity := c.Identity()
-	if strings.TrimSpace(identity.ID) == "" {
+	ownerID := c.ManagerOwnerID()
+	if strings.TrimSpace(ownerID) == "" || c.ValidateClientOwnerScope(ownerID) != nil {
 		return nil, errors.New("local control identity is unavailable")
 	}
-	return c.createGroupForOwner(identity.ID, input, "")
+	return c.createGroupForOwner(ownerID, input, "")
 }
 
 func (c *Control) createGroupForOwner(ownerID string, input GroupCreateInput, clientRequestID string) (*store.Group, error) {
@@ -187,8 +187,8 @@ func (c *Control) AddGroupMember(groupID string, input GroupMemberInput) (*store
 			return nil, errors.New("principal_id or name is required")
 		}
 		principal, err := c.store.CreatePrincipal(store.Principal{
-			Kind: store.PrincipalKindAgent, OwnerID: c.Identity().ID,
-			TrustDomainID: c.Identity().ID, Name: name, DisplayName: name,
+			Kind: store.PrincipalKindAgent, OwnerID: c.ManagerOwnerID(),
+			TrustDomainID: c.ManagerOwnerID(), Name: name, DisplayName: name,
 			Status: store.PrincipalStatusActive,
 		})
 		if err != nil {

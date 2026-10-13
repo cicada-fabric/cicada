@@ -4,10 +4,16 @@ Software 0.0.4 adds a bounded Unix operator Client for an already initialized
 Hub with an independently registered Owner approval key. Its Client identity is
 separate from Owner, Hub and Node keys. This implements the no-phone reuse slice
 of the [onboarding design](owner-onboarding-design.md), not the complete ordinary
-account/QR-pairing product. Hub-first account setup, finite first-signer bootstrap,
-unified typed pairing and Android scanning remain NOT_IMPLEMENTED. No Android
-repository files or public protocol semantics change: contract client-hub-v1.6.5,
-wire 1, catalog 55 and Hub schema 59 remain fixed.
+account/QR-pairing product. Software 0.0.5 adds separate bounded Hub setup and
+first-signer bootstrap. Docker A2 passed, including fresh-Root Client enrollment
+and the existing Node INITIAL protocol flow. Segmented normal and selected race
+coverage passed after two Store test-fixture-only corrections; the original
+aggregate A7/R3 failures/timeouts remain recorded. Vet/build and Python checks
+passed. Unified
+typed pairing and Android scanning
+remain NOT_IMPLEMENTED. No Android repository
+files or public Client protocol semantics change: contract client-hub-v1.6.5,
+wire 1 and catalog 55 remain unchanged; Hub schema 60 is an additive candidate.
 
 The bounded existing-Owner INITIAL headless scope is complete: deterministic
 normal/race checks and the final A4 disposable SDK/Hub TCP gate passed. Exact

@@ -7,9 +7,16 @@ Native consumption and physical-phone acceptance remain separate scopes.
 
 ## 2026-10-13 current source candidate — unreleased; acceptance partial
 
-The current development version is **0.0.4**: Hub schema **59**, Client
-contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
-operations. Architecture v2.3, Git revision, dirty source/build fingerprints
+The current development version is **0.0.5**: additive Hub schema-60 Owner
+bootstrap changes are scoped against previously accepted schema 59. The bounded
+checkpoint is SCOPED PASS: independent-Hub Docker A2, segmented normal and
+selected race coverage after two Store test-fixture-only corrections, vet/build,
+and Python checks passed. Original aggregate attempts A7 and R3 retain their
+failures/timeouts; no one-shot full normal or race PASS is claimed. See the
+[validation record](hub-owner-bootstrap-validation.md) for counts, skips,
+fingerprints and retained failures.
+Client contract **client-hub-v1.6.5**, encrypted wire **1** and **55** catalog
+operations remain unchanged. Architecture v2.3, Git revision, dirty source/build fingerprints
 and artifact digests are separate identities. See the
 [technical guide](v01-technical-guide.md) and
 [distribution details](distribution.md).
@@ -18,11 +25,14 @@ The [0.0.4 headless Client checkpoint](owner-headless-client-validation.md) comp
 the bounded existing-Owner INITIAL operator slice. Normal/race/vet checks and
 final A4 disposable SDK/Hub TCP passed with confirmed cleanup; its v2 is a local
 receipt schema, not a public protocol revision. A1/A2 failures and A3 intermediate
-results retain their own sources and artifacts. Full Hub account setup, finite
-first-signer authority, unified QR pairing and Windows custody remain
-NOT_IMPLEMENTED; macOS native, Android, Runtime, physical-device, public HTTPS and
-actual interactive CLI acceptance are NOT_RUN for this slice. Overall acceptance
-remains PARTIAL, with no release or deployment change.
+results retain their own sources and artifacts. Software 0.0.5 adds bounded
+Hub setup and finite first-signer bootstrap. Its scoped validation passed as
+described above. Full account UI,
+unified QR pairing and Windows custody remain
+NOT_IMPLEMENTED; human interactive CLI review, Android, Runtime, physical-device
+and public HTTPS acceptance remain NOT_RUN. Lost-Root recovery remains
+NOT_IMPLEMENTED. Overall acceptance remains PARTIAL, with no release or
+deployment change.
 
 Use the [current validation closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 as the retained broader evidence index, supplemented by the scoped 0.0.4 record

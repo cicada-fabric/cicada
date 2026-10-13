@@ -43,7 +43,7 @@ func (c *Control) AddSharedTaskDependency(groupID, taskID, dependsOnID string, r
 	if task.GroupID != groupID {
 		return nil, store.ErrSharedTaskNotFound
 	}
-	return c.store.AddSharedTaskDependency(taskID, dependsOnID, revision, c.Identity().ID)
+	return c.store.AddSharedTaskDependency(taskID, dependsOnID, revision, c.ManagerOwnerID())
 }
 
 func (c *Control) ReadySharedTask(groupID, taskID string, revision int64) (*store.SharedTask, error) {
@@ -54,7 +54,7 @@ func (c *Control) ReadySharedTask(groupID, taskID string, revision int64) (*stor
 	if task.GroupID != groupID {
 		return nil, store.ErrSharedTaskNotFound
 	}
-	return c.store.ReadySharedTask(taskID, revision, c.Identity().ID)
+	return c.store.ReadySharedTask(taskID, revision, c.ManagerOwnerID())
 }
 
 func (c *Control) ReconcileExpiredSharedTask(groupID, taskID string, revision int64) (*store.SharedTask, error) {
@@ -65,7 +65,7 @@ func (c *Control) ReconcileExpiredSharedTask(groupID, taskID string, revision in
 	if task.GroupID != groupID {
 		return nil, store.ErrSharedTaskNotFound
 	}
-	return c.store.ReconcileExpiredSharedTaskClaim(taskID, revision, c.Identity().ID)
+	return c.store.ReconcileExpiredSharedTaskClaim(taskID, revision, c.ManagerOwnerID())
 }
 
 // These methods are reached through the manager-bearer management router, never
@@ -78,8 +78,8 @@ func (c *Control) CreateSharedTaskPeerShell(groupID string, input store.SharedTa
 	if group.State != store.GroupStateActive {
 		return nil, errors.New("group is not active")
 	}
-	return c.store.CreateSharedTaskPeerShell(groupID, c.Identity().ID, input)
+	return c.store.CreateSharedTaskPeerShell(groupID, c.ManagerOwnerID(), input)
 }
 func (c *Control) AssignSharedTaskPeerBody(groupID, taskID string, input store.SharedTaskPeerAssignmentInput) (*store.SharedTaskPeerAssignment, error) {
-	return c.store.AssignSharedTaskPeerBody(groupID, taskID, c.Identity().ID, input)
+	return c.store.AssignSharedTaskPeerBody(groupID, taskID, c.ManagerOwnerID(), input)
 }

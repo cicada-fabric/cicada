@@ -120,6 +120,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	// Client enrollment and encrypted management traffic have their own trust
 	// boundary. They never fall through to the legacy management bearer.
+	if request.URL.Path == "/v2/owner/bootstrap/accept" {
+		h.ownerBootstrapAccept(response, request)
+		return
+	}
 	if request.URL.Path == "/v2/nodes/device-code" {
 		h.nodeDeviceCode(response, request)
 		return

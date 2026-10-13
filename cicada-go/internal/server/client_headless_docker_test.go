@@ -321,13 +321,24 @@ func TestClientDockerHubHeadlessOperator(t *testing.T) {
 	// Stage a clearly synthetic Node, obtain the exact authenticated candidate,
 	// then confirm only the tuple the SDK returned for review.
 	const nodeID = "synthetic-docker-headless-node"
+	nodeCallHub := func(method, path string, body []byte, expectedStatus int) []byte {
+		return callHub(method, path, body, "", expectedStatus)
+	}
+	exerciseSyntheticInitialNode(t, ctx, profile, hub.HubID, ownerID,
+		manifestBefore.DeviceID, nodeID, nodeCallHub)
+}
+
+func exerciseSyntheticInitialNode(t *testing.T, ctx context.Context, profile *clientoperator.Profile,
+	hubID, ownerID, confirmingDeviceID, nodeID string,
+	callHub func(method, path string, body []byte, expectedStatus int) []byte) store.NodeControlKeyBinding {
+	t.Helper()
 	nodeToken, nodeDigest, err := fabric.NewNodeCredential()
 	if err != nil || nodeToken == "" || nodeDigest == "" {
 		t.Fatal("could not create synthetic Node credential fixture")
 	}
 	var nodeHub control.NodeControlHubIdentity
-	if json.Unmarshal(callHub(http.MethodGet, "/v2/node/identity", nil, "", http.StatusOK), &nodeHub) != nil ||
-		nodeHub.HubID != hub.HubID || nodeHub.KeyVersion == 0 || nodeHub.Fingerprint == "" {
+	if json.Unmarshal(callHub(http.MethodGet, "/v2/node/identity", nil, http.StatusOK), &nodeHub) != nil ||
+		nodeHub.HubID != hubID || nodeHub.KeyVersion == 0 || nodeHub.Fingerprint == "" {
 		t.Fatal("disposable Hub did not return a complete Node-Control identity")
 	}
 	nodeKey, err := e2ee.NewIdentity()
@@ -351,7 +362,7 @@ func TestClientDockerHubHeadlessOperator(t *testing.T) {
 		t.Fatal("could not seal synthetic Node proof")
 	}
 	nodeStart, err := json.Marshal(map[string]any{
-		"node_id": nodeID, "node_name": "Synthetic Docker Headless Node", "credential_digest": nodeDigest,
+		"node_id": nodeID, "node_name": "Synthetic Docker Node", "credential_digest": nodeDigest,
 		"request_nonce": nonce, "node_public_identity": nodeKey.Public(),
 		"node_fingerprint": nodewire.IdentityFingerprint(nodeKey.Public()), "proof_packet": proof,
 		"hub_id": nodeHub.HubID, "hub_public_identity": nodeHub.PublicIdentity,
@@ -363,7 +374,7 @@ func TestClientDockerHubHeadlessOperator(t *testing.T) {
 	var deviceCode struct {
 		UserCode string `json:"user_code"`
 	}
-	if json.Unmarshal(callHub(http.MethodPost, "/v2/nodes/device-code", nodeStart, "", http.StatusCreated), &deviceCode) != nil || deviceCode.UserCode == "" {
+	if json.Unmarshal(callHub(http.MethodPost, "/v2/nodes/device-code", nodeStart, http.StatusCreated), &deviceCode) != nil || deviceCode.UserCode == "" {
 		t.Fatal("disposable Hub did not issue a synthetic Node device code")
 	}
 	preview, err := profile.PreviewNode(ctx, deviceCode.UserCode)
@@ -384,10 +395,10 @@ func TestClientDockerHubHeadlessOperator(t *testing.T) {
 		t.Fatal("encrypted Node confirmation failed")
 	}
 	var binding store.NodeControlKeyBinding
-	if json.Unmarshal(confirmed.Result, &binding) != nil || binding.NodeID != nodeID || binding.State != "ACTIVE" ||
-		binding.ClientDeviceID != manifestBefore.DeviceID || binding.ApprovedOwnerDeviceID != manifestBefore.DeviceID ||
-		binding.ApprovedCandidateDigest != candidate.CandidateDigest {
-		t.Fatal("Node confirmation did not bind the reviewed tuple to this Client device")
+	if json.Unmarshal(confirmed.Result, &binding) != nil || binding.NodeID != nodeID || binding.OwnerID != ownerID ||
+		binding.State != "ACTIVE" || binding.ClientDeviceID != confirmingDeviceID ||
+		binding.ApprovedOwnerDeviceID != confirmingDeviceID || binding.ApprovedCandidateDigest != candidate.CandidateDigest {
+		t.Fatal("Node confirmation did not bind the reviewed tuple to the exact Owner and confirming Client device")
 	}
 	nodes, err := profile.Nodes(ctx)
 	if err != nil || nodes == nil || !nodes.OK {
@@ -395,9 +406,11 @@ func TestClientDockerHubHeadlessOperator(t *testing.T) {
 	}
 	var listed []store.NodeDeviceBinding
 	if json.Unmarshal(nodes.Result, &listed) != nil || len(listed) != 1 || listed[0].NodeID != nodeID ||
-		listed[0].ClientDeviceID != manifestBefore.DeviceID || listed[0].State != "ACTIVE" || !listed[0].Authorized {
-		t.Fatal("encrypted Node list did not remain scoped to the synthetic external Owner")
+		listed[0].OwnerID != ownerID || listed[0].ClientDeviceID != confirmingDeviceID ||
+		listed[0].State != "ACTIVE" || !listed[0].Authorized {
+		t.Fatal("encrypted Node list did not preserve Owner and confirming-device scope")
 	}
+	return binding
 }
 
 func validateHeadlessDockerFixture(baseURL, dbPath string) error {

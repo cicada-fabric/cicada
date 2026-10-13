@@ -14,7 +14,7 @@ func (c *Control) ManagementEndpointCards(input EndpointListInput) ([]NetworkCar
 	if c == nil || c.store == nil {
 		return nil, errors.New("Endpoint management projection is unavailable")
 	}
-	ownerID := c.Identity().ID
+	ownerID := c.ManagerOwnerID()
 	endpoints, err := c.store.ListEndpointsV2(store.EndpointV2Filter{
 		OwnerID: ownerID, Status: input.Status, NodeID: input.MachineID,
 		Harness: input.Harness, MigrationState: store.EndpointMigrationReady,
@@ -48,7 +48,7 @@ func (c *Control) ManagementEndpointCard(id string) (*NetworkCard, error) {
 		return nil, store.ErrEndpointNotFound
 	}
 	principal, err := c.store.GetPrincipal(endpoint.PrincipalID)
-	if err != nil || principal == nil || principal.OwnerID != c.Identity().ID ||
+	if err != nil || principal == nil || principal.OwnerID != c.ManagerOwnerID() ||
 		principal.Status != store.PrincipalStatusActive {
 		return nil, store.ErrEndpointNotFound
 	}

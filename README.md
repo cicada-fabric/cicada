@@ -29,7 +29,18 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.4**, unreleased on `dev`. A main merge or
+The development line is **0.0.5**, unreleased on `dev`. It adds bounded local
+Hub account setup and first Owner-signer bootstrap. The independent-Hub Docker
+gate passed, including fresh-Root manager Client enrollment and the existing
+Node INITIAL protocol path. The bounded checkpoint has segmented normal and
+selected race PASS results after two Store test-fixture-only corrections; the
+original A7 and R3 aggregate failures/timeouts remain recorded. Vet/build and
+Python checks passed. See the [checkpoint record](docs/hub-owner-bootstrap-validation.md)
+for counts, skips, fingerprints and limits. The
+[operator guide](docs/hub-owner-bootstrap.md) documents fresh and existing
+Hub-volume procedures. Human interactive CLI review, Android, Native,
+physical-device and public-HTTPS acceptance remain NOT_RUN; Windows custody and
+lost-Root recovery remain unimplemented. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1, current CLI sandbox and Worker private-fixture checks passed their
 scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3
@@ -44,7 +55,13 @@ The [test automation guide](docs/test-automation.md) covers `scripts/test-archit
 
 Use the checkout-based commands in [distribution and deployment](docs/distribution.md):
 
-- Local Linux Hub: `scripts/install-cicada-server.sh`.
+- New Hub: follow the [manual first-Owner setup](docs/hub-owner-bootstrap.md),
+  which runs local `hub setup` and then serves the Hub directly with Docker.
+- Existing configured Compose-managed Hub: `scripts/install-cicada-server.sh`
+  is a controlled update helper that requires an explicit fresh backup. Its
+  `scripts/bootstrap-cicada.sh` alias is not a fresh-install path. Do not pass
+  a manually created setup volume to this helper; it treats such a volume as an
+  orphan and refuses it.
 - Optional host Node: `scripts/install-cicada-worker.sh`; review the Hub URL,
   state and Owner confirmation requirements before running it.
 - Binary packaging: `scripts/build-release.sh VERSION [OUTPUT_DIR]`

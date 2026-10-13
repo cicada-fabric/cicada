@@ -1,14 +1,31 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+## 2026-10-13 bounded Hub Owner bootstrap — SCOPED PASS; full product PARTIAL
+
+The separate [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)
+tracks a bounded stable-account mapping and first-signer bootstrap protocol.
+The source includes schema-60 state and the independent accept route. Corrected-
+source Docker A2 passed exact retry, restart, revocation/no-reset, fresh-Root
+manager Client enrollment, the existing Node INITIAL preview/confirmation/list
+path, and cleanup. Segmented normal and selected race coverage passed after two
+Store test-fixture-only corrections; original aggregate A7 and R3
+failures/timeouts remain retained. Vet/build and Python checks passed. See the
+[validation record](hub-owner-bootstrap-validation.md) for exact counts,
+fingerprints and omissions. Client v1.6.5, wire 1,
+catalog 55 and Android source remain unchanged. This does not complete account
+UI, unified QR pairing, Android, Native, physical-device or public HTTPS work.
+
 2026-10-13 corrected Owner onboarding: initialize the Linux-server Hub's human
 Owner/admin account, management entry and connection policy independently first;
 then let Node/Client join through one QR/pairing-key experience. A phone is only
 a Client. Hub-ready, external signer-ready and device-connected are distinct.
 The full [Owner onboarding design](owner-onboarding-design.md) remains planning;
-Hub account/setup, first external signer bootstrap and unified pairing UI remain
-**NOT_IMPLEMENTED**. Existing Android local device keygen and Node device-code
-primitives are reusable foundations. The bounded headless slice below is
-implemented separately. Optional OpenSSL/manual signing results
+account UI, unified pairing UI and deployment UX remain **NOT_IMPLEMENTED**.
+Software 0.0.5 contains bounded Hub setup and first-signer bootstrap. Its
+segmented normal/race, Docker, vet/build and Python checks passed with aggregate
+A7/R3 failures retained. Existing Android local device
+keygen and Node device-code primitives are reusable foundations. The bounded
+headless slice below is implemented separately. Optional OpenSSL/manual signing results
 below do not establish this product flow; their prior source and scope remain intact.
 
 The [cross-platform interface design](deployment-interface-design.md) is also
@@ -20,7 +37,10 @@ OS key storage, device pairing or native Runtime support; PQ package scope remai
 
 ## 2026-10-13 bounded headless management Client — COMPLETE; full onboarding PARTIAL
 
-Current software is **0.0.4**. The [headless Client](owner-headless-client.md)
+The [0.0.4 checkpoint](owner-headless-client.md) implemented the headless
+Client. Current software is **0.0.5**, which adds separate bounded Hub setup and
+first-signer bootstrap. Docker A2 and the segmented normal/race, vet/build and
+Python checks passed; original aggregate A7/R3 failures remain recorded. The headless Client
 creates an independent local Client identity, accepts an existing exact Owner
 Grant, and uses encrypted capabilities/status and INITIAL Node preview/confirm/list
 with durable original-packet recovery. Full Hub pins, private profile custody,
@@ -35,13 +55,17 @@ final A4 Docker three top-level + three recovery subtests PASS with confirmed
 cleanup. A1/A2 failures, A3's intermediate-v1 PASS and their distinct source/image
 identities remain intact. Local receipt v2 and 78 Python consumer/formatter tests
 are metadata evidence, not a Client protocol change or fresh Link Docker result.
-Contract v1.6.5, wire 1, catalog 55 and Hub schema 59 are unchanged.
+The headless Client itself leaves contract v1.6.5, wire 1 and catalog 55
+unchanged; the separate 0.0.5 bootstrap adds the schema-60 candidate.
 
-This completes the existing-Owner no-phone INITIAL slice. Hub account/admin setup,
-finite first-signer bootstrap, unified typed QR pairing and Windows custody remain
-NOT_IMPLEMENTED; macOS native custody, Android, native Runtime, physical devices,
-public HTTPS and actual interactive CLI acceptance remain NOT_RUN for this slice.
-Overall v0.1.0 remains PARTIAL; no old acceptance count or resident deployment changes.
+This completes the existing-Owner no-phone INITIAL slice. Bounded local Hub
+account/admin setup and finite first-signer bootstrap are implemented in 0.0.5;
+full account UI, unified typed QR pairing and Windows custody remain
+NOT_IMPLEMENTED. MacOS native custody, Android, native Runtime, physical devices,
+public HTTPS and real interactive CLI terminal review remain NOT_RUN for their
+separate scopes. Lost-Root recovery and Windows custody remain NOT_IMPLEMENTED.
+Overall v0.1.0 remains PARTIAL; no old acceptance count or
+resident deployment changes.
 
 Software 0.0.3 added signed IP locators, actual ARM64 PQ packaging and a manual
 independent-Owner first-install ceremony. [The earlier installation checkpoint](docker-ip-arm64-validation.md)
@@ -80,8 +104,11 @@ Use the [current release closeout](v01-current-closeout-20261009-validation.md#c
 for product scope and the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 for their source and artifact checks, supplemented by the
 [0.0.4 headless checkpoint](owner-headless-client-validation.md). Current software
-is 0.0.4, contract
-`client-hub-v1.6.5`, wire 1, catalog 55, and schema 59. The clean-328f default
+is 0.0.5 with the additive schema-60 bootstrap checkpoint at SCOPED PASS. Its
+segmented normal and selected race coverage, vet/build, and Python checks pass;
+original aggregate A7 and R3 failures/timeouts remain recorded;
+contract `client-hub-v1.6.5`, wire 1 and catalog 55 remain unchanged, and schema
+59 is the last accepted baseline. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
 their separate tested sources. C14 passed a bounded default-daemon scope on
 the original A/B contexts: six turns (four manual, two automatic), multi-Group

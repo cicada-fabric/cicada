@@ -5,7 +5,10 @@ usage() {
   cat <<'EOF'
 Usage: scripts/install-cicada-server.sh [--help]
 
-Build and start the minimal loopback-only Hub from this checkout.
+Build and run the minimal loopback-only Hub for an existing deployment's
+explicit backed-up update. This helper does not provision a new Hub and refuses
+pristine state before creating a container or volume. For first setup, follow
+the manual Hub setup and deployment procedure in docs/hub-owner-bootstrap.md.
 This command does not download a release artifact, ask for a provider key, or
 replace another Compose project unless CICADA_DEPLOY_PROJECT names it.
 
@@ -266,6 +269,7 @@ else
       die "the configured Hub volume exists without a matching project container; preserve it and resolve the orphaned deployment before installing"
     fi
   done <<<"$volume_names"
+  die "pristine fresh Hub install is not supported by this Compose helper; follow docs/hub-owner-bootstrap.md for manual one-shot Hub setup and direct Docker serving"
 fi
 "${compose[@]}" up --detach --build --wait hub
 printf 'CICADA Hub is healthy at http://127.0.0.1:%s\n' "$api_port"

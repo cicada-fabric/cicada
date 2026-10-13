@@ -23,6 +23,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 	workspacecas "github.com/cicada-ai/cicada/internal/workspace/cas"
+	"github.com/gofrs/flock"
 )
 
 type Config struct {
@@ -160,6 +161,7 @@ type Control struct {
 	identity            *e2ee.Identity
 	clientIdentity      *e2ee.Identity
 	nodeControlIdentity *e2ee.Identity
+	managerOwnerID      string
 	approvalMu          sync.Mutex
 	approvalDecisionMu  sync.Mutex
 	approvalWaiters     map[string]chan string
@@ -221,10 +223,12 @@ func New(config Config) (*Control, error) {
 		return nil, err
 	}
 	control.identity = identity
-	if err := persistence.EnsureLocalOwnerPrincipal(identity.Public().ID); err != nil {
+	ownerSetup, err := persistence.EnsureHubManagerLocal(identity.Public().ID)
+	if err != nil {
 		persistence.Close()
 		return nil, err
 	}
+	control.managerOwnerID = ownerSetup.OwnerID
 	// Client management traffic has its own PQ key. Peer Contact keys must
 	// never become the Hub's Client-Control decryption identity.
 	clientIdentity, err := loadIdentity(filepath.Join(config.StateDir, "e2ee", "client-control-identity.json"))
@@ -242,7 +246,7 @@ func New(config Config) (*Control, error) {
 		return nil, err
 	}
 	control.nodeControlIdentity = nodeControlIdentity
-	fabricService, err := fabricpkg.NewService(persistence, identity.Public().ID, identity.Public().ID)
+	fabricService, err := fabricpkg.NewService(persistence, ownerSetup.OwnerID, ownerSetup.OwnerID)
 	if err != nil {
 		persistence.Close()
 		return nil, err
@@ -264,6 +268,31 @@ func loadIdentity(path string) (*e2ee.Identity, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create E2EE identity directory: %w", err)
 	}
+	// Serialize only identity load/create across independent local processes.
+	// The StateDir startup lock is shared and cannot protect first creation.
+	lockPath := path + ".lock"
+	file, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		if err = file.Close(); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrExist) {
+		return nil, err
+	}
+	info, err := os.Lstat(lockPath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		return nil, errors.New("E2EE identity lock is not a private regular file")
+	}
+	lock := flock.New(lockPath, flock.SetFlag(os.O_RDONLY))
+	if err = lock.Lock(); err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+	held, err := lock.Stat()
+	current, statErr := os.Lstat(lockPath)
+	if err != nil || statErr != nil || !os.SameFile(held, current) || !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 {
+		return nil, errors.New("E2EE identity lock changed")
+	}
 	if data, err := os.ReadFile(path); err == nil {
 		identity, decodeErr := e2ee.UnmarshalIdentity(data)
 		if decodeErr != nil {
@@ -282,17 +311,36 @@ func loadIdentity(path string) (*e2ee.Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, data, 0o600); err != nil {
-		return nil, fmt.Errorf("write E2EE identity: %w", err)
-	}
-	if err := os.Chmod(temporary, 0o600); err != nil {
-		_ = os.Remove(temporary)
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
+	if err != nil {
 		return nil, err
 	}
-	if err := os.Rename(temporary, path); err != nil {
-		_ = os.Remove(temporary)
+	defer os.Remove(temporary.Name())
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return nil, fmt.Errorf("write E2EE identity: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return nil, err
+	}
+	if err := temporary.Close(); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(temporary.Name(), path); err != nil {
 		return nil, fmt.Errorf("install E2EE identity: %w", err)
+	}
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	err = directory.Sync()
+	closeErr := directory.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	return identity, nil
 }
