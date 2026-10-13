@@ -9,6 +9,59 @@ UI and physical deployment remain follow-up acceptance. [Current evidence](docke
 and [manual steps](node-tls-first-install-cli.md) keep this sequence reviewable;
 no PASS is added to historical d86 or Native results.
 
+<a id="guided-deployment-cli-tui"></a>
+
+## Future guided deployment CLI/TUI — NOT_IMPLEMENTED
+
+Current delivery includes Hub images, amd64/ARM64 packages and manual independent
+Owner signing/PQ installation. `install-cicada-server.sh` builds a loopback Hub
+from a source checkout; `bootstrap-cicada.sh` is its alias. Neither is a formal
+public one-command installer. Production CA initialization, guided TUI and
+automatic renewal are not delivered by these paths. This section records future
+deployment experience only; it changes no protocol or resident deployment.
+
+The [distribution responsibility boundary](distribution.md#product-and-operator-responsibilities)
+keeps host/IP/reachability, OS/Docker permissions, optional DNS, TLS infrastructure
+operation/backups and real approvals with the user/operator. CICADA supplies
+identity, Guard, application E2EE, sessions/queues, Node outbound transport and
+exact Thread binding, and should provide lightweight checks and guidance.
+Manual PKI setup and many hand-written JSON files are not the completed experience.
+
+Implement the smallest ordered bootstrap CLI/shell flow, then a TUI over it:
+
+1. Select **Hub, Node or both**; one physical host may run both roles. Inspect
+   architecture, OS/runtime dependencies, permissions, ports and existing services
+   before proposing any change. Preserve existing services and state by default.
+2. Choose optional Docker or an appropriate host package and verify artifact
+   provenance/dependencies. Standard static packages are an option; current PQ
+   packages depend on [glibc and staged OpenSSL](pqtls-openssl-transport.md), so
+   they must not be advertised as universal static binaries. Keep CPU/memory use
+   small and add no resident platform.
+3. Guide users with or without certificates: reuse an existing trusted HTTPS entry
+   or supplied certificate, or offer an optional automated ACME path where supported.
+   Domain/IP certificates and independently trusted private-CA routes have separate
+   client compatibility checks; do not require a domain or promise Android user-CA,
+   automatic self-signed trust or trust-all. Manage renewal for the chosen expiring
+   certificate scheme at the deployment layer; built-in ACME is not a Fabric requirement.
+4. Persist reviewed paths/configuration privately and support idempotent reruns and
+   interrupted-install recovery using existing state/inspection/backup primitives.
+   Preserve identities, counters and uncertain outcomes; do not overwrite an existing
+   service or expose private keys, credentials or full sensitive payloads in
+   output, diagnostics or remote telemetry.
+5. Audit existing crypto primitives first. For fresh deployments, guide user-confirmed
+   creation/import of private PQ identity/issuer/root/leaf material and independent
+   Owner review; never use synthetic/test materials or rotate existing keys without
+   authorization. WebPKI certificates or automatic ACME cannot establish Owner trust.
+   Automate existing service/CLI primitives for independent Hub/Owner trust checks,
+   Owner signing and exact real Node preview/approval, then the approved PQ install.
+   Keep signing independent of Hub and keep Thread Join explicit. Build no second
+   authentication/authorization business path; initial standard HTTPS, ML-KEM/ML-DSA
+   application protection and enrolled Node pure-PQ TLS remain distinct.
+6. Report actual local health, entry/trust reachability and pending approval/recovery
+   steps. Validate the future installer with disposable first-install/rerun/failure
+   fixtures; record Android, real native Runtime, physical devices and public HTTPS
+   separately. Current manual/loopback acceptance cannot supply those future results.
+
 ## Current acceptance sequence — v0.0.x development; target v0.1.0 PARTIAL
 
 [Clean d86 candidate validation](v00-candidate-d86-validation.md) closes scoped

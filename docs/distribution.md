@@ -6,8 +6,12 @@ uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
 This repository provides an opt-in, checkout-based local Hub Compose entry and
-an optional host-user Node agent launcher. It does not provide a signed
-production release installer or a public HTTPS deployment.
+an optional host-user Node agent launcher. Hub images, amd64/ARM64 program
+packages and the [manual Owner/PQ first-install ceremony](node-tls-first-install-cli.md)
+are available as scoped development artifacts. The scripts build from source
+for local use; they are not a formal public one-command installer. Production
+CA initialization and a guided TUI are **NOT_IMPLEMENTED**. No signed production
+release installer or public HTTPS acceptance is claimed.
 
 The [clean d86 candidate record](v00-candidate-d86-validation.md) separately
 records five-target standard packages, the fresh PQ package and current STD/PQ
@@ -31,12 +35,54 @@ old uncertain attempts to make an upgrade appear successful. The detailed
 backup/failure boundaries below remain authoritative.
 
 Hub, Node and Client are deployment responsibilities, not separate required
-machines. The Hub owns authoritative SQLite state and serves Control/Fabric;
+machines. One physical host may run both Hub and Node instances; these roles
+are not mutually exclusive. The Hub owns authoritative SQLite state and serves
+Control/Fabric;
 the Node owns its credential, Endpoint keys, inbox and native Runtime access;
 the Android Client owns user keys and explicit approval. Installing the Hub,
 Node binary, MCP server or plugin never joins a native Thread or grants a Group.
 Network and Group membership, Endpoint registration, SessionBinding, directory
 visibility and message grants remain separate server-checked permissions.
+
+## Product and operator responsibilities
+
+| Responsibility | Owner |
+|---|---|
+| Server/host, IP address, routing/firewall and actual reachability; OS and Docker permissions | User/operator supplies and operates these resources. |
+| Optional domain and DNS; external WebPKI HTTPS entry, its certificate/CA infrastructure, lifecycle and backups | User/operator chooses and operates this entry; deployment tooling may automate its maintenance. A domain is optional. |
+| Independent trust checks, Owner signatures, exact Node approval and other real authorization decisions | User/Owner decides; installation cannot fabricate approval or transfer Owner authority to the Hub operator. |
+| Stable identities, current Guard, application E2EE, sessions, durable queues, outbound Node transport and exact original-Thread binding | CICADA supplies and enforces these product mechanisms within its documented Runtime and acceptance limits. |
+| Internal Node PQ identity/issuer/root/leaf initialization or existing-material import, Owner authorization and installation lifecycle | CICADA should provide controlled CLI guidance so users need not build the internal PKI manually; production CA initialization remains **NOT_IMPLEMENTED**. |
+| Lightweight deployment checks and guided setup | CICADA should provide them. Requiring users to build a PKI manually or write many JSON files does not complete the easy-deployment experience. |
+
+The current manual procedures expose the trust and installation primitives;
+they do not complete that guided experience. The [future CLI/TUI sequence](architecture-v2-plan.md#guided-deployment-cli-tui)
+will automate existing service/CLI operations, with real Owner decisions kept
+explicit. This plan does not authorize changes to an existing deployment.
+
+## HTTPS entry and trust
+
+Remote browser/Android access and initial remote Node pairing need an HTTPS
+entry whose certificate and service identity are valid and trusted by the
+actual client. This does not require buying or configuring a domain: the
+selected route may use a domain certificate, a public-IP certificate with the
+matching IP SAN, or an existing HTTPS entry/private CA already independently
+trusted by that client. Private-CA compatibility must be checked per client;
+this does not claim the current Android app accepts user-installed CAs,
+automatically trusts self-signed certificates, or permits trust-all mode.
+
+For an expiring certificate scheme, renewal belongs to deployment maintenance
+and may be managed by the installer or the existing entry's tooling. Short-lived
+public certificates need appropriate automated renewal. Renewal is not a Fabric
+logic dependency, and CICADA need not embed ACME; the certificate must remain
+valid and trusted whenever the entry is used. Automatic renewal is not delivered
+by the current local bootstrap or manual first-install ceremony.
+
+Standard WebPKI HTTPS protects the bootstrap entry; ML-KEM/ML-DSA application
+protection provides separate identity and encrypted-management proofs. The
+enrolled Node strict pure-PQ TLS transport has its own approved certificate,
+pin and installation path. Standard HTTPS must not be described as pure-PQ TLS,
+nor may HTTPS replace application E2EE or Owner approval.
 
 ## Local Hub
 
@@ -110,10 +156,13 @@ release artifact or a production deployment. `scripts/bootstrap-cicada.sh`
 is an alias for this explicit Hub installer; it no longer creates a shared env
 file.
 
-This loopback HTTP profile is for same-host development. A physical Android
-device or remote Node requires the operator to configure an HTTPS reverse
-proxy, certificate and firewall policy. Neither this Compose file nor its
-health check proves public HTTPS readiness.
+This loopback HTTP profile is for same-host development. An SSH local forward
+can expose it at the browser's localhost for inspection; it does not establish
+a public HTTPS entry. The panel's WebCrypto requires a trustworthy browser
+context, such as localhost or valid trusted HTTPS. Remote browser/Android
+access and remote Node pairing require the selected trusted HTTPS entry and
+firewall policy above. Neither this Compose file nor its health check proves
+public HTTPS readiness.
 
 ## Optional Node agent and owner confirmation
 
