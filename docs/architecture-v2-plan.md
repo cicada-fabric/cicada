@@ -59,9 +59,10 @@ Implement the smallest ordered bootstrap CLI/shell flow, then a TUI over it:
    application protection and enrolled Node pure-PQ TLS remain distinct.
    Owner approval private-key generation/custody may use external standard tools;
    CICADA provides algorithm/format, verification/authorization and adaptation guidance.
-   External Owner import/conversion and Windows signing/secure-storage adaptation are
-   **NOT_IMPLEMENTED**; reuse mature libraries without protocol changes or key rotation.
-   Native Windows Owner use is unaccepted; WSL is not required. Keep private keys local,
+   The opt-in [OpenSSL helper](owner-windows-openssl.md) converts public SPKI and delegates
+   device-grant signing; private-key import/conversion and Windows secure-storage
+   adaptation remain **NOT_IMPLEMENTED**. Actual Windows execution/physical Android
+   enrollment remain **NOT_RUN**; no protocol change or key rotation. WSL is not required. Keep private keys local,
    never upload them to Hub or an online converter; runtime device identities remain separate.
 6. Report actual local health, entry/trust reachability and pending approval/recovery
    steps. Validate the future installer with disposable first-install/rerun/failure

@@ -53,7 +53,13 @@ func main() {
 			os.Exit(1)
 		}
 	case "owner-key":
-		if err := ownerKeyLocalCommand(os.Args[2:], os.Stdout); err != nil {
+		var err error
+		if len(os.Args) > 2 && os.Args[2] == "from-openssl" {
+			err = ownerKeyFromOpenSSLCommand(os.Args[3:], os.Stdout)
+		} else {
+			err = ownerKeyLocalCommand(os.Args[2:], os.Stdout)
+		}
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -72,6 +78,10 @@ func main() {
 			err = ownerNetworkCollaborationKeySignCommand(os.Args[3:], os.Stdout)
 		} else if len(os.Args) > 2 && os.Args[2] == "device-grant-sign" {
 			err = ownerDeviceGrantSignCommand(os.Args[3:], os.Stdout)
+		} else if len(os.Args) > 2 && os.Args[2] == "device-grant-sign-openssl" {
+			err = ownerDeviceGrantSignOpenSSLCommand(os.Args[3:], os.Stdout)
+		} else if len(os.Args) > 2 && os.Args[2] == "device-enrollment-prepare" {
+			err = ownerDeviceEnrollmentPrepareCommand(os.Args[3:], os.Stdout)
 		} else {
 			err = ownerSpaceCommand(os.Args[2:], os.Stdout)
 		}

@@ -16,19 +16,21 @@ format, verification/authorization and local import/adaptation guidance;
 product dependency. This boundary does not remove automatic Node/Endpoint/Client
 device identity creation or the separate internal Node PQ certificate lifecycle.
 
-Current signing commands read CICADA's `identityDisk` JSON: `version` plus
+The existing `--private` signing commands read CICADA's `identityDisk` JSON: `version` plus
 base64-encoded raw ML-KEM-768 `kem_private` and ML-DSA-65 `signing_private` bytes
 ([serialization and reader](../cicada-go/internal/e2ee/pq.go)). This is **not a
 standard PEM/PKCS#8 import**. The OpenSSL 3.5 official
 [ML-DSA documentation](https://docs.openssl.org/3.5/man7/EVP_PKEY-ML-DSA/) and
 [ML-KEM documentation](https://docs.openssl.org/3.5/man7/EVP_PKEY-ML-KEM/)
 describe those algorithm variants and standard key encodings; their availability
-does not mean the current CICADA CLI can directly read externally generated PEM.
+does not make that JSON reader a PEM importer. The opt-in
+[Windows OpenSSL path](owner-windows-openssl.md) instead converts public SPKI
+and delegates device-grant signing to OpenSSL; it does not import private PEM.
 
-External Owner key import/conversion and native Windows signing/secure-storage
-adaptation are **NOT_IMPLEMENTED** follow-up work. Reuse mature libraries and
-verify exact formats/public identity/signatures without protocol changes or
-rotating existing keys. Native Windows Owner use has not been accepted; current
+Private Owner key import/conversion and native Windows secure-storage adaptation
+remain **NOT_IMPLEMENTED**. The compatibility helper neither generates keys nor
+rotates existing ones, and retains the existing proof/wire format. Native Windows
+execution has not been accepted; current
 `0700`/`0600` checks follow Unix permissions and do not prove Windows ACL/secure
 storage support. WSL is not a product requirement. Keep private keys on the
 user-controlled signing machine; never upload them to Hub or an online converter.

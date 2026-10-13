@@ -121,7 +121,32 @@ func (identity *Identity) SignOwnerDeviceGrant(
 	if identity == nil || identity.signingPrivate == nil {
 		return nil, errors.New("owner device-grant signing identity is unavailable")
 	}
-	if err := ValidatePublicIdentity(identity.Public()); err != nil {
+	return SignOwnerDeviceGrantWithSigner(identity.Public(), ownerID, deviceID,
+		devicePublic, hubID, purpose, issuedAt, expiresAt, func(signed []byte) ([]byte, error) {
+			signature := make([]byte, mldsa65.SignatureSize)
+			err := mldsa65.SignTo(identity.signingPrivate, signed, nil, true, signature)
+			return signature, err
+		})
+}
+
+// SignOwnerDeviceGrantWithSigner uses the existing canonical framing and nonce
+// for an external ML-DSA-65 signer. The callback receives only the bounded public
+// claims, and must sign with Pure ML-DSA and an empty context. Its signature is
+// checked against ownerPublic before any grant is returned. The caller still
+// independently reviews the exact enrollment scope and current validity period.
+func SignOwnerDeviceGrantWithSigner(
+	ownerPublic PublicIdentity,
+	ownerID, deviceID string,
+	devicePublic PublicIdentity,
+	hubID, purpose string,
+	issuedAt, expiresAt time.Time,
+	sign func([]byte) ([]byte, error),
+) ([]byte, error) {
+	if sign == nil {
+		return nil, errors.New("owner device-grant signer is unavailable")
+	}
+	_, signingPublic, err := validatePublic(ownerPublic)
+	if err != nil {
 		return nil, fmt.Errorf("validate owner device-grant signer: %w", err)
 	}
 	fingerprint, err := OwnerDevicePublicKeyFingerprint(devicePublic)
@@ -131,7 +156,7 @@ func (identity *Identity) SignOwnerDeviceGrant(
 	grant := OwnerDeviceGrant{
 		Version:              OwnerDeviceGrantVersion,
 		OwnerID:              ownerID,
-		OwnerKeyID:           identity.Public().ID,
+		OwnerKeyID:           ownerPublic.ID,
 		DeviceID:             deviceID,
 		DeviceKeyID:          devicePublic.ID,
 		DeviceKeyFingerprint: fingerprint,
@@ -152,9 +177,12 @@ func (identity *Identity) SignOwnerDeviceGrant(
 	if err != nil {
 		return nil, fmt.Errorf("encode owner device-grant claims: %w", err)
 	}
-	grant.Signature = make([]byte, mldsa65.SignatureSize)
-	if err := mldsa65.SignTo(identity.signingPrivate, signed, nil, true, grant.Signature); err != nil {
+	grant.Signature, err = sign(append([]byte(nil), signed...))
+	if err != nil {
 		return nil, fmt.Errorf("sign owner device grant: %w", err)
+	}
+	if len(grant.Signature) != mldsa65.SignatureSize || !mldsa65.Verify(signingPublic, signed, nil, grant.Signature) {
+		return nil, errors.New("owner device grant signature verification failed")
 	}
 	wire, err := json.Marshal(grant)
 	if err != nil {

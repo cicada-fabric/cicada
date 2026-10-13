@@ -62,9 +62,11 @@ will automate existing service/CLI operations, with real Owner decisions kept
 explicit. This plan does not authorize changes to an existing deployment.
 
 Owner key custody is separate from automatic Node/Endpoint/Client device identity
-creation and the internal Node PQ certificate lifecycle. External Owner key
-import/conversion and native Windows signing/secure-storage adaptation are
-**NOT_IMPLEMENTED**; native Windows Owner use is unaccepted, and WSL is not a
+creation and the internal Node PQ certificate lifecycle. The opt-in
+[Windows OpenSSL helper](owner-windows-openssl.md) converts only public SPKI and
+delegates device-grant signing to external OpenSSL. Private-key import/conversion
+and native Windows secure-storage adaptation remain **NOT_IMPLEMENTED**; actual
+Windows execution and physical Android enrollment are **NOT_RUN**. WSL is not a
 product requirement. Current format limits and the optional Unix CLI are in
 [Owner bootstrap guidance](owner-approval-bootstrap.md).
 
