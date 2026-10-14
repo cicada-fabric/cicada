@@ -157,12 +157,23 @@ func serve(args []string) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	host := flags.String("host", envOr("CICADA_API_HOST", "127.0.0.1"), "listen host")
 	port := flags.Int("port", envInt("CICADA_API_PORT", 8787), "listen port")
+	hubOnly := flags.Bool("hub-only", false, "serve Hub identity/account authentication without Control or Fabric business")
+	stateDir := flags.String("state-dir", "", "Hub StateDir override")
 	fabricOnly := flags.Bool("fabric-only", false, "serve an existing Fabric state without starting Control business services")
 	pqConfigPath := flags.String("node-pqtls-config", strings.TrimSpace(os.Getenv("CICADA_HUB_NODE_PQTLS_CONFIG")), "private enrolled Node listener configuration")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	config := control.DefaultConfig()
+	if *stateDir != "" {
+		config.StateDir = *stateDir
+	}
+	if *hubOnly {
+		if *fabricOnly || *pqConfigPath != "" {
+			return errors.New("Hub-only mode cannot combine Fabric-only or enrolled Node listener configuration")
+		}
+		return serveHubOnly(*host, *port, config)
+	}
 	pqConfig, err := loadHubPQTransport(*pqConfigPath)
 	if err != nil {
 		return err
@@ -176,6 +187,11 @@ func serve(args []string) error {
 	if err := checkHubServeReadiness(config); err != nil {
 		return err
 	}
+	accountState, _, accountAuth, err := openHubAccountServices(config)
+	if err != nil {
+		return err
+	}
+	defer accountState.Close()
 	controlPlane, err := control.New(config)
 	if err != nil {
 		return err
@@ -183,7 +199,7 @@ func serve(args []string) error {
 	if err := controlPlane.Start(); err != nil {
 		return err
 	}
-	httpServer := newControlHTTPServer(*host, *port, server.NewHandler(controlPlane))
+	httpServer := newControlHTTPServer(*host, *port, server.NewHandlerWithAccount(controlPlane, accountAuth))
 	shutdownContext, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 	fmt.Printf("Cicada Control listening on %s\n", httpServer.Addr)

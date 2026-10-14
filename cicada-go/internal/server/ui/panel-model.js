@@ -1,6 +1,11 @@
 export function pinMatches(pin, identity, origin) {
+  const saved = pin?.controlPublicIdentity;
+  const observed = identity?.control_public_identity;
   return Boolean(pin && identity && pin.origin === origin && pin.hubId === identity.hub_id &&
-    pin.keyId === identity.control_public_identity?.id && identity.control_key_version === 1 &&
+    pin.keyId === observed?.id && pin.keyVersion === identity.control_key_version &&
+    pin.suite === identity.suite && (pin.contract === undefined || pin.contract === identity.contract) &&
+    saved?.id === observed?.id && saved?.kem_public === observed?.kem_public &&
+    saved?.signing_public === observed?.signing_public && identity.control_key_version === 1 &&
     identity.suite === 'ML-KEM-768+ML-DSA-65+AES-256-GCM');
 }
 
@@ -8,7 +13,26 @@ export function savedPanelRoute(state = {}) {
   if (state.device?.active) return 'active-device';
   if (state.enrollment?.body) return 'pending-enrollment';
   if (state.deviceDraft && state.vault) return 'device-draft';
-  return 'owner-account-setup-unavailable';
+  return 'owner-account';
+}
+
+export function ownerAccountPasswordFeedback(password, username = '') {
+  const value = typeof password === 'string' ? password : '';
+  const length = Array.from(value).length;
+  const byteLength = new TextEncoder().encode(value).length;
+  if (byteLength > 1024) return { level: 'too-long', meetsMinimum: false, length };
+  if (length < 10) return { level: 'too-short', meetsMinimum: false, length };
+  const folded = value.trim().toLowerCase();
+  const common = new Set(['1234567890', '12345678901', '123456789012', 'password123', 'password1234',
+    'password12345', 'qwertyuiop', 'qwerty12345', 'iloveyou123', 'administrator', 'letmein1234', 'cicada12345']);
+  const accountName = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  if (common.has(folded) || (accountName.length >= 4 && (folded === accountName || folded === `${accountName}123` ||
+      folded === `${accountName}1234` || folded === `${accountName}12345` || folded === `${accountName}2026` ||
+      folded === `${accountName}2025`))) {
+    return { level: 'weak', meetsMinimum: true, length };
+  }
+  const unique = new Set(Array.from(value)).size;
+  return { level: length >= 16 && unique / Math.max(length, 1) >= 0.55 ? 'strong' : 'okay', meetsMinimum: true, length };
 }
 
 export function screenPointToWorld(point, view) {

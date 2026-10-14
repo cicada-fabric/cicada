@@ -1,339 +1,287 @@
-# Hub Owner account claim contract proposal
+# Hub Owner account protocol
 
-Status: **PROPOSED / review only**. No route, account service, migration, or UI
-is implemented by this proposal. The software 0.0.5
-[`owner-bootstrap-v1`](hub-owner-bootstrap-contract.md) remains unchanged: it
-assumes an existing account and locally issues authority for one exact Root
-candidate. This separate flow creates an account from a finite fresh-install
-claim. It does not change Client Wire v1, Client contract v1.6.5, catalog 55,
-or Android behavior. The existing finite Owner bootstrap and Client grant /
-enrollment are implemented separately; claim, password login, account session,
-and the same-browser consent bridge below are proposals only. No
-account-purpose sealed route or cookie/session mechanism exists yet.
-The operation names, payload fields, time limits, and fingerprint encoding
-below are review targets, not frozen wire. Exact packet/transcript bytes and
-published vectors must be reviewed and frozen before implementation.
+Status: the six-operation `owner-account-v1` wire contract is frozen in
+[`internal/hubaccountwire`](../cicada-go/internal/hubaccountwire), and current
+dirty source includes its Store/schema-61, Hub account service, HTTP composition,
+password policy, CLI claim issuer, and two-page browser/WASM flow. Focused wire,
+crypto, migration/restore, real TCP protocol, CLI, selected race, and targeted
+vet checks pass. The bounded 18-step disposable Chromium account gate and
+standard Client-over-TCP Docker interop gate also pass; see the
+[captured validation record](hub-owner-account-validation.md). These scoped
+results do not establish release readiness or production deployment.
 
-The adopted trust boundary trusts the installed Hub build and its physical
-administrator. A malicious host administrator is out of scope and the
-deploying user's responsibility. The UI may be Hub-served; no separate signed
-desktop UI, enclave, or VM is required. The implementation still must keep
-secrets out of URLs, logs, debug output, and unintended storage. This adopted
-boundary supersedes the independent-UI alternative in the earlier
-[security review](hub-owner-onboarding-security.md): UI integrity is part of
-the trusted installed Hub, not a separate acceptance blocker.
+This protocol is separate from the already-existing `owner-bootstrap-v1` finite
+Root signer enrollment. It does not change Client Wire v1, Client contract
+v1.6.5, catalog 55, Client counters, grants, or Android. The adopted trust
+boundary treats the installed Hub build and physical administrator as trusted;
+a malicious host administrator is the deployment owner's responsibility.
 
-## Two-page flow
+## Resulting authority
 
-The installer emits the Hub URL and one copyable/scanable claim payload. The
-user opens that URL and enters or scans the payload. Page one verifies that the
-page's canonical origin and the live Hub's complete public identity match the
-installer pin before sending the code. It sends the code only inside the
-existing ML-KEM-768 / ML-DSA-65 / AES-256-GCM sealed application envelope,
-bound to a new account claim purpose and operation. Remote claims also require
-authenticated HTTPS;
-plain HTTP is limited to explicit literal-loopback development. HTTPS is
-defense in depth, not a replacement for the application envelope. The bounded
-response is protected to the generated browser login-device identity. Any
-short-lived claim state stays memory-only and cannot authorize ordinary Client
-RPCs.
+The installer gives the intended claimant a one-use claim card together with the
+Hub URL. The card binds a 256-bit code to the exact Hub, origin, stable account
+and Owner IDs, purpose, and finite expiry. The browser verifies the page origin
+and the complete Hub identity fingerprint before sending anything. The code,
+password, challenges, proofs, session token, and receipts travel only in the
+existing ML-KEM-768 / ML-DSA-65 / AES-256-GCM application envelope. HTTPS and
+same-origin checks are additional defenses.
 
-Page two accepts the username, password and confirmation, plus the user's
-existing ML-KEM-768 / ML-DSA-65 public identity. It generates the separate
-browser login-device identity internally and keeps its private bytes in a
-locally protected vault that is not unlocked or derived solely from the
-account password; the user does not enter device IDs or keys. Private Owner
-PEMs, seeds and passphrases never enter the browser or Hub. Reuse the existing
-strict SPKI parser and Go key validation; do not add another ASN.1 parser or
-crypto-suite definition.
+A successful claim atomically creates account credentials, the first
+`ACCOUNT_LOGIN` device, and a **pending public Owner candidate**. It does not
+create an active Root, Root history, approval signer, Client grant, or Manager
+session. Root activation requires the separate existing `owner-bootstrap-v1`
+flow: an exact local finite issuance, Hub challenge decapsulation by the Owner
+KEM key, and a valid transcript signature by the Owner signing key. Management
+then still needs a real Owner-signed `OwnerDeviceGrant`, ordinary Client
+registration, and the existing server Guard. Account login never substitutes
+for those checks.
 
-Keep the user on page two while the state changes; do not add another
-registration form. The installer code authorizes only the stable account, its first
-`ACCOUNT_LOGIN` device, and a **pending public Owner candidate**. On successful
-claim, one transaction consumes the code and creates those records plus the
-exact recoverable response. The UI reports `ACCOUNT_READY /
-OWNER_SIGNER_PENDING`; the candidate is not an active Owner key, approval
-signer, Root-history entry, or management authority. A public key upload,
-password, account session, or legacy Control identity match cannot activate a
-Root. A candidate becomes `ROOT_ACTIVE` only through the existing
-`owner-bootstrap-v1` finite local-issuer protocol after the exact Owner key
-both decapsulates the Hub challenge and signs its transcript. The pending
-candidate is frozen to the claim; changing it requires a separately reviewed,
-local-only pre-Root recovery path, never public reset or a new claim code.
+The account password is at least 10 Unicode code points and at most 1,024 UTF-8
+bytes; the server rejects a small maintained common/context password blocklist
+and applies no character-class rules. The current verifier is versioned
+`PBKDF2-SHA256-600000-v1`, with a per-record 32-byte salt and verifier. The
+password is never truncated. The registered device is also proven on every
+login; the installer code is not an ongoing factor.
 
-After the authenticated bootstrap receipt, the normal page offers a separate,
-visible **“Authorize this browser to manage Hub”** action. The normal UI names
-the browser and Hub, scope, and expiry in user-facing terms; it hides raw IDs
-and key fingerprints. A local Owner-key component reviews the exact typed
-request and signs the existing canonical `OwnerDeviceGrant` with the Owner
-private key. Reuse the existing `cicada.owner-device-enrollment.v1` public
-manifest as implementation plumbing for this bridge; do not add an
-account-cookie grant or new grant schema. A manifest file is an advanced
-fallback, not a required manual copy/paste step:
+## Installer claim card and Hub pin
 
-```json
-{
-  "format": "cicada.owner-device-enrollment.v1",
-  "hub_id": "<pinned Hub ID>",
-  "owner_id": "<stable Owner ID>",
-  "owner_key_id": "<active Owner signing key ID>",
-  "device_id": "<same ACCOUNT_LOGIN device ID>",
-  "device_key_fingerprint": "<full SHA-256 fingerprint>",
-  "purpose": "CLIENT_CONTROL",
-  "device_public_identity": { "id": "...", "kem_public": "...", "signing_public": "..." }
-}
-```
-
-The browser imports that real grant and uses the existing Client enrollment
-operation. It does not forge a signature or convert the account cookie into a
-manager credential. The `ACCOUNT_LOGIN` record and Client device enrollment
-are distinct records and guards even though they bind the same generated
-browser public identity. Without this explicit grant/enrollment, the account
-can use only account-scoped pages, not Hub topology management. Keep this
-verification and grant step inside the second setup page's pending/ready
-states; it is not a new account-registration form. The local component
-integration is not yet implemented.
-
-## Installer payload and authority
-
-Use an OS CSPRNG to generate 32 random code bytes once at local install. Store
-only a domain-separated digest of the code, bound to the claim ID, Hub,
-origin, purpose and expiry. The installer prints the payload once; restart or
-public HTTP calls never reveal or replace it. The QR is structured input for
-the claim page, not a navigable URL. The payload includes:
+The public card has exactly these fields; unknown fields, duplicate JSON keys,
+noncanonical encodings, and oversized card bytes are rejected by
+`DecodeClaimCard` before the UI presents or transmits the code.
 
 ```json
 {
   "format": "cicada.hub-owner-claim.v1",
   "version": 1,
   "purpose": "INITIAL_OWNER_ACCOUNT_CLAIM",
-  "origin": "https://hub.example.test",
+  "origin": "https://hub.example",
+  "allow_loopback_http": false,
   "hub_id": "<stable Hub ID>",
-  "hub_fingerprint": "<64 lowercase hex over the complete Hub identity>",
+  "hub_fingerprint": "<64 lowercase hex SHA-256>",
   "account_id": "<stable account ID>",
   "owner_id": "<stable human Owner ID>",
-  "claim_id": "<opaque random ID>",
-  "code": "<32 random bytes, base64url without padding>",
-  "issued_at": "<canonical UTC timestamp>",
-  "expires_at": "<canonical UTC timestamp>"
+  "claim_id": "<16 random bytes as lowercase hex>",
+  "code": "<32 random bytes as unpadded base64url>",
+  "issued_at": "<canonical UTC RFC3339Nano>",
+  "expires_at": "<canonical UTC RFC3339Nano>"
 }
 ```
 
-The claim verifier is bound to `account_id` and `owner_id` as well as claim ID,
-Hub, origin, purpose and expiry. The Hub fingerprint must be a separately
-trusted SHA-256 over a canonical encoding of the complete Hub identity: Hub
-ID, contract, key version, suite, and full Client-Control public identity. The
-domain separator, canonical bytes, and public test vector remain to be frozen.
-A short key ID, name, TLS hostname, or value returned only by the claim page is
-insufficient. The payload's lifetime is finite (proposed default: one hour).
-A local administrator can invalidate and
-replace it only before claim completion; replacement invalidates the prior
-code. There is no public issuer, status, or reset endpoint.
+The fingerprint is SHA-256 over the domain separator
+`cicada/owner-account/hub-identity/v1\0` followed by canonical JSON for the
+complete existing Hub identity (`contract`, `hub_id`, full
+`control_public_identity`, `control_key_version`, `suite`). A name, URL, key ID,
+or a value supplied only by the web page is not a substitute. The default card
+lifetime is one hour. Code issuance and replacement are local installer/admin
+operations only; there is no public issuer, status, or reset endpoint. Once
+claim completion commits, no public operation reopens the claim. A pre-Root
+local recovery procedure remains a separate reviewed operation and must retain
+the stable account/Owner IDs and audit history.
 
-The installer uses Hub-only Store/setup code. It must not call `Control.New`
-to create a compatibility human, Controller identity, workspace, local
-Machine, or intent state. Account and Owner identities are stable Hub records
-and distinct from all crypto key IDs. If local setup reserves account/Owner
-IDs, the unclaimed claim record binds to them without treating them as an
-active human or signer.
+A visibly marked synthetic vector and verifier live at
+[`internal/hubaccountwire/testdata`](../cicada-go/internal/hubaccountwire/testdata).
+Its all-zero claim code is test-only and must never be used in a deployment.
 
-## Bootstrap HTTP operations
+## Frozen packet and route bindings
 
-Use a separate `owner-account-claim-v1` setup/auth contract. Each HTTP body
-and response carries the existing ML-KEM-768 / ML-DSA-65 / AES-256-GCM sealed
-application framing, bound to a new account purpose and typed operation; claim code, password,
-proofs, challenges, session material, and receipts are never plaintext JSON.
-Reuse the existing Client-Wire cryptographic/framing implementation and Go
-ML-KEM / ML-DSA operations, but do not use Client management sequence counters,
-catalog operations, generic Client RPC, capabilities, or Guards for account
-authorization. HTTPS, same-origin checks, and CSRF protections supplement the
-application envelope. Freeze the exact packet type, purpose value, operation
-bindings, canonical payload bytes, nonce rules, and response/retry packet
-before implementation; this proposal does not define a new cipher suite or
-wire schema. Do not alter frozen Client bindings or fabricate a Control Owner
-ID. The existing `owner-bootstrap-v1` proof packet remains its own unchanged
-contract.
+The account packet is a strict canonical JSON object containing
+`format: cicada.owner-account-packet.v1`, `version: 1`, the sender's complete
+public identity, and the existing Client Wire packet (`route` plus encrypted
+`envelope`). The outer public identity is a candidate only on initial
+`claim.prepare`; the account service's persisted state and protected one-use
+code authorize the claim. The packet parser rejects unknown/duplicate fields,
+malformed identities, invalid routes, and noncanonical JSON.
 
-| Operation | Purpose |
-|---|---|
-| `POST /v2/owner/account/claim/prepare` | Receives a bounded sealed request whose protected payload contains the installer payload, generated browser-device public identity, 32-byte client nonce, and 16-byte request ID. The new account-claim operation binding names the `INITIAL_OWNER_ACCOUNT_CLAIM` purpose. Before decryption, check only cheap outer size/route/purpose/claim-ID shape, visible claim lifecycle/expiry, rate limits, and concurrency. After authenticated open, check the code verifier and protected Hub/origin/purpose/expiry bindings. Completion must recheck eligibility and consume the code atomically. Return an authenticated, Hub-bound sealed challenge containing an opaque claim-session ID, exact Hub/account/Owner/origin and device-fingerprint bindings, 32-byte server nonce, and expiry no later than ten minutes or code expiry. It creates no credentials, key binding, Root, or normal session. Exact request retry returns the same protected response bytes; changed bytes conflict. |
-| `POST /v2/owner/account/claim/complete` | Receives a bounded sealed request whose protected payload contains the exact claim/session/Hub/account/Owner/origin/device bindings, both nonces, request ID, username/password, strict public Owner candidate, and proof from the generated browser login-device key over the claim transcript. The body is at most 32 KiB. After bounded preflight and browser proof, atomically consumes the code and creates account credentials, stable account-to-human-Owner mapping, first `ACCOUNT_LOGIN` device, pending candidate, and cached protected response. It does not activate Root/history or issue login authority. Exact request retry returns the byte-identical protected response; changed bytes conflict. The envelope format and canonical transcript are to be frozen in the implementation contract, not invented here. |
+| Operation | HTTP route | Operation binding | Purpose |
+|---|---|---|---|
+| Claim prepare | `POST /v2/owner/account/claim/prepare` | `owner.account.claim.prepare` | `INITIAL_OWNER_ACCOUNT_CLAIM` |
+| Claim complete | `POST /v2/owner/account/claim/complete` | `owner.account.claim.complete` | `INITIAL_OWNER_ACCOUNT_CLAIM` |
+| Login prepare | `POST /v2/owner/account/login/prepare` | `owner.account.login.prepare` | `ACCOUNT_LOGIN` |
+| Login complete | `POST /v2/owner/account/login/complete` | `owner.account.login.complete` | `ACCOUNT_LOGIN` |
+| Session inspect | `POST /v2/owner/account/session/inspect` | `owner.account.session.inspect` | `OWNER_ACCOUNT_SESSION` |
+| Session logout | `POST /v2/owner/account/session/logout` | `owner.account.session.logout` | `OWNER_ACCOUNT_SESSION` |
 
-The claim candidate is public, pending metadata only. Root activation reuses
-`owner-bootstrap-v1`: its locally issued pairing binds the exact Hub,
-account/Owner, full candidate fingerprint, purpose, operation, nonce and
-expiry. The Owner must decapsulate its Hub-authenticated challenge with the
-existing KEM private key and sign the exact domain-separated transcript with
-the existing signing key. That protocol alone moves the pending candidate to
-active Root/history. The browser separately proves its login-device identity
-during claim. Public-key upload, password, code alone, or a Control key ID
-cannot activate a Root.
+Each request uses a fresh random 16-byte lowercase-hex operation ID and 32-byte
+client nonce. Each fixed account packet uses sequence 1. Claim and login
+handshakes use Client Wire session epoch 1; authenticated account-session routes
+use the protected current `account_epoch`. Protected bodies also carry current
+`account_epoch` and `device_epoch`, canonical origin, device key ID and full
+fingerprint. These account epochs are not Client Wire `session_epoch` or
+`device_key_version`.
 
-No public response reveals whether a Hub is claimed, a username exists, or
-which secret/proof check failed. Bound packet sizes, validate route/expiry/code
-state and rate limits before expensive PQ work, and cap KEM/signature
-concurrency. Claim sessions expire no later than the code and never become
-cookies or Client capabilities. On lost claim success response, only the
-byte-identical final request may retrieve the cached response while the same
-account/device remain active; a changed request fails. Root bootstrap has
-its own exact retry/recovery receipt. Root revocation disables receipt
-recovery but never clears Root history.
+The strict body limits are 384 KiB for the outer request/response packet,
+256 KiB for the nested Client Wire packet, 32 KiB for claim completion, and 8
+KiB for every other protected account body. The claim challenge expires within
+10 minutes and no later than the card expiry; a login challenge expires within
+2 minutes; an account session expires within 15 minutes; a single protected
+session request is valid for at most 60 seconds. Request and challenge nonces
+are 32 bytes. Account-device IDs are exactly `accountdev_` plus 16 random bytes
+as lowercase hex.
 
-## Account login, sessions and device revocation
+The Go API owns route IDs, sequence, operation, purpose, nonces, and typed
+payloads. Browser code must not construct these fields directly. The main
+entrypoints are `NewClaimPrepare`, `NewClaimCompleteFromChallenge`,
+`NewLoginPrepare`, `NewLoginComplete`, `NewSessionInspectRequest`,
+`NewLogoutRequest`, `SealClientRequest`, and `OpenClientResponse`. Server-side
+helpers are `PreflightRequest`, `OpenRequestAt`, `RequestRoute`, and
+`SealResponse`. `OpenClientResponse` checks the independently pinned full Hub
+identity, exact route echo, response type and format, and echoed operation,
+Hub, Owner, and device IDs.
 
-Keep account authentication in a separate `owner-account-v1` contract. Its
-typed routes use the existing ML-KEM-768 / ML-DSA-65 / AES-256-GCM sealed
-application framing with a new purpose and operation binding; they do not use Client management sequence
-counters, generic Client RPC, capability lists, or `Guard` authorization.
-Authenticated HTTPS, same-origin checks, and CSRF remain defense in depth. A
-successful account login only authorizes requests that also carry a valid
-account-purpose envelope and fresh registered-device proof to
-`/v2/owner/account/*`; the ordinary Client management path still requires the
-exact Owner-signed `OwnerDeviceGrant`, `/v2/client/devices/enroll`, an
-encrypted Client session, and existing operation Guards. An account cookie
-may be issued only as an opaque, non-authoritative session locator; cookie
-possession alone never authorizes even an account route, and the cookie is
-never accepted by `/v2/client/rpc`, enrollment, or legacy routes. No
-claim-session cookie exists.
+### Claim
 
-| Operation | Request and checks | Response and replay rule |
-|---|---|---|
-| `POST /v2/owner/account/login/prepare` | A sealed request's protected payload binds `ACCOUNT_LOGIN`, Hub, canonical origin, username, registered device ID/key ID/full fingerprint, 32-byte client nonce, 16-byte request ID, and proof by that device key. Require same-origin HTTPS. | For a valid registered account/device proof, return a sealed Hub-authenticated challenge bound to `ACCOUNT_LOGIN`, random attempt ID, 32-byte server nonce, exact Hub/origin/account/Owner/device/key fingerprint, echoed client nonce, account/device epochs, and issue/expiry no more than 120 seconds apart. Other cases get one generic public rejection; do not fabricate a challenge when no registered device is authenticated or disclose whether a username exists. Exact request retry returns the same protected challenge bytes; same request ID with changed bytes conflicts. |
-| `POST /v2/owner/account/login/complete` | A sealed request's protected payload binds `ACCOUNT_LOGIN`, request ID, all challenge fields/nonces/epochs/times, username, password, and a device signature over the challenge transcript. Require exact origin, unexpired unused attempt, current epochs, password-verifier success, and signature success. Verify the envelope and device proof before scheduling password KDF; perform at most one verifier operation per well-formed completion. Keep body logging disabled/redacted and cap body/KDF concurrency. | Return a sealed session response bound to `OWNER_ACCOUNT_SESSION`, Hub/account/Owner/device IDs, canonical origin, account/device epochs, issue/expiry, and a CSRF value for defense-in-depth. An optional opaque cookie is a locator only, never a bearer credential. Use `Cache-Control: no-store`; cookie, if used: `__Secure-cicada-owner-session`, `Secure; HttpOnly; SameSite=Strict; Path=/v2/owner/account`, no `Domain`, 30-minute idle and 12-hour absolute maximum. Exact request retry may return only the cached same response for the still-active session; it never creates another session. Changed bytes conflict. If unavailable after revocation/expiry, perform fresh prepare/complete. No password-only or unknown-device fallback. |
-| `POST /v2/owner/account/logout` | A sealed request's protected payload binds `OWNER_ACCOUNT_LOGOUT`, Hub/account/Owner/actor-device/session IDs, both epochs, canonical origin, 32-byte fresh nonce, 16-byte request ID, and actor-device proof. Require matching `Origin`; cookie/CSRF are supplemental checks only. | Revoke only that account session and return a protected receipt; clear any locator cookie. Exact request retry returns the cached same result and does not revoke the device, Owner key, or Client enrollment. Changed bytes conflict. |
-| `POST /v2/owner/account/devices/revoke` | A sealed request's protected payload binds `ACCOUNT_DEVICE_REVOKE`, Hub/account/Owner IDs, actor and target device IDs, account epoch, expected target device epoch, fresh nonce/request ID, issue/expiry (maximum 60 seconds), origin, and actor-device signature. Require a current session and active actor device. | Atomically increment target account-device epoch and revoke its account sessions. Return a protected `ACCOUNT_DEVICE_REVOKE` receipt with Hub/account/Owner/actor/target IDs, account epoch, prior/new target epochs, request ID and revocation time. Exact request ID+bytes returns the same receipt, including after self-revoke; changed bytes conflict and replay performs no other operation. Receipt is not a session. This revokes account login only; separately revoke matching Client enrollment through its existing Owner-authorized path if management access must also end. |
+`ClaimPrepare` contains the full card, generated account-device ID and
+fingerprint, request ID, client nonce, and issue time. `ClaimChallenge` returns
+the exact origin/Hub/account/Owner/claim/device bindings, attempt ID, echoed
+prepare request and client nonce, server nonce, account/device epochs, and
+expiry. A reload can continue from the persisted exact encrypted prepare
+request/response; `NewClaimCompleteFromChallenge` does not need the card or
+plaintext code again.
 
-Every account-session request checks the sealed envelope's purpose, Hub,
-canonical origin, account and device epochs, expiry, a fresh one-use request
-nonce, and the account-route allowlist. A byte-identical retry may return only
-the cached result for that same operation; a new operation needs a fresh nonce.
-The registered device must sign each protected request; a cookie is only a
-locator and never sufficient authority. CSRF and Origin checks supplement
-these proofs. The account login's ML-DSA
-challenge is its registered-device factor; it is independent of the password
-verifier. The
-`account_epoch` increments on password rotation/recovery or a global account
-disable; a per-device `device_epoch` increments on that login-device's
-revocation. The account UI may list only the current account's public device
-metadata. Root signer revocation and Client device revocation remain separate
-protocols. No new login-device enrollment route is defined here: unrecognized
-devices stay blocked until a separate Owner-approved device-add flow exists. The
-`account_epoch` and account `device_epoch` are not Client Wire
-`session_epoch` or `device_key_version`; account fields never enter the
-`OwnerDeviceGrant` schema or change Client sequence counters/capabilities.
+`ClaimComplete` echoes the authenticated challenge bindings and both nonces and
+contains username, password, the strict public Owner candidate, and a fresh
+request ID/client nonce. The Client Wire envelope proves possession of the
+browser device signing key. Successful challenge decryption and exact nonce
+return proves possession of its KEM key. The service checks the code only after
+opening the protected prepare body, then rechecks claim eligibility in the
+transaction that consumes it. The completion transaction writes credentials,
+stable account-to-Owner mapping, first login device, pending public candidate,
+and the exact protected receipt together. The receipt says
+`ACCOUNT_READY_OWNER_SIGNER_PENDING`, `PENDING_PROOF`, and
+`root_active:false`.
 
-Bound credential work explicitly: `username` is at most 128 UTF-8 bytes,
-password at most 1,024 UTF-8 bytes (never truncated), a login request at most
-8 KiB, and each completion performs at most one verifier operation. Permit at
-most two password-KDF operations concurrently per Hub process and queue at
-most four; reject excess work with a generic `429`/`Retry-After`. The verifier
-algorithm and work factor are versioned server configuration, benchmarked for
-the supported Hub, and capped to one accepted current profile plus any
-explicitly retained migration profile; request fields cannot raise the cost.
-The proposed 10-character minimum counts only when the registered device key
-is locally held and cannot be obtained from the submitted account password
-alone. Otherwise use the 15-character single-factor minimum.
+The Owner candidate must be distinct from both the Hub Client-Control identity
+and the generated account-login device identity.
 
-## Password and durable state
+### Login and account session
 
-NIST SP 800-63B-4 requires 15 characters for password-only remote
-authentication. CICADA's requested 10-character minimum is appropriate only
-if **every login** verifies both the password and an automatic PQC challenge
-from a trusted registered device. The one-time setup code is not ongoing MFA.
-There is no password-only fallback, including password reset or a new browser;
-unknown devices require approval from an existing Owner.
+`LoginPrepare` binds username, canonical origin, account/Owner/device and public
+key fingerprint, request ID, and client nonce. A registered device receives a
+Hub-authenticated sealed `LoginChallenge` with an attempt ID, server nonce,
+epochs and expiry. There is no fabricated challenge for unknown or unregistered
+devices. `LoginComplete` echoes the complete authenticated challenge scope and
+nonces and carries the password under the envelope. The response is a sealed
+`SessionReceipt` with a random 32-byte account session token, device/account
+epochs, and issue/expiry times.
 
-Do not impose character-class rules or arbitrary rotation. Support
-passphrases, password-manager autofill/paste, and at least 64 characters;
-count the full password and reject over-limit inputs rather than truncate.
-Block common, expected, compromised and service-context passwords on the
-server, with actionable feedback. Keep UI strength feedback local and
-bounded; do not claim precise entropy or use remote password-meter services.
-Store only a salted verifier and scheme/work-factor metadata using a
-NIST-aligned password hashing scheme. Benchmark work, rate-limit failures,
-bound input size, and cap concurrent KDF work.
+The session token remains inside the encrypted receipt and in the Go-WASM
+opaque session-handle map; browser JavaScript must not persist, log, or expose
+the token. It is never a Client or Manager credential. There is no cookie
+authority. Session inspect returns the current username, active login-device
+metadata, and pending/active/unavailable Root status with candidate key ID and
+fingerprint. Session logout revokes only that account session.
 
-```text
-UNCLAIMED + valid installer payload
-  -> CLAIM_SESSION (short-lived; exact Hub + generated login device)
-  -> ACCOUNT_READY / OWNER_SIGNER_PENDING (atomic account + verifier + stable
-     Owner mapping + first login device + pending public candidate; no Root)
-  -> ROOT_ACTIVE (only after owner-bootstrap-v1 possession proof)
-  -> MANAGER_CLIENT_READY (only after explicit consent, exact OwnerDeviceGrant,
-     and existing Client enrollment)
+The browser login-device private identity is stored only as AES-256-GCM
+ciphertext in IndexedDB, bound to the Hub/origin/account/device/public identity
+with a non-extractable random WebCrypto wrapping key. The account password does
+not derive or unlock that key. This protects the saved identity within the
+browser profile; it is not hardware-backed protection. Exact sealed protocol
+packets needed for retry may also be persisted, but plaintext claim codes,
+passwords, private identity bytes, and session tokens may not be.
 
-ACCOUNT_READY -> never UNCLAIMED; claim code cannot be reissued publicly
-ROOT_REVOKED -> history remains; separate recovery design required
-```
+Only the six operations in the table are in this bounded protocol. Device
+revocation, password reset, unknown-device enrollment, generic account RPC,
+account cookies, and management authorization are not implemented by this
+contract. An unknown device remains blocked until a separately approved
+account-device-add flow exists.
 
-Code expiry, restart, password reset, Root revocation, and a zero active-Root
-count must never reopen initial claim. Existing Root-active or Root-revoked
-Hub volumes reject installer claims. A pre-Root account lockout or wrong
-pending candidate can be repaired only through a separately reviewed,
-local-only recovery that preserves account/Owner IDs and audit history; that
-recovery is not implemented or fully specified here. Existing 0.0.5
-`HUB_READY` human Owner IDs remain stable: use authenticated local migration
-against the exact existing mapping, never create a replacement human or
-rewrite IDs. The Hub account service depends on Store, Hub identity and its
-account-route authority only; it does not require Control identity, intent,
-workspace, or Controller Machine. Manager authorization must use the explicit
-account-to-human-Owner binding plus an active Root and separately enrolled
-Client grant, not `OwnerID == Control.Identity().ID`.
+## Preflight, errors, retries, and storage
 
-Every later account login requires password verification and a current PQC
-signature challenge from an already registered, non-revoked login device. No
-account session is issued until both succeed. Claim endpoints cannot enroll a
-Client, approve a Client grant, bind a Node, create a Network membership, or
-Join an Endpoint.
+Before post-quantum decapsulation, the service checks only bounded outer size,
+route, operation, claim ID shape, stored lifecycle/expiry, rate limit, and
+concurrency. It checks the protected code and inner Hub/account/Owner/origin
+bindings only after authenticated open, then rechecks authority and epochs in
+the transaction. The protected packet proves the sender's signing key; the
+challenge return proves possession of the sender's KEM key. The full public
+identity alone is not authority.
 
-## Negative acceptance tests
+Exact retries return the original cached protected response bytes for the same
+operation ID and byte-identical packet. Changed packet bytes under an existing
+operation ID conflict, and a client nonce cannot be reused for another accepted
+operation by the same account device, including across newly opened sessions.
+An exact packet retry keeps its original operation ID and nonce. A rejected
+wrong-password completion leaves its challenge available; a corrected attempt
+uses a fresh request ID and client nonce against that same server challenge.
 
-- Wrong/missing/expired/consumed code, wrong origin or full Hub pin, wrong
-  purpose, malformed/unknown fields, or Root history rejects before claim
-  completion. Pin failure sends no code/password. No public issuer/status
-  route or first-visitor claim exists.
-- Public-only Owner key, wrong KEM recipient/ciphertext, KEM without signature,
-  signature without KEM, altered transcript, replayed nonce, wrong
-  Hub/account/device, expired challenge, or changed proof cannot activate a
-  Root or enter active approval/history. Candidate upload alone remains
-  visibly pending.
-- Concurrent claims and restarts produce at most one account, verifier,
-  pending candidate and first login device. Claim crash/retry tests distinguish
-  pre-commit from post-commit; only an exact claim request recovers its cached
-  response. Owner bootstrap exact proof retry recovers its own receipt.
-- Losing the accepted one-time claim before Root activation never opens a
-  public reset. Test the documented local-only pre-Root recovery boundary;
-  active or revoked Root history is never reset.
-- Password reset, expiry, restart, revocation and zero active Roots never
-  reopen claim. Root-active/revoked volumes require local migration and retain
-  exact IDs/grants/counters/history.
-- Claim works with Control absent, a different Control identity, and no
-  workspace/intent/Machine. Control key possession alone grants nothing.
-- Every login requires password plus the registered-device PQC challenge;
-  password-only, unknown or revoked device, claim cookie, expired attempt,
-  stale epoch, cross-origin request, and Client RPC carrying only an account
-  cookie do not issue an account session or Client capability.
-- Account login completion, logout, and device revoke follow their exact
-  one-shot/retry receipts and epoch checks. Account-cookie replay cannot call
-  Client RPC; only the same browser identity's separately Owner-signed grant
-  can enroll it. Altered grant fields and a fake/local-page signature fail.
-- Test password lengths 9/10/14/15, common/context blocklist, passphrases,
-  Unicode policy, no composition rules, no truncation, paste/password manager,
-  generic errors, rate limits and bounded KDF concurrency.
-- Scan URL/query/fragment/referrer, browser storage/cookies, process args/env,
-  logs/traces/metrics/errors/diagnostics and Hub state for setup code,
-  password, Owner private material, passphrases and proof nonces.
-- Confirm the claim path uses the existing SPKI parser and cannot invoke
-  general Client RPC or silently grant `CLIENT_CONTROL`, Node, Network, or
-  Endpoint authority.
+Claim completion and accepted login receipts are durable across restart. An
+exact consumed login-completion packet can recover its original receipt after a
+later login revokes that session, while the receipt's session token remains
+revoked. An exact logout retry can recover its committed receipt after session
+revocation only after current device proof and account/device epoch checks; that
+recovery does not authorize any new operation. Session requests use a bounded
+128-operation replay ledger per session. Root bootstrap has its separate exact
+proof/receipt retry. Revocation disables bootstrap receipt recovery but never
+clears Root history.
 
-## Primary references
+The 60-second request freshness check applies to new packets. For an exact
+previously accepted login-completion or logout packet, the Hub first matches
+the packet digest to its durable receipt under the current account, device and
+credential epochs, then authenticates the original device envelope. Only the
+age check is skipped so the exact response can be recovered after delay or
+restart; malformed or altered bytes, a new operation ID/nonce, revoked devices,
+and stale epochs do not qualify. Session request structure and its maximum
+issued-to-expiry interval remain validated.
+
+If a prepared claim challenge expires before completion, the local operator
+must explicitly cancel and issue a replacement claim card. A replacement is
+never issued implicitly by the public claim route.
+
+The HTTP handler accepts only `POST`, bounds the body, and returns raw sealed
+packet bytes. Public errors do not reveal which identity, credential, proof, or
+claim-state check failed. Current handler classes are `403` generic reject,
+`405` wrong method, `413` over-size, `503` unavailable, and `429` busy/rate
+limited with `Retry-After: 1`. If an `Origin` header is present it must match
+the configured exact origin; the protected body is independently bound to that
+origin. Browser same-origin policy, HTTPS, and CSRF protections supplement the
+application envelope.
+
+Password verifier work is bounded and rate-limited; the current implementation
+admits at most two concurrent cryptographic workers and rejects excess work
+with a generic busy response. No password, code, session token, private key,
+passphrase, or decrypted body may appear in URLs, logs, errors, traces, metrics,
+or HTTP plaintext. Use `Cache-Control: no-store` for account pages and packets.
+
+## Public-key file parsing and private material
+
+Public OpenSSL keys are accepted only as one PEM `PUBLIC KEY` SubjectPublicKeyInfo
+with absent algorithm parameters and exact ML-KEM-768 / ML-DSA-65 OIDs and key
+sizes. The shared parser API is `publicidentity.ParseOpenSSLSPKIPublic` or
+`ParseOpenSSLIdentity`; it is the same parser used by the local Owner CLI. No
+private PEM parser is part of this API. Private Owner PEMs, seeds and
+passphrases stay with the local key component and never enter the Hub or browser
+claim form.
+
+## Required negative coverage before release
+
+- Wrong, expired, consumed, or changed claim code; wrong origin or complete Hub
+  pin; wrong purpose; duplicate/unknown/noncanonical JSON; changed account,
+  Owner, Hub key, route, epoch, nonce, or operation ID.
+- Public-key-only claim, malformed ciphertext, invalid device signature,
+  invalid KEM challenge response, altered challenge, wrong device identity,
+  expired challenge, or changed completion after a committed retry.
+- Concurrent claim races, Hub restart, durable exact retry after lost response,
+  and no claim reset after claim commit, Root activation, Root revocation, or
+  account/password reset.
+- Login for unknown/unregistered/revoked device, wrong password, bad proof,
+  stale epoch, expired attempt, replayed nonce, cookie-only request, cross-origin
+  request, or account token presented to Client RPC.
+- Session-inspection Root state truthfully distinguishes pending candidate,
+  active Root, and unavailable/revoked candidate; claim receipt never reports
+  Root active.
+- Ensure the same browser public identity receives management authority only
+  after visible consent, a genuine Owner signature over the existing
+  `OwnerDeviceGrant`, normal Client enrollment, and server Guard checks.
+- Verify no clear secret values in HTTP payloads/logs or unintended browser
+  storage, and verify key parsing rejects malformed PEM, wrong OID, present
+  parameters, wrong size, and trailing blocks/data.
+
+## References
 
 - [NIST SP 800-63B-4](https://pages.nist.gov/800-63-4/sp800-63b.html),
-  §3.1.1.2: 15 characters for single-factor passwords; at least eight may be
-  used when a password is part of MFA. It also addresses blocklists, no
-  composition rules, strength guidance, rate limits, and salted verification.
+  especially password blocklists, rate limits, no composition rules, and
+  salted verifier guidance. The 10-character floor is conditional on every
+  login also proving the registered PQ device; it is not password-only MFA.
 - [Official Headscale registration guide](https://headscale.net/stable/ref/registration/):
-  create an owner before administrator-approved node registration; its
-  optional pre-auth key is administrator-issued, one-use, and defaults to one
-  hour. CICADA adopts neither its code nor its auth-key semantics.
+  an administrator creates the user and explicitly approves device
+  registration. CICADA does not use a generic first-visitor-as-owner flow or
+  inherit Headscale auth-key semantics.

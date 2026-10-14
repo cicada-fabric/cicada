@@ -2,55 +2,69 @@
 
 <a id="hub-account-two-page-next"></a>
 
-## 当前下一检查点：独立 Hub 账户的两页设置（2026-10-14，产品未实现）
+## 当前检查点：独立 Hub 账户设置与登录（2026-10-14，限定本地门禁通过；完整验收仍部分）
 
-最新用户要求已固定为：安装器输出 Hub 地址和一次性初始化信息；第一页
-先取得完整 Hub 公开身份，重算 SHA-256 与安装器 copy/QR payload 的独立
-受信 pin 匹配，再发送有限 claim；pin 无需全部 PQ key JSON。第二页用户名、账户密码和**已有公钥**绑定。密码 10+ 仅在每次
-登录都核验已登记设备 PQC challenge 的自动 MFA 条件下使用；初始 code
-不是持续 MFA，未知设备不能仅凭密码取得登记。设置秘密、密码、proof、
-结果和账户请求保持 NIST 应用加密；HTTPS 不是替代。cookie 只是 session
-hint，账户 actor 仍须认证设备 envelope、当前 epochs 与 nonce/sequence。
-正常设置不展示 technical IDs、browser-device enrollment 或 vault 表单。
-Owner 账户认证归 Hub/Identity/Authorization，独立于 Control、Workspace、
-模型和未来多个 Controller。现有 CLI/Grant/OpenSSL 手动流程降为高级/兼容
-桥接，不是普通产品入口。暂停此前 0.0.6/手动表单收口；没有新认证代码、
-路由或 migration，也不替换用户的 0.0.5 Hub。
+产品边界仍是：安装器输出 Hub 地址和一次性初始化卡；第一页核验页面 origin
+及完整 Hub 公共身份 SHA-256 与安装器独立信任值，再发送有限 claim；第二页
+设置用户名、密码并绑定用户**已有公钥**。密码每次登录都与已登记设备 PQC
+challenge 同时验证；初始 code 不是持续 MFA，未知设备不能仅凭密码取得登记。
+请求、proof、结果和 challenge 使用既有 NIST 应用加密，HTTPS 是额外传输保护。
+Cookie/session hint 本身不是 actor；每个请求仍检查设备 envelope、当前 epoch
+与 nonce。公钥关联保持 `PENDING_PROOF`，不能建立 ACTIVE Root 或 Client grant。
 
-[代码审计](architecture-v2-audit.md#2026-10-14-read-only-audit-two-page-hub-owner-account-setup)
-定位了可复用 Store/PoP 与实际 Control constructor 耦合；
-[已确定交互设计](owner-onboarding-design.md)区分账户登录、公钥关联和 ACTIVE
-签名 authority。只上传公钥必须停在关联/待证明状态，不能插入 ACTIVE Root。
+本检查点的实现与门禁证据来自本地 checkpoint commit 之前的 dirty `dev` 源码；
+该来源的软件版本为 **0.0.5**，包含 schema 61 与六个账户操作，浏览器/WASM
+两页流程也已有源代码。账户后端、迁移/恢复、CLI 和 Control-free
+组合的重点确定性测试，以及所选 race/vet 已通过。Root 对 dirty revision
+`d758086` 的 PQ-enabled Hub-only Chromium gate 全部 18 步通过；官方 standard
+Client Docker interop 也以 exit 0 通过且 cleanup 已确认。post-CAS WASM/UI
+gate 通过；界面复审发现并修复同源重复动作竞态，现用 Web Locks/singleflight
+与 exact IndexedDB compare-and-swap。该修复不改 Core/wire。sequenced Windows
+cross-build 通过（此前并行 asset/embed 构建失败后改为顺序构建）；native
+Windows/ACL 仍 NOT_RUN。这些都是限定本地
+证据，不代表 Android、原生 Windows、物理设备、公网 HTTPS、完整产品或发布验收。
+此前 0.0.6 版本提升继续暂停，不替换部署或真实 key。
 
-| 阶段 | 最小实现范围 | 有界出口 |
+[源码审计](architecture-v2-audit.md#2026-10-14-hub-account-backend-and-source-review)
+记录实现和当前证据；[交互设计](owner-onboarding-design.md)区分账户登录、
+公钥关联和 ACTIVE 签名 authority。此前的 read-only 审计保留为历史设计依据。
+
+| 阶段 | 当前状态与最小范围 | 有界出口 |
 |---|---|---|
 | A Hub-only composition（已实现、限定回归完成） | `internal/hubidentity` 提供现有三组 key 的 LoadOrCreate；`internal/hubowner` 仅 Store+identity 完成原 Issue/Accept；`hubSetupCommand` 不构造 Control，server 依窄 bootstrap/public-identity reader；旧 Control/CLI facade 委托 | 不构造 Control/Workspace/machine/model 可运行设置/PoP；同 StateDir 三组已有 key、稳定 Owner/account 和 Client/Node 历史完全保持 |
-| B claim/account persistence | 本地安装输出受保护 claim；摘要/期限/单次消费、独立 credentials/登录设备 PQC/session 与 pending public association 的小型增量迁移；固定密码 verifier 和 auth/claim 合同 | 第一页无匿名首访认领；第二页原子单胜者与原样恢复；已有账户只附加凭据，公钥匹配既有绑定，Root 历史/撤销不复活 |
-| C 两页及已有 key bridge | 小型 Hub setup/auth HTTP adapter + 两页 UI；严格 public-key-only 导入；当前 OpenSSL helper 的准确 request-file/receipt 交接隐藏在“本地验证密钥”动作后 | username/password + 已登记设备 PQC 每次登录可进入自己的受限账户/设备状态；自动管理 device ID/vault；私钥/passphrase 永不上传；无 PoP 明确待验证，不宣称 signer READY |
-| D 迁移与证明 | 独立 Hub setup/auth 合同、restore schema inventory、Control-absent 测试和一次性 Docker closed loop；现有 crypto/Client/Node 回归 | wrong Hub/claim/password/pub/CSRF、过期/并发/重放、丢响应/重启、已撤销/无私钥、存量账户/key/session/counter 保全均可核验；Windows/Android/HTTPS各自报告 |
+| B claim/account backend | **源码已实现**：schema 61 claim、credentials、PQC login-device、session、pending public association；6 个 NIST-envelope 路由；固定 PBKDF2 verifier；nonce唯一性、精确响应恢复和 restore epoch fence | claim 单次消费；密码之外每次登录都需已登记设备；pending 公钥不提升为 Root；精确旧包只在当前 authority 下恢复原回执，不重放新操作 |
+| C 两页及已有 key bridge | 两页浏览器/WASM 流程；可信 pin、公钥导入、设备 vault、显式恢复/重试与 pending Root；CLI claim file 为 0600 且默认不显示 code；post-CAS retry guard 使用 Web Locks/singleflight 与 exact IndexedDB compare-and-swap | PQ-enabled disposable Chromium 18/18 步与 fixture cleanup PASS；post-CAS WASM/UI PASS；loopback HTTP synthetic fixture，不等同 public HTTPS 或 native device acceptance |
+| D 迁移与本地互操作证明 | v60→v61 迁移/恢复确定性测试、真实 TCP PQ HTTP 集成、Control-absent/managed 共存和官方 standard Client Docker interop 均 PASS | Android、Native Windows/ACL、物理设备、native Codex end-to-end 与 public HTTPS 仍 NOT_RUN；完整产品验收仍 PARTIAL |
 
-阶段 A 已按 Root 分工实施 identity/bootstrap composition 提取，代码冻结并
-限定回归已分段通过，原 assertion failure/aggregate timeout 保留；没有新增
-claim、password routes 或 migrations。本地 setup/
+阶段 A 已按 Root 分工实施 identity/bootstrap composition 提取，原 assertion
+failure/aggregate timeout 保留；本地 setup/
 issuer 直接使用 Hub service，`Control.New` 保留旧业务启动但委托相同 key loader
 和 bootstrap service；`NewHubHandler` 可无 Control 发布 pin/接受有限 proof。
 限定测试证明无 Control 对象/Workspace/machines 时本地 setup 与 PoP 可用，
 三组原公钥与 Owner/account IDs 保持，golden vector、原样 retry、撤销后
-历史 fence 和选定旧管理 Guard 不回归；见[有界证据](architecture-v2-audit.md)。阶段 B/C 再固定新 auth/device challenge
-合同和两页交互，不把一次性 setup code 当长久第二因素。Hub/UI 与物理 admin
+历史 fence 和选定旧管理 Guard 不回归；见[有界证据](architecture-v2-audit.md)。
+阶段 B/C 在本检查点提交前的源码实现了新 auth/device challenge 合同和两页交互，限定 PQ
+Chromium 18/18、post-CAS WASM/UI 与官方 standard Docker interop gate 已通过；一次性 setup code 不是长久
+第二因素。构建 provenance guard 曾因 Docker build 期间源码变化而拒绝中止，记录为
+guard FAIL / interop NOT_RUN；之后冻结源的实际 interop rerun 才通过。两次早期
+browser-driver failure 均保留在[验证记录](hub-owner-account-validation.md)，不由最终
+修正 driver 的成功覆盖。Hub/UI 与物理 admin
 按用户边界受信，不引入强制 desktop-signature/enclave/VM；保留用户已有四个
 OpenSSL 文件。
 
-这一个检查点不建设 SSO、邮件找回、一般 RBAC、Root-loss recovery、跨 Hub
+这个检查点不建设 SSO、邮件找回、一般 RBAC、Root-loss recovery、跨 Hub
 账户同步、多个 Controller 平台或完整设备扫码系统。现有 Client 管理 NIST
 wire 和 Guard 不因新增账户 cookie 被绕过；后续业务 actor adapter 须明确
-操作范围，不能提供万能 RPC。新 claim issuer 的权威来自部署者初始渠道与
+操作范围，不能提供万能 RPC。已有 Root 账户的凭据附加只可经明确受控本地
+渠道进行；当前源码未实现该附加路径或 Root-loss recovery。新 claim issuer 的权威来自部署者初始渠道与
 受限 claim session；如何准备准确 PoP authority 需在新合同固定，不能偷改
 旧“公共 accept 不发行 authority”的合同。全程保留已生成密钥，不上传私钥、
-不重置状态。已有准确 HUB_READY account 的凭据附加只经明确受控本地渠道，
-与首次 Root 激活资格不同；不得公开认领旧 volume、重开/改变 Root。schema/
-KDF work factor 仍待合同审查。以下旧检查点与 Headscale参考保留历史来源，
-不能当作账户产品已实现。
+不重置状态。首次 Root 激活资格与账户登录不同；不得公开认领旧 volume、
+重开/改变 Root。密码最小
+长度、PBKDF2 work factor 和 nonce/restore 行为已写入合同和实现。以下旧检查点
+与 Headscale参考保留历史来源，不能替代上文记录的本检查点 browser/统一 Docker 证据。
+
+登录完成与 logout 的已接受精确包即使超过 60 秒也可恢复原有密文回执：服务先匹配 durable packet digest 和当前 account/device/credential epochs，再验证原设备信封；只有年龄检查被跳过。新包、改包与失效设备/epoch 仍拒绝。Schema 61 为这条路径增加 token digest 唯一索引、account/device/state 会话索引、消费登录回执索引及 request operation/digest 索引；索引增加随历史增长的存储和写入成本。当前 browser、Docker、selected Core 及其来源、失败保留和环境边界见[账户验证记录](hub-owner-account-validation.md)与[实施审计](architecture-v2-audit.md#2026-10-14-hub-account-backend-and-source-review)。
 
 ## 2026-10-13 bounded Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
 

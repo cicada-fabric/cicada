@@ -1,0 +1,6 @@
+{
+  "warning": "SYNTHETIC TEST VECTOR ONLY — NEVER USE THIS CLAIM CODE IN A DEPLOYMENT",
+  "hub_public_fixture": "../ownerbootstrap/testdata/owner-bootstrap-v1.json#hub_PRIVATE_TEST_ONLY.public_identity",
+  "expected_hub_fingerprint": "59e35ffa7af6b5530e184c559c6a395dbe38bfe3359ab83f87894d990e41ff27",
+  "claim_card_canonical_utf8": "{\"format\":\"cicada.hub-owner-claim.v1\",\"version\":1,\"purpose\":\"INITIAL_OWNER_ACCOUNT_CLAIM\",\"origin\":\"https://synthetic.invalid\",\"allow_loopback_http\":false,\"hub_id\":\"hub_synthetic_owner_bootstrap\",\"hub_fingerprint\":\"59e35ffa7af6b5530e184c559c6a395dbe38bfe3359ab83f87894d990e41ff27\",\"account_id\":\"account_SYNTHETIC_test_only\",\"owner_id\":\"human_SYNTHETIC_test_only\",\"claim_id\":\"00000000000000000000000000000001\",\"code\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"issued_at\":\"2026-10-14T00:00:00Z\",\"expires_at\":\"2026-10-14T01:00:00Z\"}"
+}

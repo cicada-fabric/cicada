@@ -2,17 +2,25 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/clientoperator"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
+	"github.com/cicada-ai/cicada/internal/hubauth"
+	"github.com/cicada-ai/cicada/internal/hubidentity"
 	"github.com/cicada-ai/cicada/internal/ownerbootstrap"
 	"github.com/cicada-ai/cicada/internal/ownersigner"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -158,6 +166,205 @@ func TestHubSetupRequiresSafeOutputModesAndExactCandidateContext(t *testing.T) {
 	}
 	if unsafeOutput.Len() != 0 {
 		t.Fatal("unsafe Hub candidate metadata was rendered before validation")
+	}
+}
+
+func TestHubAccountClaimIssueProtectsCardAndHidesCodeFromDefaultOutput(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state")
+	if err := hubSetupCommand([]string{"--owner-label", "Synthetic account owner", "--origin", "https://hub.synthetic.invalid",
+		"--public-config", filepath.Join(root, "connection.json"), "--state-dir", stateDir}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	privateDir := filepath.Join(root, "private")
+	if err := os.Mkdir(privateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	claimPath := filepath.Join(privateDir, "owner-claim.json")
+	var output bytes.Buffer
+	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath}, strings.NewReader(""), &output); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(claimPath)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("claim file mode=%v err=%v, want 0600", modeOf(info), err)
+	}
+	encoded, err := os.ReadFile(claimPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err := wire.DecodeClaimCard(encoded)
+	if err != nil || card.Code == "" || bytes.Contains(output.Bytes(), []byte(card.Code)) {
+		t.Fatal("default claim command did not protect the valid code from terminal output")
+	}
+	if !strings.Contains(output.String(), `"state":"INITIAL_ACCOUNT_CLAIM_ISSUED"`) {
+		t.Fatal("default claim command did not report its nonsecret state")
+	}
+	defer clear(encoded)
+
+	db, err := store.New(filepath.Join(stateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ids, err := hubidentity.LoadOrCreate(stateDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountService, err := hubauth.NewService(db, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub, err := accountService.HubIdentity()
+	if err != nil || wire.ValidateClaimCard(card, hub, time.Now().UTC()) != nil {
+		t.Fatal("persisted 0600 claim card did not bind to the exact initialized Hub")
+	}
+
+	showPath := filepath.Join(privateDir, "redirected-card.json")
+	var redirected bytes.Buffer
+	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", showPath, "--show-code-card"}, strings.NewReader(""), &redirected); err == nil {
+		t.Fatal("claim card display accepted a redirected nonterminal output")
+	}
+	if redirected.Len() != 0 {
+		t.Fatal("claim card secret was printed before requiring a terminal")
+	}
+	if _, err := os.Lstat(showPath); !os.IsNotExist(err) {
+		t.Fatal("rejected redirected display issued a second claim")
+	}
+}
+
+func TestHubAccountClaimIssueRefusesAfterPermanentRootHistory(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state")
+	if err := hubSetupCommand([]string{"--owner-label", "Synthetic account owner", "--origin", "https://hub.synthetic.invalid",
+		"--public-config", filepath.Join(root, "connection.json"), "--state-dir", stateDir}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.New(filepath.Join(stateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup, _, err := db.HubAccountSetup()
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	hub, err := e2ee.NewIdentity()
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	owner, err := e2ee.NewIdentity()
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	at := time.Now().UTC()
+	pairing := ownerbootstrap.PairingFile{Format: ownerbootstrap.Format, Origin: setup.Origin,
+		Hub: ownerbootstrap.HubIdentity{Contract: "android-hub-v1", HubID: setup.HubID, Public: hub.Public(), KeyVersion: 1, Suite: ownerbootstrap.Suite},
+		Manifest: ownerbootstrap.Manifest{Version: 1, Purpose: ownerbootstrap.Purpose, AccountID: setup.AccountID, OwnerID: setup.OwnerID,
+			HubID: setup.HubID, AuthorityID: store.NewID("root"), OperationID: store.NewID("bootstrap"),
+			CandidatePublic: owner.Public(), CandidateFingerprint: ownerbootstrap.Fingerprint(owner.Public()),
+			ExpiresAt: at.Add(time.Minute).Format(time.RFC3339Nano)}}
+	pairing, nonce, err := ownerbootstrap.CreateChallenge(hub, pairing, at)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.IssueOwnerBootstrapLocal(pairing, nonce); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	proof, err := ownerbootstrap.CreateProof(owner, pairing, at)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	proofDigest := sha256.Sum256(proof)
+	receipt, err := ownerbootstrap.CreateReceipt(hub, pairing, ownerbootstrap.Receipt{Format: ownerbootstrap.Format,
+		ManifestDigest: pairing.Manifest.Digest(), AuthorityID: pairing.Manifest.AuthorityID, AccountID: setup.AccountID,
+		OwnerID: setup.OwnerID, KeyID: owner.Public().ID, State: store.OwnerApprovalKeyActive, Version: 1})
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.CompleteOwnerBootstrap(pairing.Manifest.AuthorityID, nonce, hex.EncodeToString(proofDigest[:]), receipt); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	privateDir := filepath.Join(root, "private")
+	if err = os.Mkdir(privateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	claimPath := filepath.Join(privateDir, "owner-claim.json")
+	var output bytes.Buffer
+	if err = hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath}, strings.NewReader(""), &output); err == nil {
+		t.Fatal("claim issuer created a new account claim after permanent Root history")
+	}
+	if _, err = os.Lstat(claimPath); !os.IsNotExist(err) || output.Len() != 0 {
+		t.Fatal("Root-history rejection wrote or displayed a claim credential")
+	}
+}
+
+func TestNormalCompositionKeepsAccountAndControlStoresUsableTogether(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state")
+	workspaceRoot := filepath.Join(root, "workspace")
+	if err := hubSetupCommand([]string{"--owner-label", "Synthetic account owner", "--origin", "https://hub.synthetic.invalid",
+		"--public-config", filepath.Join(root, "connection.json"), "--state-dir", stateDir}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	config := hubControlConfig(stateDir, workspaceRoot)
+	accountDB, owner, account, err := openHubAccountServices(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accountDB.Close()
+	controlPlane, err := control.New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controlPlane.Shutdown(context.Background())
+
+	// Normal serve owns separate Store handles for account auth and Control.
+	// Concurrent writes through both verify that SQLite serialization and their
+	// shared StateDir maintenance leases keep the existing composition usable.
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	claimID := ""
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		claim, issueErr := account.IssueClaimLocal(false)
+		if issueErr == nil {
+			claimID = claim.ClaimID
+		}
+		errs <- issueErr
+	}()
+	go func() {
+		defer wg.Done()
+		_, registerErr := controlPlane.RegisterMachine("synthetic-manager-check", "Synthetic manager check", map[string]any{}, "available")
+		errs <- registerErr
+	}()
+	wg.Wait()
+	close(errs)
+	for operationErr := range errs {
+		if operationErr != nil {
+			t.Fatal(operationErr)
+		}
+	}
+	if _, err := owner.ClientHubID(); err != nil {
+		t.Fatalf("existing Hub manager service stopped working: %v", err)
+	}
+	machines, err := controlPlane.Machines()
+	if err != nil || len(machines) == 0 {
+		t.Fatalf("normal Control manager status unavailable after account write: machines=%d err=%v", len(machines), err)
+	}
+	if _, err = accountDB.HubAccountClaim(claimID); err != nil {
+		t.Fatalf("account claim was not visible through its Store: %v", err)
 	}
 }
 

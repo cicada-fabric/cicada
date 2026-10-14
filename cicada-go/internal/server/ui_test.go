@@ -28,6 +28,7 @@ func TestEmbeddedHubPanelAssetsAndFailClosedCryptoBuild(t *testing.T) {
 		{"/assets/panel.js", "text/javascript", "fetchAndValidateHubIdentity"},
 		{"/assets/panel-i18n.js", "text/javascript", "supportedLanguages"},
 		{"/assets/panel-bootstrap.js", "text/javascript", "WebAssembly.instantiate"},
+		{"/assets/panel-account.js", "text/javascript", "sealOwnerClaimPrepare"},
 		{"/assets/panel-client.js", "text/javascript", "indexedDB"},
 		{"/assets/panel-model.js", "text/javascript", "screenPointToWorld"},
 		{"/assets/panel-canvas.js", "text/javascript", "installCanvasControls"},
@@ -74,7 +75,7 @@ func TestHubPanelDoesNotExposeOldBearerUIOrUnsafeDOMSinks(t *testing.T) {
 			t.Fatalf("obsolete panel route %q status=%d", path, response.Code)
 		}
 	}
-	for _, path := range []string{"ui/panel.js", "ui/panel-i18n.js", "ui/panel-bootstrap.js", "ui/panel-client.js", "ui/panel-model.js", "ui/panel-canvas.js", "ui/panel-canvas-controls.js", "ui/panel-dom.js"} {
+	for _, path := range []string{"ui/panel.js", "ui/panel-i18n.js", "ui/panel-bootstrap.js", "ui/panel-account.js", "ui/panel-client.js", "ui/panel-model.js", "ui/panel-canvas.js", "ui/panel-canvas-controls.js", "ui/panel-dom.js"} {
 		data, err := clientFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +132,7 @@ func TestHubPanelRemainsPublicWithManagementBearerConfigured(t *testing.T) {
 	}
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
-	for _, path := range []string{"/", "/assets/panel.js", "/assets/panel-i18n.js", "/assets/panel-bootstrap.js", "/assets/panel-canvas.js",
+	for _, path := range []string{"/", "/assets/panel.js", "/assets/panel-i18n.js", "/assets/panel-bootstrap.js", "/assets/panel-account.js", "/assets/panel-canvas.js",
 		"/assets/panel-canvas-controls.js", "/assets/panel-dom.js"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

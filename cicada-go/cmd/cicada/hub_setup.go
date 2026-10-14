@@ -18,6 +18,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientoperator"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/hubauth"
 	"github.com/cicada-ai/cicada/internal/hubidentity"
 	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/ownerbootstrap"
@@ -31,15 +32,17 @@ const hubIssueUsage = "usage: cicada hub owner-bootstrap-issue --candidate-manif
 
 func hubCommand(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cicada hub setup|owner-bootstrap-issue [options]")
+		return errors.New("usage: cicada hub setup|account-claim-issue|owner-bootstrap-issue [options]")
 	}
 	switch args[0] {
 	case "setup":
 		return hubSetupCommand(args[1:], os.Stdout)
+	case "account-claim-issue":
+		return hubAccountClaimIssueCommand(args[1:], os.Stdin, os.Stdout)
 	case "owner-bootstrap-issue":
 		return hubOwnerBootstrapIssueCommand(args[1:], os.Stdin, os.Stdout)
 	default:
-		return errors.New("usage: cicada hub setup|owner-bootstrap-issue [options]")
+		return errors.New("usage: cicada hub setup|account-claim-issue|owner-bootstrap-issue [options]")
 	}
 }
 
@@ -476,4 +479,86 @@ func writePrivateExclusive(path string, data []byte) error {
 		return errors.New("refusing to write an empty Owner grant")
 	}
 	return writeExclusiveOrSame(path, data, 0600)
+}
+
+func hubAccountClaimIssueCommand(args []string, input io.Reader, output io.Writer) error {
+	flags := flag.NewFlagSet("hub account-claim-issue", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	stateDir := flags.String("state-dir", "", "Hub StateDir")
+	path := flags.String("claim-file", "", "new protected local claim-card file (never a URL)")
+	cancel := flags.Bool("cancel-pending", false, "explicitly cancel uncompleted prior claim before issuing")
+	show := flags.Bool("show-code-card", false, "display claim card only on a real local terminal")
+	if e := flags.Parse(args); e != nil || len(flags.Args()) != 0 || *path == "" || output == nil {
+		return errors.New("usage: cicada hub account-claim-issue --claim-file NEW_0600_FILE [--state-dir DIR] [--cancel-pending] [--show-code-card]")
+	}
+	if *show && !isReviewTerminal(input, output) {
+		return errors.New("code-card display requires a real terminal")
+	}
+	abs, e := filepath.Abs(*path)
+	if e != nil {
+		return e
+	}
+	parent := filepath.Dir(abs)
+	resolved, e := filepath.EvalSymlinks(parent)
+	if e != nil || resolved != parent {
+		return errors.New("claim file requires an existing protected directory without symlinks")
+	}
+	info, e := os.Lstat(parent)
+	if e != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+		return errors.New("claim file directory must have mode 0700")
+	}
+	if _, e = os.Lstat(abs); !errors.Is(e, os.ErrNotExist) {
+		return errors.New("claim output already exists or cannot be checked")
+	}
+	config := hubControlConfig(*stateDir, "")
+	startup, e := store.AcquireStateStartup(config.StateDir)
+	if e != nil {
+		return e
+	}
+	defer startup.Close()
+	db, e := store.New(filepath.Join(config.StateDir, "cicada.sqlite3"))
+	if e != nil {
+		return e
+	}
+	defer db.Close()
+	setup, _, e := db.HubAccountSetup()
+	if e != nil || setup.RootEverEstablished {
+		return store.ErrHubAccountRejected
+	}
+	if _, e = db.HubAccountCredential(setup.AccountID); e == nil {
+		return store.ErrHubAccountRejected
+	}
+	ids, e := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	if e != nil {
+		return e
+	}
+	service, e := hubauth.NewService(db, ids)
+	if e != nil {
+		return e
+	}
+	card, e := service.IssueClaimLocal(*cancel)
+	if e != nil {
+		return e
+	}
+	raw, e := json.Marshal(card)
+	if e != nil {
+		return e
+	}
+	defer clear(raw)
+	if e = writePrivateExclusive(abs, raw); e != nil {
+		return errors.New("claim file could not be persisted; explicitly cancel pending claim before retrying")
+	}
+	if *show {
+		_, e = fmt.Fprintf(output, "%s\n", raw)
+		return e
+	}
+	return json.NewEncoder(output).Encode(map[string]string{"state": "INITIAL_ACCOUNT_CLAIM_ISSUED", "origin": card.Origin, "claim_file": abs})
+}
+func isReviewTerminal(input io.Reader, output io.Writer) bool {
+	in, ok := input.(*os.File)
+	if !ok || in == nil {
+		return false
+	}
+	out, ok := output.(*os.File)
+	return ok && out != nil && isatty.IsTerminal(in.Fd()) && isatty.IsTerminal(out.Fd())
 }

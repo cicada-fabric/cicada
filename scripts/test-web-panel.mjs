@@ -21,13 +21,186 @@ async function loadOwnerBootstrapValidator(uiDir) {
     .replace(/^import .*;\s*$/gm, '')
     .replace(/export\s+(?=(?:async\s+)?function)/g, '');
   const context = { URL, TextEncoder };
-  vm.runInNewContext(`${source}\nglobalThis.panelValidators = { validateOwnerBootstrapPublicFiles, validateOwnerDeviceGrantSummary };`, context);
+  vm.runInNewContext(`${source}\nglobalThis.panelValidators = { validateOwnerBootstrapPublicFiles, validateOwnerDeviceGrantSummary, readOwnerPublicSPKIPem };`, context);
   return context.panelValidators;
 }
 
+async function accountVaultChecks(uiDir) {
+  const source = (await readFile(path.join(uiDir, 'panel-client.js'), 'utf8'))
+    .replace(/^import \{[\s\S]*?\} from '\.\/panel-model\.js';\s*/m, '')
+    .replace(/export\s+(?=(?:async\s+)?function)/g, '');
+  const context = { URL, TextEncoder, TextDecoder, Uint8Array, crypto: webcrypto, btoa, atob };
+  vm.runInNewContext(`${source}\nglobalThis.accountVault = { encryptAccountDeviceIdentity, decryptAccountDeviceIdentity,
+    saveOwnerAccountFlow, compareAndSaveOwnerAccountFlow, acquireOwnerAccountLock };`, context);
+  const api = context.accountVault;
+  const origin = 'https://hub.synthetic.invalid';
+  const hubId = 'hub_synthetic_account_vault';
+  const accountId = 'account_synthetic_vault';
+  const deviceId = 'accountdev_synthetic_vault';
+  const identity = { id: 'pq1-synthetic-device', kem_public: 'synthetic-kem-public', signing_public: 'synthetic-sign-public' };
+  const blob = 'synthetic-private-identity-blob-not-a-real-key';
+  const vault = await api.encryptAccountDeviceIdentity(blob, origin, hubId, accountId, deviceId, identity);
+  assert.equal(vault.format, 'cicada.owner-account-device-vault.v1');
+  assert.equal(vault.wrappingKey.extractable, false, 'random device wrapping key is non-extractable');
+  assert.equal(vault.wrappingKey.algorithm.name, 'AES-GCM');
+  assert.deepEqual([...vault.wrappingKey.usages].sort(), ['decrypt', 'encrypt']);
+  assert.equal(Object.hasOwn(vault, 'identity_blob'), false, 'the returned persisted object contains only encrypted identity bytes');
+  const cloned = structuredClone(vault);
+  assert.equal(await api.decryptAccountDeviceIdentity(cloned, origin, hubId, accountId, deviceId,
+    { signing_public: identity.signing_public, id: identity.id, kem_public: identity.kem_public }), blob,
+  'a structured-cloned IndexedDB CryptoKey can restore the exact device identity');
+  await assert.rejects(api.decryptAccountDeviceIdentity(cloned, 'https://other.synthetic.invalid', hubId, accountId, deviceId, identity), /does not match/);
+  await assert.rejects(api.decryptAccountDeviceIdentity(cloned, origin, 'hub_other', accountId, deviceId, identity), /does not match/);
+  await assert.rejects(api.decryptAccountDeviceIdentity(cloned, origin, hubId, 'account_other', deviceId, identity), /does not match/);
+  await assert.rejects(api.decryptAccountDeviceIdentity(cloned, origin, hubId, accountId, 'device_other', identity), /does not match/);
+  await assert.rejects(api.decryptAccountDeviceIdentity(cloned, origin, hubId, accountId, deviceId,
+    { ...identity, signing_public: 'other-signing-key' }), /does not match/);
+  await assert.rejects(api.encryptAccountDeviceIdentity(blob, 'http://public.synthetic.invalid', hubId, accountId, deviceId, identity), /secure Hub origin/);
+  await assert.rejects(api.decryptAccountDeviceIdentity({ ...cloned, owner_private_identity: 'forbidden' }, origin, hubId, accountId, deviceId, identity), /does not match/);
+  const tampered = { ...cloned, ciphertext: `${cloned.ciphertext.slice(0, -4)}AAAA` };
+  await assert.rejects(api.decryptAccountDeviceIdentity(tampered, origin, hubId, accountId, deviceId, identity), /could not be authenticated/);
+  await assert.rejects(api.encryptAccountDeviceIdentity(blob, 'http://127.0.0.1:8787', hubId, accountId, deviceId, identity), /secure Hub origin/);
+  const loopback = await api.encryptAccountDeviceIdentity(blob, 'http://127.0.0.1:8787', hubId, accountId, deviceId, identity, true);
+  assert.equal(await api.decryptAccountDeviceIdentity(loopback, 'http://127.0.0.1:8787', hubId, accountId, deviceId, identity, true), blob,
+    'plain HTTP requires explicit literal-loopback policy');
+  let stored = { pin: { origin, hubId }, device: { active: true, deviceId: 'legacy-browser-device' }, legacyDraft: { retained: true } };
+  const db = { transaction() {
+    const tx = { objectStore() { return {
+      get() { const request = {}; queueMicrotask(() => { request.result = structuredClone(stored); request.onsuccess(); }); return request; },
+      put(next) { stored = structuredClone(next); queueMicrotask(() => tx.oncomplete?.()); }
+    }; }, abort() { queueMicrotask(() => tx.onabort?.()); } };
+    return tx;
+  } };
+  const profile = { origin, hubId, accountId, ownerId: 'human_synthetic_owner', deviceId,
+    username: '', publicIdentity: identity, allowLoopbackHTTP: false,
+    ownerPublicIdentity: null, ownerFingerprint: '' };
+  const pending = { phase: 'CLAIM_PREPARE_PENDING', packet: btoa('synthetic encrypted request bytes') };
+  await api.saveOwnerAccountFlow(db, profile, pending, cloned);
+  assert.deepEqual(stored.ownerAccount, { profile, pending }, 'only public profile fields and exact encrypted request bytes persist');
+  assert.equal(stored.accountLoginVault.format, 'cicada.owner-account-device-vault.v1');
+  assert.deepEqual(stored.device, { active: true, deviceId: 'legacy-browser-device' },
+    'new account flow persistence preserves the older enrolled-device state');
+  assert.deepEqual(stored.legacyDraft, { retained: true });
+  assert.equal(stored.accountLoginVault.ciphertext, cloned.ciphertext, 'account device remains protected by its independent encrypted vault');
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, pending, { ...cloned, ciphertext: 'different' }), /already has a different/);
+  assert.doesNotMatch(JSON.stringify(stored.ownerAccount), /claim.?code|password|plaintext.?nonce/i);
+  await assert.rejects(api.saveOwnerAccountFlow(db, { ...profile, claimCode: 'SYNTHETIC_SECRET' }, pending), /state is invalid/,
+    'claim code and unrecognized secret fields cannot be persisted');
+  await assert.rejects(api.saveOwnerAccountFlow(db, { ...profile, accountId: 'account_other' }, pending), /different Owner account profile/,
+    'a later claim cannot replace the exact account binding');
+  await assert.rejects(api.saveOwnerAccountFlow(db, { ...profile, allowLoopbackHTTP: true }, pending), /different Owner account profile/,
+    'the immutable origin transport policy cannot be changed after first request');
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, { phase: 'CLAIM_CHALLENGE_SAVED', packet: pending.packet }), /state is invalid/,
+    'a saved challenge must include the exact encrypted Hub response');
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, { phase: 'CLAIM_COMPLETE_PENDING', packet: btoa('synthetic completion') }), /state is invalid/,
+    'a completion retry must retain its exact prepare and challenge packets');
+  const savedChallenge = { phase: 'CLAIM_CHALLENGE_SAVED', packet: pending.packet,
+    responsePacket: btoa('synthetic encrypted response bytes') };
+  await api.saveOwnerAccountFlow(db, profile, savedChallenge);
+  assert.equal(stored.ownerAccount.pending.responsePacket, savedChallenge.responsePacket,
+    'the exact encrypted challenge response is retained for reload recovery');
+  const ownerPublicIdentity = { id: 'pq1-synthetic-owner', kem_public: 'synthetic-owner-kem', signing_public: 'synthetic-owner-sign' };
+  const completion = { phase: 'CLAIM_COMPLETE_PENDING', packet: btoa('synthetic encrypted completion bytes'),
+    preparePacket: savedChallenge.packet, challengePacket: savedChallenge.responsePacket,
+    ownerPublicIdentity, ownerFingerprint: 'a'.repeat(64) };
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, { ...completion, ownerPublicIdentity: undefined }), /state is invalid/,
+    'a claim completion cannot lose the public candidate identity before receipt verification');
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, { ...completion, ownerFingerprint: undefined }), /state is invalid/,
+    'a claim completion cannot lose the full candidate fingerprint before receipt verification');
+  await assert.rejects(api.saveOwnerAccountFlow(db, profile, { ...completion, ownerFingerprint: 'invalid' }), /state is invalid/,
+    'a claim completion fingerprint must remain canonical while pending');
+  await api.saveOwnerAccountFlow(db, profile, completion);
+  assert.deepEqual(stored.ownerAccount.pending, completion,
+    'the exact completion and authenticated challenge survive reload before send or after response loss');
+  assert.equal(stored.ownerAccount.profile.ownerPublicIdentity, null,
+    'a candidate is not treated as an accepted Owner association while completion is pending');
+  const completedResponse = { ...completion, responsePacket: btoa('synthetic sealed receipt bytes') };
+  await api.saveOwnerAccountFlow(db, profile, completedResponse);
+  assert.deepEqual(stored.ownerAccount.pending, completedResponse,
+    'the exact sealed receipt is durable before the WASM adapter opens it');
+  await api.saveOwnerAccountFlow(db, profile, savedChallenge);
+  assert.deepEqual(stored.ownerAccount.pending, savedChallenge,
+    'after a definite rejection, the exact claim challenge remains reusable with corrected inputs');
+  await api.saveOwnerAccountFlow(db, profile, { phase: 'CLAIM_CARD_REQUIRED' });
+  assert.deepEqual(stored.ownerAccount.pending, { phase: 'CLAIM_CARD_REQUIRED' },
+    'a definite claim-prepare rejection requires a new card without discarding the bound browser key');
+
+  // Model two restored tabs racing from the same challenge snapshot. A's
+  // transaction wins; B cannot replace it with a separately sealed packet,
+  // and B's later 403 rollback cannot erase A's accepted or pending bytes.
+  stored = { pin: { origin, hubId }, accountLoginVault: cloned };
+  await api.saveOwnerAccountFlow(db, profile, savedChallenge, cloned);
+  const completionA = { ...completion, packet: btoa('synthetic completion packet A') };
+  const completionB = { ...completion, packet: btoa('synthetic completion packet B') };
+  await api.compareAndSaveOwnerAccountFlow(db, profile, savedChallenge, completionA);
+  await assert.rejects(api.compareAndSaveOwnerAccountFlow(db, profile, savedChallenge, completionB), /OWNER_ACCOUNT_STALE_PENDING/,
+    'a stale restored tab cannot replace the exact completion packet already persisted by the winning tab');
+  const newLogin = { phase: 'LOGIN_PREPARE_PENDING', packet: btoa('synthetic new login request') };
+  await assert.rejects(api.compareAndSaveOwnerAccountFlow(db, profile, null, newLogin), /OWNER_ACCOUNT_STALE_PENDING/,
+    'a new request cannot replace an UNKNOWN saved completion');
+  const rollback = { phase: 'CLAIM_CHALLENGE_SAVED', packet: savedChallenge.packet,
+    responsePacket: savedChallenge.responsePacket };
+  await assert.rejects(api.compareAndSaveOwnerAccountFlow(db, profile, savedChallenge, rollback), /OWNER_ACCOUNT_STALE_PENDING/,
+    'a late 403 from the stale tab cannot roll back the winner packet');
+  assert.deepEqual(stored.ownerAccount.pending, completionA, 'the winner exact packet remains available after stale writes fail');
+  const responseA = { ...completionA, responsePacket: btoa('synthetic accepted receipt packet A') };
+  await api.compareAndSaveOwnerAccountFlow(db, profile, completionA, responseA);
+  const acceptedProfile = { ...profile, username: 'synthetic-owner', ownerPublicIdentity,
+    ownerFingerprint: 'a'.repeat(64) };
+  await api.compareAndSaveOwnerAccountFlow(db, acceptedProfile, responseA, null);
+  await assert.rejects(api.compareAndSaveOwnerAccountFlow(db, profile, responseA, rollback), /OWNER_ACCOUNT_STALE_PENDING/,
+    'a late stale completion cannot erase a newer accepted account profile');
+  assert.deepEqual(stored.ownerAccount, { profile: acceptedProfile, pending: null },
+    'authenticated acceptance and its exact public key binding survive stale callbacks');
+
+  // A fake Web Locks manager exercises the same ifAvailable lease protocol
+  // used by restored tabs in the browser driver.
+  let lockHeld = false;
+  const fakeLocks = { request(name, options, callback) {
+    assert.equal(name, `cicada-owner-account:${origin}`);
+    assert.equal(options.mode, 'exclusive');
+    assert.equal(options.ifAvailable, true);
+    if (lockHeld) return Promise.resolve(callback(null));
+    lockHeld = true;
+    return Promise.resolve(callback({ name })).finally(() => { lockHeld = false; });
+  } };
+  const leaseA = await api.acquireOwnerAccountLock(fakeLocks, origin);
+  assert.ok(leaseA, 'the first restored tab acquires the account UI lease');
+  assert.equal(await api.acquireOwnerAccountLock(fakeLocks, origin), null,
+    'a second tab fails closed instead of waiting or entering account mutations');
+  leaseA.release();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const leaseB = await api.acquireOwnerAccountLock(fakeLocks, origin);
+  assert.ok(leaseB, 'the second tab can acquire after the first tab releases or closes');
+  leaseB.release();
+  assert.doesNotMatch(JSON.stringify(stored), /session.?token|claim.?code|password|plaintext.?nonce/i,
+    'persistent account state contains no session token, claim code, password or plaintext nonce');
+}
+
 async function ownerBootstrapChecks(uiDir) {
-  const { validateOwnerBootstrapPublicFiles: validate, validateOwnerDeviceGrantSummary: validateGrantSummary } =
+  const { validateOwnerBootstrapPublicFiles: validate, validateOwnerDeviceGrantSummary: validateGrantSummary,
+    readOwnerPublicSPKIPem } =
     await loadOwnerBootstrapValidator(uiDir);
+  const publicPem = '-----BEGIN PUBLIC KEY-----\nSYNTHETIC PUBLIC BYTES ONLY\n-----END PUBLIC KEY-----\n';
+  const pemFile = content => {
+    const calls = { prefix: 0, full: 0 };
+    return { size: Buffer.byteLength(content), calls,
+      slice(start, end) { calls.prefix++; return { text: async () => content.slice(start, end) }; },
+      async text() { calls.full++; return content; } };
+  };
+  const selectedPublic = pemFile(publicPem);
+  assert.equal(await readOwnerPublicSPKIPem(selectedPublic), publicPem);
+  assert.deepEqual(selectedPublic.calls, { prefix: 1, full: 1 }, 'only a bounded PEM header is sniffed before reading a public file');
+  const selectedPrivate = pemFile('-----BEGIN ENCRYPTED PRIVATE KEY-----\nSYNTHETIC PRIVATE BYTES NEVER USED\n');
+  await assert.rejects(readOwnerPublicSPKIPem(selectedPrivate), /Private key files are not accepted/);
+  assert.deepEqual(selectedPrivate.calls, { prefix: 1, full: 0 }, 'private PEM contents are rejected from the bounded header alone');
+  const selectedTraditionalPrivate = pemFile('-----BEGIN PRIVATE KEY-----\nSYNTHETIC PRIVATE BYTES NEVER USED\n');
+  await assert.rejects(readOwnerPublicSPKIPem(selectedTraditionalPrivate), /Private key files are not accepted/);
+  assert.deepEqual(selectedTraditionalPrivate.calls, { prefix: 1, full: 0 });
+  const oversizedPublic = pemFile(publicPem);
+  oversizedPublic.size = 16 * 1024 + 1;
+  await assert.rejects(readOwnerPublicSPKIPem(oversizedPublic), /no larger than 16 KiB/);
+  assert.deepEqual(oversizedPublic.calls, { prefix: 0, full: 0 });
   // Deliberately non-cryptographic test identities. The full Go WASM check
   // below repeats the acceptance case with real synthetic PQ identities.
   const hubPublic = { id: 'pq1-synthetic-hub-public', kem_public: 'synthetic-hub-kem', signing_public: 'synthetic-hub-sign' };
@@ -111,20 +284,14 @@ async function ownerBootstrapChecks(uiDir) {
     owner_public_identity: { ...ownerPublic, signing_private: 'PRIVATE_TEST_ONLY' } }, grantManifest, cryptoApi), /schema/);
 
   const panelSource = await readFile(path.join(uiDir, 'panel.js'), 'utf8');
-  const entryStart = panelSource.indexOf('function renderOwnerAccountEntry()');
+  const entryStart = panelSource.indexOf('function renderOwnerAccountEntry(');
   const entryEnd = panelSource.indexOf('\nfunction renderOwnerBootstrapGuide(', entryStart);
-  assert.ok(entryStart >= 0 && entryEnd > entryStart, 'normal Owner account landing is separate from advanced setup');
+  assert.ok(entryStart >= 0 && entryEnd > entryStart, 'normal Owner account page is separate from advanced setup');
   const entry = panelSource.slice(entryStart, entryEnd);
-  assert.match(entry, /installer-issued Hub URL and one-time claim code/);
-  assert.match(entry, /Owner username and password using existing public keys/);
-  assert.match(entry, /not Owner signup/);
-  assert.match(entry, /openAdvanced\.disabled = true/);
-  assert.match(entry, /consent\.addEventListener\('change'/);
-  assert.match(entry, /if \(consent\.checked\) renderOwnerBootstrapGuide\(\)/,
-    'the technical guide opens only after the explicit advanced consent checkbox');
-  for (const forbidden of ['renderNewDevice(', 'fetch(', 'updateState(', 'enrollExactRequest(', 'callRPC(']) {
-    assert.equal(entry.includes(forbidden), false, `normal Owner account landing must not call ${forbidden}`);
-  }
+  assert.match(entry, /return renderOwnerAccount\(app, \{ db, hubIdentity, cryptoApi, onAdvanced \}\)/,
+    'the normal route opens the two-page account flow and keeps advanced setup behind its explicit button');
+  assert.match(entry, /pinAlreadySaved \? renderOwnerBootstrapGuide :\s*\(\) => renderPin\(hubIdentity, renderOwnerBootstrapGuide\)/,
+    'first-visit advanced technical flow pins explicitly, while a previously pinned browser proceeds directly');
 
   const guideStart = panelSource.indexOf('function renderOwnerBootstrapGuide()');
   const guideEnd = panelSource.indexOf('\nfunction renderNewDevice(', guideStart);
@@ -141,7 +308,7 @@ async function ownerBootstrapChecks(uiDir) {
   const routeStart = panelSource.indexOf('async function routeAfterPin(');
   const routeEnd = panelSource.indexOf('\nasync function readPublicJSONFile', routeStart);
   assert.match(panelSource.slice(routeStart, routeEnd), /switch \(savedPanelRoute\(state\)\)/,
-    'unavailable signup changes only the empty-state route, not saved enrollment handling');
+    'account setup changes only the empty-state route, not saved enrollment handling');
   assert.match(panelSource.slice(routeStart, routeEnd), /case 'active-device':[\s\S]*renderUnlock\(state\)[\s\S]*enterWorkspace\(\)/,
     'an enrolled browser still unlocks or enters its existing Owner workspace');
   assert.match(panelSource.slice(routeStart, routeEnd), /case 'pending-enrollment':[\s\S]*renderEnrollmentRetry\(state\)/);
@@ -157,11 +324,83 @@ async function ownerBootstrapChecks(uiDir) {
   assert.doesNotMatch(guide, /field\([^\n]*['"]password['"]/i, 'guide has no passphrase field');
 }
 
+async function ownerAccountUIChecks(uiDir) {
+  const account = await readFile(path.join(uiDir, 'panel-account.js'), 'utf8');
+  const panel = await readFile(path.join(uiDir, 'panel.js'), 'utf8');
+  const claimStart = account.slice(account.indexOf('function renderClaimStart'), account.indexOf('\nasync function beginClaim'));
+  assert.ok(claimStart.includes("'validateOwnerClaimCard'"), 'claim-card verification runs in the Go adapter');
+  assert.ok(claimStart.includes('fingerprint: verified.hubFingerprint'), 'the full Hub fingerprint is displayed before using the code');
+  assert.ok(claimStart.includes('I independently checked this exact origin and complete fingerprint with the installer.'),
+    'claim use requires an explicit independent origin and full-fingerprint review');
+  assert.ok(claimStart.includes("type = 'password'"), 'installer claim JSON is hidden while entered');
+  assert.ok(claimStart.includes('cardText.addEventListener(\'input\', clearVerification)'),
+    'changing the claim after review invalidates the reviewed display');
+  assert.ok(claimStart.includes('beginClaim(app, context, reviewedScope, selectedCard'),
+    'the exact reviewed card bytes are bound to the next action');
+  assert.equal(claimStart.includes('fetch('), false, 'page one does not send a request before explicit scope review');
+  assert.ok(claimStart.indexOf('if (!confirmation.checked) return') < claimStart.indexOf('await savePinnedHub(context.db, context.hubIdentity)'),
+    'the first local pin is not stored until the user checks the exact full-fingerprint review');
+  const begin = account.slice(account.indexOf('async function beginClaim'), account.indexOf('\nasync function requestAndSaveResponse'));
+  assert.ok(begin.indexOf('await persist(context, profile, { phase: \'CLAIM_PREPARE_PENDING\'') < begin.indexOf('await executeClaimPrepare'),
+    'encrypted exact request and device vault are durable before first network submission');
+  assert.ok(begin.includes('existing_device_id: profile.deviceId, expected_public_identity: profile.publicIdentity'),
+    'a same-account claim reissue binds to the retained browser device ID and full public identity');
+  const credentials = account.slice(account.indexOf('function renderClaimCredentials'), account.indexOf('\nasync function executeClaimComplete'));
+  assert.ok(credentials.includes('readOwnerPublicSPKIPem'), 'credential page reads only bounded public PEMs');
+  assert.ok(credentials.includes('parseOwnerPublicSPKI'), 'public keys go through the strict shared Go parser');
+  assert.ok(credentials.includes('sealOwnerClaimComplete'), 'account password enters only the typed Go sealing API');
+  assert.ok(credentials.includes("phase: 'CLAIM_COMPLETE_PENDING'"), 'sealed completion is saved before submission');
+  assert.ok(account.includes("failure?.httpStatus === 403 && pending.preparePacket && pending.challengePacket"),
+    'only a definite server rejection returns login to its saved challenge; transport loss keeps the exact completion');
+  assert.ok(account.includes("if (failure?.httpStatus === 403 && pending.preparePacket && pending.challengePacket)"),
+    'a definitely rejected claim completion returns to its authenticated challenge for corrected inputs');
+  assert.ok(account.includes('ownerPublicIdentity: ownerKeys.owner_public_identity, ownerFingerprint: ownerKeys.owner_fingerprint'),
+    'a pending candidate stays with the exact completion until the Hub receipt authenticates');
+  assert.ok(account.includes("if (failure?.httpStatus === 403) {\n      const retry = { phase: 'CLAIM_CARD_REQUIRED' }"),
+    'a definitely rejected claim prepare can accept a fresh card after checking the same scope');
+  assert.ok(account.includes('failure?.httpStatus === 403 && createdPreparePending'),
+    'a definitely rejected login prepare returns to the username form');
+  assert.ok(account.includes("readOwnerPublicSPKIPem } from './panel-bootstrap.js'"),
+    'the account form imports the bounded public-only PEM guard from its actual module');
+  assert.equal(credentials.includes('private_key_pem'), false);
+  assert.equal(credentials.includes('owner_private_identity'), false);
+  assert.ok(account.includes("'/v2/owner/account/claim/prepare'"));
+  assert.ok(account.includes("'/v2/owner/account/claim/complete'"));
+  assert.ok(account.includes('submits only its exact saved encrypted bytes'));
+  assert.ok(account.includes('acquireOwnerAccountLock(globalThis.navigator?.locks, location.origin)'),
+    'the entire account UI requires a same-origin exclusive Web Lock');
+  assert.ok(account.includes("section.id = 'owner-account-lock-blocked'"),
+    'a busy or unsupported single-writer lease produces a stable fail-closed state');
+  assert.ok(account.includes('button.disabled = true') && account.includes('await action?.(event)') &&
+      account.includes('if (accountActionRunning || running || button.disabled) return'),
+    'account action buttons synchronously disable and single-flight async work');
+  assert.equal(account.includes('void beginClaim('), false, 'claim submission is awaited by its single-flight action');
+  assert.ok(account.includes('compareAndSaveOwnerAccountFlow'), 'account transitions use IndexedDB compare-and-save');
+  assert.ok(account.includes("'ACCOUNT_READY_OWNER_SIGNER_PENDING'"), 'claim receipt does not assert Root or Client manager authority');
+  assert.ok(account.includes('forgetOwnerAccountSession'), 'logout clears the RAM-only opaque account session handle');
+  const logoutStart = account.slice(account.indexOf("const pending = { phase: 'LOGOUT_PENDING'"), account.indexOf("section.append(actionButton(t('Advanced technical setup')", account.indexOf("const pending = { phase: 'LOGOUT_PENDING'")));
+  assert.ok(logoutStart.indexOf('await persist(context, profile, pending, null, null)') < logoutStart.indexOf('await executeOwnerLogout'),
+    'logout ciphertext and epochs are durable before submission');
+  const logoutRecovery = account.slice(account.indexOf('async function executeOwnerLogout'), account.indexOf('\nfunction renderPendingRecovery'));
+  assert.ok(logoutRecovery.includes('openOwnerLogoutReceipt'), 'logout clears local session only after authenticated receipt verification');
+  assert.ok(logoutRecovery.indexOf('openOwnerLogoutReceipt') < logoutRecovery.indexOf('await persist(context, profile, null, null, answered)'),
+    'the saved logout is retained until its exact receipt authenticates');
+  assert.ok(account.includes("if (pending.phase === 'LOGOUT_PENDING') return await executeOwnerLogout"),
+    'reload recovery reuses the exact logout packet');
+  assert.ok(account.includes("latest.ownerAccount?.pending?.phase === 'LOGIN_PREPARE_PENDING'"),
+    'a lost login-prepare response remains recoverable as the exact saved request');
+  const boot = panel.slice(panel.indexOf('async function boot()'), panel.indexOf('\nconfigureLanguage();'));
+  assert.ok(boot.includes('return renderOwnerAccountEntry(false)'), 'an empty first load goes directly to the claim-card page');
+  assert.ok(boot.includes('if (state.device?.active || state.enrollment?.body || (state.deviceDraft && state.vault))'),
+    'existing advanced browser state still requires its saved Hub pin before routing');
+}
+
 async function modelChecks(uiDir) {
+  await accountVaultChecks(uiDir);
   const model = await moduleFromFile(path.join(uiDir, 'panel-model.js'));
-  assert.equal(model.savedPanelRoute({}), 'owner-account-setup-unavailable',
-    'an empty pinned profile opens the unavailable account setup notice');
-  assert.equal(model.savedPanelRoute({ vault: { ciphertext: 'synthetic' } }), 'owner-account-setup-unavailable',
+  assert.equal(model.savedPanelRoute({}), 'owner-account',
+    'an empty pinned profile opens the first Owner account setup page');
+  assert.equal(model.savedPanelRoute({ vault: { ciphertext: 'synthetic' } }), 'owner-account',
     'a stray vault cannot be mistaken for a completed signup');
   assert.equal(model.savedPanelRoute({ device: { active: true } }), 'active-device',
     'an existing enrolled browser keeps its unlock/workspace route');
@@ -173,11 +412,17 @@ async function modelChecks(uiDir) {
     'a completed enrollment takes precedence over stale pending data');
   assert.equal(model.savedPanelRoute({ enrollment: { body: 'synthetic' }, deviceDraft: { device_id: 'synthetic' }, vault: {} }), 'pending-enrollment',
     'a saved exact enrollment request takes precedence over an older device draft');
-  const identity = { hub_id: 'hub-pin-test', control_public_identity: { id: 'pq-hub-test' },
+  const identity = { contract: 'android-hub-v1', hub_id: 'hub-pin-test',
+    control_public_identity: { id: 'pq-hub-test', kem_public: 'synthetic-kem', signing_public: 'synthetic-sign' },
     control_key_version: 1, suite: 'ML-KEM-768+ML-DSA-65+AES-256-GCM' };
-  assert.equal(model.pinMatches({ origin: 'https://hub.example', hubId: identity.hub_id, keyId: 'pq-hub-test' }, identity, 'https://hub.example'), true);
-  assert.equal(model.pinMatches({ origin: 'https://hub.example', hubId: identity.hub_id, keyId: 'changed' }, identity, 'https://hub.example'), false);
-  assert.equal(model.pinMatches({ origin: 'https://other.example', hubId: identity.hub_id, keyId: 'pq-hub-test' }, identity, 'https://hub.example'), false);
+  const savedPin = { origin: 'https://hub.example', hubId: identity.hub_id, keyId: 'pq-hub-test',
+    keyVersion: 1, suite: identity.suite, contract: identity.contract, controlPublicIdentity: identity.control_public_identity };
+  assert.equal(model.pinMatches(savedPin, identity, 'https://hub.example'), true);
+  assert.equal(model.pinMatches({ ...savedPin, keyId: 'changed' }, identity, 'https://hub.example'), false);
+  assert.equal(model.pinMatches({ ...savedPin, origin: 'https://other.example' }, identity, 'https://hub.example'), false);
+  assert.equal(model.pinMatches(savedPin, { ...identity,
+    control_public_identity: { ...identity.control_public_identity, signing_public: 'different-key' } }, 'https://hub.example'), false,
+  'a matching short key ID cannot conceal a changed full Hub public identity');
   const view = { x: 19, y: -7, scale: .72 };
   const point = { x: 125, y: 87 };
   const roundTrip = model.worldPointToScreen(model.screenPointToWorld(point, view), view);
@@ -236,6 +481,7 @@ async function modelChecks(uiDir) {
   assert.equal(completed.lastRequestSequence, 1);
 
   await ownerBootstrapChecks(uiDir);
+  await ownerAccountUIChecks(uiDir);
 
   const writeDescriptor = model.makeSemanticWriteFence('topology.apply', 'op-uncertain-write', 'a'.repeat(64),
     { kind: 'endpoint.join_group', join_group: { endpoint_id: 'endpoint-a', group_id: 'group-a' } },
@@ -543,6 +789,131 @@ async function wasmChecks(wasmPath, runtimePath, uiDir) {
   const hub = api.generateIdentity({});
   assert.equal(device.ok, true, device.error);
   assert.equal(hub.ok, true, hub.error);
+  const accountFixture = api.makeOwnerClaimFixtureForInteropTest({ hub_handle: hub.handle });
+  assert.equal(accountFixture.ok, true, accountFixture.error);
+  const claimInput = { hub_identity: accountFixture.hub_identity,
+    claim_card_json: accountFixture.claim_card_json, page_origin: accountFixture.page_origin };
+  const verifiedClaim = api.validateOwnerClaimCard(claimInput);
+  assert.equal(verifiedClaim.ok, true, verifiedClaim.error);
+  assert.equal(verifiedClaim.summary.hubId, accountFixture.hub_identity.hub_id,
+    'claim-card UI metadata uses the documented camelCase adapter shape');
+  assert.match(verifiedClaim.summary.hubFingerprint, /^[0-9a-f]{64}$/);
+  assert.equal(Object.hasOwn(verifiedClaim.summary, 'code'), false, 'claim code is excluded from the display summary');
+  assert.equal(api.validateOwnerClaimCard({ ...claimInput, page_origin: 'https://other.synthetic.invalid' }).ok, false,
+    'claim card is rejected when its origin differs from the pinned page');
+  const claimPrepare = api.sealOwnerClaimPrepare({ handle: device.handle, ...claimInput });
+  assert.equal(claimPrepare.ok, true, claimPrepare.error);
+  assert.match(claimPrepare.device_id, /^accountdev_[0-9a-f]{32}$/);
+  assert.equal(claimPrepare.claim.accountId, 'account_wasm_owner_account');
+  assert.equal(claimPrepare.claim.hubFingerprint, verifiedClaim.summary.hubFingerprint);
+  const replacementClaimPrepare = api.sealOwnerClaimPrepare({ handle: device.handle, ...claimInput,
+    existing_device_id: claimPrepare.device_id, expected_public_identity: device.public_identity });
+  assert.equal(replacementClaimPrepare.ok, true, replacementClaimPrepare.error);
+  assert.equal(replacementClaimPrepare.device_id, claimPrepare.device_id,
+    'a reissued same-scope claim keeps the exact saved browser device ID');
+  assert.equal(replacementClaimPrepare.public_identity.id, device.public_identity.id);
+  assert.notEqual(replacementClaimPrepare.request_id, claimPrepare.request_id,
+    'a replacement claim prepare gets a fresh operation ID');
+  assert.equal(api.sealOwnerClaimPrepare({ handle: device.handle, ...claimInput,
+    existing_device_id: 'accountdev_ABCDEF0123456789ABCDEF0123456789',
+    expected_public_identity: device.public_identity }).ok, false,
+  'an existing account-device ID must be canonical lowercase hex');
+  assert.equal(api.sealOwnerClaimPrepare({ handle: device.handle, ...claimInput,
+    existing_device_id: claimPrepare.device_id, expected_public_identity: hub.public_identity }).ok, false,
+  'the retained device ID cannot be rebound to a different local public identity');
+  const claimChallenge = api.sealOwnerClaimChallengeForInteropTest({ hub_handle: hub.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: claimPrepare.packet });
+  assert.equal(claimChallenge.ok, true, claimChallenge.error);
+  const replacementClaimChallenge = api.sealOwnerClaimChallengeForInteropTest({ hub_handle: hub.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: replacementClaimPrepare.packet });
+  assert.equal(replacementClaimChallenge.ok, true, replacementClaimChallenge.error);
+  assert.equal(replacementClaimChallenge.device_id, claimChallenge.device_id);
+  assert.notEqual(replacementClaimChallenge.request_id, claimChallenge.request_id);
+  assert.notEqual(replacementClaimChallenge.client_nonce, claimChallenge.client_nonce,
+    'replacement prepares use a fresh nonce while retaining the approved device identity');
+  const claimComplete = api.sealOwnerClaimComplete({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    prepare_packet: claimPrepare.packet, challenge_packet: claimChallenge.packet,
+    origin: accountFixture.page_origin, account_id: verifiedClaim.summary.accountId,
+    owner_id: verifiedClaim.summary.ownerId, device_id: claimPrepare.device_id,
+    username: 'synthetic-owner', password: 'Cicada synthetic 2026',
+    owner_public_identity: accountFixture.owner_public_identity });
+  assert.equal(claimComplete.ok, true, claimComplete.error);
+  const claimReceiptPacket = api.sealOwnerClaimReceiptForInteropTest({ hub_handle: hub.handle,
+    device_handle: device.handle, hub_identity: accountFixture.hub_identity,
+    prepare_packet: claimPrepare.packet, challenge_packet: claimChallenge.packet,
+    complete_packet: claimComplete.packet, owner_public_identity: accountFixture.owner_public_identity });
+  assert.equal(claimReceiptPacket.ok, true, claimReceiptPacket.error);
+  const ownerFingerprint = api.fingerprint({ public_identity: accountFixture.owner_public_identity });
+  assert.equal(ownerFingerprint.ok, true, ownerFingerprint.error);
+  const openedClaimReceipt = api.openOwnerClaimReceipt({ handle: device.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: claimComplete.packet,
+    response_packet: claimReceiptPacket.packet, origin: accountFixture.page_origin,
+    account_id: verifiedClaim.summary.accountId, owner_id: verifiedClaim.summary.ownerId,
+    owner_public_identity: accountFixture.owner_public_identity,
+    owner_key_id: accountFixture.owner_public_identity.id, owner_fingerprint: ownerFingerprint.fingerprint });
+  assert.equal(openedClaimReceipt.ok, true, openedClaimReceipt.error);
+  assert.equal(openedClaimReceipt.receipt.state, 'ACCOUNT_READY_OWNER_SIGNER_PENDING');
+  assert.equal(openedClaimReceipt.receipt.root_active, false, 'account claim receipt cannot imply Root authority');
+  const loginPrepare = api.sealOwnerLoginPrepare({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    origin: accountFixture.page_origin, account_id: verifiedClaim.summary.accountId,
+    owner_id: verifiedClaim.summary.ownerId, device_id: claimPrepare.device_id, username: 'synthetic-owner' });
+  assert.equal(loginPrepare.ok, true, loginPrepare.error);
+  const loginChallenge = api.sealOwnerLoginChallengeForInteropTest({ hub_handle: hub.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: loginPrepare.packet });
+  assert.equal(loginChallenge.ok, true, loginChallenge.error);
+  const loginComplete = api.sealOwnerLoginComplete({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    prepare_packet: loginPrepare.packet, challenge_packet: loginChallenge.packet,
+    origin: accountFixture.page_origin, account_id: verifiedClaim.summary.accountId,
+    owner_id: verifiedClaim.summary.ownerId, device_id: claimPrepare.device_id,
+    username: 'synthetic-owner', password: 'Cicada synthetic 2026' });
+  assert.equal(loginComplete.ok, true, loginComplete.error);
+  const sessionReceiptPacket = api.sealOwnerLoginReceiptForInteropTest({ hub_handle: hub.handle,
+    device_handle: device.handle, hub_identity: accountFixture.hub_identity,
+    prepare_packet: loginPrepare.packet, challenge_packet: loginChallenge.packet,
+    request_packet: loginComplete.packet });
+  assert.equal(sessionReceiptPacket.ok, true, sessionReceiptPacket.error);
+  const session = api.openOwnerLoginReceipt({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    request_packet: loginComplete.packet, response_packet: sessionReceiptPacket.packet,
+    origin: accountFixture.page_origin, account_id: verifiedClaim.summary.accountId,
+    owner_id: verifiedClaim.summary.ownerId, device_id: claimPrepare.device_id });
+  assert.equal(session.ok, true, session.error);
+  assert.equal(typeof session.session_handle, 'string');
+  assert.equal(Object.hasOwn(session, 'session_token'), false, 'session tokens stay behind the WASM handle');
+  const inspect = api.sealOwnerSessionInspect({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    session_handle: session.session_handle });
+  assert.equal(inspect.ok, true, inspect.error);
+  const inspectionPacket = api.sealOwnerSessionInspectionForInteropTest({ hub_handle: hub.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: inspect.packet,
+    owner_public_identity: accountFixture.owner_public_identity });
+  assert.equal(inspectionPacket.ok, true, inspectionPacket.error);
+  const inspected = api.openOwnerSessionInspection({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    session_handle: session.session_handle, request_packet: inspect.packet, response_packet: inspectionPacket.packet });
+  assert.equal(inspected.ok, true, inspected.error);
+  assert.equal(inspected.status.state, 'ACTIVE');
+  assert.equal(inspected.status.root_active, false);
+  const logout = api.sealOwnerLogout({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    session_handle: session.session_handle });
+  assert.equal(logout.ok, true, logout.error);
+  const logoutReceipt = api.sealOwnerLogoutReceiptForInteropTest({ hub_handle: hub.handle,
+    hub_identity: accountFixture.hub_identity, request_packet: logout.packet });
+  assert.equal(logoutReceipt.ok, true, logoutReceipt.error);
+  const logoutBinding = { origin: session.origin, hub_id: session.hub_id, account_id: session.account_id,
+    owner_id: session.owner_id, device_id: session.device_id,
+    account_epoch: session.account_epoch, device_epoch: session.device_epoch };
+  const loggedOut = api.openOwnerLogoutReceipt({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    session_handle: session.session_handle, request_packet: logout.packet, response_packet: logoutReceipt.packet,
+    ...logoutBinding });
+  assert.equal(loggedOut.ok, true, loggedOut.error);
+  const recoveredLogout = api.openOwnerLogoutReceipt({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    request_packet: logout.packet, response_packet: logoutReceipt.packet, ...logoutBinding });
+  assert.equal(recoveredLogout.ok, true, recoveredLogout.error,
+    'a saved authenticated logout receipt can be checked after reload without restoring a plaintext session token');
+  assert.equal(api.openOwnerLogoutReceipt({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    request_packet: logout.packet, response_packet: logoutReceipt.packet,
+    ...logoutBinding, device_epoch: logoutBinding.device_epoch + 1 }).ok, false,
+    'offline logout receipt recovery remains bound to the saved account and device epochs');
+  assert.equal(api.sealOwnerLogout({ handle: device.handle, hub_identity: accountFixture.hub_identity,
+    session_handle: session.session_handle }).ok, false, 'a completed logout clears the opaque session handle');
   assert.equal(api.validatePublicIdentity({ public_identity: device.public_identity }).ok, true);
   assert.equal(api.validatePublicIdentity({ public_identity: { ...device.public_identity, id: 'pq1-forged' } }).ok, false);
   const fingerprint = api.fingerprint({ public_identity: device.public_identity });
@@ -644,7 +1015,7 @@ async function wasmChecks(wasmPath, runtimePath, uiDir) {
 }
 
 async function staticChecks(uiDir) {
-  const files = ['panel.js', 'panel-bootstrap.js', 'panel-client.js', 'panel-model.js', 'panel-canvas.js',
+  const files = ['panel.js', 'panel-account.js', 'panel-bootstrap.js', 'panel-client.js', 'panel-model.js', 'panel-canvas.js',
     'panel-canvas-controls.js', 'panel-dom.js'];
   for (const name of files) {
     const source = await readFile(path.join(uiDir, name), 'utf8');

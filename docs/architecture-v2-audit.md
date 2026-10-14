@@ -1,9 +1,120 @@
 # Architecture v2.3 implementation audit
 
-## 2026-10-14 Stage 1: Hub identity/bootstrap extraction candidate
+## 2026-10-14 Hub account backend and source review
 
-The authorized first stage is implemented in this unreleased source checkpoint,
-with no account/password/initial-claim API, migration or version change. Evidence
+The account implementation and gate evidence recorded here were captured from
+dirty `dev` before the local checkpoint commit. At capture, the source added a
+Hub-owned account service independently of Control, schema 61, the
+six-operation encrypted account protocol, local claim issuance, and the
+two-page browser/WASM source flow. It was unreleased software 0.0.5. Client
+contract v1.6.5, encrypted wire 1 and catalog 55 are unchanged. The final
+account gates below belong to dirty revision `d758086` and their recorded
+source/build fingerprints, not to HEAD alone.
+
+The prior focused deterministic suite passed in the pinned offline Go 1.27.1
+image (network disabled): selected tests in `internal/hubauth`,
+`internal/store`, `internal/server`, and `cmd/cicada`; selected race tests in
+those packages; and targeted `go vet`. After the exact-retry/index correction,
+the current Core selectors passed normal tests in `internal/hubauth`,
+`internal/store`, and `internal/server`, race tests for Store and server, and
+`go vet` for the three affected Go packages. Store EXPLAIN tests confirm the
+new token, revocation and receipt indexes and the existing nonce-join index.
+The real TCP integration test
+`TestHubAccountPQHTTPFlowSurvivesRestartAndRecoversRevokedLogout` exercises all
+six endpoints with ephemeral synthetic keypairs through the actual post-quantum
+envelope implementation and Control absent. It covers claim, login, inspect, logout, exact lost-response
+recovery and Store/service restart; wrong password/device/scope, expired
+challenge, stale epochs, oversize and altered packets, and nonce reuse are
+denied. A later login can revoke the previous session while an exact retry
+returns only that saved prior receipt; it does not make the revoked token
+usable. An exact committed logout receipt is similarly recoverable only after
+current device proof and epoch checks, including after its 60-second request
+freshness window. The service applies this age exception only when the exact
+packet digest already names a durable receipt under current account/device/
+credential epochs, then verifies the original device envelope. New or changed
+requests still pass the normal freshness check. Tests cover stale exact login
+and logout recovery across Store/service restart, while stale fresh requests,
+altered ciphertext, restore-epoch changes and revoked devices fail closed.
+
+The Store tests verify v60→v61 migration preserves existing Owner/root history,
+key, and Client request-counter rows. Restore advances the account epoch,
+cancels pending claims and attempts, revokes sessions, and retains credentials,
+active login devices, and the pending Owner public candidate. The account
+candidate remains `PENDING_PROOF`; account login does not add Root approval
+history, an active signer, a Client grant, or Manager authority. CLI tests
+verify a 0600 canonical claim file, no default secret output, explicit-TTY
+display, no new issuer after permanent Root history, and actual `serve
+--hub-only` startup without Control/Workspace/Machine; a normal composition
+test concurrently uses the separate account and Control Stores.
+
+Password derivation is PBKDF2-SHA256 with 600,000 iterations, a 32-byte salt,
+minimum 10 Unicode code points, and a 1,024-byte maximum. Authentication admits
+two active KDF workers and four queued requests, applies a bounded token bucket,
+and runs PBKDF2 before the Store transaction. Root measured about 398 ms per
+derivation (three samples, 922 B/op, 13 allocations) on an Intel Xeon E5-2680
+v4; this is a KDF microbench, not request latency or service capacity. Fresh client-nonce enforcement uses
+three 64-character digest columns and three unique indexes on the existing
+attempt/request tables, with no nonce ledger table; the accepted request ledger
+is limited to 128 operations per session. Schema 61 also has four targeted
+indexes: unique session-token digest (including collision rejection),
+account/device/state for session revocation, a partial consumed-login receipt
+lookup, and a request operation/digest lookup. These add index storage and
+write work proportional to accepted history; they avoid scanning session and
+receipt history on token and exact-replay lookups. The existing nonce index and
+session primary key remain sufficient for the nonce join.
+
+Security review found no account authorization bypass in the captured source.
+Known bounded recovery behavior is explicit: an expired prepared claim requires
+local cancel/reissue, and a saved login receipt after later session revocation
+is recoverable only as the exact original response. The final post-CAS
+PQ-enabled Hub-only Chromium run passed all 18 steps and fixture cleanup. It
+used dirty revision `d758086f25abc0390ff2ad857086c9d94454a639`, source/build-input
+fingerprint `c4b52e67ed82f75fd2ef27f198d6e34591323de6f3dfa2f94f03adce7bc335a3`,
+and PQ Hub image
+`sha256:dc98a89e748959c357723610660145efe23b5e26014776d55d69edcf6b042d76`.
+Build metadata is
+[`build-pq-cas.json`](../.cicada-data/hub-owner-account-20261014/root-gate/build-pq-cas.json).
+The synthetic fixture explicitly enabled loopback HTTP; public HTTPS remains
+NOT_RUN. The final result is
+[`result.json`](../.cicada-data/hub-owner-account-browser/20261014t102757z-2975661-c0e87018/result.json),
+SHA-256 `aa2e023eaafee20bf654a838657efa0eaf0edaab82d2a631d8cbcb112675d01b`.
+The earlier 17-step PASS remains a pre-CAS result in the validation history,
+not the final browser gate: it used input fingerprint
+`c9d9ee307c2b08eccd6c932a297ada277df8e669f1debdfbee979867a4edf376`, Hub image
+`sha256:9b6a6ac519f710da05d66cb9cfd022c4a79295f9e938682f8e9d440fe6554d72`, and
+the separately recorded result
+[`result.json`](../.cicada-data/hub-owner-account-browser/20261014t100619z-2935843-93c8c083/result.json),
+SHA-256 `e1fcfc412eba1402495e1c0eb5e715960afbd7f143993577638b9fcc2e53fe36`.
+
+The final official standard Client Docker interop run passed with exit 0 and
+confirmed cleanup. Its disposable Hub image was
+`sha256:c9f94827e7cf96b6047b0e41cbc687931c7d36e6d8ae520ab6d7f7ecfe88431b`,
+input fingerprint
+`498b1299dba7a0ae8327ed6087dee0bb79102ca43d11f9247418e5ab24887540`; its result
+is [`result.json`](../.cicada-data/hub-owner-account-20261014/root-gate/client-interop-cas/result.json).
+The post-review UI retry guard serializes same-origin actions with Web Locks/
+singleflight and exact IndexedDB compare-and-swap; the final post-CAS WASM/UI
+gate passed. It changed no Core or wire behavior. The latest sequenced Windows
+cross-build passed; an earlier parallel asset/embed build attempt failed, and
+native Windows/ACL execution remains NOT_RUN. The earlier build-provenance guard correctly aborted when source changed during
+the Docker build; that run is retained as a guard FAIL with interop NOT_RUN,
+not a product-test failure. Two earlier browser-driver failures are preserved
+in the [account validation record](hub-owner-account-validation.md); the final
+corrected-driver PASS does not rewrite those attempts. Root's final selected
+Core suite passed 25 tests; its event log is
+[`go-core-final.jsonl`](../.cicada-data/hub-owner-account-20261014/root-gate/go-core-final.jsonl),
+SHA-256 `05a9f09d9d56dcc162d79a465f710dccce48023891076c654235539c509c812c`.
+
+The captured source's Windows cross-build passed, but no native Windows/ACL run
+occurred. Android, physical-device use, native Codex end-to-end, and public
+HTTPS remain NOT_RUN. These bounded local results do not establish full-product
+completion or a 0.1 release. See the [account validation record](hub-owner-account-validation.md)
+for source-attributed Go and external-gate evidence.
+
+## 2026-10-14 Stage 1: Hub identity/bootstrap extraction candidate (earlier source capture)
+
+At that earlier source capture, the authorized first stage was implemented
+without an account/password/initial-claim API, migration or version change. Evidence
 was captured from the working tree based on `9fa3628`; the source inventories
 and artifact hashes identify that capture, not a future post-commit HEAD.
 `internal/hubidentity` now owns the existing three key-file lifecycles, retaining
@@ -66,20 +177,21 @@ image or account/signup. Exact hashes and cleanup are in
 [the validation record](windows-owner-openssl-validation.md); native Windows/
 ACL, Android, Chromium enrollment and public HTTPS remain NOT_RUN.
 The following read-only audit records the earlier pre-extraction composition
-and the still-unimplemented account stages. Its specification line counts and
-hashes identify the read baseline before the final documentation-only two-page
+and account stages that were still unimplemented in that source capture. Its
+specification line counts and hashes identify the read baseline before the final documentation-only two-page
 architecture clarification in CICADA.md/CICADA_PROMPT.md; that clarification
 adds no account implementation or new acceptance result.
 
 ## 2026-10-14 read-only audit: two-page Hub Owner account setup
 
-The user now requires installer-issued initial claim information, page 1 Hub/
-operator verification, and page 2 username/password plus **existing public-key**
+At that read-only source review, the user required installer-issued initial
+claim information, page 1 Hub/operator verification, and page 2 username/password plus **existing public-key**
 binding. Account authentication belongs to Hub and must not require Control,
 its Workspace/model, or a specific future Controller. This section records
-actual code and the smallest proposed boundary changes; it adds no auth code,
-HTTP route, migration, deployment action or validation PASS. Software remains
-0.0.5; the pending 0.0.6/manual-form closeout is paused. The accepted UX and
+then-current code and the smallest proposed boundary changes; it added no auth
+code, HTTP route, migration, deployment action or validation PASS. Software at
+that capture remained 0.0.5; the pending 0.0.6/manual-form closeout was paused.
+The accepted UX and
 implementation stages are in [the Owner design](owner-onboarding-design.md)
 and [plan](architecture-v2-plan.md#hub-account-two-page-next).
 
@@ -96,7 +208,7 @@ The user's new account requirement supersedes the older onboarding-plan
 statement excluding server passwords; it does not authorize a management
 plaintext fallback or private-key upload.
 
-| Actual evidence | Current behavior | Minimal change required |
+| Evidence at that baseline | Behavior at that baseline | Proposed change at that time |
 |---|---|---|
 | [`Store.InitializeHubOwnerLocal`](../cicada-go/internal/store/hub_owner_setup_v1.go), lines 180–237 | Atomically creates stable human/account IDs, origin and `HUB_READY`; inserts an empty Principal credential hash. It has no username password verifier or login session. It refuses preexisting unrelated authority and preserves exact idempotent setup. | Reuse its state/Principal checks through a shared transaction helper; claim consumption, credentials and public association must commit atomically, rather than calling its already-committing method and separately saving a password. |
 | Same Store schema initializer, lines 35–67; [`migrations_v2.go`](../cicada-go/internal/store/migrations_v2.go), `CurrentV2SchemaVersion=60` | Three schema-60 tables hold immutable setup coordinates, permanent Root history and finite authority. History is seeded from every existing approval-key row; inserts add history and deletion/update is blocked. | Add credentials/claim/session/pending-public-association records in an explicit later additive migration. Never use `owner_approval_keys_v2` for unproved public association: it triggers permanent history and can strand first PoP. |
@@ -111,7 +223,7 @@ plaintext fallback or private-key upload.
 | [`install-cicada-server.sh`](../scripts/install-cicada-server.sh), lines 250–279; [`bootstrap-cicada.sh`](../scripts/bootstrap-cicada.sh) | Existing Compose update helper rejects pristine/orphaned volumes, and alias simply invokes it. It does not implement fresh install claim output or two-page account creation. | Implement a bounded fresh/local installation entry using Hub-only setup/identity and claim output. Keep controlled update/backup behavior; never solve fresh setup by deleting or substituting existing volumes. |
 | [`state_restore_reconcile.go`](../cicada-go/internal/store/state_restore_reconcile.go), reviewed schema 60 and exact table inventory | Preserves setup, Root history and consumed proof/receipt authority; unknown later schema is not implicitly trusted. | Review every additive auth table, consumed claim and session/credential epoch in backup/restore. Restoring older state must not revive initial claims, sessions, revoked keys or reset crypto counters. |
 
-Shortest useful next checkpoint: pure Hub composition, install claim redemption,
+At that time, the shortest proposed next checkpoint was pure Hub composition, install claim redemption,
 atomic existing-account/fresh-account credentials and public association,
 password login to own limited account/setup/device-status views, and a single
 local-helper action for exact finite PoP when approval signing is needed. Owner
@@ -127,23 +239,24 @@ initial setup claim is not ongoing MFA. Device IDs/keys/vault are internally
 managed with separate salts/purposes; unknown new devices require Owner
 approval and never receive a password-only device grant. Existing Client
 `CLIENT_CONTROL` binding is not silently reused as ACCOUNT_LOGIN authority.
-Current browser vault primitives are reusable local protection, not an
-implemented Hub login or registered-device MFA service. Current Hub/UI build
+At that baseline, browser vault primitives were reusable local protection, not
+an implemented Hub login or registered-device MFA service. The Hub/UI build
 and physical administrator are explicitly trusted; no mandatory signed desktop
 UI, VM or enclave is proposed. The four existing OpenSSL files are retained.
 
-Stage A proposed package contract is narrow: `internal/hubidentity.IdentitySet`
+Stage A's proposed package contract was narrow: `internal/hubidentity.IdentitySet`
 loads/reuses Peer, ClientControl and NodeControl identities with the existing
 protected key-file lifecycle; `internal/hubowner` consumes only Store and that
-identity set for finite issue/accept. Existing Control methods delegate,
-`hubSetupCommand` no longer constructs Control, and server bootstrap/public
-identity use narrow Hub service interfaces. This stage changes no schema or
-wire and does not yet implement password/claim APIs. Root review and exact file
-ownership are prerequisites to starting its code; this audit performed no code
-extraction.
+identity set for finite issue/accept. Existing Control methods would delegate,
+`hubSetupCommand` would avoid constructing Control, and server bootstrap/public
+identity would use narrow Hub service interfaces. The stage was planned to
+change no schema or wire and did not include password/claim APIs. The later
+implementation and its current source review are recorded at the top of this
+audit.
 
-The new trust/claim and password-verifier/session contract must fix expiry,
-single consumption, body/input/KDF/concurrency bounds, wrong-origin/CSRF/cookie
+Before implementation, the trust/claim and password-verifier/session contract
+needed to fix expiry, single consumption, body/input/KDF/concurrency bounds,
+wrong-origin/CSRF/cookie
 behavior, exact idempotency and revocation before implementation. It is distinct
 from both a browser vault password and an OpenSSL key passphrase. No SSO, email
 recovery, Root-loss reset, new infrastructure or crypto suite is proposed.
@@ -151,9 +264,9 @@ recovery, Root-loss reset, new infrastructure or crypto suite is proposed.
 All earlier protocol/mock/PTY/build results remain source-attributed in
 [bootstrap validation](hub-owner-bootstrap-validation.md) and
 [external-key validation](windows-owner-openssl-validation.md). They do not prove
-this new account login or two-page flow. This audit ran read-only source checks
-and document diff checks only; the proposed account/claim/auth behavior is
-NOT_IMPLEMENTED / NOT_RUN.
+this new account login or two-page flow. This historical audit ran read-only
+source checks and document diff checks only; the proposed account/claim/auth
+behavior was NOT_IMPLEMENTED / NOT_RUN at that source review.
 
 ## 2026-10-13 bounded Hub Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
 

@@ -32,6 +32,7 @@ func main() {
 	register(api, "verifyOwnerDeviceGrant", verifyOwnerDeviceGrant)
 	register(api, "sealRequest", sealRequest)
 	register(api, "openResponse", openResponse)
+	registerOwnerAccount(api)
 	registerInterop(api)
 	js.Global().Set("cicadaWebCrypto", api)
 	js.Global().Set("cicadaWebCryptoReady", true)
@@ -143,6 +144,9 @@ func forgetIdentity(input js.Value) (any, error) {
 	handle, err := stringField(input, "handle")
 	if err != nil {
 		return nil, err
+	}
+	if identity := identities[handle]; identity != nil {
+		forgetOwnerAccountSessionsForDeviceID(identity.Public().ID)
 	}
 	delete(identities, handle)
 	return map[string]any{"ok": true}, nil

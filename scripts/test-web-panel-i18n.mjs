@@ -35,6 +35,9 @@ for (const key of englishKeys) {
 }
 for (const key of [
   'Owner account setup is unavailable in this build',
+  'Owner account setup is locked',
+  'Owner account setup is active in another tab, or this browser cannot provide a safe single-tab lock. Close the other tab or use a supported browser, then reload.',
+  'Reload this page',
   'The normal first Owner setup should start with an installer-issued Hub URL and one-time claim code, then create an Owner username and password using existing public keys. That signup flow is not available in this build; this page does not create an account or accept a claim.',
   'OWNER ACCOUNT SETUP',
   'The browser-device form is a separate advanced Client enrollment tool. It is not Owner signup and does not create Owner login credentials.',

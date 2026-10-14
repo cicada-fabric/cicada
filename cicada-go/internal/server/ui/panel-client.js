@@ -5,6 +5,7 @@ const DB_NAME = 'cicada-hub-web-panel-v1';
 const DB_VERSION = 1;
 const STATE_KEY = 'owner-session';
 const encoder = new TextEncoder();
+const accountVaultFormat = 'cicada.owner-account-device-vault.v1';
 
 export async function openPanelDB() {
   return new Promise((resolve, reject) => {
@@ -97,6 +98,269 @@ export async function decryptIdentityBlob(vault, password) {
   }
 }
 
+function accountVaultAAD(origin, hubId, accountId, deviceId, publicIdentity, allowLoopbackHTTP) {
+  if (typeof origin !== 'string' || !origin || typeof hubId !== 'string' || !hubId ||
+      typeof accountId !== 'string' || !accountId || typeof deviceId !== 'string' || !deviceId ||
+      typeof allowLoopbackHTTP !== 'boolean' ||
+      !publicIdentity || Object.keys(publicIdentity).sort().join(',') !== 'id,kem_public,signing_public' ||
+      typeof publicIdentity.id !== 'string' || !publicIdentity.id ||
+      typeof publicIdentity.kem_public !== 'string' || typeof publicIdentity.signing_public !== 'string') {
+    throw new Error('Account device vault binding is invalid.');
+  }
+  const parsed = new URL(origin);
+  const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
+  if (parsed.origin !== origin || (parsed.protocol !== 'https:' && !(allowLoopbackHTTP && loopback))) {
+    throw new Error('Account device vault requires a canonical secure Hub origin.');
+  }
+  return encoder.encode(`${accountVaultFormat}\n${origin}\n${hubId}\n${accountId}\n${deviceId}\n${allowLoopbackHTTP}\n${publicIdentity.id}\n${publicIdentity.kem_public}\n${publicIdentity.signing_public}`);
+}
+
+function accountVaultBytes(value, name) {
+  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    throw new Error(`Account device vault ${name} encoding is invalid.`);
+  }
+  const binary = atob(value);
+  if (btoa(binary) !== value) throw new Error(`Account device vault ${name} encoding is invalid.`);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+function sameDevicePublicIdentity(left, right) {
+  return Boolean(left && right && Object.keys(left).sort().join(',') === 'id,kem_public,signing_public' &&
+    Object.keys(right).sort().join(',') === 'id,kem_public,signing_public' &&
+    left.id === right.id && left.kem_public === right.kem_public && left.signing_public === right.signing_public);
+}
+
+// The new Owner-account login device is protected independently from the
+// account password. IndexedDB stores a non-extractable random AES key beside
+// the authenticated ciphertext; this is browser-profile protection, not a
+// hardware-backed secret or a password-derived vault.
+export async function encryptAccountDeviceIdentity(identityBlob, origin, hubId, accountId, deviceId,
+  publicIdentity, allowLoopbackHTTP = false) {
+  if (typeof identityBlob !== 'string' || !identityBlob || identityBlob.length > 64 * 1024) {
+    throw new Error('Generated account device identity is invalid.');
+  }
+  const additionalData = accountVaultAAD(origin, hubId, accountId, deviceId, publicIdentity, allowLoopbackHTTP);
+  const wrappingKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = encoder.encode(identityBlob);
+  try {
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData, tagLength: 128 }, wrappingKey, plaintext);
+    return { format: accountVaultFormat, origin, hubId, accountId, deviceId, publicIdentity, allowLoopbackHTTP,
+      wrappingKey, iv: toBase64(iv), ciphertext: toBase64(ciphertext) };
+  } finally {
+    plaintext.fill(0);
+  }
+}
+
+export async function decryptAccountDeviceIdentity(vault, origin, hubId, accountId, deviceId,
+  expectedPublicIdentity, allowLoopbackHTTP = false) {
+  const fields = ['format', 'origin', 'hubId', 'accountId', 'deviceId', 'publicIdentity', 'allowLoopbackHTTP',
+    'wrappingKey', 'iv', 'ciphertext'];
+  if (!vault || typeof vault !== 'object' || Object.keys(vault).sort().join(',') !== [...fields].sort().join(',') ||
+      vault.format !== accountVaultFormat || vault.origin !== origin || vault.hubId !== hubId ||
+      vault.accountId !== accountId || vault.deviceId !== deviceId ||
+      vault.allowLoopbackHTTP !== allowLoopbackHTTP ||
+      !sameDevicePublicIdentity(vault.publicIdentity, expectedPublicIdentity) ||
+      vault.wrappingKey?.type !== 'secret' || vault.wrappingKey?.extractable !== false ||
+      vault.wrappingKey?.algorithm?.name !== 'AES-GCM' || vault.wrappingKey?.algorithm?.length !== 256 ||
+      !vault.wrappingKey.usages?.includes('decrypt') || !vault.wrappingKey.usages?.includes('encrypt')) {
+    throw new Error('Saved Owner-account device vault does not match this pinned Hub and device.');
+  }
+  const additionalData = accountVaultAAD(origin, hubId, accountId, deviceId, expectedPublicIdentity, allowLoopbackHTTP);
+  const iv = accountVaultBytes(vault.iv, 'nonce');
+  const ciphertext = accountVaultBytes(vault.ciphertext, 'ciphertext');
+  if (iv.byteLength !== 12 || ciphertext.byteLength < 16 || ciphertext.byteLength > 64 * 1024) {
+    throw new Error('Saved Owner-account device vault is malformed.');
+  }
+  let plaintext;
+  try {
+    plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData, tagLength: 128 },
+      vault.wrappingKey, ciphertext));
+    const value = new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+    if (!value || value.length > 64 * 1024) throw new Error('invalid identity');
+    return value;
+  } catch {
+    throw new Error('Owner-account device vault could not be authenticated or opened.');
+  } finally {
+    plaintext?.fill(0);
+    iv.fill(0);
+    ciphertext.fill(0);
+    additionalData.fill(0);
+  }
+}
+
+function accountProfileMatches(left, right) {
+  return Boolean(left && right && left.origin === right.origin && left.hubId === right.hubId &&
+    left.accountId === right.accountId && left.ownerId === right.ownerId && left.deviceId === right.deviceId &&
+    left.allowLoopbackHTTP === right.allowLoopbackHTTP &&
+    left.publicIdentity?.id === right.publicIdentity?.id &&
+    left.publicIdentity?.kem_public === right.publicIdentity?.kem_public &&
+    left.publicIdentity?.signing_public === right.publicIdentity?.signing_public);
+}
+
+function validAccountPending(pending) {
+  if (pending === null) return true;
+  if (pending && typeof pending === 'object' && !Array.isArray(pending) &&
+      pending.phase === 'CLAIM_CARD_REQUIRED') return Object.keys(pending).length === 1;
+  const maxPacketBase64Length = 4 * Math.ceil((384 * 1024) / 3);
+  const validPacket = value => typeof value === 'string' && value.length > 0 &&
+    value.length <= maxPacketBase64Length &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+  if (!pending || typeof pending !== 'object' || Array.isArray(pending) ||
+      !['CLAIM_PREPARE_PENDING', 'CLAIM_CHALLENGE_SAVED', 'CLAIM_COMPLETE_PENDING',
+        'LOGIN_PREPARE_PENDING', 'LOGIN_CHALLENGE_SAVED', 'LOGIN_COMPLETE_PENDING', 'LOGOUT_PENDING'].includes(pending.phase) ||
+      !validPacket(pending.packet)) return false;
+  const allowed = new Set(['phase', 'packet', 'responsePacket', 'preparePacket', 'challengePacket',
+    'ownerPublicIdentity', 'ownerFingerprint', 'accountEpoch', 'deviceEpoch']);
+  if (Object.keys(pending).some(key => !allowed.has(key))) return false;
+  for (const key of ['responsePacket', 'preparePacket', 'challengePacket']) {
+    if (pending[key] !== undefined && !validPacket(pending[key])) return false;
+  }
+  if ((pending.phase === 'CLAIM_CHALLENGE_SAVED' || pending.phase === 'LOGIN_CHALLENGE_SAVED') &&
+      (!validPacket(pending.responsePacket) || pending.preparePacket !== undefined || pending.challengePacket !== undefined)) return false;
+  if (pending.phase === 'CLAIM_PREPARE_PENDING' || pending.phase === 'LOGIN_PREPARE_PENDING') {
+    if (pending.responsePacket !== undefined || pending.preparePacket !== undefined || pending.challengePacket !== undefined) return false;
+  }
+  if (pending.phase === 'CLAIM_COMPLETE_PENDING' || pending.phase === 'LOGIN_COMPLETE_PENDING') {
+    if (!validPacket(pending.preparePacket) || !validPacket(pending.challengePacket)) return false;
+  }
+  if (pending.phase === 'CLAIM_COMPLETE_PENDING' &&
+      (!pending.ownerPublicIdentity || typeof pending.ownerFingerprint !== 'string')) return false;
+  if (pending.phase === 'LOGOUT_PENDING' &&
+      (!Number.isSafeInteger(pending.accountEpoch) || pending.accountEpoch < 1 ||
+       !Number.isSafeInteger(pending.deviceEpoch) || pending.deviceEpoch < 1 ||
+       pending.preparePacket !== undefined || pending.challengePacket !== undefined ||
+       pending.ownerPublicIdentity !== undefined || pending.ownerFingerprint !== undefined)) return false;
+  if (pending.phase !== 'LOGOUT_PENDING' && (pending.accountEpoch !== undefined || pending.deviceEpoch !== undefined)) return false;
+  if (pending.ownerPublicIdentity !== undefined &&
+      (pending.phase !== 'CLAIM_COMPLETE_PENDING' || !sameDevicePublicIdentity(pending.ownerPublicIdentity, pending.ownerPublicIdentity) ||
+       typeof pending.ownerFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(pending.ownerFingerprint))) return false;
+  if (pending.phase !== 'CLAIM_COMPLETE_PENDING' &&
+      (pending.ownerPublicIdentity !== undefined || pending.ownerFingerprint !== undefined)) return false;
+  if (pending.ownerFingerprint !== undefined && pending.ownerPublicIdentity === undefined) return false;
+  return true;
+}
+
+// The account flow persists only public profile metadata, the encrypted local
+// device vault, and exact encrypted protocol packets/responses. The claim card,
+// account password, plaintext challenges, and session token are excluded.
+export async function saveOwnerAccountFlow(db, profile, pending, vault = null) {
+  return saveOwnerAccountFlowChecked(db, profile, pending, vault, false, undefined);
+}
+
+// Compare-and-save is used for every asynchronous Owner-account transition.
+// IndexedDB serializes the read/compare/write transaction, so a stale tab or
+// late HTTP callback cannot replace a newer exact packet or accepted receipt.
+export async function compareAndSaveOwnerAccountFlow(db, profile, expectedPending, pending, vault = null) {
+  return saveOwnerAccountFlowChecked(db, profile, pending, vault, true, expectedPending);
+}
+
+function samePendingSnapshot(left, right) {
+  if (left == null || right == null) return left == null && right == null;
+  if (typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) || Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length || leftKeys.some((key, index) => key !== rightKeys[index])) return false;
+  return leftKeys.every(key => key === 'ownerPublicIdentity' ?
+    sameDevicePublicIdentity(left[key], right[key]) : left[key] === right[key]);
+}
+
+// Hold an origin-scoped Web Lock until the caller releases it. The callback
+// always requests ifAvailable: contention or unsupported browsers fail closed
+// rather than queuing a second account mutation behind a stale page.
+export async function acquireOwnerAccountLock(lockManager, origin) {
+  if (!lockManager || typeof lockManager.request !== 'function' || typeof origin !== 'string' || !origin) return null;
+  let signalAcquired;
+  const acquired = new Promise(resolve => { signalAcquired = resolve; });
+  let releaseHold;
+  const hold = new Promise(resolve => { releaseHold = resolve; });
+  let gotLock = false;
+  let released = false;
+  try {
+    const request = lockManager.request(`cicada-owner-account:${origin}`, { mode: 'exclusive', ifAvailable: true }, async lock => {
+      if (!lock) {
+        signalAcquired(false);
+        return;
+      }
+      gotLock = true;
+      signalAcquired(true);
+      await hold;
+    });
+    Promise.resolve(request).catch(() => {
+      if (!gotLock) signalAcquired(false);
+    });
+  } catch {
+    signalAcquired(false);
+  }
+  if (!await acquired) return null;
+  return { release() {
+    if (released) return;
+    released = true;
+    releaseHold();
+  } };
+}
+
+async function saveOwnerAccountFlowChecked(db, profile, pending, vault, compare, expectedPending) {
+  const profileFields = ['origin', 'hubId', 'accountId', 'ownerId', 'deviceId', 'username', 'publicIdentity',
+    'allowLoopbackHTTP', 'ownerPublicIdentity', 'ownerFingerprint'];
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile) ||
+      Object.keys(profile).some(key => !profileFields.includes(key)) || !profile.origin || !profile.hubId ||
+      !profile.accountId || !profile.ownerId || !profile.deviceId || typeof profile.username !== 'string' ||
+      profile.username.length > 128 || typeof profile.allowLoopbackHTTP !== 'boolean' ||
+      !sameDevicePublicIdentity(profile.publicIdentity, profile.publicIdentity) ||
+      (profile.ownerPublicIdentity != null && !sameDevicePublicIdentity(profile.ownerPublicIdentity, profile.ownerPublicIdentity)) ||
+      (profile.ownerFingerprint !== undefined && profile.ownerFingerprint !== '' && !/^[0-9a-f]{64}$/.test(profile.ownerFingerprint)) ||
+      !validAccountPending(pending)) {
+    throw new Error('Owner account state is invalid.');
+  }
+  const storedProfile = { origin: profile.origin, hubId: profile.hubId, accountId: profile.accountId,
+    ownerId: profile.ownerId, deviceId: profile.deviceId, username: profile.username,
+    publicIdentity: profile.publicIdentity, allowLoopbackHTTP: profile.allowLoopbackHTTP,
+    ownerPublicIdentity: profile.ownerPublicIdentity || null, ownerFingerprint: profile.ownerFingerprint || '' };
+  await updateState(db, state => {
+    const pin = state.pin;
+    if (!pin || pin.origin !== storedProfile.origin || pin.hubId !== storedProfile.hubId) {
+      throw new Error('Owner account state does not match the pinned Hub.');
+    }
+    const current = state.ownerAccount;
+    if (compare && !samePendingSnapshot(current?.pending ?? null, expectedPending)) {
+      throw new Error('OWNER_ACCOUNT_STALE_PENDING');
+    }
+    if (current?.profile?.ownerPublicIdentity && !storedProfile.ownerPublicIdentity) {
+      storedProfile.ownerPublicIdentity = current.profile.ownerPublicIdentity;
+      storedProfile.ownerFingerprint = current.profile.ownerFingerprint;
+    }
+    if (current && (!accountProfileMatches(current.profile, storedProfile) ||
+        (current.profile.ownerPublicIdentity && !sameDevicePublicIdentity(current.profile.ownerPublicIdentity, storedProfile.ownerPublicIdentity)) ||
+        (current.profile.ownerFingerprint && current.profile.ownerFingerprint !== storedProfile.ownerFingerprint))) {
+      throw new Error('This browser already has a different Owner account profile.');
+    }
+    let accountVault = state.accountLoginVault;
+    if (vault) {
+      if (vault.format !== accountVaultFormat || vault.origin !== storedProfile.origin || vault.hubId !== storedProfile.hubId ||
+          vault.accountId !== storedProfile.accountId || vault.deviceId !== storedProfile.deviceId ||
+          vault.allowLoopbackHTTP !== storedProfile.allowLoopbackHTTP ||
+          !sameDevicePublicIdentity(vault.publicIdentity, storedProfile.publicIdentity)) {
+        throw new Error('Encrypted account device key does not match the Owner account profile.');
+      }
+      if (accountVault && (accountVault.origin !== vault.origin || accountVault.hubId !== vault.hubId ||
+          accountVault.allowLoopbackHTTP !== vault.allowLoopbackHTTP ||
+          accountVault.accountId !== vault.accountId || accountVault.deviceId !== vault.deviceId ||
+          !sameDevicePublicIdentity(accountVault.publicIdentity, vault.publicIdentity) || accountVault.ciphertext !== vault.ciphertext)) {
+        throw new Error('This browser already has a different Owner account login device.');
+      }
+      accountVault = accountVault || vault;
+    }
+    if (!accountVault || accountVault.origin !== storedProfile.origin || accountVault.hubId !== storedProfile.hubId ||
+        accountVault.allowLoopbackHTTP !== storedProfile.allowLoopbackHTTP ||
+        accountVault.accountId !== storedProfile.accountId || accountVault.deviceId !== storedProfile.deviceId ||
+        !sameDevicePublicIdentity(accountVault.publicIdentity, storedProfile.publicIdentity)) {
+      throw new Error('The encrypted Owner account device key is missing or does not match.');
+    }
+    return { ...state, accountLoginVault: accountVault, ownerAccount: { profile: storedProfile, pending } };
+  });
+}
+
 export function downloadJSON(filename, value) {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -116,9 +380,15 @@ export async function getHubIdentity() {
 export async function savePinnedHub(db, identity) {
   const pin = { origin: location.origin, hubId: identity.hub_id,
     keyId: identity.control_public_identity?.id, keyVersion: identity.control_key_version,
-    suite: identity.suite, controlPublicIdentity: identity.control_public_identity };
+    suite: identity.suite, contract: identity.contract,
+    controlPublicIdentity: identity.control_public_identity };
   await updateState(db, current => {
-    if (current.pin && (current.pin.origin !== pin.origin || current.pin.hubId !== pin.hubId || current.pin.keyId !== pin.keyId)) {
+    const saved = current.pin;
+    if (saved && (saved.origin !== pin.origin || saved.hubId !== pin.hubId || saved.keyId !== pin.keyId ||
+        saved.keyVersion !== pin.keyVersion || saved.suite !== pin.suite ||
+        (saved.contract !== undefined && saved.contract !== pin.contract) ||
+        saved.controlPublicIdentity?.kem_public !== pin.controlPublicIdentity?.kem_public ||
+        saved.controlPublicIdentity?.signing_public !== pin.controlPublicIdentity?.signing_public)) {
       throw new Error('This browser already pinned a different Hub identity for this origin. Clear this site’s browser storage only after reviewing the identity change.');
     }
     return { ...current, pin };

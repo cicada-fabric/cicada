@@ -6,6 +6,7 @@ import { createDeviceDraftState, pinMatches, savedPanelRoute } from './panel-mod
 import { callRPC, decryptIdentityBlob, downloadJSON, encryptIdentityBlob, enrollmentManifest,
   authorizeNewWriteAfterReview, enrollExactRequest, getState, openPanelDB,
   recoverPending, savePinnedHub, updateState } from './panel-client.js';
+import { renderOwnerAccount, restoreOwnerAccountDevice } from './panel-account.js';
 
 const app = document.querySelector('#app');
 const identityLine = document.querySelector('#identity-line');
@@ -94,7 +95,7 @@ function base64(bytes) {
   return btoa(binary);
 }
 
-function renderPin(identity) {
+function renderPin(identity, onPinned = () => routeAfterPin()) {
   const section = ceremony(t('Pin this Hub independently'), t('The identity below came from this connection and is untrusted. Compare both values with an independent operator source before entering them. This page will not trust a first-seen Hub automatically.'));
   notice(section, t('Origin: {origin}\nHub ID: {hubId}\nHub identity key ID: {keyId}\nSuite: {suite}', {
     origin: location.origin, hubId: identity.hub_id, keyId: identity.control_public_identity.id, suite: identity.suite
@@ -111,7 +112,7 @@ function renderPin(identity) {
     try {
       await savePinnedHub(db, identity);
       setLocalizedText(wireState, t('Hub pinned'));
-      await routeAfterPin();
+      await onPinned();
     } catch (failure) { setMessage(section, failure); }
   });
   const grid = node('div', 'grid');
@@ -134,7 +135,7 @@ async function routeAfterPin(state) {
       else renderGrantImport(state);
       return;
     default:
-      renderOwnerAccountEntry();
+      await renderOwnerAccountEntry();
   }
 }
 
@@ -144,28 +145,10 @@ async function readPublicJSONFile(file, label) {
   catch { throw localError('{label} is not valid JSON.', { label: t(label) }); }
 }
 
-function renderOwnerAccountEntry() {
-  const section = ceremony(t('Owner account setup is unavailable in this build'),
-    t('The normal first Owner setup should start with an installer-issued Hub URL and one-time claim code, then create an Owner username and password using existing public keys. That signup flow is not available in this build; this page does not create an account or accept a claim.'),
-    t('OWNER ACCOUNT SETUP'));
-  notice(section, t('The browser-device form is a separate advanced Client enrollment tool. It is not Owner signup and does not create Owner login credentials.'), 'warn');
-
-  const advanced = node('section', 'advanced-entry');
-  advanced.append(node('div', 'eyebrow', t('Advanced technical setup')),
-    node('p', '', t('The optional technical path covers Owner-signer bootstrap and browser Client-device enrollment. It requires separate operator and signer steps and does not claim a Hub installation or create an Owner username or password.')));
-  const consent = node('input');
-  consent.type = 'checkbox';
-  consent.id = 'advanced-device-consent';
-  const consentLabel = node('label', 'advanced-consent');
-  consentLabel.htmlFor = consent.id;
-  consentLabel.append(consent, node('span', '', t('I understand this is advanced signer and browser-device setup, not Owner account signup.')));
-  const openAdvanced = actionButton(t('Open advanced signer and browser-device setup'), () => {
-    if (consent.checked) renderOwnerBootstrapGuide();
-  }, 'btn quiet');
-  openAdvanced.disabled = true;
-  consent.addEventListener('change', () => { openAdvanced.disabled = !consent.checked; });
-  advanced.append(consentLabel, openAdvanced);
-  section.append(advanced);
+function renderOwnerAccountEntry(pinAlreadySaved = true) {
+  const onAdvanced = pinAlreadySaved ? renderOwnerBootstrapGuide :
+    () => renderPin(hubIdentity, renderOwnerBootstrapGuide);
+  return renderOwnerAccount(app, { db, hubIdentity, cryptoApi, onAdvanced });
 }
 
 function renderOwnerBootstrapGuide() {
@@ -444,9 +427,21 @@ async function boot() {
       }), 'danger');
       return;
     }
-    if (!state.pin) return renderPin(hubIdentity);
+    if (!state.pin) {
+      if (state.ownerAccount?.profile) {
+        throw new Error('Saved Owner account state has no matching Hub pin. The panel refused to restore it.');
+      }
+      if (state.device?.active || state.enrollment?.body || (state.deviceDraft && state.vault)) {
+        return renderPin(hubIdentity);
+      }
+      // A genuinely empty profile starts with the installer claim flow. The
+      // claim card is checked against the full fetched identity and exact page
+      // origin, then explicitly reviewed before savePinnedHub or any request.
+      return renderOwnerAccountEntry(false);
+    }
     setLocalizedText(identityLine, t('Pinned Hub {hub}', { hub: hubIdentity.hub_id }));
     setLocalizedText(wireState, t('Hub pinned'));
+    if (state.ownerAccount?.profile) await restoreOwnerAccountDevice(db, cryptoApi, hubIdentity);
     await routeAfterPin(state);
   } catch (failure) {
     const section = ceremony(t('Secure Hub panel unavailable'), t('The page does not fall back to a bearer-token UI or another cryptographic implementation.'));

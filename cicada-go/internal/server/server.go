@@ -31,6 +31,7 @@ type OwnerBootstrapAcceptor interface{ AcceptOwnerBootstrap([]byte) ([]byte, err
 
 type Handler struct {
 	control         *control.Control
+	accountAuth     HubAccountAcceptor
 	hubIdentity     HubIdentityReader
 	ownerBootstrap  OwnerBootstrapAcceptor
 	fabricService   *fabricpkg.Service
@@ -143,6 +144,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	// Client enrollment and encrypted management traffic have their own trust
 	// boundary. They never fall through to the legacy management bearer.
+	if operation := accountOperation(request.URL.Path); operation != "" {
+		h.hubAccount(response, request, operation)
+		return
+	}
 	if request.URL.Path == "/v2/owner/bootstrap/accept" {
 		h.ownerBootstrapAccept(response, request)
 		return

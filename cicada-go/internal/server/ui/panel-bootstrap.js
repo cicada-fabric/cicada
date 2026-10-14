@@ -151,6 +151,28 @@ export function validateOwnerBootstrapPublicFiles(connection, candidate, pageOri
     origin: connection.origin, fingerprint: candidate.fingerprint };
 }
 
+// Check only the bounded PEM label before reading a selected file fully. The
+// cryptographic parser in Go remains responsible for DER/OID/parameter checks.
+export async function readOwnerPublicSPKIPem(file) {
+  if (!file || !Number.isSafeInteger(file.size) || file.size <= 0 || file.size > 16 * 1024 ||
+      typeof file.slice !== 'function' || typeof file.text !== 'function') {
+    throw new Error('Select a bounded public SPKI PEM file no larger than 16 KiB.');
+  }
+  const prefix = await file.slice(0, 128).text();
+  const match = /^\s*-----BEGIN ([A-Z0-9 ]+)-----/.exec(prefix);
+  if (match?.[1] === 'ENCRYPTED PRIVATE KEY' || match?.[1].endsWith('PRIVATE KEY')) {
+    throw new Error('Private key files are not accepted here. Select only the matching public SPKI PEM.');
+  }
+  if (match?.[1] !== 'PUBLIC KEY') {
+    throw new Error('Expected one SPKI PUBLIC KEY PEM file.');
+  }
+  const pem = await file.text();
+  if (typeof pem !== 'string' || pem.length > 16 * 1024 || !/^\s*-----BEGIN PUBLIC KEY-----/.test(pem)) {
+    throw new Error('Selected public PEM changed or is malformed.');
+  }
+  return pem;
+}
+
 export async function loadCryptoWasm() {
   const manifestResponse = await fetch('/assets/panel.manifest.json', { cache: 'no-store', credentials: 'omit' });
   if (!manifestResponse.ok) throw new Error('The Hub WebCrypto build is missing. Build the Hub with scripts/build-web-panel.sh.');

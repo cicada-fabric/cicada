@@ -1,6 +1,77 @@
 # Architecture v2.3 数据与协议迁移
 
-## 2026-10-14 Hub identity/bootstrap extraction — no migration
+## 2026-10-14 Hub account persistence — additive schema 61
+
+The schema-61 implementation recorded here was captured from dirty `dev` before
+the local checkpoint commit. At capture, the unreleased 0.0.5 source advanced
+the prior schema-60 Hub state with one additive v2 migration, version 61. It
+creates eight account tables for
+configuration/epochs, one-use claims, credentials, login devices, pending
+public Owner association, claim/login attempts, sessions, and protected request
+receipts. Prior migration IDs/checksums and existing Owner/account IDs, root
+history, key material, and Client sequence/recovery rows are preserved. The
+schema preservation test constructs the v60 boundary on a disposable Store,
+opens it through the current migration runner, and compares existing records.
+
+The existing attempt/request rows also hold three 64-character nonce-digest
+columns (`prepare_nonce_digest`, `complete_nonce_digest`, `nonce_digest`) with
+three unique indexes, including a partial index for completion nonces. This is
+the incremental database cost for same-device fresh-nonce enforcement; there
+is no standalone nonce ledger table. Accepted protected session requests retain
+their existing 128-operation per-session bound.
+
+Schema 61 also installs four narrowly scoped indexes: a unique index on session
+token digests (so lookup is indexed and random digest collisions fail closed),
+an `(account_id, device_id, state)` index for session revocation, a partial
+`(complete_id, request_digest)` index for consumed login receipts, and an
+`(operation_id, operation, request_digest, session_id)` index for exact cached
+request preflight. These add index pages and update cost in proportion to the
+rows they cover; the existing request-nonce index and session primary key cover
+the account/device nonce join without another index.
+
+An accepted login-completion or logout packet can recover its saved response
+after the 60-second request freshness window. Before allowing the age-only
+exception, Hub matches the exact packet digest to a durable receipt under the
+current account/device/credential epochs; it then verifies the original device
+envelope. New and changed packets still use normal freshness validation. The
+real TCP test seeds old accepted packet digests and checks recovery across
+Store/service restart, while fresh stale requests, altered packets, restore
+epoch changes and revoked devices are rejected. See the [account validation
+record](hub-owner-account-validation.md) for the bounded source evidence and
+external gates.
+
+Restore reconciliation is account-aware. It advances the account auth epoch,
+cancels pending claim/login attempts, marks pending claims cancelled, and
+revokes sessions so restored packets cannot regain current authority. It keeps
+the password credential, active login-device identity, and pending Owner
+public candidate. That public candidate remains separate from permanent Root
+history and `owner_approval_keys_v2`; restore does not establish a signer or
+Client grant. Deterministic migration/restore tests pass. The tested source is
+dirty revision `d758086`, with the final post-CAS PQ-enabled Chromium account
+gate passing 18/18 steps and fixture cleanup. Its Hub image is
+`sha256:dc98a89e748959c357723610660145efe23b5e26014776d55d69edcf6b042d76` with
+input fingerprint
+`c4b52e67ed82f75fd2ef27f198d6e34591323de6f3dfa2f94f03adce7bc335a3`; the result
+is [`result.json`](../.cicada-data/hub-owner-account-browser/20261014t102757z-2975661-c0e87018/result.json),
+SHA-256 `aa2e023eaafee20bf654a838657efa0eaf0edaab82d2a631d8cbcb112675d01b`.
+The official standard Client Docker interop also passed (exit 0, cleanup
+CONFIRMED), with Hub image
+`sha256:c9f94827e7cf96b6047b0e41cbc687931c7d36e6d8ae520ab6d7f7ecfe88431b`,
+input fingerprint
+`498b1299dba7a0ae8327ed6087dee0bb79102ca43d11f9247418e5ab24887540`; see
+[`result.json`](../.cicada-data/hub-owner-account-20261014/root-gate/client-interop-cas/result.json).
+Post-CAS WASM/UI passed; the UI retry guard uses Web Locks/singleflight plus
+exact IndexedDB compare-and-swap. No Core or wire behavior changed. The latest
+sequenced Windows cross-build passed after an earlier parallel asset/embed
+attempt failed; native Windows/ACL remains NOT_RUN. An
+intermediate build-provenance guard rejected a build after source changed; that
+run remains guard FAIL / interop NOT_RUN and is not a product-test failure.
+Two earlier browser-driver failures and the pre-CAS 17-step PASS remain recorded
+as historical results, alongside the final corrected-driver run. There was no
+production migration or deployment. The [account validation record](hub-owner-account-validation.md)
+contains the exact result hashes, cleanup receipts, and source boundaries.
+
+## 2026-10-14 Hub identity/bootstrap extraction — no migration (earlier source capture)
 
 The dirty 0.0.5 development candidate extracts durable key loading to
 `hubidentity` and the existing Store/finite-proof flow to `hubowner`. Setup and
@@ -20,13 +91,13 @@ composition checkpoint, not a new account/password migration or a new Docker
 interop pass. Earlier schema-60 Docker and OpenSSL results below remain tied
 to their tested source.
 
-The next account-claim/credentials/login-device/session/public-association
-stage still requires contract review, an explicit additive migration and
+At that earlier source capture, the next account-claim/credentials/login-device/session/public-association
+stage still required contract review, an explicit additive migration and
 restore coverage for one-use claims, credential/device epochs and terminal
 receipts. Public-key association must stay separate from
 `owner_approval_keys_v2`: that table establishes permanent Root history. No
 claim, cookie or password may activate Root or bypass existing Client Guard.
-There are no Stage 2 implementation or migration changes in this checkpoint.
+There were no Stage 2 implementation or migration changes in that checkpoint.
 
 ## 2026-10-13 schema-60 first Owner bootstrap — SCOPED PASS; full product PARTIAL
 

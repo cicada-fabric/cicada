@@ -80,8 +80,9 @@ const result = {
   chromium: {},
   steps: {
     hub_fixture: 'NOT_RUN',
-    manual_hub_pin_ceremony: 'NOT_RUN',
+    owner_claim_page_before_pin_or_secrets: 'NOT_RUN',
     production_go_wasm_loaded: 'NOT_RUN',
+    owner_account_claim_page: 'NOT_RUN',
     encrypted_indexeddb_vault_and_unlock: 'NOT_RUN',
     offline_owner_grant_and_device_enrollment: 'NOT_RUN',
     encrypted_topology_status_and_canvas: 'NOT_RUN',
@@ -413,11 +414,6 @@ async function setInputValue(page, selector, value) {
   if (await page.evaluate(expression) !== true) fail(`Browser panel input is unavailable: ${selector}`);
 }
 
-async function setCheckboxChecked(page, selector, checked) {
-  const expression = `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e || e.type !== 'checkbox') return false; e.checked = ${Boolean(checked)}; e.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`;
-  if (await page.evaluate(expression) !== true) fail(`Browser panel checkbox is unavailable: ${selector}`);
-}
-
 async function setFileInput(page, selector, filePath) {
   const document = await page.send('DOM.getDocument', { depth: -1 });
   const queried = await page.send('DOM.querySelector', { nodeId: document.root.nodeId, selector });
@@ -445,7 +441,7 @@ async function waitForDownload(filename, timeoutMs = 15000) {
 }
 
 async function readIndexedDBState(page) {
-  const expression = `(() => new Promise((resolve,reject) => { const req=indexedDB.open('cicada-hub-web-panel-v1'); req.onerror=()=>reject(new Error('open')); req.onsuccess=()=>{ const db=req.result; const get=db.transaction('state','readonly').objectStore('state').get('owner-session'); get.onerror=()=>reject(new Error('read')); get.onsuccess=()=>{ const s=get.result||{}; const d=s.device||{}; const v=s.vault||{}; resolve({pinHubId:s.pin?.hubId||'',pinKeyId:s.pin?.keyId||'',pinOrigin:s.pin?.origin||'',active:d.active===true,ownerId:d.ownerId||'',deviceId:d.deviceId||'',nextRequestSequence:d.nextRequestSequence||0,nextResponseSequence:d.nextResponseSequence||0,pending:Boolean(d.pending),writeFence:Boolean(d.writeFence),vaultFormat:v.format||'',vaultCipher:v.cipher||'',vaultKdf:v.kdf||'',vaultIterations:v.iterations||0,ciphertextLength:(v.ciphertext||'').length,privateFieldStored:Object.keys(d).some(k=>/private|identity_blob|secret/i.test(k))||Object.keys(v).some(k=>/private|identity_blob|secret/i.test(k)),localStorageLength:localStorage.length}); db.close(); }; }; }))()`;
+  const expression = `(() => new Promise((resolve,reject) => { const req=indexedDB.open('cicada-hub-web-panel-v1'); req.onerror=()=>reject(new Error('open')); req.onsuccess=()=>{ const db=req.result; const get=db.transaction('state','readonly').objectStore('state').get('owner-session'); get.onerror=()=>reject(new Error('read')); get.onsuccess=()=>{ const s=get.result||{}; const d=s.device||{}; const v=s.vault||{}; const a=s.ownerAccount||{}; const av=s.accountLoginVault||{}; resolve({pinHubId:s.pin?.hubId||'',pinKeyId:s.pin?.keyId||'',pinOrigin:s.pin?.origin||'',active:d.active===true,ownerId:d.ownerId||'',deviceId:d.deviceId||'',nextRequestSequence:d.nextRequestSequence||0,nextResponseSequence:d.nextResponseSequence||0,pending:Boolean(d.pending),writeFence:Boolean(d.writeFence),vaultFormat:v.format||'',vaultCipher:v.cipher||'',vaultKdf:v.kdf||'',vaultIterations:v.iterations||0,ciphertextLength:(v.ciphertext||'').length,ownerAccountSaved:Boolean(a.profile),ownerAccountPending:Boolean(a.pending),accountVaultFormat:av.format||'',accountVaultCiphertextLength:(av.ciphertext||'').length,privateFieldStored:Object.keys(d).some(k=>/private|identity_blob|secret/i.test(k))||Object.keys(v).some(k=>/private|identity_blob|secret/i.test(k))||Object.keys(a.profile||{}).some(k=>/private|identity_blob|secret|password|code/i.test(k))||Object.keys(a.pending||{}).some(k=>/private|identity_blob|secret|password|code/i.test(k))||Object.keys(av).some(k=>/private|identity_blob|secret|password|code/i.test(k)),localStorageLength:localStorage.length}); db.close(); }; }; }))()`;
   return page.evaluate(expression);
 }
 
@@ -698,10 +694,10 @@ async function runBrowserFlow() {
   const origin = `http://${browserOriginHost}:8787`;
   pageA = await createPage(cdpHostPort, origin);
   emitRPCCounter(pageA);
-  let firstText;
+  let firstPageReady;
   try {
-    firstText = await evaluateUntil(pageA, 'document.body.innerText',
-      value => value.includes('Pin this Hub independently'), 45000, 'the independent Hub pin ceremony');
+    firstPageReady = await evaluateUntil(pageA, 'document.querySelector("#owner-claim-card") !== null',
+      value => value === true, 45000, 'the normal first Owner account claim page');
   } catch (error) {
     if (process.env.CICADA_BROWSER_DEBUG === '1') {
       const diagnostic = await pageA.evaluate(`({url:location.href,title:document.title,readyState:document.readyState,body:(document.body?.innerText||'').slice(0,1200)})`).catch(() => null);
@@ -709,33 +705,43 @@ async function runBrowserFlow() {
     }
     throw error;
   }
-  if (firstText.includes('Secure Hub panel unavailable') || firstText.includes('Hub identity changed')) fail('Hub browser panel failed closed before pinning');
+  const firstText = await pageA.evaluate('document.body.innerText');
+  if (!firstPageReady || firstText.includes('Secure Hub panel unavailable') || firstText.includes('Hub identity changed')) {
+    fail('Hub browser panel failed closed before the claim page');
+  }
   const untrusted = await pageA.evaluate(`({canvas:!!document.querySelector('.workspace'),app:document.querySelector('#app')?.innerText||''})`);
-  if (untrusted.canvas || !untrusted.app.includes('Pin this Hub independently')) fail('The first Hub identity was automatically trusted');
-  markStep('manual_hub_pin_ceremony');
+  const manualPinBeforeReview = await pageA.evaluate('Boolean(document.querySelector("#pin-hub-id, #pin-key-id"))');
+  if (untrusted.canvas || !untrusted.app.includes('Set up the first Owner account') || manualPinBeforeReview) {
+    fail('The normal first visit must show the claim-card page without a manual Hub ID/key-ID form');
+  }
+  markStep('owner_claim_page_before_pin_or_secrets');
   await evaluateUntil(pageA, 'globalThis.cicadaWebCryptoReady === true && typeof globalThis.cicadaWebCrypto?.sealRequest === "function"',
     value => value === true, 45000, 'the production Go WebCrypto WASM module');
   markStep('production_go_wasm_loaded');
 
+  const ownerEntry = await pageA.evaluate(`(() => ({
+    text: document.querySelector('#app')?.innerText || '',
+    advancedButton: [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Advanced technical setup'),
+    claimInputType: document.querySelector('#owner-claim-card')?.type || '',
+    ownerCredentialInputs: document.querySelectorAll('#owner-account-password, #owner-login-password').length,
+    publicKeyInputs: document.querySelectorAll('#owner-kem-public, #owner-signing-public').length
+  }))()`);
+  const emptyOwnerState = await readIndexedDBState(pageA);
+  if (!ownerEntry.text.includes('Set up the first Owner account') ||
+      !ownerEntry.text.includes('installer-issued Hub claim file') ||
+      !ownerEntry.text.includes('complete Hub fingerprint') || !ownerEntry.advancedButton ||
+      ownerEntry.claimInputType !== 'password' || ownerEntry.ownerCredentialInputs !== 0 ||
+      ownerEntry.publicKeyInputs !== 0 || emptyOwnerState.pinOrigin || emptyOwnerState.ownerAccountSaved || emptyOwnerState.ownerAccountPending ||
+      emptyOwnerState.accountVaultFormat || emptyOwnerState.privateFieldStored || emptyOwnerState.localStorageLength !== 0) {
+    fail('The normal first Owner page must stop before trust/save/send and must not show credentials or device keys');
+  }
+  result.steps.owner_account_claim_page = 'PASS';
+  await buttonClick(pageA, 'Advanced technical setup');
+  await evaluateUntil(pageA, 'document.querySelector("#pin-hub-id") !== null', Boolean, 10000,
+    'the explicitly selected advanced manual Hub pin form');
   await setInputValue(pageA, '#pin-hub-id', hubId);
   await setInputValue(pageA, '#pin-key-id', controlKeyId);
   await buttonClick(pageA, 'Pin this exact Hub identity');
-  await evaluateUntil(pageA, 'document.querySelector("#advanced-device-consent") !== null', Boolean, 10000, 'Owner account setup notice');
-  const ownerEntry = await pageA.evaluate(`(() => ({
-    text: document.querySelector('#app')?.innerText || '',
-    advancedButtonDisabled: [...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open advanced signer and browser-device setup')?.disabled,
-    advancedFiles: document.querySelectorAll('#owner-connection-file, #owner-public-manifest-file').length,
-    passwordInputs: [...document.querySelectorAll('#app input[type="password"]')].length
-  }))()`);
-  if (!ownerEntry.text.includes('installer-issued Hub URL and one-time claim code') ||
-      !ownerEntry.text.includes('Owner username and password using existing public keys') ||
-      !ownerEntry.text.includes('not Owner signup') || ownerEntry.advancedButtonDisabled !== true ||
-      ownerEntry.advancedFiles !== 0 || ownerEntry.passwordInputs !== 0) {
-    fail('Normal Owner entry incorrectly exposes or implies a usable signup flow');
-  }
-  markStep('owner_account_setup_unavailable_notice');
-  await setCheckboxChecked(pageA, '#advanced-device-consent', true);
-  await buttonClick(pageA, 'Open advanced signer and browser-device setup');
   await evaluateUntil(pageA, 'document.querySelector("#owner-connection-file") !== null', Boolean, 10000, 'advanced Owner public-file guide');
   const ownerGuide = await pageA.evaluate(`(() => ({
     text: document.querySelector('#app')?.innerText || '',

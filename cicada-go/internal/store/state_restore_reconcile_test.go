@@ -55,6 +55,33 @@ func TestHubRestoreOwnerBootstrapHistoryAndAccountCannotRollBack(t *testing.T) {
 	}
 }
 
+func TestHubRestoreCoveragePreservesAccountNonceReplayCoordinates(t *testing.T) {
+	makeCheckpoint := func() *HubRestoreCheckpoint {
+		cp := syntheticHubCheckpoint()
+		cp.Tables = append(cp.Tables, "hub_account_attempts_v1", "hub_account_requests_v1")
+		cp.rows["hub_account_attempts_v1"] = map[string]map[string]any{"attempt": {
+			"account_id": "synthetic-account", "owner_id": "synthetic-owner", "device_id": "synthetic-device",
+			"prepare_nonce_digest": "synthetic-prepare-nonce", "complete_nonce_digest": "synthetic-complete-nonce", "state": "CONSUMED",
+		}}
+		cp.rows["hub_account_requests_v1"] = map[string]map[string]any{"request": {
+			"session_id": "synthetic-session", "operation_id": "synthetic-operation", "operation": "owner.account.session.inspect",
+			"request_digest": "synthetic-request", "nonce_digest": "synthetic-session-nonce",
+		}}
+		return cp
+	}
+	for _, change := range []struct{ table, field, value string }{
+		{"hub_account_attempts_v1", "prepare_nonce_digest", "synthetic-replaced-prepare-nonce"},
+		{"hub_account_attempts_v1", "complete_nonce_digest", "synthetic-replaced-complete-nonce"},
+		{"hub_account_requests_v1", "nonce_digest", "synthetic-replaced-session-nonce"},
+	} {
+		base, current := makeCheckpoint(), makeCheckpoint()
+		current.rows[change.table][map[string]string{"hub_account_attempts_v1": "attempt", "hub_account_requests_v1": "request"}[change.table]][change.field] = change.value
+		if err := CompareHubRestoreCoverage(base, current); !errors.Is(err, ErrHubRestoreCoverage) {
+			t.Fatalf("restore replaced %s.%s nonce history: %v", change.table, change.field, err)
+		}
+	}
+}
+
 func TestHubRestoreCoverageRejectsCrossSchemaVersions(t *testing.T) {
 	for _, versions := range [][2]int{
 		{hubRestoreReviewedSchemaVersion - 1, hubRestoreReviewedSchemaVersion},

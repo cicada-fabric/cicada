@@ -8,22 +8,63 @@ a completed historical M1–M5 task or run paid models.
 ## Current baseline and sources
 
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
-before editing. The development source line is `0.0.5`, Architecture v2.3, with
-schema-60 Owner bootstrap changes against the previously accepted schema 59.
-The original schema-60 checkpoint has scoped Docker A2 and segmented test
-acceptance; its A7/R3 aggregate failures/timeouts remain in the original record.
-This unreleased source checkpoint adds the existing encrypted OpenSSL-key helper,
+before editing. The account implementation and gate evidence below were
+captured from dirty `dev` before the local checkpoint commit. At capture, the
+unreleased development source was software `0.0.5`, Architecture v2.3, and
+contained additive schema 61 plus Hub Owner account claim/login source against
+the earlier schema-60 bootstrap. The account backend, six encrypted operations,
+local claim issuer, and two-page browser/WASM flow were implemented in the
+captured source. Focused deterministic tests,
+selected race checks and targeted vet pass. Root's final PQ-enabled disposable
+Chromium account gate passed all 18 steps with fixture cleanup, and the official
+standard Client Docker interop passed with exit 0 and confirmed cleanup. The
+post-review UI retry guard now serializes same-origin actions with Web Locks/
+singleflight and exact IndexedDB compare-and-swap; the post-CAS WASM/UI gate
+passed. No Core or wire behavior changed. The latest sequenced Windows
+cross-build passed; native Windows/ACL acceptance remains NOT_RUN. These are
+bounded local gates, not full-product or release acceptance. Attribute the
+current browser image to dirty revision `d758086` and build-input fingerprint
+`c4b52e67ed82f75fd2ef27f198d6e34591323de6f3dfa2f94f03adce7bc335a3`; its image
+digest is `sha256:dc98a89e748959c357723610660145efe23b5e26014776d55d69edcf6b042d76`.
+Its result is
+[`result.json`](.cicada-data/hub-owner-account-browser/20261014t102757z-2975661-c0e87018/result.json),
+SHA-256 `aa2e023eaafee20bf654a838657efa0eaf0edaab82d2a631d8cbcb112675d01b`;
+build metadata is `.cicada-data/hub-owner-account-20261014/root-gate/build-pq-cas.json`.
+The latest standard Client interop used image
+`sha256:c9f94827e7cf96b6047b0e41cbc687931c7d36e6d8ae520ab6d7f7ecfe88431b`
+with input fingerprint
+`498b1299dba7a0ae8327ed6087dee0bb79102ca43d11f9247418e5ab24887540` and confirmed
+cleanup; its result is `.cicada-data/hub-owner-account-20261014/root-gate/client-interop-cas/result.json`.
+The prior 17-step browser pass remains a pre-CAS historical result. Do not
+attribute this evidence to HEAD alone.
+The intermediate build-provenance guard abort and two earlier browser-driver
+failures remain recorded in the [account validation report](docs/hub-owner-account-validation.md);
+the guard failure was not a product-test failure, and later passes do not
+rewrite those attempts.
+
+The original schema-60 checkpoint's scoped Docker A2 and segmented test
+acceptance remain in its original record, including its A7/R3 aggregate
+failures/timeouts. The source also retains the encrypted OpenSSL-key helper,
 Hub identity/bootstrap separation, EN/zh-CN and an explicit advanced old-form
-entry. Stage 1 Hub-only composition has segmented normal/race, vet and contract
-coverage, with its earlier assertion failure and aggregate timeout retained.
-The Linux synthetic OpenSSL PTY ceremony, pre-extraction Windows cross-build
-and current offline Go WASM/UI-model gate have separate source attribution in
-[the audit](docs/architecture-v2-audit.md) and
-[validation record](docs/windows-owner-openssl-validation.md). Native Windows/
-ACL execution, Android, physical devices, Chromium enrollment and public HTTPS
-remain NOT_RUN for this checkpoint; Root-loss recovery and the new two-page
-account/password/claim/login product remain NOT_IMPLEMENTED. Software stays
-0.0.5; no version bump, release or resident deployment replacement is implied.
+entry. Stage 1 Hub-only composition has its own segmented normal/race, vet and
+contract evidence, with its earlier assertion failure and aggregate timeout
+retained. The Linux synthetic OpenSSL PTY ceremony, pre-extraction Windows
+cross-build, and older offline Go WASM/UI-model gate retain separate source
+attribution in [the audit](docs/architecture-v2-audit.md) and
+[validation record](docs/windows-owner-openssl-validation.md). A Windows
+cross-build passed for the captured source, but native Windows/ACL execution of
+the new account flow, Android, physical devices, native Codex end-to-end, and public HTTPS
+remain NOT_RUN. Root-loss recovery,
+password recovery, and account-device add/revoke remain unimplemented. Software
+stays 0.0.5; no version bump, release or resident deployment replacement is
+implied.
+Current account replay handling permits a greater-than-60-second login-complete
+or logout retry only when the exact packet digest matches a durable accepted
+receipt and account/device/credential epochs remain current; the original device
+envelope is still verified. New and altered packets keep the normal freshness
+check. Schema 61 includes targeted indexes for token digests, session revocation
+and exact receipt lookup, with their storage/write cost recorded in the
+[migration note](docs/architecture-v2-migration.md).
 Client contract `client-hub-v1.6.5`, encrypted wire 1 and
 catalog 55 remain unchanged. Confirm those
 identities in [VERSION](VERSION), the
@@ -62,8 +103,18 @@ indexed in [the documentation index](docs/README.md).
   channel and must not reclaim/reset its Root. Setup secrets/password/proofs/
   results and account requests preserve NIST application envelopes; HTTPS is
   transport. A cookie/session hint alone is never an actor: authenticated device
-  envelope, current epochs and nonce/sequence checks remain required. Password
-  work factors and schema choices are still proposals pending contract review.
+  envelope, current epochs and nonce/sequence checks remain required. The
+  implemented verifier is PBKDF2-SHA256-600000-v1 with a 32-byte salt, at least
+  10 Unicode code points, and a 1,024-byte maximum; two workers and four queued
+  requests bound KDF work, which runs outside the Store transaction. Current
+  restore fences advance the account epoch and invalidate pending claims,
+  attempts and sessions while retaining credentials, active login devices and
+  pending public association. This source supports the initial pre-Root claim;
+  adding credentials to an existing Root account, password recovery, and
+  device add/revoke are not implemented. The 0600 local claim card contains
+  one-use setup authority and is suppressed from default CLI output. These
+  implementation details do not imply full-product acceptance; the bounded
+  browser and interop gates passed for the captured source.
 - Control manages user intents, goals, budgets and approvals. Ordinary peer
   collaboration must not invoke its interpretation, planning or summarization.
   A Monitor can observe, review or represent within grants; it is not a mandatory

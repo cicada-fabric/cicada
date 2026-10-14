@@ -3,8 +3,12 @@
 This guide covers Hub-local setup and the bounded Owner signer flow in software 0.0.5. It creates the
 Hub's stable account-to-human Owner mapping locally, then installs one external
 Owner approval signer through a finite proof-of-possession ceremony. The guide
-uses manual local setup and direct Docker serving; it does not provide an
-automated installer or the full account/QR-pairing product. See the separate
+uses manual local setup and direct Docker serving. The current source also
+supports the normal two-page initial Owner account claim and login described in
+the [Hub panel guide](hub-web-panel.md); the bounded account implementation and
+its checks are recorded in the [Owner account validation record](hub-owner-account-validation.md).
+This guide does not provide an automated installer, QR pairing, additional
+Owner account-device enrollment, or account-reset flow. See the separate
 [protocol contract](hub-owner-bootstrap-contract.md)
 and [validation record](hub-owner-bootstrap-validation.md); the latter remains
 the authority for which checks have actually passed.
@@ -64,6 +68,43 @@ install a reverse proxy, or deploy an image. Store
 file to the Owner through a channel that lets the Owner independently trust
 its origin and full Hub Client-Control public key. A public file downloaded
 from the target Hub alone is not independent verification.
+
+## Issue the initial Owner account claim
+
+The normal empty-browser setup starts at the claim-card page. After setup, the
+Hub operator creates one claim file on the same persistent StateDir. Keep the
+file in a protected directory and transfer it to the intended Owner through a
+separate trusted channel:
+
+```bash
+CLAIM_DIR='/secure/owner-claim-transfer'
+mkdir -m 700 -p "$CLAIM_DIR"
+chmod 700 "$CLAIM_DIR"
+
+docker run --rm --network none \
+  --mount "type=volume,source=$STATE_VOLUME,target=/state" \
+  --mount "type=bind,source=$CLAIM_DIR,target=/claim" \
+  "$HUB_IMAGE" hub account-claim-issue \
+  --claim-file /claim/owner-account-claim.json --state-dir /state
+```
+
+The command writes a new mode-0600 claim file and reports only its public
+location and state. It does not print the claim code by default. Do not put the
+file in a URL, ticket, log, or public download. The claim lasts at most one hour
+and is used only for initial account creation; it does not activate Root or
+create Client manager access. The browser checks the exact page origin and
+complete Hub identity fingerprint against this independent file before it
+sends the code or password.
+
+Do not issue a replacement merely because the browser lost a response. The
+browser saves and retries the exact encrypted packet. If a claim was never
+completed and has expired, use the explicit local cancellation/reissue path
+only after confirming that no claim completion was accepted; preserve the
+stable account and Owner IDs. The claim issuer refuses an account that already
+has credentials or any permanent Root history. Root history remains set after
+revocation; do not replace an existing state volume or adopt a fresh volume to
+bypass that refusal. For existing volumes, follow the exact-ID adoption and
+history checks below.
 
 On the Owner machine, prepare a new private profile from that connection file.
 The command creates the profile directory and writes its public manifest to
@@ -230,7 +271,8 @@ flow described in the [headless Client guide](owner-headless-client.md).
 
 Do not initialize an existing volume as new. Take a consistent protected
 backup, stop all Hub writers, and perform the normal controlled upgrade with
-the new schema-60 binary. The migration preserves existing IDs and seeds
+the current schema-61 binary. This additive migration carries forward the
+schema-60 Root-history protection: it preserves existing IDs and seeds
 permanent Root history from every old Owner approval-key row, including
 revoked rows. Start the upgraded Hub normally once, then stop it cleanly before
 local adoption. Do not run `control.New` concurrently with the service.

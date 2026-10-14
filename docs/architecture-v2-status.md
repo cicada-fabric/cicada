@@ -1,6 +1,104 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
-## 2026-10-14 Hub-only extraction — SCOPED PASS; two-page account setup NOT_IMPLEMENTED
+## 2026-10-14 Hub Owner account backend — BOUNDED LOCAL GATES PASS; full acceptance PARTIAL
+
+The account implementation and gate evidence below were captured from dirty
+`dev` before the local checkpoint commit. At capture, the unreleased source was
+software **0.0.5** and included the independent Hub account service, additive
+schema 61, six encrypted account operations, local claim issuance, and the
+two-page browser/WASM source flow.
+Account login creates only a limited account session and a pending public Owner
+candidate; it does not activate Root, issue a Client grant, or create Manager
+authority. Client contract `client-hub-v1.6.5`, encrypted wire 1, and catalog
+55 are unchanged. This is a source checkpoint, not a release or a claim about
+the current HEAD alone.
+
+The focused deterministic checks passed in the pinned offline Go 1.27.1 image:
+selected tests across `internal/hubauth`, `internal/store`, `internal/server`,
+and `cmd/cicada`; selected race tests across those packages; and `go vet` for
+the same package set. The TCP integration test drives all six routes with
+ephemeral synthetic PQ keypairs through the actual post-quantum implementation
+and a nil Control composition, including lost-response and
+restart recovery, wrong password/device/scope, expired challenge, stale epochs,
+oversize and altered packets, nonce reuse, inspect and logout. Schema tests
+check the v60-to-v61 preservation boundary and restore fencing. CLI tests check
+0600 claim-file permissions, default secret suppression, explicit-TTY display,
+issuer refusal after permanent Root history, `serve --hub-only` without
+Control/Workspace/Machine startup, and normal Control/account Store coexistence.
+The final Core retry/index correction also passed current normal selectors for
+`internal/hubauth`, `internal/store`, and `internal/server`, Store/server race
+selectors, and targeted vet for those three packages. The Store query-plan test
+confirms the targeted replay indexes and the existing nonce-join index.
+
+Root's final source-attributed gates passed on the captured dirty `dev` source at
+revision `d758086f25abc0390ff2ad857086c9d94454a639`. The final post-CAS
+PQ-enabled Hub image fingerprint is
+`c4b52e67ed82f75fd2ef27f198d6e34591323de6f3dfa2f94f03adce7bc335a3` and image
+ID is
+`sha256:dc98a89e748959c357723610660145efe23b5e26014776d55d69edcf6b042d76`.
+The headless Chromium account flow passed all 18 steps, including accepted
+response-loss retries, Store/Hub restart, pending Root state and unavailable
+manager RPC; its synthetic loopback fixture cleanup passed. The official
+standard Client Docker interop suite passed with runner exit 0 and confirmed
+cleanup using disposable Hub image
+`sha256:c9f94827e7cf96b6047b0e41cbc687931c7d36e6d8ae520ab6d7f7ecfe88431b`.
+Root's final selected Core suite passed 25 tests. The final browser result is
+[`result.json`](../.cicada-data/hub-owner-account-browser/20261014t102757z-2975661-c0e87018/result.json),
+SHA-256 `aa2e023eaafee20bf654a838657efa0eaf0edaab82d2a631d8cbcb112675d01b`; build
+metadata is [`build-pq-cas.json`](../.cicada-data/hub-owner-account-20261014/root-gate/build-pq-cas.json).
+The exact artifacts and hashes are also linked from the [account validation record](hub-owner-account-validation.md).
+
+An earlier Docker build-provenance guard aborted when source changed during
+build; it is retained as guard FAIL / interop NOT_RUN, not as a product test
+failure. Two earlier browser-driver failures remain in the validation record;
+the prior 17-step PASS is retained as pre-CAS history, followed by the final
+18-step corrected-driver PASS. The post-review UI retry guard now serializes
+same-origin actions using Web Locks/singleflight and exact IndexedDB
+compare-and-swap; post-CAS WASM/UI passed without Core or wire changes. The
+latest sequenced Windows cross-build passed after an earlier parallel asset/embed
+build attempt failed; no native Windows/ACL run occurred. Android,
+physical-device, native Codex end-to-end, and public HTTPS remain NOT_RUN.
+Root's PBKDF2-SHA256-600000 microbenchmark measured about 398 ms/op on an Intel
+Xeon E5-2680 v4 (3 iterations, 922 B/op, 13 allocs); it is a KDF measurement,
+not end-to-end latency or a capacity result.
+
+Exact accepted login-completion and logout packets can recover their saved
+receipt beyond the 60-second freshness window, including after restart. The
+service first matches the packet digest against durable history and current
+account/device/credential epochs, then verifies the original device envelope;
+only the timestamp-age check is bypassed. New or altered packets, stale epochs,
+and revoked devices remain rejected. The focused HTTP test covers stale exact
+recovery and these denial paths.
+
+Schema 61 adds eight Hub-account tables. Fresh-nonce enforcement adds three
+64-character digest columns (`prepare_nonce_digest`, `complete_nonce_digest`,
+and `nonce_digest`) and three unique indexes; it adds no separate nonce table.
+Four further targeted indexes cover unique session token digests, account/device
+session revocation, consumed login-receipt lookup, and request operation/digest
+lookup. They add storage and write work as session and receipt history grows;
+the existing nonce index and session primary key serve the nonce join.
+Per-session accepted-operation history is capped at 128. Password work is
+bounded to two concurrent workers and four queued requests, and PBKDF2 runs
+outside the Store transaction/lock. The migration and restore test preserve
+existing Owner/root history, keys, and Client counters; restore advances the
+account epoch, cancels pending claims/attempts, revokes sessions, and retains
+credentials, active login devices, and pending public association.
+
+The bounded Chromium and official standard Client Docker gates passed for this
+captured dirty-source checkpoint. The latest Client interop image was
+`sha256:c9f94827e7cf96b6047b0e41cbc687931c7d36e6d8ae520ab6d7f7ecfe88431b` with
+input fingerprint `498b1299dba7a0ae8327ed6087dee0bb79102ca43d11f9247418e5ab24887540`;
+its result is [`result.json`](../.cicada-data/hub-owner-account-20261014/root-gate/client-interop-cas/result.json)
+with cleanup confirmed. They do not establish Android, native Windows/ACL,
+physical-device use, native Codex end-to-end, or public HTTPS. Historical
+OpenSSL PTY, Windows cross-build, and genuine Owner proof evidence below remain
+separately attributed to their older source and do not qualify schema 61 or
+this account flow. No version bump, release, real key rotation, or
+resident deployment replacement is part of this checkpoint. See the
+[account validation record](hub-owner-account-validation.md) for source,
+image, gate, cleanup and retained-failure evidence.
+
+## 2026-10-14 Hub-only extraction — earlier SCOPED PASS source capture
 
 This unreleased source checkpoint remains software **0.0.5**. Evidence was
 captured from the working tree based on `9fa3628`, with exact source/artifact
@@ -29,14 +127,14 @@ or account/signup; native Windows/ACL, Android, Chromium enrollment and public
 HTTPS remain NOT_RUN. Exact artifacts, source boundaries and cleanup are in
 [the validation record](windows-owner-openssl-validation.md).
 
-The latest [accepted two-page UX](owner-onboarding-design.md) is the next
-product stage: installer payload verifies the correct Hub, then username/
+At this earlier source capture, the [accepted two-page UX](owner-onboarding-design.md)
+was the next product stage: installer payload verifies the correct Hub, then username/
 password and existing **public** keys establish account association. A pending
 public association is not an ACTIVE Root; genuine private possession still
 uses the finite proof. Every 10+ password login requires a registered-device
 PQC challenge. Initial claim is one-use setup authority, not ongoing MFA or a
 Client management grant. Claim/password/session persistence, two-page UI and
-login are **NOT_IMPLEMENTED**; current manual device/CLI forms are advanced
+login were **NOT_IMPLEMENTED in that captured source**; current manual device/CLI forms are advanced
 compatibility paths. The proposed 0.0.6 bump remains paused; no deployment was
 replaced and no real key was rotated.
 
@@ -149,12 +247,15 @@ overall v0.1.0 remains PARTIAL. See [Node validation](node-provider-admission-va
 Use the [current release closeout](v01-current-closeout-20261009-validation.md#current-20261010)
 for product scope and the [2026-10-11/12 test closeout](v00-test-closeout-20261011-validation.md#current-source-closeout)
 for their source and artifact checks, supplemented by the
-[0.0.4 headless checkpoint](owner-headless-client-validation.md). Current software
-is 0.0.5 with the additive schema-60 bootstrap checkpoint at SCOPED PASS. Its
-segmented normal and selected race coverage, vet/build, and Python checks pass;
-original aggregate A7 and R3 failures/timeouts remain recorded;
-contract `client-hub-v1.6.5`, wire 1 and catalog 55 remain unchanged, and schema
-59 is the last accepted baseline. The clean-328f default
+[0.0.4 headless checkpoint](owner-headless-client-validation.md). Those closeouts
+record earlier tested source captures through the schema-60 bootstrap; their
+counts and artifacts remain attributed to those captures. The account source
+captured before the local checkpoint commit adds schema 61 and Hub authentication;
+its completed bounded checks and gates are recorded at the top of this page.
+The original schema-60 A7/R3 failures and timeouts remain attributed to their tested source.
+Contract `client-hub-v1.6.5`, wire 1 and catalog 55 remain unchanged; schema 59
+is the previous accepted baseline, while schema 60 and 61 are unreleased source
+candidates. The clean-328f default
 aggregate remains FAIL despite its passing Go lane; follow-up checks retain
 their separate tested sources. C14 passed a bounded default-daemon scope on
 the original A/B contexts: six turns (four manual, two automatic), multi-Group

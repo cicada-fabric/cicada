@@ -4,22 +4,34 @@ The Hub web panel is a browser Client for owner-managed topology. It uses the ex
 
 ## Trust and device enrollment
 
-On first use, the browser displays the Hub ID and Control public key ID returned by `/v2/client/identity`. The browser does not trust that response on its own. Compare both identifiers with an independent operator source, then type them into the pin ceremony. A later identity change for the same origin stops the panel; it never replaces a saved pin automatically. Use a separate browser profile for a different Hub.
+An empty browser profile starts with the normal two-page Owner account flow. Page one accepts the installer-issued claim JSON or file. The Go WebCrypto validator checks its exact page origin and complete Hub identity fingerprint against `/v2/client/identity`; the claimant must independently compare the displayed origin and full fingerprint with the installer source and confirm them. Only then does the panel save the Hub pin and submit the encrypted claim request. It does not first ask the claimant to type Hub or key IDs. A later identity change for the same origin stops the panel and never replaces a saved pin automatically.
 
-The browser creates a device identity in Go WASM memory. Its private bytes are encrypted for browser storage with WebCrypto AES-256-GCM and a PBKDF2-SHA-256 password key (600,000 iterations). IndexedDB stores only the encrypted vault, public device manifest, pin, session counters, and opaque sealed packets. An optional backup download contains the encrypted vault. The Owner's private identity is never imported into the browser or sent to the Hub.
+Page two collects the Owner username, password and confirmation, plus the Owner's existing ML-KEM-768 and ML-DSA-65 public SPKI PEM files. The browser rejects private-key PEM labels after reading only a bounded header, then passes the public files to the strict Go parser. The Owner private key and passphrase are never selected or sent by this flow. A saved exact encrypted request is used after reload or response loss; credentials and claim code are not persisted.
 
-## First Owner: local ceremony, public-only browser guide
+The resulting account state is `ACCOUNT_READY_OWNER_SIGNER_PENDING`; it does not create an active Root signer or Client manager session. Root proof uses the separate local finite bootstrap procedure in [the Owner bootstrap guide](hub-owner-bootstrap.md). Client enrollment still requires an Owner-signed grant, and Node INITIAL enrollment remains separate. The former manually typed Hub ID/key-ID pin ceremony is retained only behind **Advanced technical setup** for the existing technical Client workflow.
 
-The panel's first-Owner guide is not an Owner-registration UI. The existing
-software 0.0.5 server flow creates the stable account-to-human-Owner mapping
-locally with `cicada hub setup`, then the local Hub operator issues one finite
-pairing with `cicada hub owner-bootstrap-issue`. An external Owner signer proves
-possession and verifies the receipt with its local bootstrap flow. The browser
-cannot create that mapping, issue authority, register a Root, or read whether a
-Root is active. `HUB_READY` describes local account setup; `NEEDS_OWNER_SIGNER`
-describes the absence of an active first signer. They are separate from later
-browser Client enrollment and encrypted manager capabilities. Node INITIAL
-enrollment is a separate path again.
+The account flow creates a separate browser login-device identity in Go WASM memory. Its private bytes are encrypted for browser storage with WebCrypto AES-256-GCM under a random non-extractable key in IndexedDB; the account password does not unlock it. IndexedDB stores the encrypted device vault, public account metadata and exact sealed request/response packets, never the claim code, password, plaintext nonce or session token. An explicit HTTP 403 rejection can return to the saved authenticated challenge for corrected input; unknown transport outcomes keep the exact saved packet for recovery. Logout is complete only after the browser verifies the Hub's encrypted receipt, including after a reload. This protects a browser profile but is not hardware-backed; profile cloning or loss can expose or remove the device. The Owner's private identity is never imported into the browser or sent to the Hub.
+
+The account UI holds an origin-scoped Web Lock while it is open, and account actions are single-flight. IndexedDB compare-and-save checks the exact pending record before each transition, so stale responses and rejections cannot replace a newer accepted profile or unknown request. A second tab shows `#owner-account-lock-blocked` without account mutation controls; browsers without Web Locks fail closed. Close the active tab and reload the other to continue, recovering the original saved packet.
+
+Existing enrolled browser devices remain on their existing unlock and manager paths. Their older vault password is local device protection, not the new Owner account password.
+
+## Advanced Owner signer guide: local ceremony and public-only browser checks
+
+The normal first-visit Owner account flow is described above. After its account
+claim and login, the authenticated account page can inspect the current Root
+status; it displays that status without activating a signer or granting Client
+manager authority. This optional advanced guide is a separate public-file
+consistency check, not the normal account-registration page. The local Hub
+operator creates the stable account-to-human-Owner mapping with
+`cicada hub setup`, then issues one finite pairing with
+`cicada hub owner-bootstrap-issue`. An external Owner signer proves possession
+and verifies the receipt with its local bootstrap flow. The advanced guide
+cannot create the mapping, issue authority, register a Root, or read live Root
+status. `HUB_READY` describes local account setup; `NEEDS_OWNER_SIGNER` describes
+the absence of an active first signer. They are separate from later browser
+Client enrollment and encrypted manager capabilities. Node INITIAL enrollment
+is a separate path again.
 
 The guide accepts two public JSON files: the independently transferred
 `cicada.hub-owner-connection.v1` file from `hub setup`, and the
@@ -40,17 +52,19 @@ as an independent trust source. Obtain the connection file through a trusted
 local operator channel, compare the full Hub identity and candidate fingerprint
 outside the page, and rely on the local issuer's exact fingerprint review and
 the Owner signer's authenticated receipt. Never select or paste an Owner
-private key or passphrase into the browser. The panel shows the guide before
-the separate browser-device flow; selecting that flow means the operator
-already has an Owner signer. The Hub still rejects a Client enrollment without
-the existing Owner-signed grant.
+private key or passphrase into the browser. The advanced browser-device
+enrollment path is for an operator who already has an Owner signer. The Hub
+still rejects a Client enrollment without the existing Owner-signed grant.
 
-This public-only guide is source work for a future reviewed Hub build. The
-frozen software 0.0.5 artifact and any currently deployed panel remain
-unchanged. It adds no HTTP metadata route, Client catalog operation, or wire
-change. The existing bounded bootstrap contract and its CLI remain the
-authority for setup and first-signer state. Windows Owner private-key custody
-and the full one-click/unified-pairing product are not established by this UI.
+The current software 0.0.5/schema-61 source includes the two-page account flow
+and advanced guide and passed the bounded checks recorded in the
+[Owner account validation record](hub-owner-account-validation.md). This
+describes current source, not the older frozen 0.0.5 artifact or any public
+deployment; verify the exact Hub build before relying on these pages. The
+account flow adds no Client catalog or Client Wire change. The bounded bootstrap
+contract and CLI remain authoritative for setup and first-signer state. Windows
+Owner private-key custody and the full automated, QR-based pairing product
+remain outside this UI.
 
 The exported `cicada-device-enrollment.json` file contains the public browser identity and its full SHA-256 fingerprint. An Owner signs that exact key offline with an existing private identity whose file mode is `0600`:
 
@@ -157,7 +171,7 @@ exact value against both the build metadata and the Hub image label; metadata
 cannot attest to itself. For another candidate, set this variable to the
 fingerprint recorded for that exact build.
 
-The script uses Node's built-in WebSocket API for CDP and has no npm dependencies. It checks that a first visit requires the exact Hub pin; serves and loads the production Go WASM; generates and password-encrypts a device identity in IndexedDB; signs the exact public enrollment manifest offline with a synthetic Owner key; imports the signed grant and enrolls the device through the real Hub; reads encrypted topology and status into the SVG canvas; commits one exact `topology.apply` Group action and observes it after refresh; and verifies that a second browser tab cannot issue another RPC while the first exact packet is pending. Releasing the first request must advance its request and response sequence and clear the pending slot. The script records the Hub/Chromium image IDs, source fingerprint, browser version, script and metadata hashes, step results, and cleanup results in an ignored `.cicada-data/hub-web-panel-browser/<run-id>/result.json`; it removes that run's fixture directory and exact labelled containers/network.
+The script uses Node's built-in WebSocket API for CDP and has no npm dependencies. Its normal first-visit assertion expects the Owner claim-card page before any pin form, credentials, or device key. Its separate advanced-path assertions require explicit selection before the manual Hub pin and technical Client enrollment flow. It then exercises its existing synthetic Client enrollment and topology steps. The account claim/login flow has its own focused disposable Hub acceptance driver; this older topology-panel gate does not substitute for that account gate. The script records the Hub/Chromium image IDs, source fingerprint, browser version, script and metadata hashes, step results, and cleanup results in an ignored `.cicada-data/hub-web-panel-browser/<run-id>/result.json`; it removes that run's fixture directory and exact labelled containers/network.
 
 The local HTTP fixture is forwarded to `localhost:8787` by `socat` inside the disposable Chromium container so Chromium uses its standard trustworthy-loopback WebCrypto context. This bridge is test-only; it does not exercise TLS certificates or public HTTPS.
 

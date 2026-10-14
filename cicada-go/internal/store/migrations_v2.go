@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 60
+	CurrentV2SchemaVersion = 61
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -558,6 +558,11 @@ var v2Migrations = []v2Migration{
 		Description: "separate local human manager accounts and finite exact-candidate first Owner signer authority with permanent root history",
 		Objects:     []string{"hub_owner_setup_v1", "owner_root_history_v1", "owner_bootstrap_authority_v1", "owner_root_history_v1_no_delete", "owner_root_history_v1_no_update", "owner_approval_keys_v2_root_history", "hub_owner_setup_v1_coordinates", "hub_owner_setup_v1_no_delete", "hub_owner_setup_v1_ready_immutable", "owner_bootstrap_authority_v1_pending", "owner_bootstrap_authority_v1_no_delete", "owner_bootstrap_authority_v1_immutable"},
 		Apply:       func(s *Store) error { return s.initializeHubOwnerSetupSchema() },
+	},
+	{
+		Version: 61, ID: "v1.hub.account_auth", Description: "add isolated account claim, password verifier, first login device and purpose-bound PQ sessions with restore fencing",
+		Objects: []string{"hub_account_config_v1", "hub_account_claims_v1", "hub_account_claims_v1_one_pending", "hub_account_credentials_v1", "hub_account_devices_v1", "hub_account_public_association_v1", "hub_account_attempts_v1", "hub_account_attempts_v1_one_pending", "hub_account_attempts_v1_prepare_nonce", "hub_account_attempts_v1_complete_nonce", "hub_account_attempts_v1_completion_replay", "hub_account_sessions_v1", "hub_account_sessions_v1_token_digest", "hub_account_sessions_v1_account_device_state", "hub_account_requests_v1", "hub_account_requests_v1_nonce", "hub_account_requests_v1_operation_replay", "hub_account_config_v1_no_delete", "hub_account_config_v1_monotone", "hub_account_claims_v1_no_delete", "hub_account_claims_v1_coordinates", "hub_account_devices_v1_coordinates", "hub_account_public_association_v1_no_update", "hub_account_public_association_v1_no_delete", "hub_account_credentials_v1_coordinates", "hub_account_attempts_v1_coordinates", "hub_account_requests_v1_no_update", "hub_account_requests_v1_no_delete"},
+		Apply:   func(s *Store) error { return s.initializeHubAccountSchema() },
 	},
 }
 
