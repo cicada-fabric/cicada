@@ -1,5 +1,6 @@
 import { actionSummary, createdGroupTarget, groupCreationSelection, groupParentGesture, linkGesturePair, linkTransportSelection } from './panel-model.js';
 import { button, html, selectField, textField } from './panel-dom.js';
+import { localized as t, localizedIfKnown, setLocalizedText, translate } from './panel-i18n.js';
 
 export function installCanvasControls(CanvasPanel) {
   Object.assign(CanvasPanel.prototype, {
@@ -13,10 +14,10 @@ export function installCanvasControls(CanvasPanel) {
 
   ownerCard() {
     const card = html('section', 'card');
-    card.append(html('div', 'eyebrow', 'OWNER SESSION'), html('h2', '', this.topology.owner_principal_id || 'Owner unavailable'));
+    card.append(html('div', 'eyebrow', t('OWNER SESSION')), html('h2', '', this.topology.owner_principal_id || t('Owner unavailable')));
     const networks = (this.topology.networks || []).map(item => ({ value: item.network_id, label: `${item.name} · ${item.state}` }));
     if (networks.length) {
-      const network = selectField('Active Network', networks, this.networkId);
+      const network = selectField(t('Active Network'), networks, this.networkId);
       network.select.setAttribute('data-panel', 'active-network');
       network.select.addEventListener('change', () => {
         this.networkId = network.select.value;
@@ -27,23 +28,23 @@ export function installCanvasControls(CanvasPanel) {
       card.append(network.wrap);
     }
     const header = html('div', 'buttons');
-    header.append(button('Recover pending request', () => this.recoverPending(), 'btn warn'), button('Lock device', () => this.lock(), 'btn quiet'));
+    header.append(button(t('Recover pending request'), () => this.recoverPending(), 'btn warn'), button(t('Lock device'), () => this.lock(), 'btn quiet'));
     card.append(header);
-    if (this.plan.length) card.append(html('p', 'small', `${this.plan.length} preview item(s) waiting for separate confirmation.`));
+    if (this.plan.length) card.append(html('p', 'small', t('{count} preview item(s) waiting for separate confirmation.', { count: this.plan.length })));
     return card;
   },
 
   statusCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Live status snapshot'));
-    const scope = this.status.scope_mode || 'unknown scope';
-    card.append(html('p', 'small', `${scope} · captured ${this.status.captured_at || 'unknown time'}`));
+    card.append(html('h2', '', t('Live status snapshot')));
+    const scope = this.status.scope_mode || t('unknown scope');
+    card.append(html('p', 'small', t('{scope} · captured {time}', { scope, time: this.status.captured_at || t('unknown time') })));
     const visibleGroupIds = new Set((this.topology.groups || []).filter(group =>
       !this.networkId || !group.network_id || group.network_id === this.networkId).map(group => group.group_id));
     const groups = (this.status.groups || []).filter(item => visibleGroupIds.has(item.group_id));
     const endpoints = (this.status.endpoints || []).filter(item => !this.networkId || !item.group_ids?.length ||
       item.group_ids.some(id => this.topology.groups?.some(group => group.group_id === id && (!group.network_id || group.network_id === this.networkId))));
-    card.append(html('div', 'status-row', `${groups.length} Groups`), html('div', 'status-row', `${endpoints.length} Endpoints`));
+    card.append(html('div', 'status-row', t('{count} Groups', { count: groups.length })), html('div', 'status-row', t('{count} Endpoints', { count: endpoints.length })));
     for (const endpoint of endpoints.slice(0, 7)) {
       const row = html('div', 'status-row');
       row.append(html('span', '', endpoint.name || endpoint.endpoint_id), html('span', 'chip', endpoint.presence?.known ? endpoint.presence.state : 'unknown'));
@@ -54,15 +55,15 @@ export function installCanvasControls(CanvasPanel) {
 
   groupCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Create Group'));
+    card.append(html('h2', '', t('Create Group')));
     const networkItems = (this.topology.networks || []).filter(item => item.can_create_group);
-    if (!networkItems.length) { card.append(html('p', 'small', 'No active Owner-managed Network currently allows Group creation.')); return card; }
-    const networkSelect = selectField('Network', networkItems.map(item => ({ value: item.network_id, label: item.name })), this.networkId);
+    if (!networkItems.length) { card.append(html('p', 'small', t('No active Owner-managed Network currently allows Group creation.'))); return card; }
+    const networkSelect = selectField(t('Network'), networkItems.map(item => ({ value: item.network_id, label: item.name })), this.networkId);
     networkSelect.select.disabled = true;
-    const parentSelect = selectField('Parent Group', []);
+    const parentSelect = selectField(t('Parent Group'), []);
     const updateParentOptions = () => {
       parentSelect.select.replaceChildren();
-      for (const option of [{ value: '', label: 'Network root' }, ...this.groupsForNetwork(networkSelect.select.value).map(group => ({ value: group.group_id, label: group.name }))]) {
+      for (const option of [{ value: '', label: t('Network root') }, ...this.groupsForNetwork(networkSelect.select.value).map(group => ({ value: group.group_id, label: group.name }))]) {
         const item = html('option', '', option.label);
         item.value = option.value;
         parentSelect.select.append(item);
@@ -70,12 +71,12 @@ export function installCanvasControls(CanvasPanel) {
     };
     networkSelect.select.addEventListener('change', updateParentOptions);
     updateParentOptions();
-    const name = textField('New Group name');
+    const name = textField(t('New Group name'));
     let scope = this.captureScope();
     parentSelect.select.addEventListener('change', () => { scope = this.resourceScopeChanged(); });
     card.append(networkSelect.wrap, parentSelect.wrap, name.wrap,
-      html('p', 'footer-note', 'Group creation and its parent relation are one versioned topology action. The Hub validates ownership and Network scope; canvas layout is not authority.'),
-      button('Preview Group creation', () => {
+      html('p', 'footer-note', t('Group creation and its parent relation are one versioned topology action. The Hub validates ownership and Network scope; canvas layout is not authority.')),
+      button(t('Preview Group creation'), () => {
         const action = { kind: 'group.create', create_group: { group: { network_id: networkSelect.select.value, name: name.input.value.trim() }, parent_group_id: parentSelect.select.value } };
         try {
           if (networkSelect.select.value !== scope.networkId) throw new Error('Switch the active Network before creating a Group there.');
@@ -89,13 +90,13 @@ export function installCanvasControls(CanvasPanel) {
 
   joinCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Attach selected Endpoints'));
+    card.append(html('h2', '', t('Attach selected Endpoints')));
     const intent = this.createdGroupIntent;
     let scope = this.captureScope();
     const selected = intent ? intent.endpointIds.map(id => this.topology.endpoints?.find(item => item.endpoint_id === id)).filter(Boolean) : this.selectedEndpoints();
-    card.append(html('p', 'small', `${selected.length} Endpoint(s) selected. Each Group admission or reference is previewed and confirmed separately.`));
+    card.append(html('p', 'small', t('{count} Endpoint(s) selected. Each Group admission or reference is previewed and confirmed separately.', { count: selected.length })));
     const groups = this.groupsForNetwork();
-    const group = selectField('Target Group', groups.map(item => ({ value: item.group_id, label: item.name })), intent?.groupId || this.joinTargetGroupId || groups[0]?.group_id || '');
+    const group = selectField(t('Target Group'), groups.map(item => ({ value: item.group_id, label: item.name })), intent?.groupId || this.joinTargetGroupId || groups[0]?.group_id || '');
     group.select.addEventListener('change', () => {
       const groupId = group.select.value;
       scope = this.resourceScopeChanged();
@@ -105,12 +106,12 @@ export function installCanvasControls(CanvasPanel) {
       group.select.disabled = true;
       group.select.setAttribute('data-panel', 'created-group-target');
       group.select.setAttribute('data-group-id', intent.groupId);
-      card.append(html('p', 'small', 'Target locked to the authenticated newly created Group. No Endpoint is added without its own preview and confirmation.'),
-        button('Discard created Group selection intent', () => {
+      card.append(html('p', 'small', t('Target locked to the authenticated newly created Group. No Endpoint is added without its own preview and confirmation.')),
+        button(t('Discard created Group selection intent'), () => {
           this.invalidateIntents(); this.render(); this.renderSide();
         }, 'btn quiet'));
     }
-    const preview = button('Preview next selected Endpoint', async () => {
+    const preview = button(t('Preview next selected Endpoint'), async () => {
       if (!this.scopeIsCurrent(scope)) return;
       if (!group.select.value) { this.setMessage('Choose an active Group first.'); return; }
       const endpoint = selected.find(item => !(item.group_ids || []).includes(group.select.value));
@@ -124,10 +125,10 @@ export function installCanvasControls(CanvasPanel) {
 
   networkDirectoryCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Opted-in Network directory'));
-    card.append(html('p', 'small', 'Read-only Endpoint cards published by current Network members. A card does not add a Group reference, grant access, or authorize a message.'));
+    card.append(html('h2', '', t('Opted-in Network directory')));
+    card.append(html('p', 'small', t('Read-only Endpoint cards published by current Network members. A card does not add a Group reference, grant access, or authorize a message.')));
     if (!this.networkId) {
-      card.append(html('p', 'small', 'Select an active Network first.'));
+      card.append(html('p', 'small', t('Select an active Network first.')));
       return card;
     }
     const state = this.networkDirectory || { networkId: '', endpoints: [], nextCursor: '', loading: false, error: '' };
@@ -140,16 +141,16 @@ export function installCanvasControls(CanvasPanel) {
       }
       if (state.error) card.append(html('p', 'small error', state.error));
       if (!state.loading && !state.error && !(state.endpoints || []).length) {
-        card.append(html('p', 'small', 'No opted-in Endpoint cards are currently visible.'));
+        card.append(html('p', 'small', t('No opted-in Endpoint cards are currently visible.')));
       }
     }
     const actions = html('div', 'buttons');
-    const refresh = button(state.loading ? 'Loading directory…' : 'Refresh directory',
+    const refresh = button(state.loading ? t('Loading directory…') : t('Refresh directory'),
       () => this.loadNetworkDirectory(''), 'btn quiet');
     refresh.disabled = Boolean(state.loading);
     actions.append(refresh);
     if (state.networkId === this.networkId && state.nextCursor && !state.loading) {
-      actions.append(button('Next page', () => this.loadNetworkDirectory(state.nextCursor), 'btn quiet'));
+      actions.append(button(t('Next page'), () => this.loadNetworkDirectory(state.nextCursor), 'btn quiet'));
     }
     card.append(actions);
     return card;
@@ -187,49 +188,49 @@ export function installCanvasControls(CanvasPanel) {
 
   monitorCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Membership & Monitor settings'));
+    card.append(html('h2', '', t('Membership & Monitor settings')));
     const members = (this.topology.memberships || []).filter(item => !this.networkId || this.topology.groups?.some(group => group.group_id === item.group_id && group.network_id === this.networkId));
-    if (!members.length) { card.append(html('p', 'small', 'No visible Group Memberships.')); return card; }
-    const member = selectField('Membership', members.map(item => ({ value: item.membership_id, label: `${item.display_name || item.principal_id} · ${item.group_id}` })));
-    const role = selectField('Role', ['member', 'worker', 'monitor'].map(value => ({ value, label: value })), 'monitor');
+    if (!members.length) { card.append(html('p', 'small', t('No visible Group Memberships.'))); return card; }
+    const member = selectField(t('Membership'), members.map(item => ({ value: item.membership_id, label: `${item.display_name || item.principal_id} · ${item.group_id}` })));
+    const role = selectField(t('Role'), ['member', 'worker', 'monitor'].map(value => ({ value, label: value })), 'monitor');
     let scope = this.captureScope();
     member.select.addEventListener('change', () => { scope = this.resourceScopeChanged(); });
-    const roleAction = button('Preview role update', () => {
+    const roleAction = button(t('Preview role update'), () => {
       const item = members.find(value => value.membership_id === member.select.value);
       if (!item) return;
       this.queueAction({ kind: 'membership.bind_role', bind_role: { group_id: item.group_id,
         membership_id: item.membership_id, role: role.select.value,
         expected_membership_version: item.version } }, '', scope);
     }, 'btn');
-    const broadcast = selectField('Explicit message.broadcast permission', [
-      { value: 'false', label: 'Keep disabled / remove grant' }, { value: 'true', label: 'Enable for this Membership' }], 'false');
-    const broadcastAction = button('Preview permission change', () => {
+    const broadcast = selectField(t('Explicit message.broadcast permission'), [
+      { value: 'false', label: t('Keep disabled / remove grant') }, { value: 'true', label: t('Enable for this Membership') }], 'false');
+    const broadcastAction = button(t('Preview permission change'), () => {
       const item = members.find(value => value.membership_id === member.select.value);
       if (!item) return;
       this.queueAction({ kind: 'membership.set_broadcast_permission', set_broadcast_permission: {
         group_id: item.group_id, membership_id: item.membership_id,
         enabled: broadcast.select.value === 'true', expected_membership_version: item.version } }, '', scope);
     }, 'btn warn');
-    card.append(member.wrap, role.wrap, roleAction, html('p', 'footer-note', 'A Monitor role does not grant message.broadcast. That permission is a separate explicit action.'), broadcast.wrap, broadcastAction);
+    card.append(member.wrap, role.wrap, roleAction, html('p', 'footer-note', t('A Monitor role does not grant message.broadcast. That permission is a separate explicit action.')), broadcast.wrap, broadcastAction);
     return card;
   },
 
   linkCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Propose a Link'));
+    card.append(html('h2', '', t('Propose a Link')));
     const endpoints = (this.topology.endpoints || []).filter(item => !this.networkId || item.network_ids?.includes(this.networkId) || item.group_ids?.some(id => this.topology.groups?.some(group => group.group_id === id && (!group.network_id || group.network_id === this.networkId))));
     if (endpoints.length < 2) { card.append(html('p', 'small', 'At least two visible Endpoints are needed.')); return card; }
     const endpointOptions = endpoints.map(item => ({ value: item.endpoint_id, label: item.name || item.endpoint_id }));
     const pair = this.pendingLinkGesture;
     const groupOptions = this.groupsForNetwork().map(item => ({ value: item.group_id, label: item.name }));
-    const source = selectField('Source Endpoint', endpointOptions, pair?.sourceEndpointId || endpoints[0].endpoint_id);
-    const target = selectField('Target Endpoint', endpointOptions, pair?.targetEndpointId || endpoints[1].endpoint_id);
-    const sourceGroup = selectField('Source Group', groupOptions, pair?.sourceGroupId || groupOptions[0]?.value || '');
-    const targetGroup = selectField('Target Group', groupOptions, pair?.targetGroupId || groupOptions[0]?.value || '');
+    const source = selectField(t('Source Endpoint'), endpointOptions, pair?.sourceEndpointId || endpoints[0].endpoint_id);
+    const target = selectField(t('Target Endpoint'), endpointOptions, pair?.targetEndpointId || endpoints[1].endpoint_id);
+    const sourceGroup = selectField(t('Source Group'), groupOptions, pair?.sourceGroupId || groupOptions[0]?.value || '');
+    const targetGroup = selectField(t('Target Group'), groupOptions, pair?.targetGroupId || groupOptions[0]?.value || '');
     let scope = this.captureScope();
-    const transport = selectField('Common transport Hub (cross-Node only)', [
-      { value: '', label: 'No Hub selected' },
-      ...(this.pinnedHubId ? [{ value: this.pinnedHubId, label: `Select pinned Hub ${this.pinnedHubId}` }] : [])
+    const transport = selectField(t('Common transport Hub (cross-Node only)'), [
+      { value: '', label: t('No Hub selected') },
+      ...(this.pinnedHubId ? [{ value: this.pinnedHubId, label: t('Select pinned Hub {hub}', { hub: this.pinnedHubId }) }] : [])
     ]);
     transport.select.setAttribute('data-panel', 'link-transport-hub');
     const updateTransport = () => {
@@ -251,17 +252,17 @@ export function installCanvasControls(CanvasPanel) {
     if (!transport.select.disabled && pair?.transportHubId === this.pinnedHubId) {
       transport.select.value = pair.transportHubId;
     }
-    const scopes = textField('Data scopes (comma separated)', 'thread.message');
-    const actions = textField('Allowed actions (comma separated)', 'send');
-    const expiry = textField('Expires in days', '7', 'number');
+    const scopes = textField(t('Data scopes (comma separated)'), 'thread.message');
+    const actions = textField(t('Allowed actions (comma separated)'), 'send');
+    const expiry = textField(t('Expires in days'), '7', 'number');
     card.append(source.wrap, sourceGroup.wrap, target.wrap, targetGroup.wrap, transport.wrap, actions.wrap, scopes.wrap, expiry.wrap);
     if (pair) {
       const review = html('p', 'action-preview', pair.review);
       review.setAttribute('data-panel', 'link-gesture-review');
       card.append(review);
     }
-    card.append(html('p', 'footer-note', 'A Link proposal remains inactive. Endpoint Owners must separately authorize the required key grants and the other side must accept the proposal.'),
-      button('Preview Link proposal', () => {
+    card.append(html('p', 'footer-note', t('A Link proposal remains inactive. Endpoint Owners must separately authorize the required key grants and the other side must accept the proposal.')),
+      button(t('Preview Link proposal'), () => {
         let review = '';
         let transportChoice;
         try {
@@ -289,61 +290,61 @@ export function installCanvasControls(CanvasPanel) {
 
   linksCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Links'));
+    card.append(html('h2', '', t('Links')));
     const links = this.topology.links || [];
     const scope = this.captureScope();
-    if (!links.length) { card.append(html('p', 'small', 'No visible Link proposals or active Links.')); return card; }
+    if (!links.length) { card.append(html('p', 'small', t('No visible Link proposals or active Links.'))); return card; }
     for (const link of links.slice(0, 8)) {
       const row = html('div', 'status-row');
       row.append(html('span', '', `${link.source_endpoint_id} ↔ ${link.target_endpoint_id}`), html('span', link.state === 'ACTIVE' ? 'chip good' : 'chip warn', link.state));
-      if (link.state === 'ACTIVE' || link.state === 'active') row.append(button('Revoke', () => this.queueAction({ kind: 'link.revoke', revoke_link: { link_id: link.link_id, expected_link_version: link.version } }, '', scope), 'btn quiet small'));
+      if (link.state === 'ACTIVE' || link.state === 'active') row.append(button(t('Revoke'), () => this.queueAction({ kind: 'link.revoke', revoke_link: { link_id: link.link_id, expected_link_version: link.version } }, '', scope), 'btn quiet small'));
       card.append(row);
     }
-    card.append(html('p', 'footer-note', 'A proposal is not an active cross-Owner Link. Only an accepted, currently authorized Link is active.'));
+    card.append(html('p', 'footer-note', t('A proposal is not an active cross-Owner Link. Only an accepted, currently authorized Link is active.')));
     return card;
   },
 
   warningCard() {
     const card = html('section', 'card');
-    card.append(html('h2', '', 'Shared Thread memory'),
-      html('p', 'small', 'Endpoints in the same Group may share Thread memory according to Group policy. Review sharing and retention before adding an Endpoint. Canvas position is local presentation and never an ACL.'));
+    card.append(html('h2', '', t('Shared Thread memory')),
+      html('p', 'small', t('Endpoints in the same Group may share Thread memory according to Group policy. Review sharing and retention before adding an Endpoint. Canvas position is local presentation and never an ACL.')));
     return card;
   },
 
   planCard() {
     const card = html('section', 'card');
     card.setAttribute('data-panel', 'action-preview-card');
-    card.append(html('h2', '', 'Exact action preview'));
+    card.append(html('h2', '', t('Exact action preview')));
     const action = this.plan[0];
     card.append(html('p', '', actionSummary(action)));
     if (this.planReview) card.append(html('p', 'action-preview', this.planReview));
-    card.append(html('p', 'small', `${this.plan.length} action(s) are queued. Only the first is shown and submitted; each next item requires its own review.`));
+    card.append(html('p', 'small', t('{count} action(s) are queued. Only the first is shown and submitted; each next item requires its own review.', { count: this.plan.length })));
     const pre = html('pre');
     pre.textContent = JSON.stringify(action, null, 2);
-    const commit = button('Commit this one action', () => this.applyFirst(), 'btn primary');
+    const commit = button(t('Commit this one action'), () => this.applyFirst(), 'btn primary');
     commit.setAttribute('data-panel', 'commit-action');
     commit.disabled = this.applying || this.scopeIsCurrent(this.refreshScope);
     card.append(pre, commit,
-      button('Discard preview queue', () => { this.invalidateIntents(); this.renderSide(); }, 'btn quiet'));
+      button(t('Discard preview queue'), () => { this.invalidateIntents(); this.renderSide(); }, 'btn quiet'));
     return card;
   },
 
   writeFenceCard() {
     const fence = this.writeFence;
     const card = html('section', 'card fence-card');
-    card.append(html('div', 'eyebrow danger-text', 'UNCERTAIN WRITE FENCE'),
-      html('h2', '', 'A prior change may have taken effect'),
+    card.append(html('div', 'eyebrow danger-text', t('UNCERTAIN WRITE FENCE')),
+      html('h2', '', t('A prior change may have taken effect')),
       html('p', 'small', `${fence.operation} · operation ${fence.operationID}`),
       html('p', 'small', fence.digestBasis === 'legacy-sealed-packet' ?
         `Legacy sealed-packet SHA-256: ${fence.packetSha256}` : `Submitted JSON body SHA-256: ${fence.bodySha256}`),
       html('p', 'small', `Scope: ${JSON.stringify(fence.scope || {})}`),
-      html('p', 'footer-note', 'The authenticated recovery response advanced the Client sequence, but it did not prove whether this change applied. No new topology write is allowed until you inspect fresh snapshots and explicitly authorize one. The old action is never replayed.'));
-    card.append(button('Refresh topology and status for review', () => this.reload(true), 'btn warn'));
+      html('p', 'footer-note', t('The authenticated recovery response advanced the Client sequence, but it did not prove whether this change applied. No new topology write is allowed until you inspect fresh snapshots and explicitly authorize one. The old action is never replayed.')));
+    card.append(button(t('Refresh topology and status for review'), () => this.reload(true), 'btn warn'));
     const reviewed = this.reviewedWriteFenceID === fence.operationID;
-    const authorize = button('I reviewed this state; authorize a new write', () => this.authorizeReviewedWriteFence(), 'btn primary');
+    const authorize = button(t('I reviewed this state; authorize a new write'), () => this.authorizeReviewedWriteFence(), 'btn primary');
     authorize.disabled = !reviewed;
     card.append(authorize);
-    if (!reviewed) card.append(html('p', 'small', 'Refresh after the uncertain operation resolves. The confirmation button unlocks only after both authoritative snapshots finish.'));
+    if (!reviewed) card.append(html('p', 'small', t('Refresh after the uncertain operation resolves. The confirmation button unlocks only after both authoritative snapshots finish.')));
     return card;
   },
 
@@ -355,7 +356,9 @@ export function installCanvasControls(CanvasPanel) {
     }
     const digestLabel = fence.digestBasis === 'legacy-sealed-packet' ?
       `Legacy packet SHA-256: ${fence.packetSha256}` : `Submitted JSON SHA-256: ${fence.bodySha256}`;
-    const confirmed = globalThis.confirm(`Authorize new topology writes after reviewing the fresh state?\n\nPrior operation: ${fence.operation}\nOperation ID: ${fence.operationID}\n${digestLabel}\nScope: ${JSON.stringify(fence.scope || {})}\n\nThis does not retry or repeat the prior action.`);
+    const confirmed = globalThis.confirm(translate('Authorize new topology writes after reviewing the fresh state?\n\nPrior operation: {operation}\nOperation ID: {operationID}\n{digest}\nScope: {scope}\n\nThis does not retry or repeat the prior action.', {
+      operation: fence.operation, operationID: fence.operationID, digest: digestLabel, scope: JSON.stringify(fence.scope || {})
+    }));
     if (!confirmed) return;
     try {
       await this.clearWriteFence(fence.operationID);
@@ -451,7 +454,7 @@ export function installCanvasControls(CanvasPanel) {
     const continuesTarget = previousTarget && reference?.group_id === previousTarget.groupId &&
       previousTarget.endpointIds.includes(reference.endpoint_id);
     this.applying = true;
-    this.message = `Submitting ${action.kind} as one encrypted topology.apply action…`;
+    this.message = t('Submitting {operation} as one encrypted topology.apply action…', { operation: action.kind });
     this.render(); this.renderSide();
     try {
       const result = await this.rpc('topology.apply', action);
@@ -466,7 +469,7 @@ export function installCanvasControls(CanvasPanel) {
         try {
           this.createdGroupIntent = createdGroupTarget(this.topology, targetId, targetSelection);
           this.selection = new Set(this.createdGroupIntent.endpointIds);
-          this.message = 'Authenticated snapshots refreshed. The created Group target is locked; preview and confirm each selected Endpoint separately.';
+          this.message = t('Authenticated snapshots refreshed. The created Group target is locked; preview and confirm each selected Endpoint separately.');
           this.render();
         } catch (error) { this.setMessage(error.message); }
       }
@@ -485,8 +488,8 @@ export function installCanvasControls(CanvasPanel) {
   async recoverPending() {
     try {
       const result = await this.recover();
-      if (result?.error_code === 'OUTCOME_UNCERTAIN') this.message = 'The prior action has an uncertain outcome. The next snapshots are authoritative; review them before making another change.';
-      else this.message = 'The prior encrypted Client operation was recovered.';
+      if (result?.error_code === 'OUTCOME_UNCERTAIN') this.message = t('The prior action has an uncertain outcome. The next snapshots are authoritative; review them before making another change.');
+      else this.message = t('The prior encrypted Client operation was recovered.');
       await this.reload();
     } catch (error) {
       this.pending?.(error.message);
@@ -494,8 +497,9 @@ export function installCanvasControls(CanvasPanel) {
   },
 
   setMessage(message) {
-    this.message = message;
-    this.banner.textContent = message;
+    const text = message?.panelText || (message instanceof Error ? message.message : message);
+    this.message = typeof text === 'string' ? text : (text?.key || String(text ?? ''));
+    setLocalizedText(this.banner, localizedIfKnown(text));
   },
 
   groupsForNetwork(networkId = this.networkId) {

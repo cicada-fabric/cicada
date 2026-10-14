@@ -1,5 +1,160 @@
 # Architecture v2.3 implementation audit
 
+## 2026-10-14 Stage 1: Hub identity/bootstrap extraction candidate
+
+The authorized first stage is implemented in this unreleased source checkpoint,
+with no account/password/initial-claim API, migration or version change. Evidence
+was captured from the working tree based on `9fa3628`; the source inventories
+and artifact hashes identify that capture, not a future post-commit HEAD.
+`internal/hubidentity` now owns the existing three key-file lifecycles, retaining
+paths, per-file locks, private permissions, unique temporary files and fsync.
+`internal/hubowner.Service` owns the prior finite Issue/Accept flow using only
+Store and these identities. The old Control methods delegate; normal Control
+startup still initializes its existing business state. Local `hub setup` and
+`hub owner-bootstrap issue` now use the Hub services directly and create no
+Workspace/snapshot/Machine. Issuance still checks restore/readiness before
+loading keys, retains exact candidate/pin review and must run quiescently.
+
+`server.NewHubHandler` directly composes the Hub service without a Control or
+Fabric object. It publishes the unchanged identity JSON and accepts the same
+finite proof; Client enrollment/RPC remain unavailable. The existing managed
+handler uses narrow Hub identity/accept interfaces and retains its normal
+management authorization. New tests cover preserved existing key-file bytes,
+concurrent first creation, corrupt-state refusal, Control-absent TCP acceptance,
+exact receipt retry, permanent Root revocation, no business state from setup,
+and a later `Control.New` preserving a Root established through Hub-only state.
+
+The owned source inventory is
+`.cicada-data/hub-identity-extraction-20261014/a3/source-files.json`, SHA-256
+`9bca1e4d93c52f75aec2f0bd87f5b3e4c7832467e06fc6eba6d72e7048e44070`.
+This identifies changed extraction source separately from the earlier OpenSSL
+PTY and Windows cross-build artifacts. The finalized bounded evidence is in
+`.cicada-data/hub-identity-extraction-20261014/summary.json` and `a1`–`a4` logs:
+
+- Segmented normal checks: full e2ee/clientwire/ownerbootstrap and new Hub
+  packages, plus selected managed Control/Server/CLI regressions: 85 top-level
+  tests and 147 subtests passed; the separate opt-in OpenSSL test skipped.
+  A2 originally failed one new test's incorrect expected status literal
+  (`ROOT_ACTIVE` instead of existing `OWNER_SIGNER_READY`); its assertion-only
+  correction passed the isolated A3 normal rerun. A2's failure remains recorded.
+- Selected race checks: 40 top-level tests and 13 subtests passed across the
+  same eight packages, with no race reported. A3's combined Control package
+  reached the 180-second deadline during its final restore-quarantine fixture,
+  after all earlier selected tests passed. A4 reran only that unfinished test
+  with a 90-second limit and passed. The original package timeout remains;
+  this is segmented coverage, not an all-pass aggregate A3 invocation.
+- A4 then ran `go vet` for hubidentity, hubowner, control, server and cmd/cicada:
+  exit 0, no diagnostics. `git diff --check` passed. The Client contract check
+  again passed unchanged v1.6.5/catalog55 with digest `a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+
+Commands used pinned offline Go 1.27.1 image
+`sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`,
+network disabled, GOMAXPROCS=2, the existing task-owned crypto cache and
+read-only `.cicada-data/m1-gomodcache`. Normal used `go test -json -p=1
+-count=1 -timeout=180s`; race added `-race` and selected the Hub/Owner/bootstrap,
+private-operation/wire vectors, preserved identities, revoked Owner, existing
+Client grant/enrollment/RPC recovery, capabilities and CLI setup guards. A4
+used `-run '^TestHubRestoreHoldControlStartupBeforeAnyWrites$'` with `-race`.
+These deterministic checks do not establish Docker/native acceptance. A
+separate final current-source Linux/Windows build and Windows Owner-signer test
+compile passed, with independently checked exits/logs/artifact hashes. The
+current Linux helper `515e8eb...` passed real OpenSSL PTY/Docker compatibility
+run `d68c9e32e4894e11` against the immutable older Hub `fc90076...`, covering pure
+Hub-only CLI setup/issuer, proof/lost response/restart/exact receipt, grant and
+manager enrollment. That run does not qualify a rebuilt extracted-Hub runtime
+image or account/signup. Exact hashes and cleanup are in
+[the validation record](windows-owner-openssl-validation.md); native Windows/
+ACL, Android, Chromium enrollment and public HTTPS remain NOT_RUN.
+The following read-only audit records the earlier pre-extraction composition
+and the still-unimplemented account stages. Its specification line counts and
+hashes identify the read baseline before the final documentation-only two-page
+architecture clarification in CICADA.md/CICADA_PROMPT.md; that clarification
+adds no account implementation or new acceptance result.
+
+## 2026-10-14 read-only audit: two-page Hub Owner account setup
+
+The user now requires installer-issued initial claim information, page 1 Hub/
+operator verification, and page 2 username/password plus **existing public-key**
+binding. Account authentication belongs to Hub and must not require Control,
+its Workspace/model, or a specific future Controller. This section records
+actual code and the smallest proposed boundary changes; it adds no auth code,
+HTTP route, migration, deployment action or validation PASS. Software remains
+0.0.5; the pending 0.0.6/manual-form closeout is paused. The accepted UX and
+implementation stages are in [the Owner design](owner-onboarding-design.md)
+and [plan](architecture-v2-plan.md#hub-account-two-page-next).
+
+Read baseline: dirty `dev` on HEAD
+`9fa3628d593755ce21476193ef70316be07742f6`. The current full adopted
+`CICADA.md` (2,727 lines) and `CICADA_PROMPT.md` (114 lines) were reread. Their
+SHA-256 values are respectively
+`f3a8d111271af3d49d54a749eaadcd0894fd7837e82a56fd594c3393caf57bee` and
+`d796fd5466d7e7a1b10c69f7de4387739d4ec508ced46c94c68dd06419f03c65`.
+The adopted specification separates Hub Identity/Authorization from Control
+business (chapters 4, 5, 21 and 24), requires preservation of NIST protocols and
+keys (22/33), and does not define an existing username/password service.
+The user's new account requirement supersedes the older onboarding-plan
+statement excluding server passwords; it does not authorize a management
+plaintext fallback or private-key upload.
+
+| Actual evidence | Current behavior | Minimal change required |
+|---|---|---|
+| [`Store.InitializeHubOwnerLocal`](../cicada-go/internal/store/hub_owner_setup_v1.go), lines 180–237 | Atomically creates stable human/account IDs, origin and `HUB_READY`; inserts an empty Principal credential hash. It has no username password verifier or login session. It refuses preexisting unrelated authority and preserves exact idempotent setup. | Reuse its state/Principal checks through a shared transaction helper; claim consumption, credentials and public association must commit atomically, rather than calling its already-committing method and separately saving a password. |
+| Same Store schema initializer, lines 35–67; [`migrations_v2.go`](../cicada-go/internal/store/migrations_v2.go), `CurrentV2SchemaVersion=60` | Three schema-60 tables hold immutable setup coordinates, permanent Root history and finite authority. History is seeded from every existing approval-key row; inserts add history and deletion/update is blocked. | Add credentials/claim/session/pending-public-association records in an explicit later additive migration. Never use `owner_approval_keys_v2` for unproved public association: it triggers permanent history and can strand first PoP. |
+| `Store.EnsureHubManagerLocal` / `AdoptLegacyHubOwnerLocal`, lines 243–338 | Exact active self-owned legacy human may retain IDs; `GENERATED_COMPAT` is not first-setup/adoption evidence. Manager association is persisted, not new crypto-ID equality. | Retain legacy mapping and signed claims. An existing 0.0.5 account gets credentials through an independently controlled local claim for that exact account, not another fresh human or first-row selection. |
+| `Store.PreflightOwnerBootstrap` / `CompleteOwnerBootstrap`, lines 447–568 | Exact route, current Owner and permanent history are checked; only verified completion inserts ACTIVE Root and consumes authority. Exact original retry returns original cached receipt while the exact Root remains active. | Reuse unchanged completion/history checks. Public binding/login is not completion; expired/unproved candidates and revoked/lost historical Roots must not become new first Roots. |
+| [`hubSetupCommand`](../cicada-go/cmd/cicada/hub_setup.go), lines 68–113 | After saving setup, calls `Control.New` to obtain Hub Client-Control pin. | Replace composition dependency with a pure Hub identity/setup service while retaining old command as advanced compatibility facade. |
+| [`Control.New`](../cicada-go/internal/control/control.go), lines 183–259; `loadIdentity` at 267 | Creates WorkspaceRoot, workspace snapshots, interrupted-Client reconciliation and local Machines; loads three separately locked durable identity files. | Extract the tested key-file lifecycle, preserving exact paths/bytes/locking. Inject the existing identities into Control; Hub/account initialization must not construct business state or require Workspace/model configuration. |
+| [`control/hub_owner_setup.go`](../cicada-go/internal/control/hub_owner_setup.go), `IssueOwnerBootstrapLocal` / `AcceptOwnerBootstrap`; [`server/owner_bootstrap.go`](../cicada-go/internal/server/owner_bootstrap.go), lines 18/35 | Mostly pure crypto/Store logic but methods use `c.clientIdentity`; accept handler requires `h.control`. [`ClientControlPublicIdentity`](../cicada-go/internal/control/client_wire.go) also publishes that field. | Move this composition into a small Hub-owned service; old facades delegate. The legacy wire field/file name can remain for compatibility; it is a durable Hub transport pin, not a model/Controller account credential. |
+| [`NewHandler` / `NewFabricHandler`](../cicada-go/internal/server/server.go), lines 35–62; [`serve`](../cicada-go/cmd/cicada/main.go), lines 156–190 | Fabric can run without Control, but normal serve requires ready setup then constructs/starts Control. There is no unclaimed Hub account/setup server. | Add a Hub composition surface that can host restricted claim/setup/login/status without Control; preserve the existing readiness guard and business/Client authorization. Do not seed generated compatibility humans just to serve page 1. |
+| [`panel-client.js`](../cicada-go/internal/server/ui/panel-client.js), lines 64–97; [`panel.js`](../cicada-go/internal/server/ui/panel.js), browser-device creation/unlock | Password protects a local browser-device vault with PBKDF2-SHA-256/AES-GCM in IndexedDB. This is not server account authentication. No server/Store username-password/KDF/cookie-login service was found in production Go source. | Add an independent server password-verifier/session contract. Hide browser-device enrollment and vault fields from ordinary Owner setup; keep existing enrolled devices/vaults and management wire valid. |
+| [`ExternalProfile.Bootstrap`](../cicada-go/internal/ownersigner/external_profile.go); [`OpenSSLOperations.Sign` / `MLKEMDecapsulate`](../cicada-go/internal/ownersigner/external_openssl.go); [`ownerbootstrap`](../cicada-go/internal/ownerbootstrap/protocol.go) | Existing encrypted PEM remains external; helper validates complete account/Hub/candidate scope, opens challenge once, reviews then signs, persists exact proof/receipt. Real Linux OpenSSL finite-PoP/restart/retry passed separately. | Reuse hidden request-file/local-helper machinery after public association. Never send private PEM/passphrase to Hub or pretend public upload proves possession. Native Windows remains a separate acceptance scope. |
+| [`install-cicada-server.sh`](../scripts/install-cicada-server.sh), lines 250–279; [`bootstrap-cicada.sh`](../scripts/bootstrap-cicada.sh) | Existing Compose update helper rejects pristine/orphaned volumes, and alias simply invokes it. It does not implement fresh install claim output or two-page account creation. | Implement a bounded fresh/local installation entry using Hub-only setup/identity and claim output. Keep controlled update/backup behavior; never solve fresh setup by deleting or substituting existing volumes. |
+| [`state_restore_reconcile.go`](../cicada-go/internal/store/state_restore_reconcile.go), reviewed schema 60 and exact table inventory | Preserves setup, Root history and consumed proof/receipt authority; unknown later schema is not implicitly trusted. | Review every additive auth table, consumed claim and session/credential epoch in backup/restore. Restoring older state must not revive initial claims, sessions, revoked keys or reset crypto counters. |
+
+Shortest useful next checkpoint: pure Hub composition, install claim redemption,
+atomic existing-account/fresh-account credentials and public association,
+password login to own limited account/setup/device-status views, and a single
+local-helper action for exact finite PoP when approval signing is needed. Owner
+login is not disguised Client device enrollment. Existing encrypted management
+operations remain on their existing guarded protocol until an explicit typed
+Hub-account actor adapter is implemented and reviewed; do not forward a login
+cookie to a generic bearer/RPC bypass. Multiple future Controllers may consume
+Hub-authorized actors, but implementing a Controller platform is out of scope.
+
+Latest approved login requirement: a 10+ character Owner password is accepted
+only with a trusted registered-device PQC challenge on **every** login. The
+initial setup claim is not ongoing MFA. Device IDs/keys/vault are internally
+managed with separate salts/purposes; unknown new devices require Owner
+approval and never receive a password-only device grant. Existing Client
+`CLIENT_CONTROL` binding is not silently reused as ACCOUNT_LOGIN authority.
+Current browser vault primitives are reusable local protection, not an
+implemented Hub login or registered-device MFA service. Current Hub/UI build
+and physical administrator are explicitly trusted; no mandatory signed desktop
+UI, VM or enclave is proposed. The four existing OpenSSL files are retained.
+
+Stage A proposed package contract is narrow: `internal/hubidentity.IdentitySet`
+loads/reuses Peer, ClientControl and NodeControl identities with the existing
+protected key-file lifecycle; `internal/hubowner` consumes only Store and that
+identity set for finite issue/accept. Existing Control methods delegate,
+`hubSetupCommand` no longer constructs Control, and server bootstrap/public
+identity use narrow Hub service interfaces. This stage changes no schema or
+wire and does not yet implement password/claim APIs. Root review and exact file
+ownership are prerequisites to starting its code; this audit performed no code
+extraction.
+
+The new trust/claim and password-verifier/session contract must fix expiry,
+single consumption, body/input/KDF/concurrency bounds, wrong-origin/CSRF/cookie
+behavior, exact idempotency and revocation before implementation. It is distinct
+from both a browser vault password and an OpenSSL key passphrase. No SSO, email
+recovery, Root-loss reset, new infrastructure or crypto suite is proposed.
+
+All earlier protocol/mock/PTY/build results remain source-attributed in
+[bootstrap validation](hub-owner-bootstrap-validation.md) and
+[external-key validation](windows-owner-openssl-validation.md). They do not prove
+this new account login or two-page flow. This audit ran read-only source checks
+and document diff checks only; the proposed account/claim/auth behavior is
+NOT_IMPLEMENTED / NOT_RUN.
+
 ## 2026-10-13 bounded Hub Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
 
 The separate [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)

@@ -1,5 +1,51 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+## 2026-10-14 Hub-only extraction — SCOPED PASS; two-page account setup NOT_IMPLEMENTED
+
+This unreleased source checkpoint remains software **0.0.5**. Evidence was
+captured from the working tree based on `9fa3628`, with exact source/artifact
+hashes in the linked records; it does not predict HEAD after a local commit.
+Hub key loading
+and finite Owner bootstrap now live in `hubidentity` / `hubowner`; local setup
+and issuance do not start Control, a Workspace, Machine or model. A Hub-only
+HTTP handler publishes the same pin and accepts the existing finite proof.
+Existing managed Control callers delegate to the same service. All three key
+paths, stable Owner/account IDs, Root history, exact receipt recovery, schema
+60, Client contract 1.6.5 / wire 1 / catalog 55 remain unchanged.
+
+[The extraction audit](architecture-v2-audit.md#2026-10-14-stage-1-hub-identitybootstrap-extraction-candidate)
+records segmented normal (85 top-level + 147 subtest PASS, one opt-in OpenSSL
+SKIP), selected race (40 top-level + 13 subtest PASS), vet and contract checks.
+The incorrect A2 test-status assertion and aggregate A3 Control timeout remain
+recorded alongside their scoped successful reruns; neither failed invocation
+is relabeled PASS. The 13-file inventory separately identifies extraction
+source; earlier Docker/OpenSSL/Windows artifacts keep their prior source.
+Final current-source Linux/Windows builds and the Owner-signer Windows test
+compile passed. The current Linux helper also passed real OpenSSL PTY/Docker
+compatibility run `d68c9e32e4894e11` against the pinned **older** `fc90076...` Hub:
+pure Hub-only CLI setup/issuance, lost-response recovery, grant and manager
+Client enrollment. This does not qualify a rebuilt extracted-Hub runtime image
+or account/signup; native Windows/ACL, Android, Chromium enrollment and public
+HTTPS remain NOT_RUN. Exact artifacts, source boundaries and cleanup are in
+[the validation record](windows-owner-openssl-validation.md).
+
+The latest [accepted two-page UX](owner-onboarding-design.md) is the next
+product stage: installer payload verifies the correct Hub, then username/
+password and existing **public** keys establish account association. A pending
+public association is not an ACTIVE Root; genuine private possession still
+uses the finite proof. Every 10+ password login requires a registered-device
+PQC challenge. Initial claim is one-use setup authority, not ongoing MFA or a
+Client management grant. Claim/password/session persistence, two-page UI and
+login are **NOT_IMPLEMENTED**; current manual device/CLI forms are advanced
+compatibility paths. The proposed 0.0.6 bump remains paused; no deployment was
+replaced and no real key was rotated.
+
+Root's final offline real Go WASM/model gate after UI i18n/advanced opt-in exited
+0; its exact output/artifact bytes match the earlier bounded build. This is
+crypto/wire/public-file/grant-summary/model evidence, not Chromium, device
+enrollment, native Windows or Android acceptance. See
+[the validation record](windows-owner-openssl-validation.md).
+
 ## 2026-10-13 bounded Hub Owner bootstrap — SCOPED PASS; full product PARTIAL
 
 The separate [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/clientwire"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/hubidentity"
+	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/ownerbootstrap"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -250,5 +253,71 @@ func TestHubOwnerConcurrentStartupPreservesAllHubIdentities(t *testing.T) {
 	files, e := filepath.Glob(filepath.Join(config.StateDir, "e2ee", "*.tmp"))
 	if e != nil || len(files) != 0 {
 		t.Fatal("identity creation left temporary private files")
+	}
+}
+
+// A Hub can complete first-Owner proof before any Control exists. Starting
+// managed mode later must preserve all keys, human/account IDs and receipt.
+func TestHubOwnerControlCompositionPreservesHubOnlyRoot(t *testing.T) {
+	root := t.TempDir()
+	config := Config{StateDir: filepath.Join(root, "state"), WorkspaceRoot: filepath.Join(root, "workspace")}
+	startup, err := store.AcquireStateStartup(config.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startup.Close()
+	db, err := store.New(filepath.Join(config.StateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	setup, err := db.InitializeHubOwnerLocal("Synthetic Owner", "https://synthetic.invalid", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := hubidentity.LoadOrCreate(config.StateDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub, err := hubowner.NewService(db, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := hub.IssueOwnerBootstrapLocal(owner.Public(), ownerbootstrap.Fingerprint(owner.Public()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := ownerbootstrap.CreateProof(owner, *pair, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := hub.AcceptOwnerBootstrap(proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Shutdown(context.Background())
+	if !reflect.DeepEqual(c.identity.Public(), ids.Peer.Public()) ||
+		!reflect.DeepEqual(c.clientIdentity.Public(), ids.ClientControl.Public()) ||
+		!reflect.DeepEqual(c.nodeControlIdentity.Public(), ids.NodeControl.Public()) {
+		t.Fatal("Control composition changed Hub keys")
+	}
+	after, err := c.HubOwnerSetup()
+	if err != nil || after.OwnerID != setup.OwnerID || after.AccountID != setup.AccountID || !after.RootEverEstablished || after.SignerState != "OWNER_SIGNER_READY" {
+		t.Fatalf("Control composition changed established Root/account: %v", err)
+	}
+	recovered, err := c.AcceptOwnerBootstrap(proof)
+	if err != nil || !bytes.Equal(receipt, recovered) {
+		t.Fatalf("Control composition lost exact receipt: %v", err)
 	}
 }

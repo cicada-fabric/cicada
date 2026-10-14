@@ -16,8 +16,163 @@ async function moduleFromFile(file) {
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
+async function loadOwnerBootstrapValidator(uiDir) {
+  const source = (await readFile(path.join(uiDir, 'panel-bootstrap.js'), 'utf8'))
+    .replace(/^import .*;\s*$/gm, '')
+    .replace(/export\s+(?=(?:async\s+)?function)/g, '');
+  const context = { URL, TextEncoder };
+  vm.runInNewContext(`${source}\nglobalThis.panelValidators = { validateOwnerBootstrapPublicFiles, validateOwnerDeviceGrantSummary };`, context);
+  return context.panelValidators;
+}
+
+async function ownerBootstrapChecks(uiDir) {
+  const { validateOwnerBootstrapPublicFiles: validate, validateOwnerDeviceGrantSummary: validateGrantSummary } =
+    await loadOwnerBootstrapValidator(uiDir);
+  // Deliberately non-cryptographic test identities. The full Go WASM check
+  // below repeats the acceptance case with real synthetic PQ identities.
+  const hubPublic = { id: 'pq1-synthetic-hub-public', kem_public: 'synthetic-hub-kem', signing_public: 'synthetic-hub-sign' };
+  const otherHubPublic = { id: 'pq1-synthetic-other-hub', kem_public: 'synthetic-other-hub-kem', signing_public: 'synthetic-other-hub-sign' };
+  const ownerPublic = { id: 'pq1-synthetic-owner-public', kem_public: 'synthetic-owner-kem', signing_public: 'synthetic-owner-sign' };
+  const hub = { contract: 'android-hub-v1', hub_id: 'hub_synthetic_owner_guide',
+    control_public_identity: hubPublic, control_key_version: 1, suite: 'ML-KEM-768+ML-DSA-65+AES-256-GCM' };
+  const connection = { format: 'cicada.hub-owner-connection.v1', version: 1,
+    purpose: 'ROOT_SIGNER_BOOTSTRAP', account_id: 'account_synthetic_owner_guide',
+    owner_id: 'human_synthetic_owner_guide', origin: 'https://synthetic.invalid',
+    allow_loopback_http: false, hub };
+  const fingerprint = 'a'.repeat(64);
+  const candidate = { format: 'cicada.owner-signer-public.v1',
+    account_id: connection.account_id, owner_id: connection.owner_id,
+    owner_public_identity: ownerPublic, fingerprint, origin: connection.origin,
+    allow_loopback_http: false, hub };
+  const identities = new Set([JSON.stringify(hubPublic), JSON.stringify(otherHubPublic), JSON.stringify(ownerPublic)]);
+  const cryptoApi = {
+    validatePublicIdentity({ public_identity }) { return { ok: identities.has(JSON.stringify(public_identity)) }; },
+    fingerprint({ public_identity }) { return { ok: JSON.stringify(public_identity) === JSON.stringify(ownerPublic), fingerprint }; }
+  };
+  const valid = validate(connection, candidate, connection.origin, hub, cryptoApi);
+  assert.equal(valid.accountID, connection.account_id);
+  assert.equal(valid.ownerID, connection.owner_id);
+  assert.equal(valid.ownerKeyID, ownerPublic.id);
+  assert.equal(valid.hubID, hub.hub_id);
+  assert.equal(valid.fingerprint, fingerprint);
+  const loopbackConnection = { ...connection, origin: 'http://127.0.0.1:8787', allow_loopback_http: true };
+  const loopbackCandidate = { ...candidate, origin: loopbackConnection.origin, allow_loopback_http: true };
+  assert.equal(validate(loopbackConnection, loopbackCandidate, loopbackConnection.origin, hub, cryptoApi).origin,
+    loopbackConnection.origin, 'explicit literal-loopback HTTP is accepted');
+
+  const rejected = (changedConnection, changedCandidate, pageOrigin = connection.origin, observedHub = hub) =>
+    assert.throws(() => validate(changedConnection, changedCandidate, pageOrigin, observedHub, cryptoApi));
+  rejected({ ...connection, purpose: 'CLIENT_CONTROL' }, candidate);
+  rejected(connection, { ...candidate, account_id: 'account-other' });
+  rejected(connection, { ...candidate, owner_id: 'human-other' });
+  rejected(connection, { ...candidate, fingerprint: 'b'.repeat(64) });
+  rejected(connection, { ...candidate, origin: 'https://other.invalid' });
+  rejected(connection, candidate, 'https://other.invalid');
+  rejected(connection, { ...candidate, owner_private_identity: 'PRIVATE_TEST_ONLY' });
+  rejected({ ...connection, access_token: 'synthetic-token' }, candidate);
+  rejected(connection, { ...candidate, owner_public_identity: { ...ownerPublic, signing_private: 'PRIVATE_TEST_ONLY' } });
+  rejected(connection, { ...candidate, account_id: 'account-other' });
+  rejected(connection, candidate, connection.origin, { ...hub, hub_id: 'hub-other' });
+  rejected(connection, { ...candidate, hub: { ...hub, control_public_identity: otherHubPublic } });
+  rejected(connection, candidate, connection.origin, { ...hub, control_public_identity: otherHubPublic });
+  rejected({ ...loopbackConnection, origin: 'http://public.example:8787' },
+    { ...loopbackCandidate, origin: 'http://public.example:8787' }, 'http://public.example:8787');
+  rejected(loopbackConnection, { ...loopbackCandidate, allow_loopback_http: false });
+  rejected(connection, { ...candidate, owner_id: 'bad owner id' });
+
+  const grantManifest = { format: 'cicada.owner-device-enrollment.v1', hub_id: connection.hub.hub_id,
+    owner_id: connection.owner_id, owner_key_id: ownerPublic.id, device_id: 'browser_synthetic',
+    device_key_fingerprint: 'c'.repeat(64), purpose: 'CLIENT_CONTROL',
+    device_public_identity: otherHubPublic };
+  const sharedGrantSummary = { hub_id: grantManifest.hub_id, owner_id: grantManifest.owner_id,
+    owner_key_id: ownerPublic.id, owner_public_identity: ownerPublic, device_id: grantManifest.device_id,
+    device_key_id: otherHubPublic.id, device_key_fingerprint: grantManifest.device_key_fingerprint,
+    purpose: 'CLIENT_CONTROL', issued_at: '2026-10-14T00:00:00Z',
+    expires_at: '2026-10-14T01:00:00Z', grant_file: 'owner-device-grant.json' };
+  const legacyGrantSummary = { ...sharedGrantSummary, format: grantManifest.format };
+  const profileGrantSummary = { ...sharedGrantSummary, format: 'cicada.owner-device-grant-summary.v1', state: 'GRANT_WRITTEN' };
+  assert.strictEqual(validateGrantSummary(legacyGrantSummary, grantManifest, cryptoApi), ownerPublic,
+    'the established local signing summary remains importable');
+  assert.strictEqual(validateGrantSummary(profileGrantSummary, grantManifest, cryptoApi), ownerPublic,
+    'the authenticated local profile summary is public and importable');
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, owner_private_identity: 'PRIVATE_TEST_ONLY' }, grantManifest, cryptoApi),
+    /schema/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, state: 'ACTIVE' }, grantManifest, cryptoApi),
+    /schema/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, device_id: 'other-device' }, grantManifest, cryptoApi),
+    /manifest/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, owner_key_id: 'other-owner-key' }, grantManifest, cryptoApi),
+    /manifest/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, issued_at: '2026-02-31T00:00:00Z' }, grantManifest, cryptoApi),
+    /manifest/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary, issued_at: '2026-10-14T00:00:00.000Z' }, grantManifest, cryptoApi),
+    /manifest/);
+  assert.throws(() => validateGrantSummary({ ...profileGrantSummary,
+    owner_public_identity: { ...ownerPublic, signing_private: 'PRIVATE_TEST_ONLY' } }, grantManifest, cryptoApi), /schema/);
+
+  const panelSource = await readFile(path.join(uiDir, 'panel.js'), 'utf8');
+  const entryStart = panelSource.indexOf('function renderOwnerAccountEntry()');
+  const entryEnd = panelSource.indexOf('\nfunction renderOwnerBootstrapGuide(', entryStart);
+  assert.ok(entryStart >= 0 && entryEnd > entryStart, 'normal Owner account landing is separate from advanced setup');
+  const entry = panelSource.slice(entryStart, entryEnd);
+  assert.match(entry, /installer-issued Hub URL and one-time claim code/);
+  assert.match(entry, /Owner username and password using existing public keys/);
+  assert.match(entry, /not Owner signup/);
+  assert.match(entry, /openAdvanced\.disabled = true/);
+  assert.match(entry, /consent\.addEventListener\('change'/);
+  assert.match(entry, /if \(consent\.checked\) renderOwnerBootstrapGuide\(\)/,
+    'the technical guide opens only after the explicit advanced consent checkbox');
+  for (const forbidden of ['renderNewDevice(', 'fetch(', 'updateState(', 'enrollExactRequest(', 'callRPC(']) {
+    assert.equal(entry.includes(forbidden), false, `normal Owner account landing must not call ${forbidden}`);
+  }
+
+  const guideStart = panelSource.indexOf('function renderOwnerBootstrapGuide()');
+  const guideEnd = panelSource.indexOf('\nfunction renderNewDevice(', guideStart);
+  assert.ok(guideStart >= 0 && guideEnd > guideStart, 'advanced signer guide is a discrete pre-enrollment path');
+  const guide = panelSource.slice(guideStart, guideEnd);
+  assert.match(guide, /does not claim a Hub installation or set Owner login credentials/);
+  assert.match(guide, /Open advanced browser Client device enrollment/);
+  const bootStart = panelSource.indexOf('async function boot()');
+  const bootEnd = panelSource.indexOf('\nboot();', bootStart);
+  assert.match(panelSource.slice(bootStart, bootEnd), /await routeAfterPin\(state\)/,
+    'fresh and pinned visits use the existing saved-state route decision');
+  assert.doesNotMatch(panelSource.slice(bootStart, bootEnd), /renderOwnerBootstrapGuide\(\)/,
+    'startup never opens the advanced flow directly');
+  const routeStart = panelSource.indexOf('async function routeAfterPin(');
+  const routeEnd = panelSource.indexOf('\nasync function readPublicJSONFile', routeStart);
+  assert.match(panelSource.slice(routeStart, routeEnd), /switch \(savedPanelRoute\(state\)\)/,
+    'unavailable signup changes only the empty-state route, not saved enrollment handling');
+  assert.match(panelSource.slice(routeStart, routeEnd), /case 'active-device':[\s\S]*renderUnlock\(state\)[\s\S]*enterWorkspace\(\)/,
+    'an enrolled browser still unlocks or enters its existing Owner workspace');
+  assert.match(panelSource.slice(routeStart, routeEnd), /case 'pending-enrollment':[\s\S]*renderEnrollmentRetry\(state\)/);
+  assert.match(panelSource.slice(routeStart, routeEnd), /case 'device-draft':[\s\S]*renderUnlock\(state\)[\s\S]*renderGrantImport\(state\)/);
+  for (const forbidden of ['fetch(', 'updateState(', 'enrollExactRequest(', 'callRPC(', 'openPanelDB(']) {
+    assert.equal(guide.includes(forbidden), false, `public-file guide must not call ${forbidden}`);
+  }
+  assert.match(guide, /owner-connection-file/);
+  assert.match(guide, /owner-public-manifest-file/);
+  assert.match(guide, /does not contact an issuer/);
+  assert.match(guide, /Node INITIAL enrollment is a separate later flow/);
+  assert.doesNotMatch(guide, /Root is active|Root ACTIVE|signer ACTIVE/i);
+  assert.doesNotMatch(guide, /field\([^\n]*['"]password['"]/i, 'guide has no passphrase field');
+}
+
 async function modelChecks(uiDir) {
   const model = await moduleFromFile(path.join(uiDir, 'panel-model.js'));
+  assert.equal(model.savedPanelRoute({}), 'owner-account-setup-unavailable',
+    'an empty pinned profile opens the unavailable account setup notice');
+  assert.equal(model.savedPanelRoute({ vault: { ciphertext: 'synthetic' } }), 'owner-account-setup-unavailable',
+    'a stray vault cannot be mistaken for a completed signup');
+  assert.equal(model.savedPanelRoute({ device: { active: true } }), 'active-device',
+    'an existing enrolled browser keeps its unlock/workspace route');
+  assert.equal(model.savedPanelRoute({ enrollment: { body: 'synthetic-exact-request' } }), 'pending-enrollment',
+    'an exact pending enrollment remains recoverable');
+  assert.equal(model.savedPanelRoute({ deviceDraft: { device_id: 'synthetic' }, vault: { ciphertext: 'synthetic' } }), 'device-draft',
+    'an existing device draft keeps its unlock/grant route');
+  assert.equal(model.savedPanelRoute({ device: { active: true }, enrollment: { body: 'synthetic' } }), 'active-device',
+    'a completed enrollment takes precedence over stale pending data');
+  assert.equal(model.savedPanelRoute({ enrollment: { body: 'synthetic' }, deviceDraft: { device_id: 'synthetic' }, vault: {} }), 'pending-enrollment',
+    'a saved exact enrollment request takes precedence over an older device draft');
   const identity = { hub_id: 'hub-pin-test', control_public_identity: { id: 'pq-hub-test' },
     control_key_version: 1, suite: 'ML-KEM-768+ML-DSA-65+AES-256-GCM' };
   assert.equal(model.pinMatches({ origin: 'https://hub.example', hubId: identity.hub_id, keyId: 'pq-hub-test' }, identity, 'https://hub.example'), true);
@@ -29,7 +184,9 @@ async function modelChecks(uiDir) {
   assert.ok(Math.abs(roundTrip.x - point.x) < 1e-9 && Math.abs(roundTrip.y - point.y) < 1e-9);
   const canvasSource = (await readFile(path.join(uiDir, 'panel-canvas.js'), 'utf8'))
     .replace(/^import .*;$/gm, '').replace('export class CanvasPanel', 'class CanvasPanel');
-  const canvasContext = { ...model, installCanvasControls() {}, globalThis: {} };
+  const canvasContext = { ...model, installCanvasControls() {}, globalThis: {},
+    t: key => ({ key }), localizedIfKnown: value => value,
+    setLocalizedText(element, value) { element.textContent = value?.key || value; } };
   vm.runInNewContext(`${canvasSource}\nglobalThis.CanvasPanel = CanvasPanel;`, canvasContext);
   const CanvasPanel = canvasContext.globalThis.CanvasPanel;
   const attrs = {};
@@ -77,6 +234,8 @@ async function modelChecks(uiDir) {
   assert.equal(completed.pending, null);
   assert.equal(completed.nextResponseSequence, 2);
   assert.equal(completed.lastRequestSequence, 1);
+
+  await ownerBootstrapChecks(uiDir);
 
   const writeDescriptor = model.makeSemanticWriteFence('topology.apply', 'op-uncertain-write', 'a'.repeat(64),
     { kind: 'endpoint.join_group', join_group: { endpoint_id: 'endpoint-a', group_id: 'group-a' } },
@@ -364,7 +523,7 @@ async function modelChecks(uiDir) {
   assert.strictEqual(refreshing.topology, oldTopology, 'a late snapshot cannot replace a newer selected scope');
 }
 
-async function wasmChecks(wasmPath, runtimePath) {
+async function wasmChecks(wasmPath, runtimePath, uiDir) {
   const runtime = await readFile(runtimePath, 'utf8');
   globalThis.require = createRequire(import.meta.url);
   if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
@@ -388,6 +547,26 @@ async function wasmChecks(wasmPath, runtimePath) {
   assert.equal(api.validatePublicIdentity({ public_identity: { ...device.public_identity, id: 'pq1-forged' } }).ok, false);
   const fingerprint = api.fingerprint({ public_identity: device.public_identity });
   assert.match(fingerprint.fingerprint, /^[0-9a-f]{64}$/);
+  const { validateOwnerBootstrapPublicFiles: validateOwnerBootstrap,
+    validateOwnerDeviceGrantSummary: validateGrantSummary } = await loadOwnerBootstrapValidator(uiDir);
+  const publicHub = { contract: 'android-hub-v1', hub_id: 'hub_wasm_owner_bootstrap',
+    control_public_identity: hub.public_identity, control_key_version: 1,
+    suite: 'ML-KEM-768+ML-DSA-65+AES-256-GCM' };
+  const ownerConnection = { format: 'cicada.hub-owner-connection.v1', version: 1,
+    purpose: 'ROOT_SIGNER_BOOTSTRAP', account_id: 'account_wasm_owner_bootstrap',
+    owner_id: 'human_wasm_owner_bootstrap', origin: 'https://synthetic.invalid',
+    allow_loopback_http: false, hub: publicHub };
+  const ownerManifest = { format: 'cicada.owner-signer-public.v1',
+    account_id: ownerConnection.account_id, owner_id: ownerConnection.owner_id,
+    owner_public_identity: device.public_identity, fingerprint: fingerprint.fingerprint,
+    origin: ownerConnection.origin, allow_loopback_http: false, hub: publicHub };
+  const ownerDraft = validateOwnerBootstrap(ownerConnection, ownerManifest,
+    ownerConnection.origin, publicHub, api);
+  assert.equal(ownerDraft.ownerKeyID, device.public_identity.id,
+    'Owner draft validation uses the full Go WASM public-identity validator and fingerprint');
+  assert.throws(() => validateOwnerBootstrap(ownerConnection,
+    { ...ownerManifest, fingerprint: '0'.repeat(64) }, ownerConnection.origin, publicHub, api),
+  /fingerprint/);
   const binding = { hubID: 'hub-wasm-test', ownerID: 'owner-wasm-test', deviceID: 'browser-wasm-test',
     sessionEpoch: 3, hubKeyVersion: 1, deviceKeyVersion: 1 };
   const route = { version: 1, direction: 'REQUEST', hub_id: binding.hubID,
@@ -434,6 +613,27 @@ async function wasmChecks(wasmPath, runtimePath) {
   const grantInput = { owner_public_identity: grantVector.owner_public_identity,
     device_public_identity: grantVector.device_public_identity, owner_id: grantVector.owner_id,
     device_id: grantVector.device_id, hub_id: grantVector.hub_id, grant: grantVector.grant };
+  const grantManifest = { format: 'cicada.owner-device-enrollment.v1', hub_id: grantVector.hub_id,
+    owner_id: grantVector.owner_id, owner_key_id: grantVector.owner_public_identity.id,
+    device_id: grantVector.device_id, device_key_fingerprint: api.fingerprint({
+      public_identity: grantVector.device_public_identity }).fingerprint,
+    purpose: 'CLIENT_CONTROL', device_public_identity: grantVector.device_public_identity };
+  const verifiedGrant = api.verifyOwnerDeviceGrant(grantInput);
+  const signedGrantForSummary = JSON.parse(Buffer.from(grantVector.grant, 'base64').toString('utf8'));
+  const grantSummary = { format: 'cicada.owner-device-grant-summary.v1', state: 'GRANT_WRITTEN',
+    hub_id: grantManifest.hub_id, owner_id: grantManifest.owner_id,
+    owner_key_id: grantManifest.owner_key_id, owner_public_identity: grantVector.owner_public_identity,
+    device_id: grantManifest.device_id, device_key_id: grantVector.device_public_identity.id,
+    device_key_fingerprint: grantManifest.device_key_fingerprint, purpose: grantManifest.purpose,
+    issued_at: signedGrantForSummary.issued_at, expires_at: verifiedGrant.expires_at,
+    grant_file: 'owner-device-grant.json' };
+  assert.strictEqual(validateGrantSummary(grantSummary, grantManifest, api), grantVector.owner_public_identity,
+    'Go WASM validates full Owner identity in profile grant summary');
+  assert.equal(api.verifyOwnerDeviceGrant({ ...grantInput, owner_public_identity:
+    validateGrantSummary(grantSummary, grantManifest, api) }).ok, true,
+  'Go WASM verifies the signature against the exact public Owner identity from the summary');
+  assert.throws(() => validateGrantSummary({ ...grantSummary, expires_at: 'not-a-timestamp' }, grantManifest, api),
+    /manifest/);
   assert.equal(api.verifyOwnerDeviceGrant(grantInput).ok, true, 'Go WASM verifies exact Owner signature/scope');
   const badGrant = Buffer.from(grantVector.grant, 'base64');
   badGrant[Math.floor(badGrant.length / 2)] ^= 1;
@@ -453,6 +653,10 @@ async function staticChecks(uiDir) {
     }
   }
   const app = await readFile(path.join(uiDir, 'panel.js'), 'utf8');
+  assert.match(app, /--summary-output owner-device-grant-summary\.json/,
+    'the profile grant flow exports a separate summary without redirecting terminal review');
+  assert.match(app, /validateOwnerDeviceGrantSummary\(signerSummary, manifest, cryptoApi\)/,
+    'grant imports use strict local public-summary validation');
   assert.match(app, /cryptoApi\.generateIdentity\(\{\}\)/, 'WASM facade receives its required object argument');
   assert.match(app, /createDeviceDraftState\(state, location\.origin, vault, manifest\)/,
     'device creation uses the same draft guard tested for concurrent tabs');
@@ -484,7 +688,7 @@ async function main() {
   if (!wasmPath || !runtimePath || !uiDir) throw new Error('usage: test-web-panel.mjs --wasm FILE --wasm-exec FILE --ui DIR');
   await modelChecks(uiDir);
   await staticChecks(uiDir);
-  await wasmChecks(wasmPath, runtimePath);
+  await wasmChecks(wasmPath, runtimePath, uiDir);
 }
 
 main().then(() => {

@@ -16,12 +16,23 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/store"
 	"github.com/cicada-ai/cicada/internal/workspace/snapshot"
 )
 
+// HubIdentityReader and OwnerBootstrapAcceptor are Hub-owned transport/state
+// boundaries. They do not start a Control, planner, model or workspace.
+type HubIdentityReader interface {
+	ClientHubID() (string, error)
+	ClientControlPublicIdentity() e2ee.PublicIdentity
+}
+type OwnerBootstrapAcceptor interface{ AcceptOwnerBootstrap([]byte) ([]byte, error) }
+
 type Handler struct {
 	control         *control.Control
+	hubIdentity     HubIdentityReader
+	ownerBootstrap  OwnerBootstrapAcceptor
 	fabricService   *fabricpkg.Service
 	apiToken        string
 	nodeTLSCurrent  NodeTLSCurrentReader
@@ -35,11 +46,23 @@ type NodeTLSRecoveryReader func(credentialDigest, nodeID string, packet []byte) 
 func NewHandler(controlPlane *control.Control) http.Handler {
 	handler := &Handler{control: controlPlane}
 	if controlPlane != nil {
+		handler.hubIdentity = controlPlane
+		handler.ownerBootstrap = controlPlane
 		handler.apiToken = strings.TrimSpace(controlPlane.APIToken())
 		handler.fabricService = controlPlane.Fabric()
 		handler.nodeTLSCurrent = controlPlane.NodeTLSCurrentStatusPacket
 	}
 	return handler
+}
+
+// NewHubHandler serves public Hub identity and finite Owner proof acceptance
+// directly from Hub state. It exposes no account/password/claim operation and
+// deliberately has no Control business object or management Client dispatcher.
+func NewHubHandler(service *hubowner.Service) http.Handler {
+	if service == nil {
+		return &Handler{}
+	}
+	return &Handler{hubIdentity: service, ownerBootstrap: service}
 }
 
 // NewFabricHandler constructs only the collaboration data-plane HTTP surface.
@@ -226,6 +249,9 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		serviceName := "cicada-control"
 		if h.control == nil {
 			serviceName = "cicada-fabric"
+			if h.hubIdentity != nil {
+				serviceName = "cicada-hub"
+			}
 		}
 		provenance := buildinfo.CurrentProvenance()
 		writeJSON(response, http.StatusOK, map[string]any{

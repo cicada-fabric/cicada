@@ -17,6 +17,7 @@ var clientAssets = map[string]struct {
 	"/":                                {"ui/index.html", "text/html; charset=utf-8", ""},
 	"/assets/panel.css":                {"ui/panel.css", "text/css; charset=utf-8", ""},
 	"/assets/panel.js":                 {"ui/panel.js", "text/javascript; charset=utf-8", ""},
+	"/assets/panel-i18n.js":            {"ui/panel-i18n.js", "text/javascript; charset=utf-8", ""},
 	"/assets/panel-bootstrap.js":       {"ui/panel-bootstrap.js", "text/javascript; charset=utf-8", ""},
 	"/assets/panel-client.js":          {"ui/panel-client.js", "text/javascript; charset=utf-8", ""},
 	"/assets/panel-model.js":           {"ui/panel-model.js", "text/javascript; charset=utf-8", ""},
@@ -47,7 +48,7 @@ func serveClient(response http.ResponseWriter, request *http.Request) {
 	data, err := clientFiles.ReadFile(asset.file)
 	if err != nil {
 		if request.URL.Path == "/" || request.URL.Path == "/assets/panel.js" ||
-			request.URL.Path == "/assets/panel-bootstrap.js" || request.URL.Path == "/assets/panel-client.js" || request.URL.Path == "/assets/panel-model.js" ||
+			request.URL.Path == "/assets/panel-i18n.js" || request.URL.Path == "/assets/panel-bootstrap.js" || request.URL.Path == "/assets/panel-client.js" || request.URL.Path == "/assets/panel-model.js" ||
 			request.URL.Path == "/assets/panel-canvas.js" || request.URL.Path == "/assets/panel-canvas-controls.js" ||
 			request.URL.Path == "/assets/panel-dom.js" || request.URL.Path == "/assets/panel.css" || request.URL.Path == "/icon.svg" {
 			writeError(response, http.StatusNotFound, errors.New("Hub panel asset is unavailable"))

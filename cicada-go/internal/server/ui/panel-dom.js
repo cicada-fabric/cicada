@@ -1,16 +1,21 @@
+import { setLocalizedAttribute, setLocalizedText } from './panel-i18n.js';
+
 const svgNS = 'http://www.w3.org/2000/svg';
 
 export function html(tag, className = '', text = '') {
   const value = document.createElement(tag);
   if (className) value.className = className;
-  if (text !== '') value.textContent = String(text);
+  if (text !== '') setLocalizedText(value, text);
   return value;
 }
 
 export function svg(tag, attrs = {}, text = '') {
   const value = document.createElementNS(svgNS, tag);
-  for (const [key, item] of Object.entries(attrs)) value.setAttribute(key, String(item));
-  if (text !== '') value.textContent = String(text);
+  for (const [key, item] of Object.entries(attrs)) {
+    if (item && typeof item === 'object') setLocalizedAttribute(value, key, item);
+    else value.setAttribute(key, String(item));
+  }
+  if (text !== '') setLocalizedText(value, text);
   return value;
 }
 

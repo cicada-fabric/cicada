@@ -5,6 +5,34 @@ This file records user-visible changes by release line. `VERSION` and the Go
 release is a product release; historical prototype tags are not current release
 qualification. See [repository maintenance](docs/repository-maintenance.md).
 
+## Unreleased
+
+Software remains **0.0.5**; this is an unreleased source checkpoint, not
+an announced release or replacement of an existing deployment.
+
+- The local Owner helper can use existing encrypted OpenSSL ML-KEM-768 and
+  ML-DSA-65 PEM keys for the existing finite bootstrap and exact Owner grants.
+  Private operations stay in OpenSSL; Hub receives no private PEM or passphrase.
+- Hub identity loading and finite Owner bootstrap are separated from Control.
+  Local setup/issuance and a Hub-only HTTP handler do not create Control
+  Workspaces or Machines; existing identities, account/Owner IDs, Root history
+  and exact receipts remain intact.
+- The Hub panel supports EN/zh-CN and puts the old browser-device/Grant form
+  behind an explicit advanced entry. The accepted two-page account/password
+  setup and login remain **NOT_IMPLEMENTED**; public key association alone does
+  not activate an Owner signer.
+
+Scoped normal/race/vet and offline Go WASM/UI-model checks passed with earlier
+failed assertions, aggregate timeouts and harness failures retained. The actual
+current-source Linux/Windows builds and real Linux OpenSSL PTY compatibility
+with the pinned older Hub have separate source/artifact attribution. Earlier
+pre-extraction captures remain historical. These checks do not qualify a new
+extracted-Hub runtime image, native Windows/ACL behavior, Chromium enrollment,
+Android, physical devices or public HTTPS. See
+[extraction evidence](docs/architecture-v2-audit.md) and
+[external-key validation](docs/windows-owner-openssl-validation.md).
+Schema 60, Client contract v1.6.5, wire 1 and catalog 55 remain unchanged.
+
 ## 0.0.5 — unreleased development candidate
 
 ### Local Hub Owner setup and first signer bootstrap

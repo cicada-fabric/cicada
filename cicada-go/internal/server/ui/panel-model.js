@@ -4,6 +4,13 @@ export function pinMatches(pin, identity, origin) {
     identity.suite === 'ML-KEM-768+ML-DSA-65+AES-256-GCM');
 }
 
+export function savedPanelRoute(state = {}) {
+  if (state.device?.active) return 'active-device';
+  if (state.enrollment?.body) return 'pending-enrollment';
+  if (state.deviceDraft && state.vault) return 'device-draft';
+  return 'owner-account-setup-unavailable';
+}
+
 export function screenPointToWorld(point, view) {
   return { x: (point.x - view.x) / view.scale, y: (point.y - view.y) / view.scale };
 }

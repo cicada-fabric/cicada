@@ -8,6 +8,50 @@ On first use, the browser displays the Hub ID and Control public key ID returned
 
 The browser creates a device identity in Go WASM memory. Its private bytes are encrypted for browser storage with WebCrypto AES-256-GCM and a PBKDF2-SHA-256 password key (600,000 iterations). IndexedDB stores only the encrypted vault, public device manifest, pin, session counters, and opaque sealed packets. An optional backup download contains the encrypted vault. The Owner's private identity is never imported into the browser or sent to the Hub.
 
+## First Owner: local ceremony, public-only browser guide
+
+The panel's first-Owner guide is not an Owner-registration UI. The existing
+software 0.0.5 server flow creates the stable account-to-human-Owner mapping
+locally with `cicada hub setup`, then the local Hub operator issues one finite
+pairing with `cicada hub owner-bootstrap-issue`. An external Owner signer proves
+possession and verifies the receipt with its local bootstrap flow. The browser
+cannot create that mapping, issue authority, register a Root, or read whether a
+Root is active. `HUB_READY` describes local account setup; `NEEDS_OWNER_SIGNER`
+describes the absence of an active first signer. They are separate from later
+browser Client enrollment and encrypted manager capabilities. Node INITIAL
+enrollment is a separate path again.
+
+The guide accepts two public JSON files: the independently transferred
+`cicada.hub-owner-connection.v1` file from `hub setup`, and the
+`cicada.owner-signer-public.v1` manifest exported by the Owner's local signer
+configured with the Owner's existing encrypted key files.
+It checks their exact supported fields, account and Owner IDs, canonical
+origin and loopback policy, complete Hub Client-Control identity, Owner public
+identity, and full candidate fingerprint with the Go WASM validator. Unknown
+fields—including private identity, seed, credential, or secret fields—are
+rejected. The files are read into page memory for this check, are not sent to
+the Hub, and are not saved in browser storage. After validation the Owner
+manifest can be downloaded as a public file for transfer to the local Hub
+operator. This is a draft consistency check only; it does not verify a live
+Hub state or prove private-key possession.
+
+Because the page is served by the Hub, do not treat the page or its own display
+as an independent trust source. Obtain the connection file through a trusted
+local operator channel, compare the full Hub identity and candidate fingerprint
+outside the page, and rely on the local issuer's exact fingerprint review and
+the Owner signer's authenticated receipt. Never select or paste an Owner
+private key or passphrase into the browser. The panel shows the guide before
+the separate browser-device flow; selecting that flow means the operator
+already has an Owner signer. The Hub still rejects a Client enrollment without
+the existing Owner-signed grant.
+
+This public-only guide is source work for a future reviewed Hub build. The
+frozen software 0.0.5 artifact and any currently deployed panel remain
+unchanged. It adds no HTTP metadata route, Client catalog operation, or wire
+change. The existing bounded bootstrap contract and its CLI remain the
+authority for setup and first-signer state. Windows Owner private-key custody
+and the full one-click/unified-pairing product are not established by this UI.
+
 The exported `cicada-device-enrollment.json` file contains the public browser identity and its full SHA-256 fingerprint. An Owner signs that exact key offline with an existing private identity whose file mode is `0600`:
 
 ```sh
@@ -27,7 +71,30 @@ cicada owner device-grant-sign \
 
 The example uses GNU `date` to choose a future UTC expiry one hour away; choose an explicit expiry no more than 24 hours away. The grant output is canonical signed JSON with mode `0600` and is created without overwriting an existing file. The separate summary contains public identity and scope metadata so Go WASM can verify the grant locally before submission. It neither enrolls the device nor pins the Hub. The Hub still checks the Owner key, Hub, device, purpose, expiry, and nonce before activating enrollment.
 
-Import both the signer summary and grant into the browser. The panel stores the exact enrollment request before sending it. If the browser loses the `201 Created` response, retry uses the same request, key, and grant nonce. It does not generate another key or grant automatically.
+For an established signer profile, use `cicada owner-signer grant` with the
+browser manifest, a reviewed expiry, and two new output paths:
+
+```sh
+EXPIRES_AT=$(python3 -c 'from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)+timedelta(hours=23)).isoformat(timespec="seconds").replace("+00:00","Z"))')
+
+cicada owner-signer grant \
+  --profile /private/owner-signer \
+  --manifest-file /private/transfers/cicada-device-enrollment.json \
+  --expires-at "$EXPIRES_AT" \
+  --output /private/transfers/owner-device-grant.json \
+  --summary-output /private/transfers/owner-device-grant-summary.json
+```
+
+The grant requires the profile's authenticated bootstrap receipt and reviews
+the device scope in a real terminal. Keep the terminal attached; do not
+redirect stdout. `--summary-output` writes an exclusive public JSON file while
+the command prints the public summary in the terminal. The summary contains no
+private identity. The legacy `cicada owner device-grant-sign` path remains
+available when using its existing local Owner identity file. Import both the
+signer summary and grant into the browser. The panel stores the
+exact enrollment request before sending it. If the browser loses the `201
+Created` response, retry uses the same request, key, and grant nonce. It does
+not generate another key or grant automatically.
 
 ## Encrypted requests and topology changes
 

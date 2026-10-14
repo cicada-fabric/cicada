@@ -147,6 +147,10 @@
 
 产品界面先让基础操作简单，再逐步呈现复杂权限与协作能力。Thread/Endpoint、Network 登记、Group、角色和连线保持独立对象与职责；多处出现同一 Endpoint 只是引用。Hub 面板、Android Client、MCP 与 CLI 组合相同的小型受权原语，返回一致的类型化结果、错误和版本；公开 capability 只说明功能可用，不能替代设备、Owner 与当前服务端 Guard 授权。实现仍以一个轻量 Go Hub/Node binary 和可选 Docker 为主，不为“积木式体验”预建插件框架或微服务。
 
+Owner 普通首次设置以两页完成：安装器通过部署者控制渠道给出地址与短期单次 claim；第一页取得完整 Hub 公开身份，重算并匹配独立受信的 SHA-256 指纹 pin 后才发送 code 或密码；第二页输入用户名、账户密码并绑定已有 ML-KEM/ML-DSA 公钥，由程序管理独立登录设备。摘要 pin 覆盖准确完整身份，不以短 key ID 或页面自报值替代；二维码无需包含全部公钥 JSON。有限 claim 与登录设备自身 proof 可以建立账户凭据、登录设备和待证明公钥关联，但公钥上传不等于 ACTIVE Owner 批准签名者；签名 authority 仍须已有私钥的 KEM 与签名 possession proof，私钥 PEM/passphrase 不上传。
+
+账户认证归 Hub Identity/Authorization，独立于 Control、Workspace、模型和未来 Controller。10+ 字符密码策略仅与每次登录的已登记设备 PQC 挑战共同使用；初始 claim 不是持续 MFA，未知新设备不能仅凭密码取得授权。已有账户只在明确受控渠道附加凭据，不匿名认领旧部署，不重建身份或重开/改变 Root；Owner account、批准凭据、设备 identity、Network membership 与 Endpoint Join 保持独立。普通设置隐藏协议 IDs、浏览器设备登记和 vault 表单。设置 code、密码、proof、结果及后续账户请求保持 NIST 应用层加密；HTTPS 是运输边界，cookie/session hint 不单独构成 actor，仍核验认证设备 envelope、当前 epochs 与 nonce/sequence，不旁路管理加密与业务 Guard。实现与验收状态见架构文档。
+
 ### 1.5 非目标
 
 CICADA 不替代 Codex、Claude Code 或其他 Harness；不默认构造全局大脑；不要求所有任务都变成 DAG 工作流；不把“Agent 相互同意”视为事实；不发明密码学原语；不建设无邀请的开放公网社交目录、Kubernetes 平台、复杂移动客户端或未经容量实测的超大规模集群。私有、明确加入且按 Network 隔离的 Agent 协作属于本架构目标；它不等于公共网络或全局发现。

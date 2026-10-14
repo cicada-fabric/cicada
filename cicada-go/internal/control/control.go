@@ -20,10 +20,11 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	harnesspkg "github.com/cicada-ai/cicada/internal/harness"
+	"github.com/cicada-ai/cicada/internal/hubidentity"
+	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/store"
 	workspaceprep "github.com/cicada-ai/cicada/internal/workspace"
 	workspacecas "github.com/cicada-ai/cicada/internal/workspace/cas"
-	"github.com/gofrs/flock"
 )
 
 type Config struct {
@@ -162,6 +163,7 @@ type Control struct {
 	clientIdentity      *e2ee.Identity
 	nodeControlIdentity *e2ee.Identity
 	managerOwnerID      string
+	hubOwner            *hubowner.Service
 	approvalMu          sync.Mutex
 	approvalDecisionMu  sync.Mutex
 	approvalWaiters     map[string]chan string
@@ -217,35 +219,30 @@ func New(config Config) (*Control, error) {
 	if identityPath == "" {
 		identityPath = filepath.Join(config.StateDir, "e2ee", "identity.json")
 	}
-	identity, err := loadIdentity(identityPath)
+	identity, err := hubidentity.LoadIdentity(identityPath)
 	if err != nil {
 		persistence.Close()
 		return nil, err
 	}
-	control.identity = identity
 	ownerSetup, err := persistence.EnsureHubManagerLocal(identity.Public().ID)
 	if err != nil {
 		persistence.Close()
 		return nil, err
 	}
+	identities, err := hubidentity.LoadApplicationIdentities(config.StateDir, identity)
+	if err != nil {
+		persistence.Close()
+		return nil, err
+	}
+	control.identity = identities.Peer
+	control.clientIdentity = identities.ClientControl
+	control.nodeControlIdentity = identities.NodeControl
 	control.managerOwnerID = ownerSetup.OwnerID
-	// Client management traffic has its own PQ key. Peer Contact keys must
-	// never become the Hub's Client-Control decryption identity.
-	clientIdentity, err := loadIdentity(filepath.Join(config.StateDir, "e2ee", "client-control-identity.json"))
+	control.hubOwner, err = hubowner.NewService(persistence, identities)
 	if err != nil {
 		persistence.Close()
 		return nil, err
 	}
-	control.clientIdentity = clientIdentity
-	// Node Control has a distinct application key from both the Hub's peer
-	// identity and the Client management identity. Keep its lifecycle isolated
-	// so a pairing-key rotation cannot silently change either other boundary.
-	nodeControlIdentity, err := loadIdentity(filepath.Join(config.StateDir, "e2ee", "node-control-identity.json"))
-	if err != nil {
-		persistence.Close()
-		return nil, err
-	}
-	control.nodeControlIdentity = nodeControlIdentity
 	fabricService, err := fabricpkg.NewService(persistence, ownerSetup.OwnerID, ownerSetup.OwnerID)
 	if err != nil {
 		persistence.Close()
@@ -264,86 +261,8 @@ func New(config Config) (*Control, error) {
 // or reporting code; the accessor is only composition wiring.
 func (c *Control) Fabric() *fabricpkg.Service { return c.fabric }
 
-func loadIdentity(path string) (*e2ee.Identity, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("create E2EE identity directory: %w", err)
-	}
-	// Serialize only identity load/create across independent local processes.
-	// The StateDir startup lock is shared and cannot protect first creation.
-	lockPath := path + ".lock"
-	file, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err == nil {
-		if err = file.Close(); err != nil {
-			return nil, err
-		}
-	} else if !errors.Is(err, os.ErrExist) {
-		return nil, err
-	}
-	info, err := os.Lstat(lockPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
-		return nil, errors.New("E2EE identity lock is not a private regular file")
-	}
-	lock := flock.New(lockPath, flock.SetFlag(os.O_RDONLY))
-	if err = lock.Lock(); err != nil {
-		return nil, err
-	}
-	defer lock.Close()
-	held, err := lock.Stat()
-	current, statErr := os.Lstat(lockPath)
-	if err != nil || statErr != nil || !os.SameFile(held, current) || !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 {
-		return nil, errors.New("E2EE identity lock changed")
-	}
-	if data, err := os.ReadFile(path); err == nil {
-		identity, decodeErr := e2ee.UnmarshalIdentity(data)
-		if decodeErr != nil {
-			return nil, decodeErr
-		}
-		_ = os.Chmod(path, 0o600)
-		return identity, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read E2EE identity: %w", err)
-	}
-	identity, err := e2ee.NewIdentity()
-	if err != nil {
-		return nil, err
-	}
-	data, err := identity.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(temporary.Name())
-	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return nil, fmt.Errorf("write E2EE identity: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return nil, err
-	}
-	if err := temporary.Close(); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(temporary.Name(), path); err != nil {
-		return nil, fmt.Errorf("install E2EE identity: %w", err)
-	}
-	directory, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
-	err = directory.Sync()
-	closeErr := directory.Close()
-	if err != nil {
-		return nil, err
-	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	return identity, nil
-}
+// Kept for existing package-local callers; lifecycle is Hub-owned.
+func loadIdentity(path string) (*e2ee.Identity, error) { return hubidentity.LoadIdentity(path) }
 
 func (c *Control) registerLocalMachines() error {
 	hostname, err := os.Hostname()

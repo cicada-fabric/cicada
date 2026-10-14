@@ -108,17 +108,29 @@ func aad(route Route) ([]byte, error) {
 }
 
 func seal(sender *e2ee.Identity, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte) ([]byte, error) {
-	if sender == nil || len(plaintext) == 0 || len(plaintext) > maxPlaintextBytes {
+	if sender == nil {
 		return nil, ErrInvalidPacket
 	}
-	if err := validateRoute(route, binding, sender.Public(), receiver, direction); err != nil {
+	return sealWithPrivateOperations(sender.Public(), sender, receiver, binding, route, direction, plaintext, sender)
+}
+
+func sealWithPrivateOperations(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity) ([]byte, error) {
+	if operations == nil || len(plaintext) == 0 || len(plaintext) > maxPlaintextBytes {
+		return nil, ErrInvalidPacket
+	}
+	if err := validateRoute(route, binding, sender, receiver, direction); err != nil {
 		return nil, err
 	}
 	associated, err := aad(route)
 	if err != nil {
 		return nil, err
 	}
-	envelope, err := e2ee.Seal(sender, receiver, plaintext, associated, route.Sequence)
+	var envelope []byte
+	if trustedSender != nil {
+		envelope, err = e2ee.Seal(trustedSender, receiver, plaintext, associated, route.Sequence)
+	} else {
+		envelope, err = e2ee.SealWithPrivateOperations(sender, operations, receiver, plaintext, associated, route.Sequence)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +145,14 @@ func seal(sender *e2ee.Identity, receiver e2ee.PublicIdentity, binding Binding, 
 }
 
 func open(recipient *e2ee.Identity, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string) (Opened, error) {
-	if recipient == nil || len(data) == 0 || len(data) > maxPacketBytes {
+	if recipient == nil {
+		return Opened{}, ErrInvalidPacket
+	}
+	return openWithPrivateOperations(recipient.Public(), recipient, sender, binding, data, direction, nil, recipient)
+}
+
+func openWithPrivateOperations(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity) (Opened, error) {
+	if operations == nil || len(data) == 0 || len(data) > maxPacketBytes {
 		return Opened{}, ErrInvalidPacket
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -146,14 +165,29 @@ func open(recipient *e2ee.Identity, sender e2ee.PublicIdentity, binding Binding,
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return Opened{}, ErrInvalidPacket
 	}
-	if err := validateRoute(packet.Route, binding, sender, recipient.Public(), direction); err != nil {
+	if err := validateRoute(packet.Route, binding, sender, recipient, direction); err != nil {
 		return Opened{}, err
+	}
+	if expectedRoute != nil {
+		if packet.Route != *expectedRoute {
+			return Opened{}, ErrInvalidPacket
+		}
+		var envelope e2ee.Envelope
+		if json.Unmarshal(packet.Envelope, &envelope) != nil || envelope.Sequence != expectedRoute.Sequence {
+			return Opened{}, ErrInvalidPacket
+		}
 	}
 	associated, err := aad(packet.Route)
 	if err != nil {
 		return Opened{}, err
 	}
-	plaintext, sequence, err := e2ee.Open(recipient, sender, packet.Envelope, associated)
+	var plaintext []byte
+	var sequence uint64
+	if trustedRecipient != nil {
+		plaintext, sequence, err = e2ee.Open(trustedRecipient, sender, packet.Envelope, associated)
+	} else {
+		plaintext, sequence, err = e2ee.OpenWithPrivateOperations(recipient, operations, sender, packet.Envelope, associated)
+	}
 	if err != nil {
 		return Opened{}, err
 	}
@@ -169,6 +203,12 @@ func SealRequest(device *e2ee.Identity, hub e2ee.PublicIdentity, binding Binding
 	return seal(device, hub, binding, route, DirectionRequest, plaintext)
 }
 
+// SealRequestWithPrivateOperations requires a signature from the expected
+// device key, preserving the Client wire v1 frame and canonical signed bytes.
+func SealRequestWithPrivateOperations(device e2ee.PublicIdentity, operations e2ee.PrivateOperations, hub e2ee.PublicIdentity, binding Binding, route Route, plaintext []byte) ([]byte, error) {
+	return sealWithPrivateOperations(device, operations, hub, binding, route, DirectionRequest, plaintext, nil)
+}
+
 // OpenRequest authenticates and decrypts one packet. The caller must look up
 // the trusted Binding and device key independently, then atomically register
 // Route.Sequence/OperationID and check authorization before invoking Control.
@@ -182,4 +222,11 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, binding Bindin
 
 func OpenResponse(device *e2ee.Identity, hub e2ee.PublicIdentity, binding Binding, data []byte) (Opened, error) {
 	return open(device, hub, binding, data, DirectionResponse)
+}
+
+// OpenResponseWithPrivateOperations requires the complete operation-specific
+// route before invoking decapsulation. Sender signature verification also
+// precedes the callback in e2ee; callers must still authorize the operation.
+func OpenResponseWithPrivateOperations(device e2ee.PublicIdentity, operations e2ee.PrivateOperations, hub e2ee.PublicIdentity, binding Binding, expectedRoute Route, data []byte) (Opened, error) {
+	return openWithPrivateOperations(device, operations, hub, binding, data, DirectionResponse, &expectedRoute, nil)
 }

@@ -1,6 +1,7 @@
 import { boxContains, endpointAdmissionGesture, endpointJoinGesture, groupParentGesture, groupHasMember, layoutTopology, normalizeBox, screenPointToWorld, worldPointToScreen } from './panel-model.js';
 import { installCanvasControls } from './panel-canvas-controls.js';
 import { button, html, svg } from './panel-dom.js';
+import { localized as t, localizedIfKnown, setLocalizedText } from './panel-i18n.js';
 
 export class CanvasPanel {
   constructor(root, options) {
@@ -43,11 +44,11 @@ export class CanvasPanel {
     const workspace = html('section', 'workspace');
     this.stage = html('div', 'stage');
     const title = html('div', 'stage-head');
-    title.append(html('span', 'chip good', `Network · ${this.networkName()}`));
-    title.append(button('Refresh snapshots', () => this.reload(), 'btn quiet'));
+    title.append(html('span', 'chip good', t('Network · {name}', { name: this.networkName() })));
+    title.append(button(t('Refresh snapshots'), () => this.reload(), 'btn quiet'));
     const tools = html('div', 'stage-tools');
     this.modeButtons = new Map();
-    for (const [mode, label] of [['select', 'Select'], ['pan', 'Pan'], ['join', 'Drag to Group'], ['parent', 'Nest Group'], ['link', 'Draw Link']]) {
+    for (const [mode, label] of [['select', t('Select')], ['pan', t('Pan')], ['join', t('Drag to Group')], ['parent', t('Nest Group')], ['link', t('Draw Link')]]) {
       const modeButton = button(label, () => this.setMode(mode), 'btn canvas-mode');
       modeButton.setAttribute('aria-pressed', mode === this.mode ? 'true' : 'false');
       modeButton.classList.toggle('active-tool', mode === this.mode);
@@ -55,11 +56,11 @@ export class CanvasPanel {
       tools.append(modeButton);
     }
     tools.append(button('−', () => this.zoomAt(.82), 'btn'), button('+', () => this.zoomAt(1.22), 'btn'));
-    this.svgRoot = svg('svg', { role: 'img', 'aria-label': 'Hub topology canvas', tabindex: '0' });
+    this.svgRoot = svg('svg', { role: 'img', 'aria-label': t('Hub topology canvas'), tabindex: '0' });
     this.world = svg('g', { class: 'world' });
     this.selectionRect = svg('rect', { class: 'selection-box', visibility: 'hidden' });
     this.svgRoot.append(this.world, this.selectionRect);
-    this.banner = html('div', 'status-banner', 'Layout is local to this browser. It does not change ownership, ACLs, or Network policy.');
+    this.banner = html('div', 'status-banner', t('Layout is local to this browser. It does not change ownership, ACLs, or Network policy.'));
     this.stage.append(title, tools, this.svgRoot, this.banner);
     this.side = html('aside', 'side');
     workspace.append(this.stage, this.side);
@@ -72,7 +73,7 @@ export class CanvasPanel {
   }
 
   networkName() {
-    return this.topology.networks?.find(network => network.network_id === this.networkId)?.name || this.networkId || 'All networks';
+    return this.topology.networks?.find(network => network.network_id === this.networkId)?.name || this.networkId || t('All networks');
   }
 
   captureScope() {
@@ -127,7 +128,7 @@ export class CanvasPanel {
     } catch (error) {
       if (!this.scopeIsCurrent(scope)) return false;
       this.message = `${outcomeMessage ? outcomeMessage + ' ' : ''}Refresh stopped: ${error.errorCode ? error.errorCode + ': ' : ''}${error.message}`;
-      this.banner.textContent = this.message;
+      setLocalizedText(this.banner, localizedIfKnown(this.message));
       if (error.message.includes('unresolved') || error.message.includes('sequence state')) this.pending?.(error.message);
       this.renderSide();
       return false;
@@ -348,7 +349,7 @@ export class CanvasPanel {
       this.world.append(svg('rect', { x: 60, y: 20, width: 350, height: 45, class: 'group-box',
         'data-network-root-drop-id': this.networkId }));
       this.world.append(svg('text', { x: 77, y: 47, class: 'group-meta',
-        'data-network-root-drop-id': this.networkId }, 'Network root · drop Group here'));
+        'data-network-root-drop-id': this.networkId }, t('Network root · drop Group here')));
     }
     for (const group of scene.groups) {
       const position = scene.groupPos.get(group.group_id);
@@ -359,7 +360,8 @@ export class CanvasPanel {
       this.world.append(svg('text', { x: position.x + 17, y: position.y + 27, class: 'group-label',
         'data-group-drop-id': group.group_id, 'data-group-drag-id': group.group_id }, group.name));
       const parentName = scene.groups.find(item => item.group_id === group.parent_group_id)?.name;
-      const meta = parentName ? `nested under ${parentName} · v${group.version}` : `network root · v${group.version}`;
+      const meta = parentName ? t('nested under {parent} · v{version}', { parent: parentName, version: group.version }) :
+        t('network root · v{version}', { version: group.version });
       this.world.append(svg('text', { x: position.x + 18, y: position.y + 45, class: 'group-meta' }, meta));
       if (group.parent_group_id && scene.groupPos.has(group.parent_group_id)) {
         const parent = scene.groupPos.get(group.parent_group_id);
@@ -377,20 +379,24 @@ export class CanvasPanel {
     for (const [key, value] of Object.entries(this.view)) if (Number.isFinite(value)) this.view[key] = value;
     this.transformWorld();
     const stageTitle = this.stage.querySelector('.stage-head .chip');
-    if (stageTitle) stageTitle.textContent = `Network · ${this.networkName()}`;
-    this.banner.textContent = this.message || `Local layout only · ${scene.endpointRefs.length} endpoint references · zoom ${Math.round(this.view.scale * 100)}%`;
+    if (stageTitle) setLocalizedText(stageTitle, t('Network · {name}', { name: this.networkName() }));
+    setLocalizedText(this.banner, this.message ? localizedIfKnown(this.message) : t('Local layout only · {count} endpoint references · zoom {zoom}%', {
+      count: scene.endpointRefs.length, zoom: Math.round(this.view.scale * 100)
+    }));
   }
 
   drawEndpoint(ref) {
     const endpoint = ref.endpoint;
+    const presence = endpoint.presence || t('presence unknown');
     const group = svg('g', { class: this.selection.has(endpoint.endpoint_id) ? 'endpoint selected' : 'endpoint',
       'data-endpoint-id': endpoint.endpoint_id, 'data-group-ref': ref.groupId, tabindex: '0', role: 'button',
-      'aria-label': `${endpoint.name || endpoint.endpoint_id}, ${endpoint.presence || 'presence unknown'}` });
+      'aria-label': t('Endpoint: {name}, presence: {presence}', { name: endpoint.name || endpoint.endpoint_id, presence }) });
     group.append(svg('rect', { x: ref.x, y: ref.y, width: 146, height: 50, class: 'endpoint-card', rx: 9 }));
     group.append(svg('text', { x: ref.x + 10, y: ref.y + 19, class: 'endpoint-name' }, endpoint.name || endpoint.endpoint_id));
     const status = ref.status?.presence;
-    const state = status?.known ? `${status.state}${status.stale ? ' · stale' : ''}` : 'presence unknown';
-    group.append(svg('text', { x: ref.x + 10, y: ref.y + 37, class: 'endpoint-meta' }, `${state} · ${ref.groupId || 'unassigned'}`));
+    const state = status?.known ? `${status.state}${status.stale ? ' · stale' : ''}` : t('presence unknown');
+    group.append(svg('text', { x: ref.x + 10, y: ref.y + 37, class: 'endpoint-meta' },
+      t('Endpoint state: {presence} · {group}', { presence: state, group: ref.groupId || t('unassigned') })));
     this.world.append(group);
   }
 

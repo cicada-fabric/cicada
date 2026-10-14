@@ -1,208 +1,185 @@
-# Windows Owner approval with external OpenSSL
+# Windows: bind an existing encrypted Owner key to a 0.0.5 Hub
 
-This is optional advanced/development compatibility tooling, not the standard
-account or enrollment product. The [Owner onboarding design](owner-onboarding-design.md)
-records independent Linux Hub account/admin initialization first, then the same
-QR/pairing-key experience for Node/Client with trusted device-local generation/import.
-Proposed Windows/Android local components would hold external Owner signing keys
-after explicit registration;
-they do not create the Hub account instead of server-side setup. Hub never holds
-Owner private keys, and pairing credentials alone cannot generate a signed Grant.
-The new account/setup product is **NOT_IMPLEMENTED**. Normal enrollment should
-not require OpenSSL, Owner ID lookup, hand-copied public JSON or Base64 Grant.
-The manual procedure and its actual source-attributed validation below remain
-unchanged in scope.
+Use the existing ML-KEM-768 and ML-DSA-65 encrypted PEM keys and their public
+SPKI files. This flow keeps the same Hub account, StateDir, Hub keys and deployed
+software 0.0.5 image. A separately built local Windows helper opens the private
+keys through OpenSSL and completes the finite first-Owner proof; it does not
+upload private keys or replace the Hub. Implementation and acceptance status
+are separate: see [the current validation record](windows-owner-openssl-validation.md).
+Native Windows execution and ACL enforcement, the user's public HTTPS Hub,
+Android and physical-device acceptance remain **NOT_RUN** by us.
 
-The [cross-platform interface plan](deployment-interface-design.md) uses a shared
-Web UI and Go local components, with Windows native key/ACL and Runtime acceptance
-separate from cross-builds. This helper does not establish that planned product.
+## 1. Prepare the existing candidate on Windows
 
-This opt-in helper supports public-key adaptation and device-grant signing for
-the existing software 0.0.3 Hub, wire 1, catalog 55 and `client-hub-v1.6.5`.
-It is compatible with the existing Hub enrollment/registration path and does not
-require replacing an existing Hub image or trusted device keys. Its executable has separate
-source/build fingerprint and SHA-256 attribution; use the reviewed helper artifact,
-not an assumed published release. Actual Windows execution, Windows ACL enforcement
-validation and physical Android enrollment remain **NOT_RUN**; native Windows
-secure-storage adaptation remains **NOT_IMPLEMENTED**. WSL is not required.
+Obtain the exact `hub-owner-connection.json` produced by the operator's existing
+`hub setup`. Independently verify its account/Owner IDs, HTTPS origin and full
+Hub Client-Control pin. The [Hub setup guide](hub-owner-bootstrap.md) covers
+setup if it has not happened yet; retain an already configured Hub and its
+original connection file. A response fetched from the target Hub alone is not
+independent trust.
 
-All URLs, paths and IDs below are placeholders. `HTTPS_HUB_URL` is the final
-trusted HTTPS application entry chosen by the operator. Owner key generation and
-custody remain with the user and external OpenSSL; the helper neither creates keys
-nor imports/converts private PEM. Use a fresh local folder with user-controlled
-access, outside Documents/OneDrive/cloud synchronization/shared folders. OpenSSL prompts for the
-encryption passphrase; put no secret or seed in arguments, environment variables,
-Hub uploads or online converters. Run commands individually and stop on any error.
-
-## 1. Generate encrypted keys and export public SPKI on Windows
-
-Use the absolute path of the user's installed OpenSSL 3.5.9 executable; the example
-path may differ. `New-Item` must succeed for a new folder: never regenerate over an
-existing Owner identity. The [OpenSSL genpkey](https://docs.openssl.org/3.5/man1/openssl-genpkey/)
-and [pkey](https://docs.openssl.org/3.5/man1/openssl-pkey/) commands provide key
-generation/encryption and public-key export.
+Set the following absolute paths to your existing files and the separately
+verified helper artifact. Choose a new profile path under your local account;
+the helper creates it with a protected current-user/System ACL. Do not create
+the profile directory beforehand. Retain the original key files outside it.
+Run each command in a real terminal and stop on any nonzero exit code.
 
 ```powershell
-$OpenSSL = 'C:\Program Files\OpenSSL-Win64\bin\openssl.exe'
 $Helper = 'C:\CicadaTools\cicada.exe'
-$OwnerDir = Join-Path $env:LOCALAPPDATA 'CicadaOwner-fresh'
-New-Item -ItemType Directory -Path $OwnerDir -ErrorAction Stop
-Set-Location $OwnerDir
-& $OpenSSL version
-& $OpenSSL genpkey -algorithm ML-DSA-65 -aes-256-cbc -out owner-signing-private.pem
-& $OpenSSL genpkey -algorithm ML-KEM-768 -aes-256-cbc -out owner-kem-private.pem
-& $OpenSSL pkey -in owner-signing-private.pem -pubout -out owner-signing-public.pem
-& $OpenSSL pkey -in owner-kem-private.pem -pubout -out owner-kem-public.pem
-& $Helper owner-key from-openssl --kem-public owner-kem-public.pem --signing-public owner-signing-public.pem --output owner-public.json
+$OpenSSL = 'C:\Program Files\OpenSSL-Win64\bin\openssl.exe'
+$Keys = 'C:\ExistingOwnerKeys'
+$Connection = 'C:\TrustedTransfer\hub-owner-connection.json'
+$Profile = Join-Path $env:LOCALAPPDATA 'CicadaOwnerSigner'
+
+& $Helper owner-signer prepare-openssl `
+  --profile $Profile --connection-file $Connection --openssl $OpenSSL `
+  --kem-private (Join-Path $Keys 'owner-kem-private.pem') `
+  --signing-private (Join-Path $Keys 'owner-signing-private.pem') `
+  --kem-public (Join-Path $Keys 'owner-kem-public.pem') `
+  --signing-public (Join-Path $Keys 'owner-signing-public.pem')
+if ($LASTEXITCODE -ne 0) { throw 'Owner candidate preparation failed' }
 ```
 
-The two private files are encrypted PKCS#8 PEM and stay on this laptop. The last
-command reads only `PUBLIC KEY` SPKI and prints `key_id` and the complete public
-identity fingerprint. Independently verify these before registering
-`owner-public.json` on Hub; public-file adaptation is not Owner authorization.
+Review the displayed account, Owner, Hub, origin and complete fingerprint, then
+type the exact requested approval. The command outputs `NEEDS_BOOTSTRAP` and
+writes `$Profile\owner-public.json`. Transfer only that public manifest to the
+Hub operator. It binds the candidate's full public keys to the saved account,
+Owner, origin and Hub pin; it is not a Root grant.
 
-## 2. Obtain the exact Owner Human Principal ID and register its public key
+If an existing public SPKI file is missing, export only that public key with
+OpenSSL `pkey -in EXISTING_ENCRYPTED_PRIVATE.pem -pubout -out NEW_PUBLIC.pem`.
+OpenSSL prompts locally for the passphrase. Keep the existing private key;
+there is no regeneration, private PEM conversion or plaintext private-identity
+import in this procedure. Passphrases stay out of arguments, environment,
+Hub uploads and evidence.
 
-`OWNER_ID` is the independently confirmed Human Principal ID. The Client-Control
-public key ID shown by `/v2/client/identity` is a different identity; a private
-identity JSON is not an ID lookup source. There is no existing public Manager-ID
-lookup command. For an independently known fresh Hub with only its default
-creator Owner, an operator may use this optional read-only check on the Linux
-Docker host during a stopped-Hub maintenance window:
+## 2. Stop, issue locally, then restart the same Hub
 
-```sh
-docker stop cicada-hub
-CICADA_BOOTSTRAP_STATE=$(docker volume inspect --format '{{ .Mountpoint }}' cicada-hub-state)
-python3 - "$CICADA_BOOTSTRAP_STATE/cicada.sqlite3" <<'PY'
-import pathlib, sqlite3, sys
-db = pathlib.Path(sys.argv[1])
-if db.is_symlink() or not db.is_file():
-    raise SystemExit('refused: existing regular database required')
-wal = pathlib.Path(str(db) + '-wal')
-if wal.exists() and wal.stat().st_size:
-    raise SystemExit('refused: nonempty WAL; no Owner ID returned')
-with sqlite3.connect(db.resolve().as_uri() + '?mode=ro&immutable=1', uri=True) as conn:
-    rows = conn.execute("SELECT id FROM principals WHERE kind='human' AND status='active' AND owner_id=id AND (trust_domain_id='' OR trust_domain_id=id) ORDER BY id").fetchall()
-if len(rows) != 1:
-    raise SystemExit('refused: exactly one candidate required; no Owner ID returned')
-print(rows[0][0])
-PY
-docker start cicada-hub
+The Hub operator checks the candidate fingerprint against the Owner's
+independent record. Use the existing container's image and its exact retained
+state volume. Stop the Hub cleanly, issue a challenge from that same image and
+state, then start the original container. This is the same local issuer used
+by the Unix guide; it does not use `owner-key register`.
+
+```bash
+HUB_CONTAINER='your-existing-hub-container'
+STATE_VOLUME='your-existing-hub-state-volume'
+TRANSFER_DIR='/secure/owner-bootstrap-transfer'
+HUB_IMAGE=$(docker inspect --format '{{ .Image }}' "$HUB_CONTAINER")
+FINGERPRINT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fingerprint"])' \
+  "$TRANSFER_DIR/owner-public.json")
+
+docker stop "$HUB_CONTAINER"
+docker run -it --rm --network none \
+  --mount "type=volume,source=$STATE_VOLUME,target=/state,volume-nocopy" \
+  --mount "type=bind,source=$TRANSFER_DIR,target=/transfer" \
+  "$HUB_IMAGE" hub owner-bootstrap-issue \
+  --candidate-manifest /transfer/owner-public.json \
+  --candidate-fingerprint "$FINGERPRINT" \
+  --pair-file /transfer/owner-bootstrap-pair.json \
+  --state-dir /state --workspace-root /workspace
+docker start "$HUB_CONTAINER"
 ```
 
-Restart the same stopped container after this read-only check even if lookup
-refuses. Run as a host user allowed to read the volume. Refusal requires inspection, not
-WAL deletion or selecting the first row. A sole eligible row is only a candidate;
-the fresh/default-creator prerequisite and Owner association must be independently
-known. With multiple Humans, use an independently known Manager Owner ID.
+The transfer directory must be writable by the image's runtime UID, normally
+1000, and its public candidate file readable by that UID. Supply the actual
+workspace path if your retained deployment uses a different one. Run commands
+individually, stop on errors, and restart the original stopped container even
+if issuance refuses. Do not delete or substitute the state volume.
 
-Transfer only `owner-public.json` to an operator-selected public-file location.
-Replace the public-file placeholder below with its verified absolute host path;
-mode `0644` makes this public file readable by the Hub image's runtime UID (normally
-1000). Do not change permissions on any private key. Under a chosen stopped-Hub window,
-run the existing 0.0.3 image's local command against its retained state volume:
+Issuance requires a configured active Owner and no permanent Root history. It
+checks the exact candidate and requires typed approval in the local terminal.
+The new pairing file is protected local material with an expiry of at most ten
+minutes. Transfer it securely to the Windows Owner promptly after restarting.
+There is no HTTP issuer, public first-key upload, Node authority or bearer
+substitute. A revoked or lost established Root does not reopen first setup.
 
-```sh
-CICADA_OWNER_IMAGE=$(docker inspect --format '{{ .Image }}' cicada-hub)
-chmod 0644 /ABSOLUTE/owner-public.json
-docker stop cicada-hub
-docker run --rm --network none \
-  --mount type=volume,src=cicada-hub-state,dst=/state \
-  --mount type=bind,src=/ABSOLUTE/owner-public.json,dst=/owner-public.json,readonly \
-  "$CICADA_OWNER_IMAGE" owner-key register --db /state/cicada.sqlite3 \
-  --owner-id OWNER_ID --public /owner-public.json --expect-key-id REVIEWED_OWNER_KEY_ID
-docker start cicada-hub
-```
-
-This one-shot container retains the original image's ENTRYPOINT (including the
-optional PQ image's binary path), state volume and read-only single-public-file
-mount. Its local Store lease
-is shared, so the chosen stopped-Hub boundary is operational, not an exclusive CLI
-stop guard. Restart the original Hub with its retained volume afterward; do not
-reinitialize state or upload either private PEM.
-
-## 3. Pin Hub and copy the phone's public identity
-
-In the current APK, open bottom **我的 → 连接与安全**, enter `HTTPS_HUB_URL` and read
-the public candidate. Independently obtain/verify the Hub ID and **complete Control
-public identity JSON**, then fill both and select **核对并固定 Hub 公钥**. The pin field
-needs the full public JSON, not only a key ID or URL response copied as a trust root.
-
-Select **生成 / 读取设备公钥身份**. The current UI displays selectable bare public
-JSON; there is no enrollment-manifest export button. Copy that exact JSON into a
-UTF-8 `device-public.json` on the laptop. Choose one unique `DEVICE_ID`, retain the
-same value for signing and phone enrollment, and keep the generated phone identity.
-
-## 4. Prepare and independently review one manifest
+## 3. Prove both existing private keys
 
 ```powershell
-& $Helper owner device-enrollment-prepare --device-public device-public.json --owner-public owner-public.json --owner-id OWNER_ID --hub-id PINNED_HUB_ID --device-id DEVICE_ID --output device-manifest.json
+& $Helper owner-signer bootstrap --profile $Profile `
+  --pair-file 'C:\TrustedTransfer\owner-bootstrap-pair.json'
+if ($LASTEXITCODE -ne 0) { throw 'Bootstrap did not return an authenticated receipt; retain the profile' }
 ```
 
-This public-input helper constructs the existing enrollment manifest and prints its
-complete fields, including `device_key_fingerprint`. Review Owner ID, Owner key ID,
-Hub ID, Device ID, device public key ID and full fingerprint against the independent
-Owner/Hub inputs and the exact phone JSON. Its calculated fingerprint does not
-independently establish trust, and it never guesses the Owner ID or signs approval.
+OpenSSL opens the encrypted KEM key to authenticate the exact Hub challenge.
+Review the displayed finite scope and type the requested fingerprint approval;
+OpenSSL then signs using the encrypted signing key. It also opens the encrypted
+receipt locally. The helper does not write either decrypted private key, the
+challenge nonce or the KEM shared secret to disk. Its profile records public
+pins, key paths and exact encrypted protocol packets. Success prints `ACTIVE`
+with the matching account, Owner, key, authority and version.
 
-## 5. Sign with OpenSSL and paste the exact proof bytes
-
-Choose an explicit current UTC expiry no more than 24 hours ahead, written as
-`YYYY-MM-DDTHH:MM:SSZ`. Replace every expected value with the reviewed tuple above:
+If the accepted response was lost, retain the same profile and keys:
 
 ```powershell
-& $Helper owner device-grant-sign-openssl --owner-public owner-public.json --signing-private owner-signing-private.pem --openssl $OpenSSL --manifest device-manifest.json --output owner-device-grant.json --expect-owner-id OWNER_ID --expect-owner-key-id REVIEWED_OWNER_KEY_ID --expect-hub-id PINNED_HUB_ID --expect-device-id DEVICE_ID --expect-device-key-id REVIEWED_DEVICE_KEY_ID --expect-device-fingerprint REVIEWED_FULL_SHA256 --expires-at REVIEWED_UTC_EXPIRY
-[Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $OwnerDir 'owner-device-grant.json')))
+& $Helper owner-signer recover --profile $Profile
 ```
 
-Review the scope printed before OpenSSL asks for the passphrase. OpenSSL alone
-opens the encrypted signing PEM; the helper verifies its returned signature and
-writes a new canonical proof file without overwriting. The second command encodes
-those exact file bytes as **standard padded base64**; do not reserialize its JSON,
-paste raw JSON, use URL-safe base64 or submit the signer's summary as the grant.
+Recovery resends the exact saved proof and authenticates the cached receipt;
+it does not sign a replacement or choose a different candidate. If the original
+proof was never accepted and expires, the operator can perform the same
+STOP–ISSUE–START procedure for a new finite authority, retaining the same keys
+and profile. Import that new pairing with `bootstrap` and review it anew.
+The old uncertain operation and a new operation are distinct; see the
+[recovery rules](hub-owner-bootstrap-contract.md#proof-and-accept-operation).
 
-On the phone, fill Owner ID, Owner key ID, complete `owner-public.json`, the same
-Device ID and that base64 string, then select **验证 Grant 并登记此设备**. Successful
-authenticated enrollment/session capabilities determine the role and permitted
-operations. If the response is lost, use **原样恢复设备登记** with the existing identity
-and request; do not regenerate keys or sign a replacement to hide an uncertain result.
+For the deployed 0.0.5 browser-device form, the public fields come from
+`$Profile\owner-public.json`: `owner_id` is the stable human Owner ID;
+`owner_public_identity.id` is the approval key ID; the Owner public-key field
+receives the complete `owner_public_identity` object. Do not paste the whole
+manifest into that key field. Complete the finite Root bootstrap above before
+expecting a Client grant to enroll the browser device. The browser's own Client
+identity remains separate from this Owner approval identity.
 
-This enrollment does not approve a Node, Join a native Thread, grant peer keys or
-establish enrolled Node pure-PQ TLS. Those remain separate approved operations.
+## 4. Approve one management Client
 
-## Validation scope — 2026-10-13
+First obtain the exact Client enrollment manifest using the existing
+[Client preparation flow](hub-owner-bootstrap.md#enroll-a-management-client-and-continue-node-initial).
+For the current APK's manually copied public identity, the existing local
+`owner device-enrollment-prepare` helper can construct that manifest using the
+already trusted Owner/Hub tuple. Public-file adaptation does not approve the
+Client. Keep the Client's generated identity and its chosen Device ID.
 
-The tested helper source is dirty `2a5791e`, with unchanged pre/post build inputs:
-standard `source_fingerprint_v4` is `ecc00877af17b5fa2f5db0935496128772897e6b23681b0a9499b0937c919dcd`.
-The [input inventory](../.cicada-data/external-owner-openssl-20261013/windows-build/input-inventory.json)
-has the separate inventory-domain digest `9b12b2e436f522bff7b49b008f3651e7b2f2e393c4a5e6d135f7615540f78272`.
-The [QA receipt](../.cicada-data/external-owner-openssl-20261013/qa-20261013-a1/QA-RECEIPT.md)
-records focused tests passed 12 top-level/47 subtests and vet passed; full `e2ee` regression
-passed 47/134 with its optional actual-OpenSSL case explicitly SKIP, while existing
-Owner CLI/local-operator regressions passed 8/8 combined. The separate actual OpenSSL 3.5.9 gate passed
-Linux interactive encrypted-key signing, production-handler enrollment and
-[exact-image TCP compatibility](../.cicada-data/external-owner-openssl-20261013/qa-20261013-a1/actual-openssl-gates.exact-image-tcp.private.jsonl)
-against the original `ab2362f` Hub image
+```powershell
+$GrantFile = Join-Path $Profile 'client-owner-grant.json'
+$SummaryFile = Join-Path $Profile 'client-owner-grant-summary.json'
+$Expires = (Get-Date).ToUniversalTime().AddHours(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
+& $Helper owner-signer grant --profile $Profile `
+  --manifest-file 'C:\TrustedTransfer\device-manifest.json' `
+  --expires-at $Expires --output $GrantFile --summary-output $SummaryFile
+if ($LASTEXITCODE -ne 0) { throw 'Client grant signing failed' }
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($GrantFile))
+```
+
+Review the exact Hub, Owner, Owner key, Client device ID, device public-key ID,
+full fingerprint, purpose `CLIENT_CONTROL` and expiry before signing.
+The command writes the existing canonical signed grant without overwrite and
+prints a local `cicada.owner-device-grant-summary.v1` summary and writes the
+requested separate summary file, including the Owner public identity and exact
+tuple. Use `--summary-output` to export it while keeping interactive review on
+the terminal. That summary helps populate/review local enrollment fields; it
+is not the signed grant, a bearer or independent trust.
+Use the final command's **standard padded Base64 of the exact grant file** in
+an enrollment UI that requires Base64. Do not substitute summary JSON, raw
+Grant JSON or URL-safe Base64. The Hub's active-key, enrollment, encrypted
+session and Guard checks still decide authorization.
+
+This Client approval does not approve a Node. Continue the existing Node
+INITIAL review/confirmation path only after the management Client is enrolled.
+
+## Historical 2026-10-13 helper
+
+The former guide covered the separate software 0.0.3 public-key adaptation and
+Client-grant signing helper. Its legacy local registration procedure is not
+this 0.0.5 first-Owner ceremony. Its evidence remains attributed to dirty
+`2a5791e`, build-input fingerprint
+`ecc00877af17b5fa2f5db0935496128772897e6b23681b0a9499b0937c919dcd`;
+[the original QA receipt](../.cicada-data/external-owner-openssl-20261013/qa-20261013-a1/QA-RECEIPT.md)
+and [input inventory](../.cicada-data/external-owner-openssl-20261013/windows-build/input-inventory.json)
+retain their actual focused checks, Linux OpenSSL 3.5.9 grant-signing and
+exact-image TCP results against the original `ab2362f` image
 `sha256:1d8cf76c59bfb6919748f8911d07ee991c46658e9a9c4be82b0dedc93796aa71`.
-That synthetic receipt (2 top-level/6 subtests PASS) has SHA-256
-`dcbea084106d8344af86395b5e49864f0866cc8a59c9e5dba46e2250fc128ac6`;
-it covers refusal, exact retry and encrypted snapshot/recovery, not user deployment.
-The earlier pre-test `noexec` preparation failure remains recorded separately.
-
-From `cicada-go`, a focused actual-OpenSSL reproduction is:
-
-```sh
-go test -count=1 -json -run 'Test(OwnerDeviceGrant|OwnerDeviceExternalSigner|NewPublicIdentity|OwnerOpenSSL|OwnerKeyFromOpenSSL)' ./internal/e2ee ./cmd/cicada
-CICADA_TEST_OWNER_OPENSSL=/ABSOLUTE/verified-openssl-3.5.9/bin/openssl \
-  go test -count=1 -run '^(TestExternalOwnerOpenSSLRealSignatureInterop|TestOwnerDeviceOpenSSLActualCoreEnrollment)$' ./internal/e2ee ./cmd/cicada
-go vet ./internal/e2ee ./cmd/cicada
-```
-
-The default fixture is synthetic production-handler/TCP testing. Exact Docker
-image replay additionally uses `CICADA_TEST_EXTERNAL_OWNER_HUB_URL`,
-`CICADA_TEST_EXTERNAL_OWNER_HUB_DB`, optional synthetic-only
-`CICADA_TEST_EXTERNAL_OWNER_HUB_TOKEN`, and
-`CICADA_TEST_EXTERNAL_OWNER_DISPOSABLE=SYNTHETIC_OWNED_FIXTURE`; prepare a disposable
-fixture instead of pointing these at a resident Hub/state. Go 1.27.1 full CLI
-`CGO_ENABLED=0 GOOS=windows GOARCH=amd64` cross-build also passed under network-none.
-Actual Windows/ACL execution, physical Android and public HTTPS remain **NOT_RUN**.
+The historical Windows cross-build was compilation only; actual Windows,
+physical Android and public HTTPS were NOT_RUN. Those results are not reused
+as acceptance of the new external-PEM finite bootstrap.

@@ -1,6 +1,6 @@
 # Set up a Hub and bootstrap its first Owner signer
 
-This guide covers the bounded Unix CLI flow in software 0.0.5. It creates the
+This guide covers Hub-local setup and the bounded Owner signer flow in software 0.0.5. It creates the
 Hub's stable account-to-human Owner mapping locally, then installs one external
 Owner approval signer through a finite proof-of-possession ceremony. The guide
 uses manual local setup and direct Docker serving; it does not provide an
@@ -13,6 +13,11 @@ The Hub stores the Owner's public identity only. The Owner's Unix profile holds
 the private key as a regular local file protected by directory mode 0700 and
 file mode 0600. It is not encrypted at rest or protected by an HSM or OS vault.
 Keep it on the Owner's controlled machine and maintain a private backup.
+For an existing Windows OpenSSL encrypted PEM identity, use the separate
+[Windows existing-key guide](owner-windows-openssl.md). That local helper uses
+the same finite bootstrap protocol and retains the existing Hub state and keys;
+it does not require a Hub image replacement. See its
+[separate validation record](windows-owner-openssl-validation.md).
 
 ## New Hub state
 
@@ -79,11 +84,13 @@ normal new-Hub flow does not require manually copying an Owner or account ID.
 Before serving, the Hub operator issues the finite pairing challenge locally.
 The command requires a real terminal and exact typed approval of the complete
 fingerprint. It checks setup and first-Root eligibility under the StateDir
-startup lock before constructing `Control`; `Control.New` then performs normal
-startup reconciliation. Keep the Hub stopped and quiescent while issuing, and
-handle any interrupted Client operation through its existing recovery
-procedure before this maintenance step. The pairing file is created as a new
-mode-0600 file.
+startup lock before loading the durable Hub identities. The local setup/issuer
+uses `hubidentity` and `hubowner` directly: it does not construct Control,
+create a Workspace or Machine, or reconcile Client business. Keep the Hub
+stopped and quiescent while issuing; interrupted Client operations still use
+their existing recovery procedure. The pairing file is created as a new
+mode-0600 file. This extraction is a development candidate, not a replacement
+of the existing deployed 0.0.5 Hub.
 
 ```bash
 FINGERPRINT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fingerprint"])' \
@@ -286,5 +293,8 @@ does not define trust-epoch reset or Root recovery.
 
 The existing Hub image remains under the operator's deployment controls. These
 steps do not replace it, publish it, start it, or modify a resident service.
-Android bootstrap, Windows key custody, model/Native Runtime use, physical
-devices, and public HTTPS acceptance remain separate work and validation.
+Android bootstrap, native Windows execution/ACL enforcement, model/Native
+Runtime use, physical devices, and public HTTPS acceptance remain separate
+work and validation. The Windows encrypted-PEM local provider is documented
+separately; its cross-build or Linux PTY results do not establish native Windows
+acceptance.

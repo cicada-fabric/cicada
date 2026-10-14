@@ -413,6 +413,11 @@ async function setInputValue(page, selector, value) {
   if (await page.evaluate(expression) !== true) fail(`Browser panel input is unavailable: ${selector}`);
 }
 
+async function setCheckboxChecked(page, selector, checked) {
+  const expression = `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e || e.type !== 'checkbox') return false; e.checked = ${Boolean(checked)}; e.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`;
+  if (await page.evaluate(expression) !== true) fail(`Browser panel checkbox is unavailable: ${selector}`);
+}
+
 async function setFileInput(page, selector, filePath) {
   const document = await page.send('DOM.getDocument', { depth: -1 });
   const queried = await page.send('DOM.querySelector', { nodeId: document.root.nodeId, selector });
@@ -715,6 +720,33 @@ async function runBrowserFlow() {
   await setInputValue(pageA, '#pin-hub-id', hubId);
   await setInputValue(pageA, '#pin-key-id', controlKeyId);
   await buttonClick(pageA, 'Pin this exact Hub identity');
+  await evaluateUntil(pageA, 'document.querySelector("#advanced-device-consent") !== null', Boolean, 10000, 'Owner account setup notice');
+  const ownerEntry = await pageA.evaluate(`(() => ({
+    text: document.querySelector('#app')?.innerText || '',
+    advancedButtonDisabled: [...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open advanced signer and browser-device setup')?.disabled,
+    advancedFiles: document.querySelectorAll('#owner-connection-file, #owner-public-manifest-file').length,
+    passwordInputs: [...document.querySelectorAll('#app input[type="password"]')].length
+  }))()`);
+  if (!ownerEntry.text.includes('installer-issued Hub URL and one-time claim code') ||
+      !ownerEntry.text.includes('Owner username and password using existing public keys') ||
+      !ownerEntry.text.includes('not Owner signup') || ownerEntry.advancedButtonDisabled !== true ||
+      ownerEntry.advancedFiles !== 0 || ownerEntry.passwordInputs !== 0) {
+    fail('Normal Owner entry incorrectly exposes or implies a usable signup flow');
+  }
+  markStep('owner_account_setup_unavailable_notice');
+  await setCheckboxChecked(pageA, '#advanced-device-consent', true);
+  await buttonClick(pageA, 'Open advanced signer and browser-device setup');
+  await evaluateUntil(pageA, 'document.querySelector("#owner-connection-file") !== null', Boolean, 10000, 'advanced Owner public-file guide');
+  const ownerGuide = await pageA.evaluate(`(() => ({
+    text: document.querySelector('#app')?.innerText || '',
+    fileAccept: [...document.querySelectorAll('#owner-connection-file, #owner-public-manifest-file')].map(input => input.accept),
+    passwordInputs: [...document.querySelectorAll('#app input[type="password"]')].length
+  }))()`);
+  if (!ownerGuide.text.includes('finite pairing locally') ||
+      !ownerGuide.fileAccept.length || ownerGuide.fileAccept.length !== 2 || ownerGuide.fileAccept.some(value => value.includes('.pem')) ||
+      ownerGuide.passwordInputs !== 0) fail('Advanced Owner guide is not public-only and explicitly local');
+  markStep('advanced_public_only_owner_signer_guide');
+  await buttonClick(pageA, 'Open advanced browser Client device enrollment');
   await evaluateUntil(pageA, 'document.querySelector("#owner-id") !== null', Boolean, 10000, 'device creation form');
 
   const password = `browser-only-${randomBytes(22).toString('base64url')}-24`;
@@ -724,7 +756,7 @@ async function runBrowserFlow() {
   await setInputValue(pageA, '#device-id', deviceId);
   await setInputValue(pageA, '#vault-password', password);
   await setInputValue(pageA, '#vault-confirm', password);
-  await buttonClick(pageA, 'Create key and public enrollment manifest');
+  await buttonClick(pageA, 'Create Client device key and public enrollment manifest');
   await evaluateUntil(pageA, 'document.querySelector("#signer-summary") !== null', Boolean, 45000, 'Owner grant import form');
   const manifestPath = await waitForDownload('cicada-device-enrollment.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

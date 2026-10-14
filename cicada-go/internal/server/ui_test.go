@@ -26,6 +26,7 @@ func TestEmbeddedHubPanelAssetsAndFailClosedCryptoBuild(t *testing.T) {
 		{"/", "text/html", "CICADA Hub"},
 		{"/assets/panel.css", "text/css", ".stage"},
 		{"/assets/panel.js", "text/javascript", "fetchAndValidateHubIdentity"},
+		{"/assets/panel-i18n.js", "text/javascript", "supportedLanguages"},
 		{"/assets/panel-bootstrap.js", "text/javascript", "WebAssembly.instantiate"},
 		{"/assets/panel-client.js", "text/javascript", "indexedDB"},
 		{"/assets/panel-model.js", "text/javascript", "screenPointToWorld"},
@@ -73,16 +74,23 @@ func TestHubPanelDoesNotExposeOldBearerUIOrUnsafeDOMSinks(t *testing.T) {
 			t.Fatalf("obsolete panel route %q status=%d", path, response.Code)
 		}
 	}
-	for _, path := range []string{"ui/panel.js", "ui/panel-bootstrap.js", "ui/panel-client.js", "ui/panel-model.js", "ui/panel-canvas.js", "ui/panel-canvas-controls.js", "ui/panel-dom.js"} {
+	for _, path := range []string{"ui/panel.js", "ui/panel-i18n.js", "ui/panel-bootstrap.js", "ui/panel-client.js", "ui/panel-model.js", "ui/panel-canvas.js", "ui/panel-canvas-controls.js", "ui/panel-dom.js"} {
 		data, err := clientFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		script := string(data)
-		for _, forbidden := range []string{"innerHTML", "localStorage", "Authorization: Bearer", "/v1/"} {
+		for _, forbidden := range []string{"innerHTML", "Authorization: Bearer", "/v1/"} {
 			if strings.Contains(script, forbidden) {
 				t.Fatalf("%s contains forbidden unsafe/legacy integration %q", path, forbidden)
 			}
+		}
+		if path != "ui/panel-i18n.js" && strings.Contains(script, "localStorage") {
+			t.Fatalf("%s must not store browser identity or approval state in localStorage", path)
+		}
+		if path == "ui/panel-i18n.js" && (!strings.Contains(script, "cicada.hub.panel.language.v1") ||
+			!strings.Contains(script, "setItem(languagePreferenceKey, language)")) {
+			t.Fatal("only the versioned nonsecret language preference may be stored locally")
 		}
 	}
 }
@@ -123,7 +131,7 @@ func TestHubPanelRemainsPublicWithManagementBearerConfigured(t *testing.T) {
 	}
 	defer controlPlane.Shutdown(context.Background())
 	handler := NewHandler(controlPlane)
-	for _, path := range []string{"/", "/assets/panel.js", "/assets/panel-bootstrap.js", "/assets/panel-canvas.js",
+	for _, path := range []string{"/", "/assets/panel.js", "/assets/panel-i18n.js", "/assets/panel-bootstrap.js", "/assets/panel-canvas.js",
 		"/assets/panel-canvas-controls.js", "/assets/panel-dom.js"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

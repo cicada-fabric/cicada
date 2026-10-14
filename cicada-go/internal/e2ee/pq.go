@@ -305,12 +305,31 @@ func Seal(sender *Identity, recipient PublicIdentity, message, aad []byte, seque
 	if sender == nil || sender.signingPrivate == nil {
 		return nil, errors.New("nil sender identity")
 	}
+	return sealEnvelope(sender.public, sender, nil, recipient, message, aad, sequence)
+}
+
+// SealWithPrivateOperations keeps the existing envelope bytes and encryption
+// suite. The returned external signature must verify with the expected key.
+func SealWithPrivateOperations(sender PublicIdentity, operations PrivateOperations, recipient PublicIdentity, message, aad []byte, sequence uint64) ([]byte, error) {
+	if operations == nil {
+		return nil, ErrPrivateOperation
+	}
+	_, signingPublic, err := validatePublic(sender)
+	if err != nil {
+		return nil, ErrInvalidEnvelope
+	}
+	return sealEnvelope(sender, operations, signingPublic, recipient, message, aad, sequence)
+}
+
+// A nil verification key is used only by Seal with its opaque trusted Identity.
+func sealEnvelope(sender PublicIdentity, operations PrivateOperations, signingPublic *mldsa65.PublicKey, recipient PublicIdentity, message, aad []byte, sequence uint64) ([]byte, error) {
 	kemPublic, _, err := validatePublic(recipient)
 	if err != nil {
 		return nil, fmt.Errorf("validate recipient identity: %w", err)
 	}
 	kemCiphertext := make([]byte, mlkem768.CiphertextSize)
 	sharedSecret := make([]byte, mlkem768.SharedKeySize)
+	defer clear(sharedSecret)
 	kemPublic.EncapsulateTo(kemCiphertext, sharedSecret, nil)
 	key, err := deriveKey(sharedSecret, aad, sequence)
 	if err != nil {
@@ -330,8 +349,8 @@ func Seal(sender *Identity, recipient PublicIdentity, message, aad []byte, seque
 	}
 	header := envelopeHeader{
 		Version: ProtocolVersion, Algorithm: Algorithm, Sequence: sequence,
-		KEMCiphertext: kemCiphertext, Nonce: nonce, SenderID: sender.public.ID,
-		SenderSigningPublic: sender.public.SigningPublic,
+		KEMCiphertext: kemCiphertext, Nonce: nonce, SenderID: sender.ID,
+		SenderSigningPublic: sender.SigningPublic,
 	}
 	headerBytes, err := json.Marshal(header)
 	if err != nil {
@@ -347,9 +366,13 @@ func Seal(sender *Identity, recipient PublicIdentity, message, aad []byte, seque
 	if err != nil {
 		return nil, fmt.Errorf("encode E2EE envelope: %w", err)
 	}
-	signature := make([]byte, mldsa65.SignatureSize)
-	if err := mldsa65.SignTo(sender.signingPrivate, unsignedBytes, nil, true, signature); err != nil {
-		return nil, fmt.Errorf("sign E2EE envelope: %w", err)
+	signInput := unsignedBytes
+	if signingPublic != nil {
+		signInput = append([]byte(nil), unsignedBytes...)
+	}
+	signature, err := operations.Sign(signInput)
+	if err != nil || len(signature) != mldsa65.SignatureSize || (signingPublic != nil && !mldsa65.Verify(signingPublic, unsignedBytes, nil, signature)) {
+		return nil, ErrPrivateOperation
 	}
 	unsigned.Signature = signature
 	return json.Marshal(unsigned)
@@ -369,6 +392,22 @@ func OpenWithReplayGuard(recipient *Identity, expectedSender PublicIdentity, dat
 func open(recipient *Identity, expectedSender PublicIdentity, data, aad []byte, guard *ReplayGuard) ([]byte, uint64, error) {
 	if recipient == nil || recipient.kemPrivate == nil {
 		return nil, 0, errors.New("nil recipient identity")
+	}
+	return openEnvelope(recipient, recipient, expectedSender, data, aad, guard)
+}
+
+// OpenWithPrivateOperations authenticates the sender before any external
+// private operation. Framing, key derivation and AEAD are unchanged.
+func OpenWithPrivateOperations(recipient PublicIdentity, operations PrivateOperations, expectedSender PublicIdentity, data, aad []byte) ([]byte, uint64, error) {
+	if err := ValidatePublicIdentity(recipient); err != nil {
+		return nil, 0, ErrInvalidEnvelope
+	}
+	return openEnvelope(nil, operations, expectedSender, data, aad, nil)
+}
+
+func openEnvelope(trustedRecipient *Identity, operations PrivateOperations, expectedSender PublicIdentity, data, aad []byte, guard *ReplayGuard) ([]byte, uint64, error) {
+	if operations == nil {
+		return nil, 0, ErrPrivateOperation
 	}
 	var envelope Envelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
@@ -396,8 +435,16 @@ func open(recipient *Identity, expectedSender PublicIdentity, data, aad []byte, 
 	if len(envelope.KEMCiphertext) != mlkem768.CiphertextSize {
 		return nil, 0, ErrInvalidEnvelope
 	}
-	sharedSecret := make([]byte, mlkem768.SharedKeySize)
-	recipient.kemPrivate.DecapsulateTo(sharedSecret, envelope.KEMCiphertext)
+	var sharedSecret []byte
+	if trustedRecipient != nil {
+		sharedSecret, err = trustedRecipient.MLKEMDecapsulate(envelope.KEMCiphertext)
+	} else {
+		sharedSecret, err = operations.MLKEMDecapsulate(append([]byte(nil), envelope.KEMCiphertext...))
+	}
+	defer clear(sharedSecret)
+	if err != nil || len(sharedSecret) != mlkem768.SharedKeySize {
+		return nil, 0, ErrPrivateOperation
+	}
 	key, err := deriveKey(sharedSecret, aad, envelope.Sequence)
 	if err != nil {
 		return nil, 0, err

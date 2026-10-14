@@ -162,18 +162,64 @@ func CreateChallenge(hub *e2ee.Identity, p PairingFile, at time.Time) (PairingFi
 }
 
 func CreateProof(owner *e2ee.Identity, p PairingFile, at time.Time) ([]byte, error) {
-	if p.Validate(at) != nil || owner == nil || !reflect.DeepEqual(owner.Public(), p.Manifest.CandidatePublic) {
+	if owner == nil {
 		return nil, ErrInvalid
 	}
-	opened, e := clientwire.OpenResponse(owner, p.Hub.Public, p.Manifest.Binding(), p.Challenge)
+	return CreateProofWithPrivateOperations(owner.Public(), owner, p, at)
+}
+
+// CreateProofWithPrivateOperations keeps Owner private-key custody with the
+// local provider. Exact route and Hub signature checks precede decapsulation.
+func CreateProofWithPrivateOperations(owner e2ee.PublicIdentity, operations e2ee.PrivateOperations, p PairingFile, at time.Time) ([]byte, error) {
+	possession, e := OpenChallengeWithPrivateOperations(owner, operations, p, at)
+	if e != nil {
+		return nil, e
+	}
+	defer clear(possession)
+	return CreateProofFromPossessionWithPrivateOperations(owner, operations, p, possession, at)
+}
+
+// OpenChallengeWithPrivateOperations authenticates the exact Hub challenge
+// before local review. The returned nonce-bearing bytes are transient secrets:
+// callers must keep them only in RAM and clear them when review/signing ends.
+func OpenChallengeWithPrivateOperations(owner e2ee.PublicIdentity, operations e2ee.PrivateOperations, p PairingFile, at time.Time) ([]byte, error) {
+	if p.Validate(at) != nil || operations == nil || !reflect.DeepEqual(owner, p.Manifest.CandidatePublic) {
+		return nil, ErrInvalid
+	}
+	opened, e := clientwire.OpenResponseWithPrivateOperations(owner, operations, p.Hub.Public, p.Manifest.Binding(), p.Route(clientwire.DirectionResponse, 1), p.Challenge)
 	if e != nil || !reflect.DeepEqual(opened.Route, p.Route(clientwire.DirectionResponse, 1)) {
 		return nil, ErrInvalid
 	}
-	var body Possession
-	if json.Unmarshal(opened.Plaintext, &body) != nil || body.Format != Format || !reflect.DeepEqual(body.Manifest, p.Manifest) || len(body.Nonce) != 32 {
+	if !validPossession(opened.Plaintext, p.Manifest) {
+		clear(opened.Plaintext)
 		return nil, ErrInvalid
 	}
-	return clientwire.SealRequest(owner, p.Hub.Public, p.Manifest.Binding(), p.Route(clientwire.DirectionRequest, 1), opened.Plaintext)
+	return opened.Plaintext, nil
+}
+
+// CreateProofFromPossessionWithPrivateOperations signs only the canonical
+// possession bytes for this reviewed manifest. It invokes no decapsulation.
+// The Hub still verifies its secret nonce and current finite authority.
+func CreateProofFromPossessionWithPrivateOperations(owner e2ee.PublicIdentity, operations e2ee.PrivateOperations, p PairingFile, possession []byte, at time.Time) ([]byte, error) {
+	if p.Validate(at) != nil || operations == nil || !reflect.DeepEqual(owner, p.Manifest.CandidatePublic) {
+		return nil, ErrInvalid
+	}
+	if !validPossession(possession, p.Manifest) {
+		return nil, ErrInvalid
+	}
+	return clientwire.SealRequestWithPrivateOperations(owner, operations, p.Hub.Public, p.Manifest.Binding(), p.Route(clientwire.DirectionRequest, 1), possession)
+}
+
+func validPossession(data []byte, manifest Manifest) bool {
+	var body Possession
+	e := json.Unmarshal(data, &body)
+	defer clear(body.Nonce)
+	if e != nil || body.Format != Format || !reflect.DeepEqual(body.Manifest, manifest) || len(body.Nonce) != 32 {
+		return false
+	}
+	canonical, _ := json.Marshal(body)
+	defer clear(canonical)
+	return bytes.Equal(canonical, data)
 }
 
 func VerifyProof(hub *e2ee.Identity, p PairingFile, packet []byte, at time.Time) (string, error) {
@@ -204,7 +250,19 @@ func CreateReceipt(hub *e2ee.Identity, p PairingFile, r Receipt) ([]byte, error)
 }
 
 func VerifyReceipt(owner *e2ee.Identity, p PairingFile, packet []byte) (*Receipt, error) {
-	opened, e := clientwire.OpenResponse(owner, p.Hub.Public, p.Manifest.Binding(), packet)
+	if owner == nil {
+		return nil, ErrInvalid
+	}
+	return VerifyReceiptWithPrivateOperations(owner.Public(), owner, p, packet)
+}
+
+// VerifyReceiptWithPrivateOperations authenticates an exact Hub receipt while
+// retaining the same public identity, algorithms and owner-bootstrap v1 scope.
+func VerifyReceiptWithPrivateOperations(owner e2ee.PublicIdentity, operations e2ee.PrivateOperations, p PairingFile, packet []byte) (*Receipt, error) {
+	if p.Validate(time.Time{}) != nil || operations == nil || !reflect.DeepEqual(owner, p.Manifest.CandidatePublic) {
+		return nil, ErrInvalid
+	}
+	opened, e := clientwire.OpenResponseWithPrivateOperations(owner, operations, p.Hub.Public, p.Manifest.Binding(), p.Route(clientwire.DirectionResponse, 2), packet)
 	if e != nil || !reflect.DeepEqual(opened.Route, p.Route(clientwire.DirectionResponse, 2)) {
 		return nil, ErrInvalid
 	}

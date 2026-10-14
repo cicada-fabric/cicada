@@ -45,6 +45,24 @@ func TestHubSetupExportsPinnedConnectionBeforeServeAndIsIdempotent(t *testing.T)
 	if err := hubSetupCommand(args, &output); err != nil {
 		t.Fatal(err)
 	}
+	// Setup is Hub identity/account composition only. It must not start a
+	// Controller, create its workspace, or register a business Machine.
+	for _, path := range []string{workspaceRoot, filepath.Join(stateDir, "workspace-snapshots")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("Hub-only setup created business path: %v", err)
+		}
+	}
+	persistence, err := store.New(filepath.Join(stateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	machines, err := persistence.ListMachines()
+	if err != nil || len(machines) != 0 {
+		t.Fatal("Hub-only setup registered a Machine")
+	}
+	if err := persistence.Close(); err != nil {
+		t.Fatal(err)
+	}
 	var first struct {
 		State      string                     `json:"state"`
 		Connection ownersigner.ConnectionFile `json:"public_connection"`

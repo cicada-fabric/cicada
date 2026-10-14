@@ -13,9 +13,16 @@
     <header class="topbar">
       <a class="brand" href="/" aria-label="CICADA Hub"><span class="brand-mark">C</span><span>CICADA <b>HUB</b></span></a>
       <div id="identity-line" class="identity-line">Connecting to this Hub…</div>
-      <span id="wire-state" class="wire-state">unverified</span>
+      <span id="wire-state" class="wire-state" aria-label="Connection status">unverified</span>
+      <label class="language-picker" for="panel-language">
+        <span id="panel-language-label">Language</span>
+        <select id="panel-language" aria-labelledby="panel-language-label">
+          <option value="en">English</option>
+          <option value="zh-CN">简体中文</option>
+        </select>
+      </label>
     </header>
-    <main id="app" aria-live="polite"><div class="boot-card"><h1>Loading secure panel</h1><p id="boot-message">Checking the local WebCrypto build…</p></div></main>
+    <main id="app" aria-live="polite"><div class="boot-card"><h1 id="boot-title">Loading secure panel</h1><p id="boot-message">Checking the local WebCrypto build…</p></div></main>
     <noscript>This Hub panel requires JavaScript and WebAssembly.</noscript>
   </body>
 </html>

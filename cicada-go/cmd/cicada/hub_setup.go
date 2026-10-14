@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,6 +18,8 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientoperator"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/hubidentity"
+	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/ownerbootstrap"
 	"github.com/cicada-ai/cicada/internal/ownersigner"
 	"github.com/cicada-ai/cicada/internal/store"
@@ -75,30 +76,30 @@ func hubSetupCommand(args []string, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open Hub StateDir: %w", err)
 	}
+	defer state.Close()
 	var setup *store.HubOwnerSetup
 	if *adoptLegacy {
 		setup, err = state.AdoptLegacyHubOwnerLocal(*expectOwnerID, *ownerLabel, *origin, *allowLoopbackHTTP)
 	} else {
 		setup, err = state.InitializeHubOwnerLocal(*ownerLabel, *origin, *allowLoopbackHTTP)
 	}
-	closeErr := state.Close()
 	if err != nil {
 		return fmt.Errorf("initialize local Hub Owner setup: %w", err)
 	}
-	if closeErr != nil {
-		return closeErr
-	}
 
-	controlPlane, err := control.New(config)
+	identities, err := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
 	if err != nil {
 		return fmt.Errorf("load Hub-owned identities after saving Owner setup: %w", err)
 	}
-	defer controlPlane.Shutdown(context.Background())
-	setup, err = controlPlane.HubOwnerSetup()
-	if err != nil || setup == nil || setup.OwnerID != controlPlane.ManagerOwnerID() {
+	hubOwner, err := hubowner.NewService(state, identities)
+	if err != nil {
+		return err
+	}
+	setup, err = hubOwner.HubOwnerSetup()
+	if err != nil || setup == nil || setup.OwnerID == "" {
 		return errors.New("Hub Owner setup did not remain bound to the stable local manager")
 	}
-	hubID, err := controlPlane.ClientHubID()
+	hubID, err := hubOwner.ClientHubID()
 	if err != nil {
 		return err
 	}
@@ -107,10 +108,13 @@ func hubSetupCommand(args []string, output io.Writer) error {
 		AccountID: setup.AccountID, OwnerID: setup.OwnerID, Origin: setup.Origin,
 		AllowLoopbackHTTP: setup.AllowLoopbackHTTP,
 		Hub: clientoperator.HubIdentity{Contract: "android-hub-v1", HubID: hubID,
-			Public: controlPlane.ClientControlPublicIdentity(), KeyVersion: 1, Suite: clientoperator.Suite},
+			Public: hubOwner.ClientControlPublicIdentity(), KeyVersion: 1, Suite: clientoperator.Suite},
 	}
 	if connection.Hub.HubID != setup.HubID || connection.Validate() != nil {
 		return errors.New("Hub Client-Control identity does not match the saved Hub Owner setup")
+	}
+	if err := state.Close(); err != nil {
+		return err
 	}
 	encoded, err := json.MarshalIndent(connection, "", "  ")
 	if err != nil {
@@ -163,32 +167,32 @@ func hubOwnerBootstrapIssueCommand(args []string, input io.Reader, output io.Wri
 	if err != nil {
 		return err
 	}
+	defer persistence.Close()
 	preflight, preflightErr := persistence.CheckOwnerBootstrapIssueLocal()
-	closeErr := persistence.Close()
 	if preflightErr != nil {
 		return preflightErr
-	}
-	if closeErr != nil {
-		return closeErr
 	}
 	if candidate.AccountID != preflight.AccountID || candidate.OwnerID != preflight.OwnerID || candidate.Origin != preflight.Origin || candidate.AllowLoopbackHTTP != preflight.AllowLoopbackHTTP || candidate.Hub.HubID != preflight.HubID {
 		return store.ErrOwnerBootstrapRejected
 	}
-	controlPlane, err := control.New(config)
+	identities, err := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
 	if err != nil {
 		return err
 	}
-	defer controlPlane.Shutdown(context.Background())
-	setup, err := controlPlane.HubOwnerSetup()
+	hubOwner, err := hubowner.NewService(persistence, identities)
+	if err != nil {
+		return err
+	}
+	setup, err := hubOwner.HubOwnerSetup()
 	if err != nil || setup == nil || setup.State != store.HubOwnerReady || setup.RootEverEstablished {
 		return store.ErrOwnerBootstrapRejected
 	}
-	hubID, err := controlPlane.ClientHubID()
+	hubID, err := hubOwner.ClientHubID()
 	if err != nil {
 		return err
 	}
 	currentHub := clientoperator.HubIdentity{Contract: "android-hub-v1", HubID: hubID,
-		Public: controlPlane.ClientControlPublicIdentity(), KeyVersion: 1, Suite: clientoperator.Suite}
+		Public: hubOwner.ClientControlPublicIdentity(), KeyVersion: 1, Suite: clientoperator.Suite}
 	if candidate.AccountID != setup.AccountID || candidate.OwnerID != setup.OwnerID || candidate.Origin != setup.Origin || candidate.AllowLoopbackHTTP != setup.AllowLoopbackHTTP ||
 		candidate.Hub.HubID != setup.HubID || !reflect.DeepEqual(candidate.Hub, currentHub) ||
 		candidate.Origin == "" || candidate.OwnerPublic.ID == currentHub.Public.ID {
@@ -197,8 +201,11 @@ func hubOwnerBootstrapIssueCommand(args []string, input io.Reader, output io.Wri
 	if err := hubBootstrapIssueReview(input, output, candidate); err != nil {
 		return err
 	}
-	pair, err := controlPlane.IssueOwnerBootstrapLocal(candidate.OwnerPublic, candidate.Fingerprint)
+	pair, err := hubOwner.IssueOwnerBootstrapLocal(candidate.OwnerPublic, candidate.Fingerprint)
 	if err != nil {
+		return err
+	}
+	if err := persistence.Close(); err != nil {
 		return err
 	}
 	encoded, err := json.MarshalIndent(pair, "", "  ")

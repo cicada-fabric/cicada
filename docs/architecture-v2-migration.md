@@ -1,5 +1,33 @@
 # Architecture v2.3 数据与协议迁移
 
+## 2026-10-14 Hub identity/bootstrap extraction — no migration
+
+The dirty 0.0.5 development candidate extracts durable key loading to
+`hubidentity` and the existing Store/finite-proof flow to `hubowner`. Setup and
+local issuance no longer construct Control business; the managed facades and
+a Hub-only HTTP composition use the same service. This changes no DDL,
+migration ledger/checksum, identity file path/format, Root authority, Client
+wire/catalog, signed claim or existing counter. Current and reviewed restore
+schema remain **60**. Existing keys, stable account/Owner IDs and permanent
+Root history are retained; existing records are not rewritten or recreated.
+
+[The extraction audit](architecture-v2-audit.md#2026-10-14-stage-1-hub-identitybootstrap-extraction-candidate)
+records bounded normal/race/vet evidence and retained failures. Tests verify
+unchanged existing private-file bytes, concurrent identity creation, corrupt
+state refusal, exact receipt retry/revocation and a Root established before
+Control exists remaining intact when managed Control later starts. This is a
+composition checkpoint, not a new account/password migration or a new Docker
+interop pass. Earlier schema-60 Docker and OpenSSL results below remain tied
+to their tested source.
+
+The next account-claim/credentials/login-device/session/public-association
+stage still requires contract review, an explicit additive migration and
+restore coverage for one-use claims, credential/device epochs and terminal
+receipts. Public-key association must stay separate from
+`owner_approval_keys_v2`: that table establishes permanent Root history. No
+claim, cookie or password may activate Root or bypass existing Client Guard.
+There are no Stage 2 implementation or migration changes in this checkpoint.
+
 ## 2026-10-13 schema-60 first Owner bootstrap — SCOPED PASS; full product PARTIAL
 
 The bounded [`owner-bootstrap-v1` contract](hub-owner-bootstrap-contract.md)

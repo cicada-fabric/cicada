@@ -14,7 +14,7 @@ import (
 const maxClientEnrollmentBytes = 48 * 1024
 
 func (h *Handler) clientV2(response http.ResponseWriter, request *http.Request) {
-	if h.control == nil {
+	if request.URL.Path != "/v2/client/identity" && h.control == nil {
 		writeError(response, http.StatusServiceUnavailable, errors.New("Client management is unavailable"))
 		return
 	}
@@ -24,14 +24,18 @@ func (h *Handler) clientV2(response http.ResponseWriter, request *http.Request) 
 			writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
-		hubID, err := h.control.ClientHubID()
+		if h.hubIdentity == nil {
+			writeError(response, http.StatusServiceUnavailable, errors.New("Client Hub identity is unavailable"))
+			return
+		}
+		hubID, err := h.hubIdentity.ClientHubID()
 		if err != nil {
 			writeError(response, http.StatusServiceUnavailable, err)
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{
 			"contract": "android-hub-v1", "hub_id": hubID,
-			"control_public_identity": h.control.ClientControlPublicIdentity(),
+			"control_public_identity": h.hubIdentity.ClientControlPublicIdentity(),
 			"control_key_version":     1,
 			"suite":                   "ML-KEM-768+ML-DSA-65+AES-256-GCM",
 		})

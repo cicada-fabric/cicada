@@ -12,8 +12,13 @@ A7/R3 failures/timeouts remain retained. Vet/build and Python checks passed.
 See [the checkpoint record](hub-owner-bootstrap-validation.md) for exact scope
 and evidence.
 The [operator guide](hub-owner-bootstrap.md) covers fresh setup and controlled
-existing-volume adoption. This operation is outside the Client catalog and does
-not imply Android support.
+existing-volume adoption. The separate [Windows existing-key helper](owner-windows-openssl.md)
+uses the same finite first-Owner protocol with existing encrypted OpenSSL PEM
+keys; it changes no Hub wire, catalog, schema, or deployed 0.0.5 state. Its
+[new validation record](windows-owner-openssl-validation.md) keeps local crypto,
+Windows cross-build, Linux synthetic PTY, native Windows, and public HTTPS
+results separate. This operation is outside the Client catalog and does not
+imply Android support.
 See [signer preview validation](link-policy-signer-preview-validation.md).
 The v1.6.4 images, bundles and results below retain their original attribution.
 [The IP/ARM64 checkpoint](docker-ip-arm64-validation.md) adds no Client source or

@@ -1,5 +1,127 @@
 # Owner 账户、可信设备与首次接入设计
 
+## 当前用户决定：普通 Owner 首次设置为两页（2026-10-14）
+
+**两页账户设置/登录产品仍 NOT_IMPLEMENTED；阶段 A 已实现并完成限定测试。**
+本节取代此前把浏览器设备登记、手工 Owner ID/公钥 JSON/Grant、外部 CLI
+步骤作为普通设置入口的设计。当前未发布开发版本保持 0.0.5：`hubidentity` /
+`hubowner` 已分离 Hub 密钥与有限 bootstrap，setup/issuer 和 Hub-only handler
+不构造 Control/Workspace/Machine；分段 normal/race、vet 及合同检查的边界与
+原失败/超时见[提取审计](architecture-v2-audit.md)。已有加密 OpenSSL key helper、
+EN/zh-CN 和旧表单的高级入口是有界实现，不代表账户认证或两页 UI 已交付。
+暂不推进 0.0.6；没有新的账户/password/claim API 或 migration，也不操作真实
+部署、账户或密钥。
+
+### 安装输出：地址与一次性初始化信息
+
+安装器在部署者控制的本地渠道输出 Hub 地址和**一份可复制/扫码的初始化
+payload**，携带独立受信的 Hub pin 与高熵、短期、有限初始 claim。
+对准确完整公开身份的 canonical bytes 计算 SHA-256 所得指纹就是完整密码学
+pin；无须把全部 PQ key JSON 放进二维码。用户端取得完整公开身份后，必须
+按合同固定的编码重新计算并匹配这一受信摘要，不能只比较短 key ID、显示名
+或页面自报值。payload 编码及二维码容量仍须验证。它只准备受保护的
+初始化资格，不生成 Owner 私钥，也不令公开页面的第一个访客成为 Owner。
+旧部署保留已有 Hub/account/Owner、全部密钥和历史，不能用安装重试重开
+初始 claim。尚未配置账户时，Hub 的设置/认证服务可独立运行，不能调用
+`Control.New` 来创造兼容 human、工作空间或本地 Machine。
+
+### 第一页：核验正确的 Hub 和部署者资格
+
+用户打开安装器给出的地址并导入这一份 payload。浏览器先取得准确完整公开
+身份，重算 SHA-256 与安装器独立受信 pin 匹配，并核对 origin/Hub scope；
+**核验完成前不发送 claim code 或密码**。code、密码、proof 与结果均保持
+Client↔Hub NIST 应用层加密，独立 typed purpose/scope；HTTPS 是运输边界，
+不能代替该 PQ 应用保证。核验后才提交一次性初始化资格。服务端核验
+Hub/入口、用途、期限与未消费状态，签发只用于第二页的短期 claim session。公开访问、页面自报“这是你的 Hub”、只有 URL 或
+上传一个公钥都不能获得该资格。claim 不放进可复用公网 query/referrer、
+日志或浏览器长期存储；GET/预取不消费它。错误 Hub、过期、重放、并发抢占
+以及已经配置的账户必须得到真实拒绝，不能让前端标签代替权威检查。
+
+### 第二页：用户名、账户密码、已有公钥
+
+默认只显示用户名、账户密码及确认、**已有 ML-KEM/ML-DSA 公钥文件**上传与提交。
+已确定密码策略为 10+ 字符，前提是每次登录都完成可信已登记设备的 PQC
+挑战。设备 ID、独立设备密钥与本地 vault 由程序在内部管理，盐、用途与
+Hub/account scope 各自隔离；不把这些技术字段转成设置表单。
+完整指纹可以展开核验，但用户不填写 technical ID、不创建浏览器设备，
+也不设置 browser vault。账户密码由 Hub 账户认证服务校验；已有私钥 PEM、
+加密私钥 PEM 和 OpenSSL passphrase 均不能上传或进入该表单。
+
+在第一页面向该 Hub 的有效 claim session 下，核验首个独立 ACCOUNT_LOGIN
+设备自身的 KEM/签名 proof，再原子创建/关联稳定 human Owner/account、用户名
+密码 verifier、该登录设备及准确的待证明公开候选关联，消费初始化资格并
+留下可恢复结果。这一步不插入 ACTIVE Root 或永久 Root history。
+用户已有 0.0.5 account/Root 时，只能通过明确受控本地渠道给其**原账户**
+附加账户凭据与获准登录设备；这与首次 Root 激活是不同操作，不要求清空
+既有 Root，也不能改变/重开 Root。不得开放旧 volume 的匿名认领入口或在
+安装重试时默认发行新 claim。不重建 human、不换 Hub key、不修改已签 Grant；
+若已有批准 key，提交的公钥必须与既有准确关联一致，不能借设置密码替换 Root。
+
+“账户已创建，可登录”与“公钥已关联”不等于“Owner 批准签名者 ACTIVE”。
+未证明私钥时，显示“公钥已关联，批准功能待本地验证”，不在
+`owner_approval_keys_v2` 插入 ACTIVE 行，不提前触发永久 Root history。
+用户名/密码与本机已登记设备 PQC 挑战均成功后，可进入自己 Hub/account
+的受限账户与设备页面；签 Grant、建立
+Client/Node 管理授权、读取 Endpoint 私钥/历史等仍须相应 proof 与 Guard。
+Root 丢失/撤销、密码重置或备份恢复不能重开首次 Root。
+
+### 每次登录的自动设备 MFA
+
+10+ 密码不是 password-only 登录政策。初始 claim 只用于第一次设置，
+不是持续 MFA。第一次设置在其准确有限范围内登记本机独立的登录设备候选，
+核验设备自身 PQC challenge；随后每次登录由程序自动完成用户名/密码
+校验与已登记设备私钥挑战，检查当前绑定、撤销及期限。账户 session 只能
+在两项均完成后签发；cookie/session hint 本身不构成账户 actor。后续账户
+请求仍需已认证设备的 NIST 应用 envelope、当前 credential/device epochs 和
+nonce/sequence 检查；它与旧 Client 管理和 Root purpose 分开。未知新设备
+即使知道密码也不能自动登记，必须经 Owner 批准；不能把初始 code、密码重置或普通 cookie 当成新设备 grant。
+
+账户登录设备、Owner Root signer 与现有 `CLIENT_CONTROL` enrollment 分别
+有准确 purpose/权限。初始部署 claim 可以批准首个 ACCOUNT_LOGIN 候选，
+不使其成为 Root 或自动取得旧 Client 管理角色。Owner Root 仍须本地证明其
+已有 signing/KEM 私钥，后续新设备批准使用真实 signer proof。正常界面
+隐藏协议细节，服务端仍能区分每一个可信 actor，不伪造旧 device/session。
+
+当前 Hub/UI build 和宿主管理员按用户部署边界明确受信；本检查点不新增
+强制签名桌面 UI、enclave 或 VM。既有四个 OpenSSL 公私钥文件必须保留。
+标准新密钥生成可作为将来的本地可选功能，不能为完成此流程重建已有 identity。
+
+### 隐藏协议材料，复用本地证明
+
+最短桥接是第二页生成准确、有限的待验证请求，由已有 Owner 本地 helper
+读取受保护请求文件，核验安装器独立 Hub pin/account/候选，使用**已有**
+加密 PEM 完成 reverse KEM challenge 和签名回应，再返回原样 receipt。
+普通界面只显示“本地验证密钥”及真实结果；公钥、pairing/manifest/IDs/
+proof/base64 在组件间传递，不要求用户逐项抄录。当前 helper 的 TTY 审查和
+文件流程可先封装成一次明确启动；不新增通用网页 sign RPC、常驻 localhost
+签名服务或上传/转换私钥。若本地 helper/原生平台尚不可用，账户及公钥关联
+保留，批准状态保持待验证，不能伪造就绪或强迫重建已有密钥。
+
+现有 `owner-bootstrap-v1` PoP、有限候选绑定、原样恢复和历史 fence 可以
+复用。新 claim/account 服务如何受限地准备这一准确候选 authority 必须在
+后续独立 Hub setup/auth 合同固定；现行“只有本地 issuer、没有公共 issuer”
+合同不因这份规划自动变化。不能仅打开旧公共 accept 路由让其签发新候选。
+
+### 账户认证属于 Hub，Control 是后续业务服务
+
+账户、用户名密码、claim/session、Owner public association 和 Hub 身份
+归 Hub/Identity/Authorization 负责，仅依赖 Store、密钥生命周期和确定性
+Guard。它们不依赖 Control 的模型、Workspace、Goal、scheduler 或某个
+Controller 的 key ID；停用 Control 或未来更换/添加 Controller 不改变登录
+账户或人类 Owner。Controller 只通过明确授权的 adapter 使用 Hub actor。
+
+Hub 登录认证、本地设备 vault 保护、OpenSSL 私钥 passphrase 是三种
+不同职责。账户密码可以由程序用于本地设备保护的独立 KDF，但必须使用
+独立 salt/purpose/scope，不能复用服务器 verifier 或把本地 vault 密文当登录凭据。前端 PBKDF2/AES-GCM vault 不是服务器 password verifier，更不能
+把其密文当登录凭据。服务器只存带独立 salt、版本及固定成本策略的密码
+verifier；其算法/参数、会话撤销、输入/并发限制和迁移仍是待合同审查的选择，
+不是已实现的政策。账户 actor 始终来自设备 envelope 与当前 Guard，而非
+cookie 单独授权。账户会话不伪造旧 Client device/session，不用密码入口旁路现有 NIST
+管理加密、Owner proof 或业务 Guard。登录后的 Node/Client 接入、Network
+membership 与准确 Endpoint/Thread Join 仍各自授权。
+
+## 历史有界实现与后续设备目标（保留原来源）
+
 产品要求：**用户已确定**普通 Owner 账户、内置本地密钥生成/导入及简单安全的
 设备接入。**先独立部署并初始化 Linux 服务器 Hub，再让 Node/Client 以同一
 扫码/配对串体验加入**；手机只承担 Client，不作为 Hub；Hub 初始化不依赖
@@ -16,8 +138,8 @@ race coverage 在两个 Store test-fixture-only 修正后分段通过；原 A7�
 Native、physical device 和 public HTTPS 仍 NOT_RUN；Windows custody 与 lost-Root
 recovery 仍 NOT_IMPLEMENTED。现有升级预览缺少准确目标绑定/version，
 该 CLI 因而拒绝升级确认；账户界面、Android 首次 bootstrap 与统一扫码仍未实现。
-本文继续记录 2026-10-13 的产品流程与下一实现边界；有限 CLI 检查点更新软件
-版本，不改变 [已采纳规格](../CICADA.md)、已发布 Client 合同或现有部署。
+本文保留 2026-10-13 的产品流程与验收来源，并补充 2026-10-14 的接入交互目标；
+有限 CLI 检查点更新软件版本，不改变 [已采纳规格](../CICADA.md)、已发布 Client 合同或现有部署。
 已连接设备以自身私钥挑战认证；Hub 初始管理授权另来自
 独立部署者控制渠道，本次不宣称新密码/SSO 或远程 admin 登录已经实现。
 
@@ -46,6 +168,46 @@ and deployment UX remain **PROPOSED / NOT_IMPLEMENTED**.
 [现有 OpenSSL 工具](owner-windows-openssl.md)是可选高级/开发兼容路径。它已经
 取得的 Linux、生产 handler、原镜像 TCP 与交叉构建证据保留原来源；这些结果
 不证明本文的账户产品、Windows 安全存储或普通手机接入已经实现。
+
+<a id="headscale-owner-onboarding-target"></a>
+
+## 2026-10-14：参考 Headscale 的“先创建 Owner，再批准设备”交互
+
+Headscale 的官方流程先通过 `headscale users create` **明确创建用户**；
+设备输入服务器地址运行 `tailscale up --login-server`，取得浏览器说明和
+Auth ID，再由服务器管理渠道执行 `headscale auth register` 批准归属。
+另一路径是预先签发接入 key，默认一次使用、有效一小时。它不是匿名首访者
+自动成为 Owner；这里参考交互顺序，不引入 Headscale/Tailscale 依赖，也不
+照搬其凭据语义。[官方 Getting started（2026-10-14 核对）](https://headscale.net/stable/usage/getting-started/)
+
+CICADA 的**目标产品流程（PROPOSED / NOT_IMPLEMENTED）**如下：
+
+1. 部署 Hub 后，由部署者控制的本地设置或受保护设置向导显式创建稳定
+   Owner/admin 账户，得到管理入口。已有部署保留原账户、状态与密钥；
+   普通设备访问和公钥首上传不能创建、抢占或重置 Owner。
+2. 首个管理设备上的本地 signer，或独立 Owner 本地组件，选择**已有 PQ
+   密钥**并通过有限、一次性的首 signer 授权证明 signing/KEM possession。
+   Owner 批准凭据与管理设备自己的 Client identity 分开；不重新生成已有
+   密钥、不上传私钥，也不把 Hub/Node 身份当 Owner 签名资格。
+3. 其他 Node/Client 只需输入 Hub 地址，发起设备接入，再扫码/输入短期
+   一次性码，或打开待批准页面。页面可以展示公开请求 ID；接入凭据不是
+   Owner Grant。设备本地复用已有身份；仅在没有身份且用户选择创建时生成。
+4. 已授权入口显示准确候选、设备类型、权限和期限；合格 Owner 本地 signer
+   批准当前 scope，设备证明自身私钥，Hub 验证并消费对应有限授权，完成
+   **有限权限 enrollment**。扫码、打开链接、知道 Hub 地址或只持 bearer
+   join code 都不能代替 Owner 签名或私钥 proof。
+5. 面板显示待批准/已连接设备及实际角色、权限、撤销和恢复状态。Owner
+   账户、Owner 批准凭据、Client/Node identity、Network 成员关系及准确
+   Endpoint/Thread Join 各自成立；设备接入不自动加入 Network 或开放会话。
+
+**当前手动 CLI 桥接**是 `hub setup` → 本地有限 challenge issue → 重启同一
+Hub → `owner-signer bootstrap` → 现有 Client Grant/enrollment → Node INITIAL。
+已有加密 OpenSSL PEM 可通过[本地兼容 helper](owner-windows-openssl.md)参与
+相同 proof，验证记录见[单独检查点](windows-owner-openssl-validation.md)。
+这些命令是目标交互尚未交付时的桥接，不是已经实现的“输入地址即可接入”。
+本小节最初只固定产品目标；其后阶段 A 的 Hub-only 提取已按上文实施并测试，
+没有新增账户/claim API 或 schema，不改已部署 0.0.5 Hub，也不将本地 helper
+交叉构建或 Linux PTY 结果写成 Windows 原生验收。
 
 ## 1. 已有基础与缺口
 
@@ -76,7 +238,8 @@ Android PQ 私钥使用软件密码库，并由 Keystore 密钥包裹；不能�
 | Owner 批准签名者 | “可以批准新设备/具体授权的可信设备” | 对应显式注册的 Owner approval key，私钥由用户本地持有；签名资格、范围与生命周期独立管理 |
 | Client 设备 | “这台电脑/手机已连接” | 持有自己的 Client identity 与 session/replay 状态；由精确 OwnerDeviceGrant 登记，普通 Client 权限不自动成为批准签名者 |
 | Node | “这台机器可以运行我的工作” | 本地生成并持有自己的凭据、Node-Control/Endpoint 私钥与状态；Owner 确认准确候选，不上传私钥 |
-| Thread Join | “让这个原生会话参与协作” | 仍由本地真实 session owner 显式完成；设备登记、Node 批准和 Network 成员关系均不代替 Join |
+| Network 成员关系 | “允许参与这个私有协作范围” | 依各 Network 的准确授权建立；Owner 账户或设备接入不自动授予成员权限 |
+| Endpoint / Thread Join | “让这个原生会话参与协作” | 仍由本地真实 session owner 显式完成；设备登记、Node 批准和 Network 成员关系均不代替 Join |
 
 首版目标是单 Hub 的一个部署者 Owner 账户，不开放任意公网注册。存量已登记
 external humans、设备和双 Owner 连线仍保留；“单 Owner 首次设置”不能成为删除
@@ -91,8 +254,9 @@ capabilities、Owner proof 和服务端 Guard 共同裁决具体操作。
 
 默认账号稳定 ID 与密码学 key ID 分离，可有用户名/显示名作为便于识别的
 标签。一个账户可关联多个独立、可撤销的设备 key，更换设备不更换人类账户。
-本规划不新增服务端密码、SSO 或邮件找回服务；若需要首设备前的远程 admin 登录，
-另行设计密码 KDF、认证会话和恢复政策，也不能取代签名接入或 Owner 恢复。
+最新两页目标新增独立 Hub 用户名/密码登录，须先固定 password verifier、
+短期会话与撤销合同；SSO、邮件找回和一般 RBAC 不进入这个最小检查点。
+账户恢复仍不能取代私钥 proof、签名接入或 Owner trust 恢复。
 
 ## 3. 先完成服务器 Hub 初始化
 
@@ -155,11 +319,13 @@ Client，用自身独立 Client identity 登记并关联外部 signer。0.0.4 �
 其他 operator proof 入口须另行设计，不能把 bootstrap
 票或 Node identity 当成已有管理 Client actor。
 
-## 4. Node 与 Client 共用“添加设备”流程
+## 4. 账户设置之后的 Node 与 Client“添加设备”目标
 
-正常心智模型统一为：Hub 面板选择“添加设备 → Client / Node”，获得二维码
-或配对串；设备扫描或手动输入同格式凭证，在本地生成/读取密钥并连接。
-配对串是临时接入授权，不是设备私钥、Owner 私钥或日常登录密码。
+目标心智模型统一为：Node/Client 输入 Hub 地址并发起接入，或者由 Hub 面板
+选择“添加设备 → Client / Node”准备邀请；通过短期一次性二维码/配对码或
+待批准页面核对同一请求，设备复用本地已有密钥并按准确授权连接。
+没有本地身份时才按用户选择生成/导入。地址、公开请求 ID 与受保护配对凭据
+分别展示；配对凭据是有限接入材料，不是 Owner Grant、私钥或日常登录密码。
 
 1. 已授权的 Hub 管理入口按当前连接策略发出短期、单次配对授权，绑定准确
    Hub、已有 Owner、设备类型、操作 scope、随机请求 nonce 和期限，服务端保存其
@@ -238,7 +404,7 @@ Network/Group 显式 Join，不开放全部历史会话。
 | 界面 | 默认输入/展示 | 用户操作 |
 |---|---|---|
 | Hub 初始化 | 服务器管理入口、Owner 标签、HTTPS/受信 pins、连接策略 | 独立完成账户/服务设置，显示 Hub 与 signer 各自就绪状态 |
-| 添加设备 | Client/Node 类型、二维码与同格式配对串、期限/范围 | 设备扫码或粘贴/文件读取，本地 keygen/公开候选上传、准确批准后连接 |
+| 添加设备 | Hub 地址、Client/Node 类型、短期一次性二维码/码或待批准页、期限/范围 | 复用本地身份，按需创建/导入；设备 proof 与准确 Owner 批准后连接 |
 | 已连接设备登录 | 选定 Hub/账户与可信设备、本地解锁 | 用自身私钥签挑战；新设备进入统一配对流程 |
 | 账户与设备 | 设备类型/名称、当前设备、批准资格、真实状态/新鲜度、最近活动 | 添加、重命名、查看权限、撤销 |
 | 待确认 | 请求设备、Hub/账户、核对码、期限、将获权限和关联影响 | 批准、拒绝、取消 |
@@ -295,21 +461,19 @@ dispatch 与 `ValidateClientOwnerScope` 等真实写/读入口。旧稳定 Princ
 旧 Client 精确恢复行为；明确备份、停 writer、恢复/向前修复边界。现有部署
 只制定方案，不执行迁移、替换镜像、注册真实 key 或轮换真实身份。
 
-## 9. 下一主要检查点的边界
+## 9. 下一有界检查点：纯 Hub 账户与两页设置
 
-下一检查点以“独立初始化 Linux Hub 与已有 Owner/admin、分别展示 signer
-就绪状态，再用相同配对格式连接一个合成 Client 与一个 headless Node”的
-可重复闭环为目标；不依赖手机完成 Hub 设置。统一公开 setup/pairing
-API 和状态机先在本仓实现，原生平台 Client 按固定合同分开实现。Core 完成后
-再向独立 Android 仓库交接，分别实现普通手机体验；本文不授权 Client 编辑。
+先完成“安装 claim → 核验 Hub → 用户名密码与公钥关联 → 登录 → 本地 PoP
+真实状态”的合成闭环；不同时建设 SSO、跨 Hub 账户同步、多 Controller
+平台、普通设备二维码全产品或 Root-loss recovery。后续设备入口复用这些
+稳定 Hub/account actor；本次不授权修改独立 Android 仓库。
 
-| 顺序 | 本仓模块与责任 | 退出条件 |
+| 顺序 | 最小模块改动（均未实现） | 退出条件 |
 |---|---|---|
-| A 设计固定 | `docs/owner-onboarding-design.md`、安全 ADR/迁移设计 | 固定 Hub 先初始化、独立 admin 授权来源、统一 typed 配对、首 signer bootstrap/历史 fence、完整 PoP、session/恢复与 signer scope；无外部 signer 的 Node-only 边界明确 |
-| B 账户与迁移 | `internal/store`、`internal/control`、`internal/server` | account/manager mapping、独立 Hub ready/signer ready/设备状态、原子初始化及存量 dry-run；移除 crypto ID 相等授权，拒绝首设备抢占/guest 扩权，配对取消不回退 Hub |
-| C 本地接入 | `cmd/cicada`、`internal/e2ee`、既有 Web 面板 | Add device [Client/Node] 共用格式与状态，headless CLI paste/私有文件，内置 keygen/受支持导入、准确 manifest 签署及恢复；Windows 原生 custody 单独验收 |
-| D 协议与门禁 | `internal/clientcontract`、Client/OpenAPI/wire 文档、公开合成 vectors、既有 contract scripts 与 Docker gate | 实现、权威合同与检查同一有意义检查点更新；选定修订后输出精确来源协议包/Hub 工件；旧合同不回填新能力 |
-| E 独立 Client 工作 | `../CICADA_CLIENT` Owner 的后续单独任务 | 导入固定 Core commit/合同/包/镜像；复用本地 keygen/Keystore 和精确 pending/recover，新增扫码/短码与本地确认 UI；Android 自己验证合同及拒绝/恢复 |
+| A 纯 Hub composition | 下沉 `Control.loadIdentity` 的已测文件生命周期；抽出仅 Store+现有 Hub key 的 setup/bootstrap service，旧 Control/CLI facade 委托 | 相同 StateDir 三组 Hub key、Owner ID 和全部业务数据不变；无 Control/Workspace/machines/model 也能准备设置与校验 PoP |
+| B claim 与账户 | 新小型 Go Hub account/auth service 和增量 Store 数据：claim 摘要/期限/消费、稳定账户 credentials、登录设备 PQC 绑定、短期 session、独立 pending public association | 原子单胜者；无匿名首访认领；密码只存 verifier；每次登录同时验证已登记设备 challenge，未知设备不能密码自动登记；公钥未 PoP 不成为 ACTIVE Root；存量账户不重建、Root history 不清零 |
+| C 两页与本地 helper | 安装器受控输出 trust/claim；受保护 setup/auth HTTP adapter 与两页 UI；复用严格 public SPKI/parser 和 existing-key OpenSSL PoP 文件桥接 | 普通设置只需地址/claim、用户名密码和公钥；错误输入/私钥文件拒绝；没有 browser-device 表单；本地验证显示真实状态和原样恢复 |
+| D 合同与门禁 | 独立 Hub setup/auth 合同、密码/会话和 claim 限额、restore/schema inventory、迁移与一次性 Docker/平台证据 | Control 缺席的合成两页闭环、重启/并发/丢响应/撤销/无私钥/旧 Root 负例通过；原密码学协议和现有 Client/Node 门禁不回归 |
 
 Core 的针对性确定性测试至少覆盖：无手机 Hub 独立初始化、并发初始化单胜者、
 曾建立 Root 不重开首 bootstrap、取消/离线设备不影响 Hub ready、重放/过期/

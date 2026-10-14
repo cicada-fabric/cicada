@@ -19,7 +19,7 @@ authority, proof and receipt recovery, and reuse of the existing Owner-signed
 Client enrollment and Node INITIAL enrollment paths. It does not implement the
 full onboarding product: there is no account login, password/SSO recovery,
 public signup, Hub web setup panel, unified QR pairing UI, Android bootstrap
-client, Windows private-key custody, or general device enrollment protocol.
+client, Windows OS-vault custody, or general device enrollment protocol.
 The Android repository remains unchanged and does not support this bootstrap
 flow. Node INITIAL continues to use its existing enrollment path after a
 Client with the existing OwnerDeviceGrant is available.
@@ -28,7 +28,13 @@ The Owner signer's local profile is a Unix directory with mode 0700 containing
 `owner-signer.json` with mode 0600. It stores the private identity as ordinary
 local file data; this checkpoint does not encrypt that file at rest or use an
 HSM/OS key vault. Protection depends on local filesystem permissions and
-machine custody. Client-to-Control management RPC remains decrypted at Control;
+machine custody. An external OpenSSL profile instead records public pins and
+paths to the Owner's existing encrypted ML-KEM-768 and ML-DSA-65 PEM files.
+OpenSSL opens those keys locally; Go does not import or convert them into a
+plaintext private identity. Windows profile custody uses an explicitly protected
+current-user/System DACL. Native Windows enforcement and execution require
+separate acceptance; see [the Windows record](windows-owner-openssl-validation.md).
+Client-to-Control management RPC remains decrypted at Control;
 this first-Root mechanism does not change that boundary or peer Endpoint E2EE.
 
 The new HTTP application operation is separate `owner-bootstrap-v1`; it reuses
@@ -96,8 +102,10 @@ OwnerDeviceGrant path for a Client. Loopback HTTP requires the explicit
 `--allow-loopback-http` flag at Hub setup. The connection file carries this
 policy for Owner profile preparation; `cicada client prepare` separately
 requires its own explicit loopback flag.
-This is a Unix local-file flow; it does not claim Android, Windows, or web UI
-support.
+The default profile is a Unix local-file flow. The separate
+[Windows existing encrypted-PEM guide](owner-windows-openssl.md) uses a local
+external-private-operation provider with the same files and protocol scope.
+Neither flow adds Android bootstrap or a web signer.
 
 The local operator first obtains the candidate signer's public manifest from
 the Owner's local signer profile. The manifest binds the account and Owner
@@ -109,12 +117,17 @@ root history is absent. The operator reviews the complete fingerprint before
 the local command writes a new private pairing file.
 
 The issuer first acquires the StateDir startup lock and checks that a configured
-`HUB_READY` setup can issue a first Root, before it constructs `Control` or
-loads/creates the compatibility Client-Control identity. It then initializes
-`Control` and runs the usual interrupted-Client reconciliation. Keep the Hub
-stopped and quiescent while issuing; resolve any interrupted Client operation
-through its established recovery procedure first. The command prepares a
-pairing file only and does not start the Hub. Start the service through its
+`HUB_READY` setup can issue a first Root, before it loads/creates Hub identities.
+The development extraction now composes `hubidentity` and `hubowner` directly;
+setup/issuance does not construct Control, reconcile Client business, create a
+Workspace or register Machines. The three existing key paths and the finite
+proof/receipt wire remain unchanged. The managed Control facade delegates to
+this same service, while `NewHubHandler` can publish the same Hub identity and
+accept the same proof with no Control object. It enables no management Client
+session, account password or initial claim route. Keep the Hub stopped and
+quiescent while issuing; interrupted Client operations use their established
+recovery procedure. The command prepares a pairing file only and does not
+start the Hub. Start the service through its
 existing deployment procedure after issuance. Exact proof recovery after a
 lost HTTP response is performed through the running accept route and does not
 require reissuing authority.
@@ -224,12 +237,48 @@ challenge differ. It persists the new exact proof before sending. A replacement
 is a new operation, never recovery of the old one; an accepted Root cannot be
 replaced, and revocation does not reopen first-Root setup.
 
+## External private operations
+
+The external Owner provider changes private-key custody only. Its callback
+interface performs Pure ML-DSA-65 signing with an empty context over the exact
+existing signed bytes, and ML-KEM-768 decapsulation of the existing ciphertext.
+It does not change algorithms, canonical JSON, HKDF, AES-GCM, packet version,
+AAD, operation names, sequence numbers, or the published synthetic vector.
+Expected public identity is supplied and validated independently of the provider.
+A returned signature must verify with that identity, and a returned KEM secret
+must be exactly 32 bytes and pass the existing ciphertext authentication.
+
+Before an external decapsulation callback, the opener checks the complete
+expected route, receiver and sender pins, envelope sequence, and Hub signature.
+The challenge's encrypted manifest and nonce are then validated against the
+saved pairing. The signer holds canonical possession bytes only in RAM while
+the human reviews the scope; it signs after approval without reopening the
+challenge. Returned shared secrets and transient possession buffers are cleared.
+Neither private PEM plaintext, passphrases, shared secrets, nor challenge
+possession plaintext are written to the profile, temporary files, or logs.
+Protected temporary input files contain only KEM ciphertext or the public
+serialized envelope signing message. The profile persists the exact encrypted
+pairing/proof/receipt packets for recovery. Provider errors are sanitized.
+
+The trusted in-process envelope path retains its previous checks; external
+callback results require the additional expected-key validation. Existing
+opaque identities also implement the callback interface without exporting
+private keys. Neither interface grants authority: the Hub still verifies both
+possession proofs and the current finite authority at atomic completion.
+
 ## Reuse of existing enrollment
 
 After the first Root is established, the local signer signs the existing
 canonical `OwnerDeviceGrant` for the exact Client identity, full fingerprint,
-Hub, Owner, purpose `CLIENT_CONTROL`, and expiry. Existing Hub enrollment
-validation and encrypted session/Guard remain in force. This bootstrap route
+Hub, Owner, purpose `CLIENT_CONTROL`, and expiry. The local grant command can
+export a separate
+`cicada.owner-device-grant-summary.v1` file with `--summary-output`. It carries
+the exact Owner public identity, Hub/Owner/key/device tuple, purpose and grant
+timestamps for local enrollment review. It contains no private identity and
+is not a signed credential or bearer; the canonical signed grant remains a
+separate file. This local file format adds no Client catalog entry or Hub wire
+field. Existing Hub enrollment validation and encrypted session/Guard remain
+in force. This bootstrap route
 does not perform Client enrollment.
 
 The existing Node device-code, Client `nodes.preview` / `nodes.confirm`, and

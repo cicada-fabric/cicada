@@ -10,13 +10,20 @@ a completed historical M1–M5 task or run paid models.
 Development is on `dev`. Check its actual HEAD, dirty state and existing work
 before editing. The development source line is `0.0.5`, Architecture v2.3, with
 schema-60 Owner bootstrap changes against the previously accepted schema 59.
-The bounded checkpoint is SCOPED PASS: independent-Hub Docker A2, segmented
-normal and selected race coverage, vet/build, and Python checks passed. The
-original A7 normal and R3 race aggregate failures/timeouts remain recorded;
-their Store test-fixture repairs were test-only. See the validation record for
-counts, skips, source fingerprints and scope limits. Human interactive CLI
-review, Android, Native, physical-device and public HTTPS remain NOT_RUN;
-Windows custody and lost-Root recovery remain NOT_IMPLEMENTED.
+The original schema-60 checkpoint has scoped Docker A2 and segmented test
+acceptance; its A7/R3 aggregate failures/timeouts remain in the original record.
+This unreleased source checkpoint adds the existing encrypted OpenSSL-key helper,
+Hub identity/bootstrap separation, EN/zh-CN and an explicit advanced old-form
+entry. Stage 1 Hub-only composition has segmented normal/race, vet and contract
+coverage, with its earlier assertion failure and aggregate timeout retained.
+The Linux synthetic OpenSSL PTY ceremony, pre-extraction Windows cross-build
+and current offline Go WASM/UI-model gate have separate source attribution in
+[the audit](docs/architecture-v2-audit.md) and
+[validation record](docs/windows-owner-openssl-validation.md). Native Windows/
+ACL execution, Android, physical devices, Chromium enrollment and public HTTPS
+remain NOT_RUN for this checkpoint; Root-loss recovery and the new two-page
+account/password/claim/login product remain NOT_IMPLEMENTED. Software stays
+0.0.5; no version bump, release or resident deployment replacement is implied.
 Client contract `client-hub-v1.6.5`, encrypted wire 1 and
 catalog 55 remain unchanged. Confirm those
 identities in [VERSION](VERSION), the
@@ -41,6 +48,22 @@ indexed in [the documentation index](docs/README.md).
 - Physical responsibilities are Node, Hub and Client; logical participants are
   User, Control, Worker and optional Monitor. Network is a private tenant and
   authorization scope, not another deployment component or participant.
+- Owner account authentication belongs to Hub Identity/Authorization and must
+  work without Control, Workspace or a model. The accepted target is two pages:
+  verify installer-provided finite claim and independently trusted full-identity
+  SHA-256 pin before sending code/password, then create credentials, a proven
+  ACCOUNT_LOGIN device and pending existing-public-key association. Recalculate
+  the exact full identity hash; QR need not contain all PQ key JSON. Public
+  association is not ACTIVE Root: activation still requires signing/KEM private
+  possession, with no private-key upload. Ten-plus-character passwords require
+  registered-device PQC on every login; initial code is not ongoing MFA and an
+  unknown device cannot enroll by password alone. Controlled credentials
+  attachment to an existing exact account requires an explicit controlled local
+  channel and must not reclaim/reset its Root. Setup secrets/password/proofs/
+  results and account requests preserve NIST application envelopes; HTTPS is
+  transport. A cookie/session hint alone is never an actor: authenticated device
+  envelope, current epochs and nonce/sequence checks remain required. Password
+  work factors and schema choices are still proposals pending contract review.
 - Control manages user intents, goals, budgets and approvals. Ordinary peer
   collaboration must not invoke its interpretation, planning or summarization.
   A Monitor can observe, review or represent within grants; it is not a mandatory

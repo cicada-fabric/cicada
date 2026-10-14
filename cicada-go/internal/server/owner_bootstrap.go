@@ -15,7 +15,7 @@ func (h *Handler) ownerBootstrapAccept(response http.ResponseWriter, request *ht
 		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return
 	}
-	if h.control == nil {
+	if h.ownerBootstrap == nil {
 		writeError(response, http.StatusServiceUnavailable, errors.New("Owner bootstrap is unavailable"))
 		return
 	}
@@ -32,7 +32,7 @@ func (h *Handler) ownerBootstrapAccept(response http.ResponseWriter, request *ht
 		writeError(response, http.StatusBadRequest, errors.New("invalid Owner bootstrap packet size"))
 		return
 	}
-	receipt, e := h.control.AcceptOwnerBootstrap(packet)
+	receipt, e := h.ownerBootstrap.AcceptOwnerBootstrap(packet)
 	if e != nil {
 		writeError(response, http.StatusForbidden, errors.New("Owner bootstrap authorization failed"))
 		return

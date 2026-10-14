@@ -1,5 +1,57 @@
 # Architecture v2.3 实施计划
 
+<a id="hub-account-two-page-next"></a>
+
+## 当前下一检查点：独立 Hub 账户的两页设置（2026-10-14，产品未实现）
+
+最新用户要求已固定为：安装器输出 Hub 地址和一次性初始化信息；第一页
+先取得完整 Hub 公开身份，重算 SHA-256 与安装器 copy/QR payload 的独立
+受信 pin 匹配，再发送有限 claim；pin 无需全部 PQ key JSON。第二页用户名、账户密码和**已有公钥**绑定。密码 10+ 仅在每次
+登录都核验已登记设备 PQC challenge 的自动 MFA 条件下使用；初始 code
+不是持续 MFA，未知设备不能仅凭密码取得登记。设置秘密、密码、proof、
+结果和账户请求保持 NIST 应用加密；HTTPS 不是替代。cookie 只是 session
+hint，账户 actor 仍须认证设备 envelope、当前 epochs 与 nonce/sequence。
+正常设置不展示 technical IDs、browser-device enrollment 或 vault 表单。
+Owner 账户认证归 Hub/Identity/Authorization，独立于 Control、Workspace、
+模型和未来多个 Controller。现有 CLI/Grant/OpenSSL 手动流程降为高级/兼容
+桥接，不是普通产品入口。暂停此前 0.0.6/手动表单收口；没有新认证代码、
+路由或 migration，也不替换用户的 0.0.5 Hub。
+
+[代码审计](architecture-v2-audit.md#2026-10-14-read-only-audit-two-page-hub-owner-account-setup)
+定位了可复用 Store/PoP 与实际 Control constructor 耦合；
+[已确定交互设计](owner-onboarding-design.md)区分账户登录、公钥关联和 ACTIVE
+签名 authority。只上传公钥必须停在关联/待证明状态，不能插入 ACTIVE Root。
+
+| 阶段 | 最小实现范围 | 有界出口 |
+|---|---|---|
+| A Hub-only composition（已实现、限定回归完成） | `internal/hubidentity` 提供现有三组 key 的 LoadOrCreate；`internal/hubowner` 仅 Store+identity 完成原 Issue/Accept；`hubSetupCommand` 不构造 Control，server 依窄 bootstrap/public-identity reader；旧 Control/CLI facade 委托 | 不构造 Control/Workspace/machine/model 可运行设置/PoP；同 StateDir 三组已有 key、稳定 Owner/account 和 Client/Node 历史完全保持 |
+| B claim/account persistence | 本地安装输出受保护 claim；摘要/期限/单次消费、独立 credentials/登录设备 PQC/session 与 pending public association 的小型增量迁移；固定密码 verifier 和 auth/claim 合同 | 第一页无匿名首访认领；第二页原子单胜者与原样恢复；已有账户只附加凭据，公钥匹配既有绑定，Root 历史/撤销不复活 |
+| C 两页及已有 key bridge | 小型 Hub setup/auth HTTP adapter + 两页 UI；严格 public-key-only 导入；当前 OpenSSL helper 的准确 request-file/receipt 交接隐藏在“本地验证密钥”动作后 | username/password + 已登记设备 PQC 每次登录可进入自己的受限账户/设备状态；自动管理 device ID/vault；私钥/passphrase 永不上传；无 PoP 明确待验证，不宣称 signer READY |
+| D 迁移与证明 | 独立 Hub setup/auth 合同、restore schema inventory、Control-absent 测试和一次性 Docker closed loop；现有 crypto/Client/Node 回归 | wrong Hub/claim/password/pub/CSRF、过期/并发/重放、丢响应/重启、已撤销/无私钥、存量账户/key/session/counter 保全均可核验；Windows/Android/HTTPS各自报告 |
+
+阶段 A 已按 Root 分工实施 identity/bootstrap composition 提取，代码冻结并
+限定回归已分段通过，原 assertion failure/aggregate timeout 保留；没有新增
+claim、password routes 或 migrations。本地 setup/
+issuer 直接使用 Hub service，`Control.New` 保留旧业务启动但委托相同 key loader
+和 bootstrap service；`NewHubHandler` 可无 Control 发布 pin/接受有限 proof。
+限定测试证明无 Control 对象/Workspace/machines 时本地 setup 与 PoP 可用，
+三组原公钥与 Owner/account IDs 保持，golden vector、原样 retry、撤销后
+历史 fence 和选定旧管理 Guard 不回归；见[有界证据](architecture-v2-audit.md)。阶段 B/C 再固定新 auth/device challenge
+合同和两页交互，不把一次性 setup code 当长久第二因素。Hub/UI 与物理 admin
+按用户边界受信，不引入强制 desktop-signature/enclave/VM；保留用户已有四个
+OpenSSL 文件。
+
+这一个检查点不建设 SSO、邮件找回、一般 RBAC、Root-loss recovery、跨 Hub
+账户同步、多个 Controller 平台或完整设备扫码系统。现有 Client 管理 NIST
+wire 和 Guard 不因新增账户 cookie 被绕过；后续业务 actor adapter 须明确
+操作范围，不能提供万能 RPC。新 claim issuer 的权威来自部署者初始渠道与
+受限 claim session；如何准备准确 PoP authority 需在新合同固定，不能偷改
+旧“公共 accept 不发行 authority”的合同。全程保留已生成密钥，不上传私钥、
+不重置状态。已有准确 HUB_READY account 的凭据附加只经明确受控本地渠道，
+与首次 Root 激活资格不同；不得公开认领旧 volume、重开/改变 Root。schema/
+KDF work factor 仍待合同审查。以下旧检查点与 Headscale参考保留历史来源，
+不能当作账户产品已实现。
+
 ## 2026-10-13 bounded Owner bootstrap checkpoint — SCOPED PASS; full product PARTIAL
 
 The bounded source candidate is separately specified by
@@ -25,8 +77,33 @@ input and explicit proof/role checks. Full account/setup UI and unified pairing
 remain **NOT_IMPLEMENTED**. Bounded local setup and first-signer bootstrap
 passed its Docker, segmented normal/race, vet/build and Python checks; original
 aggregate A7 and R3 failures/timeouts remain recorded.
+2026-10-14 interaction target follows Headscale's explicit-user-creation and
+separate-device-approval order: deployment/local setup creates the stable
+Owner; one finite local-signer ceremony proves the existing PQ keys; subsequent
+Node/Client devices enter the Hub address, use a short-lived one-use QR/code or
+approval page, prove their own keys, receive limited enrollment, and appear in
+the panel. Owner account, Owner credential, device identity, Network membership
+and Endpoint/Thread Join remain separate. A join code is not an Owner grant;
+no anonymous first visitor claims Owner and no existing key is regenerated or
+uploaded privately. Headscale itself requires explicit user creation; its
+browser Auth ID/local registration and default one-use one-hour preauth key are
+[official reference behavior](https://headscale.net/stable/usage/getting-started/),
+not CICADA implementation or a new dependency. The
+[design](owner-onboarding-design.md#headscale-owner-onboarding-target)
+marks this as a product target; the current manual CLI bootstrap/Grant bridge
+is distinct. This documentation change adds no server/API/schema. The local
+helper's 0.0.6 version update remains pending overall QA.
 External OpenSSL is optional tooling.
 Historical manual-signing evidence below retains its original source and scope.
+
+The current web-panel follow-up is a public-file guide and consistency draft
+only: it accepts the independent Hub connection file and local Owner public
+manifest, validates their full public-key bindings, and directs users to the
+local finite-issuer and proof ceremony. It does not register a Root, inspect
+live signer state, or replace Client Grant enrollment. This source change is
+not part of the frozen 0.0.5 artifact; current deployed panels remain unchanged
+until a later reviewed build. Windows custody and unified onboarding remain
+separate work; this guide itself does not perform local key custody.
 
 [Deployment/interface design](deployment-interface-design.md) recommends a Hub
 embedded Web UI plus shared Go CLI/local components for Linux/macOS/Windows,
@@ -92,6 +169,37 @@ with the helper. Neither helper is a formal public one-command installer.
 Production CA initialization, guided TUI and automatic renewal are not delivered
 by these paths. This section records future deployment experience only; it
 changes no protocol or resident deployment.
+
+### Next checkpoint: official installer and lifecycle — NOT_IMPLEMENTED
+
+The clean 0.0.5 checkpoint at `9fa3628` remains frozen and does not include an
+official installer. Plan a small installer/lifecycle checkpoint with these
+requirements:
+
+- Detect the host OS and architecture, then require an explicit Hub or Node
+  role. Unsupported combinations fail before changing host state.
+- Resolve an exact published release through verified, pinned artifact
+  metadata. Check signatures and digests before installation; fail closed on
+  missing or invalid artifacts and on unsupported crypto requirements. Never
+  invent a download URL or silently fall back to weaker crypto. A Unix shell
+  entry may later support an official `curl | sh` path, but no such URL or
+  availability is claimed today. Provide a native Windows entry point when that
+  platform is supported.
+- Cover first install, controlled upgrade, idempotent rerun and recoverable
+  failure. Preserve existing Hub/Node keys, configuration and state across
+  upgrade and retry. The installer may prepare Hub account setup, but must not
+  create or retain the Owner's private approval key on the Hub; the finite
+  first-signer ceremony remains Owner-local and explicitly reviewed.
+- Define ordinary uninstall to remove only the exact installer-owned service
+  and registration while retaining its state volume. Complete purge must be a
+  separate explicit destructive action naming the exact owned container and
+  volume. Never select resources by a broad name prefix; never remove a shared
+  image while another container references its image ID.
+
+This is future product work, not a description of current installer support or
+authorization to delete unrelated deployments. The user's one-time permission
+for their identified reinstall remains scoped to that operation; it does not
+change the planned uninstall or purge defaults.
 
 The [distribution responsibility boundary](distribution.md#product-and-operator-responsibilities)
 keeps host/IP/reachability, OS/Docker permissions, optional DNS, TLS infrastructure
