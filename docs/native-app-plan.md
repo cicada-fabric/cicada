@@ -56,3 +56,46 @@ for an existing account. Trusted local-profile discovery and automatic resume
 without bootstrap material are N2 work. The protocol accepts only the existing
 initial-account claim authority; it does not provide Root completion or
 existing-Owner continuation.
+
+## N2 independent acceptance matrix
+
+The following are acceptance obligations, not implementation claims. The
+independent driver is `scripts/test-native-app-n2.sh`; its initial lane covers
+the existing account core with real ML-KEM/ML-DSA/AES-GCM, loopback TCP,
+persistent SQLite and separate Hub/App processes inside a disposable Docker
+container. It has no Control inference service. N2 rows require the frozen
+Hub/App contract and exact implementation commits before they can pass.
+
+| ID | Fault or boundary | Required observation | Initial scope |
+| --- | --- | --- | --- |
+| N2-01 | Wrong full Hub public key/pin | Connect rejects before secret POST or vault creation | Account baseline |
+| N2-02 | Expired finite credential | Local preflight and Hub expiry guard independently reject; no authority change | Account baseline + N2 pending |
+| N2-03 | Consumed credential, exact duplicate and changed request | Original packet returns identical durable receipt; changed identity/request fails | Account baseline + N2 pending |
+| N2-04 | Concurrent distinct candidate claims | Exactly one durable winner, loser cannot overwrite candidate or account | Account baseline + N2 pending |
+| N2-05 | Wrong Owner/account/Hub scope | Server rejects independently of client preflight | Account baseline + N2 pending |
+| N2-06 | Missing Owner KEM or signature proof | Account stays usable but Root/Manager remain unavailable | N2 pending |
+| N2-07 | Forged/expired/wrong-purpose OwnerDeviceGrant | No enrollment or Manager authority | Existing crypto guard + N2 pending |
+| N2-08 | Stale setup/account/device/grant epoch | No new execution and no revival through a cached receipt | Existing account guard + N2 pending |
+| N2-09 | Unknown or substituted App device | Password/token/public capability cannot bypass exact enrolled key | Account baseline + N2 pending |
+| N2-10 | Drop committed response, unsigned 403, corrupt PQ response | Durable uncertainty fence; only authenticated response settles operation | Account baseline + N2 pending |
+| N2-11 | Kill Hub/App process and reopen persistent state | Same IDs/keys and original encrypted packet survive; no duplicate effect | Account baseline + N2 pending |
+| N2-12 | Same operation ID with different ciphertext or nonce replay | Reject conflicting request without replacing original receipt | Account baseline + N2 pending |
+| N2-13 | Account login versus Root and Control inference unavailable | Claim/login/inspect/logout work; account session grants no Root/Manager | Account baseline; full activation pending |
+| N2-14 | Exact legacy PENDING_PROOF continuation | Existing Owner/account/key IDs retained; no second Owner/rekey/revoked Root recovery | N2 pending |
+| N2-15 | Trusted profile reopen without expired bootstrap code | Discover encrypted profile; authenticate current epoch before management | N2 pending |
+| N2-16 | Vault persistence failure before send | Zero POSTs; fail closed until reopen; no memory-only retry | Existing App guard; N2 pending |
+| N2-17 | Two Hub scopes | No key/session/pending-state inheritance | Existing vault guard; N2 pending |
+| N2-18 | Windows DPAPI, ACL and GUI | Native execution receipts required individually | NOT_RUN |
+| N2-19 | Expired 15-minute App lease, late old completion | Fixed finite lease cannot self-renew; expired/revoked authority cannot be revived by exact receipt recovery | N2 pending |
+| N2-20 | Status ABSENT, lost packet and late original arrival | ABSENT preserves uncertainty; only original authenticated receipt or durable operation+digest terminal fence allows replacement | N2 pending |
+| N2-21 | Wrong password, then correct password | Authenticated terminal rejection safely fences the failed operation; correct password can begin a new request | N2 pending; baseline recovery gap under review |
+| N2-22 | Expired or revoked account session | Safe authenticated reconciliation permits login again; never treats unsigned 403 as final or stays permanently unrecoverable | N2 pending; baseline recovery gap under review |
+| N2-23 | Native interaction and visual quality | Smooth, legible real desktop setup/recovery; no secret disclosure in snapshots or error UI | Windows GUI/visual review NOT_RUN |
+
+Each run must record source manifest before/after, dirty status, builder image
+ID, test binary hash, selectors, individual exit codes and skips, resource
+ownership/cleanup and artifact hashes. No selector match, missing prerequisite,
+skip or unimplemented row is a pass. Default baseline success is a scoped
+result only; `--require-n2` must return nonzero while complete N2 acceptance is
+unavailable. Android, native Runtime, physical device, public HTTPS and native
+PQTLS are separate NOT_RUN scopes.

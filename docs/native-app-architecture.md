@@ -139,3 +139,41 @@ not rename or revise those wire identifiers in place. See the [native App
 plan](native-app-plan.md), [account validation](hub-owner-account-validation.md)
 and [implementation status](architecture-v2-status.md) for current evidence
 and retained failures.
+
+## N2 independent threat model
+
+Acceptance starts from clean source `c1b6a30`; a later Hub/App contract and
+implementation must be pinned separately before testing N2 activation. The
+existing account claim code and operator first-signer bootstrap are distinct
+protocols. Neither is evidence of native N2 completion.
+
+Assets are the stable Hub/account/Owner IDs, exact existing Owner keypair,
+separate App-device keypair, finite setup authority, current epochs, grants,
+encrypted pending packets and immutable authenticated receipts. The trusted
+computing base includes the local operator delivery channel, App key custody,
+Hub identity/authorization service and its persistent database. Control
+inference and public capability discovery cannot issue authority. Host
+administrators are trusted; compromise of their host is outside this scope.
+
+An attacker may control DNS/transport or an HTTP intermediary, copy an expired
+or consumed code, own a different Owner/App keypair, possess an account password
+without the enrolled device, race candidates, replay accepted packets, tamper
+with signatures/ciphertext, and induce connection loss or process death. A
+stolen valid, unused setup secret is authority within its deliberately finite
+scope; secrecy of the trusted local channel is an explicit assumption.
+
+| Boundary | Required invariant and negative oracle |
+| --- | --- |
+| Operator material → Hub discovery | App independently recomputes the full public-identity pin at the exact canonical origin before any secret-bearing POST. Wrong key, scheme, origin or pin sends zero secrets. |
+| Setup authority → candidate reservation | Purpose, expiry, setup epoch, Hub/account/Owner and both public identities are bound atomically. Two distinct candidates have one durable winner; changed tuple/request cannot resume it. No transaction waits for a person or a remote client. |
+| Account → Root | Password plus enrolled App proof creates only an account actor. A pending public Owner association, cached receipt or public capability never activates Root or Manager. |
+| Owner proof → App authorization | Exact existing Owner KEM and signature proofs plus a finite, correctly scoped OwnerDeviceGrant are independently verified. Missing proof, foreign Owner, wrong App, forged grant and stale epoch leave authority unchanged. |
+| Local vault → network | Commit the exact encrypted request before sending. Lost/unsigned/corrupt responses preserve uncertainty. Restart retries the original bytes; it cannot silently reseal, replace identities, clear pending state or infer success. |
+| Durable receipt → current authority | Exact receipt recovery does not revive revoked Root, device, grant or epoch. Reconcile authenticated current Hub state before protected management actions. |
+| Existing deployment → continuation | Preserve exact existing IDs and pending key. Reject unknown candidates, second Owner, implicit rotation and resurrection of revoked Root. |
+
+The fault driver must distinguish connection loss before acceptance from loss
+after a durable commit. Evidence records request/response hashes and assertion
+names only; codes, passwords, session tokens, private keys and complete proof
+or packet payloads remain in disposable private fixture state. Linux password
+vault tests cannot establish Windows DPAPI/ACL or GUI behavior.

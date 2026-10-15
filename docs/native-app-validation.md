@@ -157,3 +157,105 @@ a replacement request or discard the pending packet. Basic password length
 and encoding checks run locally, while authoritative policy feedback requires
 a validated encrypted Hub response. This is a deliberate N1 recovery bound;
 it does not grant account or Root authority.
+
+## N2 independent account baseline
+
+On 2026-10-15 the independent acceptance task reviewed the Hub account service,
+Owner bootstrap service, App Controller, scoped encrypted vault and existing
+ML-KEM-768 / ML-DSA-65 / AES-256-GCM wire code at base `c1b6a30`. N2 activation
+and controlled legacy continuation were absent from that source. The threat
+model is in [architecture](native-app-architecture.md#n2-independent-threat-model)
+and the complete fault matrix is in [the plan](native-app-plan.md#n2-independent-acceptance-matrix).
+
+The new `cicada-go/acceptance/n2` consumer starts the production Hub
+identity/account handler with no Control service. Both Hub and App run in
+separate subprocesses. A real TCP proxy injects loss before forwarding, loss
+after a successful Hub response, an unsigned 403 after commit, and a corrupt
+PQ response. For each of claim prepare/complete, login prepare/complete,
+inspection and logout, the driver SIGKILLs the App and Hub, reopens the same
+SQLite database and encrypted vault, and verifies the exact original request
+hash and, after a commit, immutable original response hash. This is Linux App
+core protocol acceptance, not Windows GUI execution or shipping Hub CLI
+composition acceptance.
+
+Additional negative tests cover full Hub pin mismatch and expired connection
+material before vault creation/POST, two simultaneous distinct account claim
+candidates, consumed exact versus resealed requests, foreign Hub/Owner routes,
+missing/bad App signature/ciphertext, substituted login-device key and
+cookie-only inspection. The accepted account remains `PENDING_PROOF`; no
+Root or Manager authority is created.
+
+```sh
+scripts/test-native-app-n2.sh
+# Full acceptance must remain nonzero until the N2 lane exists:
+scripts/test-native-app-n2.sh --require-n2
+```
+
+The baseline run `run-20261015T123219Z-IyTWRS` exited **0 / SCOPED_PASS**:
+58 passing test events, zero failures and zero skips. Compile, process lane,
+existing guards, vet and version commands each exited 0. It used the offline
+Go 1.27.1 image `sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195`
+with read-only shared modules and an exclusive task build cache. No host port
+was published; loopback TCP stayed inside the network-disabled disposable
+container. The owned container was absent afterward.
+
+Evidence is retained outside the repository at
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/run-20261015T123219Z-IyTWRS/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `6df637833f4ffcb84ab18163a27a1e9f1f5a7a2b26f35e005968f5e48e62ca94` |
+| `artifacts.sha256.json` | `db84f6faad624b152f4240d81ec2a430afad1a102910e2134c6e2fdcf941d49e` |
+| Exact Linux test binary | `76c17dc5cae8ed1998e44f1bc0b0a0bd56e4160946c3fc65d6a5851ea69f7dab` |
+| Source manifest identity | `f690cf8759de7c34ea184d969d013825e1785d014a937e1a55fcf568667bb0ce` |
+
+The source was dirty, based on `c1b6a30`, and stable during that run. Its
+manifest, rather than HEAD alone, identifies what was tested. Later driver
+changes add portable workspace discovery and explicit resident-container
+ID/name/image/start-time comparison; they were not part of that receipt.
+The earlier `run-20261015T123111Z-ysm9I6` exited 1 because of acceptance-fixture
+cleanup lifetime, nanosecond expiry construction and error-code assertions;
+those harness errors were corrected. Its failure is retained and is not a
+production defect or an N2 pass.
+
+The baseline's deliberate fail-closed response handling also exposes an N2
+recovery requirement: wrong-password rejection and expired/revoked sessions
+need an authenticated terminal result or an operation+digest fence before
+allowing replacement login. Unsigned HTTP errors alone cannot clear pending
+state. This requirement was handed to the Hub/App owners and remains pending
+in the N2 matrix. Full activation, exact legacy continuation, expiry/late
+lease guards, status fencing and profile discovery are **NOT_RUN** in this
+baseline. Windows DPAPI, ACL, GUI and visual review are individually
+**NOT_RUN**, as are Android, native Runtime, physical device, public HTTPS and
+native PQTLS. The integration owner runs the separate standard Client Docker
+interop gate after integration; it is not run or claimed by this lane.
+
+The final preparation driver was rerun with explicit resident selection:
+
+```sh
+CICADA_N2_RESIDENT_NAMES=cicada-client-hub-v1-2-manager,cicada-client-hub-v1-2,cicada-client-v11-emulator,cicada-client-hub-v1-1 \
+  scripts/test-native-app-n2.sh --require-n2
+python3 -m unittest discover -s scripts -p test_native_app_n2_evidence.py
+```
+
+Run `run-20261015T123800Z-6ulAdI` recorded **SCOPED_PASS** for the same 58 events,
+zero failures/skips and five zero-exit lanes. The overall exit was **3**, as
+required while N2 is NOT_RUN. Source manifest
+`c320615f8629a5f966bf8744597a7367683b7ed2b67da50f7854b892f4a840aa`
+was stable; the binary hash stayed `76c17dc5cae8ed1998e44f1bc0b0a0bd56e4160946c3fc65d6a5851ea69f7dab`.
+All four resident container IDs, names, immutable images and process start
+times matched; the owned container was absent. Result SHA-256 is
+`a9b0ada5f2d1e3c1901ddfb69e53a3f753f152dd43062c56072ef5f5baeb3dc4`,
+and artifact index SHA-256 is
+`939a1146e2a4f608754f9f3c88b6ddab7f1e096b64dd06178b2af308e85df89c`.
+The two evidence-tool unit tests passed, including refusal to pass an empty
+zero-exit test log. Shell syntax, Python compilation and diff whitespace checks
+passed. This remains dirty-source evidence, preceding its documentation update.
+
+An intervening run `run-20261015T123609Z-oXVOm5` also passed all 58 events but
+exited 1: its initial resident-discovery heuristic included a concurrently
+running anonymous `--rm` Go test container, which then exited. Actual resident
+Hub/emulator identities were unchanged. The driver now excludes auto-remove
+fixtures by default and supports the explicit resident-name list above. This
+is a retained harness classification failure, not a product failure. No
+container belonging to another task was modified.
