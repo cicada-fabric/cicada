@@ -124,6 +124,9 @@ const (
 	msgHubTrustFailed            messageID = "error.hub_trust_failed"
 	msgOwnerMismatch             messageID = "error.owner_mismatch"
 	msgEncryptedOwnerUnsupported messageID = "error.encrypted_owner_unsupported"
+	msgReplacementCode           messageID = "setup.replacement_code"
+	msgReplacementBody           messageID = "setup.replacement_body"
+	msgBackToActivation          messageID = "setup.back_to_activation"
 )
 
 var catalog = map[Locale]map[messageID]string{
@@ -240,6 +243,9 @@ var catalog = map[Locale]map[messageID]string{
 		msgHubTrustFailed:            "The Hub identity could not be verified. Check the trusted Hub address before continuing.",
 		msgOwnerMismatch:             "Use the original Owner keys for this Hub. The selected identity does not match.",
 		msgEncryptedOwnerUnsupported: "This build supports unencrypted PKCS#8 Owner PEM files only. Encrypted PEM import is not supported. Your keys have not been changed.",
+		msgReplacementCode:           "Use a new activation code",
+		msgReplacementBody:           "Your previous setup did not activate Root. Enter replacement material from your Hub operator to continue with the same local keys.",
+		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
 		msgAppTitle:                  "Cicada",
@@ -354,6 +360,9 @@ var catalog = map[Locale]map[messageID]string{
 		msgHubTrustFailed:            "无法验证 Hub 身份。请先核对可信的 Hub 地址。",
 		msgOwnerMismatch:             "此 Hub 需要原有 Owner 密钥，所选身份不匹配。",
 		msgEncryptedOwnerUnsupported: "此版本仅支持未加密的 PKCS#8 Owner PEM 文件，暂不支持加密 PEM。原有密钥未作修改。",
+		msgReplacementCode:           "使用新的激活码",
+		msgReplacementBody:           "此前设置尚未激活 Root。可输入 Hub 操作员提供的新材料，保留本机原有密钥继续设置。",
+		msgBackToActivation:          "返回激活步骤",
 	},
 }
 

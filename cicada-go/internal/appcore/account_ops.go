@@ -168,7 +168,7 @@ func (c *nativeController) claimComplete(ctx context.Context, action Action) err
 }
 
 func (c *nativeController) loginPrepare(ctx context.Context, action Action) error {
-	if c.device == nil || c.state.AccountID == "" || c.state.OwnerID == "" || c.state.DeviceID == "" ||
+	if c.device == nil || !c.state.AccountDeviceEnrolled || c.state.AccountID == "" || c.state.OwnerID == "" || c.state.DeviceID == "" ||
 		c.session != nil || c.state.LoginChallenge != nil || !c.canBeginOperation() {
 		return ErrInvalidAction
 	}

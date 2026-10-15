@@ -82,6 +82,7 @@ type HubSnapshot struct {
 }
 
 type AccountSnapshot struct {
+	DeviceEnrolled       bool         `json:"device_enrolled"`
 	State                AccountState `json:"state"`
 	AccountID            string       `json:"account_id,omitempty"`
 	OwnerID              string       `json:"owner_id,omitempty"`
@@ -141,6 +142,7 @@ type SetupSnapshot struct {
 	NeedsCredentials      bool   `json:"needs_credentials"`
 	ActivationPending     bool   `json:"activation_pending"`
 	AuthorizationDeadline string `json:"authorization_deadline,omitempty"`
+	ReplacementAllowed    bool   `json:"replacement_allowed"`
 }
 
 type AuthorizationSnapshot struct {

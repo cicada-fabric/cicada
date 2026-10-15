@@ -59,34 +59,36 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
-	controller     appcore.Controller
-	window         *app.Window
-	ctx            context.Context
-	cancel         context.CancelFunc
-	theme          *material.Theme
-	locale         appui.Locale
-	activation     widget.Editor
-	username       widget.Editor
-	password       widget.Editor
-	buttons        map[appcore.ActionKind]*widget.Clickable
-	profileButtons map[string]*widget.Clickable
-	contentList    widget.List
-	canvasList     widget.List
-	langEN         widget.Clickable
-	langZH         widget.Clickable
-	previewButton  widget.Clickable
-	detailsButton  widget.Clickable
-	details        bool
-	consent        widget.Bool
-	inputScope     string
-	canvas         canvasWidget
-	preview        bool
-	busy           atomic.Bool
-	closed         atomic.Bool
-	workerWG       sync.WaitGroup
-	statusMu       sync.Mutex
-	failed         bool
-	uiErrorCode    string
+	cancelReplacement widget.Clickable
+	controller        appcore.Controller
+	window            *app.Window
+	ctx               context.Context
+	cancel            context.CancelFunc
+	theme             *material.Theme
+	locale            appui.Locale
+	activation        widget.Editor
+	username          widget.Editor
+	password          widget.Editor
+	buttons           map[appcore.ActionKind]*widget.Clickable
+	profileButtons    map[string]*widget.Clickable
+	contentList       widget.List
+	canvasList        widget.List
+	langEN            widget.Clickable
+	langZH            widget.Clickable
+	previewButton     widget.Clickable
+	detailsButton     widget.Clickable
+	details           bool
+	consent           widget.Bool
+	inputScope        string
+	replacementInput  bool
+	canvas            canvasWidget
+	preview           bool
+	busy              atomic.Bool
+	closed            atomic.Bool
+	workerWG          sync.WaitGroup
+	statusMu          sync.Mutex
+	failed            bool
+	uiErrorCode       string
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -230,6 +232,9 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 
 func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
 	flow := appui.Flow(s)
+	if v.replacementInput && s.Setup.ReplacementAllowed {
+		flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
+	}
 	rows := make([]layout.Widget, 0, 12)
 	switch flow.Stage {
 	case "connect":
@@ -243,6 +248,8 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
 	case "keys":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_keys")), v.labelRow(appui.Text(v.locale, "setup.keys_body")))
+	case "replace":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.replacement_code")), v.labelRow(appui.Text(v.locale, "setup.replacement_body")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
 	case "activate":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.activate_app")), v.labelRow(appui.Text(v.locale, "setup.grant_body")))
 		if expiry, err := time.Parse(time.RFC3339Nano, s.Setup.AuthorizationDeadline); err == nil {
@@ -259,6 +266,21 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		if s.Account.State == appcore.AccountStateOwnerProof {
 			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.owner_proof_pending")))
 		}
+	}
+	if flow.Stage == "replace" && v.replacementInput && appui.Flow(s).Stage != "replace" {
+		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+			if v.cancelReplacement.Clicked(gtx) {
+				v.replacementInput = false
+				v.activation.SetText("")
+				v.password.SetText("")
+				v.consent.Value = false
+				v.window.Invalidate()
+			}
+			style := material.Button(v.theme, &v.cancelReplacement, appui.Text(v.locale, "setup.back_to_activation"))
+			style.Background = color.NRGBA{R: 42, G: 56, B: 72, A: 255}
+			style.Color = v.theme.Fg
+			return style.Layout(gtx)
+		})
 	}
 	if flow.Username {
 		rows = append(rows, v.editorRow(&v.username, appui.Text(v.locale, "account.username"), false))
@@ -279,6 +301,9 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 	}
 	for _, kind := range flow.Secondary {
 		if label, ok := v.actionLabel(kind); ok {
+			if kind == appcore.ActionConnect && s.Setup.ReplacementAllowed {
+				label = appui.Text(v.locale, "setup.replacement_code")
+			}
 			rows = append(rows, v.actionButton(kind, label, s))
 		}
 	}
@@ -297,6 +322,9 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 	return func(gtx layout.Context) layout.Dimensions {
 		enabled := !v.busy.Load() && (kind != appcore.ActionActivateApp || v.consent.Value)
 		flow := appui.Flow(s)
+		if v.replacementInput && s.Setup.ReplacementAllowed {
+			flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
+		}
 		if kind == flow.Primary {
 			if flow.Username && strings.TrimSpace(v.username.Text()) == "" {
 				enabled = false
@@ -309,12 +337,20 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			}
 		}
 		if button.Clicked(gtx) && enabled {
+			if kind == appcore.ActionConnect && s.Hub.Verified && s.Setup.ReplacementAllowed && !v.replacementInput && appui.Flow(s).Stage != "replace" {
+				v.replacementInput = true
+				v.consent.Value = false
+				v.password.SetText("")
+				v.window.Invalidate()
+				return v.button(gtx, button, label, true)
+			}
 			action, ok := v.actionFor(kind, s)
 			if ok {
 				v.startDispatch(action)
 			}
 		}
-		if kind == appcore.ActionDiscoverProfiles || kind == appcore.ActionImportOwner || kind == appcore.ActionLogout {
+		if kind == appcore.ActionDiscoverProfiles || kind == appcore.ActionImportOwner || kind == appcore.ActionLogout ||
+			(kind == appcore.ActionConnect && s.Hub.Verified && appui.Flow(s).Primary != appcore.ActionConnect && !v.replacementInput) {
 			if v.busy.Load() {
 				gtx = gtx.Disabled()
 			}
@@ -347,6 +383,8 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		v.password.SetText("")
 		return action, action.Username != "" && action.Password != ""
 	case appcore.ActionConnect:
+		v.replacementInput = false
+		v.consent.Value = false
 		if strings.HasPrefix(strings.TrimSpace(v.activation.Text()), "cicada-hub-connection-v1:") {
 			action.ConnectionCard = strings.TrimSpace(v.activation.Text())
 			v.activation.SetText("")
@@ -571,7 +609,7 @@ func (v *view) phaseLabel(phase appcore.Phase) string {
 		appcore.PhaseLoginChallenge:    "account.login",
 		appcore.PhaseSessionCheck:      "account.state.session_check",
 		appcore.PhaseAccountPending:    "state.owner_pending",
-		appcore.PhaseAccountSession:    "state.owner_pending",
+		appcore.PhaseAccountSession:    "setup.account_ready",
 		appcore.PhaseOwnerReady:        "state.owner_ready",
 		appcore.PhaseActivationPending: "setup.activate_app",
 		appcore.PhaseUnavailable:       "state.unavailable",

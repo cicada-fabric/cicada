@@ -85,9 +85,6 @@ func (c *nativeController) canActivateEnrollment() bool {
 }
 
 func (c *nativeController) login(ctx context.Context, action Action) error {
-	if e := c.state.Enrollment; e != nil && e.Result != nil && e.Result.LeaseState == wire.ActivationLeaseRevoked {
-		return c.fail(PhaseUnavailable, "APP_DEVICE_REVOKED", ErrInvalidAction)
-	}
 	if !validPasswordInput(action.Password) || !c.canBeginOperation() {
 		return ErrInvalidAction
 	}
@@ -150,6 +147,9 @@ func (c *nativeController) applyActivationResult(result *wire.ActivationResult) 
 	}
 	if result.LeaseState == wire.ActivationLeaseActive && (e.Challenge == nil || result.LeaseExpiresAt != e.Challenge.Binding.LeaseExpiresAt || !reflect.DeepEqual(result.AllowedOperations, wire.ActivationAllowedOperations())) {
 		return errors.New("activation lease differs from confirmed proof scope")
+	}
+	if result.Operation == wire.OperationActivationComplete && result.State == wire.ActivationCompleted {
+		c.state.AccountDeviceEnrolled = true
 	}
 	if result.Operation != wire.OperationActivationStatus && result.State == wire.ActivationCompleted && e.Result != nil && e.Result.Operation == wire.OperationActivationStatus {
 		// A historical completion cannot overwrite a current-state

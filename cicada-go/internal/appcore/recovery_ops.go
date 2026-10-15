@@ -265,8 +265,11 @@ func (c *nativeController) applyRecovery() error {
 			return err
 		}
 		c.clearSession()
-		c.state.AccountState, c.state.RootState = AccountStateLoginRequired, RootStateUnknown
-		c.authorizationChecked = false
+		c.state.AccountState = AccountStateLoginRequired
+		if _, accountOnly := value.(*wire.AccountReconcileResult); accountOnly {
+			c.state.RootState = RootStateUnknown
+			c.authorizationChecked = false
+		}
 	}
 	c.state.LastRecovery, c.state.Recovery = r, nil
 	if err := c.persistState(); err != nil {
