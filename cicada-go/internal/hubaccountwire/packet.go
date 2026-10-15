@@ -82,7 +82,7 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 	packet, err := DecodePacket(raw)
 	if err != nil || hub == nil || expectedRoute.Direction != clientwire.DirectionRequest ||
 		packet.Packet.Route != expectedRoute || !validBinding(binding, expectedRoute) ||
-		(expectedRoute.Operation != OperationClaimPrepare && trustedDevice == nil) {
+		(expectedRoute.Operation != OperationClaimPrepare && expectedRoute.Operation != OperationActivationPrepare && trustedDevice == nil) {
 		return ErrInvalid
 	}
 	if trustedDevice != nil && !reflect.DeepEqual(packet.SenderPublicIdentity, *trustedDevice) {
@@ -187,7 +187,20 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 	if err := decodeCanonical(opened.Plaintext, maxBodyForOperation(opened.Route.Operation), out); err != nil {
 		return err
 	}
-	return validateResponseForRoute(out, request.Packet.Route)
+	if validateResponseForRoute(out, request.Packet.Route) != nil {
+		return ErrInvalid
+	}
+	switch value := dereference(out).(type) {
+	case ActivationChallenge:
+		if value.Binding.PreparePacketDigest != ActivationPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+	case ActivationResult:
+		if value.RequestPacketDigest != ActivationPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+	}
+	return nil
 }
 
 // DecodePacket rejects unknown fields, duplicate/noncanonical JSON encodings,
@@ -289,5 +302,5 @@ func requestRouteMetadata(body any) (operation, requestID, ownerID, deviceID str
 			return requestRouteMetadata(*value)
 		}
 	}
-	return "", "", "", "", 0, ErrInvalid
+	return extensionMetadata(body)
 }

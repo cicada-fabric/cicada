@@ -60,7 +60,7 @@ func validateRequestBody(body any, hub HubIdentity, now time.Time) error {
 			return ErrInvalid
 		}
 	default:
-		return ErrInvalid
+		return validateExtensionRequest(body, hub, now)
 	}
 	return nil
 }
@@ -194,7 +194,7 @@ func validateRequestMatchesDevice(body any, device e2ee.PublicIdentity) error {
 			return ErrInvalid
 		}
 	default:
-		return ErrInvalid
+		return validateExtensionDevice(body, device)
 	}
 	return nil
 }
@@ -246,7 +246,7 @@ func validateResponseForRoute(body any, request clientwire.Route) error {
 		operationID, hubID, ownerID, deviceID = value.RequestID, value.HubID, value.OwnerID, value.DeviceID
 		expectedType = LogoutReceiptFormat
 	default:
-		return ErrInvalid
+		return validateExtensionResponse(body, request)
 	}
 	if validateResponseBody(body) != nil || operationID != request.OperationID || hubID != request.HubID ||
 		ownerID != request.OwnerID || deviceID != request.DeviceID ||
@@ -310,11 +310,14 @@ func knownOperation(operation string) bool {
 		OperationSessionInspect, OperationSessionLogout:
 		return true
 	default:
-		return false
+		return extensionOperation(operation)
 	}
 }
 
 func maxBodyForOperation(operation string) int {
+	if extensionOperation(operation) {
+		return MaxActivationBodyBytes
+	}
 	if operation == OperationClaimComplete {
 		return MaxClaimBodyBytes
 	}

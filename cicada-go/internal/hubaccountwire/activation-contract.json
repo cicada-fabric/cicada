@@ -1,0 +1,21 @@
+{
+  "contract_revision": "owner-activation-v1",
+  "packet_format": "cicada.owner-account-packet.v1",
+  "wire_version": 1,
+  "operations": [
+    {"operation":"owner.activation.prepare","method":"POST","path":"/v2/owner/activation/prepare","request":"ActivationPrepare","response":"ActivationChallenge"},
+    {"operation":"owner.activation.complete","method":"POST","path":"/v2/owner/activation/complete","request":"ActivationComplete","response":"ActivationResult"},
+    {"operation":"owner.activation.status","method":"POST","path":"/v2/owner/activation/status","request":"ActivationStatusRequest","response":"ActivationResult"},
+    {"operation":"owner.account.reconcile","method":"POST","path":"/v2/owner/account/reconcile","request":"AccountReconcileRequest","response":"AccountReconcileResult"}
+  ],
+  "purposes": ["INITIAL_OWNER_ACTIVATION", "LEGACY_PENDING_CONTINUATION"],
+  "activation_max_seconds": 3600,
+  "enrollment_grant_max_seconds": 600,
+  "proof_max_seconds": 600,
+  "runtime_lease_seconds": 900,
+  "runtime_lease_renewable": false,
+  "allowed_operations": ["nodes.list", "session.capabilities"],
+  "absent_settles_pending": false,
+  "frozen_client_contract": "client-hub-v1.6.5",
+  "frozen_client_catalog_count": 55
+}
