@@ -60,7 +60,11 @@ func hubActivationIssueCommand(args []string, output io.Writer) error {
 		return err
 	}
 	// A configured issuer must never repair missing transport keys by rekeying.
-	for _, path := range []string{filepath.Join(config.StateDir, "e2ee", "identity.json"), filepath.Join(config.StateDir, "e2ee", "client-control-identity.json"), filepath.Join(config.StateDir, "e2ee", "node-control-identity.json")} {
+	peerPath := config.IdentityFile
+	if peerPath == "" {
+		peerPath = filepath.Join(config.StateDir, "e2ee", "identity.json")
+	}
+	for _, path := range []string{peerPath, filepath.Join(config.StateDir, "e2ee", "client-control-identity.json"), filepath.Join(config.StateDir, "e2ee", "node-control-identity.json")} {
 		info, e := os.Lstat(path)
 		if e != nil || !info.Mode().IsRegular() {
 			return errors.New("configured Hub identity is missing; activation cannot regenerate keys")

@@ -1,5 +1,35 @@
 # N2 Owner activation validation
 
+## Configured Peer identity path repair — 2026-10-15
+
+Base `570c12f`, dirty `task/n2-hub` candidate. `hub activation-issue` now checks
+the actual configured Peer identity path from `CICADA_E2EE_IDENTITY_FILE`, with
+the established StateDir default only when no override is configured. Previously
+it checked the default path but loaded the configured one: a valid custom-only
+installation was rejected, while a missing configured identity could be created
+despite an existing default. This repair preserves the actual configured key
+and rejects a missing one before any replacement file can be generated. It
+does not alter wire identifiers, grants, epochs or existing account identities.
+
+`go test ./cmd/cicada -run '^TestHubActivationIssuer' -count=1 -v` passed two
+top-level tests and two subtests, zero skips (1.899 seconds). The synthetic
+fixtures cover the retained default-path behavior, an existing custom Peer
+without a default, and a missing configured Peer with an existing default.
+The latter rejects and leaves the configured path absent; the existing Peer
+bytes remain unchanged in both custom-path cases. `go vet ./cmd/cicada` and
+`git diff --check` also passed. These are scoped CLI checks, not a new full
+Docker or native-platform acceptance claim.
+
+This repair was tested on Go 1.27.2 with the updated stable dependency closure,
+using immutable builder
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`,
+network disabled and a read-only module cache. Private structured evidence is
+`/home/zyf/Cicada/.local/evidence/n2-hub/peerpath-repair.json`; it records the
+source scope, actual completed command results and dirty source SHA-256
+`8965e18e889f545dde88cdd2c3ebda6af25e2101db8ba2319555322a5fd9e70e`.
+The earlier default-path and Go 1.27.1 results below retain their original
+source attribution.
+
 ## Hub service checkpoint — 2026-10-15
 
 Source base `c6107a8c6974fe804e39ebafdd819c1219f26bef`, dirty task branch
