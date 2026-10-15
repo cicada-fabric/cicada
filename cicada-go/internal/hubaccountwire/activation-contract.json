@@ -12,6 +12,7 @@
   "activation_max_seconds": 3600,
   "enrollment_grant_max_seconds": 600,
   "proof_max_seconds": 600,
+  "max_activation_receipt_bytes": 131072,
   "runtime_lease_seconds": 900,
   "runtime_lease_renewable": false,
   "allowed_operations": ["nodes.list", "session.capabilities"],

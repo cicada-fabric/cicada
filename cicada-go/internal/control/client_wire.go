@@ -52,6 +52,21 @@ func (c *Control) ClientDevices(ownerID string) ([]store.ClientDevice, error) {
 	return c.store.ListClientDevices(ownerID)
 }
 
+// CheckClientAppLease adds N2's finite scope to the existing business Guard.
+// Ordinary pre-N2 devices have no lease row and retain their current behavior.
+func (c *Control) CheckClientAppLease(owner, device, operation string) error {
+	if c == nil || c.store == nil {
+		return errors.New("Client authorization unavailable")
+	}
+	return c.store.CheckAppLease(owner, device, operation)
+}
+func (c *Control) ClientAppLeaseOperations(owner, device string, operations []string) ([]string, error) {
+	if c == nil || c.store == nil {
+		return nil, errors.New("Client authorization unavailable")
+	}
+	return c.store.FilterAppLeaseOperations(owner, device, operations)
+}
+
 func (c *Control) RevokeClientDevice(ownerID, deviceID string, expectedVersion int64) (*store.ClientDevice, error) {
 	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err

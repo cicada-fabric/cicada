@@ -48,7 +48,12 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 	if len(plaintext) > maxBodyForOperation(route.Operation) {
 		return nil, ErrInvalid
 	}
-	inner, err := clientwire.SealRequest(device, hub.Public, binding, route, plaintext)
+	var inner []byte
+	if extensionOperation(route.Operation) {
+		inner, err = clientwire.SealRequestWithBodyLimit(device, hub.Public, binding, route, plaintext, MaxActivationBodyBytes)
+	} else {
+		inner, err = clientwire.SealRequest(device, hub.Public, binding, route, plaintext)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +97,12 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 	if err != nil || len(inner) > MaxInnerPacketBytes {
 		return ErrInvalid
 	}
-	opened, err := clientwire.OpenRequest(hub, packet.SenderPublicIdentity, binding, inner)
+	var opened clientwire.Opened
+	if extensionOperation(expectedRoute.Operation) {
+		opened, err = clientwire.OpenRequestWithBodyLimit(hub, packet.SenderPublicIdentity, binding, inner, MaxActivationBodyBytes)
+	} else {
+		opened, err = clientwire.OpenRequest(hub, packet.SenderPublicIdentity, binding, inner)
+	}
 	if err != nil {
 		return ErrInvalid
 	}
@@ -143,7 +153,12 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 	}
 	binding := clientwire.Binding{HubID: route.HubID, OwnerID: route.OwnerID, DeviceID: route.DeviceID,
 		SessionEpoch: route.SessionEpoch, HubKeyVersion: route.SenderKeyVersion, DeviceKeyVersion: route.ReceiverKeyVersion}
-	inner, err := clientwire.SealResponse(hub, device, binding, route, plaintext)
+	var inner []byte
+	if extensionOperation(route.Operation) {
+		inner, err = clientwire.SealResponseWithBodyLimit(hub, device, binding, route, plaintext, MaxActivationBodyBytes)
+	} else {
+		inner, err = clientwire.SealResponse(hub, device, binding, route, plaintext)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +191,12 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 	if err != nil {
 		return ErrInvalid
 	}
-	opened, err := clientwire.OpenResponse(device, hub.Public, binding, inner)
+	var opened clientwire.Opened
+	if extensionOperation(request.Packet.Route.Operation) {
+		opened, err = clientwire.OpenResponseWithBodyLimit(device, hub.Public, binding, inner, MaxActivationBodyBytes)
+	} else {
+		opened, err = clientwire.OpenResponse(device, hub.Public, binding, inner)
+	}
 	if err != nil {
 		return ErrInvalid
 	}

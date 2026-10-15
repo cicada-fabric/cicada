@@ -115,7 +115,11 @@ func seal(sender *e2ee.Identity, receiver e2ee.PublicIdentity, binding Binding, 
 }
 
 func sealWithPrivateOperations(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity) ([]byte, error) {
-	if operations == nil || len(plaintext) == 0 || len(plaintext) > maxPlaintextBytes {
+	return sealWithBodyLimit(sender, operations, receiver, binding, route, direction, plaintext, trustedSender, maxPlaintextBytes)
+}
+
+func sealWithBodyLimit(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity, limit int) ([]byte, error) {
+	if operations == nil || limit <= 0 || limit > 192*1024 || len(plaintext) == 0 || len(plaintext) > limit {
 		return nil, ErrInvalidPacket
 	}
 	if err := validateRoute(route, binding, sender, receiver, direction); err != nil {
@@ -152,7 +156,11 @@ func open(recipient *e2ee.Identity, sender e2ee.PublicIdentity, binding Binding,
 }
 
 func openWithPrivateOperations(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity) (Opened, error) {
-	if operations == nil || len(data) == 0 || len(data) > maxPacketBytes {
+	return openWithBodyLimit(recipient, operations, sender, binding, data, direction, expectedRoute, trustedRecipient, maxPlaintextBytes)
+}
+
+func openWithBodyLimit(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity, limit int) (Opened, error) {
+	if operations == nil || limit <= 0 || limit > 192*1024 || len(data) == 0 || len(data) > maxPacketBytes {
 		return Opened{}, ErrInvalidPacket
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -191,7 +199,7 @@ func openWithPrivateOperations(recipient e2ee.PublicIdentity, operations e2ee.Pr
 	if err != nil {
 		return Opened{}, err
 	}
-	if sequence != packet.Route.Sequence || len(plaintext) == 0 || len(plaintext) > maxPlaintextBytes {
+	if sequence != packet.Route.Sequence || len(plaintext) == 0 || len(plaintext) > limit {
 		return Opened{}, ErrInvalidPacket
 	}
 	return Opened{Route: packet.Route, Plaintext: plaintext}, nil
@@ -229,4 +237,33 @@ func OpenResponse(device *e2ee.Identity, hub e2ee.PublicIdentity, binding Bindin
 // precedes the callback in e2ee; callers must still authorize the operation.
 func OpenResponseWithPrivateOperations(device e2ee.PublicIdentity, operations e2ee.PrivateOperations, hub e2ee.PublicIdentity, binding Binding, expectedRoute Route, data []byte) (Opened, error) {
 	return openWithPrivateOperations(device, operations, hub, binding, data, DirectionResponse, &expectedRoute, nil)
+}
+
+// The bounded variants are for independent additive protocols which explicitly
+// negotiate a larger protected body. Ordinary Client v1 callers retain their
+// 64 KiB default; its HTTP ingress still rejects these larger bodies. Packet,
+// route, AAD, crypto and the 256 KiB packet maximum remain unchanged.
+func SealRequestWithBodyLimit(device *e2ee.Identity, hub e2ee.PublicIdentity, binding Binding, route Route, plaintext []byte, limit int) ([]byte, error) {
+	if device == nil {
+		return nil, ErrInvalidPacket
+	}
+	return sealWithBodyLimit(device.Public(), device, hub, binding, route, DirectionRequest, plaintext, device, limit)
+}
+func SealResponseWithBodyLimit(hub *e2ee.Identity, device e2ee.PublicIdentity, binding Binding, route Route, plaintext []byte, limit int) ([]byte, error) {
+	if hub == nil {
+		return nil, ErrInvalidPacket
+	}
+	return sealWithBodyLimit(hub.Public(), hub, device, binding, route, DirectionResponse, plaintext, hub, limit)
+}
+func OpenRequestWithBodyLimit(hub *e2ee.Identity, device e2ee.PublicIdentity, binding Binding, data []byte, limit int) (Opened, error) {
+	if hub == nil {
+		return Opened{}, ErrInvalidPacket
+	}
+	return openWithBodyLimit(hub.Public(), hub, device, binding, data, DirectionRequest, nil, hub, limit)
+}
+func OpenResponseWithBodyLimit(device *e2ee.Identity, hub e2ee.PublicIdentity, binding Binding, data []byte, limit int) (Opened, error) {
+	if device == nil {
+		return Opened{}, ErrInvalidPacket
+	}
+	return openWithBodyLimit(device.Public(), device, hub, binding, data, DirectionResponse, nil, device, limit)
 }

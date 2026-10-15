@@ -123,6 +123,10 @@ func (s *Store) CheckOwnerBootstrapIssueLocal() (*HubOwnerSetup, error) {
 	if r == nil || r.State != HubOwnerReady || r.RootEverEstablished || !activeSelfOwnedHuman(tx, r.OwnerID) {
 		return nil, ErrOwnerBootstrapRejected
 	}
+	var n2 int
+	if tx.QueryRow(`SELECT count(*) FROM hub_owner_activation_v1 WHERE account_id=? AND state IN('ISSUED','PREPARED')`, r.AccountID).Scan(&n2) != nil || n2 != 0 {
+		return nil, ErrOwnerBootstrapRejected
+	}
 	var hubID string
 	if e = tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&hubID); e != nil || r.HubID != hubID {
 		return nil, ErrOwnerBootstrapRejected
@@ -390,6 +394,10 @@ func (s *Store) IssueOwnerBootstrapLocal(p ownerbootstrap.PairingFile, nonceDige
 	}
 	m := p.Manifest
 	if r == nil || r.State != HubOwnerReady || r.RootEverEstablished || !activeSelfOwnedHuman(tx, r.OwnerID) || r.AccountID != m.AccountID || r.OwnerID != m.OwnerID || r.HubID != m.HubID || r.Origin != p.Origin || r.AllowLoopbackHTTP != p.AllowLoopbackHTTP {
+		return nil, ErrOwnerBootstrapRejected
+	}
+	var n2 int
+	if tx.QueryRow(`SELECT count(*) FROM hub_owner_activation_v1 WHERE account_id=? AND state IN('ISSUED','PREPARED')`, r.AccountID).Scan(&n2) != nil || n2 != 0 {
 		return nil, ErrOwnerBootstrapRejected
 	}
 	_, e = tx.Exec(`UPDATE owner_bootstrap_authority_v1 SET state='EXPIRED' WHERE state='PENDING' AND expires_at<=?`, at.Format(time.RFC3339Nano))

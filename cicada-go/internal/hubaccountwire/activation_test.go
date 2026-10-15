@@ -25,12 +25,16 @@ func TestActivationManifestMatchesWire(t *testing.T) {
 		ActivationMaxSeconds int                                                           `json:"activation_max_seconds"`
 		ProofMaxSeconds      int                                                           `json:"proof_max_seconds"`
 		LeaseSeconds         int                                                           `json:"runtime_lease_seconds"`
+		ReceiptBytes         int                                                           `json:"max_activation_receipt_bytes"`
 		AllowedOperations    []string                                                      `json:"allowed_operations"`
 		LeaseRenewable       bool                                                          `json:"runtime_lease_renewable"`
 		AbsentSettles        bool                                                          `json:"absent_settles_pending"`
 	}
 	if err = json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
+	}
+	if manifest.ReceiptBytes != MaxActivationReceiptBytes {
+		t.Fatal("published activation receipt limit differs from wire")
 	}
 	if manifest.PacketFormat != PacketFormat || manifest.WireVersion != PacketVersion || time.Duration(manifest.ActivationMaxSeconds)*time.Second != MaxActivationLifetime || time.Duration(manifest.ProofMaxSeconds)*time.Second != MaxActivationProofLifetime || time.Duration(manifest.LeaseSeconds)*time.Second != MaxAppLeaseLifetime || !reflect.DeepEqual(manifest.AllowedOperations, ActivationAllowedOperations()) || manifest.LeaseRenewable || manifest.AbsentSettles || len(manifest.Operations) != 4 {
 		t.Fatal("published manifest differs from wire policy")
@@ -313,5 +317,78 @@ func TestAccountReconcileAndStatusBindExactTarget(t *testing.T) {
 	s.TargetRequestID = strings.Repeat("e", 32)
 	if ValidateActivationStatusTarget(s, f.packet) == nil {
 		t.Fatal("wrong target ID accepted")
+	}
+}
+
+func TestActivationStatusCarriesFullPQChallengeWithMaximumScopeIDs(t *testing.T) {
+	f := activationFixture(t)
+	f.hub.HubID = strings.Repeat("h", 128)
+	fp, err := HubFingerprint(f.hub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.material.HubID = f.hub.HubID
+	f.material.HubFingerprint = fp
+	f.material.OwnerID = strings.Repeat("o", 128)
+	f.material.AccountID = strings.Repeat("a", 128)
+	grant, err := f.owner.SignOwnerDeviceGrant(f.material.OwnerID, f.prepare.DeviceID, f.device.Public(), f.hub.HubID, e2ee.OwnerDevicePurposeControl, f.now, f.now.Add(9*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare, err := NewActivationPrepare(f.material, f.hub, f.device.Public(), f.owner.Public(), f.prepare.DeviceID, grant, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := SealClientRequest(f.device, f.hub, prepare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := f.challenge.Binding
+	b.HubID = f.hub.HubID
+	b.HubFingerprint = fp
+	b.OwnerID = f.material.OwnerID
+	b.AccountID = f.material.AccountID
+	b.PrepareRequestID = prepare.RequestID
+	b.PreparePacketDigest = ActivationPacketDigest(packet)
+	b.GrantDigest = ActivationGrantDigest(grant)
+	p := f.challenge.Proof
+	p.Hub = f.hub
+	p.Manifest.HubID = b.HubID
+	p.Manifest.OwnerID = b.OwnerID
+	p.Manifest.AccountID = b.AccountID
+	p.Manifest.OperationID = b.Digest()
+	p, _, err = ownerbootstrap.CreateChallenge(f.hubPrivate, p, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := f.challenge
+	ch.Binding = b
+	ch.Proof = p
+	ch.ClientNonce = prepare.ClientNonce
+	_, route, _ := NewClientRoute(f.hub, prepare, f.device.Public())
+	challengePacket, err := SealResponse(f.hubPrivate, f.device.Public(), route, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(challengePacket) > MaxActivationReceiptBytes {
+		t.Fatal("maximum-scope challenge exceeds receipt limit")
+	}
+	status, err := NewActivationStatusRequest(f.hub, b.Origin, b.AccountID, b.OwnerID, b.ActivationID, b.DeviceID, OperationActivationPrepare, prepare.RequestID, ActivationPacketDigest(packet), f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusPacket, err := SealClientRequest(f.device, f.hub, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, statusRoute, _ := NewClientRoute(f.hub, status, f.device.Public())
+	result := ActivationResult{Format: ActivationResultFormat, Operation: OperationActivationStatus, RequestID: status.RequestID, RequestPacketDigest: ActivationPacketDigest(statusPacket), Origin: b.Origin, HubID: b.HubID, AccountID: b.AccountID, OwnerID: b.OwnerID, ActivationID: b.ActivationID, DeviceID: b.DeviceID, AccountEpoch: 1, DeviceEpoch: 1, State: ActivationPrepared, RootState: RootPendingState, LeaseState: ActivationLeaseUnavailable, AllowedOperations: []string{}, LoginRequired: true, TargetOperation: OperationActivationPrepare, TargetRequestID: prepare.RequestID, TargetPacketDigest: ActivationPacketDigest(packet), TargetState: ActivationCompleted, ReceiptPacket: challengePacket, ObservedAt: formatUTC(f.now)}
+	response, err := SealResponse(f.hubPrivate, f.device.Public(), statusRoute, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out ActivationResult
+	if OpenClientResponse(f.device, f.hub, statusPacket, response, &out) != nil || ValidateActivationStatusTarget(out, packet) != nil || !bytes.Equal(out.ReceiptPacket, challengePacket) {
+		t.Fatal("maximum-scope nested challenge did not round trip within packet limits")
 	}
 }

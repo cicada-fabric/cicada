@@ -151,6 +151,9 @@ func (s *Service) Handle(ctx context.Context, operation string, raw []byte) (res
 	if s == nil || len(raw) == 0 || len(raw) > wire.MaxPacketBytes {
 		return nil, ErrAuthentication
 	}
+	if wire.ActivationHTTPPath(operation) != "" {
+		return s.handleExtension(ctx, operation, raw)
+	}
 	p, e := wire.PreflightRequest(raw, operation)
 	if e != nil {
 		return nil, ErrAuthentication

@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 61
+	CurrentV2SchemaVersion = 62
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -564,6 +564,7 @@ var v2Migrations = []v2Migration{
 		Objects: []string{"hub_account_config_v1", "hub_account_claims_v1", "hub_account_claims_v1_one_pending", "hub_account_credentials_v1", "hub_account_devices_v1", "hub_account_public_association_v1", "hub_account_attempts_v1", "hub_account_attempts_v1_one_pending", "hub_account_attempts_v1_prepare_nonce", "hub_account_attempts_v1_complete_nonce", "hub_account_attempts_v1_completion_replay", "hub_account_sessions_v1", "hub_account_sessions_v1_token_digest", "hub_account_sessions_v1_account_device_state", "hub_account_requests_v1", "hub_account_requests_v1_nonce", "hub_account_requests_v1_operation_replay", "hub_account_config_v1_no_delete", "hub_account_config_v1_monotone", "hub_account_claims_v1_no_delete", "hub_account_claims_v1_coordinates", "hub_account_devices_v1_coordinates", "hub_account_public_association_v1_no_update", "hub_account_public_association_v1_no_delete", "hub_account_credentials_v1_coordinates", "hub_account_attempts_v1_coordinates", "hub_account_requests_v1_no_update", "hub_account_requests_v1_no_delete"},
 		Apply:   func(s *Store) error { return s.initializeHubAccountSchema() },
 	},
+	{Version: 62, ID: "v1.hub.owner_activation", Description: "add finite exact Owner/App activation, nonrenewable App leases and authenticated account rejection fencing", Objects: []string{"hub_owner_activation_v1", "hub_owner_activation_v1_pending", "hub_owner_operations_v1", "hub_owner_operations_v1_nonce", "hub_app_leases_v1", "hub_owner_activation_v1_no_delete", "hub_owner_activation_v1_immutable", "hub_owner_operations_v1_no_delete", "hub_owner_operations_v1_no_update", "hub_app_leases_v1_no_delete", "hub_app_leases_v1_immutable"}, Apply: func(s *Store) error { return s.initializeHubActivationSchema() }},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority

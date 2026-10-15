@@ -1,10 +1,11 @@
 # N2 finite Owner activation contract
 
-Candidate `owner-activation-v1`, 2026-10-15. Protocol helper checkpoint only:
-the server routes, schema migration and CLI issuer are not available at this
-checkpoint. The integration owner has reviewed the scope and state-machine
-principles; implementation and scoped acceptance follow separately. This is
-not native Windows, Android, public HTTPS or deployment acceptance.
+Source contract `owner-activation-v1`, 2026-10-15. The protocol helper
+checkpoint is `c6107a8`; the subsequent service checkpoint adds schema 62,
+local CLI issuance, four encrypted HTTP routes, transactional rejection fences
+and the finite App runtime Guard. Scoped implementation tests are recorded in
+[validation](hub-owner-activation-validation.md). Integration, native Windows,
+Android, public HTTPS and deployment acceptance remain separate.
 
 The Go source in `internal/hubaccountwire/activation*.go` and `reconcile.go`
 defines exact field names, order and constructors. All JSON is canonical Go
@@ -16,12 +17,15 @@ their existing representation. No private key or passphrase reaches Hub.
 
 ## Compatibility and authority
 
+The protocol revision remains `owner-activation-v1`; its candidate receipt-size
+correction is recorded in the implementation checkpoint and manifest.
+
 This additive protocol retains the six frozen `owner-account-v1` operations,
 their successful shapes, Client wire 1, `client-hub-v1.6.5`, catalog 55 and
 `owner-bootstrap-v1`. It does not change frozen identifiers in place, replace
 keys, reset epochs, create a second Owner, or depend on Control inference.
 Software version, schema version, protocol revision and Git/image identities
-are independent. N2 implementation requires additive schema 62; software
+are independent. N2 uses additive schema 62; software
 version remains 0.0.5 at the protocol checkpoint.
 
 An account password/session alone cannot create Root, produce Owner proofs,
@@ -101,9 +105,18 @@ All new requests and responses use the existing canonical account packet and
 ML-KEM-768 / ML-DSA-65 / AES-256-GCM envelope. Outer format and wire remain
 unchanged; only the following new operations/types are accepted. Sequence is
 1, handshake epoch is 1; account/device/setup epochs remain protected fields.
-This epoch does not reset Client session counters. Maximum outer/inner packet
+This epoch does not reset Client session counters. The default frozen Client envelope API
+retains its 64 KiB plaintext bound, and the original six account operations
+still use it. Only these four additive operations explicitly select the
+`clientwire` bounded-body helpers with 192 KiB maximum. The same e2ee/AAD/route
+framing and 256 KiB nested-packet bound apply on both seal and open. Larger
+N2 status/reconcile bodies cannot enter the ordinary Client receiver because
+its default open still rejects plaintext above 64 KiB. Maximum outer/inner packet
 sizes remain 384/256 KiB. New protected bodies are at most 192 KiB, original
-packets embedded for reconciliation at most 96 KiB. Oversized input fails
+packets embedded for account reconciliation at most 96 KiB. Activation status
+may carry a prepare/complete receipt up to `MaxActivationReceiptBytes` = 128 KiB;
+the real PQ prepare challenge exceeds 96 KiB. Maximum-scope Go tests verify the
+base64 expansion still fits all unchanged body/inner/outer limits. Oversized input fails
 before expensive crypto; existing admission/rate limits continue to apply.
 
 | HTTP POST | Operation | Request | Success response |
@@ -172,7 +185,9 @@ skips request age checks. New prepare/complete/status/reconcile packets have a
 60-second freshness limit; proof challenge is at most ten minutes and no later
 than material or grant expiry. Rejected completion proof does not activate Root
 or consume the code/grant; a fresh corrected operation is possible while the
-exact reservation remains eligible. No public reset/replacement exists.
+exact reservation remains eligible. No public reset/replacement exists. A local code replacement also retains the
+previously reserved complete Owner/App public-key tuple and device ID; it is
+not a private-key-loss recovery or rekey operation.
 
 One completion transaction rechecks current setup/account/device epochs,
 active exact human, no Root history, the reservation, candidate keys, grant
@@ -201,7 +216,12 @@ state, login requirement and the requested operation/digest's durable outcome.
 only the exact fenced operation+digest. `ABSENT` is observational and must not
 clear an uncertain packet: the original may still be in transit. Status never
 issues, renews or reopens authority. Recovery access grants no business read.
-An original successful Root/lease receipt does not override current status.
+An original successful Root/lease receipt does not override current status. Root/device revocation or account/restore epoch fencing
+withholds a cached ACTIVE activation response: the original route returns a
+fresh authenticated CANCELLED result with current state. Lease expiry alone
+permits historical receipt recovery. A status result may still carry an older
+COMPLETED receipt while reporting current ROOT_UNAVAILABLE/REVOKED; its outer
+current snapshot wins over the embedded historical result.
 
 `AccountReconcileRequest` carries the exact original encrypted packet plus a
 fresh operation/nonce. Only the already recorded exact account device can
@@ -216,6 +236,14 @@ device, operation ID and packet digest. The ordinary account write transactions
 check that fence before challenge/session/receipt commit. This resolves a
 reconcile race with an original still deriving a password: either the original
 commit wins or its rejection fence wins. No second session is fabricated.
+New status/reconcile response receipts are limited to 128 per device/account
+epoch. At capacity the Hub returns busy (HTTP 429) without settling the App's
+pending request. Original exact receipt retries and the primary rejection
+fences remain recoverable and are never deleted or blocked by this new-read
+budget. Account-original rejection and its sealed reconcile response are two
+short local transactions: a crash between them leaves the original fenced;
+retrying reconcile observes the same terminal outcome and writes its response.
+
 Different bytes under the same operation ID conflict and cannot replace the
 original ledger entry. A wrong-password completion can therefore be settled
 and retried with a correct password/new operation; an expired session request

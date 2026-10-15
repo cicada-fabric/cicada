@@ -244,6 +244,25 @@ func (s *Store) getClientDeviceLocked(ownerID, deviceID string) (*ClientDevice, 
 // against an ACTIVE key already stored in the Hub's local trust table. The Hub
 // ID is read from persistent configuration, never from the grant packet.
 func (s *Store) RegisterClientDeviceFromOwnerGrant(input RegisterClientDeviceInput) (*ClientDevice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	device, err := registerClientDeviceFromOwnerGrantTx(tx, input)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return device, nil
+}
+
+// Shared by ordinary enrollment and N2's atomic proof/grant/receipt commit.
+func registerClientDeviceFromOwnerGrantTx(tx *sql.Tx, input RegisterClientDeviceInput) (*ClientDevice, error) {
 	if err := validateOwnerApprovalID(input.OwnerID); err != nil {
 		return nil, err
 	}
@@ -265,13 +284,6 @@ func (s *Store) RegisterClientDeviceFromOwnerGrant(input RegisterClientDeviceInp
 	grantDigestHex := hex.EncodeToString(grantDigest[:])
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	var hubID string
 	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id = 1`).Scan(&hubID); err != nil {
 		return nil, fmt.Errorf("load authoritative Hub ID: %w", err)
@@ -365,9 +377,6 @@ VALUES(?,?,?,?,?,?)`, input.OwnerID, input.DeviceID, input.OwnerKeyID,
 		} else if storedDigest != grantDigestHex || enrolledAt != existing.CreatedAt || !bytes.Equal(storedProof, input.OwnerDeviceGrant) {
 			return nil, ErrClientDeviceConflict
 		}
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
 		return existing, nil
 	}
 	if !errors.Is(err, ErrClientDeviceNotFound) {
@@ -415,10 +424,7 @@ VALUES(?,?,?,?,?,?)`, input.OwnerID, input.DeviceID, input.OwnerKeyID,
 	if err != nil {
 		return nil, fmt.Errorf("persist exact Client enrollment proof: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return s.getClientDeviceLocked(input.OwnerID, input.DeviceID)
+	return scanClientDevice(tx.QueryRow(clientDeviceSelect+` WHERE owner_id=? AND device_id=?`, input.OwnerID, input.DeviceID))
 }
 
 func (s *Store) GetClientDevice(ownerID, deviceID string) (*ClientDevice, error) {
@@ -632,6 +638,9 @@ WHERE owner_id = ? AND device_id = ? AND operation_id = ?`,
 		return nil, ErrClientRequestConflict
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err = appLeaseAllowed(tx, input.OwnerID, input.DeviceID, input.RouteOperation); err != nil {
 		return nil, err
 	}
 	if input.Sequence != uint64(lastSequence)+1 {

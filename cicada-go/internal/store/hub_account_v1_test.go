@@ -102,13 +102,13 @@ func TestHubAccountMigrationPreservesExistingOwnerHistoryKeysAndCounters(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"hub_account_requests_v1", "hub_account_sessions_v1", "hub_account_attempts_v1", "hub_account_public_association_v1", "hub_account_devices_v1", "hub_account_credentials_v1", "hub_account_claims_v1", "hub_account_config_v1"} {
+	for _, table := range []string{"hub_owner_operations_v1", "hub_app_leases_v1", "hub_owner_activation_v1", "hub_account_requests_v1", "hub_account_sessions_v1", "hub_account_attempts_v1", "hub_account_public_association_v1", "hub_account_devices_v1", "hub_account_credentials_v1", "hub_account_claims_v1", "hub_account_config_v1"} {
 		if _, err = raw.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			raw.Close()
 			t.Fatalf("drop disposable %s: %v", table, err)
 		}
 	}
-	if _, err = raw.Exec(`DELETE FROM schema_migrations_v2 WHERE version=61`); err != nil {
+	if _, err = raw.Exec(`DELETE FROM schema_migrations_v2 WHERE version>=61`); err != nil {
 		raw.Close()
 		t.Fatal(err)
 	}
