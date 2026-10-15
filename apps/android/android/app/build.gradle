@@ -1,0 +1,76 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react {
+    // Bundle JavaScript into debug APK so a Metro server is unnecessary.
+    debuggableVariants = []
+    autolinkLibrariesWithApp()
+}
+
+def enableProguardInReleaseBuilds = true
+
+def clientTestBuildType = providers.gradleProperty("clientTestBuildType").getOrElse("debug")
+if (!(clientTestBuildType in ["debug", "release"])) {
+    throw new GradleException("clientTestBuildType must be 'debug' or 'release'")
+}
+
+def clientAbiSplits = providers.gradleProperty("clientAbiSplits").getOrElse("false")
+if (!(clientAbiSplits in ["true", "false"])) {
+    throw new GradleException("clientAbiSplits must be 'true' or 'false'")
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace "com.cicadaclient"
+    defaultConfig {
+        applicationId "ai.cicada.client"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0-dev"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    splits {
+        abi {
+            // Preserve the universal debug APK unless release packaging opts in.
+            enable clientAbiSplits.toBoolean()
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            universalApk false
+        }
+    }
+    testBuildType clientTestBuildType
+    // Pure Kotlin vectors also run in instrumentation through the APK classloader.
+    sourceSets.androidTest.resources.srcDirs = ["src/androidTest/assets"]
+    buildTypes {
+        debug {
+            // Only the isolated emulator -> host-loopback development Hub uses HTTP.
+            manifestPlaceholders = [cleartextTrafficPermitted: "true"]
+        }
+        release {
+            manifestPlaceholders = [cleartextTrafficPermitted: "false"]
+            minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // No release signingConfig is set; release APKs remain unsigned.
+        }
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
+    implementation(files("libs/sherpa-onnx-1.13.8.aar"))
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    implementation("com.google.code.gson:gson:2.14.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+
+    implementation("com.facebook.react:hermes-android")
+}

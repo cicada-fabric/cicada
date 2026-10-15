@@ -1,0 +1,11 @@
+FROM cicada-client-android:dev
+
+USER root
+RUN "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+      "emulator" "system-images;android-35;default;x86_64" \
+    && chmod -R a+rX "$ANDROID_HOME"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libx11-6 libxext6 libxcb1 libxrender1 libxrandr2 libxfixes3 libxi6 \
+      libgl1 libpulse0 libnss3 libasound2t64 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace

@@ -1,0 +1,678 @@
+openapi: 3.1.0
+info:
+  title: Cicada Android Client ↔ Hub/Control ingress
+  version: 0.1.0-partial
+  x-contract-revision: client-hub-v1.2.1
+  x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
+  description: >-
+    Implemented Hub HTTP routes only. This is a partial server contract, not an
+    Android interoperability certification. Check GET /v2/client/capabilities
+    before use. The /v2/client/rpc operation body is encrypted to Control;
+    operation plaintext shapes and cryptographic byte rules are documented in
+    docs/client-hub-wire-v1.md. `contract_revision` identifies the cross-repository
+    contract revision; `catalog_sha256` hashes only the embedded operation catalog,
+    not this OpenAPI document or the complete contract bundle. The legacy /v1 management API is outside this
+    contract. The Node-only Link authorization route is included to make its
+    separate Node bearer trust boundary explicit; it is not a Client RPC.
+servers:
+  - url: https://{hub}
+    variables:
+      hub:
+        default: hub.example.invalid
+paths:
+  /v2/client/capabilities:
+    get:
+      operationId: getClientCapabilities
+      description: >-
+        Public, metadata-only negotiation. A true flag indicates a Hub-side
+        implementation within its stated boundary; it does not certify an
+        independent Android implementation. Fabric-only mode returns the same
+        shape with status not_ready, false flags, and no operations.
+      responses:
+        '200':
+          description: Current server-side capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientCapabilities'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v2/client/identity:
+    get:
+      operationId: getClientHubIdentity
+      description: >-
+        Public Hub and Control key metadata. Pin hub_id and the complete
+        control_public_identity through an independent trusted channel; this
+        response alone does not establish trust.
+      responses:
+        '200':
+          description: Persistent Hub ID and Control public PQ identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HubIdentity'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/devices/enroll:
+    post:
+      operationId: enrollClientDevice
+      description: >-
+        Registers a device only after verifying an owner ML-DSA grant against
+        the locally registered active owner approval key. The grant must bind
+        this Hub ID, owner, device ID, exact device public identity and
+        fingerprint, CLIENT_CONTROL purpose, validity window, and a one-use
+        nonce. A management bearer has no authority on this route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollClientDeviceRequest'
+      responses:
+        '201':
+          description: Device key and session epoch persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrolledClientDevice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Owner grant, owner scope, or trust check failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/rpc:
+    post:
+      operationId: clientControlRPC
+      description: >-
+        Application-layer ML-KEM-768 + ML-DSA-65 + AES-256-GCM packet to
+        Control. The signed route is bound into encryption AAD. Route claims
+        select the enrolled owner/device record but do not grant authority.
+        Persist sequence and exact sealed request before sending. Exact packet
+        retries return the same cached response; a conflict or UNCERTAIN result
+        must be reconciled and must not be blindly replayed. HTTP 200 may carry
+        either a successful result or a business rejection inside the encrypted
+        response. That inner rejection currently has a free-text error string,
+        not a stable machine-readable error code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Packet'
+      responses:
+        '200':
+          description: Signed and encrypted Control response packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Packet'
+        '400':
+          description: Invalid, empty, oversized, or malformed outer packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '403':
+          description: Device is unauthorized or packet authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Replay, sequence, epoch, session, processing, or uncertain-state conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/rpc/recover:
+    post:
+      operationId: recoverClientControlRPC
+      description: >-
+        Submit the exact original signed REQUEST packet after a lost RPC
+        response. This route authenticates the current device binding and
+        persisted packet digest; it never executes the operation again.
+        COMPLETED returns the original cached encrypted response. UNCERTAIN
+        or FAILED returns a durable encrypted OUTCOME_UNCERTAIN notice using
+        the request's reserved response sequence. PROCESSING returns 409;
+        pre-migration uncertain requests without a reservation return 409
+        RECOVERY_UNAVAILABLE. A notice does not prove the business outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Packet'
+      responses:
+        '200':
+          description: Original cached packet or sealed uncertainty notice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Packet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Device inactive or packet authentication failed.
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Still processing, recovery unavailable, or identity/replay mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/nodes/device-code:
+    post:
+      operationId: beginNodeDeviceBinding
+      description: >-
+        Public Node bootstrap. The Node generates and keeps its bearer locally;
+        credential_digest is SHA-256(token) in unpadded base64url. Hub stores
+        only the digest and returns a short code plus a relative path for the
+        independent Android Client. The path /client/device is not served by
+        this repository. An authenticated encrypted Client RPC nodes.preview
+        followed by nodes.confirm is required to activate the credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeDeviceCodeRequest'
+      responses:
+        '201':
+          description: One-time code and relative Client verification URI.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDeviceCode'
+        '400':
+          description: Invalid request or Node binding request rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Node is already bound or has a conflicting pending request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '429':
+          description: Per-Node or global device-code rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/relay/nodes/{node_id}/links/{link_id}/authorization:
+    get:
+      operationId: getNodeLinkAuthorizationEvidence
+      description: >-
+        Node-only read of current public Link authorization evidence. The Node
+        must present its current CicadaNode bearer, be an endpoint Node on this
+        Link under the currently bound owner, and the current Link manifest
+        plus both owner key-bound proofs must validate. This evidence is not a
+        route grant and does not activate peer delivery. The Node must already
+        trust the owner approval keys and verify the bundle itself.
+      security:
+        - CicadaNodeBearer: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: link_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Current Link manifest and bilateral owner proof evidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeLinkAuthorizationBundle'
+        '401':
+          description: Missing, malformed, revoked, or unknown Node bearer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '403':
+          description: URL node_id differs from the Node bound to this bearer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '404':
+          description: >-
+            Unknown path or no current Link authorization. Missing, expired,
+            revoked, stale, or one-sided authorization evidence is deliberately
+            returned as the same 404 response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '503':
+          description: Relay service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+components:
+  securitySchemes:
+    CicadaNodeBearer:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Send as: CicadaNode <node-bearer>. This credential is not a Client management bearer.'
+  responses:
+    BadRequest:
+      description: Request body is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    MethodNotAllowed:
+      description: HTTP method is not supported on this route.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    ServiceUnavailable:
+      description: Required Hub Control service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    InternalError:
+      description: Internal processing or response sealing failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+  schemas:
+    HttpError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message; no stable error code is currently defined.
+
+    RecoveryError:
+      type: object
+      additionalProperties: false
+      required: [code, error]
+      properties:
+        code:
+          type: string
+          enum: [STILL_PROCESSING, RECOVERY_UNAVAILABLE, RECOVERY_REJECTED]
+        error: {type: string}
+
+    ClientCapabilities:
+      type: object
+      additionalProperties: true
+      required:
+        - contract
+        - contract_revision
+        - catalog_sha256
+        - status
+        - planned_platform
+        - legacy_management_api_available
+        - client_control_pq_e2ee
+        - authenticated_client_session
+        - status_snapshot
+        - topology_management
+        - status_events
+        - status_changes_partial
+        - control_intents
+        - device_binding
+        - external_thread_links
+        - external_link_invites
+        - external_client_sessions
+        - link_key_consent
+        - group_endpoint_key_grants
+        - client_device_enrollment
+        - rpc_recovery
+        - client_device_management
+        - approval_read_and_decide
+        - queued_goal_lifecycle
+        - available_rpc_operations
+        - external_rpc_operations
+      properties:
+        contract: {const: android-hub-v1-draft}
+        contract_revision: {const: client-hub-v1.2.1}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
+        status: {type: string, enum: [partial, not_ready]}
+        planned_platform: {const: android}
+        legacy_management_api_available: {type: boolean}
+        client_control_pq_e2ee: {type: boolean}
+        authenticated_client_session: {type: boolean}
+        status_snapshot: {type: boolean}
+        topology_management: {type: boolean}
+        status_events: {const: false}
+        status_changes_partial: {type: boolean}
+        control_intents: {type: boolean}
+        device_binding: {type: boolean}
+        external_thread_links: {const: false}
+        external_link_invites: {type: boolean}
+        external_client_sessions: {type: boolean}
+        link_key_consent: {type: boolean}
+        group_endpoint_key_grants: {type: boolean}
+        client_device_enrollment: {type: boolean}
+        rpc_recovery: {type: boolean}
+        client_device_management: {type: boolean}
+        approval_read_and_decide: {type: boolean}
+        queued_goal_lifecycle: {type: boolean}
+        available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+        external_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+
+    HubIdentity:
+      type: object
+      additionalProperties: false
+      required: [contract, hub_id, control_public_identity, control_key_version, suite]
+      properties:
+        contract: {const: android-hub-v1}
+        hub_id: {type: string, minLength: 1}
+        control_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        control_key_version: {type: integer, const: 1}
+        suite: {const: ML-KEM-768+ML-DSA-65+AES-256-GCM}
+
+    EnrollClientDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [owner_id, owner_key_id, device_id, device_public_identity, owner_device_grant]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        device_id: {type: string, minLength: 1}
+        device_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        owner_device_grant:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of the canonical OwnerDeviceGrant JSON bytes.
+
+    EnrolledClientDevice:
+      type: object
+      additionalProperties: false
+      required: [owner_id, device_id, session_epoch, device_key_version, state]
+      properties:
+        owner_id: {type: string}
+        device_id: {type: string}
+        session_epoch: {type: integer, minimum: 1}
+        device_key_version: {type: integer, minimum: 1}
+        state: {const: ACTIVE}
+
+    PublicIdentity:
+      type: object
+      additionalProperties: false
+      required: [id, kem_public, signing_public]
+      properties:
+        id:
+          type: string
+          description: pq1- plus the first 16 bytes of SHA-256(KEM public bytes || signing public bytes), lowercase hex.
+        kem_public:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 ML-KEM-768 public key bytes.
+        signing_public:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 ML-DSA-65 public key bytes.
+
+    NodeDeviceCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [node_id, node_name, credential_digest]
+      properties:
+        node_id: {type: string, minLength: 1}
+        node_name: {type: string, minLength: 1, maxLength: 128}
+        credential_digest:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: Unpadded base64url SHA-256 digest of the Node bearer.
+
+    NodeDeviceCode:
+      type: object
+      additionalProperties: false
+      required: [user_code, verification_uri]
+      properties:
+        user_code:
+          type: string
+          pattern: '^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$'
+        verification_uri: {type: string, const: /client/device}
+
+    Packet:
+      type: object
+      additionalProperties: false
+      required: [route, envelope]
+      properties:
+        route:
+          $ref: '#/components/schemas/Route'
+        envelope:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of serialized e2ee.Envelope JSON bytes.
+
+    Route:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - direction
+        - hub_id
+        - owner_id
+        - device_id
+        - session_epoch
+        - sequence
+        - operation_id
+        - operation
+        - sender_key_id
+        - sender_key_version
+        - receiver_key_id
+        - receiver_key_version
+      properties:
+        version: {type: integer, const: 1}
+        direction: {type: string, enum: [REQUEST, RESPONSE]}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        device_id: {type: string}
+        session_epoch: {type: integer, minimum: 1}
+        sequence: {type: integer, minimum: 1}
+        operation_id: {type: string, minLength: 1, maxLength: 256}
+        operation:
+          $ref: '#/components/schemas/ClientRpcOperation'
+        sender_key_id: {type: string}
+        sender_key_version: {type: integer, minimum: 1}
+        receiver_key_id: {type: string}
+        receiver_key_version: {type: integer, minimum: 1}
+
+    ClientRpcOperation:
+      type: string
+      description: >-
+        Union of manager and external RPC operation IDs. Per-device authorization
+        is returned by the encrypted session.capabilities result and enforced by
+        the Hub. The canonical role catalog is embedded at
+        cicada-go/internal/clientcontract/catalog.json.
+      x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
+      enum:
+        - session.capabilities
+        - status.snapshot
+        - status.changes
+        - goal.lifecycle
+        - goal.result
+        - topology.snapshot
+        - topology.apply
+        - devices.list
+        - devices.revoke
+        - nodes.preview
+        - nodes.confirm
+        - nodes.list
+        - nodes.revoke
+        - approvals.list
+        - approvals.decide
+        - intent.get
+        - intent.status
+        - intent.list
+        - intent.submit
+        - link.key_manifest
+        - link.key_grants
+        - link.key_grant
+        - group.key_manifest
+        - group.key_grant
+        - group.key_status
+        - link.list
+        - link.invite_create
+        - link.invite_preview
+        - link.invite_accept
+
+    SessionCapabilities:
+      type: object
+      additionalProperties: false
+      required: [owner_id, role, contract_revision, catalog_sha256, rpc_recovery, available_rpc_operations]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        role: {type: string, enum: [manager, external]}
+        contract_revision: {const: client-hub-v1.2.1}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
+        rpc_recovery: {const: true}
+        available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+
+    NodeLinkAuthorizationBundle:
+      type: object
+      additionalProperties: false
+      required: [manifest, source_grant, target_grant, link_state]
+      properties:
+        manifest:
+          $ref: '#/components/schemas/CommunicationLinkKeyManifest'
+        source_grant:
+          $ref: '#/components/schemas/CommunicationLinkAuthorizationProof'
+        target_grant:
+          $ref: '#/components/schemas/CommunicationLinkAuthorizationProof'
+        link_state: {const: PROPOSED}
+
+    CommunicationLinkKeyManifest:
+      type: object
+      additionalProperties: false
+      required: [version, link_id, link_version, contract_digest, contract_canonical, source, target, digest]
+      properties:
+        version: {type: integer, const: 2}
+        link_id: {type: string}
+        link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        contract_canonical:
+          type: string
+          contentEncoding: base64
+        source:
+          $ref: '#/components/schemas/CommunicationLinkKeySide'
+        target:
+          $ref: '#/components/schemas/CommunicationLinkKeySide'
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    CommunicationLinkKeySide:
+      type: object
+      additionalProperties: false
+      required:
+        - endpoint_id
+        - group_id
+        - principal_id
+        - owner_id
+        - node_id
+        - binding_id
+        - binding_epoch
+        - candidate_version
+        - key_id
+        - key_fingerprint
+        - proof_digest
+        - public_identity
+        - attestation
+      properties:
+        endpoint_id: {type: string}
+        group_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        key_id: {type: string}
+        key_fingerprint: {type: string}
+        proof_digest: {type: string}
+        public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        attestation:
+          type: string
+          contentEncoding: base64
+
+    CommunicationLinkAuthorizationProof:
+      type: object
+      additionalProperties: false
+      required:
+        - side
+        - owner_id
+        - owner_key_id
+        - owner_public_identity
+        - owner_key_state
+        - owner_key_version
+        - current_status
+        - signed_proof
+      properties:
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        owner_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        current_status: {const: ACCEPTED}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of canonical OwnerLinkKeyGrant v2 JSON bytes.

@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""Offline guards for actual Android UI outcomes and bounded stage receipts."""
+
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+
+
+spec = importlib.util.spec_from_file_location(
+    'phone_ui_outcome', Path(__file__).with_name('v164-link-consent-android.py'))
+interop = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(interop)
+
+
+class PhoneUiOutcomeTests(unittest.TestCase):
+    def test_junit_failure_overrides_successful_adb_exit(self):
+        for log in (
+            b'FAILURES!!!\nTests run: 1, Failures: 1\n',
+            b'Error in actualReactNativeLinkConsentAlertUsesCurrentExternallySignedReview\n',
+            b'INSTRUMENTATION_FAILED: runner stopped\n',
+            b'Tests run: 1, Failures: 1\nOK (1 test)\n',
+        ):
+            with self.subTest(log=log):
+                self.assertEqual(interop.classify_phone_ui_instrumentation(log, 0), 'JUNIT_FAILED')
+
+    def test_success_requires_one_completed_test_and_successful_process(self):
+        log = b'ai.cicada.client.hub.LinkConsentPhoneUiTest: .\nTime: 3.5\nOK (1 test)\n'
+        self.assertEqual(interop.classify_phone_ui_instrumentation(log, 0), 'JUNIT_PASSED')
+        self.assertEqual(interop.classify_phone_ui_instrumentation(log, None), 'RUNNING')
+        self.assertEqual(interop.classify_phone_ui_instrumentation(log, 1), 'PROCESS_FAILED')
+        self.assertEqual(interop.classify_phone_ui_instrumentation(log, False), 'PROCESS_FAILED')
+
+    def test_missing_duplicate_or_other_test_summaries_are_unconfirmed(self):
+        for log in (b'', b'OK (0 tests)\n', b'OK (2 tests)\n',
+            b'not a summary OK (1 test)\n', b'OK (1 test)\nOK (1 test)\n',
+            b'x' * (interop.MAX_OUTPUT + 1)):
+            self.assertEqual(interop.classify_phone_ui_instrumentation(log, 0), 'INSTRUMENTATION_UNCONFIRMED')
+
+    def test_real_f28_failure_is_not_a_receipt_timeout(self):
+        log = b'''Error in actualReactNativeLinkConsentAlertUsesCurrentExternallySignedReview:
+java.lang.IllegalStateException: Could not scroll to the requested visible Link review content
+FAILURES!!!
+Tests run: 1, Failures: 1
+'''
+        self.assertEqual(interop.classify_phone_ui_instrumentation(log, 0), 'JUNIT_FAILED')
+
+    def receipt(self, stage='REVIEW_READY'):
+        return {'schema': 'cicada.client-v164-phone-ui-prepare.v1',
+            'result': 'PASS' if stage == 'REVIEW_READY' else 'FAIL',
+            'run_id_sha256': 'a' * 64, 'stage': stage,
+            'native_session_methods_called_by_test': False}
+
+    def test_only_fixed_settled_stages_can_be_exported(self):
+        for stage in ('REVIEW_READY', 'PREPARE_API_REJECTED', 'DTO_REJECTED', 'REVIEW_INVALIDATED',
+            'PREPARE_NOT_STARTED', 'PREPARE_TIMEOUT', 'REVIEW_NOT_VISIBLE'):
+            self.assertEqual(interop.validate_phone_ui_prepare_receipt(
+                json.dumps(self.receipt(stage)).encode(), 'a' * 64), stage)
+
+    def test_receipts_reject_payloads_wrong_run_and_unsettled_states(self):
+        for change in ({'payload': 'forbidden'}, {'stage': 'PREPARING'},
+            {'stage': ['REVIEW_READY']}, {'stage': 'arbitrary error text'},
+            {'native_session_methods_called_by_test': True}, {'result': 'FAIL'},
+            {'run_id_sha256': 'b' * 64}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                interop.validate_phone_ui_prepare_receipt(
+                    json.dumps({**self.receipt(), **change}).encode(), 'a' * 64)
+
+    def test_receipts_reject_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'{}', b'[]', b'null', b'{"stage":"REVIEW_READY","stage":"DTO_REJECTED"}',
+            b'x' * 4097, b''):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_prepare_receipt(raw, 'a' * 64)
+
+    def consent_receipt(self, stage='CONFIRM_READY', **fields):
+        return {'schema': 'cicada.client-v164-phone-ui-consent.v1',
+            'result': 'PASS' if stage == 'CONFIRM_READY' else 'FAIL',
+            'run_id_sha256': 'a' * 64, 'stage': stage,
+            'control_count': 1, 'enabled_count': 1, 'busy': False, 'proof_ready': True,
+            'native_session_methods_called_by_test': False, **fields}
+
+    def test_readiness_needs_one_enabled_nonbusy_proof_ready_control(self):
+        self.assertEqual(interop.validate_phone_ui_consent_receipt(
+            json.dumps(self.consent_receipt()).encode(), 'a' * 64)['stage'], 'CONFIRM_READY')
+        for change in ({'control_count': 0}, {'control_count': 2}, {'enabled_count': 0},
+            {'busy': True}, {'proof_ready': False}, {'proof_ready': None}, {'result': 'FAIL'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(**change)).encode(), 'a' * 64)
+
+    def test_control_failures_distinguish_unknown_state_from_disabled_or_busy(self):
+        cases = [
+            ('CONTROL_MISSING', dict(control_count=0, enabled_count=0, busy=None, proof_ready=None)),
+            ('CONTROL_MULTIPLE', dict(control_count=2, busy=None, proof_ready=None)),
+            ('CONTROL_UNCONFIRMED', dict(busy=None, proof_ready=None)),
+            ('CONTROL_BUSY', dict(busy=True, proof_ready=None, enabled_count=0)),
+            ('PROOF_INVALID', dict(proof_ready=False, enabled_count=0)),
+            ('CONTROL_DISABLED', dict(enabled_count=0)),
+            ('ACCESSIBILITY_CLICK_FAILED', {}),
+        ]
+        for stage, changes in cases:
+            with self.subTest(stage=stage):
+                self.assertEqual(interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(stage, **changes)).encode(), 'a' * 64)['stage'], stage)
+        with self.assertRaises(ValueError):
+            interop.validate_phone_ui_consent_receipt(
+                json.dumps(self.consent_receipt('CONTROL_MISSING', control_count=0,
+                    enabled_count=0, busy=False, proof_ready=False)).encode(), 'a' * 64)
+
+    def test_control_receipts_reject_payloads_invalid_types_and_wrong_run(self):
+        for change in ({'tree': 'forbidden'}, {'proof': 'forbidden'}, {'control_count': True},
+            {'control_count': 3}, {'enabled_count': -1}, {'busy': 0}, {'proof_ready': 'true'},
+            {'stage': ['CONFIRM_READY']}, {'stage': 'exception body'}, {'result': 'SUCCESS'},
+            {'run_id_sha256': 'b' * 64}, {'native_session_methods_called_by_test': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(
+                    json.dumps(self.consent_receipt(**change)).encode(), 'a' * 64)
+
+    def test_control_receipts_reject_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'{}', b'[]', b'null', b'{"busy":true,"busy":false}', b'x' * 4097, b''):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_consent_receipt(raw, 'a' * 64)
+
+    def list_refresh(self, **changes):
+        return {'schema': 'cicada.client-v164-phone-ui-list-refresh.v1', 'result': 'OBSERVED',
+            'run_id_sha256': 'a' * 64, 'refresh_accessibility_click_returned': True,
+            'app_root_available': True, 'read_state': 'OK_NONEMPTY', 'read_state_ambiguous': False,
+            'last_observed_read_state': 'OK_NONEMPTY', 'last_observed_error_class': None,
+            'read_states_observed': ['LOADING', 'OK_NONEMPTY'], 'observed_row_count': 1,
+            'row_count_truncated': False, 'target_node_present': True, 'target_node_visible': False,
+            'selected_scroll_container': 'PAGE', 'last_action_scroll_container': 'PAGE', 'scroll_action_count': 1,
+            'scroll_count_truncated': False, 'last_scroll_action_returned': True,
+            'wait_outcome': 'DEADLINE_EXPIRED', 'native_session_methods_called_by_test': False, **changes}
+
+    def validate_list_refresh(self, value):
+        return interop.validate_phone_ui_list_refresh_receipt(json.dumps(value).encode(), 'a' * 64)
+
+    def test_list_refresh_is_only_observed_even_when_the_ui_wait_matches(self):
+        value = self.list_refresh(target_node_visible=True, wait_outcome='MATCH_FOUND')
+        self.assertEqual(self.validate_list_refresh(value), value)
+        for change in ({'result': 'PASS'}, {'native_session_methods_called_by_test': True},
+            {'proof': 'private'}, {'link_id': 'private'}, {'ui_tree': 'private'},
+            {'run_id_sha256': 'b' * 64}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh({**value, **change})
+
+    def test_list_refresh_keeps_fixed_error_classes_without_exception_text(self):
+        for error in ('RPC_REJECTED', 'INVALID_RESPONSE', 'REQUEST_FAILED'):
+            state = 'ERROR_' + error
+            value = self.list_refresh(read_state=state, last_observed_read_state=state,
+                last_observed_error_class=error, read_states_observed=['LOADING', state],
+                observed_row_count=0, target_node_present=False)
+            self.assertEqual(self.validate_list_refresh(value)['last_observed_error_class'], error)
+        for change in ({'last_observed_error_class': 'private body'},
+            {'read_state': 'ERROR_private'}, {'read_states_observed': ['LOADING', 'private']},
+            {'selected_scroll_container': 'arbitrary class with payload'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+
+    def test_list_refresh_unavailable_root_does_not_mean_empty_list(self):
+        value = self.list_refresh(app_root_available=False, read_state='UNKNOWN', observed_row_count=None,
+            target_node_present=None, target_node_visible=None)
+        self.assertEqual(self.validate_list_refresh(value)['last_observed_read_state'], 'OK_NONEMPTY')
+        for change in ({'observed_row_count': 0}, {'target_node_present': False},
+            {'target_node_visible': False}, {'read_state': 'OK_EMPTY'}, {'row_count_truncated': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh({**value, **change})
+
+    def test_list_refresh_rejects_inconsistent_history_and_ambiguous_state(self):
+        value = self.list_refresh(read_state='UNKNOWN', read_state_ambiguous=True)
+        self.assertEqual(self.validate_list_refresh(value), value)
+        for change in ({'read_state_ambiguous': True}, {'last_observed_read_state': 'LOADING'},
+            {'read_states_observed': ['LOADING', 'OK_NONEMPTY', 'LOADING']},
+            {'read_states_observed': ['UNKNOWN']}, {'read_states_observed': [['LOADING']]},
+            {'last_observed_error_class': 'REQUEST_FAILED'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+
+    def test_list_refresh_rejects_unbounded_counts_and_false_visibility(self):
+        bounded = self.list_refresh(observed_row_count=100, row_count_truncated=True,
+            scroll_action_count=80, scroll_count_truncated=True)
+        self.assertEqual(self.validate_list_refresh(bounded), bounded)
+        for change in ({'observed_row_count': True}, {'observed_row_count': 101},
+            {'observed_row_count': -1}, {'scroll_action_count': True}, {'scroll_action_count': 81},
+            {'row_count_truncated': True}, {'scroll_count_truncated': True},
+            {'target_node_present': False, 'target_node_visible': True},
+            {'observed_row_count': 0, 'target_node_present': True},
+            {'last_action_scroll_container': 'NONE'},
+            {'scroll_action_count': 0, 'last_scroll_action_returned': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.validate_list_refresh(self.list_refresh(**change))
+        self.assertEqual(self.validate_list_refresh(self.list_refresh(selected_scroll_container='NONE'))[
+            'last_action_scroll_container'], 'PAGE')
+        self.assertIsNone(self.validate_list_refresh(self.list_refresh(last_scroll_action_returned=None))[
+            'last_scroll_action_returned'])
+
+    def test_list_refresh_accepts_an_initial_unknown_observation(self):
+        value = self.list_refresh(refresh_accessibility_click_returned=False, app_root_available=None,
+            read_state='UNKNOWN', last_observed_read_state='UNKNOWN', read_states_observed=[],
+            observed_row_count=None, target_node_present=None, target_node_visible=None,
+            selected_scroll_container='UNKNOWN', last_action_scroll_container='UNKNOWN',
+            scroll_action_count=0, last_scroll_action_returned=None,
+            wait_outcome='UNKNOWN')
+        self.assertEqual(self.validate_list_refresh(value), value)
+
+    def test_list_refresh_rejects_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'', b'{}', b'[]', b'null', b'{"result":"OBSERVED","result":"PASS"}', b'x' * 4097):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_list_refresh_receipt(raw, 'a' * 64)
+
+    def progress(self, events=None, **fields):
+        return {'schema': 'cicada.client-v164-phone-ui-submit-progress.v1',
+            'result': 'OBSERVED', 'run_id_sha256': 'a' * 64, 'events': events or [],
+            'error_code': None, 'native_ok': None, 'reconciliation_required': None,
+            'promise_in_flight': None, 'native_packet_pending': 'UNKNOWN',
+            'viewport': 'UNKNOWN', 'last_ui_stage': None,
+            'native_session_methods_called_by_test': False, 'truncated': False, **fields}
+
+    def event(self, stage, elapsed=1, **fields):
+        return {'stage': stage, 'elapsed_ms': elapsed, 'native_ok': None,
+            'reconciliation_required': None, 'error_code': None, **fields}
+
+    def validate_progress(self, value):
+        return interop.validate_phone_ui_submit_progress_receipt(json.dumps(value).encode(), 'a' * 64)
+
+    def test_progress_distinguishes_promise_from_unobserved_ciphertext_pending(self):
+        events = [self.event('ALERT_POSITIVE_CLICKED'), self.event('CALLBACK_ENTERED', 2),
+            self.event('UI_SUBMIT_DISPATCHED', 3), self.event('NATIVE_BRIDGE_ENTERED', 4),
+            self.event('NATIVE_CALL_STARTED', 5)]
+        value = self.progress(events, promise_in_flight=True, last_ui_stage='UI_SUBMIT_DISPATCHED')
+        self.assertEqual(self.validate_progress(value), value)
+        self.assertEqual(self.validate_progress(value)['native_packet_pending'], 'UNKNOWN')
+        for mutation in ({'result': 'PASS'}, {'native_packet_pending': True},
+            {'promise_in_flight': False}, {'native_ok': True}):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.validate_progress({**value, **mutation})
+
+    def test_progress_keeps_actual_native_resolution_or_allowlisted_rejection(self):
+        start = self.event('NATIVE_CALL_STARTED')
+        for terminal, fields in (
+            (self.event('NATIVE_RESOLVED', 2, native_ok=False, reconciliation_required=True),
+                dict(native_ok=False, reconciliation_required=True)),
+            (self.event('NATIVE_REJECTED', 2, error_code='LINK_CONSENT_REVIEW_STALE'),
+                dict(error_code='LINK_CONSENT_REVIEW_STALE')),
+            (self.event('NATIVE_REJECTED', 2, error_code='UNCLASSIFIED'),
+                dict(error_code='UNCLASSIFIED')),
+        ):
+            value = self.progress([start, terminal], promise_in_flight=False, **fields)
+            self.assertEqual(self.validate_progress(value), value)
+            if terminal['stage'] == 'NATIVE_REJECTED':
+                # Profile/worker rejection can happen before the session method starts.
+                self.assertEqual(self.validate_progress(self.progress([terminal],
+                    promise_in_flight=False, **fields))['promise_in_flight'], False)
+            restarted = self.progress([start, terminal, self.event('NATIVE_CALL_STARTED', 3)],
+                promise_in_flight=True)
+            self.assertEqual(self.validate_progress(restarted)['native_ok'], None)
+
+    def test_progress_rejects_sensitive_fields_wrong_run_and_untyped_error_text(self):
+        for mutation in ({'proof': 'private'}, {'tree': 'private'}, {'result': 'PASS'},
+            {'run_id_sha256': 'b' * 64}, {'viewport': []}, {'truncated': 1},
+            {'last_ui_stage': 'exception text'}, {'error_code': 'private detail'},
+            {'native_session_methods_called_by_test': True}):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.validate_progress(self.progress(**mutation))
+        for event in (self.event('NATIVE_REJECTED', error_code='secret body'),
+            self.event('CALLBACK_ENTERED', error_code='UNCLASSIFIED'),
+            self.event('NATIVE_REJECTED', native_ok=False, error_code='UNCLASSIFIED'),
+            self.event('NATIVE_REJECTED'), self.event('NATIVE_RESOLVED', native_ok='true'),
+            self.event('CALLBACK_ENTERED', proof='private')):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                self.validate_progress(self.progress([event]))
+
+    def test_progress_rejects_invalid_bounds_order_and_aggregate(self):
+        invalid_events = [[self.event('ALERT_VERIFIED', 2), self.event('RN_CONFIRM_CLICKED', 1)],
+            [self.event('ALERT_VERIFIED', True)], [self.event('ALERT_VERIFIED', -1)],
+            [self.event('ALERT_VERIFIED', 1_200_001)], [self.event('ALERT_VERIFIED')] * 33,
+            [self.event('UNKNOWN')]]
+        for events in invalid_events:
+            with self.subTest(events=events), self.assertRaises(ValueError):
+                self.validate_progress(self.progress(events))
+        value = self.progress([self.event('CALLBACK_ENTERED')], last_ui_stage='CALLBACK_ENTERED')
+        self.assertEqual(self.validate_progress(value), value)
+        with self.assertRaises(ValueError):
+            self.validate_progress({**value, 'last_ui_stage': 'UI_RESPONSE_RETURNED'})
+
+    def test_progress_rejects_duplicates_nonobjects_and_oversized_input(self):
+        for raw in (b'', b'{}', b'[]', b'null', b'{"result":"OBSERVED","result":"PASS"}', b'x' * 8193):
+            with self.assertRaises(ValueError):
+                interop.validate_phone_ui_submit_progress_receipt(raw, 'a' * 64)
+
+
+if __name__ == '__main__':
+    unittest.main()

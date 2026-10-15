@@ -1,0 +1,27 @@
+FROM node:24.21.0-bookworm-slim AS node
+FROM gradle:9.4.1-jdk17 AS gradle9
+FROM cicada-client-android:dev
+
+USER root
+COPY --from=node /usr/local /usr/local
+RUN apt-get update && apt-get install -y --no-install-recommends python3 git \
+    && rm -rf /var/lib/apt/lists/*
+RUN "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+      "platforms;android-37.0" "build-tools;37.0.0" \
+      "ndk;27.1.12297006" "cmake;3.22.1" \
+    && chmod -R a+rX "$ANDROID_HOME"
+RUN "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+      "platforms;android-36" "build-tools;36.0.0" \
+    && chmod -R a+rX "$ANDROID_HOME"
+COPY --from=gradle9 /opt/gradle /opt/gradle-9.4.1
+ENV PATH=/opt/gradle-9.4.1/bin:/usr/local/bin:/opt/android-sdk/platform-tools:$PATH
+RUN npm install -g npm@12.1.0 --no-audit --no-fund
+ARG TEMURIN25_SHA256=dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e
+COPY --from=temurin25 /temurin25.tar.gz /tmp/temurin25.tar.gz
+RUN echo "$TEMURIN25_SHA256  /tmp/temurin25.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/java/openjdk25 \
+    && tar -xzf /tmp/temurin25.tar.gz -C /opt/java/openjdk25 --strip-components=1 \
+    && rm /tmp/temurin25.tar.gz
+ENV JAVA_HOME=/opt/java/openjdk25
+ENV PATH=/opt/java/openjdk25/bin:$PATH
+WORKDIR /workspace

@@ -1,0 +1,2296 @@
+openapi: 3.1.0
+info:
+  title: Cicada Android Client ↔ Hub/Control ingress
+  version: 0.1.0-partial
+  x-contract-revision: client-hub-v1.6.4
+  x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
+  description: >-
+    Implemented Hub HTTP routes only. This is a partial server contract, not an
+    Android interoperability certification. Check GET /v2/client/capabilities
+    before use. The /v2/client/rpc operation body is encrypted to Control;
+    operation plaintext shapes and cryptographic byte rules are documented in
+    docs/client-hub-wire-v1.md. `contract_revision` identifies the cross-repository
+    contract revision; `catalog_sha256` hashes only the embedded operation catalog,
+    not this OpenAPI document or the complete contract bundle. The legacy /v1 management API is outside this
+    contract. The Node-only Link authorization route is included to make its
+    separate Node bearer trust boundary explicit; it is not a Client RPC.
+servers:
+  - url: https://{hub}
+    variables:
+      hub:
+        default: hub.example.invalid
+paths:
+  /v2/client/capabilities:
+    get:
+      operationId: getClientCapabilities
+      description: >-
+        Public, metadata-only negotiation. A true flag indicates a Hub-side
+        implementation within its stated boundary; it does not certify an
+        independent Android implementation. Fabric-only mode returns the same
+        shape with status not_ready, false flags, and no operations.
+      responses:
+        '200':
+          description: Current server-side capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientCapabilities'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v2/client/identity:
+    get:
+      operationId: getClientHubIdentity
+      description: >-
+        Public Hub and Control key metadata. Pin hub_id and the complete
+        control_public_identity through an independent trusted channel; this
+        response alone does not establish trust.
+      responses:
+        '200':
+          description: Persistent Hub ID and Control public PQ identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HubIdentity'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/devices/enroll:
+    post:
+      operationId: enrollClientDevice
+      description: >-
+        Registers a device only after verifying an owner ML-DSA grant against
+        the locally registered active owner approval key. The grant must bind
+        this Hub ID, owner, device ID, exact device public identity and
+        fingerprint, CLIENT_CONTROL purpose, validity window, and a one-use
+        nonce. A management bearer has no authority on this route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollClientDeviceRequest'
+      responses:
+        '201':
+          description: Device key and session epoch persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrolledClientDevice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Owner grant, owner scope, or trust check failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/rpc:
+    post:
+      operationId: clientControlRPC
+      description: >-
+        Application-layer ML-KEM-768 + ML-DSA-65 + AES-256-GCM packet to
+        Control. The signed route is bound into encryption AAD. Route claims
+        select the enrolled owner/device record but do not grant authority.
+        Persist sequence and exact sealed request before sending. Exact packet
+        retries return the same cached response; a conflict or UNCERTAIN result
+        must be reconciled and must not be blindly replayed. HTTP 200 may carry
+        either a successful result or a business rejection inside the encrypted
+        response. That inner rejection currently has a free-text error string,
+        not a stable machine-readable error code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Packet'
+      responses:
+        '200':
+          description: Signed and encrypted Control response packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Packet'
+        '400':
+          description: Invalid, empty, oversized, or malformed outer packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '403':
+          description: Device is unauthorized or packet authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Replay, sequence, epoch, session, processing, or uncertain-state conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/client/rpc/recover:
+    post:
+      operationId: recoverClientControlRPC
+      description: >-
+        Submit the exact original signed REQUEST packet after a lost RPC
+        response. This route authenticates the current device binding and
+        persisted packet digest; it never executes the operation again.
+        COMPLETED returns the original cached encrypted response. UNCERTAIN
+        or FAILED returns a durable encrypted OUTCOME_UNCERTAIN notice using
+        the request's reserved response sequence. PROCESSING returns 409;
+        pre-migration uncertain requests without a reservation return 409
+        RECOVERY_UNAVAILABLE. A notice does not prove the business outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Packet'
+      responses:
+        '200':
+          description: Original cached packet or sealed uncertainty notice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Packet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Device inactive or packet authentication failed.
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Still processing, recovery unavailable, or identity/replay mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/nodes/device-code:
+    post:
+      operationId: beginNodeDeviceBinding
+      description: >-
+        Public Node bootstrap with a signed/encrypted Node key-possession proof
+        to the independently pinned GET /v2/node/identity application key.
+        The Node retains its bearer and private key locally; credential_digest
+        is SHA-256(token) in unpadded base64url. The response includes a short
+        code, public candidate and relative /client/device path (not served here).
+        Owner confirmation uses separate encrypted Client RPC nodes.preview
+        and nodes.confirm with the exact candidate_digest and candidate_version.
+        The approved response is NodeControlKeyBinding, never a bearer credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeDeviceCodeRequest'
+      responses:
+        '201':
+          description: One-time code and relative Client verification URI.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDeviceCode'
+        '400':
+          description: Invalid request or Node binding request rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Node is already bound or has a conflicting pending request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '426':
+          description: MIGRATION_BLOCKED; an existing binding requires Owner-approved Node-Control key upgrade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '429':
+          description: Per-Node or global device-code rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v2/relay/nodes/{node_id}/links/{link_id}/authorization:
+    get:
+      operationId: getNodeLinkAuthorizationEvidence
+      description: >-
+        Node-only read of current public Link authorization evidence. The Node
+        must present its current CicadaNode bearer, be an endpoint Node on this
+        Link under the currently bound owner, and the current Link manifest
+        plus both owner key-bound proofs must validate. This evidence is not a
+        route grant and does not activate peer delivery. The Node must already
+        trust the owner approval keys and verify the bundle itself.
+      security:
+        - CicadaNodeBearer: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: link_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Current Link manifest and bilateral owner proof evidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeLinkAuthorizationBundle'
+        '401':
+          description: Missing, malformed, revoked, or unknown Node bearer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '403':
+          description: URL node_id differs from the Node bound to this bearer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '404':
+          description: >-
+            Unknown path or no current Link authorization. Missing, expired,
+            revoked, stale, or one-sided authorization evidence is deliberately
+            returned as the same 404 response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+        '503':
+          description: Relay service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+components:
+  securitySchemes:
+    CicadaNodeBearer:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Send as: CicadaNode <node-bearer>. This credential is not a Client management bearer.'
+  responses:
+    BadRequest:
+      description: Request body is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    MethodNotAllowed:
+      description: HTTP method is not supported on this route.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    ServiceUnavailable:
+      description: Required Hub Control service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    InternalError:
+      description: Internal processing or response sealing failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+  schemas:
+    HttpError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message; no stable error code is currently defined.
+
+    RecoveryError:
+      type: object
+      additionalProperties: false
+      required: [code, error]
+      properties:
+        code:
+          type: string
+          enum: [STILL_PROCESSING, RECOVERY_UNAVAILABLE, RECOVERY_REJECTED]
+        error: {type: string}
+
+    ClientCapabilities:
+      type: object
+      additionalProperties: true
+      required:
+        - contract
+        - contract_revision
+        - catalog_sha256
+        - status
+        - planned_platform
+        - legacy_management_api_available
+        - client_control_pq_e2ee
+        - authenticated_client_session
+        - status_snapshot
+        - topology_management
+        - status_events
+        - status_changes_partial
+        - control_intents
+        - device_binding
+        - external_thread_links
+        - external_link_invites
+        - external_client_sessions
+        - link_key_consent
+        - group_endpoint_key_grants
+        - client_device_enrollment
+        - rpc_recovery
+        - client_device_management
+        - approval_read_and_decide
+        - queued_goal_lifecycle
+        - available_rpc_operations
+        - external_rpc_operations
+      properties:
+        contract: {const: android-hub-v1-draft}
+        contract_revision: {const: client-hub-v1.6.4}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
+        status: {type: string, enum: [partial, not_ready]}
+        planned_platform: {const: android}
+        legacy_management_api_available: {type: boolean}
+        client_control_pq_e2ee: {type: boolean}
+        authenticated_client_session: {type: boolean}
+        status_snapshot: {type: boolean}
+        topology_management: {type: boolean}
+        status_events: {const: false}
+        status_changes_partial: {type: boolean}
+        control_intents: {type: boolean}
+        device_binding: {type: boolean}
+        external_thread_links: {const: false}
+        external_link_invites: {type: boolean}
+        external_client_sessions: {type: boolean}
+        link_key_consent: {type: boolean}
+        group_endpoint_key_grants: {type: boolean}
+        client_device_enrollment: {type: boolean}
+        rpc_recovery: {type: boolean}
+        client_device_management: {type: boolean}
+        approval_read_and_decide: {type: boolean}
+        queued_goal_lifecycle: {type: boolean}
+        available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+        external_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+
+    HubIdentity:
+      type: object
+      additionalProperties: false
+      required: [contract, hub_id, control_public_identity, control_key_version, suite]
+      properties:
+        contract: {const: android-hub-v1}
+        hub_id: {type: string, minLength: 1}
+        control_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        control_key_version: {type: integer, const: 1}
+        suite: {const: ML-KEM-768+ML-DSA-65+AES-256-GCM}
+
+    EnrollClientDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [owner_id, owner_key_id, device_id, device_public_identity, owner_device_grant]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        device_id: {type: string, minLength: 1}
+        device_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        owner_device_grant:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of the canonical OwnerDeviceGrant JSON bytes.
+
+    EnrolledClientDevice:
+      type: object
+      additionalProperties: false
+      required: [owner_id, device_id, session_epoch, device_key_version, state]
+      properties:
+        owner_id: {type: string}
+        device_id: {type: string}
+        session_epoch: {type: integer, minimum: 1}
+        device_key_version: {type: integer, minimum: 1}
+        state: {const: ACTIVE}
+
+    PublicIdentity:
+      type: object
+      additionalProperties: false
+      required: [id, kem_public, signing_public]
+      properties:
+        id:
+          type: string
+          description: pq1- plus the first 16 bytes of SHA-256(KEM public bytes || signing public bytes), lowercase hex.
+        kem_public:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 ML-KEM-768 public key bytes.
+        signing_public:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 ML-DSA-65 public key bytes.
+
+    NodeDeviceCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [node_id, node_name, credential_digest, request_nonce, node_public_identity, node_fingerprint, proof_packet, hub_id, hub_public_identity, hub_key_version, hub_fingerprint]
+      properties:
+        node_id: {type: string, minLength: 1}
+        node_name: {type: string, minLength: 1, maxLength: 128}
+        credential_digest:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: Unpadded base64url SHA-256 digest of the Node bearer.
+        request_nonce:
+          type: string
+          contentEncoding: base64
+          description: Fresh 16-64 byte nonce committed by the Node-Control pairing proof.
+        node_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        node_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_packet:
+          type: string
+          contentEncoding: base64
+          description: Signed/encrypted proof_packet using nodewire.PairingProofTranscript and PairingProofAAD, sequence 1.
+        hub_id: {type: string, minLength: 1}
+        hub_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        hub_key_version: {type: integer, minimum: 1}
+        hub_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    NodeDeviceCode:
+      type: object
+      additionalProperties: false
+      required: [user_code, verification_uri, candidate]
+      properties:
+        user_code:
+          type: string
+          pattern: '^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$'
+        verification_uri: {type: string, const: /client/device}
+        candidate:
+          $ref: '#/components/schemas/NodeControlKeyCandidate'
+
+    NodesPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [user_code]
+      properties:
+        user_code: {type: string, minLength: 1}
+
+    NodesConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [user_code, candidate_digest, candidate_version]
+      description: Exact pending preview CAS; omissions or changed digest/version are encrypted business refusals and do not consume the code.
+      properties:
+        user_code: {type: string, minLength: 1}
+        candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_version: {type: integer, minimum: 1}
+
+    NodesListRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+
+    NodesRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [binding_id, expected_version]
+      properties:
+        binding_id: {type: string, minLength: 1}
+        expected_version: {type: integer, minimum: 1}
+
+    NodeControlKeyCandidate:
+      type: object
+      additionalProperties: false
+      required: [request_id, version, mode, hub_id, node_id, node_name, node_key_id, node_key_fingerprint, hub_node_control_key_id, hub_node_control_key_version, hub_node_control_fingerprint, node_key_epoch, candidate_digest, expires_at, state]
+      properties:
+        request_id: {type: string}
+        version: {type: integer, minimum: 1}
+        mode: {type: string, enum: [INITIAL, UPGRADE]}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        node_key_id: {type: string}
+        node_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        hub_node_control_key_id: {type: string}
+        hub_node_control_key_version: {type: integer, minimum: 1}
+        hub_node_control_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        node_key_epoch: {type: integer, minimum: 1}
+        candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [PENDING, CONFIRMED, EXPIRED, CANCELLED]}
+        binding_id: {type: string}
+        binding_version: {type: integer, minimum: 1}
+
+    NodeControlKeyBinding:
+      type: object
+      additionalProperties: false
+      description: Owner-approved Node application key and public approval evidence. No credentials, private keys or operation body. Not the nodes.list/revoke projection and not a TLS key binding.
+      required: [owner_binding_id, owner_id, hub_id, node_id, node_name, client_device_id, owner_key_id, node_credential_version, binding_version, node_key_id, node_public_identity, node_key_fingerprint, node_key_version, node_key_epoch, hub_key_id, hub_public_identity, hub_key_fingerprint, hub_key_version, approved_request_id, approved_request_version, approved_candidate_digest, approved_owner_device_id, approved_owner_key_id, approved_at, state, version]
+      properties:
+        owner_binding_id: {type: string}
+        owner_id: {type: string}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        client_device_id: {type: string}
+        owner_key_id: {type: string}
+        node_credential_version: {type: integer, minimum: 1}
+        binding_version: {type: integer, minimum: 1}
+        node_key_id: {type: string}
+        node_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        node_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        node_key_version: {type: integer, minimum: 1}
+        node_key_epoch: {type: integer, minimum: 1}
+        hub_key_id: {type: string}
+        hub_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        hub_key_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        hub_key_version: {type: integer, minimum: 1}
+        approved_request_id: {type: string}
+        approved_request_version: {type: integer, minimum: 1, description: Pending preview version approved by the Owner.}
+        approved_candidate_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        approved_owner_device_id: {type: string}
+        approved_owner_key_id: {type: string}
+        approved_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+        version: {type: integer, minimum: 1}
+        revoked_at: {type: string, format: date-time}
+
+    NodeDeviceBinding:
+      type: object
+      additionalProperties: false
+      required: [id, owner_id, hub_id, node_id, node_name, client_device_id, owner_key_id, node_credential_version, state, authorized, version, created_at, updated_at]
+      description: Authoritative nodes.list/revoke owner credential projection, distinct from nodes.confirm NodeControlKeyBinding. ACTIVE may have authorized=false after Owner-key revocation.
+      properties:
+        id: {type: string}
+        owner_id: {type: string}
+        hub_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        client_device_id: {type: string}
+        owner_key_id: {type: string}
+        node_credential_version: {type: integer, minimum: 1}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+        authorized: {type: boolean}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+
+    NodeDeviceBindingList:
+      type: array
+      items:
+        $ref: '#/components/schemas/NodeDeviceBinding'
+
+    Packet:
+      type: object
+      additionalProperties: false
+      required: [route, envelope]
+      properties:
+        route:
+          $ref: '#/components/schemas/Route'
+        envelope:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of serialized e2ee.Envelope JSON bytes.
+
+    Route:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - direction
+        - hub_id
+        - owner_id
+        - device_id
+        - session_epoch
+        - sequence
+        - operation_id
+        - operation
+        - sender_key_id
+        - sender_key_version
+        - receiver_key_id
+        - receiver_key_version
+      properties:
+        version: {type: integer, const: 1}
+        direction: {type: string, enum: [REQUEST, RESPONSE]}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        device_id: {type: string}
+        session_epoch: {type: integer, minimum: 1}
+        sequence: {type: integer, minimum: 1}
+        operation_id: {type: string, minLength: 1, maxLength: 256}
+        operation:
+          $ref: '#/components/schemas/ClientRpcOperation'
+        sender_key_id: {type: string}
+        sender_key_version: {type: integer, minimum: 1}
+        receiver_key_id: {type: string}
+        receiver_key_version: {type: integer, minimum: 1}
+
+    ClientRpcOperation:
+      type: string
+      description: >-
+        Union of manager and external RPC operation IDs. Per-device authorization
+        is returned by the encrypted session.capabilities result and enforced by
+        the Hub. The canonical role catalog is embedded at
+        cicada-go/internal/clientcontract/catalog.json.
+      x-operation-catalog: ../cicada-go/internal/clientcontract/catalog.json
+      x-rpc-request-result-schemas:
+        link.key_manifest:
+          request: '#/components/schemas/ClientLinkKeyManifestRequest'
+          result: '#/components/schemas/CommunicationLinkKeyManifest'
+        link.key_grants:
+          request: '#/components/schemas/ClientLinkKeyGrantsRequest'
+          result: '#/components/schemas/CommunicationLinkKeyGrantStatusList'
+        link.key_grant:
+          request: '#/components/schemas/ClientLinkKeyGrantRequest'
+          result: '#/components/schemas/CommunicationLinkKeyGrantStatus'
+        nodes.preview:
+          request: '#/components/schemas/NodesPreviewRequest'
+          result: '#/components/schemas/NodeControlKeyCandidate'
+        nodes.confirm:
+          request: '#/components/schemas/NodesConfirmRequest'
+          result: '#/components/schemas/NodeControlKeyBinding'
+        nodes.list:
+          request: '#/components/schemas/NodesListRequest'
+          result: '#/components/schemas/NodeDeviceBindingList'
+        nodes.revoke:
+          request: '#/components/schemas/NodesRevokeRequest'
+          result: '#/components/schemas/NodeDeviceBinding'
+        link.invite_accept:
+          request: '#/components/schemas/LinkInviteAcceptRequest'
+          result: '#/components/schemas/LinkInviteAcceptResult'
+        link.invite_create:
+          request: '#/components/schemas/LinkInviteCreateRequest'
+          result: '#/components/schemas/LinkInviteCreateResult'
+        link.invite_preview:
+          request: '#/components/schemas/LinkInvitePreviewRequest'
+          result: '#/components/schemas/LinkInvitePreviewResult'
+        link.review_policy_grant:
+          request: '#/components/schemas/LinkReviewPolicyGrantRequest'
+          result: '#/components/schemas/LinkReviewPolicyStatusResult'
+        link.review_policy_preview:
+          request: '#/components/schemas/LinkReviewPolicyPreviewRequest'
+          result: '#/components/schemas/LinkReviewPolicyPreviewResult'
+        link.review_policy_status:
+          request: '#/components/schemas/LinkReviewPolicyStatusRequest'
+          result: '#/components/schemas/LinkReviewPolicyStatusResult'
+        monitor.broadcast_confirm:
+          request: '#/components/schemas/MonitorBroadcastConfirmRequest'
+          result: '#/components/schemas/MonitorBroadcastConfirmResult'
+        monitor.broadcast_prepare:
+          request: '#/components/schemas/MonitorBroadcastPrepareRequest'
+          result: '#/components/schemas/MonitorBroadcastPrepareResult'
+        monitor.broadcast_recover:
+          request: '#/components/schemas/MonitorBroadcastRecoverRequest'
+          result: '#/components/schemas/MonitorBroadcastRecoveredResult'
+        monitor.broadcast_status:
+          request: '#/components/schemas/MonitorBroadcastStatusRequest'
+          result: '#/components/schemas/MonitorBroadcastStatusResult'
+        network.directory:
+          request: '#/components/schemas/NetworkDirectoryRequest'
+          result: '#/components/schemas/NetworkDirectoryResult'
+        network.collaboration_key_grant:
+          request: '#/components/schemas/NetworkCollaborationKeyGrantRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyGrantResult'
+        network.collaboration_key_manifest:
+          request: '#/components/schemas/NetworkCollaborationKeyManifestRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyManifestResult'
+        network.collaboration_key_status:
+          request: '#/components/schemas/NetworkCollaborationKeyStatusRequest'
+          result: '#/components/schemas/NetworkCollaborationKeyGrantResult'
+        network.key_grant:
+          request: '#/components/schemas/NetworkKeyGrantRequest'
+          result: '#/components/schemas/NetworkKeyGrantResult'
+        network.key_manifest:
+          request: '#/components/schemas/NetworkKeyManifestRequest'
+          result: '#/components/schemas/NetworkKeyManifestResult'
+        network.key_status:
+          request: '#/components/schemas/NetworkKeyStatusRequest'
+          result: '#/components/schemas/NetworkKeyStatusResult'
+        space.foreign_endpoint_join:
+          request: '#/components/schemas/CrossOwnerEndpointJoinRequest'
+          result: '#/components/schemas/CrossOwnerEndpointJoinResult'
+        space.foreign_endpoint_preview:
+          request: '#/components/schemas/CrossOwnerEndpointPreviewRequest'
+          result: '#/components/schemas/CrossOwnerEndpointPreviewResult'
+        space.foreign_member_admit:
+          request: '#/components/schemas/CrossOwnerMemberAdmitRequest'
+          result: '#/components/schemas/CrossOwnerMemberAdmitResult'
+        space.foreign_member_revoke:
+          request: '#/components/schemas/CrossOwnerMemberRevokeRequest'
+          result: '#/components/schemas/CrossOwnerMemberAdmitResult'
+        space.key_admission_v2:
+          request: '#/components/schemas/CrossOwnerKeyProofRequest'
+          result: '#/components/schemas/CrossOwnerKeyProofResult'
+        space.key_consent_v2:
+          request: '#/components/schemas/CrossOwnerKeyProofRequest'
+          result: '#/components/schemas/CrossOwnerKeyProofResult'
+        space.key_manifest_v2:
+          request: '#/components/schemas/CrossOwnerKeyScopeRequest'
+          result: '#/components/schemas/CrossOwnerKeyManifestResult'
+        space.key_status_v2:
+          request: '#/components/schemas/CrossOwnerKeyScopeRequest'
+          result: '#/components/schemas/CrossOwnerKeyStatusResult'
+        topology.delegation_issue:
+          request: '#/components/schemas/RegroupDelegationIssueRequest'
+          result: '#/components/schemas/RegroupDelegationResult'
+        topology.delegation_revoke:
+          request: '#/components/schemas/RegroupDelegationRevokeRequest'
+          result: '#/components/schemas/RegroupDelegationResult'
+        topology.regroup_proposal:
+          request: '#/components/schemas/RegroupProposalRequest'
+          result: '#/components/schemas/RegroupProposalResult'
+        topology.endpoint_admission_preview:
+          request: '#/components/schemas/TopologyEndpointAdmissionPreviewRequest'
+          result: '#/components/schemas/TopologyEndpointAdmissionPreviewResult'
+      x-topology-apply-action-schemas:
+        group.create: '#/components/schemas/TopologyCreateGroupAction'
+        membership.set_broadcast_permission: '#/components/schemas/TopologySetBroadcastPermissionAction'
+        membership.set_directory_permission: '#/components/schemas/TopologySetDirectoryPermissionAction'
+        endpoint.admit_group: '#/components/schemas/TopologyAdmitEndpointAction'
+      x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'
+      x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'
+      x-topology-group-projection-schema: '#/components/schemas/ClientTopologyGroup'
+      x-topology-member-projection-schema: '#/components/schemas/ClientTopologyMember'
+      enum:
+        - session.capabilities
+        - status.snapshot
+        - status.changes
+        - goal.lifecycle
+        - goal.result
+        - topology.snapshot
+        - topology.apply
+        - topology.endpoint_admission_preview
+        - topology.delegation_issue
+        - topology.delegation_revoke
+        - topology.regroup_proposal
+        - space.foreign_member_admit
+        - space.foreign_member_revoke
+        - space.foreign_endpoint_preview
+        - space.foreign_endpoint_join
+        - space.key_manifest_v2
+        - space.key_consent_v2
+        - space.key_admission_v2
+        - space.key_status_v2
+        - devices.list
+        - devices.revoke
+        - nodes.preview
+        - nodes.confirm
+        - nodes.list
+        - nodes.revoke
+        - approvals.list
+        - approvals.decide
+        - intent.get
+        - intent.status
+        - intent.list
+        - intent.submit
+        - link.key_manifest
+        - link.key_grants
+        - link.key_grant
+        - link.review_policy_preview
+        - link.review_policy_grant
+        - link.review_policy_status
+        - group.key_manifest
+        - group.key_grant
+        - group.key_status
+        - network.key_grant
+        - network.key_manifest
+        - network.key_status
+        - network.collaboration_key_manifest
+        - network.collaboration_key_grant
+        - network.collaboration_key_status
+        - network.directory
+        - monitor.broadcast_confirm
+        - monitor.broadcast_prepare
+        - monitor.broadcast_recover
+        - monitor.broadcast_status
+        - link.list
+        - link.invite_create
+        - link.invite_preview
+        - link.invite_accept
+
+    SessionCapabilities:
+      type: object
+      additionalProperties: false
+      required: [owner_id, role, contract_revision, catalog_sha256, rpc_recovery, available_rpc_operations]
+      properties:
+        owner_id: {type: string, minLength: 1}
+        role: {type: string, enum: [manager, external]}
+        contract_revision: {const: client-hub-v1.6.4}
+        catalog_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the exact embedded clientcontract/catalog.json bytes only.
+        rpc_recovery: {const: true}
+        available_rpc_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientRpcOperation'
+
+    NodeLinkAuthorizationBundle:
+      type: object
+      additionalProperties: false
+      required: [manifest, source_grant, target_grant, link_state]
+      properties:
+        manifest:
+          $ref: '#/components/schemas/CommunicationLinkKeyManifest'
+        source_grant:
+          $ref: '#/components/schemas/CommunicationLinkAuthorizationProof'
+        target_grant:
+          $ref: '#/components/schemas/CommunicationLinkAuthorizationProof'
+        link_state: {const: PROPOSED}
+
+    ClientLinkKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+    ClientLinkKeyGrantsRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+    ClientLinkKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_key_id, signed_proof]
+      properties:
+        link_id: {type: string, minLength: 1, maxLength: 256}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_key_id: {type: string, minLength: 1, maxLength: 256}
+        signed_proof: {type: string, contentEncoding: base64, maxLength: 21848}
+    CommunicationLinkKeyGrantStatusList:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items: {$ref: '#/components/schemas/CommunicationLinkKeyGrantStatus'}
+    CommunicationLinkKeyGrantStatus:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_id, accepted, current_status]
+      properties:
+        link_id: {type: string}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        accepted: {type: boolean}
+        accepted_at: {type: string, format: date-time}
+        current_status: {type: string, enum: [MISSING, ACCEPTED, KEY_BINDING_STALE, OWNER_KEY_REVOKED, PROOF_EXPIRED, INVALID, LEGACY_KEY_UNBOUND]}
+        evidence: {$ref: '#/components/schemas/CommunicationLinkKeyGrantEvidence'}
+      description: >-
+        accepted records historical acceptance. Optional evidence is present only
+        for currently verified ACCEPTED consent. Both sides in a list share one
+        Store snapshot and verified_at. Consent does not establish routing or
+        native consumption. A missing/stale/revoked/expired/corrupt proof omits
+        evidence; do not reuse previously returned evidence as current authority.
+    CommunicationLinkKeyGrantEvidence:
+      type: object
+      additionalProperties: false
+      required: [link_version, contract_digest, manifest_digest, owner_key_id, owner_public_identity, owner_key_state, owner_key_version, signed_proof, verified_at]
+      properties:
+        link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        owner_key_id: {type: string}
+        owner_public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        signed_proof: {type: string, contentEncoding: base64, maxLength: 21848}
+        verified_at: {type: string, format: date-time}
+      description: >-
+        Exact retained canonical OwnerLinkKeyGrant v2 proof and current public key
+        metadata for this Link side only. Hub discovery evidence is not an
+        independent trust anchor. Match an independently trusted Owner key or pin;
+        never auto-trust the Hub key. Independently verify link.key_manifest and
+        correlate its link/version/contract/digest with each signed side; reject
+        any mismatch caused by separate-read races and refresh without signing.
+
+    CommunicationLinkKeyManifest:
+      type: object
+      additionalProperties: false
+      required: [version, link_id, link_version, contract_digest, contract_canonical, source, target, digest]
+      properties:
+        version: {type: integer, const: 2}
+        link_id: {type: string}
+        link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        contract_canonical:
+          type: string
+          contentEncoding: base64
+        source:
+          $ref: '#/components/schemas/CommunicationLinkKeySide'
+        target:
+          $ref: '#/components/schemas/CommunicationLinkKeySide'
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    LinkReviewPolicy:
+      type: object
+      additionalProperties: false
+      required: [mode, reviewers, max_failovers, reviewer_lease_seconds, max_review_age_seconds]
+      properties:
+        mode: {type: string, enum: [NONE, METADATA]}
+        reviewers:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [endpoint_id, group_id]
+            properties:
+              endpoint_id: {type: string, minLength: 1}
+              group_id: {type: string, minLength: 1}
+        max_failovers: {type: integer, minimum: 0, maximum: 8}
+        reviewer_lease_seconds: {type: integer, minimum: 0, maximum: 3600}
+        max_review_age_seconds: {type: integer, minimum: 0, maximum: 86400}
+      description: >-
+        For NONE all numeric fields and reviewers must be empty/zero. METADATA
+        requires reviewers and bounds validated by the Hub. Reviewers see only
+        bounded message metadata, never plaintext/ciphertext keys or prompt
+        content; this does not claim to eliminate prompt-injection risk.
+
+    LinkReviewPolicyPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, policy]
+      properties:
+        link_id: {type: string, minLength: 1}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+    LinkReviewPolicyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id, owner_key_id, expected_policy_version, policy, signed_proof]
+      properties:
+        link_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        expected_policy_version: {type: integer, minimum: 0, maximum: 9223372036854775806}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerLinkReviewPolicyProof JSON signing policy_version equal to expected_policy_version + 1.
+    LinkReviewPolicyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [link_id]
+      properties:
+        link_id: {type: string, minLength: 1}
+    LinkReviewPolicyPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [link_id, side, owner_id, contract_digest, link_version,
+        expected_policy_version, policy_version, policy_digest, policy, maximum_proof_expires_at, verified_at, reviewer_qualifications]
+      properties:
+        link_id: {type: string}
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        link_version: {type: integer, minimum: 1}
+        expected_policy_version: {type: integer, minimum: 0, maximum: 9223372036854775806}
+        policy_version: {type: integer, minimum: 1, maximum: 9223372036854775807}
+        policy_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        maximum_proof_expires_at: {type: string, format: date-time}
+        verified_at: {type: string, format: date-time}
+        reviewer_qualifications:
+          type: array
+          maxItems: 8
+          items: {$ref: '#/components/schemas/LinkReviewerQualification'}
+      description: >-
+        One canonical UTC RFC3339Nano snapshot. Qualifications exactly match the
+        normalized ordered requested reviewers; NONE returns an empty array.
+        Each row is emitted after the current binding and real link.review Guard
+        succeed. Submission rechecks authority; a lease is not a durable grant.
+    LinkReviewerQualification:
+      type: object
+      additionalProperties: false
+      required: [endpoint_id, group_id, membership_revision, join_revision,
+        group_version, binding_id, binding_epoch, lease_expires_at, action]
+      properties:
+        endpoint_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        membership_revision: {type: integer, minimum: 1}
+        join_revision: {type: integer, minimum: 1}
+        group_version: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1}
+        binding_epoch: {type: integer, minimum: 1}
+        lease_expires_at: {type: string, format: date-time}
+        action: {const: link.review}
+    LinkReviewPolicyOwnerEvidence:
+      type: object
+      additionalProperties: false
+      required: [owner_key_id, owner_public_identity, owner_key_state,
+        owner_key_version, signed_proof, accepted_at]
+      properties:
+        owner_key_id: {type: string, minLength: 1}
+        owner_public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          maxLength: 21848
+          description: Exact retained OwnerLinkReviewPolicyProof bytes, never reconstructed.
+        accepted_at: {type: string, format: date-time}
+    LinkReviewPolicyOwnerApproval:
+      type: object
+      additionalProperties: false
+      required: [side, owner_id, current_status]
+      properties:
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string, minLength: 1}
+        current_status: {type: string, enum: [MISSING, VERIFIED, OWNER_KEY_REVOKED, PROOF_EXPIRED, SCOPE_STALE, INVALID]}
+        evidence: {$ref: '#/components/schemas/LinkReviewPolicyOwnerEvidence'}
+      description: Evidence is present only for VERIFIED with current Link scope.
+    LinkReviewPolicyStatusResult:
+      type: object
+      additionalProperties: false
+      required: [link_id, link_version, contract_digest, policy_version, policy_digest, policy, current, accepted_sides, verified_at, owner_approvals]
+      properties:
+        link_id: {type: string}
+        link_version: {type: integer, minimum: 1}
+        contract_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        policy_version: {type: integer, minimum: 0}
+        policy_digest: {type: string}
+        policy: {$ref: '#/components/schemas/LinkReviewPolicy'}
+        current: {type: boolean}
+        accepted_sides: {type: array, maxItems: 2, items: {type: string, enum: [SOURCE, TARGET]}}
+        verified_at: {type: string, format: date-time}
+        owner_approvals:
+          type: array
+          maxItems: 2
+          items: {$ref: '#/components/schemas/LinkReviewPolicyOwnerApproval'}
+        expires_at: {type: string, format: date-time}
+      description: >-
+        Status selects the active head only. A grant result may describe its
+        partial candidate; current requires exact active head and both verified
+        sides. Configured approvals are SOURCE then TARGET; accepted_sides counts
+        verified proofs only. Unconfigured version0 NONE has empty digest,
+        accepted_sides and owner_approvals. Configured NONE still has approvals.
+        Outer Link version/contract describe the current Link; policy tuple retains
+        the selected head. Stale, revoked or expired heads return current=false with bounded policy
+        metadata and per-side reasons; corrupt policy is rejected. No reviewed
+        message body, ciphertext or native/model consumption is established.
+
+    CommunicationLinkKeySide:
+      type: object
+      additionalProperties: false
+      required:
+        - endpoint_id
+        - group_id
+        - principal_id
+        - owner_id
+        - node_id
+        - binding_id
+        - binding_epoch
+        - candidate_version
+        - key_id
+        - key_fingerprint
+        - proof_digest
+        - public_identity
+        - attestation
+      properties:
+        endpoint_id: {type: string}
+        group_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        key_id: {type: string}
+        key_fingerprint: {type: string}
+        proof_digest: {type: string}
+        public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        attestation:
+          type: string
+          contentEncoding: base64
+
+    CommunicationLinkAuthorizationProof:
+      type: object
+      additionalProperties: false
+      required:
+        - side
+        - owner_id
+        - owner_key_id
+        - owner_public_identity
+        - owner_key_state
+        - owner_key_version
+        - current_status
+        - signed_proof
+      properties:
+        side: {type: string, enum: [SOURCE, TARGET]}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        owner_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        owner_key_state: {const: ACTIVE}
+        owner_key_version: {type: integer, minimum: 1}
+        current_status: {const: ACCEPTED}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Standard padded base64 of canonical OwnerLinkKeyGrant v2 JSON bytes.
+
+    MonitorBroadcastPrepareRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, monitor_endpoint_id, body_sha256]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        monitor_endpoint_id: {type: string, minLength: 1, maxLength: 256}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    RegroupProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_id]
+      properties:
+        proposal_id: {type: string, minLength: 1, maxLength: 256}
+
+    RegroupProposalInput:
+      type: object
+      additionalProperties: false
+      required: [operation_id, network_id, source_group_id, target_group_id, action, expected_source_version, expected_target_version]
+      properties:
+        operation_id: {type: string}
+        network_id: {type: string}
+        source_group_id: {type: string}
+        target_group_id: {type: string}
+        action: {type: string, enum: [SET_PARENT, CREATE_CHILD]}
+        new_group_name: {type: string, maxLength: 80}
+        expected_source_version: {type: integer, minimum: 1}
+        expected_target_version: {type: integer, minimum: 1}
+
+    RegroupProposalResult:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, hub_id, owner_id, endpoint_id, principal_id, binding_id, binding_epoch, input, state, created_at, expires_at]
+      properties:
+        proposal_id: {type: string}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        input: {$ref: '#/components/schemas/RegroupProposalInput'}
+        state: {type: string, enum: [PROPOSED, APPLIED]}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        delegation:
+          description: Current delegation when issued; present so an Owner can recover an uncertain response.
+          $ref: '#/components/schemas/RegroupDelegationResult'
+
+    RegroupDelegationIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, expires_at, max_uses]
+      properties:
+        proposal_id: {type: string, minLength: 1, maxLength: 256}
+        expires_at: {type: string, format: date-time}
+        max_uses: {const: 1}
+
+    RegroupDelegationRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [delegation_id, expected_version]
+      properties:
+        delegation_id: {type: string, minLength: 1, maxLength: 256}
+        expected_version: {type: integer, minimum: 1}
+
+    RegroupDelegationResult:
+      type: object
+      additionalProperties: false
+      required: [delegation_id, proposal_id, hub_id, owner_id, network_id, source_group_id, target_group_id, action, expected_source_version, expected_target_version, expires_at, max_uses, use_count, state, version, created_at]
+      properties:
+        delegation_id: {type: string}
+        proposal_id: {type: string}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        network_id: {type: string}
+        source_group_id: {type: string}
+        target_group_id: {type: string}
+        action: {type: string, enum: [SET_PARENT, CREATE_CHILD]}
+        expected_source_version: {type: integer, minimum: 1}
+        expected_target_version: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+        max_uses: {const: 1}
+        use_count: {type: integer, minimum: 0, maximum: 1}
+        state: {type: string, enum: [ACTIVE, REVOKED, EXHAUSTED]}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+
+    CrossOwnerMemberAdmitRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id, grants, expires_at, expected_group_revision, expected_membership_revision]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        grants:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, enum: [space.read, space.write, space.moderate]}
+          description: space.read is required; no history or peer delivery grant is implied.
+        expires_at: {type: string, format: date-time}
+        expected_group_revision: {type: integer, minimum: 1}
+        expected_membership_revision: {type: integer, minimum: 0}
+    CrossOwnerMemberAdmitResult:
+      type: object
+      additionalProperties: false
+      required: [admission_id, hub_id, network_id, group_id, group_revision, endpoint_id, principal_id, endpoint_owner_id, group_owner_id, membership_id, membership_revision, grants, expires_at, state]
+      properties:
+        admission_id: {type: string}
+        hub_id: {type: string}
+        network_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        endpoint_owner_id: {type: string}
+        group_owner_id: {type: string}
+        membership_id: {type: string}
+        membership_revision: {type: integer, minimum: 1}
+        grants: {type: array, items: {type: string}}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+    CrossOwnerMemberRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id, expected_membership_revision]
+      properties:
+        admission_id: {type: string, minLength: 1}
+        expected_membership_revision: {type: integer, minimum: 1}
+    CrossOwnerEndpointJoinRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id, expected_binding_id, expected_binding_epoch, shared_context_risk_acknowledged]
+      properties:
+        admission_id: {type: string, minLength: 1}
+        expected_binding_id: {type: string, minLength: 1}
+        expected_binding_epoch: {type: integer, minimum: 1}
+        shared_context_risk_acknowledged: {const: true}
+    CrossOwnerEndpointJoinResult:
+      type: object
+      additionalProperties: false
+      required: [join_consent_id, admission_id, group_id, endpoint_id, endpoint_owner_id, node_id, binding_id, expected_binding_epoch, shared_context_risk_acknowledged, expires_at, state]
+      properties:
+        join_consent_id: {type: string}
+        admission_id: {type: string}
+        group_id: {type: string}
+        endpoint_id: {type: string}
+        endpoint_owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        expected_binding_epoch: {type: integer, minimum: 1}
+        shared_context_risk_acknowledged: {const: true}
+        applied_binding_epoch: {type: integer, minimum: 1}
+        applied_join_revision: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+        state: {type: string, enum: [ACTIVE, REVOKED]}
+    CrossOwnerEndpointPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [admission_id]
+      properties:
+        admission_id: {type: string, minLength: 1}
+    CrossOwnerEndpointPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [hub_id, network_id, group_id, group_name, group_owner_id, group_owner_name, endpoint_id, endpoint_name, principal_id, endpoint_owner_id, endpoint_owner_name, admission_id, admission_state, grants, expires_at, group_revision, membership_id, membership_revision, binding_id, binding_epoch, context_policy, cross_owner_context_shared, history_included]
+      properties:
+        hub_id: {type: string, minLength: 1}
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        group_name: {type: string, minLength: 1}
+        group_owner_id: {type: string, minLength: 1}
+        group_owner_name: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        endpoint_name: {type: string, minLength: 1}
+        principal_id: {type: string, minLength: 1}
+        endpoint_owner_id: {type: string, minLength: 1}
+        endpoint_owner_name: {type: string, minLength: 1}
+        admission_id: {type: string, minLength: 1}
+        admission_state: {type: string, const: ACTIVE}
+        grants:
+          type: array
+          items: {type: string, enum: [space.read, space.write, space.moderate]}
+          minItems: 1
+          maxItems: 3
+        expires_at: {type: string, format: date-time}
+        group_revision: {type: integer, minimum: 1}
+        membership_id: {type: string, minLength: 1}
+        membership_revision: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1}
+        binding_epoch: {type: integer, minimum: 1}
+        context_policy: {type: string, const: group_scoped}
+        cross_owner_context_shared: {type: boolean, const: true}
+        history_included: {type: boolean, const: false}
+    CrossOwnerKeyScopeRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+    CrossOwnerKeyProofRequest:
+      type: object
+      additionalProperties: false
+      required: [group_id, endpoint_id, owner_key_id, signed_proof_base64]
+      properties:
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+        signed_proof_base64: {type: string, contentEncoding: base64, maxLength: 22000}
+    CrossOwnerKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [version, operation, hub_id, network_id, group_id, group_revision, endpoint_id, principal_id, endpoint_owner_id, group_owner_id, node_id, binding_id, binding_epoch, membership_revision, endpoint_join_revision, candidate_version, candidate_key_id, candidate_fingerprint, candidate_proof_digest, candidate_public_identity, candidate_attestation, candidate_binding_digest, capabilities, cross_owner_context_shared, history_included, expires_at, digest]
+      properties:
+        version: {const: 2}
+        operation: {const: 'group-endpoint-key-grant:v2:cross-owner'}
+        hub_id: {type: string}
+        network_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        endpoint_owner_id: {type: string}
+        group_owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_join_revision: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        candidate_key_id: {type: string}
+        candidate_fingerprint: {type: string}
+        candidate_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_public_identity: {type: object}
+        candidate_attestation: {type: string, contentEncoding: base64}
+        candidate_binding_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        capabilities: {type: array, items: {type: string}}
+        cross_owner_context_shared: {const: true}
+        history_included: {const: false}
+        expires_at: {type: string, format: date-time}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+    CrossOwnerKeyProofResult:
+      type: object
+      additionalProperties: false
+      required: [proof_id, group_id, endpoint_id, signer_owner_id, signer_side, owner_key_id, manifest_digest, accepted_at, current_status]
+      properties:
+        proof_id: {type: string}
+        group_id: {type: string}
+        endpoint_id: {type: string}
+        signer_owner_id: {type: string}
+        signer_side: {type: string, enum: [ENDPOINT, GROUP]}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        accepted_at: {type: string, format: date-time}
+        current_status: {type: string}
+        signed_proof: {type: string, contentEncoding: base64}
+    CrossOwnerKeyStatusResult:
+      type: object
+      additionalProperties: false
+      required: [manifest, current]
+      properties:
+        manifest: {$ref: '#/components/schemas/CrossOwnerKeyManifestResult'}
+        endpoint_consent: {$ref: '#/components/schemas/CrossOwnerKeyProofResult'}
+        group_admission: {$ref: '#/components/schemas/CrossOwnerKeyProofResult'}
+        current: {type: boolean}
+
+    MonitorBroadcastConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [preview_id, snapshot_digest, body_sha256, sealed_payload]
+      properties:
+        preview_id: {type: string, minLength: 1, maxLength: 256}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        sealed_payload:
+          type: string
+          contentEncoding: base64
+          maxLength: 65536
+          description: >-
+            Base64 of the complete signed MonitorBroadcastEnvelope v2 bytes.
+            Its context binds the exact body, consent scope, Hub, owner,
+            authenticated device epoch/key, preview, Monitor key/binding,
+            expiry, and this confirm request's sequence.
+          x-decoded-json-schema: '#/components/schemas/MonitorBroadcastEnvelopeV2'
+
+    MonitorBroadcastStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [preview_id]
+      properties:
+        preview_id: {type: string, minLength: 1, maxLength: 256}
+
+    MonitorBroadcastRecoverRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Original outer Client route operation_id used by monitor.broadcast_prepare.
+
+    MonitorBroadcastConsentEndpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - endpoint_id
+        - principal_id
+        - owner_id
+        - node_id
+        - membership_revision
+        - group_join_revision
+        - binding_id
+        - binding_epoch
+        - key_id
+        - key_version
+        - key_fingerprint
+        - key_proof_digest
+      properties:
+        endpoint_id: {type: string, minLength: 1, maxLength: 256}
+        principal_id: {type: string, minLength: 1, maxLength: 256}
+        owner_id: {type: string, minLength: 1, maxLength: 256}
+        node_id: {type: string, minLength: 1, maxLength: 256}
+        membership_revision: {type: integer, minimum: 1}
+        group_join_revision: {type: integer, minimum: 1}
+        binding_id: {type: string, minLength: 1, maxLength: 256}
+        binding_epoch: {type: integer, minimum: 1}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_version: {type: integer, minimum: 1}
+        key_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        key_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    MonitorBroadcastConsentScope:
+      type: object
+      additionalProperties: false
+      required: [version, broadcast_id, group_id, group_revision, source, recipients]
+      properties:
+        version: {const: 1}
+        broadcast_id: {type: string, minLength: 1, maxLength: 256}
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        group_revision: {type: integer, minimum: 1}
+        source:
+          $ref: '#/components/schemas/MonitorBroadcastConsentEndpoint'
+        recipients:
+          type: array
+          minItems: 0
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/MonitorBroadcastConsentEndpoint'
+          description: Sorted by endpoint_id ascending; excludes source.endpoint_id.
+
+    MonitorBroadcastContextV2:
+      type: object
+      additionalProperties: false
+      required:
+        - hub_id
+        - owner_id
+        - client_device_id
+        - client_session_epoch
+        - client_key_version
+        - approval_id
+        - broadcast_id
+        - group_id
+        - monitor_endpoint_id
+        - monitor_key_id
+        - monitor_binding_id
+        - monitor_binding_epoch
+        - body_sha256
+        - recipient_snapshot_sha256
+        - expires_at
+        - consent_sha256
+        - confirm_request_sequence
+      properties:
+        hub_id: {type: string}
+        owner_id: {type: string}
+        client_device_id: {type: string}
+        client_session_epoch: {type: integer, minimum: 1}
+        client_key_version: {type: integer, minimum: 1}
+        approval_id: {type: string}
+        broadcast_id: {type: string}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        monitor_key_id: {type: string}
+        monitor_binding_id: {type: string}
+        monitor_binding_epoch: {type: integer, minimum: 1}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        recipient_snapshot_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        consent_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        confirm_request_sequence: {type: integer, minimum: 1}
+      x-canonical-json-field-order:
+        - hub_id
+        - owner_id
+        - client_device_id
+        - client_session_epoch
+        - client_key_version
+        - approval_id
+        - broadcast_id
+        - group_id
+        - monitor_endpoint_id
+        - monitor_key_id
+        - monitor_binding_id
+        - monitor_binding_epoch
+        - body_sha256
+        - recipient_snapshot_sha256
+        - expires_at
+        - consent_sha256
+        - confirm_request_sequence
+
+    MonitorBroadcastSealedHeader:
+      type: object
+      additionalProperties: false
+      required: [version, algorithm, sequence, kem_ciphertext, nonce, sender_id, sender_signing_public]
+      properties:
+        version: {const: 1}
+        algorithm: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        sequence: {type: integer, minimum: 1}
+        kem_ciphertext: {type: string, contentEncoding: base64}
+        nonce: {type: string, contentEncoding: base64, minLength: 16, maxLength: 16}
+        sender_id: {type: string}
+        sender_signing_public: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [version, algorithm, sequence, kem_ciphertext, nonce, sender_id, sender_signing_public]
+
+    MonitorBroadcastSealedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, algorithm, sequence, kem_ciphertext, nonce, ciphertext, sender_id, sender_signing_public, signature]
+      properties:
+        version: {const: 1}
+        algorithm: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        sequence: {type: integer, minimum: 1}
+        kem_ciphertext: {type: string, contentEncoding: base64}
+        nonce: {type: string, contentEncoding: base64, minLength: 16, maxLength: 16}
+        ciphertext: {type: string, contentEncoding: base64, minLength: 24}
+        sender_id: {type: string}
+        sender_signing_public: {type: string, contentEncoding: base64}
+        signature: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [version, algorithm, sequence, kem_ciphertext, nonce, ciphertext, sender_id, sender_signing_public, signature]
+      x-signature-null-for-signing-bytes: true
+      x-session-chain-fields: forbidden
+      x-header-schema-for-aead: '#/components/schemas/MonitorBroadcastSealedHeader'
+
+    MonitorBroadcastEnvelopeV2:
+      type: object
+      additionalProperties: false
+      required: [type, version, suite, context, sealed, signature]
+      properties:
+        type: {const: MONITOR_BROADCAST}
+        version: {const: 2}
+        suite: {const: ML-KEM-768+ML-DSA-65/AES-256-GCM}
+        context:
+          $ref: '#/components/schemas/MonitorBroadcastContextV2'
+        sealed:
+          $ref: '#/components/schemas/MonitorBroadcastSealedEnvelope'
+        signature: {type: string, contentEncoding: base64}
+      x-canonical-json-field-order: [type, version, suite, context, sealed, signature]
+      x-signature-null-for-signing-bytes: true
+      x-signing-prefix-utf8-hex: 6369636164612f636c69656e742f6d6f6e69746f722d62726f6164636173742f7369676e2f763100
+      x-aad-prefix-utf8-hex: 6369636164612f636c69656e742f6d6f6e69746f722d62726f6164636173742f6161642f763100
+      x-consent-array-empty-value: []
+      x-consent-source-cross-checks:
+        consent_scope.source.endpoint_id: context.monitor_endpoint_id
+        consent_scope.source.owner_id: context.owner_id
+        consent_scope.source.binding_id: context.monitor_binding_id
+        consent_scope.source.binding_epoch: context.monitor_binding_epoch
+        consent_scope.source.key_id: context.monitor_key_id
+        consent_scope.consent_sha256: context.consent_sha256
+      x-outer-and-inner-sequence-equality:
+        - context.confirm_request_sequence
+        - sealed.sequence
+        - accepted_rpc_route.sequence
+      description: >-
+        Version 2 retains the v1 domain prefixes and E2EE primitives. Outer
+        signing bytes use compact ordered JSON with signature:null. The AAD is
+        the AAD prefix followed by compact ordered context JSON. AES-256-GCM
+        key derivation is HKDF-SHA256(shared_secret, 32 zero bytes,
+        UTF8("cicada/e2ee/v1/key") || uint64_be(sequence) || AAD, 32 bytes).
+        GCM AAD appends the compact ordered MonitorBroadcastSealedHeader.
+
+    MonitorGroupEndpointKeyGrantManifest:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - operation
+        - hub_id
+        - owner_id
+        - principal_id
+        - group_id
+        - group_revision
+        - endpoint_id
+        - node_id
+        - binding_id
+        - binding_epoch
+        - membership_revision
+        - endpoint_join_revision
+        - candidate_version
+        - candidate_key_id
+        - candidate_fingerprint
+        - candidate_proof_digest
+        - candidate_binding_digest
+        - candidate_public_identity
+        - candidate_attestation
+        - owner_key_id
+        - issued_at
+        - expires_at
+        - digest
+      properties:
+        version: {const: 1}
+        operation: {const: group-endpoint-key-grant:v1}
+        hub_id: {type: string}
+        owner_id: {type: string}
+        principal_id: {type: string}
+        group_id: {type: string}
+        group_revision: {type: integer, minimum: 1}
+        endpoint_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_join_revision: {type: integer, minimum: 1}
+        candidate_version: {type: integer, minimum: 1}
+        candidate_key_id: {type: string}
+        candidate_fingerprint: {type: string}
+        candidate_proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_binding_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        candidate_public_identity:
+          $ref: '#/components/schemas/PublicIdentity'
+        candidate_attestation:
+          type: string
+          contentEncoding: base64
+        owner_key_id: {type: string}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+
+    MonitorBroadcastPreview:
+      type: object
+      additionalProperties: false
+      required: [monitor_grant_manifest, monitor_grant_signed_proof, consent_scope, consent_sha256]
+      properties:
+        monitor_grant_manifest:
+          $ref: '#/components/schemas/MonitorGroupEndpointKeyGrantManifest'
+        monitor_grant_signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete owner-signed Group Endpoint key grant proof JSON bytes.
+        consent_scope:
+          $ref: '#/components/schemas/MonitorBroadcastConsentScope'
+        consent_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: >-
+        Bounded verification evidence only. It excludes the full server snapshot,
+        native session IDs, workspace paths, and message bodies.
+
+    MonitorBroadcastPrepareResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, preview]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {const: PREPARED}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        preview:
+          $ref: '#/components/schemas/MonitorBroadcastPreview'
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastRecoveredResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, preview]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {type: string, enum: [PREPARED, APPROVED, DISPATCH_AUTHORIZED]}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        approved_at: {type: string, format: date-time}
+        dispatch_authorized_at: {type: string, format: date-time}
+        sealed_payload_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        preview:
+          $ref: '#/components/schemas/MonitorBroadcastPreview'
+      description: Read-only recovery result; this operation cannot repeat prepare or delivery.
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastConfirmResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, status, group_id, monitor_endpoint_id, body_sha256, snapshot_digest, expires_at, sealed_payload_digest]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        status: {type: string, enum: [APPROVED, DISPATCH_AUTHORIZED]}
+        group_id: {type: string}
+        monitor_endpoint_id: {type: string}
+        body_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        snapshot_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+        approved_at: {type: string, format: date-time}
+        dispatch_authorized_at: {type: string, format: date-time}
+        sealed_payload_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      x-max-serialized-bytes: 57344
+
+    MonitorBroadcastRecipientOutcome:
+      type: object
+      additionalProperties: false
+      required: [ordinal, endpoint_id, state]
+      properties:
+        ordinal: {type: integer, minimum: 0, maximum: 31}
+        endpoint_id: {type: string}
+        state: {type: string, enum: [PENDING, FAILED, UNKNOWN, ACCEPTED]}
+        evidence: {type: string, enum: [NODE_REPORTED, RELAY_PERSISTED]}
+        message_id: {type: string}
+        failure_code: {type: string, enum: [DELIVERY_REJECTED, DELIVERY_OUTCOME_UNKNOWN]}
+        reported_at: {type: string, format: date-time}
+
+    MonitorBroadcastStatusResult:
+      type: object
+      additionalProperties: false
+      required: [preview_id, broadcast_id, group_id, approval_status, expires_at, recipients]
+      properties:
+        preview_id: {type: string}
+        broadcast_id: {type: string}
+        group_id: {type: string}
+        approval_status: {type: string, enum: [PREPARED, APPROVED, DISPATCH_AUTHORIZED]}
+        expires_at: {type: string, format: date-time}
+        recipients:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/MonitorBroadcastRecipientOutcome'
+      description: >-
+        NODE_REPORTED and RELAY_PERSISTED are evidence tiers, not model consumption
+        or task success. INJECTION_UNCERTAIN is not proof of native consumption
+        or delivery; reconcile only the same reserved operation ID.
+
+    TopologySetDirectoryPermissionAction:
+      type: object
+      additionalProperties: false
+      required: [kind, set_directory_permission]
+      properties:
+        kind: {const: membership.set_directory_permission}
+        set_directory_permission:
+          $ref: '#/components/schemas/ClientTopologySetDirectoryPermission'
+
+    ClientTopologySetDirectoryPermission:
+      type: object
+      additionalProperties: false
+      required: [group_id, membership_id, enabled, expected_membership_version]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        membership_id: {type: string, minLength: 1, maxLength: 256}
+        enabled: {type: boolean}
+        expected_membership_version: {type: integer, minimum: 1, maximum: 9223372036854775806}
+      description: >-
+        Changes only explicit directory.read for an active same-Owner Principal
+        Membership in an active Owner-controlled Network/Group on the current Hub.
+        The accepted encrypted Client request, current Owner/device/key, scope and
+        Membership CAS are checked in one write transaction. This applies to all
+        joined Endpoints of that Principal in this Group, preserves roles and other
+        grants, and advances Membership revision/version. It grants no peer traffic,
+        key or history access and changes no native binding or context. Preview uses
+        the read-only topology.snapshot; legacy management calls cannot apply it.
+
+    TopologySetBroadcastPermissionAction:
+      type: object
+      additionalProperties: false
+      required: [kind, set_broadcast_permission]
+      properties:
+        kind: {const: membership.set_broadcast_permission}
+        set_broadcast_permission:
+          $ref: '#/components/schemas/ClientTopologySetBroadcastPermission'
+
+    ClientTopologySetBroadcastPermission:
+      type: object
+      additionalProperties: false
+      required: [group_id, membership_id, enabled, expected_membership_version]
+      properties:
+        group_id: {type: string, minLength: 1, maxLength: 256}
+        membership_id: {type: string, minLength: 1, maxLength: 256}
+        enabled: {type: boolean}
+        expected_membership_version: {type: integer, minimum: 1}
+      description: >-
+        Changes only the explicit message.broadcast permission for an active
+        same-owner Membership. Monitor role assignment does not imply this permission.
+
+    TopologyAdmitEndpointAction:
+      type: object
+      additionalProperties: false
+      required: [kind, admit_endpoint]
+      properties:
+        kind: {const: endpoint.admit_group}
+        admit_endpoint:
+          type: object
+          additionalProperties: false
+          required: [admission]
+          properties:
+            admission:
+              $ref: '#/components/schemas/ClientTopologyEndpointAdmissionInput'
+
+    ClientTopologyEndpointAdmissionInput:
+      type: object
+      additionalProperties: false
+      required: [network_id, group_id, endpoint_id, expected_endpoint_migration_state,
+        expected_network_version, expected_group_version, expected_network_membership_revision,
+        expected_endpoint_network_revision, network_access_binding_id, network_access_epoch,
+        native_binding_id, native_binding_epoch, expected_membership_revision, expected_endpoint_group_revision]
+      properties:
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        expected_endpoint_migration_state: {type: string, enum: [READY, MIGRATION_PENDING_GROUP]}
+        expected_network_version: {type: integer, minimum: 1}
+        expected_group_version: {type: integer, minimum: 1}
+        expected_network_membership_revision: {type: integer, minimum: 1}
+        expected_endpoint_network_revision: {type: integer, minimum: 1}
+        network_access_binding_id: {type: string, minLength: 1}
+        network_access_epoch: {type: integer, minimum: 1}
+        native_binding_id: {type: string, minLength: 1}
+        native_binding_epoch: {type: integer, minimum: 1}
+        existing_group_binding_id: {type: string}
+        existing_group_binding_epoch: {type: integer, minimum: 0}
+        expected_membership_revision: {type: integer, minimum: 0}
+        expected_endpoint_group_revision: {type: integer, minimum: 0}
+      description: >-
+        Exact Owner-reviewed CAS tuple from topology.endpoint_admission_preview.
+        The Hub rechecks current same-Owner Network/Endpoint enrollment and Node
+        binding before making only a member Membership plus Group reference. It
+        creates no Worker/Monitor grant, history grant, or Group key grant.
+
+    TopologyEndpointAdmissionPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, group_id, endpoint_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        group_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+
+    TopologyEndpointAdmissionPreviewResult:
+      type: object
+      additionalProperties: false
+      required: [owner_principal_id, network_id, network_name, network_version, group_id, group_name,
+        group_version, group_context_policy, endpoint_id, endpoint_name, endpoint_principal_id,
+        endpoint_migration_state, network_membership_revision, endpoint_network_revision,
+        network_access_binding_id, network_access_epoch, native_binding_id, native_binding_epoch,
+        membership_revision, endpoint_group_revision, admission_roles, admission_grants,
+        history_included, key_grant_created, existing_thread_memory_retained]
+      properties:
+        owner_principal_id: {type: string}
+        network_id: {type: string}
+        network_name: {type: string}
+        network_version: {type: integer, minimum: 1}
+        group_id: {type: string}
+        group_name: {type: string}
+        group_version: {type: integer, minimum: 1}
+        group_context_policy: {type: string}
+        endpoint_id: {type: string}
+        endpoint_name: {type: string}
+        endpoint_principal_id: {type: string}
+        endpoint_migration_state: {type: string, enum: [READY, MIGRATION_PENDING_GROUP]}
+        network_membership_revision: {type: integer, minimum: 1}
+        endpoint_network_revision: {type: integer, minimum: 1}
+        network_access_binding_id: {type: string}
+        network_access_epoch: {type: integer, minimum: 1}
+        native_binding_id: {type: string}
+        native_binding_epoch: {type: integer, minimum: 1}
+        existing_group_binding_id: {type: string}
+        existing_group_binding_epoch: {type: integer, minimum: 0}
+        membership_status: {type: string}
+        membership_revision: {type: integer, minimum: 0}
+        endpoint_group_status: {type: string}
+        endpoint_group_revision: {type: integer, minimum: 0}
+        admission_roles: {type: array, const: [member], items: {type: string}}
+        admission_grants: {type: array, maxItems: 0, items: {type: string}}
+        history_included: {type: boolean, const: false}
+        key_grant_created: {type: boolean, const: false}
+        existing_thread_memory_retained: {type: boolean, const: true}
+      description: >-
+        Current-Hub same-Owner pre-consent review. This metadata does not include
+        native locators, keys, historical records, or another Owner's data.
+
+    ClientTopologyMember:
+      type: object
+      additionalProperties: false
+      required: [membership_id, principal_id, group_id, role, broadcast_permission_enabled, directory_permission_enabled, status, version]
+      properties:
+        membership_id: {type: string}
+        principal_id: {type: string}
+        display_name: {type: string}
+        group_id: {type: string}
+        role: {type: string}
+        roles:
+          type: array
+          items: {type: string}
+        directory_permission_enabled:
+          type: boolean
+          description: Explicit directory.read grant configuration for this Principal Membership, shared by all its joined Endpoints in this Group; not a Guard decision.
+        broadcast_permission_enabled:
+          type: boolean
+          description: Current explicit message.broadcast grant configuration; Monitor role alone does not enable it.
+        status: {type: string}
+        version: {type: integer, minimum: 1}
+
+    TopologyCreateGroupAction:
+      type: object
+      additionalProperties: false
+      required: [kind, create_group]
+      properties:
+        kind: {const: group.create}
+        create_group:
+          $ref: '#/components/schemas/ClientTopologyCreateGroup'
+
+    ClientTopologyCreateGroup:
+      type: object
+      additionalProperties: false
+      required: [group]
+      properties:
+        group:
+          $ref: '#/components/schemas/ClientTopologyCreateGroupInput'
+        parent_group_id: {type: string}
+      description: Parent must belong to the same Network. A cross-Network parent is denied before insertion.
+
+    ClientTopologyCreateGroupInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        network_id:
+          type: string
+          description: Required when Hub Network mode is ACTIVE; the authenticated Owner must own this active Network.
+        name: {type: string, minLength: 1}
+        purpose: {type: string}
+        policy_ref: {type: string}
+        context_policy: {type: string}
+        isolation_profile: {type: string}
+        external_mode: {type: string}
+
+    ClientTopologySnapshot:
+      type: object
+      additionalProperties: false
+      required: [contract_version, owner_principal_id, captured_at, read_consistency, networks_truncated, network_endpoints_truncated, networks, groups, memberships, endpoints, links]
+      properties:
+        contract_version: {const: 2}
+        owner_principal_id: {type: string}
+        captured_at: {type: string, format: date-time}
+        read_consistency: {const: best_effort}
+        networks_truncated: {type: boolean}
+        network_endpoints_truncated: {type: boolean}
+        networks:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyNetwork'}
+        groups:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyGroup'}
+        memberships:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyMember'}
+        endpoints:
+          type: array
+          items: {$ref: '#/components/schemas/ClientTopologyEndpoint'}
+        links:
+          type: array
+          items: {type: object}
+
+    ClientTopologyNetwork:
+      type: object
+      additionalProperties: false
+      required: [network_id, name, state, version, can_create_group]
+      properties:
+        network_id: {type: string}
+        name: {type: string}
+        state: {type: string, enum: [ACTIVE, PAUSED]}
+        version: {type: integer, minimum: 1}
+        can_create_group:
+          type: boolean
+          description: True only for an active Network owned by this authenticated Client Owner; it is not a separate authorization token.
+
+    ClientTopologyGroup:
+      type: object
+      additionalProperties: false
+      required: [group_id, name, state, context_policy, version]
+      properties:
+        group_id: {type: string}
+        network_id: {type: string}
+        parent_group_id: {type: string}
+        name: {type: string}
+        state: {type: string}
+        context_policy: {type: string}
+        version: {type: integer, minimum: 1}
+      description: network_id is present for mapped Groups; PREPARING legacy unmapped Groups may omit it. context_policy names the current Thread context scope for Owner review.
+
+    ClientTopologyEndpoint:
+      type: object
+      additionalProperties: false
+      required: [endpoint_id, name, principal_id, group_ids, network_ids, presence]
+      properties:
+        endpoint_id: {type: string}
+        name: {type: string}
+        principal_id: {type: string}
+        group_ids: {type: array, items: {type: string}}
+        network_ids: {type: array, items: {type: string}}
+        node_id: {type: string}
+        harness: {type: string}
+        native_session_id: {type: string}
+        presence: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        binding_status: {type: string}
+      description: Only this Owner's Endpoints; Network-only Endpoints may have empty group_ids and no Group binding.
+
+    NetworkDirectoryRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        after_endpoint_id: {type: string, maxLength: 256}
+        limit: {type: integer, minimum: 1, maximum: 64, default: 64}
+      description: >-
+        Reads one page for this exact encrypted RPC request. Results include only
+        opted-in Endpoints in an active Network owned by the authenticated Owner.
+    NetworkDirectoryResult:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoints]
+      properties:
+        network_id: {type: string}
+        endpoints:
+          type: array
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [network_id, endpoint_id, alias, presence]
+            properties:
+              network_id: {type: string}
+              endpoint_id: {type: string}
+              alias: {type: string}
+              presence: {type: string, enum: [ACCESS_RECENT, UNKNOWN]}
+        next_cursor: {type: string, maxLength: 256}
+      description: >-
+        Only currently enrolled, discoverable Endpoints that explicitly granted
+        directory.publish are returned. Cards contain network_id, endpoint_id,
+        alias and coarse presence only. They are read-only and confer no authority.
+
+    NetworkCollaborationKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose, owner_key_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        owner_key_id: {type: string, minLength: 1}
+      description: >-
+        Previews a purpose-separated key-consent manifest for the exact current
+        Endpoint enrollment and key candidate. This operation does not grant
+        Task or Broadcast action permissions.
+    NetworkCollaborationKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose, signed_proof]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerNetworkCollaborationKeyGrant JSON bytes.
+      description: >-
+        Accepts one current Owner signature for the exact Network, Endpoint,
+        purpose and manifest digest. The accepted Client operation must be
+        bound to network.collaboration_key_grant.
+    NetworkCollaborationKeyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, purpose]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+    NetworkCollaborationKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [purpose, key_manifest, digest]
+      properties:
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        key_manifest: {$ref: '#/components/schemas/NetworkKeyManifestResult'}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: >-
+        The purpose is part of the outer digest. The Owner must independently
+        verify the candidate self-attestation and signing bytes before signing.
+    NetworkCollaborationKeyGrantResult:
+      type: object
+      additionalProperties: false
+      required: [purpose, network_id, endpoint_id, owner_id, owner_key_id,
+        manifest_digest, proof_digest, nonce, state, revision, accepted_at]
+      properties:
+        purpose: {type: string, enum: [TASK, BROADCAST]}
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        nonce: {type: string, pattern: '^[0-9a-f]{64}$'}
+        state: {type: string, enum: [active, stale, revoked]}
+        revision: {type: integer, minimum: 1}
+        accepted_at: {type: string, format: date-time}
+      description: >-
+        Purpose-specific consent metadata only. Task and Broadcast still
+        require independent task.offer.* or broadcast.* authorization. It does
+        not grant direct messaging and exposes no private key or peer payload.
+
+    NetworkKeyManifestRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, owner_key_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        owner_key_id: {type: string, minLength: 1}
+
+    NetworkKeyGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, signed_proof]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+        signed_proof:
+          type: string
+          contentEncoding: base64
+          description: Complete canonical OwnerNetworkDirectKeyGrant JSON bytes, signed by the Owner key.
+
+    NetworkKeyStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id]
+      properties:
+        network_id: {type: string, minLength: 1}
+        endpoint_id: {type: string, minLength: 1}
+
+    NetworkKeyCandidate:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, principal_id, owner_id, node_id, binding_id, binding_epoch, public_identity, fingerprint, attestation, version]
+      properties:
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        public_identity: {$ref: '#/components/schemas/PublicIdentity'}
+        fingerprint: {type: string}
+        attestation: {type: string, contentEncoding: base64}
+        version: {type: integer, minimum: 1}
+
+    NetworkKeyManifestResult:
+      type: object
+      additionalProperties: false
+      required: [version, hub_id, network_id, endpoint_id, principal_id, owner_id, node_id, native_session_id, native_session_digest, binding_id, binding_epoch, membership_revision, endpoint_enrollment_revision, candidate, digest]
+      properties:
+        version: {const: 1}
+        hub_id: {type: string}
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        principal_id: {type: string}
+        owner_id: {type: string}
+        node_id: {type: string}
+        native_session_id: {type: string}
+        native_session_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        binding_id: {type: string}
+        binding_epoch: {type: integer, minimum: 1}
+        membership_revision: {type: integer, minimum: 1}
+        endpoint_enrollment_revision: {type: integer, minimum: 1}
+        candidate: {$ref: '#/components/schemas/NetworkKeyCandidate'}
+        digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      description: Only the authenticated Endpoint Owner can preview the raw native session ID; peer bundles omit it.
+
+    NetworkKeyGrantResult:
+      type: object
+      additionalProperties: false
+      required: [network_id, endpoint_id, owner_id, owner_key_id, manifest_digest, proof_digest, nonce, state, revision, accepted_at]
+      properties:
+        network_id: {type: string}
+        endpoint_id: {type: string}
+        owner_id: {type: string}
+        owner_key_id: {type: string}
+        manifest_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        proof_digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+        nonce: {type: string}
+        state: {type: string, enum: [active, stale]}
+        revision: {type: integer, minimum: 1}
+        accepted_at: {type: string, format: date-time}
+
+    NetworkKeyStatusResult:
+      allOf:
+        - $ref: '#/components/schemas/NetworkKeyGrantResult'
+      description: The same record may report state=stale after a binding, enrollment, or candidate change.

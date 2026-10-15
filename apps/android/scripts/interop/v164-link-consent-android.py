@@ -1,0 +1,1212 @@
+#!/usr/bin/env python3
+"""Stage current pinned Link inputs and run one bounded Android selector.
+
+The emulator must already be owned by v164-android-deterministic.py. Inputs
+are read from private host files and sent only on stdin through run-as; selector
+arguments contain only the public run ID and method name. This tool never starts
+or contacts a Hub and never exports Android Keystore or session-state files.
+"""
+
+import argparse
+import base64
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+sys.dont_write_bytecode = True
+HERE = Path(__file__).resolve().parent
+
+
+def load(name, filename):
+    spec = importlib.util.spec_from_file_location(name, HERE / filename)
+    if spec is None or spec.loader is None:
+        raise ValueError('required interop module is unavailable')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+runner = load('v164_android_driver', 'v164-android-deterministic.py')
+recovery = runner.recovery_inputs
+driver = runner.driver
+link = load('v16_link_status_helpers', 'v16-link-review-policy-status.py')
+
+SCHEMA = 'cicada.client-v164-link-consent-driver.v1'
+TEST_CLASS = 'ai.cicada.client.hub.LinkConsentInteropTest'
+SELECTION_SCHEMA = 'cicada.client-v164-link-consent-selection.v2'
+ONBOARDING_SCHEMA = 'cicada.client-v164-onboarding-public.v1'
+DEVICE_SCHEMA = 'cicada.client-v164-device-public-handoff.v1'
+GRANT_SCHEMA = 'cicada.client-v164-owner-device-grant-handoff.v1'
+REVIEW_SCHEMA = 'cicada.client-v164-link-consent-review-handoff.v1'
+PROOF_SCHEMA = 'cicada.client-v164-owner-signed-proof.v1'
+POLICY_SCHEMA = 'cicada.client-v164-review-policy-fixture.v1'
+RECOVERY_SCHEMA = 'cicada.client-v164-link-consent-recovery-scenario.v1'
+RECOVERY_RECEIPT_SCHEMA = 'cicada.client-v164-link-consent-redacted-receipt.v1'
+# Recovery staging follows the delivery, not historical emulator/F6 defaults.
+CATALOG_SHA256 = recovery.delivery.PINS['catalog_sha256']
+MAX_INPUT = 256 * 1024
+MAX_OUTPUT = 512 * 1024
+MAX_SIGNED_LONG = 9_223_372_036_854_775_807
+HEX64 = re.compile(r'[0-9a-f]{64}')
+RUN_ID = re.compile(r'v164-[A-Za-z0-9_-]{1,72}')
+SIDES = {'source', 'target'}
+RUNTIME_PROPERTIES = {
+    'api_level': ('ro.build.version.sdk', '35'),
+    'android_release': ('ro.build.version.release', '15'),
+    'abi': ('ro.product.cpu.abi', 'x86_64'),
+    'emulator': ('ro.kernel.qemu', '1'),
+}
+
+PACKAGE = driver.PACKAGE
+REMOTE_ROOT = 'no_backup/link-v164'
+
+STAGE_FILES = {
+    'source-setup-public.json': ('setup', 'source'),
+    'target-setup-public.json': ('setup', 'target'),
+    'source-owner-device-grant.private.json': ('grant', 'source'),
+    'target-owner-device-grant.private.json': ('grant', 'target'),
+    'selection.json': ('selection', None),
+    'review-policy.json': ('policy', None),
+    'source-key-proof.private.json': ('proof-key', 'source'),
+    'target-key-proof.private.json': ('proof-key', 'target'),
+    'source-policy-proof.private.json': ('proof-policy', 'source'),
+    'target-policy-proof.private.json': ('proof-policy', 'target'),
+    'source-negative-key-proof.private.json': ('proof-negative', 'source'),
+    'target-negative-key-proof.private.json': ('proof-negative', 'target'),
+    'source-recovery-scenario.json': ('recovery', 'source'),
+    'target-recovery-scenario.json': ('recovery', 'target'),
+    **{f'{side}-recovery-scenario.v2.json': ('recovery-v2', side) for side in SIDES},
+    **{f'{side}-fault-ready.json': ('recovery-ready', side) for side in SIDES},
+}
+
+RECOVERY_SELECTORS = {
+    f'recover{kind}{suffix}': (operation, mode)
+    for kind, operation in (('Key', 'link.key_grant'), ('None', 'link.review_policy_grant'))
+    for suffix, mode in (('ResponseLoss', 'response-loss'), ('Processing', 'processing'),
+        ('Uncertain', 'uncertain'), ('Legacy', 'legacy'))
+}
+CAPTURE_SELECTORS = {
+    'capturesKeyOriginalConsentFault': 'link.key_grant',
+    'capturesNoneOriginalConsentFault': 'link.review_policy_grant',
+}
+
+SELECTORS = {
+    'exportSourceOwnerDeviceIdentityForHostGrant': ('source', 'source-onboarding-device.redacted.json', 'source-onboarding-device'),
+    'enrollSourceOwnerDeviceGrantAndVerifyFreshCapabilities': ('source', 'source-onboarding-enroll.redacted.json', 'source-onboarding-enroll'),
+    'exportTargetOwnerDeviceIdentityForHostGrant': ('target', 'target-onboarding-device.redacted.json', 'target-onboarding-device'),
+    'enrollTargetOwnerDeviceGrantAndVerifyFreshCapabilities': ('target', 'target-onboarding-enroll.redacted.json', 'target-onboarding-enroll'),
+    'confirmsIndependentOwnerPinsWithoutClaimingPhoneUiApproval': (None, 'owner-pins.redacted.json', 'owner-pins'),
+    'exportsFreshCurrentKeyReviewForExternalSigner': (None, 'key-review-export.redacted.json', 'key-review-export'),
+    'submitsHostSignedCurrentKeyProofAndReadsFreshSideStatus': (None, 'key-proof-submit.redacted.json', 'key-proof-submit'),
+    'exportsReviewPolicyCandidateForExternalSigner': (None, 'policy-review-export.redacted.json', 'policy-review-export'),
+    'submitsHostSignedPolicyProofAndRevalidatesFreshV164Status': (None, 'policy-proof-submit.redacted.json', 'policy-proof-submit'),
+    'rejectsWrongPinAndGenericRpcBypassWithoutConsumingSequence': (None, 'negative-local-guards.redacted.json', 'negative-local-guards'),
+    'exportsFreshKeyReviewForTamperedProofNegativeCase': (None, 'negative-proof-review-export.redacted.json', 'negative-proof-review-export'),
+    'rejectsTamperedFreshOwnerProofBeforeLinkGrantWrite': (None, 'negative-proof-submit.redacted.json', 'negative-proof-submit'),
+    'recoversOnlyAnExplicitlySelectedOriginalConsentOperation': (None, 'exact-recovery.redacted.json', 'exact-recovery'),
+    **{method: (None, None, 'CAPTURED') for method in CAPTURE_SELECTORS},
+    **{method: (None, None, 'RECOVERED') for method in RECOVERY_SELECTORS},
+}
+
+EXPORT_FILES = {
+    f'{side}-device-public.private.json' for side in SIDES
+} | {
+    f'{side}-{kind}-review.private.json'
+    for side in SIDES for kind in ('key', 'policy', 'negative-key')
+} | {
+    f'{side}-{stage}.redacted.json'
+    for side in SIDES for stage in (
+        'onboarding', 'onboarding-device', 'onboarding-enroll', 'owner-pins', 'key-review-export',
+        'key-proof-submit', 'policy-review-export', 'policy-proof-submit',
+        'negative-local-guards', 'negative-proof-review-export', 'negative-proof-submit',
+        'exact-recovery',
+    )
+} | {'selection.redacted.json'}
+EXPORT_FILES |= {
+    f'{recovery.case_stem(side, operation, mode)}.{phase}.redacted.json'
+    for side in SIDES for operation in recovery.OPERATIONS for mode in recovery.MODES
+    for phase in ('capture', 'recovery')
+}
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def parse_json(raw):
+    try:
+        value = json.loads(raw, object_pairs_hook=link._unique_object,
+            parse_constant=lambda _value: (_ for _ in ()).throw(ValueError('invalid JSON number')))
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise ValueError('input JSON is malformed or contains duplicate fields') from error
+    if not isinstance(value, dict):
+        raise ValueError('input JSON must be an object')
+    return value
+
+
+def validate_exact_recovery_receipt(receipt):
+    """Validate only transport recovery; this receipt never establishes consent acceptance."""
+    message = 'exact Link recovery receipt is invalid'
+    fields = {
+        'schema', 'result', 'run_id_sha256', 'phase',
+        'original_operation', 'original_operation_id_sha256', 'original_packet_sha256',
+        'original_request_sequence', 'original_expected_response_sequence', 'observed_response_sequence',
+        'original_packet_context_verified', 'original_request_sequence_unchanged',
+        'reconciliation_required', 'pending_after_recovery', 'recovery_state',
+        'business_acceptance', 'recovery_packet_resend_by_test',
+    }
+    if not isinstance(receipt, dict) or set(receipt) != fields:
+        raise ValueError(message)
+    if receipt.get('schema') != RECOVERY_RECEIPT_SCHEMA or \
+            receipt.get('phase') not in {'source-exact-recovery', 'target-exact-recovery'} or \
+            receipt.get('result') != 'PASS' or \
+            not isinstance(receipt.get('run_id_sha256'), str) or \
+            not HEX64.fullmatch(receipt['run_id_sha256']) or \
+            receipt.get('original_operation') not in {'link.key_grant', 'link.review_policy_grant'}:
+        raise ValueError(message)
+    if any(not isinstance(receipt.get(field), str) or not HEX64.fullmatch(receipt[field])
+            for field in ('original_operation_id_sha256', 'original_packet_sha256')):
+        raise ValueError(message)
+
+    sequence_fields = (
+        'original_request_sequence', 'original_expected_response_sequence', 'observed_response_sequence',
+    )
+    for field in sequence_fields:
+        value = receipt.get(field)
+        if not isinstance(value, str) or len(value) > 19 or not re.fullmatch(r'[1-9][0-9]*', value):
+            raise ValueError(message)
+        if int(value) > MAX_SIGNED_LONG:
+            raise ValueError(message)
+    if receipt['observed_response_sequence'] != receipt['original_expected_response_sequence']:
+        raise ValueError(message)
+
+    if receipt.get('original_packet_context_verified') is not True or \
+            receipt.get('original_request_sequence_unchanged') is not True or \
+            receipt.get('reconciliation_required') is not False or \
+            receipt.get('pending_after_recovery') is not False or \
+            receipt.get('recovery_packet_resend_by_test') is not False or \
+            receipt.get('recovery_state') != 'COMPLETED' or \
+            receipt.get('business_acceptance') != 'NOT_ESTABLISHED':
+        raise ValueError(message)
+    return receipt
+
+
+def classify_phone_ui_instrumentation(raw, exit_code):
+    """Classify JUnit output without exposing it or trusting adb's exit code alone."""
+    if not isinstance(raw, bytes) or len(raw) > MAX_OUTPUT:
+        return 'INSTRUMENTATION_UNCONFIRMED'
+    text = raw.decode('utf-8', errors='replace')
+    failures = re.findall(r'Tests run:\s*(\d+),\s*Failures:\s*(\d+)', text)
+    if re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|(?m:^\s*Error in )', text) or \
+            any(count != '1' or failed != '0' for count, failed in failures):
+        return 'JUNIT_FAILED'
+    if exit_code is None:
+        return 'RUNNING'
+    if type(exit_code) is not int or exit_code != 0:
+        return 'PROCESS_FAILED'
+    summaries = re.findall(r'(?m:^\s*OK \(1 test\)\s*$)', text)
+    return 'JUNIT_PASSED' if len(summaries) == 1 else 'INSTRUMENTATION_UNCONFIRMED'
+
+
+def validate_phone_ui_prepare_receipt(raw, expected_run_id_sha256):
+    """Accept only the bounded, payload-free stage exported by Android UI automation."""
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError('phone UI preparation receipt is invalid')
+    value = parse_json(raw)
+    stages = {'REVIEW_READY', 'PREPARE_API_REJECTED', 'DTO_REJECTED', 'REVIEW_INVALIDATED',
+        'PREPARE_NOT_STARTED', 'PREPARE_TIMEOUT', 'REVIEW_NOT_VISIBLE'}
+    if set(value) != {'schema', 'result', 'run_id_sha256', 'stage', 'native_session_methods_called_by_test'} or \
+            value.get('schema') != 'cicada.client-v164-phone-ui-prepare.v1' or \
+            value.get('run_id_sha256') != expected_run_id_sha256 or \
+            not isinstance(value.get('stage'), str) or \
+            value.get('stage') not in stages or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('result') != ('PASS' if value.get('stage') == 'REVIEW_READY' else 'FAIL'):
+        raise ValueError('phone UI preparation receipt is invalid')
+    return value['stage']
+
+
+def validate_phone_ui_consent_receipt(raw, expected_run_id_sha256):
+    """Validate button readiness diagnostics; PASS never establishes user consent."""
+    message = 'phone UI consent control receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    stages = {'CONTROL_MISSING', 'CONTROL_MULTIPLE', 'CONTROL_BUSY', 'PROOF_INVALID',
+        'CONTROL_DISABLED', 'CONTROL_UNCONFIRMED', 'CONFIRM_READY', 'ACCESSIBILITY_CLICK_FAILED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'stage', 'control_count', 'enabled_count',
+        'busy', 'proof_ready', 'native_session_methods_called_by_test'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-consent.v1' or \
+            value.get('run_id_sha256') != expected_run_id_sha256 or \
+            not isinstance(value.get('stage'), str) or value['stage'] not in stages or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('result') != ('PASS' if value['stage'] == 'CONFIRM_READY' else 'FAIL') or \
+            any(type(value.get(k)) is not int or not 0 <= value[k] <= 2
+                for k in ('control_count', 'enabled_count')) or \
+            value['enabled_count'] > value['control_count'] or \
+            any(value[k] is not None and type(value[k]) is not bool for k in ('busy', 'proof_ready')):
+        raise ValueError(message)
+    stage, count, enabled = value['stage'], value['control_count'], value['enabled_count']
+    busy, proof_ready = value['busy'], value['proof_ready']
+    if stage in {'CONFIRM_READY', 'ACCESSIBILITY_CLICK_FAILED'}:
+        valid = count == enabled == 1 and busy is False and proof_ready is True
+    elif stage == 'CONTROL_MISSING':
+        valid = count == enabled == 0 and busy is None and proof_ready is None
+    elif stage == 'CONTROL_MULTIPLE':
+        valid = count == 2 and busy is None and proof_ready is None
+    elif stage == 'CONTROL_BUSY':
+        valid = count == 1 and busy is True
+    elif stage == 'PROOF_INVALID':
+        valid = count == 1 and busy is False and proof_ready is False
+    elif stage == 'CONTROL_DISABLED':
+        valid = count == 1 and enabled == 0 and busy is False and proof_ready is True
+    else:
+        valid = count == 1 and busy is None and proof_ready is None
+    if not valid:
+        raise ValueError(message)
+    return value
+
+
+def validate_phone_ui_submit_progress_receipt(raw, expected_run_id_sha256):
+    """Validate passive debug observations; they never establish grant acceptance."""
+    message = 'phone UI submit progress receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 8192 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    ui_stages = {'CONFIRM_OPENED', 'CALLBACK_ENTERED', 'SCOPE_GUARD_PASSED',
+        'SCOPE_GUARD_REJECTED', 'REVIEW_CONSUMED', 'REVIEW_INVALIDATED',
+        'UI_SUBMIT_DISPATCHED', 'UI_RESPONSE_RETURNED', 'UI_SUBMIT_REJECTED',
+        'RESPONSE_SCOPE_CHANGED'}
+    native_stages = {'NATIVE_BRIDGE_ENTERED', 'NATIVE_CALL_STARTED',
+        'NATIVE_RESOLVED', 'NATIVE_REJECTED'}
+    stages = ui_stages | native_stages | {'RN_CONFIRM_CLICKED', 'ALERT_VERIFIED',
+        'ALERT_POSITIVE_CLICKED'}
+    codes = {'CLIENT_HUB_ERROR', 'CLIENT_HUB_UNAVAILABLE', 'INVALID_PROFILE_SCOPE',
+        'INVALID_ARGUMENT', 'LINK_CONSENT_CONFIRMATION_REQUIRED',
+        'BUSINESS_RECONCILIATION_REQUIRED', 'LINK_CONSENT_REVIEW_EXPIRED',
+        'LINK_CONSENT_REVIEW_STALE', 'INVALID_LINK_OWNER_PROOF',
+        'LINK_CONSENT_REVIEW_INVALID', 'LINK_OWNER_PROOF_INVALID',
+        'LINK_CONSENT_PACKET_CONTEXT_INVALID', 'LINK_REVIEW_POLICY_RESULT_INVALID',
+        'UNCLASSIFIED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'events', 'error_code', 'native_ok',
+        'reconciliation_required', 'promise_in_flight', 'native_packet_pending',
+        'viewport', 'last_ui_stage', 'native_session_methods_called_by_test', 'truncated'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-submit-progress.v1' or \
+            value.get('result') != 'OBSERVED' or value.get('run_id_sha256') != expected_run_id_sha256 or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            value.get('native_packet_pending') != 'UNKNOWN' or \
+            not isinstance(value.get('viewport'), str) or \
+            value['viewport'] not in {'VISIBLE', 'NOT_VISIBLE', 'UNKNOWN'} or \
+            type(value.get('truncated')) is not bool or \
+            not isinstance(value.get('events'), list) or len(value['events']) > 32:
+        raise ValueError(message)
+    event_fields = {'elapsed_ms', 'stage', 'native_ok', 'reconciliation_required', 'error_code'}
+    previous_time = -1
+    native_ok = reconciliation = inflight = error_code = last_ui = None
+    for event in value['events']:
+        if not isinstance(event, dict) or set(event) != event_fields or \
+                type(event.get('elapsed_ms')) is not int or \
+                not 0 <= event['elapsed_ms'] <= 1_200_000 or event['elapsed_ms'] < previous_time or \
+                not isinstance(event.get('stage'), str) or event['stage'] not in stages or \
+                any(event[k] is not None and type(event[k]) is not bool
+                    for k in ('native_ok', 'reconciliation_required')) or \
+                (event['error_code'] is not None and
+                    (not isinstance(event['error_code'], str) or event['error_code'] not in codes)):
+            raise ValueError(message)
+        stage = event['stage']
+        previous_time = event['elapsed_ms']
+        if stage not in {'NATIVE_RESOLVED', 'NATIVE_REJECTED'} and \
+                any(event[k] is not None for k in ('native_ok', 'reconciliation_required', 'error_code')):
+            raise ValueError(message)
+        if stage == 'NATIVE_REJECTED' and (event['error_code'] is None or
+                event['native_ok'] is not None or event['reconciliation_required'] is not None):
+            raise ValueError(message)
+        if stage in ui_stages:
+            last_ui = stage
+        if stage == 'NATIVE_CALL_STARTED':
+            inflight = True
+            native_ok = reconciliation = error_code = None
+        elif stage in {'NATIVE_RESOLVED', 'NATIVE_REJECTED'}:
+            inflight = False
+            native_ok = event['native_ok']
+            reconciliation = event['reconciliation_required']
+            error_code = event['error_code']
+    if any(value[k] is not None and type(value[k]) is not bool
+            for k in ('native_ok', 'reconciliation_required', 'promise_in_flight')) or \
+            value['native_ok'] != native_ok or value['reconciliation_required'] != reconciliation or \
+            value['promise_in_flight'] != inflight or value['error_code'] != error_code or \
+            value['last_ui_stage'] != last_ui:
+        raise ValueError(message)
+    return value
+
+
+def validate_phone_ui_list_refresh_receipt(raw, expected_run_id_sha256):
+    """Validate UI-node observations only; neither OBSERVED nor MATCH_FOUND proves an RPC result."""
+    message = 'phone UI list refresh receipt is invalid'
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 4096 or \
+            not isinstance(expected_run_id_sha256, str) or not HEX64.fullmatch(expected_run_id_sha256):
+        raise ValueError(message)
+    value = parse_json(raw)
+    states = {'IDLE', 'LOADING', 'OK_EMPTY', 'OK_NONEMPTY', 'ERROR_RPC_REJECTED',
+        'ERROR_INVALID_RESPONSE', 'ERROR_REQUEST_FAILED'}
+    fields = {'schema', 'result', 'run_id_sha256', 'refresh_accessibility_click_returned',
+        'app_root_available', 'read_state', 'read_state_ambiguous', 'last_observed_read_state',
+        'last_observed_error_class', 'read_states_observed', 'observed_row_count',
+        'row_count_truncated', 'target_node_present', 'target_node_visible',
+        'selected_scroll_container', 'last_action_scroll_container', 'scroll_action_count', 'scroll_count_truncated',
+        'last_scroll_action_returned', 'wait_outcome', 'native_session_methods_called_by_test'}
+    if set(value) != fields or value.get('schema') != 'cicada.client-v164-phone-ui-list-refresh.v1' or \
+            value.get('result') != 'OBSERVED' or value.get('run_id_sha256') != expected_run_id_sha256 or \
+            value.get('native_session_methods_called_by_test') is not False or \
+            any(type(value[k]) is not bool for k in ('refresh_accessibility_click_returned',
+                'read_state_ambiguous', 'row_count_truncated', 'scroll_count_truncated')) or \
+            any(value[k] is not None and type(value[k]) is not bool for k in ('app_root_available',
+                'target_node_present', 'target_node_visible', 'last_scroll_action_returned')) or \
+            any(not isinstance(value[k], str) or value[k] not in states | {'UNKNOWN'}
+                for k in ('read_state', 'last_observed_read_state')) or \
+            not isinstance(value['read_states_observed'], list) or len(value['read_states_observed']) > 7 or \
+            any(not isinstance(s, str) or s not in states for s in value['read_states_observed']) or \
+            len(set(value['read_states_observed'])) != len(value['read_states_observed']) or \
+            any(not isinstance(value[k], str) or value[k] not in {'UNKNOWN', 'NONE', 'PAGE', 'EDIT_TEXT', 'OTHER'}
+                for k in ('selected_scroll_container', 'last_action_scroll_container')) or \
+            not isinstance(value['wait_outcome'], str) or \
+            value['wait_outcome'] not in {'UNKNOWN', 'MATCH_FOUND', 'DEADLINE_EXPIRED'} or \
+            type(value['scroll_action_count']) is not int or not 0 <= value['scroll_action_count'] <= 80 or \
+            (value['observed_row_count'] is not None and
+                (type(value['observed_row_count']) is not int or not 0 <= value['observed_row_count'] <= 100)):
+        raise ValueError(message)
+    last = value['read_states_observed'][-1] if value['read_states_observed'] else 'UNKNOWN'
+    error_class = last.removeprefix('ERROR_') if last.startswith('ERROR_') else None
+    if value['last_observed_read_state'] != last or value['last_observed_error_class'] != error_class or \
+            (value['read_state'] != 'UNKNOWN' and value['read_state'] != last) or \
+            (value['read_state_ambiguous'] and value['read_state'] != 'UNKNOWN') or \
+            (value['scroll_count_truncated'] and value['scroll_action_count'] != 80) or \
+            (value['scroll_action_count'] == 0 and value['last_scroll_action_returned'] is not None) or \
+            (value['scroll_action_count'] == 0 and value['last_action_scroll_container'] != 'UNKNOWN') or \
+            (value['scroll_action_count'] > 0 and value['last_action_scroll_container'] not in {'PAGE', 'EDIT_TEXT', 'OTHER'}) or \
+            (value['row_count_truncated'] and value['observed_row_count'] != 100):
+        raise ValueError(message)
+    if value['app_root_available'] is True:
+        if value['observed_row_count'] is None or value['target_node_present'] is None or \
+                value['target_node_visible'] is None or \
+                (value['target_node_visible'] and not value['target_node_present']) or \
+                (value['target_node_present'] and value['observed_row_count'] == 0):
+            raise ValueError(message)
+    elif value['read_state'] != 'UNKNOWN' or value['read_state_ambiguous'] or \
+            value['observed_row_count'] is not None or value['row_count_truncated'] or \
+            value['target_node_present'] is not None or value['target_node_visible'] is not None:
+        raise ValueError(message)
+    return value
+
+
+def secret_fields(value):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            lowered = key.lower().replace('-', '_')
+            if any(word in lowered for word in ('private_key', 'privatekey', 'seed', 'bearer', 'token', 'password', 'credential', 'secret')):
+                return True
+            if secret_fields(nested):
+                return True
+    elif isinstance(value, list):
+        return any(secret_fields(item) for item in value)
+    return False
+
+
+def checked_id(value):
+    return link.valid_id(value)
+
+
+def validate_runtime_receipt(runtime):
+    """Accept only the exact v1.5 or F9 v1.6.4 producer receipt shape."""
+    properties = {key: value for key, (_property, value) in RUNTIME_PROPERTIES.items()}
+    # The F9 producer records its v1.6.4 schema and image_id. The exact Android
+    # getprop values below identify the platform because this producer omits the
+    # older explicit platform tag.
+    f9 = {'schema': runner.SCHEMA, 'image_id': runner.driver.IMAGE, **properties}
+    if runtime == f9:
+        return 'f9'
+
+    # The v1.5 producer records an explicit platform and emulator_image_id.
+    # Its network field was historically optional, but if present must say none;
+    # the separately checked ownership marker and Docker inspection remain the
+    # authority for the actual network attachment.
+    legacy = {'platform': 'Android emulator', 'emulator_image_id': runner.driver.IMAGE, **properties}
+    if runtime in (legacy, {**legacy, 'network': None}, {**legacy, 'network': 'none'}):
+        return 'legacy'
+    raise ValueError('owned emulator runtime metadata is inconsistent')
+
+
+def read_receipt(evidence, name):
+    return link.read_private_json(evidence / name, maximum=16 * 1024)[0]
+
+
+def validate_f9_property_receipts(evidence, state):
+    """Verify all four raw F9 adb getprop command receipts exactly."""
+    properties = {}
+    for field, (prop, expected_output) in RUNTIME_PROPERTIES.items():
+        receipt = read_receipt(evidence, 'runtime-' + field + '.json')
+        expected = {
+            'command': [*driver.adb(state), 'shell', 'getprop', prop],
+            'result': 'PASS',
+            'output': expected_output,
+        }
+        if set(receipt) != {'command', 'exit_code', 'expected_exit_code', 'result', 'output'} or \
+                type(receipt.get('exit_code')) is not int or receipt['exit_code'] != 0 or \
+                type(receipt.get('expected_exit_code')) is not int or receipt['expected_exit_code'] != 0 or \
+                any(receipt.get(key) != value for key, value in expected.items()):
+            raise ValueError('F9 Android runtime property receipt is inconsistent')
+        properties[field] = receipt['output']
+    return properties
+
+
+def inspect_readonly(argv):
+    try:
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, check=False, timeout=10, text=True)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError('read-only Docker bootstrap inspection failed') from error
+    if result.returncode != 0:
+        raise ValueError('read-only Docker bootstrap inspection failed')
+    return result.stdout.strip()
+
+
+def bootstrap_preflight(evidence, state=None):
+    """Read-only Android boot/runtime check; it does not establish Hub readiness."""
+    state = runner.owned_state(evidence) if state is None else state
+    if state.get('image_id') != runner.driver.IMAGE or state.get('network') != 'none':
+        raise ValueError('bootstrap preflight requires the exact offline emulator image')
+    if not runner.F6_RUN_ID.fullmatch(state['run_id']):
+        raise ValueError('bootstrap preflight requires an F6-format Android evidence run')
+
+    marker = read_receipt(evidence, 'emulator-ready.json')
+    expected_marker = {'result': 'READY', 'adb_port': 5070, 'serial': 'emulator-5640'}
+    if marker != expected_marker:
+        raise ValueError('F9 emulator READY marker is inconsistent')
+
+    id_argv = ['docker', 'inspect', '--format', '{{.Id}}', state['container']]
+    id_receipt = read_receipt(evidence, 'container-id.json')
+    if set(id_receipt) != {'command', 'exit_code', 'expected_exit_code', 'result', 'output'} or \
+            id_receipt.get('command') != id_argv or id_receipt.get('result') != 'PASS' or \
+            type(id_receipt.get('exit_code')) is not int or id_receipt['exit_code'] != 0 or \
+            type(id_receipt.get('expected_exit_code')) is not int or id_receipt['expected_exit_code'] != 0 or \
+            not isinstance(id_receipt.get('output'), str) or not re.fullmatch(r'[0-9a-f]{64}', id_receipt['output']):
+        raise ValueError('F9 container ID receipt is inconsistent')
+    readiness = read_receipt(evidence, 'emulator-readiness.redacted.json')
+    if set(readiness) != {'container_id', 'marker', 'observed_at_utc', 'result'} or \
+            readiness.get('result') != 'READY' or readiness.get('marker') != expected_marker or \
+            readiness.get('container_id') != id_receipt['output'] or \
+            not isinstance(readiness.get('observed_at_utc'), str) or not readiness['observed_at_utc']:
+        raise ValueError('F9 readiness receipt is not bound to the owned container')
+
+    actual_id = inspect_readonly(id_argv)
+    if actual_id != id_receipt['output']:
+        raise ValueError('current Docker container ID differs from the F9 READY receipt')
+    status = inspect_readonly(['docker', 'inspect', '--format',
+        '{{.State.Running}} {{.State.Status}}', state['container']])
+    if status != 'true running':
+        raise ValueError('the owned F9 Android emulator is not running')
+
+    runtime = read_receipt(evidence, 'android-runtime.redacted.json')
+    if validate_runtime_receipt(runtime) != 'f9':
+        raise ValueError('F9 bootstrap preflight requires the F9 runtime receipt shape')
+    properties = validate_f9_property_receipts(evidence, state)
+    return {
+        'result': 'ANDROID_BOOTSTRAP_CHECK_PASS',
+        'run_id': state['run_id'],
+        'container_id': actual_id,
+        'image_id': runner.driver.IMAGE,
+        'network': 'none',
+        'runtime_properties': properties,
+        'hub': 'NOT_CHECKED',
+        'root_delivery': 'NOT_CHECKED',
+    }
+
+
+def canonical_identity_string(raw):
+    value = parse_json(raw.encode())
+    if list(value) != ['id', 'kem_public', 'signing_public'] or \
+            not isinstance(value.get('id'), str) or not re.fullmatch(r'pq1-[0-9a-f]{32}', value['id']) or \
+            any(not isinstance(value.get(name), str) for name in ('kem_public', 'signing_public')):
+        raise ValueError('Owner public identity JSON has an invalid bounded shape')
+    if json.dumps(value, separators=(',', ':'), ensure_ascii=False) != raw:
+        raise ValueError('Owner public identity JSON must use the canonical field order and bytes')
+    validate_identity(value)
+    return value
+
+
+def validate_identity(value):
+    if not isinstance(value, dict) or list(value) != ['id', 'kem_public', 'signing_public'] or \
+            not isinstance(value.get('id'), str) or not re.fullmatch(r'pq1-[0-9a-f]{32}', value['id']):
+        raise ValueError('Owner public identity JSON has an invalid bounded shape')
+    decoded_keys = []
+    for field, expected in (('kem_public', 1184), ('signing_public', 1952)):
+        encoded = value.get(field)
+        if not isinstance(encoded, str):
+            raise ValueError('Owner public identity JSON has an invalid bounded shape')
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except (ValueError, base64.binascii.Error) as error:
+            raise ValueError('Owner public identity key is not canonical base64') from error
+        if len(decoded) != expected or base64.b64encode(decoded).decode() != encoded:
+            raise ValueError('Owner public identity key has an invalid encoding or size')
+        decoded_keys.append(decoded)
+    expected_id = 'pq1-' + hashlib.sha256(decoded_keys[0] + decoded_keys[1]).digest()[:16].hex()
+    if value['id'] != expected_id:
+        raise ValueError('Owner public identity ID does not derive from its public keys')
+
+
+def validate_setup(value, side, run_id):
+    fields = {'schema', 'run_id', 'base_url', 'hub_id', 'owner_id', 'owner_key_id', 'device_id',
+        'catalog_sha256', 'control_public_identity', 'owner_public_identity'}
+    if set(value) != fields or value.get('schema') != ONBOARDING_SCHEMA or value.get('run_id') != run_id or \
+            value.get('catalog_sha256') != CATALOG_SHA256 or not isinstance(value.get('base_url'), str) or \
+            not 8 <= len(value['base_url']) <= 2048 or value['base_url'] != value['base_url'].strip():
+        raise ValueError(f'{side} public onboarding fixture schema or contract pin is invalid')
+    url = urlsplit(value['base_url'])
+    if url.scheme not in {'http', 'https'} or not url.hostname or url.username or url.password or url.query or url.fragment:
+        raise ValueError(f'{side} public onboarding URL must not contain embedded credentials or query data')
+    if any(not checked_id(value.get(key)) for key in ('hub_id', 'owner_id', 'owner_key_id', 'device_id')):
+        raise ValueError(f'{side} public onboarding IDs are invalid')
+    for key in ('control_public_identity', 'owner_public_identity'):
+        identity = value.get(key)
+        validate_identity(identity)
+    if value['owner_public_identity']['id'] != value['owner_key_id']:
+        raise ValueError(f'{side} Owner key ID does not match its public identity')
+
+
+def validate_selection(value, run_id, reference):
+    fields = {'schema', 'run_id', 'profile_id', 'profile_generation', 'hub_id', 'owner_id', 'device_id',
+        'link_id', 'expected_link_version', 'catalog_sha256', 'source_owner_pin', 'target_owner_pin'}
+    if set(value) != fields or value.get('schema') != SELECTION_SCHEMA or value.get('run_id') != run_id or \
+            value.get('catalog_sha256') != CATALOG_SHA256:
+        raise ValueError('Link selection schema, run ID, or catalog pin is invalid')
+    if not isinstance(value.get('profile_id'), str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,95}', value['profile_id']) or \
+            type(value.get('profile_generation')) is not int or not 1 <= value['profile_generation'] <= 9_007_199_254_740_991 or \
+            type(value.get('expected_link_version')) is not int or not 1 <= value['expected_link_version'] <= 9_007_199_254_740_991:
+        raise ValueError('Link selection profile generation or version is invalid')
+    for key in ('hub_id', 'owner_id', 'device_id', 'link_id'):
+        if not checked_id(value.get(key)):
+            raise ValueError('Link selection contains an invalid identifier')
+    pins = []
+    for key in ('source_owner_pin', 'target_owner_pin'):
+        pin = value.get(key)
+        if not isinstance(pin, dict) or set(pin) != {'owner_id', 'key_id', 'public_identity_json', 'fingerprint'} or \
+                not checked_id(pin.get('owner_id')) or not isinstance(pin.get('key_id'), str) or \
+                not re.fullmatch(r'pq1-[0-9a-f]{32}', pin['key_id']):
+            raise ValueError('Link selection Owner pin shape is invalid')
+        identity = canonical_identity_string(pin['public_identity_json'])
+        fingerprint = pin.get('fingerprint')
+        fingerprint = fingerprint.removeprefix('sha256:') if isinstance(fingerprint, str) else ''
+        expected_fingerprint = hashlib.sha256(
+            b'cicada/client/device-public-key/v1\0' + pin['public_identity_json'].encode()).hexdigest()
+        if identity['id'] != pin['key_id'] or fingerprint != expected_fingerprint:
+            raise ValueError('Link selection Owner identity key ID or fingerprint is invalid')
+        pins.append(pin)
+    if pins[0]['owner_id'] == pins[1]['owner_id'] or pins[0]['key_id'] == pins[1]['key_id'] or \
+            value['owner_id'] not in {pins[0]['owner_id'], pins[1]['owner_id']}:
+        raise ValueError('Link selection must pin distinct source/target Owners and select one')
+    role = 'source' if value['owner_id'] == pins[0]['owner_id'] else 'target'
+    if reference is None:
+        raise ValueError('Link selection staging requires a fresh exported device-profile handoff')
+    device_fields = {'schema', 'run_id', 'owner_role', 'profile_id', 'profile_generation', 'hub_id', 'owner_id',
+        'owner_key_id', 'device_id', 'catalog_sha256', 'device_public_identity', 'device_public_identity_sha256'}
+    device_identity = reference.get('device_public_identity')
+    validate_identity(device_identity)
+    device_identity_json = json.dumps(device_identity, separators=(',', ':'), ensure_ascii=False)
+    if set(reference) != device_fields or reference.get('schema') != DEVICE_SCHEMA or reference.get('run_id') != run_id or \
+            reference.get('catalog_sha256') != CATALOG_SHA256 or type(reference.get('profile_generation')) is not int or \
+            reference.get('device_public_identity_sha256') != digest(device_identity_json.encode()) or \
+            reference.get('profile_id') != value['profile_id'] or reference.get('profile_generation') != value['profile_generation'] or \
+            reference.get('hub_id') != value['hub_id'] or reference.get('owner_id') != value['owner_id'] or \
+            reference.get('device_id') != value['device_id']:
+        raise ValueError('Link selection differs from its exact exported device-profile handoff')
+    if reference.get('owner_role') != role:
+        raise ValueError('Link selection does not match the selected fresh device-profile handoff')
+    local_pin = pins[0] if role == 'source' else pins[1]
+    if reference.get('owner_key_id') != local_pin['key_id']:
+        raise ValueError('Link selection does not match its independently pinned local Owner key')
+    return role
+
+
+def validate_grant(value, side, run_id, device):
+    fields = {'schema', 'run_id', 'profile_id', 'profile_generation', 'hub_id', 'owner_id', 'owner_key_id',
+        'device_id', 'catalog_sha256', 'device_public_identity_sha256', 'owner_device_grant_base64', 'grant_sha256'}
+    if set(value) != fields or value.get('schema') != GRANT_SCHEMA or value.get('run_id') != run_id or \
+            value.get('catalog_sha256') != CATALOG_SHA256:
+        raise ValueError(f'{side} OwnerDeviceGrant handoff schema is invalid')
+    device_fields = {'schema', 'run_id', 'owner_role', 'profile_id', 'profile_generation', 'hub_id', 'owner_id',
+        'owner_key_id', 'device_id', 'catalog_sha256', 'device_public_identity', 'device_public_identity_sha256'}
+    identity = device.get('device_public_identity') if isinstance(device, dict) else None
+    if device is not None:
+        validate_identity(identity)
+    if device is None or set(device) != device_fields or device.get('schema') != DEVICE_SCHEMA or \
+            device.get('run_id') != run_id or device.get('catalog_sha256') != CATALOG_SHA256 or \
+            device.get('device_public_identity_sha256') != digest(
+                json.dumps(identity, separators=(',', ':'), ensure_ascii=False).encode()) or \
+            device.get('owner_role') != side or \
+            any(value.get(key) != device.get(key) for key in (
+                'profile_id', 'profile_generation', 'hub_id', 'owner_id', 'owner_key_id', 'device_id',
+                'device_public_identity_sha256')):
+        raise ValueError(f'{side} OwnerDeviceGrant does not match its fresh device identity handoff')
+    validate_public_signature(value['owner_device_grant_base64'], value['grant_sha256'], 32 * 1024)
+
+
+def validate_public_signature(encoded, expected_sha, max_bytes):
+    if not isinstance(encoded, str) or not 4 <= len(encoded) <= max_bytes * 2 or not isinstance(expected_sha, str) or \
+            not HEX64.fullmatch(expected_sha):
+        raise ValueError('bounded signed public proof or digest is invalid')
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error) as error:
+        raise ValueError('signed public proof is not canonical base64') from error
+    if not raw or len(raw) > max_bytes or base64.b64encode(raw).decode() != encoded or digest(raw) != expected_sha:
+        raise ValueError('signed public proof bytes do not match their digest')
+
+
+def validate_review_handoff(value, kind, run_id):
+    fields = {'schema', 'run_id', 'kind', 'review_id', 'consent_digest', 'link_id', 'link_version',
+        'side', 'owner_id', 'owner_key_id', 'signing_request_json', 'native_review_json'}
+    if kind == 'REVIEW_POLICY':
+        fields.add('policy_json')
+    if not isinstance(value, dict) or set(value) != fields or value.get('schema') != REVIEW_SCHEMA or \
+            value.get('run_id') != run_id or value.get('kind') != kind or \
+            not isinstance(value.get('native_review_json'), dict):
+        raise ValueError('native review handoff schema is invalid')
+    native = value['native_review_json']
+    native_fields = {'reviewId', 'consentDigest', 'linkId', 'linkVersion', 'side', 'manifestDigest',
+        'contractDigest', 'sourceEndpointId', 'sourceGroupId', 'targetEndpointId', 'targetGroupId',
+        'direction', 'actions', 'dataScopes', 'expiresAt', 'sourceKeyFingerprint', 'targetKeyFingerprint',
+        'maximumProofExpiresAt', 'ownerKeyId', 'ownerKeyFingerprint', 'peerOwnerKeyFingerprint',
+        'qualifications', 'signingRequestJson'}
+    if kind == 'REVIEW_POLICY':
+        native_fields |= {'policyDigest', 'policyVersion'}
+        if 'currentPolicyStatus' in native:
+            native_fields.add('currentPolicyStatus')
+            current = native['currentPolicyStatus']
+            if not isinstance(current, dict) or set(current) != {
+                    'policyVersion', 'digest', 'current', 'sourceStatus', 'targetStatus', 'bilateralVerified'}:
+                raise ValueError('current policy status in review handoff is malformed')
+    if set(native) != native_fields:
+        raise ValueError('native review DTO has missing or unexpected fields')
+    for outer, inner in (('review_id', 'reviewId'), ('consent_digest', 'consentDigest'),
+            ('link_id', 'linkId'), ('link_version', 'linkVersion'), ('side', 'side')):
+        if value.get(outer) != native.get(inner):
+            raise ValueError('review handoff does not match its native DTO')
+    if not isinstance(value.get('consent_digest'), str) or not HEX64.fullmatch(value['consent_digest']) or \
+            not isinstance(value.get('link_version'), str) or not re.fullmatch(r'[1-9][0-9]*', value['link_version']) or \
+            value.get('side') not in {'SOURCE', 'TARGET'}:
+        raise ValueError('native review handoff tuple is malformed')
+    if native.get('ownerKeyId') != value.get('owner_key_id'):
+        raise ValueError('native review handoff Owner key differs from its envelope')
+    signer_text = value.get('signing_request_json')
+    if not isinstance(signer_text, str) or signer_text != native.get('signingRequestJson'):
+        raise ValueError('review signer envelope differs from its native DTO')
+    signer = parse_json(signer_text.encode())
+    signer_fields = {'schema', 'kind', 'owner_id', 'owner_key_id', 'owner_key_fingerprint', 'link_id',
+        'link_version', 'contract_digest', 'side', 'max_expiry', 'expires_at'}
+    signer_fields |= {'manifest_digest'} if kind == 'KEY' else {
+        'policy_digest', 'expected_policy_version', 'policy_version'}
+    link_version = signer.get('link_version')
+    if set(signer) != signer_fields or signer.get('schema') != 'cicada.client.link-consent-signing-request.v1' or \
+            signer.get('kind') != kind or signer.get('link_id') != value['link_id'] or \
+            type(link_version) is not int or not 1 <= link_version <= 9_223_372_036_854_775_807 or \
+            str(link_version) != value['link_version'] or signer.get('side') != value['side'] or \
+            signer.get('contract_digest') != native.get('contractDigest') or \
+            signer.get('owner_id') != value['owner_id'] or signer.get('owner_key_id') != value['owner_key_id']:
+        raise ValueError('native Owner signer envelope is not bound to its review handoff')
+    native_fingerprint = native.get('ownerKeyFingerprint')
+    if not isinstance(native_fingerprint, str) or not native_fingerprint.startswith('sha256:') or \
+            signer.get('owner_key_fingerprint') != native_fingerprint.removeprefix('sha256:'):
+        raise ValueError('native Owner signer fingerprint differs from its review DTO')
+    if kind == 'KEY' and signer.get('manifest_digest') != native.get('manifestDigest'):
+        raise ValueError('Owner key signer envelope is not bound to the current manifest')
+    if kind == 'REVIEW_POLICY':
+        expected_version, policy_version = signer.get('expected_policy_version'), signer.get('policy_version')
+        if type(expected_version) is not int or not 0 <= expected_version < 9_223_372_036_854_775_807 or \
+                type(policy_version) is not int or policy_version != expected_version + 1 or \
+                str(policy_version) != native.get('policyVersion') or signer.get('policy_digest') != native.get('policyDigest'):
+            raise ValueError('review policy signer version or digest is not bound to its preview')
+        policy = value.get('policy_json')
+        if not isinstance(policy, str) or secret_fields(parse_json(policy.encode())):
+            raise ValueError('review policy handoff is malformed or contains credentials')
+
+
+def validate_proof(value, kind, side, run_id, review):
+    fields = {'schema', 'run_id', 'review_id', 'consent_digest', 'link_id', 'link_version', 'side',
+        'owner_id', 'owner_key_id', 'signed_proof_base64', 'proof_sha256'}
+    if set(value) != fields or value.get('schema') != PROOF_SCHEMA or value.get('run_id') != run_id:
+        raise ValueError('signed Owner proof handoff schema is invalid')
+    validate_review_handoff(review, kind, run_id)
+    for field in ('review_id', 'consent_digest', 'link_id', 'link_version', 'side', 'owner_id', 'owner_key_id'):
+        review_field = {'review_id': 'review_id', 'consent_digest': 'consent_digest', 'link_id': 'link_id',
+            'link_version': 'link_version', 'side': 'side', 'owner_id': 'owner_id', 'owner_key_id': 'owner_key_id'}[field]
+        if value.get(field) != review.get(review_field):
+            raise ValueError('signed Owner proof does not match the exact exported native review')
+    if value['side'] != side.upper():
+        raise ValueError('signed Owner proof side does not match this staged handoff')
+    if not isinstance(value.get('consent_digest'), str) or not HEX64.fullmatch(value['consent_digest']) or \
+            not isinstance(value.get('link_version'), str) or not re.fullmatch(r'[1-9][0-9]*', value['link_version']):
+        raise ValueError('signed Owner proof scope tuple is malformed')
+    validate_public_signature(value['signed_proof_base64'], value['proof_sha256'], 16 * 1024)
+
+
+def validate_stage(value, name, kind, side, run_id, reference):
+    if secret_fields(value):
+        raise ValueError('private keys, bearer tokens, and credentials cannot be staged to Android')
+    if kind == 'setup':
+        validate_setup(value, side, run_id)
+    elif kind == 'selection':
+        validate_selection(value, run_id, reference)
+    elif kind == 'grant':
+        validate_grant(value, side, run_id, reference)
+    elif kind.startswith('proof-'):
+        proof_kind = 'KEY' if kind in {'proof-key', 'proof-negative'} else 'REVIEW_POLICY'
+        validate_proof(value, proof_kind, side, run_id, reference)
+    elif kind == 'policy':
+        if set(value) != {'schema', 'run_id', 'policy'} or value.get('schema') != POLICY_SCHEMA or value.get('run_id') != run_id:
+            raise ValueError('review policy fixture schema is invalid')
+        policy = value['policy']
+        if not isinstance(policy, dict) or set(policy) != {'mode', 'reviewers', 'max_failovers',
+                'reviewer_lease_seconds', 'max_review_age_seconds'} or policy.get('mode') not in {'NONE', 'METADATA'}:
+            raise ValueError('review policy fixture DTO is invalid')
+        reviewers = policy.get('reviewers')
+        numbers = [policy.get(key) for key in ('max_failovers', 'reviewer_lease_seconds', 'max_review_age_seconds')]
+        if not isinstance(reviewers, list) or len(reviewers) > 8 or any(type(number) is not int or number < 0 for number in numbers) or \
+                any(not isinstance(row, dict) or set(row) != {'endpoint_id', 'group_id'} or
+                    not all(checked_id(row.get(key)) for key in ('endpoint_id', 'group_id')) for row in reviewers):
+            raise ValueError('review policy fixture values are invalid')
+        failovers, lease, age = numbers
+        if policy['mode'] == 'NONE' and (reviewers or failovers or lease or age) or \
+                policy['mode'] == 'METADATA' and (not reviewers or failovers > len(reviewers) - 1 or
+                    not 30 <= lease <= 3600 or not 60 <= age <= 86400):
+            raise ValueError('review policy fixture exceeds its bounded configuration')
+    elif kind == 'recovery':
+        if set(value) != {'schema', 'run_id', 'expected_operation'} or value.get('schema') != RECOVERY_SCHEMA or \
+                value.get('run_id') != run_id or value.get('expected_operation') not in {'link.key_grant', 'link.review_policy_grant'}:
+            raise ValueError('Link recovery scenario schema is invalid')
+    elif kind == 'recovery-v2':
+        recovery.validate_scenario(value, run_id)
+    elif kind == 'recovery-ready':
+        recovery.validate_ready_envelope(value, run_id, reference)
+    else:
+        raise ValueError('unsupported bounded staging kind')
+
+
+def check_evidence(evidence, args):
+    delivery = runner.read_f6_delivery(args)
+    run_id = evidence.parent.name
+    if delivery is None and run_id.startswith('v16-deterministic-v164-f6-'):
+        raise ValueError('F6 artifact verification requires its Root pins and actual delivery metadata')
+    if delivery is not None and not runner.F6_RUN_ID.fullmatch(run_id):
+        raise ValueError('Root-pinned F6 metadata cannot be applied to a legacy evidence run')
+    state = runner.owned_state(evidence)
+    if state.get('network') != 'none':
+        raise ValueError('the owned v1.6.4 emulator must remain offline')
+    artifacts, _ = link.read_private_json(evidence / 'android-artifacts.json', maximum=64 * 1024)
+    recovery_pins = recovery.read_apk_pins(args)
+    if recovery_pins is not None:
+        if not runner.RECOVERY_RUN_ID.fullmatch(run_id):
+            raise ValueError('recovery pins require their fresh isolated emulator evidence run')
+        expected = recovery.artifact_fields(recovery_pins)
+    elif artifacts.get('fixture_lane') == recovery.RUN_SCOPE or runner.RECOVERY_RUN_ID.fullmatch(run_id):
+        raise ValueError('recovery evidence cannot fall back to historical delivery pins')
+    elif delivery is None:
+        f6_markers = {
+            'fixture_lane', 'root_delivery_pins_path', 'root_delivery_pins_sha256',
+            'delivery_metadata_path', 'delivery_metadata_sha256', 'fixture_root',
+            'root_delivery_pins', 'validated_f6_fixture',
+        }
+        if state['run_id'].startswith('v16-deterministic-v164-f6-') or any(key in artifacts for key in f6_markers):
+            raise ValueError('F6 artifact verification requires its Root pins and actual delivery metadata')
+        expected = {
+            'contract_revision': runner.CONTRACT_REVISION,
+            'core_source_revision': runner.CORE_REVISION,
+            'core_source_fingerprint': runner.CORE_SOURCE_FINGERPRINT,
+            'catalog_sha256': runner.CATALOG_SHA256,
+            'pinned_hub_image_id': runner.HUB_IMAGE,
+            'pinned_interop_image_id': runner.INTEROP_IMAGE,
+        }
+    else:
+        expected = runner.f6_pinned_artifact_values(args, delivery)
+    if any(artifacts.get(key) != value for key, value in expected.items()):
+        raise ValueError('installed emulator artifact metadata does not match its independently verified pin inputs')
+    for app in ('app', 'test'):
+        expected_sha = artifacts.get(app + '_sha256')
+        path = evidence / f'installed-{app}.private.apk'
+        if delivery is not None and expected_sha != (runner.F6_APP_SHA256 if app == 'app' else runner.F6_TEST_SHA256):
+            raise ValueError(f'F6 {app} APK does not match its authorized binary pin')
+        if delivery is None and expected_sha in (runner.F6_APP_SHA256, runner.F6_TEST_SHA256):
+            raise ValueError('F6 APKs require Root pins and a fresh F6 evidence run')
+        if not isinstance(expected_sha, str) or not HEX64.fullmatch(expected_sha) or path.is_symlink() or \
+                not path.is_file() or digest(path.read_bytes()) != expected_sha:
+            raise ValueError(f'installed {app} APK does not match its full recorded SHA-256')
+    runtime_path = evidence / 'android-runtime.redacted.json'
+    if runtime_path.is_symlink() or not runtime_path.is_file():
+        raise ValueError('owned emulator runtime receipt is missing')
+    runtime, _ = link.read_private_json(runtime_path, maximum=16 * 1024)
+    runtime_kind = validate_runtime_receipt(runtime)
+    if runtime_kind == 'f9':
+        validate_f9_property_receipts(evidence, state)
+    return state, artifacts
+
+
+def output_dir(evidence):
+    path = evidence / 'link-v164'
+    if path.is_symlink():
+        raise ValueError('Link evidence output directory cannot be a symlink')
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.stat()
+    if not path.is_dir() or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError('Link evidence output directory must be caller-owned mode 0700')
+    return path
+
+
+def save_unique(directory, stem, raw):
+    sha = digest(raw)
+    base = f'{stem}-{sha[:12]}'
+    for attempt in range(1, 1000):
+        suffix = '' if attempt == 1 else f'-{attempt}'
+        path = directory / f'{base}{suffix}.private.json'
+        try:
+            link.save_private(path, raw)
+            return path, sha
+        except FileExistsError:
+            continue
+        except ValueError:
+            if path.exists() or path.is_symlink():
+                continue
+            raise
+    raise ValueError('unable to allocate a unique private evidence filename')
+
+
+def remote_dir(run_id):
+    if not RUN_ID.fullmatch(run_id):
+        raise ValueError('instrumentation run ID must be bounded v164-*')
+    return f'{REMOTE_ROOT}/{run_id}'
+
+
+def remote_file(state, run_id, name):
+    if name not in STAGE_FILES and name not in EXPORT_FILES:
+        raise ValueError('file name is outside the bounded Link consent allowlist')
+    return remote_dir(run_id) + '/' + name
+
+
+def stage(evidence, state, args):
+    name = args.name
+    kind, side = STAGE_FILES[name]
+    run_id = args.run_id
+    if side is not None and args.side != side:
+        raise ValueError('staged file name and --side do not match')
+    if side is None and args.side is not None and kind not in {'selection'}:
+        raise ValueError('this shared fixture does not accept --side')
+    parsed, raw_sha = link.read_private_json(args.input, maximum=MAX_INPUT)
+    reference = None
+    if args.reference:
+        reference, _ = link.read_private_json(args.reference, maximum=MAX_OUTPUT)
+    stage_side = side or args.side
+    if kind == 'selection':
+        stage_side = validate_selection(parsed, run_id, reference)
+        if args.side is not None and args.side != stage_side:
+            raise ValueError('selection owner and --side do not match its device handoff')
+    validate_stage(parsed, name, kind, stage_side, run_id, reference)
+    if kind in {'recovery-v2', 'recovery-ready'}:
+        exact, raw = recovery.read_private_json(args.input, getattr(args, 'input_sha256', None))
+        if exact != parsed or digest(raw) != raw_sha:
+            raise ValueError('recovery input changed during staging')
+        if kind == 'recovery-ready' and getattr(args, 'input_sha256', None) is None:
+            raise ValueError('Root READY envelope requires an independent raw-byte SHA-256')
+    else:
+        raw = (json.dumps(parsed, separators=(',', ':'), ensure_ascii=False) + '\n').encode()
+    if len(raw) > MAX_INPUT:
+        raise ValueError('normalized staged JSON exceeds its bound')
+    state, _ = check_evidence(evidence, args)
+    output = output_dir(evidence)
+    input_copy, staged_sha = save_unique(output, 'staged-' + Path(name).stem, raw)
+    remote = remote_file(state, run_id, name)
+    shell = 'umask 077; mkdir -p ' + shlex.quote(remote_dir(run_id)) + ' && chmod 700 ' + \
+        shlex.quote(remote_dir(run_id)) + ' && cat > ' + \
+        shlex.quote(remote) + ' && chmod 600 ' + shlex.quote(remote)
+    command = driver.adb(state, True) + ['shell', shlex.join(['run-as', PACKAGE, 'sh', '-c', shell])]
+    step = f'link-v164-{run_id}-{stage_side or "shared"}-stage-{Path(name).stem}'
+    result = driver.run(evidence, step, command, data=raw)
+    if result:
+        raise RuntimeError('Android staging returned unexpected stdout')
+    summary = {
+        'schema': SCHEMA, 'result': 'PASS', 'action': 'stage', 'run_id_sha256': digest(run_id.encode()),
+        'side': stage_side or 'shared', 'file': name, 'input_sha256': raw_sha, 'staged_sha256': staged_sha,
+        'private_evidence': str(input_copy.name), 'stdin_bytes': len(raw), 'command_sha256': digest(shlex.join(command).encode()),
+    }
+    summary_path, _ = save_unique(output, f'stage-{stage_side or "shared"}-{Path(name).stem}',
+        (json.dumps(summary, sort_keys=True, separators=(',', ':')) + '\n').encode())
+    return {'result': 'PASS', 'action': 'stage', 'side': stage_side or 'shared', 'file': name,
+        'stdin_sha256': staged_sha, 'receipt': summary_path.name}
+
+
+def export_file(evidence, state, run_id, name, side):
+    if name not in EXPORT_FILES:
+        raise ValueError('only public device identities, signer reviews and redacted receipts may be exported')
+    if side and not name.startswith(side + '-') and name != 'selection.redacted.json':
+        raise ValueError('export filename and --side do not match')
+    remote = remote_file(state, run_id, name)
+    command = driver.adb(state) + ['exec-out', 'run-as', PACKAGE, 'cat', remote]
+    raw = driver.run(evidence, f'link-v164-{run_id}-{side or "shared"}-export-{Path(name).stem}', command)
+    if len(raw) > MAX_OUTPUT:
+        raise ValueError('Android export exceeded the bounded output size')
+    value = parse_json(raw)
+    if secret_fields(value):
+        raise ValueError('refusing to export an Android object containing private credentials')
+    if '.capture.redacted.json' in name or '.recovery.redacted.json' in name:
+        scenario, _ = read_remote_json(evidence, state, run_id, f'{side}-recovery-scenario.v2.json',
+            f'link-v164-{run_id}-{side}-export-recovery-scenario')
+        recovery.validate_scenario(scenario, run_id)
+        stem = recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode'])
+        if name == stem + '.capture.redacted.json':
+            recovery.validate_capture(value, scenario, side)
+        elif name == stem + '.recovery.redacted.json':
+            capture, _ = read_remote_json(evidence, state, run_id, stem + '.capture.redacted.json',
+                f'link-v164-{run_id}-{side}-export-original-capture')
+            ready, ready_raw = read_remote_json(evidence, state, run_id, f'{side}-fault-ready.json',
+                f'link-v164-{run_id}-{side}-export-root-ready')
+            recovery.validate_result(value, capture, scenario, side, ready, ready_raw)
+        else:
+            raise ValueError('recovery export does not match the current deterministic scenario')
+    elif name.endswith('.redacted.json'):
+        if value.get('schema') != 'cicada.client-v164-link-consent-redacted-receipt.v1' or \
+                value.get('result') not in {'PASS', 'NOT_RUN'} or \
+                value.get('run_id_sha256') != digest(run_id.encode()) or \
+                value.get('phase') != name.removesuffix('.redacted.json'):
+            raise ValueError('Android receipt is not a recognized redacted v1.6.4 result')
+    elif name.endswith('device-public.private.json'):
+        validate_identity(value.get('device_public_identity'))
+        if value.get('schema') != DEVICE_SCHEMA or value.get('run_id') != run_id or \
+                value.get('device_public_identity_sha256') != digest(json.dumps(
+                    value['device_public_identity'], separators=(',', ':'), ensure_ascii=False).encode()):
+            raise ValueError('Android device export is not a v1.6.4 public device handoff')
+    elif name.endswith('review.private.json'):
+        kind = 'REVIEW_POLICY' if '-policy-' in name else 'KEY'
+        validate_review_handoff(value, kind, run_id)
+    output = output_dir(evidence)
+    path, sha = save_unique(output, 'export-' + Path(name).stem, raw)
+    response = {'result': 'PASS', 'action': 'export', 'side': side or 'shared', 'file': name,
+        'sha256': sha, 'private_evidence': path.name, 'bytes': len(raw)}
+    if name.endswith('.redacted.json'):
+        response['receipt_result'] = value.get('result', value.get('phase'))
+    return response
+
+
+def read_remote_json(evidence, state, run_id, name, step):
+    remote = remote_file(state, run_id, name)
+    shell = 'if [ -f ' + shlex.quote(remote) + ' ]; then cat ' + shlex.quote(remote) + '; else printf __MISSING__; fi'
+    command = driver.adb(state) + ['exec-out', 'run-as', PACKAGE, 'sh', '-c', shell]
+    raw = driver.run(evidence, step, command)
+    if raw.strip() == b'__MISSING__':
+        return None, raw
+    return parse_json(raw), raw
+
+
+def receipt_candidates(side, method, scenario=None):
+    if method in CAPTURE_SELECTORS or method in RECOVERY_SELECTORS:
+        if scenario is None:
+            raise ValueError('deterministic recovery selector requires its exact v2 scenario')
+        suffix = 'capture' if method in CAPTURE_SELECTORS else 'recovery'
+        phase = 'CAPTURED' if suffix == 'capture' else 'RECOVERED'
+        return [(recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode']) +
+            f'.{suffix}.redacted.json', phase)]
+    _method_side, success_name, success_phase = SELECTORS[method]
+    receipt = success_name if success_name.startswith(side + '-') else f'{side}-{success_name}'
+    phase = success_phase if success_phase.startswith(side + '-') else f'{side}-{success_phase}'
+    choices = [(receipt, phase)]
+    for name, phase in (
+        ('selection.redacted.json', 'selection'),
+        (f'{side}-onboarding.redacted.json', f'{side}-onboarding'),
+        (f'{side}-onboarding-enroll.redacted.json', f'{side}-onboarding-enroll'),
+    ):
+        if (name, phase) not in choices:
+            choices.append((name, phase))
+    dedup = []
+    for item in choices:
+        if item not in dedup:
+            dedup.append(item)
+    return dedup
+
+
+def selection_side_hint(value):
+    if not isinstance(value, dict):
+        raise ValueError('active Link selection is not an object')
+    owner_id = value.get('owner_id')
+    source = value.get('source_owner_pin')
+    target = value.get('target_owner_pin')
+    matches = [side for side, pin in (('source', source), ('target', target))
+        if isinstance(pin, dict) and pin.get('owner_id') == owner_id]
+    if len(matches) != 1:
+        raise ValueError('active Link selection does not identify exactly one pinned Owner side')
+    return matches[0]
+
+
+def run_selector(evidence, state, args):
+    method = args.method
+    expected_side, _success_file, _success_phase = SELECTORS[method]
+    side = args.side or expected_side
+    if side not in SIDES or expected_side is not None and side != expected_side:
+        raise ValueError('selector and --side do not match the bounded source/target phase')
+    run_id = args.run_id
+    if expected_side is None:
+        selection, _ = read_remote_json(evidence, state, run_id, 'selection.json',
+            f'link-v164-{run_id}-{side}-read-selection')
+        if selection is not None:
+            role = selection_side_hint(selection)
+            device, _ = read_remote_json(evidence, state, run_id, f'{role}-device-public.private.json',
+                f'link-v164-{run_id}-{side}-read-device-handoff')
+            if device is not None:
+                role = validate_selection(selection, run_id, device)
+            if role != side:
+                raise ValueError('active public selection belongs to the other Owner side')
+    state, _artifacts = check_evidence(evidence, args)
+    scenario = None
+    deterministic_recovery = method in CAPTURE_SELECTORS or method in RECOVERY_SELECTORS
+    if deterministic_recovery:
+        if recovery.read_apk_pins(args) is None:
+            raise ValueError('new recovery selectors require clean e2a1908 APK pins')
+        scenario, _ = read_remote_json(evidence, state, run_id, f'{side}-recovery-scenario.v2.json',
+            f'link-v164-{run_id}-{side}-{method}-scenario')
+        operation, mode = RECOVERY_SELECTORS.get(method, (CAPTURE_SELECTORS.get(method), None))
+        recovery.validate_scenario(scenario, run_id, operation, mode)
+    output = output_dir(evidence)
+    candidates = receipt_candidates(side, method, scenario)
+    for index, (name, _phase) in enumerate(candidates, 1):
+        old, raw = read_remote_json(evidence, state, run_id, name,
+            f'link-v164-{run_id}-{side}-{method}-receipt-preflight-{index}')
+        if old is not None:
+            save_unique(output, f'prior-{side}-{Path(name).stem}', raw)
+            if deterministic_recovery:
+                raise ValueError('immutable recovery receipt exists; do not submit or recover this operation again')
+            remote = remote_file(state, run_id, name)
+            command = driver.adb(state) + ['shell', 'run-as', PACKAGE, 'rm', '-f', remote]
+            driver.run(evidence, f'link-v164-{run_id}-{side}-{method}-clear-{index}', command)
+
+    command = driver.adb(state) + ['shell', 'am', 'instrument', '-w', '-e', 'run_id', run_id,
+        '-e', 'class', TEST_CLASS + '#' + method, PACKAGE + '.test/androidx.test.runner.AndroidJUnitRunner']
+    step = f'link-v164-{run_id}-{side}-{method}'
+    output_log = driver.run(evidence, step, command, junit=True)
+    junit = json.loads((evidence / (step + '.json')).read_text())
+    if junit.get('exit_code') != 0 or junit.get('junit') != 'OK (1 test)':
+        raise RuntimeError('selector did not run exactly one passing JUnit test; inspect private log and summary')
+
+    found = []
+    for index, (name, expected_phase) in enumerate(candidates, 1):
+        value, raw = read_remote_json(evidence, state, run_id, name,
+            f'link-v164-{run_id}-{side}-{method}-receipt-{index}')
+        if value is None:
+            continue
+        if deterministic_recovery:
+            if method in CAPTURE_SELECTORS:
+                recovery.validate_capture(value, scenario, side)
+            else:
+                capture, _ = read_remote_json(evidence, state, run_id,
+                    recovery.case_stem(side, scenario['expected_operation'], scenario['fault_mode']) +
+                        '.capture.redacted.json', f'link-v164-{run_id}-{side}-{method}-original-capture')
+                ready, ready_raw = read_remote_json(evidence, state, run_id, f'{side}-fault-ready.json',
+                    f'link-v164-{run_id}-{side}-{method}-root-ready')
+                recovery.validate_result(value, capture, scenario, side, ready, ready_raw)
+        elif value.get('schema') != 'cicada.client-v164-link-consent-redacted-receipt.v1' or \
+                value.get('phase') != expected_phase or value.get('run_id_sha256') != digest(run_id.encode()) or \
+                value.get('result') not in {'PASS', 'NOT_RUN'}:
+            raise ValueError('selector receipt is malformed or belongs to another stage')
+        if method == 'recoversOnlyAnExplicitlySelectedOriginalConsentOperation' and value['result'] == 'PASS':
+            validate_exact_recovery_receipt(value)
+        found.append((name, value, raw))
+    if len(found) != 1:
+        raise RuntimeError('selector must create exactly one fresh redacted receipt')
+    receipt_name, receipt, receipt_raw = found[0]
+    receipt_path, receipt_sha = save_unique(output, f'receipt-{side}-{method}', receipt_raw)
+    result = ('CAPTURED' if method in CAPTURE_SELECTORS else 'RECOVERED') if deterministic_recovery else receipt['result']
+    summary = {
+        'schema': SCHEMA, 'result': result, 'action': 'selector', 'side': side, 'selector': method,
+        'run_id_sha256': digest(run_id.encode()), 'junit': junit.get('junit'), 'exit_code': junit.get('exit_code'),
+        'command_sha256': digest(shlex.join(command).encode()), 'log_sha256': digest(output_log),
+        'receipt_file': receipt_name, 'receipt_sha256': receipt_sha, 'private_evidence': receipt_path.name,
+    }
+    if deterministic_recovery:
+        summary.update(business_acceptance='NOT_ESTABLISHED',
+            carrier_ciphertext_comparison='ROOT_EVIDENCE_REQUIRED',
+            authoritative_status_reconciliation='SEPARATE_PARTICIPATING_SESSION_REQUIRED')
+    summary_path, _ = save_unique(output, f'selector-{side}-{method}',
+        (json.dumps(summary, sort_keys=True, separators=(',', ':')) + '\n').encode())
+    public = {'result': result, 'action': 'selector', 'side': side, 'selector': method,
+        'junit': junit['junit'], 'log_sha256': summary['log_sha256'], 'receipt_sha256': receipt_sha,
+        'evidence': summary_path.name}
+    if result == 'NOT_RUN':
+        print(json.dumps(public))
+        raise SystemExit(2)
+    return public
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('evidence', help='private evidence directory owned by the v1.6.4 emulator driver')
+    commands = parser.add_subparsers(dest='action', required=True)
+    commands.add_parser('bootstrap-preflight',
+        help='read-only Android boot/runtime check; makes no Hub or Root delivery claim')
+    preflight = commands.add_parser('preflight',
+        help='read-only F6 artifact, owned-emulator, and runtime checks without running a selector')
+    preflight.add_argument('--run-id', required=True)
+    runner.add_delivery_arguments(preflight)
+    stage_parser = commands.add_parser('stage')
+    stage_parser.add_argument('--run-id', required=True)
+    stage_parser.add_argument('--name', choices=sorted(STAGE_FILES), required=True)
+    stage_parser.add_argument('--input-sha256', help='independent exact-byte pin; required for Root recovery READY')
+    stage_parser.add_argument('--input', required=True)
+    stage_parser.add_argument('--side', choices=sorted(SIDES))
+    stage_parser.add_argument('--reference', help='private exported device or exact review handoff')
+    runner.add_delivery_arguments(stage_parser)
+    selector = commands.add_parser('selector')
+    selector.add_argument('--run-id', required=True)
+    selector.add_argument('--method', choices=sorted(SELECTORS), required=True)
+    selector.add_argument('--side', choices=sorted(SIDES))
+    runner.add_delivery_arguments(selector)
+    export = commands.add_parser('export')
+    export.add_argument('--run-id', required=True)
+    export.add_argument('--name', choices=sorted(EXPORT_FILES), required=True)
+    export.add_argument('--side', choices=sorted(SIDES))
+    runner.add_delivery_arguments(export)
+    args = parser.parse_args()
+    evidence = driver.private_evidence(args.evidence)
+    if args.action == 'bootstrap-preflight':
+        print(json.dumps(bootstrap_preflight(evidence)))
+        return
+    if not RUN_ID.fullmatch(args.run_id):
+        raise ValueError('instrumentation run ID must match v164-[A-Za-z0-9_-]{1,72}')
+    if args.action == 'preflight':
+        state, _artifacts = check_evidence(evidence, args)
+        result = bootstrap_preflight(evidence, state)
+        result.update({'action': 'preflight', 'instrumentation_run_id': args.run_id})
+        print(json.dumps(result))
+        return
+    state, _artifacts = check_evidence(evidence, args)
+    if args.action == 'stage':
+        result = stage(evidence, state, args)
+    elif args.action == 'selector':
+        result = run_selector(evidence, state, args)
+    else:
+        result = export_file(evidence, state, args.run_id, args.name, args.side)
+    print(json.dumps(result))
+
+
+if __name__ == '__main__':
+    os.umask(0o077)
+    try:
+        main()
+    except (ValueError, RuntimeError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(1)

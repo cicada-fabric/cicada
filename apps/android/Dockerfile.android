@@ -1,0 +1,19 @@
+FROM gradle:8.13-jdk17
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+RUN mkdir -p "$ANDROID_HOME/cmdline-tools" \
+    && curl --fail --location --retry 3 \
+       https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip \
+       --output /tmp/commandline-tools.zip \
+    && unzip -q /tmp/commandline-tools.zip -d "$ANDROID_HOME/cmdline-tools" \
+    && mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" \
+    && rm /tmp/commandline-tools.zip \
+    && yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null \
+    && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools" \
+    && chmod -R a+rX "$ANDROID_HOME"
+USER gradle
+WORKDIR /workspace
