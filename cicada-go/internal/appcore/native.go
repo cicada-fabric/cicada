@@ -22,7 +22,33 @@ func OpenNativeController() (Controller, error) {
 	if err != nil || root == "" {
 		return nil, errors.New("native App configuration directory unavailable")
 	}
-	return NewController(Config{HTTP: NewHTTPClient(), OpenVault: NewPlatformVaultOpener(filepath.Join(root, "CICADA", "vaults"))})
+	// N1 already published vaults at this nested path. Keep it stable: moving
+	// local identities requires an explicit migration, never a silent rekey.
+	root = filepath.Join(root, "CICADA", "vaults")
+	return NewController(Config{HTTP: NewHTTPClient(), OpenVault: NewPlatformVaultOpener(root), DiscoverVaults: NewProfileDiscovery(root)})
+}
+
+// NewProfileDiscovery supplies untrusted scope locators only. The controller
+// authenticates each vault before exposing profile metadata or sending traffic.
+func NewProfileDiscovery(root string) func(context.Context) ([]appvault.Scope, error) {
+	return func(ctx context.Context) ([]appvault.Scope, error) {
+		candidates, err := appvault.DiscoverCandidates(root)
+		if err != nil {
+			return nil, err
+		}
+		var scopes []appvault.Scope
+		for _, candidate := range candidates {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			path, err := scopeVaultPath(root, candidate.Scope)
+			if err != nil || filepath.Base(path) != candidate.Name {
+				return nil, appvault.ErrScopeMismatch
+			}
+			scopes = append(scopes, candidate.Scope)
+		}
+		return scopes, nil
+	}
 }
 
 // NewPlatformVaultOpener returns a scope-derived file path under root. The

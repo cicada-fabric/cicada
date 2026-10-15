@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cicada-ai/cicada/internal/appvault"
 	"github.com/cicada-ai/cicada/internal/hubauth"
@@ -159,7 +160,7 @@ func TestControllerRealHTTPAccountFlowAndExactUncertainRecovery(t *testing.T) {
 		return appvault.Open(path, scope, protector)
 	}
 	newController := func() Controller {
-		controller, controllerErr := NewController(Config{HTTP: recorder, OpenVault: openVault, AllowLoopbackHTTP: true})
+		controller, controllerErr := NewController(Config{HTTP: recorder, OpenVault: openVault, DiscoverVaults: NewProfileDiscovery(vaultRoot), AllowLoopbackHTTP: true})
 		if controllerErr != nil {
 			t.Fatal(controllerErr)
 		}
@@ -188,7 +189,7 @@ func TestControllerRealHTTPAccountFlowAndExactUncertainRecovery(t *testing.T) {
 	if len(paths) != 0 || len(packets) != 0 {
 		t.Fatal("failed exact-request commit sent a packet from memory-only state")
 	}
-	if got := controller.Snapshot(); got.Phase != PhaseError || !reflect.DeepEqual(got.AvailableActions, []ActionKind{ActionConnect}) || got.Account.State != AccountStateUnknown {
+	if got := controller.Snapshot(); got.Phase != PhaseError || !reflect.DeepEqual(got.AvailableActions, []ActionKind{ActionConnect, ActionDiscoverProfiles}) || got.Account.State != AccountStateUnknown {
 		t.Fatalf("storage fault did not fail closed: %+v", got)
 	}
 	if err := controller.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: activationText}); err != nil {
@@ -253,11 +254,76 @@ func TestControllerRealHTTPAccountFlowAndExactUncertainRecovery(t *testing.T) {
 	if got := controller.Snapshot(); got.Phase != PhaseSessionCheck || got.Management != ManagementUnavailable {
 		t.Fatalf("login receipt granted offline or management authority: %+v", got)
 	}
-	if err := controller.Dispatch(ctx, Action{Kind: ActionSessionInspect}); err != nil {
+	// An authenticated saved login receipt must not resurrect an expired
+	// session when replayed on restart, even while it is the pending receipt.
+	if err := controller.Close(); err != nil {
+		t.Fatal(err)
+	}
+	expired := newController()
+	expired.(*nativeController).cfg.Now = func() time.Time { return time.Now().UTC().Add(24 * time.Hour) }
+	if err := expired.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
+		t.Fatal(err)
+	}
+	expiredProfiles := expired.Snapshot().Profiles
+	if len(expiredProfiles) != 1 {
+		t.Fatal("expired session profile missing")
+	}
+	if err := expired.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: expiredProfiles[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := expired.Snapshot(); got.Account.State != AccountStateLoginRequired || !containsAction(got.AvailableActions, ActionLoginPrepare) {
+		t.Fatalf("expired cached login receipt resurrected a session: %+v", got)
+	}
+	if err := expired.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Restore the real fixture clock for the remainder of the live flow.
+	controller = newController()
+	defer controller.Close()
+	if err := controller.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
+		t.Fatal(err)
+	}
+	resumeID := controller.Snapshot().Profiles[0].ID
+	if err := controller.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: resumeID}); err != nil {
+
 		t.Fatalf("session inspect: %v", err)
 	}
 	if got := controller.Snapshot(); got.Phase != PhaseAccountSession || got.Account.State != AccountStateOwnerProof || got.Account.RootState != RootStatePending || got.Management != ManagementUnavailable {
 		t.Fatalf("session inspection overstated Owner/management authority: %+v", got)
+	}
+	// Reopening uses authenticated local metadata, never the installer code.
+	// A cached successful inspect must not make this process session-ready.
+	if err := controller.Close(); err != nil {
+		t.Fatal(err)
+	}
+	controller = newController()
+	defer controller.Close()
+	if err := controller.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
+		t.Fatal(err)
+	}
+	profiles := controller.Snapshot().Profiles
+	if len(profiles) != 1 {
+		t.Fatal("authenticated local profile was not discovered")
+	}
+	recorder.mu.Lock()
+	recorder.spoofedOnce = false
+	recorder.mu.Unlock()
+	if err := controller.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: profiles[0].ID}); err == nil {
+		t.Fatal("lost fresh inspection response was not reported")
+	}
+	if got := controller.Snapshot(); got.Account.State != AccountStateSessionCheck || got.Management != ManagementUnavailable ||
+		!containsAction(got.AvailableActions, ActionRetry) || containsAction(got.AvailableActions, ActionLogout) {
+		t.Fatalf("cached inspection bypassed fresh inspection or pending fence: %+v", got)
+	}
+	if err := controller.Dispatch(ctx, Action{Kind: ActionRetry}); err != nil {
+		t.Fatalf("inspection recovery: %v", err)
+	}
+	paths, packets = recorder.snapshot()
+	if len(packets) != 9 || !bytes.Equal(packets[6], packets[7]) || bytes.Equal(packets[7], packets[8]) {
+		t.Fatal("inspection recovery did not settle the exact packet before a new inspection")
+	}
+	for _, packet := range packets {
+		clear(packet)
 	}
 	if err := controller.Dispatch(ctx, Action{Kind: ActionLogout}); err != nil {
 		t.Fatalf("session logout: %v", err)
@@ -277,7 +343,8 @@ func TestControllerRealHTTPAccountFlowAndExactUncertainRecovery(t *testing.T) {
 		"/v2/owner/account/claim/prepare", "/v2/owner/account/claim/prepare",
 		"/v2/owner/account/claim/complete", "/v2/owner/account/login/prepare",
 		"/v2/owner/account/login/complete", "/v2/owner/account/session/inspect",
-		"/v2/owner/account/session/logout",
+		"/v2/owner/account/session/inspect", "/v2/owner/account/session/inspect",
+		"/v2/owner/account/session/inspect", "/v2/owner/account/session/logout",
 	}
 	if !reflect.DeepEqual(paths, expected) {
 		t.Fatalf("real HTTP account API operations = %v, want %v", paths, expected)

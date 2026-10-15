@@ -7,11 +7,12 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/appkeys"
 	"github.com/cicada-ai/cicada/internal/appvault"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 func (c *nativeController) generateOwner() error {
-	if c.vault == nil || c.owner != nil {
+	if c.vault == nil || c.owner != nil || c.state.OwnerKeyIDAtHub != "" {
 		return ErrInvalidAction
 	}
 	identity, err := appkeys.Generate()
@@ -42,6 +43,13 @@ func (c *nativeController) importOwner(ctx context.Context, action Action) error
 	})
 	if err != nil {
 		return c.fail(PhaseError, "OWNER_IDENTITY_IMPORT_REJECTED", errors.New("existing Owner identity import rejected"))
+	}
+	if c.state.OwnerKeyIDAtHub != "" {
+		fingerprint, err := e2ee.OwnerDevicePublicKeyFingerprint(identity.Public())
+		if err != nil || identity.Public().ID != c.state.OwnerKeyIDAtHub || fingerprint != c.state.OwnerFingerprint {
+			identity.Close()
+			return c.fail(PhaseError, "OWNER_IDENTITY_SCOPE_MISMATCH", errors.New("import must preserve the known Owner identity"))
+		}
 	}
 	if c.vault == nil {
 		if err := c.openLocalVaultForOwnerImport(ctx); err != nil {
@@ -200,6 +208,7 @@ func (c *nativeController) inspectSession(ctx context.Context) error {
 	if err != nil {
 		return c.fail(PhaseError, "SESSION_EXPIRED", errors.New("account session must be renewed"))
 	}
+	c.inspectionRequestID = request.RequestID
 	return c.sendNew(ctx, wire.OperationSessionInspect, request)
 }
 
@@ -218,7 +227,18 @@ func (c *nativeController) retry(ctx context.Context) error {
 	if c.state.Pending == nil || len(c.state.Pending.Response) != 0 {
 		return ErrInvalidAction
 	}
-	return c.sendPending(ctx)
+	inspection := c.state.Pending.Operation == wire.OperationSessionInspect
+	if inspection {
+		c.inspectionRequestID = ""
+		c.requireSessionRecheck()
+	}
+	if err := c.sendPending(ctx); err != nil {
+		return err
+	}
+	if inspection && c.session != nil {
+		return c.inspectSession(ctx)
+	}
+	return nil
 }
 
 func (c *nativeController) canBeginOperation() bool {

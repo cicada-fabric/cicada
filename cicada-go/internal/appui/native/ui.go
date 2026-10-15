@@ -39,6 +39,7 @@ func RunWindow(controller appcore.Controller) error {
 	root, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	view := newView(controller, root, cancel, window)
+	view.startDispatch(appcore.Action{Kind: appcore.ActionDiscoverProfiles})
 	var ops op.Ops
 	for {
 		switch event := window.Event().(type) {
@@ -57,40 +58,50 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
-	controller    appcore.Controller
-	window        *app.Window
-	ctx           context.Context
-	cancel        context.CancelFunc
-	theme         *material.Theme
-	locale        appui.Locale
-	activation    widget.Editor
-	username      widget.Editor
-	password      widget.Editor
-	buttons       map[appcore.ActionKind]*widget.Clickable
-	contentList   widget.List
-	canvasList    widget.List
-	langEN        widget.Clickable
-	langZH        widget.Clickable
-	previewButton widget.Clickable
-	canvas        canvasWidget
-	preview       bool
-	busy          atomic.Bool
-	closed        atomic.Bool
-	workerWG      sync.WaitGroup
-	statusMu      sync.Mutex
-	failed        bool
+	controller     appcore.Controller
+	window         *app.Window
+	ctx            context.Context
+	cancel         context.CancelFunc
+	theme          *material.Theme
+	locale         appui.Locale
+	activation     widget.Editor
+	username       widget.Editor
+	password       widget.Editor
+	buttons        map[appcore.ActionKind]*widget.Clickable
+	profileButtons map[string]*widget.Clickable
+	contentList    widget.List
+	canvasList     widget.List
+	langEN         widget.Clickable
+	langZH         widget.Clickable
+	previewButton  widget.Clickable
+	canvas         canvasWidget
+	preview        bool
+	busy           atomic.Bool
+	closed         atomic.Bool
+	workerWG       sync.WaitGroup
+	statusMu       sync.Mutex
+	failed         bool
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
 	v := &view{
-		controller: controller,
-		window:     window,
-		ctx:        ctx,
-		cancel:     cancel,
-		theme:      material.NewTheme(),
-		locale:     appui.English,
-		buttons:    make(map[appcore.ActionKind]*widget.Clickable),
+		controller:     controller,
+		window:         window,
+		ctx:            ctx,
+		cancel:         cancel,
+		theme:          material.NewTheme(),
+		locale:         appui.English,
+		buttons:        make(map[appcore.ActionKind]*widget.Clickable),
+		profileButtons: make(map[string]*widget.Clickable),
 	}
+	// Keep Gio system-font fallback enabled for Windows CJK fonts. Layout
+	// dimensions use dp/sp so Windows scaling applies to text and controls.
+	v.theme.Bg = color.NRGBA{R: 18, G: 25, B: 35, A: 255}
+	v.theme.Fg = color.NRGBA{R: 229, G: 237, B: 245, A: 255}
+	v.theme.ContrastBg = color.NRGBA{R: 100, G: 224, B: 191, A: 255}
+	v.theme.ContrastFg = color.NRGBA{R: 13, G: 36, B: 33, A: 255}
+	v.contentList.Axis = layout.Vertical
+	v.activation.Mask = '•'
 	v.activation.SingleLine, v.username.SingleLine, v.password.SingleLine = true, true, true
 	v.activation.MaxLen = appui.ActivationCodeInputLimit()
 	v.username.MaxLen, v.password.MaxLen = 128, 1024
@@ -102,17 +113,19 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 }
 
 func (v *view) layout(gtx layout.Context) {
+	paint.Fill(gtx.Ops, v.theme.Bg)
 	snapshot := v.controller.Snapshot()
 	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
 	objects, isPreview := v.canvasObjects(snapshot, managementAuthorized)
-	layout.UniformInset(18).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	layout.UniformInset(28).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceBetween}.Layout(gtx,
 			layout.Rigid(v.header),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, snapshot) }),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				rows := v.contentRows(snapshot, managementAuthorized, objects, isPreview)
-				return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
-					return layout.UniformInset(8).Layout(gtx, rows[index])
+				rows := append([]layout.Widget{func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, snapshot) }}, v.contentRows(snapshot, managementAuthorized, objects, isPreview)...)
+				return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
+					return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
+						return layout.Inset{Top: 8, Bottom: 8, Left: 4, Right: 4}.Layout(gtx, rows[index])
+					})
 				})
 			}),
 		)
@@ -120,74 +133,96 @@ func (v *view) layout(gtx layout.Context) {
 }
 
 func (v *view) header(gtx layout.Context) layout.Dimensions {
-	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return material.H5(v.theme, appui.Text(v.locale, "app.title")).Layout(gtx)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.UniformInset(4).Layout(gtx, material.Body2(v.theme, appui.Text(v.locale, "app.language")).Layout)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if v.langEN.Clicked(gtx) {
-						v.locale = appui.English
-						v.window.Invalidate()
-					}
-					return v.button(gtx, &v.langEN, appui.Text(v.locale, "language.english"), v.locale != appui.English)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if v.langZH.Clicked(gtx) {
-						v.locale = appui.Chinese
-						v.window.Invalidate()
-					}
-					return v.button(gtx, &v.langZH, appui.Text(v.locale, "language.chinese"), v.locale != appui.Chinese)
-				}),
-			)
-		}),
-	)
+	title := func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Top: 4, Bottom: 12}.Layout(gtx, material.H5(v.theme, appui.Text(v.locale, "app.title")).Layout)
+	}
+	languages := func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if v.langEN.Clicked(gtx) {
+					v.locale = appui.English
+					v.window.Invalidate()
+				}
+				return layout.Inset{Right: 8}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return v.button(gtx, &v.langEN, "English", v.locale != appui.English)
+				})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if v.langZH.Clicked(gtx) {
+					v.locale = appui.Chinese
+					v.window.Invalidate()
+				}
+				return v.button(gtx, &v.langZH, "简体中文", v.locale != appui.Chinese)
+			}),
+		)
+	}
+	if gtx.Constraints.Max.X < gtx.Dp(600) {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, layout.Rigid(title), layout.Rigid(languages))
+	}
+	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx, layout.Flexed(1, title), layout.Rigid(languages))
 }
 
 func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensions {
-	return layout.UniformInset(14).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceEnd}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return material.H6(v.theme, v.phaseLabel(s.Phase)).Layout(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return material.Body2(v.theme, appui.Text(v.locale, "connection.health_public")).Layout(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return material.Body2(v.theme, v.hubSummary(s.Hub)).Layout(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return material.Body2(v.theme, v.accountSummary(s)).Layout(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return material.Body2(v.theme, v.managementLabel(s.Management)).Layout(gtx)
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if code := safeDisplay(s.ErrorCode, 80); code != "" {
-					return material.Body2(v.theme, appui.Text(v.locale, "common.error_code")+": "+code).Layout(gtx)
-				}
-				v.statusMu.Lock()
-				failed := v.failed
-				v.statusMu.Unlock()
-				if failed {
-					return material.Body2(v.theme, appui.Text(v.locale, "common.request_failed")).Layout(gtx)
-				}
-				return layout.Dimensions{}
-			}),
-		)
+	return layout.Inset{Top: 18, Bottom: 18}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceEnd}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return material.H6(v.theme, v.phaseLabel(s.Phase)).Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if v.busy.Load() {
+						return material.Body2(v.theme, appui.Text(v.locale, "operation.in_progress")).Layout(gtx)
+					}
+					return layout.Dimensions{}
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return material.Body2(v.theme, v.hubSummary(s.Hub)).Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return material.Body2(v.theme, v.accountSummary(s)).Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return material.Body2(v.theme, v.managementLabel(s.Management)).Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if code := safeDisplay(s.ErrorCode, 80); code != "" {
+						return material.Body2(v.theme, appui.Text(v.locale, "common.error_code")+": "+code).Layout(gtx)
+					}
+					v.statusMu.Lock()
+					failed := v.failed
+					v.statusMu.Unlock()
+					if failed {
+						return material.Body2(v.theme, appui.Text(v.locale, "common.request_failed")).Layout(gtx)
+					}
+					return layout.Dimensions{}
+				}),
+			)
+		})
 	})
 }
 
 func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
 	rows := make([]layout.Widget, 0, 12)
-	if hasAction(s, appcore.ActionConnect) {
+	if !s.Hub.Verified {
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
+		if len(s.Profiles) != 0 {
+			rows = append(rows, v.headingRow(appui.Text(v.locale, "connection.saved_profiles")))
+			for _, profile := range s.Profiles {
+				rows = append(rows, v.profileRow(profile))
+			}
+		}
+	}
+	if hasAction(s, appcore.ActionRetry) {
+		rows = append(rows, v.labelRow(appui.Text(v.locale, "setup.recovery_body")))
+	} else if hasAction(s, appcore.ActionGenerateOwner) || hasAction(s, appcore.ActionImportOwner) {
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_keys")), v.labelRow(appui.Text(v.locale, "setup.keys_body")))
+	} else if hasAction(s, appcore.ActionClaimComplete) || hasAction(s, appcore.ActionLoginPrepare) || hasAction(s, appcore.ActionLoginComplete) {
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_account")))
+	}
+	if hasAction(s, appcore.ActionConnect) && !s.Hub.Verified {
 		rows = append(rows,
-			v.labelRow(appui.Text(v.locale, "connection.not_connected")),
-			v.editorRow(&v.activation, appui.Text(v.locale, "connection.activation_code"), false),
+			v.headingRow(appui.Text(v.locale, "setup.step_connect")),
+			v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false),
 		)
 	}
 	if hasAction(s, appcore.ActionLoginPrepare) {
@@ -200,7 +235,7 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		rows = append(rows, v.editorRow(&v.password, appui.Text(v.locale, "account.password"), true))
 	}
 	for _, kind := range s.AvailableActions {
-		if kind == appcore.ActionSetCanvasViewport || kind == appcore.ActionSelectCanvas {
+		if kind == appcore.ActionSetCanvasViewport || kind == appcore.ActionSelectCanvas || kind == appcore.ActionResumeProfile || (s.Hub.Verified && (kind == appcore.ActionConnect || kind == appcore.ActionDiscoverProfiles)) {
 			continue
 		}
 		label, ok := v.actionLabel(kind)
@@ -232,6 +267,17 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 				v.startDispatch(action)
 			}
 		}
+		if kind == appcore.ActionDiscoverProfiles || kind == appcore.ActionImportOwner || kind == appcore.ActionLogout {
+			if v.busy.Load() {
+				gtx = gtx.Disabled()
+			}
+			style := material.Button(v.theme, button, label)
+			style.Background = color.NRGBA{R: 42, G: 56, B: 72, A: 255}
+			style.Color = v.theme.Fg
+			style.CornerRadius = 10
+			style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
+			return style.Layout(gtx)
+		}
 		return v.button(gtx, button, label, !v.busy.Load())
 	}
 }
@@ -240,6 +286,11 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 	action := appcore.Action{Kind: kind}
 	switch kind {
 	case appcore.ActionConnect:
+		if strings.HasPrefix(strings.TrimSpace(v.activation.Text()), "cicada-hub-connection-v1:") {
+			action.ConnectionCard = strings.TrimSpace(v.activation.Text())
+			v.activation.SetText("")
+			return action, true
+		}
 		action.ActivationCode = strings.TrimSpace(v.activation.Text())
 		v.activation.SetText("")
 		return action, action.ActivationCode != ""
@@ -265,7 +316,7 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		}
 		action.OwnerImport = ownerImport
 		return action, true
-	case appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
+	case appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
 		appcore.ActionSessionInspect, appcore.ActionLogout, appcore.ActionRetry:
 		return action, true
 	default:
@@ -282,6 +333,12 @@ func (v *view) startDispatch(action appcore.Action) {
 	go func() {
 		defer v.workerWG.Done()
 		err := v.controller.Dispatch(v.ctx, action)
+		if err == nil && action.Kind == appcore.ActionDiscoverProfiles {
+			profiles := v.controller.Snapshot().Profiles
+			if len(profiles) == 1 {
+				err = v.controller.Dispatch(v.ctx, appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profiles[0].ID})
+			}
+		}
 		clearOwnerImport(action.OwnerImport)
 		// Best-effort removal of secret-bearing references. Go strings cannot
 		// guarantee physical zeroization, but they need not remain in this UI.
@@ -324,16 +381,17 @@ func (v *view) clearSensitiveInputs() {
 
 func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 	key := map[appcore.ActionKind]string{
-		appcore.ActionConnect:        "connection.connect",
-		appcore.ActionGenerateOwner:  "account.generate_local_owner",
-		appcore.ActionImportOwner:    "account.select_owner_files",
-		appcore.ActionClaimPrepare:   "account.prepare_claim",
-		appcore.ActionClaimComplete:  "account.complete_claim",
-		appcore.ActionLoginPrepare:   "account.start_login",
-		appcore.ActionLoginComplete:  "account.login",
-		appcore.ActionSessionInspect: "account.refresh",
-		appcore.ActionLogout:         "account.logout",
-		appcore.ActionRetry:          "operation.recover_exact",
+		appcore.ActionConnect:          "connection.connect",
+		appcore.ActionDiscoverProfiles: "connection.discover_profiles",
+		appcore.ActionGenerateOwner:    "account.generate_local_owner",
+		appcore.ActionImportOwner:      "account.select_owner_files",
+		appcore.ActionClaimPrepare:     "account.prepare_claim",
+		appcore.ActionClaimComplete:    "account.complete_claim",
+		appcore.ActionLoginPrepare:     "account.start_login",
+		appcore.ActionLoginComplete:    "account.login",
+		appcore.ActionSessionInspect:   "account.refresh",
+		appcore.ActionLogout:           "account.logout",
+		appcore.ActionRetry:            "operation.recover_exact",
 	}
 	label, ok := key[kind]
 	return appui.Text(v.locale, label), ok
@@ -341,8 +399,11 @@ func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 
 func (v *view) button(gtx layout.Context, button *widget.Clickable, label string, enabled bool) layout.Dimensions {
 	style := material.Button(v.theme, button, label)
+	style.CornerRadius = 10
+	style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
 	if !enabled {
-		style.Background = color.NRGBA{R: 85, G: 88, B: 92, A: 255}
+		gtx = gtx.Disabled()
+		style.Background = color.NRGBA{R: 49, G: 61, B: 75, A: 255}
 		style.Color = color.NRGBA{R: 210, G: 210, B: 210, A: 255}
 	}
 	return style.Layout(gtx)
@@ -670,4 +731,45 @@ func (c *canvasWidget) updateEvents(gtx layout.Context, objects []appui.CanvasOb
 func finiteBounds(rect appui.CanvasRect) bool {
 	return !math.IsNaN(rect.X) && !math.IsNaN(rect.Y) && !math.IsNaN(rect.Width) && !math.IsNaN(rect.Height) &&
 		!math.IsInf(rect.X, 0) && !math.IsInf(rect.Y, 0) && !math.IsInf(rect.Width, 0) && !math.IsInf(rect.Height, 0)
+}
+
+// Cards use a single spacing and surface treatment across connection, account
+// and recovery steps. The native event loop remains free of IO.
+func (v *view) card(gtx layout.Context, content layout.Widget) layout.Dimensions {
+	return layout.Stack{}.Layout(gtx,
+		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
+			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(16)).Push(gtx.Ops).Pop()
+			paint.Fill(gtx.Ops, color.NRGBA{R: 27, G: 37, B: 50, A: 255})
+			return layout.Dimensions{Size: gtx.Constraints.Min}
+		}),
+		layout.Stacked(func(gtx layout.Context) layout.Dimensions { return layout.UniformInset(20).Layout(gtx, content) }),
+	)
+}
+
+func (v *view) headingRow(label string) layout.Widget {
+	return func(gtx layout.Context) layout.Dimensions { return material.H6(v.theme, label).Layout(gtx) }
+}
+
+func (v *view) profileRow(profile appcore.ProfileSnapshot) layout.Widget {
+	button := v.profileButtons[profile.ID]
+	if button == nil {
+		button = new(widget.Clickable)
+		v.profileButtons[profile.ID] = button
+	}
+	return func(gtx layout.Context) layout.Dimensions {
+		if button.Clicked(gtx) && !v.busy.Load() {
+			v.startDispatch(appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profile.ID})
+		}
+		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+				layout.Rigid(v.labelRow(safeDisplay(profile.Origin, 256))),
+				layout.Rigid(v.labelRow(appui.Text(v.locale, "account.id")+": "+safeDisplay(profile.AccountID, 128))),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Top: 12}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return v.button(gtx, button, appui.Text(v.locale, "connection.resume_profile"), !v.busy.Load())
+					})
+				}),
+			)
+		})
+	}
 }
