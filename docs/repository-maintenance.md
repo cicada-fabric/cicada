@@ -29,7 +29,6 @@ supported public release.
 ## Documentation and evidence
 
 [CICADA.md](../CICADA.md) is the adopted Architecture v2.3 specification.
-[CICADA_PROMPT.md](../CICADA_PROMPT.md) supplies current engineering guidance;
 [AGENTS.md](../AGENTS.md) supplies repository workflow. Implementation and
 acceptance are tracked in [architecture status](architecture-v2-status.md),
 [completion ledger](completion-ledger.md) and [current closeout](v01-current-closeout-20261009-validation.md).
@@ -37,9 +36,9 @@ The [technical guide](v01-technical-guide.md) and [index](README.md) are communi
 entry points; future [Agent collaboration design](v02-agent-collaboration-design.md)
 and [integration roadmap](v02-openai-integration-roadmap.md) remain proposals.
 
-The former root task scopes for M1-only and M2/M3–M5 implementation were
-superseded by current task guidance. Their original text remains in repository
-history. Dated validation reports, failures, UNKNOWN outcomes, source identities
+The former root task scopes for M1-only and M2/M3–M5 implementation are
+historical; the user's current request defines authorized work. Their original
+text remains in repository history. Dated validation reports, failures, UNKNOWN outcomes, source identities
 and artifact limits remain intact. Old provider/model choices, Runtime images
 and “current” headings within historical sections are not present deployment
 requirements. Contract-exported historical handoffs must retain their paths

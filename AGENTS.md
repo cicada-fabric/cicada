@@ -1,8 +1,11 @@
 # CICADA engineering workflow
 
-Read `CICADA.md` and `CICADA_PROMPT.md` before architecture changes. The former
-is the adopted product/architecture specification; implementation evidence lives
-in `docs/architecture-v2-*.md`, not in the specification.
+Read `CICADA.md` before architecture changes. It is the adopted
+product/architecture specification; implementation evidence lives in
+`docs/architecture-v2-*.md`, not in the specification. Use `docs/README.md` to
+find the current implementation status, native App plan and scoped validation.
+The user's current request defines task scope; dated task instructions and
+validation records are historical, not renewed authorization.
 
 - This repository owns Hub, Node, the Windows-first native App, Android under
   `apps/android`, and their protocols. Follow `apps/android/AGENTS.md` for that

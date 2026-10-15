@@ -12,8 +12,9 @@ Use `~/Cicada/.worktrees/cicada/<task>` for concurrent writers; see the
 retain their original repository names, source IDs and validation attribution.
 
 Use `dev` for active development; `main` is currently a public placeholder and
-is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
-[current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
+is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md)
+for repository workflow and [technical documentation](docs/README.md) for
+current implementation status, plans and validation.
 The current development source is **0.0.5**, with additive Hub schema **61**
 for Owner account claim/login and encrypted session state. Frozen Client
 contract **client-hub-v1.6.5**, encrypted wire **1**, and catalog **55** remain

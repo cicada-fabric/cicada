@@ -4,14 +4,15 @@ Start with the [technical guide](docs/v01-technical-guide.md) and
 [documentation index](docs/README.md). Development happens on `dev`; the current
 source is unreleased. Read [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md)
 for repository rules, toolchains and validation. Architecture changes also
-require [CICADA.md](CICADA.md) and [CICADA_PROMPT.md](CICADA_PROMPT.md).
+require the adopted [CICADA.md](CICADA.md) specification.
 
 Open an issue describing a reproducible problem or proposed behavior before a
 large change. Keep contributions small and reviewable, preserve existing state
 and explain the user-visible result. Include relevant tests, contract updates,
 documentation and a validation record in the same meaningful checkpoint.
 Client-facing changes follow [the Client development contract](docs/client-hub-development.md);
-Android implementation belongs in its separate repository. Retain Go for core
+Android implementation lives in [apps/android](apps/android/README.md) and follows
+its [nested workflow](apps/android/AGENTS.md). Retain Go for core
 services and avoid new coordination infrastructure or dependencies without a
 concrete need.
 

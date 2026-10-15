@@ -3,7 +3,7 @@
 当前工作区是单一仓库 `Cicada/cicada` 的 `apps/android`。Android App 从旧
 `CICADA_CLIENT` 的 `dev/react-native`（`d266c5eb1e5b5d95df1d8388dc133dedea8b424f`）
 通过不 squash 的 subtree 导入；旧仓库及历史验证记录保持原始归属。根目录
-`../../AGENTS.md`、`../../CICADA.md` 和 `../../CICADA_PROMPT.md` 的当前约束适用。
+`../../AGENTS.md` 的工程约束与 `../../CICADA.md` 的已采纳架构适用。
 统一产品术语为 Hub、Node、App 和 Owner、Manager、Advisor、Worker。历史
 `Client-Control`、`client-hub-*`、`monitor.*`、包名、应用 ID、原生模块名和签名输入
 继续保留兼容；不得机械改名或重置信任/密钥/计数器。
