@@ -207,10 +207,14 @@ func TestExistingOwnerImportCreatesEncryptedLocalVaultWithoutAuthority(t *testin
 }
 
 func syntheticOwnerImport(t *testing.T) OwnerImport {
+	return syntheticOwnerImportWithSeeds(t, 0x31, 0x53)
+}
+
+func syntheticOwnerImportWithSeeds(t *testing.T, kemByte, signingByte byte) OwnerImport {
 	t.Helper()
 	kemOID := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 4, 2}
 	signingOID := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 18}
-	kemSeed := bytes.Repeat([]byte{0x31}, mlkem768.KeySeedSize)
+	kemSeed := bytes.Repeat([]byte{kemByte}, mlkem768.KeySeedSize)
 	kemPublic, kemPrivate := mlkem768.NewKeyFromSeed(kemSeed)
 	kemExpanded, err := kemPrivate.MarshalBinary()
 	if err != nil {
@@ -231,7 +235,7 @@ func syntheticOwnerImport(t *testing.T) OwnerImport {
 	clear(kemChoice)
 	clear(kemPublicBytes)
 
-	signingSeed := bytes.Repeat([]byte{0x53}, mldsa65.SeedSize)
+	signingSeed := bytes.Repeat([]byte{signingByte}, mldsa65.SeedSize)
 	signingPublic, signingPrivate := mldsa65.Scheme().DeriveKey(signingSeed)
 	signingExpanded, err := signingPrivate.MarshalBinary()
 	if err != nil {

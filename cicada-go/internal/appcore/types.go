@@ -20,18 +20,19 @@ type Controller interface {
 type Phase string
 
 const (
-	PhaseNeedConnection Phase = "NEED_CONNECTION"
-	PhaseVerifyingHub   Phase = "VERIFYING_HUB"
-	PhaseConnected      Phase = "CONNECTED"
-	PhaseLocked         Phase = "LOCKED"
-	PhaseClaimChallenge Phase = "CLAIM_CHALLENGE_PENDING"
-	PhaseLoginChallenge Phase = "LOGIN_CHALLENGE_PENDING"
-	PhaseAccountPending Phase = "ACCOUNT_READY_OWNER_SIGNER_PENDING"
-	PhaseSessionCheck   Phase = "SESSION_RECHECK_REQUIRED"
-	PhaseAccountSession Phase = "ACCOUNT_SESSION_PENDING_OWNER_PROOF"
-	PhaseOwnerReady     Phase = "OWNER_READY"
-	PhaseUnavailable    Phase = "UNAVAILABLE"
-	PhaseError          Phase = "ERROR"
+	PhaseNeedConnection    Phase = "NEED_CONNECTION"
+	PhaseVerifyingHub      Phase = "VERIFYING_HUB"
+	PhaseConnected         Phase = "CONNECTED"
+	PhaseLocked            Phase = "LOCKED"
+	PhaseClaimChallenge    Phase = "CLAIM_CHALLENGE_PENDING"
+	PhaseLoginChallenge    Phase = "LOGIN_CHALLENGE_PENDING"
+	PhaseAccountPending    Phase = "ACCOUNT_READY_OWNER_SIGNER_PENDING"
+	PhaseSessionCheck      Phase = "SESSION_RECHECK_REQUIRED"
+	PhaseAccountSession    Phase = "ACCOUNT_SESSION_PENDING_OWNER_PROOF"
+	PhaseOwnerReady        Phase = "OWNER_READY"
+	PhaseActivationPending Phase = "ACTIVATION_PENDING"
+	PhaseUnavailable       Phase = "UNAVAILABLE"
+	PhaseError             Phase = "ERROR"
 )
 
 type HubHealth string
@@ -89,6 +90,7 @@ type AccountSnapshot struct {
 	RootState            RootState    `json:"root_state"`
 	OwnerFingerprint     string       `json:"owner_fingerprint,omitempty"`
 	LocalOwnerKeyPresent bool         `json:"local_owner_key_present"`
+	SessionExpiresAt     string       `json:"session_expires_at,omitempty"`
 }
 
 type CanvasState string
@@ -120,14 +122,32 @@ type CanvasSnapshot struct {
 // Snapshot contains display-safe state only. It never includes passwords,
 // activation codes, private keys, pending ciphertext, session tokens or proofs.
 type Snapshot struct {
-	Phase            Phase             `json:"phase"`
-	Hub              HubSnapshot       `json:"hub"`
-	Account          AccountSnapshot   `json:"account"`
-	Management       ManagementState   `json:"management"`
-	Canvas           CanvasSnapshot    `json:"canvas"`
-	AvailableActions []ActionKind      `json:"available_actions"`
-	ErrorCode        string            `json:"error_code,omitempty"`
-	Profiles         []ProfileSnapshot `json:"profiles,omitempty"`
+	Phase            Phase                 `json:"phase"`
+	Hub              HubSnapshot           `json:"hub"`
+	Account          AccountSnapshot       `json:"account"`
+	Management       ManagementState       `json:"management"`
+	Canvas           CanvasSnapshot        `json:"canvas"`
+	AvailableActions []ActionKind          `json:"available_actions"`
+	ErrorCode        string                `json:"error_code,omitempty"`
+	Profiles         []ProfileSnapshot     `json:"profiles,omitempty"`
+	Setup            SetupSnapshot         `json:"setup"`
+	Authorization    AuthorizationSnapshot `json:"authorization"`
+}
+
+type SetupSnapshot struct {
+	Purpose               string `json:"purpose,omitempty"`
+	OwnerKeyStored        bool   `json:"owner_key_stored"`
+	ExpectedOwnerKeyID    string `json:"expected_owner_key_id,omitempty"`
+	NeedsCredentials      bool   `json:"needs_credentials"`
+	ActivationPending     bool   `json:"activation_pending"`
+	AuthorizationDeadline string `json:"authorization_deadline,omitempty"`
+}
+
+type AuthorizationSnapshot struct {
+	State             string   `json:"state"`
+	ExpiresAt         string   `json:"expires_at,omitempty"`
+	AllowedOperations []string `json:"allowed_operations,omitempty"`
+	Confirmed         bool     `json:"confirmed"`
 }
 
 // ProfileSnapshot is authenticated local metadata, never evidence of current
@@ -145,6 +165,12 @@ const (
 	ActionConnect           ActionKind = "CONNECT"
 	ActionDiscoverProfiles  ActionKind = "DISCOVER_LOCAL_PROFILES"
 	ActionResumeProfile     ActionKind = "UNLOCK_AND_RESUME_PROFILE"
+	ActionActivateApp       ActionKind = "ACTIVATE_APP"
+	ActionLogin             ActionKind = "LOGIN"
+	ActionRecover           ActionKind = "RECOVER_SAVED_OPERATION"
+	ActionActivationStatus  ActionKind = "REFRESH_FINITE_AUTHORIZATION"
+	ActionRefresh           ActionKind = "REFRESH_ACCOUNT_AND_AUTHORIZATION"
+	ActionSetupAccount      ActionKind = "SET_UP_ACCOUNT"
 	ActionGenerateOwner     ActionKind = "GENERATE_OWNER_IDENTITY"
 	ActionImportOwner       ActionKind = "IMPORT_OWNER_IDENTITY"
 	ActionClaimPrepare      ActionKind = "CLAIM_PREPARE"
@@ -167,6 +193,8 @@ type Action struct {
 	ConnectionCard string
 	ActivationCode string
 	ProfileID      string
+	// A native confirmation must name the exact finite scope shown to the user.
+	ConfirmLimitedAuthorization bool
 
 	Username    string
 	Password    string

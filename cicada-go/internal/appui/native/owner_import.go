@@ -15,6 +15,8 @@ import (
 
 var errOwnerImportCancelled = errors.New("Owner file selection cancelled")
 
+var errEncryptedOwnerPEMUnsupported = errors.New("encrypted Owner PKCS#8 PEM is unsupported")
+
 func chooseOwnerImport(locale appui.Locale) (*appcore.OwnerImport, error) {
 	privateKEM, kemPrivatePath, err := readSelectedPEM(appui.Text(locale, "account.select_kem_private"), true, 1<<20)
 	if err != nil {
@@ -73,6 +75,14 @@ func readSelectedPEM(title string, private bool, limit int64) ([]byte, string, e
 		return nil, "", errors.New("selected Owner PEM file exceeds its size limit")
 	}
 	block, rest := pem.Decode(data)
+	if block != nil {
+		defer clear(block.Bytes)
+	}
+	if block != nil && private && block.Type == "ENCRYPTED PRIVATE KEY" {
+		clear(data)
+		clear(block.Bytes)
+		return nil, "", errEncryptedOwnerPEMUnsupported
+	}
 	if block == nil || len(bytes.TrimSpace(rest)) != 0 || !validPEMType(block.Type, private) {
 		clear(data)
 		return nil, "", errors.New("selected Owner PEM has an unexpected public/private key type")

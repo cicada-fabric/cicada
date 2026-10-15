@@ -3,7 +3,7 @@
 `cicada-app` is the native Go/Gio desktop entry point. It opens the local
 `appcore` controller and renders only its sanitized snapshot. Hub health, an
 account session, Owner proof, Root activation, and Manager authorization remain
-separate states. The N1 core has no authorized topology read path; the canvas
+separate states. The App has no authorized topology read path; the canvas
 therefore stays empty unless a future authorized provider supplies objects.
 “Local preview” is a separate, explicitly labeled fixture view and never creates
 Hub status or sends a request.
@@ -73,3 +73,48 @@ controller has no Manager-authorized topology reader; management and live
 canvas data remain unavailable even when the account session is active. Do not
 use this build to operate Hub management or treat account login as Root or
 Manager authorization.
+
+## N2 finite activation and recovery
+
+The main flow now presents one user decision at a time: connect with locally
+issued activation material, create or import Owner keys, confirm this App's
+limited access, and log in. Prepare/complete challenges, both Owner private-key
+proofs and the separate Owner-signed device grant run inside the Go controller.
+Legacy continuation imports the exact existing Owner keys and preserves account,
+Owner and key IDs, credentials and older devices. Encrypted PKCS#8 input remains
+unsupported and receives an explicit native error; the App never rekeys or asks
+the user to run an external decrypt/signing command as a workaround.
+
+The confirmation explains the fixed, nonrenewable 15-minute lease and its exact
+`nodes.list` / `session.capabilities` scope. Ordinary account login follows Root
+proof. The App confirms finite access only after independent fresh encrypted
+session inspection and activation status; general Manager access remains
+unavailable. Snapshot and native redraw deadlines remove readiness when the
+session or lease expires, without a network poll or renewal. Connection details
+are available separately from the English/Chinese guided steps.
+
+Every business request, recovery query and authenticated receipt is committed
+to the scoped encrypted vault before network progress is reported. Recovery
+first retries exact bytes. Unsigned HTTP failures never settle the business
+packet; an authenticated target-bound receipt or durable rejection fence does.
+`ABSENT` keeps it uncertain. A rejected wrong-password completion can reuse its
+still-valid registered-device challenge with corrected credentials. Current
+account/device epoch observations prevent historical session receipts from
+reviving a fenced session. Status observations are refreshed with a new request
+after exact-cache recovery, even when the cached observation is very recent.
+
+N2 App checkpoint validation used the fixed Go 1.27.2 image
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`
+and the stable module closure supplied by the integration owner. Focused normal
+tests passed **94 cases with zero skips**, including production Hub/SQLite/PQC
+HTTP without Control: initial prepare/complete response loss and App/Hub
+restarts, imported legacy identity/credential/device preservation, wrong-password
+correction, expired-session re-login, Root revocation and account/device epoch
+faults. Linux vet, Windows vet and Windows amd64 cross-build passed. **Race tests
+were still running when this checkpoint was committed**; their final result is
+reported separately to the integration owner. Native Windows GUI/DPAPI/ACL,
+Android, physical devices, public HTTPS and PQTLS remain NOT_RUN. Final integrated
+Docker interoperability and independent acceptance belong to the integration
+owner. Evidence is retained under
+`~/Cicada/.local/evidence/n2-app/n2-full-20261015-TDvq4Q`; tests ran on the dirty
+`570c12f` source plus the recorded App changes, not that HEAD alone.

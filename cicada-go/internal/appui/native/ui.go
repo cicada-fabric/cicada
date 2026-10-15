@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	"gioui.org/app"
@@ -74,6 +75,10 @@ type view struct {
 	langEN         widget.Clickable
 	langZH         widget.Clickable
 	previewButton  widget.Clickable
+	detailsButton  widget.Clickable
+	details        bool
+	consent        widget.Bool
+	inputScope     string
 	canvas         canvasWidget
 	preview        bool
 	busy           atomic.Bool
@@ -81,6 +86,7 @@ type view struct {
 	workerWG       sync.WaitGroup
 	statusMu       sync.Mutex
 	failed         bool
+	uiErrorCode    string
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -115,6 +121,18 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 func (v *view) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, v.theme.Bg)
 	snapshot := v.controller.Snapshot()
+	if scope := snapshot.Hub.Origin + "/" + snapshot.Account.AccountID; scope != v.inputScope {
+		v.inputScope = scope
+		v.username.SetText(snapshot.Account.Username)
+		v.password.SetText("")
+		v.consent.Value = false
+	}
+	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Authorization.ExpiresAt); err == nil && deadline.After(time.Now()) {
+		gtx.Execute(op.InvalidateCmd{At: deadline})
+	}
+	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Account.SessionExpiresAt); err == nil && deadline.After(time.Now()) {
+		gtx.Execute(op.InvalidateCmd{At: deadline})
+	}
 	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
 	objects, isPreview := v.canvasObjects(snapshot, managementAuthorized)
 	layout.UniformInset(28).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -163,94 +181,110 @@ func (v *view) header(gtx layout.Context) layout.Dimensions {
 }
 
 func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensions {
-	return layout.Inset{Top: 18, Bottom: 18}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceEnd}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.H6(v.theme, v.phaseLabel(s.Phase)).Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if v.busy.Load() {
-						return material.Body2(v.theme, appui.Text(v.locale, "operation.in_progress")).Layout(gtx)
-					}
-					return layout.Dimensions{}
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Body2(v.theme, v.hubSummary(s.Hub)).Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Body2(v.theme, v.accountSummary(s)).Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Body2(v.theme, v.managementLabel(s.Management)).Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if code := safeDisplay(s.ErrorCode, 80); code != "" {
-						return material.Body2(v.theme, appui.Text(v.locale, "common.error_code")+": "+code).Layout(gtx)
-					}
-					v.statusMu.Lock()
-					failed := v.failed
-					v.statusMu.Unlock()
-					if failed {
-						return material.Body2(v.theme, appui.Text(v.locale, "common.request_failed")).Layout(gtx)
-					}
-					return layout.Dimensions{}
-				}),
-			)
-		})
+	return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
+		rows := []layout.FlexChild{
+			layout.Rigid(v.headingRow(v.phaseLabel(s.Phase))),
+		}
+		if s.Hub.Origin != "" {
+			rows = append(rows, layout.Rigid(v.labelRow(safeDisplay(s.Hub.Origin, 256))))
+		}
+		if v.busy.Load() {
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "operation.in_progress"))))
+		}
+		if s.Setup.OwnerKeyStored {
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "setup.keys_stored"))))
+		}
+		if s.Setup.Purpose != "" {
+			rows = append(rows, layout.Rigid(v.labelRow(v.authorizationLabel(s.Authorization.State))))
+			if expiry, err := time.Parse(time.RFC3339Nano, s.Authorization.ExpiresAt); err == nil {
+				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "authorization.until")+" "+expiry.Local().Format("15:04"))))
+			}
+		}
+		if s.ErrorCode != "" {
+			rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, s.ErrorCode))))
+		} else {
+			v.statusMu.Lock()
+			code, failed := v.uiErrorCode, v.failed
+			v.statusMu.Unlock()
+			if code != "" {
+				rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, code))))
+			} else if failed {
+				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "common.request_failed"))))
+			}
+		}
+		rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if v.detailsButton.Clicked(gtx) {
+				v.details = !v.details
+			}
+			style := material.Button(v.theme, &v.detailsButton, appui.Text(v.locale, "connection.details"))
+			style.Background = color.NRGBA{}
+			style.Color = v.theme.ContrastBg
+			return style.Layout(gtx)
+		}))
+		if v.details {
+			rows = append(rows, layout.Rigid(v.labelRow(v.hubSummary(s.Hub))), layout.Rigid(v.labelRow(v.accountSummary(s))), layout.Rigid(v.labelRow(v.managementLabel(s.Management))))
+		}
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
 	})
 }
 
 func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
+	flow := appui.Flow(s)
 	rows := make([]layout.Widget, 0, 12)
-	if !s.Hub.Verified {
+	switch flow.Stage {
+	case "connect":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
-		if len(s.Profiles) != 0 {
+		if len(s.Profiles) > 0 {
 			rows = append(rows, v.headingRow(appui.Text(v.locale, "connection.saved_profiles")))
 			for _, profile := range s.Profiles {
 				rows = append(rows, v.profileRow(profile))
 			}
 		}
-	}
-	if hasAction(s, appcore.ActionRetry) {
-		rows = append(rows, v.labelRow(appui.Text(v.locale, "setup.recovery_body")))
-	} else if hasAction(s, appcore.ActionGenerateOwner) || hasAction(s, appcore.ActionImportOwner) {
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
+	case "keys":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_keys")), v.labelRow(appui.Text(v.locale, "setup.keys_body")))
-	} else if hasAction(s, appcore.ActionClaimComplete) || hasAction(s, appcore.ActionLoginPrepare) || hasAction(s, appcore.ActionLoginComplete) {
+	case "activate":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.activate_app")), v.labelRow(appui.Text(v.locale, "setup.grant_body")))
+		if expiry, err := time.Parse(time.RFC3339Nano, s.Setup.AuthorizationDeadline); err == nil {
+			rows = append(rows, v.labelRow(appui.Text(v.locale, "authorization.until")+" "+expiry.Local().Format("15:04")))
+		}
+	case "account":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_account")))
+	case "login":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "account.login")), v.labelRow(appui.Text(v.locale, "setup.login_body")))
+	case "recovery":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "operation.recover_connection")), v.labelRow(appui.Text(v.locale, "setup.recovery_body")))
+	case "ready":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.account_ready")))
+		if s.Account.State == appcore.AccountStateOwnerProof {
+			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.owner_proof_pending")))
+		}
 	}
-	if hasAction(s, appcore.ActionConnect) && !s.Hub.Verified {
-		rows = append(rows,
-			v.headingRow(appui.Text(v.locale, "setup.step_connect")),
-			v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false),
-		)
-	}
-	if hasAction(s, appcore.ActionLoginPrepare) {
+	if flow.Username {
 		rows = append(rows, v.editorRow(&v.username, appui.Text(v.locale, "account.username"), false))
 	}
-	if hasAction(s, appcore.ActionLoginComplete) || hasAction(s, appcore.ActionClaimComplete) {
-		if hasAction(s, appcore.ActionClaimComplete) {
-			rows = append(rows, v.editorRow(&v.username, appui.Text(v.locale, "account.username"), false))
-		}
+	if flow.Password {
 		rows = append(rows, v.editorRow(&v.password, appui.Text(v.locale, "account.password"), true))
 	}
-	for _, kind := range s.AvailableActions {
-		if kind == appcore.ActionSetCanvasViewport || kind == appcore.ActionSelectCanvas || kind == appcore.ActionResumeProfile || (s.Hub.Verified && (kind == appcore.ActionConnect || kind == appcore.ActionDiscoverProfiles)) {
-			continue
+	if flow.LimitedConsent {
+		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+			if v.busy.Load() {
+				gtx = gtx.Disabled()
+			}
+			return material.CheckBox(v.theme, &v.consent, appui.Text(v.locale, "setup.grant_consent")).Layout(gtx)
+		})
+	}
+	if label, ok := v.actionLabel(flow.Primary); ok {
+		rows = append(rows, v.actionButton(flow.Primary, label, s))
+	}
+	for _, kind := range flow.Secondary {
+		if label, ok := v.actionLabel(kind); ok {
+			rows = append(rows, v.actionButton(kind, label, s))
 		}
-		label, ok := v.actionLabel(kind)
-		if !ok {
-			continue
-		}
-		rows = append(rows, v.actionButton(kind, label, s))
 	}
-	if s.Account.State == appcore.AccountStateOwnerProof || s.Phase == appcore.PhaseAccountPending || s.Phase == appcore.PhaseAccountSession {
-		rows = append(rows, v.labelRow(appui.Text(v.locale, "account.owner_proof_pending")))
+	if flow.Stage == "ready" {
+		rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
 	}
-	if !managementAuthorized {
-		rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")))
-	}
-	rows = append(rows, v.canvasSection(s, managementAuthorized, objects, preview))
 	return rows
 }
 
@@ -261,7 +295,20 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 		v.buttons[kind] = button
 	}
 	return func(gtx layout.Context) layout.Dimensions {
-		if button.Clicked(gtx) && !v.busy.Load() {
+		enabled := !v.busy.Load() && (kind != appcore.ActionActivateApp || v.consent.Value)
+		flow := appui.Flow(s)
+		if kind == flow.Primary {
+			if flow.Username && strings.TrimSpace(v.username.Text()) == "" {
+				enabled = false
+			}
+			if flow.Password && v.password.Text() == "" {
+				enabled = false
+			}
+			if kind == appcore.ActionConnect && strings.TrimSpace(v.activation.Text()) == "" {
+				enabled = false
+			}
+		}
+		if button.Clicked(gtx) && enabled {
 			action, ok := v.actionFor(kind, s)
 			if ok {
 				v.startDispatch(action)
@@ -278,13 +325,27 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
 			return style.Layout(gtx)
 		}
-		return v.button(gtx, button, label, !v.busy.Load())
+		return v.button(gtx, button, label, enabled)
 	}
 }
 
 func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.Action, bool) {
 	action := appcore.Action{Kind: kind}
 	switch kind {
+	case appcore.ActionActivateApp:
+		action.ConfirmLimitedAuthorization = v.consent.Value
+		v.consent.Value = false
+		if s.Setup.NeedsCredentials {
+			action.Username = strings.TrimSpace(v.username.Text())
+			action.Password = v.password.Text()
+			v.password.SetText("")
+		}
+		return action, action.ConfirmLimitedAuthorization
+	case appcore.ActionLogin, appcore.ActionSetupAccount:
+		action.Username = strings.TrimSpace(v.username.Text())
+		action.Password = v.password.Text()
+		v.password.SetText("")
+		return action, action.Username != "" && action.Password != ""
 	case appcore.ActionConnect:
 		if strings.HasPrefix(strings.TrimSpace(v.activation.Text()), "cicada-hub-connection-v1:") {
 			action.ConnectionCard = strings.TrimSpace(v.activation.Text())
@@ -310,13 +371,17 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		ownerImport, err := chooseOwnerImport(v.locale)
 		if err != nil {
 			if !errors.Is(err, errOwnerImportCancelled) {
-				v.markFailed()
+				code := ""
+				if errors.Is(err, errEncryptedOwnerPEMUnsupported) {
+					code = "ENCRYPTED_OWNER_PEM_UNSUPPORTED"
+				}
+				v.markFailed(code)
 			}
 			return appcore.Action{}, false
 		}
 		action.OwnerImport = ownerImport
 		return action, true
-	case appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
+	case appcore.ActionRecover, appcore.ActionRefresh, appcore.ActionActivationStatus, appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
 		appcore.ActionSessionInspect, appcore.ActionLogout, appcore.ActionRetry:
 		return action, true
 	default:
@@ -347,6 +412,7 @@ func (v *view) startDispatch(action appcore.Action) {
 		action.Username = ""
 		v.statusMu.Lock()
 		v.failed = err != nil
+		v.uiErrorCode = ""
 		v.statusMu.Unlock()
 		v.busy.Store(false)
 		if !v.closed.Load() {
@@ -365,9 +431,10 @@ func clearOwnerImport(owner *appcore.OwnerImport) {
 	clear(owner.SigningPublicSPKI)
 }
 
-func (v *view) markFailed() {
+func (v *view) markFailed(code string) {
 	v.statusMu.Lock()
 	v.failed = true
+	v.uiErrorCode = code
 	v.statusMu.Unlock()
 	v.window.Invalidate()
 }
@@ -382,6 +449,12 @@ func (v *view) clearSensitiveInputs() {
 func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 	key := map[appcore.ActionKind]string{
 		appcore.ActionConnect:          "connection.connect",
+		appcore.ActionActivateApp:      "setup.activate_app",
+		appcore.ActionLogin:            "account.login",
+		appcore.ActionSetupAccount:     "account.claim",
+		appcore.ActionRecover:          "operation.recover_connection",
+		appcore.ActionRefresh:          "account.refresh",
+		appcore.ActionActivationStatus: "account.refresh",
 		appcore.ActionDiscoverProfiles: "connection.discover_profiles",
 		appcore.ActionGenerateOwner:    "account.generate_local_owner",
 		appcore.ActionImportOwner:      "account.select_owner_files",
@@ -413,6 +486,9 @@ func (v *view) editorRow(editor *widget.Editor, hint string, password bool) layo
 	return func(gtx layout.Context) layout.Dimensions {
 		if password {
 			editor.Mask = '•'
+		}
+		if v.busy.Load() {
+			gtx = gtx.Disabled()
 		}
 		return material.Editor(v.theme, editor, hint).Layout(gtx)
 	}
@@ -487,18 +563,19 @@ func (v *view) canvasObjects(s appcore.Snapshot, managementAuthorized bool) ([]a
 
 func (v *view) phaseLabel(phase appcore.Phase) string {
 	key := map[appcore.Phase]string{
-		appcore.PhaseNeedConnection: "state.connection",
-		appcore.PhaseVerifyingHub:   "state.unverified",
-		appcore.PhaseConnected:      "state.connection",
-		appcore.PhaseLocked:         "state.locked",
-		appcore.PhaseClaimChallenge: "state.claim_pending",
-		appcore.PhaseLoginChallenge: "account.login",
-		appcore.PhaseSessionCheck:   "account.state.session_check",
-		appcore.PhaseAccountPending: "state.owner_pending",
-		appcore.PhaseAccountSession: "state.owner_pending",
-		appcore.PhaseOwnerReady:     "state.owner_ready",
-		appcore.PhaseUnavailable:    "state.unavailable",
-		appcore.PhaseError:          "state.error",
+		appcore.PhaseNeedConnection:    "state.connection",
+		appcore.PhaseVerifyingHub:      "state.unverified",
+		appcore.PhaseConnected:         "state.connection",
+		appcore.PhaseLocked:            "state.locked",
+		appcore.PhaseClaimChallenge:    "state.claim_pending",
+		appcore.PhaseLoginChallenge:    "account.login",
+		appcore.PhaseSessionCheck:      "account.state.session_check",
+		appcore.PhaseAccountPending:    "state.owner_pending",
+		appcore.PhaseAccountSession:    "state.owner_pending",
+		appcore.PhaseOwnerReady:        "state.owner_ready",
+		appcore.PhaseActivationPending: "setup.activate_app",
+		appcore.PhaseUnavailable:       "state.unavailable",
+		appcore.PhaseError:             "state.error",
 	}
 	return appui.Text(v.locale, key[phase])
 }
@@ -772,4 +849,12 @@ func (v *view) profileRow(profile appcore.ProfileSnapshot) layout.Widget {
 			)
 		})
 	}
+}
+
+func (v *view) authorizationLabel(state string) string {
+	key := map[string]string{"ACTIVE": "authorization.active", "LOGIN_REQUIRED": "authorization.login_required", "RECHECK_REQUIRED": "authorization.recheck_required", "EXPIRED": "authorization.expired", "REVOKED": "authorization.revoked", "UNAVAILABLE": "authorization.unavailable", "UNCONFIRMED": "authorization.unconfirmed"}[state]
+	if key == "" {
+		key = "authorization.unconfirmed"
+	}
+	return appui.Text(v.locale, key)
 }

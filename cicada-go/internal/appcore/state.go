@@ -19,28 +19,51 @@ const (
 )
 
 type durableState struct {
-	Format           string               `json:"format"`
-	Version          int                  `json:"version"`
-	Connection       HubConnectionCard    `json:"connection"`
-	DeviceID         string               `json:"device_id,omitempty"`
-	DeviceKeyID      string               `json:"device_key_id,omitempty"`
-	OwnerKeyID       string               `json:"owner_key_id,omitempty"`
-	AccountID        string               `json:"account_id,omitempty"`
-	OwnerID          string               `json:"owner_id,omitempty"`
-	Username         string               `json:"username,omitempty"`
-	AccountState     AccountState         `json:"account_state"`
-	RootState        RootState            `json:"root_state"`
-	OwnerKeyIDAtHub  string               `json:"owner_key_id_at_hub,omitempty"`
-	OwnerFingerprint string               `json:"owner_fingerprint,omitempty"`
-	ClaimChallenge   *wire.ClaimChallenge `json:"claim_challenge,omitempty"`
-	LoginChallenge   *wire.LoginChallenge `json:"login_challenge,omitempty"`
-	Pending          *pendingOperation    `json:"pending,omitempty"`
+	Format               string               `json:"format"`
+	Version              int                  `json:"version"`
+	Connection           HubConnectionCard    `json:"connection"`
+	DeviceID             string               `json:"device_id,omitempty"`
+	DeviceKeyID          string               `json:"device_key_id,omitempty"`
+	OwnerKeyID           string               `json:"owner_key_id,omitempty"`
+	AccountID            string               `json:"account_id,omitempty"`
+	OwnerID              string               `json:"owner_id,omitempty"`
+	Username             string               `json:"username,omitempty"`
+	AccountState         AccountState         `json:"account_state"`
+	RootState            RootState            `json:"root_state"`
+	OwnerKeyIDAtHub      string               `json:"owner_key_id_at_hub,omitempty"`
+	OwnerFingerprint     string               `json:"owner_fingerprint,omitempty"`
+	ClaimChallenge       *wire.ClaimChallenge `json:"claim_challenge,omitempty"`
+	LoginChallenge       *wire.LoginChallenge `json:"login_challenge,omitempty"`
+	Pending              *pendingOperation    `json:"pending,omitempty"`
+	Enrollment           *enrollmentState     `json:"enrollment,omitempty"`
+	Recovery             *pendingOperation    `json:"recovery,omitempty"`
+	LastRecovery         *pendingOperation    `json:"last_recovery,omitempty"`
+	ObservedAccountEpoch uint64               `json:"observed_account_epoch,omitempty"`
+	ObservedDeviceEpoch  uint64               `json:"observed_device_epoch,omitempty"`
+	RecoveryHistory      []recoveryDigest     `json:"recovery_history,omitempty"`
+}
+
+type recoveryDigest struct {
+	Operation string `json:"operation"`
+	Digest    string `json:"digest"`
+	CreatedAt string `json:"created_at"`
+}
+
+type enrollmentState struct {
+	Material      wire.ActivationMaterial   `json:"material"`
+	Prepare       *wire.ActivationPrepare   `json:"prepare,omitempty"`
+	PreparePacket []byte                    `json:"prepare_packet,omitempty"`
+	Challenge     *wire.ActivationChallenge `json:"challenge,omitempty"`
+	Result        *wire.ActivationResult    `json:"result,omitempty"`
+	// The last activation packet is the target of fresh status observations.
+	Target *pendingOperation `json:"target,omitempty"`
 }
 
 type pendingOperation struct {
 	Operation string `json:"operation"`
 	Request   []byte `json:"request"`
 	Response  []byte `json:"response,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 type durableSession struct {
@@ -62,24 +85,43 @@ func decodeDurableState(data []byte) (durableState, error) {
 		state.AccountState == "" || state.RootState == "" || validateConnectionCard(state.Connection, time.Time{}) != nil {
 		return durableState{}, errors.New("invalid encrypted App state")
 	}
-	if state.Pending != nil {
-		if accountRoutes[state.Pending.Operation] == "" || len(state.Pending.Request) == 0 || len(state.Pending.Request) > maxDurablePacketSize ||
-			len(state.Pending.Response) > maxDurablePacketSize {
+	for _, pending := range []*pendingOperation{state.Pending, state.Recovery, state.LastRecovery} {
+		if pending == nil {
+			continue
+		}
+		if accountPath(pending.Operation) == "" || len(pending.Request) == 0 || len(pending.Request) > maxDurablePacketSize ||
+			len(pending.Response) > maxDurablePacketSize {
 			return durableState{}, errors.New("invalid encrypted App state")
 		}
-		if _, err := wire.PreflightRequest(state.Pending.Request, state.Pending.Operation); err != nil {
+		if _, err := wire.PreflightRequest(pending.Request, pending.Operation); err != nil {
 			return durableState{}, errors.New("invalid encrypted App state")
 		}
-		if len(state.Pending.Response) != 0 {
-			if _, err := wire.DecodePacket(state.Pending.Response); err != nil {
+		if len(pending.Response) != 0 {
+			if _, err := wire.DecodePacket(pending.Response); err != nil {
 				return durableState{}, errors.New("invalid encrypted App state")
 			}
 		}
+	}
+	if len(state.RecoveryHistory) > 8 || (state.Recovery != nil && state.Pending == nil && state.Enrollment == nil) {
+		return durableState{}, errors.New("invalid encrypted App recovery state")
+	}
+	if state.Enrollment != nil && state.Enrollment.Target == nil && state.Pending != nil &&
+		(state.Pending.Operation == wire.OperationActivationPrepare || state.Pending.Operation == wire.OperationActivationComplete) {
+		state.Enrollment.Target = state.Pending
 	}
 	return state, nil
 }
 
 func encodeDurableState(state durableState) ([]byte, error) {
+	// While activation itself occupies the main slot, retain its exact packet
+	// once. After login replaces that slot, Target retains the activation bytes
+	// needed for authenticated status. This bounds nested recovery receipts.
+	if state.Enrollment != nil && state.Enrollment.Target != nil && state.Pending != nil &&
+		state.Enrollment.Target.Operation == state.Pending.Operation && bytes.Equal(state.Enrollment.Target.Request, state.Pending.Request) {
+		e := *state.Enrollment
+		e.Target = nil
+		state.Enrollment = &e
+	}
 	data, err := json.Marshal(state)
 	if err != nil || len(data) > 1<<20 {
 		return nil, errors.New("App state exceeds local vault limit")

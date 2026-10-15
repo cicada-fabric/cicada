@@ -35,7 +35,7 @@ func TestActivationCodeInputLimitCoversRealWireCode(t *testing.T) {
 	if len(code) > ActivationCodeInputLimit() {
 		t.Fatalf("wire code length %d exceeds editor limit %d", len(code), ActivationCodeInputLimit())
 	}
-	if ActivationCodeInputLimit() != hubaccountwire.MaxAppClaimCodeBytes {
+	if ActivationCodeInputLimit() < hubaccountwire.MaxAppClaimCodeBytes || ActivationCodeInputLimit() < 32*1024 {
 		t.Fatalf("editor limit = %d, protocol limit = %d", ActivationCodeInputLimit(), hubaccountwire.MaxAppClaimCodeBytes)
 	}
 }
