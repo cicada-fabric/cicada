@@ -4,12 +4,19 @@ Read `CICADA.md` and `CICADA_PROMPT.md` before architecture changes. The former
 is the adopted product/architecture specification; implementation evidence lives
 in `docs/architecture-v2-*.md`, not in the specification.
 
-- This repository owns Hub, Node, Control and their protocols. The independent
-  `../CICADA_CLIENT` repository owns Android. Read it for interoperability review,
-  but do not modify it without an explicit new instruction from the user.
+- This repository owns Hub, Node, the Windows-first native App, Android under
+  `apps/android`, and their protocols. Follow `apps/android/AGENTS.md` for that
+  subtree. The former `CICADA_CLIENT` repository is a retained migration source;
+  do not modify it. Keep Hub/Node/App and Owner/Manager/Advisor/Worker terminology
+  distinct from historical Client/Monitor protocol identifiers.
 - Develop on `dev`; keep changes small and reviewable. Do not push, release,
   merge into `main`, replace resident deployments, or rotate real keys as part
   of routine development. Preserve uncommitted work and existing state.
+- The parent `~/Cicada` directory is a workspace, not a Git repository. Keep the
+  canonical checkout at `~/Cicada/cicada` on `dev`. Give concurrent writers linked
+  worktrees at `~/Cicada/.worktrees/cicada/<task>` and coordinate Git mutations;
+  do not copy repositories or allocate permanent directories per AI. See
+  `docs/workspace-development.md` and `docs/repository-migration.md`.
 - Make one commit for each meaningful checkpoint, including its code, tests,
   contract, documentation, and validation record as applicable. Avoid routine
   follow-up microcommits that merely split one checkpoint's test or document
@@ -34,4 +41,4 @@ in `docs/architecture-v2-*.md`, not in the specification.
   and must never be used to initialize a deployment.
 - Retain Go for the core. Use shell for command orchestration and Python standard
   library for artifact/JSON tooling when appropriate. Do not add infrastructure
-  or dependencies merely to coordinate the two repositories.
+  or dependencies merely to coordinate the product components.

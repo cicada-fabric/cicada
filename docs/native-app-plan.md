@@ -1,8 +1,9 @@
 # Native App plan
 
-This plan describes the Windows-first native App inside the CICADA Go monorepo.
-It does not change the independent Android repository or claim native Windows
-acceptance. “App” is the current product name; older Client-facing wire names,
+This plan describes the Windows-first native App inside the CICADA monorepo.
+Its Go implementation remains in `cicada-go`; Android is maintained under
+`apps/android` with its original history retained. The layout does not establish
+native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
 ## Product boundary
@@ -34,9 +35,10 @@ implemented or accepted by this plan.
 | N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Not implemented. Requires server-side read/action authorization and durable operation semantics. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
-An Android repository history-preserving subtree import is an optional,
-separate repository-maintenance decision. It is not part of N1 and must not be
-performed by copying its source tree or rewriting its history.
+The authorized Android history-preserving subtree import is complete as
+repository maintenance; see the [migration record](repository-migration.md).
+It used a nonsquashed Git import and did not rewrite old history. It does not
+complete N1 or transfer earlier Android acceptance to the migrated source.
 
 ## N1 acceptance boundary
 

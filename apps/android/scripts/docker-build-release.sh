@@ -12,7 +12,7 @@ if [[ $# -eq 2 && "$2" != --android-test ]]; then
 fi
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-data_dir="/gpu1-share/data/cicada-client"
+data_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}"
 build_image_id="$1"
 docker_root="$(docker info --format '{{.DockerRootDir}}')"
 if [[ "$docker_root" != /gpu1-share/data/* ]]; then

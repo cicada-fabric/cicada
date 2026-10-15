@@ -1,18 +1,18 @@
-# CICADA Android Client：产品与交互
+# Cicada Android App：产品与交互
 
-状态：手机 Client 的 Android 产品需求与当前实现边界；未来支持 iOS 与原生鸿蒙，技术边界见 [stack-decision.md](stack-decision.md)。核心目标架构仍以 `../../CICADA/CICADA.md` 为准。**当前已接真实开发 Hub 的 Client-Control v1 加密会话和部分管理 API。** 未登录不显示开发 fixture；没有服务端确认的管理动作不得显示成功。
+状态：Android App 产品需求与当前实现边界；未来支持 iOS 与原生鸿蒙，技术边界见 [stack-decision.md](stack-decision.md)。核心目标架构仍以 [`../../../CICADA.md`](../../../CICADA.md) 为准。**当前已接真实开发 Hub 的 Client-Control v1 加密会话和部分管理 API。** 未登录不显示开发 fixture；没有服务端确认的管理动作不得显示成功。
 
 ## 第一版的五件事
 
-1. **随手看状态。** 首页展示需要用户注意的 Goal、审批与异常；可按 Node 查看在线新鲜度、Worker 的运行/等待/结束状态、Goal 的 running/paused/finished/failed 状态，以及 Group 的任务和可选 Monitor。Node 在线不代表 Worker 正在运行；Worker 退出不代表 Goal 验收完成。每项状态显示来源和观察时间，未知保持未知。
+1. **随手看状态。** 首页展示需要用户注意的 Goal、审批与异常；可按 Node 查看在线新鲜度、Worker 的运行/等待/结束状态、Goal 的 running/paused/finished/failed 状态，以及 Group 的任务和可选 Advisor。Node 在线不代表 Worker 正在运行；Worker 退出不代表 Goal 验收完成。每项状态显示来源和观察时间，未知保持未知。
 2. **快速说给 Control。** 首页底部固定一个显眼、单手可触达的语音按钮和文字入口。用户主动开始/停止录音；端侧模型把语音转成可编辑文本，用户检查后才提交。无模型时仍可打字，并可进入模型管理。第一版不做后台常听或自动发送原始音频。
 3. **可选安装多个本地模型。** 用户自己选择下载、安装、切换和删除语音转文字模型，看到语言、能力、下载大小、来源和许可；应用私有目录分别保存模型并校验下载完整性。允许 GB 级端侧模型，未来可扩展文字、图像或其他能力，但每种能力须有实际平台推理适配和验收，不能把任意 Hugging Face 仓库当成可直接运行。模型在第一版没有管理权限，也不直接决定 Goal/审批。若以后启用联网转写，必须另行告知音频将交给谁并由用户选择；当前阶段不启用。
 4. **手机控制 Hub 面板。** 手机上的管理面板是 Hub 权威状态的移动操作界面。用户可浏览 Node/Worker/Goal/Group/审批，并按加密会话能力调用现有 `topology.*`、`nodes.*` 和 `approvals.*`。选 Node/Workspace/Agent 的自然语言需求交给 `intent.submit` 后由 Control 决定；手机离线时显示空状态或上次观察时间，不把本地拖动当成授权。
-5. **与他人的 Thread 对接。** 用户可发起限定目标、方向、动作、数据范围、有效期和共同 Hub 的连接请求；对方用户独立批准相同范围后才生效。Contact、Group 父子关系、Monitor 建议和画布连线都不自动提供授权。
+5. **与他人的 Thread 对接。** 用户可发起限定目标、方向、动作、数据范围、有效期和共同 Hub 的连接请求；对方用户独立批准相同范围后才生效。Contact、Group 父子关系、Advisor 建议和画布连线都不自动提供授权。
 
 ## Control 请求与结果
 
-Android App 发给 Control 的是用户确认过的请求，不是直接给 Worker 的指令。Control 可能直接查询获授权 Worker，也可能向 Group 的 Monitor 请求汇总；具体路径由 Control/Guard 和可用能力决定，Monitor 是可选的。Control 可选择 Node、Workspace、Agent 创建或推进 Goal，也可要求澄清或用户批准。App 显示请求已持久接受、处理进度、结果及证据来源；`HTTP 200/202` 不等于 Worker 已执行或 Goal 已完成。
+Android App 发给 Control 的是用户确认过的请求，不是直接给 Worker 的指令。Control 可能直接查询获授权 Worker，也可能向 Group 的 Advisor 请求汇总；具体路径由 Control/Guard 和可用能力决定，Advisor 是可选的。Control 可选择 Node、Workspace、Agent 创建或推进 Goal，也可要求澄清或用户批准。App 显示请求已持久接受、处理进度、结果及证据来源；`HTTP 200/202` 不等于 Worker 已执行或 Goal 已完成。
 
 ## 状态和导航
 
@@ -30,4 +30,4 @@ Android App 发给 Control 的是用户确认过的请求，不是直接给 Work
 
 这里的受授权 Control 是用户请求的**明文业务终点**，可以读取用户交给它的指令；这与普通 peer 消息要求 Hub 盲转发的目标不同。App 不使用旧 `/v1` 管理 bearer；端侧转写本身也不构成手机到 Hub 的加密证明。
 
-普通 peer 的明文当前仍可能经过旧 Fabric/Contact 路径；App 不宣称盲 Hub 已上线，不拉取完整敏感 Thread 历史。设备绑定不自动 Join Thread，也不授予 peer 正文解密权。
+普通 peer 正文的 Hub 盲转发目标与此 Android 管理通道分开验收；旧 Fabric/Contact 验证记录不得用来推定当前核心部署。App 不拉取完整敏感 Thread 历史。设备绑定不自动 Join Thread，也不授予 peer 正文解密权。

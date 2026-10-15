@@ -497,7 +497,7 @@ def fixture_source_identity(fixture, binding):
             raise ValueError('DEFAULT_EXECUTION_SOURCE_IDENTITY')
     elif fixture.get('fixture_revision') != HELPER_PRODUCER_REVISION:
         raise ValueError('DEFAULT_DUAL_SOURCE_IDENTITY')
-    repo = Path('/home/zyf/CICADA')
+    repo = Path(__file__).resolve().parents[2]
     expected = {str(repo/'scripts/native_observer'/name) for name in
         ('request_observer_default.py','test_request_observer_default.py','request_observer_gate.py','request_observer_run.py')}
     rows = fixture.get('fixture_files')
@@ -525,7 +525,7 @@ def check_fixture(fixture, binding):
     if type(fixture.get('socket_roots')) is not dict or set(fixture['socket_roots']) != {'a','b'}:
         raise ValueError('DEFAULT_SOCKET_ROOT_SHAPE')
     identity = fixture_source_identity(fixture, binding)
-    repo = Path('/home/zyf/CICADA')
+    repo = Path(__file__).resolve().parents[2]
     head = subprocess.run(['git','-C',str(repo),'rev-parse','HEAD'],capture_output=True,check=True,timeout=5).stdout.decode().strip()
     if head != identity['fixture_revision']:
         raise ValueError('DEFAULT_FIXTURE_REVISION')

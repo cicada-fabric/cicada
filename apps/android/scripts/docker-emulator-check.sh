@@ -2,13 +2,14 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-data_dir="/gpu1-share/data/cicada-client"
+data_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}"
+output_dir="${CICADA_ANDROID_OUTPUT_DIR:-$repo_dir/build/outputs}"
 docker_root="$(docker info --format '{{.DockerRootDir}}')"
 if [[ "$docker_root" != /gpu1-share/data/* ]]; then
   echo "Docker data root is outside /gpu1-share/data: $docker_root" >&2
   exit 1
 fi
-apk="$data_dir/build-output/cicada-client-debug.apk"
+apk="$output_dir/cicada-app-android-debug.apk"
 if [[ ! -f "$apk" ]]; then
   echo "Build the APK with ./scripts/docker-build.sh first." >&2
   exit 1
@@ -35,5 +36,5 @@ docker run --rm --user root --device /dev/kvm "${network_args[@]}" \
   -e CICADA_EMULATOR_GUEST_PROXY="${CICADA_EMULATOR_GUEST_PROXY:-10.0.2.2:7890}" \
   -e CICADA_EMULATOR_HUB_BASE_URL="${CICADA_EMULATOR_HUB_BASE_URL:-http://10.0.2.2:8787}" \
   -v "$repo_dir:/workspace:ro" -v "$apk:/tmp/cicada.apk:ro" \
-  -v "$data_dir/build-output:/out" \
+  -v "$output_dir:/out" \
   cicada-client-emulator:dev bash /workspace/scripts/emulator-smoke.sh

@@ -1,6 +1,18 @@
-# CICADA Client development and validation plan
+# Cicada Android App development and validation plan
 
-## Current milestone: clean v1.6.5 offline delivery
+## Current workspace: unified monorepo
+
+Android source is maintained in `apps/android` on root `dev`; the adopted product
+architecture is [CICADA.md](../../../CICADA.md). The import preserves Android history
+through `d266c5e` and keeps original acceptance attributed to its tested source.
+Current vocabulary is App/Advisor; frozen Client/Monitor protocol and package
+identifiers remain compatible. The migration validation is recorded in
+[monorepo migration validation](monorepo-migration-validation.md).
+Android runtime, real native Runtime, physical-device and public HTTPS checks
+must each retain their own actual results. Historical joint-test authorization
+below does not authorize a new live fixture or deployment.
+
+## Historical milestone: clean v1.6.5 offline delivery
 
 Import and independently verify the clean `c6887f4` protocol, source inventory,
 shipping image IDs and binary. Pin the shared UI, Native session and existing

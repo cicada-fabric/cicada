@@ -830,7 +830,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     } catch (error) { setHubMessage('创建设备密钥失败：' + safeHubError(error)); }
     finally { setHubBusy(false); }
   };
-  const startNewDeviceEnrollment = () => Alert.alert('创建新的 Client 设备身份？',
+  const startNewDeviceEnrollment = () => Alert.alert('创建新的 App 设备身份？',
     '这会擦除本机旧 Keystore 包裹身份并生成新的 PQ 密钥。旧设备记录不会从 Hub 自动撤销，Hub 上可能仍保持有效；需要另一台已授权设备撤销旧记录。待处理原始密文只作为本地审计保留。', [
       {text: '取消', style: 'cancel'},
       {text: '创建新身份', style: 'destructive', onPress: async () => {
@@ -1130,18 +1130,18 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
         !Array.isArray(preview.recipients) ||
         preview.recipients.length > MONITOR_BROADCAST_MAX_RECIPIENTS ||
         !['PREPARED', 'APPROVED', 'DISPATCH_AUTHORIZED'].includes(preview.status)) {
-      throw new Error('安全桥没有返回完整、已验证的 Monitor 同意预览');
+      throw new Error('安全桥没有返回完整、已验证的 Advisor 同意预览');
     }
     if (preview.source.ownerId !== monitorOwnerId ||
         preview.recipients.some(recipient => recipient.ownerId !== monitorOwnerId)) {
-      throw new Error('Monitor 预览身份不属于当前 Owner；已拒绝显示');
+      throw new Error('Advisor 预览身份不属于当前 Owner；已拒绝显示');
     }
     const endpointIds = [preview.source.endpointId,
       ...preview.recipients.map(recipient => recipient.endpointId)];
     if (new Set(endpointIds).size !== endpointIds.length ||
         preview.recipients.some((recipient, index) => index > 0 &&
           preview.recipients[index - 1].endpointId > recipient.endpointId)) {
-      throw new Error('Monitor 预览中的 Endpoint roster 无效或未按协议排序');
+      throw new Error('Advisor 预览中的 Endpoint roster 无效或未按协议排序');
     }
     if ([preview.source, ...preview.recipients].some(card =>
       !card.principalId || !card.ownerId || !card.nodeId ||
@@ -1166,7 +1166,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     setMonitorPreviewStaleReason(staleReason);
     setMonitorMessage(staleReason || (confirmAlreadyTried ?
       '已恢复只读预览；确认操作已尝试，只能读取同一预览状态。' :
-      '已验证同一 Owner 的固定 roster 和 Monitor Endpoint 密钥授权。'));
+      '已验证同一 Owner 的固定 roster 和 Advisor Endpoint 密钥授权。'));
   };
   const toggleBroadcastPermission = (membership: JsonObject) => {
     const groupId = field(membership, 'group_id');
@@ -1192,7 +1192,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     }
     if (!monitorOperationAllowed(hubCapabilities, sessionCapabilities, hubStatus,
       'monitor.broadcast_prepare')) {
-      setMonitorMessage('加密 session.capabilities 或已验证的 Monitor 安全桥未授权 Prepare。');
+      setMonitorMessage('加密 session.capabilities 或已验证的 Advisor 安全桥未授权 Prepare。');
       return;
     }
     const bodyBytes = monitorBodyUtf8ByteLength(monitorBody);
@@ -1209,7 +1209,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
       return;
     }
     if (!monitorGroupId || !monitorEndpointId) {
-      setMonitorMessage('请选择一个 Group 和该 Group 中已单独授权广播的 Monitor Endpoint。');
+      setMonitorMessage('请选择一个 Group 和该 Group 中已单独授权广播的 Advisor Endpoint。');
       return;
     }
     setMonitorBusy(true);
@@ -1230,7 +1230,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           field(endpoint, 'principal_id') === field(item, 'principal_id') &&
           Array.isArray(endpoint.group_ids) && endpoint.group_ids.includes(monitorGroupId)));
       if (!freshGroup || !freshMembership) {
-        throw new Error('当前拓扑未确认所选 Group、Monitor 角色与独立广播权限；请重新选择。');
+        throw new Error('当前拓扑未确认所选 Group、Advisor 角色与独立广播权限；请重新选择。');
       }
       setMonitorPreparedBody(sentBody);
       setMonitorNeedsBodyReentry(false);
@@ -1244,11 +1244,11 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
       });
       if (preview.groupId !== monitorGroupId ||
           preview.monitorEndpointId !== monitorEndpointId) {
-        throw new Error('安全桥返回的预览与所选 Group/Monitor 不一致');
+        throw new Error('安全桥返回的预览与所选 Group/Advisor 不一致');
       }
       acceptMonitorPreview(preview, sentBody, freshTopology);
       await refreshMonitorOperations().catch(() => []);
-      setMonitorMessage(`已准备并验证预览；请核对 Monitor 身份、版本与完整 roster。` +
+      setMonitorMessage(`已准备并验证预览；请核对 Advisor 身份、版本与完整 roster。` +
         ` Group 授权截止 ${preview.grantExpiresAt}，最迟可确认至 ${preview.validUntil}。`);
     } catch (error) {
       const code = hubErrorCode(error);
@@ -1260,17 +1260,17 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           'Prepare 结果待核实；正在读取本机保存的原 operation ID。不会创建新 Prepare。');
       } else if (/temporarily busy|backpressure|capacity|limit/i.test(msg) ||
           /TEMPORARILY_BUSY|CAPACITY|BACKPRESSURE/.test(code)) {
-        setMonitorMessage('Hub 当前暂时繁忙，Monitor 广播容量已满或服务正忙。不会自动重试；稍后由你手动重新准备。');
+        setMonitorMessage('Hub 当前暂时繁忙，Advisor 广播容量已满或服务正忙。不会自动重试；稍后由你手动重新准备。');
       } else if (/preview expired|expired/i.test(msg) || /EXPIRED/.test(code)) {
         setMonitorMessage('预览已过期；请读取最新 Group 与权限后重新准备。');
         setMonitorPreviewStaleReason('此预览已过期；需重新准备。');
       } else if (/not currently authorized|unauthorized/i.test(msg) || /AUTHORIZ/.test(code)) {
-        setMonitorMessage('Hub 当前未授权此 Monitor 广播。请读取权威 Group 成员与权限状态。');
+        setMonitorMessage('Hub 当前未授权此 Advisor 广播。请读取权威 Group 成员与权限状态。');
       } else if (/inputs conflict|CONFLICT/.test(msg) || /CONFLICT/.test(code)) {
         setMonitorMessage('拓扑或版本已变化；请重读 Group 与成员 roster 后重新准备。');
         setMonitorPreviewStaleReason('拓扑已变化；此预览失效。');
       } else {
-        setMonitorMessage('Monitor Prepare 未确认成功：' + safeHubError(error) + '。不会自动创建第二个操作。');
+        setMonitorMessage('Advisor Prepare 未确认成功：' + safeHubError(error) + '。不会自动创建第二个操作。');
       }
       await refreshMonitorOperations().catch(() => []);
       const latest = await clientHub.getStatus().catch(() => null);
@@ -1341,7 +1341,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
       hubStatus, 'monitor.broadcast_status')) return;
     const expectedPreview = monitorPreview?.previewId === previewId ? monitorPreview : null;
     setMonitorBusy(true);
-    setMonitorMessage('正在读取同一 Monitor 预览的权威分发状态…');
+    setMonitorMessage('正在读取同一 Advisor 预览的权威分发状态…');
     try {
       const status = await clientHub.monitorBroadcastStatus({previewId});
       if (status.previewId !== previewId ||
@@ -1430,7 +1430,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           result.groupId !== monitorPreview.groupId ||
           result.monitorEndpointId !== monitorPreview.monitorEndpointId ||
           result.bodySha256 !== monitorPreview.bodySha256) {
-        throw new Error('安全桥 Confirm 结果不匹配此 Monitor 预览');
+        throw new Error('安全桥 Confirm 结果不匹配此 Advisor 预览');
       }
       setMonitorMessage(`Hub 已确认 ${result.status}。正在读取逐收件人状态；这不表示消息已被 Runtime 或模型消费。`);
       await readMonitorBroadcastStatus(monitorPreview.previewId);
@@ -1456,9 +1456,9 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
   };
   const requestMonitorConfirm = () => {
     if (!monitorPreview) return;
-    Alert.alert('明确批准此 Monitor 广播',
+    Alert.alert('明确批准此 Advisor 广播',
       `Group ${monitorPreview.groupId} · v${monitorPreview.groupRevision}\n` +
-      `Monitor ${monitorPreview.monitorEndpointId}\n` +
+      `Advisor ${monitorPreview.monitorEndpointId}\n` +
       `${monitorPreview.recipients.length} 个有序收件人\n` +
       `Group 授权到期 ${monitorPreview.grantExpiresAt}\n` +
       `Preview 到期 ${monitorPreview.expiresAt} · 最迟可确认 ${monitorPreview.validUntil}\n` +
@@ -1506,7 +1506,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     const expectedVersion = Number(device.version);
     if (!targetId || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 ||
       field(device, 'state') !== 'ACTIVE' || targetId === hubStatus.deviceId) return;
-    Alert.alert('永久撤销此 Client 设备？',
+    Alert.alert('永久撤销此 App 设备？',
       `${targetId} · 当前 Hub 版本 v${expectedVersion}\n撤销后该设备的旧密钥和旧请求将被 Hub 拒绝。请核对设备 ID。`, [
         {text: '取消', style: 'cancel'},
         {text: '永久撤销', style: 'destructive', onPress: async () => {
@@ -1637,7 +1637,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     Alert.alert(title, `Hub ${hubStatus.hubId}\nNetwork ${activeNetwork.network_id}\n\n此操作将提交给 Hub，并按对象版本校验。`, [
       {text: '取消', style: 'cancel'},
       {text: '提交', onPress: async () => {
-        invalidateMonitorPreview('Hub 拓扑写入会使 Monitor 预览失效；需重读 roster 并重新准备。');
+        invalidateMonitorPreview('Hub 拓扑写入会使 Advisor 预览失效；需重读 roster 并重新准备。');
         setTopologyActionBusy(true);
         let accepted = false;
         try {
@@ -1840,10 +1840,10 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
     syncMonitor();
     const timer = setInterval(syncMonitor, 1000);
     refreshTopologyRef.current().catch(error => {
-      if (active) setMonitorMessage('刷新 Monitor 拓扑失败：' + safeHubError(error));
+      if (active) setMonitorMessage('刷新 Advisor 拓扑失败：' + safeHubError(error));
     });
     refreshMonitorOperationsRef.current().catch(error => {
-      if (active) setMonitorMessage('读取本机 Monitor 操作索引失败：' + safeHubError(error));
+      if (active) setMonitorMessage('读取本机 Advisor 操作索引失败：' + safeHubError(error));
     });
     return () => { active = false; clearInterval(timer); };
   }, [showMonitorPanel, monitorFeatureReady]);
@@ -2376,12 +2376,12 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
             publicCapabilities={hubCapabilities} sessionCapabilities={sessionCapabilities}
             onRefresh={async () => { await refreshHubStatus(); await refreshTopology(); }} />}
           {monitorFeatureReady && <>
-            <ActionCard title={showMonitorPanel ? '收起 Monitor 广播' : 'Monitor 广播'}
+            <ActionCard title={showMonitorPanel ? '收起 Advisor 广播' : 'Advisor 广播'}
               body="向一个同 Owner Group 中已固定的收件人 roster 发送精确文本；先逐项审核，再由 Android 安全桥加密批准。"
               onPress={() => setShowMonitorPanel(open => !open)} />
             <View collapsable={false} nativeID="monitor-panel-host">
             {showMonitorPanel && <>
-              <Notice>Monitor 入口已由当前 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。</Notice>
+              <Notice>Advisor 入口已由当前 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。</Notice>
               {!!monitorMessage && <Text style={s.small}>{monitorMessage}</Text>}
               <Card>
                 <Section name="1 · 选择确切 Group" action="重读拓扑" onPress={() => {
@@ -2406,7 +2406,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                 })}
                 {!!monitorGroupId && !selectedMonitorGroup &&
                   <Notice>所选 Group 已不在最新活跃拓扑中，请重新选择。</Notice>}
-                <Section name="2 · 选择该 Group 的 Monitor Endpoint" />
+                <Section name="2 · 选择该 Group 的 Advisor Endpoint" />
                 {monitorGroupId && eligibleMonitorEndpoints.length === 0 &&
                   <Notice>此 Group 没有已加入且同时具备 `monitor` 角色和独立 `message.broadcast` 权限的 Endpoint。授予角色不会自动开启该权限。</Notice>}
                 {eligibleMonitorEndpoints.map(endpoint => {
@@ -2415,7 +2415,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                   return <Pressable key={id} style={[s.monitorChoice, selected && s.monitorChoiceSelected]}
                     onPress={() => {
                       if (id === monitorEndpointId) return;
-                      invalidateMonitorPreview('Monitor Endpoint 选择已改变；当前预览不能再确认。');
+                      invalidateMonitorPreview('Advisor Endpoint 选择已改变；当前预览不能再确认。');
                       setMonitorEndpointId(id);
                     }} disabled={monitorBusy}>
                     <Text style={s.cardTitle}>{field(endpoint, 'name') || id}</Text>
@@ -2432,9 +2432,9 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                       setMonitorPreviewStaleReason('正文已更改；当前预览绑定的是原正文，需重新 Prepare。');
                       setMonitorMessage('正文已更改；原预览不能批准。正文未被自动修整或规范化。');
                     }
-                  }} placeholder="输入要交给所选 Monitor 的准确文本" multiline
+                  }} placeholder="输入要交给所选 Advisor 的准确文本" multiline
                   autoCapitalize="none" autoCorrect={false} editable={!monitorBusy}
-                  accessibilityLabel="Monitor 广播精确正文" />
+                  accessibilityLabel="Advisor 广播精确正文" />
                 <Text style={s.small}>{monitorBodyBytes === null ?
                   '正文包含孤立 UTF-16 代理项；安全桥会拒绝这种无效 Unicode。' :
                   `${monitorBodyBytes.toLocaleString()} / ${MONITOR_BROADCAST_BODY_MAX_BYTES.toLocaleString()} UTF-8 字节`}
@@ -2458,7 +2458,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                 <Section name="只读恢复原 Prepare" />
                 {monitorRecoverableOperations.map(operation => <Card key={operation.operationId}>
                   <Text style={s.cardTitle}>Prepare 待恢复</Text>
-                  <Text style={s.description}>Group {operation.groupId} · Monitor {operation.monitorEndpointId}</Text>
+                  <Text style={s.description}>Group {operation.groupId} · Advisor {operation.monitorEndpointId}</Text>
                   <Text style={s.small}>状态：{operation.state} · Preview 到期：{operation.expiresAt || '尚未取得预览'}</Text>
                   <Text style={s.small}>Group 授权到期：{operation.grantExpiresAt || '索引未提供'} · 最迟可确认：{monitorOperationValidUntil(operation) || '未知'}</Text>
                   <Button title="恢复原预览（只读）" secondary onPress={async () => {
@@ -2471,7 +2471,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                 <Section name="Confirm 已尝试 · 只读状态" />
                 {monitorStatusOperations.map(operation => <Card key={operation.operationId}>
                   <Text style={s.cardTitle}>Confirm 结果待核实</Text>
-                  <Text style={s.description}>Group {operation.groupId} · Monitor {operation.monitorEndpointId}</Text>
+                  <Text style={s.description}>Group {operation.groupId} · Advisor {operation.monitorEndpointId}</Text>
                   <Text style={s.small}>到期：{operation.expiresAt || '未知'} · 不会再次 Confirm</Text>
                   <Button title="查询同一预览状态" secondary onPress={async () => {
                     if (operation.previewId) await readMonitorBroadcastStatus(operation.previewId);
@@ -2483,7 +2483,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
               {monitorPreview && <>
                 <Section name="4 · 核对已验证的完整同意预览" />
                 <Card>
-                  <View style={s.row}><Text style={s.cardTitle}>Monitor 预览</Text>
+                  <View style={s.row}><Text style={s.cardTitle}>Advisor 预览</Text>
                     <Pill text={monitorExpired ? '已过期' : monitorPreview.status}
                       tone={monitorExpired ? 'amber' : monitorPreview.status === 'PREPARED' ? 'green' : 'muted'} /></View>
                   <Text style={s.description}>Group {monitorPreview.groupId} · revision {monitorPreview.groupRevision} · {monitorPreview.recipients.length} 个有序收件人</Text>
@@ -2493,9 +2493,9 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
                   <Text style={s.small}>正文摘要：{monitorPreview.bodySha256} · 正文不会显示在预览卡或发送到 Prepare</Text>
                   {monitorCurrentStaleReason ? <Notice>{monitorCurrentStaleReason}</Notice> : null}
                   {monitorNeedsBodyReentry && <Notice>此预览来自只读恢复，原文不在本机内存。请原样重新输入；安全桥会在签名或联网前比对 SHA-256，不匹配时不会 Confirm。</Notice>}
-                  <Section name="Monitor 来源身份与当前版本" />
+                  <Section name="Advisor 来源身份与当前版本" />
                   <MonitorConsentCard endpoint={monitorPreview.source} source />
-                  <Text style={s.small}>Verified Monitor key {monitorPreview.monitorKeyId} · binding {monitorPreview.monitorBindingId} / epoch {monitorPreview.monitorBindingEpoch}</Text>
+                  <Text style={s.small}>Verified Advisor key {monitorPreview.monitorKeyId} · binding {monitorPreview.monitorBindingId} / epoch {monitorPreview.monitorBindingEpoch}</Text>
                   <Section name={`固定收件人 roster · ${monitorPreview.recipients.length}`} />
                   {monitorPreview.recipients.length === 0 &&
                     <Notice>当前预览没有收件人，因此不能批准广播。</Notice>}
@@ -2643,7 +2643,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
               <Text style={s.description}>Group {field(member, 'group_id')} · {field(member, 'role')} · {field(member, 'status')} · v{field(member, 'version')}</Text>
               <Text style={s.small}>message.broadcast：{hasPermission ?
                 (permissionEnabled ? '已明确允许' : '未允许') : '未由当前 snapshot 确认'}
-                {' · Monitor 角色本身不改变此值'}</Text>
+                {' · Advisor 角色本身不改变此值'}</Text>
               {canToggle && <View style={s.modelActions}>
                 <Button title={permissionEnabled ? '撤销广播权限' : '明确允许广播'} secondary
                   onPress={() => toggleBroadcastPermission(member)} disabled={topologyActionBusy} />
@@ -2719,7 +2719,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
       <Section name="连接与安全" />
       <Notice>Hub 的用户内容、状态和管理 RPC 只通过 ML-KEM-768 + ML-DSA-65 + AES-256-GCM 加密到受授权 Control。不会降级到 /v1 bearer。公开能力与身份只是候选信息，不代表已信任。</Notice>
       <Card>
-        <View style={s.row}><Text style={s.cardTitle}>Client ↔ Hub 安全会话</Text>
+        <View style={s.row}><Text style={s.cardTitle}>App ↔ Hub 安全会话</Text>
           <Pill text={realSession ? `加密会话 · ${sessionCapabilities?.role || hubStatus.role || '已认证'}` :
             hubStatus.enrolled ? '设备已登记 · 会话未就绪' : hubStatus.pinned ? 'Hub 已固定 · 设备未登记' : '未连接'}
             tone={realSession ? 'green' : 'amber'} /></View>
@@ -2743,7 +2743,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
             Hub 仍在处理原请求。原包与计数保留；稍后再次调用 /rpc/recover，不创建新 operation。
           </Notice>}
           {hubStatus.sessionError === 'RECOVERY_UNAVAILABLE' && <Notice>
-            Hub 无法恢复这条旧请求的结果密文。Client 保留 pending 并阻断新操作；重复查询不会重发业务操作，需 Hub 维护者对账。
+            Hub 无法恢复这条旧请求的结果密文。App 保留 pending 并阻断新操作；重复查询不会重发业务操作，需 Hub 维护者对账。
           </Notice>}
           {hubStatus.sessionError === 'RECOVERY_REJECTED' && <Notice>
             Hub 的恢复端没有该请求记录。可以选择显式原样重发；若请求从未到达 Hub，这会执行原操作。重放保护会阻止已接受请求再次执行。
@@ -2777,12 +2777,12 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
         {sessionCapabilities && <Text style={s.small}>Hub 授权操作：{sessionCapabilities.available_rpc_operations.join(', ') || '无'}</Text>}
       </Card>
       {clientDeviceListAllowed && <>
-        <Section name="本 Owner 的 Client 设备" action={clientDevicesBusy ? '读取中…' : '读取设备列表'}
+        <Section name="本 Owner 的 App 设备" action={clientDevicesBusy ? '读取中…' : '读取设备列表'}
           onPress={() => { if (!clientDevicesBusy) void fetchClientDevices().catch(() => undefined); }} />
         <Notice>设备清单来自加密 devices.list。撤销使用 Hub 返回的版本，由 Hub 永久隔离目标设备；当前手机不能撤销自身。设备登记不授予 peer 消息解密权。</Notice>
         {!!clientDevicesMessage && <Text style={s.small}>{clientDevicesMessage}</Text>}
         {clientDevicesLoaded && clientDevices.length === 0 &&
-          <Text style={s.small}>Hub 未返回此 Owner 的 Client 设备。</Text>}
+          <Text style={s.small}>Hub 未返回此 Owner 的 App 设备。</Text>}
         {clientDevicesLoaded && clientDevices.slice(0, 50).map(device => {
           const id = field(device, 'device_id');
           const self = Boolean(hubStatus.deviceId && id === hubStatus.deviceId);
@@ -2803,7 +2803,7 @@ function Client({connection}: {connection: HubConnection}): React.JSX.Element {
           <Notice>Hub 返回 {clientDevices.length} 台设备；当前页面只显示前 50 台。请使用 Hub 管理界面处理其余设备。</Notice>}
       </>}
       {hubStatus.authFenced && <>
-        <Notice>{hubStatus.sessionError || 'Client 设备认证已隔离；所有远程操作保持关闭。旧密钥没有因单个 HTTP 403 自动删除。'}</Notice>
+        <Notice>{hubStatus.sessionError || 'App 设备认证已隔离；所有远程操作保持关闭。旧密钥没有因单个 HTTP 403 自动删除。'}</Notice>
         <Button title="重新授权需要时创建新设备身份" onPress={startNewDeviceEnrollment} secondary={hubBusy} disabled={hubBusy} />
       </>}
       <Section name="1 · 读取未受信任的 Hub 信息" />
@@ -3136,7 +3136,7 @@ function LinkProposalPanel({status, capabilities, sessionCapabilities, apiScope,
     <Section name="跨用户 Link 提案" action={busy ? '处理中…' : '重读本人提案'}
       onPress={() => { if (!busy) void readLinks(); }} />
     <Notice>{capabilities.external_thread_links ?
-      '此页只管理双方同意的提案；Client 尚未提供普通 peer 消息入口。密钥授权须经独立公钥核验、外部 Owner 签名及手机明确确认。' :
+      '此页只管理双方同意的提案；App 尚未提供普通 peer 消息入口。密钥授权须经独立公钥核验、外部 Owner 签名及手机明确确认。' :
       'external_thread_links=false：Hub 只开放邀请与 PROPOSED 提案；不显示聊天、消息发送或已连通状态。密钥授权只记录精确范围的双方同意，不开放普通消息。'}</Notice>
     {!!message && <Text testID={linkListDiagnosticTestId(
       linkListDiagnosticState === 'OK_EMPTY' || linkListDiagnosticState === 'OK_NONEMPTY' ?
@@ -3283,7 +3283,7 @@ function MonitorConsentCard({endpoint, source = false, ordinal}: {
   endpoint: MonitorConsentEndpoint; source?: boolean; ordinal?: number;
 }) {
   return <View style={s.monitorConsentCard}>
-    <Text style={s.kicker}>{source ? 'Monitor 来源' : `收件人 ${ordinal || ''}`}</Text>
+    <Text style={s.kicker}>{source ? 'Advisor 来源' : `收件人 ${ordinal || ''}`}</Text>
     <Text style={s.cardTitle}>{endpoint.endpointId}</Text>
     <Text style={s.description}>Owner {endpoint.ownerId} · Principal {endpoint.principalId} · Node {endpoint.nodeId}</Text>
     <Text style={s.small}>Membership revision {endpoint.membershipRevision} · Group join revision {endpoint.groupJoinRevision}</Text>

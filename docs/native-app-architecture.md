@@ -23,10 +23,12 @@ product onboarding path. The target Hub public root URL `/` returns 404 and
 does not serve a web dashboard. That retirement behavior is not yet implemented
 or validated for all deployments.
 
-The Android application remains in the separate `../CICADA_CLIENT` repository.
-This work does not modify that repository or import and rewrite its history.
-A future history-preserving subtree move is a separate authorized maintenance
-decision.
+Android source is maintained in this repository under `apps/android`, following
+its nested `AGENTS.md`. The authorized nonsquashed subtree import preserved its
+original Git history; the old source repository is retained without further
+development. See the [migration record](repository-migration.md). This layout
+change does not complete N1, N2/N3, Android interoperability or native Windows
+acceptance; historical results retain their original source attribution.
 
 ## Authority and cryptographic boundaries
 

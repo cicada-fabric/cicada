@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-data_dir="/gpu1-share/data/cicada-client"
+data_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}"
 sha256sum --check <<EOF
 c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51  $data_dir/models/sensevoice-2024-07-17/model.int8.onnx
 f449eb28dc567533d7fa59be34e2abca878a47fb731a31429a1dc  $data_dir/models/sensevoice-2024-07-17/tokens.txt

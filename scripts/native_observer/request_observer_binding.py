@@ -28,7 +28,7 @@ CLI_SHA256 = "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1"
 BASE_RUNTIME_IMAGE_ID = "sha256:e7540d8a8ff83952fe0dc8e46c20446d45566a2f6fb1195a98d0ab6afe216a29"
 EVIDENCE_ROOT = Path("/home/zyf/CICADA/.cicada-data/native-observer-wiring-20261007")
 BINDING_ROOT = EVIDENCE_ROOT / "request-observer-current-0162"
-REPOSITORY_ROOT = Path("/home/zyf/CICADA")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 CLI_BINARY = EVIDENCE_ROOT / "current-peer-cli01621-20261010a/shell-output/home/.codex/packages/standalone/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex"
 
 CURRENT_BUNDLE_FIELDS = {

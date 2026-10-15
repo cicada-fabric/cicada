@@ -295,7 +295,7 @@ function ReadyGroupDirectoryPermissionPanel({api, status, topology, publicCapabi
       <Text style={styles.expand}>{expanded ? '收起' : '管理'}</Text>
     </Pressable>
     {expanded && <View style={styles.body}>
-      <Text style={styles.description}>只由当前 Owner 管理一个 Group 中一个 Principal 的 Membership。权限适用于该 Principal 当前加入此 Group 的全部 Endpoint。directory.read 仅用于发现；Join 或 Monitor 角色本身不授予目录读取。撤销不能收回对方已收到的信息。</Text>
+      <Text style={styles.description}>只由当前 Owner 管理一个 Group 中一个 Principal 的 Membership。权限适用于该 Principal 当前加入此 Group 的全部 Endpoint。directory.read 仅用于发现；Join 或 Advisor 角色本身不授予目录读取。撤销不能收回对方已收到的信息。</Text>
       {!authority.ready && <Text style={styles.notice}>{authority.reason}</Text>}
       {authority.ready && <>
         <Text style={styles.scope}>Hub：{authority.scope.hubId} · Owner：{authority.scope.ownerId}{'\n'}ACTIVE Network：{authority.scope.networkId} · v{authority.scope.networkVersion}</Text>

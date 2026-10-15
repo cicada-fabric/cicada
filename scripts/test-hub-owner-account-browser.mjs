@@ -4,7 +4,7 @@
 // synthetic local test material. It never contacts a resident Hub.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,8 +17,11 @@ const hubRef = process.env.CICADA_HUB_IMAGE || '';
 const chromiumRef = process.env.CICADA_CHROMIUM_IMAGE || 'chromedp/headless-shell:latest';
 const expectedFingerprint = process.env.CICADA_EXPECT_SOURCE_FINGERPRINT || '';
 const metadataPath = path.resolve(repoRoot, process.env.CICADA_BUILD_METADATA || '');
-const opensslPath = process.env.CICADA_ACCOUNT_TEST_OPENSSL ||
-  '/home/zyf/CICADA_pqtls/.cicada-data/pqtls-openssl-accepted-build/stage/opt/cicada-openssl/3.5.9/bin/openssl';
+const commonGitDir = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' });
+const workspaceRoot = process.env.CICADA_WORKSPACE_ROOT ||
+  path.resolve(commonGitDir.status === 0 ? commonGitDir.stdout.trim() : path.join(repoRoot, '.git'), '../..');
+const opensslPath = process.env.CICADA_ACCOUNT_TEST_OPENSSL || path.join(workspaceRoot,
+  '.local/evidence/legacy/CICADA-pqtls-data/pqtls-openssl-accepted-build/stage/opt/cicada-openssl/3.5.9/bin/openssl');
 const opensslLib = process.env.CICADA_ACCOUNT_TEST_OPENSSL_LD_LIBRARY_PATH ||
   path.resolve(path.dirname(opensslPath), '../lib');
 const outputParent = path.join(repoRoot, '.cicada-data', 'hub-owner-account-browser');

@@ -80,7 +80,7 @@ export function HubConnections({children}: {
     if (!registry || voiceBusyRef.current || busyRef.current) return;
     const scope = {...registry.activeScope};
     Alert.alert('移除本机配置？',
-      item.label + ' 的本机密钥将删除。此操作不会撤销 Hub 上的设备。存在未解决的登记、RPC、Network 授权、Regroup 委托或 Monitor 操作时不能移除。', [
+      item.label + ' 的本机密钥将删除。此操作不会撤销 Hub 上的设备。存在未解决的登记、RPC、Network 授权、Regroup 委托或 Advisor 操作时不能移除。', [
         {text: '取消', style: 'cancel'},
         {text: '移除', style: 'destructive', onPress: () => {
           change(() => hubProfiles.remove(item.profileId, scope)).catch(() => undefined);

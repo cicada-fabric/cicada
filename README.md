@@ -11,8 +11,8 @@ approval separate from model-generated claims.
   state, and connects outbound to the Hub.
 - **App** is the independent user entry point. Windows is the current native
   target; ordinary use must not depend on a browser or WebView. Android is a
-  planned separate distribution in `../CICADA_CLIENT`, whose source and history
-  remain untouched by this work.
+  planned separate distribution whose source is under `apps/android`; its
+  original Git history is retained by the monorepo import.
 - The human **Owner** supplies authority. **Manager** coordinates goals and
   approvals, **Advisor** makes bounded recommendations, and **Worker** executes
   authorized tasks. Hub Control is a service, not the Owner.
@@ -92,6 +92,12 @@ These commands build from a local checkout. No published image tag or signed
 release installer is implied. Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup,
 [CICADA.md](CICADA.md) for the adopted architecture, and
 [AGENTS.md](AGENTS.md) for repository engineering rules.
+
+The canonical checkout is `~/Cicada/cicada`, on `dev`; `~/Cicada` is the parent
+workspace. Go remains under `cicada-go`, Android under `apps/android`, and the
+authoritative shared contracts under root `docs` and `cicada-go`. Use task
+worktrees for concurrent writers. See the [workspace guide](docs/workspace-development.md)
+and [history and evidence migration record](docs/repository-migration.md).
 
 ## License
 

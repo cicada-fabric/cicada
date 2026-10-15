@@ -9,7 +9,7 @@ esac
 GO_BUILDER_IMAGE=sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 CLIENT_ROOT=$(cd -- "$SCRIPT_DIR/../../.." && pwd)
-CORE_REPO=${CORE_REPO:-"$CLIENT_ROOT/../CICADA"}
+CORE_REPO=${CORE_REPO:-"$CLIENT_ROOT/../.."}
 FIXTURE_BUILD_ROOT=${FIXTURE_BUILD_ROOT:-/gpu1-share/data/cicada-client/two-owner-node-fixture-build}
 
 if ! command -v docker >/dev/null 2>&1; then

@@ -12,7 +12,7 @@ import stat
 import sys
 
 sys.dont_write_bytecode = True
-REPO = Path('/home/zyf/CICADA_CLIENT')
+REPO = Path(__file__).resolve().parents[2]
 CACHE = Path('/gpu1-share/data/cicada-client')
 SCHEMA = 'cicada.client-v164-host-stdio-carrier.v1'
 ROUTES = sorted([

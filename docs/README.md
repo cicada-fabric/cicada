@@ -28,7 +28,8 @@ number.
 | Backup and restore | [Node backup](node-backup.md), [Hub quarantine](hub-restore-quarantine.md), [safe activation](hub-restore-safe-activation.md), [migration](architecture-v2-migration.md) |
 | Acceptance evidence | [Current closeout](v01-current-closeout-20261009-validation.md), [verification](completion-verification.md), [test automation](test-automation.md) |
 | Future design | [v0.2 Agent collaboration design](v02-agent-collaboration-design.md), [integration roadmap](v02-openai-integration-roadmap.md) — planning, not shipped functionality |
-| Repository maintenance | [Branch roles, documentation history and permissions](repository-maintenance.md), [workspace cleanup and retained source](workspace-maintenance.md) |
+| Repository maintenance | [Workspace and task worktrees](workspace-development.md), [monorepo history/evidence migration](repository-migration.md), [branch roles, documentation history and permissions](repository-maintenance.md), [historical workspace cleanup and retained source](workspace-maintenance.md) |
+| Android App source | [Imported Android subtree](../apps/android/README.md), [migration validation](../apps/android/docs/monorepo-migration-validation.md) — source and history now live in this repository; runtime acceptance remains separately attributed |
 | Community | [Contributing](../CONTRIBUTING.md), [security reporting](../SECURITY.md), [support](../SUPPORT.md), [license](../LICENSE) |
 
 Dated validation documents retain the source, artifact and environment tested

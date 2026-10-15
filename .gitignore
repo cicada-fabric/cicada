@@ -6,7 +6,9 @@ __pycache__/
 .pytest_cache/
 
 # Runtime state and credentials are kept outside the repository by default.
-.cicada-data/
+.cicada-data
+.local/
+.worktrees/
 
 # Built WebAssembly and matching Go browser runtime are embedded into Hub images.
 /cicada-go/internal/server/ui/generated/

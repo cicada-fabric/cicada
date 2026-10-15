@@ -23,7 +23,7 @@ import time
 
 sys.dont_write_bytecode = True
 
-REPO = Path('/home/zyf/CICADA_CLIENT')
+REPO = Path(__file__).resolve().parents[2]
 CACHE = Path('/gpu1-share/data/cicada-client')
 DOCKER_ROOT = '/gpu1-share/data/docker-root'
 BOOT_SCHEMA = 'cicada.client-v164-launcher-boot.v1'

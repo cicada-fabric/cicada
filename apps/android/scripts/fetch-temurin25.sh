@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-toolchain_dir=/gpu1-share/data/cicada-client/toolchains/temurin25
+toolchain_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}/toolchains/temurin25"
 archive="$toolchain_dir/temurin25.tar.gz"
 sha256=dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e
 url='https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_x64_linux_hotspot_25.0.4.1_1.tar.gz'

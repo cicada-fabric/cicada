@@ -1,24 +1,37 @@
-# CICADA Client
+# Cicada App — Android
 
-CICADA Client is the mobile entry point for a CICADA environment. It lets an authorized user inspect Hub state, submit confirmed text or locally transcribed speech to Control, and perform supported management actions. Control and authoritative management state usually run on a Hub; native Threads and their Workers run on Nodes. The Client does not inject input directly into a native Worker session.
+The Android Cicada App is the mobile entry point for a Cicada environment. It lets an authorized user inspect Hub state, submit confirmed text or locally transcribed speech to Control, and perform supported management actions. Control and authoritative management state usually run on a Hub; native Threads and their Workers run on Nodes. The App does not inject input directly into a native Worker session.
 
 The shared application is written in TypeScript and React Native. **Android is the only implemented and validated mobile platform.** Android security and device integrations use Kotlin. iOS remains a future platform. A future native HarmonyOS application will need an ArkUI/ArkTS interface; this React Native UI is not a native HarmonyOS application. See the [stack decision](docs/stack-decision.md).
+
+This project lives in `apps/android` in the unified `Cicada/cicada` repository.
+The authoritative architecture and engineering guidance are [CICADA.md](../../CICADA.md),
+[AGENTS.md](../../AGENTS.md) and the [App/Hub development boundary](../../docs/client-hub-development.md).
+The current product roles are Owner, Manager, Advisor and Worker. Compatibility names
+`Client-Control`, `client-hub-*`, `monitor.*`, Android application/package IDs and
+React Native module names remain unchanged. The Android App uses React Native and
+Kotlin; the Windows-first native App target does not imply a completed Android rewrite
+or new account activation/canvas integration. The Android App requires no browser or WebView.
+
+Its original history was imported without squashing from Android `dev/react-native`
+at `d266c5eb1e5b5d95df1d8388dc133dedea8b424f`. Historical records below retain their
+original revisions, paths, APK hashes and validation limits.
 
 ## Product capabilities
 
 - **Status and work:** Read authenticated snapshots and partial changes for authorized Nodes, Endpoints, Workers, Goals, Groups, and Tasks. Submit user-confirmed text or reviewed speech transcripts to Control, inspect Intent dispatch, and read bounded Goal results when the session permits it. Intent, Goal, Worker, and Artifact states remain distinct.
 - **Local speech:** Supported Vosk, Paraformer, and SenseVoice models are optional downloads. The model centre verifies, installs, selects, and removes supported models in the app's private storage. Users can always enter text without a model. Audio is not uploaded in the first phase. See [model selection](docs/model-selection.md) and [speech validation](docs/stt-validation.md).
-- **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Monitor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
+- **Independent connections:** Each Hub profile keeps its own verified pin, device keys, enrollment, encrypted session, counters, pending requests and Advisor ledger. Hub and Network selection is explicit. Switching clears transient drafts and consent previews; late callbacks remain bound to their original selection.
 - **Network consent:** The existing direct Network flow supports ACTIVE Network selection, scoped Group creation and independent verification of Endpoint self-attestation and external Owner key consent. The separate v1.6.4 Link consent flow passed its bounded fixed-emulator acceptance in F38; this does not establish physical-device or production acceptance. See the [F38 report](docs/client-hub-v1.6.4-0213538-f38-validation.md), the [historical v1.6 successor validation](docs/client-hub-v1.6-4fb241b-management-validation.md) and the [historical v1.5 record](docs/client-hub-v1.5-bd79ff9-validation.md).
 - **Hub management:** Authorized operations use the Hub's versioned guards and encrypted Client-Control RPC. Feature visibility requires both a locally implemented operation and permission in encrypted `session.capabilities`. The v1.6.5 implementation retains the 55-operation catalog and the existing operation classification. Five dedicated Link consent operations require the Native verification flow and remain rejected by generic `rpc`. The Hub remains authoritative for every write. The bounded native-fixture Link status run has its own [historical validation record](docs/client-link-status-native-fixture-144e079-validation.md); status metadata alone does not establish bilateral consent or enable messages.
-- **Monitor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The Client verifies the Monitor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
-- **Recovery:** The Client persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. The current snapshot recovery test retains the retired packet after authenticated `OUTCOME_UNCERTAIN`, blocks writes until a fresh authoritative snapshot, and verifies session reconciliation. An uncertain regroup delegation has a separate durable fence: a generic snapshot cannot establish its outcome or clear that fence under the current Core contract. See the [current recovery validation](docs/client-hub-v1.6.1-144e079-validation.md) and [historical regroup validation](docs/client-hub-v1.6-4fb241b-management-validation.md).
+- **Advisor consent:** Review an exact message and ordered recipient roster before authorizing a same-owner Group broadcast. The App verifies the Advisor's Endpoint and Owner proofs, checks current source authorization before sealing, and reports approval separately from delivery or model consumption. See the [historical v1.3 validation](docs/client-monitor-v13-25013b5-native-validation.md) for its tested scope; that result does not establish v1.6 native delivery.
+- **Recovery:** The App persists the exact enrollment Grant request and each signed encrypted RPC packet before sending. It recovers a lost response with the original packet through `/v2/client/rpc/recover`. The current snapshot recovery test retains the retired packet after authenticated `OUTCOME_UNCERTAIN`, blocks writes until a fresh authoritative snapshot, and verifies session reconciliation. An uncertain regroup delegation has a separate durable fence: a generic snapshot cannot establish its outcome or clear that fence under the current Core contract. See the [current recovery validation](docs/client-hub-v1.6.1-144e079-validation.md) and [historical regroup validation](docs/client-hub-v1.6-4fb241b-management-validation.md).
 
 ## Security boundary
 
 Client-to-Control business RPC uses the Client-Control v1 post-quantum protocol: ML-KEM-768, ML-DSA-65, HKDF, and AES-256-GCM. Users must verify and pin the full Hub identity through an independent trusted channel. Device enrollment requires an independently signed, one-time `OwnerDeviceGrant`. Android wraps its private keys with Android Keystore. Release builds require HTTPS; local debug HTTP is restricted to emulator-to-host development addresses.
 
-The Client does not use legacy `/v1` management bearer APIs, store Hub or Node bearer credentials, or read the Hub database. This encrypted channel terminates at Control so Control can process the request. It does not prove that ordinary peer messages are unreadable to the Hub. Cross-user Thread messaging remains unavailable while the server advertises `external_thread_links=false`.
+The App does not use legacy `/v1` management bearer APIs, store Hub or Node bearer credentials, or read the Hub database. This encrypted channel terminates at Control so Control can process the request. It does not prove that ordinary peer messages are unreadable to the Hub. Cross-user Thread messaging remains unavailable while the server advertises `external_thread_links=false`.
 
 The Endpoint attestation v1 signature input includes the final `"signature":null` field. The Android verifier handles canonical Go RFC3339Nano timestamps. Historical v1.2.1 acceptance covers a real native Codex Endpoint, independent external Owner signing, explicit Android confirmation, and encrypted `group.key_manifest → group.key_grant → group.key_status` with `CURRENT`, then `STALE` after binding expiry and `PROOF_EXPIRED` after proof expiry. See the [Group key acceptance report](docs/client-group-key-v1.2.1-disposable-validation.md) for its exact APKs and rejection tests. Those results do not certify the current v1.6 target. Physical Android and public HTTPS remain untested.
 
@@ -231,7 +244,7 @@ Monitor and Worker results remain version-specific; they do not certify v1.6.
 
 ## Build and local development
 
-Build and test in Docker. Verify the Docker data root before development; this environment expects `/gpu1-share/data/docker-root`. Keep build caches, model downloads, test identities, and temporary Hub state under `/gpu1-share/data/cicada-client`, outside Git. Do not change global Docker configuration or data belonging to the adjacent CICADA core project.
+Build and test in Docker. Verify the Docker data root before development; this environment expects `/gpu1-share/data/docker-root`. Keep build caches, model downloads, test identities, and temporary Hub state under `/gpu1-share/data/cicada-client`, outside Git. Run commands from `apps/android`. Historical caches remain at that external path; override them with `CICADA_ANDROID_DATA_DIR` when needed. Do not modify global Docker configuration or existing evidence.
 
 ```bash
 python3 scripts/check-client-contract.py
@@ -239,7 +252,7 @@ python3 scripts/check-client-contract.py
 ./scripts/docker-build-android-test.sh
 ```
 
-The contract checker defaults to the imported `144e079` v1.6.1 snapshot. Verify its archive SHA-256 against the external receipt before relying on the result. The checker is an offline contract check; it does not replace fixed-image provenance or encrypted runtime `session.capabilities` verification.
+The contract checker defaults to the imported `c6887f4` v1.6.5 snapshot. Verify its archive SHA-256 against the external receipt before relying on the result. The checker is an offline contract check; it does not replace fixed-image provenance or encrypted runtime `session.capabilities` verification.
 
 ```bash
 python3 scripts/check-client-contract.py
@@ -247,7 +260,9 @@ python3 scripts/check-client-contract.py
 
 Run its public-fixture regressions in the Docker development image with `python3 scripts/test_check_client_contract.py`.
 
-`docker-build.sh` copies its APK to `/gpu1-share/data/cicada-client/build-output/cicada-client-debug.apk`. `docker-build-android-test.sh` writes the current debug and test APKs to `android/app/build/outputs/apk/debug/app-debug.apk` and `android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`. Hash the artifacts used in each test run; the exported copy is not refreshed by the test-build script. A successful host or emulator build does not establish physical-device, iOS, or public HTTPS validation.
+`docker-build.sh` copies its APK to `build/outputs/cicada-app-android-debug.apk` (override with `CICADA_ANDROID_OUTPUT_DIR`). `docker-emulator-check.sh` uses the same output selection. `docker-build-android-test.sh` writes the current debug and test APKs to `android/app/build/outputs/apk/debug/app-debug.apk` and `android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`. Hash the artifacts used in each test run; the exported copy is not refreshed by the test-build script. A successful host or emulator build does not establish physical-device, iOS, or public HTTPS validation.
+
+For offline checks using the already cached immutable builder and dependencies, see [monorepo migration validation](docs/monorepo-migration-validation.md). The normal setup helper still installs locked dependencies when explicitly run; the migration checks perform no installs or network downloads.
 
 For local unsigned per-ABI Release APKs, use `scripts/docker-build-release.sh` with a complete immutable build-image ID; `--android-test` additionally builds Release instrumentation. The helper runs offline with a cached image, enables R8/resource shrinking and preserves the existing default Debug output. Actual artifact sizes, SHA-256 values, native-library inventories and the bounded Release runtime checks are recorded in [Release packaging validation](docs/release-packaging-validation.md). These artifacts are not a published or production-signed release.
 

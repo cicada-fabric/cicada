@@ -173,12 +173,12 @@ export function SharedSpaceConsentPanel({status, topology, publicCapabilities,
         <Text style={styles.stage}>1. Group Owner admission 仅建立受限 Membership；它不等于 Endpoint 的 native Join。</Text>
         <Text style={styles.stage}>2. Endpoint Owner 单独同意加入该 Group，并明确确认共享上下文风险；此操作本身不执行 Join。</Text>
         <Text style={styles.stage}>3. Node 之后执行新的可信 Join 并发布候选；再由 Hub 返回当前 manifest。</Text>
-        <Text style={styles.stage}>4. Endpoint Owner 独立签 SOURCE；Group Owner 独立签 TARGET。各自的 Client 必须核对本方 Owner 证明并由本人明确确认，两方互不代签。</Text>
+        <Text style={styles.stage}>4. Endpoint Owner 独立签 SOURCE；Group Owner 独立签 TARGET。各自的 App 必须核对本方 Owner 证明并由本人明确确认，两方互不代签。</Text>
         <Text style={styles.stage}>5. 两份证明必须绑定同一当前 manifest，Hub 才能报告 current；本构建没有原生验签、手机确认或提交流程。</Text>
-        <Text style={styles.small}>v1.5 语义：admission 不会加入 Node，也不授予历史；key manifest 标记不含历史。本 Client 不提供 Shared Space 消息入口。</Text>
+        <Text style={styles.small}>v1.5 语义：admission 不会加入 Node，也不授予历史；key manifest 标记不含历史。本 App 不提供 Shared Space 消息入口。</Text>
 
         <Text style={styles.sectionTitle}>委托与重组提案</Text>
-        <Text style={styles.small}>Monitor proposal 只是提案，不是 User Approval。未来委托须绑定精确 proposal、Group 版本、到期时间与一次性 max_uses=1，并按版本 CAS 撤销；当前读取、签发、撤销均关闭。</Text>
+        <Text style={styles.small}>Advisor proposal 只是提案，不是 User Approval。未来委托须绑定精确 proposal、Group 版本、到期时间与一次性 max_uses=1，并按版本 CAS 撤销；当前读取、签发、撤销均关闭。</Text>
         <Text style={styles.small}>尚未完成独立证明与授权核验的 {SHARED_SPACE_CLOSED_OPERATIONS.length} 项操作保持关闭。拓扑委托使用单独的手机确认流程。</Text>
       </>}
     </View>}

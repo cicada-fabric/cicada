@@ -136,7 +136,7 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
       setExpiry(suggestedRegroupDelegationExpiry(parsed.proposal.expires_at));
       setMessage(latest.writesFenced ?
         '已读取当前提案与 delegation。此读取只检查权威状态，不会解除原请求对账锁。' :
-        parsed.versionsCurrent && parsed.issueMembershipsCurrent ? '已读取并核对指定 Monitor 提案及 Group Membership。' :
+        parsed.versionsCurrent && parsed.issueMembershipsCurrent ? '已读取并核对指定 Advisor 提案及 Group Membership。' :
           parsed.issueMembershipReason || '提案仍可查看，但 Group 或 Membership 版本已变化，不能签发委托。');
     } catch (error) {
       if (callbackCurrent(callback)) {
@@ -199,8 +199,8 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
       decided = true;
       finish(callback);
     };
-    Alert.alert('签发一次性 Monitor 委托',
-      `Hub：${proposal.hub_id}\nOwner：${proposal.owner_id}\nMonitor Endpoint / Principal：${proposal.endpoint_id} / ${proposal.principal_id}\nBinding：${proposal.binding_id} · epoch ${proposal.binding_epoch}\nNetwork：${proposal.input.network_id}\nSource Group：${proposal.input.source_group_id} · v${proposal.input.expected_source_version}\nSource 成员关系版本：v${sourceMembership.version}\nTarget Group：${proposal.input.target_group_id} · v${proposal.input.expected_target_version}\nTarget 成员关系版本：v${targetMembership.version}\n动作：${action}\nProposal 到期：${timeText(proposal.expires_at)}\n委托到期：${timeText(expiryText)}\n\n确认时会再次核对成员关系、Group 版本和有效期；Hub 负责最终权限校验。`, [
+    Alert.alert('签发一次性 Advisor 委托',
+      `Hub：${proposal.hub_id}\nOwner：${proposal.owner_id}\nAdvisor Endpoint / Principal：${proposal.endpoint_id} / ${proposal.principal_id}\nBinding：${proposal.binding_id} · epoch ${proposal.binding_epoch}\nNetwork：${proposal.input.network_id}\nSource Group：${proposal.input.source_group_id} · v${proposal.input.expected_source_version}\nSource 成员关系版本：v${sourceMembership.version}\nTarget Group：${proposal.input.target_group_id} · v${proposal.input.expected_target_version}\nTarget 成员关系版本：v${targetMembership.version}\n动作：${action}\nProposal 到期：${timeText(proposal.expires_at)}\n委托到期：${timeText(expiryText)}\n\n确认时会再次核对成员关系、Group 版本和有效期；Hub 负责最终权限校验。`, [
         {text: '取消', style: 'cancel', onPress: cancel},
         {text: '确认签发', onPress: async () => {
           if (decided) return;
@@ -266,7 +266,7 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
       decided = true;
       finish(callback);
     };
-    Alert.alert('撤销当前 Monitor 委托？',
+    Alert.alert('撤销当前 Advisor 委托？',
       `Proposal：${delegation.proposal_id}\nDelegation：${delegation.delegation_id}\nOwner：${delegation.owner_id}\nHub：${delegation.hub_id}\n当前状态：${delegation.state} · version ${delegation.version}\n到期：${timeText(delegation.expires_at)}\n\n撤销将提交 expected_version=${delegation.version}；若 Hub 状态已改变，CAS 会拒绝。`, [
         {text: '取消', style: 'cancel', onPress: cancel},
         {text: '确认撤销', style: 'destructive', onPress: async () => {
@@ -323,7 +323,7 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
 
   return <View style={styles.card}>
     <Pressable accessibilityRole="button" accessibilityState={{expanded}}
-      accessibilityLabel={`Monitor 重组委托，${headline}`}
+      accessibilityLabel={`Advisor 重组委托，${headline}`}
       style={styles.header} onPress={() => {
         if (expanded) {
           setExpanded(false);
@@ -334,14 +334,14 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
         }
       }}>
       <View style={styles.headingText}>
-        <Text style={styles.title}>Monitor 重组委托</Text>
+        <Text style={styles.title}>Advisor 重组委托</Text>
         <Text style={styles.summary}>{headline}</Text>
       </View>
       <Text style={styles.expand}>{expanded ? '收起' : '查看'}</Text>
     </Pressable>
 
     {expanded && <View style={styles.body}>
-      <Text style={styles.description}>按 proposal ID 读取单个真实 Hub 提案；v1.6 没有提案列表 API。Owner 使用当前设备的加密 session.capabilities 确认，Monitor 不能代 User 批准 Goal。</Text>
+      <Text style={styles.description}>按 proposal ID 读取单个真实 Hub 提案；v1.6 没有提案列表 API。Owner 使用当前设备的加密 session.capabilities 确认，Advisor 不能代 User 批准 Goal。</Text>
       {!authority.ready && <Text style={styles.notice}>{authority.reason}</Text>}
       {authority.ready && <>
         <Text selectable style={styles.small}>Hub：{authority.scope.hubId} · Owner：{authority.scope.ownerId}{'\n'}ACTIVE Network：{authority.scope.networkName} · {authority.scope.networkId} · v{authority.scope.networkVersion}{'\n'}配置：{authority.scope.profileId} · 选择代次 {authority.scope.selectionGeneration}{'\n'}当前角色：{sessionCapabilities?.role || '未知'}</Text>
@@ -350,27 +350,27 @@ export function RegroupDelegationPanel({api, status, topology, publicCapabilitie
           提案读取只能检查当前 delegation，不能证明具体原请求的执行结果。</Text>}
         <TextInput style={styles.input} value={proposalId} editable={!busy}
           maxLength={256} autoCapitalize="none" autoCorrect={false}
-          placeholder="Monitor proposal ID" accessibilityLabel="Monitor proposal ID"
+          placeholder="Advisor proposal ID" accessibilityLabel="Advisor proposal ID"
           onChangeText={value => {
             setProposalId(value);
             setReviewState(null);
             setExpiry('');
             setMessage('');
           }} />
-        <Action title={authority.writesFenced ? '读取并对账当前提案' : '读取指定 Monitor 提案'}
+        <Action title={authority.writesFenced ? '读取并对账当前提案' : '读取指定 Advisor 提案'}
           disabled={busy || !authority.canRead || !proposalId.trim()}
           onPress={() => { readProposal().catch(() => undefined); }} secondary />
 
         {proposal && <View style={styles.evidence}>
           <Text style={styles.sectionTitle}>精确提案 · Hub 当前返回值</Text>
-          <Text selectable style={styles.scopeText}>Proposal：{proposal.proposal_id}{'\n'}Hub / Human Owner：{proposal.hub_id} / {proposal.owner_id}{'\n'}Monitor Endpoint：{proposal.endpoint_id}{'\n'}Monitor Principal：{proposal.principal_id}{proposal.principal_id === proposal.owner_id ? ' · 不可用（与 Owner 相同）' : ''}{'\n'}Node Binding：{proposal.binding_id} · epoch {proposal.binding_epoch}{'\n'}Network：{proposal.input.network_id}{'\n'}Source Group：{proposal.input.source_group_id} · expected v{proposal.input.expected_source_version}{'\n'}Target Group：{proposal.input.target_group_id} · expected v{proposal.input.expected_target_version}{'\n'}动作：{regroupDelegationActionLabel(proposal)}{'\n'}状态：{proposal.state}{'\n'}创建：{timeText(proposal.created_at)} · 到期：{timeText(proposal.expires_at)}</Text>
+          <Text selectable style={styles.scopeText}>Proposal：{proposal.proposal_id}{'\n'}Hub / Human Owner：{proposal.hub_id} / {proposal.owner_id}{'\n'}Advisor Endpoint：{proposal.endpoint_id}{'\n'}Advisor Principal：{proposal.principal_id}{proposal.principal_id === proposal.owner_id ? ' · 不可用（与 Owner 相同）' : ''}{'\n'}Node Binding：{proposal.binding_id} · epoch {proposal.binding_epoch}{'\n'}Network：{proposal.input.network_id}{'\n'}Source Group：{proposal.input.source_group_id} · expected v{proposal.input.expected_source_version}{'\n'}Target Group：{proposal.input.target_group_id} · expected v{proposal.input.expected_target_version}{'\n'}动作：{regroupDelegationActionLabel(proposal)}{'\n'}状态：{proposal.state}{'\n'}创建：{timeText(proposal.created_at)} · 到期：{timeText(proposal.expires_at)}</Text>
           {(!liveTopologyStatus?.sourceGroupCurrent || !liveTopologyStatus?.targetGroupCurrent) &&
             <Text style={styles.notice}>当前 topology.snapshot 未确认 source 与 target 均为所选 ACTIVE Network 内的 ACTIVE Group；签发关闭。</Text>}
           {liveTopologyStatus && !liveTopologyStatus.versionsCurrent &&
             <Text style={styles.notice}>至少一个当前 Group 版本与提案 CAS 版本不同；签发关闭，先读取当前权威状态。</Text>}
           {liveTopologyStatus && !liveTopologyStatus.issueMembershipsCurrent &&
             <Text style={styles.notice}>{liveTopologyStatus.issueMembershipReason ||
-              '当前 topology.snapshot 未确认 source/target 的显式 ACTIVE Monitor Endpoint Membership；签发关闭。'}</Text>}
+              '当前 topology.snapshot 未确认 source/target 的显式 ACTIVE Advisor Endpoint Membership；签发关闭。'}</Text>}
           {liveTopologyStatus?.issueMembershipsCurrent && liveTopologyStatus.sourceMembership &&
             liveTopologyStatus.targetMembership && <Text style={styles.small}>
               当前成员关系版本：source v{liveTopologyStatus.sourceMembership.version} · target v{liveTopologyStatus.targetMembership.version}

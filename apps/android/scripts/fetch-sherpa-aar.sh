@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-data_dir="/gpu1-share/data/cicada-client/deps"
+data_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}/deps"
 archive="$data_dir/sherpa-onnx-1.13.8.aar"
 expected="633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
 mkdir -p "$data_dir" "$repo_dir/android/app/libs"

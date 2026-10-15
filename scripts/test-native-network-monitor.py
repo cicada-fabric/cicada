@@ -133,8 +133,8 @@ class Gate(native.Gate):
     def go(self, *args, log=None, timeout=300):
         return self.docker("run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
                            "-v", str(self.repo / "cicada-go") + ":/src:ro", "-v", str(self.root) + ":/fixture",
-                           "-v", "/home/zyf/CICADA/.cicada-data/m1-gomodcache:/gomodcache:ro",
-                           "-v", "/home/zyf/.cache/go-build:/gocache", "-w", "/src", "-e", "GOTOOLCHAIN=local",
+                           "-v", str(self.repo / ".cicada-data/m1-gomodcache") + ":/gomodcache:ro",
+                           "-v", str(Path(os.environ.get("CICADA_GO_BUILD_CACHE", Path.home() / ".cache/go-build"))) + ":/gocache", "-w", "/src", "-e", "GOTOOLCHAIN=local",
                            "-e", "GOPROXY=off", "-e", "GOMODCACHE=/gomodcache", "-e", "GOCACHE=/gocache",
                            "-e", "CGO_ENABLED=0", "--entrypoint", "go", GO, *args, log=log, timeout=timeout)
 

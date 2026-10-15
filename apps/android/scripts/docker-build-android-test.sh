@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-data_dir="/gpu1-share/data/cicada-client"
+data_dir="${CICADA_ANDROID_DATA_DIR:-/gpu1-share/data/cicada-client}"
 docker_root="$(docker info --format '{{.DockerRootDir}}')"
 if [[ "$docker_root" != /gpu1-share/data/* ]]; then
   echo "Docker data root is outside /gpu1-share/data: $docker_root" >&2

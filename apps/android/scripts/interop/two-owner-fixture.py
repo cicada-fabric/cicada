@@ -33,7 +33,7 @@ ARCHIVE_SHA = "7bf1e3702eadf9fc3ffd50a0e8ab1213db0844b2bf418b577b88ba239216bf8a"
 SCHEMA = "cicada.client-two-owner-fixture.v1"
 LABEL = "org.cicada.client-two-owner-fixture"
 BASE = Path("/gpu1-share/data/cicada-client")
-CORE = Path("/home/zyf/CICADA")
+CORE = Path(__file__).resolve().parents[4]
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 

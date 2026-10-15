@@ -71,11 +71,11 @@ class MonitorProductLayoutTest {
     }
 
     private val textLabels = mapOf(
-        "收起 Monitor 广播 →" to "monitor-action-expanded",
-        "Monitor 广播 →" to "monitor-action-collapsed",
-        "Monitor 入口已由 v1.3 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。" to "monitor-entry-notice",
+        "收起 Advisor 广播 →" to "monitor-action-expanded",
+        "Advisor 广播 →" to "monitor-action-collapsed",
+        "Advisor 入口已由当前 Hub catalog、加密 session.capabilities 和 Android 安全桥共同授权。Prepare 只向 Control 发送精确正文的 SHA-256；明文仅留在本机内存，Confirm 由安全桥重新核对、加密并签名。" to "monitor-entry-notice",
         "1 · 选择确切 Group" to "monitor-group-selection",
-        "2 · 选择该 Group 的 Monitor Endpoint" to "monitor-endpoint-selection",
+        "2 · 选择该 Group 的 Advisor Endpoint" to "monitor-endpoint-selection",
         "3 · 精确正文" to "monitor-body-section",
         "4 · 核对已验证的完整同意预览" to "monitor-preview-section",
         "5 · Hub 权威审批与逐收件人结果" to "monitor-status-section",
@@ -98,7 +98,7 @@ class MonitorProductLayoutTest {
         if (safeNativeId(view) == "monitor-panel-host") return "monitor-panel-host"
         if (view is EditText) {
             return when (normalizeLabel(view.hint?.toString().orEmpty())) {
-                "输入要交给所选 Monitor 的准确文本" -> "monitor-body-placeholder"
+                "输入要交给所选 Advisor 的准确文本" -> "monitor-body-placeholder"
                 "Group ID" -> "group-key-id-placeholder"
                 else -> null
             }

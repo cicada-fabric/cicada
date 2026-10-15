@@ -2,6 +2,15 @@
 
 ## Current development entry
 
+The canonical repository is `~/Cicada/cicada`; its parent workspace is not a
+Git repository. Hub/Node/Windows App code remains in `cicada-go`, Android source
+is in `apps/android`, and shared contracts remain authoritative at the root.
+Android retains its original history through a nonsquashed subtree import.
+Use `~/Cicada/.worktrees/cicada/<task>` for concurrent writers; see the
+[workspace guide](docs/workspace-development.md) and
+[migration record](docs/repository-migration.md). Historical checkpoints below
+retain their original repository names, source IDs and validation attribution.
+
 Use `dev` for active development; `main` is currently a public placeholder and
 is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
 [current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
@@ -113,10 +122,12 @@ dual Nodes and public HTTPS remain NOT_RUN. See the
 [V01–V88/G1–G5 ledger](docs/completion-ledger.md). The f55 source/image are frozen but remain a dirty development candidate; do
 not treat the candidate contract as a Client handoff or release.
 
-The current catalog is Client `client-hub-v1.6.1` with 55 operations. The
-independent Android repository remains owned by `../CICADA_CLIENT`; this
-repository does not edit it. Historical Android v1.5 results stay pinned to
-their bd79 Hub/source/APK/package and do not validate the current candidate.
+At that historical checkpoint, the catalog was Client `client-hub-v1.6.1` with
+55 operations and Android was maintained separately in `CICADA_CLIENT`.
+Android is now maintained under `apps/android` through the
+[history-preserving migration](docs/repository-migration.md). Historical Android
+v1.5 results stay pinned to their bd79 Hub/source/APK/package and do not validate
+the current candidate.
 
 ## Local Hub and optional Node — current entry points
 

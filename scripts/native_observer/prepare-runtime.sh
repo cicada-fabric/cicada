@@ -18,7 +18,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ $unique_run =~ ^cicada-runtime-161-[a-z0-9]{8,32}$ ]] || exit 2
-artifact_parent=/home/zyf/CICADA/.cicada-data/native-observer-runtime-161-20261007
+repository_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+common_git_dir=$(git -C "$repository_root" rev-parse --path-format=absolute --git-common-dir)
+workspace_root=${CICADA_WORKSPACE_ROOT:-$(dirname -- "$(dirname -- "$common_git_dir")")}
+artifact_parent="$workspace_root/.local/artifacts/native-observer-runtime-161-20261007"
 [[ $result_dir == "$artifact_parent/$unique_run" && ! -e $result_dir ]] || exit 2
 binary=/home/zyf/.codex/packages/standalone/releases/0.161.0-x86_64-unknown-linux-musl/bin/codex
 binary_sha=9a820c17865fa825d04db416818679a9d63bd72e50835c396f496e5684626c9c
@@ -26,11 +29,11 @@ companion=${binary%/*}/codex-code-mode-host
 companion_sha=e87096087c02aa6ab90a5a85031659665aa0bf3ee20c07ca0b8ab701c83fcd5b
 bwrap=${binary%/bin/codex}/codex-resources/bwrap
 bwrap_sha=77360cb751ccedc5971391444ac86a8a33c15b04d6b4a6fe45f5d25496e62c4c
-bwrap_license=/home/zyf/CICADA/.cicada-data/native-observer-wiring-20261007/official-codex-0161-bwrap-COPYING-20261007b.txt
+bwrap_license="$workspace_root/.local/evidence/legacy/CICADA-data/native-observer-wiring-20261007/official-codex-0161-bwrap-COPYING-20261007b.txt"
 bwrap_license_sha=b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c
 bwrap_source_sha=eeb85b29dd6d89526ba6887ee2eab769675952a5f526ada1b26bb929f5133ec6
 bwrap_source_bytes=99
-bwrap_provenance=/home/zyf/CICADA/.cicada-data/native-observer-wiring-20261007/official-bwrap-0161-verification-20261007b.NONAUTH.json
+bwrap_provenance="$workspace_root/.local/evidence/legacy/CICADA-data/native-observer-wiring-20261007/official-bwrap-0161-verification-20261007b.NONAUTH.json"
 [[ -f $bwrap && ! -L $bwrap && -f $bwrap_license && ! -L $bwrap_license && -f $bwrap_provenance && ! -L $bwrap_provenance ]] || exit 2
 [[ $(stat -c '%s:%a' "$bwrap") == 529776:755 ]] || exit 2
 [[ $(sha256sum "$bwrap" | cut -d' ' -f1) == "$bwrap_sha" ]] || exit 2

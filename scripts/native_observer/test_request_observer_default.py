@@ -55,8 +55,8 @@ class ExecutionSourceChecks(unittest.TestCase):
                 ('request_observer_gate.py','request_observer_run.py')}}
 
     def source_path(self,value,*parts):
-        if value == '/home/zyf/CICADA' and not parts:
-            return self.repo
+        if value == subject.__file__ and not parts:
+            return self.repo/'scripts/native_observer/request_observer_default.py'
         return Path(value,*parts)
 
     def run_module(self,name):
@@ -177,7 +177,7 @@ class ExecutionSourceChecks(unittest.TestCase):
             self.assertFalse((parent/'uncreated-claim').exists());self.assertFalse(run.EXECUTION_EFFECTS_STARTED)
 
     def test_exact_path_and_loader_mapping_validate_a_different_public_source_directory(self):
-        self.assertEqual(subject.Path('/home/zyf/CICADA'),self.repo)
+        self.assertEqual(subject.Path(subject.__file__).resolve().parents[2],self.repo)
         for value in ('/home/zyf/CICADA-other','/tmp/public','relative',Path('/home/zyf/CICADA')):
             self.assertEqual(subject.Path(value),Path(value))
         self.assertEqual(subject.Path('/home/zyf/CICADA','child'),Path('/home/zyf/CICADA','child'))

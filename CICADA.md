@@ -1688,7 +1688,7 @@ Goal -> Group -> Role/Task -> Endpoint -> Native Session
 
 ### 27.6 Android App（独立后续交付）
 
-首要 native App 目标是独立 Windows App；Android 是后续、独立的 App 交付。Android 实现在 `../CICADA_CLIENT` 仓库中维护，当前仓库不修改其源码或重写其历史。未来如明确授权将其纳入单一仓库，须以保留旧提交和路径的 subtree 迁移方式进行。本节不表示 Android App、Android 原生验收或跨端迁移已完成。
+首要 native App 目标是独立 Windows App；Android 是后续、独立的 App 交付。Android 源码现于同一仓库的 `apps/android` 维护，已通过不 squash 的 subtree import 保留原提交历史；旧 `CICADA_CLIENT` 目录仅作保留的迁移来源，不继续开发。本次仓库迁移不改变产品能力或验收状态；Android 原生验收与跨端产品迁移仍按原有证据分别记录。参见[仓库迁移记录](docs/repository-migration.md)。
 
 Android 首页目标是按 Node 展示 Worker 与 Goal 的权威状态，明确区分 Node 连接、Worker 运行/结束、Goal 暂停/完成以及状态过期或未知；不能从 Node 离线推断任务结束，也不能用 UI 标签伪造核心尚未提供的 Goal pause/resume。
 
@@ -2347,7 +2347,7 @@ Network 是 Hub 内的逻辑 tenant 与授权 scope，不新增部署实体或 O
 - **M2 — 加密 Group Journal 与 Discussion:** 授权的 Journal append/list/get、Discussion topic/reply/list/get，可信生产者、稳定幂等、有限游标分页、追加式更正、独立 Evidence ACL、读者快照、历史 grant 与保留行为。先选定经审查的 NIST 密封和读者密钥方案；证明 Hub 仅存密文，新成员默认不能读加入前历史，既有成员可在授权期内补读，撤权后的新内容不泄露。正文、扇出、分页、保留和提示队列要有明确上限。
 - **M3 — 授权路由与轻量同步:** 在现有即时消息中显式引用选定 Journal/topic，连接获准的 Network 私聊、Task offer 与逐收件者广播；复用 Node→Hub 出站长连接传合并的 Journal/Discussion 游标提示，Endpoint 分页拉取并维护本地未读。提示不推正文或完整成员表，不默认唤醒模型；即时消息继续遵守其原有密文投递语义：默认唯一盲 Hub Relay，仅满足本机 direct 条件时零 Relay。
 - **M4 — 委托再分组:** Advisor 先提出建议；仅在精确、可撤销的 Network/Group/操作/期限委托下按拓扑版本 CAS 执行并审计。不得自授权、扩大读者、自动复制旧历史/key、迁移 Thread 上下文或本地 writer；涉及读者或历史扩权另走 Owner 审批。
-- **M5 — 多 Hub Node 与 App 互操作:** 各 Hub 的 Endpoint registration、Node credential、订阅、序号/重放状态独立，Node 对同一 native Thread 维持唯一本地 writer owner/串行队列；App 另有版本化合同与每 Hub 独立 identity pin、设备密钥、session/replay 状态，UI 明确 active Hub、Network 与目标。不得有 Hub-to-Hub 转发或公开的全局 Thread ID；Android App 仍由独立 `CICADA_CLIENT` 仓库维护，任何未来 history-preserving import 是单独维护决策，不回填冻结的 v1.3 wire。
+- **M5 — 多 Hub Node 与 App 互操作:** 各 Hub 的 Endpoint registration、Node credential、订阅、序号/重放状态独立，Node 对同一 native Thread 维持唯一本地 writer owner/串行队列；App 另有版本化合同与每 Hub 独立 identity pin、设备密钥、session/replay 状态，UI 明确 active Hub、Network 与目标。不得有 Hub-to-Hub 转发或公开的全局 Thread ID；Android App 源码已以保留历史的 subtree 迁入 `apps/android`，仍是独立的 App 构建/交付；仓库维护迁移不回填冻结的 v1.3 wire。
 
 具体实施顺序、当前工程前置条件和验收证据以 [实施计划](docs/architecture-v2-plan.md)、[Agent Networks 设计](docs/agent-networks-design.md) 和 [Group 协作空间设计](docs/group-collaboration-spaces-design.md) 为准。M1–M5 均是目标路线，不表示当前已实现；现有 Android/原生 Monitor 广播检查点的实际状态只在实施证据文档记录。
 

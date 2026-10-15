@@ -173,10 +173,12 @@ indexed in [the documentation index](docs/README.md).
 Preserve Go core and effective product capabilities, including Idea/Goal,
 Workspace, scheduling, approvals, contacts, memory, notifications and connectors.
 Reuse current MCP/service paths; do not create parallel infrastructure merely to
-coordinate repositories. Android is a planned App distribution in the separate
-`../CICADA_CLIENT` repository; read it for interoperability but do not modify or
-history-import it without explicit authorization. Future import must preserve
-its history. New native App work follows
+coordinate components. Android is a planned App distribution maintained under
+`apps/android`, with its original history retained by the authorized monorepo
+import. Follow its nested `AGENTS.md`; leave the old migration source untouched.
+Use the canonical `~/Cicada/cicada` checkout on `dev` and task worktrees under
+`~/Cicada/.worktrees/cicada/<task>` for concurrent writers. See
+[`docs/repository-migration.md`](docs/repository-migration.md). New native App work follows
 [`docs/native-app-architecture.md`](docs/native-app-architecture.md). Existing
 Client-facing work continues to respect the frozen
 [Hub contract boundary](docs/client-hub-development.md) until a versioned App

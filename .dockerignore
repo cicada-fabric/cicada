@@ -4,6 +4,9 @@
 .env.*
 !.env.example
 .cicada-data
+.local
+.worktrees
+/apps/android
 /cicada-go/internal/server/ui/generated/
 __pycache__
 *.py[cod]

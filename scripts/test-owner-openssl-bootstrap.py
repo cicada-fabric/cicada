@@ -37,8 +37,12 @@ REPOSITORY = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_EXPECTED_HELPER_SHA256 = "f0d7216b14daca417cd683bd55646a4fe87370cf93f07b78b4be6f426e9518f0"
 EXPECTED_HUB_IMAGE = "sha256:fc90076f45293a36d304dd7e31d00b6052828c0b1748fdde2c616b5900ebe9d1"
 DEFAULT_HELPER = REPOSITORY / ".cicada-data/owner-openssl-check-20261014/cicada-linux-amd64"
-DEFAULT_OPENSSL = pathlib.Path(
-    "/home/zyf/CICADA_pqtls/.cicada-data/pqtls-openssl-accepted-build/"
+WORKSPACE = pathlib.Path(os.environ.get("CICADA_WORKSPACE_ROOT") or
+    pathlib.Path(subprocess.check_output(
+        ["git", "-C", str(REPOSITORY), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        text=True).strip()).parent.parent)
+DEFAULT_OPENSSL = WORKSPACE / (
+    ".local/evidence/legacy/CICADA-pqtls-data/pqtls-openssl-accepted-build/"
     "stage/opt/cicada-openssl/3.5.9/bin/openssl"
 )
 SYNTHETIC_PASSWORD = b"Synthetic-Only-Owner-Key-2026!"

@@ -70,7 +70,7 @@ Endpoints only; do not describe its result as native Node or Monitor evidence.
 
 ## Create private run state and start the Hub and emulator
 
-Run from the CICADA_CLIENT checkout. Choose a unique safe run label; keep the
+Run from `apps/android` in the unified monorepo. Historical source and receipt paths below remain tied to their original runs. Choose a unique safe run label; keep the
 evidence directory owned by the current user and mode `0700`:
 
 ```sh
@@ -420,7 +420,7 @@ python3 scripts/interop/monitor-android.py "$EVIDENCE" stop
 ```
 
 ```sh
-../CICADA/scripts/client-group-key-fixture.sh stop "$FIXTURE_DIR"
+../../scripts/client-group-key-fixture.sh stop "$FIXTURE_DIR"
 ```
 
 The core `stop` command validates its fixture marker and container ownership
