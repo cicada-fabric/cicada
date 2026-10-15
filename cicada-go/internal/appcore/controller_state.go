@@ -18,6 +18,9 @@ func (c *nativeController) loadIdentities(createDevice bool) error {
 	for _, entry := range entries {
 		switch entry.Purpose {
 		case appvault.PurposeAppDevice:
+			if c.state.DeviceKeyID != "" && c.state.DeviceKeyID != entry.KeyID {
+				return errors.New("stored App device identity mismatch")
+			}
 			identity, getErr := c.vault.Get(entry.Purpose, entry.KeyID)
 			if getErr != nil {
 				return getErr
@@ -25,6 +28,9 @@ func (c *nativeController) loadIdentities(createDevice bool) error {
 			c.device = identity
 			c.state.DeviceKeyID = entry.KeyID
 		case appvault.PurposeOwnerSigner:
+			if c.state.OwnerKeyID != "" && c.state.OwnerKeyID != entry.KeyID {
+				return errors.New("stored Owner identity mismatch")
+			}
 			identity, getErr := c.vault.Get(entry.Purpose, entry.KeyID)
 			if getErr != nil {
 				return getErr
@@ -32,6 +38,9 @@ func (c *nativeController) loadIdentities(createDevice bool) error {
 			c.owner = identity
 			c.state.OwnerKeyID = entry.KeyID
 		}
+	}
+	if c.device == nil && (c.state.DeviceID != "" || c.state.DeviceKeyID != "") {
+		return errors.New("recorded App identity is missing")
 	}
 	if c.device == nil && createDevice {
 		identity, err := appkeys.Generate()
@@ -135,7 +144,7 @@ func (c *nativeController) restoreSession() error {
 		clear(receipt.SessionToken)
 		return errors.New("saved App session scope mismatch")
 	}
-	if !c.cfg.Now().UTC().Before(parseExpiry(receipt.ExpiresAt)) {
+	if !c.cfg.Now().UTC().Before(parseExpiry(receipt.ExpiresAt)) || receipt.AccountEpoch < c.state.ObservedAccountEpoch || receipt.DeviceEpoch < c.state.ObservedDeviceEpoch {
 		clear(receipt.SessionToken)
 		c.state.AccountState = AccountStateLoginRequired
 		return nil
@@ -179,13 +188,54 @@ func (c *nativeController) openPendingResponse(operation string, request, respon
 		value = &wire.SessionInspection{}
 	case wire.OperationSessionLogout:
 		value = &wire.LogoutReceipt{}
+	case wire.OperationActivationPrepare:
+		var challenge wire.ActivationChallenge
+		if err := wire.OpenClientResponse(device, c.hub, request, response, &challenge); err == nil {
+			return &challenge, nil
+		}
+		value = &wire.ActivationResult{}
+	case wire.OperationActivationComplete, wire.OperationActivationStatus:
+		value = &wire.ActivationResult{}
+	case wire.OperationAccountReconcile:
+		value = &wire.AccountReconcileResult{}
 	default:
 		return nil, ErrInvalidAction
 	}
 	if err := wire.OpenClientResponse(device, c.hub, request, response, value); err != nil {
 		return nil, errors.New("Hub account response rejected")
 	}
+	if err := c.validateAccountResponseScope(value); err != nil {
+		return nil, err
+	}
 	return value, nil
+}
+
+func (c *nativeController) validateAccountResponseScope(value any) error {
+	var origin, hub, account, owner, device, key string
+	switch r := value.(type) {
+	case *wire.ClaimChallenge:
+		origin, hub, account, owner, device = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.DeviceID
+	case *wire.ClaimReceipt:
+		origin, hub, account, owner, device, key = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.DeviceID, r.DeviceKeyID
+	case *wire.LoginChallenge:
+		origin, hub, account, owner, device, key = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.DeviceID, r.DeviceKeyID
+	case *wire.SessionReceipt:
+		origin, hub, account, owner, device, key = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.DeviceID, r.DeviceKeyID
+	case *wire.SessionInspection:
+		origin, hub, account, owner, device = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.ActorDeviceID
+	case *wire.LogoutReceipt:
+		origin, hub, account, owner, device = r.Origin, r.HubID, r.AccountID, r.OwnerID, r.DeviceID
+	default:
+		return nil
+	}
+	if origin != c.connection.Origin || hub != c.connection.HubID || account != c.connection.AccountID || owner != c.connection.OwnerID || device != c.state.DeviceID ||
+		(key != "" && (c.device == nil || key != c.device.Public().ID)) {
+		if r, ok := value.(*wire.SessionReceipt); ok {
+			clear(r.SessionToken)
+		}
+		return errors.New("Hub account response scope mismatch")
+	}
+	return nil
 }
 
 func (c *nativeController) applyResponse(operation string, value any, request, response []byte) error {
@@ -206,8 +256,10 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.Username = response.Username
 		c.state.AccountState = AccountStateLoginRequired
-		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) {
+		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) || response.AccountEpoch < c.state.ObservedAccountEpoch || response.DeviceEpoch < c.state.ObservedDeviceEpoch {
 			c.state.LoginChallenge = nil
+		} else {
+			c.observeEpochs(response.AccountEpoch, response.DeviceEpoch)
 		}
 	case *wire.SessionReceipt:
 		if c.state.Pending == nil || len(c.state.Pending.Response) == 0 {
@@ -218,7 +270,7 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		}
 		// An accepted receipt can be older than this process. Never resurrect
 		// an expired session when replaying an already committed response.
-		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) {
+		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) || response.AccountEpoch < c.state.ObservedAccountEpoch || response.DeviceEpoch < c.state.ObservedDeviceEpoch {
 			clear(response.SessionToken)
 			c.clearSession()
 			c.state.LoginChallenge = nil
@@ -230,12 +282,18 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		clear(response.SessionToken)
 		c.clearSession()
 		c.session = &context
+		c.observeEpochs(response.AccountEpoch, response.DeviceEpoch)
 		c.sessionNeedsCheck = true
 		c.sessionInspected = false
 		c.state.LoginChallenge = nil
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.AccountState = AccountStateSessionCheck
 	case *wire.SessionInspection:
+		if c.session == nil || !c.cfg.Now().UTC().Before(parseExpiry(c.session.ExpiresAt)) {
+			c.clearSession()
+			c.state.AccountState = AccountStateLoginRequired
+			break
+		}
 		if c.inspectionRequestID == "" || response.RequestID != c.inspectionRequestID ||
 			c.cfg.Now().UTC().Sub(parseExpiry(response.InspectedAt)) > 30*time.Second ||
 			parseExpiry(response.InspectedAt).After(c.cfg.Now().UTC().Add(30*time.Second)) {
@@ -245,7 +303,7 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 			break
 		}
 		if c.session == nil || !c.cfg.Now().UTC().Before(parseExpiry(c.session.ExpiresAt)) || response.AccountID != c.connection.AccountID || response.OwnerID != c.connection.OwnerID ||
-			response.ActorDeviceID != c.state.DeviceID {
+			response.ActorDeviceID != c.state.DeviceID || response.ActorDeviceEpoch != c.session.DeviceEpoch {
 			return errors.New("Hub account inspection scope mismatch")
 		}
 		c.state.Username = response.Username
@@ -262,6 +320,14 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		c.clearSession()
 		c.state.AccountState = AccountStateLoginRequired
 		c.state.LoginChallenge = nil
+	case *wire.ActivationChallenge:
+		if err := c.applyActivationChallenge(response, request); err != nil {
+			return err
+		}
+	case *wire.ActivationResult:
+		if err := c.applyActivationResult(response); err != nil {
+			return err
+		}
 	default:
 		return errors.New("unsupported Hub account response")
 	}
@@ -285,6 +351,16 @@ func (c *nativeController) clearRuntimeSecrets() {
 	if c.state.Pending != nil {
 		clear(c.state.Pending.Request)
 		clear(c.state.Pending.Response)
+	}
+	if c.state.Recovery != nil {
+		clear(c.state.Recovery.Request)
+		clear(c.state.Recovery.Response)
+	}
+	if c.state.Enrollment != nil {
+		c.state.Enrollment.Material.Code = ""
+		if c.state.Enrollment.Prepare != nil {
+			c.state.Enrollment.Prepare.Material.Code = ""
+		}
 	}
 	c.clearSession()
 	if c.device != nil {
@@ -345,6 +421,9 @@ func (c *nativeController) failStorage(code string, err error) error {
 }
 
 func (c *nativeController) publish() {
+	if c.suppressPublish {
+		return
+	}
 	view := Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
@@ -360,6 +439,9 @@ func (c *nativeController) publish() {
 		view.Account.RootState = c.state.RootState
 		view.Account.DeviceID = c.state.DeviceID
 		view.Account.OwnerFingerprint = c.state.OwnerFingerprint
+		if c.session != nil {
+			view.Account.SessionExpiresAt = c.session.ExpiresAt
+		}
 		view.Account.LocalOwnerKeyPresent = c.localOwnerMatchesHub()
 		if c.state.Username != "" {
 			view.Account.Username = c.state.Username
@@ -385,7 +467,10 @@ func (c *nativeController) publish() {
 			view.Account.State = AccountStateSessionCheck
 		} else if c.session != nil && c.sessionInspected {
 			view.Phase = PhaseAccountSession
-			view.Account.State = AccountStateOwnerProof
+			view.Account.State = AccountStateSessionActive
+			if c.state.RootState == RootStatePending || c.state.RootState == RootStateUnknown {
+				view.Account.State = AccountStateOwnerProof
+			}
 			if c.state.RootState == RootStateActive && view.Account.LocalOwnerKeyPresent {
 				view.Phase = PhaseOwnerReady
 				view.Account.State = AccountStateOwnerReady
@@ -393,6 +478,7 @@ func (c *nativeController) publish() {
 		}
 	}
 	view.AvailableActions = c.availableActions()
+	c.populateSetup(&view)
 	if c.storageFault {
 		view.Phase = PhaseError
 		view.Account = AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown}
@@ -433,24 +519,47 @@ func (c *nativeController) availableActions() []ActionKind {
 		actions = append(actions, ActionImportOwner)
 	}
 	if c.state.Pending != nil && len(c.state.Pending.Response) == 0 {
-		actions = append(actions, ActionRetry)
+		if c.state.Recovery == nil {
+			actions = append(actions, ActionRetry)
+		}
+		if wire.AccountReconcileOperationAllowed(c.state.Pending.Operation) || c.state.Pending.Operation == wire.OperationActivationPrepare || c.state.Pending.Operation == wire.OperationActivationComplete {
+			actions = append(actions, ActionRecover)
+		}
+	}
+	if c.state.Recovery != nil && (c.state.Pending == nil || len(c.state.Pending.Response) != 0) {
+		actions = append(actions, ActionRecover)
+	}
+	if e := c.state.Enrollment; e != nil && c.canBeginOperation() {
+		if e.Target != nil {
+			actions = append(actions, ActionActivationStatus)
+		}
+		if c.owner != nil && c.canActivateEnrollment() {
+			actions = append(actions, ActionActivateApp)
+		}
 	}
 	if c.device != nil && c.activation != nil && c.state.ClaimChallenge == nil && c.state.AccountState != AccountStateClaimPending &&
-		canBeginOperation(c.state.Pending) {
+		c.canBeginOperation() {
 		actions = append(actions, ActionClaimPrepare)
 	}
-	if c.state.ClaimChallenge != nil && c.owner != nil && canBeginOperation(c.state.Pending) {
+	if c.state.ClaimChallenge != nil && c.owner != nil && c.canBeginOperation() {
 		actions = append(actions, ActionClaimComplete)
 	}
+	if c.owner != nil && c.canBeginOperation() && (c.activation != nil || c.state.ClaimChallenge != nil) {
+		actions = append(actions, ActionSetupAccount)
+	}
 	if c.device != nil && c.state.AccountID != "" && c.state.OwnerID != "" && c.session == nil && c.state.LoginChallenge == nil &&
-		canBeginOperation(c.state.Pending) {
+		c.canBeginOperation() {
 		actions = append(actions, ActionLoginPrepare)
 	}
-	if c.state.LoginChallenge != nil && canBeginOperation(c.state.Pending) {
+	if c.device != nil && c.state.DeviceID != "" && c.session == nil && c.canBeginOperation() &&
+		(c.state.Enrollment == nil || (c.state.Enrollment.Result != nil && c.state.Enrollment.Result.RootState == wire.RootActiveState && c.state.Enrollment.Result.LeaseState != wire.ActivationLeaseRevoked)) {
+		actions = append(actions, ActionLogin)
+	}
+	if c.state.LoginChallenge != nil && c.canBeginOperation() {
 		actions = append(actions, ActionLoginComplete)
 	}
-	if c.session != nil && canBeginOperation(c.state.Pending) {
-		actions = append(actions, ActionSessionInspect, ActionLogout)
+	if c.session != nil && c.canBeginOperation() {
+		actions = append(actions, ActionSessionInspect, ActionLogout, ActionRefresh)
 	}
 	return actions
 }
@@ -472,6 +581,7 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy := source
 	copy.AvailableActions = append([]ActionKind(nil), source.AvailableActions...)
 	copy.Profiles = append([]ProfileSnapshot(nil), source.Profiles...)
+	copy.Authorization.AllowedOperations = append([]string(nil), source.Authorization.AllowedOperations...)
 	copy.Canvas.Objects = append([]CanvasObject(nil), source.Canvas.Objects...)
 	return copy
 }

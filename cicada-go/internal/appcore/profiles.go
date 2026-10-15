@@ -130,6 +130,9 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	// uncertain packet first, then ask for fresh authenticated session state.
 	c.requireSessionRecheck()
 	c.publish()
+	if c.state.Recovery != nil {
+		return c.recoverOperation(ctx)
+	}
 	if c.state.Pending != nil && len(c.state.Pending.Response) == 0 {
 		if err := c.sendPending(ctx); err != nil {
 			return err
@@ -137,7 +140,12 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 		c.requireSessionRecheck()
 	}
 	if c.session != nil {
-		return c.inspectSession(ctx)
+		if err := c.inspectSession(ctx); err != nil {
+			return err
+		}
+	}
+	if c.state.Enrollment != nil && c.state.Enrollment.Target != nil && c.canBeginOperation() {
+		return c.refreshActivation(ctx)
 	}
 	c.publish()
 	return nil

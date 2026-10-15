@@ -30,6 +30,13 @@ var accountRoutes = map[string]string{
 	wire.OperationSessionLogout:  "/v2/owner/account/session/logout",
 }
 
+func accountPath(operation string) string {
+	if path := accountRoutes[operation]; path != "" {
+		return path
+	}
+	return wire.ActivationHTTPPath(operation)
+}
+
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
 		Proxy:                 nil,
@@ -76,8 +83,8 @@ func getHubMetadata(ctx context.Context, client HTTPDoer, origin, path string) (
 }
 
 func postAccountPacket(ctx context.Context, client HTTPDoer, origin, cardOrigin, operation string, packet []byte) ([]byte, int, error) {
-	path, ok := accountRoutes[operation]
-	if !ok || client == nil || len(packet) == 0 || len(packet) > wire.MaxPacketBytes {
+	path := accountPath(operation)
+	if path == "" || client == nil || len(packet) == 0 || len(packet) > wire.MaxPacketBytes {
 		return nil, 0, errors.New("invalid Hub account request")
 	}
 	target, err := joinOrigin(origin, path)

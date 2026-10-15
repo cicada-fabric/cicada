@@ -7,11 +7,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/appkeys"
 	"github.com/cicada-ai/cicada/internal/appvault"
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
@@ -40,24 +43,27 @@ type nativeController struct {
 	snapshot   Snapshot
 	closed     bool
 
-	hub                 wire.HubIdentity
-	connection          HubConnectionCard
-	service             string
-	connected           bool
-	activation          *ActivationCode
-	vault               *appvault.Vault
-	state               durableState
-	stateVer            uint64
-	sessionVer          uint64
-	storageFault        bool
-	device              *appkeys.Identity
-	owner               *appkeys.Identity
-	profiles            []localProfile
-	session             *wire.SessionContext
-	sessionNeedsCheck   bool
-	sessionStored       bool
-	sessionInspected    bool
-	inspectionRequestID string
+	hub                       wire.HubIdentity
+	connection                HubConnectionCard
+	service                   string
+	connected                 bool
+	activation                *ActivationCode
+	vault                     *appvault.Vault
+	state                     durableState
+	stateVer                  uint64
+	sessionVer                uint64
+	storageFault              bool
+	device                    *appkeys.Identity
+	owner                     *appkeys.Identity
+	profiles                  []localProfile
+	session                   *wire.SessionContext
+	sessionNeedsCheck         bool
+	sessionStored             bool
+	sessionInspected          bool
+	inspectionRequestID       string
+	authorizationChecked      bool
+	activationStatusRequestID string
+	suppressPublish           bool
 }
 
 func NewController(config Config) (Controller, error) {
@@ -79,7 +85,40 @@ func NewController(config Config) (Controller, error) {
 func (c *nativeController) Snapshot() Snapshot {
 	c.snapshotMu.RLock()
 	defer c.snapshotMu.RUnlock()
-	return cloneSnapshot(c.snapshot)
+	view := cloneSnapshot(c.snapshot)
+	if view.Account.SessionExpiresAt != "" && !c.cfg.Now().UTC().Before(parseExpiry(view.Account.SessionExpiresAt)) {
+		blocked := false
+		for _, action := range view.AvailableActions {
+			if action == ActionRetry || action == ActionRecover {
+				blocked = true
+			}
+		}
+		view.Account.State = AccountStateLoginRequired
+		if !blocked {
+			view.Phase = PhaseConnected
+		}
+		view.Authorization.Confirmed = false
+		if view.Authorization.State == "ACTIVE" {
+			view.Authorization.State = "LOGIN_REQUIRED"
+		}
+		var actions []ActionKind
+		for _, action := range view.AvailableActions {
+			if action != ActionSessionInspect && action != ActionLogout && action != ActionRefresh {
+				actions = append(actions, action)
+			}
+		}
+		if !blocked && view.Account.DeviceID != "" && view.Authorization.State != "REVOKED" && (view.Setup.Purpose == "" || view.Account.RootState == RootStateActive) {
+			actions = append(actions, ActionLogin)
+		}
+		view.AvailableActions = actions
+	}
+	if view.Authorization.State != "REVOKED" && view.Authorization.ExpiresAt != "" && !c.cfg.Now().UTC().Before(parseExpiry(view.Authorization.ExpiresAt)) {
+		view.Authorization.State, view.Authorization.Confirmed = "EXPIRED", false
+		if view.Setup.Purpose != "" && view.Phase == PhaseOwnerReady {
+			view.Phase = PhaseAccountSession
+		}
+	}
+	return view
 }
 
 func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
@@ -112,12 +151,40 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
 	operationCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(c.lifetime, cancel)
 	defer func() { stop(); cancel() }()
+	if action.Kind != ActionConnect && action.Kind != ActionDiscoverProfiles && action.Kind != ActionResumeProfile {
+		if err := c.expireKnownSession(); err != nil {
+			return c.failStorage("APP_STATE_COMMIT_FAILED", err)
+		}
+	}
 
 	switch action.Kind {
 	case ActionDiscoverProfiles:
 		return c.discoverProfiles(operationCtx)
 	case ActionResumeProfile:
 		return c.resumeProfile(operationCtx, action.ProfileID)
+	case ActionActivateApp:
+		return c.activateApp(operationCtx, action)
+	case ActionLogin:
+		return c.login(operationCtx, action)
+	case ActionRecover:
+		return c.recoverOperation(operationCtx)
+	case ActionActivationStatus:
+		return c.refreshActivation(operationCtx)
+	case ActionRefresh:
+		if err := c.inspectSession(operationCtx); err != nil {
+			return err
+		}
+		if c.state.Enrollment != nil {
+			return c.refreshActivation(operationCtx)
+		}
+		return nil
+	case ActionSetupAccount:
+		if c.state.ClaimChallenge == nil {
+			if err := c.claimPrepare(operationCtx); err != nil {
+				return err
+			}
+		}
+		return c.claimComplete(operationCtx, action)
 	case ActionConnect:
 		return c.connect(operationCtx, action)
 	case ActionGenerateOwner:
@@ -175,7 +242,18 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	now := c.cfg.Now().UTC()
 	var card HubConnectionCard
 	var activation *ActivationCode
-	if action.ActivationCode != "" {
+	var material *wire.ActivationMaterial
+	if strings.HasPrefix(action.ActivationCode, wire.ActivationCodePrefix) {
+		parsed, err := wire.DecodeActivationCode(action.ActivationCode)
+		if err != nil || wire.ValidateActivationMaterial(parsed, now) != nil {
+			return c.fail(PhaseError, "INVALID_ACTIVATION_CODE", ErrActivationExpired)
+		}
+		material = &parsed
+		card = HubConnectionCard{Format: connectionCardFormat, Version: 1, Purpose: connectionCardPurpose,
+			Origin: parsed.Origin, AllowLoopbackHTTP: parsed.AllowLoopbackHTTP, HubID: parsed.HubID,
+			HubFingerprint: parsed.HubFingerprint, AccountID: parsed.AccountID, OwnerID: parsed.OwnerID,
+			IssuedAt: parsed.IssuedAt, ExpiresAt: parsed.ExpiresAt}
+	} else if action.ActivationCode != "" {
 		parsed, err := ParseActivationCode(action.ActivationCode)
 		if err != nil {
 			return c.fail(PhaseError, "INVALID_ACTIVATION_CODE", ErrActivationExpired)
@@ -210,6 +288,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if activation != nil && wire.ValidateClaimCard(activation.card, hub, now) != nil {
 		return c.fail(PhaseError, "INVALID_ACTIVATION_SCOPE", ErrActivationExpired)
 	}
+	if material != nil && wire.ValidateActivationHub(*material, hub, now) != nil {
+		return c.fail(PhaseError, "INVALID_ACTIVATION_SCOPE", ErrActivationExpired)
+	}
 	if c.vault != nil {
 		c.clearRuntimeSecrets()
 		_ = c.vault.Close()
@@ -223,7 +304,8 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if c.cfg.OpenVault == nil {
 		return c.fail(PhaseLocked, "APP_VAULT_UNAVAILABLE", errors.New("App vault is unavailable"))
 	}
-	vault, err := c.cfg.OpenVault(ctx, scope, activation != nil)
+	create := activation != nil || material != nil
+	vault, err := c.cfg.OpenVault(ctx, scope, create)
 	if err != nil {
 		return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
 	}
@@ -261,7 +343,7 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 		if listErr != nil || len(entries) != 0 {
 			return c.failStorage("APP_DEVICE_STATE_MISSING", errors.New("registered App device state is unavailable"))
 		}
-		if activation == nil {
+		if !create {
 			return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
 		}
 		c.state, c.stateVer = newDurableState(card), version
@@ -269,7 +351,20 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return c.failStorage("APP_STATE_UNAVAILABLE", err)
 		}
 	}
-	if err := c.loadIdentities(activation != nil); err != nil {
+	if material != nil {
+		if c.state.Enrollment != nil && !reflect.DeepEqual(c.state.Enrollment.Material, *material) {
+			return c.fail(PhaseError, "ACTIVATION_SCOPE_CHANGED", ErrInvalidAction)
+		}
+		if c.state.Enrollment == nil {
+			c.state.Enrollment = &enrollmentState{Material: *material}
+		}
+		if material.ExpectedOwnerPublic != nil {
+			c.state.OwnerKeyIDAtHub = material.ExpectedOwnerPublic.ID
+			c.state.OwnerFingerprint, _ = e2ee.OwnerDevicePublicKeyFingerprint(*material.ExpectedOwnerPublic)
+			c.state.RootState = RootStatePending
+		}
+	}
+	if err := c.loadIdentities(create); err != nil {
 		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
 	}
 	if activation != nil && c.state.DeviceID == "" && c.device == nil {
@@ -305,6 +400,7 @@ func (c *nativeController) resetConnection() error {
 	c.state = durableState{}
 	c.stateVer, c.sessionVer = 0, 0
 	c.inspectionRequestID = ""
+	c.authorizationChecked, c.activationStatusRequestID = false, ""
 	c.storageFault = false
 	c.snapshotMu.Lock()
 	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},

@@ -3,6 +3,7 @@ package appcore
 import (
 	"context"
 	"errors"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cicada-ai/cicada/internal/appkeys"
@@ -42,6 +43,9 @@ func (c *nativeController) importOwner(ctx context.Context, action Action) error
 		KEMPublicSPKI: input.KEMPublicSPKI, SigningPublicSPKI: input.SigningPublicSPKI,
 	})
 	if err != nil {
+		if errors.Is(err, appkeys.ErrEncryptedPEMUnsupported) {
+			return c.fail(PhaseError, "ENCRYPTED_OWNER_PEM_UNSUPPORTED", err)
+		}
 		return c.fail(PhaseError, "OWNER_IDENTITY_IMPORT_REJECTED", errors.New("existing Owner identity import rejected"))
 	}
 	if c.state.OwnerKeyIDAtHub != "" {
@@ -209,6 +213,7 @@ func (c *nativeController) inspectSession(ctx context.Context) error {
 		return c.fail(PhaseError, "SESSION_EXPIRED", errors.New("account session must be renewed"))
 	}
 	c.inspectionRequestID = request.RequestID
+	c.requireSessionRecheck()
 	return c.sendNew(ctx, wire.OperationSessionInspect, request)
 }
 
@@ -224,7 +229,7 @@ func (c *nativeController) logout(ctx context.Context) error {
 }
 
 func (c *nativeController) retry(ctx context.Context) error {
-	if c.state.Pending == nil || len(c.state.Pending.Response) != 0 {
+	if c.state.Pending == nil || len(c.state.Pending.Response) != 0 || c.state.Recovery != nil {
 		return ErrInvalidAction
 	}
 	inspection := c.state.Pending.Operation == wire.OperationSessionInspect
@@ -242,7 +247,7 @@ func (c *nativeController) retry(ctx context.Context) error {
 }
 
 func (c *nativeController) canBeginOperation() bool {
-	return c.state.Pending == nil || len(c.state.Pending.Response) != 0
+	return (c.state.Pending == nil || len(c.state.Pending.Response) != 0) && c.state.Recovery == nil
 }
 
 func (c *nativeController) sendNew(ctx context.Context, operation string, body any) error {
@@ -255,10 +260,23 @@ func (c *nativeController) sendNew(ctx context.Context, operation string, body a
 		clear(packet)
 		return c.fail(PhaseError, "ACCOUNT_REQUEST_INVALID", errors.New("account request could not be sealed"))
 	}
-	c.state.Pending = &pendingOperation{Operation: operation, Request: packet}
+	c.state.Pending = &pendingOperation{Operation: operation, Request: packet, CreatedAt: c.cfg.Now().UTC().Format(time.RFC3339Nano)}
+	if c.state.Enrollment != nil {
+		c.authorizationChecked = false
+	}
+	if operation == wire.OperationActivationPrepare || operation == wire.OperationActivationComplete {
+		if c.state.Enrollment == nil {
+			return ErrInvalidAction
+		}
+		c.state.Enrollment.Target = c.state.Pending
+		if operation == wire.OperationActivationPrepare {
+			c.state.Enrollment.PreparePacket = append([]byte(nil), packet...)
+		}
+	}
 	if err := c.persistState(); err != nil {
 		return c.failStorage("APP_STATE_COMMIT_FAILED", errors.New("exact account request was not safely committed"))
 	}
+	c.publish()
 	return c.sendPending(ctx)
 }
 
@@ -278,6 +296,9 @@ func (c *nativeController) sendPending(ctx context.Context) error {
 		return c.fail(PhaseUnavailable, "ACCOUNT_RESPONSE_INVALID", errors.New("Hub account response could not be authenticated"))
 	}
 	c.state.Pending.Response = append([]byte(nil), response...)
+	if c.state.Pending.Operation == wire.OperationActivationPrepare || c.state.Pending.Operation == wire.OperationActivationComplete {
+		c.state.Enrollment.Target = c.state.Pending
+	}
 	if err := c.persistState(); err != nil {
 		return c.failStorage("APP_STATE_COMMIT_FAILED", errors.New("accepted account response could not be committed"))
 	}
