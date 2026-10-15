@@ -1,0 +1,350 @@
+package appcore
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/cicada-ai/cicada/internal/appkeys"
+	"github.com/cicada-ai/cicada/internal/appvault"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
+)
+
+var (
+	ErrControllerBusy = errors.New("native App is processing another action")
+	ErrClosed         = errors.New("native App controller is closed")
+	ErrInvalidAction  = errors.New("native App action is not available")
+)
+
+type Config struct {
+	HTTP              HTTPDoer
+	OpenVault         VaultOpener
+	AllowLoopbackHTTP bool
+	Now               func() time.Time
+}
+
+type nativeController struct {
+	cfg Config
+
+	actionMu sync.Mutex
+	lifetime context.Context
+	cancel   context.CancelFunc
+
+	snapshotMu sync.RWMutex
+	snapshot   Snapshot
+	closed     bool
+
+	hub               wire.HubIdentity
+	connection        HubConnectionCard
+	service           string
+	connected         bool
+	activation        *ActivationCode
+	vault             *appvault.Vault
+	state             durableState
+	stateVer          uint64
+	sessionVer        uint64
+	storageFault      bool
+	device            *appkeys.Identity
+	owner             *appkeys.Identity
+	session           *wire.SessionContext
+	sessionNeedsCheck bool
+	sessionStored     bool
+	sessionInspected  bool
+}
+
+func NewController(config Config) (Controller, error) {
+	if config.HTTP == nil {
+		config.HTTP = NewHTTPClient()
+	}
+	if config.Now == nil {
+		config.Now = func() time.Time { return time.Now().UTC() }
+	}
+	lifetime, cancel := context.WithCancel(context.Background())
+	c := &nativeController{cfg: config, lifetime: lifetime, cancel: cancel}
+	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
+		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
+		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
+	c.publish()
+	return c, nil
+}
+
+func (c *nativeController) Snapshot() Snapshot {
+	c.snapshotMu.RLock()
+	defer c.snapshotMu.RUnlock()
+	return cloneSnapshot(c.snapshot)
+}
+
+func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
+	if ctx == nil {
+		return ErrInvalidAction
+	}
+	c.snapshotMu.RLock()
+	closed := c.closed
+	c.snapshotMu.RUnlock()
+	if closed {
+		return ErrClosed
+	}
+	if !c.actionMu.TryLock() {
+		return ErrControllerBusy
+	}
+	defer c.actionMu.Unlock()
+
+	c.snapshotMu.RLock()
+	closed = c.closed
+	c.snapshotMu.RUnlock()
+	if closed {
+		return ErrClosed
+	}
+	if c.storageFault && action.Kind != ActionConnect {
+		return c.fail(PhaseError, "APP_STORAGE_RECOVERY_REQUIRED", errors.New("reconnect to recover encrypted App state"))
+	}
+	c.snapshotMu.Lock()
+	c.snapshot.ErrorCode = ""
+	c.snapshotMu.Unlock()
+	operationCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(c.lifetime, cancel)
+	defer func() { stop(); cancel() }()
+
+	switch action.Kind {
+	case ActionConnect:
+		return c.connect(operationCtx, action)
+	case ActionGenerateOwner:
+		return c.generateOwner()
+	case ActionImportOwner:
+		return c.importOwner(operationCtx, action)
+	case ActionClaimPrepare:
+		return c.claimPrepare(operationCtx)
+	case ActionClaimComplete:
+		return c.claimComplete(operationCtx, action)
+	case ActionLoginPrepare:
+		return c.loginPrepare(operationCtx, action)
+	case ActionLoginComplete:
+		return c.loginComplete(operationCtx, action)
+	case ActionSessionInspect:
+		return c.inspectSession(operationCtx)
+	case ActionLogout:
+		return c.logout(operationCtx)
+	case ActionRetry:
+		return c.retry(operationCtx)
+	case ActionSelectCanvas, ActionSetCanvasViewport:
+		return ErrInvalidAction
+	default:
+		return ErrInvalidAction
+	}
+}
+
+func (c *nativeController) Close() error {
+	c.snapshotMu.Lock()
+	if c.closed {
+		c.snapshotMu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.snapshotMu.Unlock()
+	c.cancel()
+	c.actionMu.Lock()
+	defer c.actionMu.Unlock()
+	c.clearRuntimeSecrets()
+	if c.vault != nil {
+		err := c.vault.Close()
+		c.vault = nil
+		return err
+	}
+	return nil
+}
+
+func (c *nativeController) connect(ctx context.Context, action Action) error {
+	if err := c.resetConnection(); err != nil {
+		return c.fail(PhaseError, "APP_VAULT_CLOSE_FAILED", err)
+	}
+	if (action.ConnectionCard == "") == (action.ActivationCode == "") {
+		return c.fail(PhaseError, "INVALID_CONNECTION_MATERIAL", ErrInvalidCard)
+	}
+	now := c.cfg.Now().UTC()
+	var card HubConnectionCard
+	var activation *ActivationCode
+	if action.ActivationCode != "" {
+		parsed, err := ParseActivationCode(action.ActivationCode)
+		if err != nil {
+			return c.fail(PhaseError, "INVALID_ACTIVATION_CODE", ErrActivationExpired)
+		}
+		activation = &parsed
+		claim := parsed.card
+		card = HubConnectionCard{Format: connectionCardFormat, Version: 1, Purpose: connectionCardPurpose,
+			Origin: claim.Origin, AllowLoopbackHTTP: claim.AllowLoopbackHTTP, HubID: claim.HubID,
+			HubFingerprint: claim.HubFingerprint, AccountID: claim.AccountID, OwnerID: claim.OwnerID,
+			IssuedAt: claim.IssuedAt, ExpiresAt: claim.ExpiresAt}
+	} else {
+		parsed, err := ParseHubConnectionCard(action.ConnectionCard, now)
+		if err != nil {
+			return c.fail(PhaseError, "INVALID_CONNECTION_CARD", ErrInvalidCard)
+		}
+		card = parsed
+	}
+	if validateConnectionCard(card, now) != nil {
+		return c.fail(PhaseError, "EXPIRED_CONNECTION_MATERIAL", ErrInvalidCard)
+	}
+	if card.AllowLoopbackHTTP && !c.cfg.AllowLoopbackHTTP {
+		if len(card.Origin) >= len("http://") && card.Origin[:len("http://")] == "http://" {
+			return c.fail(PhaseError, "LOOPBACK_HTTP_DISABLED", ErrInvalidCard)
+		}
+	}
+	c.setPhase(PhaseVerifyingHub, "")
+
+	healthData, healthStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/healthz")
+	if err != nil || healthStatus != http.StatusOK {
+		return c.fail(PhaseUnavailable, "HUB_UNAVAILABLE", errors.New("Hub unavailable"))
+	}
+	service, err := verifyHealth(healthData)
+	if err != nil {
+		return c.fail(PhaseUnavailable, "HUB_HEALTH_INVALID", err)
+	}
+	identityData, identityStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/v2/client/identity")
+	if err != nil || identityStatus != http.StatusOK {
+		return c.fail(PhaseUnavailable, "HUB_IDENTITY_UNAVAILABLE", errors.New("Hub identity unavailable"))
+	}
+	hub, err := decodeHubIdentity(identityData)
+	if err != nil {
+		return c.fail(PhaseUnavailable, "HUB_IDENTITY_INVALID", err)
+	}
+	fingerprint, err := wire.HubFingerprint(hub)
+	if err != nil || hub.HubID != card.HubID || fingerprint != card.HubFingerprint {
+		return c.fail(PhaseUnavailable, "HUB_PIN_MISMATCH", errors.New("Hub identity pin mismatch"))
+	}
+	if activation != nil && wire.ValidateClaimCard(activation.card, hub, now) != nil {
+		return c.fail(PhaseError, "INVALID_ACTIVATION_SCOPE", ErrActivationExpired)
+	}
+	if c.vault != nil {
+		c.clearRuntimeSecrets()
+		_ = c.vault.Close()
+		c.vault = nil
+	}
+	c.setConnectedHub(hub, card, service, activation)
+	c.state, c.stateVer, c.sessionVer = newDurableState(card), 0, 0
+
+	scope := appvault.Scope{HubID: card.HubID, HubFingerprint: card.HubFingerprint, Origin: card.Origin,
+		AccountID: card.AccountID, OwnerID: card.OwnerID}
+	if c.cfg.OpenVault == nil {
+		return c.fail(PhaseLocked, "APP_VAULT_UNAVAILABLE", errors.New("App vault is unavailable"))
+	}
+	vault, err := c.cfg.OpenVault(ctx, scope, activation != nil)
+	if err != nil {
+		return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
+	}
+	if vault.Scope() != scope {
+		_ = vault.Close()
+		return c.fail(PhaseError, "APP_VAULT_SCOPE_MISMATCH", errors.New("App vault scope mismatch"))
+	}
+	c.vault = vault
+	c.hub, c.connection, c.connected = hub, card, true
+	c.activation = activation
+	c.snapshotMu.Lock()
+	c.snapshot.Hub = HubSnapshot{Verified: true, Origin: card.Origin, HubID: card.HubID,
+		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service}
+	c.snapshotMu.Unlock()
+
+	data, version, found, err := c.vault.LoadState(appStateNamespace)
+	if err != nil {
+		return c.failStorage("APP_STATE_UNAVAILABLE", errors.New("encrypted App state is unavailable"))
+	}
+	if found {
+		state, decodeErr := decodeDurableState(data)
+		clear(data)
+		if decodeErr != nil || !sameScopeCard(state.Connection, card) {
+			return c.failStorage("APP_STATE_SCOPE_MISMATCH", errors.New("encrypted App state scope mismatch"))
+		}
+		c.state, c.stateVer = state, version
+		if c.state.Connection != card {
+			c.state.Connection = card
+			if err := c.persistState(); err != nil {
+				return c.failStorage("APP_STATE_UNAVAILABLE", err)
+			}
+		}
+	} else {
+		entries, listErr := c.vault.List()
+		if listErr != nil || len(entries) != 0 {
+			return c.failStorage("APP_DEVICE_STATE_MISSING", errors.New("registered App device state is unavailable"))
+		}
+		if activation == nil {
+			return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
+		}
+		c.state, c.stateVer = newDurableState(card), version
+		if err := c.persistState(); err != nil {
+			return c.failStorage("APP_STATE_UNAVAILABLE", err)
+		}
+	}
+	if err := c.loadIdentities(activation != nil); err != nil {
+		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
+	}
+	if activation != nil && c.state.DeviceID == "" && c.device == nil {
+		return c.fail(PhaseLocked, "APP_DEVICE_UNAVAILABLE", errors.New("App device identity is unavailable"))
+	}
+	if err := c.restoreSession(); err != nil {
+		return c.failStorage("APP_SESSION_STATE_INVALID", err)
+	}
+	if err := c.loadCurrentPendingResponse(); err != nil {
+		return c.failStorage("APP_PENDING_RESPONSE_INVALID", err)
+	}
+	c.publish()
+	return nil
+}
+
+func (c *nativeController) resetConnection() error {
+	c.clearRuntimeSecrets()
+	if c.vault != nil {
+		err := c.vault.Close()
+		c.vault = nil
+		if err != nil {
+			c.connected = false
+			c.state = durableState{}
+			return err
+		}
+	}
+	c.hub = wire.HubIdentity{}
+	c.connection = HubConnectionCard{}
+	c.service = ""
+	c.connected = false
+	c.activation = nil
+	c.state = durableState{}
+	c.stateVer, c.sessionVer = 0, 0
+	c.storageFault = false
+	c.snapshotMu.Lock()
+	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
+		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
+		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
+	c.snapshotMu.Unlock()
+	return nil
+}
+
+func (c *nativeController) setConnectedHub(hub wire.HubIdentity, card HubConnectionCard, service string, activation *ActivationCode) {
+	c.hub, c.connection, c.connected, c.activation = hub, card, true, activation
+	c.service = service
+	c.snapshotMu.Lock()
+	c.snapshot.Hub = HubSnapshot{Verified: true, Origin: card.Origin, HubID: card.HubID,
+		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service}
+	c.snapshotMu.Unlock()
+}
+
+func decodeHubIdentity(data []byte) (wire.HubIdentity, error) {
+	defer clear(data)
+	var hub wire.HubIdentity
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&hub); err != nil || decoder.Decode(new(any)) != io.EOF {
+		return wire.HubIdentity{}, errors.New("Hub identity is invalid")
+	}
+	if _, err := wire.HubFingerprint(hub); err != nil {
+		return wire.HubIdentity{}, errors.New("Hub identity is invalid")
+	}
+	return hub, nil
+}
+
+func sameScopeCard(a, b HubConnectionCard) bool {
+	return a.HubID == b.HubID && a.HubFingerprint == b.HubFingerprint && a.Origin == b.Origin &&
+		a.AccountID == b.AccountID && a.OwnerID == b.OwnerID
+}

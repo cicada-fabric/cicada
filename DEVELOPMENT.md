@@ -5,17 +5,39 @@
 Use `dev` for active development; `main` is currently a public placeholder and
 is not a synchronized or accepted product snapshot. Read [AGENTS.md](AGENTS.md),
 [current task guidance](CICADA_PROMPT.md) and [technical documentation](docs/README.md).
-The current development source is **0.0.5**, with additive Hub schema-60 Owner
-bootstrap changes pending acceptance against previously accepted schema 59.
-Client contract **client-hub-v1.6.5**, encrypted wire **1**, and catalog **55**
-remain unchanged. Architecture v2.3 is
+The current development source is **0.0.5**, with additive Hub schema **61**
+for Owner account claim/login and encrypted session state. Frozen Client
+contract **client-hub-v1.6.5**, encrypted wire **1**, and catalog **55** remain
+unchanged. Architecture v2.3 is
 the adopted specification, independent of these versions. Confirm actual
 source/dirty state and build provenance before attributing a test or artifact.
 
+The standalone Windows-first native App is at **N1 PARTIAL**. The source has a
+Gio UI, Hub identity verification, account claim/login/inspect/logout, a
+scope-pinned encrypted local vault and separate Owner/App-device identity
+records. Native Windows execution, DPAPI/ACL acceptance, encrypted existing
+PKCS#8 input, the one-code Root activation, restart without repeating installer
+authority, and native App integration for authorized live canvas and Node
+actions remain incomplete or NOT_RUN. Supported unencrypted existing Owner
+identities can be imported into the encrypted vault; using one to prove Root
+remains incomplete. Existing Hub/Node status, preview/confirm and Guard APIs
+remain the authority for App integration. The App is not a released installer,
+and the target Hub public-root
+404 is not yet validated. The current browser account surface is legacy
+implementation/compatibility, not the native App workflow. See
+[native App architecture](docs/native-app-architecture.md) and
+[stage plan](docs/native-app-plan.md). Earlier Windows cross-build evidence is
+captured at its exact dirty source in
+`.cicada-data/native-app-foundation/run-20261015T055201Z-yurHdO/validation.json`;
+it does not establish native Windows acceptance. Focused `appvault` and
+`appkeys` tests, race, vet and Windows package cross-compilation have also
+passed on the current dirty 0.0.5 tree; do not attribute them solely to HEAD.
+
 The current [IP/ARM64 deployment checkpoint](docs/docker-ip-arm64-validation.md)
-has [manual independent-Owner installation steps](docs/node-tls-first-install-cli.md).
-Clean amd64/ARM64 package first installation passed its scoped Docker gate;
-standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
+has [manual independent-Owner server steps](docs/node-tls-first-install-cli.md).
+They are a current operator procedure, not the target App onboarding. Clean
+amd64/ARM64 package first installation passed its scoped Docker gate; standard
+HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
 Start with [distribution](docs/distribution.md) for current local Hub/optional
 Node commands and [test automation](docs/test-automation.md) for relevant checks.

@@ -1,5 +1,31 @@
 # Architecture v2 状态矩阵（v2.3目标）
 
+## 2026-10-15 Native App foundation N1 — selected checks PASS; broader acceptance PARTIAL
+
+The current development worktree adds a Windows-first native App core, strict
+local claim-code framing, encrypted-vault integration, account protocol calls,
+and the local Hub claim-code output path. The App verifies the Hub identity
+before account work, preserves exact packets for recovery, and distinguishes
+an account session from Root ownership and Manager authority. Importing an
+existing Owner key does not enroll an App device or create authorization.
+
+Selected appcore and wire-helper tests, the real-TCP six-operation account
+flow, local claim-code issuance tests, scoped race checks, and targeted vet
+passed on the dirty worktree based on `2afcc860da716bf3e9e574d9049a35d6dbba0081`.
+The combined native foundation gate then passed 55 test events with no failures
+or skipped tests; its source manifest was stable before and after. The same gate
+cross-built the Windows GUI executable, but did not run it on Windows. These
+results include uncommitted source and do not qualify the base revision alone.
+The standard disposable Client Docker interop suite also passed against a
+temporary Hub image; cleanup was confirmed and six resident container names
+were unchanged. That is legacy Client protocol evidence, not native App E2E.
+Native Windows DPAPI/ACL execution, strict PQTLS, Android, physical devices,
+public HTTPS, live authorized
+canvas and Node actions remain unestablished. N1 is a bounded implementation
+checkpoint, not full product or release acceptance. See the [Native App plan](native-app-plan.md)
+and [N1 validation record](native-app-validation.md) for exact scope and
+commands.
+
 ## 2026-10-14 Hub Owner account backend — BOUNDED LOCAL GATES PASS; full acceptance PARTIAL
 
 The account implementation and gate evidence below were captured from dirty

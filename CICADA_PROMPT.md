@@ -14,14 +14,27 @@ unreleased development source was software `0.0.5`, Architecture v2.3, and
 contained additive schema 61 plus Hub Owner account claim/login source against
 the earlier schema-60 bootstrap. The account backend, six encrypted operations,
 local claim issuer, and two-page browser/WASM flow were implemented in the
-captured source. Focused deterministic tests,
+captured source. That browser/WASM UI is retained as a bounded 0.0.5
+implementation and validation history, not the current product entry. The
+current target is a standalone Windows-first native Cicada App with no browser
+or WebView dependency. Focused deterministic tests,
 selected race checks and targeted vet pass. Root's final PQ-enabled disposable
 Chromium account gate passed all 18 steps with fixture cleanup, and the official
 standard Client Docker interop passed with exit 0 and confirmed cleanup. The
 post-review UI retry guard now serializes same-origin actions with Web Locks/
 singleflight and exact IndexedDB compare-and-swap; the post-CAS WASM/UI gate
 passed. No Core or wire behavior changed. The latest sequenced Windows
-cross-build passed; native Windows/ACL acceptance remains NOT_RUN. These are
+cross-build passed; native Windows/ACL acceptance remains NOT_RUN. The native
+App foundation is N1 PARTIAL: account claim/login and vault-backed identities
+exist in source, but the one-code Root activation, encrypted PKCS#8 input,
+automatic trusted-profile restart/reconciliation, and native App integration
+for the authorized live canvas and Node actions are incomplete. Supported
+unencrypted existing Owner identities can be imported into the encrypted
+vault; using one to prove Root remains incomplete. The Hub/Node APIs and Guard
+already exist for App integration. The App is not a released installer; N2 and
+N3 are not complete. The target is for the Hub public root `/` to return 404;
+this has not been validated. See
+[`docs/native-app-architecture.md`](docs/native-app-architecture.md). These are
 bounded local gates, not full-product or release acceptance. Attribute the
 current browser image to dirty revision `d758086` and build-input fingerprint
 `c4b52e67ed82f75fd2ef27f198d6e34591323de6f3dfa2f94f03adce7bc335a3`; its image
@@ -86,35 +99,43 @@ indexed in [the documentation index](docs/README.md).
 
 ## Architecture boundaries
 
-- Physical responsibilities are Node, Hub and Client; logical participants are
-  User, Control, Worker and optional Monitor. Network is a private tenant and
-  authorization scope, not another deployment component or participant.
+- Physical responsibilities are Node, Hub and App. A human Owner is the
+  authority; Manager coordinates goals/approvals, Advisor gives bounded
+  recommendations, and Worker executes authorized work. Control is a Hub
+  service. Network is a private tenant and authorization scope, not another
+  deployment component or participant. Existing Client/Monitor identifiers
+  and `client-hub-*` contracts are compatibility names, not product terminology.
 - Owner account authentication belongs to Hub Identity/Authorization and must
-  work without Control, Workspace or a model. The accepted target is two pages:
-  verify installer-provided finite claim and independently trusted full-identity
-  SHA-256 pin before sending code/password, then create credentials, a proven
-  ACCOUNT_LOGIN device and pending existing-public-key association. Recalculate
-  the exact full identity hash; QR need not contain all PQ key JSON. Public
-  association is not ACTIVE Root: activation still requires signing/KEM private
-  possession, with no private-key upload. Ten-plus-character passwords require
-  registered-device PQC on every login; initial code is not ongoing MFA and an
-  unknown device cannot enroll by password alone. Controlled credentials
-  attachment to an existing exact account requires an explicit controlled local
-  channel and must not reclaim/reset its Root. Setup secrets/password/proofs/
-  results and account requests preserve NIST application envelopes; HTTPS is
-  transport. A cookie/session hint alone is never an actor: authenticated device
-  envelope, current epochs and nonce/sequence checks remain required. The
-  implemented verifier is PBKDF2-SHA256-600000-v1 with a 32-byte salt, at least
-  10 Unicode code points, and a 1,024-byte maximum; two workers and four queued
-  requests bound KDF work, which runs outside the Store transaction. Current
-  restore fences advance the account epoch and invalidate pending claims,
-  attempts and sessions while retaining credentials, active login devices and
-  pending public association. This source supports the initial pre-Root claim;
-  adding credentials to an existing Root account, password recovery, and
-  device add/revoke are not implemented. The 0600 local claim card contains
-  one-use setup authority and is suppressed from default CLI output. These
-  implementation details do not imply full-product acceptance; the bounded
-  browser and interop gates passed for the captured source.
+  work without Control, Workspace or a model. The accepted product target is a
+  standalone App flow with one encoded/scannable, secret-bearing, single-use
+  activation code from a controlled operator channel. Its text representation
+  may be long; users scan or import it rather than type a short code or copy
+  JSON/IDs. This is not a browser wizard. The App fetches the Hub's full
+  identity and independently verifies the full SHA-256 pin before sending the
+  code or password. Account
+  credentials, an ACCOUNT_LOGIN device and a pending Owner-public association
+  remain distinct from active Root. The code and public association alone do
+  not activate Root or Manager; final activation requires proof from the exact
+  Owner private key and a finite device grant. Existing identity and key IDs
+  must be preserved. Ten-plus-character passwords require registered-device
+  PQC on every login; initial code is not ongoing MFA and an unknown device
+  cannot enroll by password alone. Controlled continuation of an existing
+  account must not reclaim/reset its Root. Setup secrets/password/proofs/results
+  and account requests preserve NIST application envelopes; HTTPS is transport.
+  A cookie/session hint alone is never an actor: authenticated device envelope,
+  current epochs and nonce/sequence checks remain required. The implemented
+  verifier is PBKDF2-SHA256-600000-v1 with a 32-byte salt, at least 10 Unicode
+  code points, and a 1,024-byte maximum; two workers and four queued requests
+  bound KDF work, which runs outside the Store transaction. Current restore
+  fences advance the account epoch and invalidate pending claims, attempts and
+  sessions while retaining credentials, active login devices and pending public
+  association. The current source supports initial pre-Root account claim; the
+  native App activation flow, existing-Root credential attachment, password
+  recovery and device add/revoke are not implemented. The 0600 local claim card
+  contains one-use setup authority and is suppressed from default CLI output.
+  These implementation details do not imply full-product acceptance; the
+  bounded legacy browser-compatibility and interop gates passed for the captured
+  source.
 - Control manages user intents, goals, budgets and approvals. Ordinary peer
   collaboration must not invoke its interpretation, planning or summarization.
   A Monitor can observe, review or represent within grants; it is not a mandatory
@@ -134,10 +155,13 @@ indexed in [the documentation index](docs/README.md).
   Node-callable exact-target native API, plus current authorization. A Node label
   is insufficient. Nodes initiate outbound HTTPS/SSE; do not introduce inbound
   Node access or implicit Hub-to-Hub forwarding.
-- Peer plaintext belongs at authorized Endpoints. Client management plaintext
-  belongs at Client and Control: Control decrypts management commands. Preserve
-  NIST application E2EE, keys, replay state and explicit Owner trust; transport
-  TLS/PQTLS is a separate boundary. Never silently downgrade to legacy plaintext.
+- Peer plaintext belongs at authorized Endpoints. App account operations are
+  addressed to Hub Identity/Authorization; Manager instructions are decrypted
+  by Control because Control interprets them. Hub Relay does not get peer
+  plaintext. Preserve NIST application E2EE, keys, replay state and explicit
+  Owner trust; HTTPS and future Windows PQTLS are separate transport layers.
+  Native Windows PQTLS is NOT_IMPLEMENTED. Never silently downgrade to legacy
+  plaintext.
 - Shared native Threads share model memory. Changing Group scope cannot erase
   already consumed content. Journal, Discussion, messages, Tasks, Evidence and
   Approval have separate history, authorization and acceptance semantics.
@@ -149,10 +173,14 @@ indexed in [the documentation index](docs/README.md).
 Preserve Go core and effective product capabilities, including Idea/Goal,
 Workspace, scheduling, approvals, contacts, memory, notifications and connectors.
 Reuse current MCP/service paths; do not create parallel infrastructure merely to
-coordinate repositories. Android belongs to the independent Client repository;
-read it for interoperability but modify it only with explicit user authorization.
-Client-facing work follows [the authoritative development boundary](docs/client-hub-development.md)
-and updates implementation, contract and checks in one checkpoint.
+coordinate repositories. Android is a planned App distribution in the separate
+`../CICADA_CLIENT` repository; read it for interoperability but do not modify or
+history-import it without explicit authorization. Future import must preserve
+its history. New native App work follows
+[`docs/native-app-architecture.md`](docs/native-app-architecture.md). Existing
+Client-facing work continues to respect the frozen
+[Hub contract boundary](docs/client-hub-development.md) until a versioned App
+contract replaces it; do not rename wire identifiers in place.
 
 Distinguish Relay persistence, Node persistence, Runtime injection, confirmed
 model consumption and accepted business results. At-least-once transport does

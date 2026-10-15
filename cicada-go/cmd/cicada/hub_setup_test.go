@@ -180,9 +180,22 @@ func TestHubAccountClaimIssueProtectsCardAndHidesCodeFromDefaultOutput(t *testin
 	if err := os.Mkdir(privateDir, 0700); err != nil {
 		t.Fatal(err)
 	}
+	occupiedAppPath := filepath.Join(privateDir, "already-exists.txt")
+	if err := os.WriteFile(occupiedAppPath, []byte("synthetic existing file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	preflightClaimPath := filepath.Join(privateDir, "must-not-be-created.json")
+	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", preflightClaimPath,
+		"--app-code-file", occupiedAppPath}, strings.NewReader(""), &bytes.Buffer{}); err == nil {
+		t.Fatal("claim issuer accepted a preexisting secondary output file")
+	}
+	if _, err := os.Lstat(preflightClaimPath); !os.IsNotExist(err) {
+		t.Fatal("claim issuer created one output before all output paths passed preflight")
+	}
 	claimPath := filepath.Join(privateDir, "owner-claim.json")
+	appCodePath := filepath.Join(privateDir, "owner-app-code.txt")
 	var output bytes.Buffer
-	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath}, strings.NewReader(""), &output); err != nil {
+	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath, "--app-code-file", appCodePath}, strings.NewReader(""), &output); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(claimPath)
@@ -196,6 +209,24 @@ func TestHubAccountClaimIssueProtectsCardAndHidesCodeFromDefaultOutput(t *testin
 	card, err := wire.DecodeClaimCard(encoded)
 	if err != nil || card.Code == "" || bytes.Contains(output.Bytes(), []byte(card.Code)) {
 		t.Fatal("default claim command did not protect the valid code from terminal output")
+	}
+	appInfo, err := os.Stat(appCodePath)
+	if err != nil || appInfo.Mode().Perm() != 0600 {
+		t.Fatalf("App-code file mode=%v err=%v, want 0600", modeOf(appInfo), err)
+	}
+	appCodeBytes, err := os.ReadFile(appCodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(appCodeBytes)
+	appCode := strings.TrimSuffix(string(appCodeBytes), "\n")
+	wantAppCode, err := wire.EncodeOwnerAccountClaimCode(card)
+	if err != nil || appCode != wantAppCode {
+		t.Fatal("protected App-code file did not contain the canonical compact activation code")
+	}
+	decodedAppCode, err := wire.DecodeOwnerAccountClaimCode(appCode)
+	if err != nil || decodedAppCode != card {
+		t.Fatal("protected App-code file did not decode to the exact issued claim")
 	}
 	if !strings.Contains(output.String(), `"state":"INITIAL_ACCOUNT_CLAIM_ISSUED"`) {
 		t.Fatal("default claim command did not report its nonsecret state")
@@ -220,16 +251,18 @@ func TestHubAccountClaimIssueProtectsCardAndHidesCodeFromDefaultOutput(t *testin
 		t.Fatal("persisted 0600 claim card did not bind to the exact initialized Hub")
 	}
 
-	showPath := filepath.Join(privateDir, "redirected-card.json")
-	var redirected bytes.Buffer
-	if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", showPath, "--show-code-card"}, strings.NewReader(""), &redirected); err == nil {
-		t.Fatal("claim card display accepted a redirected nonterminal output")
-	}
-	if redirected.Len() != 0 {
-		t.Fatal("claim card secret was printed before requiring a terminal")
-	}
-	if _, err := os.Lstat(showPath); !os.IsNotExist(err) {
-		t.Fatal("rejected redirected display issued a second claim")
+	for _, showFlag := range []string{"--show-code-card", "--show-app-code"} {
+		showPath := filepath.Join(privateDir, "redirected-"+strings.TrimPrefix(showFlag, "--show-")+".json")
+		var redirected bytes.Buffer
+		if err := hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", showPath, showFlag}, strings.NewReader(""), &redirected); err == nil {
+			t.Fatalf("%s accepted redirected nonterminal output", showFlag)
+		}
+		if redirected.Len() != 0 {
+			t.Fatalf("%s secret was printed before requiring a terminal", showFlag)
+		}
+		if _, err := os.Lstat(showPath); !os.IsNotExist(err) {
+			t.Fatalf("rejected %s display wrote a claim file", showFlag)
+		}
 	}
 }
 

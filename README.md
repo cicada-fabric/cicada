@@ -9,17 +9,24 @@ approval separate from model-generated claims.
   Control to interpret its messages.
 - **Node** owns local session access, Endpoint keys and durable inbox/writer
   state, and connects outbound to the Hub.
-- **Client** is the user identity and approval surface. Android development is
-  owned by the separate `CICADA_CLIENT` repository.
+- **App** is the independent user entry point. Windows is the current native
+  target; ordinary use must not depend on a browser or WebView. Android is a
+  planned separate distribution in `../CICADA_CLIENT`, whose source and history
+  remain untouched by this work.
+- The human **Owner** supplies authority. **Manager** coordinates goals and
+  approvals, **Advisor** makes bounded recommendations, and **Worker** executes
+  authorized tasks. Hub Control is a service, not the Owner.
 
 Installing a component does not Join a Thread or grant access. Explicit Join,
 current SessionBinding and per-operation Network/Group/Link authorization are
 required. A tool being available is not permission to use it.
 
 The cryptographic design uses NIST ML-KEM, ML-DSA and authenticated encryption.
-Peer plaintext belongs at authorized Endpoints; Client management plaintext
-belongs at the Client and Control. These application E2EE boundaries are
-distinct from HTTPS and the optional PQTLS transport. Content sent to an
+Peer plaintext belongs at authorized Endpoints; App account requests are
+addressed to Hub Identity/Authorization, and Manager instructions are decrypted
+by Control. The Hub peer Relay does not receive peer plaintext. These
+application E2EE boundaries are distinct from HTTPS and the future Windows
+PQTLS transport. Content sent to an
 external model is visible to that provider; this is not provider-blind E2EE.
 
 ## Development and local deployment
@@ -29,18 +36,29 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.5**, unreleased on `dev`. It adds bounded local
-Hub account setup and first Owner-signer bootstrap. The independent-Hub Docker
-gate passed, including fresh-Root manager Client enrollment and the existing
-Node INITIAL protocol path. The bounded checkpoint has segmented normal and
-selected race PASS results after two Store test-fixture-only corrections; the
-original A7 and R3 aggregate failures/timeouts remain recorded. Vet/build and
-Python checks passed. See the [checkpoint record](docs/hub-owner-bootstrap-validation.md)
-for counts, skips, fingerprints and limits. The
-[operator guide](docs/hub-owner-bootstrap.md) documents fresh and existing
-Hub-volume procedures. Human interactive CLI review, Android, Native,
-physical-device and public-HTTPS acceptance remain NOT_RUN; Windows custody and
-lost-Root recovery remain unimplemented. A main merge or
+The development line is **0.0.5**, unreleased on `dev`, with Hub schema 61.
+The account backend and earlier browser/WASM account flow are implemented and
+validated within their recorded scopes, but the current product direction is a
+native Windows App. Its source foundation is **N1 partial**: native UI and
+vault-backed protocol code exist, but native Windows/DPAPI/ACL execution,
+encrypted PKCS#8 input, the one-code Root activation, trusted automatic profile
+restart/reconciliation, and native App integration for the authorized live
+canvas and Node actions are not accepted or complete. Supported unencrypted
+existing Owner identities can be imported into the encrypted vault; using one
+to prove and activate Root remains incomplete. The Hub/Node APIs and Guard
+already exist for App integration. The App is not a released installer, and
+the Hub public-root 404 target is not yet validated. See the
+[native App architecture](docs/native-app-architecture.md) and
+[native App plan](docs/native-app-plan.md). The independent-Hub Docker account
+gate and standard legacy Client-protocol interop passed their own bounded
+scopes; neither is native Windows acceptance. The Hub bootstrap checkpoint's
+segmented normal and selected race PASS results, Store fixture corrections,
+original A7/R3 aggregate failures/timeouts, vet/build and Python results remain
+in the [Hub bootstrap record](docs/hub-owner-bootstrap-validation.md). The
+[operator guide](docs/hub-owner-bootstrap.md) documents the current Hub-volume
+procedure, not the final App onboarding. Android, native Windows, physical-device
+and public-HTTPS acceptance remain NOT_RUN; Windows custody, Root activation
+and lost-Root recovery remain incomplete. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1, current CLI sandbox and Worker private-fixture checks passed their
 scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3
@@ -55,8 +73,10 @@ The [test automation guide](docs/test-automation.md) covers `scripts/test-archit
 
 Use the checkout-based commands in [distribution and deployment](docs/distribution.md):
 
-- New Hub: follow the [manual first-Owner setup](docs/hub-owner-bootstrap.md),
-  which runs local `hub setup` and then serves the Hub directly with Docker.
+- New Hub: the current 0.0.5 operator procedure is in the
+  [Hub bootstrap guide](docs/hub-owner-bootstrap.md). It is a transitional
+  local-operator flow; the target user flow is the native App's one-use
+  activation code and is not implemented as a complete Root setup yet.
 - Existing configured Compose-managed Hub: `scripts/install-cicada-server.sh`
   is a controlled update helper that requires an explicit fresh backup. Its
   `scripts/bootstrap-cicada.sh` alias is not a fresh-install path. Do not pass

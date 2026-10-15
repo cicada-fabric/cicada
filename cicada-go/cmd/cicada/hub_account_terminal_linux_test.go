@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestHubAccountClaimCardDisplayRequiresAndUsesInteractiveTTY(t *testing.T) {
+func TestHubAccountAppCodeDisplayRequiresAndUsesInteractiveTTY(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, "state")
 	if err := hubSetupCommand([]string{"--owner-label", "Synthetic terminal owner", "--origin", "https://terminal.synthetic.invalid",
@@ -46,7 +47,7 @@ func TestHubAccountClaimCardDisplayRequiresAndUsesInteractiveTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimPath := filepath.Join(privateDir, "owner-claim.json")
-	if err = hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath, "--show-code-card"}, terminal, terminal); err != nil {
+	if err = hubAccountClaimIssueCommand([]string{"--state-dir", stateDir, "--claim-file", claimPath, "--show-app-code"}, terminal, terminal); err != nil {
 		t.Fatal(err)
 	}
 	cardBytes, err := os.ReadFile(claimPath)
@@ -80,8 +81,9 @@ func TestHubAccountClaimCardDisplayRequiresAndUsesInteractiveTTY(t *testing.T) {
 			break
 		}
 	}
-	if !bytes.Contains(displayed, []byte(card.Code)) {
-		t.Fatal("explicit TTY card display omitted the issued code")
+	activation, err := wire.DecodeOwnerAccountClaimCode(strings.TrimSpace(string(displayed)))
+	if err != nil || activation != card {
+		t.Fatal("explicit TTY display omitted the exact canonical App activation code")
 	}
 	if info, err := os.Stat(claimPath); err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("displayed claim file mode=%v err=%v, want 0600", modeOf(info), err)

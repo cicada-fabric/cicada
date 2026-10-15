@@ -18,6 +18,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/clientoperator"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubauth"
 	"github.com/cicada-ai/cicada/internal/hubidentity"
 	"github.com/cicada-ai/cicada/internal/hubowner"
@@ -486,29 +487,32 @@ func hubAccountClaimIssueCommand(args []string, input io.Reader, output io.Write
 	flags.SetOutput(io.Discard)
 	stateDir := flags.String("state-dir", "", "Hub StateDir")
 	path := flags.String("claim-file", "", "new protected local claim-card file (never a URL)")
+	appCodePath := flags.String("app-code-file", "", "new protected compact native App activation-code file")
 	cancel := flags.Bool("cancel-pending", false, "explicitly cancel uncompleted prior claim before issuing")
 	show := flags.Bool("show-code-card", false, "display claim card only on a real local terminal")
+	showAppCode := flags.Bool("show-app-code", false, "display compact App activation code only on a real local terminal")
 	if e := flags.Parse(args); e != nil || len(flags.Args()) != 0 || *path == "" || output == nil {
-		return errors.New("usage: cicada hub account-claim-issue --claim-file NEW_0600_FILE [--state-dir DIR] [--cancel-pending] [--show-code-card]")
+		return errors.New("usage: cicada hub account-claim-issue --claim-file NEW_0600_FILE [--app-code-file NEW_0600_FILE] [--state-dir DIR] [--cancel-pending] [--show-code-card|--show-app-code]")
 	}
-	if *show && !isReviewTerminal(input, output) {
+	if *show && *showAppCode {
+		return errors.New("choose either --show-code-card or --show-app-code")
+	}
+	if (*show || *showAppCode) && !isReviewTerminal(input, output) {
 		return errors.New("code-card display requires a real terminal")
 	}
-	abs, e := filepath.Abs(*path)
+	abs, e := preflightPrivateOutput(*path, "claim")
 	if e != nil {
 		return e
 	}
-	parent := filepath.Dir(abs)
-	resolved, e := filepath.EvalSymlinks(parent)
-	if e != nil || resolved != parent {
-		return errors.New("claim file requires an existing protected directory without symlinks")
-	}
-	info, e := os.Lstat(parent)
-	if e != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
-		return errors.New("claim file directory must have mode 0700")
-	}
-	if _, e = os.Lstat(abs); !errors.Is(e, os.ErrNotExist) {
-		return errors.New("claim output already exists or cannot be checked")
+	appAbs := ""
+	if *appCodePath != "" {
+		appAbs, e = preflightPrivateOutput(*appCodePath, "App activation-code")
+		if e != nil {
+			return e
+		}
+		if appAbs == abs {
+			return errors.New("claim-card and App-code outputs must use different files")
+		}
 	}
 	config := hubControlConfig(*stateDir, "")
 	startup, e := store.AcquireStateStartup(config.StateDir)
@@ -545,14 +549,54 @@ func hubAccountClaimIssueCommand(args []string, input io.Reader, output io.Write
 		return e
 	}
 	defer clear(raw)
+	appCode, e := wire.EncodeOwnerAccountClaimCode(*card)
+	if e != nil {
+		return errors.New("native App activation code could not be encoded")
+	}
+	appCodeBytes := []byte(appCode + "\n")
+	defer clear(appCodeBytes)
+	defer func() { appCode = "" }()
 	if e = writePrivateExclusive(abs, raw); e != nil {
 		return errors.New("claim file could not be persisted; explicitly cancel pending claim before retrying")
+	}
+	if appAbs != "" {
+		if e = writePrivateExclusive(appAbs, appCodeBytes); e != nil {
+			return errors.New("App activation code could not be persisted; recover it from the protected claim-card file")
+		}
 	}
 	if *show {
 		_, e = fmt.Fprintf(output, "%s\n", raw)
 		return e
 	}
-	return json.NewEncoder(output).Encode(map[string]string{"state": "INITIAL_ACCOUNT_CLAIM_ISSUED", "origin": card.Origin, "claim_file": abs})
+	if *showAppCode {
+		_, e = fmt.Fprintf(output, "%s\n", appCode)
+		return e
+	}
+	result := map[string]string{"state": "INITIAL_ACCOUNT_CLAIM_ISSUED", "origin": card.Origin, "claim_file": abs}
+	if appAbs != "" {
+		result["app_code_file"] = appAbs
+	}
+	return json.NewEncoder(output).Encode(result)
+}
+
+func preflightPrivateOutput(path, label string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	resolved, err := filepath.EvalSymlinks(parent)
+	if err != nil || resolved != parent {
+		return "", fmt.Errorf("%s file requires an existing protected directory without symlinks", label)
+	}
+	info, err := os.Lstat(parent)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+		return "", fmt.Errorf("%s file directory must have mode 0700", label)
+	}
+	if _, err := os.Lstat(abs); !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("%s output already exists or cannot be checked", label)
+	}
+	return abs, nil
 }
 func isReviewTerminal(input io.Reader, output io.Writer) bool {
 	in, ok := input.(*os.File)
