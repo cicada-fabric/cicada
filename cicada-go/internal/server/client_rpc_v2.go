@@ -131,6 +131,9 @@ func (h *Handler) clientRPC(response http.ResponseWriter, request *http.Request)
 }
 
 func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, operation string, plaintext []byte) (any, error) {
+	if err := h.control.CheckClientAppLease(ownerID, callerDeviceID, operation); err != nil {
+		return nil, err
+	}
 	if err := h.control.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, errors.New("Client session owner is unavailable")
 	}
@@ -159,12 +162,16 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
 			return nil, errors.New("invalid Client session capabilities request")
 		}
+		operations, err := h.control.ClientAppLeaseOperations(ownerID, callerDeviceID, clientcontract.OperationsForRole(role))
+		if err != nil {
+			return nil, err
+		}
 		return map[string]any{
 			"owner_id": ownerID, "role": string(role),
 			"contract_revision":        clientcontract.ContractRevision,
 			"catalog_sha256":           clientcontract.CatalogSHA256(),
 			"rpc_recovery":             true,
-			"available_rpc_operations": clientcontract.OperationsForRole(role),
+			"available_rpc_operations": operations,
 		}, nil
 	case "link.invite_create":
 		var input struct {

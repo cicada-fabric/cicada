@@ -42,6 +42,7 @@ const (
 	MaxActivationProofLifetime  = 10 * time.Minute
 	MaxAppLeaseLifetime         = 15 * time.Minute
 	MaxActivationBodyBytes      = 192 * 1024
+	MaxActivationReceiptBytes   = 128 * 1024
 )
 
 // ActivationMaterial is secret-bearing local installation material, never a

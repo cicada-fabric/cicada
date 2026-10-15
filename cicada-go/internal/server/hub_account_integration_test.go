@@ -111,6 +111,9 @@ func (f *hubAccountTCPFixture) restart(t *testing.T) {
 }
 
 func accountPath(operation string) string {
+	if path := wire.ActivationHTTPPath(operation); path != "" {
+		return path
+	}
 	switch operation {
 	case wire.OperationClaimPrepare:
 		return "/v2/owner/account/claim/prepare"

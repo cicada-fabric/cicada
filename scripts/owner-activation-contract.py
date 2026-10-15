@@ -40,6 +40,8 @@ def check():
     for name, (key, seconds) in expected.items():
         assert name in source and manifest[key] == seconds
     assert manifest["enrollment_grant_max_seconds"] == 600
+    assert manifest["max_activation_receipt_bytes"] == 128 * 1024
+    assert "MaxActivationReceiptBytes" in source
     print("owner-activation-v1 metadata check PASS (server availability not asserted)")
 
 

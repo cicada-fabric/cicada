@@ -25,6 +25,21 @@ async function loadOwnerBootstrapValidator(uiDir) {
   return context.panelValidators;
 }
 
+async function webCryptoManifestChecks(uiDir) {
+  const source = (await readFile(path.join(uiDir, 'panel-bootstrap.js'), 'utf8'))
+    .replace(/^import .*;\s*$/gm, '').replace(/export\s+(?=(?:async\s+)?function)/g, '');
+  for (const toolchain of ['go1.27.1', 'go1.27.2']) {
+    const context = {
+      fetch: async () => ({ ok: true, json: async () => ({ toolchain,
+        wasm_file: 'cicada-webcrypto.wasm.gz', wasm_sha256: 'synthetic-digest' }) }),
+      document: { createElement() { throw new Error('accepted-current-manifest'); } },
+    };
+    vm.runInNewContext(`${source}\nglobalThis.load = loadCryptoWasm;`, context);
+    await assert.rejects(context.load(), toolchain === 'go1.27.2'
+      ? /accepted-current-manifest/ : /unsupported Go toolchain/);
+  }
+}
+
 async function accountVaultChecks(uiDir) {
   const source = (await readFile(path.join(uiDir, 'panel-client.js'), 'utf8'))
     .replace(/^import \{[\s\S]*?\} from '\.\/panel-model\.js';\s*/m, '')
@@ -1052,6 +1067,7 @@ async function main() {
   const wasmPath = option('--wasm');
   const runtimePath = option('--wasm-exec');
   const uiDir = option('--ui');
+  if (uiDir) await webCryptoManifestChecks(uiDir);
   if (process.argv.includes('--model-only')) {
     if (!uiDir) throw new Error('--model-only requires --ui DIR');
     await modelChecks(uiDir); await staticChecks(uiDir); return;

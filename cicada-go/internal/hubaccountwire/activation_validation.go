@@ -81,7 +81,7 @@ func validateExtensionResponse(body any, r clientwire.Route) error {
 		default:
 			return ErrInvalid
 		}
-		if len(v.ReceiptPacket) > 96*1024 || len(v.AllowedOperations) > 2 {
+		if len(v.ReceiptPacket) > MaxActivationReceiptBytes || len(v.AllowedOperations) > 2 {
 			return ErrInvalid
 		}
 		if v.LeaseState != ActivationLeaseActive && v.LeaseState != ActivationLeaseExpired && v.LeaseState != ActivationLeaseRevoked && v.LeaseState != ActivationLeaseUnavailable {

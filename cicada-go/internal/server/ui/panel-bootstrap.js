@@ -177,7 +177,7 @@ export async function loadCryptoWasm() {
   const manifestResponse = await fetch('/assets/panel.manifest.json', { cache: 'no-store', credentials: 'omit' });
   if (!manifestResponse.ok) throw new Error('The Hub WebCrypto build is missing. Build the Hub with scripts/build-web-panel.sh.');
   const manifest = await manifestResponse.json();
-  if (manifest.toolchain !== 'go1.27.1' || manifest.wasm_file !== 'cicada-webcrypto.wasm.gz' || !manifest.wasm_sha256) {
+  if (manifest.toolchain !== 'go1.27.2' || manifest.wasm_file !== 'cicada-webcrypto.wasm.gz' || !manifest.wasm_sha256) {
     throw new Error('The Hub WebCrypto build manifest is invalid or uses an unsupported Go toolchain.');
   }
   const runtimeScript = document.createElement('script');

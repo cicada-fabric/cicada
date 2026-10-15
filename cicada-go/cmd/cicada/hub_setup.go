@@ -36,6 +36,8 @@ func hubCommand(args []string) error {
 		return errors.New("usage: cicada hub setup|account-claim-issue|owner-bootstrap-issue [options]")
 	}
 	switch args[0] {
+	case "activation-issue":
+		return hubActivationIssueCommand(args[1:], os.Stdout)
 	case "setup":
 		return hubSetupCommand(args[1:], os.Stdout)
 	case "account-claim-issue":

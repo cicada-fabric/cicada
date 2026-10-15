@@ -28,6 +28,11 @@ func NewHandlerWithAccount(c *control.Control, account *hubauth.Service) http.Ha
 	return h
 }
 func accountOperation(path string) string {
+	for _, op := range []string{wire.OperationActivationPrepare, wire.OperationActivationComplete, wire.OperationActivationStatus, wire.OperationAccountReconcile} {
+		if path == wire.ActivationHTTPPath(op) {
+			return op
+		}
+	}
 	switch path {
 	case "/v2/owner/account/claim/prepare":
 		return wire.OperationClaimPrepare

@@ -99,10 +99,11 @@ func AccountDigest(domain string, data []byte) string {
 func hubAccountNonceUsed(q hubOwnerQuerier, account, device, digest string) (bool, error) {
 	var used int
 	e := q.QueryRow(`SELECT EXISTS(
+ SELECT 1 FROM hub_owner_operations_v1 WHERE account_id=? AND device_id=? AND nonce_digest=? UNION ALL
 		SELECT 1 FROM hub_account_attempts_v1 WHERE account_id=? AND device_id=? AND (prepare_nonce_digest=? OR complete_nonce_digest=?)
 		UNION ALL
 		SELECT 1 FROM hub_account_requests_v1 r JOIN hub_account_sessions_v1 s ON s.session_id=r.session_id WHERE s.account_id=? AND s.device_id=? AND r.nonce_digest=?
-	)`, account, device, digest, digest, account, device, digest).Scan(&used)
+	)`, account, device, digest, account, device, digest, digest, account, device, digest).Scan(&used)
 	return used != 0, e
 }
 func accountEpoch(q hubOwnerQuerier) (int64, error) {
@@ -172,7 +173,7 @@ func (s *Store) fenceHubAccountRestore(receipt string) error {
 	if prior == receipt {
 		return nil
 	}
-	for _, statement := range []string{`UPDATE hub_account_config_v1 SET epoch=epoch+1,restore_receipt=? WHERE id=1`, `UPDATE hub_account_claims_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_account_attempts_v1 SET state='CANCELLED' WHERE state='PENDING'`, `UPDATE hub_account_sessions_v1 SET state='REVOKED' WHERE state='ACTIVE'`} {
+	for _, statement := range []string{`UPDATE hub_account_config_v1 SET epoch=epoch+1,restore_receipt=? WHERE id=1`, `UPDATE hub_account_claims_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_account_attempts_v1 SET state='CANCELLED' WHERE state='PENDING'`, `UPDATE hub_account_sessions_v1 SET state='REVOKED' WHERE state='ACTIVE'`, `UPDATE hub_owner_activation_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_app_leases_v1 SET state='REVOKED' WHERE state='ACTIVE'`} {
 		if strings.Contains(statement, "restore_receipt") {
 			_, e = tx.Exec(statement, receipt)
 		} else {
@@ -224,6 +225,10 @@ func (s *Store) IssueHubAccountClaimLocal(c HubAccountClaim, cancel bool) error 
 	}
 	var n int
 	if e = tx.QueryRow(`SELECT count(*) FROM hub_account_credentials_v1 WHERE account_id=?`, r.AccountID).Scan(&n); e != nil || n != 0 {
+		return ErrHubAccountRejected
+	}
+	var n2 int
+	if tx.QueryRow(`SELECT count(*) FROM hub_owner_activation_v1 WHERE account_id=? AND state IN('ISSUED','PREPARED')`, r.AccountID).Scan(&n2) != nil || n2 != 0 {
 		return ErrHubAccountRejected
 	}
 	if cancel {
@@ -350,6 +355,9 @@ func (s *Store) SaveHubAccountAttempt(a HubAccountAttempt) error {
 	epoch, e := accountEpoch(tx)
 	if e != nil || a.Epoch != epoch || a.AccountID != r.AccountID || a.OwnerID != r.OwnerID {
 		return ErrHubAccountRejected
+	}
+	if e = hubAccountOperationUnfenced(tx, a.AccountID, a.DeviceID, a.PrepareID); e != nil {
+		return e
 	}
 	if a.Purpose == "CLAIM" {
 		c, e := accountClaim(tx, a.ClaimID)
@@ -555,6 +563,9 @@ func (s *Store) CompleteHubAccountLogin(attempt, challenge, id, digest, nonceDig
 	if e != nil || ee != nil || a.Purpose != "LOGIN" || a.AccountID != r.AccountID || a.Epoch != epoch {
 		return nil, ErrHubAccountRejected
 	}
+	if e = hubAccountOperationUnfenced(tx, a.AccountID, a.DeviceID, id); e != nil {
+		return nil, e
+	}
 	if a.State == "CONSUMED" {
 		if a.CompleteID != id || a.CompleteDigest != digest {
 			return nil, ErrHubAccountRejected
@@ -646,6 +657,9 @@ func (s *Store) CompleteHubAccountRequest(session, id, operation, digest, nonceD
 	var accountID, deviceID string
 	if e = tx.QueryRow(`SELECT account_id,device_id FROM hub_account_sessions_v1 WHERE session_id=?`, session).Scan(&accountID, &deviceID); e != nil {
 		return nil, ErrHubAccountRejected
+	}
+	if e = hubAccountOperationUnfenced(tx, accountID, deviceID, id); e != nil {
+		return nil, e
 	}
 	used, e := hubAccountNonceUsed(tx, accountID, deviceID, nonceDigest)
 	if e != nil || used {
