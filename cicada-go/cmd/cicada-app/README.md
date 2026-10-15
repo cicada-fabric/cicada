@@ -118,3 +118,36 @@ Docker interoperability and independent acceptance belong to the integration
 owner. Evidence is retained under
 `~/Cicada/.local/evidence/n2-app/n2-full-20261015-TDvq4Q`; tests ran on the dirty
 `570c12f` source plus the recorded App changes, not that HEAD alone.
+
+## Recovery correction checkpoint
+
+An explicitly cancelled or refused setup can now accept new operator-issued
+material for the same complete Hub/origin/account/Owner scope and purpose,
+without changing Owner/App keys or device ID. An unused setup can also accept
+replacement material. Epoch rollback, unknown pending requests and established
+or revoked Root remain blocked. Sent operations require authenticated terminal
+evidence; an accepted old challenge alone cannot reopen its authority. One prior
+authenticated disposition receipt is retained in the vault. The native flow
+offers replacement only when this evidence permits it, and an optional local
+replacement view can return to activation without a request or state deletion.
+
+Registered-device account login is independent of Root/runtime-lease status.
+Current account login and session inspection may succeed after a restore or
+Root revocation while the finite lease remains revoked and unconfirmed. A
+device ID or prepare challenge alone never advertises login: registration is
+established only by authenticated claim/completion/session evidence. Previous
+N1/N2 profiles recover that fact without new keys or a new activation code.
+
+This correction passed **101 normal tests and 53 App/UI race tests, zero skips
+or failures**, plus Linux vet, Windows vet and Windows amd64 cross-build on the
+same fixed Go 1.27.2 builder. Real Hub tests include original-packet settlement,
+authenticated cancellation before replacement, unchanged reserved keys/IDs,
+unused-code replacement, epoch/scope rollback rejection, established/revoked
+Root refusal, and ordinary account re-login without regranting the lease.
+Evidence and before/after source manifests are retained at
+`~/Cicada/.local/evidence/n2-app/n2-recovery-20261015-Tj3El8`; Go/module manifest
+SHA-256 is `e2d7704d933ce5347575334edd04935d785ff6522ccb15d8e9853898042f7c6d`.
+The tested source was dirty relative to `070137c`; the final README facts were
+added after the unchanged code completed its checks. Independent process
+acceptance is rerun by its owner after integration. Native Windows runtime,
+DPAPI/ACL, Android, physical devices, public HTTPS and PQTLS remain NOT_RUN.

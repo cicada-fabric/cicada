@@ -14,6 +14,7 @@ func (c *nativeController) populateSetup(view *Snapshot) {
 		return
 	}
 	view.Setup.Purpose = e.Material.Purpose
+	_, view.Setup.ReplacementAllowed = c.replacementDisposition()
 	if e.Challenge != nil {
 		view.Setup.AuthorizationDeadline = e.Challenge.Binding.LeaseExpiresAt
 	}

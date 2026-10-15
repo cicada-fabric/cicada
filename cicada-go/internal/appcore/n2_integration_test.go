@@ -288,6 +288,18 @@ func TestN2AppRealHTTPInitialRecoveryAndFiniteLogin(t *testing.T) {
 			if s := c.Snapshot(); s.Authorization.Confirmed || s.Authorization.State != "REVOKED" || s.Account.RootState != RootStateUnavailable || containsAction(s.AvailableActions, ActionActivateApp) {
 				t.Fatal("cached completion reopened revoked Root/App authority")
 			}
+			if err := c.Dispatch(ctx, Action{Kind: ActionLogout}); err != nil {
+				t.Fatal(err)
+			}
+			if !containsAction(c.Snapshot().AvailableActions, ActionLogin) {
+				t.Fatal("Root revocation incorrectly blocked ordinary registered-account login")
+			}
+			if err := c.Dispatch(ctx, Action{Kind: ActionLogin, Username: action.Username, Password: n2SyntheticPassword}); err != nil {
+				t.Fatal(err)
+			}
+			if s := c.Snapshot(); s.Account.State != AccountStateSessionActive || s.Account.RootState != RootStateUnavailable || s.Authorization.State != "REVOKED" || s.Authorization.Confirmed {
+				t.Fatal("diagnostic account re-login revived Root or finite permissions")
+			}
 		})
 	}
 }
@@ -497,6 +509,229 @@ func TestN2AppReconcileSettlesOldLoginReceiptWithoutRevivingAdvancedEpoch(t *tes
 			if c.(*nativeController).session != nil || c.Snapshot().Authorization.Confirmed || len(f.transport.records(accountRoutes[wire.OperationSessionInspect])) != 0 {
 				t.Fatal("reopen revived a fenced cached session")
 			}
+			if !containsAction(c.Snapshot().AvailableActions, ActionLogin) {
+				t.Fatal("revoked runtime lease hid ordinary account re-login")
+			}
+			if err := c.Dispatch(ctx, Action{Kind: ActionLogin, Username: "native-epoch", Password: n2SyntheticPassword}); err != nil {
+				t.Fatal(err)
+			}
+			n = c.(*nativeController)
+			if n.session == nil || n.session.AccountEpoch != n.state.ObservedAccountEpoch || n.session.DeviceEpoch != n.state.ObservedDeviceEpoch || c.Snapshot().Authorization.State != "REVOKED" || c.Snapshot().Authorization.Confirmed {
+				t.Fatal("new-epoch account login renewed a revoked runtime lease or used old epochs")
+			}
 		})
+	}
+}
+
+func TestN2AppOperatorReplacementAfterAuthenticatedRefusalPreservesKeys(t *testing.T) {
+	f := newN2AppHub(t)
+	ctx := context.Background()
+	m, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := wire.EncodeActivationCode(*m)
+	c := f.controller(t, filepath.Join(t.TempDir(), "vaults"))
+	defer c.Close()
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: code}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionGenerateOwner}); err != nil {
+		t.Fatal(err)
+	}
+	n := c.(*nativeController)
+	owner, device := n.owner.Public(), n.device.Public()
+	// A bounded clock-fault request is authenticated but durably refused by
+	// the real Hub. There is no uncertain packet to discard afterward.
+	n.cfg.Now = func() time.Time { return time.Now().UTC().Add(2 * time.Minute) }
+	if err := c.Dispatch(ctx, Action{Kind: ActionActivateApp, ConfirmLimitedAuthorization: true, Username: "native-replacement", Password: n2SyntheticPassword}); err == nil {
+		t.Fatal("future-dated activation was accepted")
+	}
+	if n.state.Pending == nil || len(n.state.Pending.Response) == 0 || n.state.Enrollment.Result == nil || n.state.Enrollment.Result.State != wire.ActivationRejected {
+		t.Fatal("clock-fault request did not receive an authenticated terminal refusal")
+	}
+	n.cfg.Now = func() time.Time { return time.Now().UTC() }
+	replacement, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCode, _ := wire.EncodeActivationCode(*replacement)
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: newCode}); err != nil {
+		t.Fatalf("explicit operator replacement could not reopen settled local setup: %v", err)
+	}
+	if !reflect.DeepEqual(n.owner.Public(), owner) || !reflect.DeepEqual(n.device.Public(), device) {
+		t.Fatal("operator replacement changed local identities")
+	}
+	if n.state.PreviousActivationReceipt == nil || len(n.state.PreviousActivationReceipt.Response) == 0 {
+		t.Fatal("replacement lost the authenticated old disposition receipt")
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionActivateApp, ConfirmLimitedAuthorization: true, Username: "native-replacement", Password: n2SyntheticPassword}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestN2AppReplacementWaitsForAuthenticatedCancellationOfPreparedTuple(t *testing.T) {
+	f := newN2AppHub(t)
+	ctx := context.Background()
+	m, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := wire.EncodeActivationCode(*m)
+	c := f.controller(t, filepath.Join(t.TempDir(), "vaults"))
+	defer c.Close()
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: code}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionGenerateOwner}); err != nil {
+		t.Fatal(err)
+	}
+	f.transport.mu.Lock()
+	f.transport.dropPath = wire.ActivationHTTPPath(wire.OperationActivationPrepare)
+	f.transport.mu.Unlock()
+	a := Action{Kind: ActionActivateApp, ConfirmLimitedAuthorization: true, Username: "native-cancel", Password: n2SyntheticPassword}
+	if err := c.Dispatch(ctx, a); err == nil {
+		t.Fatal("lost prepare response was not uncertain")
+	}
+	n := c.(*nativeController)
+	owner, device, id := n.owner.Public(), n.device.Public(), n.state.DeviceID
+	packet := bytes.Clone(n.state.Pending.Request)
+	defer clear(packet)
+	replacement, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCode, _ := wire.EncodeActivationCode(*replacement)
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: newCode}); err == nil {
+		t.Fatal("new material discarded an uncertain original")
+	}
+	if n.state.Pending == nil || !bytes.Equal(n.state.Pending.Request, packet) || n.state.Enrollment.Material.ActivationID != m.ActivationID || c.Snapshot().Setup.ReplacementAllowed {
+		t.Fatal("uncertain activation was replaced before authenticated settlement")
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionRecover}); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Snapshot().Setup.ReplacementAllowed || containsAction(c.Snapshot().AvailableActions, ActionLogin) || containsAction(c.Snapshot().AvailableActions, ActionActivateApp) {
+		t.Fatal("cancelled prepared candidate was treated as enrolled or its old authority reopened")
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: newCode}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(owner, n.owner.Public()) || !reflect.DeepEqual(device, n.device.Public()) || n.state.DeviceID != id {
+		t.Fatal("operator replacement changed the reserved full tuple")
+	}
+	if err := c.Dispatch(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestN2AppNeverStartedReplacementAndEpochRollback(t *testing.T) {
+	f := newN2AppHub(t)
+	ctx := context.Background()
+	old, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCode, _ := wire.EncodeActivationCode(*old)
+	c := f.controller(t, filepath.Join(t.TempDir(), "vaults"))
+	defer c.Close()
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: oldCode}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionGenerateOwner}); err != nil {
+		t.Fatal(err)
+	}
+	n := c.(*nativeController)
+	owner, device := n.owner.Public(), n.device.Public()
+	if containsAction(c.Snapshot().AvailableActions, ActionLogin) || containsAction(c.Snapshot().AvailableActions, ActionLoginPrepare) {
+		t.Fatal("unregistered keys advertised account login")
+	}
+	f.restart(t, func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE hub_account_config_v1 SET epoch=epoch+1 WHERE id=1`); err != nil {
+			t.Fatal(err)
+		}
+	})
+	replacement, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCode, _ := wire.EncodeActivationCode(*replacement)
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: newCode}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(owner, n.owner.Public()) || !reflect.DeepEqual(device, n.device.Public()) || n.state.Enrollment.Material.AccountEpoch != replacement.AccountEpoch {
+		t.Fatal("never-started replacement changed keys or epoch")
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: oldCode}); err == nil {
+		t.Fatal("activation account epoch rolled back")
+	}
+	if n.state.Enrollment.Material.ActivationID != replacement.ActivationID || !reflect.DeepEqual(owner, n.owner.Public()) {
+		t.Fatal("rejected rollback replaced local enrollment")
+	}
+}
+
+func TestN2AppScopeChangesAndEstablishedRootCannotReplaceMaterial(t *testing.T) {
+	f := newN2AppHub(t)
+	ctx := context.Background()
+	m, err := f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := wire.EncodeActivationCode(*m)
+	c := f.controller(t, filepath.Join(t.TempDir(), "vaults"))
+	defer c.Close()
+	if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: code}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionGenerateOwner}); err != nil {
+		t.Fatal(err)
+	}
+	n := c.(*nativeController)
+	owner, device := n.owner.Public(), n.device.Public()
+	for _, field := range []string{"hub", "pin", "origin", "account", "owner", "purpose", "setup-epoch"} {
+		candidate := *m
+		candidate.ActivationID, _ = wire.NewRequestID()
+		switch field {
+		case "hub":
+			candidate.HubID += "_other"
+		case "pin":
+			candidate.HubFingerprint = "other"
+		case "origin":
+			candidate.Origin = "https://other.synthetic.invalid"
+		case "account":
+			candidate.AccountID += "_other"
+		case "owner":
+			candidate.OwnerID += "_other"
+		case "purpose":
+			candidate.Purpose = wire.PurposeLegacyContinuation
+		case "setup-epoch":
+			candidate.SetupEpoch = 0
+		}
+		if err := n.installActivationMaterial(candidate); err == nil {
+			t.Fatalf("%s changed an existing enrollment scope", field)
+		}
+	}
+	if err := c.Dispatch(ctx, Action{Kind: ActionActivateApp, ConfirmLimitedAuthorization: true, Username: "native-no-renew", Password: n2SyntheticPassword}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := c.Snapshot().Authorization.ExpiresAt
+	for _, revoked := range []bool{false, true} {
+		if revoked {
+			if _, err := f.db.RevokeOwnerApprovalKeyLocal(m.OwnerID, owner.ID, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.Dispatch(ctx, Action{Kind: ActionActivationStatus}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		candidate := *m
+		candidate.ActivationID, _ = wire.NewRequestID()
+		encoded, _ := wire.EncodeActivationCode(candidate)
+		if err := c.Dispatch(ctx, Action{Kind: ActionConnect, ActivationCode: encoded}); err == nil {
+			t.Fatal("established or revoked Root accepted replacement activation material")
+		}
+		if !reflect.DeepEqual(owner, n.owner.Public()) || !reflect.DeepEqual(device, n.device.Public()) || n.state.Enrollment.Material.ActivationID != m.ActivationID || n.state.Enrollment.Result.LeaseExpiresAt != deadline {
+			t.Fatal("Root replacement rejection changed keys, identity or lease expiry")
+		}
 	}
 }

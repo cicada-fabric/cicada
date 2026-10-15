@@ -48,8 +48,15 @@ func Flow(s appcore.Snapshot) SetupFlow {
 		return SetupFlow{Stage: "keys", Primary: appcore.ActionImportOwner}
 	}
 	if has(appcore.ActionActivateApp) {
-		return SetupFlow{Stage: "activate", Primary: appcore.ActionActivateApp,
+		flow := SetupFlow{Stage: "activate", Primary: appcore.ActionActivateApp,
 			Username: s.Setup.NeedsCredentials, Password: s.Setup.NeedsCredentials, LimitedConsent: true}
+		if s.Setup.ReplacementAllowed {
+			flow.Secondary = []appcore.ActionKind{appcore.ActionConnect}
+		}
+		return flow
+	}
+	if s.Setup.ReplacementAllowed {
+		return SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 	}
 	if has(appcore.ActionSetupAccount) {
 		return SetupFlow{Stage: "account", Primary: appcore.ActionSetupAccount, Username: true, Password: true}

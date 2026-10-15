@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -107,7 +106,7 @@ func (c *nativeController) Snapshot() Snapshot {
 				actions = append(actions, action)
 			}
 		}
-		if !blocked && view.Account.DeviceID != "" && view.Authorization.State != "REVOKED" && (view.Setup.Purpose == "" || view.Account.RootState == RootStateActive) {
+		if !blocked && view.Account.DeviceID != "" && view.Account.DeviceEnrolled {
 			actions = append(actions, ActionLogin)
 		}
 		view.AvailableActions = actions
@@ -351,21 +350,32 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return c.failStorage("APP_STATE_UNAVAILABLE", err)
 		}
 	}
-	if material != nil {
-		if c.state.Enrollment != nil && !reflect.DeepEqual(c.state.Enrollment.Material, *material) {
-			return c.fail(PhaseError, "ACTIVATION_SCOPE_CHANGED", ErrInvalidAction)
+	if material != nil && c.state.Enrollment == nil {
+		c.state.Enrollment = &enrollmentState{Material: *material}
+		if material.ExpectedOwnerPublic != nil {
+			c.state.OwnerKeyIDAtHub = material.ExpectedOwnerPublic.ID
+			c.state.OwnerFingerprint, _ = e2ee.OwnerDevicePublicKeyFingerprint(*material.ExpectedOwnerPublic)
+			c.state.RootState = RootStatePending
 		}
-		if c.state.Enrollment == nil {
-			c.state.Enrollment = &enrollmentState{Material: *material}
+		if err := c.persistState(); err != nil {
+			return c.failStorage("APP_STATE_UNAVAILABLE", err)
+		}
+	}
+	if err := c.loadIdentities(create); err != nil {
+		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
+	}
+	if material != nil {
+		if err := c.installActivationMaterial(*material); err != nil {
+			return c.fail(PhaseError, "ACTIVATION_SCOPE_CHANGED", err)
 		}
 		if material.ExpectedOwnerPublic != nil {
 			c.state.OwnerKeyIDAtHub = material.ExpectedOwnerPublic.ID
 			c.state.OwnerFingerprint, _ = e2ee.OwnerDevicePublicKeyFingerprint(*material.ExpectedOwnerPublic)
 			c.state.RootState = RootStatePending
 		}
-	}
-	if err := c.loadIdentities(create); err != nil {
-		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
+		if err := c.persistState(); err != nil {
+			return c.failStorage("APP_STATE_UNAVAILABLE", err)
+		}
 	}
 	if activation != nil && c.state.DeviceID == "" && c.device == nil {
 		return c.fail(PhaseLocked, "APP_DEVICE_UNAVAILABLE", errors.New("App device identity is unavailable"))

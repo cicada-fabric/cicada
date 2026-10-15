@@ -21,6 +21,21 @@ func TestStorageRecoveryCanReopenSavedProfilesWithVerifiedMetadata(t *testing.T)
 	}
 }
 
+func TestOperatorReplacementIsSecondaryUntilCancellationAndNeverBypassesRecovery(t *testing.T) {
+	s := appcore.Snapshot{Hub: appcore.HubSnapshot{Verified: true}, Setup: appcore.SetupSnapshot{OwnerKeyStored: true, ReplacementAllowed: true}, AvailableActions: []appcore.ActionKind{appcore.ActionActivateApp, appcore.ActionConnect}}
+	if f := Flow(s); f.Primary != appcore.ActionActivateApp || len(f.Secondary) != 1 || f.Secondary[0] != appcore.ActionConnect {
+		t.Fatal("replacement displaced the primary activation decision")
+	}
+	s.AvailableActions = []appcore.ActionKind{appcore.ActionConnect, appcore.ActionActivationStatus}
+	if f := Flow(s); f.Stage != "replace" || f.Primary != appcore.ActionConnect {
+		t.Fatal("settled cancellation hid the trusted replacement entry")
+	}
+	s.AvailableActions = append(s.AvailableActions, appcore.ActionRecover)
+	if f := Flow(s); f.Stage != "recovery" || f.Primary != appcore.ActionRecover {
+		t.Fatal("replacement bypassed an uncertain original")
+	}
+}
+
 func TestSetupFlowOffersOnePrimaryUserDecision(t *testing.T) {
 	for _, tt := range []struct {
 		name              string

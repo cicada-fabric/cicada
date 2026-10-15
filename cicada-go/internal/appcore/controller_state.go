@@ -139,11 +139,12 @@ func (c *nativeController) restoreSession() error {
 	if err := wire.OpenClientResponse(device, c.hub, saved.Request, saved.Response, &receipt); err != nil {
 		return errors.New("saved App session receipt did not verify")
 	}
-	if receipt.AccountID != c.connection.AccountID || receipt.OwnerID != c.connection.OwnerID ||
+	if receipt.Origin != c.connection.Origin || receipt.HubID != c.connection.HubID || receipt.AccountID != c.connection.AccountID || receipt.OwnerID != c.connection.OwnerID ||
 		receipt.DeviceID != c.state.DeviceID || receipt.DeviceKeyID != c.state.DeviceKeyID {
 		clear(receipt.SessionToken)
 		return errors.New("saved App session scope mismatch")
 	}
+	c.state.AccountDeviceEnrolled = true
 	if !c.cfg.Now().UTC().Before(parseExpiry(receipt.ExpiresAt)) || receipt.AccountEpoch < c.state.ObservedAccountEpoch || receipt.DeviceEpoch < c.state.ObservedDeviceEpoch {
 		clear(receipt.SessionToken)
 		c.state.AccountState = AccountStateLoginRequired
@@ -246,12 +247,14 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		c.state.AccountState = AccountStateClaimPending
 		c.activation = nil
 	case *wire.ClaimReceipt:
+		c.state.AccountDeviceEnrolled = true
 		c.state.ClaimChallenge = nil
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.OwnerKeyIDAtHub, c.state.OwnerFingerprint = response.OwnerKeyID, response.OwnerFingerprint
 		c.state.RootState = RootStatePending
 		c.state.AccountState = AccountStateClaimPending
 	case *wire.LoginChallenge:
+		c.state.AccountDeviceEnrolled = true
 		c.state.LoginChallenge = response
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.Username = response.Username
@@ -268,6 +271,7 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		if err := c.persistSession(request, c.state.Pending.Response); err != nil {
 			return err
 		}
+		c.state.AccountDeviceEnrolled = true
 		// An accepted receipt can be older than this process. Never resurrect
 		// an expired session when replaying an already committed response.
 		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) || response.AccountEpoch < c.state.ObservedAccountEpoch || response.DeviceEpoch < c.state.ObservedDeviceEpoch {
@@ -438,6 +442,7 @@ func (c *nativeController) publish() {
 		view.Account.AccountID, view.Account.OwnerID = c.connection.AccountID, c.connection.OwnerID
 		view.Account.RootState = c.state.RootState
 		view.Account.DeviceID = c.state.DeviceID
+		view.Account.DeviceEnrolled = c.state.AccountDeviceEnrolled
 		view.Account.OwnerFingerprint = c.state.OwnerFingerprint
 		if c.session != nil {
 			view.Account.SessionExpiresAt = c.session.ExpiresAt
@@ -547,12 +552,11 @@ func (c *nativeController) availableActions() []ActionKind {
 	if c.owner != nil && c.canBeginOperation() && (c.activation != nil || c.state.ClaimChallenge != nil) {
 		actions = append(actions, ActionSetupAccount)
 	}
-	if c.device != nil && c.state.AccountID != "" && c.state.OwnerID != "" && c.session == nil && c.state.LoginChallenge == nil &&
+	if c.device != nil && c.state.AccountDeviceEnrolled && c.state.AccountID != "" && c.state.OwnerID != "" && c.session == nil && c.state.LoginChallenge == nil &&
 		c.canBeginOperation() {
 		actions = append(actions, ActionLoginPrepare)
 	}
-	if c.device != nil && c.state.DeviceID != "" && c.session == nil && c.canBeginOperation() &&
-		(c.state.Enrollment == nil || (c.state.Enrollment.Result != nil && c.state.Enrollment.Result.RootState == wire.RootActiveState && c.state.Enrollment.Result.LeaseState != wire.ActivationLeaseRevoked)) {
+	if c.device != nil && c.state.AccountDeviceEnrolled && c.state.DeviceID != "" && c.session == nil && c.canBeginOperation() {
 		actions = append(actions, ActionLogin)
 	}
 	if c.state.LoginChallenge != nil && c.canBeginOperation() {
