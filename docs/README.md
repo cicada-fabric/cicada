@@ -41,3 +41,10 @@ The organization profile and static site have been published. Public HTTPS
 retrieval of the technical site succeeded; that proves documentation readability,
 not Hub public HTTPS readiness or product acceptance. Core dev remains the sole
 source for protocol contracts, catalog, runtime instructions and validation.
+
+N2 independent acceptance preparation is recorded in the existing native App
+[threat model](native-app-architecture.md#n2-independent-threat-model),
+[fault matrix](native-app-plan.md#n2-independent-acceptance-matrix) and
+[validation](native-app-validation.md#n2-independent-account-baseline).
+The disposable account-core lane is a scoped baseline; it does not accept N2
+Root activation, legacy continuation or native Windows behavior.
