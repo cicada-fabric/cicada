@@ -35,9 +35,10 @@ import (
 const syntheticPassword = "Synthetic acceptance meadow 472!"
 
 type fixtureConfig struct {
-	Origin string
-	Card   wire.ClaimCard
-	Hub    wire.HubIdentity
+	Origin     string
+	Card       wire.ClaimCard
+	Hub        wire.HubIdentity
+	Activation *wire.ActivationMaterial
 }
 
 type child struct {
@@ -52,8 +53,11 @@ func writeJSON(t *testing.T, path string, value any) {
 		t.Fatal("fixture JSON encode failed")
 	}
 	defer clear(raw)
-	if err := os.WriteFile(path, raw, 0600); err != nil {
+	if err := os.WriteFile(path+".next", raw, 0600); err != nil {
 		t.Fatal("fixture file write failed")
+	}
+	if err := os.Rename(path+".next", path); err != nil {
+		t.Fatal("fixture marker commit failed")
 	}
 }
 func readJSON(t *testing.T, path string, value any) {
@@ -229,6 +233,8 @@ func TestN2ProcessHelper(t *testing.T) {
 			Phase appcore.Phase
 			Root  appcore.RootState
 		}{true, snapshot.Phase, snapshot.Account.RootState})
+	case "app-n2":
+		runActivationAppProcess(t, dir, cfg, marker)
 	default:
 		t.Fatal("unknown fixture role")
 	}
@@ -247,6 +253,9 @@ func actions() map[string]appcore.Action {
 	}
 }
 func newController(t *testing.T, dir string, doer appcore.HTTPDoer) appcore.Controller {
+	return newControllerWithClock(t, dir, doer, nil)
+}
+func newControllerWithClock(t *testing.T, dir string, doer appcore.HTTPDoer, now func() time.Time) appcore.Controller {
 	t.Helper()
 	opener := func(_ context.Context, scope appvault.Scope, create bool) (*appvault.Vault, error) {
 		b, _ := json.Marshal(scope)
@@ -264,7 +273,7 @@ func newController(t *testing.T, dir string, doer appcore.HTTPDoer) appcore.Cont
 		}
 		return appvault.Open(path, scope, p)
 	}
-	return must(appcore.NewController(appcore.Config{HTTP: doer, OpenVault: opener, AllowLoopbackHTTP: true}))
+	return must(appcore.NewController(appcore.Config{HTTP: doer, OpenVault: opener, DiscoverVaults: appcore.NewProfileDiscovery(filepath.Join(dir, "app")), AllowLoopbackHTTP: true, Now: now}))
 }
 func hasAction(s appcore.Snapshot, a appcore.ActionKind) bool {
 	for _, x := range s.AvailableActions {
@@ -309,6 +318,7 @@ type faultProxy struct {
 	origin    string
 	mode      string
 	path      string
+	remaining int
 	exchanges []exchange
 }
 
@@ -327,9 +337,12 @@ func newFaultProxy(t *testing.T, origin string) *faultProxy {
 	return p
 }
 func (p *faultProxy) arm(mode, path string) {
+	p.armCount(mode, path, 1)
+}
+func (p *faultProxy) armCount(mode, path string, count int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.mode, p.path = mode, path
+	p.mode, p.path, p.remaining = mode, path, count
 }
 func (p *faultProxy) snapshot() []exchange {
 	p.mu.Lock()
@@ -347,7 +360,10 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 	mode := ""
 	if r.Method == http.MethodPost && r.URL.Path == p.path {
 		mode = p.mode
-		p.mode = ""
+		p.remaining--
+		if p.remaining <= 0 {
+			p.mode = ""
+		}
 	}
 	p.mu.Unlock()
 	ex := exchange{Path: r.URL.Path, RequestSHA256: digest(raw), Forwarded: mode != "before", request: bytes.Clone(raw)}
@@ -501,12 +517,20 @@ func TestN2AccountPinAndExpiryBeforeSecrets(t *testing.T) {
 
 func post(t *testing.T, f *fixture, path string, packet []byte) (int, []byte) {
 	t.Helper()
-	req := must(http.NewRequest(http.MethodPost, f.cfg.Origin+path, bytes.NewReader(packet)))
-	req.Header.Set("Origin", f.cfg.Origin)
-	resp := must(http.DefaultClient.Do(req))
-	defer resp.Body.Close()
-	raw := must(io.ReadAll(io.LimitReader(resp.Body, wire.MaxPacketBytes+1)))
-	return resp.StatusCode, raw
+	for attempt := 0; attempt < 80; attempt++ {
+		req := must(http.NewRequest(http.MethodPost, f.cfg.Origin+path, bytes.NewReader(packet)))
+		req.Header.Set("Origin", f.cfg.Origin)
+		resp := must(http.DefaultClient.Do(req))
+		raw := must(io.ReadAll(io.LimitReader(resp.Body, wire.MaxPacketBytes+1)))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusTooManyRequests {
+			return resp.StatusCode, raw
+		}
+		clear(raw)
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("owned Hub admission did not recover within bounded exact retries")
+	return 0, nil
 }
 func seal(t *testing.T, f *fixture, key *e2ee.Identity, body any) []byte {
 	t.Helper()

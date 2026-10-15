@@ -36,16 +36,18 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.5**, unreleased on `dev`, with Hub schema 61.
+The development line is **0.0.5**, unreleased on `dev`, with Hub schema 62.
 The account backend and earlier browser/WASM account flow are implemented and
 validated within their recorded scopes, but the current product direction is a
-native Windows App. Its source foundation is **N1 partial**: native UI and
-vault-backed protocol code exist, but native Windows/DPAPI/ACL execution,
-encrypted PKCS#8 input, the one-code Root activation, trusted automatic profile
-restart/reconciliation, and native App integration for the authorized live
-canvas and Node actions are not accepted or complete. Supported unencrypted
-existing Owner identities can be imported into the encrypted vault; using one
-to prove and activate Root remains incomplete. The Hub/Node APIs and Guard
+native Windows App. Hub/App core now implement **N2 finite activation**:
+one trusted local code, exact Owner KEM/signature proof, a separate 15-minute
+App lease, and encrypted-profile restart/reconciliation. Independent Linux
+protocol acceptance is **SCOPED_PASS** (131 events, zero failures/skips) in the
+[native validation record](docs/native-app-validation.md#n2-hubapp-integration).
+Native Windows/DPAPI/ACL/GUI execution and visual review remain NOT_RUN;
+encrypted PKCS#8 input is unsupported. Supported unencrypted existing Owner
+identities can be imported and proved without rekeying. Native App integration
+for the authorized live canvas and Node actions remains N3 work. The Hub/Node APIs and Guard
 already exist for App integration. The App is not a released installer, and
 the Hub public-root 404 target is not yet validated. See the
 [native App architecture](docs/native-app-architecture.md) and
@@ -57,8 +59,9 @@ original A7/R3 aggregate failures/timeouts, vet/build and Python results remain
 in the [Hub bootstrap record](docs/hub-owner-bootstrap-validation.md). The
 [operator guide](docs/hub-owner-bootstrap.md) documents the current Hub-volume
 procedure, not the final App onboarding. Android, native Windows, physical-device
-and public-HTTPS acceptance remain NOT_RUN; Windows custody, Root activation
-and lost-Root recovery remain incomplete. A main merge or
+and public-HTTPS acceptance remain NOT_RUN; Windows custody and lost-Root
+recovery remain unaccepted. N2 pending-Owner continuation cannot recover a
+revoked or lost Root. A main merge or
 0.1.0 release follows the user's actual acceptance and separate authorization.
 Real G1, current CLI sandbox and Worker private-fixture checks passed their
 scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3

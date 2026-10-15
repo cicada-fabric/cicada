@@ -1,4 +1,4 @@
-# Native App N1 validation
+# Native App validation
 
 This record covers the bounded Core, wire-helper, and local issuer checks for
 the Native App foundation. The commands ran on 2026-10-15 against the shared
@@ -371,3 +371,300 @@ fixture tool, separate from current OpenSSL stable 4.0.3 and from the App's
 Go cryptography/runtime requirements. Native Windows GUI, DPAPI, ACL, visual
 review, Android, native Runtime, physical device, public HTTPS and PQTLS remain
 **NOT_RUN** at this checkpoint.
+
+## N2 Hub/App integration
+
+The additive [owner-activation-v1 contract](hub-owner-activation-contract.md)
+and schema 62 are implemented in Hub and native App core. Independent consumer
+`cicada-go/acceptance/n2` runs through
+`scripts/test-native-app-n2.sh --require-n2`. Final independent Linux protocol
+acceptance is **SCOPED_PASS**, exit **0**, **131 passing test events, zero
+failures/skips**, after App recovery correction `d5b5609`. Partial/debug attempts
+remain separate failed receipts.
+
+The integrated starting point was `8db5be151dc1bf0e9be6d81cc0d1c8e8e2d48e8d`,
+including Hub receipt correction `ae09f3d`, CLI identity-path correction
+`ad87be8` and App checkpoint `070137c`. Each independent run also records the
+dirty source manifest, embedded Hub inputs, contract, driver, test binary and
+pinned builder. HEAD alone does not identify that binary. The [matrix](native-app-plan.md#n2-independent-acceptance-matrix)
+maps every obligation to actual tests and their layers.
+
+The final gate ran on integrated source
+`079249dee906c84ead0d2d331eeb400ad018ea03` plus the dirty independent acceptance
+consumer/driver/documents. Run `run-20261015T143305Z-KPWsvS` has before/after
+manifest **`f91a31375d3c9f9bdf469cd9551a6be454931fb5e374c2bcda0693283ed2e8e9`**.
+Source was stable throughout all eight lanes: `version`, `compile`,
+`account-process`, `n2-process`, `existing-guards`, `vet`, `n2-guards`,
+`n2-race`, each exit 0. The baseline accounts for 75 passing events and the
+additional N2 lanes for 56. Every required name/subcase passed; none was
+missing. The owned container is absent; all four residents remained unchanged.
+
+| Final independent artifact | SHA-256 |
+| --- | --- |
+| `.local/evidence/n2-acceptance/run-20261015T143305Z-KPWsvS/result.json` | `ae8e0710f8449baf56bb1f8b298f49bd318d229aee2a0cf36320db99d8e1d3fe` |
+| Same run's `artifacts.sha256.json` | `45aed5986c0f89ffe0c91d43da436094c1d5292fee620b92ae7fc39bcb406cbb` |
+| `.local/artifacts/n2-acceptance/run-20261015T143305Z-KPWsvS/n2.test` | `17b170696cffdcf88afe7b78e256d3401bdddfdb2a9cbfe3177974142f13852a` |
+
+These paths are relative to workspace `/home/zyf/Cicada`, outside repositories.
+The fixed Go image is the Go 1.27.2 bookworm digest recorded above. After this
+gate, only documentation was updated with its outcome, provenance and manual
+delivery paths; the run's immutable manifest and logs are not rewritten to
+pretend they include that later receipt prose. Test/driver/build inputs remain
+exactly those recorded by the passing gate.
+
+The fixture runs the real Hub handler and App core in child processes, uses
+real PQ envelopes over loopback TCP, and reopens disk SQLite and an AES-GCM
+encrypted Linux password vault after actual Hub/App process kills. No Control
+inference service runs. Account-only claim/login/inspect/logout keeps Root
+pending; Owner proof and App activation still require separate ordinary login.
+The lease permits only `nodes.list` and `session.capabilities`; general Manager
+actions remain unavailable. A selected server-package dispatch test uses a
+real Control object without model calls only to check its Guard/allowlist.
+
+No shared Hub or resident database is a fixture. Docker has no external network
+or host ports, runs read-only with dropped capabilities as the task UID, and
+uses task-specific loopback ports. Every run owns a unique container name/label
+and state/artifact/evidence directories under
+`/home/zyf/Cicada/.local/{state,artifacts,evidence}/n2-acceptance`. Cleanup
+requires the exact run label. Four resident containers are compared by ID,
+image, start time and state without reading environment values. Modules mount
+read-only; the task build cache has an exclusive driver lock. Synthetic private
+state is not an evidence payload and is never a deployment input.
+
+Reproduce in this worktree with the prepared module cache and synthetic PEMs:
+
+```sh
+umask 077
+CICADA_APPKEYS_SYNTHETIC_OPENSSL_KEY_DIR=/home/zyf/Cicada/.local/state/n2-acceptance/synthetic-openssl-owner-8t2OKM \
+CICADA_N2_GOMODCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable \
+CICADA_N2_GOCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/go-build-go1.27.2-stable \
+CICADA_N2_RESIDENT_NAMES=cicada-client-hub-v1-2-manager,cicada-client-hub-v1-2,cicada-client-v11-emulator,cicada-client-hub-v1-1 \
+  scripts/test-native-app-n2.sh --require-n2
+```
+
+Exit 0 requires every declared Linux test/subcase, eight successful lanes,
+zero test failures/skips, stable source, cleanup and unchanged residents.
+Exit 1 is gate failure; 2 means invalid/missing prerequisites. The default
+command runs only the account/wire baseline. Historical preimplementation
+`--require-n2` receipts returned 3 and stay NOT_RUN. Review `result.json`, lane
+`.exit`/`.log`, before/after inventories and `artifacts.sha256.json`. Tests
+record safe states, assertion names and hashes; no codes/passwords/tokens,
+grants, private keys or complete encrypted packets enter evidence.
+
+To renew the synthetic import fixture, select a verified OpenSSL executable
+with ML-KEM-768/ML-DSA-65 support as `n2_openssl`. The tested tool was 3.5.9;
+system OpenSSL 3.0.13 cannot generate these keys. Scope any relocated library
+environment to those invocations. Never point this at a real Owner directory.
+
+```sh
+umask 077
+n2_fixture=$(mktemp -d /home/zyf/Cicada/.local/state/n2-acceptance/synthetic-owner-XXXXXX)
+"$n2_openssl" genpkey -algorithm ML-KEM-768 -out "$n2_fixture/kem-private.pem"
+"$n2_openssl" genpkey -algorithm ML-DSA-65 -out "$n2_fixture/signing-private.pem"
+"$n2_openssl" pkey -in "$n2_fixture/kem-private.pem" -pubout -out "$n2_fixture/kem-public.pem"
+"$n2_openssl" pkey -in "$n2_fixture/signing-private.pem" -pubout -out "$n2_fixture/signing-public.pem"
+chmod 0400 "$n2_fixture"/*.pem
+chmod 0500 "$n2_fixture"
+```
+
+Set `CICADA_APPKEYS_SYNTHETIC_OPENSSL_KEY_DIR` to that path. The driver requires
+exactly these four regular files, refuses symlinks, and mounts them read-only.
+
+### Findings and retained failures
+
+| Finding | Observation and disposition |
+| --- | --- |
+| Hub receipt bound | Actual prepare receipt exceeds 96 KiB, preventing old nested status recovery. Hub owner corrected the dedicated bound to 128 KiB in `ae09f3d`; ordinary Client 64 KiB and outer limits stay unchanged. Independent App recovery asserts actual large-receipt byte equality after restart. |
+| Configured Hub identity path | Issuance could fall back from a configured missing key. Hub owner fixed `ad87be8` to require configured Peer and other transport identities before loading. Independent acceptance did not edit production code. |
+| App A01: account re-login blocked by revoked lease | On `8db5be1`, epoch-2 reconciliation of an accepted epoch-1 login receipt did not revive old session/lease, but omitted `LOGIN`. Safe state: `LOGIN_REQUIRED`, `ROOT_ACTIVE`, lease `REVOKED`, `Confirmed=false`, no session-inspect action. App owner fixed `d5b5609`; independent targeted and final full runs both confirm new account login succeeds while lease stays revoked. |
+| App A02: operator replacement after signed cancellation | `connect` rejected new material for the same full scope as `ACTIVATION_SCOPE_CHANGED` after authenticated terminal cancellation. App owner fixed bounded replacement in `d5b5609`; independent targeted and full runs confirm new material retains Owner/App keys/device ID. Unknown state, epoch rollback and established/revoked Root remain fenced by production-package regression guards. |
+
+Full attempt `run-20261015T133952Z-T2kXgk` returned **1**. Account baseline,
+guards, vet and two race cases passed; N2 process tests hit a malformed-proof
+fixture's local preflight, leaving expected cases missing. The fixture now
+uses existing lower-level sealing so invalid body/signature/device packets
+actually reach Hub. A local constructor refusal is not a server rejection.
+Debug `process-2.jsonl` similarly retains the local wrong-App preflight failure.
+Debug `process-3.jsonl` then recorded 38 passing events and A01 failure; all nine
+large-receipt fault combinations passed in that failed attempt.
+
+Precise A01 log
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/full-debug/process-4-epoch.jsonl`
+returned 1; SHA-256
+`1b567423dd87895dd26e54e861c533c8f9d1cc164cfb9108e088a76f5c86f680`.
+Its binary SHA-256 is
+`79381664dc38d1ffb9b4f7785497e4fc806caed95ed638d15996c15352b84882`.
+Debug 5 retained A02's subsequent connect failure after signed terminal
+recovery; all three real credential/proof expiry/cancellation subcases passed.
+Debug source snapshots/logs are retained separately. Only a complete stable
+run establishes the final aggregate result.
+
+After integration, `full-debug/process-6-regressions.jsonl` returned 0 for both
+previous App failures and all nine cryptographic negatives. The wrong-purpose
+fixture now makes a correct real Owner signature over canonical v1 claims and
+independently verifies ML-DSA before asserting actual Hub rejection. The stale
+account-epoch fixture preserves its issued epoch-1 body while advancing only
+the owned Hub database to epoch 2; it is not a future-epoch substitution. The
+subsequent final eight-lane gate exercises these same strengthened consumers.
+
+### Integration-owner gates and historical aggregate limit
+
+Separate receipts are under
+`/home/zyf/Cicada/.local/evidence/n2-integration/run-20261015T122515Z-TT8H3v`.
+They must retain their own source attribution and cannot replace the independent
+N2 process gate:
+
+| Receipt | Tested source and result |
+| --- | --- |
+| `hub-integrated-go1272-result.json` | Clean `570c12f`, Go 1.27.2: broad eight-package normal attempt **exit 1**, 1,972 passing events and 21 skips; Store hit cumulative 300-second timeout. Other seven packages passed. This is not an all-repository pass. |
+| `store-timeout-case-go1272-result.json` | Same source: the individual case executing at timeout, `TestNetworkScopedTaskAndRequestReadsFenceOldEnrollment`, passed alone within a separate 60-second bound. Original aggregate failure remains. |
+| `hub-store-scoped-go1272-result.json` | Same source: bounded Store selection exit 0, 256 passing events, **2 skips**: `TestStateBackupRestorePhysicalBindAliases` and `TestHubForwardPrepareRejectsPhysicalBindCapsuleBeforeFence`. Skips stay NOT_RUN. Log SHA-256 `71d38d8459b9f89860585eaeedddb4647f3fa7b60a16b8ac1187e8ad93577d75`. |
+| `native-foundation/run-20261015T133815Z-vmLmEN/validation.json` | Clean `8db5be1`: 114 passing events, zero failures/skips, Windows cross-build exit 0. Source manifest `d79af61a99ed73528193731a91a2ed307122471f98fd9ac7efd3a1b3734f6adb`; earlier unsigned exe SHA-256 `dbc942d43a46aa242e1e3dd39a1d5dfa626df829a5aafbdc839c3e91c7c558a3`. This binary predates A01/A02 fixes and is not the final manual-test delivery. |
+| `webcrypto-node26-result.json` | Clean `8db5be1`, Go 1.27.2 and Node 26.12.0: UI model plus real Go WASM PQ/wire interop exit 0. Log SHA-256 `032a9f3d39ffe3d375b44ca0751ec6fadd81a95ca39e603a1c684b7fb8ebf8f2`. Browser/native Windows runtime NOT_RUN. |
+
+The new standard Client disposable Docker interop passed on **clean `8db5be1`**,
+source build fingerprint
+`089b1d24c3145a8ada7bbed741cdd3645332a19879a594d46a2ba1fd71cdaf64`:
+smoke, recovery, headless operator and Owner bootstrap all passed, exit 0.
+`standard-client-interop/result.json` SHA-256 is
+`bd75144b0bfbf6d94ecaac93b5914236a019c7d2bbb90517f45a258df24c6b4b`;
+`cleanup.json` SHA-256 is
+`d4f54d4490931cac4206cc7d9dc5598de56c2ceb0a97a0615cdbae037ea32e68`,
+status `CONFIRMED`. Exact owned cleanup covers three containers, two images
+and scratch; the integration owner independently verified four residents
+unchanged. This result remains attributed to `8db5be1`, not the later App
+repair. The integration owner's runtime-source comparison found all 500 actual
+Hub inputs unchanged between that source and `079249d`. Earlier N1 interop
+also retains its original source attribution.
+
+Final native foundation gate on **clean `079249d`** passed **121 events,
+zero failures/skips**, Windows cross-build exit 0. Receipt
+`native-final/run-20261015T143117Z-S2lsUF/validation.json` SHA-256 is
+`93d28bf702ccc4cedb17d4374bf63715d894b0a9a221eb93c29461debef0a0b3`;
+stable Go-source manifest is
+`d05bae406e8e5714a5a0d1bfcbdc63ffba6dc7c86d8ad2faebc8e06b62e3126d`.
+The matching Linux Hub binary built offline with Go 1.27.2, CGO disabled;
+version reports `cicada 0.0.5`. Its complete build-input manifest, including
+ignored embedded WASM assets, stayed
+`5534e9427457716370e62534c5a3a4bd51a76855e42ca8a1414013cc94775217`.
+These final builds belong to clean `079249d`; acceptance-only test/document
+additions do not reattribute them to a later commit.
+
+### Time, restore and platform limits
+
+Real-time TCP tests construct short valid credential/proof windows and saved
+packets, wait for actual expiry, then send them. Store lease checks additionally
+use logical time/past lease state. App deadline checks advance only `Config.Now`
+and assert no network renewal. **Actual 15-minute end-to-end wait NOT_RUN.**
+The server account-session expiry case injects a past database expiry; it does
+not wait for the natural session lifetime.
+
+The independent epoch test injects an isolated SQL account-epoch transition,
+revokes sessions/lease and verifies current authenticated reconciliation with
+the exact old receipt. This is not full backup/restore acceptance. A selected
+Store test separately invokes the real restore fence and checks retained
+credential/Root and revoked lease. Full end-to-end backup/restore is outside
+this lane.
+
+Windows DPAPI, ACL, GUI and interaction/visual review are **NOT_RUN**.
+Cross-compilation is not runtime evidence. Android, physical-device use,
+real native Runtime, public HTTPS and native PQTLS are **NOT_RUN** here. N3
+authorized live canvas/Node actions, installer/signing, encrypted PKCS#8 input
+and lost/revoked Root recovery are not accepted by this checkpoint.
+
+### Windows manual acceptance procedure — NOT_RUN
+
+This procedure awaits actual user execution and a receipt. The integration
+owner supplied matching clean-`079249d` artifacts at
+`/home/zyf/Cicada/.local/artifacts/n2-validation/run-20261015T1423-7eteqx/`:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `cicada-app.exe` — unsigned Windows amd64 App | 13,022,208 | `8475ed01e189e816885641051731d3d290fc7a4b6a6d9749b7d141e7a181a393` |
+| `cicada` — local Linux amd64 Hub CLI | 25,161,888 | `8bca61bc3f2c5471676af5db83bc28ba1a2a9bed5c4bdb534fecca72fe1af7a8` |
+
+The same directory contains `delivery.json` (SHA-256
+`54087081b45f4b3eb25440208627facd47ef9f3b69d384071ff3833ee82d4186`),
+`SHA256SUMS`, complete before/after source inventories including ignored assets,
+and `hub-runtime-source-comparison.json` for the 500 unchanged Hub build inputs.
+Use this existing delivery manifest together with the independent gate receipt.
+
+The `.exe` is an acceptance build, not an installer/release. Copy it privately
+to Windows, retain its hash and use the matching Hub binary/source for the
+isolated fixture. On Linux prepend that artifact directory to the current
+shell's `PATH` or use the binary's full path for the following commands; do
+not replace an installed deployment binary. No deployment was changed here.
+Record Windows version and check
+`Get-FileHash -Algorithm SHA256 <copied-App.exe>` in PowerShell before use.
+
+1. The operator prepares an **isolated** Hub with that matching source/binary,
+   private state, transport identities and reachable HTTPS origin; leave
+   Control inference disabled. Normal native App requires HTTPS; the Linux
+   driver's loopback-HTTP override is not a desktop switch. With the fixture
+   Hub **stopped**, run on its host:
+
+   ```sh
+   cicada hub setup --owner-label 'Synthetic Windows acceptance Owner' \
+     --origin <chosen-HTTPS-origin> --public-config <new-public-config-file> \
+     --state-dir <new-isolated-state>
+   cicada hub activation-issue --purpose initial \
+     --state-dir <same-isolated-state> --code-file <new-private-code-file>
+   cicada serve --hub-only --state-dir <same-isolated-state> \
+     --host 127.0.0.1 --port <isolated-port>
+   ```
+
+   `setup` and issuance acquire an exclusive startup lock, so do not run them
+   against a serving fixture. Setup is for pristine state only; for legacy
+   continuation preserve its exact existing state/keys and omit setup. The
+   user/operator supplies a trusted HTTPS entry reachable from Windows to the
+   loopback listener, following [HTTPS trust](distribution.md#https-entry-and-trust).
+   These commands do not configure TLS, DNS or a public deployment. Hub-only
+   mode starts identity/account services without Control. Privately deliver
+   the code; do not publish it, alter residents, or hand-assemble/sign JSON.
+2. Open App under the intended Windows account. Paste into “激活码或可信连接卡”
+   and click “连接”. Verify origin/full Hub fingerprint in “连接详情” against
+   operator metadata. First use: “生成 Owner 身份”. Exact existing pending
+   Owner: “导入现有 Owner 身份文件”, selecting original matching ML-KEM private,
+   ML-DSA private and two public PEMs. For that case the operator issues
+   `--purpose legacy-pending --owner-key-id <existing-key-id> --owner-fingerprint <full-fingerprint>`
+   for the existing `PENDING_PROOF` account/Owner instead. Preserve original
+   keys. Initial setup requests username/password; legacy retains credentials.
+3. Read/select “我同意向此 App 授予上述有限权限。” and click “激活此 App”. Root
+   proof should complete while ordinary login is still required. Click “登录”
+   with the account credential. Expect finite permission/deadline for only
+   Node-list/session-capability reads; general management/live canvas remains
+   unavailable. ACTIVE/REVOKED Root cannot issue another installer code. This
+   is not lost/revoked Root recovery.
+4. Close/reopen under the same Windows account. Use “查找已保存的连接” / “解锁并继续”
+   without the installer code. After Hub reconciliation, compare account/Owner
+   IDs and public fingerprints. Log out, try wrong password, then “恢复连接”
+   until authenticated rejection settles. Correct password must allow login.
+   An unsigned HTTP error alone must leave uncertainty intact.
+5. Against this disposable Hub, interrupt transport during activation/login,
+   close/reopen, restore transport and use “恢复连接”. Expect recovery of the
+   original pending operation without duplicate Owner/device or false success.
+   A manual cut alone does not prove server commit timing; record ambiguity.
+   The Linux fault driver provides exact before/after-commit observations.
+6. Wait the full real 15-minute lease period, counting earlier steps. Check
+   local expiry, then use “刷新状态” to obtain authenticated current Hub lease
+   state. Account re-login must not renew the lease. Record real issue/deadline/
+   check times and the observed expired state. This can establish the actual
+   Windows/Hub status expiry after execution and review. The App has no N3
+   business-read controls yet; denial of a new protected business operation is
+   covered by the separate server/Store guards, not this manual UI step.
+7. Record DPAPI and ACL separately: same-user reopen succeeds; a different
+   ordinary Windows account cannot unlock a protected copy of this disposable
+   profile; ACLs remain protected and restricted to intended user/SYSTEM. Do
+   not weaken ACLs or copy production profiles. Review actual desktop scaling,
+   focus/keyboard, language, truncation, recovery feedback and secret-free
+   screenshots/errors. ACL denial alone does not prove cross-user DPAPI
+   rejection; that requires a separate native DPAPI execution receipt. Each
+   result needs its own evidence; a cross-build or screenshot cannot establish
+   DPAPI/ACL behavior.
+
+The importer supports **unencrypted PKCS#8 PEM only**, verifies the exact
+public identity and encrypts it in the vault. Encrypted PKCS#8/PBES2 must show
+the unsupported-input message without altering or silently replacing the key.
+Do not add shell decryption/signing as an ordinary-user workaround. Evidence
+may include IDs, public fingerprints, safe error/state codes and hashes;
+omit activation codes, passwords, private PEMs and session tokens.

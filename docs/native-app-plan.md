@@ -31,7 +31,7 @@ implemented or accepted by this plan.
 | Checkpoint | Scope | State |
 | --- | --- | --- |
 | N1 — Native foundation | Typed Hub connection and health verification; strict secret-free connection card; explicit transport policy; encrypted-vault identity and exact-packet persistence; existing encrypted claim/login/inspect/logout calls; honest account/Root pending states; native controller contract and deterministic protocol tests. | In progress in the current source checkpoint. See [validation](native-app-validation.md). |
-| N2 — Owner proof and finite activation | Reuse imported existing Owner keypairs without replacement; define one-use deployment activation material as a secret-bearing local code (never a URL); implement the server-authorized Root-completion operation and controlled continuation for an already-existing exact Owner/account. Add trusted local-profile resume after restart so an expired bootstrap code is not needed again. The existing account claim alone never activates Root. | Not implemented. Requires an agreed Hub contract and bounded authority design before code. |
+| N2 — Owner proof and finite activation | Reuse exact existing Owner keys; one-use local activation code; server-authorized Root proof; finite App lease; controlled pending-Owner continuation; trusted profile restart and authenticated recovery. Account login alone never activates Root. | Hub/App core implemented under [owner-activation-v1](hub-owner-activation-contract.md), schema 62; independent Linux protocol SCOPED_PASS (131 events, zero failures/skips). Windows execution/visual acceptance NOT_RUN. See [validation](native-app-validation.md#n2-hubapp-integration). |
 | N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Not implemented. Requires server-side read/action authorization and durable operation semantics. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
@@ -50,52 +50,59 @@ records each result independently. Hub account `PENDING_PROOF` remains distinct
 from active Root, and the App may show a ready account session only as account
 session readiness; it cannot label that state as activated CICADA ownership.
 
-The N1 restart path currently requires the same unexpired secret-bearing
+The historical N1 restart path required the same unexpired secret-bearing
 claim code for an initial claim, or the same still-valid public connection card
-for an existing account. Trusted local-profile discovery and automatic resume
-without bootstrap material are N2 work. The protocol accepts only the existing
-initial-account claim authority; it does not provide Root completion or
-existing-Owner continuation.
+for an existing account. N2 adds authenticated local-profile discovery and
+resume without installer material, Root completion and exact pending-Owner
+continuation. Historical N1 receipts retain their original limited scope.
 
 ## N2 independent acceptance matrix
 
-The following are acceptance obligations, not implementation claims. The
-independent driver is `scripts/test-native-app-n2.sh`; its initial lane covers
-the existing account core with real ML-KEM/ML-DSA/AES-GCM, loopback TCP,
-persistent SQLite and separate Hub/App processes inside a disposable Docker
-container. It has no Control inference service. N2 rows require the frozen
-Hub/App contract and exact implementation commits before they can pass.
+The independent driver is `scripts/test-native-app-n2.sh --require-n2`. It uses
+real ML-KEM/ML-DSA/AES-GCM, loopback TCP, persistent SQLite, encrypted Linux
+vaults and separate Hub/App-core processes in disposable Docker. No Control
+inference service runs in the independent fixture. The table maps obligations
+to actual tests; the [run receipt](native-app-validation.md#n2-hubapp-integration)
+determines their result. It does not transfer Linux results to Windows.
 
-| ID | Fault or boundary | Required observation | Initial scope |
+Test names below abbreviate `TestN2Activation` as `A:`, `TestN2Account` as
+`C:` and otherwise use the complete test name. Independent tests live in
+`cicada-go/acceptance/n2`; `server` and `store` explicitly identify narrower
+production-package guards. Full names and every required subcase are enforced
+by `scripts/native_app_n2_evidence.py`.
+
+| ID | Fault or boundary | Required observation | Tests and evidence boundary |
 | --- | --- | --- | --- |
-| N2-01 | Wrong full Hub public key/pin | Connect rejects before secret POST or vault creation | Account baseline |
-| N2-02 | Expired finite credential | Local preflight and Hub expiry guard independently reject; no authority change | Account baseline + N2 pending |
-| N2-03 | Consumed credential, exact duplicate and changed request | Original packet returns identical durable receipt; changed identity/request fails | Account baseline + N2 pending |
-| N2-04 | Concurrent distinct candidate claims | Exactly one durable winner, loser cannot overwrite candidate or account | Account baseline + N2 pending |
-| N2-05 | Wrong Owner/account/Hub scope | Server rejects independently of client preflight | Account baseline + N2 pending |
-| N2-06 | Missing Owner KEM or signature proof | Account stays usable but Root/Manager remain unavailable | N2 pending |
-| N2-07 | Forged/expired/wrong-purpose OwnerDeviceGrant | No enrollment or Manager authority | Existing crypto guard + N2 pending |
-| N2-08 | Stale setup/account/device/grant epoch | No new execution and no revival through a cached receipt | Existing account guard + N2 pending |
-| N2-09 | Unknown or substituted App device | Password/token/public capability cannot bypass exact enrolled key | Account baseline + N2 pending |
-| N2-10 | Drop committed response, unsigned 403, corrupt PQ response | Durable uncertainty fence; only authenticated response settles operation | Account baseline + N2 pending |
-| N2-11 | Kill Hub/App process and reopen persistent state | Same IDs/keys and original encrypted packet survive; no duplicate effect | Account baseline + N2 pending |
-| N2-12 | Same operation ID with different ciphertext or nonce replay | Reject conflicting request without replacing original receipt | Account baseline + N2 pending |
-| N2-13 | Account login versus Root and Control inference unavailable | Claim/login/inspect/logout work; account session grants no Root/Manager | Account baseline; full activation pending |
-| N2-14 | Exact legacy PENDING_PROOF continuation | Existing Owner/account/key IDs retained; no second Owner/rekey/revoked Root recovery | N2 pending |
-| N2-15 | Trusted profile reopen without expired bootstrap code | Discover encrypted profile; authenticate current epoch before management | N2 pending |
-| N2-16 | Vault persistence failure before send | Zero POSTs; fail closed until reopen; no memory-only retry | Existing App guard; N2 pending |
-| N2-17 | Two Hub scopes | No key/session/pending-state inheritance | Existing vault guard; N2 pending |
+| N2-01 | Wrong full Hub public key/pin | Reject before secret POST/vault creation | `C:PinAndExpiryBeforeSecrets`; `A:PinAndConsentBeforeSecrets/wrong-full-pin` |
+| N2-02 | Expired finite credential | Independent local and server expiry rejection | `A:PinAndConsentBeforeSecrets/expired`; `A:ExpiredProofAndCancelledMaterial/expired-real-credential` constructs a short valid credential through the trusted Store issuer, waits in real time, then sends the original encrypted packet |
+| N2-03 | Consumed credential, exact duplicate and changed request | Exact durable receipt; changed request fails | `A:ConcurrentDistinctClaimsAndExactCompletion`; `C:ConcurrentClaimAndConflictingReplay`; `A:ReplacementAfterFencedCancellationPreservesKeys` additionally checks safe operator replacement after a signed terminal result |
+| N2-04 | Concurrent distinct candidate claims | One durable candidate wins | `A:ConcurrentDistinctClaimsAndExactCompletion` and `C:ConcurrentClaimAndConflictingReplay`; the former also runs under `-race` |
+| N2-05 | Wrong Owner/account/Hub scope | Hub rejects independently of local preflight | `C:ForeignScopeAndMissingDeviceProof`; `A:CryptographicNegativeGuards/wrong-owner-scope`; real lower-level encrypted packets bypass local body preflight |
+| N2-06 | Missing Owner KEM/signature proof | No Root, credential, enrollment or lease effects | `A:CryptographicNegativeGuards/{missing-kem,missing-owner-signature,wrong-owner-signature}`; actual Hub rejection plus reopened database assertions |
+| N2-07 | Forged/expired/wrong-purpose grant | No unauthorized enrollment | `A:CryptographicNegativeGuards/{forged-grant,wrong-grant-purpose}`; real short proof window in `A:ExpiredProofAndCancelledMaterial`; server `TestN2ExpiredGrantChallengeCannotActivateRoot` |
+| N2-08 | Stale setup/account/device epochs | Historical receipt never revives authority | `A:CryptographicNegativeGuards/stale-account-epoch`; `A:ExpiredProofAndCancelledMaterial/cancelled-material-and-late-request`; `A:HistoricalReceiptNeverRevivesCurrentAuthority`; `A:AppRestoreEpochSettlesOldReceiptWithoutRevival`. Isolated SQL epoch fault is not a full backup/restore run; store `TestN2RestoreFencesLeaseAndPreservesCredentialAndRoot` calls the real restore fence |
+| N2-09 | Unknown/substituted App | Password/public capability never bypass exact device | `C:UnknownDeviceCannotUsePassword`; `A:CryptographicNegativeGuards/wrong-app-key`; server `TestN2ClientDispatchAndCapabilitiesIntersectFiniteLease` tests actual dispatch allowlist/login guards |
+| N2-10 | Lost response, unsigned 403, corrupt PQ response | Authenticated settlement only | `C:ProcessRecovery` covers six account operations × four faults; `A:AppProcessesAndLargeStatusRecovery` covers prepare/complete/status × three faults, including actual nested receipt larger than 96 KiB |
+| N2-11 | Kill Hub/App and reopen persistent state | Original bytes, IDs and keys survive | `C:ProcessRecovery`; `A:AppProcessesAndLargeStatusRecovery`; `A:ConcurrentDistinctClaimsAndExactCompletion`. Child Hub/App are actually killed and restarted; not just controller recreation |
+| N2-12 | Same operation ID/different ciphertext or nonce reuse | Reject conflict; keep original receipt | `A:ConcurrentDistinctClaimsAndExactCompletion`; `A:CryptographicNegativeGuards/reused-nonce`; `C:ConcurrentClaimAndConflictingReplay` |
+| N2-13 | Account versus Root; Control inference off | Independent account flow; no general Manager authority | `C:ProcessRecovery` finishes claim/login/inspect/logout with Root pending; all independent activation fixtures omit Control; post-proof App tests require separate login and keep Manager unavailable |
+| N2-14 | Exact legacy pending Owner | Keep credential, IDs, public key and old device | `A:LegacyImportedOwnerKeepsCredentialAndIDs` imports four real OpenSSL synthetic PEMs; tests unknown replacement Owner at Hub; server `TestN2LegacyContinuationRetainsPendingOwnerCredentialAndDevices` |
+| N2-15 | Profile reopen without installer code | Authenticate saved profile and current Hub state | `A:AppProcessesAndLargeStatusRecovery`; helper removes installer material on every profile reopen; `A:AppRestoreEpochSettlesOldReceiptWithoutRevival` checks obsolete session recovery |
+| N2-16 | Vault failure before send | Zero POSTs; no memory-only continuation | `A:VaultFailureBeforeSend` uses a deterministic path/persistence failure; existing App guard complements it |
+| N2-17 | Two Hub scopes | Distinct keys/profiles; no inherited session | `A:TwoHubVaultScopesRemainIndependent` uses two real TCP Hubs and one encrypted-vault root |
 | N2-18 | Windows DPAPI, ACL and GUI | Native execution receipts required individually | NOT_RUN |
-| N2-19 | Expired 15-minute App lease, late old completion | Fixed finite lease cannot self-renew; expired/revoked authority cannot be revived by exact receipt recovery | N2 pending |
-| N2-20 | Status ABSENT, lost packet and late original arrival | ABSENT preserves uncertainty; only original authenticated receipt or durable operation+digest terminal fence allows replacement | N2 pending |
-| N2-21 | Wrong password, then correct password | Authenticated terminal rejection safely fences the failed operation; correct password can begin a new request | N2 pending; baseline recovery gap under review |
-| N2-22 | Expired or revoked account session | Safe authenticated reconciliation permits login again; never treats unsigned 403 as final or stays permanently unrecoverable | N2 pending; baseline recovery gap under review |
+| N2-19 | Finite lease expiry/late old receipt | No renewal or revival | `A:AppClockExpiryDoesNotRenewLease` advances App `Config.Now`; store `TestN2LeaseGuardExpiryScopeAndExactHistoricalRecovery` uses logical time/past lease. **Actual 15-minute end-to-end wait NOT_RUN** |
+| N2-20 | ABSENT and late original | ABSENT cannot settle uncertainty; durable fence can | `A:AbsentStatusKeepsPendingUntilLateOriginal`; `C:ReconcileFencesLateCorrectRequestAcrossRestart` races under `-race` too; server `TestN2AccountReconcileRacesOriginalWithoutLateCommit` |
+| N2-21 | Wrong password then correct password | Signed fence allows safe re-login | `A:AppWrongPasswordFenceAndRelogin`; server `TestN2AccountWrongPasswordAndExpiredSessionRecoverWithDurableFence` |
+| N2-22 | Expired/revoked session and account epoch change | Re-login independent of revoked lease; no old-session revival | `A:AppWrongPasswordFenceAndRelogin` injects persisted session revocation; `A:AppRestoreEpochSettlesOldReceiptWithoutRevival` keeps the lease revoked after new login; server test above injects a past account-session expiry and sends the saved packet over real TCP |
 | N2-23 | Native interaction and visual quality | Smooth, legible real desktop setup/recovery; no secret disclosure in snapshots or error UI | Windows GUI/visual review NOT_RUN |
 
 Each run must record source manifest before/after, dirty status, builder image
 ID, test binary hash, selectors, individual exit codes and skips, resource
 ownership/cleanup and artifact hashes. No selector match, missing prerequisite,
 skip or unimplemented row is a pass. Default baseline success is a scoped
-result only; `--require-n2` must return nonzero while complete N2 acceptance is
-unavailable. Android, native Runtime, physical device, public HTTPS and native
+result only; `--require-n2` returns zero only for its complete declared Linux
+scope, with every expected test present and zero failures/skips. Prerequisite
+failure returns 2; gate failure returns 1. Physical NOT_RUN rows remain separate
+even when that scoped gate passes. Android, native Runtime, physical device, public HTTPS and native
 PQTLS are separate NOT_RUN scopes.

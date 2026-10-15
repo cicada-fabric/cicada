@@ -101,7 +101,7 @@ The bounded sequence is:
 | Stage | Scope | Current state |
 |---|---|---|
 | N1 — native foundation | Gio Windows UI source; typed Hub identity verification; account claim/login/inspect/logout; separate Owner and App-device identities; AES-GCM vault and durable exact-packet state; truthful Root/Manager pending state. | Partial in software 0.0.5. The app is not a released installer or an accepted Windows program. |
-| N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Not implemented. Do not treat account claim or current CLI/operator setup as this flow. |
+| N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Hub/App core implemented under `owner-activation-v1`, schema 62; independent Linux protocol gate SCOPED_PASS (131 test events, zero failures/skips). Native Windows remains NOT_RUN. See the [contract](hub-owner-activation-contract.md) and [receipts](native-app-validation.md#n2-hubapp-integration). |
 | N3 — authorized Hub/Node workspace | Integrate the App with existing authorized Hub/Node status, preview/confirm and Guard contracts; render live state and reconcile actions durably. | App integration is not implemented. Existing Hub/Node APIs and Guard remain the authority; do not rebuild them in the App. |
 | N4 — compatibility retirement | Retire browser product surfaces and public Client-facing names after equivalent App behavior; Hub public `/` returns 404. | Not implemented. Preserve frozen wire names and historical evidence. |
 
@@ -113,9 +113,9 @@ The strict Owner importer currently accepts unencrypted PKCS#8 PEM only and
 checks that its derived ML-KEM/ML-DSA public identity exactly matches supplied
 public PEMs before the vault encrypts it at rest. Encrypted PKCS#8 PEM input is
 unsupported; do not shell out to OpenSSL or silently rekey an existing Owner as
-a workaround. This format limitation is separate from N2: N1 can preserve and
-vault an imported identity, while the protocol still cannot use it to complete
-Root proof or activate Manager authority. Runtime zeroization is best-effort,
+a workaround. N2 can prove the exact supported imported identity and enroll its
+App device with a separate finite lease. It does not grant general Manager
+authority. Runtime zeroization is best-effort,
 not guaranteed by Go.
 
 The existing Hub/Node status, preview/confirm and server-side Guard APIs remain
@@ -133,7 +133,7 @@ hash under `.cicada-data/native-app-foundation/`; neither that receipt nor a
 cross-build alone is an end-to-end App acceptance result.
 
 The software, schema and wire identities remain separate: current source is
-software `0.0.5`, Hub schema `61`, frozen Client contract
+software `0.0.5`, Hub schema `62`, frozen Client contract
 `client-hub-v1.6.5`, encrypted wire `1`, catalog `55`. The App transition does
 not rename or revise those wire identifiers in place. See the [native App
 plan](native-app-plan.md), [account validation](hub-owner-account-validation.md)
@@ -142,10 +142,11 @@ and retained failures.
 
 ## N2 independent threat model
 
-Acceptance starts from clean source `c1b6a30`; a later Hub/App contract and
-implementation must be pinned separately before testing N2 activation. The
-existing account claim code and operator first-signer bootstrap are distinct
-protocols. Neither is evidence of native N2 completion.
+Preparation started from clean source `c1b6a30`. The frozen additive contract
+is [owner-activation-v1](hub-owner-activation-contract.md); Hub and App source
+and actual test manifests are pinned separately in the [validation record](native-app-validation.md#n2-hubapp-integration).
+Existing account claim and operator first-signer bootstrap remain distinct
+protocols. Their success does not establish native N2 completion.
 
 Assets are the stable Hub/account/Owner IDs, exact existing Owner keypair,
 separate App-device keypair, finite setup authority, current epochs, grants,
@@ -171,6 +172,22 @@ scope; secrecy of the trusted local channel is an explicit assumption.
 | Local vault → network | Commit the exact encrypted request before sending. Lost/unsigned/corrupt responses preserve uncertainty. Restart retries the original bytes; it cannot silently reseal, replace identities, clear pending state or infer success. |
 | Durable receipt → current authority | Exact receipt recovery does not revive revoked Root, device, grant or epoch. Reconcile authenticated current Hub state before protected management actions. |
 | Existing deployment → continuation | Preserve exact existing IDs and pending key. Reject unknown candidates, second Owner, implicit rotation and resurrection of revoked Root. |
+
+The enrollment grant lasts at most ten minutes. The separate runtime lease
+lasts exactly 15 minutes from challenge issuance, allows only `nodes.list` and
+`session.capabilities`, and cannot renew itself. Neither proof completion nor
+its cached receipt creates an account session. Ordinary login is independent
+of Root/lease availability: an ACTIVE account device can log in for account
+diagnostics after Root or lease revocation, while current server Guards still
+deny protected operations. Account-device revocation remains authoritative.
+
+A signed terminal rejection/cancellation can permit trusted operator material
+for the same complete scope without changing local keys or device ID. Unknown
+operations, rollback of epochs, a different Hub/account/Owner, and established
+or revoked Root cannot use that replacement path. Signed `ABSENT` means no
+receipt was observed; it does not fence a delayed original and cannot clear
+uncertainty. Account reconciliation instead records a durable operation/digest
+fence before allowing a replacement request.
 
 The fault driver must distinguish connection loss before acceptance from loss
 after a durable commit. Evidence records request/response hashes and assertion
