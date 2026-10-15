@@ -61,7 +61,7 @@ module_cache="${CICADA_TEST_MODULE_CACHE:-$(dirname "$producer_git_common")/.cic
 build_cache="${CICADA_TEST_BUILD_CACHE:-$evidence/go-build}"
 [[ -d "$module_cache" ]] || { printf 'set CICADA_TEST_MODULE_CACHE to an existing offline module cache\n' >&2; exit 1; }
 mkdir -p "$build_cache"
-test_builder_image=golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195
+test_builder_image=golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
 if [[ "$target_arch" == arm64 ]]; then
   printf 'ARM64 package acceptance requires the isolated amd64-driver/explicit-QEMU Node gate; cmd TestPQDistribution remains amd64-only\n' >&2
   exit 2

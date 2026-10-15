@@ -85,7 +85,7 @@ Use the checkout-based commands in [distribution and deployment](docs/distributi
 - Optional host Node: `scripts/install-cicada-worker.sh`; review the Hub URL,
   state and Owner confirmation requirements before running it.
 - Binary packaging: `scripts/build-release.sh VERSION [OUTPUT_DIR]`
-  (requires Go 1.27.1); optional PQ packaging requires an accepted OpenSSL stage.
+  (requires Go 1.27.2); optional PQ packaging requires an accepted OpenSSL stage.
 - Local Hub image: `scripts/build-hub-image.sh --image IMAGE --metadata-file PATH`.
 
 These commands build from a local checkout. No published image tag or signed

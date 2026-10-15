@@ -543,7 +543,7 @@ class ReleaseArtifactSmokeTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(compressed_wasm).hexdigest(), manifest["wasm_gzip_sha256"])
                 raw_wasm = gzip.decompress(compressed_wasm)
                 self.assertEqual(hashlib.sha256(raw_wasm).hexdigest(), manifest["wasm_sha256"])
-                self.assertEqual(manifest["toolchain"], "go1.27.1")
+                self.assertEqual(manifest["toolchain"], "go1.27.2")
                 self.assertEqual(health["catalog_sha256"], self.metadata["catalog_sha256"])
             finally:
                 process.terminate()
@@ -586,7 +586,7 @@ class PQSelectionTests(unittest.TestCase):
             fake.write_text("#!" + sys.executable + "\n" + '''import json,os,pathlib,sys
 import shutil
 args=sys.argv[1:]
-if args[0]=='version': print('go version go1.27.1 linux/amd64')
+if args[0]=='version': print('go version go1.27.2 linux/amd64')
 elif args[0]=='env': print(os.environ['SYNTHETIC_GOROOT'] if args[1]=='GOROOT' else os.environ.get(args[1],{'GOOS':'linux','GOARCH':'amd64','GOHOSTOS':'linux','GOHOSTARCH':'amd64'}[args[1]]))
 elif args[0]=='list': print(json.dumps({'Module':{'Main':True}}))
 elif args[0]=='build':
@@ -722,7 +722,7 @@ else: sys.exit(91)
         with tempfile.TemporaryDirectory(prefix="cicada-pq-target-") as directory:
             tools = pathlib.Path(directory)
             fake = tools / "go"
-            fake.write_text("#!/bin/sh\ncase \"$1\" in version) printf 'go version go1.27.1 linux/amd64\\n';; *) exit 91;; esac\n")
+            fake.write_text("#!/bin/sh\ncase \"$1\" in version) printf 'go version go1.27.2 linux/amd64\\n';; *) exit 91;; esac\n")
             fake.chmod(0o755)
             for extra in ({"CGO_ENABLED": "0"}, {"GOARCH": "arm64"}, {"GOOS": "darwin"}):
                 with self.subTest(extra=extra):
@@ -903,7 +903,7 @@ class PQArtifactTests(unittest.TestCase):
         self.assertEqual((root / "share/licenses/cicada/LICENSE").read_bytes(), (ROOT / "LICENSE").read_bytes())
         notices = json.loads((root / "share/licenses/go/MODULES.json").read_text())
         self.assertTrue(notices["modules"])
-        self.assertIn("go1.27.1", notices["toolchain"])
+        self.assertIn("go1.27.2", notices["toolchain"])
         self.assertTrue((root / "share/licenses/go/LICENSE").read_bytes())
         for module in notices["modules"]:
             self.assertTrue(module["notices"])

@@ -259,3 +259,115 @@ Hub/emulator identities were unchanged. The driver now excludes auto-remove
 fixtures by default and supports the explicit resident-name list above. This
 is a retained harness classification failure, not a product failure. No
 container belonging to another task was modified.
+
+## N2 stable toolchain and dependency checkpoint
+
+The preparation source was advanced by the integration owner to `8a5bb901`.
+The task then checked the stable upstream versions on 2026-10-15 using the
+[Go release feed](https://go.dev/dl/?mode=json), the
+[official Go module proxy](https://proxy.golang.org/),
+[Alpine release list](https://www.alpinelinux.org/releases/) and
+[Node download page](https://nodejs.org/en/download/current). It selected Go
+1.27.2 while preserving the minimum Go language version 1.26.0. Go builder pins
+and current CI/release/WebCrypto checks were updated together. The standard Hub
+runtime pin is Alpine 3.24.2; Ubuntu 26.04 and already-current Gio 0.10.3,
+CIRCL 1.6.5, websocket 1.8.15, flock 0.13.1 and isatty 0.0.24 are retained.
+
+| Module | Previous → selected stable version |
+| --- | --- |
+| `golang.org/x/sys` | 0.48.0 → 0.49.0 |
+| `modernc.org/sqlite` | 1.59.0 → 1.60.1 |
+| `golang.org/x/crypto` | 0.54.0 → 0.58.0 |
+| `golang.org/x/image` | 0.26.0 → 0.47.0 |
+| `golang.org/x/net` | 0.56.0 → 0.61.0 |
+| `golang.org/x/text` | 0.40.0 → 0.43.0 |
+| `github.com/dustin/go-humanize` | 1.0.1 → 1.1.0 |
+| `github.com/godbus/dbus/v5` | 5.2.2 → 5.2.4 |
+| `github.com/ncruces/go-strftime` | 1.0.0 → 1.1.0 |
+| `modernc.org/libc` | 1.75.7 → 1.78.0 |
+
+The existing `x/exp/shiny` pseudo-version is retained because upstream has no
+stable tag and Gio already pins that revision; the current `bigfft`
+pseudo-version remains unchanged. No untagged upstream branch was selected by
+an unrestricted upgrade. New modules were fetched and verified only in the
+exclusive task cache, seeded from immutable original cache files without
+writing the original shared cache. The completed consumer cache is
+`/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable` and must be
+mounted read-only by other tasks. Small transitive graph metadata was also
+resolved before the offline verification below.
+
+The fixed builder is
+`golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`;
+the standard Alpine builder is
+`golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d`.
+The runtime is
+`alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6`.
+Historical fixed native-observer/artifact bindings and earlier receipts are
+unchanged.
+
+```sh
+CICADA_N2_GOMODCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable \
+CICADA_N2_GOCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/go-build-go1.27.2-stable \
+CICADA_N2_RESIDENT_NAMES=cicada-client-hub-v1-2-manager,cicada-client-hub-v1-2,cicada-client-v11-emulator,cicada-client-hub-v1-1 \
+  scripts/test-native-app-n2.sh --require-n2
+```
+
+Run `run-20261015T125602Z-2p0YUR` passed **75 test events, 0 failures, 0 skips**,
+including the six new frozen activation/reconcile wire-helper tests. All five
+lanes exited 0, the full Go/embedded-input manifest was stable at
+`ec7318a04cae3eefe24f3642fba6b3fe304684a03afea51a58d55008c2061fef`,
+and resident identities/start times were unchanged. Overall exit **3** still
+correctly reports that the server/App N2 integration lane has not run. Result
+SHA-256 is `dee0bf15e30ff6e4645cba87ecbc6d1be5d8d3e589dd2d51ec4505d96c8e96e0`;
+exact test-binary SHA-256 is
+`2108628448efd1748d031e68696c2632a87d25c8fdf3715ce54d19f319479870`.
+These are dirty-source results based on `8a5bb901`, preceding this record.
+
+A separate network-disabled, read-only-module-cache container completed all
+four commands with exit 0: Windows amd64 App cross-build, JS/WASM WebCrypto
+build, `go mod verify`, and `go list -mod=readonly -m all`. The App binary is
+`f0a17af3dbb95da6381f8232d9c7a347dd807ccccaa5d4dd525f8a880d8adb7c`;
+the WASM binary is
+`c629de331c2b1f729f08a78f42864daa5f3c8f005c8a7dfefd7f571e13adaad5`.
+They are dependency-closure artifacts, not the final integrated N2 delivery.
+The 22 selected release/installer/ELF metadata tests passed without skips. The
+broader packaging run exited 0 with six optional artifact/stage tests skipped;
+those six are **NOT_RUN**, not passes. The two N2 evidence-unit tests, contract
+metadata checks, shell/Python syntax and whitespace checks passed.
+
+Evidence resides in
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/dependency-update/`.
+`result.json` SHA-256 is
+`a12d5950431e7b88a000a136bd41c616755d62623ecb58e42bfaa4033715ade9`;
+the evidence-index SHA-256 is
+`84be2ce227ac1387e64e406b25154cd5e4afef9d0e5711f9faf5610548b2bd4f`.
+The first platform command group compiled both targets and verified modules,
+but exited 1 at module-graph listing because small graph metadata was absent.
+After metadata completion, the same offline group exited 0. An optional
+`go mod tidy -diff` preflight also exited 1 because dependency packages' own
+font/test/tool fixtures were absent from this bounded cache; it did not modify
+source. No claim is made about running upstream dependency test suites.
+
+The integration owner's earlier `profile-integrated-go1272.jsonl` recorded
+58 passing and 9 failing events: the old fixture incorrectly assumed the last
+POST was the recovered inspection. New App profile recovery first retries the
+exact pending inspection, then issues a distinct current-state inspection.
+The fixture now compares the first request and original accepted response
+**byte-for-byte in memory**, then requires exactly one fresh inspection before
+the helper reports current account state. Other operations still require only
+the exact retry. Payload bytes are never logged. The adapted 58-event run
+`run-20261015T124521Z-nSoDWc` and the 75-event stable-dependency run both passed.
+The original integration failure remains attributed to its old oracle.
+
+Node 26.12.0 was installed only in the task cache from its official archive,
+verified against official SHA256SUMS; archive SHA-256 is
+`fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded`.
+The WebCrypto developer script accepts Node 24 LTS or 26 and reports the actual
+runtime used. Full WebCrypto UI interoperability waits for the Hub owner's
+production manifest assertion to accept Go 1.27.2; that production JS change
+is outside the independent acceptance writer's scope. OpenSSL 3.5.9 was used
+only to generate new visibly synthetic PQ PEM fixtures; it is the selected LTS
+fixture tool, separate from current OpenSSL stable 4.0.3 and from the App's
+Go cryptography/runtime requirements. Native Windows GUI, DPAPI, ACL, visual
+review, Android, native Runtime, physical device, public HTTPS and PQTLS remain
+**NOT_RUN** at this checkpoint.

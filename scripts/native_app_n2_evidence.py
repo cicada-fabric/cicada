@@ -21,11 +21,13 @@ def save(path, value):
 
 
 def snapshot(repo, dest):
-    paths = sorted(p for p in (repo / 'cicada-go').rglob('*')
-                   if p.is_file() and (p.suffix == '.go' or p.name in ('go.mod', 'go.sum')))
+    # Include embedded assets/fixtures as well as Go: the test binary imports
+    # the actual Hub handler, whose embedded UI bytes are build inputs too.
+    paths = sorted(p for p in (repo / 'cicada-go').rglob('*') if p.is_file())
     paths.extend(sorted(p for p in (repo / 'scripts').glob('*native*app*n2*') if p.is_file()))
     paths.extend(repo / 'docs' / name for name in (
         'native-app-architecture.md', 'native-app-plan.md', 'native-app-validation.md'))
+    paths.extend(p for p in (repo / 'docs').glob('*activation*') if p.is_file())
     files = {str(p.relative_to(repo)): sha(p) for p in sorted(set(paths))}
     manifest = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     save(dest, {
@@ -105,6 +107,12 @@ def finish(run, artifacts, image, required, owned):
         'TestOwnerDeviceGrantRejectsTamperingNoncanonicalAndInvalidTime',
         'TestHubAccountPQHTTPFlowSurvivesRestartAndRecoversRevokedLogout',
         'TestOwnerAccountClaimCodeRoundTripAndStrictFraming',
+        'TestActivationManifestMatchesWire',
+        'TestActivationProofAndExactPacketRoundTrip',
+        'TestActivationCodeAndLegacyExactIdentity',
+        'TestActivationRejectsBindingNonceGrantAndLeaseSubstitution',
+        'TestActivationChallengeCannotSettleAnotherExactPacket',
+        'TestAccountReconcileAndStatusBindExactTarget',
     }
     missing = sorted(expected_process - {t for (_, t), a in process.items() if a == 'pass'})
     missing += sorted(expected_guards - {t for (_, t), a in guards.items() if a == 'pass'})
@@ -117,10 +125,10 @@ def finish(run, artifacts, image, required, owned):
                 and not any(a in ('fail', 'skip') for a in all_events) and stable and not owned and residents_unchanged)
     result = {
         'schema': 'cicada.native-app.n2.acceptance.v1',
-        'scope': 'existing-account-baseline',
+        'scope': 'existing-account-and-activation-wire-baseline',
         'baseline': 'SCOPED_PASS' if baseline else 'FAIL',
         'n2_acceptance': 'NOT_RUN',
-        'n2_reason': 'Frozen N2 Hub/App activation/status contract and integrated source not supplied to this lane.',
+        'n2_reason': 'N2 server/App activation integration and full fault matrix not executed in this lane.',
         'source_head': before['head'], 'source_dirty': before['dirty'],
         'source_manifest_sha256': before['manifest_sha256'], 'source_stable': stable,
         'builder_image': image, 'exit_codes': lanes, 'missing_or_unpassed_tests': missing,

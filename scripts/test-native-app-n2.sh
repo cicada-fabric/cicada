@@ -7,8 +7,8 @@ common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-
 workspace_root="$(dirname "$(dirname "$common_dir")")"
 local_root="${CICADA_N2_LOCAL_ROOT:-$workspace_root/.local}"
 module_cache="${CICADA_N2_GOMODCACHE:-$local_root/cache/gomod}"
-build_cache="$local_root/cache/n2-acceptance/go-build"
-image="${CICADA_N2_GO_IMAGE:-sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195}"
+build_cache="${CICADA_N2_GOCACHE:-$local_root/cache/n2-acceptance/go-build}"
+image="${CICADA_N2_GO_IMAGE:-sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61}"
 require_n2=false
 if [[ "${1:-}" == --require-n2 ]]; then require_n2=true; shift; fi
 if [[ "$#" -ne 0 ]]; then printf '%s\n' 'Usage: scripts/test-native-app-n2.sh [--require-n2]' >&2; exit 2; fi
@@ -67,7 +67,7 @@ else
 fi
 run_lane existing-guards go test -json -mod=readonly -p=1 -count=1 -timeout=120s \
  ./internal/appcore ./internal/hubaccountwire ./internal/hubowner ./internal/e2ee ./internal/server \
- -run '^Test(ControllerRealHTTPAccountFlowAndExactUncertainRecovery|ActivationAndConnectionCardBoundaries|HubOwnerWithoutControlProvesKeysAndPreservesPermanentHistory|OwnerDeviceGrantVerifiesExactTrustedEnrollment|OwnerDeviceGrantRejectsTamperingNoncanonicalAndInvalidTime|HubAccountPQHTTPFlowSurvivesRestartAndRecoversRevokedLogout|OwnerAccountClaimCodeRoundTripAndStrictFraming)$'
+ -run '^Test(ControllerRealHTTPAccountFlowAndExactUncertainRecovery|ActivationAndConnectionCardBoundaries|HubOwnerWithoutControlProvesKeysAndPreservesPermanentHistory|OwnerDeviceGrantVerifiesExactTrustedEnrollment|OwnerDeviceGrantRejectsTamperingNoncanonicalAndInvalidTime|HubAccountPQHTTPFlowSurvivesRestartAndRecoversRevokedLogout|OwnerAccountClaimCodeRoundTripAndStrictFraming|ActivationManifestMatchesWire|ActivationProofAndExactPacketRoundTrip|ActivationCodeAndLegacyExactIdentity|ActivationRejectsBindingNonceGrantAndLeaseSubstitution|ActivationChallengeCannotSettleAnotherExactPacket|AccountReconcileAndStatusBindExactTarget)$'
 run_lane vet go vet -mod=readonly ./acceptance/n2
 python3 "$repo_root/scripts/native_app_n2_evidence.py" snapshot "$repo_root" "$evidence/source-after.json"
 cleanup

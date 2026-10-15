@@ -2,16 +2,18 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-image="sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195"
-module_cache="${CICADA_NATIVE_APP_GOMODCACHE:-$repo_root/.cicada-data/m1-gomodcache}"
-if [[ -z "${HOME:-}" && -z "${CICADA_NATIVE_APP_GOCACHE:-}" ]]; then
-	printf '%s\n' 'Set HOME or CICADA_NATIVE_APP_GOCACHE to choose the writable Go build cache.' >&2
-	exit 2
-fi
-build_cache="${CICADA_NATIVE_APP_GOCACHE:-$HOME/.cache/go-build}"
-artifact_root="$repo_root/.cicada-data/native-app-foundation"
+image="sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+local_root="$(dirname "$(dirname "$common_dir")")/.local"
+module_cache="${CICADA_NATIVE_APP_GOMODCACHE:-$local_root/cache/gomod}"
+build_cache="${CICADA_NATIVE_APP_GOCACHE:-$local_root/cache/native-app/go-build}"
+artifact_root="${CICADA_NATIVE_APP_ARTIFACT_ROOT:-$local_root/evidence/native-app-foundation}"
 synthetic_fixture="${CICADA_APPKEYS_SYNTHETIC_OPENSSL_KEY_DIR:-}"
 
+umask 077
+mkdir -p "$build_cache"
+exec 9>"$build_cache/native-app.lock"
+flock -n 9 || { printf 'Native App build cache is in use.\n' >&2; exit 2; }
 if [[ ! -d "$module_cache" || ! -d "$build_cache" ]]; then
 	printf '%s\n' 'Required offline Go caches are missing.' >&2
 	exit 2

@@ -1,7 +1,7 @@
 # Lightweight Hub runtime. It uses the same Go service binary as the full
 # development image, but deliberately contains no Codex CLI, model config,
 # provider URL, or provider credentials.
-FROM golang:1.27.1-alpine AS cicada-builder
+FROM golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS cicada-builder
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -62,7 +62,7 @@ WORKDIR /src
 RUN chmod -R a+rX /src
 ENTRYPOINT ["go", "test", "-json", "-p=1", "./internal/server", "./cmd/client-recovery-fixture", "-run", "^TestClientDockerHub(Smoke|RecoveryFixture)$", "-count=1"]
 
-FROM alpine:3.24 AS hub-runtime
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS hub-runtime
 
 ARG CICADA_UID=1000
 ARG CICADA_GID=1000

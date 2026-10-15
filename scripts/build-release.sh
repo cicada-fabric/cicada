@@ -40,8 +40,8 @@ done
 [[ -f "$repo_root/LICENSE" ]] || { printf 'build-release: project LICENSE is missing\n' >&2; exit 1; }
 [[ -f "$repo_root/cicada-go/go.mod" ]] || { printf 'build-release: CICADA Go source is missing\n' >&2; exit 1; }
 go_version="$(go version)"
-[[ "$(awk '{print $3}' <<<"$go_version")" == go1.27.1 ]] || {
-  printf 'build-release: Go 1.27.1 is required to match the Hub WebCrypto runtime\n' >&2
+[[ "$(awk '{print $3}' <<<"$go_version")" == go1.27.2 ]] || {
+  printf 'build-release: Go 1.27.2 is required to match the Hub WebCrypto runtime\n' >&2
   exit 1
 }
 if [[ "$transport" == pqtls ]]; then
@@ -207,7 +207,7 @@ target = "linux/" + arch
 runtime_target = inputs['runtime']['target']
 metadata = {'schema_version': 'cicada.pqtls-distribution.v1', 'software_version': version,
             'source': {'revision': revision, 'dirty': dirty == 'true', 'source_fingerprint': inputs['fingerprint']['sha256'], 'input_inventory': inputs},
-            'toolchain': 'go1.27.1', 'hub_webcrypto_manifest_sha256': wasm, 'catalog_sha256': catalog,
+            'toolchain': 'go1.27.2', 'hub_webcrypto_manifest_sha256': wasm, 'catalog_sha256': catalog,
             'targets': [target], 'transport_variant': 'pqtls', 'pqtls_available': True,
             'cgo_enabled': True, 'build_tag': 'cicada_pqtls', 'openssl_version': '3.5.9',
             'loader': {'interpreter': runtime_target['interpreter'], 'runpath': '$ORIGIN/../lib', 'minimum_observed_glibc_symbol': glibc},

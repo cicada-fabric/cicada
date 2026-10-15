@@ -300,6 +300,8 @@ type exchange struct {
 	ResponseSHA256 string
 	Status         int
 	Forwarded      bool
+	request        []byte // Memory only; never exported to evidence.
+	response       []byte
 }
 type faultProxy struct {
 	mu        sync.Mutex
@@ -313,7 +315,15 @@ type faultProxy struct {
 func newFaultProxy(t *testing.T, origin string) *faultProxy {
 	p := &faultProxy{origin: origin}
 	p.server = httptest.NewServer(http.HandlerFunc(p.serve))
-	t.Cleanup(p.server.Close)
+	t.Cleanup(func() {
+		p.server.Close()
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		for _, ex := range p.exchanges {
+			clear(ex.request)
+			clear(ex.response)
+		}
+	})
 	return p
 }
 func (p *faultProxy) arm(mode, path string) {
@@ -340,7 +350,7 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 		p.mode = ""
 	}
 	p.mu.Unlock()
-	ex := exchange{Path: r.URL.Path, RequestSHA256: digest(raw), Forwarded: mode != "before"}
+	ex := exchange{Path: r.URL.Path, RequestSHA256: digest(raw), Forwarded: mode != "before", request: bytes.Clone(raw)}
 	drop := func() {
 		conn, _, e := w.(http.Hijacker).Hijack()
 		if e == nil {
@@ -373,6 +383,7 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clear(body)
 	ex.Status, ex.ResponseSHA256 = response.StatusCode, digest(body)
+	ex.response = bytes.Clone(body)
 	if r.Method == http.MethodPost {
 		p.mu.Lock()
 		p.exchanges = append(p.exchanges, ex)
@@ -419,12 +430,24 @@ func TestN2AccountProcessRecovery(t *testing.T) {
 					recovery := spawn(t, f.dir, "app", filepath.Join(f.dir, "app-ready"), extra...)
 					recovery.kill(t)
 					after := f.proxy.snapshot()
-					retry := after[len(after)-1]
-					if len(after) != len(before)+1 || retry.Path != original.Path || retry.RequestSHA256 != original.RequestSHA256 || retry.Status != http.StatusOK {
+					delta := after[len(before):]
+					if len(delta) == 0 {
+						t.Fatal("recovery did not send the original packet")
+					}
+					retry := delta[0]
+					if retry.Path != original.Path || !bytes.Equal(retry.request, original.request) || retry.Status != http.StatusOK {
 						t.Fatal("recovery changed the original packet/path or did not authenticate")
 					}
-					if mode != "before" && retry.ResponseSHA256 != original.ResponseSHA256 {
+					if mode != "before" && !bytes.Equal(retry.response, original.response) {
 						t.Fatal("exact retry did not recover the immutable original response")
+					}
+					if step == "inspect" {
+						if len(delta) != 2 || delta[1].Path != retry.Path || delta[1].Status != http.StatusOK || bytes.Equal(delta[1].request, retry.request) {
+							t.Fatal("inspection recovery did not follow the original receipt with a distinct fresh current-state inspection")
+						}
+						t.Logf("CURRENT_INSPECTION packet_sha256=%s response_sha256=%s", delta[1].RequestSHA256, delta[1].ResponseSHA256)
+					} else if len(delta) != 1 {
+						t.Fatal("recovery sent an unexpected replacement operation")
 					}
 					t.Logf("EXACT_RECOVERY mode=%s path=%s packet_sha256=%s response_sha256=%s", mode, retry.Path, retry.RequestSHA256, retry.ResponseSHA256)
 				})
