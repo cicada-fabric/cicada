@@ -137,6 +137,7 @@ func (c *nativeController) restoreSession() error {
 	}
 	if !c.cfg.Now().UTC().Before(parseExpiry(receipt.ExpiresAt)) {
 		clear(receipt.SessionToken)
+		c.state.AccountState = AccountStateLoginRequired
 		return nil
 	}
 	context := receipt.Context()
@@ -205,6 +206,9 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.Username = response.Username
 		c.state.AccountState = AccountStateLoginRequired
+		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) {
+			c.state.LoginChallenge = nil
+		}
 	case *wire.SessionReceipt:
 		if c.state.Pending == nil || len(c.state.Pending.Response) == 0 {
 			return errors.New("session receipt packet is not durable")
@@ -212,8 +216,18 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		if err := c.persistSession(request, c.state.Pending.Response); err != nil {
 			return err
 		}
+		// An accepted receipt can be older than this process. Never resurrect
+		// an expired session when replaying an already committed response.
+		if !c.cfg.Now().UTC().Before(parseExpiry(response.ExpiresAt)) {
+			clear(response.SessionToken)
+			c.clearSession()
+			c.state.LoginChallenge = nil
+			c.state.AccountState = AccountStateLoginRequired
+			break
+		}
 		// The exact encrypted receipt is retained; the token remains in RAM.
 		context := response.Context()
+		clear(response.SessionToken)
 		c.clearSession()
 		c.session = &context
 		c.sessionNeedsCheck = true
@@ -222,7 +236,15 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 		c.state.AccountID, c.state.OwnerID, c.state.DeviceID = response.AccountID, response.OwnerID, response.DeviceID
 		c.state.AccountState = AccountStateSessionCheck
 	case *wire.SessionInspection:
-		if c.session == nil || response.AccountID != c.connection.AccountID || response.OwnerID != c.connection.OwnerID ||
+		if c.inspectionRequestID == "" || response.RequestID != c.inspectionRequestID ||
+			c.cfg.Now().UTC().Sub(parseExpiry(response.InspectedAt)) > 30*time.Second ||
+			parseExpiry(response.InspectedAt).After(c.cfg.Now().UTC().Add(30*time.Second)) {
+			// An exact retry may return an authentic historical response.
+			// The saved receipt cannot make a restored session current.
+			c.requireSessionRecheck()
+			break
+		}
+		if c.session == nil || !c.cfg.Now().UTC().Before(parseExpiry(c.session.ExpiresAt)) || response.AccountID != c.connection.AccountID || response.OwnerID != c.connection.OwnerID ||
 			response.ActorDeviceID != c.state.DeviceID {
 			return errors.New("Hub account inspection scope mismatch")
 		}
@@ -326,6 +348,9 @@ func (c *nativeController) publish() {
 	view := Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
+	for _, profile := range c.profiles {
+		view.Profiles = append(view.Profiles, profile.view)
+	}
 	if c.connected {
 		view.Hub = HubSnapshot{Verified: true, Origin: c.connection.Origin, HubID: c.connection.HubID,
 			Fingerprint: c.connection.HubFingerprint, Health: HubHealthHealthy, Service: c.service}
@@ -343,6 +368,9 @@ func (c *nativeController) publish() {
 			view.Phase = PhaseLocked
 		} else if c.state.Pending != nil && len(c.state.Pending.Response) == 0 {
 			view.Phase = PhaseUnavailable
+			if c.session != nil {
+				view.Account.State = AccountStateSessionCheck
+			}
 		} else if c.state.ClaimChallenge != nil {
 			view.Phase = PhaseClaimChallenge
 			view.Account.State = AccountStateClaimPending
@@ -379,6 +407,12 @@ func (c *nativeController) publish() {
 
 func (c *nativeController) availableActions() []ActionKind {
 	actions := []ActionKind{ActionConnect}
+	if c.cfg.DiscoverVaults != nil {
+		actions = append(actions, ActionDiscoverProfiles)
+	}
+	if len(c.profiles) != 0 {
+		actions = append(actions, ActionResumeProfile)
+	}
 	if c.storageFault {
 		return actions
 	}
@@ -393,7 +427,10 @@ func (c *nativeController) availableActions() []ActionKind {
 		return actions
 	}
 	if c.owner == nil {
-		actions = append(actions, ActionGenerateOwner, ActionImportOwner)
+		if c.state.OwnerKeyIDAtHub == "" {
+			actions = append(actions, ActionGenerateOwner)
+		}
+		actions = append(actions, ActionImportOwner)
 	}
 	if c.state.Pending != nil && len(c.state.Pending.Response) == 0 {
 		actions = append(actions, ActionRetry)
@@ -412,7 +449,7 @@ func (c *nativeController) availableActions() []ActionKind {
 	if c.state.LoginChallenge != nil && canBeginOperation(c.state.Pending) {
 		actions = append(actions, ActionLoginComplete)
 	}
-	if c.session != nil {
+	if c.session != nil && canBeginOperation(c.state.Pending) {
 		actions = append(actions, ActionSessionInspect, ActionLogout)
 	}
 	return actions
@@ -434,6 +471,7 @@ func (c *nativeController) localOwnerMatchesHub() bool {
 func cloneSnapshot(source Snapshot) Snapshot {
 	copy := source
 	copy.AvailableActions = append([]ActionKind(nil), source.AvailableActions...)
+	copy.Profiles = append([]ProfileSnapshot(nil), source.Profiles...)
 	copy.Canvas.Objects = append([]CanvasObject(nil), source.Canvas.Objects...)
 	return copy
 }

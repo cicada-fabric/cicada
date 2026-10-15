@@ -24,6 +24,7 @@ var (
 type Config struct {
 	HTTP              HTTPDoer
 	OpenVault         VaultOpener
+	DiscoverVaults    func(context.Context) ([]appvault.Scope, error)
 	AllowLoopbackHTTP bool
 	Now               func() time.Time
 }
@@ -39,22 +40,24 @@ type nativeController struct {
 	snapshot   Snapshot
 	closed     bool
 
-	hub               wire.HubIdentity
-	connection        HubConnectionCard
-	service           string
-	connected         bool
-	activation        *ActivationCode
-	vault             *appvault.Vault
-	state             durableState
-	stateVer          uint64
-	sessionVer        uint64
-	storageFault      bool
-	device            *appkeys.Identity
-	owner             *appkeys.Identity
-	session           *wire.SessionContext
-	sessionNeedsCheck bool
-	sessionStored     bool
-	sessionInspected  bool
+	hub                 wire.HubIdentity
+	connection          HubConnectionCard
+	service             string
+	connected           bool
+	activation          *ActivationCode
+	vault               *appvault.Vault
+	state               durableState
+	stateVer            uint64
+	sessionVer          uint64
+	storageFault        bool
+	device              *appkeys.Identity
+	owner               *appkeys.Identity
+	profiles            []localProfile
+	session             *wire.SessionContext
+	sessionNeedsCheck   bool
+	sessionStored       bool
+	sessionInspected    bool
+	inspectionRequestID string
 }
 
 func NewController(config Config) (Controller, error) {
@@ -100,7 +103,7 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
 	if closed {
 		return ErrClosed
 	}
-	if c.storageFault && action.Kind != ActionConnect {
+	if c.storageFault && action.Kind != ActionConnect && action.Kind != ActionResumeProfile && action.Kind != ActionDiscoverProfiles {
 		return c.fail(PhaseError, "APP_STORAGE_RECOVERY_REQUIRED", errors.New("reconnect to recover encrypted App state"))
 	}
 	c.snapshotMu.Lock()
@@ -111,6 +114,10 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
 	defer func() { stop(); cancel() }()
 
 	switch action.Kind {
+	case ActionDiscoverProfiles:
+		return c.discoverProfiles(operationCtx)
+	case ActionResumeProfile:
+		return c.resumeProfile(operationCtx, action.ProfileID)
 	case ActionConnect:
 		return c.connect(operationCtx, action)
 	case ActionGenerateOwner:
@@ -196,25 +203,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	}
 	c.setPhase(PhaseVerifyingHub, "")
 
-	healthData, healthStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/healthz")
-	if err != nil || healthStatus != http.StatusOK {
-		return c.fail(PhaseUnavailable, "HUB_UNAVAILABLE", errors.New("Hub unavailable"))
-	}
-	service, err := verifyHealth(healthData)
+	hub, service, err := c.verifyHub(ctx, card)
 	if err != nil {
-		return c.fail(PhaseUnavailable, "HUB_HEALTH_INVALID", err)
-	}
-	identityData, identityStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/v2/client/identity")
-	if err != nil || identityStatus != http.StatusOK {
-		return c.fail(PhaseUnavailable, "HUB_IDENTITY_UNAVAILABLE", errors.New("Hub identity unavailable"))
-	}
-	hub, err := decodeHubIdentity(identityData)
-	if err != nil {
-		return c.fail(PhaseUnavailable, "HUB_IDENTITY_INVALID", err)
-	}
-	fingerprint, err := wire.HubFingerprint(hub)
-	if err != nil || hub.HubID != card.HubID || fingerprint != card.HubFingerprint {
-		return c.fail(PhaseUnavailable, "HUB_PIN_MISMATCH", errors.New("Hub identity pin mismatch"))
+		return c.fail(PhaseUnavailable, err.Error(), err)
 	}
 	if activation != nil && wire.ValidateClaimCard(activation.card, hub, now) != nil {
 		return c.fail(PhaseError, "INVALID_ACTIVATION_SCOPE", ErrActivationExpired)
@@ -290,6 +281,7 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if err := c.loadCurrentPendingResponse(); err != nil {
 		return c.failStorage("APP_PENDING_RESPONSE_INVALID", err)
 	}
+	c.requireSessionRecheck()
 	c.publish()
 	return nil
 }
@@ -312,6 +304,7 @@ func (c *nativeController) resetConnection() error {
 	c.activation = nil
 	c.state = durableState{}
 	c.stateVer, c.sessionVer = 0, 0
+	c.inspectionRequestID = ""
 	c.storageFault = false
 	c.snapshotMu.Lock()
 	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
@@ -347,4 +340,28 @@ func decodeHubIdentity(data []byte) (wire.HubIdentity, error) {
 func sameScopeCard(a, b HubConnectionCard) bool {
 	return a.HubID == b.HubID && a.HubFingerprint == b.HubFingerprint && a.Origin == b.Origin &&
 		a.AccountID == b.AccountID && a.OwnerID == b.OwnerID
+}
+
+func (c *nativeController) verifyHub(ctx context.Context, card HubConnectionCard) (wire.HubIdentity, string, error) {
+	healthData, healthStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/healthz")
+	if err != nil || healthStatus != http.StatusOK {
+		return wire.HubIdentity{}, "", errors.New("HUB_UNAVAILABLE")
+	}
+	service, err := verifyHealth(healthData)
+	if err != nil {
+		return wire.HubIdentity{}, "", errors.New("HUB_HEALTH_INVALID")
+	}
+	identityData, identityStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/v2/client/identity")
+	if err != nil || identityStatus != http.StatusOK {
+		return wire.HubIdentity{}, "", errors.New("HUB_IDENTITY_UNAVAILABLE")
+	}
+	hub, err := decodeHubIdentity(identityData)
+	if err != nil {
+		return wire.HubIdentity{}, "", errors.New("HUB_IDENTITY_INVALID")
+	}
+	fingerprint, err := wire.HubFingerprint(hub)
+	if err != nil || hub.HubID != card.HubID || fingerprint != card.HubFingerprint {
+		return wire.HubIdentity{}, "", errors.New("HUB_PIN_MISMATCH")
+	}
+	return hub, service, nil
 }

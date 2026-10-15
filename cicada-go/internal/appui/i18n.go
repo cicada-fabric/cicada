@@ -90,6 +90,18 @@ const (
 	msgStartLogin            messageID = "account.start_login"
 	msgGenerateLocalOwner    messageID = "account.generate_local_owner"
 	msgRecoverExact          messageID = "operation.recover_exact"
+	msgDiscoverProfiles      messageID = "connection.discover_profiles"
+	msgSavedProfiles         messageID = "connection.saved_profiles"
+	msgResumeProfile         messageID = "connection.resume_profile"
+	msgWelcome               messageID = "setup.welcome"
+	msgWelcomeBody           messageID = "setup.welcome_body"
+	msgStepConnect           messageID = "setup.step_connect"
+	msgStepKeys              messageID = "setup.step_keys"
+	msgStepAccount           messageID = "setup.step_account"
+	msgKeysBody              messageID = "setup.keys_body"
+	msgRecoveryBody          messageID = "setup.recovery_body"
+	msgConnectionMaterial    messageID = "connection.material"
+	msgSetupReady            messageID = "setup.account_ready"
 )
 
 var catalog = map[Locale]map[messageID]string{
@@ -172,6 +184,18 @@ var catalog = map[Locale]map[messageID]string{
 		msgStartLogin:            "Start login",
 		msgGenerateLocalOwner:    "Generate local Owner identity",
 		msgRecoverExact:          "Recover exact saved request",
+		msgDiscoverProfiles:      "Find saved connections",
+		msgSavedProfiles:         "Your saved connections",
+		msgResumeProfile:         "Unlock & continue",
+		msgWelcome:               "Your Cicada, connected.",
+		msgWelcomeBody:           "Connect to your trusted Hub. Your private keys stay on this device.",
+		msgStepConnect:           "1  Connect your Hub",
+		msgStepKeys:              "2  Keep your identity safe",
+		msgStepAccount:           "3  Set up your account",
+		msgKeysBody:              "Already an Owner? Import your existing keys to keep your identity. For a new identity, create keys here and store them securely on this device.",
+		msgRecoveryBody:          "The last response is unconfirmed. Cicada has saved your request and will retry the same package. Keep this connection to recover safely.",
+		msgConnectionMaterial:    "Activation code or trusted connection card",
+		msgSetupReady:            "Your account connection",
 	},
 	Chinese: {
 		msgAppTitle:              "Cicada",
@@ -252,6 +276,18 @@ var catalog = map[Locale]map[messageID]string{
 		msgStartLogin:            "开始登录",
 		msgGenerateLocalOwner:    "生成本地 Owner 身份",
 		msgRecoverExact:          "恢复完全相同的已保存请求",
+		msgDiscoverProfiles:      "查找已保存的连接",
+		msgSavedProfiles:         "已保存的连接",
+		msgResumeProfile:         "解锁并继续",
+		msgWelcome:               "连接你的 Cicada。",
+		msgWelcomeBody:           "连接可信 Hub，私钥始终保存在这台设备上。",
+		msgStepConnect:           "1  连接你的 Hub",
+		msgStepKeys:              "2  安全保管你的身份",
+		msgStepAccount:           "3  设置你的账户",
+		msgKeysBody:              "已有 Owner 身份？请导入原有密钥以保留身份。首次使用可在本机生成密钥，并安全保存在此设备上。",
+		msgRecoveryBody:          "上次请求的结果尚未确认。Cicada 已保存请求，将重发同一个包。请保留此连接以安全恢复。",
+		msgConnectionMaterial:    "激活码或可信连接卡",
+		msgSetupReady:            "你的账户连接",
 	},
 }
 

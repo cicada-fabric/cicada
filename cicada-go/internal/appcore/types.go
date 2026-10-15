@@ -120,19 +120,31 @@ type CanvasSnapshot struct {
 // Snapshot contains display-safe state only. It never includes passwords,
 // activation codes, private keys, pending ciphertext, session tokens or proofs.
 type Snapshot struct {
-	Phase            Phase           `json:"phase"`
-	Hub              HubSnapshot     `json:"hub"`
-	Account          AccountSnapshot `json:"account"`
-	Management       ManagementState `json:"management"`
-	Canvas           CanvasSnapshot  `json:"canvas"`
-	AvailableActions []ActionKind    `json:"available_actions"`
-	ErrorCode        string          `json:"error_code,omitempty"`
+	Phase            Phase             `json:"phase"`
+	Hub              HubSnapshot       `json:"hub"`
+	Account          AccountSnapshot   `json:"account"`
+	Management       ManagementState   `json:"management"`
+	Canvas           CanvasSnapshot    `json:"canvas"`
+	AvailableActions []ActionKind      `json:"available_actions"`
+	ErrorCode        string            `json:"error_code,omitempty"`
+	Profiles         []ProfileSnapshot `json:"profiles,omitempty"`
+}
+
+// ProfileSnapshot is authenticated local metadata, never evidence of current
+// Hub availability, an account session, or management authorization.
+type ProfileSnapshot struct {
+	ID        string `json:"id"`
+	Origin    string `json:"origin"`
+	AccountID string `json:"account_id"`
+	OwnerID   string `json:"owner_id"`
 }
 
 type ActionKind string
 
 const (
 	ActionConnect           ActionKind = "CONNECT"
+	ActionDiscoverProfiles  ActionKind = "DISCOVER_LOCAL_PROFILES"
+	ActionResumeProfile     ActionKind = "UNLOCK_AND_RESUME_PROFILE"
 	ActionGenerateOwner     ActionKind = "GENERATE_OWNER_IDENTITY"
 	ActionImportOwner       ActionKind = "IMPORT_OWNER_IDENTITY"
 	ActionClaimPrepare      ActionKind = "CLAIM_PREPARE"
@@ -154,6 +166,7 @@ type Action struct {
 	// Exactly one connection material field may be set for ActionConnect.
 	ConnectionCard string
 	ActivationCode string
+	ProfileID      string
 
 	Username    string
 	Password    string
