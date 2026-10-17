@@ -32,6 +32,9 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 		}
 		switch flow.Stage {
 		case "code":
+			if flow.Notice != "" {
+				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, flow.Notice))))
+			}
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.intro"))), layout.Rigid(v.editorRow(&v.nodeCode, appui.Text(v.locale, "node.code"), false)))
 		case "review", "review-expired":
 			c := s.Node.Candidate
@@ -41,7 +44,7 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			}
 			rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, reviewKey))))
 			if flow.Stage == "review-expired" {
-				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.candidate_expired"))))
+				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, flow.Notice))))
 			}
 			for _, field := range []struct{ key, value string }{
 				{"node.name", safeDisplay(c.Name, 128)}, {"node.id", safeDisplay(c.NodeID, 128)},
@@ -116,7 +119,11 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				}
 			}
 		default:
-			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.unavailable"))))
+			key := flow.Notice
+			if key == "" {
+				key = "node.unavailable"
+			}
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, key))))
 		}
 		if flow.Primary != "" {
 			label := v.nodeActionLabel(flow.Primary)

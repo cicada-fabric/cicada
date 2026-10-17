@@ -160,6 +160,9 @@ const (
 	msgNodeAccessRevoked         messageID = "node.access_revoked"
 	msgNodeAccessUnconfirmed     messageID = "node.access_unconfirmed"
 	msgNodeCandidateExpired      messageID = "node.candidate_expired"
+	msgNodeInitialReviewExpired  messageID = "node.initial_review_expired"
+	msgNodeStatusReviewExpired   messageID = "node.status_review_expired"
+	msgNodeUnboundSessionEnded   messageID = "node.unbound_session_ended"
 	msgInitialAuthorization      messageID = "authorization.initial"
 	msgNodeCancelReview          messageID = "node.cancel_review"
 	msgNodeEndAccess             messageID = "node.end_access"
@@ -228,7 +231,10 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeAccessExpired:         "This Node authorization has expired. It does not renew automatically.",
 		msgNodeAccessRevoked:         "This Node authorization was revoked.",
 		msgNodeAccessUnconfirmed:     "Node authorization has not been confirmed.",
-		msgNodeCandidateExpired:      "This Node review has expired. Check its saved state or end this review before using a current Node code.",
+		msgNodeCandidateExpired:      "This Node review has expired. Check its saved state or end this review before starting another review.",
+		msgNodeInitialReviewExpired:  "This Node connection review has expired. Check its saved state or end this review before using a current Node code.",
+		msgNodeStatusReviewExpired:   "This status-access review has expired. Check its saved state or end this review, then explicitly review status access again.",
+		msgNodeUnboundSessionEnded:   "The sign-in used for this unfinished Node connection has ended.",
 		msgAppTitle:                  "Cicada",
 		msgLanguage:                  "Language",
 		msgEnglish:                   "English",
@@ -393,7 +399,10 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeAccessExpired:         "本次 Node 授权已到期，不会自动续期。",
 		msgNodeAccessRevoked:         "本次 Node 授权已撤销。",
 		msgNodeAccessUnconfirmed:     "Node 授权尚未确认。",
-		msgNodeCandidateExpired:      "此次 Node 核对已过期。请先核对已保存的状态或结束此次核对，再使用 Node 当前连接码。",
+		msgNodeCandidateExpired:      "此次 Node 核对已过期。请先检查已保存的状态或结束此次核对，再开始新的核对。",
+		msgNodeInitialReviewExpired:  "此次 Node 连接核对已过期。请先检查已保存的状态或结束此次核对，再使用 Node 当前连接码。",
+		msgNodeStatusReviewExpired:   "此次状态访问核对已过期。请先检查已保存的状态或结束此次核对，再明确重新核对状态授权。",
+		msgNodeUnboundSessionEnded:   "此次未完成 Node 连接所绑定的登录已结束。",
 		msgAppTitle:                  "Cicada",
 		msgLanguage:                  "语言",
 		msgEnglish:                   "English",

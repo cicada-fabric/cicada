@@ -228,3 +228,19 @@ its race run was interrupted before the idle-expiry correction and is explicitly
 The integration owner runs the complete native/disposable interoperability gate
 after integration. Native Windows execution, GUI/DPAPI/ACL, physical Ubuntu Node,
 native Runtime, Android, public HTTPS and PQTLS remain NOT_RUN for this App check.
+
+The 2026-10-17 UI guidance correction distinguishes an expired INITIAL
+connection review from an expired status-only review. Status-only instructions
+keep the user on explicit status authorization. Known unfinished-connection
+authorization outcomes are displayed even before a binding exists, so a
+revoked permission does not send an already signed-in user back to login.
+These messages preserve the controller's actions, recovery priority and consent.
+
+This UI-only checkpoint passed **42 App UI/native normal events and 42 race
+events, zero failures/skips**, both platform vet checks and Windows amd64 build
+on the same fixed Go 1.27.2 builder. Before/after Go/module manifests both hash to
+`4c51097dc46609fb6fef5633cd5129ee962bd255e6301ae9901884da7df8862d`;
+the source was dirty relative to `ec72bf2`. Evidence is retained at
+`~/Cicada/.local/evidence/n3-app/ux-guidance-20261017-sicleufn`.
+Native Windows rendering/high-DPI/GUI/security and full process acceptance
+remain separate NOT_RUN scopes for this UI check.

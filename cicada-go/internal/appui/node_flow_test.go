@@ -1,8 +1,10 @@
 package appui
 
 import (
-	"github.com/cicada-ai/cicada/internal/appcore"
+	"reflect"
 	"testing"
+
+	"github.com/cicada-ai/cicada/internal/appcore"
 )
 
 func TestNodeFlowCannotInferPermissionFromOwnerOrN2(t *testing.T) {
@@ -118,5 +120,65 @@ func TestExpiredProposalKeepsDiagnosticRefreshAheadOfLogin(t *testing.T) {
 	}
 	if f := NodeFlow(s); f.Primary != appcore.ActionRefreshNode || f.Consent || f.Code {
 		t.Fatal("expired proposal offered consent instead of authenticated state refresh")
+	}
+}
+
+func TestExpiredNodeReviewGuidanceKeepsItsOriginalScope(t *testing.T) {
+	for _, statusOnly := range []bool{false, true} {
+		name, notice := "initial", "node.initial_review_expired"
+		if statusOnly {
+			name, notice = "status-only", "node.status_review_expired"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := appcore.Snapshot{Node: appcore.NodeSetupSnapshot{Available: true,
+				Candidate: &appcore.NodeCandidateSnapshot{ReviewID: "synthetic-expired-review", StatusOnly: statusOnly}},
+				AvailableActions: []appcore.ActionKind{appcore.ActionRefreshNode, appcore.ActionCancelNodeAccess}}
+			f := NodeFlow(s)
+			if f.Stage != "review-expired" || f.Notice != notice || f.Primary != appcore.ActionRefreshNode ||
+				f.Code || f.Consent || !reflect.DeepEqual(f.Secondary, []appcore.ActionKind{appcore.ActionCancelNodeAccess}) {
+				t.Fatal("expired review changed its scope or controller-authorized decisions")
+			}
+			if _, ok := NodeApprovalAction(s, "synthetic-expired-review", true, true); ok {
+				t.Fatal("expiry guidance enabled approval")
+			}
+		})
+	}
+}
+
+func TestUnboundNodeTerminalGuidancePreservesControllerDecisions(t *testing.T) {
+	for _, tt := range []struct{ state, notice string }{
+		{"REVOKED", "node.access_revoked"},
+		{"EXPIRED", "node.access_expired"},
+		{"CANCELLED", "node.access_ended"},
+		{"SESSION_ENDED", "node.unbound_session_ended"},
+	} {
+		t.Run(tt.state, func(t *testing.T) {
+			s := appcore.Snapshot{Hub: appcore.HubSnapshot{Verified: true},
+				Account:          appcore.AccountSnapshot{State: appcore.AccountStateSessionActive, RootState: appcore.RootStateActive},
+				Node:             appcore.NodeSetupSnapshot{Available: true, Access: appcore.NodeAccessSnapshot{State: tt.state}},
+				AvailableActions: []appcore.ActionKind{appcore.ActionRefresh, appcore.ActionLogout}}
+			before := append([]appcore.ActionKind(nil), s.AvailableActions...)
+			f := NodeFlow(s)
+			if f.Notice != tt.notice || f.Stage != "unavailable" || f.Primary != "" || f.Consent || f.Code || len(f.Secondary) != 0 {
+				t.Fatal("known unfinished-connection outcome was hidden or enabled new work")
+			}
+			if account := Flow(s); account.Stage != "ready" || account.Password {
+				t.Fatal("ended Node permission turned the current account session into a login prompt")
+			}
+			if !reflect.DeepEqual(before, s.AvailableActions) {
+				t.Fatal("guidance changed controller actions")
+			}
+			if tt.state != "REVOKED" {
+				s.AvailableActions = append(s.AvailableActions, appcore.ActionPreviewNode)
+				if f = NodeFlow(s); f.Notice != tt.notice || f.Stage != "code" || !f.Code || f.Primary != appcore.ActionPreviewNode || f.Consent {
+					t.Fatal("terminal explanation hid a separately authorized new preview")
+				}
+			}
+			s.Node.Pending = true
+			s.AvailableActions = append(s.AvailableActions, appcore.ActionRecoverNode)
+			if f = NodeFlow(s); f.Primary != appcore.ActionRecoverNode || f.Notice != "" || f.Code || f.Consent {
+				t.Fatal("terminal explanation displaced uncertain-request recovery")
+			}
+		})
 	}
 }

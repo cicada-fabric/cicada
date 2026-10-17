@@ -10,6 +10,7 @@ type NodeSetupFlow struct {
 	Secondary []appcore.ActionKind
 	Code      bool
 	Consent   bool
+	Notice    string // Localized guidance only; it never enables an action.
 }
 
 func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
@@ -42,7 +43,10 @@ func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
 		return flow
 	}
 	if s.Node.Candidate != nil {
-		flow := NodeSetupFlow{Stage: "review-expired"}
+		flow := NodeSetupFlow{Stage: "review-expired", Notice: "node.initial_review_expired"}
+		if s.Node.Candidate.StatusOnly {
+			flow.Notice = "node.status_review_expired"
+		}
 		if has(appcore.ActionRefreshNode) {
 			flow.Primary = appcore.ActionRefreshNode
 		}
@@ -69,9 +73,26 @@ func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
 		return flow
 	}
 	if has(appcore.ActionPreviewNode) {
-		return NodeSetupFlow{Stage: "code", Primary: appcore.ActionPreviewNode, Code: true}
+		return NodeSetupFlow{Stage: "code", Primary: appcore.ActionPreviewNode, Code: true, Notice: unboundNodeNotice(s.Node.Access.State)}
 	}
-	return NodeSetupFlow{Stage: "unavailable"}
+	return NodeSetupFlow{Stage: "unavailable", Notice: unboundNodeNotice(s.Node.Access.State)}
+}
+
+// An unfinished connection can have an authenticated terminal authorization
+// state. Show that reason without inventing a login, retry or pairing action.
+func unboundNodeNotice(state string) string {
+	switch state {
+	case "REVOKED":
+		return "node.access_revoked"
+	case "EXPIRED":
+		return "node.access_expired"
+	case "CANCELLED":
+		return "node.access_ended"
+	case "SESSION_ENDED":
+		return "node.unbound_session_ended"
+	default:
+		return ""
+	}
 }
 
 // NodeApprovalAction binds a native consent gesture to the exact currently
