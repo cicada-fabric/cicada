@@ -49,7 +49,9 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 		return nil, ErrInvalid
 	}
 	var inner []byte
-	if extensionOperation(route.Operation) {
+	if appNodeOperation(route.Operation) {
+		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
+	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithBodyLimit(device, hub.Public, binding, route, plaintext, MaxActivationBodyBytes)
 	} else {
 		inner, err = clientwire.SealRequest(device, hub.Public, binding, route, plaintext)
@@ -58,7 +60,7 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 		return nil, err
 	}
 	var packet clientwire.Packet
-	if err := decodeCanonical(inner, MaxInnerPacketBytes, &packet); err != nil {
+	if err := decodeCanonical(inner, innerLimitForOperation(route.Operation), &packet); err != nil {
 		return nil, ErrInvalid
 	}
 	return marshalPacket(Packet{Format: PacketFormat, Version: PacketVersion,
@@ -94,11 +96,13 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 		return ErrInvalid
 	}
 	inner, err := json.Marshal(packet.Packet)
-	if err != nil || len(inner) > MaxInnerPacketBytes {
+	if err != nil || len(inner) > innerLimitForOperation(expectedRoute.Operation) {
 		return ErrInvalid
 	}
 	var opened clientwire.Opened
-	if extensionOperation(expectedRoute.Operation) {
+	if appNodeOperation(expectedRoute.Operation) {
+		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
+	} else if extensionOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithBodyLimit(hub, packet.SenderPublicIdentity, binding, inner, MaxActivationBodyBytes)
 	} else {
 		opened, err = clientwire.OpenRequest(hub, packet.SenderPublicIdentity, binding, inner)
@@ -154,7 +158,9 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 	binding := clientwire.Binding{HubID: route.HubID, OwnerID: route.OwnerID, DeviceID: route.DeviceID,
 		SessionEpoch: route.SessionEpoch, HubKeyVersion: route.SenderKeyVersion, DeviceKeyVersion: route.ReceiverKeyVersion}
 	var inner []byte
-	if extensionOperation(route.Operation) {
+	if appNodeOperation(route.Operation) {
+		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
+	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithBodyLimit(hub, device, binding, route, plaintext, MaxActivationBodyBytes)
 	} else {
 		inner, err = clientwire.SealResponse(hub, device, binding, route, plaintext)
@@ -163,7 +169,7 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 		return nil, err
 	}
 	var innerPacket clientwire.Packet
-	if err := decodeCanonical(inner, MaxInnerPacketBytes, &innerPacket); err != nil {
+	if err := decodeCanonical(inner, innerLimitForOperation(route.Operation), &innerPacket); err != nil {
 		return nil, ErrInvalid
 	}
 	return marshalPacket(Packet{Format: PacketFormat, Version: PacketVersion,
@@ -192,7 +198,9 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		return ErrInvalid
 	}
 	var opened clientwire.Opened
-	if extensionOperation(request.Packet.Route.Operation) {
+	if appNodeOperation(request.Packet.Route.Operation) {
+		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
+	} else if extensionOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithBodyLimit(device, hub.Public, binding, inner, MaxActivationBodyBytes)
 	} else {
 		opened, err = clientwire.OpenResponse(device, hub.Public, binding, inner)
@@ -219,6 +227,18 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		if value.RequestPacketDigest != ActivationPacketDigest(requestBytes) {
 			return ErrInvalid
 		}
+	case AppNodeChallenge:
+		if value.RequestPacketDigest != AppNodePacketDigest(requestBytes) || ValidateAppNodeGrantClaims(value.Claims, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+	case AppNodeResult:
+		if value.RequestPacketDigest != AppNodePacketDigest(requestBytes) || validateOpenedAppNodeResult(value, hub) != nil {
+			return ErrInvalid
+		}
+	case AppNodeReconcileResult:
+		if value.RequestPacketDigest != AppNodePacketDigest(requestBytes) {
+			return ErrInvalid
+		}
 	}
 	return nil
 }
@@ -232,8 +252,11 @@ func DecodePacket(raw []byte) (Packet, error) {
 		e2ee.ValidatePublicIdentity(packet.SenderPublicIdentity) != nil || validateRouteHeader(packet.Packet.Route, packet.SenderPublicIdentity) != nil {
 		return Packet{}, ErrInvalid
 	}
+	if len(raw) > appNodeOuterLimit(packet.Packet.Route.Operation) {
+		return Packet{}, ErrInvalid
+	}
 	inner, err := json.Marshal(packet.Packet)
-	if err != nil || len(inner) > MaxInnerPacketBytes || len(packet.Packet.Envelope) == 0 {
+	if err != nil || len(inner) > innerLimitForOperation(packet.Packet.Route.Operation) || len(packet.Packet.Envelope) == 0 {
 		return Packet{}, ErrInvalid
 	}
 	return packet, nil

@@ -24,11 +24,11 @@ func marshalPacket(packet Packet) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	inner, err := json.Marshal(packet.Packet)
-	if err != nil || len(inner) > MaxInnerPacketBytes {
+	if err != nil || len(inner) > innerLimitForOperation(packet.Packet.Route.Operation) {
 		return nil, ErrInvalid
 	}
 	data, err := json.Marshal(packet)
-	if err != nil || len(data) > MaxPacketBytes {
+	if err != nil || len(data) > appNodeOuterLimit(packet.Packet.Route.Operation) {
 		return nil, ErrInvalid
 	}
 	return data, nil

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check additive N3 reviewed types metadata; do not assert server availability."""
+"""Check additive N3 shared-helper metadata; do not assert server availability."""
 import json
 import pathlib
 import re
@@ -17,7 +17,7 @@ def check():
     catalog = json.loads((ROOT / "cicada-go/internal/clientcontract/catalog.json").read_text())
     n2 = json.loads((package / "activation-contract.json").read_text())
     assert manifest["contract_revision"] == "app-node-authority-v1"
-    assert manifest["status"] == "REVIEWED_TYPES_ONLY"
+    assert manifest["status"] == "SHARED_HELPERS_ONLY"
     assert manifest["wire_version"] == manifest["account_packet_sequence"] == manifest["account_route_epoch"] == 1
     assert manifest["packet_format"] == "cicada.owner-account-packet.v1"
     assert manifest["frozen_client_contract"] == catalog["contract_revision"] == "client-hub-v1.6.5"
@@ -35,6 +35,7 @@ def check():
     assert n2["runtime_lease_seconds"] == 900 and not n2["runtime_lease_renewable"]
     assert manifest["max_mutation_packet_bytes"] == manifest["max_original_bytes"] == manifest["max_receipt_bytes"] == 128 * 1024
     assert manifest["max_body_bytes"] == 192 * 1024 and manifest["max_proof_bytes"] == 32 * 1024
+    assert manifest["max_inner_bytes"] == manifest["max_outer_bytes"] == 384 * 1024 and manifest["legacy_inner_bytes"] == 256 * 1024
     assert (manifest["intent_max_seconds"], manifest["proof_max_seconds"], manifest["runtime_lease_seconds"]) == (60, 300, 900)
     assert manifest["serve_mode"] == "--hub-nodes-only"
     assert manifest["node_control_operations"] == ["node.binding.status"]
@@ -54,7 +55,7 @@ def check():
         assert value in source and value in prose, value
     for error in manifest["error_codes"]:
         assert error in prose, error
-    print("app-node-authority-v1 reviewed types metadata PASS (no server availability asserted)")
+    print("app-node-authority-v1 shared-helper metadata PASS (no server availability asserted)")
 
 
 if __name__ == "__main__":

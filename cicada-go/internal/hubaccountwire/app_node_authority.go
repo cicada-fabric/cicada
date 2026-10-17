@@ -12,6 +12,8 @@ import (
 
 // Reviewed N3 contract: these definitions do not enable an HTTP handler, modify
 // the frozen Client catalog, or alter owner-activation-v1 authority.
+const MaxAppNodeInnerPacketBytes = 384 * 1024
+
 const (
 	AppNodeContractRevision             = "app-node-authority-v1"
 	AppNodeCapabilitiesFormat           = "cicada.app-node-capabilities.v1"

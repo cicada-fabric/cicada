@@ -315,6 +315,9 @@ func knownOperation(operation string) bool {
 }
 
 func maxBodyForOperation(operation string) int {
+	if appNodeOperation(operation) {
+		return MaxAppNodeBodyBytes
+	}
 	if extensionOperation(operation) {
 		return MaxActivationBodyBytes
 	}

@@ -1,6 +1,6 @@
 {
   "contract_revision": "app-node-authority-v1",
-  "status": "REVIEWED_TYPES_ONLY",
+  "status": "SHARED_HELPERS_ONLY",
   "packet_format": "cicada.owner-account-packet.v1",
   "wire_version": 1,
   "account_packet_sequence": 1,
@@ -27,6 +27,9 @@
   "status_only_confirmation_limit": 0,
   "node_status_read_explicit": true,
   "max_body_bytes": 196608,
+  "max_inner_bytes": 393216,
+  "max_outer_bytes": 393216,
+  "legacy_inner_bytes": 262144,
   "max_proof_bytes": 32768,
   "max_original_bytes": 131072,
   "max_mutation_packet_bytes": 131072,

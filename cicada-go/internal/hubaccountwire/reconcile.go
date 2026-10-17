@@ -76,6 +76,9 @@ func ValidateAccountReconcileTarget(result AccountReconcileResult, original []by
 }
 
 func validateExtensionDevice(body any, device e2ee.PublicIdentity) error {
+	if op, _, _, _, _, err := appNodeMetadata(body); err == nil && appNodeOperation(op) {
+		return validateAppNodeDevice(body, device)
+	}
 	switch v := dereference(body).(type) {
 	case ActivationPrepare:
 		if v.OwnerPublic.ID == device.ID || v.Material.HubID == "" {

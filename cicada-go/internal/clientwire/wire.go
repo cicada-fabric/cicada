@@ -119,6 +119,13 @@ func sealWithPrivateOperations(sender e2ee.PublicIdentity, operations e2ee.Priva
 }
 
 func sealWithBodyLimit(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity, limit int) ([]byte, error) {
+	return sealWithLimits(sender, operations, receiver, binding, route, direction, plaintext, trustedSender, limit, maxPacketBytes)
+}
+
+func sealWithLimits(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity, limit, packetLimit int) ([]byte, error) {
+	if packetLimit <= 0 || packetLimit > 384*1024 {
+		return nil, ErrInvalidPacket
+	}
 	if operations == nil || limit <= 0 || limit > 192*1024 || len(plaintext) == 0 || len(plaintext) > limit {
 		return nil, ErrInvalidPacket
 	}
@@ -142,7 +149,7 @@ func sealWithBodyLimit(sender e2ee.PublicIdentity, operations e2ee.PrivateOperat
 	if err != nil {
 		return nil, err
 	}
-	if len(packet) > maxPacketBytes {
+	if len(packet) > packetLimit {
 		return nil, ErrInvalidPacket
 	}
 	return packet, nil
@@ -160,7 +167,11 @@ func openWithPrivateOperations(recipient e2ee.PublicIdentity, operations e2ee.Pr
 }
 
 func openWithBodyLimit(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity, limit int) (Opened, error) {
-	if operations == nil || limit <= 0 || limit > 192*1024 || len(data) == 0 || len(data) > maxPacketBytes {
+	return openWithLimits(recipient, operations, sender, binding, data, direction, expectedRoute, trustedRecipient, limit, maxPacketBytes)
+}
+
+func openWithLimits(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity, limit, packetLimit int) (Opened, error) {
+	if packetLimit <= 0 || packetLimit > 384*1024 || operations == nil || limit <= 0 || limit > 192*1024 || len(data) == 0 || len(data) > packetLimit {
 		return Opened{}, ErrInvalidPacket
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))

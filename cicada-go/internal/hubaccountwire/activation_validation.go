@@ -20,10 +20,10 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	case AccountReconcileRequest:
 		return OperationAccountReconcile, v.RequestID, v.OwnerID, v.DeviceID, HandshakeEpoch, nil
 	}
-	return "", "", "", "", 0, ErrInvalid
+	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
-	return op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile
+	return op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op)
 }
 func validateActivationBinding(b ActivationBinding) error {
 	if b.Format != ActivationFormat || (b.Purpose != PurposeInitialActivation && b.Purpose != PurposeLegacyContinuation) || validateOrigin(b.Origin) != nil || !validID(b.HubID) || !validID(b.AccountID) || !validID(b.OwnerID) || !isHex(b.HubFingerprint, 32) || !isHex(b.ActivationID, 16) || b.SetupEpoch == 0 || b.AccountEpoch == 0 || b.DeviceEpoch == 0 || e2ee.ValidatePublicIdentity(b.OwnerPublic) != nil || e2ee.ValidatePublicIdentity(b.DevicePublic) != nil || b.OwnerPublic.ID == b.DevicePublic.ID || !validDeviceID(b.DeviceID) || !isHex(b.PrepareRequestID, 16) || !isHex(b.PreparePacketDigest, 32) || !isHex(b.GrantDigest, 32) || !reflect.DeepEqual(b.AllowedOperations, ActivationAllowedOperations()) || validateCanonicalTime(b.LeaseExpiresAt) != nil {
@@ -32,6 +32,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if op, _, _, _, _, err := appNodeMetadata(body); err == nil && appNodeOperation(op) {
+		return validateAppNodeRequest(body, hub, now)
+	}
 	switch v := dereference(body).(type) {
 	case ActivationPrepare:
 		if v.Format != ActivationPrepareFormat || ValidateActivationHub(v.Material, hub, time.Time{}) != nil || e2ee.ValidatePublicIdentity(v.OwnerPublic) != nil || v.OwnerPublic.ID == hub.Public.ID || len(v.OwnerDeviceGrant) == 0 || len(v.OwnerDeviceGrant) > 16*1024 || len(v.ClientNonce) != NonceBytes || validateRecent(v.IssuedAt, now, MaxSessionRequestLifetime) != nil || (v.Material.ExpectedOwnerPublic != nil && !reflect.DeepEqual(*v.Material.ExpectedOwnerPublic, v.OwnerPublic)) {
@@ -67,6 +70,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if appNodeOperation(r.Operation) {
+		return validateAppNodeResponse(body, r)
+	}
 	switch v := dereference(body).(type) {
 	case ActivationChallenge:
 		if r.Operation != OperationActivationPrepare || v.Format != ActivationChallengeFormat || validateActivationBinding(v.Binding) != nil || v.Binding.PrepareRequestID != r.OperationID || v.Binding.HubID != r.HubID || v.Binding.OwnerID != r.OwnerID || v.Binding.DeviceID != r.DeviceID || ValidateActivationChallenge(v, v.Proof.Hub, v.Binding.DevicePublic, time.Time{}) != nil {

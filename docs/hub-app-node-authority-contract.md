@@ -1,9 +1,9 @@
 # Finite App authority for one INITIAL Node
 
 Reviewed contract `app-node-authority-v1`, 2026-10-17, phase
-**REVIEWED_TYPES_ONLY — types and metadata checks only; no N3 HTTP service or App
-behavior is enabled by this checkpoint.** Root approved this contract before
-implementation. The normative types are
+**SHARED_HELPERS_ONLY — reviewed types plus shared proof/framing helpers; no N3
+HTTP service or App behavior is enabled by this checkpoint.** Root approved this
+contract before implementation. The normative types are
 `internal/e2ee/owner_app_node_claims.go` and
 `internal/hubaccountwire/app_node_authority*.go`; metadata is
 `internal/hubaccountwire/app-node-contract.json`. Run
@@ -102,8 +102,15 @@ accepted prepare/complete/cancel packet and N3-tagged Client confirmation packet
 is capped at 128 KiB even where a legacy parser allows more, so every accepted
 mutation fits `reconcile`. Oversize originals fail before admission; reconcile
 itself is never an eligible original target. The new
-extension body is bounded to 192 KiB, inside existing 256 KiB inner / 384 KiB
-outer packet limits. Owner proofs are at most 32 KiB. Compact reconciliation
+extension body is bounded to 192 KiB. **Reviewed transport-budget erratum after
+types checkpoint `a545988`: only the five N3 operations use a 384 KiB inner cap;
+the outer cap remains 384 KiB.** Ordinary Client/N2 inner caps remain 256 KiB.
+The bounded outer parser recognizes an exact N3 operation before selecting its
+larger inner bound; unknown/default ingress never gains it. Explicit clientwire
+packet-limit helpers preserve old defaults, fields, AAD and version. The retained
+real-PQ RED proved that a legal 128 KiB nested carrier fits the JSON body but
+exceeds the old inner cap after double base64; full outer-frame GREEN and default
+rejection are required. Owner proofs are at most 32 KiB. Compact reconciliation
 responses do not repeat large full-key scopes alongside a nested base64 receipt.
 Legal receipts above 96 KiB must round-trip; limits never expand old operations.
 
@@ -199,6 +206,18 @@ new explicit preview/approval, grant ID and monotonic head; it cannot update the
 old grant or N2 row. The server enforces one confirmation; competing confirms
 cannot approve two bindings. The App must distinguish **permission granted**
 from **Node confirmed**. Complete alone does not confirm the Node.
+
+If INITIAL authority becomes ACTIVE but never produces successful confirmation
+provenance, a consumed/expired candidate must not strand that App. A new explicit
+INITIAL preview from a new code is permitted only after the prior proposal or
+grant has an authenticated terminal result, every pending original packet has
+been reconciled, and neither the App's retained history nor the Hub has a
+successful confirmation provenance. It uses the current head CAS and a new
+grant instance, preserving all old history. ACTIVE unconfirmed authority must
+first be explicitly cancelled or become expired/session-ended. Security
+revocation or changed identities/keys/epochs cannot use this path. Once any
+successful provenance exists, the only subsequent profile is READ_EXISTING for
+that exact unchanged binding; a new code cannot substitute another Node.
 
 ### Explicit status reauthorization after expiry or login replacement
 

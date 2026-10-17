@@ -1,0 +1,108 @@
+# N3 Hub authority validation
+
+2026-10-17 shared-helper checkpoint, scoped to synthetic local tests.
+Contract: [app-node-authority-v1](hub-app-node-authority-contract.md).
+The contract-only predecessor is
+`a545988ac6c038da180413d4f29ffbf740c402d4`. This checkpoint implements shared
+proof and framing helpers; it does not enable N3 HTTP routes, a Store state
+machine or `--hub-nodes-only`.
+
+## Tested input and execution
+
+Tests used dirty input based on that predecessor, with exact file hashes in
+`/home/zyf/Cicada/.local/evidence/n3-hub/shared-helpers/source-attempt4.json`.
+Its SHA-256 is
+`482bd1832366f9b9a01bc5d131e26cfb9d7b1569fa33401e8fb085c673abe419`.
+The validation document was added after the tested code input was fixed.
+Do not attribute that dirty test run solely to its HEAD.
+
+The disposable Docker image was Go 1.27.2,
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`.
+Containers ran as uid/gid 1000, with no network, read-only root/repository/module
+cache, dropped capabilities, no new privileges, an executable private tmpfs,
+and a private writable Go build cache. No shared Hub or deployment state was
+used. All identities were newly generated synthetic test fixtures.
+
+Normal and race commands both tested `./internal/e2ee`,
+`./internal/clientwire`, `./internal/hubaccountwire`, and `./internal/nodewire`
+with `-count=1`; race added `-race`. `go vet` covered those four packages.
+Metadata checks were `scripts/app-node-authority-contract.py check` and
+`scripts/owner-activation-contract.py check`; `git diff --check` passed.
+
+| Lane | Result |
+| --- | --- |
+| Four-package normal | PASS: 295 test events, zero failures; one separately recorded skip |
+| Four-package race | PASS: 295 test events, zero failures; one separately recorded skip |
+| N3-focused tests within each lane | PASS: 32 events, zero failures/skips |
+| Four-package vet | PASS |
+| N3 and N2 metadata checks | PASS |
+| Independent OpenSSL 3.5.9 Owner-signature interop | SKIP: no explicit verified `CICADA_TEST_OWNER_OPENSSL` executable supplied; never counted as pass |
+| Store/service/HTTP/composition/relay-only integration | NOT_RUN: not implemented in this helper checkpoint |
+| Integrated disposable Docker product interop | NOT_RUN for this checkpoint; reserved for the integrated server implementation |
+| Windows native, real Ubuntu Node, public HTTPS, strict PQ TLS, real Runtime | NOT_RUN |
+
+Logs and their earlier attempts remain in the same private evidence directory.
+`normal-attempt1/2` precede the final semantic guards; `attempt3` precedes the
+final liveness/provenance guards. They are not evidence for those later changes.
+
+## Verified behavior and retained failure
+
+Real ML-DSA Owner signatures cover distinct preview/grant domains, exact
+retained keys, canonical claims, deadlines and immutable scope. Real PQ account
+envelopes round-trip INITIAL and READ_EXISTING prepare/complete. Incorrect
+keys, changed signed targets, wrong domains, noncanonical proof bytes and
+expired completion proofs fail. The READ_EXISTING helper cannot seal a confirm.
+
+The confirmation adapter consumes the actual frozen Store public binding DTO;
+it verifies the original tagged operation instance, durable expected response
+sequence, approved request/version/digest and complete public-key tuple. A
+delayed packet cannot borrow a newer grant. The App imports no Store package.
+
+Genuinely Hub-signed invalid responses fail: READ_EXPIRED carrying Node data,
+operations or a remaining budget; inconsistent ACTIVE head/latest instance,
+session/deadline/counters/profile; CONNECTED with a future heartbeat or revoked
+binding. `ValidateAppNodeLiveResult` additionally requires nonzero current time,
+the exact locally retained grant scope/epochs/instance/lease/target, and the
+exact READ_EXISTING confirmation provenance. Historical receipt recovery does
+not confer current authority.
+
+The full maximum opaque 128 KiB nested receipt carrier originally failed with
+175161 bytes of plaintext because its encoded inner packet exceeded 256 KiB.
+The original RED log is retained as
+`contract-draft/nested-transport-red.log`. The reviewed correction gives only
+the five N3 account operations an explicit 384 KiB inner bound; the outer bound
+stays 384 KiB, body 192 KiB and original/receipt 128 KiB. The complete PQ outer
+seal/open now passes at that carrier maximum. Default Client/N2 APIs and a
+packet relabelled as N2 still reject that enlarged inner frame. Oversized outer
+and receipt inputs fail. Opaque carrier bytes test transport capacity, not a
+claim that arbitrary bytes are a valid business receipt.
+
+Earlier contract-container setup failures (unwritable borrowed cache and
+non-executable tmpfs) remain separately recorded. They were corrected with the
+private cache and executable tmpfs; no failed attempt was relabelled as pass.
+
+## App helper handoff
+
+Use `e2ee.SignOwnerAppNodePreview/Grant` and
+`e2ee.VerifyOwnerAppNodePreview/Grant` with the retained Owner identity.
+`hubaccountwire.AppNodeSession` constructors produce typed prepare, complete,
+status, cancel and reconciliation requests; existing `SealClientRequest` and
+`OpenClientResponse` support those types. `OpenAppNodeResponse` dispatches a
+prepare challenge or its common rejection result. Reconciliation must also
+pass `ValidateAppNodeReconcileTarget` against the exact persisted original.
+
+Use `SealAppNodeConfirmation` and `OpenAppNodeConfirmationResponse` for the one
+allowed Client RPC. The response helper takes value
+`e2ee.OwnerAppNodeGrantClaims` and the expected durable response sequence,
+returning `AppNodeConfirmationResponse` with RequestID, OperationID, OK, Error
+and `*e2ee.OwnerAppNodeBinding`. It permits historical receipt verification;
+current action/UI gates remain separate.
+
+After opening a fresh COMPLETED/ACTIVE status, call
+`ValidateAppNodeLiveResult(result, retainedGrant, hub, now)` before adopting it.
+Zero time is rejected by this live helper. Generic envelope authentication
+cannot recover the complete private original scope from outbound ciphertext.
+READ_EXPIRED closes only the exact read and provides no live Node authority.
+The App must still persist bytes before every POST and apply local deadline,
+freshness and counter-recovery gates. All mutations require the remaining Store
+implementation's atomic current guards; helpers alone never authorize effects.
