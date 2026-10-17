@@ -26,7 +26,10 @@ The [login-first display boundary](native-app-validation.md#login-first-presenta
 at `1980dce` hides saved account/Owner/Node information until a trusted current
 account session is inspected. Independent source review found no blocker;
 portable UI normal/race each passed 141/0/0. New Windows rendering and interaction
-remain NOT_RUN. Existing valid-session restoration and original-request recovery are
+have a Windows 11 USER_REPORTED_PASS for the basic signed-out screen, original
+account login restoring the same GPU1 Node, and logout hiding the information.
+Independent native GUI execution and dedicated DPAPI/ACL acceptance remain
+NOT_RUN. Existing valid-session restoration and original-request recovery are
 preserved, and login still grants no Root or Node authority.
 Live canvas, App SSE, real native Runtime and physical acceptance remain incomplete.
 It is not a browser product or a

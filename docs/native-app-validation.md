@@ -1651,14 +1651,39 @@ task-owned path under `.local/evidence`, then run
 `bash scripts/test-client-hub-interop.sh --suite client` (exit 0 required;
 cleanup must be CONFIRMED). Do not point this gate at an existing Hub.
 
-No blocker was found in the reviewed presentation scope. New-artifact Windows
-GUI/layout/interaction/high-DPI, DPAPI and ACL execution remain **NOT_RUN**.
-Physical verification must check signed-out first display, fresh restored
-session inspection, manual login restoring the same saved Node, logout/expiry
-hiding details, neutral exact-request recovery, profile scope switching and
-keyboard focus/scroll behavior. Record the exact artifact hash and separate
-results; do not log credentials or recreate a real binding just for this test.
+No blocker was found in the reviewed presentation scope. The basic Windows 11
+login/logout path now has the USER_REPORTED_PASS below. Independent native
+GUI execution, high-DPI, DPAPI and ACL checks remain **NOT_RUN**. Remaining
+physical checks include wrong-password rejection, close/reopen and fresh
+restored-session inspection, natural expiry hiding details, neutral exact-request
+recovery, profile scope switching and keyboard focus/scroll behavior. Record
+the exact artifact hash and separate results; do not log credentials or
+recreate a real binding just for this test.
 Historical user-reported partial successes and idle failure remain in their
 original records. New-package public HTTPS, physical Node service/reboot,
 natural full N3 lease continuity, strict PQTLS, native Runtime, Android,
 canvas/SSE and installer acceptance remain separate and unaccepted.
+
+#### Windows 11 basic login/logout user observation
+
+2026-10-17. The user replied “符合预期，继续验收” to the coordinator's
+three-step check for the delivered clean `1980dce` App candidate. Its SHA-256
+is `27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
+the source and external artifact binding remain those recorded above. The
+environment and outcomes below are user-reported Windows 11 observations,
+not QA-operated native tests.
+
+| Step | Reported behavior | Result |
+| --- | --- | --- |
+| Signed out | Only the login screen is shown before account login | USER_REPORTED_PASS |
+| Original account login | Login restores the same saved GPU1 Node information | USER_REPORTED_PASS |
+| Logout | Saved information is hidden again | USER_REPORTED_PASS |
+
+This accepts only those three reported behaviors. It does not establish fresh
+session inspection across a process restart, natural session/grant expiry,
+Root-pending behavior, wrong-password handling, uncertain-result recovery,
+profile switching, high-DPI, DPAPI or ACL acceptance. Wrong-password and
+close/reopen checks are the next guided steps and have **NOT_RUN** status at
+this checkpoint. There is no automated native exit code or independent Windows
+execution trace for this observation. Earlier Linux receipts, immutable
+artifact hashes and historical Windows results are unchanged.
