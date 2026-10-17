@@ -75,7 +75,7 @@ func (s *Service) openAppNode(raw []byte, operation string, hub wire.HubIdentity
 	if err = wire.OpenRequestAt(s.ids.ClientControl, &trusted, binding, r, raw, out, time.Time{}); err != nil {
 		return store.HubAppNodeAuthorityInput{}, nil, ErrAuthentication
 	}
-	in := store.HubAppNodeAuthorityInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), Device: trusted, Packet: raw, Body: reflect.ValueOf(out).Elem().Interface(), At: s.requestTime()}
+	in := store.HubAppNodeAuthorityInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), Device: trusted, Packet: raw, Body: reflect.ValueOf(out).Elem().Interface(), Now: s.requestTime}
 	seal := func(body any) ([]byte, error) { return wire.SealResponse(s.ids.ClientControl, trusted, r, body) }
 	return in, seal, nil
 }
@@ -189,7 +189,7 @@ func (s *Service) openAppNodeClient(raw []byte, hub wire.HubIdentity, trusted e2
 	if decoder.Decode(&extra) != io.EOF {
 		return store.HubAppNodeClientInput{}, ErrAuthentication
 	}
-	in := store.HubAppNodeClientInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), Device: trusted, Packet: raw, Route: opened.Route, Code: body.Code, CandidateDigest: body.Digest, CandidateVersion: body.Version, At: s.requestTime()}
+	in := store.HubAppNodeClientInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), Device: trusted, Packet: raw, Route: opened.Route, Code: body.Code, CandidateDigest: body.Digest, CandidateVersion: body.Version, Now: s.requestTime}
 	in.Seal = func(sequence uint64, id string, result *store.NodeControlKeyBinding, code string) ([]byte, error) {
 		wrapper := struct {
 			Error       string `json:"error,omitempty"`

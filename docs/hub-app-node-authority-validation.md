@@ -1,5 +1,79 @@
 # N3 Hub authority validation
 
+## Relay restart recovery and transaction-time checkpoint
+
+2026-10-17. Tested dirty source based on
+`af92b16d3c0dc616280d694986692a2cbb1caa71`, with per-file hashes in the
+workspace-local runtime evidence directory below. This checkpoint is not
+attributed solely to its predecessor HEAD. It uses the same immutable Go 1.27.2
+Docker image, synthetic isolated state and no-network/read-only-root/uid-1000
+controls recorded for the runtime checkpoint. No resident Hub was used.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n3-hub/runtime/`.
+
+| Lane | Result | Source manifest SHA-256 |
+| --- | --- | --- |
+| `recovery-normal` | PASS: 8 test events, zero failures/skips | `d92754e0652919dbfef9a747f24d3e00314ca62856ee2923ee2d218e55a03620` |
+| `recovery-race` | PASS: same 8 events, zero failures/skips | `5a98ac7599de282a12620d6e01d94df558af36a7da8837e62515ec8041009eb5` |
+| `recovery-vet` | PASS: four affected packages | `e4ddcb0ccfa9573aaf0473968964dcbb06f9a667738f5465d3885470d17625f1` |
+| N3/N2 metadata and diff whitespace | PASS | Repository scripts and `git diff --check` |
+
+All three source-pinned runs verified unchanged inputs. Only this validation
+section was added afterward. Normal/race cover `./cmd/cicada`,
+`./internal/server`, `./internal/store` and `./internal/hubauth`, with `-count=1`
+and selection
+`^TestHubNodesRelayOnceResumes\|^TestN3HubNodesRealTCP\|^TestMachineAgent.*Relay\|^TestN3StoreQueued\|^TestN3StoreTransactionClock`.
+Timeouts were 180 seconds normal and 600 seconds race. Hubauth has no selected
+standalone test in this lane; the real TCP integration exercises its production
+authority and Client clock wiring. Vet checks all four packages.
+
+The actual relay-only CLI child first persists its original unconfirmed INITIAL
+candidate and exits waiting for explicit approval. A visibly synthetic trusted
+local operator confirms that candidate while the process is stopped. Restarting
+the same real CLI with `--once` now installs that exact durable approval with its
+original key and candidate, then finishes idle polling. This child fixture does
+not claim an App N3 ceremony; the separately selected real TCP test performs
+actual N2 activation and N3 App authorization. The existing legacy bound-relay
+test also verifies no Node-Control key/state or new ceremony is created.
+
+Two distinct REDs remain retained. `relay-resume-red` used the original runtime
+plus the actual child regression (manifest
+`0e68b1355a32fd3fbb26153742d355c4bf20b674f30bf967997986c6e0ec6e59`):
+the normal idle `POST /v2/fabric/node/networks/direct/claim` returned 404 and
+the child exited unsuccessfully. `relay-resume-route-only` exposed only that
+exact existing route (manifest
+`22d765925c6dd77e892f569fbbaece05e78541d83a757bfab168c028ecd55cee`):
+the child exited successfully but retained its unresolved local PENDING state.
+The final fix restores only that retained INITIAL approval before the bearer
+fast path, reusing existing full candidate/key checks. No key, code or identity
+is regenerated. The exact claim route retains its existing credential and
+Node-ID transaction guards; missing credential is 401, another Node is 403,
+and direct send/ask and network join remain 404. No general Fabric prefix is
+enabled. Legacy absent-state and UPGRADE peer lifecycles stay unchanged.
+
+`queued-clock-red` independently reproduced stale admission: a real Owner
+preview intent valid for one second was queued behind the Store writer until
+after expiry; the old pre-writer `At` still returned PREPARED. Its retained
+manifest is
+`6e95b8ef2b09372aeee8fa53d518b8b32fff51d43f16769daa7c2ed213168fae`.
+Hubauth now passes a trusted process clock callback, sampled after Store mutex
+and transaction acquisition. An absent callback preserves explicit deterministic
+Store time; a callback returning zero fails closed. Nested reconcile originals
+inherit the one outer transaction time. The real one-second regression now
+returns a durable rejection with no proposal and identical ciphertext on retry.
+Deterministic queued Client cases cross the exact session and lease deadlines,
+reject without a Node effect or success-budget consumption, and retain one
+counter slot plus the same sealed rejection on retry.
+
+The earlier `relay-resume-fixed` 3/0/0 lane is an intermediate result before the
+final legacy-state assertion and transaction-time change. Integrated N2/native
+and standard disposable Docker interop results reported by Root for clean
+`af92b16` remain attributed to that source; this checkpoint does not renew them.
+Independent QA process-fault acceptance must rerun on the integrated fix.
+Physical Ubuntu/user-service, actual native UI/vault, public HTTPS, strict PQTLS,
+Android and real Runtime results are NOT_RUN by this checkpoint. No deployment,
+push, identity reset or real credential change occurred.
+
 ## Explicit Hub Nodes runtime checkpoint
 
 2026-10-17, phase HUB_NODES_ONLY. Tested dirty input based on integrated App/Store

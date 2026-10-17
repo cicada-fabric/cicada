@@ -453,6 +453,11 @@ a replacement key nor deletes historical local-machine rows. Public discovery
 advertises only this composition's availability; authenticated scope is checked
 again for every call.
 
+The existing Node idle poll `POST /v2/fabric/node/networks/direct/claim` is
+available only through its existing current Node credential and exact Node ID
+transaction guards. This is one exact route; direct send/ask, network join and
+general Fabric management remain unavailable.
+
 The only Node-Control business RPC is existing `node.binding.status`; other
 management/Worker routes are unavailable. Account and Owner operations retain
 their existing services. Existing `--hub-only` behavior stays unchanged. Add a
@@ -466,6 +471,17 @@ or Hub private state. Keep its identity and private state across retries/restart
 It opens no inbound port and uses trusted outbound HTTPS. Installing, authorizing,
 confirmed binding, recent heartbeat and a real Runtime task are distinct states;
 this slice stops at the first four and performs no paid/model work.
+
+If a Node stops with a retained PENDING INITIAL candidate and its Owner confirms
+while it is offline, the next relay-only startup recovers that exact confirmed
+candidate and original key before the bearer-ready fast path. It installs the
+durable approval even after the original code expires. A legacy bound Node with
+no Node-Control state creates no replacement key or new approval ceremony.
+
+For both N3 HTTP authority and tagged Client admission, the trusted server clock
+is sampled after acquiring the Store writer and transaction. Proof, exact login
+session, lease, candidate and observation checks share that transaction time;
+time captured before queueing and packet timestamps cannot extend authority.
 
 `HTTPS_APPLICATION_PQ` means standard verified HTTPS transport plus the existing
 application PQ proofs; it is **not strict PQTLS**. The adopted specification's

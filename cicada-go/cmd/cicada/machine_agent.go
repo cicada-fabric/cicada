@@ -416,6 +416,11 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		fmt.Fprintln(os.Stderr, "Relay Node binding probe:", probeErr)
 	}
 	if probeBound {
+		if *relayOnly {
+			if err := recoverMachineRelayInitialApproval(ctx, *stateDir, base, *id, nodeIdentity.RelayToken); err != nil {
+				return fmt.Errorf("recover retained Owner-approved Node candidate: %w", err)
+			}
+		}
 		markRelayReady()
 	}
 	if *once {

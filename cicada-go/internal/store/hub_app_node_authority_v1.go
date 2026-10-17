@@ -24,9 +24,12 @@ type HubAppNodeAuthorityInput struct {
 	Packet            []byte
 	Body              any
 	At                time.Time
-	Original          *HubAppNodeAuthorityInput
-	OriginalSeal      HubAppNodeSeal
-	OriginalClient    *HubAppNodeClientInput
+	// Now is a trusted process clock sampled only after writer/Tx acquisition.
+	// Nil preserves the explicit At seam used by deterministic Store fixtures.
+	Now            func() time.Time
+	Original       *HubAppNodeAuthorityInput
+	OriginalSeal   HubAppNodeSeal
+	OriginalClient *HubAppNodeClientInput
 }
 type HubAppNodeSeal func(body any) ([]byte, error)
 
@@ -173,10 +176,6 @@ func (s *Store) ProcessHubAppNodeAuthority(in HubAppNodeAuthorityInput, seal Hub
 	if s.requireOwnerSetupStartupAllowed() != nil || seal == nil {
 		return nil, ErrHubAccountRejected
 	}
-	c, token, op, _, err := appNodeInputRoute(in)
-	if err != nil {
-		return nil, err
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.Begin()
@@ -184,6 +183,13 @@ func (s *Store) ProcessHubAppNodeAuthority(in HubAppNodeAuthorityInput, seal Hub
 		return nil, err
 	}
 	defer tx.Rollback()
+	if in.Now != nil {
+		in.At = in.Now().UTC()
+	}
+	c, token, op, _, err := appNodeInputRoute(in)
+	if err != nil {
+		return nil, err
+	}
 	a, err := appNodeActor(tx, in.Hub, c.DeviceID, in.Device, token, in.At)
 	if err != nil {
 		return nil, err

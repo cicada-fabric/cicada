@@ -81,6 +81,12 @@ proves the exact Node and current Hub Node-Control keys, and displays a finite
 legacy protocol `VerificationURI` remains unchanged and is still validated;
 this new mode does not ask the user to visit the absent browser approval page.
 
+If the Agent stops before learning an approval completed while it was offline,
+restart it with the same ID and StateDir. It recovers the exact retained INITIAL
+candidate and original key, installs the durable approval and then continues
+relay polling. An expired enrollment code does not erase a completed approval;
+an unconfirmed code still needs explicit Owner approval within its deadline.
+
 For this fresh Node, keep Cicada's binary, state and optional service source
 together under that one configurable absolute base. Existing Hub/App paths and
 existing Node identities are retained; this guide installs no path migration.

@@ -26,7 +26,9 @@ type HubAppNodeClientInput struct {
 	Code, CandidateDigest string
 	CandidateVersion      uint64
 	At                    time.Time
-	Seal                  HubAppNodeClientSeal
+	// Now has the same trusted transaction-time semantics as authority input.
+	Now  func() time.Time
+	Seal HubAppNodeClientSeal
 }
 
 // ProcessHubAppNodeClient is the sole N3 business admission path. It does not
@@ -43,6 +45,9 @@ func (s *Store) ProcessHubAppNodeClient(in HubAppNodeClientInput) ([]byte, error
 		return nil, err
 	}
 	defer tx.Rollback()
+	if in.Now != nil {
+		in.At = in.Now().UTC()
+	}
 	a, err := appNodeActor(tx, in.Hub, in.Route.DeviceID, in.Device, nil, in.At)
 	if err != nil {
 		return nil, err

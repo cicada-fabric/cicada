@@ -261,6 +261,21 @@ func TestN3HubNodesRealTCPActivationProofConfirmHeartbeatAndReadExisting(t *test
 	if status != http.StatusNoContent {
 		t.Fatal("relay-only heartbeat refused", status)
 	}
+	claimPath := "/v2/fabric/node/networks/direct/claim"
+	claim, _ := json.Marshal(map[string]any{"node_id": nodeID, "consumer_id": "synthetic-n3-node-consumer", "limit": 1})
+	status, _ = n3HTTP(t, f, http.MethodPost, claimPath, token, claim)
+	if status != http.StatusOK {
+		t.Fatal("idle exact Node claim unavailable", status)
+	}
+	status, _ = n3HTTP(t, f, http.MethodPost, claimPath, "", claim)
+	if status != http.StatusUnauthorized {
+		t.Fatal("claim accepted missing Node credential", status)
+	}
+	wrongClaim, _ := json.Marshal(map[string]any{"node_id": "synthetic-n3-other-node", "consumer_id": "synthetic-n3-node-consumer", "limit": 1})
+	status, _ = n3HTTP(t, f, http.MethodPost, claimPath, token, wrongClaim)
+	if status != http.StatusForbidden {
+		t.Fatal("claim accepted another Node ID", status)
+	}
 	query, _ = wire.NewAppNodeStatus(session, g.GrantID, time.Now().UTC())
 	_, _, connected := n3Authority(t, f, device, query)
 	if connected.Result.Node == nil || connected.Result.Node.Connectivity != "CONNECTED" || wire.ValidateAppNodeLiveResult(*connected.Result, g, f.hub, time.Now().UTC()) != nil {
@@ -326,7 +341,7 @@ func TestN3HubNodesRealTCPActivationProofConfirmHeartbeatAndReadExisting(t *test
 		t.Fatal("late read escaped exact READ_EXPIRED settlement")
 	}
 	// Unsupported management surfaces are absent from this composition.
-	for _, path := range []string{"/v1/status", "/v1/workers", "/v2/client/devices/enroll", "/v2/client/rpc/recover", "/v2/node/control/key-upgrade"} {
+	for _, path := range []string{"/v1/status", "/v1/workers", "/v2/client/devices/enroll", "/v2/client/rpc/recover", "/v2/node/control/key-upgrade", "/v2/fabric/node/networks/direct/send", "/v2/fabric/node/networks/direct/ask", "/v2/fabric/node/networks/join"} {
 		status, _ := n3HTTP(t, f, http.MethodPost, path, "", []byte(`{}`))
 		if status != http.StatusNotFound {
 			t.Fatalf("unexpected old business path %s HTTP %d", path, status)

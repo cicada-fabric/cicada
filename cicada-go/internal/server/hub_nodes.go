@@ -116,6 +116,13 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.base.ServeHTTP(w, r)
 		return
 	}
+	// The existing relay-only Agent polls this exact Node-scoped queue even
+	// when it is empty. Keep its credential/nodeID transaction guard; no
+	// Network send/ask/join or general Fabric prefix is exposed by this mode.
+	if path == "/v2/fabric/node/networks/direct/claim" {
+		h.base.ServeHTTP(w, r)
+		return
+	}
 	writeError(w, http.StatusNotFound, errors.New("route unavailable in Hub Nodes mode"))
 }
 

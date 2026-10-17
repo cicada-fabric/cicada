@@ -98,6 +98,60 @@ func pinExistingMachineAgentHubID(ctx context.Context, stateDir, base, nodeID st
 	return pinMachineAgentApprovedHubID(ctx, client)
 }
 
+// A Node may have stopped after persisting INITIAL but before learning the
+// remote Owner's successful confirmation. An approved bearer probe cannot
+// replace that retained exact key/candidate proof. Recover only this existing
+// case before the legacy relay fast path; absent state and UPGRADE waiters keep
+// their prior peer lifecycle and never create a key or pairing code here.
+func recoverMachineRelayInitialApproval(ctx context.Context, stateDir, base, nodeID, token string) error {
+	identityPath, statePath := machineNodeControlPaths(stateDir, nodeID)
+	if _, err := os.Lstat(statePath); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := protectNodeControlLocalFile(statePath); err != nil {
+		return err
+	}
+	if err := protectNodeControlLocalFile(identityPath); err != nil {
+		return err
+	}
+	client, err := openMachineNodeControlClient(stateDir, base, nodeID)
+	if err != nil {
+		return err
+	}
+	if client.bindingReady() {
+		return nil
+	}
+	client.mu.Lock()
+	var pending *machineNodeControlCandidate
+	if client.state.PendingPairing != nil {
+		copy := *client.state.PendingPairing
+		pending = &copy
+	}
+	client.mu.Unlock()
+	if pending == nil || pending.Mode != "INITIAL" {
+		return nil
+	}
+	hub, err := machineNodeControlGetHubIdentity(ctx, client)
+	if err != nil {
+		return err
+	}
+	if expected := machinePinnedHubID(ctx); expected != "" && expected != hub.HubID {
+		return errors.New("retained Node candidate differs from pinned Hub")
+	}
+	// Pairing expiry limits new approval. A confirmed durable result remains
+	// recoverable after it, using this same retained candidate and private key.
+	status, err := pollMachineNodeControlPairingStatus(ctx, client, token, pending.RequestID)
+	if err != nil {
+		return err
+	}
+	if err = client.installApprovedBinding(status, pending.RequestID, *pending, hub); err != nil {
+		return err
+	}
+	return pinMachineAgentApprovedHubID(ctx, client)
+}
+
 func machinePinnedHubID(ctx context.Context) string {
 	if hub, ok := machineHubFrom(ctx); ok {
 		return hub.HubID

@@ -531,6 +531,12 @@ func TestMachineAgentRelayOnlySkipsWorkerManagementAndFiltersChildCredentials(t 
 			t.Fatalf("relay-only agent entered Worker management: %v", paths)
 		}
 	}
+	controlKey, controlState := machineNodeControlPaths(stateDir, nodeID)
+	for _, path := range []string{controlKey, controlState} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatal("legacy bound relay fast path created a new Node-Control identity or ceremony", err)
+		}
+	}
 
 	workspace := filepath.Join(root, "workspaces", "goals", "node-job")
 	result := executeMachineJob(context.Background(), machineJob{
