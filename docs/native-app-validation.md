@@ -1651,14 +1651,15 @@ task-owned path under `.local/evidence`, then run
 `bash scripts/test-client-hub-interop.sh --suite client` (exit 0 required;
 cleanup must be CONFIRMED). Do not point this gate at an existing Hub.
 
-No blocker was found in the reviewed presentation scope. The basic Windows 11
-login/logout path now has the USER_REPORTED_PASS below. Independent native
-GUI execution, high-DPI, DPAPI and ACL checks remain **NOT_RUN**. Remaining
-physical checks include wrong-password rejection, close/reopen and fresh
-restored-session inspection, natural expiry hiding details, neutral exact-request
-recovery, profile scope switching and keyboard focus/scroll behavior. Record
-the exact artifact hash and separate results; do not log credentials or
-recreate a real binding just for this test.
+The initial independent source review found no blocker. Subsequent Windows 11
+feedback reports the second-instance entry screen and Chinese text failures
+below; the original test receipts remain attributed to their tested scope.
+Basic login/logout and batch steps 1–5/8 have USER_REPORTED_PASS observations.
+Independent native GUI execution, high-DPI, DPAPI and ACL checks remain
+**NOT_RUN**. Exact-packet recovery, profile switching, precise timing and
+individual layout/input cases still need separate evidence. Record the exact
+artifact hash and separate results; do not log credentials or recreate a real
+binding just for this test.
 Historical user-reported partial successes and idle failure remain in their
 original records. New-package public HTTPS, physical Node service/reboot,
 natural full N3 lease continuity, strict PQTLS, native Runtime, Android,
@@ -1687,3 +1688,200 @@ close/reopen checks are the next guided steps and have **NOT_RUN** status at
 this checkpoint. There is no automated native exit code or independent Windows
 execution trace for this observation. Earlier Linux receipts, immutable
 artifact hashes and historical Windows results are unchanged.
+
+#### Windows 11 eight-step user batch
+
+2026-10-17, after the basic three-step observation. Documentation baseline is
+`a14ad2885f094c884a35decae570a6deadaf82fb`; the delivered App is still clean
+`1980dced7c20da0be40ac8a03892a911d2ffab9b`, SHA-256
+`27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`.
+The user reported “全部正常，只有6第二App初始要求device code；7中文字体仍乱码，
+样式字体以后再说，继续开发验收”. The aggregate reply is mapped to the
+coordinator's eight numbered procedures; it is not independent native execution.
+
+| Step | Procedure and bounded observation | Result |
+| --- | --- | --- |
+| 1 | Wrong password is rejected behind the private display boundary, followed by correct login. The optional recover-connection branch and its message were not separately reported | USER_REPORTED_PASS; recovery branch NOT_REPORTED_SEPARATELY |
+| 2 | Close/reopen App, recover the still-valid account and same saved GPU1 Node without a new pairing/import | USER_REPORTED_PASS |
+| 3 | Stop Node service, leave App open without refresh/minimization, then restart Node; App becomes stale and returns online | USER_REPORTED_PASS; exact cadence/timestamps not supplied |
+| 4 | End this App's Node status access; current online status stops, saved connection remains, Node service remains active | USER_REPORTED_PASS; continuous-heartbeat trace not supplied |
+| 5 | Explicitly restore finite read-only access to the same Node without a new pairing code or second Node | USER_REPORTED_PASS |
+| 6 | Open a second App while the first holds the configuration; second App incorrectly shows initial setup/device-code entry instead of configuration-in-use/unlock guidance | USER_REPORTED_FAIL |
+| 7 | Chinese text is still garbled; user defers font/style work. Other language-switch, resize, masking, readability and session-preservation checks were not individually reported | Chinese USER_REPORTED_FAIL; other subcases NOT_REPORTED_SEPARATELY |
+| 8 | Leave the account session to expire naturally, observe the private information hidden without refresh, then log in to recover the same Node; Node service remains active | USER_REPORTED_PASS; exact elapsed time/command outputs not supplied |
+
+Step 6 is assigned to the App owner. It establishes an incorrect second-instance
+entry path; concurrent-vault-write isolation and corruption were not measured
+by this observation. Step 7 remains a known user-reported display defect and
+is deferred, not passed. The optional branch in step 1 is not an authenticated
+exact-request recovery receipt. Step 8 concerns account-session expiry; it does
+not establish Node continuity across a full natural fifteen-minute N3 grant
+expiry. Service-active observations do not establish a reboot, continuous
+heartbeats or native Runtime execution.
+
+There is no independent Windows exit code or captured timing trace for this
+batch. Dedicated native DPAPI/ACL, high-DPI, full uncertain-result recovery,
+multi-profile isolation, real workspace/Runtime operations, Android, strict
+PQTLS and installer acceptance remain unaccepted. The original three-step
+record and Linux evidence are unchanged. A new App fix requires its own source,
+artifact and verification record; these user results stay attached to the
+`1980dce` candidate.
+
+### Same-Node real Thread dialogue preparation
+
+2026-10-17, baseline `a14ad28`. The user selected actual question/answer between
+two real Codex Threads on the same logical Node ID and gpu1 host as the next
+priority. Workspace/task-creation contract work is paused. The main lane is
+the existing public Hub/account and actual gpu1 Node; a disposable Runtime or
+two-Node fixture cannot substitute for it. The
+[preparation matrix](native-app-plan.md#same-node-real-codex-thread-acceptance-preparation)
+requires original native SIDs/context witnesses, a B-only answer, real
+production MCP Join/ASK/receive/REPLY, explicit current authorization, actual
+route evidence and separate acceptance/consumption/completion observations.
+The real conversation remains **NOT_RUN**.
+
+Root's preparation evidence is under
+`/home/zyf/Cicada/.local/evidence/n3-same-node-dialogue/run-20261017T122249Z-cb9b7d/`:
+
+| Receipt | Observed scope | SHA-256 |
+| --- | --- | --- |
+| `start.json` | Records the Windows batch above, same-Node target and CLI `0.163.0` read-only observation; real dialogue NOT_RUN, no resident mutations | `ad219362e8e353e66af2ea5bffcb5ed85a43089cb637db5ac1cf538882c69203` |
+| `public-preflight.json` | Unauthenticated GET only: public Hub health 200, `/v2/fabric/node/join` 404 with `route unavailable in Hub Nodes mode`; no Join/authorization/model call | `119834f8ad26c63cdaf950cb923206763e0accf3ef8d686d5aaa311282048d9c` |
+
+The public metadata reports clean Hub revision
+`e42640d4521b1925f2d9e869aba88f70a96daacc`, source fingerprint
+`9e1e329b7c06285ac1e571596db689d9e9650a4b174e9badb10a47c811932695`.
+It is distinct from the Windows App's `1980dce` source and the canonical dev
+checkpoint. The probe proves only the recorded method/availability outcome;
+it is not an authenticated native Join or public dialogue receipt.
+
+The checked source has a Fabric service behind the Hub Nodes handler but a
+bounded wrapper route allowlist. The relay-only Node already starts the local
+Join bridge. Hub is reviewing the required native Join/metadata/key/peer routes
+and typed Owner authorization; App must keep the existing Owner private keys
+in its vault. No SQL-injected grants, replacement Owner or old N3 status grant
+can satisfy that prerequisite. New ordinary same-Group traffic uses the
+production sealed HubRelay route; matching Node IDs do not establish direct
+eligibility. Direct and legitimate Relay fallback results must be distinguished.
+
+No paid turn, deployment, public-process restart or conversation result is
+claimed by this preparation. There is no placeholder driver whose NOT_RUN
+output counts as delivery. An executable same-Node gate will be connected
+only after the production entry points and authority contract are reviewed;
+the old two-Node native driver retains its original topology and evidence.
+
+### Profile recovery follow-up
+
+2026-10-17, implementation `84d7aeefecccb4d1274d937bbaa0c07eecde5c2b`, based
+on `a14ad28`. This fixes the batch's second-instance entry defect without
+accepting its Windows retest or Chinese fonts. Native startup now requires a
+complete trusted profile discovery. While discovery/unlock/resume is blocked,
+the Core permits only discovery or a previously verified profile locator,
+rejects Connect/identity/Node actions and publishes the restricted snapshot
+atomically even during slow callbacks. A busy vault has the stable neutral
+`APP_PROFILE_IN_USE` error and retry screen. Successful empty discovery still
+permits normal first setup; the headless no-discovery caller can retry its
+original card. No new credential, identity, binding or grant is generated to
+escape a busy profile.
+
+QA independently reviewed the Core guard, atomic snapshot reset, native entry,
+temporary-list publication, trusted scope re-open and renderer flow. Failed
+recovery preserves the original vault/pending packet. `loadIdentities` now
+persists state only if the Owner/device key IDs changed: an unchanged or bad
+session no longer causes an unnecessary vault rewrite. Required new/legacy
+identity state and the exact pending request still cross the real vault barrier
+before a secret-bearing POST. Tests include an actual second OS process holding
+the vault lock, unchanged keys/packet recovery after release, slow callbacks,
+reset/Snapshot concurrency, failed resume, legacy identity completion and the
+persist-before-POST barrier. Source review found no remaining blocker in this
+bounded fix; it is not a new peer/Runtime implementation.
+
+| Evidence | Tested source, scope and result | SHA-256 |
+| --- | --- | --- |
+| `/home/zyf/Cicada/.local/evidence/n3-app/profile-recovery-20261017-1vxt9vq5/atomic-final/receipt.json` | Producer `a14ad28` plus dirty App inputs: normal 290/0/0; new Core scoped race 21/0/0; complete UI/native race 149/0/0; Linux/Windows vet and Windows build exit 0 | `e79db1c0d66230d3151ea19033c7fd1d976d24acbc8edd90a241195cd4696bb5` |
+| `native-profile/run-20261017T125114Z-6qKm8d/validation.json` | Root clean `84d7aee`, 369/0/0, Windows list/build exit 0, stable Go+script manifest `557b1ce2078a3b55c899d91fdac1bfc3bf3f9d09a7eb29c20cc34baf42761bbd` | `0a073f727b864038385809e35af9584794cd21a4f4f7ab32f6a0c8a1aa4db83b` |
+| `client-interop-profile/result.json` | Standard disposable real-TCP interop on clean `84d7aee`: four top-level/three subtests pass, script/runners exit 0, cleanup CONFIRMED | `34c53249e46d2bd04a015445e4de4bac3690a3bec31d850ab864add1642ed94c` |
+| `client-interop-profile/cleanup.json` | Five owned container/image resources and private scratch EXACT_ABSENT; Root retained the four residents | `e9096f491c2e848a424b0fcffcbccb62fd7eba750b2ec7107269e94dbfa4463b` |
+| `qa/profile-checks/receipt.json` | Independent bounded source review; 69/69 production pins, 13 parser tests, contract/shell/diff checks exit 0; 1151 producer Go/module entries match, five owned interop resources independently absent | `d8bacfaa113772b75fb7e904506d91bd54051e61abbebafd9aca0aac80dc540b` |
+
+Relative paths in this table are under
+`/home/zyf/Cicada/.local/evidence/n3-same-node-dialogue/run-20261017T122249Z-cb9b7d/`.
+QA compared all 1151 producer Go/module entries with committed `84d7aee`;
+the before/after producer manifest is
+`748629b4dd2e3c5adcefdcac58962beefa79e5636f349958c0848d7455755cf9`.
+The earlier producer normal RED (279 pass, two fail, one skip), interrupted
+race runs and intermediate source candidates remain retained separately.
+The broad legacy N2 race run was interrupted with Root's agreement; it is
+**NOT_A_PASS**. Scoped Core race and complete UI/native race above are the
+executed race scopes, not a full 290-test race claim.
+
+The standard native gate's Windows test-build hash is
+`e0fb22ec52b091e8e6c63616e1c0fd546ce43bab55838275c496c62210cb406b`;
+it is not a delivered or physically accepted Windows package. The `1980dce`
+user observations retain their original executable hash. Windows two-instance
+lock/retry, DPAPI/ACL and high-DPI on a matching `84d7aee` artifact remain
+**NOT_RUN**. The Chinese display defect remains USER_REPORTED_FAIL and deferred.
+
+The N3 evidence tool now pins **69** production inputs, adding the native
+constructor and updating only reviewed App files. Overall, UI and App Core
+reviewed source are `84d7aee`; Hub/store/contract component pins retain their
+earlier sources. The prior 68-pin and 84+2 actual-process receipts are immutable
+earlier-source evidence. They were not rerun or reassigned to this fix or the
+native pair. Reproduce the standard native/interop gates using the earlier
+task-isolation recipe and synthetic OpenSSL fixture. For current-source pin
+verification, the earlier Python snippet must assert `len(pins) == 69`.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_native_app_n3_evidence.py
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import hashlib, pathlib, runpy
+pins = runpy.run_path('scripts/native_app_n3_evidence.py')['CONTRACT']['files']
+assert len(pins) == 69
+assert all(hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() == h for p, h in pins.items())
+print('69/69 production pins match')
+PY
+```
+
+### Zero-model default-daemon initialization
+
+2026-10-17. QA compiled an external, hashed Go test overlay against `84d7aee`
+and executed the production `codexapp.StartRunningProxy` and
+`InitializeExperimental` on the installed Codex CLI `0.163.0`. The actual
+default daemon's WebSocket proxy handshake passed: compile/runtime exit 0,
+one selected test passed, with no Thread reads/creation, queue requests or
+turn starts. Existing daemon PIDs and global config were preserved. The
+overlay never modified repository Go sources, HOME, CODEX_HOME or global config.
+
+Evidence under the same Root run:
+`qa/production-proxy-20261017T125911Z-1a43ab/receipt.json`, SHA-256
+`9cf1f5cb0b443da2e136e75acdc949ed77f97a0922dc50c78280012d9b6c029e`.
+Executed Linux test binary SHA-256
+`8df8fee47bf59d5c698dd2cc8ad885510ca3c557a3e0556f8f98f95dfdca530d`;
+external overlay test SHA-256
+`fad0dadd148353a8b65168d0bc0888389134a980cdcb9c94b8f45fa2959f7134`.
+The receipt's three `compiled_product_inputs` are selected inputs, not a
+complete compiled-file inventory. The separate `source-review-posthoc.json`
+in that directory (SHA-256
+`2ecf0b18360336ac6cc141512bea3e909a5d6f0b089dbb260cc6f15b4c056067`)
+compares all seven `codexapp` Go files and the 1151 repository Go/module source
+entries with clean `84d7aee` and the frozen producer manifest. This is explicitly
+a post-execution comparison, not a newly discovered contemporaneous complete
+compile inventory; the original receipt remains unchanged and the probe was
+not repeated.
+
+The first raw-JSONL probe is retained at
+`qa/initialize-20261017T125319Z-00f64a/receipt.json`, SHA-256
+`566ee46f1f8c0a0e582b7ce4ddfe0552150efac561c9b3453e912853924daf89`.
+Its proxy framing was incorrect: the production proxy requires WebSocket
+Upgrade, while the separate standalone JSONL timeout remains unexplained.
+Neither is recorded as a product-conversation failure or hidden by the later
+successful production-helper handshake.
+
+The [official app-server documentation](https://learn.chatgpt.com/docs/app-server)
+describes initialization separately from `thread/start` and `turn/start`.
+The actual 0.163 schema confirms that `thread/start` creates a SID; it was not
+called in this probe. A new standalone server also does not prove that the
+production default-daemon queue can deliver to its loaded Threads. Full tool
+closure, per-Thread restrictions, original-context consumption, controlled
+resume, loaded/cold wake and the requested real two-SID conversation all remain
+**NOT_PROVEN / NOT_RUN**. No Root/development SID received probe traffic.

@@ -20,17 +20,32 @@ passed 84/0/0 plus a separate 2/0/0 automatic status-entry gate on reviewed
 `854a594` with dirty QA inputs. The earlier same-binary Ubuntu 24.04.4 84/0/0
 receipt retains its original source. The App reads selected-Node status every
 30 seconds only under existing finite permission; it does not renew permission.
-The old Windows package's automatic decay failed in user observation; the new
-window behavior awaits physical retest.
+The old Windows package's automatic decay failed in user observation. The
+`1980dce` candidate has user-reported automatic stale/online recovery and account
+expiry hiding results; exact Windows timing and independent native execution
+remain unverified.
 The [login-first display boundary](native-app-validation.md#login-first-presentation-follow-up)
 at `1980dce` hides saved account/Owner/Node information until a trusted current
 account session is inspected. Independent source review found no blocker;
-portable UI normal/race each passed 141/0/0. New Windows rendering and interaction
-have a Windows 11 USER_REPORTED_PASS for the basic signed-out screen, original
-account login restoring the same GPU1 Node, and logout hiding the information.
+portable UI normal/race each passed 141/0/0. Windows 11 feedback records
+USER_REPORTED_PASS for basic login/logout and batch steps 1–5/8, including
+reopen, automatic stale/online recovery and account expiry hiding. The second
+App's incorrect first-setup/device-code screen is USER_REPORTED_FAIL; Chinese
+text is also USER_REPORTED_FAIL, with font/style work deferred by the user.
+See the [batch record](native-app-validation.md#windows-11-eight-step-user-batch)
+for the exact scope and unsplit observations.
+The [profile-recovery fix](native-app-validation.md#profile-recovery-follow-up)
+at `84d7aee` blocks first setup while saved-profile recovery is unresolved.
+Producer normal 290/0/0, scoped Core race 21/0/0, UI/native race 149/0/0,
+Root native 369/0/0 and standard disposable interop passed. The matching
+Windows second-instance/retry behavior remains NOT_RUN; Chinese text is still
+unaccepted.
 Independent native GUI execution and dedicated DPAPI/ACL acceptance remain
 NOT_RUN. Existing valid-session restoration and original-request recovery are
 preserved, and login still grants no Root or Node authority.
+The next priority is an [actual same-gpu1 two-Thread conversation](native-app-validation.md#same-node-real-thread-dialogue-preparation)
+through production Join/Fabric/MCP. Public route and Owner-authorization
+prerequisites are under review; the real dialogue remains NOT_RUN.
 Live canvas, App SSE, real native Runtime and physical acceptance remain incomplete.
 It is not a browser product or a
 released installer. Development stays in 0.0.x until user acceptance; the

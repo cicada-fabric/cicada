@@ -32,7 +32,7 @@ implemented or accepted by this plan.
 | --- | --- | --- |
 | N1 — Native foundation | Typed Hub connection and health verification; strict secret-free connection card; explicit transport policy; encrypted-vault identity and exact-packet persistence; existing encrypted claim/login/inspect/logout calls; honest account/Root pending states; native controller contract and deterministic protocol tests. | In progress in the current source checkpoint. See [validation](native-app-validation.md). |
 | N2 — Owner proof and finite activation | Reuse exact existing Owner keys; one-use local activation code; server-authorized Root proof; finite App lease; controlled pending-Owner continuation; trusted profile restart and authenticated recovery. Account login alone never activates Root. | Hub/App core implemented under [owner-activation-v1](hub-owner-activation-contract.md), schema 62; independent Linux protocol SCOPED_PASS (131 events, zero failures/skips). Oct 17 Windows initial flow/positive ACL are user-reported PARTIAL; dedicated native security tests and comprehensive visual acceptance remain NOT_RUN. See [validation](native-app-validation.md#n2-hubapp-integration). |
-| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery under `app-node-authority-v1`, schema 63. Latest `854a594` plus dirty QA: Linux 84/0/0 and separate automatic status-entry 2/0/0. Earlier Ubuntu 84/0/0 remains separately attributed. Deadline/saved-Node UX and 30-second status polling implemented; new native Windows behavior awaits retest after old-package user-reported automatic-decay failure. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. |
+| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery under `app-node-authority-v1`, schema 63. Reviewed `854a594` plus dirty QA: Linux 84/0/0 and separate automatic status-entry 2/0/0; earlier Ubuntu 84/0/0 retains its source. Windows `1980dce` batch steps 1–5/8 are USER_REPORTED_PASS; second-instance entry and Chinese text are USER_REPORTED_FAIL. Independent native execution remains NOT_RUN. Next priority is two real Codex Threads on the same gpu1 Node; workspace/task creation is paused. Live canvas, App SSE and native Runtime acceptance remain incomplete. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
 The authorized Android history-preserving subtree import is complete as
@@ -221,15 +221,15 @@ do not establish an independent production Hub/App/Node N3 result.
 | N3-16 | Local persistence failure | Fail before network send; do not keep a memory-only replacement or regenerate identities after vault/disk failure | SCOPED_PASS — declared Linux process scope |
 | N3-17 | Target Node status privacy | Return only the authorized target Node projection; no owner-wide goals, tasks, workers or unrelated Nodes leak into the status payload | SCOPED_PASS — declared Linux process scope |
 | N3-18 | Genuine Node-only liveness | Installation, binding, credentials or a cached snapshot never imply online; only accepted current target Node heartbeats establish bounded Node freshness | SCOPED_PASS — declared Linux process scope |
-| N3-19 | Cached-online decay | Heartbeat/as-of TTL governs display on failed reads and elapsed time alone; fetching/recovering an old response does not refresh its heartbeat time | Core/TCP SCOPED_PASS; portable production Gio Router RED/GREEN; old Windows USER_REPORTED_FAIL, corrected Windows idle redraw NOT_RUN |
+| N3-19 | Cached-online decay | Heartbeat/as-of TTL governs display on failed reads and elapsed time alone; fetching/recovering an old response does not refresh its heartbeat time | Core/TCP SCOPED_PASS; portable Gio Router RED/GREEN; old Windows USER_REPORTED_FAIL, `1980dce` stop/restart stale/online USER_REPORTED_PASS; exact timing trace NOT_RUN |
 | N3-20 | Node process/generation recovery | Restart/reconnect preserves approved Node identity; old credentials/generation cannot publish freshness or overwrite new status | SCOPED restart/revocation and real Node restart/heartbeat after App SELF_CANCEL; natural full N3 lease continuity and key rotation NOT_RUN |
 | N3-21 | Honest Runtime/SSE boundaries | Node freshness is not an SSE live subscription or native Runtime availability/execution. Unrun Codex/native sessions remain unknown/NOT_RUN; no demo objects are rendered as live | SCOPED Node presentation; App SSE/native Runtime NOT_RUN |
 | N3-22 | Target platform/user | Validate actual OS/arch, UID/nonroot and Codex version only on the disposable target fixture or explicit physical receipt; a bookworm Go builder does not prove Ubuntu target behavior | Earlier-source Ubuntu 24.04.4 container SCOPED_PASS; e426 physical Ubuntu initial binding/heartbeat USER_REPORTED_PARTIAL; latest 854 gates bookworm only; user-service/reboot/Codex execution NOT_RUN |
 | N3-23 | Private evidence and cleanup | Real crypto/TCP/persistent stores; task-owned state, ports, caches and resources; hashes/safe facts only, no secrets or full private payloads; modules read-only; exact cleanup | SCOPED_PASS — declared Linux process scope |
-| N3-24 | Windows/public/native Runtime | Independently attributable native Windows interaction, public HTTPS, physical Node and real native Runtime receipts required; Linux fixture results do not transfer | e426 Windows/public HTTPS/Ubuntu initial flow USER_REPORTED_PARTIAL, idle USER_REPORTED_FAIL, manual stale USER_REPORTED_PASS; new artifact native automation/security/visual, user-service/reboot, full-lease continuity/Runtime NOT_RUN |
+| N3-24 | Windows/public/native Runtime | Independently attributable native Windows interaction, public HTTPS, physical Node and real native Runtime receipts required; Linux fixture results do not transfer | e426 historical PARTIAL/idle FAIL/manual stale PASS retained; `1980dce` Windows batch 1–5/8 USER_REPORTED_PASS, second-instance/Chinese USER_REPORTED_FAIL; dedicated native security/high-DPI, service reboot/full N3 lease continuity/Runtime NOT_RUN |
 | N3-25 | Abandoned INITIAL and explicit read authority after expiry | Before any successful confirmation, authenticated terminal/no-pending state permits a new explicit INITIAL code/grant/head; after confirmation and consumed code, explicit Owner consent may create a new finite status-only instance for the same exact approved Node/binding, with current head CAS and zero confirmation budget; no re-pair, key upgrade or N2 renewal | SCOPED self-cancel/session replacement; full N3 lease wall expiry NOT_RUN |
 | N3-26 | Read-only renewal cannot authorize mutation | Old packets cannot borrow the new read grant; that grant cannot confirm; changed Node/binding/key/generation is rejected, and cached online state still follows the original heartbeat rather than a new poll's observation time | SCOPED_PASS — declared Linux process scope |
-| N3-27 | Automatic selected-Node status | Lock-held exact scope/full binding/live permission checks precede new durable ciphertext; only status reads; wrong target/expiry skip without write; uncertain response freezes later ticks/restart; signed terminal settles; manual recovery precedes new reads | Separate actual Core/TCP 2/0/0 SCOPED_PASS; portable 30-second coordinator tests separate; Windows scheduler NOT_RUN |
+| N3-27 | Automatic selected-Node status | Lock-held exact scope/full binding/live permission checks precede new durable ciphertext; only status reads; wrong target/expiry skip without write; uncertain response freezes later ticks/restart; signed terminal settles; manual recovery precedes new reads | Separate actual Core/TCP 2/0/0 SCOPED_PASS; portable coordinator tests separate; Windows automatic stale/online USER_REPORTED_PASS, exact 30-second cadence and fault traces NOT_RUN |
 
 The original cases below run in the full 84-event selector. The earlier Ubuntu
 receipt and latest Linux receipts retain their independent source attribution;
@@ -277,8 +277,10 @@ They separately prove UNKNOWN-to-real-heartbeat status, unchanged read grant,
 counter/budget and keys, no-write wrong-target/logical-expiry rejection,
 SELF_CANCEL Node continuity, manual READ_EXISTING consent, server-signed
 revocation settlement, and loss/restart/multi-trigger freeze followed by exact
-manual recovery and fresh reads. Full natural N3 lease expiry/Node continuity
-and Windows clock/event-loop testing remain NOT_RUN.
+manual recovery and fresh reads. The later `1980dce` Windows batch reports
+automatic stale/online behavior and account-session expiry hiding; full natural
+N3 grant expiry/Node continuity and precise Windows clock/event-loop traces
+remain NOT_RUN.
 
 The supplied Ubuntu 24.04.3 / x86_64 / UID 1000 / `codex --version` 0.163.0
 output is **USER_REPORTED_ENVIRONMENT**. That original environment output alone
@@ -326,7 +328,7 @@ source. No Hub/Node deployment or key change is part of this work.
 | LOGIN-06 | Multiple profiles and routing | Prelogin selection uses neutral labels bound to exact trusted profile IDs; never silently pick another account/Hub from a username. Credentials are sent only through the existing verified origin/pin flow | SOURCE_REVIEW + PORTABLE_PASS |
 | LOGIN-07 | Recovery without identity disclosure | Account Recover/Retry and, where required, saved Node recovery remain reachable with neutral copy; retain original IDs/ciphertext/receipts and priority. An unauthenticated screen does not display Node identity to explain recovery | SOURCE_REVIEW + PORTABLE_PASS |
 | LOGIN-08 | Necessary first connection | No-profile/unfinished setup can still reach the existing controlled connection, exact Owner import/proof and activation flow; the login view neither fabricates a Hub nor generates new keys or authority | SOURCE_REVIEW + PORTABLE_PASS |
-| LOGIN-09 | Logout, expiry and scope transition | Hide old workspace information when account authentication is lost/rechecked or scope changes; clear stale input/expansion state, while preserving encrypted profiles, keys, Node bindings and pending recovery | SOURCE_REVIEW + PORTABLE_PASS; logout hiding only USER_REPORTED_PASS |
+| LOGIN-09 | Logout, expiry and scope transition | Hide old workspace information when account authentication is lost/rechecked or scope changes; clear stale input/expansion state, while preserving encrypted profiles, keys, Node bindings and pending recovery | SOURCE_REVIEW + PORTABLE_PASS; logout/account-session expiry hiding USER_REPORTED_PASS; scope-transition physical cases unverified |
 | LOGIN-10 | Automation and authority | The presentation gate grants nothing and does not mutate AvailableActions. A hidden screen pauses future Node ticks and reopening starts a fresh interval without discarding an in-flight packet. Existing guards still require current exact permission; ordinary Node pending with valid account login retains its separate busy/recovery semantics | SOURCE_REVIEW + PORTABLE_PASS |
 
 `TestAccountInformationRequiresCurrentTrustedSession` covers LOGIN-02/03;
@@ -345,8 +347,117 @@ GPU1 Node, then logout hiding the information. This is **USER_REPORTED_PASS**
 for the clean `1980dce` delivery candidate, SHA-256
 `27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
 see the [dated observation](native-app-validation.md#login-first-presentation-follow-up).
-It is not independent native execution or complete Windows acceptance. Wrong
-password, close/reopen, natural expiry, uncertain-result recovery, high-DPI,
-DPAPI and ACL checks for this candidate remain **NOT_RUN**. The earlier report
-that Node information appeared before login remains a historical USER_REPORTED
-defect; the old 84+2 receipts retain their original source.
+It is not independent native execution or complete Windows acceptance. The
+later [eight-step user batch](native-app-validation.md#windows-11-eight-step-user-batch)
+also reports steps 1–5/8 passing: wrong-password/correct-login path, reopen,
+automatic stale/online, self-cancellation, explicit same-Node read access and
+account-session natural expiry/relogin. The optional recovery branch in step 1
+was not reported separately. Step 6's second-instance first-setup/device-code
+entry is USER_REPORTED_FAIL; step 7's Chinese text is USER_REPORTED_FAIL, with
+other layout/input subcases not individually reported. The App owner handles
+the entry defect; the user deferred font/style work. Dedicated DPAPI/ACL,
+high-DPI, full uncertain-result recovery and independent native tests remain
+NOT_RUN. The prior three-step record and old 84+2 receipts retain their source.
+
+The follow-up [profile-recovery source](native-app-validation.md#profile-recovery-follow-up)
+is `84d7aee`: native startup requires complete trusted discovery before first
+setup; busy/failed recovery exposes only retry/trusted-resume controls and
+rejects other Core actions. Snapshot reset publishes those controls atomically.
+Conditional identity persistence preserves an unchanged vault during recovery;
+new/missing identities and the original request still persist before POST.
+Producer normal 290/0/0, scoped Core race 21/0/0, UI/native race 149/0/0, Root
+native 369/0/0 and disposable interop passed. This is a scoped source/portable
+fix, with matching Windows two-instance/retry execution NOT_RUN. The old
+candidate's USER_REPORTED_FAIL and deferred Chinese display failure remain.
+
+## Same-Node real Codex Thread acceptance preparation
+
+Preparation baseline `a14ad28`, 2026-10-17. The user's next priority is an actual
+question/answer between two independent real Codex Threads on the same logical
+Node ID and physical gpu1 host, through the existing production Join/Fabric/MCP
+chain. New workspace/task contracts and task creation are paused. Root may
+prepare two owned acceptance Threads, with separate original native SIDs and
+context witnesses. Preparation has not executed paid turns, deployed changes,
+created a Group or granted authority.
+
+This main lane targets the existing public Hub/account plus the actual gpu1
+Node. A disposable real-Runtime lane, deterministic protocol tests and recording
+fixtures must be labelled separately; none replaces the requested public lane.
+The existing `test-two-node-codex-native.py` creates two independent Node/container
+namespaces and is not a same-Node gate. Its old source, images and results stay
+attributed to that distinct topology.
+
+Current source has a trusted local Join bridge in the relay-only Node, but the
+Hub Nodes wrapper only exposes its reviewed route allowlist. The underlying
+Fabric service exists; the missing general Join/metadata/key-consent routes
+must be reviewed by Hub, along with the typed Owner authorization path. An App
+account login or existing N3 status grant does not supply those permissions.
+Owner private keys remain in the existing vault; preparation does not export
+them or widen the old status grant.
+
+The [same-Node relay implementation](same-node-group-relay.md) sends new ordinary
+same-Group ASK/REPLY through sealed HubRelay. Generic native direct eligibility
+remains guarded by the [direct design](native-local-direct-design.md): same
+Node/host labels alone do not establish the same authenticated Codex account
+or a usable exact-Thread native API. A legitimate Relay fallback may satisfy
+the conversation lane with its actual route recorded. It is not direct PASS.
+
+| ID | Boundary | Required oracle | State |
+| --- | --- | --- | --- |
+| N3-TT-01 | Exact deployed topology | Pin public Hub origin/identity and actual Hub/Node/Codex artifacts; both native SIDs are distinct on the same real gpu1 host and one approved logical Node/binding, not two fixture Nodes | NOT_RUN; PRECONDITIONS_PENDING |
+| N3-TT-02 | Explicit native Join | Use a real selected Network and two reviewed slots. Each trusted Runtime connection joins its original SID with zero peer/directory authority to its own stable Endpoint/current native SessionBinding; caller JSON cannot impersonate another SID/Node | NOT_RUN |
+| N3-TT-03 | Unjoined isolation | Before Join, peer directory/resolve/receive cannot enumerate joined Threads or recover peer content. Node enrollment, account login and another Thread's membership confer no visibility | NOT_RUN |
+| N3-TT-04 | Explicit authority and keys | Current Group/member/binding/lease and exact Endpoint key candidates/Owner grants authorize only the selected conversation; no implicit Join, directory/history grant or broad status-grant upgrade | NOT_RUN; PRECONDITIONS_PENDING |
+| N3-TT-05 | Original context and B-only answer | Record separate private context witnesses and a fresh random B-only answer before traffic; A receives the question but never the answer in its prompt/config. Restrict/audit alternate file/shell/history/oracle access so A obtains the answer only through the correlated peer REPLY; Root/script never forwards peer bodies | NOT_RUN |
+| N3-TT-06 | Actual native tool use | Each real Thread completes the production MCP calls on its original SID. Recording queues, curl/SDK calls by the driver and script-injected answers cannot stand in for model consumption | NOT_RUN |
+| N3-TT-07 | ASK/REPLY correlation | A's ASK has exact target/operation/request/message identity; B receives that request and replies to its original request ID; A receives the matching answer and independently retains its original context witness | NOT_RUN |
+| N3-TT-08 | Separate completion levels | Record transport acceptance, queue/injection observation, actual B consumption, correlated REPLY, actual A consumption and completed native turns separately; no earlier level implies the next | NOT_RUN |
+| N3-TT-09 | Honest route | Record trusted route evidence for each message. Sealed HubRelay fallback is explicit; direct requires separate host/account/API/Guard evidence and is never inferred from equal Node IDs | NOT_RUN; DIRECT_UNACCEPTED |
+| N3-TT-10 | Negative scope and revocation | Wrong Group/Endpoint/native binding, stale lease/epoch and revocation of owned acceptance membership/grants deny further traffic; another active scope cannot rescue it | NOT_RUN |
+| N3-TT-11 | Loss/restart/replay | Recover original operation/ciphertext and durable request history after loss/restart; do not reseal or reinject an uncertain native write, and do not label queued data as consumed | NOT_RUN |
+| N3-TT-12 | Reply/cancel ownership | Only the original receiver can reply and original sender cancel; cancel acknowledgement does not prove the Runtime stopped or that an uncertain question was never consumed | NOT_RUN |
+| N3-TT-13 | Privacy and bounded execution | Use owned synthetic question/answer markers, bounded turns/time/budget and private traces; publish hashes/counters only, omit credentials/keys/full native context, and distinguish turn counts from provider-request counts | NOT_RUN |
+| N3-TT-14 | Safe restoration and cleanup | Owned Group/Thread grants, helpers and artifacts have explicit cleanup; preserve the real Node/account/Owner keys/binding and unrelated Threads. Rejoining/recovery requires current authority and preserves original SID/context evidence | NOT_RUN |
+| N3-TT-15 | Separate authority lifetimes | Protected new App authorizations require its current account session. Account-session expiry does not itself revoke established peer grants; N3 status-access expiry/cancellation neither grants nor revokes peer authority. Native SessionBinding/lease, Group/member/grant and Node/Owner revocation remain independently authoritative | NOT_RUN; CONTRACT_REVIEW_PENDING |
+| N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Root's proposed shared bound is four independent bidirectional ASK roots, at most one reply each/eight messages/eight native deliveries, 8 KiB plaintext and 128 KiB ciphertext per message, 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | NOT_RUN; CONTRACT_REVIEW_PENDING |
+
+The minimal driver has the following phases. Missing production routes,
+authorization, native API evidence or runtime configuration stop before a model
+call, with **NOT_RUN**, not a synthetic substitute.
+
+1. Read-only preparation pins exact source/artifacts/topology and the actual
+   production Join/MCP/Owner-consent prerequisites, expected transport, bounded
+   model budget and owned resources. It supplies no password, key or provider
+   secret on an argv/log and starts no turn. Check the actual exposed tool set
+   without a model call; per-MCP allowlisting alone does not prove host code,
+   shell, apps or other tools are disabled. Use per-process/per-Thread config
+   and an owned cwd; do not modify global config or repurpose HOME/CODEX_HOME.
+2. With the reviewed execution boundary, prepare A/B's separate owned native
+   SIDs, private context witnesses and B-only answer. Probe unjoined isolation,
+   then explicitly Join and obtain only required peer/key permissions through
+   the production paths. Do not use the coordinator's TUI message API as peer
+   transport.
+3. Resume A only to issue the exact ASK; record its native tool and durable
+   acceptance. Resume B at a controlled safe point only to receive and REPLY
+   using its remembered answer. Resume A to receive that answer and report
+   its original witness. Never put the expected answer in A's continuation.
+4. Independently correlate original SIDs, Endpoint/binding/lease scope,
+   operation/request/message IDs, real native tool completion, context/answer
+   digests and actual route. Required MCP calls are insufficient if an
+   unobserved alternate tool can read B's answer; verify the allowed tool set
+   and complete trace, including file/shell/history access. Safe-point
+   consumption does not prove busy wake, exactly-once native execution or
+   every Runtime capability. A later reopen/second exchange must retain the
+   original SIDs and remaining pair budget; the first actual gate uses only
+   one ASK/REPLY, with budget exhaustion tested in the separate fault lane.
+5. Exercise owned-scope leave/revocation and current-authority recovery without
+   revoking the real Node or unrelated work. Put destructive loss/restart
+   injection in an explicitly isolated fault lane; public-process restarts
+   require their own scoped instruction and cannot be inferred from this plan.
+
+Fault coverage includes pre-forward/post-commit loss, corrupt/unsigned reply,
+duplicate ASK/REPLY, delayed original after cancellation, binding/lease change,
+and queue/injection crash windows. Fixture-only outcomes remain separate from
+actual public native consumption. Retain request/result hashes, process/turn
+and tool counts, source/image/CLI hashes, route evidence, exit code, cleanup and
+all incomplete levels. No real two-Thread conversation has passed this matrix.
