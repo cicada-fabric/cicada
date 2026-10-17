@@ -139,20 +139,7 @@ func (v *view) layout(gtx layout.Context) {
 		v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 		v.nodeReviewID = ""
 	}
-	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Authorization.ExpiresAt); err == nil && deadline.After(time.Now()) {
-		gtx.Execute(op.InvalidateCmd{At: deadline})
-	}
-	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Account.SessionExpiresAt); err == nil && deadline.After(time.Now()) {
-		gtx.Execute(op.InvalidateCmd{At: deadline})
-	}
-	for _, value := range []string{snapshot.Node.Access.ExpiresAt, nodeCandidateExpiry(snapshot.Node)} {
-		if deadline, err := time.Parse(time.RFC3339Nano, value); err == nil && deadline.After(time.Now()) {
-			gtx.Execute(op.InvalidateCmd{At: deadline})
-		}
-	}
-	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Node.Connectivity.FreshUntil); err == nil && deadline.After(time.Now()) {
-		gtx.Execute(op.InvalidateCmd{At: deadline})
-	}
+	scheduleSnapshotRedraw(gtx, snapshot, time.Now())
 	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
 	objects, isPreview := v.canvasObjects(snapshot, managementAuthorized)
 	layout.UniformInset(28).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -323,7 +310,7 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 	if label, ok := v.actionLabel(flow.Primary); ok && !(flow.Stage == "ready" && s.Node.Available) {
 		rows = append(rows, v.actionButton(flow.Primary, label, s))
 	}
-	if (flow.Stage == "ready" && s.Node.Available) || flow.Stage == "node-diagnostic" || s.Node.Pending {
+	if appui.NodeCardVisible(s, flow) {
 		rows = append(rows, v.nodeSection(s))
 	}
 	for _, kind := range flow.Secondary {

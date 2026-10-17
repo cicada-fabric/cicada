@@ -172,6 +172,17 @@ const (
 	msgNodeAuthorizeStatus       messageID = "node.authorize_status"
 	msgNodeReauthorizeStatus     messageID = "node.reauthorize_status"
 	msgNodeAccountRecovery       messageID = "node.account_recovery"
+	msgNodeSavedConnection       messageID = "node.saved_connection"
+	msgNodeSavedConnectionBody   messageID = "node.saved_connection_body"
+	msgNodeConnectionStatus      messageID = "node.connection_status"
+	msgNodeStatusAccess          messageID = "node.status_access"
+	msgNodeAwaitingHeartbeat     messageID = "node.awaiting_heartbeat"
+	msgNodeSignInForStatus       messageID = "node.sign_in_for_status"
+	msgNodeReauthorizeToCheck    messageID = "node.reauthorize_to_check"
+	msgNodeCheckAccessToContinue messageID = "node.check_access_to_continue"
+	msgNodeCheckAccess           messageID = "node.check_access"
+	msgNodeCheckForCurrentStatus messageID = "node.check_for_current_status"
+	msgNodeAccountRecoveryFirst  messageID = "node.account_recovery_first"
 )
 
 const (
@@ -184,17 +195,28 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
-		msgNodeUnavailableError: "This Hub's Node connection service is unavailable. Your saved requests are retained.",
-		msgNodeCodeInvalid:      "Enter the current connection code shown on your Node.",
-		msgNodeCounterConflict:  "The saved Node conversation could not be reconciled safely. Its state has been retained.",
-		msgNodeSessionEnded:     "The sign-in used for this Node access has ended. Sign in and explicitly authorize status again.",
-		msgNodeAccessEnded:      "This App's Node access has ended.",
+		msgNodeUnavailableError:      "This Hub's Node connection service is unavailable. Your saved requests are retained.",
+		msgNodeCodeInvalid:           "Enter the current connection code shown on your Node.",
+		msgNodeCounterConflict:       "The saved Node conversation could not be reconciled safely. Its state has been retained.",
+		msgNodeSessionEnded:          "The sign-in used for this status access has ended.",
+		msgNodeAccessEnded:           "This App's Node access has ended.",
+		msgNodeSavedConnection:       "Saved Node connection",
+		msgNodeSavedConnectionBody:   "This saved connection remains when sign-in or status access expires.",
+		msgNodeConnectionStatus:      "Current connection status",
+		msgNodeStatusAccess:          "Status access",
+		msgNodeAwaitingHeartbeat:     "This status record has no recent Node heartbeat yet. Check Node status for an update.",
+		msgNodeSignInForStatus:       "Sign in to view this Node's current status. Its saved connection is kept.",
+		msgNodeReauthorizeToCheck:    "Continue viewing status to review this App's next limited status access.",
+		msgNodeCheckAccessToContinue: "Check this App's status access before continuing to view this saved Node.",
+		msgNodeCheckAccess:           "Check status access",
+		msgNodeCheckForCurrentStatus: "Check Node status to get the latest result.",
+		msgNodeAccountRecoveryFirst:  "Recover the saved account request before checking this Node's current status.",
 
-		msgNodeReviewStatus:          "Review status access for this Node",
+		msgNodeReviewStatus:          "Review this status access",
 		msgNodeStatusScope:           "Allow only status reads for this previously approved Node until the displayed expiry. This does not pair the Node again or renew its previous authorization.",
 		msgNodeStatusConsent:         "I allow this App to read this Node's status for the shown period.",
 		msgNodeAuthorizeStatus:       "Allow status access",
-		msgNodeReauthorizeStatus:     "Authorize status again",
+		msgNodeReauthorizeStatus:     "Continue viewing status",
 		msgNodeAccountRecovery:       "A Node request is also saved. Recover the account request above first; the original Node request will remain available.",
 		msgNodeCancelReview:          "Cancel this review",
 		msgNodeEndAccess:             "End this App's Node access",
@@ -216,20 +238,20 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeFingerprints:          "Key fingerprints",
 		msgNodeHubFingerprint:        "Hub Node-Control key fingerprint",
 		msgNodeCandidateUntil:        "Approve before",
-		msgNodeAccessUntil:           "Node access expires",
+		msgNodeAccessUntil:           "Status access valid until",
 		msgNodeObservation:           "Status checked at",
 		msgNodeLastHeartbeat:         "Last Node heartbeat",
 		msgNodeNotBound:              "No Node connection approved yet.",
-		msgNodeUnknown:               "Node status has not been confirmed.",
+		msgNodeUnknown:               "Current status is unavailable. The saved Node connection is kept.",
 		msgNodeOnline:                "Node online",
 		msgNodeOffline:               "Node offline",
-		msgNodeStale:                 "Node status is out of date.",
+		msgNodeStale:                 "This status is out of date. Check for an update.",
 		msgNodeBound:                 "Node connection approved. Waiting for a current Node observation.",
 		msgNodeRecovery:              "The last Node response is unconfirmed. Recover the saved request before approving another connection.",
 		msgNodeUnavailable:           "Connect and sign in to review your Node connection.",
-		msgNodeAccessActive:          "Limited access to this Node is confirmed.",
-		msgNodeAccessExpired:         "This Node authorization has expired. It does not renew automatically.",
-		msgNodeAccessRevoked:         "This Node authorization was revoked.",
+		msgNodeAccessActive:          "Limited status access to this Node is confirmed.",
+		msgNodeAccessExpired:         "This App's status access has expired. It does not renew automatically.",
+		msgNodeAccessRevoked:         "This App's access to this Node was revoked.",
 		msgNodeAccessUnconfirmed:     "Node authorization has not been confirmed.",
 		msgNodeCandidateExpired:      "This Node review has expired. Check its saved state or end this review before starting another review.",
 		msgNodeInitialReviewExpired:  "This Node connection review has expired. Check its saved state or end this review before using a current Node code.",
@@ -352,17 +374,28 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
-		msgNodeUnavailableError: "此 Hub 的 Node 连接服务当前不可用。已保存的请求会继续保留。",
-		msgNodeCodeInvalid:      "请输入 Node 当前屏幕上显示的连接码。",
-		msgNodeCounterConflict:  "暂时无法安全核对此 Node 会话，原有状态已保留。",
-		msgNodeSessionEnded:     "本次 Node 访问所绑定的登录已结束。请登录后明确重新授权查看状态。",
-		msgNodeAccessEnded:      "此 App 的 Node 访问已结束。",
+		msgNodeUnavailableError:      "此 Hub 的 Node 连接服务当前不可用。已保存的请求会继续保留。",
+		msgNodeCodeInvalid:           "请输入 Node 当前屏幕上显示的连接码。",
+		msgNodeCounterConflict:       "暂时无法安全核对此 Node 会话，原有状态已保留。",
+		msgNodeSessionEnded:          "本次状态访问所绑定的登录已结束。",
+		msgNodeAccessEnded:           "此 App 的 Node 访问已结束。",
+		msgNodeSavedConnection:       "已保存的 Node 连接",
+		msgNodeSavedConnectionBody:   "登录或状态访问到期后，此 Node 的已保存连接仍然保留。",
+		msgNodeConnectionStatus:      "当前连接状态",
+		msgNodeStatusAccess:          "状态访问",
+		msgNodeAwaitingHeartbeat:     "此次状态记录尚未取得 Node 的最近心跳，可检查状态获取更新。",
+		msgNodeSignInForStatus:       "请先登录以查看此 Node 的当前状态。已保存的连接信息仍然保留。",
+		msgNodeReauthorizeToCheck:    "请继续查看状态，并确认此 App 下一次有限状态访问。",
+		msgNodeCheckAccessToContinue: "请先检查此 App 的状态访问，再继续查看已保存的 Node。",
+		msgNodeCheckAccess:           "检查状态访问",
+		msgNodeCheckForCurrentStatus: "请检查 Node 状态以获取最新结果。",
+		msgNodeAccountRecoveryFirst:  "请先恢复已保存的账户请求，再查看此 Node 的当前状态。",
 
-		msgNodeReviewStatus:          "核对此 Node 的状态访问",
+		msgNodeReviewStatus:          "确认此次状态访问",
 		msgNodeStatusScope:           "仅允许在显示的截止时间前查看此前已批准 Node 的状态。本次授权不会重新配对 Node，也不会续期此前的授权。",
 		msgNodeStatusConsent:         "我同意此 App 在所示期限内查看此 Node 的状态。",
 		msgNodeAuthorizeStatus:       "允许查看状态",
-		msgNodeReauthorizeStatus:     "重新授权查看状态",
+		msgNodeReauthorizeStatus:     "继续查看状态",
 		msgNodeAccountRecovery:       "还有一个 Node 请求已保存。请先恢复上方的账户请求，Node 原始请求会继续保留。",
 		msgNodeCancelReview:          "取消此次核对",
 		msgNodeEndAccess:             "结束此 App 的 Node 访问",
@@ -384,20 +417,20 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeFingerprints:          "密钥指纹",
 		msgNodeHubFingerprint:        "Hub Node-Control 密钥指纹",
 		msgNodeCandidateUntil:        "确认截止时间",
-		msgNodeAccessUntil:           "Node 授权截止时间",
+		msgNodeAccessUntil:           "状态访问有效至",
 		msgNodeObservation:           "状态核对时间",
 		msgNodeLastHeartbeat:         "最近 Node 心跳",
 		msgNodeNotBound:              "尚未批准 Node 连接。",
-		msgNodeUnknown:               "Node 当前状态尚未确认。",
+		msgNodeUnknown:               "当前暂无法读取状态，已保存的 Node 连接仍然保留。",
 		msgNodeOnline:                "Node 在线",
 		msgNodeOffline:               "Node 离线",
-		msgNodeStale:                 "Node 状态已陈旧。",
+		msgNodeStale:                 "状态记录已过期，请检查最新状态。",
 		msgNodeBound:                 "Node 连接已获批准，正在等待当前 Node 状态。",
 		msgNodeRecovery:              "上次 Node 响应尚未确认。请先恢复已保存的请求，再批准其他连接。",
 		msgNodeUnavailable:           "连接并登录后，可核对 Node 连接。",
-		msgNodeAccessActive:          "对此 Node 的有限访问已确认。",
-		msgNodeAccessExpired:         "本次 Node 授权已到期，不会自动续期。",
-		msgNodeAccessRevoked:         "本次 Node 授权已撤销。",
+		msgNodeAccessActive:          "对此 Node 的有限状态访问已确认。",
+		msgNodeAccessExpired:         "此 App 的状态访问已到期，不会自动续期。",
+		msgNodeAccessRevoked:         "此 App 对此 Node 的访问已撤销。",
 		msgNodeAccessUnconfirmed:     "Node 授权尚未确认。",
 		msgNodeCandidateExpired:      "此次 Node 核对已过期。请先检查已保存的状态或结束此次核对，再开始新的核对。",
 		msgNodeInitialReviewExpired:  "此次 Node 连接核对已过期。请先检查已保存的状态或结束此次核对，再使用 Node 当前连接码。",

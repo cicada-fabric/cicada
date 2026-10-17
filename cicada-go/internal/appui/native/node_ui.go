@@ -26,7 +26,18 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 			v.nodePinDetails = true
 		}
-		rows := []layout.FlexChild{layout.Rigid(v.headingRow(appui.Text(v.locale, "node.section")))}
+		var rows []layout.FlexChild
+		if b := s.Node.Binding; b != nil {
+			name := safeDisplay(b.Name, 128)
+			if name == "" {
+				name = appui.Text(v.locale, "node.section")
+			}
+			rows = append(rows, layout.Rigid(v.headingRow(name)),
+				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.saved_connection")+" · "+safeDisplay(b.NodeID, 128))),
+				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.saved_connection_body"))))
+		} else {
+			rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "node.section"))))
+		}
 		if s.Node.ErrorCode != "" {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, s.Node.ErrorCode))))
 		}
@@ -88,17 +99,13 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 		case "recovery":
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.recovery"))))
 		case "bound":
-			if b := s.Node.Binding; b != nil {
-				rows = append(rows, layout.Rigid(v.labelRow(safeDisplay(b.Name, 128)+" · "+safeDisplay(b.NodeID, 128))))
-			}
-			key := map[appcore.NodeConnectionState]string{appcore.NodeNotBound: "node.not_bound", appcore.NodeUnknown: "node.unknown", appcore.NodeOnline: "node.online", appcore.NodeOffline: "node.offline", appcore.NodeStale: "node.stale"}[s.Node.ConnectionState()]
-			state := s.Node.ConnectionState()
-			rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			key := appui.NodeStatusMessage(s)
+			rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.connection_status"))), layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				label := material.Body1(v.theme, appui.Text(v.locale, key))
-				switch state {
-				case appcore.NodeOnline:
+				switch key {
+				case "node.online":
 					label.Color = color.NRGBA{R: 100, G: 224, B: 191, A: 255}
-				case appcore.NodeStale, appcore.NodeOffline:
+				case "node.stale", "node.offline":
 					label.Color = color.NRGBA{R: 242, G: 193, B: 111, A: 255}
 				default:
 					label.Color = color.NRGBA{R: 169, G: 184, B: 202, A: 255}
@@ -112,10 +119,14 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			if accessKey == "" {
 				accessKey = "node.access_unconfirmed"
 			}
-			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, accessKey))))
-			for _, field := range []struct{ key, value string }{{"node.access_until", displayNodeTime(s.Node.Access.ExpiresAt)}, {"node.observed_at", displayNodeTime(s.Node.Connectivity.ObservedAt)}, {"node.last_heartbeat", displayNodeTime(s.Node.Connectivity.LastHeartbeatAt)}} {
+			rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.status_access"))), layout.Rigid(v.labelRow(appui.Text(v.locale, accessKey))))
+			times := []struct{ key, value string }{{"node.access_until", displayNodeTime(s.Node.Access.ExpiresAt)}}
+			if appui.NodeObservationVisible(s) {
+				times = append(times, struct{ key, value string }{"node.observed_at", displayNodeTime(s.Node.Connectivity.ObservedAt)}, struct{ key, value string }{"node.last_heartbeat", displayNodeTime(s.Node.Connectivity.LastHeartbeatAt)})
+			}
+			for _, field := range times {
 				if field.value != "" {
-					rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, field.key)+": "+field.value)))
+					rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, field.key)+": "+field.value)))
 				}
 			}
 		default:
@@ -127,6 +138,9 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 		}
 		if flow.Primary != "" {
 			label := v.nodeActionLabel(flow.Primary)
+			if flow.Primary == appcore.ActionRefreshNode && s.Node.Binding != nil && !s.Node.Access.Confirmed {
+				label = appui.Text(v.locale, "node.check_access")
+			}
 			if flow.Primary == appcore.ActionApproveNode && s.Node.Candidate != nil && s.Node.Candidate.StatusOnly {
 				label = appui.Text(v.locale, "node.authorize_status")
 			}
@@ -149,6 +163,14 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			}
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, spaced...)
 		})
+	}
+}
+
+func (v *view) nodeCaption(label string) layout.Widget {
+	return func(gtx layout.Context) layout.Dimensions {
+		style := material.Body2(v.theme, label)
+		style.Color = color.NRGBA{R: 169, G: 184, B: 202, A: 255}
+		return style.Layout(gtx)
 	}
 }
 
@@ -210,11 +232,4 @@ func displayNodeTime(value string) string {
 
 func isNodeAction(kind appcore.ActionKind) bool {
 	return kind == appcore.ActionPreviewNode || kind == appcore.ActionApproveNode || kind == appcore.ActionRefreshNode || kind == appcore.ActionRecoverNode || kind == appcore.ActionCancelNodeAccess || kind == appcore.ActionReauthorizeNodeStatus
-}
-
-func nodeCandidateExpiry(n appcore.NodeSetupSnapshot) string {
-	if n.Candidate != nil {
-		return n.Candidate.ExpiresAt
-	}
-	return ""
 }

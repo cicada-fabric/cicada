@@ -32,8 +32,13 @@ func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
 		}
 		return flow
 	}
-	if !s.Node.Available {
+	if !s.Node.Available && s.Node.Binding == nil {
 		return NodeSetupFlow{Stage: "unavailable"}
+	}
+	if s.Node.Binding != nil && (has(appcore.ActionLogin) || has(appcore.ActionRecover) || has(appcore.ActionRetry)) {
+		// Keep the saved Node visible while the account's primary step takes
+		// precedence over Node diagnostics, consent or cancellation.
+		return NodeSetupFlow{Stage: "bound"}
 	}
 	if s.Node.Candidate != nil && has(appcore.ActionApproveNode) {
 		flow := NodeSetupFlow{Stage: "review", Primary: appcore.ActionApproveNode, Consent: true}
@@ -76,6 +81,78 @@ func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
 		return NodeSetupFlow{Stage: "code", Primary: appcore.ActionPreviewNode, Code: true, Notice: unboundNodeNotice(s.Node.Access.State)}
 	}
 	return NodeSetupFlow{Stage: "unavailable", Notice: unboundNodeNotice(s.Node.Access.State)}
+}
+
+// NodeCardVisible keeps authenticated saved connection information independent
+// of the current account flow. Visibility never establishes current access.
+func NodeCardVisible(s appcore.Snapshot, account SetupFlow) bool {
+	return s.Node.Binding != nil || s.Node.Pending || account.Stage == "node-diagnostic" ||
+		(account.Stage == "ready" && s.Node.Available)
+}
+
+// NodeStatusMessage explains the current observation without conflating the
+// saved binding, finite status permission and Node heartbeat.
+func NodeStatusMessage(s appcore.Snapshot) string {
+	n := s.Node
+	has := func(kind appcore.ActionKind) bool {
+		for _, action := range s.AvailableActions {
+			if action == kind {
+				return true
+			}
+		}
+		return false
+	}
+	if has(appcore.ActionRecover) || has(appcore.ActionRetry) {
+		return "node.account_recovery_first"
+	}
+	if n.Pending {
+		return "node.recovery"
+	}
+	if n.Binding == nil {
+		return "node.not_bound"
+	}
+	if n.Access.State == "REVOKED" {
+		return "node.access_revoked"
+	}
+	if has(appcore.ActionLogin) || s.Account.State == appcore.AccountStateLoginRequired {
+		return "node.sign_in_for_status"
+	}
+	switch n.Access.State {
+	case "EXPIRED", "CANCELLED", "SESSION_ENDED":
+		if has(appcore.ActionReauthorizeNodeStatus) {
+			return "node.reauthorize_to_check"
+		}
+		if has(appcore.ActionRefreshNode) {
+			return "node.check_access_to_continue"
+		}
+		return map[string]string{"EXPIRED": "node.access_expired", "CANCELLED": "node.access_ended", "SESSION_ENDED": "node.session_ended"}[n.Access.State]
+	}
+	switch n.ConnectionState() {
+	case appcore.NodeOnline:
+		return "node.online"
+	case appcore.NodeStale:
+		return "node.stale"
+	case appcore.NodeOffline:
+		return "node.offline"
+	}
+	if n.Access.State == "ACTIVE" && n.Access.Confirmed && n.Connectivity.Current && !n.Connectivity.Known {
+		return "node.awaiting_heartbeat"
+	}
+	if has(appcore.ActionRefreshNode) {
+		if n.Access.State == "ACTIVE" && n.Access.Confirmed {
+			return "node.check_for_current_status"
+		}
+		return "node.check_access_to_continue"
+	}
+	return "node.unknown"
+}
+
+// Observation timestamps describe current data only while the snapshot still
+// has its independently confirmed access and authenticated observation.
+func NodeObservationVisible(s appcore.Snapshot) bool {
+	n := s.Node
+	return s.Account.State != appcore.AccountStateLoginRequired && n.Binding != nil && n.Binding.Authorized && !n.Pending && n.Access.State == "ACTIVE" &&
+		n.Access.Confirmed && n.Connectivity.Current
 }
 
 // An unfinished connection can have an authenticated terminal authorization

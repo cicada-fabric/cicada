@@ -35,6 +35,9 @@ func Flow(s appcore.Snapshot) SetupFlow {
 		}
 		return flow
 	}
+	if s.Node.Binding != nil && has(appcore.ActionLogin) {
+		return SetupFlow{Stage: "login", Primary: appcore.ActionLogin, Username: true, Password: true}
+	}
 	if s.Node.Candidate != nil && has(appcore.ActionRefreshNode) && !has(appcore.ActionApproveNode) {
 		return SetupFlow{Stage: "node-diagnostic"}
 	}

@@ -485,6 +485,36 @@ func TestNodeControllerOldHubNeverPostsSecretsOrCreatesPending(t *testing.T) {
 	}
 }
 
+func TestNodeControllerHeartbeatClockBoundaryWithoutTraffic(t *testing.T) {
+	f := newNodeActorFixture(t)
+	ctx := context.Background()
+	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+		t.Fatal(err)
+	}
+	f.approve(t)
+	f.heartbeat = f.stamp(f.n2.now)
+	if err := f.c.Dispatch(ctx, Action{Kind: ActionRefreshNode}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := parseExpiry(f.c.Snapshot().Node.Connectivity.FreshUntil)
+	if !deadline.Equal(parseExpiry(f.heartbeat).Add(wire.AppNodeObservationStaleAfter)) {
+		t.Fatal("test did not use the authenticated heartbeat deadline")
+	}
+	version, requests := f.c.nodeVer, len(f.requests)
+	for _, tt := range []struct {
+		at   time.Time
+		want NodeConnectionState
+	}{{deadline.Add(-time.Nanosecond), NodeOnline}, {deadline, NodeStale}, {deadline.Add(time.Nanosecond), NodeStale}} {
+		f.n2.now = tt.at
+		if got := f.c.Snapshot().Node.ConnectionState(); got != tt.want {
+			t.Fatalf("snapshot at heartbeat boundary %v: got %s, want %s", tt.at, got, tt.want)
+		}
+	}
+	if f.c.nodeVer != version || len(f.requests) != requests || f.c.hasNodePending() {
+		t.Fatal("clock-only redraw sent traffic, changed durable state or renewed observation")
+	}
+}
+
 func TestNodeControllerLegacyOrChangedEpochCannotStartAuthority(t *testing.T) {
 	f := newNodeActorFixture(t)
 	before := len(f.posts[wire.OperationAppNodePrepare])

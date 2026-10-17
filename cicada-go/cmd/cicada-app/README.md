@@ -244,3 +244,36 @@ the source was dirty relative to `ec72bf2`. Evidence is retained at
 `~/Cicada/.local/evidence/n3-app/ux-guidance-20261017-sicleufn`.
 Native Windows rendering/high-DPI/GUI/security and full process acceptance
 remain separate NOT_RUN scopes for this UI check.
+
+The idle-redraw correction retains a deadline that passes between reading the
+controller Snapshot and scheduling the native frame. The renderer schedules one
+earliest redraw; a still-live projection whose deadline has just passed requests
+an immediate resample. Ended permissions and stale historical timestamps do not
+create an idle redraw loop. No network polling or automatic authorization was
+added. Status is fetched on demand; an out-of-date cached observation does not
+establish whether the Hub has since received a newer Node heartbeat.
+
+The saved Node card stays visible through account login, expiry and recovery.
+It separates the saved connection, current observation and this App's finite
+status access, with account login or saved-packet recovery taking priority.
+Observation timestamps are hidden without current access. "Continue viewing
+status" still opens the exact status-only review and requires explicit consent.
+Status-access expiry does not revoke the saved Node binding or request a new
+Node code. The UI presents an expired status record as a prompt to check for an
+update, rather than an inferred Node disconnection.
+
+This combined correction passed **95 App UI/native events plus one controller
+clock event in both normal and race runs, zero failures/skips**, Linux/Windows
+vet and Windows amd64 cross-build. The actual production scheduler is exercised
+through portable Gio Router/Frame processing: substituting the previous helper
+with Go's source overlay produces the retained RED (11 failed, six passed),
+while all 17 scheduler events pass with the correction. A real-PQ controller
+case separately checks Snapshot at heartbeat deadline minus one nanosecond,
+exactly at the deadline and plus one nanosecond, without network or durable
+state changes. These checks do not execute a Win32 window or establish a physical
+Windows fix. Native idle rendering and physical-device follow-up remain NOT_RUN.
+Final source was dirty relative to `e42640d`; its before/after Go/module manifest
+is `685bdf3a81dafed9ec2a754a954520b1be298e81e9a6ffd5c29569f9918eded1`.
+The fixed Go 1.27.2 builder, private cache, read-only module closure, RED/GREEN
+logs and unsigned build are recorded at
+`~/Cicada/.local/evidence/n3-app/native-status-20261017-fu0fc8pv`.

@@ -57,3 +57,23 @@ func TestNodeExpiryCopyKeepsStatusReviewSeparateFromPairing(t *testing.T) {
 		})
 	}
 }
+
+func TestSavedNodeCopySeparatesStatusAccessFromPersistentConnection(t *testing.T) {
+	for _, tt := range []struct {
+		locale                                           Locale
+		continueLabel, accessLabel, savedWord, staleWord string
+	}{
+		{English, "Continue viewing status", "Status access valid until", "saved connection", "status"},
+		{Chinese, "继续查看状态", "状态访问有效至", "已保存连接", "状态记录"},
+	} {
+		t.Run(string(tt.locale), func(t *testing.T) {
+			if Text(tt.locale, "node.reauthorize_status") != tt.continueLabel || Text(tt.locale, "node.access_until") != tt.accessLabel {
+				t.Fatal("status access was presented as installing or expiring the saved Node")
+			}
+			if !strings.Contains(Text(tt.locale, "node.saved_connection_body"), tt.savedWord) ||
+				!strings.Contains(Text(tt.locale, "node.stale"), tt.staleWord) {
+				t.Fatal("copy lost the persistent connection or confused cached status with current Node failure")
+			}
+		})
+	}
+}
