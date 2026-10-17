@@ -1,8 +1,8 @@
 # Finite App authority for one INITIAL Node
 
 Reviewed contract `app-node-authority-v1`, 2026-10-17, phase
-**STORE_ONLY — reviewed types, shared proof/framing helpers and Store state
-machine; no N3 HTTP service or App behavior is enabled by this checkpoint.** Root approved this
+**HUB_NODES_ONLY — shared helpers, Store and explicit `--hub-nodes-only` service.
+Other modes refuse N3; environment acceptance remains separately scoped.** Root approved this
 contract before implementation. The normative types are
 `internal/e2ee/owner_app_node_claims.go` and
 `internal/hubaccountwire/app_node_authority*.go`; metadata is
@@ -42,8 +42,8 @@ lease. Frozen `client-hub-v1.6.5`, encrypted wire 1, 55 catalog operations, old
 account operations and old Owner-bootstrap vectors remain byte-compatible.
 Software version, proposed next schema migration, Git revision and artifact
 digest are recorded separately. Schema 63 implements the private Store state
-machine and extends restore inventory/floor rules; it does not enable an HTTP
-service by itself.
+machine and extends restore inventory/floor rules. The explicit composition
+enables the reviewed HTTP operations; schema migration by itself does not.
 
 The INITIAL Client RPC operations are the exact ordered list
 `["nodes.confirm"]`. The initial confirmation budget is
@@ -216,7 +216,7 @@ from **Node confirmed**. Complete alone does not confirm the Node.
 
 If INITIAL authority becomes ACTIVE but never produces successful confirmation
 provenance, a consumed/expired candidate must not strand that App. A new explicit
-INITIAL preview from a new code is permitted only after the prior proposal or
+INITIAL preview from an explicitly re-entered valid code is permitted only after the prior proposal or
 grant has an authenticated terminal result, every pending original packet has
 been reconciled, and neither the App's retained history nor the Hub has a
 successful confirmation provenance. It uses the current head CAS and a new
@@ -225,6 +225,14 @@ first be explicitly cancelled or become expired/session-ended. Security
 revocation or changed identities/keys/epochs cannot use this path. Once any
 successful provenance exists, the only subsequent profile is READ_EXISTING for
 that exact unchanged binding; a new code cannot substitute another Node.
+
+"New code" here denotes a new explicit INITIAL attempt, not a requirement to
+change the selector digest. After authenticated SELF_CANCEL/unconfirmed terminal
+history, the same still-unexpired PENDING candidate/code may be explicitly
+re-entered once all originals are settled and no confirmation provenance exists.
+The new Owner preview/consent, grant instance, current-head CAS and immutable new
+deadline carry authority. A presealed unsent old-grant packet still cannot borrow
+the new instance; it must reject/fence without consuming the new grant's budget.
 
 ### Explicit status reauthorization after expiry or login replacement
 

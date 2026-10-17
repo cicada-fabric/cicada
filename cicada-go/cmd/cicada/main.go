@@ -158,6 +158,7 @@ func serve(args []string) error {
 	host := flags.String("host", envOr("CICADA_API_HOST", "127.0.0.1"), "listen host")
 	port := flags.Int("port", envInt("CICADA_API_PORT", 8787), "listen port")
 	hubOnly := flags.Bool("hub-only", false, "serve Hub identity/account authentication without Control or Fabric business")
+	hubNodesOnly := flags.Bool("hub-nodes-only", false, "serve finite same-App Node authorization and relay without Control business")
 	stateDir := flags.String("state-dir", "", "Hub StateDir override")
 	fabricOnly := flags.Bool("fabric-only", false, "serve an existing Fabric state without starting Control business services")
 	pqConfigPath := flags.String("node-pqtls-config", strings.TrimSpace(os.Getenv("CICADA_HUB_NODE_PQTLS_CONFIG")), "private enrolled Node listener configuration")
@@ -167,6 +168,12 @@ func serve(args []string) error {
 	config := control.DefaultConfig()
 	if *stateDir != "" {
 		config.StateDir = *stateDir
+	}
+	if *hubNodesOnly {
+		if *hubOnly || *fabricOnly || *pqConfigPath != "" {
+			return errors.New("Hub Nodes mode cannot combine Hub-only, Fabric-only or enrolled strict Node PQ listener configuration")
+		}
+		return serveHubNodesOnly(*host, *port, config)
 	}
 	if *hubOnly {
 		if *fabricOnly || *pqConfigPath != "" {

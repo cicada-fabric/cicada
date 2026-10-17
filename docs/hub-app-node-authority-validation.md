@@ -1,5 +1,84 @@
 # N3 Hub authority validation
 
+## Explicit Hub Nodes runtime checkpoint
+
+2026-10-17, phase HUB_NODES_ONLY. Tested dirty input based on integrated App/Store
+predecessor `8df8ae5034f819ff3d839b6574f02c3c887af253`; this is not a build or test
+attributed solely to that HEAD. The same immutable Go 1.27.2 Docker image and
+private no-network/read-only-root/uid-1000 controls recorded below were used.
+Only disposable synthetic state and loopback TCP were exercised.
+
+Evidence directory:
+`/home/zyf/Cicada/.local/evidence/n3-hub/runtime/`.
+Normal manifest `checkpoint-normal-source.json` SHA-256:
+`418549428c0a43c9bfc48b36c20f94c32dacaff0fa2d04833f6056fef36bec23`.
+Race manifest `checkpoint-race-source.json` SHA-256:
+`fbe62878bb7eb6881f2358eee6373778e00c7a95b7241919d3f3b953cb812197`.
+Both runs verified their listed inputs remained unchanged. After those checks,
+only this validation section and delivery-guide prose/commands were updated:
+fresh Node files now share one configurable NodeRoot with bin/state and an
+optional unexecuted user-service template. The Hub writer also removed only its
+own README navigation delta, returning that file to QA ownership. Shell snippets
+were syntax-checked separately; Go was not rerun for these doc-only changes.
+
+| Lane | Result |
+| --- | --- |
+| Six-package focused normal | PASS: 40 events, zero failures/skips |
+| Same focused race | PASS: 40 events, zero failures/skips |
+| Eight-package vet | PASS |
+| N3/N2 metadata; diff whitespace | PASS |
+| Delivery-guide shell snippets | PASS: syntax only, commands not executed |
+| Independent App/Hub adversarial/process-fault acceptance | NOT_RUN by this Hub checkpoint; QA-owned next gate |
+| Standard disposable Docker product interop and broad N2/native regression | NOT_RUN by this checkpoint; integrated Root-owned gates |
+| Actual Ubuntu Node/user service, native Windows UI/vault, public HTTPS, strict PQ TLS, actual Runtime | NOT_RUN |
+
+Normal/race tested `./internal/server`, `./cmd/cicada`, `./internal/store`,
+`./internal/control`, `./internal/hubauth` and `./internal/hubaccountwire`, with
+`-count=1` and this selection:
+`^TestN3HubNodes\|^TestServeHubNodes\|^TestN3StoreBoundHeartbeat\|^TestBoundNodeHeartbeatPreservesStatusUnlessExplicit$\|^TestNodeDeviceCodeOwnerConfirmation\|^TestStartNodeDeviceBinding\|^TestAppNode`.
+Vet additionally covered the new `./internal/nodebinding` and
+`./internal/hubnodes` packages.
+
+The real TCP test uses the actual N2 Root KEM/signature activation and password
+login, followed by an independently generated Node's real pairing proof. It
+then exercises N3 discovery, exact full-key Owner preview/grant, atomic Client
+confirmation and identical receipt retry; actual Node PQ binding-status and
+identical retry; Worker RPC refusal; accepted empty heartbeat; self-cancel and
+new READ_EXISTING; historical confirmation reconciliation; READ_EXPIRED for an
+unadmitted read; and rejection of a late read as new authority. It verifies that
+binding alone is UNKNOWN and an accepted heartbeat becomes CONNECTED while the
+persisted Worker status remains offline. This shared-wire test does not claim
+native App controller/UI execution against the new runtime.
+
+The CLI subprocess executes the actual `serve --hub-nodes-only` entry point,
+checks bounded discovery, unavailable old business APIs and graceful shutdown,
+and verifies retained identities, no Control workspace/snapshot store and no
+local Machine. Missing identity loading refuses without regeneration. Mixed
+serve modes and a configured strict Node PQ listener refuse rather than
+downgrading. The relay-only instruction now directs the user to Cicada App,
+retaining the Device code marker, protocol VerificationURI validation and old
+full-mode message. It is not a production installation or physical Node run.
+
+The first TCP attempt reached confirmation but failed liveness: the existing
+bound heartbeat writer used whole-second Store time, which truncated a newly
+accepted heartbeat before a same-second RFC3339Nano approval. The RED log remains
+`tcp-attempt2.jsonl`. Both accepted bound heartbeat writers now capture local
+RFC3339Nano time after their binding/Owner guards; global Store `now()` and
+strict pre-approval/future checks remain unchanged. A deterministic actual-Store
+test approves at fractional `.123456789`, accepts a heartbeat ten nanoseconds
+later in that same second, exercises both writers, and verifies CONNECTED with
+Worker status unchanged. No sleep or time tolerance masks the failure.
+
+The full compile-only attempt is recorded separately and claims no runtime
+acceptance. Earlier compile failures (test Seal argument order and missing time
+import) and the liveness RED are retained. `happy-attempt4` passed six initial
+integration/CLI/heartbeat events; final 40-event lanes include the shared-wire
+and existing Node code compatibility regression as well. The guide
+[Hub Nodes mode and Ubuntu delivery](hub-nodes-only.md) keeps the ordinary-user,
+single-root installation and optional unit distinct from unrun physical,
+systemd, HTTPS and Runtime acceptance. No resident service, real keys, grants or
+deployment was modified.
+
 ## Store checkpoint
 
 2026-10-17, phase STORE_ONLY. Predecessor shared-helper commit:

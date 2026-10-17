@@ -1,6 +1,6 @@
 {
   "contract_revision": "app-node-authority-v1",
-  "status": "STORE_ONLY",
+  "status": "HUB_NODES_ONLY",
   "packet_format": "cicada.owner-account-packet.v1",
   "wire_version": 1,
   "account_packet_sequence": 1,

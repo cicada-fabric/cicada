@@ -2,12 +2,11 @@ package control
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/nodebinding"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -150,8 +149,4 @@ func normalizeNodeDeviceCode(value string) (string, error) {
 	return value, nil
 }
 
-func nodeDeviceCodeDigest(hubID, code string) string {
-	data := []byte("cicada-node-device-code-v1\x00" + strings.TrimSpace(hubID) + "\x00" + code)
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
+func nodeDeviceCodeDigest(hubID, code string) string { return nodebinding.CodeDigest(hubID, code) }

@@ -29,6 +29,7 @@ type Service struct {
 	tokens            float64
 	last              time.Time
 	requestNow        func() time.Time
+	appNodeAuthority  bool
 }
 
 func NewService(db *store.Store, ids hubidentity.Set) (*Service, error) {
@@ -55,6 +56,13 @@ func (s *Service) HubIdentity() (wire.HubIdentity, error) {
 	return wire.HubIdentity{Contract: "android-hub-v1", HubID: id, Public: s.ids.ClientControl.Public(), KeyVersion: 1, Suite: "ML-KEM-768+ML-DSA-65+AES-256-GCM"}, nil
 }
 func (s *Service) ExpectedOrigin() (string, error) {
+	if s.appNodeAuthority {
+		setup, e := s.db.GetHubOwnerSetup()
+		if e != nil || setup == nil {
+			return "", ErrAuthentication
+		}
+		return setup.Origin, nil
+	}
 	setup, _, e := s.db.HubAccountSetup()
 	if e != nil {
 		return "", e
@@ -150,6 +158,12 @@ func (s *Service) acquire(ctx context.Context) (func(), error) {
 func (s *Service) Handle(ctx context.Context, operation string, raw []byte) (response []byte, err error) {
 	if s == nil || len(raw) == 0 || len(raw) > wire.MaxPacketBytes {
 		return nil, ErrAuthentication
+	}
+	if wire.AppNodeHTTPPath(operation) != "" {
+		if !s.appNodeAuthority {
+			return nil, ErrAuthentication
+		}
+		return s.handleAppNode(ctx, operation, raw)
 	}
 	if wire.ActivationHTTPPath(operation) != "" {
 		return s.handleExtension(ctx, operation, raw)

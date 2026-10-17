@@ -508,6 +508,10 @@ WHERE credential.credential_hash=? AND credential.status='active'`, credentialDi
 // machine timestamp update share a transaction, so revocation cannot race a
 // separate status write into the Client snapshot.
 func (s *Store) RecordBoundNodeHeartbeat(credentialDigest string) error {
+	return s.recordBoundNodeHeartbeat(credentialDigest, time.Now)
+}
+
+func (s *Store) recordBoundNodeHeartbeat(credentialDigest string, clock func() time.Time) error {
 	credentialDigest = strings.TrimSpace(credentialDigest)
 	if !validNodeCredentialDigest(credentialDigest) {
 		return ErrNodeCredentialNotFound
@@ -542,7 +546,9 @@ WHERE credential.credential_hash=? AND credential.status='active'`, credentialDi
 	if machineOwnerID != ownerID {
 		return ErrNodeMachineOwnershipConflict
 	}
-	stamp := now()
+	// Preserve accepted heartbeat precision just like the Machine-heartbeat
+	// entry point; another bound writer must not truncate it before approval.
+	stamp := clock().UTC().Format(time.RFC3339Nano)
 	_, err = tx.Exec(`UPDATE machines SET name=?, last_seen=?
 WHERE id=? AND owner_id=?`, nodeName, stamp, nodeID, ownerID)
 	if err != nil {

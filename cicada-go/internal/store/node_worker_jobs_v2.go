@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
@@ -588,16 +589,16 @@ func scanNodeWorker(row interface{ Scan(...any) error }) (*Worker, error) {
 }
 
 func (s *Store) RecordBoundNodeMachineHeartbeat(credentialDigest, status string, capabilities map[string]any) error {
-	return s.recordBoundNodeMachineHeartbeat(credentialDigest, status, capabilities, nil)
+	return s.recordBoundNodeMachineHeartbeat(credentialDigest, status, capabilities, nil, time.Now)
 }
 
 // RecordBoundNodeMachineHeartbeatNodeControl rejects a heartbeat whose
 // binding/key epoch or admitted packet changed before the database write.
 func (s *Store) RecordBoundNodeMachineHeartbeatNodeControl(input NodeControlRPCInput, status string, capabilities map[string]any) error {
-	return s.recordBoundNodeMachineHeartbeat(input.CredentialDigest, status, capabilities, &input)
+	return s.recordBoundNodeMachineHeartbeat(input.CredentialDigest, status, capabilities, &input, time.Now)
 }
 
-func (s *Store) recordBoundNodeMachineHeartbeat(credentialDigest, status string, capabilities map[string]any, guard *NodeControlRPCInput) error {
+func (s *Store) recordBoundNodeMachineHeartbeat(credentialDigest, status string, capabilities map[string]any, guard *NodeControlRPCInput, clock func() time.Time) error {
 	status = strings.TrimSpace(status)
 	if status != "" && status != "available" && status != "idle" && status != "busy" {
 		return fmt.Errorf("%w: status must be available, idle, or busy", ErrNodeMachineHeartbeatInput)
@@ -650,7 +651,10 @@ WHERE credential.credential_hash=? AND credential.status='active'`, credentialDi
 	if machineOwnerID != ownerID {
 		return ErrNodeMachineOwnershipConflict
 	}
-	stamp := now()
+	// Capture accepted time after the exact binding/Owner guard. Whole-second
+	// truncation can put a new heartbeat before its same-second approval and
+	// incorrectly project UNKNOWN. Other Store timestamps retain their format.
+	stamp := clock().UTC().Format(time.RFC3339Nano)
 	set := "name=?, last_seen=?"
 	args := []any{nodeName, stamp}
 	if status != "" {

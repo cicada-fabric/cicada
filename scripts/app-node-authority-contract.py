@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check additive N3 Store metadata; do not assert server availability."""
+"""Check additive N3 Hub Nodes metadata; do not assert deployment acceptance."""
 import json
 import pathlib
 import re
@@ -17,7 +17,7 @@ def check():
     catalog = json.loads((ROOT / "cicada-go/internal/clientcontract/catalog.json").read_text())
     n2 = json.loads((package / "activation-contract.json").read_text())
     assert manifest["contract_revision"] == "app-node-authority-v1"
-    assert manifest["status"] == "STORE_ONLY"
+    assert manifest["status"] == "HUB_NODES_ONLY"
     assert manifest["wire_version"] == manifest["account_packet_sequence"] == manifest["account_route_epoch"] == 1
     assert manifest["packet_format"] == "cicada.owner-account-packet.v1"
     assert manifest["frozen_client_contract"] == catalog["contract_revision"] == "client-hub-v1.6.5"
@@ -56,7 +56,7 @@ def check():
         assert value in source and value in prose, value
     for error in manifest["error_codes"]:
         assert error in prose, error
-    print("app-node-authority-v1 Store metadata PASS (no server availability asserted)")
+    print("app-node-authority-v1 Hub Nodes metadata PASS (deployment acceptance not asserted)")
 
 
 if __name__ == "__main__":

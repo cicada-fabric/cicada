@@ -72,6 +72,10 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 	}
 	packet, e := h.accountAuth.Handle(request.Context(), operation, raw)
 	if e != nil {
+		if errors.Is(e, hubauth.ErrAppNodeCounterConflict) {
+			writeError(response, http.StatusConflict, hubauth.ErrAppNodeCounterConflict)
+			return
+		}
 		status := http.StatusForbidden
 		if errors.Is(e, hubauth.ErrBusy) {
 			status = http.StatusTooManyRequests

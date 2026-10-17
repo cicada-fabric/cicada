@@ -5,63 +5,29 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
+	"github.com/cicada-ai/cicada/internal/nodebinding"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-const nodeControlHubKeyVersion uint64 = 1
+const nodeControlHubKeyVersion = nodebinding.KeyVersion
 
-type NodeControlHubIdentity struct {
-	Version        int                 `json:"version"`
-	Algorithm      string              `json:"algorithm"`
-	HubID          string              `json:"hub_id"`
-	KeyID          string              `json:"key_id"`
-	KeyVersion     uint64              `json:"key_version"`
-	Fingerprint    string              `json:"fingerprint"`
-	PublicIdentity e2ee.PublicIdentity `json:"public_identity"`
-}
-
-type NodeControlDeviceCodeInput struct {
-	Mode               string
-	NodeID             string
-	NodeName           string
-	CredentialDigest   string
-	RequestNonce       []byte
-	NodePublicIdentity e2ee.PublicIdentity
-	NodeFingerprint    string
-	ProofPacket        []byte
-	HubID              string
-	HubPublicIdentity  e2ee.PublicIdentity
-	HubKeyVersion      uint64
-	HubFingerprint     string
-	TargetBindingID    string
-}
-
-type NodeControlDeviceCode struct {
-	UserCode        string                         `json:"user_code"`
-	VerificationURI string                         `json:"verification_uri"`
-	Candidate       *store.NodeControlKeyCandidate `json:"candidate"`
-}
+type NodeControlHubIdentity = nodebinding.HubIdentity
+type NodeControlDeviceCodeInput = nodebinding.Input
+type NodeControlDeviceCode = nodebinding.DeviceCode
 
 func (c *Control) NodeControlPublicIdentity() (NodeControlHubIdentity, error) {
 	if c == nil || c.store == nil || c.nodeControlIdentity == nil {
 		return NodeControlHubIdentity{}, errors.New("Node-Control identity is unavailable")
 	}
-	hubID, err := c.store.GetClientHubID()
+	service, err := nodebinding.NewService(c.store, c.nodeControlIdentity)
 	if err != nil {
 		return NodeControlHubIdentity{}, err
 	}
-	public := c.nodeControlIdentity.Public()
-	if e2ee.ValidatePublicIdentity(public) != nil {
-		return NodeControlHubIdentity{}, errors.New("Node-Control public identity is invalid")
-	}
-	return NodeControlHubIdentity{Version: nodewire.Version, Algorithm: e2ee.Algorithm,
-		HubID: hubID, KeyID: public.ID, KeyVersion: nodeControlHubKeyVersion,
-		Fingerprint: nodewire.IdentityFingerprint(public), PublicIdentity: public}, nil
+	return service.PublicIdentity()
 }
 
 // StartNodeControlDeviceBinding stages a public Node key and a short-lived
@@ -96,65 +62,11 @@ func (c *Control) startNodeControlDeviceBinding(input NodeControlDeviceCodeInput
 	if c == nil || c.store == nil || c.nodeControlIdentity == nil {
 		return nil, errors.New("Node-Control binding registry is unavailable")
 	}
-	input.NodeID = strings.TrimSpace(input.NodeID)
-	input.NodeName = strings.TrimSpace(input.NodeName)
-	input.CredentialDigest = strings.TrimSpace(input.CredentialDigest)
-	input.Mode = strings.ToUpper(strings.TrimSpace(input.Mode))
-	input.HubID = strings.TrimSpace(input.HubID)
-	input.NodeFingerprint = strings.ToLower(strings.TrimSpace(input.NodeFingerprint))
-	input.HubFingerprint = strings.ToLower(strings.TrimSpace(input.HubFingerprint))
-	if input.Mode == "" {
-		input.Mode = store.NodeControlPairingInitial
-	}
-	if requiredMode != "" && input.Mode != requiredMode {
-		return nil, errors.New("Node-Control key-upgrade mode is required")
-	}
-	if input.Mode != store.NodeControlPairingInitial && input.Mode != store.NodeControlPairingUpgrade {
-		return nil, errors.New("unsupported Node-Control pairing mode")
-	}
-	hub, err := c.NodeControlPublicIdentity()
+	service, err := nodebinding.NewService(c.store, c.nodeControlIdentity)
 	if err != nil {
 		return nil, err
 	}
-	if input.HubID != hub.HubID || input.HubKeyVersion != hub.KeyVersion ||
-		input.HubPublicIdentity.ID != hub.KeyID || input.HubFingerprint != hub.Fingerprint ||
-		!sameNodeControlPublicIdentity(input.HubPublicIdentity, hub.PublicIdentity) {
-		return nil, errors.New("Node-Control Hub key candidate does not match the current Control key")
-	}
-	if input.NodeFingerprint != nodewire.IdentityFingerprint(input.NodePublicIdentity) {
-		return nil, errors.New("Node-Control public key fingerprint mismatch")
-	}
-	transcript, err := nodewire.PairingProofTranscript(nodewire.PairingProofContext{
-		HubID: hub.HubID, NodeID: input.NodeID, RequestNonce: input.RequestNonce,
-		CredentialDigest: input.CredentialDigest, NodePublicIdentity: input.NodePublicIdentity,
-		HubPublicIdentity: hub.PublicIdentity, HubKeyVersion: hub.KeyVersion,
-	})
-	if err != nil {
-		return nil, errors.New("invalid Node-Control key proof context")
-	}
-	opened, sequence, err := e2ee.Open(c.nodeControlIdentity, input.NodePublicIdentity,
-		input.ProofPacket, nodewire.PairingProofAAD())
-	if err != nil || sequence != 1 || !bytes.Equal(opened, transcript) {
-		return nil, errors.New("Node-Control key proof verification failed")
-	}
-	code, err := newNodeDeviceCode()
-	if err != nil {
-		return nil, err
-	}
-	codeDigest := nodeDeviceCodeDigest(hub.HubID, code)
-	candidate, err := c.store.StartNodeControlKeyRequest(store.NodeControlKeyRequestInput{
-		Mode: input.Mode, NodeID: input.NodeID, NodeName: input.NodeName,
-		CredentialDigest: input.CredentialDigest, CodeDigest: codeDigest,
-		NodePublicIdentity: input.NodePublicIdentity, NodeFingerprint: input.NodeFingerprint,
-		ProofPacket: input.ProofPacket, HubPublicIdentity: hub.PublicIdentity,
-		HubKeyVersion: hub.KeyVersion, HubFingerprint: hub.Fingerprint,
-		TargetBindingID: input.TargetBindingID, ExpiresAt: time.Now().UTC().Add(NodeDeviceCodeLifetime),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &NodeControlDeviceCode{UserCode: formatNodeDeviceCode(code),
-		VerificationURI: NodeDeviceVerificationURI, Candidate: candidate}, nil
+	return service.Start(input, requiredMode)
 }
 
 func sameNodeControlPublicIdentity(left, right e2ee.PublicIdentity) bool {

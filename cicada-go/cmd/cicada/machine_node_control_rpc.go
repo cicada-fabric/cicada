@@ -1374,10 +1374,14 @@ func awaitMachineNodeControlBinding(ctx context.Context, stateDir, base, nodeID,
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(output, "Owner approval required at %s. Compare Node key %s (%s) and Hub Node-Control key %s (%s) before approving. Device code: %s (valid for %s).\n",
-		verificationURL, challenge.Candidate.NodeKeyID, challenge.Candidate.NodeKeyFingerprint,
-		challenge.Candidate.HubNodeControlKeyID, challenge.Candidate.HubNodeControlFingerprint,
-		challenge.UserCode, control.NodeDeviceCodeLifetime)
+	if !verifyRPC {
+		fmt.Fprintf(output, "Open Cicada App and enter the Device code. Compare Node key %s (%s) and Hub Node-Control key %s (%s) in the App before explicit Owner approval. Device code: %s (valid for %s).\n", challenge.Candidate.NodeKeyID, challenge.Candidate.NodeKeyFingerprint, challenge.Candidate.HubNodeControlKeyID, challenge.Candidate.HubNodeControlFingerprint, challenge.UserCode, control.NodeDeviceCodeLifetime)
+	} else {
+		fmt.Fprintf(output, "Owner approval required at %s. Compare Node key %s (%s) and Hub Node-Control key %s (%s) before approving. Device code: %s (valid for %s).\n",
+			verificationURL, challenge.Candidate.NodeKeyID, challenge.Candidate.NodeKeyFingerprint,
+			challenge.Candidate.HubNodeControlKeyID, challenge.Candidate.HubNodeControlFingerprint,
+			challenge.UserCode, control.NodeDeviceCodeLifetime)
+	}
 	if once {
 		return errors.New("Node-Control binding is waiting for explicit Owner approval")
 	}
