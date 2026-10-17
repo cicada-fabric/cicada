@@ -1885,3 +1885,67 @@ production default-daemon queue can deliver to its loaded Threads. Full tool
 closure, per-Thread restrictions, original-context consumption, controlled
 resume, loaded/cold wake and the requested real two-SID conversation all remain
 **NOT_PROVEN / NOT_RUN**. No Root/development SID received probe traffic.
+
+### Native-pair executable TCP lane: expected service RED
+
+2026-10-17. `bash scripts/test-native-pair.sh` compiles the production CLI and
+`acceptance/n3` binary, then selects five independent protocol cases. Each starts
+its own real `--hub-nodes-only` CLI, persistent SQLite database, original App
+vault, production N2 activation/login and explicit N3 Node confirmation. The
+Node restarts with its approved identity. The new protocol caller authenticates
+the saved confirmation with the original PQ keys; it never grants rights with
+SQL. It is an independent typed PQ caller, **not** the production App's new
+pair workflow or a real Codex Thread.
+
+Source is `214a223e4432ecb3ee0ca947729b430aa3f9111c` **plus dirty QA inputs**.
+All five executions reached the actual public new capabilities route and got
+HTTP 404, with zero new pair secret POSTs. The result is
+**EXPECTED_RED_SERVICE_UNAVAILABLE**, exit **1**, 0 pass / 5 fail / 0 skip.
+Version, CLI compilation, acceptance compilation and scoped vet each exited 0;
+the selected runtime harness exited 1. The bootstrap, wrong-scope, missing-proof,
+loss/reconcile and replay assertions after discovery are therefore **NOT_RUN**.
+The 404 is service unavailability, not evidence that any security negative passed.
+
+Evidence directory:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261017T133759Z-nycOEd/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `9cfc32d3e632f47ac33fb077767ba8ed594eecacaa0ff2fce83ddcad859062be` |
+| `source-before.json` / identical `source-after.json` | `e2eb52496ef4db65a681d03ef019f834c0be9b12dc2ba53ab773f5483040e6b3` |
+| CLI `cicada` (33375282 bytes) | `a910496edfef407d39ae21d36693ef2e2ea0fa787bafed6b0f03d6752671a892` |
+| `n3.test` (22163344 bytes) | `938f41748c5b9cb1548c927a9849b8d697b070f82a5b1d30d66956dfdb8766f7` |
+
+The source manifest covers 1209 inputs: the full Go/module/embedded-asset tree,
+the two new driver/evidence scripts and the selected contract/plan documents.
+Its aggregate SHA-256 is
+`f7af22ec25ee0099accc55d0040a2ec1a9091d99d217507a6618e220688545b3`.
+The unchanged before/after manifest includes the exact tested dirty QA test
+source. Later documentation and the eventual commit do not relabel this build
+as clean or change the original receipt.
+
+Execution uses Docker image
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`,
+literal fixture loopback TCP, no Docker network, read-only repository and module
+cache mounts, a locked task build cache and owned private temporary state. The
+owned container was confirmed absent. There were zero model turns, no native
+daemon operations, no shared development Hub and no public deployment change.
+
+Reproduce from this task checkout using the populated read-only offline module
+cache and pinned image:
+
+```sh
+bash scripts/test-native-pair.sh
+```
+
+Every run has fresh state/evidence/artifact directories under
+`/home/zyf/Cicada/.local/{state,evidence,artifacts}/native-pair-acceptance/`.
+The result records per-stage exits, source/artifact hashes, exact selected tests,
+missing/skipped cases and cleanup. A future available service must satisfy all
+five assertions to return scoped exit 0; neither 404 nor EXPECTED_RED returns 0.
+Actual request/response envelope bytes and monotonic elapsed microseconds are
+logged for new protocol POSTs once discovery succeeds. No such POST metrics
+exist in this initial unavailable run. Runtime/MCP consumption, both reserved
+Joins, dual consent, real same-Node Relay and Windows DPAPI/ACL/GUI remain
+**NOT_RUN**. This lane does not update the earlier N3 production source pins or
+promote old 84+2/native/interop receipts to the new protocol.

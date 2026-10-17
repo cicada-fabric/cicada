@@ -420,6 +420,7 @@ the conversation lane with its actual route recorded. It is not direct PASS.
 | N3-TT-14 | Safe restoration and cleanup | Owned Group/Thread grants, helpers and artifacts have explicit cleanup; preserve the real Node/account/Owner keys/binding and unrelated Threads. Rejoining/recovery requires current authority and preserves original SID/context evidence | NOT_RUN |
 | N3-TT-15 | Separate authority lifetimes | Protected new App authorizations require its current account session. Account-session expiry does not itself revoke established peer grants; N3 status-access expiry/cancellation neither grants nor revokes peer authority. Native SessionBinding/lease, Group/member/grant and Node/Owner revocation remain independently authoritative | NOT_RUN; CONTRACT_REVIEW_PENDING |
 | N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Root's proposed shared bound is four independent bidirectional ASK roots, at most one reply each/eight messages/eight native deliveries, 8 KiB plaintext and 128 KiB ciphertext per message, 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | NOT_RUN; CONTRACT_REVIEW_PENDING |
+| N3-TT-17 | Lightweight, measured operation | Reuse existing Go/crypto/transport/persistence with no new coordination service/dependency. Record actual request/response JSON bytes, peer ciphertext bytes, latency, requests/retries/native submissions, owned-SID model calls and idle pair traffic separately; no extra authorization renewal, model loop or polling is inferred from availability | NOT_RUN |
 
 The minimal driver has the following phases. Missing production routes,
 authorization, native API evidence or runtime configuration stop before a model
@@ -461,3 +462,23 @@ and queue/injection crash windows. Fixture-only outcomes remain separate from
 actual public native consumption. Retain request/result hashes, process/turn
 and tool counts, source/image/CLI hashes, route evidence, exit code, cleanup and
 all incomplete levels. No real two-Thread conversation has passed this matrix.
+Use existing transport/driver counters and bounded private traces for these
+measurements; do not add a monitoring framework or a separate optimization
+project before the usable chain closes. Distinguish application JSON size from
+TLS/socket bytes and permission/message budgets from provider cost. Idle
+observations cover only the owned pair/SIDs, so unrelated development activity
+and the resident Node's existing heartbeat/SSE do not become claimed pair work.
+
+The independent protocol lane is executable with
+`bash scripts/test-native-pair.sh`. It builds the actual CLI and acceptance
+binary in the pinned disposable offline Docker image, then uses the existing
+production App N2/N3 flow to approve one synthetic Node before the new PQ
+caller attempts bootstrap. Its initial five cases cover exact bootstrap replay
+after Hub restart, a genuine Owner signature over the wrong Node scope, missing
+Owner proof, pre-forward prepare loss and post-commit complete loss with exact
+reconciliation. They do not create Codex SIDs or model turns. Node reserved-slot
+Join, both zero-permission candidates, dual consent and actual native/MCP traffic
+will extend this lane when their typed production surfaces are available.
+The first execution reached real capabilities HTTP 404 after all five actual
+N2/N3 setups and returned exit 1, **EXPECTED_RED_SERVICE_UNAVAILABLE**. No new
+pair secret POST or business/fault assertion executed; see the validation record.
