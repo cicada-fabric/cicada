@@ -32,7 +32,7 @@ implemented or accepted by this plan.
 | --- | --- | --- |
 | N1 — Native foundation | Typed Hub connection and health verification; strict secret-free connection card; explicit transport policy; encrypted-vault identity and exact-packet persistence; existing encrypted claim/login/inspect/logout calls; honest account/Root pending states; native controller contract and deterministic protocol tests. | In progress in the current source checkpoint. See [validation](native-app-validation.md). |
 | N2 — Owner proof and finite activation | Reuse exact existing Owner keys; one-use local activation code; server-authorized Root proof; finite App lease; controlled pending-Owner continuation; trusted profile restart and authenticated recovery. Account login alone never activates Root. | Hub/App core implemented under [owner-activation-v1](hub-owner-activation-contract.md), schema 62; independent Linux protocol SCOPED_PASS (131 events, zero failures/skips). Oct 17 Windows initial flow/positive ACL are user-reported PARTIAL; dedicated native security tests and comprehensive visual acceptance remain NOT_RUN. See [validation](native-app-validation.md#n2-hubapp-integration). |
-| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery implemented under `app-node-authority-v1`, schema 63: explicit INITIAL/READ_EXISTING consent, target-only status and durable recovery. Independent actual-process SCOPED_PASS: 84/0/0 on bookworm and 84/0/0 with identical binaries in Ubuntu 24.04.4. Live canvas, App SSE, native Runtime execution and physical acceptance remain incomplete. |
+| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery under `app-node-authority-v1`, schema 63. Latest `854a594` plus dirty QA: Linux 84/0/0 and separate automatic status-entry 2/0/0. Earlier Ubuntu 84/0/0 remains separately attributed. Deadline/saved-Node UX and 30-second status polling implemented; new native Windows behavior awaits retest after old-package user-reported automatic-decay failure. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
 The authorized Android history-preserving subtree import is complete as
@@ -125,10 +125,13 @@ disposable driver/evidence and this matrix. The integration owner reviewed `app-
 `af92b16d3c0dc616280d694986692a2cbb1caa71`, phase **HUB_NODES_ONLY**.
 The runtime fixes were reviewed at `ec72bf2891bcc7bf98565beedbac54e51f35b7db`;
 UI-only guidance followed at `e81b9dce28133861b5a8c5f45bb065e9721309f3`.
-The final evidence driver pins 64 reviewed normative/helper/Store/App/runtime
-files and records all actual inputs separately. Both final real-process gates
-passed their exact 84-event inventory; original FAIL receipts remain unchanged
-in the [validation record](native-app-validation.md#n3-independent-process-acceptance).
+Deadline/saved-Node UX followed at `530f5d5c24d16887bc9ef28be5a14beab03e920a`,
+then bounded automatic status at `854a5943285b413ebf6d133af3685dd7f300c929`.
+The evidence driver now pins 67 reviewed normative/helper/Store/App/runtime
+files and records all inputs separately. Latest Linux gates passed separate
+84-event and two-event inventories on the same frozen dirty QA source. The
+earlier Ubuntu 84-event receipt and all original FAIL receipts retain their
+sources in the [validation record](native-app-validation.md#n3-idle-decay-and-automatic-status-follow-up).
 The Hub-owned
 [contract](hub-app-node-authority-contract.md) defines the protocol; this matrix
 defines independent invariants.
@@ -218,17 +221,20 @@ do not establish an independent production Hub/App/Node N3 result.
 | N3-16 | Local persistence failure | Fail before network send; do not keep a memory-only replacement or regenerate identities after vault/disk failure | SCOPED_PASS — declared Linux process scope |
 | N3-17 | Target Node status privacy | Return only the authorized target Node projection; no owner-wide goals, tasks, workers or unrelated Nodes leak into the status payload | SCOPED_PASS — declared Linux process scope |
 | N3-18 | Genuine Node-only liveness | Installation, binding, credentials or a cached snapshot never imply online; only accepted current target Node heartbeats establish bounded Node freshness | SCOPED_PASS — declared Linux process scope |
-| N3-19 | Cached-online decay | Heartbeat/as-of TTL governs display on failed reads and elapsed time alone; fetching/recovering an old response does not refresh its heartbeat time | SCOPED_PASS — declared Linux process scope |
-| N3-20 | Node process/generation recovery | Restart/reconnect preserves approved Node identity; old credentials/generation cannot publish freshness or overwrite new status | SCOPED restart/revocation; key rotation NOT_RUN |
+| N3-19 | Cached-online decay | Heartbeat/as-of TTL governs display on failed reads and elapsed time alone; fetching/recovering an old response does not refresh its heartbeat time | Core/TCP SCOPED_PASS; portable production Gio Router RED/GREEN; old Windows USER_REPORTED_FAIL, corrected Windows idle redraw NOT_RUN |
+| N3-20 | Node process/generation recovery | Restart/reconnect preserves approved Node identity; old credentials/generation cannot publish freshness or overwrite new status | SCOPED restart/revocation and real Node restart/heartbeat after App SELF_CANCEL; natural full N3 lease continuity and key rotation NOT_RUN |
 | N3-21 | Honest Runtime/SSE boundaries | Node freshness is not an SSE live subscription or native Runtime availability/execution. Unrun Codex/native sessions remain unknown/NOT_RUN; no demo objects are rendered as live | SCOPED Node presentation; App SSE/native Runtime NOT_RUN |
-| N3-22 | Target platform/user | Validate actual OS/arch, UID/nonroot and Codex version only on the disposable target fixture or explicit physical receipt; a bookworm Go builder does not prove Ubuntu target behavior | SCOPED Ubuntu 24.04.4 container, x86_64/UID1000; physical 24.04.3/Codex NOT_RUN |
+| N3-22 | Target platform/user | Validate actual OS/arch, UID/nonroot and Codex version only on the disposable target fixture or explicit physical receipt; a bookworm Go builder does not prove Ubuntu target behavior | Earlier-source Ubuntu 24.04.4 container SCOPED_PASS; e426 physical Ubuntu initial binding/heartbeat USER_REPORTED_PARTIAL; latest 854 gates bookworm only; user-service/reboot/Codex execution NOT_RUN |
 | N3-23 | Private evidence and cleanup | Real crypto/TCP/persistent stores; task-owned state, ports, caches and resources; hashes/safe facts only, no secrets or full private payloads; modules read-only; exact cleanup | SCOPED_PASS — declared Linux process scope |
-| N3-24 | Windows/public/native Runtime | Independently attributable native Windows interaction, public HTTPS, physical Node and real native Runtime receipts required; Linux fixture results do not transfer | NOT_RUN Windows native/public HTTPS/physical/native Runtime |
+| N3-24 | Windows/public/native Runtime | Independently attributable native Windows interaction, public HTTPS, physical Node and real native Runtime receipts required; Linux fixture results do not transfer | e426 Windows/public HTTPS/Ubuntu initial flow USER_REPORTED_PARTIAL, idle USER_REPORTED_FAIL, manual stale USER_REPORTED_PASS; new artifact native automation/security/visual, user-service/reboot, full-lease continuity/Runtime NOT_RUN |
 | N3-25 | Abandoned INITIAL and explicit read authority after expiry | Before any successful confirmation, authenticated terminal/no-pending state permits a new explicit INITIAL code/grant/head; after confirmation and consumed code, explicit Owner consent may create a new finite status-only instance for the same exact approved Node/binding, with current head CAS and zero confirmation budget; no re-pair, key upgrade or N2 renewal | SCOPED self-cancel/session replacement; full N3 lease wall expiry NOT_RUN |
 | N3-26 | Read-only renewal cannot authorize mutation | Old packets cannot borrow the new read grant; that grant cannot confirm; changed Node/binding/key/generation is rejected, and cached online state still follows the original heartbeat rather than a new poll's observation time | SCOPED_PASS — declared Linux process scope |
+| N3-27 | Automatic selected-Node status | Lock-held exact scope/full binding/live permission checks precede new durable ciphertext; only status reads; wrong target/expiry skip without write; uncertain response freezes later ticks/restart; signed terminal settles; manual recovery precedes new reads | Separate actual Core/TCP 2/0/0 SCOPED_PASS; portable 30-second coordinator tests separate; Windows scheduler NOT_RUN |
 
-The following actual cases supply the matrix evidence in both final runners;
-the full names and exact subcase inventory are in each result's `expected_tests`.
+The original cases below run in the full 84-event selector. The earlier Ubuntu
+receipt and latest Linux receipts retain their independent source attribution;
+the two automatic-entry cases use a separate selector and were not run by the
+earlier Ubuntu gate. Exact names/subcases are in each result's `expected_tests`.
 Zero matching cases, missing prerequisites, skips, unknown outcomes and
 harness-only success never establish N3 acceptance. N2/Windows history and
 earlier failures retain their tested source attribution.
@@ -246,6 +252,7 @@ earlier failures retain their tested source attribution.
 | 17 | `StatusContainsOnlyExactSelectedNode` |
 | 18–21 | `ActualImmediateRelayHeartbeatRetainsSubsecondOrder`, `ActualAppConsentBindingRelayAndWallClockDecay`, `RevokedNodeCannotPublishOrReuseReadProvenance` |
 | 22–23 | Driver-recorded runner OS/arch, explicit UID 1000, image/binary/source hashes, isolation and owned-resource cleanup |
+| 20, 27 | `ActualAutomaticStatusKeepsScopeAndSelfCancelledNode`, `ActualAutomaticStatusLossFreezesTicksUntilExactRecovery` — separate `--auto-status-only` selector, two events |
 
 N3-05's inactive/unproved-human and missing-N2-history checks additionally use
 the separately attributed producer Store case
@@ -262,7 +269,21 @@ N3-20 covers retained INITIAL recovery and revoked credentials/bindings;
 Node key rotation/UPGRADE remains outside the slice. The rolling cache's
 five-minute age is an explicitly controlled persisted fixture, not a wall wait.
 
+The 84-event Core actor queries `Controller.Snapshot()` after its real wait;
+it does not prove native no-input redraw. Latest automatic-entry tests invoke
+the production flagged refresh through the actual App child, not a simulated
+client. Their triggers are explicit test commands, not a real Windows timer.
+They separately prove UNKNOWN-to-real-heartbeat status, unchanged read grant,
+counter/budget and keys, no-write wrong-target/logical-expiry rejection,
+SELF_CANCEL Node continuity, manual READ_EXISTING consent, server-signed
+revocation settlement, and loss/restart/multi-trigger freeze followed by exact
+manual recovery and fresh reads. Full natural N3 lease expiry/Node continuity
+and Windows clock/event-loop testing remain NOT_RUN.
+
 The supplied Ubuntu 24.04.3 / x86_64 / UID 1000 / `codex --version` 0.163.0
-output is **USER_REPORTED_ENVIRONMENT**. It establishes neither an installed,
-approved Node nor real native Runtime execution. Repeated status polling must
+output is **USER_REPORTED_ENVIRONMENT**. That original environment output alone
+did not establish an installed/approved Node or native Runtime execution. Later
+`e426` user-reported initial binding/heartbeat and Root's read-only process/binding
+observations are recorded separately; they do not accept the new Windows build
+or full Node service/reboot/lease continuity. Repeated status polling must
 not extend an old heartbeat's freshness merely by receiving a newer ObservedAt.

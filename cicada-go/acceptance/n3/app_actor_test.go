@@ -164,6 +164,7 @@ type appActorCommand struct {
 
 type appActorReply struct {
 	ActionFailed bool             `json:"action_failed"`
+	ActionError  string           `json:"action_error,omitempty"`
 	Current      appcore.Snapshot `json:"current"`
 	ClockMode    string           `json:"clock_mode"`
 }
@@ -288,7 +289,16 @@ func TestN3AppProcess(t *testing.T) {
 			reply.ClockMode = "APP_LOGICAL_CLOCK_ONLY"
 		}
 		if command.Action != nil {
-			reply.ActionFailed = c.Dispatch(ctx, *command.Action) != nil
+			err := c.Dispatch(ctx, *command.Action)
+			reply.ActionFailed = err != nil
+			switch {
+			case errors.Is(err, appcore.ErrInvalidAction):
+				reply.ActionError = "INVALID_ACTION"
+			case errors.Is(err, appcore.ErrControllerBusy):
+				reply.ActionError = "BUSY"
+			case err != nil:
+				reply.ActionError = "OTHER"
+			}
 		}
 		reply.Current = c.Snapshot()
 		writeJSON(t, base+"-reply.json", reply)

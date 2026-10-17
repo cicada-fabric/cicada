@@ -18,6 +18,8 @@ DISCOVERY_EXPECTED = {'TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets'}
 DISCOVERY_EXPECTED.update('TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets/' + mode for mode in
                           ('actual-legacy-hub', 'unsupported-before-forward', 'unknown-profile-before-forward'))
 SEED_EXPECTED = {'TestN3SeedRetainedN2Fixture'}
+AUTO_EXPECTED = {'TestN3ActualAutomaticStatusKeepsScopeAndSelfCancelledNode',
+                 'TestN3ActualAutomaticStatusLossFreezesTicksUntilExactRecovery'}
 RUNTIME_TOP = {
     'TestN3ConcurrentPrepareConfirmAndConflictingReplay', 'TestN3ActualVaultFailureStopsBeforeSecretSend',
     'TestN3ServerRejectsIndependentProofScopeAttacks', 'TestN3ServerRejectsForgedCompletionPreservingPreview',
@@ -48,37 +50,40 @@ AGED_TEST = 'TestN3ActualIdentityFlowAfterWallClockN2Expiry'
 
 CONTRACT = {'revision': 'app-node-authority-v1',
  'types_reviewed_source': 'a545988ac6c038da180413d4f29ffbf740c402d4',
- 'reviewed_source': 'e81b9dce28133861b5a8c5f45bb065e9721309f3',
+ 'reviewed_source': '854a5943285b413ebf6d133af3685dd7f300c929',
  'runtime_reviewed_source': 'ec72bf2891bcc7bf98565beedbac54e51f35b7db',
- 'ui_reviewed_source': 'e81b9dce28133861b5a8c5f45bb065e9721309f3',
+ 'ui_reviewed_source': '854a5943285b413ebf6d133af3685dd7f300c929',
  'status': 'HUB_NODES_ONLY',
  'packet_limits': {'n3_inner': 393216,
                    'default_inner': 262144,
                    'outer': 393216,
                    'body': 196608,
                    'original_and_receipt': 131072},
- 'files': {'cicada-go/cmd/cicada/machine_hub_context.go': '695e4e9372b9508aedc73711ec12401d882e7d5ec7b8f3a115a2bb3ae4fcbe4e',
+ 'files': {'cicada-go/internal/appui/native/node_update.go': '71a7de919301254930d3267599ef98dbd40a0954495ce564774333f50f1cf3bf',
+           'cicada-go/internal/appui/native/redraw.go': '234943d3b8b53196e63fe354555aa664c3df6f7a538974327d94c36536348787',
+           'cicada-go/internal/appcore/node_auto.go': '8994b0021a48830a461591440f37afffbeb425140487ff9829ca957e774b4f89',
+           'cicada-go/cmd/cicada/machine_hub_context.go': '695e4e9372b9508aedc73711ec12401d882e7d5ec7b8f3a115a2bb3ae4fcbe4e',
            'cicada-go/cmd/cicada/machine_agent.go': '7e170fd423e2c61caef4043ba7a979290c4ec203e06906f255ba9362e7c6bcda',
            'cicada-go/cmd/cicada/machine_node_control_rpc.go': '97ea29bad6bba9cc46e30082b7340b9edf3d038292e6b9986e01ce99193b0276',
            'cicada-go/cmd/cicada/main.go': 'e6dab529a09bdfb1647cf241397b4725942d106c7af49ce97dca249c2b2cbd9d',
            'cicada-go/cmd/cicada/serve_hub_nodes.go': 'f8b8659ed01b054c7f63af014276ed8d5637282e858131ab22ca21bd136efdc4',
-           'cicada-go/internal/appcore/controller.go': '9e6f2ecba0f6b35554502424c6444b515c55f68ecba722a88371a9044a9b7aa3',
+           'cicada-go/internal/appcore/controller.go': '601dbb3f05ab8a54c412f93e140e779e2974a4df63f01dcc6b45953a807cada5',
            'cicada-go/internal/appcore/controller_state.go': '8d890d70a0e1dd25b7291d2e5f6a4d3878a09ec0a5098dc0a7814b4eaba7c9b4',
            'cicada-go/internal/appcore/node_confirm.go': '9c58d4c0e07ca66a36678b37af5c0bcacd5fdacb17fa2d2c839489ec3151fc3f',
-           'cicada-go/internal/appcore/node_ops.go': '3f705ecac00918ad814d49ca227c63e17fb1bba31394c82cc19a0cf499d62c63',
+           'cicada-go/internal/appcore/node_ops.go': 'b60d04b79b2ce91ee672d5563d19e0fd3887c3b53f23e6dc6e6ff3a30ac89320',
            'cicada-go/internal/appcore/node_recovery.go': 'ffa4b20a8d67833c44c31869d1472cec26a6bfad5c201dfa9c3cd84c94d80a37',
            'cicada-go/internal/appcore/node_responses.go': '2e920d71b3087f40ebe3f406a63ef90bfe3e4adbb121923e81f9537bf0f6cfb5',
            'cicada-go/internal/appcore/node_state.go': 'ff7d6624a58674a707f552111078082ed8665f40d6936748487665a7b29c12b0',
            'cicada-go/internal/appcore/node_transport.go': '9e6c2f242101484635ba65d322da71ceaf96874d84cb867db789d4e132a2dc2f',
-           'cicada-go/internal/appcore/node_view.go': 'e9aa726f8465d33b6e38eb2b7f34e407951d0b17de2487a23706ab13d167a5e9',
+           'cicada-go/internal/appcore/node_view.go': '7e4044dcb6e70b6292c153540ebb654d211602a969a46cf6b5def5f4b57c465a',
            'cicada-go/internal/appcore/profiles.go': '913e7fe47643756d0807118a86efa04389bd5cda47f9bab79c2b823f19dfb62f',
-           'cicada-go/internal/appcore/types.go': '8c75c9afa7e92d7741955249e8052a99813730e2aca5a8e964c9e84780a6d732',
+           'cicada-go/internal/appcore/types.go': 'd8a2483840a14dd0a7072499e42eecda68e81e2c8bcf365448a52fc88f783407',
            'cicada-go/internal/appui/errors.go': '4f278bdaffc15b55be34146f65639870575731a25bf8aa0357eda542f9c15388',
-           'cicada-go/internal/appui/flow.go': '0669a6b7a992a417af9d7e4db136ebf606abb12a434d8b12bdcfd9e478ed23ac',
-           'cicada-go/internal/appui/i18n.go': '3f2e18ec37213d04dc79666ebb5f023e575e2a5f67015aea055b7705b8d147d6',
-           'cicada-go/internal/appui/native/node_ui.go': 'f7394893de48be804b26b643e6b4dba919787fc204758158a2d1b70bd35bf1b7',
-           'cicada-go/internal/appui/native/ui.go': 'e8b67db0c39adfd3bc0edd30155be118c334424e321553bcd41784ed4ac38448',
-           'cicada-go/internal/appui/node_flow.go': '1adc3afc088056676933e19a6392aadc630e5a8109a907a2965bd9032f95b760',
+           'cicada-go/internal/appui/flow.go': '4efb8f9a911f1062eb0aefed6519595fd28e4f804b02a3da2a9ccca0f11065db',
+           'cicada-go/internal/appui/i18n.go': '1171b5d8c4360a163feed85be93dfbe8359edfc709f973c8321a7c899351a47d',
+           'cicada-go/internal/appui/native/node_ui.go': '41b43a20b1127b9798e69d2203af74b4901e156d2d53c6c53b1a333a79abe9fc',
+           'cicada-go/internal/appui/native/ui.go': '89987bffc1d037eb217f837376cb6e228da210cb316542faa6db067a5f9720ad',
+           'cicada-go/internal/appui/node_flow.go': '1005cd1454f88d120977d46f8af0c339354c4108b00db45ecc58cc0fdba0aa05',
            'cicada-go/internal/clientwire/packet_limits.go': '107b0e1ae419eb4731c997fe767eb5b881fda031c4f2e1b3e74d0db5100002f5',
            'cicada-go/internal/clientwire/wire.go': 'b9bc6d4e58cdcd9c92206821d19d3baf1addeb1f06f3fd453a0c20b4434c1ba4',
            'cicada-go/internal/control/node_control_identity.go': 'ad9ce1342e098aed84d2c3fb31cd7e9b922cbeea75be3d136929c6aba87e81af',
@@ -125,7 +130,7 @@ CONTRACT = {'revision': 'app-node-authority-v1',
  'schema': 63,
  'requires_n2_client_session_epoch': 1,
  'login_required': 'No valid matching bound login; grant expiry/self-cancel alone does not require login.',
- 'reviewed_app_source': '8df8ae5034f819ff3d839b6574f02c3c887af253',
+ 'reviewed_app_source': '854a5943285b413ebf6d133af3685dd7f300c929',
  'app_phase': 'CONTROLLER_IMPLEMENTED',
  'store_reviewed_source': 'e078c58d97413f5e0457acb3c586afbef1a9d438'}
 
@@ -198,7 +203,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
     before, after = [json.loads((run / ('source-' + side + '.json')).read_text()) for side in ('before', 'after')]
     codes = {p.stem: int(p.read_text()) for p in run.glob('*.exit')}
     got = events(run / 'harness.log')
-    expected = {'discovery': DISCOVERY_EXPECTED, 'seed': SEED_EXPECTED,
+    expected = {'discovery': DISCOVERY_EXPECTED, 'seed': SEED_EXPECTED, 'auto': AUTO_EXPECTED,
                 'runtime': RUNTIME_EXPECTED | ({AGED_TEST} if required else set())}.get(mode, EXPECTED)
     if mode == 'case':
         if case not in RUNTIME_TOP: raise ValueError('Unknown independent runtime case')
@@ -219,7 +224,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
                   'seed': 'SETUP_ONLY-real-n2-private-stopped-expiry-fixture'}.get(mode,
                   'real-hub-cli-app-core-pq-tcp-process-harness-on-frozen-n2-only'),
         'harness': ('SETUP_READY' if mode == 'seed' else 'SCOPED_PASS') if passed else 'FAIL', 'n3_acceptance': 'NOT_RUN',
-        'reason': 'N3 Store/schema 63 reviewed; production N3 Hub/App/Node acceptance cases are not yet integrated.',
+        'reason': 'Preparation selector only; full production N3 runtime cases are not executed by this run.',
         'reviewed_contract': CONTRACT, 'contract_pin_matches': contract_matches,
         'exit_code': code, 'exit_codes': codes,
         'source_head': before['head'], 'source_dirty': before['dirty'], 'source_manifest_sha256': before['manifest_sha256'],
@@ -238,7 +243,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
                         'codex_version': '0.163.0', 'evidence': 'USER_REPORTED_ENVIRONMENT'},
         'windows_native': 'NOT_RUN_IN_THIS_GATE', 'public_https': 'NOT_RUN_IN_THIS_GATE',
         'real_native_runtime': 'NOT_RUN',
-        'matrix': {f'N3-{i:02}': 'NOT_RUN' for i in range(1, 27)},
+        'matrix': {f'N3-{i:02}': 'NOT_RUN' for i in range(1, 28)},
     }
     if mode == 'discovery':
         result['discovery_guard'] = 'SCOPED_PASS' if passed else 'FAIL'
@@ -258,6 +263,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
                                  'production_node_n3': 'ACTUAL_CLI_PROCESS' if passed else 'NOT_ACCEPTED',
                                  'wire_adversary': 'REAL_CRYPTO_INDEPENDENT_OF_APP_PREFLIGHT'})
         result['matrix'] = {f'N3-{i:02}': ('SCOPED_PASS' if passed else 'NOT_ACCEPTED') for i in range(1, 27)}
+        result['matrix']['N3-27'] = 'NOT_RUN_AUTO_CORE_ENTRY'
         for row in ('N3-22', 'N3-24'): result['matrix'][row] = 'NOT_RUN_PHYSICAL_NATIVE_PUBLIC'
         result['clock_evidence'] = {
             'short_intent_expiry': 'REAL_WALL_CLOCK_TCP' if got.get('TestN3ServerRejectsIndependentProofScopeAttacks/expired-intent') == 'pass' else 'NOT_ACCEPTED',
@@ -281,6 +287,16 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         result['n3_acceptance'] = 'PARTIAL_CASE' if passed else 'FAIL'
         result['reason'] = 'One explicitly selected integration case; no aggregate runtime acceptance.'
         result['case'] = case
+    if mode == 'auto':
+        result['scope'] = 'actual-App-core-auto-entry-selected-status-and-durable-uncertainty-only'
+        result['auto_status_acceptance'] = 'SCOPED_PASS' if passed else 'FAIL'
+        result['reason'] = 'Two explicit test-triggered production automatic entry cases; prior 84-case inventory and Windows timer not run by this selector.'
+        result['actors'].update({'production_app_n3': 'ACTUAL_CORE_PROCESS' if passed else 'NOT_ACCEPTED',
+                                 'production_node_n3': 'ACTUAL_CLI_PROCESS' if passed else 'NOT_ACCEPTED'})
+        result['matrix']['N3-27'] = 'SCOPED_AUTO_CORE_ENTRY_ONLY' if passed else 'NOT_ACCEPTED'
+        result['matrix']['N3-20'] = 'SCOPED_SELF_CANCEL_NODE_CLI_CONTINUITY_ONLY' if passed else 'NOT_ACCEPTED'
+        result['Windows_30_second_scheduler'] = 'NOT_RUN'
+        result['full_N3_lease_natural_expiry_and_Node_continuity'] = 'NOT_RUN'
     save(run / 'result.json', result)
     save(run / 'artifacts.sha256.json', {p.name: sha(p) for p in sorted(run.iterdir()) if p.is_file() and p.name != 'artifacts.sha256.json'})
     print(f'N3 harness evidence: {run}')
@@ -353,6 +369,8 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'case-selector':
         if sys.argv[2] not in RUNTIME_TOP: raise SystemExit('Unknown runtime case')
         print('^' + sys.argv[2] + '$')
+    elif sys.argv[1] == 'auto-selector':
+        print('^(' + '|'.join(sorted(AUTO_EXPECTED)) + ')$')
     elif sys.argv[1] == 'ubuntu-prepare':
         print(ubuntu_prepare(*(Path(arg) for arg in sys.argv[2:5])))
     elif sys.argv[1] == 'ubuntu-finish':

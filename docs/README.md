@@ -9,12 +9,19 @@ Read the published [community technical site](https://cicada-fabric.github.io/)
 or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
 current 0.0.5 source, deployment boundaries and remaining acceptance work.
 The native Windows-first App has N2 Hub/App core with independent Linux protocol
-SCOPED_PASS (131 events, zero failures/skips); native Windows remains NOT_RUN.
+SCOPED_PASS (131 events, zero failures/skips). The old `e426` package has
+user-reported partial Windows/public-HTTPS/Ubuntu Node enrollment and heartbeat
+results; complete native security and visual acceptance remain pending.
 The bounded N3 Node authority/status slice is implemented under
 [app-node-authority-v1](hub-app-node-authority-contract.md), schema 63, using the
 [identity/Node-only Hub](hub-nodes-only.md) with Control inference disabled.
-Independent [actual-process acceptance](native-app-validation.md#n3-independent-process-acceptance)
-passed 84/0/0 on bookworm and 84/0/0 using the same binaries in Ubuntu 24.04.4.
+Latest [actual-process acceptance](native-app-validation.md#n3-idle-decay-and-automatic-status-follow-up)
+passed 84/0/0 plus a separate 2/0/0 automatic status-entry gate on reviewed
+`854a594` with dirty QA inputs. The earlier same-binary Ubuntu 24.04.4 84/0/0
+receipt retains its original source. The App reads selected-Node status every
+30 seconds only under existing finite permission; it does not renew permission.
+The old Windows package's automatic decay failed in user observation; the new
+window behavior awaits physical retest.
 Live canvas, App SSE, real native Runtime and physical acceptance remain incomplete.
 It is not a browser product or a
 released installer. Development stays in 0.0.x until user acceptance; the

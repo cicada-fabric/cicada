@@ -1343,3 +1343,196 @@ Hub contract metadata checks pass. The full code and scripts remain exactly
 those executed above; only these existing documentation files were finalized
 after the gates. No push, merge, deployment or real-key rotation is authorized
 or performed by this acceptance checkpoint.
+
+### N3 idle decay and automatic status follow-up
+
+2026-10-17. Latest bounded Linux acceptance is **84/0/0 plus a separate 2/0/0**
+on reviewed App source `854a5943285b413ebf6d133af3685dd7f300c929` with dirty QA
+inputs. Windows automatic redraw/polling has **not** been accepted. Earlier
+`e81b9dc`/`e42640d` records, including the Ubuntu same-binary 84-event run, keep
+their original source and artifact identities.
+
+The user reported that the delivered `e42640d` Windows App kept showing Node
+online after the Node had been stopped for more than 130 seconds. Root reported
+no Node agent on the development host at 09:43 UTC. Clicking **Check Node status**
+then displayed stale status. Record these separately: **USER_REPORTED_FAIL** for
+idle automatic decay, **USER_REPORTED_PASS** for manual refresh. No exact Windows
+UTC clock/offset, last authenticated heartbeat/deadline, or running-executable
+hash was captured in this observation. Clock skew has not been excluded, and
+the specific cause of that physical observation remains unconfirmed.
+
+The old `e426` package also has **USER_REPORTED_PARTIAL** Windows/public-HTTPS
+initial setup and real Ubuntu Node binding/heartbeat observations; Root
+separately observed processes/binding read-only. These earlier results are not
+erased by the NOT_RUN labels for the corrected binary. They do not constitute
+complete Windows security/visual acceptance, a Node user-service/reboot test,
+natural full-lease continuity or real native Runtime execution.
+
+The prior 84-event test waits real wall time, then sends an explicit command
+that calls `Controller.Snapshot()`. It establishes Core decay when queried,
+without a new network request. It does not run a Windows window, its deadline
+wakeup or redraw. Earlier native gates ran Linux tests and cross-built Windows;
+the Windows-tagged renderer was not executed. Their scoped passes remain valid
+and do not establish native no-input refresh.
+
+The App owner fixed a reproducible code window in `530f5d5c24d16887bc9ef28be5a14beab03e920a`:
+a snapshot can still be online when sampled, but layout's later clock check can
+cross its heartbeat deadline and omit that redraw. The preserved equivalent
+old future-only scheduler, exercised through real Gio Router/Frame processing,
+selects a later eight-minute access deadline at D/D+1ns. Final-test overlay RED
+retains **11 fail / 6 pass**, exit 1. This is a deterministic code reproduction,
+not execution of the old Windows binary or proof of the user's clock state.
+
+The production Windows layout now calls the same portable scheduling helper
+tested through Gio Router. Due still-live projections request an immediate
+resample; already-stale/expired fields do not create an idle frame loop. Saved
+Node information remains visible through login/recovery and expired status
+access. Connection facts, current permission and current observation have
+separate labels; expired App access does not instruct Node reinstallation.
+Status actions remain a subset of `AvailableActions`, with recovery first.
+The producer's dirty Go/module manifest was
+`685bdf3a81dafed9ec2a754a954520b1be298e81e9a6ffd5c29569f9918eded1`;
+normal/race each **95 UI/native + 1 Core clock = 96 passed**, vet/crossbuild 0.
+
+`854a594` adds bounded **30-second selected-Node polling**, not SSE. Its producer
+normal/race each passed **104 UI/native + 35 Core = 139**, with no failures or
+skips, vet/Windows build 0, stable dirty Go/module manifest
+`8700f5d8cc629b64ab71a251ceccbc0acf5ae890df1e46547fce8a033a01e7de`.
+The Core rechecks exact scope, grant, full approved binding, current login,
+epochs, errors and pending/review state under `actionMu`. UNKNOWN/STALE Node
+liveness may be polled while authority is valid. Each new request is durably
+saved before POST; only status is automatic. It performs no Owner consent
+signature, prepare/complete, confirmation, renewal or automatic recovery.
+
+Foreground controls run before a due tick. Already-started reads share one
+short busy period with all manual operations, including profile changes; there
+is no preemption or queued scope handoff. The read context is limited to the
+lesser of ten seconds and remaining authorization. Minimize pauses future
+ticks without cancelling a valid in-flight read; close cancels it. Old-worker
+state/flag writes finish before another foreground operation can start.
+Uncertain or unauthenticated outcomes pause new requests. Complete authenticated
+terminal receipts settle normally; a cancelled/late authenticated receipt can
+be applied historically without becoming current authority.
+
+QA independently reviewed the deadline, permission and worker-lifetime changes.
+Because the second checkpoint also modifies shared `sendNodePending` cancellation
+and historical-apply handling, QA reran the complete old 84-event suite before
+running the two new actual automatic-entry cases. Code/scripts/pins/docs stayed
+frozen throughout both gates; only task-owned `.local` evidence/state changed.
+
+| Independent gate | Result and scope |
+| --- | --- |
+| `run-20261017T104732Z-c7hreg` | **84 pass / 0 fail / 0 skip**; all five lanes exit 0; full bounded Core/Hub/Node regression including real N2 natural expiry and 120-second Core decay |
+| `run-20261017T110049Z-3BtJeC` | **2 pass / 0 fail / 0 skip**; all five lanes exit 0; real production automatic Core entry through the actual App child, TCP, PQ crypto, encrypted vault and SQLite; explicit test triggers, not a Windows timer |
+
+Both gates have identical source manifest
+`bc3ef0dc1d4dc4074279978b9032590e20bc6b4d8f704ecf034e8e50f1d6cba7`,
+67 matching strict production/contract pins, and identical test/CLI binaries.
+The source is **854a594 plus dirty QA code/scripts**, never attributed solely
+to HEAD. The pinned Go 1.27.2 bookworm image, network-none/read-only-root/UID1000
+isolation, read-only shared module closure and locked private build cache are
+unchanged. Owned containers were absent at completion. No shared or public Hub,
+real Owner/device/Node key, deployment or production state was changed.
+
+The two new cases prove:
+
+- `TestN3ActualAutomaticStatusKeepsScopeAndSelfCancelledNode`: wrong review,
+  binding version, Owner, Node and origin reject with INVALID_ACTION, zero HTTP
+  and unchanged encrypted-vault bytes. An App-only logical sixteen-minute guard
+  test also has zero durable/network effects; it is not a natural N3 expiry wait.
+  Valid UNKNOWN status is readable; a real relay-only CLI heartbeat becomes
+  online through the automatic entry. Automatic segments send only the selected
+  grant's status POST and preserve grant/head, budget and Client counters.
+- In that same case, manual SELF_CANCEL stops new App reads while restarting
+  the original Node CLI still commits a later heartbeat. Node ID, binding/version,
+  key ID/fingerprint/epoch, complete identity-file bytes and relay-token bytes
+  remain unchanged. Subsequent READ_EXISTING preview/Owner consent is explicitly
+  **manual**, for the same saved binding with zero confirmation budget. Its new
+  target works through the automatic entry. Only then, the stopped private DB
+  has that one ACTIVE grant changed to REVOKED/SECURITY_FENCE. The actual Hub's
+  signed revoked status settles without pending uncertainty; later triggers send
+  no new packet or vault write. Owner/device/Node bindings are not revoked by
+  this fixture fault.
+- `TestN3ActualAutomaticStatusLossFreezesTicksUntilExactRecovery`: after a real
+  status response commits and is lost, three later triggers send nothing and
+  preserve the vault image. Actual App/Hub SIGKILL and restart retain the exact
+  unresolved ciphertext; three more triggers still send nothing. Explicit manual
+  recovery retries the original bytes and receives the identical authenticated
+  receipt, then explicitly refreshes context and grant. Only afterward can one
+  new automatic status be sent. Original full App/Owner identities remain intact.
+
+The original stopped synthetic N2 template was cloned for the 84-event run;
+its source tree still hashes to
+`5f91ab669b3818526a52bd2648a5e3248cc604210d8d4dd87cb0ca64cc016037`.
+The two automatic cases use new isolated synthetic fixtures. SELF_CANCEL
+continuity is now an actual Node CLI result; Node continuation across a **full
+natural fifteen-minute N3 lease/session expiry remains NOT_RUN**. Code review
+shows Node credentials/relay heartbeat do not depend on ordinary App grant
+expiry, but this is not a substitute for that elapsed-time test. Explicit
+security revocation remains effective; Node-Control also checks its enrolled
+Client device's ACTIVE state, so this is not a claim that all App-device state
+is irrelevant to Node operation.
+
+| Artifact under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T104732Z-c7hreg/result.json` | `fb81e7cdf4b0a7733cedb38c9bcb194195dd549a6251d3bd17a141118c950d15` |
+| Same run's `artifacts.sha256.json` | `ee9a0a3894abf19c19cc74cef2b207271aafb40a9aea6e7b91c99f56a7f20441` |
+| `evidence/n3-acceptance/run-20261017T110049Z-3BtJeC/result.json` | `f34cb5b9641307d02e1e653b342b157f500d3191147d897be1e70492891567de` |
+| Same run's `artifacts.sha256.json` | `c9d8496390627b6a7e8c8723589160e0294647dcbc103035d272bf73aeacd376` |
+| Both runs' matched `n3.test` | `89b9fb8b1bfbf0d17cfaf0b681b6cd6670674af7fc200fee04af3be0a1ae9c54` |
+| Both runs' matched acceptance `cicada` CLI | `867fd1c9610764dde6fecee5b83e7e621d16fe2a167ae07ac81a5d4bb1554da8` |
+| App producer deadline/UX `evidence/n3-app/native-status-20261017-fu0fc8pv/validation.json` | `9047e02dc0a9c7131ca96f0d8282242fc62b291cd7e1093508c31dcbd87fe45e` |
+| App producer auto `evidence/n3-app/auto-observation-20261017-z_8hgpqy/validation.json` | `71235407edbf5760890ca6d82bece33dad2fb6bb4bac75a532d4ef71d69cb13a` |
+
+Reproduce the two independent scopes sequentially:
+
+```sh
+CICADA_N3_AGED_SEED=/home/zyf/Cicada/.local/state/n3-acceptance/run-20261017T072753Z-DKv6h2/retained-aged-n2 \
+  scripts/test-native-app-n3.sh --require-n3
+scripts/test-native-app-n3.sh --auto-status-only
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/test_native_app_n3_evidence.py
+```
+
+The first selector requires all original 84 events and does not accept N3-27.
+The second requires exactly its two new events and records
+`auto_status_acceptance=SCOPED_PASS`; its `n3_acceptance=NOT_RUN` means the
+84-event suite was not executed **by that selector**. Neither selector accepts
+Windows scheduler behavior. Exits remain 0 for the declared successful scope,
+1 for gate failure, 2 for prerequisite/selector failure. Skips, zero matching
+tests, changed source/pins or owned resource leaks fail closed. Parser tests:
+**13 passed**, including rejection of auto-only promotion to full N3/Windows.
+
+Root independently completed clean-854 gates. The first native attempt used an
+older read-only module cache missing dependencies; it is retained as a **setup
+FAIL**, not a product-test failure or pass. Stable closure rerun passed. Root's
+Go-only native source fingerprint
+`86fbebb7a34a830de89320705271a6c8e2cf6f8301792803dce9e3212b6af8a8`
+and QA's full input fingerprint above are different inventories.
+
+| Root receipt under `/home/zyf/Cicada/.local/evidence/n3-idle-decay/run-20261017T094657Z-93244d` | Source/result | SHA-256 |
+| --- | --- | --- |
+| `native/run-20261017T104907Z-o8vqd4/validation.json` | Clean 854; old-cache setup FAIL, retained | `8b1e7cf568b535c8d3922d8212cb35be3c33f60d1a85ac29cc19e44ccea9fd2c` |
+| `native-stable-cache/run-20261017T105049Z-zya4KY/validation.json` | Clean 854; **303/0/0**, stable source, Windows crossbuild/list exit 0; native execution NOT_RUN | `92bad594c3bcc32816dde11682fc9f4f585d4f1454a7edec53397f68ba1d51cd` |
+| `client-interop/result.json` | Clean 854; disposable standard Client interop PASS/exit 0, owned cleanup | `1525804e70d0d43b800572c603990d989d42f28df9ae8abc1dc61ed6f7b7d0d8` |
+
+The candidate Windows App is built from **clean 854a594**, 13,387,264 bytes,
+SHA-256 `e081168f2791b38d055a884b8334fefa63cba862a579b501b702decba55d301a`.
+QA independently rehashed that file. Root verified PE64 GUI, Go/module inputs
+and source stability. Its revision/source fingerprint are bound by an
+**external SHA-bound source/packaging manifest**: this App does not reference
+`buildinfo`, and revision/fingerprint linker values were not embedded in the
+executable. Earlier wording about stamped App artifacts was not verified and
+must not be treated as proof. Historical receipts remain unchanged. CLI/Hub
+embedded metadata is separate; the App binary is attributed to clean 854, not
+to a later QA-only documentation/test commit.
+
+No confirmed blocker remains in the executed bounded Core/TCP scope. The old
+Windows idle failure remains USER_REPORTED_FAIL, manual refresh remains
+USER_REPORTED_PASS, and corrected native no-input redraw, actual 30-second
+polling, complete native security and visual/interaction review remain
+**NOT_RUN pending physical retest**. New-artifact DPAPI/ACL/GUI execution is not
+accepted by a crossbuild. Windows clock skew remains unresolved. Old-package
+Windows/public HTTPS/Ubuntu initial flow remains USER_REPORTED_PARTIAL; physical
+Node user-service/reboot, full natural N3 expiry/Node continuity, real Codex/
+Runtime execution, new-package public HTTPS, strict PQTLS, live canvas/SSE,
+installer and N4 remain unaccepted.

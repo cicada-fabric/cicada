@@ -144,6 +144,24 @@ class PreparationEvidenceTests(unittest.TestCase):
                                                     for name in source['expected_tests']))
         return run, artifacts, ubuntu
 
+    def test_automatic_entry_scope_does_not_promote_old_runtime_or_Windows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts = self.fixture(Path(tmp))
+            (run / 'harness.log').write_text('\n'.join(json.dumps({'Action': 'pass', 'Test': name})
+                                                        for name in sorted(ev.AUTO_EXPECTED)))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ev.finish(run, artifacts, 'synthetic-image', False, False, 'auto'), 0)
+            result = json.loads((run / 'result.json').read_text())
+            self.assertEqual(result['auto_status_acceptance'], 'SCOPED_PASS')
+            self.assertEqual(result['n3_acceptance'], 'NOT_RUN')
+            self.assertEqual(result['Windows_30_second_scheduler'], 'NOT_RUN')
+            self.assertEqual(result['matrix']['N3-19'], 'NOT_RUN')
+            self.assertEqual(result['matrix']['N3-27'], 'SCOPED_AUTO_CORE_ENTRY_ONLY')
+            with (run / 'harness.log').open('a') as f:
+                f.write('\n' + json.dumps({'Action': 'skip', 'Test': next(iter(ev.AUTO_EXPECTED))}))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ev.finish(run, artifacts, 'synthetic-image', False, False, 'auto'), 1)
+
     def test_full_runtime_requires_all_events_and_attributes_clock_per_case(self):
         with tempfile.TemporaryDirectory() as tmp:
             run, artifacts = self.fixture(Path(tmp))

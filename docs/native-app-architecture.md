@@ -102,7 +102,7 @@ The bounded sequence is:
 |---|---|---|
 | N1 — native foundation | Gio Windows UI source; typed Hub identity verification; account claim/login/inspect/logout; separate Owner and App-device identities; AES-GCM vault and durable exact-packet state; truthful Root/Manager pending state. | Partial in software 0.0.5. The app is not a released installer or an accepted Windows program. |
 | N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Hub/App core implemented under `owner-activation-v1`, schema 62; independent Linux protocol gate SCOPED_PASS (131 test events, zero failures/skips). Native Windows remains NOT_RUN. See the [contract](hub-owner-activation-contract.md) and [receipts](native-app-validation.md#n2-hubapp-integration). |
-| N3 — authorized Hub/Node workspace | Compose existing Hub/Node Guard, explicit Node preview/confirmation, target-only status and durable recovery in the native App. | Bounded `app-node-authority-v1` App core/UI and `serve --hub-nodes-only` implemented, schema 63. Independent actual App-core/Hub/Node process gates: 84/0/0 on bookworm and the same binaries 84/0/0 in Ubuntu 24.04.4; SCOPED_PASS. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. See the [matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix) and [receipts](native-app-validation.md#n3-independent-process-acceptance). |
+| N3 — authorized Hub/Node workspace | Compose existing Hub/Node Guard, explicit Node preview/confirmation, target-only status and durable recovery in the native App. | Bounded `app-node-authority-v1` App core/UI and `serve --hub-nodes-only` implemented, schema 63. Latest reviewed `854a594` plus dirty QA inputs: Linux 84/0/0 and separate automatic status-entry 2/0/0, SCOPED_PASS. Earlier Ubuntu 24.04.4 84/0/0 retains its own source. Windows automatic decay had a user-reported failure; new window behavior awaits retest. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. See the [matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix) and [receipts](native-app-validation.md#n3-idle-decay-and-automatic-status-follow-up). |
 | N4 — compatibility retirement | Retire browser product surfaces and public Client-facing names after equivalent App behavior; Hub public `/` returns 404. | Not implemented. Preserve frozen wire names and historical evidence. |
 
 The local vault uses AES-256-GCM with an authenticated, scope-bound envelope.
@@ -136,6 +136,38 @@ availability or native Runtime execution. A newly approved Node without a valid
 heartbeat for its current binding is UNKNOWN. After a Node stops, its last
 accepted heartbeat remains CONNECTED until the original 120-second deadline,
 then becomes STALE. Cached observations decay against that heartbeat time.
+
+The saved Node card is a persistent connection fact. Account sign-in and the
+App's finite status access can expire without reinstalling or re-pairing that
+Node. Current status, saved binding and current permission are shown separately;
+expired access does not mean the Node left the Hub. Explicit device, key,
+credential or binding revocation still applies. Actual relay-only restart after
+App self-cancellation preserves Node identity/credential and commits a later
+heartbeat; continuation across a full natural fifteen-minute N3 lease expiry
+has not been run.
+
+The native renderer schedules the earliest relevant deadline and immediately
+resamples a still-live snapshot that crossed its deadline during layout.
+Historical expired fields do not keep requesting frames. With an existing
+valid login and selected-Node grant, the App also schedules a status read every
+30 seconds. This is polling, not App SSE. The Core checks the exact target and
+full binding under its action lock, persists each encrypted request before
+POST, and never renews a grant or confirms another Node. Unknown/stale liveness
+does not prevent a read while authority is still valid.
+
+Foreground controls run before a due background read. Once a read starts,
+manual operations including profile changes share its short busy period; its
+context budget is at most ten seconds and never exceeds remaining authority.
+There is no foreground preemption or queue. Minimizing pauses future ticks;
+closing cancels the read. Unauthenticated or uncertain outcomes retain the
+original packet and stop new automatic requests until explicit recovery and
+fresh inspection. Portable Gio Router tests and real Core/TCP tests cover these
+layers; they do not establish the new artifact's Windows event-loop behavior or
+exclude Windows clock skew in the reported defect. The older `e426` package has
+user-reported Windows/public-HTTPS/physical Ubuntu initial binding and heartbeat
+observations, plus Root's read-only process/binding observations. These partial
+results do not establish corrected Windows automation, full native security or
+visual review, Node user-service/reboot or full-lease continuity.
 
 Focused `appvault` and `appkeys` tests, race tests, vet, OpenSSL-generated
 synthetic PEM import and Windows amd64 cross-compilation have passed on a dirty

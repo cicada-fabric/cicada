@@ -16,10 +16,11 @@ for arg in "$@"; do
  case "$arg" in
   --require-n3) required=true ;;
   --runtime-core) mode=runtime ;;
+  --auto-status-only) mode=auto ;;
   --case=*) mode=case; case_name="${arg#--case=}" ;;
   --discovery-only) mode=discovery ;;
   --seed-expiry) mode=seed ;;
-  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
+  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --auto-status-only | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
  esac
 done
 if [[ "$required" == true && "$mode" != preparation && "$mode" != runtime ]]; then
@@ -89,6 +90,7 @@ if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-te
  selector='^TestN3Harness(RealHubReplyRecovery|DelayedPacketCancellation|CommitBeforeReplyCrashWindow|ActualAppBootstrapAndResume|ActualAppVaultCommitBarrier)$'
  if [[ "$mode" == discovery ]]; then selector='^TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets$'; fi
  if [[ "$mode" == seed ]]; then selector='^TestN3SeedRetainedN2Fixture$'; fi
+ if [[ "$mode" == auto ]]; then selector="$(python3 "$repo_root/scripts/native_app_n3_evidence.py" auto-selector)"; fi
  timeout=120s
  if [[ "$mode" == runtime ]]; then
   selector="$(python3 "$repo_root/scripts/native_app_n3_evidence.py" runtime-selector "$required")"
