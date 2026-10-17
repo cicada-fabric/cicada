@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
@@ -34,14 +35,38 @@ func (b *machineAgentJoinBridge) publishJoinedLocalEndpointKey(joined *fabric.Jo
 		harness.Canonical(card.Harness) != "codex" {
 		return errors.New("local Join key publication requires the current native binding")
 	}
-	identity, err := nodekeys.LoadOrCreate(machineNodeStateDir(b.stateDir, b.nodeID), card.EndpointID)
+	stateDir := machineNodeStateDir(b.stateDir, b.nodeID)
+	state, err := nodekeys.OpenCryptoState(stateDir)
+	if err != nil {
+		return err
+	}
+	defer state.Close()
+	required, err := state.NativePairPolicyRequired(b.ctx, card.GroupID)
+	if err != nil {
+		return err
+	}
+	var identity *e2ee.Identity
+	var proof []byte
+	var pairID string
+	if required {
+		policy, err := state.NativePairPolicyForGroup(b.ctx, card.GroupID)
+		if err != nil {
+			return err
+		}
+		var retained nodekeys.GroupEndpointKeyCandidate
+		identity, retained, err = prepareNativePairLocalCandidate(b.ctx, state, stateDir, *policy, card, strings.TrimSpace(joined.Endpoint.Owner))
+		if err != nil {
+			return err
+		}
+		proof, pairID = retained.Attestation, policy.PairID
+	} else {
+		identity, err = nodekeys.LoadOrCreate(stateDir, card.EndpointID)
+		if err == nil {
+			proof, err = identity.SignEndpointKeyAttestation(card.EndpointID, card.PrincipalID, card.NodeID, card.BindingID, card.BindingEpoch)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("load joined Endpoint key: %w", err)
-	}
-	proof, err := identity.SignEndpointKeyAttestation(card.EndpointID, card.PrincipalID,
-		card.NodeID, card.BindingID, card.BindingEpoch)
-	if err != nil {
-		return fmt.Errorf("attest joined Endpoint key: %w", err)
 	}
 	payload, err := json.Marshal(struct {
 		Attestation json.RawMessage `json:"attestation"`
@@ -65,6 +90,13 @@ func (b *machineAgentJoinBridge) publishJoinedLocalEndpointKey(joined *fabric.Jo
 	}
 	if !sameMCPKeyPublic(candidate.Public, identity.Public()) {
 		return errors.New("Hub returned a different public key for the joined Endpoint")
+	}
+	if pairID != "" {
+		accepted := nativePairPublishedCandidate(candidate)
+		accepted.GroupID = card.GroupID
+		if err := state.ConfirmNativePairLocalCandidate(b.ctx, pairID, accepted); err != nil {
+			return err
+		}
 	}
 	return nil
 }

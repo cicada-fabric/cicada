@@ -87,6 +87,59 @@ Known-pair rejection uses the shared dedicated fence and original DTO/packet
 target validator. A generic result cannot replace its no-effect proof, and an
 outer reconcile outcome cannot contradict its nested authenticated fence.
 
+## Independent Node-local checkpoint
+
+The later Node-local checkpoint is separate from the App consumer above. It
+extends `internal/nodekeys` crypto-state schema 5 to 6 and adds small, currently
+unwired Node helpers. It does not change the public protocol, replace the
+existing Join/Relay implementation, or establish an available Pair workflow.
+
+The local policy commits the original bootstrap proof, pinned Hub identity,
+required-policy marker and first credential/control-binding versions together.
+The Owner key must already have independent local trust; a Hub response cannot
+install it. Missing evidence for a required Group, changed scope and revoked
+local Owner trust reject fresh work. Ordinary Groups retain their existing path.
+
+Candidate publication retains the original public key and exact signed
+attestation before POST. A missing original private-key file cannot silently
+create a replacement once its marker exists. The retained candidate version
+stays zero until the caller has checked the actual matching acknowledgement.
+Join-selection helpers accept only Pair ID and slot from tool arguments; the
+original SID/workspace must come from the checked native context. These helpers
+are not yet connected to production MCP dispatch.
+
+Durable reservations enforce four root ASKs, four replies, eight messages, one
+outstanding root ASK, 8 KiB per plaintext and 64 KiB total plaintext, 128 KiB per
+ciphertext and 1 MiB total ciphertext, and eight native submissions. UNKNOWN,
+restart and cancellation do not refund their message or byte charges. Only a
+matching authenticated admission or cancellation/expiry outcome may settle the
+corresponding request. A reserved reply alone does not close its ASK.
+
+An `existing=true` reservation is historical lookup/recovery metadata, never a
+new send or queue permission. Production callers still need current peer
+evidence, the independent Owner pin and all routed scope checks, including a
+recheck after acquiring the original writer. An existing submission must use
+its retained writer ledger and must not enqueue another invocation. Actual
+production send/injection callers remain outside this checkpoint.
+
+Reopening an accepted local policy after the ten-minute Join window preserves
+its original proof and one-hour peer deadline; a previously unknown policy
+cannot first enter after that window. This is not proof of a live native or
+Network-access lease. Existing MCP Group heartbeats run every 30 seconds;
+restart checks the cached original binding through whoami and heartbeat and
+does not silently rejoin. Ordinary Network renewal rotates the access epoch,
+so it cannot stand in for renewal of a Pair's already signed access identity.
+Five-minute native/access lease continuity and its peer-deadline ceiling need
+their own Hub integration evidence.
+
+The public Current carrier and production Join receipt application remain
+unwired. Historical accepted Join recovery must precede a new Describe/Join,
+without replacing the original SID, binding or key. The legacy peer-key view
+may omit the receiver SID; current SID checks must use actual Current metadata,
+not fill missing live data from the signed plan. Public Join/ASK tool results
+must remain small; full bootstrap/Owner proofs, internal peer evidence and
+tokens must not appear in model results.
+
 ## Verification scope
 
 App-local tests use real shared PQ envelopes, Owner proofs and encrypted vault

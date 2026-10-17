@@ -248,8 +248,8 @@ func TestCryptoStateV1UpgradePreservesSequenceOutboxAndReplay(t *testing.T) {
 	if err := state.db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton = 1`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 5 {
-		t.Fatalf("migrated schema version = %d, want 5", version)
+	if version != 6 {
+		t.Fatalf("migrated schema version = %d, want 6", version)
 	}
 	sequence, err := state.ReserveOutboundSequence(context.Background(), "ep_legacy", "key_legacy")
 	if err != nil || sequence != 12 {
@@ -373,8 +373,8 @@ UPDATE node_crypto_schema SET version = 3 WHERE singleton = 1`)
 	if err := state.db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton=1`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 5 {
-		t.Fatalf("schema after v3 migration = %d, want 5", version)
+	if version != 6 {
+		t.Fatalf("schema after v3 migration = %d, want 6", version)
 	}
 }
 
