@@ -16,3 +16,17 @@ func TestOwnerFormatFeedbackIsExplicitAndHasNoExternalToolWorkaround(t *testing.
 		t.Fatal("unsupported format was not clearly disclosed")
 	}
 }
+
+func TestBusyProfileFeedbackUsesExistingWindowWithoutRekeyInstructions(t *testing.T) {
+	for _, locale := range []Locale{English, Chinese} {
+		message := ErrorText(locale, "APP_PROFILE_IN_USE")
+		if message == ErrorText(locale, "APP_PROFILE_UNLOCK_FAILED") || !strings.Contains(message, "Cicada") {
+			t.Fatal("busy profile was presented as a failed unlock rather than an existing window")
+		}
+		for _, forbidden := range []string{"APP_PROFILE_IN_USE", "vault", "device code", "OpenSSL", ".lock", "新密钥", "设备码"} {
+			if strings.Contains(message, forbidden) {
+				t.Fatal("busy-profile feedback exposed internals or suggested new setup")
+			}
+		}
+	}
+}

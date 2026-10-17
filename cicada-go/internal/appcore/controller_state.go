@@ -11,6 +11,7 @@ import (
 )
 
 func (c *nativeController) loadIdentities(createDevice bool) error {
+	ownerKeyID, deviceKeyID := c.state.OwnerKeyID, c.state.DeviceKeyID
 	entries, err := c.vault.List()
 	if err != nil {
 		return err
@@ -54,7 +55,10 @@ func (c *nativeController) loadIdentities(createDevice bool) error {
 		c.device = identity
 		c.state.DeviceKeyID = identity.Public().ID
 	}
-	return c.persistState()
+	if c.state.OwnerKeyID != ownerKeyID || c.state.DeviceKeyID != deviceKeyID {
+		return c.persistState()
+	}
+	return nil
 }
 
 func (c *nativeController) persistState() error {
@@ -487,7 +491,9 @@ func (c *nativeController) publish() {
 	view.AvailableActions = c.availableActions()
 	c.populateSetup(&view)
 	c.populateNode(&view)
-	view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
+	if !c.profileRecoveryRequired {
+		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
+	}
 	if c.storageFault {
 		view.Phase = PhaseError
 		view.Account = AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown}
@@ -501,12 +507,18 @@ func (c *nativeController) publish() {
 }
 
 func (c *nativeController) availableActions() []ActionKind {
-	actions := []ActionKind{ActionConnect}
+	var actions []ActionKind
+	if !c.profileRecoveryRequired {
+		actions = append(actions, ActionConnect)
+	}
 	if c.cfg.DiscoverVaults != nil {
 		actions = append(actions, ActionDiscoverProfiles)
 	}
 	if len(c.profiles) != 0 {
 		actions = append(actions, ActionResumeProfile)
+	}
+	if c.profileRecoveryRequired {
+		return actions
 	}
 	if c.storageFault {
 		return actions

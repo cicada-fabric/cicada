@@ -5,6 +5,8 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_PROFILE_IN_USE":
+		id = msgProfileInUse
 	case "APP_NODE_UNAVAILABLE":
 		id = msgNodeUnavailableError
 	case "APP_NODE_CODE_INVALID":

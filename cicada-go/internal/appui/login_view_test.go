@@ -185,3 +185,28 @@ func TestPresentationInputResetUsesFullScopeAndAuthenticationEdge(t *testing.T) 
 		}
 	}
 }
+
+func TestBlockedProfileRecoveryNeverOffersFirstSetup(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	for _, code := range []string{"", "APP_PROFILE_IN_USE", "APP_PROFILE_DISCOVERY_FAILED", "APP_PROFILE_INVALID", "APP_PROFILE_HUB_UNVERIFIED", "APP_SESSION_STATE_INVALID"} {
+		t.Run(code, func(t *testing.T) {
+			s := accountDisplayFixture(now)
+			s.Account.State = appcore.AccountStateUnknown
+			s.ErrorCode = code
+			s.AvailableActions = []appcore.ActionKind{appcore.ActionDiscoverProfiles, appcore.ActionResumeProfile}
+			p := PresentScreen(s, now)
+			f := p.Flow
+			if p.InformationVisible || f.Stage != "profile-recovery" || f.Primary != appcore.ActionDiscoverProfiles ||
+				f.Username || f.Password || f.LimitedConsent || len(f.Secondary) != 0 {
+				t.Fatal("unavailable saved connection fell into new setup, credentials or identity generation")
+			}
+			if f := Flow(s); f.Stage != "profile-recovery" || f.Primary != appcore.ActionDiscoverProfiles {
+				t.Fatal("an alternate renderer bypassed the core profile recovery controls")
+			}
+		})
+	}
+	s := appcore.Snapshot{AvailableActions: []appcore.ActionKind{appcore.ActionConnect, appcore.ActionDiscoverProfiles}}
+	if p := PresentScreen(s, now); p.Flow.Stage != "connect" || p.Flow.Primary != appcore.ActionConnect {
+		t.Fatal("successful empty discovery stranded first setup")
+	}
+}

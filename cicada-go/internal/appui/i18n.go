@@ -189,6 +189,10 @@ const (
 	msgCheckSavedSession         messageID = "setup.check_saved_session"
 	msgContinueSavedSession      messageID = "setup.continue_saved_session"
 	msgPrivateRecoveryBody       messageID = "setup.private_recovery_body"
+	msgProfileRecoveryTitle      messageID = "setup.profile_recovery_title"
+	msgProfileRecoveryBody       messageID = "setup.profile_recovery_body"
+	msgRetrySavedConnection      messageID = "connection.retry_saved_connection"
+	msgProfileInUse              messageID = "error.profile_in_use"
 )
 
 const (
@@ -201,6 +205,10 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		msgProfileRecoveryTitle:      "Saved connection unavailable",
+		msgProfileRecoveryBody:       "Retry opening your saved connection before continuing.",
+		msgRetrySavedConnection:      "Retry saved connection",
+		msgProfileInUse:              "Your saved connection is in use by another Cicada window. Continue there, or close that window before retrying.",
 		msgSavedConnection:           "Saved connection",
 		msgCheckSavedSession:         "Verify your saved sign-in to continue.",
 		msgContinueSavedSession:      "Continue sign-in",
@@ -386,6 +394,10 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		msgProfileRecoveryTitle:      "暂时无法打开已保存连接",
+		msgProfileRecoveryBody:       "请重试打开已保存连接后继续。",
+		msgRetrySavedConnection:      "重试已保存连接",
+		msgProfileInUse:              "已保存连接正由另一个 Cicada 窗口使用。可继续使用原窗口，或关闭原窗口后重试。",
 		msgSavedConnection:           "保存的连接",
 		msgCheckSavedSession:         "验证已保存的登录后继续。",
 		msgContinueSavedSession:      "继续登录",

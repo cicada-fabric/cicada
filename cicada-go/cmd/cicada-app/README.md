@@ -332,3 +332,51 @@ The parent App receipt is an earlier source and is not this checkpoint's receipt
 Win32 rendering/interaction/high-DPI, Windows DPAPI/ACL, physical devices, native
 Runtime, Android and public HTTPS remain NOT_RUN for this change. Independent
 Docker process/interoperability acceptance belongs to the integration owner.
+
+Native startup now keeps first setup blocked until local profile discovery
+finishes successfully. A profile already open in another Cicada process has a
+distinct, neutral message and a retry button. Discovery, unlock, restored-state
+and Hub-verification failures cannot fall back to a new device code or Owner-key
+import/generation. Core rejects those actions too; this is not only a hidden
+button. Discovery publishes its profile list only after every candidate is
+authenticated, retaining earlier trusted locators if a later scan fails. A
+successful empty scan still allows genuine first setup. Explicit headless core
+callers without discovery retain their original connection-card retry after a
+busy lock is released.
+The reset snapshot publishes restricted recovery actions under the same lock,
+including during slow discovery/unlock, so an intermediate frame cannot offer
+first setup. Regression checks include concurrent frames across 1,000 resets.
+
+Reopening recorded identity IDs is read-only, so detecting an invalid saved
+session does not first rewrite that vault. Actual legacy key-ID completion and
+new-device identity creation still persist, and the real-PQ request fixture
+checks that both identity IDs and the exact request precede every POST.
+
+The regression includes an actual second Linux OS process contending for the
+encrypted synthetic fixture vault while the first keeps an uncertain request.
+After the first closes, retry preserves the same Owner/App keys and resends the
+original packet. This is a core/process result; it does not run two Win32 GUI
+windows or validate Windows DPAPI/ACL, Chinese font rendering or visual style.
+Those native checks remain separate; fonts and styling are deferred.
+
+Final validation used dirty `a14ad28` source in the fixed Go 1.27.2 builder:
+**290 normal events, 21 scoped core race events and 149 complete UI/native race
+events, zero failures/skips**. The core selector covers every new profile
+regression, including the second OS process, slow callbacks, concurrent reset,
+legacy key-ID completion and the real-PQ persistence-before-POST barrier. The
+normal run covers appcore, appui/native, appkeys and appvault. Linux/Windows vet
+and the Windows amd64 cross-build passed. The existing synthetic OpenSSL Owner
+fixture was mounted read-only; it is never deployment initialization material.
+
+Original, resume and final Go/module manifests (1,151 entries) all match
+`748629b4dd2e3c5adcefdcac58962beefa79e5636f349958c0848d7455755cf9`.
+Commands, exit codes, source manifests, fixture/artifact hashes and the final
+receipt are retained at
+`~/Cicada/.local/evidence/n3-app/profile-recovery-20261017-1vxt9vq5/atomic-final`.
+The broad legacy N2 race sweep was interrupted and is **not a pass**; its log and
+reason remain beside the scoped race receipts. Earlier candidates retain their
+own interrupted records, including the `final` directory's normal RED of
+279 passed, two failed events (parent plus invalid-session case) and one
+unconfigured optional-fixture skip. Those results do not transfer to this source.
+Standard disposable interop and Windows two-window GUI acceptance remain
+separate integration/native scopes.

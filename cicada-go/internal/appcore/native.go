@@ -25,7 +25,7 @@ func OpenNativeController() (Controller, error) {
 	// N1 already published vaults at this nested path. Keep it stable: moving
 	// local identities requires an explicit migration, never a silent rekey.
 	root = filepath.Join(root, "CICADA", "vaults")
-	return NewController(Config{HTTP: NewHTTPClient(), OpenVault: NewPlatformVaultOpener(root), DiscoverVaults: NewProfileDiscovery(root)})
+	return newController(Config{HTTP: NewHTTPClient(), OpenVault: NewPlatformVaultOpener(root), DiscoverVaults: NewProfileDiscovery(root)}, true)
 }
 
 // NewProfileDiscovery supplies untrusted scope locators only. The controller

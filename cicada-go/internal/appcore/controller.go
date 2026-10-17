@@ -55,6 +55,7 @@ type nativeController struct {
 	device                    *appkeys.Identity
 	owner                     *appkeys.Identity
 	profiles                  []localProfile
+	profileRecoveryRequired   bool
 	session                   *wire.SessionContext
 	sessionNeedsCheck         bool
 	sessionStored             bool
@@ -78,6 +79,10 @@ type nativeController struct {
 }
 
 func NewController(config Config) (Controller, error) {
+	return newController(config, false)
+}
+
+func newController(config Config, discoverBeforeConnect bool) (Controller, error) {
 	if config.HTTP == nil {
 		config.HTTP = NewHTTPClient()
 	}
@@ -85,7 +90,8 @@ func NewController(config Config) (Controller, error) {
 		config.Now = func() time.Time { return time.Now().UTC() }
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
-	c := &nativeController{cfg: config, lifetime: lifetime, cancel: cancel}
+	c := &nativeController{cfg: config, lifetime: lifetime, cancel: cancel,
+		profileRecoveryRequired: discoverBeforeConnect && config.DiscoverVaults != nil}
 	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
@@ -155,6 +161,9 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 		return ErrClosed
 	}
 	if action.AutoNodeStatus != nil && action.Kind != ActionRefreshNode {
+		return ErrInvalidAction
+	}
+	if c.profileRecoveryRequired && action.Kind != ActionDiscoverProfiles && action.Kind != ActionResumeProfile {
 		return ErrInvalidAction
 	}
 	if action.AutoNodeStatus != nil {
@@ -360,6 +369,12 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	create := activation != nil || material != nil
 	vault, err := c.cfg.OpenVault(ctx, scope, create)
 	if err != nil {
+		if errors.Is(err, appvault.ErrVaultBusy) {
+			// Native startup always has discovery. An explicit headless
+			// caller without it must retain its original-card retry path.
+			c.profileRecoveryRequired = c.cfg.DiscoverVaults != nil || len(c.profiles) != 0
+			return c.failProfileOpen(err)
+		}
 		return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
 	}
 	if vault.Scope() != scope {
@@ -473,6 +488,11 @@ func (c *nativeController) resetConnection() error {
 	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
+	if c.profileRecoveryRequired {
+		// A frame must never observe first-setup controls between reset
+		// and the next (possibly slow) discovery or unlock result.
+		c.snapshot.AvailableActions = c.availableActions()
+	}
 	c.snapshotMu.Unlock()
 	return nil
 }

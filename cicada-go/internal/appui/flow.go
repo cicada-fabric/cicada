@@ -22,6 +22,9 @@ func Flow(s appcore.Snapshot) SetupFlow {
 		}
 		return false
 	}
+	if has(appcore.ActionDiscoverProfiles) && !has(appcore.ActionConnect) {
+		return SetupFlow{Stage: "profile-recovery", Primary: appcore.ActionDiscoverProfiles}
+	}
 	if has(appcore.ActionRecover) {
 		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRecover}
 	}

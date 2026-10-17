@@ -277,6 +277,8 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 	}
 	rows := make([]layout.Widget, 0, 12)
 	switch flow.Stage {
+	case "profile-recovery":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.profile_recovery_title")), v.labelRow(appui.Text(v.locale, "setup.profile_recovery_body")))
 	case "connect":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
 		if len(s.Profiles) > 0 {
@@ -345,6 +347,9 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 	if label, ok := v.actionLabel(flow.Primary); ok && !(flow.Stage == "ready" && s.Node.Available) {
 		if !informationVisible && flow.Stage == "session-check" {
 			label = appui.Text(v.locale, "setup.continue_saved_session")
+		}
+		if flow.Stage == "profile-recovery" {
+			label = appui.Text(v.locale, "connection.retry_saved_connection")
 		}
 		rows = append(rows, v.actionButton(flow.Primary, label, s, flow))
 	}

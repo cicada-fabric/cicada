@@ -37,11 +37,11 @@ func readProfile(vault *appvault.Vault, scope appvault.Scope) (durableState, uin
 }
 
 func (c *nativeController) discoverProfiles(ctx context.Context) error {
+	c.profileRecoveryRequired = c.cfg.DiscoverVaults != nil
 	if err := c.resetConnection(); err != nil {
 		return c.fail(PhaseError, "APP_VAULT_CLOSE_FAILED", err)
 	}
-	c.profiles = nil
-	if c.cfg.DiscoverVaults == nil || c.cfg.OpenVault == nil {
+	if c.cfg.DiscoverVaults == nil {
 		c.publish()
 		return nil
 	}
@@ -49,6 +49,10 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 	if err != nil || len(scopes) > 64 {
 		return c.fail(PhaseLocked, "APP_PROFILE_DISCOVERY_FAILED", errors.New("local profile discovery unavailable"))
 	}
+	if len(scopes) != 0 && c.cfg.OpenVault == nil {
+		return c.fail(PhaseLocked, "APP_PROFILE_UNLOCK_FAILED", errors.New("local profile storage unavailable"))
+	}
+	var profiles []localProfile
 	seen := make(map[appvault.Scope]bool)
 	for _, scope := range scopes {
 		if seen[scope] {
@@ -57,7 +61,7 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 		seen[scope] = true
 		vault, err := c.cfg.OpenVault(ctx, scope, false)
 		if err != nil {
-			return c.fail(PhaseLocked, "APP_PROFILE_UNLOCK_FAILED", err)
+			return c.failProfileOpen(err)
 		}
 		_, _, readErr := readProfile(vault, scope)
 		closeErr := vault.Close()
@@ -68,11 +72,12 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 		if err != nil {
 			return c.fail(PhaseLocked, "APP_PROFILE_INVALID", err)
 		}
-		c.profiles = append(c.profiles, localProfile{scope: scope, view: ProfileSnapshot{
+		profiles = append(profiles, localProfile{scope: scope, view: ProfileSnapshot{
 			ID: strings.TrimSuffix(filepath.Base(path), ".vault"), Origin: scope.Origin,
 			AccountID: scope.AccountID, OwnerID: scope.OwnerID}})
 	}
-	sort.Slice(c.profiles, func(i, j int) bool { return c.profiles[i].view.ID < c.profiles[j].view.ID })
+	sort.Slice(profiles, func(i, j int) bool { return profiles[i].view.ID < profiles[j].view.ID })
+	c.profiles, c.profileRecoveryRequired = profiles, false
 	c.publish()
 	return nil
 }
@@ -89,6 +94,7 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 		return ErrInvalidAction
 	}
 	scope := selected.scope
+	c.profileRecoveryRequired = true
 	if err := c.resetConnection(); err != nil {
 		return c.fail(PhaseError, "APP_VAULT_CLOSE_FAILED", err)
 	}
@@ -96,7 +102,7 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	// origin. Discovery metadata and a filename alone never establish trust.
 	vault, err := c.cfg.OpenVault(ctx, scope, false)
 	if err != nil {
-		return c.fail(PhaseLocked, "APP_PROFILE_UNLOCK_FAILED", err)
+		return c.failProfileOpen(err)
 	}
 	state, version, err := readProfile(vault, scope)
 	if err != nil {
@@ -129,6 +135,7 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	if err := c.loadCurrentPendingResponse(); err != nil {
 		return c.failStorage("APP_PENDING_RESPONSE_INVALID", err)
 	}
+	c.profileRecoveryRequired = false
 	// Cached inspections are receipts, not current authorization. Recover an
 	// uncertain packet first, then ask for fresh authenticated session state.
 	c.requireSessionRecheck()
@@ -152,6 +159,14 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	}
 	c.publish()
 	return nil
+}
+
+func (c *nativeController) failProfileOpen(err error) error {
+	code := "APP_PROFILE_UNLOCK_FAILED"
+	if errors.Is(err, appvault.ErrVaultBusy) {
+		code = "APP_PROFILE_IN_USE"
+	}
+	return c.fail(PhaseLocked, code, err)
 }
 
 func (c *nativeController) requireSessionRecheck() {
