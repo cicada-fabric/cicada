@@ -668,3 +668,172 @@ the unsupported-input message without altering or silently replacing the key.
 Do not add shell decryption/signing as an ordinary-user workaround. Evidence
 may include IDs, public fingerprints, safe error/state codes and hashes;
 omit activation codes, passwords, private PEMs and session tokens.
+
+## Windows native security driver and user observations — 2026-10-17
+
+This is an additive record. The Oct 15 Linux test receipts, their failures,
+native NOT_RUN fields, original App/Hub delivery binaries and hashes above are
+unchanged. A user-reported observation is not an independently executed test.
+N2 identity/security evidence does not establish the full Node/business flow,
+N3, an installer, or overall system acceptance.
+
+### User-reported physical observations
+
+| Observation supplied through the integration owner | Classification and limit |
+| --- | --- |
+| Windows 11 Pro `10.0.26200`, x64; downloaded App/Hub hashes matched the Oct 15 delivery | USER_REPORTED artifact match. The locally retained delivery manifest is independently readable; the running remote process was not independently inspected by this acceptance task. |
+| User explicitly authorized wiping the old remote Docker Hub/state/workspace/image; one root systemd Hub now uses `/opt/cicada-n2`, origin `https://cicada.basil.xin` | New user-operated environment, not an acceptance fixture created by this task. Wipe/new initialization is not process-restart recovery, backup restore, legacy continuation, or preservation of the old Owner. |
+| Health reports version `0.0.5`, revision `079249dee906c84ead0d2d331eeb400ad018ea03`, `dirty=false`, source fingerprint `5534e9427457716370e62534c5a3a4bd51a76855e42ca8a1414013cc94775217` | Reported metadata matches the retained delivery. This is not remote executable attestation, a full HTTPS deployment gate, or native PQTLS evidence. Control-off launch arguments were not supplied in this receipt. |
+| App shows Owner ready, Root active, local Owner key present, pinned Hub HEALTHY, limited access confirmed, Log out available; management/canvas unavailable | USER_REPORTED initial native Windows/HTTPS identity flow PARTIAL and expected N2 UI boundary. This is not a new adversarial server Guard test or comprehensive visual review. |
+| After the integration owner's reopen / wrong-password / outage / expiry procedure, user says everything is as expected | USER_REPORTED overall procedural success. No per-case logs, unchanged account/Owner/device IDs, exact replay receipts, or post-relogin expiry snapshot were supplied; do not promote each negative/recovery case to independently verified PASS. |
+| App directly displays “This 15-minute access period has ended. It will not renew automatically. Access ends at 12:54” | USER_REPORTED natural expiry UI observed. Timezone, issue/check timestamps and a retained `N2CheckStart` were absent. This does not establish a measured 15-minute duration, backend rejection of a new protected operation, or proof that re-login cannot renew. |
+| Windows identity `VASTE\MAGI`; `Get-Acl` on `%LOCALAPPDATA%\CICADA\vaults` reports that Owner and `AreAccessRulesProtected=True` | USER_REPORTED direct positive owner/protected-DACL inspection of that root only. |
+| `icacls /T` succeeded for five entries: root, `CICADA` child, nested `vaults`, vault and vault lock. Each shows only user and SYSTEM FullControl; directories OI/CI, files no inheritance flags shown | USER_REPORTED positive ACE inspection for those five entries. Child Owner and Protected properties were not separately queried, so do not assert all five had those properties directly measured. The existing double-nested `CICADA\vaults\CICADA\vaults` layout is observed and is not relocated/reset. |
+
+Same-user DPAPI unprotect may be indirectly exercised by reported profile
+reopen, but there is no dedicated native test receipt yet. Cross-user DPAPI,
+synthetic negative ACL rejection/no-repair and the new native test driver below
+remain **NOT_RUN** until actual Windows results are collected. No existing
+Owner vault or keys were read/copied by this task, no live Hub fixture was
+created, and no identities, production paths, APIs or dependencies changed.
+
+### Standalone synthetic native security gate
+
+`internal/appvault/n2_native_windows_test.go` adds Windows-only acceptance tests;
+production `appvault` and App/Hub sources remain unchanged. Existing generic
+vault tests use the password protector and POSIX-style directory fixtures;
+they are not a native DPAPI gate. The selected new tests use only fresh
+synthetic data, never the App's default vault path or a network connection:
+
+| Required test | Native assertion |
+| --- | --- |
+| `TestN2NativeWindowsContext` | Actual token SID, ordinary-user classification (including deny-only administrator membership), Windows build and hashed machine identifier. |
+| `TestN2NativeWindowsProtectorRoundTrip` | Actual `NewPlatformProtector` / current-user CryptProtectData and CryptUnprotectData; fresh random synthetic 32-byte key; wrong entropy and corrupted blob reject. |
+| `TestN2NativeWindowsVaultAndACL` | Production Create/CAS/Close/Open/LoadState with DPAPI in a new synthetic scope; concurrent writer fence. Independent GetNamedSecurityInfo inspects directory, vault and lock: current-user owner, protected DACL, exactly user and SYSTEM full-control ACEs, directory OI/CI and file flags zero. |
+| `TestN2NativeWindowsACLRejectsTampering` | Four fresh synthetic fixtures: extra ACE on directory, vault or lock, and directory inheritance enabled. Production Open must reject; pre/post rejection SDDL and ciphertext remain unchanged. No real vault's ACL is modified. |
+| `TestN2NativeWindowsCrossUserProduce` | A wraps a fresh synthetic key and verifies its own DPAPI control, then publishes only ciphertext, public entropy and synthetic metadata. The new public transfer directory intentionally grants authenticated users read/execute, never write. Its ACL is distinct from the private synthetic vault's ACL. No plaintext key or Owner identity is exported. |
+| `TestN2NativeWindowsCrossUserVerifyA` | Another A process reads/hashes the exact persisted transfer bytes and successfully unwraps with identical entropy on the same machine. |
+| `TestN2NativeWindowsCrossUserRejectB` | An existing distinct ordinary Windows user must read/hash those same bytes, match machine/entropy, pass its own DPAPI positive control, then receive rejection from actual production UnwrapKey. File-access failure, same SID, unavailable/administrative B, changed input or failed positive control cannot count as cross-user PASS. |
+
+The PowerShell runner requires the exact seven-test inventory, required
+subcases, one native receipt per case, one overall completion and exit 0 per
+executed test. Missing tests, zero cases, skip/fail output, duplicate passes,
+nonzero exits and changed bundle hashes fail. There are no `TestWindows*`
+placeholder selectors: a no-match executable cannot pass. The reviewer-side
+Python checker separately re-parses logs, verifies the artifact index and
+matches A/B source/executable, fixture, entropy, machine and distinct SID.
+
+Build on Linux with the existing immutable Go image and module cache read-only:
+
+```sh
+CICADA_N2_GOMODCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable \
+  scripts/build-native-app-n2-windows.sh
+python3 -m unittest discover -s scripts -p test_native_app_n2_windows_evidence.py
+```
+
+The disposable Docker build has no external network, host ports or Hub. The
+task's own build cache is locked; modules are never modified. It runs Linux
+vault regressions, Windows vet and a Windows amd64/CGO-disabled test-executable
+cross-build. That executable requires **no Go installation on Windows**.
+Windows API execution is a separate NOT_RUN result until run there.
+
+Final build `windows-build-20261017T051446Z-gyZE5T` passed all four lanes
+(`version`, `linux-vault`, `windows-vet`, `windows-compile`), each exit 0;
+Linux vault tests recorded **12 pass, zero fail/skip**. Tested source is
+`b7ecd33c1db391f6f6f40b25ba4f7c2738cd5b54` plus the dirty acceptance-only
+changes, stable before/after build-input manifest
+`2f4c7ca6c44da8496c5b809807e13577da1201b6242484d313cfc8c289cc8f07`.
+This does not change the runtime provenance of the original App/Hub delivery.
+
+| New acceptance-only artifact | Path / SHA-256 |
+| --- | --- |
+| Build receipt | `/home/zyf/Cicada/.local/evidence/n2-acceptance/windows-build-20261017T051446Z-gyZE5T/result.json`; `a664c4f406d0fdd4fc3422ac4062a3d0ad4121725e358f62c904d3beb5acb0f9` |
+| Bundle directory | `/home/zyf/Cicada/.local/artifacts/n2-acceptance/windows-build-20261017T051446Z-gyZE5T/` |
+| Bundle ZIP | Same directory name plus `.zip`; `708702bb3e7974f6fde13e970796dd5c7185f3380e6a7cdaa4d7509f6fab8bdc` |
+| `cicada-appvault-tests.exe` | 7,356,928 bytes; `f4f95eca08011c9cad6b6f2ab54b78a3643044a1dc6537d17db86ea1629a6fac` |
+| `n2-native-windows-build.json` | `92717e481cd8b382ddb4ada4729218099745245d0a892a3c8c971a22c5cc5005` |
+| `run-native-app-n2-windows.ps1` | `da075228b51238a09f13091137b415d21b7cf73b27ccbd8b733cc9a95c716d94` |
+
+Additional check receipt
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/native-windows-checks-20261017-ewP5ob/result.json`
+has SHA-256 `d61418f74099a55752ac99802435c95478f8600ecf1f726dc828afc6e635e5cb`.
+It records **16 Python evidence tests** (11 new plus 5 existing), shell syntax
+success, and a real **Linux PowerShell 7.5.3** parser self-test rejecting six
+false-success inputs. The task-only tool archive was verified against the
+[official release hashes](https://github.com/PowerShell/PowerShell/releases/tag/v7.5.3),
+SHA-256 `5c74e0bbafd8be59e72267f05700fd6615344d9cf4d30460d9b6d12cd4a88a8c`.
+This checks parsing, not Windows APIs, Windows PowerShell 5.1 execution or
+native A/B process behavior; those remain NOT_RUN. No shared dependency cache
+or product dependency was modified to obtain that tool.
+
+The first build attempt `windows-build-20261017T050517Z-H13EVO` remains **FAIL**,
+exit 1: Docker's noexec `/tmp` prevented the Linux test executable from starting,
+so there were no Linux assertion results. Windows vet/compile did pass in that
+failed attempt. The runner was corrected to use an isolated task-state bind
+for `TMPDIR`; the complete rerun `windows-build-20261017T051046Z-6QiQSa` passed.
+The final run above adds ZIP packaging and repeats the complete four-lane gate.
+Failed and earlier successful receipts are retained rather than rewritten.
+
+### Native Windows commands and phase semantics
+
+Copy only the acceptance bundle (`cicada-appvault-tests.exe`,
+`run-native-app-n2-windows.ps1`, `n2-native-windows-build.json`,
+`native_app_n2_windows_evidence.py`, `SHA256SUMS`) to Windows. Preserve the
+integration owner's bundle/build-manifest hashes and verify them before use.
+Give both existing A and B accounts read/execute access to the **same hashed
+bundle**, for example by putting a copy in a fresh public acceptance folder.
+A's Downloads directory may be private. Do not copy a real App data directory,
+Owner vault, private key, or account credential to make B's test work.
+
+In Windows PowerShell, from that bundle directory under account A:
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\cicada-appvault-tests.exe
+Get-FileHash -Algorithm SHA256 .\n2-native-windows-build.json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-native-app-n2-windows.ps1 -Phase SelfTest
+$LASTEXITCODE
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-native-app-n2-windows.ps1 -Phase A
+$LASTEXITCODE
+```
+
+`ExecutionPolicy Bypass` here applies only to the invoked process; no permanent
+machine/user policy is changed. An enforced policy or unavailable ordinary B
+is a prerequisite limitation, not permission to weaken system policy or create
+accounts automatically. Phase A creates a unique evidence directory and a
+new `CommonDocuments\cicada-n2-native-synthetic-<run-id>` transfer directory;
+it prints the **fully populated B command**. No manual JSON, signatures or key
+handling are required.
+
+Sign in interactively to a **different existing ordinary account on the same
+machine**, with its profile loaded. Use the same verified bundle and copy the
+printed B command verbatim:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run-native-app-n2-windows.ps1 -Phase B -TransferFile '<printed synthetic transfer file>' -FixtureSHA256 '<printed SHA256>'
+$LASTEXITCODE
+```
+
+No ordinary B account means **cross-user NOT_RUN**. An admin account with an
+unelevated/deny-only token is still not ordinary B. The B runner returns 2 for
+that explicit prerequisite result without pretending a skipped test passed.
+Do not change the real App vault's ACL to obtain a cross-user result: the
+synthetic transfer blob is intentionally independently readable already.
+
+Phase A exit 0 means only A's local security tests and separate-process
+producer control passed, with cross-user NOT_RUN. Phase B exit 0 means B's
+rejection was observed; matching A evidence is still required. Other executed
+phase failures return 1. Send the two **new evidence directories** to the
+integration owner, who verifies them using the shipped checker on Linux:
+
+```sh
+python3 scripts/native_app_n2_windows_evidence.py \
+  --build <bundle>/n2-native-windows-build.json \
+  --producer <A-evidence> --consumer <B-evidence> --output <new-review.json>
+```
+
+Review exit 0 accepts only the paired synthetic native security scope. Omitting
+`--consumer`, or an explicit nonordinary-B prerequisite receipt, returns 2 and
+keeps cross-user NOT_RUN. Invalid/missing/skipped/failed evidence returns 1.
+Retain each `result.json`, logs, source/build hashes and artifact index. The
+synthetic public transfer directory can be removed by its owner after all
+phases and receipts are retained; never recursively clean an App data root.
