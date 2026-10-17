@@ -63,6 +63,18 @@ type nativeController struct {
 	authorizationChecked      bool
 	activationStatusRequestID string
 	suppressPublish           bool
+	node                      nodeAuthorityState
+	nodeVer                   uint64
+	nodeRecovery              *nodeOperation
+	nodeRecoveryVer           uint64
+	nodeConfirmation          *nodeConfirmationRecord
+	nodeConfirmationVer       uint64
+	nodeAvailable             bool
+	nodeDiscoveryTried        bool
+	nodeChecked               bool
+	nodeContextChecked        bool
+	nodeReadRequestID         string
+	nodeError                 string
 }
 
 func NewController(config Config) (Controller, error) {
@@ -117,10 +129,11 @@ func (c *nativeController) Snapshot() Snapshot {
 			view.Phase = PhaseAccountSession
 		}
 	}
+	expireNodeView(&view, c.cfg.Now().UTC())
 	return view
 }
 
-func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
+func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatchErr error) {
 	if ctx == nil {
 		return ErrInvalidAction
 	}
@@ -150,6 +163,14 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
 	operationCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(c.lifetime, cancel)
 	defer func() { stop(); cancel() }()
+	defer func() {
+		if dispatchErr == nil && !nodeActionKind(action.Kind) {
+			c.initializeNode(operationCtx)
+		}
+	}()
+	if action.Kind == ActionRefresh {
+		c.nodeDiscoveryTried = false
+	}
 	if action.Kind != ActionConnect && action.Kind != ActionDiscoverProfiles && action.Kind != ActionResumeProfile {
 		if err := c.expireKnownSession(); err != nil {
 			return c.failStorage("APP_STATE_COMMIT_FAILED", err)
@@ -157,6 +178,28 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) error {
 	}
 
 	switch action.Kind {
+	case ActionPreviewNode:
+		return c.previewNode(operationCtx, action.NodeCode, false)
+	case ActionReauthorizeNodeStatus:
+		return c.previewNode(operationCtx, "", true)
+	case ActionApproveNode:
+		return c.approveNode(operationCtx, action)
+	case ActionRefreshNode:
+		if !c.nodeContextChecked && c.nodeAccountReady() {
+			if !c.nodeAvailable {
+				if err := c.discoverNodeAvailability(operationCtx); err != nil {
+					return c.failNode("APP_NODE_UNAVAILABLE", err)
+				}
+			}
+			if err := c.refreshNodeContext(operationCtx); err != nil {
+				return err
+			}
+		}
+		return c.refreshNode(operationCtx)
+	case ActionRecoverNode:
+		return c.recoverNode(operationCtx)
+	case ActionCancelNodeAccess:
+		return c.cancelNodeAccess(operationCtx, action.NodeReviewID)
 	case ActionDiscoverProfiles:
 		return c.discoverProfiles(operationCtx)
 	case ActionResumeProfile:
@@ -363,6 +406,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	}
 	if err := c.loadIdentities(create); err != nil {
 		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
+	}
+	if err := c.loadNodeState(); err != nil {
+		return c.failStorage("APP_NODE_STATE_INVALID", err)
 	}
 	if material != nil {
 		if err := c.installActivationMaterial(*material); err != nil {

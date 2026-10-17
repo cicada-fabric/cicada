@@ -133,6 +133,7 @@ type Snapshot struct {
 	Profiles         []ProfileSnapshot     `json:"profiles,omitempty"`
 	Setup            SetupSnapshot         `json:"setup"`
 	Authorization    AuthorizationSnapshot `json:"authorization"`
+	Node             NodeSetupSnapshot     `json:"node"`
 }
 
 type SetupSnapshot struct {
@@ -164,26 +165,32 @@ type ProfileSnapshot struct {
 type ActionKind string
 
 const (
-	ActionConnect           ActionKind = "CONNECT"
-	ActionDiscoverProfiles  ActionKind = "DISCOVER_LOCAL_PROFILES"
-	ActionResumeProfile     ActionKind = "UNLOCK_AND_RESUME_PROFILE"
-	ActionActivateApp       ActionKind = "ACTIVATE_APP"
-	ActionLogin             ActionKind = "LOGIN"
-	ActionRecover           ActionKind = "RECOVER_SAVED_OPERATION"
-	ActionActivationStatus  ActionKind = "REFRESH_FINITE_AUTHORIZATION"
-	ActionRefresh           ActionKind = "REFRESH_ACCOUNT_AND_AUTHORIZATION"
-	ActionSetupAccount      ActionKind = "SET_UP_ACCOUNT"
-	ActionGenerateOwner     ActionKind = "GENERATE_OWNER_IDENTITY"
-	ActionImportOwner       ActionKind = "IMPORT_OWNER_IDENTITY"
-	ActionClaimPrepare      ActionKind = "CLAIM_PREPARE"
-	ActionClaimComplete     ActionKind = "CLAIM_COMPLETE"
-	ActionLoginPrepare      ActionKind = "LOGIN_PREPARE"
-	ActionLoginComplete     ActionKind = "LOGIN_COMPLETE"
-	ActionSessionInspect    ActionKind = "SESSION_INSPECT"
-	ActionLogout            ActionKind = "LOGOUT"
-	ActionRetry             ActionKind = "RECOVER_EXACT_PENDING_REQUEST"
-	ActionSelectCanvas      ActionKind = "SELECT_CANVAS_OBJECT"
-	ActionSetCanvasViewport ActionKind = "SET_CANVAS_VIEWPORT"
+	ActionConnect               ActionKind = "CONNECT"
+	ActionDiscoverProfiles      ActionKind = "DISCOVER_LOCAL_PROFILES"
+	ActionResumeProfile         ActionKind = "UNLOCK_AND_RESUME_PROFILE"
+	ActionActivateApp           ActionKind = "ACTIVATE_APP"
+	ActionLogin                 ActionKind = "LOGIN"
+	ActionRecover               ActionKind = "RECOVER_SAVED_OPERATION"
+	ActionActivationStatus      ActionKind = "REFRESH_FINITE_AUTHORIZATION"
+	ActionRefresh               ActionKind = "REFRESH_ACCOUNT_AND_AUTHORIZATION"
+	ActionPreviewNode           ActionKind = "REVIEW_NODE_CONNECTION"
+	ActionApproveNode           ActionKind = "APPROVE_EXACT_NODE_CONNECTION"
+	ActionRefreshNode           ActionKind = "REFRESH_NODE_CONNECTION"
+	ActionRecoverNode           ActionKind = "RECOVER_NODE_CONNECTION"
+	ActionCancelNodeAccess      ActionKind = "END_APP_NODE_ACCESS"
+	ActionReauthorizeNodeStatus ActionKind = "REAUTHORIZE_EXACT_NODE_STATUS"
+	ActionSetupAccount          ActionKind = "SET_UP_ACCOUNT"
+	ActionGenerateOwner         ActionKind = "GENERATE_OWNER_IDENTITY"
+	ActionImportOwner           ActionKind = "IMPORT_OWNER_IDENTITY"
+	ActionClaimPrepare          ActionKind = "CLAIM_PREPARE"
+	ActionClaimComplete         ActionKind = "CLAIM_COMPLETE"
+	ActionLoginPrepare          ActionKind = "LOGIN_PREPARE"
+	ActionLoginComplete         ActionKind = "LOGIN_COMPLETE"
+	ActionSessionInspect        ActionKind = "SESSION_INSPECT"
+	ActionLogout                ActionKind = "LOGOUT"
+	ActionRetry                 ActionKind = "RECOVER_EXACT_PENDING_REQUEST"
+	ActionSelectCanvas          ActionKind = "SELECT_CANVAS_OBJECT"
+	ActionSetCanvasViewport     ActionKind = "SET_CANVAS_VIEWPORT"
 )
 
 // Action carries one closed native interaction. Secret-bearing fields are
@@ -197,6 +204,12 @@ type Action struct {
 	ProfileID      string
 	// A native confirmation must name the exact finite scope shown to the user.
 	ConfirmLimitedAuthorization bool
+	// Node approval names the exact authenticated candidate displayed to the
+	// user. The controller rechecks it; a UI checkbox never grants authority.
+	NodeCode            string
+	NodeReviewID        string
+	ConfirmNodeIdentity bool
+	ConfirmNodeAccess   bool
 
 	Username    string
 	Password    string

@@ -120,6 +120,9 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	if err := c.loadIdentities(false); err != nil {
 		return c.failStorage("APP_IDENTITY_UNAVAILABLE", err)
 	}
+	if err := c.loadNodeState(); err != nil {
+		return c.failStorage("APP_NODE_STATE_INVALID", err)
+	}
 	if err := c.restoreSession(); err != nil {
 		return c.failStorage("APP_SESSION_STATE_INVALID", err)
 	}

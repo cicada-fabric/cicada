@@ -59,36 +59,42 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
-	cancelReplacement widget.Clickable
-	controller        appcore.Controller
-	window            *app.Window
-	ctx               context.Context
-	cancel            context.CancelFunc
-	theme             *material.Theme
-	locale            appui.Locale
-	activation        widget.Editor
-	username          widget.Editor
-	password          widget.Editor
-	buttons           map[appcore.ActionKind]*widget.Clickable
-	profileButtons    map[string]*widget.Clickable
-	contentList       widget.List
-	canvasList        widget.List
-	langEN            widget.Clickable
-	langZH            widget.Clickable
-	previewButton     widget.Clickable
-	detailsButton     widget.Clickable
-	details           bool
-	consent           widget.Bool
-	inputScope        string
-	replacementInput  bool
-	canvas            canvasWidget
-	preview           bool
-	busy              atomic.Bool
-	closed            atomic.Bool
-	workerWG          sync.WaitGroup
-	statusMu          sync.Mutex
-	failed            bool
-	uiErrorCode       string
+	cancelReplacement   widget.Clickable
+	controller          appcore.Controller
+	window              *app.Window
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	theme               *material.Theme
+	locale              appui.Locale
+	activation          widget.Editor
+	username            widget.Editor
+	password            widget.Editor
+	buttons             map[appcore.ActionKind]*widget.Clickable
+	profileButtons      map[string]*widget.Clickable
+	contentList         widget.List
+	canvasList          widget.List
+	langEN              widget.Clickable
+	langZH              widget.Clickable
+	previewButton       widget.Clickable
+	detailsButton       widget.Clickable
+	details             bool
+	consent             widget.Bool
+	nodeCode            widget.Editor
+	nodeIdentityConsent widget.Bool
+	nodeAccessConsent   widget.Bool
+	nodeReviewID        string
+	nodePinDetails      bool
+	nodePinButton       widget.Clickable
+	inputScope          string
+	replacementInput    bool
+	canvas              canvasWidget
+	preview             bool
+	busy                atomic.Bool
+	closed              atomic.Bool
+	workerWG            sync.WaitGroup
+	statusMu            sync.Mutex
+	failed              bool
+	uiErrorCode         string
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -112,6 +118,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.activation.Mask = '•'
 	v.activation.SingleLine, v.username.SingleLine, v.password.SingleLine = true, true, true
 	v.activation.MaxLen = appui.ActivationCodeInputLimit()
+	v.nodeCode.SingleLine, v.nodeCode.MaxLen = true, 32
 	v.username.MaxLen, v.password.MaxLen = 128, 1024
 	v.activation.InputHint = 1
 	v.username.InputHint = 1
@@ -128,11 +135,22 @@ func (v *view) layout(gtx layout.Context) {
 		v.username.SetText(snapshot.Account.Username)
 		v.password.SetText("")
 		v.consent.Value = false
+		v.nodeCode.SetText("")
+		v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
+		v.nodeReviewID = ""
 	}
 	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Authorization.ExpiresAt); err == nil && deadline.After(time.Now()) {
 		gtx.Execute(op.InvalidateCmd{At: deadline})
 	}
 	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Account.SessionExpiresAt); err == nil && deadline.After(time.Now()) {
+		gtx.Execute(op.InvalidateCmd{At: deadline})
+	}
+	for _, value := range []string{snapshot.Node.Access.ExpiresAt, nodeCandidateExpiry(snapshot.Node)} {
+		if deadline, err := time.Parse(time.RFC3339Nano, value); err == nil && deadline.After(time.Now()) {
+			gtx.Execute(op.InvalidateCmd{At: deadline})
+		}
+	}
+	if deadline, err := time.Parse(time.RFC3339Nano, snapshot.Node.Connectivity.FreshUntil); err == nil && deadline.After(time.Now()) {
 		gtx.Execute(op.InvalidateCmd{At: deadline})
 	}
 	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
@@ -196,7 +214,7 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 		if s.Setup.OwnerKeyStored {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "setup.keys_stored"))))
 		}
-		if s.Setup.Purpose != "" {
+		if s.Setup.Purpose != "" && !s.Node.Available {
 			rows = append(rows, layout.Rigid(v.labelRow(v.authorizationLabel(s.Authorization.State))))
 			if expiry, err := time.Parse(time.RFC3339Nano, s.Authorization.ExpiresAt); err == nil {
 				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "authorization.until")+" "+expiry.Local().Format("15:04"))))
@@ -225,6 +243,12 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 		}))
 		if v.details {
 			rows = append(rows, layout.Rigid(v.labelRow(v.hubSummary(s.Hub))), layout.Rigid(v.labelRow(v.accountSummary(s))), layout.Rigid(v.labelRow(v.managementLabel(s.Management))))
+			if s.Node.Available && s.Setup.Purpose != "" {
+				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "authorization.initial")+": "+v.authorizationLabel(s.Authorization.State))))
+			}
+			if s.Node.Available && hasAction(s, appcore.ActionRefresh) {
+				rows = append(rows, layout.Rigid(v.actionButton(appcore.ActionRefresh, appui.Text(v.locale, "account.refresh"), s)))
+			}
 		}
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
 	})
@@ -296,8 +320,11 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 			return material.CheckBox(v.theme, &v.consent, appui.Text(v.locale, "setup.grant_consent")).Layout(gtx)
 		})
 	}
-	if label, ok := v.actionLabel(flow.Primary); ok {
+	if label, ok := v.actionLabel(flow.Primary); ok && !(flow.Stage == "ready" && s.Node.Available) {
 		rows = append(rows, v.actionButton(flow.Primary, label, s))
+	}
+	if (flow.Stage == "ready" && s.Node.Available) || flow.Stage == "node-diagnostic" || s.Node.Pending {
+		rows = append(rows, v.nodeSection(s))
 	}
 	for _, kind := range flow.Secondary {
 		if label, ok := v.actionLabel(kind); ok {
@@ -308,7 +335,9 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		}
 	}
 	if flow.Stage == "ready" {
-		rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
+		if !s.Node.Available && !s.Node.Pending {
+			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
+		}
 	}
 	return rows
 }
@@ -321,6 +350,9 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 	}
 	return func(gtx layout.Context) layout.Dimensions {
 		enabled := !v.busy.Load() && (kind != appcore.ActionActivateApp || v.consent.Value)
+		if isNodeAction(kind) {
+			enabled = v.nodeActionEnabled(kind, s)
+		}
 		flow := appui.Flow(s)
 		if v.replacementInput && s.Setup.ReplacementAllowed {
 			flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
@@ -349,7 +381,7 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 				v.startDispatch(action)
 			}
 		}
-		if kind == appcore.ActionDiscoverProfiles || kind == appcore.ActionImportOwner || kind == appcore.ActionLogout ||
+		if kind == appcore.ActionDiscoverProfiles || kind == appcore.ActionImportOwner || kind == appcore.ActionLogout || kind == appcore.ActionCancelNodeAccess || (kind == appcore.ActionRefresh && s.Node.Available) ||
 			(kind == appcore.ActionConnect && s.Hub.Verified && appui.Flow(s).Primary != appcore.ActionConnect && !v.replacementInput) {
 			if v.busy.Load() {
 				gtx = gtx.Disabled()
@@ -366,6 +398,9 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 }
 
 func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.Action, bool) {
+	if isNodeAction(kind) {
+		return v.nodeActionFor(kind, s)
+	}
 	action := appcore.Action{Kind: kind}
 	switch kind {
 	case appcore.ActionActivateApp:
@@ -448,6 +483,7 @@ func (v *view) startDispatch(action appcore.Action) {
 		action.Password = ""
 		action.ActivationCode = ""
 		action.Username = ""
+		action.NodeCode = ""
 		v.statusMu.Lock()
 		v.failed = err != nil
 		v.uiErrorCode = ""
@@ -481,6 +517,8 @@ func (v *view) clearSensitiveInputs() {
 	v.activation.SetText("")
 	v.username.SetText("")
 	v.password.SetText("")
+	v.nodeCode.SetText("")
+	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 	v.cancel()
 }
 

@@ -5,6 +5,28 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_NODE_UNAVAILABLE":
+		id = msgNodeUnavailableError
+	case "APP_NODE_CODE_INVALID":
+		id = msgNodeCodeInvalid
+	case "APP_NODE_COUNTER_CONFLICT", "APP_NODE_RECOVERY_UNRESOLVED":
+		id = msgNodeCounterConflict
+	case "APP_NODE_REQUEST_UNKNOWN", "APP_NODE_RESPONSE_INVALID", "APP_NODE_RECOVERY_INVALID":
+		id = msgNodeRecovery
+	case "APP_NODE_SESSION_REQUIRED":
+		id = msgNodeSessionEnded
+	case "APP_NODE_AUTHORITY_EXPIRED":
+		id = msgNodeAccessExpired
+	case "APP_NODE_AUTHORITY_REVOKED", "APP_NODE_ROOT_UNAVAILABLE", "APP_NODE_DEVICE_UNAVAILABLE":
+		id = msgNodeAccessRevoked
+	case "APP_NODE_CANDIDATE_UNAVAILABLE", "APP_NODE_CANDIDATE_CHANGED", "APP_NODE_PROOF_EXPIRED":
+		id = msgNodeCandidateExpired
+	case "APP_NODE_CONFIRM_REJECTED", "APP_NODE_SCOPE_MISMATCH", "APP_NODE_REPLAY_CONFLICT", "APP_NODE_AUTHORITY_CONFLICT", "APP_NODE_INVALID_REQUEST":
+		id = msgRequestRejected
+	case "APP_NODE_STATE_INVALID", "APP_NODE_COMMIT_FAILED":
+		id = msgLocalUnlockFailed
+	case "APP_NODE_CANDIDATE_EXPIRED":
+		id = msgNodeCandidateExpired
 	case "ACCOUNT_RESPONSE_UNKNOWN", "ACCOUNT_RESPONSE_INVALID", "APP_RECOVERY_RESPONSE_UNKNOWN", "APP_RECOVERY_RESPONSE_INVALID":
 		id = msgRequestUnknown
 	case "ACCOUNT_REQUEST_REJECTED":

@@ -127,10 +127,108 @@ const (
 	msgReplacementCode           messageID = "setup.replacement_code"
 	msgReplacementBody           messageID = "setup.replacement_body"
 	msgBackToActivation          messageID = "setup.back_to_activation"
+	msgNodeSection               messageID = "node.section"
+	msgNodeIntro                 messageID = "node.intro"
+	msgNodeCode                  messageID = "node.code"
+	msgNodePreview               messageID = "node.preview"
+	msgNodeApprove               messageID = "node.approve"
+	msgNodeRefresh               messageID = "node.refresh"
+	msgNodeRecover               messageID = "node.recover"
+	msgNodeReview                messageID = "node.review"
+	msgNodeIdentityConsent       messageID = "node.identity_consent"
+	msgNodeAccessConsent         messageID = "node.access_consent"
+	msgNodeScope                 messageID = "node.scope"
+	msgNodeName                  messageID = "node.name"
+	msgNodeID                    messageID = "node.id"
+	msgNodeFingerprint           messageID = "node.fingerprint"
+	msgNodeFingerprints          messageID = "node.fingerprints"
+	msgNodeHubFingerprint        messageID = "node.hub_fingerprint"
+	msgNodeCandidateUntil        messageID = "node.candidate_until"
+	msgNodeAccessUntil           messageID = "node.access_until"
+	msgNodeObservation           messageID = "node.observed_at"
+	msgNodeLastHeartbeat         messageID = "node.last_heartbeat"
+	msgNodeNotBound              messageID = "node.not_bound"
+	msgNodeUnknown               messageID = "node.unknown"
+	msgNodeOnline                messageID = "node.online"
+	msgNodeOffline               messageID = "node.offline"
+	msgNodeStale                 messageID = "node.stale"
+	msgNodeBound                 messageID = "node.bound"
+	msgNodeRecovery              messageID = "node.recovery"
+	msgNodeUnavailable           messageID = "node.unavailable"
+	msgNodeAccessActive          messageID = "node.access_active"
+	msgNodeAccessExpired         messageID = "node.access_expired"
+	msgNodeAccessRevoked         messageID = "node.access_revoked"
+	msgNodeAccessUnconfirmed     messageID = "node.access_unconfirmed"
+	msgNodeCandidateExpired      messageID = "node.candidate_expired"
+	msgInitialAuthorization      messageID = "authorization.initial"
+	msgNodeCancelReview          messageID = "node.cancel_review"
+	msgNodeEndAccess             messageID = "node.end_access"
+	msgNodeReviewStatus          messageID = "node.review_status"
+	msgNodeStatusScope           messageID = "node.status_scope"
+	msgNodeStatusConsent         messageID = "node.status_consent"
+	msgNodeAuthorizeStatus       messageID = "node.authorize_status"
+	msgNodeReauthorizeStatus     messageID = "node.reauthorize_status"
+	msgNodeAccountRecovery       messageID = "node.account_recovery"
+)
+
+const (
+	msgNodeUnavailableError messageID = "error.node_unavailable"
+	msgNodeCodeInvalid      messageID = "error.node_code_invalid"
+	msgNodeCounterConflict  messageID = "error.node_counter_conflict"
+	msgNodeSessionEnded     messageID = "node.session_ended"
+	msgNodeAccessEnded      messageID = "node.access_ended"
 )
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		msgNodeUnavailableError: "This Hub's Node connection service is unavailable. Your saved requests are retained.",
+		msgNodeCodeInvalid:      "Enter the current connection code shown on your Node.",
+		msgNodeCounterConflict:  "The saved Node conversation could not be reconciled safely. Its state has been retained.",
+		msgNodeSessionEnded:     "The sign-in used for this Node access has ended. Sign in and explicitly authorize status again.",
+		msgNodeAccessEnded:      "This App's Node access has ended.",
+
+		msgNodeReviewStatus:          "Review status access for this Node",
+		msgNodeStatusScope:           "Allow only status reads for this previously approved Node until the displayed expiry. This does not pair the Node again or renew its previous authorization.",
+		msgNodeStatusConsent:         "I allow this App to read this Node's status for the shown period.",
+		msgNodeAuthorizeStatus:       "Allow status access",
+		msgNodeReauthorizeStatus:     "Authorize status again",
+		msgNodeAccountRecovery:       "A Node request is also saved. Recover the account request above first; the original Node request will remain available.",
+		msgNodeCancelReview:          "Cancel this review",
+		msgNodeEndAccess:             "End this App's Node access",
+		msgInitialAuthorization:      "Initial setup access",
+		msgNodeSection:               "Your Node",
+		msgNodeIntro:                 "Start Cicada Node on your Ubuntu computer, then enter the connection code shown there.",
+		msgNodeCode:                  "Node connection code",
+		msgNodePreview:               "Review this Node",
+		msgNodeApprove:               "Approve this connection",
+		msgNodeRefresh:               "Check Node status",
+		msgNodeRecover:               "Recover saved Node request",
+		msgNodeReview:                "Check this exact Node",
+		msgNodeIdentityConsent:       "I checked the Node and Hub key fingerprints against the trusted Node screen.",
+		msgNodeAccessConsent:         "I approve the limited access shown for this Node.",
+		msgNodeScope:                 "Allow this App to approve only the Node shown here and read its connection status until the displayed expiry. Access does not renew automatically.",
+		msgNodeName:                  "Computer",
+		msgNodeID:                    "Node ID",
+		msgNodeFingerprint:           "Node key fingerprint",
+		msgNodeFingerprints:          "Key fingerprints",
+		msgNodeHubFingerprint:        "Hub Node-Control key fingerprint",
+		msgNodeCandidateUntil:        "Approve before",
+		msgNodeAccessUntil:           "Node access expires",
+		msgNodeObservation:           "Status checked at",
+		msgNodeLastHeartbeat:         "Last Node heartbeat",
+		msgNodeNotBound:              "No Node connection approved yet.",
+		msgNodeUnknown:               "Node status has not been confirmed.",
+		msgNodeOnline:                "Node online",
+		msgNodeOffline:               "Node offline",
+		msgNodeStale:                 "Node status is out of date.",
+		msgNodeBound:                 "Node connection approved. Waiting for a current Node observation.",
+		msgNodeRecovery:              "The last Node response is unconfirmed. Recover the saved request before approving another connection.",
+		msgNodeUnavailable:           "Connect and sign in to review your Node connection.",
+		msgNodeAccessActive:          "Limited access to this Node is confirmed.",
+		msgNodeAccessExpired:         "This Node authorization has expired. It does not renew automatically.",
+		msgNodeAccessRevoked:         "This Node authorization was revoked.",
+		msgNodeAccessUnconfirmed:     "Node authorization has not been confirmed.",
+		msgNodeCandidateExpired:      "This Node review has expired. Check its saved state or end this review before using a current Node code.",
 		msgAppTitle:                  "Cicada",
 		msgLanguage:                  "Language",
 		msgEnglish:                   "English",
@@ -159,7 +257,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgImportOwner:               "Import existing Owner key",
 		msgOwnerProofPending:         "The account is ready, but Owner key-possession proof is still required.",
 		msgManagementEnabled:         "Management authority is active.",
-		msgManagementDisabled:        "Management is not authorized. No management data is shown.",
+		msgManagementDisabled:        "General management is not authorized.",
 		msgRefresh:                   "Refresh status",
 		msgLogout:                    "Log out",
 		msgNoCanvasAuthority:         "No authorized canvas data is available.",
@@ -248,6 +346,54 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		msgNodeUnavailableError: "此 Hub 的 Node 连接服务当前不可用。已保存的请求会继续保留。",
+		msgNodeCodeInvalid:      "请输入 Node 当前屏幕上显示的连接码。",
+		msgNodeCounterConflict:  "暂时无法安全核对此 Node 会话，原有状态已保留。",
+		msgNodeSessionEnded:     "本次 Node 访问所绑定的登录已结束。请登录后明确重新授权查看状态。",
+		msgNodeAccessEnded:      "此 App 的 Node 访问已结束。",
+
+		msgNodeReviewStatus:          "核对此 Node 的状态访问",
+		msgNodeStatusScope:           "仅允许在显示的截止时间前查看此前已批准 Node 的状态。本次授权不会重新配对 Node，也不会续期此前的授权。",
+		msgNodeStatusConsent:         "我同意此 App 在所示期限内查看此 Node 的状态。",
+		msgNodeAuthorizeStatus:       "允许查看状态",
+		msgNodeReauthorizeStatus:     "重新授权查看状态",
+		msgNodeAccountRecovery:       "还有一个 Node 请求已保存。请先恢复上方的账户请求，Node 原始请求会继续保留。",
+		msgNodeCancelReview:          "取消此次核对",
+		msgNodeEndAccess:             "结束此 App 的 Node 访问",
+		msgInitialAuthorization:      "首次设置授权",
+		msgNodeSection:               "你的 Node",
+		msgNodeIntro:                 "在 Ubuntu 电脑上启动 Cicada Node，然后输入该电脑显示的连接码。",
+		msgNodeCode:                  "Node 连接码",
+		msgNodePreview:               "查看此 Node",
+		msgNodeApprove:               "批准此连接",
+		msgNodeRefresh:               "检查 Node 状态",
+		msgNodeRecover:               "恢复已保存的 Node 请求",
+		msgNodeReview:                "核对此 Node",
+		msgNodeIdentityConsent:       "我已与可信 Node 屏幕核对 Node 和 Hub 密钥的完整指纹。",
+		msgNodeAccessConsent:         "我同意此 App 在所示范围和期限内批准并查看此 Node。",
+		msgNodeScope:                 "允许此 App 在显示的截止时间前，仅批准此处所示 Node 并读取其连接状态。授权不会自动续期。",
+		msgNodeName:                  "电脑名称",
+		msgNodeID:                    "Node ID",
+		msgNodeFingerprint:           "Node 密钥指纹",
+		msgNodeFingerprints:          "密钥指纹",
+		msgNodeHubFingerprint:        "Hub Node-Control 密钥指纹",
+		msgNodeCandidateUntil:        "确认截止时间",
+		msgNodeAccessUntil:           "Node 授权截止时间",
+		msgNodeObservation:           "状态核对时间",
+		msgNodeLastHeartbeat:         "最近 Node 心跳",
+		msgNodeNotBound:              "尚未批准 Node 连接。",
+		msgNodeUnknown:               "Node 当前状态尚未确认。",
+		msgNodeOnline:                "Node 在线",
+		msgNodeOffline:               "Node 离线",
+		msgNodeStale:                 "Node 状态已陈旧。",
+		msgNodeBound:                 "Node 连接已获批准，正在等待当前 Node 状态。",
+		msgNodeRecovery:              "上次 Node 响应尚未确认。请先恢复已保存的请求，再批准其他连接。",
+		msgNodeUnavailable:           "连接并登录后，可核对 Node 连接。",
+		msgNodeAccessActive:          "对此 Node 的有限访问已确认。",
+		msgNodeAccessExpired:         "本次 Node 授权已到期，不会自动续期。",
+		msgNodeAccessRevoked:         "本次 Node 授权已撤销。",
+		msgNodeAccessUnconfirmed:     "Node 授权尚未确认。",
+		msgNodeCandidateExpired:      "此次 Node 核对已过期。请先核对已保存的状态或结束此次核对，再使用 Node 当前连接码。",
 		msgAppTitle:                  "Cicada",
 		msgLanguage:                  "语言",
 		msgEnglish:                   "English",
@@ -276,7 +422,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgImportOwner:               "导入现有 Owner 密钥",
 		msgOwnerProofPending:         "账户已就绪，但仍需完成 Owner 密钥持有证明。",
 		msgManagementEnabled:         "管理权限已激活。",
-		msgManagementDisabled:        "尚未获得管理授权，不会显示管理数据。",
+		msgManagementDisabled:        "通用管理权限尚未开通。",
 		msgRefresh:                   "刷新状态",
 		msgLogout:                    "退出登录",
 		msgNoCanvasAuthority:         "当前没有已授权的画布数据。",

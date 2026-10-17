@@ -28,6 +28,16 @@ func Flow(s appcore.Snapshot) SetupFlow {
 	if has(appcore.ActionRetry) {
 		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRetry}
 	}
+	if s.Node.Pending && has(appcore.ActionRecoverNode) {
+		flow := SetupFlow{Stage: "node-recovery"}
+		if has(appcore.ActionLogout) {
+			flow.Secondary = []appcore.ActionKind{appcore.ActionLogout}
+		}
+		return flow
+	}
+	if s.Node.Candidate != nil && has(appcore.ActionRefreshNode) && !has(appcore.ActionApproveNode) {
+		return SetupFlow{Stage: "node-diagnostic"}
+	}
 	operational := false
 	for _, kind := range []appcore.ActionKind{appcore.ActionGenerateOwner, appcore.ActionImportOwner, appcore.ActionActivateApp, appcore.ActionSetupAccount, appcore.ActionLogin, appcore.ActionRefresh, appcore.ActionActivationStatus} {
 		if has(kind) {

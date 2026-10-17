@@ -343,6 +343,7 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 }
 
 func (c *nativeController) clearSession() {
+	c.nodeChecked, c.nodeContextChecked, c.nodeReadRequestID = false, false, ""
 	if c.session != nil {
 		clear(c.session.SessionToken)
 		c.session = nil
@@ -352,6 +353,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearNodeRuntime()
 	if c.state.Pending != nil {
 		clear(c.state.Pending.Request)
 		clear(c.state.Pending.Response)
@@ -484,6 +486,8 @@ func (c *nativeController) publish() {
 	}
 	view.AvailableActions = c.availableActions()
 	c.populateSetup(&view)
+	c.populateNode(&view)
+	view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
 	if c.storageFault {
 		view.Phase = PhaseError
 		view.Account = AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown}
@@ -587,6 +591,7 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy.Profiles = append([]ProfileSnapshot(nil), source.Profiles...)
 	copy.Authorization.AllowedOperations = append([]string(nil), source.Authorization.AllowedOperations...)
 	copy.Canvas.Objects = append([]CanvasObject(nil), source.Canvas.Objects...)
+	copy.Node = cloneNodeSnapshot(source.Node)
 	return copy
 }
 

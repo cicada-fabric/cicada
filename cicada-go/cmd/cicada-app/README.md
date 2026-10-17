@@ -151,3 +151,80 @@ The tested source was dirty relative to `070137c`; the final README facts were
 added after the unchanged code completed its checks. Independent process
 acceptance is rerun by its owner after integration. Native Windows runtime,
 DPAPI/ACL, Android, physical devices, public HTTPS and PQTLS remain NOT_RUN.
+
+## Finite Node connection in the same App profile
+
+N3 uses the existing vaulted Owner and enrolled App device. Connect and sign in
+with the saved Hub profile, enter the code shown by the Ubuntu Node, and review
+its exact identity and complete Node/Hub Node-Control key fingerprints. Explicit
+consent signs one finite authorization for that Node and one exact INITIAL
+confirmation. Private keys stay in the existing local vault; setup needs no
+private-key export, browser, OpenSSL or replacement Owner.
+
+The App first checks the Hub's separate Node availability document. Older or
+unsupported Hubs receive no new N3 secret POST or pending packet. N3 requires
+completed N2 enrollment history; it does not extend the original N2 lease.
+Only `nodes.confirm` uses Client RPC. Node-only observation and diagnostic
+recovery use `app-node-authority-v1` HTTP; no broad Node list, general status
+snapshot, capability RPC, Worker/Goal operation or live canvas is called.
+
+The Node permission has a fixed prepare-plus-15-minute deadline and ends sooner
+if its bound account session ends. A new login cannot adopt it. For a previously
+confirmed Node, "Authorize status again" prepares a new status-only review for
+the exact saved binding and confirmation provenance. Approval permits reads
+only; it never pairs again or spends another confirmation. "End this App's
+Node access" ends only the App permission and preserves the Node binding.
+An expired or cancelled unconfirmed review can return to a new code only after
+authenticated terminal evidence, with a new grant/head and unchanged identities.
+
+Binding approval, recent Node heartbeat and Runtime readiness are separate.
+The card shows the authenticated observation time and last heartbeat. Its
+connected label expires at the signed heartbeat `fresh_until`; polling cannot
+extend an old heartbeat. This contract reports UNKNOWN, CONNECTED and STALE,
+without inferring physical disconnection or Runtime readiness. A failed read or
+expired permission keeps current status unknown.
+
+Exact Node packets, signed receipts and applied markers are encrypted before
+progress. A saved-but-unapplied response is completed idempotently at startup;
+Client counters cannot advance twice. Separate encrypted records retain the
+INITIAL confirmation and large diagnostic exchanges. Unsigned errors preserve
+the original packet. `READ_EXPIRED` settles only its exact side-effect-free read;
+mutations require an authenticated original receipt or durable rejection fence.
+Node recovery remains accessible after logout or session expiry. This change
+keeps the existing vault location and secure-storage backend.
+Windows resumes the inherited N1 location
+`%LOCALAPPDATA%\CICADA\vaults\CICADA\vaults\<scope-hash>.vault` when opened
+as the same Windows user with the same environment. The nested path is retained;
+this checkpoint does not migrate it or require a launch-environment override.
+
+App-focused validation for this checkpoint is recorded with its exact dirty
+source, scoped actor tests and Windows cross-build below. Independent Hub/Node
+process, Windows native security/GUI and physical Ubuntu results remain separate
+and are not established by the App crypto actor.
+
+The final 2026-10-17 App check passed **41 Node-focused normal test events and
+41 race test events, zero failures/skips**, Linux vet, Windows vet and Windows
+amd64 cross-build. The actual controller regression advances time after preview
+and reads Snapshot without publishing or sending traffic: expired consent is
+removed while diagnostic refresh remains reachable. Other cases cover exact
+receipt restart, confirmation/proof persistence boundaries, counter idempotency,
+old-Hub preflight, session-ended diagnostics, status-only reauthorization and
+full-binding substitution refusal. These are scripted crypto actors using real
+shared PQ packets and disposable encrypted vaults, not production Hub Guard or
+Hub/Node process-crash acceptance.
+
+Final checks used the fixed Go 1.27.2 builder above, a task-exclusive build cache
+and the read-only stable module closure. The tested source was dirty relative to
+Store checkpoint `e078c58`; before/after Go/module manifests both hash to
+`4cf16ff9726c774dfe18f437f7fd6f89b51b358b02a29805ae6968a42d150935`.
+Receipts and the unsigned Windows build are retained at
+`~/Cicada/.local/evidence/n3-app/controller-final-20261017-j7l2o3eb`.
+The executable SHA-256 is
+`d48745afe24b22dc91fdd469e24e4d71d7dc9be8828f9a1cbca398a479094ab2`.
+An earlier broader App normal run passed 93 events on dirty `5f509be` source;
+its race run was interrupted before the idle-expiry correction and is explicitly
+**not a pass**. That separate evidence is retained at
+`~/Cicada/.local/evidence/n3-app/controller-20261017-_tbmz785`.
+The integration owner runs the complete native/disposable interoperability gate
+after integration. Native Windows execution, GUI/DPAPI/ACL, physical Ubuntu Node,
+native Runtime, Android, public HTTPS and PQTLS remain NOT_RUN for this App check.
